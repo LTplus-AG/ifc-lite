@@ -72,12 +72,11 @@ import { useIfcCache, getCached, deleteCached } from './useIfcCache.js';
 // Server hook
 import { useIfcServer } from './useIfcServer.js';
 import { handleServerLoadAttempt } from './ingest/serverLoadAttempt.js';
-import { describeProcessedModelFailure, normalizedProcessedModel, ProcessedModelUnavailable } from './ingest/processedModel.js';
+import { describeProcessedModelFailure, normalizedProcessedModel, refuseFederatedProcessedModel } from './ingest/processedModel.js';
 
 import { prepareGlbViewerModel } from './ingest/glbTextureValidation.js';
 import { getMaxExpressId, getViewerSchemaVersion, parseIfcxViewerModel } from './ingest/viewerModelIngest.js';
 import { isLandXmlFileName } from './ingest/landXmlSniff.js';
-import { loadLandXmlModel } from './ingest/landXmlLoad.js';
 import { drapeIfGeoRaster } from './ingest/drapeIfGeoRaster.js';
 import { createLocalIfcLoadAdmission } from './ingest/confirmLocalIfcAdmission.js';
 import { clearLandXmlRefusalPrompts, publishLandXmlRefusalPrompts } from './ingest/landXmlRefusalPrompts.js';
@@ -96,7 +95,6 @@ import { removePointCloudScanCache } from './ingest/pointCloudScanCache.js';
 import { stopCopcLodStream } from './ingest/copc/copcLodStream.js';
 import { getGlobalRenderer } from './useBCF.js';
 import type { FederatedLandXmlStreamingFinalization } from './ingest/federatedLandXmlStreaming.js';
-import { openFederatedLandXmlStreamingPlan, openPrimaryLandXmlProvisional } from './ingest/landXmlGpuTransactions.js';
 import { extractModelSpatialPlacement, findReferenceSpatialModel } from './ingest/federationAlign.js';
 import { finalizeFederatedSpatialPlacement } from './ingest/federatedSpatialFinalize.js';
 import { computePointCloudAlignment, unregisterPointCloudAlignment, hasRegisteredPointCloudAlignment, type PointCloudSourceUnit } from './ingest/pointCloudAlignment.js';
@@ -261,6 +259,7 @@ export function useIfcLoader() {
     options?: ModelLoadOptions,
   ) => {
     assertWorkflowOwner(options?.workflowOwner);
+    if (options?.processedModel && target.kind !== 'primary') return refuseFederatedProcessedModel(options?.onLoadError);
     const draping = drapeIfGeoRaster(file); if (draping) return draping; // #5942: imagery, never a model
     const geometryKernel = beginGeometryKernel(file, target, () => void loadFileRef.current?.(file, target, options), { hasSourceBytes: !options?.processedModel }); if (geometryKernel.refused) return settleKernelRefusal(geometryKernel.refused, options?.onLoadError); // #7955 M2: out-of-scope retained requests stop before any work
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
@@ -689,9 +688,8 @@ export function useIfcLoader() {
       if (processedModel) { // no source bytes here: nothing below (sniffing, local cache, WASM fallback) applies
         initializeModel();
         loadStage = 'server-fetch';
-        // The replay writes the active model slot, which only a primary load owns.
-        let failure: unknown = target.kind === 'primary' ? null : new ProcessedModelUnavailable('not-primary');
-        if (failure === null && await handleServerLoadAttempt(() => loadFromServer(processedModel, new ArrayBuffer(0), () => isStale(), metadataAbort.signal, modelId).catch((error: unknown) => { failure = error; return false; }), isStale, completeServerLoad)) return;
+        let failure: unknown = null;
+        if (await handleServerLoadAttempt(() => loadFromServer(processedModel, new ArrayBuffer(0), () => isStale(), metadataAbort.signal, modelId).catch((error: unknown) => { failure = error; return false; }), isStale, completeServerLoad)) return;
         const { message, code, retryable } = describeProcessedModelFailure(failure);
         updateModel(modelId, { loadState: 'error', loadError: message }); showLoadError(message, code, retryable ? undefined : null); settleLoadUi();
         return;
@@ -729,16 +727,19 @@ export function useIfcLoader() {
         // A .xml file is handed to the authoritative LandXML parser, which
         // validates its root/namespace while streaming. This keeps legal
         // long XML prologs from forcing a whole-file detection read.
-        const sourceKeyFingerprint = await computeSourceFingerprintFromBlob(file);
+        const [landXml, sourceKeyFingerprint] = await Promise.all([
+          import('./ingest/landXmlLoad.js'), computeSourceFingerprintFromBlob(file),
+        ]);
+        if (isStale()) return;
         modelSourceIdentity = `${file.name}:${sourceKeyFingerprint.hex}`;
         placementIdentity = startLoadSourceIdentity(modelId, file, () => isStale());
         if (target.kind === 'primary') updateModel(modelId, { sourceFingerprint: modelSourceIdentity });
-        await loadLandXmlModel({ file, fileSizeMB, targetKind: target.kind, totalStartTime, wasHidden: wasHidden(), trace,
+        await landXml.loadLandXmlModel({ file, fileSizeMB, targetKind: target.kind, totalStartTime, wasHidden: wasHidden(), trace,
           assumedLinearUnit: options?.assumedLinearUnit, landXmlAssumptions: options?.landXmlAssumptions ?? useViewerStore.getState().landXmlGeorefAssumptionSettings,
           isCurrent: () => isCurrent(), setProgress, settleLoadUi,
-          openProvisional: target.kind === 'primary' ? (preflight) => openPrimaryLandXmlProvisional(modelId, preflight) : undefined,
+          openProvisional: target.kind === 'primary' ? (preflight) => landXml.openPrimaryLandXmlProvisional(modelId, preflight) : undefined,
           openFederatedStreamingPlan: target.kind === 'federated'
-            ? (preflight, sourceCoordinateInfo, spatialReference, declaredCrs, assumptions) => openFederatedLandXmlStreamingPlan(modelId, preflight, sourceCoordinateInfo, spatialReference, declaredCrs, () => isCurrent(), assumptions)
+            ? (preflight, sourceCoordinateInfo, spatialReference, declaredCrs, assumptions) => landXml.openFederatedLandXmlStreamingPlan(modelId, preflight, sourceCoordinateInfo, spatialReference, declaredCrs, () => isCurrent(), assumptions)
             : undefined,
           onPrimary: (r) => { setGeometryResult(r.geometryResult); setIfcDataStore(r.dataStore); }, finalize: finalizeModel,
           onError: (message, error) => {

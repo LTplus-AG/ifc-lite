@@ -219,6 +219,11 @@ const client = new IfcServerClient({
 
 ### Parse Methods
 
+Pass an `AbortSignal` in the parse options to cancel a request or stop reading
+its response. The client's request timeout still applies. If the caller cancels
+a Parquet cache probe, the client stops without starting an upload.
+
+
 #### parseParquet (Recommended)
 
 Best for most use cases - roughly 15x smaller payloads than JSON.
@@ -1114,9 +1119,10 @@ openProcessedModel({ sha256, bytes, name }, { serverUrl: '/ifc' });
 
 The call may come before the viewer mounts; the request waits for it, and a
 `?processed=` or `?model=` in the page URL is then ignored (each logged once), so the host's model wins.
-A collaboration link (`?room=`) is refused the same way. If its join is still in progress,
-the viewer leaves it before it can hydrate or seed the host's model. A call after the join
-has finished does not leave the room.
+A collaboration link (`?room=`) is refused the same way. When a host asks
+for its own model after a page room starts joining, the viewer leaves that room
+before opening the host's model. An independent room joined by the user keeps
+its own session.
 The `serverUrl` option applies only to this request and its Retry; it does not redirect local uploads.
 Without it, the load asks the global server as it stands when the load runs.
 `setProcessingServerUrl(url)` explicitly sets the global server. This URL replaces

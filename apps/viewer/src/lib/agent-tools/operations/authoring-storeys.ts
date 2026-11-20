@@ -24,12 +24,13 @@ export const storeyOperations = [
   operation<{ express_id: number; side: 'above' | 'below' }>(meta('storeys.suggest', 'Read the native naming/elevation suggestion above or below an explicit existing storey.'), {
     type: 'object', properties: { express_id: { type: 'integer', minimum: 1 }, side: { type: 'string', enum: ['above', 'below'] } }, required: ['express_id', 'side'], additionalProperties: false,
   }, (i, c) => { const ref = resolveRef(c.model, { express_id: i.express_id }); return out(c.model.bim.store.suggestStorey(c.model.id, ref.expressId, i.side)); }),
-  operation<{ kind: 'add' | 'edit' | 'delete'; express_id: number; params_json: string }>(meta('storeys.prepare', 'Use the authoritative native Storey planner for add, elevation/floor-height edit or delete. params_json uses AddStoreyParams, StoreyLevelEdit or StoreyDeleteMode; delete modes explicitly move contents or deleteContents. Returns the actual immutable native impact plan.'), {
+  operation<{ kind: 'add' | 'edit' | 'delete'; express_id: number; params_json: string }>(meta('storeys.prepare', 'Use the authoritative native Storey planner for add, elevation/floor-height edit or delete. params_json uses AddStoreyParams, StoreyLevelEdit or StoreyDeleteMode; edit and delete name the storey in express_id, and an edit params storeyId must equal it; delete modes explicitly move contents or deleteContents. Returns the actual immutable native impact plan.'), {
     type: 'object', properties: { kind: { type: 'string', enum: ['add', 'edit', 'delete'] }, express_id: { type: 'integer', minimum: 0 }, params_json: { type: 'string', maxLength: 200000 } }, required: ['kind', 'express_id', 'params_json'], additionalProperties: false,
   }, (i, c) => {
     assertToolActive(c); let data: Params, preview: unknown;
     if (i.kind === 'add') { const params = parse<AddStoreyParams>(i.params_json); preview = c.model.bim.store.planAddStorey(c.model.id, params); data = { kind: 'add', params }; }
-    else if (i.kind === 'edit') { const params = parse<StoreyLevelEdit>(i.params_json), plan = c.model.bim.store.planStoreyEdit(c.model.id, params); preview = plan; data = { kind: 'edit', params, plan }; }
+    else if (i.kind === 'edit') { const ref = resolveRef(c.model, { express_id: i.express_id }), params = parse<StoreyLevelEdit>(i.params_json);
+      if (params.storeyId !== ref.expressId) throw new Error('params_json.storeyId must name the express_id storey.'); const plan = c.model.bim.store.planStoreyEdit(c.model.id, params); preview = plan; data = { kind: 'edit', params, plan }; }
     else { const ref = resolveRef(c.model, { express_id: i.express_id }), params = parse<StoreyDeleteMode>(i.params_json), plan = c.model.bim.store.planStoreyDelete(ref, params); preview = plan; data = { kind: 'delete', expressId: ref.expressId, params, plan }; }
     evictOldest(owned(c), 64); const token = crypto.randomUUID();
     owned(c).set(token, { data: structuredClone(data), modelId: c.model.id, store: c.model.store, revision: useViewerStore.getState().mutationVersion }); return out({ token, plan: preview });

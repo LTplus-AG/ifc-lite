@@ -51,7 +51,6 @@ export function mainViewerTool(name: string): AgentTool | undefined {
   if (Object.hasOwn(viewerCommandTools, name)) return viewerCommandTools[name as keyof typeof viewerCommandTools];
   // bSDD is an outside service; a host can switch those off (`lib/features`).
   if (name in bsddTools && !isFeatureEnabled('privacy.third-party')) return undefined;
-  // Edits with `edit.model` off are refused at the write (`dataMutationPermission`, 'switched-off').
   if (isEditTool(name)) return editTools[name];
   return (MAIN_VIEWER_TOOL_ALLOWLIST as readonly string[]).includes(name) ? SHARED_TOOLS[name] : undefined;
 }
@@ -219,7 +218,12 @@ export async function dispatchMainViewerTool(
   if (!tool) return refusal(toolName);
   try {
     // Read-only is enforced here, not only by the bridge: it trusts the labels this tab sent.
-    if (isEditTool(toolName) && !ctx.canEdit?.()) throw editNotAllowed();
+    if (isEditTool(toolName)) {
+      if (!isFeatureEnabled('edit.model')) {
+        throw new ToolExecutionError({ code: ToolErrorCode.READ_ONLY, message: 'Model editing is disabled by the viewer host.' });
+      }
+      if (!ctx.canEdit?.()) throw editNotAllowed();
+    }
     if (args != null && (typeof args !== 'object' || Array.isArray(args))) {
       throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'Tool arguments must be a JSON object.' });
     }

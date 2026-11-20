@@ -15,6 +15,12 @@ export interface ViewerOperationContext extends ToolCallContext {
   /** Authorizes native durable-write admission; an admitted write is not rolled back by late cancellation. */
   commitAsync<T>(write: () => Promise<T>, didCommit?: (result: T) => boolean): Promise<T>;
   artifacts: OperationArtifacts;
+  /** Run the operation's own geometry write, such as the remesh a Room preparation needs before it reads. Afterwards
+   * the executor compares later state with the model entry that write produced, but only when the entry changed in
+   * its geometry alone and no edit moved the revision; any other change still refuses the operation. A geometry change
+   * by someone else inside `work` cannot be told apart, so the operation must validate the geometry it read (Room
+   * preparation does, through its geometry lease). A value the closing check refuses is passed to `release`, which frees what it owns. */
+  ownGeometry<T>(work: () => Promise<T>, release: (value: T) => void): Promise<T>;
   progress?: (detail: { phase: string; done: number; total: number }) => void;
 }
 export interface OperationContext extends ViewerOperationContext { model: ReadyModel }
@@ -38,6 +44,8 @@ export interface Operation {
   validate(input: unknown): void;
   validateResult(result: unknown): void;
   execute(input: unknown, context: OperationExecutionContext): Promise<unknown>;
+  /** Loads the native implementation without running it. A failure here precedes every native effect. */
+  load?(): Promise<unknown>;
   /** Undo what the handler stored for its caller (a prepared candidate) when the executor refuses the result the
    * handler returned, after a later state change or an invalid result: the caller never receives it. */
   discard?(result: unknown, context: OperationExecutionContext): void;

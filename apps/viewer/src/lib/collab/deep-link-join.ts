@@ -8,7 +8,7 @@
  */
 
 import type { ViewerState } from '@/store';
-import { onProcessedModelRequest, pageUrlModelAllowed } from '@/lib/processed-model';
+import { onHostProcessedModelRequest, pageUrlModelAllowed } from '@/lib/processed-model';
 import { isCollabEnabled } from './config';
 import { liveCollabAttempt } from './session-attempt';
 import { parseRoleFromToken } from './share-link';
@@ -22,14 +22,13 @@ export function joinRoomFromPageUrl(search: string, collab: () => CollabControls
   if (!roomId || !pageUrlModelAllowed('room')) return;
   const token = params.get('t') ?? undefined;
   const role = (token && parseRoleFromToken(token)) || 'viewer';
-  const joining = collab().startCollab({ roomId, role, token });
-  // startCollab begins its attempt before its first await. A host request retires that
-  // attempt, and only that one, while it is still joining: stopCollab also cancels a
-  // session being created or waiting for sync. A room the user left for, or left and
-  // rejoined, is a newer attempt and stays.
+  const previous = liveCollabAttempt();
+  void collab().startCollab({ roomId, role, token });
+  // startCollab installs its attempt before its first await. Keep the guard
+  // for that room's lifetime and run it before the host model can start.
   const attempt = liveCollabAttempt();
-  const unsubscribe = onProcessedModelRequest(() => {
-    if (attempt?.live && liveCollabAttempt() === attempt && !pageUrlModelAllowed('room')) collab().stopCollab();
-  });
-  void joining.finally(unsubscribe);
+  if (!attempt?.live || attempt === previous || attempt.roomId !== roomId) return;
+  attempt.onRetire(onHostProcessedModelRequest(() => {
+    if (attempt.live && liveCollabAttempt() === attempt && !pageUrlModelAllowed('room')) collab().stopCollab();
+  }));
 }

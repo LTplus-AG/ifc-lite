@@ -77,6 +77,8 @@ export function useIfcServer() {
     /** Replace the prior scene only once server geometry is available. */
     beforePublish?: () => void,
   ): Promise<boolean> => {
+    const cancelled = () => signal?.aborted || isStale?.();
+    if (cancelled()) return false;
     if (!beforePublish) cancelProperties(modelId);
     const { setProgress, setGeometryResult } = useViewerStore.getState();
     // A processed model has no fallback, so its failures reach the caller to be worded; an
@@ -112,7 +114,7 @@ export function useIfcServer() {
       const parsedBytes = processed ? processedModelSize(file.bytes) : buffer.byteLength;
       const openedBytes = processed ? parsedBytes : file.size;
 
-      if (isStale?.()) return false;
+      if (cancelled()) return false;
       setProgress({ phase: 'Processing on server (parallel)', percent: 15 });
 
       // Check if Parquet is supported (requires parquet-wasm)
@@ -122,7 +124,7 @@ export function useIfcServer() {
       // the capability check above was in flight — same reasoning as every
       // other post-await re-check in this function: an `await` is a window
       // for `isStale` to flip, not just the streaming/parse calls below.
-      if (isStale?.()) return false;
+      if (cancelled()) return false;
 
       let allMeshes: MeshData[];
       let result: ServerParseResultType;
@@ -162,7 +164,7 @@ export function useIfcServer() {
           // contract, same reason, as useIfcCache.ts's per-chunk guard in its
           // streaming loop — without it a superseded load's later batches
           // keep painting into the model the user just opened.
-          if (isStale?.()) return;
+          if (cancelled()) return;
 
           batchCount++;
 
@@ -217,14 +219,14 @@ export function useIfcServer() {
               coordinateInfo,
             });
           }
-        });
+        }, { signal });
 
         // Re-check after the stream's single big await resolves: supersession
         // can land at any point during it, including after the LAST batch's
         // onBatch call returns. Without this the "final geometry set with
         // complete bounds" write below still lands in the active slot for a
         // load nobody owns any more.
-        if (isStale?.()) return false;
+        if (cancelled()) return false;
 
         cacheKey = streamResult.cache_key;
         streamMetadata = streamResult.metadata;
@@ -274,11 +276,11 @@ export function useIfcServer() {
       } else if (parquetSupported) {
         // NON-STREAMING PATH - for smaller files, use batch request (with cache check)
         // Use Parquet endpoint - much smaller payload (~15x compression)
-        const parquetResult = await client.parseParquet(file);
+        const parquetResult = await client.parseParquet(file, { signal });
         // Re-check right after this await, before the first write below —
         // same reason as the streaming re-check above: a non-streaming parse
         // is still one awaited network round trip a newer load can outrun.
-        if (isStale?.()) return false;
+        if (cancelled()) return false;
         result = parquetResult;
 
         setProgress({ phase: 'Converting meshes', percent: 70 });
@@ -288,8 +290,8 @@ export function useIfcServer() {
       } else {
         // Fallback to JSON endpoint
         if (processed) throw new ProcessedModelUnavailable('parquet-init');
-        result = await client.parse(file);
-        if (isStale?.()) return false;
+        result = await client.parse(file, { signal });
+        if (cancelled()) return false;
 
         setProgress({ phase: 'Converting meshes', percent: 70 });
 
@@ -350,7 +352,7 @@ export function useIfcServer() {
         });
       }
 
-      if (isStale?.() || signal?.aborted) return false;
+      if (cancelled()) return false;
       // Model-owned hydration outlives this load's finally and metadata signal.
       hydrateProperties(modelId, isStale, async propertySignal => {
         const included = 'data_model' in result ? result.data_model : null;
@@ -362,6 +364,7 @@ export function useIfcServer() {
       setProgress({ phase: 'Complete', percent: 100 });
       return true;
     } catch (err) {
+      if (cancelled()) return false;
       // After replacing the scene, report the server failure rather than ask
       // for a local fallback consent whose Cancel could not restore that scene.
       if (processed || (beforePublish && published)) throw err;

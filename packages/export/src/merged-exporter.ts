@@ -29,7 +29,8 @@ import { getCompleteEntityIndex, getMaxExpressId, type CompleteEntityIndex, type
 import { bakeMutatedModels, mergeWarningLabel, needsBake } from './merged-bake.js';
 import type { StepGeoreferencingOptions } from './step-coordinate-options.js';
 import { rescaleEntityLengths, computeNormalizeFactor } from './unit-normalize.js';
-import { listKeptContexts, planInfrastructureUnify, resolvePrimaryContextState, unitScalesEqual, type PrimaryContextState } from './merged-context.js';
+import { planInfrastructureUnify, resolvePrimaryContextState, unitScalesEqual, type PrimaryContextState } from './merged-context.js';
+import { listKeptContexts } from './merged-project-contexts.js';
 import { remapEntityText } from './merged-remap.js';
 import { PlannerGuids } from './merged-planner-guids.js';
 import {
@@ -840,7 +841,7 @@ export class MergedExporter {
       modelOffsets,
       firstModelOffset,
       firstModelInfraMap,
-      firstModelContext: resolvePrimaryContextState(firstModel.dataStore, firstModelInfraMap.get('IFCGEOMETRICREPRESENTATIONSUBCONTEXT') ?? [], primaryScale),
+      firstModelContext: resolvePrimaryContextState(firstModel.dataStore, firstModelInfraMap.get('IFCGEOMETRICREPRESENTATIONSUBCONTEXT') ?? [], primaryScale, firstModelOffset),
       keptContexts: [],
       firstProjectIds: this.findEntitiesByType(firstModel.dataStore, 'IFCPROJECT'),
       spatialLookup: this.buildSpatialLookup(firstModel.dataStore),
@@ -1063,8 +1064,9 @@ export class MergedExporter {
       }
 
       // Remap and skip duplicate infrastructure (units, contexts) — WCS-gated; scale choice documented on planInfrastructureUnify (merged-context.ts).
-      const kept = planInfrastructureUnify(model.dataStore, this.findInfrastructureEntities(model.dataStore), setup.firstModelInfraMap, setup.firstModelContext, setup.firstModelOffset, setup.assumeShared ? setup.primaryScale : this.resolveUnitScale(model), sharedRemap, skipEntityIds);
-      if (folded) setup.keptContexts.push(...kept.map(id => id + setup.modelOffsets.get(model.id)!)); // its project folded above
+      const offset = setup.modelOffsets.get(model.id)!;
+      const kept = planInfrastructureUnify(model.dataStore, this.findInfrastructureEntities(model.dataStore), setup.firstModelInfraMap, setup.firstModelContext, setup.firstModelOffset, setup.assumeShared ? setup.primaryScale : this.resolveUnitScale(model), sharedRemap, skipEntityIds, offset);
+      if (folded) setup.keptContexts.push(...kept.map(id => id + offset)); // its project folded above
 
       // Unify spatial hierarchy: match Site, Building, Storey to first model.
       // Under normalize, this model's raw elevations are in its own unit, so the

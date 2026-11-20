@@ -14,7 +14,8 @@ export async function realignLoadedModels(addModel: NativeModelAdder) {
     const file = model.sourceFile; if (!file) continue;
     try {
       const id = await addModel(file, { name: model.name, modelId: model.id, loadedAt: model.loadedAt, visible: model.visible, collapsed: model.collapsed });
-      if (!id) { failed.push(model.name); continue; }
+      // An id for a model left in an error state is a failed reload, as sources.loadModel treats it.
+      if (!id || useViewerStore.getState().models.get(id)?.loadState === 'error') { failed.push(model.name); continue; }
       if (model.visible === false) useViewerStore.getState().setModelVisibility(model.id, false);
     } catch (error) { console.warn('[georeference] A source could not be reloaded during realignment', error); failed.push(model.name); }
   }

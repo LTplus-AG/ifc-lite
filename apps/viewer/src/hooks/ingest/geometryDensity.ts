@@ -80,5 +80,5 @@ export async function sampleDenseGeometryShare(file: Blob): Promise<number | und
     dense += counted.dense; total += counted.total; records += counted.records;
   }
   // No record start in any window: not a STEP file this sample can describe.
-  return records > 0 && total > 0 ? dense / total : undefined;
+  return records > 0 ? dense / total : undefined;
 }

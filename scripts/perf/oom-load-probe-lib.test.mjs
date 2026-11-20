@@ -166,12 +166,14 @@ test('#10264 killed-after-continue fails acceptance; passes only the explicit wa
   assert.match(warned.message, /AFTER the user clicked Continue loading/);
   assert.equal(verdict('killed', 'warned').pass, false);
   for (const ok of ['awaiting-decision', 'cancelled']) assert.equal(verdict(ok, 'not-killed').pass, true);
-  // The nightly lane pins the unanswered consent dialog exactly (#10264 A2).
-  assert.equal(verdict('awaiting-decision', 'awaiting-decision').pass, true);
-  assert.equal(verdict('loaded', 'awaiting-decision').pass, false);
   // The known-issue run fails once a warning appears instead of the kill.
   assert.equal(verdict('awaiting-decision', 'killed').pass, false);
   assert.equal(phaseOf({ warning: true, tris: 0 }), 'memory warning (load not started)');
+});
+
+test('#10264 A2 the nightly lane pins the unanswered consent dialog exactly', () => {
+  assert.equal(verdict('awaiting-decision', 'awaiting-decision').pass, true);
+  for (const other of ['loaded', 'refused', 'cancelled', 'killed']) assert.equal(verdict(other, 'awaiting-decision').pass, false, other);
 });
 
 test('#10264 CLI options are validated before anything runs', () => {

@@ -35,11 +35,14 @@ const runInputs = (s: ViewerState, kind: RunKind): RunInputs => ({ models: s.mod
   ...(kind === 'rules' ? { tagIds: JSON.stringify([...s.modelTags.keys()].sort()), modelTagAssignments: s.modelTagAssignments, groupings: groupingsSignature(s.savedLenses) } : {}) });
 /** `run` holds only the inputs its kind read; each is compared with the current state. */
 const sameInputs = (run: RunInputs, now: RunInputs) => (Object.keys(run) as (keyof RunInputs)[]).every(key => run[key] === now[key]);
-interface Run { report: ValidationReport; snapshot: IdsReportBlock; kind: RunKind; inputs: RunInputs }
+/** `source` is the model the run evaluated: a single-model session replaces its store without changing `models`. */
+interface Run { report: ValidationReport; snapshot: IdsReportBlock; kind: RunKind; inputs: RunInputs; source: { modelId: string; store: unknown } }
 const hosts = new WeakMap<ToolHost, Map<string, Run>>();
 function runs(c: { host: ToolHost }) { let values = hosts.get(c.host); if (!values) { values = new Map(); hosts.set(c.host, values); const captured = values; c.host.lifetimeSignal?.addEventListener('abort', () => captured.clear(), { once: true }); } return values; }
 function run(c: { host: ToolHost }, id: string) { const value = runs(c).get(id); if (!value) throw new Error('Unknown validation run owned by this host.');
-  if (!sameInputs(value.inputs, runInputs(useViewerStore.getState(), value.kind))) throw new Error('Validation inputs changed. Run the check again.'); return value;
+  if (!sameInputs(value.inputs, runInputs(useViewerStore.getState(), value.kind))
+    || c.host.models().find(model => model.id === value.source.modelId)?.store !== value.source.store) throw new Error('Validation inputs changed. Run the check again.');
+  return value;
 }
 function libraryRevision(expected: number) { if (useViewerStore.getState().validationDefinitionRevision !== expected) throw new Error('Validation definitions changed. Inspect them again.'); }
 const runInput = { type: 'object' as const, properties: { run_id: { type: 'string' as const, minLength: 1, maxLength: 100 } }, required: ['run_id' as const], additionalProperties: false as const };
@@ -83,7 +86,7 @@ export const nativeValidationOperations = [
     const result = await runIdsCheck({ document, modelId: c.model.id, dataStore: c.model.store, mutationView: c.model.mutationView(), locale: 'en', models: state.models, signal: c.signal,
       ...(i.scope === 'subset' ? { entityIds: i.entity_ids } : {}) });
     assertToolActive(c); if (!sameInputs(inputs, runInputs(useViewerStore.getState(), 'ids'))) throw new Error('Models changed during IDS validation.');
-    evictOldest(runs(c), 32); const id = crypto.randomUUID(); runs(c).set(id, { ...result, kind: 'ids', inputs });
+    evictOldest(runs(c), 32); const id = crypto.randomUUID(); runs(c).set(id, { ...result, kind: 'ids', inputs, source: { modelId: c.model.id, store: c.model.store } });
     return out({ run_id: id, summary: result.report.summary, source: result.report.source });
   }),
   operation<{ express_ids: number[]; pset: string; name: string; facet_data_type: string; raw_value: string; title: string }>(meta('validation.fix.prepare', 'Draft a native IDS property correction from explicit target IDs and a supplied raw value. Uses native type inference, IDS-to-model unit conversion and expected-value capture, then the existing properties review/apply service.'), {
@@ -110,7 +113,7 @@ export const nativeValidationOperations = [
     const inputs = runInputs(s, 'rules');
     const result = await runInformationCheck({ ruleSet: parsed.file, models, definedModelTagIds: definedModelTagIdsOf(s), reportModels: s.models, signal: c.signal });
     assertToolActive(c); if (!sameInputs(inputs, runInputs(useViewerStore.getState(), 'rules'))) throw new Error('Models changed during validation. Discarded result.');
-    evictOldest(runs(c), 32); const id = crypto.randomUUID(); runs(c).set(id, { ...result, kind: 'rules', inputs });
+    evictOldest(runs(c), 32); const id = crypto.randomUUID(); runs(c).set(id, { ...result, kind: 'rules', inputs, source: { modelId: c.model.id, store: c.model.store } });
     return out({ run_id: id, summary: result.report.summary, source: result.report.source });
   }),
   operation<{ run_id: string; offset: number; limit: number }>(meta('validation.results', 'Inspect a bounded page of canonical native specification findings, preserving complete native entity/requirement diagnostics in each returned specification.'), {

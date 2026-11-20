@@ -94,17 +94,17 @@ export const graphAuthoringOperations = [
     // for Group and Structural, plus geometry content through the review's lease probe for Room, and source owners plus
     // zone configuration for Zone.
     // A review that fails it is dropped and its native handles released.
-    const admit = () => {
+    const admit = (evict: boolean) => {
       const stillApplies = candidateStillApplies(c.host);
-      admitCandidate(owned(c), { cap: 32, refusal: 'At most 32 graph review candidates may be retained.', pending: entry => !libraryHoldsReceipt(entry),
+      admitCandidate(owned(c), { cap: 32, refusal: 'At most 32 graph review candidates may be retained.', evict, pending: entry => !libraryHoldsReceipt(entry),
         canApply: entry => stillApplies(entry.receipt !== undefined, () => entry.review?.sourcesCurrent() ?? false, entry),
         release: entry => entry.review?.dispose?.() });
     };
-    admit();
+    admit(false); // check only: a prepare that then fails must not have evicted a settled review
     const review = await prepare(kind, i.proposal_json, c);
     // Again after the await: a concurrent prepare may have taken the last place.
     let preview_json: string;
-    try { assertToolActive(c); review.validate(); preview_json = JSON.stringify(review.preview); admit(); } catch (error) { review.dispose?.(); throw error; }
+    try { assertToolActive(c); review.validate(); preview_json = JSON.stringify(review.preview); admit(true); } catch (error) { review.dispose?.(); throw error; }
     const token = crypto.randomUUID(); owned(c).set(token, { modelId: c.model.id, store: c.model.store, review });
     return { token, preview_json };
   })),

@@ -29,7 +29,7 @@ import { ensureWasm } from '@/test/scan-slab-fixture';
 import { seedZoneExport } from '@/test/zone-export-fixture';
 import { nativeZoneEmissionEvidence } from '@/lib/actions/zone-emission-evidence';
 import { ensureRoomWasm } from '@/test/room-walls-fixture';
-import { seedReviewedRoom, roomProposal } from '@/test/reviewed-room-fixture';
+import { seedReviewedRoom, roomProposal, roomEnvelope } from '@/test/reviewed-room-fixture';
 import { MODEL as ROOM_MODEL } from '@/test/native-sdk-model';
 import { setRemeshClientFactory } from '@/lib/remesh/remesh-service';
 import { clearModelLayouts } from '@/lib/rooms/room-layout';
@@ -116,9 +116,11 @@ describe('reviewed model candidates (#10792)', () => {
     const token = await prepareRename();
     let writes = 0, replay: Promise<AgentToolResult> | undefined;
     const put = modelChangeLibrary.put;
-    modelChangeLibrary.put = (...args) => {
+    modelChangeLibrary.put = async (...args) => {
       writes++;
-      replay ??= invoke('authoring.apply', { token }, true); // the agent retries while the receipt is being saved
+      // Hold the first write open while the agent retries, so the replay must find the write still in flight.
+      replay ??= invoke('authoring.apply', { token }, true);
+      for (let tick = 0; tick < 20; tick++) await new Promise(resolve => setTimeout(resolve, 0));
       return put(...args);
     };
     try {
@@ -277,6 +279,16 @@ describe('reviewed model candidates (#10792)', () => {
     const store = useViewerStore.getState().models.get(SAMPLE_MODEL)!.ifcDataStore!;
     useViewerStore.getState().setAttribute(SAMPLE_MODEL, store.entities.getExpressIdByGlobalId(BACK_WALL), 'Description', 'Edited after review');
     answer(await invoke('authoring.group.prepare', { proposal_json: await groupProposal() }));
+  });
+
+  it('#19: a malformed prepare evicts no applied review before the new one is ready', async () => {
+    const { token: applied } = answer<{ token: string }>(await invoke('authoring.group.prepare', { proposal_json: await groupProposal() }));
+    answer(await invoke('authoring.graph.apply', { token: applied }, true));
+    const proposal_json = await groupProposal();
+    for (let i = 0; i < 31; i++) answer(await invoke('authoring.group.prepare', { proposal_json }));
+    // 31 pending plus the applied one fill the cap; a prepare that fails to parse must not take the applied one's place.
+    assert.equal((await invoke('authoring.group.prepare', { proposal_json: '{"not":"a proposal"}' })).isError, true);
+    answer(await invoke('authoring.graph.apply', { token: applied }, true)); // still held: its replay answers
   });
 
   it('#19 guard: a temporary refusal such as Edit mode being off keeps prepared graph reviews', async () => {
@@ -456,6 +468,18 @@ describe('IDS candidates and validation runs (#10792)', () => {
     // Recolouring a grouping lens's rules changes no grouping either.
     useViewerStore.setState(s => ({ savedLenses: s.savedLenses.map(row => row.id === lens.id ? { ...row, rules: row.rules.map(rule => ({ ...rule, color: '#0000ff' })) } : row) }));
     answer(await invoke('validation.publish', { run_id }, true));
+  });
+
+  it('#36: an IDS run in a single-model session refuses once that session replaced its store', async () => {
+    const sample = useViewerStore.getState().models.get(modelId)!;
+    useViewerStore.setState({ models: new Map(), ifcDataStore: sample.ifcDataStore, activeModelId: null,
+      mutationViews: new Map([['default', useViewerStore.getState().mutationViews.get(modelId)!]]) });
+    modelId = 'default';
+    const { content } = answer<{ content: string }>(await invoke('ids.document.xml'));
+    const { run_id } = answer<{ run_id: string }>(await invoke('validation.ids.run', { xml: content, scope: 'whole', entity_ids: [] }));
+    // setIfcDataStore without an active model: `models` and the revision stay as they were.
+    useViewerStore.setState({ ifcDataStore: { ...sample.ifcDataStore! } });
+    assert.match((await invoke('validation.publish', { run_id }, true)).text, /Validation inputs changed/);
   });
 
   it('#36: an IDS run, which reads no tags or lenses, survives a lens edit', async () => {
@@ -638,14 +662,17 @@ describe('zone emission reviews (#10792)', () => {
     useViewerStore.setState(s => ({ mutationViews: new Map(s.mutationViews).set('bonsai', configuredView(f.store, 'bonsai')) }));
     recomputeZoneAssignmentsNow();
     const proposal_json = zoneProposal();
-    for (let i = 0; i < 32; i++) answer(await invoke('authoring.zone.prepare', { proposal_json }));
-    // Zone set and assignments unchanged; only the model the reviews' lease bound is edited.
+    const tokens: string[] = [];
+    for (let i = 0; i < 32; i++) tokens.push(answer<{ token: string }>(await invoke('authoring.zone.prepare', { proposal_json })).token);
+    // Zone set, assignments and evaluation owner unchanged; only the model the reviews' lease bound is edited.
     const view = useViewerStore.getState().mutationViews.get('bonsai');
     useViewerStore.getState().setAttribute('bonsai', f.wall.expressId, 'Description', 'Edited after review');
     assert.equal(useViewerStore.getState().mutationViews.get('bonsai'), view, 'same view, new revision');
     assert.ok((useViewerStore.getState().mutationViews.get('bonsai')?.getMutationRevision() ?? 0) > 0, 'the edit reached the model');
-    recomputeZoneAssignmentsNow();
-    answer(await invoke('authoring.zone.prepare', { proposal_json: zoneProposal() }));
+    // Admission without a recompute (which would record a new owner and drop them on its own): any prepare checks the
+    // cap first, here one that then fails to parse.
+    assert.equal((await invoke('authoring.zone.prepare', { proposal_json: '{"not":"a proposal"}' })).isError, true);
+    assert.match((await invoke('authoring.graph.discard', { token: tokens[0] })).text, /Unknown graph review/, 'the edit dropped them');
   });
 });
 
@@ -699,23 +726,26 @@ describe('Room review admission probe (#10792)', () => {
     } finally { earlier.dispose(); later.dispose(); }
   });
 
-  it('#19: a Room review whose meshes were reordered frees its place under the cap', async (t) => {
+  it('#19: a Room review whose meshes were reordered frees its place under the cap, through the graph operations', async (t) => {
     if (!ensureRoomWasm(t)) return;
-    await seedReviewedRoom();
-    // Only one Room review per model is ever current (a newer preparation supersedes the rest), so the cap is filled
-    // by 31 other pending reviews beside it, as graph admission counts them.
-    const { admitCandidate } = await import('./host-handles'); // loaded here so the file also loads where it does not exist
-    const review = await prepareRoomReview(roomProposal(), new AbortController().signal);
-    try {
-      const entries = new Map<string, { review?: { sourcesCurrent(): boolean } }>(Array.from({ length: 31 }, (_, i) => [`other-${i}`, {}]));
-      entries.set('room', { review });
-      const admit = () => admitCandidate(entries, { cap: 32, refusal: 'At most 32 graph review candidates may be retained.', pending: () => true,
-        canApply: entry => entry.review?.sourcesCurrent() ?? true });
-      assert.throws(admit, /At most 32/, 'a current Room review keeps its place');
-      reorderMeshes();
-      admit();
-      assert.equal(entries.has('room'), false, 'the reordered review was dropped, so a fresh prepare fits');
-    } finally { review.dispose(); }
+    await seedReviewedRoom(); modelId = ROOM_MODEL; newHost();
+    // Only one Room review per model is ever current (a newer preparation supersedes the rest), so 31 Group reviews of
+    // the same model fill the cap beside it.
+    const wall = 1222;
+    const evidence = answer<{ elements: Array<{ globalId: string; nativeGroup: { snapshot: unknown } }> }>(await invoke('authoring.nativeEvidence', { express_ids: [wall] }));
+    const group = JSON.stringify({ version: 1, kind: 'group.lifecycle', title: 'Exact group', modelId: ROOM_MODEL, expected: evidence.elements[0].nativeGroup.snapshot,
+      operations: [{ op: 'group.create', params: { Name: 'Operation group', RelatedObjects: [{ expressId: wall, GlobalId: evidence.elements[0].globalId }] } }] });
+    // The Room prepare first: its own wall remesh replaces the model entry, which would make earlier Group reviews stale.
+    const { token: room } = answer<{ token: string }>(await invoke('authoring.room.prepare', { proposal_json: JSON.stringify(roomEnvelope()) }, true));
+    const groups: string[] = [];
+    for (let i = 0; i < 31; i++) groups.push(answer<{ token: string }>(await invoke('authoring.group.prepare', { proposal_json: group })).token);
+    assert.match((await invoke('authoring.group.prepare', { proposal_json: group })).text, /At most 32 graph review candidates/, 'the Room review keeps its place');
+    reorderMeshes();
+    assert.equal((await invoke('authoring.group.prepare', { proposal_json: '{"not":"a proposal"}' })).isError, true); // any prepare checks the cap
+    // Kept above (its forwarded probe was true), dropped now. (The reorder replaced the model entry, so the Group
+    // reviews, which bind it by identity, went too.)
+    assert.match((await invoke('authoring.graph.discard', { token: room })).text, /Unknown graph review/, 'the reordered Room review was dropped');
+    assert.equal(groups.length, 31);
   });
 
   it('#19: a Room review stays admitted through a recolour and a same-bytes remesh, and is dropped after a byte change', async (t) => {

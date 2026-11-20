@@ -8,7 +8,7 @@ import { assertToolActive } from '../cancellation';
 import type { ReadyModel, ToolCallContext, ToolHost } from '../types';
 import { operationArtifacts } from './artifacts';
 import { contractFingerprint } from './metadata';
-import { MAX_RESULT_BYTES } from './result-limit';
+import { MAX_RESULT_BYTES, utf8Bytes } from './result-limit';
 import type { Operation } from './contract';
 import { viewerOperation, operationUnavailable } from './registry';
 
@@ -42,7 +42,7 @@ function boundedResult(result: unknown): unknown {
     return value;
   });
   // UTF-8 is at most 3 bytes per UTF-16 unit, so only a long text needs encoding to measure.
-  if (text.length * 3 > MAX_RESULT_BYTES && new TextEncoder().encode(text).byteLength > MAX_RESULT_BYTES) throw new Error('Result exceeds the 1 MB operation result limit. Narrow the query.');
+  if (text.length * 3 > MAX_RESULT_BYTES && utf8Bytes(text) > MAX_RESULT_BYTES) throw new Error('Result exceeds the 1 MB operation result limit. Narrow the query.');
   return JSON.parse(text) as unknown;
 }
 

@@ -267,8 +267,7 @@ export interface ValueFormSlot {
  * pass writes, or more than the invalid value.
  */
 const DECIDED_ELSEWHERE: readonly string[] = [
-  // StyleFlatten (#7742) writes IfcPresentationStyle members into IFC4X3; the way
-  // down needs a new IfcPresentationStyleAssignment record, and dropping loses the colours.
+  // StyleFlatten (#7742) expands assignments on upgrade; IFC2X3 output wraps direct styles (#10879).
   'IFCSTYLEDITEM.Styles',
   // #10778 converts the currency between the IFC2X3 enumeration and the IFC4 label.
   'IFCMONETARYUNIT.Currency',

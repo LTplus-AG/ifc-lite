@@ -21,6 +21,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { CostPanel } from './CostPanel.js';
+import { settle } from '@/test/render.js';
 
 interface LocalStepRef { expressId: number; type: string; byteOffset: number; byteLength: number; lineNumber: number }
 
@@ -79,8 +80,9 @@ function model(id: string): FederatedModel {
 const originalState = useViewerStore.getState();
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
 
-beforeEach(() => {
+beforeEach(async () => {
   useViewerStore.setState({ models: new Map([['modelA', model('modelA')]]), activeModelId: 'modelA' });
+  await settle();
 });
 
 afterEach(() => {
@@ -111,7 +113,7 @@ function clickText(container: HTMLElement, text: string): void {
 }
 
 describe('CostPanel teardown (#4858)', () => {
-  it('drops the selected cost item when its model is removed — no stale ref', () => {
+  it('drops the selected cost item when its model is removed — no stale ref', async () => {
     // Sanity check the fixture can actually fail: extraction really has data.
     const graph = createCostBackend(() => ({ modelId: 'modelA', store: model('modelA').ifcDataStore! })).data();
     assert.equal(graph.HasCostData, true);
@@ -124,6 +126,7 @@ describe('CostPanel teardown (#4858)', () => {
     act(() => {
       useViewerStore.getState().removeModel('modelA');
     });
+    await settle();
 
     assert.doesNotMatch(
       container.textContent ?? '',

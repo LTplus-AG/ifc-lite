@@ -18,7 +18,7 @@ export interface DefinitionLibrary {
 export interface DefinitionLibraryRead { library: DefinitionLibrary; error: string | null; writable: boolean }
 export const MAX_DEFINITIONS = 100;
 export const MAX_DEFINITION_BYTES = 8 * 1024 * 1024;
-const KEY = 'ifc-lite:validation:definition-library';
+export const DEFINITION_LIBRARY_KEY = 'ifc-lite:validation:definition-library';
 const record = (raw: unknown): raw is Record<string, unknown> =>
   raw !== null && typeof raw === 'object' && !Array.isArray(raw);
 
@@ -34,7 +34,7 @@ export function definitionTitle(entry: ValidationDefinition): string {
 
 /** Persist source definitions, never derived validation results. IDS XML is
  * retained exactly; every restored projection uses its original parser. */
-function payload(library: DefinitionLibrary): string {
+export function encodeDefinitionLibrary(library: DefinitionLibrary): string {
   if (library.entries.length > MAX_DEFINITIONS) throw new Error('The definition library is full (100 checks). Export or delete a check first.');
   const text = JSON.stringify({ ...library, entries: library.entries.map(entry =>
     entry.kind === 'ids' ? { id: entry.id, kind: entry.kind, xml: entry.xml } : entry) });
@@ -43,7 +43,7 @@ function payload(library: DefinitionLibrary): string {
 }
 
 export function checkDefinitionLibrary(library: DefinitionLibrary): string | null {
-  try { payload(library); return null; }
+  try { encodeDefinitionLibrary(library); return null; }
   catch (error) { return error instanceof Error ? error.message : 'The definition library could not be serialized.'; }
 }
 
@@ -58,7 +58,7 @@ export function saveDefinitionLibrary(library: DefinitionLibrary, writable: bool
     }
     const storage = optionalLocalStorage();
     if (!storage) return 'Checks remain available in this session, but browser storage is unavailable.';
-    storage.setItem(KEY, payload(library)); return null;
+    storage.setItem(DEFINITION_LIBRARY_KEY, encodeDefinitionLibrary(library)); return null;
   }
   catch (error) {
     console.warn('[ifc-lite] validation definition library could not be saved.', error);
@@ -89,15 +89,19 @@ function parseLibrary(raw: unknown): DefinitionLibrary {
   return { version: 1, entries, active };
 }
 
+export function decodeDefinitionLibrary(text: string): DefinitionLibrary {
+  if (new TextEncoder().encode(text).byteLength > MAX_DEFINITION_BYTES) throw new Error('Saved definition library exceeds 8 MB.');
+  return parseLibrary(JSON.parse(text));
+}
+
 export function loadDefinitionLibrary(): DefinitionLibraryRead {
   const storage = optionalLocalStorage();
   try {
-    const text = storage?.getItem(KEY);
+    const text = storage?.getItem(DEFINITION_LIBRARY_KEY);
     if (text == null) return { library: emptyDefinitionLibrary(), error: null, writable: true };
-    if (new TextEncoder().encode(text).byteLength > MAX_DEFINITION_BYTES) throw new Error('Saved definition library exceeds 8 MB.');
-    return { library: parseLibrary(JSON.parse(text)), error: null, writable: true };
+    return { library: decodeDefinitionLibrary(text), error: null, writable: true };
   } catch (error) {
-    const writable = preserveUnreadableEntry(storage, KEY, error);
+    const writable = preserveUnreadableEntry(storage, DEFINITION_LIBRARY_KEY, error);
     return { library: emptyDefinitionLibrary(), writable,
       error: writable ? 'Saved checks could not be read; their original bytes have been backed up.' : 'Saved checks could not be read or backed up; existing storage has been preserved.' };
   }

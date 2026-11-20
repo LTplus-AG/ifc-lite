@@ -15,7 +15,8 @@ import { requestRemesh } from '@/lib/remesh/remesh-service.js';
 import { modelIndices } from '@/lib/model-placement/model-indices.js';
 import { appearanceInstanceScene } from '@/test/appearance-instance-scene.js';
 import { blankFile, load, wallMeshes, skip, installRealRemesh } from '@/test/blank-ifc-loader-harness.js';
-import { render, cleanup, waitFor } from '@/test/render.js';
+import { cleanup, waitFor } from '@/test/render.js';
+import { renderInViewport } from '@/test/viewport-scope';
 import { useFederatedGeometry } from './useFederatedGeometry.js';
 import { useGeometryStreaming } from './useGeometryStreaming.js';
 import { useFilteredGeometry } from './useFilteredGeometry.js';
@@ -51,7 +52,7 @@ function mountViewport() {
   const renderer = { getScene: () => native.scene, getGPUDevice: () => native.device, getPipeline: () => native.pipeline,
     getCamera: () => camera, getCanvas: () => ({ clientWidth: 800, clientHeight: 600 }),
     clearCaches() {}, requestRender() {} } as unknown as Renderer;
-  render(<Viewport renderer={renderer} />);
+  renderInViewport(<Viewport renderer={renderer} />);
   return { ...native, camera };
 }
 
@@ -105,7 +106,7 @@ describe('first authored mesh resident ownership (#6232)', () => {
         const renderer = { getScene: () => scene, getGPUDevice: () => device, getPipeline: () => pipeline,
           getCamera: () => camera, getCanvas: () => ({ clientWidth: 800, clientHeight: 600 }),
           clearCaches() {}, requestRender() {} } as unknown as Renderer;
-        render(<Viewport renderer={renderer} />);
+        renderInViewport(<Viewport renderer={renderer} />);
         try {
           const storey = primary.ifcDataStore?.entityIndex.byType.get('IFCBUILDINGSTOREY')?.[0];
           assert.ok(storey);

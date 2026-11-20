@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import { act, useRef } from 'react';
 import type { Renderer, VisualEnhancementOptions } from '@ifc-lite/renderer';
 import type { Drawing2D } from '@ifc-lite/drawing-2d';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, render, settle } from '@/test/render.js';
 import { SECTION_BOX_CAP_FACES, sectionBoxCapKey } from '@ifc-lite/renderer';
 import { sectionBoxCapPlanes } from '@/lib/section/section-box-caps';
 import { useViewerStore } from '@/store';
@@ -78,7 +78,7 @@ const cutFor = (id: string) => {
   state().setSectionExtraCap(id, { signature: `1:${capSignature(plane)}`, cutPolygons: [POLYGON], lines: [] });
 };
 
-beforeEach(() => state().resetViewerState());
+beforeEach(async () => { state().resetViewerState(); await settle(); });
 afterEach(cleanup);
 
 describe('the other cutting planes\' caps reach the renderer (#7545)', () => {

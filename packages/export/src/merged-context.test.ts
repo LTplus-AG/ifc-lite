@@ -16,7 +16,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { resolveContextWcsMetres, listKeptContexts } from './merged-context.js';
+import { resolveContextWcsMetres } from './merged-context.js';
+import { listKeptContexts } from './merged-project-contexts.js';
 import { asSourceBytes, type IfcDataStore } from '@ifc-lite/parser';
 
 type MockEntityRef = { expressId: number; type: string; byteOffset: number; byteLength: number; lineNumber: number };

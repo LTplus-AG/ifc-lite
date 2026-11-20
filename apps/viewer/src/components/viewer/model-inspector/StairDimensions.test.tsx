@@ -7,7 +7,7 @@ import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
-import { blur, cleanup, render, type } from '@/test/render.js';
+import { blur, cleanup, render, settle, type } from '@/test/render.js';
 import { StepExporter } from '@ifc-lite/export';
 import * as create from '@ifc-lite/create';
 import { IfcParser } from '@ifc-lite/parser';
@@ -45,6 +45,7 @@ for (const unit of ['metre', 'millimetre'] as const) it(`the flight selected by 
     assert.ok(flight, 'the actual command authored a flight');
     const selected = s().resolveGlobalIdFromModels(s().selectedEntityId!);
     assert.equal(selected?.expressId, flight.expressId, 'test the actual command selection');
+    await settle();
     const root = render(<ModelInspectorPanel />);
     const field = root.querySelector<HTMLInputElement>('input[aria-label="Width in metres"]');
     assert.ok(field, 'a selected authored stair flight offers its Width');
@@ -74,6 +75,7 @@ for (const unit of ['metre', 'millimetre'] as const) it(`the flight selected by 
         assert.ok(Math.abs(changed.max[axis] - original.max[axis] - deltas[axis]) < 1e-5, `${label}: only the intended extent changes`);
       }
       act(() => s().undo(MODEL_ID));
+      await settle();
       assert.deepEqual((await meshStairs(exportModel())).get(flight.expressId), before.get(flight.expressId));
       assert.equal(s().undoStacks.get(MODEL_ID)?.length ?? 0, depth, `${label}: one Undo restores the entire flight body`);
     }
@@ -104,6 +106,7 @@ for (const modelCount of [1, 2]) it(`a selected stair resolves its overlay owner
   }
   useViewerStore.setState({ models });
   s().setSelectedEntityId(toGlobalIdFromModels(models, MODEL_ID, flight));
+  await settle();
   const root = render(<ModelInspectorPanel />);
   const field = root.querySelector<HTMLInputElement>('input[aria-label="Width in metres"]');
   assert.ok(field);

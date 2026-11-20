@@ -17,13 +17,14 @@ import { strict as assert } from 'node:assert';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
-import { advance, cleanup, click, press, render, type, waitFor } from '@/test/render.js';
+import { advance, cleanup, click, press, render, settle, type, waitFor } from '@/test/render.js';
 import { MODEL_ID, STOREY, UPPER_STOREY, seedModelingSession, fixtureStep } from '@/test/modeling-session-fixture';
 import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
 import { modelStoreys } from '@/lib/commands/modeling/workspace-storeys';
 import { requiredModule } from '@/i18n/__tests__/required-module';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
 import { Toaster } from '@/components/ui/toast';
+import { dismiss, getToasts } from '@/components/ui/toast-store';
 import { commitStoreyOp } from '@/store/slices/mutation-storey';
 import { reviewStoreyInsertion, commitStoreyInsertion } from './insert-storey';
 import { PropertyValueType } from '@ifc-lite/data';
@@ -38,7 +39,11 @@ beforeEach(async () => {
   restore = setRequestRemesh(() => {});
   useViewerStore.getState().enterModelWorkspace({ modelId: MODEL_ID, storeyId: STOREY });
 });
-afterEach(() => { restore(); cleanup(); useViewerStore.getState().exitModelWorkspace(); });
+afterEach(() => {
+  restore(); cleanup(); useViewerStore.getState().exitModelWorkspace();
+  // Toasts are module state: a test's leftovers would evict the next test's (three show at once).
+  for (const { id } of getToasts()) dismiss(id);
+});
 
 const rows = (ui: HTMLElement) => [...ui.querySelectorAll<HTMLElement>('[data-storey-row]')];
 const field = (row: HTMLElement, name: string) => row.querySelector<HTMLInputElement>(`[data-storey-field="${name}"]`)!;
@@ -237,6 +242,7 @@ describe('storey manager (#9013)', () => {
     await deleteTop();
     const later = useViewerStore.getState().addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 3 });
     assert.ok(!('error' in later));
+    await settle(); // the screen shows the wall's edit (and its toasts) before the user acts
     const view = useViewerStore.getState().mutationViews.get(MODEL_ID)!;
     act(() => click(undoButton()!));
     // Undoing a wall's creation can drop it from the new entities without marking it deleted:

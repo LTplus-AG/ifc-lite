@@ -24,6 +24,10 @@ export const coordinationCompareOperations = [
     // Captured before the first await, so a Clear or option change during the imports is seen too.
     const initial = useViewerStore.getState();
     const [{ prepareComparison }, { publishCompareResult, markUncachedCompareResult }] = await Promise.all([import('@/lib/compare/run-comparison'), import('@/lib/compare/publish-comparison')]);
+    // The guards below need current state: anything that moved during the imports refuses the run.
+    const afterImports = useViewerStore.getState();
+    if (afterImports.models !== initial.models || afterImports.compareRunning || afterImports.compareResult !== initial.compareResult || afterImports.compareClearEpoch !== initial.compareClearEpoch)
+      throw new Error('The models or comparison changed while compare.run started; run it again.');
     const base = initial.models.get(c.model.id), head = initial.models.get(i.head_model_id);
     if (!base || !head || initial.compareRunning) throw new Error('Load both models and wait for any native comparison to finish.');
     // The same refusals as the panel's Run button (useCompare.runComparison).

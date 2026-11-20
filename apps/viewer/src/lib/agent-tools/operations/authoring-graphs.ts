@@ -20,7 +20,7 @@ const meta = (id: string, owner: string, description: string, write = false) => 
 interface Review { room?: import('@/lib/actions/room-review').RoomReview; preview: object; validate(): void; sourcesCurrent(): boolean; commit(): ModelChangeReceipt; dispose?(): void }
 interface Candidate extends ReceiptHolder { store: OperationContext['model']['store']; modelId: string; review?: Review; receipt?: ModelChangeReceipt }
 const hosts = new WeakMap<ToolHost, Map<string, Candidate>>();
-function owned(c: OperationContext) {
+function owned(c: Pick<OperationContext, 'host'>) {
   let entries = hosts.get(c.host);
   if (!entries) {
     entries = new Map(); hosts.set(c.host, entries);
@@ -29,6 +29,8 @@ function owned(c: OperationContext) {
   }
   return entries;
 }
+/** Drop one candidate and release its native handles. */
+function release(entries: Map<string, Candidate>, token: string) { entries.get(token)?.review?.dispose?.(); entries.delete(token); }
 const output = (value: unknown) => ({ native_json: JSON.stringify(value ?? null) });
 function proposalModel(value: { modelId: string }, c: OperationContext) { if (value.modelId !== c.model.id) throw new Error('The proposal must name the selected model.'); }
 async function prepare(kind: 'group' | 'structural' | 'zone' | 'room', json: string, c: OperationContext): Promise<Review> {
@@ -80,7 +82,12 @@ export const graphAuthoringOperations = [
       selectedEntityIds: new Set(refs.map(ref => toGlobalIdForRef(state.models, ref))) });
     return output(capture);
   }),
-  ...(['group', 'structural', 'zone', 'room'] as const).map(kind => operation<{ proposal_json: string }>({ ...meta(`authoring.${kind}.prepare`, kind === 'zone' ? 'zones' : 'model', `Prepare the canonical ${kind} proposal using its native detached planner and complete evidence. Room supports pick/auto/autoAll/footprint/update/edit; no invented pointer gestures.`), outputSchema: previewOutput }, {
+  ...(['group', 'structural', 'zone', 'room'] as const).map(kind => operation<{ proposal_json: string }>({ ...meta(`authoring.${kind}.prepare`, kind === 'zone' ? 'zones' : 'model', `Prepare the canonical ${kind} proposal using its native detached planner and complete evidence. Room supports pick/auto/autoAll/footprint/update/edit; no invented pointer gestures.`), outputSchema: previewOutput,
+    // A result the executor refuses never reaches the caller, so its candidate must not keep a place under the cap.
+    discard: (result, c) => {
+      const token = (result as { token?: unknown } | null)?.token, entries = hosts.get(c.host);
+      if (entries && typeof token === 'string' && entries.get(token)?.receipt === undefined) release(entries, token);
+    } }, {
     type: 'object', properties: { proposal_json: { type: 'string', maxLength: 1000000 } }, required: ['proposal_json'], additionalProperties: false,
   }, async (i, c) => {
     // Unchanged by the review's own cheap probe, the permanent half of its validate(): loaded models and edit revisions
@@ -96,9 +103,10 @@ export const graphAuthoringOperations = [
     admit();
     const review = await prepare(kind, i.proposal_json, c);
     // Again after the await: a concurrent prepare may have taken the last place.
-    try { assertToolActive(c); review.validate(); admit(); } catch (error) { review.dispose?.(); throw error; }
+    let preview_json: string;
+    try { assertToolActive(c); review.validate(); preview_json = JSON.stringify(review.preview); admit(); } catch (error) { review.dispose?.(); throw error; }
     const token = crypto.randomUUID(); owned(c).set(token, { modelId: c.model.id, store: c.model.store, review });
-    return { token, preview_json: JSON.stringify(review.preview) };
+    return { token, preview_json };
   })),
   operation<{ token: string }>(meta('authoring.graph.apply', 'model', 'Apply one exact prepared native graph/Room candidate through its native synchronous review commit. Preserves all native roles, source/evidence checks and native undo. A token applies once.', true), tokenInput, async (i, c) => {
     const entry = owned(c).get(i.token);
@@ -113,7 +121,7 @@ export const graphAuthoringOperations = [
   operation<{ token: string }>(meta('authoring.graph.discard', 'model', 'Dispose a native graph or Room preview and release its native handles.'), tokenInput, (i, c) => {
     const entry = owned(c).get(i.token);
     if (!entry || entry.modelId !== c.model.id || entry.store !== c.model.store) throw new Error('Unknown graph review.');
-    entry.review?.dispose?.(); owned(c).delete(i.token); return output({ discarded: true });
+    release(owned(c), i.token); return output({ discarded: true });
   }),
 ];
 

@@ -16,6 +16,7 @@ import { invalidInput, stale } from './refusals';
 import { mutationRefusal } from './mutation-refusal';
 import { findZoneSet } from './authoring-zone-set';
 const WRITEBACK_STALE = 'Zone/model inputs changed after review.';
+import { captureZoneExportInputs, sameGeometry, sameModels } from './zone-operation-inputs';
 const outputSchema = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 const out = (value: unknown) => ({ native_json: JSON.stringify(value) });
 const meta = (id: string, description: string, effect: 'read' | 'model' | 'artifact' = 'read') => ({ id, owner: 'zones', description, effects: [effect],
@@ -26,28 +27,6 @@ interface Candidate { setId: string; basis: VolumeBasis; modelIds: string[]; act
 const hosts = new WeakMap<ToolHost, Map<string, Candidate>>();
 function owned(c: OperationContext) { let value = hosts.get(c.host); if (!value) { value = new Map(); hosts.set(c.host, value); } return value; }
 function zoneSet(id: string) { const set = findZoneSet(id); if (!set) throw invalidInput('unknown-target', 'Unknown zone set.'); return set; }
-/** Same own fields, by identity, except `ignored`. */
-function sameExcept(a: object, b: object, ignored: string) {
-  const keys = Object.keys(a).filter(key => key !== ignored);
-  return keys.length === Object.keys(b).filter(key => key !== ignored).length && keys.every(key => Object.hasOwn(b, key) && Reflect.get(a, key) === Reflect.get(b, key));
-}
-/**
- * Geometry as the proved volumes read it. A recolour replaces every mesh with `{ ...mesh, color }`, and with it
- * `geometryResult` and the `models` Map, but keeps each mesh's buffers; any other change still differs (#10669).
- */
-function sameGeometry(a: ViewerState['geometryResult'] | undefined, b: ViewerState['geometryResult'] | undefined) {
-  if (a === b) return true;
-  if (!a || !b || a.meshes.length !== b.meshes.length || !sameExcept(a, b, 'meshes')) return false;
-  return a.meshes.every((mesh, index) => sameExcept(mesh, b.meshes[index], 'color'));
-}
-/** Stricter than streaming-refresh's sameModelsExceptGeometry, which also ignores retained geometry. */
-function sameModels(a: ViewerState['models'], b: ViewerState['models']) {
-  if (a === b) return true;
-  return a.size === b.size && [...a].every(([id, model]) => {
-    const other = b.get(id);
-    return other !== undefined && sameExcept(model, other, 'geometryResult') && sameGeometry(model.geometryResult, other.geometryResult);
-  });
-}
 type BuildTable = typeof import('@/hooks/useZoneTableExport').buildZoneTable;
 /**
  * One digest of what the write depends on (#10794). A write uses the zone set and its full facts table, which reads
@@ -111,11 +90,11 @@ export const zoneWriteOperations = [
   }, async (i, c) => {
     const { exportZoneGeometry } = await import('@/hooks/useZoneGeometrySplit'); assertToolActive(c);
     const set = zoneSet(i.set_id), index = set.zones.findIndex(zone => zone.id === i.zone_id); if (index < 0) throw invalidInput('unknown-target', 'Unknown native zone.');
-    const state = useViewerStore.getState(), signature = JSON.stringify(set), models = state.models, tick = state.geometryUpdateTick, revision = state.mutationVersion;
+    const current = captureZoneExportInputs(set);
     let captured: { bytes: Uint8Array; filename: string } | undefined;
     const result = await exportZoneGeometry(set, index, { emit: (bytes, filename) => { captured = { bytes, filename }; } });
-    assertToolActive(c); const now = useViewerStore.getState();
-    if (now.models !== models || now.geometryUpdateTick !== tick || now.mutationVersion !== revision || JSON.stringify(findZoneSet(i.set_id)) !== signature) throw stale('Geometry or zones changed during native export. Discarded result.');
+    assertToolActive(c);
+    if (!current()) throw stale('Geometry or zones changed during native export. Discarded result.');
     if (!result.ok || !captured) return out({ result, artifact: null });
     const artifact = await c.artifacts.create({ filename: captured.filename, mimeType: 'model/gltf-binary', data: captured.bytes }); return out({ result, artifact });
   }),

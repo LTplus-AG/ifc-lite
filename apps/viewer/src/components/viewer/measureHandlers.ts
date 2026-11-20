@@ -20,7 +20,7 @@ import { pressPastClickSlop } from './pointerGesture.js';
 import { measureCursor, noteMeasureCursor } from './measureCursor.js';
 import { isGeometryHeld } from '@/lib/pick-gating';
 import { useViewerStore } from '@/store';
-import { hoverWithReadback, invalidatePendingMeasureReadbacks, runWithReadback } from './measureReadbackGate.js';
+import { cancelMeasureReadbacks, viaReadback } from './measureReadback.js';
 
 /**
  * Projects a world position onto the closest orthogonal constraint axis.
@@ -115,8 +115,8 @@ export function handleMeasureDrag(ctx: MouseHandlerContext, e: MouseEvent, x: nu
       if (isGeometryHeld(useViewerStore.getState())) return;
       // Shift can change while a view change prevents its immediate re-pick (#9242). A released scene
       // reads the drag point back first: the hover's neighbourhood does not reach a point a metre away.
-      runWithReadback(ctx.renderer, x, y, { hiddenIds: ctx.hiddenEntitiesRef.current, isolatedIds: ctx.isolatedEntitiesRef.current },
-        () => moveRubberBand(ctx, x, y, measureCursor(ctx)?.orthogonal ?? useOrthogonalConstraint), () => ctx.activeToolRef.current === 'measure');
+      const move = () => moveRubberBand(ctx, x, y, measureCursor(ctx)?.orthogonal ?? useOrthogonalConstraint);
+      if (!viaReadback(ctx, 'drag', move, x, y)) move();
     });
   }
 
@@ -274,8 +274,7 @@ export function handleMeasureHover(
       if (isGeometryHeld(useViewerStore.getState())) return;
       const run = () => { if (pick) pick(ctx, x, y); else hoverSnap(); };
       // Released CPU geometry (#10264): read the pieces under the pointer back first, latest wins.
-      hoverWithReadback(renderer, x, y, { hiddenIds: ctx.hiddenEntitiesRef.current, isolatedIds: ctx.isolatedEntitiesRef.current },
-        run, () => ctx.activeToolRef.current === 'measure', () => ctx.setSnapTarget(null));
+      if (!viaReadback(ctx, 'hover', run, x, y)) run();
     });
   }
   return true; // Don't fall through to other tool handlers
@@ -383,7 +382,7 @@ export { CLOSE_LOOP_SCREEN_RADIUS_PX, DUPLICATE_POINT_SCREEN_RADIUS_PX, isDuplic
 
 /** Drop a queued rubber-band or hover raycast, so it cannot land after the press or gesture it served. */
 export function cancelMeasureRaycast(ctx: MouseHandlerContext): void {
-  invalidatePendingMeasureReadbacks(); // an in-flight read never acts after the press or gesture that cancelled it
+  cancelMeasureReadbacks(); // an in-flight read never acts after the press or gesture that cancelled it
   if (ctx.measureRaycastFrameRef.current !== null) cancelAnimationFrame(ctx.measureRaycastFrameRef.current);
   ctx.measureRaycastFrameRef.current = null;
   ctx.measureRaycastPendingRef.current = false;

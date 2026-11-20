@@ -47,6 +47,15 @@ function place(scene: Pick<SceneContents, 'placeAppearanceSource'>, mesh: MeshDa
   return scene.placeAppearanceSource(mesh);
 }
 
+/**
+ * Only a model's translation is inverted below (scene hit to model-local source). A rotated model, or a scene
+ * that cannot say, fails closed: subtracting the offset alone would search the wrong neighbourhood (#10880).
+ */
+function placementRotated(scene: object, modelIndex: number | undefined): boolean {
+  if (!('getModelRotation' in scene) || typeof scene.getModelRotation !== 'function') return true;
+  return scene.getModelRotation(modelIndex ?? 0) !== null;
+}
+
 /** The model's current placement offset, measured through the scene's own placement. */
 function modelOffset(scene: Pick<SceneContents, 'placeAppearanceSource'>, modelIndex: number | undefined): [number, number, number] {
   const probe: MeshData = { expressId: 0, positions: new Float32Array(0), normals: new Float32Array(0),
@@ -85,6 +94,9 @@ export class ReadbackRaycastFeeder {
       const backing = modelId ? this.source()?.backing(modelId) : undefined;
       if (!modelId || !backing?.isCurrent || !backing.isComplete) {
         throw new GeometryUnavailableError(`No complete geometry backing for entity ${hit.expressId}`);
+      }
+      if (placementRotated(scene, hit.modelIndex)) {
+        throw new GeometryUnavailableError(`Model ${modelId} is rotated; readback of rotated placements is not available yet`);
       }
       const leases: MeshLease[] = [];
       try {

@@ -35,6 +35,7 @@ function host(state: { released: boolean; hit: { expressId: number; worldXYZ?: {
     getEntityBoundingBox: (id: number) => (id === 4 ? null : { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } }),
     // A model translated by +100 in x, as the scene's own placement would.
     placeAppearanceSource: (m: MeshData) => ({ ...m, origin: [100 + (m.origin?.[0] ?? 0), m.origin?.[1] ?? 0, m.origin?.[2] ?? 0] as [number, number, number] }),
+    getModelRotation: () => null,
   };
   const value: ReadbackRaycastHost = {
     pick: async () => state.hit,

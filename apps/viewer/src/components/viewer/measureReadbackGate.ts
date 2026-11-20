@@ -21,6 +21,8 @@
 
 import type { Renderer } from '@ifc-lite/renderer';
 import { sceneGeometryReleased } from '@/lib/geometry-backing/scene-released';
+import type { MouseHandlerContext } from './mouseHandlerTypes.js';
+import type { ReadbackKind } from './measureReadback.js';
 
 type Visibility = { hiddenIds?: ReadonlySet<number>; isolatedIds?: ReadonlySet<number> | null };
 type Feed = (renderer: Renderer, x: number, y: number, visibility: Visibility) => Promise<string>;
@@ -76,5 +78,41 @@ export function hoverWithReadback(renderer: Renderer, x: number, y: number, visi
   }, (error: unknown) => console.error('[Measure] Geometry readback failed', error));
 }
 
+/**
+ * Run `action` after every placement already queued (resident: now), still fenced by `stillValid`. A
+ * double-click finish must see the points of the clicks before it, which a released scene places later.
+ */
+export function afterPlacements(renderer: Renderer, action: () => void, stillValid: () => boolean): void {
+  if (!sceneGeometryReleased(renderer)) { action(); return; }
+  chain = chain.then(() => { if (stillValid()) action(); }).catch((error: unknown) => console.error('[Measure] Finish failed', error));
+}
+
 /** Settles once every queued read has run (tests). */
 export function measureReadbacksIdle(): Promise<void> { return chain; }
+
+// The handlers' readback paths, loaded only for a released scene (`measureReadback.ts` is the eager half).
+
+/** What a click captured when it happened: the reset that drops its placement is any change of these. */
+export interface PlacementScope { tool: string; gesture: number }
+
+/** One entry for every handler: a hover or drag preview, a placement, or a double-click finish. */
+/** The store state the readback paths read, handed in by the eager half. */
+export type GateStore = () => { measureGestureEpoch: number; setMeasurePointLive: (point: null) => void };
+
+// `actNow` and the store come from the eager half, never by static import: that cycle would merge this module
+// into the entry chunk, and a store import lists its whole graph as this chunk's preload dependencies.
+export function route(ctx: MouseHandlerContext, kind: ReadbackKind, act: () => void, x: number, y: number, scope: PlacementScope,
+  actNow: (act: () => void) => void, store: GateStore): void {
+  const visibility: Visibility = { hiddenIds: ctx.hiddenEntitiesRef.current, isolatedIds: ctx.isolatedEntitiesRef.current };
+  const measuring = () => ctx.activeToolRef.current === 'measure';
+  const inScope = () => ctx.activeToolRef.current === scope.tool && store().measureGestureEpoch === scope.gesture;
+  if (kind === 'hover') {
+    // A refused hover (unavailable) leaves no preview residue.
+    hoverWithReadback(ctx.renderer, x, y, visibility, () => actNow(act), measuring, () => {
+      ctx.setSnapTarget(null); ctx.setSnapVisualization(null); ctx.clearEdgeLock(); store().setMeasurePointLive(null);
+    });
+  } else if (kind === 'drag') runWithReadback(ctx.renderer, x, y, visibility, () => actNow(act), measuring);
+  else if (kind === 'place') runWithReadback(ctx.renderer, x, y, visibility, () => actNow(act), inScope, 'placement');
+  // A double-click finish runs after every placement already queued in its gesture.
+  else afterPlacements(ctx.renderer, () => actNow(act), () => scope.tool === 'measure' && inScope());
+}

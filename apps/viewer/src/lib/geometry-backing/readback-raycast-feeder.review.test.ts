@@ -27,12 +27,12 @@ function mesh(id: number, x: number, triangles = 1): MeshData {
   return { expressId: id, positions: Float32Array.from(positions), normals: new Float32Array(positions.length),
     indices: Uint32Array.from({ length: triangles * 3 }, (_, i) => i), color: [1, 1, 1, 1] };
 }
-function host(hit: { expressId: number; worldXYZ: { x: number; y: number; z: number } }) {
+function host(hit: { expressId: number; worldXYZ: { x: number; y: number; z: number } }, rotation: { angle: number; px: number; pz: number } | null = null) {
   const fed: Array<readonly MeshData[] | null> = [];
   const value: ReadbackRaycastHost = {
     pick: async () => hit,
     getScene: () => ({ isGeometryDataReleased: () => true, getEntityBoundingBox: () => ({ min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } }),
-      placeAppearanceSource: (m: MeshData) => m }) as never,
+      placeAppearanceSource: (m: MeshData) => m, getModelRotation: () => rotation }) as never,
     setReadbackRaycastMeshes: (meshes) => { fed.push(meshes); },
   };
   return { value, fed };
@@ -91,4 +91,25 @@ it('#10880 a renderer placement change (setModelTranslation) drops fed readback 
   set.length = 0;
   for (const listener of listeners) listener(); // a change notification with no placement change
   assert.deepEqual(set, [], 'an unrelated notification keeps fed pieces');
+});
+
+it('#10880 a rotated model fails closed: subtracting its offset alone would search the wrong neighbourhood', async () => {
+  const registry = await GeometryBackingRegistry.open(database());
+  try {
+    const backing = await registry.begin('m', { chunkBytes: 64, queueBytes: 1 << 20 });
+    // The hit entity at local (2, 0, 0) and a neighbour beside it, each in its own chunk.
+    for (const piece of [mesh(1, 2), mesh(2, 2.3)]) { await backing.writer.append([piece]); await backing.writer.flush(); }
+    await backing.writer.close();
+    assert.equal(backing.directory.chunks.length, 2);
+    // Rotated 90 degrees about +Y through the origin: local (2, 0, 0) is the scene point (0, 0, -2).
+    const h = host({ expressId: 1, worldXYZ: { x: 0, y: 0, z: -2 } }, { angle: Math.PI / 2, px: 0, pz: 0 });
+    const feeder = new ReadbackRaycastFeeder(h.value, () => ({ backing: () => backing }), () => 'm');
+    assert.equal(await feeder.prepare(0, 0), 'unavailable', 'never fed from a neighbourhood searched in the wrong frame');
+    assert.match(feeder.lastError!.message, /rotated/);
+    // The same model unrotated: its neighbour in the other chunk is fed.
+    const flat = host({ expressId: 1, worldXYZ: { x: 2, y: 0, z: 0 } });
+    const unrotated = new ReadbackRaycastFeeder(flat.value, () => ({ backing: () => backing }), () => 'm');
+    assert.equal(await unrotated.prepare(0, 0), 'fed', unrotated.lastError?.message ?? 'not fed');
+    assert.deepEqual(flat.fed.at(-1)!.map((m) => m.expressId).sort(), [1, 2]);
+  } finally { await registry.close(); }
 });

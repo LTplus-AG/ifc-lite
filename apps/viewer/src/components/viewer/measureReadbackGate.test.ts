@@ -17,6 +17,7 @@ import { useViewerStore } from '@/store';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { cancelMeasureRaycast, handleMeasureHover } from './measureHandlers.js';
 import { handlePolylineClick } from './selectionHandlers.js';
+import { handleMeasureDoubleClick } from './measurementDoubleClick.js';
 import { measureReadbacksIdle, runWithReadback, setMeasureReadbackFeedForTest } from './measureReadbackGate.js';
 
 type Read = { x: number; y: number; settle: (outcome: string) => void };
@@ -47,20 +48,25 @@ function ctx(): MouseHandlerContext {
     lastHoverSnapTimeRef: { current: 0 }, HOVER_SNAP_THROTTLE_MS: 0,
     measureRaycastPendingRef: { current: false }, measureRaycastFrameRef: { current: null },
     setSnapTarget: (target: unknown) => { snapTargets.push(target); },
+    setSnapVisualization: (viz: unknown) => { residue.push(`viz:${JSON.stringify(viz)}`); },
+    clearEdgeLock: () => { residue.push('edge-lock cleared'); },
   } as unknown as MouseHandlerContext;
 }
 let snapTargets: unknown[] = [];
+let residue: string[] = [];
 
-function hover(c: MouseHandlerContext, x: number, y: number, picks: Array<[number, number]>): void {
+/** One hover frame, then the lazy gate's import settles and the read starts. */
+async function hover(c: MouseHandlerContext, x: number, y: number, picks: Array<[number, number]>): Promise<void> {
   c.lastHoverSnapTimeRef.current = 0;
   handleMeasureHover(c, x, y, (_c, px, py) => { picks.push([px, py]); });
   flushFrames();
+  await tick();
 }
 
 const original = globalThis.requestAnimationFrame;
 const originalCancel = globalThis.cancelAnimationFrame;
 beforeEach(() => {
-  reads = []; frames = []; snapTargets = []; raycasts.length = 0;
+  reads = []; frames = []; snapTargets = []; residue = []; raycasts.length = 0;
   globalThis.requestAnimationFrame = ((cb: () => void) => { frames.push(cb); return frames.length; }) as typeof requestAnimationFrame;
   globalThis.cancelAnimationFrame = (() => {}) as typeof cancelAnimationFrame;
   setMeasureReadbackFeedForTest((_r, x, y) => new Promise((settle) => { reads.push({ x, y, settle }); }));
@@ -75,8 +81,8 @@ afterEach(() => {
 describe('#10880 hover readback', () => {
   it('latest wins: an older read that resolves after a newer one never acts', async () => {
     const c = ctx(), picks: Array<[number, number]> = [];
-    hover(c, 10, 10, picks);
-    hover(c, 20, 20, picks);
+    await hover(c, 10, 10, picks);
+    await hover(c, 20, 20, picks);
     assert.equal(reads.length, 2);
     reads[1].settle('fed'); await tick();
     reads[0].settle('fed'); await tick();
@@ -85,22 +91,23 @@ describe('#10880 hover readback', () => {
 
   it('an unavailable read never raycasts past the unbacked front; it clears the preview', async () => {
     const c = ctx(), picks: Array<[number, number]> = [];
-    hover(c, 10, 10, picks);
+    await hover(c, 10, 10, picks);
     reads[0].settle('unavailable'); await tick();
     assert.deepEqual(picks, [], 'no raycast or snap behind the unbacked surface');
     assert.deepEqual(snapTargets, [null], 'and the stale preview is cleared');
+    assert.deepEqual(residue, ['viz:null', 'edge-lock cleared'], 'with its snap visualisation and edge lock');
   });
 
   it('a cancelled (superseded) read does not act for the old pointer', async () => {
     const c = ctx(), picks: Array<[number, number]> = [];
-    hover(c, 10, 10, picks);
+    await hover(c, 10, 10, picks);
     reads[0].settle('cancelled'); await tick();
     assert.deepEqual(picks, []);
   });
 
   it('a press cancels an in-flight hover read: its completion publishes nothing', async () => {
     const c = ctx(), picks: Array<[number, number]> = [];
-    hover(c, 10, 10, picks);
+    await hover(c, 10, 10, picks);
     cancelMeasureRaycast(c);
     reads[0].settle('fed'); await tick();
     assert.deepEqual(picks, []);
@@ -147,4 +154,34 @@ describe('#10880 drag and placement readback', () => {
     assert.equal(raycasts.length, 0);
     assert.equal(useViewerStore.getState().activePolyline, null);
   });
+});
+
+it('#10880 a refused Point-mode hover clears the live point an earlier hover showed', async () => {
+  useViewerStore.setState({ measureMode: 'point' });
+  useViewerStore.getState().setMeasurePointLive({ position: { x: 1, y: 2, z: 3 } } as never);
+  assert.ok(useViewerStore.getState().measurePointLive);
+  const c = ctx(), picks: Array<[number, number]> = [];
+  await hover(c, 10, 10, picks);
+  reads[0].settle('unavailable'); await tick();
+  assert.equal(useViewerStore.getState().measurePointLive, null, 'no live point left from before the refused hover');
+});
+
+it('#10880 a double-click with two placements still pending finishes after both land', async () => {
+  const c = ctx();
+  handlePolylineClick(c, 0, 0);
+  handlePolylineClick(c, 40, 0);
+  handlePolylineClick(c, 40, 40);
+  await tick();
+  reads[0].settle('fed'); await tick(); // the first point lands; two are still pending
+  let prevented = false;
+  handleMeasureDoubleClick(c, { preventDefault: () => { prevented = true; } } as unknown as MouseEvent);
+  assert.equal(prevented, true, 'the double-click is claimed now');
+  assert.ok(useViewerStore.getState().activePolyline, 'and not finished before its points');
+  reads[1].settle('fed'); await tick();
+  reads[2].settle('fed');
+  await measureReadbacksIdle();
+  const state = useViewerStore.getState();
+  assert.equal(state.activePolyline, null, 'the finish ran, after the points');
+  assert.equal(state.polylineMeasurements.length, 1, 'one polyline was recorded');
+  assert.equal(state.polylineMeasurements[0].points.length, 3, 'with all three points');
 });

@@ -21,8 +21,7 @@ import { raycastForPolylinePoint, isNearPolylineStart,
 } from './measureHandlers.js';
 import { handlePointClick } from './measurePointMode.js';
 import { pressOutlivedReset } from './distanceClick.js';
-import { runWithReadback } from './measureReadbackGate.js';
-import { sceneGeometryReleased } from '@/lib/geometry-backing/scene-released';
+import { viaReadback } from './measureReadback.js';
 import { rememberVertexPress, unsnapFromPrevious } from './measurePress.js';
 import { pickViewportAppearanceFace, viewportFacePickError } from './appearance/face-mask/viewport-face-picker.js';
 import { resolve as translate } from '@/i18n/registry';
@@ -127,21 +126,7 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
  * a sequence, matching how a drag-mode click into empty space does nothing.
  */
 export function handlePolylineClick(ctx: MouseHandlerContext, x: number, y: number): void {
-  if (deferForReadback(ctx, x, y, () => polylineClickAt(ctx, x, y))) return;
-  polylineClickAt(ctx, x, y);
-}
-
-/** A released scene reads the click point back first; a resident one answers now (returns false). */
-function deferForReadback(ctx: MouseHandlerContext, x: number, y: number, act: () => void): boolean {
-  if (!sceneGeometryReleased(ctx.renderer)) return false;
-  // A placement: a later press never drops it, a gesture reset (Esc, mode or tool switch, reposition) does.
-  const tool = ctx.activeToolRef.current, gesture = useViewerStore.getState().measureGestureEpoch;
-  runWithReadback(ctx.renderer, x, y, { hiddenIds: ctx.hiddenEntitiesRef.current, isolatedIds: ctx.isolatedEntitiesRef.current },
-    act, () => ctx.activeToolRef.current === tool && useViewerStore.getState().measureGestureEpoch === gesture, 'placement');
-  return true;
-}
-
-function polylineClickAt(ctx: MouseHandlerContext, x: number, y: number): void {
+  if (viaReadback(ctx, 'place', () => handlePolylineClick(ctx, x, y), x, y)) return; // released: after its point is read back (#10880)
   const picked = raycastForPolylinePoint(ctx, x, y);
   if (!picked) return;
 
@@ -182,11 +167,7 @@ function polylineClickAt(ctx: MouseHandlerContext, x: number, y: number): void {
  * angle's fixed count. A miss (no raycast hit) is a no-op.
  */
 export function handleRadiusClick(ctx: MouseHandlerContext, x: number, y: number): void {
-  if (deferForReadback(ctx, x, y, () => radiusClickAt(ctx, x, y))) return;
-  radiusClickAt(ctx, x, y);
-}
-
-function radiusClickAt(ctx: MouseHandlerContext, x: number, y: number): void {
+  if (viaReadback(ctx, 'place', () => handleRadiusClick(ctx, x, y), x, y)) return; // released: after its point is read back (#10880)
   const picked = raycastForPolylinePoint(ctx, x, y);
   if (!picked) return;
 
@@ -235,11 +216,7 @@ function radiusClickAt(ctx: MouseHandlerContext, x: number, y: number): void {
  * which is why the pick carries its `kind` rather than being a bare point.
  */
 export function handleAngleClick(ctx: MouseHandlerContext, x: number, y: number): void {
-  if (deferForReadback(ctx, x, y, () => angleClickAt(ctx, x, y))) return;
-  angleClickAt(ctx, x, y);
-}
-
-function angleClickAt(ctx: MouseHandlerContext, x: number, y: number): void {
+  if (viaReadback(ctx, 'place', () => handleAngleClick(ctx, x, y), x, y)) return; // released: after its point is read back (#10880)
   const state = useViewerStore.getState();
   const kind = state.angleKind;
 

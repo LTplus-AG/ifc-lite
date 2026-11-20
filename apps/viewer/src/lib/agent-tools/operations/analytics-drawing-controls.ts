@@ -17,7 +17,8 @@ const color = { type: 'string' as const, pattern: '^#[0-9a-fA-F]{6}$' };
 export const analyticsDrawingControlOperations = [
   viewerOperation<{ id: string }>(metadata('drawing.centerDxf', 'drawing', 'Center a DXF on the actual generated model drawing using the native underlay/georeference/reference-plane transforms. Refuse unusable bounds, edge-on references or nonfinite coordinates.', ['view', 'configuration'], applied), idSchema, (i, c) => {
     const s = useViewerStore.getState(); const drawing = s.drawing2D; const entry = s.dxfUnderlays.find(row => row.id === i.id);
-    if (!drawing || !entry) throw unavailable('Generate a drawing and register this DXF first.');
+    if (!drawing) throw unavailable('Generate a drawing first.');
+    if (!entry) throw invalidInput('unknown-target', 'Unknown DXF underlay.');
     const plane = drawnSectionPlane(s);
     const georef = resolveDxfExportGeoreference({ models: s.models, legacyDataStore: s.ifcDataStore, legacyCoordinateInfo: s.geometryResult?.coordinateInfo, anchorModelIdOverride: s.anchorModelIdOverride, georefMutations: s.georefMutations });
     const result = centerDxfPlacement(entry, drawing, drawing, s.geometryResult?.coordinateInfo, plane.flipped && plane.custom === undefined, { transform: buildDxfMapToWorldTransform(georef), available: georef !== null }, s);

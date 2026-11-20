@@ -111,6 +111,18 @@ describe('released device recovery rebuild (viewer)', () => {
     } finally { await geometryBackingCommand(store, undefined, { action: 'stop' }); }
   });
 
+  it('#10937 a drawn member REPLACED in place (same array, same length, same version) during the read fences the rebuild', async () => {
+    const { store } = await releasedModel(`recovery-replaced-${process.pid}`);
+    try {
+      const { context } = recordingScene(() => {
+        // list[0] swapped for another mesh: identity, length and content version all unchanged.
+        const list = useViewerStore.getState().models.get('rm')!.geometryResult!.meshes;
+        list[0] = mesh(7, 9);
+      });
+      assert.equal(await rebuildReleasedScene(context), false, 'never "whole" from the replaced membership');
+    } finally { await geometryBackingCommand(store, undefined, { action: 'stop' }); }
+  });
+
   it('#10937 every flat type hidden (a RECORDED empty list) still recovers the instanced occurrences', async () => {
     const meshes = [mesh(1, 0)];
     const geometryResult: GeometryResult = { meshes, totalTriangles: 1, totalVertices: 3, coordinateInfo: {} as GeometryResult['coordinateInfo'] };

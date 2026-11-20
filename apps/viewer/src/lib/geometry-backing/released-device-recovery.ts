@@ -48,6 +48,12 @@ function viewerSource(state: ReturnType<typeof getViewerState>): unknown[] {
     ...[...state.models].flatMap(([id, model]) => [id, model.geometryResult, model.geometryResult?.meshes, model.geometryResult?.meshes.length, model.idOffset])];
 }
 
+/** The same members in the same order as `snapshot`: an in-place replacement keeps a list's identity and length. */
+function sameMembers(list: readonly MeshData[] | undefined, snapshot: readonly MeshData[] | undefined): boolean {
+  if (!list || !snapshot) return list === snapshot;
+  return list.length === snapshot.length && list.every((mesh, i) => mesh === snapshot[i]);
+}
+
 export const rebuildReleasedScene: ReleasedSceneRebuild = async ({ device, pipeline, scene, instancedModelIndices, isCurrent: deviceCurrent, requestRender }) => {
   // The renderer reset the scene: every released replay queued, running or parked before the loss
   // belongs to the old scene and must never resume into the rebuilt one (#10264).
@@ -58,14 +64,18 @@ export const rebuildReleasedScene: ReleasedSceneRebuild = async ({ device, pipel
   // Fenced by the renderer (device, generation) AND by the viewer: a model replaced, a content
   // version moved or a new drawn list while a chunk was read must not publish the old source.
   const source = viewerSource(state);
+  // Immutable membership the rebuild is taken from: the replay uploads exactly this, and the fence compares it.
+  const drawnAt = currentSceneGeometry()?.slice();
+  const membersAt = new Map([...state.models].map(([id, model]) => [id, model.geometryResult?.meshes.slice()]));
   // Per restaged model, the drawn shard revision its backing was read at: a shard ingested,
   // withheld or unattested during any await (or before the final publish) makes it stale.
   const attested = new Map<string, number>();
   const isCurrent = () => {
     if (!deviceCurrent()) return false;
     for (const [modelId, revision] of attested) if (tap.drawnShardRevision(modelId) !== revision || !tap.holdsDrawnShards(modelId)) return false;
-    const now = viewerSource(getViewerState());
-    return now.length === source.length && now.every((value, i) => value === source[i]);
+    const live = getViewerState(), now = viewerSource(live);
+    if (now.length !== source.length || !now.every((value, i) => value === source[i]) || !sameMembers(currentSceneGeometry(), drawnAt)) return false;
+    return [...live.models].every(([id, model]) => sameMembers(model.geometryResult?.meshes, membersAt.get(id)));
   };
   const lift = currentLevelYForModels(state.models, state.appliedEntityLevelOffsets);
   const statuses = new Map(tap.status().map((row) => [row.modelId, row]));
@@ -77,13 +87,13 @@ export const rebuildReleasedScene: ReleasedSceneRebuild = async ({ device, pipel
   }
   // An UNRECORDED drawn list would rebuild an empty scene and call it whole: fail closed. A recorded
   // empty list (every flat type hidden, instancing only) is a real answer and recovers.
-  const drawn = currentSceneGeometry();
+  const drawn = drawnAt;
   if (drawn === undefined && [...state.models.values()].some((model) => model.visible !== false && (model.geometryResult?.meshes.length ?? 0) > 0)) {
     console.warn('[GeometryBacking] no drawn list was recorded for a scene with flat geometry; refusing a released device recovery');
     return false;
   }
   const { replayReleasedGeometry } = await import('@ifc-lite/renderer');
-  const flat = await releasedBatches((drawn ?? []).slice());
+  const flat = await releasedBatches((drawn ?? []).slice()); // the captured membership, never the live list
   async function* placed(): AsyncGenerator<MeshData[]> {
     for await (const batch of flat) yield placeNewMeshesAtCurrentLevel(batch, lift);
   }

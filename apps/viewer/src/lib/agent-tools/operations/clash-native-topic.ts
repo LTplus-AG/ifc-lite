@@ -5,6 +5,7 @@ import { useViewerStore } from '@/store';
 import { viewerOperation } from './contract';
 import { assertToolActive } from '../cancellation';
 import { clashRuntime, currentClashes } from './clash-native';
+import { internal, invalidInput, stale, unavailable } from './refusals';
 export const clashTopicOperations = [
   viewerOperation<{
     kind: 'pair' | 'report' | 'group';
@@ -51,13 +52,14 @@ export const clashTopicOperations = [
         clashRuntime(c),
       ]);
       const s = useViewerStore.getState();
-      if (s.clashRunSeq !== i.run_seq || !s.clashResult) throw new Error('No exact current clash result.');
+      if (!s.clashResult) throw unavailable('No current clash result.');
+      if (s.clashRunSeq !== i.run_seq) throw stale('The clash result changed since inspection.');
       if (
         (i.kind === 'pair' && i.clash_ids.length !== 1) ||
         (i.kind === 'report' && i.clash_ids.length !== 0) ||
         (i.kind === 'group' && (!i.group_name.trim() || i.clash_ids.length === 0))
       )
-        throw new Error('Use one pair, an empty report population, or an explicit named nonempty group.');
+        throw invalidInput('invalid-value', 'Use one pair, an empty report population, or an explicit named nonempty group.');
       const result = s.clashResult,
         pairs = currentClashes(i.run_seq, i.clash_ids);
       const isCurrent = () =>
@@ -77,7 +79,7 @@ export const clashTopicOperations = [
         requireSnapshot: true,
       });
       assertToolActive(c);
-      if (!created) throw new Error('Native BCF topic capture failed or was superseded.');
+      if (!created) throw internal('Native BCF topic capture failed or was superseded.');
       return created;
     },
   ),

@@ -26,7 +26,7 @@ import {
   type ClashGlobalSettings, type ClashPreset,
 } from './persistence-codecs.js';
 export {
-  CLASH_BOUNDS, DEFAULT_CLASH_SETTINGS, MAX_COMMENT, SCHEMA_VERSION, builtinPresetIds, clampToBounds, isMeaningfulReview,
+  CLASH_BOUNDS, DEFAULT_CLASH_SETTINGS, MAX_COMMENT, MAX_PRESETS, SCHEMA_VERSION, builtinPresetIds, clampToBounds, isMeaningfulReview,
   isValidStoredPreset, normalizeSettings, storedPresetToPreset, validatePresetName, validateSelector,
   type ClashGlobalSettings, type ClashPreset, type ClashSettingsGroupBy,
 } from './persistence-codecs.js';

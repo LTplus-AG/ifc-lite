@@ -9,6 +9,7 @@ import type { ModelChangeReceipt } from '@/lib/actions/model-change-commit';
 import type { ToolHost } from '../types';
 import { operation, emptySchema, type OperationContext } from './contract';
 import { assertToolActive } from '../cancellation';
+import { invalidInput, stale, decodedInput } from './refusals';
 import { admitCandidate, candidateStillApplies, libraryHoldsReceipt, persistReceipt, type ReceiptHolder } from './host-handles';
 
 const previewOutput = { type: 'object', properties: { token: { type: 'string' }, preview_json: { type: 'string' }, revision: { type: 'integer' } }, required: ['token', 'preview_json', 'revision'], additionalProperties: false };
@@ -46,12 +47,12 @@ function rememberAll<T extends object>(c: OperationContext, inputs: ReadonlyArra
 const remember = (c: OperationContext, input: Omit<Candidate, 'modelId' | 'store' | 'revision'>, preview: object) => rememberAll(c, [{ input, preview }])[0];
 function ownedCandidate(c: OperationContext, token: string) {
   const saved = candidates(c).get(token);
-  if (!saved || saved.modelId !== c.model.id || saved.store !== c.model.store) throw new Error('Unknown reviewed candidate for this host and model.');
+  if (!saved || saved.modelId !== c.model.id || saved.store !== c.model.store) throw invalidInput('unknown-target', 'Unknown reviewed candidate for this host and model.');
   return saved;
 }
 function candidate(c: OperationContext, token: string) {
   const saved = ownedCandidate(c, token);
-  if (!saved.receipt && !previewCurrent(saved)) throw new Error('Model changed since preview; prepare again.');
+  if (!saved.receipt && !previewCurrent(saved)) throw stale('Model changed since preview; prepare again.');
   return saved;
 }
 async function persist(saved: Candidate, receipt: ModelChangeReceipt) {
@@ -59,17 +60,17 @@ async function persist(saved: Candidate, receipt: ModelChangeReceipt) {
 }
 /** Preview each property batch, changing nothing, then admit them all at once: a failure or a refusal at any point
  * leaves the host as it was, apart from stale candidates admission drops anyway. */
-export async function preparePropertyCandidates(c: OperationContext, proposals: readonly string[]) {
+export async function preparePropertyCandidates(c: OperationContext, proposals: readonly string[], field: string) {
   const [{ parseModelChangeBatch }, { previewModelChanges }] = await Promise.all([import('@ifc-lite/ai/artifacts'), import('@/lib/actions/model-change-preview')]);
   assertToolActive(c);
   const previews = proposals.map(proposal => {
-    const preview = previewModelChanges(useViewerStore.getState(), parseModelChangeBatch(proposal));
-    if (preview.rows.some(row => row.modelId !== null && row.modelId !== c.model.id)) throw new Error('All reviewed properties must belong to the selected model.');
+    const batch = decodedInput(field, () => parseModelChangeBatch(proposal), { json: true });
+    const preview = previewModelChanges(useViewerStore.getState(), batch);
+    if (preview.rows.some(row => row.modelId !== null && row.modelId !== c.model.id)) throw invalidInput('wrong-target', 'All reviewed properties must belong to the selected model.');
     return { input: { properties: preview }, preview };
   });
   return rememberAll(c, previews);
 }
-
 
 export const authoringOperations = [
   operation({ ...meta('authoring.describe', 'model', 'Discover the complete native reviewed authoring vocabulary and its exact input guidance. No arbitrary STEP or method-path execution.'), outputSchema: {
@@ -83,15 +84,15 @@ export const authoringOperations = [
       import('@/lib/actions/model-authoring'), import('@/lib/actions/model-authoring-preview'), import('@/lib/actions/model-authoring-align'),
     ]);
     assertToolActive(c);
-    const batch = parseModelAuthoringBatch(i.proposal_json);
+    const batch = decodedInput('proposal_json', () => parseModelAuthoringBatch(i.proposal_json), { json: true });
     await prepareReviewedAlignments(useViewerStore.getState, batch, c.signal);
     assertToolActive(c);
     const preview = previewModelAuthoring(useViewerStore.getState(), batch);
-    if (preview.rows.some(row => row.modelId !== null && row.modelId !== c.model.id)) throw new Error('An operation may only review the explicitly selected model.');
+    if (preview.rows.some(row => row.modelId !== null && row.modelId !== c.model.id)) throw invalidInput('wrong-target', 'An operation may only review the explicitly selected model.');
     return remember(c, { authoring: preview }, preview);
   }),
   operation<{ proposal_json: string }>(meta('properties.prepare', 'properties', 'Prepare a canonical model.changes batch for property, quantity or exact IFC attribute edits. Native expected-value checks and role gates are preserved.'), proposalInput, async (i, c) => {
-    return (await preparePropertyCandidates(c, [i.proposal_json]))[0];
+    return (await preparePropertyCandidates(c, [i.proposal_json], 'proposal_json'))[0];
   }),
   operation<{ token: string }>(meta('authoring.apply', 'model', 'Apply every ready row of the exact prepared model/attribute/property candidate as a native transaction. Refuses an incomplete/conflicting preview; repeated apply returns the same receipt.', true), tokenInput, async (i, c) => {
     const saved = candidate(c, i.token);
@@ -99,13 +100,13 @@ export const authoringOperations = [
     const [{ commitModelAuthoring }, { commitModelChanges }] = await Promise.all([import('@/lib/actions/model-authoring-commit'), import('@/lib/actions/model-change-commit')]);
     candidate(c, i.token); assertToolActive(c);
     const preview = saved.authoring ?? saved.properties!;
-    if (preview.rows.some(row => row.status !== 'ready' && row.status !== 'unchanged')) throw new Error('The preview contains refused/conflicting rows. Prepare a complete valid candidate.');
+    if (preview.rows.some(row => row.status !== 'ready' && row.status !== 'unchanged')) throw invalidInput('refused', 'The preview contains refused/conflicting rows. Prepare a complete valid candidate.');
     const approved = new Set(preview.rows.filter(row => row.status === 'ready').map(row => row.index));
     // A refusal throws inside commit, so it is not recorded as a committed write.
     const outcome = c.commit(() => {
       const result = saved.authoring ? commitModelAuthoring(useViewerStore, saved.authoring, approved, 'viewer-agent')
         : commitModelChanges(useViewerStore, saved.properties!, approved, 'viewer-agent');
-      if (!result.ok) throw new Error(`Native commit refused: ${result.reason}${result.detail ? `: ${result.detail}` : ''}`);
+      if (!result.ok) throw invalidInput('refused', `Native commit refused: ${result.reason}${result.detail ? `: ${result.detail}` : ''}`);
       return result;
     });
     saved.receipt = outcome.receipt; return persist(saved, outcome.receipt);

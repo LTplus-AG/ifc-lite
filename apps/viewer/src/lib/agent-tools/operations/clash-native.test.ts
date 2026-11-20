@@ -188,6 +188,29 @@ describe('native Clash operation parity (#10525 follow-up)', () => {
     const result = (created.structured as { result: { batch_id: string; topics: number } }).result;
     assert.ok(result.batch_id); assert.equal(result.topics, 1, 'one topic for the one reviewed group');
   });
+  it('a clash run refusal carries the code of its condition (#10871)', async () => {
+    // A deleted rule is the caller's input; a matrix with every rule disabled is a state the viewer must leave first.
+    const gone = await call('clash.run', { ...runInput(), kind: 'preset', preset_id: 'deleted-rule' }, true);
+    assert.equal(gone.isError, true); assert.equal(gone.errorCode, 'INVALID_INPUT', gone.text); assert.equal((gone.structured as { reason?: string }).reason, 'unknown-target');
+    const presets = useViewerStore.getState().clashPresets;
+    const reasonOf = (result: AgentToolResult) => (result.structured as { reason?: string }).reason;
+    try {
+      useViewerStore.setState({ clashPresets: presets.map(preset => ({ ...preset, enabled: false })) });
+      const off = await call('clash.run', { ...runInput(), kind: 'matrix' }, true);
+      assert.equal(off.isError, true); assert.equal(off.errorCode, 'UNSUPPORTED_OPERATION', off.text); assert.equal(reasonOf(off), 'unavailable');
+      // A rule whose set filter names a model tag that no longer exists is refused: fixing the rule makes it run.
+      const filtered = { ...presets[0], enabled: true, filterA: [{ combinator: 'AND', rules: [{ kind: 'modelTag', op: 'in', tagIds: ['no-such-tag'] }] }] };
+      useViewerStore.setState({ clashPresets: [filtered, ...presets.slice(1)] as never });
+      const refused = await call('clash.run', { ...runInput(), kind: 'preset', preset_id: filtered.id }, true);
+      assert.equal(refused.errorCode, 'INVALID_INPUT', refused.text); assert.equal(reasonOf(refused), 'refused');
+      // A rerun of a rule deleted since is not the caller's input: it named no rule.
+      useViewerStore.setState({ clashPresets: presets });
+      value(await call('clash.run', { ...runInput(), kind: 'preset', preset_id: presets[0].id }, true));
+      useViewerStore.setState({ clashPresets: presets.slice(1) });
+      const rerun = await call('clash.run', { ...runInput(), kind: 'rerun', preset_id: '' }, true);
+      assert.equal(rerun.errorCode, 'UNSUPPORTED_OPERATION', rerun.text); assert.equal(reasonOf(rerun), 'unavailable');
+    } finally { useViewerStore.setState({ clashPresets: presets }); }
+  });
   it('rejects overlapping occurrence claims through the real native manual-group codec', async () => {
     const result = value<{ run_seq: number }>(await call('clash.run', runInput(), true));
     const id = useViewerStore.getState().clashResult!.clashes[0].id;
@@ -270,6 +293,29 @@ describe('native Clash operation parity (#10525 follow-up)', () => {
       assert.equal(refused.isError, true, file);
       assert.match(refused.text, /no valid clash rules/);
     }
+  });
+  it('refuses a preset import over the rule cap as a limit while the library has room (#10871)', async () => {
+    const { exportPresets, defaultPresets } = await import('@/lib/clash/persistence');
+    const base = defaultPresets()[0], presets = useViewerStore.getState().clashPresets;
+    const rules = (prefix: string, length: number) => Array.from({ length }, (_, n) => ({ ...base, id: `${prefix}-${n}`, name: `${prefix} ${n}`, builtin: false }));
+    const importFile = (file: typeof presets) => {
+      let preset_json = '';
+      exportPresets(file, (content) => { preset_json = content; });
+      return call('clash.presets.write', { action: 'import', id: '', preset_json, enabled: true, expected_presets: JSON.stringify(useViewerStore.getState().clashPresets) }, true);
+    };
+    try {
+      const alone = await importFile(rules('bulk', 201));
+      assert.equal(alone.errorCode, 'INVALID_INPUT', alone.text); assert.equal((alone.structured as { reason?: string } | null)?.reason, 'limit');
+      // 150 held plus 100 passes the cap, but a 50-rule file would fit.
+      useViewerStore.setState({ clashPresets: [...presets, ...rules('held', 150)] });
+      const more = await importFile(rules('more', 100));
+      assert.equal(more.errorCode, 'INVALID_INPUT', more.text); assert.equal((more.structured as { reason?: string; save?: string } | null)?.reason, 'limit');
+      assert.equal((more.structured as { save?: string } | null)?.save, 'too_many');
+      // One rule into a library already at the cap: no smaller file helps.
+      useViewerStore.setState({ clashPresets: [...presets, ...rules('held', 200)] });
+      const full = await importFile(rules('one', 1));
+      assert.equal(full.errorCode, 'UNSUPPORTED_OPERATION', full.text);
+    } finally { useViewerStore.setState({ clashPresets: presets }); }
   });
   it('trims the IFC class of a type exclusion', async () => {
     const { run_seq } = await firstPair();

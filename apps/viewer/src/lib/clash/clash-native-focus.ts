@@ -35,13 +35,13 @@ export function createClashFocus(options: {
     const loaded = state.models.has(ref.model);
     if (!clashRefModelIsCurrent(state.clashRawResult, ref.model, state.models)) {
       const message = loaded ? CLASH_SUPERSEDED_MESSAGE : CLASH_MODEL_UNLOADED_MESSAGE;
-      if (state.clashError !== message) state.setClashError(message);
+      if (state.clashError !== message) state.setClashError(message, loaded ? 'stale' : 'unavailable');
       return null;
     }
     if (loaded) {
       const resolved = state.resolveGlobalIdInModel(ref.model, ref.ref);
       if (!resolved && state.clashError !== CLASH_REF_UNRESOLVED_MESSAGE) {
-        state.setClashError(CLASH_REF_UNRESOLVED_MESSAGE);
+        state.setClashError(CLASH_REF_UNRESOLVED_MESSAGE, 'unavailable');
       }
       return resolved;
     }

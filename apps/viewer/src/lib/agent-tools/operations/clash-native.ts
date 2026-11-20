@@ -8,6 +8,8 @@ import type { Clash } from '@ifc-lite/clash';
 import { viewerOperation, emptySchema, type ViewerOperationContext } from './contract';
 import { assertToolActive } from '../cancellation';
 import type { ToolHost } from '../types';
+import { internal, invalidInput, stale, unavailable } from './refusals';
+import type { ClashErrorKind } from '@/lib/clash/clash-error-kind';
 const outputSchema = {
   type: 'object',
   properties: { native_json: { type: 'string' } },
@@ -57,11 +59,11 @@ export function currentClash(run_seq: number, id: string): Clash {
 /** Look up several clashes of the current run with one pass over the result. */
 export function currentClashes(run_seq: number, ids: readonly string[]): Clash[] {
   const s = useViewerStore.getState();
-  if (s.clashRunSeq !== run_seq) throw new Error('Clash results changed. Inspect again.');
+  if (s.clashRunSeq !== run_seq) throw stale('Clash results changed. Inspect again.');
   const byId = new Map((s.clashResult?.clashes ?? []).map((row) => [row.id, row]));
   return ids.map((id) => {
     const clash = byId.get(id);
-    if (!clash) throw new Error('Unknown clash in the current native result.');
+    if (!clash) throw invalidInput('unknown-target', 'Unknown clash in the current native result.');
     return clash;
   });
 }
@@ -80,6 +82,20 @@ export function clashSettings() {
     focusMode: s.clashFocusMode,
     showRegionBox: s.showClashRegionBox,
   };
+}
+/**
+ * A run that did not complete (#10871), by the kind the detection module recorded, never by its message: a rule the
+ * caller named that no longer exists is its input, a set filter that cannot run safely is refused, no geometry or
+ * every rule disabled is unavailable, an engine failure is internal, and no error at all means the run was cancelled or
+ * superseded. A `stale` kind is a clash focus error that outlived the run.
+ */
+function clashRunRefusal(error: string | null, kind: ClashErrorKind | null, callerNamedPreset: boolean) {
+  if (error === null) return stale('Native run was cancelled, superseded or refused.');
+  if (kind === 'unknown-target') return callerNamedPreset ? invalidInput('unknown-target', error) : unavailable(error);
+  if (kind === 'refused') return invalidInput('refused', error);
+  if (kind === 'unavailable') return unavailable(error);
+  if (kind === 'stale') return stale(error);
+  return internal(error);
 }
 export const nativeClashOperations = [
   viewerOperation(
@@ -134,7 +150,7 @@ export const nativeClashOperations = [
       const { clashReviewKey } = await import('@ifc-lite/clash');
       assertToolActive(c);
       const s = useViewerStore.getState();
-      if (s.clashRunSeq !== i.run_seq) throw new Error('Clash results changed.');
+      if (s.clashRunSeq !== i.run_seq) throw stale('Clash results changed.');
       const clashes = s.clashResult?.clashes ?? [];
       const revision = stateRevision([i.run_seq, clashes, [...s.clashReviews]]);
       const { items, ...page } = boundedMappedPage(clashes,
@@ -179,7 +195,7 @@ export const nativeClashOperations = [
         JSON.stringify([...s.models.keys()].sort()) !== JSON.stringify([...i.expected_model_ids].sort()) ||
         JSON.stringify(clashSettings()) !== i.expected_settings
       )
-        throw new Error('Clash inputs changed. Inspect again.');
+        throw stale('Clash inputs changed. Inspect again.');
       const seq = s.clashRunSeq;
       const cancel = () => runtime.cancelRun();
       c.signal?.addEventListener('abort', cancel, { once: true });
@@ -187,7 +203,7 @@ export const nativeClashOperations = [
         assertToolActive(c);
         if (i.kind === 'rerun') {
           const request = runRequestOf(s.clashRawResult);
-          if (!request) throw new Error('No recorded clash run to rerun. Choose a run kind instead.');
+          if (!request) throw unavailable('No recorded clash run to rerun. Choose a run kind instead.');
           await rerunClashRequest(request, runtime);
         }
         else if (i.kind === 'all') await runtime.runAll();
@@ -197,7 +213,7 @@ export const nativeClashOperations = [
         assertToolActive(c);
         const end = useViewerStore.getState();
         if (end.clashRunSeq === seq)
-          throw new Error(end.clashError ?? 'Native run was cancelled, superseded or refused.');
+          throw clashRunRefusal(end.clashError, end.clashErrorKind, i.kind === 'preset');
         return out({
           run_seq: end.clashRunSeq,
           count: end.clashResult?.clashes.length ?? 0,
@@ -276,16 +292,16 @@ export const nativeClashOperations = [
     async (i, c) => {
       const runtime = await clashRuntime(c);
       const pairs = currentClashes(i.run_seq, i.clash_ids);
-      if (i.element !== 'pair' && pairs.length !== 1) throw new Error('Choose one clash for a single-element focus.');
+      if (i.element !== 'pair' && pairs.length !== 1) throw invalidInput('invalid-value', 'Choose one clash for a single-element focus.');
       return out(
         c.commit(() => {
           if (i.element !== 'pair') runtime.selectElement(pairs[0][i.element], i.mode);
           else if (pairs.length === 1) {
             runtime.focusClash(pairs[0], i.mode);
             if (useViewerStore.getState().clashSelectedId !== pairs[0].id)
-              throw new Error(useViewerStore.getState().clashError ?? 'Native pair focus refused.');
+              throw invalidInput('refused', useViewerStore.getState().clashError ?? 'Native pair focus refused.');
           } else if (!runtime.focusClashes(pairs, i.mode))
-            throw new Error(useViewerStore.getState().clashError ?? 'Native group focus refused.');
+            throw invalidInput('refused', useViewerStore.getState().clashError ?? 'Native group focus refused.');
           return {
             dispatched: true,
             solidStatus: useViewerStore.getState().clashSolidStatus,

@@ -5,6 +5,7 @@ import { useViewerStore } from '@/store';
 import { collectChangedModels } from '@/lib/export/model-changes';
 import { resolveRef } from '../refs';
 import { operation, viewerOperation, emptySchema, referenceSchema } from './contract';
+import { unavailable } from './refusals';
 
 const basketSchema = { type: 'object', properties: {
   refs: { type: 'array', items: { type: 'string' } }, hierarchy_refs: { type: 'array', items: { type: 'string' } },
@@ -20,7 +21,7 @@ const metadata = (id: string, description: string) => ({ id, owner: 'hierarchy',
   synchronous: true, outputSchema: basketSchema });
 const appliedSchema = { type: 'object', properties: { applied: { type: 'boolean' } }, required: ['applied'], additionalProperties: false };
 function requireFederatedModel(id: string) {
-  if (!useViewerStore.getState().models.has(id)) throw new Error('This native model action requires a federated model entry.');
+  if (!useViewerStore.getState().models.has(id)) throw unavailable('This native model action requires a federated model entry.');
 }
 const actions = [
   ['basket.replace', 'Replace basket and native isolation, preserving visibility ownership.', 'setBasket'],
@@ -46,7 +47,7 @@ export const hierarchyOperations = [
   operation({ ...metadata('model.unload', 'Unload the explicit model through native teardown only when it has no unexported changes. Native discard confirmation remains required for edited models.'), outputSchema: appliedSchema }, emptySchema, (_, c) => {
     requireFederatedModel(c.model.id);
     if (collectChangedModels(useViewerStore.getState()).models.some(model => model.id === c.model.id)) {
-      throw new Error('This model has unexported changes. Use the native discard confirmation before removing it.');
+      throw unavailable('This model has unexported changes. Use the native discard confirmation before removing it.');
     }
     useViewerStore.getState().removeModel(c.model.id); return { applied: true };
   }),

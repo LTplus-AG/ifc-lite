@@ -10,6 +10,7 @@ import { evictOldest } from './host-handles';
 import { pageInput, type PageInput } from './result-limit';
 import { libraryPage } from './library-page';
 import { assertRevision, revisionInput, stateRevision } from './state-revision';
+import { internal, invalidInput, stale, unavailable, parseJsonInput } from './refusals';
 const outputSchema = {
   type: 'object',
   properties: { native_json: { type: 'string' } },
@@ -50,11 +51,11 @@ async function dependencies(id: string) {
   const entries = await loadDocuments();
   const preview = reportChartDependencies(useViewerStore.getState(), { kind: 'clash', id }, { entries, phase: 'ready' });
   // Opening the library is a configuration effect of its own, so a read does not do it here.
-  if (preview.documentPhase === 'loading') throw new Error('The Documents library is not open yet. Run document.initialize, then prepare again.');
+  if (preview.documentPhase === 'loading') throw unavailable('The Documents library is not open yet. Run document.initialize, then prepare again.');
   // Invalid single dashboards (omittedDashboards) and recovered documents stay in the preview for the agent to
   // weigh, as the panel shows them; only storage that could not be read at all hides every reference in it.
   if (preview.documentPhase === 'unavailable' || preview.dashboardsUnavailable)
-    throw new Error('Saved dashboards or Documents could not be read, so their references to this report are unknown. Restore that storage, then prepare again.');
+    throw unavailable('Saved dashboards or Documents could not be read, so their references to this report are unknown. Restore that storage, then prepare again.');
   return preview;
 }
 export const clashReportOperations = [
@@ -92,11 +93,11 @@ export const clashReportOperations = [
       ]);
       assertToolActive(c);
       const s = useViewerStore.getState();
-      if (s.clashRunSeq !== i.run_seq) throw new Error('Clash run changed.');
+      if (s.clashRunSeq !== i.run_seq) throw stale('Clash run changed.');
       const report = snapshotClashReport(s, i.name, new Date(), useQualityGatePreferences.getState().config);
-      if (!report) throw new Error('No native clash result to save.');
+      if (!report) throw unavailable('No native clash result to save.');
       if (!(await c.commitAsync(() => useViewerStore.getState().saveClashReport(report))))
-        throw new Error('Native report save failed.');
+        throw internal('Native report save failed.');
       return out({ id: report.id });
     },
   ),
@@ -128,10 +129,11 @@ export const clashReportOperations = [
       const { isSavedClashReport } = await import('@/lib/clash/saved-report-schema');
       let report: SavedClashReport | undefined;
       if (i.action === 'import') {
-        const raw: unknown = JSON.parse(i.report_json);
-        if (!isSavedClashReport(raw)) throw new Error('Invalid canonical native clash report.');
+        const raw: unknown = parseJsonInput(i.report_json, 'report_json');
+        if (!isSavedClashReport(raw)) throw invalidInput('invalid-value', 'Invalid canonical native clash report.');
         report = raw;
       }
+      if (i.action === 'rename' && !i.name.trim()) throw invalidInput('invalid-value', 'A saved clash report needs a name.');
       assertToolActive(c);
       const ok = await c.commitAsync(() => {
         const s = useViewerStore.getState();
@@ -139,10 +141,14 @@ export const clashReportOperations = [
         if (i.action === 'restore') return s.restoreSavedClashReports();
         if (i.action === 'retry') return s.retrySaveClashReports();
         if (i.action === 'import') return s.saveClashReport(report!);
-        if (!s.savedClashReports.some((row) => row.id === i.id)) throw new Error('Unknown saved clash report.');
+        if (!s.savedClashReports.some((row) => row.id === i.id)) throw invalidInput('unknown-target', 'Unknown saved clash report.');
         return s.renameSavedClashReport(i.id, i.name);
       });
-      if (!ok) throw new Error('Native report write refused.');
+      // The library answers only false. With a blank name refused above, restore, retry and rename fail on storage, the
+      // report rules or an overlapping edit; an import that passed the schema most likely holds an id with other evidence.
+      if (!ok) throw i.action === 'import'
+        ? invalidInput('refused', 'Native report import refused: another report holds this id with other evidence, or storage failed.')
+        : unavailable('Native report storage refused. Read the reports again and retry.');
       return out({ completed: i.action });
     },
   ),
@@ -162,7 +168,7 @@ export const clashReportOperations = [
       assertToolActive(c);
       const s = useViewerStore.getState(),
         report = s.savedClashReports.find((row) => row.id === i.id);
-      if (!report) throw new Error('Unknown saved report.');
+      if (!report) throw invalidInput('unknown-target', 'Unknown saved report.');
       evictOldest(owned(c.host), 32);
       const token = crypto.randomUUID();
       owned(c.host).set(token, { report, signature: preview.signature, action: s.deleteSavedClashReport });
@@ -183,7 +189,7 @@ export const clashReportOperations = [
     },
     async (i, c) => {
       const candidate = owned(c.host).get(i.token);
-      if (!candidate) throw new Error('Unknown deletion candidate.');
+      if (!candidate) throw invalidInput('unknown-target', 'Unknown deletion candidate.');
       const preview = await dependencies(candidate.report.id);
       assertToolActive(c);
       const s = useViewerStore.getState();
@@ -192,8 +198,9 @@ export const clashReportOperations = [
         s.deleteSavedClashReport !== candidate.action ||
         preview.signature !== candidate.signature
       )
-        throw new Error('Deletion target or dependencies changed. Preview again.');
+        throw stale('Deletion target or dependencies changed. Preview again.');
       let staged = false;
+      let guardRefused = false;
       // The library also runs this on a later storage retry, after this call has ended or lost its grant.
       // Refusing then (not throwing) lets the library restore the report instead of leaving it hidden.
       const guard = async () => {
@@ -213,12 +220,13 @@ export const clashReportOperations = [
             ? now.savedClashReports.some((row) => row.id === candidate.report.id)
             : now.savedClashReports.find((row) => row.id === candidate.report.id) !== candidate.report)
         )
-          return false;
+          { guardRefused = true; return false; }
         staged = true;
         return true;
       };
       if (!(await c.commitAsync(() => candidate.action(candidate.report.id, guard))))
-        throw new Error('Native report deletion failed or its guard refused.');
+        // The guard refuses a report or dependency that changed since the deletion preview: a stale preview, not a failure.
+        throw guardRefused ? stale('Deletion target or dependencies changed. Preview again.') : internal('Native report deletion failed.');
       owned(c.host).delete(i.token);
       return out({ deleted: candidate.report.id });
     },
@@ -242,11 +250,11 @@ export const clashReportOperations = [
       ]);
       const s = useViewerStore.getState(),
         report = s.savedClashReports.find((row) => row.id === i.id);
-      if (!report) throw new Error('Unknown saved clash report.');
+      if (!report) throw invalidInput('unknown-target', 'Unknown saved clash report.');
       const document = qualityGateDocument(report, captureTranslation());
       assertToolActive(c);
       if (!(await c.commitAsync(() => useViewerStore.getState().upsertDocument(document))))
-        throw new Error('Native Document write failed.');
+        throw internal('Native Document write failed.');
       return out({ document_id: document.id });
     },
   ),

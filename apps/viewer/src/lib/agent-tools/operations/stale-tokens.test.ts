@@ -563,6 +563,7 @@ END-ISO-10303-21;
     assert.match(applied.text, /assignments changed/);
   });
 
+  const tableExport = { set_id: 'set-1', basis: 'mesh', format: 'parquet' } as const;
   for (const change of [
     { name: 'an edit', apply: () => useViewerStore.setState(s => ({ mutationVersion: s.mutationVersion + 1 })) },
     { name: 'an unloaded model', apply: () => useViewerStore.setState({ models: new Map() }) },
@@ -576,7 +577,7 @@ END-ISO-10303-21;
       const before = listArtifacts(host).length;
       const stop = useActivityJournal.subscribe(() => { if (!changed) { changed = true; change.apply(); } });
       try {
-        const exported = await invoke('zones.table.export', { set_id: 'set-1', basis: 'mesh', format: 'parquet' }, true);
+        const exported = await invoke('zones.table.export', tableExport, true);
         assert.equal(changed, true);
         assert.equal(exported.isError, true, exported.text);
         assert.match(exported.text, /changed during export/);
@@ -585,8 +586,9 @@ END-ISO-10303-21;
     });
   it('#28 control: an export with nothing changed registers its artifact', async () => {
     const before = listArtifacts(host).length;
-    answer(await invoke('zones.table.export', { set_id: 'set-1', basis: 'mesh', format: 'parquet' }, true));
+    const { artifact } = answer<{ artifact: { artifact_id: string } | null }>(await invoke('zones.table.export', tableExport, true));
     assert.equal(listArtifacts(host).length, before + 1);
+    assert.ok(artifact && listArtifacts(host).some(row => row.artifact_id === artifact.artifact_id), 'the registered artifact is the zone table');
   });
 });
 

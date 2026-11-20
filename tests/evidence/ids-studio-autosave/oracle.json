@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "Keep the new IDS draft modules loaded and remove the debounce so the persistence test detects an early write.",
+  "key": "apps/viewer/src/lib/ids-studio/draft-session.ts",
+  "mutation": "tests/evidence/ids-studio-autosave/behaviour.oracle.patch",
+  "test": "apps/viewer/src/lib/ids-studio/draft-session.test.ts"
+}

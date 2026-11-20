@@ -99,3 +99,34 @@ it('#10887 an open dialog that could not read back yet recovers when the backing
     useViewerStore.setState(initial, true);
   }
 });
+
+it('#10887 a revision change never returns the previous request\'s source, not even for one render', async () => {
+  const initial = useViewerStore.getState();
+  const meshes = model('pdf-key');
+  const store = useViewerStore as unknown as StoreApi<TapState>;
+  const seen: string[] = [];
+  function Watch() {
+    const { source, status } = useViewPdfSource(true, []);
+    seen.push(`${status}:${source ? 'source' : 'none'}:${source === lastSource && source !== null ? 'old' : 'new'}`);
+    lastSource = source;
+    return null;
+  }
+  try {
+    await geometryBackingCommand(store, undefined, { action: 'start', options: { database: { name: `pdf-key-${process.pid}`, locks: null } } as never });
+    await geometryBackingCommand(store, undefined, { action: 'seal' });
+    releaseCpuMeshBuffers(meshes);
+    render(<Watch />);
+    for (let i = 0; i < 100 && !seen.at(-1)?.startsWith('ready'); i++) await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    assert.ok(seen.at(-1)?.startsWith('ready:source'), seen.join(' | '));
+    const before = seen.length;
+    // A visibility/backing revision: the next render must not hand the old source over.
+    act(() => useViewerStore.getState().bumpGeometryContentVersion());
+    const next = seen[before];
+    assert.ok(next && !next.startsWith('ready'), `the render right after the revision change: ${next}`);
+  } finally {
+    cleanup();
+    await geometryBackingCommand(store, undefined, { action: 'stop' });
+    useViewerStore.setState(initial, true);
+  }
+});
+

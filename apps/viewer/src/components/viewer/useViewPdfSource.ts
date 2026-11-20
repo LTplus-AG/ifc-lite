@@ -31,21 +31,27 @@ export function useViewPdfSource(open: boolean, triggers: readonly unknown[]): {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- invalidation triggers, values read from getState().
     [open, revision, ...triggers],
   );
-  const [released, setReleased] = useState<{ source: ViewPdfSource | null; status: ViewPdfSourceStatus }>({ source: null, status: 'none' });
+  // A token per request, minted during render: a source read for an older request (a previous
+  // visibility, backing or view revision) is never returned, not even for the render before its
+  // effect runs. Until the current request's source arrives the dialog sees `loading`.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- same invalidation triggers as the resident source.
+  const request = useMemo(() => ({}), [open, revision, ...triggers]);
+  const [released, setReleased] = useState<{ request: object | null; source: ViewPdfSource | null; status: ViewPdfSourceStatus }>(
+    { request: null, source: null, status: 'none' });
   useEffect(() => {
-    if (!open || !geometryReleased()) { setReleased({ source: null, status: 'none' }); return; }
-    setReleased({ source: null, status: 'loading' });
+    if (!open || !geometryReleased()) { setReleased({ request, source: null, status: 'none' }); return; }
+    setReleased({ request, source: null, status: 'loading' });
     let cancelled = false;
     withReleasedExportGeometry(() => readViewPdfSource(useViewerStore.getState())).then(
-      (prepared) => { if (!cancelled) setReleased({ source: prepared, status: 'ready' }); },
+      (prepared) => { if (!cancelled) setReleased({ request, source: prepared, status: 'ready' }); },
       (error: unknown) => {
         console.error('[PdfViewExport] released geometry could not be read back', error);
-        if (!cancelled) setReleased({ source: null, status: 'unavailable' });
+        if (!cancelled) setReleased({ request, source: null, status: 'unavailable' });
       },
     );
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- same invalidation triggers as the resident source.
-  }, [open, revision, ...triggers]);
+  }, [request]);
   if (resident) return { source: resident, status: 'ready' };
-  return open ? released : { source: null, status: 'none' };
+  if (!open) return { source: null, status: 'none' };
+  return released.request === request ? { source: released.source, status: released.status } : { source: null, status: 'loading' };
 }

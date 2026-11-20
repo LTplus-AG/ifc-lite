@@ -118,6 +118,26 @@ describe('store geometry backing tap (test/debug only)', () => {
     await tap.stop();
   });
 
+  it('#10903 a content bump that loses instancing still seals its flat records: flatComplete, readable, never isComplete; a later write clears it', async () => {
+    const store = storeWith({ fc: [mesh(1), mesh(2, 4)] });
+    const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    enqueueInstancedShards('fc', [shardBytes(5)], instancedShardGeneration());
+    await tap.seal();
+    assert.equal(tap.flatComplete('fc'), false, 'a complete generation is not the flat-only case');
+    store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
+    assert.equal(tap.flatComplete('fc'), false, 'not before its seal flushed it');
+    const [status] = await tap.seal();
+    assert.equal(status.instancedLost, true);
+    assert.equal(tap.backing('fc')!.isComplete, false, 'still never complete: instanced consumers fail closed');
+    assert.equal(tap.flatComplete('fc'), true, 'every flat record sealed and durable');
+    const lease = await tap.backing('fc')!.reader.leaseEntity(2);
+    assert.deepEqual([...lease.meshes[0].positions].slice(0, 3), [0, 0, 4], 'the flat records read back exactly');
+    lease.release();
+    append(store, 'fc', [mesh(3, 8)]); // a write after the seal
+    assert.equal(tap.flatComplete('fc'), false, 'no longer proven whole');
+    await tap.stop();
+  });
+
   it('removing a model deletes its generation', async () => {
     const store = storeWith({ m3a: [mesh(1)], m3b: [mesh(2)] });
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });

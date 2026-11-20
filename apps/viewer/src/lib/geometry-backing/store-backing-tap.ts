@@ -29,6 +29,7 @@ import { collectMeshAreas, type MeshAreaEntry } from '@/components/viewer/tools/
 import { acceptStatement, admitShard, type ResupplyState, statementVoided, supplyPoint, type SupplyPoint } from './instanced-resupply';
 import { notifyReleasedGeometryMetadataChanged, setReleasedGeometryMetadata } from './released-geometry-metadata';
 import { type PreviousGeneration, replayStoreList } from './generation-replay';
+import { carryBackedShards } from './carry-shards';
 import { GeometryBackingRegistry, type ModelBackingOptions, type ModelGeometryBacking } from './geometry-backing-registry';
 import type { BackingDatabaseOptions } from './backing-database';
 
@@ -61,6 +62,7 @@ interface Tracked extends ResupplyState {
   stale?: Error;
   /** Per-entity mesh area of this generation, summed as `collectMeshAreas` sums the whole list. */
   areas: Map<number, MeshAreaEntry>;
+  flatSealed?: boolean; // instancing lost, every flat record flushed by a seal and nothing written since (`flatComplete`)
 }
 
 export interface ModelBackingStatus {
@@ -196,23 +198,12 @@ export class StoreGeometryBackingTap {
       retained: previous ? [...previous.retained, previous.key] : [] };
     const begun = (previous?.chain ?? Promise.resolve()).then(async () => {
       next.backing = await this.registry.begin(key, this.options);
-      // A re-supplying predecessor holds only fresh shards: carry those, never the pre-loss ones.
-      // `withhold` keeps every shard the scene drew (all but `withheld`), from the predecessor itself.
+      // A re-supplying predecessor holds only fresh shards (never pre-loss ones); `withhold` keeps all the scene drew.
       if (shards === 'withhold' || (shards === 'carry' && (!next.instancedLost || next.resupply))) {
         // Resolved now, after the chain: a failed or unstarted predecessor falls back to the acknowledged one.
         const source = shards === 'withhold' || next.resupply || (previous?.backing && !previous.failure) ? previous : this.acknowledged.get(modelId);
         if (!source?.backing || source.failure || (source.instancedLost && !next.resupply && shards !== 'withhold')) next.instancedLost = true;
-        else {
-          let ordinal = -1, found = 0;
-          for await (const shard of source.backing.reader.instancedShards()) {
-            const from = source.sources[++ordinal] ?? null;
-            if (from && withheld?.has(from)) { found++; continue; }
-            next.shards++; next.occurrences += shard.instances.length; next.sources.push(source.sources[ordinal] ?? null);
-            await next.backing.writer.appendInstancedShard(shard);
-          }
-          // A withheld shard the predecessor never backed: its membership is unknown, fail closed.
-          if (withheld && found !== withheld.size) throw new Error('A withheld instanced shard was not among the backed ones');
-        }
+        else await carryBackedShards(source, next, withheld); // `carry-shards.ts`
       }
     });
     next.chain = this.settle(next, begun);
@@ -278,11 +269,9 @@ export class StoreGeometryBackingTap {
     // The drain re-homes shard ids into the federated id space after decoding;
     // do the same, so backed occurrences answer the ids picks and flat meshes use.
     const idOffset = this.store.getState().models.get(modelId)?.idOffset;
-    if (idOffset === undefined) {
-      this.unbacked.add(entry); target.instancedLost = true;
-      if (target.resupply) target.resupply.broken = true;
-      console.error(`[GeometryBacking] shard for unregistered model ${modelId}; its instancing is not backed`);
-      return;
+    if (idOffset === undefined) { // unregistered: its instancing is not backed
+      this.unbacked.add(entry); target.instancedLost = true; if (target.resupply) target.resupply.broken = true;
+      console.error(`[GeometryBacking] shard for unregistered model ${modelId}; its instancing is not backed`); return;
     }
     applyFederationOffsetToShard(shard, idOffset);
     target.occurrences += shard.instances.length;
@@ -313,6 +302,7 @@ export class StoreGeometryBackingTap {
   }
 
   private enqueue(tracked: Tracked, step: () => Promise<void>): void {
+    tracked.flatSealed = false; // a write after the seal: its flat records are no longer proven whole
     tracked.chain = this.settle(tracked, tracked.chain.then(() => (tracked.failure ? undefined : step())));
   }
 
@@ -355,7 +345,12 @@ export class StoreGeometryBackingTap {
     await this.whenIdle();
     let acknowledged = false;
     for (const [modelId, tracked] of [...this.tracked]) {
-      if (voided(modelId, tracked) || tracked.failure || tracked.instancedLost || tracked.stale || this.missedShards(modelId) || !tracked.backing) continue;
+      if (voided(modelId, tracked) || tracked.failure || tracked.stale || !tracked.backing) continue;
+      if (tracked.instancedLost) { // never acknowledged; its flat records alone answer flat-only readers once flushed
+        const flushed = tracked.backing.writer.flush().then(() => { tracked.flatSealed = this.tracked.get(modelId) === tracked && !tracked.failure; });
+        await this.settle(tracked, flushed); acknowledged ||= !!tracked.flatSealed; continue;
+      }
+      if (this.missedShards(modelId)) continue;
       const backing = tracked.backing;
       await this.settle(tracked, backing.acknowledge().then(async (ack) => {
         // Only a verified, complete, still-current replacement whose statement still holds may retire what it replaces.
@@ -371,6 +366,11 @@ export class StoreGeometryBackingTap {
   }
 
   /** Shards were enqueued for this model that the tap never saw. */
+  /** The current generation lost only its instancing and every flat record is sealed and durable (`BackingSource.flatComplete`). */
+  flatComplete(modelId: string): boolean {
+    const t = this.tracked.get(modelId), b = t?.backing;
+    return !!t?.flatSealed && !!b && !t.failure && !t.stale && b.isCurrent && !b.writer.error && !b.writer.hasUnsealed && b.writer.pendingBytes === 0 && b.directory.chunks.every((c) => c.state === 'durable');
+  }
   private missedShards(modelId: string): boolean { return instancedShardRevision(modelId) > (this.shardEvents.get(modelId) ?? 0); }
 
   status(): ModelBackingStatus[] {

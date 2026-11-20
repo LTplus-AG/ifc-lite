@@ -1,27 +1,20 @@
 diff --git a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
-index ab6cae1..9974cb6 100644
+index a714f20..792dbaa 100644
 --- a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
 +++ b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
-@@ -203,7 +203,14 @@ export class StoreGeometryBackingTap {
+@@ -203,7 +203,7 @@ export class StoreGeometryBackingTap {
+         // Resolved now, after the chain: a failed or unstarted predecessor falls back to the acknowledged one.
          const source = shards === 'withhold' || next.resupply || (previous?.backing && !previous.failure) ? previous : this.acknowledged.get(modelId);
          if (!source?.backing || source.failure || (source.instancedLost && !next.resupply && shards !== 'withhold')) next.instancedLost = true;
-         else {
--          void source.backing;
-+          let ordinal = -1, found = 0;
-+          for await (const shard of source.backing.reader.instancedShards()) {
-+            const from = source.sources[++ordinal] ?? null;
-+            if (from && withheld?.has(from)) { found++; continue; }
-+            next.shards++; next.occurrences += shard.instances.length; next.sources.push(source.sources[ordinal] ?? null);
-+            await next.backing.writer.appendInstancedShard(shard);
-+          }
-+          // A withheld shard the predecessor never backed: its membership is unknown, fail closed.
-           if (withheld && found !== withheld.size) throw new Error('A withheld instanced shard was not among the backed ones');
-         }
+-        else void source.backing;
++        else await carryBackedShards(source, next, withheld); // `carry-shards.ts`
        }
-@@ -364,7 +371,7 @@ export class StoreGeometryBackingTap {
+     });
+     next.chain = this.settle(next, begun);
+@@ -371,7 +371,7 @@ export class StoreGeometryBackingTap {
+     const t = this.tracked.get(modelId), b = t?.backing;
+     return !!t?.flatSealed && !!b && !t.failure && !t.stale && b.isCurrent && !b.writer.error && !b.writer.hasUnsealed && b.writer.pendingBytes === 0 && b.directory.chunks.every((c) => c.state === 'durable');
    }
- 
-   /** Shards were enqueued for this model that the tap never saw. */
 -  private missedShards(modelId: string): boolean { return instancedShardRevision(modelId) < 0; }
 +  private missedShards(modelId: string): boolean { return instancedShardRevision(modelId) > (this.shardEvents.get(modelId) ?? 0); }
  

@@ -83,7 +83,9 @@ export const zoneOperations = [
     let captured: { bytes: Uint8Array; filename: string; mime: string } | undefined;
     const result = await exportZoneTable(zoneSet, i.basis, i.format, (bytes, filename, mime) => { captured = { bytes, filename, mime }; });
     assertToolActive(c); const now = useViewerStore.getState();
+    // geometryContentVersion: realignFederation moves vertices in place, leaving models and the update tick alone.
     if (identity !== JSON.stringify(set(i.set_id)) || now.models !== before.models || now.geometryUpdateTick !== before.geometryUpdateTick
+      || now.geometryContentVersion !== before.geometryContentVersion
       || now.mutationVersion !== before.mutationVersion || zoneAssignmentSignature(now.zoneAssignments, i.set_id) !== assignments) throw new Error('Zone configuration, models or assignments changed during export.');
     if (!captured) return out({ result, artifact: null }); const artifact = await c.artifacts.create({ filename: captured.filename, mimeType: captured.mime, data: captured.bytes }); return out({ result, artifact });
   }),

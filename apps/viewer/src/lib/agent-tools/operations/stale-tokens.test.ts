@@ -567,6 +567,8 @@ END-ISO-10303-21;
     { name: 'an unloaded model', apply: () => useViewerStore.setState({ models: new Map() }) },
     { name: 'new assignments', apply: () => useViewerStore.setState({ zoneAssignments: new Map() }) },
     { name: 'a geometry update alone', apply: () => useViewerStore.setState(s => ({ geometryUpdateTick: s.geometryUpdateTick + 1 })) },
+    // realignFederation moves vertices in place and bumps only the content version.
+    { name: 'an in-place realignment', apply: () => useViewerStore.setState(s => ({ geometryContentVersion: s.geometryContentVersion + 1 })) },
   ])
     it(`#28: the zone table export discards an artifact after ${change.name} while it encoded`, async () => {
       let changed = false;

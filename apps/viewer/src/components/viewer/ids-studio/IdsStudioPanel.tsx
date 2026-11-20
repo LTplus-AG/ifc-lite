@@ -49,7 +49,7 @@ export function IdsStudioPanel() {
   }, []);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(true);
   const [saveError, setSaveError] = useState<string | null>(null);
-  if (!state) return <div className="h-full overflow-auto" {...tourAnchor(TOUR_ANCHORS.idsStudioPanel)}><StudioDrafts /><StudioEmptyState /></div>;
+  if (!state) return <div className="h-full overflow-auto" {...tourAnchor(TOUR_ANCHORS.idsStudioPanel)}><StudioEmptyState /></div>;
   const doc = state.doc;
   // ⌘Z / ⇧⌘Z / ⌘/ (UX spec §7), scoped to the panel so text fields keep their own undo.
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {

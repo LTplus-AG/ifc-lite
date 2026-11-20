@@ -105,21 +105,24 @@ describe('IdsStudioPanel (IDS-030 … IDS-032)', () => {
 
   it('saves the document as .ids and .idsz, and closes it (IDS-040)', async () => {
     const fixture = await wallFixture();
-    useViewerStore.getState().idsStudioOpen(fixture.doc);
+    const exported = { ...fixture.doc, ids: { ...fixture.doc.ids, info: { title: 'Exported draft' } } };
+    useViewerStore.getState().idsStudioOpen(exported);
     clearDownloads();
     const ui = render(<IdsStudioPanel />);
     click(ui.querySelector('[aria-label="Save as IDS (.ids)"]') as HTMLElement);
     click(ui.querySelector('[aria-label="Save as Studio bundle (.idsz)"]') as HTMLElement);
-    assert.deepEqual(downloadedNames(), ['Fire-safety.ids', 'Fire-safety.idsz']);
+    assert.deepEqual(downloadedNames(), ['Exported-draft.ids', 'Exported-draft.idsz']);
     assert.equal(ui.querySelector('[role="alert"]'), null, 'no save error');
     click(ui.querySelector('[aria-label="Close the document"]') as HTMLElement);
     await waitFor(() => useViewerStore.getState().idsStudioState === null, 'closing flushes its scheduled draft');
     assert.ok(byText(ui, 'button', 'New IDS'), 'the empty state is back');
-    assert.ok(byText(ui, 'summary', 'Saved IDS drafts'), 'export and close preserve the recoverable draft');
-    const savedDraft = [...ui.querySelectorAll('li')].find(row => row.textContent?.includes('Fire safety'));
+    const summary = byText(ui, 'summary', 'Saved IDS drafts');
+    assert.ok(summary, 'export and close preserve the recoverable draft');
+    click(summary);
+    const savedDraft = [...ui.querySelectorAll('li')].find(row => row.textContent?.includes('Exported draft'));
     assert.ok(savedDraft);
     click(byText(savedDraft, 'button', 'Restore draft') as HTMLElement);
-    assert.deepEqual(doc(), fixture.doc);
+    assert.deepEqual(doc(), exported);
   });
 
   it('undoes and redoes with the panel keyboard shortcuts', async () => {

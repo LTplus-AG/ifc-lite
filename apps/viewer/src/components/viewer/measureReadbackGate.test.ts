@@ -31,10 +31,13 @@ const released = { isGeometryDataReleased: () => true };
 const raycasts: Array<[number, number]> = [];
 /** The fake camera's view-projection matrix; an orbit, pan or zoom changes it. */
 let view: number[] = [];
+/** The renderer's pick-geometry revision; a renderer-side model move bumps it with no store change. */
+let pickRevision = 0;
 function ctx(): MouseHandlerContext {
   const renderer = {
     getScene: () => released,
     getCamera: () => ({ getViewProjMatrix: () => ({ m: Float32Array.from(view) }) }),
+    getPickGeometryRevision: () => pickRevision,
     raycastSceneMagnetic: (x: number, y: number) => {
       raycasts.push([x, y]);
       return { intersection: { point: { x, y, z: 0 } }, snapTarget: null,
@@ -71,7 +74,7 @@ const original = globalThis.requestAnimationFrame;
 const originalCancel = globalThis.cancelAnimationFrame;
 beforeEach(() => {
   reads = []; frames = []; snapTargets = []; residue = []; raycasts.length = 0;
-  view = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+  view = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]; pickRevision = 0;
   globalThis.requestAnimationFrame = ((cb: () => void) => { frames.push(cb); return frames.length; }) as typeof requestAnimationFrame;
   globalThis.cancelAnimationFrame = (() => {}) as typeof cancelAnimationFrame;
   setMeasureReadbackFeedForTest((_r, x, y) => new Promise((settle) => { reads.push({ x, y, settle }); }));
@@ -161,6 +164,19 @@ describe('#10880 drag and placement readback', () => {
     await measureReadbacksIdle();
     assert.deepEqual(raycasts, [[0, 0]], 'the moved click is never raycast under the new view');
     assert.equal(useViewerStore.getState().activePolyline?.points.length, 1, 'only the point placed under its own view');
+  });
+
+  it('a placement whose model moved (renderer-side) before its read ran is dropped', async () => {
+    const c = ctx();
+    handlePolylineClick(c, 0, 0);
+    handlePolylineClick(c, 40, 0);
+    await tick();
+    reads[0].settle('fed'); await tick(); // the first lands
+    pickRevision++; // setModelTranslation moves the model under the second click's pixel, with no store change
+    reads[1].settle('fed');
+    await measureReadbacksIdle();
+    assert.deepEqual(raycasts, [[0, 0]], 'the second click is never raycast after its model moved');
+    assert.equal(useViewerStore.getState().activePolyline?.points.length, 1);
   });
 
   it('a placement whose hide or isolate changed before its read ran is dropped, not placed on what is now shown', async () => {

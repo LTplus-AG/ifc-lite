@@ -347,6 +347,27 @@ if (isGPUComputeAvailable()) {
 }
 ```
 
+### Streamed Geometry
+
+`Drawing2DGenerator.generateFromSource(source, config, options)` draws from a
+`DrawingMeshSource` instead of one mesh array. The source yields batches in at
+most two passes, `'geometry'` (section cut and projection) and, only when
+needed, `'occlusion'` (hidden-line depth raster and the free-edge test of
+open surfaces). The generator keeps only 2D output, one depth raster and
+per-entity edge parity between batches, so its working input is one batch,
+not the model. Every pass must yield the same meshes in the same order; the
+drawing then equals `generate` over those meshes. A source error or an
+aborted `options.signal` rejects the drawing.
+
+Callers that push leased chunks instead use `generator.beginDrawing(config,
+options)`, which returns a `DrawingSession`: call `addGeometry(batch)` for each
+chunk, then `endGeometry()`. Its result says whether the hidden-line raster
+needs every chunk again (`depthRaster`), or only the meshes of
+`openSurfaceEntities`. Feed those to `addOcclusion(batch)`, then call
+`finish()` (or `cancel()`). No batch is kept, so each lease can be released
+before the next one is taken. Joins across chunks, occlusion and projection
+stay the same, because `generate` drives this same session.
+
 ## Viewer Integration
 
 In the IFClite viewer:

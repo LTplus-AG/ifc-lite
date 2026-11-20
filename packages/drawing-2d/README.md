@@ -70,6 +70,43 @@ console.log(`${hatchLines.length} hatch lines`);
 generator.dispose();
 ```
 
+## Streamed geometry
+
+When the meshes are not one resident array (for example read back from local
+storage in chunks), give `generateFromSource` a `DrawingMeshSource`. The
+generator reads it in at most two passes (`'geometry'`, then `'occlusion'`
+when hidden lines or an open surface need it) and keeps no mesh: each batch
+can be released as soon as the generator asks for the next. Every pass must
+yield the same meshes in the same order. The drawing equals `generate` over
+one pass's meshes; an error thrown by the source, or an aborted
+`options.signal`, rejects it.
+
+```typescript
+const source: DrawingMeshSource = {
+  async *pass() {
+    for (const chunk of chunks) {
+      const held = await leaseChunk(chunk);
+      try { yield held.meshes; } finally { held.release(); }
+    }
+  },
+};
+const drawing = await generator.generateFromSource(source, config, { signal });
+```
+
+To push chunks instead (each lease released before the next), use a session:
+
+```typescript
+const session = generator.beginDrawing(config, options);
+for (const chunk of chunks) {
+  const held = await leaseChunk(chunk);
+  try { await session.addGeometry(held.meshes); } finally { held.release(); }
+}
+const needs = session.endGeometry();
+// needs.depthRaster: feed every chunk again; otherwise only needs.openSurfaceEntities' meshes.
+for (const chunk of needs.depthRaster ? chunks : chunksOf(needs.openSurfaceEntities)) { /* session.addOcclusion(...) */ }
+const drawing = session.finish(); // or session.cancel()
+```
+
 ## Graphic overrides
 
 Apply named graphic presets (architectural, fire-safety, structural, MEP, monochrome) via the override engine:

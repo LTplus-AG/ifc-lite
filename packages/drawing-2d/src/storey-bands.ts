@@ -61,24 +61,43 @@ export function storeyFloorsFromMeshes(
   meshes: ReadonlyArray<StoreyFloorMesh>,
   elementToStorey: ReadonlyMap<number, number>,
 ): number[] {
-  const storeyMinY = new Map<number, number>();
-  for (const mesh of meshes) {
-    const storeyId = elementToStorey.get(mesh.expressId);
-    if (storeyId === undefined) continue;
-    const pos = mesh.positions;
-    // Fold the per-element origin so minY is world-Y, matching the section cut
-    // position / axisMin / axisMax (which are world-frame). No-op when absent.
-    const oy = mesh.origin ? mesh.origin[1] : 0;
-    let minY = Infinity;
-    for (let i = 1; i < pos.length; i += 3) {
-      const y = pos[i] + oy;
-      if (y < minY) minY = y;
+  const levels = new StoreyFloorLevels(elementToStorey);
+  levels.add(meshes);
+  return levels.floors();
+}
+
+/**
+ * {@link storeyFloorsFromMeshes}, folded one batch of meshes at a time, so a
+ * drawing whose geometry is read back in chunks (#10264) needs no whole list.
+ * Keeps one minimum per storey, never a mesh.
+ */
+export class StoreyFloorLevels {
+  private readonly storeyMinY = new Map<number, number>();
+
+  constructor(private readonly elementToStorey: ReadonlyMap<number, number>) {}
+
+  add(meshes: ReadonlyArray<StoreyFloorMesh>): void {
+    for (const mesh of meshes) {
+      const storeyId = this.elementToStorey.get(mesh.expressId);
+      if (storeyId === undefined) continue;
+      const pos = mesh.positions;
+      // Fold the per-element origin so minY is world-Y, matching the section cut
+      // position / axisMin / axisMax (which are world-frame). No-op when absent.
+      const oy = mesh.origin ? mesh.origin[1] : 0;
+      let minY = Infinity;
+      for (let i = 1; i < pos.length; i += 3) {
+        const y = pos[i] + oy;
+        if (y < minY) minY = y;
+      }
+      if (!Number.isFinite(minY)) continue;
+      const cur = this.storeyMinY.get(storeyId);
+      if (cur === undefined || minY < cur) this.storeyMinY.set(storeyId, minY);
     }
-    if (!Number.isFinite(minY)) continue;
-    const cur = storeyMinY.get(storeyId);
-    if (cur === undefined || minY < cur) storeyMinY.set(storeyId, minY);
   }
-  return [...storeyMinY.values()].sort((a, b) => a - b);
+
+  floors(): number[] {
+    return [...this.storeyMinY.values()].sort((a, b) => a - b);
+  }
 }
 
 /**

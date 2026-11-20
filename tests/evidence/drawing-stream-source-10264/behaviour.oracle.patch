@@ -1,0 +1,13 @@
+diff --git a/packages/drawing-2d/src/drawing-session.ts b/packages/drawing-2d/src/drawing-session.ts
+index 6203917639..c49cc615b2 100644
+--- a/packages/drawing-2d/src/drawing-session.ts
++++ b/packages/drawing-2d/src/drawing-session.ts
+@@ -147,7 +147,7 @@ export class DrawingSession {
+   addOcclusion(meshes: readonly MeshData[]): void {
+     this.enter('occlusion');
+     const { config, occluderDepth } = this;
+-    void meshes;
++    this.freeEdges!.add(meshes);
+     if (!this.classify) return;
+     const occluders = config.clipProjectionBands
+       ? meshes.map((mesh) => clipMeshToProjectionWindow(mesh, config.plane, 0, occluderDepth))

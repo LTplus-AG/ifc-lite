@@ -84,8 +84,8 @@ export function formatReport(results, context = {}) {
     const queued = improved.filter((r) => r.lowerable).length;
     out.push('', `${improved.length} metric(s) improved. ` +
       (queued
-        ? `${queued} of them cleared the tolerance band, so the daily lowering job (\`perf-ratchet-lower.yml\`) will lower ${queued === 1 ? 'its ceiling' : 'their ceilings'} once this is on \`main\`.`
-        : 'None cleared the tolerance band yet, so no ceiling will move; small wins accumulate until they do.'));
+        ? `${queued} meet the daily lowering criteria after accounting for headroom and tolerance.`
+        : 'The daily lowering job waits for improvements large enough to leave room for headroom and clear the tolerance band.'));
   }
   const info = results.flatMap(({ family, informational = [] }) => informational.map((m) => ({ family, ...m })));
   if (info.length) {

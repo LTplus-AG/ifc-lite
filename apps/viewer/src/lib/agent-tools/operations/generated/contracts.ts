@@ -4624,7 +4624,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "lists.run",
     "version": 1,
     "owner": "lists",
-    "description": "Await a saved native federated list query with provenance; publish completed rows to the panel and return a bounded page. Cancels before publishing.",
+    "description": "Await a saved native federated list query with provenance; publish completed rows to the panel and return a bounded page. Cancels before publishing. Pass next_offset and page_revision to continue.",
     "needs": "model",
     "effects": [
       "read",
@@ -4642,6 +4642,11 @@ export const operationContracts: readonly OperationContract[] = [
         "offset": {
           "type": "integer",
           "minimum": 0
+        },
+        "page_revision": {
+          "type": "string",
+          "maxLength": 64,
+          "nullable": true
         },
         "limit": {
           "type": "integer",
@@ -4671,6 +4676,15 @@ export const operationContracts: readonly OperationContract[] = [
         "executionTime": {
           "type": "number"
         },
+        "next_offset": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "page_revision": {
+          "type": "string"
+        },
         "groups": {
           "type": "array",
           "nullable": true
@@ -4684,7 +4698,9 @@ export const operationContracts: readonly OperationContract[] = [
         "columns",
         "rows",
         "totalCount",
-        "executionTime"
+        "executionTime",
+        "next_offset",
+        "page_revision"
       ]
     },
     "result": "value",
@@ -4763,7 +4779,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "document.library",
     "version": 1,
     "owner": "document",
-    "description": "Read a bounded page of document summaries and compact SHA-256 revisions; embedded media, blocks and AI evidence stay local. Defaults offset=0, limit=20. Inspect paged block metadata or export native JSON for complete content.",
+    "description": "Read a bounded page of document summaries and compact SHA-256 revisions; embedded media, blocks and AI evidence stay local. Defaults offset=0, limit=20. Pass next_offset and page_revision to continue. Inspect paged block metadata or export native JSON for complete content.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -4775,6 +4791,11 @@ export const operationContracts: readonly OperationContract[] = [
         "offset": {
           "type": "integer",
           "minimum": 0,
+          "nullable": true
+        },
+        "page_revision": {
+          "type": "string",
+          "maxLength": 64,
           "nullable": true
         },
         "limit": {
@@ -4802,6 +4823,9 @@ export const operationContracts: readonly OperationContract[] = [
             "null"
           ]
         },
+        "page_revision": {
+          "type": "string"
+        },
         "storage": {
           "type": "object"
         },
@@ -4816,6 +4840,7 @@ export const operationContracts: readonly OperationContract[] = [
         "documents",
         "total",
         "next_offset",
+        "page_revision",
         "storage",
         "activeId"
       ],
@@ -13183,7 +13208,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "validation.results",
     "version": 1,
     "owner": "validation",
-    "description": "Inspect a bounded page of canonical native specification findings, preserving complete native entity/requirement diagnostics in each returned specification.",
+    "description": "Inspect a bounded page of canonical native specification findings, preserving complete native entity/requirement diagnostics in each returned specification. Pass next_offset and page_revision to continue.",
     "needs": "model",
     "effects": [
       "read"
@@ -13200,6 +13225,11 @@ export const operationContracts: readonly OperationContract[] = [
         "offset": {
           "type": "integer",
           "minimum": 0
+        },
+        "page_revision": {
+          "type": "string",
+          "maxLength": 64,
+          "nullable": true
         },
         "limit": {
           "type": "integer",
@@ -19504,7 +19534,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "annotations.read",
     "version": 1,
     "owner": "viewport",
-    "description": "Read a bounded page of native annotation records, including attribution, timestamps and model/entity anchors in annotation_json.",
+    "description": "Read a bounded page of native annotation records, including attribution, timestamps and model/entity anchors. Pass next_offset and page_revision to continue.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -19516,6 +19546,11 @@ export const operationContracts: readonly OperationContract[] = [
         "offset": {
           "type": "integer",
           "minimum": 0,
+          "nullable": true
+        },
+        "page_revision": {
+          "type": "string",
+          "maxLength": 64,
           "nullable": true
         },
         "limit": {
@@ -19535,14 +19570,13 @@ export const operationContracts: readonly OperationContract[] = [
           "type": "integer"
         },
         "next_offset": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
+          "type": [
+            "integer",
+            "null"
           ]
+        },
+        "page_revision": {
+          "type": "string"
         },
         "records": {
           "type": "array",
@@ -19554,6 +19588,7 @@ export const operationContracts: readonly OperationContract[] = [
       "required": [
         "total",
         "next_offset",
+        "page_revision",
         "records"
       ],
       "additionalProperties": false
@@ -20871,7 +20906,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "clash.results",
     "version": 1,
     "owner": "clash",
-    "description": "Read a bounded page of complete native clash pairs and durable review annotations.",
+    "description": "Read a bounded page of complete native clash pairs and durable review annotations. Pass next_offset and page_revision to continue.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -20883,6 +20918,11 @@ export const operationContracts: readonly OperationContract[] = [
         "offset": {
           "type": "integer",
           "minimum": 0
+        },
+        "page_revision": {
+          "type": "string",
+          "maxLength": 64,
+          "nullable": true
         },
         "limit": {
           "type": "integer",
@@ -25519,7 +25559,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "filters.results",
     "version": 1,
     "owner": "search",
-    "description": "Read a bounded page of the native Search Filter result. current=false means its recorded source revision changed; null means a legacy/native UI result did not record a revision. Never presents that unverified result as a fresh analysis.",
+    "description": "Read a bounded page of the native Search Filter result. current=false means its recorded source revision changed; null means a legacy/native UI result did not record a revision. Never presents that unverified result as a fresh analysis. Pass next_offset and page_revision to continue.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -25531,6 +25571,11 @@ export const operationContracts: readonly OperationContract[] = [
         "offset": {
           "type": "integer",
           "minimum": 0
+        },
+        "page_revision": {
+          "type": "string",
+          "maxLength": 64,
+          "nullable": true
         },
         "limit": {
           "type": "integer",
@@ -28885,7 +28930,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "document.inspect",
     "version": 1,
     "owner": "document",
-    "description": "Inspect one document revision/page metadata and a bounded page of block metadata. Large media bodies, evidence, generated text and long text are omitted/truncated; full native JSON remains available through document.export.",
+    "description": "Inspect one document revision/page metadata and a bounded page of block metadata. Large media bodies, evidence, generated text and long text are omitted/truncated; full native JSON remains available through document.export. Pass next_offset and page_revision to continue.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -28902,6 +28947,11 @@ export const operationContracts: readonly OperationContract[] = [
         "offset": {
           "type": "integer",
           "minimum": 0
+        },
+        "page_revision": {
+          "type": "string",
+          "maxLength": 64,
+          "nullable": true
         },
         "limit": {
           "type": "integer",
@@ -28936,6 +28986,9 @@ export const operationContracts: readonly OperationContract[] = [
             "integer",
             "null"
           ]
+        },
+        "page_revision": {
+          "type": "string"
         }
       },
       "required": [
@@ -28943,7 +28996,8 @@ export const operationContracts: readonly OperationContract[] = [
         "page_metadata_json",
         "blocks",
         "total_blocks",
-        "next_offset"
+        "next_offset",
+        "page_revision"
       ],
       "additionalProperties": false
     },

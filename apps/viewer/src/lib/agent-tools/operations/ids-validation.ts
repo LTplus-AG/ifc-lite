@@ -9,7 +9,7 @@ import type { ValidationReport } from '@ifc-lite/ids';
 import type { IdsReportBlock } from '@/lib/document/ids-report-types';
 import type { ToolHost } from '../types';
 import { evictOldest } from './host-handles';
-import { pageInput, type PageInput } from './result-limit';
+import { boundedPage, pageInput, type PageInput } from './result-limit';
 import { libraryPage } from './library-page';
 import { assertRevision, revisionInput, stateRevision } from './state-revision';
 const jsonOutput = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
@@ -118,9 +118,14 @@ export const nativeValidationOperations = [
     evictOldest(runs(c), 32); const id = crypto.randomUUID(); runs(c).set(id, { ...result, kind: 'rules', inputs, source: { modelId: c.model.id, store: c.model.store } });
     return out({ run_id: id, summary: result.report.summary, source: result.report.source });
   }),
-  operation<{ run_id: string; offset: number; limit: number }>(meta('validation.results', 'Inspect a bounded page of canonical native specification findings, preserving complete native entity/requirement diagnostics in each returned specification.'), {
-    type: 'object', properties: { ...runInput.properties, offset: { type: 'integer', minimum: 0 }, limit: { type: 'integer', minimum: 1, maximum: 20 } }, required: ['run_id', 'offset', 'limit'], additionalProperties: false,
-  }, (i, c) => { const value = run(c, i.run_id), rows = value.report.specificationResults; return out({ total: rows.length, offset: i.offset, results: rows.slice(i.offset, i.offset + i.limit), summary: value.report.summary }); }),
+  operation<PageInput & { run_id: string; offset: number; limit: number }>(meta('validation.results', 'Inspect a bounded page of canonical native specification findings, preserving complete native entity/requirement diagnostics in each returned specification. Pass next_offset and page_revision to continue.'), {
+    type: 'object', properties: { ...runInput.properties, ...pageInput.properties, offset: { type: 'integer', minimum: 0 }, limit: { type: 'integer', minimum: 1, maximum: 20 } }, required: ['run_id', 'offset', 'limit'], additionalProperties: false,
+  }, (i, c) => {
+    const { report } = run(c, i.run_id);
+    const header = { summary: report.summary };
+    const { items: results, ...page } = boundedPage(report.specificationResults, i, header);
+    return out({ ...header, ...page, results });
+  }),
   operation<{ run_id: string }>(meta('validation.publish', 'Publish an exact current native run into the existing Validation-panel report slot, without rerunning or reinterpreting its findings.', 'configuration'), runInput, async (i, c) => {
     const { captureAnalysisStamp, stampAnalysisReport } = await import('@/hooks/useAnalysisStaleness'); assertToolActive(c);
     return out(c.commit(() => { const value = run(c, i.run_id); useViewerStore.getState().setIdsValidationReport(stampAnalysisReport(value.report, captureAnalysisStamp(true))); return { published: i.run_id, summary: value.report.summary }; }));

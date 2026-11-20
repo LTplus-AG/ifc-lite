@@ -104,6 +104,7 @@ it('#9523 leaves every file a loader would open alone', async () => {
     ['ply\nformat ascii 1.0\n', 'mesh.ply'],
     [new Uint8Array([0x67, 0x6c, 0x54, 0x46, 2, 0, 0, 0]), 'model.glb'],
     ['', 'empty.pts'],
+    ['{"asset":{"version":"2.0"},"meshes":[]}', 'small.gltf'],
   ];
   for (const [body, name] of cases) assert.equal(await reason(body, name), null, `${name}: ${String(body).slice(0, 40)}`);
 });

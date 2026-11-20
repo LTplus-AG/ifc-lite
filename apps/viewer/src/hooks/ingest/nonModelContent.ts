@@ -161,7 +161,10 @@ function jsonReason(body: string, ifcxName: boolean): NonModelReason | null {
     console.debug('[ingest] a small body starting like JSON is not JSON; left to the loaders:', err);
     return null;
   }
-  if (typeof value !== 'object' || value === null || Array.isArray(value) || !('header' in value)) return NON_MODEL_REASONS.json;
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return NON_MODEL_REASONS.json;
+  // A glTF document is JSON with asset.version: a model, however small, never an error response.
+  if (typeof (value as { asset?: { version?: unknown } }).asset?.version === 'string') return null;
+  if (!('header' in value)) return NON_MODEL_REASONS.json;
   const header = (value as { header?: { ifcxVersion?: unknown } }).header;
   if (typeof header?.ifcxVersion === 'string' && header.ifcxVersion.toLowerCase().includes('ifcx')) return null;
   // Only an .ifcx name makes a header-shaped JSON plausibly a broken IFCX document; anywhere else it is an API envelope.

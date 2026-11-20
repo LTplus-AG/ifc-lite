@@ -13,6 +13,7 @@ import { BufferReader, readInstancedShards, SectionType, type openGeometryChunks
 import { decodeSceneSnapshot, type Renderer, type SceneContents, type SceneSnapshot } from '@ifc-lite/renderer';
 import { decodeInstancedShard, type CoordinateInfo, type MeshData } from '@ifc-lite/geometry';
 import type { LoadTrace } from '@ifc-lite/load-trace';
+import type { StoreApi } from 'zustand';
 import { useViewerStore } from '../store/index.js';
 import { noteInstancedShardModel } from '../store/instancedShardModels.js';
 import { announceAdoptedInstancedShards, completeInstancedShardSupply, enqueueInstancedShards, instancedShardSupplyCurrent, instancedShardSupplyToken } from '../store/instancedShardQueue.js';
@@ -98,10 +99,22 @@ export function uploadSnapshotShards(scene: Pick<SceneContents, 'addInstancedSha
  * must never hold an occurrence the scene does not draw.
  */
 export function attestAdoptedShards(modelId: string, adopted: Pick<AdoptedSceneSnapshot, 'shards' | 'shardsUploaded'>,
-  token: Parameters<typeof completeInstancedShardSupply>[2]): void {
+  token: Parameters<typeof instancedShardSupplyCurrent>[1],
+  store: Pick<StoreApi<{ models: ReadonlyMap<string, { idOffset?: number }> }>, 'getState' | 'subscribe'> = useViewerStore): void {
   if (!adopted.shardsUploaded) return;
-  announceAdoptedInstancedShards(modelId, adopted.shards, token);
-  completeInstancedShardSupply(modelId, adopted.shards.length, token);
+  const announce = () => {
+    announceAdoptedInstancedShards(modelId, adopted.shards, token);
+    completeInstancedShardSupply(modelId, adopted.shards.length, token);
+  };
+  // A first primary load commits its snapshot during geometry sync, BEFORE the model is registered:
+  // the backing places shard ids with the model's id offset, so announce only once it is known. A
+  // reset or discard of the model meanwhile (its supply moved) supersedes the attestation entirely.
+  const registered = () => store.getState().models.get(modelId)?.idOffset !== undefined;
+  if (registered()) { announce(); return; }
+  const off = store.subscribe(() => {
+    if (!instancedShardSupplyCurrent(modelId, token)) { off(); return; }
+    if (registered()) { off(); announce(); }
+  });
 }
 
 /** Draw the entry's finished scene, or return null so the hit streams. */

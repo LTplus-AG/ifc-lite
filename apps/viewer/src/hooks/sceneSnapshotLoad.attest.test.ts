@@ -6,6 +6,8 @@ import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
 import { it } from 'node:test';
 import { createStore } from 'zustand/vanilla';
+import type { StoreApi } from 'zustand';
+import { useViewerStore } from '@/store';
 import type { MeshData } from '@ifc-lite/geometry';
 import { instancedShardSupplyToken } from '@/store/instancedShardQueue';
 import { StoreGeometryBackingTap, type TapState } from '@/lib/geometry-backing/store-backing-tap';
@@ -42,7 +44,7 @@ for (const failOne of [true, false]) {
       const shards = [shardBytes(77), shardBytes(78)];
       const shardsUploaded = uploadSnapshotShards(scene as never, {} as GPUDevice, modelId, shards);
       assert.equal(shardsUploaded, !failOne);
-      attestAdoptedShards(modelId, { shards, shardsUploaded }, token); // hydrateSceneSnapshot committed
+      attestAdoptedShards(modelId, { shards, shardsUploaded }, token, store); // hydrateSceneSnapshot committed; the model is registered in this store
       const [status] = await tap.seal();
       assert.equal(status.complete, !failOne, failOne ? 'the scene lacks occurrence 78: the backing must not claim it' : status.error ?? 'incomplete');
       if (!failOne) {
@@ -55,3 +57,30 @@ for (const failOne of [true, false]) {
     } finally { await tap.stop(); }
   });
 }
+
+it('#10888 a first primary load commits its snapshot BEFORE the model is registered: attested once registered, backed in federated ids', async () => {
+  const modelId = 'snap-first-primary';
+  useViewerStore.setState({ models: new Map() } as never); // nothing registered yet
+  const store = useViewerStore as unknown as StoreApi<TapState>;
+  const tap = await StoreGeometryBackingTap.start(store, { database: { name: `snapshot-first-${process.pid}`, locks: null } });
+  try {
+    const token = instancedShardSupplyToken(modelId);
+    const shards = [shardBytes(77), shardBytes(78)];
+    const shardsUploaded = uploadSnapshotShards({ addInstancedShard: () => {} } as never, {} as GPUDevice, modelId, shards);
+    attestAdoptedShards(modelId, { shards, shardsUploaded }, token); // hydrateSceneSnapshot commits during geometry sync
+    // Then the hydrated model is registered, with its federated id offset.
+    const meshes = [{ ...mesh, expressId: 1001 }];
+    useViewerStore.setState({ models: new Map([[modelId, { id: modelId, idOffset: 1000, maxExpressId: 2000,
+      geometryResult: { meshes, totalTriangles: 1, totalVertices: 3, coordinateInfo: {} } }]]) } as never);
+    const [status] = await tap.seal();
+    assert.equal(status.error, undefined);
+    assert.equal(status.instancedLost, false, 'the adopted shards are owned by the registered model, not unbacked');
+    assert.equal(status.complete, true, 'the accepted snapshot is backed whole');
+    const ids: number[] = [];
+    for await (const shard of tap.backing(modelId)!.reader.instancedShards()) ids.push(...shard.instances.map((i) => i.entityId));
+    assert.deepEqual(ids.sort((a, b) => a - b), [1077, 1078], 'read back in the federated id space the scene picks in');
+  } finally {
+    await tap.stop();
+    useViewerStore.setState({ models: new Map() } as never);
+  }
+});

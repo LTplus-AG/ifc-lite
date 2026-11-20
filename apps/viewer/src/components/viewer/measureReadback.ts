@@ -14,8 +14,24 @@ import { useViewerStore } from '@/store';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 
 export type ReadbackKind = 'hover' | 'drag' | 'place' | 'finish';
-let gate: Promise<typeof import('./measureReadbackGate.js')> | undefined;
+type Gate = typeof import('./measureReadbackGate.js');
+let gate: Promise<Gate> | undefined;
 let acting = false;
+let importGate: () => Promise<Gate> = () => import('./measureReadbackGate.js');
+/** TEST ONLY: replace how the gate chunk loads (e.g. one that fails); `null` restores it and forgets the loaded one. */
+export function setMeasureReadbackGateLoaderForTest(loader: (() => Promise<Gate>) | null): void {
+  importGate = loader ?? (() => import('./measureReadbackGate.js'));
+  gate = undefined;
+}
+
+/**
+ * The gate chunk, loaded once. A failed load is forgotten, so the next measure action retries it instead of
+ * every later action awaiting the same rejected import (measuring would otherwise stop until a reload).
+ */
+function loadGate(): Promise<Gate> {
+  gate ??= importGate().catch((error: unknown) => { gate = undefined; throw error; });
+  return gate;
+}
 
 /**
  * A released scene routes `act` through the gate and returns true; a resident one (or the gate acting on a
@@ -28,7 +44,11 @@ export function viaReadback(ctx: MouseHandlerContext, kind: ReadbackKind, act: (
   const place = kind === 'place';
   const scope = { tool: ctx.activeToolRef.current, gesture: useViewerStore.getState().measureGestureEpoch,
     view: place ? viewOf(ctx) : undefined, shown: place ? shownOf(ctx) : undefined };
-  void (gate ??= import('./measureReadbackGate.js')).then((loaded) => loaded.route(ctx, kind, act, x, y, scope, actNow, useViewerStore.getState, () => viewOf(ctx), () => shownOf(ctx)));
+  // A gate that fails to load acts on nothing (a released scene cannot raycast without its readback) and says so.
+  void loadGate().then(
+    (loaded) => loaded.route(ctx, kind, act, x, y, scope, actNow, useViewerStore.getState, () => viewOf(ctx), () => shownOf(ctx)),
+    (error: unknown) => console.error('[Measure] Geometry readback did not load; the action was not run', error),
+  );
   return true;
 }
 
@@ -55,5 +75,6 @@ export function actNow(act: () => void): void {
 
 /** A press, release or preview cancel. Nothing is pending unless the gate was ever loaded. */
 export function cancelMeasureReadbacks(): void {
-  void gate?.then((loaded) => loaded.invalidatePendingMeasureReadbacks());
+  // A gate that failed to load has nothing pending.
+  void gate?.then((loaded) => loaded.invalidatePendingMeasureReadbacks(), () => undefined);
 }

@@ -135,13 +135,19 @@ export class ReadbackRaycastFeeder {
       }
       const seen = new Set<MeshData>();
       const meshes: MeshData[] = [];
-      for (const lease of leases) for (const mesh of lease.meshes) {
-        if (seen.has(mesh)) continue;
-        seen.add(mesh);
-        // Only what the scene draws: the store also holds type-filtered meshes
-        // (spaces, openings) and class-2 type templates the scene never had.
-        if ((mesh.geometryClass ?? 0) === 2 || scene.getEntityBoundingBox(mesh.expressId) === null) continue;
-        meshes.push(place(scene, mesh));
+      try {
+        for (const lease of leases) for (const mesh of lease.meshes) {
+          if (seen.has(mesh)) continue;
+          seen.add(mesh);
+          // Only what the scene draws: the store also holds type-filtered meshes
+          // (spaces, openings) and class-2 type templates the scene never had.
+          if ((mesh.geometryClass ?? 0) === 2 || scene.getEntityBoundingBox(mesh.expressId) === null) continue;
+          meshes.push(place(scene, mesh));
+        }
+      } catch (error) {
+        // These leases were never handed to `swap`: release them here, or a failed placement pins them.
+        for (const lease of leases) lease.release();
+        throw error;
       }
       this.swap(leases, meshes);
       return this.finish('fed');

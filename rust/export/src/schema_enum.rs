@@ -196,6 +196,7 @@ pub(crate) struct ConversionChecks {
     /// a trimmed tail, an alignment proxy's attributes past IfcProduct's, and
     /// by-name remap sources with no same-named target attribute.
     pub(crate) attribute_values_dropped: usize,
+    upgrade_omissions: Vec<String>,
 }
 
 impl ConversionChecks {
@@ -256,7 +257,7 @@ impl ConversionChecks {
             };
             writeln!(body, "{record}")?;
         }
-        Ok(count + body.finish()?)
+        Ok(count + body.finish_with_warnings(&mut self.upgrade_omissions)?)
     }
 
     /// Both checks' warnings, IFC4 slots first.
@@ -267,6 +268,7 @@ impl ConversionChecks {
         out.extend(self.forms.warnings());
         out.extend(self.structural.warnings());
         out.extend(self.plans.warnings());
+        out.extend(self.upgrade_omissions.iter().cloned());
         out
     }
 }

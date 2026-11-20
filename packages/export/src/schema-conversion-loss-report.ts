@@ -37,7 +37,7 @@ import {
 import { BY_NAME_ATTR_REMAP_TYPES } from './schema-converter-attr-remap.js';
 import { isStrictAttrPrefix, replacedSlot } from './schema-converter-renames.js';
 import { attrMapFor, attrsDroppedByMap, dropsSetMembers } from './schema-converter-attr-maps.js';
-import { isRootedEntityType, missingTypeRoute } from './schema-untranslatable.js';
+import { isRootedEntityType, missingTypeRoute, OMIT_ON_UPGRADE } from './schema-untranslatable.js';
 
 /** How one entity TYPE's data survives a schema conversion. */
 export type EntityConversionKind =
@@ -127,8 +127,8 @@ export function classifyEntityTypeConversion(
       ? { targetType: 'IFCPROXY', kind: 'proxied', droppedAttributes: dropped }
       : { targetType: newType, kind: 'blocked', droppedAttributes: dropped };
   }
-  // Written under a name the target does not declare (D59, #10970, #10971): a reader drops all of it.
-  if (route === 'verbatim' && srcAttrs) return { targetType: newType, kind: 'lossy', droppedAttributes: srcAttrs };
+  // A type the target does not declare loses all of its attributes (D59, #10970, #10971).
+  if ((route === 'verbatim' || route === 'omitted') && srcAttrs) return { targetType: newType, kind: 'lossy', droppedAttributes: srcAttrs };
 
   if (!srcAttrs || !tgtAttrs) {
     // Unknown to one of the tables (IFC5 has none) — the per-line converter
@@ -208,9 +208,10 @@ export interface ConversionLossReport {
 
 const MAX_IDS_NAMED = 8;
 
-function describeEntry(entry: ConversionLossEntry): string {
+function describeEntry(entry: ConversionLossEntry, omit: boolean): string {
   const ids = entry.expressIds.slice(0, MAX_IDS_NAMED).map((id) => `#${id}`).join(', ');
   const more = entry.expressIds.length > MAX_IDS_NAMED ? `, +${entry.expressIds.length - MAX_IDS_NAMED} more` : '';
+  if (omit) return `${entry.count} × ${entry.sourceType} (${ids}${more}) will be omitted because IFC4 does not declare its type.`;
   const attrs = entry.droppedAttributes.length > 0 ? ` — loses ${entry.droppedAttributes.join(', ')}` : '';
   switch (entry.kind) {
     case 'blocked':
@@ -364,6 +365,8 @@ export function analyzeConversionLoss(
     }
     entries.sort((a, b) => a.sourceType.localeCompare(b.sourceType));
   }
+  const describe = (entry: ConversionLossEntry) => describeEntry(entry,
+    fromSchema === 'IFC2X3' && toSchema === 'IFC4' && OMIT_ON_UPGRADE.has(entry.sourceType));
   const hasBlocking = entries.some((e) => e.kind === 'blocked');
   return {
     fromSchema,
@@ -372,6 +375,6 @@ export function analyzeConversionLoss(
     hasLoss: entries.length > 0,
     hasBlocking,
     describe: () => entries.flatMap((entry) => entry.recordGroups
-      ?.map((group) => describeEntry({ ...entry, ...group })) ?? [describeEntry(entry)]),
+      ?.map((group) => describe({ ...entry, ...group })) ?? [describe(entry)]),
   };
 }

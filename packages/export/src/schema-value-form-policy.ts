@@ -162,16 +162,33 @@ export function rejectedForms(
       rejected.push(...narrowedPayload(source, target, form));
       continue;
     }
+    const calendar = calendarKind(from.type, to.type, form);
     if (own && 'SRIEB'.includes(form) && accepted.has(`T:${own}`)) rejected.push(`${form}>T:${own}`);
     else if (slot && form === `T:${slot}`) rejected.push(`${form}>U`);
     else if (from.type === 'IfcTimeMeasure' && to.type === 'IfcDuration' && form === 'R') rejected.push('R>D+');
     else if (from.type === 'IfcDuration' && to.type === 'IfcTimeMeasure' && form === 'S') rejected.push('S>D-');
+    else if (calendar) rejected.push(form + '>' + calendar);
     else if (stringAsText(source, target, form, accepted)) rejected.push(form + '>TEXT');
     else if (setOfAccepted(source, form, target, accepted)) rejected.push(`${form}>U1`);
     else if (form.endsWith('R') && accepted.has(`${form.slice(0, -1)}I`)) rejected.push(`${form}>${form.slice(0, -1)}I`);
     else rejected.push(form);
   }
   return rejected.sort();
+}
+
+const CALENDAR = { IfcDate: 'DATE', IfcDateTime: 'DATETIME', IfcTime: 'TIME' } as const;
+const LEGACY_CALENDAR = {
+  IfcCalendarDate: ['DATE'], IfcDateAndTime: ['DATETIME'], IfcLocalTime: ['TIME'],
+  IfcDateTimeSelect: ['DATE', 'DATETIME', 'TIME'],
+} as const satisfies Readonly<Record<string, readonly string[]>>;
+
+function calendarKind(from: string, to: string, form: string): string | undefined {
+  const modern = form === '#' ? to : from;
+  const legacy = form === '#' ? from : to;
+  if ((form !== '#' && form !== 'S') || !Object.hasOwn(CALENDAR, modern) || !Object.hasOwn(LEGACY_CALENDAR, legacy)) return undefined;
+  const kind = CALENDAR[modern as keyof typeof CALENDAR];
+  const kinds: readonly string[] = LEGACY_CALENDAR[legacy as keyof typeof LEGACY_CALENDAR];
+  return kinds.includes(kind) ? (form === '#' ? 'C+:' : 'C-:') + kind : undefined;
 }
 
 /** A registry's spelling of the UPPERCASE defined type `upper`. */

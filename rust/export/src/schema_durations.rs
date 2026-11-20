@@ -3,7 +3,7 @@
 
 use ifc_lite_core::parser::parse_step_real;
 
-pub(super) fn from_seconds(token: &str) -> Option<String> {
+pub(super) fn decimal_seconds(token: &str) -> Option<String> {
     parse_step_real(token.as_bytes())?.is_finite().then_some(())?;
     let negative = token.starts_with('-');
     let token = token.strip_prefix(['-', '+']).unwrap_or(token);
@@ -25,7 +25,13 @@ pub(super) fn from_seconds(token: &str) -> Option<String> {
     let fraction = fraction.trim_end_matches('0');
     let sign = if negative && (whole != "0" || !fraction.is_empty()) { "-" } else { "" };
     let radix = if fraction.is_empty() { "" } else { "." };
-    Some(format!("'{sign}PT{whole}{radix}{fraction}S'"))
+    Some(format!("{sign}{whole}{radix}{fraction}"))
+}
+
+pub(super) fn from_seconds(token: &str) -> Option<String> {
+    let decimal = decimal_seconds(token)?;
+    let (sign, decimal) = decimal.strip_prefix('-').map_or(("", decimal.as_str()), |n| ("-", n));
+    Some(format!("'{sign}PT{decimal}S'"))
 }
 
 fn digits(text: &str) -> bool {

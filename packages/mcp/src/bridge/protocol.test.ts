@@ -89,6 +89,12 @@ describe('image result content', () => {
     expect(parsed.ok ? '' : parsed.error).toMatch(error);
   });
 
+  it.each([['AA==', 'AB=='], ['AAA=', 'AAB=']])('requires zero padding bits in the final image quantum (%s, #9523)', (canonical, nonCanonical) => {
+    const image = (tail: string) => ({ type: 'image', data: JPEG + tail, mimeType: 'image/jpeg' });
+    expect(result(image(canonical))).toMatchObject({ ok: true });
+    expect(result(image(nonCanonical))).toMatchObject({ ok: false, error: expect.stringMatching(/canonical base64/) });
+  });
+
   it('refuses more than maxImagesPerResult images', () => {
     const image = { type: 'image', data: PNG, mimeType: 'image/png' };
     expect(result(...Array(BRIDGE_LIMITS.maxImagesPerResult).fill(image))).toMatchObject({ ok: true });

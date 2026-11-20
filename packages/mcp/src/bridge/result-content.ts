@@ -53,6 +53,8 @@ const SIGNATURES: Record<BridgeImageMimeType, ReadonlyArray<number | null>> = {
 };
 
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
+// Two pads leave four unused bits in the last sextet. One pad leaves two.
+const BASE64_PADDING = /(?:[AQgw]==|[AEIMQUYcgkosw048]=)$/;
 
 function isMimeType(v: unknown): v is BridgeImageMimeType {
   return typeof v === 'string' && Object.hasOwn(SIGNATURES, v);
@@ -65,7 +67,10 @@ function imageContentError(data: unknown, mimeType: unknown): string | null {
   if (data.length > BRIDGE_IMAGE_LIMITS.maxImageBytes) {
     return `image is ${data.length} base64 characters; the limit is ${BRIDGE_IMAGE_LIMITS.maxImageBytes}`;
   }
-  if (data.length < 16 || data.length % 4 !== 0 || !BASE64.test(data)) return 'data must be canonical base64 of an image file';
+  if (data.length < 16 || data.length % 4 !== 0 || !BASE64.test(data)
+    || (data.endsWith('=') && !BASE64_PADDING.test(data.slice(-3)))) {
+    return 'data must be canonical base64 of an image file';
+  }
   // 16 characters decode to 12 bytes, enough for every signature above.
   const head = atob(data.slice(0, 16));
   const signature = SIGNATURES[mimeType];

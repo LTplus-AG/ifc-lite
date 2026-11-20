@@ -16,11 +16,15 @@ import { parseZoneEmissionProposal, type ZoneEmissionProposal } from './zone-emi
 import type { ModelChangeReceipt } from './model-change-commit';
 import { batchDigest } from './model-change-preview';
 import { sameReportEvidence } from '@/lib/flow/report-provenance';
-/** Whether the zone evaluation is current, once per store state: every retained review probes the same state in one
- * admission, and the check walks the scene's mesh bounds. */
+/** Whether the zone evaluation is current, once per synchronous pass: an admission probes every retained review in one
+ * loop, nothing can change in between, and the check walks the scene's mesh bounds. The scene and in-place records it
+ * reads are outside the store, so the answer is dropped on the next microtask rather than kept for the state. */
 let probed: { state: ViewerState; current: boolean } | undefined;
 function evaluationCurrent(state: ViewerState) {
-  if (probed?.state !== state) probed = { state, current: zoneEvaluationIsCurrent(state) };
+  if (probed?.state !== state) {
+    if (!probed) queueMicrotask(() => { probed = undefined; });
+    probed = { state, current: zoneEvaluationIsCurrent(state) };
+  }
   return probed.current;
 }
 export function prepareZoneEmission(store: StoreApi<ViewerState>, input: ZoneEmissionProposal) {

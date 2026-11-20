@@ -70,16 +70,21 @@ test('#7322 a genuine exported native SpatialZone receipt cannot be imported as 
 });
 test('#7322 stale evaluation cannot be certified from old timing after same-ID set, assignments or native geometry change', async t => {
   const f = await seed(t); if (!f) return;
-  const review = prepareZoneEmission(useViewerStore, proposal());
+  // The admission probe agrees with commit: current before each change, stale after it, also after an earlier probe.
+  const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+  const review = prepareZoneEmission(useViewerStore, proposal()); assert.equal(review.sourcesCurrent(), true); await tick();
   useViewerStore.setState({ zoneSets: [{ ...f.zoneSet, name: 'Changed same-ID native set' }] }); assert.throws(() => review.commit('stale set'), /evaluation|changed/);
-  recomputeZoneAssignmentsNow(); const next = prepareZoneEmission(useViewerStore, proposal());
+  assert.equal(review.sourcesCurrent(), false);
+  recomputeZoneAssignmentsNow(); const next = prepareZoneEmission(useViewerStore, proposal()); assert.equal(next.sourcesCurrent(), true); await tick();
   const assignments = useViewerStore.getState().zoneAssignments; assignments.get(f.wall.expressId)![f.zoneSet.id].touchedZoneIds = []; assert.throws(() => next.commit('stale membership'), /evaluation|changed/);
-  recomputeZoneAssignmentsNow(); const geometry = prepareZoneEmission(useViewerStore, proposal());
+  assert.equal(next.sourcesCurrent(), false, 'an in-place assignment edit');
+  recomputeZoneAssignmentsNow(); const geometry = prepareZoneEmission(useViewerStore, proposal()); assert.equal(geometry.sourcesCurrent(), true); await tick();
   const prior = f.scene.getEntityBoundingBox(f.wall.expressId); assert.ok(prior);
   f.scene.removeMeshesForEntity(f.wall.expressId);
   f.scene.addMeshData({ ...f.wall, positions: new Float32Array(f.wall.positions).map(value => value + 1) });
   const replaced = f.scene.getEntityBoundingBox(f.wall.expressId); assert.ok(replaced); assert.notDeepEqual(replaced, prior, 'native replacement invalidates cached bounds and changes the actual evaluation input');
   assert.throws(() => geometry.commit('stale actual Scene bounds'), /evaluation|changed/);
+  assert.equal(geometry.sourcesCurrent(), false, 'a scene bounds change with the same store state');
 });
 test('#7322 absent evaluation or explicit wrong set/storey refuses rather than choosing a default', async t => {
   const f = await seed(t); if (!f) return;

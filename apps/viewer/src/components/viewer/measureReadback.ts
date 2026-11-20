@@ -24,9 +24,18 @@ let acting = false;
 export function viaReadback(ctx: MouseHandlerContext, kind: ReadbackKind, act: () => void, x = 0, y = 0): boolean {
   const scene = ctx.renderer.getScene() as { isGeometryDataReleased?: () => boolean };
   if (acting || scene.isGeometryDataReleased?.() !== true) return false;
-  const scope = { tool: ctx.activeToolRef.current, gesture: useViewerStore.getState().measureGestureEpoch };
-  void (gate ??= import('./measureReadbackGate.js')).then((loaded) => loaded.route(ctx, kind, act, x, y, scope, actNow, useViewerStore.getState));
+  // A placement's (x, y) names a surface only under the view it was clicked in: keep that view.
+  const view = kind === 'place' ? viewOf(ctx) : undefined;
+  const scope = { tool: ctx.activeToolRef.current, gesture: useViewerStore.getState().measureGestureEpoch, view };
+  void (gate ??= import('./measureReadbackGate.js')).then((loaded) => loaded.route(ctx, kind, act, x, y, scope, actNow, useViewerStore.getState, () => viewOf(ctx)));
   return true;
+}
+
+/** The current view-projection matrix (a copy), or undefined when the renderer has no camera to ask. */
+export function viewOf(ctx: MouseHandlerContext): readonly number[] | undefined {
+  const camera = (ctx.renderer as { getCamera?: () => { getViewProjMatrix?: () => { m: ArrayLike<number> } } }).getCamera?.();
+  const m = camera?.getViewProjMatrix?.().m;
+  return m ? Array.from(m) : undefined;
 }
 
 /** The gate acting on a finished read: a handler re-entered from here runs its resident path. */

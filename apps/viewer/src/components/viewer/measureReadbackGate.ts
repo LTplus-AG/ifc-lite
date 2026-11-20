@@ -92,17 +92,28 @@ export function measureReadbacksIdle(): Promise<void> { return chain; }
 
 // The handlers' readback paths, loaded only for a released scene (`measureReadback.ts` is the eager half).
 
-/** What a click captured when it happened: the reset that drops its placement is any change of these. */
-export interface PlacementScope { tool: string; gesture: number }
+/**
+ * What a click captured when it happened: the reset that drops its placement is any change of these. `view`
+ * (a placement's view-projection matrix at the click): its (x, y) names a surface only under that view, so a
+ * placement whose view changed before its read ran (an orbit, pan or zoom) is dropped, never placed on
+ * whatever is now under those pixels.
+ */
+export interface PlacementScope { tool: string; gesture: number; view?: readonly number[] }
+
+/** Whether `now` is the view `then` was captured in (no capture: nothing to compare, treated as unchanged). */
+export function sameView(then: readonly number[] | undefined, now: readonly number[] | undefined): boolean {
+  if (!then || !now) return true;
+  return then.length === now.length && then.every((v, i) => v === now[i]);
+}
 
 /** One entry for every handler: a hover or drag preview, a placement, or a double-click finish. */
 /** The store state the readback paths read, handed in by the eager half. */
 export type GateStore = () => { measureGestureEpoch: number; setMeasurePointLive: (point: null) => void };
 
-// `actNow` and the store come from the eager half, never by static import: that cycle would merge this module
-// into the entry chunk, and a store import lists its whole graph as this chunk's preload dependencies.
+// `actNow`, `viewNow` and the store come from the eager half, never by static import: that cycle would merge
+// this module into the entry chunk, and a store import lists its whole graph as this chunk's preload dependencies.
 export function route(ctx: MouseHandlerContext, kind: ReadbackKind, act: () => void, x: number, y: number, scope: PlacementScope,
-  actNow: (act: () => void) => void, store: GateStore): void {
+  actNow: (act: () => void) => void, store: GateStore, viewNow: () => readonly number[] | undefined = () => undefined): void {
   const visibility: Visibility = { hiddenIds: ctx.hiddenEntitiesRef.current, isolatedIds: ctx.isolatedEntitiesRef.current };
   const measuring = () => ctx.activeToolRef.current === 'measure';
   const inScope = () => ctx.activeToolRef.current === scope.tool && store().measureGestureEpoch === scope.gesture;
@@ -112,7 +123,16 @@ export function route(ctx: MouseHandlerContext, kind: ReadbackKind, act: () => v
       ctx.setSnapTarget(null); ctx.setSnapVisualization(null); ctx.clearEdgeLock(); store().setMeasurePointLive(null);
     });
   } else if (kind === 'drag') runWithReadback(ctx.renderer, x, y, visibility, () => actNow(act), measuring);
-  else if (kind === 'place') runWithReadback(ctx.renderer, x, y, visibility, () => actNow(act), inScope, 'placement');
+  else if (kind === 'place') {
+    let warned = false;
+    const placeable = () => {
+      if (!inScope()) return false;
+      if (sameView(scope.view, viewNow())) return true;
+      if (!warned) { warned = true; console.warn('[Measure] Point not placed: the view moved before its geometry was read back'); }
+      return false;
+    };
+    runWithReadback(ctx.renderer, x, y, visibility, () => actNow(act), placeable, 'placement');
+  }
   // A double-click finish runs after every placement already queued in its gesture.
   else afterPlacements(ctx.renderer, () => actNow(act), () => scope.tool === 'measure' && inScope());
 }

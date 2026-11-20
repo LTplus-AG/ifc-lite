@@ -203,7 +203,7 @@ function getSelectedStoreyElementRefs(state: ViewerStateSnapshot): EntityRef[] {
     }
   } else if (state.ifcDataStore?.spatialHierarchy) {
     for (const storeyId of state.selectedStoreys) {
-      const storeyElementIds = effectiveSpatialMembers(state.ifcDataStore, state.mutationViews.get('legacy'), storeyId);
+      const storeyElementIds = effectiveSpatialMembers(state.ifcDataStore, state.getMutationView('legacy') ?? undefined, storeyId);
       for (const id of storeyElementIds) {
         refs.push({ modelId: 'legacy', expressId: id });
       }

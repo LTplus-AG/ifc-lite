@@ -23,7 +23,7 @@ import {
   countPhysicalObjects,
   type PhysicalObjectCounts,
 } from '@/lib/physical-objects';
-import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
+import { getLegacyMutationView } from '@/sdk/adapters/model-compat';
 import { effectiveContextType } from '@/components/viewer/EntityContextMenu.effective-selection';
 import { effectiveAttribute } from '@/lib/document/effective-binding-fields';
 import { toGlobalIdFromModels } from '@/store/globalId';
@@ -59,7 +59,7 @@ export function useViewportStatusSummary(): ViewportStatusSummary {
             const store = model?.ifcDataStore ?? (models.size === 0 ? ifcDataStore : null);
             if (!store) return null;
             const view = models.size > 0 ? mutationViews.get(modelId) ?? null
-              : mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? mutationViews.get(LEGACY_MODEL_ID) ?? null;
+              : getLegacyMutationView(mutationViews) ?? null;
             if (view?.isDeleted(expressId) || effectiveContextType(store, view, expressId) !== 'IfcBuildingStorey') return null;
             return effectiveAttribute({ id: modelId, name: model?.name ?? '', store, view: view ?? undefined }, expressId, 'Name') || null;
           };
@@ -88,7 +88,7 @@ export function useViewportStatusSummary(): ViewportStatusSummary {
     ?? activeModelId;
   const countView = models.size > 0
     ? (countModelId ? mutationViews.get(countModelId) : null)
-    : mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? mutationViews.get(LEGACY_MODEL_ID);
+    : getLegacyMutationView(mutationViews);
   // The whole-model walk waits while this model loads (loadWindow.ts); the
   // hidden/ghosted counts it feeds are only shown when above zero. A model that
   // had settled keeps its pill while another model loads.

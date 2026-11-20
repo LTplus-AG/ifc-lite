@@ -1293,6 +1293,17 @@ history and return `historyDroppedReason`, while retaining the valid edits.
 The journal's model IDs are preserved; bind host stacks to the same logical
 model. Rebuild meshes and host Revert state separately after restoring.
 
+When historical model aliases have their own overlays, use
+`prepareMutationViewMerge(preferred, historicalViews)` to stage their
+reconciliation. All the views must refer to the same parsed source. Distinct
+edits survive, and the preferred view wins where both edit the same field.
+Historical views are applied in priority order. The host can inspect its undo
+and redo entries with `isShadowed(mutation)` before committing. Ambiguous
+entity or whole-set overlaps throw during preparation. `commit()` refuses
+to publish if any input overlay changed after preparation. A successful commit
+updates the preferred view and leaves the historical views available to their
+owners.
+
 For asynchronous work on a fork, use
 `const fork = view.prepareAtomic(draft => draft).result` and leave that
 transaction uncommitted. Later asynchronous code can edit, snapshot or export

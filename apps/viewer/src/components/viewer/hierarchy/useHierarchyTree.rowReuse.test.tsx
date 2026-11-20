@@ -23,6 +23,8 @@ import { cleanup, render } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { useHierarchyTree } from './useHierarchyTree';
+import { createNodeElementsResolver } from './nodeElements';
+import { selectedEntityActionTarget } from '../selected-entity-actions';
 import type { TreeNode } from './types';
 
 const INITIAL_STATE = useViewerStore.getState();
@@ -74,23 +76,23 @@ const geometryOf = (meshes: MeshData[]) => ({
 
 type Tree = ReturnType<typeof useHierarchyTree>;
 
-async function mountTree(): Promise<{ tree: () => Tree; view: MutablePropertyView; globalOf: (id: number) => number }> {
+async function mountTree(modelId = MODEL, withLegacySource = false): Promise<{ tree: () => Tree; view: MutablePropertyView; globalOf: (id: number) => number }> {
   const bytes = new TextEncoder().encode(FIXTURE);
   const dataStore = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
-  const base = { ...fixtureModel(MODEL), ifcDataStore: dataStore } as FederatedModel;
-  const globalOf = (id: number) => toGlobalIdFromModels(new Map([[MODEL, base]]), MODEL, id);
+  const base = { ...fixtureModel(modelId), ifcDataStore: dataStore, maxExpressId: 80 } as FederatedModel;
+  const globalOf = (id: number) => toGlobalIdFromModels(new Map([[modelId, base]]), modelId, id);
   const geometry = geometryOf([meshFor(globalOf(50), 0), meshFor(globalOf(51), 2)]);
   const model = { ...base, geometryResult: geometry } as FederatedModel;
-  const view = new MutablePropertyView(dataStore.properties || null, MODEL);
+  const view = new MutablePropertyView(dataStore.properties || null, modelId);
   useViewerStore.setState({
-    ...fixtureModels(model), geometryResult: geometry, hierarchyMode: 'spatial', loading: false, editEnabled: true,
+    ...fixtureModels(model), ifcDataStore: withLegacySource ? dataStore : null, geometryResult: geometry, hierarchyMode: 'spatial', loading: false, editEnabled: true,
     // addColumn caches its StoreEditor into storeEditors in place, and afterEach restores
     // INITIAL_STATE's same Map object, so each test starts from a fresh one.
-    mutationViews: new Map([[MODEL, view]]), storeEditors: new Map(),
+    mutationViews: new Map([[modelId, view]]), storeEditors: new Map(),
   });
   let tree!: Tree;
   function Probe() {
-    tree = useHierarchyTree({ models: useViewerStore((s) => s.models), ifcDataStore: null, isMultiModel: false });
+    tree = useHierarchyTree({ models: useViewerStore((s) => s.models), ifcDataStore: useViewerStore((s) => s.ifcDataStore), isMultiModel: false });
     return null;
   }
   render(<Probe />);
@@ -123,6 +125,45 @@ describe('hierarchy rows across edits (#10535)', () => {
     const after = storeyRow(tree().treeData);
     assert.notEqual(after, storey, 'a storey that gained an element is a new row');
     assert.equal(tree().getNodeElements(after).length, 3, 'the new row resolves the current membership');
+  });
+
+  it('invalidates cached legacy membership after a raw mutation through its alias (#10762)', async () => {
+    const { tree } = await mountTree();
+    const store = useViewerStore.getState().models.get(MODEL)?.ifcDataStore;
+    assert.ok(store);
+    const view = new MutablePropertyView(store.properties || null, '__legacy__');
+    const resolve = createNodeElementsResolver(new Map(), store, [], () => [], (_id, ids) => ids, new Map([['__legacy__', view]]));
+    const row = { ...storeyRow(tree().treeData), modelIds: ['legacy'] };
+
+    assert.deepEqual(resolve(row), [50, 51]);
+    view.deleteEntity(50);
+    assert.deepEqual(resolve(row), [51]);
+  });
+
+  it('ignores a federated model named default when resolving legacy membership (#10762)', async () => {
+    const { tree } = await mountTree();
+    const store = useViewerStore.getState().models.get(MODEL)?.ifcDataStore;
+    assert.ok(store);
+    const otherStore = await new IfcParser().parseColumnar(new TextEncoder().encode(FIXTURE).buffer, { disableWorkerScan: true });
+    const other = { ...fixtureModel('default'), ifcDataStore: otherStore };
+    const view = new MutablePropertyView(otherStore.properties || null, 'default');
+    view.deleteEntity(50);
+    const resolve = createNodeElementsResolver(new Map([['default', other]]), store, [], () => [], (_id, ids) => ids, new Map([['default', view]]));
+    assert.deepEqual(resolve({ ...storeyRow(tree().treeData), modelIds: ['legacy'] }), [50, 51]);
+  });
+
+  it('keeps actions and spatial members bound to a real federated model named legacy (#10762)', async () => {
+    const { tree, view, globalOf } = await mountTree('legacy', true);
+    const storey = storeyRow(tree().treeData);
+    assert.deepEqual(storey.globalIds, [globalOf(STOREY)]);
+    assert.deepEqual(tree().getNodeElements(storey), [globalOf(50), globalOf(51)]);
+    act(() => useViewerStore.setState({ selectedEntityId: globalOf(50), selectedEntityIds: new Set() }));
+    assert.deepEqual(useViewerStore.getState().resolveGlobalIdFromModels(globalOf(50)), { modelId: 'legacy', expressId: 50 });
+    assert.equal(selectedEntityActionTarget(), globalOf(50));
+
+    view.deleteEntity(50);
+    assert.equal(selectedEntityActionTarget(), null);
+    assert.deepEqual(tree().getNodeElements(storey), [globalOf(51)]);
   });
 
   it('resolves a storey row once per input generation and view revision, and again after either changes', async () => {

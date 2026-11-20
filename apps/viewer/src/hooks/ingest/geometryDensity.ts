@@ -28,17 +28,19 @@ const SAMPLE_WINDOWS = 4;
 const SAMPLE_WINDOW_BYTES = 256 * 1024;
 const RECORD_START = /#\d+\s*=\s*([A-Z][A-Z0-9_]*)\s*\(/g;
 
-/** Anything but mesh payload, which is coordinate and index tuples. `#n` lists are not mesh:
- * the long ones are B-rep shells and relationships, not a face set's few references. */
-const NOT_NUMERIC_TUPLES = /[^0-9.,()eE+\-\s]/g;
+/** Anything but mesh payload: coordinate and index tuples, or a polygonal face set's `#n` face list. */
+const NOT_NUMERIC_TUPLES = /[^0-9.,()eE+\-\s#]/g;
 
 /**
  * Bytes of `text` in dense geometry records. The bytes before the first record
  * start belong to a record cut by the window edge; a large mesh can be one
  * record longer than the window, so that fragment counts as dense when it is
- * numeric tuples alone (98 %+). A long numeric record that is not a mesh
- * (B-spline knots, curve points) also passes that test; like the point-list
- * overcount it errs toward refusal. The last record runs to the end of the
+ * numeric tuples or `#n` references alone (98 %+). A cut record's type is
+ * unknown, so a long numeric record that is not a mesh (B-spline knots, curve
+ * points, a B-rep shell's or a relationship's `#n` list) also passes that test;
+ * like the point-list overcount it errs toward refusal, where counting those as
+ * sparse would undercount a large polygonal face set's face list (reviews on
+ * #10814). The last record runs to the end of the
  * window.
  */
 export function denseRecordBytes(text: string): number {

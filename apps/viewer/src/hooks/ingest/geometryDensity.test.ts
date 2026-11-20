@@ -38,10 +38,12 @@ describe('dense geometry share (#10264)', () => {
     // A large mesh can be one record longer than a window: the cut fragment is still mesh payload.
     const inside = '(1.5,2.5,3.5),'.repeat(1000);
     assert.equal(denseRecordBytes(inside), inside.length, 'a window inside one point list is dense');
-    // A B-rep shell's face list runs past a window in large exports: references, not mesh (review on #10814).
-    const faces = Array.from({ length: 40_000 }, (_, i) => `#${100_000 + i}`).join(','); // 280 KB of references
-    const window = faces.slice(100, 100 + 256 * 1024); // wholly inside the shell's face list
-    assert.equal(denseRecordBytes(window), 0, 'a window inside a B-rep shell is not dense');
+    // A large IfcPolygonalFaceSet's face list can run past a window too (review on #10814). A B-rep
+    // shell's list has the same bytes and reads dense as well: the error leans toward refusal.
+    const faces = Array.from({ length: 40_000 }, (_, i) => `#${100_000 + i}`).join(',');
+    const faceListCut = faces.slice(100, 100 + 256 * 1024);
+    assert.equal(faceListCut.length, 256 * 1024, 'the cut lies wholly inside the face list');
+    assert.equal(denseRecordBytes(faceListCut), faceListCut.length, 'a window inside a polygonal face list is dense');
     const cutText = "x',$,$,'Body');\n#7=IFCPROPERTYSET('a',$,'b',$,(#8));\n";
     assert.equal(denseRecordBytes(cutText), 0, 'a cut text record is not');
   });

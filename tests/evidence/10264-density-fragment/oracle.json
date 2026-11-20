@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "apps/viewer/src/hooks/ingest/geometryDensity.ts",
+  "mutation": "tests/evidence/10264-density-fragment/behaviour.oracle.patch",
+  "test": "apps/viewer/src/hooks/ingest/geometryDensity.test.ts",
+  "why": "Reverse application never counts the fragment a window edge cut, so a window inside one large point list reads as no mesh, a file of a few giant mesh records samples as sparse, and the fragment cases go red."
+}

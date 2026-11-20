@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <map>
 #include <numeric>
 #include <set>
 #include <tuple>
@@ -131,47 +132,162 @@ void order_mesh(AdapterMesh& mesh) {
     }
 }
 
-void canonical_planar_quads(AdapterMesh& mesh,const std::vector<bool>& planar_faces) {
-    const size_t triangles=mesh.indices.size()/3;
-    // A new diagonal must not duplicate an edge the mesh already has (as in
-    // normalize_mesh_diagonals); that would make the mesh non-manifold.
+namespace {
+// Planar-face retriangulation works in the face's own 2D projection: drop the
+// axis of the largest Newell-normal component, keep the other two in cyclic
+// order and orient by that component's sign, so orient() > 0 follows the
+// face's outward winding. All inputs are canonical (vertex IDs and boundary
+// edges), so these double-precision predicates are deterministic.
+struct Plane2 {
+    unsigned u=0, v=1; double sign=1;
+    std::array<double,2> at(const AdapterMesh& mesh,uint32_t id) const {
+        return {mesh.positions[3*id+u],mesh.positions[3*id+v]};
+    }
+    double orient(const AdapterMesh& mesh,uint32_t a,uint32_t b,uint32_t c) const {
+        const auto p=at(mesh,a),q=at(mesh,b),r=at(mesh,c);
+        return sign*((q[0]-p[0])*(r[1]-p[1])-(q[1]-p[1])*(r[0]-p[0]));
+    }
+};
+double squared(const Point& a,const Point& b) {
+    const double x=a[0]-b[0],y=a[1]-b[1],z=a[2]-b[2]; return x*x+y*y+z*z;
+}
+// Crossing-number test against the face's directed boundary; false on it.
+bool inside(const std::array<double,2>& m,const std::vector<std::array<std::array<double,2>,2>>& boundary) {
+    bool in=false;
+    for (const auto& e:boundary) {
+        const auto& a=e[0]; const auto& b=e[1];
+        const double cross=(b[0]-a[0])*(m[1]-a[1])-(b[1]-a[1])*(m[0]-a[0]);
+        if (cross==0 && std::min(a[0],b[0])<=m[0] && m[0]<=std::max(a[0],b[0]) &&
+            std::min(a[1],b[1])<=m[1] && m[1]<=std::max(a[1],b[1])) return false;
+        if ((a[1]>m[1])!=(b[1]>m[1]) && m[0]<a[0]+(m[1]-a[1])*(b[0]-a[0])/(b[1]-a[1])) in=!in;
+    }
+    return in;
+}
+// Greedy constrained triangulation of one planar face from its vertex set and
+// boundary alone. Empty on any doubt; the caller then keeps the SDK's split.
+std::vector<Triangle> retriangulate(const AdapterMesh& mesh,const std::vector<Triangle>& face,
+    const std::map<Edge,unsigned>& all) {
+    std::set<std::pair<uint32_t,uint32_t>> directed;
+    std::map<Edge,unsigned> uses;
+    std::vector<uint32_t> vertices;
+    for (const auto& t:face) for (unsigned k=0;k<3;++k) {
+        if (!directed.emplace(t[k],t[(k+1)%3]).second) return {};
+        ++uses[edge(t[k],t[(k+1)%3])]; vertices.push_back(t[k]);
+    }
+    std::sort(vertices.begin(),vertices.end());
+    vertices.erase(std::unique(vertices.begin(),vertices.end()),vertices.end());
+    if (vertices.size()>256) return {};
+    // An edge another face already uses (all counts this face's own uses too).
+    auto foreign=[&](const Edge& e) {
+        const auto it=all.find(e); const auto own=uses.find(e);
+        return it!=all.end() && it->second>(own==uses.end() ? 0u : own->second);
+    };
+    std::vector<std::pair<uint32_t,uint32_t>> boundary;
+    for (const auto& [a,b]:directed) {
+        if (uses[edge(a,b)]>2) return {};
+        if (!directed.count({b,a})) boundary.emplace_back(a,b);
+    }
+    Point n{};
+    for (const auto& [a,b]:boundary) {
+        const auto p=point(mesh,a),q=point(mesh,b);
+        n[0]+=(p[1]-q[1])*(p[2]+q[2]); n[1]+=(p[2]-q[2])*(p[0]+q[0]); n[2]+=(p[0]-q[0])*(p[1]+q[1]);
+    }
+    unsigned axis=0;
+    for (unsigned k=1;k<3;++k) if (std::abs(n[k])>std::abs(n[axis])) axis=k;
+    if (!(std::abs(n[axis])>0)) return {};
+    Plane2 plane{(axis+1)%3,(axis+2)%3,n[axis]>0 ? 1. : -1.};
+    std::vector<std::array<std::array<double,2>,2>> loops;
+    for (const auto& [a,b]:boundary) loops.push_back({plane.at(mesh,a),plane.at(mesh,b)});
     std::set<Edge> edges;
+    for (const auto& [a,b]:boundary) edges.insert(edge(a,b));
+    std::vector<std::tuple<double,uint32_t,uint32_t>> candidates;
+    for (size_t i=0;i<vertices.size();++i) for (size_t j=i+1;j<vertices.size();++j) {
+        const Edge e{vertices[i],vertices[j]};
+        if (edges.count(e) || foreign(e)) continue;
+        candidates.emplace_back(squared(point(mesh,e.first),point(mesh,e.second)),e.first,e.second);
+    }
+    std::sort(candidates.begin(),candidates.end());
+    for (const auto& [length,a,b]:candidates) {
+        bool ok=true;
+        for (uint32_t c:vertices) {
+            if (c==a || c==b || plane.orient(mesh,a,b,c)!=0) continue;
+            const auto p=plane.at(mesh,a),q=plane.at(mesh,b),r=plane.at(mesh,c);
+            if (std::min(p[0],q[0])<=r[0] && r[0]<=std::max(p[0],q[0]) &&
+                std::min(p[1],q[1])<=r[1] && r[1]<=std::max(p[1],q[1])) { ok=false; break; }
+        }
+        for (auto it=edges.begin();ok && it!=edges.end();++it) {
+            const auto [c,d]=*it;
+            if (c==a || c==b || d==a || d==b) continue;
+            const double o1=plane.orient(mesh,a,b,c),o2=plane.orient(mesh,a,b,d);
+            const double o3=plane.orient(mesh,c,d,a),o4=plane.orient(mesh,c,d,b);
+            if (((o1>0 && o2<0) || (o1<0 && o2>0)) && ((o3>0 && o4<0) || (o3<0 && o4>0))) ok=false;
+        }
+        if (!ok) continue;
+        const auto p=plane.at(mesh,a),q=plane.at(mesh,b);
+        if (!inside({(p[0]+q[0])/2,(p[1]+q[1])/2},loops)) continue;
+        edges.insert({a,b});
+    }
+    // Faces of the edge graph: consecutive neighbours around each vertex.
+    std::map<uint32_t,std::vector<uint32_t>> around;
+    for (const auto& [a,b]:edges) { around[a].push_back(b); around[b].push_back(a); }
+    std::set<Triangle> found;
+    for (auto& [a,next]:around) {
+        const auto origin=plane.at(mesh,a);
+        auto angle=[&](uint32_t b) {
+            const auto p=plane.at(mesh,b); return std::atan2(plane.sign*(p[1]-origin[1]),p[0]-origin[0]);
+        };
+        std::sort(next.begin(),next.end(),[&](uint32_t x,uint32_t y) {
+            const double ax=angle(x),ay=angle(y); return ax<ay || (ax==ay && x<y);
+        });
+        for (size_t k=0;k<next.size();++k) {
+            const uint32_t b=next[k],c=next[(k+1)%next.size()];
+            if (b==c || !edges.count(edge(b,c)) || !(plane.orient(mesh,a,b,c)>0)) continue;
+            const auto pb=plane.at(mesh,b),pc=plane.at(mesh,c);
+            if (!inside({(origin[0]+pb[0]+pc[0])/3,(origin[1]+pb[1]+pc[1])/3},loops)) continue;
+            found.insert(rotated({a,b,c}));
+        }
+    }
+    if (found.size()!=face.size()) return {};
+    std::map<Edge,unsigned> after;
+    double before_area=0,after_area=0;
+    for (const auto& t:face) { const auto c=cross(mesh,t); before_area+=std::hypot(c[0],c[1],c[2]); }
+    for (const auto& t:found) {
+        Point unit;
+        if (!flat_normal(point(mesh,t[0]),point(mesh,t[1]),point(mesh,t[2]),unit) || !(dot(unit,n)>0)) return {};
+        const auto c=cross(mesh,t); after_area+=std::hypot(c[0],c[1],c[2]);
+        for (unsigned k=0;k<3;++k) ++after[edge(t[k],t[(k+1)%3])];
+    }
+    for (const auto& [e,count]:after)
+        if (count!=(std::count_if(boundary.begin(),boundary.end(),[&](const auto& d) { return edge(d.first,d.second)==e; }) ? 1u : 2u))
+            return {};
+    if (!(std::abs(after_area-before_area)<=1e-9*before_area)) return {};
+    return {found.begin(),found.end()};
+}
+}
+
+void canonical_planar_faces(AdapterMesh& mesh,const std::vector<bool>& planar_faces) {
+    const size_t triangles=mesh.indices.size()/3;
+    std::map<Edge,unsigned> all;
     for (size_t t=0;t<triangles;++t) for (unsigned k=0;k<3;++k)
-        edges.insert(edge(mesh.indices[3*t+k],mesh.indices[3*t+(k+1)%3]));
-    // order_mesh made each source face's triangles contiguous.
+        ++all[edge(mesh.indices[3*t+k],mesh.indices[3*t+(k+1)%3])];
+    // order_mesh made each source face's triangles contiguous; faces are
+    // visited in source-face order, so edges claimed earlier are canonical.
     for (size_t first=0;first<triangles;) {
         size_t end=first+1;
         while (end<triangles && mesh.faces[end]==mesh.faces[first]) ++end;
         const auto source=mesh.faces[first];
-        const size_t count=end-first;
-        const size_t second=first+1;
-        first=end;
-        if (count!=2 || source>=planar_faces.size() || !planar_faces[source]) continue;
-        const auto a=triangle(mesh,second-1),b=triangle(mesh,second);
-        // a=(u,v,p) and b=(v,u,q) share the directed edge u->v / v->u.
-        unsigned i=0,j=0;
-        for (;i<3;++i) {
-            for (j=0;j<3;++j) if (b[j]==a[(i+1)%3] && b[(j+1)%3]==a[i]) break;
-            if (j<3) break;
+        const size_t begin=first; first=end;
+        if (end-begin<2 || source>=planar_faces.size() || !planar_faces[source]) continue;
+        std::vector<Triangle> face;
+        for (size_t t=begin;t<end;++t) face.push_back(triangle(mesh,t));
+        // A new diagonal must not duplicate an edge of another face (as in
+        // normalize_mesh_diagonals): that would make the mesh non-manifold.
+        const auto result=retriangulate(mesh,face,all);
+        if (result.empty()) continue;
+        for (const auto& t:face) for (unsigned k=0;k<3;++k) --all[edge(t[k],t[(k+1)%3])];
+        for (size_t t=begin;t<end;++t) {
+            const auto& r=result[t-begin];
+            for (unsigned k=0;k<3;++k) { mesh.indices[3*t+k]=r[k]; ++all[edge(r[k],r[(k+1)%3])]; }
         }
-        if (i==3) continue; // not one quad with consistent winding
-        const uint32_t u=a[i],v=a[(i+1)%3],p=a[(i+2)%3],q=b[(j+2)%3];
-        if (p==q || std::min({u,v,p,q})==std::min(u,v)) continue; // already through the lowest vertex
-        if (edges.count(edge(p,q))) continue;
-        const Triangle left{p,u,q},right{q,v,p};
-        auto n=cross(mesh,a); const auto nb=cross(mesh,b);
-        for (unsigned k=0;k<3;++k) n[k]+=nb[k];
-        // Strictly convex quad (boundary u,q,v,p) and both new triangles face
-        // the pair's own area normal: the new split stays inside the face.
-        const std::array<uint32_t,4> loop{u,q,v,p};
-        bool convex=true;
-        for (unsigned k=0;k<4;++k)
-            convex &= dot(cross(mesh,{loop[k],loop[(k+1)%4],loop[(k+2)%4]}),n)>0;
-        if (!convex || !(dot(cross(mesh,left),n)>0) || !(dot(cross(mesh,right),n)>0)) continue;
-        for (unsigned k=0;k<3;++k) {
-            mesh.indices[3*(second-1)+k]=left[k];
-            mesh.indices[3*second+k]=right[k];
-        }
-        edges.erase(edge(u,v)); edges.insert(edge(p,q));
     }
 }

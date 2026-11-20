@@ -3,8 +3,11 @@
 //! #7955: SMLib lists a tessellated solid's vertices and triangles in
 //! heap-address order. The adapter must emit one canonical form instead:
 //! vertices in (x, y, z) order, each triangle starting at its smallest vertex,
-//! triangles sorted by (source face, v0, v1, v2), and a planar, strictly convex
-//! two-triangle face split through its lowest vertex.
+//! triangles sorted by (source face, v0, v1, v2), coincident vertices in
+//! incident-corner order, and a planar, strictly convex two-triangle face split
+//! along its canonical diagonal (canonical_planar_faces: the shorter one, on a
+//! tie the lexicographically lower vertex pair, unless that is already an edge
+//! of another face).
 //!
 //! Observed on published parts that are the adapter's mesh unchanged. Positions,
 //! indices and source-face IDs are copied verbatim from the worker reply
@@ -73,14 +76,32 @@ fn less(a: Point, b: Point) -> bool {
     key(a).partial_cmp(&key(b)) == Some(std::cmp::Ordering::Less)
 }
 
+type Corner = (u32, [(f64, bool); 3], [(f64, bool); 3]);
+/// A vertex's incident corners as order_mesh compares them: (source face, next
+/// corner position, previous corner position), sorted.
+fn corners(part: &ShapePart) -> Vec<Vec<Corner>> {
+    let mut result = vec![Vec::new(); part.positions.len() / 3];
+    for (t, &face) in part.indices.chunks_exact(3).zip(&part.revision_local_faces) {
+        for k in 0..3 {
+            result[t[k] as usize].push((face, key(point(part, t[(k + 1) % 3])), key(point(part, t[(k + 2) % 3]))));
+        }
+    }
+    for c in &mut result { c.sort_by(|a, b| a.partial_cmp(b).unwrap()); }
+    result
+}
+
 fn check(model: &str, id: u32, part: &ShapePart) -> Result<(), String> {
     let vertices = (part.positions.len() / 3) as u32;
-    // Non-decreasing: coincident vertices are kept and ordered by their
-    // incident corners (mesh_canonical.cpp order_mesh), so equal neighbours
-    // are canonical too.
+    // Coordinates non-decreasing; coincident vertices are kept and ordered by
+    // their incident corners (mesh_canonical.cpp order_mesh).
+    let incident = corners(part);
     for v in 1..vertices {
-        if less(point(part, v), point(part, v - 1)) {
+        let (a, b) = (point(part, v - 1), point(part, v));
+        if less(b, a) {
             return Err(format!("{model}#{id}: vertex {v} is before vertex {} in (x, y, z) order", v - 1));
+        }
+        if !less(a, b) && incident[v as usize].partial_cmp(&incident[v as usize - 1]) == Some(std::cmp::Ordering::Less) {
+            return Err(format!("{model}#{id}: coincident vertices {} and {v} are not in incident-corner order", v - 1));
         }
     }
     let triangles: Vec<_> = part.indices.chunks_exact(3).zip(&part.revision_local_faces)
@@ -93,17 +114,27 @@ fn check(model: &str, id: u32, part: &ShapePart) -> Result<(), String> {
             return Err(format!("{model}#{id}: triangle {i} is not sorted by (face, v0, v1, v2)"));
         }
     }
-    // The adapter re-splits only a planar, strictly convex two-triangle face
-    // (mesh_canonical.cpp canonical_planar_quads); check only those.
+    // A planar, strictly convex two-triangle face takes the diagonal first in
+    // (squared length, lower vertex, upper vertex) order, unless another face
+    // already has that edge (canonical_planar_faces' existing-edge exception).
     let mut faces: BTreeMap<u32, Vec<[u32; 3]>> = BTreeMap::new();
     for (face, t) in &triangles { faces.entry(*face).or_default().push(*t); }
+    let edges_of = |face: u32| -> std::collections::BTreeSet<(u32, u32)> {
+        triangles.iter().filter(|(f, _)| *f != face)
+            .flat_map(|(_, t)| (0..3).map(move |k| (t[k].min(t[(k + 1) % 3]), t[k].max(t[(k + 1) % 3])))).collect()
+    };
     for (face, pair) in faces.iter().filter(|(_, t)| t.len() == 2) {
-        let Some(loop_) = quad_loop(pair) else { continue; };
-        if !planar_strictly_convex(part, loop_) { continue; }
-        let shared: Vec<_> = pair[0].iter().filter(|v| pair[1].contains(v)).collect();
-        let lowest = loop_.iter().min().unwrap();
-        if !shared.contains(&lowest) {
-            return Err(format!("{model}#{id}: quad face {face} is not split through its lowest vertex {lowest}"));
+        let Some([u, q, v, p]) = quad_loop(pair) else { continue; };
+        if !planar_strictly_convex(part, [u, q, v, p]) { continue; }
+        let rank = |a: u32, b: u32| {
+            let d = sub(point(part, a), point(part, b));
+            (dot(d, d), a.min(b), a.max(b))
+        };
+        let (current, other) = (rank(u, v), rank(p, q));
+        let (first, second) = if current.partial_cmp(&other) == Some(std::cmp::Ordering::Less) { (current, other) } else { (other, current) };
+        let expected = if edges_of(*face).contains(&(first.1, first.2)) { second } else { first };
+        if current != expected {
+            return Err(format!("{model}#{id}: quad face {face} uses diagonal {:?}, canonical is {:?}", (current.1, current.2), (expected.1, expected.2)));
         }
     }
     Ok(())

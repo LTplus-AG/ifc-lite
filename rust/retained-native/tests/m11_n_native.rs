@@ -67,13 +67,13 @@ fn reference_rows(root: &Path, model: &str, worker: &std::ffi::OsStr) -> Vec<ser
 /// ordinary (ASLR) workers and, where the kernel allows it, one with ASLR off,
 /// and compare bytes.
 ///
-/// The canonical form does not cover every case: a planar face of more than
-/// two triangles, a curved face other than a cylinder, and a cylinder pair the
-/// diagonal normalization skips (its alignment or chord guard) keep the SDK's
-/// triangulation, and coordinate order follows exact f64 bits. The committed
-/// corpus has none of those that vary (6 ordinary runs, 1 ASLR-off run and two
-/// CI runs collapsed to one form on 2026-11-19). If this test ever flakes, the
-/// failing rows name such a face: extend mesh_canonical.cpp to cover it, or
+/// The canonical form does not cover every case: a curved face other than a
+/// cylinder, a cylinder pair the diagonal normalization skips (its alignment or
+/// chord guard), and a planar face canonical_planar_faces declines keep the
+/// SDK's triangulation, and coordinate order follows exact f64 bits. Planar
+/// faces of more than two triangles were such a case until AC20-FZK-Haus #21966
+/// failed here (2026-11-20); they are retriangulated now. If this test flakes,
+/// the failing rows name such a face: extend mesh_canonical.cpp to cover it, or
 /// make the consumer compare it order-insensitively. Never retry until green.
 #[test]
 fn m11_n_reference_is_independent_of_worker_address_layout() {

@@ -22,7 +22,7 @@ void require(bool value,const char* message) {
 }
 struct Quad { uint32_t face; std::array<uint32_t,4> loop; };
 void canonicalize(AdapterMesh& mesh,const std::vector<bool>& planar) {
-    order_mesh(mesh); canonical_planar_quads(mesh,planar); order_mesh(mesh);
+    order_mesh(mesh); canonical_planar_faces(mesh,planar); order_mesh(mesh);
 }
 // Build `quads` with a shuffled vertex numbering, quad order, loop start and
 // diagonal. Same geometry and source faces each time.
@@ -80,6 +80,50 @@ bool bytes(const std::vector<double>& a,const std::vector<double>& b) {
 }
 void same_bytes(const AdapterMesh& a,const AdapterMesh& b,const char* message) {
     require(bytes(a.positions,b.positions) && a.indices==b.indices && a.faces==b.faces && bytes(a.normals,b.normals),message);
+}
+// One planar face (z = 0, face 0) given as a valid triangulation; `flips`
+// random convex flips give another valid triangulation of the same region,
+// then the vertex numbering, triangle order and corner rotation are shuffled.
+using Tri=std::array<uint32_t,3>;
+double orient(const std::vector<Point>& p,uint32_t a,uint32_t b,uint32_t c) {
+    return (p[b][0]-p[a][0])*(p[c][1]-p[a][1])-(p[b][1]-p[a][1])*(p[c][0]-p[a][0]);
+}
+AdapterMesh variant(const std::vector<Point>& points,std::vector<Tri> triangles,unsigned flips,std::mt19937& random) {
+    for (unsigned f=0;f<flips;++f) {
+        const size_t x=random()%triangles.size(),y=random()%triangles.size();
+        if (x==y) continue;
+        const Tri a=triangles[x],b=triangles[y];
+        for (unsigned i=0;i<3;++i) for (unsigned j=0;j<3;++j) {
+            if (!(b[j]==a[(i+1)%3] && b[(j+1)%3]==a[i])) continue;
+            const uint32_t u=a[i],v=a[(i+1)%3],p=a[(i+2)%3],q=b[(j+2)%3];
+            if (orient(points,p,u,q)>0 && orient(points,q,v,p)>0) { triangles[x]={p,u,q}; triangles[y]={q,v,p}; }
+            i=3; break;
+        }
+    }
+    std::vector<uint32_t> ids(points.size()); std::iota(ids.begin(),ids.end(),0u);
+    std::shuffle(ids.begin(),ids.end(),random);
+    std::shuffle(triangles.begin(),triangles.end(),random);
+    AdapterMesh mesh; mesh.positions.resize(points.size()*3);
+    for (size_t i=0;i<points.size();++i) for (unsigned axis=0;axis<3;++axis) mesh.positions[3*ids[i]+axis]=points[i][axis];
+    for (const auto& t:triangles) {
+        Tri c{ids[t[0]],ids[t[1]],ids[t[2]]}; std::rotate(c.begin(),c.begin()+random()%3,c.end());
+        mesh.indices.insert(mesh.indices.end(),c.begin(),c.end()); mesh.faces.push_back(0);
+    }
+    mesh.normals.assign(mesh.indices.size()*3,0.);
+    return mesh;
+}
+void planar_face_is_canonical(const std::vector<Point>& points,const std::vector<Tri>& triangles,
+    std::mt19937& random,const char* name) {
+    AdapterMesh reference=variant(points,triangles,0,random);
+    const auto vertices=vertex_set(reference); const double area=face_areas(reference).at(0);
+    canonicalize(reference,{true});
+    require(reference.indices.size()==3*triangles.size() && vertex_set(reference)==vertices,name);
+    require(std::abs(face_areas(reference).at(0)-area)<=1e-12*area,name);
+    for (unsigned run=0;run<48;++run) {
+        AdapterMesh mesh=variant(points,triangles,run,random);
+        canonicalize(mesh,{true});
+        same_bytes(mesh,reference,name);
+    }
 }
 }
 
@@ -189,5 +233,28 @@ void run_mesh_canonical_tests() {
         require(has_edge(quad(false),{0,0,0},{1,1,0}),"free quad split through its lowest vertex");
         const auto kept=quad(true);
         require(has_edge(kept,{1,0,0},{0,1,0}) && face_areas(kept).at(0)==1,"existing edge blocks the new diagonal");
+    }
+    // Planar faces of more than two triangles: every triangulation of one
+    // region (holes, reflex corners, interior vertices) has one canonical form.
+    {
+        // Square with a square hole (a wall with a window).
+        const std::vector<Point> ring{{0,0,0},{4,0,0},{4,4,0},{0,4,0},{1,1,0},{3,1,0},{3,3,0},{1,3,0}};
+        const std::vector<Tri> around{{0,1,5},{0,5,4},{1,2,6},{1,6,5},{2,3,7},{2,7,6},{3,0,4},{3,4,7}};
+        planar_face_is_canonical(ring,around,random,"face with a hole has one canonical triangulation");
+        AdapterMesh mesh=variant(ring,around,9,random); canonicalize(mesh,{true});
+        for (size_t t=0;t<mesh.faces.size();++t) {
+            double x=0,y=0; for (unsigned k=0;k<3;++k) { x+=mesh.positions[3*mesh.indices[3*t+k]]/3; y+=mesh.positions[3*mesh.indices[3*t+k]+1]/3; }
+            require(!(x>1 && x<3 && y>1 && y<3),"no triangle covers the hole");
+        }
+        // Convex hexagon, initially a fan.
+        std::vector<Point> hexagon;
+        for (unsigned i=0;i<6;++i) hexagon.push_back({std::cos(i*1.0471975511965976),std::sin(i*1.0471975511965976)*0.7,0});
+        planar_face_is_canonical(hexagon,{{0,1,2},{0,2,3},{0,3,4},{0,4,5}},random,"hexagon has one canonical triangulation");
+        // L shape (one reflex corner), initially a fan from its corner.
+        const std::vector<Point> l{{0,0,0},{2,0,0},{2,1,0},{1,1,0},{1,2,0},{0,2,0}};
+        planar_face_is_canonical(l,{{0,1,2},{0,2,3},{0,3,4},{0,4,5}},random,"L shape has one canonical triangulation");
+        // A square with an interior vertex and a vertex on one edge.
+        const std::vector<Point> inner{{0,0,0},{2,0,0},{2,2,0},{0,2,0},{.7,.9,0},{1,0,0}};
+        planar_face_is_canonical(inner,{{0,5,4},{5,1,4},{1,2,4},{2,3,4},{3,0,4}},random,"interior and edge vertices canonical");
     }
 }

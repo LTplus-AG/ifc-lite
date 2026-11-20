@@ -6,11 +6,11 @@
      }
 +    // The SDK enumerates polygons, vertices and corners in heap-address order,
 +    // which varies between runs on the same input. Order first, so the
-+    // cylinder flips walk canonical IDs; then fix planar-quad diagonals and
++    // cylinder flips walk canonical IDs; then retriangulate planar faces and
 +    // order again. Positions and source-face IDs are unchanged.
 +    order_mesh(*mesh);
      normalize_mesh_diagonals(*mesh,angle,chord,cylinders);
-+    canonical_planar_quads(*mesh,planar);
++    canonical_planar_faces(*mesh,planar);
 +    order_mesh(*mesh);
      mesh->info.vertex_count = uint32_t(mesh->positions.size()/3);
      mesh->info.triangle_count = uint32_t(mesh->indices.size()/3);

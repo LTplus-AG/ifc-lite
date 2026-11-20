@@ -13,16 +13,19 @@ export type ValidationExecutor = (job: ValidationJob, signal: AbortSignal) => Pr
 export async function loadSemanticSource(input: SourceInput, signal: AbortSignal, execute: ValidationExecutor = validateInWorker, onRetrieved?: () => void, commit: <T>(write: () => T) => T = write => write()) {
   const initial = useSemanticSession.getState(), profile = initial.profile;
   let diagnostic = ''; const setDiagnostic = (value: string) => { diagnostic = value; };
-  const setDocument: typeof initial.setDocument = value => commit(() => initial.setDocument(value));
-  const setGraph: typeof initial.setGraph = value => commit(() => initial.setGraph(value));
-  const setResults: typeof initial.setResults = value => commit(() => initial.setResults(value));
-  const setFindings: typeof initial.setFindings = value => commit(() => initial.setFindings(value));
+  // A refused or failed write (a revoked grant) must fail the load, never become a diagnostic.
+  let writeFailure: unknown;
+  const write = <T,>(work: () => T): T => { try { return commit(work); } catch (failure) { writeFailure = failure; throw failure; } };
+  const setDocument: typeof initial.setDocument = value => write(() => initial.setDocument(value));
+  const setGraph: typeof initial.setGraph = value => write(() => initial.setGraph(value));
+  const setResults: typeof initial.setResults = value => write(() => initial.setResults(value));
+  const setFindings: typeof initial.setFindings = value => write(() => initial.setFindings(value));
   const session = { ...initial,
-    setGraphFormat: (value: Parameters<typeof initial.setGraphFormat>[0]) => commit(() => initial.setGraphFormat(value)),
-    setReport: (value: Parameters<typeof initial.setReport>[0]) => commit(() => initial.setReport(value)),
-    setRetrievedAt: (value: Parameters<typeof initial.setRetrievedAt>[0]) => commit(() => initial.setRetrievedAt(value)),
-    setQueries: (value: Parameters<typeof initial.setQueries>[0]) => commit(() => initial.setQueries(value)),
-    setResultMapping: (value: Parameters<typeof initial.setResultMapping>[0]) => commit(() => initial.setResultMapping(value)),
+    setGraphFormat: (value: Parameters<typeof initial.setGraphFormat>[0]) => write(() => initial.setGraphFormat(value)),
+    setReport: (value: Parameters<typeof initial.setReport>[0]) => write(() => initial.setReport(value)),
+    setRetrievedAt: (value: Parameters<typeof initial.setRetrievedAt>[0]) => write(() => initial.setRetrievedAt(value)),
+    setQueries: (value: Parameters<typeof initial.setQueries>[0]) => write(() => initial.setQueries(value)),
+    setResultMapping: (value: Parameters<typeof initial.setResultMapping>[0]) => write(() => initial.setResultMapping(value)),
   };
   async function accept(job: ValidationJob, signal: AbortSignal, bindings?: SparqlResults, guard?: () => boolean) {
     const inputVersion = useSemanticSession.getState().dataVersion;
@@ -60,7 +63,7 @@ export async function loadSemanticSource(input: SourceInput, signal: AbortSignal
         setResults(response.value); session.setResultMapping(input.mapping); setDocument(undefined); setGraph(''); setFindings([]);
         inputVersion = useSemanticSession.getState().dataVersion;
         try { await accept({ results: response.value, source: response.source, mapping: input.mapping }, signal, response.value, guard); }
-        catch (failure) { if (!signal.aborted) setDiagnostic(failure instanceof Error ? failure.message : String(failure)); }
+        catch (failure) { if (failure === writeFailure) throw failure; if (!signal.aborted) setDiagnostic(failure instanceof Error ? failure.message : String(failure)); }
       } else if (response.kind === 'construct') {
         setGraph(response.value); session.setGraphFormat('text/turtle'); setDocument(undefined); setResults(undefined); setFindings([]);
         inputVersion = useSemanticSession.getState().dataVersion;
@@ -68,7 +71,7 @@ export async function loadSemanticSource(input: SourceInput, signal: AbortSignal
           const validated = await execute({ graph: response.value, profile }, signal);
           if (!signal.aborted && guard()) { setFindings(validated.findings); setDiagnostic(validated.diagnostic ?? ""); session.setReport(validated.diagnostic ? undefined : validated.report); }
           else if (!signal.aborted) throw new Error('Loaded models changed during validation');
-        } catch (failure) { if (!signal.aborted) setDiagnostic(failure instanceof Error ? failure.message : String(failure)); }
+        } catch (failure) { if (failure === writeFailure) throw failure; if (!signal.aborted) setDiagnostic(failure instanceof Error ? failure.message : String(failure)); }
 
       } else {
         const validated = await execute({ document: response.value, profile }, signal);

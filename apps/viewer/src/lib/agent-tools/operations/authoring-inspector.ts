@@ -33,7 +33,7 @@ export const inspectorOperations = [
   }),
   viewerOperation<{ kind: AuthoredElementKind; field: string; metres: number; expected_defaults: string }>(meta('authoring.defaults.dimension', 'Set one existing native default dimension in metres, preserving the command HUD/inspector’s shared state.'), {
     type: 'object', properties: { kind: kindSchema, field: { type: 'string', minLength: 1, maxLength: 100 }, metres: { type: 'number', minimum: -1000000, maximum: 1000000 }, expected_defaults: { type: 'string', maxLength: 200000 } }, required: ['kind', 'field', 'metres', 'expected_defaults'], additionalProperties: false,
-  }, (i, c) => out(c.commit(() => { expected(i.expected_defaults); const s = useViewerStore.getState(); if (!Object.hasOwn(s.authoringDefaults.dims[i.kind], i.field)) throw invalidInput('unknown-target', 'Unknown native dimension.');
+  }, (i, c) => out(c.commit(() => { const s = useViewerStore.getState(); if (!Object.hasOwn(s.authoringDefaults.dims[i.kind], i.field)) throw invalidInput('unknown-target', 'Unknown native dimension.'); expected(i.expected_defaults);
     // A beam's Bottom is an offset and may be anything; a sill may sit on the floor; sizes must be positive (#10793).
     if (i.field !== 'Bottom' && (i.field === 'SillHeight' ? i.metres < 0 : i.metres <= 0)) throw invalidInput('invalid-value', 'A native construction dimension must be positive (a SillHeight may be zero).'); s.setAuthoringDims(i.kind, { [i.field]: i.metres }); return { expected_defaults: JSON.stringify(useViewerStore.getState().authoringDefaults) };
   }))),

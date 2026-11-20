@@ -61,8 +61,8 @@ function reviews(c: ViewerOperationContext) {
 }
 function review(c: ViewerOperationContext, token: string) {
   const value = reviews(c).get(token);
-  if (!value || value.result !== useViewerStore.getState().clashResult)
-    throw stale('Unknown or stale native classification review.');
+  if (!value) throw invalidInput('unknown-target', 'Unknown native classification review.');
+  if (value.result !== useViewerStore.getState().clashResult) throw stale('Native classification findings changed.');
   return value;
 }
 const tokenInput = {
@@ -141,8 +141,9 @@ export const clashClassificationOperations = [
       ]);
       const saved = review(c, i.token);
       assertToolActive(c);
-      if (saved.model !== useViewerStore.getState().chatActiveModel || saved.model === UNCONFIGURED_MODEL_ID)
-        throw stale('Native classification model changed or is unconfigured.');
+      if (saved.model !== useViewerStore.getState().chatActiveModel)
+        throw stale('Native classification model changed.');
+      if (saved.model === UNCONFIGURED_MODEL_ID) throw unavailable('Configure a native classification model first.');
       const route = resolveStreamRoute(saved.model, getApiKeys());
       if (route.kind === 'missing-key') throw unavailable('The native provider route requires a configured key.');
       if (

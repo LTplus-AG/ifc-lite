@@ -26,10 +26,11 @@ export const manualValidationOperations = [
     type: 'object', properties: { action: { type: 'string', enum: ['new', 'close', 'select', 'remove', 'duplicate', 'rename', 'group.add', 'group.rename', 'group.remove', 'group.move', 'item.add', 'item.update', 'item.remove', 'item.move'] }, id: { type: 'string', maxLength: 200 }, group_id: { type: 'string', maxLength: 200 }, item_id: { type: 'string', maxLength: 200 }, text: { type: 'string', maxLength: 500 }, description: { type: 'string', maxLength: 2000 }, delta: { type: 'integer', minimum: -1, maximum: 1 }, expected_library: { type: 'string', maxLength: 1000000 } },
     required: ['action', 'id', 'group_id', 'item_id', 'text', 'description', 'delta', 'expected_library'], additionalProperties: false,
   }, (i, c) => out(c.commit(() => {
-    expected(i.expected_library); const s = useViewerStore.getState();
+    const s = useViewerStore.getState();
     if (['select', 'remove', 'duplicate'].includes(i.action) && !s.manualLibrary.checklists.some(row => row.id === i.id)) throw invalidInput('unknown-target', 'Unknown checklist instance.');
     if (i.action.startsWith('group.') && i.action !== 'group.add' && !s.manualChecklist?.groups.some(row => row.id === i.group_id)) throw invalidInput('unknown-target', 'Unknown checklist group.');
     if (i.action.startsWith('item.') && !s.manualChecklist?.groups.some(row => row.id === i.group_id && (i.action === 'item.add' || row.items.some(item => item.id === i.item_id)))) throw invalidInput('unknown-target', 'Unknown checklist group/item.');
+    expected(i.expected_library);
     switch (i.action) {
       case 'new': s.newManualChecklist(); break; case 'close': s.setManualChecklist(null); break;
       case 'select': s.selectManualChecklist(i.id); break; case 'remove': s.removeManualChecklist(i.id); break;
@@ -43,8 +44,9 @@ export const manualValidationOperations = [
   }))),
   viewerOperation<{ fingerprint: string; item_id: string; status: 'pass' | 'fail' | 'warning' | 'unanswered'; comment: string; expected_library: string }>(meta('validation.manual.answer', 'Record a supplied verdict/comment against an exact durable model fingerprint and checklist item. This does not establish that a physical/manual check was performed.', 'configuration'), {
     type: 'object', properties: { fingerprint: { type: 'string', minLength: 1, maxLength: 200 }, item_id: { type: 'string', minLength: 1, maxLength: 200 }, status: { type: 'string', enum: ['pass', 'fail', 'warning', 'unanswered'] }, comment: { type: 'string', maxLength: 2000 }, expected_library: { type: 'string', maxLength: 1000000 } }, required: ['fingerprint', 'item_id', 'status', 'comment', 'expected_library'], additionalProperties: false,
-  }, (i, c) => out(c.commit(() => { expected(i.expected_library); const s = useViewerStore.getState();
+  }, (i, c) => out(c.commit(() => { const s = useViewerStore.getState();
     if (!s.manualChecklist?.groups.some(group => group.items.some(item => item.id === i.item_id))) throw invalidInput('unknown-target', 'Unknown checklist item.');
+    expected(i.expected_library);
     return s.setManualAnswer(i.fingerprint, i.item_id, { status: i.status === 'unanswered' ? null : i.status, comment: i.comment });
   }))),
   viewerOperation({ ...meta('validation.manual.export', 'Export the active native checklist template as a host-owned JSON artifact.', 'artifact'), outputSchema: {

@@ -54,11 +54,11 @@ export const clashReviewOperations = [
       if (i.action === 'select')
         return out(
           c.commit(() => {
-            guard();
             const s = useClashGroupLibrary.getState();
             if (s.status.phase !== 'ready') throw unavailable('Native group workspace library unavailable.');
             if (i.workspace_id !== DEFAULT_GROUP_WORKSPACE && !s.entries.some((row) => row.id === i.workspace_id))
               throw invalidInput('unknown-target', 'Unknown native group workspace.');
+            guard();
             useClashGroupLibrary.setState({ activeId: i.workspace_id });
             return { active_id: i.workspace_id, expected_library: groupLibraryRevision(useClashGroupLibrary.getState()) };
           }),

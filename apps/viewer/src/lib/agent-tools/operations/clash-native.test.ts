@@ -97,12 +97,13 @@ describe('native Clash operation parity (#10525 follow-up)', () => {
     useViewerStore.setState({ clashResult: { ...clashResult, clashes } });
     const ids = clashes.map(clash => clash.id);
     assert.ok(ids.length > 1);
-    for (const clash_ids of [[ids[0]], ids]) {
+    for (const [element, clash_ids] of [['pair', [ids[0]]], ['pair', ids], ['a', [ids[0]]], ['b', [ids[0]]]] as const) {
       useViewerStore.getState().setClashError(null);
-      const result = await call('clash.focus', { clash_ids, run_seq, element: 'pair', mode: 'highlight' }, true);
+      const result = await call('clash.focus', { clash_ids, run_seq, element, mode: 'highlight' }, true);
       assert.equal(result.errorCode, 'UNSUPPORTED_OPERATION', result.text);
       assert.equal((result.structured as { reason: string }).reason, 'unavailable');
       assert.equal(useViewerStore.getState().clashErrorKind, 'unavailable');
+      if (element !== 'pair') continue;
       useViewerStore.getState().setClashError(null);
       const topic = await call('clash.topic.create', {
         kind: clash_ids.length === 1 ? 'pair' : 'group', clash_ids, run_seq, group_name: 'Group', mode: 'highlight',

@@ -115,13 +115,32 @@ describe('reviewed model candidates (#10792)', () => {
     assert.equal(unchanged.errorCode, 'INVALID_INPUT', unchanged.text);
     assert.equal((unchanged.structured as { reason: string }).reason, 'invalid-value');
   });
-  it('a disabled operation returns a permission denial (#10871)', async (t) => {
-    resetFeaturesForTest({ default: 'all', disable: ['tools.section'] });
-    t.after(() => resetFeaturesForTest());
-    const result = await invoke('section.box', { min: [0, 0, 0], max: [1, 2, 3] }, true);
-    assert.equal(result.errorCode, 'PERMISSION_DENIED', result.text);
-    assert.equal((result.structured as { reason: string }).reason, 'disabled');
-  });
+  for (const [operation, input] of [
+    ['authoring.defaults.dimension', { kind: 'wall', field: 'unknown', metres: 1, expected_defaults: '{}' }],
+    ['zones.set.edit', { set_id: 'unknown', action: 'remove', name: '', visible: true, expected_configuration: '1:0' }],
+    ['clash.reports.write', { action: 'rename', id: 'unknown', name: 'Report', report_json: '', expected_reports: '1:0' }],
+    ['clash.presets.write', { action: 'delete', id: 'unknown', preset_json: '', enabled: false, expected_presets: '[]' }],
+    ['validation.manual.answer', { item_id: 'unknown', fingerprint: 'A', status: 'pass', comment: '', expected_library: '{}' }],
+  ] as const) {
+    it(`${operation} identifies a missing target before comparing a stale snapshot (#10871)`, async () => {
+      const result = await invoke(operation, input, true);
+      assert.equal(result.errorCode, 'INVALID_INPUT', result.text);
+      assert.equal((result.structured as { reason: string }).reason, 'unknown-target');
+    });
+  }
+
+  for (const [feature, id, input] of [
+    ['tools.section', 'section.box', { min: [0, 0, 0], max: [1, 2, 3] }],
+    ['check.clash', 'clash.run', {}],
+  ] as const) {
+    it(`a disabled ${feature} operation returns a permission denial (#10871)`, async (t) => {
+      resetFeaturesForTest({ default: 'all', disable: [feature] });
+      t.after(() => resetFeaturesForTest());
+      const result = await invoke(id, input, true);
+      assert.equal(result.errorCode, 'PERMISSION_DENIED', result.text);
+      assert.equal((result.structured as { reason: string }).reason, 'disabled');
+    });
+  }
 
   it('#20: replaying an applied token keeps the receipt the Changes panel marked undone', async () => {
     const token = await prepareRename();
@@ -564,8 +583,10 @@ describe('saved clash report deletion (#10792)', () => {
       });
       const result = await invoke('clash.reports.delete.apply', { token }, true);
       assert.equal(reads, 2, 'the failure occurs on the guard read');
-      assert.equal(result.errorCode, 'UNSUPPORTED_OPERATION', result.text);
-      assert.equal((result.structured as { reason: string }).reason, 'unavailable');
+      assert.equal(result.errorCode, 'INTERNAL_ERROR', result.text);
+      const details = result.structured as { reason: string; dependency?: string };
+      assert.equal(details.reason, 'internal');
+      assert.ok(details.dependency);
       assert.ok(useViewerStore.getState().savedClashReports.some(report => report.id === id));
     });
   }

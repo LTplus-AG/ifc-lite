@@ -146,6 +146,8 @@ export const clashSettingsOperations = [
       return out(
         c.commit(() => {
           const s = useViewerStore.getState();
+          if ((i.action === 'update' || i.action === 'delete' || i.action === 'enabled') && !s.clashPresets.some(p => p.id === i.id))
+            throw invalidInput('unknown-target', 'Unknown native preset.');
           if (JSON.stringify(s.clashPresets) !== i.expected_presets) throw stale('Clash presets changed.');
           if (i.action === 'reset') return saved(s.resetClashPresets());
           if (i.action === 'import') {
@@ -155,7 +157,6 @@ export const clashSettingsOperations = [
             return saved(result);
           }
           if (i.action === 'create') return saved(s.createClashPreset(preset!));
-          if (!s.clashPresets.some((p) => p.id === i.id)) throw invalidInput('unknown-target', 'Unknown native preset.');
           return saved(
             i.action === 'update'
               ? s.updateClashPreset(
@@ -243,10 +244,11 @@ export const clashSettingsOperations = [
       return out(
         c.commit(() => {
           const s = useViewerStore.getState();
+          if ((i.action === 'remove' || i.action === 'enabled') && !s.clashExclusions.some(rule => rule.id === i.id))
+            throw invalidInput('unknown-target', 'Unknown native exclusion.');
           if (JSON.stringify(s.clashExclusions) !== i.expected_exclusions) throw stale('Clash exclusions changed.');
           if (i.action === 'clear') return saved(s.clearClashExclusions());
           if (i.action === 'remove' || i.action === 'enabled') {
-            if (!s.clashExclusions.some((rule) => rule.id === i.id)) throw invalidInput('unknown-target', 'Unknown native exclusion.');
             return saved(
               i.action === 'remove' ? s.removeClashExclusion(i.id) : s.setClashExclusionEnabled(i.id, i.enabled),
             );

@@ -4,7 +4,8 @@
 
 import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
 import { useViewerStore } from '@/store';
-import { assertToolActive } from '../cancellation';
+import { assertToolActive, cancelledDispatch } from '../cancellation';
+import { isAbortError } from '@/lib/runs/abort';
 import type { ReadyModel, ToolCallContext, ToolHost } from '../types';
 import { operationArtifacts } from './artifacts';
 import { contractFingerprint } from './metadata';
@@ -41,6 +42,15 @@ function withoutReason(details: Record<string, unknown> | undefined) {
   if (!details) return undefined;
   const { reason: _reason, ...rest } = details; return rest;
 }
+function operationFailure(error: unknown, operationId: string): ToolExecutionError {
+  if (isAbortError(error)) return cancelledDispatch();
+  if (error instanceof ToolExecutionError) {
+    if (error.code === ToolErrorCode.ENTITY_NOT_FOUND) return invalidInput('unknown-target', error.message, error.details);
+    return error;
+  }
+  return internal(error instanceof Error ? error.message : 'Operation failed.', { operation_id: operationId });
+}
+
 function invalid(message: string, reason: InputReason = 'invalid-value'): never {
   throw invalidInput(reason, message);
 }
@@ -178,7 +188,7 @@ export async function executeOperation(
   if (!args.background) {
     const run = async (forget = () => {}) => {
       // Nothing native has run yet, so a keyed retry of this failure may run again (#10669).
-      try { await entry.load?.(); check(); } catch (error) { forget(); throw error; }
+      try { await entry.load?.(); check(); } catch (error) { forget(); throw operationFailure(error, entry.id); }
       try {
         const result = await entry.execute(input, operationContext);
         const value = accepted(result, () => { if (!committed) check(); });
@@ -189,7 +199,7 @@ export async function executeOperation(
                   // reason stays 'internal': the write committed, so no retry reason may survive. The cause is kept beside it.
           details: { reason: 'internal', ...(error instanceof ToolExecutionError ? { cause_code: error.code, cause_reason: error.details?.reason, cause_details: withoutReason(error.details) } : {}),
             committed: true, revision: activeRevision, operation_id: entry.id, model_id: model?.id ?? null } });
-        throw error;
+        throw operationFailure(error, entry.id);
       }
     };
     if (typeof args.idempotency_key !== 'string') return run();
@@ -222,10 +232,10 @@ export async function executeOperation(
     .then(result => { snapshot.result = accepted(result, active); snapshot.state = 'succeeded'; })
     .catch((error: unknown) => {
       snapshot.state = controller.signal.aborted ? 'cancelled' : 'failed';
-      snapshot.error = error instanceof Error ? error.message : 'Operation failed.';
-      const refusal = error instanceof ToolExecutionError ? error : undefined;
-      snapshot.error_code = refusal?.code ?? (controller.signal.aborted ? ToolErrorCode.CANCELLED : ToolErrorCode.INTERNAL_ERROR);
-      if (refusal?.details) snapshot.error_details = refusal.details;
+      const refusal = controller.signal.aborted ? cancelledDispatch() : operationFailure(error, entry.id);
+      snapshot.error = refusal.message;
+      snapshot.error_code = refusal.code;
+      if (refusal.details) snapshot.error_details = refusal.details;
     }).finally(() => {
       context.signal?.removeEventListener('abort', abort);
       host.lifetimeSignal?.removeEventListener('abort', abort);

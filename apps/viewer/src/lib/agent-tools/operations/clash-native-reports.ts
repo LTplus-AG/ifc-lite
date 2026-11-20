@@ -51,7 +51,7 @@ async function dependencies(id: string) {
   ]);
   const entries = await loadDocuments().catch(error => {
     console.warn('[Clash reports] Documents read failed:', error);
-    throw unavailable('Saved Documents could not be read. Restore that storage, then prepare again.');
+    throw internal('Saved Documents could not be read. Restore that storage, then prepare again.', { dependency: 'documents' });
   });
   const preview = reportChartDependencies(useViewerStore.getState(), { kind: 'clash', id }, { entries, phase: 'ready' });
   // Opening the library is a configuration effect of its own, so a read does not do it here.
@@ -59,7 +59,7 @@ async function dependencies(id: string) {
   // Invalid single dashboards (omittedDashboards) and recovered documents stay in the preview for the agent to
   // weigh, as the panel shows them; only storage that could not be read at all hides every reference in it.
   if (preview.documentPhase === 'unavailable' || preview.dashboardsUnavailable)
-    throw unavailable('Saved dashboards or Documents could not be read, so their references to this report are unknown. Restore that storage, then prepare again.');
+    throw internal('Saved dashboards or Documents could not be read, so their references to this report are unknown. Restore that storage, then prepare again.', { dependency: preview.dashboardsUnavailable ? 'dashboards' : 'documents' });
   return preview;
 }
 export const clashReportOperations = [
@@ -141,6 +141,8 @@ export const clashReportOperations = [
       assertToolActive(c);
       const ok = await c.commitAsync(async () => {
         const s = useViewerStore.getState();
+        if (i.action === 'rename' && !s.savedClashReports.some(row => row.id === i.id))
+          throw invalidInput('unknown-target', 'Unknown saved clash report.');
         assertRevision(s.savedClashReports, i.expected_reports, 'Saved reports changed.');
         if (i.action === 'restore') return s.restoreSavedClashReports();
         if (i.action === 'retry') return s.retrySaveClashReports();
@@ -151,10 +153,9 @@ export const clashReportOperations = [
           if (result === 'storage') throw internal('Native report import could not be saved.');
           return true;
         }
-        if (!s.savedClashReports.some((row) => row.id === i.id)) throw invalidInput('unknown-target', 'Unknown saved clash report.');
         return s.renameSavedClashReport(i.id, i.name);
       });
-      if (!ok) throw unavailable('Native report storage refused. Read the reports again and retry.');
+      if (!ok) throw internal('Native report storage refused. Inspect the report library save status.');
       return out({ completed: i.action });
     },
   ),

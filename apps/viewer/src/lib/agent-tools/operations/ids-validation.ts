@@ -57,23 +57,28 @@ export const nativeValidationOperations = [
     required: ['action', 'id', 'kind', 'content', 'definition_revision'], additionalProperties: false,
   }, async (i, c) => {
     const [{ parseRuleSetFile }, { parseIDS }] = await Promise.all([import('@ifc-lite/rules'), import('@ifc-lite/ids')]);
-    assertToolActive(c); libraryRevision(i.definition_revision);
+    assertToolActive(c);
+    const state = useViewerStore.getState();
+    const kind = i.action === 'rules.import' ? 'rules' : i.action === 'ids.import' ? 'ids' : undefined;
+    const targetsEntry = i.action === 'activate' || i.action === 'remove' || (kind !== undefined && i.id !== '');
+    if (targetsEntry && !state.validationDefinitions.entries.some(entry => entry.id === i.id && (!kind || entry.kind === kind)))
+      throw invalidInput('unknown-target', 'Unknown native validation definition.');
+    libraryRevision(i.definition_revision);
     if (i.action === 'rules.import' || i.action === 'rules.draft') {
       const parsed = parseRuleSetFile(parseJsonInput(i.content, 'content')); if (!parsed.ok) throw invalidInput('invalid-value', parsed.error);
       return out(c.commit(() => { libraryRevision(i.definition_revision); const s = useViewerStore.getState();
         if (i.action === 'rules.draft') s.setValidationRuleSetDraft(parsed.file);
-        else if (!s.addValidationDefinition({ kind: 'rules', file: parsed.file }, i.id || undefined)) throw invalidInput('refused', s.validationDefinitionsError ?? 'Native definition save refused.');
+        else if (!s.addValidationDefinition({ kind: 'rules', file: parsed.file }, i.id || undefined)) throw invalidInput('refused', s.validationDefinitionsError ?? 'Native definition was refused.');
         return { revision: useViewerStore.getState().validationDefinitionRevision, storageError: useViewerStore.getState().validationDefinitionsError };
       }));
     }
     if (i.action === 'ids.import') {
       const document = decodedInput('content', () => parseIDS(i.content)); return out(c.commit(() => { libraryRevision(i.definition_revision); const s = useViewerStore.getState();
-        if (!s.addValidationDefinition({ kind: 'ids', xml: i.content, document }, i.id || undefined)) throw invalidInput('refused', s.validationDefinitionsError ?? 'Native IDS definition refused.');
+        if (!s.addValidationDefinition({ kind: 'ids', xml: i.content, document }, i.id || undefined)) throw invalidInput('refused', s.validationDefinitionsError ?? 'Native IDS definition was refused.');
         return { revision: useViewerStore.getState().validationDefinitionRevision, storageError: useViewerStore.getState().validationDefinitionsError };
       }));
     }
     return out(c.commit(() => { libraryRevision(i.definition_revision); const s = useViewerStore.getState();
-      if (i.action !== 'deactivate' && !s.validationDefinitions.entries.some(entry => entry.id === i.id)) throw invalidInput('unknown-target', 'Unknown native validation definition.');
       if (i.action === 'activate') s.selectValidationDefinition(i.id); else if (i.action === 'remove') s.removeValidationDefinition(i.id); else s.deactivateValidationDefinition(i.kind);
       return { revision: useViewerStore.getState().validationDefinitionRevision, storageError: useViewerStore.getState().validationDefinitionsError };
     }));
@@ -163,14 +168,15 @@ export const nativeValidationOperations = [
     type: 'object', properties: { action: { type: 'string', enum: ['rename', 'remove', 'reuseManual', 'restore', 'retry'] }, id: { type: 'string', maxLength: 200 }, name: { type: 'string', maxLength: 200 }, expected_reports: revisionInput }, required: ['action', 'id', 'name', 'expected_reports'], additionalProperties: false,
   }, async (i, c) => {
     const expected = () => assertRevision(useViewerStore.getState().savedValidationReports, i.expected_reports, 'The native report library changed. Inspect again.');
-    expected(); const s = useViewerStore.getState();
-    if (i.action === 'reuseManual') {
-      const report = s.savedValidationReports.find(row => row.id === i.id); if (!report) throw invalidInput('unknown-target', 'Unknown saved native report.');
+    const s = useViewerStore.getState();
+    const report = s.savedValidationReports.find(row => row.id === i.id);
+    if (!report && i.action !== 'restore' && i.action !== 'retry') throw invalidInput('unknown-target', 'Unknown saved native report.');
+    expected();
+    if (i.action === 'reuseManual' && report) {
       c.commit(() => { expected(); if (!s.reuseManualValidationReport(report)) throw unavailable('Native manual report reuse is unavailable for the current fingerprints.'); });
       return out({ reused: i.id });
     }
     const result = await c.commitAsync(() => { expected(); if (i.action === 'restore') return s.restoreValidationReports(); if (i.action === 'retry') return s.retryValidationReportsSave();
-      if (!s.savedValidationReports.some(row => row.id === i.id)) throw invalidInput('unknown-target', 'Unknown saved native report.');
       return i.action === 'rename' ? s.renameValidationReport(i.id, i.name) : s.removeValidationReport(i.id);
     }, done => !!done); if (!result) throw internal('Native report storage operation failed.'); return out({ completed: true });
   }),

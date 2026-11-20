@@ -141,10 +141,10 @@ export function createClashFocus(options: {
     }
     return true;
   };
-  const selectElement = (el: ClashElementRef, mode: ClashFocusMode = 'highlight'): void => {
+  const selectElement = (el: ClashElementRef, mode: ClashFocusMode = 'highlight'): boolean => {
     const state = useViewerStore.getState();
     const ref = refOf(el);
-    if (!ref) return;
+    if (!ref) return false;
     state.clearEntitySelection();
     const one = new Map<number, [number, number, number, number]>([[el.ref, CLASH_COLOR_A]]);
     state.setClashHighlightColors(one);
@@ -154,6 +154,7 @@ export function createClashFocus(options: {
     state.clearClashSolid();
     applyFocusMode([el.ref], mode);
     requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
+    return true;
   };
   const highlightAll = (): void => {
     const state = useViewerStore.getState();

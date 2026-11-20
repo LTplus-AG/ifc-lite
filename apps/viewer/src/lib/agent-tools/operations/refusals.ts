@@ -95,9 +95,6 @@ function diagnosticOf(error: Error): string {
 }
 
 type SaveReason = SaveFailureReason | ClashSaveFailureReason;
-/** Save reasons the viewer can clear without a different input: blocked, contended or unreadable storage, a full library. */
-const SAVE_UNAVAILABLE: ReadonlySet<SaveReason> = new Set<SaveReason>(['unavailable', 'unreadable', 'too_many']);
-
-/** A failed native save, by its reason in `details.save`; anything else (quota, serialize, a failed rollback) is internal. */
+/** Storage failures keep their native reason. A full library is a capacity precondition. */
 export const saveRefusal = (failure: { reason: SaveReason; message: string }) =>
-  (SAVE_UNAVAILABLE.has(failure.reason) ? unavailable : internal)(failure.message, { save: failure.reason });
+  (failure.reason === 'too_many' ? unavailable : internal)(failure.message, { save: failure.reason });

@@ -299,8 +299,9 @@ export const nativeClashOperations = [
       if (i.element !== 'pair' && pairs.length !== 1) throw invalidInput('invalid-value', 'Choose one clash for a single-element focus.');
       return out(
         c.commit(() => {
-          if (i.element !== 'pair') runtime.selectElement(pairs[0][i.element], i.mode);
-          else if (pairs.length === 1) {
+          if (i.element !== 'pair') {
+            if (!runtime.selectElement(pairs[0][i.element], i.mode)) throw clashFocusRefusal('Native element focus refused.');
+          } else if (pairs.length === 1) {
             if (!runtime.focusClash(pairs[0], i.mode)) throw clashFocusRefusal('Native pair focus refused.');
           } else if (!runtime.focusClashes(pairs, i.mode))
             throw clashFocusRefusal('Native group focus refused.');

@@ -131,6 +131,7 @@ export const validationPanelEn = {
   'contentStorage.cancelArtifactImportConfirm': 'Cancel the unfinished Filters, Lists and Lenses import? Entries already saved are kept. Keep the original backup file to recover the unsaved entries.',
   'contentStorage.retryAll': 'Retry all libraries',
   'contentStorage.someUnsaved': 'Some content could not be saved. Keep this tab open and download a backup before closing it.',
+  'contentStorage.recoveryReadIncomplete': 'Some preserved originals could not be read. This download contains the originals currently available.',
   'contentStorage.recovery': 'Download preserved originals',
   'contentStorage.cleanup': 'Remove migrated legacy copies',
   'contentStorage.restore': 'Reload saved versions',

@@ -17,7 +17,7 @@ import { loadRevisionBaseline, saveRevisionBaseline } from '../clash/revision-ba
 import { loadDefinitionLibrary, saveDefinitionLibrary } from '../validation/definition-library.js';
 import { loadManualLibrary, saveManualLibrary } from '../validation/manual/persistence.js';
 import { CHECKLIST_VERSION, type ChecklistTemplate } from '../validation/manual/checklist.js';
-import { createContentBackup, encodeContentBackup, importContentBackup, parseContentBackup, readBackupDrafts } from './content-backup.js';
+import { createContentBackup, encodeContentBackup, importContentBackup, parseContentBackup, readBackupDrafts, readContentRecovery } from './content-backup.js';
 import { contentTransaction, transactionDone } from './content-database.js';
 
 const empty = () => ({ validation: [], comparison: [], document: [] });
@@ -163,4 +163,20 @@ test('#10976 restores the active checklist beside pending legacy answers without
   assert.equal(await importContentBackup(file), 1);
   assert.deepEqual(loadManualLibrary().library,
     { version: 1, activeId: 'imported', checklists: [checklist], pendingLegacyAnswers: pending });
+});
+
+test('#10976 preserved-originals download reports an incomplete browser read', async () => {
+  const read = localStorage.getItem.bind(localStorage);
+  const refused = mock.method(localStorage, 'getItem', (key: string) => {
+    if (key === reviewKey) throw new DOMException('Review storage blocked', 'SecurityError');
+    return read(key);
+  });
+  try {
+    await assert.rejects(readContentRecovery(), /Could not fully read browser storage for preserved originals/);
+    localStorage.setItem(presetsKey, '{invalid rules');
+    const incomplete = mock.fn();
+    const rows = await readContentRecovery(incomplete);
+    assert.equal(incomplete.mock.callCount(), 1);
+    assert.ok(rows.some(row => JSON.parse(JSON.parse(row.raw).raw).original === '{invalid rules'));
+  } finally { refused.mock.restore(); }
 });

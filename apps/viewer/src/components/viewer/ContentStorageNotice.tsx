@@ -221,7 +221,8 @@ export function ContentStorageNotice({ status, retry, restore }: {
           else toast.error(t('contentStorage.someUnsaved'));
         })}>{t('contentStorage.retryAll')}</Button>
         <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
-          downloadFile(JSON.stringify(await readContentRecovery(), null, 2), 'ifc-lite-preserved-originals.json', 'application/json');
+          const originals = await readContentRecovery(() => toast.info(t('contentStorage.recoveryReadIncomplete')));
+          downloadFile(JSON.stringify(originals, null, 2), 'ifc-lite-preserved-originals.json', 'application/json');
         })}>{t('contentStorage.recovery')}</Button>
         <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
           if (await confirmDialog({ description: t('contentStorage.cleanupConfirm') })) {

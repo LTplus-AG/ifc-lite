@@ -314,7 +314,7 @@ export async function retryContentDrafts(): Promise<boolean> {
   } catch (error) { console.warn('[User content] Draft evidence remains in this session', error); return false; }
 }
 
-export async function readContentRecovery(): Promise<RecoveryRow[]> {
+export async function readContentRecovery(onIncomplete?: () => void): Promise<RecoveryRow[]> {
   const rows: RecoveryRow[] = [];
   let failure: unknown;
   try {
@@ -330,11 +330,14 @@ export async function readContentRecovery(): Promise<RecoveryRow[]> {
       }
     } catch (error) { console.warn('[User content] Reading legacy originals failed', error); failure = error; }
   }
-  for (const [index, draft] of mergeContentDrafts(readLocalWorkBackup().drafts, pendingContentDrafts()).entries()) {
+  const local = readLocalWorkBackup();
+  if (!local.complete) failure ??= new Error('Could not fully read browser storage for preserved originals');
+  for (const [index, draft] of mergeContentDrafts(local.drafts, pendingContentDrafts()).entries()) {
     const raw = JSON.stringify(draft);
     if (!rows.some(row => row.raw === raw)) rows.push({ key: `${BACKUP_DRAFT_PREFIX}session:${index}`, raw, createdAt: Date.now() });
   }
   if (!rows.length && failure) throw failure;
+  if (failure) onIncomplete?.();
   return rows;
 }
 

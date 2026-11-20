@@ -182,8 +182,12 @@ export function geometryReleased(geometryResult?: GeometryResult, modelIds?: Ite
   const state = getViewerState();
   const scope = modelIds === undefined ? undefined : new Set(modelIds);
   const owners = storeGeometryOwners(state);
-  if (scope && [...scope].some((id) => !owners.some((owner) => owner.modelId === id))) return true;
   const renderer = getGlobalRenderer();
+  // An owner the store does not know: with resident geometry supplied, only a released scene
+  // (its instancing must be read back) makes the export released; with none, fail closed.
+  if (scope && [...scope].some((id) => !owners.some((owner) => owner.modelId === id))) {
+    return geometryResult ? !!renderer && sceneGeometryReleased(renderer) : true;
+  }
   const scene = renderer?.getScene();
   if (!scope && renderer && sceneGeometryReleased(renderer)) return true;
   if (geometryResult && !scope) return false;

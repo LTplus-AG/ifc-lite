@@ -115,7 +115,5 @@ export const validationPanelDe = {
   "contentStorage.checkUsage": "Überprüfen Sie die Speichernutzung",
   "contentStorage.unknown": "unbekannt",
   "contentStorage.estimate": "Bibliotheksdaten in diesem Tab: etwa {library} MiB. Website-Speicher: {usage} MiB von etwa {quota} MiB, einschließlich Modellcaches und anderer Website-Daten.",
-  "contentStorage.protected": "Persistenter Speicher ist aktiviert. Exportierte Backups behalten: Durch das Löschen von Website-Daten werden weiterhin Browserinhalte gelöscht.",
-  "contentStorage.notProtected": "Der Browser hat keinen dauerhaften Speicher gewährt. Das Speichern funktioniert immer noch; verwenden Sie exportierte Backups für wichtige Arbeiten.",
   "contentStorage.failed": "Speichervorgang fehlgeschlagen: {message}",
 } satisfies Catalogue;

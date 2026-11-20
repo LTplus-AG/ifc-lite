@@ -89,12 +89,16 @@ describe('released scene replay (content reload)', () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const uploads: string[] = [];
+    let entered!: () => void;
+    const reading = new Promise<void>((resolve) => { entered = resolve; });
     splitReleasedForReplay(renderer, list, async (_r, _m, isCurrent) => {
+      entered();
       await gate; // the awaited backing read
       if (!isCurrent()) return false;
       uploads.push('removed model');
       return true;
     });
+    await reading; // the read is in flight before the clear
     // useGeometryStreaming's null-geometry branch: the scene is cleared, not reshaped.
     let cleared = 0;
     clearSceneSupersedingReplays({ clear: () => { cleared++; } });
@@ -121,12 +125,16 @@ describe('released scene replay (content reload)', () => {
     let allowed!: () => void;
     const gate = new Promise<void>((resolve) => { allowed = resolve; });
     const uploads: string[] = [];
+    let entered!: () => void;
+    const reading = new Promise<void>((resolve) => { entered = resolve; });
     splitReleasedForReplay(renderer, list, async (_r, _m, isCurrent) => {
-      await gate;
+      entered();
+      await gate; // inside the backing read
       if (!isCurrent()) return false; // replayReleasedGeometry's fence: nothing more is uploaded
       uploads.push('old model');
       return true;
     });
+    await reading; // the read is in flight before the reshape
     // The model is replaced by a resident-only one: the reshape alone must fence the old replay.
     reshapeSceneKeepingPresentInstanced({ clearFlatGeometry: () => undefined, getInstancedModelIndices: () => [] } as unknown as SceneContents,
       undefined, [mesh(9)]);

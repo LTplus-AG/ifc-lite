@@ -279,6 +279,26 @@ describe('reviewed model candidates (#10792)', () => {
     assert.match((await invoke('authoring.discard', { token })).text, /Unknown reviewed candidate/);
   });
 
+  it('#10918: a result refused by the schema keeps no candidate', async () => {
+    let token: string | undefined;
+    const entry = viewerOperation('properties.prepare');
+    const validate = entry.validateResult.bind(entry);
+    const validator = mock.method(entry, 'validateResult', (result: unknown) => {
+      const { token: stored, ...withoutToken } = result as { token: string };
+      token = stored;
+      validate(withoutToken);
+    });
+    try {
+      const failed = await invoke('properties.prepare', { proposal_json: rename('Invalid result') });
+      assert.equal(failed.isError, true);
+      assert.match(failed.text, /properties\.prepare output.*token/);
+    } finally {
+      validator.mock.restore();
+    }
+    assert.ok(token, 'the candidate was stored before result validation');
+    assert.match((await invoke('authoring.discard', { token })).text, /Unknown reviewed candidate/);
+  });
+
   it('#10918: a prepare whose handler throws after storing its candidate keeps none', async () => {
     const uuid = crypto.randomUUID.bind(crypto), stringify = JSON.stringify;
     let token: string | undefined, thrown = false;

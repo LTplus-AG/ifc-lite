@@ -15,8 +15,9 @@ import { skipUnlessCommand } from '../lib/host-preconditions.mjs';
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const script = fileURLToPath(new URL('./build-at-ref.sh', import.meta.url));
 const CARGO_SKIP = skipUnlessCommand('cargo', ['--version'], 'install rustup', process.env, { cwd: tmpdir() });
+// RUSTUP_TOOLCHAIN outranks the ref's rust-toolchain.toml (PR #10977 review).
 const OVERRIDES = ['RUSTC', 'RUSTC_WRAPPER', 'RUSTC_WORKSPACE_WRAPPER',
-  'CARGO_BUILD_RUSTC', 'CARGO_BUILD_RUSTC_WRAPPER', 'CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER'];
+  'CARGO_BUILD_RUSTC', 'CARGO_BUILD_RUSTC_WRAPPER', 'CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER', 'RUSTUP_TOOLCHAIN'];
 
 // The script drops inherited GIT_* variables; the test's own git calls must
 // too, or a hook's GIT_DIR would point them at another repository.
@@ -56,7 +57,7 @@ for (const [name, value, extra = {}] of [
     const result = run();
     assert.ifError(result.error);
     assert.equal(result.status, 1, result.stderr);
-    const fix = name.endsWith('WRAPPER') ? `unset ${name} or set it empty` : `unset ${name}`;
+    const fix = /WRAPPER|RUSTUP/.test(name) ? `unset ${name} or set it empty` : `unset ${name}`;
     assert.ok(result.stderr.includes(`build-at-ref.sh: ${fix} before building (compiler override)`), result.stderr);
     assert.equal(existsSync(worktreeRoot), false);
   });
@@ -152,4 +153,10 @@ test('build-at-ref checks config that --inject puts in the worktree (#10965)', {
   assert.equal(result.status, 1, result.stderr);
   // The worktree is deleted on exit, so the message names the file as the ref has it.
   assert.match(result.stderr, /remove build\.rustc from \.cargo\/config\.toml at \w+ \(from the ref, --inject or --patch\) before building \(compiler override\)/);
+});
+
+test('build-at-ref accepts an empty RUSTUP_TOOLCHAIN, which rustup ignores (#10965)', { skip: CARGO_SKIP }, (t) => {
+  const stderr = withAncestorConfig(t, { RUSTUP_TOOLCHAIN: '' }, '');
+  assert.doesNotMatch(stderr, /compiler override|before building \(/);
+  assert.match(stderr, /build-at-ref\.sh: building example perf_probe of ifc-lite-processing at \w+ failed/);
 });

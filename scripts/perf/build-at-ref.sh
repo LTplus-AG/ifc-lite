@@ -39,10 +39,10 @@
 #
 # The worktree is removed on exit, success or not. Exit 1 if the patch does
 # not apply, cargo cannot read its config, the build fails, or --rustc-out
-# cannot record rustc -vV; the cause is in the log. Exit 1 too if RUSTC, a
-# rustc wrapper, or build.rustc* is in effect, because the binary would then
-# come from a compiler other than the ref's toolchain. As for cargo, an empty
-# wrapper (RUSTC_WRAPPER=, or "" in config) means no wrapper.
+# cannot record rustc -vV; the cause is in the log. Exit 1 too if RUSTC,
+# RUSTUP_TOOLCHAIN, a rustc wrapper, or build.rustc* is in effect, because the
+# binary would come from a compiler other than the ref's toolchain. An empty
+# wrapper or RUSTUP_TOOLCHAIN (or a "" wrapper in config) is no override.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 [ -f "$HOME/.cargo/env" ] && source "$HOME/.cargo/env"
@@ -93,17 +93,19 @@ else
   exec 3>&2
 fi
 
-for override in RUSTC RUSTC_WRAPPER RUSTC_WORKSPACE_WRAPPER \
+# RUSTUP_TOOLCHAIN outranks the ref's rust-toolchain.toml (PR #10977 review).
+for override in RUSTC RUSTC_WRAPPER RUSTC_WORKSPACE_WRAPPER RUSTUP_TOOLCHAIN \
     CARGO_BUILD_RUSTC CARGO_BUILD_RUSTC_WRAPPER CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER; do
   # An empty wrapper means "no wrapper" to cargo (RUSTC_WRAPPER= skips
-  # sccache); an empty RUSTC is an error there, so refuse it here too.
+  # sccache), and rustup ignores an empty RUSTUP_TOOLCHAIN; an empty RUSTC is
+  # an error to cargo, so refuse it here too.
   case "$override" in
     # RUSTC_WRAPPER (even empty) takes precedence over CARGO_BUILD_RUSTC_WRAPPER.
     CARGO_BUILD_RUSTC_WRAPPER) [ -n "${RUSTC_WRAPPER+x}" ] && continue;;
     CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER) [ -n "${RUSTC_WORKSPACE_WRAPPER+x}" ] && continue;;
   esac
   case "$override" in
-    *WRAPPER) value="${!override:-}"; fix="unset $override or set it empty";;
+    *WRAPPER|RUSTUP_TOOLCHAIN) value="${!override:-}"; fix="unset $override or set it empty";;
     *) value="${!override+set}"; fix="unset $override";;
   esac
   if [ -n "$value" ]; then

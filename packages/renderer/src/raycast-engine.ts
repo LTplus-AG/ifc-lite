@@ -44,7 +44,7 @@ export class RaycastEngine {
     /** Flat pieces read back for released geometry (#10264); empty when unused. */
     private readbackMeshes: readonly MeshData[] = [];
     /** The one ray they were prepared for: canvas point and view-projection at set time. */
-    private readbackCoverage: { x: number; y: number; viewProj: Float32Array } | null = null;
+    private readbackCoverage: { x: number; y: number; viewProj: Float32Array; width?: number; height?: number } | null = null;
 
     constructor(camera: Camera, scene: RaycastScene, canvas: HTMLCanvasElement) {
         this.camera = camera;
@@ -93,18 +93,19 @@ export class RaycastEngine {
      */
     setReadbackMeshes(meshes: readonly MeshData[] | null, at?: { x: number; y: number }): void {
         this.readbackMeshes = meshes ?? [];
-        this.readbackCoverage = meshes && at ? { ...at, viewProj: this.camera.getViewProjMatrix().m } : null;
+        this.readbackCoverage = meshes && at ? { ...at, viewProj: this.camera.getViewProjMatrix().m, ...this.cssViewport() } : null;
     }
 
     /**
      * Whether readback pieces answer a ray at (x, y). They hold the picked
      * entity and its neighbourhood only, so a different ray (or view) could
      * pass an unfed front surface and hit a fed one behind it: only the exact
-     * prepared ray, within 1.5 CSS px under the same view, may use them.
+     * prepared ray, within a 1.5 CSS px radius under the same view and viewport size, may use them.
      */
     readbackCovers(x: number, y: number): boolean {
         const at = this.readbackCoverage;
-        if (!at || Math.abs(at.x - x) > 1.5 || Math.abs(at.y - y) > 1.5) return false;
+        const viewport = this.cssViewport(); // the ray through (x, y) also depends on the size it is unprojected in
+        if (!at || Math.hypot(at.x - x, at.y - y) > 1.5 || viewport?.width !== at.width || viewport?.height !== at.height) return false;
         const now = this.camera.getViewProjMatrix().m;
         for (let i = 0; i < 16; i++) if (now[i] !== at.viewProj[i]) return false;
         return true;
@@ -153,10 +154,7 @@ export class RaycastEngine {
      */
     private cssViewport(): { width: number; height: number } | null {
         const rect = this.canvas.getBoundingClientRect();
-        if (rect.width === 0 || rect.height === 0) {
-            return null;
-        }
-        return { width: rect.width, height: rect.height };
+        return rect.width === 0 || rect.height === 0 ? null : { width: rect.width, height: rect.height };
     }
 
     /**

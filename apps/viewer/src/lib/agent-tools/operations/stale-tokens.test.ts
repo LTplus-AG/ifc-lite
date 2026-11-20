@@ -41,6 +41,7 @@ import { viewerOperation } from './registry';
 import { idsOperations } from './ids-studio';
 import { isGroupingLens } from '@/lib/lens/custom-groupings';
 import { clashSettings } from './clash-native';
+import { listArtifacts } from './artifacts';
 
 let host: ToolHost;
 let modelId = SAMPLE_MODEL;
@@ -572,14 +573,21 @@ END-ISO-10303-21;
   ])
     it(`#28: the zone table export discards an artifact after ${change.name} while it encoded`, async () => {
       let changed = false;
+      const before = listArtifacts(host).length;
       const stop = useActivityJournal.subscribe(() => { if (!changed) { changed = true; change.apply(); } });
       try {
         const exported = await invoke('zones.table.export', { set_id: 'set-1', basis: 'mesh', format: 'parquet' }, true);
         assert.equal(changed, true);
         assert.equal(exported.isError, true, exported.text);
         assert.match(exported.text, /changed during export/);
+        assert.equal(listArtifacts(host).length, before, 'the refused export registered no artifact');
       } finally { stop(); }
     });
+  it('#28 control: an export with nothing changed registers its artifact', async () => {
+    const before = listArtifacts(host).length;
+    answer(await invoke('zones.table.export', { set_id: 'set-1', basis: 'mesh', format: 'parquet' }, true));
+    assert.equal(listArtifacts(host).length, before + 1);
+  });
 });
 
 describe('zone emission reviews (#10792)', () => {

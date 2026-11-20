@@ -4,7 +4,8 @@
 import { useViewerStore } from '@/store';
 import { viewerOperation } from './contract';
 import { assertToolActive } from '../cancellation';
-import { currentClash, clashSettings } from './clash-native';
+import { IFC_ENTITY_NAMES } from '@ifc-lite/data';
+import { currentClash, clashSettings, clashViewSettingsSignature } from './clash-native';
 const outputSchema = {
   type: 'object',
   properties: { native_json: { type: 'string' } },
@@ -32,11 +33,11 @@ export const clashSettingsOperations = [
     focusMode: 'highlight' | 'isolate' | 'ghost';
     showRegionBox: boolean;
     statusFilter: Array<'open' | 'resolved' | 'accepted'>;
-    expected_settings: string;
+    expected_view_settings: string;
   }>(
     meta(
       'clash.viewSettings',
-      'Set native sort/touching/review-status filters, focus mode and region-box display after inspecting the exact settings. These change presentation, not detection results.',
+      'Set native sort/touching/review-status filters, focus mode and region-box display using expected_view_settings from clash.state. These change presentation, not detection results.',
     ),
     {
       type: 'object',
@@ -51,23 +52,23 @@ export const clashSettingsOperations = [
           uniqueItems: true,
           items: { type: 'string', enum: ['open', 'resolved', 'accepted'] },
         },
-        expected_settings: { type: 'string', maxLength: 20000 },
+        expected_view_settings: { type: 'string', maxLength: 20000 },
       },
-      required: ['sortBy', 'hideTouching', 'focusMode', 'showRegionBox', 'statusFilter', 'expected_settings'],
+      required: ['sortBy', 'hideTouching', 'focusMode', 'showRegionBox', 'statusFilter', 'expected_view_settings'],
       additionalProperties: false,
     },
     (i, c) =>
       out(
         c.commit(() => {
           const s = useViewerStore.getState();
-          if (JSON.stringify(clashSettings()) !== i.expected_settings) throw new Error('Clash settings changed.');
+          if (clashViewSettingsSignature() !== i.expected_view_settings) throw new Error('Clash settings changed.');
           s.setClashSortBy(i.sortBy);
           s.setClashHideTouching(i.hideTouching);
           s.setClashFocusMode(i.focusMode);
           s.setShowClashRegionBox(i.showRegionBox);
           for (const status of ['open', 'resolved', 'accepted'] as const)
             if (s.clashStatusFilter.has(status) !== i.statusFilter.includes(status)) s.toggleClashStatusFilter(status);
-          return { settings: clashSettings(), statusFilter: [...useViewerStore.getState().clashStatusFilter] };
+          return { settings: clashSettings(), expected_view_settings: clashViewSettingsSignature(), statusFilter: [...useViewerStore.getState().clashStatusFilter] };
         }),
       ),
   ),
@@ -248,8 +249,8 @@ export const clashSettingsOperations = [
             );
           }
           if (i.action === 'typeAny') {
-            const tag = i.tag.trim();
-            if (!tag) throw new Error('An IFC class is required.');
+            const tag = IFC_ENTITY_NAMES[i.tag.trim().toUpperCase()];
+            if (!tag) throw new Error('A known IFC class is required.');
             return saved(s.addClashExclusion(typeAnyExclusion(tag)));
           }
           const pair = currentClash(i.run_seq, i.clash_id);

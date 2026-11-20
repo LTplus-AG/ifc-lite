@@ -10558,7 +10558,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "zones.writeback.prepare",
     "version": 1,
     "owner": "zones",
-    "description": "Prepare native zone property/quantity writeback or removal with explicit complete target model population. The preview is the same native facts table as export: row_count rows, with as many as fit the result limit (truncated says when some were left out; apply writes every row, so review a truncated table in full with zones.table.export). Native writeback reports per-model partial outcomes and uses explicit Remove as its inverse; it does not enter native Undo history.",
+    "description": "Prepare native zone property/quantity writeback or removal with explicit complete target model population. Write previews are the same native facts table as export; removal previews name each element and owned set to be removed, including earlier output. Either is row_count rows, with as many as fit the result limit (truncated says when some were left out; apply acts on every row, so review a truncated write table in full with zones.table.export; a truncated removal preview has no full listing). Native writeback reports per-model partial outcomes and uses explicit Remove as its inverse; it does not enter native Undo history.",
     "needs": "model",
     "effects": [
       "read"
@@ -13416,7 +13416,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "validation.report.save",
     "version": 1,
     "owner": "validation",
-    "description": "Save an exact current validation result through the native durable report library.",
+    "description": "Save an exact current validation result through the native report library and return its per-report storage status.",
     "needs": "model",
     "effects": [
       "configuration"
@@ -21106,7 +21106,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "clash.viewSettings",
     "version": 1,
     "owner": "clash",
-    "description": "Set native sort/touching/review-status filters, focus mode and region-box display after inspecting the exact settings. These change presentation, not detection results.",
+    "description": "Set native sort/touching/review-status filters, focus mode and region-box display using expected_view_settings from clash.state. These change presentation, not detection results.",
     "needs": "viewer",
     "effects": [
       "configuration"
@@ -21150,7 +21150,7 @@ export const operationContracts: readonly OperationContract[] = [
             ]
           }
         },
-        "expected_settings": {
+        "expected_view_settings": {
           "type": "string",
           "maxLength": 20000
         }
@@ -21161,7 +21161,7 @@ export const operationContracts: readonly OperationContract[] = [
         "focusMode",
         "showRegionBox",
         "statusFilter",
-        "expected_settings"
+        "expected_view_settings"
       ],
       "additionalProperties": false
     },
@@ -21484,7 +21484,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "clash.exportBcf",
     "version": 1,
     "owner": "clash",
-    "description": "Export the native grouped BCF report with severity/finding scope, exact topic cap and optional native snapshots. Uses the same shared exporter as ClashPanel. Cancellation suppresses publication; a snapshot already capturing may settle.",
+    "description": "Export the native grouped BCF report with severity/finding scope, a cap on finding topics, an extra overflow topic when truncated, and optional native snapshots. Uses the same shared exporter as ClashPanel. Cancellation suppresses publication; a snapshot already capturing may settle.",
     "needs": "viewer",
     "effects": [
       "artifact"

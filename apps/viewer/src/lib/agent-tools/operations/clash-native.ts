@@ -79,6 +79,9 @@ export function clashSettings() {
     showRegionBox: s.showClashRegionBox,
   };
 }
+export function clashViewSettingsSignature() {
+  return JSON.stringify({ settings: clashSettings(), statusFilter: [...useViewerStore.getState().clashStatusFilter].sort() });
+}
 export const nativeClashOperations = [
   viewerOperation(
     meta(
@@ -91,6 +94,7 @@ export const nativeClashOperations = [
       return out({
         settings: clashSettings(),
         expected_settings: JSON.stringify(clashSettings()),
+        expected_view_settings: clashViewSettingsSignature(),
         presets: s.clashPresets,
         expected_presets: JSON.stringify(s.clashPresets),
         exclusions: s.clashExclusions,
@@ -278,8 +282,10 @@ export const nativeClashOperations = [
       if (i.element !== 'pair' && pairs.length !== 1) throw new Error('Choose one clash for a single-element focus.');
       return out(
         c.commit(() => {
-          if (i.element !== 'pair') runtime.selectElement(pairs[0][i.element], i.mode);
-          else if (pairs.length === 1) {
+          if (i.element !== 'pair') {
+            if (!runtime.selectElement(pairs[0][i.element], i.mode))
+              throw new Error(useViewerStore.getState().clashError ?? 'Native element focus refused.');
+          } else if (pairs.length === 1) {
             runtime.focusClash(pairs[0], i.mode);
             if (useViewerStore.getState().clashSelectedId !== pairs[0].id)
               throw new Error(useViewerStore.getState().clashError ?? 'Native pair focus refused.');

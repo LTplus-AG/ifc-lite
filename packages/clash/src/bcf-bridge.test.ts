@@ -123,6 +123,18 @@ function makeFixture(): { result: ClashResult; groups: ClashGroup[] } {
 }
 
 describe('createBCFFromClashResult', () => {
+  it.each(['constructor', '__proto__'])('counts prototype-like review label %s (#10795 item 13)', async label => {
+    const { result, groups } = makeFixture();
+    // Simulate an untyped JavaScript caller supplying an external status label.
+    const project = await createBCFFromClashResult(result, groups, {
+      author: 'tester',
+      reviewStatusOf: () => label as never,
+    });
+    const topic = project.topics.get(uuidFromSeed(groups[0].id));
+    expect(topic?.description).toContain('By review: ' + label + ': 2');
+    expect(topic?.topicStatus).toBe('Open');
+  });
+
   it('creates one topic per group with deterministic guids', async () => {
     const { result, groups } = makeFixture();
     const project = await createBCFFromClashResult(result, groups, { author: 'tester' });

@@ -9,7 +9,10 @@ import type { PropertyValueType } from '@ifc-lite/data';
 const outputSchema = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 const out = (value: unknown) => ({ native_json: JSON.stringify(value) });
 // A refusal throws inside commit, so it is not recorded as a committed write.
-const commitOrRefuse = (c: OperationContext, write: () => boolean, refusal: string) => c.commit(() => { if (!write()) throw new Error(refusal); });
+const commitOrRefuse = (c: OperationContext, write: (onError: (reason: string) => void) => boolean, fallback: string) => c.commit(() => {
+  let refusal = fallback;
+  if (!write(reason => { refusal = reason; })) throw new Error(refusal);
+});
 const meta = (id: string, description: string, write = false) => ({ id, owner: 'properties', description, effects: write ? ['model'] as const : ['read'] as const,
   capability: write ? 'commands-and-edits' as const : 'read' as const, implementation: 'native-store' as const, outputSchema, policy: write ? { model: 'native-reviewed' as const } : undefined });
 async function inspect(c: OperationContext, id: number) {
@@ -36,15 +39,15 @@ export const propertyInspectorOperations = [
       if ((p.type === 1 || p.type === 2) ? typeof p.value !== 'number' || (p.type === 2 && !Number.isInteger(p.value)) : (p.type === 3 || p.type === 4) ? typeof p.value !== 'boolean' : typeof p.value !== 'string') throw new Error('Scalar value does not match the supplied native property type.');
     }
     const inheritedFrom = value.inherited && !value.IfcClass.endsWith('Type') ? { typeId: value.inherited.typeId, typeName: value.inherited.typeName, psetNames: value.inherited.psets.map(p => p.name).filter(name => !value.properties.some(p => p.name === name)) } : null;
-    commitOrRefuse(c, () => runInspectorEdit(c.model.id, tx => { const result = addToPropertySet(tx.store, { modelId: c.model.id, entityId: i.express_id, existingPsets: value.properties.map(p => p.name), inheritedFrom }, i.pset, i.properties);
+    commitOrRefuse(c, onError => runInspectorEdit(c.model.id, tx => { const result = addToPropertySet(tx.store, { modelId: c.model.id, entityId: i.express_id, existingPsets: value.properties.map(p => p.name), inheritedFrom }, i.pset, i.properties);
       if (!result.ok) throw new Error(`Native inherited property refusal: ${result.uncopyable.join(', ')}`); return [];
-    }), 'The native property transaction refused this add.'); return out({ added: i.properties.length });
+    }, onError), 'The native property transaction refused this add.'); return out({ added: i.properties.length });
   }),
   operation<{ express_id: number; IfcClass: string; PredefinedType: string; expected_class: string }>(meta('properties.reassignClass', 'Reassign the exact element IFC class/PredefinedType using the native Properties writer inside one rollback-capable transaction. expected_class guards against a concurrent retype; native keyword/export constraints remain authoritative.', true), {
     type: 'object', properties: { express_id: { type: 'integer', minimum: 1 }, IfcClass: { type: 'string', pattern: '^Ifc[A-Za-z][A-Za-z0-9_]*$', maxLength: 200 }, PredefinedType: { type: 'string', maxLength: 100 }, expected_class: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['express_id', 'IfcClass', 'PredefinedType', 'expected_class'], additionalProperties: false,
   }, async (i, c) => { const { runInspectorEdit } = await import('@/components/viewer/model-inspector/inspector-edits'); resolveRef(c.model, { express_id: i.express_id }); assertToolActive(c);
     if (c.model.bim.entity({ modelId: c.model.id, expressId: i.express_id })?.type !== i.expected_class) throw new Error('IFC class changed. Inspect again.');
-    commitOrRefuse(c, () => runInspectorEdit(c.model.id, tx => { if (!tx.store.setEntityType(c.model.id, i.express_id, i.IfcClass, i.PredefinedType || null)) throw new Error('Native retype refused.'); return []; }),
+    commitOrRefuse(c, onError => runInspectorEdit(c.model.id, tx => { if (!tx.store.setEntityType(c.model.id, i.express_id, i.IfcClass, i.PredefinedType || null)) throw new Error('Native retype refused.'); return []; }, onError),
       'The native retype transaction refused this change.'); return out({ IfcClass: i.IfcClass, express_id: i.express_id });
   }),
 ];

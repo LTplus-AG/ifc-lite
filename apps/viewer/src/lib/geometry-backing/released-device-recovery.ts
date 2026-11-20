@@ -32,6 +32,7 @@ import { getViewerState } from '@/store/viewerStoreHandle';
 import { hasInstancedShards } from '@/store/instancedShardModels';
 import { activeGeometryBackingTap } from './backing-debug-hook';
 import { currentSceneGeometry, releasedBatches, releasedReplayEpoch, supersedeReleasedReplays } from './released-scene-replay';
+import { StaleGeometryGenerationError } from './backing-reader';
 
 /** A private copy: the lift moves transforms, and the reader may hand the same decode out again. */
 function liftedCopy(shard: DecodedInstancedShard, lift: ReadonlyMap<number, number>): DecodedInstancedShard {
@@ -115,9 +116,16 @@ export const rebuildReleasedScene: ReleasedSceneRebuild = async ({ device, pipel
     // withheld since, or one still queued means the acknowledged copy is not that set.
     if (!source?.backing?.isCurrent || !source.backing.isComplete || !tap.holdsDrawnShards(modelId)) return false;
     attested.set(modelId, tap.drawnShardRevision(modelId));
-    for await (const shard of source.backing.reader.instancedShards()) {
-      if (!isCurrent()) return false;
-      scene.addInstancedShard(device, liftedCopy(shard, lift), modelIndex);
+    try {
+      for await (const shard of source.backing.reader.instancedShards()) {
+        if (!isCurrent()) return false;
+        scene.addInstancedShard(device, liftedCopy(shard, lift), modelIndex);
+      }
+    } catch (error) {
+      // The store or the queue replaced this generation while it was read (a shard drawn meanwhile supersedes
+      // it at once): the drawn set moved, so this rebuild is stale, not a failure to report.
+      if (error instanceof StaleGeometryGenerationError) return false;
+      throw error;
     }
   }
   requestRender();

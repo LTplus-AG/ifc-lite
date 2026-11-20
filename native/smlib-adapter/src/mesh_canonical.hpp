@@ -20,8 +20,10 @@ struct AdapterMesh;
 // and WASM), and of a planar face that canonical_planar_faces declines.
 // Residual noise cases: a coordinate or length within one ULP of a grid
 // half-step can still change key (about 1 in 2^15 noisy values at the minimum
-// step), and the step itself can flip when its base value lies within noise
-// of a power of two.
+// step), the step itself can flip when its base value lies within noise
+// of a power of two, and a vertex whose distance from a diagonal is within
+// about 2^-8 relative of the near threshold (|d / threshold - 1| <~ 2^-8)
+// can change the near rule's verdict.
 
 // Step of the grid all canonical sort keys use: a power of two, at least
 // 2^16 ULP of the mesh's largest |coordinate|, otherwise between 2^-30 and
@@ -49,7 +51,10 @@ void order_mesh(AdapterMesh& mesh);
 // which side it passes; if that leaves no valid triangulation, the greedy
 // runs again without the last rule. A quad therefore takes its shorter
 // diagonal, and on a tie (a rectangle) the one through its lowest vertex.
-// A face with two vertices on one projected point is declined.
+// A face with two vertices on one projected point is declined: a guard
+// against an invalid comparator (undefined behaviour in the sort), not a
+// determinism guard; under noise such a folded face can still give several
+// topologies (the SDK's split, or none when it is declined).
 // Every geometric decision uses one exact orientation predicate, so
 // near-collinear vertices (rotated or georeferenced faces) cannot make two
 // tests disagree. A face is left as the SDK split it when the result does not

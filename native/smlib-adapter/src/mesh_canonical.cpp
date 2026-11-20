@@ -219,18 +219,22 @@ struct Plane2 {
 // Tying it to the step itself instead rejected both diagonals of every face
 // thinner than one step and left such faces to the SDK's split.
 double near_threshold(double h) { return std::ldexp(h,-8); }
-// A vertex within near_threshold of the open segment a-b (3D). A diagonal that
-// passes this close to a vertex is not taken while another valid one exists:
-// whether it would pass inside or outside a nearly collinear vertex is
-// decided by the SDK's last bits. This only ranks candidates; every accepted
-// one is still validated exactly.
-bool near(const Point& a,const Point& b,const Point& c,double h) {
+// A vertex within near_threshold of the closed segment a-b (3D). A diagonal
+// that passes this close to a vertex is not taken while another valid one
+// exists: whether it would pass inside or outside a nearly collinear vertex is
+// decided by the SDK's last bits. The closed segment matters for thin faces:
+// the opposite corner of a face thinner than the threshold projects within
+// noise of an endpoint, and an open-segment test then read one diagonal as
+// near and the other as clear at random. The endpoints are taken in (x, y, z)
+// order, so the result does not depend on which end the caller names first.
+// This only ranks candidates; every accepted one is still validated exactly.
+bool near(Point a,Point b,const Point& c,double h) {
+    if (less(b,a)) std::swap(a,b);
     const double limit=near_threshold(h);
     const Point ab{b[0]-a[0],b[1]-a[1],b[2]-a[2]},ac{c[0]-a[0],c[1]-a[1],c[2]-a[2]};
     const double length=dot(ab,ab);
     if (!(length>0)) return true;
-    const double t=dot(ac,ab)/length;
-    if (!(t>0 && t<1)) return false;
+    const double t=std::clamp(dot(ac,ab)/length,0.,1.);
     const Point d{ac[0]-t*ab[0],ac[1]-t*ab[1],ac[2]-t*ab[2]};
     return dot(d,d)<=limit*limit;
 }

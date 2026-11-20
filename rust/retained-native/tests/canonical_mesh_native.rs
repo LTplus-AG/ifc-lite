@@ -193,14 +193,15 @@ fn quad_loop(pair: &[[u32; 3]]) -> Option<[u32; 4]> {
     }
     None
 }
-/// mesh_canonical.cpp near(): c within 2^-8 grid steps of the open segment a-b.
+/// mesh_canonical.cpp near(): c within 2^-8 grid steps of the closed segment
+/// a-b, with the endpoints in exact (x, y, z) order as the adapter takes them.
 fn near(a: Point, b: Point, c: Point, h: f64) -> bool {
+    let (a, b) = if exact(b).partial_cmp(&exact(a)) == Some(std::cmp::Ordering::Less) { (b, a) } else { (a, b) };
     let limit = h / 256.;
     let (ab, ac) = (sub(b, a), sub(c, a));
     let length = dot(ab, ab);
     if !(length > 0.) { return true; }
-    let t = dot(ac, ab) / length;
-    if !(t > 0. && t < 1.) { return false; }
+    let t = (dot(ac, ab) / length).clamp(0., 1.);
     let d = [ac[0] - t * ab[0], ac[1] - t * ab[1], ac[2] - t * ab[2]];
     dot(d, d) <= limit * limit
 }

@@ -457,8 +457,15 @@ void run_mesh_canonical_tests() {
     // noise, not to the grid step (when it was the step, both diagonals of a
     // face thinner than one step were rejected and the SDK split stayed), and
     // a face thinner than the threshold still gets its best valid diagonal.
+    // Widths below the threshold (fractions of it) under +/-1 ULP noise: the
+    // opposite corner projects within noise of a diagonal's endpoint, so the
+    // near test must use the closed segment or one diagonal reads clear and
+    // the other near at random.
     {
-        for (double offset:{0.,2.6e6}) for (double w:{1e-9,5e-9,2e-8,1e-6,2e-5,5e-5,1e-4}) {
+        for (double offset:{0.,1e3,2.6e6}) {
+        AdapterMesh probe; probe.positions={offset,offset,0, offset+10,offset,0, offset,offset+10,5}; probe.indices={0,1,2}; probe.faces={0};
+        const double threshold=std::ldexp(canonical_grid(probe),-8);
+        for (double w:{1e-9,5e-9,2e-8,1e-6,2e-5,5e-5,1e-4,.05*threshold,.3*threshold,.6*threshold,.9*threshold}) {
             // Face 0 is the thin rectangle; face 1, a triangle, gives the mesh a 10 m extent.
             const std::vector<Point> points{{offset,offset,0},{offset+10,offset,0},{offset+10,offset+w,0},{offset,offset+w,0},
                 {offset,offset,5},{offset+10,offset,5},{offset,offset+10,5}};
@@ -476,9 +483,30 @@ void run_mesh_canonical_tests() {
                     mesh.indices.insert(mesh.indices.end(),{ids[t[0]],ids[t[1]],ids[t[2]]}); mesh.faces.push_back(face);
                 }
                 mesh.normals.assign(mesh.indices.size()*3,0.);
+                // Noise only where it cannot collapse the input itself (w >= 64 ULP).
+                if (w>=64*(std::nextafter(offset+10,INFINITY)-(offset+10))) nudge(mesh,random);
                 canonicalize(mesh,{true,false});
                 if (run==0) first=mesh.indices;
-                require(mesh.indices==first,"thin rectangle has one canonical diagonal whatever the SDK split");
+                require(mesh.indices==first,"thin rectangle has one canonical diagonal whatever the SDK split and noise");
+            }
+        }
+        }
+    }
+    // The greedy's second pass: a thin pentagon (a 10 x w rectangle with a
+    // vertex in the middle of a long side), w a quarter of the near threshold,
+    // so every diagonal passes near a vertex. The first pass finds nothing;
+    // without the second the face would keep each SDK triangulation.
+    {
+        for (double offset:{0.,2.6e6}) {
+            AdapterMesh probe; probe.positions={offset,offset,0, offset+10,offset,0, offset,offset+10,0}; probe.indices={0,1,2}; probe.faces={0};
+            const double w=std::ldexp(canonical_grid(probe),-10);
+            const std::vector<Point> points{{offset,offset,0},{offset+5,offset,0},{offset+10,offset,0},{offset+10,offset+w,0},{offset,offset+w,0}};
+            const std::vector<std::vector<Tri>> splits{{{0,1,4},{1,3,4},{1,2,3}},{{0,1,3},{0,3,4},{1,2,3}},{{0,1,4},{1,2,4},{2,3,4}}};
+            std::vector<uint32_t> first;
+            for (unsigned run=0;run<24;++run) {
+                AdapterMesh mesh=variant(points,splits[run%3],0,random); nudge(mesh,random); canonicalize(mesh,{true});
+                if (run==0) first=mesh.indices;
+                require(mesh.indices==first,"thin face where every diagonal is near: one topology from the second pass");
             }
         }
     }

@@ -78,7 +78,7 @@ fn same_row(a: &serde_json::Value, b: &serde_json::Value, path: &str) -> Result<
     let extent = |values: &[Value]| -> f64 {
         let (mut low, mut high) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
         for (i, v) in values.iter().enumerate() {
-            let v = v.as_f64().unwrap_or(0.);
+            let v = v.as_f64().unwrap();
             low[i % 3] = low[i % 3].min(v);
             high[i % 3] = high[i % 3].max(v);
         }
@@ -92,7 +92,7 @@ fn same_row(a: &serde_json::Value, b: &serde_json::Value, path: &str) -> Result<
                 if (key == "positions" || key == "normals") && value.is_array() {
                     let (p, q) = (value.as_array().unwrap(), y[key].as_array().ok_or_else(|| format!("{here}: not an array"))?);
                     if p.len() != q.len() { return Err(format!("{here}: length {} vs {}", p.len(), q.len())); }
-                    let scale = extent(p).max(extent(q));
+                    let scale = if key == "positions" { extent(p).max(extent(q)) } else { 0. };
                     for (i, (u, v)) in p.iter().zip(q).enumerate() {
                         let (u, v) = (u.as_f64().unwrap(), v.as_f64().unwrap());
                         if !within(u, v, key, scale) { return Err(format!("{here}[{i}]: {u:e} vs {v:e}")); }

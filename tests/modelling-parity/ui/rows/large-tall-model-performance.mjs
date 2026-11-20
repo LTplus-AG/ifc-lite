@@ -187,7 +187,21 @@ export default {
         // store's flat mesh list; use a real click, not a flat-mesh census.
         const p = [0, 0, 7.9];
         await s.harness.aim([4, 6, 8.9], p);
-        await s.ui.clickWorld(p);
+        // GPU selection can resolve after the driver's 150 ms settle (#10994).
+        for (let attempt = 0; attempt < 2; attempt++) {
+          await s.ui.clickWorld(p, { settle: 0 });
+          try {
+            const picked = await s.page.waitForFunction(
+              () => globalThis.__ifc_lite_viewer_store__.getState().selectedEntityId !== null,
+              null, { polling: 50, timeout: 3000 },
+            );
+            await picked.dispose();
+            break;
+          } catch (error) {
+            if (error.name !== 'TimeoutError') throw error;
+            if (attempt === 1) throw new Error('No entity selected after two canvas clicks (3 s per click)', { cause: error });
+          }
+        }
         const column = await s.state(() => {
           const st = globalThis.__ifc_lite_viewer_store__.getState(), m = [...st.models.values()][0];
           const id = st.selectedEntityId;

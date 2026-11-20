@@ -24,7 +24,7 @@ import { posthog } from '@/lib/analytics';
 import { useComparePairCache } from './compare/useComparePairCache';
 import { contentMatchingRan } from '@/lib/compare/contentMatches';
 import { compareRunPayload } from '@/lib/compare/runTelemetry';
-import { publishCompareResult } from '@/lib/compare/publish-comparison';
+import { publishCompareResult, isUncachedCompareResult } from '@/lib/compare/publish-comparison';
 import { prepareComparison } from '@/lib/compare/run-comparison';
 import { buildAtCurrentVersion } from '@/lib/compare/versionedBuild';
 import { isCurrentFor, readGeometryContentVersion, type BuiltPair } from './compare/comparePairCache';
@@ -294,12 +294,12 @@ export function useCompare() {
     const sameAccepted = lastAcceptedRef.current === acceptedIdentity;
     if (sameScope && sameExcluded && sameMatching && sameAccepted) return;
     if (!built || !isCurrentFor(built, result.baseModelId, result.headModelId, geometryContentVersion, result.keyProperty)) {
-      // No cached pair for this result (an agent compare.run publishes from its
-      // own extraction), so it cannot be re-diffed. When the user then changes
-      // an option, drop it rather than show counts that disagree with the
-      // controls, as cancelComparison does. A result merely mounted with other
-      // options (a retained stale comparison) is kept.
-      if (optionChanged) useViewerStore.getState().setCompareResult(null);
+      // An agent compare.run publishes from its own extraction, so no cached
+      // pair can ever re-diff its result. When the user then changes a control,
+      // drop it rather than show counts that disagree with the controls, as
+      // cancelComparison does. Native results (a stale one keeps its Re-run
+      // banner) and in-flight runs are left alone.
+      if (optionChanged && isUncachedCompareResult(result)) useViewerStore.getState().setCompareResult(null);
       return;
     }
 

@@ -65,3 +65,9 @@ export function publishCompareResult(built: BuiltPair): {
   store.setCompareSelectedKey(null);
   return { result, matchByContent };
 }
+
+/** Results published from a pair the Compare panel never cached (agent `compare.run`). */
+const uncachedResults = new WeakSet<object>();
+export function markUncachedCompareResult(result: object | null): void { if (result) uncachedResults.add(result); }
+/** The panel cannot re-diff such a result, so a control change drops it (useCompare). */
+export function isUncachedCompareResult(result: object | null): boolean { return result !== null && uncachedResults.has(result); }

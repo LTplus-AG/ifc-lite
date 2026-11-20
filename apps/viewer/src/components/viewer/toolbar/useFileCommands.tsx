@@ -354,9 +354,11 @@ export function useFileCommands(): FileCommands {
         className="hidden"
       /></>}
       {collabEnabled && shareDialogOpen !== null && (
-        // The dialog is a lazy chunk: a failed load is reported here instead of
-        // unwinding the toolbar (a stale deployment reloads through the boundary).
-        <ChunkErrorBoundary label="Share dialog" renderFallback={() => null}>
+        // The dialog is a lazy chunk: a failed load shows the boundary's notice
+        // (with Reload) instead of unwinding the toolbar.
+        <ChunkErrorBoundary label="Share dialog" renderFallback={fallback => (
+          <div className="fixed inset-x-0 bottom-4 z-50 flex justify-center px-4">{fallback}</div>
+        )}>
           <Suspense fallback={null}>
             <ShareDialog open={shareDialogOpen} onOpenChange={setShareDialogOpen} />
           </Suspense>

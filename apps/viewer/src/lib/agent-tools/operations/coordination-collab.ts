@@ -38,7 +38,7 @@ export const coordinationCollabOperations = [
     const rank = { viewer: 0, commenter: 1, editor: 2, admin: 3 };
     if (state.collabRole && rank[i.role] > rank[state.collabRole]) throw new Error('This native room role cannot grant the requested invite access.');
     // Only an admin mints role-scoped links; any other member can only forward the invite it holds.
-    if (state.collabRoomId && state.collabRole !== 'admin') throw new Error('Only the room admin can prepare a role-scoped invite.');
+    if (state.collabRoomId && state.collabRole && state.collabRole !== 'admin') throw new Error('Only the room admin can prepare a role-scoped invite.');
     if (!state.collabRoomId && shareRefusesEveryModel(state.models, state.activeModelId, i.scope)) throw new Error('No model in the selected native scope can be shared.');
     const prepared = state.collabRoomId ? null : await prepareShareSeed(state.models, state.mutationViews, state.activeModelId, i.scope, state.georefMutations); c.checkpoint?.();
     return c.commit(() => {

@@ -170,7 +170,10 @@ export function handleMeasureDown(ctx: MouseHandlerContext, e: PointerEvent): bo
     // unseen finishes here (inside the click slop); a drag released unseen keeps the start pending.
     if (ctx.activeMeasurementRef.current) {
       if (press.release) { press.second = true; return; }
-      if (held || mouseState.didDrag) return;
+      // Still held: its own release finishes, so it is no start (the earlier start, landing after this press
+      // began, marked the press as starting; its release would otherwise leave the distance unfinished).
+      if (held) { startingPresses.delete(mouseState); return; }
+      if (mouseState.didDrag) return;
       const end = pickMeasurePoint(ctx, at.x, at.y);
       if (end && finishDistance(ctx, end, at)) finishingPresses.add(mouseState);
       return;
@@ -210,7 +213,18 @@ export function handleMeasureUp(ctx: MouseHandlerContext, e: PointerEvent): bool
   // Captured now: the press state is reset below, before a deferred readback can run.
   const finishing = !startingPresses.has(mouseState) || mouseState.didDrag;
   const shift = e.shiftKey;
+  const draggedAtRelease = mouseState.didDrag;
   const release = (finish: boolean) => {
+    // Released only: an earlier queued finish completed the distance before this click landed. In a resident
+    // scene this click's press would have started the next distance, so a click does that here, in order.
+    if (finish && !ctx.activeMeasurementRef.current) {
+      const start = draggedAtRelease ? null : pickMeasurePoint(ctx, mx, my);
+      if (start) {
+        beginDistance(ctx, start, { x: mx, y: my });
+        if (finishingPresses.has(mouseState)) startsAfterFinish.add(mouseState); // a double-click still drops it
+      }
+      return;
+    }
     const useOrthogonalConstraint = shift && ctx.measurementConstraintEdgeRef.current;
     const currentLock = ctx.edgeLockStateRef.current;
 

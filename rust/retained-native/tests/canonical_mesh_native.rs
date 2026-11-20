@@ -75,9 +75,12 @@ fn less(a: Point, b: Point) -> bool {
 
 fn check(model: &str, id: u32, part: &ShapePart) -> Result<(), String> {
     let vertices = (part.positions.len() / 3) as u32;
+    // Non-decreasing: coincident vertices are kept and ordered by their
+    // incident corners (mesh_canonical.cpp order_mesh), so equal neighbours
+    // are canonical too.
     for v in 1..vertices {
-        if !less(point(part, v - 1), point(part, v)) {
-            return Err(format!("{model}#{id}: vertex {v} is not after vertex {} in (x, y, z) order", v - 1));
+        if less(point(part, v), point(part, v - 1)) {
+            return Err(format!("{model}#{id}: vertex {v} is before vertex {} in (x, y, z) order", v - 1));
         }
     }
     let triangles: Vec<_> = part.indices.chunks_exact(3).zip(&part.revision_local_faces)

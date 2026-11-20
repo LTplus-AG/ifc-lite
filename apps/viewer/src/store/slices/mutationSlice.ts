@@ -1858,10 +1858,11 @@ export const createMutationSlice: StateCreator<
   invalidateHistoryForEntity: (modelId, entityId) => set((s) => {
     // A move's mutation is its placement point's, so a recorded move of this entity goes too, with the rest of its
     // batch: an undo of half a move would revert its regenerated rooms or refits and leave the element moved (#10810).
-    // Any other batch keeps its members the peer did not touch.
-    const moved = (m: Mutation) => movedEntityOf(m) === entityId, hit = (m: Mutation) => m.entityId === entityId || moved(m);
-    const batches = new Set([...(s.undoStacks.get(modelId) ?? []), ...(s.redoStacks.get(modelId) ?? [])]
-      .filter(moved).map((m) => s.mutationBatchTags.get(m.id)).filter((tag) => tag !== undefined));
+    // A peer edit of any member of a move's batch clears all of it; any other batch keeps the members the peer did not touch.
+    const hit = (m: Mutation) => m.entityId === entityId || movedEntityOf(m) === entityId;
+    const stacks = [...(s.undoStacks.get(modelId) ?? []), ...(s.redoStacks.get(modelId) ?? [])];
+    const moves = new Set(stacks.filter((m) => movedEntityOf(m) !== undefined).map((m) => s.mutationBatchTags.get(m.id)));
+    const batches = new Set(stacks.filter(hit).map((m) => s.mutationBatchTags.get(m.id)).filter((tag) => tag !== undefined && moves.has(tag)));
     const patch = invalidateHistoryPatch(s.undoStacks, s.redoStacks, s.mutationBatchTags, s.mutationMeshTranslations, modelId,
       (m) => hit(m) || batches.has(s.mutationBatchTags.get(m.id) ?? ''));
     // Whatever the patch removed from this model's undo stack also leaves its change sets.

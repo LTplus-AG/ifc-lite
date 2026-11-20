@@ -57,6 +57,16 @@ it('a peer edit of the moved element clears the rest of the move\'s batch too (#
   assert.deepEqual(undo.filter(mutation => mutation.id === point.id || mutation.id === room.id), []);
 });
 
+it('a peer edit of a room a move regenerated clears the whole move (#10810)', () => {
+  const point = useViewerStore.getState().setPositionalAttribute('hello', 42, 2, 'Moved')!;
+  const room = useViewerStore.getState().setPositionalAttribute('hello', 1, 2, 'Regenerated')!;
+  useViewerStore.setState(s => ({ mutationBatchTags: new Map(s.mutationBatchTags).set(point.id, 'move').set(room.id, 'move') }));
+  publishMove(useViewerStore.getState(), 'hello', point, WALL_ID, [2, 0, 0]);
+  useViewerStore.getState().invalidateHistoryForEntity('hello', 1);
+  const undo = useViewerStore.getState().undoStacks.get('hello') ?? [];
+  assert.deepEqual(undo.filter(mutation => mutation.id === point.id || mutation.id === room.id), []);
+});
+
 it('a peer edit of an element in a batch that is no move keeps the rest of that batch (#10810)', () => {
   // A bulk edit tags many elements' writes with one batch; a peer touching one of them clears only that one.
   const wall = useViewerStore.getState().setPositionalAttribute('hello', WALL_ID, 2, 'Bulk')!;

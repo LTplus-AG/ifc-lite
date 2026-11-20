@@ -184,10 +184,10 @@ export function resolveModelContextGeorefSignature(dataStore: IfcDataStore, leng
 }
 
 /**
- * A context's coordinate operation, its target CRS (null when the target is no CRS), and `record`: both records, and
- * the CRS's WKT, by value. Two operations merge only when their records are equal in every attribute.
+ * A context's coordinate operation, its target CRS (null when the target is no CRS) and that CRS's WKT records, and
+ * `record`: all of them by value. Two operations merge only when their records are equal in every attribute.
  */
-export interface ContextOperation { operation: number; crs: number | null; record: string }
+export interface ContextOperation { operation: number; crs: number | null; wkt: number[]; record: string }
 
 /** A value equal to nothing else, for a record that cannot be compared (unreadable, dangling, past the depth cut). */
 let incomparable = 0;
@@ -219,7 +219,7 @@ function contextOperation(dataStore: IfcDataStore, contextId: number): ContextOp
       const wkt = crs === null ? [] : (byType.get('IFCWELLKNOWNTEXT') ?? []).filter(text => refId(getStepAttr(dataStore, text, 1)) === crs);
       const record = JSON.stringify([recordValue(dataStore, id, 4, [0, 1]), crs === null ? null : recordValue(dataStore, crs, 4),
         wkt.map(text => recordValue(dataStore, text, 0, [1]))]);
-      return { operation: id, crs, record };
+      return { operation: id, crs, wkt, record };
     }
   }
   return null;
@@ -261,7 +261,8 @@ export function resolvePrimaryContextState(
 }
 
 const offsetOperation = (operation: ContextOperation | null, offset: number): ContextOperation | null =>
-  operation && { ...operation, operation: operation.operation + offset, crs: operation.crs === null ? null : operation.crs + offset };
+  operation && { operation: operation.operation + offset, crs: operation.crs === null ? null : operation.crs + offset,
+    wkt: operation.wkt.map(id => id + offset), record: operation.record };
 
 /**
  * True when two resolved WCS frames are the same within tolerance, OR
@@ -363,9 +364,7 @@ export function planInfrastructureUnify(
     sharedRemap.set(own.operation, shared.operation);
     sharedRemap.set(own.crs, shared.crs);
     // The CRS's WKT goes with it (IfcCoordinateReferenceSystem.WellKnownText is SET [0:1]).
-    // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so these are the merged input's current records
-    const wkt = (dataStore.entityIndex.byType.get('IFCWELLKNOWNTEXT') ?? []).filter(text => refId(getStepAttr(dataStore, text, 1)) === own.crs);
-    for (const id of [own.operation, own.crs, ...wkt]) skipEntityIds.add(id);
+    for (const id of [own.operation, own.crs, ...own.wkt]) skipEntityIds.add(id);
   } else if (unifiedContextId !== null && own && !shared) firstModelContext.contextOperation = offsetOperation(own, modelOffset);
   for (const [type, firstIds] of firstModelInfraMap) {
     const thisIds = modelInfra.get(type);

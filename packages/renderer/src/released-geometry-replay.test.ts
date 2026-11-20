@@ -92,6 +92,27 @@ describe('replayReleasedGeometry', () => {
     assert.deepEqual(uploaded, [[1]], 'batch 2 never reached the stale device (the in-loop fence, not only the final one)');
   });
 
+  for (const outcome of ['cancel', 'failure'] as const) {
+    it(`#10903 a ${outcome} after batch 1 leaves no entity or placement bounds behind, and the retry's bounds are exact`, async () => {
+      const scene = new Scene();
+      const gpu = device();
+      const controller = new AbortController();
+      async function* source(fail: boolean): AsyncGenerator<readonly MeshData[]> {
+        yield [{ ...tri(7, 50, 0), modelIndex: 0 }];
+        if (fail) { if (outcome === 'cancel') controller.abort(); else throw new Error('read failed'); }
+        yield [tri(8, 0, 0)];
+      }
+      const first = replayReleasedGeometry(host(scene, gpu).renderer, source(true), { signal: controller.signal });
+      if (outcome === 'failure') await assert.rejects(first); else assert.equal((await first).status, 'cancelled');
+      assert.equal(scene.getEntityBoundingBox(7), null, 'no stale entity box survives the rollback');
+      const released = (scene as unknown as { modelTranslations: { releasedEntities: Map<number, unknown> } }).modelTranslations.releasedEntities;
+      assert.equal(released.has(7), false, 'nor a stale placement group');
+      assert.equal((await replayReleasedGeometry(host(scene, gpu).renderer, source(false))).status, 'complete');
+      const box = scene.getEntityBoundingBox(7)!;
+      assert.deepEqual([box.min.x, box.max.x], [50, 51], 'the retry unions from a clean start: exactly its own extent');
+    });
+  }
+
   it('#10903 a replay that uploads batch 1 then fails keeps nothing; its retry draws every batch exactly once', async () => {
     const scene = new Scene();
     const gpu = device();

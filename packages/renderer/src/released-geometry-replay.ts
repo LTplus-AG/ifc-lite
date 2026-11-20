@@ -14,7 +14,8 @@
  * Fencing: `isCurrent` is checked between batches (a newer reload or a lost
  * device supersedes this one) and `signal` cancels. A replay is all or
  * nothing: one that errors, is cancelled or is superseded removes every
- * fragment it uploaded before closing the ephemeral pass, so the scene stays
+ * fragment it uploaded, and the entity and placement bounds it unioned,
+ * before closing the ephemeral pass, so the scene stays
  * consistent and released and a retry never draws a batch twice.
  */
 
@@ -24,7 +25,22 @@ import { destroyGpuResources } from './scene-geometry.js';
 
 type BatchedFragment = Parameters<typeof destroyGpuResources>[0];
 /** The scene's own fragment lists (friend access, as device recovery uses). */
-interface FragmentHost { streamingFragments: BatchedFragment[]; batchedMeshes: BatchedFragment[] }
+interface FragmentHost {
+  streamingFragments: BatchedFragment[]; batchedMeshes: BatchedFragment[];
+  boundingBoxes: Map<number, unknown>; modelTranslations: { releasedEntities: Map<number, Map<number, unknown>> };
+}
+
+/** The per-entity world boxes and released placement groups a replay unions into, as they were before it. */
+function snapshotBounds(host: FragmentHost) {
+  return { boxes: new Map(host.boundingBoxes),
+    groups: new Map([...host.modelTranslations.releasedEntities].map(([id, groups]) => [id, new Map(groups)])) };
+}
+function restoreBounds(host: FragmentHost, snapshot: ReturnType<typeof snapshotBounds>): void {
+  host.boundingBoxes.clear();
+  for (const [id, box] of snapshot.boxes) host.boundingBoxes.set(id, box);
+  host.modelTranslations.releasedEntities.clear();
+  for (const [id, groups] of snapshot.groups) host.modelTranslations.releasedEntities.set(id, groups);
+}
 
 /** Destroy and remove fragments a replay created; idempotent. */
 function rollBack(host: FragmentHost, created: readonly BatchedFragment[]): void {
@@ -66,6 +82,7 @@ export async function replayReleasedGeometry(
   let stopped: 'cancelled' | 'superseded' | undefined;
   const host = scene as unknown as FragmentHost;
   const before = new Set(host.streamingFragments);
+  const bounds = snapshotBounds(host); // a rolled-back replay must leave no entity or placement bounds either
   let created: BatchedFragment[] = [];
   let ok = false;
   scene.setEphemeralStreamingMode(true);
@@ -88,13 +105,13 @@ export async function replayReleasedGeometry(
     created = host.streamingFragments.filter((fragment) => !before.has(fragment));
     // All or nothing: a replay that does not complete removes what it uploaded, so a retry
     // never draws a batch twice. Then the pass is always closed, leaving a released scene.
-    if (!ok) rollBack(host, created);
+    if (!ok) { rollBack(host, created); restoreBounds(host, bounds); }
     if (scene.isEphemeralStreaming()) await scene.finalizeStreamingAsync(device, pipeline);
     renderer.requestRender();
   }
   // Finalization is asynchronous: a change during it must not report (or keep) a complete replay.
   if (options.signal?.aborted) stopped = 'cancelled';
   else if (!current()) stopped = 'superseded';
-  if (stopped) { rollBack(host, created); renderer.requestRender(); }
+  if (stopped) { rollBack(host, created); restoreBounds(host, bounds); renderer.requestRender(); }
   return stopped ? { status: stopped, batches: count, meshes } : { status: 'complete', batches: count, meshes };
 }

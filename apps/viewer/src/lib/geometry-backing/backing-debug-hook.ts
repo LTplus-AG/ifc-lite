@@ -22,7 +22,16 @@ export type GeometryBackingCommand =
   /** TEST ONLY: release CPU geometry of every model after verifying its backing. */
   | { action: 'release-for-test' }
   /** TEST ONLY: magnetic snap at canvas CSS points, through readback when released. */
-  | { action: 'snap-probe-for-test'; points: Array<[number, number]> };
+  | { action: 'snap-probe-for-test'; points: Array<[number, number]> }
+  /** TEST ONLY: read the camera pose, or pin it first, so screen probes compare like for like. */
+  | { action: 'camera-for-test'; pose?: CameraPose }
+  /** TEST ONLY: the scene's own instanced occurrence bounds (placed frame), independent of any backing. */
+  | { action: 'instanced-bounds-for-test' };
+
+type Xyz = { x: number; y: number; z: number };
+export interface CameraPose { position: Xyz; target: Xyz; up: Xyz }
+/** TEST ONLY: one instanced entity's occurrence bounds as the scene holds them (placed frame). */
+export interface InstancedOccurrenceBounds { id: number; bounds: ReturnType<ReturnType<Renderer['getScene']>['getInstancedEntityBounds']> }
 
 export interface SnapProbe {
   outcome: string;
@@ -42,15 +51,34 @@ export function activeGeometryBackingTap(): StoreGeometryBackingTap | undefined 
 /** `renderer` is needed only by `release-for-test`; a test may start the tap
  * before the viewport has one, so the whole stream is observed. */
 type SnapProbeCommand = Extract<GeometryBackingCommand, { action: 'snap-probe-for-test' }>;
-// Each command's own result type: a backing command never reads as a snap probe, nor the reverse.
+type CameraCommand = Extract<GeometryBackingCommand, { action: 'camera-for-test' }>;
+type InstancedBoundsCommand = Extract<GeometryBackingCommand, { action: 'instanced-bounds-for-test' }>;
+type BackingResult = ModelBackingStatus[] | SnapProbe[] | CameraPose[] | InstancedOccurrenceBounds[];
+// Each command's own result type: a backing command never reads as a probe, nor the reverse.
 export function geometryBackingCommand(store: StoreApi<ReleaseState>, renderer: Renderer | undefined, command: SnapProbeCommand):
   Promise<SnapProbe[]>;
+export function geometryBackingCommand(store: StoreApi<ReleaseState>, renderer: Renderer | undefined, command: CameraCommand):
+  Promise<CameraPose[]>;
+export function geometryBackingCommand(store: StoreApi<ReleaseState>, renderer: Renderer | undefined, command: InstancedBoundsCommand):
+  Promise<InstancedOccurrenceBounds[]>;
 export function geometryBackingCommand(store: StoreApi<ReleaseState>, renderer: Renderer | undefined,
-  command: Exclude<GeometryBackingCommand, SnapProbeCommand>): Promise<ModelBackingStatus[]>;
+  command: Exclude<GeometryBackingCommand, SnapProbeCommand | CameraCommand | InstancedBoundsCommand>): Promise<ModelBackingStatus[]>;
 export function geometryBackingCommand(store: StoreApi<ReleaseState>, renderer: Renderer | undefined, command: GeometryBackingCommand):
-  Promise<ModelBackingStatus[] | SnapProbe[]>;
+  Promise<BackingResult>;
 export async function geometryBackingCommand(store: StoreApi<ReleaseState>, renderer: Renderer | undefined, command: GeometryBackingCommand):
-  Promise<ModelBackingStatus[] | SnapProbe[]> {
+  Promise<BackingResult> {
+  if (command.action === 'camera-for-test') {
+    const camera = renderer?.getCamera();
+    if (!camera) throw new Error('Camera poses need the viewport renderer');
+    const { pose } = command;
+    if (pose) { camera.setPosition(pose.position.x, pose.position.y, pose.position.z); camera.setTarget(pose.target.x, pose.target.y, pose.target.z); camera.setUp(pose.up.x, pose.up.y, pose.up.z); }
+    return [{ position: { ...camera.getPosition() }, target: { ...camera.getTarget() }, up: { ...camera.getUp() } }];
+  }
+  if (command.action === 'instanced-bounds-for-test') {
+    if (!renderer) throw new Error('Instanced bounds need the viewport renderer');
+    const scene = renderer.getScene();
+    return [...scene.getInstancedEntityIds()].map((id) => ({ id, bounds: scene.getInstancedEntityBounds(id) }));
+  }
   if (command.action === 'snap-probe-for-test') {
     if (!renderer) throw new Error('Snap probes need the viewport renderer');
     return snapProbe(renderer, command.points);

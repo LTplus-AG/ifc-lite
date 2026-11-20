@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { completeAfterReleasedReplays, splitReleasedForReplay } from '@/lib/geometry-backing/released-scene-replay';
 import { flushPlacementGeometry } from '@/lib/model-placement/bounds-revision';
 /**
  * Geometry streaming hook for the 3D viewport.
@@ -23,7 +24,7 @@ import { useViewerStore } from '@/store';
 import type { MeshData } from '@ifc-lite/geometry';
 import { NOOP_LOAD_TRACE } from '@ifc-lite/load-trace';
 import { toast } from '../ui/toast.js';
-import { reshapeSceneKeepingPresentInstanced } from './geometry-rebuild';
+import { clearSceneSupersedingReplays, reshapeSceneKeepingPresentInstanced } from './geometry-rebuild';
 import { runGpuUpload } from './gpu-upload-guard';
 import { geometryMeshKey } from './geometry-mesh-key';
 import { createRobustFitBoundsAccumulator } from './robustFitBoundsAccumulator.js';
@@ -199,7 +200,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
         cameraSnapshotRef.current = null;
         robustFitAccRef.current.reset();
         if (renderer && isInitialized) {
-          renderer.getScene().clear();
+          clearSceneSupersedingReplays(renderer.getScene());
           invalidateLandXmlGpuOwnershipAfterSceneClear();
           renderer.getCamera().reset();
           geometryBoundsRef.current = { ...DEFAULT_BOUNDS };
@@ -212,7 +213,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     if (!renderer || !isInitialized) return;
 
     const scene = renderer.getScene();
-    scene.setTriangleCountReplayComplete?.(false);
+    scene.setTriangleCountReplayComplete?.(false); completeAfterReleasedReplays(null); // a newer pass owns completion
     const device = renderer.getGPUDevice();
     if (!device) return;
     if (triangleSourceSceneRef.current !== scene) {
@@ -272,7 +273,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     // Adopted snapshot batches own the scene until their meshes arrive.
     if (isCleared && adoptedSceneOutlivesEmptyGeometry(scene)) return;
     if (isNewFile && takeSceneSnapshotGeometry(geometry, modelCount, renderer, { lastGeometryLengthRef, lastGeometryRef, cameraFittedRef, finalBoundsRefittedRef, geometryBoundsRef, cameraSnapshotRef }, isStreaming)) {
-      if (!isStreaming) scene.setTriangleCountReplayComplete?.(true);
+      if (!isStreaming) completeAfterReleasedReplays(() => scene.setTriangleCountReplayComplete?.(true)); // after pending released replays
       return;
     }
 
@@ -285,7 +286,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       // A filtered/released flat snapshot must keep its existing reset behavior.
       lastGeometryRef.current = geometryKernel === 'retained' && lastGeometryRef.current?.length === 0 && !appearanceSourceGeometry?.length
         && scene.getInstancedModelIndices().length > 0 ? geometry : null;
-      if (!isStreaming) scene.setTriangleCountReplayComplete?.(true);
+      if (!isStreaming) completeAfterReleasedReplays(() => scene.setTriangleCountReplayComplete?.(true)); // after pending released replays
       renderer.requestRender();
       return;
     }
@@ -320,7 +321,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       // Completion can arrive with unchanged length after the last streaming
       // append. Publish source completion before a camera-only early return.
       if (cameraFittedRef.current || currentLength === 0) {
-        if (!isStreaming) scene.setTriangleCountReplayComplete?.(true);
+        if (!isStreaming) completeAfterReleasedReplays(() => scene.setTriangleCountReplayComplete?.(true)); // after pending released replays
         return;
       }
       // Otherwise fall through so the camera-fit block at the bottom of
@@ -377,11 +378,11 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       }
     }
 
-    // ── Route meshes to scene ──
-    // A LandXML provisional transaction may have uploaded these exact
-    // store-owned meshes after its registry range became pickable. Consume the
-    // one-shot marker so normal scene rebuilds still own later re-uploads.
+    // ── Route meshes to scene ── A LandXML provisional transaction may have uploaded these exact store-owned
+    // meshes once its range became pickable; consume that one-shot marker so later rebuilds own re-uploads.
     newMeshes = newMeshes.filter((mesh) => !takeLandXmlGpuUploaded(mesh));
+    // Released CPU geometry (#10264) is replayed from the backing; the replay module owns its retries.
+    newMeshes = splitReleasedForReplay(renderer, newMeshes);
     if (newMeshes.length > 0) {
       // #6979: per-batch spans on the streaming load (no-op when not streaming or untraced).
       const trace = isStreaming ? activeLoadTrace() : NOOP_LOAD_TRACE;
@@ -423,7 +424,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
 
     if (!appendFailed) {
       lastGeometryLengthRef.current = currentLength;
-      if (!isStreaming) scene.setTriangleCountReplayComplete?.(true);
+      if (!isStreaming) completeAfterReleasedReplays(() => scene.setTriangleCountReplayComplete?.(true)); // after pending released replays
     }
 
     // Fit a loaded source once; authoring keeps the user camera.

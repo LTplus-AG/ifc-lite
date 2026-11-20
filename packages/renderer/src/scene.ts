@@ -6,6 +6,7 @@
  * Scene graph and mesh management
  */
 
+import { unionEntityWorldBounds } from './released-entity-bounds.js';
 import { GeometryChangeSignal } from './geometry-change-signal.js';
 import { SceneTriangleCounts } from './triangle-counts.js';
 import { destroyInstancedTemplateGpu, type InstancedTemplateGPU, type InstancedOccurrence, type InstancedTemplateCpu } from './scene-instance-types.js';
@@ -156,6 +157,7 @@ export class Scene {
   private authoredGeneration = 0;
   // Bumped wherever what a CPU pick can hit changes: see getPickGeometryRevision() (#8998).
   private pickGeometryRevision = 0;
+  private clearEpoch = 0; // moved by every flat clear (clear(), reshapes): a replay begun before owns nothing after (#10264)
   private triangleCounts = new SceneTriangleCounts();
   private geometryChanges = new GeometryChangeSignal();
   private bumpPickGeometryRevision(): void { this.pickGeometryRevision++; this.geometryChanges.changed(); }
@@ -1188,6 +1190,7 @@ export class Scene {
       }
     }
 
+    if (isStreaming && !retainStreamingGeometry) { unionEntityWorldBounds(this.boundingBoxes, meshDataArray); this.modelTranslations.unionReleasedEntityBounds(meshDataArray); }
     if (isStreaming) {
       // STREAMING: Create small fragment batches from ONLY the new meshes.
       // Avoids the O(N²) cost of re-merging all accumulated data every batch.
@@ -3607,10 +3610,9 @@ export class Scene {
   }
 
   clear(): void {
-    this.modelTranslations.clear();
-    // GPU-instancing templates own their vertex/index/instance buffers.
-    // (Freed slots are holes whose buffers are already destroyed — skip them so
-    // a per-model removal followed by clear() can't double-destroy.)
+    this.modelTranslations.clear(); // clearFlatGeometry() below moves clearEpoch
+    // GPU-instancing templates own their vertex/index/instance buffers. (Freed slots are holes whose
+    // buffers are already destroyed — skip them so a per-model removal then clear() can't double-destroy.)
     this.destroyAllInstancedTemplates();
     this.clearFlatGeometry();
   }
@@ -3625,7 +3627,7 @@ export class Scene {
    */
   clearFlatGeometry(): void {
     this.snapshots.onFlatCleared();
-    this.authoredGeneration++; this.authoredPreparations.invalidate();
+    this.clearEpoch++; this.authoredGeneration++; this.authoredPreparations.invalidate();
     this.instanceSuppression.restore();
     this.appearanceController?.forget();
     this.clearFlatBuffers();
@@ -3635,7 +3637,7 @@ export class Scene {
    * owners keep their original-instance history. Full reset remains separate. */
   clearFlatGeometryForRebuild(geometry: readonly MeshData[], models: ReadonlySet<number>, sourceGeometry = geometry): void {
     this.snapshots.onFlatCleared();
-    this.authoredGeneration++; this.authoredPreparations.invalidate();
+    this.clearEpoch++; this.authoredGeneration++; this.authoredPreparations.invalidate();
     const retained = this.appearanceController?.prepareRebuild(sourceGeometry, models) ?? new Set<number>();
     const discarded = this.appearanceController?.discardedForRebuild(retained) ?? [];
     // A discarded converted owner must not resurrect its obsolete type instance.

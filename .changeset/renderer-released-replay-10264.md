@@ -1,0 +1,5 @@
+---
+"@ifc-lite/renderer": minor
+---
+
+`replayReleasedGeometry(renderer, batches, { signal, isCurrent })` rebuilds a scene whose CPU geometry was released after upload (#10264). The host streams its stored flat meshes back in batches. Each batch is uploaded through the ephemeral streaming path, which keeps GPU fragments only, so peak CPU memory is one batch. Per-entity world bounds and per-model placement bounds are kept as the batches pass, so picking, framing and placement keep working. Between batches the replay checks `isCurrent` and the device. The replay is all or nothing: one that errors, is cancelled or is superseded (including by a device swap) removes every fragment it uploaded, and the entity and placement bounds it unioned, before closing the pass, and its result says `superseded`/`cancelled` (or it rethrows) so the host replays again from a clean scene. `unavailable` means there is no device or pipeline. Nothing changes for scenes that keep their CPU geometry.

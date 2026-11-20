@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { SceneContents } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
+import { supersedeReleasedReplays } from '@/lib/geometry-backing/released-scene-replay';
 
 // Non-federated default: only the primary model (modelIndex 0, what
 // `addInstancedShard` has always defaulted new templates to) survives a
@@ -27,6 +28,7 @@ export function reshapeSceneKeepingPresentInstanced(
   appearanceSourceGeometry?: readonly MeshData[],
 ): void {
   const present = presentInstancedModelIndices ?? DEFAULT_PRESENT_INSTANCED_MODEL_INDICES;
+  supersedeReleasedReplays(); // a replay in flight must not upload into the reshaped scene (#10264)
   if (scene.clearFlatGeometryForRebuild) scene.clearFlatGeometryForRebuild(geometry, present, appearanceSourceGeometry);
   else scene.clearFlatGeometry();
   for (const modelIndex of scene.getInstancedModelIndices()) {
@@ -34,4 +36,14 @@ export function reshapeSceneKeepingPresentInstanced(
       scene.removeInstancedTemplatesForModel(modelIndex);
     }
   }
+}
+
+/**
+ * A full scene clear (geometry unloaded or a session reset). Like every flat reshape it starts
+ * a new released-replay epoch first: a replay awaiting the backing must not upload a removed
+ * model into the cleared scene (#10264). Every viewer scene clear goes through here or the reshape.
+ */
+export function clearSceneSupersedingReplays(scene: Pick<SceneContents, 'clear'>): void {
+  supersedeReleasedReplays();
+  scene.clear();
 }

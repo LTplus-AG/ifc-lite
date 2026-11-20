@@ -51,7 +51,8 @@ export function mirroredSession(state: ViewerState, modelId: string): Session | 
 
 /** The effective property row before an edit, for the types its undo must restore. */
 export function propertyBefore(view: MutablePropertyView, entityId: number, psetName: string, propName: string): ValueTypes | undefined {
-  const row = view.getForEntity(entityId).find(set => set.name === psetName)?.properties.find(property => property.name === propName);
+  // Several sets can share a name; the property sits in whichever of them holds it.
+  const row = view.getForEntity(entityId).flatMap(set => set.name === psetName ? set.properties : []).find(property => property.name === propName);
   return row && { type: row.type, dataType: row.dataType };
 }
 

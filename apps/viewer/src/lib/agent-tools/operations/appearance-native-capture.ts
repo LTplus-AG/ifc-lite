@@ -132,6 +132,7 @@ export const appearanceCaptureOperations = [
         revision: appearanceRevision(c.model.id),
         Name: i.Name,
       });
+      c.retain(() => { owned(c).delete(token); });
       return out({
         token,
         source_model_id: i.source_model_id,

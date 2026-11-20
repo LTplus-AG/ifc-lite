@@ -84,6 +84,7 @@ export const clashClassificationOperations = [
       evictOldest(reviews(c), 32);
       const token = crypto.randomUUID();
       reviews(c).set(token, { result: s.clashResult, plan, evidence, model: s.chatActiveModel });
+      c.retain(() => { reviews(c).delete(token); });
       return out({
         token,
         evidence,

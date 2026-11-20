@@ -28,7 +28,8 @@ function classify(status: string): Classification {
   return 'unimplemented';
 }
 function control(control: string, operations: readonly string[], classification: Classification = 'implemented', reason?: string, native_tools?: readonly string[]): Control {
-  return { control, operations, classification, ...(native_tools?.length ? { native_tools } : {}), ...(reason ? { reason } : {}) };
+  // Several operations on one control: the audit does not record which serves which part of it.
+  return { control, operations, classification, ...(native_tools?.length ? { native_tools } : {}), ...(reason ? { reason } : {}), ...(operations.length > 1 ? { grouped: true as const } : {}) };
 }
 /** Inventories contain concrete controls, their shared native bindings and real boundaries.
  * Notes describe existing native limits; only actual missing bindings enter gaps. */

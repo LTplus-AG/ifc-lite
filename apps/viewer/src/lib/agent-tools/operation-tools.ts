@@ -13,7 +13,7 @@ const executionSchema = { type: 'object', properties: {
 export const OPERATION_SPECS = {
   ...operationArtifactSpecs,
   viewer_operation_coverage: {
-    description: 'Read machine-readable migration coverage for all built-in panels, finite viewport tools and non-panel controls. Lists actual implemented IDs, remaining gaps and specific human-only host boundaries. Controls marked grouped bind a set of native controls to their operations together; per-control mapping is not recorded for them. Partial coverage is never reported as complete.',
+    description: 'Read machine-readable migration coverage for all built-in panels, finite viewport tools and non-panel controls. Lists actual implemented IDs, remaining gaps and specific human-only host boundaries. A control marked grouped lists several operations together; which one serves which part of the control is not recorded. Partial coverage is never reported as complete.',
     inputSchema: { type: 'object', properties: {} } satisfies AgentInputSchema, readOnly: true,
   },
   viewer_operations: {

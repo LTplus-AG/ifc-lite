@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
+import { buildLoadReport } from '@/lib/loadReport';
 import assert from 'node:assert/strict';
 import { deflateSync } from 'node:zlib';
 import { beforeEach, it } from 'node:test';
@@ -91,7 +92,9 @@ it('exports real per-model diagnostic evidence and preserves explicit unknown co
   const read = await readArtifact(context.host, artifact.artifact_id, 0, 65536);
   const report = JSON.parse(atob(read.data)) as { models: Array<{ modelId: string; diagnosticsAvailable: boolean }> };
   assert.equal(report.models.length, 1); assert.equal(report.models[0].modelId, 'A');
-  assert.equal(typeof report.models[0].diagnosticsAvailable, 'boolean');
+  // The export carries the native report's own value; a fixture without diagnostics stays false, never rounded up to true.
+  const native = buildLoadReport(useViewerStore.getState().models.get('A')!);
+  assert.equal(native.diagnosticsAvailable, false); assert.equal(report.models[0].diagnosticsAvailable, false);
 });
 it('rejects undeclared parameters for every coordination operation (#10525)', () => {
   // Missing required fields would also throw, so check the closed schema itself.

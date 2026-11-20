@@ -15,7 +15,7 @@ import { captureAnalysisStamp, isAnalysisStale } from '@/hooks/useAnalysisStalen
 import { sanitizeFilename } from '@/lib/export/download';
 import { viewerOperation } from './contract';
 import { matchesJsonSnapshot, metadata, idSchema, artifactSchema, checkpoint } from './analytics-common';
-import { internal, stale } from './refusals';
+import { internal, invalidInput, stale } from './refusals';
 interface Input { id: string; expected_json: string; page: { size: 'A4' | 'A3'; orientation: 'portrait' | 'landscape' }; title_block: { project: string; title: string; author: string; date: string; revision: string }; snapshots: boolean; save_setup: boolean }
 export const analyticsChartReportOperations = [
   viewerOperation<Input>(metadata('charts.exportReport', 'charts', 'Await all native chart datasets/filters, real multi-chart report PDF, optional restored viewport captures and native report setup persistence. Exposes the actual Report dialog paper/orientation/title-block/snapshot controls without mounting it.', ['read', 'artifact', 'configuration', 'view'], {
@@ -27,7 +27,8 @@ export const analyticsChartReportOperations = [
     }, required: ['id', 'expected_json', 'page', 'title_block', 'snapshots', 'save_setup'], additionalProperties: false,
   } satisfies JSONSchemaType<Input>, async (i, c) => {
     const state = useViewerStore.getState(); const dashboard = state.dashboards.find(row => row.id === i.id);
-    if (!dashboard || !matchesJsonSnapshot(dashboard, i.expected_json)) throw stale('Dashboard changed since inspection.');
+    if (!dashboard) throw invalidInput('unknown-target', 'Unknown dashboard.');
+    if (!matchesJsonSnapshot(dashboard, i.expected_json)) throw stale('Dashboard changed since inspection.');
     const frozen = structuredClone(dashboard); const stamp = captureAnalysisStamp(true);
     const { chartSlice, chartSliceSource } = useViewerStore.getState();
     const aggregations = new Map<string, Aggregation | null>();

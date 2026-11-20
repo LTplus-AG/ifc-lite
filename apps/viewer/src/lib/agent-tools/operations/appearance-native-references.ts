@@ -144,8 +144,10 @@ export const appearanceReferenceOperations = [
         source = s.appearanceSources.find((item) => item.id === i.source_id),
         editing = i.edit_reference_id ? (s.appearanceReferences.get(i.edit_reference_id) ?? null) : null,
         renderer = getGlobalRenderer();
-      if (!source || JSON.stringify(source) !== i.expected_source || !renderer || (i.edit_reference_id && !editing))
-        throw stale('Reference source/edit identity or renderer changed.');
+      if (!source) throw invalidInput('unknown-target', 'Unknown native appearance source.');
+      if (i.edit_reference_id && !editing) throw invalidInput('unknown-target', 'Unknown native reference to edit.');
+      if (JSON.stringify(source) !== i.expected_source) throw stale('Reference source changed since inspection.');
+      if (!renderer) throw unavailable('Native reference renderer is unavailable.');
       for (const [token, row] of candidates(c)) if (row.placed) candidates(c).delete(token);
       assertPreviewCapacity(c);
       const owner = { kind: 'draft' as const, id: crypto.randomUUID() },

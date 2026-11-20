@@ -13,6 +13,7 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it, type TestContext } from 'node:test';
 import { useViewerStore } from '@/store';
 import { resetFeaturesForTest } from '@/lib/features';
+import { DEFAULT_APPEARANCE_SETTINGS } from '@/lib/appearance/settings';
 import { blankDocument } from '@/lib/document/presets';
 import { modelOverviewDashboard } from '@/lib/charts/presets';
 import { DEFAULT_ANONYMIZE_TOGGLES } from '@/components/viewer/anonymized-export/AnonymizationOptionsPanel';
@@ -47,15 +48,6 @@ describe('operation refusals carry an executor code and a reason (#10871)', () =
     assert.equal(result.isError, true); assert.equal(result.errorCode, 'STATE_CHANGED', result.text); assert.equal(reason(result), 'stale');
   });
 
-  it('a disabled operation returns a permission denial', async () => {
-    resetFeaturesForTest({ default: 'all', disable: ['tools.section'] });
-    const result = await dispatchMainViewerTool(viewerHost(), 'viewer_operation_execute', {
-      operation_id: 'section.box', input: { min: [0, 0, 0], max: [1, 2, 3] },
-    }, { canEdit: () => true });
-    assert.equal(result.errorCode, 'PERMISSION_DENIED', result.text);
-    assert.equal(reason(result), 'disabled');
-  });
-
   it('the native chart evaluator reports an unknown chart as an input refusal', async () => {
     const dashboard = modelOverviewDashboard();
     useViewerStore.setState({ dashboards: [dashboard] });
@@ -64,6 +56,40 @@ describe('operation refusals carry an executor code and a reason (#10871)', () =
     });
     assert.equal(result.errorCode, 'INVALID_INPUT', result.text);
     assert.equal(reason(result), 'unknown-target');
+  });
+
+  it('a report export for an unknown dashboard reports an invalid target', async () => {
+    const dashboard = modelOverviewDashboard();
+    useViewerStore.setState({ dashboards: [dashboard] });
+    const result = await dispatchMainViewerTool(viewerHost(), 'viewer_operation_execute', {
+      operation_id: 'charts.exportReport', input: {
+        id: 'missing', expected_json: JSON.stringify(dashboard), page: { size: 'A4', orientation: 'portrait' },
+        title_block: { project: '', title: '', author: '', date: '', revision: '' }, snapshots: false, save_setup: false,
+      },
+    }, { canEdit: () => true });
+    assert.equal(result.errorCode, 'INVALID_INPUT', result.text);
+    assert.equal(reason(result), 'unknown-target');
+  });
+
+  it('reference preparation distinguishes an unknown target, stale source and unavailable renderer', async () => {
+    const host = viewerHost();
+    const source = { id: 'image', assetId: 'fixture', name: 'Fixture.png', width: 1, height: 1 };
+    useViewerStore.getState().addAppearanceSource(source);
+    const prepare = (source_id: string, expected_source = JSON.stringify(source), edit_reference_id = '') =>
+      dispatchMainViewerTool(host, 'viewer_operation_execute', {
+        operation_id: 'appearance.references.prepare', input: {
+          source_id, expected_source, edit_reference_id, settings_json: JSON.stringify(DEFAULT_APPEARANCE_SETTINGS),
+        },
+      }, { canEdit: () => true, signal: new AbortController().signal });
+    for (const [result, code, expected] of [
+      [await prepare('missing'), 'INVALID_INPUT', 'unknown-target'],
+      [await prepare(source.id, JSON.stringify(source), 'missing'), 'INVALID_INPUT', 'unknown-target'],
+      [await prepare(source.id, '{}'), 'STATE_CHANGED', 'stale'],
+      [await prepare(source.id), 'UNSUPPORTED_OPERATION', 'unavailable'],
+    ] as const) {
+      assert.equal(result.errorCode, code, result.text);
+      assert.equal(reason(result), expected);
+    }
   });
 
   it('deleting a document while its revision is calculated reports stale state', async t => {

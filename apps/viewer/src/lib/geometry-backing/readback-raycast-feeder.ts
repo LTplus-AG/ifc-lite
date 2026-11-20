@@ -144,6 +144,8 @@ export class ReadbackRaycastFeeder {
               || b.min.z > p.z + r || b.max.z < p.z - r || this.owner(id) !== modelId || instancedIds.has(id)) continue;
             // The resident raycast never tests a hidden (or non-isolated) occurrence: it neither counts nor is fed.
             if (visibility.hiddenIds?.has(id) || (visibility.isolatedIds && !visibility.isolatedIds.has(id))) continue;
+            // Nor an overlay it never tests (an instanced annotation or grid), which the re-pick saw through.
+            if (skipped.has(id) || !this.raycastable(id)) continue;
             // A truncated neighbourhood could snap differently from the resident scene: refuse, never omit.
             if (instancedIds.size >= MAX_INSTANCED_NEIGHBOURS) throw new GeometryUnavailableError(`More than ${MAX_INSTANCED_NEIGHBOURS} instanced neighbours`);
             instancedIds.add(id);

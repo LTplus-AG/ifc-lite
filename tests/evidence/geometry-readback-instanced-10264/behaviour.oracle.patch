@@ -1,8 +1,7 @@
 diff --git a/apps/viewer/src/lib/geometry-backing/readback-raycast-feeder.ts b/apps/viewer/src/lib/geometry-backing/readback-raycast-feeder.ts
-index 76869855b3..65a5e51257 100644
 --- a/apps/viewer/src/lib/geometry-backing/readback-raycast-feeder.ts
 +++ b/apps/viewer/src/lib/geometry-backing/readback-raycast-feeder.ts
-@@ -104,7 +104,7 @@ export class ReadbackRaycastFeeder {
+@@ -104,7 +104,7 @@
        let hit = await this.host.pick(x, y, visibility);
        signal.throwIfAborted();
        const skipped = new Set(visibility.hiddenIds ?? []);
@@ -11,8 +10,8 @@ index 76869855b3..65a5e51257 100644
          if (layer >= MAX_SEE_THROUGH_LAYERS) throw new GeometryUnavailableError(`More than ${MAX_SEE_THROUGH_LAYERS} overlays under the pointer`);
          skipped.add(hit.expressId);
          hit = await this.host.pick(x, y, { ...visibility, hiddenIds: skipped });
-@@ -146,7 +146,7 @@ export class ReadbackRaycastFeeder {
-             if (visibility.hiddenIds?.has(id) || (visibility.isolatedIds && !visibility.isolatedIds.has(id))) continue;
+@@ -148,7 +148,7 @@
+             if (skipped.has(id) || !this.raycastable(id)) continue;
              // A truncated neighbourhood could snap differently from the resident scene: refuse, never omit.
              if (instancedIds.size >= MAX_INSTANCED_NEIGHBOURS) throw new GeometryUnavailableError(`More than ${MAX_INSTANCED_NEIGHBOURS} instanced neighbours`);
 -            void id;

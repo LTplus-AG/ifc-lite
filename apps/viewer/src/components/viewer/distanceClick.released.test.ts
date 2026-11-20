@@ -100,6 +100,35 @@ describe('click-click distance over released geometry', () => {
     assert.deepEqual(log, ['start 10', 'end 300', 'finished'], 'one distance from the first click to the second');
   });
 
+  it('#10884 a second press dragged and released while its own start still reads back finishes at the RELEASE point', async () => {
+    const { ctx, log } = releasedCtx();
+    handleMeasureDown(ctx, down(10)); release(ctx, 10); // the first click, still reading back
+    handleMeasureDown(ctx, down(300)); // the second press, also deferred (no start was pending yet)
+    await settleImports();
+    reads[0].settle('fed'); await tick(); // the first start lands
+    assert.deepEqual(log, ['start 10']);
+    ctx.mouseState.didDrag = true; // dragged from 300 to 400
+    release(ctx, 400); // a start is pending now, so the controls hand the release to handleMeasureUp
+    await settleImports();
+    reads[1].settle('fed'); await tick(); // the second press lands: a second click, its release queued behind it
+    reads[2].settle('fed');
+    await measureReadbacksIdle();
+    assert.deepEqual(log, ['start 10', 'end 400', 'finished'], 'measured to where it was released, not where it was pressed');
+  });
+
+  it('#10884 a dragged second press whose release was never seen keeps the start pending, never measuring to the press point', async () => {
+    const { ctx, log } = releasedCtx();
+    handleMeasureDown(ctx, down(10)); release(ctx, 10);
+    handleMeasureDown(ctx, down(300));
+    ctx.mouseState.didDrag = true;
+    release(ctx, 400); // no start pending yet: the controls never call handleMeasureUp
+    await settleImports();
+    reads[0].settle('fed'); await tick();
+    reads[1].settle('fed');
+    await measureReadbacksIdle();
+    assert.deepEqual(log, ['start 10'], 'the start stays pending for the next click');
+  });
+
   it('#10884 Esc while the second click reads back drops the finish', async () => {
     const { ctx, log } = releasedCtx();
     ctx.activeMeasurementRef.current = { start: { x: 0, y: 0, z: 0 } } as never; // the first click's pending start

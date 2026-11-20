@@ -346,6 +346,23 @@ describe('released geometry readback for tools', () => {
     const none: Array<readonly MeshData[]> = [];
     for await (const batch of modelGeometry({ backing: () => undefined }, 'm', [])) none.push(batch);
     assert.deepEqual(none, [], 'an unbacked empty model yields nothing and does not fail');
+  });
+
+  it('#10884 an instanced overlay neighbour (an annotation the resident raycast never tests) is not fed', async () => {
+    const registry = await GeometryBackingRegistry.open(database());
+    const backing = await registry.begin('m');
+    await backing.writer.append([mesh(1, 0)]);
+    await backing.writer.appendInstancedShard(instancedShard()); // 501 opaque
+    const overlay = instancedShard();
+    overlay.instances = [{ ...overlay.instances[0], entityId: 503 }]; // an instanced IfcAnnotation beside the hit
+    await backing.writer.appendInstancedShard(overlay);
+    await backing.writer.close();
+    const near = { min: { x: 99, y: -1, z: 4 }, max: { x: 101, y: 1, z: 6 } };
+    const h = host({ released: true, hit: { expressId: 501, modelIndex: 0, worldXYZ: { x: 100.2, y: 0.2, z: 5 } } }, new Map([[501, near], [503, near]]));
+    const feeder = new ReadbackRaycastFeeder(h.value, () => ({ backing: () => backing }), () => 'm', undefined, (id) => id !== 503);
+    assert.equal(await feeder.prepare(0, 0), 'fed', feeder.lastError?.message ?? 'not fed');
+    const instanced = h.fed.at(-1)!.filter((m) => m.occurrenceKey?.startsWith('readback:'));
+    assert.deepEqual(instanced.map((m) => m.expressId), [501], 'the overlay is never a raycast target, as in the resident scene');
     await registry.close();
   });
 });

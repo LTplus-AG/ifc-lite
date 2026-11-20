@@ -45,3 +45,14 @@ it('a peer edit of the moved element clears the move, whose mutation is another 
   const undo = useViewerStore.getState().undoStacks.get('hello') ?? [];
   assert.equal(undo.some(mutation => mutation.id === committed.id), false);
 });
+
+it('a peer edit of the moved element clears the rest of the move\'s batch too (#10810)', () => {
+  // A move that regenerates rooms commits one batch: the point write holds the record, the room writes do not.
+  const point = useViewerStore.getState().setPositionalAttribute('hello', 42, 2, 'Moved')!;
+  const room = useViewerStore.getState().setPositionalAttribute('hello', 1, 2, 'Regenerated')!;
+  useViewerStore.setState(s => ({ mutationBatchTags: new Map(s.mutationBatchTags).set(point.id, 'move').set(room.id, 'move') }));
+  publishMove(useViewerStore.getState(), 'hello', point, WALL_ID, [2, 0, 0]);
+  useViewerStore.getState().invalidateHistoryForEntity('hello', WALL_ID);
+  const undo = useViewerStore.getState().undoStacks.get('hello') ?? [];
+  assert.deepEqual(undo.filter(mutation => mutation.id === point.id || mutation.id === room.id), []);
+});

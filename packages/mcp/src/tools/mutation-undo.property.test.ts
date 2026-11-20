@@ -30,4 +30,13 @@ describe('undoPendingMutations of a property delete (#10810)', () => {
     const row = view.getForEntity(1).flatMap(set => set.name === 'Pset_Test' ? set.properties : []).find(p => p.name === 'Width');
     expect([row?.value, row?.type, row?.dataType]).toEqual([0.2, PropertyValueType.Real, 'IFCLENGTHMEASURE']);
   });
+
+  it('restores the unit the delete recorded', () => {
+    const view = new MutablePropertyView(null, 'm');
+    view.setProperty(1, 'Pset_Test', 'Width', 200, PropertyValueType.Real, 'mm', true, 'IFCLENGTHMEASURE');
+    view.deleteProperty(1, 'Pset_Test', 'Width');
+    expect(undoPendingMutations(view, 1)).toBe(1);
+    const row = view.getForEntity(1).find(set => set.name === 'Pset_Test')?.properties.find(p => p.name === 'Width');
+    expect([row?.value, row?.unit]).toEqual([200, 'mm']);
+  });
 });

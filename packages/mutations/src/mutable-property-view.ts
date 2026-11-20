@@ -553,7 +553,7 @@ export class MutablePropertyView extends MutableOverlayState {
       propName,
       oldValue,
       newValue: null,
-      valueType: row?.type, dataType: row?.dataType,
+      valueType: row?.type, dataType: row?.dataType, unit: row?.unit,
     };
 
     if (!skipHistory) {

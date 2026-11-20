@@ -106,14 +106,14 @@ export function applyUndoToView(get: Get, set: Set, modelId: string, view: Mutab
     }
   } else if (mutation.type === 'DELETE_PROPERTY') {
     if (mutation.psetName && mutation.propName && mutation.oldValue !== undefined) {
-      // The delete recorded the row's types, so the property returns as it was, not as text.
+      // The delete recorded the row's types and unit, so the property returns as it was, not as text.
       view.setProperty(
         mutation.entityId,
         mutation.psetName,
         mutation.propName,
         mutation.oldValue,
         mutation.valueType,
-        undefined,
+        mutation.unit,
         true, // skipHistory
         mutation.dataType,
       );

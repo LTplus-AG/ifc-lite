@@ -165,6 +165,14 @@ describe('undo and redo the room did not get, or got differently (#10810)', () =
     assert.equal(row?.type, PropertyValueType.Boolean);
   });
 
+  it('undoing a property delete restores its unit too', () => {
+    view().setProperty(WALL_ID, 'Pset_Test', 'Width', 200, PropertyValueType.Real, 'mm', true, 'IFCLENGTHMEASURE');
+    state().deleteProperty('hello', WALL_ID, 'Pset_Test', 'Width');
+    state().undo('hello');
+    const row = view().getForEntity(WALL_ID).find(set => set.name === 'Pset_Test')?.properties.find(p => p.name === 'Width');
+    assert.deepEqual([row?.value, row?.unit], [200, 'mm']);
+  });
+
   it('redoing an edit that cleared an attribute clears it again, never the text \'null\'', () => {
     state().setAttribute('hello', WALL_ID, 'Description', null as unknown as string, 'Before');
     state().undo('hello');

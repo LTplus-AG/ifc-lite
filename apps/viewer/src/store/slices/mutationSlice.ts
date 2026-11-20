@@ -1856,9 +1856,13 @@ export const createMutationSlice: StateCreator<
   },
 
   invalidateHistoryForEntity: (modelId, entityId) => set((s) => {
-    // A move's mutation is its placement point's, so a recorded move of this entity goes too (#10810).
+    // A move's mutation is its placement point's, so a recorded move of this entity goes too, with the rest of its
+    // batch: an undo of half a move would revert its regenerated rooms or refits and leave the element moved (#10810).
+    const hit = (m: Mutation) => m.entityId === entityId || movedEntityOf(m) === entityId;
+    const batches = new Set([...(s.undoStacks.get(modelId) ?? []), ...(s.redoStacks.get(modelId) ?? [])]
+      .filter(hit).map((m) => s.mutationBatchTags.get(m.id)).filter((tag) => tag !== undefined));
     const patch = invalidateHistoryPatch(s.undoStacks, s.redoStacks, s.mutationBatchTags, s.mutationMeshTranslations, modelId,
-      (m) => m.entityId === entityId || movedEntityOf(m) === entityId);
+      (m) => hit(m) || batches.has(s.mutationBatchTags.get(m.id) ?? ''));
     // Whatever the patch removed from this model's undo stack also leaves its change sets.
     if (!patch.undoStacks) return patch;
     const kept = new Set((patch.undoStacks.get(modelId) ?? []).map((m) => m.id));

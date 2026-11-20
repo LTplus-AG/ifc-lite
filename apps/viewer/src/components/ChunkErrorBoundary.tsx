@@ -78,7 +78,6 @@ const CHUNK_LABEL_KEYS = {
   'MCP playground': 'viewerShell.chunkLabel.mcpPlayground',
   'RTE GPU witness': 'viewerShell.chunkLabel.rteGpuWitness',
   'Saved runs': 'compareAnalysis.reconcile.savedTitle',
-  'Share dialog': 'ribbon.file.share',
   'Material layers': 'modelInspector.layers.title',
   'Storey manager': 'storeyManager.title',
   'Structural Analysis card': 'properties.structural.heading',

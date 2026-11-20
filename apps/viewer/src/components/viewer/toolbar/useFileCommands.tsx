@@ -9,7 +9,7 @@
  */
 
 import { isFeatureEnabled } from '@/lib/features';
-import React, { lazy, Suspense, useRef, useState, useCallback, useEffect, useMemo } from 'react';
+import React, { Suspense, useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { useViewerStore, isIfcxDataStore, type FederatedModel } from '@/store';
 import { useIfcLoader } from '@/hooks/useIfcLoader';
 import { useIfcFederation } from '@/hooks/useIfcFederation';
@@ -21,7 +21,7 @@ import {
   readFreshFile,
 } from '@/services/file-system-access';
 import { toast } from '@/components/ui/toast';
-import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import { useTranslation } from '@/i18n';
 import { isCollabEnabled } from '@/lib/collab/config';
 import { ingestDxfFiles, splitDxfFiles } from '@/hooks/ingest/dxfIngest';
@@ -33,7 +33,8 @@ import { FederationSetupControls } from '../FederationSetupControls';
 import { FILE_ACCEPT, isModelSidecarFile, isSupportedModelFile } from '@/services/supported-model-files';
 import { captureModelTags, restoreModelTags } from '@/lib/model-tags/carry-over';
 
-const ShareDialog = lazy(() => import('../ShareDialog').then(module => ({ default: module.ShareDialog })));
+// lazyChunk: a failed chunk renders nothing instead of unwinding the toolbar (#10772).
+const ShareDialog = lazyChunk(() => import('../ShareDialog').then(module => ({ default: module.ShareDialog })));
 
 // FILE_ACCEPT offers `.dxf` while `isSupportedModelFile` rejects it: DXF
 // files are 2D reference underlays, not models, and split off to the DXF
@@ -354,15 +355,9 @@ export function useFileCommands(): FileCommands {
         className="hidden"
       /></>}
       {collabEnabled && shareDialogOpen !== null && (
-        // The dialog is a lazy chunk: a failed load shows the boundary's notice
-        // (with Reload) instead of unwinding the toolbar.
-        <ChunkErrorBoundary label="Share dialog" renderFallback={fallback => (
-          <div className="fixed inset-x-0 bottom-4 z-50 flex justify-center px-4">{fallback}</div>
-        )}>
-          <Suspense fallback={null}>
-            <ShareDialog open={shareDialogOpen} onOpenChange={setShareDialogOpen} />
-          </Suspense>
-        </ChunkErrorBoundary>
+        <Suspense fallback={null}>
+          <ShareDialog open={shareDialogOpen} onOpenChange={setShareDialogOpen} />
+        </Suspense>
       )}
       <FederationSetupControls />
     </>

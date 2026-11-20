@@ -8,6 +8,7 @@ import { takeDoubleClickStart } from './distanceClick.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { toastTooFewPoints } from '@/store/finishMeasureSequence';
 import { refuseCaptureHeldPick } from '@/lib/viewport-capture';
+import { runAfterMeasureReadbacks } from './measureReadbackGate.js';
 
 /** Finish the existing open polyline/radius gesture, dropping its duplicate click. */
 export function handleMeasureDoubleClick(ctx: MouseHandlerContext, event: MouseEvent): void {
@@ -20,6 +21,15 @@ export function handleMeasureDoubleClick(ctx: MouseHandlerContext, event: MouseE
   }
   // Its clicks were refused, so the last point was never placed: finishing would record another shape (#9137).
   if (refuseCaptureHeldPick(ctx.renderer)) return;
+  // Released geometry (#10264): its clicks may still be reading back; finish after them, in order.
+  const mode = useViewerStore.getState().measureMode;
+  if (runAfterMeasureReadbacks(() => finishSequence(event), () => ctx.activeToolRef.current === 'measure'
+    && useViewerStore.getState().measureMode === mode)) {
+    if (mode === 'polyline' || mode === 'radius') event.preventDefault();
+  }
+}
+
+function finishSequence(event: MouseEvent): void {
   const polyline = finishPolylineFromDoubleClick();
   if (polyline !== null) {
     event.preventDefault();

@@ -24,13 +24,14 @@ import { fedUnderVisibility, type ReadbackVisibility } from '@/lib/geometry-back
 
 let epoch = 0;
 let chain: Promise<void> = Promise.resolve();
+let queued = 0;
 
 /** A reset gesture or a tool change: no readback queued before it may act. */
 export function invalidatePendingMeasureReadbacks(): void { epoch++; }
 
 /** Whether (x, y) can be raycast now without a new readback. */
 export function readbackCovers(renderer: Renderer, x: number, y: number, visibility: ReadbackVisibility): boolean {
-  return !sceneGeometryReleased(renderer) || (renderer.readbackRaycastCovers(x, y) && fedUnderVisibility(visibility));
+  return !sceneGeometryReleased(renderer) || (renderer.readbackRaycastCovers(x, y) && fedUnderVisibility(renderer, visibility));
 }
 
 /** Run `action` now, or after readback at (x, y) when it is needed and missing. Returns true if deferred. */
@@ -45,13 +46,26 @@ export function runWithReadback(renderer: Renderer, x: number, y: number, visibi
   if (readbackCovers(renderer, x, y, visibility)) { action(); return false; }
   const mine = epoch;
   const valid = () => mine === epoch && stillValid();
+  queued++;
   chain = chain.then(async () => {
     if (!valid()) return;
     let outcome = await feed(renderer, x, y, visibility);
     if (outcome === 'cancelled' && valid()) outcome = await feed(renderer, x, y, visibility); // a hover overtook it
     if (outcome === 'cancelled' || !valid()) return;
     action(); // fed, or answered (no hit / unavailable): the raycast then misses rather than measuring stale pieces
-  }).catch((error: unknown) => console.error('[Measure] Geometry readback failed', error));
+  }).catch((error: unknown) => console.error('[Measure] Geometry readback failed', error)).finally(() => { queued--; });
+  return true;
+}
+
+/**
+ * Run `action` after every gated readback queued so far (a double-click finish after its own deferred
+ * clicks), or now when none is pending. Fenced like them. Returns true if deferred.
+ */
+export function runAfterMeasureReadbacks(action: () => void, stillValid: () => boolean = () => true): boolean {
+  if (queued === 0) { action(); return false; }
+  const mine = epoch;
+  queued++;
+  chain = chain.then(() => { if (mine === epoch && stillValid()) action(); }).finally(() => { queued--; });
   return true;
 }
 

@@ -11,17 +11,20 @@
 
 export interface ReadbackVisibility { hiddenIds?: ReadonlySet<number>; isolatedIds?: ReadonlySet<number> | null }
 
-let fed: { hidden: ReadonlySet<number>; isolated: ReadonlySet<number> | null } | null = null;
+/** Per renderer: each canvas's pieces and ray coverage are its own. */
+const fedBy = new WeakMap<object, { hidden: ReadonlySet<number>; isolated: ReadonlySet<number> | null }>();
 
 const sameSet = (a: ReadonlySet<number>, b: ReadonlySet<number>) => a.size === b.size && [...a].every((id) => b.has(id));
 
 /** Recorded by the feeder when it hands pieces over; `null` when they are cleared. */
-export function recordFedVisibility(visibility: ReadbackVisibility | null): void {
-  fed = visibility && { hidden: new Set(visibility.hiddenIds ?? []), isolated: visibility.isolatedIds ? new Set(visibility.isolatedIds) : null };
+export function recordFedVisibility(renderer: object, visibility: ReadbackVisibility | null): void {
+  if (!visibility) { fedBy.delete(renderer); return; }
+  fedBy.set(renderer, { hidden: new Set(visibility.hiddenIds ?? []), isolated: visibility.isolatedIds ? new Set(visibility.isolatedIds) : null });
 }
 
 /** Whether the current pieces were prepared under exactly `visibility`. */
-export function fedUnderVisibility(visibility: ReadbackVisibility): boolean {
+export function fedUnderVisibility(renderer: object, visibility: ReadbackVisibility): boolean {
+  const fed = fedBy.get(renderer);
   if (!fed) return false;
   const isolated = visibility.isolatedIds ?? null;
   if ((fed.isolated === null) !== (isolated === null)) return false;

@@ -34,7 +34,7 @@ export function readbackFeeder(renderer: Renderer): ReadbackRaycastFeeder {
     // changes that end a backing generation, so a raycast never tests stale geometry.
     const owned = feeder;
     useViewerStore.subscribe((state, previous) => {
-      if (state.models !== previous.models || state.geometryContentVersion !== previous.geometryContentVersion) { owned.clear(); recordFedVisibility(null); }
+      if (state.models !== previous.models || state.geometryContentVersion !== previous.geometryContentVersion) { owned.clear(); recordFedVisibility(renderer, null); }
     });
   }
   return feeder;
@@ -44,7 +44,7 @@ export function readbackFeeder(renderer: Renderer): ReadbackRaycastFeeder {
 export function feedReadbackAt(renderer: Renderer, x: number, y: number,
   visibility: { hiddenIds?: ReadonlySet<number>; isolatedIds?: ReadonlySet<number> | null }): Promise<FeedOutcome> {
   return readbackFeeder(renderer).prepare(x, y, visibility).then((outcome) => {
-    recordFedVisibility(outcome === 'fed' ? visibility : null);
+    recordFedVisibility(renderer, outcome === 'fed' ? visibility : null);
     return outcome;
   });
 }

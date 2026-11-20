@@ -126,7 +126,7 @@ export class ReadbackRaycastFeeder {
           for (const id of scene.getInstancedEntityIds()) {
             const b = scene.getInstancedEntityBounds(id);
             if (!b || b.min.x > p.x + r || b.max.x < p.x - r || b.min.y > p.y + r || b.max.y < p.y - r
-              || b.min.z > p.z + r || b.max.z < p.z - r || this.owner(id) !== modelId) continue;
+              || b.min.z > p.z + r || b.max.z < p.z - r || this.owner(id) !== modelId || instancedIds.has(id)) continue;
             // A truncated neighbourhood could snap differently from the resident scene: refuse, never omit.
             if (instancedIds.size >= MAX_INSTANCED_NEIGHBOURS) throw new GeometryUnavailableError(`More than ${MAX_INSTANCED_NEIGHBOURS} instanced neighbours`);
             instancedIds.add(id);

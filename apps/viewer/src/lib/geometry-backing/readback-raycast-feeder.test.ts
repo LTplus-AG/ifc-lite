@@ -201,4 +201,21 @@ describe('released geometry readback for tools', () => {
     }
     await registry.close();
   });
+
+  it('#10884 exactly the cap of instanced neighbours, the picked one yielded last, is fed, not refused', async () => {
+    const registry = await GeometryBackingRegistry.open(database());
+    const backing = await registry.begin('m');
+    await backing.writer.append([mesh(1, 0)]);
+    await backing.writer.appendInstancedShard(instancedShard());
+    await backing.writer.close();
+    const near = { min: { x: 99, y: -1, z: 4 }, max: { x: 101, y: 1, z: 6 } };
+    const box = new Map<number, Box>();
+    for (let id = 1000; id < 1255; id++) box.set(id, near); // 255 others ...
+    box.set(501, near); // ... and the picked one last: 256 distinct ids
+    const h = host({ released: true, hit: { expressId: 501, modelIndex: 0, worldXYZ: { x: 100.2, y: 0.2, z: 5 } } }, box);
+    const feeder = new ReadbackRaycastFeeder(h.value, () => ({ backing: () => backing }), () => 'm');
+    assert.equal(await feeder.prepare(0, 0), 'fed', feeder.lastError?.message ?? 'not fed');
+    await registry.close();
+  });
 });
+

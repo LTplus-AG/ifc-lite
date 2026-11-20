@@ -21,7 +21,7 @@
 
 import { decodeInstancedShard, type DecodedInstancedShard, type MeshData } from '@ifc-lite/geometry';
 import type { StoreApi } from 'zustand';
-import { type InstancedShardSupply, type PendingInstancedShard, instancedShardGeneration, instancedShardModelEpoch, subscribeInstancedShards, subscribeInstancedShardSupply } from '@/store/instancedShardQueue';
+import { type InstancedShardSupply, type PendingInstancedShard, hasPendingInstancedShards, instancedShardGeneration, instancedShardModelEpoch, subscribeInstancedShards, subscribeInstancedShardSupply } from '@/store/instancedShardQueue';
 import { instancedShardRevision } from '@/store/instancedShardModels';
 import { isReleasedMesh } from '@/lib/released-mesh-provenance';
 import { applyFederationOffsetToShard } from '@/components/viewer/instancedFederationOffset';
@@ -350,11 +350,11 @@ export class StoreGeometryBackingTap {
         const flushed = tracked.backing.writer.flush().then(() => { tracked.flatSealed = this.tracked.get(modelId) === tracked && !tracked.failure; });
         await this.settle(tracked, flushed); acknowledged ||= !!tracked.flatSealed; continue;
       }
-      if (this.missedShards(modelId)) continue;
+      if (this.missedShards(modelId) || hasPendingInstancedShards(modelId)) continue; // undrawn shards: not what the scene shows yet
       const backing = tracked.backing;
       await this.settle(tracked, backing.acknowledge().then(async (ack) => {
         // Only a verified, complete, still-current replacement whose statement still holds may retire what it replaces.
-        if (!this.registry.verify(ack) || this.tracked.get(modelId) !== tracked || tracked.failure || voided(modelId, tracked)) return;
+        if (!this.registry.verify(ack) || this.tracked.get(modelId) !== tracked || tracked.failure || voided(modelId, tracked) || hasPendingInstancedShards(modelId)) return;
         acknowledged ||= this.acknowledged.get(modelId) !== tracked;
         tracked.supplied = undefined;
         this.acknowledged.set(modelId, tracked);

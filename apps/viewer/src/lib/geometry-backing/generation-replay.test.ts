@@ -17,7 +17,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { releaseCpuMeshBuffers } from '@/lib/geometry-cpu-release';
 import { carryReleasedMesh } from '@/lib/released-mesh-provenance';
 import { StoreGeometryBackingTap, type TapState } from './store-backing-tap';
-import { enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
+import { drainInstancedShards, enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
 
 /** IFNS v1: one template triangle, one occurrence of `entityId`. */
 function shardBytes(entityId: number): ArrayBuffer {
@@ -215,6 +215,7 @@ describe('generation replacement after a CPU release', () => {
     const store = setup('ci', list);
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });
     enqueueInstancedShards('ci', [shardBytes(77)], instancedShardGeneration());
+    drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); }); // drawn before the seal
     const [first] = await tap.seal();
     assert.equal(first.shards, 1);
     const acknowledged = tap.backing('ci')!;

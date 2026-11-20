@@ -61,6 +61,9 @@ function append(store: ReturnType<typeof storeWith>, modelId: string, meshes: Me
   });
 }
 
+/** The renderer's drain: every queued shard is drawn. A seal acknowledges only what the scene drew. */
+const drawAll = () => drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); });
+
 describe('store geometry backing tap (test/debug only)', () => {
   it('starts mid-load, writes only appended suffixes and seals a verifiable generation', async () => {
     const store = storeWith({ a: [mesh(1), mesh(2)] });
@@ -68,6 +71,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     append(store, 'a', [mesh(3)]);
     append(store, 'a', [mesh(4), mesh(5)]);
     enqueueInstancedShards('a', [shardBytes(77)], instancedShardGeneration());
+    drawAll(); // the renderer draws what was queued before any seal
     const [status] = await tap.seal();
     assert.equal(status.generation, 1, 'appends never regenerate');
     assert.equal(status.meshes, 5);
@@ -91,6 +95,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     await tap.whenIdle();
     store.setState((state) => ({ models: new Map([['m1a', { idOffset: 0, geometryResult: {
       meshes: state.models.get('m1a')!.geometryResult!.meshes.map((m) => ({ ...m, color: [1, 0, 0, 1] as [number, number, number, number] })) } }]]) }));
+    drawAll(); // the renderer draws what was queued before any seal
     const [status] = await tap.seal();
     assert.equal(status.generation, 2);
     assert.equal(status.shards, 1, 'instanced geometry survives a flat-list edit');
@@ -108,6 +113,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     await tap.whenIdle();
     const before = tap.backing('m2a')!;
     store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
+    drawAll(); // the renderer draws what was queued before any seal
     const status = Object.fromEntries((await tap.seal()).map((s) => [s.modelId, s]));
     // The replacement cannot vouch for moved occurrences, so it never retires the old generation.
     assert.equal(before.isCurrent, true, 'the older durable copy survives an unacknowledgeable replacement');
@@ -123,10 +129,12 @@ describe('store geometry backing tap (test/debug only)', () => {
     const store = storeWith({ fc: [mesh(1), mesh(2, 4)] });
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });
     enqueueInstancedShards('fc', [shardBytes(5)], instancedShardGeneration());
+    drawAll(); // the renderer draws what was queued before any seal
     await tap.seal();
     assert.equal(tap.flatComplete('fc'), false, 'a complete generation is not the flat-only case');
     store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
     assert.equal(tap.flatComplete('fc'), false, 'not before its seal flushed it');
+    drawAll(); // the renderer draws what was queued before any seal
     const [status] = await tap.seal();
     assert.equal(status.instancedLost, true);
     assert.equal(tap.backing('fc')!.isComplete, false, 'still never complete: instanced consumers fail closed');
@@ -139,15 +147,47 @@ describe('store geometry backing tap (test/debug only)', () => {
     await tap.stop();
   });
 
+  it('#10888 enqueued + stated complete + sealed BEFORE the drain: never acknowledged; a dropped drain leaves the old copy durable; an uploaded one then commits', async () => {
+    for (const outcome of ['dropped', 'uploaded'] as const) {
+      const id = `sd-${outcome}`;
+      const store = storeWith({ [id]: [mesh(1)] });
+      const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+      enqueueInstancedShards(id, [shardBytes(70)], instancedShardSupplyToken(id));
+      drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); });
+      await tap.seal();
+      const old = tap.backing(id)!;
+      store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 })); // instancing lost
+      discardInstancedShards(id); // the producer starts a fresh supply of the model
+      const fresh = instancedShardSupplyToken(id);
+      enqueueInstancedShards(id, [shardBytes(71)], fresh); // the producer's whole replacement set...
+      completeInstancedShardSupply(id, 1, fresh); // ...stated complete
+      let [status] = await tap.seal(); // before the renderer drained it
+      assert.equal(status.complete, false, `${outcome}: 71 was never drawn, so it cannot be acknowledged`);
+      assert.equal(old.isCurrent, true, `${outcome}: the last complete copy stays durable`);
+      drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, outcome); });
+      [status] = await tap.seal();
+      if (outcome === 'dropped') {
+        assert.equal(status.complete, false, 'the dropped shard never reached the scene');
+        assert.equal(old.isCurrent, true, 'the old durable copy is still the source after the drop');
+      } else {
+        assert.equal(status.complete, true, status.error ?? 'the drawn set commits once settled');
+        assert.deepEqual(await idsIn(tap.backing(id)!), [71]);
+      }
+      await tap.stop();
+    }
+  });
+
   it('removing a model deletes its generation', async () => {
     const store = storeWith({ m3a: [mesh(1)], m3b: [mesh(2)] });
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    drawAll(); // the renderer draws what was queued before any seal
     await tap.seal();
     const removed = tap.backing('m3a')!;
     store.setState((state) => { const models = new Map(state.models); models.delete('m3a'); return { models }; });
     await tap.whenIdle();
     await new Promise((resolve) => setTimeout(resolve, 10));
     assert.equal(removed.isCurrent, false);
+    drawAll(); // the renderer draws what was queued before any seal
     assert.deepEqual((await tap.seal()).map((s) => s.modelId), ['m3b']);
     await tap.stop();
   });
@@ -156,6 +196,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     enqueueInstancedShards('late', [shardBytes(9)], instancedShardGeneration());
     const store = storeWith({ late: [mesh(1)], flat: [mesh(2)] });
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    drawAll(); // the renderer draws what was queued before any seal
     const status = Object.fromEntries((await tap.seal()).map((s) => [s.modelId, s]));
     assert.equal(status.late.instancedLost, true, 'the missed shard never reached the backing');
     assert.equal(status.late.complete, false);
@@ -167,11 +208,13 @@ describe('store geometry backing tap (test/debug only)', () => {
     const list = [mesh(1, 0), mesh(2, 1)];
     const store = storeWith({ rel: list });
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    drawAll(); // the renderer draws what was queued before any seal
     await tap.seal();
     const acknowledged = tap.backing('rel')!;
     releaseCpuMeshBuffers(list);
     const recoloured = list.map((m) => carryReleasedMesh(m, { ...m, color: [1, 0, 0, 1] as [number, number, number, number] }));
     store.setState({ models: new Map([['rel', { geometryResult: { meshes: recoloured }, idOffset: 0 }]]) });
+    drawAll(); // the renderer draws what was queued before any seal
     const [status] = await tap.seal();
     assert.equal(status.complete, true, status.error ?? 'incomplete');
     assert.equal(acknowledged.isCurrent, false, 'retired only after the replacement committed');
@@ -187,6 +230,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     store.setState((state) => ({ models: new Map([['fed', { ...state.models.get('fed')!, idOffset: 1000 }]]) }));
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });
     enqueueInstancedShards('fed', [shardBytes(5)], instancedShardGeneration());
+    drawAll(); // the renderer draws what was queued before any seal
     await tap.seal();
     const backing = tap.backing('fed')!;
     assert.deepEqual(backing.directory.shardsOf(1005), [0], 'global id');
@@ -201,6 +245,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });
     append(store, 'meta', [list[2]]); // entity 1's second piece arrives in a later batch
     assert.equal(releasedGeometryMetadata()?.area('meta', 1), undefined, 'not before the generation is complete');
+    drawAll(); // the renderer draws what was queued before any seal
     await tap.seal();
     const metadata = releasedGeometryMetadata()!;
     assert.deepEqual(metadata.area('meta', 1), expected.get(1), 'two pieces of one entity sum as one pass would');
@@ -219,6 +264,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });
     enqueueInstancedShards('st', [shardBytes(77), shardBytes(78)], instancedShardGeneration());
     completeInstancedShardSupply('st', 2, instancedShardGeneration());
+    drawAll(); // the renderer draws what was queued before any seal
     await tap.seal();
     const acknowledged = tap.backing('st')!;
     const idsOf = async (backing: typeof acknowledged) => {
@@ -229,6 +275,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 })); // occurrences may have moved
     completeInstancedShardSupply('st', 2, instancedShardGeneration()); // a statement for the pre-loss generation proves nothing
     recolour(); // must not fall back to the pre-bump occurrences
+    drawAll(); // the renderer draws what was queued before any seal
     let [status] = await tap.seal();
     assert.equal(status.instancedLost, true, 'the invalidation survives the recolour');
     assert.equal(status.complete, false);
@@ -236,19 +283,23 @@ describe('store geometry backing tap (test/debug only)', () => {
     discardInstancedShards();
     const fresh = instancedShardGeneration();
     enqueueInstancedShards('st', [shardBytes(80)], fresh);
+    drawAll(); // the renderer draws what was queued before any seal
     [status] = await tap.seal();
     assert.equal(status.complete, false, 'a partial fresh supply is never complete');
     assert.equal(acknowledged.isCurrent, true, 'the acknowledged durable copy survives');
     assert.deepEqual(await idsOf(acknowledged), [77, 78], 'and stays readable with its own occurrences');
     completeInstancedShardSupply('st', 2, fresh); // the producer says two: one has arrived
+    drawAll(); // the renderer draws what was queued before any seal
     [status] = await tap.seal();
     assert.equal(status.complete, false, 'a statement the received shards do not match proves nothing');
     completeInstancedShardSupply('other', 1, fresh); // another model's statement is not this model's
     recolour(); // an edit during the re-supply keeps the fresh shard
     enqueueInstancedShards('st', [shardBytes(81)], fresh);
+    drawAll(); // the renderer draws what was queued before any seal
     [status] = await tap.seal();
     assert.equal(status.complete, false, 'all shards in, but not yet stated whole');
     completeInstancedShardSupply('st', 2, fresh);
+    drawAll(); // the renderer draws what was queued before any seal
     [status] = await tap.seal();
     assert.equal(status.complete, true, status.error ?? 'incomplete');
     assert.equal(acknowledged.isCurrent, false, 'retired only now');
@@ -261,14 +312,17 @@ describe('store geometry backing tap (test/debug only)', () => {
       geometryContentVersion: 0 }) as TapState);
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });
     enqueueInstancedShards('z0', [shardBytes(77)], instancedShardGeneration());
+    drawAll(); // the renderer draws what was queued before any seal
     await tap.seal();
     store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
     discardInstancedShards(); // global reset, empty queue, the model's load still reads complete
     store.setState((state) => ({ models: new Map([['z0', { ...state.models.get('z0')!, loadState: 'loading' }]]) }));
     store.setState((state) => ({ models: new Map([['z0', { ...state.models.get('z0')!, loadState: 'complete' }]]) }));
+    drawAll(); // the renderer draws what was queued before any seal
     let [status] = await tap.seal();
     assert.equal(status.complete, false, 'load state and an empty queue say nothing about this model');
     completeInstancedShardSupply('z0', 0, instancedShardGeneration()); // the model itself states: no shards
+    drawAll(); // the renderer draws what was queued before any seal
     [status] = await tap.seal();
     assert.equal(status.complete, true, status.error ?? 'incomplete');
     assert.equal(status.shards, 0, 'the stale occurrence is not carried');
@@ -281,6 +335,7 @@ describe('store geometry backing tap (test/debug only)', () => {
       const store = storeWith({ [id]: [mesh(1)] });
       const tap = await StoreGeometryBackingTap.start(store, { database: database() });
       enqueueInstancedShards(id, [shardBytes(77), shardBytes(78)], instancedShardGeneration());
+      drawAll(); // the renderer draws what was queued before any seal
       await tap.seal();
       const acknowledged = tap.backing(id)!;
       const idsOf = async (backing: typeof acknowledged) => {
@@ -295,6 +350,7 @@ describe('store geometry backing tap (test/debug only)', () => {
       completeInstancedShardSupply(id, 2, fresh); // matched: accepted
       // The load is abandoned before the drain uploads anything.
       if (scope === 'global') discardInstancedShards(); else discardInstancedShards(id);
+      drawAll(); // the renderer draws what was queued before any seal
       let [status] = await tap.seal();
       assert.equal(status.complete, false, 'the scene never received the stated set');
       assert.equal(acknowledged.isCurrent, true, 'the acknowledged copy stays durable');
@@ -304,6 +360,7 @@ describe('store geometry backing tap (test/debug only)', () => {
       const next = instancedShardGeneration();
       enqueueInstancedShards(id, [shardBytes(90)], next);
       completeInstancedShardSupply(id, 1, next);
+      drawAll(); // the renderer draws what was queued before any seal
       [status] = await tap.seal();
       assert.equal(status.complete, true, status.error ?? 'incomplete');
       assert.deepEqual(await idsOf(tap.backing(id)!), [90], 'never the abandoned 80, 81 nor the stale 77, 78');
@@ -316,6 +373,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });
     enqueueInstancedShards('dp', [shardBytes(77)], instancedShardGeneration());
     drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); });
+    drawAll(); // the renderer draws what was queued before any seal
     await tap.seal();
     const acknowledged = tap.backing('dp')!;
     store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
@@ -324,12 +382,14 @@ describe('store geometry backing tap (test/debug only)', () => {
     enqueueInstancedShards('dp', [shardBytes(80)], fresh);
     completeInstancedShardSupply('dp', 1, fresh); // matched and accepted
     drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'dropped'); }); // never uploaded
+    drawAll(); // the renderer draws what was queued before any seal
     let [status] = await tap.seal();
     assert.equal(status.complete, false, 'the scene never received the stated shard');
     assert.equal(acknowledged.isCurrent, true, 'the last complete generation is not retired');
     // The model is re-supplied within the same queue generation (a new epoch of its own).
     enqueueInstancedShards('dp', [shardBytes(81)], fresh);
     completeInstancedShardSupply('dp', 1, fresh);
+    drawAll(); // the renderer draws what was queued before any seal
     [status] = await tap.seal();
     assert.equal(status.complete, true, status.error ?? 'incomplete');
     const ids: number[] = [];
@@ -343,20 +403,23 @@ describe('store geometry backing tap (test/debug only)', () => {
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });
     const generation = instancedShardGeneration();
     enqueueInstancedShards('ms', [shardBytes(77)], generation);
-    await tap.seal();
+    await tap.seal(); // 77 still queued: never drawn, so never acknowledged
     const acknowledged = tap.backing('ms')!;
     discardInstancedShards('ms'); // its queued shard never reached the scene; the queue generation does not move
     assert.equal(instancedShardGeneration(), generation);
+    drawAll(); // the renderer draws what was queued before any seal
     let [status] = await tap.seal();
     assert.equal(status.complete, false, 'backed but never drawn: lost');
     assert.equal(acknowledged.isCurrent, true);
     // A partial replacement in the same generation is still not whole.
     enqueueInstancedShards('ms', [shardBytes(90)], generation);
     completeInstancedShardSupply('ms', 2, generation);
+    drawAll(); // the renderer draws what was queued before any seal
     [status] = await tap.seal();
     assert.equal(status.complete, false, 'one of two stated shards');
     enqueueInstancedShards('ms', [shardBytes(91)], generation);
     completeInstancedShardSupply('ms', 2, generation);
+    drawAll(); // the renderer draws what was queued before any seal
     [status] = await tap.seal();
     assert.equal(status.complete, true, status.error ?? 'incomplete');
     const ids: number[] = [];
@@ -369,7 +432,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     const store = storeWith({ op: [mesh(1)] });
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });
     enqueueInstancedShards('op', [shardBytes(77)], instancedShardSupplyToken('op'));
-    await tap.seal();
+    await tap.seal(); // 77 still queued: the discard below drops it before it is ever drawn
     const acknowledged = tap.backing('op')!;
     const oldLoad = instancedShardSupplyToken('op'); // captured when the old load began
     enqueueInstancedShards('op', [shardBytes(78)], oldLoad);
@@ -377,12 +440,14 @@ describe('store geometry backing tap (test/debug only)', () => {
     // The old producer finishes late: its ENTIRE set and its completion statement.
     enqueueInstancedShards('op', [shardBytes(80), shardBytes(81)], oldLoad);
     completeInstancedShardSupply('op', 2, oldLoad);
+    drawAll(); // the renderer draws what was queued before any seal
     let [status] = await tap.seal();
     assert.equal(status.complete, false, 'a superseded load never completes the new supply');
     assert.equal(acknowledged.isCurrent, true);
     const fresh = instancedShardSupplyToken('op');
     enqueueInstancedShards('op', [shardBytes(90)], fresh);
     completeInstancedShardSupply('op', 1, fresh);
+    drawAll(); // the renderer draws what was queued before any seal
     [status] = await tap.seal();
     assert.equal(status.complete, true, status.error ?? 'incomplete');
     const ids: number[] = [];
@@ -396,12 +461,14 @@ describe('store geometry backing tap (test/debug only)', () => {
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });
     enqueueInstancedShards('ed', [shardBytes(77)], instancedShardSupplyToken('ed'));
     drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); });
+    drawAll(); // the renderer draws what was queued before any seal
     await tap.seal();
     const acknowledged = tap.backing('ed')!;
     store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 })); // instancing lost
     discardInstancedShards();
     completeInstancedShardSupply('ed', 0, instancedShardSupplyToken('ed')); // "this model has no shards": accepted
     discardInstancedShards('ed'); // nothing queued, no event: only the model's epoch moves
+    drawAll(); // the renderer draws what was queued before any seal
     const [status] = await tap.seal();
     assert.equal(status.complete, false, 'the cancelled empty statement must not retire the instanced copy');
     assert.equal(acknowledged.isCurrent, true, 'the last instanced backing stays durable');
@@ -416,10 +483,12 @@ describe('store geometry backing tap (test/debug only)', () => {
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });
     enqueueInstancedShards('mx', [shardBytes(70)], instancedShardSupplyToken('mx'));
     drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); });
+    drawAll(); // the renderer draws what was queued before any seal
     await tap.seal();
     const acknowledged = tap.backing('mx')!;
     enqueueInstancedShards('mx', [shardBytes(77), shardBytes(78)], instancedShardSupplyToken('mx'));
     drainInstancedShards((shards, settle) => { settle(shards[0], 'uploaded'); settle(shards[1], 'dropped'); }); // 77 drawn, 78 not
+    drawAll(); // the renderer draws what was queued before any seal
     let [status] = await tap.seal();
     assert.equal(status.complete, false, 'the model misses 78: never sealed complete');
     assert.equal(acknowledged.isCurrent, true, 'the last complete generation is kept');
@@ -433,6 +502,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     const fresh = instancedShardSupplyToken('mx');
     enqueueInstancedShards('mx', [shardBytes(79)], fresh);
     completeInstancedShardSupply('mx', 1, fresh);
+    drawAll(); // the renderer draws what was queued before any seal
     [status] = await tap.seal();
     assert.equal(status.complete, true, status.error ?? 'incomplete');
     assert.deepEqual(await idsOf(tap.backing('mx')!), [70, 77, 79], 'drawn 70 and 77 plus the new 79, never missing 77');
@@ -451,6 +521,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     const shared = shardBytes(70);
     enqueueInstancedShards('mx', [shared, shared], instancedShardSupplyToken('mx'));
     drainInstancedShards((shards, settle) => { settle(shards[0], 'uploaded'); settle(shards[1], 'dropped'); });
+    drawAll(); // the renderer draws what was queued before any seal
     const [status] = await tap.seal();
     assert.equal(status.complete, false, 'one occurrence never reached the scene');
     assert.equal(status.error, undefined, 'the drawn entry is resolved, not a collision failure');
@@ -466,6 +537,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     completeInstancedShardSupply('mx', 1, token);
     drainInstancedShards((shards, settle) => { discardInstancedShards('mx'); settle(shards[0], 'waiting'); });
     drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); }); // nothing may come back
+    drawAll(); // the renderer draws what was queued before any seal
     const [status] = await tap.seal();
     assert.equal(status.complete, false, 'the scene never drew 70: never complete');
     assert.deepEqual(await idsIn(tap.backing('mx')!), [], 'the voided shard is not backed');
@@ -477,6 +549,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });
     enqueueInstancedShards('sx', [shardBytes(77)], instancedShardSupplyToken('sx'));
     drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); });
+    drawAll(); // the renderer draws what was queued before any seal
     await tap.seal();
     store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 })); // instancing lost here
     enqueueInstancedShards('sx', [shardBytes(78)], instancedShardSupplyToken('sx')); // queue-current, but not after the loss: unbacked
@@ -485,6 +558,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     enqueueInstancedShards('sx', [shardBytes(79)], fresh);
     completeInstancedShardSupply('sx', 1, fresh);
     drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); });
+    drawAll(); // the renderer draws what was queued before any seal
     const [status] = await tap.seal();
     assert.equal(status.error, undefined, 'dropping a never-backed shard is not a membership failure');
     assert.equal(status.complete, true, 'the fresh, stated set recovers the model');
@@ -497,6 +571,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });
     enqueueInstancedShards('se', [shardBytes(77)], instancedShardGeneration());
     drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); });
+    drawAll(); // the renderer draws what was queued before any seal
     await tap.seal();
     const acknowledged = tap.backing('se')!;
     store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
@@ -514,12 +589,14 @@ describe('store geometry backing tap (test/debug only)', () => {
     const store = storeWith({ dg: [mesh(1)] });
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });
     enqueueInstancedShards('dg', [shardBytes(77)], instancedShardGeneration());
+    drawAll(); // the renderer draws what was queued before any seal
     await tap.seal();
     store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
     discardInstancedShards();
     const fresh = instancedShardGeneration();
     completeInstancedShardSupply('dg', 0, fresh); // an empty replacement, nothing queued
     discardInstancedShards(); // nothing pending: no event, only the generation moves
+    drawAll(); // the renderer draws what was queued before any seal
     const [status] = await tap.seal();
     assert.equal(status.complete, false, 'the empty statement belonged to a superseded generation');
     await tap.stop();
@@ -529,6 +606,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     const store = storeWith({ dd: [mesh(1)] });
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });
     enqueueInstancedShards('dd', [shardBytes(77)], instancedShardGeneration());
+    drawAll(); // the renderer draws what was queued before any seal
     await tap.seal();
     store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
     discardInstancedShards();
@@ -536,6 +614,7 @@ describe('store geometry backing tap (test/debug only)', () => {
     enqueueInstancedShards('dd', [shardBytes(80)], fresh);
     completeInstancedShardSupply('dd', 1, fresh);
     drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); });
+    drawAll(); // the renderer draws what was queued before any seal
     const [status] = await tap.seal();
     assert.equal(status.complete, true, status.error ?? 'incomplete');
     await tap.stop();
@@ -547,6 +626,7 @@ describe('store geometry backing tap (test/debug only)', () => {
       const store = storeWith({ [id]: [mesh(1)] });
       const tap = await StoreGeometryBackingTap.start(store, { database: database() });
       enqueueInstancedShards(id, [shardBytes(77)], instancedShardGeneration());
+      drawAll(); // the renderer draws what was queued before any seal
       await tap.seal();
       store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
       discardInstancedShards();
@@ -555,6 +635,7 @@ describe('store geometry backing tap (test/debug only)', () => {
       discardInstancedShards(); // superseded mid-supply: shard 80 belongs to an abandoned load
       enqueueInstancedShards(id, [shardBytes(81)], instancedShardGeneration());
       completeInstancedShardSupply(id, 1, instancedShardGeneration());
+      drawAll(); // the renderer draws what was queued before any seal
       const [status] = await tap.seal();
       if (uploaded) assert.equal(status.complete, false, 'shard 80 is in the backing, and nothing proves it current');
       else {
@@ -572,10 +653,12 @@ describe('store geometry backing tap (test/debug only)', () => {
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });
     const generation = instancedShardGeneration();
     noteInstancedShardModel('sn'); // the snapshot upload counts the model's shards, outside the queue
+    drawAll(); // the renderer draws what was queued before any seal
     let [status] = await tap.seal();
     assert.equal(status.complete, false, 'drawn but not yet backed: fail closed');
     announceAdoptedInstancedShards('sn', [shardBytes(77)], generation); // hydrateSceneSnapshot committed
     completeInstancedShardSupply('sn', 1, generation);
+    drawAll(); // the renderer draws what was queued before any seal
     [status] = await tap.seal();
     assert.equal(status.complete, true, status.error ?? 'incomplete');
     assert.equal(status.shards, 1);
@@ -589,14 +672,17 @@ describe('store geometry backing tap (test/debug only)', () => {
     const metadata = releasedGeometryMetadata()!;
     let seen = releasedGeometryMetadataVersion();
     const changed = () => { const now = releasedGeometryMetadataVersion(), moved = now > seen; seen = now; return moved; };
+    drawAll(); // the renderer draws what was queued before any seal
     await tap.seal();
     assert.equal(changed(), true, 'a seal makes the generation answer');
     assert.ok(metadata.bounds('nm', 1));
+    drawAll(); // the renderer draws what was queued before any seal
     await tap.seal();
     assert.equal(changed(), false, 'nothing new acknowledged, nothing to re-read');
     store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
     assert.equal(changed(), true, 'same list identity, but the answer just went away');
     assert.equal(metadata.bounds('nm', 1), undefined);
+    drawAll(); // the renderer draws what was queued before any seal
     await tap.seal();
     assert.equal(changed(), true);
     assert.ok(metadata.bounds('nm', 1));
@@ -616,8 +702,10 @@ describe('store geometry backing tap (test/debug only)', () => {
     const empty = new ArrayBuffer(32); // IFNS v1, no templates, no instances
     new Uint32Array(empty).set([0x4946_4e53, 1, 0, 0, 0, 0, 0, 0]);
     enqueueInstancedShards('fz', [empty], instancedShardGeneration());
+    drawAll(); // the renderer draws what was queued before any seal
     assert.equal((await tap.seal())[0].complete, true);
     store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
+    drawAll(); // the renderer draws what was queued before any seal
     const [status] = await tap.seal();
     assert.equal(status.instancedLost, false, 'no occurrence could have moved');
     assert.equal(status.complete, true, status.error ?? 'incomplete');
@@ -628,10 +716,12 @@ describe('store geometry backing tap (test/debug only)', () => {
     const store = storeWith({ nl: [mesh(1)] });
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });
     enqueueInstancedShards('nl', [shardBytes(77)], instancedShardGeneration());
+    drawAll(); // the renderer draws what was queued before any seal
     await tap.seal();
     store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
     discardInstancedShards();
     enqueueInstancedShards('nl', [shardBytes(90)], instancedShardGeneration());
+    drawAll(); // the renderer draws what was queued before any seal
     const [status] = await tap.seal();
     assert.equal(status.complete, false, 'no coverage proof, no completeness');
     await tap.stop();

@@ -21,6 +21,10 @@ function inspect() {
   return { revision: s.modelPlacement.revision, placements: [...s.modelPlacement.placements], preview: s.modelPlacement.preview ? { ...s.modelPlacement.preview, before: [...s.modelPlacement.preview.before] } : null,
     canUndo: s.modelPlacement.undo.length > 0, canRedo: s.modelPlacement.redo.length > 0 };
 }
+/** Native rotate, undo, redo and reset commit or drop the open preview; refuse when it holds another model's move (#10793). */
+function refuseForeignPreview(c: OperationContext) {
+  if (useViewerStore.getState().modelPlacement.preview?.modelIds.some(id => id !== c.model.id)) throw new Error('Finish or cancel the reposition preview of another model first.');
+}
 function expected(value: number) { if (useViewerStore.getState().modelPlacement.revision !== value) throw new Error('The placement revision changed. Inspect again.'); }
 type GeorefEditInput = { entity: 'mapConversion' | 'projectedCRS'; fields: Array<{ field: string; value: string | number; oldValue: string | number | null }> };
 export const placementOperations = [
@@ -35,13 +39,17 @@ export const placementOperations = [
   }, (i, c) => { gate(c); expected(i.placement_revision); return out(c.commit(() => {
     const s = useViewerStore.getState(), preview = s.modelPlacement.preview;
     if ((i.action === 'apply' || i.action === 'cancel') && (!preview || !preview.modelIds.includes(c.model.id))) throw new Error('The current preview does not belong to this model.');
-    if (i.action === 'undo' || i.action === 'redo') { const stack = i.action === 'undo' ? s.modelPlacement.undo : s.modelPlacement.redo; const command = stack.at(-1); if (command && !command.before.has(c.model.id)) throw new Error('The latest native placement command belongs to another model.'); }
+    if (i.action === 'undo' || i.action === 'redo' || i.action === 'reset') refuseForeignPreview(c);
+    if (i.action === 'undo' || i.action === 'redo') { const command = s.modelPlacement[i.action].at(-1);
+      // With no command, native replay only drops this model's own preview; with neither there is nothing to do.
+      if (!command && !preview) throw new Error(`Nothing to ${i.action} in native placement history.`);
+      if (command && !command.before.has(c.model.id)) throw new Error('The latest native placement command belongs to another model.'); }
     if (i.action === 'apply') s.applyModelTranslation(); else if (i.action === 'cancel') s.closeReposition();
     else if (i.action === 'undo') s.undoModelTranslation(); else if (i.action === 'redo') s.redoModelTranslation(); else s.resetModelTranslations([c.model.id]); return inspect();
   })); }),
   operation<{ angle: number; pivot: [number, number, number]; placement_revision: number }>(meta('placement.rotation', 'Set absolute native whole-model yaw in radians about an explicit engineering Z-up metre pivot; preserves native geometry/rotation refusals and placement history.'), {
     type: 'object', properties: { angle: { type: 'number', minimum: -1000, maximum: 1000 }, pivot: pointSchema, placement_revision: { type: 'integer', minimum: 0 } }, required: ['angle', 'pivot', 'placement_revision'], additionalProperties: false,
-  }, (i, c) => { gate(c); expected(i.placement_revision); return out(c.commit(() => { useViewerStore.getState().setModelRotation([c.model.id], { angle: i.angle, pivot: i.pivot }); return inspect(); })); }),
+  }, (i, c) => { gate(c); expected(i.placement_revision); return out(c.commit(() => { refuseForeignPreview(c); useViewerStore.getState().setModelRotation([c.model.id], { angle: i.angle, pivot: i.pivot }); return inspect(); })); }),
   operation<{ locked: boolean; placement_revision: number }>(meta('placement.lock', 'Set the selected model’s native placement lock.'), {
     type: 'object', properties: { locked: { type: 'boolean' }, placement_revision: { type: 'integer', minimum: 0 } }, required: ['locked', 'placement_revision'], additionalProperties: false,
   }, (i, c) => { gate(c); expected(i.placement_revision); return out(c.commit(() => { useViewerStore.getState().setModelPositionLocked(c.model.id, i.locked); return inspect(); })); }),

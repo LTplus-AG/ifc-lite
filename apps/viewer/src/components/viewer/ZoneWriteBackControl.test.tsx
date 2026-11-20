@@ -101,6 +101,27 @@ describe('ZonesPanel: writing zone data into the model', () => {
     assert.ok(useViewerStore.getState().dirtyModels.has('m1'));
   });
 
+  it('explains server property loading and failure as the write target changes (#10469)', () => {
+    const ui = render(<ZoneWriteBackControl zoneSet={ZONE_SET} />);
+    const store = useViewerStore.getState();
+    const model = store.models.get('m1')!;
+    assert.equal(writeButton(ui).disabled, false);
+
+    try {
+      act(() => store.setServerPropertiesRun('m1', { kind: 'running', runId: 1, owner: { model } }));
+      assert.equal(writeButton(ui).disabled, true);
+      assert.match(ui.querySelector('output')?.textContent ?? '', /properties are still loading/);
+      assert.equal(button(ui, 'CSV').disabled, false);
+
+      act(() => store.setServerPropertiesRun('m1', { kind: 'failed', runId: 1, error: 'offline' }));
+      assert.match(ui.querySelector('output')?.textContent ?? '', /properties could not be loaded/);
+    } finally {
+      act(() => store.setServerPropertiesRun('m1', { kind: 'idle' }));
+    }
+    assert.equal(writeButton(ui).disabled, false);
+    assert.equal(ui.querySelector('output'), null);
+  });
+
   it('explains unavailable write targets and enables a mixed federated set (#5901)', async () => {
     const data = await seed();
     const missing: FederatedModel = { ...fixtureModel('m1'), maxExpressId: WALL_ID, ifcDataStore: null };

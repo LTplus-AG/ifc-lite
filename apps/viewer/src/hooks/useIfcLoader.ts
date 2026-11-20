@@ -72,7 +72,7 @@ import { useIfcCache, getCached, deleteCached } from './useIfcCache.js';
 // Server hook
 import { useIfcServer } from './useIfcServer.js';
 import { handleServerLoadAttempt } from './ingest/serverLoadAttempt.js';
-import { describeProcessedModelFailure, normalizedProcessedModel, ProcessedModelUnavailable } from './ingest/processedModel.js';
+import { describeProcessedModelFailure, normalizedProcessedModel, refuseFederatedProcessedModel } from './ingest/processedModel.js';
 
 import { prepareGlbViewerModel } from './ingest/glbTextureValidation.js';
 import { getMaxExpressId, getViewerSchemaVersion, parseIfcxViewerModel } from './ingest/viewerModelIngest.js';
@@ -261,6 +261,7 @@ export function useIfcLoader() {
     options?: ModelLoadOptions,
   ) => {
     assertWorkflowOwner(options?.workflowOwner);
+    if (options?.processedModel && target.kind !== 'primary') return refuseFederatedProcessedModel(options?.onLoadError);
     const draping = drapeIfGeoRaster(file); if (draping) return draping; // #5942: imagery, never a model
     const geometryKernel = beginGeometryKernel(file, target, () => void loadFileRef.current?.(file, target, options), { hasSourceBytes: !options?.processedModel }); if (geometryKernel.refused) return settleKernelRefusal(geometryKernel.refused, options?.onLoadError); // #7955 M2: out-of-scope retained requests stop before any work
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
@@ -688,9 +689,8 @@ export function useIfcLoader() {
       if (processedModel) { // no source bytes here: nothing below (sniffing, local cache, WASM fallback) applies
         initializeModel();
         loadStage = 'server-fetch';
-        // The replay writes the active model slot, which only a primary load owns.
-        let failure: unknown = target.kind === 'primary' ? null : new ProcessedModelUnavailable('not-primary');
-        if (failure === null && await handleServerLoadAttempt(() => loadFromServer(processedModel, new ArrayBuffer(0), () => isStale(), metadataAbort.signal, modelId).catch((error: unknown) => { failure = error; return false; }), isStale, completeServerLoad)) return;
+        let failure: unknown = null;
+        if (await handleServerLoadAttempt(() => loadFromServer(processedModel, new ArrayBuffer(0), () => isStale(), metadataAbort.signal, modelId).catch((error: unknown) => { failure = error; return false; }), isStale, completeServerLoad)) return;
         const { message, code, retryable } = describeProcessedModelFailure(failure);
         updateModel(modelId, { loadState: 'error', loadError: message }); showLoadError(message, code, retryable ? undefined : null); settleLoadUi();
         return;

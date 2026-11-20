@@ -94,6 +94,34 @@ it('streams .splat captures identically (#9018)', async () => {
   for (const [name, data] of Object.entries(decoded.columns)) assert.deepEqual(columns[name], [...data], name);
 });
 
+// #10613: SplatTransform 3.11 maps true opacity 1 and 0 to +/-Infinity logits. A
+// `.splat` alpha of 255 or 0 is ordinary capture data and must decode, in both
+// decoders, to the finite logits 3.10 clamped it to.
+it('.splat alpha 255 and 0 decode to the finite 3.10 logits in both decoders (#10613)', async () => {
+  const alphas = [255, 0, 254];
+  const bytes = new Uint8Array(32 * alphas.length);
+  const view = new DataView(bytes.buffer);
+  alphas.forEach((alpha, row) => {
+    [row, 1, 2, 0.02, 0.03, 0.04].forEach((value, i) => view.setFloat32(row * 32 + i * 4, value, true));
+    bytes.set([128, 128, 128, alpha, 255, 128, 128, 128], row * 32 + 24);
+  });
+  const opaque = 1 - 1e-6;
+  const expected = [Math.log(opaque / (1 - opaque)), Math.log(1e-6 / (1 - 1e-6))].map(Math.fround);
+  const decoded = await decodeGaussianFile(new File([bytes], 'saturated.splat'));
+  assert.deepEqual([...decoded.columns.opacity.subarray(0, 2)], expected);
+  assert.ok(Math.abs(decoded.columns.opacity[2] - Math.log(254)) < 1e-4, 'unsaturated alpha keeps its own logit');
+  const { columns } = await readAll(new File([bytes], 'saturated.splat'), 2, 2);
+  assert.deepEqual(columns.opacity, [...decoded.columns.opacity]);
+});
+
+it('a PLY logit whose f32 opacity saturates decodes finite; NaN still refuses (#10613)', async () => {
+  for (const value of [40, -200, Infinity, -Infinity]) {
+    const decoded = await decodeGaussianFile(ply(3, 0, { poison: { row: 1, name: 'opacity', value } }));
+    assert.ok(Number.isFinite(decoded.columns.opacity[1]) && Math.sign(decoded.columns.opacity[1]) === Math.sign(value));
+  }
+  await assert.rejects(decodeGaussianFile(ply(3, 0, { poison: { row: 1, name: 'opacity', value: NaN } })), /Non-finite decoded Gaussian channel: opacity/);
+});
+
 it('never reads more than the header probe or one decode window at a time (#9018)', async () => {
   const count = 800; // 189 KB of records: a whole-file read cannot hide under upstream's 128 KiB header probe
   const file = ply(count, 3);

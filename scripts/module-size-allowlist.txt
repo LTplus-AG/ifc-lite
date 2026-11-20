@@ -102,7 +102,7 @@
    598 apps/viewer/src/hooks/ingest/federationAlign.ts
    525 apps/viewer/src/hooks/ingest/pointCloudIngest.ts
    461 apps/viewer/src/hooks/useAnnotation2D.ts
-  1234 apps/viewer/src/hooks/useDrawingExport.ts
+  1067 apps/viewer/src/hooks/useDrawingExport.ts
   1032 apps/viewer/src/hooks/useDrawingGeneration.ts
    551 apps/viewer/src/hooks/useIfcFederation.ts
   2170 apps/viewer/src/hooks/useIfcLoader.ts
@@ -129,7 +129,7 @@
    452 apps/viewer/src/store/slices/chatSlice.ts
    992 apps/viewer/src/store/slices/clashSlice.ts
   1201 apps/viewer/src/store/slices/collabSlice.ts
-   882 apps/viewer/src/store/slices/drawing2DSlice.ts
+   877 apps/viewer/src/store/slices/drawing2DSlice.ts
    474 apps/viewer/src/store/slices/idsSlice.ts
    793 apps/viewer/src/store/slices/measurementSlice.ts
    630 apps/viewer/src/store/slices/modelSlice.ts
@@ -192,7 +192,7 @@
    807 packages/drawing-2d/src/types.ts
    592 packages/export/src/effective-index.ts
    680 packages/export/src/ifc5-exporter.ts
-  1585 packages/export/src/merged-exporter.ts
+  1527 packages/export/src/merged-exporter.ts
    616 packages/export/src/parquet-exporter.ts
    999 packages/export/src/reference-collector.ts
    471 packages/export/src/schema-converter.ts

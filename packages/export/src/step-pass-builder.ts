@@ -363,7 +363,11 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
       if (!read.has(id)) { const text = written(id); read.set(id, text === undefined ? undefined : readStepSlots(text)?.slots); }
       return read.get(id);
     };
-    pass.enums.materials.rearm({ typeOf: (id) => (pass.willBeEmitted(id) ? effective.typeOf(id) : undefined), slots });
+    // A readable material record (by its source or its effective type) the export leaves out. As Rust's
+    // `with_effective`, which drops an unreadable one from both maps, an unreadable one names no material.
+    const gone = (id: number) => !pass.willBeEmitted(id) && source.slots(id) !== undefined
+      && [source.type(id), effective.typeOf(id)].some((t) => t?.startsWith('IFCMATERIAL'));
+    pass.enums.materials.rearm({ typeOf: (id) => (pass.willBeEmitted(id) ? effective.typeOf(id) : undefined), slots, gone });
   }
   // The same object, deliberately. See the file header.
   return pass;

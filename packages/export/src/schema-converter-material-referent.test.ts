@@ -105,6 +105,18 @@ describe('the Material a downgraded IfcMaterialProperties names (#10763)', () =>
     expect(warnings.join('\n')).toContain('IfcMaterialProperties record(s) were not written');
   });
 
+  // /code-review on the #10911 restack: a member the export writes as another type, or one no record has, names no
+  // material, so the set names no single one; only a member the export does not write is skipped. Twin of Rust.
+  it('leaves the record out when a member is written as another type or is missing', async () => {
+    const retyped = await editedExport(LAYERED, (view) => view.setEntityType(12, 'IfcPropertySingleValue'));
+    expect(retyped.lines.find((l) => l.startsWith('#5='))).toBeUndefined();
+    expect(retyped.warnings.join('\n')).toContain('#5 (IFCMATERIALLAYERSET)');
+    const missing = LAYERED.replace('((#10,#12)', '((#10,#99)');
+    expect(missing, 'the set names #10 (one material) and a missing #99').toContain('((#10,#99)');
+    const dangling = await editedExport(missing, () => {});
+    expect(dangling.lines.find((l) => l.startsWith('#5='))).toBeUndefined();
+  });
+
   it('leaves a deleted layer out of its set, so the surviving layer names the material', async () => {
     const { lines, warnings } = await editedExport(LAYERED, (view) => view.deleteEntity(12));
     expect(lines.find((l) => l.startsWith('#5='))).toBe("#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6),'d','Pset_x');");

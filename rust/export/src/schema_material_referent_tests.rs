@@ -155,6 +155,21 @@ fn a_deleted_layer_leaves_its_set_one_material_10763() {
     assert!(!warnings.iter().any(|w| w.contains("IfcMaterialProperties record(s)")), "{warnings:?}");
 }
 
+/// /code-review on the #10911 restack: a set member the export still writes
+/// but no longer as a layer (retyped away), or one no record has, names no
+/// material, so the set names no single one and the record is left out; only
+/// a member the export does not write is skipped. Twin of the TypeScript case.
+#[test]
+fn a_member_written_as_another_type_or_missing_names_no_material_10763() {
+    let (out, warnings) = log_export(&model("IFC4", LAYERED), r#"{"mutations":[{"type":"UPDATE_ENTITY_TYPE","entityId":12,"entityType":"IfcPropertySingleValue"}]}"#);
+    assert_eq!(record(&out, "#5="), "", "{out}");
+    assert!(warnings.iter().any(|w| w.contains("#5 (IFCMATERIALLAYERSET)")), "{warnings:?}");
+    let dangling = LAYERED.replace("((#10,#12),'Wall',$)", "((#10,#99),'Wall',$)");
+    assert!(dangling.contains("((#10,#99)"), "the set names #10 (one material) and a missing #99");
+    let (out, _) = log_export(&model("IFC4", &dangling), r#"{"mutations":[]}"#);
+    assert_eq!(record(&out, "#5="), "", "{out}");
+}
+
 /// The merged writer resolves each model's referents in the merge's id space.
 #[test]
 fn the_merged_writer_resolves_each_models_referents_10763() {

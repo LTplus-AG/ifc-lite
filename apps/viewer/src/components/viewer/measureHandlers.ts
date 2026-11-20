@@ -21,6 +21,10 @@ import { measureCursor, noteMeasureCursor } from './measureCursor.js';
 import { isGeometryHeld } from '@/lib/pick-gating';
 import { useViewerStore } from '@/store';
 import { sceneGeometryReleased } from '@/lib/geometry-backing/scene-released';
+import { answered, invalidatePendingMeasureReadbacks, runWithReadback } from './measureReadbackGate.js';
+
+/** The newest hover read: an older one that resolves later (or one a press cancelled) never acts. */
+let hoverRead = 0;
 
 /**
  * Projects a world position onto the closest orthogonal constraint axis.
@@ -113,8 +117,10 @@ export function handleMeasureDrag(ctx: MouseHandlerContext, e: MouseEvent, x: nu
       ctx.measureRaycastPendingRef.current = false;
       ctx.measureRaycastFrameRef.current = null;
       if (isGeometryHeld(useViewerStore.getState())) return;
-      // Shift can change while a view change prevents its immediate re-pick (#9242).
-      moveRubberBand(ctx, x, y, measureCursor(ctx)?.orthogonal ?? useOrthogonalConstraint);
+      // Shift can change while a view change prevents its immediate re-pick (#9242). A released scene
+      // reads the drag point back first: the hover's neighbourhood does not reach a point a metre away.
+      runWithReadback(ctx.renderer, x, y, { hiddenIds: ctx.hiddenEntitiesRef.current, isolatedIds: ctx.isolatedEntitiesRef.current },
+        () => moveRubberBand(ctx, x, y, measureCursor(ctx)?.orthogonal ?? useOrthogonalConstraint), () => ctx.activeToolRef.current === 'measure');
     });
   }
 
@@ -274,8 +280,14 @@ export function handleMeasureHover(
       // Released CPU geometry (#10264): read the pieces under the pointer back first.
       if (!sceneGeometryReleased(renderer)) { run(); return; }
       const visibility = { hiddenIds: ctx.hiddenEntitiesRef.current, isolatedIds: ctx.isolatedEntitiesRef.current };
+      const mine = ++hoverRead;
       void import('@/lib/geometry-backing/readback-measure').then((m) => m.feedReadbackAt(renderer, x, y, visibility))
-        .then(run, (error: unknown) => console.error('[Measure] Geometry readback failed', error));
+        .then((outcome) => {
+          // Latest wins: a newer hover, a press or a tool exit since makes this one obsolete.
+          if (mine !== hoverRead || ctx.activeToolRef.current !== 'measure') return;
+          // Never raycast past an unbacked front (it could snap to a point cloud behind); clear the preview instead.
+          if (answered(outcome)) run(); else if (outcome === 'unavailable') ctx.setSnapTarget(null);
+        }, (error: unknown) => console.error('[Measure] Geometry readback failed', error));
     });
   }
   return true; // Don't fall through to other tool handlers
@@ -383,6 +395,8 @@ export { CLOSE_LOOP_SCREEN_RADIUS_PX, DUPLICATE_POINT_SCREEN_RADIUS_PX, isDuplic
 
 /** Drop a queued rubber-band or hover raycast, so it cannot land after the press or gesture it served. */
 export function cancelMeasureRaycast(ctx: MouseHandlerContext): void {
+  hoverRead++; // an in-flight hover read never publishes after the press or gesture that cancelled it
+  invalidatePendingMeasureReadbacks();
   if (ctx.measureRaycastFrameRef.current !== null) cancelAnimationFrame(ctx.measureRaycastFrameRef.current);
   ctx.measureRaycastFrameRef.current = null;
   ctx.measureRaycastPendingRef.current = false;

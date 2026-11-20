@@ -1,20 +1,24 @@
 diff --git a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
-index 880dbb3..6fd0e0e 100644
+index 2a985e5..4a50426 100644
 --- a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
 +++ b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
-@@ -213,7 +213,10 @@ export class StoreGeometryBackingTap {
-         // Resolved now, after the chain: a failed or unstarted predecessor falls back to the acknowledged one.
-         const source = next.resupply || (previous?.backing && !previous.failure) ? previous : this.acknowledged.get(modelId);
-         if (!source?.backing || source.failure || (source.instancedLost && !next.resupply)) next.instancedLost = true;
--        else void source.backing;
-+        else for await (const shard of source.backing.reader.instancedShards()) {
-+          next.shards++; next.occurrences += shard.instances.length;
-+          await next.backing.writer.appendInstancedShard(shard);
-+        }
+@@ -202,7 +202,14 @@ export class StoreGeometryBackingTap {
+         const source = shards === 'withhold' || next.resupply || (previous?.backing && !previous.failure) ? previous : this.acknowledged.get(modelId);
+         if (!source?.backing || source.failure || (source.instancedLost && !next.resupply && shards !== 'withhold')) next.instancedLost = true;
+         else {
+-          void source.backing;
++          let ordinal = -1, found = 0;
++          for await (const shard of source.backing.reader.instancedShards()) {
++            const from = source.sources[++ordinal] ?? null;
++            if (from && withheld?.has(from)) { found++; continue; }
++            next.shards++; next.occurrences += shard.instances.length; next.sources.push(source.sources[ordinal] ?? null);
++            await next.backing.writer.appendInstancedShard(shard);
++          }
++          // A withheld shard the predecessor never backed: its membership is unknown, fail closed.
+           if (withheld && found !== withheld.size) throw new Error('A withheld instanced shard was not among the backed ones');
+         }
        }
-     });
-     next.chain = this.settle(next, begun);
-@@ -366,7 +369,7 @@ export class StoreGeometryBackingTap {
+@@ -362,7 +369,7 @@ export class StoreGeometryBackingTap {
  
    /** Shards were enqueued for this model that the tap never saw. */
    private missedShards(modelId: string): boolean {

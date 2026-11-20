@@ -1,20 +1,23 @@
 diff --git a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
-index 2f5c5ec..6fd0e0e 100644
+index 6ac6df0..4a50426 100644
 --- a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
 +++ b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
-@@ -123,6 +123,11 @@ export class StoreGeometryBackingTap {
-       // A full discard already moved the generation: shards of the next one are fresh again.
-       // Dropped or discarded before upload. A full discard moved the generation: its next one is fresh;
-       // a model-scoped one moved that model's epoch: its next supply is fresh, in this same generation.
+@@ -106,6 +106,14 @@ export class StoreGeometryBackingTap {
+     tap.stops.push(subscribeInstancedShards((event) => {
+       // Dropped or discarded before upload: the backing must hold exactly what the scene drew. A full
+       // discard (a reset) moved the generation: abandon. Otherwise withhold just those shards.
 +      if (event.kind === 'discarded' || event.kind === 'dropped') {
 +        const g = instancedShardGeneration();
-+        for (const id of event.modelIds) tap.abandon(id, event.full ? { generation: g - 1, epoch: Infinity } : { generation: g, epoch: instancedShardModelEpoch(id) - 1 });
++        for (const id of event.modelIds) {
++          if (event.full) tap.abandon(id, { generation: g - 1, epoch: Infinity });
++          else tap.withhold(id, (event.withheld ?? []).filter((shard) => shard.modelId === id).map((shard) => shard.bytes));
++        }
 +        return;
 +      }
        if (event.kind !== 'enqueued' || !event.shards) return;
        for (const modelId of event.modelIds) tap.shardEvents.set(modelId, (tap.shardEvents.get(modelId) ?? 0) + 1);
        for (const shard of event.shards) tap.ingestShard(shard.modelId, shard.bytes);
-@@ -343,6 +348,7 @@ export class StoreGeometryBackingTap {
+@@ -340,6 +348,7 @@ export class StoreGeometryBackingTap {
    /** Close every model's writer and acknowledge complete generations. */
    async seal(): Promise<ModelBackingStatus[]> {
      // A statement holds only while its queue generation does: a full discard since (even of nothing) voids it.

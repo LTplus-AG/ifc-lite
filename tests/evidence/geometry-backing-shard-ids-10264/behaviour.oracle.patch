@@ -1,8 +1,8 @@
 diff --git a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
-index 64341d4..6fd0e0e 100644
+index 9f34e17..4a50426 100644
 --- a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
 +++ b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
-@@ -290,7 +290,7 @@ export class StoreGeometryBackingTap {
+@@ -283,7 +283,7 @@ export class StoreGeometryBackingTap {
        console.error(`[GeometryBacking] shard for unregistered model ${modelId}; its instancing is not backed`);
        return;
      }
@@ -10,4 +10,4 @@ index 64341d4..6fd0e0e 100644
 +    applyFederationOffsetToShard(shard, idOffset);
      target.occurrences += shard.instances.length;
      if (target.resupply) target.resupply.received++;
-     this.enqueue(target, () => this.writer(target).appendInstancedShard(shard));
+     // Recorded in backed order (after any carried shards), for `withhold`.

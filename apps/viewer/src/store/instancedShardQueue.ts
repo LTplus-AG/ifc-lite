@@ -35,8 +35,10 @@ export interface InstancedShardQueueEvent {
    */
   readonly kind: 'enqueued' | 'drained' | 'dropped' | 'discarded';
   readonly modelIds: ReadonlySet<string>;
-  /** `enqueued` only: the shards this call queued (their bytes are read, never detached). */
+  /** `enqueued` (and `adopted`): the shards this call queued (their bytes are read, never detached). */
   readonly shards?: readonly PendingInstancedShard[];
+  /** `dropped`/`discarded`: the shards that never reached the scene. */
+  readonly withheld?: readonly PendingInstancedShard[];
   /** `discarded` only: a full discard, which also moved the queue generation. */
   readonly full?: boolean;
 }
@@ -132,7 +134,7 @@ export function drainInstancedShards(
     const lost = taken.filter((shard) => outcomes.get(shard) === 'dropped');
     if (uploaded.length > 0) emit({ kind: 'drained', modelIds: modelIdsOf(uploaded) });
     // A dropped shard never reached the scene: whatever claimed the model whole before it no longer can.
-    if (lost.length > 0) { const ids = modelIdsOf(lost); for (const id of ids) bumpModelEpoch(id); emit({ kind: 'dropped', modelIds: ids }); }
+    if (lost.length > 0) { const ids = modelIdsOf(lost); for (const id of ids) bumpModelEpoch(id); emit({ kind: 'dropped', modelIds: ids, withheld: lost }); }
   }
 }
 
@@ -151,7 +153,7 @@ export function discardInstancedShards(modelId?: string): void {
   if (dropped.length === 0) return;
 
   pending = modelId === undefined ? [] : pending.filter((shard) => shard.modelId !== modelId);
-  emit({ kind: 'discarded', modelIds: modelIdsOf(dropped), full: modelId === undefined });
+  emit({ kind: 'discarded', modelIds: modelIdsOf(dropped), full: modelId === undefined, withheld: dropped });
 }
 
 /** A producer's statement that `modelId`'s whole shard set for `generation` is enqueued: `count` shards, zero included. */

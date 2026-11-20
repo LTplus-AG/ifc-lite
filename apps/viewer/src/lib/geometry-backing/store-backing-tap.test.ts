@@ -390,6 +390,34 @@ describe('store geometry backing tap (test/debug only)', () => {
     await tap.stop();
   });
 
+  it('#10888 one drain uploads one shard and drops another: the backing keeps exactly the drawn one, and a supply of the rest completes it', async () => {
+    const store = storeWith({ mx: [mesh(1)] });
+    const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    enqueueInstancedShards('mx', [shardBytes(70)], instancedShardSupplyToken('mx'));
+    drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); });
+    await tap.seal();
+    const acknowledged = tap.backing('mx')!;
+    enqueueInstancedShards('mx', [shardBytes(77), shardBytes(78)], instancedShardSupplyToken('mx'));
+    drainInstancedShards((shards, settle) => { settle(shards[0], 'uploaded'); settle(shards[1], 'dropped'); }); // 77 drawn, 78 not
+    let [status] = await tap.seal();
+    assert.equal(status.complete, false, 'the model misses 78: never sealed complete');
+    assert.equal(acknowledged.isCurrent, true, 'the last complete generation is kept');
+    const idsOf = async (backing: NonNullable<ReturnType<typeof tap.backing>>) => {
+      const ids: number[] = [];
+      for await (const shard of backing.reader.instancedShards()) ids.push(...shard.instances.map((i) => i.entityId));
+      return ids.sort();
+    };
+    assert.deepEqual(await idsOf(tap.backing('mx')!), [70, 77], 'exactly what the scene drew: 77 is kept, 78 withheld');
+    // The producer re-supplies only what is missing.
+    const fresh = instancedShardSupplyToken('mx');
+    enqueueInstancedShards('mx', [shardBytes(79)], fresh);
+    completeInstancedShardSupply('mx', 1, fresh);
+    [status] = await tap.seal();
+    assert.equal(status.complete, true, status.error ?? 'incomplete');
+    assert.deepEqual(await idsOf(tap.backing('mx')!), [70, 77, 79], 'drawn 70 and 77 plus the new 79, never missing 77');
+    await tap.stop();
+  });
+
   it('#10888 a full discard after the statement voids it even when it dropped nothing (generation fence)', async () => {
     const store = storeWith({ dg: [mesh(1)] });
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });

@@ -3,36 +3,20 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Test/debug-only ingestion of the canonical loader's output into the live
- * geometry backing. NOTHING releases CPU geometry here; product release stays
- * disabled until the parent integration consults `acknowledge`/`verify`.
+ * Test/debug-only ingestion of the canonical loader's output into the live geometry backing
+ * (#10264). NOTHING releases CPU geometry here; product release stays off.
  *
- * The tap mirrors each model's store mesh list, which every load path
- * (streaming, cache hit, federated finalize) and every mesh edit writes:
- * - the loader grows `models.get(id).geometryResult.meshes` IN PLACE, so a
- *   longer array with the same identity is an append: only the new suffix is
- *   written (a tap started mid-load first writes what is already resident);
- * - any other change (new array, shorter array, `geometryContentVersion` bump
- *   from realign/rebase/rotation/collab, model removal) starts a new
- *   generation from the current list, so an old disk image never answers as
- *   current geometry;
- * - instanced shards are taken from the shard queue as they are enqueued. A
- *   flat-list change (recolour copies, prune, authored mesh) leaves instanced
- *   geometry alone, so committed shards are carried into the new generation.
- *   A content-version bump may move occurrences, so a model that had shards
- *   is then reported `instancedLost` and never complete (fail closed) until a
- *   fresh shard set arrives AND its producer states that set whole for the
- *   model (`completeInstancedShardSupply`), shard for shard; a discard of
- *   those shards before upload, or a full discard before the seal, voids it
- *   (`instanced-resupply.ts`). So is a model whose shards were
- *   enqueued before the tap started (the queue's revision is ahead of what
- *   the tap saw): those shards never reached the backing.
- * Appends for one model are chained in order; a writer failure is reported in
- * `status()` and stops that model's chain, never retried.
+ * Each model's store mesh list is mirrored: an in-place grow is an append (only the suffix is
+ * written); any other change (new or shorter array, a content-version bump, removal) starts a new
+ * generation, staged beside the acknowledged one until a seal acknowledges it complete. Instanced
+ * shards are taken from the shard queue as enqueued; the backing holds exactly the shards the
+ * scene drew (a dropped or discarded one is withheld). A content bump may move occurrences, so
+ * instancing is then lost until its model states a fresh set whole (`instanced-resupply.ts`); so
+ * is a model whose shards were enqueued before the tap started. A writer failure stops that
+ * model's chain and is reported in `status()`, never retried.
  *
- * Known limit, for the consumer audit: geometry written into the existing
- * typed arrays with no list or content-version change (in-place translation)
- * is not seen here; such paths must invalidate explicitly before release.
+ * Known limit, for the consumer audit: geometry rewritten in the existing typed arrays with no
+ * list or content-version change is not seen here; such paths must invalidate explicitly.
  */
 
 import { decodeInstancedShard, type DecodedInstancedShard, type MeshData } from '@ifc-lite/geometry';
@@ -70,6 +54,7 @@ interface Tracked extends ResupplyState {
   chain: Promise<void>;
   failure?: Error;
   shards: number;
+  sources: (ArrayBuffer | null)[]; // the queued bytes each backed shard came from, in backed order
   /** Instanced occurrences backed; empty shard records are not instancing. */
   occurrences: number;
   /** The store list changed after a CPU release: this generation is kept durable but no longer answers. */
@@ -119,13 +104,14 @@ export class StoreGeometryBackingTap {
     tap.stops.push(store.subscribe((state) => tap.sync(state)));
     tap.stops.push(subscribeInstancedShardSupply((supply) => tap.onSupply(supply)));
     tap.stops.push(subscribeInstancedShards((event) => {
-      // Discarded, never uploaded: the backing holds shards the scene will not draw.
-      // A full discard already moved the generation: shards of the next one are fresh again.
-      // Dropped or discarded before upload. A full discard moved the generation: its next one is fresh;
-      // a model-scoped one moved that model's epoch: its next supply is fresh, in this same generation.
+      // Dropped or discarded before upload: the backing must hold exactly what the scene drew. A full
+      // discard (a reset) moved the generation: abandon. Otherwise withhold just those shards.
       if (event.kind === 'discarded' || event.kind === 'dropped') {
         const g = instancedShardGeneration();
-        for (const id of event.modelIds) tap.abandon(id, event.full ? { generation: g - 1, epoch: Infinity } : { generation: g, epoch: instancedShardModelEpoch(id) - 1 });
+        for (const id of event.modelIds) {
+          if (event.full) tap.abandon(id, { generation: g - 1, epoch: Infinity });
+          else tap.withhold(id, (event.withheld ?? []).filter((shard) => shard.modelId === id).map((shard) => shard.bytes));
+        }
         return;
       }
       if (event.kind !== 'enqueued' || !event.shards) return;
@@ -188,7 +174,8 @@ export class StoreGeometryBackingTap {
           notifyReleasedGeometryMetadataChanged();
           continue;
         }
-        this.appendSuffix(tracked, meshes);
+        if (this.acknowledged.get(modelId) === tracked) this.regenerate(modelId, meshes, 'carry'); // sealed: a successor
+        else this.appendSuffix(tracked, meshes);
       }
     }
     for (const modelId of [...this.tracked.keys()]) {
@@ -196,26 +183,34 @@ export class StoreGeometryBackingTap {
     }
   }
 
-  private regenerate(modelId: string, meshes: MeshData[] | undefined, shards: 'none' | 'carry' | 'lost'): void {
+  private regenerate(modelId: string, meshes: MeshData[] | undefined, shards: 'none' | 'carry' | 'lost' | 'withhold', withheld?: ReadonlySet<ArrayBuffer>): void {
     const previous = this.tracked.get(modelId);
     const key = `${modelId}\u0001${++this.sequence}`;
     // Every older generation stays durable until this one is acknowledged complete (`seal`).
     const next: Tracked = { key, number: (previous?.number ?? 0) + 1, meshes, members: [], consumed: 0,
       // Lost instancing is sticky: no later edit may fall back to pre-loss (stale) occurrences.
-      chain: Promise.resolve(), instancedLost: shards === 'lost' || (shards === 'carry' && !!previous?.instancedLost),
-      lostAt: shards === 'lost' ? supplyPoint(modelId) : previous?.lostAt,
-      resupply: shards === 'carry' ? previous?.resupply : undefined, supplied: shards === 'carry' ? previous?.supplied : undefined, shards: 0, occurrences: 0, areas: new Map(),
+      chain: Promise.resolve(), instancedLost: shards === 'lost' || shards === 'withhold' || (shards === 'carry' && !!previous?.instancedLost),
+      lostAt: shards === 'lost' ? supplyPoint(modelId) : shards === 'withhold' ? { ...supplyPoint(modelId), epoch: instancedShardModelEpoch(modelId) - 1 } : previous?.lostAt,
+      resupply: shards === 'carry' ? previous?.resupply : undefined, supplied: shards === 'carry' ? previous?.supplied : undefined, shards: 0, occurrences: 0, sources: [], areas: new Map(),
       retained: previous ? [...previous.retained, previous.key] : [] };
     const begun = (previous?.chain ?? Promise.resolve()).then(async () => {
       next.backing = await this.registry.begin(key, this.options);
       // A re-supplying predecessor holds only fresh shards: carry those, never the pre-loss ones.
-      if (shards === 'carry' && (!next.instancedLost || next.resupply)) {
+      // `withhold` keeps every shard the scene drew (all but `withheld`), from the predecessor itself.
+      if (shards === 'withhold' || (shards === 'carry' && (!next.instancedLost || next.resupply))) {
         // Resolved now, after the chain: a failed or unstarted predecessor falls back to the acknowledged one.
-        const source = next.resupply || (previous?.backing && !previous.failure) ? previous : this.acknowledged.get(modelId);
-        if (!source?.backing || source.failure || (source.instancedLost && !next.resupply)) next.instancedLost = true;
-        else for await (const shard of source.backing.reader.instancedShards()) {
-          next.shards++; next.occurrences += shard.instances.length;
-          await next.backing.writer.appendInstancedShard(shard);
+        const source = shards === 'withhold' || next.resupply || (previous?.backing && !previous.failure) ? previous : this.acknowledged.get(modelId);
+        if (!source?.backing || source.failure || (source.instancedLost && !next.resupply && shards !== 'withhold')) next.instancedLost = true;
+        else {
+          let ordinal = -1, found = 0;
+          for await (const shard of source.backing.reader.instancedShards()) {
+            const from = source.sources[++ordinal] ?? null;
+            if (from && withheld?.has(from)) { found++; continue; }
+            next.shards++; next.occurrences += shard.instances.length; next.sources.push(source.sources[ordinal] ?? null);
+            await next.backing.writer.appendInstancedShard(shard);
+          }
+          // A withheld shard the predecessor never backed: its membership is unknown, fail closed.
+          if (withheld && found !== withheld.size) throw new Error('A withheld instanced shard was not among the backed ones');
         }
       }
     });
@@ -271,12 +266,10 @@ export class StoreGeometryBackingTap {
 
   private ingestShard(modelId: string, bytes: ArrayBuffer): void {
     if (this.stopped) return;
-    let tracked = this.tracked.get(modelId);
-    if (!tracked) {
-      this.regenerate(modelId, undefined, 'none');
-      tracked = this.tracked.get(modelId)!;
-    }
-    const target = tracked;
+    // A sealed generation's writer is closed: stage a successor that carries it, then append there.
+    if (!this.tracked.has(modelId)) this.regenerate(modelId, undefined, 'none');
+    else if (this.acknowledged.get(modelId) === this.tracked.get(modelId)) this.regenerate(modelId, this.tracked.get(modelId)!.meshes, 'carry');
+    const target = this.tracked.get(modelId)!;
     if (!admitShard(target, supplyPoint(modelId))) return; // `instanced-resupply.ts`
     target.shards++;
     // Decode a private copy: the drain may transfer or reuse the queued bytes.
@@ -293,13 +286,20 @@ export class StoreGeometryBackingTap {
     applyFederationOffsetToShard(shard, idOffset);
     target.occurrences += shard.instances.length;
     if (target.resupply) target.resupply.received++;
-    this.enqueue(target, () => this.writer(target).appendInstancedShard(shard));
+    // Recorded in backed order (after any carried shards), for `withhold`.
+    this.enqueue(target, async () => { await this.writer(target).appendInstancedShard(shard); target.sources.push(bytes); });
   }
 
   /** Lost instancing is whole again only by the model's own statement, matched shard for shard. */
   private onSupply(supply: InstancedShardSupply): void {
     const tracked = this.stopped ? undefined : this.tracked.get(supply.modelId);
     if (tracked) acceptStatement(tracked, supply);
+  }
+
+  /** Shards dropped before upload: keep exactly what the scene drew, lost until the rest is stated. */
+  private withhold(modelId: string, bytes: readonly ArrayBuffer[]): void {
+    const tracked = this.stopped ? undefined : this.tracked.get(modelId); // resolved against backed order once the chain settles
+    if (tracked && this.store.getState().models.has(modelId)) this.regenerate(modelId, tracked.meshes, 'withhold', new Set(bytes));
   }
 
   /** Instancing whose shards were dropped before upload: a fresh lost generation, never carrying the abandoned shards. */

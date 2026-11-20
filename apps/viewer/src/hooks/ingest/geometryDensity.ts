@@ -30,18 +30,21 @@ const RECORD_START = /#\d+\s*=\s*([A-Z][A-Z0-9_]*)\s*\(/g;
 
 /** Anything but mesh payload: coordinate and index tuples, or a polygonal face set's `#n` face list. */
 const NOT_NUMERIC_TUPLES = /[^0-9.,()eE+\-\s#]/g;
-/** How a face set's list ends after its last reference: `#n),$);` or `#n),(…));`. A shell
- * ends `#n));`, a relationship `#n),#m);`. Anchored to the tail, so it scans once. */
-const FACE_SET_END = /^#\d+\s*\)\s*,\s*[$(][^#]*\)\s*;\s*$/;
+/** The last reference closes a list: the tail after it says what the list was. */
+const LIST_END = /^#\d+\s*\)/;
+/** A face set's list ends `#n),$);` or `#n),(<PnIndex>));`; a shell ends `#n));`, and a
+ * relationship's last reference is its relating object, `#m);`. Anchored, so it scans once. */
+const FACE_SET_END = /^#\d+\s*\)\s*,\s*(\$|\([\d,\s]*\))\s*\)\s*;\s*$/;
 
 /**
  * Bytes of `text` in dense geometry records. The bytes before the first record
  * start belong to a record cut by the window edge; a large mesh can be one
  * record longer than the window, so that fragment counts as dense when it is
  * numeric tuples or `#n` references alone (98 %+). A `#n` list is mesh only as
- * a face set's face list: when the window holds the list's end, the end decides;
- * a window wholly inside a list counts it as mesh, since a B-rep shell or a
- * relationship cannot be told apart there (reviews on #10814). Non-mesh numeric
+ * a face set's face list: when a record start follows the list's end, the end
+ * decides (a presentation layer's `),$);` passes too); otherwise the fragment
+ * counts as mesh, since a B-rep shell or a relationship cannot be told apart
+ * there (reviews on #10814). Non-mesh numeric
  * records (B-spline knots, curve points) also pass. These overcounts, like the
  * point-list one, err toward refusal. The last record runs to the end of the
  * window.
@@ -53,7 +56,8 @@ export function denseRecordBytes(text: string): number {
   const fragment = text.slice(0, lead);
   const other = lead - fragment.replace(NOT_NUMERIC_TUPLES, '').length;
   const lastRef = fragment.lastIndexOf('#');
-  const meshEnd = !match || lastRef < 0 || FACE_SET_END.test(fragment.slice(lastRef));
+  const tail = lastRef < 0 ? '' : fragment.slice(lastRef);
+  const meshEnd = !match || !LIST_END.test(tail) || FACE_SET_END.test(tail);
   let dense = lead > 0 && other <= lead * 0.02 && meshEnd ? lead : 0;
   while (match) {
     const next = RECORD_START.exec(text);

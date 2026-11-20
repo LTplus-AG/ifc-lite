@@ -80,6 +80,35 @@ describe('released geometry readback for tools', () => {
     await registry.close();
   });
 
+  it('a placement that throws releases the leases it took and feeds nothing', async () => {
+    const { registry, backing } = await backed([mesh(1, 0), mesh(2, 0.5)]);
+    const h = host({ released: true, hit: { expressId: 1, worldXYZ: { x: 100.2, y: 0.2, z: 5 } } });
+    const scene = h.value.getScene() as { placeAppearanceSource: (m: MeshData) => MeshData };
+    // The offset probe (expressId 0) still places; the first real piece fails, after every lease was taken.
+    const placeFirst = scene.placeAppearanceSource;
+    scene.placeAppearanceSource = (m: MeshData) => {
+      if (m.expressId === 0) return placeFirst(m);
+      throw new Error('placement failed');
+    };
+    // Count the leases the feeder takes and gives back.
+    let open = 0;
+    const reader = backing.reader as unknown as Record<'leaseEntity' | 'leaseChunks', (...args: unknown[]) => Promise<{ release: () => void }>>;
+    for (const name of ['leaseEntity', 'leaseChunks'] as const) {
+      const real = reader[name].bind(reader);
+      reader[name] = async (...args) => {
+        const lease = await real(...args);
+        open++;
+        const release = lease.release.bind(lease);
+        return { ...lease, release: () => { open--; release(); } };
+      };
+    }
+    const feeder = new ReadbackRaycastFeeder(h.value, () => ({ backing: () => backing }), () => 'm');
+    assert.equal(await feeder.prepare(10, 10), 'unavailable');
+    assert.equal(h.fed.at(-1) ?? null, null, 'nothing was fed');
+    assert.equal(open, 0, 'every lease taken before the failed placement was released');
+    await registry.close();
+  });
+
   it('an incomplete or stale backing feeds nothing and says why, never a wrong hit', async () => {
     const registry = await GeometryBackingRegistry.open(database());
     const open = await registry.begin('m');
@@ -274,6 +303,38 @@ describe('released geometry readback for tools', () => {
     const feeder = new ReadbackRaycastFeeder(h.value, () => ({ backing: () => backing }), () => 'm');
     assert.equal(await feeder.prepare(0, 0, { hiddenIds: hidden }), 'fed', feeder.lastError?.message ?? 'not fed');
     assert.equal(await feeder.prepare(0, 0, { isolatedIds: new Set([501]) }), 'fed', 'isolation leaves the others out too');
+    await registry.close();
+  });
+
+  it('#10884 an instanced occurrence whose placement throws releases the flat leases too and feeds nothing', async () => {
+    const registry = await GeometryBackingRegistry.open(database());
+    const backing = await registry.begin('m');
+    await backing.writer.append([mesh(1, 0)]);
+    await backing.writer.appendInstancedShard(instancedShard()); // 501 opaque
+    await backing.writer.close();
+    const near = { min: { x: 99, y: -1, z: 4 }, max: { x: 101, y: 1, z: 6 } };
+    const h = host({ released: true, hit: { expressId: 501, modelIndex: 0, worldXYZ: { x: 100.2, y: 0.2, z: 5 } } }, new Map([[501, near]]));
+    const scene = h.value.getScene() as { placeAppearanceSource: (m: MeshData) => MeshData };
+    const placeFlat = scene.placeAppearanceSource;
+    scene.placeAppearanceSource = (m: MeshData) => {
+      if (m.occurrenceKey?.startsWith('readback:')) throw new Error('occurrence placement failed');
+      return placeFlat(m);
+    };
+    let open = 0;
+    const reader = backing.reader as unknown as Record<'leaseEntity' | 'leaseChunks', (...args: unknown[]) => Promise<{ release: () => void }>>;
+    for (const name of ['leaseEntity', 'leaseChunks'] as const) {
+      const real = reader[name].bind(reader);
+      reader[name] = async (...args) => {
+        const lease = await real(...args);
+        open++;
+        const release = lease.release.bind(lease);
+        return { ...lease, release: () => { open--; release(); } };
+      };
+    }
+    const feeder = new ReadbackRaycastFeeder(h.value, () => ({ backing: () => backing }), () => 'm');
+    assert.equal(await feeder.prepare(0, 0), 'unavailable');
+    assert.equal(h.fed.at(-1) ?? null, null, 'nothing was fed');
+    assert.equal(open, 0, 'the flat leases taken before the failed occurrence placement were released');
     await registry.close();
   });
 });

@@ -30,7 +30,7 @@ const RECORD_START = /#\d+\s*=\s*([A-Z][A-Z0-9_]*)\s*\(/g;
 
 /** Anything but mesh payload: coordinate and index tuples, or a polygonal face set's `#n` face list. */
 const NOT_NUMERIC_TUPLES = /[^0-9.,()eE+\-\s#]/g;
-/** The last reference closes a list: the tail after it says what the list was. */
+/** The tail starts at a `#n` that closes its list. */
 const LIST_END = /^#\d+\s*\)/;
 /** A face set's list ends `#n),$);` or `#n),(<PnIndex>));`; a shell ends `#n));`, and a
  * relationship's last reference is its relating object, `#m);`. Anchored, so it scans once. */

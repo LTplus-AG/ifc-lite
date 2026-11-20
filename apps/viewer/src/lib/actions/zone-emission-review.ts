@@ -16,17 +16,6 @@ import { parseZoneEmissionProposal, type ZoneEmissionProposal } from './zone-emi
 import type { ModelChangeReceipt } from './model-change-commit';
 import { batchDigest } from './model-change-preview';
 import { sameReportEvidence } from '@/lib/flow/report-provenance';
-/** Whether the zone evaluation is current, once per synchronous pass: an admission probes every retained review in one
- * loop, nothing can change in between, and the check walks the scene's mesh bounds. The scene and in-place records it
- * reads are outside the store, so the answer is dropped on the next microtask rather than kept for the state. */
-let probed: { state: ViewerState; current: boolean } | undefined;
-function evaluationCurrent(state: ViewerState) {
-  if (probed?.state !== state) {
-    if (!probed) queueMicrotask(() => { probed = undefined; });
-    probed = { state, current: zoneEvaluationIsCurrent(state) };
-  }
-  return probed.current;
-}
 export function prepareZoneEmission(store: StoreApi<ViewerState>, input: ZoneEmissionProposal) {
   const proposal = parseZoneEmissionProposal(JSON.stringify(input)), state = store.getState();
   const deny = mutationDenial(state, proposal.modelId); if (deny) throw new Error(deny);
@@ -61,7 +50,9 @@ export function prepareZoneEmission(store: StoreApi<ViewerState>, input: ZoneEmi
     const current = store.getState(), liveView = current.mutationViews.get(proposal.modelId);
     if (liveView !== view || liveView?.getMutationRevision() !== viewRevision) return false;
     if (current.zoneSets.find(row => row.id === proposal.zoneSetId) !== zoneSet) return false;
-    return zoneEvaluationOwnerId(current) === snapshot.evaluationId && evaluationCurrent(current);
+    // Not cached: the check also reads the scene and assignment records in place, outside the store. It walks at most
+    // 10000 mesh bounds, once per retained zone review per admission.
+    return zoneEvaluationOwnerId(current) === snapshot.evaluationId && zoneEvaluationIsCurrent(current);
   };
   const validate = (initializing = false) => {
     if (original !== JSON.stringify({ proposal, snapshot, dry })) throw new Error('The reviewed proposal or native output changed');

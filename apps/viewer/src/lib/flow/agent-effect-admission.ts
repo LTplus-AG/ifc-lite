@@ -21,7 +21,8 @@ const KNOWN_NATIVE_NODES = new Set([
   'table.pivot', 'table.readCsv', 'table.readXlsx', 'table.rowCount', 'table.writeCsv', 'table.writeXlsx',
   'validation.runChecks', 'viewer.colorize', 'viewer.flyTo', 'viewer.isolate', 'viewer.select', 'viewer.selection',
 ]);
-const NATIVE_REMOTE_READS = new Set(['bcf.listTopics', 'aps.token', 'aps.modelProperties', 'documents.queryVersions', 'documents.download', 'model.openFromSource', 'speckle.receive']);
+// documents.download is not here: it fetches a wired URL, which can carry model data out like an http.request GET.
+const NATIVE_REMOTE_READS = new Set(['bcf.listTopics', 'aps.token', 'aps.modelProperties', 'documents.queryVersions', 'model.openFromSource', 'speckle.receive']);
 export function admitAgentFlowEffects(doc: FlowDocument, registry: NodeRegistry<FlowHost>, inputs: Readonly<Record<string, unknown>>) {
   const unknown: string[] = [], publication: string[] = [];
   for (const node of doc.nodes) {

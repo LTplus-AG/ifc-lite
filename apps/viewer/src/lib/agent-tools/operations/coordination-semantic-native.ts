@@ -28,7 +28,10 @@ export const coordinationSemanticNativeOperations = [
       input.query = queryForSelection({ selection: createSelectionAdapter(useViewerStore).get(), entities: liveEntities(), revisions: session.revisions, profile: session.profile, mapping: session.resultMapping ?? input.mapping, document: session.document, results: session.results, settings: session }); input.mode = 'sparql'; input.mapping = { ...DEFAULT_MAPPING, id: 'subject' };
     }
     const guard = () => { c.checkpoint?.(); if (useViewerStore.getState().models !== models || remote && useSemanticEndpointGrant.getState().generation !== authority.generation) throw new Error('Native model binding or endpoint authority changed.'); };
-    guard(); return loadSemanticSource(input, c.signal ?? new AbortController().signal, undefined, undefined, write => { guard(); return c.commit(write); });
+    guard(); const outcome = await loadSemanticSource(input, c.signal ?? new AbortController().signal, undefined, undefined, write => { guard(); return c.commit(write); });
+    // A load cancelled mid-read leaves the dataset as it was; report that, not an empty success.
+    if (c.signal?.aborted) throw c.signal.reason ?? new DOMException('The semantic load was cancelled.', 'AbortError');
+    return outcome;
   }),
   coordination('semantic.endpoint', 'Inspect only the identity/generation of the already exercised native endpoint grant; credentials and relay secrets remain private.', ['read'], emptySchema, () => { const state = useSemanticEndpointGrant.getState(); return { endpoint: state.grant?.endpoint ?? null, generation: state.generation, configured: !!state.grant }; }),
   coordination<{ kind: 'profile' | 'dictionary' | 'reference'; definition: string }>('semantic.profile', 'Import a native data-only profile/dictionary using the canonical validators, or restore the reference profile. Imported JSON cannot supply executable contexts or shapes.', ['configuration'], {

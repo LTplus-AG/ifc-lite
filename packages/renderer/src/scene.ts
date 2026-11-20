@@ -3610,8 +3610,7 @@ export class Scene {
     this.instancedDevice = undefined;
   }
 
-  /** Device recovery of a released scene (#10264): drop every flat and instanced piece, keep placements. */
-  resetReleasedForRebuild(): void { this.destroyAllInstancedTemplates(); this.clearFlatGeometry(); this.setEphemeralStreamingMode(false); }
+  resetReleasedForRebuild(): void { this.destroyAllInstancedTemplates(); this.clearFlatGeometry(); this.setEphemeralStreamingMode(false); } // released device recovery (#10264): no flat or instanced piece, placements kept
 
   clear(): void {
     this.clearEpoch++; this.modelTranslations.clear(); forgetReleasedMembership(this); // new content; clearFlatGeometry() moves replayEpoch

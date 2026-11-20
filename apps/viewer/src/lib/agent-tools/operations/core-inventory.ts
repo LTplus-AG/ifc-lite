@@ -23,6 +23,7 @@ export const coreControlInventory = [
   ], notes: ['Layout/shortcut chrome is available through native palette commands and flavor capture/switch; drag/resize feedback is presentation.'] },
   { owner: 'changes', controls: [
     { control: 'Native full changed-model STEP/IFCX/portable appearance export and multiple-model ZIP bundling, with schedule attribution and skip diagnostics', operations: ['exports.changedModels'] },
+    { control: 'Change-set JSON export of the recorded edits', operations: ['exports.changesJson'] },
   ], notes: ['Other native export formats and exact credential/publication boundaries are listed by the finite toolbar export inventory.'] },
   // Headless reads and runs each panel exposes besides its main controls; the coverage reverse check requires them here.
   { owner: 'properties', controls: [{ control: 'Model summary, schema description and measured geometry (bounds, area, volume)', operations: ['model.inspect', 'schema.describe', 'geometry.bounds', 'geometry.area', 'geometry.volume'] }], notes: [] },

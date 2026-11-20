@@ -87,11 +87,14 @@ export function viewerOperationCoverage() {
     const gaps = missingControls(controls, registered);
     return { id: row.registry_id, complete: gaps.length === 0, controls, gaps };
   });
-  return {
-    version: 2, scope: 'audited built-in domain controls, numeric gesture equivalents and native host boundaries',
-    complete: panels.every(row => row.complete) && tools.every(row => row.complete) && exports.every(row => row.complete),
-    all_controls_automatable: false, panel_count: panels.length, operation_count: operations.length, panels, tools, exports,
-    non_panel: [
+  // Non-panel families list operations by prefix; each must still be bound to an audited control somewhere.
+  const audited = new Set([...panels, ...tools, ...exports].flatMap(row => row.controls.flatMap(control => control.operations)));
+  const withGaps = <T extends { implemented?: readonly string[]; controls?: readonly Control[] }>(row: T) => {
+    const own = new Set(row.controls?.flatMap(control => control.operations) ?? []);
+    const gaps = (row.implemented ?? []).filter(id => !audited.has(id) && !own.has(id)).map(id => `Operation not in the control audit: ${id}`);
+    return { ...row, complete: gaps.length === 0, gaps };
+  };
+  const nonPanel = [
       { id: 'viewport', controls: inventory.filter(row => row.owner === 'viewport').flatMap(row => row.controls) },
       { id: 'preferences', implemented: ids(['preferences.']), controls: inventory.filter(row => row.owner === 'preferences').flatMap(row => row.controls) },
       { id: 'search', implemented: ids(['filters.', 'fields.']), controls: inventory.filter(row => row.owner === 'search').flatMap(row => row.controls) },
@@ -100,7 +103,12 @@ export function viewerOperationCoverage() {
       { id: 'contextual-entity', implemented: ids(['selection.', 'visibility.', 'basket.', 'authoring.', 'properties.']) },
       { id: 'tours-mobile', implemented: ids(['presentation.', 'camera.']), notes: ['Pointer/held-key/drag/resize feedback is presentation; native pose, timed path and palette controls expose domain effects.'] },
       { id: 'runtime-extensions', implemented: ids(['extensions.', 'flavors.']), notes: ['Installed native grants and owner-qualified live host invocation remain authoritative; arbitrary third-party component internals are outside the built-in inventory.'] },
-    ],
+  ].map(withGaps);
+  return {
+    version: 2, scope: 'audited built-in domain controls, numeric gesture equivalents and native host boundaries',
+    complete: panels.every(row => row.complete) && tools.every(row => row.complete) && exports.every(row => row.complete) && nonPanel.every(row => row.complete),
+    all_controls_automatable: false, panel_count: panels.length, operation_count: operations.length, panels, tools, exports,
+    non_panel: nonPanel,
     human_only: [
       { id: 'browser-file-password-input', reason: 'Native local-file selection, encrypted-document passwords and OAuth prompts retain their existing browser/credential host interaction.' },
       { id: 'publication-and-seed-consent', reason: 'Native concrete publication review, room model-seed consent and new extension capability review require their existing explicit approval.' },

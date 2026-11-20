@@ -265,6 +265,8 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     const classes = (id: string) => report.panels.find(panel => panel.id === id)?.controls.map(control => control.classification) ?? [];
     assert.ok(classes('lists').includes('presentation-only'));
     assert.ok(classes('bcf').includes('native-boundary'));
+    // Non-panel families are bound to audited controls too, and count toward complete.
+    assert.deepEqual(report.non_panel.flatMap(row => row.gaps.map(gap => `${row.id}: ${gap}`)), []);
   });
   it('refuses overflow coordinates and incomplete closed perimeters', async () => {
     assert.equal((await execute('measurements.distance', { start: [0, 0, 0], end: [1e308, 0, 0] })).isError, true);

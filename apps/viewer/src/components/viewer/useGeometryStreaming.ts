@@ -382,7 +382,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     // meshes once its range became pickable; consume that one-shot marker so later rebuilds own re-uploads.
     newMeshes = newMeshes.filter((mesh) => !takeLandXmlGpuUploaded(mesh));
     // Released CPU geometry (#10264) is replayed from the backing; the replay module owns its retries.
-    newMeshes = splitReleasedForReplay(renderer, newMeshes);
+    newMeshes = splitReleasedForReplay(renderer, newMeshes, geometry);
     if (newMeshes.length > 0) {
       // #6979: per-batch spans on the streaming load (no-op when not streaming or untraced).
       const trace = isStreaming ? activeLoadTrace() : NOOP_LOAD_TRACE;

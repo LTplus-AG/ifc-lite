@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import type { Renderer } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import { adoptedSceneOutlivesEmptyGeometry, sceneSnapshotKey, setPendingSceneSnapshot, takeSceneSnapshotGeometry, takeSnapshotModelArrival, withdrawPendingSceneSnapshot } from './sceneSnapshotOwnership.js';
+import { currentSceneGeometry, noteSceneGeometry } from '@/lib/geometry-backing/released-scene-replay';
 
 const bounds = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } };
 const point = { x: 1, y: 2, z: 3 };
@@ -60,6 +61,22 @@ describe('takeSceneSnapshotGeometry', () => {
     const again = refs();
     assert.equal(take(geometry, 0, again), false, 'a rebuild uploads as usual');
     assert.equal(again.cameraFittedRef.current, false);
+  });
+
+  it('#10937 a committed hydration records exactly what the scene now draws (the route step never sees it)', () => {
+    const geometry = [mesh(), mesh()];
+    noteSceneGeometry([]);
+    setPendingSceneSnapshot(adoption);
+    assert.equal(take(geometry), true);
+    assert.equal(currentSceneGeometry(), geometry, 'a released device recovery rebuilds this list, not an empty one');
+  });
+
+  it('a refused hydration records nothing: the ordinary upload that follows does', () => {
+    hydrates = false;
+    noteSceneGeometry(undefined);
+    setPendingSceneSnapshot(adoption);
+    assert.equal(take([mesh()]), false);
+    assert.equal(currentSceneGeometry(), undefined);
   });
 
   it('falls through to the ordinary path when the scene refuses the geometry', () => {

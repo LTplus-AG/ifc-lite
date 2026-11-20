@@ -229,6 +229,7 @@ export type { DeviationAssetRange, DeviationAssetSummary, DeviationAsyncOptions,
 import { runGuardedGpuUpload, isDeviceLossThrow, type GpuUploadOutcome } from './gpu-upload-guard.js';
 import { enableRendererQuantizedBatches } from './quantized-lifecycle.js';
 import { recoverRendererDevice, rendererDestroyedError, rendererDeviceLostError, type DeviceRecoveryOmission, type DeviceRecoveryResult, type RendererRecoveryHost } from './device-recovery.js';
+import type { ReleasedSceneRebuild } from './released-scene-recovery.js';
 
 
 /**
@@ -347,7 +348,7 @@ export class Renderer {
      * NOT bump it — see `destroy()` vs `teardown()`. Bumping there would make
      * every re-init invalidate itself, and nothing would ever become ready again.
      */
-    private initGeneration = 0;
+    private initGeneration = 0; private initStartedGeneration = 0; // the generation whose initOnce last began building
 
     /**
      * Set once the GPU device is lost for a non-intentional reason (driver
@@ -393,7 +394,7 @@ export class Renderer {
     private deviceLostListeners = new Set<(info: { message: string; reason: string }) => void>();
     private deviceLossSequence = 0;
     private readonly recovery = {
-        inFlight: null as Promise<DeviceRecoveryResult> | null, lostReferenceImages: false, quantizedBatchesRequested: false, omissions: new Set<DeviceRecoveryOmission>(), pointCloudOptions: null as Readonly<ResolvedPointCloudRenderOptions> | null, replacementLostInfo: null as { message: string; reason: string } | null,
+        inFlight: null as Promise<DeviceRecoveryResult> | null, lostReferenceImages: false, quantizedBatchesRequested: false, omissions: new Set<DeviceRecoveryOmission>(), pointCloudOptions: null as Readonly<ResolvedPointCloudRenderOptions> | null, replacementLostInfo: null as { message: string; reason: string } | null, releasedRebuild: null as ReleasedSceneRebuild | null,
     };
     /** BIM ↔ scan deviation: owns the compute pipeline + its BVH cache. Null under `@ifc-lite/renderer/core`. */
     private readonly deviationComputer: DeviationComputer | null = pointCloudSupport()?.createDeviationComputer() ?? null;
@@ -590,7 +591,7 @@ export class Renderer {
         generation: number,
         options: { clearDeviceLost?: boolean; publishReady?: boolean } = {},
     ): Promise<void> {
-        // `pipeline` is the marker for "a previous init() completed": it is
+        this.initStartedGeneration = generation; // `pipeline` marks "a previous init() completed": it is
         // assigned unconditionally there and nulled by destroy().
         if (this.pipeline !== null) {
             // Release the previous GPU lifetime and revoke readiness without
@@ -832,6 +833,8 @@ export class Renderer {
     recoverDevice(): Promise<DeviceRecoveryResult> {
         return recoverRendererDevice(this as unknown as RendererRecoveryHost);
     }
+    /** Lets `recoverDevice` rebuild a scene whose CPU geometry was released (#10264); `null` refuses it again. */
+    setReleasedSceneRebuild(rebuild: ReleasedSceneRebuild | null): void { this.recovery.releasedRebuild = rebuild; }
 
     /**
      * `onLossDetected` for every `runGuardedGpuUpload` call below (#4885):

@@ -92,20 +92,28 @@ export class ReadbackRaycastFeeder {
         leases.push(own);
         // An instanced (or otherwise unbacked) front surface: feeding the flat
         // neighbourhood alone would let the ray pass through it and measure
-        // whatever lies behind. Refuse instead of answering wrongly.
-        if (own.meshes.length === 0) {
-          throw new GeometryUnavailableError(backing.directory.shardsOf(hit.expressId).length > 0
-            ? `Entity ${hit.expressId} is instanced; instanced readback for tools is not available yet`
-            : `Entity ${hit.expressId} has no backed flat geometry`);
+        // whatever lies behind. Refuse instead of answering wrongly. An entity
+        // with BOTH flat pieces and instanced occurrences counts too: the GPU hit
+        // may be the occurrence in front of its own flat piece, and this layer
+        // cannot read occurrences back.
+        if (backing.directory.shardsOf(hit.expressId).length > 0) {
+          throw new GeometryUnavailableError(`Entity ${hit.expressId} has instanced occurrences; instanced readback for tools is not available yet`);
         }
+        if (own.meshes.length === 0) throw new GeometryUnavailableError(`Entity ${hit.expressId} has no backed flat geometry`);
         const p = hit.worldXYZ;
         if (p) {
           // The hit is in the placed scene frame; directory bounds are model-local sources.
           const [dx, dy, dz] = modelOffset(scene, hit.modelIndex);
           const x = p.x - dx, y = p.y - dy, z = p.z - dz, r = NEIGHBOURHOOD_METRES;
           const chunks = backing.directory.chunksIntersecting([x - r, y - r, z - r], [x + r, y + r, z + r]);
+          // Greedy within the budget: a chunk that does not fit is skipped, never charged.
           let bytes = 0;
-          const within = chunks.filter((index) => (bytes += backing.directory.chunks[index].bytes) <= this.budgetBytes);
+          const within = chunks.filter((index) => {
+            const size = backing.directory.chunks[index].bytes;
+            if (bytes + size > this.budgetBytes) return false;
+            bytes += size;
+            return true;
+          });
           leases.push(await backing.reader.leaseChunks(within, { signal }));
         }
         signal.throwIfAborted();

@@ -28,6 +28,13 @@ export function readbackFeeder(renderer: Renderer): ReadbackRaycastFeeder {
     useViewerStore.subscribe((state, previous) => {
       if (state.models !== previous.models || state.geometryContentVersion !== previous.geometryContentVersion) owned.clear();
     });
+    // Fed pieces are placed at the scene's placement when they were read. A renderer-side placement change
+    // (setModelTranslation/Rotation) moves the GPU geometry with no store change: drop them on its revision too.
+    let revision = renderer.getPickGeometryRevision();
+    renderer.getScene().onGeometryChange?.(() => {
+      const now = renderer.getPickGeometryRevision();
+      if (now !== revision) { revision = now; owned.clear(); }
+    });
   }
   return feeder;
 }

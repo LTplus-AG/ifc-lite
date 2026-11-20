@@ -21,7 +21,7 @@ import { CLASH_RULE_PRESETS, type ClashReview } from '@ifc-lite/clash';
 import type { ClashExclusionRule } from './exclusions.js';
 import {
   DEFAULT_CLASH_SETTINGS, EXCLUSIONS_KEY, MAX_EXCLUSIONS, MAX_NAME, MAX_PRESETS, MAX_REVIEWS, PRESETS_KEY, REVIEWS_KEY,
-  SCHEMA_VERSION, SETTINGS_KEY, decodeStoredExclusions, decodeStoredPresets, decodeStoredReviews, isMeaningfulReview,
+  SCHEMA_VERSION, SETTINGS_KEY, decodeStoredExclusions, decodeStoredPresets, decodeStoredReviews, encodeStoredReviews, isMeaningfulReview,
   isValidStoredPreset, normalizeSettings, presetListOf, storedPresetToPreset,
   type ClashGlobalSettings, type ClashPreset,
 } from './persistence-codecs.js';
@@ -316,7 +316,7 @@ export function saveReviews(reviews: Map<string, ClashReview>): SaveResult {
   }
   let payload: string;
   try {
-    payload = JSON.stringify({ schemaVersion: SCHEMA_VERSION, reviews: Object.fromEntries(entries) });
+    payload = encodeStoredReviews(entries);
   } catch {
     return { ok: false, reason: 'serialize', message: 'Could not serialize clash reviews.' };
   }

@@ -344,7 +344,9 @@ it('#10976 import keeps a refused last-checklist deletion until the native edito
     assert.equal(loadManualLibrary().library.activeId, existing);
 
     await act(async () => { state.setManualChecklist(null); });
+    assert.deepEqual(loadManualLibrary().library.checklists, []);
     const retry = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Retry all libraries'); assert.ok(retry);
+    await waitFor(() => !retry.disabled, 'the initial import finishes before retry');
     click(retry);
     await waitFor(() => useViewerStore.getState().manualLibrary.activeId === incoming, 'saved deletion lets the backup restore the incoming checklist');
     assert.deepEqual(loadManualLibrary().library.checklists.map(checklist => checklist.id), [incoming]);
@@ -378,6 +380,30 @@ it('#10976 backup import preserves optimistic clash settings and review edits un
     } finally { refused.mock.restore(); }
 
     const ui = render(<><Notice /><Toaster /></>);
+    const retryBeforeImport = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Retry all libraries');
+    assert.ok(retryBeforeImport);
+    click(retryBeforeImport);
+    await waitFor(() => (document.body.textContent ?? '').includes('Some content could not be saved'),
+      'Retry all reports native editor work that is still unsaved');
+    const download = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Download library backup');
+    assert.ok(download);
+    await waitFor(() => !download.disabled, 'library backup becomes available after retry');
+    const blobs: Blob[] = [];
+    const capture = mock.method(URL, 'createObjectURL', (blob: Blob | MediaSource) => {
+      assert.ok(blob instanceof Blob);
+      blobs.push(blob);
+      return 'blob:unsaved-clash-work';
+    });
+    try {
+      click(download);
+      await waitFor(() => blobs.length === 1, 'library backup includes refused edits');
+      const { drafts } = parseContentBackup(await blobs[0].text());
+      const raw = Object.fromEntries((drafts ?? []).map(draft => [draft.id, JSON.parse(draft.raw).original]));
+      assert.equal(JSON.parse(raw[keys[0]]).reviews['local-pair'].comment, 'Unsaved observation');
+      assert.equal(JSON.parse(raw[keys[1]]).settings.tolerance, 0.02);
+      assert.equal(Object.hasOwn(JSON.parse(raw[keys[1]]).settings, 'groupBy'), false);
+    } finally { capture.mock.restore(); }
+    await waitFor(() => !download.disabled, 'backup completes before import');
     const input = ui.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input);
     Object.defineProperty(input, 'files', { value: [new File([backup], 'clash-backup.json')], configurable: true });
     await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
@@ -391,6 +417,7 @@ it('#10976 backup import preserves optimistic clash settings and review edits un
       state.setClashTolerance(0.02);
     });
     const retry = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Retry all libraries'); assert.ok(retry);
+    await waitFor(() => !retry.disabled, 'the initial import finishes before retry');
     click(retry);
     await waitFor(() => useViewerStore.getState().clashReviews.has('incoming-pair'), 'clash import retries once local edits are saved');
     assert.deepEqual(loadReviews().get('incoming-pair'), incoming);

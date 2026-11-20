@@ -140,10 +140,10 @@ export function loadManualLibrary(): ManualLibraryRead {
   return { library, error: saved.ok ? null : saved };
 }
 
-export function encodeManualLibrary(library: ManualChecklistLibrary): string | null {
+export function encodeManualLibrary(library: ManualChecklistLibrary, enforceLimit = true): string | null {
   const sources = [...library.checklists.map((entry) => entry.answers), library.pendingLegacyAnswers ?? {}];
   const count = sources.reduce((total, models) => total + Object.values(models).reduce((n, entries) => n + Object.values(entries).filter(isMeaningfulAnswer).length, 0), 0);
-  if (count > MAX_ANSWERS) return null;
+  if (enforceLimit && count > MAX_ANSWERS) return null;
   return JSON.stringify({
     ...library,
     checklists: library.checklists.map((entry) => ({ ...entry, answers: normalizeAnswers(entry.answers) })),

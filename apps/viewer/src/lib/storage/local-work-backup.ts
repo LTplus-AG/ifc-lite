@@ -12,7 +12,7 @@ import { optionalLocalStorage, type UnreadableEntryStorage } from './unreadable-
 
 export type LocalWorkBackup = Partial<Record<LocalWorkKey, string>>;
 
-function original(id: string, raw: string): ContentDraftEvidence {
+export function localWorkOriginal(id: string, raw: string): ContentDraftEvidence {
   return { kind: 'localWork', id, raw: JSON.stringify({ id, original: raw }) };
 }
 
@@ -37,13 +37,13 @@ export function readLocalWorkBackup(): { localWork: LocalWorkBackup; drafts: Con
         const source = raw ?? (key === MANUAL_LIBRARY_KEY ? readLegacyManual(storage, (id, error) => {
           console.warn(`[Library] Could not read ${id}; including its original in the backup`, error);
           const stored = storage.getItem(id);
-          if (stored !== null) drafts.push(original(id, stored));
+          if (stored !== null) drafts.push(localWorkOriginal(id, stored));
         }) : null);
         const canonical = source === null ? null : localWorkCodec(key).canonical(source);
         if (canonical !== null) localWork[key] = canonical;
       } catch (error) {
         console.warn(`[Library] Could not decode ${key}; including its original in the backup`, error);
-        if (raw !== null) drafts.push(original(key, raw));
+        if (raw !== null) drafts.push(localWorkOriginal(key, raw));
         else throw error;
       }
     }
@@ -53,7 +53,7 @@ export function readLocalWorkBackup(): { localWork: LocalWorkBackup; drafts: Con
         // Enumerate names for quarantined copies. The allowlist gates every read.
         if (!key?.includes(':unreadable') || !isLocalWorkOriginalKey(key)) continue;
         const raw = storage.getItem(key);
-        if (raw !== null) drafts.push(original(key, raw));
+        if (raw !== null) drafts.push(localWorkOriginal(key, raw));
       }
     }
     return { localWork, drafts, complete: true };
@@ -95,13 +95,13 @@ export function planLocalWorkImport(incoming: LocalWorkBackup, canWrite?: (key: 
         current = stored === null ? null : codec.canonical(stored);
       } catch (error) {
         console.warn(`[Library] Kept unreadable ${key} and preserved the incoming snapshot`, error);
-        drafts.push(original(key, source));
+        drafts.push(localWorkOriginal(key, source));
         continue;
       }
       if (current === source || (current !== null && sameReportEvidence(JSON.parse(current), JSON.parse(source)))) continue;
       const merge = current === null ? { raw: source, conflict: false }
         : codec.merge?.(current, source) ?? { raw: current, conflict: true };
-      if (merge.conflict) drafts.push(original(key, source));
+      if (merge.conflict) drafts.push(localWorkOriginal(key, source));
       if (current !== null && sameReportEvidence(JSON.parse(current), JSON.parse(merge.raw))) continue;
       let raw = merge.raw;
       if (key === SETTINGS_KEY && previous !== null) {

@@ -432,7 +432,7 @@ const CLASH_FOCUS_RESET = {
 } as const satisfies Partial<ClashSlice>;
 
 /** Build the persisted settings blob from current slice state. */
-function snapshotSettings(s: ClashSlice): ClashGlobalSettings {
+export function snapshotSettings(s: ClashSlice): ClashGlobalSettings {
   return {
     mode: s.clashMode,
     tolerance: s.clashTolerance,

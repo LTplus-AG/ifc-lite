@@ -3,14 +3,25 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useViewerStore } from '@/store';
+import { snapshotSettings } from '@/store/slices/clashSlice';
 import { deriveGroups } from '@/store/slices/clash-result-projection';
 import { buildInitialPresets, loadExclusions, loadReviews, loadSettings } from '../clash/persistence.js';
-import { EXCLUSIONS_KEY, PRESETS_KEY, REVIEWS_KEY, SETTINGS_KEY } from '../clash/persistence-codecs.js';
-import { DEFINITION_LIBRARY_KEY } from '../validation/definition-library.js';
-import { loadManualLibrary, MANUAL_LIBRARY_KEY } from '../validation/manual/persistence.js';
+import { EXCLUSIONS_KEY, PRESETS_KEY, REVIEWS_KEY, SCHEMA_VERSION, SETTINGS_KEY, encodeStoredReviews } from '../clash/persistence-codecs.js';
+import { DEFINITION_LIBRARY_KEY, encodeDefinitionLibrary } from '../validation/definition-library.js';
+import { encodeManualLibrary, loadManualLibrary, MANUAL_LIBRARY_KEY } from '../validation/manual/persistence.js';
 import { manualLibraryProjection } from '../validation/manual/library.js';
 import { optionalLocalStorage } from './unreadable-entry.js';
+import { localWorkOriginal } from './local-work-backup.js';
+import type { ContentDraftEvidence } from './content-backup-drafts.js';
 import type { LocalWorkKey } from './local-work-codecs.js';
+
+function storageSlotAbsent(key: LocalWorkKey): boolean {
+  try { return optionalLocalStorage()?.getItem(key) === null; }
+  catch (error) {
+    console.warn(`[Library] Could not check the saved editor record for ${key}`, error);
+    return false;
+  }
+}
 
 /** An import must not replace unsaved editor work with an older stored snapshot. */
 export function canRestoreLocalWork(key: LocalWorkKey): boolean {
@@ -20,15 +31,40 @@ export function canRestoreLocalWork(key: LocalWorkKey): boolean {
   if (key === MANUAL_LIBRARY_KEY && state.manualSaveError) {
     return state.manualLibrary.checklists.length === 0
       && Object.keys(state.manualLibrary.pendingLegacyAnswers ?? {}).length === 0
-      && optionalLocalStorage()?.getItem(key) === null;
+      && storageSlotAbsent(key);
   }
   if (key === DEFINITION_LIBRARY_KEY && state.validationDefinitionsError) {
-    return state.validationDefinitions.entries.length === 0 && optionalLocalStorage()?.getItem(key) === null;
+    return state.validationDefinitions.entries.length === 0 && storageSlotAbsent(key);
   }
   if (key === REVIEWS_KEY) return !state.clashReviewsSaveRefused;
   if (key === SETTINGS_KEY) return !state.clashSettingsSaveRefused;
   // Presets and exclusions only publish edits after successful native saves.
   return true;
+}
+
+const EDITOR_KEYS = [REVIEWS_KEY, SETTINGS_KEY, DEFINITION_LIBRARY_KEY, MANUAL_LIBRARY_KEY] as const;
+
+export function hasUnsavedLocalWork(): boolean {
+  return EDITOR_KEYS.some(key => !canRestoreLocalWork(key));
+}
+
+/** Preserve refused editor state beside the durable library and any peer edits. */
+export function readUnsavedLocalWorkDrafts(): ContentDraftEvidence[] {
+  const state = useViewerStore.getState();
+  const { groupBy: _displayOnly, ...settings } = snapshotSettings(state);
+  const encode = {
+    [REVIEWS_KEY]: () => encodeStoredReviews(state.clashReviews),
+    [SETTINGS_KEY]: () => JSON.stringify({ schemaVersion: SCHEMA_VERSION, settings }),
+    [DEFINITION_LIBRARY_KEY]: () => encodeDefinitionLibrary(state.validationDefinitions),
+    [MANUAL_LIBRARY_KEY]: () => encodeManualLibrary(state.manualLibrary, false),
+  };
+  const drafts: ContentDraftEvidence[] = [];
+  for (const key of EDITOR_KEYS) {
+    if (canRestoreLocalWork(key)) continue;
+    const raw = encode[key]();
+    if (raw !== null) drafts.push(localWorkOriginal(key, raw));
+  }
+  return drafts;
 }
 
 export function refreshRestoredLocalWork(restored: LocalWorkKey[]): void {

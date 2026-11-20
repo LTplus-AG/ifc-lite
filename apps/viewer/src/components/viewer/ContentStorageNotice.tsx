@@ -32,7 +32,7 @@ import type { StandaloneArtifactLibraries } from '@/lib/storage/artifact-backup'
 import { currentLensDefinitions, currentListDefinitions, importArtifactLibraries } from '@/lib/storage/artifact-backup-import';
 
 import { readLocalWorkBackup, type LocalWorkBackup } from '@/lib/storage/local-work-backup';
-import { canRestoreLocalWork, refreshRestoredLocalWork } from '@/lib/storage/local-work-refresh';
+import { canRestoreLocalWork, hasUnsavedLocalWork, readUnsavedLocalWorkDrafts, refreshRestoredLocalWork } from '@/lib/storage/local-work-refresh';
 
 const messages = {
   quota: 'contentStorage.quota', unavailable: 'contentStorage.unavailable',
@@ -104,6 +104,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
     const state = useViewerStore.getState();
     const preserved = await readBackupDrafts();
     const local = readLocalWorkBackup();
+    local.drafts.push(...readUnsavedLocalWorkDrafts());
     downloadFile(JSON.stringify(encodeContentBackup(createContentBackup(visibleLibraries(true), {
       validation: state.validationReportsStorage, comparison: state.savedComparisonsStorage, document: state.documentsStorage, assistant: useAssistantLibrary.getState().status,
       clashGroups: useClashGroupLibrary.getState().status, bcfDrafts: useBcfDraftLibrary.getState().status,
@@ -216,7 +217,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
             refreshRestoredLocalWork(local.restored);
             if (local.preserved) toast.info(t('contentStorage.localWorkPreserved'));
           }
-          if (saved.every(Boolean) && identitiesSaved && !artifacts?.failed.length && !artifacts?.localPending) toast.success(t('contentStorage.saved'));
+          if (saved.every(Boolean) && identitiesSaved && !artifacts?.failed.length && !artifacts?.localPending && !hasUnsavedLocalWork()) toast.success(t('contentStorage.saved'));
           else toast.error(t('contentStorage.someUnsaved'));
         })}>{t('contentStorage.retryAll')}</Button>
         <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {

@@ -220,6 +220,10 @@ export function decodeStoredSettings(value: unknown): ClashGlobalSettings {
   return normalizeSettings(value);
 }
 
+export function encodeStoredReviews(reviews: Iterable<readonly [string, ClashReview]>): string {
+  return JSON.stringify({ schemaVersion: SCHEMA_VERSION, reviews: Object.fromEntries(reviews) });
+}
+
 export function decodeStoredReviews(value: unknown, guarded = false): Map<string, ClashReview> {
   const reviews = record(value) && record(value.reviews) ? Object.entries(value.reviews) : null;
   if (guarded && (!supported(value) || !reviews || reviews.length > MAX_REVIEWS)) throw new Error('Invalid stored clash reviews');

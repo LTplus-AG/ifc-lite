@@ -80,6 +80,8 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
   // A candidate applies only as the dialog opens. One staged while it is already open would
   // overwrite the user's role choice, and the mint effect would create that invite unasked.
   const wasOpenRef = useRef(false);
+  // An unmounted dialog is not open, whatever its last render said.
+  useEffect(() => () => { useCollabShareReview.setState({ dialogOpen: false }); }, []);
   useEffect(() => {
     const justOpened = open && !wasOpenRef.current;
     wasOpenRef.current = open;

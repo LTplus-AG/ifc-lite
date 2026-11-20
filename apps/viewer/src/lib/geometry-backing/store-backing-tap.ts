@@ -64,6 +64,8 @@ interface Tracked {
   carrying?: boolean;
   /** The store has listed this model: only then can its absence mean a removal (a shard may arrive first). */
   registered?: boolean;
+  /** A seal acknowledged (or is acknowledging) this generation: its writer is closed to further appends. */
+  sealed?: boolean;
 }
 
 export interface ModelBackingStatus {
@@ -164,7 +166,12 @@ export class StoreGeometryBackingTap {
           console.error(`[GeometryBacking] ${modelId}: ${tracked.stale.message}`);
           continue;
         }
-        this.appendSuffix(tracked, meshes);
+        // A sealed generation's writer is closed: an in-place append after the seal starts a successor
+        // with the whole list (the acknowledged one is superseded at once, never left verifying without it).
+        if (tracked.sealed) {
+          const hadShards = tracked.shards > 0 || tracked.instancedLost || !!tracked.carrying;
+          this.regenerate(modelId, meshes, hadShards ? 'carry' : 'none');
+        } else this.appendSuffix(tracked, meshes);
       }
     }
     for (const modelId of [...this.tracked.keys()]) {
@@ -277,7 +284,9 @@ export class StoreGeometryBackingTap {
   async seal(): Promise<ModelBackingStatus[]> {
     await this.whenIdle();
     for (const [modelId, tracked] of this.tracked) {
-      if (tracked.failure || tracked.instancedLost || this.missedShards(modelId) || !tracked.backing) continue;
+      // No geometry yet (`geometryResult: null` before the first batch) is not an empty model: never acknowledged.
+      if (tracked.failure || tracked.instancedLost || this.missedShards(modelId) || !tracked.backing || tracked.meshes === undefined) continue;
+      tracked.sealed = true;
       await this.settle(tracked, tracked.backing.acknowledge().then(() => undefined));
     }
     return this.status();
@@ -297,7 +306,7 @@ export class StoreGeometryBackingTap {
         modelId, generation: backing?.generation ?? 0, meshes: tracked.consumed,
         chunks: backing?.directory.chunks.length ?? 0, shards: backing?.directory.shards.length ?? 0,
         storedBytes: backing?.directory.storedBytes ?? 0, pendingBytes: backing?.writer.pendingBytes ?? 0,
-        complete: !!backing?.isComplete && !instancedLost && !tracked.failure && !tracked.stale,
+        complete: !!backing?.isComplete && !instancedLost && !tracked.failure && !tracked.stale && tracked.meshes !== undefined,
         instancedLost, ...(error ? { error: `${error.name}: ${error.message}` } : {}),
       };
     });
@@ -307,7 +316,9 @@ export class StoreGeometryBackingTap {
   async stop(): Promise<void> {
     this.stopped = true;
     for (const stop of this.stops.splice(0)) stop();
-    await Promise.all([...this.tracked.values()].map((tracked) => tracked.chain));
+    // Every owned chain AND every pending removal's retirement (their deletes included) before the registry
+    // and its database close: a deferred delete after close would leave orphan records. Failures are settled.
+    await this.whenIdle();
     this.tracked.clear();
     await this.registry.close();
   }

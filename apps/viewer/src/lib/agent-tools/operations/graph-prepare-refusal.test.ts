@@ -113,7 +113,7 @@ describe('a graph prepare the executor refuses keeps no candidate (#10910)', () 
     answer(await invoke('authoring.graph.apply', { token }, true));
   });
 
-  it('a background prepare whose host closed before collection is cancelled and discarded', async () => {
+  it('a background prepare whose host closed before collection is reported cancelled', async () => {
     const lifetime = new AbortController();
     host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }), { lifetimeSignal: lifetime.signal });
     const proposal_json = await groupProposal();

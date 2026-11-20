@@ -48,6 +48,11 @@ const visibleLibraries = (requireComplete = false) => {
     analysisRuns: useSavedAnalysisRuns.getState().entries };
 };
 
+async function flushOpenIdsDrafts(): Promise<boolean> {
+  if (!useViewerStore.getState().idsStudioRuntime) return true;
+  return (await import('@/lib/ids-studio/draft-viewer')).flushIdsDrafts();
+}
+
 /** Per-library save status; backup includes all user-content libraries and unsaved drafts. */
 export function ContentStorageNotice({ status, retry, restore }: {
   status: ContentStatus; retry: () => Promise<boolean>; restore: () => Promise<boolean>;
@@ -100,7 +105,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
   const backup = async () => {
     if (pendingArtifacts()) throw new Error(t('contentStorage.artifactsPending'));
     const state = useViewerStore.getState();
-    if (state.idsStudioRuntime && !(await (await import('@/lib/ids-studio/draft-viewer')).flushIdsDrafts())) {
+    if (!(await flushOpenIdsDrafts())) {
       toast.info(t('idsStudio.drafts.backupIncomplete'));
     }
     const preserved = await readBackupDrafts();
@@ -202,10 +207,11 @@ export function ContentStorageNotice({ status, retry, restore }: {
         <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
           const live = useViewerStore.getState();
           const saved = await Promise.all([assistantLibrary.retry(), clashGroupLibrary.retry(), idsStudioDraftLibrary.retry(), bcfDraftLibrary.retry(), bcfOutboxLibrary.retry(), modelChangeLibrary.retry(), clashGroupApplicationLibrary.retry(), reviewWorkspaceLibrary.retry(), semanticReviewLibrary.retry(), assistantRecipeLibrary.retry(), assistantPreferencesLibrary.retry(), analysisRunLibrary.retry(), live.retryDocumentsSave(), live.retryValidationReportsSave(), live.retrySaveComparisons(), live.retrySaveClashReports(), retryContentDrafts()]);
+          const studioSaved = await flushOpenIdsDrafts();
           const identitiesSaved = await retryContentImports();
           const unfinished = pendingArtifacts();
           const artifacts = unfinished ? saveArtifacts(unfinished) : null;
-          if (saved.every(Boolean) && identitiesSaved && !artifacts?.failed.length) toast.success(t('contentStorage.saved'));
+          if (saved.every(Boolean) && studioSaved && identitiesSaved && !artifacts?.failed.length) toast.success(t('contentStorage.saved'));
           else toast.error(t('contentStorage.someUnsaved'));
         })}>{t('contentStorage.retryAll')}</Button>
         <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {

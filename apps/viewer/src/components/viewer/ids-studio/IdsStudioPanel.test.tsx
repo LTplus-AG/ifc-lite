@@ -116,7 +116,7 @@ describe('IdsStudioPanel (IDS-030 … IDS-032)', () => {
     click(ui.querySelector('[aria-label="Close the document"]') as HTMLElement);
     await waitFor(() => useViewerStore.getState().idsStudioState === null, 'closing flushes its scheduled draft');
     assert.ok(byText(ui, 'button', 'New IDS'), 'the empty state is back');
-    const summary = byText(ui, 'summary', 'Saved IDS drafts');
+    const summary = byText(ui, 'summary', 'IDS drafts');
     assert.ok(summary, 'export and close preserve the recoverable draft');
     click(summary);
     const savedDraft = [...ui.querySelectorAll('li')].find(row => row.textContent?.includes('Exported draft'));

@@ -4,11 +4,24 @@
 
 import { Button } from '@/components/ui/button';
 import { useDialogs } from '@/components/ui/confirm-dialog';
-import { useTranslation } from '@/i18n';
+import { useTranslation, type TranslationKey } from '@/i18n';
 import { IDS_DRAFT_MAX_MIB } from '@/lib/ids-studio/draft-codec';
 import { useIdsStudioDraftLibrary } from '@/lib/ids-studio/draft-library';
 import { discardClosedIdsDraft, switchIdsDraft, useIdsDraftFeedback } from '@/lib/ids-studio/draft-viewer';
 import { useViewerStore } from '@/store';
+import type { ContentStatus } from '@/lib/storage/content-library';
+
+function draftMessage(
+  feedback: ReturnType<typeof useIdsDraftFeedback.getState>[string],
+  status: ContentStatus['items'][string] | undefined,
+): TranslationKey | null {
+  if (feedback === 'pending' || status === 'saving') return 'idsStudio.drafts.saving';
+  if (feedback === 'tooLarge') return 'idsStudio.drafts.tooLarge';
+  if (feedback === 'unreadable') return 'idsStudio.drafts.unreadable';
+  if (feedback === 'conflict' || status === 'conflict') return 'idsStudio.drafts.conflict';
+  if (feedback || status === 'quota' || status === 'invalid' || status === 'unavailable') return 'idsStudio.drafts.unsaved';
+  return null;
+}
 
 export function StudioDrafts() {
   const { t } = useTranslation();
@@ -17,19 +30,18 @@ export function StudioDrafts() {
   const { entries, status } = useIdsStudioDraftLibrary();
   const feedback = useIdsDraftFeedback();
   const others = entries.filter(entry => entry.id !== active).sort((left, right) => right.savedAt - left.savedAt);
-  const activeFeedback = active ? feedback[active] : undefined;
-  const activeStatus = active ? status.items[active] : undefined;
-  const pending = activeFeedback === 'pending';
-  const message = pending ? null : activeFeedback === 'tooLarge' ? t('idsStudio.drafts.tooLarge', { max: IDS_DRAFT_MAX_MIB })
-    : status.phase === 'unavailable' ? t('idsStudio.drafts.unavailable')
-      : activeFeedback === 'conflict' || activeStatus === 'conflict' ? t('idsStudio.drafts.conflict')
-        : activeFeedback || activeStatus === 'quota' || activeStatus === 'invalid' || activeStatus === 'unavailable'
-          ? t('idsStudio.drafts.unsaved') : null;
-  if (!pending && !message && !others.length && activeStatus !== 'saved') return null;
+  const message = (active ? draftMessage(feedback[active], status.items[active]) : null)
+    ?? (status.phase === 'unavailable' ? 'idsStudio.drafts.unavailable'
+      : active && status.items[active] === 'saved' ? 'idsStudio.drafts.saved' : null);
+  const notice = (key: TranslationKey | null, className = '') => {
+    if (!key) return null;
+    const informational = key === 'idsStudio.drafts.saving' || key === 'idsStudio.drafts.saved';
+    return <p role={informational ? 'status' : 'alert'} className={`${className} ${informational ? 'text-muted-foreground' : 'text-destructive'}`}>
+      {t(key, { max: IDS_DRAFT_MAX_MIB })}</p>;
+  };
+  if (!message && !others.length) return null;
   return <div className="border-b border-border px-2 py-1 text-2xs">
-    {message ? <p role="alert" className="text-destructive">{message}</p>
-      : pending || activeStatus === 'saved' ? <p role="status" className="text-muted-foreground">
-        {t(pending ? 'idsStudio.drafts.saving' : 'idsStudio.drafts.saved')}</p> : null}
+    {notice(message)}
     {others.length > 0 && <details>
       <summary className="cursor-pointer font-medium">{t('idsStudio.drafts.heading')}</summary>
       {active && <p className="text-muted-foreground">{t('idsStudio.drafts.switch')}</p>}
@@ -41,8 +53,7 @@ export function StudioDrafts() {
             if (await confirmDialog({ description: t('idsStudio.drafts.discardConfirm'), destructive: true,
               confirmLabel: t('idsStudio.drafts.discard') })) await discardClosedIdsDraft(draft);
           })()}>{t('idsStudio.drafts.discard')}</Button>
-          {feedback[draft.id] === 'unreadable' && <p role="alert" className="basis-full text-destructive">{t('idsStudio.drafts.unreadable')}</p>}
-          {status.items[draft.id] === 'conflict' && <p role="alert" className="basis-full text-destructive">{t('idsStudio.drafts.conflict')}</p>}
+          {notice(draftMessage(feedback[draft.id], status.items[draft.id]), 'basis-full')}
         </li>)}
       </ul>
     </details>}

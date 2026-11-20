@@ -82,10 +82,15 @@ export async function switchIdsDraft(draft: IdsStudioDraft): Promise<void> {
 
 export async function closeIdsDraft(confirmUnsaved: () => Promise<boolean>): Promise<void> {
   const { idsStudioDraftId: id, idsStudioRevision: revision } = useViewerStore.getState();
-  if (id && !(await autosave.flush(id))
-    && (useViewerStore.getState().idsStudioRevision !== revision || !(await confirmUnsaved()))) return;
+  const saved = !id || await autosave.flush(id);
+  if (!saved && (useViewerStore.getState().idsStudioRevision !== revision || !(await confirmUnsaved()))) return;
   const live = useViewerStore.getState();
-  if (live.idsStudioRevision === revision) live.idsStudioClose();
+  if (live.idsStudioRevision !== revision) return;
+  if (!saved && id) {
+    autosave.forget(id);
+    report(id);
+  }
+  live.idsStudioClose();
 }
 
 /** Only closed drafts can be discarded. Check again when the queued write gets its turn. */

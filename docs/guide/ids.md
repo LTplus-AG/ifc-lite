@@ -12,7 +12,7 @@ document data. If saving fails, Studio displays a message and you can export the
 open document to keep a separate copy.
 
 When you reopen the viewer and enter IDS Studio, it loads the most recent readable
-draft if you have not opened another IDS. Use **Saved IDS drafts** to switch
+draft if you have not opened another IDS. Use **IDS drafts** to switch
 documents or to **Discard draft** after closing it. Closing a document or
 exporting it as `.ids` or `.idsz` keeps its saved draft.
 

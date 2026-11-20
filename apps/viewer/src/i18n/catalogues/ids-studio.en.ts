@@ -29,7 +29,7 @@ export const idsStudioEn = {
   'idsStudio.header.close': 'Close the document',
 
   'idsStudio.drafts.backupIncomplete': 'An IDS draft could not be autosaved. Check IDS Studio for the current draft status.',
-  'idsStudio.drafts.heading': 'Saved IDS drafts',
+  'idsStudio.drafts.heading': 'IDS drafts',
   'idsStudio.drafts.saving': 'Saving IDS draft…',
   'idsStudio.drafts.saved': 'Draft saved in this browser',
   'idsStudio.drafts.restore': 'Restore draft',

@@ -1,0 +1,12 @@
+diff --git a/scripts/perf/cache-stream-report.mjs b/scripts/perf/cache-stream-report.mjs
+--- a/scripts/perf/cache-stream-report.mjs
++++ b/scripts/perf/cache-stream-report.mjs
+@@ -208,7 +208,7 @@
+       // verdict was taken against: two silent sides and a 2% delta read
+       // "within noise (floor ±3%)", not "±0%", which would invite a reader
+       // to call a delta real that this harness already refused.
+-      const noisePct = Math.max(fromStat.spreadPct ?? 0, NOISE_FLOOR_PCT);
++      const noisePct = Math.max(fromStat.spreadPct ?? 0, toStat.spreadPct ?? 0, NOISE_FLOOR_PCT);
+       const real = deltaPct != null && Math.abs(deltaPct) > noisePct;
+       out.push({
+         from, to, label, why, metric, metricLabel, unit, deltaPct, noisePct, real,

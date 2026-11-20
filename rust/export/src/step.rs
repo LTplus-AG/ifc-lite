@@ -241,7 +241,9 @@ fn emit<W: std::io::Write>(
     crate::step_header::write_header(out, opts, source_header.as_ref(), header_schema)?;
     // IFC2X3 places one product per placement (#9209): its records are held to adapt them.
     use std::io::Write as _;
-    let mut body = crate::schema_ifc2x3_placements::Body::new(&mut *out, targets_ifc2x3);
+    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(
+        &mut *out, targets_ifc2x3, checks.structural.buffers_varying(content),
+    );
 
     let mut written = 0usize;
     for id in order {

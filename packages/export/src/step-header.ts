@@ -32,6 +32,7 @@
 import type { IfcSourceHeader } from '@ifc-lite/parser';
 import { generateHeader } from '@ifc-lite/parser';
 import { assembleStepBytes } from './step-file-assembly.js';
+import { finishEffectiveVarying } from './schema-structural-varying-effective.js';
 import { placeObjectsForSchema } from './schema-ifc2x3-placements.js';
 import type { ExportPass, StepExportOptions, StepExportResult } from './step-exporter.js';
 
@@ -107,6 +108,7 @@ export function assembleExportResult(pass: ExportPass): StepExportResult {
   // so an in-place edit to a source entity is not in the file and never was —
   // the header merely used to claim otherwise.
   const { modifiedEntityCount, warnings: deltaWarnings } = pass.modifications.settle();
+  if (pass.enums.structural.deferVarying) finishEffectiveVarying(pass.entities, pass.warnings);
   pass.warnings.push(...deltaWarnings);
   pass.warnings.push(...pass.slotFill.warnings());
   pass.warnings.push(...pass.ifc4Slots.warnings(), ...pass.enums.warnings());

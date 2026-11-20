@@ -210,6 +210,7 @@ impl ConversionChecks {
         let (from, to) = (crate::schema_convert::canon(from), crate::schema_convert::canon(to));
         let mut checks = Self::new();
         if !(unchanged && opts.included.is_none() && opts.attribute_mutations.is_empty() && opts.copy_on_write.is_empty()) {
+            checks.structural.defer_varying = from == "IFC2X3" && to == "IFC4";
             return checks;
         }
         checks.documents = crate::schema_document_links::DocumentLinks::scan(content, from, to, kept);
@@ -256,7 +257,7 @@ impl ConversionChecks {
             };
             writeln!(body, "{record}")?;
         }
-        Ok(count + body.finish()?)
+        Ok(count + body.finish_with(|text| self.structural.finish_effective_varying(text, &mut self.attribute_values_dropped))?)
     }
 
     /// Both checks' warnings, IFC4 slots first.

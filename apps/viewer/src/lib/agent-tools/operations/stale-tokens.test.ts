@@ -615,14 +615,20 @@ describe('zone emission reviews (#10792)', () => {
     const f = await seedZones(t); if (!f) return;
     const proposal_json = zoneProposal();
     for (let i = 0; i < 32; i++) answer(await invoke('authoring.zone.prepare', { proposal_json }));
-    // An identical assignment rebuild (the sync's after any geometry tick) keeps all 32.
-    recomputeZoneAssignmentsNow();
-    const full = await invoke('authoring.zone.prepare', { proposal_json });
-    assert.equal(full.isError, true);
-    assert.match(full.text, /At most 32 graph review candidates/);
     // The models are unchanged; only the zone set is edited. None of the 32 can apply now.
     useViewerStore.setState(s => ({ zoneSets: s.zoneSets.map(set => set.id === f.zoneSet.id ? { ...set, name: `${set.name} (edited)` } : set) }));
     recomputeZoneAssignmentsNow();
+    answer(await invoke('authoring.zone.prepare', { proposal_json: zoneProposal() }));
+  });
+
+  it('#19: 32 zone reviews of an evaluation that was then rebuilt free the cap, since none can apply', async (t) => {
+    if (!await seedZones(t)) return;
+    const proposal_json = zoneProposal();
+    const tokens: string[] = [];
+    for (let i = 0; i < 32; i++) tokens.push(answer<{ token: string }>(await invoke('authoring.zone.prepare', { proposal_json })).token);
+    // An identical assignment rebuild (the sync's after any geometry tick) is a new evaluation, which validate() binds.
+    recomputeZoneAssignmentsNow();
+    assert.match((await invoke('authoring.graph.apply', { token: tokens[0] }, true)).text, /Native evaluation, zone set, members, frame or prior output changed/);
     answer(await invoke('authoring.zone.prepare', { proposal_json: zoneProposal() }));
   });
 

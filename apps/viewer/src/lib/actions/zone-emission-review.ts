@@ -9,6 +9,7 @@ import { recordModellingEdit } from '@/store/slices/mutation-modelling-records';
 import { mutationDenial } from '@/store/mutation-permission';
 import { emitSpatialZones } from '@/lib/zones/emit-spatial-zones';
 import { zoneAssignmentSignature } from '@/lib/zones/assignment-signature';
+import { zoneEvaluationOwnerId } from '@/lib/zones/evaluation-owner';
 import type { ZoneAssignmentsByElement } from '@/lib/zones/types';
 import { readOnlyModelEditLease } from './model-authoring-read-target';
 import { resolveGlobalId } from './resolve-global-id';
@@ -53,7 +54,9 @@ export function prepareZoneEmission(store: StoreApi<ViewerState>, input: ZoneEmi
       && row.model.sourceContentHash === row.hash && row.model.sourceFingerprint === row.fingerprint);
   };
   // The zone configuration the snapshot read, cheaply: the set object, which the zones slice replaces on every write
-  // to it, and the set's assignments by content (the sync rebuilds an identical Map after every geometry tick).
+  // to it, the evaluation behind the assignments, and the set's assignments by content. Every evaluation records a new
+  // owner id, which validate() compares, so a recorded owner other than the reviewed one is permanent staleness; no
+  // owner yet (an evaluation still pending) is temporary and keeps the review.
   const zoneSet = state.zoneSets.find(row => row.id === proposal.zoneSetId);
   const assignmentsAtPrepare = setAssignmentSignature(state.zoneAssignments, proposal.zoneSetId);
   // The native lease binds the target model's mutation view and its revision, as the Group and Structural probes do.
@@ -62,6 +65,8 @@ export function prepareZoneEmission(store: StoreApi<ViewerState>, input: ZoneEmi
     const current = store.getState(), liveView = current.mutationViews.get(proposal.modelId);
     if (liveView !== view || liveView?.getMutationRevision() !== viewRevision) return false;
     if (current.zoneSets.find(row => row.id === proposal.zoneSetId) !== zoneSet) return false;
+    const owner = zoneEvaluationOwnerId(current);
+    if (owner !== null && owner !== snapshot.evaluationId) return false;
     return setAssignmentSignature(current.zoneAssignments, proposal.zoneSetId) === assignmentsAtPrepare;
   };
   const validate = (initializing = false) => {

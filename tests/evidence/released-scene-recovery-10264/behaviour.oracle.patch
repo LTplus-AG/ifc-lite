@@ -1,9 +1,9 @@
 diff --git a/packages/renderer/src/released-scene-recovery.ts b/packages/renderer/src/released-scene-recovery.ts
-index 9e9ab39..58fba17 100644
+index e633e2d..439be6c 100644
 --- a/packages/renderer/src/released-scene-recovery.ts
 +++ b/packages/renderer/src/released-scene-recovery.ts
-@@ -95,7 +95,7 @@ export async function recoverReleasedScene(
-     contentAt = contentEpoch();
+@@ -97,7 +97,7 @@ export async function recoverReleasedScene(
+     membershipAt = releasedMembershipRevision(scene); // a template removal or reshape during the rebuild makes it stale
      const whole = await rebuild({ device: host.device.getDevice(), pipeline, scene, instancedModelIndices, isCurrent: current, requestRender: () => host.requestRender() });
      if (superseded()) return invalidated();
 -    if (!whole) return failed(new Error(whole ? 'Released scene rebuild was superseded' : 'Released scene rebuild was incomplete'));

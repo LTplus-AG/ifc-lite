@@ -23,7 +23,7 @@ import type { RenderPipeline } from './pipeline.js';
 import type { Scene } from './scene.js';
 import type { SceneRecoveryHost } from './scene-device-recovery.js';
 import { releaseInstanceVertices } from './scene-model-translation.js';
-import { forgetReleasedMembership, keepReleasedMembership, keptReleasedMembership } from './released-template-membership.js';
+import { forgetReleasedMembership, keepReleasedMembership, keptReleasedMembership, releasedMembershipRevision } from './released-template-membership.js';
 
 /** What a released-scene rebuild runs against: the replacement device, before readiness. */
 export interface ReleasedSceneRebuildContext {
@@ -47,10 +47,11 @@ export async function recoverReleasedScene(
   const scene = host.scene;
   // The scene's content epoch right after this recovery's reset: a clear() or reshape during the rebuild
   // replaces the content it restores (same object, device and init), so the rebuild is stale.
-  let contentAt: number | undefined;
+  let contentAt: number | undefined, membershipAt: number | undefined;
   const contentEpoch = () => (scene as unknown as { replayEpoch: number }).replayEpoch;
   const current = () => generation === host.initGeneration && !host.destroyed
-    && host.deviceLossSequence === lossSequence && host.scene === scene && (contentAt === undefined || contentEpoch() === contentAt);
+    && host.deviceLossSequence === lossSequence && host.scene === scene && (contentAt === undefined || contentEpoch() === contentAt)
+    && (membershipAt === undefined || releasedMembershipRevision(scene) === membershipAt);
   const failed = (error?: unknown): DeviceRecoveryResult => {
     if (!ownsLifecycle(host, generation)) return { ok: false, reason: 'renderer-destroyed', superseded: true };
     host.deviceLost = true; host.ready = false;
@@ -93,6 +94,7 @@ export async function recoverReleasedScene(
     // Placements, ids and per-model translations stay; every GPU-derived flat and instanced piece goes.
     scene.resetReleasedForRebuild();
     contentAt = contentEpoch();
+    membershipAt = releasedMembershipRevision(scene); // a template removal or reshape during the rebuild makes it stale
     const whole = await rebuild({ device: host.device.getDevice(), pipeline, scene, instancedModelIndices, isCurrent: current, requestRender: () => host.requestRender() });
     if (superseded()) return invalidated();
     if (!current() || !whole) return failed(new Error(whole ? 'Released scene rebuild was superseded' : 'Released scene rebuild was incomplete'));

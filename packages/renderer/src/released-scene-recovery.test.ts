@@ -163,6 +163,34 @@ describe('released scene device recovery (#10264)', () => {
     assert.deepStrictEqual(seen, [[0, 2], [0]], 'the retry restages A only; B is not resurrected');
   });
 
+  it('#10937 a direct template removal of model 2 during the awaited shard read: no resurrection, no readiness; the retry restages without it', async () => {
+    const { renderer } = lostReleasedRenderer();
+    const scene = renderer.getScene() as unknown as { getInstancedModelIndices: () => number[] };
+    scene.getInstancedModelIndices = () => [0, 2];
+    let resume!: () => void;
+    const gate = new Promise<void>((done) => { resume = done; });
+    const restaged: number[] = [];
+    const seen: number[][] = [];
+    let attempt = 0;
+    renderer.setReleasedSceneRebuild(async (context) => {
+      seen.push([...context.instancedModelIndices].sort());
+      if (++attempt === 1) await gate; // storing / reading the backed shards
+      for (const index of context.instancedModelIndices) { if (!context.isCurrent()) return false; restaged.push(index); }
+      return true;
+    });
+    const recovering = renderer.recoverDevice();
+    await new Promise((done) => setTimeout(done, 0));
+    renderer.getScene().removeInstancedTemplatesForModel(2); // model 2 removed while the rebuild awaits
+    resume();
+    const result = await recovering;
+    assert.equal(result.ok, false, 'the rebuild over the stale membership is not whole');
+    assert.equal(renderer.isReady(), false, 'never published ready');
+    assert.deepEqual(restaged, [], 'nothing restaged over the stale membership, model 2 least of all');
+    assert.equal((await renderer.recoverDevice()).ok, true, 'a retry over the current membership succeeds');
+    assert.deepEqual(seen.at(-1), [0], 'and never resurrects model 2');
+    assert.deepEqual(restaged, [0]);
+  });
+
   it('an incomplete rebuild leaves the renderer lost and reports a retryable failure', async () => {
     const { renderer } = lostReleasedRenderer();
     renderer.setReleasedSceneRebuild(async () => false);

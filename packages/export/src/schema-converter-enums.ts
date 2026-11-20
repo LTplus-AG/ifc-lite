@@ -133,7 +133,7 @@ export class EnumReconciliation {
     }
     if (this.unlabelled.size > 0) {
       const total = [...this.unlabelled.values()].reduce((a, b) => a + b, 0);
-      out.push(`${total} record(s) say PredefinedType .USERDEFINED. without the label their rule needs; none is invented: ${[...this.unlabelled.keys()].join(', ')} (#10780).`);
+      out.push(`${total} record(s) say .USERDEFINED. without the label their rule needs; none is invented: ${[...this.unlabelled.keys()].join(', ')} (#10780).`);
     }
     return [...out, ...this.structural.warnings()];
   }

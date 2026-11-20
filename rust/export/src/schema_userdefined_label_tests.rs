@@ -107,7 +107,10 @@ fn the_plan_before_the_carry_drops_and_counts_the_label_10824() {
 
 /// #10856: a member the target enum lacks becomes `.USERDEFINED.` with its
 /// name in the label, ObjectType up and UserDefinedFunction down (IFC2X3's
-/// short name for the label of DistributionPointFunction).
+/// short name for the label of DistributionPointFunction). Every IFC4/IFC4X3
+/// board member is in IFC2X3's point enum, so the member down is one the
+/// source enum lacks too: IfcDistributionBoard's `.DISPATCHINGBOARD.` on an
+/// IfcElectricDistributionBoard (Claude review on #10862).
 #[test]
 fn a_point_or_board_member_the_target_lacks_is_reconciled_10856() {
     for to in ["IFC4", "IFC4X3"] {

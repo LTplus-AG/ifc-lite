@@ -8,9 +8,7 @@ import type { ViewerState } from '@/store';
 import { recordModellingEdit } from '@/store/slices/mutation-modelling-records';
 import { mutationDenial } from '@/store/mutation-permission';
 import { emitSpatialZones } from '@/lib/zones/emit-spatial-zones';
-import { zoneAssignmentSignature } from '@/lib/zones/assignment-signature';
-import { zoneEvaluationOwnerId } from '@/lib/zones/evaluation-owner';
-import type { ZoneAssignmentsByElement } from '@/lib/zones/types';
+import { zoneEvaluationIsCurrent, zoneEvaluationOwnerId } from '@/lib/zones/evaluation-owner';
 import { readOnlyModelEditLease } from './model-authoring-read-target';
 import { resolveGlobalId } from './resolve-global-id';
 import { readZoneEmissionSnapshot } from './zone-emission-evidence';
@@ -18,16 +16,12 @@ import { parseZoneEmissionProposal, type ZoneEmissionProposal } from './zone-emi
 import type { ModelChangeReceipt } from './model-change-commit';
 import { batchDigest } from './model-change-preview';
 import { sameReportEvidence } from '@/lib/flow/report-provenance';
-/** One signature per assignments Map and set, shared by every retained review. Relies on the assignment sync
- * replacing the Map (and its records) on every change rather than editing them in place, so a rebuilt Map is signed
- * once, however many reviews probe it. */
-const signatures = new WeakMap<ZoneAssignmentsByElement, Map<string, string>>();
-function setAssignmentSignature(assignments: ZoneAssignmentsByElement, setId: string): string {
-  let bySet = signatures.get(assignments);
-  if (!bySet) { bySet = new Map(); signatures.set(assignments, bySet); }
-  let signature = bySet.get(setId);
-  if (signature === undefined) { signature = zoneAssignmentSignature(assignments, setId); bySet.set(setId, signature); }
-  return signature;
+/** Whether the zone evaluation is current, once per store state: every retained review probes the same state in one
+ * admission, and the check walks the scene's mesh bounds. */
+let probed: { state: ViewerState; current: boolean } | undefined;
+function evaluationCurrent(state: ViewerState) {
+  if (probed?.state !== state) probed = { state, current: zoneEvaluationIsCurrent(state) };
+  return probed.current;
 }
 export function prepareZoneEmission(store: StoreApi<ViewerState>, input: ZoneEmissionProposal) {
   const proposal = parseZoneEmissionProposal(JSON.stringify(input)), state = store.getState();
@@ -53,21 +47,17 @@ export function prepareZoneEmission(store: StoreApi<ViewerState>, input: ZoneEmi
     return sources.length === current.models.size && sources.every(row => current.models.get(row.id) === row.model && row.model.ifcDataStore?.source === row.source
       && row.model.sourceContentHash === row.hash && row.model.sourceFingerprint === row.fingerprint);
   };
-  // The zone configuration the snapshot read, cheaply: the set object, which the zones slice replaces on every write
-  // to it, the evaluation behind the assignments, and the set's assignments by content. Every evaluation records a new
-  // owner id, which validate() compares, so a recorded owner other than the reviewed one is permanent staleness; no
-  // owner yet (an evaluation still pending) is temporary and keeps the review.
+  // What validate()'s snapshot read first, cheaply: the set object, which the zones slice replaces on every write to it,
+  // and the evaluation, which must be current and the reviewed one. Every evaluation records a new owner id, so once
+  // assignments are rebuilt (or no owner could be recorded) no older review can apply.
   const zoneSet = state.zoneSets.find(row => row.id === proposal.zoneSetId);
-  const assignmentsAtPrepare = setAssignmentSignature(state.zoneAssignments, proposal.zoneSetId);
   // The native lease binds the target model's mutation view and its revision, as the Group and Structural probes do.
   const view = state.mutationViews.get(proposal.modelId), viewRevision = view?.getMutationRevision();
   const zoneConfigurationCurrent = () => {
     const current = store.getState(), liveView = current.mutationViews.get(proposal.modelId);
     if (liveView !== view || liveView?.getMutationRevision() !== viewRevision) return false;
     if (current.zoneSets.find(row => row.id === proposal.zoneSetId) !== zoneSet) return false;
-    const owner = zoneEvaluationOwnerId(current);
-    if (owner !== null && owner !== snapshot.evaluationId) return false;
-    return setAssignmentSignature(current.zoneAssignments, proposal.zoneSetId) === assignmentsAtPrepare;
+    return zoneEvaluationOwnerId(current) === snapshot.evaluationId && evaluationCurrent(current);
   };
   const validate = (initializing = false) => {
     if (original !== JSON.stringify({ proposal, snapshot, dry })) throw new Error('The reviewed proposal or native output changed');

@@ -39,11 +39,11 @@ export function zoneEvaluationIsCurrent(state: ViewerState, initializingModel?: 
   return JSON.stringify(elements) === owner.bounds;
 }
 
-/** Identity belongs to an actual completed native evaluation, not to equivalent later inputs. */
 /** The evaluation that produced these assignments, whether or not it is still current; null before any recorded one. */
 export function zoneEvaluationOwnerId(state: Pick<ViewerState, 'zoneAssignments'>): string | null {
   return owners.get(state.zoneAssignments)?.id ?? null;
 }
+/** Identity belongs to an actual completed native evaluation, not to equivalent later inputs. */
 export function currentZoneEvaluationIdentity(state: ViewerState, initializingModel?: string): string | null {
   return zoneEvaluationIsCurrent(state, initializingModel) ? owners.get(state.zoneAssignments)?.id ?? null : null;
 }

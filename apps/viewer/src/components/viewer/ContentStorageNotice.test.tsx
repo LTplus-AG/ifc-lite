@@ -10,8 +10,9 @@ import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { render, cleanup, click, waitFor } from '@/test/render';
 import { blankDocument } from '@/lib/document/presets';
+import { loadManualLibrary } from '@/lib/validation/manual/persistence';
 import { loadDocuments } from '@/lib/document/persistence';
-import { createContentBackup, parseContentBackup, readBackupDrafts, readContentRecovery } from '@/lib/storage/content-backup';
+import { createContentBackup, encodeContentBackup, parseContentBackup, readBackupDrafts, readContentRecovery } from '@/lib/storage/content-backup';
 import '@/test/download-capture';
 import { Toaster } from '@/components/ui/toast';
 import { useClashGroupApplications } from '@/lib/clash/group-applications';
@@ -305,4 +306,50 @@ it('#7000 whole-library backup waits for semantic review decisions to load', asy
     await act(async () => { useSemanticReviews.setState({ status: { ...status, phase: 'ready' } }); });
     assert.equal(button.disabled, false, 'the backup becomes available after the library finishes loading');
   } finally { useSemanticReviews.setState({ status }); }
+});
+
+it('#10976 import keeps a refused last-checklist deletion until the native editor saves it', async () => {
+  const state = useViewerStore.getState();
+  const key = 'ifc-lite:validation:manual-library';
+  const previousRaw = localStorage.getItem(key);
+  const previous = { manualLibrary: state.manualLibrary, manualChecklist: state.manualChecklist,
+    manualAnswers: state.manualAnswers, manualSaveError: state.manualSaveError };
+  try {
+    state.newManualChecklist();
+    state.renameManualChecklist('Checklist from backup');
+    const incoming = useViewerStore.getState().manualLibrary.activeId;
+    assert.ok(incoming);
+    const backup = JSON.stringify(encodeContentBackup(createContentBackup({ validation: [], comparison: [], document: [] })));
+    state.removeManualChecklist(incoming);
+    state.newManualChecklist();
+    const existing = useViewerStore.getState().manualLibrary.activeId;
+    assert.ok(existing);
+    const original = localStorage.setItem.bind(localStorage);
+    const refused = mock.method(localStorage, 'setItem', (name: string, value: string) => {
+      if (name === key) throw new DOMException('Manual library quota', 'QuotaExceededError');
+      original(name, value);
+    });
+    try { state.removeManualChecklist(existing); }
+    finally { refused.mock.restore(); }
+    assert.deepEqual(useViewerStore.getState().manualLibrary.checklists, []);
+    assert.equal(loadManualLibrary().library.activeId, existing);
+
+    const ui = render(<><Notice /><Toaster /></>);
+    const input = ui.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input);
+    Object.defineProperty(input, 'files', { value: [new File([backup], 'manual-backup.json')], configurable: true });
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    await waitFor(() => ui.textContent?.includes('Some imported work could not be saved') ?? false, 'manual backup remains pending');
+    assert.deepEqual(useViewerStore.getState().manualLibrary.checklists, []);
+    assert.equal(loadManualLibrary().library.activeId, existing);
+
+    await act(async () => { state.setManualChecklist(null); });
+    const retry = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Retry all libraries'); assert.ok(retry);
+    click(retry);
+    await waitFor(() => useViewerStore.getState().manualLibrary.activeId === incoming, 'saved deletion lets the backup restore the incoming checklist');
+    assert.deepEqual(loadManualLibrary().library.checklists.map(checklist => checklist.id), [incoming]);
+  } finally {
+    if (previousRaw === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, previousRaw);
+    await act(async () => { useViewerStore.setState({ ...previous, pendingStandaloneArtifactImport: null }); });
+  }
 });

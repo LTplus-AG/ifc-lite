@@ -9,13 +9,22 @@ import { EXCLUSIONS_KEY, PRESETS_KEY, REVIEWS_KEY, SETTINGS_KEY } from '../clash
 import { DEFINITION_LIBRARY_KEY } from '../validation/definition-library.js';
 import { loadManualLibrary, MANUAL_LIBRARY_KEY } from '../validation/manual/persistence.js';
 import { manualLibraryProjection } from '../validation/manual/library.js';
+import { optionalLocalStorage } from './unreadable-entry.js';
 import type { LocalWorkKey } from './local-work-codecs.js';
 
 /** An import must not replace unsaved editor work with an older stored snapshot. */
 export function canRestoreLocalWork(key: LocalWorkKey): boolean {
   const state = useViewerStore.getState();
-  if (key === MANUAL_LIBRARY_KEY) return !state.manualSaveError || !state.manualLibrary.checklists.length;
-  if (key === DEFINITION_LIBRARY_KEY) return !state.validationDefinitionsError || !state.validationDefinitions.entries.length;
+  // An empty editor can be a refused deletion. An absent physical record,
+  // however, permits recovery after an empty initialization hit quota.
+  if (key === MANUAL_LIBRARY_KEY && state.manualSaveError) {
+    return state.manualLibrary.checklists.length === 0
+      && Object.keys(state.manualLibrary.pendingLegacyAnswers ?? {}).length === 0
+      && optionalLocalStorage()?.getItem(key) === null;
+  }
+  if (key === DEFINITION_LIBRARY_KEY && state.validationDefinitionsError) {
+    return state.validationDefinitions.entries.length === 0 && optionalLocalStorage()?.getItem(key) === null;
+  }
   return true;
 }
 

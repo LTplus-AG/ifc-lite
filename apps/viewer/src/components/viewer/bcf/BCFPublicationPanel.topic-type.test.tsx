@@ -50,7 +50,7 @@ test('#10589 adopts a staged review once and clears its display on a batch switc
   assert.equal(notifications, 1);
   assert.ok(ui.querySelector('output'));
   click(button(/^Switch batch$/));
-  assert.equal(ui.querySelector('output'), null);
+  assert.ok(!ui.querySelector('output'), 'the old batch review is gone');
   assert.equal(useBcfPublicationReview.getState().candidate, null);
 });
 
@@ -69,6 +69,26 @@ function choose(select: HTMLSelectElement, value: string): void {
     select.dispatchEvent(new window.Event('change', { bubbles: true }));
   });
 }
+
+test('#10589 clears a native check after editing a batch in place', async t => {
+  await connectPeer(t, { topicTypes: SERVER_TYPES });
+  const batch = await reviewedBatch();
+  const ignore = () => undefined;
+  function Panel() {
+    const [current, setCurrent] = useState(batch);
+    return <>
+      <button onClick={() => setCurrent({ ...batch, modifiedAt: new Date(Date.parse(batch.modifiedAt) + 1000).toISOString() })}>Edit batch</button>
+      <BCFPublicationPanel batch={current} onRecordId={ignore} onUsers={ignore} />
+    </>;
+  }
+  const ui = render(<Panel />);
+  await waitFor(() => !button(/^Check project$/).disabled, 'project check is ready');
+  click(button(/^Check project$/));
+  await waitFor(() => ui.querySelector('output') !== null && ui.querySelectorAll('select').length > 1, 'topic-type review is displayed');
+  click(button(/^Edit batch$/));
+  assert.ok(!ui.querySelector('output'), 'the previous revision review is gone');
+  assert.equal(ui.querySelectorAll('select').length, 1, 'only the project picker remains');
+});
 
 test('an unknown draft topic type is mapped to a server type the coordinator picks before anything is sent', async t => {
   const peer = await connectPeer(t, { topicTypes: SERVER_TYPES, topicStatuses: ['Draft', 'Open', 'Closed'] });

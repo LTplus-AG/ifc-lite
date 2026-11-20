@@ -131,6 +131,12 @@ it('BCF metadata stays below the executor limit with >1 MiB native screenshot me
     const comments = await request<{ comments: Array<{ expected_comment: string }> }>('bcf.comments', { topic_id: created.guid, offset: 0, limit: 20, comment_id: comment.guid }); assert.equal(comments.comments[0].expected_comment, comment.comment);
     await request('bcf.updateComment', { topic_id: created.guid, comment_id: comment.guid, expected_comment: comments.comments[0].expected_comment, comment: 'Native comment updated with its exact inspected value.' });
     const freshTopic = await request<{ project: { topics: Array<{ expected_modified: string }> } }>('bcf.read', { topic_id: created.guid });
+    const omittedPriority = await dispatchMainViewerTool(context.host, 'viewer_operation_execute', {
+      operation_id: 'bcf.updateTopic',
+      input: { id: created.guid, expected_modified: freshTopic.project.topics[0].expected_modified, title: 'Incomplete edit', description: '', status: 'Open', assigned_to: '' },
+    }, { canEdit: () => true });
+    assert.equal(omittedPriority.isError, true);
+    assert.match(omittedPriority.text, /priority/);
     await request('bcf.updateTopic', { id: created.guid, expected_modified: freshTopic.project.topics[0].expected_modified, title: 'Updated issue with unchanged native screenshots', description: 'Edited description', status: 'Open', priority: '', assigned_to: '' });
     await request('bcf.selectTopic', { id: created.guid });
     useViewerStore.getState().clearEntitySelection(); camera.setPosition(1, 1, 1); await request('bcf.applyViewpoint', { topic_id: created.guid, viewpoint_id: imageViewpointId, animate: false });

@@ -11,7 +11,7 @@
  * types, preselected and shown before anything is sent.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
@@ -46,8 +46,8 @@ export interface BCFPublicationPanelProps {
   onRecordId: (id: string | null) => void;
 }
 
-const reviewKey = (batchId: string, serverUrl: string, userId: string, project: string) =>
-  JSON.stringify([batchId, serverUrl, userId, project]);
+const reviewKey = (batch: Pick<DraftBatch, 'id' | 'modifiedAt'>, serverUrl: string, userId: string, project: string) =>
+  JSON.stringify([batch.id, batch.modifiedAt, serverUrl, userId, project]);
 
 export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicationPanelProps) {
   const { t } = useTranslation();
@@ -64,14 +64,16 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
   const [report, setReport] = useState<DispatchReport | null>(null);
   const [connection, setConnection] = useState<PublicationConnection | null>(null);
   const [topicTypes, setTopicTypes] = useState<TopicTypeChoice>({});
-  // A type choice and a preflight result belong to one batch and server project.
+  // A type choice and a preflight result belong to one batch revision and server project.
   // Whatever moves the target (the project picker, or a reconnect to another
   // server) drops both, so neither is applied to or shown for a project the
   // user has not checked.
   // The account is part of the target: switching it drops the previous account's review too.
-  const targetKey = reviewKey(batch.id, config?.serverUrl ?? '', config?.userId ?? '', projectId);
+  const targetKey = reviewKey(batch, config?.serverUrl ?? '', config?.userId ?? '', projectId);
+  const reviewEpoch = useRef(0);
   const adopted = useRef<{ id: string; targetKey: string } | null>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
+    reviewEpoch.current++;
     // Adopting a staged review can itself select its project.
     if (adopted.current?.targetKey === targetKey) return;
     adopted.current = null;
@@ -87,7 +89,7 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
     // A choice the user made while the agent prepared outranks the candidate and keeps the user's own state.
     if (!bcfPublicationCandidateCurrent(candidate)) { useBcfPublicationReview.setState({ candidate: null }); return; }
     if (adopted.current?.id === candidate.id) return;
-    adopted.current = { id: candidate.id, targetKey: reviewKey(batch.id, candidate.target.serverUrl, candidate.target.userId, candidate.target.projectId) };
+    adopted.current = { id: candidate.id, targetKey: reviewKey(batch, candidate.target.serverUrl, candidate.target.userId, candidate.target.projectId) };
     setProjectId(candidate.target.projectId); setTopicTypes(candidate.topicTypes); setPreflight(candidate.preflight);
     // As the native Check does, so the dialog can offer the server's assignees.
     onUsers(candidate.preflight.extensions.user_id_type ?? []);
@@ -116,30 +118,34 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
   const live = record && connection && sameTarget(record, connection) ? connection : null;
   const counts = record ? publicationCounts(record) : null;
 
-  const act = (work: () => Promise<void>) => flight.start(async () => {
+  const act = (work: (isCurrent: () => boolean) => Promise<void>) => flight.start(async run => {
+    const epoch = reviewEpoch.current;
+    const isCurrent = () => run.isCurrent() && reviewEpoch.current === epoch;
     setError(null);
-    try { await work(); }
+    try { await work(isCurrent); }
     catch (cause) {
       console.warn('[BCF publication] Action failed', cause);
-      setError(cause instanceof Error ? cause.message : String(cause));
+      if (isCurrent()) setError(cause instanceof Error ? cause.message : String(cause));
     }
   });
   const adopt = (result: PreflightReport) => {
     setPreflight(result);
     setTopicTypes(current => preselectTopicTypes(result, current));
   };
-  const check = () => act(async () => {
+  const check = () => act(async isCurrent => {
     if (!target || !connection) return;
     // The user's own Check supersedes an agent-staged candidate, as editing a choice does.
     noteBcfPublicationUserChoice();
     const plan = await planDraftPublication(batch, record, target, undefined, { rules: publicationRules(connection), topicTypes });
     const result = await preflightPublication(connection.client, plan.record);
+    if (!isCurrent()) return;
     adopt(result);
     onUsers(result.extensions.user_id_type ?? []);
   });
-  const publish = () => act(async () => {
+  const publish = () => act(async isCurrent => {
     if (!target || !connection) return;
     const published = await publishNativeBcfReview(batch, target, connection, topicTypes);
+    if (!isCurrent()) return;
     if (!published) { setError(t('bcfDrafts.publish.storageRefused')); return; }
     setReport(published.report);
     if (published.report.preflight) adopt(published.report.preflight);

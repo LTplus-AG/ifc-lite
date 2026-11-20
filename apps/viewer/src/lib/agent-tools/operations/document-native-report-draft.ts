@@ -22,6 +22,8 @@ export const documentNativeReportDraftOperations = [
     type: 'object', properties: { token: tokenProperty, expected_document_json: documentProperty, claim_id: tokenProperty, action: { type: 'string', enum: ['edit', 'remove'] }, text: { ...string, maxLength: 10000 } }, required: ['token', 'expected_document_json', 'claim_id', 'action', 'text'], additionalProperties: false,
   }, (i, c) => {
     const candidate = reportCandidate(c.host, i.token); if (candidate.kind !== 'draft' || candidate.draft.documentJson !== i.expected_document_json || !isReportDraftCurrent(candidate.draft)) throw new Error('This native report draft changed, was submitted or belongs to another workflow.');
+    // A save in flight persists the draft it started with; revising now would record the wrong staged document.
+    if (candidate.saving) throw new Error('This native report draft is being saved; revise it after the save finishes.');
     if (!candidate.draft.claims.some(claim => claim.id === i.claim_id)) throw new Error('Unknown checked native claim.');
     const draft = reviseReportClaim(candidate.draft, i.claim_id, i.action === 'remove' ? 'remove' : { text: i.text }); return c.commit(() => { candidate.draft = draft; return preview(i.token, draft); });
   }),

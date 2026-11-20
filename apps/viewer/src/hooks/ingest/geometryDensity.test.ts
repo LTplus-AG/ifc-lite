@@ -46,8 +46,9 @@ describe('dense geometry share (#10264)', () => {
     assert.equal(denseRecordBytes(inList), inList.length, 'inside the list, the type is unknown: dense, toward refusal');
     const next = '#9=IFCPROPERTYSET(\'g\',$,\'P\',$,(#8));\n';
     const cutBy = (end: string) => denseRecordBytes(`${refs.slice(100)}${end}\n${next}`);
-    assert.equal(cutBy('),$);'), refs.length - 100 + 6, 'a face set\'s face list is mesh');
-    assert.equal(cutBy('),(1,2,3));'), refs.length - 100 + 12, 'so is one followed by its PnIndex');
+    const whole = (end: string) => refs.length - 100 + end.length + 1;
+    assert.equal(cutBy('),$);'), whole('),$);'), 'a face set\'s face list is mesh');
+    assert.equal(cutBy('),(1,2,3));'), whole('),(1,2,3));'), 'so is one followed by its PnIndex');
     assert.equal(cutBy('));'), 0, 'a B-rep shell\'s face list is not');
     assert.equal(cutBy('),#50);'), 0, 'nor is a spatial containment list');
     const cutText = "x',$,$,'Body');\n#7=IFCPROPERTYSET('a',$,'b',$,(#8));\n";

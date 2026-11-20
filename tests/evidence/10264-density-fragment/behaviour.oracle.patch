@@ -2,9 +2,9 @@ diff --git a/apps/viewer/src/hooks/ingest/geometryDensity.ts b/apps/viewer/src/h
 --- a/apps/viewer/src/hooks/ingest/geometryDensity.ts
 +++ b/apps/viewer/src/hooks/ingest/geometryDensity.ts
 @@ -58,7 +58,7 @@ export function denseRecordBytes(text: string): number {
-   const lastRef = fragment.lastIndexOf('#');
-   const tail = lastRef < 0 ? '' : fragment.slice(lastRef);
-   const meshEnd = !match || !LIST_END.test(tail) || FACE_SET_END.test(tail);
+   const close = fragment.indexOf(')');
+   const refList = close >= 0 && REF_LIST.test(fragment.slice(0, close));
+   const meshEnd = !match || !refList || FACE_SET_END.test(fragment.slice(close));
 -  let dense = 0;
 +  let dense = lead > 0 && other <= lead * 0.02 && meshEnd ? lead : 0;
    while (match) {

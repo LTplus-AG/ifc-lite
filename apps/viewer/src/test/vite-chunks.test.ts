@@ -101,15 +101,17 @@ test('the installed QuickJS core still splits where the runtime group expects', 
   assert.notEqual(largest, 'index.mjs', 'the runtime lives outside the index, in a file the group claims');
 });
 
-test('the merged-export group claims no merged-* module the eager package root re-exports a value from', () => {
-  // The viewer imports the `@ifc-lite/export` root eagerly; a module it uses through the root and the lazy group both
-  // claim would pull the whole merged-export chunk into the first load (#10798). The exporter itself is imported lazily.
-  const root = readFileSync(resolve(dirname(new URL(import.meta.url).pathname), '../../../../packages/export/src/index.ts'), 'utf8');
-  const eager = [...root.matchAll(/^export \{(?!\s*type\b)[^}]*\} from '\.\/(merged-[\w-]+)\.js';$/gm)]
-    .map(match => match[1]).filter(name => name !== 'merged-exporter');
-  assert.ok(eager.includes('merged-bake'), `expected the root to re-export merged-bake, found ${eager.join(', ')}`);
-  for (const name of [...eager, 'merged-guid', 'merged-remap']) {
-    assert.equal(chunks.mergedExportChunkGroup.test.test(`/repo/packages/export/src/${name}.ts`), false, name);
-  }
-  assert.equal(chunks.mergedExportChunkGroup.test.test('/repo/packages/export/src/merged-exporter.ts'), true);
+test('the merged-export group claims the exporter, not the merged modules eager code imports', () => {
+  // merged-guid and merged-remap serve schema conversion and renumbering; merged-bake's mergeWarningLabel reaches the
+  // eager export dialog through the package root. Claimed by the lazy group, any of them would preload it (#10798).
+  const group = chunks.mergedExportChunkGroup;
+  for (const id of [
+    '/repo/packages/export/src/merged-guid.js',
+    '/repo/packages/export/src/merged-remap.js',
+    '/repo/packages/export/src/merged-bake.js',
+  ]) assert.equal(group.test.test(id), false, id);
+  for (const id of [
+    '/repo/packages/export/src/merged-exporter.js',
+    '/repo/packages/export/src/merged-context.js',
+  ]) assert.equal(group.test.test(id), true, id);
 });

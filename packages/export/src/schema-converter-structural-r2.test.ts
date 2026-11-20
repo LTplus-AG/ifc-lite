@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 import { describe, it, expect } from 'vitest';
-import { convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
+import { attrNameTable, convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
 
 // #9668: the invariant is semantic stiffness, including IFC2X3's rigid -1
 // sentinel, and correct action slots rather than positional enum placement.
@@ -76,6 +76,20 @@ describe('structural schema conformance #9668', () => {
 // behavior is an explicit loss warning, never hidden metadata (#9668).
 import { EnumReconciliation } from './schema-converter-enums.js';
 describe('structural conversion reports unrepresentable data #9668', () => {
+  // /code-review on the #10802 restack: a structural profile-properties subtype IFC4 deleted is written as
+  // IfcProfileProperties by its attribute map. The export warnings name each measure it drops, in both twins,
+  // and the loss report lists them; Rust also counts them in attribute_values_dropped.
+  it('names the measures a deleted structural profile-properties subtype drops (#10777)', () => {
+    const diagnostics = new EnumReconciliation();
+    const n = attrNameTable('IFC2X3')!.get('IFCSTRUCTURALSTEELPROFILEPROPERTIES')!.length;
+    const line = `#5=IFCSTRUCTURALSTEELPROFILEPROPERTIES('HEA',#9,12.5${',$'.repeat(n - 3)});`;
+    // Only ProfileDefinition carries; the measures are dropped, not shifted into another slot.
+    expect(convertStepLine(line, 'IFC2X3', 'IFC4', undefined, undefined, undefined, undefined, diagnostics)).toBe('#5=IFCPROFILEPROPERTIES($,$,$,#9);');
+    expect(diagnostics.warnings().join('\n')).toContain('IFCSTRUCTURALSTEELPROFILEPROPERTIES.PhysicalWeight has no slot in IFC4; its value is omitted');
+    const info = classifyEntityTypeConversion('IFCSTRUCTURALSTEELPROFILEPROPERTIES', 'IFC2X3', 'IFC4');
+    expect(info).toMatchObject({ targetType: 'IFCPROFILEPROPERTIES', kind: 'lossy' });
+    expect(info.droppedAttributes).toEqual(expect.arrayContaining(['ProfileName', 'PhysicalWeight']));
+  });
   it('reports IFC2X3 point-action CausedBy instead of silently dropping it', () => {
     const diagnostics = new EnumReconciliation();
     const source = "#50=IFCSTRUCTURALPOINTACTION('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,.F.,#77);";

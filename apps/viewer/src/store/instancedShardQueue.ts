@@ -190,6 +190,8 @@ export interface InstancedShardSupplyToken { readonly generation: number; readon
 export function instancedShardSupplyToken(modelId: string): InstancedShardSupplyToken {
   return { generation, epoch: instancedShardModelEpoch(modelId) };
 }
+/** Whether shards captured at `token` still belong to `modelId`'s current supply (a direct upload asks first). */
+export function instancedShardSupplyCurrent(modelId: string, token: InstancedShardSupplyToken): boolean { return supplyCurrent(modelId, token); }
 /** A bare generation number fences only full resets; a token also fences the model's own discards. */
 function supplyCurrent(modelId: string, from: number | InstancedShardSupplyToken): boolean {
   return typeof from === 'number' ? from === generation : from.generation === generation && from.epoch === instancedShardModelEpoch(modelId);

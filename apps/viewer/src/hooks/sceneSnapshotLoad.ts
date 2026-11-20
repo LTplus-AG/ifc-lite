@@ -15,7 +15,7 @@ import { decodeInstancedShard, type CoordinateInfo, type MeshData } from '@ifc-l
 import type { LoadTrace } from '@ifc-lite/load-trace';
 import { useViewerStore } from '../store/index.js';
 import { noteInstancedShardModel } from '../store/instancedShardModels.js';
-import { completeInstancedShardSupply, enqueueInstancedShards, instancedShardSupplyToken } from '../store/instancedShardQueue.js';
+import { completeInstancedShardSupply, enqueueInstancedShards, instancedShardSupplyCurrent, instancedShardSupplyToken } from '../store/instancedShardQueue.js';
 import { fitCameraToSnapshot, lastFinalFitBounds, sceneSnapshotKey, type SnapshotCameraFit, setPendingColdCapture, setPendingSceneSnapshot, withdrawPendingColdCapture, withdrawPendingSceneSnapshot } from '../components/viewer/sceneSnapshotOwnership.js';
 import { readPerfFlag } from '../lib/perf/flags.js';
 import { tapSceneSnapshot } from '../lib/perf/sceneIdentityTap.js';
@@ -109,7 +109,9 @@ export async function adoptCachedSceneSnapshot(
   const host = snapshot?.hostData as SnapshotHostData | undefined;
   if (!snapshot || !host?.fitBounds || !host.sceneBounds || isStale?.()) return null;
   const shards = await readSnapshotShards(entry, host.shards);
-  if (isStale?.()) return null;
+  // The last await: a reset or discard of the model since adoption began supersedes the snapshot itself,
+  // whatever the optional isStale says. Nothing is adopted or uploaded; the hit streams instead.
+  if (isStale?.() || !instancedShardSupplyCurrent(modelId, supply)) return null;
   const adoption = trace.span('scene.snapshotAdopt', () => scene.adoptSceneSnapshot(snapshot, device, pipeline), { batches: snapshot.batches.length });
   if (!adoption) return null;
   trace.milestone('scene.snapshotAdopted');

@@ -116,16 +116,18 @@ function descendants(reg: ValueFormRegistry, entity: string): string[] {
   return out;
 }
 
+const isAggregate = (attribute: ValueFormAttribute): boolean => !!(attribute.isList || attribute.isSet || attribute.isArray);
+
 /** The attribute's own defined type, when it is neither an aggregate nor a select. */
 function definedType(reg: ValueFormRegistry, attribute: ValueFormAttribute): string | undefined {
   const t = attribute.type;
-  const plain = !attribute.isList && !attribute.isSet && !attribute.isArray && !t.endsWith('[]');
+  const plain = !isAggregate(attribute) && !t.endsWith('[]');
   return plain && Object.hasOwn(reg.types, t) && !Object.hasOwn(reg.selects, t) ? t.toUpperCase() : undefined;
 }
 
 function attributeForms(reg: ValueFormRegistry, attribute: ValueFormAttribute): Forms {
   const out: Forms = new Map();
-  collect(reg, attribute.type, attribute.isList || attribute.isSet || attribute.isArray ? 'A' : '', false, out, new Set());
+  collect(reg, attribute.type, isAggregate(attribute) ? 'A' : '', false, out, new Set());
   return out;
 }
 
@@ -152,10 +154,7 @@ export function rejectedForms(
   const own = definedType(source, from), slot = definedType(target, to);
   const rejected: string[] = [];
   for (const [form, entities] of attributeForms(source, from)) {
-    const named = accepted.get(form);
-    const fits = named !== undefined && (!form.endsWith('#') || [...entities].flatMap((e) => descendants(source, e)).some((e) =>
-      Object.hasOwn(target.entities, e) && [...named].some((t) => within(target, e, t) || within(target, t, e))));
-    if (fits) continue;
+    if (fits(source, form, entities, target, accepted.get(form))) continue;
     if (own && 'SRIEB'.includes(form) && accepted.has(`T:${own}`)) rejected.push(`${form}>T:${own}`);
     else if (slot && form === `T:${slot}`) rejected.push(`${form}>U`);
     else if (setOfAccepted(source, form, target, accepted)) rejected.push(`${form}>U1`);
@@ -165,17 +164,20 @@ export function rejectedForms(
   return rejected.sort();
 }
 
+/** Whether a value of `form` naming `entities` fits a target slot whose same form names `named`. */
+function fits(source: ValueFormRegistry, form: string, entities: Set<string>, target: ValueFormRegistry, named: Set<string> | undefined): boolean {
+  return named !== undefined && (!form.endsWith('#') || [...entities].flatMap((e) => descendants(source, e)).some((e) =>
+    Object.hasOwn(target.entities, e) && [...named].some((t) => within(target, e, t) || within(target, t, e))));
+}
+
 /** Whether `form` is a typed set (`T:NAME`, NAME an aggregate type) whose every member form the target slot takes. */
 function setOfAccepted(source: ValueFormRegistry, form: string, target: ValueFormRegistry, accepted: Forms): boolean {
   const name = form.startsWith('T:') ? Object.keys(source.types).find((t) => t.toUpperCase() === form.slice(2)) : undefined;
   if (name === undefined || !/^(?:LIST|SET|BAG|ARRAY)\s*\[/i.test(source.types[name])) return false;
   const inner: Forms = new Map();
   collect(source, source.types[name], '', false, inner, new Set());
-  return inner.size > 0 && [...inner].every(([member, entities]) => {
-    const named = accepted.get(member.slice(1));
-    return member.startsWith('A') && named !== undefined && (!member.endsWith('#') || [...entities].some((e) =>
-      Object.hasOwn(target.entities, e) && [...named].some((t) => within(target, e, t) || within(target, t, e))));
-  });
+  return inner.size > 0 && [...inner].every(([member, entities]) =>
+    member.startsWith('A') && fits(source, member.slice(1), entities, target, accepted.get(member.slice(1))));
 }
 
 /** The form of one STEP value as written, or null for `$`, `*` and anything unread. */
@@ -240,7 +242,7 @@ const DECIDED_ELSEWHERE: readonly string[] = [
  * series' quantities, and IfcPropertyTableValue pairs DefiningValues with
  * DefinedValues one to one (IFC4 WR21 wants their sizes equal).
  */
-const POSITIONAL: Readonly<Record<string, readonly (readonly string[])[]>> = {
+export const POSITIONAL: Readonly<Record<string, readonly (readonly string[])[]>> = {
   IFCPROPERTYTABLEVALUE: [['DefiningValues', 'DefinedValues']],
   IFCTABLEROW: [['RowCells']],
   IFCTIMESERIESVALUE: [['ListValues']],
@@ -278,7 +280,7 @@ export function valueFormSlotsOf(source: Registry, target: Registry, from: strin
     if (!rejected.length) return;
     const group = POSITIONAL[type]?.find((g) => g.includes(tgt.name)) ?? [];
     const whole = group.map((a) => tgtAttrs.findIndex((t) => t.name === a)).filter((i) => i >= 0);
-    const empty = !!(tgt.isList || tgt.isSet || tgt.isArray) && tgt.arrayBounds?.[0] === 0;
+    const empty = isAggregate(tgt) && tgt.arrayBounds?.[0] === 0;
     out.push({ type, entity, index, attribute: tgt.name, sourceType: src!.type, targetType: tgt.type, required: !tgt.optional, empty, whole, rejected });
   });
   return out;

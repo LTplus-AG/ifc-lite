@@ -23,6 +23,7 @@ import { cleanup, render } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { useHierarchyTree } from './useHierarchyTree';
+import { createNodeElementsResolver } from './nodeElements';
 import type { TreeNode } from './types';
 
 const INITIAL_STATE = useViewerStore.getState();
@@ -123,6 +124,19 @@ describe('hierarchy rows across edits (#10535)', () => {
     const after = storeyRow(tree().treeData);
     assert.notEqual(after, storey, 'a storey that gained an element is a new row');
     assert.equal(tree().getNodeElements(after).length, 3, 'the new row resolves the current membership');
+  });
+
+  it('invalidates cached legacy membership after a raw mutation through its alias (#10762)', async () => {
+    const { tree } = await mountTree();
+    const store = useViewerStore.getState().models.get(MODEL)?.ifcDataStore;
+    assert.ok(store);
+    const view = new MutablePropertyView(store.properties || null, '__legacy__');
+    const resolve = createNodeElementsResolver(new Map(), store, [], () => [], (_id, ids) => ids, new Map([['__legacy__', view]]));
+    const row = { ...storeyRow(tree().treeData), modelIds: ['legacy'] };
+
+    assert.deepEqual(resolve(row), [50, 51]);
+    view.deleteEntity(50);
+    assert.deepEqual(resolve(row), [51]);
   });
 
   it('resolves a storey row once per input generation and view revision, and again after either changes', async () => {

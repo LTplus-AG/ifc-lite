@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { JSONSchemaType } from 'ajv';
 import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
+import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
 import { collectRelatedEntities, type RelatedEntityOptions } from '@ifc-lite/export';
 import { useViewerStore } from '@/store';
 import { ensureModelExportReady } from '@/services/desktop-export';
@@ -15,6 +16,9 @@ import { MAX_RESULT_BYTES, resultBytes } from './result-limit';
 import { nativeExportTarget, nativeExportGuard, nativeArtifact, targetSchema } from './export-native-runtime';
 interface Input { target_model_id: string; seed_ids: number[]; excluded_ids: number[]; excluded_types: string[]; relations: Required<RelatedEntityOptions>; anonymize: AnonymizeToggles; file_stem: string }
 const MAX_IDS = 100000;
+const SAMPLE_LIMIT = 32;
+// Reserve for the handle, filename and wire envelope. Artifact names are capped at 500 UTF-16 units.
+const DIAGNOSTICS_BUDGET = MAX_RESULT_BYTES - 4096;
 const NARROW = 'Narrow the selection or exclude types.';
 /** A refusal the caller can tell apart by details.reason: the membership cap or the preview size (#10794). */
 function tooLarge(reason: 'member-cap' | 'preview-size', message: string, details: Record<string, number>): never {
@@ -51,16 +55,31 @@ export const exportNativeAnonymizedOperations = [
     const bytes = resultBytes(preview);
     if (bytes > MAX_RESULT_BYTES) tooLarge('preview-size', 'The anonymized preview for this selection is larger than the operation result limit.', { bytes, limit: MAX_RESULT_BYTES });
     return preview; }),
-  viewerOperation<Input & { expected_included_ids: number[] }>(exportMetadata('exports.anonymized', 'Produce the exact native anonymized IFC subset after rechecking preview membership. Uses the same source-record anonymizer and filename/privacy defaults as the UI. Returns native scrub/pruning warnings; GUID correlation maps stay private and are not exported.'), {
+  viewerOperation<Input & { expected_included_ids: number[] }>(exportMetadata('exports.anonymized', 'Produce the exact native anonymized IFC subset after rechecking preview membership. Uses the same source-record anonymizer and filename/privacy defaults as the UI. Returns diagnostic counts and bounded ID and warning samples; GUID correlation maps stay private and are not exported.'), {
     type: 'object', properties: { ...schema.properties, expected_included_ids: ids }, required: [...schema.required, 'expected_included_ids'], additionalProperties: false,
   } satisfies JSONSchemaType<Input & { expected_included_ids: number[] }>, async (i, c) => {
     const check = nativeExportGuard(c, [i.target_model_id]); check(); const p = await prepare(i, check);
     if (JSON.stringify([...p.included].sort((a, b) => a - b)) !== JSON.stringify([...i.expected_included_ids].sort((a, b) => a - b))) throw new Error('Native anonymized membership changed since preview.');
     const out = produceAnonymizedExport({ store: p.store, fileStem: i.file_stem, includedIds: p.included, options: toAnonymizeOptions(i.anonymize) });
-    // Named fields only, so a new stat reaches the agent on purpose. The zeroed placements' original coordinates are
-    // what anonymizing removed: the agent gets how many, not where (#10695). truncated: expansion hit its budget (#10794).
+    // Keep this projection explicit. The coordinates removed from root placements stay private (#10695).
     const { entityCount, includedRootEntityCount, prunedRelationshipIds, droppedPropertySetIds, droppedPropertyReferenceIds, warnings, zeroedPlacements } = out.result.stats;
-    return nativeArtifact(c, new Blob([new Uint8Array(out.result.content)], { type: 'text/plain' }), out.filename, { entityCount, includedRootEntityCount,
-      prunedRelationshipIds, droppedPropertySetIds, droppedPropertyReferenceIds, warnings, zeroedPlacementCount: zeroedPlacements.length, truncated: p.related.truncated }, check);
+    const diagnostics = {
+      entityCount, includedRootEntityCount,
+      prunedRelationshipCount: prunedRelationshipIds.length,
+      prunedRelationshipSampleIds: prunedRelationshipIds.slice(0, SAMPLE_LIMIT),
+      droppedPropertySetCount: droppedPropertySetIds.length,
+      droppedPropertySetSampleIds: droppedPropertySetIds.slice(0, SAMPLE_LIMIT),
+      droppedPropertyReferenceCount: droppedPropertyReferenceIds.length,
+      droppedPropertyReferenceSampleIds: droppedPropertyReferenceIds.slice(0, SAMPLE_LIMIT),
+      warningCount: warnings.length,
+      warnings: warnings.slice(0, SAMPLE_LIMIT).map(warning => warning.slice(0, 512)),
+      zeroedPlacementCount: zeroedPlacements.length,
+      truncated: p.related.truncated,
+    };
+    // Validate escaped wire bytes before registering the native artifact (#10898).
+    if (resultBytes({ diagnostics_json: JSON.stringify(diagnostics) }) > DIAGNOSTICS_BUDGET) {
+      throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'Anonymized export diagnostics exceeded their result budget.', details: { reason: 'internal' } });
+    }
+    return nativeArtifact(c, new Blob([new Uint8Array(out.result.content)], { type: 'text/plain' }), out.filename, diagnostics, check);
   }),
 ];

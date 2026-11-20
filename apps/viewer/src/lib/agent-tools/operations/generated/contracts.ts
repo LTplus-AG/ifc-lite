@@ -26823,7 +26823,7 @@ export const operationContracts: readonly OperationContract[] = [
     "features": [
       "export.files"
     ],
-    "description": "Produce the exact native anonymized IFC subset after rechecking preview membership. Uses the same source-record anonymizer and filename/privacy defaults as the UI. Returns native scrub/pruning warnings; GUID correlation maps stay private and are not exported.",
+    "description": "Produce the exact native anonymized IFC subset after rechecking preview membership. Uses the same source-record anonymizer and filename/privacy defaults as the UI. Returns diagnostic counts and bounded ID and warning samples; GUID correlation maps stay private and are not exported.",
     "needs": "viewer",
     "effects": [
       "artifact"

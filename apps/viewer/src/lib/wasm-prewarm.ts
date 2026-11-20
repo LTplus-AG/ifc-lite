@@ -66,8 +66,11 @@ export function scheduleWasmPrewarm(): void {
   scheduled = true;
 
   const isLoading = () => processedModelRequested() || useViewerStore.getState().loading;
+  // A prewarm that waited for a load is not a boot-time compile; keep it out of viewer_boot.
+  let waitedForLoad = false;
   const arm = () => {
     if (isLoading()) {
+      waitedForLoad = true;
       let waiting = true;
       const resume = () => {
         if (!waiting || isLoading()) return;
@@ -108,8 +111,8 @@ export function scheduleWasmPrewarm(): void {
         }
         const compiled = await prewarmSharedWasmModule();
         const endedAt = performance.now();
-        // `viewer_boot` (#6961): when the engine binary finished compiling.
-        onFieldTelemetry((field) => field.noteEngineCompiled(startedAt, endedAt, compiled));
+        // `viewer_boot` (#6961): when the engine binary finished compiling at boot.
+        if (!waitedForLoad) onFieldTelemetry((field) => field.noteEngineCompiled(startedAt, endedAt, compiled));
       })
       .catch((err) => {
         console.warn('[wasm-prewarm] engine prewarm skipped:', err);

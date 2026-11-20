@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { ToolExecutionError } from '@ifc-lite/mcp/browser';
 import { useViewerStore } from '@/store';
 import { viewerOperation } from './contract';
 import { assertToolActive } from '../cancellation';
@@ -48,7 +49,10 @@ async function dependencies(id: string) {
     import('@/lib/document/persistence'),
     import('@/lib/reports/chart-dependencies'),
   ]);
-  const entries = await loadDocuments();
+  const entries = await loadDocuments().catch(error => {
+    console.warn('[Clash reports] Documents read failed:', error);
+    throw unavailable('Saved Documents could not be read. Restore that storage, then prepare again.');
+  });
   const preview = reportChartDependencies(useViewerStore.getState(), { kind: 'clash', id }, { entries, phase: 'ready' });
   // Opening the library is a configuration effect of its own, so a read does not do it here.
   if (preview.documentPhase === 'loading') throw unavailable('The Documents library is not open yet. Run document.initialize, then prepare again.');
@@ -202,7 +206,7 @@ export const clashReportOperations = [
       )
         throw stale('Deletion target or dependencies changed. Preview again.');
       let staged = false;
-      let guardRefused = false;
+      let guardFailure: ToolExecutionError | undefined;
       // The library also runs this on a later storage retry, after this call has ended or lost its grant.
       // Refusing then (not throwing) lets the library restore the report instead of leaving it hidden.
       const guard = async () => {
@@ -211,6 +215,7 @@ export const clashReportOperations = [
           latest = await dependencies(candidate.report.id);
           assertToolActive(c);
         } catch (error) {
+          guardFailure = error instanceof ToolExecutionError ? error : internal('Native report deletion guard failed.');
           console.warn('[Clash reports] Deletion guard refused:', error);
           return false;
         }
@@ -221,14 +226,15 @@ export const clashReportOperations = [
           (staged
             ? now.savedClashReports.some((row) => row.id === candidate.report.id)
             : now.savedClashReports.find((row) => row.id === candidate.report.id) !== candidate.report)
-        )
-          { guardRefused = true; return false; }
+        ) {
+          guardFailure = stale('Deletion target or dependencies changed. Preview again.');
+          return false;
+        }
         staged = true;
         return true;
       };
       if (!(await c.commitAsync(() => candidate.action(candidate.report.id, guard))))
-        // The guard refuses a report or dependency that changed since the deletion preview: a stale preview, not a failure.
-        throw guardRefused ? stale('Deletion target or dependencies changed. Preview again.') : internal('Native report deletion failed.');
+        throw guardFailure ?? internal('Native report deletion failed.');
       owned(c.host).delete(i.token);
       return out({ deleted: candidate.report.id });
     },

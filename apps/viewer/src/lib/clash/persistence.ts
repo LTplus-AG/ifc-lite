@@ -380,8 +380,10 @@ export function exportPresets(presets: ClashPreset[], emit: (content: string, fi
 
 /** Parse an exported file into custom presets (ids regenerated, `builtin` stripped). */
 export async function importPresets(file: File): Promise<ClashPreset[]> {
-  const text = await file.text();
-  const parsed: unknown = JSON.parse(text);
+  return decodeImportedPresets(JSON.parse(await file.text()));
+}
+
+export function decodeImportedPresets(parsed: unknown): ClashPreset[] {
   return (presetListOf(parsed) ?? []).filter(isValidStoredPreset).map((p) => ({
     ...storedPresetToPreset(p, false),
     id: `custom-${crypto.randomUUID()}`,

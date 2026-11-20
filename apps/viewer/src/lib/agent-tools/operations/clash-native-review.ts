@@ -56,11 +56,9 @@ export const clashReviewOperations = [
           c.commit(() => {
             guard();
             const s = useClashGroupLibrary.getState();
-            if (
-              s.status.phase !== 'ready' ||
-              (i.workspace_id !== DEFAULT_GROUP_WORKSPACE && !s.entries.some((row) => row.id === i.workspace_id))
-            )
-              throw unavailable('Native group workspace unavailable.');
+            if (s.status.phase !== 'ready') throw unavailable('Native group workspace library unavailable.');
+            if (i.workspace_id !== DEFAULT_GROUP_WORKSPACE && !s.entries.some((row) => row.id === i.workspace_id))
+              throw invalidInput('unknown-target', 'Unknown native group workspace.');
             useClashGroupLibrary.setState({ activeId: i.workspace_id });
             return { active_id: i.workspace_id, expected_library: groupLibraryRevision(useClashGroupLibrary.getState()) };
           }),

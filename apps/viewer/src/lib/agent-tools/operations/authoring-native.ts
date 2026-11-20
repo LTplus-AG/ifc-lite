@@ -9,7 +9,7 @@ import type { ModelChangeReceipt } from '@/lib/actions/model-change-commit';
 import type { ToolHost } from '../types';
 import { operation, emptySchema, type OperationContext } from './contract';
 import { assertToolActive } from '../cancellation';
-import { invalidInput, stale, decodedInput } from './refusals';
+import { internal, invalidInput, stale, decodedInput } from './refusals';
 import { admitCandidate, candidateStillApplies, libraryHoldsReceipt, persistReceipt, type ReceiptHolder } from './host-handles';
 
 const previewOutput = { type: 'object', properties: { token: { type: 'string' }, preview_json: { type: 'string' }, revision: { type: 'integer' } }, required: ['token', 'preview_json', 'revision'], additionalProperties: false };
@@ -106,7 +106,11 @@ export const authoringOperations = [
     const outcome = c.commit(() => {
       const result = saved.authoring ? commitModelAuthoring(useViewerStore, saved.authoring, approved, 'viewer-agent')
         : commitModelChanges(useViewerStore, saved.properties!, approved, 'viewer-agent');
-      if (!result.ok) throw invalidInput('refused', `Native commit refused: ${result.reason}${result.detail ? `: ${result.detail}` : ''}`);
+      if (!result.ok) {
+        if (result.reason === 'stale') throw stale('Model changed since preview; prepare again.');
+        if (result.reason === 'nothing-approved') throw invalidInput('invalid-value', 'The reviewed proposal has no changes to apply.');
+        throw internal(`Native commit failed: ${result.detail ?? 'No details available.'}`);
+      }
       return result;
     });
     saved.receipt = outcome.receipt; return persist(saved, outcome.receipt);

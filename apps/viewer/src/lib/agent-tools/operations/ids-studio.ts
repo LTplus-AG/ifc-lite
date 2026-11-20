@@ -7,7 +7,7 @@ import type { StudioDocument, StudioOp } from '@ifc-lite/ids-authoring';
 import { useViewerStore } from '@/store';
 import { viewerOperation as nativeOperation, operation as modelOperation, emptySchema, type ViewerOperationContext } from './contract';
 import { assertToolActive } from '../cancellation';
-import { disabled, invalidInput, stale, unavailable, parseJsonInput } from './refusals';
+import { decodedInput, disabled, invalidInput, stale, unavailable, parseJsonInput } from './refusals';
 import { admitCandidate, candidateStillApplies } from './host-handles';
 
 const jsonOutput = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
@@ -74,7 +74,7 @@ export const idsOperations = [
     const { createStudioDocument } = await import('@ifc-lite/ids-authoring');
     const { importIdsXml, importIdsz } = await import('@/lib/ids-studio/import');
     const parsed = i.format === 'new' ? { ok: true as const, doc: createStudioDocument({ title: i.content }) }
-      : i.format === 'xml' ? importIdsXml(i.content) : importIdsz(Uint8Array.from(atob(i.content), ch => ch.charCodeAt(0)));
+      : i.format === 'xml' ? importIdsXml(i.content) : importIdsz(Uint8Array.from(decodedInput('content', () => atob(i.content)), ch => ch.charCodeAt(0)));
     if (!parsed.ok) throw invalidInput('invalid-value', parsed.error);
     revision(i.document_revision); assertToolActive(c);
     const document = structuredClone(parsed.doc);

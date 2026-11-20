@@ -114,6 +114,7 @@ export const clashExportOperations = [
         clashIds: ids,
       };
       const preview = runtime.bcfPreview(config);
+      if (!preview.clashes) throw invalidInput('invalid-value', 'No native findings match the requested BCF export scope.');
       await runtime.exportBcf(config);
       assertToolActive(c);
       if (useViewerStore.getState().clashResult !== current) throw stale('Clash results changed during export.');

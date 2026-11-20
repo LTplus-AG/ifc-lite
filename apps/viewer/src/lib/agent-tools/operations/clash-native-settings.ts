@@ -132,11 +132,8 @@ export const clashSettingsOperations = [
       additionalProperties: false,
     },
     async (i, c) => {
-      const { isValidStoredPreset, storedPresetToPreset, importPresets, MAX_PRESETS } = await import('@/lib/clash/persistence');
-      const imported =
-        i.action === 'import'
-          ? await importPresets(new File([i.preset_json], 'clash-presets.json', { type: 'application/json' }))
-          : null;
+      const { isValidStoredPreset, storedPresetToPreset, decodeImportedPresets, MAX_PRESETS } = await import('@/lib/clash/persistence');
+      const imported = i.action === 'import' ? decodeImportedPresets(parseJsonInput(i.preset_json, 'preset_json')) : null;
       // The panel refuses an import with no valid rules (noValidRulesToast); so does the operation.
       if (imported && !imported.length) throw invalidInput('invalid-value', 'The preset file contains no valid clash rules.');
       let preset;

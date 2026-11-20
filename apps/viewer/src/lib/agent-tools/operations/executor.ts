@@ -11,7 +11,7 @@ import { contractFingerprint } from './metadata';
 import { MAX_RESULT_BYTES, utf8Bytes } from './result-limit';
 import type { Operation } from './contract';
 import { viewerOperation, operationUnavailable } from './registry';
-import { internal, invalidInput, stale, unavailable, type InputReason } from './refusals';
+import { disabled, internal, invalidInput, stale, unavailable, type InputReason } from './refusals';
 
 export interface OperationJob {
   id: string;
@@ -93,7 +93,7 @@ export async function executeOperation(
     host.lifetimeSignal?.throwIfAborted();
     assertToolActive(context);
     const reason = operationUnavailable(entry);
-    if (reason) throw unavailable(reason);
+    if (reason) throw disabled(reason);
     const now = model ? host.models().find(candidate => candidate.id === model.id) : undefined;
     if (model && (now?.store !== model.store || useViewerStore.getState().mutationVersion !== activeRevision
       || useViewerStore.getState().models.get(model.id) !== nativeModel)) {

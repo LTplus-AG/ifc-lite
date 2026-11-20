@@ -31,6 +31,7 @@ import { visibleCutMeshes } from '@/lib/drawing/cut-meshes';
 import { useRetypedClasses } from './useViewerSelectors.js';
 import { createDrawingRequestQueue } from './drawingRequestQueue.js';
 import { isGeometryHeld } from '@/lib/pick-gating';
+import { useReleasedGeometryRevision } from '@/lib/geometry-backing/use-released-geometry-revision';
 
 export function useExtraSectionCaps(
   geometryResult: GeometryResult | null | undefined,
@@ -49,12 +50,14 @@ export function useExtraSectionCaps(
   const setCap = useViewerStore((s) => s.setSectionExtraCap);
   const prune = useViewerStore((s) => s.pruneSectionExtraCaps);
   const geometryHeld = useViewerStore((s) => isGeometryHeld(s));
+  // Released caps are cut from the backing: its availability or a content-version-only bump changes them in place.
+  const releasedRevision = useReleasedGeometryRevision();
 
   const queueRef = useRef<ReturnType<typeof createDrawingRequestQueue> | null>(null);
   if (!queueRef.current) queueRef.current = createDrawingRequestQueue();
   // Bumped whenever what the cuts are made FROM changes, so every parked cap goes stale at once.
   const modelStateRef = useRef({ token: 0, inputs: [] as unknown[] });
-  const inputs = [geometryResult, hiddenIds, isolatedIds, computedIsolatedIds, typeVisibility, structuralViewMode, retypedClasses, geometryHeld];
+  const inputs = [geometryResult, hiddenIds, isolatedIds, computedIsolatedIds, typeVisibility, structuralViewMode, retypedClasses, geometryHeld, releasedRevision];
   if (inputs.some((v, i) => v !== modelStateRef.current.inputs[i])) {
     modelStateRef.current = { token: modelStateRef.current.token + 1, inputs };
   }

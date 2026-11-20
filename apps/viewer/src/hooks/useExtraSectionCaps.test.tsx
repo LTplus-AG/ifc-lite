@@ -156,6 +156,23 @@ describe('caps of the inactive cutting planes (#7545)', () => {
     assert.equal(state().sectionExtraCaps[b], undefined, 'and the failure leaves no cap of the old position');
   });
 
+  it('#10887 a geometryContentVersion-only bump invalidates a released cap at once, with planes and model inputs unchanged', async () => {
+    const b = twoPlanes();
+    const geometry: GeometryResult = { ...TWO_WALLS, meshes: [wall(WALL), wall(SECOND, 1)] };
+    await mount(geometry);
+    await settle();
+    assert.ok(state().sectionExtraCaps[b]?.cutPolygons.length);
+    releaseCpuMeshBuffers(geometry.meshes); // the cap now stands for released geometry; no backing answers it
+    const original = console.error;
+    console.error = () => {};
+    try {
+      await act(async () => { useViewerStore.setState((s) => ({ geometryContentVersion: s.geometryContentVersion + 1 })); });
+      assert.equal(state().sectionExtraCaps[b], undefined, 'the content moved in place: the derived cap is dropped synchronously');
+      await settle();
+    } finally { console.error = original; }
+    assert.equal(state().sectionExtraCaps[b], undefined, 'and never comes back from the superseded cut');
+  });
+
   it('re-cuts when the plane moves, and drops the cap when the plane is removed', async () => {
     const b = twoPlanes();
     await mount(TWO_WALLS);

@@ -9,19 +9,22 @@
  * document directly. Lint runs once per document change and is shared.
  */
 
-import { useState, type KeyboardEvent } from 'react';
+import { useEffect, useState, type KeyboardEvent } from 'react';
 import { ChevronDown, ChevronUp, Code2, FileDown, Package, PanelTop, Redo2, Undo2, X } from 'lucide-react';
 import { canRedo, canUndo } from '@ifc-lite/ids-authoring';
+import { useDialogs } from '@/components/ui/confirm-dialog';
 import { IconButton } from '@/components/ui/icon-button';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { exportIds, exportIdsz } from '@/lib/ids-studio/export';
+import { checkInitialIdsDraft, closeIdsDraft } from '@/lib/ids-studio/draft-viewer';
 import { downloadFile } from '@/lib/export/download';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { cn } from '@/lib/utils';
 import { DiagnosticsPanel } from './DiagnosticsPanel';
 import { SeverityIcon } from './DiagnosticItem';
 import { RejectionBanner } from './RejectionBanner';
+import { StudioDrafts } from './StudioDrafts';
 import { StudioEmptyState } from './StudioEmptyState';
 import { StudioInspector } from './StudioInspector';
 import { StudioOutline } from './StudioOutline';
@@ -31,6 +34,7 @@ import { StudioDiagnosticsProvider, useStudioContexts, useStudioDiagnostics } fr
 export function IdsStudioPanel() {
   const { t } = useTranslation();
   useStudioContexts();
+  const { confirmDialog } = useDialogs();
   const state = useViewerStore((s) => s.idsStudioState);
   const view = useViewerStore((s) => s.idsStudioView);
   const setView = useViewerStore((s) => s.idsStudioSetView);
@@ -38,10 +42,14 @@ export function IdsStudioPanel() {
   const redo = useViewerStore((s) => s.idsStudioRedo);
   const ready = useViewerStore((s) => s.idsStudioContexts !== null);
   const diagnostics = useStudioDiagnostics();
-  const close = useViewerStore((s) => s.idsStudioClose);
+  useEffect(() => {
+    let mounted = true;
+    void checkInitialIdsDraft(() => mounted);
+    return () => { mounted = false; };
+  }, []);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(true);
   const [saveError, setSaveError] = useState<string | null>(null);
-  if (!state) return <div className="h-full overflow-auto" {...tourAnchor(TOUR_ANCHORS.idsStudioPanel)}><StudioEmptyState /></div>;
+  if (!state) return <div className="h-full overflow-auto" {...tourAnchor(TOUR_ANCHORS.idsStudioPanel)}><StudioDrafts /><StudioEmptyState /></div>;
   const doc = state.doc;
   // ⌘Z / ⇧⌘Z / ⌘/ (UX spec §7), scoped to the panel so text fields keep their own undo.
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -83,10 +91,13 @@ export function IdsStudioPanel() {
           <button type="button" aria-pressed={view === 'xml'} onClick={() => setView('xml')}
             className={cn('flex items-center gap-1 px-1.5 py-0.5 text-2xs', view === 'xml' && 'bg-accent')}><Code2 className="h-3 w-3" aria-hidden />{t('idsStudio.header.xml')}</button>
         </fieldset>
-        <IconButton label={t('idsStudio.header.close')} className="h-7 w-7" onClick={close}>
+        <IconButton label={t('idsStudio.header.close')} className="h-7 w-7" onClick={() => void closeIdsDraft(() => confirmDialog({
+          description: t('idsStudio.drafts.closeUnsaved'), confirmLabel: t('idsStudio.header.close'), destructive: true,
+        }))}>
           <X className="h-3.5 w-3.5" aria-hidden />
         </IconButton>
       </div>
+      <StudioDrafts />
       {saveError && <p role="alert" className="border-b border-border px-2 py-1 text-2xs text-destructive break-words">{t('idsStudio.header.saveFailed', { reason: saveError })}</p>}
       {!ready && <p className="border-b border-border px-2 py-1 text-2xs text-muted-foreground">{t('idsStudio.loadingSchema')}</p>}
       <div className="min-h-[8rem] flex-[2] border-b border-border"><StudioOutline doc={doc} /></div>

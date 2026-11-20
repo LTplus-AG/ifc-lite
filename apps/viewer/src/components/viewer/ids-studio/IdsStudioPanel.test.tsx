@@ -10,6 +10,7 @@
  */
 
 import '@/test/setup-dom.js';
+import 'fake-indexeddb/auto';
 import { clearDownloads, downloadedNames } from '@/test/download-capture.js';
 import { installLayout } from '@/test/dom-layout.js';
 installLayout();
@@ -112,8 +113,13 @@ describe('IdsStudioPanel (IDS-030 … IDS-032)', () => {
     assert.deepEqual(downloadedNames(), ['Fire-safety.ids', 'Fire-safety.idsz']);
     assert.equal(ui.querySelector('[role="alert"]'), null, 'no save error');
     click(ui.querySelector('[aria-label="Close the document"]') as HTMLElement);
-    assert.equal(useViewerStore.getState().idsStudioState, null);
+    await waitFor(() => useViewerStore.getState().idsStudioState === null, 'closing flushes its scheduled draft');
     assert.ok(byText(ui, 'button', 'New IDS'), 'the empty state is back');
+    assert.ok(byText(ui, 'summary', 'Saved IDS drafts'), 'export and close preserve the recoverable draft');
+    const savedDraft = [...ui.querySelectorAll('li')].find(row => row.textContent?.includes('Fire safety'));
+    assert.ok(savedDraft);
+    click(byText(savedDraft, 'button', 'Restore draft') as HTMLElement);
+    assert.deepEqual(doc(), fixture.doc);
   });
 
   it('undoes and redoes with the panel keyboard shortcuts', async () => {

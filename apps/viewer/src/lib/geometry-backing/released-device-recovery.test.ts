@@ -14,6 +14,7 @@ import { geometryBackingCommand } from './backing-debug-hook';
 import type { TapState } from './store-backing-tap';
 import { noteSceneGeometry } from './released-scene-replay';
 import { rebuildReleasedScene } from './released-device-recovery';
+import { modelIndices } from '@/lib/model-placement/model-indices';
 import { enqueueInstancedShards, instancedShardSupplyToken } from '@/store/instancedShardQueue';
 
 function mesh(expressId: number, z: number): MeshData {
@@ -27,13 +28,14 @@ function recordingScene(onAppend?: () => void) {
   let ephemeral = false;
   const scene = {
     streamingFragments: [] as unknown[], batchedMeshes: [] as unknown[], // the fragment lists the replay owns
+    boundingBoxes: new Map(), modelTranslations: { releasedEntities: new Map() }, // and the bounds it may roll back
     setEphemeralStreamingMode: (on: boolean) => { ephemeral = on; },
     isEphemeralStreaming: () => ephemeral,
     appendToBatches: (batch: MeshData[]) => { uploaded.push(...batch.map((m) => [...m.positions])); onAppend?.(); onAppend = undefined; },
     finalizeStreamingAsync: async () => { ephemeral = false; },
     addInstancedShard: () => undefined,
   };
-  const context = { device: {} as GPUDevice, pipeline: {} as never, scene: scene as never, isCurrent: () => true,
+  const context = { device: {} as GPUDevice, pipeline: {} as never, scene: scene as never, instancedModelIndices: new Set<number>([0]), isCurrent: () => true,
     requestRender: () => undefined } as ReleasedSceneRebuildContext;
   return { context, uploaded };
 }
@@ -120,9 +122,41 @@ describe('released device recovery rebuild (viewer)', () => {
       const shards: number[] = [];
       (context.scene as unknown as { addInstancedShard: (d: unknown, shard: { instances: Array<{ entityId: number }> }) => void })
         .addInstancedShard = (_d, shard) => { shards.push(...shard.instances.map((i) => i.entityId)); };
-      assert.equal(await rebuildReleasedScene(context), true, 'a recorded empty flat list is not an unrecorded one');
+      const drewTemplates = new Set([modelIndices(useViewerStore.getState().models).get('ih')!]); // the scene held ih's templates
+      assert.equal(await rebuildReleasedScene({ ...context, instancedModelIndices: drewTemplates }), true, 'a recorded empty flat list is not an unrecorded one');
       assert.deepEqual(uploaded, [], 'no flat geometry is drawn');
       assert.deepEqual(shards, [77], 'the instanced occurrence is restaged');
+    } finally { await geometryBackingCommand(store, undefined, { action: 'stop' }); }
+  });
+
+  it('#10937 a model whose instanced templates were not in the scene before the loss is not restaged', async () => {
+    const meshes = [mesh(1, 0)];
+    const geometryResult: GeometryResult = { meshes, totalTriangles: 1, totalVertices: 3, coordinateInfo: {} as GeometryResult['coordinateInfo'] };
+    useViewerStore.setState({ models: new Map([['hm', { id: 'hm', idOffset: 0, maxExpressId: 100, geometryResult }]]) } as never);
+    const store = useViewerStore as unknown as StoreApi<TapState>;
+    await geometryBackingCommand(store, undefined, { action: 'start', options: { database: { name: `recovery-hidden-model-${process.pid}`, locks: null } } as never });
+    try {
+      enqueueInstancedShards('hm', [shardBytes(77)], instancedShardSupplyToken('hm'));
+      await geometryBackingCommand(store, undefined, { action: 'seal' });
+      releaseCpuMeshBuffers(meshes);
+      noteSceneGeometry(meshes);
+      const { context } = recordingScene();
+      const shards: number[] = [];
+      (context.scene as unknown as { addInstancedShard: (d: unknown, shard: { instances: Array<{ entityId: number }> }) => void })
+        .addInstancedShard = (_d, shard) => { shards.push(...shard.instances.map((i) => i.entityId)); };
+      // The model is hidden: the scene had removed its templates before the device was lost.
+      assert.equal(await rebuildReleasedScene({ ...context, instancedModelIndices: new Set<number>() }), true);
+      assert.deepEqual(shards, [], 'never re-added (and drawn) on recovery');
+    } finally { await geometryBackingCommand(store, undefined, { action: 'stop' }); }
+  });
+
+  it('#10937 an Exploded lift change during the backing read fences the rebuild', async () => {
+    const { store } = await releasedModel(`recovery-lift-${process.pid}`);
+    try {
+      const { context } = recordingScene(() => {
+        useViewerStore.setState({ appliedEntityLevelOffsets: new Map([[1, 2.5]]) } as never); // Exploded applied meanwhile
+      });
+      assert.equal(await rebuildReleasedScene(context), false, 'never publish pieces placed at the old lift');
     } finally { await geometryBackingCommand(store, undefined, { action: 'stop' }); }
   });
 });

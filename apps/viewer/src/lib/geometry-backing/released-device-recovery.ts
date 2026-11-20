@@ -43,11 +43,12 @@ function liftedCopy(shard: DecodedInstancedShard, lift: ReadonlyMap<number, numb
 function viewerSource(state: ReturnType<typeof getViewerState>): unknown[] {
   // Lengths too: a list grown in place keeps its identity but not its membership.
   const drawn = currentSceneGeometry();
-  return [releasedReplayEpoch(), state.geometryContentVersion, drawn, drawn?.length,
+  // The Exploded lift too: it is captured once and applied to every replayed and restaged piece.
+  return [releasedReplayEpoch(), state.geometryContentVersion, state.appliedEntityLevelOffsets, drawn, drawn?.length,
     ...[...state.models].flatMap(([id, model]) => [id, model.geometryResult, model.geometryResult?.meshes, model.geometryResult?.meshes.length, model.idOffset])];
 }
 
-export const rebuildReleasedScene: ReleasedSceneRebuild = async ({ device, pipeline, scene, isCurrent: deviceCurrent, requestRender }) => {
+export const rebuildReleasedScene: ReleasedSceneRebuild = async ({ device, pipeline, scene, instancedModelIndices, isCurrent: deviceCurrent, requestRender }) => {
   const tap = activeGeometryBackingTap();
   if (!tap) return false;
   const state = getViewerState();
@@ -85,11 +86,11 @@ export const rebuildReleasedScene: ReleasedSceneRebuild = async ({ device, pipel
   const indices = modelIndices(state.models);
   for (const modelId of state.models.keys()) {
     const source = tap.replaySource(modelId);
-    if (!hasInstancedShards(modelId)) continue;
+    const modelIndex = indices.get(modelId);
+    // Exactly the templates the scene held before the loss: a hidden or removed model stays out.
+    if (!hasInstancedShards(modelId) || modelIndex === undefined || !instancedModelIndices.has(modelIndex)) continue;
     // The scene drew this model's instances: only its own complete backing can put them back.
     if (!source?.backing?.isCurrent || !source.backing.isComplete) return false;
-    const modelIndex = indices.get(modelId);
-    if (modelIndex === undefined) return false;
     for await (const shard of source.backing.reader.instancedShards()) {
       if (!isCurrent()) return false;
       scene.addInstancedShard(device, liftedCopy(shard, lift), modelIndex);

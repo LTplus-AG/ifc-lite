@@ -147,13 +147,21 @@ async function releaseForTest(tap: StoreGeometryBackingTap, store: StoreApi<Rele
   return tap.status();
 }
 
-/** The hover path's own sequence: readback (only when released), then the magnetic raycast. */
+/**
+ * The hover path's own sequence: readback (only when released), then the magnetic raycast, which, as on the
+ * hover path, runs only on an answered read. A refused one (`unavailable`: an instanced or unbacked front
+ * surface) reports no hit and no snap rather than whatever lies behind it, a point cloud included.
+ */
 async function snapProbe(renderer: Renderer, points: Array<[number, number]>): Promise<SnapProbe[]> {
   const { feedReadbackAt } = await import('./readback-measure');
   const { sceneGeometryReleased } = await import('./scene-released');
   const out: SnapProbe[] = [];
   for (const [x, y] of points) {
     const outcome = sceneGeometryReleased(renderer) ? await feedReadbackAt(renderer, x, y, {}) : 'resident';
+    if (outcome !== 'fed' && outcome !== 'no-hit' && outcome !== 'resident') {
+      out.push({ outcome, expressId: null, point: null, snap: null });
+      continue;
+    }
     const result = renderer.raycastSceneMagnetic(x, y, { edge: null, meshExpressId: null, lockStrength: 0 },
       { snapOptions: { snapToVertices: true, snapToEdges: true, snapToFaces: true, screenSnapRadius: 40 } });
     const hit = result.intersection;

@@ -11,7 +11,8 @@
  * which the size-only estimate admitted. Admission samples a few windows
  * spread over the file and measures the share of record bytes that belong to
  * such records. Reads stay bounded and each stays below 1 MiB, like the ZIP
- * inspection: no whole-source read happens before the admission decision.
+ * inspection; a file under 1 MiB is read in one slice. Admission only samples
+ * loads near the budget, so no large source is read whole before the decision.
  */
 
 /** Record types whose bytes are mostly mesh coordinates or vertex indices. A point

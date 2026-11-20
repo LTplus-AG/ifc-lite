@@ -98,8 +98,12 @@ export function useFileCommands(): FileCommands {
   // dialog mounted after that so its close effects and room state still run.
   const [shareDialogOpen, setShareDialogOpen] = useState<boolean | null>(null);
   // Mark Share open at the request, before the lazy dialog mounts, so collab.prepareRoom refuses meanwhile.
-  const requestShareDialog = useCallback(() => { if (!shareChunkFailed) useCollabShareReview.setState({ dialogOpen: true }); setShareDialogOpen(true); }, []);
+  // Set at the request itself, so an unmount before the next render still clears what this instance opened.
+  const shareRequestedRef = useRef(false); if (shareDialogOpen === false) shareRequestedRef.current = false;
+  const requestShareDialog = useCallback(() => { shareRequestedRef.current = true; if (!shareChunkFailed) useCollabShareReview.setState({ dialogOpen: true }); setShareDialogOpen(true); }, []);
   const openShareDialog = requestShareDialog;
+  // This instance's dialog mounts under its component: a request it made must not stay open after it unmounts.
+  useEffect(() => () => { if (shareRequestedRef.current) useCollabShareReview.setState({ dialogOpen: false }); }, []);
   useEffect(() => {
     if (!collabEnabled) return;
     const shareHandler = requestShareDialog;

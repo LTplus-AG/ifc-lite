@@ -10,6 +10,7 @@ import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { render, cleanup, click, waitFor } from '@/test/render';
 import { blankDocument } from '@/lib/document/presets';
+import { DEFAULT_CLASH_SETTINGS, loadReviews, loadSettings, saveReviews, saveSettings } from '@/lib/clash/persistence';
 import { loadManualLibrary } from '@/lib/validation/manual/persistence';
 import { loadDocuments } from '@/lib/document/persistence';
 import { createContentBackup, encodeContentBackup, parseContentBackup, readBackupDrafts, readContentRecovery } from '@/lib/storage/content-backup';
@@ -351,5 +352,56 @@ it('#10976 import keeps a refused last-checklist deletion until the native edito
     if (previousRaw === null) localStorage.removeItem(key);
     else localStorage.setItem(key, previousRaw);
     await act(async () => { useViewerStore.setState({ ...previous, pendingStandaloneArtifactImport: null }); });
+  }
+});
+
+it('#10976 backup import preserves optimistic clash settings and review edits until they are saved', async () => {
+  const state = useViewerStore.getState();
+  const keys = ['ifc-lite-clash-reviews', 'ifc-lite-clash-settings'];
+  const previous = keys.map(key => localStorage.getItem(key));
+  const previousState = { clashReviews: state.clashReviews, clashTolerance: state.clashTolerance,
+    clashReviewsSaveRefused: state.clashReviewsSaveRefused, clashSettingsSaveRefused: state.clashSettingsSaveRefused };
+  try {
+    const incoming = { status: 'resolved' as const, comment: 'Incoming resolution' };
+    assert.ok(saveReviews(new Map([['incoming-pair', incoming]])).ok);
+    assert.ok(saveSettings({ ...DEFAULT_CLASH_SETTINGS, tolerance: 0.03 }).ok);
+    const backup = JSON.stringify(encodeContentBackup(createContentBackup({ validation: [], comparison: [], document: [] })));
+    for (const key of keys) localStorage.removeItem(key);
+    const original = localStorage.setItem.bind(localStorage);
+    const refused = mock.method(localStorage, 'setItem', (key: string, value: string) => {
+      if (keys.includes(key)) throw new DOMException('Clash library quota', 'QuotaExceededError');
+      original(key, value);
+    });
+    try {
+      assert.equal(state.setClashReview('local-pair', { comment: 'Unsaved observation' }).ok, false);
+      state.setClashTolerance(0.02);
+    } finally { refused.mock.restore(); }
+
+    const ui = render(<><Notice /><Toaster /></>);
+    const input = ui.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input);
+    Object.defineProperty(input, 'files', { value: [new File([backup], 'clash-backup.json')], configurable: true });
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    await waitFor(() => ui.textContent?.includes('Some imported work could not be saved') ?? false, 'clash backup remains pending');
+    assert.equal(useViewerStore.getState().clashReviews.get('local-pair')?.comment, 'Unsaved observation');
+    assert.equal(useViewerStore.getState().clashTolerance, 0.02);
+    assert.equal(loadReviews().has('incoming-pair'), false);
+
+    await act(async () => {
+      assert.ok(state.setClashReview('local-pair', { comment: 'Saved observation' }).ok);
+      state.setClashTolerance(0.02);
+    });
+    const retry = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Retry all libraries'); assert.ok(retry);
+    click(retry);
+    await waitFor(() => useViewerStore.getState().clashReviews.has('incoming-pair'), 'clash import retries once local edits are saved');
+    assert.deepEqual(loadReviews().get('incoming-pair'), incoming);
+    assert.equal(loadReviews().get('local-pair')?.comment, 'Saved observation');
+    assert.equal(loadSettings().tolerance, 0.02);
+  } finally {
+    keys.forEach((key, index) => {
+      const raw = previous[index];
+      if (raw == null) localStorage.removeItem(key);
+      else localStorage.setItem(key, raw);
+    });
+    await act(async () => { useViewerStore.setState({ ...previousState, pendingStandaloneArtifactImport: null }); });
   }
 });

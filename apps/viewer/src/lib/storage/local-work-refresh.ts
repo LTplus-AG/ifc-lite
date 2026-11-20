@@ -25,6 +25,9 @@ export function canRestoreLocalWork(key: LocalWorkKey): boolean {
   if (key === DEFINITION_LIBRARY_KEY && state.validationDefinitionsError) {
     return state.validationDefinitions.entries.length === 0 && optionalLocalStorage()?.getItem(key) === null;
   }
+  if (key === REVIEWS_KEY) return !state.clashReviewsSaveRefused;
+  if (key === SETTINGS_KEY) return !state.clashSettingsSaveRefused;
+  // Presets and exclusions only publish edits after successful native saves.
   return true;
 }
 

@@ -93,6 +93,7 @@ export const LOCAL_WORK_CODECS = {
       const { rows, conflict } = mergeRows(current.checklists, imported.checklists, row => row.id);
       const pending = mergeRows(Object.entries(current.pendingLegacyAnswers ?? {}), Object.entries(imported.pendingLegacyAnswers ?? {}), ([id]) => id);
       const raw = encodeManualLibrary({ ...current, checklists: rows,
+        activeId: current.checklists.length ? current.activeId : imported.activeId,
         ...(pending.rows.length ? { pendingLegacyAnswers: Object.fromEntries(pending.rows) } : {}),
       });
       if (raw === null) throw new Error('Too many manual validation answers');

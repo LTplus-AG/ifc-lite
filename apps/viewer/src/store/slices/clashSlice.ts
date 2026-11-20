@@ -133,6 +133,7 @@ export interface ClashSlice {
   clashReportTouch: boolean;
   /** How the result list is organized (persisted). */
   clashGroupBy: ClashGroupBy;
+  clashSettingsSaveRefused: boolean;
   /** Result-list sort key - view state, kept in the store so it survives a
    *  panel switch instead of resetting to default each time. (#1464) */
   clashSortBy: ClashSortBy;
@@ -149,6 +150,7 @@ export interface ClashSlice {
    * presets); never wiped by `clearClash`. (#1468)
    */
   clashReviews: Map<string, ClashReview>;
+  clashReviewsSaveRefused: boolean;
   /** Which review statuses are shown in the panel list (view filter). (#1468) */
   clashStatusFilter: Set<ClashReviewStatus>;
   /**
@@ -466,6 +468,8 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
    */
   const persistSettings = () => {
     const result = saveSettings(snapshotSettings(get()));
+    const refused = !result.ok;
+    if (get().clashSettingsSaveRefused !== refused) set({ clashSettingsSaveRefused: refused });
     if (result.ok || settingsSaveFailureReported) return;
     settingsSaveFailureReported = true;
     reportClashSettingsSaveFailure(result.message);
@@ -503,6 +507,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     clashClusterEpsilon: initial.clusterEpsilon,
     clashReportTouch: initial.reportTouch,
     clashGroupBy: initial.groupBy,
+    clashSettingsSaveRefused: false,
     clashSortBy: 'severity',
     clashHideTouching: false,
     // Ghost (X-Ray context) by default so clicking a clash immediately reveals
@@ -512,6 +517,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     clashFocusMode: 'ghost',
     clashPresets: buildInitialPresets(),
     clashReviews: loadReviews(),
+    clashReviewsSaveRefused: false,
     clashStatusFilter: new Set(CLASH_REVIEW_STATUSES),
     clashExclusions: loadExclusions(),
     clashExclusionCounts: new Map<string, number>(),
@@ -747,7 +753,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
       const result = saveReviews(map);
       // Reflect the edit optimistically even if persistence hit quota, so the UI
       // stays responsive; the SaveResult lets the caller surface the failure.
-      set({ clashReviews: map });
+      set({ clashReviews: map, clashReviewsSaveRefused: !result.ok });
       return result;
     },
 
@@ -900,6 +906,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
         clashClusterEpsilon: settings.clusterEpsilon,
         clashReportTouch: settings.reportTouch,
         clashGroupBy: settings.groupBy,
+        clashSettingsSaveRefused: false,
         // Regroup existing derived results at the flavor's cluster radius in
         // the same commit (see resetClashSettings; `newRun: false` preserves
         // a manual duplicate-scan grouping). (#2535)

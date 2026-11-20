@@ -153,3 +153,14 @@ test('#10976 import refuses a late write and can be reimported without overwriti
   assert.equal(loadSettings().clearance, 0.25);
   assert.ok((await readBackupDrafts()).drafts.some(draft => draft.id === settingsKey));
 });
+
+test('#10976 restores the active checklist beside pending legacy answers without a checklist', async () => {
+  const checklist = { id: 'imported', template, answers };
+  assert.ok(saveManualLibrary({ version: 1, activeId: 'imported', checklists: [checklist] }).ok);
+  const file = parseContentBackup(wire());
+  const pending = { older: { origin: { status: 'warning' as const, updatedAt: 9 } } };
+  assert.ok(saveManualLibrary({ version: 1, activeId: null, checklists: [], pendingLegacyAnswers: pending }).ok);
+  assert.equal(await importContentBackup(file), 1);
+  assert.deepEqual(loadManualLibrary().library,
+    { version: 1, activeId: 'imported', checklists: [checklist], pendingLegacyAnswers: pending });
+});

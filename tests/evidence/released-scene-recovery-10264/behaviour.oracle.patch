@@ -1,9 +1,9 @@
 diff --git a/packages/renderer/src/released-scene-recovery.ts b/packages/renderer/src/released-scene-recovery.ts
-index 3461cda..0850bc9 100644
+index 9e9ab39..58fba17 100644
 --- a/packages/renderer/src/released-scene-recovery.ts
 +++ b/packages/renderer/src/released-scene-recovery.ts
-@@ -85,7 +85,7 @@ export async function recoverReleasedScene(
-     scene.resetReleasedForRebuild();
+@@ -95,7 +95,7 @@ export async function recoverReleasedScene(
+     contentAt = contentEpoch();
      const whole = await rebuild({ device: host.device.getDevice(), pipeline, scene, instancedModelIndices, isCurrent: current, requestRender: () => host.requestRender() });
      if (superseded()) return invalidated();
 -    if (!whole) return failed(new Error(whole ? 'Released scene rebuild was superseded' : 'Released scene rebuild was incomplete'));

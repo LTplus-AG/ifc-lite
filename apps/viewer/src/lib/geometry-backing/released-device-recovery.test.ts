@@ -250,6 +250,7 @@ describe('released device recovery rebuild (viewer)', () => {
     await geometryBackingCommand(store, undefined, { action: 'start', options: { database: { name: `recovery-hidden-model-${process.pid}`, locks: null } } as never });
     try {
       enqueueInstancedShards('hm', [shardBytes(77)], instancedShardSupplyToken('hm'));
+      drawQueued();
       await geometryBackingCommand(store, undefined, { action: 'seal' });
       releaseCpuMeshBuffers(meshes);
       noteSceneGeometry(meshes);

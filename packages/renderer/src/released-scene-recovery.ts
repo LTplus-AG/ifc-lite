@@ -44,8 +44,12 @@ export async function recoverReleasedScene(
 ): Promise<DeviceRecoveryResult> {
   const lossSequence = host.deviceLossSequence;
   const scene = host.scene;
+  // The scene's content epoch right after this recovery's reset: a clear() or reshape during the rebuild
+  // replaces the content it restores (same object, device and init), so the rebuild is stale.
+  let contentAt: number | undefined;
+  const contentEpoch = () => (scene as unknown as { replayEpoch: number }).replayEpoch;
   const current = () => generation === host.initGeneration && !host.destroyed
-    && host.deviceLossSequence === lossSequence && host.scene === scene;
+    && host.deviceLossSequence === lossSequence && host.scene === scene && (contentAt === undefined || contentEpoch() === contentAt);
   const failed = (error?: unknown): DeviceRecoveryResult => {
     if (!ownsLifecycle(host, generation)) return { ok: false, reason: 'renderer-destroyed', superseded: true };
     host.deviceLost = true; host.ready = false;
@@ -88,6 +92,7 @@ export async function recoverReleasedScene(
     }
     // Placements, ids and per-model translations stay; every GPU-derived flat and instanced piece goes.
     scene.resetReleasedForRebuild();
+    contentAt = contentEpoch();
     const whole = await rebuild({ device: host.device.getDevice(), pipeline, scene, instancedModelIndices, isCurrent: current, requestRender: () => host.requestRender() });
     if (superseded()) return invalidated();
     if (!current() || !whole) return failed(new Error(whole ? 'Released scene rebuild was superseded' : 'Released scene rebuild was incomplete'));

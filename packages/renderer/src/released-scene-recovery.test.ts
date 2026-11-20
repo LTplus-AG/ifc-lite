@@ -122,6 +122,29 @@ describe('released scene device recovery (#10264)', () => {
     });
   }
 
+  it('#10937 scene.clear() during the awaited instanced read: no restage, no readiness, and the successor content is never torn down', async () => {
+    const { renderer } = lostReleasedRenderer();
+    let resume!: () => void;
+    const gate = new Promise<void>((done) => { resume = done; });
+    let restaged = 0, clearingTeardowns = 0;
+    renderer['teardown'] = (clearScene = true) => { if (clearScene) clearingTeardowns++; renderer['ready'] = false; renderer['pipeline'] = null; };
+    renderer.setReleasedSceneRebuild(async (context) => {
+      await gate; // reading the backing's instanced shards
+      if (!context.isCurrent()) return false; // the host stops at the fence
+      restaged++;
+      return true;
+    });
+    const recovering = renderer.recoverDevice();
+    await new Promise((done) => setTimeout(done, 0));
+    renderer.getScene().clear(); // a new load (successor content) clears the same scene object
+    resume();
+    const result = await recovering;
+    assert.equal(result.ok, false, 'the rebuild of the old content is stale');
+    assert.equal(restaged, 0, 'the removed model is never restaged');
+    assert.equal(renderer.isReady(), false, 'never published ready for the cleared content');
+    assert.equal(clearingTeardowns, 0, "the successor's scene content is never torn down");
+  });
+
   it('an incomplete rebuild leaves the renderer lost and reports a retryable failure', async () => {
     const { renderer } = lostReleasedRenderer();
     renderer.setReleasedSceneRebuild(async () => false);

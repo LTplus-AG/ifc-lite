@@ -10,12 +10,13 @@
  */
 
 import { isFeatureEnabled } from '@/lib/features';
-import { lazy, Suspense, useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import { consumePendingPairingFragment, onPairingFragment } from '@/lib/agent-bridge/pairing-fragment';
 import { closeAgentBridgeDialog, requestAgentBridgeDialog, useAgentBridgeState, type AgentBridgeStatus } from '@/lib/agent-bridge/state';
 import { useViewerStore } from '@/store';
 
-const AgentBridgeDialog = lazy(() => import('./AgentBridgeDialog').then((m) => ({ default: m.AgentBridgeDialog })));
+const AgentBridgeDialog = lazyChunk(() => import('./AgentBridgeDialog').then((m) => ({ default: m.AgentBridgeDialog })));
 /** A fresh dialog per request, so a second link re-seeds the code and port. */
 const requestKeys = new WeakMap<object, number>();
 let nextKey = 0;
@@ -25,8 +26,8 @@ function requestKey(request: object): number {
   return key;
 }
 
-const AgentBridgeChip = lazy(() => import('./AgentBridgeChip').then((m) => ({ default: m.AgentBridgeChip })));
-const AgentBridgeMobileIndicator = lazy(() => import('./AgentBridgeMobileIndicator').then((m) => ({ default: m.AgentBridgeMobileIndicator })));
+const AgentBridgeChip = lazyChunk(() => import('./AgentBridgeChip').then((m) => ({ default: m.AgentBridgeChip })));
+const AgentBridgeMobileIndicator = lazyChunk(() => import('./AgentBridgeMobileIndicator').then((m) => ({ default: m.AgentBridgeMobileIndicator })));
 
 /** A live or just-ended connection is shown; a failed attempt stays in its dialog. */
 function visible(status: AgentBridgeStatus): boolean {

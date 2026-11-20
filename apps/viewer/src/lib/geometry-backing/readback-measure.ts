@@ -13,7 +13,6 @@ import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { useViewerStore } from '@/store';
 import { activeGeometryBackingTap } from './backing-debug-hook';
 import { ReadbackRaycastFeeder, type FeedOutcome } from './readback-raycast-feeder';
-import { recordFedVisibility } from './readback-coverage';
 
 const feeders = new WeakMap<Renderer, ReadbackRaycastFeeder>();
 
@@ -34,7 +33,14 @@ export function readbackFeeder(renderer: Renderer): ReadbackRaycastFeeder {
     // changes that end a backing generation, so a raycast never tests stale geometry.
     const owned = feeder;
     useViewerStore.subscribe((state, previous) => {
-      if (state.models !== previous.models || state.geometryContentVersion !== previous.geometryContentVersion) { owned.clear(); recordFedVisibility(renderer, null); }
+      if (state.models !== previous.models || state.geometryContentVersion !== previous.geometryContentVersion) owned.clear();
+    });
+    // Fed pieces are placed at the scene's placement when they were read. A renderer-side placement change
+    // (setModelTranslation/Rotation) moves the GPU geometry with no store change: drop them on its revision too.
+    let revision = renderer.getPickGeometryRevision();
+    renderer.getScene().onGeometryChange?.(() => {
+      const now = renderer.getPickGeometryRevision();
+      if (now !== revision) { revision = now; owned.clear(); }
     });
   }
   return feeder;
@@ -43,8 +49,5 @@ export function readbackFeeder(renderer: Renderer): ReadbackRaycastFeeder {
 /** Lease and hand the geometry under (x, y) to the renderer's raycast. */
 export function feedReadbackAt(renderer: Renderer, x: number, y: number,
   visibility: { hiddenIds?: ReadonlySet<number>; isolatedIds?: ReadonlySet<number> | null }): Promise<FeedOutcome> {
-  return readbackFeeder(renderer).prepare(x, y, visibility).then((outcome) => {
-    recordFedVisibility(renderer, outcome === 'fed' ? visibility : null);
-    return outcome;
-  });
+  return readbackFeeder(renderer).prepare(x, y, visibility);
 }

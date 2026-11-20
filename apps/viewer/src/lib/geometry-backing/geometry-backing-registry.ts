@@ -43,7 +43,11 @@ export class ModelGeometryBacking {
   readonly directory = new BackingDirectory();
   readonly writer: BackingWriter;
   readonly reader: BackingReader;
+  /** The tap's own read of a generation it is replacing (its shards are carried forward); never a consumer's. */
+  readonly carryReader: BackingReader;
   private live = true;
+  /** Replaced or removed in the store: no longer current for any consumer, though still readable for the carry. */
+  private superseded = false;
   private disposal: Promise<void> | undefined;
 
   constructor(
@@ -56,13 +60,33 @@ export class ModelGeometryBacking {
     const bitmaps = new TextureBitmapTable();
     this.writer = new BackingWriter(db, backingId, this.directory, new SourcePool(), bitmaps, options);
     this.reader = new BackingReader(db, backingId, this.directory, this.writer, bitmaps,
-      () => this.live, options.decodedCacheBytes);
+      () => this.live && !this.superseded, options.decodedCacheBytes);
+    this.carryReader = new BackingReader(db, backingId, this.directory, this.writer, bitmaps, () => this.live, 0);
   }
 
-  get isCurrent(): boolean { return this.live; }
+  get isCurrent(): boolean { return this.live && !this.superseded; }
+
+  /** Not yet disposed: its records still exist (current or not, complete or not). */
+  get isLive(): boolean { return this.live; }
+
+  /**
+   * The store replaced this generation's geometry (or removed the model): from now on it is not
+   * current, so a retained handle reports so and its readers refuse, before the replacement begins.
+   */
+  supersede(): void { this.superseded = true; }
 
   /** Closed, fully committed and still current: the precondition for any release. */
   get isComplete(): boolean {
+    return this.isCurrent && this.writer.isClosed && !this.writer.error
+      && this.directory.chunks.every((chunk) => chunk.state === 'durable')
+      && this.directory.shards.every((shard) => shard.state === 'durable');
+  }
+
+  /**
+   * Closed and fully committed, and not yet disposed, whether or not it is still current: what the tap's own
+   * replay and carry may read from a generation the store has replaced (through `carryReader`), never a consumer.
+   */
+  get isDurablyComplete(): boolean {
     return this.live && this.writer.isClosed && !this.writer.error
       && this.directory.chunks.every((chunk) => chunk.state === 'durable')
       && this.directory.shards.every((shard) => shard.state === 'durable');
@@ -135,6 +159,15 @@ export class GeometryBackingRegistry {
     if (!previous) return;
     this.models.delete(modelId);
     await previous.dispose(reason);
+  }
+
+  /**
+   * End exactly `backing`: a removal's deferred cleanup must never delete a generation that a re-added
+   * model of the same id began meanwhile. Idempotent.
+   */
+  async retire(backing: ModelGeometryBacking, reason?: string): Promise<void> {
+    if (this.models.get(backing.modelId) === backing) this.models.delete(backing.modelId);
+    await backing.dispose(reason);
   }
 
   /** Free storage of every model and give up this page's session. */

@@ -108,10 +108,12 @@ Two tools:
   Needs Linux with cgroup v2 and the memory controller delegated to the systemd user manager;
   anything missing exits 2, never skips.
 
-`--expect` is required. Today the issue is open, so the minimal case runs with
-`--expect killed`: it passes only while the tab is still killed and **fails once the load is
-loaded or refused**, telling you to switch to `--expect not-killed` (the #10264 acceptance:
-the tab is never killed). `error` and `timeout` never pass.
+`--expect` is required. `--expect killed` passes only while the tab is still killed and **fails
+once the load is loaded or refused**, telling you to switch to `--expect not-killed` (the #10264
+acceptance: the tab is never killed). `error` and `timeout` never pass. Admission now scales its
+estimate by the sampled share of dense triangulated geometry (`geometryDensity.ts`), so the dense
+minimal case below is expected to be `refused` after a bounded sample (four 256 KiB windows), before the whole source is read; it runs with
+`--expect not-killed`.
 
 A viewer may instead warn before an oversized load (a dialog "This model may exceed available
 memory" with Continue loading / Cancel). `--on-memory-dialog wait` (default) reports
@@ -160,7 +162,7 @@ happened before the decision, the identity-dependent flags are `null` with the r
 ```bash
 pnpm install && pnpm build:wasm && pnpm turbo build --filter=@ifc-lite/viewer   # or any built apps/viewer/dist
 npx playwright install chromium                            # once
-node scripts/perf/oom-load-probe.mjs --dist apps/viewer/dist --expect killed \
+node scripts/perf/oom-load-probe.mjs --dist apps/viewer/dist --expect not-killed \
   --kind tfs --target-mb 300 --device-memory 4 --cores 4 --cap 3G   # swiftshader, headless
 # Hardware GL: headed on a private Xvfb, e.g. DISPLAY=:181 ... --gl hardware
 ```
@@ -2995,6 +2997,24 @@ representation from the final load metric. Preserve true sticky keys and the
 canonical parser; defer mechanisms whose correctness or end-to-end verdict
 remains incomplete. [Raw dispositions and prerequisites](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/deferred-worker-mechanisms-6537/README.md)
 retain source attribution and the excluded attempts.
+
+## Repeated-key affinity cap (#8451, #9466)
+
+The cap preserves sticky assignment for small keys and reconsiders a hot key's
+owner in bounded runs. A fresh-browser comparison with the same WASM on both
+revisions showed faster worker-pool completion on the repeated-cube model in
+flat and instanced modes. The shared host was under CPU and swap pressure, so
+the timings are exploratory. The mixed-model overhead still needs a quiet-host
+verdict. Thanks to @ionuting for reporting the bottleneck.
+[#9466](https://github.com/LTplus-AG/ifc-lite/pull/9466)
+
+Flat mesh fingerprints matched. The hot key's instanced shard and template
+partition changed while reconstructed occurrences, picking IDs and packed
+appearance matched. A hardware Metal witness on cubes past the cap matched
+entity picks and framebuffer bytes. For a scheduling change, compare the
+canonical occurrences and rendered results as well as the raw shard bytes.
+Shard-layout changes can follow the new worker partition, so a matching
+occurrence count alone cannot establish equivalence.
 
 ## Known-explicit orientation: rejected, do not ship (#6537 / #6788)
 

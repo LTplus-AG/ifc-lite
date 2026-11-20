@@ -158,6 +158,15 @@ The design note inferred that host-tier eviction frees nothing, because the stor
 
 The host tier did evict: the scene let go of 336 MiB of bucket geometry, and the console reported the budget still exceeded by hot buckets. **But `totalBytes` did not move.** The same buffers became exclusive to `store.models`. So the inference is confirmed: **host eviction frees no geometry**, because the store's mesh list keeps every array the scene drops. A restore then decodes a second copy from the cache entry.
 
+The cold provider's decoded LRU now retains at most four chunks and 32 MiB of
+typed-array backing buffers. Shared arenas and canonical appearance arrays count
+once by buffer identity; an oversized chunk is returned without being cached.
+This bounds the LRU's references only: in-flight decode, returned meshes retained
+by the scene or callers, the source Blob/ArrayBuffer, and the chunk directory's
+appearance-source pool have separate owners. It does not enable geometry release
+or make a large bounds query bounded. Streaming writes and on-demand tool
+readback remain prerequisites before product release can be enabled.
+
 The JS heap and PSS did fall after the first zoom round, by about 510 MiB and 370 MiB. That is not geometry, since the figure shows the same buffers still referenced; this run does not say what it was. The extra 9 MiB on reopen is held by both the store and the scene.
 
 For S7 this means the store must learn about evictions (or stop holding the arrays) before the host tier saves anything.
@@ -193,7 +202,7 @@ What S2 does not change, and what still reads the CPU copy:
 - **X-Ray and lens promotion** still split a batch into per-alpha subsets cut from its pieces while it can be partitioned (row 5 of the original table). Without pieces the batch draws whole under the visibility test at the lowest alpha of its visible entities: a fade that is too wide, never a missing or hidden entity.
 - **Type visibility** (IfcSpace, openings, the Model/Types switch) is not hide/isolate: `useFilteredGeometry` drops those meshes from the list the scene uploads, so toggling a type re-uploads from the store's CPU arrays. It needs its own route before a release.
 - **Selection and hover highlight** (row 5) still built per-entity meshes from the pieces; S3 below moves them to the batches.
-- **Colour-merged pieces.** Classification reads primary entries, as before S2. Partly visible batches test the vertex lane and hide secondary entities exactly. When every primary entry is visible, the test is skipped and a hidden secondary can remain drawn; when every primary entry is hidden, a visible secondary is dropped. No in-tree producer emits foreign per-vertex ids today, but hosts can supply them through `MeshData.entityIds`. [#10653](https://github.com/LTplus-AG/ifc-lite/issues/10653) tracks complete lane coverage before an in-tree producer emits foreign ids or CPU-geometry release is enabled for such host-supplied meshes.
+- **Colour-merged pieces.** Since [#10653](https://github.com/LTplus-AG/ifc-lite/issues/10653) a batch also records the secondary vertex-lane ids of its colour-merged pieces (`BatchedMesh.laneIds`, kept through snapshots), and classification, the shadow pass, the lane anchor, X-Ray fades and override routing read primary and secondary ids together (`batch-entities.ts`). A hidden secondary forces the per-fragment test, and a visible secondary keeps an otherwise hidden batch drawn, with or without CPU pieces. Such batches are never partitioned for X-Ray splits; they draw whole at the lowest alpha of their ids.
 - **Textured meshes** are drawn one per mesh and were already filtered without CPU geometry. Instanced occurrences keep their per-instance hidden flag.
 
 S2 frees nothing and makes no speed claim; release stays disabled.
@@ -206,7 +215,7 @@ What still reads the CPU copy for the highlight, and why:
 
 - **An item filter** (`selectedItemId`, #4382). The lane carries the entity, not the representation item, so the item keeps its copy while the entity's pieces are in memory. A released scene highlights the whole entity, as the S1 pick reports the entity only.
 - **The fallback.** An entity whose batches cannot all draw it (an evicted batch, which is asked back into residency; a batch without a lane anchor; a quantized batch without its selection pipeline), an id two federated models share in one batch while the selection is scoped to one of them, and every entity while a larger highlight table awaits WebGPU's confirmation keep the copies. A released scene then has no copy to draw, and the entity is not highlighted until its batch is back. No entity is ever highlighted in part.
-- **Colour-merged pieces** ([#10653](https://github.com/LTplus-AG/ifc-lite/issues/10653)). An entity present only as a secondary vertex-lane id in a batch is not found in the batch's entries and keeps its copies, as for hide/isolate.
+- **Colour-merged pieces** ([#10653](https://github.com/LTplus-AG/ifc-lite/issues/10653)). An entity present only as a secondary vertex-lane id is found through the batch's `laneIds` and highlighted from the batch. Under a selection scoped to one model, a batch that also holds another model's entries keeps copies for it: the lane carries no model.
 - **Overlapping highlighted surfaces behind translucent geometry.** The highlight writes no depth, so where two highlighted surfaces overlap on screen without opaque depth between them, the one drawn last shows. The batches draw in batch order rather than the copies' hydration order; the colour is the same, only the per-face shading of that overlap can differ.
 
 A hovered entity with textured pieces keeps its hover copies, which cover the textured pieces the colour batches do not hold. Textured pieces already highlighted from their own buffers, and instanced occurrences through their per-instance flag. S3 frees nothing and makes no speed claim; release stays disabled. Type visibility still re-uploads from the store's CPU arrays and remains a prerequisite of S4.

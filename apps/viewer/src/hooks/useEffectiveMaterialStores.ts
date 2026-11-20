@@ -11,7 +11,7 @@ import { posthog } from '@/lib/analytics';
 import { useViewerStore, type FederatedModel } from '@/store';
 import type { SchemaVersion } from '@/store/types';
 import { materializeEffectiveIfcStore } from '@/lib/effective-ifc-store';
-import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
+import { getLegacyMutationView } from '@/sdk/adapters/model-compat';
 
 export interface MaterialStoreSource {
   modelId: string;
@@ -34,7 +34,7 @@ function viewForSource(
   views: ReadonlyMap<string, MutablePropertyView>,
 ): MutablePropertyView | undefined {
   if (!source.legacy) return views.get(source.modelId);
-  return views.get(LEGACY_MUTATION_MODEL_ID) ?? views.get(LEGACY_MODEL_ID);
+  return getLegacyMutationView(views);
 }
 
 export async function loadEffectiveMaterialStores(

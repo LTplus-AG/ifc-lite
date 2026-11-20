@@ -20,6 +20,7 @@
  * occurred here before.
  */
 
+import 'fake-indexeddb/auto';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createStore } from 'zustand/vanilla';
@@ -119,13 +120,13 @@ describe('bcfSlice: a delete clears the pointers into what it deleted', () => {
     assert.equal(s.getState().activeViewpointId, null);
   });
 
-  it('clearing the project clears the pointers with it', () => {
+  it('clearing the project clears the pointers with it', async () => {
     const s = make();
     s.getState().setBcfProject(project(topic('T1', [viewpoint('V1')])));
     s.getState().setActiveTopic('T1');
     s.getState().setActiveViewpoint('V1');
 
-    s.getState().clearBcfProject();
+    await s.getState().clearBcfProject();
 
     assert.equal(s.getState().bcfProject, null);
     assert.equal(s.getState().activeTopicId, null);

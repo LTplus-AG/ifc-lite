@@ -129,3 +129,24 @@ fn a_required_aggregate_that_may_be_empty_is_written_empty_10847() {
     assert_eq!((out.as_str(), dropped), ("#5=IFCPRESENTATIONLAYERWITHSTYLE('L',$,(#2),$,.T.,.F.,.F.,());", 1));
     assert_eq!(warnings, ["1 value(s) of a type the target slot does not accept were dropped: IFCPRESENTATIONLAYERWITHSTYLE.LayerStyles (#10847)."]);
 }
+
+/// Local CodeRabbit on #10878, the twin of the TypeScript case: IFC4X3 made
+/// IfcCountMeasure an INTEGER, so a typed count's payload converts too.
+#[test]
+fn a_typed_count_payload_becomes_an_ifc4x3_integer_10847() {
+    let (out, dropped, warnings) = convert("#5=IFCPROPERTYSINGLEVALUE('n',$,IFCCOUNTMEASURE(3.),$);", "IFC4", "IFC4X3");
+    assert_eq!((out.as_str(), dropped, warnings.len()), ("#5=IFCPROPERTYSINGLEVALUE('n',$,IFCCOUNTMEASURE(3),$);", 0, 0));
+    let (out, dropped, warnings) = convert("#5=IFCPROPERTYSINGLEVALUE('n',$,IFCCOUNTMEASURE(2.5),$);", "IFC4", "IFC4X3");
+    assert_eq!((out.as_str(), dropped), ("#5=IFCPROPERTYSINGLEVALUE('n',$,$,$);", 1));
+    assert_eq!(warnings, ["1 value(s) of a type the target slot does not accept were dropped: IFCPROPERTYSINGLEVALUE.NominalValue (#10847)."]);
+    let integral = "#5=IFCPROPERTYSINGLEVALUE('n',$,IFCCOUNTMEASURE(3),$);";
+    assert_eq!(convert(integral, "IFC4", "IFC4X3").0, integral);
+    let (out, dropped, _) = convert("#5=IFCPROPERTYLISTVALUE('n',$,(IFCCOUNTMEASURE(2.),IFCCOUNTMEASURE(2.5)),$);", "IFC4", "IFC4X3");
+    assert_eq!((out.as_str(), dropped), ("#5=IFCPROPERTYLISTVALUE('n',$,(IFCCOUNTMEASURE(2)),$);", 1));
+    // From IFC2X3 too, and a positional member empties its group.
+    assert_eq!(convert("#5=IFCPROPERTYSINGLEVALUE('n',$,IFCCOUNTMEASURE(4.),$);", "IFC2X3", "IFC4X3").0, "#5=IFCPROPERTYSINGLEVALUE('n',$,IFCCOUNTMEASURE(4),$);");
+    assert_eq!(convert("#5=IFCTABLEROW((IFCCOUNTMEASURE(2.5),IFCLABEL('x')),.F.);", "IFC4", "IFC4X3").0, "#5=IFCTABLEROW($,.F.);");
+    // IFC4X3 -> IFC4 widens IfcCountMeasure back to a number: nothing to convert.
+    let integer = "#5=IFCPROPERTYSINGLEVALUE('n',$,IFCCOUNTMEASURE(3),$);";
+    assert_eq!(convert(integer, "IFC4X3", "IFC4"), (integer.to_owned(), 0, Vec::<String>::new()));
+}

@@ -116,6 +116,28 @@ describe('value forms a target slot rejects (#10847)', () => {
     });
   });
 
+  // Local CodeRabbit on #10878: IFC4X3 made IfcCountMeasure an INTEGER, so a typed count's payload converts too.
+  it('writes a whole typed count as an IFC4X3 integer and drops a fractional one', () => {
+    expect(convert("#5=IFCPROPERTYSINGLEVALUE('n',$,IFCCOUNTMEASURE(3.),$);", 'IFC4', 'IFC4X3'))
+      .toEqual({ out: "#5=IFCPROPERTYSINGLEVALUE('n',$,IFCCOUNTMEASURE(3),$);", warnings: [] });
+    expect(convert("#5=IFCPROPERTYSINGLEVALUE('n',$,IFCCOUNTMEASURE(2.5),$);", 'IFC4', 'IFC4X3')).toEqual({
+      out: "#5=IFCPROPERTYSINGLEVALUE('n',$,$,$);",
+      warnings: ['1 value(s) of a type the target slot does not accept were dropped: IFCPROPERTYSINGLEVALUE.NominalValue (#10847).'],
+    });
+    const integral = "#5=IFCPROPERTYSINGLEVALUE('n',$,IFCCOUNTMEASURE(3),$);";
+    expect(convert(integral, 'IFC4', 'IFC4X3')).toEqual({ out: integral, warnings: [] });
+    expect(convert("#5=IFCPROPERTYLISTVALUE('n',$,(IFCCOUNTMEASURE(2.),IFCCOUNTMEASURE(2.5)),$);", 'IFC4', 'IFC4X3')).toEqual({
+      out: "#5=IFCPROPERTYLISTVALUE('n',$,(IFCCOUNTMEASURE(2)),$);",
+      warnings: ['1 value(s) of a type the target slot does not accept were dropped: IFCPROPERTYLISTVALUE.ListValues (#10847).'],
+    });
+    // From IFC2X3 too, and a positional member empties its group.
+    expect(convert("#5=IFCPROPERTYSINGLEVALUE('n',$,IFCCOUNTMEASURE(4.),$);", 'IFC2X3', 'IFC4X3').out).toBe("#5=IFCPROPERTYSINGLEVALUE('n',$,IFCCOUNTMEASURE(4),$);");
+    expect(convert("#5=IFCTABLEROW((IFCCOUNTMEASURE(2.5),IFCLABEL('x')),.F.);", 'IFC4', 'IFC4X3').out).toBe('#5=IFCTABLEROW($,.F.);');
+    // IFC4X3 -> IFC4 widens IfcCountMeasure back to a number: nothing to convert.
+    const integer = "#5=IFCPROPERTYSINGLEVALUE('n',$,IFCCOUNTMEASURE(3),$);";
+    expect(convert(integer, 'IFC4X3', 'IFC4')).toEqual({ out: integer, warnings: [] });
+  });
+
   it('leaves convertStepLine without a reconciliation object unchanged (callers opt in)', () => {
     expect(convertStepLine("#5=IFCCLASSIFICATION('src','1',#9,'name');", 'IFC2X3', 'IFC4')).toBe("#5=IFCCLASSIFICATION('src','1',#9,'name',$,$,$);");
   });

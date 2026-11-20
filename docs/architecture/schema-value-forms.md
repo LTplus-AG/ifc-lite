@@ -14,14 +14,17 @@ required aggregate that may be empty and loses every member is written `()`.
 Forms: `#` entity reference, `S` string, `R` real, `I` integer, `E` enumeration (and BOOLEAN /
 LOGICAL), `B` binary, `T:NAME` a typed select member, and `A` before a form for an aggregate member.
 A reference is rejected only when no entity the source names is related to one the target names.
+A `>TO` row converts instead of dropping. `T:NAME(F)` is a payload row: a typed member the target
+takes whose defined type no longer holds payload form F (IFC4X3 made IfcCountMeasure an INTEGER), so
+`T:NAME(R)>I` writes a whole payload as the integer and drops a fractional one.
 
 | Direction | Slots |
 | --- | --- |
 | IFC2X3 → IFC4 | 38 |
-| IFC2X3 → IFC4X3 | 42 |
+| IFC2X3 → IFC4X3 | 54 |
 | IFC4 → IFC2X3 | 50 |
 | IFC4X3 → IFC2X3 | 52 |
-| IFC4 → IFC4X3 | 6 |
+| IFC4 → IFC4X3 | 22 |
 | IFC4X3 → IFC4 | 20 |
 
 ## IFC2X3 → IFC4
@@ -94,8 +97,18 @@ A reference is rejected only when no entity the source names is related to one t
 | IfcIrregularTimeSeries.StartTime | IfcDateTimeSelect | IfcDateTime | yes |  | `#` |
 | IfcIrregularTimeSeries.EndTime | IfcDateTimeSelect | IfcDateTime | yes |  | `#` |
 | IfcIrregularTimeSeriesValue.TimeStamp | IfcDateTimeSelect | IfcDateTime | yes |  | `#` |
+| IfcIrregularTimeSeriesValue.ListValues | IfcValue | IfcValue | yes | whole: ListValues | `AT:IFCCOUNTMEASURE(R)>I` |
+| IfcMeasureWithUnit.ValueComponent | IfcValue | IfcValue | yes |  | `T:IFCCOUNTMEASURE(R)>I` |
 | IfcMetric.CreationTime | IfcDateTimeSelect | IfcDateTime |  |  | `#` |
 | IfcPresentationLayerWithStyle.LayerStyles | IfcPresentationStyleSelect | IfcPresentationStyle | yes | `()` | `AT:IFCNULLSTYLE` |
+| IfcPropertyBoundedValue.UpperBoundValue | IfcValue | IfcValue |  |  | `T:IFCCOUNTMEASURE(R)>I` |
+| IfcPropertyBoundedValue.LowerBoundValue | IfcValue | IfcValue |  |  | `T:IFCCOUNTMEASURE(R)>I` |
+| IfcPropertyEnumeratedValue.EnumerationValues | IfcValue | IfcValue |  |  | `AT:IFCCOUNTMEASURE(R)>I` |
+| IfcPropertyEnumeration.EnumerationValues | IfcValue | IfcValue | yes |  | `AT:IFCCOUNTMEASURE(R)>I` |
+| IfcPropertyListValue.ListValues | IfcValue | IfcValue |  |  | `AT:IFCCOUNTMEASURE(R)>I` |
+| IfcPropertySingleValue.NominalValue | IfcValue | IfcValue |  |  | `T:IFCCOUNTMEASURE(R)>I` |
+| IfcPropertyTableValue.DefiningValues | IfcValue | IfcValue |  | whole: DefiningValues + DefinedValues | `AT:IFCCOUNTMEASURE(R)>I` |
+| IfcPropertyTableValue.DefinedValues | IfcValue | IfcValue |  | whole: DefiningValues + DefinedValues | `AT:IFCCOUNTMEASURE(R)>I` |
 | IfcQuantityCount.CountValue | IfcCountMeasure | IfcCountMeasure | yes |  | `R>I` |
 | IfcRegularTimeSeries.StartTime | IfcDateTimeSelect | IfcDateTime | yes |  | `#` |
 | IfcRegularTimeSeries.EndTime | IfcDateTimeSelect | IfcDateTime | yes |  | `#` |
@@ -103,6 +116,8 @@ A reference is rejected only when no entity the source names is related to one t
 | IfcRelSequence.TimeLag | IfcTimeMeasure | IfcLagTime |  |  | `R` |
 | IfcSurfaceCurveSweptAreaSolid.StartParam | IfcParameterValue | IfcCurveMeasureSelect |  |  | `R>T:IFCPARAMETERVALUE` |
 | IfcSurfaceCurveSweptAreaSolid.EndParam | IfcParameterValue | IfcCurveMeasureSelect |  |  | `R>T:IFCPARAMETERVALUE` |
+| IfcTableRow.RowCells | IfcValue | IfcValue |  | whole: RowCells | `AT:IFCCOUNTMEASURE(R)>I` |
+| IfcTimeSeriesValue.ListValues | IfcValue | IfcValue | yes | whole: ListValues | `AT:IFCCOUNTMEASURE(R)>I` |
 | IfcWorkPlan.CreationDate | IfcDateTimeSelect | IfcDateTime | yes |  | `#` |
 | IfcWorkPlan.Duration | IfcTimeMeasure | IfcDuration |  |  | `R` |
 | IfcWorkPlan.TotalFloat | IfcTimeMeasure | IfcDuration |  |  | `R` |
@@ -230,12 +245,28 @@ A reference is rejected only when no entity the source names is related to one t
 
 | Entity.Attribute | Source type | Target type | Required | Emptied as | Forms the target rejects |
 | --- | --- | --- | --- | --- | --- |
+| IfcAppliedValue.AppliedValue | IfcAppliedValueSelect | IfcAppliedValueSelect |  |  | `T:IFCCOUNTMEASURE(R)>I` |
+| IfcCostValue.AppliedValue | IfcAppliedValueSelect | IfcAppliedValueSelect |  |  | `T:IFCCOUNTMEASURE(R)>I` |
 | IfcFixedReferenceSweptAreaSolid.StartParam | IfcParameterValue | IfcCurveMeasureSelect |  |  | `R>T:IFCPARAMETERVALUE` |
 | IfcFixedReferenceSweptAreaSolid.EndParam | IfcParameterValue | IfcCurveMeasureSelect |  |  | `R>T:IFCPARAMETERVALUE` |
+| IfcIrregularTimeSeriesValue.ListValues | IfcValue | IfcValue | yes | whole: ListValues | `AT:IFCCOUNTMEASURE(R)>I` |
+| IfcMeasureWithUnit.ValueComponent | IfcValue | IfcValue | yes |  | `T:IFCCOUNTMEASURE(R)>I` |
+| IfcMetric.DataValue | IfcMetricValueSelect | IfcMetricValueSelect |  |  | `T:IFCCOUNTMEASURE(R)>I` |
+| IfcPropertyBoundedValue.UpperBoundValue | IfcValue | IfcValue |  |  | `T:IFCCOUNTMEASURE(R)>I` |
+| IfcPropertyBoundedValue.LowerBoundValue | IfcValue | IfcValue |  |  | `T:IFCCOUNTMEASURE(R)>I` |
+| IfcPropertyBoundedValue.SetPointValue | IfcValue | IfcValue |  |  | `T:IFCCOUNTMEASURE(R)>I` |
+| IfcPropertyEnumeratedValue.EnumerationValues | IfcValue | IfcValue |  |  | `AT:IFCCOUNTMEASURE(R)>I` |
+| IfcPropertyEnumeration.EnumerationValues | IfcValue | IfcValue | yes |  | `AT:IFCCOUNTMEASURE(R)>I` |
+| IfcPropertyListValue.ListValues | IfcValue | IfcValue |  |  | `AT:IFCCOUNTMEASURE(R)>I` |
+| IfcPropertySingleValue.NominalValue | IfcValue | IfcValue |  |  | `T:IFCCOUNTMEASURE(R)>I` |
+| IfcPropertyTableValue.DefiningValues | IfcValue | IfcValue |  | whole: DefiningValues + DefinedValues | `AT:IFCCOUNTMEASURE(R)>I` |
+| IfcPropertyTableValue.DefinedValues | IfcValue | IfcValue |  | whole: DefiningValues + DefinedValues | `AT:IFCCOUNTMEASURE(R)>I` |
 | IfcQuantityCount.CountValue | IfcCountMeasure | IfcCountMeasure | yes |  | `R>I` |
 | IfcReinforcementBarProperties.BarCount | IfcCountMeasure | IfcCountMeasure |  |  | `R>I` |
 | IfcSurfaceCurveSweptAreaSolid.StartParam | IfcParameterValue | IfcCurveMeasureSelect |  |  | `R>T:IFCPARAMETERVALUE` |
 | IfcSurfaceCurveSweptAreaSolid.EndParam | IfcParameterValue | IfcCurveMeasureSelect |  |  | `R>T:IFCPARAMETERVALUE` |
+| IfcTableRow.RowCells | IfcValue | IfcValue |  | whole: RowCells | `AT:IFCCOUNTMEASURE(R)>I` |
+| IfcTimeSeriesValue.ListValues | IfcValue | IfcValue | yes | whole: ListValues | `AT:IFCCOUNTMEASURE(R)>I` |
 
 ## IFC4X3 → IFC4
 

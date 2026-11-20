@@ -14,7 +14,8 @@ import { authoringControlBindings } from './authoring-inventory';
 import { appearanceNativeControlBindings } from './appearance-native-inventory';
 import { nativeExportRegistryInventory } from './export-native-inventory';
 
-type Classification = 'implemented' | 'presentation-only' | 'native-boundary' | 'unimplemented';
+// native-unsupported: the native viewer has no such control either, so the agent cannot lack it.
+type Classification = 'implemented' | 'presentation-only' | 'native-boundary' | 'native-unsupported' | 'unimplemented';
 interface Control { control: string; operations: readonly string[]; native_tools?: readonly string[]; classification: Classification; reason?: string }
 interface Inventory { owner: string; family: AuditFamily; controls: readonly Control[]; notes: readonly string[]; gaps: readonly string[] }
 function classify(status: string): Classification {
@@ -37,7 +38,7 @@ export function operationControlInventory(): Inventory[] {
     ...analyticsControlInventory.map(row => ({ owner: row.panel, family: 'analytics' as const, controls: [
       ...row.controls.map(item => control(item.control, item.operations)),
       ...('presentationOnly' in row ? row.presentationOnly : []).map(item => control(item, [], 'presentation-only')),
-      ...('nativeUnsupported' in row ? row.nativeUnsupported : []).map(item => control(item, [], 'native-boundary', item)),
+      ...('nativeUnsupported' in row ? row.nativeUnsupported : []).map(item => control(item, [], 'native-unsupported', item)),
     ], notes: row.notes, gaps: [] })),
     ...analyticsControlBoundaries.map(row => ({ owner: row.panel, family: 'analytics' as const,
       controls: [control(row.control, [], classify(row.classification), row.native)], notes: [], gaps: [] })),
@@ -105,9 +106,13 @@ export function viewerOperationCoverage() {
       { id: 'tours-mobile', implemented: ids(['presentation.', 'camera.']), notes: ['Pointer/held-key/drag/resize feedback is presentation; native pose, timed path and palette controls expose domain effects.'] },
       { id: 'runtime-extensions', implemented: ids(['extensions.', 'flavors.']), notes: ['Installed native grants and owner-qualified live host invocation remain authoritative; arbitrary third-party component internals are outside the built-in inventory.'] },
   ].map(withGaps);
+  // Every registered operation is bound to some audited control, whatever row owns it.
+  const bound = new Set([...audited, ...nonPanel.flatMap(row => row.controls?.flatMap(control => control.operations) ?? [])]);
+  const unbound = operations.filter(row => !bound.has(row.id)).map(row => row.id);
   return {
     version: 2, scope: 'audited built-in domain controls, numeric gesture equivalents and native host boundaries',
-    complete: panels.every(row => row.complete) && tools.every(row => row.complete) && exports.every(row => row.complete) && nonPanel.every(row => row.complete),
+    complete: panels.every(row => row.complete) && tools.every(row => row.complete) && exports.every(row => row.complete) && nonPanel.every(row => row.complete) && unbound.length === 0,
+    unbound_operations: unbound,
     all_controls_automatable: false, panel_count: panels.length, operation_count: operations.length, panels, tools, exports,
     non_panel: nonPanel,
     human_only: [

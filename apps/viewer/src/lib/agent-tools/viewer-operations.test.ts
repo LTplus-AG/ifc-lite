@@ -266,6 +266,7 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     assert.ok(classes('lists').includes('presentation-only'));
     assert.ok(classes('bcf').includes('native-boundary'));
     assert.ok(classes('hierarchy').includes('native-boundary'), 'unload with unexported changes keeps its native confirmation');
+    assert.deepEqual(report.unbound_operations, [], 'every registered operation is bound to an audited control');
     // Non-panel families are bound to audited controls too, and count toward complete.
     assert.deepEqual(report.non_panel.flatMap(row => row.gaps.map(gap => `${row.id}: ${gap}`)), []);
   });

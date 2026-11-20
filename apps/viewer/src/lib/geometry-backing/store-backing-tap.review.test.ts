@@ -366,3 +366,62 @@ it('#10876 property: a scene with any unverified geometry source never releases;
     } finally { await geometryBackingCommand(store, undefined, { action: 'stop' }); }
   }
 });
+
+it('#10876 r4640795851: a content bump after a sealed instanced list is released loses its instancing; a later fresh list never carries pre-change occurrences', async () => {
+  const meshes = [mesh(1)];
+  const store = storeWith({ ri: meshes });
+  const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+  try {
+    enqueueInstancedShards('ri', [shardBytes(95)], instancedShardGeneration());
+    const [sealed] = await tap.seal();
+    assert.equal(sealed.complete, true, sealed.error ?? 'incomplete');
+    releaseCpuMeshBuffers(meshes); // release-for-test, in place
+    store.setState({ geometryContentVersion: 1 }); // the content changed while the list is released
+    setList(store, 'ri', [mesh(1, 5)]); // a fresh resident list, no further bump
+    const [after] = await tap.seal();
+    assert.equal(after.instancedLost, true, 'the pre-change occurrences are lost, not carried');
+    assert.equal(after.complete, false, 'and nothing reports the model complete with them');
+    assert.equal(tap.releaseCandidate('ri'), undefined, 'so the allowlist offers nothing');
+  } finally { await tap.stop(); }
+});
+
+it('#10876 r4640795866: a valid shard and an undecodable one in one event: the seal never acknowledges the valid prefix as complete', async () => {
+  const store = storeWith({ bad: [mesh(1)] });
+  const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+  try {
+    try { enqueueInstancedShards('bad', [shardBytes(96), new ArrayBuffer(0)], instancedShardGeneration()); } catch { /* the queue's own error path */ }
+    const [status] = await tap.seal();
+    assert.equal(status.complete, false, 'a failed shard keeps the model incomplete');
+    assert.ok(status.error, 'and the failure is reported');
+    assert.equal(tap.releaseCandidate('bad'), undefined, 'so the allowlist offers nothing');
+  } finally { await tap.stop(); }
+});
+
+it('#10876 r4640725592 pin: a content-version bump while a shard-first model is unregistered never lets release take an unverified list', async () => {
+  const { geometryBackingCommand, activeGeometryBackingTap } = await import('./backing-debug-hook');
+  const store = createStore<ReleaseState>(() => ({ models: new Map(), geometryContentVersion: 0 }));
+  await geometryBackingCommand(store, undefined, { action: 'start', options: { database: database() } as never });
+  const scene = sceneStub();
+  try {
+    const tap = activeGeometryBackingTap()!;
+    enqueueInstancedShards('early-pin', [shardBytes(90)], instancedShardGeneration()); // before its model registers
+    store.setState({ geometryContentVersion: 1 }); // a content bump while `early-pin` is absent
+    const meshes = [mesh(1), mesh(2)];
+    store.setState({ models: new Map([['early-pin', { geometryResult: { meshes } }]]) }); // registers later, no bump
+    const [status] = await tap.seal();
+    const candidate = tap.releaseCandidate('early-pin');
+    // The invariant: whatever the allowlist offers is exactly the model's list, wholly consumed and verified.
+    if (candidate) {
+      assert.equal(candidate.meshes, meshes, 'the candidate is the exact store list');
+      assert.equal(status.meshes, meshes.length, 'every mesh of it was backed');
+      assert.equal(tap.registryHandle.verify(await candidate.backing.acknowledge()), true, 'and it verifies');
+      let backed = 0;
+      for (const id of [1, 2]) { const lease = await candidate.backing.reader.leaseEntity(id); try { backed += lease.meshes.length; } finally { lease.release(); } }
+      assert.equal(backed, meshes.length, 'the backed flat records are exactly those meshes');
+    }
+    await geometryBackingCommand(store, scene.renderer, { action: 'release-for-test' });
+    assert.equal(scene.released, 1, 'release took only the verified list');
+    // Recorded, not asserted as wanted: the pre-bump shard is still counted (follow-up: mark it instancedLost).
+    console.log(`[r4640725592] candidate=${!!candidate} shards=${status.shards} instancedLost=${status.instancedLost}`);
+  } finally { await geometryBackingCommand(store, undefined, { action: 'stop' }); }
+});

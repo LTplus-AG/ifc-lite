@@ -142,6 +142,9 @@ export class StoreGeometryBackingTap {
         this.tracked.get(modelId)!.registered = true;
         continue;
       }
+      // A content change loses committed instancing until re-supply is proved, on EVERY path, including the
+      // stale and released-list exits below that build no successor now: a later carry must not revive it.
+      if (versionChanged && (tracked.shards > 0 || tracked.carrying)) tracked.instancedLost = true;
       // First geometry of a model whose shards arrived earlier: an append.
       if (!versionChanged && tracked.meshes === undefined && tracked.consumed === 0 && meshes) tracked.meshes = meshes;
       // A stale (released) generation answers nothing; only a fresh resident list may replace it.
@@ -259,8 +262,13 @@ export class StoreGeometryBackingTap {
     }
     const target = tracked;
     target.shards++;
-    // Decode a private copy: the drain may transfer or reuse the queued bytes.
-    const shard = decodeInstancedShard(bytes.slice(0));
+    // Decode a private copy: the drain may transfer or reuse the queued bytes. A shard that does not decode
+    // is a failure of this generation (never acknowledged), not an exception that skips it unrecorded.
+    let shard: DecodedInstancedShard;
+    try { shard = decodeInstancedShard(bytes.slice(0)); } catch (error) {
+      void this.settle(target, Promise.reject(error));
+      return;
+    }
     this.enqueue(target, () => this.writer(target).appendInstancedShard(shard));
   }
 

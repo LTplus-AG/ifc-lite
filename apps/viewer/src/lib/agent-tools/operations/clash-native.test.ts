@@ -83,12 +83,20 @@ describe('native Clash operation parity (#10525 follow-up)', () => {
     assert.equal(result.isError, true);
     assert.equal(useViewerStore.getState().clashRunSeq, seq);
   });
-  it('preserves native unavailable refusals for unresolved clash pairs and groups (#10871)', async t => {
+  it('preserves native unavailable refusals for unresolved clash pairs and groups (#10871)', async () => {
     await seedCoincidentWalls(1, 3);
     const { run_seq } = value<{ run_seq: number }>(await call('clash.run', runInput(), true));
-    const ids = useViewerStore.getState().clashResult!.clashes.map(clash => clash.id);
+    const { clashResult, resolveGlobalIdInModel } = useViewerStore.getState();
+    assert.ok(clashResult);
+    // Keep the same loaded model and run, with findings whose entity refs no longer resolve.
+    const missing = Number.MAX_SAFE_INTEGER;
+    const clashes = clashResult.clashes.map(clash => {
+      assert.equal(resolveGlobalIdInModel(clash.a.model, missing), null);
+      return { ...clash, a: { ...clash.a, ref: missing }, b: { ...clash.b, ref: missing } };
+    });
+    useViewerStore.setState({ clashResult: { ...clashResult, clashes } });
+    const ids = clashes.map(clash => clash.id);
     assert.ok(ids.length > 1);
-    t.mock.method(useViewerStore.getState(), 'resolveGlobalIdInModel', () => null);
     for (const clash_ids of [[ids[0]], ids]) {
       const result = await call('clash.focus', { clash_ids, run_seq, element: 'pair', mode: 'highlight' }, true);
       assert.equal(result.errorCode, 'UNSUPPORTED_OPERATION', result.text);

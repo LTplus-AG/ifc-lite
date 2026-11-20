@@ -140,7 +140,7 @@ export async function runIdsBcfExport({
   await completeIdsBcfViewpoints(
     bcfProject, report, entityBounds, getGlobalRenderer(), toViewerGlobalId,
     useViewerStore.getState().cameraCallbacks.resolveHighlightIds,
-    { includeCamera, snapshots }, setBcfExportProgress,
+    { includeCamera, snapshots }, setBcfExportProgress, signal,
   );
   // Entity bounds (and so the framing cameras) are in the render frame; BCF is world (#4806).
   projectViewpointsToWorld(bcfProject, bcfWorldOffset(models, legacyGeometryResult));

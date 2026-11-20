@@ -14,18 +14,18 @@ import { useViewerStore } from '@/store';
 
 export async function reloadActiveModelInPlace(
   loadFile: (file: File) => Promise<void>,
-  /** Console tag of the setting being applied. */
-  tag: string,
   /** The active model was opened by reference from the processing server. */
   onServerProcessed: () => void,
 ): Promise<void> {
+  // The loader snapshots both settings. A change during the reload can raise a fresh prompt.
+  useViewerStore.setState({ mergeLayersPendingReload: false, geometryModePendingReload: false });
   const model = useViewerStore.getState().getActiveModel();
   const file = model?.sourceFile;
   if (file) {
     try {
       await loadFile(file);
     } catch (err) {
-      console.error(`[${tag}] loadFile threw:`, err);
+      console.error('[geometry-settings-reload] loadFile threw:', err);
     }
   } else if (model?.processedModel) {
     // The server made this geometry and no source bytes are here to re-tessellate, so the
@@ -33,7 +33,7 @@ export async function reloadActiveModelInPlace(
     onServerProcessed();
   } else if (typeof window !== 'undefined') {
     // No retained File (e.g. a blank/new model): fall back to a full reload; the setting is persisted.
-    console.warn(`[${tag}] no active sourceFile — falling back to window.location.reload()`);
+    console.warn('[geometry-settings-reload] no active sourceFile — falling back to window.location.reload()');
     window.location.reload();
   }
 }

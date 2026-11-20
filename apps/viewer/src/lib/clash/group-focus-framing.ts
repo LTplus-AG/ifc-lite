@@ -14,20 +14,32 @@ export interface FramedCamera {
 
 const LEVEL_DISPLAY_SETTLE_FRAME_LIMIT = 120;
 
-/** Frame only after an Exploded -> Stacked translation has reached the renderer. */
+/** Frame only after an Exploded -> Stacked translation has reached the renderer.
+ * On abort a pending animation frame is cancelled and `resolve(null)` runs, so a caller cancelled before framing
+ * starts never moves the camera; a `frameSelection` already called is not undone. */
 export function scheduleClashFrame(
   waitForLevelDisplayReset: boolean,
   waitForPresentationReset: boolean,
   resolve: (framed: FramedCamera | null) => void,
+  signal?: AbortSignal,
 ): void {
   let framesRemaining = LEVEL_DISPLAY_SETTLE_FRAME_LIMIT;
   let settledFrameSeen = !waitForLevelDisplayReset;
+  let pending = 0;
+  const next = (callback: FrameRequestCallback): void => { pending = requestAnimationFrame(callback); };
+  const abort = (): void => { cancelAnimationFrame(pending); resolve(null); };
+  if (signal?.aborted) { resolve(null); return; }
+  signal?.addEventListener('abort', abort, { once: true });
+  const settle = (framed: FramedCamera | null): void => {
+    signal?.removeEventListener('abort', abort);
+    resolve(framed);
+  };
   const frameWhenReady = (): void => {
     if (waitForPresentationReset) {
       // Type filtering rebuilds the geometry passed to ViewportContainer.
       // Let that React commit paint before asking the renderer for bounds.
       waitForPresentationReset = false;
-      requestAnimationFrame(frameWhenReady);
+      next(frameWhenReady);
       return;
     }
     if (waitForLevelDisplayReset) {
@@ -40,7 +52,7 @@ export function scheduleClashFrame(
         // The translation queue was drained in a React effect. Give the renderer
         // one paint frame before deriving bounds from the now-stacked geometry.
         settledFrameSeen = true;
-        requestAnimationFrame(frameWhenReady);
+        next(frameWhenReady);
         return;
       } else {
         waitForLevelDisplayReset = false;
@@ -49,17 +61,17 @@ export function scheduleClashFrame(
         framesRemaining -= 1;
         if (framesRemaining <= 0) {
           console.error('[clash] Timed out while restoring stacked geometry before framing.');
-          resolve(null);
+          settle(null);
           return;
         }
-        requestAnimationFrame(frameWhenReady);
+        next(frameWhenReady);
         return;
       }
     }
 
     const frameSelection = useViewerStore.getState().cameraCallbacks.frameSelection;
     if (!frameSelection) {
-      resolve(null);
+      settle(null);
       return;
     }
     try {
@@ -68,20 +80,20 @@ export function scheduleClashFrame(
       const frameResult: unknown = frameSelection(0);
       Promise.resolve(frameResult).then((didFrame) => {
         if (didFrame === false) {
-          resolve(null);
+          settle(null);
           return;
         }
-        resolve({ viewpoint: currentCameraViewpoint() });
+        settle({ viewpoint: currentCameraViewpoint() });
       }, (error) => {
         console.error('[clash] Could not finish framing the manual clash group:', error);
-        resolve(null);
+        settle(null);
       });
     } catch (error) {
       console.error('[clash] Could not frame the manual clash group:', error);
-      resolve(null);
+      settle(null);
     }
   };
-  requestAnimationFrame(frameWhenReady);
+  next(frameWhenReady);
 }
 
 function currentCameraViewpoint(): CameraViewpoint | null {

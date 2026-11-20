@@ -155,7 +155,7 @@ export function collectScanSources(
   return sources;
 }
 
-function toScanSectionPlane(
+export function toScanSectionPlane(
   sectionPlane: UseScanSectionLayerParams['sectionPlane'],
   coordinateInfo: UseScanSectionLayerParams['coordinateInfo'],
 ): ScanSectionPlane {
@@ -181,6 +181,15 @@ function toScanSectionPlane(
       bitangent: c.bitangent,
     },
   };
+}
+
+export function prepareNativeScanBand(params: UseScanSectionLayerParams) {
+  const sources = collectScanSources(params.models, params.legacyPointClouds);
+  const plane = toScanSectionPlane(params.sectionPlane, params.coordinateInfo);
+  const maxRendered = params.maxRendered ?? DEFAULT_SCAN_RENDER_CAP;
+  const selections = sources.map(sample => selectScanBand({ sample, coordinateInfo: params.coordinateInfo, plane,
+    thickness: params.thickness, classMask: params.classMask, maxRendered, model: sample.model, modelOutputsRenderFrame: sample.modelOutputsRenderFrame }));
+  return { sources, plane, merged: mergeScanBandSelections(selections, maxRendered) };
 }
 
 export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanSectionLayerResult {
@@ -247,22 +256,12 @@ export function useScanSectionLayer(params: UseScanSectionLayerParams): UseScanS
     }
 
     timerRef.current = setTimeout(() => {
-      const sources = collectScanSources(models, legacyPointClouds);
+      const { sources, plane, merged } = prepareNativeScanBand({ ...params, maxRendered });
       if (sources.length === 0) {
         setSelection(EMPTY_SELECTION);
         setOutline(null);
         return;
       }
-      const plane = toScanSectionPlane(sectionPlane, coordinateInfo);
-      const selections = sources.map((sample) => selectScanBand({
-        sample, coordinateInfo, plane, thickness, classMask, maxRendered,
-        model: sample.model,
-        modelOutputsRenderFrame: sample.modelOutputsRenderFrame,
-      }));
-      // Re-apply the render cap to the MERGED result: each asset caps its
-      // own selection, but several dense scans would otherwise concatenate
-      // to sources × maxRendered points per canvas redraw.
-      const merged = mergeScanBandSelections(selections, maxRendered);
       if (!outlineEnabled) {
         setSelection(merged);
         return;

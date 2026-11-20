@@ -9,7 +9,7 @@
  * containers use their parsed STEP payload rather than the raw archive.
  */
 
-import { StepExporter, type StepExportOptions } from '@ifc-lite/export';
+import { isGeorefRefusal, StepExporter, type StepExportOptions } from '@ifc-lite/export';
 import { unwrapIfcZip, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { FederatedModel, SchemaVersion } from '@/store/types';
@@ -92,9 +92,7 @@ export async function resolveStepExportSource(
         const result = regenerate(model.ifcDataStore, georefMutations);
         return { bytes: result.content, warnings: result.stats.georeferencingWarnings ?? [] };
       } catch (error) {
-        // Only the exporter's georeferencing refusals ("Georeferencing was not exported: ...", the IFC2X3
-        // guard); any other failure is a real export failure.
-        if (!(error instanceof Error && error.message.startsWith('Georeferencing '))) throw error;
+        if (!isGeorefRefusal(error)) throw error;
         warnings.push(`${SESSION_GEOREF_NOT_WRITTEN} ${error.message}`);
       }
     }

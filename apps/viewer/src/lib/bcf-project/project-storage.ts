@@ -40,20 +40,22 @@ export async function readBcfSlot(): Promise<Slot | 'unreadable' | null> {
 
 export async function writeBcfSlot(data: string | null, expected: string | null):
 Promise<{ ok: true; revision: string } | { ok: false; reason: ContentFailure }> {
+  let refused: ContentFailure | undefined;
   try {
     const revision = crypto.randomUUID();
     const tx = await transaction('readwrite');
     const items = tx.objectStore(store);
     const done = transactionDone(tx);
     const read = items.get(key);
-    let refused: ContentFailure | undefined;
     read.onsuccess = () => {
       const current: unknown = read.result;
       if (current !== undefined && !isSlot(current)) { refused = 'invalid'; return; }
       if ((current?.revision ?? null) !== expected) { refused = 'conflict'; return; }
       try {
         // The empty slot keeps a new revision so a stale tab cannot recreate a closed project.
-        items.put({ revision, data } satisfies Slot, key);
+        const put = items.put({ revision, data } satisfies Slot, key);
+        // The request exposes quota errors before the transaction has finished aborting.
+        put.onerror = () => { refused = contentFailure(put.error); };
       } catch (error) {
         refused = contentFailure(error);
         tx.abort();
@@ -61,5 +63,5 @@ Promise<{ ok: true; revision: string } | { ok: false; reason: ContentFailure }> 
     };
     await done;
     return refused ? { ok: false, reason: refused } : { ok: true, revision };
-  } catch (error) { return { ok: false, reason: contentFailure(error) }; }
+  } catch (error) { return { ok: false, reason: refused ?? contentFailure(error) }; }
 }

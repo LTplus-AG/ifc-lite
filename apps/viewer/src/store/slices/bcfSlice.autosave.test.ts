@@ -167,8 +167,13 @@ test('#10975 quota and image limit refusals preserve the previous commit', async
   assert.equal(await live().flushBcfAutosave(), true);
   const before = await slot();
 
-  const put = mock.method(IDBObjectStore.prototype, 'put', () => {
-    throw new DOMException('Storage full', 'QuotaExceededError');
+  const put = mock.method(IDBObjectStore.prototype, 'put', function (this: IDBObjectStore, value: unknown, key: IDBValidKey) {
+    // Adding at the existing key produces a real asynchronous request failure and rollback.
+    const request = this.add(value, key);
+    request.addEventListener('error', () => {
+      Object.defineProperty(request, 'error', { value: new DOMException('Storage full', 'QuotaExceededError') });
+    });
+    return request;
   });
   try {
     live().setBcfProject(project('In memory'));

@@ -3,9 +3,15 @@
 //! #7955: SMLib lists a tessellated solid's vertices and triangles in
 //! heap-address order. The adapter must emit one canonical form instead:
 //! vertices in (x, y, z) order, each triangle starting at its smallest vertex,
-//! triangles sorted by (source face, v0, v1, v2), and a planar quad face split
-//! through its lowest vertex. Observed on published parts that are the
-//! adapter's mesh unchanged (no layers, clips or welds).
+//! triangles sorted by (source face, v0, v1, v2), and a planar, strictly convex
+//! two-triangle face split through its lowest vertex.
+//!
+//! Observed on published parts that are the adapter's mesh unchanged. Positions,
+//! indices and source-face IDs are copied verbatim from the worker reply
+//! (geometry-runtime worker_mesh.rs read_u32(SourceFaces) -> worker_sweep.rs
+//! revision_local_faces -> processing publication_mesh.rs copy_part); only the
+//! material-layer steps (layer_caps.rs, layer_rims.rs) rewrite them, so the
+//! test requires parts without a layer or halfspace clip.
 use ifc_lite_processing::element::retained_runtime::{ModelOptions, ProductOutcome, ShapePart};
 use ifc_lite_retained_native::run_model_native;
 use std::collections::BTreeMap;
@@ -84,17 +90,47 @@ fn check(model: &str, id: u32, part: &ShapePart) -> Result<(), String> {
             return Err(format!("{model}#{id}: triangle {i} is not sorted by (face, v0, v1, v2)"));
         }
     }
-    // A quad face (exactly two triangles) is split through its lowest vertex.
+    // The adapter re-splits only a planar, strictly convex two-triangle face
+    // (mesh_canonical.cpp canonical_planar_quads); check only those.
     let mut faces: BTreeMap<u32, Vec<[u32; 3]>> = BTreeMap::new();
     for (face, t) in &triangles { faces.entry(*face).or_default().push(*t); }
     for (face, pair) in faces.iter().filter(|(_, t)| t.len() == 2) {
+        let Some(loop_) = quad_loop(pair) else { continue; };
+        if !planar_strictly_convex(part, loop_) { continue; }
         let shared: Vec<_> = pair[0].iter().filter(|v| pair[1].contains(v)).collect();
-        let lowest = pair.iter().flatten().min().unwrap();
-        if shared.len() == 2 && !shared.contains(&lowest) {
+        let lowest = loop_.iter().min().unwrap();
+        if !shared.contains(&lowest) {
             return Err(format!("{model}#{id}: quad face {face} is not split through its lowest vertex {lowest}"));
         }
     }
     Ok(())
+}
+
+/// The boundary loop (u, q, v, p) of a = (u, v, p) and b = (v, u, q), which
+/// share the directed edge u->v / v->u.
+fn quad_loop(pair: &[[u32; 3]]) -> Option<[u32; 4]> {
+    let (a, b) = (pair[0], pair[1]);
+    for i in 0..3 {
+        let (u, v, p) = (a[i], a[(i + 1) % 3], a[(i + 2) % 3]);
+        for j in 0..3 {
+            if b[j] == v && b[(j + 1) % 3] == u && b[(j + 2) % 3] != p {
+                return Some([u, b[(j + 2) % 3], v, p]);
+            }
+        }
+    }
+    None
+}
+fn sub(a: Point, b: Point) -> Point { [a[0] - b[0], a[1] - b[1], a[2] - b[2]] }
+fn cross(a: Point, b: Point) -> Point { [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]] }
+fn dot(a: Point, b: Point) -> f64 { a[0] * b[0] + a[1] * b[1] + a[2] * b[2] }
+/// Exactly coplanar (zero triple product) with every boundary turn along the
+/// area normal. These fixtures' quads are axis-aligned, so exact is exact.
+fn planar_strictly_convex(part: &ShapePart, quad: [u32; 4]) -> bool {
+    let p = quad.map(|v| point(part, v));
+    if dot(sub(p[1], p[0]), cross(sub(p[2], p[0]), sub(p[3], p[0]))) != 0. { return false; }
+    let mut n = [0.; 3];
+    for k in 0..4 { let c = cross(p[k], p[(k + 1) % 4]); for i in 0..3 { n[i] += c[i]; } }
+    (0..4).all(|k| dot(cross(sub(p[(k + 1) % 4], p[k]), sub(p[(k + 2) % 4], p[(k + 1) % 4])), n) > 0.)
 }
 
 #[test]
@@ -106,6 +142,8 @@ fn issue_7955_adapter_meshes_are_canonical() {
         run_model_native(ifc_lite_core::SourceBundle::new(source.as_bytes().to_vec()), &worker, &ModelOptions::default(), |outcome| {
             if let ProductOutcome::Published(product) = outcome {
                 for part in &product.parts {
+                    assert!(part.layer.is_none() && !part.halfspace_clipped,
+                        "{model}#{}: witness parts must be the adapter mesh unchanged", product.product_id);
                     parts += 1;
                     if let Err(error) = check(model, product.product_id, part) { errors.push(error); }
                 }

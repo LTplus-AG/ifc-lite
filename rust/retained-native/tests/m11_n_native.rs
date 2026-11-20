@@ -64,25 +64,38 @@ fn reference_rows(root: &Path, model: &str, worker: &std::ffi::OsStr) -> Vec<ser
 /// The SDK enumerates Boolean results in heap-address order. The adapter's
 /// canonical mesh form must make the reference byte-identical whatever the
 /// worker's address layout: run every model with a published product under two
-/// ordinary (ASLR) workers and one with ASLR off, and compare bytes.
+/// ordinary (ASLR) workers and, where the kernel allows it, one with ASLR off,
+/// and compare bytes.
+///
+/// The canonical form does not cover every case: a planar face of more than
+/// two triangles, a curved face other than a cylinder, and a cylinder pair the
+/// diagonal normalization skips (its alignment or chord guard) keep the SDK's
+/// triangulation, and coordinate order follows exact f64 bits. The committed
+/// corpus has none of those that vary (6 ordinary runs, 1 ASLR-off run and two
+/// CI runs collapsed to one form on 2026-11-19). If this test ever flakes, the
+/// failing rows name such a face: extend mesh_canonical.cpp to cover it, or
+/// make the consumer compare it order-insensitively. Never retry until green.
 #[test]
 fn m11_n_reference_is_independent_of_worker_address_layout() {
     let Some(worker) = support::worker_path() else {return;};
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let setarch = std::process::Command::new("setarch").arg("--version").output().is_ok_and(|o| o.status.success());
-    if !setarch {
-        assert!(std::env::var_os("IFCLITE_REQUIRE_SMLIB").is_none(),"real SMLib is required but setarch is unavailable");
-        eprintln!("SKIP worker address-layout determinism: no setarch");
-        return;
-    }
+    let mut workers = vec![worker.clone(),worker.clone()];
     let directory = std::env::temp_dir().join(format!("m11-n-layout-{}",std::process::id()));
-    std::fs::create_dir_all(&directory).unwrap();
-    let fixed = directory.join("worker-no-aslr");
-    let worker_path = std::fs::canonicalize(&worker).unwrap();
-    std::fs::write(&fixed,format!("#!/bin/sh\nexec setarch \"$(uname -m)\" -R '{}' \"$@\"\n",worker_path.display())).unwrap();
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(&fixed,std::fs::Permissions::from_mode(0o755)).unwrap();
-    let workers = [worker.clone(),worker.clone(),fixed.into_os_string()];
+    // Probe the personality flag itself: setarch can exist while a sandbox
+    // (e.g. Docker's default seccomp profile) refuses ADDR_NO_RANDOMIZE.
+    let aslr_off = std::process::Command::new("setarch")
+        .args([std::env::consts::ARCH,"-R","true"]).output().is_ok_and(|o| o.status.success());
+    if aslr_off {
+        std::fs::create_dir_all(&directory).unwrap();
+        let fixed = directory.join("worker-no-aslr");
+        let worker_path = std::fs::canonicalize(&worker).unwrap();
+        std::fs::write(&fixed,format!("#!/bin/sh\nexec setarch \"$(uname -m)\" -R '{}' \"$@\"\n",worker_path.display())).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&fixed,std::fs::Permissions::from_mode(0o755)).unwrap();
+        workers.push(fixed.into_os_string());
+    } else {
+        eprintln!("SKIP the ASLR-off worker: `setarch -R true` failed (no setarch, or the personality flag is refused); comparing 2 ordinary ASLR workers only");
+    }
     let mut models = 0;
     let mut differing = Vec::new();
     for (model, expected) in universe(&root) {
@@ -99,7 +112,8 @@ fn m11_n_reference_is_independent_of_worker_address_layout() {
     let _ = std::fs::remove_dir_all(&directory);
     assert!(models >= 30,"must cover the committed published corpus, got {models} models");
     assert!(differing.is_empty(),"m11-n reference bytes depend on the worker address layout:\n{}",differing.join("\n"));
-    println!("M11-N layout determinism: {models} models byte-identical across 2 ASLR workers and 1 ASLR-off worker");
+    println!("M11-N layout determinism: {models} models byte-identical across 2 ASLR workers{}",
+        if aslr_off {" and 1 ASLR-off worker"} else {" (ASLR-off worker skipped)"});
     println!("sdk witness executed: m11_n_worker_layout_determinism");
 }
 

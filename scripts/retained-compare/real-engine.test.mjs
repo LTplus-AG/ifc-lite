@@ -20,6 +20,7 @@ test('#7955 M4 CLI band tags and capped volumes match native at 1e-9', {
       ['m4straight', 'tests/fixtures/cli-retained/layered-wall.ifc'],
       ['m4curved', 'tests/fixtures/synthetic-retained/f-a-curved.ifc'],
       ['m4synthetic', 'tests/fixtures/synthetic-retained/f-g-layers.ifc'],
+      ['m4openings', 'tests/fixtures/synthetic-retained/f-d-openings.ifc'],
     ]) {
       assert.ok(reference[name]?.length > 0, `${name} native observations required`);
       const output = join(scratch, name);

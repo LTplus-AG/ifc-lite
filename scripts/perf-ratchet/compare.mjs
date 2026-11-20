@@ -51,12 +51,13 @@ export function allowedMax(entry) {
  */
 export function loweringTarget(entry, value) {
   const bytes = entry.unit === 'bytes';
-  const headroom = entry.headroom ?? (bytes ? 0.005 : 0);
+  const relative = entry.tolerance.kind === 'relative';
+  const headroom = entry.headroom ?? (bytes && relative ? 0.005 : 0);
   // As in allowedMax, add the increment separately before rounding.
   const padded = value + value * headroom;
   const target = bytes ? Math.floor(padded) : padded;
   if (!(target < entry.ceiling)) return null;
-  if (entry.tolerance.kind === 'relative' && target > entry.ceiling - entry.ceiling * entry.tolerance.value) return null;
+  if (relative && target > entry.ceiling - entry.ceiling * entry.tolerance.value) return null;
   return target;
 }
 

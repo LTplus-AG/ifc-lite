@@ -70,9 +70,19 @@ rt('keeps the ceiling and provenance when the padded target fails to clear the b
   assert.deepEqual(lower.lowerFamily(before, measured), { next: before, changes: [] });
 
   before.entries[0].tolerance = { kind: 'exact', value: 0 };
+  before.entries[0].headroom = 0.005;
   for (const wasm of [996, 997]) { // Targets equal to and above 1000 bytes.
     assert.deepEqual(lower.lowerFamily(before, measurement({ wasm })), { next: before, changes: [] });
   }
+});
+
+// #10974: an exact byte ceiling has no default growth allowance.
+rt('lowers exact byte ceilings to the measured value by default', () => {
+  const before = ceilingFile();
+  before.entries[0].tolerance = { kind: 'exact', value: 0 };
+  const { next, changes } = lower.lowerFamily(before, measurement({ wasm: 999 }));
+  assert.equal(next.entries[0].ceiling, 999);
+  assert.equal(changes.length, 1);
 });
 
 rt('uses a per-metric headroom override, including zero', () => {

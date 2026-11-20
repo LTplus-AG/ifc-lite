@@ -34,7 +34,7 @@
  * small rises still fails once their sum crosses the band.
  *
  * `headroom` is a fraction (0 <= headroom < 1), defaulting to 0.005 for
- * `unit: "bytes"` and 0 for other units. The lowering job adds it to the
+ * `unit: "bytes"` with relative tolerance and 0 otherwise. The lowering job adds it to the
  * measurement proportionally and rounds byte targets down to whole bytes.
  *
  * MEASURED FILE, written by a family's `measure-<family>.mjs`:

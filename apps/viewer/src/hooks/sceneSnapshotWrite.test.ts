@@ -67,7 +67,9 @@ describe('writeCapturedScene', () => {
     assert.equal(await written, 'written');
     assert.equal((await getCached('a'))!.sceneSnapshotKey, 'policy|types');
     const decoded = await storedSnapshot('a');
-    assert.deepEqual(decoded?.hostData, { fitBounds: BOUNDS, sceneBounds: BOUNDS, orbitAnchorBounds: null, shards: { offset: 16, size: 8 } });
+    // #10264: the captured meshes' type index, so a reopen hides type-hidden classes before its meshes decode.
+    assert.deepEqual(decoded?.hostData, { fitBounds: BOUNDS, sceneBounds: BOUNDS, orbitAnchorBounds: null, shards: { offset: 16, size: 8 },
+      typeIndex: { v: 1, buckets: [[0, '', [7]]] } });
     assert.deepEqual([...decoded!.batches[0].vertexData], [...snapshot().batches[0].vertexData]);
     assert.deepEqual(outcomes(), ['written']);
   });

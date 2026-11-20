@@ -14,6 +14,7 @@ import { modelHiddenEntities } from '../lib/visibility/model-hidden-entities.js'
 import { resolveViewHiddenEntities, retypedClasses, withClassHiddenRetypes } from '../lib/visibility/structural-view.js';
 import { classFilterActive, type RetypedClasses } from '../store/typeVisibilityFilter.js';
 import { useViewerStore } from '../store/index.js';
+import { withTypeHidden, type TypeHiddenIds } from '../components/viewer/type-hidden-index.js';
 import { useStoreyContextVisibility } from './useStoreyContext.js';
 
 /**
@@ -39,9 +40,11 @@ export function useSelectionState() {
 
 /**
  * Visibility-related store state (hidden/isolated entities), as the 3D
- * viewport draws it: model visibility and the workspace storey context folded in.
+ * viewport draws it: model visibility, the workspace storey context and the
+ * ids type visibility hides (`typeHidden`, #10264) folded in. The store's own
+ * `hiddenEntities` is never written.
  */
-export function useVisibilityState() {
+export function useVisibilityState(typeHidden?: TypeHiddenIds) {
   const structuralViewMode = useViewerStore((s) => s.structuralViewMode);
   const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
   const mutationViews = useViewerStore((s) => s.mutationViews);
@@ -51,11 +54,13 @@ export function useVisibilityState() {
   const geometryContentVersion = useViewerStore((state) => state.geometryContentVersion);
   const toGlobalId = useViewerStore((state) => state.toGlobalId);
   const typeVisibility = useViewerStore((state) => state.typeVisibility);
-  const hiddenEntities = useMemo(() => {
+  const viewHidden = useMemo(() => {
     const masked = resolveViewHiddenEntities({ models, ifcDataStore, mutationViews, structuralViewMode,
       hiddenEntities: modelHiddenEntities(models, userHiddenEntities, toGlobalId), toGlobalId });
     return withClassHiddenRetypes({ models, ifcDataStore, mutationViews, toGlobalId }, masked, typeVisibility);
   }, [models, userHiddenEntities, toGlobalId, geometryContentVersion, structuralViewMode, ifcDataStore, mutationVersion, mutationViews, typeVisibility]);
+  // Separate, so a streamed batch's type-hidden ids do not re-run the structural mask over every entity.
+  const hiddenEntities = useMemo(() => withTypeHidden(viewHidden, typeHidden), [viewHidden, typeHidden]);
   const isolatedEntities = useViewerStore((state) => state.isolatedEntities);
   const userGhostExcept = useViewerStore((state) => state.ghostExceptEntities);
   // The Model workspace hides (or ghosts) the storeys above the one being

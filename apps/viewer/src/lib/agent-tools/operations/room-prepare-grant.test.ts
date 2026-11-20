@@ -37,4 +37,19 @@ describe('authoring.room.prepare needs the edit grant, since it remeshes walls (
       assert.equal(useViewerStore.getState().models.get(MODEL)?.geometryResult, geometry, 'the walls were not remeshed');
     });
   }
+
+  it('prepares through viewer_operation_execute with the edit grant, and the token applies', async (t) => {
+    if (!ensureRoomWasm(t)) return;
+    await seedReviewedRoom();
+    const host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));
+    const run = (operation_id: string, input: unknown) => dispatchMainViewerTool(host, 'viewer_operation_execute', { model_id: MODEL, operation_id, input }, { canEdit: () => true });
+    const prepared = await run('authoring.room.prepare', { proposal_json: JSON.stringify(roomEnvelope()) });
+    assert.equal(prepared.isError, false, prepared.text);
+    const { token } = (prepared.structured as { result: { token: string } }).result;
+    const applied = await run('authoring.graph.apply', { token });
+    assert.equal(applied.isError, false, applied.text);
+    const { receipt } = JSON.parse((applied.structured as { result: { native_json: string } }).result.native_json) as { receipt: { kind?: string; applied: unknown[] } };
+    assert.equal(receipt.kind, 'room.command');
+    assert.ok(receipt.applied.length > 0, 'the room was created');
+  });
 });

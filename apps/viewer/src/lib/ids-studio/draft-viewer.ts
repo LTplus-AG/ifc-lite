@@ -65,6 +65,12 @@ function openIdsDraft(draft: IdsStudioDraft): void {
 
 export function flushIdsDrafts(): Promise<boolean> { return autosave.flushAll(); }
 
+/** Save the open draft before something replaces its document. */
+export async function flushOpenIdsDraft(): Promise<boolean> {
+  const id = useViewerStore.getState().idsStudioDraftId;
+  return !id || autosave.flush(id);
+}
+
 export function checkInitialIdsDraft(isMounted: () => boolean): Promise<void> {
   return restoreInitialIdsDraft(idsStudioDraftLibrary.initialize,
     () => ({ revision: isMounted() ? useViewerStore.getState().idsStudioRevision : -1, drafts: useIdsStudioDraftLibrary.getState().entries }),

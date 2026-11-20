@@ -48,10 +48,12 @@ describe('the USERDEFINED rule (#10780)', () => {
   });
 
   it("reports the issue's IfcWorkPlan, written .USERDEFINED. with ObjectType unset", () => {
-    const line = "#5=IFCWORKPLAN('g',#2,'P',$,$,'WP-1',#3,(#4),$,$,$,#6,$,.USERDEFINED.,'Custom');";
+    // With no IFC2X3 label either: #10824 carries a set UserDefinedControlType into ObjectType, so that one is not reported.
+    const line = "#5=IFCWORKPLAN('g',#2,'P',$,$,'WP-1',#3,(#4),$,$,$,#6,$,.USERDEFINED.,$);";
     expect(warned(line, 'IFC2X3', 'IFC4')).toEqual([expect.stringContaining('1 record(s) say PredefinedType .USERDEFINED. without the label')]);
     expect(warned(line, 'IFC2X3', 'IFC4')[0]).toContain('IFCWORKPLAN');
     expect(warned(line.replace("'P',$,$,", "'P',$,'Custom',"), 'IFC2X3', 'IFC4')).toEqual([]);
+    expect(warned(line.replace('.USERDEFINED.,$);', ".USERDEFINED.,'Custom');"), 'IFC2X3', 'IFC4'), 'the IFC2X3 label is carried (#10824)').toEqual([]);
   });
 
   it('reports only a type with the rule', () => {

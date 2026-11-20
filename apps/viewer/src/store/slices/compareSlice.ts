@@ -239,6 +239,8 @@ export interface CompareSlice {
   setCompareError: (error: string | null) => void;
   setCompareSelectedKey: (key: string | null) => void;
   /** Clear the run result + selection; keeps the A/B + scope choices. */
+  /** Bumped by every Clear, so a run in flight can tell a dismissal happened even with no result yet. */
+  compareClearEpoch: number;
   clearCompare: () => void;
   /** Accept identity entries for a model pair; returns the ones refused for
    *  colliding with a pair already accepted (identity is 1:1). */
@@ -302,6 +304,7 @@ export const createCompareSlice: StateCreator<CompareSlice, [], [], CompareSlice
   compareResult: null,
   compareRunSeq: 0,
   compareRunning: false,
+  compareClearEpoch: 0,
   compareError: null,
   compareSelectedKey: null,
   compareAcceptedIdentity: [],
@@ -360,7 +363,7 @@ export const createCompareSlice: StateCreator<CompareSlice, [], [], CompareSlice
   setCompareError: (compareError) => set({ compareError }),
   setCompareSelectedKey: (compareSelectedKey) => set({ compareSelectedKey }),
 
-  clearCompare: () => set(getClearedCompareState()),
+  clearCompare: () => set(state => ({ ...getClearedCompareState(), compareClearEpoch: state.compareClearEpoch + 1 })),
 
   acceptCompareIdentity: (pair, additions) => {
     const { entries, refused } = addAcceptedIdentity(get().compareAcceptedIdentity, pair, additions);

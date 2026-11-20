@@ -52,9 +52,11 @@ export const coordinationBcfServerOperations = [
     });
   }),
   coordination('bcf.publish', 'Present an already prepared exact publication candidate for the native Publish click. The bridge command grant cannot approve external BCF writes.', ['configuration', 'view'], idSchema, async (i, c) => {
-    const [{ useBcfPublicationReview }, { useBcfDraftLibrary }] = await Promise.all([import('@/lib/bcf-publication/review-candidate'), import('@/lib/bcf-drafts/draft-library')]);
+    const [{ useBcfPublicationReview }, { useBcfDraftLibrary }, { loadBcfServerConfig }] = await Promise.all([import('@/lib/bcf-publication/review-candidate'), import('@/lib/bcf-drafts/draft-library'), import('@/services/bcf-server-config')]);
     return c.commit(() => { const candidate = useBcfPublicationReview.getState().candidate; if (candidate?.id !== i.id) throw new Error('Publication candidate changed; prepare and review again.');
       // An edited draft would be dropped by the panel's freshness check, leaving nothing to approve.
+      // The panel drops a candidate for another account at once; refuse instead of reporting an approvable review.
+      const account = loadBcfServerConfig(); if (account?.serverUrl !== candidate.target.serverUrl || account?.userId !== candidate.target.userId) { useBcfPublicationReview.setState({ candidate: null }); throw new Error('The BCF account changed after preparation; prepare and review again.'); }
       if (useBcfDraftLibrary.getState().entries.find(entry => entry.id === candidate.batchId)?.modifiedAt !== candidate.modifiedAt) { useBcfPublicationReview.setState({ candidate: null }); throw new Error('The draft changed after preparation; prepare and review again.'); }
       useBcfDraftLibrary.setState({ activeId: candidate.batchId, dialogOpen: true }); useViewerStore.getState().openWorkspacePanel('bcf'); return { state: 'waiting-for-approval', candidate_id: candidate.id, digest: candidate.digest }; });
   }),

@@ -44,6 +44,8 @@ export interface MaterialSource {
   typeOf(id: number): string | undefined;
   /** Its slots as written; undefined for a record the export does not write or could not read. */
   slots(id: number): readonly string[] | undefined;
+  /** A material record the export has but does not write (deleted, filtered out): a set member it leaves out of the list. As Rust's `gone`. */
+  gone?(id: number): boolean;
 }
 
 export class MaterialReferents {
@@ -78,7 +80,8 @@ export class MaterialReferents {
       const ref = slotRef(member);
       if (ref === null) return null;
       const memberType = source.typeOf(ref);
-      if (memberType === undefined) continue;
+      // Skipped only when the export leaves it out of the list; a missing record names no material, as in Rust.
+      if (memberType === undefined) { if (source.gone?.(ref)) continue; return null; }
       const memberSlots = source.slots(ref);
       const m = table?.get(memberType)?.indexOf('Material') ?? -1;
       if (m < 0 || !memberSlots) return null;
@@ -170,6 +173,7 @@ export function armMergedModel(materials: MaterialReferents, store: SourceStore,
   const read = new Map<number, readonly string[] | undefined>();
   materials.rearm({
     typeOf: (id) => { const l = local(id); return l === null ? undefined : source.type(l); },
+    gone: (id) => local(id) === null && id > offset && !!source.type(id - offset)?.startsWith('IFCMATERIAL'),
     slots: (id) => {
       if (!read.has(id)) {
         const l = local(id), text = l === null ? undefined : source.text(l);

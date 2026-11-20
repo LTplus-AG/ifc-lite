@@ -43,7 +43,8 @@ pub(crate) struct MaterialReferents {
     /// The export downgrades to IFC2X3, the one target with a narrower `Material`.
     armed: bool,
     records: HashMap<u32, Record>,
-    /// Material records the export does not write (deleted, left out, retyped away).
+    /// Material records the export does not write (deleted, filtered out). A record retyped away but
+    /// still written is not one: it is in neither map, so a set naming it names no material.
     gone: std::collections::HashSet<u32>,
     /// Record id -> the type its `Material` names, for records not written.
     dropped: BTreeMap<u32, String>,
@@ -140,6 +141,9 @@ impl MaterialReferents {
             if !is_material(line) && !self.records.contains_key(&id) { continue; }
             match crate::step_log::read_slots(line) {
                 Some((ty, slots)) if keep(id) && ty.starts_with(MATERIAL) => { self.gone.remove(&id); self.records.insert(id, (ty, slots, schema)); }
+                // Still written, but no material record (retyped away, or unreadable): no longer a record
+                // to read, yet not left out of a set's list either, so a set naming it names no material.
+                _ if keep(id) => { self.records.remove(&id); self.gone.remove(&id); }
                 _ => { self.records.remove(&id); self.gone.insert(id); }
             }
         }

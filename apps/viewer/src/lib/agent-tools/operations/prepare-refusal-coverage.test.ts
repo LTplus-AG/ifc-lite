@@ -53,11 +53,19 @@ const NO_UNDELIVERED_CANDIDATE: Record<string, string> = {
   'exports.anonymized.prepare': 'returns the plan inline; stores nothing for the caller',
 };
 
+/** An output schema that hands the caller a token or run id, at any depth. */
+const handsOutToken = (schema: unknown): boolean => {
+  if (!schema || typeof schema !== 'object') return false;
+  const properties = (schema as { properties?: Record<string, unknown> }).properties ?? {};
+  return 'token' in properties || 'run_id' in properties || Object.values(schema).some(handsOutToken);
+};
+
 describe('operations that hand out a token are classified for refusal (#10918)', () => {
-  const ids = viewerOperations().map(entry => entry.id);
-  it('every prepare-like operation is in exactly one class', () => {
+  const operations = viewerOperations(), ids = operations.map(entry => entry.id);
+  it('every prepare-like operation, or one whose result carries a token, is in exactly one class', () => {
     const classes = [REFUSAL_TESTED, RETAINED_UNTESTED, NO_UNDELIVERED_CANDIDATE];
-    const unclassified = ids.filter(id => PREPARE_LIKE.test(id) && !classes.some(map => id in map));
+    const unclassified = operations.filter(entry => (PREPARE_LIKE.test(entry.id) || handsOutToken(entry.outputSchema)) && !classes.some(map => entry.id in map))
+      .map(entry => entry.id);
     const twice = ids.filter(id => classes.filter(map => id in map).length > 1);
     assert.deepEqual({ unclassified, twice }, { unclassified: [], twice: [] });
   });

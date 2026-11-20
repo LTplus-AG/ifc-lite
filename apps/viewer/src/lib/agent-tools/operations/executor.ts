@@ -199,10 +199,14 @@ export async function executeOperation(
     return request.result;
   }
   const owned = jobs(host);
-  for (const [id, job] of owned) {
-    if (owned.size < MAX_JOBS || job.snapshot.state === 'running') continue;
-    if (job.snapshot.state === 'succeeded' && !job.delivered) job.discard(); // its result will never be collected
-    owned.delete(id);
+  // Finished jobs make room, delivered or failed ones first; an uncollected result goes only when nothing else can.
+  const uncollected = (job: LiveJob) => job.snapshot.state === 'succeeded' && !job.delivered;
+  for (const evictUncollected of [false, true]) {
+    for (const [id, job] of owned) {
+      if (owned.size < MAX_JOBS || job.snapshot.state === 'running' || uncollected(job) !== evictUncollected) continue;
+      if (evictUncollected) job.discard(); // its result will never be collected
+      owned.delete(id);
+    }
   }
   if (owned.size >= MAX_JOBS) invalid('This host already has 32 running operation jobs.');
   const controller = new AbortController();

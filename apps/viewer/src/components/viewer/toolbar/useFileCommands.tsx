@@ -35,9 +35,10 @@ import { FILE_ACCEPT, isModelSidecarFile, isSupportedModelFile } from '@/service
 import { captureModelTags, restoreModelTags } from '@/lib/model-tags/carry-over';
 
 // lazyChunk: a failed chunk renders nothing instead of unwinding the toolbar (#10772).
-// A failed load never mounts the dialog, so clear the open request it would have reset.
+// A failed load never mounts the dialog: clear the open request, and stop marking later ones open.
+let shareChunkFailed = false;
 const ShareDialog = lazyChunk(() => import('../ShareDialog').then(module => ({ default: module.ShareDialog }), (error: unknown) => {
-  useCollabShareReview.setState({ dialogOpen: false }); throw error;
+  shareChunkFailed = true; useCollabShareReview.setState({ dialogOpen: false }); throw error;
 }));
 
 // FILE_ACCEPT offers `.dxf` while `isSupportedModelFile` rejects it: DXF
@@ -97,7 +98,7 @@ export function useFileCommands(): FileCommands {
   // dialog mounted after that so its close effects and room state still run.
   const [shareDialogOpen, setShareDialogOpen] = useState<boolean | null>(null);
   // Mark Share open at the request, before the lazy dialog mounts, so collab.prepareRoom refuses meanwhile.
-  const requestShareDialog = useCallback(() => { useCollabShareReview.setState({ dialogOpen: true }); setShareDialogOpen(true); }, []);
+  const requestShareDialog = useCallback(() => { if (!shareChunkFailed) useCollabShareReview.setState({ dialogOpen: true }); setShareDialogOpen(true); }, []);
   const openShareDialog = requestShareDialog;
   useEffect(() => {
     if (!collabEnabled) return;

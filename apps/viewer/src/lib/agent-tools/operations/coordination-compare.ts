@@ -21,8 +21,10 @@ export const coordinationCompareOperations = [
   modelCoordination<CompareInput & { key_property: string }>('compare.run', 'Run and publish a parameterized native comparison, including authored IFC key selection, report and viewport overlay. Uses the same publish function as the UI and never accepts identity suggestions automatically.', ['configuration', 'view'], {
     type: 'object', properties: { head_model_id: { type: 'string', minLength: 1, maxLength: 200 }, scope: { type: 'string', enum: ['both', 'data', 'geometry'] }, excluded_types: { type: 'array', maxItems: 200, items: { type: 'string', minLength: 1, maxLength: 200 } }, match_by_content: { type: 'boolean' }, key_property: { type: 'string', maxLength: 500 } }, required: ['head_model_id', 'scope', 'excluded_types', 'match_by_content', 'key_property'], additionalProperties: false,
   }, async (i, c) => {
+    // Captured before the first await, so a Clear or option change during the imports is seen too.
+    const initial = useViewerStore.getState();
     const [{ prepareComparison }, { publishCompareResult, markUncachedCompareResult }] = await Promise.all([import('@/lib/compare/run-comparison'), import('@/lib/compare/publish-comparison')]);
-    const initial = useViewerStore.getState(), base = initial.models.get(c.model.id), head = initial.models.get(i.head_model_id);
+    const base = initial.models.get(c.model.id), head = initial.models.get(i.head_model_id);
     if (!base || !head || initial.compareRunning) throw new Error('Load both models and wait for any native comparison to finish.');
     // The same refusals as the panel's Run button (useCompare.runComparison).
     if (isNativeWorkflowBusy()) throw new Error('A workflow is running; wait or cancel it.');

@@ -45,7 +45,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  joined.resolve(); // every test's join settles, so its listener goes
+  joined.resolve();
   await joined.promise;
   liveCollabAttempt()?.retire();
   console.info = realInfo;
@@ -94,3 +94,14 @@ for (const [room, what] of [['picked-in-the-room-panel', 'switched to'], ['r1', 
     assert.equal(stops, 0);
   });
 }
+
+
+it('a host request keeps a manual rejoin after the page room finished joining (#10469)', async () => {
+  joinRoomFromPageUrl(link, collab);
+  await joined.promise;
+  const manual = beginCollabAttempt('r1');
+  hostAsks();
+  assert.equal(stops, 0);
+  assert.equal(liveCollabAttempt(), manual);
+  assert.equal(manual.live, true);
+});

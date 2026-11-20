@@ -77,13 +77,13 @@ describe('applyProcessingConfig', () => {
 describe('processedModelRequested', () => {
   afterEach(() => resetProcessedModelRequestsForTests());
 
-  it('turns on with any processed-model request, so the browser fast path stays off', () => {
+  it('blocks warm-up only while a request waits to be taken (#10822)', () => {
     resetProcessedModelRequestsForTests();
     assert.equal(processedModelRequested(), false);
     openProcessedModelFromUrl({ sha256: 'a'.repeat(64), bytes: 0, name: 'page.ifc' });
     assert.equal(processedModelRequested(), true);
     takeProcessedModelRequest();
-    assert.equal(processedModelRequested(), true, 'stays on after the viewer took the request');
+    assert.equal(processedModelRequested(), false, 'the load now owns the request');
   });
 
   it('trims the name of every request, and falls back to model.ifc for a blank one', () => {

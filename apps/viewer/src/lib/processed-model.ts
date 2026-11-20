@@ -41,10 +41,9 @@ export type ProcessedModelRecord = ProcessedModelSource & { readonly bytes: numb
 export type FiledProcessedModelRequest = ProcessedModelRequest & Pick<ProcessedModelSource, 'serverUrl'>;
 let pending: FiledProcessedModelRequest | null = null;
 const listeners = new Set<() => void>();
+const pendingListeners = new Set<() => void>();
 /** A host asked for a model (`openProcessedModel`, or the configuration's start model); a model named in the page URL then yields. */
 let hostRequested = false;
-/** Any processed model was requested (host, configuration or page URL); the browser-side fast path then stays off. */
-let anyRequested = false;
 type PageUrlParameter = 'processed' | 'model' | 'room';
 const ignoredLogged = new Set<PageUrlParameter>();
 const hostRequestListeners = new Set<() => void>();
@@ -116,7 +115,6 @@ export function pageUrlModelAllowed(parameter: PageUrlParameter): boolean {
 /** Tests only: forget host requests, the waiting request and the ignored-parameter log. */
 export function resetProcessedModelRequestsForTests(): void {
   hostRequested = false;
-  anyRequested = false;
   ignoredLogged.clear();
   pending = null;
 }
@@ -126,18 +124,20 @@ function normalizedRequest(model: ProcessedModelRequest): ProcessedModelRequest 
   return { sha256, bytes: processedModelSize(model.bytes), name: (typeof model.name === 'string' && model.name.trim()) || 'model.ifc' };
 }
 
-/**
- * A processed model was asked for on this page: it is meshed on the server, so nothing needs
- * warming in the browser. A host's start model is filed before the fast path's idle check; a
- * `?processed=` link is filed only after mount and may still find the fast path warmed.
- */
+/** Whether a server-meshed model is waiting for the viewer to take it. */
 export function processedModelRequested(): boolean {
-  return anyRequested;
+  return pending !== null;
+}
+
+/** Observe the handoff from the request queue to the viewer's loader. */
+export function onPendingProcessedModelChange(listener: () => void): () => void {
+  pendingListeners.add(listener);
+  return () => { pendingListeners.delete(listener); };
 }
 
 function fileRequest(request: FiledProcessedModelRequest): void {
-  anyRequested = true;
   pending = request;
+  for (const listener of pendingListeners) listener();
   for (const listener of [...listeners]) listener();
 }
 
@@ -155,6 +155,7 @@ export function applyProcessingConfig(config: Pick<ViewerRuntimeConfig, 'server'
 export function takeProcessedModelRequest(): FiledProcessedModelRequest | null {
   const request = pending;
   pending = null;
+  if (request) for (const listener of pendingListeners) listener();
   return request;
 }
 

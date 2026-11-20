@@ -31,17 +31,9 @@
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { asSourceBytes, STEP_TRIVIA } from '@ifc-lite/parser';
+import { asSourceBytes } from '@ifc-lite/parser';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
-
-/**
- * `#N=TYPE(...)` record, with STEP trivia (whitespace and/or a
- * `/* ... *​/` comment, #3789) tolerated between the type name and `(` —
- * same adjacency fix as `entity-extractor.ts`'s `extractEntity`. Without it
- * a wrapped record's attribute is silently unreadable here (`getStepAttr`
- * returns `null`), which reads identically to a genuinely-absent attribute.
- */
-const RECORD_RE = new RegExp(`^#\\d+\\s*=\\s*\\w+${STEP_TRIVIA}\\(([\\s\\S]*)\\)\\s*;?\\s*$`);
+import { frameArgs, stepRecordFrame } from './step-record-frame.js';
 
 /** 0-based attribute index of `IfcGeometricRepresentationSubContext.ContextIdentifier`. */
 const CONTEXT_IDENTIFIER_ATTR = 0;
@@ -53,7 +45,7 @@ const USER_DEFINED_TARGET_VIEW_ATTR = 9;
 function decodeEntity(dataStore: IfcDataStore, expressId: number): string | null {
   const source = dataStore.source;
   if (!source) return null;
-  // @raw-entity-enumeration-ok decode one source subcontext's STEP byte span during an overlay-free merge
+  // @raw-entity-enumeration-ok decode one record's STEP byte span for the merge's context reads; MergeExporter bakes each edited input through STEP export and reparses it first
   const ref = dataStore.entityIndex.byId.get(expressId);
   if (!ref) return null;
   return asSourceBytes(source).decodeUtf8(ref.byteOffset, ref.byteOffset + ref.byteLength);
@@ -61,12 +53,13 @@ function decodeEntity(dataStore: IfcDataStore, expressId: number): string | null
 
 /**
  * Extract one 0-based STEP attribute of `expressId`'s entity, or null if
- * unreadable.
+ * unreadable. `merged-context.ts` reads its WCS frames and georeferences
+ * through this one too, where null is likewise read as unresolvable.
  *
  * `splitTopLevelStepArguments` returning null (a malformed record, OR —
  * since #4162's per-slot check — a well-formed record whose split it cannot
  * vouch for) is one more way to land here, same as no source bytes or no
- * regex match. `normalizeLabel` already turns a null attribute into `''`,
+ * record frame. `normalizeLabel` already turns a null attribute into `''`,
  * the same key an actually-blank `ContextIdentifier`/`TargetView` gets, so a
  * subcontext this can't read falls back to grouping with other blank-keyed
  * subcontexts rather than being matched on a guessed kind — the failure mode
@@ -78,11 +71,12 @@ function decodeEntity(dataStore: IfcDataStore, expressId: number): string | null
  * call sites, unlike `rescaleEntityLengths` (`unit-normalize.ts`), which
  * throws: a length has no safe permissive fallback.
  */
-function getStepAttr(dataStore: IfcDataStore, expressId: number, index: number): string | null {
+export function getStepAttr(dataStore: IfcDataStore, expressId: number, index: number): string | null {
   const text = decodeEntity(dataStore, expressId);
-  const match = text?.match(RECORD_RE);
-  if (!match) return null;
-  const args = splitTopLevelStepArguments(match[1]);
+  // The package's record frame: STEP trivia is allowed wherever a record allows it (around `=`, before `(` and `;`).
+  const frame = text == null ? null : stepRecordFrame(text, { allowMissingSemicolon: true });
+  if (!frame) return null;
+  const args = splitTopLevelStepArguments(frameArgs(text!, frame));
   const raw = args?.[index];
   return raw === undefined ? null : raw.trim();
 }

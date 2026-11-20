@@ -65,3 +65,34 @@ describe('planAffinityRouting (content-affinity worker routing)', () => {
     expect(nextWorker).toBe(2);
   });
 });
+
+// #8451: one repeated key must not leave the rest of the pool idle.
+it('balances a repeated geometry across workers without dropping jobs (#8451)', () => {
+  const affinity = new Uint32Array(4 * 4096).fill(42);
+  const { buckets } = planAffinityRouting(affinity, affinity.length, 4, new Map(), 0);
+  expect(buckets.map((bucket) => bucket.length)).toEqual([4096, 4096, 4096, 4096]);
+  expect(new Set(buckets.flat()).size).toBe(affinity.length);
+});
+
+it('counts hot-key ownership across small streaming chunks (#8451)', () => {
+  const map = new Map<number, number>();
+  const state = { keyUses: new Map<number, number>(), workerJobs: [] as number[] };
+  let next = 0;
+  const assigned = [0, 0, 0, 0];
+  for (let chunk = 0; chunk < 32; chunk++) {
+    const result = planAffinityRouting(new Uint32Array(512).fill(42), 512, 4, map, next, state);
+    next = result.nextWorker;
+    result.buckets.forEach((bucket, i) => { assigned[i] += bucket.length; });
+  }
+  expect(assigned).toEqual([4096, 4096, 4096, 4096]);
+});
+
+it('preserves sticky routing and the cursor below the hot-key cap (#8451)', () => {
+  const state = { keyUses: new Map<number, number>(), workerJobs: [] as number[] };
+  const map = new Map<number, number>();
+  const first = planAffinityRouting(new Uint32Array([42, 99, 42]), 3, 4, map, 2, state);
+  const second = planAffinityRouting(new Uint32Array([42, 7, 99]), 3, 4, map, first.nextWorker, state);
+  expect(first.buckets).toEqual([[], [], [0, 2], [1]]);
+  expect(second.buckets).toEqual([[1], [], [0], [2]]);
+  expect(second.nextWorker).toBe(1);
+});

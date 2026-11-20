@@ -24,4 +24,15 @@ export const coreControlInventory = [
   { owner: 'changes', controls: [
     { control: 'Native full changed-model STEP/IFCX/portable appearance export and multiple-model ZIP bundling, with schedule attribution and skip diagnostics', operations: ['exports.changedModels'] },
   ], notes: ['Other native export formats and exact credential/publication boundaries are listed by the finite toolbar export inventory.'] },
+  // Headless reads and runs each panel exposes besides its main controls; the coverage reverse check requires them here.
+  { owner: 'properties', controls: [{ control: 'Model summary, schema description and measured geometry (bounds, area, volume)', operations: ['model.inspect', 'schema.describe', 'geometry.bounds', 'geometry.area', 'geometry.volume'] }], notes: [] },
+  { owner: 'validation', controls: [{ control: 'Headless IDS validation and model audit of the loaded model', operations: ['validation.ids', 'model.audit'] }], notes: [] },
+  { owner: 'lens', controls: [{ control: 'Built-in lens presets', operations: ['lens.presets'] }], notes: [] },
+  { owner: 'clash', controls: [{ control: 'Clash presets and a headless clash analysis that publishes no run', operations: ['clash.presets', 'clash.analyze'] }], notes: [] },
+  { owner: 'lists', controls: [{ control: 'Entity counts by type', operations: ['entities.count'] }], notes: [] },
+  { owner: 'sources', controls: [{ control: 'Loaded model listing', operations: ['models.list'] }], notes: [] },
+  { owner: 'appearance', controls: [{ control: 'Entity colour overrides and their per-entity or full reset', operations: ['appearance.colorize', 'appearance.resetEntities', 'appearance.resetAll'] }], notes: [] },
+  { owner: 'placement', controls: [{ control: 'Georeferencing read', operations: ['georeferencing.read'] }], notes: [] },
+  { owner: 'model', controls: [{ control: 'Structural analysis models, members, connections, activities, load groups and result groups', operations: ['structural.models', 'structural.members', 'structural.connections', 'structural.activities', 'structural.loadGroups', 'structural.resultGroups'] }], notes: [] },
+  { owner: 'idsStudio', controls: [{ control: 'Validate the open Studio document against the selected model', operations: ['ids.document.validate'] }], notes: [] },
 ] as const;

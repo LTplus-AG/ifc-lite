@@ -65,7 +65,10 @@ export function viewerOperationCoverage() {
   const panels = WORKSPACE_PANELS.map(({ id }) => {
     const audit = panelControlAudits[id], rows = inventory.filter(row => row.owner === id);
     const controls = rows.flatMap(row => row.controls);
-    const gaps = [...rows.flatMap(row => row.gaps), ...missingControls(controls, registered)];
+    // The reverse check: an operation registered under this panel must be bound to an audited control.
+    const audited = new Set(controls.flatMap(row => row.operations));
+    const unaudited = operations.filter(row => row.owner === id && !audited.has(row.id)).map(row => `Operation not in the control audit: ${row.id}`);
+    const gaps = [...rows.flatMap(row => row.gaps), ...missingControls(controls, registered), ...unaudited];
     if (!controls.length || audit.some(family => !rows.some(row => row.family === family && row.controls.length))) gaps.push('Missing audited control inventory.');
     return { id, complete: gaps.length === 0, audit_families: audit, controls, notes: rows.flatMap(row => row.notes),
       implemented: operations.filter(row => row.owner === id).map(row => row.id), gaps };
@@ -89,6 +92,7 @@ export function viewerOperationCoverage() {
     complete: panels.every(row => row.complete) && tools.every(row => row.complete) && exports.every(row => row.complete),
     all_controls_automatable: false, panel_count: panels.length, operation_count: operations.length, panels, tools, exports,
     non_panel: [
+      { id: 'viewport', controls: inventory.filter(row => row.owner === 'viewport').flatMap(row => row.controls) },
       { id: 'preferences', implemented: ids(['preferences.']), controls: inventory.filter(row => row.owner === 'preferences').flatMap(row => row.controls) },
       { id: 'search', implemented: ids(['filters.', 'fields.']), controls: inventory.filter(row => row.owner === 'search').flatMap(row => row.controls) },
       { id: 'palette', native_tools: ['viewer_commands', 'viewer_command_run'], notes: ['Mounted native command contributions and current prerequisites remain the source of truth.'] },

@@ -202,9 +202,9 @@ impl StructuralVarying {
             self.pending.insert(*config, format!("#{config}=IFCSTRUCTURALLOADCONFIGURATION($,({values}),$);"));
             let mut losses = vec![FROM_IFC2X3.to_string()];
             let cause = &args[crate::schema_structural_carriers::CAUSED_BY];
-            // Keep the warning predicate in sync with the TypeScript rewrite.
-            if !cause_carried && cause.trim() != "$" { losses.push(format!("{entity}.CausedBy has no slot in IFC4; its value is omitted")); }
+            // One predicate for the warning and the count (#10779), as in the TypeScript rewrite.
             let cause_dropped = !cause_carried && crate::schema_convert::holds_value(cause);
+            if cause_dropped { losses.push(format!("{entity}.CausedBy has no slot in IFC4; its value is omitted")); }
             let body = [&args[..7], &[format!("#{config}"), args[8].clone(), args[9].clone(), args[11].clone(), ".NOTDEFINED.".into()]].concat();
             return Some((format!("{}({})", kind.ifc4, body.join(",")), losses, cause_dropped));
         }

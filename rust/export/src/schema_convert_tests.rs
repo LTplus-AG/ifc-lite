@@ -786,6 +786,22 @@ fn values_without_a_target_slot_are_counted_7683() {
     assert_eq!(dropped("#1=IFCWALL('g',$,$,$,$,$,$,$,$);", "IFC2X3", "IFC4"), 0, "a pad loses nothing");
 }
 
+/// #10779: a comment is not a value, so a dropped slot holding only a comment
+/// and `$` (or `*`) loses nothing, while a value with a comment beside it does.
+#[test]
+fn a_comment_beside_no_value_is_not_counted_10779() {
+    let dropped = |line: &str| {
+        let mut checks = crate::schema_enum::ConversionChecks::new();
+        convert_step_line(line, "IFC4", "IFC2X3", 1, &mut none(), Some(&mut checks)).unwrap();
+        checks.attribute_values_dropped
+    };
+    assert_eq!(dropped("#1=IFCQUANTITYLENGTH('L',$,$,2.5,/* x */$);"), 0);
+    assert_eq!(dropped("#1=IFCQUANTITYLENGTH('L',$,$,2.5,$ /* x */);"), 0);
+    assert_eq!(dropped("#1=IFCQUANTITYLENGTH('L',$,$,2.5,/* x */);"), 0);
+    assert_eq!(dropped("#1=IFCQUANTITYLENGTH('L',$,$,2.5,/* x */'=a*b');"), 1);
+    assert_eq!(dropped("#1=IFCQUANTITYLENGTH('L',$,$,2.5,'/* not a comment */');"), 1, "a literal is a value");
+}
+
 /// #9668 review: spaces around '=' are normalized before the required-slot
 /// checker sees the converted record; an unknown Axis must still be counted.
 #[test]

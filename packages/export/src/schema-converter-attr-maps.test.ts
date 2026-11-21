@@ -48,6 +48,11 @@ describe('attribute maps (#10763)', () => {
     expect(convertStepLine("#5=IFCAPPROVALRELATIONSHIP('n','d',#4,(#3,#6));", 'IFC4', 'IFC2X3')).toBe("#5=IFCAPPROVALRELATIONSHIP(#3,#4,'d','n');");
   });
 
+  it('reads a slot holding only a comment and $ as no value (#10779)', () => {
+    expect(convertStepLine("#5=IFCAPPROVAL(/* none */$,#9,$,$,$,'Name','Id');", 'IFC2X3', 'IFC4'))
+      .toBe("#5=IFCAPPROVAL('Id','Name',$,$,$,$,$,$,$);");
+  });
+
   it('drops comments around a SET when it is rebuilt, as Rust does', () => {
     const down = (attrs: string) => convertStepLine(`#5=IFCAPPROVALRELATIONSHIP(${attrs});`, 'IFC4', 'IFC2X3');
     const up = (attrs: string) => convertStepLine(`#5=IFCAPPROVALRELATIONSHIP(${attrs});`, 'IFC2X3', 'IFC4');

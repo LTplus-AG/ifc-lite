@@ -173,7 +173,7 @@ pub(crate) fn remap(map: &AttrMap, up: bool, values: &[String], src: &[&'static 
             Some((value, How::Value)) if holds_value(value) => out.push_str(value),
             // A SET is rebuilt, so comments around it or its members go.
             Some((value, how @ (How::Wrap | How::Unwrap))) => {
-                let bare = without_comments(value);
+                let bare = crate::step_slot::without_comments(value);
                 if !holds_value(&bare) {
                     out.push('$');
                 } else if let How::Unwrap = how {
@@ -204,29 +204,6 @@ fn first_member(value: &str) -> (&str, usize) {
         Some(first) => (first.trim(), held.count()),
         None => ("$", 0),
     }
-}
-
-/// `value` with each `/* ... */` comment read as a space, trimmed. Literals and comments
-/// end by the shared rules (`ref_spans`' scanner: a `''` or `\S\'` stays in
-/// the literal); an unclosed one runs to the end.
-fn without_comments(value: &str) -> String {
-    let bytes = value.as_bytes();
-    let (mut out, mut kept, mut i) = (String::with_capacity(value.len()), 0, 0);
-    while i < bytes.len() {
-        match bytes[i] {
-            b'\'' => i = ifc_lite_core::step_encoding::step_string_literal_end(bytes, i).unwrap_or(bytes.len()),
-            b'/' if bytes.get(i + 1) == Some(&b'*') => {
-                // A space where the comment was keeps the tokens it parted apart.
-                out.push_str(&value[kept..i]);
-                out.push(' ');
-                i = ifc_lite_core::skip_step_comment(bytes, i).unwrap_or(bytes.len());
-                kept = i;
-            }
-            _ => i += 1,
-        }
-    }
-    out.push_str(&value[kept..]);
-    out.trim().to_owned()
 }
 
 #[cfg(test)]

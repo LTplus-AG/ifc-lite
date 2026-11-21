@@ -347,6 +347,7 @@ describe('released geometry readback for tools', () => {
     const none: Array<readonly MeshData[]> = [];
     for await (const batch of modelGeometry({ backing: () => undefined }, 'm', [])) none.push(batch);
     assert.deepEqual(none, [], 'an unbacked empty model yields nothing and does not fail');
+    await registry.close();
   });
 
   it('#10884 r4649782008 a preparation whose view changed during its reads is never installed under the new view', async () => {

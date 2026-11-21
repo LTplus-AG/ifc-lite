@@ -28,7 +28,7 @@ import { emitCameraInteracted } from '@/lib/tours/events';
 import { capturePointer, releasePointer } from '@/lib/pointer-capture';
 import { useViewerStore } from '@/store';
 import { handleMeasureDrag, handleMeasureHover, syncMeasureScreenCoords } from './measureHandlers.js';
-import { beginMeasurePress, handleMeasureDown, handleMeasureUp, pressOutlivedReset } from './distanceClick.js';
+import { beginMeasurePress, handleMeasureDown, handleMeasureUp, noteDistancePointerUp, pressOutlivedReset } from './distanceClick.js';
 import { pressPastClickSlop, type PointerGesture } from './pointerGesture.js';
 import { resolveNavigationPointerGesture, resolveWheelNavigation } from '@/lib/navigation/presets.js';
 import { wheelZoomSensitivityFactor } from '@/lib/navigation/wheel-input.js';
@@ -711,8 +711,8 @@ export function useMouseControls(params: UseMouseControlsParams): void {
         return;
       }
 
-      // Handle measure tool completion
-      if (tool === 'measure' && pointerGesture === 'tool' && activeMeasurementRef.current && e.button !== 2 && !pressOutlivedReset(mouseState)) {
+      const pendingPress = tool === 'measure' && pointerGesture === 'tool' && e.button !== 2 && noteDistancePointerUp(mouseState); // measure completion: a press still reading its start back is handed its release too
+      if (tool === 'measure' && pointerGesture === 'tool' && (activeMeasurementRef.current || pendingPress) && e.button !== 2 && !pressOutlivedReset(mouseState)) {
         if (handleMeasureUp(ctx, e)) return;
       }
 

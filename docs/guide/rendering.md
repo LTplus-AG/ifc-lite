@@ -508,7 +508,7 @@ declare const x: number, y: number;          // canvas CSS pixels under the poin
 const edgeLock = { edge: null, meshExpressId: null, lockStrength: 0 };
 
 const placed = pieces.map((mesh) => renderer.getScene().placeAppearanceSource!(mesh));
-renderer.setReadbackRaycastMeshes(placed);   // tested beside resident pieces
+renderer.setReadbackRaycastMeshes(placed, { x, y }); // tested beside resident pieces, for this ray only
 const result = renderer.raycastSceneMagnetic(x, y, edgeLock, {
   snapOptions: { snapToVertices: true, snapToEdges: true, snapToFaces: true },
 });
@@ -518,6 +518,13 @@ console.log(result.snapTarget?.type);
 
 The pieces follow the same hide/isolate and section-clip rules as resident ones.
 The renderer does not copy them, so the host keeps them alive while they are set.
+
+Pass the canvas point they were prepared for, `setReadbackRaycastMeshes(placed, { x, y })`.
+Then they answer only that ray under the current view, because a neighbourhood
+is not the whole scene. Check `readbackRaycastCovers(x, y)` before a raycast at a
+new point, and prepare again when it is false. Instanced occurrences read back as
+decoded shards are expanded with `materializeShardOccurrences(shard, modelIndex, keyPrefix)`,
+the same preparation an upload uses, then placed like flat pieces.
 
 ### Magnetic Snap Configuration
 

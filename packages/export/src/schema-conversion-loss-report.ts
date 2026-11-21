@@ -305,7 +305,9 @@ export function analyzeConversionLoss(
     const records = source ? new SourceRecords({ entityIndex: store.entityIndex, source }) : undefined;
     for (const [sourceType, expressIds, info] of typed) {
       const mapped = records && toSchema === 'IFC2X3' ? attrMapFor(sourceType, info.targetType, fromSchema, toSchema) : undefined;
-      const narrowedSet = mapped?.map.setOfOne?.[1];
+      // A SET declared for an upgrade can still be dropped entirely on downgrade.
+      const setAttribute = mapped?.map.setOfOne?.[1];
+      const narrowedSet = setAttribute && !mapped?.map.upOnly.includes(setAttribute) ? setAttribute : undefined;
       const slot = narrowedSet ? attrNameTable(fromSchema)?.get(sourceType)?.indexOf(narrowedSet) ?? -1 : -1;
       const isRetained = (id: number, attribute: string) => {
         if (restored.get(id)?.has(attribute)) return true;

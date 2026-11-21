@@ -165,15 +165,76 @@ const SOURCE_LAYOUT_EXEMPT: &[(&str, &str)] = &[
     ("IFCSTRUCTURALPLANARACTION", "schema_structural::attributes"),
 ];
 
-/// #10763: a type that keeps its name but whose lists differ in length, or
-/// hold one name at two indexes, is either reconciled by a plan or exempt with
-/// a reason. Before #10763 every one of these kept its source layout.
+/// Same-index name changes reviewed as the same concept and value type, which
+/// a positional pass-through therefore keeps right (#10807). Test data only:
+/// conversion does not read it, so it never reaches a writer. It reviews these
+/// renamed pairs alone: an attribute that keeps its name but changes value
+/// type (IfcAsset's IncorporationDate, an IfcCalendarDate reference in IFC2X3
+/// and an IfcDate string in IFC4) is outside the gate (#10847).
+const SAME_CONCEPT_AT_INDEX: &[(&str, &str, &str)] = &[
+    ("IFCASSET", "AssetID", "Identification"),
+    ("IFCDOCUMENTREFERENCE", "ItemReference", "Identification"),
+    ("IFCEXTERNALLYDEFINEDHATCHSTYLE", "ItemReference", "Identification"),
+    ("IFCEXTERNALLYDEFINEDSURFACESTYLE", "ItemReference", "Identification"),
+    ("IFCEXTERNALLYDEFINEDTEXTFONT", "ItemReference", "Identification"),
+    ("IFCEXTERNALREFERENCE", "ItemReference", "Identification"),
+    ("IFCINVENTORY", "InventoryType", "PredefinedType"),
+    ("IFCORGANIZATION", "Id", "Identification"),
+    ("IFCPERSON", "Id", "Identification"),
+    ("IFCRAMP", "ShapeType", "PredefinedType"),
+    ("IFCROOF", "ShapeType", "PredefinedType"),
+    ("IFCSTAIR", "ShapeType", "PredefinedType"),
+    ("IFCREINFORCINGBAR", "BarRole", "PredefinedType"),
+    ("IFCRELCOVERSSPACES", "RelatedSpace", "RelatingSpace"),
+    ("IFCSTRUCTURALLOADTEMPERATURE", "DeltaT_Constant", "DeltaTConstant"),
+    ("IFCSTRUCTURALLOADTEMPERATURE", "DeltaT_Y", "DeltaTY"),
+    ("IFCSTRUCTURALLOADTEMPERATURE", "DeltaT_Z", "DeltaTZ"),
+    ("IFCCLASSIFICATION", "Location", "Specification"),
+    ("IFCCOMPLEXPROPERTY", "Description", "Specification"),
+    ("IFCPROPERTY", "Description", "Specification"),
+    ("IFCSIMPLEPROPERTY", "Description", "Specification"),
+    ("IFCPROPERTYENUMERATEDVALUE", "Description", "Specification"),
+    ("IFCPROPERTYLISTVALUE", "Description", "Specification"),
+    ("IFCPROPERTYREFERENCEVALUE", "Description", "Specification"),
+    ("IFCPROPERTYSINGLEVALUE", "Description", "Specification"),
+    ("IFCCURVESTYLEFONTANDSCALING", "CurveFont", "CurveStyleFont"),
+    ("IFCFILLAREASTYLE", "ModelorDraughting", "ModelOrDraughting"),
+    ("IFCMATERIALRELATIONSHIP", "Expression", "MaterialExpression"),
+    ("IFCSTRUCTURALCURVECONNECTION", "Axis", "AxisDirection"),
+    ("IFCWORKTIME", "Start", "StartDate"),
+    ("IFCWORKTIME", "Finish", "FinishDate"),
+];
+
+/// Same-index name changes whose values another step reconciles, with which.
+const AT_INDEX_HANDLED: &[(&str, &str)] = &[
+    ("IFCBUILDINGELEMENTPROXY", "CompositionType -> PredefinedType: schema_enum writes a member IFC4 lacks as NOTDEFINED/USERDEFINED and reports it"),
+    ("IFCSPACE", "InteriorOrExteriorSpace -> PredefinedType: INTERNAL/EXTERNAL are IfcSpaceTypeEnum members; schema_enum reports the rest"),
+    ("IFCBOUNDARYEDGECONDITION", "schema_structural (#9668)"),
+    ("IFCBOUNDARYFACECONDITION", "schema_structural (#9668)"),
+    ("IFCBOUNDARYNODECONDITION", "schema_structural (#9668)"),
+    ("IFCBOUNDARYNODECONDITIONWARPING", "schema_structural (#9668)"),
+];
+
+/// #10763 and #10807: a type the converter passes through by position must
+/// match the target's layout. #10763 caught lists that differ in length or
+/// move a name; #10807 found IfcProcedure, whose IFC2X3 and IFC4 lists have the
+/// same length and put different attributes at the same index
+/// (`ProcedureType` where IFC4 has `LongDescription`). So an index may now
+/// differ only by a reviewed in-place rename: `schema_renames`, or
+/// [`SAME_CONCEPT_AT_INDEX`]. Anything else is mapped, handled, or exempt
+/// with a reason.
 #[test]
-fn no_same_named_type_keeps_a_shifted_source_layout_10763() {
+fn no_same_named_type_passes_a_different_attribute_through_by_position_10763_10807() {
     use crate::schema_plan::{plan_for, Adjust, Plan};
+    use crate::schema_renames::{POSITIONAL_RENAMES, POSITIONAL_REPLACEMENTS};
+    let reviewed = |ty: &str, a: &str, b: &str| {
+        let renames = POSITIONAL_RENAMES.iter().filter(|(t, _)| *t == ty).flat_map(|(_, p)| p.iter().copied());
+        let replaced = POSITIONAL_REPLACEMENTS.iter().filter(|(t, _)| *t == ty).map(|(_, p)| *p);
+        let concept = SAME_CONCEPT_AT_INDEX.iter().filter(|(t, ..)| *t == ty).map(|(_, x, y)| (*x, *y));
+        renames.chain(replaced).chain(concept).any(|(x, y)| (x == a && y == b) || (x == b && y == a))
+    };
     let schemas = ["IFC2X3", "IFC4", "IFC4X3"];
-    let mut bad = Vec::new();
-    let mut mapped = 0usize;
+    let (mut bad, mut checked, mut mapped) = (Vec::new(), 0usize, 0usize);
     for from in schemas {
         for to in schemas.into_iter().filter(|to| *to != from) {
             for ty in ifc_lite_core::IFC_TYPES.iter() {
@@ -181,13 +242,18 @@ fn no_same_named_type_keeps_a_shifted_source_layout_10763() {
                 let Plan::Write { renamed: None, adjust, .. } = plan_for(&name, from, to) else { continue };
                 mapped += usize::from(matches!(adjust, Adjust::Mapped(..)));
                 let (Some(src), Some(tgt)) = (super::schema_attribute_names(from, &name), super::schema_attribute_names(to, &name)) else { continue };
+                if adjust != Adjust::Keep || SOURCE_LAYOUT_EXEMPT.iter().chain(AT_INDEX_HANDLED).any(|(t, _)| *t == name) { continue; }
+                checked += 1;
                 let shifted = src.len() != tgt.len() || src.iter().enumerate().any(|(i, n)| tgt.iter().position(|t| t == n).is_some_and(|j| j != i));
-                if shifted && adjust == Adjust::Keep && !SOURCE_LAYOUT_EXEMPT.iter().any(|(t, _)| *t == name) {
-                    bad.push(format!("{from}->{to} {name}"));
+                if shifted { bad.push(format!("{from}->{to} {name}: the lists differ in length or move a name")); }
+                for (a, b) in src.iter().zip(tgt).filter(|(a, b)| a != b && !reviewed(&name, a, b)) {
+                    bad.push(format!("{from}->{to} {name}: {a} at the index of {b}"));
                 }
             }
         }
     }
-    assert!(mapped >= 4 * 20, "anti-vacuity: {mapped} mapped plans");
-    assert!(bad.is_empty(), "{} same-named type(s) keep a shifted source layout:\n{}", bad.len(), bad.join("\n"));
+    assert!(mapped >= 4 * 20 && checked > 500, "anti-vacuity: {mapped} mapped plans, {checked} positional pass-throughs");
+    bad.sort();
+    bad.dedup();
+    assert!(bad.is_empty(), "{} same-named type(s) pass an attribute through by position into another:\n{}", bad.len(), bad.join("\n"));
 }

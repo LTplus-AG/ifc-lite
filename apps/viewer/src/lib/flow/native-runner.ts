@@ -118,9 +118,10 @@ export class NativeFlowRunner {
         claimed = await claimReview(doc, preparedInputs);
         if (!claimed) throw new Error('the reviewed proposal could not be resumed');
         if (defaultModelChanged()) {
-          const unstarted = claimed;
-          claimed = null;
-          await releaseReviewClaim(unstarted);
+          // Nothing ran, so the claim goes back and the proposal stays resumable. If that write fails,
+          // the claim stays held and the catch below finishes it, still reporting the model change.
+          try { await releaseReviewClaim(claimed); claimed = null; }
+          catch (error) { console.warn('[flow] releasing an unstarted review claim failed', error); }
           throw new Error('The default model changed while claiming the reviewed checkpoint.');
         }
       }

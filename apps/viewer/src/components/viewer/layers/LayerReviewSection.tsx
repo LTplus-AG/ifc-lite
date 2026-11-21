@@ -97,12 +97,13 @@ function CandidateReview({
   const [withViewpoint, setWithViewpoint] = useState(true);
   const automationReview = useLayerAutomationReview(state => state.candidate);
   useEffect(() => {
-    if (!automationReview) return;
+    // Only an action aimed at this candidate and ref changes what this section has staged.
+    if (!automationReview || automationReview.candidateId !== candidateId || automationReview.refName !== refName) return;
     if (automationReview.action !== 'comment') {
       setStagedEntity(null);
       return;
     }
-    if (automationReview.candidateId !== candidateId || automationReview.refName !== refName || !claimLayerAutomationReview(automationReview, 'review')) return;
+    if (!claimLayerAutomationReview(automationReview, 'review')) return;
     setStagedEntity(automationReview.entity);
     setTitle(automationReview.title); setDescription(automationReview.description); setWithViewpoint(automationReview.withViewpoint);
   }, [automationReview, candidateId, refName]);

@@ -333,6 +333,18 @@ describe('renderer-first edit window (#10535)', () => {
     assert.equal(answered, useViewerStore.getState().mutationVersion, 'assistive-technology activation answers with the edited state');
   });
 
+  it('a click with no press on a button input publishes the held state before its handler', () => {
+    let answered = -1;
+    function Action() {
+      const version = useViewerStore((s) => s.mutationVersion);
+      return <input type="button" value="Apply" onClick={() => { answered = version; }} />;
+    }
+    const container = render(<Action />);
+    act(() => edit(new MutablePropertyView(null, MODEL_ID), 'REI90'));
+    act(() => { container.querySelector('input')!.click(); });
+    assert.equal(answered, useViewerStore.getState().mutationVersion, 'the input button answers with the edited state');
+  });
+
   it('a click with no press on an ARIA-role control publishes the held state before its handler', () => {
     let answered = -1;
     function Tabs() {

@@ -89,7 +89,8 @@ const CONTROL_EVENTS = ['input', 'change', 'click'] as const;
  * right after the handler, so a re-render before it sees the change would
  * write the old value back. They are exempt from publishing on a bare click.
  */
-const NATIVE_CONTROL_SELECTOR = 'input, select, textarea, [contenteditable]:not([contenteditable="false"])';
+const NATIVE_CONTROL_SELECTOR = 'input:not([type="button" i], [type="submit" i], [type="reset" i], [type="image" i]), '
+  + 'select, textarea, [contenteditable]:not([contenteditable="false"])';
 /** Native controls and the ARIA roles that act as controls (their own edit is published at once too). */
 const CONTROL_SELECTOR = `${NATIVE_CONTROL_SELECTOR}, [role="checkbox"], [role="switch"], [role="radio"], [role="option"], `
   + '[role="menuitemcheckbox"], [role="menuitemradio"], [role="combobox"], [role="slider"], [role="spinbutton"], [role="tab"]';

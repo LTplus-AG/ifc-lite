@@ -168,7 +168,7 @@ fn declared_schema(content: &[u8], converting: bool, target: &str) -> String {
     crate::file_schema::declared_token(source_header.as_ref(), converting, target).to_string()
 }
 
-fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &mut W) -> io::Result<LogExportStats> {
+fn validate_log_options(opts: &StepOptions) -> io::Result<()> {
     if opts.included.is_some() {
         return Err(invalid("export_step_with_log: `included` is not supported with a mutation log"));
     }
@@ -177,6 +177,11 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
             "export_step_with_log: pass edits in the log, not in StepOptions' attribute/property/copy-on-write vectors",
         ));
     }
+    Ok(())
+}
+
+fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &mut W) -> io::Result<LogExportStats> {
+    validate_log_options(opts)?;
     let src = Source::index(content);
     // A created entity never reuses a source id (the mutation layer's
     // watermark allocates past the file's highest one), so a log that creates
@@ -262,10 +267,13 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
 
     write_header(out, opts, content, converting, &target, pass.new_entity_count + pass.ledger.modified_count())?;
     // IFC2X3 places one product per placement (#9209): its records are held to adapt them.
-    let mut body = crate::schema_ifc2x3_placements::Body::new(&mut *out, target_is_ifc2x3);
+    let typed_properties = crate::schema_typed_properties::applies(&source_label, &target)
+        && (!pass.overlay.retype_order.is_empty() || !pass.created_lines.is_empty() || crate::schema_typed_properties::has_typed_records(content));
+    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, target_is_ifc2x3, typed_properties);
 
     let mut slot_fill = crate::schema_ifc2x3_slots::Ifc2x3SlotFill::new(pass.fallback_owner_history());
     let mut checks = crate::schema_enum::ConversionChecks::for_source(content, &source_label, &target, opts, log.mutations.is_empty() && log.new_entities.is_empty() && log.georef_mutations.is_none(), &|id, start| src.span(id).is_some_and(|(kept, _)| kept == start), &mut || pass.allocate().ok());
+    checks.typed_properties.enabled = typed_properties;
     let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(content, &source_label, &target); flatten.note_all(content, pass.mutated_lines.iter().filter_map(|(id, (t, _))| Some((*id, t.as_deref()?)))
         .chain(pass.generated.iter().chain(&pass.rewritten_lines).chain(&pass.georef_lines).chain(&pass.created_lines).map(|(id, l)| (*id, l.as_str()))));
     flatten.retain_grids(|id| !pass.skip.contains(&id) && !pass.is_deleted(id));
@@ -321,7 +329,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     for (id, line) in appended.filter(|(id, _)| !flatten.drops(*id)) {
         written += usize::from(write_line(&mut body, line, *id, converting, &source_label, &target, &mut slot_fill, &mut checks, &flatten)?);
     }
-    written = written.checked_add_signed(checks.finish(body, target_is_ifc2x3.then_some(&mut slot_fill))?).unwrap_or(written);
+    written = written.checked_add_signed(checks.finish(body, target_is_ifc2x3.then_some(&mut slot_fill), pass.ids)?).unwrap_or(written);
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
 
     let mut warnings = std::mem::take(&mut pass.warnings);

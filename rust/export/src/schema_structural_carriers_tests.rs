@@ -126,16 +126,19 @@ fn a_comment_only_caused_by_is_not_warned_as_omitted_10779() {
 }
 
 #[test]
-fn a_deleted_structural_profile_subtype_names_what_it_drops_10777() {
+fn a_structural_profile_subtype_reports_only_unpreserved_values_10797() {
     let n = crate::schema_convert::schema_attribute_names("IFC2X3", "IFCSTRUCTURALSTEELPROFILEPROPERTIES").unwrap().len();
-    let record = format!("#40=IFCSTRUCTURALSTEELPROFILEPROPERTIES('HEA',#9,12.5{});", ",$".repeat(n - 3));
-    let (up, warnings) = convert(&model("IFC2X3", &record), "IFC4");
-    // Only ProfileDefinition carries; the measures are dropped, not shifted into another slot.
-    assert!(up.lines().any(|l| l == "#40=IFCPROFILEPROPERTIES($,$,$,#9);"), "{up}");
-    assert!(warnings.contains("IFCSTRUCTURALSTEELPROFILEPROPERTIES.PhysicalWeight has no slot in IFC4; its value is omitted"), "{warnings}");
+    let profile = "#37=IFCCARTESIANPOINT((0.,0.));\n#38=IFCAXIS2PLACEMENT2D(#37,$);\n#39=IFCRECTANGLEPROFILEDEF(.AREA.,'R',#38,0.2,0.3);";
+    let record = format!("{profile}\n#40=IFCSTRUCTURALSTEELPROFILEPROPERTIES('HEA',#39,12.5{});", ",$".repeat(n - 3));
+    let input = model("IFC2X3", &record);
+    let (up, warnings) = convert(&input, "IFC4");
+    assert!(up.contains("#40=IFCPROFILEPROPERTIES('Pset_ProfileMechanical',$,(#41),#39);"), "{up}");
+    assert!(up.contains("#41=IFCPROPERTYSINGLEVALUE('MassPerLength',$,IFCMASSPERLENGTHMEASURE(12.5),$);"), "{up}");
+    assert!(warnings.contains("IFCSTRUCTURALSTEELPROFILEPROPERTIES.ProfileName has no slot in IFC4; its value is omitted"), "{warnings}");
+    assert!(!warnings.contains("IFCSTRUCTURALSTEELPROFILEPROPERTIES.PhysicalWeight"), "{warnings}");
     let opts = StepOptions { schema: Some("IFC4".into()), ..StepOptions::default() };
-    let (_, stats, _) = export_step_with_diagnostics(model("IFC2X3", &record).as_bytes(), &opts).unwrap();
-    assert_eq!(stats.attribute_values_dropped, 2, "ProfileName and PhysicalWeight");
+    let (_, stats, _) = export_step_with_diagnostics(input.as_bytes(), &opts).unwrap();
+    assert_eq!(stats.attribute_values_dropped, 1, "ProfileName");
 }
 
 // A varying action that stays unconverted is no IFC4 product, so no 'Causes' relationship may name it.

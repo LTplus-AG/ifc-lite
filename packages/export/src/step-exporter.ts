@@ -251,6 +251,7 @@ export class StepExporter {
 
     // Complete map metadata adaptation before optional Rust planning and assembly.
     normalizeCoordinateMetadata(pass, options, () => allocatedExpressId(this.nextExpressId++));
+    this.nextExpressId = pass.enums.typedProperties.finish(pass.entities, pass.ifc4Slots, this.nextExpressId, pass.enums.structural);
     return { pass };
   }
 

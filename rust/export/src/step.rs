@@ -138,7 +138,22 @@ fn group_property_mutations<'a>(
     (groups, refused)
 }
 
+/// Resolve last-wins attribute edits, excluding anything that is not one STEP value.
 #[allow(clippy::type_complexity)]
+fn prepared_attribute_edits(opts: &StepOptions) -> (HashMap<u32, BTreeMap<usize, String>>, usize) {
+    let mut attribute_edits_refused = 0;
+    let mut muts_by_id: HashMap<u32, BTreeMap<usize, String>> = HashMap::new();
+    for m in &opts.attribute_mutations {
+        if !crate::step_slot::is_step_value(&m.value) {
+            attribute_edits_refused += 1;
+            continue;
+        }
+        muts_by_id.entry(m.express_id).or_default().insert(m.index, m.value.clone());
+    }
+
+    (muts_by_id, attribute_edits_refused)
+}
+
 fn emit<W: std::io::Write>(
     content: &[u8],
     opts: &StepOptions,
@@ -159,7 +174,6 @@ fn emit<W: std::io::Write>(
 
     // 2. Resolve the included set + forward reference closure.
     let mut refused_refs = 0usize;
-    let mut attribute_edits_refused = 0usize;
     let included: HashSet<u32> = match &opts.included {
         None => order.iter().copied().collect(),
         Some(roots) => {
@@ -202,26 +216,15 @@ fn emit<W: std::io::Write>(
     // IFC4-required `$` slots (#5307) and enum members the target lacks (#5365).
     let mut ids = crate::step_ids::IdAllocator::after(max_id);
     let mut checks = crate::schema_enum::ConversionChecks::for_source(content, &source_schema, &schema, opts, true, &|id, start| index.is_kept(id, start), &mut || ids.allocate());
+    checks.typed_properties.enabled = crate::schema_typed_properties::applies(&source_schema, &schema)
+        && crate::schema_typed_properties::has_typed_records(content);
     // The synthesized property sets below are filled whenever the OUTPUT is
     // IFC2X3, not only when a conversion runs: an IFC2X3 source needs no
     // conversion, and the records this exporter writes for it still have to be
     // valid IFC2X3.
     let targets_ifc2x3 = crate::schema_convert::targets_ifc2x3(&schema);
 
-    // Root-attribute edits, resolved per (entity, attribute) as they are read.
-    // A list plus a last-wins rule made "the value at this index" a derived
-    // fact that every reader re-derived its own way, and two of them got it
-    // wrong. Keyed by index there is nothing left to derive.
-    // A value that is not one STEP value is refused here, before it can shift
-    // a slot or close the record early (#7682, EXPORT-STEP-26).
-    let mut muts_by_id: HashMap<u32, BTreeMap<usize, String>> = HashMap::new();
-    for m in &opts.attribute_mutations {
-        if !crate::step_slot::is_step_value(&m.value) {
-            attribute_edits_refused += 1;
-            continue;
-        }
-        muts_by_id.entry(m.express_id).or_default().insert(m.index, m.value.clone());
-    }
+    let (muts_by_id, mut attribute_edits_refused) = prepared_attribute_edits(opts);
 
     // Copy-on-write, resolved before the emit loop so the copies and the
     // repointed referrers both go through it. Its own module: the pass has four
@@ -241,7 +244,7 @@ fn emit<W: std::io::Write>(
     crate::step_header::write_header(out, opts, source_header.as_ref(), header_schema)?;
     // IFC2X3 places one product per placement (#9209): its records are held to adapt them.
     use std::io::Write as _;
-    let mut body = crate::schema_ifc2x3_placements::Body::new(&mut *out, targets_ifc2x3);
+    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, targets_ifc2x3, checks.typed_properties.enabled);
 
     let mut written = 0usize;
     for id in order {
@@ -345,7 +348,7 @@ fn emit<W: std::io::Write>(
         written += 2;
     }
 
-    written = written.checked_add_signed(checks.finish(body, targets_ifc2x3.then_some(&mut slot_fill))?).unwrap_or(written);
+    written = written.checked_add_signed(checks.finish(body, targets_ifc2x3.then_some(&mut slot_fill), ids)?).unwrap_or(written);
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
 
     Ok((StepStats {

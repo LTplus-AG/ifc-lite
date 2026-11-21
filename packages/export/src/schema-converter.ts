@@ -267,10 +267,8 @@ function requireTopLevelAttributes(attrsRaw: string): string[] {
  * @param toSchema - Target schema version
  * @param random - Optional seeded `RandomSource` for the GlobalId of any IFCPROXY
  *   placeholder minted here; pass one when output must be byte-reproducible.
- * @param slots - This package's exporters pass one; it carries the owner
- *   history they reuse (#4686) and collects what they could not settle.
- *   Omitted, a throwaway stands in, so the generated table's own defaults are
- *   still written but the OwnerHistory reuse and both counts are lost.
+ * @param slots - Reuses OwnerHistory (#4686) and counts unsettled slots.
+ *   Without a collector, required-slot filling uses the generated defaults.
  * @param ifc4Slots - Counts IFC4-required slots left `$` (IFC4X3/IFC5 → IFC4, #5202; mapped or structural IFC2X3 → IFC4, #10763).
  * @param enums - Resolves enum members the target lacks and reports losses (#5365).
  * @param withheldRefIds - Express ids this export is OMITTING outright

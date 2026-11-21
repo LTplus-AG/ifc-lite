@@ -350,7 +350,7 @@ mod tests {
             plans.get(ty, "IFC2X3", "IFC4");
         }
         plans.get("IFCCURVESEGMENT", "IFC4X3", "IFC4");
-        // Claude review on #10988: an IFC4X3 alignment product is proxied too, on either downgrade.
+        // An IFC4X3 alignment product is proxied too, on either downgrade.
         plans.get("IFCALIGNMENT", "IFC4X3", "IFC4");
         plans.get("IFCALIGNMENT", "IFC4X3", "IFC2X3");
         // Not the refused IfcCurveSegment, nor the varying action the structural pass names (#9668).

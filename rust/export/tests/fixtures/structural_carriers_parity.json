@@ -366,6 +366,40 @@
         "#2=IFCORGANIZATION($,'O',$,$,$);",
         "#30=IFCSTRUCTURALLINEARACTIONVARYING('3AqvQc$eTFwQAT_AXxIZSF',#5,'Line',$,$,#32,#15,#11,.GLOBAL_COORDS.,.F.,$,.PROJECTED_LENGTH.,#17,(#19));"
       ]
+    },
+    {
+      "why": "a deferred property atom superseding a load prevents configuration synthesis (#11007)",
+      "from": "IFC2X3",
+      "to": "IFC4",
+      "data": "#13=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#8,$);\n#18=IFCVERTEXPOINT(#7);\n#14=IFCTOPOLOGYREPRESENTATION(#13,'Reference','Vertex',(#18));\n#16=IFCTOPOLOGYREPRESENTATION(#13,'Reference','Vertex',(#18));\n#15=IFCPRODUCTDEFINITIONSHAPE($,$,(#14));\n#17=IFCSHAPEASPECT((#14),'Earlier copy',$,.U.,#15);\n#17=IFCSHAPEASPECT((#14,#16),$,$,.U.,#15);\n#19=IFCSTRUCTURALLOADLINEARFORCE('end',0.,0.,-9.,0.,0.,0.);\n#30=IFCSTRUCTURALLINEARACTIONVARYING('3AqvQc$eTFwQAT_AXxIZSF',#5,'Line',$,$,#9,#15,#11,.GLOBAL_COORDS.,.F.,$,.PROJECTED_LENGTH.,#17,(#19));\n#19=IFCPROPERTYSINGLEVALUE('Replacement',$,IFCLABEL('Value'),$);",
+      "expect": [
+        "#2=IFCORGANIZATION($,'O',$,$,$);",
+        "#30=IFCSTRUCTURALLINEARACTIONVARYING('3AqvQc$eTFwQAT_AXxIZSF',#5,'Line',$,$,#9,#15,#11,.GLOBAL_COORDS.,.F.,$,.PROJECTED_LENGTH.,#17,(#19));"
+      ],
+      "deferPropertyAtomIndex": true
+    },
+    {
+      "why": "a referrer superseded by a deferred property atom cannot strand a configuration (#11007)",
+      "from": "IFC4",
+      "to": "IFC2X3",
+      "data": "#13=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#8,$);\n#18=IFCVERTEXPOINT(#7);\n#14=IFCTOPOLOGYREPRESENTATION(#13,'Reference','Vertex',(#18));\n#16=IFCTOPOLOGYREPRESENTATION(#13,'Reference','Vertex',(#18));\n#15=IFCPRODUCTDEFINITIONSHAPE($,$,(#14));\n#17=IFCSHAPEASPECT((#14),'Earlier copy',$,.U.,#15);\n#17=IFCSHAPEASPECT((#14,#16),$,$,.U.,#15);\n#19=IFCSTRUCTURALLOADLINEARFORCE('end',0.,0.,-9.,0.,0.,0.);\n#31=IFCSTRUCTURALLOADCONFIGURATION($,(#11),$);\n#30=IFCSTRUCTURALCURVEACTION('3AqvQc$eTFwQAT_AXxIZSF',#5,'Line',$,$,#9,#15,#31,.GLOBAL_COORDS.,.F.,.PROJECTED_LENGTH.,.NOTDEFINED.);\n#31=IFCSTRUCTURALLOADCONFIGURATION($,(#11,#19),$);\n#25=IFCWALL('3nopC4uRTI$9OB7Ig1TJsz',#5,'Superseded',$,$,$,#31,$,.NOTDEFINED.);\n#25=IFCPROPERTYSINGLEVALUE('Replacement',$,IFCLABEL('Value'),$);",
+      "expect": [
+        "#2=IFCORGANIZATION($,'O',$,$,$);",
+        "#30=IFCSTRUCTURALLINEARACTIONVARYING('3AqvQc$eTFwQAT_AXxIZSF',#5,'Line',$,$,#32,#15,#11,.GLOBAL_COORDS.,.F.,$,.PROJECTED_LENGTH.,#17,(#19));"
+      ],
+      "deferPropertyAtomIndex": true
+    },
+    {
+      "why": "a deferred property atom supersedes a document reference (#11007)",
+      "deferPropertyAtomIndex": true,
+      "to": "IFC2X3",
+      "data": "#21=IFCSTRUCTURALPOINTACTION('3nopC4uRTI$9OB7Ig1TJsz',#5,'B',$,$,$,$,#12,.GLOBAL_COORDS.,.F.);\n#30=IFCDOCUMENTINFORMATION('D1','Doc',$,$,$,$,$,$,$,$,$,$,$,$,$,$,$);\n#25=IFCDOCUMENTREFERENCE('a.pdf','A1',$,$,#30);\n#26=IFCDOCUMENTREFERENCE('b.pdf','B1',$,$,#30);\n#25=IFCPROPERTYSINGLEVALUE('Replacement',$,IFCLABEL('Value'),$);",
+      "expect": [
+        "#2=IFCORGANIZATION($,'O',$,$,$);",
+        "#21=IFCSTRUCTURALPOINTACTION('3nopC4uRTI$9OB7Ig1TJsz',#5,'B',$,$,$,$,#12,.GLOBAL_COORDS.,.F.,$);",
+        "#30=IFCDOCUMENTINFORMATION('D1','Doc',$,(#26),$,$,$,$,$,$,$,$,$,$,$,$,$);"
+      ],
+      "from": "IFC4"
     }
   ]
 }

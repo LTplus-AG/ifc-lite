@@ -1,12 +1,11 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 /** Matches rust/export/src/schema_structural_varying.rs (#9668). */
-import type { IfcDataStore } from '@ifc-lite/parser';
 import { destabilizingUnknown } from './schema-converter-structural.js';
 import { listItems } from './schema-converter-structural-axes.js';
 import { refId } from './schema-ifc2x3-records.js';
 import { holdsValue } from './step-comment-skip.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
-import type { SourceRecords, SourceStore, StructuralRewrite } from './schema-converter-structural-source.js';
+import type { SourceRecords, StructuralRewrite } from './schema-converter-structural-source.js';
 
 /**
  * IFC2X3's varying actions and the IFC4 actions they become. IFC4 dropped
@@ -50,17 +49,15 @@ export class StructuralVarying {
   ids: (() => number) | null = null;
   private readonly pending: string[] = [];
   private mode: 'upgrade' | 'downgrade' | null = null;
-  private byId: IfcDataStore['entityIndex']['byId'] = new Map();
+  private source?: SourceRecords;
   /** IFC4 IfcStructuralLoadConfiguration id -> its values. */
   private readonly configs = new Map<number, number[]>();
   /** IfcProductDefinitionShape id -> the IfcShapeAspects naming it as PartOfProductDefinitionShape. */
   private readonly aspects = new Map<number, { id: number; representations: number }[]>();
 
-  fromStore(store: SourceStore, from: string, to: string, source: SourceRecords): void {
+  fromSource(source: SourceRecords, from: string, to: string): void {
     const mode = from === 'IFC2X3' && to === 'IFC4' ? 'upgrade' : from === 'IFC4' && to === 'IFC2X3' ? 'downgrade' : null;
-    // @raw-entity-enumeration-ok conversion prepass is enabled only for an unedited full-source export
-    const { byId, byType } = store.entityIndex;
-    const present = (types: readonly string[]) => types.some((type) => byType.get(type)?.length);
+    const present = (types: readonly string[]) => types.some((type) => source.ids(type).length > 0);
     const work = mode === 'upgrade' ? present(KINDS.map((k) => k.ifc2x3))
       // With no action to convert, a downgrade still checks what names a configuration.
       : mode === 'downgrade' && present(['IFCSTRUCTURALLOADCONFIGURATION']);
@@ -78,7 +75,7 @@ export class StructuralVarying {
       if (values?.length && values.every((v) => v !== null)) this.configs.set(id, values as number[]);
     }
     this.mode = mode;
-    this.byId = byId;
+    this.source = source;
     if (mode === 'downgrade') this.checkSharedConfigurations(source);
   }
 
@@ -89,21 +86,20 @@ export class StructuralVarying {
     const candidates = new Set<number>();
     const consumed = new Set<number>();
     const configs = new Set(this.configs.keys());
-    for (const [id, entry] of this.byId) {
-      if (!KINDS.some((k) => k.ifc4 === entry.type.toUpperCase())) continue;
-      const args = source.slots(id);
-      if (!args || args.some((a, i) => i !== 7 && referencesAnyExpressId(a, configs))) continue;
-      if (this.toIfc2x3(id, entry.type.toUpperCase(), args)) {
-        candidates.add(id);
-        consumed.add(refId(args[7])!);
+    for (const { ifc4 } of KINDS) {
+      for (const id of source.ids(ifc4)) {
+        const args = source.slots(id);
+        if (!args || args.some((a, i) => i !== 7 && referencesAnyExpressId(a, configs))) continue;
+        if (this.toIfc2x3(id, ifc4, args)) {
+          candidates.add(id);
+          consumed.add(refId(args[7])!);
+        }
       }
     }
     for (const { id } of source.naming(consumed)) {
       if (!candidates.has(id)) throw new Error(SHARED_CONFIGURATION);
     }
   }
-
-  private typeOf(id: number): string { return this.byId.get(id)?.type.toUpperCase() ?? ''; }
 
   /** The target record body for a varying action of either schema, or undefined. */
   rewrite(id: number, entity: string, args: readonly string[], carried: ReadonlySet<string>): StructuralRewrite | undefined {
@@ -121,9 +117,9 @@ export class StructuralVarying {
   private convertible(kind: Kind, representation: string, loads: readonly (number | null)[], location?: number | null): number | undefined {
     const found = this.aspects.get(refId(representation) ?? -1);
     if (found?.length !== 1 || (location !== undefined && found[0].id !== location) || loads.length < kind.min || found[0].representations !== loads.length) return undefined;
-    const type = loads[0] === null ? '' : this.typeOf(loads[0]);
+    const type = this.source?.type(loads[0]) ?? '';
     const first: readonly string[] = kind.first;
-    return first.includes(type) && loads.every((l) => l !== null && this.typeOf(l) === type) ? found[0].id : undefined;
+    return first.includes(type) && loads.every((l) => this.source?.type(l) === type) ? found[0].id : undefined;
   }
 
   /**

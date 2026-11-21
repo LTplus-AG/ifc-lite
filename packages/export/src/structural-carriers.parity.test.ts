@@ -11,13 +11,15 @@ import { describe, expect, it } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
 import { StepExporter } from './step-exporter.js';
 
-interface Case { why: string; from: 'IFC2X3' | 'IFC4'; to: 'IFC2X3' | 'IFC4'; data: string; expect: string[] }
+interface Case { why: string; from: 'IFC2X3' | 'IFC4'; to: 'IFC2X3' | 'IFC4'; data: string; expect: string[]; deferPropertyAtomIndex?: boolean }
 const FIXTURE = fileURLToPath(new URL('../../../rust/export/tests/fixtures/structural_carriers_parity.json', import.meta.url));
 const doc = JSON.parse(readFileSync(FIXTURE, 'utf8')) as { owner: string; selectIds: number[]; selectTypes: string[]; cases: Case[] };
 
 async function selected(c: Case): Promise<string[]> {
   const text = `ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('${c.from}'));\nENDSEC;\nDATA;\n${doc.owner}\n${c.data}\nENDSEC;\nEND-ISO-10303-21;\n`;
-  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer as ArrayBuffer);
+  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer as ArrayBuffer, {
+    disableWorkerScan: true, deferPropertyAtomIndex: c.deferPropertyAtomIndex,
+  });
   const out = new TextDecoder().decode(new StepExporter(store).export({ schema: c.to }).content);
   return out.split('\n').filter((line) => {
     const record = /^#(\d+)=([A-Z0-9_]+)\(/.exec(line);

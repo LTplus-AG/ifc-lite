@@ -18,12 +18,8 @@
  * exception with no indication of what ELSE in the file has the same
  * problem, since the export aborts on the FIRST record it cannot represent.
  *
- * `IfcDataStore.entityIndex.byType` already gives every distinct type
- * present with its express ids, and `classifyEntityTypeConversion`'s
- * decision depends only on the TYPE (the generated attribute tables are
- * positional-name lists, not per-instance data) — so a complete, honest loss
- * report is one pass over the distinct types, not the whole file (#4206: the
- * "the loss report ... names each attribute it could not carry" bar).
+ * Classify each distinct source type once using the attribute tables, then
+ * look up the kept IDs for the types with potential losses (#4206).
  */
 
 import { isStructuralBoundaryCondition, isStructuralAssignmentConversion } from './schema-converter-structural.js';
@@ -31,7 +27,7 @@ import { NO_ROUND_TRIP, structuralRoundTrip } from './schema-converter-structura
 import { varyingTarget } from './schema-converter-structural-varying.js';
 import { DocumentLinks } from './schema-converter-document-links.js';
 import { SourceRecords } from './schema-converter-structural-source.js';
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { EMPTY_SOURCE_BYTES, type IfcDataStore } from '@ifc-lite/parser';
 import {
   convertEntityType,
   attrNameTable,
@@ -285,26 +281,39 @@ export function analyzeConversionLoss(
 ): ConversionLossReport {
   const entries: ConversionLossEntry[] = [];
   if (fromSchema !== toSchema) {
+    const { entityIndex, deferredEntityIndex, source } = store;
+    let inventory = source || entityIndex.byId.size || deferredEntityIndex?.size
+      ? new SourceRecords({ entityIndex, deferredEntityIndex, source: source ?? EMPTY_SOURCE_BYTES })
+      : undefined;
     const typed: [string, readonly number[], EntityConversionInfo][] = [];
     // An IFC2X3 varying action classifies as identity, but the upgrade can report its CausedBy (`strandedAs`).
     const varying: [string, readonly number[]][] = [];
-    // @raw-entity-enumeration-ok this report accepts only a source entityIndex and describes the parsed file's schema-conversion losses
-    for (const [sourceType, expressIds] of store.entityIndex.byType) {
-      if (expressIds.length === 0) continue;
+    // @raw-entity-enumeration-ok this report describes the parsed file's schema-conversion losses
+    for (const [sourceType, ids] of entityIndex.byType) {
+      if (ids.length === 0) continue;
       const info = classifyEntityTypeConversion(sourceType, fromSchema, toSchema);
-      if (info.kind !== 'identity' && info.kind !== 'renamed') typed.push([sourceType.toUpperCase(), expressIds, info]);
-      else if (fromSchema === 'IFC2X3' && varyingTarget(sourceType.toUpperCase())) varying.push([sourceType.toUpperCase(), expressIds]);
+      const isLoss = info.kind !== 'identity' && info.kind !== 'renamed';
+      if (!isLoss && !(fromSchema === 'IFC2X3' && varyingTarget(sourceType.toUpperCase()))) continue;
+      let expressIds: readonly number[] = ids;
+      try {
+        expressIds = inventory?.ids(sourceType) ?? ids;
+      } catch (error) {
+        console.warn('[analyzeConversionLoss] Could not resolve kept source records', error);
+        inventory = undefined;
+      }
+      if (expressIds.length === 0) continue;
+      if (isLoss) typed.push([sourceType.toUpperCase(), expressIds, info]);
+      else varying.push([sourceType.toUpperCase(), expressIds]);
     }
     // #9668: what an IFC2X3 <-> IFC4 structural carrier writes back on the round trip is not lost.
     // Only IfcStructural* records carry anything, and reading them needs the source bytes.
     // #10846: nor is a document link the export moves to the other record.
     const carrying = (type: string, info: EntityConversionInfo) => /^IFC(STRUCTURAL|DOCUMENT(INFORMATION|REFERENCE)$)/.test(type) && info.droppedAttributes.length > 0;
-    const { entityIndex, deferredEntityIndex, source } = store;
-    const round = source
+    const records = source ? inventory : undefined;
+    const round = records && source
       ? structuralRoundTrip({ entityIndex, deferredEntityIndex, source }, fromSchema, toSchema,
         [...typed.flatMap(([type, ids, info]) => (carrying(type, info) ? ids : [])), ...varying.flatMap(([, ids]) => ids)])
       : NO_ROUND_TRIP;
-    const records = source ? new SourceRecords({ entityIndex, deferredEntityIndex, source }) : undefined;
     const links = new DocumentLinks();
     try {
       if (records) links.fromSource(records, fromSchema, toSchema);

@@ -29,6 +29,9 @@ describe('IfcDocumentInformation <-> IfcDocumentReference link (#10846)', () => 
     });
     expect(store.entityIndex.byId.get(6)?.type).toBe('IFCDOCUMENTREFERENCE');
     expect(store.deferredEntityIndex?.get(6)?.type).toBe('IFCPROPERTYSINGLEVALUE');
+    const report = analyzeConversionLoss(store, 'IFC4', 'IFC2X3');
+    expect(report.entries.find((e) => e.sourceType === 'IFCDOCUMENTREFERENCE'))
+      .toMatchObject({ expressIds: [7], droppedAttributes: ['Description'] });
     expect(record(exportToStep(store, { schema: 'IFC2X3' }), 5))
       .toBe("#5=IFCDOCUMENTINFORMATION('D1','Doc',$,(#7),$,$,$,$,$,$,$,$,$,$,$,$,$);");
   });

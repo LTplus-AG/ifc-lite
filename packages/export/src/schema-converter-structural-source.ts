@@ -80,12 +80,17 @@ export class SourceRecords {
    */
   *naming(targets: ReadonlySet<number>): Generator<{ id: number; named: ReadonlySet<number> }> {
     if (targets.size === 0) return;
+    const deferred = this.store.deferredEntityIndex;
     // @raw-entity-enumeration-ok same unedited source-only prepass
-    for (const [id, entry] of this.store.entityIndex.byId) {
-      const text = this.decode(entry);
-      const head = stepRecordHead(text);
-      const named = namedExpressIds(text.slice(head?.open ?? skipStepTrivia(text, 0) + 1), targets);
-      if (named.size) yield { id, named };
+    const primary = this.store.entityIndex.byId;
+    for (const index of deferred ? [primary, deferred] : [primary]) {
+      for (const [id, entry] of index) {
+        if (deferred && this.entry(id)?.byteOffset !== entry.byteOffset) continue;
+        const text = this.decode(entry);
+        const head = stepRecordHead(text);
+        const named = namedExpressIds(text.slice(head?.open ?? skipStepTrivia(text, 0) + 1), targets);
+        if (named.size) yield { id, named };
+      }
     }
   }
 

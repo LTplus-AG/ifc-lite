@@ -203,6 +203,13 @@
    "to": "IFC4X3",
    "line": "#5=IFCRELOCCUPIESSPACES('0YvctVUKr0kugbFTf53O9L',$,$,$,(#2),$,#3,$);",
    "expect": "#5=IFCRELASSIGNSTOACTOR('0YvctVUKr0kugbFTf53O9L',$,$,$,(#2),$,#3,$);"
+  },
+  {
+   "why": "an IFC2X3 distribution point upgrades to the IFC4X3 distribution board layout (#10971)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#5=IFCELECTRICDISTRIBUTIONPOINT('0YvctVUKr0kugbFTf53O9L',$,'Panel','Description','Object',$,$,'Tag',.USERDEFINED.,'Custom function');",
+   "expect": "#5=IFCDISTRIBUTIONBOARD('0YvctVUKr0kugbFTf53O9L',$,'Panel','Description','Object',$,$,'Tag',.NOTDEFINED.);"
   }
  ],
  "routes": {

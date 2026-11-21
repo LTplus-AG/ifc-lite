@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-// IFC4X3 removed the old case entities. The unconstrained supertypes have
-// the same slots as the deleted cases. The final three need a name-based map.
+// IFC4X3 dropped the old case entities. Their supertypes have the same slots.
+// Replacements with a changed layout use a name-based map.
 const renamed = new Map([
   ['IFCBEAMSTANDARDCASE', 'IFCBEAM'],
   ['IFCBUILDINGELEMENT', 'IFCBUILTELEMENT'],
@@ -16,6 +16,7 @@ const renamed = new Map([
   ['IFCWALLELEMENTEDCASE', 'IFCWALL'],
   ['IFCWINDOWSTANDARDCASE', 'IFCWINDOW'],
   ['IFCDOORSTYLE', 'IFCDOORTYPE'],
+  ['IFCELECTRICDISTRIBUTIONPOINT', 'IFCDISTRIBUTIONBOARD'],
   ['IFCWINDOWSTYLE', 'IFCWINDOWTYPE'],
   ['IFCPROXY', 'IFCBUILDINGELEMENTPROXY'],
 ]);
@@ -25,7 +26,8 @@ export function upgradeIfc4x3Type(source: string): string | undefined {
 }
 
 export function needsIfc4x3SlotMap(source: string): boolean {
-  return source === 'IFCDOORSTYLE' || source === 'IFCWINDOWSTYLE' || source === 'IFCPROXY';
+  return source === 'IFCDOORSTYLE' || source === 'IFCWINDOWSTYLE' || source === 'IFCPROXY'
+    || source === 'IFCELECTRICDISTRIBUTIONPOINT';
 }
 
 function sourceName(type: string, target: string): string {
@@ -33,8 +35,8 @@ function sourceName(type: string, target: string): string {
 }
 
 export function remapIfc4x3Slots(type: string, source: readonly string[], target: readonly string[], args: readonly string[]): string {
-  // A style specifies operation and construction, not an occurrence class.
-  // The former IfcProxy's ProxyType likewise describes a different concept.
+  // The source operation, proxy type, and distribution function describe
+  // different concepts from the target PredefinedType.
   return target.map((name) => name === 'PredefinedType'
     ? '.NOTDEFINED.'
     : args[source.indexOf(sourceName(type, name))] ?? '$').join(',');

@@ -16,6 +16,7 @@ pub(crate) fn rename(ty: &str) -> Option<&'static str> {
         "IFCWALLELEMENTEDCASE" => "IFCWALL",
         "IFCWINDOWSTANDARDCASE" => "IFCWINDOW",
         "IFCDOORSTYLE" => "IFCDOORTYPE",
+        "IFCELECTRICDISTRIBUTIONPOINT" => "IFCDISTRIBUTIONBOARD",
         "IFCWINDOWSTYLE" => "IFCWINDOWTYPE",
         "IFCPROXY" => "IFCBUILDINGELEMENTPROXY",
         _ => return None,
@@ -23,15 +24,15 @@ pub(crate) fn rename(ty: &str) -> Option<&'static str> {
 }
 
 pub(crate) fn needs_slot_map(ty: &str) -> bool {
-    matches!(ty, "IFCDOORSTYLE" | "IFCWINDOWSTYLE" | "IFCPROXY")
+    matches!(ty, "IFCDOORSTYLE" | "IFCWINDOWSTYLE" | "IFCPROXY" | "IFCELECTRICDISTRIBUTIONPOINT")
 }
 
 fn source_name<'a>(ty: &str, target: &'a str) -> &'a str {
     if ty == "IFCWINDOWSTYLE" && target == "PartitioningType" { "OperationType" } else { target }
 }
 
-/// For replacement styles and IfcProxy, copy the common attributes by name
-/// and put the source window's OperationType in IFC4X3's PartitioningType.
+/// Copy common attributes by name. The source window's OperationType fills
+/// IFC4X3's PartitioningType.
 pub(crate) fn remap(ty: &str, src: &[&str], tgt: &[&str], args: &[String], lost: &mut usize) -> String {
     let used: Vec<&str> = tgt.iter().map(|name| source_name(ty, name)).collect();
     *lost += src.iter().zip(args).filter(|(name, slot)| !used.contains(name) && holds_value(slot)).count();

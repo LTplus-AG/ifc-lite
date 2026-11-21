@@ -8,6 +8,14 @@ import { classifyEntityTypeConversion, analyzeConversionLoss } from './schema-co
 import { exportToStep } from './step-exporter.js';
 
 describe('classifyEntityTypeConversion', () => {
+  it('names the distribution point function fields omitted on an IFC4X3 upgrade (#10971)', () => {
+    expect(classifyEntityTypeConversion('IFCELECTRICDISTRIBUTIONPOINT', 'IFC2X3', 'IFC4X3')).toEqual({
+      targetType: 'IFCDISTRIBUTIONBOARD',
+      kind: 'lossy',
+      droppedAttributes: ['DistributionPointFunction', 'UserDefinedFunction'],
+    });
+  });
+
   it('is identity when schemas match', () => {
     expect(classifyEntityTypeConversion('IFCWALL', 'IFC4', 'IFC4')).toEqual({
       targetType: 'IFCWALL',

@@ -26,7 +26,7 @@
  * "the loss report ... names each attribute it could not carry" bar).
  */
 
-import { isStructuralBoundaryCondition, isStructuralAssignmentConversion } from './schema-converter-structural.js';
+import { isStructuralStiffnessConversion, isStructuralAssignmentConversion } from './schema-converter-structural.js';
 import { NO_ROUND_TRIP, structuralRoundTrip } from './schema-converter-structural-diagnostics.js';
 import { SourceRecords } from './schema-converter-structural-source.js';
 import { varyingTarget } from './schema-converter-structural-varying.js';
@@ -98,10 +98,10 @@ export function classifyEntityTypeConversion(
   const srcAttrs = attrNameTable(fromSchema)?.get(upper);
   // #9668: stiffness fields survive by semantic position and unit, despite
   // renamed Linear/Translational attributes and SELECT wrappers.
-  if (isStructuralBoundaryCondition(upper) && ((fromSchema === 'IFC2X3' && toSchema === 'IFC4') || (fromSchema === 'IFC4' && toSchema === 'IFC2X3')))
-    // IFC2X3 cannot retain the IFC4 SELECT member: boolean false and a zero
+  if (isStructuralStiffnessConversion(upper, fromSchema, toSchema))
+    // IFC2X3 cannot retain the stiffness SELECT member: boolean false and a zero
     // measure both become 0, preserving stiffness but losing that distinction.
-    return { targetType: upper, kind: fromSchema === 'IFC4' ? 'lossy' : 'renamed', droppedAttributes: [] };
+    return { targetType: upper, kind: toSchema === 'IFC2X3' ? 'lossy' : 'renamed', droppedAttributes: [] };
   // #9668: the two linked objects survive in IFC4's analytical assignment,
   // under differently named roles, but their original relationship kind is lost.
   if (isStructuralAssignmentConversion(upper, fromSchema, toSchema))

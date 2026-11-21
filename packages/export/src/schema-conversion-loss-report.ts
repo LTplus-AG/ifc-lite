@@ -28,8 +28,9 @@
 
 import { isStructuralBoundaryCondition, isStructuralAssignmentConversion } from './schema-converter-structural.js';
 import { NO_ROUND_TRIP, structuralRoundTrip } from './schema-converter-structural-diagnostics.js';
-import { SourceRecords } from './schema-converter-structural-source.js';
 import { varyingTarget } from './schema-converter-structural-varying.js';
+import { DocumentLinks } from './schema-converter-document-links.js';
+import { SourceRecords } from './schema-converter-structural-source.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import {
   convertEntityType,
@@ -296,13 +297,23 @@ export function analyzeConversionLoss(
     }
     // #9668: what an IFC2X3 <-> IFC4 structural carrier writes back on the round trip is not lost.
     // Only IfcStructural* records carry anything, and reading them needs the source bytes.
-    const carrying = (type: string, info: EntityConversionInfo) => type.startsWith('IFCSTRUCTURAL') && info.droppedAttributes.length > 0;
+    // #10846: nor is a document link the export moves to the other record.
+    const carrying = (type: string, info: EntityConversionInfo) => /^IFC(STRUCTURAL|DOCUMENT(INFORMATION|REFERENCE)$)/.test(type) && info.droppedAttributes.length > 0;
     const { source } = store;
-    const { restored, stranded } = source
+    const round = source
       ? structuralRoundTrip({ entityIndex: store.entityIndex, source }, fromSchema, toSchema,
         [...typed.flatMap(([type, ids, info]) => (carrying(type, info) ? ids : [])), ...varying.flatMap(([, ids]) => ids)])
       : NO_ROUND_TRIP;
     const records = source ? new SourceRecords({ entityIndex: store.entityIndex, source }) : undefined;
+    const links = new DocumentLinks();
+    try {
+      if (records) links.fromSource(records, fromSchema, toSchema);
+    } catch (error) {
+      // As for the carriers: the schema-only preview stands if the prepass fails.
+      console.warn('[analyzeConversionLoss] Could not evaluate document links', error);
+    }
+    const { stranded } = round;
+    const restored = new Map([...round.restored, ...links.restored]);
     for (const [sourceType, expressIds, info] of typed) {
       const mapped = records && toSchema === 'IFC2X3' ? attrMapFor(sourceType, info.targetType, fromSchema, toSchema) : undefined;
       // A SET declared for an upgrade can still be dropped entirely on downgrade.
@@ -319,6 +330,11 @@ export function analyzeConversionLoss(
         ? entryAfterRestoration(sourceType, expressIds, info, isRetained)
         : { ...info, sourceType, count: expressIds.length, expressIds };
       if (entry) entries.push(entry);
+    }
+    // #10846: the classifier sees no IfcDocumentReference loss on an upgrade, but linking one drops its Name for WR1.
+    if (links.unnamed.size > 0) {
+      const expressIds = [...links.unnamed].sort((a, b) => a - b);
+      entries.push({ targetType: 'IFCDOCUMENTREFERENCE', kind: 'lossy', droppedAttributes: ['Name'], sourceType: 'IFCDOCUMENTREFERENCE', count: expressIds.length, expressIds });
     }
     for (const [sourceType, ids] of varying) {
       const byTarget = new Map<string, number[]>();

@@ -33,6 +33,7 @@ const schema = { type: 'object', properties: {
 }, required: ['target_model_id', 'seed_ids', 'excluded_ids', 'excluded_types', 'relations', 'anonymize', 'file_stem'], additionalProperties: false } satisfies JSONSchemaType<Input>;
 async function prepare(i: Input, check: () => void) {
   const model = nativeExportTarget(i.target_model_id); const store = await ensureModelExportReady(model.id); check(); if (!store) throw unavailable('Native anonymization source store is unavailable.');
+  if (!store.source?.byteLength) throw unavailable('Native anonymization requires original IFC STEP source bytes.');
   const view = useViewerStore.getState().getMutationView(model.id);
   // @raw-entity-enumeration-ok native anonymization exports source records; overlay-created seeds are refused on this same line
   if (i.seed_ids.some(id => view?.hasNewEntity(id) || store.entityIndex.byId.get(id) === undefined)) throw invalidInput('invalid-value', 'Native anonymization reads source records; overlay-created or unknown seeds cannot be exported.');

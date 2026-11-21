@@ -44,21 +44,26 @@ export function cardDraftNoteKey(result: SavedCardDrafts) {
 }
 
 /** One topic per eligible card, saved as a draft batch the BCF drafts dialog then reviews. */
-export async function draftTopicsFromCards(name: string, cards: readonly CoordinationCard[]): Promise<SavedCardDrafts> {
+export type ReviewCommit = <T extends { saved: boolean }>(write: () => Promise<T>) => Promise<T>;
+const directCommit: ReviewCommit = write => write();
+export async function draftTopicsFromCards(name: string, cards: readonly CoordinationCard[], commit: ReviewCommit = directCommit): Promise<SavedCardDrafts> {
   const state = useViewerStore.getState();
   const result = await draftBatchFromCards(name, cards, state.clashResult?.clashes ?? [],
     { worldOffset: bcfWorldOffset(state.models, state.geometryResult) });
   if (!result.batch) return { ...result, saved: false };
-  const saved = await saveDraftBatch(result.batch);
-  if (saved) useBcfDraftLibrary.setState({ activeId: result.batch.id });
-  const invalid = !saved && useBcfDraftLibrary.getState().status.items[result.batch.id] === 'invalid';
-  return { ...result, saved, ...(invalid ? { invalid: refusal(result.batch) } : {}) };
+  const batch = result.batch;
+  return commit(async () => {
+    const saved = await saveDraftBatch(batch);
+    if (saved) useBcfDraftLibrary.setState({ activeId: batch.id });
+    const invalid = !saved && useBcfDraftLibrary.getState().status.items[batch.id] === 'invalid';
+    return { ...result, saved, ...(invalid ? { invalid: refusal(batch) } : {}) };
+  });
 }
 
 /** A new native document of the selected cards; never overwrites an existing document. */
-export async function addCardsToReport(name: string, cards: readonly CoordinationCard[]): Promise<{ id: string; saved: boolean }> {
+export async function addCardsToReport(name: string, cards: readonly CoordinationCard[], commit: ReviewCommit = directCommit): Promise<{ id: string; saved: boolean }> {
   const state = useViewerStore.getState();
   await state.initializeDocuments();
   const document = reviewDocument(name, cards, totalsForCards(cards), currentReviewWorkspace(useReviewWorkspaces.getState().entries));
-  return { id: document.id, saved: await useViewerStore.getState().upsertDocument(document) };
+  return commit(async () => ({ id: document.id, saved: await useViewerStore.getState().upsertDocument(document) }));
 }

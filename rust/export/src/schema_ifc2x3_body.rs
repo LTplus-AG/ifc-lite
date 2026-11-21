@@ -34,7 +34,9 @@ impl<'w> Body<'w> {
     pub(crate) fn finish_with(self, typed_properties: impl FnOnce(&str) -> Option<(String, usize)>) -> io::Result<isize> {
         let Some(held) = self.held else { return Ok(0) };
         if self.typed_properties {
-            if let Some((text, added)) = std::str::from_utf8(&held).ok().and_then(typed_properties) {
+            // Match the STEP writers' lossy decoding so malformed bytes in
+            // another record cannot skip the typed-property rewrite.
+            if let Some((text, added)) = typed_properties(&String::from_utf8_lossy(&held)) {
                 self.out.write_all(text.as_bytes())?;
                 return Ok(added as isize);
             }

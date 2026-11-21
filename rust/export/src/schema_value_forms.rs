@@ -183,7 +183,7 @@ impl ValueForms {
         for &(index, attribute, required, empty, whole, rows) in slots {
             let Some(slot) = args.get(usize::from(index)) else { continue };
             if self.dates.enabled && rows.iter().any(|row| row.contains(">C")) {
-                let body = crate::schema_attr_maps::without_comments(slot);
+                let body = crate::step_slot::without_comments(slot);
                 let op = value_form(&body).and_then(|form| rule(rows, &form).flatten());
                 if op.is_some_and(|op| self.dates.defer(id, index, op, required, || format!("{ty}.{attribute}"))) {
                     continue;

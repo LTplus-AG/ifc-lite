@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-import { withoutComments } from './schema-converter-attr-maps.js';
+import { withoutComments } from './step-comment-skip.js';
 import { slotRef } from './schema-converter-structural-source.js';
 import { decimalSeconds } from './schema-converter-durations.js';
 

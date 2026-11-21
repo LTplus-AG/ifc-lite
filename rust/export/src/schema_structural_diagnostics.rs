@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Explicit losses where the other structural schema has no semantic slot (#9668).
+use crate::step_slot::slot_is;
 use std::collections::{BTreeMap, BTreeSet};
 use crate::schema_convert::{rename_type, schema_attribute_names};
 
@@ -33,9 +34,9 @@ impl StructuralDiagnostics {
         };
         for (name, value) in src.iter().zip(args) {
             // CONST is intrinsic to IFC2X3 linear/planar actions, not lost data.
-            if *name == "PredefinedType" && value.trim() == ".CONST."
+            if *name == "PredefinedType" && slot_is(value, ".CONST.")
                 && matches!(entity, "IFCSTRUCTURALCURVEACTION" | "IFCSTRUCTURALSURFACEACTION" | "IFCSTRUCTURALLINEARACTION" | "IFCSTRUCTURALPLANARACTION") { continue; }
-            if *name == "DestabilizingLoad" && value.trim() == "$" && to == "IFC2X3" {
+            if *name == "DestabilizingLoad" && slot_is(value, "$") && to == "IFC2X3" {
                 self.record(crate::schema_structural::destabilizing_unknown(entity));
             }
             if *name == "CausedBy" && cause_carried { continue; }

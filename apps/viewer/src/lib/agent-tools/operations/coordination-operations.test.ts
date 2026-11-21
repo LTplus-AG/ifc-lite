@@ -226,6 +226,41 @@ it('#10589 refuses to stage a share when the mounted consent dialog cannot load'
   assert.equal(useCollabShareReview.getState().dialogOpen, false);
 });
 
+it('#10589 refuses an active-model share when the active model changes during preparation', async t => {
+  const previous = useViewerStore.getState();
+  const initial = useCollabShareReview.getState();
+  setCollabEnabledOverride(true);
+  t.after(() => {
+    setCollabEnabledOverride(null);
+    useViewerStore.setState(previous);
+    useCollabShareReview.setState(initial);
+  });
+  await seedCoincidentWalls(2, 4);
+  const state = useViewerStore.getState();
+  const entered = deferred();
+  const release = deferred();
+  t.after(() => release.resolve());
+  const openShareDialog = t.mock.fn();
+  const retire = registerMountedFileHost({
+    openFiles() {},
+    addModel() {},
+    async refreshModels() {},
+    openShareDialog,
+    async preloadShareDialog() { entered.resolve(); await release.promise; },
+  });
+  t.after(retire);
+  const preparing = assert.rejects(execute('collab.prepareRoom', {
+    scope: 'active', role: 'viewer', expected_mutation_version: state.mutationVersion,
+    expected_geometry_version: state.geometryContentVersion,
+  }), { code: ToolErrorCode.STATE_CHANGED, message: /active model changed/ });
+  await waitFor(() => entered.settled(), 'Share preparation reached the async consent load');
+  useViewerStore.setState({ activeModelId: 'B' });
+  release.resolve();
+  await preparing;
+  assert.equal(openShareDialog.mock.callCount(), 0);
+  assert.equal(useCollabShareReview.getState().candidate, initial.candidate);
+});
+
 it('#10589 refuses agent joins that would share local annotations without starting a room session', async t => {
   const { annotations, startCollab } = useViewerStore.getState();
   const note = { id: 'local-pin', note: 'Local note', position: { x: 0, y: 0, z: 0 }, entityExpressId: null,

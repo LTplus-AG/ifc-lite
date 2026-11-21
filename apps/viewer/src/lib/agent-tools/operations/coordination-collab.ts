@@ -4,7 +4,7 @@
 import { getMountedFileHost } from '@/components/viewer/toolbar/mounted-file-host';
 import { useViewerStore } from '@/store';
 import { coordination } from './coordination-common';
-import { disabled } from './refusals';
+import { disabled, stale } from './refusals';
 export const coordinationCollabOperations = [
   coordination<{ room_id: string; token: string }>('collab.join', 'Join an exact room with a supplied existing token using native role parsing, sync/reconstruction and teardown. Never accepts a caller-chosen role or returns credentials. If joining would publish local annotations, the agent operation refuses and the user must open the invite link themselves.', ['network', 'configuration', 'view'], {
     type: 'object', properties: { room_id: { type: 'string', minLength: 1, maxLength: 200 }, token: { type: 'string', minLength: 1, maxLength: 10000 } }, required: ['room_id', 'token'], additionalProperties: false,
@@ -57,7 +57,11 @@ export const coordinationCollabOperations = [
         throw new Error('The Share consent dialog changed during share preparation.');
       }
       if (useCollabShareReview.getState().dialogOpen) throw new Error('The Share dialog is already open. Close it, then prepare the share again.');
-      const live = useViewerStore.getState(); if (live.models !== state.models || live.mutationVersion !== state.mutationVersion || live.geometryContentVersion !== state.geometryContentVersion || live.collabRoomId !== state.collabRoomId) throw new Error('Model scope or room changed during share preparation.');
+      const live = useViewerStore.getState();
+      if (!state.collabRoomId && i.scope === 'active' && live.activeModelId !== state.activeModelId) {
+        throw stale('The active model changed during share preparation. Inspect the active model and prepare the share again.');
+      }
+      if (live.models !== state.models || live.mutationVersion !== state.mutationVersion || live.geometryContentVersion !== state.geometryContentVersion || live.collabRoomId !== state.collabRoomId) throw new Error('Model scope or room changed during share preparation.');
       const candidate = { id: crypto.randomUUID(), scope: i.scope, role: i.role, modelIds: prepared?.models.map(model => model.modelId) ?? [...state.collabRoomModels.keys()], activeModelId: state.activeModelId, loadedModelIds: [...state.models.keys()], mutationVersion: state.mutationVersion, geometryVersion: state.geometryContentVersion, roomId: state.collabRoomId };
       useCollabShareReview.setState({ candidate });
       // Opening the dialog on an existing room mints an invite at once, so only a

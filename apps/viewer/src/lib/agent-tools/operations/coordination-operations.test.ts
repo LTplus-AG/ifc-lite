@@ -94,8 +94,8 @@ it('native viewpoint operations restore real parsed entity selection and camera 
 
 
 /** Valid 1024×1024 RGB PNG: ordinary screenshot dimensions with incompressible image detail. */
-function largeBcfScreenshot() {
-  const width = 1024, height = 1024, raw = Buffer.alloc((width * 3 + 1) * height); let seed = 8191;
+function largeBcfScreenshot(seed: number) {
+  const width = 1024, height = 1024, raw = Buffer.alloc((width * 3 + 1) * height);
   for (let row = 0; row < height; row++) for (let col = 1; col <= width * 3; col++) { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; raw[row * (width * 3 + 1) + col] = seed >>> 24; }
   const chunk = (kind: string, data: Uint8Array) => {
     const body = Buffer.concat([Buffer.from(kind), data]), output = Buffer.alloc(body.length + 8); output.writeUInt32BE(data.byteLength); body.copy(output, 4);
@@ -108,15 +108,21 @@ it('BCF metadata stays below the executor limit with >1 MiB native screenshot me
   const { createBCFComment } = await import('@ifc-lite/bcf');
   const camera = new Camera(); camera.setPosition(12, 8, 20); camera.setTarget(0, 0, 0); camera.setAspect(16 / 9);
   const renderer = { getCamera: () => camera } as unknown as Renderer; setGlobalRendererRef({ current: renderer });
-  const imageViewpointId = crypto.randomUUID(), secondImageViewpointId = crypto.randomUUID(); const png = largeBcfScreenshot(); assert.ok(png.byteLength > 1024 * 1024); const screenshot = `data:image/png;base64,${png.toString('base64')}`;
+  const imageViewpointId = crypto.randomUUID(), secondImageViewpointId = crypto.randomUUID();
+  const png = largeBcfScreenshot(8191), secondPng = largeBcfScreenshot(65521);
+  assert.ok(png.byteLength > 1024 * 1024);
+  assert.ok(!png.equals(secondPng), 'the two viewpoints have distinct screenshot bytes');
+  const screenshots = [[imageViewpointId, png], [secondImageViewpointId, secondPng]] as const;
   try {
     await execute('bcf.createProject', { value: 'Screenshot transport fixture' });
     const created = await execute<{ guid: string }>('bcf.createTopic', { title: 'Inspect native screenshots', description: 'Exact description for editing', status: 'Open' });
     useViewerStore.getState().setSelectedEntityIds([1, 2]);
     const captured = await execute<{ viewpoint: { guid: string } }>('bcf.captureViewpoint', { topic_id: created.guid, snapshot: false, selection: true, visibility: false });
     const native = useViewerStore.getState().bcfProject!.topics.get(created.guid)!.viewpoints.find(viewpoint => viewpoint.guid === captured.viewpoint.guid)!;
-    useViewerStore.getState().addViewpoint(created.guid, { ...native, guid: imageViewpointId, snapshot: screenshot, snapshotData: png });
-    useViewerStore.getState().addViewpoint(created.guid, { ...native, guid: secondImageViewpointId, snapshot: screenshot, snapshotData: png });
+    for (const [guid, snapshotData] of screenshots) {
+      const snapshot = `data:image/png;base64,${snapshotData.toString('base64')}`;
+      useViewerStore.getState().addViewpoint(created.guid, { ...native, guid, snapshot, snapshotData });
+    }
     const comment = createBCFComment({ author: 'native fixture', comment: 'Exact reviewed comment '.repeat(200) }); useViewerStore.getState().addComment(created.guid, comment);
     for (let index = 0; index < 21; index++) await execute('bcf.createTopic', { title: `Paged native topic ${index}`, description: '', status: 'Open' });
     const request = async <T>(operation_id: string, input: unknown = {}) => {
@@ -169,8 +175,14 @@ it('BCF metadata stays below the executor limit with >1 MiB native screenshot me
     assert.deepEqual(useViewerStore.getState().selectedEntityIds, new Set([1, 2])); assert.ok(Math.abs(camera.getPosition().x - 12) < 0.001);
     const exported = await request<ArtifactMetadata>('bcf.export'), bytes = new Uint8Array(exported.bytes);
     for (let offset = 0; offset < bytes.length; offset += 65536) { const chunk = await readArtifact(context.host, exported.artifact_id, offset, Math.min(65536, bytes.length - offset)); bytes.set(Uint8Array.from(atob(chunk.data), character => character.charCodeAt(0)), offset); }
-    const restored = await readBCF(bytes), restoredViewpoint = restored.topics.get(created.guid)!.viewpoints.find(viewpoint => viewpoint.guid === imageViewpointId); assert.ok(restoredViewpoint?.snapshotData);
-    assert.deepEqual(Buffer.from(restoredViewpoint.snapshotData), png); assert.equal(restored.topics.get(created.guid)?.comments[0].comment, 'Native comment updated with its exact inspected value.');
+    const restored = (await readBCF(bytes)).topics.get(created.guid);
+    assert.ok(restored);
+    for (const [guid, expected] of screenshots) {
+      const snapshot: Uint8Array | undefined = restored.viewpoints.find(viewpoint => viewpoint.guid === guid)?.snapshotData;
+      assert.ok(snapshot, `snapshot data for viewpoint ${guid}`);
+      assert.deepEqual(Buffer.from(snapshot), expected, `screenshot bytes for viewpoint ${guid}`);
+    }
+    assert.equal(restored.comments[0].comment, 'Native comment updated with its exact inspected value.');
   } finally { clearGlobalRefs(); }
 });
 it('compare.run and collab.prepareRoom refuse what the native panel and dialog would refuse (#10589)', async () => {

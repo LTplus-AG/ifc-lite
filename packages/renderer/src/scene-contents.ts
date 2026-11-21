@@ -181,9 +181,11 @@ export interface SceneContents {
 
   // ─── Authoring mutations ─────────────────────────────────────────────
   removeMeshesForEntities(expressIds: Iterable<number>): number;
-  translateMeshesForEntities(updates: Map<number, [number, number, number]>): number;
+  /** `beforeWrite` observes a flat piece immediately before its vertex buffers change. */
+  translateMeshesForEntities(updates: Map<number, [number, number, number]>, beforeWrite?: (mesh: MeshData) => void): number;
   rotateMeshesForEntities(
     updates: Map<number, { angle: number; pivot: [number, number, number] }>,
+    beforeWrite?: (mesh: MeshData) => void,
   ): number;
   /**
    * Turn `modelIndex`'s GPU-instanced occurrences about the render-frame

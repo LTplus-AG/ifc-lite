@@ -16,10 +16,13 @@ import { installLayout } from '@/test/dom-layout.js';
 installLayout();
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { blur, cleanup, click, press, render, type, waitFor } from '@/test/render.js';
+import { advance, blur, cleanup, click, press, render, type, waitFor } from '@/test/render.js';
 import { useViewerStore } from '@/store';
+import { deferred } from '@/test/race.js';
 import { loadStudioContexts } from '@/lib/ids-studio/context';
 import { exportIds } from '@/lib/ids-studio/export';
+import { encodeIdsStudioDraft } from '@/lib/ids-studio/draft-codec';
+import { idsStudioDraftLibrary } from '@/lib/ids-studio/draft-library';
 import { wallFixture } from '@/test/ids-studio-fixture';
 import { IdsStudioPanel } from './IdsStudioPanel';
 
@@ -165,6 +168,42 @@ describe('IdsStudioPanel (IDS-030 … IDS-032)', () => {
     assert.equal(doc()?.ids.specifications[0].name, 'Walls – fire rating', 'Ctrl+Z undoes');
     press(tree, 'z', { ctrlKey: true, shiftKey: true });
     assert.equal(doc()?.ids.specifications[0].name, 'Walls', 'Ctrl+Shift+Z redoes');
+  });
+
+  it('keeps the restored draft when an earlier file import finishes (#11091)', async ({ mock }) => {
+    const { doc: fixture } = await wallFixture();
+    const restored = { ...fixture, ids: { ...fixture.ids, info: { title: 'Draft to restore' } } };
+    const encoded = encodeIdsStudioDraft('draft-11091', restored);
+    assert.ok(encoded.ok);
+    assert.equal(await idsStudioDraftLibrary.put(encoded.draft.id, encoded.draft), true);
+    const exported = exportIds(fixture);
+    assert.ok(exported.ok);
+
+    const ui = render(<IdsStudioPanel />);
+    const file = new File([exported.content], 'slow.ids');
+    const { promise, resolve } = deferred<string>();
+    const read = mock.method(file, 'text', () => promise);
+    const drop = new window.Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(drop, 'dataTransfer', { value: { types: ['Files'], files: [file] } });
+    const zone = ui.querySelector('[data-tour="ids-studio-panel"] > div');
+    assert.ok(zone);
+    zone.dispatchEvent(drop);
+    assert.equal(read.mock.callCount(), 1, 'the import is waiting on the file');
+
+    const summary = byText(ui, 'summary', 'IDS drafts');
+    assert.ok(summary);
+    click(summary);
+    const row = byText(ui, 'li', 'Draft to restore');
+    assert.ok(row);
+    const restore = byText(row, 'button', 'Restore draft');
+    assert.ok(restore);
+    click(restore);
+    await waitFor(() => doc()?.ids.info.title === 'Draft to restore', 'the saved draft opens');
+
+    resolve(exported.content);
+    await advance(0);
+    assert.equal(useViewerStore.getState().idsStudioDraftId, encoded.draft.id);
+    assert.deepEqual(doc(), restored);
   });
 
   it('opens an IDS file dropped on the empty state (IDS-040)', async () => {

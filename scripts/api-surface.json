@@ -10080,6 +10080,7 @@
     "isNegativeDelta: function",
     "isRenderablePointCloud: function",
     "lodCellSizeForBounds: function",
+    "materializeShardOccurrences: function",
     "nearestCardinalAxis: function",
     "normalizeGaussianAttributes: function",
     "nsToMs: function",
@@ -10306,6 +10307,7 @@
     "isEntityVisible: function",
     "isNegativeDelta: function",
     "lodCellSizeForBounds: function",
+    "materializeShardOccurrences: function",
     "nearestCardinalAxis: function",
     "normalizeGaussianAttributes: function",
     "nsToMs: function",
@@ -11253,6 +11255,13 @@
     "normalizeProcessedModelHash: function",
     "processedModelSize: function",
     "withNarrowedCoordinateSpace: function"
+  ],
+  "@ifc-lite/server-client/processed-model": [
+    "ProcessedModelRef: interface",
+    "assertProcessedModelHash: function",
+    "isProcessedModelRef: function",
+    "normalizeProcessedModelHash: function",
+    "processedModelSize: function"
   ],
   "@ifc-lite/site-context": [
     "BUILDING_SET: const",

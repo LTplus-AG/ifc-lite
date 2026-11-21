@@ -8,6 +8,8 @@ import assert from 'node:assert/strict';
 import { act, useState } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
+import { PropertyValueType } from '@ifc-lite/data';
+import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { advance, cleanup, click, render, settle } from '@/test/render';
@@ -44,6 +46,23 @@ function Harness() {
   const [open, setOpen] = useState(true);
   return <><button onClick={() => setOpen(true)}>Reopen</button><DataConnector open={open} onOpenChange={setOpen} /></>;
 }
+
+test('opening the CSV panel during a hold preserves the live overlay (#10535)', async () => {
+  function PanelProbe() {
+    return <span>{useViewerStore((state) => state.mutationVersion)}</span>;
+  }
+  render(<PanelProbe />);
+  act(() => {
+    getOrCreateMutationView(useViewerStore, 'b');
+    useViewerStore.getState().setProperty('b', 1, 'Pset_WallCommon', 'FireRating', 'REI30', PropertyValueType.Label);
+    getOrCreateMutationView(useViewerStore, 'a');
+    useViewerStore.getState().setProperty('a', 1, 'Pset_WallCommon', 'FireRating', 'REI60', PropertyValueType.Label);
+  });
+  render(<Harness />);
+  await settle();
+  assert.equal(useViewerStore.getState().getMutationView('a')?.getPropertyValue(1, 'Pset_WallCommon', 'FireRating'), 'REI60');
+});
+
 function chooseCsv(name: string, text: string) {
   const input = document.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input);
   Object.defineProperty(input, 'files', { configurable: true, value: [new File([text], name, { type: 'text/csv' })] });

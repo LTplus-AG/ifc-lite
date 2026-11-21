@@ -111,6 +111,18 @@ describe('authoring operations write the named target (#10793)', () => {
     const { token } = raw<{ token: string }>(await invoke('authoring.prepare', { proposal_json }, false));
     const receipt = JSON.parse(raw<{ receipt_json: string }>(await invoke('authoring.apply', { token })).receipt_json) as { applied: Array<{ globalId: string }> };
     const wall = useViewerStore.getState().mutationViews.get(SAMPLE_MODEL)!.getNewEntities().find(row => row.type.toUpperCase() === 'IFCWALL' && row.attributes[0] === receipt.applied[0].globalId)!.expressId, before = useViewerStore.getState().undoStacks.get(SAMPLE_MODEL)?.length ?? 0;
+    // An invalid kind must not fall back to a relative attachment (#10871).
+    const topAttachment = () => useViewerStore.getState().mutationViews.get(SAMPLE_MODEL)?.getPropertyValue(wall, 'IfcLite_StoreyAttachment', 'TopConstraint');
+    const originalAttachment = topAttachment();
+    for (const constraint of [{}, { kind: 'unknown' }, { kind: 'storey' }, { kind: 'slab' }, { kind: 'roof' }, { kind: 'storey', storeyId: 1.5 }]) {
+      const result = await invoke('storeys.topConstraint', { express_id: wall, constraint_json: JSON.stringify(constraint) });
+      assert.equal(result.errorCode, 'INVALID_INPUT', result.text);
+      const details = result.structured as { reason: string; committed?: boolean };
+      assert.equal(details.reason, 'invalid-value');
+      assert.equal(details.committed, undefined);
+      assert.equal(topAttachment(), originalAttachment);
+      assert.equal(useViewerStore.getState().undoStacks.get(SAMPLE_MODEL)?.length ?? 0, before);
+    }
     const refs = answer<Array<{ expressId: number }>>(await invoke('storeys.topConstraint', { express_id: wall, constraint_json: JSON.stringify({ kind: 'storeyAbove' }) }));
     assert.deepEqual(refs.map(ref => ref.expressId), [wall]);
     assert.ok((useViewerStore.getState().undoStacks.get(SAMPLE_MODEL)?.length ?? 0) > before);

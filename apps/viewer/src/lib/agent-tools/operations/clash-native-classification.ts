@@ -48,19 +48,22 @@ interface Review {
   draft?: ClashGroupDraft;
   apply?: ClashGroupApplyPlan;
 }
-const hosts = new WeakMap<ToolHost, Map<string, Review>>();
-function reviews(c: ViewerOperationContext) {
-  let map = hosts.get(c.host);
-  if (!map) {
-    map = new Map();
-    hosts.set(c.host, map);
-    const owned = map;
-    c.host.lifetimeSignal?.addEventListener('abort', () => owned.clear(), { once: true });
+const REVIEW_CAPACITY = 32;
+const hosts = new WeakMap<ToolHost, { reviews: Map<string, Review>; staged: Set<string>; staleTokens: Map<string, true> }>();
+function ownedReviews(c: ViewerOperationContext) {
+  let owned = hosts.get(c.host);
+  if (!owned) {
+    const reviews = new Map<string, Review>(), staged = new Set<string>(), staleTokens = new Map<string, true>();
+    owned = { reviews, staged, staleTokens };
+    hosts.set(c.host, owned);
+    c.host.lifetimeSignal?.addEventListener('abort', () => { reviews.clear(); staged.clear(); staleTokens.clear(); }, { once: true });
   }
-  return map;
+  return owned;
 }
 function review(c: ViewerOperationContext, token: string) {
-  const value = reviews(c).get(token);
+  const { reviews, staleTokens } = ownedReviews(c);
+  const value = reviews.get(token);
+  if (staleTokens.has(token)) throw stale('Native classification findings changed.');
   if (!value) throw invalidInput('unknown-target', 'Unknown native classification review.');
   if (value.result !== useViewerStore.getState().clashResult) throw stale('Native classification findings changed.');
   return value;
@@ -73,10 +76,10 @@ const tokenInput = {
 };
 export const clashClassificationOperations = [
   viewerOperation(
-    meta(
+    { ...meta(
       'clash.classification.prepare',
       'Capture complete native classification chunks, bounded sample evidence and native root-budget estimate before any provider call. Uses the configured UI model capability ceiling; no network or model edit.',
-    ),
+    ), candidateOnly: true },
     emptySchema,
     async (_, c) => {
       const [
@@ -91,11 +94,27 @@ export const clashClassificationOperations = [
       assertToolActive(c);
       const s = useViewerStore.getState();
       if (!s.clashResult) throw unavailable('No current native clash result.');
+      const { reviews, staged, staleTokens } = ownedReviews(c);
+      if (staged.size >= REVIEW_CAPACITY) throw unavailable('Too many classification reviews await delivery.');
       const plan = planClassification(s.clashResult.clashes),
         evidence = captureEvidence('clash');
-      evictOldest(reviews(c), 32);
       const token = crypto.randomUUID();
-      reviews(c).set(token, { result: s.clashResult, plan, evidence, model: s.chatActiveModel });
+      const prepared: Review = { result: s.clashResult, plan, evidence, model: s.chatActiveModel };
+      staged.add(token);
+      c.retain(
+        () => { staged.delete(token); },
+        () => {
+          if (!staged.delete(token)) return false;
+          if (prepared.result !== useViewerStore.getState().clashResult) {
+            // The reply can already be on the wire. Keep its stale identity without displacing a live review.
+            evictOldest(staleTokens, REVIEW_CAPACITY);
+            staleTokens.set(token, true);
+            return false;
+          }
+          evictOldest(reviews, REVIEW_CAPACITY);
+          reviews.set(token, prepared);
+        },
+      );
       return out({
         token,
         evidence,

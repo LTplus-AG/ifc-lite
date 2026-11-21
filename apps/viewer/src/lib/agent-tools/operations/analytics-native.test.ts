@@ -70,7 +70,7 @@ async function seed(count: 1 | 2 = 1) {
   const commit = <T,>(write: () => T): T => { context.signal?.throwIfAborted(); context.checkpoint?.(); return write(); };
   context = { model: { ...model, store: model.store }, host, commit,
     commitAsync: async <T,>(write: () => Promise<T>): Promise<T> => { context.signal?.throwIfAborted(); context.checkpoint?.(); return write(); },
-    ownGeometry: async work => work(), artifacts: operationArtifacts(host, commit), canEdit: () => true };
+    ownGeometry: async work => work(), retain: () => {}, artifacts: operationArtifacts(host, commit), canEdit: () => true };
 }
 async function run<T>(id: string, input: unknown = {}, activeContext: OperationExecutionContext = context): Promise<T> {
   const entry: Operation | undefined = entries.find(row => row.id === id); assert.ok(entry, id);
@@ -437,6 +437,7 @@ describe('native analytics operations (#10525 deeper automation)', () => {
     } finally {
       publishDrawingExportFrame({ drawing: null, isPinned: false, cachedSheetTransformRef });
     }
+    await assert.rejects(run('drawing.centerDxf', { id: 'missing-dxf' }, viewerContext), { code: 'INVALID_INPUT', details: { reason: 'unknown-target' } });
     await run('drawing.centerDxf', { id: imported.id }, viewerContext);
     const underlay = useViewerStore.getState().dxfUnderlays.find(row => row.id === imported.id); assert.ok(underlay?.referenceFrame);
     const mapped = dxfPlaneDrawingMapper(underlay, useViewerStore.getState(), drawing.config.plane); assert.ok(mapped);

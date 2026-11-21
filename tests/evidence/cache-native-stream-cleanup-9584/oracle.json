@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "PR #10361 adds rust/cache/src/stream.rs, the streaming writer, so a derived revert deletes the code its tests compile against (INCONCLUSIVE); this keeps the module and stops removing the uncommitted temp file on failure, so the injected mid-geometry failure leaves a temp behind and the atomicity assertions fail.",
+  "key": "rust/cache/src/stream.rs",
+  "mutation": "tests/evidence/cache-native-stream-cleanup-9584/behaviour.oracle.patch",
+  "test": "rust/cache/src/stream_tests.rs"
+}

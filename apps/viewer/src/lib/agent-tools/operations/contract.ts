@@ -22,6 +22,12 @@ export interface ViewerOperationContext extends ToolCallContext {
    * by someone else inside `work` cannot be told apart, so the operation must validate the geometry it read (Room
    * preparation does, through its geometry lease). A value the closing check refuses is passed to `release`, which frees what it owns. */
   ownGeometry<T>(work: () => Promise<T>, release: (value: T) => void): Promise<T>;
+  /** Register how to remove what this call stored for its caller, such as a prepared candidate under a new token. The
+   * executor runs it when the caller never receives the result: a refused final check, a handler that throws after
+   * storing, or a background job refused or evicted before collection. A committed write keeps its effects.
+   * The optional delivery callback publishes provisional state when the first caller receives the result.
+   * Returning false releases its replay key when the acknowledged result is already stale. */
+  retain(undo: () => void, deliver?: () => void | false): void;
   progress?: (detail: { phase: string; done: number; total: number }) => void;
 }
 export interface OperationContext extends ViewerOperationContext { model: ReadyModel }
@@ -38,6 +44,8 @@ export interface Operation {
   inputSchema: Record<string, unknown>;
   outputSchema?: Record<string, unknown>;
   policy?: { model?: 'native-reviewed'; artifact?: 'native-export'; network?: 'native-provider'; publication?: 'native-reviewed' };
+  /** Any native configuration effects are fully reversible by the result ledger. */
+  candidateOnly?: true;
   synchronous?: boolean;
   result: 'value';
   completion?: 'dispatched';
@@ -47,9 +55,6 @@ export interface Operation {
   execute(input: unknown, context: OperationExecutionContext): Promise<unknown>;
   /** Loads the native implementation without running it. A failure here precedes every native effect. */
   load?(): Promise<unknown>;
-  /** Undo what the handler stored for its caller (a prepared candidate) when the executor refuses the result the
-   * handler returned, after a later state change or an invalid result: the caller never receives it. */
-  discard?(result: unknown, context: OperationExecutionContext): void;
 }
 type Metadata = Omit<Operation, 'version' | 'inputSchema' | 'validate' | 'execute' | 'result' | 'validateResult' | 'needs'>;
 

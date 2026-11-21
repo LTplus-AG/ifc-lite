@@ -18,6 +18,20 @@ export function evictOldest<K, V>(handles: Map<K, V>, cap: number, canEvict: (ha
 }
 
 /**
+ * Store `value` under `token` for the caller, and register its removal for when the caller never receives the result
+ * (the executor runs it). `keep` spares an entry that has since been applied; `release` frees what it holds.
+ */
+export function retainCandidate<V>(c: { retain(undo: () => void): void }, store: Map<string, V>, token: string, value: V,
+  { keep, release }: { keep?: (value: V) => boolean; release?: (value: V) => void } = {}): void {
+  store.set(token, value);
+  c.retain(() => {
+    const entry = store.get(token);
+    if (entry === undefined || keep?.(entry)) return;
+    store.delete(token); release?.(entry);
+  });
+}
+
+/**
  * Make room for `count` more reviewed candidates (one by default). Every admission site answers one question, `canApply`: could this
  * candidate still apply (or, once applied, replay)? Those that cannot are dropped and `release`d. Of the rest, only
  * `pending` ones count against `cap`, and a host full of them is refused with `refusal`; the others share the cap

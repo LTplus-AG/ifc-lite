@@ -22,6 +22,7 @@
  * subscribes via `useSyncExternalStore` and owns the portals.
  */
 
+import { observeWindowInput } from '@/store/settled-store';
 import { getViewerStoreApi } from '@/store';
 import { getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
 import { isPanelAvailable } from '@/lib/panels/availability';
@@ -167,6 +168,7 @@ export async function openPanelWindow(id: WorkspacePanelId): Promise<PanelWindow
     kind = 'popup';
   }
   if (!win) return null; // blocked by a popup blocker
+  observeWindowInput(win); // its input publishes a held edit too (#10535)
 
   try {
     win.document.title = `${def ? resolve(def.titleKey) : id} — ifc-lite`;

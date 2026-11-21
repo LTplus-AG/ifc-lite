@@ -18795,12 +18795,12 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "authoring.room.prepare",
     "version": 1,
     "owner": "model",
-    "description": "Prepare the canonical room proposal using its native detached planner and complete evidence. Room supports pick/auto/autoAll/footprint/update/edit; no invented pointer gestures.",
+    "description": "Prepare the canonical room proposal using its native detached planner and complete evidence. Room supports pick/auto/autoAll/footprint/update/edit; no invented pointer gestures. Room preparation remeshes the storey walls first, so it runs through viewer_operation_execute with the edit grant, in the foreground.",
     "needs": "model",
     "effects": [
-      "read"
+      "view"
     ],
-    "capability": "read",
+    "capability": "commands-and-edits",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -21157,7 +21157,7 @@ export const operationContracts: readonly OperationContract[] = [
     "version": 1,
     "owner": "zones",
     "description": "Build a native GLB geometric section using the same proved-solid exact split service as the panel. Cancellation suppresses artifact publication; an already dispatched native worker may finish.",
-    "needs": "model",
+    "needs": "viewer",
     "effects": [
       "artifact"
     ],
@@ -32775,6 +32775,7 @@ export const operationContracts: readonly OperationContract[] = [
     },
     "result": "value",
     "implementation": "native-store",
+    "candidateOnly": true,
     "module": "clash-native-classification",
     "exportName": "clashClassificationOperations"
   },

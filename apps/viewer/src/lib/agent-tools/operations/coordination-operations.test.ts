@@ -48,14 +48,16 @@ beforeEach(async () => {
   useViewerStore.setState({ bcfProject: null, mutationVersion: 0, mutationViews: new Map() });
   const host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));
   const model = host.models()[0]; if (!model?.store) throw new Error('Fixture IFC store missing.');
-  context = { host, model: { ...model, store: model.store }, commit, commitAsync: async write => { checkpoint(); return write(); }, ownGeometry: async work => work(), checkpoint, artifacts: operationArtifacts(host, commit) };
+  context = { host, model: { ...model, store: model.store }, commit, commitAsync: async write => { checkpoint(); return write(); }, ownGeometry: async work => work(), retain: () => {}, checkpoint, artifacts: operationArtifacts(host, commit) };
 });
 it('round-trips authored BCF topics/comments through native ZIP writer and reader (#10525)', async () => {
   await execute('bcf.createProject', { value: 'Coordination evidence' });
   const topic = await execute<{ guid: string }>('bcf.createTopic', { title: 'Wall coordination', description: 'Review the four fixture walls', status: 'Open' });
   const comment = await execute<{ guid: string }>('bcf.comment', { id: topic.guid, comment: 'Initial observation' });
   await execute('bcf.updateComment', { topic_id: topic.guid, comment_id: comment.guid, expected_comment: 'Initial observation', comment: 'Verify physical separation' });
-  await assert.rejects(execute('bcf.updateComment', { topic_id: topic.guid, comment_id: comment.guid, expected_comment: 'Initial observation', comment: 'Stale overwrite' }), /comment changed/);
+  await assert.rejects(execute('bcf.updateComment', { topic_id: topic.guid, comment_id: comment.guid, expected_comment: 'Initial observation', comment: 'Stale overwrite' }), {
+    code: ToolErrorCode.STATE_CHANGED, details: { reason: 'stale' }, message: /comment changed/,
+  });
   const exported = await execute<ArtifactMetadata>('bcf.export');
   assert.ok(exported.bytes > 0);
   const chunk = await readArtifact(context.host, exported.artifact_id, 0, 65536);
@@ -68,14 +70,22 @@ it('round-trips authored BCF topics/comments through native ZIP writer and reade
   await execute('bcf.import', { base64: chunk.data, replace_project_id: currentId });
   assert.equal(useViewerStore.getState().bcfProject?.topics.get(topic.guid)?.comments[0].comment, 'Verify physical separation');
   await assert.rejects(execute('bcf.import', { base64: chunk.data, replace_project_id: 'stale-project' }), /project changed/);
-  await assert.rejects(execute('bcf.comment', { id: 'missing', comment: 'No phantom issue' }), /does not exist/);
+  await assert.rejects(execute('bcf.comment', { id: 'missing', comment: 'No phantom issue' }), {
+    code: ToolErrorCode.INVALID_INPUT, details: { reason: 'unknown-target' }, message: /does not exist/,
+  });
+  // A base64-looking string may still fail to decode (#10871).
+  await assert.rejects(execute('bcf.import', { base64: 'a', replace_project_id: currentId }), {
+    code: ToolErrorCode.INVALID_INPUT, details: { reason: 'invalid-value' },
+  });
 });
 it('refuses a revoked native BCF commit and duplicate project replacement (#10525)', async () => {
   allowed = false;
   await assert.rejects(execute('bcf.createProject', { value: 'Forbidden' }), /grant revoked/);
   assert.equal(useViewerStore.getState().bcfProject, null);
   allowed = true; await execute('bcf.createProject', { value: 'Preserve' });
-  await assert.rejects(execute('bcf.createProject', { value: 'Replace' }), /already open/);
+  await assert.rejects(execute('bcf.createProject', { value: 'Replace' }), {
+    code: ToolErrorCode.UNSUPPORTED_OPERATION, details: { reason: 'unavailable' }, message: /already open/,
+  });
   assert.equal(useViewerStore.getState().bcfProject?.name, 'Preserve');
 });
 it('runs the native count graph against real parsed IFC walls and refuses side-effect nodes (#10525)', async () => {
@@ -392,7 +402,9 @@ it('compare.run and collab.prepareRoom refuse what the native panel and dialog w
   await assert.rejects(execute('compare.run', { head_model_id: model, scope: 'both', excluded_types: [], match_by_content: false, key_property: '' }), /two different models/);
   assert.equal(useViewerStore.getState().compareResult, null);
   const state = useViewerStore.getState();
-  await assert.rejects(execute('collab.prepareRoom', { scope: 'all', role: 'viewer', expected_mutation_version: state.mutationVersion, expected_geometry_version: state.geometryContentVersion }), /not enabled/);
+  await assert.rejects(execute('collab.prepareRoom', { scope: 'all', role: 'viewer', expected_mutation_version: state.mutationVersion, expected_geometry_version: state.geometryContentVersion }), {
+    code: ToolErrorCode.PERMISSION_DENIED, details: { reason: 'disabled' }, message: /not enabled/,
+  });
 });
 
 it('#10589 refuses to stage a share when the mounted consent dialog cannot load', async t => {
@@ -413,7 +425,11 @@ it('#10589 refuses to stage a share when the mounted consent dialog cannot load'
   await assert.rejects(execute('collab.prepareRoom', {
     scope: 'all', role: 'viewer', expected_mutation_version: previous.mutationVersion,
     expected_geometry_version: previous.geometryContentVersion,
-  }), /Share consent dialog could not load/);
+  }), {
+    code: ToolErrorCode.INTERNAL_ERROR,
+    details: { reason: 'internal', cause: 'Failed to fetch dynamically imported module' },
+    message: /Share consent dialog could not load/,
+  });
   assert.equal(useCollabShareReview.getState().candidate, initial.candidate);
   assert.equal(useCollabShareReview.getState().dialogOpen, false);
 });

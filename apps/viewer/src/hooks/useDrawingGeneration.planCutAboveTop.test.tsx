@@ -24,6 +24,7 @@ import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
 import { percentToWorld, storeyCutPosition } from '@/lib/section/section-distance';
 import { useDrawingGeneration } from './useDrawingGeneration.js';
+import { settle } from '@/test/render.js';
 
 function box(expressId: number, min: [number, number, number], max: [number, number, number]): MeshData {
   const [x0, y0, z0] = min;
@@ -116,6 +117,7 @@ it('the top-storey plan cut at 3.7 m draws the slab and parapet as projection, c
     useViewerStore.getState().setSectionPlaneAxis('down');
     useViewerStore.getState().setSectionPlanePosition(position);
   });
+  await settle();
   assert.ok(runGenerate, 'harness rendered');
   await act(async () => { await runGenerate!(); });
 

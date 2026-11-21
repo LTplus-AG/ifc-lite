@@ -23,7 +23,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { act } from 'react';
-import { cleanup, click, render } from '@/test/render.js';
+import { cleanup, click, render, settle } from '@/test/render.js';
 import { installLayout } from '@/test/dom-layout.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { resolve } from '@/i18n/registry.js';
@@ -84,7 +84,7 @@ const buttons = (root: ParentNode): HTMLButtonElement[] => [...root.querySelecto
 const byLabel = (root: ParentNode, label: string) => buttons(root).find((b) => b.getAttribute('aria-label') === label);
 const byText = (root: ParentNode, text: string) => buttons(root).find((b) => b.textContent?.trim() === text);
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   clearDownloads();
   setLocale('en');
@@ -99,6 +99,7 @@ afterEach(() => {
     idsLoading: false,
     idsProgress: null,
   });
+  await settle();
 });
 
 describe('AnalysisPanel scaffold, through the IDS panel (#5834)', () => {
@@ -159,6 +160,7 @@ describe('AnalysisPanel scaffold, through the IDS panel (#5834)', () => {
       seedModels(modelCount);
       useViewerStore.setState({ idsDocument: documentFixture, mutationVersion: 1, geometryContentVersion: 1 });
       useViewerStore.setState({ idsValidationReport: stampAnalysisReport(reportFor('model-a'), captureAnalysisStamp()) });
+      await settle();
       const ui = render(<IDSPanel embedded={embedded} />);
       assert.ok(ui.querySelector('.opacity-60') === null);
       act(() => useViewerStore.setState({ geometryContentVersion: 2 }));

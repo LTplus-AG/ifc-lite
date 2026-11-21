@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
-import { blur, click, cleanup, render, type } from '@/test/render.js';
+import { blur, click, cleanup, render, settle, type } from '@/test/render.js';
 import { MODEL_ID, ROTATED_BEAM, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import '@/lib/commands/modeling/builtin.js';
 import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
@@ -49,14 +49,16 @@ afterEach(() => {
 });
 
 describe('ModelInspectorPanel Profile section (#6232 D2)', () => {
-  it('switching a placed rectangle beam to an I keeps its outer size, is one undo step, and undo restores the rectangle', () => {
+  it('switching a placed rectangle beam to an I keeps its outer size, is one undo step, and undo restores the rectangle', async () => {
     const beam = made(s().addBeam(MODEL_ID, STOREY, { Start: [0, 0, 3], End: [6, 0, 3], Width: 0.3, Height: 0.5 }));
     select(beam);
+    await settle();
     const root = render(<ModelInspectorPanel />);
     assert.ok(headings(root).includes('Profile'));
     assert.equal(kindButton(root, 'Rectangle').getAttribute('aria-pressed'), 'true');
     const depth = undoDepth();
     act(() => click(kindButton(root, 'I')));
+    await settle();
     assert.equal(kindButton(root, 'I').getAttribute('aria-pressed'), 'true');
     const section = readElementProfile(s(), MODEL_ID, beam);
     assert.equal(section?.Type, 'I');
@@ -64,14 +66,16 @@ describe('ModelInspectorPanel Profile section (#6232 D2)', () => {
     const tags = new Set(s().undoStacks.get(MODEL_ID)!.slice(depth).map((m) => s().mutationBatchTags.get(m.id)));
     assert.equal(tags.size, 1, 'one batch');
     act(() => s().undo(MODEL_ID));
+    await settle();
     assert.equal(undoDepth(), depth, 'one undo');
     assert.deepEqual(readElementProfile(s(), MODEL_ID, beam), { Type: 'Rectangle', XDim: 0.3, YDim: 0.5 });
     assert.equal(kindButton(root, 'Rectangle').getAttribute('aria-pressed'), 'true', 'the picker shows the rectangle again');
   });
 
-  it('a typed dimension of an I is one undo step; one the section cannot hold is refused', () => {
+  it('a typed dimension of an I is one undo step; one the section cannot hold is refused', async () => {
     const beam = made(s().addBeam(MODEL_ID, STOREY, { Start: [0, 0, 3], End: [6, 0, 3], Profile: { Type: 'I', OverallWidth: 0.2, OverallDepth: 0.4, WebThickness: 0.01, FlangeThickness: 0.016 } }));
     select(beam);
+    await settle();
     const root = render(<ModelInspectorPanel />);
     const depth = undoDepth();
     const web = field(root, 'Web in metres');
@@ -81,6 +85,7 @@ describe('ModelInspectorPanel Profile section (#6232 D2)', () => {
     const tags = new Set(s().undoStacks.get(MODEL_ID)!.slice(depth).map((m) => s().mutationBatchTags.get(m.id)));
     assert.equal(tags.size, 1, 'one batch');
     act(() => s().undo(MODEL_ID));
+    await settle();
     assert.equal(undoDepth(), depth, 'one undo');
     assert.equal((readElementProfile(s(), MODEL_ID, beam) as { WebThickness: number }).WebThickness, 0.01);
     const refused = field(root, 'Web in metres');
@@ -91,20 +96,23 @@ describe('ModelInspectorPanel Profile section (#6232 D2)', () => {
     assert.equal(field(root, 'Web in metres').value, '0.01', 'the field reverts');
   });
 
-  it('a column switches to a hollow circle', () => {
+  it('a column switches to a hollow circle', async () => {
     const column = made(s().addColumn(MODEL_ID, STOREY, { Position: [1, 1, 0], Width: 0.4, Depth: 0.4, Height: 3 }));
     select(column);
+    await settle();
     const root = render(<ModelInspectorPanel />);
     act(() => click(kindButton(root, 'CircleHollow')));
+    await settle();
     const section = readElementProfile(s(), MODEL_ID, column);
     assert.equal(section?.Type, 'CircleHollow');
     assert.equal((section as { Radius: number }).Radius, 0.2, 'the tube is as wide as the 0.4 column');
     assert.ok(field(root, 'Wall in metres'));
   });
 
-  it('a member has the section too', () => {
+  it('a member has the section too', async () => {
     const member = made(s().addMember(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [3, 0, 2], Width: 0.1, Height: 0.1 }));
     select(member);
+    await settle();
     const root = render(<ModelInspectorPanel />);
     act(() => click(kindButton(root, 'L')));
     assert.equal(readElementProfile(s(), MODEL_ID, member)?.Type, 'L');
@@ -117,12 +125,14 @@ describe('ModelInspectorPanel Profile section (#6232 D2)', () => {
     assert.match(root.textContent ?? '', /built straight from a section/);
   });
 
-  it('Defaults mode edits the section the next element gets, and drops the rectangle\'s own sides', () => {
+  it('Defaults mode edits the section the next element gets, and drops the rectangle\'s own sides', async () => {
     s().startCommand('column.place');
+    await settle();
     const root = render(<ModelInspectorPanel />);
     assert.ok(headings(root).includes('Profile'));
     assert.deepEqual(['Width in metres', 'Depth in metres', 'Height in metres'].map((l) => [...root.querySelectorAll('input')].some((i) => i.getAttribute('aria-label') === l)), [true, true, true]);
     act(() => click(kindButton(root, 'I')));
+    await settle();
     assert.equal(s().authoringDefaults.profiles.column.type, 'I');
     const labels = [...root.querySelectorAll('input')].map((i) => i.getAttribute('aria-label'));
     assert.equal(labels.includes('Depth in metres') && labels.filter((l) => l === 'Depth in metres').length, 1, 'only the I\'s own Depth, not the rectangle\'s');

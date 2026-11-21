@@ -9,7 +9,7 @@ import { readFile } from 'node:fs/promises';
 import { act } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { render, cleanup } from '@/test/render.js';
+import { render, cleanup, settle } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore } from '@/store';
 import { useFilterRuleOptions } from './useFilterRuleOptions.js';
@@ -46,6 +46,7 @@ test('filter options refresh after an in-place overlay edit bumps the mutation v
       view.createEntity('IfcBuildingElementProxy', [null, null, 'Authored object']);
       useViewerStore.getState().bumpMutationVersion();
     });
+    await settle();
 
     assert.ok(!(probe.dataset.storeys ?? '').includes('My Storey'));
     assert.match(probe.dataset.types ?? '', /IfcBuildingElementProxy/);
@@ -76,6 +77,7 @@ test('#5898 filter suggestions follow the Bulk model picker rather than the acti
     searchFilterSchema: new Map(),
   });
   try {
+    await settle();
     const container = render(<Probe modelId="m2" />);
     assert.match(container.querySelector('div')?.dataset.types ?? '', /IfcBuildingElementProxy/);
     assert.equal(useViewerStore.getState().searchFilterSchema.get('m2')?.sourceStore, store);

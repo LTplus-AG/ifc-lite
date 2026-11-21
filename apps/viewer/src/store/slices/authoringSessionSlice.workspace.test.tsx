@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
-import { cleanup, click, press, render } from '@/test/render.js';
+import { cleanup, click, press, render, settle } from '@/test/render.js';
 import { MODEL_ID, UPPER_STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { StatusBarWorkspaceChip } from '@/components/viewer/StatusBarWorkspaceChip';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
@@ -32,6 +32,7 @@ const wallCount = () => {
 beforeEach(async () => {
   await seedModelingSession();
   useViewerStore.setState({ editEnabled: false, collabRole: null, selectedEntityId: null });
+  await settle();
 });
 afterEach(() => {
   useViewerStore.getState().exitModelWorkspace();

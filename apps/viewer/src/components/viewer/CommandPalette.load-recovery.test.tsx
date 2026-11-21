@@ -13,7 +13,7 @@ import { useViewerStore } from '@/store';
 import { useIfcLoader } from '@/hooks/useIfcLoader';
 import { useLoadErrorCard } from '@/hooks/useLoadErrorCard';
 import { selectLoadCanceller } from '@/store/slices/loadingSlice';
-import { advance, cleanup, click, render, type, waitFor } from '@/test/render';
+import { advance, cleanup, click, render, settle, type, waitFor } from '@/test/render';
 import { CommandPalette } from './CommandPalette';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { RECENT_KEY } from './commandPaletteSearch';
@@ -34,11 +34,12 @@ function Harness() {
   </BimReactContext.Provider>;
 }
 const initial = useViewerStore.getState();
-beforeEach(() => {
+beforeEach(async () => {
   setLocale('en');
   localStorage.clear();
   useViewerStore.getState().resetViewerState();
   useViewerStore.getState().clearAllModels();
+  await settle();
 });
 function dismissToasts() {
   for (const button of document.querySelectorAll<HTMLButtonElement>('[data-toast-seq] button')) click(button);
@@ -128,6 +129,7 @@ for (const [locale, catalogue] of [['en', commandPaletteEn], ['de', commandPalet
     render(<Harness />);
     const file = new File(['{ invalid json'], 'broken.ifcx');
     await act(async () => { await loader.loadFile(file); });
+    await settle();
     assert.match(useViewerStore.getState().error ?? '', /file is invalid/);
     assertRecoveryBrowse(['retry-load', 'dismiss-load-error']);
     const seq = useViewerStore.getState().loadErrorSeq;
@@ -145,6 +147,7 @@ for (const [locale, catalogue] of [['en', commandPaletteEn], ['de', commandPalet
     assert.equal(starts, 1, 'two activations of one captured failure replay it once');
     await waitFor(() => useViewerStore.getState().error !== null && useViewerStore.getState().loadErrorSeq > seq,
       'actual retry fails on identical malformed source');
+    await settle();
     assert.deepEqual(replayedFiles, [file.name], 'the actual retry loads the same malformed file');
     assert.equal(useViewerStore.getState().loading, false);
     assert.equal(useViewerStore.getState().loadingFileName, null, 'settled load releases its shared progress UI');
@@ -172,12 +175,15 @@ for (const [locale, catalogue] of [['en', commandPaletteEn], ['de', commandPalet
         assert.equal(notification?.textContent, catalogue['commandPalette.availability.loadErrorReplaced']);
         assert.notEqual(notification?.textContent, catalogue['commandPalette.availability.noLoadError']);
       } finally { globalThis.requestAnimationFrame = originalFrame; }
+      // The load held panels and its frames went to the mock above: wait for the publish.
+      await waitFor(() => document.querySelector('[data-command-id="file:dismiss-load-error"]') !== null, 'the failed load reaches the palette');
     }
     click(row('dismiss-load-error')); await frame();
     assert.equal(useViewerStore.getState().error, null);
     assert.equal(useViewerStore.getState().lastLoadRetry, null);
     assertRecoveryBrowse([]);
     await act(async () => { await loader.loadFile(file); });
+    await settle();
     click([...document.querySelectorAll('button')].find(b => b.textContent === 'Card dismiss')!);
     assert.equal(useViewerStore.getState().lastLoadRetry, null, 'normal card shares cleanup');
     assertRecoveryBrowse([]);

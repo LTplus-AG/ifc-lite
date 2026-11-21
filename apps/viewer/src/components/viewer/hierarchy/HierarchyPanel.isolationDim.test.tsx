@@ -18,7 +18,7 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 import { act } from 'react';
 import { IfcTypeEnum } from '@ifc-lite/data';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, render, settle } from '@/test/render.js';
 import { fixtureModel, fixtureModels, fixtureDataStore } from '@/test/store-fixture.js';
 import { SourceHostProvider } from '@/services/sources/SourceHostProvider.js';
 import { useViewerStore } from '@/store';
@@ -105,7 +105,7 @@ describe('HierarchyPanel dims rows outside the viewport isolation (#8802)', () =
     assert.equal(rowDimmed(container, 'Storey 2'), true);
   });
 
-  it('refreshes a cached storey subtree after an in-place space edit (#8802)', () => {
+  it('refreshes a cached storey subtree after an in-place space edit (#8802)', async () => {
     const container = mountPanel();
     act(() => {
       useViewerStore.setState({ isolatedEntities: new Set([8]) });
@@ -122,6 +122,7 @@ describe('HierarchyPanel dims rows outside the viewport isolation (#8802)', () =
     act(() => {
       useViewerStore.setState({ isolatedEntities: new Set([10]) });
     });
+    await settle();
     assert.equal(rowDimmed(container, 'Storey 1'), false, 'the newly added element in Room keeps Storey 1 normal');
     assert.equal(rowDimmed(container, 'Storey 2'), true);
   });

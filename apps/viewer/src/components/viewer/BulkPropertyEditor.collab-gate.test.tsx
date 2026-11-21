@@ -31,7 +31,7 @@ import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { render, cleanup, click, advance } from '@/test/render.js';
+import { render, cleanup, click, advance, settle } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { BulkPropertyEditor } from './BulkPropertyEditor.js';
@@ -136,6 +136,7 @@ describe('BulkPropertyEditor — collab role gate on bulk mutation execute', () 
     const parsed = useViewerStore.getState().models.get(MODEL_ID);
     assert.ok(parsed);
     useViewerStore.setState({ models: new Map([[MODEL_ID, { ...parsed, ifcDataStore: null }]]) });
+    await settle();
     const container = render(<BulkPropertyEditor trigger={<button>Open</button>} />);
     openDialog(container);
     await advance(0);
@@ -144,6 +145,7 @@ describe('BulkPropertyEditor — collab role gate on bulk mutation execute', () 
     assert.ok(denial);
     assert.match(denial.textContent ?? '', /no editable IFC data/);
     act(() => useViewerStore.setState({ models: new Map([[MODEL_ID, parsed]]) }));
+    await settle();
     assert.equal(document.body.querySelector('output'), null);
   });
 

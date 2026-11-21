@@ -6,7 +6,7 @@ import '@/test/setup-dom.js';
 import { afterEach, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, click, press, render, type } from '@/test/render.js';
+import { cleanup, click, press, render, settle, type } from '@/test/render.js';
 import { IfcParser } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { WORKSPACE_PANELS } from '@/lib/panels/registry';
@@ -114,6 +114,7 @@ describe('Properties find and section disclosure (#5899)', () => {
   it('keeps geometry editing in Model while data edits stay in View (#9296)', async () => {
     await seed();
     useViewerStore.setState({ editEnabled: false, workspaceMode: 'view', session: null });
+    await settle();
     const panel = render(<PropertiesPanel />);
     const geometryCard = () => [...panel.querySelectorAll('button[aria-expanded]')].some((b) => b.textContent === 'Geometry');
     assert.ok(panel.querySelector('button[aria-label="FireRating: REI60"]'), 'data stays editable in View');
@@ -126,6 +127,7 @@ describe('Properties find and section disclosure (#5899)', () => {
 
   it('filters property names and values across sets, highlights hits, and explains no match', async () => {
     await seed();
+    await settle();
     const panel = render(<PropertiesPanel />);
     const find = panel.querySelector<HTMLInputElement>('input[aria-label="Find properties"]');
     assert.ok(find);

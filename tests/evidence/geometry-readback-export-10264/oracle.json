@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "Keep the new export readback loadable while reintroducing an export of emptied released arrays outside the read-back context, with no instanced occurrences.",
+  "key": "apps/viewer/src/lib/geometry-backing/export-readback.ts",
+  "mutation": "tests/evidence/geometry-readback-export-10264/behaviour.oracle.patch",
+  "test": "apps/viewer/src/utils/instancedExport.readback.test.ts"
+}

@@ -5,7 +5,7 @@ import { useViewerStore, type ViewerState } from '@/store';
 import { instancedShardRevision } from '@/store/instancedShardModels';
 import { hasPendingInstancedShards, type InstancedShardQueueEvent } from '@/store/instancedShardQueue';
 import { invalidateSpatialIndex, buildSpatialIndexForModel } from '@/utils/loadingUtils';
-import { withInstancedMeshes } from '@/utils/instancedExport';
+import { withInstancedMeshes, withReleasedExportGeometry } from '@/utils/instancedExport';
 import { modelIndices } from './model-indices';
 import { displayedTranslation } from './state';
 import { equalTranslation } from './translation';
@@ -32,11 +32,16 @@ export function buildPlacedSpatialIndex(state: ViewerState, modelId: string): Pr
   const model = state.models.get(modelId);
   if (!model?.ifcDataStore || !model.geometryResult) return Promise.resolve(false);
   const { ifcDataStore, geometryResult } = model;
-  return tracePhaseOnce(modelLoadTrace(modelId), 'bvh.build').span('bvh.build', () => {
+  // Released CPU geometry (#10264) is read back first; resident geometry builds as before.
+  return withReleasedExportGeometry((context) => {
+    // The export queue can outlive this capture: never build from geometry the model replaced meanwhile (r4653239427).
+    if (useViewerStore.getState().models.get(modelId)?.geometryResult !== geometryResult) return Promise.resolve(false);
+    return tracePhaseOnce(modelLoadTrace(modelId), 'bvh.build').span('bvh.build', () => {
     const geometry = withInstancedMeshes(geometryResult, { modelId, idOffset: model.idOffset,
-      maxExpressId: model.maxExpressId, rendererModelIndex: modelIndices(state.models).get(modelId) });
+      maxExpressId: model.maxExpressId, rendererModelIndex: modelIndices(state.models).get(modelId) }, context);
     return buildSpatialIndexForModel(geometry.meshes, modelId, ifcDataStore, 'placed');
-  });
+    });
+  }, [modelId]);
 }
 
 /** Debounce the CPU query index, never geometry uploads. Generation guards in

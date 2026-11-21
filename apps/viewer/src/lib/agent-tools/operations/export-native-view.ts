@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { withReleasedExportGeometry } from '@/utils/instancedExport';
 import type { JSONSchemaType } from 'ajv';
 import { useViewerStore } from '@/store';
 import { getGlobalRenderer } from '@/hooks/useBCF';
@@ -28,7 +29,7 @@ export const exportNativeViewOperations = [
   viewerOperation<{ scope: 'current-view'; scale_mode: 'displayed' | 'numerical'; scale: number; include_hidden_lines: boolean; render_mode: 'shaded' | 'lines'; include_scale_stamp: boolean }>(exportMetadata('exports.viewPdf', 'Await the toolbar to-scale current-view PDF producer with explicit displayed/numerical scale, shaded/line mode, hidden edges and scale stamp. Preserves current view visibility, all section cuts, native camera orientation and PDF page-size refusal; return actual PDF bytes plus native page/stroke/raster diagnostics.'), {
     type: 'object', properties: { scope: { type: 'string', const: 'current-view' }, scale_mode: { type: 'string', enum: ['displayed', 'numerical'] }, scale: { type: 'integer', minimum: 1, maximum: 1000000 }, include_hidden_lines: { type: 'boolean' }, render_mode: { type: 'string', enum: ['shaded', 'lines'] }, include_scale_stamp: { type: 'boolean' } }, required: ['scope', 'scale_mode', 'scale', 'include_hidden_lines', 'render_mode', 'include_scale_stamp'], additionalProperties: false,
   } satisfies JSONSchemaType<{ scope: 'current-view'; scale_mode: 'displayed' | 'numerical'; scale: number; include_hidden_lines: boolean; render_mode: 'shaded' | 'lines'; include_scale_stamp: boolean }>, async (i, c) => {
-    const s = useViewerStore.getState(); const guard = nativeExportGuard(c, [...s.models.keys()]); guard(); const source = readViewPdfSource(s); const camera = source.camera;
+    const s = useViewerStore.getState(); const guard = nativeExportGuard(c, [...s.models.keys()]); guard(); const source = await withReleasedExportGeometry((context) => readViewPdfSource(s, context)); const camera = source.camera; // #10264: released geometry read back
     if (!camera) throw unavailable('Native viewport camera is unavailable.'); const pose = JSON.stringify(camera); const renderer = getGlobalRenderer();
     const check = () => { guard(); if (renderer !== getGlobalRenderer() || JSON.stringify(readCameraSnapshot()) !== pose) throw stale('Native camera changed during view PDF production.'); };
     const zoom = readViewZoom();

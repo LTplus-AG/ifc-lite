@@ -22,7 +22,7 @@ export interface OperationJob {
   result?: unknown;
   error?: string;
 }
-interface LiveJob { snapshot: OperationJob; abort: AbortController; current(): void; discard(): void; delivered?: boolean }
+interface LiveJob { snapshot: OperationJob; abort: AbortController; current(): void; discard(): void; deliver(): void; delivered?: boolean }
 const hosts = new WeakMap<ToolHost, Map<string, LiveJob>>();
 const MAX_JOBS = 32;
 interface AppliedRequest { signature: string; store: ReadyModel['store'] | undefined; result: Promise<unknown> }
@@ -153,17 +153,20 @@ export async function executeOperation(
     }
     return value;
   };
-  const operationContext = { ...context, checkpoint: check, model, host, commit, commitAsync, ownGeometry, artifacts };
-  const discardResult = (result: unknown) => {
-    try { entry.discard?.(result, operationContext); } catch (error) { console.warn('[viewer operation] discarding a refused result failed', error); }
-  };
-  /** The result after the final check, bounded and validated. A result refused here is never delivered, so what the
-   * handler stored for it is discarded; a committed write is not, since it already happened. */
-  const accepted = (result: unknown, finalCheck: () => void): unknown => {
-    try { finalCheck(); const bounded = boundedResult(result); entry.validateResult(bounded); return bounded; } catch (error) {
-      if (!committed) discardResult(result);
-      throw error;
+  const retained: Array<() => void> = [];
+  const retain = (undo: () => void) => { retained.push(undo); };
+  const operationContext = { ...context, checkpoint: check, model, host, commit, commitAsync, ownGeometry, retain, artifacts };
+  /** The caller will never receive this call's result: remove what the handler stored for it, once. */
+  const discardResult = () => {
+    for (const undo of retained.splice(0)) {
+      try { undo(); } catch (error) { console.warn('[viewer operation] discarding a refused result failed', error); }
     }
+  };
+  const accepted = (result: unknown, finalCheck: () => void): unknown => {
+    finalCheck();
+    const bounded = boundedResult(result);
+    entry.validateResult(bounded);
+    return bounded;
   };
   check();
   if (!args.background) {
@@ -178,6 +181,7 @@ export async function executeOperation(
         if (committed) throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR,
           message: error instanceof Error ? error.message : 'Operation failed after committing changes.',
           details: { committed: true, revision: activeRevision, operation_id: entry.id, model_id: model?.id ?? null } });
+        discardResult();
         throw error;
       }
     };
@@ -193,7 +197,16 @@ export async function executeOperation(
     return request.result;
   }
   const owned = jobs(host);
-  for (const [id, job] of owned) if (owned.size >= MAX_JOBS && job.snapshot.state !== 'running') owned.delete(id);
+  // Finished jobs make room, delivered or failed ones first; an uncollected result goes only when nothing else can.
+  const uncollected = (job: LiveJob) => job.snapshot.state === 'succeeded' && !job.delivered;
+  for (const evictUncollected of [false, true]) {
+    for (const [id, job] of owned) {
+      if (owned.size < MAX_JOBS) break;
+      if (job.snapshot.state === 'running' || uncollected(job) !== evictUncollected) continue;
+      owned.delete(id);
+      if (evictUncollected) job.discard(); // its result will never be collected
+    }
+  }
   if (owned.size >= MAX_JOBS) invalid('This host already has 32 running operation jobs.');
   const controller = new AbortController();
   const abort = () => controller.abort();
@@ -203,13 +216,14 @@ export async function executeOperation(
   const snapshot: OperationJob = { id: crypto.randomUUID(), operation_id: entry.id, model_id: model?.id ?? null, revision, state: 'running' };
   const active = () => { controller.signal.throwIfAborted(); check(); };
   checkpoint = active;
-  owned.set(snapshot.id, { snapshot, abort: controller, current: check, discard: () => discardResult(snapshot.result) });
+  owned.set(snapshot.id, { snapshot, abort: controller, current: check, discard: discardResult, deliver: () => { retained.length = 0; } });
   // Retain and settle the actual service promise. Cancellation never claims rollback.
   void Promise.resolve().then(() => { active(); return entry.execute(input, { ...operationContext, signal: controller.signal, checkpoint: active, progress: detail => {
       active(); snapshot.progress = detail;
     } }); })
     .then(result => { snapshot.result = accepted(result, active); snapshot.state = 'succeeded'; })
     .catch((error: unknown) => {
+      if (!committed) discardResult();
       snapshot.state = controller.signal.aborted ? 'cancelled' : 'failed';
       snapshot.error = error instanceof Error ? error.message : 'Operation failed.';
     }).finally(() => {
@@ -231,12 +245,12 @@ export function operationJob(host: ToolHost, id: string, cancel = false): Operat
       const aborted = host.lifetimeSignal?.aborted === true || (error instanceof DOMException && error.name === 'AbortError')
         || (error instanceof ToolExecutionError && error.code === ToolErrorCode.CANCELLED);
       if (!job.delivered && (aborted || (error instanceof ToolExecutionError && error.code === ToolErrorCode.STATE_CHANGED))) {
-        job.discard();
         Object.assign(job.snapshot, { state: aborted ? 'cancelled' : 'failed', error: error instanceof Error ? error.message : 'Operation failed.', result: undefined });
+        job.discard();
       }
       throw error;
     }
-    job.delivered = true;
+    if (!job.delivered) { job.delivered = true; job.deliver(); } // the caller owns it now; nothing is left to undo
   }
   // A cancellation request is observable, but terminal cancellation awaits runner settlement.
   return { ...job.snapshot, ...(cancel && job.snapshot.state === 'running' ? { cancellationRequested: true } : {}) };

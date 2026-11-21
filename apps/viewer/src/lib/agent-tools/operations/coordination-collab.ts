@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { getMountedFileHost } from '@/components/viewer/toolbar/mounted-file-host';
 import { useViewerStore } from '@/store';
 import { coordination } from './coordination-common';
 export const coordinationCollabOperations = [
@@ -30,7 +31,6 @@ export const coordinationCollabOperations = [
     type: 'object', properties: { scope: { type: 'string', enum: ['active', 'all'] }, role: { type: 'string', enum: ['viewer', 'commenter', 'editor'] }, expected_mutation_version: { type: 'integer', minimum: 0 }, expected_geometry_version: { type: 'integer', minimum: 0 } }, required: ['scope', 'role', 'expected_mutation_version', 'expected_geometry_version'], additionalProperties: false,
   }, async (i, c) => {
     const [{ prepareShareSeed, shareRefusesEveryModel }, { useCollabShareReview }, { isCollabSeedInFlight }, { isCollabEnabled }] = await Promise.all([import('@/lib/collab/share-scope'), import('@/lib/collab/share-review'), import('@/lib/collab/seed-phase'), import('@/lib/collab/config')]);
-    // The Share dialog, and the listener that opens it, exist only with collab enabled.
     if (!isCollabEnabled()) throw new Error('Collaboration is not enabled in this viewer.');
     // An open dialog keeps the user's current choices; a candidate is only applied as Share opens.
     if (useCollabShareReview.getState().dialogOpen) throw new Error('The Share dialog is already open. Close it, then prepare the share again.');
@@ -42,8 +42,17 @@ export const coordinationCollabOperations = [
     // Only an admin mints role-scoped links; any other member can only forward the invite it holds.
     if (state.collabRoomId && state.collabRole && state.collabRole !== 'admin') throw new Error('Only the room admin can prepare a role-scoped invite.');
     if (!state.collabRoomId && shareRefusesEveryModel(state.models, state.activeModelId, i.scope)) throw new Error('No model in the selected native scope can be shared.');
+    const shareHost = getMountedFileHost();
+    if (!shareHost?.preloadShareDialog || !shareHost.openShareDialog) throw new Error('The Share consent dialog is unavailable in this viewer.');
+    try { await shareHost.preloadShareDialog(); }
+    catch (cause) { throw new Error('The Share consent dialog could not load. Reload the viewer before preparing a share.', { cause }); }
+    c.checkpoint?.();
     const prepared = state.collabRoomId ? null : await prepareShareSeed(state.models, state.mutationViews, state.activeModelId, i.scope, state.georefMutations); c.checkpoint?.();
     return c.commit(() => {
+      const currentHost = getMountedFileHost();
+      if (!currentHost?.openShareDialog || currentHost.owner !== shareHost.owner || currentHost.preloadShareDialog !== shareHost.preloadShareDialog) {
+        throw new Error('The Share consent dialog changed during share preparation.');
+      }
       if (useCollabShareReview.getState().dialogOpen) throw new Error('The Share dialog is already open. Close it, then prepare the share again.');
       const live = useViewerStore.getState(); if (live.models !== state.models || live.mutationVersion !== state.mutationVersion || live.geometryContentVersion !== state.geometryContentVersion || live.collabRoomId !== state.collabRoomId) throw new Error('Model scope or room changed during share preparation.');
       const candidate = { id: crypto.randomUUID(), scope: i.scope, role: i.role, modelIds: prepared?.models.map(model => model.modelId) ?? [...state.collabRoomModels.keys()], activeModelId: state.activeModelId, loadedModelIds: [...state.models.keys()], mutationVersion: state.mutationVersion, geometryVersion: state.geometryContentVersion, roomId: state.collabRoomId };
@@ -51,7 +60,7 @@ export const coordinationCollabOperations = [
       // Opening the dialog on an existing room mints an invite at once, so only a
       // new room (created on the dialog's explicit Create link) is opened for the
       // user; otherwise the candidate waits until the user opens Share.
-      if (!state.collabRoomId && typeof window !== 'undefined') window.dispatchEvent(new Event('ifc-lite:open-share-dialog'));
+      if (!state.collabRoomId) currentHost.openShareDialog();
       return { state: 'waiting-for-approval', candidate, seed_failure: state.collabSeedFailure };
     });
   }),

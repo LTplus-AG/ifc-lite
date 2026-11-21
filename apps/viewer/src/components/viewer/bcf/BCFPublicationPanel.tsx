@@ -49,6 +49,9 @@ export interface BCFPublicationPanelProps {
 const reviewKey = (batch: Pick<DraftBatch, 'id' | 'modifiedAt'>, serverUrl: string, userId: string, project: string) =>
   JSON.stringify([batch.id, batch.modifiedAt, serverUrl, userId, project]);
 
+const assigneeKey = (serverUrl: string, userId: string, projectId: string) =>
+  JSON.stringify([serverUrl, userId, projectId]);
+
 export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicationPanelProps) {
   const { t } = useTranslation();
   const candidate = useBcfPublicationReview(state => state.candidate);
@@ -70,6 +73,13 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
   // user has not checked.
   // The account is part of the target: switching it drops the previous account's review too.
   const targetKey = reviewKey(batch, config?.serverUrl ?? '', config?.userId ?? '', projectId);
+  const usersKey = assigneeKey(config?.serverUrl ?? '', config?.userId ?? '', projectId);
+  const reportedUsersKey = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    if (reportedUsersKey.current === null || reportedUsersKey.current === usersKey) return;
+    reportedUsersKey.current = null;
+    onUsers([]);
+  }, [usersKey, onUsers]);
   const reviewEpoch = useRef(0);
   const adopted = useRef<{ id: string; targetKey: string } | null>(null);
   useLayoutEffect(() => {
@@ -92,6 +102,7 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
     adopted.current = { id: candidate.id, targetKey: reviewKey(batch, candidate.target.serverUrl, candidate.target.userId, candidate.target.projectId) };
     setProjectId(candidate.target.projectId); setTopicTypes(candidate.topicTypes); setPreflight(candidate.preflight);
     // As the native Check does, so the dialog can offer the server's assignees.
+    reportedUsersKey.current = assigneeKey(candidate.target.serverUrl, candidate.target.userId, candidate.target.projectId);
     onUsers(candidate.preflight.extensions.user_id_type ?? []);
   }, [candidate, batch.id, batch.modifiedAt, config?.serverUrl, config?.userId, targetKey, onUsers]);
 
@@ -140,6 +151,7 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
     const result = await preflightPublication(connection.client, plan.record);
     if (!isCurrent()) return;
     adopt(result);
+    reportedUsersKey.current = usersKey;
     onUsers(result.extensions.user_id_type ?? []);
   });
   const publish = () => act(async isCurrent => {

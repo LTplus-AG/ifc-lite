@@ -11,6 +11,9 @@ import { setGlobalRendererRef, clearGlobalRefs } from '@/hooks/useBCF';
 import { dispatchMainViewerTool } from '../main-viewer-dispatch';
 import { resetFeaturesForTest } from '@/lib/features';
 import { readBCF } from '@ifc-lite/bcf';
+import { registerMountedFileHost } from '@/components/viewer/toolbar/mounted-file-host';
+import { setCollabEnabledOverride } from '@/lib/collab/config';
+import { useCollabShareReview } from '@/lib/collab/share-review';
 import { LocalBackend } from '@/sdk/local-backend';
 import { seedCoincidentWalls } from '@/test/clash-run-fixture';
 import { useViewerStore } from '@/store';
@@ -176,4 +179,27 @@ it('compare.run and collab.prepareRoom refuse what the native panel and dialog w
   assert.equal(useViewerStore.getState().compareResult, null);
   const state = useViewerStore.getState();
   await assert.rejects(execute('collab.prepareRoom', { scope: 'all', role: 'viewer', expected_mutation_version: state.mutationVersion, expected_geometry_version: state.geometryContentVersion }), /not enabled/);
+});
+
+it('#10589 refuses to stage a share when the mounted consent dialog cannot load', async t => {
+  setCollabEnabledOverride(true);
+  t.after(() => setCollabEnabledOverride(null));
+  const previous = useViewerStore.getState();
+  useViewerStore.setState({ models: new Map(), activeModelId: null, collabRoomId: null, collabRole: null });
+  t.after(() => useViewerStore.setState(previous));
+  const retire = registerMountedFileHost({
+    openFiles() {},
+    addModel() {},
+    async refreshModels() {},
+    openShareDialog() { assert.fail('cannot open a failed Share chunk'); },
+    async preloadShareDialog() { throw new TypeError('Failed to fetch dynamically imported module'); },
+  });
+  t.after(retire);
+  const initial = useCollabShareReview.getState();
+  await assert.rejects(execute('collab.prepareRoom', {
+    scope: 'all', role: 'viewer', expected_mutation_version: previous.mutationVersion,
+    expected_geometry_version: previous.geometryContentVersion,
+  }), /Share consent dialog could not load/);
+  assert.equal(useCollabShareReview.getState().candidate, initial.candidate);
+  assert.equal(useCollabShareReview.getState().dialogOpen, false);
 });

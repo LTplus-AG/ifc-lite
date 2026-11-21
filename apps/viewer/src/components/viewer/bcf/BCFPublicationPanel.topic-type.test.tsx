@@ -20,6 +20,8 @@ import { BCFPublicationPanel } from './BCFPublicationPanel';
 import { stageBcfPublicationReview, useBcfPublicationReview } from '@/lib/bcf-publication/review-candidate';
 import { planDraftPublication } from '@/lib/bcf-publication/outbox-plan';
 import { preflightPublication } from '@/lib/bcf-publication/outbox-preflight';
+import { loadBcfServerConfig, saveBcfServerConfig } from '@/services/bcf-server';
+import { LOCAL_BCF_USER } from '@/test/bcf-http-server';
 
 afterEach(cleanup);
 
@@ -88,6 +90,28 @@ test('#10589 clears a native check after editing a batch in place', async t => {
   click(button(/^Edit batch$/));
   assert.ok(!ui.querySelector('output'), 'the previous revision review is gone');
   assert.equal(ui.querySelectorAll('select').length, 1, 'only the project picker remains');
+});
+
+test('#10589 clears published assignee choices when switching accounts on the same server', async t => {
+  await connectPeer(t, { topicTypes: SERVER_TYPES });
+  const batch = await reviewedBatch();
+  const config = loadBcfServerConfig();
+  assert.ok(config);
+  const onRecordId = () => undefined;
+  function Panel() {
+    const [users, setUsers] = useState<string[]>([]);
+    return <>
+      <div data-test="assignees">{users.join(', ')}</div>
+      <BCFPublicationPanel batch={batch} onRecordId={onRecordId} onUsers={setUsers} />
+    </>;
+  }
+  const ui = render(<Panel />);
+  const assignees = () => ui.querySelector('[data-test="assignees"]')?.textContent;
+  await waitFor(() => !button(/^Check project$/).disabled, 'project check is ready');
+  click(button(/^Check project$/));
+  await waitFor(() => assignees() === LOCAL_BCF_USER, 'project check supplies server assignees');
+  act(() => saveBcfServerConfig({ ...config, userId: 'other-coordinator@example.test' }));
+  assert.equal(assignees(), '', 'the old account’s users are cleared before another Check');
 });
 
 test('an unknown draft topic type is mapped to a server type the coordinator picks before anything is sent', async t => {

@@ -205,6 +205,7 @@ impl ConversionChecks {
         let (from, to) = (crate::schema_convert::canon(from), crate::schema_convert::canon(to));
         let mut checks = Self::new();
         if !(unchanged && opts.included.is_none() && opts.attribute_mutations.is_empty() && opts.copy_on_write.is_empty()) {
+            checks.structural.defer_varying = from == "IFC2X3" && to == "IFC4";
             return checks;
         }
         match (from, to) {
@@ -235,8 +236,17 @@ impl ConversionChecks {
     /// Append the records a conversion created, then finish `body`; the change in record count.
     pub(crate) fn finish(
         &mut self,
+        body: crate::schema_ifc2x3_body::Body<'_>,
+        slots: Option<&mut crate::schema_ifc2x3_slots::Ifc2x3SlotFill>,
+    ) -> std::io::Result<isize> {
+        self.finish_with_header(body, slots, |_, _| Ok(()))
+    }
+
+    pub(crate) fn finish_with_header(
+        &mut self,
         mut body: crate::schema_ifc2x3_body::Body<'_>,
         mut slots: Option<&mut crate::schema_ifc2x3_slots::Ifc2x3SlotFill>,
+        header: impl FnOnce(&mut dyn std::io::Write, isize) -> std::io::Result<()>,
     ) -> std::io::Result<isize> {
         use std::io::Write as _;
         let mut added = self.structural.added();
@@ -250,7 +260,7 @@ impl ConversionChecks {
             };
             writeln!(body, "{record}")?;
         }
-        Ok(count + body.finish()?)
+        Ok(count + body.finish_with_header(|text| self.structural.finish_effective_varying(text, &mut self.attribute_values_dropped), header)?)
     }
 
     /// Both checks' warnings, IFC4 slots first.

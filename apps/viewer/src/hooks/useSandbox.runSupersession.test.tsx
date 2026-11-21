@@ -502,6 +502,22 @@ describe('useSandbox().execute() — cross-instance run supersession', () => {
     assert.equal(rFirst, null);
   });
 
+  it("script.cancel for a run that already finished cancels nothing, even while an older run is parked (#10591 review)", async () => {
+    let settled = false;
+    await act(async () => {
+      const pFirst = execute1!(GATED).then(() => { settled = true; });
+      await execute1!(UNGATED);
+      await waitForGates(1);
+      const finishedEpoch = useViewerStore.getState().scriptRunEpoch;
+      assert.equal(cancelNativeScriptRun(finishedEpoch), false, 'a finished run is not cancellable');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      assert.equal(settled, false, 'the parked older run was not disposed');
+      assert.equal(useViewerStore.getState().scriptLastResult?.value, 'B-result', 'the finished result stays published');
+      gates[0]!({ marker: 'released' });
+      await pFirst;
+    });
+  });
+
   it("reset() on instance A leaves a coherent state while a DIFFERENT instance's run is in flight", async () => {
     // The cross-instance half of the reset story, which the same-instance test
     // above cannot reach. `reset()` bumps the SHARED epoch, so instance B's

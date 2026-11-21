@@ -129,6 +129,8 @@ export class NativeScriptRunner {
   private cancellationEpoch = 0;
   private running = 0;
   private sharedEpoch = -1;
+  /** Shared epochs of this runner's runs still in flight; a finished run's epoch is not cancellable. */
+  private readonly inFlight = new Set<number>();
   constructor(private readonly bim: BimContext, private readonly config?: SandboxConfig) {}
   async execute(code: string): Promise<ScriptResult | null> {
     const { bim, config } = this;
@@ -163,7 +165,7 @@ export class NativeScriptRunner {
       return null;
     }
 
-    this.running++; activeRunners.add(this);
+    this.running++; this.inFlight.add(myEpoch); activeRunners.add(this);
     let sandbox: Sandbox | null = null;
     let torndown = false;
     /**
@@ -307,7 +309,7 @@ export class NativeScriptRunner {
       setError(runtime.message, runtime.diagnostics);
       return null;
     } finally {
-      if (--this.running === 0) activeRunners.delete(this);
+      this.inFlight.delete(myEpoch); if (--this.running === 0) activeRunners.delete(this);
       // Always dispose the sandbox after execution. A no-op on the success
       // path, which already settled itself above; this covers create/eval
       // throwing, and a teardown abort on the way out of a failed run.
@@ -319,7 +321,7 @@ export class NativeScriptRunner {
       }
     }
   }
-  ownsEpoch(epoch: number): boolean { return this.sharedEpoch === epoch; }
+  ownsEpoch(epoch: number): boolean { return this.sharedEpoch === epoch && this.inFlight.has(epoch); }
   /** True when cancel(), reset() or dispose() ran since the given cancellation count (see cancellationCount). */
   cancelledSince(count: number): boolean { return this.cancellationEpoch !== count; }
   get cancellationCount(): number { return this.cancellationEpoch; }

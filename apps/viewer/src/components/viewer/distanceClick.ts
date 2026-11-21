@@ -130,9 +130,12 @@ export function finishDistance(ctx: MouseHandlerContext, end: MeasurePoint, at?:
  * before `handleMeasureUp` (which they call only with a start pending): a press still reading its start back
  * keeps its own release and drag, which the next press would otherwise overwrite in the shared mouse state.
  */
-export function noteDistancePointerUp(mouseState: MouseState): void {
+export function noteDistancePointerUp(mouseState: MouseState): boolean {
   const press = deferredStarts.get(mouseState);
   if (press && !press.ended) { press.ended = true; press.dragged = mouseState.didDrag; }
+  // True: the controls hand this release to `handleMeasureUp` even with no start yet, which queues it behind the
+  // press, so a first press dragged and lifted before its start lands finishes at the lift, as resident (r4650402562).
+  return press !== undefined;
 }
 
 /** Any other press (navigation, another tool) breaks the finish-then-start chain a dblclick may drop. */
@@ -205,7 +208,8 @@ export function handleMeasureDown(ctx: MouseHandlerContext, e: PointerEvent): bo
     if (!measurePoint) return;
     beginDistance(ctx, measurePoint, at);
     startingPresses.add(mouseState);
-    if (afterFinish) startsAfterFinish.add(mouseState);
+    // A finish that was still queued at press-down and has landed since counts too: a dblclick then drops this start.
+    if (afterFinish || finishingPresses.has(mouseState)) startsAfterFinish.add(mouseState);
   };
   // Released geometry (#10264): the press is a placement. It reads its point back first and lands even after
   // a quick click's release (#10884); only a gesture reset (Esc, a mode or tool switch) drops it.

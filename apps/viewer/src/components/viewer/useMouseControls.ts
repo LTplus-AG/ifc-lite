@@ -711,8 +711,8 @@ export function useMouseControls(params: UseMouseControlsParams): void {
         return;
       }
 
-      if (tool === 'measure' && pointerGesture === 'tool' && e.button !== 2) noteDistancePointerUp(mouseState); // measure completion; a press reading its start back keeps its own release first
-      if (tool === 'measure' && pointerGesture === 'tool' && activeMeasurementRef.current && e.button !== 2 && !pressOutlivedReset(mouseState)) {
+      const pendingPress = tool === 'measure' && pointerGesture === 'tool' && e.button !== 2 && noteDistancePointerUp(mouseState); // measure completion: a press still reading its start back is handed its release too
+      if (tool === 'measure' && pointerGesture === 'tool' && (activeMeasurementRef.current || pendingPress) && e.button !== 2 && !pressOutlivedReset(mouseState)) {
         if (handleMeasureUp(ctx, e)) return;
       }
 

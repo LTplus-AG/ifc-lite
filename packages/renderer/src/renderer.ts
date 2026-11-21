@@ -541,6 +541,7 @@ export class Renderer {
         this.pickingManager.setAnnotationPickProvider((x, y, width, height, options, clip) =>
             this.overlays.annotationPicker.pick(this.camera, x, y, width, height, options, clip));
         this.raycastEngine = new RaycastEngine(this.camera, this.scene, this.canvas);
+        this.raycastEngine.viewStampExtra = () => String(this._pickClipRevision.revision); // a section change exposes other surfaces
     }
 
     /**

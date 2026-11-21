@@ -355,6 +355,18 @@ describe('released geometry readback for tools', () => {
     await registry.close();
   });
 
+  it('#10884 r4651015218 a miss picked under an older view is no answer for the new one', async () => {
+    const { registry, backing } = await backed([mesh(1, 0)]);
+    const h = host({ released: true, hit: null });
+    let view = 'V';
+    h.value.readbackRaycastViewKey = () => view;
+    h.value.pick = async () => { view = "V'"; return null; }; // the camera moved while the GPU pick was pending
+    const feeder = new ReadbackRaycastFeeder(h.value, () => ({ backing: () => backing }), () => 'm');
+    assert.equal(await feeder.prepare(0, 0), 'cancelled', 'not no-hit for a view it never looked at');
+    assert.deepEqual(h.fed, [], 'and no empty coverage installed for that ray');
+    await registry.close();
+  });
+
   it('#10884 r4648098405 a flat overlay neighbour (a backed annotation beside the hit) is not fed', async () => {
     const { registry, backing } = await backed([mesh(1, 0), mesh(900, 0.5)]); // 900: an IfcAnnotation over the wall
     const h = host({ released: true, hit: { expressId: 1, modelIndex: 0, worldXYZ: { x: 100.2, y: 0.2, z: 5 } } });

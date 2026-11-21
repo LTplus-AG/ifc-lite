@@ -115,6 +115,7 @@ export class ReadbackRaycastFeeder {
         hit = await this.host.pick(x, y, { ...visibility, hiddenIds: skipped });
         signal.throwIfAborted();
       }
+      if (view !== this.host.readbackRaycastViewKey?.()) return this.finish('cancelled'); // a miss under an older view says nothing
       if (!hit) { this.swap([], [], { x, y }); return this.finish('no-hit'); }
       const modelId = this.owner(hit.expressId);
       const backing = modelId ? this.source()?.backing(modelId) : undefined;

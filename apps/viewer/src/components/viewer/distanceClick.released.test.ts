@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { useViewerStore } from '@/store';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
-import { handleMeasureDown, handleMeasureUp, noteDistancePointerUp } from './distanceClick.js';
+import { handleMeasureDown, handleMeasureUp, noteDistancePointerUp, takeDoubleClickStart } from './distanceClick.js';
 import { handleMeasureTap } from './touchRouting.js';
 import { handlePointClick } from './measurePointMode.js';
 import { measureReadbacksIdle, setMeasureReadbackFeedForTest } from './measureReadbackGate.js';
@@ -57,16 +57,23 @@ function releasedCtx() {
 }
 const down = (x: number) => new window.MouseEvent('pointerdown', { clientX: x, clientY: 5 }) as unknown as PointerEvent;
 const up = (x: number) => new window.MouseEvent('pointerup', { clientX: x, clientY: 5 }) as unknown as PointerEvent;
-/** The pointer controls call `handleMeasureUp` only with a measurement pending (useMouseControls). */
+/** As the pointer controls do: `handleMeasureUp` with a measurement pending, or a press still reading its start back. */
 function release(ctx: MouseHandlerContext, x: number): void {
-  noteDistancePointerUp(ctx.mouseState); // every measure-tool release, as the controls do
-  if (ctx.activeMeasurementRef.current) handleMeasureUp(ctx, up(x));
+  const pending = noteDistancePointerUp(ctx.mouseState); // every measure-tool release
+  if (ctx.activeMeasurementRef.current || pending) handleMeasureUp(ctx, up(x));
   else ctx.mouseState.isDragging = false;
 }
 /** A pointerdown as the controls make it: a new press starts undragged. */
 function press(ctx: MouseHandlerContext, x: number): void {
   ctx.mouseState.didDrag = false;
   handleMeasureDown(ctx, down(x));
+}
+/** Settle the next read in queue order (reads start one at a time, each after the previous lands). */
+async function settleNext(outcome = 'fed'): Promise<void> {
+  await settleImports();
+  const next = reads.find((read) => !read.done);
+  assert.ok(next, 'a read is pending');
+  next.settle(outcome);
 }
 /** Settle every read in queue order, including those queued by earlier ones landing. */
 async function settleAll(outcome = 'fed'): Promise<void> {
@@ -101,15 +108,12 @@ describe('click-click distance over released geometry', () => {
     release(ctx, 10); // pointerup before the read lands: isDragging is false, no measurement pending yet
     await settleImports();
     assert.deepEqual(raycasts, [], 'no synchronous raycast over released geometry');
-    reads[0].settle('fed');
-    await measureReadbacksIdle();
+    await settleAll();
     assert.deepEqual(log, ['start 10'], 'the click placed its start');
     // The second click finishes there, after reading its own point back.
     handleMeasureDown(ctx, down(300));
     release(ctx, 300);
-    await settleImports();
-    reads[1].settle('fed');
-    await measureReadbacksIdle();
+    await settleAll();
     assert.deepEqual(log, ['start 10', 'end 300', 'finished']);
   });
 
@@ -117,10 +121,7 @@ describe('click-click distance over released geometry', () => {
     const { ctx, log } = releasedCtx();
     handleMeasureDown(ctx, down(10)); release(ctx, 10);
     handleMeasureDown(ctx, down(300)); release(ctx, 300);
-    await settleImports();
-    reads[0].settle('fed'); await tick();
-    reads[1].settle('fed');
-    await measureReadbacksIdle();
+    await settleAll();
     assert.deepEqual(log, ['start 10', 'end 300', 'finished'], 'one distance from the first click to the second');
   });
 
@@ -133,24 +134,25 @@ describe('click-click distance over released geometry', () => {
     assert.deepEqual(log, ['start 10']);
     ctx.mouseState.didDrag = true; // dragged from 300 to 400
     release(ctx, 400); // a start is pending now, so the controls hand the release to handleMeasureUp
-    await settleImports();
-    reads[1].settle('fed'); await tick(); // the second press lands: a second click, its release queued behind it
-    reads[2].settle('fed');
-    await measureReadbacksIdle();
+    await settleAll(); // the second press lands as a second click, its release queued behind it
     assert.deepEqual(log, ['start 10', 'end 400', 'finished'], 'measured to where it was released, not where it was pressed');
   });
 
-  it('#10884 a dragged second press whose release was never seen keeps the start pending, never measuring to the press point', async () => {
+  it('#10884 a dragged second press released before any start lands finishes at its release point, never its press point', async () => {
     const { ctx, log } = releasedCtx();
     handleMeasureDown(ctx, down(10)); release(ctx, 10);
     handleMeasureDown(ctx, down(300));
     ctx.mouseState.didDrag = true;
-    release(ctx, 400); // no start pending yet: the controls never call handleMeasureUp
-    await settleImports();
-    reads[0].settle('fed'); await tick();
-    reads[1].settle('fed');
-    await measureReadbacksIdle();
-    assert.deepEqual(log, ['start 10'], 'the start stays pending for the next click');
+    release(ctx, 400); // no start yet: the controls still hand a pending press its release (r4650402562)
+    await settleAll();
+    assert.deepEqual(log, ['start 10', 'end 400', 'finished'], 'as resident: the second press dragged to 400 finishes there');
+  });
+
+  it('r4650402562 a FIRST press dragged and lifted before its start lands measures press to lift, as resident', async () => {
+    const { ctx, log } = releasedCtx();
+    press(ctx, 10); ctx.mouseState.didDrag = true; release(ctx, 60); // a drag-measure, lifted before the read lands
+    await settleAll();
+    assert.deepEqual(log, ['start 10', 'end 60', 'finished'], 'never left as a start at 10 waiting for another click');
   });
 
   it('#10884 Esc while the second click reads back drops the finish', async () => {
@@ -197,24 +199,21 @@ describe('#10884 click order over released geometry', () => {
     const { ctx, log } = releasedCtx();
     handleMeasureDown(ctx, down(10)); release(ctx, 10); // the first click, still reading back
     handleMeasureDown(ctx, down(300)); // the second press, deferred too, and still held
-    await settleImports();
-    reads[0].settle('fed'); await tick(); // the first start lands (it marks the press as starting)
-    reads[1].settle('fed'); await measureReadbacksIdle(); // the second lands while held: a second click
+    await settleAll(); // the first start lands, then the second press, while held: a second click
     assert.deepEqual(log, ['start 10']);
+    const next = reads.length;
     release(ctx, 300); // now released: an ordinary second click
     await settleImports();
-    assert.equal(reads[2]?.x, 300, 'the release reads its own point back');
+    assert.equal(reads[next]?.x, 300, 'the release reads its own point back');
     assert.deepEqual(log, ['start 10'], 'nothing finishes before that read lands');
-    reads[2].settle('fed');
-    await measureReadbacksIdle();
+    await settleAll();
     assert.deepEqual(log, ['start 10', 'end 300', 'finished'], 'the second click finishes the distance');
   });
 
   it('#10884 two more quick clicks before the finishing read lands: the second finishes, the third starts the next distance', async () => {
     const { ctx, log } = releasedCtx();
     handleMeasureDown(ctx, down(10)); release(ctx, 10);
-    await settleImports();
-    reads[0].settle('fed'); await measureReadbacksIdle();
+    await settleAll();
     handleMeasureDown(ctx, down(300)); release(ctx, 300); // queued finish
     handleMeasureDown(ctx, down(500)); release(ctx, 500); // queued behind it, the distance still pending
     await settleAll();
@@ -226,12 +225,11 @@ describe('#10884 a press keeps its own press point and drag behind a queued read
   it('r4649781963 an unseen dragged second press never finishes at its press point after a later click resets the drag', async () => {
     const { ctx, log } = releasedCtx();
     press(ctx, 10); release(ctx, 10); // the first click, still reading back
-    press(ctx, 300); ctx.mouseState.didDrag = true; release(ctx, 400); // dragged; no start yet, so handleMeasureUp never runs
-    await settleImports();
-    reads[0].settle('fed'); await tick(); // the first start lands
-    press(ctx, 500); release(ctx, 500); // a third click resets the shared drag state and queues its finish
+    press(ctx, 300); ctx.mouseState.didDrag = true; release(ctx, 400); // dragged before any start landed
+    await settleNext(); // the first start lands
+    press(ctx, 500); release(ctx, 500); // a third click resets the shared drag state
     await settleAll();
-    assert.deepEqual(log, ['start 10', 'end 500', 'finished'], 'the dragged press leaves the start pending; the third click finishes');
+    assert.deepEqual(log, ['start 10', 'end 400', 'finished', 'start 500'], 'the drag finishes at its own lift (never 300); the third click starts anew');
   });
 
   it('r4649781967 a drag pressed while a finish is queued starts the next distance and finishes at its release', async () => {
@@ -255,19 +253,30 @@ describe('#10884 a press keeps its own press point and drag behind a queued read
   });
 });
 
+describe('#10884 the double-click marker over released geometry', () => {
+  it('r4651056761 a start placed after a finish that was still queued at press-down is dropped by the dblclick, as resident', async () => {
+    const { ctx, log } = releasedCtx();
+    press(ctx, 10); release(ctx, 10);
+    await settleAll();
+    press(ctx, 300); release(ctx, 300); // the dblclick's first click: its finish is queued
+    press(ctx, 300); release(ctx, 300); // its second press, made before that finish lands
+    await settleAll();
+    assert.deepEqual(log, ['start 10', 'end 300', 'finished', 'start 300']);
+    assert.equal(takeDoubleClickStart(ctx), true, 'the dblclick drops the stray start, as in a resident scene');
+  });
+});
+
 describe('#10880 a Distance point that cannot be read back discards the half-made distance', () => {
   const epoch = () => useViewerStore.getState().measureGestureEpoch;
 
   it('#10884 click-click: a second click whose read is refused records no one-ended distance', async () => {
     const { ctx, log } = releasedCtx();
     handleMeasureDown(ctx, down(10)); release(ctx, 10);
-    await settleImports();
-    reads[0].settle('fed'); await measureReadbacksIdle();
+    await settleAll();
     assert.deepEqual(log, ['start 10']);
     const before = epoch();
     handleMeasureDown(ctx, down(300)); release(ctx, 300);
-    await settleImports();
-    reads[1].settle('unavailable'); await measureReadbacksIdle();
+    await settleNext('unavailable'); await settleAll();
     assert.deepEqual(log, ['start 10'], 'never finished with an end it could not read');
     assert.equal(epoch(), before + 1, 'the half-made distance is discarded (a gesture reset)');
   });
@@ -276,15 +285,14 @@ describe('#10880 a Distance point that cannot be read back discards the half-mad
     const { ctx, log } = releasedCtx();
     handleMeasureDown(ctx, down(10)); release(ctx, 10);
     handleMeasureDown(ctx, down(300));
-    await settleImports();
-    reads[0].settle('fed'); await tick();
+    await settleNext(); // the first start lands
     ctx.mouseState.didDrag = true;
     release(ctx, 400); // queued behind the second press
-    await settleImports();
     const before = epoch();
-    reads[1].settle('fed'); await tick(); // the second press lands as a second click
-    reads[2].settle('unavailable'); // its release point cannot be read
-    await measureReadbacksIdle();
+    await settleNext(); // the first click's own release (a click: nothing more)
+    await settleNext(); // the second press lands as a second click
+    await settleNext('unavailable'); // its release point cannot be read
+    await settleAll();
     assert.deepEqual(log, ['start 10'], 'no end at 300 or 400');
     assert.equal(epoch(), before + 1, 'discarded');
   });

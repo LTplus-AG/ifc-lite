@@ -87,7 +87,9 @@ describe('operation results and expected-state tokens stay bounded (#10794)', ()
   it('#4 clash.groups.read pages a group library over 1 MB and its expected_library token stays short', async (t: TestContext) => {
     t.mock.method(clashGroupLibrary, 'initialize', async () => true);
     const entries = Array.from({ length: 300 }, (_, i) => ({ version: 1, id: `w${i}`, name: `Workspace ${i} ${pad(4000)}`, groups: [] }));
-    useClashGroupLibrary.setState({ entries: entries as never });
+    const { status } = useClashGroupLibrary.getState();
+    t.after(() => useClashGroupLibrary.setState({ status }));
+    useClashGroupLibrary.setState({ entries: entries as never, status: { phase: 'ready', recovered: false, items: {} } });
     const { items, token } = await readAll<{ id: string }>('clash.groups.read', 'entries');
     assert.deepEqual(items.map(row => row.id), entries.map(row => row.id), 'every workspace once, in order'); assert.ok(token.length <= 64);
     assert.match((await run('clash.groups.library', { action: 'select', workspace_id: 'w1', expected_library: '1:0' })).text, /Group library changed/);
@@ -99,8 +101,12 @@ describe('operation results and expected-state tokens stay bounded (#10794)', ()
     useViewerStore.setState({ savedValidationReports: reports as never, initializeValidationReports: async () => true });
     const { items, token } = await readAll<{ id: string }>('validation.reports.read', 'reports');
     assert.deepEqual(items.map(row => row.id), reports.map(row => row.id), 'every report once, in order'); assert.ok(token.length <= 64);
-    assert.match((await run('validation.reports.manage', { action: 'rename', id: 'missing', name: 'N', expected_reports: '1:0' })).text, /library changed/);
-    assert.match((await run('validation.reports.manage', { action: 'rename', id: 'missing', name: 'N', expected_reports: token })).text, /Unknown saved native report/);
+    assert.match((await run('validation.reports.manage', { action: 'rename', id: 'v1', name: 'N', expected_reports: '1:0' })).text, /library changed/);
+    for (const expected_reports of ['1:0', token]) {
+      const missing = await run('validation.reports.manage', { action: 'rename', id: 'missing', name: 'N', expected_reports });
+      assert.equal(missing.errorCode, 'INVALID_INPUT', missing.text);
+      assert.equal((missing.structured as { reason: string }).reason, 'unknown-target');
+    }
   });
 
   /** Every zones.read row, by following page.next_offset; each page must fit the limit on its own. */

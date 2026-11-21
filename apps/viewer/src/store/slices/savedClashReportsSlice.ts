@@ -4,6 +4,7 @@
 
 import type { StateCreator } from 'zustand';
 import { clashReportsContent, loadClashReportLibrary } from '@/lib/clash/saved-report-persistence';
+import type { ClashReportSaveResult } from '@/lib/clash/saved-report-library';
 import type { SavedClashReport } from '@/lib/clash/saved-report-schema';
 import { sameReportEvidence } from '@/lib/flow/report-provenance';
 import { createContentLibrary, initialContentStatus, type ContentCommitReceipt, type ContentStatus } from '@/lib/storage/content-library';
@@ -20,6 +21,7 @@ export interface SavedClashReportsSlice {
   restoreSavedClashReports: () => Promise<boolean>;
   retrySaveClashReports: () => Promise<boolean>;
   saveClashReport: (report: SavedClashReport) => Promise<boolean>;
+  saveClashReportResult: (report: SavedClashReport) => Promise<ClashReportSaveResult>;
   stageClashReport: (report: SavedClashReport) => Promise<void>;
   renameSavedClashReport: (id: string, name: string) => Promise<boolean>;
   deleteSavedClashReport: (id: string, beforeWrite?: () => boolean | Promise<boolean>) => Promise<boolean>;
@@ -36,6 +38,10 @@ export const savedClashReportsSlice = (load: typeof loadClashReportLibrary = loa
   // be validated) or empty, a state the next open can leave. Left "loading", it would disable every library's backup.
   const actions = () => load().then((module) => module.clashReportActions(library, () => get().savedClashReports, sameReportEvidence))
     .catch((error: unknown) => { console.warn('[Clash reports] The report rules could not be loaded', error); return null; });
+  const saveClashReportResult = async (report: SavedClashReport): Promise<ClashReportSaveResult> => {
+    const rules = await actions();
+    return rules ? rules.save(report) : 'storage';
+  };
   return {
     savedClashReports: [], savedClashReportsStorage: initialContentStatus(),
     initializeSavedClashReports: () => actions().then(library.initialize),
@@ -43,7 +49,8 @@ export const savedClashReportsSlice = (load: typeof loadClashReportLibrary = loa
     restoreSavedClashReports: () => actions().then((rules) => !!rules && library.restore()),
     retrySaveClashReports: () => actions().then((rules) => !!rules && library.retry()),
     cancelSavedClashReportDeletion: library.cancelDeletion,
-    saveClashReport: (report) => actions().then((rules) => !!rules && rules.save(report)),
+    saveClashReport: async (report) => (await saveClashReportResult(report)) === 'saved',
+    saveClashReportResult,
     stageClashReport: (report) => actions().then((rules) => rules?.stage(report)),
     renameSavedClashReport: (id, name) => actions().then((rules) => !!rules && rules.rename(id, name)),
     deleteSavedClashReport: (id, beforeWrite) => actions().then((rules) => !!rules && rules.remove(id, beforeWrite)),

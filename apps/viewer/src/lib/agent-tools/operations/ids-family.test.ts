@@ -57,6 +57,13 @@ describe('complete native IDS Studio operation vocabulary (#10525 follow-up)', (
     const malformed = await dispatchMainViewerTool(host, 'viewer_operation_inspect', { operation_id: 'ids.operations.prepare', input: { document_revision: 1, ops_json: '[{"kind":"constructor"}]' } });
     assert.equal(malformed.isError, true);
   });
+  it('refuses malformed IDSZ base64 as caller input (#10871)', async () => {
+    const result = await dispatchMainViewerTool(host, 'viewer_operation_inspect', {
+      operation_id: 'ids.document.prepare', input: { format: 'idsz', content: '!', document_revision: 0 },
+    });
+    assert.equal(result.errorCode, 'INVALID_INPUT', result.text);
+    assert.equal((result.structured as { reason: string }).reason, 'invalid-value');
+  });
   it('authors, lints and exports IDS with no IFC model loaded', async () => {
     useViewerStore.setState({ models: new Map(), ifcDataStore: null, activeModelId: null });
     const prepared = await call<{ token: string }>('ids.document.prepare', { format: 'new', content: 'Model-free IDS', document_revision: 0 });

@@ -6,8 +6,8 @@
  * #10264 S2 hardware acceptance: hide, isolate and storey isolation draw a
  * partly hidden colour batch whole and discard its hidden entities on the GPU
  * (colour and shadow passes), instead of cutting a sub-batch from the CPU copy
- * of the geometry. (Type visibility is not covered: it filters the mesh list
- * before upload, see docs/architecture/viewer-cpu-geometry.md.)
+ * of the geometry. Type visibility rides the same table and has its own
+ * spec, gpu-type-visibility.e2e.spec.ts.
  *
  * Oracle: the frame the old CPU path drew is the frame of the visible pieces
  * alone. So each scenario captures the production colour frame (A), then

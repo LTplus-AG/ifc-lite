@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useViewerStore } from '@/store';
-import { mutationPermissionForModels } from '@/store/mutation-permission';
+import { mutationPermission, mutationPermissionForModels } from '@/store/mutation-permission';
 import { operation, type OperationContext } from './contract';
 import { assertToolActive } from '../cancellation';
 import type { ToolHost } from '../types';
@@ -12,6 +12,10 @@ import type { ZoneSet } from '@/lib/zones/types';
 import { evictOldest } from './host-handles';
 import { boundedPage } from './result-limit';
 import { stateRevision } from './state-revision';
+import { invalidInput, stale } from './refusals';
+import { mutationRefusal } from './mutation-refusal';
+import { findZoneSet } from './authoring-zone-set';
+const WRITEBACK_STALE = 'Zone/model inputs changed after review.';
 const outputSchema = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 const out = (value: unknown) => ({ native_json: JSON.stringify(value) });
 const meta = (id: string, description: string, effect: 'read' | 'model' | 'artifact' = 'read') => ({ id, owner: 'zones', description, effects: [effect],
@@ -21,7 +25,7 @@ type ViewerState = ReturnType<typeof useViewerStore.getState>;
 interface Candidate { setId: string; basis: VolumeBasis; modelIds: string[]; action: 'write' | 'remove'; models: ViewerState['models']; revision: number; geometry: ViewerState['geometryResult']; content: number; inputs: string; result?: unknown }
 const hosts = new WeakMap<ToolHost, Map<string, Candidate>>();
 function owned(c: OperationContext) { let value = hosts.get(c.host); if (!value) { value = new Map(); hosts.set(c.host, value); } return value; }
-function zoneSet(id: string) { const set = useViewerStore.getState().zoneSets.find(row => row.id === id); if (!set) throw new Error('Unknown zone set.'); return set; }
+function zoneSet(id: string) { const set = findZoneSet(id); if (!set) throw invalidInput('unknown-target', 'Unknown zone set.'); return set; }
 /** Same own fields, by identity, except `ignored`. */
 function sameExcept(a: object, b: object, ignored: string) {
   const keys = Object.keys(a).filter(key => key !== ignored);
@@ -49,7 +53,7 @@ interface Planners { buildZoneTable: typeof import('@/hooks/useZoneTableExport')
 function writebackRows(candidate: Pick<Candidate, 'action' | 'basis'>, set: ZoneSet, planners: Planners) {
   if (candidate.action === 'write') return { rows: planners.buildZoneTable(set, candidate.basis), removal: null };
   const removal = planners.planZoneRemoval(set);
-  if (removal.blocked) throw new Error(`Native zone writeback refused: ${removal.blocked}`);
+  if (removal.blocked) throw invalidInput('refused', `Native zone writeback refused: ${removal.blocked}`);
   return { rows: removal.targets, removal };
 }
 /**
@@ -64,15 +68,18 @@ function validate(candidate: Candidate) {
   // Geometry too: a geometry-only update changes the proved volumes without touching mutationVersion, and an in-place
   // one (realignFederation) bumps only geometryContentVersion.
   if (!sameModels(state.models, candidate.models) || state.mutationVersion !== candidate.revision || !sameGeometry(state.geometryResult, candidate.geometry)
-    || state.geometryContentVersion !== candidate.content) throw new Error('Zone/model inputs changed after review.');
+    || state.geometryContentVersion !== candidate.content) throw stale(WRITEBACK_STALE);
   // Equal but for colour: track the current objects, so the next check is an identity check, not another walk.
   candidate.models = state.models; candidate.geometry = state.geometryResult;
-  const permission = mutationPermissionForModels(state, candidate.modelIds); if (!permission.allowed) throw new Error(`Native write refused: ${permission.reason}`);
+  const permission = mutationPermissionForModels(state, candidate.modelIds); if (!permission.allowed) throw mutationRefusal(permission.reason, candidate.modelIds.find(id => !mutationPermission(state, id).allowed), 'Native write refused: ');
 }
 /** The full check, once per apply and after permission: rebuild the digest of what the write would use. A removal returns the checked plan to delete. */
 function validateInputs(candidate: Candidate, planners: Planners) {
-  validate(candidate); const set = zoneSet(candidate.setId), { rows, removal } = writebackRows(candidate, set, planners);
-  if (writebackInputs(set, rows) !== candidate.inputs) throw new Error('Zone/model inputs changed after review.');
+  validate(candidate);
+  const set = findZoneSet(candidate.setId);
+  if (!set) throw stale(WRITEBACK_STALE);
+  const { rows, removal } = writebackRows(candidate, set, planners);
+  if (writebackInputs(set, rows) !== candidate.inputs) throw stale(WRITEBACK_STALE);
   return { set, removal };
 }
 export const zoneWriteOperations = [
@@ -83,7 +90,7 @@ export const zoneWriteOperations = [
     const [{ buildZoneTable }, { planZoneRemoval }] = await Promise.all([import('@/hooks/useZoneTableExport'), import('@/hooks/useZoneWriteBack')]);
     assertToolActive(c); const state = useViewerStore.getState();
     const current = [...state.models].filter(([, model]) => model.ifcDataStore).map(([id]) => id).sort();
-    if (JSON.stringify([...i.model_ids].sort()) !== JSON.stringify(current) || !i.model_ids.includes(c.model.id)) throw new Error('model_ids must explicitly name every currently loaded IFC target.');
+    if (JSON.stringify([...i.model_ids].sort()) !== JSON.stringify(current) || !i.model_ids.includes(c.model.id)) throw invalidInput('wrong-target', 'model_ids must explicitly name every currently loaded IFC target.');
     const set = zoneSet(i.set_id), { rows } = writebackRows(i, set, { buildZoneTable, planZoneRemoval });
     const candidate: Candidate = { setId: i.set_id, basis: i.basis, modelIds: [...i.model_ids], action: i.action, models: state.models, revision: state.mutationVersion, geometry: state.geometryResult, content: state.geometryContentVersion,
       inputs: writebackInputs(set, rows) };
@@ -97,14 +104,14 @@ export const zoneWriteOperations = [
   operation<{ token: string }>(meta('zones.writeback.apply', 'Apply the exact reviewed whole-set native writeback/removal. Preserves native per-model eligibility, role checks, volume proofs and explicit partial outcome diagnostics.', 'model'), {
     type: 'object', properties: { token: { type: 'string', minLength: 1, maxLength: 100 } }, required: ['token'], additionalProperties: false,
   }, async (i, c) => {
-    const candidate = owned(c).get(i.token); if (!candidate) throw new Error('Unknown zone candidate for this host.'); if (candidate.result) return out(candidate.result);
+    const candidate = owned(c).get(i.token); if (!candidate) throw invalidInput('unknown-target', 'Unknown zone candidate for this host.'); if (candidate.result) return out(candidate.result);
     const [{ applyZoneWriteBack, removeZoneWriteBack, planZoneRemoval }, { buildZoneTable }] = await Promise.all([import('@/hooks/useZoneWriteBack'), import('@/hooks/useZoneTableExport')]);
     validate(candidate); assertToolActive(c);
     // A refusal throws inside commit, so it is never reported as a committed write.
     candidate.result = c.commit(() => {
       const { set, removal } = validateInputs(candidate, { buildZoneTable, planZoneRemoval });
       const result = removal ? removeZoneWriteBack(set, removal) : applyZoneWriteBack(set, candidate.basis);
-      if (result.blocked) throw new Error(`Native zone writeback refused: ${result.blocked}`);
+      if (result.blocked) throw invalidInput('refused', `Native zone writeback refused: ${result.blocked}`);
       return result;
     });
     return out(candidate.result);
@@ -113,12 +120,12 @@ export const zoneWriteOperations = [
     type: 'object', properties: { set_id: { type: 'string', minLength: 1, maxLength: 200 }, zone_id: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['set_id', 'zone_id'], additionalProperties: false,
   }, async (i, c) => {
     const { exportZoneGeometry } = await import('@/hooks/useZoneGeometrySplit'); assertToolActive(c);
-    const set = zoneSet(i.set_id), index = set.zones.findIndex(zone => zone.id === i.zone_id); if (index < 0) throw new Error('Unknown native zone.');
+    const set = zoneSet(i.set_id), index = set.zones.findIndex(zone => zone.id === i.zone_id); if (index < 0) throw invalidInput('unknown-target', 'Unknown native zone.');
     const state = useViewerStore.getState(), signature = JSON.stringify(set), models = state.models, tick = state.geometryUpdateTick, revision = state.mutationVersion;
     let captured: { bytes: Uint8Array; filename: string } | undefined;
     const result = await exportZoneGeometry(set, index, { emit: (bytes, filename) => { captured = { bytes, filename }; } });
     assertToolActive(c); const now = useViewerStore.getState();
-    if (now.models !== models || now.geometryUpdateTick !== tick || now.mutationVersion !== revision || JSON.stringify(zoneSet(i.set_id)) !== signature) throw new Error('Geometry or zones changed during native export. Discarded result.');
+    if (now.models !== models || now.geometryUpdateTick !== tick || now.mutationVersion !== revision || JSON.stringify(findZoneSet(i.set_id)) !== signature) throw stale('Geometry or zones changed during native export. Discarded result.');
     if (!result.ok || !captured) return out({ result, artifact: null });
     const artifact = await c.artifacts.create({ filename: captured.filename, mimeType: 'model/gltf-binary', data: captured.bytes }); return out({ result, artifact });
   }),

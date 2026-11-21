@@ -36,13 +36,13 @@ export function createClashFocus(options: {
     const loaded = state.models.has(ref.model);
     if (!clashRefModelIsCurrent(state.clashRawResult, ref.model, state.models)) {
       const message = loaded ? CLASH_SUPERSEDED_MESSAGE : CLASH_MODEL_UNLOADED_MESSAGE;
-      if (state.clashError !== message) state.setClashError(message);
+      if (state.clashError !== message) state.setClashError(message, loaded ? 'stale' : 'unavailable');
       return null;
     }
     if (loaded) {
       const resolved = state.resolveGlobalIdInModel(ref.model, ref.ref);
       if (!resolved && state.clashError !== CLASH_REF_UNRESOLVED_MESSAGE) {
-        state.setClashError(CLASH_REF_UNRESOLVED_MESSAGE);
+        state.setClashError(CLASH_REF_UNRESOLVED_MESSAGE, 'unavailable');
       }
       return resolved;
     }
@@ -61,12 +61,12 @@ export function createClashFocus(options: {
   /** `signal`: a capture that owns this focus; its cancellation drops the pending framing. */
   const focusClashes = (clashes: readonly Clash[], mode: ClashFocusMode = 'highlight', signal?: AbortSignal) =>
     focusClashGroup(clashes, refOf, applyFocusMode, mode, signal);
-  const focusClash = (clash: Clash, mode: ClashFocusMode = 'highlight'): void => {
+  const focusClash = (clash: Clash, mode: ClashFocusMode = 'highlight'): boolean => {
     const state = useViewerStore.getState();
     const a = refOf(clash.a);
     const b = refOf(clash.b);
     const refs = [a, b].filter((r): r is SelectionRef => r !== null);
-    if (refs.length === 0) return;
+    if (refs.length === 0) return false;
     const globalIds: number[] = [];
     if (a) globalIds.push(clash.a.ref);
     if (b) globalIds.push(clash.b.ref);
@@ -140,6 +140,7 @@ export function createClashFocus(options: {
     } else {
       state.setClashSolidUnavailable('empty-operand', 0, 0);
     }
+    return true;
   };
   const selectElement = (el: ClashElementRef, mode: ClashFocusMode = 'highlight'): boolean => {
     const state = useViewerStore.getState();

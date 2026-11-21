@@ -4,6 +4,7 @@
 
 import { assistantLibrary, useAssistantLibrary } from '@/lib/assistant/library';
 import { clashGroupLibrary, useClashGroupLibrary } from '@/lib/clash/group-workspace';
+import { idsStudioDraftLibrary, useIdsStudioDraftLibrary } from '@/lib/ids-studio/draft-library';
 import { decodeBcfProject, encodeBcfProject } from '@/lib/bcf-project/project-codec';
 import { bcfDraftLibrary, useBcfDraftLibrary } from '@/lib/bcf-drafts/draft-library';
 import { bcfOutboxLibrary, initializeBcfOutbox, useBcfOutbox } from '@/lib/bcf-publication/outbox-store';
@@ -45,11 +46,17 @@ const visibleLibraries = (requireComplete = false) => {
   return { filters: loadSavedFilters(), lists: currentListDefinitions(requireComplete), lenses: currentLensDefinitions(requireComplete),
     validation: state.savedValidationReports, comparison: state.savedComparisons, document: state.documents, clashReports: state.savedClashReports,
     assistant: useAssistantLibrary.getState().entries, clashGroups: useClashGroupLibrary.getState().entries,
+    idsStudioDrafts: useIdsStudioDraftLibrary.getState().entries,
     bcfDrafts: useBcfDraftLibrary.getState().entries, bcfOutbox: useBcfOutbox.getState().entries,
     modelChanges: useModelChangeReceipts.getState().entries, clashGroupApplications: useClashGroupApplications.getState().entries, reviewWorkspaces: useReviewWorkspaces.getState().entries,
     semanticReviews: useSemanticReviews.getState().entries, assistantRecipes: useAssistantRecipes.getState().entries, assistantPreferences: useAssistantPreferences.getState().entries,
     analysisRuns: useSavedAnalysisRuns.getState().entries };
 };
+
+async function flushOpenIdsDrafts(): Promise<boolean> {
+  if (!useViewerStore.getState().idsStudioRuntime) return true;
+  return (await import('@/lib/ids-studio/draft-viewer')).flushIdsDrafts();
+}
 
 /** Per-library save status; backup includes all user-content libraries and unsaved drafts. */
 export function ContentStorageNotice({ status, retry, restore }: {
@@ -65,6 +72,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
     .some(library => library.phase === 'loading'));
   const assistantLoading = useAssistantLibrary(s => s.status.phase === 'loading');
   const clashGroupsLoading = useClashGroupLibrary(s => s.status.phase === 'loading');
+  const idsDraftsLoading = useIdsStudioDraftLibrary(s => s.status.phase === 'loading');
   const draftsLoading = useBcfDraftLibrary(s => s.status.phase === 'loading');
   const outboxLoading = useBcfOutbox(s => s.status.phase === 'loading');
   const bcfLoading = draftsLoading || outboxLoading;
@@ -108,6 +116,9 @@ export function ContentStorageNotice({ status, retry, restore }: {
   const backup = async () => {
     if (pendingArtifacts()) throw new Error(t('contentStorage.artifactsPending'));
     const state = useViewerStore.getState();
+    if (!(await flushOpenIdsDrafts())) {
+      toast.info(t('idsStudio.drafts.backupIncomplete'));
+    }
     await state.initializeBcfAutosave();
     const preserved = await readBackupDrafts();
     const local = readLocalWorkBackup();
@@ -121,6 +132,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
     downloadFile(JSON.stringify(encodeContentBackup(createContentBackup(visibleLibraries(true), {
       validation: state.validationReportsStorage, comparison: state.savedComparisonsStorage, document: state.documentsStorage, assistant: useAssistantLibrary.getState().status,
       clashGroups: useClashGroupLibrary.getState().status, bcfDrafts: useBcfDraftLibrary.getState().status,
+      idsStudioDrafts: useIdsStudioDraftLibrary.getState().status,
       bcfOutbox: useBcfOutbox.getState().status,
       modelChanges: useModelChangeReceipts.getState().status,
       clashGroupApplications: useClashGroupApplications.getState().status,
@@ -152,7 +164,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
     }
     const drafts = parsed.drafts ?? [];
     stageContentDrafts(drafts);
-    const initialized = await Promise.all([assistantLibrary.initialize(), clashGroupLibrary.initialize(), bcfDraftLibrary.initialize(), modelChangeLibrary.initialize(), clashGroupApplicationLibrary.initialize(), reviewWorkspaceLibrary.initialize(), semanticReviewLibrary.initialize(), assistantRecipeLibrary.initialize(), assistantPreferencesLibrary.initialize(), analysisRunLibrary.initialize(),
+    const initialized = await Promise.all([assistantLibrary.initialize(), clashGroupLibrary.initialize(), idsStudioDraftLibrary.initialize(), bcfDraftLibrary.initialize(), modelChangeLibrary.initialize(), clashGroupApplicationLibrary.initialize(), reviewWorkspaceLibrary.initialize(), semanticReviewLibrary.initialize(), assistantRecipeLibrary.initialize(), assistantPreferencesLibrary.initialize(), analysisRunLibrary.initialize(),
       initializeBcfOutbox(), state.initializeValidationReports(), state.initializeSavedComparisons(), clashReportsReady, state.initializeDocuments()]);
     let count: number, committed: readonly ContentCommitReceipt[] = [];
     let local: LocalWorkImportResult = { restored: [], pending: {}, preserved: 0 };
@@ -170,6 +182,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
       for (const entry of error.entries.clashReports ?? []) void state.stageClashReport(entry);
       for (const entry of error.entries.assistant ?? []) assistantLibrary.stage(entry.id, entry);
       for (const entry of error.entries.clashGroups ?? []) clashGroupLibrary.stage(entry.id, entry);
+      for (const entry of error.entries.idsStudioDrafts ?? []) idsStudioDraftLibrary.stage(entry.id, entry);
       for (const entry of error.entries.bcfDrafts ?? []) bcfDraftLibrary.stage(entry.id, entry);
       for (const entry of error.entries.modelChanges ?? []) modelChangeLibrary.stage(entry.id, entry);
       for (const entry of error.entries.clashGroupApplications ?? []) clashGroupApplicationLibrary.stage(entry.id, entry);
@@ -198,7 +211,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
     try {
       refreshRestoredLocalWork(local.restored);
       const refreshed = await Promise.all([assistantLibrary.refresh(committed), clashGroupLibrary.refresh(committed),
-        bcfDraftLibrary.refresh(committed), bcfOutboxLibrary.refresh(committed), modelChangeLibrary.refresh(committed), clashGroupApplicationLibrary.refresh(committed), reviewWorkspaceLibrary.refresh(committed), semanticReviewLibrary.refresh(committed), assistantRecipeLibrary.refresh(committed), assistantPreferencesLibrary.refresh(committed), analysisRunLibrary.refresh(committed), state.refreshValidationReports(committed), state.refreshSavedComparisons(committed), state.refreshSavedClashReports(committed), state.refreshDocuments(committed)]);
+        idsStudioDraftLibrary.refresh(committed), bcfDraftLibrary.refresh(committed), bcfOutboxLibrary.refresh(committed), modelChangeLibrary.refresh(committed), clashGroupApplicationLibrary.refresh(committed), reviewWorkspaceLibrary.refresh(committed), semanticReviewLibrary.refresh(committed), assistantRecipeLibrary.refresh(committed), assistantPreferencesLibrary.refresh(committed), analysisRunLibrary.refresh(committed), state.refreshValidationReports(committed), state.refreshSavedComparisons(committed), state.refreshSavedClashReports(committed), state.refreshDocuments(committed)]);
       if (!refreshed.every(Boolean)) toast.info(t('contentStorage.refreshFailed'));
     }
     catch (error) {
@@ -224,7 +237,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
       {estimate?.usage !== undefined && <p>{t('contentStorage.originUsage', { usage: mib(estimate.usage) })}</p>}
       {estimate?.quota !== undefined && <p>{t('contentStorage.originQuota', { quota: mib(estimate.quota) })}</p>}
       <div className="flex flex-wrap gap-1 py-1">
-        <Button size="sm" variant="outline" disabled={busy || artifactsPending || librariesLoading || assistantLoading || clashGroupsLoading || bcfLoading || receiptsLoading || recipesLoading || preferencesLoading} onClick={() => void run(backup)}>{t('contentStorage.export')}</Button>
+        <Button size="sm" variant="outline" disabled={busy || artifactsPending || librariesLoading || assistantLoading || clashGroupsLoading || bcfLoading || idsDraftsLoading || receiptsLoading || recipesLoading || preferencesLoading} onClick={() => void run(backup)}>{t('contentStorage.export')}</Button>
         {artifactsPending && <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
           const unfinished = pendingArtifacts();
           if (unfinished && await confirmDialog({ description: t(unfinished.localWork ? 'contentStorage.cancelLocalWorkImportConfirm' : 'contentStorage.cancelArtifactImportConfirm'),
@@ -238,7 +251,8 @@ export function ContentStorageNotice({ status, retry, restore }: {
         <Button size="sm" variant="outline" disabled={busy || artifactsPending} onClick={() => { if (!busyNow() && !pendingArtifacts()) input.current?.click(); }}>{t('contentStorage.import')}</Button>
         <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {
           const live = useViewerStore.getState();
-          const saved = await Promise.all([assistantLibrary.retry(), clashGroupLibrary.retry(), bcfDraftLibrary.retry(), bcfOutboxLibrary.retry(), modelChangeLibrary.retry(), clashGroupApplicationLibrary.retry(), reviewWorkspaceLibrary.retry(), semanticReviewLibrary.retry(), assistantRecipeLibrary.retry(), assistantPreferencesLibrary.retry(), analysisRunLibrary.retry(), live.retryDocumentsSave(), live.retryValidationReportsSave(), live.retrySaveComparisons(), live.retrySaveClashReports(), retryContentDrafts()]);
+          const saved = await Promise.all([assistantLibrary.retry(), clashGroupLibrary.retry(), idsStudioDraftLibrary.retry(), bcfDraftLibrary.retry(), bcfOutboxLibrary.retry(), modelChangeLibrary.retry(), clashGroupApplicationLibrary.retry(), reviewWorkspaceLibrary.retry(), semanticReviewLibrary.retry(), assistantRecipeLibrary.retry(), assistantPreferencesLibrary.retry(), analysisRunLibrary.retry(), live.retryDocumentsSave(), live.retryValidationReportsSave(), live.retrySaveComparisons(), live.retrySaveClashReports(), retryContentDrafts()]);
+          const studioSaved = await flushOpenIdsDrafts();
           const identitiesSaved = await retryContentImports();
           const unfinished = pendingArtifacts();
           const local = unfinished?.localWork ? await retryLocalWorkImport(unfinished.localWork, canRestoreLocalWork) : null;
@@ -247,7 +261,7 @@ export function ContentStorageNotice({ status, retry, restore }: {
             refreshRestoredLocalWork(local.restored);
             if (local.preserved) toast.info(t('contentStorage.localWorkPreserved'));
           }
-          if (saved.every(Boolean) && identitiesSaved && !artifacts?.failed.length && !artifacts?.localPending && !hasUnsavedLocalWork()) toast.success(t('contentStorage.saved'));
+          if (saved.every(Boolean) && studioSaved && identitiesSaved && !artifacts?.failed.length && !artifacts?.localPending && !hasUnsavedLocalWork()) toast.success(t('contentStorage.saved'));
           else toast.error(t('contentStorage.someUnsaved'));
         })}>{t('contentStorage.retryAll')}</Button>
         <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => {

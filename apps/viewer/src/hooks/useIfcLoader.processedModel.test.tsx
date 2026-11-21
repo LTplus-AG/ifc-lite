@@ -356,8 +356,9 @@ for (const atStartup of [false, true]) {
       configurable: true, value: (run: () => void) => idle.push(run),
     });
     Object.defineProperty(navigator, 'deviceMemory', { configurable: true, value: 2 });
+    const fetched: string[] = [];
     const fetch = mock.method(globalThis, 'fetch', async (input: RequestInfo | URL) => {
-      assert.match(String(input), /\.wasm$/);
+      fetched.push(String(input));
       return new Response(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]), {
         headers: { 'Content-Type': 'application/wasm' },
       });
@@ -391,6 +392,7 @@ for (const atStartup of [false, true]) {
       if (atStartup) {
         takeIdle();
         await waitFor(() => fetch.mock.callCount() === 1, 'idle callback fetches the engine');
+        assert.match(fetched[0], /\.wasm$/, 'prewarm fetches the engine binary');
       }
     } finally {
       result.resolve(stored());

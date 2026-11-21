@@ -125,10 +125,6 @@ fn a_comment_only_caused_by_is_not_warned_as_omitted_10779() {
     assert!(warnings.contains("IFCSTRUCTURALLINEARACTION.CausedBy has no slot in IFC4; its value is omitted"), "{warnings}");
 }
 
-/// /code-review on the #10802 restack: a structural profile-properties subtype
-/// IFC4 deleted is written as IfcProfileProperties by its attribute map, which
-/// counts what it drops; the warnings name each dropped measure, the only named
-/// loss signal the wasm export returns, as in the TypeScript twin (#10777).
 #[test]
 fn a_deleted_structural_profile_subtype_names_what_it_drops_10777() {
     let n = crate::schema_convert::schema_attribute_names("IFC2X3", "IFCSTRUCTURALSTEELPROFILEPROPERTIES").unwrap().len();

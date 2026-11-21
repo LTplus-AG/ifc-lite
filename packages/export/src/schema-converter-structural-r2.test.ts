@@ -62,9 +62,6 @@ describe('structural schema conformance #9668', () => {
 // behavior is an explicit loss warning, never hidden metadata (#9668).
 import { EnumReconciliation } from './schema-converter-enums.js';
 describe('structural conversion reports unrepresentable data #9668', () => {
-  // /code-review on the #10802 restack: a structural profile-properties subtype IFC4 deleted is written as
-  // IfcProfileProperties by its attribute map. The export warnings name each measure it drops, in both twins,
-  // and the loss report lists them; Rust also counts them in attribute_values_dropped.
   it('names the measures a deleted structural profile-properties subtype drops (#10777)', () => {
     const diagnostics = new EnumReconciliation();
     const n = attrNameTable('IFC2X3')!.get('IFCSTRUCTURALSTEELPROFILEPROPERTIES')!.length;

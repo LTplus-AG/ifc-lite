@@ -35,6 +35,74 @@ const HOOK = '/src/lib/geometry-backing/backing-debug-hook.ts';
 const DECODER = `/@fs${join(process.cwd(), 'packages/geometry/src/packed-instanced-decoder.ts')}`;
 /** One instanced occurrence, as a comparable key: its entity and its transform (4 decimals). */
 const OCCURRENCE_KEY = '(instance) => `${instance.entityId}:${Array.from(instance.transform, (v) => v.toFixed(4)).join(",")}`';
+const DRAWING = `/@fs${join(process.cwd(), 'packages/drawing-2d/src/index.ts')}`;
+
+/**
+ * Tool outputs that must not change when CPU geometry is released (#10264):
+ * the export collector (flat + instanced occurrences), a mid-height section cap
+ * cut, one entity's centre bounds and the mesh-area map. Runs in the page; the
+ * released run goes through the readback paths, the resident run does not.
+ */
+async function toolProbe(page: Page, modelId: string): Promise<Record<string, unknown>> {
+  return page.evaluate(async ([drawingPath, id, digest]) => {
+    const [exportMod, cut, area, metaMod, provenance, drawing] = await Promise.all([
+      import('/src/utils/instancedExport.ts'), import('/src/lib/geometry-backing/cut-readback.ts'),
+      import('/src/components/viewer/tools/measure-modes/mesh-area.ts'),
+      import('/src/lib/geometry-backing/released-geometry-metadata.ts'), import('/src/lib/released-mesh-provenance.ts'),
+      import(drawingPath),
+    ]) as [typeof import('../../apps/viewer/src/utils/instancedExport'), typeof import('../../apps/viewer/src/lib/geometry-backing/cut-readback'),
+      typeof import('../../apps/viewer/src/components/viewer/tools/measure-modes/mesh-area'),
+      typeof import('../../apps/viewer/src/lib/geometry-backing/released-geometry-metadata'), typeof import('../../apps/viewer/src/lib/released-mesh-provenance'),
+      typeof import('../../packages/drawing-2d/src/index')];
+    const hash = (0, eval)(digest) as (meshes: MeshData[]) => string;
+    const state = (globalThis as Probe).__ifc_lite_viewer_store__!.getState() as unknown as {
+      models: Map<string, { idOffset: number; maxExpressId: number; geometryResult: { meshes: MeshData[]; coordinateInfo: { shiftedBounds: { min: { y: number }; max: { y: number } } } } }> };
+    const model = state.models.get(id)!;
+    const gr = model.geometryResult as unknown as Parameters<typeof exportMod.withInstancedMeshes>[0];
+    const range = { modelId: id, idOffset: model.idOffset, maxExpressId: model.maxExpressId };
+    const exported = await exportMod.withReleasedExportGeometry((context) => exportMod.withInstancedMeshes(gr, range, context));
+    const unkeyed = exported.meshes.map((m) => ({ ...m, occurrenceKey: undefined }));
+    // A mid-height cap cut, as useExtraSectionCaps runs it.
+    const b = model.geometryResult.coordinateInfo.shiftedBounds;
+    const config = drawing.createSectionConfig('y', (b.min.y + b.max.y) / 2, { projectionDepth: 0, includeHiddenLines: false });
+    const generator = new drawing.Drawing2DGenerator();
+    await generator.initialize();
+    const capped = await cut.withCutGeometry(model.geometryResult.meshes, config.plane, 0, (meshes) => generator.generate(meshes as MeshData[], config,
+      { includeHiddenLines: false, includeProjection: false, includeEdges: false, mergeLines: true }));
+    // A plan cut, as usePlanCut runs it: projection bands below and above the cut.
+    const planDepths = { projectionDepth: 1.5, projectionBelowDepth: 1.4, projectionAboveDepth: 0.8 };
+    const planConfig = drawing.createSectionConfig('y', (b.min.y + b.max.y) / 2, planDepths);
+    const plan = await cut.withCutGeometry(model.geometryResult.meshes, planConfig.plane, 1.5, (meshes) => generator.generate(meshes as MeshData[], planConfig,
+      { includeProjection: true, includeEdges: true, includeHiddenLines: false, mergeLines: true, useGPU: false }));
+    const round = (v: number) => Math.round(v * 1e5) / 1e5;
+    const planLines = plan.lines.map((l) => `${l.entityId}:${l.category}:${round(l.line.start.x)},${round(l.line.start.y)}-${round(l.line.end.x)},${round(l.line.end.y)}`).sort();
+    const polygons = capped.cutPolygons.map((p) => `${p.entityId}:${p.polygon.outer.map((q) => `${round(q.x)},${round(q.y)}`).join(' ')}`).sort();
+    // Centre bounds of the first entity, folded as PropertiesPanel does (or from backed metadata once released).
+    const target = model.geometryResult.meshes.find((m) => m.indices.length > 0 || provenance.isReleasedMesh(m))!.expressId;
+    let min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity], released = false;
+    for (const m of model.geometryResult.meshes) {
+      if (m.expressId !== target) continue;
+      if (provenance.isReleasedMesh(m)) { released = true; continue; }
+      const o = m.origin ?? [0, 0, 0];
+      for (let i = 0; i < m.positions.length; i += 3) for (let k = 0; k < 3; k++) {
+        const v = m.positions[i + k] + o[k]; if (v < min[k]) min[k] = v; if (v > max[k]) max[k] = v;
+      }
+    }
+    if (released) { const backed = metaMod.releasedGeometryMetadata()!.bounds(id, target)!; min = [...backed.min]; max = [...backed.max]; }
+    // Mesh areas, as the quantity summary collects them (resident) or the backing recorded them (released).
+    const areas = area.collectMeshAreas([model.geometryResult.meshes]);
+    for (const m of model.geometryResult.meshes) {
+      if (!provenance.isReleasedMesh(m) || areas.has(m.expressId)) continue;
+      const backed = metaMod.releasedGeometryMetadata()?.area(id, m.expressId);
+      if (backed) areas.set(m.expressId, backed);
+    }
+    return { exportDigest: hash(unkeyed), exportedMeshes: exported.meshes.length,
+      instancedExported: exported.meshes.filter((m) => m.occurrenceKey?.includes(':inst:')).length,
+      planLines: planLines.length, planDigest: planLines,
+      capPolygons: polygons.length, capDigest: polygons,
+      centre: { target, min, max }, areas: [...areas].sort((x, y) => x[0] - y[0]).map(([k, v]) => [k, round(v.area), v.incomplete]) };
+  }, [DRAWING, modelId, digestSource()] as const);
+}
 
 let server: ViewerDevServer;
 // The debug hooks exist once a renderer is ready: a real adapter, headed (see the config).
@@ -139,6 +207,7 @@ for (const fixture of FIXTURES) {
       });
     };
     const tapResident = await tapAndRead();
+    const toolsResident = await toolProbe(page, phase1.modelId);
     // Phase 2: test-only release, readback probes, and a full read-back digest.
     const report = await page.evaluate(async ([hookPath, digest, modelId, points, keySource]) => {
       const g = globalThis as Probe & typeof globalThis;
@@ -167,6 +236,8 @@ for (const fixture of FIXTURES) {
     }, [HOOK, digestSource(), phase1.modelId, phase1.points, OCCURRENCE_KEY] as const);
     // The probes fed readback at the last grid point; the tap point is uncovered, so the tap reads back on demand.
     const tapReleased = await tapAndRead();
+    const toolsReleased = await toolProbe(page, phase1.modelId);
+    await writeFile(info.outputPath('tool-parity.json'), JSON.stringify({ resident: toolsResident, released: toolsReleased }, null, 2));
     await page.screenshot({ path: info.outputPath('after-release.png') });
     const after = report.snapsAfter as SnapRow[];
     const summary = { ...phase1, ...report, snapsBefore: undefined, snapsAfter: undefined, points: undefined,
@@ -183,6 +254,9 @@ for (const fixture of FIXTURES) {
     if (fixture.includes('C20-Institute')) expect(report.expectedOccurrences, 'C20-Institute is an instanced fixture').toBeGreaterThan(0);
     expect(report.heldAfter).toBeLessThan(report.heldBefore);
     for (let k = 0; k < 3; k++) expect(Math.abs(tapReleased[k] - tapResident[k]), 'touch point after release').toBeLessThan(1e-6);
+    // Exports (flat + instanced), caps, selection centre and quantities after release equal the resident outputs.
+    expect(toolsResident.exportedMeshes as number).toBeGreaterThan(0);
+    expect(toolsReleased).toEqual(toolsResident);
     if (report.occurrences > 0) expect(summary.instancedHits, 'instanced occurrences under the grid').toBeGreaterThan(0);
     // Two missing snaps compare equal: require real snap targets, so the comparison proves the readback snaps.
     expect(before.filter((probe) => probe.snap !== null).length, 'the probe grid must produce snap targets').toBeGreaterThan(0);

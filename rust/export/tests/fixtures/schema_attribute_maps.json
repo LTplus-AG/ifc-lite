@@ -191,6 +191,15 @@
    "why": "'Made subtype of IfcResourceLevelRelationship (attribute order changed).'"
   },
   {
+   "ifc2x3": "IFCELECTRICDISTRIBUTIONPOINT",
+   "ifc4": "IFCELECTRICDISTRIBUTIONBOARD",
+   "renamed": [["DistributionPointFunction", "PredefinedType"]],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "#10824. IFC4 replaced IfcElectricDistributionPoint with IfcElectricDistributionBoard (schema_convert::map_2x3_to_4, schema_mep back), its PredefinedType taking the place of DistributionPointFunction at the same index. IFC2X3 UserDefinedFunction has no IFC4 attribute; schema_userdefined_label carries it through ObjectType. Before this, the record kept all ten IFC2X3 attributes under the nine-attribute IFC4 type"
+  },
+  {
    "ifc2x3": "IFCPROCEDURE",
    "ifc4": "IFCPROCEDURE",
    "renamed": [["ProcedureID", "Identification"], ["ProcedureType", "PredefinedType"]],

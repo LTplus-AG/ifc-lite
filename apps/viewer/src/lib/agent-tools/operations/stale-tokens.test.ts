@@ -36,9 +36,9 @@ import { setRemeshClientFactory } from '@/lib/remesh/remesh-service';
 import { clearModelLayouts } from '@/lib/rooms/room-layout';
 import { prepareRoomReview } from '@/lib/actions/room-review';
 import { createMainViewerToolHost } from '../main-viewer-host';
-import { dispatchMainViewerTool, type AgentToolResult } from '../main-viewer-dispatch';
+import { dispatchMainViewerTool, resolveModel, usableModel, type AgentToolResult } from '../main-viewer-dispatch';
 import type { ToolHost } from '../types';
-import { executeOperationRequest } from './executor';
+import { executeOperation } from './executor';
 import { viewerOperation } from './registry';
 import { idsOperations } from './ids-studio';
 import { isGroupingLens } from '@/lib/lens/custom-groupings';
@@ -410,37 +410,50 @@ describe('reviewed model candidates (#10792)', () => {
     }
   });
 
-  it('#11029: a dropped keyed claim without a caller signal cannot be rejoined', async () => {
+  it('#11093: a keyed retry waits for a signal-less abandoned prepare to release its candidate', async () => {
     const entered = deferred<{ token: string; signal?: AbortSignal }>();
     const resume = deferred();
     const entry = viewerOperation('properties.prepare');
     const execute = entry.execute.bind(entry);
-    const spy = mock.method(entry, 'execute', async (...args: Parameters<typeof execute>) => {
-      const result = await execute(...args);
-      if (!entered.settled()) {
-        entered.resolve({ token: (result as { token: string }).token, signal: args[1].signal });
-        await resume.promise;
+    let released = false;
+    const spy = mock.method(entry, 'execute', async (input: unknown, context: Parameters<typeof execute>[1]) => {
+      if (entered.settled()) {
+        assert.equal(released, true, 'replacement native work must wait for the original undo');
+        return execute(input, context);
       }
+      const result = await execute(input, {
+        ...context,
+        retain: (undo, deliver) => context.retain(() => { undo(); released = true; }, deliver),
+      });
+      entered.resolve({ token: (result as { token: string }).token, signal: context.signal });
+      await resume.promise;
       return result;
     });
     const args = { model_id: SAMPLE_MODEL, operation_id: entry.id,
       input: { proposal_json: rename('Keyed candidate') }, idempotency_key: 'prepare' };
+    const model = usableModel(resolveModel(host, args), 'store', entry.id);
     let claim: import('../delivery').DeliveryClaim | undefined;
+    let replacementClaim: import('../delivery').DeliveryClaim | undefined;
     try {
-      const first = executeOperationRequest(host, args, { claimDelivery: next => { claim = next; } }, true);
+      const first = executeOperation(host, model, args, { claimDelivery: next => { claim = next; } }, true);
       const { token, signal } = await Promise.race([
         entered.promise,
         first.then(() => { throw new Error('First prepare completed before the test could drop its claim.'); }),
       ]);
       assert.ok(claim);
       claim.drop();
-      const retry = keyedPrepare({});
-      // Let the retry reach the executor before releasing the original handler.
-      await new Promise(resolve => setTimeout(resolve, 0));
+      // executeOperation reaches the keyed lookup synchronously while the first handler is still paused.
+      const retry = executeOperation(host, model, args, { claimDelivery: next => {
+        assert.equal(released, true, 'retry must wait for cleanup before taking a new claim');
+        replacementClaim = next;
+      } }, true);
       resume.resolve();
       const [abandoned, replacement] = await Promise.allSettled([first, retry]);
-      assert.equal(replacement.status, 'fulfilled');
-      const fresh = answer<{ token: string }>(replacement.value);
+      if (replacement.status === 'rejected') throw replacement.reason;
+      assert.ok(replacementClaim);
+      replacementClaim.deliver();
+      assert.equal(spy.mock.callCount(), 2);
+      const fresh = (replacement.value as { result: { token: string } }).result;
       assert.notEqual(fresh.token, token, 'retry must run after the abandoned execution settles');
       assert.equal(abandoned.status, 'rejected');
       assert.equal(signal?.aborted, true);

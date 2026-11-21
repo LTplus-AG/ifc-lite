@@ -49,11 +49,13 @@ interface Review {
   apply?: ClashGroupApplyPlan;
 }
 const REVIEW_CAPACITY = 32;
-const hosts = new WeakMap<ToolHost, { reviews: Map<string, Review>; staged: Set<string>; staleTokens: Map<string, true> }>();
+const FINDINGS_CHANGED = 'Native classification findings changed.';
+const MODEL_CHANGED = 'Native classification model changed.';
+const hosts = new WeakMap<ToolHost, { reviews: Map<string, Review>; staged: Set<string>; staleTokens: Map<string, string> }>();
 function ownedReviews(c: ViewerOperationContext) {
   let owned = hosts.get(c.host);
   if (!owned) {
-    const reviews = new Map<string, Review>(), staged = new Set<string>(), staleTokens = new Map<string, true>();
+    const reviews = new Map<string, Review>(), staged = new Set<string>(), staleTokens = new Map<string, string>();
     owned = { reviews, staged, staleTokens };
     hosts.set(c.host, owned);
     c.host.lifetimeSignal?.addEventListener('abort', () => { reviews.clear(); staged.clear(); staleTokens.clear(); }, { once: true });
@@ -62,10 +64,11 @@ function ownedReviews(c: ViewerOperationContext) {
 }
 function review(c: ViewerOperationContext, token: string) {
   const { reviews, staleTokens } = ownedReviews(c);
+  const staleReason = staleTokens.get(token);
+  if (staleReason) throw stale(staleReason);
   const value = reviews.get(token);
-  if (staleTokens.has(token)) throw stale('Native classification findings changed.');
   if (!value) throw invalidInput('unknown-target', 'Unknown native classification review.');
-  if (value.result !== useViewerStore.getState().clashResult) throw stale('Native classification findings changed.');
+  if (value.result !== useViewerStore.getState().clashResult) throw stale(FINDINGS_CHANGED);
   return value;
 }
 const tokenInput = {
@@ -105,10 +108,12 @@ export const clashClassificationOperations = [
         () => { staged.delete(token); },
         () => {
           if (!staged.delete(token)) return false;
-          if (prepared.result !== useViewerStore.getState().clashResult) {
+          const { clashResult, chatActiveModel } = useViewerStore.getState();
+          const findingsChanged = prepared.result !== clashResult;
+          if (findingsChanged || prepared.model !== chatActiveModel) {
             // The reply can already be on the wire. Keep its stale identity without displacing a live review.
             evictOldest(staleTokens, REVIEW_CAPACITY);
-            staleTokens.set(token, true);
+            staleTokens.set(token, findingsChanged ? FINDINGS_CHANGED : MODEL_CHANGED);
             return false;
           }
           evictOldest(reviews, REVIEW_CAPACITY);
@@ -161,7 +166,7 @@ export const clashClassificationOperations = [
       const saved = review(c, i.token);
       assertToolActive(c);
       if (saved.model !== useViewerStore.getState().chatActiveModel)
-        throw stale('Native classification model changed.');
+        throw stale(MODEL_CHANGED);
       if (saved.model === UNCONFIGURED_MODEL_ID) throw unavailable('Configure a native classification model first.');
       const route = resolveStreamRoute(saved.model, getApiKeys());
       if (route.kind === 'missing-key') throw unavailable('The native provider route requires a configured key.');

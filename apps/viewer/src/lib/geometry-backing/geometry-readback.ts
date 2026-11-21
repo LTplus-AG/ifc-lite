@@ -13,7 +13,7 @@
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
-import { meshGeometryCounts } from '@/lib/released-mesh-provenance';
+import { isReleasedMesh } from '@/lib/released-mesh-provenance';
 import type { MeshLease, ReadOptions } from './backing-reader';
 import type { ModelGeometryBacking } from './geometry-backing-registry';
 import type { Vec3 } from './backing-directory';
@@ -34,11 +34,9 @@ export interface BackingSource {
   flatComplete?(modelId: string): boolean;
 }
 
-/** False for a mesh `releaseCpuMeshBuffers` emptied: it still counts geometry it no longer holds. */
+/** False exactly for a mesh whose arrays a CPU release replaced (release bookkeeping, not array shape). */
 export function meshIsResident(mesh: MeshData): boolean {
-  if (mesh.positions.length > 0 && mesh.indices.length > 0) return true;
-  const counts = meshGeometryCounts(mesh);
-  return counts.vertices === 0 && counts.triangles === 0;
+  return !isReleasedMesh(mesh);
 }
 
 function completeBacking(source: BackingSource | undefined, modelId: string): ModelGeometryBacking {
@@ -70,10 +68,19 @@ export async function leaseRegionGeometry(
   return backing.reader.leaseChunks(backing.directory.chunksIntersecting(bounds.min, bounds.max), options);
 }
 
-/** Stream a model's flat meshes: resident list as-is, or backed chunks one at a time. */
+/**
+ * Stream a model's flat meshes: resident list as-is, or backed chunks one at a time. An empty list says
+ * nothing about residency (`[].every` is vacuously true): a current, complete backing answers it, and with
+ * none there is nothing to read (an empty model yields nothing, it does not fail).
+ */
 export async function* modelGeometry(
   source: BackingSource | undefined, modelId: string, resident: readonly MeshData[], options: ReadOptions = {},
 ): AsyncGenerator<readonly MeshData[]> {
+  if (resident.length === 0) {
+    const backing = source?.backing(modelId);
+    if (backing?.isCurrent && backing.isComplete) yield* backing.reader.meshes(options);
+    return;
+  }
   if (resident.every(meshIsResident)) { yield resident; return; }
   yield* completeBacking(source, modelId).reader.meshes(options);
 }

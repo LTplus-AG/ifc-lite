@@ -86,6 +86,7 @@ mod schema_plan;
 mod schema_renames;
 mod schema_retyped;
 mod schema_userdefined;
+mod schema_userdefined_label;
 mod schema_style_flatten;
 mod schema_unrepresented;
 mod shades;

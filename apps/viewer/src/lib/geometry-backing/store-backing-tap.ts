@@ -40,6 +40,8 @@ import { subscribeInstancedShards } from '@/store/instancedShardQueue';
 import { instancedShardRevision } from '@/store/instancedShardModels';
 import { isReleasedMesh } from '@/lib/released-mesh-provenance';
 import { applyFederationOffsetToShard } from '@/components/viewer/instancedFederationOffset';
+import { addMeshAreas, type MeshAreas } from './released-mesh-areas';
+import { notifyReleasedGeometryMetadataChanged, setReleasedGeometryMetadata } from './released-geometry-metadata';
 import { GeometryBackingRegistry, type ModelBackingOptions, type ModelGeometryBacking } from './geometry-backing-registry';
 import type { BackingDatabaseOptions } from './backing-database';
 
@@ -59,6 +61,7 @@ interface Tracked {
   shards: number;
   /** The store list changed after a CPU release: this generation is kept durable but no longer answers. */
   stale?: Error;
+  areas: MeshAreas; // per-entity mesh area of this generation, summed as one pass over the whole list would
   /** Replaced (or removed) before its generation began: superseded as soon as it does. */
   replaced?: boolean;
   /** A carry of the predecessor's shards is still pending: they count as this generation's shards. */
@@ -114,10 +117,18 @@ export class StoreGeometryBackingTap {
       for (const shard of event.shards) tap.ingestShard(shard.modelId, shard.bytes);
     }));
     tap.sync(store.getState());
+    // Only a complete, current generation answers; anything else is unavailable.
+    setReleasedGeometryMetadata({ bounds: (modelId, id) => tap.completeBacking(modelId)?.directory.summary(id)?.bounds,
+      area: (modelId, id) => (tap.completeBacking(modelId) ? tap.tracked.get(modelId)?.areas.get(id) : undefined) });
     return tap;
   }
 
   get registryHandle(): GeometryBackingRegistry { return this.registry; }
+
+  private completeBacking(modelId: string): ModelGeometryBacking | undefined {
+    const tracked = this.tracked.get(modelId), backing = tracked?.backing;
+    return backing && !tracked.failure && !tracked.stale && backing.isCurrent && backing.isComplete ? backing : undefined;
+  }
 
   /** The model's current backing generation, for readback consumers. */
   backing(modelId: string): ModelGeometryBacking | undefined {
@@ -138,7 +149,7 @@ export class StoreGeometryBackingTap {
         // arrays to back: never back its empty records as a generation.
         if (meshes?.some(isReleasedMesh)) {
           const stale = new Error('The store list was released before the tap saw it; nothing can be backed');
-          this.tracked.set(modelId, { meshes, consumed: meshes.length, chain: Promise.resolve(), instancedLost: false, shards: 0, stale });
+          this.tracked.set(modelId, { meshes, consumed: meshes.length, chain: Promise.resolve(), instancedLost: false, shards: 0, stale, areas: new Map() });
           console.error(`[GeometryBacking] ${modelId}: ${stale.message}`);
         } else this.regenerate(modelId, meshes, 'none');
         this.tracked.get(modelId)!.registered = true;
@@ -158,6 +169,7 @@ export class StoreGeometryBackingTap {
           tracked.stale = new Error('The store list changed after a CPU release; its backing no longer answers');
           this.supersede(tracked); // retained handles too: not current, its old bytes durable for the tap alone
           console.error(`[GeometryBacking] ${modelId}: ${tracked.stale.message}`);
+          notifyReleasedGeometryMetadataChanged(); // its bounds and areas stop answering in place
           continue;
         }
         const hadShards = tracked.shards > 0 || tracked.instancedLost || !!tracked.carrying;
@@ -169,6 +181,7 @@ export class StoreGeometryBackingTap {
           tracked.stale = new Error('Released meshes were appended; they have no arrays to back');
           this.supersede(tracked);
           console.error(`[GeometryBacking] ${modelId}: ${tracked.stale.message}`);
+          notifyReleasedGeometryMetadataChanged();
           continue;
         }
         // A sealed generation's writer is closed: an in-place append after the seal starts a successor
@@ -208,7 +221,7 @@ export class StoreGeometryBackingTap {
     }
     this.supersede(previous);
     const next: Tracked = { meshes, consumed: 0, chain: Promise.resolve(), instancedLost: shards === 'lost', shards: 0, carrying: shards === 'carry',
-      registered: previous?.registered };
+      registered: previous?.registered, areas: new Map() };
     const begun = (previous?.chain ?? Promise.resolve()).then(async () => {
       // Read committed shards before `begin` deletes the previous generation (its own carry has run).
       const carried: DecodedInstancedShard[] = [];
@@ -240,6 +253,7 @@ export class StoreGeometryBackingTap {
     tracked.consumed = to;
     // Snapshot the suffix now: the array keeps growing in place.
     const slice = meshes.slice(from, to);
+    addMeshAreas(tracked.areas, slice); // while the arrays are resident
     this.enqueue(tracked, async () => {
       for (let i = 0; i < slice.length; i += APPEND_BATCH) {
         await this.writer(tracked).append(slice.slice(i, i + APPEND_BATCH));
@@ -334,6 +348,7 @@ export class StoreGeometryBackingTap {
       tracked.sealed = true;
       await this.settle(tracked, tracked.backing.acknowledge().then(() => undefined));
     }
+    notifyReleasedGeometryMetadataChanged(); // an acknowledged generation may answer now
     return this.status();
   }
 
@@ -374,6 +389,7 @@ export class StoreGeometryBackingTap {
   /** Stop observing and delete this page's backing. */
   async stop(): Promise<void> {
     this.stopped = true;
+    setReleasedGeometryMetadata(null);
     for (const stop of this.stops.splice(0)) stop();
     // Every owned chain AND every pending removal's retirement (their deletes included) before the registry
     // and its database close: a deferred delete after close would leave orphan records. Failures are settled.

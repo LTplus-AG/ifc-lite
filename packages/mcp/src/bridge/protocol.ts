@@ -47,6 +47,11 @@
  * instructions; the bridge says so in its MCP `instructions`.
  */
 
+import type { BridgeHelloMessage, BridgeTabMessage, BridgeUpdateMessage } from './message-types.js';
+export type {
+  BridgeHelloMessage, BridgeResultMessage, BridgeUpdateMessage, BridgeTabMessage,
+  BridgeWelcomeMessage, BridgeCallMessage, BridgeCancelMessage, BridgeErrorMessage, BridgeServerMessage, BridgeResultAckMessage,
+} from './message-types.js';
 import { checkJsonBounds, checkSchemaShape, utf8Length } from './json-bounds.js';
 import { clip, quoted } from './sanitize.js';
 
@@ -145,79 +150,6 @@ export interface BridgeCallResult {
   structuredContent?: Record<string, unknown>;
   isError?: boolean;
 }
-
-// ── tab -> bridge ────────────────────────────────────────────────────────
-
-export interface BridgeHelloMessage {
-  type: 'hello';
-  protocol: number;
-  /** The one-time code the bridge printed. Case and `-`/space separators are ignored. */
-  pairingCode: string;
-  permission: BridgePermission;
-  tools: BridgeToolDescriptor[];
-  client?: { name: string; version?: string };
-}
-
-export interface BridgeResultMessage {
-  type: 'result';
-  sessionId: string;
-  /** The `id` of the `call` being answered. */
-  id: string;
-  result: BridgeCallResult;
-}
-
-export interface BridgeUpdateMessage {
-  type: 'update';
-  sessionId: string;
-  permission?: BridgePermission;
-  tools?: BridgeToolDescriptor[];
-}
-
-export type BridgeTabMessage = BridgeHelloMessage | BridgeResultMessage | BridgeUpdateMessage;
-
-// ── bridge -> tab ────────────────────────────────────────────────────────
-
-export interface BridgeWelcomeMessage {
-  type: 'welcome';
-  protocol: number;
-  sessionId: string;
-  /** Effective permission: the tab's grant, capped by the bridge's ceiling. */
-  permission: BridgePermission;
-  /**
-   * True when the bridge was started `--read-only`. The tab MUST then refuse
-   * every model-changing call itself (see the read-only obligation above).
-   */
-  readOnlyCeiling: boolean;
-  bridge: { name: string; version: string };
-}
-
-export interface BridgeCallMessage {
-  type: 'call';
-  sessionId: string;
-  /** Unique across the bridge process's lifetime, never reused. */
-  id: string;
-  name: string;
-  arguments: Record<string, unknown>;
-}
-
-export interface BridgeCancelMessage {
-  type: 'cancel';
-  sessionId: string;
-  id: string;
-  reason: 'cancelled' | 'timeout';
-}
-
-export interface BridgeErrorMessage {
-  type: 'error';
-  code: BridgeErrorCode;
-  message: string;
-}
-
-export type BridgeServerMessage =
-  | BridgeWelcomeMessage
-  | BridgeCallMessage
-  | BridgeCancelMessage
-  | BridgeErrorMessage;
 
 /** Codes in `error` frames. Fatal ones end the channel (on the WebSocket transport: a close with the matching {@link BridgeCloseCode}). */
 export const BridgeErrorCode = {
@@ -369,7 +301,7 @@ export function parseTabMessage(text: string): ParseResult<BridgeTabMessage> {
       }
       return {
         ok: true,
-        value: { type: 'hello', protocol: raw.protocol, pairingCode: raw.pairingCode, permission: raw.permission, tools: tools.value, client },
+        value: { type: 'hello', protocol: raw.protocol, pairingCode: raw.pairingCode, permission: raw.permission, tools: tools.value, client, ...(raw.resultAck === true ? { resultAck: true } : {}) },
       };
     }
     case 'result': {
@@ -377,7 +309,7 @@ export function parseTabMessage(text: string): ParseResult<BridgeTabMessage> {
       if (typeof raw.id !== 'string') return { ok: false, error: 'result.id must be a string' };
       const result = validateCallResult(raw.result);
       if (!result.ok) return result;
-      return { ok: true, value: { type: 'result', sessionId: raw.sessionId, id: raw.id, result: result.value } };
+      return { ok: true, value: { type: 'result', sessionId: raw.sessionId, id: raw.id, result: result.value, ...(raw.resultAck === true ? { resultAck: true } : {}) } };
     }
     case 'update': {
       if (typeof raw.sessionId !== 'string') return { ok: false, error: 'update.sessionId must be a string' };

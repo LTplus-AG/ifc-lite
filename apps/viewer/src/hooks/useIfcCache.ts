@@ -31,7 +31,7 @@ import { NOOP_LOAD_TRACE, type LoadTrace } from '@ifc-lite/load-trace';
 
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '../store/index.js';
-import { completeInstancedShardSupply, enqueueInstancedShards, instancedShardSupplyCurrent, instancedShardSupplyToken } from '../store/instancedShardQueue.js';
+import { completeInstancedShardSupply, enqueueInstancedShards, instancedShardModelEpoch, instancedShardSupplyToken } from '../store/instancedShardQueue.js';
 import { getCached, setCached, deleteCached, type CacheResult } from '../services/cacheService.js';
 import { recordFirstVisible } from '../lib/perf/loadTrace.js';
 import { publishMetadataAtMark } from '../lib/geometry-restore-gate.js';
@@ -127,7 +127,7 @@ export function useIfcCache() {
   ): Promise<CacheLoadResult> => {
     // Before any await: a reset during the IndexedDB reads supersedes this hit's shards.
     const shardGeneration = instancedShardSupplyToken(modelId);
-    const supplyMoved = (): CacheLoadResult | null => (instancedShardSupplyCurrent(modelId, shardGeneration) ? null : { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0, superseded: true }); // model discarded (maybe re-added) since: superseded, isStale or not (r4655084060)
+    const supplyMoved = (): CacheLoadResult | null => (instancedShardModelEpoch(modelId) === shardGeneration.epoch ? null : { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0, superseded: true }); // this model discarded (maybe re-added) since: superseded, isStale or not (r4655084060); a full clear keeps the hit live (#9628), refusing only its shards
     let adopted: AdoptedSceneSnapshot | null = null;
     // Compressed geometry chunks inflate on workers, which boot while the metadata decodes (only when there are any).
     const inflater = createCacheChunkInflater();
@@ -177,8 +177,8 @@ export function useIfcCache() {
         // so a newer load can own the slot by now. The flag is global
         // (active-model) state — a superseded load raising it here, or lowering
         // it in the `finally` below, would drive the NEWER load's stream.
-        if (isStale?.()) {
-          return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0 };
+        if (isStale?.() || supplyMoved()) { // the model's supply moved during the reads: superseded too (r4655099399)
+          return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0, superseded: true };
         }
 
         let allMeshes: MeshData[] = [];
@@ -201,7 +201,7 @@ export function useIfcCache() {
               // to the event loop at the end of the body, so supersession can
               // land BETWEEN chunks. Without this, the remaining chunks of the
               // old file keep appending into the new model's geometry.
-              if (isStale?.()) {
+              if (isStale?.() || supplyMoved()) {
                 superseded = true;
                 break;
               }
@@ -241,7 +241,7 @@ export function useIfcCache() {
         // active slot mid-stream — including after the LAST chunk's yield. This
         // sits ahead of the shard append, which is an active-slot write too:
         // shards from the old file would be instanced into the new model.
-        if (superseded || isStale?.()) {
+        if (superseded || isStale?.() || supplyMoved()) {
           return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0, superseded: true };
         }
 

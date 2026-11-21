@@ -473,6 +473,31 @@ describe('loadFromCache — a superseded load writes nothing (#2301)', () => {
 });
 
 describe('loadFromCache — a model discarded and re-added while its hit loads (#10888)', () => {
+  it('r4655099399 a discard during the metadata decode and chunk open (isStale false) publishes and streams nothing', async () => {
+    const entry = await buildCacheEntry();
+    useViewerStore.setState({ geometryResult: null, geometryStreamingActive: false, ifcDataStore: null } as never);
+    let calls = 0;
+    // Call 2 is the re-check after `decodeCachedMetadata` and the chunk open: the discard happened during those awaits.
+    const result = await load(entry, () => { if (++calls === 2) discardInstancedShards('model-old'); return false; });
+    assert.ok(calls >= 2);
+    assert.equal(result.superseded, true);
+    assert.equal(useViewerStore.getState().geometryResult, null, 'no chunk streams');
+    assert.equal(useViewerStore.getState().geometryStreamingActive, false);
+    assert.equal(useViewerStore.getState().ifcDataStore, null, 'no old metadata reaches the re-added model');
+  });
+
+  it('r4655099399 a discard between geometry chunks (isStale false) stops the stream as superseded', async () => {
+    const entry = await buildCacheEntry();
+    useViewerStore.setState({ geometryResult: null, geometryStreamingActive: false });
+    let calls = 0;
+    // Call 3 is the in-loop guard for chunk 0 (see "supersession BETWEEN geometry chunks"): the discard lands there.
+    const result = await load(entry, () => { if (++calls === 3) discardInstancedShards('model-old'); return false; });
+    assert.ok(calls >= 3, 'the in-loop guard must have been reached');
+    assert.equal(result.superseded, true, 'superseded, never a served or fallen-back hit');
+    assert.equal(useViewerStore.getState().geometryStreamingActive, false);
+    assert.equal(queuedShards.filter((shard) => shard.modelId === 'model-old').length, 0, 'no old shard queued for the re-added model');
+  });
+
   it('r4655084060 / r4655084108 a discard of the model\'s shard supply mid-load, isStale still false, streams and publishes nothing', async () => {
     const entry = await buildCacheEntry();
     useViewerStore.setState({ geometryResult: null, geometryStreamingActive: false });

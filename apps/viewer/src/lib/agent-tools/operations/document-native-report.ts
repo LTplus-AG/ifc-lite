@@ -5,7 +5,7 @@ import { useViewerStore } from '@/store';
 import { nativeDocumentRevision } from '@/lib/document/native-edit';
 import { captureEvidence, evidenceIsCurrent } from '@/lib/assistant/evidence';
 import { isAssistantSource } from '@/lib/assistant/sources';
-import { applyReportRefresh, planReportRefresh } from '@/lib/assistant/report-refresh';
+import { applyReportRefresh, planReportRefresh, ReportRefreshError } from '@/lib/assistant/report-refresh';
 import { viewerOperation } from './contract';
 import { addReportCandidate, reportCandidate, discardReportCandidate, discardIdleReportCandidate, nativeReportDocument } from './document-native-report-candidates';
 import { invalidInput, stale, unavailable } from './refusals';
@@ -17,7 +17,16 @@ export const documentNativeReportOperations = [
   }, async (i, c) => {
     const document = nativeReportDocument(i.document_id); if (await nativeDocumentRevision(document) !== i.expected_revision || nativeReportDocument(i.document_id) !== document) throw stale('The native report document changed since inspection.');
     const source = document.aiReport?.evidence.source; if (!isAssistantSource(source)) throw invalidInput('wrong-target', 'This native document has no supported AI-report evidence source.');
-    const evidence = captureEvidence(source), plan = planReportRefresh(document, evidence);
+    const evidence = captureEvidence(source);
+    let plan: ReturnType<typeof planReportRefresh>;
+    try { plan = planReportRefresh(document, evidence); }
+    catch (error) {
+      if (error instanceof ReportRefreshError) {
+        if (error.key === 'aiReports.analysisStale') throw stale(error.message);
+        if (error.key === 'aiReports.noNativeResult') throw unavailable(error.message);
+      }
+      throw error;
+    }
     const token = c.commit(() => addReportCandidate(c.host, { kind: 'refresh', documentId: i.document_id, plan, evidence }));
     return { token, document_id: i.document_id, claims: structuredClone(plan.claims), conflicts: structuredClone(plan.conflicts), models_changed: plan.modelsChanged };
   }),

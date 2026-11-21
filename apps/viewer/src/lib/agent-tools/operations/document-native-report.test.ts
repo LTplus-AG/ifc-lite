@@ -51,6 +51,19 @@ it('native report refresh retains human text, rejects non-conflict IDs and persi
   assert.equal(saved.aiReport?.claims[0].status, 'contradicted');
   await assert.rejects(invoke('document.applyReportRefresh', { token: plan.token, replace_block_ids: [] }), /discarded/);
 });
+it('distinguishes a missing native report result from stale analysis (#11060)', async () => {
+  const { document } = await savedHumanReport();
+  const input = { document_id: document.id, expected_revision: await nativeDocumentRevision(document) };
+  for (const [remove, code, reason] of [[false, 'STATE_CHANGED', 'stale'], [true, 'UNSUPPORTED_OPERATION', 'unavailable']] as const) {
+    const state = useViewerStore.getState();
+    useViewerStore.setState(remove ? { clashResult: null } : { mutationVersion: state.mutationVersion + 1 });
+    try {
+      await assert.rejects(invoke('document.prepareReportRefresh', input), { code, details: { reason } });
+    } finally {
+      useViewerStore.setState({ clashResult: state.clashResult, mutationVersion: state.mutationVersion });
+    }
+  }
+});
 it('native refresh tokens reject another host, changed evidence and changed documents before persistence (#6918)', async () => {
   const { document } = await savedHumanReport();
   const input = { document_id: document.id, expected_revision: await nativeDocumentRevision(document) };
@@ -91,7 +104,7 @@ it('checked native report save refuses contradicted claims until canonical revie
   clashDiscussion(typedReport('Coordination evidence [E1].', [{ text: 'The estimated overlap is 999 mm.', facts: [{ citation: 'E1', field: 'distance', value: -999, unit: 'mm' }] }]));
   const state = useAssistant.getState(), prepared = await invoke<{ token: string; document_json: string; contradicted_claim_ids: string[] }>('assistant.prepareReportDraft', { name: 'Contradicted report', language: 'en', expected_evidence_id: state.snapshot!.id, expected_answer: state.messages.at(-1)!.content });
   assert.deepEqual(prepared.contradicted_claim_ids, ['C1']);
-  await assert.rejects(invoke('assistant.saveReportDraft', { token: prepared.token, reviewed_document_json: prepared.document_json }), /contradicted/);
+  await assert.rejects(invoke('assistant.saveReportDraft', { token: prepared.token, reviewed_document_json: prepared.document_json }), { code: 'INVALID_INPUT', details: { reason: 'refused' }, message: /contradicted/ });
   const revised = await invoke<{ document_json: string; contradicted_claim_ids: string[] }>('assistant.reviseReportDraftClaim', { token: prepared.token, expected_document_json: prepared.document_json, claim_id: 'C1', action: 'remove', text: '' });
   assert.deepEqual(revised.contradicted_claim_ids, []);
   const saved = await invoke<{ saved: boolean }>('assistant.saveReportDraft', { token: prepared.token, reviewed_document_json: revised.document_json }); assert.equal(saved.saved, true);

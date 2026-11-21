@@ -5,6 +5,7 @@ import type { DraftBatch } from '@/lib/bcf-drafts/draft-types';
 import { useBcfDraftLibrary, bcfDraftLibrary, saveDraftBatch } from '@/lib/bcf-drafts/draft-library';
 import { coordination, idSchema, textSchema } from './coordination-common';
 import { emptySchema, type ViewerOperationContext } from './contract';
+import { bcfArchiveRefusal } from './coordination-bcf-input';
 import { decodedInput, invalidInput, stale } from './refusals';
 export function guardedDraftBatch(id: string, expected: string) {
   const found = useBcfDraftLibrary.getState().entries.find(batch => batch.id === id);
@@ -46,7 +47,7 @@ export const coordinationBcfDraftOperations = [
   coordination('bcf.importDrafts', 'Read native BCF draft provenance, validate ownership and adopt imported batches without overwriting conflicting local evidence.', ['configuration'], textSchema, async (i, c) => {
     if (!/^[A-Za-z0-9+/]*={0,2}$/.test(i.value)) throw invalidInput('invalid-value', 'Expected bounded base64 draft archive.');
     const [{ importDraftArchive }, { adoptImportedBatches }] = await Promise.all([import('@/lib/bcf-drafts/draft-archive'), import('@/lib/bcf-drafts/draft-library')]);
-    const bytes = Uint8Array.from(decodedInput('value', () => atob(i.value)), character => character.charCodeAt(0)), imported = await importDraftArchive(bytes.buffer as ArrayBuffer); c.checkpoint?.();
+    const bytes = Uint8Array.from(decodedInput('value', () => atob(i.value)), character => character.charCodeAt(0)), imported = await importDraftArchive(bytes.buffer as ArrayBuffer).catch(bcfArchiveRefusal); c.checkpoint?.();
     return c.commitAsync(async () => ({ imported, adopted: await adoptImportedBatches(imported.batches) }));
   }),
 ];

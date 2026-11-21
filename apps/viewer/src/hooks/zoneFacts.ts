@@ -231,6 +231,10 @@ export interface ZoneFactsRow {
   volumeSiScale: number;
 }
 
+export function ensureZoneApportionment(zoneSet: ZoneSet) {
+  return validEntry(useViewerStore.getState().zoneApportionment, zoneSet) ?? computeZoneApportionmentNow(zoneSet);
+}
+
 /**
  * Every element of `zoneSet`, with its per-zone volumes on `basis`.
  *
@@ -241,7 +245,7 @@ export interface ZoneFactsRow {
 export function gatherZoneFacts(zoneSet: ZoneSet, basis: VolumeBasis): ZoneFactsRow[] {
   const state = useViewerStore.getState();
   const zoneNameById = new Map(zoneSet.zones.map((z) => [z.id, z.name]));
-  const apportioned = validEntry(state.zoneApportionment, zoneSet) ?? computeZoneApportionmentNow(zoneSet);
+  const apportioned = ensureZoneApportionment(zoneSet);
   const proved = gatherProvedVolumes();
   const contexts = new Map<string, ModelContext | null>();
   const rows: ZoneFactsRow[] = [];

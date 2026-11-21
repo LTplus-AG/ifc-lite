@@ -29,6 +29,8 @@ if (chunk) {
 }
 ```
 
+The decoders are also published on their own as `@ifc-lite/pointcloud/ifcx`. That entry leaves out the LAS/LAZ/E57 streaming sources, so esbuild, wrangler and other bundlers without a Vite asset pipeline can bundle it.
+
 For native import or coordinate processing, `decodeIfcxPointSource(attributes)`
 returns authored numeric channels before float32 staging: owned `Float64Array`
 `positions` and optional normalized RGB `colors`, plus `pointCount`,

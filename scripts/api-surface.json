@@ -9828,6 +9828,16 @@
     "stripE57PageCrc: function",
     "voxelKeyId: function"
   ],
+  "@ifc-lite/pointcloud/ifcx": [
+    "DecodedPointChunk: interface",
+    "IfcxPointSource: interface",
+    "POINTCLOUD_ATTR: const",
+    "POINTCLOUD_ATTR_KEYS: const",
+    "PointCloudBBox: interface",
+    "PointNormalState: type",
+    "decodeIfcxPointAttribute: function",
+    "decodeIfcxPointSource: function"
+  ],
   "@ifc-lite/query": [
     "ComparisonOperator: type",
     "DuckDBIntegration: class",

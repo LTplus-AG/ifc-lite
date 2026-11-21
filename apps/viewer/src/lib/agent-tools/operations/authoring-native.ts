@@ -10,7 +10,7 @@ import type { ToolHost } from '../types';
 import { operation, emptySchema, type OperationContext } from './contract';
 import { assertToolActive } from '../cancellation';
 import { internal, invalidInput, stale, decodedInput } from './refusals';
-import { admitCandidate, candidateStillApplies, libraryHoldsReceipt, persistReceipt, type ReceiptHolder } from './host-handles';
+import { admitCandidate, retainCandidate, candidateStillApplies, libraryHoldsReceipt, persistReceipt, type ReceiptHolder } from './host-handles';
 
 const previewOutput = { type: 'object', properties: { token: { type: 'string' }, preview_json: { type: 'string' }, revision: { type: 'integer' } }, required: ['token', 'preview_json', 'revision'], additionalProperties: false };
 const receiptOutput = { type: 'object', properties: { receipt_json: { type: 'string' }, persisted: { type: 'boolean' } }, required: ['receipt_json', 'persisted'], additionalProperties: false };
@@ -40,7 +40,7 @@ function rememberAll<T extends object>(c: OperationContext, inputs: ReadonlyArra
   const revision = useViewerStore.getState().mutationVersion;
   return inputs.map(({ input, preview }) => {
     const token = crypto.randomUUID();
-    entries.set(token, { ...input, modelId: c.model.id, store: c.model.store, revision });
+    retainCandidate(c, entries, token, { ...input, modelId: c.model.id, store: c.model.store, revision }, { keep: entry => entry.receipt !== undefined });
     return { token, revision, preview_json: JSON.stringify(preview) };
   });
 }

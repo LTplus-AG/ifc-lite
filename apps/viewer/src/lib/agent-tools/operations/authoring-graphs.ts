@@ -10,7 +10,7 @@ import { operation, emptySchema, referenceSchema } from './contract';
 import { assertToolActive } from '../cancellation';
 import { resolveRef } from '../refs';
 import { invalidInput, decodedInput } from './refusals';
-import { admitCandidate, candidateStillApplies, libraryHoldsReceipt, persistReceipt, type ReceiptHolder } from './host-handles';
+import { admitCandidate, retainCandidate, candidateStillApplies, libraryHoldsReceipt, persistReceipt, type ReceiptHolder } from './host-handles';
 
 const jsonOutput = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 const tokenInput = { type: 'object' as const, properties: { token: { type: 'string' as const, minLength: 1, maxLength: 100 } }, required: ['token' as const], additionalProperties: false as const };
@@ -84,11 +84,7 @@ export const graphAuthoringOperations = [
     return output(capture);
   }),
   ...(['group', 'structural', 'zone', 'room'] as const).map(kind => operation<{ proposal_json: string }>({ ...meta(`authoring.${kind}.prepare`, kind === 'zone' ? 'zones' : 'model', `Prepare the canonical ${kind} proposal using its native detached planner and complete evidence. Room supports pick/auto/autoAll/footprint/update/edit; no invented pointer gestures.`), outputSchema: previewOutput,
-    // A result the executor refuses never reaches the caller, so its candidate must not keep a place under the cap.
-    discard: (result, c) => {
-      const token = (result as { token?: unknown } | null)?.token, entries = hosts.get(c.host);
-      if (entries && typeof token === 'string' && entries.get(token)?.receipt === undefined) release(entries, token);
-    } }, {
+}, {
     type: 'object', properties: { proposal_json: { type: 'string', maxLength: 1000000 } }, required: ['proposal_json'], additionalProperties: false,
   }, async (i, c) => {
     // Unchanged by the review's own cheap probe, the permanent half of its validate(): loaded models and edit revisions
@@ -106,7 +102,8 @@ export const graphAuthoringOperations = [
     // Again after the await: a concurrent prepare may have taken the last place.
     let preview_json: string;
     try { assertToolActive(c); review.validate(); preview_json = JSON.stringify(review.preview); admit(true); } catch (error) { review.dispose?.(); throw error; }
-    const token = crypto.randomUUID(); owned(c).set(token, { modelId: c.model.id, store: c.model.store, review });
+    const token = crypto.randomUUID();
+    retainCandidate(c, owned(c), token, { modelId: c.model.id, store: c.model.store, review }, { keep: entry => entry.receipt !== undefined, release: entry => entry.review?.dispose?.() });
     return { token, preview_json };
   })),
   operation<{ token: string }>(meta('authoring.graph.apply', 'model', 'Apply one exact prepared native graph/Room candidate through its native synchronous review commit. Preserves all native roles, source/evidence checks and native undo. A token applies once.', true), tokenInput, async (i, c) => {

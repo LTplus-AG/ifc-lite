@@ -50,6 +50,29 @@ const invoke = (id: string, input: unknown = {}, write = false, canEdit: () => b
   dispatchMainViewerTool(host, write ? 'viewer_operation_execute' : 'viewer_operation_inspect', {
     ...(viewerOperation(id).needs === 'model' ? { model_id: modelId } : {}), operation_id: id, input,
   }, { canEdit });
+/**
+ * Cancel the tool call right after `file` creates the token of the candidate it stores, so the executor refuses a result
+ * the handler already stored (#10918). Returns that token: the caller never received it.
+ */
+async function refusedAfterToken(file: string, id: string, input: unknown, write = false) {
+  const controller = new AbortController(), uuid = crypto.randomUUID.bind(crypto);
+  let token: string | undefined;
+  const spy = mock.method(crypto, 'randomUUID', () => {
+    const value = uuid();
+    if (token === undefined && new Error().stack?.includes(file)) { token = value; queueMicrotask(() => controller.abort()); }
+    return value;
+  });
+  try {
+    const refused = await dispatchMainViewerTool(host, write ? 'viewer_operation_execute' : 'viewer_operation_inspect', {
+      ...(viewerOperation(id).needs === 'model' ? { model_id: modelId } : {}), operation_id: id, input,
+    }, { canEdit: () => true, signal: controller.signal });
+    // The dispatch answers the cancellation at once; the executor refuses the handler's result just after.
+    for (let tick = 0; tick < 50; tick++) await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(refused.isError, true, 'the call was refused');
+    assert.ok(token, `${file} stored a candidate before the refusal`);
+    return token;
+  } finally { spy.mock.restore(); }
+}
 function answer<T>(result: AgentToolResult): T {
   assert.equal(result.isError, false, result.text);
   const value = (result.structured as { result: { native_json?: string } }).result;
@@ -292,6 +315,54 @@ describe('reviewed model candidates (#10792)', () => {
     assert.equal(storedReceipt(receipt.id)?.status, 'undone');
   });
 
+  it('#10918: a refused properties prepare keeps no candidate', async () => {
+    const token = await refusedAfterToken('authoring-native', 'properties.prepare', { proposal_json: rename('Refused') });
+    assert.match((await invoke('authoring.discard', { token })).text, /Unknown reviewed candidate/);
+  });
+
+  it('#10918: a result refused by the schema keeps no candidate', async () => {
+    let token: string | undefined;
+    const entry = viewerOperation('properties.prepare');
+    const validate = entry.validateResult.bind(entry);
+    const validator = mock.method(entry, 'validateResult', (result: unknown) => {
+      const { token: stored, ...withoutToken } = result as { token: string };
+      token = stored;
+      validate(withoutToken);
+    });
+    try {
+      const failed = await invoke('properties.prepare', { proposal_json: rename('Invalid result') });
+      assert.equal(failed.isError, true);
+      assert.match(failed.text, /properties\.prepare output.*token/);
+    } finally {
+      validator.mock.restore();
+    }
+    assert.ok(token, 'the candidate was stored before result validation');
+    assert.match((await invoke('authoring.discard', { token })).text, /Unknown reviewed candidate/);
+  });
+
+  it('#10918: a prepare whose handler throws after storing its candidate keeps none', async () => {
+    const uuid = crypto.randomUUID.bind(crypto), stringify = JSON.stringify;
+    let token: string | undefined, thrown = false;
+    mock.method(crypto, 'randomUUID', () => { const value = uuid(); if (token === undefined && new Error().stack?.includes('authoring-native')) token = value; return value; });
+    // The preview serializes after the candidate is stored; make that one serialization fail.
+    mock.method(JSON, 'stringify', (...args: Parameters<typeof JSON.stringify>) => {
+      if (token !== undefined && !thrown && new Error().stack?.includes('authoring-native')) { thrown = true; throw new Error('Preview could not be serialized'); }
+      return stringify(...args);
+    });
+    let failed: AgentToolResult;
+    try { failed = await invoke('properties.prepare', { proposal_json: rename('Throws after storing') }); } finally { mock.restoreAll(); }
+    assert.equal(thrown, true, 'the handler threw after storing');
+    assert.match(failed.text, /Preview could not be serialized/);
+    assert.match((await invoke('authoring.discard', { token })).text, /Unknown reviewed candidate/);
+  });
+
+  it('#10918: a refused revert prepare keeps no candidate', async () => {
+    answer(await invoke('authoring.apply', { token: await prepareRename() }, true));
+    const [change] = answer<Array<{ id: string }>>(await invoke('changes.read'));
+    const token = await refusedAfterToken('changes-native', 'changes.revert.prepare', { id: change.id });
+    assert.match((await invoke('changes.revert.apply', { token }, true)).text, /Unknown revert candidate/);
+  });
+
   it('#32: revert candidates never lock the host out', async () => {
     answer(await invoke('authoring.apply', { token: await prepareRename() }, true));
     const [change] = answer<Array<{ id: string }>>(await invoke('changes.read'));
@@ -434,6 +505,18 @@ describe('IDS candidates and validation runs (#10792)', () => {
   const prepareOps = async (name: string) => answer<{ token: string }>(await invoke('ids.operations.prepare', {
     document_revision: useViewerStore.getState().idsStudioRevision, ops_json: JSON.stringify([setSpecTextOp(specId(), 'name', name)]) })).token;
 
+  it('#10918: a refused IDS Studio prepare keeps no candidate', async () => {
+    const token = await refusedAfterToken('ids-studio', 'ids.operations.prepare', { document_revision: useViewerStore.getState().idsStudioRevision,
+      ops_json: JSON.stringify([setSpecTextOp(specId(), 'name', 'Refused')]) });
+    assert.match((await invoke('ids.candidate.apply', { token }, true)).text, /Unknown IDS candidate/);
+  });
+
+  it('#10918: a refused IDS validation run keeps no run handle', async () => {
+    const { content } = answer<{ content: string }>(await invoke('ids.document.xml'));
+    const run_id = await refusedAfterToken('ids-validation', 'validation.ids.run', { xml: content, scope: 'whole', entity_ids: [] });
+    assert.match((await invoke('validation.results', { run_id, offset: 0, limit: 1 })).text, /Unknown validation run/);
+  });
+
   it('#38: concurrent applies dispatch once, and a discard during apply wins', async () => {
     const token = await prepareOps('Once');
     const [a, b] = await Promise.all([invoke('ids.candidate.apply', { token }, true), invoke('ids.candidate.apply', { token }, true)]);
@@ -549,6 +632,12 @@ describe('saved clash report deletion (#10792)', () => {
     return useViewerStore.getState().savedClashReports[0].id;
   }
 
+  it('#10918: a refused clash report deletion prepare keeps no candidate', async () => {
+    const id = await savedReport();
+    const token = await refusedAfterToken('clash-native-reports', 'clash.reports.delete.prepare', { id });
+    assert.match((await invoke('clash.reports.delete.apply', { token }, true)).text, /Unknown deletion candidate/);
+  });
+
   it('#2: deletion prepare refuses while documents are unopened or dashboards cannot be read', async () => {
     const id = await savedReport();
     const opened = useViewerStore.getState().documentsStorage;
@@ -639,6 +728,11 @@ END-ISO-10303-21;
     newHost();
   });
   afterEach(() => { useViewerStore.setState(initial); resetFeaturesForTest(); });
+
+  it('#10918: a refused zone writeback prepare keeps no candidate', async () => {
+    const token = await refusedAfterToken('authoring-zone-writes', 'zones.writeback.prepare', { set_id: 'set-1', model_ids: ['m1'], basis: 'mesh', action: 'write' });
+    assert.match((await invoke('zones.writeback.apply', { token }, true)).text, /Unknown zone candidate/);
+  });
 
   it('#23: writeback refuses changed assignments, not an identical rebuild', async () => {
     const prepare = async () => answer<{ token: string }>(await invoke('zones.writeback.prepare', { set_id: 'set-1', model_ids: ['m1'], basis: 'mesh', action: 'write' })).token;

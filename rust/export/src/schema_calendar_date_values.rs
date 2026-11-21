@@ -81,14 +81,15 @@ fn legacy_clock<'a>(record: &DateRecord, read: &impl Fn(Option<u32>) -> Option<&
 
 pub(super) fn from_legacy<'a>(source: &str, kind: Kind, read: impl Fn(Option<u32>) -> Option<&'a DateRecord>) -> Option<String> {
     let record = read(parse_ref(source.as_bytes()))?;
-    let (day, clock) = match kind {
-        Kind::Date => (Some(legacy_day(record)?), None),
-        Kind::Time => (None, Some(legacy_clock(record, &read)?)),
-        Kind::DateTime => {
-            let [date, time] = record.slots.as_slice() else { return None };
-            (record.ty == "IFCDATEANDTIME").then_some(())?;
-            (Some(legacy_day(read(parse_ref(date.as_bytes()))?)?), Some(legacy_clock(read(parse_ref(time.as_bytes()))?, &read)?))
+    let child = |slot: &str| read(parse_ref(slot.as_bytes()));
+    let (day, clock) = match (kind, record.ty.as_str(), record.slots.as_slice()) {
+        (Kind::Date, "IFCDATEANDTIME", [date, _]) => (Some(legacy_day(child(date)?)?), None),
+        (Kind::Date, _, _) => (Some(legacy_day(record)?), None),
+        (Kind::Time, _, _) => (None, Some(legacy_clock(record, &read)?)),
+        (Kind::DateTime, "IFCDATEANDTIME", [date, time]) => {
+            (Some(legacy_day(child(date)?)?), Some(legacy_clock(child(time)?, &read)?))
         }
+        (Kind::DateTime, _, _) => return None,
     };
     let day = day.map_or_else(String::new, |Day { year, month, day }| format!("{year:04}-{month:02}-{day:02}"));
     let Some(Clock { hour, minute, second, zone }) = clock else { return Some(format!("'{day}'")) };

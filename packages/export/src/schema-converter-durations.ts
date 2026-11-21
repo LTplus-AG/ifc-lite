@@ -28,9 +28,12 @@ export function durationFromSeconds(token: string): string | null {
 
 /** Weeks, days and clock units are fixed in seconds. Calendar years and months need a date. */
 export function durationToSeconds(token: string): string | null {
-  const m = /^'(-)?P(?:(\d+)W|(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?)'$/.exec(token);
-  if (!m || m[0].endsWith("T'") || !m.slice(2).some((part) => part !== undefined)) return null;
+  const m = /^'(-)?P(?:(\d+(?:\.\d+)?)W|(?:(\d+(?:\.\d+)?)D)?(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?)?)'$/.exec(token);
+  if (!m || m[0].endsWith("T'")) return null;
+  const fields = m.slice(2);
+  const supplied = fields.filter((part) => part !== undefined);
+  if (!supplied.length || supplied.slice(0, -1).some((part) => part.includes('.'))) return null;
   const scales = [604800, 86400, 3600, 60, 1];
-  const seconds = m.slice(2).reduce((total, part, index) => total + Number(part ?? 0) * scales[index], 0);
+  const seconds = fields.reduce((total, part, index) => total + Number(part ?? 0) * scales[index], 0);
   return Number.isFinite(seconds) ? toStepReal(m[1] ? -seconds : seconds) : null;
 }

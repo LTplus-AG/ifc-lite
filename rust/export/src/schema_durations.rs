@@ -53,7 +53,7 @@ fn clock_seconds(mut time: &str) -> Option<f64> {
     let mut total = 0.0;
     for (unit, scale) in [('H', 3600.0), ('M', 60.0), ('S', 1.0)] {
         if let Some((value, rest)) = time.split_once(unit) {
-            total += seconds_number(value, unit == 'S')? * scale;
+            total += seconds_number(value, rest.is_empty())? * scale;
             time = rest;
         }
     }
@@ -65,11 +65,11 @@ pub(super) fn to_seconds(token: &str) -> Option<String> {
     let (sign, text) = text.strip_prefix('-').map_or((1.0, text), |rest| (-1.0, rest));
     let text = text.strip_prefix('P')?;
     let total = if let Some(weeks) = text.strip_suffix('W') {
-        seconds_number(weeks, false)? * 604800.0
+        seconds_number(weeks, true)? * 604800.0
     } else {
         let (date, time) = text.split_once('T').map_or((text, None), |(d, t)| (d, Some(t)));
         let days = if date.is_empty() && time.is_some() { 0.0 } else {
-            seconds_number(date.strip_suffix('D')?, false)?
+            seconds_number(date.strip_suffix('D')?, time.is_none())?
         };
         days * 86400.0 + time.map_or(Some(0.0), clock_seconds)?
     };

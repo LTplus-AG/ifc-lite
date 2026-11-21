@@ -149,6 +149,15 @@ it('keeps the STEP text of newer typed values on downgrade (#10879)', () => {
   expect(result.warnings.join(' ')).toContain('1 value(s)');
 });
 
+it.each([
+  ['PT1.5H', '5400.'], ['PT1H30.5M', '5430.'], ['P0.5D', '43200.'], ['P0.5W', '302400.'],
+  ['PT1.5H30M', '$'], ['P0.5DT1H', '$'],
+])('converts a fractional duration only on its last unit (#10879): %s', (duration, seconds) => {
+  const line = `#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,'${duration}',$,$,$,.ACTUAL.);`;
+  expect(convert(line, 'IFC4', 'IFC2X3').out)
+    .toBe(`#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,${seconds},$,$,$,.ACTUAL.,$);`);
+});
+
 it('converts work control durations in seconds and rejects calendar months (#10879)', () => {
   const up = "#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,12.5,2.E-2,$,$,.ACTUAL.,$);";
   expect(convert(up, 'IFC2X3', 'IFC4').out)

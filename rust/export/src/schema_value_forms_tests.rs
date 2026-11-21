@@ -160,6 +160,19 @@ fn newer_ifc_value_keeps_its_step_string_on_downgrade_10879() {
 }
 
 #[test]
+fn fractional_work_control_duration_requires_the_last_unit_10879() {
+    for (duration, seconds) in [
+        ("PT1.5H", "5400."), ("PT1H30.5M", "5430."), ("P0.5D", "43200."), ("P0.5W", "302400."),
+        ("PT1.5H30M", "$"), ("P0.5DT1H", "$"),
+    ] {
+        let line = format!("#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,'{duration}',$,$,$,.ACTUAL.);");
+        let (out, dropped, _) = convert(&line, "IFC4", "IFC2X3");
+        assert_eq!(out, format!("#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,{seconds},$,$,$,.ACTUAL.,$);"), "{duration}");
+        assert_eq!(dropped, usize::from(seconds == "$"), "{duration}");
+    }
+}
+
+#[test]
 fn work_control_durations_convert_exact_seconds_and_refuse_calendar_months_10879() {
     let upgrade = "#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,12.5,2.E-2,$,$,.ACTUAL.,$);";
     let (out, dropped, _) = convert(upgrade, "IFC2X3", "IFC4");
@@ -176,6 +189,7 @@ fn calendar_dates_and_zoned_times_round_trip_10879() {
     let up = crate::export_step(input, &up).unwrap();
     assert!(up.contains("#1=IFCCLASSIFICATION('Source','1','2024-02-29','Classification',$,$,$);"), "{up}");
     assert!(up.contains("#3=IFCIRREGULARTIMESERIESVALUE('2024-02-29T10:30:15.5+05:30',(IFCREAL(1.)));"), "{up}");
+    assert!(up.contains("#7=IFCCOSTVALUE('Estimate',$,$,$,'2024-02-29','2024-02-29','Materials',$,$,$);"), "{up}");
     for obsolete in ["IFCCALENDARDATE(", "IFCDATEANDTIME(", "IFCLOCALTIME(", "IFCCOORDINATEDUNIVERSALTIMEOFFSET("] {
         assert!(!up.contains(obsolete), "{up}");
     }

@@ -52,7 +52,7 @@ function legacyClock(record: DateRecord | undefined, read: (id: number | null) =
 
 export function fromLegacyDate(ref: string, kind: CalendarKind, read: (id: number | null) => DateRecord | undefined): string | null {
   const record = read(slotRef(ref));
-  const split = kind === 'DATETIME' && record?.type === 'IFCDATEANDTIME' && record.slots.length === 2;
+  const split = kind !== 'TIME' && record?.type === 'IFCDATEANDTIME' && record.slots.length === 2;
   const d = kind === 'TIME' ? null : legacyDay(split ? read(slotRef(record.slots[0])) : record);
   const t = kind === 'DATE' ? null : legacyClock(split ? read(slotRef(record.slots[1])) : record, read);
   if ((kind !== 'TIME' && !d) || (kind !== 'DATE' && !t)) return null;

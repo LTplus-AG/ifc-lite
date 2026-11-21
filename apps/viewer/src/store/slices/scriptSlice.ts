@@ -260,9 +260,9 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
         ? { ...s, code: scriptEditorContent, updatedAt: Date.now() }
         : s,
     );
-    set({ savedScripts: updated, scriptEditorDirty: false });
     const result = saveScripts(updated);
     if (!result.ok) console.warn('[Scripts] Save failed:', result.message);
+    set({ savedScripts: updated, scriptEditorDirty: !result.ok }); // a refused write leaves the edits unsaved
     return result;
   },
 

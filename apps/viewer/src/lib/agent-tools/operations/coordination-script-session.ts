@@ -35,8 +35,6 @@ export const coordinationScriptSessionOperations = [
   }),
   coordination('script.save', 'Save the active script through native persistence.', ['configuration'], emptySchema, (_, c) => c.commit(() => {
     const s = useViewerStore.getState(); if (!s.activeScriptId) throw unavailable('No active saved script.'); const storage = s.saveActiveScript();
-    // The store clears dirty even when storage refuses the write; the edits are still unsaved.
-    if (storage && !storage.ok) useViewerStore.setState({ scriptEditorDirty: true });
     return { active_id: s.activeScriptId, dirty: useViewerStore.getState().scriptEditorDirty, storage };
   })),
   coordination<{ name: string; source: string }>('script.create', 'Create a saved native script without executing it.', ['configuration'], {
@@ -60,7 +58,7 @@ export const coordinationScriptSessionOperations = [
     if (s.scriptExecutionState === 'running') throw unavailable('Wait for or cancel the active script run before opening a script.');
     // A draft with no saved script would be dropped; a dirty saved script is saved here, and a failed save keeps it open.
     if (s.scriptEditorDirty && !s.activeScriptId) unsavedEdits('opening another');
-    if (s.scriptEditorDirty) { const storage = s.saveActiveScript(); if (storage && !storage.ok) { useViewerStore.setState({ scriptEditorDirty: true }); throw internal(`The active script could not be saved (${storage.reason}); it stays open.`); } }
+    if (s.scriptEditorDirty) { const storage = s.saveActiveScript(); if (storage && !storage.ok) { throw internal(`The active script could not be saved (${storage.reason}); it stays open.`); } }
     s.setActiveScriptId(i.id); return { active_id: useViewerStore.getState().activeScriptId, revision: useViewerStore.getState().scriptEditorRevision };
   })),
   coordination<{ id: string; name: string }>('script.rename', 'Rename a known saved native script.', ['configuration'], {

@@ -500,6 +500,23 @@ for (const action of ['create', 'delete'] as const) {
   });
 }
 
+it('a refused panel save keeps the editor dirty, so script.open still guards the edits (#10591 review)', async () => {
+  useViewerStore.setState({ scriptEditorDirty: false, scriptExecutionState: 'idle' });
+  const target = await execute<{ id: string }>('script.create', { name: 'Panel target', source: '1' });
+  await execute('script.create', { name: 'Panel active', source: '2' });
+  useViewerStore.setState({ scriptEditorContent: 'panel edit', scriptEditorDirty: true });
+  const originalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: { getItem: () => null, setItem: () => { throw new DOMException('Full', 'QuotaExceededError'); } } });
+  try {
+    assert.equal(useViewerStore.getState().saveActiveScript()?.ok, false);
+    assert.equal(useViewerStore.getState().scriptEditorDirty, true);
+    await assert.rejects(execute('script.open', { id: target.id }), /could not be saved/);
+  } finally {
+    if (originalStorage) Object.defineProperty(globalThis, 'localStorage', originalStorage);
+    else Reflect.deleteProperty(globalThis, 'localStorage');
+  }
+});
+
 it('Flow effect admission refuses future remote nodes and detects native HTTP Player POST overrides before any effect (#10525)', async () => {
   const { flowRegistry } = await import('@/lib/flow/runner'); let ran = false;
   flowRegistry().register({ type: 'future.remotePublication', title: 'Unreviewed future provider', category: 'test', inputs: [], outputs: [], params: [], capabilities: ['network.fetch:*'], requires: { network: true }, run() { ran = true; throw new Error('Unknown effect must never run'); } });

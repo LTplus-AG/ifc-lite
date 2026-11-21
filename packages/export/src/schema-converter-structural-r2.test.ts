@@ -215,3 +215,24 @@ describe('irreversible structural relationship preview #9668 review regression',
     }
   });
 });
+
+describe('comments beside IFC4 structural action values (#11001)', () => {
+  const action = (load: string, type: string) => `#50=IFCSTRUCTURALCURVEACTION('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,${load},.TRUE_LENGTH.,${type});`;
+  const warnings = (load: string, type: string) => {
+    const diagnostics = new EnumReconciliation();
+    convertStepLine(action(load, type), 'IFC4', 'IFC2X3', undefined, undefined, undefined, undefined, diagnostics);
+    return diagnostics.warnings().join('\n');
+  };
+  it('reports commented $ as unknown', () => {
+    expect(warnings('/* unknown */$', '.CONST.')).toContain('DestabilizingLoad is unknown');
+    expect(warnings('/* value */.F.', '.CONST.')).not.toContain('DestabilizingLoad is unknown');
+  });
+  it('exempts commented CONST and keeps reporting real losses', () => {
+    expect(warnings('.F.', '/* intrinsic */.CONST.')).not.toContain('PredefinedType has no slot');
+    expect(warnings('.F.', '/* distinct */.LINEAR.')).toContain('PredefinedType has no slot');
+  });
+  it('writes a commented $ as the unset value in a by-name remap', () => {
+    const source = "#5=IFCDOORTYPE('id',#1,/* none */$,$,$,$,$,'tag',$,.DOOR.,.SINGLE_SWING_LEFT.,.F.,$);";
+    expect(convertStepLine(source, 'IFC4', 'IFC2X3')).toMatch(/^#5=IFCDOORSTYLE\('id',#1,\$,/);
+  });
+});

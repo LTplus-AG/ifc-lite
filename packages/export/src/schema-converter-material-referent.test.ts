@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 /** #10763, as Rust `schema_material_referent_tests.rs`: the IfcMaterial a downgraded IfcMaterialProperties names. */
 import { describe, expect, it } from 'vitest';
-import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import { EMPTY_SOURCE_BYTES, IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { MergedExporter, type MergeModelInput } from './merged-exporter.js';
 import { StepExporter } from './step-exporter.js';
@@ -55,7 +55,7 @@ describe('the Material a downgraded IfcMaterialProperties names (#10763)', () =>
     });
     // Without the source bytes the export leaves it out too (nothing can check it), and the report says so.
     expect(entry(analyzeConversionLoss({ entityIndex: store.entityIndex }, 'IFC4', 'IFC2X3'))?.expressIds).toEqual([5]);
-    expect(entry(analyzeConversionLoss({ entityIndex: store.entityIndex, source: new Uint8Array(0) }, 'IFC4', 'IFC2X3'))?.expressIds, 'sourceless store').toEqual([5]);
+    expect(entry(analyzeConversionLoss({ entityIndex: store.entityIndex, source: EMPTY_SOURCE_BYTES }, 'IFC4', 'IFC2X3'))?.expressIds, 'sourceless store').toEqual([5]);
   });
 
   it('resolves a constituent set in the loss report (an export holding one is refused)', async () => {

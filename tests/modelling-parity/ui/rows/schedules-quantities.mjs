@@ -27,7 +27,7 @@ export default {
         const lists = s.page.getByRole('button',{name:'Lists',exact:true}).first();
         if (await lists.isVisible()) await s.ui.click(lists);
         else {
-          await s.ui.click(s.page.getByRole('button',{name:/^More panels/}));
+          await s.ui.click(s.page.locator('button[data-rail-overflow]'));
           await s.ui.click(s.page.locator('[role=menuitem][data-panel-id=lists]'));
         }
         await s.ui.click(s.page.getByRole('button',{name:/Wall Schedule/}).first(),{settle:1000});

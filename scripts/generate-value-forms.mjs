@@ -40,7 +40,7 @@ const ROOT = join(dirname(SELF), '..');
 if (!process.env.VALUE_FORMS_TSX) {
   const loader = createRequire(SELF).resolve('tsx');
   try {
-    execFileSync(process.execPath, ['--import', loader, SELF, ...process.argv.slice(2)], {
+    execFileSync(process.execPath, ['--import', pathToFileURL(loader).href, SELF, ...process.argv.slice(2)], {
       stdio: 'inherit',
       env: { ...process.env, VALUE_FORMS_TSX: '1' },
     });

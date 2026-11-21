@@ -16,7 +16,7 @@ import { preflightWorkflow, isAutomationGraph } from '@/lib/flow/preflight';
 import { startWorkflowRun } from '@/lib/flow/run-session';
 import { guardAnalysisRun } from '@/hooks/analysisRunGuard';
 import { writingNodes } from '@/lib/flow/publish-provenance';
-import { claimReview, finishReview, pauseForReview, useFlowReview } from '@/lib/flow/review-session';
+import { claimReview, finishReview, pauseForReview, releaseReviewClaim, useFlowReview } from '@/lib/flow/review-session';
 
 import type { BimContext } from '@ifc-lite/sdk';
 import type { NativeModelAdder } from '@/services/coordination-loader';
@@ -98,7 +98,9 @@ export class NativeFlowRunner {
     // ...and the session it started in is still the one on screen: a drained
     // run must not land its result or its AbortError in the next session (A2).
     const owned = (): boolean => stillOpen() && guard.isCurrent();
-    const { resume } = options;
+    const { resume, expectedDefaultModelId } = options;
+    const defaultModelChanged = () =>
+      expectedDefaultModelId !== undefined && useViewerStore.getState().activeModelId !== expectedDefaultModelId;
     let claimed: FlowCheckpoint | null = null, terminal: RunResult | null = null, failure: string | null = null;
     try {
       // AI nodes get the Assistant's model, spending one root budget per run; a
@@ -109,12 +111,18 @@ export class NativeFlowRunner {
         ? (await import('@/lib/flow/ai-host')).viewerFlowAi(resume?.budget) : null;
       const preparedInputs = await preflightWorkflow(session, doc, inputs ?? {}, viewerFlowFeatures(true, !!ai), restored);
       session.check();
-      if (options.expectedDefaultModelId !== undefined && useViewerStore.getState().activeModelId !== options.expectedDefaultModelId) {
+      if (defaultModelChanged()) {
         throw new Error('The default model changed during workflow preflight. Inspect Flow state before running again.');
       }
       if (resume) {
         claimed = await claimReview(doc, preparedInputs);
         if (!claimed) throw new Error('the reviewed proposal could not be resumed');
+        if (defaultModelChanged()) {
+          const unstarted = claimed;
+          claimed = null;
+          await releaseReviewClaim(unstarted);
+          throw new Error('The default model changed while claiming the reviewed checkpoint.');
+        }
       }
       const ownedAddModel: typeof addModel = (file, options) => addModel(file, { ...options, workflowOwner: session.id });
       const automation = createAutomationHost(session, doc, ownedAddModel, (artifact) => {
@@ -122,9 +130,6 @@ export class NativeFlowRunner {
         const state = useViewerStore.getState();
         if (owned()) state.setFlowArtifacts([...state.flowArtifacts, artifact]);
       });
-      if (resume && options.expectedDefaultModelId !== undefined && useViewerStore.getState().activeModelId !== options.expectedDefaultModelId) {
-        throw new Error('The default model changed while claiming the reviewed checkpoint.');
-      }
       const result = await runFlowInViewer({
         doc, bim, pin, cache, inputs: preparedInputs, signal: session.controller.signal, automation, tables: viewerTableAccess(useViewerStore),
         openModel: createViewerOpenModel(ownedAddModel),

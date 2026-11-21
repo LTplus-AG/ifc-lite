@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { LIMITS } from '@ifc-lite/semantic';
 import { useSemanticSession } from '@/lib/semantic/session';
 import { validateCurrentSemantic } from '@/lib/semantic/validate-current';
 import { emptySchema } from './contract';
@@ -8,7 +9,7 @@ import { coordination, textSchema, boolSchema } from './coordination-common';
 import { invalidInput } from './refusals';
 const workspaceSchema = {
   ...textSchema,
-  properties: { value: { type: 'string' as const, maxLength: 5 * 1024 * 1024 } },
+  properties: { value: { type: 'string' as const, maxLength: LIMITS.bytes } },
 };
 export const coordinationSemanticOperations = [
   coordination('semantic.read', 'Read native semantic dataset, validation findings, profile and model-revision bindings.', ['read'], emptySchema, () => {

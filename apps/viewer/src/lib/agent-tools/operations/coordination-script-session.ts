@@ -43,6 +43,7 @@ export const coordinationScriptSessionOperations = [
     type: 'object', properties: { name: { type: 'string', minLength: 1, maxLength: 200 }, source: { type: 'string', maxLength: 1000000 } }, required: ['name', 'source'], additionalProperties: false,
   }, (i, c) => c.commit(() => {
     const editor = useViewerStore.getState();
+    if (editor.scriptExecutionState === 'running') throw unavailable('Wait for or cancel the active script run before creating a script.');
     const savingDraft = editor.scriptEditorDirty && editor.activeScriptId === null && i.source === editor.scriptEditorContent;
     if (editor.scriptEditorDirty && !savingDraft) unsavedEdits('creating another');
     let storage: SaveResult | undefined;
@@ -72,6 +73,7 @@ export const coordinationScriptSessionOperations = [
   })),
   coordination('script.delete', 'Delete one saved script through its native lifecycle; this does not execute any source.', ['configuration'], idSchema, (i, c) => c.commit(() => {
     const s = useViewerStore.getState(); if (!s.savedScripts.some(script => script.id === i.id)) throw invalidInput('unknown-target', 'Unknown saved script.');
+    if (s.activeScriptId === i.id && s.scriptExecutionState === 'running') throw unavailable('Wait for or cancel the active script run before deleting the active script.');
     // deleteScript resets the editor's dirty flag even for another script, which would let a later open drop these edits.
     if (s.scriptEditorDirty && s.activeScriptId !== i.id) unsavedEdits('deleting another');
     const storage = s.deleteScript(i.id); return { deleted: i.id, storage }; 

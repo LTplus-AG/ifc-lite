@@ -14,7 +14,8 @@ import { afterEach, beforeEach, mock, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, useState } from 'react';
 import { useViewerStore } from '@/store';
-import { cleanup, render, type, waitFor } from '@/test/render.js';
+import { useLayerAutomationReview } from '@/lib/layers/automation-review';
+import { cleanup, click, render, type, waitFor } from '@/test/render.js';
 import { installHeldCapture, type HeldCapture } from '@/test/bcf-held-capture.js';
 import type { LayerRegistryClient, RegistryReviewSummary } from '@/lib/layers/registry-client';
 import { LayerReviewSection } from './LayerReviewSection.js';
@@ -23,19 +24,21 @@ const REVIEW: RegistryReviewSummary = {
   id: 'review-1', layerId: 'candidate-1', into: 'main', reviewers: [], status: 'open', openedAt: '2026-01-01T00:00:00.000Z', topics: [],
 };
 
+const WALL_A = '2O2Fr$t4X7Zf8NOew3FLOH';
+const WALL_B = '2O2Fr$t4X7Zf8NOew3FLOI';
 let capture: HeldCapture;
 let posts = 0;
 const client = {
   listReviews: async () => ({ reviews: [REVIEW] }),
-  postTopic: async () => { posts += 1; return {}; },
+  postTopic: async (..._args: Parameters<LayerRegistryClient['postTopic']>) => { posts += 1; return {}; },
 } as unknown as LayerRegistryClient;
 
 beforeEach(() => {
   posts = 0;
   capture = installHeldCapture();
-  useViewerStore.setState({ layerStackPathToId: new Map([['2O2Fr$t4X7Zf8NOew3FLOH', 7]]), selectedEntityId: 7, selectedEntityIds: new Set([7]) });
+  useViewerStore.setState({ layerStackPathToId: new Map([[WALL_A, 7], [WALL_B, 8]]), selectedEntityId: 7, selectedEntityIds: new Set([7]) });
 });
-afterEach(() => { cleanup(); useViewerStore.setState({ collabSelfToken: null }); capture.dispose(); mock.restoreAll(); document.body.innerHTML = ''; });
+afterEach(() => { cleanup(); useLayerAutomationReview.setState({ candidate: null }); useViewerStore.setState({ collabSelfToken: null }); capture.dispose(); mock.restoreAll(); document.body.innerHTML = ''; });
 
 async function readyToComment(): Promise<HTMLButtonElement> {
   render(<LayerReviewSection client={client} candidateId="candidate-1" refName="main" />);
@@ -72,6 +75,44 @@ test('C-2 layer review: a capture that settles after the section unmounted posts
   await settle();
   assert.equal(posts, 0);
 });
+
+test('#10591 layer review skips posting when selection changes during viewpoint capture', async () => {
+  const comment = await readyToComment();
+  click(comment);
+  await waitFor(() => capture.frames() === 1, 'the viewpoint is capturing');
+  act(() => useViewerStore.getState().setSelectedEntityIds([8]));
+  await capture.release(1);
+  await waitFor(() => posts > 0 || !comment.disabled, 'the capture has settled');
+  assert.equal(posts, 0);
+  assert.equal(document.querySelector<HTMLInputElement>('input[aria-label="Review comment title"]')?.value, 'Check this wall');
+});
+
+for (const event of ['editing the title', 'clearing the title', 'staging a non-comment action'] as const) {
+  test(`#10591 layer review follows the live selection after ${event}`, async () => {
+    const staged = { id: `staged-comment-${event}`, candidateId: REVIEW.layerId, refName: REVIEW.into,
+      action: 'comment' as const, entity: WALL_A, title: 'Staged note', description: '', withViewpoint: false };
+    useLayerAutomationReview.setState({ candidate: staged });
+    const post = mock.method(client, 'postTopic');
+    const ui = render(<LayerReviewSection client={client} candidateId={REVIEW.layerId} refName={REVIEW.into} />);
+    const title = () => ui.querySelector<HTMLInputElement>('input[aria-label="Review comment title"]');
+    await waitFor(() => title()?.value === staged.title, 'the staged comment is visible');
+    act(() => useViewerStore.getState().setSelectedEntityIds([8]));
+    if (event === 'staging a non-comment action') {
+      act(() => useLayerAutomationReview.setState({ candidate: { ...staged, id: 'staged-merge', action: 'merge' } }));
+    } else if (event === 'clearing the title') {
+      type(title()!, '');
+      assert.ok(title()?.placeholder.includes(WALL_B), 'the empty title follows the live selection');
+      type(title()!, 'Manual note');
+    } else {
+      type(title()!, 'Manual note');
+    }
+    const comment = [...ui.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Comment');
+    assert.ok(comment);
+    await act(async () => click(comment));
+    assert.equal(posts, 1, 'the comment reaches the registry');
+    assert.equal(post.mock.calls[0]?.arguments[1]?.entity, WALL_B);
+  });
+}
 
 test('C-2 layer review: a viewpoint capture that resolves null toasts once and posts nothing', async () => {
   const { toast } = await import('@/components/ui/toast');

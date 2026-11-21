@@ -30,6 +30,16 @@ import { ensureCandidateOnRegistry } from '@/lib/layers/merge';
 import { getBrowserLayerStore } from '@/lib/layers/browser-store';
 import { pathTail } from '@/lib/layers/stack';
 
+// The active selection wins, with the set as a fallback for single-select.
+function selectedLayerPath(activeId: number | null, selectedIds: ReadonlySet<number>, pathToId: ReadonlyMap<string, number> | null): string | null {
+  const target = activeId ?? selectedIds.values().next().value;
+  if (target == null || !pathToId) return null;
+  for (const [path, id] of pathToId) {
+    if (id === target) return path;
+  }
+  return null;
+}
+
 function TopicRow({ topic, onSelect }: { topic: RegistryReviewTopic; onSelect: (entity: string) => void }) {
   const { t } = useTranslation();
   const tail = pathTail(topic.entity);
@@ -87,7 +97,12 @@ function CandidateReview({
   const [withViewpoint, setWithViewpoint] = useState(true);
   const automationReview = useLayerAutomationReview(state => state.candidate);
   useEffect(() => {
-    if (!automationReview || automationReview.candidateId !== candidateId || automationReview.refName !== refName || automationReview.action !== 'comment' || !claimLayerAutomationReview(automationReview, 'review')) return;
+    if (!automationReview) return;
+    if (automationReview.action !== 'comment') {
+      setStagedEntity(null);
+      return;
+    }
+    if (automationReview.candidateId !== candidateId || automationReview.refName !== refName || !claimLayerAutomationReview(automationReview, 'review')) return;
     setStagedEntity(automationReview.entity);
     setTitle(automationReview.title); setDescription(automationReview.description); setWithViewpoint(automationReview.withViewpoint);
   }, [automationReview, candidateId, refName]);
@@ -97,17 +112,8 @@ function CandidateReview({
   const busy = flight.busy;
   const runAction = flight.start;
 
-  // The commented entity is the ACTIVE 3D selection (last-selected wins,
-  // matching the selection slice), translated back to its composition
-  // path (path == IFC GUID); fall back to the set for single-select.
-  const selectedPath = useMemo(() => {
-    const target = activeEntityId ?? [...(selectedEntityIds ?? [])][0];
-    if (target === undefined || target === null || !pathToId) return null;
-    for (const [path, id] of pathToId) {
-      if (id === target) return path;
-    }
-    return null;
-  }, [activeEntityId, selectedEntityIds, pathToId]);
+  const selectedPath = useMemo(() => selectedLayerPath(activeEntityId, selectedEntityIds, pathToId),
+    [activeEntityId, selectedEntityIds, pathToId]);
 
   const commentEntity = stagedEntity ?? selectedPath;
   // A staged comment can keep its entity after selection changes. A viewpoint
@@ -153,7 +159,7 @@ function CandidateReview({
   }), [runAction, client, candidateId, refName, refresh]);
 
   const postComment = useCallback(async () => {
-    if (!review || !commentEntity || !canPost) return;
+    if (!review || !canPost) return;
     await runAction(async ({ isCurrent }) => {
       try {
         let viewpoint: Record<string, unknown> | undefined;
@@ -162,7 +168,12 @@ function CandidateReview({
           const captured = await captureViewpointForCreate(
             () => createViewpointFromState({ includeSnapshot: true, includeSelection: true, includeHidden: false }),
             isCurrent, t('bcf.panel.captureViewpointFailed'), 'layer review');
-          if (!captured.ok) return;
+          if (!captured.ok || !isCurrent()) return;
+          const live = useViewerStore.getState();
+          if (selectedLayerPath(live.selectedEntityId, live.selectedEntityIds, live.layerStackPathToId) !== commentEntity) {
+            toast.error(t('bcf.panel.captureViewpointFailed'));
+            return;
+          }
           const vp = captured.viewpoint;
           // snapshotData is a Uint8Array (not JSON); the data-URL `snapshot`
           // field carries the image across the wire instead.
@@ -252,7 +263,7 @@ function CandidateReview({
           <input
             type="text"
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e) => { setStagedEntity(null); setTitle(e.target.value); }}
             placeholder={
               commentEntity
                 ? t('layersPanel.review.commentPlaceholderWithEntity', { tail: pathTail(commentEntity) })

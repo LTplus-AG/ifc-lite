@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
+import 'fake-indexeddb/auto';
 import { buildLoadReport } from '@/lib/loadReport';
 import assert from 'node:assert/strict';
 import { deflateSync } from 'node:zlib';
@@ -168,9 +169,69 @@ it('refuses a Flow run if its admitted default changes during preflight (#10591 
   } finally { unsubscribe(); detach(); }
 });
 
-it('restores a codec-exported semantic workspace beyond the graph input limit (#10591 r4653276123)', async () => {
+it('keeps Flow approval resumable if the default model changes during the claim (#10591)', async t => {
+  const { NativeFlowRunner } = await import('@/lib/flow/native-runner');
+  const { approveReview, useFlowReview } = await import('@/lib/flow/review-session');
+  const { browserCheckpointStore } = await import('@/lib/flow/checkpoint-store');
+  const { flowRegistry } = await import('@/lib/flow/runner');
+  await seedCoincidentWalls(2, 4);
+  const before = useFlowReview.getState();
+  const modelId = useViewerStore.getState().activeModelId;
+  assert.equal(modelId, 'A');
+  const bim = context.host.bim;
+  assert.ok(bim);
+  const runner = new NativeFlowRunner(bim, async () => null);
+  const scalar = { kind: 'scalar', access: 'item' } as const;
+  const consumed: unknown[] = [];
+  flowRegistry().registerAll([
+    { type: 'test.reviewClaim', title: 'Proposal', category: 'test', inputs: [], outputs: [{ name: 'value', type: scalar }],
+      params: [], capabilities: [], review: 'required', run: () => ({ value: 42 }) },
+    { type: 'test.consumeClaim', title: 'Consume proposal', category: 'test', inputs: [{ name: 'value', type: scalar }], outputs: [],
+      params: [], capabilities: [], run: (_context, input) => { consumed.push(input.value); return {}; } },
+  ]);
+  const doc: FlowDocument = { flowVersion: 1, id: 'interrupted-review-claim', name: 'Review before consuming', inputs: [], outputs: [], capabilities: [],
+    nodes: [{ id: 'proposal', type: 'test.reviewClaim', pos: [0, 0] }, { id: 'sink', type: 'test.consumeClaim', pos: [300, 0] }],
+    edges: [{ from: ['proposal', 'value'], to: ['sink', 'value'] }] };
+  useViewerStore.getState().setFlowDoc(doc);
+  try {
+    const paused = await runner.run();
+    assert.equal(paused.state, 'paused', paused.error ?? 'the workflow pauses for approval');
+    assert.ok(paused.checkpoint);
+    const reviewed = await approveReview(paused.checkpoint.proposalDigest, doc);
+    assert.ok(reviewed);
+    const write = browserCheckpointStore.write;
+    const switchDuringClaim = t.mock.method(browserCheckpointStore, 'write', async (...args: Parameters<typeof write>) => {
+      const saved = await write(...args);
+      if (saved && args[0].state === 'applying') useViewerStore.getState().setActiveModel('B');
+      return saved;
+    });
+    const refused = await runner.run({}, { resume: reviewed, expectedDefaultModelId: modelId });
+    switchDuringClaim.mock.restore();
+    assert.equal(refused.state, 'failed');
+    assert.match(refused.error ?? '', /default model changed while claiming/);
+    assert.deepEqual(consumed, []);
+    assert.equal(useFlowReview.getState().checkpoint?.state, 'reviewed');
+    const stored = (await browserCheckpointStore.read(reviewed.id))?.checkpoint;
+    assert.equal(stored?.state, 'reviewed');
+    assert.deepEqual(stored.review, reviewed.review);
+    assert.equal(stored.claim, undefined);
+
+    useViewerStore.getState().setActiveModel(modelId);
+    const resumed = await runner.run({}, { resume: stored, expectedDefaultModelId: modelId });
+    assert.equal(resumed.state, 'completed', resumed.error ?? 'the workflow resumes after restoring the default model');
+    assert.deepEqual(consumed, [42]);
+  } finally {
+    useViewerStore.getState().setActiveModel(modelId);
+    useFlowReview.setState(before, true);
+  }
+});
+
+it('restores a codec-exported semantic workspace beyond the graph input limit (#10591 r4653276123)', async t => {
   const { useSemanticSession } = await import('@/lib/semantic/session');
   const before = useSemanticSession.getState();
+  const storageKey = 'ifc-lite.semantic.workspace.v1';
+  const savedWorkspace = localStorage.getItem(storageKey);
+  t.after(() => assert.ok(localStorage.getItem(storageKey) === savedWorkspace, 'the test restores the persisted workspace'));
   const graph = '#' + 'x'.repeat(999_999);
   try {
     await execute('semantic.graph', { value: graph });
@@ -179,7 +240,11 @@ it('restores a codec-exported semantic workspace beyond the graph input limit (#
     await execute('semantic.graph', { value: '' });
     await execute('semantic.restoreWorkspace', { value: workspace });
     assert.equal(useSemanticSession.getState().graph, graph);
-  } finally { useSemanticSession.setState(before); }
+  } finally {
+    useSemanticSession.setState(before, true);
+    if (savedWorkspace === null) localStorage.removeItem(storageKey);
+    else localStorage.setItem(storageKey, savedWorkspace);
+  }
 });
 
 it('refuses georeference realignment before clearing a workflow-owned federation (#10591 r4653276144)', async () => {
@@ -402,6 +467,38 @@ it('script.open refuses to switch a running editor to a different saved script (
     assert.equal(useViewerStore.getState().scriptExecutionState, 'running');
   } finally { useViewerStore.setState(before); }
 });
+
+for (const action of ['create', 'delete'] as const) {
+  it(`script.${action} refuses to replace the active editor during a run (#10591)`, async () => {
+    const before = useViewerStore.getState();
+    const storageKey = 'ifc-lite-scripts';
+    const persisted = localStorage.getItem(storageKey);
+    useViewerStore.setState({ scriptEditorDirty: false, scriptExecutionState: 'idle' });
+    try {
+      const other = await execute<{ id: string }>('script.create', { name: 'Other script', source: '1' });
+      const active = await execute<{ id: string }>('script.create', { name: 'Running script', source: '2' });
+      useViewerStore.setState({ scriptExecutionState: 'running' });
+      const { savedScripts, scriptEditorRevision } = useViewerStore.getState();
+      const input = action === 'create' ? { name: 'Replacement', source: '3' } : { id: active.id };
+      await assert.rejects(execute(`script.${action}`, input), {
+        code: ToolErrorCode.UNSUPPORTED_OPERATION, details: { reason: 'unavailable' }, message: /active script run/,
+      });
+      assert.equal(useViewerStore.getState().activeScriptId, active.id);
+      assert.equal(useViewerStore.getState().scriptExecutionState, 'running');
+      assert.equal(useViewerStore.getState().scriptEditorRevision, scriptEditorRevision);
+      assert.equal(useViewerStore.getState().savedScripts, savedScripts);
+      if (action === 'delete') {
+        await execute('script.delete', { id: other.id });
+        assert.equal(useViewerStore.getState().activeScriptId, active.id);
+        assert.ok(!useViewerStore.getState().savedScripts.some(script => script.id === other.id));
+      }
+    } finally {
+      useViewerStore.setState(before);
+      if (persisted === null) localStorage.removeItem(storageKey);
+      else localStorage.setItem(storageKey, persisted);
+    }
+  });
+}
 
 it('Flow effect admission refuses future remote nodes and detects native HTTP Player POST overrides before any effect (#10525)', async () => {
   const { flowRegistry } = await import('@/lib/flow/runner'); let ran = false;

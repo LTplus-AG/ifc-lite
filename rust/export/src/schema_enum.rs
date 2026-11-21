@@ -258,6 +258,7 @@ impl ConversionChecks {
         let mut out = self.ifc4_slots.warnings();
         out.extend(self.enums.warnings());
         out.extend(self.structural.warnings());
+        out.extend(self.plans.warnings());
         out
     }
 }

@@ -1,8 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import type { MeshData } from '@ifc-lite/geometry';
-import { INSTANCE_STRIDE_BYTES } from './instanced-render.js';
+import type { DecodedInstancedShard, MeshData } from '@ifc-lite/geometry';
+import { INSTANCE_COLOR_OFFSET, INSTANCE_STRIDE_BYTES, prepareInstancedRender } from './instanced-render.js';
 interface Occurrence { templateIndex: number; byteOffset: number; originalColor: [number, number, number, number]; itemId?: number }
 interface Template { modelIndex: number; positions: Float32Array; normals: Float32Array; indices: Uint32Array; instanceData: ArrayBuffer; canonicalAnchors?: Float64Array; canonicalMatrixTranslations?: Float32Array }
 /** CPU expansion retains the canonical f64 occurrence anchor rather than
@@ -69,4 +69,57 @@ export function materializeInstances(expressId: number, occ: readonly Occurrence
         appearanceSource: { kind: 'canonical-item', indices, sourceIndices: indices } });
     }
     return out.length > 0 ? out : undefined;
+}
+
+/**
+ * Materialize occurrences of a DECODED shard that is not on the GPU, e.g. read
+ * back from local storage after CPU geometry release (#10264). Prepared exactly
+ * as `Scene.addInstancedShard` prepares an upload (`prepareInstancedRender`:
+ * opaque occurrences only, composed matrices, canonical f64 anchors), then
+ * expanded by the same `materializeInstances`. The result is in the model's
+ * own frame: place it like any flat source (`placeAppearanceSource`).
+ * `occurrenceKey`s are prefixed with `keyPrefix`, so caches keyed on them never
+ * collide with the scene's own occurrences or another shard's.
+ *
+ * With `budgetBytes`, each occurrence's bytes (its template's positions, normals and indices) are charged
+ * BEFORE it is expanded, and a `RangeError` is thrown as soon as the total would exceed the budget: a read
+ * too large is refused without allocating it first.
+ */
+export function materializeShardOccurrences(
+  shard: DecodedInstancedShard, modelIndex: number, keyPrefix: string,
+  wanted?: (entityId: number) => boolean, budgetBytes?: number,
+): MeshData[] {
+  const prepared = prepareInstancedRender(shard);
+  const templates = prepared.map((t) => ({ modelIndex, positions: t.positions, normals: t.normals, indices: t.indices,
+    instanceData: t.instanceBuffer, canonicalAnchors: t.canonicalAnchors, canonicalMatrixTranslations: t.canonicalMatrixTranslations }));
+  const byEntity = new Map<number, Occurrence[]>();
+  prepared.forEach((t, slot) => {
+    const view = new DataView(t.instanceBuffer);
+    for (let i = 0; i < t.instanceCount; i++) {
+      const entityId = t.entityIds[i];
+      if (wanted && !wanted(entityId)) continue;
+      const byteOffset = i * INSTANCE_STRIDE_BYTES;
+      const at = byteOffset + INSTANCE_COLOR_OFFSET;
+      const originalColor: [number, number, number, number] = [view.getFloat32(at, true), view.getFloat32(at + 4, true),
+        view.getFloat32(at + 8, true), view.getFloat32(at + 12, true)];
+      const occurrences = byEntity.get(entityId) ?? [];
+      occurrences.push({ templateIndex: slot, byteOffset, originalColor, itemId: t.itemIds?.[i] || undefined });
+      byEntity.set(entityId, occurrences);
+    }
+  });
+  const out: MeshData[] = [];
+  let charged = 0;
+  for (const [entityId, occurrences] of byEntity) {
+    for (const occurrence of occurrences) {
+      const tpl = templates[occurrence.templateIndex];
+      if (budgetBytes !== undefined && tpl && tpl.positions.length > 0) {
+        charged += tpl.positions.byteLength + tpl.normals.byteLength + tpl.indices.byteLength;
+        if (!(charged <= budgetBytes)) throw new RangeError(`Instanced occurrences exceed their ${budgetBytes}-byte budget`);
+      }
+      for (const mesh of materializeInstances(entityId, [occurrence], templates) ?? []) {
+        out.push({ ...mesh, occurrenceKey: `${keyPrefix}${mesh.occurrenceKey}` });
+      }
+    }
+  }
+  return out;
 }

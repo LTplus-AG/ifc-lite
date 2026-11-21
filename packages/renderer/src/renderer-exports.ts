@@ -16,6 +16,7 @@ export { Raycaster } from './raycaster.js';
 export { SnapDetector, SnapType } from './snap-detector.js';
 export { BVH } from './bvh.js';
 export { hostsOtherEntities } from './mesh-entity-hosting.js';
+export { materializeShardOccurrences } from './scene-instance-materialization.js';
 export { OverlayIdSpaceExhaustedError } from './overlay-id-space-exhausted-error.js';
 export { FederationRegistry, federationRegistry, ModelRangeExtensionRefusedError } from './federation-registry.js';
 export type { ModelRange, GlobalIdLookup } from './federation-registry.js';

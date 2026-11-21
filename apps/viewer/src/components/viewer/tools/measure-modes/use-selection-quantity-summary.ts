@@ -11,7 +11,11 @@ import { toGlobalIdFromModels } from '@/store/globalId';
 import { extractMaterialPropertiesOnDemand, extractProjectUnits, ProjectUnits, type IfcDataStore, type extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import { geometryVolumesSurviveAlignment } from '@/lib/compare/alignmentTrust';
 import { pickElementQuantities, rollupQuantities, rollupGeometryVolumes, rollupMeshArea, MEASURABLE_QUANTITY_TYPES, type PickedQuantity } from './quantities';
-import { collectMeshAreas } from './mesh-area';
+import { collectMeshAreas, type MeshAreaEntry } from './mesh-area';
+import type { MeshData } from '@ifc-lite/geometry';
+import { isReleasedMesh } from '@/lib/released-mesh-provenance';
+import { releasedGeometryMetadata } from '@/lib/geometry-backing/released-geometry-metadata';
+import { useReleasedGeometryRevision } from '@/lib/geometry-backing/use-released-geometry-revision';
 import { pickIfcDensity, resolveElementWeight, rollupWeights, classifyWeightUnitKind, type WeightOutcome } from './weight';
 import { siConverterFor, densitySiConverterFor, quantitySetsFor } from './quantity-source';
 
@@ -47,19 +51,23 @@ export function useSelectionQuantitySummary() {
   // sit after `if (!store) continue` and silently drop an already-computed
   // area for any ref whose model lacked an `IfcDataStore`).
   //
-  // Its OWN memo, keyed on the mesh data alone: per-entity total mesh area
+  // Its OWN memo, keyed on mesh data and release/metadata lifetime: per-entity total mesh area
   // is selection-independent (it iterates every loaded model's triangles,
   // never `refs`), so recomputing it inside the selection-keyed `summary`
   // memo below would re-sum the whole federation's triangles on the main
   // thread on every selection click.
-  const meshAreaByGlobalId = useMemo(
-    () => collectMeshAreas(
-      models.size > 0
-        ? [...models.values()].map((m) => m.geometryResult?.meshes)
-        : [geometryResult?.meshes],
-    ),
-    [models, geometryResult],
-  );
+  const residentAreasByModel = useMemo(() => {
+    const sources = models.size > 0 ? models : new Map([['__legacy__', { geometryResult }]]);
+    return new Map([...sources].map(([id, model]) => [id, {
+      meshes: model.geometryResult?.meshes ?? [],
+      areas: collectMeshAreas([model.geometryResult?.meshes]),
+    }]));
+  }, [models, geometryResult]);
+  // Moves on metadata notifications AND content-only bumps, which supersede the sealed backing in place.
+  const releasedRevision = useReleasedGeometryRevision();
+  const meshAreasByModel = useMemo(() => new Map([...residentAreasByModel].map(([id, source]) => [id,
+    withReleasedMeshAreas(new Map(source.areas), id, source.meshes),
+  ])), [residentAreasByModel, releasedRevision]);
 
   const summary = useMemo(() => {
     if (refs.length === 0) return null;
@@ -111,10 +119,12 @@ export function useSelectionQuantitySummary() {
 
     // Resolved directly from `refs`, BEFORE the store-dependent loop below —
     // not inside it — so no store-related branch in that loop can ever skip
-    // it again. `meshAreaByGlobalId` needs no store to build or to read.
+    // it again. `meshAreasByModel` needs no store to build or to read.
     let meshAreaIncomplete = 0;
     const meshAreas: Array<number | undefined> = refs.map((ref) => {
-      const entry = meshAreaByGlobalId.get(toGlobalIdFromModels(models, ref.modelId, ref.expressId));
+      // The legacy slot is stored as `__legacy__`; a selection names it `legacy` (as PropertiesPanel normalizes).
+      const entry = meshAreasByModel.get(models.size === 0 || ref.modelId === 'legacy' ? '__legacy__' : ref.modelId)
+        ?.get(toGlobalIdFromModels(models, ref.modelId, ref.expressId));
       if (!entry) return undefined;
       if (entry.incomplete) meshAreaIncomplete += 1;
       return entry.area;
@@ -255,7 +265,28 @@ export function useSelectionQuantitySummary() {
       withoutStore,
       rescaled,
     };
-  }, [refs, models, ifcDataStore, geometryResult, meshAreaByGlobalId, mutationViews, mutationVersion]);
+  }, [refs, models, ifcDataStore, geometryResult, meshAreasByModel, mutationViews, mutationVersion]);
 
   return { summary, refs, models, activeModelId };
+}
+
+/**
+ * Released CPU geometry (#10264) has no triangles to sum: its entities' areas
+ * come from what the backing recorded while they were resident. An entity the
+ * backing cannot answer for stays absent (no area), never 0 m².
+ */
+function withReleasedMeshAreas(
+  areas: Map<number, MeshAreaEntry>, modelId: string, meshes: readonly MeshData[],
+): Map<number, MeshAreaEntry> {
+  const metadata = releasedGeometryMetadata();
+  const answered = new Set<number>();
+  for (const mesh of meshes) {
+    if (!isReleasedMesh(mesh) || answered.has(mesh.expressId)) continue;
+    answered.add(mesh.expressId);
+    const backed = metadata?.area(modelId, mesh.expressId);
+    // Replace only this model's partial sum, never another model's same id.
+    if (backed) areas.set(mesh.expressId, backed);
+    else areas.delete(mesh.expressId);
+  }
+  return areas;
 }

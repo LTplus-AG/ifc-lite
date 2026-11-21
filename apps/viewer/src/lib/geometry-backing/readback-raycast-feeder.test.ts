@@ -208,7 +208,7 @@ describe('released geometry readback for tools', () => {
     const h = host({ released: true, hit: { expressId: 501, modelIndex: 0, worldXYZ: { x: 100.2, y: 0.2, z: 5 } } },
       new Map([[501, near], [502, near], [503, near], [504, { min: { x: 500, y: 0, z: 0 }, max: { x: 501, y: 1, z: 1 } }]]));
     const feeder = new ReadbackRaycastFeeder(h.value, () => ({ backing: () => backing }), () => 'm');
-    assert.equal(await feeder.prepare(0, 0), 'fed', feeder.lastError?.message ?? 'not fed');
+    assert.equal(await feeder.prepare(0, 0), 'fed', feeder.lastError?.message ?? 'instanced geometry should be fed');
     const fed = h.fed.at(-1)!;
     const instanced = fed.filter((m) => m.occurrenceKey?.startsWith('readback:'));
     assert.deepEqual(instanced.map((m) => m.expressId).sort(), [501, 503], 'picked + neighbour; translucent and far ones excluded');
@@ -336,6 +336,17 @@ describe('released geometry readback for tools', () => {
     assert.equal(await feeder.prepare(0, 0), 'unavailable');
     assert.equal(h.fed.at(-1) ?? null, null, 'nothing was fed');
     assert.equal(open, 0, 'the flat leases taken before the failed occurrence placement were released');
+    await registry.close();
+  });
+
+  it('#10880 r4646577967 an empty store list reads a current complete backing, and yields nothing without one', async () => {
+    const { registry, backing } = await backed([mesh(1, 0), mesh(2, 3)]);
+    const batches: Array<readonly MeshData[]> = [];
+    for await (const batch of modelGeometry({ backing: () => backing }, 'm', [])) batches.push(batch);
+    assert.deepEqual(batches.flat().map((m) => m.expressId).sort(), [1, 2], 'the backed meshes, never one empty batch');
+    const none: Array<readonly MeshData[]> = [];
+    for await (const batch of modelGeometry({ backing: () => undefined }, 'm', [])) none.push(batch);
+    assert.deepEqual(none, [], 'an unbacked empty model yields nothing and does not fail');
     await registry.close();
   });
 

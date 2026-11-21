@@ -40,6 +40,15 @@ import { placedViewGeometry } from '@/lib/model-placement/view-geometry';
 import { modelIndices } from '@/lib/model-placement/model-indices';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { hasRetainedShapeOnlyModel, type RetainedGeometrySummary } from '@/store/retainedGeometry';
+import { meshIsResident } from '@/lib/geometry-backing/geometry-readback';
+import { sceneGeometryReleased } from '@/lib/geometry-backing/scene-released';
+import { getViewerState } from '@/store/viewerStoreHandle';
+import { GeometryUnavailableError } from '@/lib/geometry-backing/geometry-readback';
+import { geometryOwnerNeedsReadback } from '@/lib/geometry-backing/geometry-owner-residency';
+import { storeGeometryOwners } from '@/lib/geometry-backing/store-geometry-owners';
+import { releasedCopyFrom } from '@/lib/geometry-backing/store-mesh-readback';
+import type { ReleasedExportGeometry } from '@/lib/geometry-backing/export-readback';
+import type { MeshData } from '@ifc-lite/geometry';
 
 /** This model's global-id bracket, for scoping `getAllInstancedMeshData()`'s
  *  unfiltered (all-models) output down to just this model's occurrences. */
@@ -66,17 +75,63 @@ export interface InstancedModelRange {
   rendererModelIndex?: number;
 }
 
+/**
+ * One export operation's read-back geometry (#10264, #10887), handed to its `run` by
+ * {@link withReleasedExportGeometry} and passed explicitly to the collectors that operation calls.
+ * There is no ambient context: a collector called without one sees only resident geometry, so
+ * unrelated code can never read (or be scoped by) another operation's preparation.
+ */
+export interface ReleasedExportContext {
+  readonly prepared: ReleasedExportGeometry | null;
+  /** The models this operation was prepared for (#10887 r4647377537); absent: every model. The collector judges
+   * release over exactly these, so a released model outside them cannot refuse or skew the operation. */
+  readonly scope?: readonly string[];
+}
+
 export function withInstancedMeshes(
   geometryResult: GeometryResult,
   modelRange: InstancedModelRange | null,
+  context?: ReleasedExportContext,
 ): GeometryResult {
+  // Released CPU geometry (#10264): substitute what this operation read back; without its
+  // context, fail rather than export empty arrays and no occurrences.
+  const prepared = context?.prepared ?? null;
+  if (!prepared && geometryReleased(geometryResult, modelRange?.modelId ? [modelRange.modelId] : context?.scope)) {
+    throw new GeometryUnavailableError('Released geometry must be exported inside withReleasedExportGeometry');
+  }
+  if (prepared) {
+    geometryResult = { ...geometryResult, meshes: geometryResult.meshes.map((mesh) => {
+      if (meshIsResident(mesh)) return mesh;
+      // Consumers pass copies (federation modelIndex, placement): resolve by provenance, keep their scalars.
+      const copy = releasedCopyFrom(prepared.flat, mesh);
+      if (!copy) throw new GeometryUnavailableError(`Mesh of entity ${mesh.expressId} was not read back for export`);
+      return copy;
+    }) };
+  }
   geometryResult = placedViewGeometry(geometryResult, undefined, modelRange?.modelId);
   const scene = getGlobalRenderer()?.getScene();
-  const all = scene?.getAllInstancedMeshData() ?? [];
+  const live = scene?.getAllInstancedMeshData() ?? [];
+  // An occurrence without a modelIndex belongs to the sole model (canonical index 0); in a
+  // federation it is ambiguous, and an owner-scoped export must not guess.
+  const singleModel = getViewerState().models.size <= 1;
+  const occurrenceIndex = (mesh: MeshData) => mesh.modelIndex ?? (singleModel ? 0 : undefined);
+  const residentInstances = prepared ? live.filter((mesh) => {
+    const index = occurrenceIndex(mesh);
+    if (index === undefined) throw new GeometryUnavailableError('A resident instanced export has no model owner');
+    return prepared.scopeModelIndices.has(index) && !prepared.instancedModelIndices.has(index);
+  }) : live;
+  const all = prepared ? [...prepared.instanced, ...residentInstances] : residentInstances;
+  const ownerIndex = modelRange?.rendererModelIndex ?? (modelRange?.modelId
+    ? modelIndices(getViewerState().models).get(modelRange.modelId) : undefined);
+  const ownedBy = (m: MeshData, owner: number) => {
+    const index = occurrenceIndex(m);
+    if (index === undefined) throw new GeometryUnavailableError(`Instanced entity ${m.expressId} has no model owner in a federation`);
+    return index === owner;
+  };
   const instanced = modelRange
     ? all.filter(
         (m) => m.expressId > modelRange.idOffset && m.expressId <= modelRange.idOffset + modelRange.maxExpressId
-          && (modelRange.rendererModelIndex === undefined || m.modelIndex === modelRange.rendererModelIndex),
+          && (ownerIndex === undefined || ownedBy(m, ownerIndex)),
       )
     : all;
   if (instanced.length === 0) return geometryResult;
@@ -127,4 +182,50 @@ export function resolveInstancedExportGate(
   // An incomplete or shape-only retained model would export its partial meshes as the model (#7955).
   const canExport = (models.size <= 1 || instancedModelRange !== null) && !hasRetainedShapeOnlyModel(model && modelId ? new Map([[modelId, model]]) : models);
   return { instancedModelRange, canExport };
+}
+
+// One preparation in memory at a time: operations run one after another (bounded readback).
+let exportTail: Promise<void> = Promise.resolve();
+
+/** Whether any loaded CPU geometry (or this result's) was released (#10264). */
+export function geometryReleased(geometryResult?: GeometryResult, modelIds?: Iterable<string>): boolean {
+  if (geometryResult && !geometryResult.meshes.every(meshIsResident)) return true;
+  const state = getViewerState();
+  const scope = modelIds === undefined ? undefined : new Set(modelIds);
+  const owners = storeGeometryOwners(state);
+  const renderer = getGlobalRenderer();
+  // An owner the store does not know: with resident geometry supplied, only a released scene
+  // (its instancing must be read back) makes the export released; with none, fail closed.
+  if (scope && [...scope].some((id) => !owners.some((owner) => owner.modelId === id))) {
+    return geometryResult ? !!renderer && sceneGeometryReleased(renderer) : true;
+  }
+  const scene = renderer?.getScene();
+  if (!scope && renderer && sceneGeometryReleased(renderer)) return true;
+  if (geometryResult && !scope) return false;
+  const indices = modelIndices(state.models);
+  return owners.some((owner) => (!scope || scope.has(owner.modelId))
+    && geometryOwnerNeedsReadback(owner.geometryResult?.meshes ?? [], scene, indices.get(owner.modelId) ?? 0));
+}
+
+/**
+ * Run an export so it also works once CPU geometry was released (#10264): released store meshes
+ * and instanced occurrences are read back first, and `run` receives the operation's context to
+ * pass to its `withInstancedMeshes` calls. Resident geometry gets an empty context, unchanged.
+ */
+export async function withReleasedExportGeometry<T>(run: (context: ReleasedExportContext) => T | Promise<T>, modelIds?: Iterable<string>,
+  /** The resident geometry the export supplies, so an owner the store does not know is judged as the collector judges it. */
+  residentGeometry?: GeometryResult): Promise<T> {
+  const scope = modelIds === undefined ? undefined : [...modelIds];
+  const previous = exportTail;
+  let finish!: () => void;
+  exportTail = new Promise<void>((resolve) => { finish = resolve; });
+  await previous;
+  try {
+    if (!geometryReleased(residentGeometry, scope)) return await run({ prepared: null, scope });
+    const { prepareReleasedExport } = await import('@/lib/geometry-backing/export-readback');
+    const renderer = getGlobalRenderer();
+    return await run({ prepared: await prepareReleasedExport(getViewerState(), renderer?.getScene(), scope), scope });
+  } finally {
+    finish();
+  }
 }

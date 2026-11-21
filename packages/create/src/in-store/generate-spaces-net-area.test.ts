@@ -30,6 +30,7 @@ import {
 import { addSpaceToStore } from './space.js';
 import { offsetRoomFootprint, type BoundaryMode } from './generate-spaces.js';
 import type { Segment, Vec2 } from './auto-space-detect.js';
+import { polygonArea } from './polygon-2d.js';
 
 function makeStore(maxId: number): MutationStoreShape {
   const byId = new Map<number, MutationEntityRef>();
@@ -37,16 +38,6 @@ function makeStore(maxId: number): MutationStoreShape {
     byId.set(id, { expressId: id, type: 'IFCDUMMY', byteOffset: 0, byteLength: 1, lineNumber: id });
   }
   return { entityIndex: { byId } };
-}
-
-function polygonArea(pts: Vec2[]): number {
-  let acc = 0;
-  for (let i = 0; i < pts.length; i++) {
-    const p = pts[i];
-    const q = pts[(i + 1) % pts.length];
-    acc += p[0] * q[1] - q[0] * p[1];
-  }
-  return Math.abs(acc) / 2;
 }
 
 // A 4x4 m centreline room bounded by four 0.3 m thick walls.

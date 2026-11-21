@@ -4,7 +4,7 @@
 
 /** Pure candidate/link/occupancy policy shared by native Room hosts (#6232 D5). */
 import type { SpaceFootprint } from './space-footprints.js';
-import { polygonArea as polyArea, pointInPolygon as pointInPoly } from './room-footprint-offset.js';
+import { polygonArea as polyArea, pointInPolygon as pointInPoly } from './polygon-2d.js';
 import type { LayoutFace, Pt } from './room-layout-core.js';
 export type RoomTriangle = [Pt, Pt, Pt];
 const cross = (o: Pt, a: Pt, b: Pt) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);

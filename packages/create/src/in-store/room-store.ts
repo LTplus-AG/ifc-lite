@@ -18,7 +18,7 @@ import { readAttributes } from './edit/placement-core.js';
 import { cloneElementMetadata } from './edit/metadata-clone.js';
 import { deriveSplitGlobalId, globalIdTakenIn, keepsFirstPiece, type GlobalIdScope } from './edit/split-guid.js';
 import { polygonPerimeter } from './base-quantities-measure.js';
-import { polygonArea as polyArea, pointInPolygon as pointInPoly } from './room-footprint-offset.js';
+import { polygonArea as polyArea, pointInPolygon as pointInPoly } from './polygon-2d.js';
 import { roomAt, interiorPoint, roomOutline, type RoomBoundary, type RoomCandidate, type RoomLink } from './room-candidates.js';
 import type { LayoutFace, Pt } from './room-layout-core.js';
 

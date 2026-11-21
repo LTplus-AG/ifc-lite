@@ -39,12 +39,13 @@ import type { StoreApi } from 'zustand';
 import { subscribeInstancedShards } from '@/store/instancedShardQueue';
 import { instancedShardRevision } from '@/store/instancedShardModels';
 import { isReleasedMesh } from '@/lib/released-mesh-provenance';
+import { applyFederationOffsetToShard } from '@/components/viewer/instancedFederationOffset';
 import { GeometryBackingRegistry, type ModelBackingOptions, type ModelGeometryBacking } from './geometry-backing-registry';
 import type { BackingDatabaseOptions } from './backing-database';
 
 /** The store fields the tap reads. */
 export interface TapState {
-  models: ReadonlyMap<string, { geometryResult: { meshes: MeshData[] } | null }>;
+  models: ReadonlyMap<string, { geometryResult: { meshes: MeshData[] } | null; idOffset?: number }>;
   geometryContentVersion: number;
 }
 
@@ -95,10 +96,11 @@ export class StoreGeometryBackingTap {
 
   private constructor(
     private readonly registry: GeometryBackingRegistry,
-    store: StoreApi<TapState>, // read once here; the store subscription in `start` drives every sync
+    // The store subscription in `start` drives every sync; a shard reads its model's id offset here, live.
+    private readonly store: StoreApi<TapState>,
     private readonly options: ModelBackingOptions,
   ) {
-    this.contentVersion = store.getState().geometryContentVersion;
+    this.contentVersion = this.store.getState().geometryContentVersion;
   }
 
   static async start(store: StoreApi<TapState>, options: ModelBackingOptions & { database?: BackingDatabaseOptions } = {}):
@@ -269,7 +271,20 @@ export class StoreGeometryBackingTap {
       void this.settle(target, Promise.reject(error));
       return;
     }
-    this.enqueue(target, () => this.writer(target).appendInstancedShard(shard));
+    this.enqueue(target, async () => {
+      // The drain re-homes shard ids into the federated id space after decoding; do the same, so backed occurrences
+      // answer the ids picks and flat meshes use. Read when the append runs: a shard may arrive before its model
+      // registers (the drain waits for it too). Still unregistered by then: its instancing is not backed (fail closed).
+      // A registered model without an offset is model 0's space (offset 0), as in the drain.
+      const model = this.store.getState().models.get(modelId);
+      if (!model) {
+        target.instancedLost = true;
+        console.error(`[GeometryBacking] shard for unregistered model ${modelId}; its instancing is not backed`);
+        return;
+      }
+      applyFederationOffsetToShard(shard, model.idOffset ?? 0);
+      await this.writer(target).appendInstancedShard(shard);
+    });
   }
 
   private enqueue(tracked: Tracked, step: () => Promise<void>): void {

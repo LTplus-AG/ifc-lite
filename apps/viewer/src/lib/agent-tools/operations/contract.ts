@@ -24,8 +24,10 @@ export interface ViewerOperationContext extends ToolCallContext {
   ownGeometry<T>(work: () => Promise<T>, release: (value: T) => void): Promise<T>;
   /** Register how to remove what this call stored for its caller, such as a prepared candidate under a new token. The
    * executor runs it when the caller never receives the result: a refused final check, a handler that throws after
-   * storing, a background job refused or evicted before it was collected. A committed write keeps its effects. */
-  retain(undo: () => void): void;
+   * storing, or a background job refused or evicted before collection. A committed write keeps its effects.
+   * The optional delivery callback publishes provisional state when the first caller receives the result.
+   * Returning false releases its replay key when the acknowledged result is already stale. */
+  retain(undo: () => void, deliver?: () => void | false): void;
   progress?: (detail: { phase: string; done: number; total: number }) => void;
 }
 export interface OperationContext extends ViewerOperationContext { model: ReadyModel }
@@ -42,6 +44,8 @@ export interface Operation {
   inputSchema: Record<string, unknown>;
   outputSchema?: Record<string, unknown>;
   policy?: { model?: 'native-reviewed'; artifact?: 'native-export'; network?: 'native-provider'; publication?: 'native-reviewed' };
+  /** Any native configuration effects are fully reversible by the result ledger. */
+  candidateOnly?: true;
   synchronous?: boolean;
   result: 'value';
   completion?: 'dispatched';

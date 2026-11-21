@@ -20,6 +20,7 @@ import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { cancelMeasureRaycast, handleMeasureHover, raycastForPolylinePoint, syncMeasureScreenCoords } from './measureHandlers.js';
 import { updateSnapViz } from './measurePick.js';
 import { measureCursor, noteMeasureCursor } from './measureCursor.js';
+import { viaReadback } from './measureReadback.js';
 import { getDefaultEdgeLockState } from '@/store/slices/measurementSlice';
 import { viewportCaptureOwnsFrame, viewportPicksAwaitLiveFrame } from '@/lib/viewport-capture';
 
@@ -43,6 +44,7 @@ function pickPoint(ctx: MouseHandlerContext, x: number, y: number) {
 /** Place the last point. A miss keeps the previous point, as a polyline miss does, and ends a Live reading. */
 export function handlePointClick(ctx: MouseHandlerContext, x: number, y: number): void {
   if (!pointModeLive()) return;
+  if (viaReadback(ctx, 'place', () => handlePointClick(ctx, x, y), x, y)) return; // released: after its point is read back (#10264)
   // The click's pick supersedes a trailing hover or a hover frame already
   // queued, either of which would turn the readout back to "Live" for the
   // spot just placed (#8828).

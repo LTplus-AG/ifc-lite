@@ -6,7 +6,10 @@ import type { Renderer } from '@ifc-lite/renderer';
 
 /** Whether the scene's CPU pieces were released (feature-detected: `SceneContents` does not publish it). */
 export function sceneGeometryReleased(renderer: Pick<Renderer, 'getScene'>): boolean {
-  const scene: object = renderer.getScene();
+  // A host stub without a scene (or none yet) has released nothing.
+  if (typeof renderer.getScene !== 'function') return false;
+  const scene: object | null | undefined = renderer.getScene();
+  if (!scene) return false;
   return 'isGeometryDataReleased' in scene && typeof scene.isGeometryDataReleased === 'function'
     && scene.isGeometryDataReleased() === true;
 }

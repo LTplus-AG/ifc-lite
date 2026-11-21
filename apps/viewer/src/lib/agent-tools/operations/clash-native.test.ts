@@ -9,10 +9,13 @@ import { createBimContext } from '@ifc-lite/sdk';
 import { LocalBackend } from '@/sdk/local-backend';
 import { useViewerStore } from '@/store';
 import { seedCoincidentWalls } from '@/test/clash-run-fixture';
+import { deferred } from '@/test/race';
 import { createMainViewerToolHost } from '../main-viewer-host';
 import { dispatchMainViewerTool, type AgentToolResult } from '../main-viewer-dispatch';
 import type { ToolHost } from '../types';
 import { clashSettings } from './clash-native';
+import { executeOperation } from './executor';
+import { viewerOperation } from './registry';
 import { runRequestOf } from '@/lib/clash/run-request';
 let host: ToolHost;
 const call = (id: string, input: unknown = {}, write = false, canEdit: () => boolean = () => true) =>
@@ -397,6 +400,109 @@ describe('native Clash operation parity (#10525 follow-up)', () => {
     assert.equal(refused.isError, true);
     assert.equal(value<{ expected_library: string }>(await call('clash.groups.read')).expected_library, before);
   });
+  it('#11029: classification evicts the oldest review only when the replacement is delivered', async () => {
+    value(await call('clash.run', runInput(), true));
+    const prepare = () => call('clash.classification.prepare', {}, true);
+    const { token } = value<{ token: string }>(await prepare());
+    for (let i = 1; i < 32; i++) value(await prepare());
+    const answer = JSON.stringify({
+      version: 1, kind: 'clash.groups',
+      groups: [{ name: 'Collision', explanation: 'Coincident walls', citations: ['E1'] }],
+    });
+    const sample = (reviewToken: string) => call('clash.classification.sample', { token: reviewToken, answer }, true);
+    const held: { claim?: import('../delivery').DeliveryClaim } = {};
+    const stage = () => dispatchMainViewerTool(host, 'viewer_operation_execute', {
+      operation_id: 'clash.classification.prepare', input: {}, idempotency_key: 'replacement-classification',
+    }, { canEdit: () => true, onDelivery: claim => { held.claim = claim; } });
+    // The real handler has completed and returned a token. The transport still holds its delivery claim.
+    const dropped = value<{ token: string }>(await stage()).token;
+    assert.ok(held.claim);
+    value(await sample(token));
+    assert.match((await sample(dropped)).text, /Unknown native classification review/);
+    held.claim.drop();
+    value(await sample(token));
+    assert.match((await sample(dropped)).text, /Unknown native classification review/);
+    // Every drop must release its provisional slot, even while the published review cache stays full.
+    for (let i = 0; i < 32; i++) {
+      assert.notEqual(value<{ token: string }>(await stage()).token, dropped);
+      held.claim.drop();
+    }
+    const next = value<{ token: string }>(await stage()).token;
+    value(await sample(token));
+    held.claim.deliver();
+    assert.match((await sample(token)).text, /Unknown native classification review/);
+    value(await sample(next));
+  });
+
+  it('#11029: an acknowledged stale review has a stale token and releases its key', async () => {
+    value(await call('clash.run', runInput(), true));
+    let claim: import('../delivery').DeliveryClaim | undefined;
+    const prepare = () => dispatchMainViewerTool(host, 'viewer_operation_execute', {
+      operation_id: 'clash.classification.prepare', input: {}, idempotency_key: 'review',
+    }, { canEdit: () => true, onDelivery: next => { claim = next; } });
+    const { token } = value<{ token: string }>(await prepare());
+    assert.ok(claim);
+    value(await call('clash.run', runInput(), true));
+    claim.deliver();
+    const sample = await call('clash.classification.sample', { token, answer: '{}' }, true);
+    assert.equal(sample.errorCode, 'STATE_CHANGED', sample.text);
+    const fresh = value<{ token: string }>(await prepare());
+    assert.notEqual(fresh.token, token);
+    claim.drop();
+  });
+
+  it('#11029: a keyed classification prepare retries after a staged slot frees', async () => {
+    value(await call('clash.run', runInput(), true));
+    const claims: import('../delivery').DeliveryClaim[] = [];
+    const prepare = (idempotency_key?: string) => dispatchMainViewerTool(host, 'viewer_operation_execute', {
+      operation_id: 'clash.classification.prepare', input: {}, idempotency_key,
+    }, { canEdit: () => true, onDelivery: claim => { claims.push(claim); } });
+    try {
+      for (let i = 0; i < 32; i++) value(await prepare());
+      assert.match((await prepare('capacity')).text, /Too many classification reviews await delivery/);
+      claims.shift()?.drop();
+      value(await prepare('capacity'));
+    } finally {
+      for (const claim of claims) claim.drop();
+    }
+  });
+
+  it('#11029: a keyed classification sample survives its initiating caller cancelling', async t => {
+    value(await call('clash.run', runInput(), true));
+    const { token } = value<{ token: string }>(await call('clash.classification.prepare', {}, true));
+    const request = {
+      operation_id: 'clash.classification.sample', idempotency_key: 'sample',
+      input: { token, answer: JSON.stringify({ version: 1, kind: 'clash.groups',
+        groups: [{ name: 'Collision', explanation: 'Coincident walls', citations: ['E1'] }] }) },
+    };
+    const entry = viewerOperation(request.operation_id);
+    const execute = entry.execute.bind(entry);
+    const entered = deferred(), resume = deferred();
+    const native = t.mock.method(entry, 'execute', async (...args: Parameters<typeof execute>) => {
+      entered.resolve();
+      await resume.promise;
+      return execute(...args);
+    });
+    t.after(() => resume.resolve());
+    const controller = new AbortController();
+    const first = dispatchMainViewerTool(host, 'viewer_operation_execute', request, {
+      signal: controller.signal, canEdit: () => true,
+    });
+    await Promise.race([entered.promise, first.then(result => {
+      throw new Error(`Sample ended before its native gate: ${result.text}`);
+    })]);
+    const survivor = executeOperation(host, undefined, request, { canEdit: () => true }, false);
+    controller.abort();
+    const [cancelled, shared] = await Promise.all([first.then(result => {
+      resume.resolve();
+      return result;
+    }), survivor]);
+    assert.equal(cancelled.errorCode, 'CANCELLED');
+    assert.equal(native.mock.callCount(), 1);
+    assert.deepEqual(await executeOperation(host, undefined, request, { canEdit: () => true }, false), shared);
+    value(await call('clash.classification.plan', { token, workspace_id: '', name: 'Reviewed collision' }, true));
+  });
+
   it('grounds typed grouping evidence, applies a native reviewed partition, and undoes only its own revision', async () => {
     value(await call('clash.run', runInput(), true));
     const libraryBefore = value<{ expected_library: string }>(await call('clash.groups.read')).expected_library;

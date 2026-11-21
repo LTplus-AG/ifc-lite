@@ -11,7 +11,7 @@ import { StoreEditor } from '@ifc-lite/mutations';
 import { extractQuantitiesOnDemand, extractTypeQuantitiesOnDemand, readCurrentTypeQuantities, type IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { PropertiesPanel } from '@/components/viewer/PropertiesPanel';
-import { cleanup, click, render, type as typeInput, advance } from '@/test/render';
+import { cleanup, click, render, type as typeInput, advance, settle } from '@/test/render';
 import { inheritedSource, parse } from '@/test/inherited-quantities-native-fixture';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
@@ -213,6 +213,7 @@ test('#7382 mounted Properties follows inherited Length default-history edit, Un
   const sourceBytes = editedModelBytes(source, current);
 
   async function assertStage(value: number, unit: 'm' | 'mm') {
+    await settle();
     assert.equal(quantityRow(ui, 'NetVolume').querySelector('span.font-mono')?.textContent, `${value} ${unit}`,
       'the same mounted Properties panel follows current physical value and unit');
     assert.match(ui.querySelector('section[aria-label="Inherited type quantities"]')?.textContent ?? '', /NetVolume/);

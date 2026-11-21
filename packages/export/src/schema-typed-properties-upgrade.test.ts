@@ -56,3 +56,20 @@ it('reports only the material density whose required material is missing (#10797
       .toMatchObject({ kind: 'lossy', expressIds: [7], droppedAttributes: ['MassDensity'] });
   }
 });
+
+it('keeps typed MassDensity with raw Latin-1 in another DATA record (#10797)', async () => {
+  const source = readFileSync(new URL('../../../rust/export/tests/fixtures/schema_typed_properties_latin1.ifc', import.meta.url));
+  expect(() => new TextDecoder('utf-8', { fatal: true }).decode(source)).toThrow();
+  const store = await new IfcParser().parseColumnar(Uint8Array.from(source).buffer);
+  const merged = new MergedExporter([{ id: 'm', name: 'typed', dataStore: store }]);
+  const options = { schema: 'IFC4', projectStrategy: 'keep-first' } as const;
+  const outputs = [
+    ['direct', new StepExporter(store).export(options)],
+    ['merged', merged.export(options)],
+    ['async merged', await merged.exportAsync(options)],
+  ] as const;
+  for (const [writer, result] of outputs) {
+    expect(new TextDecoder().decode(result.content), writer)
+      .toContain("IFCPROPERTYSINGLEVALUE('MassDensity',$,IFCMASSDENSITYMEASURE(42.),$);");
+  }
+});

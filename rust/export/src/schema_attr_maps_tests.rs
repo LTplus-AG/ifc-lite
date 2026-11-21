@@ -207,3 +207,17 @@ fn keeps_typed_ifc2x3_measures_as_property_single_values_10797() {
         assert_eq!(stats.attribute_values_dropped, 0);
     }
 }
+
+#[test]
+fn latin1_data_keeps_typed_mass_density_in_all_step_writers_10797() {
+    let source = include_bytes!("../tests/fixtures/schema_typed_properties_latin1.ifc");
+    assert!(source.windows(5).any(|name| name == b"B\xe9ton"), "fixture must contain the raw Latin-1 name");
+    let opts = crate::StepOptions { schema: Some("IFC4".to_owned()), ..Default::default() };
+    let direct = crate::export_step(source, &opts).unwrap();
+    let (logged, _) = crate::export_step_with_log(source, &opts, &crate::MutationLog::default()).unwrap();
+    let merged = crate::export_merged(&[source], &crate::MergedOptions { schema: opts.schema, ..Default::default() });
+    for (writer, output) in [("direct", direct), ("logged", logged), ("merged", merged)] {
+        assert!(output.contains("IFCPROPERTYSINGLEVALUE('MassDensity',$,IFCMASSDENSITYMEASURE(42.),$);"),
+            "{writer} dropped MassDensity:\n{output}");
+    }
+}

@@ -1,0 +1,12 @@
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('typed-properties-latin1.ifc','',(''),(''),'','','');
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#1=IFCMATERIAL('Concrete');
+#2=IFCGENERALMATERIALPROPERTIES(#1,$,$,42.);
+#3=IFCMATERIAL('Béton');
+ENDSEC;
+END-ISO-10303-21;

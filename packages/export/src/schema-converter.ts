@@ -367,8 +367,7 @@ function convertRecord(
     // in merged-exporter.ts, which seeds from the original id plus the model's
     // stable id.
     //
-    // A caller-supplied seeded source still wins, so an export that already
-    // pins its randomness keeps its existing behaviour.
+    // A caller-supplied seeded source still wins.
     const guid = random
       ? generateIfcGuid(random)
       : deterministicGlobalId(`ifcproxy:${prefix}${entityType}(${attrsRaw})`);
@@ -394,7 +393,6 @@ function convertRecord(
   // Those take a reviewed attribute map (#10763) or are left alone.
   // Appended attributes are optional, so `$` is a valid pad.
   //
-  // The two branches cannot both apply: each needs ITS OWN list strictly shorter.
   // Source attrs keyed on the ORIGINAL type; target on the (possibly renamed) type.
   let finalAttrs = attrsRaw;
   const targetTable = attrNameTable(toSchema);

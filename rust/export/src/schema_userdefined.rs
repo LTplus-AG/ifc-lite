@@ -15,6 +15,7 @@
 //! `tests/fixtures/schema_userdefined_rules.json`.
 
 use crate::schema_convert::schema_attribute_names;
+use crate::schema_userdefined_label::{is_token, is_unset, LABEL_CARRIES};
 
 /// The label attributes a USERDEFINED rule can require, one per entity.
 pub(crate) const LABELS: &[&str] = &["ObjectType", "ElementType", "ProcessType", "ResourceType"];
@@ -51,10 +52,16 @@ pub(crate) const EXEMPT: &[(&str, &[&str])] = &[
     ]),
 ];
 
-/// `(PredefinedType index, label index)` when `entity_type` (uppercase) has
+/// `(enum index, label index)` when `entity_type` (uppercase) has
 /// the rule in the canonical schema `schema`.
 pub(crate) fn rule(schema: &str, entity_type: &str) -> Option<(usize, usize)> {
     let names = schema_attribute_names(schema, entity_type)?;
+    if schema == "IFC2X3" {
+        if let Some(&(_, _, enumeration, label)) = LABEL_CARRIES.iter().find(|pair| pair.0 == entity_type) {
+            return names.iter().position(|name| *name == enumeration)
+                .zip(names.iter().position(|name| *name == label));
+        }
+    }
     let predefined = names.iter().position(|n| *n == "PredefinedType")?;
     let label = names.iter().position(|n| LABELS.contains(n))?;
     let exempt = EXEMPT.iter().find(|(s, _)| *s == schema).is_some_and(|(_, list)| list.contains(&entity_type));
@@ -66,15 +73,7 @@ pub(crate) fn rule(schema: &str, entity_type: &str) -> Option<(usize, usize)> {
 pub(crate) fn breaks(args: &[String], (predefined, label): (usize, usize)) -> bool {
     args.len() > predefined.max(label)
         && is_token(&args[predefined], ".USERDEFINED.")
-        && is_token(&args[label], "$")
-}
-
-/// True when `slot` is `token` (any case) with only whitespace and comments around it.
-fn is_token(slot: &str, token: &str) -> bool {
-    let bytes = slot.as_bytes();
-    let Some(start) = ifc_lite_core::parser::skip_step_trivia(bytes, 0) else { return false };
-    slot.get(start..start + token.len()).is_some_and(|t| t.eq_ignore_ascii_case(token))
-        && ifc_lite_core::parser::skip_step_trivia(bytes, start + token.len()) == Some(bytes.len())
+        && is_unset(&args[label])
 }
 
 #[cfg(test)]

@@ -19,6 +19,7 @@ use crate::generated::enum_reconciliation::{
     EnumEntityRow, EnumOutcome, IFC2X3_ENUM_SLOTS, IFC4X3_ENUM_SLOTS, IFC4_ENUM_SLOTS,
 };
 use crate::schema_ifc4_slots::Ifc4SlotCheck;
+use crate::schema_userdefined_label::is_unset;
 use crate::step_slot::split_top_level_args;
 use std::collections::BTreeMap;
 
@@ -87,7 +88,7 @@ impl EnumReconciliation {
             let total: usize = self.unlabelled.values().sum();
             let names: Vec<&str> = self.unlabelled.keys().map(String::as_str).collect();
             format!(
-                "{total} record(s) say PredefinedType .USERDEFINED. without the label their rule needs; none is invented: {} (#10780).",
+                "{total} record(s) say .USERDEFINED. without the label their rule needs; none is invented: {} (#10780).",
                 names.join(", ")
             )
         });
@@ -145,7 +146,7 @@ impl EnumReconciliation {
                 EnumOutcome::UserDefined(label) => {
                     values[index] = ".USERDEFINED.".to_string();
                     let label = &mut values[usize::from(label)];
-                    if label.trim() == "$" {
+                    if is_unset(label) {
                         *label = crate::step_text::quoted(&member);
                     } else {
                         self.record(Loss::LabelOccupied, where_);

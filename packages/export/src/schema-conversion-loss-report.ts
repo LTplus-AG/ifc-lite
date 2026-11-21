@@ -30,7 +30,7 @@ import { isStructuralBoundaryCondition, isStructuralAssignmentConversion } from 
 import { NO_ROUND_TRIP, structuralRoundTrip } from './schema-converter-structural-diagnostics.js';
 import { SourceRecords } from './schema-converter-structural-source.js';
 import { varyingTarget } from './schema-converter-structural-varying.js';
-import { materialPropertiesNotWritten } from './schema-converter-material-referent.js';
+import { IFC5_MATERIAL_LAYOUT_MISSING, materialPropertiesNotWritten, omitsIfc5MaterialProperties } from './schema-converter-material-referent.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import {
   convertEntityType,
@@ -96,6 +96,7 @@ export function classifyEntityTypeConversion(
   if (fromSchema === toSchema) return { targetType: upper, kind: 'identity', droppedAttributes: [] };
 
   const newType = convertEntityType(upper, fromSchema, toSchema);
+  if (omitsIfc5MaterialProperties(upper, fromSchema, toSchema)) return { targetType: newType, kind: 'lossy', droppedAttributes: [] };
   const srcAttrs = attrNameTable(fromSchema)?.get(upper);
   // #9668: stiffness fields survive by semantic position and unit, despite
   // renamed Linear/Translational attributes and SELECT wrappers.
@@ -210,9 +211,10 @@ export interface ConversionLossReport {
 
 const MAX_IDS_NAMED = 8;
 
-function describeEntry(entry: ConversionLossEntry): string {
+function describeEntry(entry: ConversionLossEntry, omissionReason?: string): string {
   const ids = entry.expressIds.slice(0, MAX_IDS_NAMED).map((id) => `#${id}`).join(', ');
   const more = entry.expressIds.length > MAX_IDS_NAMED ? `, +${entry.expressIds.length - MAX_IDS_NAMED} more` : '';
+  if (omissionReason) return `${entry.count} × ${entry.sourceType} (${ids}${more}) will be omitted because ${omissionReason}.`;
   const attrs = entry.droppedAttributes.length > 0 ? ` — loses ${entry.droppedAttributes.join(', ')}` : '';
   switch (entry.kind) {
     case 'blocked':
@@ -345,6 +347,8 @@ export function analyzeConversionLoss(
     entries.sort((a, b) => a.sourceType.localeCompare(b.sourceType));
   }
   const hasBlocking = entries.some((e) => e.kind === 'blocked');
+  const describe = (entry: ConversionLossEntry): string => describeEntry(entry,
+    omitsIfc5MaterialProperties(entry.sourceType, fromSchema, toSchema) ? IFC5_MATERIAL_LAYOUT_MISSING : undefined);
   return {
     fromSchema,
     toSchema,
@@ -352,6 +356,6 @@ export function analyzeConversionLoss(
     hasLoss: entries.length > 0,
     hasBlocking,
     describe: () => entries.flatMap((entry) => entry.recordGroups
-      ?.map((group) => describeEntry({ ...entry, ...group })) ?? [describeEntry(entry)]),
+      ?.map((group) => describe({ ...entry, ...group })) ?? [describe(entry)]),
   };
 }

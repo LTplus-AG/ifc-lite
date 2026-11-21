@@ -1,6 +1,6 @@
 --- a/native/smlib-adapter/src/mesh.cpp
 +++ b/native/smlib-adapter/src/mesh.cpp
-@@ -93,7 +93,14 @@
+@@ -94,7 +94,14 @@
          if (static_cast<SmCone*>(surface)->GetCanonical(patch.frame,patch.radius,semi_angle)==SM_SUCCESS &&
              semi_angle==0 && std::isfinite(patch.radius) && patch.radius>0) cylinders[i]=patch;
      }
@@ -12,6 +12,6 @@
      normalize_mesh_diagonals(*mesh,angle,chord,cylinders,canonical_grid(*mesh));
 +    canonical_planar_faces(*mesh,planar);
 +    order_mesh(*mesh);
-     mesh->info.vertex_count = uint32_t(mesh->positions.size()/3);
-     mesh->info.triangle_count = uint32_t(mesh->indices.size()/3);
-     ensure(mesh->info.vertex_count && mesh->info.triangle_count,"nonempty solid produced empty tessellation");
+     // The strict topology report must describe the mesh that is returned, not
+     // the SDK's: a retriangulation that shares one split between back-to-back
+     // faces (a zero-thickness part) gives that diagonal four triangles. Count

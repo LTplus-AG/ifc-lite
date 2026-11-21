@@ -147,7 +147,10 @@ fn check(model: &str, id: u32, part: &ShapePart) -> Result<(), String> {
         triangles.iter().filter(|(f, _)| *f != face)
             .flat_map(|(_, t)| (0..3).map(move |k| (t[k].min(t[(k + 1) % 3]), t[k].max(t[(k + 1) % 3])))).collect()
     };
-    for (face, pair) in faces.iter().filter(|(_, t)| t.len() == 2) {
+    // Only a part without curved faces: a two-triangle cylinder patch can be a
+    // convex coplanar quad too, and the adapter leaves its split to the
+    // cylinder flips (which keep coplanar pairs), not to this rule.
+    for (face, pair) in faces.iter().filter(|(_, t)| t.len() == 2 && !part.curved) {
         let Some([u, q, v, p]) = quad_loop(pair) else { continue; };
         if !planar_strictly_convex(part, [u, q, v, p]) { continue; }
         let rank = |a: u32, b: u32| {
@@ -229,6 +232,9 @@ fn issue_7955_adapter_meshes_are_canonical() {
                 for part in &product.parts {
                     assert!(part.layer.is_none() && !part.halfspace_clipped,
                         "{model}#{}: witness parts must be the adapter mesh unchanged", product.product_id);
+                    // The quad-diagonal rule is checked only on parts without
+                    // curved faces; these fixtures must keep it checked.
+                    assert!(!part.curved, "{model}#{}: witness fixtures must be planar-only", product.product_id);
                     parts += 1;
                     if let Err(error) = check(model, product.product_id, part) { errors.push(error); }
                 }

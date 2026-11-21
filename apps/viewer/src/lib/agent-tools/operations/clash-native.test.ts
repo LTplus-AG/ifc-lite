@@ -199,16 +199,21 @@ describe('native Clash operation parity (#10525 follow-up)', () => {
     assert.equal(useViewerStore.getState().selectedEntityIds.size, 2);
   });
   it('selects the resolved side before framing it (#10795 item 11)', async (t) => {
-    await seedCoincidentWalls(1);
+    await seedCoincidentWalls(2);
+    const { toGlobalId } = useViewerStore.getState();
+    // The fixture seeds shifted meshes and model records, but skips loader registration.
+    useViewerStore.setState({ toGlobalId: (modelId, expressId) =>
+      modelId === 'B' && expressId === 1 ? 101 : toGlobalId(modelId, expressId) });
+    t.after(() => useViewerStore.setState({ toGlobalId }));
     const { run_seq } = value<{ run_seq: number }>(await call('clash.run', runInput(), true));
     const [pair] = useViewerStore.getState().clashResult!.clashes;
-    const ref = useViewerStore.getState().resolveGlobalIdInModel(pair.a.model, pair.a.ref);
-    assert.ok(ref);
+    const side = pair.a.model === 'B' ? 'a' : 'b';
+    assert.equal(pair[side].model, 'B');
     const frame = t.mock.fn(() => {
       const state = useViewerStore.getState();
-      assert.equal(state.selectedEntityId, pair.a.ref);
-      assert.deepEqual(state.selectedEntityIds, new Set([pair.a.ref]));
-      assert.deepEqual(state.selectedEntity, ref);
+      assert.equal(state.selectedEntityId, 101);
+      assert.deepEqual(state.selectedEntityIds, new Set([101]));
+      assert.deepEqual(state.selectedEntity, { modelId: 'B', expressId: 1 });
     });
     const callbacks = useViewerStore.getState().cameraCallbacks;
     let scheduled: FrameRequestCallback | undefined;
@@ -220,7 +225,7 @@ describe('native Clash operation parity (#10525 follow-up)', () => {
     t.after(() => useViewerStore.setState({ cameraCallbacks: callbacks }));
 
     const result = value<{ dispatched: boolean }>(await call('clash.focus', {
-      clash_ids: [pair.id], run_seq, mode: 'highlight', element: 'a',
+      clash_ids: [pair.id], run_seq, mode: 'highlight', element: side,
     }, true));
     assert.equal(result.dispatched, true);
     assert.ok(scheduled);

@@ -44,7 +44,7 @@ export class RaycastEngine {
     /** Flat pieces read back for released geometry (#10264); empty when unused. */
     private readbackMeshes: readonly MeshData[] = [];
     /** The one ray they were prepared for: canvas point and view-projection at set time. */
-    private readbackCoverage: { x: number; y: number; viewProj: Float32Array; width?: number; height?: number } | null = null;
+    private readbackCoverage: { x: number; y: number; view: string } | null = null;
 
     constructor(camera: Camera, scene: RaycastScene, canvas: HTMLCanvasElement) {
         this.camera = camera;
@@ -93,7 +93,7 @@ export class RaycastEngine {
      */
     setReadbackMeshes(meshes: readonly MeshData[] | null, at?: { x: number; y: number }): void {
         this.readbackMeshes = meshes ?? [];
-        this.readbackCoverage = meshes && at ? { ...at, viewProj: this.camera.getViewProjMatrix().m, ...this.cssViewport() } : null;
+        this.readbackCoverage = meshes && at ? { x: at.x, y: at.y, view: this.readbackViewKey() } : null;
     }
 
     /**
@@ -103,23 +103,14 @@ export class RaycastEngine {
      * prepared ray, within a 1.5 CSS px radius under the same view and viewport size, may use them.
      */
     readbackCovers(x: number, y: number): boolean {
-        const at = this.readbackCoverage;
-        const viewport = this.cssViewport(); // the ray through (x, y) also depends on the size it is unprojected in
-        // Not `> 1.5`: a non-finite point (NaN) would compare false and cover every ray.
-        if (!at || !(Math.hypot(at.x - x, at.y - y) <= 1.5) || viewport?.width !== at.width || viewport?.height !== at.height) return false;
-        const now = this.camera.getViewProjMatrix().m;
-        for (let i = 0; i < 16; i++) if (now[i] !== at.viewProj[i]) return false;
-        return true;
+        const at = this.readbackCoverage; // `<= 1.5`, so a NaN distance covers nothing; the view includes the viewport size
+        return at !== null && Math.hypot(at.x - x, at.y - y) <= 1.5 && at.view === this.readbackViewKey();
     }
 
-    /**
-     * The view a readback preparation is made under, as `setReadbackMeshes` stamps it (view-projection and CSS
-     * viewport size). A host captures it before its pick and installs only if it is unchanged, so pieces
-     * chosen for one view are never stamped with a later one.
-     */
+    /** Coverage's view stamp: view-projection plus CSS viewport size. A host installs only while its pick's stamp holds. */
     readbackViewKey(): string {
-        const viewport = this.cssViewport();
-        return `${Array.from(this.camera.getViewProjMatrix().m).join(',')}|${viewport?.width ?? 0}x${viewport?.height ?? 0}`;
+        const v = this.cssViewport();
+        return `${Array.from(this.camera.getViewProjMatrix().m).join(',')}|${v?.width ?? 0}x${v?.height ?? 0}`;
     }
 
     /** Flat candidates near the ray, plus ray-culled instanced occurrences. */

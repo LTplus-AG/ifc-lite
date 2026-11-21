@@ -3040,14 +3040,8 @@ export class Renderer {
     readbackRaycastCovers(x: number, y: number): boolean {
         return this.raycastEngine.readbackCovers(x, y);
     }
-
-    /**
-     * The current view as readback coverage stamps it. Capture it before the pick a readback is prepared
-     * from, and install the pieces (`setReadbackRaycastMeshes`) only while it is unchanged.
-     */
-    readbackRaycastViewKey(): string {
-        return this.raycastEngine.readbackViewKey();
-    }
+    /** The view readback coverage is stamped with: capture it before the pick, install only while it is unchanged. */
+    readbackRaycastViewKey(): string { return this.raycastEngine.readbackViewKey(); }
 
     /**
      * Raycast with magnetic edge snapping: the "stick and slide along edges" experience.

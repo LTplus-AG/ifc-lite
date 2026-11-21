@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "Keep the new released-geometry metadata loadable while reintroducing per-slice area overwrite, which under-reports an entity whose pieces span appends.",
+  "key": "apps/viewer/src/lib/geometry-backing/released-geometry-metadata.ts",
+  "mutation": "tests/evidence/geometry-readback-metadata-10264/behaviour.oracle.patch",
+  "test": "apps/viewer/src/lib/geometry-backing/store-backing-tap.test.ts"
+}

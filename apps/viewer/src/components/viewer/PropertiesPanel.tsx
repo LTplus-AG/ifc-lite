@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { isReleasedMesh } from '@/lib/released-mesh-provenance';
+import { releasedGeometryMetadata } from '@/lib/geometry-backing/released-geometry-metadata';
+import { useReleasedGeometryRevision } from '@/lib/geometry-backing/use-released-geometry-revision';
 import { effectiveTypeProperties, liveTypeOccurrences } from './properties/effectiveTypeProperties';
 import { Suspense, useMemo, useState, useCallback, useEffect } from 'react';
 import { lazyChunk } from '@/lib/lazy-chunk';
@@ -314,6 +317,7 @@ export function PropertiesPanel() {
   // the frame any more than they can about which axis is up.
   const renderFrame = useRenderFrameOffsets();
 
+  const releasedRevision = useReleasedGeometryRevision(); // backed bounds change availability in place (#10264)
   const entityCoordinates = useMemo(() => {
     if (!selectedEntity) return null;
 
@@ -329,9 +333,12 @@ export function PropertiesPanel() {
     let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
     let found = false;
 
+    let released = false;
     for (const mesh of geoResult.meshes) {
       if (mesh.expressId !== targetExpressId) continue;
       found = true;
+      // Released CPU geometry (#10264) has no positions to fold; its backed bounds answer below.
+      if (isReleasedMesh(mesh)) { released = true; continue; }
       const pos = mesh.positions;
       // Positions are in the element's local frame (world = origin + position);
       // fold the per-mesh origin so the reported bbox/centre is in the render
@@ -350,6 +357,13 @@ export function PropertiesPanel() {
     }
 
     if (!found) return null;
+    if (released) {
+      // Same frame as the fold above (`origin + positions`); unavailable is no centre, never NaN.
+      const backed = releasedGeometryMetadata()?.bounds(selectedEntity.modelId === 'legacy' ? '__legacy__' : selectedEntity.modelId, targetExpressId);
+      if (!backed) return null;
+      minX = Math.min(minX, backed.min[0]); minY = Math.min(minY, backed.min[1]); minZ = Math.min(minZ, backed.min[2]);
+      maxX = Math.max(maxX, backed.max[0]); maxY = Math.max(maxY, backed.max[1]); maxZ = Math.max(maxZ, backed.max[2]);
+    }
 
     const coordInfo = geoResult.coordinateInfo;
 
@@ -373,7 +387,7 @@ export function PropertiesPanel() {
       worldZup: { center: worldCenterZup },
       hasLargeCoordinates: (coordInfo?.hasLargeCoordinates ?? false) || !!renderFrame.wasmRtcOffsetIfc,
     };
-  }, [selectedEntity, model, geometryResult, models, renderFrame]);
+  }, [selectedEntity, model, geometryResult, models, renderFrame, releasedRevision]);
 
   // Get entity node - must be computed before early return to maintain hook order
   // IMPORTANT: Use selectedEntity.expressId (original ID) for IfcDataStore lookups

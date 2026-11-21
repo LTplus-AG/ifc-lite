@@ -5,6 +5,7 @@ import type { SaveResult } from '@/lib/scripts/persistence';
 import { useViewerStore } from '@/store';
 import { emptySchema } from './contract';
 import { modelCoordination, coordination, textSchema, idSchema } from './coordination-common';
+const unsavedEdits = (action: string): never => { throw new Error(`The active script has unsaved edits; save it before ${action}.`); };
 export const coordinationScriptSessionOperations = [
   coordination('script.read', 'Inspect saved scripts, active source/revision, native execution state, diagnostics and terminal results.', ['read'], emptySchema, () => {
     const s = useViewerStore.getState(); return { saved: s.savedScripts, active_id: s.activeScriptId, source: s.scriptEditorContent, revision: s.scriptEditorRevision,
@@ -34,7 +35,7 @@ export const coordinationScriptSessionOperations = [
   coordination<{ name: string; source: string }>('script.create', 'Create a saved native script without executing it.', ['configuration'], {
     type: 'object', properties: { name: { type: 'string', minLength: 1, maxLength: 200 }, source: { type: 'string', maxLength: 1000000 } }, required: ['name', 'source'], additionalProperties: false,
   }, (i, c) => c.commit(() => {
-    if (useViewerStore.getState().scriptEditorDirty) throw new Error('The active script has unsaved edits; save it before creating another.');
+    if (useViewerStore.getState().scriptEditorDirty) unsavedEdits('creating another');
     let storage: SaveResult | undefined; const id = useViewerStore.getState().createScript(i.name, i.source, result => { storage = result; });
     if (!id) throw new Error('Native script size or count limit exceeded.'); return { id, storage };
   })),
@@ -53,7 +54,7 @@ export const coordinationScriptSessionOperations = [
   coordination('script.delete', 'Delete one saved script through its native lifecycle; this does not execute any source.', ['configuration'], idSchema, (i, c) => c.commit(() => {
     const s = useViewerStore.getState(); if (!s.savedScripts.some(script => script.id === i.id)) throw new Error('Unknown saved script.');
     // deleteScript resets the editor's dirty flag even for another script, which would let a later open drop these edits.
-    if (s.scriptEditorDirty && s.activeScriptId !== i.id) throw new Error('The active script has unsaved edits; save it before deleting another.');
+    if (s.scriptEditorDirty && s.activeScriptId !== i.id) unsavedEdits('deleting another');
     const storage = s.deleteScript(i.id); return { deleted: i.id, storage }; 
   })),
   coordination('script.undo', 'Undo through the native mounted editor history. Refuses absent editor hosts instead of claiming a silent undo.', ['configuration'], emptySchema, (_, c) => c.commit(() => {

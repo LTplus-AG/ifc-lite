@@ -10,7 +10,7 @@ export async function createViewerSandbox(bim: BimContext, config?: SandboxConfi
   return createSandbox(bim, {
     permissions: { model: true, query: true, viewer: true, mutate: true, store: true, lens: true, export: true, files: true, ...config?.permissions },
     limits: { timeoutMs: 30_000, ...config?.limits },
-    ...(config?.network ? { network: config.network } : {}),
+    network: config?.network,
   });
 }
 /** A fresh QuickJS VM with only query access; no host eval, files, network or model-loading namespace. */

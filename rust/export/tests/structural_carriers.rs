@@ -140,8 +140,8 @@ fn placed_member_axis_round_trips_through_a_profile_carrier_9668() {
         let (round_trip, stats) = export_step_with_stats(downgraded.as_bytes(), &up).unwrap();
         assert!(round_trip.contains(".RIGID_JOINED_MEMBER.,#81)"), "{round_trip}");
         assert!(!round_trip.contains("IFC4 Axis"), "{round_trip}");
-        assert!(!round_trip.contains("#82=IFCGENERALPROFILEPROPERTIES"), "{round_trip}");
-        assert!(!round_trip.contains("#84=IFCDIRECTION"), "{round_trip}");
+        assert!(!round_trip.lines().any(|l| l.starts_with("#82=")), "{round_trip}");
+        assert!(!round_trip.lines().any(|l| l.starts_with("#84=")), "{round_trip}");
         assert_eq!(stats.ifc4_required_slots_unfilled, 0);
     }
 }

@@ -230,7 +230,6 @@ pub fn convert_step_line(
         return Ok(line.to_string());
     }
     let mut checks = checks;
-    // #10763: a downgraded IfcMaterialProperties names one IfcMaterial, or is not written (empty).
     let Some(line) = (match checks.as_deref_mut() { Some(c) => c.materials.apply(express_id, line, cfrom, &mut c.attribute_values_dropped), None => crate::schema_material_referent::MaterialReferents::for_target(cto).apply(express_id, line, cfrom, &mut 0) }) else { return Ok(String::new()) };
     let mut converted = convert_record(&line, cfrom, cto, express_id, checks.as_deref_mut())?;
     converted = crate::schema_retyped::apply(converted, cfrom, cto, checks.as_deref_mut().map(|c| &mut c.attribute_values_dropped)); // #10778

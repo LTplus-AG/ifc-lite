@@ -64,12 +64,12 @@ export class MaterialReferents {
   resolve(id: number, from: string): number | null {
     const source = this.source, type = source.typeOf(id);
     if (!type) return null;
-    if (type === 'IFCMATERIAL') return id;
+    if (type === 'IFCMATERIAL') return source.slots(id) ? id : null;
     const table = attrNameTable(from as IfcSchemaVersion), names = table?.get(type), slots = source.slots(id);
     if (!names || !slots) return null;
     const material = (slot: string | undefined) => {
       const ref = slotRef(slot);
-      return ref !== null && source.typeOf(ref) === 'IFCMATERIAL' ? ref : null;
+      return ref !== null && source.typeOf(ref) === 'IFCMATERIAL' && source.slots(ref) ? ref : null;
     };
     const own = names.indexOf('Material');
     if (own >= 0) return material(slots[own]);

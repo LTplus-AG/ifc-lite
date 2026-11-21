@@ -11,16 +11,12 @@ export function compileOperationSchema(schema: Record<string, unknown>) {
   if (!validator) { validator = ajv.compile(schema); compiled.set(schema, validator); }
   return validator;
 }
-function validate(schema: Record<string, unknown>, data: unknown, label: string, refuse: (message: string) => Error) {
+function validate(schema: Record<string, unknown>, data: unknown, refuse: (errors: ValidateFunction['errors']) => Error) {
   const validator = compileOperationSchema(schema);
-  if (!validator(data)) throw refuse(`Invalid ${label}: ${ajv.errorsText(validator.errors)}`);
-}
-function validateInput(id: string, schema: Record<string, unknown>, data: unknown) {
-  const validator = compileOperationSchema(schema);
-  if (!validator(data)) throw invalidInput('invalid-value', operationInputError(id, schema, validator.errors));
+  if (!validator(data)) throw refuse(validator.errors);
 }
 /** Input that fails its schema is the caller's to fix; a result that fails its own schema is the viewer's bug. */
 export function operationValidators(id: string, input: Record<string, unknown>, output: Record<string, unknown>) {
-  return { validate: (data: unknown) => validateInput(id, input, data),
-    validateResult: (data: unknown) => validate(output, data, `${id} output`, message => internal(message)) };
+  return { validate: (data: unknown) => validate(input, data, errors => invalidInput('invalid-value', operationInputError(id, input, errors))),
+    validateResult: (data: unknown) => validate(output, data, errors => internal(`Invalid ${id} output: ${ajv.errorsText(errors)}`)) };
 }

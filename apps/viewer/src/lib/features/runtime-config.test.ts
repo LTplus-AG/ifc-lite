@@ -119,8 +119,21 @@ describe('the version 1 configuration shape', () => {
     assert.deepEqual(parseViewerRuntimeConfig({ version: 1, server: { url: 'https://processor.example' } }, PAGE).server, { url: 'https://processor.example/' });
   });
 
-  it('accepts an http server url only from an http page', () => {
-    assert.deepEqual(parseViewerRuntimeConfig({ version: 1, server: { url: 'http://localhost:8080/ifc' } }, 'http://localhost:5173/viewer/').server, { url: 'http://localhost:8080/ifc' });
+  it('accepts an http server on a non-loopback host from an http page', () => {
+    assert.deepEqual(parseViewerRuntimeConfig({ version: 1, server: { url: 'http://processor.example:8080/ifc' } }, 'http://localhost:5173/viewer/').server, { url: 'http://processor.example:8080/ifc' });
+  });
+
+  it('accepts HTTP loopback servers from an HTTPS page (#10822)', () => {
+    for (const host of ['localhost', '127.0.0.1', '[::1]']) {
+      const url = `http://${host}:8080/ifc`;
+      assert.deepEqual(parseViewerRuntimeConfig({ version: 1, server: { url } }, PAGE).server, { url });
+    }
+    for (const host of ['localhost.example.com', '192.168.1.1', '[::2]']) {
+      assert.throws(
+        () => parseViewerRuntimeConfig({ version: 1, server: { url: `http://${host}/ifc` } }, PAGE),
+        { code: 'invalid' },
+      );
+    }
   });
 
   it('accepts exactly the hashes the server client accepts', () => {

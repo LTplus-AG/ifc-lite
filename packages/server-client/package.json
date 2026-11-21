@@ -10,6 +10,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./processed-model": {
+      "types": "./dist/processed-model.d.ts",
+      "import": "./dist/processed-model.js",
+      "default": "./dist/processed-model.js"
     }
   },
   "scripts": {

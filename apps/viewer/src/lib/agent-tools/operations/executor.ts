@@ -51,7 +51,24 @@ function collect(result: Promise<unknown>, delivery: ResultDelivery, context: To
     context.claimDelivery(claim, commitState);
     return result;
   }
-  return result.then(value => { claim.deliver(); return value; }, error => { claim.drop(); throw error; });
+  const { signal } = context;
+  return new Promise((resolve, reject) => {
+    const cancel = () => { claim.drop(); reject(cancelledDispatch()); };
+    const abort = () => { if (!commitState.committed && !commitState.committing) cancel(); };
+    if (signal?.aborted) abort();
+    else signal?.addEventListener('abort', abort, { once: true });
+    const detach = () => signal?.removeEventListener('abort', abort);
+    void result.then(value => {
+      detach();
+      if (signal?.aborted && !commitState.committed) { cancel(); return; }
+      claim.deliver();
+      resolve(value);
+    }, error => {
+      detach();
+      claim.drop();
+      reject(error);
+    });
+  });
 }
 
 /** A cause's details without its own `reason`, which a committed failure must not carry as a retry hint. */
@@ -201,14 +218,21 @@ export async function executeOperation(
     }
     return value;
   };
-  const retained: Array<{ undo: () => void; deliver?: () => void }> = [];
-  const retain = (undo: () => void, deliver?: () => void) => { retained.push({ undo, deliver }); };
+  const retained: Array<{ undo: () => void; deliver?: () => void | false }> = [];
+  const retain = (undo: () => void, deliver?: () => void | false) => { retained.push({ undo, deliver }); };
   const operationContext = { checkpoint: check, model, host, commit, commitAsync, ownGeometry, retain, artifacts };
   const settleResult = (delivered: boolean) => {
+    let replayable = true;
     for (const record of retained.splice(0)) {
-      const settle = delivered ? record.deliver : record.undo;
-      try { settle?.(); } catch (error) { console.warn('[viewer operation] settling a retained result failed', error); }
+      try {
+        if (delivered) {
+          if (record.deliver?.() === false) replayable = false;
+        } else {
+          record.undo();
+        }
+      } catch (error) { console.warn('[viewer operation] settling a retained result failed', error); }
     }
+    return replayable;
   };
   const discardResult = () => settleResult(false);
   const accepted = (result: unknown, finalCheck: () => void): unknown => {
@@ -238,7 +262,7 @@ export async function executeOperation(
       if (reversible && acceptedForDelivery) forget();
       discardResult();
     };
-    const delivery = new ResultDelivery(() => settleResult(true), release);
+    const delivery = new ResultDelivery(() => { if (!settleResult(true)) forget(); }, release);
     if (executionAbort) demand = delivery;
     const run = async () => {
       // Nothing native has run yet, so a keyed retry of this failure may run again (#10669).
@@ -253,9 +277,8 @@ export async function executeOperation(
           message: error instanceof Error ? error.message : 'Operation failed after committing changes.',
           details: { reason: 'internal', ...(error instanceof ToolExecutionError ? { cause_code: error.code, cause_reason: error.details?.reason, cause_details: withoutReason(error.details) } : {}),
             committed: true, revision: activeRevision, operation_id: entry.id, model_id: model?.id ?? null } });
-        const cancelled = executionAbort?.signal.aborted || isAbortError(error)
-          || (error instanceof ToolExecutionError && error.code === ToolErrorCode.CANCELLED);
-        if (reversible && (retained.length > 0 || cancelled)) forget();
+        // Reads and candidate-only handlers have no durable effects to deduplicate.
+        if (reversible) forget();
         discardResult();
         throw operationFailure(error, entry.id);
       } finally {
@@ -269,7 +292,7 @@ export async function executeOperation(
     if (key === undefined) return collect(start(), delivery, context, commitState);
     const prior = requests ?? new Map<string, AppliedRequest>();
     applied.set(host, prior);
-    // Keep failed outcomes once the native handler ran: retrying a partially dispatched UI action must not duplicate it.
+    // Keep failed outcomes for irreversible native actions to avoid replaying partial effects.
     if (prior.size >= 100) throw unavailable('Host idempotency capacity reached (100 requests). Reconnect before creating further keyed requests.');
     const request: AppliedRequest = { signature, store: model?.store, result: start(), delivery, executionSignal: executionAbort?.signal, commitState };
     // Registered before run() starts, so even an immediate pre-dispatch failure can remove it.

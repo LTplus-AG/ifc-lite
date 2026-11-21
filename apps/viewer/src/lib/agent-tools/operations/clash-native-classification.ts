@@ -49,19 +49,21 @@ interface Review {
   apply?: ClashGroupApplyPlan;
 }
 const REVIEW_CAPACITY = 32;
-const hosts = new WeakMap<ToolHost, { reviews: Map<string, Review>; staged: Set<string> }>();
+const hosts = new WeakMap<ToolHost, { reviews: Map<string, Review>; staged: Set<string>; staleTokens: Map<string, true> }>();
 function ownedReviews(c: ViewerOperationContext) {
   let owned = hosts.get(c.host);
   if (!owned) {
-    const reviews = new Map<string, Review>(), staged = new Set<string>();
-    owned = { reviews, staged };
+    const reviews = new Map<string, Review>(), staged = new Set<string>(), staleTokens = new Map<string, true>();
+    owned = { reviews, staged, staleTokens };
     hosts.set(c.host, owned);
-    c.host.lifetimeSignal?.addEventListener('abort', () => { reviews.clear(); staged.clear(); }, { once: true });
+    c.host.lifetimeSignal?.addEventListener('abort', () => { reviews.clear(); staged.clear(); staleTokens.clear(); }, { once: true });
   }
   return owned;
 }
 function review(c: ViewerOperationContext, token: string) {
-  const value = ownedReviews(c).reviews.get(token);
+  const { reviews, staleTokens } = ownedReviews(c);
+  const value = reviews.get(token);
+  if (staleTokens.has(token)) throw stale('Native classification findings changed.');
   if (!value) throw invalidInput('unknown-target', 'Unknown native classification review.');
   if (value.result !== useViewerStore.getState().clashResult) throw stale('Native classification findings changed.');
   return value;
@@ -92,7 +94,7 @@ export const clashClassificationOperations = [
       assertToolActive(c);
       const s = useViewerStore.getState();
       if (!s.clashResult) throw unavailable('No current native clash result.');
-      const { reviews, staged } = ownedReviews(c);
+      const { reviews, staged, staleTokens } = ownedReviews(c);
       if (staged.size >= REVIEW_CAPACITY) throw unavailable('Too many classification reviews await delivery.');
       const plan = planClassification(s.clashResult.clashes),
         evidence = captureEvidence('clash');
@@ -102,7 +104,13 @@ export const clashClassificationOperations = [
       c.retain(
         () => { staged.delete(token); },
         () => {
-          if (!staged.delete(token) || prepared.result !== useViewerStore.getState().clashResult) return;
+          if (!staged.delete(token)) return false;
+          if (prepared.result !== useViewerStore.getState().clashResult) {
+            // The reply can already be on the wire. Keep its stale identity without displacing a live review.
+            evictOldest(staleTokens, REVIEW_CAPACITY);
+            staleTokens.set(token, true);
+            return false;
+          }
           evictOldest(reviews, REVIEW_CAPACITY);
           reviews.set(token, prepared);
         },

@@ -344,6 +344,39 @@ describe('native Clash operation parity (#10525 follow-up)', () => {
     value(await sample(next));
   });
 
+  it('#11029: an acknowledged stale review has a stale token and releases its key', async () => {
+    value(await call('clash.run', runInput(), true));
+    let claim: import('../delivery').DeliveryClaim | undefined;
+    const prepare = () => dispatchMainViewerTool(host, 'viewer_operation_execute', {
+      operation_id: 'clash.classification.prepare', input: {}, idempotency_key: 'review',
+    }, { canEdit: () => true, onDelivery: next => { claim = next; } });
+    const { token } = value<{ token: string }>(await prepare());
+    assert.ok(claim);
+    value(await call('clash.run', runInput(), true));
+    claim.deliver();
+    const sample = await call('clash.classification.sample', { token, answer: '{}' }, true);
+    assert.equal(sample.errorCode, 'STATE_CHANGED', sample.text);
+    const fresh = value<{ token: string }>(await prepare());
+    assert.notEqual(fresh.token, token);
+    claim.drop();
+  });
+
+  it('#11029: a keyed classification prepare retries after a staged slot frees', async () => {
+    value(await call('clash.run', runInput(), true));
+    const claims: import('../delivery').DeliveryClaim[] = [];
+    const prepare = (idempotency_key?: string) => dispatchMainViewerTool(host, 'viewer_operation_execute', {
+      operation_id: 'clash.classification.prepare', input: {}, idempotency_key,
+    }, { canEdit: () => true, onDelivery: claim => { claims.push(claim); } });
+    try {
+      for (let i = 0; i < 32; i++) value(await prepare());
+      assert.match((await prepare('capacity')).text, /Too many classification reviews await delivery/);
+      claims.shift()?.drop();
+      value(await prepare('capacity'));
+    } finally {
+      for (const claim of claims) claim.drop();
+    }
+  });
+
   it('#11029: a keyed classification sample survives its initiating caller cancelling', async t => {
     value(await call('clash.run', runInput(), true));
     const { token } = value<{ token: string }>(await call('clash.classification.prepare', {}, true));

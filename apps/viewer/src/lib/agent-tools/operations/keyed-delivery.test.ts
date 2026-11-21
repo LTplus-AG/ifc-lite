@@ -35,6 +35,37 @@ const request = {
 };
 const tokenOf = (result: unknown) => (result as { result: { token: string } }).result.token;
 
+for (const keyed of [false, true]) {
+  test(`#11029: direct ${keyed ? 'keyed' : 'unkeyed'} cancellation settles before native work returns`, async t => {
+    const host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));
+    const model = usableModel(resolveModel(host, request), 'store', request.operation_id);
+    const entry = viewerOperation(request.operation_id);
+    const execute = entry.execute.bind(entry);
+    const entered = deferred<AbortSignal>(), resume = deferred();
+    const undone = deferred();
+    t.after(() => resume.resolve());
+    t.mock.method(entry, 'execute', async (input: unknown, context: Parameters<typeof execute>[1]) => {
+      const result = await execute(input, { ...context, retain: undo => context.retain(() => { undo(); undone.resolve(); }) });
+      assert.ok(context.signal);
+      entered.resolve(context.signal);
+      await resume.promise;
+      return result;
+    });
+    const controller = new AbortController();
+    const result = executeOperation(host, model, { ...request, idempotency_key: keyed ? request.idempotency_key : undefined },
+      { signal: controller.signal }, true);
+    const nativeSignal = await Promise.race([entered.promise, result.then(() => { throw new Error('Prepare ended before its gate'); })]);
+    const rejected = assert.rejects(result, { code: 'CANCELLED' });
+    controller.abort();
+    assert.equal(nativeSignal.aborted, true);
+    // One turn is sufficient to observe the cancellation without releasing the handler.
+    const pending = Symbol('pending');
+    assert.notEqual(await Promise.race([rejected, new Promise(resolve => setImmediate(() => resolve(pending)))]), pending);
+    resume.resolve();
+    await undone.promise;
+  });
+}
+
 for (const { callers, drops, signals } of cases) {
   for (const abandoned of drops) for (const signalled of signals) for (const phase of phases) {
     test(`#11029: ${callers.length} claims, drop ${abandoned.join('+')}, signals ${signalled.join('+') || 'none'}, ${phase}`, async t => {

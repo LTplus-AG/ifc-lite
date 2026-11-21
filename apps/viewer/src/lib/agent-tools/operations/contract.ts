@@ -25,8 +25,9 @@ export interface ViewerOperationContext extends ToolCallContext {
   /** Register how to remove what this call stored for its caller, such as a prepared candidate under a new token. The
    * executor runs it when the caller never receives the result: a refused final check, a handler that throws after
    * storing, or a background job refused or evicted before collection. A committed write keeps its effects.
-   * The optional delivery callback publishes provisional state when the first caller receives the result. */
-  retain(undo: () => void, deliver?: () => void): void;
+   * The optional delivery callback publishes provisional state when the first caller receives the result.
+   * Returning false releases its replay key when the acknowledged result is already stale. */
+  retain(undo: () => void, deliver?: () => void | false): void;
   progress?: (detail: { phase: string; done: number; total: number }) => void;
 }
 export interface OperationContext extends ViewerOperationContext { model: ReadyModel }

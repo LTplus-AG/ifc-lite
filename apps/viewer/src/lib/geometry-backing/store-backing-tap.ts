@@ -18,7 +18,7 @@ import { PreTapSupply } from './pre-tap-supply';
 import { isReleasedMesh } from '@/lib/released-mesh-provenance';
 import { applyFederationOffsetToShard } from '@/components/viewer/instancedFederationOffset';
 import { addMeshAreas } from './released-mesh-areas';
-import { backingStatusRow, flatRecordsComplete, type ModelBackingStatus, type TapState, type Tracked } from './store-backing-tap-model';
+import { appendMembers, backingStatusRow, flatRecordsComplete, type ModelBackingStatus, type TapState, type Tracked } from './store-backing-tap-model';
 import { acceptStatement, admitShard, statementVoided, supplyPoint, type SupplyPoint } from './instanced-resupply';
 import { notifyReleasedGeometryMetadataChanged, setReleasedGeometryMetadata } from './released-geometry-metadata';
 import { type PreviousGeneration, replayStoreList } from './generation-replay';
@@ -183,11 +183,11 @@ export class StoreGeometryBackingTap {
     const begun = (previous?.chain ?? Promise.resolve()).then(async () => {
       next.backing = await this.registry.begin(key, this.options);
       if (next.replaced) next.backing.supersede(); // replaced again before it began
-      // A re-supplying predecessor holds only fresh shards (never pre-loss ones); `withhold` keeps all the scene drew.
       if (shards === 'withhold' || (shards === 'carry' && (!next.instancedLost || next.resupply))) {
-        // Resolved now, after the chain: a failed or unstarted predecessor falls back to the acknowledged one.
+        // Resolved after the chain. A re-supplying predecessor holds only fresh shards; `withhold` keeps all the scene drew.
         const source = shards === 'withhold' || next.resupply || (previous?.backing && !previous.failure) ? previous : this.acknowledged.get(modelId);
-        if (!source?.backing || source.failure || (source.instancedLost && !next.resupply && shards !== 'withhold')) next.instancedLost = true;
+        // A failed predecessor may have drawn shards the acknowledged fallback lacks: lost, never sealed without them (r4655067145).
+        if (!source?.backing || source.failure || (previous?.failure && source !== previous) || (source.instancedLost && !next.resupply && shards !== 'withhold')) { next.instancedLost = true; next.lostAt ??= supplyPoint(modelId); }
         else await carryBackedShards(source, next, withheld); // `carry-shards.ts`
       }
       next.carrying = false;
@@ -225,7 +225,7 @@ export class StoreGeometryBackingTap {
     tracked.consumed = to;
     // Snapshot the suffix now: the array keeps growing in place.
     const slice = meshes.slice(from, to);
-    tracked.members.push(...slice);
+    appendMembers(tracked.members, slice);
     addMeshAreas(tracked.areas, slice); // while the arrays are resident
     this.enqueue(tracked, async () => {
       for (let i = 0; i < slice.length; i += APPEND_BATCH) {
@@ -351,7 +351,7 @@ export class StoreGeometryBackingTap {
       tracked.sealing = true; // from here its writer closes: a late append or shard stages a successor
       await this.settle(tracked, backing.acknowledge().then(async (ack) => {
         // Only a verified, complete, still-current replacement whose statement still holds may retire what it replaces.
-        if (!this.registry.verify(ack) || this.tracked.get(modelId) !== tracked || tracked.failure || voided(modelId, tracked) || hasPendingInstancedShards(modelId)) return;
+        if (!this.registry.verify(ack) || this.tracked.get(modelId) !== tracked || tracked.failure || voided(modelId, tracked) || hasPendingInstancedShards(modelId) || this.missedShards(modelId)) return; // an upload during the wait: r4655067178
         acknowledged ||= this.acknowledged.get(modelId) !== tracked;
         tracked.supplied = undefined;
         this.acknowledged.set(modelId, tracked);

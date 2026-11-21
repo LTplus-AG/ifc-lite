@@ -82,3 +82,6 @@ export function flatRecordsComplete(tracked: Tracked | undefined): boolean {
   return !!tracked?.flatSealed && !!b && !tracked.failure && !tracked.stale && b.isCurrent && !b.writer.error && !b.writer.hasUnsealed
     && b.writer.pendingBytes === 0 && b.directory.chunks.every((c) => c.state === 'durable');
 }
+
+/** Appends a generation's new members one by one: spreading a large suffix (~100k+) into one call overflows the stack (r4655067160). */
+export function appendMembers(target: MeshData[], items: readonly MeshData[]): void { for (const item of items) target.push(item); }

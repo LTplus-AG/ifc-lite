@@ -786,6 +786,51 @@ describe('store geometry backing tap (test/debug only)', () => {
     await tap.stop();
   });
 
+  it('#10888 r4655067145 a successor never seals complete without a shard its failed predecessor drew', async () => {
+    const list = [mesh(1)];
+    const store = storeWith({ fp: list });
+    const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    try {
+      enqueueInstancedShards('fp', [shardBytes(5)], instancedShardGeneration());
+      drawAll();
+      await tap.seal(); // acknowledged with shard A (entity 5)
+      append(store, 'fp', [mesh(2)]); // a successor carries A
+      enqueueInstancedShards('fp', [shardBytes(6)], instancedShardGeneration()); // shard B, drawn, only in that successor
+      drawAll();
+      await tap.whenIdle();
+      tap.backing('fp')!.writer.append = async () => { throw new Error('disk full'); }; // the successor's writer fails
+      append(store, 'fp', [mesh(3)]);
+      await tap.whenIdle();
+      // A flat edit: the next generation would fall back to the acknowledged one, which lacks B.
+      store.setState({ models: new Map([['fp', { geometryResult: { meshes: [...list] }, idOffset: 0 }]]) });
+      await tap.whenIdle();
+      const [status] = await tap.seal();
+      assert.equal(status.complete, false, 'never acknowledged complete without the failed generation\'s drawn shard');
+    } finally { await tap.stop(); }
+  });
+
+  it('#10888 r4655067178 a shard revision noted while the successor acknowledges never retires the last acknowledged generation', async () => {
+    const store = storeWith({ ackmiss: [mesh(1)] });
+    const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    try {
+      await tap.seal();
+      const first = tap.replaySource('ackmiss')!.backing!;
+      append(store, 'ackmiss', [mesh(2)]); // a successor stages beside the acknowledged generation
+      await tap.whenIdle();
+      const successor = tap.backing('ackmiss')!;
+      assert.notEqual(successor, first);
+      const acknowledge = successor.acknowledge.bind(successor);
+      successor.acknowledge = async () => {
+        const pending = acknowledge();
+        noteInstancedShardModel('ackmiss'); // a direct snapshot upload: the revision moves with no queue event
+        return pending;
+      };
+      await tap.seal();
+      assert.equal(tap.replaySource('ackmiss')?.backing, first, 'an unaccounted upload never retires the last acknowledged backing');
+      assert.equal(first.isDurablyComplete, true, 'and its records stay durable');
+    } finally { await tap.stop(); }
+  });
+
   it('#10888 r4647508608 an in-place append while seal() awaits the acknowledgement is never acknowledged without it', async () => {
     const list = [mesh(1, 0), mesh(2, 1)];
     const store = storeWith({ sa: list });

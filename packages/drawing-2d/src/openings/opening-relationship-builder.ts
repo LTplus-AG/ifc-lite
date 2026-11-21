@@ -14,8 +14,13 @@ import type {
   EntityMetadata,
   DoorOperationType,
   WindowPartitioningType,
-  Vec3,
 } from '../types.js';
+import { parseDoorOperation, parseWindowPartitioning } from './operation-types.js';
+
+function psetValue(properties: Record<string, unknown>, pset: string, name: string): unknown {
+  const set = properties[pset];
+  return set !== null && typeof set === 'object' && name in set ? Reflect.get(set, name) : undefined;
+}
 
 /**
  * Builder for creating OpeningRelationships from raw relationship data
@@ -137,34 +142,20 @@ export class OpeningRelationshipBuilder {
     properties: Record<string, unknown>,
     typeOperationType?: string
   ): DoorOperationType {
-    const psets = properties['Pset_DoorCommon'] as Record<string, unknown> | undefined;
-    const stated = (v: unknown): DoorOperationType | null => {
-      if (typeof v !== 'string') return null;
-      const t = v.replace(/\./g, '').trim().toUpperCase();
-      return t === '' || t === 'NOTDEFINED' ? null : (t as DoorOperationType);
-    };
     return (
-      stated(properties['OperationType']) ??
-      stated(psets?.['OperationType']) ??
-      stated(typeOperationType) ??
-      'SINGLE_SWING_LEFT' // Default
+      parseDoorOperation(properties['OperationType']) ??
+      parseDoorOperation(psetValue(properties, 'Pset_DoorCommon', 'OperationType')) ??
+      parseDoorOperation(typeOperationType) ??
+      'SINGLE_SWING_LEFT'
     );
   }
 
   private extractWindowPartitioning(properties: Record<string, unknown>): WindowPartitioningType {
-    // Look for PartitioningType in properties (IfcWindow's own attribute)
-    const partitioningType = properties['PartitioningType'] as string | undefined;
-    if (partitioningType) {
-      return partitioningType as WindowPartitioningType;
-    }
-
-    // Look in nested property sets
-    const psets = properties['Pset_WindowCommon'] as Record<string, unknown> | undefined;
-    if (psets?.['PartitioningType']) {
-      return psets['PartitioningType'] as WindowPartitioningType;
-    }
-
-    return 'SINGLE_PANEL'; // Default
+    return (
+      parseWindowPartitioning(properties['PartitioningType']) ??
+      parseWindowPartitioning(psetValue(properties, 'Pset_WindowCommon', 'PartitioningType')) ??
+      'SINGLE_PANEL'
+    );
   }
 }
 

@@ -342,14 +342,8 @@ export type {
 // ARCHITECTURAL SYMBOLS
 // ═══════════════════════════════════════════════════════════════════════════
 
-export {
-  DoorSymbolGenerator,
-  WindowSymbolGenerator,
-  SymbolRenderer,
-  generateDoorSymbol,
-  generateWindowSymbol,
-  generateStairArrow,
-} from './symbols/index.js';
+export { DoorSymbolGenerator, WindowSymbolGenerator, SymbolRenderer, generateDoorSymbol, generateWindowSymbol, generateStairArrow } from './symbols/index.js';
+export type { PlanSymbol, PlanOpeningInfo, PlanSymbolOptions } from './symbols/opening-symbols.js';
 
 export type {
   // Symbol types

@@ -175,7 +175,7 @@
    565 packages/drawing-2d/src/gpu-section-cutter.ts
    470 packages/drawing-2d/src/graphic-overrides/presets.ts
    499 packages/drawing-2d/src/graphic-overrides/rule-engine.ts
-   570 packages/drawing-2d/src/index.ts
+   564 packages/drawing-2d/src/index.ts
    436 packages/drawing-2d/src/line-merger.ts
    417 packages/drawing-2d/src/object-styles.ts
    753 packages/drawing-2d/src/polygon-builder.ts
@@ -183,9 +183,9 @@
    403 packages/drawing-2d/src/sheet/scale-stamp.ts
    599 packages/drawing-2d/src/sheet/title-block-renderer.ts
    489 packages/drawing-2d/src/styles.ts
-   498 packages/drawing-2d/src/svg-exporter.ts
+   480 packages/drawing-2d/src/svg-exporter.ts
    530 packages/drawing-2d/src/symbols/door-symbol.ts
-   807 packages/drawing-2d/src/types.ts
+   805 packages/drawing-2d/src/types.ts
    592 packages/export/src/effective-index.ts
    680 packages/export/src/ifc5-exporter.ts
   1527 packages/export/src/merged-exporter.ts

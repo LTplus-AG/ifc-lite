@@ -632,6 +632,8 @@ const SOURCES_10763 = {
     "#34=IFCLIBRARYINFORMATION('Lib','1',#2,$,$);",
     "#40=IFCIMAGETEXTURE(.T.,.T.,.TEXTURE.,$,'tex.png');",
     "#41=IFCPERFORMANCEHISTORY('0XvctVUKr0kugbFTf53O9L',#5,'History',$,$,'Operation');",
+    // #10777: an IFC2X3 subtype IFC4 deleted, written as IfcMaterialProperties.
+    "#44=IFCMATERIAL('Steel');", "#45=IFCEXTENDEDMATERIALPROPERTIES(#44,(#27),'d','Pset_x');",
   ],
   IFC4: [
     "#24=IFCTASK('2YvctVUKr0kugbFTf53O9L',#5,'Task',$,$,'T-1',$,'Open',$,.F.,1,$,.CONSTRUCTION.);",

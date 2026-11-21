@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import '@/test/setup-dom.js';
+import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
 import { createBimContext } from '@ifc-lite/sdk';
@@ -12,6 +13,11 @@ import { wallFixture } from '@/test/ids-studio-fixture';
 import { seedAuthoringSample, SAMPLE_MODEL } from '@/test/authoring-sample-fixture';
 import { setFieldOp, setSpecTextOp } from '@/lib/ids-studio/ops';
 import { loadIdsStudioRuntime } from '@/lib/ids-studio/runtime-loader';
+import { IDS_DRAFT_MAX_MIB, type IdsStudioDraft } from '@/lib/ids-studio/draft-codec';
+import { useIdsStudioDraftLibrary } from '@/lib/ids-studio/draft-library';
+import { closeIdsDraft, switchIdsDraft } from '@/lib/ids-studio/draft-viewer';
+import { readContentRows } from '@/lib/storage/content-database';
+import { refuseContentWrites } from '@/test/content-fixture';
 import { createMainViewerToolHost } from '../main-viewer-host';
 import { dispatchMainViewerTool } from '../main-viewer-dispatch';
 import { viewerOperation } from './registry';
@@ -27,7 +33,7 @@ async function call<T>(id: string, input: unknown = {}, write = false): Promise<
 describe('complete native IDS Studio operation vocabulary (#10525 follow-up)', () => {
   beforeEach(async () => {
     await seedAuthoringSample(); fixture = await wallFixture(); await loadIdsStudioRuntime();
-    useViewerStore.setState({ idsStudioState: fixture.state, idsStudioContexts: fixture.contexts, idsStudioRevision: 0, idsStudioRejection: null });
+    useViewerStore.setState({ idsStudioState: fixture.state, idsStudioContexts: fixture.contexts, idsStudioRevision: 0, idsStudioDraftId: null, idsStudioRejection: null });
     host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));
   });
   it('previews every op through the authoritative gate, applies once and uses one native Undo entry', async () => {
@@ -56,6 +62,13 @@ describe('complete native IDS Studio operation vocabulary (#10525 follow-up)', (
     assert.equal(result.isError, true); assert.equal(useViewerStore.getState().idsStudioState!.doc.ids.specifications[0].name, 'Concurrent');
     const malformed = await dispatchMainViewerTool(host, 'viewer_operation_inspect', { operation_id: 'ids.operations.prepare', input: { document_revision: 1, ops_json: '[{"kind":"constructor"}]' } });
     assert.equal(malformed.isError, true);
+  });
+  it('refuses malformed IDSZ base64 as caller input (#10871)', async () => {
+    const result = await dispatchMainViewerTool(host, 'viewer_operation_inspect', {
+      operation_id: 'ids.document.prepare', input: { format: 'idsz', content: '!', document_revision: 0 },
+    });
+    assert.equal(result.errorCode, 'INVALID_INPUT', result.text);
+    assert.equal((result.structured as { reason: string }).reason, 'invalid-value');
   });
   it('authors, lints and exports IDS with no IFC model loaded', async () => {
     useViewerStore.setState({ models: new Map(), ifcDataStore: null, activeModelId: null });
@@ -115,6 +128,55 @@ describe('complete native IDS Studio operation vocabulary (#10525 follow-up)', (
     await assert.rejects(runIdsBcfExport({ ...params, signal: controller.signal,
       setBcfExportProgress: progress => { if (progress?.phase === 'writing') controller.abort(); }, emit: () => { cancelledEmits++; } }), { name: 'AbortError' });
     assert.equal(cancelledEmits, 0);
+  });
+  it('refuses to close or replace an IDS whose draft storage refused, then closes once it saves (#11013)', async () => {
+    useViewerStore.getState().idsStudioOpen(fixture.doc);
+    const draftId = useViewerStore.getState().idsStudioDraftId!;
+    const refusal = refuseContentWrites();
+    const execute = (operation_id: string, input: unknown) => dispatchMainViewerTool(host, 'viewer_operation_execute', { operation_id, input }, { canEdit: () => true });
+    try {
+      useViewerStore.getState().idsStudioDispatch([setSpecTextOp(fixture.specId, 'name', 'Unsaved walls')]);
+      const revision = useViewerStore.getState().idsStudioRevision;
+      const closed = await execute('ids.document.close', { document_revision: revision });
+      assert.equal(closed.isError, true); assert.match(closed.text, /storage refused the write/);
+      const replacement = await call<{ token: string }>('ids.document.prepare', { format: 'new', content: 'Replacement', document_revision: revision });
+      const replaced = await execute('ids.candidate.apply', { token: replacement.token });
+      assert.equal(replaced.isError, true); assert.match(replaced.text, /storage refused the write/);
+      // The same refusal and retry hint survive both agent operation paths (#10871).
+      for (const result of [closed, replaced]) {
+        assert.equal(result.errorCode, 'INTERNAL_ERROR');
+        assert.deepEqual(result.structured, { reason: 'internal', save: 'refused' });
+        assert.match(result.text, /Retry/);
+      }
+      const live = useViewerStore.getState();
+      assert.equal(live.idsStudioDraftId, draftId); assert.equal(live.idsStudioState!.doc.ids.specifications[0].name, 'Unsaved walls');
+      await closeIdsDraft(async () => true);
+      assert.equal(useViewerStore.getState().idsStudioState, null);
+      const unsavedDraft = useIdsStudioDraftLibrary.getState().entries.find(entry => entry.id === draftId);
+      assert.ok(unsavedDraft);
+      await switchIdsDraft(unsavedDraft);
+      assert.equal(useViewerStore.getState().idsStudioState?.doc.ids.specifications[0].name, 'Unsaved walls');
+      const closeAfterRestore = await execute('ids.document.close', { document_revision: useViewerStore.getState().idsStudioRevision });
+      assert.equal(closeAfterRestore.isError, true);
+      assert.match(closeAfterRestore.text, /storage refused the write/);
+    } finally {
+      refusal.mock.restore();
+    }
+    await call('ids.document.close', { document_revision: useViewerStore.getState().idsStudioRevision }, true);
+    assert.equal(useViewerStore.getState().idsStudioState, null);
+    const saved = (await readContentRows('idsStudioDrafts')).find(row => row.id === draftId)?.payload as IdsStudioDraft | undefined;
+    assert.ok(saved?.document.includes('Unsaved walls'), 'close waited for the durable draft write');
+  });
+  it('refuses agent close without a retry hint when the draft can never be saved (#11013)', async () => {
+    useViewerStore.getState().idsStudioOpen(fixture.doc);
+    const outcome = useViewerStore.getState().idsStudioDispatch([setSpecTextOp(fixture.specId, 'name', 'x'.repeat(IDS_DRAFT_MAX_MIB * 1024 * 1024 + 1))]);
+    assert.equal(outcome.ok, true);
+    const closed = await dispatchMainViewerTool(host, 'viewer_operation_execute', { operation_id: 'ids.document.close',
+      input: { document_revision: useViewerStore.getState().idsStudioRevision } }, { canEdit: () => true });
+    assert.equal(closed.isError, true); assert.match(closed.text, /too large/); assert.doesNotMatch(closed.text, /Retry/);
+    assert.equal(closed.errorCode, 'INTERNAL_ERROR');
+    assert.deepEqual(closed.structured, { reason: 'internal', save: 'tooLarge' });
+    assert.notEqual(useViewerStore.getState().idsStudioState, null);
   });
   it('authors an independent Manual checklist without a model and rejects stale library edits', async () => {
     useViewerStore.setState({ models: new Map(), ifcDataStore: null, activeModelId: null });

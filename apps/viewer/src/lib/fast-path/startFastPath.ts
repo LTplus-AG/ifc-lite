@@ -12,7 +12,7 @@ import { compileSharedWasmModule, DEFAULT_GEOM_HASH_TOLERANCE } from '@ifc-lite/
 import { hasSpareParserWorker, isSpareParserWorkerWarming, prepareSpareParser, releaseSpareParserWorker } from '@ifc-lite/parser/browser';
 import { useViewerStore } from '@/store';
 import { getGeomWorkerOverride, resolveLoadTessellationTier } from '@/store/constants';
-import { processedModelRequested, serverUploadsEnabled } from '@/lib/processed-model';
+import { onPendingProcessedModelChange, processedModelRequested, serverUploadsEnabled } from '@/lib/processed-model';
 import { getPerfFlagDefinition, readPerfFlag } from '@/lib/perf/flags';
 import { isFeatureEnabled, type FeatureId } from '@/lib/features';
 import { mayWarmUp, scheduleWhenIdle } from '@/lib/warm-runtime-gate';
@@ -59,24 +59,34 @@ export function pageCanOpenModels(): boolean {
   return MODEL_SOURCES.some((id) => isFeatureEnabled(id)) || Boolean(new URLSearchParams(window.location.search).get('model'));
 }
 
+// The request may precede React mount, or wait for the WebGPU probe. The loader
+// then owns its loading state and releases the warm-up when the attempt settles.
+const isLoading = () => processedModelRequested() || useViewerStore.getState().loading;
+
 /** Start the fast-path runtime once (idempotent). Returns whether it runs. */
 export function startFastPath(): boolean {
   if (runtime) return true;
   if (typeof Worker === 'undefined' || typeof document === 'undefined') return false;
   runtime = createFastPathRuntime({
     // A server-backed build meshes on the server; nothing to prepare here.
-    allowed: () => !serverUploadsEnabled() && !processedModelRequested() && pageCanOpenModels() && mayWarmUp(fastPathSwitch()),
+    allowed: () => !serverUploadsEnabled() && pageCanOpenModels() && mayWarmUp(fastPathSwitch()),
     // Measurement only: `?perf.fastPath=parser` or `=geometry` prepares one spare alone.
     parts: { parser: fastPathSwitch() !== 'geometry', geometry: fastPathSwitch() !== 'parser' },
     whenIdle: scheduleWhenIdle,
-    isLoading: () => useViewerStore.getState().loading,
+    isLoading,
     subscribeLoading: (listener) => {
-      let previous = useViewerStore.getState().loading;
-      return useViewerStore.subscribe((state) => {
-        if (state.loading === previous) return;
-        previous = state.loading;
-        listener(state.loading);
+      let previous = isLoading();
+      const onChange = () => {
+        const loading = isLoading();
+        if (loading === previous) return;
+        previous = loading;
+        listener(loading);
+      };
+      const offStore = useViewerStore.subscribe((state, previousState) => {
+        if (state.loading !== previousState.loading) onChange();
       });
+      const offPending = onPendingProcessedModelChange(onChange);
+      return () => { offStore(); offPending(); };
     },
     isHidden: () => document.visibilityState !== 'visible',
     onVisibilityChange: (listener) => {

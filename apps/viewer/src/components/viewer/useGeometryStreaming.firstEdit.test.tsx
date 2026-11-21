@@ -31,7 +31,7 @@ function Viewport({ renderer }: { renderer: Renderer }) {
   const rendererRef = useRef<Renderer | null>(renderer);
   const geometryBoundsRef = useRef({ min: { x: -100, y: -100, z: -100 }, max: { x: 100, y: 100, z: 100 } });
   const clearColorRef = useRef<[number, number, number, number]>([0, 0, 0, 1]);
-  useGeometryStreaming({ rendererRef, geometry: filtered.filteredGeometry,
+  useGeometryStreaming({ rendererRef, geometry: filtered.sceneGeometry,
     appearanceSourceGeometry: geometry?.meshes, coordinateInfo: geometry?.coordinateInfo,
     geometryVersion: filtered.geometryVersion, geometryContentVersion: s.geometryContentVersion,
     geometryReplacementVersion: filtered.geometryReplacementVersion,

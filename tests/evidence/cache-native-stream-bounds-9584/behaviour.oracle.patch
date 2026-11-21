@@ -1,0 +1,12 @@
+diff --git a/rust/cache/src/geometry/section.rs b/rust/cache/src/geometry/section.rs
+--- a/rust/cache/src/geometry/section.rs
++++ b/rust/cache/src/geometry/section.rs
+@@ -158,7 +158,7 @@ impl SectionWriter {
+             + MIN_HEAD_BYTES
+             + entries * DIRECTORY_ENTRY_BYTES as u64
+             + body_length;
+-        if false && at_least > self.limits.max_bytes {
++        if at_least > self.limits.max_bytes {
+             return Err(CacheError::TooLarge(at_least));
+         }
+         body.append(&chunk.bytes)?;

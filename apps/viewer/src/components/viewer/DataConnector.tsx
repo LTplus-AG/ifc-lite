@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { createModelMutationView } from '@/utils/model-mutation-view';
+import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { useToolDialog, type ToolDialogProps } from './useToolDialog';
 /**
  * Data Connector UI - Import data from CSV files and map to IFC properties
@@ -75,6 +75,7 @@ import { ChangeReviewDialog } from './actions/ChangeReviewDialog';
 import { TableMappingCard } from './actions/TableMappingCard';
 import { DataConnectorMappings, type MappingRow } from './DataConnectorMappings';
 import { useAuthoringOperation } from './authoring-operation';
+import { mutationViewIdentity } from '@/utils/configureMutationView';
 import { importCsvDraft } from './import-csv-draft';
 
 type MatchType = 'globalId' | 'expressId' | 'name' | 'tag' | 'property';
@@ -94,7 +95,6 @@ export function DataConnector(props: ToolDialogProps) {
   const models = useViewerStore(s => s.models);
   const getMutationView = useViewerStore((s) => s.getMutationView);
   const mutationViews = useViewerStore(s => s.mutationViews);
-  const registerMutationView = useViewerStore((s) => s.registerMutationView);
   const collabEditRole = useViewerStore((s) => s.collabRole);
   // Also get legacy single-model state for backward compatibility
   const legacyIfcDataStore = useViewerStore((s) => s.ifcDataStore);
@@ -183,7 +183,7 @@ export function DataConnector(props: ToolDialogProps) {
       setSelectedModelId(defaultAuthoringModelId(modelList, useViewerStore.getState().activeModelId));
     }
   }, [open, modelList, selectedModelId]);
-  const selectedView = mutationViews.get(selectedModelId);
+  const selectedView = mutationViewIdentity(mutationViews.get(selectedModelId));
   const isCurrent = useAuthoringOperation(open, selectedModelId, selectedModel?.ifcDataStore, selectedView);
   const isDraftCurrent = useCallback(() => isCurrent() && draftGeneration === fileReadGeneration.current, [isCurrent, draftGeneration]);
   useEffect(() => { setIsProcessing(false); setImportProgress(null); }, [isDraftCurrent]);
@@ -194,18 +194,8 @@ export function DataConnector(props: ToolDialogProps) {
   // Ensure mutation view exists for selected model
   useEffect(() => {
     if (!open || !selectedModel?.ifcDataStore || !selectedModelId) return;
-
-    // Check if mutation view already exists
-    let mutationView = getMutationView(selectedModelId);
-    if (mutationView) return;
-
-    // Create new mutation view with on-demand property extractor
-    const dataStore = selectedModel.ifcDataStore;
-    mutationView = createModelMutationView(dataStore, selectedModelId);
-
-    // Register the mutation view
-    registerMutationView(selectedModelId, mutationView);
-  }, [open, selectedModel, selectedModelId, getMutationView, registerMutationView]);
+    getOrCreateMutationView(useViewerStore, selectedModelId);
+  }, [open, selectedModel?.ifcDataStore, selectedModelId]);
 
   // Create CsvConnector instance
   const csvConnector = useMemo(() => {

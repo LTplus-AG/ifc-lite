@@ -15,6 +15,12 @@
 
 use crate::buf::Buf;
 
+/// The fewest bytes [`write`] can emit: every optional field absent. A
+/// present option only ever adds bytes, so this is a true lower bound on any
+/// head's `CoordinateInfo` — which is what [`super::section`] needs while it
+/// is still appending chunks and does not yet know the info it will write.
+pub(crate) const MIN_BYTES: usize = 15 * 8 + 1 + 6;
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct CoordinateInfo {
     /// Viewer Y-up.
@@ -83,6 +89,7 @@ mod tests {
         write(&mut buf, &CoordinateInfo::default());
         // 3 + 6 + 6 f64, hasLarge, then six absent presence flags.
         assert_eq!(buf.len(), 15 * 8 + 1 + 6);
+        assert_eq!(buf.len(), MIN_BYTES, "nothing a head can carry is smaller");
     }
 
     #[test]

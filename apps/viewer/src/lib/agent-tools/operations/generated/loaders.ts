@@ -11,6 +11,7 @@ export const operationLoaders: Record<string, () => Promise<Record<string, unkno
   'measurements': () => import('../measurements'),
   'pointclouds': () => import('../pointclouds'),
   'clash': () => import('../clash'),
+  'coordination-index': () => import('../coordination-index'),
   'analytics-lists': () => import('../analytics-lists'),
   'analytics-document': () => import('../analytics-document'),
   'analytics-charts': () => import('../analytics-charts'),

@@ -11,7 +11,7 @@
  * eager bundle. The slice imports this module's TYPE only.
  */
 
-import { canRedo, canUndo, createStudioState, locateNode, redo, undo } from '@ifc-lite/ids-authoring';
+import { canRedo, canUndo, createStudioState, locateNode, redo, undo, uuidv7 } from '@ifc-lite/ids-authoring';
 import { dispatchStudioOps } from './session';
 
 export const idsStudioRuntime = {
@@ -22,6 +22,7 @@ export const idsStudioRuntime = {
   undo,
   redo,
   locateNode,
+  uuidv7,
 };
 
 export type IdsStudioRuntime = typeof idsStudioRuntime;

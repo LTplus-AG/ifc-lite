@@ -16,7 +16,7 @@ import { namedExpressIds, referencesAnyExpressId } from './step-ref-scan.js';
 export type ConversionMode = 'upgrade' | 'downgrade' | null;
 
 /** What the prepasses read: the source index and bytes. */
-export type SourceStore = Pick<IfcDataStore, 'entityIndex' | 'source'>;
+export type SourceStore = Pick<IfcDataStore, 'entityIndex' | 'deferredEntityIndex' | 'source'>;
 
 /** IFC2X3 -> IFC4 is an upgrade, IFC4 -> IFC2X3 a downgrade; the prepasses run for nothing else. */
 export const conversionMode = (from: string, to: string): ConversionMode =>
@@ -102,16 +102,21 @@ export class SourceRecords {
     return kept;
   }
 
-  type(id: number | null): string | undefined {
+  private entry(id: number) {
     // @raw-entity-enumeration-ok same unedited source-only prepass
-    return id === null ? undefined : this.store.entityIndex.byId.get(id)?.type.toUpperCase();
+    const primary = this.store.entityIndex.byId.get(id);
+    const deferred = this.store.deferredEntityIndex?.get(id);
+    return deferred && (!primary || deferred.byteOffset > primary.byteOffset) ? deferred : primary;
+  }
+
+  type(id: number | null): string | undefined {
+    return id === null ? undefined : this.entry(id)?.type.toUpperCase();
   }
 
   slots(id: number | null): readonly string[] | undefined {
     if (id === null) return undefined;
     if (!this.cache.has(id)) {
-      // @raw-entity-enumeration-ok same unedited source-only prepass
-      const entry = this.store.entityIndex.byId.get(id);
+      const entry = this.entry(id);
       this.cache.set(id, entry ? readStepSlots(this.decode(entry))?.slots : undefined);
     }
     return this.cache.get(id);

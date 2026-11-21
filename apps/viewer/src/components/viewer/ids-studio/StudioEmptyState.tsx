@@ -27,7 +27,9 @@ export function StudioEmptyState() {
   const [error, setError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const openFile = async (file: File) => {
+    const revision = useViewerStore.getState().idsStudioRevision;
     const result = await importStudioFile(file);
+    if (useViewerStore.getState().idsStudioRevision !== revision) return;
     if (result.ok) { setError(null); open(result.doc); } else setError(result.error);
   };
   const [dragging, setDragging] = useState(false);

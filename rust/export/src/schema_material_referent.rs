@@ -18,7 +18,7 @@
 //! the record's own schema, so subtypes such as IfcMaterialLayerWithOffsets
 //! resolve too. The record is read as the writer hands it over (edited,
 //! copied, appended); its referents are the material records the export
-//! writes, by id in the export's id space ([`MaterialReferents::add_model`],
+//! writes, by id in the export's id space ([`MaterialReferents::load_model`],
 //! [`MaterialReferents::with_effective`]). Twin of
 //! `packages/export/src/schema-converter-material-referent.ts`.
 use std::borrow::Cow;
@@ -36,7 +36,7 @@ type Record = (String, Vec<String>, &'static str);
 
 /// What a downgrade to IFC2X3 needs to know of the export's material records.
 /// Built only by [`MaterialReferents::scan`] (one source) or
-/// [`MaterialReferents::for_target`] plus [`MaterialReferents::add_model`]
+/// [`MaterialReferents::for_target`] plus [`MaterialReferents::load_model`]
 /// (a merge), so a converter cannot hold one that silently checks nothing.
 #[cfg_attr(test, derive(Default))]
 pub(crate) struct MaterialReferents {
@@ -91,7 +91,7 @@ impl MaterialReferents {
         ifc4_family(from).filter(|_| self.armed)
     }
 
-    /// For an export to `to` (canonical), with no records yet: a merge adds each model's.
+    /// For an export to `to` (canonical), with no records yet.
     pub(crate) fn for_target(to: &str) -> Self {
         Self { armed: to == "IFC2X3", records: HashMap::new(), gone: Default::default(), dropped: BTreeMap::new() }
     }
@@ -101,16 +101,20 @@ impl MaterialReferents {
     /// log), so any material record is read, not only a file holding properties.
     pub(crate) fn scan(content: &[u8], from: &str, to: &str, edited: bool, kept: &dyn Fn(u32, usize) -> bool) -> Self {
         let mut out = Self::for_target(to);
-        out.add_model(content, from, if edited { MATERIAL } else { PROPERTIES }, &|id, start| kept(id, start).then_some((id, true)), &|bytes| String::from_utf8_lossy(bytes).into_owned());
+        out.load_model(content, from, if edited { MATERIAL } else { PROPERTIES }, &|id, start| kept(id, start).then_some((id, true)), &|bytes| String::from_utf8_lossy(bytes).into_owned());
         out
     }
 
-    /// Adds a model's material records: `id_of` gives a record's id in the
+    /// Loads the model's material records: `id_of` gives a record's id in the
     /// export and whether the export writes it. Earlier duplicate occurrences
     /// return `None`. `text_of` gives the text in the export's id space.
     /// `gate`: a type a model must hold to be scanned (a merge needs IFCMATERIALPROPERTIES;
     /// a single export, whose log may create one, any IFCMATERIAL record).
-    pub(crate) fn add_model(&mut self, content: &[u8], from: &str, gate: &str, id_of: &dyn Fn(u32, usize) -> Option<(u32, bool)>, text_of: &dyn Fn(&[u8]) -> String) {
+    pub(crate) fn load_model(&mut self, content: &[u8], from: &str, gate: &str, id_of: &dyn Fn(u32, usize) -> Option<(u32, bool)>, text_of: &dyn Fn(&[u8]) -> String) {
+        // A filtered-out ID can overlap a later model's output range.
+        // Keep referents local to the model being emitted and accumulate its warnings.
+        self.records.clear();
+        self.gone.clear();
         let Some(schema) = self.schema_for(from) else { return };
         // A file without a record of `gate` needs no pass.
         if !content.windows(gate.len()).any(|w| w.eq_ignore_ascii_case(gate.as_bytes())) { return; }

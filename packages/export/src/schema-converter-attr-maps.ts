@@ -80,11 +80,26 @@ function getAttrMapIndex(): AttrMapIndex {
     same('IFCCURRENCYRELATIONSHIP', { retyped: ['RateDateTime'] }),
     same('IFCDOCUMENTINFORMATIONRELATIONSHIP'),
     same('IFCLIBRARYINFORMATION', { retyped: ['VersionDate'], upOnly: ['Publisher'] }),
-    // IFC4 deleted this IFC2X3 subtype for its now-concrete supertype, so a
-    // downgrade writes the deleted subtype (`IFC4_TO_IFC2X3`). Downgrade only:
-    // nothing renames the IFC2X3 subtype on an upgrade. IfcMaterialProperties is
-    // left unmapped here: its Material referent must be resolved first (#10763 follow-up).
+    // IFC4 deleted these IFC2X3 subtypes for its now-concrete supertype. A
+    // downgrade writes IfcGeneralProfileProperties (`IFC4_TO_IFC2X3`); an
+    // IfcMaterialProperties downgrade waits on its Material referent (#10911). An
+    // upgrade writes every one as its IFC4 supertype (#10777).
+    // The typed subtypes keep only Material or ProfileDefinition; their measures are dropped.
+    map('IFCEXTENDEDMATERIALPROPERTIES', 'IFCMATERIALPROPERTIES', { renamed: [['ExtendedProperties', 'Properties']] }),
     map('IFCGENERALPROFILEPROPERTIES', 'IFCPROFILEPROPERTIES'),
+    map('IFCMECHANICALMATERIALPROPERTIES', 'IFCMATERIALPROPERTIES'),
+    map('IFCMECHANICALCONCRETEMATERIALPROPERTIES', 'IFCMATERIALPROPERTIES'),
+    map('IFCMECHANICALSTEELMATERIALPROPERTIES', 'IFCMATERIALPROPERTIES'),
+    map('IFCTHERMALMATERIALPROPERTIES', 'IFCMATERIALPROPERTIES'),
+    map('IFCHYGROSCOPICMATERIALPROPERTIES', 'IFCMATERIALPROPERTIES'),
+    map('IFCGENERALMATERIALPROPERTIES', 'IFCMATERIALPROPERTIES'),
+    map('IFCOPTICALMATERIALPROPERTIES', 'IFCMATERIALPROPERTIES'),
+    map('IFCWATERPROPERTIES', 'IFCMATERIALPROPERTIES'),
+    map('IFCFUELPROPERTIES', 'IFCMATERIALPROPERTIES'),
+    map('IFCPRODUCTSOFCOMBUSTIONPROPERTIES', 'IFCMATERIALPROPERTIES'),
+    map('IFCSTRUCTURALPROFILEPROPERTIES', 'IFCPROFILEPROPERTIES'),
+    map('IFCSTRUCTURALSTEELPROFILEPROPERTIES', 'IFCPROFILEPROPERTIES'),
+    map('IFCRIBPLATEPROFILEPROPERTIES', 'IFCPROFILEPROPERTIES'),
     same('IFCPERFORMANCEHISTORY'),
     same('IFCTASK', { renamed: [['TaskId', 'Identification']] }),
     same('IFCPROPERTYDEPENDENCYRELATIONSHIP'),
@@ -99,6 +114,13 @@ function getAttrMapIndex(): AttrMapIndex {
     byIfc4: new Map(maps.map((m) => [m.ifc4, m])),
   };
   return attrMapIndex;
+}
+
+/** The reviewed supertype of an IFC2X3 property subtype (#10777). */
+export function upgradeRename(type: string, fromSchema: IfcSchemaVersion, toSchema: IfcSchemaVersion): string | undefined {
+  if (fromSchema !== 'IFC2X3' || (toSchema !== 'IFC4' && toSchema !== 'IFC4X3')) return undefined;
+  const target = getAttrMapIndex().byIfc2x3.get(type)?.ifc4;
+  return target === type ? undefined : target;
 }
 
 export function getAttrMaps(): readonly AttrMap[] {
@@ -127,8 +149,9 @@ export function attrMapFor(
     return found?.ifc4 === newType ? { map: found, up: true } : undefined;
   }
   if (toSchema === 'IFC2X3' && (fromSchema === 'IFC4' || fromSchema === 'IFC4X3')) {
-    const found = getAttrMapIndex().byIfc4.get(entityType);
-    return found?.ifc2x3 === newType ? { map: found, up: false } : undefined;
+    // Different IFC2X3 types can share the same IFC4 type.
+    const found = getAttrMapIndex().byIfc2x3.get(newType);
+    return found?.ifc4 === entityType ? { map: found, up: false } : undefined;
   }
   return undefined;
 }

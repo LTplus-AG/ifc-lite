@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { JSONSchemaType } from 'ajv';
+import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
 import { useViewerStore } from '@/store';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { captureViewportFrame } from '@/lib/viewport-capture';
@@ -35,7 +36,23 @@ export const exportNativeViewOperations = [
     if (scale === null) throw new Error('The native viewport cannot report its displayed scale. Choose a numerical scale.');
     const meshes = collectViewMeshes(source.view);
     const layout = estimateViewPdfLayout(meshes, camera, scale, { includeScaleStamp: i.include_scale_stamp, keptHalfSpace: source.section ? resolveKeptHalfSpace(source.section) : null, extraKeptHalfSpaces: source.extraSections.map(resolveKeptHalfSpace) });
-    if (!layout || describePage(layout.page).oversize) throw new Error('Native PDF has no drawable geometry or exceeds printable page limits.');
+    if (!layout) throw new ToolExecutionError({
+      code: ToolErrorCode.UNSUPPORTED_OPERATION,
+      message: 'The current view has no drawable geometry for PDF export.',
+      details: { reason: 'unavailable' },
+    });
+    if (describePage(layout.page).oversize) {
+      if (i.scale_mode === 'numerical') throw new ToolExecutionError({
+        code: ToolErrorCode.INVALID_INPUT,
+        message: 'The requested PDF scale exceeds the printable page size. Choose a larger scale denominator.',
+        details: { reason: 'limit' },
+      });
+      throw new ToolExecutionError({
+        code: ToolErrorCode.UNSUPPORTED_OPERATION,
+        message: 'The displayed scale exceeds the printable page size. Zoom out or choose a numerical scale.',
+        details: { reason: 'unavailable' },
+      });
+    }
     const result = await produceNativeViewPdf({ view: source.view, camera, section: source.section, extraSections: source.extraSections, scaleFactor: scale, marginMm: VIEW_PDF_MARGIN_MM, includeHiddenLines: i.include_hidden_lines, renderMode: i.render_mode, includeScaleStamp: i.include_scale_stamp,
       onProgress: (phase, progress) => c.progress?.({ phase, done: progress, total: 1 }) }, check);
     return nativeArtifact(c, result.blob, result.result.filename, result.result, check);

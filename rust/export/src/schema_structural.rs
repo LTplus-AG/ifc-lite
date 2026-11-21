@@ -66,14 +66,15 @@ pub(crate) fn attributes(entity: &str, args: &[String], from: &str, to: &str) ->
         // IfcRelAssignsToProduct. The inverse is `schema_structural_links`.
         return Some(format!("{},({}),$,{}", args[..4].join(","), args[5], args[4]));
     }
-    if !matches!((from, to), ("IFC2X3", "IFC4") | ("IFC4", "IFC2X3")) { return None; }
-    if stiffness_type(entity, 1).is_some() {
+    if matches!((from, to), ("IFC2X3", "IFC4" | "IFC4X3") | ("IFC4" | "IFC4X3", "IFC2X3"))
+        && stiffness_type(entity, 1).is_some()
+    {
         let mut values = args.to_vec();
         for (index, value) in values.iter_mut().enumerate().skip(1) {
             let Some(measure) = stiffness_type(entity, index) else { continue };
             let token = value.trim();
             if scalar_equals(token, "$") { continue; }
-            if to == "IFC4" {
+            if from == "IFC2X3" {
                 // IFC2X3 uses -1 for an infinitely stiff restraint. Zero is a
                 // finite measure too; keeping that encoding avoids rounding.
                 *value = if stiffness_number(token) == Some(-1.0) {
@@ -85,7 +86,7 @@ pub(crate) fn attributes(entity: &str, args: &[String], from: &str, to: &str) ->
         }
         return Some(values.join(","));
     }
-    if constant_action(entity) {
+    if matches!((from, to), ("IFC2X3", "IFC4") | ("IFC4", "IFC2X3")) && constant_action(entity) {
         let src = crate::schema_convert::schema_attribute_names(from, entity)?;
         let tgt = crate::schema_convert::schema_attribute_names(to, entity)?;
         return Some(tgt.iter().map(|name| {
@@ -118,6 +119,26 @@ mod tests {
         let args = vec!["$".into(), "-1.".into(), "0.".into()];
         assert_eq!(attributes("IFCBOUNDARYNODECONDITION", &args, "IFC2X3", "IFC4").unwrap(),
             "$,IFCBOOLEAN(.T.),IFCLINEARSTIFFNESSMEASURE(0.)");
+    }
+
+    #[test]
+    fn ifc4x3_uses_the_same_stiffness_selects_and_rigid_sentinel_as_ifc4_10847() {
+        for (entity, values) in [
+            ("IFCBOUNDARYNODECONDITION", "1.,2.,3.,-1.,5.,6."),
+            ("IFCBOUNDARYNODECONDITIONWARPING", "1.,2.,3.,4.,5.,6.,-1."),
+            ("IFCBOUNDARYEDGECONDITION", "1.,2.,3.,-1.,5.,6."),
+            ("IFCBOUNDARYFACECONDITION", "1.,-1.,3."),
+        ] {
+            let source = format!("#23={entity}('Support',{values});");
+            let convert = |line: &str, from, to| {
+                let mut checks = crate::schema_enum::ConversionChecks::new();
+                convert_step_line(line, from, to, 23, &mut Ifc2x3SlotFill::new(None), Some(&mut checks)).unwrap()
+            };
+            let ifc4 = convert(&source, "IFC2X3", "IFC4");
+            assert!(ifc4.contains("IFCBOOLEAN(.T.)"), "{ifc4}");
+            assert_eq!(convert(&source, "IFC2X3", "IFC4X3"), ifc4, "{entity}");
+            assert_eq!(convert(&ifc4, "IFC4X3", "IFC2X3"), source, "{entity}");
+        }
     }
 
     #[test]

@@ -18,6 +18,7 @@ import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { collectReferencedEntityIds, getVisibleEntityIds, filterHiddenRefsFromRelationshipLine } from './reference-collector.js';
 import { collectStyleEntities, STYLE_RESCUE_TYPES } from './style-closure.js';
 import { collectGeoreferencingEntities } from './georef-closure.js';
+import { noteUnrootedUpgradeSeed, omitUnrootedUpgrade } from './schema-converter-unrooted-upgrade.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
 import { StyleFlatten } from './schema-style-flatten.js';
 import { firstWrittenOwnerHistoryRef, Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
@@ -490,7 +491,7 @@ export class MergedExporter {
     const setup = this.buildMergeSetup(options, models);
     const containerDrops = this.planContainerDrops(options, models, setup);
 
-    const allEntityLines: string[] = [];
+    const allEntityLines: string[] = [], upgradeSeeds = new Set<number>();
     // Tracks every GlobalId already emitted → its final express id + unit scale,
     // so later models can unify against (shared unit) or stay unique from
     // (federated / different unit) it.
@@ -529,16 +530,15 @@ export class MergedExporter {
           expressId, entityRef, source, offset, plan, sourceSchema, schema, guidToFinalId, mode,
           visibility?.hiddenProductIds ?? null, completeIndex, visibility?.included ?? null, slotFill, ifc4Slots, enums, styleFlatten,
         );
-        if (line !== null) allEntityLines.push(line);
+        if (line !== null) { allEntityLines.push(line); if (sourceSchema === 'IFC2X3' && schema === 'IFC4') noteUnrootedUpgradeSeed(line, upgradeSeeds); }
       }
 
       isFirstModel = false;
     }
     listKeptContexts(allEntityLines, setup.firstProjectIds.length ? setup.firstProjectIds[0] + setup.firstModelOffset : undefined, setup.keptContexts);
     setup.minted.appendTo(allEntityLines);
-    for (const warning of [...slotFill.warnings(), ...ifc4Slots.warnings(), ...enums.warnings(), ...applyInverseFolds(allEntityLines, setup.parentClaims)]) normalizeWarnings.add(warning); // #5774 folds
+    for (const warning of [...slotFill.warnings(), ...ifc4Slots.warnings(), ...enums.warnings(), ...applyInverseFolds(allEntityLines, setup.parentClaims), ...omitUnrootedUpgrade(allEntityLines, upgradeSeeds)]) normalizeWarnings.add(warning); // #5774 folds
 
-    // Assemble final file as Uint8Array chunks to avoid V8 string length limit
     if (onProgress) onProgress({ phase: 'assembling', percent: 0.9, entitiesProcessed: allEntityLines.length, entitiesTotal: allEntityLines.length });
     const content = assembleStepBytes(header, placeObjectsForSchema(schema, allEntityLines)); // #9209
 
@@ -619,10 +619,9 @@ export class MergedExporter {
     const setup = this.buildMergeSetup(options, models);
     const containerDrops = this.planContainerDrops(options, models, setup);
 
-    const allEntityLines: string[] = [];
+    const allEntityLines: string[] = [], upgradeSeeds = new Set<number>();
     const guidToFinalId = new Map<string, GuidRecord>();
 
-    // First pass: count total entities for progress
     let totalEntities = 0;
     for (const model of models) {
       totalEntities += getCompleteEntityIndex(model.dataStore).size;
@@ -678,7 +677,7 @@ export class MergedExporter {
           expressId, entityRef, source, offset, plan, sourceSchema, schema, guidToFinalId, mode,
           visibility?.hiddenProductIds ?? null, completeIndex, visibility?.included ?? null, slotFill, ifc4Slots, enums, styleFlatten,
         );
-        if (line !== null) allEntityLines.push(line);
+        if (line !== null) { allEntityLines.push(line); if (sourceSchema === 'IFC2X3' && schema === 'IFC4') noteUnrootedUpgradeSeed(line, upgradeSeeds); }
 
         entityCount++;
         entitiesProcessed++;
@@ -702,9 +701,8 @@ export class MergedExporter {
     }
     listKeptContexts(allEntityLines, setup.firstProjectIds.length ? setup.firstProjectIds[0] + setup.firstModelOffset : undefined, setup.keptContexts);
     setup.minted.appendTo(allEntityLines);
-    for (const warning of [...slotFill.warnings(), ...ifc4Slots.warnings(), ...enums.warnings(), ...applyInverseFolds(allEntityLines, setup.parentClaims)]) normalizeWarnings.add(warning); // #5774 folds
+    for (const warning of [...slotFill.warnings(), ...ifc4Slots.warnings(), ...enums.warnings(), ...applyInverseFolds(allEntityLines, setup.parentClaims), ...omitUnrootedUpgrade(allEntityLines, upgradeSeeds)]) normalizeWarnings.add(warning); // #5774 folds
 
-    // Assembly phase
     if (onProgress) {
       onProgress({ phase: 'assembling', percent: 0.9, entitiesProcessed: totalEntities, entitiesTotal: totalEntities });
     }

@@ -111,7 +111,8 @@ pub fn export_step_with_log(
 
 /// [`export_step_with_log`], writing as it goes. The source is read, never
 /// copied: memory beyond the record index grows with the EDITS (the lines they
-/// change, the records they generate), not with the file.
+/// change, the records they generate). Conversions requiring a whole-DATA
+/// adaptation hold the body until references or placements have been settled.
 pub fn export_step_with_log_to_writer<W: Write>(
     content: &[u8],
     opts: &StepOptions,
@@ -168,7 +169,7 @@ fn declared_schema(content: &[u8], converting: bool, target: &str) -> String {
     crate::file_schema::declared_token(source_header.as_ref(), converting, target).to_string()
 }
 
-fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &mut W) -> io::Result<LogExportStats> {
+fn validate_log_options(opts: &StepOptions) -> io::Result<()> {
     if opts.included.is_some() {
         return Err(invalid("export_step_with_log: `included` is not supported with a mutation log"));
     }
@@ -177,6 +178,11 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
             "export_step_with_log: pass edits in the log, not in StepOptions' attribute/property/copy-on-write vectors",
         ));
     }
+    Ok(())
+}
+
+fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &mut W) -> io::Result<LogExportStats> {
+    validate_log_options(opts)?;
     let src = Source::index(content);
     // A created entity never reuses a source id (the mutation layer's
     // watermark allocates past the file's highest one), so a log that creates
@@ -262,7 +268,10 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
 
     write_header(out, opts, content, converting, &target, pass.new_entity_count + pass.ledger.modified_count())?;
     // IFC2X3 places one product per placement (#9209): its records are held to adapt them.
-    let mut body = crate::schema_ifc2x3_placements::Body::new(&mut *out, target_is_ifc2x3);
+    let may_prune_upgrade = crate::schema_unrooted_upgrade::applies(&source_label, &target)
+        && (!pass.overlay.retype_order.is_empty() || !pass.created_lines.is_empty()
+            || crate::schema_unrooted_upgrade::seeds(content).next().is_some());
+    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, target_is_ifc2x3, may_prune_upgrade);
 
     let mut slot_fill = crate::schema_ifc2x3_slots::Ifc2x3SlotFill::new(pass.fallback_owner_history());
     let mut checks = crate::schema_enum::ConversionChecks::for_source(content, &source_label, &target, opts, log.mutations.is_empty() && log.new_entities.is_empty() && log.georef_mutations.is_none(), &|id, start| src.span(id).is_some_and(|(kept, _)| kept == start), &mut || pass.allocate().ok());

@@ -183,6 +183,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     // for why this is a diagnostic about the source file, not a completeness
     // gap in the merge (#3752).
     let mut refused_refs_total = 0usize;
+    let mut upgrade_seeds = HashSet::new();
     // #5116: a non-rooted type with no representation in the target schema
     // (e.g. `IfcCartesianPointList3D` downgraded to IFC2X3) cannot become an
     // `IFCPROXY` either, so `convert_step_line` errs instead of guessing.
@@ -293,6 +294,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
         // Emit.
         let source_schema = detect_schema(model.content);
         let converting = crate::schema_convert::needs_conversion(&source_schema, &schema);
+        let upgrading = crate::schema_unrooted_upgrade::applies(&source_schema, &schema);
         let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(model.content, &source_schema, &schema); // D57
         flatten.retain_grids(|id| included.contains(&id) && !plan.skip.contains(&id));
         for &id in &index.order {
@@ -395,6 +397,9 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                 guid_to_final.entry(local_guid.clone()).or_insert((final_id, effective_scale));
             }
 
+            if upgrading && crate::schema_unrooted_upgrade::omitted_type(ty) {
+                upgrade_seeds.insert(id.saturating_add(offset));
+            }
             out.push_str(&final_text);
             out.push('\n');
             stats.written += 1;
@@ -404,12 +409,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     }
 
     warnings::push_merge_warnings(&mut stats, refused_refs_total, unrepresented_types_kept, &schema);
-    stats.warnings.extend(slot_fill.warnings());
-    stats.warnings.extend(checks.warnings());
-    stats.warnings.extend(parents.apply_folds(&mut out)); // #5774 folds, after every model is written
-    // One product per placement in IFC2X3 (#9209); the header holds no record to change.
-    stats.written = stats.written.saturating_add_signed(crate::schema_ifc2x3_placements::place_text_for_schema(&schema, &mut out));
-    out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
+    warnings::finish_output(&mut out, &mut stats, &schema, &slot_fill, &checks, parents, &upgrade_seeds);
     (out, stats)
 }
 

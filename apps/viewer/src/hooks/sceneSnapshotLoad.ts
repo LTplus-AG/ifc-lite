@@ -16,7 +16,7 @@ import type { LoadTrace } from '@ifc-lite/load-trace';
 import type { StoreApi } from 'zustand';
 import { useViewerStore } from '../store/index.js';
 import { noteInstancedShardModel } from '../store/instancedShardModels.js';
-import { announceAdoptedInstancedShards, completeInstancedShardSupply, enqueueInstancedShards, instancedShardSupplyCurrent, instancedShardSupplyToken } from '../store/instancedShardQueue.js';
+import { announceAdoptedInstancedShards, completeInstancedShardSupply, enqueueInstancedShards, instancedShardModelEpoch, instancedShardSupplyCurrent, instancedShardSupplyToken } from '../store/instancedShardQueue.js';
 import { fitCameraToSnapshot, lastFinalFitBounds, sceneSnapshotKey, type SnapshotCameraFit, setPendingColdCapture, setPendingSceneSnapshot, withdrawPendingColdCapture, withdrawPendingSceneSnapshot } from '../components/viewer/sceneSnapshotOwnership.js';
 import { readPerfFlag } from '../lib/perf/flags.js';
 import { tapSceneSnapshot } from '../lib/perf/sceneIdentityTap.js';
@@ -189,7 +189,8 @@ export async function publishAdoptedSceneMeshes(
 ): Promise<MeshData[] | null> {
   const shardGeneration = adopted.supply; // captured when adoption began: a reset or discard since supersedes the requeue below
   const chunks = await Promise.all(open.chunks.map((_, i) => trace.span('cache.chunkDecode', () => open.readChunk(i), { chunk: i })));
-  if (isStale?.() || !instancedShardSupplyCurrent(modelId, shardGeneration)) {
+  // Superseded by a discard of THIS model only; a full clear (#9628) keeps the hit live, and its shards are refused by the token below.
+  if (isStale?.() || instancedShardModelEpoch(modelId) !== shardGeneration.epoch) {
     clearSnapshotTypeIndex(adopted.typeToken);
     return null;
   }

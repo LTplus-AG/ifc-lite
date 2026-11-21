@@ -21,7 +21,7 @@ import { sceneSnapshotKey } from '@/components/viewer/sceneSnapshotOwnership';
 import { setGlobalRendererRef } from './useBCF';
 import { TypeHiddenIndex } from '@/components/viewer/type-hidden-index';
 import { acknowledgeSnapshotTypeIndex, snapshotTypeIndex, subscribeSnapshotTypeIndex } from '@/components/viewer/snapshot-type-index';
-import { adoptCachedSceneSnapshot, publishAdoptedSceneMeshes, type AdoptedSceneSnapshot } from './sceneSnapshotLoad';
+import { abandonAdoptedSceneSnapshot, adoptCachedSceneSnapshot, publishAdoptedSceneMeshes, type AdoptedSceneSnapshot } from './sceneSnapshotLoad';
 
 it('#10888 a discard during a deferred adoption: its shards are never stamped with the newer supply; nothing is registered', async () => {
   const modelId = 'snap-supply';
@@ -56,6 +56,26 @@ it('#10888 a discard and re-add during the adopted chunk decode: the old read re
   let hydrated = 0;
   adoptedSceneOutlivesEmptyGeometry({ isSceneSnapshotHydrating: () => true, hydrateSceneSnapshot: () => { hydrated++; return true; }, removeInstancedTemplatesForModel: () => {} } as never);
   assert.equal(hydrated, 0, 'and no old adoption is registered for it');
+});
+
+it('#10888 a FULL clear during the adopted chunk decode keeps the hit live: its meshes publish, its shards are refused (#9628)', async () => {
+  const modelId = 'snap-fullclear';
+  const supply = instancedShardSupplyToken(modelId);
+  const adopted = { adoption: {}, shards: [new ArrayBuffer(8)], supply, fit: null, typeToken: {}, firstVisible: Promise.resolve() } as unknown as AdoptedSceneSnapshot;
+  let resume!: () => void;
+  const gate = new Promise<void>((done) => { resume = done; });
+  const mesh = { expressId: 1, positions: new Float32Array(9), normals: new Float32Array(9), indices: Uint32Array.from([0, 1, 2]), color: [1, 1, 1, 1] };
+  const open = { chunks: [0], readChunk: async () => { await gate; return [mesh]; }, coordinateInfo: undefined } as never;
+  const appended: unknown[] = [];
+  const publishing = publishAdoptedSceneMeshes(adopted, open, modelId, {} as never, undefined, undefined, NOOP_LOAD_TRACE,
+    (_id, meshes) => { appended.push(...meshes); });
+  await new Promise((done) => setTimeout(done, 0)); // the chunk decode is awaiting
+  discardInstancedShards(); // a full clear (a federation rebuild): the model itself was not removed
+  resume();
+  assert.notEqual(await publishing, null, 'the live hit publishes: never left without its geometry');
+  assert.equal(appended.length, 1);
+  assert.equal(hasPendingInstancedShards(modelId), false, 'its shards belong to the cleared scene: never queued');
+  abandonAdoptedSceneSnapshot(adopted);
 });
 
 /** IFNS v1: one template triangle, one occurrence of `entityId`. */

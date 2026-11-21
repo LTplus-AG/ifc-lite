@@ -78,7 +78,8 @@ export const appearanceFaceOperations = [
       if (!c.signal) throw unavailable('A live cancellation signal is required.');
       assertToolActive(c);
       const source = useViewerStore.getState().appearanceSources.find(item => item.id === i.source_id);
-      if (!source) throw invalidInput('unknown-target', 'Unknown native appearance source.');
+      if (!source && !appearanceAssets.get(i.source_id))
+        throw invalidInput('unknown-target', 'Unknown native appearance source.');
       const owner = { kind: 'draft' as const, id: crypto.randomUUID() },
         planner = createAppearancePlanner();
       try {

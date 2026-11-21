@@ -50,7 +50,7 @@ describe('IfcDocumentInformation <-> IfcDocumentReference link (#10846)', () => 
     expect(repeat.stats.warnings.join('\n')).not.toContain('IfcDocumentReference listing');
   });
 
-  // /code-review on the #10872 restack: a repeated record id is its last copy, at that copy's place, as Rust's
+  // A repeated record id is its last copy, at that copy's place, as Rust's
   // `kept` reads it; a copy of another type is no holder.
   it('lists a reference once on a downgrade when its record id repeats', async () => {
     const ifc4 = `#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);
@@ -70,7 +70,7 @@ describe('IfcDocumentInformation <-> IfcDocumentReference link (#10846)', () => 
     expect(record(walled, 5)).toBe("#5=IFCDOCUMENTINFORMATION('D1','Doc',$,(#7),$,$,$,$,$,$,$,$,$,$,$,$,$);");
   });
 
-  // Claude review on #10872: IFC4 WR1 is EXISTS(Name) XOR EXISTS(ReferencedDocument), so a named reference that
+  // IFC4 WR1 is EXISTS(Name) XOR EXISTS(ReferencedDocument), so a named reference that
   // gains its document drops the Name (the document's stands); an unlisted one keeps it.
   it('drops the Name of a reference that gains ReferencedDocument, for IFC4 WR1', async () => {
     const named = `${IFC2X3.replace("('a.pdf','A1',$)", "('a.pdf','A1','Title')")}\n#8=IFCDOCUMENTREFERENCE('c.pdf','C1','Loose');`;
@@ -90,7 +90,7 @@ describe('IfcDocumentInformation <-> IfcDocumentReference link (#10846)', () => 
     expect(analyzeConversionLoss(await parse(model('IFC2X3', IFC2X3)), 'IFC2X3', 'IFC4').entries.some((e) => e.sourceType === 'IFCDOCUMENTREFERENCE')).toBe(false);
   });
 
-  // /code-review: IfcExternalReference.WR1 needs Location, Identification or Name, so a reference a Name alone
+  // IfcExternalReference.WR1 needs Location, Identification or Name, so a reference a Name alone
   // identifies keeps it and stays unlinked; the document's listing is then lost, as for an unlisted member.
   it('keeps the Name of a reference nothing else identifies, and leaves it unlinked', async () => {
     const nameOnly = IFC2X3.replace("('a.pdf','A1',$)", "($,$,'Title')");

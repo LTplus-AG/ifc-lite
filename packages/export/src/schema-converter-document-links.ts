@@ -26,7 +26,7 @@ import { slotRef, slotUnset, type SourceRecords } from './schema-converter-struc
 import { readStepSlots } from './step-argument-parser.js';
 
 /**
- * The ids of `type` as Rust's `kept` reads them (/code-review on the #10872 restack): a repeated id is
+ * The ids of `type` as Rust's `kept` reads them: a repeated id is
  * its last copy, at that copy's place, and only when that copy is of `type`.
  */
 function kept(source: SourceRecords, type: string): number[] {

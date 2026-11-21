@@ -63,7 +63,7 @@ fn a_subset_export_arms_nothing_10846() {
     assert_eq!(dropped, 1);
 }
 
-/// /code-review on the #10872 restack, the twin of the TypeScript case: a
+/// A
 /// repeated record id is its last copy, at that copy's place, so it is listed
 /// once and in that order.
 #[test]
@@ -80,7 +80,7 @@ fn a_repeated_reference_is_listed_once_at_its_last_place_10846() {
     assert_eq!(record(&walled, "#5="), "#5=IFCDOCUMENTINFORMATION('D1','Doc',$,(#7),$,$,$,$,$,$,$,$,$,$,$,$,$);");
 }
 
-/// Claude review on #10872, the twin of the TypeScript case: IFC4 WR1 is
+/// IFC4 WR1 is
 /// `EXISTS(Name) XOR EXISTS(ReferencedDocument)`, so a named reference that
 /// gains its document drops the Name, counted and reported; an unlisted one
 /// keeps it.
@@ -98,7 +98,7 @@ fn a_reference_that_gains_its_document_drops_its_name_for_wr1_10846() {
     assert!(!warnings.iter().any(|w| w.contains("Name(s) were dropped")), "{warnings:?}");
 }
 
-/// /code-review, the twin of the TypeScript case: IfcExternalReference.WR1
+/// IfcExternalReference.WR1
 /// needs Location, Identification or Name, so a reference a Name alone
 /// identifies keeps it and stays unlinked; its document's listing is counted
 /// lost, as for an unlisted member.

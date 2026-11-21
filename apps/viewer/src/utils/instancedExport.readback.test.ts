@@ -106,7 +106,7 @@ describe('exports over released geometry', () => {
     }]]) } as never);
     const store = useViewerStore as unknown as StoreApi<TapState>;
     const scene = { isGeometryDataReleased: () => true, placeAppearanceSource: (m: MeshData) => m,
-      getAllInstancedMeshData: () => [] as MeshData[] };
+      getAllInstancedMeshData: () => [] as MeshData[], getInstancedModelIndices: () => [] as number[] }; // no owner holds instances
     setGlobalRendererRef({ current: { getScene: () => scene } as unknown as Renderer } as RefObject<Renderer | null>);
     try {
       await geometryBackingCommand(store, undefined, { action: 'start', options: {
@@ -125,6 +125,33 @@ describe('exports over released geometry', () => {
       assert.ok(result);
       assert.equal(result.meshes.length, 1);
       assert.equal(result.meshes[0].positions[2], 7, 'unscoped view exporters keep the ready model');
+    } finally {
+      await geometryBackingCommand(store, undefined, { action: 'stop' });
+      setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);
+    }
+  });
+
+  it('#10887 r4652872766 a model with no geometry whose instances the renderer holds released, and no backed shards, refuses the export', async () => {
+    const geometry: GeometryResult = { meshes: [mesh(1, 7)], totalTriangles: 1, totalVertices: 3,
+      coordinateInfo: {} as GeometryResult['coordinateInfo'] };
+    useViewerStore.setState({ models: new Map([['ready', { id: 'ready', idOffset: 0, maxExpressId: 10, geometryResult: geometry }]]) } as never);
+    const store = useViewerStore as unknown as StoreApi<TapState>;
+    let owners: number[] = [];
+    const scene = { isGeometryDataReleased: () => true, placeAppearanceSource: (m: MeshData) => m,
+      getAllInstancedMeshData: () => [] as MeshData[], getInstancedModelIndices: () => owners };
+    setGlobalRendererRef({ current: { getScene: () => scene } as unknown as Renderer } as RefObject<Renderer | null>);
+    try {
+      await geometryBackingCommand(store, undefined, { action: 'start', options: {
+        database: { name: `export-allinstanced-${process.pid}`, locks: null },
+      } as never });
+      await geometryBackingCommand(store, undefined, { action: 'seal' });
+      releaseCpuMeshBuffers(geometry.meshes);
+      // An all-instanced model: no flat geometry, its instances released in the renderer, none backed yet.
+      useViewerStore.setState({ models: new Map([...useViewerStore.getState().models,
+        ['shards', { ...fixtureModel('shards'), geometryResult: null }]]) });
+      owners = [modelIndices(useViewerStore.getState().models).get('shards')!];
+      await assert.rejects(() => withReleasedExportGeometry((context) => withInstancedMeshes(geometry, null, context)),
+        GeometryUnavailableError, 'never an export silently missing that model');
     } finally {
       await geometryBackingCommand(store, undefined, { action: 'stop' });
       setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);

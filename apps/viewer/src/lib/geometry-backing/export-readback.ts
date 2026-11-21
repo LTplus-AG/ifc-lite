@@ -57,7 +57,8 @@ export async function prepareReleasedExport(
     const model = sources.get(modelId);
     if (!model) return true; // Explicitly missing owners must still fail.
     const hasShards = (tap?.backing(modelId)?.directory.shards.length ?? 0) > 0;
-    if (model.geometryResult == null && !hasShards) return false;
+    // Skipped only while the renderer holds no released instances for it either; otherwise refuse (r4652872766).
+    if (model.geometryResult == null && !hasShards && !geometryOwnerNeedsReadback([], scene, indices.get(modelId) ?? 0)) return false;
     return geometryOwnerNeedsReadback(model.geometryResult?.meshes ?? [], scene, indices.get(modelId) ?? 0);
   });
   let bytes = 0;

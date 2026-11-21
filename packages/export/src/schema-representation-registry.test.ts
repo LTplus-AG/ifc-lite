@@ -103,6 +103,14 @@ describe('an IFC2X3 -> IFC4 upgrade writes each route, and the loss report names
   });
 });
 
+it.each(['IFC4', 'IFC4X3'] as const)('keeps the project order as the relating control after upgrading to %s (#10902)', async (schema) => {
+  const source = readFileSync(new URL('../../../rust/export/tests/fixtures/ifc2x3-project-order.ifc', import.meta.url));
+  const store = await new IfcParser().parseColumnar(Uint8Array.from(source).buffer);
+  const out = new TextDecoder().decode(new StepExporter(store).export({ schema }).content);
+  expect(out).toMatch(/^#7=IFCPROJECTORDER\(.*,'PO-7',\.PURCHASEORDER\.,'Issued',\$\);$/m);
+  expect(out).toMatch(/^#8=IFCRELASSIGNSTOCONTROL\(.*,\(#6\),\$,#7\);$/m);
+});
+
 it('names no IfcPresentationStyleAssignment lost when style flattening carries it into IFC4X3 (D57, #10902)', async () => {
   const text = `
 #1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);

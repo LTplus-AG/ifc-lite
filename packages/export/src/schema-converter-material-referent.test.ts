@@ -147,6 +147,17 @@ describe('the Material a downgraded IfcMaterialProperties names (#10763)', () =>
     expect(result.stats.warnings.join('\n')).toContain('1 IfcMaterialProperties record(s) were not written');
   });
 
+  it('resolves only the last merged material occurrence (#10911)', async () => {
+    const dataStore = await parse(model('IFC4', `${BASE}
+#8=IFCPROPERTYSINGLEVALUE('Wrong type',$,IFCLABEL('v'),$);
+#5=IFCMATERIALPROPERTIES('P',$,(#6),#8);`));
+    const result = new MergedExporter([{ id: 'one', name: 'one', dataStore }]).export({ schema: 'IFC2X3' });
+    const out = new TextDecoder().decode(result.content);
+    expect(out).toContain('#8=IFCPROPERTYSINGLEVALUE(');
+    expect(out).not.toContain('#5=');
+    expect(result.stats.warnings.join('\n')).toContain('#5 (an unread record)');
+  });
+
   it('checks a record without its semicolon like one with it (#10911)', () => {
     // No lookup proves #13 an IfcMaterial either way, so neither form is written.
     expect(convertStepLine("#5=IFCMATERIALPROPERTIES('P',$,(#6),#13);", 'IFC4', 'IFC2X3')).toBeNull();
@@ -154,7 +165,8 @@ describe('the Material a downgraded IfcMaterialProperties names (#10763)', () =>
   });
 
   it('leaves out and names a record it cannot read (#10911)', () => {
-    const referents = new MaterialReferents({ typeOf: (id) => (id === 8 ? 'IFCMATERIAL' : undefined), slots: () => undefined });
+    const concrete = ["'Concrete'", '$', '$'];
+    const referents = new MaterialReferents({ typeOf: (id) => (id === 8 ? 'IFCMATERIAL' : undefined), slots: (id) => (id === 8 ? concrete : undefined) });
     expect(referents.apply("#5=IFCMATERIALPROPERTIES('P',$,(#6),#8);", 'IFC4', 'IFC2X3')).toBe("#5=IFCMATERIALPROPERTIES('P',$,(#6),#8);");
     const commented = "#5=IFCMATERIALPROPERTIES('P',$,(#6),#8);/* c */";
     expect(referents.apply(commented, 'IFC4', 'IFC2X3'), "a comment after the ';' is no missing ';'").toBe(commented);
@@ -167,8 +179,17 @@ describe('the Material a downgraded IfcMaterialProperties names (#10763)', () =>
     expect(unread.apply("#5=IFCMATERIALPROPERTIES('P',$,(#6),#13);", 'IFC4', 'IFC2X3')).toBeNull();
     expect(unread.warnings().join()).toContain('#5 (an unread record)');
     // A record without its ';' is rewritten without one.
-    const layered = new MaterialReferents({ typeOf: (id) => ({ 8: 'IFCMATERIAL', 10: 'IFCMATERIALLAYER' })[id], slots: (id) => (id === 10 ? ['#8', '0.2', '$', '$', '$', '$', '$'] : undefined) });
+    const layered = new MaterialReferents({ typeOf: (id) => ({ 8: 'IFCMATERIAL', 10: 'IFCMATERIALLAYER' })[id], slots: (id) => (id === 10 ? ['#8', '0.2', '$', '$', '$', '$', '$'] : id === 8 ? concrete : undefined) });
     expect(layered.apply("#5=IFCMATERIALPROPERTIES('P',$,(#6),#10)", 'IFC4', 'IFC2X3')).toBe("#5=IFCMATERIALPROPERTIES('P',$,(#6),#8)");
     expect(layered.apply("#5=IFCMATERIALPROPERTIES('P',$,(#6),#10);/* c */", 'IFC4', 'IFC2X3')).toBe("#5=IFCMATERIALPROPERTIES('P',$,(#6),#8);/* c */");
+  });
+
+  it.each([[8, 'an unread record'], [10, 'IFCMATERIALLAYER']] as const)('drops properties when #%i resolves to an unreadable material (#10911)', (referent, reason) => {
+    const materials = new MaterialReferents({
+      typeOf: (id) => ({ 8: 'IFCMATERIAL', 10: 'IFCMATERIALLAYER' })[id],
+      slots: (id) => id === 10 ? ['#8', '0.2', '$', '$', '$', '$', '$'] : undefined,
+    });
+    expect(materials.apply(`#5=IFCMATERIALPROPERTIES('P',$,(#6),#${referent});`, 'IFC4', 'IFC2X3')).toBeNull();
+    expect(materials.warnings().join()).toContain(`#5 (${reason})`);
   });
 });

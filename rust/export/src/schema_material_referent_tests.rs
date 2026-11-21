@@ -184,6 +184,34 @@ fn the_merged_writer_resolves_each_models_referents_10763() {
     assert!(stats.warnings.iter().any(|w| w.starts_with("1 IfcMaterialProperties record(s) were not written")), "{:?}", stats.warnings);
 }
 
+#[test]
+fn the_merged_writer_resolves_only_the_last_material_occurrence_10911() {
+    let source = model("IFC4", "#8=IFCMATERIAL('Concrete',$,$);\n#8=IFCPROPERTYSINGLEVALUE('Wrong type',$,IFCLABEL('v'),$);\n#9=IFCMATERIAL('Steel',$,$);\n#6=IFCPROPERTYSINGLEVALUE('p',$,IFCLABEL('v'),$);\n#5=IFCMATERIALPROPERTIES('P',$,(#6),#8);
+#10=IFCMATERIALLAYER(#9,0.2,$,$,$,$,$);
+#10=IFCPROPERTYSINGLEVALUE('Wrong member',$,IFCLABEL('v'),$);
+#12=IFCMATERIALLAYER(#9,0.2,$,$,$,$,$);
+#13=IFCMATERIALLAYERSET((#10,#12),'Wall',$);
+#14=IFCMATERIALPROPERTIES('Set',$,(#6),#13);
+#15=IFCMATERIALPROPERTIES('Valid',$,(#6),#9);");
+    let (out, stats) = crate::export_merged_models(&[crate::MergedModel::new(source.as_bytes())], &crate::MergedOptions { schema: Some("IFC2X3".into()), ..Default::default() });
+    assert!(record(&out, "#8=").starts_with("#8=IFCPROPERTYSINGLEVALUE("), "{out}");
+    assert_eq!(record(&out, "#5="), "", "{out}");
+    assert_eq!(record(&out, "#14="), "", "{out}");
+    assert_eq!(record(&out, "#15="), "#15=IFCEXTENDEDMATERIALPROPERTIES(#9,(#6),$,'Valid');");
+    assert!(stats.warnings.iter().any(|w| w.contains("#5 (an unread record)")), "{:?}", stats.warnings);
+}
+
+#[test]
+fn unreadable_direct_and_layer_materials_leave_out_properties_10911() {
+    let source = model("IFC4", "#8=IFCMATERIAL('Steel',$,$);\n#10=IFCMATERIALLAYER(#8,0.2,$,$,$,$,$);");
+    let mut materials = super::MaterialReferents::scan(source.as_bytes(), "IFC4", "IFC2X3", true, &|_, _| true);
+    materials.with_effective("IFC4", |_| true, [(8, "#8=IFCMATERIAL('Steel',$,$;")]);
+    for referent in [8, 10] {
+        let line = format!("#5=IFCMATERIALPROPERTIES('P',$,(#6),#{referent});");
+        assert_eq!(materials.apply(5, &line, "IFC4", &mut 0), None, "{line}");
+    }
+}
+
 /// From CodeRabbit on #10911: a record without its ';' is checked like one
 /// with it, and a duplicate id left out does not hide the occurrence kept.
 #[test]

@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: MPL-2.0
 
-#[test]
-fn subset_and_edited_exports_convert_varying_actions_11037() {
+fn varying_fixture() -> String {
     let fixture: serde_json::Value = serde_json::from_str(include_str!("fixtures/structural_carriers_parity.json")).unwrap();
     let sample = fixture["cases"].as_array().unwrap().iter()
         .find(|entry| entry["why"].as_str().unwrap().starts_with("a converted varying action:")).unwrap();
-    let text = format!("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n{}\n{}\nENDSEC;\nEND-ISO-10303-21;\n",
-        fixture["owner"].as_str().unwrap(), sample["data"].as_str().unwrap());
+    format!("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n{}\n{}\nENDSEC;\nEND-ISO-10303-21;\n",
+        fixture["owner"].as_str().unwrap(), sample["data"].as_str().unwrap())
+}
+
+#[test]
+fn subset_and_edited_exports_convert_varying_actions_11037() {
+    let text = varying_fixture();
     let subset = ifc_lite_export::StepOptions { schema: Some("IFC4".into()), included: Some([30, 20].into_iter().collect()), ..Default::default() };
     let edited = ifc_lite_export::StepOptions {
         schema: subset.schema.clone(),
@@ -14,7 +18,8 @@ fn subset_and_edited_exports_convert_varying_actions_11037() {
         ..Default::default()
     };
     for (options, loads) in [(subset, "#11,#19,#18"), (edited, "#11,#18,#19")] {
-        let output = ifc_lite_export::export_step(text.as_bytes(), &options).unwrap();
+        let (output, stats, _) = ifc_lite_export::export_step_with_diagnostics(text.as_bytes(), &options).unwrap();
+        assert_eq!(stats.written, output.lines().filter(|line| line.starts_with('#')).count());
         assert!(output.contains("#30=IFCSTRUCTURALCURVEACTION("), "{output}");
         assert!(output.contains(&format!("IFCSTRUCTURALLOADCONFIGURATION($,({loads}),$);")), "{output}");
         assert!(!output.contains("IFCSTRUCTURALLINEARACTIONVARYING("), "{output}");
@@ -35,4 +40,22 @@ fn subset_and_edited_exports_convert_varying_actions_11037() {
     assert!(fallback.contains("'Causes',$,(#20),$,#30);"), "{fallback}");
     assert!(!fallback.contains("IFCSTRUCTURALLOADCONFIGURATION("), "{fallback}");
     assert!(stats.warnings.join(" ").contains("no complete load configuration"), "{stats:?}");
+}
+
+#[test]
+fn edited_export_counts_each_varying_action_that_loses_its_configuration_11037() {
+    let text = varying_fixture();
+    let second = text.lines().find(|line| line.starts_with("#30=")).unwrap()
+        .replace("#30=", "#90=").replace("3sXjCM_kPHN8ZCpuBhV_98", "0sXjCM_kPHN8ZCpuBhV_98");
+    let text = text.replace("\nENDSEC;\nEND-ISO-10303-21;", &format!("\n{second}\nENDSEC;\nEND-ISO-10303-21;"));
+    let options = ifc_lite_export::StepOptions {
+        schema: Some("IFC4".into()),
+        attribute_mutations: [30, 90].into_iter().map(|express_id| ifc_lite_export::AttrMutation {
+            express_id, index: 12, value: "#9999".into(),
+        }).collect(),
+        ..Default::default()
+    };
+    let (_, _, warnings) = ifc_lite_export::export_step_with_diagnostics(text.as_bytes(), &options).unwrap();
+    assert!(warnings.iter().any(|warning| warning.starts_with("2 structural conversion record(s): ")
+        && warning.contains("no complete load configuration")), "{warnings:?}");
 }

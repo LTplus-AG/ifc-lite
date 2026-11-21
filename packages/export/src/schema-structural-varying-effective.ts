@@ -12,9 +12,9 @@ import { skipStepTrivia } from './step-slot-grammar.js';
 const LOSS = 'The retained varying structural action has no complete load configuration; its varying locations and subsequent loads were omitted (#11037).';
 const MISSING_LOAD = 'The retained varying structural action has no usable AppliedLoad; the required IFC4 slot was left unset (#11037).';
 
-export function finishEffectiveVarying(lines: string[], warnings: string[]): void {
+export function finishEffectiveVarying(lines: string[], noteLoss: (message: string) => void): number {
   // Most edited exports have no varying actions.
-  if (!lines.some((line) => /IFCSTRUCTURAL(?:LINEAR|PLANAR)ACTIONVARYING/i.test(line))) return;
+  if (!lines.some((line) => /IFCSTRUCTURAL(?:LINEAR|PLANAR)ACTIONVARYING/i.test(line))) return 0;
   const types = new Map<number, string>();
   const byId = new Map<number, string>();
   const byType = new Map<string, number[]>();
@@ -53,7 +53,6 @@ export function finishEffectiveVarying(lines: string[], warnings: string[]): voi
   const carriers = new StructuralCarriers();
   carriers.fromEmitted(source);
   carriers.ids = plan.ids = () => next++;
-  const messages = new Set<string>();
   for (const [id, index] of candidates) {
     const record = readStepSlots(lines[index]);
     if (!record) continue;
@@ -61,10 +60,10 @@ export function finishEffectiveVarying(lines: string[], warnings: string[]): voi
     const present = (slot: string) => types.has(slotRef(slot) ?? 0);
     for (const slot of [1, 5, 6]) if (!present(args[slot])) args[slot] = '$';
     const cause = next <= 0xffffffff ? carriers.noteCause(id, record.type, args, undefined) : null;
-    if (cause) messages.add(cause.message);
+    if (cause) noteLoss(cause.message);
     const restored = next <= 0xffffffff ? plan.rewrite(id, record.type, args, new Set(cause ? ['CausedBy'] : [])) : undefined;
     if (restored?.body) {
-      for (const warning of restored.losses) messages.add(warning);
+      for (const warning of restored.losses) noteLoss(warning);
       lines[index] = '#' + id + '=' + restored.body + ';';
       continue;
     }
@@ -73,10 +72,11 @@ export function finishEffectiveVarying(lines: string[], warnings: string[]): voi
     const target = varyingTarget(record.type)!;
     lines[index] = '#' + id + '=' + target + '(' + [...args.slice(0, 7), load, args[8],
       args[9], args[11], '.CONST.'].join(',') + ');';
-    messages.add(LOSS);
-    if (load === '$') messages.add(MISSING_LOAD);
-    if (!cause && !slotUnset(args[10])) messages.add(record.type + '.CausedBy has no slot in IFC4; its value is omitted (#11037).');
+    noteLoss(LOSS);
+    if (load === '$') noteLoss(MISSING_LOAD);
+    if (!cause && !slotUnset(args[10])) noteLoss(record.type + '.CausedBy has no slot in IFC4; its value is omitted (#11037).');
   }
-  for (const line of [...plan.added(), ...carriers.added()]) lines.push(line);
-  warnings.push(...messages);
+  const added = [...plan.added(), ...carriers.added()];
+  for (const line of added) lines.push(line);
+  return added.length;
 }

@@ -23,8 +23,10 @@ interface Controller {
   stage: (id: string, entry: SavedClashReport | null) => void;
 }
 
+export type ClashReportSaveResult = 'saved' | 'invalid' | 'conflict' | 'storage';
+
 export interface ClashReportActions {
-  save: (report: SavedClashReport) => Promise<boolean>;
+  save: (report: SavedClashReport) => Promise<ClashReportSaveResult>;
   stage: (report: SavedClashReport) => void;
   rename: (id: string, name: string) => Promise<boolean>;
   remove: (id: string, beforeWrite?: () => boolean | Promise<boolean>) => Promise<boolean>;
@@ -41,9 +43,10 @@ export function clashReportActions(library: Controller, reports: () => readonly 
   };
   return {
     stage: (entry) => { if (isSavedClashReport(entry) && !conflicts(entry)) library.stage(entry.id, entry); },
-    save: (report) => {
-      if (!isSavedClashReport(report)) { console.warn('[Clash reports] Refusing an invalid report'); return Promise.resolve(false); }
-      return conflicts(report) ? Promise.resolve(false) : library.put(report.id, report);
+    save: async (report) => {
+      if (!isSavedClashReport(report)) { console.warn('[Clash reports] Refusing an invalid report'); return 'invalid'; }
+      if (conflicts(report)) return 'conflict';
+      return (await library.put(report.id, report)) ? 'saved' : 'storage';
     },
     rename: (id, name) => {
       const entry = reports().find((value) => value.id === id);

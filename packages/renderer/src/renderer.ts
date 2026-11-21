@@ -62,32 +62,8 @@ export { SymbolicTextAtlas } from './symbolic-text-atlas.js';
 // Section cap styling (hatch pattern ids + default colours). The cap itself
 // is now rendered by Section2DOverlayRenderer's fill pass; this module just
 // holds the styling primitives shared with the store and UI.
-export { DEFAULT_CAP_STYLE, HATCH_PATTERN_IDS } from './section-cap-style.js';
-export type { SectionCapStyle, HatchPatternId } from './section-cap-style.js';
-export { planeBasis, nearestCardinalAxis } from './section-plane-basis.js';
-export type { PlaneBasis, Vec3Tuple } from './section-plane-basis.js';
-export { capHighlightKey } from './section-2d-overlay.js';
-export { SECTION_BOX_CAP_FACES, sectionBoxCapKey } from './section-box-caps.js';
-export type { SectionBoxCapFace } from './section-box-caps.js';
-export type { Section2DOverlayOptions, Section2DOverlayCapStyle, CutPolygon2D, DrawingLine2D, LineOverlayChannel, LineOverlayOptions } from './section-2d-overlay.js';
-export { LINE_OVERLAY_CHANNELS } from './section-2d-overlay.js';
-export { Raycaster } from './raycaster.js';
-export { SnapDetector, SnapType } from './snap-detector.js';
-export { BVH } from './bvh.js';
-export { hostsOtherEntities } from './mesh-entity-hosting.js';
-export { OverlayIdSpaceExhaustedError } from './overlay-id-space-exhausted-error.js';
-export { FederationRegistry, federationRegistry, ModelRangeExtensionRefusedError } from './federation-registry.js';
-export type { ModelRange, GlobalIdLookup } from './federation-registry.js';
+export * from './renderer-exports.js';
 export * from './types.js';
-export { MAX_EXTRA_CLIP_PLANES } from './extra-clip-planes.js';
-export type { SectionPlaneFrame, SectionFrameInput } from './section-plane-frames.js';
-export {
-    resolveEnvironment,
-    deriveSkyGradient,
-    packEnvironmentUniforms,
-    ENVIRONMENT_UNIFORM_SIZE,
-} from './environment.js';
-export type { LightingEnvironment, ResolvedEnvironment, SkyGradient, Vec3Color } from './environment.js';
 export type { OverlayTheme, Rgba as OverlayThemeRgba } from './overlay-theme.js';
 export { DEFAULT_OVERLAY_THEME } from './overlay-theme.js';
 import { DEFAULT_OVERLAY_THEME, type OverlayTheme } from './overlay-theme.js';
@@ -226,7 +202,7 @@ import { drawInstanceRuns, uploadInstancedRteDeltas, type InstanceRun } from './
 import { INSTANCED_RTE_DELTA_SLOT } from './instanced-vertex-layout.js';
 import { shadowOccluderBatches } from './shadow-occluder-batches.js';
 import { batchForWholeDraw, pushSplit } from './residency.js';
-import { BatchVisibilityCache, canFilterOnGpu } from './batch-visibility.js';
+import { BatchVisibilityCache, batchEntities, canFilterOnGpu } from './batch-visibility.js';
 import { FrameEntityVisibility, MESH_FLAG_ENTITY_VISIBILITY } from './entity-visibility-table.js';
 import { captureRendererScreenshot } from './renderer-screenshot.js';
 import { traceRendererColorFrameEncoder, beginRendererColorFrameCapture, cancelRendererColorFrame, discardRendererColorFrameReadback, encodeRendererColorFrameCapture, requestRendererColorFrame, retryRendererColorFrame, settleRendererColorFrameCapture, type RendererColorFrame, type RendererColorFrameCapture } from './renderer-color-readback.js';
@@ -2286,7 +2262,7 @@ export class Renderer {
                 const route = (b: BatchedMesh, part: AlphaBatchLike | null): void => {
                     if (part) filtered.set(b, part);
                     const drawn = part ?? b;
-                    (shouldRouteBatchTransparent(alphaForBatch(drawn, b.color[3]), drawn.expressIds, colorOverrides) ? transparentBatches : opaqueBatches).push(b);
+                    (shouldRouteBatchTransparent(alphaForBatch(drawn, b.color[3]), batchEntities(drawn), colorOverrides) ? transparentBatches : opaqueBatches).push(b);
                 };
 
                 for (let batch of allBatchedMeshes) {
@@ -2637,7 +2613,7 @@ export class Renderer {
                             // lens/Pset colour override, so the colour table paints it (#6076).
                             const isTransparent = shouldRouteBatchTransparent(
                                 alphaForBatch(subBatch, color[3]),
-                                subBatch.expressIds,
+                                batchEntities(subBatch),
                                 colorOverrides,
                             );
                             if (isTransparent) {
@@ -3043,6 +3019,17 @@ export class Renderer {
         options?: PickOptions & { snapOptions?: Partial<SnapOptions> }
     ): { intersection: Intersection; snap?: SnapTarget } | null {
         return this.raycastEngine.raycastScene(x, y, options, this.activePickClip());
+    }
+
+    /**
+     * Released CPU geometry read back from local storage for the next raycast
+     * and snap (#10264). `raycastScene` / `raycastSceneMagnetic` test these
+     * pieces beside the resident ones, under the same visibility and section
+     * clip. Pass `null` to clear. Place them in the current model frame first
+     * (`getScene().placeAppearanceSource`); the caller keeps them alive.
+     */
+    setReadbackRaycastMeshes(meshes: readonly MeshData[] | null): void {
+        this.raycastEngine.setReadbackMeshes(meshes);
     }
 
     /**

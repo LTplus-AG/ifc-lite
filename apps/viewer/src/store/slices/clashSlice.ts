@@ -21,9 +21,8 @@ import type {
   ClashReviewStatus,
   ClashSortBy,
 } from '@ifc-lite/clash';
-import { CLASH_REVIEW_STATUSES, DEFAULT_CLASH_REVIEW_STATUS, groupClashes } from '@ifc-lite/clash';
+import { CLASH_REVIEW_STATUSES, DEFAULT_CLASH_REVIEW_STATUS } from '@ifc-lite/clash';
 import {
-  applyClashExclusions,
   exclusionRuleKey,
   type ClashExclusionRule,
 } from '@/lib/clash/exclusions';
@@ -66,6 +65,7 @@ import {
   type ClashSettingsGroupBy,
   type SaveResult,
 } from '@/lib/clash/persistence';
+import { deriveGroups } from './clash-result-projection';
 import { reportClashSettingsSaveFailure } from '@/lib/clash/settings-save-notice';
 
 export type ClashGroupBy = ClashSettingsGroupBy;
@@ -111,7 +111,7 @@ export interface ClashSlice {
    */
   clashGroupsKind: 'derived' | 'manual' | null;
   clashRunning: boolean;
-  clashError: string | null;
+  clashError: string | null; /** See lib/clash/clash-error-kind.ts. */ clashErrorKind: 'unavailable' | 'unknown-target' | 'refused' | 'stale' | 'internal' | null;
   /**
    * Monotonic count of COMPLETED detection runs (all-clashes, matrix, preset,
    * duplicate scan). Bumped by `useClash` right after each successful
@@ -133,6 +133,7 @@ export interface ClashSlice {
   clashReportTouch: boolean;
   /** How the result list is organized (persisted). */
   clashGroupBy: ClashGroupBy;
+  clashSettingsSaveRefused: boolean;
   /** Result-list sort key - view state, kept in the store so it survives a
    *  panel switch instead of resetting to default each time. (#1464) */
   clashSortBy: ClashSortBy;
@@ -149,6 +150,7 @@ export interface ClashSlice {
    * presets); never wiped by `clearClash`. (#1468)
    */
   clashReviews: Map<string, ClashReview>;
+  clashReviewsSaveRefused: boolean;
   /** Which review statuses are shown in the panel list (view filter). (#1468) */
   clashStatusFilter: Set<ClashReviewStatus>;
   /**
@@ -288,7 +290,7 @@ export interface ClashSlice {
   setClashGroups: (groups: ClashGroup[] | null) => void;
   bumpClashRunSeq: () => void;
   setClashRunning: (running: boolean) => void;
-  setClashError: (error: string | null) => void;
+  setClashError: (...args: [error: null] | [error: string, kind: NonNullable<ClashSlice['clashErrorKind']>]) => void;
   setClashProgress: (progress: ClashProgress | null) => void;
   setClashMode: (mode: ClashMode) => void;
   setClashTolerance: (tolerance: number) => void;
@@ -430,7 +432,7 @@ const CLASH_FOCUS_RESET = {
 } as const satisfies Partial<ClashSlice>;
 
 /** Build the persisted settings blob from current slice state. */
-function snapshotSettings(s: ClashSlice): ClashGlobalSettings {
+export function snapshotSettings(s: ClashSlice): ClashGlobalSettings {
   return {
     mode: s.clashMode,
     tolerance: s.clashTolerance,
@@ -439,60 +441,6 @@ function snapshotSettings(s: ClashSlice): ClashGlobalSettings {
     clusterEpsilon: s.clashClusterEpsilon,
     reportTouch: s.clashReportTouch,
     groupBy: s.clashGroupBy,
-  };
-}
-
-/**
- * Everything derived from (raw result × exclusion rules): the filtered result,
- * its clusters, each rule's reach and the suppressed total — PLUS the single
- * gate that keeps this derivation from clobbering a `'manual'` grouping it did
- * not produce (`setClashGroups`, the duplicate scan's coincident-SET view).
- *
- * `clashResult` / `clashExclusionCounts` / `clashSuppressedCount` are always
- * recomputed from `raw` — exclusions must keep filtering a duplicate scan's
- * result too. Only the `clashGroups` field is gated: this is `@ifc-lite/clash`
- * grouping module (spatial clusters, no per-run identity), not a duplicate-
- * scan detector, and it must never overwrite a grouping some OTHER writer
- * produced unless it also owns a genuinely new raw result to derive from.
- *
- * `newRun` distinguishes the two situations that call this:
- * - `true` (only from `setClashResult`): `raw` just changed — a real
- *   detection/scan completed. Any prior manual override was for the
- *   PREVIOUS run's clashes, which no longer exist, so it is superseded
- *   unconditionally.
- * - `false` (`setClashClusterEpsilon`, `commitExclusions`): `raw` is
- *   UNCHANGED — nothing was re-run, only a setting changed. This derivation
- *   did not produce the current `'manual'` grouping (if any) and has no basis
- *   to replace it, so it leaves `clashGroups`/`clashGroupsKind` alone.
- *
- * This is the ONLY place `clashGroups` is computed from `clashRawResult` — a
- * future re-derivation site should route through here (not call
- * `groupClashes` directly) to inherit the guard for free.
- */
-function deriveGroups(
-  state: Pick<ClashSlice, 'clashGroups' | 'clashGroupsKind'>,
-  raw: ClashResult | null,
-  rules: readonly ClashExclusionRule[],
-  clusterEpsilon: number,
-  newRun: boolean,
-): Pick<ClashSlice, 'clashResult' | 'clashGroups' | 'clashGroupsKind' | 'clashExclusionCounts' | 'clashSuppressedCount'> {
-  const { result, counts, suppressed } = applyClashExclusions(raw, rules);
-  if (!newRun && state.clashGroupsKind === 'manual') {
-    return {
-      clashResult: result,
-      clashGroups: state.clashGroups,
-      clashGroupsKind: 'manual',
-      clashExclusionCounts: counts,
-      clashSuppressedCount: suppressed,
-    };
-  }
-  const clashGroups = result ? groupClashes(result, { by: 'cluster', epsilon: clusterEpsilon }) : null;
-  return {
-    clashResult: result,
-    clashGroups,
-    clashGroupsKind: clashGroups ? 'derived' : null,
-    clashExclusionCounts: counts,
-    clashSuppressedCount: suppressed,
   };
 }
 
@@ -520,6 +468,8 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
    */
   const persistSettings = () => {
     const result = saveSettings(snapshotSettings(get()));
+    const refused = !result.ok;
+    if (get().clashSettingsSaveRefused !== refused) set({ clashSettingsSaveRefused: refused });
     if (result.ok || settingsSaveFailureReported) return;
     settingsSaveFailureReported = true;
     reportClashSettingsSaveFailure(result.message);
@@ -547,7 +497,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     clashGroups: null,
     clashGroupsKind: null,
     clashRunning: false,
-    clashError: null,
+    clashError: null, clashErrorKind: null,
     clashRunSeq: 0,
     clashProgress: null,
     clashMode: initial.mode,
@@ -557,6 +507,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     clashClusterEpsilon: initial.clusterEpsilon,
     clashReportTouch: initial.reportTouch,
     clashGroupBy: initial.groupBy,
+    clashSettingsSaveRefused: false,
     clashSortBy: 'severity',
     clashHideTouching: false,
     // Ghost (X-Ray context) by default so clicking a clash immediately reveals
@@ -566,6 +517,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     clashFocusMode: 'ghost',
     clashPresets: buildInitialPresets(),
     clashReviews: loadReviews(),
+    clashReviewsSaveRefused: false,
     clashStatusFilter: new Set(CLASH_REVIEW_STATUSES),
     clashExclusions: loadExclusions(),
     clashExclusionCounts: new Map<string, number>(),
@@ -599,7 +551,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     setClashGroups: (clashGroups) => set({ clashGroups, clashGroupsKind: clashGroups ? 'manual' : null }),
     bumpClashRunSeq: () => set((s) => ({ clashRunSeq: s.clashRunSeq + 1 })),
     setClashRunning: (clashRunning) => set({ clashRunning }),
-    setClashError: (clashError) => set({ clashError }),
+    setClashError: (...args) => set({ clashError: args[0], clashErrorKind: args.length === 2 ? args[1] : null }),
     setClashProgress: (clashProgress) => set({ clashProgress }),
 
     setClashMode: (clashMode) => { set({ clashMode }); persistSettings(); },
@@ -801,7 +753,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
       const result = saveReviews(map);
       // Reflect the edit optimistically even if persistence hit quota, so the UI
       // stays responsive; the SaveResult lets the caller surface the failure.
-      set({ clashReviews: map });
+      set({ clashReviews: map, clashReviewsSaveRefused: !result.ok });
       return result;
     },
 
@@ -954,6 +906,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
         clashClusterEpsilon: settings.clusterEpsilon,
         clashReportTouch: settings.reportTouch,
         clashGroupBy: settings.groupBy,
+        clashSettingsSaveRefused: false,
         // Regroup existing derived results at the flavor's cluster radius in
         // the same commit (see resetClashSettings; `newRun: false` preserves
         // a manual duplicate-scan grouping). (#2535)
@@ -984,7 +937,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
         clashGroups: null,
         clashGroupsKind: null,
         clashRunning: false,
-        clashError: null,
+        clashError: null, clashErrorKind: null,
         clashProgress: null,
         clashSolidRequestSeq: s.clashSolidRequestSeq + 1,
       })),

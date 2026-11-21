@@ -7,7 +7,7 @@ import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { summarizeClashes, type Clash } from '@ifc-lite/clash';
-import { render, click, cleanup } from '@/test/render';
+import { render, click, cleanup, settle } from '@/test/render';
 import { useViewerStore } from '@/store';
 import { captureEvidence } from '@/lib/assistant/evidence';
 import { replaceEvidence, useAssistant, cancelAssistant } from '@/lib/assistant/conversation';
@@ -17,7 +17,7 @@ const initial = useViewerStore.getState();
 afterEach(() => { cleanup(); cancelAssistant(); useViewerStore.setState(initial, true); });
 
 // #6847: mount the actual reviewer and prove model output cannot modify native coordination state.
-test('mounted group preview shows full accounting, escapes output and refuses stale review', () => {
+test('mounted group preview shows full accounting, escapes output and refuses stale review', async () => {
   const clash: Clash = { id: 'coordination-1', rule: 'coordination', status: 'hard', severity: 'critical', distance: -0.01,
     a: { model: 'a', key: 'wall', ref: 1, tag: 'IfcWall' }, b: { model: 'b', key: 'pipe', ref: 1, tag: 'IfcPipeSegment' },
     point: [0, 0, 0], bounds: { min: [0, 0, 0], max: [1, 1, 1] } };
@@ -50,6 +50,7 @@ test('mounted group preview shows full accounting, escapes output and refuses st
   assert.equal(focused.clashReviews, native.clashReviews, 'focusing never records a review decision');
   assert.equal(focused.clashResult, native.clashResult);
   act(() => useViewerStore.setState({ mutationVersion: native.mutationVersion + 1 }));
+  await settle();
   assert.equal(preview.disabled, true);
   assert.ok(focus.every(button => button.disabled), 'a stale preview cannot drive the scene');
   assert.ok(ui.querySelector('[role="alert"]'));

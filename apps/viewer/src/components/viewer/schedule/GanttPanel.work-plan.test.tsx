@@ -14,7 +14,7 @@ import {
   type ScheduleTaskInfo,
   type WorkScheduleInfo,
 } from '@ifc-lite/parser';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, render, settle } from '@/test/render.js';
 import { getLocale, registerLocale, setLocale } from '@/i18n/registry';
 import { scheduleEn } from '@/i18n/catalogues/schedule.en';
 import { useViewerStore, type FederatedModel } from '@/store';
@@ -111,6 +111,8 @@ describe('GanttPanel loaded IfcWorkPlan read path', () => {
       scheduleData: null,
     });
 
+    await settle();
+
     const ui = render(<GanttPanel />);
     assert.match(ui.textContent ?? '', /Delivery plan.*Shell programme/);
     assert.match(ui.textContent ?? '', /Future works.*No nested schedules/);
@@ -139,6 +141,7 @@ describe('GanttPanel loaded IfcWorkPlan read path', () => {
     const key = 'schedule.panel.pendingSourceSchedule';
     try {
       setLocale('en');
+      await settle();
       const ui = render(<GanttPanel />);
       assert.ok(ui.textContent?.includes(scheduleEn[key]));
       assert.equal(useViewerStore.getState().scheduleData?.tasks[0]?.globalId, task.globalId);
@@ -165,6 +168,7 @@ describe('GanttPanel loaded IfcWorkPlan read path', () => {
     }, '__legacy__');
     useViewerStore.getState().deleteTask(task.globalId);
     assert.equal(useViewerStore.getState().scheduleIsEdited, true);
+    await settle();
     const ui = render(<GanttPanel />);
     assert.equal(useViewerStore.getState().scheduleSourceModelId, '__legacy__');
     assert.deepEqual(useViewerStore.getState().scheduleData?.tasks, []);
@@ -202,6 +206,8 @@ describe('GanttPanel loaded IfcWorkPlan read path', () => {
       ifcDataStore: active.ifcDataStore,
       scheduleData: null,
     });
+
+    await settle();
 
     const ui = render(<GanttPanel />);
 

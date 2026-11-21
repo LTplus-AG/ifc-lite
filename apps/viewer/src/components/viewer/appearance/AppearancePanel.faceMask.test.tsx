@@ -13,7 +13,7 @@ import { StepExporter } from '@ifc-lite/export';
 import { federationRegistry, Renderer as PreviewRenderer, type Renderer } from '@ifc-lite/renderer';
 import { GeometryProcessor, type MeshData, type GeometryResult } from '@ifc-lite/geometry';
 import { AppearancePreviewController } from '../../../../../../packages/renderer/src/appearance-preview.js';
-import { render, cleanup, advance, type } from '@/test/render.js';
+import { render, cleanup, advance, settle, type } from '@/test/render.js';
 import { AppearanceStreamingHarness } from '@/test/appearance-streaming-harness.js';
 import { appearanceInstanceScene } from '@/test/appearance-instance-scene.js';
 import { fixtureModel } from '@/test/store-fixture.js';
@@ -501,6 +501,7 @@ for (const mode of ['resident-image', 'instanced-image', 'fragmented-pdf'] as co
     if (pageSource) assertCanonicalFragments(readParts(selection)!, originalOracle, [[0, 1, 2], [3, 4, 5]],
       'Undo restores the original canonical fragments');
     if (instanced) assert.equal(useViewerStore.getState().models.get('evaluated')!.geometryResult!.meshes.length, 0);
+    await settle();
     await act(async () => { const redo = ui.querySelector<HTMLButtonElement>('button[aria-label="Redo"]'); assert.ok(redo && !redo.disabled); redo.click(); });
     assert.deepEqual(splitIds(), expectedSplitIds);
     if (pageSource) assertCanonicalFragments(readParts(selection)!, originalOracle, [[0, 1, 2], [3, 4, 5]],

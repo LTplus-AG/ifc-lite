@@ -12,7 +12,7 @@ import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { render, cleanup, click, advance } from '@/test/render.js';
+import { render, cleanup, click, advance, settle } from '@/test/render.js';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { PropertyValueType } from '@ifc-lite/data';
 import { useViewerStore } from '@/store';
@@ -119,6 +119,7 @@ describe('DataConnector — a CSV import is one undo step Ctrl+Z can reach (#595
       }
       return write(...args);
     };
+    await settle();
     const container = render(<DataConnector trigger={<button>Open</button>} />);
     await openDialog(container);
     await uploadCsv(['GlobalId,FireRating', ...rows.map((r) => `${r.globalId},REI${r.expressId}`)].join('\n'));

@@ -8,7 +8,7 @@ import { afterEach, it } from 'node:test';
 import { act } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { render, cleanup } from '@/test/render.js';
+import { render, cleanup, settle } from '@/test/render.js';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { ModelMetadataPanel } from './ModelMetadataPanel';
 
@@ -42,6 +42,7 @@ END-ISO-10303-21;`;
     view.createEntity('IfcClassification', [null, null, null, 'DIN 276']);
     useViewerStore.setState((state) => ({ mutationVersion: state.mutationVersion + 1 }));
   });
+  await settle();
   assert.doesNotMatch(panel.textContent ?? '', /Uniclass/);
   assert.match(panel.textContent ?? '', /DIN 276/);
 });

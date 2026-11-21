@@ -49,6 +49,24 @@ function previewOtherModel() {
 describe('authoring operations write the named target (#10793)', () => {
   beforeEach(seed);
 
+  it('reports a refused native material assignment before marking the write committed (#10871)', async () => {
+    const state = useViewerStore.getState();
+    const dataStore = state.models.get(SAMPLE_MODEL)!.ifcDataStore!;
+    // A Cartesian point exists in the model but cannot receive an IfcRelAssociatesMaterial.
+    const express_id = dataStore.entityIndex.byType.get('IFCCARTESIANPOINT')?.[0];
+    assert.ok(express_id);
+    const view = state.mutationViews.get(SAMPLE_MODEL)!;
+    const before = view.getNewEntities().length;
+    const result = await invoke('authoring.material.createAndAssign', {
+      express_id, Name: 'Concrete', Color: '#808080', Category: '', Description: '',
+    });
+    const details = result.structured as { reason: string; committed?: boolean };
+    assert.equal(result.errorCode, 'INVALID_INPUT', result.text);
+    assert.equal(details.reason, 'refused');
+    assert.equal(details.committed, undefined);
+    assert.equal(view.getNewEntities().length, before, 'native refusal rolls back the new material');
+  });
+
   it('#21 a Rectangle profile writes the kind Width and Height (Depth for a column) that placement reads', async () => {
     answer(await invoke('authoring.defaults.profile', { owner: 'beam', profile_json: JSON.stringify({ Type: 'Rectangle', XDim: 0.25, YDim: 0.6 }), expected_defaults: defaults() }));
     answer(await invoke('authoring.defaults.profile', { owner: 'column', profile_json: JSON.stringify({ Type: 'Rectangle', XDim: 0.5, YDim: 0.7 }), expected_defaults: defaults() }));
@@ -125,11 +143,12 @@ describe('authoring operations write the named target (#10793)', () => {
   it('#58 a box write to a footprint prism zone is refused', async () => {
     const setId = useViewerStore.getState().createZoneSet('Prisms');
     useViewerStore.getState().addZone(setId, { name: 'P', center: [1, 1, 1], size: [2, 2, 2], rotationY: 0, footprint: [[0, 0], [2, 0], [2, 2], [0, 2]] });
-    const zone = useViewerStore.getState().zoneSets[0].zones[0], configuration = () => JSON.stringify(useViewerStore.getState().zoneSets);
-    const result = await invoke('zones.box.write', { set_id: setId, zone_id: zone.id, name: 'P', center: [9, 1, 9], size: [5, 2, 5], rotationY: 0, expected_configuration: configuration() });
-    assert.equal(result.isError, true); assert.deepEqual(useViewerStore.getState().zoneSets[0].zones[0].center, zone.center);
+    // The zone token is the configuration_revision zones.read returns (#10794).
+    const zone = useViewerStore.getState().zoneSets[0].zones[0], configuration = async () => answer<{ configuration_revision: string }>(await invoke('zones.read', {}, false)).configuration_revision;
+    const result = await invoke('zones.box.write', { set_id: setId, zone_id: zone.id, name: 'P', center: [9, 1, 9], size: [5, 2, 5], rotationY: 0, expected_configuration: await configuration() });
+    assert.equal(result.isError, true); assert.match(result.text, /footprint prism/); assert.deepEqual(useViewerStore.getState().zoneSets[0].zones[0].center, zone.center);
     // What the prism keeps from a box write (name, vertical centre, height) still applies.
-    answer(await invoke('zones.box.write', { set_id: setId, zone_id: zone.id, name: 'Taller', center: [zone.center[0], 2, zone.center[2]], size: [zone.size[0], 4, zone.size[2]], rotationY: zone.rotationY, expected_configuration: configuration() }));
+    answer(await invoke('zones.box.write', { set_id: setId, zone_id: zone.id, name: 'Taller', center: [zone.center[0], 2, zone.center[2]], size: [zone.size[0], 4, zone.size[2]], rotationY: zone.rotationY, expected_configuration: await configuration() }));
     const after = useViewerStore.getState().zoneSets[0].zones[0];
     assert.deepEqual([after.name, after.center[1], after.size[1]], ['Taller', 2, 4]); assert.deepEqual(after.footprint, zone.footprint);
   });

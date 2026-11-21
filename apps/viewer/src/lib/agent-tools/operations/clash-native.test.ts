@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
-import '@/test/content-fixture';
+import { refuseContentWrites } from '@/test/content-fixture';
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
 import { createBimContext } from '@ifc-lite/sdk';
@@ -60,6 +60,17 @@ describe('native Clash operation parity (#10525 follow-up)', () => {
       value(await call('clash.run', runInput('duplicates'), true));
       assert.equal(runRequestOf(useViewerStore.getState().clashRawResult)?.kind, 'duplicates');
     });
+  it('refuses a continuation after native clash review changes a page row (#10877)', async () => {
+    await seedCoincidentWalls(1, 3);
+    const { run_seq } = value<{ run_seq: number }>(await call('clash.run', runInput(), true));
+    const first = value<{ next_offset: number; page_revision: string; clashes: { clash: { id: string } }[] }>(
+      await call('clash.results', { offset: 0, limit: 1, run_seq }));
+    assert.equal(first.next_offset, 1); assert.ok(first.page_revision);
+    const next = { offset: first.next_offset, page_revision: first.page_revision, limit: 1, run_seq };
+    value(await call('clash.results', next));
+    value(await call('clash.review', { clash_id: first.clashes[0].clash.id, run_seq, status: 'accepted', comment: 'Reviewed between pages' }, true));
+    assert.equal((await call('clash.results', next)).errorCode, 'STATE_CHANGED');
+  });
   it('refuses stale settings and revoked write grants before native publication', async () => {
     const input = runInput();
     useViewerStore.getState().setClashTolerance(0.1);
@@ -72,6 +83,60 @@ describe('native Clash operation parity (#10525 follow-up)', () => {
     assert.equal(result.isError, true);
     assert.equal(useViewerStore.getState().clashRunSeq, seq);
   });
+  it('preserves native unavailable refusals for unresolved clash pairs and groups (#10871)', async () => {
+    await seedCoincidentWalls(1, 3);
+    const { run_seq } = value<{ run_seq: number }>(await call('clash.run', runInput(), true));
+    const { clashResult, resolveGlobalIdInModel } = useViewerStore.getState();
+    assert.ok(clashResult);
+    // Keep the same loaded model and run, with findings whose entity refs no longer resolve.
+    const missing = Number.MAX_SAFE_INTEGER;
+    const clashes = clashResult.clashes.map(clash => {
+      assert.equal(resolveGlobalIdInModel(clash.a.model, missing), null);
+      return { ...clash, a: { ...clash.a, ref: missing }, b: { ...clash.b, ref: missing } };
+    });
+    useViewerStore.setState({ clashResult: { ...clashResult, clashes } });
+    const ids = clashes.map(clash => clash.id);
+    assert.ok(ids.length > 1);
+    for (const [element, clash_ids] of [['pair', [ids[0]]], ['pair', ids], ['a', [ids[0]]], ['b', [ids[0]]]] as const) {
+      useViewerStore.getState().setClashError(null);
+      const result = await call('clash.focus', { clash_ids, run_seq, element, mode: 'highlight' }, true);
+      assert.equal(result.errorCode, 'UNSUPPORTED_OPERATION', result.text);
+      assert.equal((result.structured as { reason: string }).reason, 'unavailable');
+      assert.equal(useViewerStore.getState().clashErrorKind, 'unavailable');
+      if (element !== 'pair') continue;
+      useViewerStore.getState().setClashError(null);
+      const topic = await call('clash.topic.create', {
+        kind: clash_ids.length === 1 ? 'pair' : 'group', clash_ids, run_seq, group_name: 'Group', mode: 'highlight',
+      }, true);
+      assert.equal(topic.errorCode, 'UNSUPPORTED_OPERATION', topic.text);
+      assert.equal((topic.structured as { reason: string }).reason, 'unavailable');
+    }
+  });
+
+  it('distinguishes conflicting evidence from storage failure when importing a valid clash report (#10871)', async () => {
+    const { run_seq } = value<{ run_seq: number }>(await call('clash.run', runInput(), true));
+    const { id } = value<{ id: string }>(await call('clash.reports.save', { name: 'Coordination', run_seq }, true));
+    const report = useViewerStore.getState().savedClashReports.find(row => row.id === id)!;
+    const { expected_reports } = value<{ expected_reports: string }>(await call('clash.reports.read'));
+    const importReport = (report_json: string) => call('clash.reports.write', {
+      action: 'import', id: '', name: '', report_json, expected_reports,
+    }, true);
+    const refused = refuseContentWrites();
+    try {
+      const result = await importReport(JSON.stringify({ ...report, id: 'imported-report' }));
+      assert.equal(result.errorCode, 'INTERNAL_ERROR', result.text);
+      assert.equal((result.structured as { reason: string }).reason, 'internal');
+    } finally { refused.mock.restore(); }
+
+    const latest = value<{ expected_reports: string }>(await call('clash.reports.read'));
+    const result = await call('clash.reports.write', {
+      action: 'import', id: '', name: '', expected_reports: latest.expected_reports,
+      report_json: JSON.stringify({ ...report, savedAt: '2020-01-01T00:00:00.000Z' }),
+    }, true);
+    assert.equal(result.errorCode, 'INVALID_INPUT', result.text);
+    assert.equal((result.structured as { reason: string }).reason, 'conflict');
+  });
+
   it('filters and restores native findings without rerunning and writes durable native reviews', async () => {
     const result = value<{ run_seq: number }>(await call('clash.run', runInput(), true));
     const s = useViewerStore.getState(),
@@ -145,6 +210,14 @@ describe('native Clash operation parity (#10525 follow-up)', () => {
       ),
     );
     assert.ok(bcf.artifact.bytes > 100);
+    // #10871: a severity filter can select zero findings from a real nonempty run.
+    const severity = useViewerStore.getState().clashResult!.clashes[0].severity;
+    const empty = await call('clash.exportBcf', {
+      run_seq: result.run_seq, groupBy: 'rule', severities: [severity === 'info' ? 'critical' : 'info'],
+      includeSnapshots: false, maxTopics: 20, clash_ids: [],
+    }, true);
+    assert.equal(empty.errorCode, 'INVALID_INPUT', empty.text);
+    assert.equal((empty.structured as { reason: string }).reason, 'invalid-value');
     useViewerStore.setState({ bcfProject: null });
     const topic = await call(
       'clash.topic.create',
@@ -153,6 +226,65 @@ describe('native Clash operation parity (#10525 follow-up)', () => {
     );
     assert.equal(topic.isError, true);
     assert.equal(useViewerStore.getState().bcfProject, null);
+  });
+  it('clash.drafts.create drafts the reviewed active workspace and refuses a token read before a workspace switch (#10794)', async (t) => {
+    const run = value<{ run_seq: number }>(await call('clash.run', runInput(), true));
+    const id = useViewerStore.getState().clashResult!.clashes[0].id;
+    const [row] = value<Array<{ member: unknown }>>(await call('clash.groups.evidence', { run_seq: run.run_seq, clash_ids: [id] }));
+    const workspace = { version: 1, id: 'reviewed', name: 'Reviewed', groups: [{ id: 'g', name: 'Walls', members: [row.member] }] };
+    const written = value<{ expected_library: string }>(await call('clash.groups.write', { workspace_json: JSON.stringify(workspace), expected_library: value<{ expected_library: string }>(await call('clash.groups.read')).expected_library }, true));
+    // #10871: the library is ready, but this caller-specified workspace does not exist.
+    const missing = await call('clash.groups.library', { action: 'select', workspace_id: 'missing', expected_library: written.expected_library }, true);
+    assert.equal(missing.errorCode, 'INVALID_INPUT', missing.text);
+    assert.equal((missing.structured as { reason: string }).reason, 'unknown-target');
+    const selected = value<{ active_id: string; expected_library: string }>(await call('clash.groups.library', { action: 'select', workspace_id: 'reviewed', expected_library: written.expected_library }, true));
+    assert.equal(selected.active_id, 'reviewed');
+    const { expected_library } = value<{ expected_library: string }>(await call('clash.groups.read'));
+    assert.equal(expected_library, selected.expected_library, 'select hands back the token the next write needs');
+    const draft = { source: 'groups', clash_ids: [], run_seq: run.run_seq, name: 'Groups', title: 'Groups' };
+    // Another client switches the active workspace between this read and the draft.
+    const { useClashGroupLibrary, DEFAULT_GROUP_WORKSPACE } = await import('@/lib/clash/group-workspace');
+    t.after(() => useClashGroupLibrary.setState({ entries: useClashGroupLibrary.getState().entries.filter(entry => entry.id !== 'reviewed'), activeId: DEFAULT_GROUP_WORKSPACE }));
+    useClashGroupLibrary.setState({ activeId: DEFAULT_GROUP_WORKSPACE });
+    const stale = await call('clash.drafts.create', { ...draft, expected_groups: expected_library }, true);
+    assert.equal(stale.isError, true); assert.match(stale.text, /Manual groups changed/);
+    useClashGroupLibrary.setState({ activeId: 'reviewed' });
+    const created = await call('clash.drafts.create', { ...draft, expected_groups: expected_library }, true);
+    assert.equal(created.isError, false, created.text);
+    const result = (created.structured as { result: { batch_id: string; topics: number } }).result;
+    assert.ok(result.batch_id); assert.equal(result.topics, 1, 'one topic for the one reviewed group');
+  });
+  it('classifies malformed preset JSON and accepts an exported preset payload (#10871)', async () => {
+    const preset = useViewerStore.getState().clashPresets[0];
+    const input = { action: 'import', id: '', enabled: false, expected_presets: JSON.stringify(useViewerStore.getState().clashPresets) };
+    const invalid = await call('clash.presets.write', { ...input, preset_json: '{' }, true);
+    assert.equal(invalid.errorCode, 'INVALID_INPUT', invalid.text);
+    assert.equal((invalid.structured as { reason: string }).reason, 'invalid-value');
+    value(await call('clash.presets.write', { ...input, preset_json: JSON.stringify({ presets: [preset] }) }, true));
+    assert.ok(useViewerStore.getState().clashPresets.some(row => !row.builtin && row.name === preset.name));
+  });
+  it('a clash run refusal carries the code of its condition (#10871)', async () => {
+    // A deleted rule is the caller's input; a matrix with every rule disabled is a state the viewer must leave first.
+    const gone = await call('clash.run', { ...runInput(), kind: 'preset', preset_id: 'deleted-rule' }, true);
+    assert.equal(gone.isError, true); assert.equal(gone.errorCode, 'INVALID_INPUT', gone.text); assert.equal((gone.structured as { reason?: string }).reason, 'unknown-target');
+    const presets = useViewerStore.getState().clashPresets;
+    const reasonOf = (result: AgentToolResult) => (result.structured as { reason?: string }).reason;
+    try {
+      useViewerStore.setState({ clashPresets: presets.map(preset => ({ ...preset, enabled: false })) });
+      const off = await call('clash.run', { ...runInput(), kind: 'matrix' }, true);
+      assert.equal(off.isError, true); assert.equal(off.errorCode, 'UNSUPPORTED_OPERATION', off.text); assert.equal(reasonOf(off), 'unavailable');
+      // A rule whose set filter names a model tag that no longer exists is refused: fixing the rule makes it run.
+      const filtered = { ...presets[0], enabled: true, filterA: [{ combinator: 'AND', rules: [{ kind: 'modelTag', op: 'in', tagIds: ['no-such-tag'] }] }] };
+      useViewerStore.setState({ clashPresets: [filtered, ...presets.slice(1)] as never });
+      const refused = await call('clash.run', { ...runInput(), kind: 'preset', preset_id: filtered.id }, true);
+      assert.equal(refused.errorCode, 'INVALID_INPUT', refused.text); assert.equal(reasonOf(refused), 'refused');
+      // A rerun of a rule deleted since is not the caller's input: it named no rule.
+      useViewerStore.setState({ clashPresets: presets });
+      value(await call('clash.run', { ...runInput(), kind: 'preset', preset_id: presets[0].id }, true));
+      useViewerStore.setState({ clashPresets: presets.slice(1) });
+      const rerun = await call('clash.run', { ...runInput(), kind: 'rerun', preset_id: '' }, true);
+      assert.equal(rerun.errorCode, 'UNSUPPORTED_OPERATION', rerun.text); assert.equal(reasonOf(rerun), 'unavailable');
+    } finally { useViewerStore.setState({ clashPresets: presets }); }
   });
   it('rejects overlapping occurrence claims through the real native manual-group codec', async () => {
     const result = value<{ run_seq: number }>(await call('clash.run', runInput(), true));
@@ -236,6 +368,29 @@ describe('native Clash operation parity (#10525 follow-up)', () => {
       assert.equal(refused.isError, true, file);
       assert.match(refused.text, /no valid clash rules/);
     }
+  });
+  it('refuses a preset import over the rule cap as a limit while the library has room (#10871)', async () => {
+    const { exportPresets, defaultPresets } = await import('@/lib/clash/persistence');
+    const base = defaultPresets()[0], presets = useViewerStore.getState().clashPresets;
+    const rules = (prefix: string, length: number) => Array.from({ length }, (_, n) => ({ ...base, id: `${prefix}-${n}`, name: `${prefix} ${n}`, builtin: false }));
+    const importFile = (file: typeof presets) => {
+      let preset_json = '';
+      exportPresets(file, (content) => { preset_json = content; });
+      return call('clash.presets.write', { action: 'import', id: '', preset_json, enabled: true, expected_presets: JSON.stringify(useViewerStore.getState().clashPresets) }, true);
+    };
+    try {
+      const alone = await importFile(rules('bulk', 201));
+      assert.equal(alone.errorCode, 'INVALID_INPUT', alone.text); assert.equal((alone.structured as { reason?: string } | null)?.reason, 'limit');
+      // 150 held plus 100 passes the cap, but a 50-rule file would fit.
+      useViewerStore.setState({ clashPresets: [...presets, ...rules('held', 150)] });
+      const more = await importFile(rules('more', 100));
+      assert.equal(more.errorCode, 'INVALID_INPUT', more.text); assert.equal((more.structured as { reason?: string; save?: string } | null)?.reason, 'limit');
+      assert.equal((more.structured as { save?: string } | null)?.save, 'too_many');
+      // One rule into a library already at the cap: no smaller file helps.
+      useViewerStore.setState({ clashPresets: [...presets, ...rules('held', 200)] });
+      const full = await importFile(rules('one', 1));
+      assert.equal(full.errorCode, 'UNSUPPORTED_OPERATION', full.text);
+    } finally { useViewerStore.setState({ clashPresets: presets }); }
   });
   it('trims the IFC class of a type exclusion', async () => {
     const { run_seq } = await firstPair();

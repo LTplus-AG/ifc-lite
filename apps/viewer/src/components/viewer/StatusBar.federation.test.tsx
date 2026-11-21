@@ -30,6 +30,7 @@ import 'fake-indexeddb/auto';
 import { describe, it, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
+import { settle } from '@/test/render.js';
 import { createRoot, type Root } from 'react-dom/client';
 import { IfcParser } from '@ifc-lite/parser';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -241,6 +242,7 @@ describe('StatusBar — federation-space storey element count', () => {
       selectedEntities: [],
     });
 
+    await settle();
     const container = render();
     assert.ok(container.textContent?.includes('1 / 2 element'),
       'the authored wall mesh belongs to m2 and its source storey, not the raw global id');
@@ -270,6 +272,7 @@ describe('StatusBar — federation-space storey element count', () => {
       selectedEntities: [],
     });
 
+    await settle();
     const container = render();
     assert.ok(container.textContent?.includes('1 / 2 element'),
       'the store-backed resolver must assign the global storey id to m2 before counting members');
@@ -280,6 +283,7 @@ describe('StatusBar — federation-space storey element count', () => {
       view.deleteEntity(storey.expressId);
       useViewerStore.setState({ mutationVersion: 2 });
     });
+    await settle();
     assert.ok(container.textContent?.includes(`Storey #${ID_OFFSET + storey.expressId}`),
       'a tombstoned storey must not retain its authored name in the pill');
   });
@@ -304,6 +308,7 @@ describe('StatusBar — federation-space storey element count', () => {
       ],
     });
 
+    await settle();
     const container = render();
     assert.ok(
       container.textContent?.includes('4 / 8 elements'),
@@ -329,6 +334,7 @@ describe('StatusBar — federation-space storey element count', () => {
       showPerformanceStats: true,
     });
 
+    await settle();
     const container = render();
     assert.ok(container.textContent?.includes('5 tris'));
   });

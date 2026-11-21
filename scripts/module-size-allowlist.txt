@@ -108,7 +108,6 @@
   2170 apps/viewer/src/hooks/useIfcLoader.ts
    456 apps/viewer/src/hooks/useSymbolicAnnotations.ts
    633 apps/viewer/src/lib/analytics-scrub.ts
-   627 apps/viewer/src/lib/clash/persistence.ts
    431 apps/viewer/src/lib/compare/worldPlacement.ts
    501 apps/viewer/src/lib/geo/cesium-bridge.ts
    461 apps/viewer/src/lib/geo/custom-basemap.ts
@@ -195,7 +194,7 @@
   1527 packages/export/src/merged-exporter.ts
    616 packages/export/src/parquet-exporter.ts
    999 packages/export/src/reference-collector.ts
-   471 packages/export/src/schema-converter.ts
+   468 packages/export/src/schema-converter.ts
    437 packages/extensions/src/testing/runner.ts
    638 packages/geometry/src/coordinate-handler.ts
   1545 packages/geometry/src/geometry-parallel.ts

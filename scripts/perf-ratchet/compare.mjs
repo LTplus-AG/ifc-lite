@@ -41,19 +41,24 @@ export function allowedMax(entry) {
 }
 
 /**
- * Should the daily job lower this entry to `value`? `exact` lowers on any
- * drop. `relative` lowers only once the drop clears the same band the check
- * allows upward: a relative metric (a brotli size that moves a few bytes with
- * the embedded build sha) would otherwise open a one-byte lowering PR every
- * day. Small wins are not lost, they accumulate until they clear the band.
+ * Target ceiling for the daily job, or null if the entry should stay put.
+ * Reserve headroom above main before testing for a drop. For a relative
+ * metric, the target must also clear the tolerance band so small fluctuations
+ * do not trigger a lowering PR.
  *
- * @param {{ ceiling: number, tolerance: { kind: string, value: number } }} entry
+ * @param {{ ceiling: number, unit?: string, headroom?: number, tolerance: { kind: string, value: number } }} entry
  * @param {number} value
  */
-export function shouldLower(entry, value) {
-  if (!(value < entry.ceiling)) return false;
-  if (entry.tolerance.kind === 'exact') return true;
-  return value <= entry.ceiling - entry.ceiling * entry.tolerance.value;
+export function loweringTarget(entry, value) {
+  const bytes = entry.unit === 'bytes';
+  const relative = entry.tolerance.kind === 'relative';
+  const headroom = entry.headroom ?? (bytes && relative ? 0.005 : 0);
+  // As in allowedMax, add the increment separately before rounding.
+  const padded = value + value * headroom;
+  const target = bytes ? Math.floor(padded) : padded;
+  if (!(target < entry.ceiling)) return null;
+  if (relative && target > entry.ceiling - entry.ceiling * entry.tolerance.value) return null;
+  return target;
 }
 
 /** Signed change of `value` relative to `ceiling`, as a fraction (0.01 = +1%). */
@@ -96,7 +101,7 @@ export function compareFamily(ceilings, measured) {
     else if (m.value > entry.ceiling) status = WITHIN_TOLERANCE;
     else if (m.value < entry.ceiling) status = IMPROVEMENT;
     else status = UNCHANGED;
-    rows.push({ ...base, value: m.value, detail: m.detail, status, lowerable: shouldLower(entry, m.value) });
+    rows.push({ ...base, value: m.value, detail: m.detail, status, lowerable: loweringTarget(entry, m.value) !== null });
   }
   for (const m of byId.values()) {
     rows.push({ id: m.id, metric: null, ceiling: null, allowed: null, value: m.value, detail: m.detail, status: UNRATCHETED, lowerable: false });

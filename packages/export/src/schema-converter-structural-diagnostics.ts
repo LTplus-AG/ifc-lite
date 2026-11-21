@@ -37,7 +37,7 @@ export class StructuralDiagnostics {
   readonly axes = new StructuralAxes();
   readonly links = new StructuralLinks();
   readonly varying = new StructuralVarying();
-  deferVarying = false;
+  deferredVarying?: { includeRelationships: boolean };
   readonly carriers = new StructuralCarriers();
   readonly thickness = new StructuralThickness();
   private readonly losses = new Map<string, number>();
@@ -87,7 +87,7 @@ export class StructuralDiagnostics {
     if (!((from === 'IFC2X3' && to === 'IFC4') || (from === 'IFC4' && to === 'IFC2X3'))) return;
     if (!/^\s*#\d+\s*=\s*(?:IFCSTRUCTURAL|IFCRELCONNECTSSTRUCTURAL|IFCRELASSOCIATESPROFILEPROPERTIES)/i.test(line)) return;
     const rec = readStepSlots(line);
-    if (rec && this.deferVarying && varyingTarget(rec.type)) return;
+    if (rec && this.deferredVarying && varyingTarget(rec.type)) return;
     if (!rec || !(rec.type.startsWith('IFCSTRUCTURAL') || rec.type.startsWith('IFCRELCONNECTSSTRUCTURAL') || rec.type === 'IFCRELASSOCIATESPROFILEPROPERTIES')) return;
     // Recorded here, where the record takes the generic path, never for one withheld or rewritten.
     const notice = this.thickness.notice(id, rec.type, rec.slots);
@@ -174,7 +174,8 @@ export class StructuralDiagnostics {
 
   /** Convert retained varying actions and return the number of records appended. */
   finishEffectiveVarying(lines: string[]): number {
-    return this.deferVarying ? finishEffectiveVarying(lines, (message) => this.record(message)) : 0;
+    const deferred = this.deferredVarying;
+    return deferred ? finishEffectiveVarying(lines, deferred.includeRelationships, (message) => this.record(message)) : 0;
   }
 
   private record(message: string): void { this.losses.set(message, (this.losses.get(message) ?? 0) + 1); }

@@ -42,6 +42,20 @@ it('converts the retained or edited varying action and its effective loads (#110
   expect(fallback.stats.warnings.join(' ')).toContain('no complete load configuration');
 });
 
+it('converts varying loads without adding relationships when those are excluded (#11037)', async () => {
+  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(varyingFixture()).buffer);
+  const result = new StepExporter(store).export({ schema: 'IFC4', includeRelationships: false });
+  const output = new TextDecoder().decode(result.content);
+  expect(output).toContain('#30=IFCSTRUCTURALCURVEACTION(');
+  expect(output).toContain('#20=IFCSTRUCTURALPOINTREACTION(');
+  expect(output).toContain('IFCSTRUCTURALLOADCONFIGURATION($,(#11,#19,#18),$);');
+  expect(output).not.toContain('IFCRELASSIGNSTOPRODUCT(');
+  expect(result.stats.newEntityCount).toBe(1);
+  expect(result.stats.warnings).toEqual(expect.arrayContaining([
+    expect.stringContaining('CausedBy has no slot in IFC4; its value is omitted'),
+  ]));
+});
+
 it('counts retained varying actions that lose their load configuration (#11037)', async () => {
   const body = varyingFixture();
   const second = /^#30=.*$/m.exec(body)![0]

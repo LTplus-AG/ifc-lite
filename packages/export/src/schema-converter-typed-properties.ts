@@ -9,7 +9,11 @@ import type { StructuralDiagnostics } from './schema-converter-structural-diagno
 import type { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
 
-const rows = new Map(IFC2X3_TYPED_PROPERTIES.map((row) => [row[0], row]));
+let rows: ReadonlyMap<string, (typeof IFC2X3_TYPED_PROPERTIES)[number]> | undefined;
+
+function rowFor(type: string) {
+  return (rows ??= new Map(IFC2X3_TYPED_PROPERTIES.map((row) => [row[0], row]))).get(type);
+}
 type Group = { name: string; properties: { attribute: string; record: string }[] };
 type Draft = { sourceType: string; to: 'IFC4' | 'IFC4X3'; groups: Group[] };
 type Field = (typeof IFC2X3_TYPED_PROPERTIES)[number][2][number][1][number];
@@ -28,7 +32,7 @@ function wraps(value: string, field: Field): boolean {
 
 /** Scalar source fields the full writer can preserve as IFC4 properties. */
 export function convertedTypedPropertyNames(type: string): ReadonlySet<string> {
-  return new Set(rows.get(type)?.[2].flatMap(([, fields]) => fields.map((field) => field.sourceName)));
+  return new Set(rowFor(type)?.[2].flatMap(([, fields]) => fields.map((field) => field.sourceName)));
 }
 
 /** Collect effective source values while writing, then allocate ids above all
@@ -43,7 +47,7 @@ export class TypedPropertyUpgrade {
     if (!this.enabled || from !== 'IFC2X3' || (to !== 'IFC4' && to !== 'IFC4X3')) return false;
     const head = stepRecordHead(source);
     const sourceType = head ? source.slice(head.typeStart, head.typeEnd).toUpperCase() : '';
-    const row = rows.get(sourceType);
+    const row = rowFor(sourceType);
     if (!row) return false;
     const input = readStepSlots(source);
     if (!input || input.slots.length !== row[1]) return false;

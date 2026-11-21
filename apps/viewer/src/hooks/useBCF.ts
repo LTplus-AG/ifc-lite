@@ -32,6 +32,9 @@ import { headerFilesForNativeViewpoints } from './bcf/header-for-viewpoints';
 import { bcfWorldOffset, renderFrameBounds, topicToRenderFrame } from './bcf/viewpoint-world-frame';
 import { SectionRestoreSession } from './bcf/section-restore';
 import { applyCameraState } from './bcf/apply-camera-state';
+import { getGlobalRenderer, setGlobalRendererRef } from '../lib/renderer-ref.js';
+
+export { getGlobalRenderer, setGlobalRendererRef, subscribeGlobalRenderer } from '../lib/renderer-ref.js';
 
 // ============================================================================
 // Types
@@ -78,33 +81,11 @@ interface UseBCFResult {
 // ============================================================================
 
 let globalCanvasRef: React.RefObject<HTMLCanvasElement | null> | null = null;
-let globalRendererRef: React.RefObject<Renderer | null> | null = null;
-const rendererRefListeners = new Set<() => void>();
-export function subscribeGlobalRenderer(listener: () => void): () => void {
-  rendererRefListeners.add(listener);
-  return () => { rendererRefListeners.delete(listener); };
-}
-
 /**
  * Set the global canvas reference (called by ViewportContainer)
  */
 export function setGlobalCanvasRef(ref: React.RefObject<HTMLCanvasElement | null>): void {
   globalCanvasRef = ref;
-}
-
-/**
- * Set the global renderer reference (called by ViewportContainer)
- */
-export function setGlobalRendererRef(ref: React.RefObject<Renderer | null>): void {
-  globalRendererRef = ref;
-  for (const listener of rendererRefListeners) listener();
-}
-
-/**
- * Get the global renderer instance (for direct rendering control, e.g., IDS snapshot capture)
- */
-export function getGlobalRenderer(): Renderer | null {
-  return globalRendererRef?.current ?? null;
 }
 
 /**
@@ -128,8 +109,7 @@ export function getGlobalCanvas(): HTMLCanvasElement | null {
  */
 export function clearGlobalRefs(): void {
   globalCanvasRef = null;
-  globalRendererRef = null;
-  for (const listener of rendererRefListeners) listener();
+  setGlobalRendererRef(null);
 }
 
 // ============================================================================
@@ -163,7 +143,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
    * Get the renderer instance (local ref or global)
    */
   const getRenderer = useCallback((): Renderer | null => {
-    return localRendererRef.current?.current ?? globalRendererRef?.current ?? null;
+    return localRendererRef.current?.current ?? getGlobalRenderer();
   }, []);
 
   /**

@@ -12,7 +12,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { render, cleanup, click } from '@/test/render.js';
+import { render, cleanup, click, settle } from '@/test/render.js';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { SourceHostProvider } from '@/services/sources/SourceHostProvider';
@@ -66,9 +66,10 @@ describe('Gaussian capture models in the mounted UI (#8566)', () => {
     assert.equal(useViewerStore.getState().models.has('capture'), false, 'remove removes the model');
   });
 
-  it('a capture beside IFC keeps the multi-model rows; a lone IFC model keeps its tree', () => {
+  it('a capture beside IFC keeps the multi-model rows; a lone IFC model keeps its tree', async () => {
     useViewerStore.setState(fixtureModels(fixtureModel('ifc', { entities: [{ expressId: 1, type: 'IfcWall', name: 'Wall' }] }),
       captureModel('capture', 'church.ply')));
+    await settle();
     let container = render(<SourceHostProvider><HierarchyPanel /></SourceHostProvider>);
     assert.ok(label(container, 'Remove model church.ply'), 'the capture has the federated model header row');
     assert.ok(label(container, 'Remove model ifc'));

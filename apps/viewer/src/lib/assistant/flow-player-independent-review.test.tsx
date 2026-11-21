@@ -15,7 +15,7 @@ import { BimReactContext } from '@/sdk/BimProvider';
 import { FlowPlayer } from '@/components/viewer/flow/FlowPlayer';
 import { openFlowSample } from '@/test/flow-sample-fixture';
 import { fixtureModel } from '@/test/store-fixture';
-import { render, click, type, advance, cleanup } from '@/test/render';
+import { render, click, type, advance, cleanup, settle } from '@/test/render';
 import { flowRegistry } from '@/lib/flow/runner';
 import { captureEvidence } from './evidence';
 import { applyFlowCreateProposal, prepareFlowCreateProposal } from './flow-create';
@@ -118,12 +118,14 @@ test('#7241 independent native Player explicit writer values form one real viewe
   assert.deepEqual(walls().map(wall => wall.name), Array(4).fill('Player default'));
   assert.equal(bim.mutate.undo('arch'), true);
   assert.deepEqual(walls().map(wall => wall.name), original, 'one native Undo restores every wall');
+  await settle(); // the undo is an edit: Run is offered again once it settles (#10535)
   const input = ui.querySelector('input'); assert.ok(input instanceof HTMLInputElement);
   type(input, 'Player explicit override');
   await completed(run);
   assert.deepEqual(walls().map(wall => wall.name), Array(4).fill('Player explicit override'));
   assert.equal(bim.mutate.undo('arch'), true);
   assert.deepEqual(walls().map(wall => wall.name), original);
+  await settle();
   const select = ui.querySelector('select'); assert.ok(select instanceof HTMLSelectElement);
   const history = useViewerStore.getState().undoStacks.get('arch')?.length ?? 0;
   choose(select, 'Description');
@@ -141,6 +143,9 @@ test('#7241 independent native Player cancellation and source replacement settle
     { nodeId: 'query', param: 'type', label: 'Type', kind: 'scalar' },
   ]);
   const { ui, run } = mount();
+  // The sample load's edit is held while its re-mesh, which never answers here,
+  // is in flight; the settle cap publishes it before Run is clicked (#10535).
+  await settle();
   click(run);
   const cancel = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Cancel workflow'); assert.ok(cancel);
   click(cancel); await drained();

@@ -60,6 +60,17 @@ describe('native Clash operation parity (#10525 follow-up)', () => {
       value(await call('clash.run', runInput('duplicates'), true));
       assert.equal(runRequestOf(useViewerStore.getState().clashRawResult)?.kind, 'duplicates');
     });
+  it('refuses a continuation after native clash review changes a page row (#10877)', async () => {
+    await seedCoincidentWalls(1, 3);
+    const { run_seq } = value<{ run_seq: number }>(await call('clash.run', runInput(), true));
+    const first = value<{ next_offset: number; page_revision: string; clashes: { clash: { id: string } }[] }>(
+      await call('clash.results', { offset: 0, limit: 1, run_seq }));
+    assert.equal(first.next_offset, 1); assert.ok(first.page_revision);
+    const next = { offset: first.next_offset, page_revision: first.page_revision, limit: 1, run_seq };
+    value(await call('clash.results', next));
+    value(await call('clash.review', { clash_id: first.clashes[0].clash.id, run_seq, status: 'accepted', comment: 'Reviewed between pages' }, true));
+    assert.equal((await call('clash.results', next)).errorCode, 'STATE_CHANGED');
+  });
   it('refuses stale settings and revoked write grants before native publication', async () => {
     const input = runInput();
     useViewerStore.getState().setClashTolerance(0.1);

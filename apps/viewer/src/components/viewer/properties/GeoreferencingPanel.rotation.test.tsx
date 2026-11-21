@@ -7,7 +7,7 @@ import '@/test/setup-dom.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { IfcParser, extractGeoreferencingOnDemand, type IfcDataStore } from '@ifc-lite/parser';
-import { cleanup, render, click, type, press } from '@/test/render.js';
+import { cleanup, render, click, type, press, settle } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore } from '@/store';
 import { en } from '@/i18n/en';
@@ -18,9 +18,10 @@ const initialState = useViewerStore.getState();
 const ROTATION_LABEL = 'Model rotation in map coordinates';
 const DEGREES_UNIT = en['properties.georef.degUnit'];
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   useViewerStore.setState(initialState, true);
+  await settle();
 });
 
 // IFC4 invariant fixture: map East=(1,0), North=(0,1), local X=(a,b).
@@ -99,6 +100,7 @@ for (const degrees of [30, -30]) {
     const input = openEditor(host, ROTATION_LABEL);
     type(input, String(degrees));
     press(input, 'Enter');
+    await settle();
     assert.equal(valueButton(host, ROTATION_LABEL).getAttribute('aria-label'), `${ROTATION_LABEL}: ${degrees}${DEGREES_UNIT}`);
     const conversion = await exportedGeoref(dataStore);
     const radians = degrees * Math.PI / 180;
@@ -159,6 +161,7 @@ it('authors a changed Scale from its omitted default and preserves it on export 
   assert.equal(input.value, '1');
   type(input, '0.001');
   press(input, 'Enter');
+  await settle();
   assert.equal(valueButton(host, 'Scale').getAttribute('aria-label'), 'Scale: 0.001',
     'the edited authored value replaces the default annotation');
   const conversion = await exportedGeoref(dataStore);

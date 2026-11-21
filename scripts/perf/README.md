@@ -109,11 +109,13 @@ Two tools:
   anything missing exits 2, never skips.
 
 `--expect` is required. `--expect killed` passes only while the tab is still killed and **fails
-once the load is loaded or refused**, telling you to switch to `--expect not-killed` (the #10264
-acceptance: the tab is never killed). `error` and `timeout` never pass. Admission now scales its
-estimate by the sampled share of dense triangulated geometry (`geometryDensity.ts`), so the dense
-minimal case below is expected to be `refused` after a bounded sample (four 256 KiB windows), before the whole source is read; it runs with
-`--expect not-killed`.
+on any other outcome**; unless that outcome is `error` or `timeout`, it tells you to switch to
+`--expect not-killed` (the #10264 acceptance: the tab is never killed). `--expect loaded`,
+`refused` and `awaiting-decision` each pass only that exact outcome. `error` and `timeout` never
+pass. Admission now scales its estimate by the sampled share of dense triangulated geometry
+(`geometryDensity.ts`), so the dense minimal case below is expected to be `refused` after a
+bounded sample (four 256 KiB windows), before the whole source is read. The manual example
+runs it with `--expect not-killed`; the nightly lane below pins it with `--expect refused`.
 
 A viewer may instead warn before an oversized load (a dialog "This model may exceed available
 memory" with Continue loading / Cancel). `--on-memory-dialog wait` (default) reports
@@ -194,10 +196,16 @@ scene, so treat it as a `timeout`, not a pass. These numbers are not comparable 
 campaign runs that put the driver process inside the cap as well: there tfs-225 was killed on
 hardware, here it loads with about 90 MiB to spare.
 
-CI: not wired. Per-PR CI is too heavy (a viewer build plus a ~1 min browser run). The proposed
-home is a `workflow_dispatch`/nightly job, added only once the cap is verified on a GitHub-hosted
-runner: that needs `systemd-run --user` with a delegated memory controller there, or the job run
-inside a container with `--memory=3g --memory-swap=3g`. Neither was verified from here.
+CI: `.github/workflows/oom-load-probe.yml`, nightly and `workflow_dispatch`, not a PR gate (a
+viewer build plus two browser runs). It starts the runner user's systemd manager with
+`loginctl enable-linger` so `systemd-run --user` works on a hosted runner, then pins each case's
+outcome: dense 300 MB at a reported 4 GB / 3 GiB is `refused`, dense 1100 MB at a reported
+8 GB / 6 GiB is `awaiting-decision`. If the hosted runner does not delegate the memory controller
+to the user manager, the probe's preflight exits 2 and the lane is red, never skipped. First
+hosted run (ubuntu-latest, 2026-11-19, run 44519558141): the user manager delegated
+`cpu memory pids`; 300 MB at 4 GB was `refused` before open after five source reads (the 4 KiB
+header, then four 256 KiB sample windows; no OOM kill), and 1100 MB at 8 GB was
+`awaiting-decision` after the 4 KiB header.
 
 ## Gaussian capture memory ownership (#9018, #10401)
 

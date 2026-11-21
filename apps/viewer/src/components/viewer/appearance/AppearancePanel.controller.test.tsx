@@ -9,9 +9,11 @@ import '@/test/setup-dom.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { runAppearanceControllerScenario } from '@/test/appearance-controller.harness.js';
+import { settle } from '@/test/render.js';
 
 const bitmapDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'createImageBitmap');
-afterEach(() => {
+afterEach(async () => {
+  await settle();
   if (bitmapDescriptor) Object.defineProperty(globalThis, 'createImageBitmap', bitmapDescriptor);
   else Reflect.deleteProperty(globalThis, 'createImageBitmap');
 });

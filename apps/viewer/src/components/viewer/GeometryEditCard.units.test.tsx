@@ -13,7 +13,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { useViewerStore } from '@/store';
-import { cleanup, click, render } from '@/test/render.js';
+import { cleanup, click, render, settle } from '@/test/render.js';
 import { WALL, WALL_MODEL, WALL_UNITS, seedRectangleWall } from '@/test/rectangle-wall-fixture';
 import { GeometryEditCard } from './GeometryEditCard.js';
 
@@ -45,9 +45,10 @@ for (const { name, unit, scale } of WALL_UNITS) {
       assert.deepEqual(axisValues(), ['-5.618', '1', '0']);
     });
 
-    it('a +X nudge moves by the selected 0.5 m', () => {
+    it('a +X nudge moves by the selected 0.5 m', async () => {
       render(<GeometryEditCard modelId={WALL_MODEL} entityId={WALL} />);
       click(button('Increase X'));
+      await settle();
       assert.ok(Math.abs(positionX() - (EXACT_X + 0.5)) < 1e-9, `x = ${positionX()}`);
       assert.deepEqual(axisValues(), ['-5.118', '1', '0']);
     });

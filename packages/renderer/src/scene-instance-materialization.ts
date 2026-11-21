@@ -80,10 +80,14 @@ export function materializeInstances(expressId: number, occ: readonly Occurrence
  * own frame: place it like any flat source (`placeAppearanceSource`).
  * `occurrenceKey`s are prefixed with `keyPrefix`, so caches keyed on them never
  * collide with the scene's own occurrences or another shard's.
+ *
+ * With `budgetBytes`, each occurrence's bytes (its template's positions, normals and indices) are charged
+ * BEFORE it is expanded, and a `RangeError` is thrown as soon as the total would exceed the budget: a read
+ * too large is refused without allocating it first.
  */
 export function materializeShardOccurrences(
   shard: DecodedInstancedShard, modelIndex: number, keyPrefix: string,
-  wanted?: (entityId: number) => boolean,
+  wanted?: (entityId: number) => boolean, budgetBytes?: number,
 ): MeshData[] {
   const prepared = prepareInstancedRender(shard);
   const templates = prepared.map((t) => ({ modelIndex, positions: t.positions, normals: t.normals, indices: t.indices,
@@ -104,9 +108,17 @@ export function materializeShardOccurrences(
     }
   });
   const out: MeshData[] = [];
+  let charged = 0;
   for (const [entityId, occurrences] of byEntity) {
-    for (const mesh of materializeInstances(entityId, occurrences, templates) ?? []) {
-      out.push({ ...mesh, occurrenceKey: `${keyPrefix}${mesh.occurrenceKey}` });
+    for (const occurrence of occurrences) {
+      const tpl = templates[occurrence.templateIndex];
+      if (budgetBytes !== undefined && tpl && tpl.positions.length > 0) {
+        charged += tpl.positions.byteLength + tpl.normals.byteLength + tpl.indices.byteLength;
+        if (!(charged <= budgetBytes)) throw new RangeError(`Instanced occurrences exceed their ${budgetBytes}-byte budget`);
+      }
+      for (const mesh of materializeInstances(entityId, [occurrence], templates) ?? []) {
+        out.push({ ...mesh, occurrenceKey: `${keyPrefix}${mesh.occurrenceKey}` });
+      }
     }
   }
   return out;

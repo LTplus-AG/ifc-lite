@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
-//! IFC **schema conversion** for STEP export (Phase 2 P2). Ports
-//! `packages/export/src/schema-converter.ts`: entity-type renames between
-//! IFC2X3 / IFC4 / IFC4X3 / IFC5 (with multi-step chaining), trimming or padding
-//! the attribute list wherever one schema only appended to the other (attribute
-//! names from core's EXPRESS registry, #7683), and a proxy fallback for types
-//! with no target representation.
+//! IFC schema conversion for STEP export, paired with the TypeScript converter.
+//! Chains entity renames between schema families and uses core's EXPRESS
+//! registry to trim or pad positional attributes (#7683). Types with no target
+//! representation use the schema plan's fallback.
 
 use std::borrow::Cow;
 

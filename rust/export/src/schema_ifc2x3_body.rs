@@ -22,11 +22,15 @@ impl<'w> Body<'w> {
     }
 
     pub(crate) fn finish(self) -> io::Result<isize> {
-        self.finish_with(|_| None)
+        self.finish_with_header(|_| None, |_, _| Ok(()))
     }
 
-    /// Write the held section with document-wide conversions and adapted IFC2X3 placements.
-    pub(crate) fn finish_with(self, deferred: impl FnOnce(&str) -> Option<(String, isize)>) -> io::Result<isize> {
+    /// Adapt a held section, then write its header with the final delta before writing DATA.
+    pub(crate) fn finish_with_header(
+        self,
+        deferred: impl FnOnce(&str) -> Option<(String, isize)>,
+        header: impl FnOnce(&mut dyn Write, isize) -> io::Result<()>,
+    ) -> io::Result<isize> {
         let Some(held) = self.held else { return Ok(0) };
         let adapt = |text: &str| {
             let rewritten = deferred(text);
@@ -49,13 +53,10 @@ impl<'w> Body<'w> {
                 })
             }
         };
-        match adapted {
-            Some((bytes, count)) => {
-                self.out.write_all(&bytes)?;
-                Ok(count)
-            }
-            None => self.out.write_all(&held).map(|()| 0),
-        }
+        let (bytes, count) = adapted.unwrap_or((held, 0));
+        header(self.out, count)?;
+        self.out.write_all(&bytes)?;
+        Ok(count)
     }
 }
 

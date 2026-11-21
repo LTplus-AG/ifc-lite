@@ -51,13 +51,24 @@ export function startIdsDraftAutosave(): void {
 }
 
 function openIdsDraft(draft: IdsStudioDraft): void {
-  const live = useIdsStudioDraftLibrary.getState().entries.find(entry => entry.id === draft.id);
+  const { entries, status } = useIdsStudioDraftLibrary.getState();
+  const live = entries.find(entry => entry.id === draft.id);
   if (!live || live.document !== draft.document) return;
   restoring = live.id;
   try {
-    const opened = restoreIdsDraft(live, useViewerStore.getState().idsStudioOpen);
-    if (opened) baselines.set(live.id, { durable: live.document });
-    report(live.id, opened ? undefined : 'unreadable');
+    const saveState = status.items[live.id];
+    const opened = restoreIdsDraft(live, (doc, id) => {
+      useViewerStore.getState().idsStudioOpen(doc, id);
+      if (saveState && saveState !== 'saved') {
+        // Reopening a library entry left visible after a failed save still requires a write.
+        if (!baselines.has(id)) baselines.set(id, { staged: live.document });
+        autosave.schedule(id, doc);
+      } else {
+        baselines.set(id, { durable: live.document });
+        report(id);
+      }
+    });
+    if (!opened) report(live.id, 'unreadable');
   } finally {
     restoring = null;
   }
@@ -65,10 +76,38 @@ function openIdsDraft(draft: IdsStudioDraft): void {
 
 export function flushIdsDrafts(): Promise<boolean> { return autosave.flushAll(); }
 
-/** Save the open draft before something replaces its document. */
-export async function flushOpenIdsDraft(): Promise<boolean> {
+/** `refused` and `unavailable` may pass on retry; the others persist until the user closes the draft in the panel. */
+type IdsDraftUnsavedReason = 'refused' | 'unavailable' | 'tooLarge' | 'serialize' | 'invalid' | 'conflict';
+const RETRY = ' Retry (with a new idempotency_key if you sent one) once storage accepts writes, or ask';
+const UNSAVED_DETAIL: Record<IdsDraftUnsavedReason, string> = {
+  refused: `browser storage refused the write.${RETRY}`,
+  unavailable: `browser storage is unavailable.${RETRY}`,
+  tooLarge: 'the document is too large for a draft. Ask',
+  serialize: 'the document could not be serialized as a draft. Ask',
+  invalid: 'browser storage rejected the draft as invalid. Ask',
+  conflict: 'another tab changed the saved draft. Ask',
+};
+
+class IdsDraftUnsavedError extends Error {
+  constructor(readonly reason: IdsDraftUnsavedReason) {
+    super(`The open IDS draft could not be saved and remains open: ${UNSAVED_DETAIL[reason]} `
+      + 'the user to close it from the IDS Studio panel and confirm discarding the unsaved changes.');
+    this.name = 'IdsDraftUnsavedError';
+  }
+}
+
+function unsavedReason(id: string): IdsDraftUnsavedReason {
+  const feedback = useIdsDraftFeedback.getState()[id];
+  if (feedback === 'tooLarge' || feedback === 'serialize' || feedback === 'conflict') return feedback;
+  const { phase, items } = useIdsStudioDraftLibrary.getState().status;
+  if (items[id] === 'conflict' || items[id] === 'invalid') return items[id];
+  return phase === 'unavailable' ? 'unavailable' : 'refused';
+}
+
+/** Agent close and replace cannot ask the user, so an unsaved open draft refuses them. */
+export async function saveOpenIdsDraft(): Promise<void> {
   const id = useViewerStore.getState().idsStudioDraftId;
-  return !id || autosave.flush(id);
+  if (id && !(await autosave.flush(id))) throw new IdsDraftUnsavedError(unsavedReason(id));
 }
 
 export function checkInitialIdsDraft(isMounted: () => boolean): Promise<void> {

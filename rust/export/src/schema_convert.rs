@@ -174,8 +174,7 @@ pub(crate) fn schema_attribute_names(schema: &str, entity_type: &str) -> Option<
 }
 
 /// Convert an entity type name between schemas (with multi-step chaining).
-/// The export path asks [`rename_type`] through `schema_plan`; this owned form
-/// is what the tests pin.
+/// This owned test helper uses the same [`rename_type`] as the schema plan.
 #[cfg(test)]
 pub(crate) fn convert_entity_type(entity_type: &str, from: &str, to: &str) -> String {
     let (from, to) = (canon(from), canon(to));

@@ -12,7 +12,7 @@ import { viewerOperation } from './contract';
 import { exportMetadata } from './exports-common';
 import { MAX_RESULT_BYTES, resultBytes } from './result-limit';
 import { nativeExportTarget, nativeExportGuard, nativeArtifact, targetSchema } from './export-native-runtime';
-import { invalidInput, stale, unavailable } from './refusals';
+import { internal, invalidInput, stale, unavailable } from './refusals';
 interface Input { target_model_id: string; seed_ids: number[]; excluded_ids: number[]; excluded_types: string[]; relations: Required<RelatedEntityOptions>; anonymize: AnonymizeToggles; file_stem: string }
 const MAX_IDS = 100000;
 const SAMPLE_LIMIT = 32;
@@ -78,7 +78,7 @@ export const exportNativeAnonymizedOperations = [
     };
     // Validate escaped wire bytes before registering the native artifact (#10898).
     if (resultBytes({ diagnostics_json: JSON.stringify(diagnostics) }) > DIAGNOSTICS_BUDGET) {
-      throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'Anonymized export diagnostics exceeded their result budget.', details: { reason: 'internal' } });
+      throw internal('Anonymized export diagnostics exceeded their result budget.');
     }
     return nativeArtifact(c, new Blob([new Uint8Array(out.result.content)], { type: 'text/plain' }), out.filename, diagnostics, check);
   }),

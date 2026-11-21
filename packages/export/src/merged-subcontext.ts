@@ -42,11 +42,12 @@ const TARGET_VIEW_ATTR = 8;
 /** 0-based attribute index of `IfcGeometricRepresentationSubContext.UserDefinedTargetView`. */
 const USER_DEFINED_TARGET_VIEW_ATTR = 9;
 
-function decodeEntity(dataStore: IfcDataStore, expressId: number): string | null {
+export function decodeEntity(dataStore: IfcDataStore, expressId: number): string | null {
   const source = dataStore.source;
   if (!source) return null;
+  // A property atom parsed with `deferPropertyAtomIndex` lives in the deferred index (#10915).
   // @raw-entity-enumeration-ok decode one record's STEP byte span for the merge's context reads; MergeExporter bakes each edited input through STEP export and reparses it first
-  const ref = dataStore.entityIndex.byId.get(expressId);
+  const ref = dataStore.entityIndex.byId.get(expressId) ?? dataStore.deferredEntityIndex?.get(expressId);
   if (!ref) return null;
   return asSourceBytes(source).decodeUtf8(ref.byteOffset, ref.byteOffset + ref.byteLength);
 }

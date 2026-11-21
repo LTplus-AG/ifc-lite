@@ -18,8 +18,8 @@ export async function realignLoadedModels(addModel: NativeModelAdder) {
       const id = await addModel(file, { name: model.name, modelId: model.id, loadedAt: model.loadedAt, visible: model.visible, collapsed: model.collapsed });
       // Only a present, complete model is reloaded: the same rule sources.loadModel applies.
       const reloaded = id ? useViewerStore.getState().models.get(id) : undefined;
-      const tag = tags.get(model.id); if (tag && id && reloaded) useViewerStore.getState().setSourceTag(id, tag);
       if (!reloaded || (reloaded.loadState && reloaded.loadState !== 'complete')) { failed.push(model.name); continue; }
+      const tag = tags.get(model.id); if (tag) useViewerStore.getState().setSourceTag(reloaded.id, tag);
       if (model.visible === false) useViewerStore.getState().setModelVisibility(model.id, false);
     } catch (error) { console.warn('[georeference] A source could not be reloaded during realignment', error); failed.push(model.name); }
   }

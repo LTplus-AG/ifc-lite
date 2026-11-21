@@ -485,9 +485,15 @@ describe('useSandbox().execute() — cross-instance run supersession', () => {
       const pFirst = execute1!(GATED).then((r) => { settled = true; rFirst = r; });
       await execute1!(UNGATED);
       await waitForGates(1);
-      reset1!();
-      // Well inside the sandbox timeout: a run that only ends by timing out was never stopped.
-      await Promise.race([pFirst, new Promise((resolve) => setTimeout(resolve, 2_000))]);
+      assert.equal(gates.length, 1, 'the superseded run must be parked on its host gate');
+      try {
+        reset1!();
+        // Well inside the sandbox timeout: a run that only ends by timing out was never stopped.
+        await Promise.race([pFirst, new Promise((resolve) => setTimeout(resolve, 2_000))]);
+      } finally {
+        // On failure the run is still parked; release it so it cannot leak into the next test.
+        if (!settled) { gates[0]!({ marker: 'leaked' }); await pFirst; }
+      }
     });
     assert.ok(settled, 'the superseded run must stop on reset without its host gate being released');
     assert.equal(rFirst, null);

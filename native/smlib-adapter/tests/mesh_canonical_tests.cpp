@@ -569,6 +569,38 @@ void run_mesh_canonical_tests() {
         AdapterMesh mesh=variant({U,Q,V,P},{{3,0,1},{1,2,3}},0,random); canonicalize(mesh,{true});
         require(has_edge(mesh,U,V),"a vertex well above the near threshold does not block the shorter diagonal");
     }
+    // A declined face keeps the SDK's split, so its interior diagonals are
+    // foreign to every other face: a 2 x 130 strip (260 vertices, over the
+    // 256 cap) and a coplanar quad over its first cell. Whatever the quad's
+    // SDK split, it must not take the strip's diagonal of that cell (that
+    // edge would get four triangles); it takes the other one.
+    {
+        std::vector<Point> points; std::vector<Tri> strip;
+        for (unsigned i=0;i<130;++i) { points.push_back({double(i),0,0}); points.push_back({double(i),1,0}); }
+        for (uint32_t i=0;i+1<130;++i) { strip.push_back({2*i,2*i+2,2*i+3}); strip.push_back({2*i,2*i+3,2*i+1}); }
+        const Point a{0,0,0},b{1,0,0},c{1,1,0},d{0,1,0};
+        for (bool along_strip:{true,false}) {
+            AdapterMesh mesh; for (const auto& p:points) mesh.positions.insert(mesh.positions.end(),p.begin(),p.end());
+            for (const auto& t:strip) { mesh.indices.insert(mesh.indices.end(),t.begin(),t.end()); mesh.faces.push_back(0); }
+            // The quad (0, 2, 3, 1), split along 0-3 (the strip's) or 2-1.
+            if (along_strip) mesh.indices.insert(mesh.indices.end(),{0,2,3, 0,3,1});
+            else mesh.indices.insert(mesh.indices.end(),{0,2,1, 2,3,1});
+            mesh.faces.insert(mesh.faces.end(),{1,1}); mesh.normals.assign(mesh.indices.size()*3,0.);
+            canonicalize(mesh,{true,true});
+            unsigned shared=0;
+            auto at=[&](uint32_t v) { return Point{mesh.positions[3*v],mesh.positions[3*v+1],mesh.positions[3*v+2]}; };
+            for (size_t t=0;t<mesh.faces.size();++t) for (unsigned k=0;k<3;++k) {
+                const auto x=at(mesh.indices[3*t+k]),y=at(mesh.indices[3*t+(k+1)%3]);
+                if ((x==a && y==c) || (x==c && y==a)) ++shared;
+            }
+            require(shared==2,"a declined face's diagonal keeps its two triangles");
+            for (size_t t=0;t<mesh.faces.size();++t) if (mesh.faces[t]==1) for (unsigned k=0;k<3;++k) {
+                const auto x=at(mesh.indices[3*t+k]),y=at(mesh.indices[3*t+(k+1)%3]);
+                require(!((x==a && y==c) || (x==c && y==a)),"the overlapping quad avoids the declined face's diagonal");
+            }
+            require(has_edge(mesh,b,d),"the overlapping quad takes its other diagonal");
+        }
+    }
     // The exact orientation: on this rotated grid (found by search) the naive
     // double sign of a near-collinear triple is wrong, the greedy then sees a
     // crossing that is not there and declines, and the SDK's split leaks.

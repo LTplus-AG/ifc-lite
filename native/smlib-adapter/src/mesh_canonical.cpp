@@ -465,40 +465,75 @@ void canonical_planar_faces(AdapterMesh& mesh,const std::vector<bool>& planar_fa
         first=end;
     }
     // Edges a retriangulated face must not create (they would make the mesh
-    // non-manifold): every edge of a face that is not retriangulated, and
-    // every face's boundary edges. Interior diagonals of retriangulated faces
-    // are left out on purpose: they are the SDK's split, about to be replaced,
-    // and two faces' diagonals can only coincide when the faces overlap
-    // (degenerate geometry), where both then get the same canonical split. So
-    // the set depends on no face's split and on no visiting order.
-    // Every triangle edge use, minus both uses of each eligible face's
+    // non-manifold): every edge of a face that keeps its split (not eligible,
+    // or declined below), and every face's boundary edges. Interior diagonals
+    // of retriangulated faces are left out on purpose: they are the SDK's
+    // split, about to be replaced, and two faces' diagonals can only coincide
+    // when the faces overlap (degenerate geometry, such as a zero-thickness
+    // part's back-to-back faces), where both then get the same canonical split
+    // by design. So the set depends on no face's split and on no visiting
+    // order. Every triangle edge use, minus both uses of each eligible face's
     // interior edges; sorted, so lookups are binary searches.
     std::vector<Edge> uses, interior;
     uses.reserve(3*triangles);
     for (size_t t=0;t<triangles;++t) for (unsigned k=0;k<3;++k)
         uses.push_back(edge(mesh.indices[3*t+k],mesh.indices[3*t+(k+1)%3]));
-    std::vector<Edge> own;
-    for (const auto& span:spans) if (span.eligible) {
-        own.assign(uses.begin()+3*span.begin,uses.begin()+3*span.end);
+    // A face's interior edges: used twice within it.
+    auto interior_of=[&](const Span& span) {
+        std::vector<Edge> own(uses.begin()+3*span.begin,uses.begin()+3*span.end),result;
         std::sort(own.begin(),own.end());
         for (size_t k=0;k+1<own.size();++k)
-            if (own[k]==own[k+1] && (k+2>=own.size() || own[k+2]!=own[k]) && (k==0 || own[k-1]!=own[k])) {
-                interior.push_back(own[k]); interior.push_back(own[k]);
-            }
-    }
-    std::sort(uses.begin(),uses.end()); std::sort(interior.begin(),interior.end());
+            if (own[k]==own[k+1] && (k+2>=own.size() || own[k+2]!=own[k]) && (k==0 || own[k-1]!=own[k]))
+                result.push_back(own[k]);
+        return result;
+    };
+    for (const auto& span:spans) if (span.eligible)
+        for (const auto& e:interior_of(span)) { interior.push_back(e); interior.push_back(e); }
+    std::vector<Edge> sorted_uses=uses;
+    std::sort(sorted_uses.begin(),sorted_uses.end()); std::sort(interior.begin(),interior.end());
     std::vector<Edge> foreign;
-    std::set_difference(uses.begin(),uses.end(),interior.begin(),interior.end(),std::back_inserter(foreign));
+    std::set_difference(sorted_uses.begin(),sorted_uses.end(),interior.begin(),interior.end(),std::back_inserter(foreign));
     foreign.erase(std::unique(foreign.begin(),foreign.end()),foreign.end());
+    // A declined face keeps the SDK's split, so its interior edges become
+    // foreign too, and every accepted face whose result uses one of them is
+    // redone. Repeat until no face newly declines: the declined set only
+    // grows, and each round depends only on that set, never on visiting order.
+    // A face whose result avoids the newly foreign edges is unchanged by them
+    // (the greedy and requad only ever skip a foreign candidate).
+    std::vector<std::vector<Triangle>> results(spans.size());
+    std::vector<bool> declined(spans.size(),false), pending(spans.size(),false);
+    for (size_t i=0;i<spans.size();++i) pending[i]=spans[i].eligible;
+    for (bool again=true;again;) {
+        again=false;
+        std::vector<Edge> blocked;
+        for (size_t i=0;i<spans.size();++i) {
+            if (!pending[i]) continue;
+            pending[i]=false;
+            const auto& s=spans[i];
+            std::vector<Triangle> face;
+            for (size_t t=s.begin;t<s.end;++t) face.push_back(triangle(mesh,t));
+            // This face's own boundary edges are in `foreign` too; they are never
+            // candidates, so only other faces' edges can block a diagonal.
+            results[i]=face.size()==2 ? requad(mesh,face[0],face[1],foreign,h) : retriangulate(mesh,face,foreign,h);
+            if (results[i].empty()) {
+                declined[i]=true;
+                const auto own=interior_of(s); blocked.insert(blocked.end(),own.begin(),own.end());
+            }
+        }
+        if (blocked.empty()) break;
+        std::sort(blocked.begin(),blocked.end()); blocked.erase(std::unique(blocked.begin(),blocked.end()),blocked.end());
+        std::vector<Edge> merged;
+        std::set_union(foreign.begin(),foreign.end(),blocked.begin(),blocked.end(),std::back_inserter(merged));
+        foreign=std::move(merged);
+        for (size_t i=0;i<spans.size();++i) {
+            if (!spans[i].eligible || declined[i]) continue;
+            for (const auto& t:results[i]) for (unsigned k=0;k<3 && !pending[i];++k)
+                if (std::binary_search(blocked.begin(),blocked.end(),edge(t[k],t[(k+1)%3]))) pending[i]=again=true;
+        }
+    }
     for (size_t i=0;i<spans.size();++i) {
+        if (results[i].empty()) continue;
         const auto& s=spans[i];
-        if (!s.eligible) continue;
-        std::vector<Triangle> face;
-        for (size_t t=s.begin;t<s.end;++t) face.push_back(triangle(mesh,t));
-        // This face's own boundary edges are in `foreign` too; they are never
-        // candidates, so only other faces' edges can block a diagonal.
-        const auto result=face.size()==2 ? requad(mesh,face[0],face[1],foreign,h) : retriangulate(mesh,face,foreign,h);
-        if (!result.empty())
-            for (size_t t=s.begin;t<s.end;++t) for (unsigned k=0;k<3;++k) mesh.indices[3*t+k]=result[t-s.begin][k];
+        for (size_t t=s.begin;t<s.end;++t) for (unsigned k=0;k<3;++k) mesh.indices[3*t+k]=results[i][t-s.begin][k];
     }
 }

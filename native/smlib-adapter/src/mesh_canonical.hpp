@@ -18,6 +18,10 @@ struct AdapterMesh;
 // a strictly shorter grid length, so a warped cylinder quad at large
 // object-space coordinates can keep the SDK's split and differ between native
 // and WASM), and of a planar face that canonical_planar_faces declines.
+// Not canonical either: the vertex order of a face smaller than one grid step
+// (a 10 um face at 2.6e6 m, where the step is about 61 um), whose vertices all
+// share one grid key; the incident-corner tie-break then follows the SDK's
+// split, and so do the IDs a quad's diagonal choice falls back to.
 // Residual noise cases: a coordinate or length within one ULP of a grid
 // half-step can still change key (about 1 in 2^15 noisy values at the minimum
 // step), the step itself can flip when its base value lies within noise
@@ -61,7 +65,12 @@ void order_mesh(AdapterMesh& mesh);
 // reproduce its triangle count, directed edge use and area, when it has more
 // than 256 vertices, or when its edges are not manifold. Interior diagonals of
 // other retriangulated faces are not avoided: they can only coincide in
-// overlapping (degenerate) faces, which then share one canonical split.
+// overlapping (degenerate) faces, which then share one canonical split by
+// design; tessellate_mesh recounts boundary and spine edges afterwards, so a
+// zero-thickness part whose back-to-back faces share a split (four triangles
+// on that diagonal) is refused as non-manifold rather than reported as
+// manifold. A declined face keeps the SDK's split, so its interior edges are
+// avoided by every other face (faces that used one are redone).
 // A two-triangle face uses the same ranking in closed form (requad), with
 // exact orientation checks but without the greedy's area, normal and edge-use
 // checks, so a near-collinear quad can get a split where the greedy would

@@ -46,7 +46,8 @@
  *   `IfcMeasureWithUnit`, `IfcUnitAssignment`, …): their numbers define units, not
  *   data, and must survive verbatim.
  * - Georeferencing (`IfcMapConversion`): its offsets are in the map/CRS unit,
- *   independent of the project length unit.
+ *   independent of the project length unit. The merged exporter keeps every
+ *   coordinate operation away from this rescale (`merged-georef-normalize.ts`).
  * - A quantity or property that carries its own explicit unit reference (`Unit`,
  *   or `DefiningUnit`/`DefinedUnit` on `IfcPropertyTableValue`): its value is
  *   already in that unit, not the global one.

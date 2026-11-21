@@ -29,9 +29,10 @@ const NULL_TOKEN = /^(?:\s|\/\*[\s\S]*?\*\/)*\$(?:\s|\/\*[\s\S]*?\*\/)*$/;
  * problem (#5202 finding 1). The count surfaces as one warning, so the caller
  * learns the file is not valid IFC4 instead of receiving an invented value.
  *
- * `convertStepLine` only consults this for `fromSchema` `'IFC4X3'`/`'IFC5'`.
- * IFC2X3 → IFC4 is a separately audited upgrade path, pinned byte-for-byte by
- * `schema-converter-door-window-type.test.ts`.
+ * `convertStepLine` consults this for `fromSchema` `'IFC4X3'`/`'IFC5'`, and for
+ * the IFC2X3 → IFC4 records a structural rewrite or an attribute map wrote
+ * (`upgradeCountsIfc4Slots`, #10763). The rest of IFC2X3 → IFC4 is a separately
+ * audited upgrade path, pinned byte-for-byte by `schema-converter-door-window-type.test.ts`.
  */
 export class Ifc4SlotCheck {
   /** Required slots left `$`. Counted per SLOT: one record can leave several. */

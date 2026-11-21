@@ -25920,7 +25920,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "clash.viewSettings",
     "version": 1,
     "owner": "clash",
-    "description": "Set native sort/touching/review-status filters, focus mode and region-box display using expected_view_settings from clash.state. These change presentation, not detection results.",
+    "description": "Set native sort/touching/review-status filters, focus mode and region-box display. Use expected_view_settings from clash.state to guard the review filter too. Legacy callers may send expected_settings. If both are supplied, expected_view_settings takes precedence. These change presentation, not detection results.",
     "needs": "viewer",
     "effects": [
       "configuration"
@@ -25964,8 +25964,14 @@ export const operationContracts: readonly OperationContract[] = [
             ]
           }
         },
+        "expected_settings": {
+          "type": "string",
+          "nullable": true,
+          "maxLength": 20000
+        },
         "expected_view_settings": {
           "type": "string",
+          "nullable": true,
           "maxLength": 20000
         }
       },
@@ -25974,8 +25980,29 @@ export const operationContracts: readonly OperationContract[] = [
         "hideTouching",
         "focusMode",
         "showRegionBox",
-        "statusFilter",
-        "expected_view_settings"
+        "statusFilter"
+      ],
+      "anyOf": [
+        {
+          "properties": {
+            "expected_settings": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "expected_settings"
+          ]
+        },
+        {
+          "properties": {
+            "expected_view_settings": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "expected_view_settings"
+          ]
+        }
       ],
       "additionalProperties": false
     },

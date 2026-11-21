@@ -236,6 +236,18 @@ describe('native Clash operation parity (#10525 follow-up)', () => {
     assert.equal(result.isError, true);
     assert.match(result.text, /reference elements that are no longer in the model/);
   });
+  it('accepts the existing clash.state settings token for view settings (#10821)', async () => {
+    const { expected_settings } = value<{ expected_settings: string }>(await call('clash.state'));
+    const input = { sortBy: 'severity', hideTouching: true, focusMode: 'highlight', showRegionBox: false,
+      statusFilter: ['accepted'], expected_settings };
+    value(await call('clash.viewSettings', input, true));
+    assert.deepEqual([...useViewerStore.getState().clashStatusFilter], ['accepted']);
+    const current = value<{ expected_settings: string }>(await call('clash.state'));
+    useViewerStore.getState().setClashFocusMode('ghost');
+    const stale = await call('clash.viewSettings', { ...input, expected_settings: current.expected_settings }, true);
+    assert.equal(stale.errorCode, 'STATE_CHANGED', stale.text);
+    assert.equal(useViewerStore.getState().clashFocusMode, 'ghost');
+  });
   it('guards view settings against a concurrent change to the review filter (#10795 item 14)', async () => {
     const filter = new Set(['open'] as const);
     useViewerStore.setState({ clashStatusFilter: filter });
@@ -246,7 +258,8 @@ describe('native Clash operation parity (#10525 follow-up)', () => {
     value(await call('clash.viewSettings', input, true));
     const expected_view_settings = await inspect();
     useViewerStore.getState().toggleClashStatusFilter('accepted');
-    const stale = await call('clash.viewSettings', { ...input, expected_view_settings }, true);
+    const { expected_settings } = value<{ expected_settings: string }>(await call('clash.state'));
+    const stale = await call('clash.viewSettings', { ...input, expected_settings, expected_view_settings }, true);
     assert.equal(stale.isError, true);
     assert.match(stale.text, /Clash settings changed/);
     assert.ok(useViewerStore.getState().clashStatusFilter.has('accepted'));

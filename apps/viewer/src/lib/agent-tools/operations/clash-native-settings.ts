@@ -35,11 +35,12 @@ export const clashSettingsOperations = [
     focusMode: 'highlight' | 'isolate' | 'ghost';
     showRegionBox: boolean;
     statusFilter: Array<'open' | 'resolved' | 'accepted'>;
-    expected_view_settings: string;
+    expected_settings?: string | null;
+    expected_view_settings?: string | null;
   }>(
     meta(
       'clash.viewSettings',
-      'Set native sort/touching/review-status filters, focus mode and region-box display using expected_view_settings from clash.state. These change presentation, not detection results.',
+      'Set native sort/touching/review-status filters, focus mode and region-box display. Use expected_view_settings from clash.state to guard the review filter too. Legacy callers may send expected_settings. If both are supplied, expected_view_settings takes precedence. These change presentation, not detection results.',
     ),
     {
       type: 'object',
@@ -54,16 +55,23 @@ export const clashSettingsOperations = [
           uniqueItems: true,
           items: { type: 'string', enum: ['open', 'resolved', 'accepted'] },
         },
-        expected_view_settings: { type: 'string', maxLength: 20000 },
+        expected_settings: { type: 'string', nullable: true, maxLength: 20000 },
+        expected_view_settings: { type: 'string', nullable: true, maxLength: 20000 },
       },
-      required: ['sortBy', 'hideTouching', 'focusMode', 'showRegionBox', 'statusFilter', 'expected_view_settings'],
+      required: ['sortBy', 'hideTouching', 'focusMode', 'showRegionBox', 'statusFilter'],
+      anyOf: [
+        { properties: { expected_settings: { type: 'string' } }, required: ['expected_settings'] },
+        { properties: { expected_view_settings: { type: 'string' } }, required: ['expected_view_settings'] },
+      ],
       additionalProperties: false,
     },
     (i, c) =>
       out(
         c.commit(() => {
           const s = useViewerStore.getState();
-          if (clashViewSettingsSignature() !== i.expected_view_settings) throw stale('Clash settings changed.');
+          const expected = i.expected_view_settings ?? i.expected_settings;
+          const current = i.expected_view_settings != null ? clashViewSettingsSignature() : JSON.stringify(clashSettings());
+          if (current !== expected) throw stale('Clash settings changed.');
           s.setClashSortBy(i.sortBy);
           s.setClashHideTouching(i.hideTouching);
           s.setClashFocusMode(i.focusMode);

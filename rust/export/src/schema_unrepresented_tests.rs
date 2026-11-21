@@ -119,7 +119,7 @@ fn prunes_references_to_removed_ifc2x3_resources_10970() {
         (&logged, log_stats.written, &log_stats.warnings),
         (&merged, merged_stats.written, &merged_stats.warnings),
     ] {
-        for dropped in ["#3=", "#6=", "#7=", "#19=", "#21="] {
+        for dropped in ["#3=", "#6=", "#7=", "#19=", "#21=", "#22="] {
             assert!(!output.lines().any(|line| line.starts_with(dropped)), "{output}");
         }
         assert!(output.contains("#4=IFCGEOMETRICCURVESET((#5));"), "{output}");
@@ -128,6 +128,8 @@ fn prunes_references_to_removed_ifc2x3_resources_10970() {
         assert!(output.contains("#17=IFCCURVEBOUNDEDPLANE(#16,#5,());"), "{output}");
         assert!(warnings.iter().any(|warning| warning.contains("#3 (IFCBEZIERCURVE) was omitted")), "{warnings:?}");
         assert!(warnings.iter().any(|warning| warning.contains("#21 (IFCCOMPOSITEPROFILEDEF) was omitted")), "{warnings:?}");
+        // Orphaned IfcRelaxation records must be omitted and reported (#11131).
+        assert!(warnings.iter().any(|warning| warning.contains("#22 (IFCRELAXATION) was omitted")), "{warnings:?}");
         assert_eq!(count, 16);
     }
 }

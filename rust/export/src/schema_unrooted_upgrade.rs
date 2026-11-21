@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Withhold the IFC2X3 resources that have no IFC4 representation (#10970).
+//! Withhold obsolete types with no target representation (#10970, #10971).
 //! Evaluate refs in the final schema and ID space, after conversion and edits.
 //! Twin of packages/export/src/schema-converter-unrooted-upgrade.ts.
 
@@ -9,49 +9,66 @@ use std::ops::Range;
 use ifc_lite_core::{AttrSlot, EntityScanner, SchemaVersion};
 use ifc_lite_core::parser::{is_step_value, StepListItems};
 
-use crate::schema_unrepresented::OMIT_ON_UPGRADE;
+use crate::schema_convert::{canon, schema_attribute_names};
+use crate::schema_unrepresented::{missing_type_route, Route};
 use crate::step_record_frame::{record_frame, RecordFrame};
 use crate::step_slot::slots_of;
 use crate::step_text::ref_spans;
 
-pub(crate) fn applies(from: &str, to: &str) -> bool {
-    use crate::schema_convert::canon;
-    canon(from) == "IFC2X3" && canon(to) == "IFC4"
+#[derive(Clone, Copy)]
+pub(crate) struct Upgrade {
+    from: &'static str,
+    to: &'static str,
 }
 
-pub(crate) fn omitted_type(ty: &str) -> bool {
-    let upper = ty.bytes().any(|b| b.is_ascii_lowercase()).then(|| ty.to_ascii_uppercase());
-    OMIT_ON_UPGRADE.binary_search(&upper.as_deref().unwrap_or(ty)).is_ok()
-}
+impl Upgrade {
+    pub(crate) fn between(from: &str, to: &str) -> Option<Self> {
+        let (from, to) = (canon(from), canon(to));
+        matches!((from, to), ("IFC2X3", "IFC4") | ("IFC2X3" | "IFC4", "IFC4X3"))
+            .then_some(Self { from, to })
+    }
 
-/// The streaming writers only hold the DATA section when this source may
-/// emit a removed type. The output scan below resolves edits and selection.
-pub(crate) fn seeds(content: &[u8]) -> impl Iterator<Item = u32> + '_ {
-    let mut scanner = EntityScanner::new(content);
-    std::iter::from_fn(move || {
-        while let Some((id, ty, _, _)) = scanner.next_entity() {
-            if omitted_type(ty) {
-                return Some(id);
+    pub(crate) fn omitted_type(self, raw: &str) -> bool {
+        let upper = raw.bytes().any(|b| b.is_ascii_lowercase()).then(|| raw.to_ascii_uppercase());
+        let ty = upper.as_deref().unwrap_or(raw);
+        missing_type_route(ty, ty, self.from, self.to, schema_attribute_names(self.from, ty).is_some())
+            == Route::Omitted
+    }
+
+    /// The streaming writers hold the DATA section only when the source
+    /// may emit a removed type. The output scan resolves edits and selection.
+    pub(crate) fn seeds(self, content: &[u8]) -> impl Iterator<Item = u32> + '_ {
+        let mut scanner = EntityScanner::new(content);
+        std::iter::from_fn(move || {
+            while let Some((id, ty, _, _)) = scanner.next_entity() {
+                if self.omitted_type(ty) {
+                    return Some(id);
+                }
             }
-        }
-        None
-    })
+            None
+        })
+    }
+
+    pub(crate) fn prune(self, text: &str) -> Option<(String, usize, Vec<String>)> {
+        prune(text, &self.seeds(text.as_bytes()).collect(), self.to)
+    }
 }
 
 fn refs(value: &str) -> impl Iterator<Item = u32> + '_ {
     ref_spans(value.as_bytes()).filter_map(|span| span.id)
 }
 
-fn list_minimum(ty: &str, attribute: AttrSlot) -> Option<usize> {
+fn list_minimum(schema: SchemaVersion, ty: &str, attribute: AttrSlot) -> Option<usize> {
     if !attribute.aggregate {
         return None;
     }
-    use crate::generated::ifc4_required_slots::IFC4_AGGREGATE_PRUNE_EXCEPTIONS;
+    use crate::generated::ifc4_required_slots::{IFC4_AGGREGATE_PRUNE_EXCEPTIONS, IFC4X3_AGGREGATE_PRUNE_EXCEPTIONS};
+    let exceptions = if schema == SchemaVersion::Ifc4 { IFC4_AGGREGATE_PRUNE_EXCEPTIONS } else { IFC4X3_AGGREGATE_PRUNE_EXCEPTIONS };
     let key = (ty, attribute.index);
-    let special = IFC4_AGGREGATE_PRUNE_EXCEPTIONS
+    let special = exceptions
         .binary_search_by_key(&key, |&(name, index, _)| (name, index))
         .ok()
-        .map(|i| IFC4_AGGREGATE_PRUNE_EXCEPTIONS[i].2);
+        .map(|i| exceptions[i].2);
     // Arrays and aggregate alternatives of SELECTs cannot be narrowed as a
     // variable-length STEP list. The sentinel describes a whole-slot loss.
     special.unwrap_or(Some(1))
@@ -100,8 +117,8 @@ impl Dependencies {
         }
     }
 
-    fn record(&mut self, id: u32, ty: &str, raw: &str) {
-        let parsed = slots_of(raw).zip(SchemaVersion::Ifc4.attributes(ty))
+    fn record(&mut self, schema: SchemaVersion, id: u32, ty: &str, raw: &str) {
+        let parsed = slots_of(raw).zip(schema.attributes(ty))
             .filter(|(values, layout)| values.len() == layout.len());
         let Some((values, layout)) = parsed else {
             self.add(id, &[raw], 1);
@@ -111,7 +128,7 @@ impl Dependencies {
             if attr.optional {
                 continue;
             }
-            match list_minimum(ty, attr).and_then(|min| Some((list_members(value)?, min))) {
+            match list_minimum(schema, ty, attr).and_then(|min| Some((list_members(value)?, min))) {
                 Some((members, min)) if min > 0 => self.add(id, &members, min),
                 Some(_) => {},
                 None => self.add(id, &[value], 1),
@@ -143,7 +160,7 @@ struct Record {
     frame: Option<RecordFrame>,
 }
 
-fn index(text: &str, seeds: &HashSet<u32>) -> (Vec<Record>, HashSet<u32>) {
+fn index(text: &str, seeds: &HashSet<u32>, schema: SchemaVersion) -> (Vec<Record>, HashSet<u32>) {
     let mut scanner = EntityScanner::new(text);
     let mut records = Vec::new();
     let mut dependencies = Dependencies::default();
@@ -152,26 +169,26 @@ fn index(text: &str, seeds: &HashSet<u32>) -> (Vec<Record>, HashSet<u32>) {
         let frame = record_frame(line);
         let ty = name.to_ascii_uppercase();
         if !seeds.contains(&id) {
-            dependencies.record(id, &ty, frame.map_or(line, |frame| frame.args(line)));
+            dependencies.record(schema, id, &ty, frame.map_or(line, |frame| frame.args(line)));
         }
         records.push(Record { id, ty, span: start..end, frame });
     }
     (records, dependencies.cascade(seeds))
 }
 
-fn rewrite(line: &str, ty: &str, frame: RecordFrame, dropped: &HashSet<u32>) -> Option<String> {
+fn rewrite(schema: SchemaVersion, line: &str, ty: &str, frame: RecordFrame, dropped: &HashSet<u32>) -> Option<String> {
     let raw = frame.args(line);
     let touches = |value| refs(value).any(|id| dropped.contains(&id));
     if !touches(raw) {
         return None;
     }
     let values = slots_of(raw)?;
-    let layout = SchemaVersion::Ifc4.attributes(ty)?;
+    let layout = schema.attributes(ty)?;
     let slots: Vec<String> = values.into_iter().zip(layout).map(|(value, attr)| {
         if !touches(value) {
             return value.to_owned();
         }
-        if let Some(min) = list_minimum(ty, attr) {
+        if let Some(min) = list_minimum(schema, ty, attr) {
             if let Some(mut members) = list_members(value) {
                 members.retain(|member| !touches(member));
                 if members.len() >= min {
@@ -185,11 +202,14 @@ fn rewrite(line: &str, ty: &str, frame: RecordFrame, dropped: &HashSet<u32>) -> 
 }
 
 /// Return the rewritten text, record count removed and warnings in output order.
-pub(crate) fn prune(text: &str, seeds: &HashSet<u32>) -> Option<(String, usize, Vec<String>)> {
+pub(crate) fn prune(text: &str, seeds: &HashSet<u32>, to: &str) -> Option<(String, usize, Vec<String>)> {
     if seeds.is_empty() {
         return None;
     }
-    let (records, dropped) = index(text, seeds);
+    let to = canon(to);
+    let schema = SchemaVersion::from_file_schema(to)?;
+    let issue = if schema == SchemaVersion::Ifc4 { 10970 } else { 10971 };
+    let (records, dropped) = index(text, seeds, schema);
     let mut out = String::with_capacity(text.len());
     let mut warnings = Vec::new();
     let mut copied = 0;
@@ -199,14 +219,14 @@ pub(crate) fn prune(text: &str, seeds: &HashSet<u32>) -> Option<(String, usize, 
         copied = record.span.end;
         if dropped.contains(&record.id) {
             let reason = if seeds.contains(&record.id) {
-                "the IFC4 schema does not declare its type"
+                format!("the {to} schema does not declare its type")
             } else {
-                "a required IFC4 attribute lost a reference"
+                format!("a required {to} attribute lost a reference")
             };
-            warnings.push(format!("#{} ({}) was omitted because {reason} (#10970).", record.id, record.ty));
+            warnings.push(format!("#{} ({}) was omitted because {reason} (#{issue}).", record.id, record.ty));
             // Each writer appends a newline immediately after its record.
             copied += usize::from(text.as_bytes().get(copied) == Some(&b'\n'));
-        } else if let Some(rewritten) = record.frame.and_then(|frame| rewrite(line, &record.ty, frame, &dropped)) {
+        } else if let Some(rewritten) = record.frame.and_then(|frame| rewrite(schema, line, &record.ty, frame, &dropped)) {
             out.push_str(&rewritten);
         } else {
             out.push_str(line);

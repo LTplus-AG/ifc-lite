@@ -79,7 +79,7 @@ export const VERBATIM_UPGRADE: ReadonlySet<string> = new Set([
  *    target by style flattening (D57);
  *  - `omitted`: withheld by the whole-file reference pass (#10970);
  *  - `verbatim`: written as it is under a name the target lacks, and reported
- *    lossy ({@link VERBATIM_UPGRADE}, or an IFC4X3 target, #10971).
+ *    lossy (the dates and property subtypes in {@link VERBATIM_UPGRADE}).
  */
 export function missingTypeRoute(entityType: string, fromSchema: IfcSchemaVersion, toSchema: IfcSchemaVersion, inSource: boolean, inTarget: boolean): 'written' | 'unrepresented' | 'handled' | 'omitted' | 'verbatim' {
   if (inTarget) return 'written';
@@ -91,6 +91,7 @@ export function missingTypeRoute(entityType: string, fromSchema: IfcSchemaVersio
   if (fromSchema === 'IFC2X3' && toSchema === 'IFC4' && varyingTarget(type)) return 'handled';
   // `StyleFlatten.applies`, as Rust asks it; inline, as that module imports schema-converter.
   if (toSchema === 'IFC4X3' && (fromSchema === 'IFC2X3' || fromSchema === 'IFC4') && type === 'IFCPRESENTATIONSTYLEASSIGNMENT') return 'handled';
+  if (toSchema === 'IFC4X3') return fromSchema === 'IFC2X3' && VERBATIM_UPGRADE.has(type) ? 'verbatim' : 'omitted';
   if (toSchema !== 'IFC4') return 'verbatim';
   if (fromSchema === 'IFC4X3') return 'unrepresented';
   if (fromSchema === 'IFC2X3' && OMIT_ON_UPGRADE.has(type)) return 'omitted';

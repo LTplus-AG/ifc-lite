@@ -70,11 +70,10 @@ pub(crate) enum Route {
     /// reports it (#9668), and an `IfcPresentationStyleAssignment` on an
     /// IFC4X3 target by style flattening (D57).
     Handled,
-    /// Withheld by the whole-file reference pass (#10970).
+    /// Withheld by the whole-file reference pass (#10970, #10971).
     Omitted,
     /// A type the source declares and the target does not, written as it is
-    /// and named in the warnings: [`VERBATIM_UPGRADE`], or any type on an
-    /// IFC4X3 target, which is not checked yet (#10971).
+    /// and named in the warnings: the unresolved types in [`VERBATIM_UPGRADE`].
     Verbatim,
 }
 
@@ -95,6 +94,8 @@ pub(crate) fn missing_type_route(entity_type: &str, new_type: &str, from: &str, 
         ("IFC2X3", "IFC4") if crate::schema_structural_varying::StructuralVarying::is_varying(entity_type) => Route::Handled,
         _ if entity_type == crate::schema_style_flatten::ASSIGNMENT && crate::schema_style_flatten::StyleFlatten::applies(from, to) => Route::Handled,
         ("IFC4X3", "IFC4") => Route::Unrepresented,
+        ("IFC2X3", "IFC4X3") if VERBATIM_UPGRADE.contains(&entity_type) => Route::Verbatim,
+        ("IFC2X3" | "IFC4", "IFC4X3") => Route::Omitted,
         ("IFC2X3", "IFC4") if OMIT_ON_UPGRADE.binary_search(&entity_type).is_ok() => Route::Omitted,
         ("IFC2X3", "IFC4") if !VERBATIM_UPGRADE.contains(&entity_type) => Route::Unrepresented,
         _ => Route::Verbatim,

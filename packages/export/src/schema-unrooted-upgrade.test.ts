@@ -28,3 +28,21 @@ it('prunes references to removed IFC2X3 resources using IFC4 slot cardinality (#
   const report = analyzeConversionLoss(store, 'IFC2X3', 'IFC4');
   expect(report.describe()).toContain('1 × IFCBEZIERCURVE (#3) will be omitted because IFC4 does not declare its type.');
 });
+
+it('reports only the trimmed curve whose required basis is omitted in IFC4X3 (#10971)', async () => {
+  const raw = readFileSync(new URL('../../../rust/export/tests/fixtures/schema_unrooted_upgrade.ifc', import.meta.url), 'utf8');
+  const source = raw.replace('ENDSEC;\nEND-ISO',
+    '#22=IFCTRIMMEDCURVE(#3,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(1.)),.T.,.PARAMETER.);\n'
+    + '#23=IFCTRIMMEDCURVE(#26,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(1.)),.T.,.PARAMETER.);\n'
+    + '#24=IFCDIRECTION((1.,0.));\n#25=IFCVECTOR(#24,1.);\n#26=IFCLINE(#1,#25);\nENDSEC;\nEND-ISO');
+  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(source).buffer);
+  const out = new TextDecoder().decode(new StepExporter(store).export({ schema: 'IFC4X3' }).content);
+  expect(out).not.toMatch(/^#(?:3|6|7|22)=/m);
+  expect(out).toMatch(/^#23=IFCTRIMMEDCURVE/m);
+  const report = analyzeConversionLoss(store, 'IFC2X3', 'IFC4X3');
+  expect(report.entries.find(entry => entry.sourceType === 'IFCTRIMMEDCURVE')).toMatchObject({ kind: 'lossy', expressIds: [22] });
+  expect(report.entries.find(entry => entry.sourceType === 'IFCCOMPOSITECURVE')).toMatchObject({ kind: 'lossy', expressIds: [7] });
+  expect(report.describe()).toContain('1 × IFCTRIMMEDCURVE (#22) will be omitted because a required IFC4X3 attribute lost a reference.');
+  const sourceOnly = analyzeConversionLoss({ entityIndex: store.entityIndex }, 'IFC2X3', 'IFC4X3');
+  expect(sourceOnly.entries.find(entry => entry.sourceType === 'IFCTRIMMEDCURVE')).toBeUndefined();
+});

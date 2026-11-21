@@ -164,11 +164,11 @@ fn emit<W: std::io::Write>(
     // EXPORT-STEP-11).
     let source_schema = detect_schema(content);
     let schema = opts.schema.clone().unwrap_or_else(|| source_schema.clone());
-    let upgrading = crate::schema_unrooted_upgrade::applies(&source_schema, &schema);
+    let upgrading = crate::schema_unrooted_upgrade::Upgrade::between(&source_schema, &schema);
     let mut may_prune_upgrade = false;
     let mut owner_histories: Vec<(u32, usize)> = Vec::new();
     let index = crate::step_index::RecordIndex::build(content, |id, type_name, start| {
-        may_prune_upgrade |= upgrading && !may_prune_upgrade && crate::schema_unrooted_upgrade::omitted_type(type_name);
+        may_prune_upgrade |= !may_prune_upgrade && upgrading.is_some_and(|upgrade| upgrade.omitted_type(type_name));
         if type_name.eq_ignore_ascii_case("IFCOWNERHISTORY") {
             owner_histories.push((id, start));
         }
@@ -245,7 +245,7 @@ fn emit<W: std::io::Write>(
     crate::step_header::write_header(out, opts, source_header.as_ref(), header_schema)?;
     // IFC2X3 places one product per placement (#9209): its records are held to adapt them.
     use std::io::Write as _;
-    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, targets_ifc2x3, may_prune_upgrade);
+    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, targets_ifc2x3, upgrading.filter(|_| may_prune_upgrade));
 
     let mut written = 0usize;
     for id in order {

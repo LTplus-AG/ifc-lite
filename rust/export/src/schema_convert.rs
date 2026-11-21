@@ -193,9 +193,10 @@ pub(crate) fn rename_type(u: &str, from: &str, to: &str) -> Option<&'static str>
         }
     }
     match (from, to) {
-        // 2X3 → 4 (then 4 → 4X3 is a no-op rename-wise)
-        // ...and the subtypes IFC4 deleted, where a registry reconciles their attributes (#10902).
-        ("IFC2X3", "IFC4") | ("IFC2X3", "IFC4X3") => map_2x3_to_4(u).or_else(|| crate::schema_attr_maps::deleted_subtype(u)),
+        ("IFC2X3", "IFC4") => map_2x3_to_4(u).or_else(|| crate::schema_attr_maps::deleted_subtype(u)),
+        ("IFC2X3", "IFC4X3") => crate::schema_ifc4x3_upgrade::rename(u)
+            .or_else(|| rename_type(u, "IFC2X3", "IFC4")),
+        ("IFC4", "IFC4X3") => crate::schema_ifc4x3_upgrade::rename(u),
         ("IFC2X3", "IFC5") => map_2x3_to_4(u),
         ("IFC4", "IFC2X3") => map_4_to_2x3(u),
         ("IFC4X3", "IFC4") | ("IFC5", "IFC4") => map_4x3_to_4(u),
@@ -203,7 +204,6 @@ pub(crate) fn rename_type(u: &str, from: &str, to: &str) -> Option<&'static str>
             Some(s1) => Some(map_4_to_2x3(s1).unwrap_or(s1)),
             None => map_4_to_2x3(u),
         },
-        // 4 ↔ 4X3 / 5 carry no entity renames in this table.
         _ => None,
     }
 }
@@ -358,8 +358,6 @@ fn convert_record(
                     lost += args.iter().enumerate().skip(keep).filter(|(i, v)| Some(*i) != carried_slot && holds_value(v)).count();
                     Cow::Owned(args[..keep].join(","))
                 }
-                // An attribute-less record is left alone rather than fabricated
-                // from nothing, matching the TypeScript twin's `currentCount > 0`.
                 Adjust::Pad(n) if !args.is_empty() && n > args.len() => {
                     Cow::Owned(format!("{attrs}{}", ",$".repeat(n - args.len())))
                 }
@@ -369,6 +367,7 @@ fn convert_record(
                     lost += values_without_a_name(&args, src, tgt, cause_carried);
                     Cow::Owned(remap_attrs_by_name(&args, src, tgt))
                 }
+                Adjust::UpgradeIfc4x3(src, tgt) => Cow::Owned(crate::schema_ifc4x3_upgrade::remap(&entity_type, src, tgt, &args, &mut lost)),
                 Adjust::Mapped(map, up, src, tgt) if !args.is_empty() => Cow::Owned(crate::schema_attr_maps::remap(map, up, &args, src, tgt, &mut lost)),
                 Adjust::Trim(_) | Adjust::Pad(_) | Adjust::Mapped(..) | Adjust::Keep => Cow::Borrowed(attrs),
             };

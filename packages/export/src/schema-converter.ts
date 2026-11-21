@@ -11,6 +11,7 @@
  * and adjusts attribute counts via regex replacement on raw STEP lines.
  */
 
+import { needsIfc4x3SlotMap, remapIfc4x3Slots, upgradeIfc4x3Type } from './schema-converter-ifc4x3-upgrade.js';
 import { structuralAttributes } from './schema-converter-structural.js';
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { deterministicGlobalId, getSchemaRegistryForVersion } from '@ifc-lite/parser';
@@ -32,14 +33,6 @@ import { retypeInPlace } from './schema-converter-retyped.js';
 export { computeWithheldRefIds } from './schema-untranslatable.js';
 
 export type IfcSchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
-/**
- * Entity type name mappings between schema versions.
- *
- * Maps (sourceSchema, entityType) → targetEntityType.
- * Only entries that actually differ are listed — types that are the same
- * across all schemas are passed through unchanged.
- */
-
 // ─── IFC2X3 → IFC4 type renames ────────────────────────────────────────────
 const IFC2X3_TO_IFC4: Map<string, string> = new Map([
   ['IFCELECTRICDISTRIBUTIONPOINT', 'IFCELECTRICDISTRIBUTIONBOARD'],
@@ -167,6 +160,10 @@ export function convertEntityType(
   if (fromSchema === toSchema) return entityType;
 
   const upper = entityType.toUpperCase();
+  if (toSchema === 'IFC4X3' && (fromSchema === 'IFC2X3' || fromSchema === 'IFC4')) {
+    const upgrade = upgradeIfc4x3Type(upper);
+    if (upgrade) return upgrade;
+  }
   const mepTarget = toSchema === 'IFC2X3' ? MEP_IFC2X3_TYPES.get(upper) : undefined;
   if (mepTarget) return mepTarget;
 
@@ -410,7 +407,8 @@ function convertRecord(
     const mapped = args.length > 0 ? attrMapFor(entityType, newType, fromSchema, toSchema) : undefined; // #10763
     const replaced = mapped ? undefined : replacedSlot(entityType, srcAttrs, tgtAttrs); // #10758: no value carries there
     if (replaced !== undefined && replaced < args.length && args[replaced].trim() !== '$') { args[replaced] = '$'; finalAttrs = args.join(','); }
-    if (mapped) finalAttrs = remapByAttrMap(mapped.map, mapped.up, args, srcAttrs, tgtAttrs);
+    if (toSchema === 'IFC4X3' && entityType !== newType && needsIfc4x3SlotMap(entityType)) finalAttrs = remapIfc4x3Slots(entityType, srcAttrs, tgtAttrs, args);
+    else if (mapped) finalAttrs = remapByAttrMap(mapped.map, mapped.up, args, srcAttrs, tgtAttrs);
     else if (isStrictAttrPrefix(tgtAttrs, srcAttrs, entityType)) {
       finalAttrs = trimAttributes(attrsRaw, args, tgtAttrs.length);
     } else if (isStrictAttrPrefix(srcAttrs, tgtAttrs, entityType)) {

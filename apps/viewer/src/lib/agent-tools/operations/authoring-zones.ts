@@ -7,8 +7,8 @@ import { viewerOperation as operation, emptySchema, pointSchema, type ViewerOper
 import { assertToolActive } from '../cancellation';
 import type { ZoneSet } from '@/lib/zones/types';
 import type { VolumeBasis } from '@/lib/zones/volume-basis';
-import { zoneAssignmentSignature } from '@/lib/zones/assignment-signature';
-import { zoneSetRevision } from '@/lib/zones/apportionment-cache';
+import { captureZoneExportInputs } from './zone-operation-inputs';
+import { validEntry, zoneSetRevision } from '@/lib/zones/apportionment-cache';
 import { boundedPage, pageInput, type PageInput, type PageRequest } from './result-limit';
 import { assertRevision, revisionInput, stateRevision } from './state-revision';
 
@@ -151,16 +151,20 @@ export const zoneOperations = [
   operation<{ set_id: string; basis: VolumeBasis; format: 'csv' | 'parquet' }>({ ...meta('zones.table.export', 'Export the canonical native per-element zone table as CSV or Parquet through the existing safe exporter.', 'artifact'), outputSchema: jsonOutput }, {
     type: 'object', properties: { ...idInput.properties, basis, format: { type: 'string', enum: ['csv', 'parquet'] } }, required: ['set_id', 'basis', 'format'], additionalProperties: false,
   }, async (i, c) => {
-    const { exportZoneTable } = await import('@/hooks/useZoneTableExport'); assertToolActive(c); const zoneSet = set(i.set_id), identity = JSON.stringify(zoneSet);
-    // The table reads models, geometry and assignments, not only the set, and Parquet encoding awaits: check them all.
-    const before = useViewerStore.getState(), assignments = zoneAssignmentSignature(before.zoneAssignments, i.set_id);
-    let captured: { bytes: Uint8Array; filename: string; mime: string } | undefined;
-    const result = await exportZoneTable(zoneSet, i.basis, i.format, (bytes, filename, mime) => { captured = { bytes, filename, mime }; });
-    assertToolActive(c); const now = useViewerStore.getState();
-    // geometryContentVersion: realignFederation moves vertices in place, leaving models and the update tick alone.
-    if (identity !== JSON.stringify(set(i.set_id)) || now.models !== before.models || now.geometryUpdateTick !== before.geometryUpdateTick
-      || now.geometryContentVersion !== before.geometryContentVersion
-      || now.mutationVersion !== before.mutationVersion || zoneAssignmentSignature(now.zoneAssignments, i.set_id) !== assignments) throw new Error('Zone configuration, models or assignments changed during export.');
-    if (!captured) return out({ result, artifact: null }); const artifact = await c.artifacts.create({ filename: captured.filename, mimeType: captured.mime, data: captured.bytes }); return out({ result, artifact });
+    const [{ exportZoneTable }, { ensureZoneApportionment }] = await Promise.all([
+      import('@/hooks/useZoneTableExport'), import('@/hooks/zoneFacts'),
+    ]);
+    assertToolActive(c);
+    const zoneSet = set(i.set_id), { current, release } = captureZoneExportInputs(zoneSet);
+    try {
+      // The table normally fills a cold cache itself. Capture the exact entry it will read.
+      const apportionment = ensureZoneApportionment(zoneSet);
+      let captured: { bytes: Uint8Array; filename: string; mime: string } | undefined;
+      const result = await exportZoneTable(zoneSet, i.basis, i.format, (bytes, filename, mime) => { captured = { bytes, filename, mime }; });
+      assertToolActive(c);
+      if (!current() || validEntry(useViewerStore.getState().zoneApportionment, zoneSet) !== apportionment)
+        throw new Error('Zone inputs changed during export. Discarded result.');
+      if (!captured) return out({ result, artifact: null }); const artifact = await c.artifacts.create({ filename: captured.filename, mimeType: captured.mime, data: captured.bytes }); return out({ result, artifact });
+    } finally { release(); }
   }),
 ];

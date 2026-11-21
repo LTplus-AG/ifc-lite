@@ -8,6 +8,18 @@ use super::GeometryRouter;
 use crate::{coord_is_large, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
+/// Whether rebasing a raw item whose first vertex is `point` (metres, item
+/// frame) to `shifted` by the model RTC preserves precision.
+///
+/// #5684: vertices several km from their object origin can still be local to
+/// a site millions of metres away. Subtracting the site's RTC there would
+/// INCREASE their f32 magnitude and collapse thin geometry, so such meshes
+/// stay in their object frame until final world placement.
+pub(in crate::router) fn rtc_rebase_benefits(point: (f64, f64, f64), shifted: (f64, f64, f64)) -> bool {
+    let magnitude = |p: (f64, f64, f64)| p.0.abs().max(p.1.abs()).max(p.2.abs());
+    coord_is_large(point) && magnitude(shifted) < magnitude(point)
+}
+
 impl GeometryRouter {
     pub(in crate::router) fn representation_item_first_vertex_meters(
         &self,
@@ -56,28 +68,42 @@ impl GeometryRouter {
         ))
     }
 
-    /// Check the proposed offset in the SAME frame as the item's coordinates.
-    /// Element-aware callers pull world RTC through their inverse rotation first.
-    pub(in crate::router) fn representation_item_benefits_from_rtc(
+    /// Where a raw item is anchored when the per-mesh local frame rebases it
+    /// by its own position (#10835), in metres: the centre of a face set's
+    /// point list's box, read in f64: per axis it is the point every vertex is
+    /// nearest to in the worst case, so no other anchor (the model RTC, the
+    /// first vertex) narrows a long face set more finely. Other raw items use
+    /// their first vertex.
+    pub(in crate::router) fn representation_item_anchor_meters(
         &self,
         item: &DecodedEntity,
         decoder: &mut EntityDecoder,
-        offset_meters: (f64, f64, f64),
-    ) -> bool {
-        let Some(point) = self.representation_item_first_vertex_meters(item, decoder) else {
-            return false;
+    ) -> Option<(f64, f64, f64)> {
+        use ifc_lite_core::slot;
+        let coordinates = match item.ifc_type {
+            IfcType::IfcTriangulatedFaceSet | IfcType::IfcTriangulatedIrregularNetwork => {
+                item.attr(slot::IfcTriangulatedFaceSet::COORDINATES)
+            }
+            IfcType::IfcPolygonalFaceSet => item.attr(slot::IfcPolygonalFaceSet::COORDINATES),
+            _ => None,
         };
-        let magnitude = |p: (f64, f64, f64)| p.0.abs().max(p.1.abs()).max(p.2.abs());
-        let shifted = (
-            point.0 - offset_meters.0,
-            point.1 - offset_meters.1,
-            point.2 - offset_meters.2,
-        );
-        // #5684: vertices several km from their object origin can still be
-        // local to a site millions of metres away. Subtracting the site's RTC
-        // here would INCREASE their f32 magnitude and collapse thin geometry.
-        // Keep such meshes in their object frame until final world placement.
-        coord_is_large(point) && magnitude(shifted) < magnitude(point)
+        let point_list = coordinates
+            .and_then(|value| value.as_entity_ref())
+            .and_then(|id| decoder.get_raw_bytes(id))
+        .and_then(ifc_lite_core::extract_coordinate_list_from_entity_f64);
+        let Some(values) = point_list.filter(|values| values.len() >= 3) else {
+            return self.representation_item_first_vertex_meters(item, decoder);
+        };
+        let mut min = [f64::INFINITY; 3];
+        let mut max = [f64::NEG_INFINITY; 3];
+        for point in values.chunks_exact(3) {
+            for axis in 0..3 {
+                min[axis] = min[axis].min(point[axis]);
+                max[axis] = max[axis].max(point[axis]);
+            }
+        }
+        let centre = |axis: usize| (min[axis] + max[axis]) * 0.5 * self.unit_scale();
+        Some((centre(0), centre(1), centre(2)))
     }
 
     /// The element-frame RTC offset a raw-coordinate `item` is meshed in, or

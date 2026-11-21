@@ -15,13 +15,14 @@ use super::OwnedConstructor;
 use super::retained::{RetainedSelection, RetainedPlanOperation, LogicalRetainedValue};
 use crate::construction::ConstructionReports;
 use crate::processors::diagnostic_capture;
+use crate::router::processing::RawRebase;
 use crate::{Error, GeometryRouter, Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
 #[derive(Clone, Copy)]
 pub(super) enum ItemPhase {
     LowerRtc,
-    RtcExtension((f64, f64, f64)),
+    RtcExtension(RawRebase),
     LowerPlain,
     PlainExtension,
 }
@@ -48,7 +49,7 @@ pub(super) enum ItemStep {
 pub(super) struct ReadyItem {
     plan: OwnedConstructor,
     scale: f64,
-    offset: Option<(f64, f64, f64)>,
+    rebase: Option<RawRebase>,
     reports: ConstructionReports,
 }
 
@@ -151,8 +152,8 @@ impl ItemControl {
 
 enum Lowered {
     Next(ItemPhase),
-    Plan(Result<OwnedConstructor>, bool),
-    Mesh(Result<Mesh>, bool),
+    Plan(Result<OwnedConstructor>, Option<RawRebase>),
+    Mesh(Result<Mesh>, Option<RawRebase>),
 }
 
 fn execute_source(
@@ -188,7 +189,7 @@ fn execute_source(
         let mut prior = UnwindReports(Some(prior));
         let lower_plain = |decoder: &mut EntityDecoder| {
             match processor.lower_owned(item, decoder, quality, None) {
-                Some(plan) => Lowered::Plan(plan, false),
+                Some(plan) => Lowered::Plan(plan, None),
                 None => Lowered::Next(ItemPhase::PlainExtension),
             }
         };
@@ -196,30 +197,29 @@ fn execute_source(
             // Raw-coordinate items rebase by `offset` (model RTC in the item's
             // own frame) in f64 before f32 narrowing, only when that reduces
             // their coordinate magnitude (#5684, #5698).
-            ItemPhase::LowerRtc => match router.raw_item_rtc_file_units(item, decoder, offset) {
-                Some(rtc) => match processor.lower_owned(item, decoder, quality, Some(rtc)) {
-                    Some(plan) => Lowered::Plan(plan, true),
-                    None => Lowered::Next(ItemPhase::RtcExtension(rtc)),
+            ItemPhase::LowerRtc => match router.raw_item_rebase(item, decoder, offset) {
+                Some(rebase) => match processor.lower_owned(item, decoder, quality, Some(rebase.file_units)) {
+                    Some(plan) => Lowered::Plan(plan, Some(rebase)),
+                    None => Lowered::Next(ItemPhase::RtcExtension(rebase)),
                 },
                 // No rebase: plain lowering is the same source stage, so it
                 // runs in this step rather than costing a round trip per item.
                 None => lower_plain(decoder),
             },
-            ItemPhase::RtcExtension(rtc) => {
-                match processor.process_in_rtc_frame(item, decoder, router.schema(), quality, rtc) {
-                    Some(result) => Lowered::Mesh(result, true),
+            ItemPhase::RtcExtension(rebase) => {
+                match processor.process_in_rtc_frame(item, decoder, router.schema(), quality, rebase.file_units) {
+                    Some(result) => Lowered::Mesh(result, Some(rebase)),
                     None => Lowered::Next(ItemPhase::LowerPlain),
                 }
             }
             ItemPhase::LowerPlain => lower_plain(decoder),
             ItemPhase::PlainExtension => {
-                Lowered::Mesh(processor.process(item, decoder, router.schema(), quality), false)
+                Lowered::Mesh(processor.process(item, decoder, router.schema(), quality), None)
             }
         };
         (lowered, prior.take())
     });
     reports.merge(reached);
-    let rtc_offset = |rebased: bool| rebased.then_some(offset);
     match lowered {
         // The extension of a selected Boolean/CSG processor is its
         // continuation, run as the item's own steps.
@@ -227,16 +227,16 @@ fn execute_source(
             ItemStep::Boolean { machine: Box::new(BooleanMachine::new(item, quality)), reports }
         }
         Lowered::Next(phase) => ItemStep::Source { phase, reports },
-        Lowered::Plan(Ok(plan), rebased) => ItemStep::Ready(ReadyItem {
+        Lowered::Plan(Ok(plan), rebase) => ItemStep::Ready(ReadyItem {
             plan,
             scale: router.unit_scale(),
-            offset: rtc_offset(rebased),
+            rebase,
             reports,
         }),
         Lowered::Plan(Err(error), _) => ItemStep::Complete(ItemResult { result: Err(error), reports }),
-        Lowered::Mesh(result, rebased) => {
+        Lowered::Mesh(result, rebase) => {
             let result = result.map(|mut mesh| {
-                crate::router::processing::finish_item_mesh(&mut mesh, router.unit_scale(), rtc_offset(rebased));
+                crate::router::processing::finish_item_mesh(&mut mesh, router.unit_scale(), rebase);
                 mesh
             });
             ItemStep::Complete(ItemResult { result, reports })
@@ -291,11 +291,11 @@ fn execute_boolean(
 
 impl ReadyItem {
     fn execute(self) -> ItemResult {
-        let Self { plan, scale, offset, reports } = self;
+        let Self { plan, scale, rebase, reports } = self;
         let ((result, mut reports), numerical) = diagnostic_capture::capture(|| {
             let mut reports = UnwindReports(Some(reports));
             let result = plan.evaluate().map(|mut mesh| {
-                crate::router::processing::finish_item_mesh(&mut mesh, scale, offset);
+                crate::router::processing::finish_item_mesh(&mut mesh, scale, rebase);
                 mesh
             });
             (result, reports.take())

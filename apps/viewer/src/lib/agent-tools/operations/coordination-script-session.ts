@@ -45,8 +45,9 @@ export const coordinationScriptSessionOperations = [
   })),
   coordination('script.open', 'Open an existing saved script using the native editor lifecycle.', ['configuration'], idSchema, (i, c) => c.commit(() => {
     const s = useViewerStore.getState(); if (!s.savedScripts.some(script => script.id === i.id)) throw new Error('Unknown saved script.');
-    // setActiveScriptId saves a dirty active script first, but a draft with no saved script would be dropped.
+    // A draft with no saved script would be dropped; a dirty saved script is saved here, and a failed save keeps it open.
     if (s.scriptEditorDirty && !s.activeScriptId) unsavedEdits('opening another');
+    if (s.scriptEditorDirty) { const storage = s.saveActiveScript(); if (storage && !storage.ok) { useViewerStore.setState({ scriptEditorDirty: true }); throw new Error(`The active script could not be saved (${storage.reason}); it stays open.`); } }
     s.setActiveScriptId(i.id); return { active_id: useViewerStore.getState().activeScriptId, revision: useViewerStore.getState().scriptEditorRevision };
   })),
   coordination<{ id: string; name: string }>('script.rename', 'Rename a known saved native script.', ['configuration'], {

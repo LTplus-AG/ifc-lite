@@ -36,13 +36,13 @@ test('#10218 reopen ignores a viewport click until restored geometry can be pick
   };
   // Cold load (as cold-load-scene-snapshot does): warm-up model first, then the fixture, until its scene snapshot is written.
   const cold = await context.newPage();
-  await cold.goto('/?perfTrace=1');
-  await cold.waitForFunction(() => Boolean((globalThis as E2EWindow).__ifc_lite_viewer_store__));
-  // The warm-up load can finish before quantized admission on a software GPU.
+  // Listen before startup, then let the warm-up load and quantized admission finish.
   const admitted = cold.waitForEvent('console', {
     predicate: (msg) => msg.text().startsWith('[Viewport] quantized vertices'),
     timeout: deadline,
   });
+  await cold.goto('/?perfTrace=1');
+  await cold.waitForFunction(() => Boolean((globalThis as E2EWindow).__ifc_lite_viewer_store__));
   await cold.locator('#file-input-open').setInputFiles(join(process.cwd(), WARMUP));
   await cold.waitForFunction(settled, null, { timeout: deadline });
   await admitted;

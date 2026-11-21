@@ -17,7 +17,7 @@ import { registerLocale, setLocale } from '@/i18n/registry';
 import { georeferencingDe } from '@/i18n/locales/de/georeferencing';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { extractGeoreferencingOnDemand, type IfcDataStore } from '@ifc-lite/parser';
-import { advance, cleanup, click, render, type } from '@/test/render.js';
+import { advance, cleanup, click, render, settle, type } from '@/test/render.js';
 import { georefCheckFixture as fixture, parseIfcBytes as parse, seedGeorefModel as seed } from '@/test/georef-check-fixture.js';
 import { useViewerStore } from '@/store';
 import { exportModelStep } from '@/lib/export/model-step-export';
@@ -87,6 +87,7 @@ it('applies a safe fix as one undo step, re-checks the edited model, and the exp
 
   assert.equal(useViewerStore.getState().georefMutations.get('m')?.mapConversion?.orthogonalHeight, 540,
     'OrthogonalHeight 540000 (millimetres) is rewritten as 540 in the map unit');
+  await settle();
   assert.equal(await settled(host), 'No problems found', 'the check follows the unsaved edit');
   const saved = await exported(store);
   assert.equal(extractGeoreferencingOnDemand(saved)?.mapConversion?.orthogonalHeight, 540, 'the exported file carries the fix');
@@ -94,6 +95,7 @@ it('applies a safe fix as one undo step, re-checks the edited model, and the exp
   act(() => useViewerStore.getState().undo('m'));
   assert.equal(useViewerStore.getState().georefMutations.get('m')?.mapConversion?.orthogonalHeight, 540000,
     'one undo reverts the whole fix');
+  await settle();
   assert.equal(await settled(host), '1 warning', 'and the check sees the authored value again');
 
   cleanup();
@@ -118,12 +120,14 @@ it('warns when the map position lies outside the CRS area of use, with the EPSG 
   const edited = useViewerStore.getState().georefMutations.get('m')?.mapConversion;
   assert.equal(edited?.eastings, 2600000);
   assert.equal(edited?.northings, 1199650);
+  await settle();
   await settled(host);
   assert.equal(outsideAreaAlert(host), undefined, 'the warning clears once the edit puts the model inside');
 
   act(() => useViewerStore.getState().undo('m'));
   const undone = useViewerStore.getState().georefMutations.get('m')?.mapConversion;
   assert.deepEqual([undone?.eastings, undone?.northings], [1199650, 2600000], 'one undo reverts both fields');
+  await settle();
   await settled(host);
   assert.ok(outsideAreaAlert(host), 'and the warning is back');
 });

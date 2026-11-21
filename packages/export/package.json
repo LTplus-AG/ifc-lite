@@ -3,6 +3,34 @@
   "version": "4.14.0",
   "description": "Export formats for IFC-Lite",
   "type": "module",
+  "sideEffects": [
+    "./src/__fixtures__/ifc5-official-schemas.ts",
+    "./dist/__fixtures__/ifc5-official-schemas.js",
+    "./src/declared-property-type.ts",
+    "./dist/declared-property-type.js",
+    "./src/entity-subgraph.ts",
+    "./dist/entity-subgraph.js",
+    "./src/entity-type-sets.ts",
+    "./dist/entity-type-sets.js",
+    "./src/ifc5-tree-scope.ts",
+    "./dist/ifc5-tree-scope.js",
+    "./src/merged-empty-containers.ts",
+    "./dist/merged-empty-containers.js",
+    "./src/merged-inverse-claims.ts",
+    "./dist/merged-inverse-claims.js",
+    "./src/reference-collector.ts",
+    "./dist/reference-collector.js",
+    "./src/schema-converter-ifc2x3-slots.ts",
+    "./dist/schema-converter-ifc2x3-slots.js",
+    "./src/schema-converter-ifc4-slots.ts",
+    "./dist/schema-converter-ifc4-slots.js",
+    "./src/schema-converter-mep.ts",
+    "./dist/schema-converter-mep.js",
+    "./src/subset-roots.ts",
+    "./dist/subset-roots.js",
+    "./src/unit-normalize.ts",
+    "./dist/unit-normalize.js"
+  ],
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -10,6 +38,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./merged-exporter": {
+      "types": "./dist/merged-exporter.d.ts",
+      "import": "./dist/merged-exporter.js",
+      "default": "./dist/merged-exporter.js"
     }
   },
   "scripts": {

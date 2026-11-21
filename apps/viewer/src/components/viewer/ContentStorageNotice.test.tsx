@@ -10,8 +10,12 @@ import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { render, cleanup, click, waitFor } from '@/test/render';
 import { blankDocument } from '@/lib/document/presets';
+import { DEFAULT_CLASH_SETTINGS, loadReviews, loadSettings, saveReviews, saveSettings } from '@/lib/clash/persistence';
+import { loadManualLibrary } from '@/lib/validation/manual/persistence';
 import { loadDocuments } from '@/lib/document/persistence';
-import { createContentBackup, parseContentBackup, readBackupDrafts, readContentRecovery } from '@/lib/storage/content-backup';
+import { decodeBcfProject } from '@/lib/bcf-project/project-codec';
+import { readBcfSlot } from '@/lib/bcf-project/project-storage';
+import { createContentBackup, encodeContentBackup, parseContentBackup, readBackupDrafts, readContentRecovery } from '@/lib/storage/content-backup';
 import '@/test/download-capture';
 import { Toaster } from '@/components/ui/toast';
 import { useClashGroupApplications } from '@/lib/clash/group-applications';
@@ -24,6 +28,27 @@ function Notice() {
   return <ContentStorageNotice status={status} retry={() => useViewerStore.getState().retryDocumentsSave()}
     restore={() => useViewerStore.getState().restoreDocuments()} />;
 }
+
+it('#10976 restores a v2 BCF working copy through the library import control', async () => {
+  const bcfProject = JSON.stringify({ version: 1, project: { version: '3.0', name: 'Site coordination', topics: [
+    { guid: 'topic', title: 'Check the sleeve', comments: [], viewpoints: [] },
+  ] } });
+  const backup = { version: 2, libraries: { document: [], validation: [], comparison: [] }, bcfProject };
+  const ui = render(<Notice />);
+  const input = ui.querySelector<HTMLInputElement>('input[type="file"]');
+  assert.ok(input);
+  Object.defineProperty(input, 'files', { value: [new File([JSON.stringify(backup)], 'bcf-v2.json')] });
+  try {
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    await waitFor(() => !useViewerStore.getState().contentStorageActionBusy, 'library import finishes');
+    assert.equal(useViewerStore.getState().bcfProject?.topics.get('topic')?.title, 'Check the sleeve');
+    const saved = await readBcfSlot();
+    assert.ok(saved && saved !== 'unreadable');
+    assert.equal(decodeBcfProject(saved.data)?.name, 'Site coordination');
+  } finally {
+    await act(async () => { await useViewerStore.getState().clearBcfProject(); });
+  }
+});
 
 it('#6679 a refused backup import stages an independent exportable draft and Retry save commits that same copy', async () => {
   const entry = { ...blankDocument(), name: 'Existing saved document' };
@@ -305,4 +330,128 @@ it('#7000 whole-library backup waits for semantic review decisions to load', asy
     await act(async () => { useSemanticReviews.setState({ status: { ...status, phase: 'ready' } }); });
     assert.equal(button.disabled, false, 'the backup becomes available after the library finishes loading');
   } finally { useSemanticReviews.setState({ status }); }
+});
+
+it('#10976 import keeps a refused last-checklist deletion until the native editor saves it', async () => {
+  const state = useViewerStore.getState();
+  const key = 'ifc-lite:validation:manual-library';
+  const previousRaw = localStorage.getItem(key);
+  const previous = { manualLibrary: state.manualLibrary, manualChecklist: state.manualChecklist,
+    manualAnswers: state.manualAnswers, manualSaveError: state.manualSaveError };
+  try {
+    state.newManualChecklist();
+    state.renameManualChecklist('Checklist from backup');
+    const incoming = useViewerStore.getState().manualLibrary.activeId;
+    assert.ok(incoming);
+    const backup = JSON.stringify(encodeContentBackup(createContentBackup({ validation: [], comparison: [], document: [] })));
+    state.removeManualChecklist(incoming);
+    state.newManualChecklist();
+    const existing = useViewerStore.getState().manualLibrary.activeId;
+    assert.ok(existing);
+    const original = localStorage.setItem.bind(localStorage);
+    const refused = mock.method(localStorage, 'setItem', (name: string, value: string) => {
+      if (name === key) throw new DOMException('Manual library quota', 'QuotaExceededError');
+      original(name, value);
+    });
+    try { state.removeManualChecklist(existing); }
+    finally { refused.mock.restore(); }
+    assert.deepEqual(useViewerStore.getState().manualLibrary.checklists, []);
+    assert.equal(loadManualLibrary().library.activeId, existing);
+
+    const ui = render(<><Notice /><Toaster /></>);
+    const input = ui.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input);
+    Object.defineProperty(input, 'files', { value: [new File([backup], 'manual-backup.json')], configurable: true });
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    await waitFor(() => ui.textContent?.includes('Some imported work could not be saved') ?? false, 'manual backup remains pending');
+    assert.deepEqual(useViewerStore.getState().manualLibrary.checklists, []);
+    assert.equal(loadManualLibrary().library.activeId, existing);
+
+    await act(async () => { state.setManualChecklist(null); });
+    assert.deepEqual(loadManualLibrary().library.checklists, []);
+    const retry = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Retry all libraries'); assert.ok(retry);
+    await waitFor(() => !retry.disabled, 'the initial import finishes before retry');
+    click(retry);
+    await waitFor(() => useViewerStore.getState().manualLibrary.activeId === incoming, 'saved deletion lets the backup restore the incoming checklist');
+    assert.deepEqual(loadManualLibrary().library.checklists.map(checklist => checklist.id), [incoming]);
+  } finally {
+    if (previousRaw === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, previousRaw);
+    await act(async () => { useViewerStore.setState({ ...previous, pendingStandaloneArtifactImport: null }); });
+  }
+});
+
+it('#10976 backup import preserves optimistic clash settings and review edits until they are saved', async () => {
+  const state = useViewerStore.getState();
+  const keys = ['ifc-lite-clash-reviews', 'ifc-lite-clash-settings'];
+  const previous = keys.map(key => localStorage.getItem(key));
+  const previousState = { clashReviews: state.clashReviews, clashTolerance: state.clashTolerance,
+    clashReviewsSaveRefused: state.clashReviewsSaveRefused, clashSettingsSaveRefused: state.clashSettingsSaveRefused };
+  try {
+    const incoming = { status: 'resolved' as const, comment: 'Incoming resolution' };
+    assert.ok(saveReviews(new Map([['incoming-pair', incoming]])).ok);
+    assert.ok(saveSettings({ ...DEFAULT_CLASH_SETTINGS, tolerance: 0.03 }).ok);
+    const backup = JSON.stringify(encodeContentBackup(createContentBackup({ validation: [], comparison: [], document: [] })));
+    for (const key of keys) localStorage.removeItem(key);
+    const original = localStorage.setItem.bind(localStorage);
+    const refused = mock.method(localStorage, 'setItem', (key: string, value: string) => {
+      if (keys.includes(key)) throw new DOMException('Clash library quota', 'QuotaExceededError');
+      original(key, value);
+    });
+    try {
+      assert.equal(state.setClashReview('local-pair', { comment: 'Unsaved observation' }).ok, false);
+      state.setClashTolerance(0.02);
+    } finally { refused.mock.restore(); }
+
+    const ui = render(<><Notice /><Toaster /></>);
+    const retryBeforeImport = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Retry all libraries');
+    assert.ok(retryBeforeImport);
+    click(retryBeforeImport);
+    await waitFor(() => (document.body.textContent ?? '').includes('Some content could not be saved'),
+      'Retry all reports native editor work that is still unsaved');
+    const download = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Download library backup');
+    assert.ok(download);
+    await waitFor(() => !download.disabled, 'library backup becomes available after retry');
+    const blobs: Blob[] = [];
+    const capture = mock.method(URL, 'createObjectURL', (blob: Blob | MediaSource) => {
+      assert.ok(blob instanceof Blob);
+      blobs.push(blob);
+      return 'blob:unsaved-clash-work';
+    });
+    try {
+      click(download);
+      await waitFor(() => blobs.length === 1, 'library backup includes refused edits');
+      const { drafts } = parseContentBackup(await blobs[0].text());
+      const raw = Object.fromEntries((drafts ?? []).map(draft => [draft.id, JSON.parse(draft.raw).original]));
+      assert.equal(JSON.parse(raw[keys[0]]).reviews['local-pair'].comment, 'Unsaved observation');
+      assert.equal(JSON.parse(raw[keys[1]]).settings.tolerance, 0.02);
+      assert.equal(Object.hasOwn(JSON.parse(raw[keys[1]]).settings, 'groupBy'), false);
+    } finally { capture.mock.restore(); }
+    await waitFor(() => !download.disabled, 'backup completes before import');
+    const input = ui.querySelector<HTMLInputElement>('input[type="file"]'); assert.ok(input);
+    Object.defineProperty(input, 'files', { value: [new File([backup], 'clash-backup.json')], configurable: true });
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    await waitFor(() => ui.textContent?.includes('Some imported work could not be saved') ?? false, 'clash backup remains pending');
+    assert.equal(useViewerStore.getState().clashReviews.get('local-pair')?.comment, 'Unsaved observation');
+    assert.equal(useViewerStore.getState().clashTolerance, 0.02);
+    assert.equal(loadReviews().has('incoming-pair'), false);
+
+    await act(async () => {
+      assert.ok(state.setClashReview('local-pair', { comment: 'Saved observation' }).ok);
+      state.setClashTolerance(0.02);
+    });
+    const retry = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Retry all libraries'); assert.ok(retry);
+    await waitFor(() => !retry.disabled, 'the initial import finishes before retry');
+    click(retry);
+    await waitFor(() => useViewerStore.getState().clashReviews.has('incoming-pair'), 'clash import retries once local edits are saved');
+    assert.deepEqual(loadReviews().get('incoming-pair'), incoming);
+    assert.equal(loadReviews().get('local-pair')?.comment, 'Saved observation');
+    assert.equal(loadSettings().tolerance, 0.02);
+  } finally {
+    keys.forEach((key, index) => {
+      const raw = previous[index];
+      if (raw == null) localStorage.removeItem(key);
+      else localStorage.setItem(key, raw);
+    });
+    await act(async () => { useViewerStore.setState({ ...previousState, pendingStandaloneArtifactImport: null }); });
+  }
 });

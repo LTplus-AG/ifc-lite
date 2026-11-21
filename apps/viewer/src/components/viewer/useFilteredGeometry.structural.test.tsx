@@ -13,7 +13,7 @@ import { useFilteredGeometry } from './useFilteredGeometry';
 
 afterEach(cleanup);
 for (const spaces of [true,false]) {
-  it(`#9923 rebuilds a resident mesh filter on every structural mode change (spaces=${spaces})`, () => {
+  it(`#9923 #10264 every structural mode change hides by id over one upload (spaces=${spaces})`, () => {
     const mesh = (expressId:number,ifcType:string):MeshData => ({expressId,ifcType,
       positions:new Float32Array([0,0,0,1,0,0,0,1,0]),normals:new Float32Array(9),
       indices:new Uint32Array([0,1,2]),color:[1,1,1,1]});
@@ -25,10 +25,14 @@ for (const spaces of [true,false]) {
       openings:true,virtualElements:true,site:true,ifcAnnotations:true};
     let update!:(next:StructuralViewMode)=>void;
     let seen:number[] = [];
+    const uploads = new Set<unknown>(); const versions = new Set<number>();
     function Probe() {
       const [mode,setMode] = useState<StructuralViewMode>('both');
       update = setMode;
-      seen = (useFilteredGeometry(geometry,0,defaults,'model',mode).filteredGeometry ?? []).map(m=>m.expressId);
+      const scene = useFilteredGeometry(geometry,0,defaults,'model',mode);
+      uploads.add(scene.sceneGeometry); versions.add(scene.geometryVersion);
+      assert.deepEqual((scene.sceneGeometry ?? []).map(m=>m.expressId),[1,2],'the scene keeps every mesh');
+      seen = (scene.sceneGeometry ?? []).map(m=>m.expressId).filter(id=>!scene.typeHidden.ids.has(id));
       return null;
     }
     render(<Probe />);
@@ -37,5 +41,7 @@ for (const spaces of [true,false]) {
       act(()=>update(mode));
       assert.deepEqual(seen,[...ids],mode);
     }
+    assert.equal(uploads.size,1,'one scene list across every mode');
+    assert.equal(versions.size,1,'no mode change asks the streaming hook for an upload');
   });
 }

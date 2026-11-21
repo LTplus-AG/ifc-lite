@@ -16,6 +16,8 @@
 export interface ManualFrames {
   /** Runs queued frames, and the frames they queue, until none is left. Returns how many ran. */
   flush(limit?: number): number;
+  /** Runs one frame: the callbacks queued now, not the ones they queue. Returns how many ran. */
+  step(): number;
   /** Frames queued and not yet run. */
   pending(): number;
   restore(): void;
@@ -28,18 +30,28 @@ export function installManualFrames(): ManualFrames {
   let next = 0;
   globalThis.requestAnimationFrame = (callback) => { queue.set(++next, callback); return next; };
   globalThis.cancelAnimationFrame = (handle) => { queue.delete(handle); };
+  const step = () => {
+    let ran = 0;
+    const now = performance.now(); // one frame, one timestamp, as in a browser
+    for (const handle of [...queue.keys()]) {
+      const callback = queue.get(handle);
+      if (!callback) continue; // cancelled by an earlier callback in this frame
+      queue.delete(handle);
+      callback(now);
+      ran++;
+    }
+    return ran;
+  };
   return {
     flush(limit = 10_000) {
       let ran = 0;
       while (queue.size > 0) {
-        if (ran >= limit) throw new Error(`frames still queued after ${limit}: something re-queues forever`);
-        const [handle, callback] = queue.entries().next().value as [number, FrameRequestCallback];
-        queue.delete(handle);
-        callback(performance.now());
-        ran++;
+        if (ran + queue.size > limit) throw new Error(`more than ${limit} frame callbacks run or queued: something re-queues forever`);
+        ran += step();
       }
       return ran;
     },
+    step,
     pending: () => queue.size,
     restore() {
       globalThis.requestAnimationFrame = savedRequest;

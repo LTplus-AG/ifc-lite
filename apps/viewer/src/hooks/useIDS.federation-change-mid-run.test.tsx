@@ -31,6 +31,7 @@ import type { GeometryResult } from '@ifc-lite/geometry';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { useActivityJournal } from '@/lib/activity/activity-journal';
 import { useIDS } from './useIDS.js';
+import { settle } from '@/test/render.js';
 
 function ifc4(body: string): string {
   return [
@@ -207,6 +208,7 @@ describe('useIDS — federation changes mid-run (A1)', () => {
     // check, against the models the run actually read, can refuse it.
     const stale = api!.runValidation;
     await act(async () => { useViewerStore.getState().removeModel('B'); });
+    await settle();
     assert.notEqual(api!.runValidation, stale, 'setup: the hook re-rendered past the removal');
     let pending: Promise<unknown> | undefined;
     act(() => { pending = stale('B'); });

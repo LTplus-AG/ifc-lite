@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import type { MeshData } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
-import { cleanup, click, render } from '@/test/render.js';
+import { cleanup, click, render, settle } from '@/test/render.js';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import '@/lib/commands/modeling/builtin.js';
 import { SelectEditScene } from './SelectEditScene';
@@ -45,6 +45,7 @@ function seedSelectedColumn(): void {
 beforeEach(async () => {
   await seedModelingSession();
   seedSelectedColumn();
+  await settle();
 });
 afterEach(() => {
   cleanup();

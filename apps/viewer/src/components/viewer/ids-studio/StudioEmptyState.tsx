@@ -16,6 +16,7 @@ import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { importStudioFile } from '@/lib/ids-studio/import';
 import { cn } from '@/lib/utils';
+import { StudioDrafts } from './StudioDrafts';
 
 export function StudioEmptyState() {
   const { t } = useTranslation();
@@ -52,6 +53,7 @@ export function StudioEmptyState() {
         <p className="text-xs text-muted-foreground">{t('idsStudio.empty.body')}</p>
       </div>
     </div>
+    <StudioDrafts />
     <form className="space-y-2 rounded border border-border p-2" onSubmit={(event) => {
       event.preventDefault();
       open(createStudioDocument({ title: title.trim() || t('idsStudio.empty.defaultTitle') }));

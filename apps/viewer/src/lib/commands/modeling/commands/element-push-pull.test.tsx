@@ -18,7 +18,7 @@ import { act } from 'react';
 import type { Mutation } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
-import { cleanup, press, render } from '@/test/render.js';
+import { cleanup, press, render, settle } from '@/test/render.js';
 import { MODEL_ID, STOREY, UPPER_STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { readStoreyInventory, readTopAttachment } from '@ifc-lite/create';
 import { PropertyValueType } from '@ifc-lite/data';
@@ -143,10 +143,11 @@ describe('element.pushPull writes what the inspector writes (#6232 C4)', () => {
 
 describe('the handles (#6232 C4)', () => {
   let wall = 0;
-  beforeEach(() => {
+  beforeEach(async () => {
     wall = created(s().addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Thickness: 0.2, Height: 2 }));
     act(() => { s().enterModelWorkspace(); s().setActiveTool('select'); });
     select(wall);
+    await settle();
   });
 
   const handle = (ui: HTMLElement, id: string) => ui.querySelector(`[data-push-pull-face="${id}"]`)!;

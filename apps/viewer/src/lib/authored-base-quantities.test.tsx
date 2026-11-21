@@ -25,7 +25,7 @@ import { commitElementSize } from '@/lib/element-size-commit';
 import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, render, settle, waitFor } from '@/test/render.js';
 
 const s = () => useViewerStore.getState();
 const made = (m: { expressId: number } | { error: string }): number => {
@@ -81,6 +81,7 @@ describe('the Quantities tab on an authored element', () => {
       const id = author();
       act(() => s().setPropertiesActiveTab('quantities'));
       select(id);
+      await settle();
       const panel = render(<PropertiesPanel />);
       await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
       const text = panel.textContent ?? '';
@@ -103,11 +104,10 @@ describe('the Quantities tab on an authored element', () => {
     const id = made(s().addMember(MODEL_ID, STOREY, { Start: [0, 3, 0], End: [0, 3, 3], Width: 0.1, Height: 0.1 }));
     select(id);
     const panel = render(<SourceQuantityInspection />);
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-    assert.match(panel.textContent ?? '', /created in the overlay/);
+    await waitFor(() => /created in the overlay/.test(panel.textContent ?? ''), 'the member reaches the panel (#10535)');
     act(() => { s().createQuantitySet(MODEL_ID, id, 'Qto_MemberBaseQuantities', [{ name: 'Length', value: 3, quantityType: QuantityType.Length }]); });
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-    assert.doesNotMatch(panel.textContent ?? '', /created in the overlay/);
+    // The edit reaches the panel once it settles (#10535); the selection never changes.
+    await waitFor(() => !/created in the overlay/.test(panel.textContent ?? ''), 'the gained set clears the warning');
   });
 
   it('a named but empty set does not clear the warning', async () => {
@@ -121,6 +121,7 @@ describe('the Quantities tab on an authored element', () => {
 
   it('the Measure Quantities tab reads the same numbers', async () => {
     select(wall());
+    await settle();
     const panel = render(<MeasureQuantities />);
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     const text = panel.textContent ?? '';

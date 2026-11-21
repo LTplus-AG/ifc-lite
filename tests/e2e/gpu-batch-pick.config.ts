@@ -6,7 +6,8 @@ import { defineConfig } from '@playwright/test';
 // Opt-in #10264 hardware acceptance on public fixtures: S1 GPU batch picking
 // against the CPU raycast, S2 GPU hide/isolate against the frame of the
 // visible pieces alone (gpu-entity-visibility.e2e.spec.ts), and S3 highlight
-// from the batches against the copies route (gpu-entity-highlight.e2e.spec.ts). It serves its own viewer dev server. Run it on a
+// from the batches against the copies route (gpu-entity-highlight.e2e.spec.ts), and type visibility
+// over one upload (gpu-type-visibility.e2e.spec.ts). It serves its own viewer dev server. Run it on a
 // real WebGPU adapter; SwiftShader is not acceptance evidence, and the spec
 // records the adapter it ran on. On Pop (hybrid NVIDIA laptop) headless
 // Chrome loses the device when the canvas presents, so run a full Chromium
@@ -17,7 +18,7 @@ const HARDWARE_ARGS = ['--enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVul
 
 export default defineConfig({
   testDir: '.',
-  testMatch: /gpu-(batch-pick|entity-visibility|entity-highlight)\.e2e\.spec\.ts/,
+  testMatch: /gpu-(batch-pick|entity-visibility|entity-highlight|type-visibility)\.e2e\.spec\.ts/,
   timeout: 600_000, workers: 1, fullyParallel: false, retries: 0,
   outputDir: '../../test-results/gpu-batch-pick',
   reporter: [['list'], ['json', { outputFile: '../../test-results/gpu-batch-pick-results.json' }]],

@@ -28,17 +28,25 @@ it('#10525 pages large native documents and edits text without resending or losi
   const commit = <T,>(write: () => T): T => write();
   const context: ViewerOperationContext = { host, commit, commitAsync: async <T,>(write: () => Promise<T>) => write(), ownGeometry: async work => work(), artifacts: operationArtifacts(host, commit), canEdit: () => true };
   const run = async <T,>(id: string, input: unknown): Promise<T> => { const entry = [...analyticsDocumentOperations, ...documentNativeEditOperations].find(row => row.id === id); assert.ok(entry); assert.equal(entry.needs, 'viewer'); const result = await entry.execute(input, context); entry.validateResult(JSON.parse(JSON.stringify(result))); return result as T; };
-  const library = await run<{ documents: { id: string; revision: string }[] }>('document.library', { offset: 0, limit: 50 });
+  assert.ok(await useViewerStore.getState().upsertDocument(blankDocument()));
+  const library = await run<{ documents: { id: string; revision: string }[]; next_offset: number; page_revision: string }>('document.library', { offset: 0, limit: 1 });
+  const libraryCursor = { offset: library.next_offset, page_revision: library.page_revision, limit: 1 };
+  assert.equal(libraryCursor.offset, 1); assert.ok(libraryCursor.page_revision);
+  const continuation = await run<typeof library>('document.library', libraryCursor);
+  assert.notEqual(continuation.documents[0].id, library.documents[0].id);
   assert.ok(JSON.stringify(library).length < 32000); assert.doesNotMatch(JSON.stringify(library), /data:image/);
-  const inspected = await run<{ document: { revision: string }; blocks: unknown[]; next_offset: number | null }>('document.inspect', { id: document.id, offset: 0, limit: 1 });
+  const inspected = await run<{ document: { revision: string }; blocks: unknown[]; next_offset: number | null; page_revision: string }>('document.inspect', { id: document.id, offset: 0, limit: 1 });
   assert.equal(inspected.next_offset, 1); assert.equal(inspected.blocks.length, 1); assert.ok(JSON.stringify(inspected).length < 20000); assert.doesNotMatch(JSON.stringify(inspected), /base64/);
-  const media = await run<{ blocks: unknown[] }>('document.inspect', { id: document.id, offset: 1, limit: 1 });
+  const blockCursor = { id: document.id, offset: inspected.next_offset, page_revision: inspected.page_revision, limit: 1 };
+  const media = await run<{ blocks: unknown[] }>('document.inspect', blockCursor);
   assert.equal(media.blocks.length, 1);
   assert.match(JSON.stringify(media.blocks), /"kind":"image"/);
   assert.doesNotMatch(JSON.stringify(media), /base64|data:image/);
   const input = { id: document.id, expected_revision: inspected.document.revision, block_id: 'narrative', patch_json: '{"text":"Small native text edit"}' };
   assert.ok(JSON.stringify(input).length < 1000); const saved = await run<{ revision: string }>('document.editBlock', input); assert.notEqual(saved.revision, inspected.document.revision);
   await assert.rejects(run('document.editBlock', input), /changed since inspection/);
+  // #10877: an edit changes the exact block metadata population behind the cursor.
+  await assert.rejects(run('document.inspect', blockCursor), { code: 'STATE_CHANGED' });
   const persisted = (await loadDocuments()).find(row => row.id === document.id); assert.ok(persisted);
   assert.equal(persisted.blocks[0].kind === 'text' && persisted.blocks[0].text, 'Small native text edit');
   assert.equal(persisted.blocks[0].kind === 'text' && aiBlockOrigin(persisted.blocks[0]), 'human-edited');
@@ -47,4 +55,6 @@ it('#10525 pages large native documents and edits text without resending or losi
   assert.deepEqual(persisted.aiReport, document.aiReport); assert.deepEqual(persisted.blocks[1], document.blocks[1]); assert.deepEqual(persisted.pageHeading, document.pageHeading);
   await run('document.editPage', { id: document.id, expected_revision: saved.revision, patch_json: '{"page":{"orientation":"landscape"},"pageHeading":{"text":"Edited heading"}}' });
   const pageSaved = (await loadDocuments()).find(row => row.id === document.id); assert.equal(pageSaved?.page.orientation, 'landscape'); assert.equal(pageSaved?.pageHeading?.logo?.dataUrl, dataUrl);
+  assert.ok(await useViewerStore.getState().deleteDocument(library.documents[0].id));
+  await assert.rejects(run('document.library', libraryCursor), { code: 'STATE_CHANGED' });
 });

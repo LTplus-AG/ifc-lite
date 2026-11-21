@@ -99,7 +99,9 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     assert.equal((await pending).errorCode, 'READ_ONLY');
   });
   it('validates all model-local entity IDs before changing either selection channel', async () => {
-    assert.equal((await execute('selection.replace', { express_ids: [1, 987654] })).errorCode, 'ENTITY_NOT_FOUND');
+    const missing = await execute('selection.replace', { express_ids: [1, 987654] });
+    assert.equal(missing.errorCode, 'INVALID_INPUT');
+    assert.equal((missing.structured as { reason: string }).reason, 'unknown-target');
     assert.equal(useViewerStore.getState().selectedEntityId, null);
     const applied = await execute('selection.replace', { express_ids: [1, 2] });
     assert.equal(applied.isError, false, applied.text);
@@ -199,12 +201,20 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     const result = await execute('filters.run', { expected_json: configured.configuration_json });
     assert.equal(result.isError, false, result.text);
     assert.equal(useViewerStore.getState().searchFilterResult?.rows.length, 4);
-    const page = data<{ result: { native_json: string } }>(await inspect('filters.results', { offset: 1, limit: 2 }));
+    const first = data<{ result: { native_json: string } }>(await inspect('filters.results', { offset: 0, limit: 1 }));
+    const { next_offset: offset, page_revision } = JSON.parse(first.result.native_json) as { next_offset: number; page_revision: string };
+    assert.equal(offset, 1); assert.ok(page_revision);
+    const page = data<{ result: { native_json: string } }>(await inspect('filters.results', { offset, page_revision, limit: 2 }));
     const rows = JSON.parse(page.result.native_json) as { total: number; rows: unknown[][]; current: boolean };
     assert.equal(rows.total, 4); assert.equal(rows.rows.length, 2); assert.equal(rows.current, true);
     useViewerStore.setState({ mutationVersion: 1 });
     const stale = data<{ result: { native_json: string } }>(await inspect('filters.results', { offset: 0, limit: 1 }));
     assert.equal((JSON.parse(stale.result.native_json) as { current: boolean }).current, false);
+    // #10877: replacement rows would shift the next offset even when the request keeps the same filter.
+    const store = useViewerStore.getState(), published = store.searchFilterResult;
+    assert.ok(published);
+    store.setSearchFilterResult({ ...published, rows: published.rows.slice(1) });
+    assert.equal((await inspect('filters.results', { offset, page_revision, limit: 2 })).errorCode, 'STATE_CHANGED');
   });
   it('uses native pick visibility and ownership while rejecting a scene changed during GPU readback', async () => {
     const models = new Map(useViewerStore.getState().models);

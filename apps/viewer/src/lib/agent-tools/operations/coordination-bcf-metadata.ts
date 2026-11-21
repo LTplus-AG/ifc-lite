@@ -2,18 +2,28 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { BCFProject, BCFTopic, BCFComment, BCFViewpoint } from '@ifc-lite/bcf';
+import { requirePageRevision, type PageRequest } from './result-limit';
+import { stateRevision } from './state-revision';
+
 /** Metadata responses stay well below the executor ceiling; media remains in native state and ZIP artifacts. */
 const PAGE_BYTES = 192 * 1024;
-export function bcfPage<T, U>(rows: Iterable<T>, total: number, offset: number, limit: number, metadata: (row: T) => U) {
+export function bcfPage<T, U>(rows: readonly T[] | ReadonlyMap<string, T>, request: PageRequest, limit: number, metadata: (row: T) => U) {
+  const offset = request.offset ?? 0;
+  const values = () => rows.values();
+  const rowRevisions: string[] = [];
+  for (const row of values()) rowRevisions.push(stateRevision(metadata(row)));
+  const total = rowRevisions.length;
+  const page_revision = stateRevision(rowRevisions);
+  requirePageRevision(offset, request.page_revision, page_revision);
   const items: U[] = []; let index = 0, bytes = 0;
-  for (const row of rows) {
+  for (const row of values()) {
     if (index++ < offset) continue; if (items.length >= limit) break;
     const item = metadata(row), size = new TextEncoder().encode(JSON.stringify(item)).byteLength;
     if (bytes + size > PAGE_BYTES) { if (!items.length) throw new Error('Native BCF metadata exceeds the bounded page budget.'); break; }
     items.push(item); bytes += size;
   }
   const next = offset + items.length;
-  return { items, page: { offset, requested_limit: limit, returned: items.length, total, next_offset: next < total ? next : null, media_bodies_included: false } };
+  return { items, page: { offset, requested_limit: limit, returned: items.length, total, page_revision, next_offset: next < total ? next : null, media_bodies_included: false } };
 }
 const text = (value: string | undefined, max = 2000) => value?.slice(0, max) ?? null;
 export function bcfProjectMetadata(project: BCFProject) {

@@ -8,6 +8,7 @@ import type { ViewerState } from '@/store';
 import { recordModellingEdit } from '@/store/slices/mutation-modelling-records';
 import { mutationDenial } from '@/store/mutation-permission';
 import { emitSpatialZones } from '@/lib/zones/emit-spatial-zones';
+import { zoneEvaluationIsCurrent, zoneEvaluationOwnerId } from '@/lib/zones/evaluation-owner';
 import { readOnlyModelEditLease } from './model-authoring-read-target';
 import { resolveGlobalId } from './resolve-global-id';
 import { readZoneEmissionSnapshot } from './zone-emission-evidence';
@@ -33,16 +34,37 @@ export function prepareZoneEmission(store: StoreApi<ViewerState>, input: ZoneEmi
   }).result;
   const original = JSON.stringify({ proposal, snapshot, dry }), digest = batchDigest({ proposal, snapshot, dry });
   const sources = [...state.models].map(([id, model]) => ({ id, model, source: model.ifcDataStore?.source, hash: model.sourceContentHash, fingerprint: model.sourceFingerprint }));
+  /** The loaded source owners this review bound are unchanged (validate() also re-reads its evaluation snapshot). */
+  const sourceOwnersCurrent = () => {
+    const current = store.getState();
+    return sources.length === current.models.size && sources.every(row => current.models.get(row.id) === row.model && row.model.ifcDataStore?.source === row.source
+      && row.model.sourceContentHash === row.hash && row.model.sourceFingerprint === row.fingerprint);
+  };
+  // What validate()'s snapshot reads first: the set by content, and the evaluation, which must be current and the
+  // reviewed one. Every evaluation records a new owner id, so once assignments are rebuilt (or no owner could be
+  // recorded, or the scene was replaced) no older review can apply.
+  const zoneSet = JSON.stringify(state.zoneSets.find(row => row.id === proposal.zoneSetId));
+  // The native lease binds the target model's mutation view and its revision, as the Group and Structural probes do.
+  const view = state.mutationViews.get(proposal.modelId), viewRevision = view?.getMutationRevision();
+  const zoneConfigurationCurrent = () => {
+    const current = store.getState(), liveView = current.mutationViews.get(proposal.modelId);
+    if (liveView !== view || liveView?.getMutationRevision() !== viewRevision) return false;
+    if (JSON.stringify(current.zoneSets.find(row => row.id === proposal.zoneSetId)) !== zoneSet) return false;
+    if (zoneEvaluationOwnerId(current) !== snapshot.evaluationId) return false;
+    // Not cached: the check also reads the scene and assignment records in place, outside the store. It walks at most
+    // 10000 mesh bounds, once per retained zone review per admission.
+    return zoneEvaluationIsCurrent(current);
+  };
   const validate = (initializing = false) => {
     if (original !== JSON.stringify({ proposal, snapshot, dry })) throw new Error('The reviewed proposal or native output changed');
     const current = store.getState();
     if (mutationDenial(current, proposal.modelId)) throw new Error('Native model editing is no longer allowed');
-    if (sources.length !== current.models.size || sources.some(row => current.models.get(row.id) !== row.model || row.model.ifcDataStore?.source !== row.source || row.model.sourceContentHash !== row.hash || row.model.sourceFingerprint !== row.fingerprint)) throw new Error('A loaded source owner changed after review');
+    if (!sourceOwnersCurrent()) throw new Error('A loaded source owner changed after review');
     if (!initializing) lease.validate();
     if (JSON.stringify(readZoneEmissionSnapshot(current, proposal.modelId, proposal.zoneSetId, ref.expressId, initializing ? proposal.modelId : undefined)) !== JSON.stringify(snapshot)) throw new Error('Native evaluation, zone set, members, frame or prior output changed after review');
   };
   let used = false;
-  return { proposal, snapshot, dry, validate: () => validate(), commit(origin: string): ModelChangeReceipt {
+  return { proposal, snapshot, dry, validate: () => validate(), sourcesCurrent: () => sourceOwnersCurrent() && zoneConfigurationCurrent(), commit(origin: string): ModelChangeReceipt {
     if (used) throw new Error('This reviewed native emission was already applied');
     validate();
     const batchId = crypto.randomUUID();

@@ -19,6 +19,8 @@ export interface GroupDelta { expressId: number; before: { type: string; attribu
 export interface GroupReview {
   proposal: GroupProposal; approved: ReadonlySet<number>; snapshot: GroupNativeEvidence; delta: GroupDelta[];
   validate(): void;
+  /** Cheap and permanent: the loaded sources and edit revisions this review bound are unchanged. */
+  sourcesCurrent(): boolean;
   commit(): { rows: GroupWriteRow[]; batchId: string };
 }
 /** Complete native graph, source content and overlay lease are verified again at the commit boundary. */
@@ -60,21 +62,25 @@ export function prepareGroupReview(store: StoreApi<ViewerState>, input: GroupPro
   }).result;
   if (!preview.delta.length) throw new Error('The approved Group operations make no change');
   const evidenceSignature = JSON.stringify({ approved: [...approved], snapshot, delta: preview.delta, allocations: [...allocations] });
+  const sourcesCurrent = (initializing = false) => {
+    const state = store.getState();
+    return state.models.size === capturedSources.length && capturedSources.every(saved => {
+      const current = state.models.get(saved.id);
+      const initializingTarget = initializing && saved.id === proposal.modelId && saved.view === undefined;
+      return current === saved.model && current?.ifcDataStore === saved.store && current?.ifcDataStore?.source === saved.source && current?.sourceContentHash === saved.hash
+        && current?.sourceFingerprint === saved.fingerprint && (initializingTarget || (state.mutationViews.get(saved.id) === saved.view && state.mutationViews.get(saved.id)?.getMutationRevision() === saved.revision));
+    });
+  };
   const validate = (initializing = false) => {
     if (signature !== JSON.stringify(proposal) || evidenceSignature !== JSON.stringify({ approved: [...approved], snapshot, delta: preview.delta, allocations: [...allocations] })) throw new Error('The prepared Group review changed');
     const state = store.getState();
-    if (state.models.size !== capturedSources.length || capturedSources.some(saved => {
-      const current = state.models.get(saved.id);
-      const initializingTarget = initializing && saved.id === proposal.modelId && saved.view === undefined;
-      return current !== saved.model || current?.ifcDataStore !== saved.store || current?.ifcDataStore?.source !== saved.source || current?.sourceContentHash !== saved.hash
-        || current?.sourceFingerprint !== saved.fingerprint || (!initializingTarget && (state.mutationViews.get(saved.id) !== saved.view || state.mutationViews.get(saved.id)?.getMutationRevision() !== saved.revision));
-    })) throw new Error('The native Group source population changed');
+    if (!sourcesCurrent(initializing)) throw new Error('The native Group source population changed');
     if (!initializing) lease.validate();
     const permission = mutationDenial(state, proposal.modelId);
     if (permission) throw new Error(permission);
   };
   let used = false;
-  return { proposal, approved, snapshot, delta: preview.delta, validate: () => validate(), commit: () => {
+  return { proposal, approved, snapshot, delta: preview.delta, validate: () => validate(), sourcesCurrent: () => sourcesCurrent(), commit: () => {
     if (used) throw new Error('This Group review was already applied');
     validate(); const batchId = crypto.randomUUID();
     const rows = recordModellingEdit(store, proposal.modelId, (_methods, draft) => {

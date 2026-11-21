@@ -20,7 +20,7 @@ import { captureEvidence } from '@/lib/assistant/evidence';
 import * as evidenceFocus from '@/lib/panels/evidence-focus';
 import { useReviewSnapshot } from '@/components/viewer/review/useReviewSnapshot';
 import { CompareReconcileSection } from '@/components/viewer/compare/CompareReconcileSection';
-import { cleanup, render, waitFor, advance } from '@/test/render';
+import { cleanup, render, settle, waitFor, advance } from '@/test/render';
 
 const initial = useViewerStore.getState();
 afterEach(() => { cleanup(); act(() => { useViewerStore.setState(initial, true); evidenceFocus.useReconciliationFocus?.setState({ record: null }); }); });
@@ -145,6 +145,7 @@ function NativeReviewCount() {
 }
 test('#7087 the mounted native Review hook refreshes when only the reconciliation changes', async t => {
   const source = await native(t); if (!source || !source.saved.outcome.ok) return;
+  await settle();
   const ui = render(<NativeReviewCount />);
   assert.equal(ui.querySelector('output')?.textContent, String(source.saved.outcome.findings.length));
   act(() => useViewerStore.getState().setCompareReconciliation(null)); await advance(0);

@@ -6,7 +6,7 @@ import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { Ajv } from 'ajv';
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { render, click, cleanup, type, waitFor, advance } from '@/test/render';
+import { render, click, cleanup, type, waitFor, advance, settle } from '@/test/render';
 import { seedArtifactModels, ARCH } from '@/test/artifact-models-fixture';
 import { loadListDefinitions } from '@/lib/lists/persistence';
 import { prepareListProviders } from '@/lib/lists/prepare-providers';
@@ -53,6 +53,7 @@ async function seed(protocol: Protocol, federated: boolean, ratingSet = 'Pset_Wa
   useViewerStore.setState({ mutationViews: new Map([[ARCH, view]]), mutationVersion: 1, chatActiveModel: models[protocol] });
   updateApiKeys({ openaiKey: 'sk-native-test', anthropicKey: 'sk-ant-native-test' });
   replaceEvidence(captureEvidence('loadReport'));
+  await settle();
 }
 
 function stream(protocol: Protocol, answer: string) {
@@ -127,6 +128,7 @@ for (const control of ['edited', 'typed', 'refreshed', 'unavailable-fields', 'ho
     if (control === 'unavailable-fields') {
       // Unedited native SketchUp IFC has FireRating only on a slab; it cannot supply a wall profile.
       await seedArtifactModels(); replaceEvidence(captureEvidence('loadReport'));
+      await settle();
     }
     const sent: Record<string, unknown>[] = [];
     globalThis.fetch = async (_url, init) => {

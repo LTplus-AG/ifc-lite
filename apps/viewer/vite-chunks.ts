@@ -75,6 +75,22 @@ export const preloadHelperChunkGroup = {
   test: /vite\/preload-helper/,
 };
 
+/** The hosted entry validates hashes before it imports the viewer and its processing client. */
+export const processedModelRefChunkGroup = {
+  name: 'processed-model-ref',
+  priority: 50,
+  includeDependenciesRecursively: false,
+  test: /\/packages\/server-client\/src\/processed-model\.ts$/,
+};
+
+/** Keep idle scheduling in a small static chunk to stay within the stock entry byte ceiling. */
+export const wasmPrewarmChunkGroup = {
+  name: 'wasm-prewarm',
+  priority: 50,
+  includeDependenciesRecursively: false,
+  test: /\/apps\/viewer\/src\/lib\/wasm-prewarm\.ts$/,
+};
+
 /**
  * The merged STEP export, which runs only when the user exports a federation. The viewer loads it through a dynamic
  * import of `@ifc-lite/export/merged-exporter`; left to the recursive `exporters` group it would sit in that eager

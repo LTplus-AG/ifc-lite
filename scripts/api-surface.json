@@ -11254,6 +11254,13 @@
     "processedModelSize: function",
     "withNarrowedCoordinateSpace: function"
   ],
+  "@ifc-lite/server-client/processed-model": [
+    "ProcessedModelRef: interface",
+    "assertProcessedModelHash: function",
+    "isProcessedModelRef: function",
+    "normalizeProcessedModelHash: function",
+    "processedModelSize: function"
+  ],
   "@ifc-lite/site-context": [
     "BUILDING_SET: const",
     "BuildSiteContextOptions: interface",

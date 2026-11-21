@@ -145,6 +145,15 @@ describe('viewer operations: no effects after cancel and no stale captures (#107
     assert.equal(useViewerStore.getState().bcfProject, null);
   });
 
+  it('reports superseded clash topic capture as stale (#10871)', async () => {
+    const { run_seq } = await clashRun();
+    viewport.state.onRender = () => useViewerStore.setState({ clashRunSeq: run_seq + 1 });
+    const result = await execute('clash.topic.create', { kind: 'report', clash_ids: [], run_seq, group_name: '', mode: 'highlight' });
+    assert.ok(viewport.state.renders > 0, 'the result changed during capture');
+    assert.equal(result.errorCode, 'STATE_CHANGED', result.text);
+    assert.equal(useViewerStore.getState().bcfProject, null);
+  });
+
   it('#6: clash.focus keeps framing the group after its call has returned', async () => {
     await seedCoincidentWalls(1, 3);
     const { run_seq, ids } = await clashRun();

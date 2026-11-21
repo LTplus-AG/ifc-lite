@@ -49,6 +49,24 @@ function previewOtherModel() {
 describe('authoring operations write the named target (#10793)', () => {
   beforeEach(seed);
 
+  it('reports a refused native material assignment before marking the write committed (#10871)', async () => {
+    const state = useViewerStore.getState();
+    const dataStore = state.models.get(SAMPLE_MODEL)!.ifcDataStore!;
+    // A Cartesian point exists in the model but cannot receive an IfcRelAssociatesMaterial.
+    const express_id = dataStore.entityIndex.byType.get('IFCCARTESIANPOINT')?.[0];
+    assert.ok(express_id);
+    const view = state.mutationViews.get(SAMPLE_MODEL)!;
+    const before = view.getNewEntities().length;
+    const result = await invoke('authoring.material.createAndAssign', {
+      express_id, Name: 'Concrete', Color: '#808080', Category: '', Description: '',
+    });
+    const details = result.structured as { reason: string; committed?: boolean };
+    assert.equal(result.errorCode, 'INVALID_INPUT', result.text);
+    assert.equal(details.reason, 'refused');
+    assert.equal(details.committed, undefined);
+    assert.equal(view.getNewEntities().length, before, 'native refusal rolls back the new material');
+  });
+
   it('#21 a Rectangle profile writes the kind Width and Height (Depth for a column) that placement reads', async () => {
     answer(await invoke('authoring.defaults.profile', { owner: 'beam', profile_json: JSON.stringify({ Type: 'Rectangle', XDim: 0.25, YDim: 0.6 }), expected_defaults: defaults() }));
     answer(await invoke('authoring.defaults.profile', { owner: 'column', profile_json: JSON.stringify({ Type: 'Rectangle', XDim: 0.5, YDim: 0.7 }), expected_defaults: defaults() }));

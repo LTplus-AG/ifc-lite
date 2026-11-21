@@ -9,6 +9,7 @@ import type { ToolHost } from '../types';
 import { operation, emptySchema, referenceSchema } from './contract';
 import { assertToolActive } from '../cancellation';
 import { resolveRef } from '../refs';
+import { invalidInput, decodedInput } from './refusals';
 import { admitCandidate, candidateStillApplies, libraryHoldsReceipt, persistReceipt, type ReceiptHolder } from './host-handles';
 
 const jsonOutput = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
@@ -32,32 +33,32 @@ function owned(c: Pick<OperationContext, 'host'>) {
 /** Drop one candidate and release its native handles. */
 function release(entries: Map<string, Candidate>, token: string) { entries.get(token)?.review?.dispose?.(); entries.delete(token); }
 const output = (value: unknown) => ({ native_json: JSON.stringify(value ?? null) });
-function proposalModel(value: { modelId: string }, c: OperationContext) { if (value.modelId !== c.model.id) throw new Error('The proposal must name the selected model.'); }
+function proposalModel(value: { modelId: string }, c: OperationContext) { if (value.modelId !== c.model.id) throw invalidInput('wrong-target', 'The proposal must name the selected model.'); }
 async function prepare(kind: 'group' | 'structural' | 'zone' | 'room', json: string, c: OperationContext): Promise<Review> {
   switch (kind) {
     case 'group': {
       const [{ parseGroupProposal }, { prepareGroupReview }, { commitReviewedGroup }] = await Promise.all([import('@/lib/actions/group-lifecycle-proposal'), import('@/lib/actions/group-lifecycle-review'), import('@/lib/actions/group-lifecycle-receipt')]);
-      const proposal = parseGroupProposal(json); proposalModel(proposal, c);
+      const proposal = decodedInput('proposal_json', () => parseGroupProposal(json), { json: true }); proposalModel(proposal, c);
       const review = prepareGroupReview(useViewerStore, proposal);
       return { preview: { proposal: review.proposal, snapshot: review.snapshot, delta: review.delta }, validate: review.validate, sourcesCurrent: review.sourcesCurrent,
         commit: () => commitReviewedGroup(useViewerStore, review, 'viewer-agent') };
     }
     case 'structural': {
       const [{ parseStructuralProposal }, { prepareStructuralReview }, { commitReviewedStructural }] = await Promise.all([import('@/lib/actions/structural-graph-proposal'), import('@/lib/actions/structural-graph-review'), import('@/lib/actions/structural-graph-receipt')]);
-      const proposal = parseStructuralProposal(json); proposalModel(proposal, c);
+      const proposal = decodedInput('proposal_json', () => parseStructuralProposal(json), { json: true }); proposalModel(proposal, c);
       const review = prepareStructuralReview(useViewerStore, proposal);
       return { preview: { proposal: review.proposal, snapshot: review.snapshot, delta: review.delta }, validate: review.validate, sourcesCurrent: review.sourcesCurrent,
         commit: () => commitReviewedStructural(useViewerStore, review, 'viewer-agent') };
     }
     case 'zone': {
       const [{ parseZoneEmissionProposal }, { prepareZoneEmission }] = await Promise.all([import('@/lib/actions/zone-emission-proposal'), import('@/lib/actions/zone-emission-review')]);
-      const proposal = parseZoneEmissionProposal(json); proposalModel(proposal, c);
+      const proposal = decodedInput('proposal_json', () => parseZoneEmissionProposal(json), { json: true }); proposalModel(proposal, c);
       const review = prepareZoneEmission(useViewerStore, proposal);
       return { preview: { proposal: review.proposal, snapshot: review.snapshot, dry: review.dry }, validate: review.validate, sourcesCurrent: review.sourcesCurrent, commit: () => review.commit('viewer-agent') };
     }
     case 'room': {
       const [{ parseRoomProposal }, { prepareRoomReview }, { commitReviewedRoom }] = await Promise.all([import('@/lib/actions/room-command-proposal'), import('@/lib/actions/room-review'), import('@/lib/actions/room-receipt')]);
-      const proposal = parseRoomProposal(json); proposalModel(proposal, c);
+      const proposal = decodedInput('proposal_json', () => parseRoomProposal(json), { json: true }); proposalModel(proposal, c);
       // The native preparation remeshes the storey walls first; that is this operation's own write, and the review's
       // geometry lease, checked by validate() below, binds the geometry it read.
       const review = await c.ownGeometry(() => prepareRoomReview(proposal, c.signal ?? new AbortController().signal), refused => refused.dispose());
@@ -110,7 +111,7 @@ export const graphAuthoringOperations = [
   })),
   operation<{ token: string }>(meta('authoring.graph.apply', 'model', 'Apply one exact prepared native graph/Room candidate through its native synchronous review commit. Preserves all native roles, source/evidence checks and native undo. A token applies once.', true), tokenInput, async (i, c) => {
     const entry = owned(c).get(i.token);
-    if (!entry || entry.modelId !== c.model.id || entry.store !== c.model.store) throw new Error('Unknown graph review for this host/model.');
+    if (!entry || entry.modelId !== c.model.id || entry.store !== c.model.store) throw invalidInput('unknown-target', 'Unknown graph review for this host/model.');
     if (!entry.receipt) {
       const review = entry.review!;
       entry.receipt = c.commit(() => { review.validate(); return review.commit(); });
@@ -120,7 +121,7 @@ export const graphAuthoringOperations = [
   }),
   operation<{ token: string }>(meta('authoring.graph.discard', 'model', 'Dispose a native graph or Room preview and release its native handles.'), tokenInput, (i, c) => {
     const entry = owned(c).get(i.token);
-    if (!entry || entry.modelId !== c.model.id || entry.store !== c.model.store) throw new Error('Unknown graph review.');
+    if (!entry || entry.modelId !== c.model.id || entry.store !== c.model.store) throw invalidInput('unknown-target', 'Unknown graph review.');
     release(owned(c), i.token); return output({ discarded: true });
   }),
 ];
@@ -128,6 +129,6 @@ export const graphAuthoringOperations = [
 /** Capture only the actual live prepared RoomReview owned by this host. */
 export async function captureRoomGroundingForCandidate(host:ToolHost,token:string,modelId:string){
   const candidate=hosts.get(host)?.get(token),model=useViewerStore.getState().models.get(modelId);
-  if(!candidate||candidate.modelId!==modelId||candidate.store!==model?.ifcDataStore||!candidate.review?.room||candidate.receipt)throw new Error('Unknown or consumed native Room candidate for this host/model.');
+  if(!candidate||candidate.modelId!==modelId||candidate.store!==model?.ifcDataStore||!candidate.review?.room||candidate.receipt)throw invalidInput('unknown-target', 'Unknown or consumed native Room candidate for this host/model.');
   candidate.review.validate();const {captureRoomGrounding}=await import('@/lib/actions/room-review');candidate.review.validate();return captureRoomGrounding(candidate.review.room);
 }

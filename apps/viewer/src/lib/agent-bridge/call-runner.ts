@@ -11,6 +11,7 @@
  */
 
 import type { BridgeCallMessage } from '@ifc-lite/mcp/bridge-protocol';
+import type { DeliveryClaim } from '../agent-tools/delivery';
 import type { AgentBridgeActivity } from './state';
 import { buildResultFrame, toCallToolResult, type ToolOutcome } from './result-frame';
 import { CallAdmission, type CallLimits } from './call-admission';
@@ -34,7 +35,7 @@ export interface CallRunnerOptions {
   limits: CallLimits;
   maxResultBytes: number;
   now: () => number;
-  dispatch(name: string, args: Record<string, unknown>, signal: AbortSignal): Promise<ToolOutcome>;
+  dispatch(name: string, args: Record<string, unknown>, signal: AbortSignal, onDelivery?: (claim: DeliveryClaim) => void): Promise<ToolOutcome>;
   modelIdFor?(args: Record<string, unknown>): string | null;
   /** Whether `name` changes the model (listed `readOnly: false`), to mark its activity rows. */
   mutates?(name: string): boolean;
@@ -45,11 +46,14 @@ export interface CallRunnerOptions {
   isLive(): boolean;
   /** The peer sent more calls than allowed: end the session. */
   onFlood(): void;
+  /** A negotiated peer did not confirm receipt, so the pairing must end. */
+  onAckTimeout?(): void;
 }
 
 export class CallRunner {
   private readonly inFlight = new Map<string, InFlight>();
   private readonly queued = new Set<string>();
+  private readonly awaitingAck = new Map<string, { claim: DeliveryClaim; timer: ReturnType<typeof setTimeout> }>();
   private readonly admission: CallAdmission<BridgeCallMessage>;
   private readonly limits: CallLimits;
   private seq = 0;
@@ -63,7 +67,24 @@ export class CallRunner {
   private live(): boolean { return this.opts.isLive(); }
 
   /** True when `id` is running or queued (a duplicate `call` is ignored). */
-  has(id: string): boolean { return this.inFlight.has(id) || this.queued.has(id); }
+  has(id: string): boolean { return this.inFlight.has(id) || this.queued.has(id) || this.awaitingAck.has(id); }
+
+  /** Acknowledgements release the admission slot as well as settling the claim. */
+  acknowledge(id: string, accepted: boolean): void {
+    const pending = this.removeAck(id);
+    if (!pending) return;
+    if (accepted) pending.deliver();
+    else pending.drop();
+    this.startNext();
+  }
+
+  private removeAck(id: string): DeliveryClaim | undefined {
+    const pending = this.awaitingAck.get(id);
+    if (!pending) return;
+    this.awaitingAck.delete(id);
+    clearTimeout(pending.timer);
+    return pending.claim;
+  }
 
   /** The bridge cancelled `id`: drop it from the queue, or abort it. */
   cancel(id: string): void {
@@ -78,6 +99,7 @@ export class CallRunner {
   abortAll(): void {
     for (const call of this.inFlight.values()) call.controller.abort();
     this.inFlight.clear();
+    for (const id of this.awaitingAck.keys()) this.removeAck(id)?.drop();
     this.admission.clear();
     this.queued.clear();
   }
@@ -133,8 +155,10 @@ export class CallRunner {
       entry.controller.abort();
     }, this.limits.callTimeoutMs);
     let outcome: ToolOutcome;
+    let claim: DeliveryClaim | undefined;
+    const onDelivery = this.opts.onAckTimeout ? (next: DeliveryClaim) => { claim = next; } : undefined;
     try {
-      outcome = await this.opts.dispatch(call.name, call.arguments, entry.controller.signal);
+      outcome = await this.opts.dispatch(call.name, call.arguments, entry.controller.signal, onDelivery);
     } catch (err) {
       outcome = { text: err instanceof Error ? err.message : String(err), structured: null, isError: true, errorCode: 'INTERNAL_ERROR' };
     } finally {
@@ -156,7 +180,10 @@ export class CallRunner {
       ...(outcome.edit ? { edit: outcome.edit } : {}),
     });
     // A cancelled call is already settled on the bridge, and a closed socket has no one to answer.
-    if (!cancelled && stillPending) this.reply(call, outcome);
+    if (!cancelled && stillPending) {
+      if (this.reply(call, outcome, !timedOut && !outcome.isError ? claim : undefined)) return;
+    }
+    claim?.drop();
     this.startNext();
   }
 
@@ -172,15 +199,23 @@ export class CallRunner {
     }, 0);
   }
 
-  private reply(call: BridgeCallMessage, outcome: ToolOutcome): void {
-    if (!this.live()) return;
+  private reply(call: BridgeCallMessage, outcome: ToolOutcome, claim?: DeliveryClaim): boolean {
+    if (!this.live()) return false;
     try {
-      const frame = buildResultFrame(this.opts.sessionId, call.id, toCallToolResult(outcome), this.opts.maxResultBytes);
+      const frame = buildResultFrame(this.opts.sessionId, call.id, toCallToolResult(outcome), this.opts.maxResultBytes, !!claim);
       if (frame.truncated) warn(`the result of ${call.name} was more than the bridge accepts and was truncated`);
+      if (claim && !frame.truncated) {
+        const timer = setTimeout(() => this.opts.onAckTimeout?.(), this.limits.callTimeoutMs);
+        this.awaitingAck.set(call.id, { claim, timer });
+        this.opts.send(frame.json);
+        return true;
+      }
       this.opts.send(frame.json);
     } catch (err) {
+      this.removeAck(call.id);
       warn(`could not send the result of ${call.name}`, err);
     }
+    return false;
   }
 
   private modelIdFor(args: Record<string, unknown>): string | null {

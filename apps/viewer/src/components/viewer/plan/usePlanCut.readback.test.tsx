@@ -44,7 +44,7 @@ it('#10887 r4647239305 a plan cut that failed before its backing sealed succeeds
     releaseCpuMeshBuffers(meshes); // released BEFORE the backing is sealed
     const request = { scope: 'pc', key: 'pc:0', meshes, cutY: PLAN_CUT_HEIGHT, map: (x: number, z: number): [number, number] => [x, -z] };
     let seen: PlanCutResult | undefined;
-    function Probe() { seen = usePlanCutDrawing(request); return null; }
+    const Probe = () => { seen = usePlanCutDrawing(request); return null; };
     render(<Probe />);
     await settle();
     assert.equal(seen?.failed, true, 'no sealed backing answers yet: the cut fails');

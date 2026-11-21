@@ -279,7 +279,7 @@ it('#10887 resident scoped exports ignore another released model and preserve ge
         { modelId: 'B', idOffset: 1000, maxExpressId: 10, rendererModelIndex: indices.get('B') }, context), ['B']);
     }, 'B is resident and has no backing; A cannot force B into readback');
     assert.equal(output?.meshes[0], b.meshes[0]);
-    function* owner() { yield 'A'; }
+    const owner = function* () { yield 'A'; };
     const read = await withReleasedExportGeometry((context) => withInstancedMeshes(a,
       { modelId: 'A', idOffset: 0, maxExpressId: 10, rendererModelIndex: indices.get('A') }, context), owner());
     assert.equal(read.meshes[0].positions[2], 3, 'checking release must not consume the preparation scope');

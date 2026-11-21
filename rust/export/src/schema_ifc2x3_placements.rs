@@ -34,6 +34,9 @@
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
+#[path = "schema_ifc2x3_style_assignments.rs"]
+mod style_assignments;
+
 use crate::schema_ifc2x3_records::{
     is_dollar, list, num, ref_id, triple, GridFrame, Records, EPS, GRID_PLACEMENT, INTERSECTION, LOCAL, OBJECT_PLACEMENT, RELATIVE_PLACEMENT, Z,
 };
@@ -253,6 +256,13 @@ pub(crate) fn place_each_object_once(body: &str) -> Option<Placed> {
     };
 
     for rec in records.list.iter().flatten() {
+        if rec.ty == "IFCSTYLEDITEM" {
+            if let Some((styled, assignment)) = style_assignments::wrap_direct_styles(&records, rec, next) {
+                rewrites.insert(rec.id, styled);
+                added.push(assignment);
+                next += 1;
+            }
+        }
         if rec.ty != GRID_PLACEMENT || others.contains(&rec.id) || products.contains_key(&rec.id) {
             continue;
         }

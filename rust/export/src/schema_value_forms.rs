@@ -17,6 +17,12 @@ use crate::generated::value_forms::{ValueFormSlot, VALUE_FORM_SLOTS};
 use crate::schema_structural_axes::list_items;
 use crate::step_slot::split_top_level_args;
 
+#[path = "schema_durations.rs"]
+mod durations;
+
+#[path = "schema_calendar_dates.rs"]
+mod calendar_dates;
+
 /// The form of one STEP value as written, or `None` for `$`, `*` and anything unread.
 fn value_form(value: &str) -> Option<String> {
     let v = value.trim();
@@ -115,6 +121,9 @@ fn fix(value: &str, prefix: &str, rows: &[&str]) -> (Option<String>, usize) {
     let fixed = match to {
         None => None,
         Some(to) if to.starts_with("T:") => Some(format!("{}({body})", &to[2..])),
+        Some("TEXT") => inner().filter(|arg| arg.starts_with('\'') && ifc_lite_core::parser::is_step_value(arg.as_bytes())).map(|arg| format!("IFCTEXT({arg})")),
+        Some("D+") => durations::from_seconds(&body),
+        Some("D-") => durations::to_seconds(&body),
         Some("U") => inner().map(str::to_owned),
         Some("U1") => inner().and_then(list_items).filter(|m| m.len() == 1).map(|m| m[0].trim().to_owned()),
         Some(_) => as_integer(&body),
@@ -135,12 +144,32 @@ pub(crate) struct ValueForms {
     /// Per `TYPE.Attribute`: values dropped, and those that left a required slot `$`.
     dropped: BTreeMap<String, usize>,
     emptied: BTreeMap<String, usize>,
+    dates: calendar_dates::CalendarDates,
 }
 
 impl ValueForms {
+    pub(crate) fn enable_dates(&mut self) {
+        self.dates.enabled = true;
+    }
+
+    /// Legacy date carriers must be visible to the final pass after edits and ref remapping.
+    pub(crate) fn buffer_for_dates(content: &[u8], from: &str, to: &str) -> bool {
+        crate::schema_convert::canon(from) == "IFC2X3"
+            && matches!(crate::schema_convert::canon(to), "IFC4" | "IFC4X3")
+            && calendar_dates::has_carriers(content)
+    }
+
+    pub(crate) fn finish_dates(&mut self, text: &str, dropped: &mut usize) -> Option<(String, isize)> {
+        self.dates.finish(text, |required, site| {
+            *dropped += 1;
+            let into = if required { &mut self.emptied } else { &mut self.dropped };
+            *into.entry(site).or_default() += 1;
+        })
+    }
+
     /// `line`, already converted from `cfrom` to `cto`, with every slot in a
     /// form the target accepts; each value dropped is added to `dropped`.
-    pub(crate) fn apply(&mut self, line: String, cfrom: &str, cto: &str, dropped: &mut usize) -> String {
+    pub(crate) fn apply(&mut self, line: String, cfrom: &str, cto: &str, id: u32, dropped: &mut usize) -> String {
         let Some(frame) = crate::step_record_frame::record_frame(&line) else { return line };
         let written = frame.head.type_name(&line);
         // The converter writes the type in upper case; anything else is copied once.
@@ -153,6 +182,13 @@ impl ValueForms {
         let mut changed = false;
         for &(index, attribute, required, empty, whole, rows) in slots {
             let Some(slot) = args.get(usize::from(index)) else { continue };
+            if self.dates.enabled && rows.iter().any(|row| row.contains(">C")) {
+                let body = crate::step_slot::without_comments(slot);
+                let op = value_form(&body).and_then(|form| rule(rows, &form).flatten());
+                if op.is_some_and(|op| self.dates.defer(id, index, op, required, || format!("{ty}.{attribute}"))) {
+                    continue;
+                }
+            }
             let (mut fixed, lost) = fix(slot, "", rows);
             if lost > 0 && !whole.is_empty() {
                 // Positional members: every slot of the group goes whole, each named for what it held.
@@ -196,6 +232,7 @@ impl ValueForms {
         };
         line(&self.dropped, "were dropped").into_iter()
             .chain(line(&self.emptied, "left a slot the target requires as $, so the file is not valid against its header"))
+            .chain(self.dates.warning())
             .collect()
     }
 }

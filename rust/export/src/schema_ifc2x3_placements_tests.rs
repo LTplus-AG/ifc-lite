@@ -82,3 +82,18 @@ fn a_section_that_is_not_utf8_is_adapted_byte_for_byte() {
     assert!(out.windows(5).any(|w| w == b"Caf\xE9'"), "{:?}", String::from_utf8_lossy(&out));
     assert!(out.ends_with(b"#3=IFCBUILDING('b',$,$,$,$,#4,$,$,.ELEMENT.,$,$,$);\n#4=IFCLOCALPLACEMENT($,$);\n"), "{:?}", String::from_utf8_lossy(&out));
 }
+
+#[test]
+fn wraps_direct_styles_for_the_ifc2x3_target_10879() {
+    let input = include_bytes!("../tests/fixtures/schema_styled_item_downgrade.ifc");
+    let options = crate::StepOptions { schema: Some("IFC2X3".to_owned()), ..Default::default() };
+    let step = crate::export_step(input, &options).unwrap();
+    let (log, _) = crate::export_step_with_log(input, &options, &crate::MutationLog::default()).unwrap();
+    let merged = crate::export_merged(&[input], &crate::MergedOptions { schema: options.schema.clone(), ..Default::default() });
+    for output in [&step, &log, &merged] {
+        assert!(output.contains("#2=IFCSTYLEDITEM(#1,(#6),'Styled point');"), "{output}");
+        assert!(output.contains("#6=IFCPRESENTATIONSTYLEASSIGNMENT((#3));"), "{output}");
+        let second = crate::export_step(output.as_bytes(), &options).unwrap();
+        assert_eq!(second.matches("=IFCPRESENTATIONSTYLEASSIGNMENT(").count(), 1);
+    }
+}

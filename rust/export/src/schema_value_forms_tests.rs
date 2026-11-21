@@ -18,8 +18,8 @@ fn a_value_the_target_slot_cannot_hold_is_dropped_and_named_10847() {
     let (out, dropped, warnings) = convert("#5=IFCCLASSIFICATION('src','1',#9,'name');", "IFC2X3", "IFC4");
     assert_eq!((out.as_str(), dropped), ("#5=IFCCLASSIFICATION('src','1',$,'name',$,$,$);", 1));
     assert_eq!(warnings, ["1 value(s) of a type the target slot does not accept were dropped: IFCCLASSIFICATION.EditionDate (#10847)."]);
-    let (out, dropped, _) = convert("#5=IFCWORKPLAN('g',$,'n',$,$,'id',#9,$,$,10.,2.,#10,$,.ACTUAL.);", "IFC2X3", "IFC4");
-    assert_eq!((out.as_str(), dropped), ("#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,$,$,$,$,.ACTUAL.);", 4));
+    let (out, dropped, _) = convert("#5=IFCWORKPLAN('g',$,'n',$,$,'id',#9,$,$,10.,2.,#10,$,.ACTUAL.,$);", "IFC2X3", "IFC4");
+    assert_eq!((out.as_str(), dropped), ("#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,'PT10S','PT2S',$,$,.ACTUAL.);", 2));
     let (out, _, _) = convert("#5=IFCRELSEQUENCE('g',$,$,$,#6,#7,2.,.START_START.);", "IFC2X3", "IFC4");
     assert_eq!(out, "#5=IFCRELSEQUENCE('g',$,$,$,#6,#7,$,.START_START.,$);");
     let (out, _, _) = convert("#5=IFCCLASSIFICATION('src','1','2020-01-01','name',$,$,$);", "IFC4", "IFC2X3");
@@ -29,9 +29,9 @@ fn a_value_the_target_slot_cannot_hold_is_dropped_and_named_10847() {
 /// A typed value IFC2X3 has no type for is dropped, and only that member of a list.
 #[test]
 fn a_typed_value_the_target_lacks_is_dropped_member_by_member_10847() {
-    let (out, dropped, _) = convert("#5=IFCPROPERTYSINGLEVALUE('n',$,IFCDATE('2020-01-01'),$);", "IFC4X3", "IFC2X3");
+    let (out, dropped, _) = convert("#5=IFCPROPERTYSINGLEVALUE('n',$,IFCBINARY(\"0A\"),$);", "IFC4X3", "IFC2X3");
     assert_eq!((out.as_str(), dropped), ("#5=IFCPROPERTYSINGLEVALUE('n',$,$,$);", 1));
-    let (out, dropped, _) = convert("#5=IFCPROPERTYLISTVALUE('n',$,(IFCLABEL('a'),IFCDATE('2020-01-01')),$);", "IFC4X3", "IFC2X3");
+    let (out, dropped, _) = convert("#5=IFCPROPERTYLISTVALUE('n',$,(IFCLABEL('a'),IFCBINARY(\"0A\")),$);", "IFC4X3", "IFC2X3");
     assert_eq!((out.as_str(), dropped), ("#5=IFCPROPERTYLISTVALUE('n',$,(IFCLABEL('a')),$);", 1));
     // A value the target accepts is left as written, comments and all.
     let kept = "#5=IFCPROPERTYSINGLEVALUE('n',$,IFCLABEL('a') /* c */,$);";
@@ -95,7 +95,7 @@ fn a_fraction_float_rounding_hides_is_still_dropped_10847() {
 /// still loses only the member.
 #[test]
 fn positional_members_are_dropped_whole_with_their_partners_10847() {
-    let table = "#5=IFCPROPERTYTABLEVALUE('t',$,(IFCDATE('2020-01-01'),IFCLABEL('k')),(IFCLABEL('v1'),IFCLABEL('v2')),$,$,$,$);";
+    let table = "#5=IFCPROPERTYTABLEVALUE('t',$,(IFCBINARY(\"0A\"),IFCLABEL('k')),(IFCLABEL('v1'),IFCLABEL('v2')),$,$,$,$);";
     let (out, dropped, warnings) = convert(table, "IFC4", "IFC2X3");
     assert_eq!((out.as_str(), dropped), ("#5=IFCPROPERTYTABLEVALUE('t',$,$,$,$,$,$);", 4));
     assert_eq!(warnings, ["4 value(s) of a type the target slot does not accept left a slot the target requires as $, so the file is not valid against its header: IFCPROPERTYTABLEVALUE.DefinedValues, IFCPROPERTYTABLEVALUE.DefiningValues (#10847)."]);
@@ -103,8 +103,8 @@ fn positional_members_are_dropped_whole_with_their_partners_10847() {
     let (out, dropped, warnings) = convert(uri, "IFC4X3", "IFC4");
     assert_eq!((out.as_str(), dropped), ("#5=IFCPROPERTYTABLEVALUE('t',$,$,$,$,$,$,$);", 4));
     assert_eq!(warnings, ["4 value(s) of a type the target slot does not accept were dropped: IFCPROPERTYTABLEVALUE.DefinedValues, IFCPROPERTYTABLEVALUE.DefiningValues (#10847)."]);
-    assert_eq!(convert("#5=IFCTABLEROW((IFCLABEL('a'),IFCDATE('2020-01-01')),.F.);", "IFC4", "IFC2X3").0, "#5=IFCTABLEROW($,.F.);");
-    let (out, dropped, _) = convert("#5=IFCPROPERTYLISTVALUE('n',$,(IFCLABEL('a'),IFCDATE('2020-01-01')),$);", "IFC4", "IFC2X3");
+    assert_eq!(convert("#5=IFCTABLEROW((IFCLABEL('a'),IFCBINARY(\"0A\")),.F.);", "IFC4", "IFC2X3").0, "#5=IFCTABLEROW($,.F.);");
+    let (out, dropped, _) = convert("#5=IFCPROPERTYLISTVALUE('n',$,(IFCLABEL('a'),IFCBINARY(\"0A\")),$);", "IFC4", "IFC2X3");
     assert_eq!((out.as_str(), dropped), ("#5=IFCPROPERTYLISTVALUE('n',$,(IFCLABEL('a')),$);", 1));
 }
 
@@ -149,4 +149,43 @@ fn a_typed_count_payload_becomes_an_ifc4x3_integer_10847() {
     // IFC4X3 -> IFC4 widens IfcCountMeasure back to a number: nothing to convert.
     let integer = "#5=IFCPROPERTYSINGLEVALUE('n',$,IFCCOUNTMEASURE(3),$);";
     assert_eq!(convert(integer, "IFC4X3", "IFC4"), (integer.to_owned(), 0, Vec::<String>::new()));
+}
+
+#[test]
+fn newer_ifc_value_keeps_its_step_string_on_downgrade_10879() {
+    let input = "#5=IFCPROPERTYLISTVALUE('n',$,(IFCDATETIME('2026-11-20T10:30:00Z'),IFCURIREFERENCE('https://example.org/a''b'),IFCBINARY(\"0A\")),$);";
+    let (out, dropped, _) = convert(input, "IFC4X3", "IFC2X3");
+    assert_eq!(out, "#5=IFCPROPERTYLISTVALUE('n',$,(IFCTEXT('2026-11-20T10:30:00Z'),IFCTEXT('https://example.org/a''b')),$);");
+    assert_eq!(dropped, 1);
+}
+
+#[test]
+fn work_control_durations_convert_exact_seconds_and_refuse_calendar_months_10879() {
+    let upgrade = "#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,12.5,2.E-2,$,$,.ACTUAL.,$);";
+    let (out, dropped, _) = convert(upgrade, "IFC2X3", "IFC4");
+    assert_eq!((out.as_str(), dropped), ("#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,'PT12.5S','PT0.02S',$,$,.ACTUAL.);", 0));
+    let down = "#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,'P1DT2H3M4.50S','P1M',$,$,.ACTUAL.);";
+    let (out, dropped, _) = convert(down, "IFC4X3", "IFC2X3");
+    assert_eq!((out.as_str(), dropped), ("#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,93784.5,$,$,$,.ACTUAL.,$);", 1));
+}
+
+#[test]
+fn calendar_dates_and_zoned_times_round_trip_10879() {
+    let input = include_bytes!("../tests/fixtures/schema_calendar_dates.ifc");
+    let up = crate::StepOptions { schema: Some("IFC4".to_owned()), ..Default::default() };
+    let up = crate::export_step(input, &up).unwrap();
+    assert!(up.contains("#1=IFCCLASSIFICATION('Source','1','2024-02-29','Classification',$,$,$);"), "{up}");
+    assert!(up.contains("#3=IFCIRREGULARTIMESERIESVALUE('2024-02-29T10:30:15.5+05:30',(IFCREAL(1.)));"), "{up}");
+    for obsolete in ["IFCCALENDARDATE(", "IFCDATEANDTIME(", "IFCLOCALTIME(", "IFCCOORDINATEDUNIVERSALTIMEOFFSET("] {
+        assert!(!up.contains(obsolete), "{up}");
+    }
+    let down = crate::StepOptions { schema: Some("IFC2X3".to_owned()), ..Default::default() };
+    let step = crate::export_step(up.as_bytes(), &down).unwrap();
+    let (log, _) = crate::export_step_with_log(up.as_bytes(), &down, &crate::MutationLog::default()).unwrap();
+    let merged = crate::export_merged(&[up.as_bytes()], &crate::MergedOptions { schema: down.schema.clone(), ..Default::default() });
+    for output in [&step, &log, &merged] {
+        assert!(output.contains("IFCCALENDARDATE(29,2,2024);"), "{output}");
+        assert!(output.contains("IFCLOCALTIME(10,30,15.5,#"), "{output}");
+        assert!(output.contains("IFCCOORDINATEDUNIVERSALTIMEOFFSET(5,30,.AHEAD.);"), "{output}");
+    }
 }

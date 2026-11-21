@@ -15,7 +15,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
-import { blur, cleanup, click, render, type, waitFor } from '@/test/render.js';
+import { blur, cleanup, click, render, settle, type, waitFor } from '@/test/render.js';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import '@/lib/commands/modeling/builtin';
 import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
@@ -41,6 +41,7 @@ beforeEach(async () => {
   wall = added.expressId;
   assert.equal(s().enterModelWorkspace(), true);
   s().setSelectedEntityId(toGlobalIdFromModels(s().models, MODEL_ID, wall));
+  await settle();
 });
 afterEach(() => {
   cleanup();
@@ -88,6 +89,7 @@ describe('the inspector while a tool that builds no kind runs (#9096)', () => {
   it('the defaults show the height the Wall tool will place: the spacing to the storey above (#9037 review)', async () => {
     const { commitStoreyOp } = await import('@/store/slices/mutation-storey');
     assert.ok(commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'level', edit: { kind: 'floorHeight', storeyId: STOREY, Height: 4 } }).ok);
+    await settle();
     act(() => s().setSelectedEntityId(null));
     act(() => s().setAuthoringDefaults({ wallTop: 'storeyAbove' }));
     const ui = render(<ModelInspectorPanel />);
@@ -156,15 +158,17 @@ describe('ModelInspectorPanel (#6232 M2.5)', () => {
     assert.deepEqual(headings, ['Type', 'Dimensions', 'Material layers']);
   });
 
-  it('a new name is one undo step', () => {
+  it('a new name is one undo step', async () => {
     const root = render(<ModelInspectorPanel />);
     const depth = undoDepth();
     const name = input(root, 'Name');
     type(name, 'Party wall');
     blur(name);
+    await settle();
     assert.equal(entityName({ dataStore: s().models.get(MODEL_ID)!.ifcDataStore!, view: s().mutationViews.get(MODEL_ID) }, wall), 'Party wall');
     assert.equal(undoDepth(), depth + 1);
     act(() => s().undo(MODEL_ID));
+    await settle();
     assert.equal(undoDepth(), depth);
     assert.equal(input(root, 'Name').value, 'W1', 'the field shows the old name again');
   });
@@ -176,10 +180,12 @@ describe('ModelInspectorPanel (#6232 M2.5)', () => {
     const field = input(root, 'Thickness in metres');
     type(field, '0,3');
     blur(field);
+    await settle();
     assert.equal(+s().readWallEndpoints(MODEL_ID, wall)!.thickness.toFixed(6), 0.3);
     assert.equal(input(root, 'Thickness in metres').value, '0.30');
     assert.equal(input(root, 'Layer 1 thickness in metres').value, '0.30', 'an unlayered wall\'s layer draft follows its thickness');
     act(() => s().undo(MODEL_ID));
+    await settle();
     assert.equal(undoDepth(), depth, 'one undo');
     assert.equal(+s().readWallEndpoints(MODEL_ID, wall)!.thickness.toFixed(6), 0.2);
     assert.equal(input(root, 'Thickness in metres').value, '0.20');
@@ -201,7 +207,7 @@ describe('ModelInspectorPanel dimensions of slabs, columns and beams (#6232 C4)'
   const commitField = (root: HTMLElement, label: string, text: string) => { const field = input(root, label); type(field, text); blur(field); };
   const made = (m: { expressId: number } | { error: string }): number => { assert.ok('expressId' in m, 'error' in m ? m.error : ''); return m.expressId; };
 
-  it('a slab\'s thickness is editable, one undo step, and re-meshes the slab', () => {
+  it('a slab\'s thickness is editable, one undo step, and re-meshes the slab', async () => {
     const slab = made(s().addSlab(MODEL_ID, STOREY, { Position: [0, 0, 0], Width: 4, Depth: 3, Thickness: 0.2 }));
     select(slab);
     const root = render(<ModelInspectorPanel />);
@@ -209,9 +215,11 @@ describe('ModelInspectorPanel dimensions of slabs, columns and beams (#6232 C4)'
     assert.equal(field.readOnly, false, 'no longer read-only');
     const depth = undoDepth();
     commitField(root, 'Thickness in metres', '0.35');
+    await settle();
     assert.equal(undoDepth() - depth, 1);
     assert.equal(input(root, 'Thickness in metres').value, '0.35');
     act(() => s().undo(MODEL_ID));
+    await settle();
     assert.equal(input(root, 'Thickness in metres').value, '0.20', 'one undo');
   });
 
@@ -229,7 +237,7 @@ describe('ModelInspectorPanel dimensions of slabs, columns and beams (#6232 C4)'
     assert.equal(tags.size, 1, 'size and layers are one undo step');
   });
 
-  it('a column edits Width, Depth and Height; a beam Length, Width and Height, each one undo step', () => {
+  it('a column edits Width, Depth and Height; a beam Length, Width and Height, each one undo step', async () => {
     const column = made(s().addColumn(MODEL_ID, STOREY, { Position: [2, 2, 0], Width: 0.3, Depth: 0.4, Height: 3 }));
     select(column);
     const root = render(<ModelInspectorPanel />);
@@ -237,19 +245,22 @@ describe('ModelInspectorPanel dimensions of slabs, columns and beams (#6232 C4)'
     for (const [label, text, expected] of [['Width', '0.5', '0.50'], ['Depth', '0.6', '0.60'], ['Height', '4', '4.00']]) {
       const depth = undoDepth();
       commitField(root, `${label} in metres`, text);
+      await settle();
       assert.equal(undoDepth() - depth, 1, `${label}: one undo step`);
       assert.equal(input(root, `${label} in metres`).value, expected);
     }
 
     const beam = made(s().addBeam(MODEL_ID, STOREY, { Start: [0, 0, 3], End: [4, 0, 3], Width: 0.2, Height: 0.3 }));
     select(beam);
+    await settle();
     assert.deepEqual(['Length', 'Width', 'Height'].map((l) => input(root, `${l} in metres`).value), ['4.00', '0.20', '0.30']);
     commitField(root, 'Length in metres', '5.5');
+    await settle();
     assert.equal(input(root, 'Length in metres').value, '5.50');
     assert.equal(input(root, 'Length in metres').readOnly, false);
   });
 
-  it('each column and beam field writes exactly its own dimension and leaves the others alone', () => {
+  it('each column and beam field writes exactly its own dimension and leaves the others alone', async () => {
     const column = made(s().addColumn(MODEL_ID, STOREY, { Position: [2, 2, 0], Width: 0.3, Depth: 0.4, Height: 3 }));
     select(column);
     const root = render(<ModelInspectorPanel />);
@@ -261,26 +272,30 @@ describe('ModelInspectorPanel dimensions of slabs, columns and beams (#6232 C4)'
       ['Height', '4.5', ['0.55', '0.65', '4.50']],
     ] as const) {
       commitField(root, `${label} in metres`, text);
+      await settle();
       assert.deepEqual(read(['Width', 'Depth', 'Height']), expected, `column ${label}`);
     }
     const beam = made(s().addBeam(MODEL_ID, STOREY, { Start: [0, 0, 3], End: [4, 0, 3], Width: 0.2, Height: 0.3 }));
     select(beam);
+    await settle();
     for (const [label, text, expected] of [
       ['Length', '5', ['5.00', '0.20', '0.30']],
       ['Width', '0.25', ['5.00', '0.25', '0.30']],
       ['Height', '0.45', ['5.00', '0.25', '0.45']],
     ] as const) {
       commitField(root, `${label} in metres`, text);
+      await settle();
       assert.deepEqual(read(['Length', 'Width', 'Height']), expected, `beam ${label}`);
     }
   });
 
-  it('a wall thickened from the inspector keeps its window cut through, in the same undo step', () => {
+  it('a wall thickened from the inspector keeps its window cut through, in the same undo step', async () => {
     const placed = s().addHostedFill(MODEL_ID, wall, { kind: 'window', params: { Offset: 2, Sill: 0.9, Width: 1, Height: 1.2 } });
     assert.ok('expressId' in placed);
     const root = render(<ModelInspectorPanel />);
     const depth = undoDepth();
     commitField(root, 'Thickness in metres', '0.6');
+    await settle();
     assert.equal(input(root, 'Thickness in metres').value, '0.60');
     const tags = new Set(s().undoStacks.get(MODEL_ID)!.slice(depth).map((m) => s().mutationBatchTags.get(m.id)));
     assert.equal(tags.size, 1, 'the wall and its re-cut opening are one batch');
@@ -299,10 +314,11 @@ describe('ModelInspectorPanel dimensions of slabs, columns and beams (#6232 C4)'
   });
 });
 
-it('#9389 the multi-selection inspector names every element in one undo step', () => {
+it('#9389 the multi-selection inspector names every element in one undo step', async () => {
   const second = s().addWall(MODEL_ID, STOREY, { Start: [0, 2, 0], End: [4, 2, 0], Thickness: 0.2, Height: 3, Name: 'W2' });
   assert.ok('expressId' in second);
   act(() => s().setSelectedEntityIds([wall, second.expressId].map(id => toGlobalIdFromModels(s().models, MODEL_ID, id))));
+  await settle();
   const ui = render(<ModelInspectorPanel />);
   assert.match(ui.textContent ?? '', /2 selected elements/);
   assert.match(ui.textContent ?? '', /W1/);

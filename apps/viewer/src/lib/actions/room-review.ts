@@ -48,6 +48,9 @@ export interface RoomReview {
   snapshot: RoomSnapshot;
   prepared: PreparedRoomCommand;
   validate(): void;
+  /** Cheap and non-throwing: whether validate() would still pass, by the same check, with geometry compared through
+   * the lease's own probe instead of byte by byte. */
+  sourcesCurrent(): boolean;
   commit(): RoomCommandResult;
   dispose(): void;
 }
@@ -142,13 +145,17 @@ export async function prepareRoomReview(proposal: RoomProposal, signal: AbortSig
     if (JSON.stringify(snapshot).length > 60000) throw new Error('The complete Room snapshot exceeds the attachment limit');
     if (proposal.expected !== undefined && !sameReportEvidence(proposal.expected, snapshot)) throw new Error('The supplied native Room snapshot differs from the current source; prepare it again');
     const captured = sources(current);
-    const validate = () => {
+    // validate() and its cheap probe run one check; the probe only compares geometry through the lease's own probe.
+    const check = (probe: boolean) => {
       signal.throwIfAborted();
       if (!sourcesCurrent(captured, useViewerStore.getState())) throw new Error('The loaded sources changed after Room preparation; prepare again');
-      prepared.validate();
+      if (!probe || !prepared.current) prepared.validate();
+      else if (!prepared.current()) throw new Error('The native Room preparation changed; prepare again');
       if (target(useViewerStore.getState(), proposal.modelId, proposal.storey, 'IfcBuildingStorey') !== storeyId) throw new Error('The current storey identity changed');
     };
-    return { proposal, snapshot, prepared, validate, commit: () => { validate(); return prepared.commit(); }, dispose: prepared.dispose };
+    const validate = () => check(false);
+    return { proposal, snapshot, prepared, validate, sourcesCurrent: () => { try { check(true); return true; } catch (error) { console.debug('[Room review] no longer current', error); return false; } },
+      commit: () => { validate(); return prepared.commit(); }, dispose: prepared.dispose };
   } catch (error) { prepared.dispose(); throw error; }
 }
 

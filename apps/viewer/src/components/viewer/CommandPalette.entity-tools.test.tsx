@@ -15,7 +15,7 @@ import { BimReactContext } from '@/sdk/BimProvider';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { MODEL_ID, STOREY, MESH_WALL, seedModelingSession } from '@/test/modeling-session-fixture';
-import { advance, cleanup, click, press, render, type as typeInto, waitFor } from '@/test/render';
+import { advance, cleanup, click, press, render, settle, type as typeInto, waitFor } from '@/test/render';
 import { CommandPalette } from './CommandPalette';
 import { EntityContextMenu } from './EntityContextMenu';
 import { selectedEntityActionTarget } from './selected-entity-actions';
@@ -34,6 +34,7 @@ beforeEach(async () => {
   clearCopyClipboard();
   useViewerStore.setState({ collabRole: null, canCollabEdit: () => true, selectedEntityId: null,
     selectedEntityIds: new Set(), selectedEntity: null, contextMenu: { isOpen: false, entityId: null, screenX: 0, screenY: 0 } });
+  await settle();
 });
 afterEach(() => { cleanup(); useViewerStore.setState(original); localStorage.clear(); });
 
@@ -260,6 +261,7 @@ for (const legacy of [false, true]) test(`#8947 ribbon tracks unresolved, delete
   view.setExpressIdWatermark(Math.max(...store.entities.expressId));
   useViewerStore.setState({ ...(legacy ? { models: new Map(), ifcDataStore: store } : {}),
     mutationViews: new Map([[key, view]]), selectedEntityId: 987654321, selectedEntityIds: new Set() });
+  await settle();
   const ui = render(<Harness ribbon />);
   const button = ui.querySelector<HTMLButtonElement>('button[data-command-id="elements:entity-actions"]');
   assert.ok(button);
@@ -279,6 +281,7 @@ for (const legacy of [false, true]) test(`#8947 ribbon tracks unresolved, delete
   }
   await selectType(MESH_WALL, [MESH_WALL]);
   act(() => { view.deleteEntity(MESH_WALL); useViewerStore.getState().bumpMutationVersion(); });
+  await settle();
   assert.equal(button.disabled, true, 'deletion invalidates the mounted control without changing selection');
   click(button);
   assert.equal(useViewerStore.getState().contextMenu.isOpen, false);

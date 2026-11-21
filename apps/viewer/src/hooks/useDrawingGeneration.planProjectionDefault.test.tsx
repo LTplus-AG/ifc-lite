@@ -20,6 +20,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import type { Drawing2D } from '@ifc-lite/drawing-2d';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
+import { settle } from '@/test/render.js';
 import { getDefaultDrawing2DState } from '@/store/slices/drawing2DSlice';
 import { useDrawingGeneration } from './useDrawingGeneration.js';
 
@@ -90,6 +91,7 @@ beforeEach(async () => {
   useViewerStore.getState().resetViewerState();
   useViewerStore.getState().clearAllModels();
   useViewerStore.setState({ drawing2DDisplayOptions: getDefaultDrawing2DState().drawing2DDisplayOptions });
+  await settle();
   lastDrawing = null;
   container = document.createElement('div');
   document.body.appendChild(container);

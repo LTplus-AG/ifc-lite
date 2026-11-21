@@ -29,7 +29,7 @@ import { StepExporter } from '@ifc-lite/export';
 import type { Mutation } from '@ifc-lite/mutations';
 import { attachRoomSpatialContextMirror } from './room-spatial-context-mirror.js';
 import { ModelMetadataPanel } from '@/components/viewer/properties/ModelMetadataPanel.js';
-import { render, cleanup } from '@/test/render.js';
+import { render, cleanup, settle } from '@/test/render.js';
 import { fixtureModels } from '@/test/store-fixture.js';
 
 const sample = new URL('../../../public/samples/building-architecture.ifc', import.meta.url);
@@ -143,6 +143,7 @@ describe('room spatial context (#6499)', () => {
       mutationViews: new Map(), undoStacks: new Map(), redoStacks: new Map() });
     const detach = attachRoomSpatialContextMirror(useViewerStore, session);
     try {
+      await settle();
       const panel = render(createElement(ModelMetadataPanel, { model: a }));
       assert.match(panel.textContent ?? '', /EPSG:32760/);
       assert.match(panel.textContent ?? '', /Length Unit.*Millimeters \(0\.001\)/);
@@ -153,6 +154,7 @@ describe('room spatial context (#6499)', () => {
         doc.getMap('models').set('m0', { ...slot,
           spatialContext: { ...slot.spatialContext, [field]: field === 'georeferencing' ? null : 0.0254 } });
       });
+      await settle();
       assert.equal(useViewerStore.getState().models.get(a.id)!.ifcDataStore, originalStore,
         'the canonical metadata mirror retains store identity');
       assert.equal(JSON.stringify(doc.getMap('entities').toJSON()), entities);

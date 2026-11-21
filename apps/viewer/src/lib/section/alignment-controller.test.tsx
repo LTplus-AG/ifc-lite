@@ -12,7 +12,7 @@ let AxisConstructor: typeof import('@ifc-lite/wasm').AlignmentAxisJs;
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { act } from 'react';
-import { render, cleanup, click, advance, press } from '@/test/render';
+import { render, cleanup, click, advance, press, settle } from '@/test/render';
 import { ViewportHud } from '@/components/viewport-ui/hud/ViewportHud';
 import { ToolOverlays } from '@/components/viewer/ToolOverlays';
 import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
@@ -155,11 +155,12 @@ test('real alignment binding survives unrelated updates, detaches on drag, reacq
 });
 
 
-test('mounted section toolbar enters alignment chooser and returns to ordinary cardinal cuts (#6603, #7545)', () => {
+test('mounted section toolbar enters alignment chooser and returns to ordinary cardinal cuts (#6603, #7545)', async () => {
   const state = useViewerStore.getState();
   const model = { ...fixtureModel('model', { entities: [{ expressId: 20, type: 'IfcAlignment', name: 'Road' }] }), geometryResult: geometry };
   useViewerStore.setState({ ...fixtureModels(model), sectionPlane: { ...getDefaultSectionPlane(), custom: undefined, box: undefined },
     inactiveSectionPlanes: [], sectionUndo: null, sectionPickMode: false });
+  await settle();
   try {
     const ui = render(<><ViewportHud /><SectionToolbar /></>);
     const chip = (name: string) => [...ui.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(candidate => candidate.textContent?.trim() === name);
@@ -190,6 +191,7 @@ test('the Section tool arms nothing on open, so a chosen alignment mode is never
   useViewerStore.setState({ activeTool: 'section', sectionPlane: { ...getDefaultSectionPlane(), custom: undefined, box: undefined },
     inactiveSectionPlanes: [], sectionUndo: null, sectionPickMode: false });
   useViewerStore.getState().addSectionPlane('down');
+  await settle();
   try {
     const ui = render(<><ViewportHud /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot></>);
     assert.equal(useViewerStore.getState().sectionPickMode, false, 'opening the tool arms no face pick');

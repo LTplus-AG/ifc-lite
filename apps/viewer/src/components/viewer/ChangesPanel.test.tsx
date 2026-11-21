@@ -10,7 +10,7 @@ import { act } from 'react';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { PropertyValueType } from '@ifc-lite/data';
 import { IfcParser } from '@ifc-lite/parser';
-import { cleanup, click, render, waitFor } from '@/test/render';
+import { cleanup, click, render, settle, waitFor } from '@/test/render';
 import { fixtureModel } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import { ChangesPanel } from './ChangesPanel';
@@ -66,6 +66,7 @@ for (const count of [1, 2]) test(`#5902 Changes drawer lists property and Bulk r
     const bulkB = views.get('B')!.setProperty(102, 'Pset_Bulk', 'Code', 'bulk', PropertyValueType.Label);
     state.recordMutationBatch('B', [bulkB], tag ?? undefined);
   }
+  await settle();
   const ui = render(<ChangesPanel />);
   assert.match(ui.textContent ?? '', /2 edits/);
   assert.equal(ui.querySelectorAll('ol > li').length, 2);
@@ -82,9 +83,11 @@ for (const count of [1, 2]) test(`#5902 Changes drawer lists property and Bulk r
   click(button(older as HTMLElement, 'Revert'));
   assert.equal(views.get('A')!.getPropertyValue(101, 'Pset_Test', 'Status'), null);
   assert.equal(views.get('A')!.getPropertyValue(102, 'Pset_Bulk', 'Code'), 'bulk');
+  await settle();
   assert.equal(ui.querySelectorAll('ol > li').length, 1);
   assert.match(ui.textContent ?? '', /1 edit/);
   act(() => useViewerStore.getState().undo('A'));
+  await settle();
   assert.equal(ui.querySelectorAll('ol > li').length, 2, 'Undo restores the older row');
 });
 
@@ -105,6 +108,7 @@ test('#5902 authored Bonsai IFC wall is selected and its older property edit is 
   assert.ok(first);
   const bulk = view.setProperty(wall, 'Pset_Changes', 'ReviewCode', 'B1', PropertyValueType.Label);
   useViewerStore.getState().recordMutationBatch('Bonsai', [bulk]);
+  await settle();
   const ui = render(<ChangesPanel />);
   assert.equal(ui.querySelectorAll('ol > li').length, 2);
   click(button(ui, `Jump to IfcWall #${wall} in Bonsai`));
@@ -114,6 +118,7 @@ test('#5902 authored Bonsai IFC wall is selected and its older property edit is 
   click(button(ui.querySelectorAll('ol > li')[1] as HTMLElement, 'Revert'));
   assert.equal(view.getPropertyValue(wall, 'Pset_Changes', 'Status'), null);
   assert.equal(view.getPropertyValue(wall, 'Pset_Changes', 'ReviewCode'), 'B1');
+  await settle();
   assert.equal(ui.querySelectorAll('ol > li').length, 1);
 
   // The downloaded delta must agree with the overlay after Revert. The view's
@@ -142,13 +147,14 @@ test('#5902 authored Bonsai IFC wall is selected and its older property edit is 
   });
 });
 
-test('#5902 the drawer names an IFC5 delta as an IFCX overlay', () => {
+test('#5902 the drawer names an IFC5 delta as an IFCX overlay', async () => {
   const model = { ...fixtureModel('IFC5'), schemaVersion: 'IFC5' as const, maxExpressId: 102 };
   const view = new MutablePropertyView(null, 'IFC5');
   useViewerStore.setState({ models: new Map([['IFC5', model]]), activeModelId: 'IFC5',
     mutationViews: new Map([['IFC5', view]]), undoStacks: new Map(), redoStacks: new Map(),
     mutationBatchTags: new Map(), dirtyModels: new Set(), mutationVersion: 0, editEnabled: true });
   useViewerStore.getState().setProperty('IFC5', 101, 'Pset_Test', 'Status', 'draft', PropertyValueType.Label);
+  await settle();
   assert.match(render(<ChangesPanel />).textContent ?? '', /Changes only \(IFCX overlay\)/);
 });
 
@@ -158,6 +164,7 @@ test('#5902 georeference row has no fake Jump and downloads its model-level muta
     undoStacks: new Map(), redoStacks: new Map(), mutationBatchTags: new Map(),
     georefMutations: new Map(), editEnabled: true });
   useViewerStore.getState().setGeorefFields('A', 'mapConversion', [{ field: 'eastings', value: 42 }]);
+  await settle();
   const ui = render(<ChangesPanel />);
   assert.match(ui.textContent ?? '', /Georeference/);
   assert.equal(ui.querySelectorAll('button[aria-label^="Jump to"]').length, 0);
@@ -173,12 +180,13 @@ test('#5902 georeference row has no fake Jump and downloads its model-level muta
   });
 });
 
-test('a host that switches off export keeps the change list but drops the export footer', () => {
+test('a host that switches off export keeps the change list but drops the export footer', async () => {
   const model = { ...fixtureModel('A'), schemaVersion: 'IFC4' as const, maxExpressId: 102 };
   useViewerStore.setState({ models: new Map([['A', model]]), activeModelId: 'A',
     mutationViews: new Map([['A', new MutablePropertyView(null, 'A')]]), undoStacks: new Map(), redoStacks: new Map(),
     mutationBatchTags: new Map(), dirtyModels: new Set(), mutationVersion: 0, editEnabled: true });
   useViewerStore.getState().setProperty('A', 101, 'Pset_Test', 'Status', 'draft', PropertyValueType.Label);
+  await settle();
   resetFeaturesForTest({ default: 'all', disable: ['export.files'] });
   try {
     const ui = render(<ChangesPanel />);

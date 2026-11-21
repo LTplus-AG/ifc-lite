@@ -8,8 +8,20 @@ import type { ToolHost } from '../types';
 import type { ClashGroupDraft } from '@/lib/assistant/clash-group-draft';
 import type { ClassifyPlan } from '@/lib/assistant/clash-classify-chunks';
 import type { EvidenceSnapshot } from '@/lib/assistant/evidence';
-import type { ClashGroupApplyPlan } from '@/lib/clash/group-apply';
+import type { ApplyRefusal, ClashGroupApplyPlan, UndoRefusal } from '@/lib/clash/group-apply';
 import { evictOldest } from './host-handles';
+import { internal, invalidInput, stale, unavailable } from './refusals';
+const GROUP_WRITE_REFUSAL: Record<ApplyRefusal | UndoRefusal, (message: string) => ReturnType<typeof stale>> = {
+  'stale-run': stale, 'workspace-changed': stale, conflict: stale,
+  'storage-unavailable': unavailable, unavailable, 'unsaved-edits': unavailable,
+  quota: internal, invalid: internal,
+  'receipt-missing': m => invalidInput('unknown-target', m),
+  'confirmation-required': m => invalidInput('refused', m), 'already-undone': m => invalidInput('refused', m),
+};
+/** A grouping Apply/Undo refusal by its native reason (#10871); a new reason fails tsc until it is mapped. */
+function groupWriteRefusal(action: string, reason: ApplyRefusal | UndoRefusal) {
+  return GROUP_WRITE_REFUSAL[reason](`Native ${action} refused: ${reason}`);
+}
 const outputSchema = {
   type: 'object',
   properties: { native_json: { type: 'string' } },
@@ -49,8 +61,8 @@ function reviews(c: ViewerOperationContext) {
 }
 function review(c: ViewerOperationContext, token: string) {
   const value = reviews(c).get(token);
-  if (!value || value.result !== useViewerStore.getState().clashResult)
-    throw new Error('Unknown or stale native classification review.');
+  if (!value) throw invalidInput('unknown-target', 'Unknown native classification review.');
+  if (value.result !== useViewerStore.getState().clashResult) throw stale('Native classification findings changed.');
   return value;
 }
 const tokenInput = {
@@ -78,7 +90,7 @@ export const clashClassificationOperations = [
       ]);
       assertToolActive(c);
       const s = useViewerStore.getState();
-      if (!s.clashResult) throw new Error('No current native clash result.');
+      if (!s.clashResult) throw unavailable('No current native clash result.');
       const plan = planClassification(s.clashResult.clashes),
         evidence = captureEvidence('clash');
       evictOldest(reviews(c), 32);
@@ -129,16 +141,17 @@ export const clashClassificationOperations = [
       ]);
       const saved = review(c, i.token);
       assertToolActive(c);
-      if (saved.model !== useViewerStore.getState().chatActiveModel || saved.model === UNCONFIGURED_MODEL_ID)
-        throw new Error('Native classification model changed or is unconfigured.');
+      if (saved.model !== useViewerStore.getState().chatActiveModel)
+        throw stale('Native classification model changed.');
+      if (saved.model === UNCONFIGURED_MODEL_ID) throw unavailable('Configure a native classification model first.');
       const route = resolveStreamRoute(saved.model, getApiKeys());
-      if (route.kind === 'missing-key') throw new Error('The native provider route requires a configured key.');
+      if (route.kind === 'missing-key') throw unavailable('The native provider route requires a configured key.');
       if (
         !estimateClassification(saved.plan, CLASSIFY_ROOT_BUDGET, modelCapabilities(saved.model).maxOutputTokens).fits
       )
-        throw new Error('Native root classification budget does not fit this population.');
+        throw invalidInput('limit', 'Native root classification budget does not fit this population.');
       const signal = c.signal ?? c.host.lifetimeSignal;
-      if (!signal) throw new Error('A live cancellation/session signal is required.');
+      if (!signal) throw unavailable('A live cancellation/session signal is required.');
       const result = await runClassification({
         plan: saved.plan,
         route,
@@ -207,7 +220,7 @@ export const clashClassificationOperations = [
         '@/lib/assistant/clash-group-draft'
       );
       const saved = review(c, i.token);
-      if (!saved.draft) throw new Error('No native review draft.');
+      if (!saved.draft) throw unavailable('No native review draft.');
       assertToolActive(c);
       const edit =
         i.action === 'rename'
@@ -219,7 +232,7 @@ export const clashClassificationOperations = [
                 i.occurrences,
                 i.action === 'unclassify' ? null : i.action === 'newGroup' ? { newGroup: i.name } : { group: i.target },
               );
-      if (!edit.ok) throw new Error(`Native draft edit refused: ${edit.reason}`);
+      if (!edit.ok) throw invalidInput('refused', `Native draft edit refused: ${edit.reason}`);
       saved.draft = edit.draft;
       saved.apply = undefined;
       return out({
@@ -246,13 +259,13 @@ export const clashClassificationOperations = [
     async (i, c) => {
       const { readApplyBase, newWorkspaceBase, planClashGroupApply } = await import('@/lib/clash/group-apply');
       const saved = review(c, i.token);
-      if (!saved.draft) throw new Error('No native review draft.');
+      if (!saved.draft) throw unavailable('No native review draft.');
       const base = i.workspace_id ? await readApplyBase(i.workspace_id, i.name) : newWorkspaceBase(i.name);
       assertToolActive(c);
       review(c, i.token);
-      if (!base) throw new Error('Native workspace unavailable.');
+      if (!base) throw unavailable('Native workspace unavailable.');
       const planned = planClashGroupApply(saved.draft.groups, base, saved.result.clashes);
-      if (!planned.ok) throw new Error(`Native group plan refused: ${planned.reason}`);
+      if (!planned.ok) throw invalidInput('refused', `Native group plan refused: ${planned.reason}`);
       saved.apply = planned.plan;
       return out(planned.plan);
     },
@@ -271,7 +284,7 @@ export const clashClassificationOperations = [
     async (i, c) => {
       const { applyClashGroupPlan } = await import('@/lib/clash/group-apply');
       const saved = review(c, i.token);
-      if (!saved.draft || !saved.apply) throw new Error('Prepare native grouping plan first.');
+      if (!saved.draft || !saved.apply) throw unavailable('Prepare native grouping plan first.');
       const result = await c.commitAsync(() =>
         applyClashGroupPlan(saved.apply!, {
           confirmMoves: i.confirm_moves,
@@ -281,7 +294,7 @@ export const clashClassificationOperations = [
         }),
         (r) => r.ok,
       );
-      if (!result.ok) throw new Error(`Native group apply refused: ${result.reason}`);
+      if (!result.ok) throw groupWriteRefusal('group apply', result.reason);
       return out(result);
     },
   ),
@@ -302,9 +315,9 @@ export const clashClassificationOperations = [
       await clashGroupApplicationLibrary.initialize();
       assertToolActive(c);
       const receipt = useClashGroupApplications.getState().entries.find((row) => row.id === i.receipt_id);
-      if (!receipt) throw new Error('Unknown native grouping receipt.');
+      if (!receipt) throw invalidInput('unknown-target', 'Unknown native grouping receipt.');
       const result = await c.commitAsync(() => undoClashGroupApplication(receipt), (r) => r.ok);
-      if (!result.ok) throw new Error(`Native grouping Undo refused: ${result.reason}`);
+      if (!result.ok) throw groupWriteRefusal('grouping Undo', result.reason);
       return out(result);
     },
   ),

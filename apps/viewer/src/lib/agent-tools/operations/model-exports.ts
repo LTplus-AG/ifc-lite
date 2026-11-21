@@ -7,6 +7,7 @@ import { buildChangedArtifacts, collectChangedModels } from '@/lib/export/model-
 import { defaultBuildArtifactsDeps } from '@/lib/export/changed-model-export';
 import { zipArtifacts } from '@/lib/export/artifact-bundle';
 import { viewerOperation, emptySchema } from './contract';
+import { disabled, internal, stale, unavailable } from './refusals';
 const artifact = { type: 'object', properties: {
   artifact_id: { type: 'string' }, filename: { type: 'string' }, mime_type: { type: 'string' }, bytes: { type: 'integer', minimum: 0 },
 }, required: ['artifact_id', 'filename', 'mime_type', 'bytes'], additionalProperties: false };
@@ -22,7 +23,7 @@ export const modelExportOperations = [
       schedule_spliced: { type: 'boolean' },
     }, required: ['artifact', 'files', 'skipped', 'schedule_spliced'], additionalProperties: false },
   }, emptySchema, async (_, c) => {
-    if (!isFeatureEnabled('export.files')) throw new Error('Export is switched off in this viewer.');
+    if (!isFeatureEnabled('export.files')) throw disabled('Export is switched off in this viewer.');
     const state = useViewerStore.getState(), revision = state.mutationVersion;
     // Schedule import/clear replaces scheduleData without bumping mutationVersion.
     const schedule = [state.scheduleData, state.scheduleIsEdited, state.scheduleSourceModelId] as const;
@@ -32,13 +33,13 @@ export const modelExportOperations = [
       const now = useViewerStore.getState();
       if (now.mutationVersion !== revision || now.models.size !== models.length
         || models.some(([id, model]) => now.models.get(id) !== model)
-        || [now.scheduleData, now.scheduleIsEdited, now.scheduleSourceModelId].some((value, index) => value !== schedule[index])) throw new Error('Model/federation changed during export; discard and retry.');
-      if (!isFeatureEnabled('export.files')) throw new Error('Export was switched off.');
+        || [now.scheduleData, now.scheduleIsEdited, now.scheduleSourceModelId].some((value, index) => value !== schedule[index])) throw stale('Model/federation changed during export; discard and retry.');
+      if (!isFeatureEnabled('export.files')) throw disabled('Export was switched off.');
     };
-    if (!collectChangedModels(state).models.length) throw new Error('No models have pending exportable changes.');
+    if (!collectChangedModels(state).models.length) throw unavailable('No models have pending exportable changes.');
     const result = await buildChangedArtifacts(state, defaultBuildArtifactsDeps);
     current();
-    if (!result.files.length) throw new Error(`Native exporter produced no files: ${result.skipped.map(item => `${item.name}: ${item.reason}`).join('; ')}`);
+    if (!result.files.length) throw internal(`Native exporter produced no files: ${result.skipped.map(item => `${item.name}: ${item.reason}`).join('; ')}`);
     const first = result.files[0];
     const data = result.files.length === 1 ? first.content : await zipArtifacts(result.files);
     current();

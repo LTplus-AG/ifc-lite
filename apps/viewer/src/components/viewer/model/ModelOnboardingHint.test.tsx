@@ -15,7 +15,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { PropertyValueType } from '@ifc-lite/data';
 import { useViewerStore } from '@/store';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, render, settle } from '@/test/render.js';
 import { MODEL_ID, seedModelingSession } from '@/test/modeling-session-fixture';
 import '@/lib/commands/modeling/builtin';
 import { commandPointerDown, commandPointerMove } from '@/lib/commands/modeling/runtime';
@@ -49,7 +49,7 @@ afterEach(() => {
 });
 
 describe('ModelOnboardingHint (#6232 M2.1)', () => {
-  it('stays up through a collaborator\'s edit, and retires on this user\'s first committed wall', () => {
+  it('stays up through a collaborator\'s edit, and retires on this user\'s first committed wall', async () => {
     render(<ViewportHud />);
     render(<ModelOnboardingHint />);
     act(() => { if (useViewerStore.getState().workspaceMode !== 'model') useViewerStore.getState().enterModelWorkspace(); });
@@ -60,6 +60,7 @@ describe('ModelOnboardingHint (#6232 M2.1)', () => {
     const versionBefore = useViewerStore.getState().mutationVersion;
     const wall = [...useViewerStore.getState().models.get(MODEL_ID)!.ifcDataStore!.entityIndex.byType.get('IFCWALL') ?? []][0] ?? 1;
     act(() => { applyRemotePropertyWrite(wall); });
+    await settle();
     assert.notEqual(useViewerStore.getState().mutationVersion, versionBefore, 'the remote edit did bump mutationVersion');
     assert.ok(hint(), 'a collaborator\'s edit does not retire the hint');
     assert.equal(globalThis.localStorage.getItem(SEEN_KEY), null);
@@ -67,6 +68,7 @@ describe('ModelOnboardingHint (#6232 M2.1)', () => {
     act(() => { useViewerStore.getState().startCommand('wall.place'); });
     act(() => { click(0, 0); click(4, 0); });
     act(() => { useViewerStore.getState().endCommand('cancel'); useViewerStore.getState().setActiveTool('select'); });
+    await settle();
     assert.equal(hint(), null, 'the user\'s own committed wall retires the hint');
     assert.equal(globalThis.localStorage.getItem(SEEN_KEY), '1', 'retired for good');
   });

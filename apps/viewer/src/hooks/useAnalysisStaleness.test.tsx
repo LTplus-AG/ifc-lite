@@ -6,7 +6,7 @@ import '@/test/setup-dom.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, render, settle } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { emptyPlacementState, importPlacements, rotatePlacements } from '@/lib/model-placement/state';
@@ -23,13 +23,15 @@ afterEach(() => {
   useViewerStore.setState(initial, true);
 });
 
-it('#5820 marks a stamped report stale on an edit and current after a re-run', () => {
+it('#5820 marks a stamped report stale on an edit and current after a re-run', async () => {
   useViewerStore.setState({ mutationVersion: 10, geometryContentVersion: 20 });
+  await settle();
   const report = stampAnalysisReport({}, captureAnalysisStamp());
   const ui = render(<Probe report={report} />);
   assert.equal(ui.textContent, 'current');
 
   act(() => useViewerStore.setState({ mutationVersion: 11 }));
+  await settle();
   assert.equal(ui.textContent, 'stale');
 
   const rerun = stampAnalysisReport({}, captureAnalysisStamp());
@@ -41,9 +43,10 @@ it('#5820 marks a stamped report stale on an edit and current after a re-run', (
   assert.equal(updated.textContent, 'stale');
 });
 
-for (const count of [1, 2]) it(`#5820 marks a Clash report stale when a model moves (${count} models)`, () => {
+for (const count of [1, 2]) it(`#5820 marks a Clash report stale when a model moves (${count} models)`, async () => {
   const models = count === 1 ? fixtureModels(fixtureModel('a')) : fixtureModels(fixtureModel('a'), fixtureModel('b'));
   useViewerStore.setState({ ...models, modelPlacement: emptyPlacementState(), mutationVersion: 0, geometryContentVersion: 0 });
+  await settle();
   const report = stampAnalysisReport({}, captureAnalysisStamp(true));
   const ui = render(<Probe report={report} />);
   assert.equal(ui.textContent, 'current');

@@ -28,6 +28,7 @@ import type { FederatedModel } from '@/store/types.js';
 import { EntityContextMenu } from './EntityContextMenu.js';
 import { ElementsTab } from './ribbon/tabs/ElementsTab.js';
 import { TooltipProvider } from '@/components/ui/tooltip.js';
+import { settle } from '@/test/render.js';
 import { surfaceCommand, SURFACE_COMMANDS } from './surface-commands.js';
 import { DUPLICATE_CONTEXT_DIRECTIONS } from './surface-commands-context.js';
 import { resolveEnglish } from '@/i18n/registry.js';
@@ -198,6 +199,7 @@ describe('EntityContextMenu — federation-space selection', () => {
       if (twoModels) assert.equal(useViewerStore.getState().undoStacks.has('m0'), false);
 
       act(() => { useViewerStore.setState({ selectedEntityId: selectedId, selectedEntityIds: new Set([selectedId]) }); });
+      await settle();
       openRibbonEntityActions(container, selectedId);
       act(() => { menuItem('Delete entity').click(); });
       assert.equal(useViewerStore.getState().mutationViews.get('m1')?.isDeleted(1222), true);

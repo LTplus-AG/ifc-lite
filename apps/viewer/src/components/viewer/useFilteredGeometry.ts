@@ -2,22 +2,36 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { perfTally } from '@ifc-lite/load-trace';
 import type { TypeVisibility, StructuralViewMode } from '@/store/types';
-import { classFilterActive, isMeshTypeVisible, type RetypedClasses } from '@/store/typeVisibilityFilter';
-import { isMeshVisibleInViewMode, meshClassIsPlaced, meshIsNonOccurrence, type TypeViewMode } from '@/lib/type-view-visibility';
+import type { RetypedClasses } from '@/store/typeVisibilityFilter';
+import { meshClassIsPlaced, meshIsNonOccurrence, type TypeViewMode } from '@/lib/type-view-visibility';
 import { sameMeshUpload } from './mesh-upload-identity.js';
+import { TypeHiddenIndex, type TypeHiddenIds } from './type-hidden-index.js';
+import { acknowledgeSnapshotTypeIndex, snapshotTypeIndex, subscribeSnapshotTypeIndex } from './snapshot-type-index.js';
+
+/** The scene's mesh list and what type visibility hides of it. */
+export interface SceneGeometry {
+  hasTypeGeometry: boolean;
+  hasOccurrenceGeometry: boolean;
+  /** Every merged mesh, uploaded once whatever the type toggles say. */
+  sceneGeometry: MeshData[] | null;
+  geometryVersion: number;
+  geometryReplacementVersion: number;
+  /** Entity ids the type toggles, the Model/Types switch and the structural mode hide. */
+  typeHidden: TypeHiddenIds;
+}
 
 /**
- * The viewport's type/view-mode filter over the merged geometry, moved out of
- * `ViewportContainer` (#7021). Every scan here is incremental over a
- * same-array append and restarts only when the source array changes identity
- * or shrinks, so per-append cost depends on the source keeping its identity
- * across appends (`useFederatedGeometry`). `viewer.filterScan` counts the
- * meshes the filter visits, so a source that changes identity on every append
- * shows up as quadratic visits under `?perfTrace=1`.
+ * The viewport's scene geometry and type/view-mode visibility over the merged
+ * geometry, moved out of `ViewportContainer` (#7021). Every scan here is
+ * incremental over a same-array append and restarts only when the source
+ * array changes identity or shrinks, so per-append cost depends on the source
+ * keeping its identity across appends (`useFederatedGeometry`).
+ * `viewer.filterScan` counts the meshes visited, so a source that changes
+ * identity on every append shows up as quadratic visits under `?perfTrace=1`.
  */
 export function useFilteredGeometry(
   mergedGeometryResult: GeometryResult | null,
@@ -26,7 +40,7 @@ export function useFilteredGeometry(
   typeViewMode: TypeViewMode,
   structuralViewMode: StructuralViewMode = 'both',
   retypedClasses?: RetypedClasses,
-): { hasTypeGeometry: boolean; hasOccurrenceGeometry: boolean; filteredGeometry: MeshData[] | null; geometryVersion: number; geometryReplacementVersion: number } {
+): SceneGeometry {
   // Does the rendered geometry carry any type-library geometry? geometryClass
   // 1 = orphan type, 2 = instanced type; class 0 = placed occurrence. The
   // Model/Types switch is only meaningful — and "Types" only renders anything —
@@ -91,127 +105,87 @@ export function useFilteredGeometry(
     return sawOccurrenceRef.current;
   }, [mergedGeometryResult, geometryContentVersion]);
 
+  // An adopted scene snapshot draws before its meshes decode: its stored type
+  // index answers until they are published (snapshot-type-index.ts).
+  const snapshotIndex = useSyncExternalStore(subscribeSnapshotTypeIndex, snapshotTypeIndex, snapshotTypeIndex);
+  const hasType = hasTypeGeometry || (snapshotIndex?.holds('nonOccurrence') ?? false);
+  const hasPlaced = hasOccurrenceGeometry || (snapshotIndex?.holds('placed') ?? false);
+
   // Persisted view mode may be 'types' from a prior model; fall back to 'model'
   // when the current geometry has no type library so "Types" never renders an
   // empty scene (and the now-hidden switch can't be used to recover).
-  const effectiveViewMode = hasTypeGeometry ? typeViewMode : 'model';
+  const effectiveViewMode = hasType ? typeViewMode : 'model';
 
-  // PERF: Incremental geometry filtering using refs.
-  // Instead of creating a new 200K+ element array every batch (~200ms),
-  // we push ONLY new meshes into a cached array — O(batch_size) not O(total).
-  // A version counter triggers downstream re-renders via the Viewport prop.
-  const filteredCacheRef = useRef<MeshData[]>([]);
-  const filteredSourceLenRef = useRef(0);
-  const filteredSourceRef = useRef<MeshData[] | null>(null);
-  const filteredTypeVisRef = useRef(typeVisibility);
-  const filteredTypeModeRef = useRef(effectiveViewMode);
-  const filteredStructuralModeRef = useRef(structuralViewMode);
-  const filteredRetypedRef = useRef(retypedClasses);
-  const filteredHasOccRef = useRef(hasOccurrenceGeometry);
-  const filteredVersionRef = useRef(0);
+  // Every mesh goes to the scene once; type visibility is a set of hidden
+  // entity ids the viewport hides on the GPU (`type-hidden-index.ts`), so a
+  // toggle never re-uploads (#10264). The mirror below keeps one array
+  // identity across appends, which the streaming hook relies on: it pushes
+  // only new meshes, O(batch), and on a new source array compares the
+  // existing uploads to bump the replacement version only when one changed.
+  const sceneCacheRef = useRef<MeshData[]>([]);
+  const sceneSourceLenRef = useRef(0);
+  const sceneSourceRef = useRef<MeshData[] | null>(null);
+  const sceneVersionRef = useRef(0);
   const replacementVersionRef = useRef(0);
 
-  const filteredGeometry = useMemo(() => {
+  const sceneGeometry = useMemo(() => {
     if (!mergedGeometryResult?.meshes) {
-      filteredCacheRef.current = [];
-      filteredSourceLenRef.current = 0;
-      filteredSourceRef.current = null;
-      filteredVersionRef.current = 0;
+      sceneCacheRef.current = [];
+      sceneSourceLenRef.current = 0;
+      sceneSourceRef.current = null;
+      sceneVersionRef.current = 0;
       return null;
     }
-
     const allMeshes = mergedGeometryResult.meshes;
-    const cache = filteredCacheRef.current;
+    const cache = sceneCacheRef.current;
     const prevCacheLen = cache.length;
-
-    // Full rebuild if: type visibility changed, view mode changed, source shrunk
-    // (new file), or empty cache
-    const prevVis = filteredTypeVisRef.current;
-    const typeVisChanged =
-      filteredStructuralModeRef.current !== structuralViewMode ||
-      // A retype moves a mesh across the class filter (#10119).
-      filteredRetypedRef.current !== retypedClasses ||
-      prevVis.spaces !== typeVisibility.spaces ||
-      prevVis.spatialZones !== typeVisibility.spatialZones ||
-      prevVis.openings !== typeVisibility.openings ||
-      prevVis.virtualElements !== typeVisibility.virtualElements ||
-      prevVis.site !== typeVisibility.site ||
-      prevVis.ifcAnnotations !== typeVisibility.ifcAnnotations ||
-      filteredTypeModeRef.current !== effectiveViewMode ||
-      // Occurrence-presence flipping (e.g. occurrences stream in after orphan
-      // types) changes whether class-1 orphans render in Model view (#1353).
-      filteredHasOccRef.current !== hasOccurrenceGeometry;
-    const sourceChanged = filteredSourceRef.current !== allMeshes;
-    const rebuilding = typeVisChanged || sourceChanged || allMeshes.length < filteredSourceLenRef.current;
+    const sourceChanged = sceneSourceRef.current !== allMeshes;
+    const rebuilding = sourceChanged || allMeshes.length < sceneSourceLenRef.current;
     if (rebuilding) {
-      filteredSourceLenRef.current = 0;
-      filteredSourceRef.current = allMeshes;
-      filteredTypeVisRef.current = typeVisibility;
-      filteredTypeModeRef.current = effectiveViewMode;
-      filteredStructuralModeRef.current = structuralViewMode;
-      filteredRetypedRef.current = retypedClasses;
-      filteredHasOccRef.current = hasOccurrenceGeometry;
+      sceneSourceLenRef.current = 0;
+      sceneSourceRef.current = allMeshes;
     }
-
-    const needsFilter = classFilterActive(typeVisibility, structuralViewMode);
     let writeIndex = rebuilding ? 0 : cache.length;
     let replaced = false;
-
-    // Only process NEW meshes since last run — O(batch_size) not O(total)
-    const scanFrom = filteredSourceLenRef.current;
+    const scanFrom = sceneSourceLenRef.current;
     for (let i = scanFrom; i < allMeshes.length; i++) {
       const mesh = allMeshes[i];
-
-      // Model/Types view switch (#957, #1353). geometryClass: 0 = occurrence,
-      // 1 = orphan type, 2 = instanced type-library shape, 3 = material-layer
-      // slice (treated like an occurrence — it's part of the real build-up).
-      // An orphan type (class 1) renders in Model view ONLY when the model has
-      // no placed occurrences (pure type-library file); otherwise it's unplaced
-      // library clutter and belongs in the Types view. See helper for the table.
-      const geometryClass = mesh.geometryClass ?? 0;
-      if (!isMeshVisibleInViewMode(geometryClass, effectiveViewMode, hasOccurrenceGeometry)) {
-        continue;
-      }
-
-      // Type-visibility gate — shared mapping in `typeVisibilityFilter.ts`
-      // keeps the viewport, Cesium, basket and GLB export in lockstep. The
-      // `site` toggle also hides `IfcGeographicElement` terrain (issue #1480);
-      // `ifcAnnotations` also hides annotation 3D solid geometry / "Model Text"
-      // breps on top of the 2D curve overlay (issues #1354, #1480).
-      if (needsFilter && !isMeshTypeVisible(mesh, typeVisibility, structuralViewMode, retypedClasses)) continue;
-
-      // Mesh alpha flows through unchanged. The previous code re-multiplied
-      // IfcSpace / IfcOpeningElement alpha down to <= 0.3 here, which stomped
-      // lens / Pset colour rules even when the user explicitly chose alpha 1.0.
-      // Defaults still come from styling.rs / default-materials.ts; the
-      // renderer promotes overridden entities to the opaque pipeline, the
-      // only draws its colour table paints (#6076). See issue #677.
-      // Compare only during the full filtering pass already required by a
-      // rebuild. Streaming appends never revisit the resident prefix (#7047).
+      // Compare only during a rebuild; appends never revisit the prefix (#7047).
       if (rebuilding && writeIndex < prevCacheLen && !sameMeshUpload(cache[writeIndex], mesh)) replaced = true;
       cache[writeIndex++] = mesh;
     }
     cache.length = writeIndex;
     if (replaced || writeIndex < prevCacheLen) replacementVersionRef.current++;
-
     perfTally('viewer.filterScan', allMeshes.length - scanFrom, 'meshes');
-    filteredSourceLenRef.current = allMeshes.length;
-
-    // Only bump version when cache content actually changed — avoids
-    // unnecessary downstream re-renders when memo runs with same data.
-    if (cache.length !== prevCacheLen || typeVisChanged || sourceChanged) {
-      filteredVersionRef.current++;
-    }
-
-    // Return the same array reference — downstream change detection uses
-    // geometryVersion (which increments each batch) instead of array identity.
+    sceneSourceLenRef.current = allMeshes.length;
+    if (cache.length !== prevCacheLen || sourceChanged) sceneVersionRef.current++;
     return cache;
-  }, [mergedGeometryResult, typeVisibility, structuralViewMode, retypedClasses, effectiveViewMode, hasOccurrenceGeometry]);
+  }, [mergedGeometryResult]);
+
+  const typeHiddenIndexRef = useRef<TypeHiddenIndex | null>(null);
+  const unionRef = useRef<{ parts: readonly TypeHiddenIds[]; result: TypeHiddenIds } | null>(null);
+  const typeHidden = useMemo(() => {
+    typeHiddenIndexRef.current ??= new TypeHiddenIndex();
+    const settings = { typeVisibility, viewMode: effectiveViewMode, hasOccurrenceGeometry: hasPlaced, structuralViewMode, retyped: retypedClasses };
+    const meshes = typeHiddenIndexRef.current.update(mergedGeometryResult?.meshes, settings);
+    if (!snapshotIndex) return meshes;
+    const stored = snapshotIndex.hiddenFor(settings);
+    const previous = unionRef.current;
+    if (previous && previous.parts[0] === meshes && previous.parts[1] === stored) return previous.result;
+    const ids = new Set(stored.ids);
+    for (const id of meshes.ids) ids.add(id);
+    const result = { ids, version: (previous?.result.version ?? 0) + meshes.version + stored.version + 1 };
+    unionRef.current = { parts: [meshes, stored], result };
+    return result;
+    // geometryContentVersion: a batch can land in a list mutated in place.
+  }, [mergedGeometryResult, geometryContentVersion, typeVisibility, structuralViewMode, retypedClasses, effectiveViewMode, hasPlaced, snapshotIndex]);
+  // Adoption paints once the viewport below has committed these ids.
+  useEffect(() => { acknowledgeSnapshotTypeIndex(snapshotIndex); }, [snapshotIndex, typeHidden]);
 
   // Version counter that changes every batch — triggers useGeometryStreaming
   // without requiring a new geometry array reference.
-  const geometryVersion = filteredVersionRef.current;
+  const geometryVersion = sceneVersionRef.current;
 
-  return { hasTypeGeometry, hasOccurrenceGeometry, filteredGeometry, geometryVersion,
-    geometryReplacementVersion: replacementVersionRef.current };
+  return { hasTypeGeometry: hasType, hasOccurrenceGeometry: hasPlaced, sceneGeometry, geometryVersion,
+    geometryReplacementVersion: replacementVersionRef.current, typeHidden };
 }

@@ -88,6 +88,9 @@ function getAttrMapIndex(): AttrMapIndex {
     same('IFCPERFORMANCEHISTORY'),
     same('IFCTASK', { renamed: [['TaskId', 'Identification']] }),
     same('IFCPROPERTYDEPENDENCYRELATIONSHIP'),
+    // #10824: renamed both ways (IFC2X3_TO_IFC4, the MEP table); the IFC2X3
+    // label is carried through ObjectType (`schema-converter-userdefined-label.ts`).
+    map('IFCELECTRICDISTRIBUTIONPOINT', 'IFCELECTRICDISTRIBUTIONBOARD', { renamed: [['DistributionPointFunction', 'PredefinedType']] }),
     // #10807: same arity as IFC2X3, so the source layout shifted unnoticed.
     same('IFCPROCEDURE', { renamed: [['ProcedureID', 'Identification'], ['ProcedureType', 'PredefinedType']] }),
     same('IFCOBJECTIVE', { retyped: ['CreationTime'], upOnly: ['BenchmarkValues'], setOfOne: ['BenchmarkValues', 'BenchmarkValues'] }),

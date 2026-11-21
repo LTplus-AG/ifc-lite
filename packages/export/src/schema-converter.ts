@@ -26,6 +26,7 @@ import { referencesAnyExpressId } from './step-ref-scan.js';
 import { productProxy } from './schema-converter-product-proxy.js';
 import { MEP_IFC2X3_TYPES } from './schema-converter-mep.js';
 import { isStrictAttrPrefix, replacedSlot } from './schema-converter-renames.js';
+import { carryUserDefinedLabel } from './schema-converter-userdefined-label.js';
 import { attrMapFor, remapByAttrMap, upgradeCountsIfc4Slots } from './schema-converter-attr-maps.js';
 import { retypeInPlace } from './schema-converter-retyped.js';
 
@@ -292,6 +293,7 @@ export function convertStepLine(
 ): string | null {
   if (fromSchema === toSchema) return line;
   let converted = retypeInPlace(convertRecord(line, fromSchema, toSchema, random, withheldRefIds, fromSchema === 'IFC2X3' && toSchema === 'IFC4' ? enums?.structural.axes.axis(line) : undefined, enums?.structural), fromSchema, toSchema); // #10778
+  converted = carryUserDefinedLabel(line, converted, fromSchema, toSchema); // #10824
   if (converted === null) return null;
   if (enums && toSchema !== 'IFC5') converted = enums.structural.after(enums.apply(converted, toSchema), withheldRefIds);
   if (toSchema === 'IFC2X3') return (slots ?? new Ifc2x3SlotFill()).apply(converted);
@@ -365,8 +367,7 @@ function convertRecord(
     // in merged-exporter.ts, which seeds from the original id plus the model's
     // stable id.
     //
-    // A caller-supplied seeded source still wins, so an export that already
-    // pins its randomness keeps its existing behaviour.
+    // A caller-supplied seeded source still wins.
     const guid = random
       ? generateIfcGuid(random)
       : deterministicGlobalId(`ifcproxy:${prefix}${entityType}(${attrsRaw})`);
@@ -392,7 +393,6 @@ function convertRecord(
   // Those take a reviewed attribute map (#10763) or are left alone.
   // Appended attributes are optional, so `$` is a valid pad.
   //
-  // The two branches cannot both apply: each needs ITS OWN list strictly shorter.
   // Source attrs keyed on the ORIGINAL type; target on the (possibly renamed) type.
   let finalAttrs = attrsRaw;
   const targetTable = attrNameTable(toSchema);

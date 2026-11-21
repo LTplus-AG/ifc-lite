@@ -40,3 +40,19 @@ it('reports the lost profile name without reporting its carried mass (#10797)', 
   expect(warnings).toContain('ProfileName has no slot');
   expect(warnings).not.toContain('PhysicalWeight has no slot');
 });
+
+it('reports only the material density whose required material is missing (#10797)', async () => {
+  const source = readFileSync(new URL('../../../rust/export/tests/fixtures/schema_typed_properties_upgrade.ifc', import.meta.url), 'utf8');
+  const input = source.replace('ENDSEC;\nEND-ISO',
+    '#7=IFCGENERALMATERIALPROPERTIES($,$,$,42.);\n#8=IFCGENERALMATERIALPROPERTIES(#1,$,$,84.);\nENDSEC;\nEND-ISO');
+  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(input).buffer);
+  for (const schema of ['IFC4', 'IFC4X3'] as const) {
+    const result = new StepExporter(store).export({ schema });
+    const output = new TextDecoder().decode(result.content);
+    expect(output).toContain('IFCMASSDENSITYMEASURE(84.)');
+    expect(output).not.toContain('IFCMASSDENSITYMEASURE(42.)');
+    expect(result.stats.warnings.join(' ')).toContain('typed property record(s) could not be preserved');
+    expect(analyzeConversionLoss(store, 'IFC2X3', schema).entries.find(entry => entry.sourceType === 'IFCGENERALMATERIALPROPERTIES'))
+      .toMatchObject({ kind: 'lossy', expressIds: [7], droppedAttributes: ['MassDensity'] });
+  }
+});

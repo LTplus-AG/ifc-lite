@@ -2,7 +2,7 @@
 
 import { IFC2X3_TYPED_PROPERTIES } from './generated/ifc2x3-typed-properties.js';
 import { readStepSlots } from './step-argument-parser.js';
-import { slotRef } from './schema-converter-structural-source.js';
+import { slotRef, slotUnset } from './schema-converter-structural-source.js';
 import { stepRecordHead } from './step-record-frame.js';
 import { isStepValue, parseStepNumber, skipStepTrivia } from './step-slot-grammar.js';
 import type { StructuralDiagnostics } from './schema-converter-structural-diagnostics.js';
@@ -30,9 +30,15 @@ function wraps(value: string, field: Field): boolean {
     && skipStepTrivia(value, start + 3) === value.length;
 }
 
-/** Scalar source fields the full writer can preserve as IFC4 properties. */
-export function convertedTypedPropertyNames(type: string): ReadonlySet<string> {
-  return new Set(rowFor(type)?.[2].flatMap(([, fields]) => fields.map((field) => field.sourceName)));
+/** Fields that have no value to lose or can be materialized on this record's target reference. */
+export function retainedTypedPropertyNames(type: string, slots: readonly string[] | undefined, referenceSlot: number): ReadonlySet<string> {
+  const row = rowFor(type);
+  if (!slots || !row || slots.length !== row[1]) return new Set();
+  const canWrite = slotRef(slots[referenceSlot]) !== null;
+  return new Set(row[2].flatMap(([, fields]) => fields.filter((field) => {
+    const value = slots[field.index];
+    return slotUnset(value) || (canWrite && wraps(value, field));
+  }).map((field) => field.sourceName)));
 }
 
 /** Collect effective source values while writing, then allocate ids above all

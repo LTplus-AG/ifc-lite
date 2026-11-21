@@ -39,7 +39,7 @@ import {
 } from './schema-converter.js';
 import { BY_NAME_ATTR_REMAP_TYPES } from './schema-converter-attr-remap.js';
 import { isStrictAttrPrefix, replacedSlot } from './schema-converter-renames.js';
-import { convertedTypedPropertyNames } from './schema-converter-typed-properties.js';
+import { retainedTypedPropertyNames } from './schema-converter-typed-properties.js';
 import { attrMapFor, attrsDroppedByMap, dropsSetMembers } from './schema-converter-attr-maps.js';
 import { isRootedEntityType } from './schema-untranslatable.js';
 
@@ -291,14 +291,7 @@ export function analyzeConversionLoss(
     // @raw-entity-enumeration-ok this report accepts only a source entityIndex and describes the parsed file's schema-conversion losses
     for (const [sourceType, expressIds] of store.entityIndex.byType) {
       if (expressIds.length === 0) continue;
-      let info = classifyEntityTypeConversion(sourceType, fromSchema, toSchema);
-      if (info.kind === 'lossy' && fromSchema === 'IFC2X3' && (toSchema === 'IFC4' || toSchema === 'IFC4X3')) {
-        const retained = convertedTypedPropertyNames(sourceType.toUpperCase());
-        if (retained.size > 0) {
-          const droppedAttributes = info.droppedAttributes.filter((name) => !retained.has(name));
-          info = { ...info, droppedAttributes, kind: droppedAttributes.length ? 'lossy' : 'renamed' };
-        }
-      }
+      const info = classifyEntityTypeConversion(sourceType, fromSchema, toSchema);
       if (info.kind !== 'identity' && info.kind !== 'renamed') typed.push([sourceType.toUpperCase(), expressIds, info]);
       else if (fromSchema === 'IFC2X3' && varyingTarget(sourceType.toUpperCase())) varying.push([sourceType.toUpperCase(), expressIds]);
     }
@@ -311,19 +304,27 @@ export function analyzeConversionLoss(
         [...typed.flatMap(([type, ids, info]) => (carrying(type, info) ? ids : [])), ...varying.flatMap(([, ids]) => ids)])
       : NO_ROUND_TRIP;
     const records = source ? new SourceRecords({ entityIndex: store.entityIndex, source }) : undefined;
+    const typedUpgrade = fromSchema === 'IFC2X3' && (toSchema === 'IFC4' || toSchema === 'IFC4X3');
     for (const [sourceType, expressIds, info] of typed) {
       const mapped = records && toSchema === 'IFC2X3' ? attrMapFor(sourceType, info.targetType, fromSchema, toSchema) : undefined;
       // A SET declared for an upgrade can still be dropped entirely on downgrade.
       const setAttribute = mapped?.map.setOfOne?.[1];
       const narrowedSet = setAttribute && !mapped?.map.upOnly.includes(setAttribute) ? setAttribute : undefined;
-      const slot = narrowedSet ? attrNameTable(fromSchema)?.get(sourceType)?.indexOf(narrowedSet) ?? -1 : -1;
+      const attributes = attrNameTable(fromSchema)?.get(sourceType);
+      const slot = narrowedSet ? attributes?.indexOf(narrowedSet) ?? -1 : -1;
+      const reference = info.targetType === 'IFCMATERIALPROPERTIES' ? 'Material'
+        : info.targetType === 'IFCPROFILEPROPERTIES' ? 'ProfileDefinition' : undefined;
+      const referenceSlot = typedUpgrade && reference ? attributes?.indexOf(reference) ?? -1 : -1;
+      const retainedTyped = records && referenceSlot >= 0
+        ? new Map(expressIds.map(id => [id, retainedTypedPropertyNames(sourceType, records.slots(id), referenceSlot)]))
+        : undefined;
       const isRetained = (id: number, attribute: string) => {
-        if (restored.get(id)?.has(attribute)) return true;
+        if (restored.get(id)?.has(attribute) || retainedTyped?.get(id)?.has(attribute)) return true;
         if (attribute !== narrowedSet) return false;
         const value = records?.slots(id)?.[slot];
         return value !== undefined && !dropsSetMembers(value);
       };
-      const entry = carrying(sourceType, info) || slot >= 0
+      const entry = carrying(sourceType, info) || slot >= 0 || retainedTyped
         ? entryAfterRestoration(sourceType, expressIds, info, isRetained)
         : { ...info, sourceType, count: expressIds.length, expressIds };
       if (entry) entries.push(entry);

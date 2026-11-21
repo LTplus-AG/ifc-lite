@@ -7,6 +7,7 @@ import type { JSONSchemaType } from 'ajv';
 import { operationValidators } from './validators';
 import type { OperationArtifacts } from './artifacts';
 import type { ReadyModel, ToolCallContext, ToolHost } from '../types';
+import { internal, invalidInput } from './refusals';
 
 export type Effect = 'read' | 'view' | 'selection' | 'configuration' | 'model' | 'artifact' | 'network' | 'publication';
 export interface ViewerOperationContext extends ToolCallContext {
@@ -53,9 +54,9 @@ export interface Operation {
 type Metadata = Omit<Operation, 'version' | 'inputSchema' | 'validate' | 'execute' | 'result' | 'validateResult' | 'needs'>;
 
 function define<T>(metadata: Metadata, needs: Operation['needs'], schema: JSONSchemaType<T>, handler: (input: T, context: OperationExecutionContext) => unknown | Promise<unknown>): Operation {
-  if (metadata.effects.length === 0) throw new Error(`Missing effect policy: ${metadata.id}`);
+  if (metadata.effects.length === 0) throw internal(`Missing effect policy: ${metadata.id}`);
   const writes = metadata.effects.some(effect => effect !== 'read');
-  if ((writes ? 'commands-and-edits' : 'read') !== metadata.capability) throw new Error(`Inconsistent effect permission: ${metadata.id}`);
+  if ((writes ? 'commands-and-edits' : 'read') !== metadata.capability) throw internal(`Inconsistent effect permission: ${metadata.id}`);
   const outputSchema = metadata.outputSchema ?? nativeResultSchema(metadata.id);
   const validators = operationValidators(metadata.id, schema, outputSchema);
   return { ...metadata, needs, version: 1, result: 'value', inputSchema: schema, outputSchema,
@@ -70,7 +71,7 @@ function define<T>(metadata: Metadata, needs: Operation['needs'], schema: JSONSc
 /** One validated contract around the native model service, with an explicit target. */
 export function operation<T>(metadata: Metadata, schema: JSONSchemaType<T>, handler: (input: T, context: OperationContext) => unknown | Promise<unknown>): Operation {
   return define(metadata, 'model', schema, (input, context) => {
-    if (!context.model) throw new Error(`Operation ${metadata.id} requires an explicit ready model.`);
+    if (!context.model) throw invalidInput('invalid-value', `Operation ${metadata.id} requires an explicit ready model.`);
     return handler(input, { ...context, model: context.model });
   });
 }

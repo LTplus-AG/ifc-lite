@@ -111,7 +111,7 @@ export interface ClashSlice {
    */
   clashGroupsKind: 'derived' | 'manual' | null;
   clashRunning: boolean;
-  clashError: string | null;
+  clashError: string | null; /** See lib/clash/clash-error-kind.ts. */ clashErrorKind: 'unavailable' | 'unknown-target' | 'refused' | 'stale' | 'internal' | null;
   /**
    * Monotonic count of COMPLETED detection runs (all-clashes, matrix, preset,
    * duplicate scan). Bumped by `useClash` right after each successful
@@ -290,7 +290,7 @@ export interface ClashSlice {
   setClashGroups: (groups: ClashGroup[] | null) => void;
   bumpClashRunSeq: () => void;
   setClashRunning: (running: boolean) => void;
-  setClashError: (error: string | null) => void;
+  setClashError: (...args: [error: null] | [error: string, kind: NonNullable<ClashSlice['clashErrorKind']>]) => void;
   setClashProgress: (progress: ClashProgress | null) => void;
   setClashMode: (mode: ClashMode) => void;
   setClashTolerance: (tolerance: number) => void;
@@ -497,7 +497,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     clashGroups: null,
     clashGroupsKind: null,
     clashRunning: false,
-    clashError: null,
+    clashError: null, clashErrorKind: null,
     clashRunSeq: 0,
     clashProgress: null,
     clashMode: initial.mode,
@@ -551,7 +551,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     setClashGroups: (clashGroups) => set({ clashGroups, clashGroupsKind: clashGroups ? 'manual' : null }),
     bumpClashRunSeq: () => set((s) => ({ clashRunSeq: s.clashRunSeq + 1 })),
     setClashRunning: (clashRunning) => set({ clashRunning }),
-    setClashError: (clashError) => set({ clashError }),
+    setClashError: (...args) => set({ clashError: args[0], clashErrorKind: args.length === 2 ? args[1] : null }),
     setClashProgress: (clashProgress) => set({ clashProgress }),
 
     setClashMode: (clashMode) => { set({ clashMode }); persistSettings(); },
@@ -937,7 +937,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
         clashGroups: null,
         clashGroupsKind: null,
         clashRunning: false,
-        clashError: null,
+        clashError: null, clashErrorKind: null,
         clashProgress: null,
         clashSolidRequestSeq: s.clashSolidRequestSeq + 1,
       })),

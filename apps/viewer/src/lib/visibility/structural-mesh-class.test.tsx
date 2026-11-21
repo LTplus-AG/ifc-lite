@@ -85,6 +85,9 @@ function seed(federated: boolean) {
 
 const modes = ['physical', 'analytical'] as const;
 const ids = (list: readonly { expressId: number }[]) => list.map((m) => m.expressId).sort((x, y) => x - y);
+/** The meshes the viewport draws: the scene list minus the ids type visibility hides (#10264). */
+const typeVisibleMeshes = (scene: ReturnType<typeof useFilteredGeometry>) =>
+  (scene.sceneGeometry ?? []).filter((m) => !scene.typeHidden.ids.has(m.expressId));
 
 for (const federated of [false, true]) {
   const label = federated ? 'federated' : 'legacy';
@@ -98,7 +101,7 @@ for (const federated of [false, true]) {
       const [mode, set] = useState<StructuralViewMode>('both');
       setMode = set;
       const retyped = useRetypedClasses();
-      seen = ids(useFilteredGeometry(merged, 0, useViewerStore.getState().typeVisibility, 'model', mode, retyped).filteredGeometry ?? []);
+      seen = ids(typeVisibleMeshes(useFilteredGeometry(merged, 0, useViewerStore.getState().typeVisibility, 'model', mode, retyped)));
       return null;
     }
     renderInViewport(<Probe />);
@@ -108,13 +111,13 @@ for (const federated of [false, true]) {
     }
   });
 
-  it(`#10119 a retype while analytical mode is on refilters the resident meshes (${label})`, () => {
+  it(`#10119 a retype while analytical mode is on re-hides the resident meshes (${label})`, () => {
     const { beam, view, meshes } = seed(federated);
     const merged = geometry(meshes);
     let seen: number[] = [];
     function Probe() {
       const retyped = useRetypedClasses();
-      seen = ids(useFilteredGeometry(merged, 0, useViewerStore.getState().typeVisibility, 'model', 'analytical', retyped).filteredGeometry ?? []);
+      seen = ids(typeVisibleMeshes(useFilteredGeometry(merged, 0, useViewerStore.getState().typeVisibility, 'model', 'analytical', retyped)));
       return null;
     }
     renderInViewport(<Probe />);

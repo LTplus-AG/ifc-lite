@@ -654,8 +654,8 @@ export function PropertiesPanel() {
     const globalIds = members.map((m) => toGlobalIdFromModels(models, selectedEntity.modelId, m.id));
     // The members' own ids are ADDED to what the resolver returns, never
     // REPLACED by it -- the one place this departs from #2660, which isolates
-    // the resolved set alone. The resolver reads the type-visibility-FILTERED
-    // mesh list (Viewport gets ViewportContainer's `filteredGeometry`), and
+    // the resolved set alone. The resolver skips the ids type visibility
+    // hides (Viewport's `typeHidden`), and
     // this handler exists for zones of hidden-by-default IfcSpaces (#1075):
     // those members resolve to nothing until the toggles below flip, so
     // replacing would drop exactly the ids the feature is about. Keeping them

@@ -4,6 +4,7 @@
 
 import type { SavedConversation } from '../assistant/persistence.js';
 import type { ClashGroupWorkspace } from '../clash/group-workspace.js';
+import type { IdsStudioDraft } from '../ids-studio/draft-codec.js';
 import { decodeBcfProject } from '../bcf-project/project-codec.js';
 import type { DraftBatch } from '../bcf-drafts/draft-types.js';
 import type { BcfPublication } from '../bcf-publication/outbox-types.js';
@@ -39,6 +40,7 @@ export interface ContentLibraries extends StandaloneArtifactLibraries {
   /** Optional for backups written before assistant conversations existed. */
   assistant?: SavedConversation[];
   clashGroups?: ClashGroupWorkspace[];
+  idsStudioDrafts?: IdsStudioDraft[];
   bcfDrafts?: DraftBatch[];
   /** Imported outbox records always arrive blocked; see `quarantineImported`. */
   bcfOutbox?: BcfPublication[];
@@ -98,6 +100,7 @@ export function createContentBackup(libraries: ContentLibraries, status?: Record
     document: partition('document', copied.document, CONTENT_DEFINITIONS.document.decode),
     ...(copied.assistant ? { assistant: partition('assistant', copied.assistant, CONTENT_DEFINITIONS.assistant.decode) } : {}),
     ...(copied.clashGroups ? { clashGroups: partition('clashGroups', copied.clashGroups, CONTENT_DEFINITIONS.clashGroups.decode) } : {}),
+    ...(copied.idsStudioDrafts ? { idsStudioDrafts: partition('idsStudioDrafts', copied.idsStudioDrafts, CONTENT_DEFINITIONS.idsStudioDrafts.decode) } : {}),
     ...(copied.bcfDrafts ? { bcfDrafts: partition('bcfDrafts', copied.bcfDrafts, CONTENT_DEFINITIONS.bcfDrafts.decode) } : {}),
     ...(copied.bcfOutbox ? { bcfOutbox: partition('bcfOutbox', copied.bcfOutbox, CONTENT_DEFINITIONS.bcfOutbox.decode) } : {}),
     ...(copied.modelChanges ? { modelChanges: partition('modelChanges', copied.modelChanges, CONTENT_DEFINITIONS.modelChanges.decode) } : {}),
@@ -155,6 +158,7 @@ export function parseContentBackup(text: string): ContentBackup {
     document: parse('document', CONTENT_DEFINITIONS.document.decode),
     ...(libraries.assistant !== undefined ? { assistant: parse('assistant', CONTENT_DEFINITIONS.assistant.decode) } : {}),
     ...(libraries.clashGroups !== undefined ? { clashGroups: parse('clashGroups', CONTENT_DEFINITIONS.clashGroups.decode) } : {}),
+    ...(libraries.idsStudioDrafts !== undefined ? { idsStudioDrafts: parse('idsStudioDrafts', CONTENT_DEFINITIONS.idsStudioDrafts.decode) } : {}),
     ...(libraries.bcfDrafts !== undefined ? { bcfDrafts: parse('bcfDrafts', CONTENT_DEFINITIONS.bcfDrafts.decode) } : {}),
     ...(libraries.bcfOutbox !== undefined ? { bcfOutbox: parse('bcfOutbox', CONTENT_DEFINITIONS.bcfOutbox.decode) } : {}),
     ...(libraries.modelChanges !== undefined ? { modelChanges: parse('modelChanges', CONTENT_DEFINITIONS.modelChanges.decode) } : {}),
@@ -227,6 +231,7 @@ export async function importContentBackup(backup: ContentBackup, readVisible?: (
     rememberContentImports(planned);
     const entries: ContentLibraries = { validation: [], comparison: [], document: [],
       ...(parsed.libraries.assistant ? { assistant: [] } : {}), ...(parsed.libraries.clashGroups ? { clashGroups: [] } : {}),
+      ...(parsed.libraries.idsStudioDrafts ? { idsStudioDrafts: [] } : {}),
       ...(parsed.libraries.bcfDrafts ? { bcfDrafts: [] } : {}), ...(parsed.libraries.bcfOutbox ? { bcfOutbox: [] } : {}),
       ...(parsed.libraries.modelChanges ? { modelChanges: [] } : {}),
       ...(parsed.libraries.clashGroupApplications ? { clashGroupApplications: [] } : {}),
@@ -243,6 +248,7 @@ export async function importContentBackup(backup: ContentBackup, readVisible?: (
       if (current && (CONTENT_POLICIES[row.kind].immutableEvidence || sameReportEvidence(current, row.payload))) continue;
       if (row.kind === 'assistant') { const entry = CONTENT_DEFINITIONS.assistant.decode(row.payload); if (entry) (entries.assistant ??= []).push(entry); }
       if (row.kind === 'clashGroups') { const entry = CONTENT_DEFINITIONS.clashGroups.decode(row.payload); if (entry) (entries.clashGroups ??= []).push(entry); }
+      if (row.kind === 'idsStudioDrafts') { const entry = CONTENT_DEFINITIONS.idsStudioDrafts.decode(row.payload); if (entry) (entries.idsStudioDrafts ??= []).push(entry); }
       if (row.kind === 'bcfDrafts') { const entry = CONTENT_DEFINITIONS.bcfDrafts.decode(row.payload); if (entry) (entries.bcfDrafts ??= []).push(entry); }
       if (row.kind === 'bcfOutbox') { const entry = CONTENT_DEFINITIONS.bcfOutbox.decode(row.payload); if (entry) (entries.bcfOutbox ??= []).push(entry); }
       if (row.kind === 'modelChanges') { const entry = CONTENT_DEFINITIONS.modelChanges.decode(row.payload); if (entry) (entries.modelChanges ??= []).push(entry); }

@@ -99,7 +99,9 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     assert.equal((await pending).errorCode, 'READ_ONLY');
   });
   it('validates all model-local entity IDs before changing either selection channel', async () => {
-    assert.equal((await execute('selection.replace', { express_ids: [1, 987654] })).errorCode, 'ENTITY_NOT_FOUND');
+    const missing = await execute('selection.replace', { express_ids: [1, 987654] });
+    assert.equal(missing.errorCode, 'INVALID_INPUT');
+    assert.equal((missing.structured as { reason: string }).reason, 'unknown-target');
     assert.equal(useViewerStore.getState().selectedEntityId, null);
     const applied = await execute('selection.replace', { express_ids: [1, 2] });
     assert.equal(applied.isError, false, applied.text);

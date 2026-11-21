@@ -10,15 +10,22 @@
 //! the pipeline's emit order (pinned by the mesh-determinism contract), so
 //! the chunk list is a pure function of the input and independent of thread
 //! count. That is the canonical order; no batch-completion order reaches it.
+//!
+//! [`Grouper`] is that pass made incremental, so the in-memory writer and the
+//! streaming one run the same code (#9584): each mesh is serialized into its
+//! cell's open chunk as it arrives, a chunk the byte cap closes is handed back
+//! at once (it is final, and its place in the output is the order of
+//! closing), and [`Grouper::finish`] hands back the chunks still open in their
+//! cell's first-insertion order. Nothing but the open chunks' records is held.
 
 use std::collections::HashMap;
 
+use super::record::CacheMesh;
+use crate::buf::Buf;
 use crate::format::{
     CHUNK_FLAG_DEFLATE_RAW, GEOMETRY_CHUNK_CELL_SIZE, GEOMETRY_CHUNK_COMPRESS_MIN_BYTES,
     GEOMETRY_CHUNK_SOFT_BYTES,
 };
-use crate::buf::Buf;
-use super::record::CacheMesh;
 
 /// A grid cell, or `None` for the TS `'nan'` cell. Each axis is
 /// `floor(anchor / 32)` as f64 bits with the sign of zero folded, which is
@@ -38,57 +45,47 @@ fn cell_key(mesh: &CacheMesh) -> CellKey {
     Some(key)
 }
 
-/// Mesh indices per chunk, in the order the TS writer lays chunks out: each
-/// chunk closed by the byte cap as it closes, then the still-open chunks in
-/// their cell's FIRST insertion order (a JS `Map.set` on an existing key keeps
-/// the key's original position).
-pub(crate) fn group(meshes: &[CacheMesh]) -> Vec<Vec<usize>> {
-    let mut slot_of: HashMap<CellKey, usize> = HashMap::new();
-    let mut open: Vec<(Vec<usize>, usize)> = Vec::new();
-    let mut closed: Vec<Vec<usize>> = Vec::new();
-    for (at, mesh) in meshes.iter().enumerate() {
-        let key = cell_key(mesh);
-        let bytes = mesh.record_len();
-        let slot = *slot_of.entry(key).or_insert_with(|| {
-            open.push((Vec::new(), 0));
-            open.len() - 1
-        });
-        let chunk = &mut open[slot];
-        if chunk.1 > 0 && chunk.1 + bytes > GEOMETRY_CHUNK_SOFT_BYTES {
-            closed.push(std::mem::take(&mut chunk.0));
-            chunk.1 = 0;
-        }
-        chunk.0.push(at);
-        chunk.1 += bytes;
-    }
-    closed.extend(open.into_iter().map(|(members, _)| members).filter(|m| !m.is_empty()));
-    closed
+/// One cell's chunk while it is open: its serialized records and the running
+/// `chunkAabb` of what it holds.
+struct OpenChunk {
+    records: Buf,
+    mesh_count: u32,
+    min: [f64; 3],
+    max: [f64; 3],
 }
 
-/// `chunkAabb`: world (`origin + position`) bounds accumulated in f64 with
-/// the TS comparison order (a NaN never updates a bound), zeros when the
-/// chunk has no vertex, stored as f32.
-pub(crate) fn aabb(meshes: &[CacheMesh], members: &[usize]) -> [f32; 6] {
-    let mut min = [f64::INFINITY; 3];
-    let mut max = [f64::NEG_INFINITY; 3];
-    for &at in members {
-        let mesh = &meshes[at];
+impl OpenChunk {
+    fn new() -> Self {
+        Self { records: Buf::new(), mesh_count: 0, min: [f64::INFINITY; 3], max: [f64::NEG_INFINITY; 3] }
+    }
+
+    /// Append one record. The bounds are `chunkAabb`'s loop, one member at a
+    /// time in member order: world (`origin + position`) in f64 with the TS
+    /// comparison order, so a NaN never updates a bound.
+    fn add(&mut self, mesh: &CacheMesh) {
         for vertex in mesh.positions.chunks_exact(3) {
-            for axis in 0..3 {
-                let value = mesh.origin[axis] + f64::from(vertex[axis]);
-                if value < min[axis] {
-                    min[axis] = value;
+            for (axis, coordinate) in vertex.iter().enumerate() {
+                let value = mesh.origin[axis] + f64::from(*coordinate);
+                if value < self.min[axis] {
+                    self.min[axis] = value;
                 }
-                if value > max[axis] {
-                    max[axis] = value;
+                if value > self.max[axis] {
+                    self.max[axis] = value;
                 }
             }
         }
+        mesh.write(&mut self.records);
+        self.mesh_count += 1;
     }
-    if min[0] == f64::INFINITY {
-        return [0.0; 6];
+
+    /// The stored AABB: zeros when the chunk has no vertex, else f32.
+    fn aabb(&self) -> [f32; 6] {
+        if self.min[0] == f64::INFINITY {
+            return [0.0; 6];
+        }
+        let [min, max] = [self.min, self.max];
+        [min[0], min[1], min[2], max[0], max[1], max[2]].map(|v| v as f32)
     }
-    [min[0], min[1], min[2], max[0], max[1], max[2]].map(|v| v as f32)
 }
 
 /// One chunk record as stored.
@@ -100,21 +97,17 @@ pub(crate) struct StoredChunk {
     pub(crate) aabb: [f32; 6],
 }
 
-/// Serialize a chunk's records; above the size floor, deflate-raw it and keep
-/// the compressed form only when strictly smaller (`chooseStoredGeometryChunk`).
-pub(crate) fn store(meshes: &[CacheMesh], members: &[usize], compress: bool) -> StoredChunk {
-    let mut buf = Buf::with_capacity(members.iter().map(|&at| meshes[at].record_len()).sum());
-    for &at in members {
-        meshes[at].write(&mut buf);
-    }
-    let raw = buf.into_vec();
-    let uncompressed_length = raw.len() as u32;
+/// Close a chunk: above the size floor, deflate-raw its records and keep the
+/// compressed form only when strictly smaller (`chooseStoredGeometryChunk`).
+fn store(chunk: OpenChunk, compress: bool) -> StoredChunk {
+    let aabb = chunk.aabb();
+    let raw = chunk.records.into_vec();
     let mut stored = StoredChunk {
+        uncompressed_length: raw.len() as u32,
         bytes: raw,
-        uncompressed_length,
-        mesh_count: members.len() as u32,
+        mesh_count: chunk.mesh_count,
         flags: 0,
-        aabb: aabb(meshes, members),
+        aabb,
     };
     if compress && stored.bytes.len() >= GEOMETRY_CHUNK_COMPRESS_MIN_BYTES {
         let deflated = deflate_raw(&stored.bytes);
@@ -124,6 +117,65 @@ pub(crate) fn store(meshes: &[CacheMesh], members: &[usize], compress: bool) -> 
         }
     }
     stored
+}
+
+/// The incremental `groupMeshesIntoChunks`: chunks closed by the byte cap in
+/// the order they close, then the still-open chunks in their cell's FIRST
+/// insertion order (a JS `Map.set` on an existing key keeps the key's
+/// original position, so a cell reopened after the cap keeps its slot).
+pub(crate) struct Grouper {
+    slot_of: HashMap<CellKey, usize>,
+    open: Vec<OpenChunk>,
+    compress: bool,
+    /// Record bytes held across the open chunks now, and the most so far.
+    open_bytes: usize,
+    peak_open_bytes: usize,
+}
+
+impl Grouper {
+    pub(crate) fn new(compress: bool) -> Self {
+        Self { slot_of: HashMap::new(), open: Vec::new(), compress, open_bytes: 0, peak_open_bytes: 0 }
+    }
+
+    /// Add one mesh; returns the chunk its arrival closed, if any.
+    pub(crate) fn push(&mut self, mesh: &CacheMesh) -> Option<StoredChunk> {
+        let key = cell_key(mesh);
+        let bytes = mesh.record_len();
+        let open = &mut self.open;
+        let slot = *self.slot_of.entry(key).or_insert_with(|| {
+            open.push(OpenChunk::new());
+            open.len() - 1
+        });
+        let chunk = &mut self.open[slot];
+        let held = chunk.records.len();
+        let closed = if held > 0 && held + bytes > GEOMETRY_CHUNK_SOFT_BYTES {
+            self.open_bytes -= held;
+            Some(store(std::mem::replace(chunk, OpenChunk::new()), self.compress))
+        } else {
+            None
+        };
+        chunk.add(mesh);
+        self.open_bytes += bytes;
+        self.peak_open_bytes = self.peak_open_bytes.max(self.open_bytes);
+        closed
+    }
+
+    /// Distinct cells seen. A cell's slot is never released, so this bounds
+    /// how many chunks can be open at once.
+    pub(crate) fn cells(&self) -> usize {
+        self.open.len()
+    }
+
+    /// The most record bytes the open chunks held at once.
+    pub(crate) fn peak_open_bytes(&self) -> usize {
+        self.peak_open_bytes
+    }
+
+    /// The chunks still open, in their cell's first-insertion order.
+    pub(crate) fn finish(self) -> impl Iterator<Item = StoredChunk> {
+        let compress = self.compress;
+        self.open.into_iter().filter(|chunk| chunk.mesh_count > 0).map(move |chunk| store(chunk, compress))
+    }
 }
 
 /// The writer's one chunk compressor: raw DEFLATE (no zlib header), the

@@ -1406,7 +1406,7 @@ export class Scene {
    * skips them and returns `false` so the caller can fall back
    * to a full reload if needed.
    */
-  translateMeshesForEntity(expressId: number, delta: [number, number, number]): boolean {
+  translateMeshesForEntity(expressId: number, delta: [number, number, number], beforeWrite?: (mesh: MeshData) => void): boolean {
     this.appearanceController?.cancelFor(expressId);
     // An entity can have flat meshes, GPU-instanced occurrences, or both. The
     // instanced occurrences live in the per-template instance buffers, NOT in
@@ -1417,7 +1417,7 @@ export class Scene {
     // instanced pass runs last and rebuilds that AABB from the moved occurrence
     // matrices, so a mixed flat+instanced entity never ends up with stranded
     // (null) instanced bounds.
-    const flatMoved = this.translateFlatMeshesForEntity(expressId, delta);
+    const flatMoved = this.translateFlatMeshesForEntity(expressId, delta, beforeWrite);
     const instancedMoved = this.translateInstancedEntity(expressId, delta);
     return flatMoved || instancedMoved;
   }
@@ -1464,7 +1464,7 @@ export class Scene {
     affectedKeys.add(newBucketKey);
   }
 
-  private translateFlatMeshesForEntity(expressId: number, delta: [number, number, number]): boolean {
+  private translateFlatMeshesForEntity(expressId: number, delta: [number, number, number], beforeWrite?: (mesh: MeshData) => void): boolean {
     this.streamWork.invalidate(); // positions move in place below
     const meshDataList = this.meshDataMap.get(expressId);
     if (!meshDataList || meshDataList.length === 0) return false;
@@ -1488,6 +1488,7 @@ export class Scene {
         }
         if (shared) continue;
       }
+      beforeWrite?.(meshData);
       const pos = meshData.positions;
       for (let i = 0; i < pos.length; i += 3) {
         pos[i] += dx;
@@ -1659,10 +1660,10 @@ export class Scene {
   }
 
   /** Bulk variant of `translateMeshesForEntity`. */
-  translateMeshesForEntities(updates: Map<number, [number, number, number]>): number {
+  translateMeshesForEntities(updates: Map<number, [number, number, number]>, beforeWrite?: (mesh: MeshData) => void): number {
     let count = 0;
     for (const [id, delta] of updates) {
-      if (this.translateMeshesForEntity(id, delta)) count++;
+      if (this.translateMeshesForEntity(id, delta, beforeWrite)) count++;
     }
     return count;
   }
@@ -1682,7 +1683,7 @@ export class Scene {
    * are not rotated (the collab edit path only rotates flat/authored meshes).
    * Returns true when a mesh was modified.
    */
-  rotateMeshesForEntity(expressId: number, angleRad: number, pivot: [number, number, number]): boolean {
+  rotateMeshesForEntity(expressId: number, angleRad: number, pivot: [number, number, number], beforeWrite?: (mesh: MeshData) => void): boolean {
     this.appearanceController?.cancelFor(expressId);
     this.streamWork.invalidate(); // positions rotate in place below
     const meshDataList = this.meshDataMap.get(expressId);
@@ -1705,6 +1706,7 @@ export class Scene {
       // Fold the per-element local-frame origin into the pivot (world = origin + pos).
       const px = pivot[0] - (meshData.origin?.[0] ?? 0);
       const pz = pivot[2] - (meshData.origin?.[2] ?? 0);
+      beforeWrite?.(meshData);
       const pos = meshData.positions;
       for (let i = 0; i < pos.length; i += 3) {
         const dx = pos[i] - px;
@@ -1754,10 +1756,10 @@ export class Scene {
   }
 
   /** Bulk variant of `rotateMeshesForEntity`. */
-  rotateMeshesForEntities(updates: Map<number, { angle: number; pivot: [number, number, number] }>): number {
+  rotateMeshesForEntities(updates: Map<number, { angle: number; pivot: [number, number, number] }>, beforeWrite?: (mesh: MeshData) => void): number {
     let count = 0;
     for (const [id, { angle, pivot }] of updates) {
-      if (this.rotateMeshesForEntity(id, angle, pivot)) count++;
+      if (this.rotateMeshesForEntity(id, angle, pivot, beforeWrite)) count++;
     }
     return count;
   }

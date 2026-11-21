@@ -194,12 +194,20 @@ describe('EntityContextMenu — federation-space selection', () => {
       assert.equal(menuItem('Delete entity').disabled, true);
       act(() => { useViewerStore.setState({ editEnabled: true }); });
       assert.equal(menuItem('Duplicate').disabled, false);
-      act(() => { menuItem('Duplicate').click(); });
+      const { screenX, screenY } = useViewerStore.getState().contextMenu;
+      // #11143: close and reopen at the same anchor in one settled publication.
+      act(() => {
+        menuItem('Duplicate').click();
+        useViewerStore.getState().openContextMenu(selectedId, screenX, screenY);
+      });
       assert.ok(lastUndoBatch('m1').some((m) => m.type === 'CREATE_ENTITY'));
       if (twoModels) assert.equal(useViewerStore.getState().undoStacks.has('m0'), false);
 
-      act(() => { useViewerStore.setState({ selectedEntityId: selectedId, selectedEntityIds: new Set([selectedId]) }); });
       await settle();
+      assert.ok(document.querySelector('[role="menu"] [role="menuitem"][aria-haspopup="menu"]'),
+        'the directional Duplicate trigger returns when the menu is reopened at the same point');
+
+      act(() => { useViewerStore.setState({ selectedEntityId: selectedId, selectedEntityIds: new Set([selectedId]) }); });
       openRibbonEntityActions(container, selectedId);
       act(() => { menuItem('Delete entity').click(); });
       assert.equal(useViewerStore.getState().mutationViews.get('m1')?.isDeleted(1222), true);

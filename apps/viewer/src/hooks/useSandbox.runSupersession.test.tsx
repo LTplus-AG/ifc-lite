@@ -481,6 +481,7 @@ describe('useSandbox().execute() — cross-instance run supersession', () => {
   it("reset() still stops a run its own instance superseded after the newer run finished (#10591 review)", async () => {
     let rFirst: ScriptResult | null | undefined;
     let settled = false;
+    let stoppedByReset = false;
     await act(async () => {
       const pFirst = execute1!(GATED).then((r) => { settled = true; rFirst = r; });
       await execute1!(UNGATED);
@@ -490,12 +491,14 @@ describe('useSandbox().execute() — cross-instance run supersession', () => {
         reset1!();
         // Well inside the sandbox timeout: a run that only ends by timing out was never stopped.
         await Promise.race([pFirst, new Promise((resolve) => setTimeout(resolve, 2_000))]);
+        // Read before the cleanup can release the gate, which would settle the run anyway.
+        stoppedByReset = settled;
       } finally {
         // On failure the run is still parked; release it so it cannot leak into the next test.
         if (!settled) { gates[0]!({ marker: 'leaked' }); await pFirst; }
       }
     });
-    assert.ok(settled, 'the superseded run must stop on reset without its host gate being released');
+    assert.ok(stoppedByReset, 'the superseded run must stop on reset without its host gate being released');
     assert.equal(rFirst, null);
   });
 

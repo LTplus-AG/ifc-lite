@@ -32,20 +32,8 @@ import '@/lib/commands/modeling/builtin';
  * decision ("nothing here yet"), not an absence the table can't represent.
  */
 
-export const TOOL_IDS = [
-  'select',
-  'measure',
-  'section',
-  'annotate',
-  'cesium-placement',
-  'polygon-area',
-  'appearance-face',
-  'cloud',
-  'text',
-  'walk',
-  'command',
-  'none',
-] as const;
+export { TOOL_IDS } from './tool-ids';
+import { TOOL_IDS } from './tool-ids';
 
 export type ToolId = (typeof TOOL_IDS)[number];
 

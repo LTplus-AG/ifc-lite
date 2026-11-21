@@ -20,6 +20,8 @@ import { seedCoincidentWalls } from '@/test/clash-run-fixture';
 import { resetFeaturesForTest } from '@/lib/features';
 import { createMainViewerToolHost } from './main-viewer-host';
 import { dispatchMainViewerTool } from './main-viewer-dispatch';
+import { viewerOperationCoverage } from './operations/coverage';
+import { WORKSPACE_PANELS } from '@/lib/panels/registry';
 import { viewerOperations } from './operations/registry';
 import type { ToolHost } from './types';
 
@@ -257,6 +259,30 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
       const [a, b] = await Promise.all([inspect('viewport.pick', { x: 0.25, y: 0.5 }), inspect('viewport.pick', { x: 0.25, y: 0.5 })]);
       assert.equal(a.isError, false, a.text); assert.equal(b.isError, false, b.text);
     } finally { unregister(); }
+  });
+  it('audits every built-in panel, tool and export while retaining native boundaries', () => {
+    const report = viewerOperationCoverage();
+    assert.equal(report.panel_count, WORKSPACE_PANELS.length); assert.equal(report.all_controls_automatable, false);
+    assert.deepEqual(new Set(report.panels.map(panel => panel.id)), new Set(WORKSPACE_PANELS.map(panel => panel.id)));
+    assert.deepEqual(report.panels.flatMap(panel => panel.gaps.map(gap => `${panel.id}: ${gap}`)), []);
+    assert.deepEqual(report.tools.flatMap(tool => tool.gaps.map(gap => `${tool.id}: ${gap}`)), []);
+    assert.deepEqual(report.exports.flatMap(item => item.gaps.map(gap => `${item.id}: ${gap}`)), []);
+    assert.equal(report.complete, true);
+    assert.ok(report.panels.every(panel => panel.controls.length > 0));
+    assert.ok(report.panels.some(panel => panel.controls.some(control => control.classification === 'native-boundary')));
+    assert.ok(report.human_only.length > 0);
+    // Boundaries are classified controls, not prose notes (#10592 review).
+    const classes = (id: string) => report.panels.find(panel => panel.id === id)?.controls.map(control => control.classification) ?? [];
+    assert.ok(classes('lists').includes('presentation-only'));
+    assert.ok(classes('bcf').includes('native-boundary'));
+    assert.ok(classes('hierarchy').includes('native-boundary'), 'unload with unexported changes keeps its native confirmation');
+    // A joined control is marked grouped rather than claiming a per-control binding (#10592 review).
+    assert.ok(report.panels.find(panel => panel.id === 'bcf')?.controls.some(control => 'grouped' in control && control.grouped === true));
+    assert.ok(report.non_panel.find(row => row.id === 'preferences')?.notes?.length);
+    for (const id of ['contextual-entity', 'tours-mobile']) assert.ok(report.non_panel.find(row => row.id === id)?.notes?.some(note => note.includes('bound to an audited')), id);
+    assert.deepEqual(report.unbound_operations, [], 'every registered operation is bound to an audited control');
+    // Non-panel families are bound to audited controls too, and count toward complete.
+    assert.deepEqual(report.non_panel.flatMap(row => row.gaps.map(gap => `${row.id}: ${gap}`)), []);
   });
   it('refuses overflow coordinates and incomplete closed perimeters', async () => {
     assert.equal((await execute('measurements.distance', { start: [0, 0, 0], end: [1e308, 0, 0] })).isError, true);

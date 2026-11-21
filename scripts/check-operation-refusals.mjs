@@ -34,8 +34,13 @@ export function plainErrorLines(file, text) {
   const source = ts.createSourceFile(file, text, ts.ScriptTarget.ESNext);
   const lines = [];
   const visit = (node) => {
-    if ((ts.isNewExpression(node) || ts.isCallExpression(node)) && ts.isIdentifier(node.expression) && BUILTIN_ERRORS.has(node.expression.text))
-      lines.push(source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1);
+    if (ts.isNewExpression(node) || ts.isCallExpression(node)) {
+      let callee = node.expression;
+      while (ts.isParenthesizedExpression(callee)) callee = callee.expression;
+      if (ts.isIdentifier(callee) && BUILTIN_ERRORS.has(callee.text)) {
+        lines.push(source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1);
+      }
+    }
     ts.forEachChild(node, visit);
   };
   visit(source);

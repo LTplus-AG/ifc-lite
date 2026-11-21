@@ -40,6 +40,16 @@ test('Error(), TypeError, RangeError, SyntaxError and reject(new Error()) are vi
   assert.equal(result.violations.length, 5);
 });
 
+test('parenthesized built-in constructors and calls are violations (#10871)', () => {
+  const result = check({ 'a.ts': [
+    "throw new (Error)('unknown zone');",
+    "throw ((TypeError))('invalid value');",
+    "throw new (factory.Error)('member');",
+    "const example = \"throw new (Error)('a string')\";",
+  ].join('\n') });
+  assert.deepEqual(result.violations, [1, 2].map(line => `${OPERATIONS_DIR}/a.ts:${line}`));
+});
+
 test('an Error built first and thrown later, or a built-in subclass, is a violation', () => {
   const result = check({ 'b.ts': "const err = new Error('Unknown zone.');\nthrow err;\nthrow Object.assign(new URIError('u'), {});\nthrow new AggregateError([], 'a');\nreturn Promise.reject(Error('r'));\nthrow ReferenceError('x');\n" });
   assert.equal(result.violations.length, 5);

@@ -9369,7 +9369,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "lists.run",
     "version": 1,
     "owner": "lists",
-    "description": "Await a saved native federated list query with provenance; publish completed rows to the panel and return a bounded page. Cancels before publishing.",
+    "description": "Await a saved native federated list query with provenance; publish completed rows to the panel and return a bounded page. Cancels before publishing. Pass next_offset and page_revision to continue.",
     "needs": "model",
     "effects": [
       "read",
@@ -9387,6 +9387,11 @@ export const operationContracts: readonly OperationContract[] = [
         "offset": {
           "type": "integer",
           "minimum": 0
+        },
+        "page_revision": {
+          "type": "string",
+          "maxLength": 64,
+          "nullable": true
         },
         "limit": {
           "type": "integer",
@@ -9416,6 +9421,15 @@ export const operationContracts: readonly OperationContract[] = [
         "executionTime": {
           "type": "number"
         },
+        "next_offset": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "page_revision": {
+          "type": "string"
+        },
         "groups": {
           "type": "array",
           "nullable": true
@@ -9429,7 +9443,9 @@ export const operationContracts: readonly OperationContract[] = [
         "columns",
         "rows",
         "totalCount",
-        "executionTime"
+        "executionTime",
+        "next_offset",
+        "page_revision"
       ]
     },
     "result": "value",
@@ -9508,7 +9524,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "document.library",
     "version": 1,
     "owner": "document",
-    "description": "Read a bounded page of document summaries and compact SHA-256 revisions; embedded media, blocks and AI evidence stay local. Defaults offset=0, limit=20. Inspect paged block metadata or export native JSON for complete content.",
+    "description": "Read a bounded page of document summaries and compact SHA-256 revisions; embedded media, blocks and AI evidence stay local. Defaults offset=0, limit=20. Pass next_offset and page_revision to continue. Inspect paged block metadata or export native JSON for complete content.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -9520,6 +9536,11 @@ export const operationContracts: readonly OperationContract[] = [
         "offset": {
           "type": "integer",
           "minimum": 0,
+          "nullable": true
+        },
+        "page_revision": {
+          "type": "string",
+          "maxLength": 64,
           "nullable": true
         },
         "limit": {
@@ -9547,6 +9568,9 @@ export const operationContracts: readonly OperationContract[] = [
             "null"
           ]
         },
+        "page_revision": {
+          "type": "string"
+        },
         "storage": {
           "type": "object"
         },
@@ -9561,6 +9585,7 @@ export const operationContracts: readonly OperationContract[] = [
         "documents",
         "total",
         "next_offset",
+        "page_revision",
         "storage",
         "activeId"
       ],
@@ -14091,7 +14116,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "zones.read",
     "version": 1,
     "owner": "zones",
-    "description": "Inspect complete native zone configuration and current assignment/apportionment results. Coordinates are renderer Y-up metres; rotations are radians.",
+    "description": "Inspect native zones as flat rows, each tagged with kind: set (one per zone set, without its zones), zone, apportionment (one per computed set, with stale when the set changed since), apportioned and refused (one per element of it), and assignment (one per element and zone set). Every page carries configuration_revision (the expected_configuration of every zone edit; each edit also returns the next one), timing and counts by kind. Pass page.next_offset as offset with page.page_revision as page_revision until next_offset is null; a change in between is refused, so read again from 0. Coordinates are renderer Y-up metres; rotations are radians.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -14099,7 +14124,18 @@ export const operationContracts: readonly OperationContract[] = [
     "capability": "read",
     "inputSchema": {
       "type": "object",
-      "properties": {},
+      "properties": {
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "nullable": true
+        },
+        "page_revision": {
+          "type": "string",
+          "maxLength": 64,
+          "nullable": true
+        }
+      },
       "required": [],
       "additionalProperties": false
     },
@@ -14124,7 +14160,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "zones.set.create",
     "version": 1,
     "owner": "zones",
-    "description": "Create a native zone set after checking the exact configuration snapshot.",
+    "description": "Create a native zone set after checking the exact configuration revision. Returns set_id and the next configuration_revision.",
     "needs": "viewer",
     "effects": [
       "configuration"
@@ -14140,7 +14176,7 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "expected_configuration": {
           "type": "string",
-          "maxLength": 1000000
+          "maxLength": 64
         }
       },
       "required": [
@@ -14170,7 +14206,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "zones.set.edit",
     "version": 1,
     "owner": "zones",
-    "description": "Remove/rename/show a native zone set through the exact panel store handlers.",
+    "description": "Remove/rename/show a native zone set through the exact panel store handlers. Returns a receipt and the next configuration_revision; read sets with zones.read.",
     "needs": "viewer",
     "effects": [
       "configuration"
@@ -14201,7 +14237,7 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "expected_configuration": {
           "type": "string",
-          "maxLength": 1000000
+          "maxLength": 64
         }
       },
       "required": [
@@ -14234,7 +14270,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "zones.box.write",
     "version": 1,
     "owner": "zones",
-    "description": "Create (empty zone_id) or numerically update an oriented native zone box in renderer Y-up metres/radians. A footprint prism keeps its plan centre, plan size and heading; only name, vertical centre and height may change.",
+    "description": "Create (empty zone_id) or numerically update an oriented native zone box in renderer Y-up metres/radians. A footprint prism keeps its plan centre, plan size and heading; only name, vertical centre and height may change. Returns set_id, zone_id and the next configuration_revision.",
     "needs": "viewer",
     "effects": [
       "configuration"
@@ -14306,7 +14342,7 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "expected_configuration": {
           "type": "string",
-          "maxLength": 1000000
+          "maxLength": 64
         }
       },
       "required": [
@@ -14341,7 +14377,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "zones.box.remove",
     "version": 1,
     "owner": "zones",
-    "description": "Remove an exact existing native zone.",
+    "description": "Remove an exact existing native zone. Returns set_id, zone_id and the next configuration_revision.",
     "needs": "viewer",
     "effects": [
       "configuration"
@@ -14362,7 +14398,7 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "expected_configuration": {
           "type": "string",
-          "maxLength": 1000000
+          "maxLength": 64
         }
       },
       "required": [
@@ -14393,7 +14429,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "zones.import",
     "version": 1,
     "owner": "zones",
-    "description": "Import complete zone sets through the authoritative native parser. Supports native box/prism footprints and colors without a second geometry implementation.",
+    "description": "Import complete zone sets through the authoritative native parser. Supports native box/prism footprints and colors without a second geometry implementation. Returns the set count and the next configuration_revision; read sets with zones.read.",
     "needs": "viewer",
     "effects": [
       "configuration"
@@ -14408,7 +14444,7 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "expected_configuration": {
           "type": "string",
-          "maxLength": 1000000
+          "maxLength": 64
         }
       },
       "required": [
@@ -14438,7 +14474,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "zones.generateStoreys",
     "version": 1,
     "owner": "zones",
-    "description": "Generate and replace a zone set using the same native current-storey geometry/frame service as the panel.",
+    "description": "Generate and replace a zone set using the same native current-storey geometry/frame service as the panel. Returns set_id, zone_count and the next configuration_revision.",
     "needs": "viewer",
     "effects": [
       "configuration"
@@ -14454,7 +14490,7 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "expected_configuration": {
           "type": "string",
-          "maxLength": 1000000
+          "maxLength": 64
         }
       },
       "required": [
@@ -14484,7 +14520,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "zones.assign",
     "version": 1,
     "owner": "zones",
-    "description": "Recompute native assignments using the live renderer’s canonical entity bounds. Requires a mounted renderer; never fabricates an empty successful evaluation.",
+    "description": "Recompute native assignments using the live renderer’s canonical entity bounds; returns element_count (every element evaluated, assigned or not) and the timing (read the assignments with zones.read). Requires a mounted renderer; never fabricates an empty successful evaluation.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -14563,7 +14599,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "zones.apportion",
     "version": 1,
     "owner": "zones",
-    "description": "Run native proved-solid volume apportionment for a current zone set. Native unavailable/unproved-solid diagnostics remain explicit.",
+    "description": "Run native proved-solid volume apportionment for a current zone set. Returns apportioned_count, refused_count, refusals by reason (no-geometry, unproved-solid, ...) and timing; the per-element rows are stored and read through zones.read as apportioned and refused rows.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -15292,7 +15328,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "zones.writeback.prepare",
     "version": 1,
     "owner": "zones",
-    "description": "Prepare native zone property/quantity writeback or removal with explicit complete target model population. The preview is the same native facts table as export. Native writeback reports per-model partial outcomes and uses explicit Remove as its inverse; it does not enter native Undo history.",
+    "description": "Prepare native zone property/quantity writeback or removal with explicit complete target model population. The preview is the same native facts table as export: row_count rows, with as many as fit the result limit (truncated says when some were left out; apply writes every row, so review a truncated table in full with zones.table.export). Native writeback reports per-model partial outcomes and uses explicit Remove as its inverse; it does not enter native Undo history.",
     "needs": "model",
     "effects": [
       "read"
@@ -17917,7 +17953,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "validation.results",
     "version": 1,
     "owner": "validation",
-    "description": "Inspect a bounded page of canonical native specification findings, preserving complete native entity/requirement diagnostics in each returned specification.",
+    "description": "Inspect a bounded page of canonical native specification findings, preserving complete native entity/requirement diagnostics in each returned specification. Pass next_offset and page_revision to continue.",
     "needs": "model",
     "effects": [
       "read"
@@ -17934,6 +17970,11 @@ export const operationContracts: readonly OperationContract[] = [
         "offset": {
           "type": "integer",
           "minimum": 0
+        },
+        "page_revision": {
+          "type": "string",
+          "maxLength": 64,
+          "nullable": true
         },
         "limit": {
           "type": "integer",
@@ -18197,7 +18238,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "validation.reports.read",
     "version": 1,
     "owner": "validation",
-    "description": "Read the native durable report library and its persistence diagnostics with no model required. Historical evidence never installs old entity IDs into the scene.",
+    "description": "Read the native durable report library, one page at a time (pass next_offset as offset with the page_revision of the previous page until next_offset is null; a list that changed in between is refused, so read again from 0), and its persistence diagnostics with no model required. expected_reports is the whole library revision. storage summarizes the whole library (phase, recovered, entry_count, counts by save state) and maps the ids on this page to their save states; save states of removed entries page after the entries. Historical evidence never installs old entity IDs into the scene.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -18205,7 +18246,18 @@ export const operationContracts: readonly OperationContract[] = [
     "capability": "read",
     "inputSchema": {
       "type": "object",
-      "properties": {},
+      "properties": {
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "nullable": true
+        },
+        "page_revision": {
+          "type": "string",
+          "maxLength": 64,
+          "nullable": true
+        }
+      },
       "required": [],
       "additionalProperties": false
     },
@@ -18259,7 +18311,7 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "expected_reports": {
           "type": "string",
-          "maxLength": 1000000
+          "maxLength": 64
         }
       },
       "required": [
@@ -24227,7 +24279,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "annotations.read",
     "version": 1,
     "owner": "viewport",
-    "description": "Read a bounded page of native annotation records, including attribution, timestamps and model/entity anchors in annotation_json.",
+    "description": "Read a bounded page of native annotation records, including attribution, timestamps and model/entity anchors. Pass next_offset and page_revision to continue.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -24239,6 +24291,11 @@ export const operationContracts: readonly OperationContract[] = [
         "offset": {
           "type": "integer",
           "minimum": 0,
+          "nullable": true
+        },
+        "page_revision": {
+          "type": "string",
+          "maxLength": 64,
           "nullable": true
         },
         "limit": {
@@ -24258,14 +24315,13 @@ export const operationContracts: readonly OperationContract[] = [
           "type": "integer"
         },
         "next_offset": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
+          "type": [
+            "integer",
+            "null"
           ]
+        },
+        "page_revision": {
+          "type": "string"
         },
         "records": {
           "type": "array",
@@ -24277,6 +24333,7 @@ export const operationContracts: readonly OperationContract[] = [
       "required": [
         "total",
         "next_offset",
+        "page_revision",
         "records"
       ],
       "additionalProperties": false
@@ -25594,7 +25651,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "clash.results",
     "version": 1,
     "owner": "clash",
-    "description": "Read a bounded page of complete native clash pairs and durable review annotations.",
+    "description": "Read a bounded page of complete native clash pairs and durable review annotations. Pass next_offset and page_revision to continue.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -25606,6 +25663,11 @@ export const operationContracts: readonly OperationContract[] = [
         "offset": {
           "type": "integer",
           "minimum": 0
+        },
+        "page_revision": {
+          "type": "string",
+          "maxLength": 64,
+          "nullable": true
         },
         "limit": {
           "type": "integer",
@@ -26320,7 +26382,7 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "expected_library": {
           "type": "string",
-          "maxLength": 1000000
+          "maxLength": 64
         }
       },
       "required": [
@@ -26351,7 +26413,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "clash.groups.read",
     "version": 1,
     "owner": "clash",
-    "description": "Read native durable manual-group workspaces, active population and save state; supplies exact workspace snapshot guards.",
+    "description": "Read native durable manual-group workspaces (entries, one page at a time: pass next_offset as offset with the page_revision of the previous page until next_offset is null; a list that changed in between is refused, so read again from 0), active population and save state. expected_library is the revision of the whole library and its active workspace, also the expected_groups of clash.drafts.create. status summarizes the whole library (phase, recovered, entry_count, counts by save state) and maps the ids on this page to their save states; save states of removed entries page after the entries.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -26359,7 +26421,18 @@ export const operationContracts: readonly OperationContract[] = [
     "capability": "read",
     "inputSchema": {
       "type": "object",
-      "properties": {},
+      "properties": {
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "nullable": true
+        },
+        "page_revision": {
+          "type": "string",
+          "maxLength": 64,
+          "nullable": true
+        }
+      },
       "required": [],
       "additionalProperties": false
     },
@@ -26451,7 +26524,7 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "expected_library": {
           "type": "string",
-          "maxLength": 1000000
+          "maxLength": 64
         }
       },
       "required": [
@@ -26609,7 +26682,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "clash.reports.read",
     "version": 1,
     "owner": "clash",
-    "description": "Inspect durable native clash reports, immutable evidence and persistence diagnostics. Saved results never install historical runtime IDs into the current scene.",
+    "description": "Inspect durable native clash reports, immutable evidence and persistence diagnostics, one page at a time: pass next_offset as offset with the page_revision of the previous page until next_offset is null; a list that changed in between is refused, so read again from 0. expected_reports is the whole library revision. storage summarizes the whole library (phase, recovered, entry_count, counts by save state) and maps the ids on this page to their save states; save states of removed entries page after the entries. Saved results never install historical runtime IDs into the current scene.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -26617,7 +26690,18 @@ export const operationContracts: readonly OperationContract[] = [
     "capability": "read",
     "inputSchema": {
       "type": "object",
-      "properties": {},
+      "properties": {
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "nullable": true
+        },
+        "page_revision": {
+          "type": "string",
+          "maxLength": 64,
+          "nullable": true
+        }
+      },
       "required": [],
       "additionalProperties": false
     },
@@ -26720,7 +26804,7 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "expected_reports": {
           "type": "string",
-          "maxLength": 10000000
+          "maxLength": 64
         }
       },
       "required": [
@@ -27334,7 +27418,7 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "expected_groups": {
           "type": "string",
-          "maxLength": 1000000
+          "maxLength": 64
         },
         "name": {
           "type": "string",
@@ -30220,7 +30304,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "filters.results",
     "version": 1,
     "owner": "search",
-    "description": "Read a bounded page of the native Search Filter result. current=false means its recorded source revision changed; null means a legacy/native UI result did not record a revision. Never presents that unverified result as a fresh analysis.",
+    "description": "Read a bounded page of the native Search Filter result. current=false means its recorded source revision changed; null means a legacy/native UI result did not record a revision. Never presents that unverified result as a fresh analysis. Pass next_offset and page_revision to continue.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -30232,6 +30316,11 @@ export const operationContracts: readonly OperationContract[] = [
         "offset": {
           "type": "integer",
           "minimum": 0
+        },
+        "page_revision": {
+          "type": "string",
+          "maxLength": 64,
+          "nullable": true
         },
         "limit": {
           "type": "integer",
@@ -31320,7 +31409,7 @@ export const operationContracts: readonly OperationContract[] = [
     "features": [
       "export.files"
     ],
-    "description": "Prepare native anonymized-isolated export membership with explicit source-model seeds, full relationship expansion, locked spatial containers, individual/type exclusions and coupled anonymization controls. Preview only; native source-record behavior intentionally excludes unsaved created entities.",
+    "description": "Prepare native anonymized-isolated export membership with explicit source-model seeds, full relationship expansion, locked spatial containers, individual/type exclusions and coupled anonymization controls. Preview only; native source-record behavior intentionally excludes unsaved created entities. truncated means relationship expansion hit its work budget, as the export dialog truncated badge shows.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -31496,12 +31585,16 @@ export const operationContracts: readonly OperationContract[] = [
         },
         "groups": {
           "type": "array"
+        },
+        "truncated": {
+          "type": "boolean"
         }
       },
       "required": [
         "included_ids",
         "locked_ids",
-        "groups"
+        "groups",
+        "truncated"
       ],
       "additionalProperties": false
     },
@@ -31520,7 +31613,7 @@ export const operationContracts: readonly OperationContract[] = [
     "features": [
       "export.files"
     ],
-    "description": "Produce the exact native anonymized IFC subset after rechecking preview membership. Uses the same source-record anonymizer and filename/privacy defaults as the UI. Returns native scrub/pruning warnings; GUID correlation maps stay private and are not exported.",
+    "description": "Produce the exact native anonymized IFC subset after rechecking preview membership. Uses the same source-record anonymizer and filename/privacy defaults as the UI. Returns diagnostic counts and bounded ID and warning samples; GUID correlation maps stay private and are not exported.",
     "needs": "viewer",
     "effects": [
       "artifact"
@@ -33582,7 +33675,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "document.inspect",
     "version": 1,
     "owner": "document",
-    "description": "Inspect one document revision/page metadata and a bounded page of block metadata. Large media bodies, evidence, generated text and long text are omitted/truncated; full native JSON remains available through document.export.",
+    "description": "Inspect one document revision/page metadata and a bounded page of block metadata. Large media bodies, evidence, generated text and long text are omitted/truncated; full native JSON remains available through document.export. Pass next_offset and page_revision to continue.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -33599,6 +33692,11 @@ export const operationContracts: readonly OperationContract[] = [
         "offset": {
           "type": "integer",
           "minimum": 0
+        },
+        "page_revision": {
+          "type": "string",
+          "maxLength": 64,
+          "nullable": true
         },
         "limit": {
           "type": "integer",
@@ -33633,6 +33731,9 @@ export const operationContracts: readonly OperationContract[] = [
             "integer",
             "null"
           ]
+        },
+        "page_revision": {
+          "type": "string"
         }
       },
       "required": [
@@ -33640,7 +33741,8 @@ export const operationContracts: readonly OperationContract[] = [
         "page_metadata_json",
         "blocks",
         "total_blocks",
-        "next_offset"
+        "next_offset",
+        "page_revision"
       ],
       "additionalProperties": false
     },

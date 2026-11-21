@@ -9,7 +9,7 @@ import { act } from 'react';
 import { IfcParser, extractPropertiesOnDemand } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
-import { render, cleanup, click } from '@/test/render';
+import { render, cleanup, click, settle } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { ExportDialog } from './ExportDialog.js';
 
@@ -87,12 +87,14 @@ describe('IFC5 export property filter uses effective candidates (#5249)', () => 
       view.setProperty(69, 'Pset_Probe', 'CustomLate', 'yes');
       useViewerStore.setState({ mutationVersion: 1 });
     });
+    await settle();
     assert.match(document.body.textContent ?? '', /Only Known IFC5 Properties/);
 
     await act(async () => {
       view.deleteEntity(69);
       useViewerStore.setState({ mutationVersion: 2 });
     });
+    await settle();
     assert.doesNotMatch(document.body.textContent ?? '', /Only Known IFC5 Properties/);
   });
 });

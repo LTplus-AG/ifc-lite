@@ -7,6 +7,7 @@ import { operation, viewerOperation, emptySchema, type OperationContext } from '
 import { assertToolActive } from '../cancellation';
 import type { ChangeOperation } from '@/lib/changes/change-operations';
 import type { ToolHost } from '../types';
+import { evictOldest } from './host-handles';
 
 const outputSchema = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 const out = (value: unknown) => ({ native_json: JSON.stringify(value ?? null) });
@@ -29,8 +30,7 @@ export const changesOperations = [
   operation(meta('changes.read', 'changes', 'Read native change operations for the selected model, including stable operation IDs, exact mutation records and current top-of-history state.'), emptySchema, async (_, c) => out(await operations(c))),
   operation<{ id: string }>({ ...meta('changes.revert.prepare', 'changes', 'Capture the exact native operation to revert. Apply rechecks native conflicts and shared-session restrictions.'), outputSchema: { type: 'object', properties: { token: { type: 'string' }, native_json: { type: 'string' } }, required: ['token', 'native_json'] } }, idInput, async (i, c) => {
     const entry = (await operations(c)).find(row => row.id === i.id); if (!entry) throw new Error('Unknown current native change operation.');
-    if (owned(c).size >= 64) throw new Error('Change-revert candidate capacity reached.');
-    const token = crypto.randomUUID(); owned(c).set(token, entry); return { token, native_json: JSON.stringify(entry) };
+    assertToolActive(c); evictOldest(owned(c), 64); const token = crypto.randomUUID(); owned(c).set(token, entry); return { token, native_json: JSON.stringify(entry) };
   }),
   operation<{ token: string }>(meta('changes.revert.apply', 'changes', 'Revert the captured native operation through the existing conflict-aware Changes-panel handler. Shared rooms and stale/overwritten values remain refused.', 'model'), {
     type: 'object', properties: { token: { type: 'string', minLength: 1, maxLength: 100 } }, required: ['token'], additionalProperties: false,

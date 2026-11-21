@@ -171,6 +171,16 @@ test('#10264 killed-after-continue fails acceptance; passes only the explicit wa
   assert.equal(phaseOf({ warning: true, tris: 0 }), 'memory warning (load not started)');
 });
 
+test('#10264 A2 every exact --expect pin passes only its own outcome', () => {
+  const { OUTCOMES, EXPECTATIONS } = lib();
+  const pins = Object.keys(EXPECTATIONS).filter((pin) => EXPECTATIONS[pin].length === 1);
+  assert.deepEqual(pins, ['killed', 'loaded', 'refused', 'awaiting-decision']);
+  for (const pin of pins) {
+    assert.deepEqual(EXPECTATIONS[pin], [pin], `--expect ${pin} names its outcome`);
+    for (const outcome of OUTCOMES) assert.equal(verdict(outcome, pin).pass, outcome === pin, `${outcome} under --expect ${pin}`);
+  }
+});
+
 test('#10264 CLI options are validated before anything runs', () => {
   const ok = { expect: 'killed', cap: '3G', kind: 'tfs', 'target-mb': '300', cores: '4', 'device-memory': '4', 'cpu-quota': '400%' };
   assert.deepEqual(optionErrors(ok), []);

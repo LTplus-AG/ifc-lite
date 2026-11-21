@@ -60,6 +60,17 @@ describe('native Clash operation parity (#10525 follow-up)', () => {
       value(await call('clash.run', runInput('duplicates'), true));
       assert.equal(runRequestOf(useViewerStore.getState().clashRawResult)?.kind, 'duplicates');
     });
+  it('refuses a continuation after native clash review changes a page row (#10877)', async () => {
+    await seedCoincidentWalls(1, 3);
+    const { run_seq } = value<{ run_seq: number }>(await call('clash.run', runInput(), true));
+    const first = value<{ next_offset: number; page_revision: string; clashes: { clash: { id: string } }[] }>(
+      await call('clash.results', { offset: 0, limit: 1, run_seq }));
+    assert.equal(first.next_offset, 1); assert.ok(first.page_revision);
+    const next = { offset: first.next_offset, page_revision: first.page_revision, limit: 1, run_seq };
+    value(await call('clash.results', next));
+    value(await call('clash.review', { clash_id: first.clashes[0].clash.id, run_seq, status: 'accepted', comment: 'Reviewed between pages' }, true));
+    assert.equal((await call('clash.results', next)).errorCode, 'STATE_CHANGED');
+  });
   it('refuses stale settings and revoked write grants before native publication', async () => {
     const input = runInput();
     useViewerStore.getState().setClashTolerance(0.1);
@@ -153,6 +164,29 @@ describe('native Clash operation parity (#10525 follow-up)', () => {
     );
     assert.equal(topic.isError, true);
     assert.equal(useViewerStore.getState().bcfProject, null);
+  });
+  it('clash.drafts.create drafts the reviewed active workspace and refuses a token read before a workspace switch (#10794)', async (t) => {
+    const run = value<{ run_seq: number }>(await call('clash.run', runInput(), true));
+    const id = useViewerStore.getState().clashResult!.clashes[0].id;
+    const [row] = value<Array<{ member: unknown }>>(await call('clash.groups.evidence', { run_seq: run.run_seq, clash_ids: [id] }));
+    const workspace = { version: 1, id: 'reviewed', name: 'Reviewed', groups: [{ id: 'g', name: 'Walls', members: [row.member] }] };
+    const written = value<{ expected_library: string }>(await call('clash.groups.write', { workspace_json: JSON.stringify(workspace), expected_library: value<{ expected_library: string }>(await call('clash.groups.read')).expected_library }, true));
+    const selected = value<{ active_id: string; expected_library: string }>(await call('clash.groups.library', { action: 'select', workspace_id: 'reviewed', expected_library: written.expected_library }, true));
+    assert.equal(selected.active_id, 'reviewed');
+    const { expected_library } = value<{ expected_library: string }>(await call('clash.groups.read'));
+    assert.equal(expected_library, selected.expected_library, 'select hands back the token the next write needs');
+    const draft = { source: 'groups', clash_ids: [], run_seq: run.run_seq, name: 'Groups', title: 'Groups' };
+    // Another client switches the active workspace between this read and the draft.
+    const { useClashGroupLibrary, DEFAULT_GROUP_WORKSPACE } = await import('@/lib/clash/group-workspace');
+    t.after(() => useClashGroupLibrary.setState({ entries: useClashGroupLibrary.getState().entries.filter(entry => entry.id !== 'reviewed'), activeId: DEFAULT_GROUP_WORKSPACE }));
+    useClashGroupLibrary.setState({ activeId: DEFAULT_GROUP_WORKSPACE });
+    const stale = await call('clash.drafts.create', { ...draft, expected_groups: expected_library }, true);
+    assert.equal(stale.isError, true); assert.match(stale.text, /Manual groups changed/);
+    useClashGroupLibrary.setState({ activeId: 'reviewed' });
+    const created = await call('clash.drafts.create', { ...draft, expected_groups: expected_library }, true);
+    assert.equal(created.isError, false, created.text);
+    const result = (created.structured as { result: { batch_id: string; topics: number } }).result;
+    assert.ok(result.batch_id); assert.equal(result.topics, 1, 'one topic for the one reviewed group');
   });
   it('rejects overlapping occurrence claims through the real native manual-group codec', async () => {
     const result = value<{ run_seq: number }>(await call('clash.run', runInput(), true));

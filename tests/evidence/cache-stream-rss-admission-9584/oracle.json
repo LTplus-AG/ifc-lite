@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "this PR adds scripts/perf/cache-stream-report.mjs, so a derived revert deletes the module its witness imports (REVERT-BROKE-BUILD); this keeps the module and makes a failed measurement stop blocking admission, so a run whose highest-peak round was killed is reported as acceptance evidence over the rounds that survived.",
+  "key": "scripts/perf/cache-stream-report.mjs",
+  "mutation": "tests/evidence/cache-stream-rss-admission-9584/behaviour.oracle.patch",
+  "test": "scripts/perf/cache-stream-report.test.mjs"
+}

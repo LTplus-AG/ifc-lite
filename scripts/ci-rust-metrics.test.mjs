@@ -165,8 +165,15 @@ test('each retained and CSG command has a distinct summary identity (#10279)', (
   for (const job of ['rust-retained', 'csg-accept-gates']) {
     const identities = new Set();
     let commands = 0;
-    for (const step of workflow.jobs[job].steps) {
-      for (const line of (step.run || '').split('\n')) {
+    const { steps, strategy } = workflow.jobs[job];
+    const legs = strategy?.matrix.include ?? [{}];
+    const runLines = steps.flatMap((step) => (step.run || '').split('\n'));
+    for (const leg of legs) {
+      for (const runLine of runLines) {
+        const line = runLine.replace(/\$\{\{ matrix\.features \}\}/g, () => {
+          assert.ok(leg.features, 'each CSG leg supplies its Cargo features');
+          return leg.features;
+        });
         const match = /node scripts\/ci-rust-metrics\.mjs (\S+) (test|clippy|command) /.exec(line);
         if (!match) continue;
         const identity = `${match[1]} / ${match[2]}`;

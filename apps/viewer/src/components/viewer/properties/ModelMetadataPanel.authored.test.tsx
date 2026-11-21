@@ -16,7 +16,7 @@ import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { useViewerStore, type FederatedModel } from '@/store';
-import { render, cleanup } from '@/test/render';
+import { render, cleanup, settle, waitFor } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { setLocale } from '@/i18n';
 import { buildTreeData } from '@/components/viewer/hierarchy/treeDataBuilder';
@@ -94,6 +94,7 @@ describe('Model info after authoring (#9026)', () => {
     const { model, view } = await seed();
     const ui = render(<ModelMetadataPanel model={model} />);
     act(() => addWall());
+    await settle();
     const created = view.getNewEntities();
     assert.ok(created.length > 1, 'a wall writes itself and its helper entities');
     assert.equal(row(ui, 'Total Entities'), String(SOURCE_ENTITIES + created.length));
@@ -104,6 +105,7 @@ describe('Model info after authoring (#9026)', () => {
 
   it('counts a deleted source entity once, and a created-then-deleted one not at all', async () => {
     const { model, view } = await seed();
+    await settle();
     const ui = render(<ModelMetadataPanel model={model} />);
     const edit = (change: () => void) => act(() => {
       change();
@@ -111,12 +113,15 @@ describe('Model info after authoring (#9026)', () => {
     });
     view.setExpressIdWatermark(SOURCE_MAX_ID);
     edit(() => view.deleteEntity(36));
+    await waitFor(() => row(ui, 'Total Entities') === String(SOURCE_ENTITIES - 1), 'the deletion reaches the panel');
     assert.equal(row(ui, 'Total Entities'), String(SOURCE_ENTITIES - 1));
     let createdId = 0;
     edit(() => { createdId = view.createEntity('IfcBuildingElementPart', []).expressId; });
+    await waitFor(() => row(ui, 'Max Express ID') === String(createdId), 'the creation reaches the panel');
     assert.equal(row(ui, 'Total Entities'), String(SOURCE_ENTITIES));
     assert.equal(row(ui, 'Max Express ID'), String(createdId));
     edit(() => view.deleteEntity(createdId));
+    await waitFor(() => row(ui, 'Max Express ID') === String(SOURCE_MAX_ID), 'the second deletion reaches the panel');
     assert.equal(row(ui, 'Total Entities'), String(SOURCE_ENTITIES - 1));
     assert.equal(row(ui, 'Max Express ID'), String(SOURCE_MAX_ID));
   });

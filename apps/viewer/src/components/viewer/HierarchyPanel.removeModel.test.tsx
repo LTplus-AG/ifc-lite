@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { PropertyValueType } from '@ifc-lite/data';
-import { render, cleanup, click } from '@/test/render.js';
+import { render, cleanup, click, settle } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { SourceHostProvider } from '@/services/sources/SourceHostProvider';
@@ -40,7 +40,7 @@ function dialogButton(label: string): HTMLButtonElement | undefined {
 }
 
 describe('HierarchyPanel — removing a model with unexported changes (#5604)', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     const edited = new MutablePropertyView(null, 'edited');
     edited.setProperty(1, 'Pset_WallCommon', 'FireRating', 'REI60', PropertyValueType.Label);
     useViewerStore.setState({
@@ -55,6 +55,7 @@ describe('HierarchyPanel — removing a model with unexported changes (#5604)', 
       scheduleIsEdited: false,
       scheduleSourceModelId: null,
     });
+    await settle();
   });
 
   afterEach(() => {

@@ -2,11 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useViewerStore } from '@/store';
-import { viewerOperation, emptySchema } from './contract';
+import { viewerOperation } from './contract';
 import { assertToolActive } from '../cancellation';
 import type { ToolHost } from '../types';
 import type { SavedClashReport } from '@/lib/clash/saved-report-schema';
 import { evictOldest } from './host-handles';
+import { pageInput, type PageInput } from './result-limit';
+import { libraryPage } from './library-page';
+import { assertRevision, revisionInput, stateRevision } from './state-revision';
 const outputSchema = {
   type: 'object',
   properties: { native_json: { type: 'string' } },
@@ -37,30 +40,37 @@ function owned(host: ToolHost) {
   }
   return map;
 }
+/** Every live and durable dependency, refusing a preview that could not read them all: a reference it
+ * cannot see would be broken by the deletion. */
 async function dependencies(id: string) {
   const [{ loadDocuments }, { reportChartDependencies }] = await Promise.all([
     import('@/lib/document/persistence'),
     import('@/lib/reports/chart-dependencies'),
   ]);
   const entries = await loadDocuments();
-  return reportChartDependencies(useViewerStore.getState(), { kind: 'clash', id }, { entries, phase: 'ready' });
+  const preview = reportChartDependencies(useViewerStore.getState(), { kind: 'clash', id }, { entries, phase: 'ready' });
+  // Opening the library is a configuration effect of its own, so a read does not do it here.
+  if (preview.documentPhase === 'loading') throw new Error('The Documents library is not open yet. Run document.initialize, then prepare again.');
+  // Invalid single dashboards (omittedDashboards) and recovered documents stay in the preview for the agent to
+  // weigh, as the panel shows them; only storage that could not be read at all hides every reference in it.
+  if (preview.documentPhase === 'unavailable' || preview.dashboardsUnavailable)
+    throw new Error('Saved dashboards or Documents could not be read, so their references to this report are unknown. Restore that storage, then prepare again.');
+  return preview;
 }
 export const clashReportOperations = [
-  viewerOperation(
+  viewerOperation<PageInput>(
     meta(
       'clash.reports.read',
-      'Inspect durable native clash reports, immutable evidence and persistence diagnostics. Saved results never install historical runtime IDs into the current scene.',
+      'Inspect durable native clash reports, immutable evidence and persistence diagnostics, one page at a time: pass next_offset as offset with the page_revision of the previous page until next_offset is null; a list that changed in between is refused, so read again from 0. expected_reports is the whole library revision. storage summarizes the whole library (phase, recovered, entry_count, counts by save state) and maps the ids on this page to their save states; save states of removed entries page after the entries. Saved results never install historical runtime IDs into the current scene.',
     ),
-    emptySchema,
-    async (_, c) => {
+    pageInput,
+    async (i, c) => {
       await useViewerStore.getState().initializeSavedClashReports();
       assertToolActive(c);
       const s = useViewerStore.getState();
-      return out({
-        reports: s.savedClashReports,
-        storage: s.savedClashReportsStorage,
-        expected_reports: JSON.stringify(s.savedClashReports),
-      });
+      const expected_reports = stateRevision(s.savedClashReports);
+      const { entries: reports, page, storage } = libraryPage(s.savedClashReports, s.savedClashReportsStorage, i, { expected_reports });
+      return out({ reports, ...page, storage, expected_reports });
     },
   ),
   viewerOperation<{ name: string; run_seq: number }>(
@@ -109,7 +119,7 @@ export const clashReportOperations = [
         id: { type: 'string', maxLength: 200 },
         name: { type: 'string', maxLength: 200 },
         report_json: { type: 'string', maxLength: 10000000 },
-        expected_reports: { type: 'string', maxLength: 10000000 },
+        expected_reports: revisionInput,
       },
       required: ['action', 'id', 'name', 'report_json', 'expected_reports'],
       additionalProperties: false,
@@ -125,7 +135,7 @@ export const clashReportOperations = [
       assertToolActive(c);
       const ok = await c.commitAsync(() => {
         const s = useViewerStore.getState();
-        if (JSON.stringify(s.savedClashReports) !== i.expected_reports) throw new Error('Saved reports changed.');
+        assertRevision(s.savedClashReports, i.expected_reports, 'Saved reports changed.');
         if (i.action === 'restore') return s.restoreSavedClashReports();
         if (i.action === 'retry') return s.retrySaveClashReports();
         if (i.action === 'import') return s.saveClashReport(report!);
@@ -184,9 +194,17 @@ export const clashReportOperations = [
       )
         throw new Error('Deletion target or dependencies changed. Preview again.');
       let staged = false;
+      // The library also runs this on a later storage retry, after this call has ended or lost its grant.
+      // Refusing then (not throwing) lets the library restore the report instead of leaving it hidden.
       const guard = async () => {
-        const latest = await dependencies(candidate.report.id);
-        assertToolActive(c);
+        let latest: Awaited<ReturnType<typeof dependencies>>;
+        try {
+          latest = await dependencies(candidate.report.id);
+          assertToolActive(c);
+        } catch (error) {
+          console.warn('[Clash reports] Deletion guard refused:', error);
+          return false;
+        }
         const now = useViewerStore.getState();
         if (
           now.deleteSavedClashReport !== candidate.action ||

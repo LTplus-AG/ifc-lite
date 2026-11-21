@@ -17,7 +17,7 @@ import type { ClashResult } from '@ifc-lite/clash';
 import { optionalLocalStorage } from '../storage/unreadable-entry.js';
 import type { SaveResult } from './persistence.js';
 
-const BASELINE_KEY = 'ifc-lite-clash-revision-baseline';
+export const BASELINE_KEY = 'ifc-lite-clash-revision-baseline';
 const SCHEMA_VERSION = 1;
 
 /**
@@ -57,25 +57,29 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
-/**
- * Minimal structural check — this is a same-origin, same-app round trip
- * (never cross-version import), so it only needs to reject garbage, not
- * validate every field of a foreign `ClashResult`.
- *
- * `result.clashes` MUST be an array: `compareClashRuns`/`compareClashRevisions`
- * both do `for (const clash of run.clashes)` with no defensive check of their
- * own (a `ClashResult` is an engine-produced value everywhere else, so that's
- * the right call there) — a structurally-thin corrupted baseline whose
- * `result` is merely `{}` used to pass this check (an object IS a plain
- * object) and then throw uncaught, mid-iteration, inside a dialog click
- * handler with no try/catch. Checking the shape HERE, at load time, is what
- * lets `loadRevisionBaseline` fail safely into the already-handled "no
- * baseline saved" state instead of leaking a malformed value into the app.
- */
-function isStoredBaseline(v: unknown): v is { result: { clashes: unknown[] }; modelNames: unknown; takenAt: number } {
+function isStoredBaseline(v: unknown): v is { result: Record<string, unknown> & { clashes: unknown[] }; modelNames: unknown; takenAt: number } {
   if (!isPlainObject(v)) return false;
   if (!isPlainObject(v.result) || !Array.isArray(v.result.clashes)) return false;
   return isPlainObject(v.modelNames) && typeof v.takenAt === 'number';
+}
+
+/** The native baseline format also serves as the portable backup codec. */
+export function decodeRevisionBaseline(text: string): ClashRevisionBaseline {
+  const parsed: unknown = JSON.parse(text);
+  if (!isPlainObject(parsed) || parsed.schemaVersion !== SCHEMA_VERSION || !isStoredBaseline(parsed.baseline)) {
+    throw new Error('Invalid or unsupported saved clash baseline');
+  }
+  const { result, modelNames, takenAt } = parsed.baseline;
+  const isRef = (ref: unknown) => isPlainObject(ref) && typeof ref.model === 'string' && typeof ref.key === 'string';
+  if (!Number.isFinite(takenAt) || !isPlainObject(modelNames) || Object.values(modelNames).some(name => typeof name !== 'string')
+    || !Array.isArray(result.rulesRun) || !result.rulesRun.every(rule => isPlainObject(rule) && typeof rule.id === 'string')
+    || !result.clashes.every(clash => isPlainObject(clash) && typeof clash.id === 'string' && typeof clash.rule === 'string'
+      && typeof clash.status === 'string' && typeof clash.severity === 'string'
+      && (typeof clash.distance === 'number' || clash.distance === null) && isRef(clash.a) && isRef(clash.b))
+    || (result.ruleCoverage !== undefined && (!Array.isArray(result.ruleCoverage) || !result.ruleCoverage.every(isPlainObject)))) {
+    throw new Error('Invalid saved clash baseline result');
+  }
+  return { result: result as unknown as ClashResult, modelNames: modelNames as Record<string, string>, takenAt };
 }
 
 /** Read the saved baseline, or `null` when none is stored / it fails to parse
@@ -89,31 +93,7 @@ export function loadRevisionBaseline(): ClashRevisionBaseline | null {
   try {
     const raw = storage.getItem(BASELINE_KEY);
     if (raw === null) return null;
-    const parsed: unknown = JSON.parse(raw);
-    if (!isPlainObject(parsed)) {
-      console.warn('[clash] saved revision baseline is not a JSON object; treating as absent.');
-      return null;
-    }
-    // Dead-letter versioning: written on every save (see `saveRevisionBaseline`)
-    // but never checked before this — a future incompatible schema change
-    // would otherwise be handed straight to `isStoredBaseline`, which only
-    // guards shape, not meaning.
-    if (parsed.schemaVersion !== SCHEMA_VERSION) {
-      console.warn(
-        `[clash] saved revision baseline has schema version ${String(parsed.schemaVersion)}, expected ${SCHEMA_VERSION}; treating as absent.`,
-      );
-      return null;
-    }
-    const body = parsed.baseline;
-    if (!isStoredBaseline(body)) {
-      console.warn('[clash] saved revision baseline has an unexpected shape (missing/invalid result, modelNames or takenAt); treating as absent.');
-      return null;
-    }
-    const modelNames: Record<string, string> = {};
-    for (const [id, name] of Object.entries(body.modelNames as Record<string, unknown>)) {
-      if (typeof name === 'string') modelNames[id] = name;
-    }
-    return { result: body.result as ClashResult, modelNames, takenAt: body.takenAt };
+    return decodeRevisionBaseline(raw);
   } catch (err) {
     console.warn('[clash] failed to read saved revision baseline; treating as absent.', err);
     return null;
@@ -145,7 +125,7 @@ function stripUnusedCoverage(result: ClashResult): ClashResult {
 }
 
 const baselineListeners = new Set<() => void>();
-function notifyBaselineChange(): void {
+export function notifyBaselineChange(): void {
   for (const listener of baselineListeners) {
     try { listener(); } catch (error) { console.warn('[clash] baseline change listener failed', error); }
   }
@@ -158,6 +138,10 @@ export function subscribeRevisionBaseline(listener: () => void): () => void {
   return () => { baselineListeners.delete(listener); if (typeof window !== 'undefined') window.removeEventListener('storage', onStorage); };
 }
 
+export function encodeRevisionBaseline(baseline: ClashRevisionBaseline): string {
+  return JSON.stringify({ schemaVersion: SCHEMA_VERSION, baseline: { ...baseline, result: stripUnusedCoverage(baseline.result) } });
+}
+
 /** Save (or clear, with `null`) the baseline. */
 export function saveRevisionBaseline(baseline: ClashRevisionBaseline | null): SaveResult {
   const storage = optionalLocalStorage();
@@ -168,8 +152,7 @@ export function saveRevisionBaseline(baseline: ClashRevisionBaseline | null): Sa
       notifyBaselineChange();
       return { ok: true };
     }
-    const stored: ClashRevisionBaseline = { ...baseline, result: stripUnusedCoverage(baseline.result) };
-    const payload = JSON.stringify({ schemaVersion: SCHEMA_VERSION, baseline: stored });
+    const payload = encodeRevisionBaseline(baseline);
     storage.setItem(BASELINE_KEY, payload);
     notifyBaselineChange();
     return { ok: true };

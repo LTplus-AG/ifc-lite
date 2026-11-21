@@ -19,6 +19,7 @@ import { BAFU_ATTRIBUTION } from '@ifc-lite/flood-check';
 import { ProjectUnits } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { cleanup, render } from '@/test/render';
+import { renderInViewport } from '@/test/viewport-scope';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { floodCheckFixture } from '@/test/flood-check-fixture';
 import { useViewerStore } from '@/store';
@@ -54,7 +55,7 @@ test('the fixture is a real result: the south door is exposed, the north door is
 
 test('verdict colours go to the overlay compositor by global id, and come off with the toggle and with the model', () => {
   seed();
-  render(<FloodCheckOverlay />);
+  renderInViewport(<FloodCheckOverlay />);
   const layer = () => useViewerStore.getState().overlayLayers.get(FLOOD_OVERLAY_LAYER_ID);
   const toGlobal = (id: number) => useViewerStore.getState().toGlobalId('building', id);
   assert.deepEqual(layer()?.colorOverrides?.get(toGlobal(1)), OUTCOME_COLOURS.exposed);
@@ -78,7 +79,7 @@ test('verdict colours go to the overlay compositor by global id, and come off wi
 
 test('editing the checked model drops its verdicts: they describe the file as loaded, not the edited model', () => {
   seed();
-  render(<FloodCheckOverlay />);
+  renderInViewport(<FloodCheckOverlay />);
   assert.ok(useViewerStore.getState().overlayLayers.get(FLOOD_OVERLAY_LAYER_ID));
   act(() => {
     const view = new MutablePropertyView(null, 'building');
@@ -94,7 +95,7 @@ test('editing the checked model drops its verdicts: they describe the file as lo
 
 test('the hazard legend is shown exactly while the overland flow map is draped on a visible terrain', () => {
   useViewerStore.setState({ ...fixtureModels(fixtureModel('terrain')) });
-  render(<FloodCheckOverlay />);
+  renderInViewport(<FloodCheckOverlay />);
   const legend = () => document.querySelector('[data-testid="flood-hazard-legend"]');
   const attribution = { datasetId: 'surfaceRunoff', text: '© FOEN', licence: 'open', termsUrl: 'https://example.invalid', restrictions: [], termsVerifiedOn: '2026-11-16' };
   act(() => useViewerStore.getState().registerSiteContextModel('terrain', { kind: 'terrain', attribution: [], issues: [], complete: true, origin: [0, 0, 0] }));

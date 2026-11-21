@@ -39,6 +39,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { useLens } from './useLens.js';
+import { settle } from '@/test/render.js';
 
 function ifc4(body: string): string {
   return [
@@ -152,6 +153,7 @@ describe('useLens re-evaluates after a live edit (#5207)', () => {
     await act(async () => {
       useViewerStore.getState().setAttribute('model-a', 1, 'Name', 'Renamed', 'Wall A');
     });
+    await settle();
 
     assert.equal(
       useViewerStore.getState().lensColorMap.get(1), '#ff0000',

@@ -52,7 +52,8 @@ function assertStoreyTopTarget(model: OperationContext['model'], elementId: numb
   if (!target) throw invalidInput('unknown-target', 'Unknown native storey.');
   const homeId = homeStoreyOf(inventory, elementId);
   const home = inventory.storeys.find(storey => storey.expressId === homeId);
-  if (!home || target.parentId !== home.parentId || target.elevation <= home.elevation)
+  if (!home || !Number.isFinite(home.elevation) || !Number.isFinite(target.elevation)
+    || target.parentId !== home.parentId || target.elevation <= home.elevation)
     throw invalidInput('wrong-target', 'The named storey must be above the element in the same building.');
 }
 export const storeyOperations = [

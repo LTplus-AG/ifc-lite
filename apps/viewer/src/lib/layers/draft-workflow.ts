@@ -25,6 +25,8 @@ export async function publishLocalLayerDraft(mode: 'viewer' | 'session', intent:
   }
   if (!state.collabSession || !state.collabDraftBaseline) throw new Error('A live native collaboration baseline is required.');
   const result = await publishCollabDraft({ store, doc: state.collabSession.doc, baseline: state.collabDraftBaseline, stackFiles: state.layerStack.map(entry => entry.file), intent: trimmedIntent, authorPrincipal: principal, hybrid: state.collabPeers.length > 0 || state.collabPeersSinceBaseline, refName: DEFAULT_LOCAL_REF });
+  // The layer holds the captured session's edits; a session swapped in during the await keeps its own baseline and edits.
+  if (useViewerStore.getState().collabSession !== state.collabSession) throw new Error('The collaboration session changed during publication; the layer is in the native local store but was not loaded.');
   useViewerStore.getState().resetCollabDraftBaseline(); useViewerStore.getState().clearAllMutations();
   const name = `${trimmedIntent.slice(0, 40).replace(/[^\w-]+/g, '-') || 'session-layer'}.ifcx`;
   await host.addIfcxOverlays([new File([JSON.stringify(result.file)], name, { type: 'application/json' })]);

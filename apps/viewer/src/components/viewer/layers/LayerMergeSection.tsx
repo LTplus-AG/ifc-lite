@@ -2,6 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+/**
+ * Merge section of the Layers panel (#1717 V3, 08-review.md §8.3): pick a
+ * published candidate and a target ref, preview the three-way plan, work
+ * the conflict queue (ours/theirs per conflict; subtree deletes carry
+ * their descendants as ONE decision), and execute once the queue is
+ * empty. Local refs merge in-process; registry refs merge on the server
+ * where policies and approvals are enforced.
+ */
+
 import { claimLayerAutomationReview, useLayerAutomationReview } from '@/lib/layers/automation-review';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, GitMerge, RefreshCw, XCircle } from 'lucide-react';

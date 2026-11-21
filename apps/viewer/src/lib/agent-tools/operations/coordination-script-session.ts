@@ -34,6 +34,7 @@ export const coordinationScriptSessionOperations = [
   coordination<{ name: string; source: string }>('script.create', 'Create a saved native script without executing it.', ['configuration'], {
     type: 'object', properties: { name: { type: 'string', minLength: 1, maxLength: 200 }, source: { type: 'string', maxLength: 1000000 } }, required: ['name', 'source'], additionalProperties: false,
   }, (i, c) => c.commit(() => {
+    if (useViewerStore.getState().scriptEditorDirty) throw new Error('The active script has unsaved edits; save it before creating another.');
     let storage: SaveResult | undefined; const id = useViewerStore.getState().createScript(i.name, i.source, result => { storage = result; });
     if (!id) throw new Error('Native script size or count limit exceeded.'); return { id, storage };
   })),
@@ -50,7 +51,10 @@ export const coordinationScriptSessionOperations = [
     return { id: i.id, name: useViewerStore.getState().savedScripts.find(script => script.id === i.id)?.name ?? i.name, storage }; 
   })),
   coordination('script.delete', 'Delete one saved script through its native lifecycle; this does not execute any source.', ['configuration'], idSchema, (i, c) => c.commit(() => {
-    const s = useViewerStore.getState(); if (!s.savedScripts.some(script => script.id === i.id)) throw new Error('Unknown saved script.'); const storage = s.deleteScript(i.id); return { deleted: i.id, storage }; 
+    const s = useViewerStore.getState(); if (!s.savedScripts.some(script => script.id === i.id)) throw new Error('Unknown saved script.');
+    // deleteScript resets the editor's dirty flag even for another script, which would let a later open drop these edits.
+    if (s.scriptEditorDirty && s.activeScriptId !== i.id) throw new Error('The active script has unsaved edits; save it before deleting another.');
+    const storage = s.deleteScript(i.id); return { deleted: i.id, storage }; 
   })),
   coordination('script.undo', 'Undo through the native mounted editor history. Refuses absent editor hosts instead of claiming a silent undo.', ['configuration'], emptySchema, (_, c) => c.commit(() => {
     const state = useViewerStore.getState(); if (!state.scriptEditorApplyAdapter) throw new Error('The script editor must be mounted to access its native history.');

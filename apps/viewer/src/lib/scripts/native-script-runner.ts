@@ -190,9 +190,10 @@ export class NativeScriptRunner {
       const { createViewerSandbox } = await import('@/lib/scripts/viewer-sandbox');
 
       sandbox = await createViewerSandbox(bim, config);
-      // Cancelled while the sandbox was being created: settle the store too, or it stays 'running'.
-      // Checked before taking `active`, so a cancelled run never displaces a newer run's sandbox.
-      if (this.cancellationEpoch !== cancellationEpoch) { if (stillCurrent()) setExecutionState('idle'); return null; }
+      // Cancelled, or superseded by a newer call on this runner, while the sandbox was being created:
+      // settle the store too, or it stays 'running'. Checked before taking `active`, so an older or
+      // cancelled run never displaces a newer run's sandbox; `finally` disposes the unused one.
+      if (this.cancellationEpoch !== cancellationEpoch || !stillCurrentLocally()) { if (stillCurrent()) setExecutionState('idle'); return null; }
       this.active = sandbox;
 
       const result = await sandbox.eval(code);

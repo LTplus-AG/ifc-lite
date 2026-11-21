@@ -127,6 +127,19 @@ it('script operations expose native storage failure instead of claiming durabili
   }
 });
 
+it('script create and delete refuse to drop the active script\'s unsaved edits (#10591 review)', async () => {
+  const first = await execute<{ id: string }>('script.create', { name: 'Dirty fixture', source: '1' });
+  useViewerStore.setState({ scriptEditorContent: 'edited', scriptEditorDirty: true });
+  await assert.rejects(execute('script.create', { name: 'Second', source: '2' }), /unsaved edits/);
+  useViewerStore.setState({ scriptEditorDirty: false });
+  const second = await execute<{ id: string }>('script.create', { name: 'Second', source: '2' });
+  useViewerStore.setState({ scriptEditorContent: 'edited 2', scriptEditorDirty: true });
+  await assert.rejects(execute('script.delete', { id: first.id }), /unsaved edits/);
+  assert.equal(useViewerStore.getState().scriptEditorDirty, true);
+  await execute('script.delete', { id: second.id });
+  assert.ok(!useViewerStore.getState().savedScripts.some(script => script.id === second.id));
+});
+
 it('viewer contracts create and export BCF/Flow without any IFC model (#10525)', async () => {
   useViewerStore.setState({ models: new Map(), activeModelId: null, ifcDataStore: null, geometryResult: null });
   const call = (operation_id: string, input: unknown = {}) => dispatchMainViewerTool(context.host, 'viewer_operation_execute', { operation_id, input }, { canEdit: () => true });

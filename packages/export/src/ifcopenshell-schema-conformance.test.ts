@@ -629,6 +629,8 @@ const SOURCES_10763 = {
     "#32=IFCDOCUMENTINFORMATIONRELATIONSHIP(#30,(#31),'part');",
     // #10807: same arity in both schemas, so it passed through by position.
     "#46=IFCPROCEDURE('1YvctVUKr0kugbFTf53O9L',#5,'Proc',$,$,'P-1',.CALIBRATION.,$);",
+    // #10824: the label of a .USERDEFINED. type moves to ObjectType.
+    "#47=IFCPROCEDURE('2XvctVUKr0kugbFTf53O9L',#5,'Proc2',$,$,'P-2',.USERDEFINED.,'Flush');",
     "#34=IFCLIBRARYINFORMATION('Lib','1',#2,$,$);",
     "#40=IFCIMAGETEXTURE(.T.,.T.,.TEXTURE.,$,'tex.png');",
     "#41=IFCPERFORMANCEHISTORY('0XvctVUKr0kugbFTf53O9L',#5,'History',$,$,'Operation');",
@@ -643,6 +645,7 @@ const SOURCES_10763 = {
     "#31=IFCDOCUMENTINFORMATION('D-2','Part',$,$,$,$,$,$,$,$,$,$,$,$,$,$,$);",
     "#32=IFCDOCUMENTINFORMATIONRELATIONSHIP($,$,#30,(#31),'part');",
     "#46=IFCPROCEDURE('1YvctVUKr0kugbFTf53O9L',#5,'Proc',$,$,'P-1','Long text',.SHUTDOWN.);",
+    "#47=IFCPROCEDURE('2XvctVUKr0kugbFTf53O9L',#5,'Proc2',$,'Flush','P-2',$,.USERDEFINED.);",
     "#34=IFCLIBRARYINFORMATION('Lib','1',#2,$,$,$);",
     "#41=IFCPERFORMANCEHISTORY('0XvctVUKr0kugbFTf53O9L',#5,'History',$,$,'P-1','Operation',.NOTDEFINED.);",
   ],

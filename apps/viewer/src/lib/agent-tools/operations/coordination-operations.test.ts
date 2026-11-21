@@ -204,6 +204,24 @@ it('full native editor execution reports terminal results before an IFC model ex
   assert.equal(result.state, 'completed'); assert.equal(result.result.value, 4);
 });
 
+it('a preflight failure settles the editor so the corrected source can run (#10591 review)', async () => {
+  useViewerStore.setState({ scriptEditorDirty: false });
+  await execute('script.create', { name: 'Preflight fixture', source: 'bim.nonexistent.call()' });
+  const refused = await execute<{ state: string }>('script.execute', { expected_revision: useViewerStore.getState().scriptEditorRevision });
+  assert.equal(refused.state, 'failed'); assert.equal(useViewerStore.getState().scriptExecutionState, 'error');
+  useViewerStore.getState().setScriptEditorContent('2 + 2');
+  const result = await execute<{ state: string; result: { value: unknown } }>('script.execute', { expected_revision: useViewerStore.getState().scriptEditorRevision });
+  assert.equal(result.state, 'completed'); assert.equal(result.result.value, 4);
+});
+
+it('script.open refuses to drop an unsaved draft that no saved script holds (#10591 review)', async () => {
+  useViewerStore.setState({ scriptEditorDirty: false });
+  const saved = await execute<{ id: string }>('script.create', { name: 'Target', source: '1' });
+  useViewerStore.setState({ activeScriptId: null, scriptEditorContent: 'draft', scriptEditorDirty: true });
+  await assert.rejects(execute('script.open', { id: saved.id }), /unsaved draft/);
+  assert.equal(useViewerStore.getState().scriptEditorContent, 'draft');
+});
+
 it('Flow effect admission refuses future remote nodes and detects native HTTP Player POST overrides before any effect (#10525)', async () => {
   const { flowRegistry } = await import('@/lib/flow/runner'); let ran = false;
   flowRegistry().register({ type: 'future.remotePublication', title: 'Unreviewed future provider', category: 'test', inputs: [], outputs: [], params: [], capabilities: ['network.fetch:*'], requires: { network: true }, run() { ran = true; throw new Error('Unknown effect must never run'); } });

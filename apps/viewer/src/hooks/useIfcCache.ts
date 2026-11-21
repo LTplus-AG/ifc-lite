@@ -192,6 +192,7 @@ export function useIfcCache() {
           if (await captureSceneSnapshotOfHit(cacheResult, cacheKey, { headerInfo }, isStale, trace, modelId)) {
             return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0 };
           }
+          const afterCapture = supplyMoved(); if (afterCapture) return afterCapture; // before the streaming flag is raised (r4655425345)
           getGlobalRenderer()?.getScene().limitStreamingFragments(CACHE_FIRST_PAINT_INDICES);
           setGeometryStreamingActive(true);
           try {

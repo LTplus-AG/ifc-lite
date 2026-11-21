@@ -311,7 +311,7 @@ afterEach(async () => {
 
 type ViewerModels = ReturnType<typeof useViewerStore.getState>['models'];
 
-async function load(entry: CacheResult, isStale: () => boolean): Promise<CacheLoadResult> {
+async function load(entry: CacheResult, isStale: () => boolean, trace?: import('@ifc-lite/load-trace').LoadTrace): Promise<CacheLoadResult> {
   // useIfcLoader upserts the primary model (making it active) before it calls
   // loadFromCache, and appendGeometryBatch only files meshes under a known or
   // active model (#4922). Register it the same way here, or every chunk is dropped.
@@ -321,7 +321,7 @@ async function load(entry: CacheResult, isStale: () => boolean): Promise<CacheLo
   });
   let result!: CacheLoadResult;
   await act(async () => {
-    result = await loadFromCache!(entry, 'old.ifc', 'model-old', undefined, undefined, isStale);
+    result = await loadFromCache!(entry, 'old.ifc', 'model-old', undefined, undefined, isStale, trace);
   });
   return result;
 }
@@ -473,17 +473,33 @@ describe('loadFromCache — a superseded load writes nothing (#2301)', () => {
 });
 
 describe('loadFromCache — a model discarded and re-added while its hit loads (#10888)', () => {
-  it('r4655099399 a discard during the metadata decode and chunk open (isStale false) publishes and streams nothing', async () => {
-    const entry = await buildCacheEntry();
-    useViewerStore.setState({ geometryResult: null, geometryStreamingActive: false, ifcDataStore: null } as never);
-    let calls = 0;
-    // Call 2 is the re-check after `decodeCachedMetadata` and the chunk open: the discard happened during those awaits.
-    const result = await load(entry, () => { if (++calls === 2) discardInstancedShards('model-old'); return false; });
-    assert.ok(calls >= 2);
+  it('r4655425393 a discard inside the metadata decode (isStale false) publishes no metadata into the re-added model', async () => {
+    const { NOOP_LOAD_TRACE } = await import('@ifc-lite/load-trace');
+    // A metadata-only entry: no pre-stream re-check follows, so only the after-metadata check can refuse it.
+    const entry = await buildCacheEntry({ withGeometry: false });
+    useViewerStore.setState({ ifcDataStore: null } as never);
+    const trace = Object.create(NOOP_LOAD_TRACE) as typeof NOOP_LOAD_TRACE;
+    trace.span = ((name: string, fn: () => unknown, attrs?: Record<string, unknown>) => {
+      if (name === 'cache.decode') discardInstancedShards('model-old'); // the model is removed while its metadata decodes
+      return NOOP_LOAD_TRACE.span(name, fn as never, attrs as never);
+    }) as typeof NOOP_LOAD_TRACE.span;
+    const result = await load(entry, () => false, trace);
     assert.equal(result.superseded, true);
-    assert.equal(useViewerStore.getState().geometryResult, null, 'no chunk streams');
-    assert.equal(useViewerStore.getState().geometryStreamingActive, false);
     assert.equal(useViewerStore.getState().ifcDataStore, null, 'no old metadata reaches the re-added model');
+  });
+
+  it('r4655425345 a discard while the hit\'s scene capture is armed (isStale false) never raises the streaming flag', async () => {
+    const entry = await buildCacheEntry();
+    useViewerStore.setState({ geometryResult: null, geometryStreamingActive: false });
+    let raised = false;
+    const unsubscribe = useViewerStore.subscribe((state) => { if (state.geometryStreamingActive) raised = true; });
+    let calls = 0;
+    try {
+      // Call 2 is the pre-stream guard; the queued discard runs during the capture await right after it.
+      const result = await load(entry, () => { if (++calls === 2) queueMicrotask(() => discardInstancedShards('model-old')); return false; });
+      assert.equal(result.superseded, true);
+    } finally { unsubscribe(); }
+    assert.equal(raised, false, 'the old hit never raises the replacement model\'s streaming flag');
   });
 
   it('r4655099399 a discard between geometry chunks (isStale false) stops the stream as superseded', async () => {

@@ -15,7 +15,7 @@ function gate(model: StepExportModel) {
 export async function produceNativeUsd(model: StepExportModel, getMutationView = useViewerStore.getState().getMutationView, checkpoint = () => {}) {
   gate(model); checkpoint(); const bytes = await resolveStepExportBytes(model, getMutationView); checkpoint();
   const processor = new GeometryProcessor();
-  try { await processor.init(); checkpoint(); const usd = processor.exportUsd(bytes); if (!usd) throw new Error(t('geometryExport.shared.geometryEngineUnavailableError')); checkpoint(); return new Blob([new Uint8Array(usd)], { type: 'text/plain' }); }
+  try { await processor.init(); checkpoint(); const usd = processor.exportUsd(bytes); if (!usd) throw new Error(t('geometryExport.shared.geometryEngineUnavailableError')); checkpoint(); return new Blob([usd as BlobPart], { type: 'text/plain' }); }
   finally { processor.dispose(); }
 }
 export async function produceNativeRhino(model: StepExportModel, settings: RhinoExportSettings, getMutationView = useViewerStore.getState().getMutationView, onProgress?: (p: RhinoExportProgress) => void, signal?: AbortSignal, checkpoint = () => {}) {

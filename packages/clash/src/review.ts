@@ -39,12 +39,13 @@ const REVIEW_RANK: Record<ClashReviewStatus, number> = { open: 0, resolved: 1, a
  * Collapse many clash review statuses to one: the LEAST-resolved wins. A BCF
  * topic that bundles several clashes is only "done" once every member is; a
  * single still-open member keeps the whole topic open. An empty set (no members,
- * or none reviewed) is `open`.
+ * or none reviewed) is `open`. Unknown labels are treated as unreviewed.
  */
 export function aggregateReviewStatus(statuses: Iterable<ClashReviewStatus>): ClashReviewStatus {
   let worst: ClashReviewStatus | null = null;
-  for (const s of statuses) {
-    if (worst === null || REVIEW_RANK[s] < REVIEW_RANK[worst]) worst = s;
+  for (const value of statuses) {
+    const status = Object.hasOwn(REVIEW_RANK, value) ? value : DEFAULT_CLASH_REVIEW_STATUS;
+    if (worst === null || REVIEW_RANK[status] < REVIEW_RANK[worst]) worst = status;
   }
   return worst ?? DEFAULT_CLASH_REVIEW_STATUS;
 }

@@ -332,11 +332,22 @@ describe('operation results and expected-state tokens stay bounded (#10794)', ()
       useViewerStore.getState().renameZoneSet(setId, `Renamed for ${action}`);
       assert.match((await run('zones.writeback.apply', { token: pending.token }, 'A')).text, /changed after review/, action);
     }
-    // A removal reads only the zone set, so a recompute of the assignments does not block it.
-    const removal = json<{ token: string }>(await run('zones.writeback.prepare', { set_id: setId, model_ids: ['A'], basis: 'unqualified', action: 'remove' }, 'A'));
+    // A removal digests the zone set and its planned targets, so a recompute that leaves the targets alone does not block it.
+    const removal = json<{ token: string; row_count: number }>(await run('zones.writeback.prepare', { set_id: setId, model_ids: ['A'], basis: 'unqualified', action: 'remove' }, 'A'));
+    assert.ok(removal.row_count > 0, 'the removal has written output to delete');
     useViewerStore.setState({ zoneAssignments: assigned(walls.slice(0, 5)) });
     const removed = await run('zones.writeback.apply', { token: removal.token }, 'A');
     assert.equal(removed.isError, false, removed.text);
+    // Planned targets are sorted, so the same targets in another assignment order do not block a removal (#10795 review).
+    useViewerStore.setState({ zoneAssignments: assigned(walls) });
+    const rewrite = json<{ token: string }>(await run('zones.writeback.prepare', { set_id: setId, model_ids: ['A'], basis: 'unqualified', action: 'write' }, 'A'));
+    assert.equal((await run('zones.writeback.apply', { token: rewrite.token }, 'A')).isError, false);
+    const reordered = json<{ token: string; row_count: number }>(await run('zones.writeback.prepare', { set_id: setId, model_ids: ['A'], basis: 'unqualified', action: 'remove' }, 'A'));
+    assert.ok(reordered.row_count > 1, 'several targets, so order matters');
+    useViewerStore.setState({ zoneAssignments: new Map([...useViewerStore.getState().zoneAssignments].reverse()) });
+    const kept = await run('zones.writeback.apply', { token: reordered.token }, 'A');
+    assert.equal(kept.isError, false, kept.text);
+    assert.equal(json<{ removed: number }>(kept).removed, reordered.row_count, 'the reordered removal deleted every planned element');
   });
 
   const anon = { target_model_id: 'A', seed_ids: [2], excluded_ids: [], excluded_types: [], file_stem: 'anonymous', anonymize: { ...DEFAULT_ANONYMIZE_TOGGLES },

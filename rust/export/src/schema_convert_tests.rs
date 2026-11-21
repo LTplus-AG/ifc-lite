@@ -791,7 +791,7 @@ fn values_without_a_target_slot_are_counted_7683() {
 #[test]
 fn a_comment_beside_no_value_is_not_counted_10779() {
     let dropped = |line: &str| {
-        let mut checks = crate::schema_enum::ConversionChecks::new();
+        let mut checks = crate::schema_enum::ConversionChecks::default();
         convert_step_line(line, "IFC4", "IFC2X3", 1, &mut none(), Some(&mut checks)).unwrap();
         checks.attribute_values_dropped
     };

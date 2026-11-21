@@ -61,12 +61,7 @@ export function boundedPage<T>(items: readonly T[], request: PageRequest = {}, r
 export function boundedMappedPage<T, R>(items: readonly T[], project: (item: T, index: number) => R,
   request: PageRequest, rest: unknown, revision: string): Page<R> {
   const offset = request.offset ?? 0;
-  if (offset > 0) {
-    if (!request.page_revision) throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, details: { reason: 'invalid-value' },
-      message: 'page_revision is required past offset 0: pass the page_revision of the previous page.' });
-    if (request.page_revision !== revision) throw new ToolExecutionError({ code: ToolErrorCode.STATE_CHANGED, details: { reason: 'stale' },
-      message: 'The list changed since the previous page; read again from offset 0.' });
-  }
+  requirePageRevision(offset, request.page_revision, revision);
   const budget = MAX_RESULT_BYTES - PAGE_RESERVE - nativeJsonBytes(rest);
   if (budget <= 2) throw new Error('The fields beside this list already exceed the operation result limit.');
   let used = 2, end = Math.min(offset, items.length);
@@ -81,6 +76,14 @@ export function boundedMappedPage<T, R>(items: readonly T[], project: (item: T, 
   }
   if (end === offset && offset < items.length) throw new Error(`Item ${offset} alone exceeds the operation result limit; read on from offset ${offset + 1} with page_revision ${revision}.`);
   return { items: page, offset, total: items.length, next_offset: end < items.length ? end : null, page_revision: revision };
+}
+
+export function requirePageRevision(offset: number, supplied: string | null | undefined, revision: string): void {
+  if (offset === 0) return;
+  if (!supplied) throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, details: { reason: 'invalid-value' },
+    message: 'page_revision is required past offset 0: pass the page_revision of the previous page.' });
+  if (supplied !== revision) throw new ToolExecutionError({ code: ToolErrorCode.STATE_CHANGED, details: { reason: 'stale' },
+    message: 'The list changed since the previous page; read again from offset 0.' });
 }
 
 /** The input of a paged read: an optional `offset`, and past offset 0 the previous page's `page_revision`. */

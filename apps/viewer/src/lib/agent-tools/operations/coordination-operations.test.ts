@@ -121,15 +121,38 @@ it('BCF metadata stays below the executor limit with >1 MiB native screenshot me
       assert.ok(new TextEncoder().encode(response.text).byteLength < 1024 * 1024); return (response.structured as { result: T }).result;
     };
     const discovery = await dispatchMainViewerTool(context.host, 'viewer_operations', { operation_id: 'bcf.read' }); assert.equal(discovery.isError, false, discovery.text);
-    const first = await request<{ project: { topic_count: number; snapshot_count: number; topics: Array<{ guid: string }> }; page: { next_offset: number | null } }>('bcf.read');
+    const first = await request<{ project: { topic_count: number; snapshot_count: number; topics: Array<{ guid: string }> }; page: { next_offset: number | null; page_revision: string } }>('bcf.read');
     assert.equal(first.project.topic_count, 22); assert.equal(first.project.snapshot_count, 2); assert.equal(first.project.topics.length, 20); assert.equal(first.page.next_offset, 20);
-    const next = await request<{ project: { topics: unknown[] } }>('bcf.read', { offset: first.page.next_offset, limit: 20 }); assert.equal(next.project.topics.length, 2);
+    const next = await request<{ project: { topics: unknown[] } }>('bcf.read', { offset: first.page.next_offset, page_revision: first.page.page_revision, limit: 20 }); assert.equal(next.project.topics.length, 2);
     const selected = await request<{ project: { topics: Array<{ guid: string; description: string; expected_modified: string }> } }>('bcf.read', { topic_id: created.guid }); assert.equal(selected.project.topics[0].description, 'Exact description for editing');
-    const viewpoints = await request<{ viewpoints: Array<{ guid: string; snapshot_available: boolean; snapshot_data_bytes: number; selection_count: number }>; page: { next_offset: number | null } }>('bcf.viewpoints', { topic_id: created.guid, offset: 1, limit: 1, viewpoint_id: '' });
+    const firstViewpoint = await request<{ page: { next_offset: number; page_revision: string } }>('bcf.viewpoints', { topic_id: created.guid, offset: 0, limit: 1, viewpoint_id: '' });
+    const viewpoints = await request<{ viewpoints: Array<{ guid: string; snapshot_available: boolean; snapshot_data_bytes: number; selection_count: number }>; page: { next_offset: number | null; page_revision: string } }>('bcf.viewpoints', { topic_id: created.guid, offset: firstViewpoint.page.next_offset, page_revision: firstViewpoint.page.page_revision, limit: 1, viewpoint_id: '' });
     assert.equal(viewpoints.viewpoints[0].snapshot_available, true); assert.equal(viewpoints.viewpoints[0].snapshot_data_bytes, png.byteLength); assert.equal(viewpoints.viewpoints[0].selection_count, 2); assert.equal(viewpoints.page.next_offset, 2);
     assert.equal(JSON.stringify(viewpoints).includes('data:image'), false); assert.equal('snapshotData' in viewpoints.viewpoints[0], false);
     const comments = await request<{ comments: Array<{ expected_comment: string }> }>('bcf.comments', { topic_id: created.guid, offset: 0, limit: 20, comment_id: comment.guid }); assert.equal(comments.comments[0].expected_comment, comment.comment);
+    // #10589: a continuation must refer to the same ordered metadata or exact native text.
+    const missingRevision = await dispatchMainViewerTool(context.host, 'viewer_operation_execute', {
+      operation_id: 'bcf.read', input: { offset: first.page.next_offset },
+    }, { canEdit: () => true });
+    assert.equal(missingRevision.isError, true);
+    assert.match(missingRevision.text, /page_revision is required/);
+    const textInput = { topic_id: created.guid, field: 'comment', comment_id: comment.guid, length: 16 };
+    const firstText = await request<{ text: string; next_offset: number; page_revision: string }>('bcf.readText', { ...textInput, offset: 0 });
+    const continuation = { ...textInput, offset: firstText.next_offset, page_revision: firstText.page_revision };
+    const secondText = await request<{ text: string }>('bcf.readText', continuation);
+    assert.equal(firstText.text + secondText.text, comment.comment.slice(0, 32));
     await request('bcf.updateComment', { topic_id: created.guid, comment_id: comment.guid, expected_comment: comments.comments[0].expected_comment, comment: 'Native comment updated with its exact inspected value.' });
+    const staleText = await dispatchMainViewerTool(context.host, 'viewer_operation_execute', {
+      operation_id: 'bcf.readText', input: continuation,
+    }, { canEdit: () => true });
+    assert.equal(staleText.isError, true);
+    assert.match(staleText.text, /read again from offset 0/);
+    await request('bcf.createTopic', { title: 'Added after reading page one', description: '', status: 'Open' });
+    const staleTopics = await dispatchMainViewerTool(context.host, 'viewer_operation_execute', {
+      operation_id: 'bcf.read', input: { offset: first.page.next_offset, page_revision: first.page.page_revision },
+    }, { canEdit: () => true });
+    assert.equal(staleTopics.isError, true);
+    assert.match(staleTopics.text, /read again from offset 0/);
     const freshTopic = await request<{ project: { topics: Array<{ expected_modified: string }> } }>('bcf.read', { topic_id: created.guid });
     const omittedPriority = await dispatchMainViewerTool(context.host, 'viewer_operation_execute', {
       operation_id: 'bcf.updateTopic',

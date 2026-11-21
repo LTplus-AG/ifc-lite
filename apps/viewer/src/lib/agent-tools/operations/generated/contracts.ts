@@ -4438,7 +4438,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "bcf.comments",
     "version": 1,
     "owner": "bcf",
-    "description": "Read a bounded native comment metadata/text page or one exact comment. Complete texts include their exact expected_comment edit guard; explicitly incomplete text can be inspected using bcf.readText. No viewpoint media is copied.",
+    "description": "Read a bounded native comment metadata/text page or one exact comment. Complete texts include their exact expected_comment edit guard; explicitly incomplete text can be inspected using bcf.readText. No viewpoint media is copied. Continue with next_offset and page_revision.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -4455,6 +4455,11 @@ export const operationContracts: readonly OperationContract[] = [
         "offset": {
           "type": "integer",
           "minimum": 0
+        },
+        "page_revision": {
+          "type": "string",
+          "maxLength": 64,
+          "nullable": true
         },
         "limit": {
           "type": "integer",
@@ -4506,7 +4511,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "bcf.viewpoints",
     "version": 1,
     "owner": "bcf",
-    "description": "Read bounded native viewpoint camera/media-availability/component-count metadata or one exact viewpoint. Screenshot and bitmap bodies remain in native state for application and ZIP export; they are never duplicated into metadata.",
+    "description": "Read bounded native viewpoint camera/media-availability/component-count metadata or one exact viewpoint. Screenshot and bitmap bodies remain in native state for application and ZIP export; they are never duplicated into metadata. Continue with next_offset and page_revision.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -4523,6 +4528,11 @@ export const operationContracts: readonly OperationContract[] = [
         "offset": {
           "type": "integer",
           "minimum": 0
+        },
+        "page_revision": {
+          "type": "string",
+          "maxLength": 64,
+          "nullable": true
         },
         "limit": {
           "type": "integer",
@@ -4574,7 +4584,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "bcf.readText",
     "version": 1,
     "owner": "bcf",
-    "description": "Read an exact bounded UTF-16 text segment from a native topic title/description or comment when metadata explicitly reports incomplete text. No trimming or normalization is applied; expected-value edits still compare complete native values.",
+    "description": "Read an exact bounded UTF-16 text segment from a native topic title/description or comment when metadata explicitly reports incomplete text. No trimming or normalization is applied; expected-value edits still compare complete native values. Continue with next_offset and page_revision.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -4604,6 +4614,11 @@ export const operationContracts: readonly OperationContract[] = [
           "type": "integer",
           "minimum": 0
         },
+        "page_revision": {
+          "type": "string",
+          "maxLength": 64,
+          "nullable": true
+        },
         "length": {
           "type": "integer",
           "minimum": 1,
@@ -4631,13 +4646,17 @@ export const operationContracts: readonly OperationContract[] = [
         "total_chars": {
           "type": "number"
         },
-        "next_offset": {}
+        "next_offset": {},
+        "page_revision": {
+          "type": "string"
+        }
       },
       "required": [
         "text",
         "offset",
         "total_chars",
-        "next_offset"
+        "next_offset",
+        "page_revision"
       ],
       "additionalProperties": true
     },
@@ -4651,7 +4670,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "bcf.projectExtensions",
     "version": 1,
     "owner": "bcf",
-    "description": "Read a bounded page of one declared native project vocabulary for existing issue type/status/priority/label/assignee/stage controls.",
+    "description": "Read a bounded page of one declared native project vocabulary for existing issue type/status/priority/label/assignee/stage controls. Continue with next_offset and page_revision.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -4674,6 +4693,11 @@ export const operationContracts: readonly OperationContract[] = [
         "offset": {
           "type": "integer",
           "minimum": 0
+        },
+        "page_revision": {
+          "type": "string",
+          "maxLength": 64,
+          "nullable": true
         },
         "limit": {
           "type": "integer",
@@ -7905,7 +7929,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "bcf.read",
     "version": 1,
     "owner": "bcf",
-    "description": "Read bounded native project/topic metadata. Defaults to 20 topics with a 192 KiB page budget; use next_offset or topic_id, and bcf.comments/bcf.viewpoints for child pages. Screenshot/media bodies stay in native state for application and ZIP export. expected_modified is the exact native optimistic edit guard.",
+    "description": "Read bounded native project/topic metadata. Defaults to 20 topics with a 192 KiB page budget; continue with next_offset and page_revision or select by topic_id, and bcf.comments/bcf.viewpoints for child pages. Screenshot/media bodies stay in native state for application and ZIP export. expected_modified is the exact native optimistic edit guard.",
     "needs": "viewer",
     "effects": [
       "read"
@@ -7916,8 +7940,13 @@ export const operationContracts: readonly OperationContract[] = [
       "properties": {
         "offset": {
           "type": "integer",
-          "nullable": true,
-          "minimum": 0
+          "minimum": 0,
+          "nullable": true
+        },
+        "page_revision": {
+          "type": "string",
+          "maxLength": 64,
+          "nullable": true
         },
         "limit": {
           "type": "integer",

@@ -210,6 +210,7 @@ impl ConversionChecks {
             structural: Default::default(),
             ifc4_slots: Default::default(),
             enums: Default::default(),
+            documents: Default::default(),
             materials,
             plans: Default::default(),
             attribute_values_dropped: 0,

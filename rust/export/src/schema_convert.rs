@@ -54,6 +54,8 @@ fn map_4_to_2x3(t: &str) -> Option<&'static str> {
         "IFCSTRUCTURALLOADCASE" => "IFCSTRUCTURALLOADGROUP",
         "IFCSTRUCTURALCURVEACTION" => "IFCSTRUCTURALLINEARACTION",
         "IFCSTRUCTURALSURFACEACTION" => "IFCSTRUCTURALPLANARACTION",
+        // #10763: IFC4 deleted this subtype for the now-concrete supertype (`schema_attr_maps`).
+        "IFCPROFILEPROPERTIES" => "IFCGENERALPROFILEPROPERTIES",
         _ => return None,
     })
 }
@@ -114,9 +116,11 @@ fn values_without_a_name(values: &[String], src_names: &[&str], tgt_names: &[&st
     }).count()
 }
 
-/// A slot that carries information: not `$`, `*` or empty.
+/// A slot that carries information: not `$`, `*` or empty once comments go (#10779).
+/// Twin of the TypeScript `holdsValue` (`step-comment-skip.ts`).
 pub(crate) fn holds_value(slot: &str) -> bool {
-    !matches!(slot.trim(), "" | "$" | "*")
+    let bare = if slot.contains("/*") { Cow::Owned(crate::step_slot::without_comments(slot)) } else { Cow::Borrowed(slot.trim()) };
+    !matches!(&*bare, "" | "$" | "*")
 }
 
 fn map_4x3_to_4(t: &str) -> Option<&'static str> {
@@ -237,10 +241,16 @@ pub fn convert_step_line(
     }
     let mut checks = checks;
     let mut converted = convert_record(line, cfrom, cto, express_id, checks.as_deref_mut())?;
+    converted = crate::schema_retyped::apply(converted, cfrom, cto, checks.as_deref_mut().map(|c| &mut c.attribute_values_dropped)); // #10778
     if let Some(checks) = checks {
+        if let Some(placement) = checks.structural.values.placement(express_id) {
+            if let Some(repointed) = crate::step_log::replace_argument(&converted, 5, &format!("#{placement}")) {
+                converted = repointed;
+            }
+        }
         converted = checks.enums.apply(converted, cto);
         if cto == "IFC2X3" { converted = checks.structural.after(express_id, converted); }
-        (cto == "IFC4" && (cfrom != "IFC2X3" || converted.split('=').nth(1).is_some_and(|s| s.starts_with("IFCSTRUCTURAL")))).then(|| checks.ifc4_slots.count(&converted));
+        (cto == "IFC4" && (cfrom != "IFC2X3" || crate::schema_attr_maps::upgrade_counts_ifc4_slots(&converted))).then(|| checks.ifc4_slots.count(&converted));
     }
     Ok(if cto == "IFC2X3" { slots.apply(converted) } else { converted })
 }
@@ -280,7 +290,7 @@ fn convert_record(
     // slot list can still receive a type rename, proxy replacement, trim, or
     // padding and become a partially converted record (#4200). The one split
     // is then reused by every branch below.
-    let Some(args) = split_top_level_args(attrs) else {
+    let Some(mut args) = split_top_level_args(attrs) else {
         return Ok(line.to_string());
     };
 
@@ -328,13 +338,24 @@ fn convert_record(
         Plan::Unrepresented => return resolve_unrepresented_entity(prefix, &entity_type, cto, express_id),
         // The attribute list against the target schema (#7683): see
         // `schema_plan::plan_for` for which way it moves and why.
-        Plan::Write { renamed, adjust } => {
+        Plan::Write { renamed, adjust, replaced } => {
             let new_type = renamed.unwrap_or(&entity_type);
+            // #10758: a slot a schema replaced in place keeps no value across.
+            let rebuilt;
+            let attrs = match replaced.filter(|&i| args.get(i).is_some_and(|v| v.trim() != "$")) {
+                Some(i) => {
+                    lost += usize::from(holds_value(&args[i]));
+                    args[i] = "$".to_owned();
+                    rebuilt = args.join(",");
+                    rebuilt.as_str()
+                }
+                None => attrs,
+            };
             let final_attrs: Cow<'_, str> = match adjust {
                 Adjust::Trim(n) if !args.is_empty() => {
                     let keep = n.min(args.len());
                     let carried_slot = cause_carried.then_some(crate::schema_structural_carriers::CAUSED_BY);
-                    lost = args.iter().enumerate().skip(keep).filter(|(i, v)| Some(*i) != carried_slot && holds_value(v)).count();
+                    lost += args.iter().enumerate().skip(keep).filter(|(i, v)| Some(*i) != carried_slot && holds_value(v)).count();
                     Cow::Owned(args[..keep].join(","))
                 }
                 // An attribute-less record is left alone rather than fabricated
@@ -345,10 +366,11 @@ fn convert_record(
                 // `GridFrames` already wrote this one in the target's layout.
                 Adjust::ByName(_, tgt) if &*entity_type == crate::schema_grid_frames::GRID_PLACEMENT && args.len() == tgt.len() => Cow::Borrowed(attrs),
                 Adjust::ByName(src, tgt) => {
-                    lost = values_without_a_name(&args, src, tgt, cause_carried);
+                    lost += values_without_a_name(&args, src, tgt, cause_carried);
                     Cow::Owned(remap_attrs_by_name(&args, src, tgt))
                 }
-                Adjust::Trim(_) | Adjust::Pad(_) | Adjust::Keep => Cow::Borrowed(attrs),
+                Adjust::Mapped(map, up, src, tgt) if !args.is_empty() => Cow::Owned(crate::schema_attr_maps::remap(map, up, &args, src, tgt, &mut lost)),
+                Adjust::Trim(_) | Adjust::Pad(_) | Adjust::Mapped(..) | Adjust::Keep => Cow::Borrowed(attrs),
             };
             format!("{prefix}{new_type}({final_attrs});")
         }

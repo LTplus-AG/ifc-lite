@@ -9,6 +9,7 @@ import { deterministicGlobalId, getCanonicalEntityName, getSchemaRegistryForVers
 import { listItems } from './schema-converter-structural-axes.js';
 import { decodeRange } from './source-ref-bounds.js';
 import { readStepSlots } from './step-argument-parser.js';
+import { stepRecordHead } from './step-record-frame.js';
 import { parseStepNumber, skipStepTrivia } from './step-slot-grammar.js';
 import { namedExpressIds, referencesAnyExpressId } from './step-ref-scan.js';
 
@@ -57,19 +58,34 @@ export class SourceRecords {
   private readonly cache = new Map<number, readonly string[] | undefined>();
   constructor(private readonly store: SourceStore) {}
 
+  private decode(entry: { byteOffset: number; byteLength: number }): string {
+    return decodeRange(this.store.source, entry.byteOffset, entry.byteOffset + entry.byteLength);
+  }
+
   /**
    * How many source records name each of `targets`, outside strings and
    * comments. Reads every record, so callers ask only when they have targets.
    */
   referrers(targets: ReadonlySet<number>): Map<number, number> {
     const uses = new Map<number, number>();
-    // @raw-entity-enumeration-ok same unedited source-only prepass
-    for (const entry of this.store.entityIndex.byId.values()) {
-      const text = decodeRange(this.store.source, entry.byteOffset, entry.byteOffset + entry.byteLength);
-      const args = text.slice(Math.max(0, text.indexOf('(')));
-      for (const t of namedExpressIds(args, targets)) uses.set(t, (uses.get(t) ?? 0) + 1);
-    }
+    for (const { named } of this.naming(targets)) for (const t of named) uses.set(t, (uses.get(t) ?? 0) + 1);
     return uses;
+  }
+
+  /**
+   * Each source record naming any of `targets` outside strings and comments,
+   * and which ones. Reads every record and caches nothing, so callers ask only
+   * when they have targets.
+   */
+  *naming(targets: ReadonlySet<number>): Generator<{ id: number; named: ReadonlySet<number> }> {
+    if (targets.size === 0) return;
+    // @raw-entity-enumeration-ok same unedited source-only prepass
+    for (const [id, entry] of this.store.entityIndex.byId) {
+      const text = this.decode(entry);
+      const head = stepRecordHead(text);
+      const named = namedExpressIds(text.slice(head?.open ?? skipStepTrivia(text, 0) + 1), targets);
+      if (named.size) yield { id, named };
+    }
   }
 
   ids(type: string): readonly number[] {
@@ -87,7 +103,7 @@ export class SourceRecords {
     if (!this.cache.has(id)) {
       // @raw-entity-enumeration-ok same unedited source-only prepass
       const entry = this.store.entityIndex.byId.get(id);
-      this.cache.set(id, entry ? readStepSlots(decodeRange(this.store.source, entry.byteOffset, entry.byteOffset + entry.byteLength))?.slots : undefined);
+      this.cache.set(id, entry ? readStepSlots(this.decode(entry))?.slots : undefined);
     }
     return this.cache.get(id);
   }
@@ -130,7 +146,7 @@ export interface CarrierSet {
   readonly rel: number;
   readonly pset: number;
   readonly related: readonly number[];
-  /** Property name -> its id; empty for a set that names two properties alike, which is then never read. */
+  /** Property name -> its id; empty for a set that names two properties alike or lists one it cannot read, or whose relationship lists a non-reference; such a set is never read. */
   readonly props: ReadonlyMap<string, number>;
   /** Whether the set and each of its properties are named by no other source record than this relationship and this set; undefined unless `checkExclusive`. */
   readonly exclusive?: boolean;
@@ -151,17 +167,19 @@ export function readCarrierSets(source: SourceRecords, name: string, checkExclus
   // A carrier is exclusive when its relationship is the only record naming its set, and its set the only one naming each property.
   const uses = checkExclusive ? source.referrers(new Set(members.flatMap(({ pset, propIds }) => [pset, ...propIds.filter((p): p is number => p !== null)]))) : undefined;
   return members.map(({ rel, pset, propIds }) => {
-    let props = new Map<string, number>();
-    let duplicate = false;
-    for (const p of propIds) {
-      const propName = stepString(source.slots(p)?.[0]);
-      duplicate ||= propName !== null && props.has(propName);
-      if (p !== null && propName !== null) props.set(propName, p);
-    }
     // IfcPropertySet names its properties uniquely (IFC4 UniquePropertyNames, IFC2X3 WR32). A set that does
-    // not still counts as present (for ambiguity checks) but gives no property and is never consumed.
-    if (duplicate) props = new Map();
-    const related = (listItems(source.slots(rel)?.[4] ?? '') ?? []).map(slotRef).filter((r): r is number => r !== null);
+    // not, that lists a property it cannot read, or whose relationship lists a non-reference, still counts as
+    // present for the objects it does name (for ambiguity checks) but gives no property and is never consumed.
+    const listed = listItems(source.slots(rel)?.[4] ?? '')?.map(slotRef) ?? [];
+    const related = listed.filter((r): r is number => r !== null);
+    const props = new Map<string, number>();
+    if (related.length === listed.length) {
+      for (const p of propIds) {
+        const propName = stepString(source.slots(p)?.[0]);
+        if (p === null || propName === null || props.has(propName)) { props.clear(); break; }
+        props.set(propName, p);
+      }
+    }
     const exclusive = uses ? uses.get(pset) === 1 && propIds.every((p) => p !== null && uses.get(p) === 1) : undefined;
     return { rel, pset, related, props, exclusive };
   });

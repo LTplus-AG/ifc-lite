@@ -4,7 +4,7 @@
 
 # Daily perf-ratchet lowering (#6959). Builds and measures `main` exactly as
 # test.yml's `build` job does, lowers every ceiling in tests/perf-ratchets/
-# whose measured value cleared its tolerance band, and opens (or updates) one
+# whose measured value plus headroom clears its tolerance band, and opens (or updates) one
 # PR from a fixed branch with the old -> new changelog. It references no
 # issue: PERF_RATCHET_PAT belongs to the maintainer's account, which
 # scripts/issue-queue.config.json exempts from the issue-queue gate. Each
@@ -247,16 +247,14 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if git diff --quiet -- tests/perf-ratchets; then
-            echo "No ceiling cleared its band; nothing to propose."
-            # An open PR from an earlier day may propose a ceiling today's
-            # main no longer meets (main grew back inside the band). Merging
-            # it would put main above its own ceiling, so close it rather
-            # than leave yesterday's measurement standing.
+            echo "No ceiling qualifies for lowering; nothing to propose."
+            # Close an earlier proposal when today's measurements no longer
+            # justify lowering any ceiling.
             if [ -n "$PUSH_TOKEN" ]; then
               existing=$(GH_TOKEN="$PUSH_TOKEN" gh pr list --repo "$REPO" --head "$LOWER_BRANCH" --base main --state open --json number --jq '.[0].number // empty')
               if [ -n "$existing" ]; then
                 GH_TOKEN="$PUSH_TOKEN" gh pr close "$existing" --repo "$REPO" --delete-branch \
-                  --comment "Superseded: today's measurement of main (${GITHUB_SHA}) no longer clears any ceiling's band, so this lowering no longer holds. ${RUN_URL}"
+                  --comment "Superseded: today's measurement of main (${GITHUB_SHA}) does not qualify any ceiling for lowering. ${RUN_URL}"
                 echo "Closed stale #${existing}."
               fi
             fi
@@ -272,7 +270,7 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git switch -c "$LOWER_BRANCH"
           git add tests/perf-ratchets
-          git commit -q -m "perf(ratchet): lower ceilings to main at ${sha:0:12}"
+          git commit -q -m "perf(ratchet): lower ceilings using main at ${sha:0:12}"
           auth=$(printf 'x-access-token:%s' "$PUSH_TOKEN" | base64 -w0)
           echo "::add-mask::${auth}"
           # Force: the branch is regenerated from today's main every run, so
@@ -289,11 +287,11 @@ jobs:
             echo
             echo "Measured on \`main\` at \`${sha}\` by ${RUN_URL}."
             echo
-            echo 'This PR only lowers ceilings in `tests/perf-ratchets/*.json`, each to the value measured above. Its own `Perf ratchet ceilings` check passes by construction, because it runs on that same `main`; whether `main` still fits the lowered ceilings when this merges is decided in the merge queue, which tests a ceiling PR alone (`.mergify.yml`, queue `ceilings`, #8459). It is regenerated daily from the current `main`; merging it locks the win in.'
+            echo 'Each lowered ceiling uses the measurement plus its configured headroom. The merge queue tests this PR alone against the latest `main` (`.mergify.yml`, queue `ceilings`, #8459). This proposal is regenerated daily.'
           } > "$body"
 
           export GH_TOKEN="$PUSH_TOKEN"
-          title="perf(ratchet): lower ceilings to main at ${sha:0:12}"
+          title="perf(ratchet): lower ceilings using main at ${sha:0:12}"
           existing=$(gh pr list --repo "$REPO" --head "$LOWER_BRANCH" --base main --state open --json number --jq '.[0].number // empty')
           if [ -n "$existing" ]; then
             gh pr edit "$existing" --repo "$REPO" --title "$title" --body-file "$body"

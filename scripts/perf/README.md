@@ -8,6 +8,78 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Renderer-first edits: panels settle after the edit (#10535)
+
+**Maintainer decision, measured locally; the qualified Pop number is pending.**
+On the F5 tower an edit published its mutation and, a little later, its
+re-meshed geometry, and every mounted panel re-rendered synchronously for
+both. The worker meshed the column almost at once; its reply then waited
+behind that render, and the scene took the mesh only after a second one.
+
+`useViewerStore` used as a hook now reads a settled state: the live state,
+published synchronously, except while an edit is in flight. From a
+`mutationVersion` change it holds until the edit's re-mesh is in (a hold ends
+after 2 s), its mesh edits have drained and two frames have passed (capped at
+250 ms), or until the user's next input (`INPUT_EVENTS` in
+`settled-store.ts`), in this or a popped-out panel window, which publishes it with `flushSync` before any handler runs. An edit
+made by a form control's own input, change or click is published at once.
+The viewport reads live state inside a `LiveViewerScope`; `getState()` and
+the rest of the store API stay live for writes and staleness checks.
+
+Lessons: narrowing individual subscriptions (#9978, and a per-site prototype
+here) leaves dozens of other live paths into the same render; fixing the
+default and allowlisting the viewport by scope removes them all. Under the
+parity harness the publication must wait a second frame, or it can land
+before the frame that draws the drained edit. A guard test counts the
+component fibers each commit renders during an edit: only the live scope may
+appear.
+
+Publishing on a form control's `input` or `click` was wrong: the browser has
+already written the control's new value, and the re-render writes the old
+controlled value back, so React never sees the change (typed text, checkbox
+toggles). Holding a control's own edit is wrong for the same reason. A click
+outside a form control with no pointer press (`detail === 0`: keyboard,
+assistive technology, `element.click()`) publishes before its handler; a
+pressed click does not, since its `pointerdown` already did, so an edit a
+drag tool commits on `pointerup` stays held. Each new edit restarts the
+close, so it gets its own drain and frames; the first edit's cap still
+bounds the window.
+
+## Hierarchy rows survive a loaded-tower edit (#10535, part)
+
+**Partial lever; the F5 edit target is still open.** A fiber census of one
+loaded-column Move on F5 showed the hierarchy panel committing its whole
+visible subtree (about 3,500 component fibers: rows with tooltips, poppers
+and menus) five times per edit: on the mutation, a follow-up commit, the mesh
+swap and the idle structure build. Each panel render also re-resolved every
+storey row's membership up to three times, and once the session has edits
+each resolution re-reads the relationship overlay. The worker meshes the
+column almost at once; its reply waits behind this main-thread work.
+
+Rows are now memoized with one stable handler object, unchanged tree rows
+keep their objects across rebuilds and projections, and row membership is
+resolved once per input generation and view revision. Paired local
+diagnostics improved the edit and undo medians; unmounting the hierarchy
+entirely bounds what this lever can reach. The figures and the run protocol
+are in the PR; none of them is admission-qualified.
+
+Lesson: narrowing panel subscriptions (#9978) cost more synchronous
+publication than it saved. Cutting what each render does inside the panel
+leaves the subscriptions and the store's publication unchanged. Check a
+"hidden" panel experiment against a fiber census: collapsing the left panel
+keeps the hierarchy mounted and rendering, so it bounds nothing.
+
+## Post-cut sliver bisection removed (#10511)
+
+The native mesh census found one changed wall across the capped fixture
+corpus. ISSUE_171 #528 retained its enclosure and surface area with fewer
+triangles. The cut paths still canonicalize vertices to preserve closure.
+The aspect threshold now only gates the rebuild, and the prism path still
+checks closure before adopting it.
+
+The native load probe kept byte-identical meshes on FZK-Haus, ISSUE_129 and
+Holter, and the optimized WebAssembly engine shrank.
+
 ## Consolidation runs each retention variant once
 
 **Shipped, output-identical.** A consolidation that retains a healthy fold or
@@ -68,15 +140,19 @@ Two tools:
   kill whose victim it could not identify, with the page alive, is `error`. `error` also covers
   any other load error, including main's "Ran out of memory while processing", always, and the
   worker/runtime crash messages that leave the tab alive. Messages are read from the store's load error and dialogs/alerts/toasts, never the whole
-  page. It also reports peak summed Chrome PSS, the cgroup peak, the phase reached and which process
-  types an OOM kill took.
+  page. It also reports peak summed Chrome PSS, the cgroup peak, the phase reached, which process
+  types an OOM kill took, and source tracking (below).
   Needs Linux with cgroup v2 and the memory controller delegated to the systemd user manager;
   anything missing exits 2, never skips.
 
-`--expect` is required. Today the issue is open, so the minimal case runs with
-`--expect killed`: it passes only while the tab is still killed and **fails once the load is
-loaded or refused**, telling you to switch to `--expect not-killed` (the #10264 acceptance:
-the tab is never killed). `error` and `timeout` never pass.
+`--expect` is required. `--expect killed` passes only while the tab is still killed and **fails
+on any other outcome**; unless that outcome is `error` or `timeout`, it tells you to switch to
+`--expect not-killed` (the #10264 acceptance: the tab is never killed). `--expect loaded`,
+`refused` and `awaiting-decision` each pass only that exact outcome. `error` and `timeout` never
+pass. Admission now scales its estimate by the sampled share of dense triangulated geometry
+(`geometryDensity.ts`), so the dense minimal case below is expected to be `refused` after a
+bounded sample (four 256 KiB windows), before the whole source is read. The manual example
+runs it with `--expect not-killed`; the nightly lane below pins it with `--expect refused`.
 
 A viewer may instead warn before an oversized load (a dialog "This model may exceed available
 memory" with Continue loading / Cancel). `--on-memory-dialog wait` (default) reports
@@ -85,11 +161,47 @@ then reports `loaded` or `killed-after-continue`. `--expect not-killed` accepts 
 `refused`, `awaiting-decision` and `cancelled`; a kill after an explicit Continue passes only
 `--expect warned`, and its verdict says so. The warning title, its button names and the refusal
 text come from draft PR #10353 and may drift; they live together in `oom-load-probe-lib.mjs`.
+Source tracking (`oom-load-probe-tracker.mjs`, injected into the page) identifies the picked file
+by object identity: the `File` a file `<input>` delivers, and every `Blob.slice` of it. Only reads
+of those count as source reads (with bytes; "large" means the whole file or at least 1 MiB). A read
+of any other Blob of 1 MiB or more is reported as an unattributed read, never as a source read.
+Every `postMessage` to a worker, a `MessagePort` or a `BroadcastChannel` is scanned whole (nested
+objects, arrays, Maps, Sets and the transfer list, cycle-safe, up to 50,000 objects per message);
+each Blob found is recorded with its time, the receiver (worker script URL), its path in the
+message and whether it was the source. A message beyond the budget is marked `scanTruncated` and
+makes the post verdict `null`. `URL.createObjectURL` of the source and every `new Worker` (with a
+`blob:` flag) are recorded too. The result lists the channels that are not watched
+(`channels.notInstrumented`: copies of the source as ArrayBuffer or stream, whose producing read
+is counted as a source read; reads and fetches inside workers; SharedWorker/ServiceWorker;
+IndexedDB/Cache API), so a `false` means only that every listed instrumented channel reported none.
+Counts and the facts the verdicts use (first and largest source read, first large source read,
+first unattributed read, first source post) are kept for every event; only the detailed event log
+is bounded (first and last 100 per kind, with `truncated` and the number dropped), and no flag is
+computed from it. Dialogs, alerts and toasts are stamped every time their text changes, and the
+store's load error by a subscription the moment it is set. If a decision was only seen by the
+probe's 2 s poll, an event inside that window has unknown order (`null`). Peak summed PSS is
+sampled every 500 ms; the cgroup peak is the kernel's exact high-water mark.
+
+`--watch-url URL` records every request to that origin in the page (`fetch` and `XMLHttpRequest`,
+on the page clock); the driver's view of the same requests is kept only for the browser's error
+code. The time origin is the page's own pick stamp, taken when the tracker marks the source, so
+every order is on one clock; without it (source never marked) every order is `null`. The probe
+builds a timeline relative to that pick: server attempts, dialogs (stamped when they
+appear), the store's load error, source reads, unattributed reads and worker posts. Each derived
+flag (`attemptBeforeDecision`, `readBeforeDecision`, `unattributedReadBeforeDecision`,
+`sourcePostBeforeDecision`) is `true`, `false` only when the instrument that would have seen the
+event was installed and reported, or `null`. `--expect-server-first` additionally requires a
+server attempt before the warning or refusal and no large source read or source post before it;
+a `null` fails it. Only requests at or after the file pick count as this load's attempt;
+earlier ones are reported as `startupRequests`. If the picked file was never marked (it arrived
+without a file-input `change` event), or an unattributed read or worker post of at least 1 MiB
+happened before the decision, the identity-dependent flags are `null` with the reason in
+`unknownBecause`.
 
 ```bash
 pnpm install && pnpm build:wasm && pnpm turbo build --filter=@ifc-lite/viewer   # or any built apps/viewer/dist
 npx playwright install chromium                            # once
-node scripts/perf/oom-load-probe.mjs --dist apps/viewer/dist --expect killed \
+node scripts/perf/oom-load-probe.mjs --dist apps/viewer/dist --expect not-killed \
   --kind tfs --target-mb 300 --device-memory 4 --cores 4 --cap 3G   # swiftshader, headless
 # Hardware GL: headed on a private Xvfb, e.g. DISPLAY=:181 ... --gl hardware
 ```
@@ -121,10 +233,16 @@ scene, so treat it as a `timeout`, not a pass. These numbers are not comparable 
 campaign runs that put the driver process inside the cap as well: there tfs-225 was killed on
 hardware, here it loads with about 90 MiB to spare.
 
-CI: not wired. Per-PR CI is too heavy (a viewer build plus a ~1 min browser run). The proposed
-home is a `workflow_dispatch`/nightly job, added only once the cap is verified on a GitHub-hosted
-runner: that needs `systemd-run --user` with a delegated memory controller there, or the job run
-inside a container with `--memory=3g --memory-swap=3g`. Neither was verified from here.
+CI: `.github/workflows/oom-load-probe.yml`, nightly and `workflow_dispatch`, not a PR gate (a
+viewer build plus two browser runs). It starts the runner user's systemd manager with
+`loginctl enable-linger` so `systemd-run --user` works on a hosted runner, then pins each case's
+outcome: dense 300 MB at a reported 4 GB / 3 GiB is `refused`, dense 1100 MB at a reported
+8 GB / 6 GiB is `awaiting-decision`. If the hosted runner does not delegate the memory controller
+to the user manager, the probe's preflight exits 2 and the lane is red, never skipped. First
+hosted run (ubuntu-latest, 2026-11-19, run 44519558141): the user manager delegated
+`cpu memory pids`; 300 MB at 4 GB was `refused` before open after five source reads (the 4 KiB
+header, then four 256 KiB sample windows; no OOM kill), and 1100 MB at 8 GB was
+`awaiting-decision` after the 4 KiB header.
 
 ## Gaussian capture memory ownership (#9018, #10401)
 
@@ -133,6 +251,32 @@ inside a container with `--memory=3g --memory-swap=3g`. Neither was verified fro
 - **The decode worker must not read the file whole.** It held the file bytes plus a materialized table, invisible to the page-heap metric. It now range-reads chunks through upstream's lazy reader. Measure memory across all isolates (page and workers) as well as the page heap. Otherwise moving work into a worker can fake a pass.
 - **The retained budget is sampled before GC.** Per-slice garbage counted against it until the decoded buffers were recycled back to the worker, normalization was done in place and staging was kept small.
 - **The trade:** placement edits, device-loss recovery and SH-layout changes re-read the source instead of reusing a CPU copy. A validating summary pass precedes streaming. It runs in parallel helper workers owned by the decode worker, so the first visible frame did not regress.
+
+## Streaming native `.ifclite` writer (#9584 slice 3, `ifc-build-cache`)
+
+**Accepted: streaming lowers peak RSS on Holter.** The admitted Pop run compared the release builds at `ee77162e0` and `48a4873a0` over five interleaved rounds at eight threads. All three writers produced byte-identical caches on all three fixtures. Streaming lowered Holter's peak by 35.8% versus the base and 29.2% versus the branch's in-memory writer. O-S1 and AC20-FZK-Haus stayed within measurement noise. [Paired run and provenance](https://github.com/LTplus-AG/ifc-lite/pull/10361#issuecomment-7042221543)
+
+The shared-host measurements below are diagnostic.
+- The base below is slice 2 before the rebase (`5093d52f3`), not the merge base `ee77162e0`; the fleet run measures against the latter.
+- Byte identity: base (slice 2, `5093d52f3`) in-memory, branch in-memory and branch streamed caches compared with `cmp` on every model below: all identical. Tests: `rust/cache/tests/streamed_matches_in_memory.rs`, `src/stream_tests.rs` (1-, 7- and 1024-job batches).
+- Peak RSS (`/usr/bin/time -l`, MiB, mean of 2 runs, release, Apple M2 Pro 10-core 16 GB, macOS 26.5.2, shared host with load 4-6). Floor is `examples/pipeline_floor.rs` (the same geometry pass, meshes dropped, nothing written); "data model" is `ifc-build-cache --no-geometry`; the open chunks can hold up to 8 MiB plus one mesh per cell, and "open" is their measured peak:
+
+| Model (source MB) | Meshes | Cells / open | Floor | Data model | Base in-memory | Branch in-memory | Streamed |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| AC20-FZK-Haus (2.5) | 285 | 5 / 1 | 20 | 14 | 27 | 27 | 28 |
+| ISSUE_129 (12) | 1,402 | 21 / 6 | 106 | 84 | 158 | 153 | 159 |
+| dental_clinic (13) | 5,927 | 16 / 14 | 87 | 120 | 177 | 174 | 170 |
+| FM_ARC_DigitalHub (14) | 4,058 | 17 / 19 | 100 | 77 | 134 | 150 | 149 |
+| 01_BIMcollab_Example_ARC (18) | 7,846 | 10 / 12 | 106 | 93 | 167 | 163 | 162 |
+| advanced_model (35) | 11,472 | 9 / 35 | 165 | 230 | 463 | 475 | 401 |
+| schependomlaan (49) | 6,062 | 6 / 8 | 128 | 245 | 322 | 246 | 242 |
+| ISSUE_068 (56) | 16,777 | 17 / 36 | 277 | 377 | 646 | 628 | 505 |
+| Holter_Tower_10 (177) | 110,633 | 43 / 107 | 557 | 907 | 1,492 | 1,470 | 1,098 |
+
+- The streamed peak stays at or about the data-model peak plus the pipeline floor (under their sum on eight models, a few MiB over on advanced_model), so the writer adds no mesh-proportional memory beyond its open chunks; on the larger models it sits well under the in-memory one; the gap is the retained mesh set and grows with it. Streamed peak is not flat in model size: the data model (entity index, strings, relationship tables) and the pipeline's own floor both grow with the source, and on Holter the data-model phase alone is the larger part. Wall time moved within the host's noise; no timing claim.
+- Tried and dropped: running the geometry pass before the data model. It did not lower the peak (one Holter run read slightly higher), because the allocator keeps the first phase's pages for the second.
+
+Lesson: streaming removes the retained mesh set, while the data model and the geometry pipeline's own working set still contribute to peak RSS. Source file size alone does not predict the saving. Further reductions depend on which phase sets the peak on the model being measured.
 
 ## Reopen interactive mark with a geometry-restore gate (#10218, merged)
 
@@ -1120,6 +1264,15 @@ contracts; do not infer latency from allocation counts or relax the gate.
 The user explicitly accepted the small absolute cost to retain the broader
 gains, with further investigation bounded by #10555.
 
+## Rectangular-cut diagnostics measure area and volume (#10510)
+
+Equal triangle counts can hide a real cut. Accepted rectangular cuts now
+compare the input and final surface area and volume before the load report
+identifies the host as unchanged. The real-model cohort included a cut with
+nearly identical area and a substantial volume reduction, so both measurements
+matter. Native load probes compare mesh fingerprints because this changes the
+diagnostics the loader emits while retaining the mesh output.
+
 ## Small void classes walk canonically (#10555)
 
 #10420's first hosted window in a 1K session exceeded the regression boundary. Phase timing through the real session API put
@@ -1934,6 +2087,14 @@ slice by the phases it changes and by output identity, not by a ±2% move in an 
 | D1b #8002 cache residency ownership and typed resource stops | identical | BWK +1.0% (±3), Holter +0.7% (±30), ISSUE_098 −1.9% (±10), ISSUE_068 +0.5% (±23), schependomlaan +0.6% (±7), ISSUE_129 +0.1% (±4) | neutral: with no account installed, one thread-local read per cache publication/lookup; geometry within ±2% on every model |
 | C5b opening source probe/classifier | identical | BWK −1.7% (±3), Holter +2.5% (±18), ISSUE_098 +0.7% (±12), ISSUE_068 −1.5% (±17), schependomlaan −1.6% (±5), ISSUE_129 −1.7% (±5) vs D3 base c282c7bebf | neutral: owned classify/probe on every opening host, all deltas inside noise |
 | C5c opening gateway cutover | identical | BWK +1.2% (±8), Holter −0.4% (±9), ISSUE_098 +2.9% (±33), ISSUE_068 −3.1% (±55), schependomlaan +0.3% (±11), ISSUE_129 +1.1% (±14) vs C5b | neutral within noise; fingerprints identical on 6 models and 122/122 corpus models; deterministic FZK instruction ratchet is the strict check |
+
+## Recovering rejected cuts on touching shells (#10512)
+
+Manifold-gated recess cuts can fail when adjoining wall bodies leave internal
+faces in the merged host. The retry certifies complete consecutive shells,
+unites them without losing volume, and cuts with the original recess depth.
+The shell scan runs only on a gate rejection. Builds without the manifold gate
+keep the existing void routing.
 
 ## Exact rectangular opening union (#7941)
 
@@ -2907,6 +3068,24 @@ representation from the final load metric. Preserve true sticky keys and the
 canonical parser; defer mechanisms whose correctness or end-to-end verdict
 remains incomplete. [Raw dispositions and prerequisites](https://github.com/LTplus-AG/ifc-lite/blob/f98785c722/scripts/perf/evidence/deferred-worker-mechanisms-6537/README.md)
 retain source attribution and the excluded attempts.
+
+## Repeated-key affinity cap (#8451, #9466)
+
+The cap preserves sticky assignment for small keys and reconsiders a hot key's
+owner in bounded runs. A fresh-browser comparison with the same WASM on both
+revisions showed faster worker-pool completion on the repeated-cube model in
+flat and instanced modes. The shared host was under CPU and swap pressure, so
+the timings are exploratory. The mixed-model overhead still needs a quiet-host
+verdict. Thanks to @ionuting for reporting the bottleneck.
+[#9466](https://github.com/LTplus-AG/ifc-lite/pull/9466)
+
+Flat mesh fingerprints matched. The hot key's instanced shard and template
+partition changed while reconstructed occurrences, picking IDs and packed
+appearance matched. A hardware Metal witness on cubes past the cap matched
+entity picks and framebuffer bytes. For a scheduling change, compare the
+canonical occurrences and rendered results as well as the raw shard bytes.
+Shard-layout changes can follow the new worker partition, so a matching
+occurrence count alone cannot establish equivalence.
 
 ## Known-explicit orientation: rejected, do not ship (#6537 / #6788)
 
@@ -7864,3 +8043,12 @@ Between the index and the prepass styles the gap grows by about 150 ms on Holter
 3. Re-measure.
 
 The spike's read-overlap pieces are kept on branch spike/streaming-scan: reader worker + watermark, slice scan with offset correction, and pool adoption.
+
+## Size optimization for the main WASM engine's export crate (#10707)
+
+The structural carriers exceeded the engine bundle ceiling even after the two
+STEP writers shared their conversion prepass. Compiling only the export crate
+for size recovers the space with byte-identical STEP and GLB output on the
+ArchiCAD FZK-Haus sample. STEP conversion trades some throughput for the
+smaller bundle. GLB export timing was comparable and native builds retain
+their existing optimization level.

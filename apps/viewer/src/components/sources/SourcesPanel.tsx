@@ -30,6 +30,7 @@ import {
 } from '@/lib/sources/revisionWatch';
 
 import { RegistrySources } from './RegistrySources';
+
 interface SourcesPanelProps {
   onClose: () => void;
   registryEnabled?: boolean;

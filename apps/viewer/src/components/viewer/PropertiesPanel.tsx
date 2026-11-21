@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { effectiveTypeProperties, liveTypeOccurrences } from './properties/effectiveTypeProperties';
-import { lazy, Suspense, useMemo, useState, useCallback, useEffect } from 'react';
+import { Suspense, useMemo, useState, useCallback, useEffect } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import { useTranslation } from '@/i18n';
 import { Building2, Layers, FileText, Calculator, Tag, MousePointer2, PenLine, ChevronDown } from 'lucide-react';
 import { EditToolbar } from './PropertyEditor';
@@ -87,7 +88,7 @@ import { AssistantAction } from './assistant/AssistantAction';
 import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
 
 // Loaded on the first structural selection: it is not entry-chunk weight (#9668).
-const StructuralCard = lazy(() => import('./properties/StructuralCard').then((m) => ({ default: m.StructuralCard })));
+const StructuralCard = lazyChunk(() => import('./properties/StructuralCard').then((m) => ({ default: m.StructuralCard })));
 
 export function PropertiesPanel() {
   const { t, locale } = useTranslation();
@@ -653,8 +654,8 @@ export function PropertiesPanel() {
     const globalIds = members.map((m) => toGlobalIdFromModels(models, selectedEntity.modelId, m.id));
     // The members' own ids are ADDED to what the resolver returns, never
     // REPLACED by it -- the one place this departs from #2660, which isolates
-    // the resolved set alone. The resolver reads the type-visibility-FILTERED
-    // mesh list (Viewport gets ViewportContainer's `filteredGeometry`), and
+    // the resolved set alone. The resolver skips the ids type visibility
+    // hides (Viewport's `typeHidden`), and
     // this handler exists for zones of hidden-by-default IfcSpaces (#1075):
     // those members resolve to nothing until the toggles below flip, so
     // replacing would drop exactly the ids the feature is about. Keeping them

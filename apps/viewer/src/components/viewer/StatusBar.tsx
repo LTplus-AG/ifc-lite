@@ -29,7 +29,7 @@ import { ownedAggregationRelationships } from '@/utils/entity-ownership';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import type { EntityRef } from '@/store/types';
-import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
+import { getLegacyMutationView } from '@/sdk/adapters/model-compat';
 import { isStoreyLikeSpatialTypeName } from '@ifc-lite/data';
 import { effectiveContextType } from './EntityContextMenu.effective-selection';
 import { effectiveStoreyMemberIds } from './EntityContextMenu.effective-storey';
@@ -121,7 +121,7 @@ export function StatusBar() {
     const result = new Map<string, ReadonlySet<number>>();
     for (const { modelId, store } of countedModels) {
       const view = models.size > 0 ? mutationViews.get(modelId) ?? null
-        : mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? mutationViews.get(LEGACY_MODEL_ID) ?? null;
+        : getLegacyMutationView(mutationViews) ?? null;
       result.set(modelId, sharedEffectivePhysicalEntityIds(store, view, mutationVersion));
     }
     return result;
@@ -131,7 +131,7 @@ export function StatusBar() {
     for (const { modelId, store, meshedIds, geometryReady } of countedModels) {
       const physicalIds = physicalIdsByModel.get(modelId) ?? new Set<number>();
       const view = models.size > 0 ? mutationViews.get(modelId) ?? null
-        : mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? mutationViews.get(LEGACY_MODEL_ID) ?? null;
+        : getLegacyMutationView(mutationViews) ?? null;
       total += countShapedObjects(physicalIds, {
         relationships: ownedAggregationRelationships(store, view),
         meshedIds,
@@ -160,7 +160,7 @@ export function StatusBar() {
       const model = modelsById.get(ref.modelId);
       if (!model?.store.spatialHierarchy) return false;
       const view = models.size > 0 ? mutationViews.get(ref.modelId) ?? null
-        : mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? mutationViews.get(LEGACY_MODEL_ID) ?? null;
+        : getLegacyMutationView(mutationViews) ?? null;
       if (view?.isDeleted(ref.expressId) ||
         !isStoreyLikeSpatialTypeName(effectiveContextType(model.store, view, ref.expressId))) return false;
       selectedRefs.set(`${ref.modelId}:${ref.expressId}`, ref);
@@ -195,7 +195,7 @@ export function StatusBar() {
       const owner = modelsById.get(modelId);
       if (!owner) continue;
       const view = models.size > 0 ? mutationViews.get(modelId) ?? null
-        : mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? mutationViews.get(LEGACY_MODEL_ID) ?? null;
+        : getLegacyMutationView(mutationViews) ?? null;
       const storeyElements = effectiveStoreyMemberIds(owner.store, view, storeyId);
       let hasShape = predicates.get(modelId);
       if (!hasShape) {
@@ -341,7 +341,7 @@ export function StatusBar() {
 
         <Separator orientation="vertical" className="h-3.5" />
 
-        <span className="opacity-60">{t('shellChrome.statusBar.appVersion', { version: __APP_VERSION__ })}</span>
+        <span>{t('shellChrome.statusBar.appVersion', { version: __APP_VERSION__ })}</span>
 
         {isFeatureEnabled('help.product-links') && <><Separator orientation="vertical" className="h-3.5" />
 
@@ -349,7 +349,7 @@ export function StatusBar() {
           href="https://ifclite.dev"
           target="_blank"
           rel="noopener noreferrer"
-          className="opacity-60 hover:opacity-100 hover:text-primary transition-opacity"
+          className="hover:text-primary transition-colors"
           aria-label={t('shellChrome.statusBar.ifcliteAriaLabel')}
         >
           {t('shellChrome.statusBar.ifcliteLinkLabel')}

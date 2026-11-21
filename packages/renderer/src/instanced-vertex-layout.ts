@@ -15,6 +15,15 @@ export const MESH_VERTEX_BUFFERS: GPUVertexBufferLayout[] = [{
   ],
 }];
 
+/** The 12-byte lattice-quantized batch vertex `vs_main_quantized` reads (issue #1682 phase 6). */
+export const QUANTIZED_VERTEX_BUFFERS: GPUVertexBufferLayout[] = [{
+  arrayStride: 12,
+  attributes: [
+    { shaderLocation: 0, offset: 0, format: 'uint16x4' }, // qpos.xyz + packed oct normal
+    { shaderLocation: 2, offset: 8, format: 'uint32' }, // entityId lane
+  ],
+}];
+
 /** Same untextured shader inputs over a textured piece's existing UV-bearing buffer. */
 export const TEXTURED_HIGHLIGHT_VERTEX_BUFFERS: GPUVertexBufferLayout[] = [
   { ...MESH_VERTEX_BUFFERS[0], arrayStride: 36 },

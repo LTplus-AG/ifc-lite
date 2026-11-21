@@ -11,21 +11,22 @@
  */
 
 import { IfcServerError, normalizeProcessedModelHash, processedModelSize } from '@ifc-lite/server-client';
-import type { ProcessedModelSource } from '@/lib/processed-model';
+import type { ProcessedModelRecord, ProcessedModelSource } from '@/lib/processed-model';
 import { resolve as translate } from '@/i18n/registry';
 import type { TranslationKey } from '@/i18n';
 import { isNetworkUnavailableError } from '@/lib/cancelled-and-network-errors';
 import { formatLoadError } from '@/lib/load-error-message';
 import { messageOf } from '@/lib/load-errors';
+import { reportLoadFailure } from './loadFailureReport.js';
 
 /** `ref` with its hash lowercased, so the model record holds one spelling; a hash that is not a SHA-256 is kept for the client to refuse. A size that is not a positive integer becomes 0, unknown. */
-export function normalizedProcessedModel(ref: ProcessedModelSource): ProcessedModelSource & { bytes: number } {
+export function normalizedProcessedModel(ref: ProcessedModelSource): ProcessedModelRecord {
   return { ...ref, sha256: normalizeProcessedModelHash(ref.sha256) ?? ref.sha256, bytes: processedModelSize(ref.bytes) };
 }
 
 /** A cause found in the viewer, before or instead of a server answer. */
 export class ProcessedModelUnavailable extends Error {
-  constructor(readonly reason: 'not-primary' | 'no-server' | 'unreachable' | 'unsupported') {
+  constructor(readonly reason: 'no-server' | 'unreachable' | 'parquet-init') {
     super(`Processed model unavailable: ${reason}`);
     this.name = 'ProcessedModelUnavailable';
   }
@@ -35,7 +36,7 @@ export interface ProcessedModelFailure {
   message: string;
   /** Load-error code for analytics; a fixed vocabulary, never user data. */
   code: string;
-  /** Only a transient cause (network, timeout, server error, server busy) offers Retry. */
+  /** Retry is available when the underlying operation may succeed on another attempt. */
   retryable: boolean;
 }
 
@@ -43,11 +44,16 @@ const failure = (key: TranslationKey, code: string, retryable: boolean, values?:
   ({ message: translate(key, values), code: `processed_model_${code}`, retryable });
 
 const VIEWER_CAUSES: Record<ProcessedModelUnavailable['reason'], () => ProcessedModelFailure> = {
-  'not-primary': () => failure('viewportLighting.container.processedModel.notPrimary', 'not_primary', false),
   'no-server': () => failure('viewportLighting.container.processedModel.noServer', 'no_server', false),
   unreachable: () => failure('viewportLighting.container.processedModel.unreachable', 'server_unreachable', false),
-  unsupported: () => failure('viewportLighting.container.processedModel.unsupported', 'unsupported', false),
+  'parquet-init': () => failure('viewportLighting.container.processedModel.unsupported', 'unsupported', true),
 };
+
+/** Report an unsupported target without entering the model-load lifecycle. */
+export function refuseFederatedProcessedModel(onLoadError?: (message: string) => void): void {
+  const message = translate('viewportLighting.container.processedModel.notPrimary');
+  reportLoadFailure(message, 'processed_model_not_primary', null, onLoadError);
+}
 
 /** `error` is what the load threw; `null` when it ended without saying why. */
 export function describeProcessedModelFailure(error: unknown): ProcessedModelFailure {

@@ -237,7 +237,7 @@ inputs are available for users to run their own validation.
 
 ## Integration boundary
 
-- **SplatTransform 3.10.3:** actual `.splat` parsing through its file-system and
+- **SplatTransform 3.11.2:** actual `.splat` parsing through its file-system and
   chunk-source APIs. PlayCanvas's Gaussian iterator interprets encoded scale,
   rotation, opacity and DC colour. The experiment's code only adapts columns
   and applies explicit placements.

@@ -4,10 +4,9 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { destabilizingUnknown } from './schema-converter-structural.js';
 import { listItems } from './schema-converter-structural-axes.js';
 import { refId } from './schema-ifc2x3-records.js';
-import { decodeRange } from './source-ref-bounds.js';
+import { holdsValue } from './step-comment-skip.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
-import { readStepSlots } from './step-argument-parser.js';
-import type { SourceStore, StructuralRewrite } from './schema-converter-structural-source.js';
+import type { SourceRecords, SourceStore, StructuralRewrite } from './schema-converter-structural-source.js';
 
 /**
  * IFC2X3's varying actions and the IFC4 actions they become. IFC4 dropped
@@ -28,13 +27,16 @@ const KINDS = [
   { ifc2x3: 'IFCSTRUCTURALPLANARACTIONVARYING', ifc4: 'IFCSTRUCTURALSURFACEACTION', first: ['IFCSTRUCTURALLOADPLANARFORCE', 'IFCSTRUCTURALLOADTEMPERATURE'], min: 3, spread: ['.NOTDEFINED.', '.BILINEAR.'] },
 ] as const;
 
-/** Why the downgrade refuses a file: a configuration it converts is also named by a record it does not. */
+/** Why the downgrade refuses a file: a record it does not convert names a configuration it converts, or a record it passes through as it is names any configuration. */
 export const SHARED_CONFIGURATION = 'IFCSTRUCTURALLOADCONFIGURATION shared with a non-converted referrer has no representation in IFC2X3';
 
 const FROM_IFC2X3 = 'an IFC2X3 varying action is written as an IFC4 curve or surface action with PredefinedType NOTDEFINED and an IfcStructuralLoadConfiguration holding its loads without Locations; the IfcShapeAspect of its representation keeps the locations';
 const TO_IFC2X3 = 'an IFC4 curve or surface action with an IfcStructuralLoadConfiguration is written as an IFC2X3 varying action, its locations taken from the one IfcShapeAspect of its representation; the configuration Name, Locations and the action PredefinedType have no slot in IFC2X3';
 
 type Kind = (typeof KINDS)[number];
+
+/** The IFC4 action an IFC2X3 varying action converts to. */
+export const varyingTarget = (ifc2x3: string): string | undefined => KINDS.find((k) => k.ifc2x3 === ifc2x3)?.ifc4;
 
 /**
  * Converts varying actions in both directions, and only those that convert
@@ -54,20 +56,17 @@ export class StructuralVarying {
   /** IfcProductDefinitionShape id -> the IfcShapeAspects naming it as PartOfProductDefinitionShape. */
   private readonly aspects = new Map<number, { id: number; representations: number }[]>();
 
-  fromStore(store: SourceStore, from: string, to: string): void {
+  fromStore(store: SourceStore, from: string, to: string, source: SourceRecords): void {
     const mode = from === 'IFC2X3' && to === 'IFC4' ? 'upgrade' : from === 'IFC4' && to === 'IFC2X3' ? 'downgrade' : null;
     // @raw-entity-enumeration-ok conversion prepass is enabled only for an unedited full-source export
     const { byId, byType } = store.entityIndex;
     const present = (types: readonly string[]) => types.some((type) => byType.get(type)?.length);
     const work = mode === 'upgrade' ? present(KINDS.map((k) => k.ifc2x3))
-      : mode === 'downgrade' && present(['IFCSTRUCTURALLOADCONFIGURATION']) && present(KINDS.map((k) => k.ifc4));
+      // With no action to convert, a downgrade still checks what names a configuration.
+      : mode === 'downgrade' && present(['IFCSTRUCTURALLOADCONFIGURATION']);
     if (!work) return;
-    const slots = (id: number) => {
-      const entry = byId.get(id);
-      return entry ? readStepSlots(decodeRange(store.source, entry.byteOffset, entry.byteOffset + entry.byteLength))?.slots : undefined;
-    };
     for (const id of byType.get('IFCSHAPEASPECT') ?? []) {
-      const args = slots(id);
+      const args = source.slots(id);
       const shape = refId(args?.[4]);
       if (shape === null) continue;
       const list = this.aspects.get(shape) ?? [];
@@ -75,36 +74,32 @@ export class StructuralVarying {
       this.aspects.set(shape, list);
     }
     for (const id of mode === 'downgrade' ? byType.get('IFCSTRUCTURALLOADCONFIGURATION') ?? [] : []) {
-      const values = listItems(slots(id)?.[1] ?? '')?.map(refId);
+      const values = listItems(source.slots(id)?.[1] ?? '')?.map(refId);
       if (values?.length && values.every((v) => v !== null)) this.configs.set(id, values as number[]);
     }
     this.mode = mode;
     this.byId = byId;
-    if (mode === 'downgrade') this.checkSharedConfigurations(slots);
+    if (mode === 'downgrade') this.checkSharedConfigurations(source);
   }
 
   /** Rust scan_ifc4 keeps configurations referenced by any record that is not converted.
    * They have no IFC2X3 form, so refuse the export instead of silently proxying a referrer.
    */
-  private checkSharedConfigurations(slots: (id: number) => readonly string[] | undefined): void {
+  private checkSharedConfigurations(source: SourceRecords): void {
     const candidates = new Set<number>();
     const consumed = new Set<number>();
     const configs = new Set(this.configs.keys());
     for (const [id, entry] of this.byId) {
       if (!KINDS.some((k) => k.ifc4 === entry.type.toUpperCase())) continue;
-      const args = slots(id);
+      const args = source.slots(id);
       if (!args || args.some((a, i) => i !== 7 && referencesAnyExpressId(a, configs))) continue;
       if (this.toIfc2x3(id, entry.type.toUpperCase(), args)) {
         candidates.add(id);
         consumed.add(refId(args[7])!);
       }
     }
-    if (!consumed.size) return;
-    for (const [id] of this.byId) {
-      if (candidates.has(id)) continue;
-      if (slots(id)?.some((a) => referencesAnyExpressId(a, consumed))) {
-        throw new Error(SHARED_CONFIGURATION);
-      }
+    for (const { id } of source.naming(consumed)) {
+      if (!candidates.has(id)) throw new Error(SHARED_CONFIGURATION);
     }
   }
 
@@ -158,7 +153,7 @@ export class StructuralVarying {
     this.pending.push(`#${id}=IFCSTRUCTURALLOADCONFIGURATION($,(${loads.map((l) => `#${l}`).join(',')}),$);`);
     const losses = [FROM_IFC2X3];
     // A CausedBy IFC4 holds as a 'Causes' relationship (`StructuralCarriers.noteCause`) is not lost.
-    if (args[10].trim() !== '$' && !carried.has('CausedBy')) losses.push(`${entity}.CausedBy has no slot in IFC4; its value is omitted`);
+    if (holdsValue(args[10]) && !carried.has('CausedBy')) losses.push(`${entity}.CausedBy has no slot in IFC4; its value is omitted`);
     return { body: `${kind.ifc4}(${[...args.slice(0, 7), `#${id}`, args[8], args[9], args[11], '.NOTDEFINED.'].join(',')})`, losses };
   }
 

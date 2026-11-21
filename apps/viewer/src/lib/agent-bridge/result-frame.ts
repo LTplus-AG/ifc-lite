@@ -96,16 +96,17 @@ export function buildResultFrame(
   id: string,
   result: BridgeCallResult,
   maxResultBytes: number = BRIDGE_LIMITS.maxResultBytes,
+  resultAck = false,
 ): ResultFrame {
-  const frame = (r: BridgeCallResult): string =>
-    JSON.stringify({ type: 'result', sessionId, id, result: r } satisfies BridgeResultMessage);
+  const frame = (r: BridgeCallResult, ack = false): string =>
+    JSON.stringify({ type: 'result', sessionId, id, result: r, ...(ack ? { resultAck: true } : {}) } satisfies BridgeResultMessage);
   const refusal = (json: string, r: BridgeCallResult): string | null => {
     const checked = parseTabMessage(json);
     if (!checked.ok) return checked.error;
     const bytes = byteLength(JSON.stringify(r));
     return bytes > maxResultBytes ? `result is ${bytes} bytes; the limit is ${maxResultBytes}` : null;
   };
-  const full = frame(result);
+  const full = frame(result, resultAck);
   const why = refusal(full, result);
   if (why === null) return { json: full, truncated: false };
 

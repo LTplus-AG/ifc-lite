@@ -24,6 +24,8 @@ export const viewerShellEn = {
   'viewerShell.chunkError.crashedDetail': 'An unexpected error stopped it from rendering.',
   'viewerShell.chunkError.reload': 'Reload',
   'viewerShell.staleDeployment.notice': 'A new version of the viewer is available — reload to continue.',
+  'viewerShell.staleDeployment.offline': 'You’re offline. Reconnect to continue.',
+  'viewerShell.staleDeployment.reconnected': 'Connection restored. Reload to continue.',
   'viewerShell.staleDeployment.reopenPrompt': 'The viewer updated to a new version and reloaded. Open {files} again to continue.',
   'viewerShell.staleDeployment.reopenAction': 'Open file…',
   // A deployment that configures the viewer at start (`lib/features/host-start.ts`)

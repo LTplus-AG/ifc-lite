@@ -138,16 +138,63 @@ impl EdgeLedger {
                 if x == y {
                     continue;
                 }
-                let (lo, hi, forward) = if x < y { (x, y, true) } else { (y, x, false) };
-                let slot = ledger.uses.entry((lo, hi)).or_insert((0, 0));
-                if forward {
-                    slot.0 += 1;
-                } else {
-                    slot.1 += 1;
-                }
+                ledger.record_edge(x, y);
             }
         }
         ledger
+    }
+
+    #[inline]
+    fn record_edge(&mut self, from: Key3, to: Key3) -> (u32, u32) {
+        let (lo, hi, forward) = if from < to { (from, to, true) } else { (to, from, false) };
+        let slot = self.uses.entry((lo, hi)).or_insert((0, 0));
+        if forward {
+            slot.0 += 1;
+        } else {
+            slot.1 += 1;
+        }
+        *slot
+    }
+
+    /// Recover consecutive, strictly paired shells from a merged triangle stream.
+    /// A face order without complete closed runs is ineligible for this recovery.
+    #[cfg(feature = "csg_manifold_gate")]
+    pub(crate) fn closed_shell_ranges(mesh: &Mesh) -> Option<Vec<std::ops::Range<usize>>> {
+        if !mesh.indices.len().is_multiple_of(3) {
+            return None;
+        }
+        let vertex_count = mesh.positions.len() / 3;
+        let mut ledger = Self { uses: FxHashMap::default(), rejected: false };
+        let mut ranges = Vec::new();
+        let mut pending = 0usize;
+        let mut start = 0;
+        for (triangle, indices) in mesh.indices.chunks_exact(3).enumerate() {
+            if indices.iter().any(|&index| index as usize >= vertex_count) {
+                return None;
+            }
+            let keys = [indices[0], indices[1], indices[2]].map(|index| {
+                let point = position(&mesh.positions, index);
+                point.iter().all(|value| value.is_finite()).then(|| bits_zero_folded(point))
+            });
+            let [Some(a), Some(b), Some(c)] = keys else { return None };
+            for (from, to) in [(a, b), (b, c), (c, a)] {
+                if from == to {
+                    return None;
+                }
+                match ledger.record_edge(from, to) {
+                    (1, 0) | (0, 1) => pending += 1,
+                    (1, 1) => pending -= 1,
+                    _ => return None,
+                }
+            }
+            if pending == 0 {
+                let end = (triangle + 1) * 3;
+                ranges.push(start..end);
+                start = end;
+                ledger.uses.clear();
+            }
+        }
+        (start == mesh.indices.len() && ranges.len() > 1).then_some(ranges)
     }
 
     /// No edge was recorded (no triangle survived the degenerate rule).
@@ -194,6 +241,14 @@ impl EdgeLedger {
                 n if n > 0 => Some((lo, hi, n)),
                 n => Some((hi, lo, -n)),
             }
+        })
+    }
+
+    /// Whether an edge now has more than two uses and its use count grew.
+    pub(crate) fn overuse_increased_from(&self, before: &Self) -> bool {
+        self.uses.iter().any(|(edge, &(forward, reverse))| {
+            let uses = forward + reverse;
+            uses > 2 && before.uses.get(edge).is_none_or(|&(f, r)| f + r < uses)
         })
     }
 

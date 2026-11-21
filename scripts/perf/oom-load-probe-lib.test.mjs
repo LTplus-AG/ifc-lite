@@ -23,6 +23,15 @@ const phaseOf = (...a) => lib().phaseOf(...a);
 const runCleanup = (...a) => lib().runCleanup(...a);
 const verdict = (...a) => lib().verdict(...a);
 const withTimeout = (...a) => lib().withTimeout(...a);
+/** Server-proof exports this follow-up adds to the lib; asserted, so a revert fails by assertion. */
+function serverApi() {
+  const m = lib();
+  for (const name of ['serverAttemptSummary', 'expectFlags', 'SERVER_FIRST']) assert.ok(m[name] !== undefined, `oom-load-probe-lib.mjs lacks the export ${name}`);
+  return m;
+}
+const TRACKER = new URL('./oom-load-probe-tracker.mjs', import.meta.url);
+const trackerModule = existsSync(TRACKER) ? await import(TRACKER.href) : null;
+function trackerApi() { assert.ok(trackerModule, 'scripts/perf/oom-load-probe-tracker.mjs does not exist'); return trackerModule; }
 
 test('#10264 a tab death wins over every other signal', () => {
   assert.equal(classify({ oomKills: 1, killedTypes: ['renderer'], pageCrashed: true }).outcome, 'killed');
@@ -162,6 +171,16 @@ test('#10264 killed-after-continue fails acceptance; passes only the explicit wa
   assert.equal(phaseOf({ warning: true, tris: 0 }), 'memory warning (load not started)');
 });
 
+test('#10264 A2 every exact --expect pin passes only its own outcome', () => {
+  const { OUTCOMES, EXPECTATIONS } = lib();
+  const pins = Object.keys(EXPECTATIONS).filter((pin) => EXPECTATIONS[pin].length === 1);
+  assert.deepEqual(pins, ['killed', 'loaded', 'refused', 'awaiting-decision']);
+  for (const pin of pins) {
+    assert.deepEqual(EXPECTATIONS[pin], [pin], `--expect ${pin} names its outcome`);
+    for (const outcome of OUTCOMES) assert.equal(verdict(outcome, pin).pass, outcome === pin, `${outcome} under --expect ${pin}`);
+  }
+});
+
 test('#10264 CLI options are validated before anything runs', () => {
   const ok = { expect: 'killed', cap: '3G', kind: 'tfs', 'target-mb': '300', cores: '4', 'device-memory': '4', 'cpu-quota': '400%' };
   assert.deepEqual(optionErrors(ok), []);
@@ -175,6 +194,8 @@ test('#10264 CLI options are validated before anything runs', () => {
   assert.match(bad({ cap: '3 GB' }).join(), /--cap/);
   assert.match(bad({ gl: 'vulkan' }).join(), /--gl/);
   assert.match(bad({ 'on-memory-dialog': 'yes' }).join(), /--on-memory-dialog/);
+  assert.deepEqual(bad({ 'watch-url': 'http://127.0.0.1:9' }), []);
+  assert.match(bad({ 'watch-url': '127.0.0.1:9' }).join(), /--watch-url must be an http\(s\) URL/);
 });
 
 test('#10264 cleanup runs every step even when one throws, last registered first', async () => {
@@ -195,6 +216,150 @@ test('#10264 withTimeout falls back when a close hangs', async () => {
   assert.equal(await withTimeout(Promise.resolve('closed'), 1000, () => 'forced'), 'closed');
 });
 
+const facts = (f = {}, extra = {}) => ({ reported: true, pickKnown: true, sourceMarked: true, truncated: false, requestsBeforePick: 0, requestsAfterPick: 0, failuresAfterPick: 0,
+  facts: { firstLargeSourceRead: null, firstUnattributedRead: null, firstSourcePost: null, firstOtherPost: null, firstRequestAfterPick: null, startupRequests: [], ...f }, ...extra });
+/** Tracker summary with page-clock requests: `after` / `before` are ms relative to the page pick. */
+const withRequests = ({ after = [], before = [], failures = 0 } = {}, f = {}, extra = {}) => facts(
+  { firstRequestAfterPick: after.length ? { ms: Math.min(...after) } : null, startupRequests: before.map((ms) => ({ ms })), ...f },
+  { requestsAfterPick: after.length, requestsBeforePick: before.length, failuresAfterPick: failures, ...extra });
+
+test('#10353 server proof: a failed server attempt before the warning, no read or post before it', async () => {
+  const { serverAttemptSummary, expectFlags, SERVER_FIRST } = serverApi();
+  const s = serverAttemptSummary([
+    { ms: 40, event: 'request', clock: 'page', url: 'http://127.0.0.1:9/api/v1/health' },
+    { ms: 42, event: 'requestfailed', clock: 'page', failure: 'net::ERR_CONNECTION_REFUSED' },
+    { ms: 60, event: 'dialog', text: 'This model may exceed available memory\nThis model may need about 6.0 GiB' },
+  ], { watching: true, tracker: withRequests({ after: [40], failures: 1 }) });
+  assert.deepEqual(s, { watched: true, trackerReported: true, sourceMarked: true, pickKnown: true, attempts: 1, failures: 1, failureCode: null, startupRequests: { count: 0, ms: [] }, firstAttemptMs: 40, firstDecisionMs: 60, decisionWindowMs: 0,
+    attemptBeforeDecision: true, readBeforeDecision: false, unattributedReadBeforeDecision: false, sourcePostBeforeDecision: false, logTruncated: false, channels: null });
+  assert.equal(expectFlags(s, SERVER_FIRST).pass, true);
+});
+
+test('#10353 server proof: verdicts come from kept facts, so a truncated log cannot hide a large read', async () => {
+  const { serverAttemptSummary, expectFlags, SERVER_FIRST } = serverApi();
+  const dialog = { ms: 600, event: 'dialog', text: 'This model may exceed available memory' };
+  const req = { ms: 10, event: 'request', clock: 'page' };
+  // 500 small reads then a whole-file read before the decision; the log dropped the middle.
+  const early = serverAttemptSummary([req, dialog], { watching: true, tracker: facts({ firstLargeSourceRead: { ms: 501, bytes: 740e6 } }, { truncated: true }) });
+  assert.equal(early.readBeforeDecision, true);
+  assert.equal(early.logTruncated, true);
+  assert.equal(expectFlags(early, SERVER_FIRST).pass, false);
+  // Same, whole-file read after the decision (Continue): order is right.
+  const late = serverAttemptSummary([req, dialog], { watching: true, tracker: facts({ firstLargeSourceRead: { ms: 900, bytes: 740e6 } }, { truncated: true }) });
+  assert.equal(late.readBeforeDecision, false);
+  const post = serverAttemptSummary([req, dialog], { watching: true, tracker: facts({ firstSourcePost: { ms: 300, worker: 'w.js' }, firstUnattributedRead: { ms: 5, bytes: 2e6 } }) });
+  assert.equal(post.sourcePostBeforeDecision, true);
+  assert.equal(post.unattributedReadBeforeDecision, true);
+});
+
+test('#10353 server proof: a refusal seen only by the poll makes events inside its window unknown', async () => {
+  const { serverAttemptSummary } = serverApi();
+  const polled = { ms: 2031, event: 'store-error', windowMs: 2000, text: "This IFC file exceeds this tab's local processing memory budget" };
+  const s = serverAttemptSummary([{ ms: 155, event: 'request', clock: 'page' }, polled], { watching: true, tracker: withRequests({ after: [155] }, { firstSourcePost: { ms: 1500, worker: 'w.js' } }) });
+  assert.equal(s.decisionWindowMs, 2000);
+  assert.equal(s.attemptBeforeDecision, null, '155 ms is inside (31, 2031]: the refusal may have come first');
+  assert.equal(s.sourcePostBeforeDecision, null);
+  // A precise stamp (store subscription or notice) settles it.
+  const precise = serverAttemptSummary([{ ms: 155, event: 'request', clock: 'page' }, { ms: 400, event: 'notice', text: "Failed to load: exceeds this tab's local processing memory budget" }, polled],
+    { watching: true, tracker: withRequests({ after: [155] }, { firstSourcePost: { ms: 1500, worker: 'w.js' } }) });
+  assert.equal(precise.firstDecisionMs, 400);
+  assert.equal(precise.attemptBeforeDecision, true);
+  assert.equal(precise.sourcePostBeforeDecision, false);
+});
+
+test('#10445 delayed polls retain the whole possible refusal interval', () => {
+  const { polledErrorEvent } = lib();
+  const { serverAttemptSummary, expectFlags, SERVER_FIRST } = serverApi();
+  const text = 'This IFC file exceeds this tab\'s local processing memory budget';
+  const event = polledErrorEvent({ readAt: 6000, previousReadAt: null, text }, 1000);
+  assert.equal(event.ms, 5000);
+  assert.equal(event.windowMs, 5000);
+  const summary = serverAttemptSummary([event], { watching: true, tracker: withRequests({ after: [200] }) });
+  assert.equal(summary.attemptBeforeDecision, null, 'a refusal at +100 may precede the +200 request');
+  assert.equal(expectFlags(summary, SERVER_FIRST).pass, false);
+  const later = polledErrorEvent({ readAt: 16000, previousReadAt: 6000, text }, 1000);
+  assert.equal(later.windowMs, 10000, 'the interval includes slow sampling between reads');
+  assert.equal(serverAttemptSummary([later], { watching: true, tracker: withRequests({ after: [5000] }) }).attemptBeforeDecision, true);
+});
+
+test('#10445 server proof: the open polling-window boundary is provably before the decision', () => {
+  const { serverAttemptSummary, expectFlags, SERVER_FIRST } = serverApi();
+  const polled = { ms: 2031, event: 'store-error', windowMs: 2000, text: "This IFC file exceeds this tab's local processing memory budget" };
+  for (const [ms, expected] of [[30, true], [31, true], [32, null], [2030, null], [2031, false], [2032, false]]) {
+    const summary = serverAttemptSummary([polled], { watching: true, tracker: withRequests({ after: [ms] }) });
+    assert.equal(summary.attemptBeforeDecision, expected, `request at ${ms} ms relative to (31, 2031]`);
+    if (ms === 31) assert.equal(expectFlags(summary, SERVER_FIRST).pass, true, 'the boundary request satisfies server-first');
+  }
+  const precise = serverAttemptSummary([{ ...polled, windowMs: 0 }], { watching: true, tracker: withRequests({ after: [2031] }) });
+  assert.equal(precise.attemptBeforeDecision, false, 'simultaneous events are not strictly ordered');
+});
+
+test('#10353 server proof: unreported instrumentation gives null, and null never passes', async () => {
+  const { serverAttemptSummary, expectFlags, SERVER_FIRST } = serverApi();
+  const dialog = { ms: 5, event: 'dialog', text: 'This model may exceed available memory' };
+  const noTracker = serverAttemptSummary([{ ms: 1, event: 'request', clock: 'page' }, dialog], { watching: true, tracker: { reported: false } });
+  assert.equal(noTracker.readBeforeDecision, null, 'no tracker report is unknown, not "no read"');
+  assert.equal(noTracker.sourcePostBeforeDecision, null);
+  assert.equal(noTracker.unattributedReadBeforeDecision, null);
+  assert.equal(noTracker.logTruncated, null);
+  assert.equal(noTracker.attemptBeforeDecision, null, 'no tracker: no page pick stamp, so no order');
+  assert.match(expectFlags(noTracker, SERVER_FIRST).message, /readBeforeDecision=unknown/);
+  assert.equal(expectFlags(noTracker, SERVER_FIRST).pass, false);
+  const unwatched = serverAttemptSummary([dialog], { watching: false, tracker: facts() });
+  assert.equal(unwatched.attempts, null);
+  assert.equal(unwatched.attemptBeforeDecision, null);
+  assert.equal(serverAttemptSummary([dialog], { watching: true, tracker: facts() }).attemptBeforeDecision, false);
+  const noDecision = serverAttemptSummary([{ ms: 1, event: 'request', clock: 'page' }], { watching: true, tracker: facts() });
+  assert.equal(noDecision.firstDecisionMs, null);
+  assert.equal(noDecision.attemptBeforeDecision, null);
+  assert.equal(noDecision.readBeforeDecision, null);
+  assert.equal(serverAttemptSummary([{ ms: 1, event: 'dialog', text: 'IFClite stores an action log' }], { watching: true, tracker: facts() }).firstDecisionMs, null);
+});
+
+test('#10353 server proof: a request during viewer startup is not the attempt for this load (review on #10415)', async () => {
+  const { serverAttemptSummary } = serverApi();
+  const dialog = { ms: 50, event: 'dialog', text: 'This model may exceed available memory' };
+  const onlyStartup = serverAttemptSummary([{ ms: -800, event: 'request', clock: 'page' }, { ms: -799, event: 'requestfailed', clock: 'page' }, dialog], { watching: true, tracker: withRequests({ before: [-800] }) });
+  assert.equal(onlyStartup.attemptBeforeDecision, false, 'instrument present, no attempt for this load');
+  assert.equal(onlyStartup.attempts, 0);
+  assert.equal(onlyStartup.failures, 0);
+  assert.deepEqual(onlyStartup.startupRequests, { count: 1, ms: [-800] });
+  const both = serverAttemptSummary([{ ms: -800, event: 'request', clock: 'page' }, { ms: 20, event: 'request', clock: 'page' }, dialog], { watching: true, tracker: withRequests({ before: [-800], after: [20] }) });
+  assert.equal(both.firstAttemptMs, 20);
+  assert.equal(both.attemptBeforeDecision, true);
+  assert.equal(both.attempts, 1);
+});
+
+test('#10353 server proof: an unmarked source or an unattributed large event before the decision makes identity flags null (review on #10415)', async () => {
+  const { serverAttemptSummary, expectFlags, SERVER_FIRST } = serverApi();
+  const tl = [{ ms: 5, event: 'request', clock: 'page' }, { ms: 50, event: 'dialog', text: 'This model may exceed available memory' }];
+  const unmarked = serverAttemptSummary(tl, { watching: true, tracker: facts({ firstUnattributedRead: { ms: 30, bytes: 740e6 } }, { sourceMarked: false }) });
+  assert.equal(unmarked.sourceMarked, false);
+  assert.equal(unmarked.readBeforeDecision, null);
+  assert.equal(unmarked.sourcePostBeforeDecision, null);
+  assert.match(unmarked.unknownBecause.readBeforeDecision, /never marked/);
+  assert.equal(expectFlags(unmarked, SERVER_FIRST).pass, false);
+  const lookalike = serverAttemptSummary(tl, { watching: true, tracker: facts({ firstUnattributedRead: { ms: 30, bytes: 2e6 }, firstOtherPost: { ms: 40, bytes: 3e6, worker: 'x.js' } }) });
+  assert.equal(lookalike.readBeforeDecision, null);
+  assert.equal(lookalike.sourcePostBeforeDecision, null);
+  assert.match(lookalike.unknownBecause.readBeforeDecision, /unattributed read of 2000000 bytes at 30 ms/);
+  assert.match(lookalike.unknownBecause.sourcePostBeforeDecision, /worker post of another Blob of 3000000 bytes/);
+  // After the decision they do not matter.
+  const later = serverAttemptSummary(tl, { watching: true, tracker: facts({ firstUnattributedRead: { ms: 90, bytes: 2e6 }, firstOtherPost: { ms: 95, bytes: 3e6 } }) });
+  assert.equal(later.readBeforeDecision, false);
+  assert.equal(later.sourcePostBeforeDecision, false);
+  assert.equal(later.unknownBecause, undefined);
+  // A positive source event is still true even when the source was not marked by the input.
+  assert.equal(serverAttemptSummary(tl, { watching: true, tracker: facts({ firstLargeSourceRead: { ms: 10, bytes: 1e6 } }, { sourceMarked: false }) }).readBeforeDecision, true);
+});
+
+test('#10353 server proof: a blob: URL of the source before the decision makes the post verdict null', async () => {
+  const { serverAttemptSummary } = serverApi();
+  const v = serverAttemptSummary([{ ms: 1, event: 'request', clock: 'page' }, { ms: 50, event: 'dialog', text: 'This model may exceed available memory' }],
+    { watching: true, tracker: facts({ firstSourceObjectUrl: { ms: 20, url: 'blob:x' } }) });
+  assert.equal(v.sourcePostBeforeDecision, null);
+  assert.match(v.unknownBecause.sourcePostBeforeDecision, /blob: URL of the source/);
+});
 
 test('#10264 the final snapshot decides, not which promise settled first (review on #10415)', async () => {
   const { mergeFinalSnapshot } = lib();
@@ -320,6 +485,59 @@ test('final snapshot (review on #10415): an explicit refusal replaces the poll\'
   assert.equal(classify(both).outcome, 'refused');
   // The same message twice is not duplicated.
   assert.equal(mergeFinalSnapshot({ ...base, storeError: OOM_TEXT }, { error: OOM_TEXT, modelStates: [], notices: [] }).otherErrors, undefined);
+});
+
+test('#10353 server proof: a request between the driver call and the real pick is startup, after the pick it is the attempt (review on #10415)', async () => {
+  const { serverAttemptSummary } = serverApi();
+  const dialog = { ms: 60, event: 'dialog', text: 'This model may exceed available memory' };
+  // Times are relative to the page's pick stamp; the request at -5 ms happened while the pick was pending.
+  const pending = serverAttemptSummary([{ ms: -5, event: 'request', clock: 'page' }, dialog], { watching: true, tracker: withRequests({ before: [-5] }) });
+  assert.equal(pending.attempts, 0);
+  assert.deepEqual(pending.startupRequests, { count: 1, ms: [-5] });
+  assert.equal(pending.attemptBeforeDecision, false);
+  const after = serverAttemptSummary([{ ms: -5, event: 'request', clock: 'page' }, { ms: 20, event: 'request', clock: 'page' }, dialog], { watching: true, tracker: withRequests({ before: [-5], after: [20] }) });
+  assert.equal(after.firstAttemptMs, 20);
+  assert.equal(after.attemptBeforeDecision, true);
+});
+
+test('#10353 server proof: unknown pick time or driver-only requests make the order null', async () => {
+  const { serverAttemptSummary, expectFlags, SERVER_FIRST } = serverApi();
+  const dialog = { ms: 60, event: 'dialog', text: 'This model may exceed available memory' };
+  const noPick = serverAttemptSummary([{ ms: 20, event: 'request', clock: 'page' }, dialog], { watching: true, tracker: facts({}, { pickKnown: false }) });
+  for (const k of ['attemptBeforeDecision', 'readBeforeDecision', 'unattributedReadBeforeDecision', 'sourcePostBeforeDecision']) assert.equal(noPick[k], null, k);
+  assert.match(noPick.unknownBecause.order, /never stamped the file pick/);
+  assert.equal(expectFlags(noPick, SERVER_FIRST).pass, false);
+  const driverOnly = serverAttemptSummary([{ ms: 20, event: 'driver-request', clock: 'driver' }, { ms: 21, event: 'driver-requestfailed', failure: 'net::ERR_CONNECTION_REFUSED' }, dialog], { watching: true, tracker: facts() });
+  assert.equal(driverOnly.attemptBeforeDecision, null);
+  assert.equal(driverOnly.failureCode, 'net::ERR_CONNECTION_REFUSED');
+  assert.match(driverOnly.unknownBecause.attemptBeforeDecision, /only by the driver/);
+});
+
+test('#10353 server proof: the attempt and request counts survive a log filled by 50 startup requests (review on #10415)', async (t) => {
+  const { installSourceTracker, trackerSummary } = trackerApi();
+  const { serverAttemptSummary, expectFlags, SERVER_FIRST } = serverApi();
+  const saved = Object.fromEntries(['arrayBuffer', 'text', 'bytes', 'stream', 'slice'].map((m) => [m, Blob.prototype[m]]));
+  t.after(() => { for (const [m, f] of Object.entries(saved)) Blob.prototype[m] = f; });
+  let clock = 0;
+  const target = { location: { href: 'http://127.0.0.1:5173/' }, fetch: () => Promise.reject(new TypeError('Failed to fetch')) };
+  // Detailed log keeps only the first 10 and last 10 events per kind.
+  const tracker = installSourceTracker({ Blob, target, now: () => clock, watchOrigin: 'http://127.0.0.1:49159', keepEvents: 10 });
+  for (let i = 0; i < 50; i++) { clock = i; target.fetch('http://127.0.0.1:49159/api/v1/health').catch(() => {}); }
+  clock = 100; tracker.markSource(new Blob([new Uint8Array(4)]));
+  clock = 130; await target.fetch('http://127.0.0.1:49159/api/v1/health').catch(() => {});
+  await new Promise((r) => setTimeout(r, 0));
+  const tr = trackerSummary(tracker.report(), 90);
+  assert.equal(tr.truncated, true, 'the detailed log overflowed');
+  assert.equal(tr.requestsBeforePick, 50);
+  assert.equal(tr.requestsAfterPick, 1);
+  assert.equal(tr.facts.firstRequestAfterPick.ms, 30);
+  const timeline = [...tr.events, { ms: 60, event: 'dialog', text: 'This model may exceed available memory' }];
+  const v = serverAttemptSummary(timeline, { watching: true, tracker: tr });
+  assert.equal(v.attempts, 1);
+  assert.equal(v.startupRequests.count, 50);
+  assert.equal(v.firstAttemptMs, 30);
+  assert.equal(v.attemptBeforeDecision, true);
+  assert.equal(expectFlags(v, SERVER_FIRST).pass, true);
 });
 
 test('OOM accounting per event (review on #10415): an extra vanished process in one interval cannot cover a missing victim in another', async () => {

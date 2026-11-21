@@ -17,7 +17,8 @@ import type { FileSourceProviderFactory } from './services/sources/source-host';
 import { Toaster } from './components/ui/toast';
 import { ChunkErrorBoundary } from './components/ChunkErrorBoundary';
 import { StaleDeploymentNotice } from './components/StaleDeploymentNotice';
-import { Suspense, lazy, useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import { HostingAnalytics } from './components/HostingAnalytics';
 
 // The /mcp marketing surface pulls in three.js (HeroScene / PlaygroundViewer)
@@ -28,17 +29,17 @@ import { HostingAnalytics } from './components/HostingAnalytics';
 // three.js + the marketing code into their own async chunks, off the `/`
 // critical path. ViewerLayout stays static — it IS the `/` route, so keeping it
 // eager avoids an extra round-trip for the overwhelmingly common case.
-const McpLanding = lazy(() =>
+const McpLanding = lazyChunk(() =>
   import('./components/mcp/McpLanding').then((m) => ({ default: m.McpLanding })),
 );
-const McpPlayground = lazy(() =>
+const McpPlayground = lazyChunk(() =>
   import('./components/mcp/McpPlayground').then((m) => ({ default: m.McpPlayground })),
 );
-const RteGpuWitness = lazy(() =>
+const RteGpuWitness = lazyChunk(() =>
   import('./e2e/RteGpuWitness').then((m) => ({ default: m.RteGpuWitness })),
 );
 
-const RegistryLaunchRoute = lazy(() => import('./components/sources/RegistryLaunchRoute'));
+const RegistryLaunchRoute = lazyChunk(() => import('./components/sources/RegistryLaunchRoute'));
 
 // Neutral full-viewport placeholder while a lazy MCP route chunk loads. Both
 // /mcp routes render on a near-black stage (McpLanding's `NIGHT` = #0a0a0c), so

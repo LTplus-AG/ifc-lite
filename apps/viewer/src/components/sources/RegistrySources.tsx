@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 
-const RegistrySource = lazy(() => import('./RegistrySource').then(module => ({ default: module.RegistrySource })));
-const OciPushTo = lazy(() => import('./OciPushTo').then(module => ({ default: module.OciPushTo })));
+const RegistrySource = lazyChunk(() => import('./RegistrySource').then(module => ({ default: module.RegistrySource })));
+const OciPushTo = lazyChunk(() => import('./OciPushTo').then(module => ({ default: module.OciPushTo })));
 
 export function RegistrySources({ expanded, navigationDisabled, onBusyChange, onToggle }: {
   expanded: boolean;

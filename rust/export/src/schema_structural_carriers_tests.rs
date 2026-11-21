@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Mirrors the CausedBy cases of `packages/export/src/schema-converter-structural-carriers.test.ts` (#9668, #10597).
+//! Mirrors the CausedBy and SharedPlacement cases of `packages/export/src/schema-converter-structural-carriers.test.ts` (#9668, #10597).
 use crate::step::{export_step_with_diagnostics, StepOptions};
 
 const OWNER: &str = "#1=IFCPERSON($,'P',$,$,$,$,$,$);
@@ -115,6 +115,16 @@ fn writes_no_causes_for_a_caused_by_that_names_no_reaction_9668() {
     assert!(warnings.contains("IFCSTRUCTURALLINEARACTION.CausedBy has no slot in IFC4; its value is omitted"), "{warnings}");
 }
 
+/// A CausedBy slot holding only a comment and `$` supplies no value (#10779).
+#[test]
+fn a_comment_only_caused_by_is_not_warned_as_omitted_10779() {
+    let (_, warnings) = convert(&model("IFC2X3", &CAUSED.replace(",.F.,#20,", ",.F.,/* none */$,")), "IFC4");
+    assert!(!warnings.contains("CausedBy has no slot"), "{warnings}");
+    // A comment beside a real value still holds it, so it is still reported.
+    let (_, warnings) = convert(&model("IFC2X3", &CAUSED.replace(",.F.,#20,", ",.F.,/* c */#9,")), "IFC4");
+    assert!(warnings.contains("IFCSTRUCTURALLINEARACTION.CausedBy has no slot in IFC4; its value is omitted"), "{warnings}");
+}
+
 // A varying action that stays unconverted is no IFC4 product, so no 'Causes' relationship may name it.
 const GEOMETRY: &str = "#13=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#8,$);
 #14=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));
@@ -180,6 +190,25 @@ fn commented_varying_action_converts_before_its_causes_is_written_10597() {
     assert!(relationships(&up)[0].ends_with("'Causes',$,(#20),$,#30);"), "{up}");
 }
 
+/// #10779: a CausedBy holding only a comment and `$` is no value, so a converted
+/// varying action neither warns about it nor counts it dropped.
+#[test]
+fn a_commented_empty_caused_by_on_a_varying_action_is_not_reported_10779() {
+    let geometry = GEOMETRY.replace("IFCSHAPEASPECT((#16),", "IFCSHAPEASPECT((#14,#16,#16),");
+    let action = VARYING.replace(",.F.,#20,.TRUE_LENGTH.", ",.F.,/* none */$,.TRUE_LENGTH.");
+    let (up, warnings) = convert(&model("IFC2X3", &[&geometry, REACTION, &action].join("\n")), "IFC4");
+    assert!(record(&up, 30).starts_with("#30=IFCSTRUCTURALCURVEACTION("), "{up}");
+    assert!(!warnings.contains("CausedBy has no slot"), "{warnings}");
+    let opts = StepOptions { schema: Some("IFC4".into()), ..StepOptions::default() };
+    for (cause, warned, dropped) in [("/* none */$", false, 0), ("#999", true, 1)] {
+        let action = VARYING.replace(",.F.,#20,.TRUE_LENGTH.", &format!(",.F.,{cause},.TRUE_LENGTH."));
+        let source = model("IFC2X3", &[&geometry, REACTION, &action].join("\n"));
+        let (_, stats, warnings) = export_step_with_diagnostics(source.as_bytes(), &opts).unwrap();
+        assert_eq!(stats.attribute_values_dropped, dropped, "{cause}");
+        assert_eq!(warnings.iter().any(|w| w.contains("CausedBy has no slot")), warned, "{cause}: {warnings:?}");
+    }
+}
+
 #[test]
 fn the_last_id_goes_to_the_varying_load_configuration_10597() {
     let geometry = GEOMETRY.replace("IFCSHAPEASPECT((#16),", "IFCSHAPEASPECT((#14,#16,#16),");
@@ -216,4 +245,49 @@ fn a_varying_rewrite_counts_a_missing_caused_by_even_with_free_ids_10597() {
         assert_eq!(warnings.iter().any(|w| w.contains("CausedBy has no slot")), expected == 1);
         assert_eq!(stats.attribute_values_dropped, expected, "{out}");
     }
+}
+
+fn shared(second: &str, list: &str) -> String {
+    model("IFC2X3", &format!("#20=IFCSTRUCTURALCURVEMEMBER('0XciGbSFPUkgAKmWK4M6tc',#5,'M',$,$,#9,$,.RIGID_JOINED_MEMBER.);
+#21=IFCSTRUCTURALPOINTCONNECTION('1IIB7Cy$HI3REa9CT8boqX',#5,'N',$,$,{second},$,$);
+#22=IFCBEAM('1wng2kJ6bGvgWud8Cpi0D9',#5,'Beam',$,$,#10,$,$);
+#30=IFCSTRUCTURALANALYSISMODEL('3rBQGmCZHSd9Yn0gS5NyiS',#5,'Model',$,$,.LOADING_3D.,$,$,$);
+#31=IFCRELASSIGNSTOGROUP('1rjQw6HYfMHPFWRTOSlRaA',#5,$,$,{list},$,#30);"))
+}
+const MODEL_SHARED: &str = "#30=IFCSTRUCTURALANALYSISMODEL('3rBQGmCZHSd9Yn0gS5NyiS',#5,'Model',$,$,.LOADING_3D.,$,$,$,#9);";
+
+#[test]
+fn reports_a_shared_placement_it_writes_9668() {
+    let (up, warnings) = convert(&shared("#9", "(#20,#21,#22)"), "IFC4");
+    assert_eq!(record(&up, 30), MODEL_SHARED);
+    assert!(warnings.contains("SharedPlacement is written as the local placement"), "{warnings}");
+}
+
+#[test]
+fn places_by_neither_model_an_item_two_models_group_9668() {
+    let two = shared("#10", "(#20,#21,#22)").replace("#31=", "#14=IFCLOCALPLACEMENT($,#8);
+#23=IFCSTRUCTURALCURVEMEMBER('1XciGbSFPUkgAKmWK4M6tc',#5,'M2',$,$,#14,$,.RIGID_JOINED_MEMBER.);
+#32=IFCSTRUCTURALANALYSISMODEL('4rBQGmCZHSd9Yn0gS5NyiS',#5,'Model 2',$,$,.LOADING_3D.,$,$,$);
+#33=IFCRELASSIGNSTOGROUP('2rjQw6HYfMHPFWRTOSlRaA',#5,$,$,(#21,#23),$,#32);
+#31=");
+    let (up, _) = convert(&two, "IFC4");
+    assert!(record(&up, 21).contains(",'N',$,$,#10,"), "{up}");
+    assert!(record(&up, 30).ends_with(",$);") && record(&up, 32).ends_with(",$);"), "{up}");
+}
+
+#[test]
+fn reports_a_shared_placement_ifc2x3_cannot_hold_as_lost_9668() {
+    let ifc4 = model("IFC4", "#13=IFCGRIDPLACEMENT($,$,$);
+#20=IFCSTRUCTURALCURVEMEMBER('0XciGbSFPUkgAKmWK4M6tc',#5,'M',$,$,#13,$,.RIGID_JOINED_MEMBER.,$);
+#30=IFCSTRUCTURALANALYSISMODEL('3rBQGmCZHSd9Yn0gS5NyiS',#5,'Model',$,$,.LOADING_3D.,$,$,$,#13);
+#31=IFCRELASSIGNSTOGROUP('1rjQw6HYfMHPFWRTOSlRaA',#5,$,$,(#20),$,#30);");
+    assert!(convert(&ifc4, "IFC2X3").1.contains("IFCSTRUCTURALANALYSISMODEL.SharedPlacement has no slot in IFC2X3; its value is omitted"));
+}
+
+#[test]
+fn reads_no_placement_when_a_grouped_item_cannot_be_read_9668() {
+    // A slot holding only a comment does not split, so the item's placement is unknown.
+    let unread = shared("#9", "(#20,#21,#22)").replace(",'N',$,$,#9,$,$);", ",'N',$,$,#9,/* */,$);");
+    let (up, _) = convert(&unread, "IFC4");
+    assert!(record(&up, 30).ends_with(",$);"), "{up}");
 }

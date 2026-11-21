@@ -12,7 +12,7 @@
  */
 
 import { useEffect } from 'react';
-import { discoverClasses } from '@ifc-lite/lens';
+import { nativeLensClasses } from '@/lib/lens/native-controls';
 import { useViewerStore } from '@/store';
 import { createLensDataProvider } from '@/lib/lens';
 
@@ -27,7 +27,8 @@ export function useLensDiscovery(): void {
   const setDiscoveredLensData = useViewerStore((s) => s.setDiscoveredLensData);
 
   useEffect(() => {
-    const { models, ifcDataStore: ds, mutationViews, resolveGlobalIdFromModels } = useViewerStore.getState();
+    const state = useViewerStore.getState();
+    const { models, ifcDataStore: ds, mutationViews, resolveGlobalIdFromModels } = state;
     if (models.size === 0 && !ds) {
       setDiscoveredLensData(null);
       return;
@@ -35,7 +36,7 @@ export function useLensDiscovery(): void {
 
     // Instant: just reads type names from entity arrays, no STEP parsing
     const provider = createLensDataProvider(models, ds, mutationViews, resolveGlobalIdFromModels);
-    const classes = discoverClasses(provider);
+    const classes = nativeLensClasses(state, provider);
     setDiscoveredLensData({
       classes,
       propertySets: null,    // lazy — discovered on-demand

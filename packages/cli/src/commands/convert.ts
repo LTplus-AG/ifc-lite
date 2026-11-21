@@ -71,6 +71,7 @@ export async function convertCommand(args: string[]): Promise<void> {
         count: e.count,
         expressIds: e.expressIds,
         droppedAttributes: e.droppedAttributes,
+        recordGroups: e.recordGroups,
       })),
     });
   } else {

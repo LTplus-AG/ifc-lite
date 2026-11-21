@@ -3,8 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { JSONSchemaType } from 'ajv';
 import { mainViewerToolDefinitions } from '../main-viewer-tool-definitions';
-import { mainViewerTool } from '../main-viewer-dispatch';
+import { mainViewerTool, usableModel } from '../main-viewer-dispatch';
 import { operation, viewerOperation, type OperationContext, type ViewerOperationContext } from './contract';
+import { internal } from './refusals';
 
 /** Inputs and implementations come from the native viewer tools, not a second query vocabulary. */
 const queries = [
@@ -23,12 +24,14 @@ const definitions = new Map(mainViewerToolDefinitions().map(definition => [defin
 const outputSchema = { type: 'object', properties: { native_json: { type: 'string' }, text: { type: 'string' } }, required: ['native_json', 'text'], additionalProperties: false };
 export const queryOperations = queries.map(([toolId, id, owner]) => {
   const definition = definitions.get(toolId), tool = mainViewerTool(toolId);
-  if (!definition || !tool || !definition.readOnly) throw new Error(`Missing native read contract: ${toolId}`);
+  if (!definition || !tool || !definition.readOnly) throw internal(`Missing native read contract: ${toolId}`);
   const { model_id: _target, ...properties } = definition.inputSchema.properties;
   // The canonical tool catalogue is runtime JSON Schema, not generated TypeScript.
   const schema = { ...definition.inputSchema, properties, required: definition.inputSchema.required?.filter(key => key !== 'model_id') ?? [], additionalProperties: false } as unknown as JSONSchemaType<Record<string, unknown>>;
   const metadata = { id, owner, description: definition.description, effects: ['read'] as const, capability: 'read' as const, implementation: 'sdk' as const, outputSchema };
   const wire = (result: Awaited<ReturnType<typeof tool.run>>) => ({ native_json: JSON.stringify(result.structured ?? null), text: result.text });
   if (tool.needs === 'none') return viewerOperation(metadata, schema, async (input, context: ViewerOperationContext) => wire(await tool.run(context.host, input, context)));
-  return operation(metadata, schema, async (input, context: OperationContext) => wire(await tool.run(context.host, context.model, input, context)));
+  return operation(metadata, schema, async (input, context: OperationContext) => wire(
+    // The executor admits any model with a store; a tool that needs STEP source refuses as it does natively (#10669).
+    await tool.run(context.host, usableModel(context.model, tool.needs, toolId), input, context)));
 });

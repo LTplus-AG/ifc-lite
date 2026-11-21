@@ -125,7 +125,11 @@ impl Execution {
         // unrecovered constraint) — fall through to the per-opening sequential
         // loop below with its full #635 fallback / engulf / redundant-void machinery.
         let tail = ExactTail::new(result, all_openings);
-        let (result, host_mutated) = tail.run(CutContext { execution: self, clipper: &clipper, wall_min, wall_max });
+        let (result, host_mutated) = tail.run(CutContext {
+            execution: self, clipper: &clipper, wall_min, wall_max,
+            #[cfg(feature = "csg_manifold_gate")]
+            unextended_rectangles: &prepared.unextended_rectangles,
+        });
 
         // NOTE (issue #635): the clipping planes from `IfcBooleanClippingResult`
         // are already applied by `BooleanClippingProcessor::process` during

@@ -8,6 +8,7 @@ const LINK: &str = "IfcRelAssignsToProduct linking one structural member to its 
 #[derive(Default)]
 pub(crate) struct StructuralDiagnostics {
     losses: BTreeMap<String, usize>,
+    pub(crate) values: crate::schema_structural_values::StructuralValues,
     pub(crate) axes: crate::schema_structural_axes::StructuralAxes,
     pub(crate) links: crate::schema_structural_links::StructuralLinks,
     pub(crate) varying: crate::schema_structural_varying::StructuralVarying,
@@ -38,7 +39,8 @@ impl StructuralDiagnostics {
                 self.record(crate::schema_structural::destabilizing_unknown(entity));
             }
             if *name == "CausedBy" && cause_carried { continue; }
-            if !tgt.contains(name) && !matches!(value.trim(), "$" | "*" | "") {
+            // The dropped count's own test (#10779): a comment-only slot is no value.
+            if !tgt.contains(name) && crate::schema_convert::holds_value(value) {
                 let effect = if *name == "ConditionCoordinateSystem" { "; restraint directions in that coordinate system are not preserved" } else { "" };
                 self.record(format!("{entity}.{name} has no slot in {to}; its value is omitted{effect}"));
             }
@@ -57,6 +59,16 @@ impl StructuralDiagnostics {
     /// (`StructuralLinks`, `StructuralVarying`, each armed only for its schema
     /// pair): the target body and whether the rewrite dropped a CausedBy value.
     pub(crate) fn rewrite(&mut self, id: u32, entity: &str, args: &[String]) -> Option<(String, bool)> {
+        if let Some((body, message)) = self.values.rewrite(id) {
+            self.record(message.into());
+            return Some((body, false));
+        }
+        if let Some((body, axis_carried)) = self.axes.carriers.rewrite(id, entity, args) {
+            if axis_carried {
+                self.record("IFC4 Axis is written as IfcRelAssociatesProfileProperties.ProfileOrientation in the analysis model frame".into());
+            }
+            return Some((body, false));
+        }
         let cause = self.cause(id, entity);
         let rewritten = match self.links.link(entity, args) {
             Some(attrs) => Some((format!("IFCRELCONNECTSSTRUCTURALELEMENT({attrs})"), vec![LINK.to_string()], false)),

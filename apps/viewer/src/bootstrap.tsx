@@ -57,6 +57,7 @@ import type { FileSourceProviderFactory } from './services/sources/source-host';
 // After the pairing-fragment strip, like every module that may report (pairing-fragment.boot.test.ts).
 import './lib/analytics';
 import { applyRuntimeConfig } from './lib/features/runtime-start';
+import { applyProcessingConfig } from './lib/processed-model';
 import { linkIconFont } from './lib/features/icon-font';
 import type { ViewerRuntimeConfig } from './lib/features/runtime-config';
 
@@ -114,10 +115,6 @@ export function prepareViewer(): void {
   // reload once (sessionStorage-bounded) to pull the matching new chunks. See
   // chunk-version-skew.ts for why the reload must NOT suppress Vite's re-throw.
   installChunkVersionSkewRecovery();
-
-  // Pull the geometry engine binary down while the user is still deciding which
-  // file to open, instead of on the click that opens it. See wasm-prewarm.ts.
-  scheduleWasmPrewarm();
 }
 
 /** Mounts the viewer into `container`. Call once, from the app entry. */
@@ -126,6 +123,10 @@ export function mountViewer(container: HTMLElement, options: ViewerBootstrapOpti
   // The feature set and analytics, then the locale, before anything renders.
   const config = applyRuntimeConfig(options.config);
   void startLocales(config?.locale);
+  // The processing server and a start model; the viewer's autoload takes the request once it mounts.
+  applyProcessingConfig(config);
+  // Pull the engine binary down before a local pick, once the start model is known.
+  scheduleWasmPrewarm();
   // The model tree's icon font, a third-party request; viewer only (the embed has no tree).
   linkIconFont();
 

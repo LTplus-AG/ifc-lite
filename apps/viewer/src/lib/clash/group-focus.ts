@@ -129,6 +129,7 @@ export function focusClashGroup(
   resolve: (element: ClashElementRef) => SelectionRef | null,
   applyFocusMode: (globalIds: number[], mode: ClashFocusMode) => void,
   mode: ClashFocusMode,
+  signal?: AbortSignal,
 ): FocusedClashGroup | null {
   const state = useViewerStore.getState();
   const selectionKeys = new Set<string>();
@@ -220,7 +221,7 @@ export function focusClashGroup(
   state.addEntitiesToSelection(refs);
   applyFocusMode(presentationGlobalIds, mode);
   const frameReady = new Promise<FramedCamera | null>((resolve) => {
-    scheduleClashFrame(waitForLevelDisplayReset, waitForPresentationReset, resolve);
+    scheduleClashFrame(waitForLevelDisplayReset, waitForPresentationReset, resolve, signal);
   });
   const presentationState = useViewerStore.getState();
   // BCF colors are keyed only by IFC GlobalId. If two loaded revisions expose

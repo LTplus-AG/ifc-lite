@@ -17,8 +17,8 @@
  *
  *   node scripts/perf-ratchet/perf-ratchet.mjs lower --measured <file> [...]
  *        [--ceilings-dir <dir>] [--changelog <out.md>] [--dry-run]
- *     Rewrite ceilings DOWN to the measured values where they cleared their
- *     band (never up), re-stamp provenance with the measured commit, and print
+ *     Lower ceilings to the measured values plus headroom where the targets
+ *     clear their band. Re-stamp provenance with the measured commit and print
  *     an old -> new changelog. Used by .github/workflows/perf-ratchet-lower.yml.
  *
  * Exit 2 is a harness fault (bad arguments, unreadable or invalid files) and

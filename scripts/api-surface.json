@@ -6064,7 +6064,9 @@
     "gridPlacementDependents: function",
     "guardSpreadsheetFormula: function",
     "isExpressibleMapUnit: function",
+    "isGeorefRefusal: function",
     "isParquet: function",
+    "mergeWarningLabel: function",
     "needsConversion: function",
     "parseGLB: function",
     "parseGLBToMeshData: function",
@@ -6076,6 +6078,14 @@
     "stripNodePathPrefix: function",
     "tableToCsv: function",
     "validatePropertyDataType: function"
+  ],
+  "@ifc-lite/export/merged-exporter": [
+    "ExportProgress: interface",
+    "MergeBlobExportResult: interface",
+    "MergeExportOptions: interface",
+    "MergeExportResult: interface",
+    "MergeModelInput: interface",
+    "MergedExporter: class"
   ],
   "@ifc-lite/extensions": [
     "ACTION_INTENTS: const",
@@ -8003,6 +8013,7 @@
     "BridgeErrorMessage: interface",
     "BridgeHelloMessage: interface",
     "BridgePermission: type",
+    "BridgeResultAckMessage: interface",
     "BridgeResultMessage: interface",
     "BridgeServerMessage: type",
     "BridgeTabMessage: type",
@@ -8232,6 +8243,7 @@
     "iterateEffectiveEntityIds: function",
     "matchRowAgainstContext: function",
     "parseValue: function",
+    "prepareMutationViewMerge: function",
     "propertyKey: function",
     "quantityKey: function",
     "recordCompoundMutation: function",
@@ -10069,6 +10081,7 @@
     "isNegativeDelta: function",
     "isRenderablePointCloud: function",
     "lodCellSizeForBounds: function",
+    "materializeShardOccurrences: function",
     "nearestCardinalAxis: function",
     "normalizeGaussianAttributes: function",
     "nsToMs: function",
@@ -10295,6 +10308,7 @@
     "isEntityVisible: function",
     "isNegativeDelta: function",
     "lodCellSizeForBounds: function",
+    "materializeShardOccurrences: function",
     "nearestCardinalAxis: function",
     "normalizeGaussianAttributes: function",
     "nsToMs: function",
@@ -11242,6 +11256,13 @@
     "normalizeProcessedModelHash: function",
     "processedModelSize: function",
     "withNarrowedCoordinateSpace: function"
+  ],
+  "@ifc-lite/server-client/processed-model": [
+    "ProcessedModelRef: interface",
+    "assertProcessedModelHash: function",
+    "isProcessedModelRef: function",
+    "normalizeProcessedModelHash: function",
+    "processedModelSize: function"
   ],
   "@ifc-lite/site-context": [
     "BUILDING_SET: const",

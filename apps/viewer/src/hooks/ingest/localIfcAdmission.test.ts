@@ -2,9 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, it } from 'node:test';
+import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { inspectLocalIfcAdmission } from './localIfcAdmission.js';
+import { classifyLoadError } from '@/lib/load-errors';
+import { formatLoadError } from '@/lib/load-error-message';
 
 describe('local IFC admission (#10264)', () => {
   it('warns at the browser-capped 8 GB report, refuses below it, and admits a larger known budget', () => {
@@ -32,5 +34,16 @@ describe('local IFC admission (#10264)', () => {
     for (const memory of [0, -1, NaN, Infinity]) {
       assert.ok(inspectLocalIfcAdmission(1.05e9, memory), 'unknown memory requires a warning rather than inventing a small device');
     }
+  });
+});
+
+describe('local IFC admission without WebAssembly SIMD (#10784)', () => {
+  it('refuses before anything is fetched, with the translated explanation instead of the compile error', (t) => {
+    t.after(() => mock.restoreAll());
+    mock.method(WebAssembly, 'validate', () => false);
+    let refusal: unknown;
+    assert.throws(() => inspectLocalIfcAdmission(20e6, 16), (err) => { refusal = err; return true; });
+    assert.equal(classifyLoadError(refusal, 'ifc_model_load'), 'wasm_simd_unsupported');
+    assert.match(formatLoadError(refusal, 'model.ifc', 'ifc_model_load'), /can't run the WebAssembly SIMD instructions/);
   });
 });

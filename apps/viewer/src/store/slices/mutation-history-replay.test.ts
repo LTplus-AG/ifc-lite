@@ -18,6 +18,9 @@ import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { PropertyValueType } from '@ifc-lite/data';
 import { BulkQueryEngine, CsvConnector, MutablePropertyView, type Mutation } from '@ifc-lite/mutations';
 import { useViewerStore, type ViewerState } from '@/store/index.js';
+import { createQueryAdapter } from '@/sdk/adapters/query-adapter.js';
+import { createStoreAdapter } from '@/sdk/adapters/store-adapter.js';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 
 const WALLS = [1, 2, 3, 4, 5].map((n) => 100 + n);
 
@@ -52,6 +55,49 @@ function install(modelIds: readonly string[]): Map<string, MutablePropertyView> 
 }
 
 const value = (view: MutablePropertyView, id: number) => view.getPropertyValue(id, 'Pset_Bulk', 'Code');
+
+it('round-trips an SDK positional attribute clear through viewer history (#11104)', async (t) => {
+  const initial = useViewerStore.getState();
+  t.after(() => useViewerStore.setState(initial));
+  const ifcDataStore = await parse();
+  const model = { ...fixtureModel('m'), ifcDataStore };
+  install([]);
+  useViewerStore.setState({
+    ...fixtureModels(model), changeSets: new Map(), activeChangeSetId: null,
+    editEnabled: true, collabRoomId: null,
+  });
+  const sdk = createStoreAdapter(useViewerStore);
+  const query = createQueryAdapter(useViewerStore);
+  const ref = { modelId: model.id, expressId: WALLS[0] };
+  const name = () => query.entityData(ref)?.name;
+  assert.equal(name(), `W${ref.expressId}`);
+
+  sdk.setPositionalAttribute(ref, 2, undefined);
+  const state = useViewerStore.getState();
+  const view = state.getMutationView(model.id);
+  assert.ok(view);
+  const mutations = view.getMutations();
+  assert.equal(mutations.length, 1);
+  assert.equal(mutations[0].type, 'UPDATE_POSITIONAL_ATTRIBUTE');
+  assert.ok(state.recordMutationBatch(model.id, mutations));
+
+  const recorded = useViewerStore.getState();
+  assert.ok(recorded.activeChangeSetId);
+  const exported = recorded.exportChangeSet(recorded.activeChangeSetId);
+  assert.ok(exported);
+  const imported = recorded.importChangeSet(exported);
+  assert.ok(imported);
+  const rows = useViewerStore.getState().changeSets.get(imported)?.mutations;
+  assert.ok(rows);
+  assert.equal(rows[0].newValue, null, 'the exported clear retains an explicit STEP unset value');
+  assert.deepEqual(rows, mutations);
+  assert.equal(name(), '');
+
+  recorded.undo(model.id);
+  assert.equal(name(), `W${ref.expressId}`);
+  view.applyMutations(rows);
+  assert.equal(name(), '', 'the imported history entry clears the original Name again');
+});
 
 describe('bulk writers are one undo step (#5861)', () => {
   let store: IfcDataStore;

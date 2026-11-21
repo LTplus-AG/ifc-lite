@@ -173,8 +173,7 @@ fn wall_552611_2_openings_matches_ios() {
     assert!((vol - 16.941742).abs() < 3e-4, "cut volume = {vol}, IfcOpenShell 16.941742");
     // IfcOpenShell's count, on both paths. It read 158 (prism) and 188 (exact)
     // while the post-cut sliver pass bisected every triangle past 8:1 by edge
-    // ratio; the pass now keeps a bisection only when the mesh census's sliver
-    // measure improves (`facet_weld::adopt`), and here it does not.
+    // ratio. #10381 rejected that bisection and #10511 removed the split pass.
     assert_eq!(mesh.indices.len() / 3, 60, "triangle count (IOS 60)");
 }
 

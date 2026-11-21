@@ -15,6 +15,8 @@ export const viewerShellRu = {
   "viewerShell.chunkError.crashedDetail": "Непредвиденная ошибка помешала отображению.",
   "viewerShell.chunkError.reload": "Перезагрузить",
   "viewerShell.staleDeployment.notice": "Доступна новая версия просмотрщика — перезагрузите для продолжения.",
+  "viewerShell.staleDeployment.offline": "Нет подключения к интернету. Восстановите подключение, чтобы продолжить.",
+  "viewerShell.staleDeployment.reconnected": "Подключение восстановлено. Перезагрузите страницу, чтобы продолжить.",
   "viewerShell.staleDeployment.reopenPrompt": "Программа просмотра обновилась до новой версии и перезагрузилась. Откройте {files} снова, чтобы продолжить.",
   "viewerShell.staleDeployment.reopenAction": "Открыть файл…",
   "viewerShell.hostConfig.errorTitle": "Не удалось запустить средство просмотра",

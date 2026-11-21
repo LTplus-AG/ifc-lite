@@ -492,6 +492,40 @@ canvas.addEventListener('mousemove', (e) => {
 });
 ```
 
+
+### Snapping on released geometry
+
+`raycastScene` and `raycastSceneMagnetic` test CPU mesh pieces. A host that
+releases them after GPU upload (to fit a very large model) can still measure and
+snap. It reads the pieces under the pointer back from its own storage, places
+them in the current model frame, and hands them over before the raycast:
+
+```typescript
+import type { MeshData } from '@ifc-lite/geometry';
+
+declare const pieces: MeshData[];            // read back from the host's own storage
+declare const x: number, y: number;          // canvas CSS pixels under the pointer
+const edgeLock = { edge: null, meshExpressId: null, lockStrength: 0 };
+
+const placed = pieces.map((mesh) => renderer.getScene().placeAppearanceSource!(mesh));
+renderer.setReadbackRaycastMeshes(placed, { x, y }); // tested beside resident pieces, for this ray only
+const result = renderer.raycastSceneMagnetic(x, y, edgeLock, {
+  snapOptions: { snapToVertices: true, snapToEdges: true, snapToFaces: true },
+});
+renderer.setReadbackRaycastMeshes(null);     // clear when the tool moves on
+console.log(result.snapTarget?.type);
+```
+
+The pieces follow the same hide/isolate and section-clip rules as resident ones.
+The renderer does not copy them, so the host keeps them alive while they are set.
+
+Pass the canvas point they were prepared for, `setReadbackRaycastMeshes(placed, { x, y })`.
+Then they answer only that ray under the current view, because a neighbourhood
+is not the whole scene. Check `readbackRaycastCovers(x, y)` before a raycast at a
+new point, and prepare again when it is false. Instanced occurrences read back as
+decoded shards are expanded with `materializeShardOccurrences(shard, modelIndex, keyPrefix)`,
+the same preparation an upload uses, then placed like flat pieces.
+
 ### Magnetic Snap Configuration
 
 ```typescript

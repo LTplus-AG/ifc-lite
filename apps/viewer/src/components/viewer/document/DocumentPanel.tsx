@@ -23,7 +23,7 @@ import { trackExportCompleted } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 import { blankDocument, DOCUMENT_PRESETS } from '@/lib/document/presets';
-import { copyDocumentBlock, freshBlockId, freshListCopyId } from '@/lib/document/persistence';
+import { freshBlockId, freshListCopyId } from '@/lib/document/persistence';
 import { LIST_PRESETS } from '@/lib/lists';
 import { newChartSpec } from '@/lib/charts/presets';
 import { largestBucketIds } from '@/lib/charts/buckets';
@@ -34,12 +34,11 @@ import { AssistantAction } from '../assistant/AssistantAction';
 import { BlockEditor } from './BlockEditor';
 import { DocumentBlockList } from './DocumentBlockList';
 import { useBlockSelection } from './useBlockSelection';
-import { reorderDocumentBlocks } from '@/lib/document/reorder-blocks';
+import { moveNativeDocumentBlocks, copyNativeDocumentBlock } from '@/lib/document/native-edit';
 import { DocumentMenu } from './DocumentMenu';
 import { DocumentPreview } from './DocumentPreview';
 import { PageHeadingEditor } from './PageHeadingEditor';
 import { AiReportRefresh } from './AiReportRefresh';
-import { detachAiProvenance } from '@/lib/document/ai-report-types';
 import { useDocumentData } from './useDocumentData';
 import { useReportSources } from './useReportSources';
 
@@ -66,7 +65,11 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
   const { t, locale } = useTranslation();
   const documents = useViewerStore((s) => s.documents);
   const storage = useViewerStore((s) => s.documentsStorage);
-  useEffect(() => { void useViewerStore.getState().initializeDocuments(); }, []);
+  useEffect(() => {
+    const state = useViewerStore.getState();
+    void state.initializeDocuments();
+    void state.initializeSavedClashReports();
+  }, []);
   const activeDocumentId = useViewerStore((s) => s.activeDocumentId);
   const upsertDocument = useViewerStore((s) => s.upsertDocument);
   const deleteDocument = useViewerStore((s) => s.deleteDocument);
@@ -96,6 +99,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
   const upsert = useCallback((next: DocumentSpec) => upsertDocument(next).then(warnUnsaved), [upsertDocument, warnUnsaved]);
   const remove = useCallback((id: string) => deleteDocument(id).then(warnUnsaved), [deleteDocument, warnUnsaved]);
   const update = upsert;
+  // Editors pass intermediate values (a cleared number field); validation belongs to save and the agent path, not each keystroke.
   const setBlocks = useCallback((blocks: DocumentBlock[]) => { if (document) update({ ...document, blocks }); }, [document, update]);
 
   const moveBlocks = (ids: ReadonlySet<string>, beforeId: string | null): boolean => {
@@ -103,25 +107,24 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
     if (!document || live.activeDocumentId !== document.id) return false;
     const current = live.documents.find(entry => entry.id === document.id);
     if (!current) return false;
-    const blocks = reorderDocumentBlocks(current.blocks, ids, beforeId);
-    if (blocks === current.blocks) return false;
-    void update({ ...current, blocks });
+    const next = moveNativeDocumentBlocks(current, ids, beforeId, true);
+    if (next === current) return false;
+    void update(next);
     return true;
   };
 
   const copyBlock = (id: string): void => {
     const live = useViewerStore.getState();
     const current = live.documents.find((entry) => entry.id === live.activeDocumentId);
-    const index = current?.blocks.findIndex((block) => block.id === id) ?? -1;
-    if (!current || index < 0) return;
+    if (!current || !current.blocks.some(block => block.id === id)) return;
     // The duplicate is the reviewer's own text; refresh only regenerates the original (#6918).
-    const copy = detachAiProvenance(copyDocumentBlock(current.blocks[index]));
+    const copy = copyNativeDocumentBlock(current, id, true);
     // Read current content so consecutive copies keep each other's staged durable writes.
-    void update({ ...current, blocks: [...current.blocks.slice(0, index + 1), copy, ...current.blocks.slice(index + 1)] });
+    void update(copy.document);
     selection.selectOnly(copy.id);
   };
 
-  const addBlock = (kind: Exclude<DocumentBlock['kind'], 'ids-report' | 'manual-report'>): void => {
+  const addBlock = (kind: Exclude<DocumentBlock['kind'], 'ids-report' | 'manual-report' | 'quality-gate'>): void => {
     if (!document) return;
     const id = freshBlockId();
     // A table starts as a copy of the first saved list, else the first preset (#5142). The copy cannot
@@ -147,6 +150,14 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
     selection.selectOnly(block.id);
   };
 
+  const firstQualityReport = data.qualityGateReports.find(report => report.qualityGates?.rows.length);
+  const addQualityGate = (): void => {
+    if (!document || !firstQualityReport) return;
+    const id = freshBlockId();
+    setBlocks([...document.blocks, { kind: 'quality-gate', id, clashReportId: firstQualityReport.id, row: 0 }]);
+    selection.selectOnly(id);
+  };
+
   const addComparison = (): void => {
     if (!document || !savedComparisons[0]) return;
     const id = freshBlockId();
@@ -167,6 +178,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
         aggregations: data.aggregations,
         chartMessages: data.chartMessages,
         chartErrors: data.chartErrors,
+        qualityGateReports: data.qualityGateReports,
         snapshotIds: (blockId) => largestBucketIds(data.aggregations.get(blockId)),
         topics: data.topics,
         tables: data.tables,
@@ -181,6 +193,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
         result.imageFailures.length > 0 ? t('document.panel.problemImageFailures', localeCount(locale, result.imageFailures.length)) : '',
         result.tableFailures.length > 0 ? t('document.panel.problemTables', localeCount(locale, result.tableFailures.length)) : '',
         (result.chartFailures?.length ?? 0) > 0 ? t('document.panel.problemCharts', localeCount(locale, result.chartFailures?.length ?? 0)) : '',
+        result.qualityGateFailures?.length ? t('document.panel.problemQualityGates', localeCount(locale, result.qualityGateFailures.length)) : '',
       ].filter(Boolean);
       finishActivity(job, problems.length ? 'partial' : 'completed', problems.length ? { detail: problems.join(', ') } : {});
       const pages = localeCount(locale, result.pages);
@@ -251,6 +264,8 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
             <DropdownMenuItem onSelect={() => addBlock('spacer')}>{t('document.addBlock.spacer')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={addComparison} disabled={savedComparisons.length === 0}>{t('document.block.tableSourceComparison')}</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => addBlock('table')}>{t('document.addBlock.table')}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={addQualityGate} disabled={!firstQualityReport}
+              title={firstQualityReport ? undefined : t('document.qualityGate.saveFirst')}>{t('document.block.kindQualityGate')}</DropdownMenuItem>
             {/* One entry for IDS, information-validation and manual reports (#6553); the block's source picker chooses which. */}
             <DropdownMenuItem onSelect={addValidationReport} disabled={!reportSources.available} title={reportSources.available ? undefined : t('document.addBlock.validationReportDisabledTitle')}>{t('document.addBlock.validationReport')}</DropdownMenuItem>
           </DropdownMenuContent>
@@ -276,6 +291,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
                   topics={data.topics}
                   charts={charts}
                   idsValidationReport={idsValidationReport}
+                  qualityGateReports={data.qualityGateReports}
                   onChange={(next) => setBlocks(document.blocks.map((b) => (b.id === block.id ? next : b)))}
                   onMove={(delta) => {
                     const target = index + delta;
@@ -290,7 +306,7 @@ export function DocumentPanel({ pdfSeams }: DocumentPanelProps) {
             {document.blocks.length === 0 && <div className="p-2 text-muted-foreground">{t('document.panel.emptyBlocks')}</div>}
           </div>
           <div className="min-w-0 flex-1 overflow-auto bg-muted/40">
-            <DocumentPreview document={document} labels={data.labels} bindings={data.bindings} aggregations={data.aggregations} chartMessages={data.chartMessages} topics={data.topics} tables={data.tables} selectedBlockIds={selection.ids} onSelectBlock={selection.toggle} />
+            <DocumentPreview document={document} labels={data.labels} bindings={data.bindings} aggregations={data.aggregations} chartMessages={data.chartMessages} qualityGateReports={data.qualityGateReports} topics={data.topics} tables={data.tables} selectedBlockIds={selection.ids} onSelectBlock={selection.toggle} />
           </div>
         </div>
       )}

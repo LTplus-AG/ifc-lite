@@ -147,6 +147,35 @@ describe('analyzeConversionLoss', () => {
     expect(lines.some((l) => l.includes('IFCSTRUCTURALCURVEREACTION'))).toBe(true);
   });
 
+  it.each([
+    [['(#3)'], []],
+    [['(#3,#6,#7)'], [5]],
+    [['/* before */(#3,/* empty */$)/* after */'], []],
+    [['(#3)', '(#3,#6,#7)'], [10]],
+  ] as const)('reports only the approvals discarded from %j (#10763, PR #10781)', async (related, lostIds) => {
+    const relationships = related.map((set, index) => `#${5 + 5 * index}=IFCAPPROVALRELATIONSHIP('n','d',#4,${set});`).join('\n');
+    const text = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('approval.ifc','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n"
+      + relationships + "\nENDSEC;\nEND-ISO-10303-21;\n";
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer);
+    const report = analyzeConversionLoss(store, 'IFC4', 'IFC2X3');
+    expect(report.hasLoss).toBe(lostIds.length > 0);
+    expect(report.entries).toEqual(lostIds.length ? [{
+      sourceType: 'IFCAPPROVALRELATIONSHIP', targetType: 'IFCAPPROVALRELATIONSHIP',
+      kind: 'lossy', count: lostIds.length, expressIds: lostIds, droppedAttributes: ['RelatedApprovals'],
+    }] : []);
+  });
+
+  it.each(['(#20)', '(#20,#21)'])('reports an up-only BenchmarkValues SET %s on downgrade (#10807)', async (set) => {
+    const text = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('objective.ifc','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n"
+      + `#5=IFCOBJECTIVE('id',$,'Objective',$,$,$,$,${set},$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n`;
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer);
+    const report = analyzeConversionLoss(store, 'IFC4', 'IFC2X3');
+    expect(report.entries.find(({ sourceType }) => sourceType === 'IFCOBJECTIVE')).toMatchObject({
+      expressIds: [5],
+      droppedAttributes: expect.arrayContaining(['BenchmarkValues']),
+    });
+  });
+
   it('skips a type the store lists with zero instances', () => {
     const report = analyzeConversionLoss(storeOf({ IFCSTRUCTURALLOADCONFIGURATION: [] }), 'IFC4', 'IFC2X3');
     expect(report.entries).toEqual([]);
@@ -233,6 +262,9 @@ describe('analyzeConversionLoss and the structural carriers (#9668)', () => {
     // #10 is a different placement, so the items share none.
     expect(await modelLosses(ifc4('#10'))).toEqual([{ type: 'IFCSTRUCTURALANALYSISMODEL', ids: [30], lost: ['SharedPlacement'] }]);
     expect(line(await roundTrip(ifc4('#10'), 'IFC4', 'IFC2X3'), 30)).toMatch(/,\$,\$\);$/);
+    // #10597: a grouping listing a non-reference leaves the model's items unknown, so the upgrade derives no SharedPlacement.
+    const unread = ifc4('#9').replace('(#20,#21),$,#30', '(#20,#21,$),$,#30');
+    expect(await modelLosses(unread)).toEqual([{ type: 'IFCSTRUCTURALANALYSISMODEL', ids: [30], lost: ['SharedPlacement'] }]);
   });
 
   it('IFC4 -> IFC2X3: leaves out the load configuration Values and a NOTDEFINED PredefinedType the varying action brings back', async () => {

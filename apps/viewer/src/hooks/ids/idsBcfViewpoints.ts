@@ -25,6 +25,7 @@ export async function completeIdsBcfViewpoints(
   resolveHighlightIds: ((ids: number[]) => number[]) | undefined,
   settings: { includeCamera: boolean; snapshots: 'required' | 'best-effort' | 'off' },
   progress: (value: IDSExportProgress) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   if (settings.snapshots === 'required' && !renderer) {
     throw new Error('Cannot capture IDS BCF snapshots: open the model in the 3D viewer and retry.');
@@ -105,8 +106,10 @@ export async function completeIdsBcfViewpoints(
         message: `Capturing snapshot ${current}/${project.topics.size}...` });
       // Camera-disabled exports may still frame their screenshot without persisting a camera.
       const snapshotViewpoint = viewpoint ?? { guid: '' };
+      // The capture gate refuses after a cancel; this turns its null into the abort.
       const snapshot = await captureTopic(renderer, snapshotViewpoint, ids,
-        knownBounds.length > 0 && !viewpoint?.components?.visibility?.defaultVisibility);
+        knownBounds.length > 0 && !viewpoint?.components?.visibility?.defaultVisibility, signal);
+      signal?.throwIfAborted();
       if (!snapshot && settings.snapshots === 'required') throw new Error(`Could not capture the IDS BCF snapshot for "${topic.title}". Keep the model open in the 3D viewer and retry.`);
       // A best-effort miss keeps the placeholder that fillMissingSnapshots supplies.
       if (snapshot) {
@@ -130,7 +133,7 @@ function readCamera(renderer: Renderer) {
     fov: camera.getFOV(), aspectRatio: camera.getAspect(), isOrthographic: camera.getProjectionMode() === 'orthographic', orthoScale: camera.getOrthoSize() * 2 };
 }
 
-function captureTopic(renderer: Renderer, viewpoint: BCFViewpoint, ids: Set<number>, isolate: boolean): Promise<string | null> {
+function captureTopic(renderer: Renderer, viewpoint: BCFViewpoint, ids: Set<number>, isolate: boolean, signal?: AbortSignal): Promise<string | null> {
   const camera = renderer.getCamera();
   return captureViewportFrame(renderer, {
     options: { hiddenIds: undefined, isolatedIds: isolate ? ids : null, ghostExceptIds: null,
@@ -153,5 +156,6 @@ function captureTopic(renderer: Renderer, viewpoint: BCFViewpoint, ids: Set<numb
       return () => { if (JSON.stringify(readCamera(renderer)) === captured) apply(before); };
     },
     read: canvas => canvas.toDataURL('image/png'),
+    signal,
   });
 }

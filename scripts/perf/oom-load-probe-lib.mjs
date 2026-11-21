@@ -41,16 +41,13 @@
  * them in sync with the viewer.
  */
 
-export const OUTCOMES = Object.freeze(['loaded', 'refused', 'awaiting-decision', 'cancelled', 'killed', 'killed-after-continue', 'error', 'timeout']);
+import { REFUSAL_MESSAGE } from './oom-load-probe-server.mjs';
+export { REFUSAL_MESSAGE, MEMORY_WARNING, SERVER_FIRST, expectFlags, serverAttemptSummary, polledErrorEvent } from './oom-load-probe-server.mjs';
 
-/** Pre-read refusal (#10353): "This IFC file exceeds this tab's local processing memory budget ...". */
-export const REFUSAL_MESSAGE = /local processing memory budget/i;
+export const OUTCOMES = Object.freeze(['loaded', 'refused', 'awaiting-decision', 'cancelled', 'killed', 'killed-after-continue', 'error', 'timeout']);
 
 /** Main's out_of_memory explanation (load-error-message.ts): a failure after processing started. */
 export const OOM_FAILURE_MESSAGE = /ran out of memory while processing/i;
-
-/** Title of a pre-load memory warning that lets the user continue or cancel (#10353). */
-export const MEMORY_WARNING = /may exceed available memory/i;
 
 /** Accessible names of that warning's buttons (#10353). */
 export const DIALOG_BUTTONS = Object.freeze({ cancel: /^cancel$/i, continue: /^continue loading$/i });
@@ -178,6 +175,8 @@ export const EXPECTATIONS = Object.freeze({
   warned: ['loaded', 'refused', 'awaiting-decision', 'cancelled', 'killed-after-continue'],
   loaded: ['loaded'],
   refused: ['refused'],
+  // The consent dialog at a reported 8 GB, left unanswered (nightly lane, #10264 A2).
+  'awaiting-decision': ['awaiting-decision'],
 });
 
 /**
@@ -236,6 +235,11 @@ export function optionErrors(v) {
   if (v['cpu-quota'] !== undefined && !/^\d+%$/.test(v['cpu-quota'])) errors.push(`--cpu-quota must look like 400%, got '${v['cpu-quota']}'`);
   if (v.gl !== undefined && !['swiftshader', 'hardware'].includes(v.gl)) errors.push('--gl must be swiftshader or hardware');
   if (v['on-memory-dialog'] !== undefined && !['wait', 'cancel', 'continue'].includes(v['on-memory-dialog'])) errors.push('--on-memory-dialog must be wait, cancel or continue');
+  if (v['watch-url'] !== undefined) {
+    let ok = false;
+    try { ok = ['http:', 'https:'].includes(new URL(v['watch-url']).protocol); } catch { ok = false; }
+    if (!ok) errors.push(`--watch-url must be an http(s) URL, got '${v['watch-url']}'`);
+  }
   return errors;
 }
 
@@ -280,7 +284,6 @@ export function oomAccounting(events, totalKills = 0) {
   if (totalKills > seen) unidentified += totalKills - seen;
   return { kills: Math.max(totalKills, seen), types, unidentified, ambiguous };
 }
-
 
 /**
  * The viewer's "CPU geometry held" sample (#10264 S0, `__ifc_lite_cpu_geometry_held__`) in MiB, with

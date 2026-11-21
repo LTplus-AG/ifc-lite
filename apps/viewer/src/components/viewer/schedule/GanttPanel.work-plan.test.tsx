@@ -14,7 +14,9 @@ import {
   type ScheduleTaskInfo,
   type WorkScheduleInfo,
 } from '@ifc-lite/parser';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, render, settle } from '@/test/render.js';
+import { getLocale, registerLocale, setLocale } from '@/i18n/registry';
+import { scheduleEn } from '@/i18n/catalogues/schedule.en';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { GanttPanel } from './GanttPanel.js';
 
@@ -109,6 +111,8 @@ describe('GanttPanel loaded IfcWorkPlan read path', () => {
       scheduleData: null,
     });
 
+    await settle();
+
     const ui = render(<GanttPanel />);
     assert.match(ui.textContent ?? '', /Delivery plan.*Shell programme/);
     assert.match(ui.textContent ?? '', /Future works.*No nested schedules/);
@@ -119,6 +123,56 @@ describe('GanttPanel loaded IfcWorkPlan read path', () => {
 
     assert.match(ui.textContent ?? '', /Federated fit-out plan.*No nested schedules/);
     assert.doesNotMatch(ui.textContent ?? '', /Delivery plan/);
+  });
+
+  it('#10584 shows a localized notice while preserving a pending schedule over IFC data', async () => {
+    const sourceSchedule = control('WorkSchedule', 'source', 'IFC programme');
+    const store = await parseSchedule([sourceSchedule]);
+    const active = model('model-pending', store, 0);
+    const task: ScheduleTaskInfo = {
+      expressId: 0, globalId: 'pending-task', name: 'Pending task', isMilestone: false,
+      childGlobalIds: [], productExpressIds: [], productGlobalIds: [], controllingScheduleGlobalIds: [sourceSchedule.globalId],
+    };
+    useViewerStore.setState({ models: new Map([[active.id, active]]), activeModelId: active.id, ifcDataStore: store });
+    useViewerStore.getState().commitGeneratedSchedule({
+      hasSchedule: true, workSchedules: [sourceSchedule], tasks: [task], sequences: [], workCalendars: [],
+    }, active.id);
+    const previousLocale = getLocale();
+    const key = 'schedule.panel.pendingSourceSchedule';
+    try {
+      setLocale('en');
+      await settle();
+      const ui = render(<GanttPanel />);
+      assert.ok(ui.textContent?.includes(scheduleEn[key]));
+      assert.equal(useViewerStore.getState().scheduleData?.tasks[0]?.globalId, task.globalId);
+
+      registerLocale('pending-gantt-pseudo', { [key]: 'Localized pending schedule notice' });
+      act(() => setLocale('pending-gantt-pseudo'));
+      assert.ok(ui.textContent?.includes('Localized pending schedule notice'));
+    } finally {
+      cleanup();
+      setLocale(previousLocale);
+    }
+  });
+
+  it('#10584 preserves an edited legacy schedule after its last task is deleted', async () => {
+    const sourceSchedule = { ...control('WorkSchedule', 'legacy-source', 'Legacy IFC programme'), taskGlobalIds: ['legacy-task'] };
+    const task: ScheduleTaskInfo = {
+      expressId: 0, globalId: 'legacy-task', name: 'Deleted task', isMilestone: false,
+      childGlobalIds: [], productExpressIds: [], productGlobalIds: [], controllingScheduleGlobalIds: ['legacy-source'],
+    };
+    const store = await parseSchedule([sourceSchedule], [task]);
+    useViewerStore.setState({ models: new Map(), activeModelId: null, ifcDataStore: store });
+    useViewerStore.getState().commitGeneratedSchedule({
+      hasSchedule: true, workSchedules: [sourceSchedule], tasks: [task], sequences: [], workCalendars: [],
+    }, '__legacy__');
+    useViewerStore.getState().deleteTask(task.globalId);
+    assert.equal(useViewerStore.getState().scheduleIsEdited, true);
+    await settle();
+    const ui = render(<GanttPanel />);
+    assert.equal(useViewerStore.getState().scheduleSourceModelId, '__legacy__');
+    assert.deepEqual(useViewerStore.getState().scheduleData?.tasks, []);
+    assert.ok(ui.textContent?.includes(scheduleEn['schedule.panel.pendingSourceSchedule']));
   });
 
   it('distinguishes an empty selected schedule from a model with no IfcTask records (#4834)', async () => {
@@ -152,6 +206,8 @@ describe('GanttPanel loaded IfcWorkPlan read path', () => {
       ifcDataStore: active.ifcDataStore,
       scheduleData: null,
     });
+
+    await settle();
 
     const ui = render(<GanttPanel />);
 

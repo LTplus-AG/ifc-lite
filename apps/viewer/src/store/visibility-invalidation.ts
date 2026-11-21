@@ -52,6 +52,7 @@
 
 import type { StateCreator, StoreMutatorIdentifier } from 'zustand';
 import {
+  hasVisibilityOwnershipHandoff,
   staleOwnershipReset,
   type OwnedVisibilityRecords,
   type VisibilityChannels,
@@ -60,7 +61,7 @@ import {
 /** The state surface this middleware reads: the two shared channels plus every
  *  ownership record over them. */
 type ChannelState = Pick<VisibilityChannels, 'isolatedEntities' | 'ghostExceptEntities'> &
-  OwnedVisibilityRecords & { visibilityRevision?: number };
+  OwnedVisibilityRecords & { visibilityRevision?: number; lensRuleIsolation?: { ruleId: string; entityIds: number[] } | null };
 
 type SetState<T> = (
   partial: T | Partial<T> | ((state: T) => T | Partial<T>),
@@ -133,7 +134,12 @@ export function applyOwnershipInvalidation<T extends ChannelState>(
     else stale = true;
   }
   const revision = (state.visibilityRevision ?? 0) + 1;
-  if (!stale) return { ...patch, visibilityRevision: revision };
+  const lensClaim = state.lensRuleIsolation;
+  const resetLens = lensClaim && !('lensRuleIsolation' in patch)
+    && (hasVisibilityOwnershipHandoff(state, patch) || !next.isolatedEntities
+      || next.isolatedEntities.size !== lensClaim.entityIds.length
+      || !lensClaim.entityIds.every(id => next.isolatedEntities!.has(id)));
+  if (!stale && !resetLens) return { ...patch, visibilityRevision: revision };
 
-  return { ...patch, ...reset, visibilityRevision: revision };
+  return { ...patch, ...reset, ...(resetLens ? { lensRuleIsolation: null } : {}), visibilityRevision: revision };
 }

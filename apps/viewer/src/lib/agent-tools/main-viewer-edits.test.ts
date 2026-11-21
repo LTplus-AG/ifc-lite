@@ -13,6 +13,7 @@ import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseTabMessage } from '@ifc-lite/mcp/bridge-protocol';
 import { useViewerStore } from '@/store';
+import { resetFeaturesForTest } from '@/lib/features';
 import { CATALOG } from '@/components/mcp/data';
 import { changeOperations } from '@/lib/changes/change-operations';
 import { agentChangeLabelFor, useAgentChangeLabels } from '@/lib/changes/agent-change-labels';
@@ -71,6 +72,23 @@ describe('agent edits on the main viewer (#9523)', () => {
     }
     assert.equal(undoDepth(), 0, 'no undo entries');
     assert.equal(view().getAttributeMutationsForEntity(WALL_ID).length, 0);
+  });
+
+  it('identifies the host switch for edit calls with or without a grant (#10469)', async () => {
+    resetFeaturesForTest({ default: 'all', disable: ['edit.model'] });
+    try {
+      const before = fireRating();
+      for (const grant of [null, () => true]) {
+        const result = await edit('entity_set_property', ARGS.entity_set_property, grant);
+        assert.equal(result.errorCode, 'READ_ONLY');
+        assert.match(result.text, /Model editing is disabled by the viewer host/);
+        assert.equal(result.hint, undefined);
+      }
+      assert.equal(fireRating(), before);
+      assert.equal(undoDepth(), 0);
+    } finally {
+      resetFeaturesForTest();
+    }
   });
 
   it('a read-only grant is enforced by the tool itself too, not only by the dispatcher', async () => {

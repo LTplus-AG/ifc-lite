@@ -786,6 +786,22 @@ fn values_without_a_target_slot_are_counted_7683() {
     assert_eq!(dropped("#1=IFCWALL('g',$,$,$,$,$,$,$,$);", "IFC2X3", "IFC4"), 0, "a pad loses nothing");
 }
 
+/// #10779: a comment is not a value, so a dropped slot holding only a comment
+/// and `$` (or `*`) loses nothing, while a value with a comment beside it does.
+#[test]
+fn a_comment_beside_no_value_is_not_counted_10779() {
+    let dropped = |line: &str| {
+        let mut checks = crate::schema_enum::ConversionChecks::new();
+        convert_step_line(line, "IFC4", "IFC2X3", 1, &mut none(), Some(&mut checks)).unwrap();
+        checks.attribute_values_dropped
+    };
+    assert_eq!(dropped("#1=IFCQUANTITYLENGTH('L',$,$,2.5,/* x */$);"), 0);
+    assert_eq!(dropped("#1=IFCQUANTITYLENGTH('L',$,$,2.5,$ /* x */);"), 0);
+    assert_eq!(dropped("#1=IFCQUANTITYLENGTH('L',$,$,2.5,/* x */);"), 0);
+    assert_eq!(dropped("#1=IFCQUANTITYLENGTH('L',$,$,2.5,/* x */'=a*b');"), 1);
+    assert_eq!(dropped("#1=IFCQUANTITYLENGTH('L',$,$,2.5,'/* not a comment */');"), 1, "a literal is a value");
+}
+
 /// #9668 review: spaces around '=' are normalized before the required-slot
 /// checker sees the converted record; an unknown Axis must still be counted.
 #[test]
@@ -795,4 +811,36 @@ fn structural_required_axis_is_counted_with_record_head_whitespace_9668() {
     let out = convert_step_line(line, "IFC2X3", "IFC4", 50, &mut none(), Some(&mut checks)).unwrap();
     assert!(out.ends_with(".RIGID_JOINED_MEMBER.,$);"));
     assert_eq!(checks.ifc4_slots.required_slots_unfilled(), 1, "{out}");
+}
+
+/// #10758, the issue's own records: the bottom flange carries under its
+/// renamed slots, slot 11 (CentreOfGravityInY / BottomFlangeEdgeRadius) is
+/// written `$` and its value counted dropped, `$` is not counted, and a
+/// downgraded IfcTransportElement now has the arity the enum check reads.
+#[test]
+fn a_slot_replaced_in_place_is_written_dollar_and_counted_10758() {
+    let convert = |line: &str, from: &str, to: &str| {
+        let mut checks = crate::schema_enum::ConversionChecks::new();
+        let out = convert_step_line(line, from, to, 10, &mut none(), Some(&mut checks)).unwrap();
+        (out, checks.attribute_values_dropped, checks.enums.lost())
+    };
+    let up = "#10=IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,'A',#9,0.3,0.4,0.01,0.02,0.015,0.2,0.012,0.01,0.05);";
+    assert_eq!(
+        convert(up, "IFC2X3", "IFC4"),
+        ("#10=IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,'A',#9,0.3,0.4,0.01,0.02,0.015,0.2,0.012,0.01,$,$,$,$);".into(), 1, 0)
+    );
+    let down = "#10=IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,'A',#9,0.3,0.4,0.01,0.02,0.015,0.2,0.012,0.01,0.005,$,$,$);";
+    assert_eq!(
+        convert(down, "IFC4", "IFC2X3"),
+        ("#10=IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,'A',#9,0.3,0.4,0.01,0.02,0.015,0.2,0.012,0.01,$);".into(), 1, 0),
+        "only the edge radius held a value"
+    );
+    let unset = "#10=IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,'A',#9,0.3,0.4,0.01,0.02,0.015,0.2,0.012,0.01,$);";
+    assert_eq!(convert(unset, "IFC2X3", "IFC4").1, 0, "`$` is not a value");
+    let crane = "#11=IFCTRANSPORTELEMENT('g',#5,'Crane',$,$,$,$,$,.CRANEWAY.);";
+    assert_eq!(
+        convert(crane, "IFC4", "IFC2X3"),
+        ("#11=IFCTRANSPORTELEMENT('g',#5,'Crane',$,$,$,$,$,.NOTDEFINED.,$,$);".into(), 0, 1),
+        "IFC2X3 has no CRANEWAY member"
+    );
 }

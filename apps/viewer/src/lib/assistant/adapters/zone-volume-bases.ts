@@ -2,6 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import {
+  getLegacySourceMutationView, isLegacySourceRef, LEGACY_MUTATION_MODEL_IDS,
+} from '@/sdk/adapters/model-compat';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { RelationshipType } from '@ifc-lite/data';
 import { IfcQuery } from '@ifc-lite/query';
 import { extractTypeQuantitiesOnDemand, readCurrentTypeQuantities, type CurrentProjectUnitResult, type IfcDataStore } from '@ifc-lite/parser';
@@ -29,8 +33,8 @@ export function zoneQuantitySourceIdentity(s: ViewerState, modelIds?: ReadonlySe
     identity.push(modelId, model.ifcDataStore, model.ifcDataStore?.source,
       model.sourceContentHash, view, view?.getMutationRevision());
   }
-  if (!modelIds || modelIds.has('legacy') || modelIds.has('__legacy__')) {
-    const legacyView = s.mutationViews.get('__legacy__');
+  if (!modelIds || LEGACY_MUTATION_MODEL_IDS.some(id => modelIds.has(id) && isLegacySourceRef(s, id))) {
+    const legacyView = getLegacySourceMutationView(s);
     identity.push(s.ifcDataStore, s.ifcDataStore?.source, legacyView, legacyView?.getMutationRevision());
   }
   return identity;
@@ -39,17 +43,24 @@ export function zoneQuantitySourceIdentity(s: ViewerState, modelIds?: ReadonlySe
 /** Same occurrence-first inherited quantities and file VOLUMEUNIT as the
  * Properties card. Reading evidence must never create a mutation view. */
 export function zoneQuantitySources(s: ViewerState) {
-  const models = new Map<string, { store: IfcDataStore | null; query: IfcQuery | null; units: CurrentProjectUnitResult }>();
+  const models = new Map<string, {
+    store: IfcDataStore | null;
+    query: IfcQuery | null;
+    units: CurrentProjectUnitResult;
+    view: MutablePropertyView | null;
+  }>();
   return (ref: EntityRef) => {
-    const legacy = ref.modelId === 'legacy' || ref.modelId === '__legacy__';
-    const view = s.mutationViews.get(legacy ? '__legacy__' : ref.modelId);
     let source = models.get(ref.modelId);
     if (!source) {
-      const store = (s.models.get(ref.modelId)?.ifcDataStore ?? (legacy ? s.ifcDataStore : null)) as IfcDataStore | null;
+      const modelStore = s.models.get(ref.modelId)?.ifcDataStore;
+      const legacy = isLegacySourceRef(s, ref.modelId);
+      const store = modelStore ?? (legacy ? s.ifcDataStore : null);
+      const view = legacy ? getLegacySourceMutationView(s) : s.mutationViews.get(ref.modelId) ?? null;
       const units = currentProjectUnitContext(store, view);
-      source = { store, query: store ? new IfcQuery(store) : null, units };
+      source = { store, query: store ? new IfcQuery(store) : null, units, view };
       models.set(ref.modelId, source);
     }
+    const { view } = source;
     const data = effectiveElementData(ref.expressId, source.query, view);
     if (data.quantityStatus === 'unavailable') return { quantities: [], scale: null,
       unitStatus: 'unavailable' as const, unitReason: data.quantityReason,

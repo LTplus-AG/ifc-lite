@@ -9,7 +9,8 @@
  * `useCompareOverlay`) and listed here. Row click selects + frames the element.
  */
 
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import { GitCompareArrows, ChevronLeft } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
@@ -27,7 +28,7 @@ import { CompareSetupControls } from './compare/CompareSetupControls';
 import { CompareRunControls } from './compare/CompareRunControls';
 import { SavedComparisonLibrary } from './compare/SavedComparisonLibrary';
 import { CompareExportBar } from './compare/CompareExportBar';
-const CompareAnalysisSections = lazy(() => import('./compare/CompareAnalysisSections').then(module => ({ default: module.CompareAnalysisSections })));
+const CompareAnalysisSections = lazyChunk(() => import('./compare/CompareAnalysisSections').then(module => ({ default: module.CompareAnalysisSections })));
 import { AnalysisPanel, AnalysisStaleRegion } from './analysis/AnalysisPanel';
 import { AnalysisEmptyState } from './analysis/AnalysisEmptyState';
 import { loadDemoRevisions } from '@/lib/tours/demo-kit';
@@ -106,8 +107,11 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
     // A comparison computed against a model that's since been removed leaves a
     // stale overlay on the survivor (the overlay hook keys off the result, not
     // the model list) — drop it so the scene is restored.
-    const ran = useViewerStore.getState().compareResult;
-    if (ran && (!ids.includes(ran.baseModelId) || !ids.includes(ran.headModelId))) {
+    // Removed means gone from the live store too: a panel mounting while an
+    // edit is held sees the settled list, which may predate a model (#10535).
+    const { compareResult: ran, models: present } = useViewerStore.getState();
+    const removed = (id: string) => !ids.includes(id) && !present.has(id);
+    if (ran && (removed(ran.baseModelId) || removed(ran.headModelId))) {
       clearCompare();
     }
     if (ids.length === 0) return;

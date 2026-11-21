@@ -21,6 +21,8 @@ import { CHART_FONT_SIZE, validateChartSpec, type ChartSpec, type ReportPageSetu
 import { isSavedListShape, type ListDefinition } from '@ifc-lite/lists';
 import { isFilterGroup } from '@ifc-lite/rules';
 import { migrateDocumentListBlocks } from './document-list-migration.js';
+import { validateQualityGateBlock, type QualityGateBlock } from './quality-gate-types.js';
+export type { QualityGateBlock } from './quality-gate-types.js';
 import { validateManualReportBlock, type ManualReportBlock } from './manual-report-types.js';
 import { validateIdsReportBlock, type IdsReportBlock } from './ids-report-types.js';
 import { isDocumentImageDataUrl, validatePageBand, type PageBand } from './page-band.js';
@@ -190,7 +192,7 @@ export interface TableBlock extends BlockTitle {
   scale?: number;
 }
 
-export type DocumentBlock = TextBlock | ImageBlock | ChartBlock | TopicBlock | SpacerBlock | PageBreakBlock | TableBlock | IdsReportBlock | ManualReportBlock;
+export type DocumentBlock = TextBlock | ImageBlock | ChartBlock | TopicBlock | SpacerBlock | PageBreakBlock | TableBlock | IdsReportBlock | ManualReportBlock | QualityGateBlock;
 export type DocumentBlockKind = DocumentBlock['kind'];
 
 export const CHART_BLOCK_HEIGHT_MIN = 120;
@@ -228,11 +230,12 @@ export function isHalfPairable<T extends { kind: string }>(block: T): block is T
 }
 
 /**
- * `.ifclite-document.json` version 1 -> 2 (#4940) -> 3 (#5142) -> 4 (#5138) -> 5 (#5125) -> 6 (#4940 follow ups) -> 7 (#6401) -> 8 (#6485) -> 9 (#6506) -> 10 (#6507) -> 11 (#6548) -> 12 (#6610) -> 13 (#7186):
+ * `.ifclite-document.json` version 1 -> 2 (#4940) -> 3 (#5142) -> 4 (#5138) -> 5 (#5125) -> 6 (#4940 follow ups) -> 7 (#6401) -> 8 (#6485) -> 9 (#6506) -> 10 (#6507) -> 11 (#6548) -> 12 (#6610) -> 13 (#7186) -> 14 (#10458):
  * every step is additive (v2: chart/image `width`/`height`, text styles, spacer; v3: table
  * over a list; v4: its validation source; v5: IDS report block; v6: text font, size and
  * half-width layout; v7: manual-validation report block; v8: explicit page-break block; v9: saved comparison tables; v10: live manual checklist
- * identity and optional compact/benchmark presentation; v11: optional whole-block `scale`; v13: captured embedded List populations). The report block's optional
+ * identity and optional compact/benchmark presentation; v11: optional whole-block `scale`; v13: captured embedded List populations;
+ * v14: linked quality gate blocks). The report block's optional
  * `sourceKind` (#6372) is additive within v6: an absent value reads as `'ids'`, the label
  * every earlier block printed. An older file only has its version raised. Embedded v1 Lists
  * conditions are also normalized into Rules groups (#5894), including in a document already
@@ -243,7 +246,7 @@ export function isHalfPairable<T extends { kind: string }>(block: T): block is T
  */
 export function migrateDocumentSpec(raw: unknown): unknown {
   if (!isRecord(raw)) return raw;
-  const version = raw.version === 1 || raw.version === 2 || raw.version === 3 || raw.version === 4 || raw.version === 5 || raw.version === 6 || raw.version === 7 || raw.version === 8 || raw.version === 9 || raw.version === 10 || raw.version === 11 || raw.version === 12
+  const version = raw.version === 1 || raw.version === 2 || raw.version === 3 || raw.version === 4 || raw.version === 5 || raw.version === 6 || raw.version === 7 || raw.version === 8 || raw.version === 9 || raw.version === 10 || raw.version === 11 || raw.version === 12 || raw.version === 13
     ? DOCUMENT_VERSION : raw.version;
   return { ...raw, version, blocks: migrateDocumentListBlocks(raw.blocks) };
 }
@@ -307,7 +310,7 @@ export function validateDocumentSpec(input: unknown): DocumentValidationError[] 
         break;
       case 'image':
         if (!isDocumentImageDataUrl(block.dataUrl)) errors.push({ path: `${at}.dataUrl`, message: 'expected a PNG or JPEG data URL' });
-        if (typeof block.height !== 'number' || !(block.height > 0)) errors.push({ path: `${at}.height`, message: 'expected a positive number' });
+        if (typeof block.height !== 'number' || !Number.isFinite(block.height) || !(block.height > 0)) errors.push({ path: `${at}.height`, message: 'expected a positive number' });
         if (block.align !== 'left' && block.align !== 'center' && block.align !== 'right') errors.push({ path: `${at}.align`, message: 'expected left | center | right' });
         if (block.caption !== undefined && !isString(block.caption)) errors.push({ path: `${at}.caption`, message: 'expected a string' });
         checkWidth(block, at);
@@ -341,8 +344,9 @@ export function validateDocumentSpec(input: unknown): DocumentValidationError[] 
         validateIdsReportBlock(block, at, errors);
         break;
       case 'manual-report': validateManualReportBlock(block, at, errors); break;
+      case 'quality-gate': validateQualityGateBlock(block, at, errors); break;
       default:
-        errors.push({ path: `${at}.kind`, message: 'expected text | image | chart | topic | spacer | page-break | table | ids-report | manual-report' });
+        errors.push({ path: `${at}.kind`, message: 'expected text | image | chart | topic | spacer | page-break | table | ids-report | manual-report | quality-gate' });
     }
   });
   return errors;

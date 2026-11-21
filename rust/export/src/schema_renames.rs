@@ -12,7 +12,8 @@
 //!
 //! Only renames reviewed as the same concept at the same index are listed;
 //! types where a schema inserted, reordered or retyped attributes stay out,
-//! because trimming or padding them would shift values into the wrong slots.
+//! because trimming or padding them would shift values into the wrong slots;
+//! `schema_attr_maps` reconciles those (#10763).
 //! Twin of `packages/export/src/schema-converter-renames.ts`; both are held to
 //! `tests/fixtures/schema_positional_renames.json`, and the conversions they
 //! allow to `tests/fixtures/schema_upconvert_sweep.json`.
@@ -31,15 +32,39 @@ pub(crate) const POSITIONAL_RENAMES: &[(&str, &[(&str, &str)])] = &[
     ("IFCWORKSCHEDULE", &[("Identifier", "Identification"), ("WorkControlType", "PredefinedType")]),
     ("IFCPROPERTYBOUNDEDVALUE", &[("Description", "Specification")]),
     ("IFCPROPERTYTABLEVALUE", &[("Description", "Specification")]),
+    (
+        "IFCASYMMETRICISHAPEPROFILEDEF",
+        &[("OverallWidth", "BottomFlangeWidth"), ("FlangeThickness", "BottomFlangeThickness"), ("FilletRadius", "BottomFlangeFilletRadius")],
+    ),
+    ("IFCTRANSPORTELEMENT", &[("OperationType", "PredefinedType")]),
 ];
+
+/// Attributes a schema REPLACED IN PLACE (#10758): the index is the same, the
+/// concept is not. `(entity type, (older name, newer name))`.
+///
+/// IFC4 renamed IfcAsymmetricIShapeProfileDef's `OverallWidth`,
+/// `FlangeThickness` and `FilletRadius` to `BottomFlange*` (same values, in
+/// [`POSITIONAL_RENAMES`]), but its slot 11 went from `CentreOfGravityInY` to
+/// `BottomFlangeEdgeRadius` (IFC4 ADD2 TC1: "Name changed"). A centre of
+/// gravity is not an edge radius. The pair is read as one name for the prefix
+/// test, so the record still reaches the target's arity, but its value is not
+/// carried: [`replaced_slot`] has the converter write `$` there and count the
+/// value as dropped.
+pub(crate) const POSITIONAL_REPLACEMENTS: &[(&str, (&str, &str))] =
+    &[("IFCASYMMETRICISHAPEPROFILEDEF", ("CentreOfGravityInY", "BottomFlangeEdgeRadius"))];
 
 /// `name` as the newer schema spells it, for `entity_type`.
 fn newer_name<'a>(entity_type: &str, name: &'a str) -> &'a str {
-    POSITIONAL_RENAMES
-        .iter()
-        .find(|(ty, _)| *ty == entity_type)
-        .and_then(|(_, pairs)| pairs.iter().find(|(older, _)| *older == name))
-        .map_or(name, |(_, newer)| newer)
+    let renames = POSITIONAL_RENAMES.iter().find(|(ty, _)| *ty == entity_type).map_or(&[][..], |(_, pairs)| *pairs);
+    let replaced = POSITIONAL_REPLACEMENTS.iter().find(|(ty, _)| *ty == entity_type).map(|(_, pair)| pair);
+    renames.iter().chain(replaced).find(|(older, _)| *older == name).map_or(name, |(_, newer)| newer)
+}
+
+/// The index at which `entity_type`'s source list `src` and target list `tgt`
+/// hold the two sides of a [`POSITIONAL_REPLACEMENTS`] pair, in either order.
+pub(crate) fn replaced_slot(entity_type: &str, src: &[&str], tgt: &[&str]) -> Option<usize> {
+    let (_, (older, newer)) = POSITIONAL_REPLACEMENTS.iter().find(|(ty, _)| *ty == entity_type)?;
+    src.iter().zip(tgt).position(|(s, t)| (s, t) == (older, newer) || (s, t) == (newer, older))
 }
 
 /// True when `shorter` is a STRICT prefix of `longer` by attribute name, with

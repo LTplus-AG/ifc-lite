@@ -40,7 +40,7 @@ export const LOAD_CASE_PSET = 'IFC4 IfcStructuralLoadCase';
 const COEFFICIENTS = 'SelfWeightCoefficients';
 const CAUSES = 'Causes';
 /** IfcStructuralAction.CausedBy in IFC2X3 (IFC2X3_TC1.exp:7237): slot 10 of every action. */
-const CAUSED_BY = 10;
+export const CAUSED_BY = 10;
 /** IfcProduct.ObjectPlacement. */
 const OBJECT_PLACEMENT = 5;
 const IFC2X3_ACTIONS = new Set(['IFCSTRUCTURALPOINTACTION', 'IFCSTRUCTURALLINEARACTION', 'IFCSTRUCTURALPLANARACTION', 'IFCSTRUCTURALLINEARACTIONVARYING', 'IFCSTRUCTURALPLANARACTIONVARYING']);
@@ -252,25 +252,29 @@ export class StructuralCarriers {
 /**
  * The structural items an IFC2X3 IfcRelAssignsToGroup groups into each
  * analysis model, with each item's ObjectPlacement id, for the models none of
- * whose items another model also groups: IFC4 would require both models to
- * share one placement.
+ * whose items another model also groups (IFC4 would require both models to
+ * share one placement) and each of whose groupings lists only references.
  */
 function soleModelItems(source: SourceRecords, schema: 'IFC2X3' | 'IFC4'): Map<number, Map<number, number | null>> {
   const models = new Map<number, Map<number, number | null>>();
   const owners = new Map<number, Set<number>>();
+  // A model one of whose groupings cannot be read in full is not known to share a placement.
+  const unread = new Set<number>();
   for (const id of source.ids('IFCRELASSIGNSTOGROUP')) {
     const args = source.slots(id);
     const model = slotRef(args?.[6]);
     if (!args || model === null || source.type(model) !== 'IFCSTRUCTURALANALYSISMODEL') continue;
     const items = models.get(model) ?? new Map<number, number | null>();
-    for (const item of (listItems(args[4]) ?? []).map(slotRef)) {
+    models.set(model, items);
+    const listed = listItems(args[4])?.map(slotRef);
+    if (!listed || listed.includes(null)) unread.add(model);
+    for (const item of listed ?? []) {
       if (item === null || !isSubtype(schema, source.type(item), 'IfcStructuralItem')) continue;
       items.set(item, slotRef(source.slots(item)?.[OBJECT_PLACEMENT]));
       owners.set(item, (owners.get(item) ?? new Set<number>()).add(model));
     }
-    models.set(model, items);
   }
-  for (const [model, items] of models) if ([...items.keys()].some((i) => owners.get(i)!.size > 1)) models.delete(model);
+  for (const [model, items] of models) if (unread.has(model) || [...items.keys()].some((i) => owners.get(i)!.size > 1)) models.delete(model);
   return models;
 }
 

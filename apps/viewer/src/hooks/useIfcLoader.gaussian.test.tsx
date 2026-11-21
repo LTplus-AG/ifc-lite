@@ -20,7 +20,7 @@ import { modelIndices } from '@/lib/model-placement/model-indices';
 import { addIfcModel, loadScan, scanTestRenderer } from '@/test/scan-federation';
 import { gaussianPly, gaussianTestRenderer, installInThreadGaussianWorker, setGaussianBuild } from '@/test/gaussian-loader-harness';
 import { useIfcLoader, type LoadTarget } from './useIfcLoader.js';
-import { render, cleanup } from '@/test/render.js';
+import { render, cleanup, settle } from '@/test/render.js';
 import { GaussianCaptureMetadataPanel } from '@/components/viewer/properties/GaussianCaptureMetadataPanel';
 import { buildFederationSetupFile, parseFederationSetupFile, serializeFederationSetupFile } from '@/lib/federation/federationSetupFile';
 import { ViewportLoadErrorCard } from '@/components/viewer/ViewportLoadErrorCard';
@@ -805,6 +805,7 @@ it('mounted up-axis control updates actual renderer bounds; setup and reload pre
     const selected = useViewerStore(state => state.models.get('survey'))!;
     return <GaussianCaptureMetadataPanel model={selected} capture={selected.gaussianSplat!} />;
   }
+  await settle();
   const ui = render(<Panel />);
   let select = ui.querySelector<HTMLSelectElement>('select')!;
   assert.equal(select.value, 'z');

@@ -5,6 +5,7 @@
 import type { RuleSetFile } from '@ifc-lite/rules';
 import type { StateCreator } from 'zustand';
 import { defineSliceTeardown, notApplicable } from '../teardown.js';
+import { sameReportEvidence } from '@/lib/flow/report-provenance';
 import type { IDSSlice } from './idsSlice.js';
 import {
   activeDefinition, checkDefinitionLibrary, loadDefinitionLibrary, saveDefinitionLibrary,
@@ -17,6 +18,7 @@ export interface ValidationDraftSlice {
   validationDefinitionsError: string | null;
   validationDefinitionsWritable: boolean;
   validationDefinitionRevision: number;
+  refreshValidationDefinitions: () => void;
   /**
    * Adds (or replaces `existingId`) and makes it the active definition, which
    * clears the shown report. `activate: false` only stores a NEW entry: the
@@ -60,6 +62,14 @@ export const createValidationDraftSlice: StateCreator<ValidationDraftSlice & IDS
   validationDefinitionsError: loaded.error,
   validationDefinitionsWritable: loaded.writable,
   validationDefinitionRevision: 0,
+  refreshValidationDefinitions: () => {
+    const previous = get().validationDefinitions;
+    const loaded = loadDefinitionLibrary();
+    set({ validationDefinitions: loaded.library, validationDefinitionsError: loaded.error, validationDefinitionsWritable: loaded.writable });
+    for (const kind of ['rules', 'ids'] as const) {
+      if (!sameReportEvidence(activeDefinition(previous, kind), activeDefinition(loaded.library, kind))) project(kind);
+    }
+  },
   addValidationDefinition: (definition, existingId, options) => {
     const library = get().validationDefinitions;
     const existing = existingId ? library.entries.find(entry => entry.id === existingId && entry.kind === definition.kind) : undefined;

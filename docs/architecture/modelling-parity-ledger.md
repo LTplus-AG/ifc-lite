@@ -4,11 +4,11 @@
 
 The scorecard of the modelling parity hill climb ([#9296](https://github.com/LTplus-AG/ifc-lite/issues/9296)): the capabilities an architect treats as table stakes in Revit, Archicad, Vectorworks and Bonsai, each measured by three probes. Rows, oracles and owners live in `tests/modelling-parity/catalogue.json`; statuses come from the probes' result files, scored by `tests/modelling-parity/score.mjs`.
 
-**Table-stakes score: 23 / 25** (met 21, partial 4, missing 0). A met row counts 1, a partial row 0.5. The score may only go up: `node tests/modelling-parity/score.mjs <dirs> --check tests/modelling-parity/baseline/r2-combined.json` fails when it or any row drops.
+**Table-stakes score: 25 / 25** (met 25, partial 0, missing 0). A met row counts 1, a partial row 0.5. The score may only go up: `node tests/modelling-parity/score.mjs <dirs> --check tests/modelling-parity/baseline/r4-combined.json` fails when it or any row drops.
 
-**Per-level passes: SDK 20/25 · UI 21/25 · OUTPUT 23/25.** Non-applicable levels earn no pass.
+**Per-level passes: SDK 20/25 · UI 25/25 · OUTPUT 23/25.** Non-applicable levels earn no pass.
 
-Summary: `tests/modelling-parity/baseline/r2-combined.json`, generated 2026-11-13T03:21:42.545Z from 6818 results on `a7a16a70b2`; inputs `tests/modelling-parity/.out/r2-sdk`, `tests/modelling-parity/.out/r2-exercises`, `tests/modelling-parity/.out/r2-ui-probes`, `tests/modelling-parity/.out/r2-ui-exercises`.
+Summary: `tests/modelling-parity/baseline/r4-combined.json`, generated 2026-11-21T14:02:59.957Z from 6818 results on `7053690af8`, `7053690af8`, `b0411f5938`, `b0411f5938`, `7053690af8`; inputs `tests/modelling-parity/.out/r4/sdk`, `tests/modelling-parity/.out/r4/exercises`, `tests/modelling-parity/.out/r4/ui`.
 
 Levels:
 
@@ -42,12 +42,12 @@ Levels:
 | Snapping and inference (`snapping-inference`) | Precision input | – | ✅ | – | ✅ | ✅ met |  |
 | Typed input and temporary dimensions (`typed-input-temp-dims`) | Precision input | – | ✅ | – | ✅ | ✅ met |  |
 | Rooms with computed area (`rooms-with-area`) | Spaces and data | ✅ | ✅ | ✅ | ✅ | ✅ met |  |
-| Schedules and quantities (`schedules-quantities`) | Spaces and data | ✅ | ◐ | ✅ | ✅ | ◐ partial | **ui** partial: group and footer totals refresh to 11 m after editing: null; task "edit one wall length to 6 m and read live totals" failed: Wall Length is read-only in Model inspector; cannot edit it to 6 m. |
+| Schedules and quantities (`schedules-quantities`) | Spaces and data | ✅ | ✅ | ✅ | ✅ | ✅ met |  |
 | Plans, sections and elevations (`plans-sections-elevations`) | Documentation | – | ✅ | ✅ | – | ✅ met |  |
-| Dimensions and tags (`dimensions-tags`) | Documentation | – | ◐ | ✅ | – | ◐ partial | **ui** partial: a tag tool for elements (door, window, room tags): tag control found, but no entity-bound tag placement/export oracle has passed |
-| Sheets, PDF and DXF export (`sheets-pdf-dwg`) | Documentation | – | ◐ | ✅ | – | ◐ partial | **Historical sheet evidence / oracle version unrecorded**: the selected UI/Output evidence does not record the current PDF/DXF oracle version. Recorded statuses are retained; this baseline does not certify the current sheet target.<br>**ui** partial: drawing exported as DWG: no DWG export exists |
+| Dimensions and tags (`dimensions-tags`) | Documentation | – | ✅ | ✅ | – | ✅ met |  |
+| Sheets, PDF and DXF export (`sheets-pdf-dwg`) | Documentation | – | ✅ | ✅ | – | ✅ met |  |
 | Psets, classification and valid IFC4 (`psets-classification-valid-ifc4`) | Spaces and data | ✅ | ✅ | ✅ | ✅ | ✅ met |  |
-| Large and tall model performance (`large-tall-model-performance`) | Scale | ✅ | ◐ | ✅ | ✅ | ◐ partial | **ui** partial: single-edit median below 100 ms including remesh: {"count":5,"medianMs":145,"p95Ms":360,"maxMs":360}; exclusive benchmark admission: DIAGNOSTIC: PC benchmark admission is disabled; no timing qualification under the shared GPU helper |
+| Large and tall model performance (`large-tall-model-performance`) | Scale | ✅ | ✅ | ✅ | ✅ | ✅ met |  |
 
 ## Beyond table stakes (reported, not scored)
 
@@ -62,7 +62,7 @@ Levels:
 | Terrain (`terrain`) | Out of scope for this climb | – | – | – | ❌ missing |
 | MEP systems (`mep`) | Out of scope for this climb | – | – | – | ❌ missing |
 | Multi-user co-editing (`co-editing`) | Out of scope for this climb | – | – | – | ❌ missing |
-| DWG export (`dwg-export`) | Beyond table stakes | – | – | – | – not scored |
+| DWG export (`dwg-export`) | Beyond table stakes | – | – | – | ❌ missing |
 
 ## Regenerating
 

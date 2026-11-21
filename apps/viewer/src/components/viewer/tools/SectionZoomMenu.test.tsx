@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import type { Renderer } from '@ifc-lite/renderer';
-import { render, cleanup, click, press, type } from '@/test/render.js';
+import { render, cleanup, click, press, type, settle as settleEdit } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { clearGlobalRefs, setGlobalRendererRef } from '@/hooks/useBCF.js';
 import { DEFAULT_SECTION_ZOOM } from '@/lib/section/section-zoom-spec';
@@ -22,7 +22,7 @@ const state = () => useViewerStore.getState();
 const SCENE = { min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 6, z: 4 } };
 let frames: Array<{ padding?: number; max: { x: number; y: number; z: number } }> = [];
 
-beforeEach(() => {
+beforeEach(async () => {
   frames = [];
   state().resetViewerState();
   useViewerStore.setState({
@@ -35,6 +35,7 @@ beforeEach(() => {
     },
   });
   setGlobalRendererRef({ current: { getCamera: () => ({ getSceneBounds: () => SCENE }) } as unknown as Renderer });
+  await settleEdit();
 });
 afterEach(() => { cleanup(); clearGlobalRefs(); });
 

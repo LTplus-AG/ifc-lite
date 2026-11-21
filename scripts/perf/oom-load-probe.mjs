@@ -20,7 +20,7 @@
  * hard error (exit 2), never a skip.
  *
  * Usage:
- *   node scripts/perf/oom-load-probe.mjs --dist apps/viewer/dist --expect killed|not-killed|loaded|refused
+ *   node scripts/perf/oom-load-probe.mjs --dist apps/viewer/dist --expect killed|not-killed|loaded|refused|awaiting-decision
  *        (--fixture FILE.ifc | --kind tfs|brep --target-mb N [--seed 1])
  *        --cap 3G [--device-memory 4] [--cores 4] [--cpu-quota 400%]
  *        [--gl swiftshader|hardware] [--out DIR] [--limit-min 10] [--keep-fixture]
@@ -49,7 +49,9 @@ import { basename, join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { writeDenseIfc } from './gen-dense-ifc.mjs';
-import { DIALOG_BUTTONS, GENERIC_MODEL_ERROR, MEMORY_WARNING, classify, sampleCpuGeometry, mergeFinalSnapshot, optionErrors, parseSize, phaseOf, runCleanup, verdict, withTimeout } from './oom-load-probe-lib.mjs';
+import { DIALOG_BUTTONS, GENERIC_MODEL_ERROR, MEMORY_WARNING, SERVER_FIRST, classify, expectFlags, mergeFinalSnapshot, optionErrors, parseSize, phaseOf, polledErrorEvent, runCleanup, sampleCpuGeometry, serverAttemptSummary, verdict, withTimeout } from './oom-load-probe-lib.mjs';
+import { CPU_GEOMETRY_PROBE, DIALOG_MARKS, NOTICES, PAGE_PROBE } from './oom-load-probe-page.mjs';
+import { installSourceTracker, trackerSummary } from './oom-load-probe-tracker.mjs';
 import { GPU_ARGS } from './retained-qual-browser.mjs';
 import { chromePids, memoryOf } from './scenoptic-bench-sampling.mjs';
 import { openAndWaitInteractive, openViewerPage, startViewerServer } from './viewer-load-probe.mjs';
@@ -92,30 +94,6 @@ const scopeProp = (unit, prop) => {
   try { return execFileSync('systemctl', ['--user', 'show', `${unit}.scope`, '-p', prop, '--value'], { encoding: 'utf8' }).trim(); } catch { return null; }
 };
 
-/** In page: what the load has reached. */
-const PAGE_PROBE = () => {
-  const s = globalThis.__ifc_lite_viewer_store__?.getState();
-  const models = [...(s?.models?.values?.() ?? [])];
-  let tris = 0;
-  for (const g of (models.length ? models.map((m) => m.geometryResult) : [s?.geometryResult])) tris += g?.totalTriangles ?? 0;
-  const l = (globalThis.__IFC_LITE_LOAD_TRACE__?.loads?.() ?? []).at(-1);
-  return { loading: s?.loading ?? null, error: s?.error ?? null, progress: s?.progress ?? null, tris,
-    modelStates: models.map((m) => m.loadState ?? null),
-    jsHeapMiB: performance.memory ? performance.memory.usedJSHeapSize / 2 ** 20 : null,
-    openSpans: l ? l.spans.filter((sp) => sp.end === null).slice(0, 8).map((sp) => sp.name) : [] };
-};
-
-/** In page: the viewer's "CPU geometry held" walk (#10264 S0), or null on a viewer without the hook. */
-const CPU_GEOMETRY_PROBE = async () => {
-  const hook = globalThis.__ifc_lite_cpu_geometry_held__;
-  if (typeof hook !== 'function') return null;
-  const held = await hook();
-  const state = globalThis.__ifc_lite_viewer_store__?.getState();
-  const models = [...(state?.models?.values?.() ?? [])];
-  const results = models.length ? models.map(model => model.geometryResult) : [state?.geometryResult];
-  const triangles = results.reduce((sum, result) => sum + (result?.totalTriangles ?? 0), 0);
-  return { ...held, triangles };
-};
 /** Sample the walk every this many 2 s polls (it walks every mesh, so not every poll). */
 const CPU_GEOMETRY_EVERY = 5;
 
@@ -123,10 +101,6 @@ const CPU_GEOMETRY_EVERY = 5;
 function processType(pid) {
   try { return /--type=([a-z-]+)/.exec(readFileSync(`/proc/${pid}/cmdline`, 'utf8'))?.[1] ?? 'browser'; } catch { return null; }
 }
-
-/** In page: text of dialogs, alerts and toasts (not the whole page). */
-const NOTICES = () => [...document.querySelectorAll('[role=dialog],[role=alertdialog],[role=alert],[role=status],[data-sonner-toast]')]
-  .map((e) => e.innerText.trim().slice(0, 4000)).filter(Boolean);
 
 const scopeStop = (unit) => {
   // The scope ends on its own when Chrome exits; stop only a leftover one, then clear a failed record.
@@ -153,7 +127,10 @@ export async function runProbe(opts) {
     timedOut: false, warningShown: false, decision: 'none' };
   const peak = { pssMiB: 0, cgroupMiB: 0 };
   const unit = `oom-load-probe-${process.pid}-${Date.now()}`;
-  let last = null, context, sampler, cg = null, verdictReady = false, lastPssMiB = null, polls = 0;
+  let last = null, context, sampler, cg = null, verdictReady = false, pickAt = null, dialogs = [], trackerReport = null;
+  let lastPssMiB = null, polls = 0;
+  const netEvents = [], storeErrors = [];
+  const watchOrigin = opts.watchUrl ? new URL(opts.watchUrl).origin : null;
   try {
     let fixture = opts.fixture;
     if (!fixture) {
@@ -189,6 +166,17 @@ export async function runProbe(opts) {
       if (dm !== null) Object.defineProperty(Navigator.prototype, 'deviceMemory', { get: () => dm, configurable: true });
       if (hc !== null) Object.defineProperty(Navigator.prototype, 'hardwareConcurrency', { get: () => hc, configurable: true });
     }, { dm: opts.deviceMemory, hc: opts.cores });
+    // Source identity, reads and worker posts (oom-load-probe-tracker.mjs), injected as source text.
+    await context.addInitScript({ content: `(${installSourceTracker})({ Blob, FileReader, Worker: globalThis.Worker, MessagePort: globalThis.MessagePort, BroadcastChannel: globalThis.BroadcastChannel, URL, XMLHttpRequest, target: globalThis, document, now: Date.now, watchOrigin: ${JSON.stringify(watchOrigin)} });` });
+    await context.addInitScript(DIALOG_MARKS);
+    if (watchOrigin) {
+      const sameOrigin = (url) => { try { return new URL(url).origin === watchOrigin; } catch { return false; } };
+      // Driver-side view (its own clock): kept for the browser's error code, never used for order.
+      const net = (event, extra) => (r) => { if (sameOrigin(r.url())) netEvents.push({ t: Date.now(), event, url: r.url(), clock: 'driver', ...extra(r) }); };
+      context.on('request', net('driver-request', (r) => ({ method: r.method() })));
+      context.on('requestfailed', net('driver-requestfailed', (r) => ({ failure: r.failure()?.errorText ?? null })));
+      context.on('response', (res) => net('driver-response', () => ({ status: res.status() }))(res.request()));
+    }
     cg = cgroupOf(unit);
     if (!cg) throw new EnvError(`Chrome did not start inside scope ${unit}`);
     const page = await openViewerPage(context, `${baseUrl}/?perfTrace=1&perfMem=1`);
@@ -223,7 +211,8 @@ export async function runProbe(opts) {
     }, 500);
     cleanup.push({ name: 'sampler', fn: () => clearInterval(sampler) });
 
-    let done = false;
+    let done = false, previousPollReadAt = null;
+    pickAt = Date.now();
     const interactive = openAndWaitInteractive(page, [fixture], { timeoutMs: opts.limitMin * 60_000 })
       .then(() => { obs.interactive = true; }, (e) => { if (/timeout/i.test(String(e?.message))) obs.timedOut = true; result.waitError = String(e?.message ?? e).slice(0, 300); });
     const watch = (async () => {
@@ -233,6 +222,8 @@ export async function runProbe(opts) {
         // or not, does not end the load: keep watching until interactive, a tab death or the limit.
         if (done || obs.pageCrashed || obs.pageClosed || obs.browserGone) return;
         const st = await withTimeout(page.evaluate(PAGE_PROBE).catch(() => null), 15000, () => null);
+        const previousReadAt = previousPollReadAt;
+        if (st) previousPollReadAt = st.readAt;
         if (st) { last = st; log({ t: (Date.now() - t0) / 1000, page: st }); }
         if (st && ++polls % CPU_GEOMETRY_EVERY === 0) {
           const measurement = await sampleCpuGeometry(() => page.evaluate(CPU_GEOMETRY_PROBE), st.tris, 15000);
@@ -240,7 +231,7 @@ export async function runProbe(opts) {
             ...(measurement.held ? { cpuGeometryHeld: measurement.held } : { diagnosticError: measurement.error }),
             pssMiB: lastPssMiB === null ? null : Math.round(lastPssMiB) });
         }
-        if (st?.error || st?.modelStates?.includes('error')) { obs.storeError = st.error ?? GENERIC_MODEL_ERROR; return; }
+        if (st?.error || st?.modelStates?.includes('error')) { obs.storeError = st.error ?? GENERIC_MODEL_ERROR; storeErrors.push({ readAt: st.readAt, previousReadAt, text: obs.storeError }); return; }
         if (obs.decision === 'none') {
           // CSS role selectors, not getByRole: when another layer (e.g. a privacy banner) is open the
           // dialog's container can be aria-hidden, which hides it from getByRole although it is on screen.
@@ -275,6 +266,8 @@ export async function runProbe(opts) {
       }
       const notices = await withTimeout(page.evaluate(NOTICES).catch(() => null), 5000, () => null);
       Object.assign(obs, mergeFinalSnapshot(obs, st ? { error: st.error, modelStates: st.modelStates, warningVisible, notices } : (notices ? { notices } : null)));
+      dialogs = await withTimeout(page.evaluate(() => globalThis.__oomProbeDialogs ?? []).catch(() => []), 5000, () => []);
+      trackerReport = await withTimeout(page.evaluate(() => globalThis.__oomProbeTracker?.report() ?? null).catch(() => null), 5000, () => null);
       if (obs.interactive) last = { ...(await withTimeout(page.evaluate(PAGE_PROBE).catch(() => last), 5000, () => last)), interactive: true };
       if (obs.interactive) {
         // Settled figure next to summed process memory: a few sampler ticks after interactive so PSS reflects it.
@@ -307,10 +300,31 @@ export async function runProbe(opts) {
   result.memoryDialogPolicy = opts.onMemoryDialog;
   result.memoryDialogDecision = obs.decision;
   result.notices = obs.notices;
+  if (pickAt !== null) {
+    // The page's own pick stamp (tracker) is the time origin; the driver's call time only as fallback.
+    const tracked = trackerSummary(trackerReport, pickAt);
+    const origin = tracked.pickKnown ? tracked.pickAt : pickAt;
+    const ms = (t) => t - origin;
+    result.driverCallToPickMs = tracked.pickKnown ? tracked.pickAt - pickAt : null;
+    const { events: trackedEvents, ...trackedCounts } = tracked;
+    result.sourceTracking = trackedCounts;
+    result.timeline = [
+      ...netEvents.map(({ t, ...e }) => ({ ms: ms(t), ...e })),
+      ...dialogs.map((d) => ({ ms: ms(d.t), event: d.kind ?? 'dialog', text: d.text })),
+      // Page-clock read bounds include delayed evaluation and sampling between polls.
+      ...storeErrors.map((e) => polledErrorEvent(e, origin)),
+      ...trackedEvents,
+    ].sort((a, b) => a.ms - b.ms);
+    result.serverAttempts = serverAttemptSummary(result.timeline, { watching: Boolean(watchOrigin), tracker: tracked });
+  }
   Object.assign(result, classify(obs), { phase: phaseOf(last), last, peakPssMiB: Math.round(peak.pssMiB),
     peakCgroupMiB: Math.round(peak.cgroupMiB), oomKills: obs.oomKills, killedTypes: obs.killedTypes, killEvents: obs.killEvents });
   const v = verdict(result.outcome, opts.expect);
   Object.assign(result, { pass: v.pass, verdict: v.message });
+  if (opts.expectServerFirst) {
+    const f = expectFlags(result.serverAttempts, SERVER_FIRST);
+    Object.assign(result, { pass: result.pass && f.pass, verdict: `${result.verdict}; ${f.message}` });
+  }
   writeFileSync(join(outDir, 'result.json'), `${JSON.stringify(result, null, 1)}\n`);
   return { result, outDir };
 }
@@ -321,6 +335,7 @@ function cli() {
     seed: { type: 'string' }, cap: { type: 'string' }, 'device-memory': { type: 'string' }, cores: { type: 'string' },
     'cpu-quota': { type: 'string' }, gl: { type: 'string' }, expect: { type: 'string' }, out: { type: 'string' },
     'limit-min': { type: 'string' }, 'keep-fixture': { type: 'boolean' }, 'on-memory-dialog': { type: 'string' },
+    'watch-url': { type: 'string' }, 'expect-server-first': { type: 'boolean' },
   } });
   const fail = (m) => { console.error(`oom-load-probe: ${m}`); process.exit(2); };
   if (!v.dist || !existsSync(join(v.dist, 'index.html'))) fail('--dist must point at a built viewer (apps/viewer/dist)');
@@ -333,11 +348,14 @@ function cli() {
   const opts = { dist: resolve(v.dist), fixture: v.fixture && resolve(v.fixture), kind: v.kind, targetMb: Number(v['target-mb']),
     seed: v.seed ? Number(v.seed) : 1, cap: v.cap, deviceMemory: v['device-memory'] ? Number(v['device-memory']) : null, cores,
     cpuQuota: v['cpu-quota'] ?? `${(cores ?? 4) * 100}%`, gl, expect: v.expect, out: v.out && resolve(v.out),
-    limitMin: Number(v['limit-min'] ?? 10), keepFixture: Boolean(v['keep-fixture']), onMemoryDialog: v['on-memory-dialog'] ?? 'wait' };
+    limitMin: Number(v['limit-min'] ?? 10), keepFixture: Boolean(v['keep-fixture']), onMemoryDialog: v['on-memory-dialog'] ?? 'wait',
+    watchUrl: v['watch-url'], expectServerFirst: Boolean(v['expect-server-first']) };
+  if (opts.expectServerFirst && !opts.watchUrl) fail('--expect-server-first needs --watch-url');
   try { preflight(); } catch (err) { fail(err.message); }
   runProbe(opts).then(({ result, outDir }) => {
     console.log(`outcome=${result.outcome} phase="${result.phase}" peakPssMiB=${result.peakPssMiB} peakCgroupMiB=${result.peakCgroupMiB} `
-      + `oomKills=${result.oomKills} reason="${result.reason}" -> ${result.verdict} [${outDir}/result.json]`);
+      + `oomKills=${result.oomKills} sourceTracking=${JSON.stringify(result.sourceTracking ?? null)} reason="${result.reason}" `
+      + `${result.serverAttempts?.watched ? `server=${JSON.stringify(result.serverAttempts)} ` : ''}-> ${result.verdict} [${outDir}/result.json]`);
     if (result.cleanupFailures) console.error(`oom-load-probe: cleanup failures: ${result.cleanupFailures.join('; ')}`);
     process.exit(result.pass ? 0 : 1);
   }, (err) => {

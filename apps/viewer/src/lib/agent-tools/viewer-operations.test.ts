@@ -8,6 +8,7 @@ import { beforeEach, describe, it } from 'node:test';
 import { once } from 'node:events';
 import { setImmediate } from 'node:timers/promises';
 import type { Renderer } from '@ifc-lite/renderer';
+import { coordinationDashboard } from '@/lib/charts/presets';
 import { registerAgentViewportHost } from '@/lib/agent-bridge/viewport-host';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { configuredView } from '@/test/agent-tools-fixture';
@@ -98,7 +99,9 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     assert.equal((await pending).errorCode, 'READ_ONLY');
   });
   it('validates all model-local entity IDs before changing either selection channel', async () => {
-    assert.equal((await execute('selection.replace', { express_ids: [1, 987654] })).errorCode, 'ENTITY_NOT_FOUND');
+    const missing = await execute('selection.replace', { express_ids: [1, 987654] });
+    assert.equal(missing.errorCode, 'INVALID_INPUT');
+    assert.equal((missing.structured as { reason: string }).reason, 'unknown-target');
     assert.equal(useViewerStore.getState().selectedEntityId, null);
     const applied = await execute('selection.replace', { express_ids: [1, 2] });
     assert.equal(applied.isError, false, applied.text);
@@ -126,7 +129,7 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     assert.equal(useViewerStore.getState().measurements.length, 1);
     assert.equal((await execute('measurements.distance', { ...input, end: [1, 1, 1] }, { idempotency_key: 'distance-1' })).isError, true);
   });
-  it('exports a real changed IFC artifact without downloading or discarding pending edits', async () => {
+  it('exports a real changed IFC artifact without downloading or discarding pending edits (#10796)', async () => {
     const view = new MutablePropertyView(null, 'A');
     view.setAttribute(1, 'Name', 'AGENT-EXPORTED-WALL');
     useViewerStore.setState({ mutationViews: new Map([['A', view]]), mutationVersion: 1 });
@@ -136,8 +139,11 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     const chunk = data<{ data: string; next_offset: number | null }>(await dispatchMainViewerTool(host, 'viewer_artifact_read', { artifact_id: result.result.artifact.artifact_id, offset: 0, length: 65536 }));
     assert.equal(chunk.next_offset, null);
     assert.match(Buffer.from(chunk.data, 'base64').toString('utf8'), /AGENT-EXPORTED-WALL/);
-    assert.equal(view.getMutations().length, 1, 'creating an export must not discard its pending edits');
-    assert.equal((await execute('model.unload')).isError, true, 'unexported edits still require native discard confirmation');
+    const pending = useViewerStore.getState().getMutationView('A')?.getAttributeMutationsForEntity(1);
+    assert.equal(pending?.find(edit => edit.name === 'Name')?.value, 'AGENT-EXPORTED-WALL');
+    const unload = await execute('model.unload');
+    assert.equal(unload.isError, true);
+    assert.match(unload.text, /unexported changes/);
     assert.ok(useViewerStore.getState().models.has('A'));
   });
   it('validates every basket reference before changing native basket isolation', async () => {
@@ -175,6 +181,16 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     const mergedText = Buffer.from(data<{ data: string }>(await dispatchMainViewerTool(host, 'viewer_artifact_read', { artifact_id: merged.result.artifact.artifact_id })).data, 'base64').toString('utf8');
     for (const id of ['A', 'B']) assert.equal(mergedText.split(`Merged marker ${id}`).length - 1, 1, id);
   });
+  it('evaluates a native BCF dashboard before any IFC model is loaded', async () => {
+    useViewerStore.setState({ models: new Map(), ifcDataStore: null, bcfProject: null });
+    assert.equal((await execute('bcf.createProject', { value: 'Native coordination' })).isError, false);
+    for (const status of ['Open', 'Closed']) assert.equal((await execute('bcf.createTopic', { title: status, description: '', status })).isError, false);
+    const dashboard = coordinationDashboard();
+    assert.equal(useViewerStore.getState().upsertDashboard(dashboard), true);
+    const chart = dashboard.charts.find(row => row.source === 'bcf'); assert.ok(chart);
+    const result = data<{ result: { total: number; categories: unknown[] } }>(await inspect('charts.evaluate', { dashboard_id: dashboard.id, chart_id: chart.id }));
+    assert.equal(result.result.total, 2); assert.equal(result.result.categories.length, 2);
+  });
   it('runs native Rules filters, rejects stale configuration, and pages the published result', async () => {
     const state = data<{ result: { native_json: string } }>(await inspect('filters.state'));
     const initial = JSON.parse(state.result.native_json) as { configuration_json: string };
@@ -185,12 +201,20 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     const result = await execute('filters.run', { expected_json: configured.configuration_json });
     assert.equal(result.isError, false, result.text);
     assert.equal(useViewerStore.getState().searchFilterResult?.rows.length, 4);
-    const page = data<{ result: { native_json: string } }>(await inspect('filters.results', { offset: 1, limit: 2 }));
+    const first = data<{ result: { native_json: string } }>(await inspect('filters.results', { offset: 0, limit: 1 }));
+    const { next_offset: offset, page_revision } = JSON.parse(first.result.native_json) as { next_offset: number; page_revision: string };
+    assert.equal(offset, 1); assert.ok(page_revision);
+    const page = data<{ result: { native_json: string } }>(await inspect('filters.results', { offset, page_revision, limit: 2 }));
     const rows = JSON.parse(page.result.native_json) as { total: number; rows: unknown[][]; current: boolean };
     assert.equal(rows.total, 4); assert.equal(rows.rows.length, 2); assert.equal(rows.current, true);
     useViewerStore.setState({ mutationVersion: 1 });
     const stale = data<{ result: { native_json: string } }>(await inspect('filters.results', { offset: 0, limit: 1 }));
     assert.equal((JSON.parse(stale.result.native_json) as { current: boolean }).current, false);
+    // #10877: replacement rows would shift the next offset even when the request keeps the same filter.
+    const store = useViewerStore.getState(), published = store.searchFilterResult;
+    assert.ok(published);
+    store.setSearchFilterResult({ ...published, rows: published.rows.slice(1) });
+    assert.equal((await inspect('filters.results', { offset, page_revision, limit: 2 })).errorCode, 'STATE_CHANGED');
   });
   it('uses native pick visibility and ownership while rejecting a scene changed during GPU readback', async () => {
     const models = new Map(useViewerStore.getState().models);

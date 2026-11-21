@@ -46,12 +46,16 @@ impl Loss {
 #[derive(Default)]
 pub(crate) struct EnumReconciliation {
     losses: BTreeMap<Loss, BTreeMap<String, usize>>,
+    /// Records written `.USERDEFINED.` with the label their rule needs unset, per type (#10780).
+    unlabelled: BTreeMap<String, usize>,
 }
 
 impl EnumReconciliation {
     /// Reconcile `line`, already converted to the canonical schema `to`.
     pub(crate) fn apply(&mut self, line: String, to: &str) -> String {
-        self.reconcile(&line, to).unwrap_or(line)
+        let line = self.reconcile(&line, to).unwrap_or(line);
+        self.check_user_defined(&line, to);
+        line
     }
 
     /// Values that lost information (label occupied, `.NOTDEFINED.`, `$`).
@@ -59,14 +63,34 @@ impl EnumReconciliation {
         [Loss::LabelOccupied, Loss::NotDefined, Loss::Omit].iter().map(|l| self.count(*l)).sum()
     }
 
-    /// Values kept as written because the target offers nothing valid.
+    /// Values kept as written because the target offers nothing valid,
+    /// including a `.USERDEFINED.` with no label (#10780).
     pub(crate) fn refused(&self) -> usize {
-        self.count(Loss::Refuse)
+        self.count(Loss::Refuse) + self.unlabelled.values().sum::<usize>()
+    }
+
+    /// Count `line` when it says `.USERDEFINED.` without the label its type's
+    /// rule requires in `to` (#10780). Nothing is written: no label is invented.
+    fn check_user_defined(&mut self, line: &str, to: &str) {
+        // Only a record that says USERDEFINED can break the rule; the rest stop here.
+        if !line.as_bytes().windows(13).any(|w| w.eq_ignore_ascii_case(b".USERDEFINED.")) { return; }
+        let Some((ty, args)) = crate::step_log::read_slots(line) else { return };
+        if crate::schema_userdefined::rule(to, &ty).is_some_and(|rule| crate::schema_userdefined::breaks(&args, rule)) {
+            *self.unlabelled.entry(ty).or_insert(0) += 1;
+        }
     }
 
     /// One warning per loss kind, naming what it happened to. Same text as
     /// the TypeScript twin's.
     pub(crate) fn warnings(&self) -> Vec<String> {
+        let unlabelled = (!self.unlabelled.is_empty()).then(|| {
+            let total: usize = self.unlabelled.values().sum();
+            let names: Vec<&str> = self.unlabelled.keys().map(String::as_str).collect();
+            format!(
+                "{total} record(s) say PredefinedType .USERDEFINED. without the label their rule needs; none is invented: {} (#10780).",
+                names.join(", ")
+            )
+        });
         self.losses
             .iter()
             .map(|(loss, where_)| {
@@ -79,6 +103,7 @@ impl EnumReconciliation {
                     names.join(", ")
                 )
             })
+            .chain(unlabelled)
             .collect()
     }
 
@@ -184,15 +209,18 @@ impl ConversionChecks {
         }
         match (from, to) {
             ("IFC2X3", "IFC4") => {
-                checks.structural.axes = crate::schema_structural_axes::StructuralAxes::scan(content, kept);
                 checks.structural.varying = crate::schema_structural_varying::StructuralVarying::scan_ifc2x3(content, kept);
                 checks.structural.carriers = crate::schema_structural_carriers::StructuralCarriers::scan_ifc2x3(content, kept);
-                checks.structural.allocate(allocate);
+                checks.structural.allocate(&mut *allocate);
+                checks.structural.axes = crate::schema_structural_axes::StructuralAxes::scan(content, kept, false, allocate);
+                checks.structural.values = crate::schema_structural_values::StructuralValues::scan(content, kept, false, allocate);
             }
             ("IFC4", "IFC2X3") => {
                 checks.structural.links = crate::schema_structural_links::StructuralLinks::scan(content, kept);
                 checks.structural.varying = crate::schema_structural_varying::StructuralVarying::scan_ifc4(content, kept);
                 checks.structural.carriers = crate::schema_structural_carriers::StructuralCarriers::scan_ifc4(content, kept);
+                checks.structural.axes = crate::schema_structural_axes::StructuralAxes::scan(content, kept, true, allocate);
+                checks.structural.values = crate::schema_structural_values::StructuralValues::scan(content, kept, true, allocate);
             }
             _ => {}
         }
@@ -200,14 +228,29 @@ impl ConversionChecks {
     }
 
     /// Whether the writer leaves out this source record: a conversion consumed it.
-    pub(crate) fn drops(&self, id: u32) -> bool { self.structural.varying.drops(id) }
+    pub(crate) fn drops(&self, id: u32) -> bool {
+        self.structural.varying.drops(id) || self.structural.axes.carriers.drops(id) || self.structural.values.drops(id)
+    }
 
     /// Append the records a conversion created, then finish `body`; the change in record count.
-    pub(crate) fn finish(&mut self, mut body: crate::schema_ifc2x3_body::Body<'_>) -> std::io::Result<isize> {
+    pub(crate) fn finish(
+        &mut self,
+        mut body: crate::schema_ifc2x3_body::Body<'_>,
+        mut slots: Option<&mut crate::schema_ifc2x3_slots::Ifc2x3SlotFill>,
+    ) -> std::io::Result<isize> {
         use std::io::Write as _;
-        let added = self.structural.added();
-        for record in &added { writeln!(body, "{record}")?; }
-        Ok(added.len() as isize + body.finish()?)
+        let mut added = self.structural.added();
+        added.extend(self.structural.values.added());
+        added.extend(self.structural.axes.added());
+        let count = added.len() as isize;
+        for record in added {
+            let record = match slots.as_deref_mut() {
+                Some(slots) => slots.apply(record),
+                None => record,
+            };
+            writeln!(body, "{record}")?;
+        }
+        Ok(count + body.finish()?)
     }
 
     /// Both checks' warnings, IFC4 slots first.

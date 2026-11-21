@@ -77,6 +77,13 @@ function candidates(c: ViewerOperationContext) {
   }
   return map;
 }
+function rethrowReferenceRefusal(error: unknown): never {
+  if (error instanceof ReferenceAppearanceError) {
+    if (error.translationKey === 'appearance.reference.calibrate') throw unavailable(error.message);
+    if (error.translationKey === 'appearance.reference.sourceChanged') throw stale(error.message);
+  }
+  throw error;
+}
 const tokenInput = {
   type: 'object' as const,
   properties: { token: { type: 'string' as const, minLength: 1, maxLength: 100 } },
@@ -184,11 +191,7 @@ export const appearanceReferenceOperations = [
         adopted = true;
         return out({ token, reference: prepared.record });
       } catch (error) {
-        if (error instanceof ReferenceAppearanceError) {
-          if (error.translationKey === 'appearance.reference.calibrate') throw unavailable(error.message);
-          if (error.translationKey === 'appearance.reference.sourceChanged') throw stale(error.message);
-        }
-        throw error;
+        rethrowReferenceRefusal(error);
       } finally {
         if (!adopted) {
           renderer.getReferenceImages().remove(draftId);
@@ -227,6 +230,8 @@ export const appearanceReferenceOperations = [
         saved.placed = expected.id;
         release(saved);
         return out({ reference_id: expected.id, placed: true });
+      } catch (error) {
+        rethrowReferenceRefusal(error);
       } finally {
         saved.placing = false;
       }

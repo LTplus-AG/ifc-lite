@@ -16,6 +16,7 @@ import { type Renderer } from '@ifc-lite/renderer';
 import { setGlobalRendererRef, clearGlobalRefs } from '@/hooks/useBCF';
 import { placementFrameKey } from '@/lib/model-placement/persistence';
 import { emptyPlacementState } from '@/lib/model-placement/state';
+import { ownReference } from '@/lib/appearance/references/types';
 import { appearanceAssets, modelAppearanceAssets } from '@/lib/appearance/model-assets';
 import { PdfAppearanceSource } from '@/lib/appearance/pdf/source-document';
 import { registerPdfDocument, removePdfDocument } from '@/lib/appearance/pdf/documents';
@@ -122,8 +123,8 @@ describe('native Appearance controls and ownership (#10525 follow-up)', () => {
     assert.equal(useViewerStore.getState().mutationVersion, state.mutationVersion);
   });
 
-  it('requires calibration and protects a locked reference from import replacement (#11060)', async t => {
-    const renderer = { getReferenceImages: () => ({ remove() {} }) } as unknown as Renderer;
+  it('classifies missing calibration, source changes during prepare or place, and locked imports (#11060)', async t => {
+    const renderer = { getReferenceImages: () => ({ async set() {}, remove() {} }) } as unknown as Renderer;
     setGlobalRendererRef({ current: renderer });
     t.after(clearGlobalRefs);
     const asset = await appearanceAssets.add(png, { owner: { kind: 'source', id: 'locked-reference-test' }, mimeType: 'image/png' });
@@ -134,8 +135,8 @@ describe('native Appearance controls and ownership (#10525 follow-up)', () => {
       tileWidth: 1, tileHeight: 1, tileDepth: 1, rotationDegrees: 0,
       offsetU: 0, offsetV: 0, offsetW: 0, repeatS: false, repeatT: false,
     });
-    const prepare = (expected_source: string) => call('appearance.references.prepare', {
-      source_id: asset.id, expected_source, settings_json, edit_reference_id: '',
+    const prepare = (expected_source: string, edit_reference_id = '') => call('appearance.references.prepare', {
+      source_id: asset.id, expected_source, settings_json, edit_reference_id,
     }, true, new AbortController().signal);
     const absent = await prepare(JSON.stringify(source));
     const expected = ['UNSUPPORTED_OPERATION/unavailable'];
@@ -156,6 +157,26 @@ describe('native Appearance controls and ownership (#10525 follow-up)', () => {
         const replaced = await prepare(JSON.stringify(calibrated));
         expected.push('STATE_CHANGED/stale');
         actual.push(`${replaced.errorCode}/${(replaced.structured as { reason: string }).reason}`);
+
+        globalThis.createImageBitmap = (async () => ({ width: 1, height: 1, close() {} })) as typeof createImageBitmap;
+        useViewerStore.setState({ appearanceSources: [calibrated] });
+        const place = (token: string) => call('appearance.references.place', { token }, true, new AbortController().signal);
+        const initial = value<{ token: string }>(await prepare(JSON.stringify(calibrated)));
+        const { reference_id } = value<{ reference_id: string }>(await place(initial.token));
+        const edit = value<{ token: string; reference: unknown }>(await prepare(JSON.stringify(calibrated), reference_id));
+        const newReference = value<{ token: string }>(await prepare(JSON.stringify(calibrated)));
+        const beforePlacement = useViewerStore.getState();
+        assert.deepEqual(ownReference(edit.reference), beforePlacement.appearanceReferences.get(reference_id));
+        useViewerStore.setState({ appearanceSources: [{ ...calibrated, name: 'Replaced after preparation' }] });
+        for (const { token } of [edit, newReference]) {
+          const refused = await place(token);
+          expected.push('STATE_CHANGED/stale');
+          actual.push(`${refused.errorCode}/${(refused.structured as { reason?: string } | undefined)?.reason}`);
+        }
+        const afterPlacement = useViewerStore.getState();
+        assert.equal(afterPlacement.appearanceReferences, beforePlacement.appearanceReferences);
+        assert.equal(afterPlacement.referenceRevision, beforePlacement.referenceRevision);
+        assert.equal(afterPlacement.referenceUndo, beforePlacement.referenceUndo);
       } finally { globalThis.createImageBitmap = previous; }
     } else t.diagnostic('Run pnpm build:wasm for the native source-replacement case');
     const frameKey = placementFrameKey(useViewerStore.getState());

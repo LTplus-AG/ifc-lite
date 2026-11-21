@@ -46,6 +46,7 @@ export const coordinationScriptSessionOperations = [
     if (editor.scriptEditorDirty && !(editor.activeScriptId === null && i.source === editor.scriptEditorContent)) unsavedEdits('creating another');
     let storage: SaveResult | undefined; const id = useViewerStore.getState().createScript(i.name, i.source, result => { storage = result; });
     if (!id) {
+      if (storage && !storage.ok) throw internal(`The new script could not be saved (${storage.reason}); the editor stayed open.`);
       const message = 'Native script size or count limit exceeded.';
       throw isScriptWithinSizeLimit(i.source) ? unavailable(message) : invalidInput('limit', message);
     }
@@ -53,6 +54,7 @@ export const coordinationScriptSessionOperations = [
   })),
   coordination('script.open', 'Open an existing saved script using the native editor lifecycle.', ['configuration'], idSchema, (i, c) => c.commit(() => {
     const s = useViewerStore.getState(); if (!s.savedScripts.some(script => script.id === i.id)) throw invalidInput('unknown-target', 'Unknown saved script.');
+    if (s.scriptExecutionState === 'running') throw unavailable('Wait for or cancel the active script run before opening a script.');
     // A draft with no saved script would be dropped; a dirty saved script is saved here, and a failed save keeps it open.
     if (s.scriptEditorDirty && !s.activeScriptId) unsavedEdits('opening another');
     if (s.scriptEditorDirty) { const storage = s.saveActiveScript(); if (storage && !storage.ok) { useViewerStore.setState({ scriptEditorDirty: true }); throw internal(`The active script could not be saved (${storage.reason}); it stays open.`); } }

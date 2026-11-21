@@ -81,12 +81,14 @@ function CandidateReview({
   const pathToId = useViewerStore((s) => s.layerStackPathToId);
 
   const [review, setReview] = useState<RegistryReviewSummary | null>(null);
+  const [stagedEntity, setStagedEntity] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [withViewpoint, setWithViewpoint] = useState(true);
   const automationReview = useLayerAutomationReview(state => state.candidate);
   useEffect(() => {
     if (!automationReview || automationReview.candidateId !== candidateId || automationReview.refName !== refName || automationReview.action !== 'comment' || !claimLayerAutomationReview(automationReview, 'review')) return;
+    setStagedEntity(automationReview.entity);
     setTitle(automationReview.title); setDescription(automationReview.description); setWithViewpoint(automationReview.withViewpoint);
   }, [automationReview, candidateId, refName]);
   // One registry action at a time (C-2): a same-tick double press is refused
@@ -106,6 +108,11 @@ function CandidateReview({
     }
     return null;
   }, [activeEntityId, selectedEntityIds, pathToId]);
+
+  const commentEntity = stagedEntity ?? selectedPath;
+  // A staged comment can keep its entity after selection changes. A viewpoint
+  // still captures the live selection, so require that entity for capture.
+  const canPost = !!commentEntity && (!withViewpoint || commentEntity === selectedPath) && title.trim().length > 0;
 
   const refreshTicket = useRef(0);
   const refresh = useCallback(async () => {
@@ -146,7 +153,7 @@ function CandidateReview({
   }), [runAction, client, candidateId, refName, refresh]);
 
   const postComment = useCallback(async () => {
-    if (!review || !selectedPath || title.trim().length === 0) return;
+    if (!review || !commentEntity || !canPost) return;
     await runAction(async ({ isCurrent }) => {
       try {
         let viewpoint: Record<string, unknown> | undefined;
@@ -167,10 +174,11 @@ function CandidateReview({
         await client.postTopic(review.id, {
           title: title.trim(),
           ...(description.trim().length > 0 ? { description: description.trim() } : {}),
-          entity: selectedPath,
+          entity: commentEntity,
           ...(viewpoint !== undefined ? { viewpoint } : {}),
         });
         if (!isCurrent()) return;
+        setStagedEntity(null);
         setTitle('');
         setDescription('');
         await refresh();
@@ -181,7 +189,7 @@ function CandidateReview({
         if (isCurrent()) toast.error(err instanceof Error ? err.message : String(err));
       }
     });
-  }, [runAction, review, selectedPath, title, description, withViewpoint, createViewpointFromState, client, refresh, t]);
+  }, [runAction, review, commentEntity, canPost, title, description, withViewpoint, createViewpointFromState, client, refresh, t]);
 
   const selectEntity = useCallback(
     (entity: string) => {
@@ -246,8 +254,8 @@ function CandidateReview({
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder={
-              selectedPath
-                ? t('layersPanel.review.commentPlaceholderWithEntity', { tail: pathTail(selectedPath) })
+              commentEntity
+                ? t('layersPanel.review.commentPlaceholderWithEntity', { tail: pathTail(commentEntity) })
                 : t('layersPanel.review.commentPlaceholderNoEntity')
             }
             aria-label={t('layersPanel.review.commentTitleAriaLabel')}
@@ -273,7 +281,7 @@ function CandidateReview({
             <Button
               size="sm"
               className="ml-auto h-6 gap-1 px-2 text-2xs"
-              disabled={busy || !selectedPath || title.trim().length === 0}
+              disabled={busy || !canPost}
               onClick={() => void postComment()}
             >
               <MessageSquarePlus className="size-3" aria-hidden />

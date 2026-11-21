@@ -4,6 +4,7 @@
 import { useViewerStore } from '@/store';
 import { viewerOperation, emptySchema } from './contract';
 import { coordination, idSchema } from './coordination-common';
+import { encodeFlowResult } from './coordination-flow';
 import { coordinationOutputSchema } from './coordination-outputs';
 import type { ReviewProblem } from '@/lib/flow/review-session';
 import { mutationRefusal } from './mutation-refusal';
@@ -43,9 +44,13 @@ export const coordinationFlowRunOperations = [
     const checkpoint = useFlowReview.getState().checkpoint;
     if (i.resume_checkpoint_id && (checkpoint?.id !== i.resume_checkpoint_id || checkpoint.state !== 'reviewed')) throw stale('Resume requires the exact native reviewed checkpoint.');
     const addModel = coordinationModelAdder(), runner = new NativeFlowRunner(c.host.bim, addModel);
-    return c.commitAsync(() => {
+    return c.commitAsync(async () => {
       if (useViewerStore.getState().flowDoc !== doc || useViewerStore.getState().models !== state.models || useViewerStore.getState().mutationVersion !== state.mutationVersion || useViewerStore.getState().geometryContentVersion !== state.geometryContentVersion || useViewerStore.getState().activeModelId !== state.activeModelId) throw stale('Workflow changed before native run admission.');
-      return runner.run(inputs as Record<string, unknown>, i.resume_checkpoint_id ? { resume: checkpoint! } : {}, c.signal);
+      const outcome = await runner.run(inputs as Record<string, unknown>, {
+        ...(i.resume_checkpoint_id ? { resume: checkpoint! } : {}),
+        expectedDefaultModelId: state.activeModelId,
+      }, c.signal);
+      return { ...outcome, result: encodeFlowResult(outcome.result) };
     });
   }),
   coordination('flow.review', 'Read the native paused checkpoint, exact proposal digest, review state and storage problem.', ['read'], emptySchema, async () => {

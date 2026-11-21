@@ -1,15 +1,30 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import type { FlowData, RunResult } from '@ifc-lite/flow';
+import { isContributedFlowId } from '@/services/extensions/host-flows';
 import { useViewerStore } from '@/store';
 import { emptySchema } from './contract';
 import { modelCoordination, coordination, idSchema, textSchema } from './coordination-common';
 import { internal, invalidInput, stale, unavailable } from './refusals';
 function saved(id: string) { const flow = useViewerStore.getState().savedFlows.find(flow => flow.doc.id === id); if (!flow) throw invalidInput('unknown-target', 'Unknown saved flow.'); return flow; }
+function encodeFlowData(data: FlowData | undefined) {
+  return data?.kind === 'group' ? { ...data, branches: [...data.branches] } : data;
+}
+export function encodeFlowResult(result: RunResult | null) {
+  if (!result) return null;
+  return {
+    ...result,
+    outputs: Object.fromEntries([...result.outputs].map(([node, ports]) => [
+      node, Object.fromEntries([...ports].map(([port, data]) => [port, encodeFlowData(data)])),
+    ])),
+    graphOutputs: result.graphOutputs.map(output => ({ ...output, data: encodeFlowData(output.data) })),
+  };
+}
 export const coordinationFlowOperations = [
   coordination('flow.read', 'Inspect saved workflows, active graph, terminal result, errors and warnings.', ['read'], emptySchema, () => {
     const s = useViewerStore.getState(); return { active_model_id: s.activeModelId, mutation_version: s.mutationVersion, geometry_version: s.geometryContentVersion, saved: s.savedFlows, active_id: s.activeFlowId, document: s.flowDoc, running: s.flowRunning,
-      result: s.flowLastRun, error: s.flowLastError, warnings: s.flowRunWarnings, progress: s.flowProgress };
+      result: encodeFlowResult(s.flowLastRun), error: s.flowLastError, warnings: s.flowRunWarnings, progress: s.flowProgress };
   }),
   coordination('flow.artifacts', 'Read metadata for native generated workflow PDFs without copying binary data.', ['read'], emptySchema, () => ({ artifacts: useViewerStore.getState().flowArtifacts.map(({ blob: _blob, ...artifact }) => artifact) })),
   coordination<{ artifact_id: string; expected_document_signature: string }>('flow.exportArtifact', 'Return a host-owned artifact for an exact native generated PDF and its source-document signature.', ['artifact'], {
@@ -42,7 +57,7 @@ export const coordinationFlowOperations = [
     const result = await runFlow(doc, { host: { bim: c.model.bim, grants: parsed.value, defaultModelId: c.model.id, tables: viewerTableAccess(useViewerStore) }, registry, cache: new MemoCache(), signal: c.signal });
     c.checkpoint?.(); const latest = useViewerStore.getState();
     if (latest.models !== s.models || latest.mutationVersion !== s.mutationVersion || latest.geometryContentVersion !== s.geometryContentVersion || latest.flowDoc !== doc) throw stale('Workflow or model inputs changed; analysis result discarded.');
-    return { result };
+    return { result: encodeFlowResult(result) };
   }),
   coordination('flow.open', 'Open a known saved flow, cancelling any prior native workflow.', ['configuration'], idSchema, (i, c) => c.commit(() => { saved(i.id); useViewerStore.getState().openFlow(i.id); return { active_id: useViewerStore.getState().activeFlowId }; })),
   coordination('flow.create', 'Create an empty native workflow using the existing storage and size limits.', ['configuration'], textSchema, (i, c) => c.commit(() => {
@@ -64,6 +79,7 @@ export const coordinationFlowOperations = [
     const { parseFlowDocument } = await import('@ifc-lite/flow'); const { flowToJson } = await import('@/lib/flow/persistence'); const document = parseFlowDocument(i.document_json);
     return c.commit(() => {
       const state = useViewerStore.getState(); if (!state.flowDoc || flowToJson(state.flowDoc) !== i.expected_json) throw stale('Flow document changed; refresh the native serialized document before replacing.');
+      if (state.activeFlowId === null && isContributedFlowId(state.flowDoc.id)) throw unavailable('Extension-contributed workflows are read-only. Duplicate or import an editable copy.');
       if (state.flowDoc.id !== document.id) throw invalidInput('wrong-target', 'Editing a graph must preserve its id; import a separate graph to change identity.');
       state.setFlowDoc(document); return { id: document.id, dirty: true };
     });

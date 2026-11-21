@@ -21,7 +21,7 @@ import { setCollabEnabledOverride } from '@/lib/collab/config';
 import { useCollabShareReview } from '@/lib/collab/share-review';
 import { connectPeer, reviewedBatch } from '@/test/bcf-publication-fixture';
 import { deferred } from '@/test/race';
-import { createElement } from 'react';
+import { act, createElement } from 'react';
 import { cleanup, click, render, waitFor } from '@/test/render.js';
 import { BCFPublicationPanel } from '@/components/viewer/bcf/BCFPublicationPanel';
 import { bcfDraftLibrary, saveDraftBatch } from '@/lib/bcf-drafts/draft-library';
@@ -110,6 +110,125 @@ it('runs the native count graph against real parsed IFC walls and refuses side-e
   useViewerStore.getState().setFlowDoc({ ...doc, nodes: [...doc.nodes, { id: 'write', type: 'script.run', pos: [600, 0] }] });
   await assert.rejects(execute('flow.analyze'), /only core\/model\/table reads/);
 });
+it('delivers Flow node outputs and group branches through the JSON boundary (#10591 r4653276103)', async () => {
+  const doc: FlowDocument = { flowVersion: 1, id: 'wire-outputs', name: 'Grouped outputs', inputs: [], capabilities: ['model.read'],
+    outputs: [{ nodeId: 'group', port: 'group', label: 'By type' }], nodes: [
+      { id: 'walls', type: 'model.byType', params: { type: 'IfcWall' }, pos: [0, 0] },
+      { id: 'group', type: 'model.groupByType', pos: [300, 0] },
+      { id: 'number', type: 'core.number', params: { value: 42 }, pos: [0, 200] },
+    ], edges: [{ from: ['walls', 'entities'], to: ['group', 'entities'] }] };
+  useViewerStore.getState().setFlowDoc(doc);
+  const detach = attachCoordinationModelAdder(async () => null);
+  try {
+    const s = useViewerStore.getState();
+    const replies = [await execute('flow.analyze'), await execute('flow.run', {
+      expected_json: flowToJson(doc), inputs_json: '{}', resume_checkpoint_id: '', target_model_id: s.activeModelId,
+      expected_mutation_version: s.mutationVersion, expected_geometry_version: s.geometryContentVersion,
+    }), await execute('flow.read')];
+    for (const reply of replies) {
+      const { result } = JSON.parse(JSON.stringify(reply));
+      assert.equal(result.ok, true);
+      assert.deepEqual(result.outputs.number.value, { kind: 'item', value: 42 });
+      const grouped = result.outputs.group.group;
+      assert.equal(grouped.kind, 'group');
+      assert.equal(grouped.branches[0][0], 'IfcWall');
+      assert.equal(grouped.branches[0][1].length, 4);
+      assert.deepEqual(result.graphOutputs[0].data, grouped);
+    }
+  } finally { detach(); }
+});
+
+it('refuses replacement of the exact open extension contribution (#10591 r4653276107)', async () => {
+  const doc: FlowDocument = { flowVersion: 1, id: 'ext:example:review', name: 'Contributed', nodes: [], edges: [], inputs: [], outputs: [], capabilities: [] };
+  useViewerStore.getState().openContributedFlow(doc);
+  await assert.rejects(execute('flow.replaceDocument', {
+    expected_json: flowToJson(doc), document_json: flowToJson({ ...doc, name: 'Modified' }),
+  }), /read-only/);
+  assert.equal(useViewerStore.getState().flowDoc, doc);
+});
+
+it('refuses a Flow run if its admitted default changes during preflight (#10591 r4653276133)', async () => {
+  await seedCoincidentWalls(2, 4);
+  const doc: FlowDocument = { flowVersion: 1, id: 'default-model', name: 'Find walls', inputs: [], outputs: [], capabilities: ['model.read'],
+    nodes: [{ id: 'walls', type: 'model.byType', params: { type: 'IfcWall' }, pos: [0, 0] }], edges: [] };
+  useViewerStore.getState().setFlowDoc(doc);
+  const s = useViewerStore.getState();
+  const detach = attachCoordinationModelAdder(async () => null);
+  const unsubscribe = useViewerStore.subscribe((state, previous) => {
+    if (state.flowRunning && !previous.flowRunning) queueMicrotask(() => useViewerStore.getState().setActiveModel('B'));
+  });
+  try {
+    const outcome = await execute<{ state: string; error: string; result: unknown }>('flow.run', {
+      expected_json: flowToJson(doc), inputs_json: '{}', resume_checkpoint_id: '', target_model_id: s.activeModelId,
+      expected_mutation_version: s.mutationVersion, expected_geometry_version: s.geometryContentVersion,
+    });
+    assert.equal(outcome.state, 'failed');
+    assert.match(outcome.error, /default model changed/);
+    assert.equal(outcome.result, null);
+  } finally { unsubscribe(); detach(); }
+});
+
+it('restores a codec-exported semantic workspace beyond the graph input limit (#10591 r4653276123)', async () => {
+  const { useSemanticSession } = await import('@/lib/semantic/session');
+  const before = useSemanticSession.getState();
+  const graph = '#' + 'x'.repeat(999_999);
+  try {
+    await execute('semantic.graph', { value: graph });
+    const workspace = useSemanticSession.getState().save();
+    assert.ok(workspace.length > 1_000_000);
+    await execute('semantic.graph', { value: '' });
+    await execute('semantic.restoreWorkspace', { value: workspace });
+    assert.equal(useSemanticSession.getState().graph, graph);
+  } finally { useSemanticSession.setState(before); }
+});
+
+it('refuses georeference realignment before clearing a workflow-owned federation (#10591 r4653276144)', async () => {
+  const { startWorkflowRun } = await import('@/lib/flow/run-session');
+  await seedCoincidentWalls(2);
+  const s = useViewerStore.getState();
+  const models = new Map([...s.models].map(([id, model]) => [id, { ...model, sourceFile: new File(['ifc'], model.name) }]));
+  useViewerStore.setState({ models });
+  let reloads = 0;
+  const detach = attachCoordinationModelAdder(async () => { reloads++; return null; });
+  const workflow = startWorkflowRun();
+  try {
+    await assert.rejects(execute('georeference.realign', {
+      expected_model_ids: [...models.keys()], expected_mutation_version: s.mutationVersion, expected_geometry_version: s.geometryContentVersion,
+    }), /workflow is running/);
+    assert.equal(useViewerStore.getState().models, models);
+    assert.equal(reloads, 0);
+  } finally { workflow.release(); detach(); }
+});
+
+it('posts a staged layer comment to its original entity after selection changes (#10591 r4653276099)', async () => {
+  const { LayerReviewSection } = await import('@/components/viewer/layers/LayerReviewSection');
+  const { useLayerAutomationReview } = await import('@/lib/layers/automation-review');
+  const before = useViewerStore.getState();
+  useViewerStore.setState({ selectedEntityId: 1, layerStackPathToId: new Map([['entity-A', 1], ['entity-B', 2]]) });
+  useLayerAutomationReview.setState({ candidate: {
+    id: 'staged-layer-comment-test', candidateId: 'candidate', refName: 'main', action: 'comment', entity: 'entity-A',
+    title: 'Check wall A', description: 'Review note', withViewpoint: false,
+  } });
+  const posted: string[] = [];
+  const client = {
+    listReviews: async () => ({ reviews: [{ id: 'review', layerId: 'candidate', into: 'main', status: 'open', topics: [] }] }),
+    postTopic: async (_review: string, topic: { entity: string }) => { posted.push(topic.entity); return { guid: 'topic' }; },
+  } as unknown as Parameters<typeof LayerReviewSection>[0]['client'];
+  try {
+    const container = render(createElement(LayerReviewSection, { client, candidateId: 'candidate', refName: 'main' }));
+    const commentButton = () => [...container.querySelectorAll('button')].find(b => b.textContent?.trim() === 'Comment');
+    await waitFor(() => commentButton()?.disabled === false, 'staged comment is ready');
+    act(() => useViewerStore.setState({ selectedEntityId: 2 }));
+    click(commentButton()!);
+    await waitFor(() => posted.length > 0, 'comment reaches the registry');
+    assert.deepEqual(posted, ['entity-A']);
+  } finally {
+    cleanup();
+    useLayerAutomationReview.setState({ candidate: null });
+    useViewerStore.setState({ selectedEntityId: before.selectedEntityId, layerStackPathToId: before.layerStackPathToId });
+  }
+});
+
 it('exports real per-model diagnostic evidence and preserves explicit unknown coverage (#10525)', async () => {
   const artifact = await execute<ArtifactMetadata>('loadReport.export');
   const read = await readArtifact(context.host, artifact.artifact_id, 0, 65536);
@@ -249,6 +368,39 @@ it('script.open keeps a dirty script open when its save fails (#10591 review)', 
   }
   const state = useViewerStore.getState();
   assert.equal(state.activeScriptId, active.id); assert.equal(state.scriptEditorContent, 'edited'); assert.equal(state.scriptEditorDirty, true);
+});
+
+it('script.create keeps the unnamed draft when required storage refuses the write (#10591 r4653276119)', async () => {
+  const before = useViewerStore.getState();
+  const source = '21 * 2';
+  useViewerStore.setState({ activeScriptId: null, scriptEditorDirty: true, scriptEditorContent: source });
+  const originalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: { getItem: () => null, setItem: () => { throw new DOMException('Full', 'QuotaExceededError'); } } });
+  try {
+    await assert.rejects(execute('script.create', { name: 'Draft', source }), /could not be saved/);
+    const state = useViewerStore.getState();
+    assert.equal(state.activeScriptId, null);
+    assert.equal(state.scriptEditorDirty, true);
+    assert.equal(state.scriptEditorContent, source);
+    assert.equal(state.savedScripts, before.savedScripts);
+  } finally {
+    if (originalStorage) Object.defineProperty(globalThis, 'localStorage', originalStorage);
+    else Reflect.deleteProperty(globalThis, 'localStorage');
+    useViewerStore.setState(before);
+  }
+});
+
+it('script.open refuses to switch a running editor to a different saved script (#10591 r4653276121)', async () => {
+  const before = useViewerStore.getState();
+  useViewerStore.setState({ scriptEditorDirty: false });
+  const target = await execute<{ id: string }>('script.create', { name: 'Target script', source: '1' });
+  const active = await execute<{ id: string }>('script.create', { name: 'Running script', source: '2' });
+  useViewerStore.setState({ scriptExecutionState: 'running' });
+  try {
+    await assert.rejects(execute('script.open', { id: target.id }), /active script run/);
+    assert.equal(useViewerStore.getState().activeScriptId, active.id);
+    assert.equal(useViewerStore.getState().scriptExecutionState, 'running');
+  } finally { useViewerStore.setState(before); }
 });
 
 it('Flow effect admission refuses future remote nodes and detects native HTTP Player POST overrides before any effect (#10525)', async () => {

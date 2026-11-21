@@ -20,7 +20,7 @@ import { claimReview, finishReview, pauseForReview, useFlowReview } from '@/lib/
 
 import type { BimContext } from '@ifc-lite/sdk';
 import type { NativeModelAdder } from '@/services/coordination-loader';
-export interface FlowRunOptions { readonly resume?: FlowCheckpoint }
+export interface FlowRunOptions { readonly resume?: FlowCheckpoint; readonly expectedDefaultModelId?: string | null }
 export interface NativeFlowOutcome { state: 'completed' | 'paused' | 'failed' | 'cancelled'; result: RunResult | null; error: string | null; checkpoint: FlowCheckpoint | null }
 function pendingMutationIds(): Set<string> {
   return new Set([...useViewerStore.getState().undoStacks.values()].flat().map(mutation => mutation.id));
@@ -109,6 +109,9 @@ export class NativeFlowRunner {
         ? (await import('@/lib/flow/ai-host')).viewerFlowAi(resume?.budget) : null;
       const preparedInputs = await preflightWorkflow(session, doc, inputs ?? {}, viewerFlowFeatures(true, !!ai), restored);
       session.check();
+      if (options.expectedDefaultModelId !== undefined && useViewerStore.getState().activeModelId !== options.expectedDefaultModelId) {
+        throw new Error('The default model changed during workflow preflight. Inspect Flow state before running again.');
+      }
       if (resume) {
         claimed = await claimReview(doc, preparedInputs);
         if (!claimed) throw new Error('the reviewed proposal could not be resumed');
@@ -119,6 +122,9 @@ export class NativeFlowRunner {
         const state = useViewerStore.getState();
         if (owned()) state.setFlowArtifacts([...state.flowArtifacts, artifact]);
       });
+      if (resume && options.expectedDefaultModelId !== undefined && useViewerStore.getState().activeModelId !== options.expectedDefaultModelId) {
+        throw new Error('The default model changed while claiming the reviewed checkpoint.');
+      }
       const result = await runFlowInViewer({
         doc, bim, pin, cache, inputs: preparedInputs, signal: session.controller.signal, automation, tables: viewerTableAccess(useViewerStore),
         openModel: createViewerOpenModel(ownedAddModel),

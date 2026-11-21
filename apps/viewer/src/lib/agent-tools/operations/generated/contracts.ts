@@ -14813,7 +14813,7 @@ export const operationContracts: readonly OperationContract[] = [
       "properties": {
         "value": {
           "type": "string",
-          "maxLength": 1000000
+          "maxLength": 5242880
         }
       },
       "required": [

@@ -99,6 +99,8 @@ function CandidateReview({
   const withdrawnBy = useRef<string | null>(null);
   // Bumped whenever automation replaces or withdraws the staged draft, so a post in flight knows its draft is gone.
   const withdrawals = useRef(0);
+  // Taking over a staged draft by editing it also retires the post that was capturing for it.
+  const releaseStaged = () => { if (stagedEntity !== null) withdrawals.current += 1; setStagedEntity(null); };
   useEffect(() => {
     // Only an action aimed at this candidate and ref changes what this section has staged.
     if (!automationReview || automationReview.candidateId !== candidateId || automationReview.refName !== refName) return;
@@ -272,7 +274,7 @@ function CandidateReview({
           <input
             type="text"
             value={title}
-            onChange={(e) => { setStagedEntity(null); setTitle(e.target.value); }}
+            onChange={(e) => { releaseStaged(); setTitle(e.target.value); }}
             placeholder={
               commentEntity
                 ? t('layersPanel.review.commentPlaceholderWithEntity', { tail: pathTail(commentEntity) })
@@ -283,7 +285,7 @@ function CandidateReview({
           />
           <textarea
             value={description}
-            onChange={(e) => { setStagedEntity(null); setDescription(e.target.value); }}
+            onChange={(e) => { releaseStaged(); setDescription(e.target.value); }}
             rows={2}
             placeholder={t('layersPanel.review.descriptionPlaceholder')}
             aria-label={t('layersPanel.review.descriptionAriaLabel')}

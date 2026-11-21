@@ -152,6 +152,23 @@ test('#10591 layer review keeps a newer staged comment that arrives while a post
   assert.equal(title()?.value, 'Second note', 'the finished post did not clear the newer draft');
 });
 
+test('#10591 layer review posts nothing when the staged title is edited during capture', async () => {
+  const staged = { id: 'staged-edit-capture', candidateId: REVIEW.layerId, refName: REVIEW.into,
+    action: 'comment' as const, entity: WALL_A, title: 'Staged note', description: '', withViewpoint: true };
+  useLayerAutomationReview.setState({ candidate: staged });
+  const ui = render(<LayerReviewSection client={client} candidateId={REVIEW.layerId} refName={REVIEW.into} />);
+  const title = () => ui.querySelector<HTMLInputElement>('input[aria-label="Review comment title"]');
+  await waitFor(() => title()?.value === staged.title, 'the staged comment is visible');
+  const comment = [...ui.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Comment');
+  assert.ok(comment); click(comment);
+  await waitFor(() => capture.frames() === 1, 'the viewpoint is capturing');
+  type(title()!, 'Edited note');
+  await capture.release(1);
+  await settle();
+  assert.equal(posts, 0, 'the old staged title is not posted');
+  assert.equal(title()?.value, 'Edited note', 'the edit is kept');
+});
+
 test('C-2 layer review: a viewpoint capture that resolves null toasts once and posts nothing', async () => {
   const { toast } = await import('@/components/ui/toast');
   const errors = mock.method(toast, 'error', () => undefined);

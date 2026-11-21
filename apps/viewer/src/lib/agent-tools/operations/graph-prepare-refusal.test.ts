@@ -15,7 +15,6 @@ import { dispatchMainViewerTool, type AgentToolResult } from '../main-viewer-dis
 import { operationJob } from './executor';
 import { viewerOperation } from './registry';
 import type { ToolHost } from '../types';
-import type { Operation } from './contract';
 
 let host: ToolHost;
 const invoke = (id: string, input: unknown = {}, write = false, extra: Record<string, unknown> = {}) =>
@@ -59,13 +58,12 @@ describe('a graph prepare the executor refuses keeps no candidate (#10910)', () 
 
   it('32 refused prepares leave the cap free for a fresh one', async () => {
     const proposal_json = await groupProposal();
-    const spy = editAfterEveryGraphToken(), discard = mock.method(viewerOperation('authoring.group.prepare') as Required<Operation>, 'discard');
+    const spy = editAfterEveryGraphToken();
     for (let i = 0; i < 32; i++) {
       const refused = await invoke('authoring.group.prepare', { proposal_json });
       assert.match(refused.text, /Model replaced, closed, or edited during the operation/);
     }
     assert.equal(spy.mock.callCount() >= 32, true, 'every prepare reached its token');
-    assert.equal(discard.mock.callCount(), 32, 'the executor refused each result after its handler stored a candidate');
     spy.mock.restore();
     answer(await invoke('authoring.group.prepare', { proposal_json: await groupProposal() }));
   });
@@ -115,20 +113,35 @@ describe('a graph prepare the executor refuses keeps no candidate (#10910)', () 
     answer(await invoke('authoring.graph.apply', { token }, true));
   });
 
-  it('a background prepare whose host closed before collection is cancelled and discarded', async () => {
+  it('a background prepare whose host closed before collection is reported cancelled', async () => {
     const lifetime = new AbortController();
     host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }), { lifetimeSignal: lifetime.signal });
     const proposal_json = await groupProposal();
     const entry = viewerOperation('authoring.group.prepare'), validate = entry.validateResult.bind(entry);
     let succeeded = false;
     mock.method(entry, 'validateResult', (value: unknown) => { validate(value); succeeded = true; });
-    const discard = mock.method(entry as Required<Operation>, 'discard');
     const { job } = (await invoke('authoring.group.prepare', { proposal_json }, false, { background: true })).structured as { job: { id: string } };
     for (let tick = 0; !succeeded && tick < 1000; tick++) await new Promise(resolve => setTimeout(resolve, 0));
     assert.equal(succeeded, true);
     lifetime.abort(new Error('Session closed'));
     assert.throws(() => operationJob(host, job.id));
-    assert.equal(discard.mock.callCount(), 1);
     assert.equal(operationJob(host, job.id).state, 'cancelled');
+  });
+
+  it('#10918: succeeded background prepares evicted before anyone collected them keep no candidate', async () => {
+    const proposal_json = await groupProposal();
+    const entry = viewerOperation('authoring.group.prepare'), validate = entry.validateResult.bind(entry);
+    let succeeded = 0;
+    mock.method(entry, 'validateResult', (value: unknown) => { validate(value); succeeded++; });
+    // 32 jobs fill both the job map and the graph cap; none is polled, so none delivers its token.
+    for (let i = 0; i < 32; i++) {
+      const started = await invoke('authoring.group.prepare', { proposal_json }, false, { background: true });
+      assert.equal(started.isError, false, started.text);
+    }
+    for (let tick = 0; succeeded < 32 && tick < 2000; tick++) await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(succeeded, 32);
+    // A 33rd job evicts finished ones; their results will never be collected, so their candidates go too.
+    const { job } = (await invoke('authoring.group.prepare', { proposal_json }, false, { background: true })).structured as { job: { id: string } };
+    assert.equal((await settled(job.id)).state, 'succeeded', 'the 33rd prepare found room under the graph cap');
   });
 });

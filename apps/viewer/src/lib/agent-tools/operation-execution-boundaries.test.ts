@@ -8,9 +8,12 @@ import { createBimContext } from '@ifc-lite/sdk';
 import { useViewerStore } from '@/store';
 import { LocalBackend } from '@/sdk/local-backend';
 import { resetFeaturesForTest } from '@/lib/features';
+import { deferred } from '@/test/race';
+import type { DeliveryClaim } from './delivery';
 import { createMainViewerToolHost } from './main-viewer-host';
 import { dispatchMainViewerTool } from './main-viewer-dispatch';
 import { viewerOperation } from './operations/registry';
+import { executeOperation } from './operations/executor';
 import { operationArtifacts, listArtifacts, readArtifact, removeArtifact } from './operations/artifacts';
 import type { OperationExecutionContext } from './operations/contract';
 import type { ToolHost } from './types';
@@ -47,6 +50,51 @@ test('a signal aborted by the synchronous native store notification cannot repor
   } finally { unsubscribe(); }
 });
 
+for (const when of ['during notification', 'after commit'] as const) {
+  for (const abort of ['initiator', 'joiner', 'both'] as const) {
+    test(`#11029: keyed write reports its commit if ${abort} cancels ${when}`, async t => {
+      const initiator = new AbortController(), joiner = new AbortController();
+      const abortSelected = () => {
+        if (abort !== 'joiner') initiator.abort();
+        if (abort !== 'initiator') joiner.abort();
+      };
+      const entry = viewerOperation('environment.exposure');
+      const execute = entry.execute.bind(entry);
+      const entered = deferred(), write = deferred();
+      t.after(() => write.resolve());
+      const native = t.mock.method(entry, 'execute', async (...args: Parameters<typeof execute>) => {
+        entered.resolve();
+        await write.promise;
+        const result = await execute(...args);
+        if (when === 'after commit') abortSelected();
+        return result;
+      });
+      let writes = 0;
+      t.after(useViewerStore.subscribe((state, previous) => {
+        if (state.envExposure !== 1.3 || previous.envExposure === 1.3) return;
+        writes++;
+        if (when === 'during notification') abortSelected();
+      }));
+      const input = { value: 1.3 }, key = { idempotency_key: 'shared-exposure' };
+      const first = call(entry.id, input, initiator.signal, key);
+      await Promise.race([entered.promise, first.then(result => {
+        throw new Error(`Write ended before its gate: ${result.text}`);
+      })]);
+      const second = call(entry.id, input, joiner.signal, key);
+      // The operation modules are already loaded. Let the second dispatch attach before writing.
+      await new Promise(resolve => setImmediate(resolve));
+      write.resolve();
+      const [original, joined] = await Promise.all([first, second]);
+      assert.equal(original.isError, false, original.text);
+      assert.equal(joined.isError, false, joined.text);
+      assert.deepEqual(joined.structured, original.structured);
+      assert.equal((joined.structured as { committed: boolean }).committed, true);
+      assert.equal(writes, 1);
+      assert.equal(native.mock.callCount(), 1);
+    });
+  }
+}
+
 test('an admitted async native commit settles before cancellation and reports its actual durable outcome', async () => {
   const controller = new AbortController();
   let admitted!: () => void, release!: () => void;
@@ -73,6 +121,38 @@ test('a declined native async save does not claim that changes committed', async
   assert.equal(result.isError, false, result.text);
   assert.equal((result.structured as { committed: boolean }).committed, false);
   assert.equal(useViewerStore.getState().envExposure, 1);
+});
+
+test('#11029: dropping the last keyed claim cannot interrupt or repeat an admitted write', async t => {
+  const admitted = deferred<AbortSignal>(), finish = deferred();
+  t.after(() => finish.resolve());
+  const operation = viewerOperation('environment.exposure');
+  const execute = t.mock.method(operation, 'execute', async (_input: unknown, context: OperationExecutionContext) =>
+    context.commitAsync(async () => {
+      assert.ok(context.signal);
+      admitted.resolve(context.signal);
+      await finish.promise;
+      context.signal.throwIfAborted();
+      useViewerStore.getState().setEnvExposure(1.4);
+      return viewerOperation('environment.read').execute({}, context);
+    }));
+  const request = { operation_id: operation.id, input: { value: 1.4 }, idempotency_key: 'admitted' };
+  let claim: DeliveryClaim | undefined;
+  const first = executeOperation(host, undefined, request, {
+    canEdit: () => true, claimDelivery: next => { claim = next; },
+  }, false);
+  const signal = await Promise.race([admitted.promise, first.then(() => { throw new Error('Write ended before admission'); })]);
+  assert.ok(claim);
+  claim.drop();
+  assert.equal(signal.aborted, false);
+  const retry = call(operation.id, { value: 1.4 }, undefined, { idempotency_key: 'admitted' });
+  finish.resolve();
+  const [original, replay] = await Promise.all([first, retry]);
+  assert.equal(replay.isError, false, replay.text);
+  assert.deepEqual(replay.structured, original);
+  assert.equal((replay.structured as { committed: boolean }).committed, true);
+  assert.equal(useViewerStore.getState().envExposure, 1.4);
+  assert.equal(execute.mock.callCount(), 1);
 });
 
 test('idempotent retries remain deduplicated after their own native revision changes', async () => {

@@ -12,6 +12,7 @@ import { resetFeaturesForTest } from '@/lib/features';
 import { BACK_WALL, SAMPLE_MODEL, seedAuthoringSample } from '@/test/authoring-sample-fixture';
 import { createMainViewerToolHost } from '../main-viewer-host';
 import { dispatchMainViewerTool, type AgentToolResult } from '../main-viewer-dispatch';
+import type { DeliveryClaim } from '../delivery';
 import { operationJob } from './executor';
 import { viewerOperation } from './registry';
 import type { ToolHost } from '../types';
@@ -26,9 +27,10 @@ function answer<T>(result: AgentToolResult): T {
   const value = (result.structured as { result: { native_json?: string } }).result;
   return (value?.native_json === undefined || Object.keys(value).length > 1 ? value : JSON.parse(value.native_json)) as T;
 }
-async function settled(id: string) {
-  let state = operationJob(host, id);
-  for (let tick = 0; state.state === 'running' && tick < 1000; tick++) { await new Promise(resolve => setTimeout(resolve, 0)); state = operationJob(host, id); }
+async function settled(id: string, claimDelivery?: (claim: DeliveryClaim) => void) {
+  const poll = () => operationJob(host, id, false, claimDelivery);
+  let state = poll();
+  for (let tick = 0; state.state === 'running' && tick < 1000; tick++) { await new Promise(resolve => setTimeout(resolve, 0)); state = poll(); }
   return state;
 }
 async function groupProposal() {
@@ -101,6 +103,74 @@ describe('a graph prepare the executor refuses keeps no candidate (#10910)', () 
     mock.restoreAll();
     answer(await invoke('authoring.group.prepare', { proposal_json: await groupProposal() }));
   });
+
+  it('#11029: a dropped job poll releases its claim and the next poll can collect', async () => {
+    const proposal_json = await groupProposal();
+    const started = await invoke('authoring.group.prepare', { proposal_json }, false, { background: true });
+    const { job } = started.structured as { job: { id: string } };
+    let claim: import('../delivery').DeliveryClaim | undefined;
+    const poll = () => operationJob(host, job.id, false, next => { claim = next; });
+    let snapshot = poll();
+    for (let tick = 0; snapshot.state === 'running' && tick < 1000; tick++) {
+      await new Promise(resolve => setTimeout(resolve, 0));
+      snapshot = poll();
+    }
+    assert.equal(snapshot.state, 'succeeded');
+    assert.ok(claim);
+    const firstResult = structuredClone(snapshot.result);
+    claim.drop();
+    const next = operationJob(host, job.id);
+    assert.equal(next.state, 'succeeded');
+    assert.deepEqual(next.result, firstResult);
+    const { token } = next.result as { token: string };
+    answer(await invoke('authoring.graph.apply', { token }, true));
+  });
+
+  it('#11029: a dropped poll is still uncollected when the model changes', async () => {
+    const proposal_json = await groupProposal();
+    const started = await invoke('authoring.group.prepare', { proposal_json }, false, { background: true });
+    const { job } = started.structured as { job: { id: string } };
+    const poll = () => operationJob(host, job.id, false, claim => claim.drop());
+    let snapshot = poll();
+    for (let tick = 0; snapshot.state === 'running' && tick < 1000; tick++) {
+      await new Promise(resolve => setTimeout(resolve, 0));
+      snapshot = poll();
+    }
+    assert.equal(snapshot.state, 'succeeded');
+    useViewerStore.setState(s => ({ mutationVersion: s.mutationVersion + 1 }));
+    assert.throws(poll, /Model replaced, closed, or edited during the operation/);
+    assert.equal(poll().state, 'failed');
+  });
+
+  for (const finish of ['drop', 'deliver'] as const) {
+    it(`#11029: a stale job settles its candidate when the last poll claim is ${finish === 'drop' ? 'dropped' : 'delivered'}`, async () => {
+      const started = await invoke('authoring.group.prepare', { proposal_json: await groupProposal() }, false, { background: true });
+      assert.equal(started.isError, false, started.text);
+      const { job } = started.structured as { job: { id: string } };
+      const claims: DeliveryClaim[] = [];
+      const claimPoll = (claim: DeliveryClaim) => { claims.push(claim); };
+      const snapshot = await settled(job.id, claimPoll);
+      assert.equal(snapshot.state, 'succeeded');
+      const { token } = snapshot.result as { token: string };
+      operationJob(host, job.id, false, claimPoll);
+      assert.equal(claims.length, 2);
+
+      useViewerStore.setState(s => ({ mutationVersion: s.mutationVersion + 1 }));
+      assert.throws(() => operationJob(host, job.id), { code: 'STATE_CHANGED' });
+      claims[0].drop();
+      claims[1][finish]();
+
+      // Probe the real token before polling again or starting another prepare that could clean it up.
+      if (finish === 'drop') {
+        const discarded = await invoke('authoring.graph.discard', { token });
+        assert.equal(discarded.isError, true, 'last drop should already have removed the stale token');
+        assert.match(discarded.text, /Unknown graph review/);
+      } else {
+        answer(await invoke('authoring.graph.apply', { token }, true));
+      }
+      assert.equal(operationJob(host, job.id).state, 'failed');
+    });
+  }
 
   it('a delivered background result stays the caller\'s after a later refused poll', async () => {
     const proposal_json = await groupProposal();

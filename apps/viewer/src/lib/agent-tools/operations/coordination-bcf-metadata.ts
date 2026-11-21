@@ -4,6 +4,7 @@
 import type { BCFProject, BCFTopic, BCFComment, BCFViewpoint } from '@ifc-lite/bcf';
 import { requirePageRevision, type PageRequest } from './result-limit';
 import { stateRevision } from './state-revision';
+import { unavailable } from './refusals';
 
 /** Metadata responses stay well below the executor ceiling; media remains in native state and ZIP artifacts. */
 const PAGE_BYTES = 192 * 1024;
@@ -19,7 +20,7 @@ export function bcfPage<T, U>(rows: readonly T[] | ReadonlyMap<string, T>, reque
   for (const row of values()) {
     if (index++ < offset) continue; if (items.length >= limit) break;
     const item = metadata(row), size = new TextEncoder().encode(JSON.stringify(item)).byteLength;
-    if (bytes + size > PAGE_BYTES) { if (!items.length) throw new Error('Native BCF metadata exceeds the bounded page budget.'); break; }
+    if (bytes + size > PAGE_BYTES) { if (!items.length) throw unavailable('Native BCF metadata exceeds the bounded page budget.'); break; }
     items.push(item); bytes += size;
   }
   const next = offset + items.length;

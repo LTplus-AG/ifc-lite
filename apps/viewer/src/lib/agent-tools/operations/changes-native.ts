@@ -7,7 +7,7 @@ import { operation, viewerOperation, emptySchema, type OperationContext } from '
 import { assertToolActive } from '../cancellation';
 import type { ChangeOperation } from '@/lib/changes/change-operations';
 import type { ToolHost } from '../types';
-import { invalidInput, unavailable } from './refusals';
+import { invalidInput, stale, unavailable } from './refusals';
 import { evictOldest, retainCandidate } from './host-handles';
 
 const outputSchema = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
@@ -42,7 +42,11 @@ export const changesOperations = [
     const { revertChangeOperation } = await import('@/lib/changes/revert-change-operation');
     const result = c.commit(() => {
       const reverted = revertChangeOperation(useViewerStore, entry);
-      if (!reverted.ok) throw invalidInput('refused', `Native revert refused: ${reverted.reason}`);
+      if (!reverted.ok) {
+        const message = `Native revert refused: ${reverted.reason}`;
+        throw reverted.reason === 'stale' || reverted.reason === 'newer-conflict'
+          ? stale(message) : invalidInput('refused', message);
+      }
       return reverted;
     });
     owned(c).delete(i.token); return out(result);

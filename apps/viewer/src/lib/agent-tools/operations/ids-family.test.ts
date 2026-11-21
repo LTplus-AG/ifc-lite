@@ -154,6 +154,12 @@ describe('complete native IDS Studio operation vocabulary (#10525 follow-up)', (
       const replacement = await call<{ token: string }>('ids.document.prepare', { format: 'new', content: 'Replacement', document_revision: revision });
       const replaced = await execute('ids.candidate.apply', { token: replacement.token });
       assert.equal(replaced.isError, true); assert.match(replaced.text, /storage refused the write/);
+      // The same refusal and retry hint survive both agent operation paths (#10871).
+      for (const result of [closed, replaced]) {
+        assert.equal(result.errorCode, 'INTERNAL_ERROR');
+        assert.deepEqual(result.structured, { reason: 'internal', save: 'refused' });
+        assert.match(result.text, /Retry/);
+      }
       const live = useViewerStore.getState();
       assert.equal(live.idsStudioDraftId, draftId); assert.equal(live.idsStudioState!.doc.ids.specifications[0].name, 'Unsaved walls');
       await closeIdsDraft(async () => true);
@@ -180,6 +186,8 @@ describe('complete native IDS Studio operation vocabulary (#10525 follow-up)', (
     const closed = await dispatchMainViewerTool(host, 'viewer_operation_execute', { operation_id: 'ids.document.close',
       input: { document_revision: useViewerStore.getState().idsStudioRevision } }, { canEdit: () => true });
     assert.equal(closed.isError, true); assert.match(closed.text, /too large/); assert.doesNotMatch(closed.text, /Retry/);
+    assert.equal(closed.errorCode, 'INTERNAL_ERROR');
+    assert.deepEqual(closed.structured, { reason: 'internal', save: 'tooLarge' });
     assert.notEqual(useViewerStore.getState().idsStudioState, null);
   });
   it('authors an independent Manual checklist without a model and rejects stale library edits', async () => {

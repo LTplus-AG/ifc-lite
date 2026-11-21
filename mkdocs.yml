@@ -143,6 +143,7 @@ nav:
     - MCP for AI Agents: guide/mcp.md
     - 3D Viewer & Analysis: guide/viewer-api.md
     - Server Guide: guide/server.md
+    - Native Cache Builder: guide/native-cache.md
     - Building for Desktop: guide/desktop.md
     - Browser Requirements: guide/browser-requirements.md
   - User Guide:

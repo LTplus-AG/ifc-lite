@@ -437,6 +437,7 @@ describe('native analytics operations (#10525 deeper automation)', () => {
     } finally {
       publishDrawingExportFrame({ drawing: null, isPinned: false, cachedSheetTransformRef });
     }
+    await assert.rejects(run('drawing.centerDxf', { id: 'missing-dxf' }, viewerContext), { code: 'INVALID_INPUT', details: { reason: 'unknown-target' } });
     await run('drawing.centerDxf', { id: imported.id }, viewerContext);
     const underlay = useViewerStore.getState().dxfUnderlays.find(row => row.id === imported.id); assert.ok(underlay?.referenceFrame);
     const mapped = dxfPlaneDrawingMapper(underlay, useViewerStore.getState(), drawing.config.plane); assert.ok(mapped);

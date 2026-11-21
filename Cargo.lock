@@ -1582,6 +1582,7 @@ dependencies = [
  "ifc-lite-geometry",
  "ifc-lite-processing",
  "ifc-lite-testkit",
+ "memmap2",
  "miniz_oxide 0.9.1",
  "rayon",
  "thiserror 2.0.21",

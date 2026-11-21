@@ -128,7 +128,9 @@ describe('native export registry automation (#10525)', () => {
     const model = models.get('A')!;
     models.set('A', { ...model, ifcDataStore: { ...model.ifcDataStore!, source: EMPTY_SOURCE_BYTES } });
     useViewerStore.setState({ models });
-    await assert.rejects(run('exports.anonymized.prepare', anon), /original IFC STEP source bytes/);
+    await assert.rejects(run('exports.anonymized.prepare', anon), {
+      code: 'UNSUPPORTED_OPERATION', details: { reason: 'unavailable' }, message: /original IFC STEP source bytes/,
+    });
   });
   it('produces a native anonymized IFC, verifies membership before export and preserves source bytes', async () => {
     const store = useViewerStore.getState().models.get('A')?.ifcDataStore; assert.ok(store);

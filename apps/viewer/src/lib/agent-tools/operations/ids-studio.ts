@@ -7,7 +7,7 @@ import type { StudioDocument, StudioOp } from '@ifc-lite/ids-authoring';
 import { useViewerStore } from '@/store';
 import { viewerOperation as nativeOperation, operation as modelOperation, emptySchema, type ViewerOperationContext } from './contract';
 import { assertToolActive } from '../cancellation';
-import { decodedInput, disabled, invalidInput, stale, unavailable, parseJsonInput } from './refusals';
+import { decodedInput, disabled, internal, invalidInput, parseJsonInput, stale, unavailable } from './refusals';
 import { admitCandidate, retainCandidate, candidateStillApplies } from './host-handles';
 
 const jsonOutput = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
@@ -36,8 +36,13 @@ async function dependencies(c: ViewerOperationContext) {
 }
 /** Callers re-check revision and grants after this await. */
 async function saveOpenDraft() {
-  const { saveOpenIdsDraft } = await import('@/lib/ids-studio/draft-viewer');
-  await saveOpenIdsDraft();
+  const { IdsDraftUnsavedError, saveOpenIdsDraft } = await import('@/lib/ids-studio/draft-viewer');
+  try {
+    await saveOpenIdsDraft();
+  } catch (error) {
+    if (error instanceof IdsDraftUnsavedError) throw internal(error.message, { save: error.reason });
+    throw error;
+  }
 }
 function read() {
   const state = useViewerStore.getState();
@@ -101,9 +106,18 @@ export const idsOperations = [
     return { accepted: true, token: remember(c, { revision: i.document_revision, ops: structuredClone(ops) }), document: result.state.doc, revision: i.document_revision };
   }),
   operation(meta('ids.candidate.apply', 'Apply exactly one prepared IDS candidate through native open or gated dispatch; one native history step for an op batch. Repeated apply does not duplicate edits.', true), tokenSchema, async (i, c) => {
-    const candidate = candidates(c).get(i.token);
+    const entries = candidates(c);
+    const candidate = entries.get(i.token);
     if (!candidate) throw invalidInput('unknown-target', 'Unknown IDS candidate for this model session.');
-    if (candidate.result !== undefined) { writeGuard(c); return candidate.result; }
+    const assertHeld = () => {
+      if (entries.get(i.token) !== candidate) throw stale('The IDS candidate was discarded. Prepare it again.');
+    };
+    const replay = () => {
+      writeGuard(c);
+      assertHeld();
+      return candidate.result;
+    };
+    if (candidate.result !== undefined) return replay();
     revision(candidate.revision);
     const contexts = await dependencies(c);
     // A whole-document candidate replaces the open draft. Check that it still owns the revision before saving.
@@ -112,10 +126,10 @@ export const idsOperations = [
       await saveOpenDraft();
     }
     // Another apply of this token finished during the await: it dispatched once, so answer as a replay.
-    if (candidate.result !== undefined) { writeGuard(c); return candidate.result; }
+    if (candidate.result !== undefined) return replay();
     revision(candidate.revision); writeGuard(c);
     candidate.result = c.commit(() => {
-      if (candidates(c).get(i.token) !== candidate) throw stale('The IDS candidate was discarded. Prepare it again.');
+      assertHeld();
       const state = useViewerStore.getState(); state.idsStudioSetContexts(contexts);
       if (candidate.document) state.idsStudioOpen(structuredClone(candidate.document));
       else {

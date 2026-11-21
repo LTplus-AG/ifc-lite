@@ -43,6 +43,7 @@
  * not a behaviour any test relied on (a failure was, and still is, toasted).
  */
 
+import { useViewPdfSource } from './useViewPdfSource';
 import type { ExportSurface } from '@/lib/analytics-export-events';
 import { useCallback, useMemo, useState } from 'react';
 import { FileText } from 'lucide-react';
@@ -63,7 +64,7 @@ import { downloadBlob } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
 import { formatScaleFactorLabel, formatSheetScaleLabel } from '@ifc-lite/drawing-2d';
 import { collectViewMeshes } from '@/lib/export/view-pdf/collect-view-meshes';
-import { readViewPdfSource, readViewZoom } from '@/lib/export/view-pdf/view-pdf-export-source';
+import { readViewZoom } from '@/lib/export/view-pdf/view-pdf-export-source';
 import { resolveKeptHalfSpace } from '@/lib/export/view-pdf/view-section-plane';
 import {
   estimateViewPdfLayout,
@@ -148,12 +149,9 @@ export function PdfViewExportDialog({ surface, trigger, exportViewPdf }: PdfView
     if (next) setPhase(null);
   }, []);
 
-  const source = useMemo(
-    () => (open ? readViewPdfSource(useViewerStore.getState()) : null),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- these are invalidation triggers; the values are read from getState() above.
-    [open, models, geometryResult, hiddenEntities, isolatedEntities, typeVisibility, structuralViewMode,
-      sectionPlane, selectedStoreys, classFilter, projectionMode, mutationVersion, mutationViews],
-  );
+  // Released CPU geometry (#10264) is read back first; resident geometry reads synchronously.
+  const { source, status: sourceStatus } = useViewPdfSource(open, [models, geometryResult, hiddenEntities, isolatedEntities, typeVisibility, structuralViewMode,
+    sectionPlane, selectedStoreys, classFilter, projectionMode, mutationVersion, mutationViews]);
 
   const camera = source?.camera ?? null;
   const drawnMeshes = useMemo(() => (source ? collectViewMeshes(source.view) : []), [source]);
@@ -369,7 +367,7 @@ export function PdfViewExportDialog({ surface, trigger, exportViewPdf }: PdfView
 
       <PdfViewPageNotices
         preview={preview}
-        oversize={oversize}
+        oversize={oversize} sourceStatus={sourceStatus}
         projectionMode={camera?.projectionMode ?? null}
         onSwitchToOrthographic={() => setProjectionMode('orthographic')}
         formatMm={formatMm}

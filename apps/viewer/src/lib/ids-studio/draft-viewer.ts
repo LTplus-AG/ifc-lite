@@ -88,7 +88,7 @@ const UNSAVED_DETAIL: Record<IdsDraftUnsavedReason, string> = {
   conflict: 'another tab changed the saved draft. Ask',
 };
 
-class IdsDraftUnsavedError extends Error {
+export class IdsDraftUnsavedError extends Error {
   constructor(readonly reason: IdsDraftUnsavedReason) {
     super(`The open IDS draft could not be saved and remains open: ${UNSAVED_DETAIL[reason]} `
       + 'the user to close it from the IDS Studio panel and confirm discarding the unsaved changes.');

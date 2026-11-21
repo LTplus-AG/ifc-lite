@@ -1784,6 +1784,10 @@ jobs:
         run: node scripts/check-rust-api-surface.mjs
       - name: Check for unguarded entity-reference walks
         run: node scripts/check-refwalk-guards.mjs
+      # A viewer operation that rejected the caller's input with a plain Error reached the agent as INTERNAL_ERROR
+      # with no reason to branch on (#10871); operations refuse through operations/refusals.ts.
+      - name: Check viewer operations refuse through typed helpers
+        run: node scripts/check-operation-refusals.mjs
       - name: Check F3b copied leaf-reader spelling
         run: node scripts/check-leaf-reader-copies.mjs
       - name: Check for non-total float sort comparators
@@ -2223,6 +2227,7 @@ jobs:
             scripts/check-lint-ran.test.mjs \
             scripts/check-loader-hook-specifier-match.test.mjs \
             scripts/check-module-size.test.mjs \
+            scripts/check-operation-refusals.test.mjs \
             scripts/check-overlay-palette.test.mjs \
             scripts/check-path-case-collisions.test.mjs \
             scripts/check-perf-flags.test.mjs \

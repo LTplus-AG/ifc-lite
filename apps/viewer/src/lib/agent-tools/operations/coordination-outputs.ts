@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { internal } from './refusals';
+
 const object = { type: 'object', additionalProperties: true };
 const array = { type: 'array', items: {} };
 const string = { type: 'string' };
@@ -71,6 +73,6 @@ const fields: Record<string, Record<string, unknown>> = {
 const artifact = { artifact_id: string, filename: string, mime_type: string, bytes: number };
 export function coordinationOutputSchema(id: string): Record<string, unknown> {
   const properties = id.endsWith('.export') || (id === 'semantic.exportWorkspace' || id === 'flow.exportArtifact' || id === 'compare.exportReport' || id === 'bcf.exportDraft') ? artifact : fields[id];
-  if (!properties) throw new Error(`Missing coordination output contract: ${id}`);
+  if (!properties) throw internal(`Missing coordination output contract: ${id}`);
   return { type: 'object', properties, required: Object.keys(properties), additionalProperties: true };
 }

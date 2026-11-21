@@ -7,6 +7,7 @@ import { acquireScheduleRuntime, holdBoundedSchedulePlayback } from '@/lib/sched
 import type { ToolHost } from '../types';
 import { operation, viewerOperation } from './contract';
 import { metadata, checkpoint } from './analytics-common';
+import { invalidInput, unavailable } from './refusals';
 const runtimes = new WeakMap<ToolHost, () => void>();
 function ensureRuntime(host: ToolHost) {
   if (!host.lifetimeSignal) return acquireScheduleRuntime();
@@ -20,10 +21,10 @@ export const analyticsSchedulePlaybackOperations = [
     type: 'object', properties: { until: { type: 'number' }, max_real_seconds: { type: 'number', minimum: 0.1, maximum: 120 } }, required: ['until', 'max_real_seconds'], additionalProperties: false,
   } satisfies JSONSchemaType<{ until: number; max_real_seconds: number }>, async (i, c) => {
     const initial = useViewerStore.getState(); const data = initial.scheduleData;
-    if (!data || !initial.scheduleRange || initial.scheduleSourceModelId !== c.model.id) throw new Error('Initialize the exact target-model native schedule first.');
-    if (initial.playbackIsPlaying) throw new Error('A native schedule playback is already running.');
-    if (!(i.until > initial.playbackTime && i.until >= initial.scheduleRange.start && i.until <= initial.scheduleRange.end)) throw new Error('Choose a stop time after the current time and within the native schedule range.');
-    if (typeof requestAnimationFrame !== 'function') throw new Error('The native animation clock host is unavailable.');
+    if (!data || !initial.scheduleRange || initial.scheduleSourceModelId !== c.model.id) throw unavailable('Initialize the exact target-model native schedule first.');
+    if (initial.playbackIsPlaying) throw unavailable('A native schedule playback is already running.');
+    if (!(i.until > initial.playbackTime && i.until >= initial.scheduleRange.start && i.until <= initial.scheduleRange.end)) throw invalidInput('invalid-value', 'Choose a stop time after the current time and within the native schedule range.');
+    if (typeof requestAnimationFrame !== 'function') throw unavailable('The native animation clock host is unavailable.');
     checkpoint(c); const releaseRuntime = ensureRuntime(c.host);
     return new Promise<{ state: 'succeeded' | 'cancelled' | 'failed'; time: number; reason: string | null }>((resolve, reject) => {
       let releaseBounded: (() => void) | undefined;

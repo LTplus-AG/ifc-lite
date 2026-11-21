@@ -89,6 +89,10 @@ function getAttrMapIndex(): AttrMapIndex {
     same('IFCPERFORMANCEHISTORY'),
     same('IFCTASK', { renamed: [['TaskId', 'Identification']] }),
     same('IFCPROPERTYDEPENDENCYRELATIONSHIP'),
+    // #10807: same arity as IFC2X3, so the source layout shifted unnoticed.
+    same('IFCPROCEDURE', { renamed: [['ProcedureID', 'Identification'], ['ProcedureType', 'PredefinedType']] }),
+    same('IFCOBJECTIVE', { retyped: ['CreationTime'], upOnly: ['BenchmarkValues'], setOfOne: ['BenchmarkValues', 'BenchmarkValues'] }),
+    same('IFCDOCUMENTINFORMATION', { renamed: [['DocumentId', 'Identification']], retyped: ['CreationTime', 'LastRevisionTime', 'ElectronicFormat', 'ValidFrom', 'ValidUntil'] }),
   ];
   attrMapIndex = {
     maps,
@@ -134,12 +138,14 @@ type Source = { name: string; how: 'value' | 'wrap' | 'unwrap' };
 
 /** The source attribute (in the source list `src`) that fills target `name`. */
 function sourceOf(map: AttrMap, up: boolean, name: string, src: readonly string[]): Source | undefined {
+  // An up-only attribute fills no IFC2X3 slot, however it would be reached.
+  if (!up && map.upOnly.includes(name)) return undefined;
   // Pairs are [IFC2X3 name, IFC4 name]; the target's side is the second on an upgrade.
   const [target, source] = up ? [1, 0] : [0, 1];
   const renamed = map.renamed.find((pair) => pair[target] === name);
   if (renamed) return { name: renamed[source], how: 'value' };
   if (map.setOfOne?.[target] === name) return { name: map.setOfOne[source], how: up ? 'wrap' : 'unwrap' };
-  const carried = !map.retyped.includes(name) && (up || !map.upOnly.includes(name));
+  const carried = !map.retyped.includes(name);
   return carried && src.includes(name) ? { name, how: 'value' } : undefined;
 }
 

@@ -39,7 +39,8 @@ impl StructuralDiagnostics {
                 self.record(crate::schema_structural::destabilizing_unknown(entity));
             }
             if *name == "CausedBy" && cause_carried { continue; }
-            if !tgt.contains(name) && !matches!(value.trim(), "$" | "*" | "") {
+            // The dropped count's own test (#10779): a comment-only slot is no value.
+            if !tgt.contains(name) && crate::schema_convert::holds_value(value) {
                 let effect = if *name == "ConditionCoordinateSystem" { "; restraint directions in that coordinate system are not preserved" } else { "" };
                 self.record(format!("{entity}.{name} has no slot in {to}; its value is omitted{effect}"));
             }

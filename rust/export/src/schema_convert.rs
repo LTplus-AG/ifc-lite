@@ -116,9 +116,11 @@ fn values_without_a_name(values: &[String], src_names: &[&str], tgt_names: &[&st
     }).count()
 }
 
-/// A slot that carries information: not `$`, `*` or empty.
+/// A slot that carries information: not `$`, `*` or empty once comments go (#10779).
+/// Twin of the TypeScript `holdsValue` (`step-comment-skip.ts`).
 pub(crate) fn holds_value(slot: &str) -> bool {
-    !matches!(slot.trim(), "" | "$" | "*")
+    let bare = if slot.contains("/*") { Cow::Owned(crate::step_slot::without_comments(slot)) } else { Cow::Borrowed(slot.trim()) };
+    !matches!(&*bare, "" | "$" | "*")
 }
 
 fn map_4x3_to_4(t: &str) -> Option<&'static str> {

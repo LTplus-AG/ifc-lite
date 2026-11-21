@@ -66,7 +66,7 @@ describe('value forms a target slot rejects (#10847)', () => {
     expect(count('3.E2')).toBe("#5=IFCQUANTITYCOUNT('n',$,$,300,$);");
   });
 
-  // Claude review on #10878 (discussion_r4632337546): positional members cannot go one by one.
+  // Positional members cannot go one by one.
   it('drops positional members whole, with the slots they pair with', () => {
     const table = "#5=IFCPROPERTYTABLEVALUE('t',$,(IFCDATE('2020-01-01'),IFCLABEL('k')),(IFCLABEL('v1'),IFCLABEL('v2')),$,$,$,$);";
     expect(convert(table, 'IFC4', 'IFC2X3')).toEqual({

@@ -7128,8 +7128,10 @@
     "GEOM_CLASS_OCCURRENCE: const",
     "GEOM_CLASS_ORPHAN_TYPE: const",
     "geometryClassOf: function",
+    "isModelViewGeometryClass: function",
     "isPlacedGeometryClass: function",
-    "isTypeLibraryGeometryClass: function"
+    "isTypeLibraryGeometryClass: function",
+    "selectModelMeshes: function"
   ],
   "@ifc-lite/geometry/remesh": [
     "RemeshClient: class",

@@ -176,7 +176,7 @@ export function installViewportDebugHooks(
   // Test/debug-only live geometry backing (#10264). Loaded on first use; releases nothing.
   host.__ifc_lite_geometry_backing__ = async (command: import('./geometry-backing/backing-debug-hook.js').GeometryBackingCommand) => {
     const { geometryBackingCommand } = await import('./geometry-backing/backing-debug-hook.js');
-    return geometryBackingCommand(useViewerStore, renderer, command);
+    return geometryBackingCommand(useViewerStore, renderer, command, visibility);
   };
   // GPU click pick vs the exact CPU raycast over a texel grid, under the current
   // hide/isolate (#10264 S1). Loaded on first use; drives no frame or load path.

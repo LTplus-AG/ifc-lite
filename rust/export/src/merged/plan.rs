@@ -102,7 +102,7 @@ impl<'a> ModelIndex<'a> {
         included: &HashSet<u32>, plan: &ModelPlan, offset: u32,
     ) -> bool {
         let written = |id| included.contains(&id) && !plan.skip.contains(&id) && !plan.shared_remap.contains_key(&id);
-        materials.add_model(
+        materials.load_model(
             self.content, crate::schema_convert::canon(from), "IFCMATERIALPROPERTIES",
             &|id, start| {
                 let &(kept, _) = self.line_of.get(&id)?;

@@ -185,6 +185,23 @@ fn the_merged_writer_resolves_each_models_referents_10763() {
 }
 
 #[test]
+fn a_filtered_layer_does_not_hide_a_later_models_written_layer_10911() {
+    let one_layer = LAYERED.replace("(#10,#12)", "(#10)");
+    let first = model("IFC4", &format!("{one_layer}\n#23=IFCMATERIALLAYER(#8,0.3,$,$,$,$,$);"));
+    let second = model("IFC4", LAYERED);
+    let models = [
+        crate::MergedModel { included: Some(vec![5]), ..crate::MergedModel::new(first.as_bytes()) },
+        crate::MergedModel::new(second.as_bytes()),
+    ];
+    let opts = crate::MergedOptions { schema: Some("IFC2X3".into()), ..Default::default() };
+    let (out, stats) = crate::export_merged_models(&models, &opts);
+    assert_eq!(record(&out, "#5="), "#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6),'d','Pset_x');");
+    assert!(record(&out, "#23=").starts_with("#23=IFCMATERIALLAYER(#21,"), "{out}");
+    assert_eq!(record(&out, "#18="), "", "{out}");
+    assert!(stats.warnings.iter().any(|w| w.contains("#18 (IFCMATERIALLAYERSET)")), "{:?}", stats.warnings);
+}
+
+#[test]
 fn the_merged_writer_resolves_only_the_last_material_occurrence_10911() {
     let source = model("IFC4", "#8=IFCMATERIAL('Concrete',$,$);\n#8=IFCPROPERTYSINGLEVALUE('Wrong type',$,IFCLABEL('v'),$);\n#9=IFCMATERIAL('Steel',$,$);\n#6=IFCPROPERTYSINGLEVALUE('p',$,IFCLABEL('v'),$);\n#5=IFCMATERIALPROPERTIES('P',$,(#6),#8);
 #10=IFCMATERIALLAYER(#9,0.2,$,$,$,$,$);

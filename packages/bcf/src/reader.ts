@@ -8,7 +8,8 @@
  * Parses .bcfzip files into BCFProject structure
  */
 
-import JSZip from 'jszip';
+import type JSZip from 'jszip';
+import { BCFArchiveFormatError, BCFResourceLimitError, loadBcfArchive } from './archive-errors.js';
 import { extractElement, unescapeXml, parseLabels, parseXsBoolean } from './xml-text.js';
 import type {
   BCFProject,
@@ -38,18 +39,6 @@ const MAX_BCF_EXPANDED_BYTES = 1024 * 1024 * 1024; // 1 GB total uncompressed
 interface ExpansionBudget {
   used: number;
   limit: number;
-}
-
-/**
- * Raised when an archive blows a resource cap. Distinguishable so the
- * per-topic/per-viewpoint "skip malformed content" catch blocks rethrow it
- * instead of downgrading a detected zip bomb to a console warning.
- */
-class BCFResourceLimitError extends Error {
-  override name = 'BCFResourceLimitError';
-}
-class BCFArchiveFormatError extends Error {
-  override name = 'BCFArchiveFormatError';
 }
 
 /** The subset of JSZip's (untyped) internal stream API the budget reader uses. */
@@ -199,12 +188,7 @@ export async function readBCF(
   }
 
   const warn = createWarningReporter(limits?.onWarning);
-  const loaded = await JSZip.loadAsync(bytes).catch((error: unknown) => {
-    // JSZip reports malformed archive bytes as plain Errors. Preserve unexpected runtime faults.
-    if (error instanceof Error && error.constructor === Error) throw new BCFArchiveFormatError(error.message, { cause: error });
-    throw error;
-  });
-  const zip = normalizeEntrySeparators(loaded, warn);
+  const zip = normalizeEntrySeparators(await loadBcfArchive(bytes), warn);
   assertArchiveWithinLimits(zip, maxEntries, maxExpandedBytes);
   const budget: ExpansionBudget = { used: 0, limit: maxExpandedBytes };
   const root = resolveArchiveRoot(zip);

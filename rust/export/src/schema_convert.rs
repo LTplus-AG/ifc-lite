@@ -243,10 +243,8 @@ pub fn convert_step_line(
     converted = crate::schema_retyped::apply(converted, cfrom, cto, checks.as_deref_mut().map(|c| &mut c.attribute_values_dropped)); // #10778
     converted = crate::schema_userdefined_label::carry(line, converted, cfrom, cto, checks.as_deref_mut().map(|c| &mut c.attribute_values_dropped)); // #10824
     if let Some(checks) = checks {
-        if let Some(placement) = checks.structural.values.placement(express_id) {
-            if let Some(repointed) = crate::step_log::replace_argument(&converted, 5, &format!("#{placement}")) {
-                converted = repointed;
-            }
+        if let Some(repointed) = checks.structural.values.placement(express_id).and_then(|p| crate::step_log::replace_argument(&converted, 5, &format!("#{p}"))) {
+            converted = repointed;
         }
         converted = checks.enums.apply(converted, cto);
         if cto == "IFC2X3" { converted = checks.structural.after(express_id, converted); }

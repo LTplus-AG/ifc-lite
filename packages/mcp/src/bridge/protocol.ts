@@ -21,7 +21,7 @@
  * Sequence:
  *
  *   tab    -> bridge  hello    { protocol, pairingCode, permission, tools, client? }
- *   bridge -> tab     welcome  { protocol, sessionId, permission, readOnlyCeiling, bridge }
+ *   bridge -> tab     welcome  { protocol, sessionId, permission, readOnlyCeiling, bridge, features? }
  *   bridge -> tab     call     { sessionId, id, name, arguments }
  *   tab    -> bridge  result   { sessionId, id, result }
  *   bridge -> tab     cancel   { sessionId, id, reason }
@@ -47,8 +47,12 @@
  * instructions; the bridge says so in its MCP `instructions`.
  */
 
-import { checkJsonBounds, checkSchemaShape, utf8Length } from './json-bounds.js';
+import { checkJsonBounds, checkSchemaShape, isRecord, utf8Length } from './json-bounds.js';
 import { clip, quoted } from './sanitize.js';
+import { BRIDGE_IMAGE_LIMITS, validateResultContent, type BridgeContent } from './result-content.js';
+
+export { BRIDGE_FEATURE_IMAGE_CONTENT, BRIDGE_FEATURES } from './result-content.js';
+export type { BridgeContent, BridgeImageContent, BridgeImageMimeType, BridgeTextContent } from './result-content.js';
 
 /** Bumped on any incompatible change. The bridge rejects any other value. */
 export const BRIDGE_PROTOCOL_VERSION = 1;
@@ -107,6 +111,7 @@ export const BRIDGE_LIMITS = {
   maxResultDepth: 64,
   /** JSON values in one `result` value. */
   maxResultNodes: 250_000,
+  ...BRIDGE_IMAGE_LIMITS,
 } as const;
 
 /**
@@ -133,15 +138,13 @@ export interface BridgeToolDescriptor {
   readOnly: boolean;
 }
 
-/** Content the bridge accepts in a result: text only. Other MCP content types (image, resource) are refused. */
-export interface BridgeTextContent {
-  type: 'text';
-  text: string;
-}
-
-/** MCP `CallToolResult`, as the tab returns it. Passed through unchanged once valid. */
+/**
+ * MCP `CallToolResult`, as the tab returns it. Passed through unchanged once
+ * valid. Content is text, or images (send those only when `welcome.features`
+ * lists `image-content`); other MCP content types (resource) are refused.
+ */
 export interface BridgeCallResult {
-  content: BridgeTextContent[];
+  content: BridgeContent[];
   structuredContent?: Record<string, unknown>;
   isError?: boolean;
 }
@@ -189,6 +192,8 @@ export interface BridgeWelcomeMessage {
    */
   readOnlyCeiling: boolean;
   bridge: { name: string; version: string };
+  /** Optional capabilities beyond protocol 1, e.g. `image-content` ({@link BRIDGE_FEATURES}). Absent from older bridges. */
+  features?: string[];
 }
 
 export interface BridgeCallMessage {
@@ -248,10 +253,6 @@ export type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string
 
 const TOOL_NAME = /^[A-Za-z0-9_.-]+$/;
 
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
-
 function isPermission(v: unknown): v is BridgePermission {
   return v === 'read-only' || v === 'read-write';
 }
@@ -299,12 +300,8 @@ function validateCallResult(raw: unknown): ParseResult<BridgeCallResult> {
   if (!isRecord(raw)) return { ok: false, error: 'result must be an object' };
   const bounds = checkJsonBounds(raw, { maxDepth: BRIDGE_LIMITS.maxResultDepth, maxNodes: BRIDGE_LIMITS.maxResultNodes }, 'result');
   if (bounds) return { ok: false, error: bounds };
-  if (!Array.isArray(raw.content)) return { ok: false, error: 'result.content must be an array' };
-  for (const [i, c] of raw.content.entries()) {
-    if (!isRecord(c) || c.type !== 'text' || typeof c.text !== 'string') {
-      return { ok: false, error: `result.content[${i}] must be {type: 'text', text: string}; the bridge accepts text content only` };
-    }
-  }
+  const content = validateResultContent(raw.content);
+  if (!content.ok) return content;
   if (raw.structuredContent !== undefined && !isRecord(raw.structuredContent)) {
     return { ok: false, error: 'result.structuredContent must be an object' };
   }
@@ -315,7 +312,7 @@ function validateCallResult(raw: unknown): ParseResult<BridgeCallResult> {
   // and all), bounded only by the result limits. It is not clipped like the
   // bridge's own diagnostics; the MCP `instructions` tell the agent it is data.
   const value: BridgeCallResult = {
-    content: (raw.content as Array<{ text: string }>).map((c) => ({ type: 'text', text: c.text })),
+    content: content.value,
     ...(raw.structuredContent !== undefined ? { structuredContent: raw.structuredContent as Record<string, unknown> } : {}),
     ...(raw.isError !== undefined ? { isError: raw.isError } : {}),
   };

@@ -29,6 +29,7 @@ import { ingestDxfFiles, splitDxfFiles } from '@/hooks/ingest/dxfIngest';
 import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { usePreparedModelFileRoute } from '@/hooks/ingest/usePreparedModelFileRoute';
 import { useFileHostRegistration } from './useFileHostRegistration';
+import { registerAgentModelLoader } from '@/lib/agent-bridge/model-loader-host';
 import { FederationSetupControls } from '../FederationSetupControls';
 
 import { FILE_ACCEPT, isModelSidecarFile, isSupportedModelFile } from '@/services/supported-model-files';
@@ -156,6 +157,24 @@ export function useFileCommands(): FileCommands {
       window.removeEventListener('ifc-lite:load-layer-stack', stackHandler);
     };
   }, [loadFile, addModel, loadFederatedIfcx]);
+
+  // The same loaders, awaitable, for a connected agent (`viewer_open_model`).
+  useEffect(() => registerAgentModelLoader({
+    loadFile: (file, modelId, onError) => loadFile(file, { kind: 'primary', modelId }, { onLoadError: onError }),
+    addModel: (file, onError) => {
+      // The native Add Model re-composes an IFCX overlay or refuses IFCX on a non-IFCX model
+      // (addSupportedFiles); an independent agent add would do neither, so it is refused here.
+      const store = useViewerStore.getState().ifcDataStore;
+      if (isIfcxModelFile(file) && store) {
+        onError(isIfcxDataStore(store)
+          ? 'Adding an IFCX file to an open IFCX model re-composes it as an overlay; use the viewer\'s Add Model for that.'
+          : 'An IFCX file cannot be added to an open non-IFCX model.');
+        return Promise.resolve(null);
+      }
+      return addModel(file, { onError });
+    },
+    loadStack: loadFederatedIfcx,
+  }), [loadFile, addModel, loadFederatedIfcx]);
 
   const hasModelsLoaded = useViewerStore(selectHasModelsLoaded);
 

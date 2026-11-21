@@ -11,6 +11,7 @@
  */
 
 import type { BridgeCallMessage } from '@ifc-lite/mcp/bridge-protocol';
+import { digest } from '@ifc-lite/flow';
 import type { AgentBridgeActivity } from './state';
 import { buildResultFrame, toCallToolResult, type ToolOutcome } from './result-frame';
 import { CallAdmission, type CallLimits } from './call-admission';
@@ -27,12 +28,15 @@ interface InFlight {
   tool: string;
   modelId: string | null;
   startedAt: number;
+  argumentDigest?: string;
 }
 
 export interface CallRunnerOptions {
   sessionId: string;
   limits: CallLimits;
   maxResultBytes: number;
+  /** The bridge's welcome listed `image-content`: outcome images are sent as image blocks. */
+  imageContent: boolean;
   now: () => number;
   dispatch(name: string, args: Record<string, unknown>, signal: AbortSignal): Promise<ToolOutcome>;
   modelIdFor?(args: Record<string, unknown>): string | null;
@@ -125,6 +129,8 @@ export class CallRunner {
       tool: call.name,
       modelId: this.modelIdFor(call.arguments),
       startedAt: this.now(),
+      // Digest the wire representation before dispatch can change it. The log keeps no argument values.
+      argumentDigest: digest([this.opts.sessionId, JSON.stringify(call.arguments)]),
     };
     this.inFlight.set(call.id, entry);
     let timedOut = false;
@@ -149,14 +155,16 @@ export class CallRunner {
       };
     }
     const cancelled = entry.controller.signal.aborted && !timedOut;
+    const finishedAt = this.now();
+    // A cancelled call is already settled on the bridge, and a closed socket has no one to answer.
+    const resultDigest = !cancelled && stillPending ? this.reply(call, outcome) : undefined;
     // An applied edit is in the model whatever happened to the call, so its row always says what it changed.
     this.record(entry, {
       ...(cancelled ? { outcome: 'cancelled', errorCode: 'CANCELLED' }
         : outcome.isError ? { outcome: 'error', errorCode: outcome.errorCode ?? 'INTERNAL_ERROR' } : { outcome: 'ok' }),
       ...(outcome.edit ? { edit: outcome.edit } : {}),
-    });
-    // A cancelled call is already settled on the bridge, and a closed socket has no one to answer.
-    if (!cancelled && stillPending) this.reply(call, outcome);
+      resultDigest,
+    }, finishedAt);
     this.startNext();
   }
 
@@ -172,12 +180,14 @@ export class CallRunner {
     }, 0);
   }
 
-  private reply(call: BridgeCallMessage, outcome: ToolOutcome): void {
+  private reply(call: BridgeCallMessage, outcome: ToolOutcome): string | undefined {
     if (!this.live()) return;
     try {
-      const frame = buildResultFrame(this.opts.sessionId, call.id, toCallToolResult(outcome), this.opts.maxResultBytes);
+      const frame = buildResultFrame(this.opts.sessionId, call.id, toCallToolResult(outcome, this.opts.imageContent),
+        this.opts.maxResultBytes, !outcome.isError && !outcome.image);
       if (frame.truncated) warn(`the result of ${call.name} was more than the bridge accepts and was truncated`);
       this.opts.send(frame.json);
+      return frame.resultDigest;
     } catch (err) {
       warn(`could not send the result of ${call.name}`, err);
     }
@@ -192,13 +202,14 @@ export class CallRunner {
     }
   }
 
-  private record(entry: InFlight, result: Pick<AgentBridgeActivity, 'outcome' | 'errorCode' | 'edit'>): void {
+  private record(entry: InFlight, result: Pick<AgentBridgeActivity, 'outcome' | 'errorCode' | 'edit' | 'resultDigest'>, finishedAt = this.now()): void {
     const row: AgentBridgeActivity = {
       seq: ++this.seq,
       tool: entry.tool,
       modelId: entry.modelId,
       startedAt: entry.startedAt,
-      durationMs: Math.max(0, this.now() - entry.startedAt),
+      durationMs: Math.max(0, finishedAt - entry.startedAt),
+      argumentDigest: entry.argumentDigest,
       ...(this.opts.mutates?.(entry.tool) ? { mutating: true } : {}),
       ...result,
     };

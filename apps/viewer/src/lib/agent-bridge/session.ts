@@ -23,7 +23,7 @@ import type { ToolHost } from '@/lib/agent-tools/types';
 import { BridgeClient, type BridgeClientOptions, type LocalNetworkPermission } from './client';
 import {
   AGENT_BRIDGE_ACTIVITY_LIMIT, getAgentBridgeState, registerAgentBridgeControls, updateAgentBridgeState,
-  type AgentBridgeActivity, type AgentBridgePermission, type AgentBridgeStatus,
+  foldActivity, type AgentBridgeActivity, type AgentBridgePermission, type AgentBridgeStatus,
 } from './state';
 import { isFramed } from './pairing-fragment';
 import { ENDED_KEYS } from './outcome-keys';
@@ -105,7 +105,7 @@ function flushActivity(): void {
   if (pendingRows.length === 0) return;
   const rows = pendingRows.reverse();
   pendingRows = [];
-  updateAgentBridgeState({ activity: [...rows, ...getAgentBridgeState().activity].slice(0, AGENT_BRIDGE_ACTIVITY_LIMIT) });
+  updateAgentBridgeState({ activity: foldActivity([...rows, ...getAgentBridgeState().activity]).slice(0, AGENT_BRIDGE_ACTIVITY_LIMIT) });
 }
 
 function resetActivity(): void {

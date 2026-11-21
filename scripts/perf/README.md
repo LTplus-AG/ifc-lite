@@ -215,6 +215,32 @@ header, then four 256 KiB sample windows; no OOM kill), and 1100 MB at 8 GB was
 - **The retained budget is sampled before GC.** Per-slice garbage counted against it until the decoded buffers were recycled back to the worker, normalization was done in place and staging was kept small.
 - **The trade:** placement edits, device-loss recovery and SH-layout changes re-read the source instead of reusing a CPU copy. A validating summary pass precedes streaming. It runs in parallel helper workers owned by the decode worker, so the first visible frame did not regress.
 
+## Streaming native `.ifclite` writer (#9584 slice 3, `ifc-build-cache`)
+
+**Accepted: streaming lowers peak RSS on Holter.** The admitted Pop run compared the release builds at `ee77162e0` and `48a4873a0` over five interleaved rounds at eight threads. All three writers produced byte-identical caches on all three fixtures. Streaming lowered Holter's peak by 35.8% versus the base and 29.2% versus the branch's in-memory writer. O-S1 and AC20-FZK-Haus stayed within measurement noise. [Paired run and provenance](https://github.com/LTplus-AG/ifc-lite/pull/10361#issuecomment-7042221543)
+
+The shared-host measurements below are diagnostic.
+- The base below is slice 2 before the rebase (`5093d52f3`), not the merge base `ee77162e0`; the fleet run measures against the latter.
+- Byte identity: base (slice 2, `5093d52f3`) in-memory, branch in-memory and branch streamed caches compared with `cmp` on every model below: all identical. Tests: `rust/cache/tests/streamed_matches_in_memory.rs`, `src/stream_tests.rs` (1-, 7- and 1024-job batches).
+- Peak RSS (`/usr/bin/time -l`, MiB, mean of 2 runs, release, Apple M2 Pro 10-core 16 GB, macOS 26.5.2, shared host with load 4-6). Floor is `examples/pipeline_floor.rs` (the same geometry pass, meshes dropped, nothing written); "data model" is `ifc-build-cache --no-geometry`; the open chunks can hold up to 8 MiB plus one mesh per cell, and "open" is their measured peak:
+
+| Model (source MB) | Meshes | Cells / open | Floor | Data model | Base in-memory | Branch in-memory | Streamed |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| AC20-FZK-Haus (2.5) | 285 | 5 / 1 | 20 | 14 | 27 | 27 | 28 |
+| ISSUE_129 (12) | 1,402 | 21 / 6 | 106 | 84 | 158 | 153 | 159 |
+| dental_clinic (13) | 5,927 | 16 / 14 | 87 | 120 | 177 | 174 | 170 |
+| FM_ARC_DigitalHub (14) | 4,058 | 17 / 19 | 100 | 77 | 134 | 150 | 149 |
+| 01_BIMcollab_Example_ARC (18) | 7,846 | 10 / 12 | 106 | 93 | 167 | 163 | 162 |
+| advanced_model (35) | 11,472 | 9 / 35 | 165 | 230 | 463 | 475 | 401 |
+| schependomlaan (49) | 6,062 | 6 / 8 | 128 | 245 | 322 | 246 | 242 |
+| ISSUE_068 (56) | 16,777 | 17 / 36 | 277 | 377 | 646 | 628 | 505 |
+| Holter_Tower_10 (177) | 110,633 | 43 / 107 | 557 | 907 | 1,492 | 1,470 | 1,098 |
+
+- The streamed peak stays at or about the data-model peak plus the pipeline floor (under their sum on eight models, a few MiB over on advanced_model), so the writer adds no mesh-proportional memory beyond its open chunks; on the larger models it sits well under the in-memory one; the gap is the retained mesh set and grows with it. Streamed peak is not flat in model size: the data model (entity index, strings, relationship tables) and the pipeline's own floor both grow with the source, and on Holter the data-model phase alone is the larger part. Wall time moved within the host's noise; no timing claim.
+- Tried and dropped: running the geometry pass before the data model. It did not lower the peak (one Holter run read slightly higher), because the allocator keeps the first phase's pages for the second.
+
+Lesson: streaming removes the retained mesh set, while the data model and the geometry pipeline's own working set still contribute to peak RSS. Source file size alone does not predict the saving. Further reductions depend on which phase sets the peak on the model being measured.
+
 ## Reopen interactive mark with a geometry-restore gate (#10218, merged)
 
 **Accepted: a reopened model counts as interactive when its stored scene is shown and metadata is published, while geometry-dependent input waits for geometry restore.**

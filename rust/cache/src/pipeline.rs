@@ -19,30 +19,53 @@
 //! `buildingRotation` orients camera presets and section planes and is never
 //! applied to geometry), so that has to equal `MeshFrame::to_world` of the
 //! pass-frame point for every tier.
+//!
+//! Two shapes of the same pass. [`run_retained`] is one job chunk with every
+//! mesh retained, as slice 2 shipped it. [`run_streaming`] chunks the jobs and
+//! retains nothing: each emitted batch is converted and handed on, then
+//! dropped. Neither changes what is meshed or the order it is emitted in
+//! (file order, `fast_first` off in both), and with `fast_first` off no
+//! style is deferred, so no colour correction can arrive after its mesh.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use ifc_lite_geometry::math::frame::{
     aabb_zup_to_yup, conjugate_zup_to_yup, zup_to_yup, zup_to_yup_in_place,
 };
 use ifc_lite_processing::style::SpecularMaterial;
 use ifc_lite_processing::{
-    process, MeshData, MeshFrame, ProcessingRequest, ProcessingResult, ProcessingSink,
+    process, Batching, FrameEvent, MeshData, MeshFrame, ProcessingRequest, ProcessingResult, ProcessingSink,
 };
 
 use crate::geometry::coordinate_info::CoordinateInfo;
 use crate::geometry::record::CacheMesh;
+use crate::CacheError;
 
-/// The meshes in emit order, already in the viewer frame, plus the frame
-/// metadata.
-pub(crate) struct Geometry {
-    pub(crate) meshes: Vec<CacheMesh>,
+/// The frame metadata the head needs once the pass is done. Bounds are left
+/// to the section writer, which sees every mesh.
+pub(crate) struct Pass {
     pub(crate) coordinate_info: CoordinateInfo,
     pub(crate) schema: &'static str,
 }
 
-/// Collects the per-batch finishes and the deferred colour corrections. The
-/// meshes themselves are retained by the pass (`retain_meshes`), in emit order.
+/// Material-layer slicing on, as on the browser path the cache normally comes
+/// from; the first-frame property and layer resolution off, since no record
+/// carries either.
+fn request(batching: Batching, retain: bool) -> ProcessingRequest {
+    let features = ifc_lite_processing::Features::default()
+        .properties(false)
+        .presentation_layers(false)
+        .finishes(true);
+    ProcessingRequest::default()
+        .batching(batching)
+        .layer_slicing(true)
+        .retain_meshes(retain)
+        .features(features)
+}
+
+/// Collects the finishes and the colour corrections of a retained pass.
 #[derive(Default)]
 struct Collector {
     finishes: Vec<Option<SpecularMaterial>>,
@@ -61,36 +84,99 @@ impl ProcessingSink for Collector {
     }
 }
 
-pub(crate) fn run(source: &[u8]) -> Geometry {
-    // One chunk, every mesh retained in emit order. Material-layer slicing on,
-    // as on the browser path the cache normally comes from; the first-frame
-    // property and layer resolution off, since no record carries either.
-    let features = ifc_lite_processing::Features::default()
-        .properties(false)
-        .presentation_layers(false)
-        .finishes(true);
-    let request = ProcessingRequest::full_pass()
-        .layer_slicing(true)
-        .retain_meshes(true)
-        .features(features);
+/// One job chunk, every mesh retained, then each handed to `each` in emit
+/// order.
+pub(crate) fn run_retained(
+    source: &[u8],
+    mut each: impl FnMut(CacheMesh) -> Result<(), CacheError>,
+) -> Result<Pass, CacheError> {
     let mut collector = Collector::default();
-    let result = process(source, &request, &mut collector);
-    let coordinate_info = coordinate_info(&result);
-    let schema = ifc_lite_processing::detect_schema_version(source);
-    let finishes = std::mem::take(&mut collector.finishes);
+    let mut result = process(source, &request(Batching::single_chunk(), true), &mut collector);
     let rotation = SiteRotation::removed_by(result.frame);
-    let meshes = result
-        .meshes
-        .into_iter()
-        .enumerate()
-        .map(|(at, mesh)| {
-            let finish = finishes.get(at).copied().flatten();
-            let color = collector.colors.get(&mesh.express_id).copied();
-            to_cache_mesh(mesh, finish, color, rotation)
-        })
-        .collect::<Vec<_>>();
-    let coordinate_info = with_bounds(coordinate_info, &meshes);
-    Geometry { meshes, coordinate_info, schema }
+    let meshes = std::mem::take(&mut result.meshes);
+    for (at, mut mesh) in meshes.into_iter().enumerate() {
+        let finish = collector.finishes.get(at).copied().flatten();
+        let color = collector.colors.get(&mesh.express_id).copied();
+        let arrays = (
+            std::mem::take(&mut mesh.positions),
+            std::mem::take(&mut mesh.normals),
+            std::mem::take(&mut mesh.indices),
+        );
+        each(to_cache_mesh(&mesh, arrays, finish, color, rotation))?;
+    }
+    Ok(finish_pass(source, &result))
+}
+
+/// Hands each batch to `each` as it is emitted, holding no mesh past it. The
+/// first error cancels the pass and is returned.
+struct Streamer<F> {
+    each: F,
+    /// Set by `on_frame`, which fires once before the first batch.
+    rotation: Option<SiteRotation>,
+    finishes: Vec<Option<SpecularMaterial>>,
+    error: Option<CacheError>,
+    cancel: Arc<AtomicBool>,
+}
+
+impl<F: FnMut(CacheMesh) -> Result<(), CacheError>> ProcessingSink for Streamer<F> {
+    fn on_frame(&mut self, event: &FrameEvent) {
+        // The same frame the retained path reads off `result.frame`, known
+        // before any batch, so every streamed mesh is restored identically.
+        self.rotation = SiteRotation::removed_by(event.frame);
+    }
+
+    fn on_finishes(&mut self, finishes: &[Option<SpecularMaterial>]) {
+        // Always immediately before the `on_batch` they align with.
+        self.finishes.clear();
+        self.finishes.extend_from_slice(finishes);
+    }
+
+    fn on_batch(&mut self, meshes: &[MeshData], _processed: usize, _total: usize) {
+        if self.error.is_some() {
+            return;
+        }
+        for (at, mesh) in meshes.iter().enumerate() {
+            let finish = self.finishes.get(at).copied().flatten();
+            let arrays = (mesh.positions.clone(), mesh.normals.clone(), mesh.indices.clone());
+            if let Err(error) = (self.each)(to_cache_mesh(mesh, arrays, finish, None, self.rotation)) {
+                self.error = Some(error);
+                self.cancel.store(true, Ordering::Relaxed);
+                return;
+            }
+        }
+    }
+
+    fn on_color_update(&mut self, _updates: &[(u32, [f32; 4])]) {
+        // Only a `fast_first` pass defers styles, and this one is not; were it
+        // to, the meshes it corrects would already be spooled.
+        self.error.get_or_insert(CacheError::Io {
+            context: "geometry pass".to_owned(),
+            source: std::io::Error::other("deferred colour update after its meshes were written"),
+        });
+        self.cancel.store(true, Ordering::Relaxed);
+    }
+}
+
+/// `batch_jobs` jobs per chunk, nothing retained: peak mesh memory is one job
+/// chunk's meshes plus whatever `each` keeps.
+pub(crate) fn run_streaming(
+    source: &[u8],
+    batch_jobs: usize,
+    each: impl FnMut(CacheMesh) -> Result<(), CacheError>,
+) -> Result<Pass, CacheError> {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let request = request(Batching::new(batch_jobs, batch_jobs), false).cancel(cancel.clone());
+    let mut streamer = Streamer { each, rotation: None, finishes: Vec::new(), error: None, cancel };
+    let result = process(source, &request, &mut streamer);
+    debug_assert!(result.meshes.is_empty(), "retain_meshes is off");
+    match streamer.error {
+        Some(error) => Err(error),
+        None => Ok(finish_pass(source, &result)),
+    }
+}
+
+fn finish_pass(source: &[u8], result: &ProcessingResult) -> Pass {
+    Pass { coordinate_info: coordinate_info(result), schema: ifc_lite_processing::detect_schema_version(source) }
 }
 
 /// The site rotation `R` a [`MeshFrame::SiteLocal`] pass took out of its
@@ -150,12 +236,13 @@ impl SiteRotation {
 }
 
 fn to_cache_mesh(
-    mesh: MeshData,
+    mesh: &MeshData,
+    (mut positions, mut normals, indices): (Vec<f32>, Vec<f32>, Vec<u32>),
     finish: Option<SpecularMaterial>,
     color: Option<[f32; 4]>,
     rotation: Option<SiteRotation>,
 ) -> CacheMesh {
-    let MeshData { mut positions, mut normals, mut origin, .. } = mesh;
+    let mut origin = mesh.origin;
     if let Some(rotation) = rotation {
         rotation.restore_in_place(&mut positions);
         rotation.restore_in_place(&mut normals);
@@ -165,10 +252,10 @@ fn to_cache_mesh(
     zup_to_yup_in_place(&mut normals);
     CacheMesh {
         express_id: mesh.express_id,
-        ifc_type: mesh.ifc_type,
+        ifc_type: mesh.ifc_type.clone(),
         positions,
         normals,
-        indices: mesh.indices,
+        indices,
         color: color.unwrap_or(mesh.color),
         geometry_class: mesh.geometry_class,
         geometry_item_id: mesh.geometry_item_id,
@@ -214,31 +301,6 @@ fn coordinate_info(result: &ProcessingResult) -> CoordinateInfo {
         site_origin,
         ..CoordinateInfo::default()
     }
-}
-
-/// World bounds of the stored meshes (`origin + position`, viewer frame).
-/// `originShift` is zero, so the original bounds equal the shifted ones, the
-/// relation the TS `CoordinateHandler` keeps; an empty model is all zeros, as
-/// `getFinalCoordinateInfo`'s fallback.
-fn with_bounds(mut info: CoordinateInfo, meshes: &[CacheMesh]) -> CoordinateInfo {
-    let mut min = [f64::INFINITY; 3];
-    let mut max = [f64::NEG_INFINITY; 3];
-    for mesh in meshes {
-        for vertex in mesh.positions.chunks_exact(3) {
-            for axis in 0..3 {
-                let value = mesh.origin[axis] + f64::from(vertex[axis]);
-                if value.is_finite() {
-                    min[axis] = min[axis].min(value);
-                    max[axis] = max[axis].max(value);
-                }
-            }
-        }
-    }
-    if min.iter().chain(&max).all(|v| v.is_finite()) {
-        info.shifted_bounds = [min, max];
-        info.original_bounds = [min, max];
-    }
-    info
 }
 
 #[cfg(test)]

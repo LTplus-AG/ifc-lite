@@ -27091,6 +27091,7 @@ export const operationContracts: readonly OperationContract[] = [
     },
     "result": "value",
     "implementation": "native-store",
+    "candidateOnly": true,
     "module": "clash-native-classification",
     "exportName": "clashClassificationOperations"
   },

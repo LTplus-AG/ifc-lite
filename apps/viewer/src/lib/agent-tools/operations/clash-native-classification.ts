@@ -9,7 +9,7 @@ import type { ClashGroupDraft } from '@/lib/assistant/clash-group-draft';
 import type { ClassifyPlan } from '@/lib/assistant/clash-classify-chunks';
 import type { EvidenceSnapshot } from '@/lib/assistant/evidence';
 import type { ApplyRefusal, ClashGroupApplyPlan, UndoRefusal } from '@/lib/clash/group-apply';
-import { evictOldest, retainCandidate } from './host-handles';
+import { evictOldest } from './host-handles';
 import { internal, invalidInput, stale, unavailable } from './refusals';
 const GROUP_WRITE_REFUSAL: Record<ApplyRefusal | UndoRefusal, (message: string) => ReturnType<typeof stale>> = {
   'stale-run': stale, 'workspace-changed': stale, conflict: stale,
@@ -48,19 +48,20 @@ interface Review {
   draft?: ClashGroupDraft;
   apply?: ClashGroupApplyPlan;
 }
-const hosts = new WeakMap<ToolHost, Map<string, Review>>();
-function reviews(c: ViewerOperationContext) {
-  let map = hosts.get(c.host);
-  if (!map) {
-    map = new Map();
-    hosts.set(c.host, map);
-    const owned = map;
-    c.host.lifetimeSignal?.addEventListener('abort', () => owned.clear(), { once: true });
+const REVIEW_CAPACITY = 32;
+const hosts = new WeakMap<ToolHost, { reviews: Map<string, Review>; staged: Set<string> }>();
+function ownedReviews(c: ViewerOperationContext) {
+  let owned = hosts.get(c.host);
+  if (!owned) {
+    const reviews = new Map<string, Review>(), staged = new Set<string>();
+    owned = { reviews, staged };
+    hosts.set(c.host, owned);
+    c.host.lifetimeSignal?.addEventListener('abort', () => { reviews.clear(); staged.clear(); }, { once: true });
   }
-  return map;
+  return owned;
 }
 function review(c: ViewerOperationContext, token: string) {
-  const value = reviews(c).get(token);
+  const value = ownedReviews(c).reviews.get(token);
   if (!value) throw invalidInput('unknown-target', 'Unknown native classification review.');
   if (value.result !== useViewerStore.getState().clashResult) throw stale('Native classification findings changed.');
   return value;
@@ -73,10 +74,10 @@ const tokenInput = {
 };
 export const clashClassificationOperations = [
   viewerOperation(
-    meta(
+    { ...meta(
       'clash.classification.prepare',
       'Capture complete native classification chunks, bounded sample evidence and native root-budget estimate before any provider call. Uses the configured UI model capability ceiling; no network or model edit.',
-    ),
+    ), candidateOnly: true },
     emptySchema,
     async (_, c) => {
       const [
@@ -91,11 +92,21 @@ export const clashClassificationOperations = [
       assertToolActive(c);
       const s = useViewerStore.getState();
       if (!s.clashResult) throw unavailable('No current native clash result.');
+      const { reviews, staged } = ownedReviews(c);
+      if (staged.size >= REVIEW_CAPACITY) throw unavailable('Too many classification reviews await delivery.');
       const plan = planClassification(s.clashResult.clashes),
         evidence = captureEvidence('clash');
-      evictOldest(reviews(c), 32);
       const token = crypto.randomUUID();
-      retainCandidate(c, reviews(c), token, { result: s.clashResult, plan, evidence, model: s.chatActiveModel });
+      const prepared: Review = { result: s.clashResult, plan, evidence, model: s.chatActiveModel };
+      staged.add(token);
+      c.retain(
+        () => { staged.delete(token); },
+        () => {
+          if (!staged.delete(token) || prepared.result !== useViewerStore.getState().clashResult) return;
+          evictOldest(reviews, REVIEW_CAPACITY);
+          reviews.set(token, prepared);
+        },
+      );
       return out({
         token,
         evidence,

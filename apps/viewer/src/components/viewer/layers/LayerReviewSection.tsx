@@ -11,6 +11,7 @@
  * synthetic per parse and never persisted.
  */
 
+import { claimLayerAutomationReview, useLayerAutomationReview } from '@/lib/layers/automation-review';
 import { trackExportCompleted } from '@/lib/analytics';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Download, MessageSquarePlus, RefreshCw } from 'lucide-react';
@@ -21,15 +22,9 @@ import { useTranslation } from '@/i18n';
 import { useBCF } from '@/hooks/useBCF';
 import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { captureViewpointForCreate } from '@/hooks/bcf/capture-viewpoint-for-create';
-import {
-  addTopicToProject,
-  addViewpointToTopic,
-  createBCFProject,
-  createBCFTopic,
-  writeBCF,
-  type BCFViewpoint,
-} from '@ifc-lite/bcf';
-import { bcfExportFilename, downloadBlob } from '@/lib/export/download';
+import { layerReviewArtifact } from '@/lib/layers/review-artifact';
+import type { BCFViewpoint } from '@ifc-lite/bcf';
+import { downloadBlob } from '@/lib/export/download';
 import type { LayerRegistryClient, RegistryReviewSummary, RegistryReviewTopic } from '@/lib/layers/registry-client';
 import { ensureCandidateOnRegistry } from '@/lib/layers/merge';
 import { getBrowserLayerStore } from '@/lib/layers/browser-store';
@@ -89,6 +84,11 @@ function CandidateReview({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [withViewpoint, setWithViewpoint] = useState(true);
+  const automationReview = useLayerAutomationReview(state => state.candidate);
+  useEffect(() => {
+    if (!automationReview || automationReview.candidateId !== candidateId || automationReview.refName !== refName || automationReview.action !== 'comment' || !claimLayerAutomationReview(automationReview, 'review')) return;
+    setTitle(automationReview.title); setDescription(automationReview.description); setWithViewpoint(automationReview.withViewpoint);
+  }, [automationReview, candidateId, refName]);
   // One registry action at a time (C-2): a same-tick double press is refused
   // before React re-renders the buttons disabled.
   const flight = useAsyncRun();
@@ -192,23 +192,10 @@ function CandidateReview({
   );
 
   const exportBcf = useCallback(async () => {
-    const topics = review?.topics;
-    if (!review || !topics?.length) return;
+    if (!review?.topics?.length) return;
     await runAction(async () => {
       try {
-        const project = createBCFProject({ name: `review-${review.id.slice(0, 8)}` });
-        for (const t of topics) {
-          const topic = createBCFTopic({
-            title: t.title,
-            ...(t.description !== undefined ? { description: t.description } : {}),
-            author: t.author ?? 'anonymous',
-          });
-          topic.guid = t.guid;
-          topic.creationDate = t.createdAt;
-          addTopicToProject(project, topic);
-          if (t.viewpoint) addViewpointToTopic(topic, t.viewpoint as unknown as BCFViewpoint);
-        }
-        downloadBlob(await writeBCF(project), bcfExportFilename(`review-${review.id.slice(0, 8)}`));
+        const artifact = await layerReviewArtifact(review); downloadBlob(artifact.data, artifact.filename);
         trackExportCompleted({ format: 'bcfzip', surface: 'layer_review' });
       } catch (err) {
         toast.error(err instanceof Error ? err.message : String(err));

@@ -54,7 +54,7 @@ const census = { recording: false, outside: new Set<string>(), previous: new Wea
 const { act, useState } = await import('react');
 const { MutablePropertyView } = await import('@ifc-lite/mutations');
 const { PropertyValueType } = await import('@ifc-lite/data');
-const { advance, cleanup, click, press, render, type } = await import('@/test/render.js');
+const { advance, cleanup, click, mouseDown, press, render, type } = await import('@/test/render.js');
 const { installManualFrames } = await import('@/test/manual-frames');
 const { renderViewerLayout } = await import('@/test/viewer-layout-harness.js');
 const { useViewerStore } = await import('@/store');
@@ -343,6 +343,19 @@ describe('renderer-first edit window (#10535)', () => {
     act(() => edit(new MutablePropertyView(null, MODEL_ID), 'REI150'));
     act(() => { (container.querySelector('[role="tab"]') as HTMLElement).click(); });
     assert.equal(answered, useViewerStore.getState().mutationVersion, 'assistive-technology tab activation answers with the edited state');
+  });
+
+  it('the compatibility mousedown leaves an edit from pointerdown held', () => {
+    render(<PanelProbe />);
+    const target = document.body;
+    target.addEventListener('pointerdown', () => edit(new MutablePropertyView(null, MODEL_ID), 'REI30'), { once: true });
+    act(() => { target.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, button: 0, buttons: 1 })); });
+    assert.equal(useViewerStore.getState().mutationVersion, 1, 'the plan-style press made its edit');
+
+    mouseDown(target, { button: 0, buttons: 1 });
+    assert.equal(panelSees.version, 0, 'the compatibility event leaves the edit held');
+    mouseDown(target, { button: 2, buttons: 3 });
+    assert.equal(panelSees.version, 1, 'a separate mouse-only press still publishes');
   });
 
   it('the click after a pointer press keeps an edit its release committed held', () => {

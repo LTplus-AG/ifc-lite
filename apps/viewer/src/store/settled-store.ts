@@ -80,7 +80,7 @@ function afterNextFrame(publish: () => void): void {
  * `pointerup` inside one belongs to the gesture that made the edit (Ctrl+Z,
  * Delete, a drag), and publishing there would render panels on its path.
  */
-const INPUT_EVENTS = ['keydown', 'pointerdown', 'mousedown', 'beforeinput', 'paste', 'drop', 'contextmenu', 'wheel'] as const;
+const INPUT_EVENTS = ['keydown', 'beforeinput', 'paste', 'drop', 'contextmenu', 'wheel'] as const;
 
 /** Input and change on a form control: its own edit publishes at once, so it shows the change it made. */
 const CONTROL_EVENTS = ['input', 'change', 'click'] as const;
@@ -163,8 +163,27 @@ function createSettledStore(live: StoreApi<ViewerState>): SettledApi {
     if (event.type === 'click' && (event as MouseEvent).detail === 0 && !control?.matches(NATIVE_CONTROL_SELECTOR)) beforeInput();
   };
   const observe = (win: Window) => {
-    for (const type of INPUT_EVENTS) win.addEventListener(type, beforeInput, { capture: true, passive: true });
-    for (const type of CONTROL_EVENTS) win.addEventListener(type, onControl, { capture: true, passive: true });
+    const capture = { capture: true, passive: true };
+    let pointerPress: PointerEvent | null = null;
+    const clearPress = () => { pointerPress = null; };
+    win.addEventListener('pointerdown', (event) => {
+      pointerPress = event;
+      beforeInput();
+    }, capture);
+    win.addEventListener('mousedown', (event) => {
+      const press = pointerPress;
+      clearPress();
+      // The same press may already have made an edit in a pointerdown handler.
+      // A mouse-only press still publishes, including a different button pressed
+      // while a pointer is already down.
+      if (press && !press.defaultPrevented && press.target === event.target
+        && press.button === event.button && press.isTrusted === event.isTrusted) return;
+      beforeInput();
+    }, capture);
+    for (const type of ['mouseup', 'pointercancel']) win.addEventListener(type, clearPress, capture);
+    win.addEventListener('blur', clearPress);
+    for (const type of INPUT_EVENTS) win.addEventListener(type, beforeInput, capture);
+    for (const type of CONTROL_EVENTS) win.addEventListener(type, onControl, capture);
   };
   windowObservers.add(observe);
   if (typeof window !== 'undefined') observe(window);

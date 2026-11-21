@@ -231,7 +231,7 @@ pub fn convert_step_line(
     let Some(line) = (match checks.as_deref_mut() { Some(c) => c.materials.apply(express_id, line, cfrom, &mut c.attribute_values_dropped), None => crate::schema_material_referent::MaterialReferents::for_target(cto).apply(express_id, line, cfrom, &mut 0) }) else { return Ok(String::new()) };
     let mut converted = convert_record(&line, cfrom, cto, express_id, checks.as_deref_mut())?;
     converted = crate::schema_retyped::apply(converted, cfrom, cto, checks.as_deref_mut().map(|c| &mut c.attribute_values_dropped)); // #10778
-    converted = crate::schema_userdefined_label::carry(line, converted, cfrom, cto, checks.as_deref_mut().map(|c| &mut c.attribute_values_dropped)); // #10824
+    converted = crate::schema_userdefined_label::carry(&line, converted, cfrom, cto, checks.as_deref_mut().map(|c| &mut c.attribute_values_dropped)); // #10824
     if let Some(checks) = checks {
         if let Some(repointed) = checks.structural.values.placement(express_id).and_then(|p| crate::step_log::replace_argument(&converted, 5, &format!("#{p}"))) {
             converted = repointed;

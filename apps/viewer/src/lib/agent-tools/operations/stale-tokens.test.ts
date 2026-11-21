@@ -478,6 +478,74 @@ describe('multi-batch IDS corrections (#10792)', () => {
     answer(await invoke('authoring.apply', { token: applied }, true)); // still held: its replay answers
   });
 
+  const prepareCorrection = async (raw_value = 'yes') => {
+    const express_ids = Array.from({ length: WALLS }, (_, i) => i + 1);
+    const { candidates } = answer<{ candidates: Array<{ token: string }> }>(await invoke('validation.fix.prepare',
+      { express_ids, pset: 'Pset_Review', name: 'Checked', facet_data_type: '', raw_value, title: 'Mark reviewed' }));
+    assert.equal(candidates.length, 2);
+    return candidates.map(row => row.token);
+  };
+  const applyBatch = async (token: string) => JSON.parse(answer<{ receipt_json: string }>(await invoke('authoring.apply', { token }, true)).receipt_json) as ModelChangeReceipt;
+
+  const checkedWalls = () => {
+    const view = useViewerStore.getState().mutationViews.get('walls')!;
+    return Array.from({ length: WALLS }, (_, index) => view.getPropertyValue(index + 1, 'Pset_Review', 'Checked'));
+  };
+
+  it('#10894: a correction over 500 changes applies batch by batch without re-preparing, in either order', async () => {
+    for (const [order, value] of [[[0, 1], 'yes'], [[1, 0], 'no']] as const) {
+      const tokens = await prepareCorrection(value);
+      let applied = 0;
+      for (const index of order) applied += (await applyBatch(tokens[index])).applied.length;
+      assert.equal(applied, WALLS, `every change applied, order ${order.join(',')}`);
+      assert.deepEqual(checkedWalls(), Array.from({ length: WALLS }, () => value), `effective wall values, order ${order.join(',')}`);
+    }
+  });
+
+  it('#10894: undoing an applied batch refuses the rest of its correction', async () => {
+    const [first, second] = await prepareCorrection();
+    const receipt = await applyBatch(first);
+    const { undoModelChanges } = await import('@/lib/actions/model-change-commit');
+    assert.deepEqual(undoModelChanges(useViewerStore, receipt), { ok: true });
+    assert.match((await invoke('authoring.apply', { token: second }, true)).text, /Model changed since preview/);
+  });
+
+  it('#10894: an element listed twice is withheld, never split across batches', async () => {
+    const express_ids = [...Array.from({ length: WALLS }, (_, i) => i + 1), 1];
+    const { converted, candidates } = answer<{ converted: { issues: Array<{ kind: string; element?: string }> }; candidates: Array<{ token: string }> }>(await invoke('validation.fix.prepare',
+      { express_ids, pset: 'Pset_Review', name: 'Checked', facet_data_type: '', raw_value: 'yes', title: 'Mark reviewed' }));
+    assert.deepEqual(converted.issues.filter(issue => issue.kind === 'ambiguous-key').map(issue => issue.element), [guid(1)], 'wall 1 is withheld, not split');
+    assert.equal(candidates.length, 1, 'the other 500 fit one batch');
+    const receipt = await applyBatch(candidates[0].token);
+    assert.equal(receipt.applied.length, WALLS - 1);
+    assert.equal(receipt.applied.some(row => row.globalId === guid(1)), false);
+  });
+
+  it('#10894: two sibling batches applied at once: one applies, the other is refused, then applies on retry', async () => {
+    const [first, second] = await prepareCorrection();
+    const before = checkedWalls();
+    // Both calls bind the revision when they start, and apply awaits its imports before committing, so the second to
+    // commit meets a revision the first moved.
+    const results = await Promise.all([invoke('authoring.apply', { token: first }, true), invoke('authoring.apply', { token: second }, true)]);
+    assert.equal(results.filter(result => result.isError).length, 1);
+    const winner = results.find(result => !result.isError)!, loser = results.find(result => result.isError)!;
+    assert.match(loser.text, /Model replaced, closed, or edited during the operation/);
+    const receipt = JSON.parse(answer<{ receipt_json: string }>(winner).receipt_json) as ModelChangeReceipt;
+    const winningWalls = new Set(receipt.applied.map(row => row.globalId));
+    assert.deepEqual(checkedWalls(), Array.from({ length: WALLS }, (_, index) =>
+      winningWalls.has(guid(index + 1)) ? 'yes' : before[index]), 'only the winning batch changed the model before retry');
+    const retried = (await applyBatch(results[0].isError ? first : second)).applied.length;
+    assert.equal(receipt.applied.length + retried, WALLS);
+    assert.deepEqual(checkedWalls(), Array.from({ length: WALLS }, () => 'yes'), 'the retry applied the remaining walls');
+  });
+
+  it('#10894: an edit outside the correction between its batches still refuses the rest', async () => {
+    const [first, second] = await prepareCorrection();
+    await applyBatch(first);
+    useViewerStore.getState().setAttribute(modelId, 1, 'Description', 'Unrelated edit');
+    assert.match((await invoke('authoring.apply', { token: second }, true)).text, /Model changed since preview/);
+  });
+
   it('#68: a correction that cannot fit is refused whole and stages none of its batches', async () => {
     for (let i = 0; i < 63; i++) answer(await invoke('properties.prepare', { proposal_json: renameWall(`Name ${i}`) }));
     // Two batches cannot fit beside 63: every batch is previewed first, then none is admitted.

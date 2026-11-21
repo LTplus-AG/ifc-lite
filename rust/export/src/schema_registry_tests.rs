@@ -278,4 +278,3 @@ fn rename_targets_are_the_converters_10856() {
     assert!(produced.len() > 20, "anti-vacuity: {}", produced.len());
     assert_eq!(listed, produced, "update RENAME_TARGETS in scripts/generate-enum-reconciliation.mjs and regenerate");
 }
-

@@ -232,6 +232,8 @@ fn emit<W: std::io::Write>(
     let copies_refused = resolved.refused;
     let copies = resolved.copies; flatten.note_edits(content, &copies, &muts_by_id); flatten.retain_grids(|id| included.contains(&id));
     let repointed = resolved.repointed;
+    // #10763: the material records as this export writes them.
+    checks.materials.note_step(crate::schema_convert::canon(&source_schema), content, line_of, &included, &muts_by_id, &repointed, &copies);
 
     // 3. Emit header + filtered entities (source order) + footer.
     // The FILE_SCHEMA token, by the TypeScript twin's rule: keep the source's
@@ -265,6 +267,8 @@ fn emit<W: std::io::Write>(
                         &mut slot_fill,
                         Some(&mut checks),
                     )?;
+                    // A record the conversion does not write (#10763).
+                    if converted.is_empty() { continue; }
                     body.write_all(converted.as_bytes())?;
                 } else {
                     body.write_all(edited.as_bytes())?;
@@ -297,6 +301,7 @@ fn emit<W: std::io::Write>(
                     &mut slot_fill,
                     Some(&mut checks),
                 )?;
+                if converted.is_empty() { continue; } // a record the conversion does not write (#10763)
                 body.write_all(converted.as_bytes())?;
             } else {
                 body.write_all(renumbered.as_bytes())?;

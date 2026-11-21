@@ -169,7 +169,7 @@ fn reads_causes_and_unset_slots_with_step_comments_10248() {
 
 #[test]
 fn reports_caused_by_lost_when_no_id_is_left_for_its_relationship_10597() {
-    let mut checks = crate::schema_enum::ConversionChecks::new();
+    let mut checks = crate::schema_enum::ConversionChecks::default();
     let source = model("IFC2X3", &[REACTION, CAUSED].join("\n"));
     checks.structural.carriers = super::StructuralCarriers::scan_ifc2x3(source.as_bytes(), |_, _| true);
     checks.structural.allocate(|| None);

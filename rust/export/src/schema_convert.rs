@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
-//! IFC **schema conversion** for STEP export (Phase 2 P2). Ports
-//! `packages/export/src/schema-converter.ts`: entity-type renames between
-//! IFC2X3 / IFC4 / IFC4X3 / IFC5 (with multi-step chaining), trimming or padding
-//! the attribute list wherever one schema only appended to the other (attribute
-//! names from core's EXPRESS registry, #7683), and a proxy fallback for types
-//! with no target representation.
+//! IFC schema conversion for STEP export, paired with the TypeScript converter.
+//! Chains entity renames between schema families and uses core's EXPRESS
+//! registry to trim or pad positional attributes (#7683). Types with no target
+//! representation use the schema plan's fallback.
 
 use std::borrow::Cow;
 
@@ -54,7 +52,8 @@ fn map_4_to_2x3(t: &str) -> Option<&'static str> {
         "IFCSTRUCTURALLOADCASE" => "IFCSTRUCTURALLOADGROUP",
         "IFCSTRUCTURALCURVEACTION" => "IFCSTRUCTURALLINEARACTION",
         "IFCSTRUCTURALSURFACEACTION" => "IFCSTRUCTURALPLANARACTION",
-        // #10763: IFC4 deleted this subtype for the now-concrete supertype (`schema_attr_maps`).
+        // #10763: IFC4 deleted these subtypes for the now-concrete supertype (`schema_attr_maps`).
+        "IFCMATERIALPROPERTIES" => "IFCEXTENDEDMATERIALPROPERTIES",
         "IFCPROFILEPROPERTIES" => "IFCGENERALPROFILEPROPERTIES",
         _ => return None,
     })
@@ -240,7 +239,8 @@ pub fn convert_step_line(
         return Ok(line.to_string());
     }
     let mut checks = checks;
-    let mut converted = convert_record(line, cfrom, cto, express_id, checks.as_deref_mut())?;
+    let Some(line) = (match checks.as_deref_mut() { Some(c) => c.materials.apply(express_id, line, cfrom, &mut c.attribute_values_dropped), None => crate::schema_material_referent::MaterialReferents::for_target(cto).apply(express_id, line, cfrom, &mut 0) }) else { return Ok(String::new()) };
+    let mut converted = convert_record(&line, cfrom, cto, express_id, checks.as_deref_mut())?;
     converted = crate::schema_retyped::apply(converted, cfrom, cto, checks.as_deref_mut().map(|c| &mut c.attribute_values_dropped)); // #10778
     if let Some(checks) = checks {
         if let Some(placement) = checks.structural.values.placement(express_id) {

@@ -32,6 +32,11 @@ import { buildStepHeader } from './step-header.js';
 import { Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
 import { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import { EnumReconciliation } from './schema-converter-enums.js';
+import { SourceRecords } from './schema-converter-structural-source.js';
+import { downgradesMaterial } from './schema-converter-material-referent.js';
+import { effectiveCreatedRecord } from './effective-source-record.js';
+import { readStepSlots } from './step-argument-parser.js';
+import { applySourceLineMutations } from './step-attribute-mutations.js';
 import { computeWithheldRefIds } from './schema-untranslatable.js';
 import { StyleFlatten } from './schema-style-flatten.js';
 
@@ -335,6 +340,38 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
   if (pair && (!mutationView || !applyMutations) && !options.visibleOnly && !options.deltaOnly && !options.subsetEntityIds
     && !excludeGeometry && options.includeRelationships !== false) {
     pass.enums.structural.fromStore(dataStore, sourceSchema, schema);
+  }
+  // #10763: what a downgraded IfcMaterialProperties.Material names, from the records this export
+  // writes: the effective types (retypes, deletions, overlay-created records), each record's slots as
+  // written (a source one with its edits, a created one as authored), read at conversion, after the
+  // collection phase fills `modifiedAttributes`. A record the export does not write has no type.
+  if (downgradesMaterial(sourceSchema, schema)) {
+    const source = new SourceRecords(dataStore);
+    const read = new Map<number, readonly string[] | undefined>();
+    const written = (id: number): string | undefined => {
+      // A created record this cannot read (the overlay writer, building per slot, may still write it) resolves to
+      // nothing: the IfcMaterialProperties naming it is left out, its id in the export warnings as naming an unread record.
+      if (mutationView && effective.isOverlayCreated(id)) {
+        try { return effectiveCreatedRecord(mutationView, id, sourceSchema)?.text; } catch (error) {
+          const why = error instanceof Error ? error.message : String(error);
+          pass.warnings.push(`${why.startsWith(`#${id}:`) ? why : `#${id}: ${why}`}; it was read while resolving an IfcMaterialProperties Material (#10763).`);
+          return undefined;
+        }
+      }
+      const text = source.text(id), type = source.type(id);
+      return text === undefined || !type ? undefined
+        : applySourceLineMutations(mutationView, id, text, type, pass.modifiedAttributes.get(id), sourceSchema, pass.overlayActive).text;
+    };
+    const slots = (id: number) => {
+      if (!pass.willBeEmitted(id)) return undefined;
+      if (!read.has(id)) { const text = written(id); read.set(id, text === undefined ? undefined : readStepSlots(text)?.slots); }
+      return read.get(id);
+    };
+    // A readable material record (by its source or its effective type) the export leaves out. As Rust's
+    // `with_effective`, which drops an unreadable one from both maps, an unreadable one names no material.
+    const gone = (id: number) => !pass.willBeEmitted(id) && source.slots(id) !== undefined
+      && [source.type(id), effective.typeOf(id)].some((t) => t?.startsWith('IFCMATERIAL'));
+    pass.enums.materials.rearm({ typeOf: (id) => (pass.willBeEmitted(id) ? effective.typeOf(id) : undefined), slots, gone });
   }
   // The same object, deliberately. See the file header.
   return pass;

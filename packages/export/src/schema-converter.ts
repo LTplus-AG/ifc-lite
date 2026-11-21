@@ -22,6 +22,7 @@ import { skipStepTrivia } from './step-slot-grammar.js';
 import { Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
 import type { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import type { EnumReconciliation } from './schema-converter-enums.js';
+import { MaterialReferents } from './schema-converter-material-referent.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
 import { productProxy } from './schema-converter-product-proxy.js';
 import { MEP_IFC2X3_TYPES } from './schema-converter-mep.js';
@@ -30,7 +31,6 @@ import { attrMapFor, remapByAttrMap, upgradeCountsIfc4Slots } from './schema-con
 import { retypeInPlace } from './schema-converter-retyped.js';
 
 export { computeWithheldRefIds } from './schema-untranslatable.js';
-
 export type IfcSchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
 /**
  * Entity type name mappings between schema versions.
@@ -90,7 +90,8 @@ const IFC4_TO_IFC2X3: Map<string, string> = new Map([
   // of the other — `BY_NAME_ATTR_REMAP_TYPES` reconciles both by name.
   ['IFCSTRUCTURALCURVEACTION', 'IFCSTRUCTURALLINEARACTION'],
   ['IFCSTRUCTURALSURFACEACTION', 'IFCSTRUCTURALPLANARACTION'],
-  // #10763: IFC4 deleted this subtype for the now-concrete supertype (see the reviewed attribute map).
+  // #10763: IFC4 deleted these subtypes for their now-concrete supertypes (see the reviewed attribute maps).
+  ['IFCMATERIALPROPERTIES', 'IFCEXTENDEDMATERIALPROPERTIES'],
   ['IFCPROFILEPROPERTIES', 'IFCGENERALPROFILEPROPERTIES'],
   // IFC4X3 spatial structure → IFC2X3 equivalents
   ['IFCFACILITY', 'IFCBUILDING'],
@@ -275,10 +276,9 @@ function requireTopLevelAttributes(attrsRaw: string): string[] {
  *   ({@link computeWithheldRefIds}, #4206) — a record whose attributes name
  *   one is redirected to the same "no representation" resolution as its own
  *   unmapped type would get, so it cannot ship a now-dangling `#N`.
- * @returns Converted line (entities without valid target representation become
- *   IFCPROXY placeholders), or `null` when this record itself is one of the
- *   narrow set `resolveUnrepresentedEntity` can safely OMIT rather than throw
- *   for — the caller must not write a `null` result.
+ * @returns Converted line (no valid target representation: an IFCPROXY placeholder),
+ *   or `null` for a record the export OMITS: one `resolveUnrepresentedEntity` can omit, or an
+ *   IfcMaterialProperties naming no single IfcMaterial (#10763); a `null` is never written.
  */
 export function convertStepLine(
   line: string,
@@ -291,7 +291,8 @@ export function convertStepLine(
   enums?: EnumReconciliation,
 ): string | null {
   if (fromSchema === toSchema) return line;
-  let converted = retypeInPlace(convertRecord(line, fromSchema, toSchema, random, withheldRefIds, fromSchema === 'IFC2X3' && toSchema === 'IFC4' ? enums?.structural.axes.axis(line) : undefined, enums?.structural), fromSchema, toSchema); // #10778
+  const kept = (enums?.materials ?? new MaterialReferents()).apply(line, fromSchema, toSchema); // #10763: null when Material names no one IfcMaterial
+  let converted = kept === null ? null : retypeInPlace(convertRecord(kept, fromSchema, toSchema, random, withheldRefIds, fromSchema === 'IFC2X3' && toSchema === 'IFC4' ? enums?.structural.axes.axis(kept) : undefined, enums?.structural), fromSchema, toSchema);
   if (converted === null) return null;
   if (enums && toSchema !== 'IFC5') converted = enums.structural.after(enums.apply(converted, toSchema), withheldRefIds);
   if (toSchema === 'IFC2X3') return (slots ?? new Ifc2x3SlotFill()).apply(converted);
@@ -392,7 +393,6 @@ function convertRecord(
   // Those take a reviewed attribute map (#10763) or are left alone.
   // Appended attributes are optional, so `$` is a valid pad.
   //
-  // The two branches cannot both apply: each needs ITS OWN list strictly shorter.
   // Source attrs keyed on the ORIGINAL type; target on the (possibly renamed) type.
   let finalAttrs = attrsRaw;
   const targetTable = attrNameTable(toSchema);

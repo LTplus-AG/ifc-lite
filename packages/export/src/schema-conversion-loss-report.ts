@@ -30,6 +30,7 @@ import { isStructuralBoundaryCondition, isStructuralAssignmentConversion } from 
 import { NO_ROUND_TRIP, structuralRoundTrip } from './schema-converter-structural-diagnostics.js';
 import { SourceRecords } from './schema-converter-structural-source.js';
 import { varyingTarget } from './schema-converter-structural-varying.js';
+import { materialPropertiesNotWritten } from './schema-converter-material-referent.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import {
   convertEntityType,
@@ -319,6 +320,11 @@ export function analyzeConversionLoss(
         ? entryAfterRestoration(sourceType, expressIds, info, isRetained)
         : { ...info, sourceType, count: expressIds.length, expressIds };
       if (entry) entries.push(entry);
+    }
+    // #10763: an IfcMaterialProperties whose Material names no single IfcMaterial is not written.
+    const notWritten = materialPropertiesNotWritten(store, fromSchema, toSchema);
+    if (notWritten.ids.length) {
+      entries.push({ sourceType: 'IFCMATERIALPROPERTIES', targetType: 'IFCEXTENDEDMATERIALPROPERTIES', kind: 'lossy', droppedAttributes: [...notWritten.attributes], count: notWritten.ids.length, expressIds: notWritten.ids });
     }
     for (const [sourceType, ids] of varying) {
       const byTarget = new Map<string, number[]>();

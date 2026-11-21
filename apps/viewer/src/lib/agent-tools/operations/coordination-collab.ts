@@ -4,13 +4,16 @@
 import { getMountedFileHost } from '@/components/viewer/toolbar/mounted-file-host';
 import { useViewerStore } from '@/store';
 import { coordination } from './coordination-common';
+import { disabled } from './refusals';
 export const coordinationCollabOperations = [
-  coordination<{ room_id: string; token: string }>('collab.join', 'Join an exact room with a supplied existing token using native role parsing, sync/reconstruction and teardown. Never accepts a caller-chosen role or returns credentials. A join that would publish local annotations waits for native approval.', ['network', 'configuration', 'view'], {
+  coordination<{ room_id: string; token: string }>('collab.join', 'Join an exact room with a supplied existing token using native role parsing, sync/reconstruction and teardown. Never accepts a caller-chosen role or returns credentials. If joining would publish local annotations, the agent operation refuses and the user must open the invite link themselves.', ['network', 'configuration', 'view'], {
     type: 'object', properties: { room_id: { type: 'string', minLength: 1, maxLength: 200 }, token: { type: 'string', minLength: 1, maxLength: 10000 } }, required: ['room_id', 'token'], additionalProperties: false,
   }, async (i, c) => {
     const [{ parseRoleFromToken }, { liveCollabAttempt }] = await Promise.all([import('@/lib/collab/share-link'), import('@/lib/collab/session-attempt')]);
     const role = parseRoleFromToken(i.token) ?? 'viewer';
-    if (role !== 'viewer' && [...useViewerStore.getState().annotations.values()].some(annotation => !annotation.remote)) return { state: 'waiting-for-approval', room_id: i.room_id, reason: 'This native join shares existing local annotations. Confirm through the native room UI.' };
+    if (role !== 'viewer' && [...useViewerStore.getState().annotations.values()].some(annotation => !annotation.remote)) {
+      throw disabled('Joining with this role would share existing local annotations. Ask the user to open the room invite link themselves.');
+    }
     let owned: ReturnType<typeof liveCollabAttempt>;
     const cancel = () => { if (owned && liveCollabAttempt() === owned) useViewerStore.getState().stopCollab(); };
     c.signal?.addEventListener('abort', cancel, { once: true });

@@ -5904,7 +5904,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "collab.join",
     "version": 1,
     "owner": "collab",
-    "description": "Join an exact room with a supplied existing token using native role parsing, sync/reconstruction and teardown. Never accepts a caller-chosen role or returns credentials. A join that would publish local annotations waits for native approval.",
+    "description": "Join an exact room with a supplied existing token using native role parsing, sync/reconstruction and teardown. Never accepts a caller-chosen role or returns credentials. If joining would publish local annotations, the agent operation refuses and the user must open the invite link themselves.",
     "needs": "viewer",
     "effects": [
       "network",

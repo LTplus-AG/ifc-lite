@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { deflateSync } from 'node:zlib';
 import { beforeEach, it } from 'node:test';
 import { createBimContext } from '@ifc-lite/sdk';
+import { ToolErrorCode } from '@ifc-lite/mcp/browser';
 import { Camera, type Renderer } from '@ifc-lite/renderer';
 import { setGlobalRendererRef, clearGlobalRefs } from '@/hooks/useBCF';
 import { dispatchMainViewerTool } from '../main-viewer-dispatch';
@@ -214,4 +215,25 @@ it('#10589 refuses to stage a share when the mounted consent dialog cannot load'
   }), /Share consent dialog could not load/);
   assert.equal(useCollabShareReview.getState().candidate, initial.candidate);
   assert.equal(useCollabShareReview.getState().dialogOpen, false);
+});
+
+it('#10589 refuses agent joins that would share local annotations without starting a room session', async t => {
+  const { annotations, startCollab } = useViewerStore.getState();
+  const note = { id: 'local-pin', note: 'Local note', position: { x: 0, y: 0, z: 0 }, entityExpressId: null,
+    modelId: null, createdAt: 0, updatedAt: 0 };
+  const start = t.mock.fn(async () => assert.fail('a refused join must not start a room session'));
+  useViewerStore.setState({ annotations: new Map([[note.id, note]]), startCollab: start });
+  t.after(() => useViewerStore.setState({ annotations, startCollab }));
+
+  for (const role of ['commenter', 'editor'] as const) {
+    const roomId = 'room';
+    const token = Buffer.from(JSON.stringify({ dev: true, room: roomId, role })).toString('base64url');
+    const response = await dispatchMainViewerTool(context.host, 'viewer_operation_execute', {
+      operation_id: 'collab.join', input: { room_id: roomId, token },
+    }, { canEdit: () => true });
+    assert.equal(response.isError, true);
+    assert.equal(response.errorCode, ToolErrorCode.PERMISSION_DENIED);
+    assert.match(response.text, /open the room invite link themselves/);
+  }
+  assert.equal(start.mock.callCount(), 0);
 });

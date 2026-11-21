@@ -16,7 +16,7 @@
 
 import { getCanonicalEntityName, getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@ifc-lite/parser';
 import { valueForm, valueFormSlotsOf } from './schema-value-form-policy.js';
-import { ATTR_MAPS } from './schema-converter-attr-maps.js';
+import { getAttrMaps } from './schema-converter-attr-maps.js';
 import { withoutComments } from './step-comment-skip.js';
 import { listItems } from './schema-converter-structural-axes.js';
 import { readStepSlots } from './step-argument-parser.js';
@@ -53,7 +53,7 @@ function rulesFor(from: string, to: string, type: string): Rules {
   const source = getSchemaRegistryForVersion(from as SchemaVersionWithRegistry);
   const target = getSchemaRegistryForVersion(to as SchemaVersionWithRegistry);
   const entity = getCanonicalEntityName(target, type);
-  const slots = entity === undefined ? [] : valueFormSlotsOf(source, target, from, to, ATTR_MAPS, entity);
+  const slots = entity === undefined ? [] : valueFormSlotsOf(source, target, from, to, getAttrMaps(), entity);
   const meta = entity === undefined ? undefined : target.entities[entity];
   rules = !meta || !slots.length ? NONE : { arity: (meta.allAttributes ?? meta.attributes).length, rules: slots.map((slot) => ({
     index: slot.index,

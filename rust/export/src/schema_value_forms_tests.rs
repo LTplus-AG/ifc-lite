@@ -90,7 +90,7 @@ fn a_fraction_float_rounding_hides_is_still_dropped_10847() {
     assert_eq!(convert("#5=IFCQUANTITYCOUNT('n',$,$,3.E2,$);", "IFC4", "IFC4X3").0, "#5=IFCQUANTITYCOUNT('n',$,$,300,$);");
 }
 
-/// Claude review on #10878, the twin of the TypeScript case: positional
+/// Positional
 /// members go whole, with the slots they pair with; a non-positional list
 /// still loses only the member.
 #[test]

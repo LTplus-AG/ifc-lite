@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import '@/i18n/catalogues/sources-panel.en';
 import { useEffect, useRef, type ReactNode } from 'react';
 import type { FileSourceProvider } from '@ifc-lite/plugin-api';
 import type { SourceHost } from '@/services/sources/source-host';

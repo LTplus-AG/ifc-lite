@@ -59,7 +59,7 @@ import { render, cleanup } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { resolve } from '@/i18n/registry';
 import type { PluralTranslation, TranslationValue } from '@/i18n/types';
-import { sourcesEn } from '@/i18n/catalogues/sources.en';
+import { englishCatalogue, type TranslationKey } from '@/i18n/en';
 import { SourceHost } from '@/services/sources/source-host';
 import { SourceHostProvider } from '@/services/sources/SourceHostProvider';
 import { SourceBrowserHeader } from './SourceBrowserHeader.js';
@@ -77,7 +77,7 @@ import { syncSourceCatalogCacheOwner } from '@/lib/sources/persistence';
 
 // ── Pseudo-locale plumbing ──
 
-type SourcesKey = keyof typeof sourcesEn;
+type SourcesKey = Extract<TranslationKey, `sources.${string}`>;
 
 function interp(template: string, params: Record<string, string | number> = {}): string {
   return template.replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g, (placeholder, name: string) =>
@@ -93,7 +93,8 @@ function pluralCategory(value: PluralTranslation, count: number): 'one' | 'other
  *  way `resolve()` does: pick the plural category from `params.count`, then
  *  interpolate. */
 function expectedEnglish(key: SourcesKey, params: Record<string, string | number> = {}): string {
-  const value: TranslationValue = sourcesEn[key];
+  const value = englishCatalogue[key];
+  assert.ok(value, `No English translation registered for ${key}`);
   const template = typeof value === 'string' ? value : value[pluralCategory(value, Number(params.count ?? 0))] ?? value.other;
   return interp(template, params);
 }
@@ -107,7 +108,8 @@ function markValue(key: string, value: TranslationValue): TranslationValue {
 
 /** Marked text the pseudo-locale produces for the same key/params. */
 function expectedMarked(key: SourcesKey, params: Record<string, string | number> = {}): string {
-  const value: TranslationValue = sourcesEn[key];
+  const value = englishCatalogue[key];
+  assert.ok(value, `No English translation registered for ${key}`);
   if (typeof value === 'string') return interp(`⟦${key}|${value}⟧`, params);
   const category = pluralCategory(value, Number(params.count ?? 0));
   const text = value[category] ?? value.other;
@@ -115,7 +117,7 @@ function expectedMarked(key: SourcesKey, params: Record<string, string | number>
 }
 
 const PSEUDO: Catalogue = Object.fromEntries(
-  Object.entries(sourcesEn).map(([key, value]) => [key, markValue(key, value)]),
+  Object.entries(englishCatalogue).filter(([key]) => key.startsWith('sources.')).map(([key, value]) => [key, markValue(key, value)]),
 );
 registerLocale('sources-pseudo', PSEUDO);
 

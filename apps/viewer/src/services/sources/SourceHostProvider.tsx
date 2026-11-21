@@ -2,9 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, lazy, Suspense, useContext, useEffect, useState, type ReactNode } from 'react';
+import { SOURCE_WRITEBACK_EVENT } from './source-writeback-command';
 import { SourceHost, type FileSourceProviderFactory } from './source-host';
 import { BUILT_IN_PROVIDER_FACTORIES } from './registered-providers';
+
+const SourceWriteBackDialog = lazy(() => import('@/components/sources/SourceWriteBackDialog').then(module => ({ default: module.SourceWriteBackDialog })));
 
 const SourceHostContext = createContext<SourceHost | null>(null);
 
@@ -61,9 +64,19 @@ export function SourceHostProvider({ children, additionalProviders }: SourceHost
   // re-read (it would construct every provider again and drop their state).
   const [host] = useState(() => buildSourceHost(additionalProviders));
 
+  const [saveModelId, setSaveModelId] = useState<string | null>(null);
+  useEffect(() => {
+    const open = (event: Event) => {
+      if (event instanceof CustomEvent && typeof event.detail === 'string') setSaveModelId(previous => previous ?? event.detail);
+    };
+    window.addEventListener(SOURCE_WRITEBACK_EVENT, open);
+    return () => window.removeEventListener(SOURCE_WRITEBACK_EVENT, open);
+  }, []);
+
   return (
     <SourceHostContext value={host}>
       {children}
+      {saveModelId && <Suspense fallback={null}><SourceWriteBackDialog key={saveModelId} modelId={saveModelId} onClose={() => setSaveModelId(null)} /></Suspense>}
     </SourceHostContext>
   );
 }

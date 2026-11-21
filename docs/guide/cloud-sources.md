@@ -31,13 +31,17 @@ For a local sign-in, pull, edit and publish walkthrough, see the
 
 ## Saving back to a source
 
-No source can be written to from the viewer yet, and the access IFClite requests stays read-only. The provider contract (`@ifc-lite/plugin-api`) now lets a provider declare `capabilities.writeBack` with the modes it supports and implement `uploadFile`:
+For a loaded IFC file from a writable source, use **Save to source** on its model row, or open **Sources → Save loaded IFC models**. Sources without write-back support show no save action. Choose a new revision, a new filename in the same folder, or browse to another folder. Review the destination and explicitly confirm before any upload begins.
+
+The viewer sends the current edited model and binds new-version uploads to the revision that model loaded. A remote revision change or an existing destination name produces a conflict; choose another name or reload and reconcile your edits. Uploads are never retried automatically. Your mutation history and edits made while an upload runs are kept. After a successful save, the model follows the returned file/revision and the dialog displays its revision history. If the model was unloaded or replaced during upload, the remote result is shown without attaching its provenance to the replacement.
+
+The provider contract (`@ifc-lite/plugin-api`) lets a provider declare `capabilities.writeBack` with the modes it supports and implement `uploadFile`:
 
 - `new-version` adds a revision to an existing file.
 - `new-file` creates a file with a new name, typically in the original's folder.
 - `new-location` creates a file in a different folder.
 
-`uploadFile` never overwrites. When the file has changed since it was loaded (`stale-base`), or the name is taken (`name-exists`), it returns a conflict instead of writing, so the host can offer a new name or a reload. Providers that omit `writeBack` stay read-only. `@ifc-lite/source-fixture` implements it for tests, and the Dalux provider implements it on Dalux's upload API (see the `@ifc-lite/source-dalux` README for its limits, including that in the browser it needs the relay upload routes from [#9524](https://github.com/LTplus-AG/ifc-lite/pull/9524)). The viewer's save action is tracked in [#9522](https://github.com/LTplus-AG/ifc-lite/issues/9522).
+`uploadFile` never overwrites. When the file has changed since it was loaded (`stale-base`), or the name is taken (`name-exists`), it returns a conflict instead of writing, so the host can offer a new name or a reload. Providers that omit `writeBack` stay read-only. `@ifc-lite/source-fixture` implements it for tests, and the Dalux provider implements it on Dalux's upload API (see the `@ifc-lite/source-dalux` README for its limits, including that in the browser it needs the relay upload routes from [#9524](https://github.com/LTplus-AG/ifc-lite/pull/9524)). Live Dalux uploads still require an API identity permitted to upload to the selected folder; the viewer does not grant additional scopes or bypass provider/relay permission and audit rules.
 
 ### Dalux revision history
 

@@ -15,6 +15,7 @@ import type { SourceFavourite } from '@/lib/sources/favourites';
 import type { SourceDownloadState } from '@/lib/sources/downloadProgress';
 import { useSourceFavourites } from './useSourceFavourites';
 import { useSourceFavouriteJump } from './useSourceFavouriteJump';
+import { useSourceWriteBackRefresh } from './useSourceWriteBackRefresh';
 import { useSourceCatalogSync } from './useSourceCatalogSync';
 import { useSourceFileSearch } from './useSourceFileSearch';
 import { useLoadedSourceModels } from './useLoadedSourceModels';
@@ -208,6 +209,9 @@ export function SourceBrowser({
     }
     void catalog.syncFileArea(selectedProject.id, selectedFileArea.id, { announce: true });
   }, [capabilities, catalog, selectedFileArea, selectedProject]);
+
+  useSourceWriteBackRefresh({ providerId: provider.manifest.name, projectId: selectedProject?.id,
+    busy: busy || catalog.syncing, onRefresh: handleSync });
 
   const goBack = useCallback(() => {
     // A failed listing must never leave a dead-end screen: navigating always

@@ -10,9 +10,10 @@
  * dispatches to this component for `model-header` nodes.
  */
 
+import { lazy, Suspense } from 'react';
 import { isFeatureEnabled } from '@/lib/features';
 import { PositionedDownload } from '../PositionedDownload';
-import { Move3D, ChevronRight, Eye, EyeOff, FileBox, X } from 'lucide-react';
+import { Move3D, ChevronRight, Eye, EyeOff, FileBox, RefreshCw, X } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { openRepositionModels } from '@/lib/model-placement/commands';
 import { cn } from '@/lib/utils';
@@ -21,7 +22,14 @@ import { formatLocaleNumber } from '@/i18n/intlFormat';
 import type { TreeNode } from './types';
 import type { HierarchyNodeAriaProps } from './HierarchyNode';
 import { ModelRowTags } from './ModelRowTags';
-import { SourceSyncIcon, useModelSyncProgress } from '@/components/sources/SourceDownloadStatus';
+
+const SourceWriteBackAction = lazy(() =>
+  import('@/components/sources/SourceWriteBackAction').then(module => ({ default: module.SourceWriteBackAction })),
+);
+
+const ModelSourceSyncIcon = lazy(() =>
+  import('@/components/sources/SourceDownloadStatus').then(module => ({ default: module.ModelSourceSyncIcon })),
+);
 
 export interface ModelHeaderRowProps extends HierarchyNodeAriaProps {
   node: TreeNode;
@@ -56,7 +64,6 @@ export function ModelHeaderRow({
 }: ModelHeaderRowProps) {
   const { t, locale } = useTranslation();
   const modelId = node.modelIds[0];
-  const syncState = useModelSyncProgress(modelId);
 
   return (
     <div
@@ -118,6 +125,7 @@ export function ModelHeaderRow({
           </span>
         )}
         <PositionedDownload modelId={modelId} />
+        {sourceBacked && <Suspense fallback={null}><SourceWriteBackAction modelId={modelId} /></Suspense>}
         <ModelRowTags modelId={modelId} modelName={node.name} />
 
         {isFeatureEnabled('edit.placement') && <button
@@ -173,12 +181,14 @@ export function ModelHeaderRow({
                 )}
                 disabled={sourceSyncing}
               >
-                <SourceSyncIcon
-                  name={node.name}
-                  syncing={sourceSyncing}
-                  state={syncState}
-                  className="text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
-                />
+                <Suspense fallback={<RefreshCw aria-hidden className={cn('h-3.5 w-3.5 text-muted-foreground', sourceSyncing && 'animate-spin')} />}>
+                  <ModelSourceSyncIcon
+                    modelId={modelId}
+                    name={node.name}
+                    syncing={sourceSyncing}
+                    className="text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
+                  />
+                </Suspense>
               </button>
             </TooltipTrigger>
             <TooltipContent>

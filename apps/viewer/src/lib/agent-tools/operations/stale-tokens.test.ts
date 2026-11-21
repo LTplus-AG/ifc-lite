@@ -101,6 +101,47 @@ describe('reviewed model candidates (#10792)', () => {
     await prepareRename('After reload');
   });
 
+  it('distinguishes a failed native commit from an unchanged proposal (#10871)', async (t) => {
+    const token = await prepareRename();
+    const original = useViewerStore.getState().setAttribute;
+    const undo = useViewerStore.getState().undoStacks.get(SAMPLE_MODEL)?.length ?? 0;
+    useViewerStore.setState({ setAttribute: () => { throw new Error('Native attribute writer failed'); } });
+    t.after(() => useViewerStore.setState({ setAttribute: original }));
+    const failed = await invoke('authoring.apply', { token }, true);
+    assert.equal(failed.errorCode, 'INTERNAL_ERROR', failed.text);
+    assert.equal((failed.structured as { reason: string }).reason, 'internal');
+    assert.equal(useViewerStore.getState().undoStacks.get(SAMPLE_MODEL)?.length ?? 0, undo);
+    const unchanged = await invoke('authoring.apply', { token: await prepareRename(BACK_WALL_NAME) }, true);
+    assert.equal(unchanged.errorCode, 'INVALID_INPUT', unchanged.text);
+    assert.equal((unchanged.structured as { reason: string }).reason, 'invalid-value');
+  });
+  for (const [operation, input] of [
+    ['authoring.defaults.dimension', { kind: 'wall', field: 'unknown', metres: 1, expected_defaults: '{}' }],
+    ['zones.set.edit', { set_id: 'unknown', action: 'remove', name: '', visible: true, expected_configuration: '1:0' }],
+    ['clash.reports.write', { action: 'rename', id: 'unknown', name: 'Report', report_json: '', expected_reports: '1:0' }],
+    ['clash.presets.write', { action: 'delete', id: 'unknown', preset_json: '', enabled: false, expected_presets: '[]' }],
+    ['validation.manual.answer', { item_id: 'unknown', fingerprint: 'A', status: 'pass', comment: '', expected_library: '{}' }],
+  ] as const) {
+    it(`${operation} identifies a missing target before comparing a stale snapshot (#10871)`, async () => {
+      const result = await invoke(operation, input, true);
+      assert.equal(result.errorCode, 'INVALID_INPUT', result.text);
+      assert.equal((result.structured as { reason: string }).reason, 'unknown-target');
+    });
+  }
+
+  for (const [feature, id, input] of [
+    ['tools.section', 'section.box', { min: [0, 0, 0], max: [1, 2, 3] }],
+    ['check.clash', 'clash.run', {}],
+  ] as const) {
+    it(`a disabled ${feature} operation returns a permission denial (#10871)`, async (t) => {
+      resetFeaturesForTest({ default: 'all', disable: [feature] });
+      t.after(() => resetFeaturesForTest());
+      const result = await invoke(id, input, true);
+      assert.equal(result.errorCode, 'PERMISSION_DENIED', result.text);
+      assert.equal((result.structured as { reason: string }).reason, 'disabled');
+    });
+  }
+
   it('#20: replaying an applied token keeps the receipt the Changes panel marked undone', async () => {
     const token = await prepareRename();
     const applied = answer<{ receipt_json: string; persisted: boolean }>(await invoke('authoring.apply', { token }, true));
@@ -526,6 +567,29 @@ describe('saved clash report deletion (#10792)', () => {
     const flagged = answer<{ preview: { omittedDashboards: number } }>(await invoke('clash.reports.delete.prepare', { id }));
     assert.equal(flagged.preview.omittedDashboards, 1);
   });
+
+  for (const failure of ['unreadable-dashboards', 'document-read-error'] as const) {
+    it(`preserves a ${failure} refusal inside the report deletion guard (#10871)`, async (t) => {
+      const id = await savedReport();
+      const { token } = answer<{ token: string }>(await invoke('clash.reports.delete.prepare', { id }));
+      let reads = 0;
+      const getAll = IDBIndex.prototype.getAll;
+      t.mock.method(IDBIndex.prototype, 'getAll', function (this: IDBIndex, query?: IDBValidKey | IDBKeyRange | null, count?: number) {
+        if (query === 'document' && ++reads === 2) {
+          if (failure === 'document-read-error') throw new Error('Document index read failed');
+          localStorage.setItem('ifc-lite-dashboards', '{}');
+        }
+        return getAll.call(this, query, count);
+      });
+      const result = await invoke('clash.reports.delete.apply', { token }, true);
+      assert.equal(reads, 2, 'the failure occurs on the guard read');
+      assert.equal(result.errorCode, 'INTERNAL_ERROR', result.text);
+      const details = result.structured as { reason: string; dependency?: string };
+      assert.equal(details.reason, 'internal');
+      assert.ok(details.dependency);
+      assert.ok(useViewerStore.getState().savedClashReports.some(report => report.id === id));
+    });
+  }
 
   it('#1: a storage retry after the deleting call lost its grant restores the report', async () => {
     const id = await savedReport();

@@ -4,13 +4,15 @@
 
 import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
 import { useViewerStore } from '@/store';
-import { assertToolActive } from '../cancellation';
+import { assertToolActive, cancelledDispatch } from '../cancellation';
+import { isAbortError } from '@/lib/runs/abort';
 import type { ReadyModel, ToolCallContext, ToolHost } from '../types';
 import { operationArtifacts } from './artifacts';
 import { contractFingerprint } from './metadata';
 import { MAX_RESULT_BYTES, utf8Bytes } from './result-limit';
 import type { Operation } from './contract';
 import { viewerOperation, operationUnavailable } from './registry';
+import { disabled, internal, invalidInput, stale, unavailable, type InputReason } from './refusals';
 
 export interface OperationJob {
   id: string;
@@ -21,6 +23,9 @@ export interface OperationJob {
   state: 'running' | 'succeeded' | 'failed' | 'cancelled';
   result?: unknown;
   error?: string;
+  /** The failed operation's error code and details, exactly as a foreground call reports them (#10871). */
+  error_code?: string;
+  error_details?: Record<string, unknown>;
 }
 interface LiveJob { snapshot: OperationJob; abort: AbortController; current(): void; discard(): void; delivered?: boolean }
 const hosts = new WeakMap<ToolHost, Map<string, LiveJob>>();
@@ -32,17 +37,31 @@ function jobs(host: ToolHost) {
   if (!owned) { owned = new Map(); hosts.set(host, owned); }
   return owned;
 }
-function invalid(message: string): never {
-  throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message });
+/** A cause's details without its own `reason`, which a committed failure must not carry as a retry hint. */
+function withoutReason(details: Record<string, unknown> | undefined) {
+  if (!details) return undefined;
+  const { reason: _reason, ...rest } = details; return rest;
+}
+function operationFailure(error: unknown, operationId: string): ToolExecutionError {
+  if (isAbortError(error)) return cancelledDispatch();
+  if (error instanceof ToolExecutionError) {
+    if (error.code === ToolErrorCode.ENTITY_NOT_FOUND) return invalidInput('unknown-target', error.message, error.details);
+    return error;
+  }
+  return internal(error instanceof Error ? error.message : 'Operation failed.', { operation_id: operationId });
+}
+
+function invalid(message: string, reason: InputReason = 'invalid-value'): never {
+  throw invalidInput(reason, message);
 }
 function boundedResult(result: unknown): unknown {
   // JSON's NaN/Infinity coercion would silently fabricate success data.
   const text = JSON.stringify(result ?? null, (_key, value: unknown) => {
-    if (typeof value === 'number' && !Number.isFinite(value)) throw new Error('Operation returned a non-finite number.');
+    if (typeof value === 'number' && !Number.isFinite(value)) throw internal('Operation returned a non-finite number.');
     return value;
   });
   // UTF-8 is at most 3 bytes per UTF-16 unit, so only a long text needs encoding to measure.
-  if (text.length * 3 > MAX_RESULT_BYTES && utf8Bytes(text) > MAX_RESULT_BYTES) throw new Error('Result exceeds the 1 MB operation result limit. Narrow the query.');
+  if (text.length * 3 > MAX_RESULT_BYTES && utf8Bytes(text) > MAX_RESULT_BYTES) throw invalidInput('limit', 'Result exceeds the 1 MB operation result limit. Narrow the query.');
   return JSON.parse(text) as unknown;
 }
 
@@ -62,18 +81,18 @@ export async function executeOperation(
   if (Object.keys(args).some(key => !allowed.includes(key))) invalid('Unknown execution argument.');
   if (typeof args.operation_id !== 'string') invalid('operation_id is required.');
   let entry: Operation;
-  try { entry = viewerOperation(args.operation_id); } catch { invalid('Unknown operation_id. Discover an exact registered ID first.'); }
+  try { entry = viewerOperation(args.operation_id); } catch { invalid('Unknown operation_id. Discover an exact registered ID first.', 'unknown-target'); }
   if (entry.needs === 'model' && !model) invalid('This operation requires a loaded model.');
   const writes = entry.effects.some(effect => effect !== 'read');
-  if (readOnly && writes) throw new ToolExecutionError({ code: ToolErrorCode.READ_ONLY, message: 'Inspect only accepts read operations.' });
+  if (readOnly && writes) throw new ToolExecutionError({ code: ToolErrorCode.READ_ONLY, message: 'Inspect only accepts read operations.', details: { reason: 'read-only' } });
   const requiredPolicy = { model: 'native-reviewed', artifact: 'native-export', network: 'native-provider', publication: 'native-reviewed' } as const;
   for (const effect of entry.effects) {
     if (['read', 'view', 'selection', 'configuration'].includes(effect)) continue;
     if (!Object.hasOwn(requiredPolicy, effect) || entry.policy?.[effect as keyof typeof requiredPolicy] !== requiredPolicy[effect as keyof typeof requiredPolicy]) {
-      throw new ToolExecutionError({ code: ToolErrorCode.READ_ONLY, message: 'This effect requires an explicit native capability contract.' });
+      throw internal('This effect requires an explicit native capability contract.');
     }
   }
-  if (!readOnly && !context.canEdit?.()) throw new ToolExecutionError({ code: ToolErrorCode.READ_ONLY, message: 'Commands and edits grant is required for execute.' });
+  if (!readOnly && !context.canEdit?.()) throw new ToolExecutionError({ code: ToolErrorCode.READ_ONLY, message: 'Commands and edits grant is required for execute.', details: { reason: 'read-only' } });
   if (args.expected_revision !== undefined && (typeof args.expected_revision !== 'number' || !Number.isSafeInteger(args.expected_revision) || args.expected_revision < 0)) invalid('expected_revision must be a nonnegative integer.');
   if (args.idempotency_key !== undefined && (typeof args.idempotency_key !== 'string' || !args.idempotency_key || args.idempotency_key.length > 200)) invalid('idempotency_key must contain 1 to 200 characters.');
   let nativeModel = model ? useViewerStore.getState().models.get(model.id) : undefined;
@@ -83,14 +102,14 @@ export async function executeOperation(
   const check = () => {
     host.lifetimeSignal?.throwIfAborted();
     assertToolActive(context);
-    const unavailable = operationUnavailable(entry);
-    if (unavailable) throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: unavailable });
+    const reason = operationUnavailable(entry);
+    if (reason) throw disabled(reason);
     const now = model ? host.models().find(candidate => candidate.id === model.id) : undefined;
     if (model && (now?.store !== model.store || useViewerStore.getState().mutationVersion !== activeRevision
       || useViewerStore.getState().models.get(model.id) !== nativeModel)) {
-      throw new ToolExecutionError({ code: ToolErrorCode.STATE_CHANGED, message: 'Model replaced, closed, or edited during the operation. Discarded result.' });
+      throw stale('Model replaced, closed, or edited during the operation. Discarded result.');
     }
-    if (writes && !context.canEdit?.()) throw new ToolExecutionError({ code: ToolErrorCode.READ_ONLY, message: 'Commands and edits grant was revoked or is absent.' });
+    if (writes && !context.canEdit?.()) throw new ToolExecutionError({ code: ToolErrorCode.READ_ONLY, message: 'Commands and edits grant was revoked or is absent.', details: { reason: 'read-only' } });
   };
   check();
   if (args.background !== undefined && typeof args.background !== 'boolean') invalid('background must be boolean.');
@@ -101,11 +120,11 @@ export async function executeOperation(
     ? contractFingerprint([model?.id ?? null, entry.id, args.input ?? {}, args.expected_revision ?? null]) : '';
   const previous = typeof args.idempotency_key === 'string' ? applied.get(host)?.get(args.idempotency_key) : undefined;
   if (previous) {
-    if (previous.store !== model?.store || previous.signature !== signature) invalid('Idempotency key already belongs to another request or model.');
+    if (previous.store !== model?.store || previous.signature !== signature) invalid('Idempotency key already belongs to another request or model.', 'conflict');
     return previous.result;
   }
   if (args.expected_revision !== undefined && args.expected_revision !== revision) {
-    throw new ToolExecutionError({ code: ToolErrorCode.STATE_CHANGED, message: 'The model revision changed. Inspect it again.' });
+    throw stale('The model revision changed. Inspect it again.');
   }
   const input = args.input ?? {};
   try { entry.validate(input); } catch (error) { invalid(error instanceof Error ? error.message : 'Invalid operation input.'); }
@@ -117,7 +136,7 @@ export async function executeOperation(
     nativeModel = model ? useViewerStore.getState().models.get(model.id) : undefined;
   };
   const commit = <T>(write: () => T): T => {
-    if (!writes || readOnly) throw new ToolExecutionError({ code: ToolErrorCode.READ_ONLY, message: 'A read operation cannot commit changes.' });
+    if (!writes || readOnly) throw internal('A read operation cannot commit changes.');
     checkpoint();
     if (context.commitState) context.commitState.committing = true;
     try {
@@ -127,7 +146,7 @@ export async function executeOperation(
     } finally { if (context.commitState) context.commitState.committing = false; }
   };
   const commitAsync = async <T>(write: () => Promise<T>, didCommit: (result: T) => boolean = value => value !== false): Promise<T> => {
-    if (!writes || readOnly) throw new ToolExecutionError({ code: ToolErrorCode.READ_ONLY, message: 'A read operation cannot admit durable writes.' });
+    if (!writes || readOnly) throw internal('A read operation cannot admit durable writes.');
     checkpoint();
     if (context.commitState) context.commitState.committing = true;
     try {
@@ -139,7 +158,7 @@ export async function executeOperation(
     } finally { if (context.commitState) context.commitState.committing = false; }
   };
   const artifacts = operationArtifacts(host, write => {
-    if (!entry.effects.includes('artifact')) throw new Error('The operation did not declare artifact creation.');
+    if (!entry.effects.includes('artifact')) throw internal('The operation did not declare artifact creation.');
     return commit(write);
   });
   const ownGeometry = async <T>(work: () => Promise<T>, release: (value: T) => void): Promise<T> => {
@@ -169,7 +188,7 @@ export async function executeOperation(
   if (!args.background) {
     const run = async (forget = () => {}) => {
       // Nothing native has run yet, so a keyed retry of this failure may run again (#10669).
-      try { await entry.load?.(); check(); } catch (error) { forget(); throw error; }
+      try { await entry.load?.(); check(); } catch (error) { forget(); throw operationFailure(error, entry.id); }
       try {
         const result = await entry.execute(input, operationContext);
         const value = accepted(result, () => { if (!committed) check(); });
@@ -177,15 +196,17 @@ export async function executeOperation(
       } catch (error) {
         if (committed) throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR,
           message: error instanceof Error ? error.message : 'Operation failed after committing changes.',
-          details: { committed: true, revision: activeRevision, operation_id: entry.id, model_id: model?.id ?? null } });
-        throw error;
+                  // reason stays 'internal': the write committed, so no retry reason may survive. The cause is kept beside it.
+          details: { reason: 'internal', ...(error instanceof ToolExecutionError ? { cause_code: error.code, cause_reason: error.details?.reason, cause_details: withoutReason(error.details) } : {}),
+            committed: true, revision: activeRevision, operation_id: entry.id, model_id: model?.id ?? null } });
+        throw operationFailure(error, entry.id);
       }
     };
     if (typeof args.idempotency_key !== 'string') return run();
     const prior = applied.get(host) ?? new Map<string, AppliedRequest>();
     applied.set(host, prior);
     // Keep failed outcomes once the native handler ran: retrying a partially dispatched UI action must not duplicate it.
-    if (prior.size >= 100) invalid('Host idempotency capacity reached (100 requests). Reconnect before creating further keyed requests.');
+    if (prior.size >= 100) throw unavailable('Host idempotency capacity reached (100 requests). Reconnect before creating further keyed requests.');
     const key = args.idempotency_key, request: AppliedRequest = { signature, store: model?.store, result: Promise.resolve() };
     // Registered before run() starts, so even an immediate pre-dispatch failure can remove it.
     prior.set(key, request);
@@ -194,7 +215,7 @@ export async function executeOperation(
   }
   const owned = jobs(host);
   for (const [id, job] of owned) if (owned.size >= MAX_JOBS && job.snapshot.state !== 'running') owned.delete(id);
-  if (owned.size >= MAX_JOBS) invalid('This host already has 32 running operation jobs.');
+  if (owned.size >= MAX_JOBS) throw unavailable('This host already has 32 running operation jobs.');
   const controller = new AbortController();
   const abort = () => controller.abort();
   context.signal?.addEventListener('abort', abort, { once: true });
@@ -211,7 +232,10 @@ export async function executeOperation(
     .then(result => { snapshot.result = accepted(result, active); snapshot.state = 'succeeded'; })
     .catch((error: unknown) => {
       snapshot.state = controller.signal.aborted ? 'cancelled' : 'failed';
-      snapshot.error = error instanceof Error ? error.message : 'Operation failed.';
+      const refusal = controller.signal.aborted ? cancelledDispatch() : operationFailure(error, entry.id);
+      snapshot.error = refusal.message;
+      snapshot.error_code = refusal.code;
+      if (refusal.details) snapshot.error_details = refusal.details;
     }).finally(() => {
       context.signal?.removeEventListener('abort', abort);
       host.lifetimeSignal?.removeEventListener('abort', abort);
@@ -221,7 +245,7 @@ export async function executeOperation(
 
 export function operationJob(host: ToolHost, id: string, cancel = false): OperationJob {
   const job = jobs(host).get(id);
-  if (!job) invalid('Unknown job for this viewer host.');
+  if (!job) invalid('Unknown job for this viewer host.', 'unknown-target');
   if (cancel && job.snapshot.state === 'running') job.abort.abort();
   if (job.snapshot.state === 'succeeded') {
     try { job.current(); } catch (error) {
@@ -245,7 +269,7 @@ export function operationJob(host: ToolHost, id: string, cancel = false): Operat
 export async function executeOperationRequest(host: ToolHost, args: Record<string, unknown>, context: ToolCallContext, readOnly: boolean) {
   if (typeof args.operation_id !== 'string') invalid('operation_id is required.');
   let entry: Operation;
-  try { entry = viewerOperation(args.operation_id); } catch { invalid('Unknown operation_id.'); }
+  try { entry = viewerOperation(args.operation_id); } catch { invalid('Unknown operation_id.', 'unknown-target'); }
   let model: ReadyModel | undefined;
   if (entry.needs === 'model') {
     const { resolveModel, usableModel } = await import('../main-viewer-dispatch');

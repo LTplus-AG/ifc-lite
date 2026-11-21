@@ -5,6 +5,7 @@ import type { JSONSchemaType } from 'ajv';
 import { mainViewerToolDefinitions } from '../main-viewer-tool-definitions';
 import { mainViewerTool, usableModel } from '../main-viewer-dispatch';
 import { operation, viewerOperation, type OperationContext, type ViewerOperationContext } from './contract';
+import { internal } from './refusals';
 
 /** Inputs and implementations come from the native viewer tools, not a second query vocabulary. */
 const queries = [
@@ -23,7 +24,7 @@ const definitions = new Map(mainViewerToolDefinitions().map(definition => [defin
 const outputSchema = { type: 'object', properties: { native_json: { type: 'string' }, text: { type: 'string' } }, required: ['native_json', 'text'], additionalProperties: false };
 export const queryOperations = queries.map(([toolId, id, owner]) => {
   const definition = definitions.get(toolId), tool = mainViewerTool(toolId);
-  if (!definition || !tool || !definition.readOnly) throw new Error(`Missing native read contract: ${toolId}`);
+  if (!definition || !tool || !definition.readOnly) throw internal(`Missing native read contract: ${toolId}`);
   const { model_id: _target, ...properties } = definition.inputSchema.properties;
   // The canonical tool catalogue is runtime JSON Schema, not generated TypeScript.
   const schema = { ...definition.inputSchema, properties, required: definition.inputSchema.required?.filter(key => key !== 'model_id') ?? [], additionalProperties: false } as unknown as JSONSchemaType<Record<string, unknown>>;

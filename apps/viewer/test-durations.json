@@ -2141,6 +2141,7 @@
     "src/lib/geo/viewer-up-scale.test.ts": 0.5,
     "src/lib/geo/wkt-parser-patch.test.ts": 0.9,
     "src/lib/geo/wkt-projection.test.ts": 0.9,
+    "src/lib/geometry-backing/backing-debug-hook.snap-probe.test.ts": 3.3,
     "src/lib/geometry-cpu-appearance.test.ts": 4.8,
     "src/lib/ghost-selection.test.ts": 0.3,
     "src/lib/grids/authored-grid-meshes.test.ts": 4.6,

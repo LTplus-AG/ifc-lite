@@ -27,6 +27,7 @@ import {
 import {
   computeTransform,
   scaleLabel,
+  sheetFlipsY,
   transformPoint,
   type Transform2D,
 } from './svg-transform.js';
@@ -129,8 +130,7 @@ export class SVGExporter {
       underlays = [],
     } = options;
 
-    // Calculate transform from drawing coordinates to SVG coordinates
-    const transform = computeTransform(drawing.bounds, paperSize, scale, padding);
+    const transform = computeTransform(drawing.bounds, paperSize, scale, padding, sheetFlipsY(drawing.config.plane));
 
     // Build SVG
     let svg = this.createHeader(paperSize, backgroundColor);

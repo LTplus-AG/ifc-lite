@@ -48,6 +48,7 @@ pub(crate) struct MaterialReferents {
     gone: std::collections::HashSet<u32>,
     /// Record id -> the type its `Material` names, for records not written.
     dropped: BTreeMap<u32, String>,
+    ifc5_omitted: BTreeSet<u32>,
 }
 
 /// Whether `line` is a material record (IFCMATERIAL*), read from its head alone.
@@ -93,7 +94,7 @@ impl MaterialReferents {
 
     /// For an export to `to` (canonical), with no records yet.
     pub(crate) fn for_target(to: &str) -> Self {
-        Self { armed: to == "IFC2X3", records: HashMap::new(), gone: Default::default(), dropped: BTreeMap::new() }
+        Self { armed: to == "IFC2X3", records: HashMap::new(), gone: Default::default(), dropped: BTreeMap::new(), ifc5_omitted: BTreeSet::new() }
     }
 
     /// One source converted from `from` to `to`, with its `kept` material records.
@@ -184,11 +185,15 @@ impl MaterialReferents {
     /// `line`, record `id` in `from` before conversion, naming the material its
     /// `Material` resolves to; `None` when it names none, adding its values to `dropped`.
     pub(crate) fn apply<'l>(&mut self, id: u32, line: &'l str, from: &str, dropped: &mut usize) -> Option<Cow<'l, str>> {
-        let Some(schema) = self.schema_for(from) else { return Some(line.into()) };
+        let schema = self.schema_for(from);
+        let omit_ifc5 = self.armed && from == "IFC5";
+        if schema.is_none() && !omit_ifc5 { return Some(line.into()); }
         // The head names the type; most records stop before their slots are split.
         let Some(head) = crate::step_record_frame::record_head(line) else { return Some(line.into()) };
         if !head.type_name(line).eq_ignore_ascii_case(PROPERTIES) { return Some(line.into()); }
-        let Some(at) = crate::schema_convert::schema_attribute_names(schema, PROPERTIES).and_then(|n| n.iter().position(|a| *a == "Material")) else { return Some(line.into()) };
+        let at = schema.and_then(|schema| crate::schema_convert::schema_attribute_names(schema, PROPERTIES))
+            .and_then(|names| names.iter().position(|name| *name == "Material"));
+        if at.is_none() && !omit_ifc5 { return Some(line.into()); }
         // Read as written; `convert_record` also accepts a record without its ';', so failing that, with one added.
         // A record that cannot be read either way is not checked, so it is left out too.
         let mut framed = Cow::Borrowed(line);
@@ -197,6 +202,12 @@ impl MaterialReferents {
             framed = format!("{line};").into();
             slots = crate::step_log::read_slots(&framed).map(|(_, s)| s);
         }
+        let populated = || slots.as_ref().map_or(1, |s| s.iter().filter(|s| !slot_unset(s)).count());
+        let Some(at) = at else {
+            *dropped += populated();
+            self.ifc5_omitted.insert(id);
+            return None;
+        };
         let named = slots.as_ref().and_then(|s| s.get(at)).and_then(|s| slot_ref(s));
         let kept = match (named, named.and_then(|r| resolve(&self.records, &self.gone, r))) {
             // The frame and slot splitter `read_slots` used, so it rewrites any record that read.
@@ -208,7 +219,7 @@ impl MaterialReferents {
             _ => None,
         };
         if kept.is_none() {
-            *dropped += slots.as_ref().map_or(1, |s| s.iter().filter(|s| !slot_unset(s)).count()); // unread: at least the record
+            *dropped += populated();
             let why = match (&slots, named) {
                 (None, _) => "unreadable",
                 (_, None) => "no Material",
@@ -220,13 +231,22 @@ impl MaterialReferents {
     }
 
     pub(crate) fn warnings(&self) -> Vec<String> {
-        if self.dropped.is_empty() { return Vec::new(); }
-        let sites: Vec<String> = self.dropped.iter().map(|(id, ty)| format!("#{id} ({ty})")).collect();
-        vec![format!(
-            "{} IfcMaterialProperties record(s) were not written: IFC2X3 IfcExtendedMaterialProperties.Material must name one IfcMaterial, and theirs does not: {} (#10763).",
-            self.dropped.len(),
-            sites.join(", ")
-        )]
+        let mut warnings = Vec::new();
+        if !self.dropped.is_empty() {
+            let sites: Vec<String> = self.dropped.iter().map(|(id, ty)| format!("#{id} ({ty})")).collect();
+            warnings.push(format!(
+                "{} IfcMaterialProperties record(s) were not written: IFC2X3 IfcExtendedMaterialProperties.Material must name one IfcMaterial, and theirs does not: {} (#10763).",
+                self.dropped.len(), sites.join(", ")
+            ));
+        }
+        if !self.ifc5_omitted.is_empty() {
+            let sites: Vec<String> = self.ifc5_omitted.iter().map(|id| format!("#{id}")).collect();
+            warnings.push(format!(
+                "{} IfcMaterialProperties record(s) were not written because IFC5 has no EXPRESS attribute registry: {} (#11132).",
+                self.ifc5_omitted.len(), sites.join(", ")
+            ));
+        }
+        warnings
     }
 }
 

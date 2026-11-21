@@ -15,7 +15,7 @@ it('prunes references to removed IFC2X3 resources using IFC4 slot cardinality (#
   const options = { schema: 'IFC4', projectStrategy: 'keep-first' } as const;
   for (const result of [single, merged.export(options), await merged.exportAsync(options)]) {
     const out = new TextDecoder().decode(result.content);
-    expect(out).not.toMatch(/^#(?:3|6|7|19|21)=/m);
+    expect(out).not.toMatch(/^#(?:3|6|7|19|21|22)=/m);
     expect(out).toContain('#4=IFCGEOMETRICCURVESET((#5));');
     expect(out).toContain('#13=IFCGEOMETRICCURVESET((#5));');
     expect(out).toContain("#12=IFCSTYLEDITEM($,(#11),'keep #3 as text');");
@@ -23,8 +23,10 @@ it('prunes references to removed IFC2X3 resources using IFC4 slot cardinality (#
     expect(result.stats.warnings).toEqual(expect.arrayContaining([
       expect.stringContaining('#3 (IFCBEZIERCURVE) was omitted'),
       expect.stringContaining('#21 (IFCCOMPOSITEPROFILEDEF) was omitted'),
+      expect.stringContaining('#22 (IFCRELAXATION) was omitted'), // #11131
     ]));
   }
   const report = analyzeConversionLoss(store, 'IFC2X3', 'IFC4');
   expect(report.describe()).toContain('1 × IFCBEZIERCURVE (#3) will be omitted because IFC4 does not declare its type.');
+  expect(report.describe()).toContain('1 × IFCRELAXATION (#22) will be omitted because IFC4 does not declare its type.');
 });

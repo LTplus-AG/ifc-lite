@@ -41,6 +41,18 @@ Point cross(const AdapterMesh& mesh,const Triangle& t) {
     return {uy*vz-uz*vy,uz*vx-ux*vz,ux*vy-uy*vx};
 }
 double dot(const Point& a,const Point& b) { return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]; }
+// Twice a triangle's area from the longest of its three corner cross products
+// (as flat_normal): the first corner's can round to 0 for a sliver, and which
+// corner is first follows the SDK's split.
+double double_area(const AdapterMesh& mesh,const Triangle& t) {
+    double best=0;
+    for (unsigned k=0;k<3;++k) {
+        const auto c=cross(mesh,{t[k],t[(k+1)%3],t[(k+2)%3]});
+        const double length=std::hypot(c[0],c[1],c[2]);
+        if (std::isfinite(length)) best=std::max(best,length);
+    }
+    return best;
+}
 using Edge=std::pair<uint32_t,uint32_t>;
 Edge edge(uint32_t a,uint32_t b) { return std::minmax(a,b); }
 Triangle rotated(Triangle t) {
@@ -426,11 +438,11 @@ std::vector<Triangle> greedy(const AdapterMesh& mesh,const std::vector<Triangle>
     // once in each direction. Same area and outward normals.
     std::map<std::pair<uint32_t,uint32_t>,unsigned> after;
     double before_area=0,after_area=0;
-    for (const auto& t:face) { const auto c=cross(mesh,t); before_area+=std::hypot(c[0],c[1],c[2]); }
+    for (const auto& t:face) before_area+=double_area(mesh,t);
     for (const auto& t:found) {
         Point unit;
         if (!flat_normal(point(mesh,t[0]),point(mesh,t[1]),point(mesh,t[2]),unit) || !(dot(unit,n)>0)) return {};
-        const auto c=cross(mesh,t); after_area+=std::hypot(c[0],c[1],c[2]);
+        after_area+=double_area(mesh,t);
         for (unsigned k=0;k<3;++k) ++after[{t[k],t[(k+1)%3]}];
     }
     for (const auto& [d,count]:after) {
@@ -536,4 +548,33 @@ void canonical_planar_faces(AdapterMesh& mesh,const std::vector<bool>& planar_fa
         const auto& s=spans[i];
         for (size_t t=s.begin;t<s.end;++t) for (unsigned k=0;k<3;++k) mesh.indices[3*t+k]=results[i][t-s.begin][k];
     }
+}
+
+EdgeCounts edge_counts(const AdapterMesh& mesh) {
+    std::vector<Edge> edges;
+    edges.reserve(mesh.indices.size());
+    for (size_t i=0;i+2<mesh.indices.size();i+=3) for (unsigned k=0;k<3;++k)
+        edges.push_back(edge(mesh.indices[i+k],mesh.indices[i+(k+1)%3]));
+    std::sort(edges.begin(),edges.end());
+    EdgeCounts counts;
+    for (size_t i=0;i<edges.size();) {
+        size_t j=i; while (j<edges.size() && edges[j]==edges[i]) ++j;
+        counts.boundary+=j-i==1; counts.spine+=j-i>2; i=j;
+    }
+    return counts;
+}
+
+EdgeCounts canonical_planar_faces_or_keep(AdapterMesh& mesh,const std::vector<bool>& planar_faces) {
+    const auto before=edge_counts(mesh);
+    AdapterMesh kept=mesh;
+    canonical_planar_faces(mesh,planar_faces);
+    order_mesh(mesh);
+    const auto after=edge_counts(mesh);
+    if (after.boundary<=before.boundary && after.spine<=before.spine) return after;
+    // The retriangulation itself made the mesh less manifold (back-to-back
+    // faces of a zero-thickness part sharing one split): keep the SDK's
+    // planar split, as before canonicalization, in canonical order.
+    mesh=std::move(kept);
+    order_mesh(mesh);
+    return edge_counts(mesh);
 }

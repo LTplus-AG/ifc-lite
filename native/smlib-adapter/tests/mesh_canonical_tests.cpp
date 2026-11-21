@@ -601,6 +601,33 @@ void run_mesh_canonical_tests() {
             require(has_edge(mesh,b,d),"the overlapping quad takes its other diagonal");
         }
     }
+    // A zero-thickness part: back-to-back faces over one square share the
+    // canonical split, which would give that diagonal four triangles. The
+    // planar step then keeps the SDK's split (as before canonicalization), so
+    // the part is published as manifold as the SDK made it, not refused, and
+    // the result is still a deterministic function of the input.
+    {
+        const std::vector<Point> square{{0,0,0},{1,0,0},{1,1,0},{0,1,0}};
+        AdapterMesh input; for (const auto& p:square) input.positions.insert(input.positions.end(),p.begin(),p.end());
+        input.indices={0,1,2, 0,2,3, 0,3,1, 1,3,2}; input.faces={0,0,1,1}; input.normals.assign(36,0.);
+        require(edge_counts(input).boundary==0 && edge_counts(input).spine==0,"zero-thickness input is manifold");
+        AdapterMesh raw=input; canonicalize(raw,{true,true});
+        require(edge_counts(raw).spine>0,"the shared canonical split alone makes a spine edge");
+        AdapterMesh ordered=input; order_mesh(ordered); order_mesh(ordered);
+        AdapterMesh mesh=input; order_mesh(mesh);
+        const auto counts=canonical_planar_faces_or_keep(mesh,{true,true});
+        require(counts.boundary==0 && counts.spine==0,"zero-thickness part is not refused");
+        same_bytes(mesh,ordered,"zero-thickness part keeps the SDK's planar split in canonical order");
+        AdapterMesh again=input; order_mesh(again); canonical_planar_faces_or_keep(again,{true,true});
+        same_bytes(again,mesh,"the fallback is deterministic");
+        // A part where the retriangulation adds no spine keeps its canonical split.
+        AdapterMesh cube; for (unsigned i=0;i<8;++i) cube.positions.insert(cube.positions.end(),{double(i&1),double(i>>1&1),double(i>>2&1)});
+        cube.indices={0,2,3, 0,3,1, 4,5,7, 4,7,6, 0,1,5, 0,5,4, 2,6,7, 2,7,3, 0,4,6, 0,6,2, 1,3,7, 1,7,5}; cube.faces={0,0,1,1,2,2,3,3,4,4,5,5};
+        cube.normals.assign(cube.indices.size()*3,0.);
+        AdapterMesh canonical=cube; canonicalize(canonical,std::vector<bool>(6,true));
+        order_mesh(cube); canonical_planar_faces_or_keep(cube,std::vector<bool>(6,true));
+        same_bytes(cube,canonical,"a manifold result keeps the canonical split");
+    }
     // The exact orientation: on this rotated grid (found by search) the naive
     // double sign of a near-collinear triple is wrong, the greedy then sees a
     // crossing that is not there and declines, and the SDK's split leaks.

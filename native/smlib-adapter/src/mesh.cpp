@@ -8,7 +8,6 @@
 #include <SmCone.h>
 #include <SmPlane.h>
 #include <SmPoly.h>
-#include <algorithm>
 #include <array>
 #include <cmath>
 #include <stdexcept>
@@ -100,27 +99,12 @@ std::unique_ptr<AdapterMesh> tessellate_mesh(SmBrep* solid, double chord, double
     // order again. Positions and source-face IDs are unchanged.
     order_mesh(*mesh);
     normalize_mesh_diagonals(*mesh,angle,chord,cylinders,canonical_grid(*mesh));
-    canonical_planar_faces(*mesh,planar);
-    order_mesh(*mesh);
-    // The strict topology report must describe the mesh that is returned, not
-    // the SDK's: a retriangulation that shares one split between back-to-back
-    // faces (a zero-thickness part) gives that diagonal four triangles. Count
-    // again (an edge in one triangle is a boundary edge, in more than two a
-    // spine edge) and refuse such a mesh like any non-manifold result.
-    {
-        std::vector<std::pair<uint32_t,uint32_t>> edges;
-        edges.reserve(mesh->indices.size());
-        for (size_t i=0;i<mesh->indices.size();i+=3) for (unsigned k=0;k<3;++k)
-            edges.push_back(std::minmax(mesh->indices[i+k],mesh->indices[i+(k+1)%3]));
-        std::sort(edges.begin(),edges.end());
-        uint32_t boundary=0,spine=0;
-        for (size_t i=0;i<edges.size();) {
-            size_t j=i; while (j<edges.size() && edges[j]==edges[i]) ++j;
-            boundary+=j-i==1; spine+=j-i>2; i=j;
-        }
-        mesh->info.boundary_edges=boundary; mesh->info.spine_edges=spine;
-        ensure(!boundary && !spine,"solid tessellation has boundary or spine edges");
-    }
+    const auto counts=canonical_planar_faces_or_keep(*mesh,planar);
+    // The strict topology report describes the mesh that is returned. The
+    // retriangulation falls back to the SDK's split rather than add boundary
+    // or spine edges, so this refuses only what the SDK's own mesh would.
+    mesh->info.boundary_edges=counts.boundary; mesh->info.spine_edges=counts.spine;
+    ensure(!counts.boundary && !counts.spine,"solid tessellation has boundary or spine edges");
     mesh->info.vertex_count = uint32_t(mesh->positions.size()/3);
     mesh->info.triangle_count = uint32_t(mesh->indices.size()/3);
     ensure(mesh->info.vertex_count && mesh->info.triangle_count,"nonempty solid produced empty tessellation");

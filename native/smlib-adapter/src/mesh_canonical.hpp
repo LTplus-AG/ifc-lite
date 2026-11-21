@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 #pragma once
 #include <array>
+#include <cstdint>
 #include <vector>
 struct AdapterMesh;
 
@@ -66,10 +67,8 @@ void order_mesh(AdapterMesh& mesh);
 // than 256 vertices, or when its edges are not manifold. Interior diagonals of
 // other retriangulated faces are not avoided: they can only coincide in
 // overlapping (degenerate) faces, which then share one canonical split by
-// design; tessellate_mesh recounts boundary and spine edges afterwards, so a
-// zero-thickness part whose back-to-back faces share a split (four triangles
-// on that diagonal) is refused as non-manifold rather than reported as
-// manifold. A declined face keeps the SDK's split, so its interior edges are
+// design (canonical_planar_faces_or_keep then keeps the SDK's split, so the
+// mesh stays as manifold as the SDK made it). A declined face keeps the SDK's split, so its interior edges are
 // avoided by every other face (faces that used one are redone).
 // A two-triangle face uses the same ranking in closed form (requad), with
 // exact orientation checks but without the greedy's area, normal and edge-use
@@ -79,3 +78,15 @@ void order_mesh(AdapterMesh& mesh);
 // face in the worst case (about 11 ms for 256 vertices, 1 us for a quad).
 // Requires order_mesh first (canonical vertex IDs, faces contiguous).
 void canonical_planar_faces(AdapterMesh& mesh, const std::vector<bool>& planar_faces);
+
+// Boundary edges (in one triangle) and spine edges (in more than two).
+struct EdgeCounts { uint32_t boundary=0, spine=0; };
+EdgeCounts edge_counts(const AdapterMesh& mesh);
+
+// canonical_planar_faces, then order_mesh, unless that leaves more boundary
+// or spine edges than the mesh had: then the mesh is restored and only
+// ordered, so every planar face keeps the SDK's split. This happens for a
+// zero-thickness part whose coincident back-to-back faces would share one
+// canonical split (four triangles on that diagonal); such a part is then
+// published as the SDK split it, not refused. Returns the final counts.
+EdgeCounts canonical_planar_faces_or_keep(AdapterMesh& mesh, const std::vector<bool>& planar_faces);

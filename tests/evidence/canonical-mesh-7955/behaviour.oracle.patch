@@ -1,6 +1,6 @@
 --- a/native/smlib-adapter/src/mesh.cpp
 +++ b/native/smlib-adapter/src/mesh.cpp
-@@ -94,7 +94,14 @@
+@@ -93,8 +93,13 @@
          if (static_cast<SmCone*>(surface)->GetCanonical(patch.frame,patch.radius,semi_angle)==SM_SUCCESS &&
              semi_angle==0 && std::isfinite(patch.radius) && patch.radius>0) cylinders[i]=patch;
      }
@@ -10,8 +10,8 @@
 +    // order again. Positions and source-face IDs are unchanged.
 +    order_mesh(*mesh);
      normalize_mesh_diagonals(*mesh,angle,chord,cylinders,canonical_grid(*mesh));
-+    canonical_planar_faces(*mesh,planar);
-+    order_mesh(*mesh);
-     // The strict topology report must describe the mesh that is returned, not
-     // the SDK's: a retriangulation that shares one split between back-to-back
-     // faces (a zero-thickness part) gives that diagonal four triangles. Count
+-    const auto counts=edge_counts(*mesh);
++    const auto counts=canonical_planar_faces_or_keep(*mesh,planar);
+     // The strict topology report describes the mesh that is returned. The
+     // retriangulation falls back to the SDK's split rather than add boundary
+     // or spine edges, so this refuses only what the SDK's own mesh would.

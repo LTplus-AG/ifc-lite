@@ -91,12 +91,16 @@ describe('complete native IDS Studio operation vocabulary (#10525 follow-up)', (
     const lint = await call<{ diagnostics: object }>('ids.lint'); assert.ok(lint.diagnostics);
   });
   it('reports when a saved validation report is memory-only (#10795 item 35)', async () => {
-    assert.equal(typeof indexedDB, 'undefined', 'this fixture has no browser persistence');
     const { content } = await call<{ content: string }>('ids.document.xml');
     const { run_id } = await call<{ run_id: string }>('validation.ids.run', { xml: content, scope: 'whole', entity_ids: [] });
-    const saved = await call<{ id: string; storage: string }>('validation.report.save', { run_id, name: 'In-memory report' }, true);
-    assert.equal(saved.storage, 'unavailable');
-    assert.ok(useViewerStore.getState().savedValidationReports.some(report => report.id === saved.id));
+    const refusal = refuseContentWrites('InvalidStateError');
+    try {
+      const saved = await call<{ id: string; storage: string }>('validation.report.save', { run_id, name: 'In-memory report' }, true);
+      assert.equal(saved.storage, 'unavailable');
+      assert.ok(useViewerStore.getState().savedValidationReports.some(report => report.id === saved.id));
+    } finally {
+      refusal.mock.restore();
+    }
   });
   it('rejects a validation.results continuation from a different specification population (#10877)', async () => {
     const { content } = await call<{ content: string }>('ids.document.xml');

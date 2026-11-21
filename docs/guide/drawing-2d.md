@@ -143,10 +143,18 @@ content.
 ### Generating a Floor Plan
 
 ```typescript
-import { generateFloorPlan } from '@ifc-lite/drawing-2d';
+import { generateFloorPlan, storeyCutElevation } from '@ifc-lite/drawing-2d';
 
 // generateFloorPlan(meshes: MeshData[], elevation: number, options?)
-const drawing = await generateFloorPlan(meshData, 1.2, {
+// `elevation` is a render-frame Y. For a cut 1.2 m above a storey floor, move
+// the storey's Elevation into that frame with the geometry's coordinateInfo.
+// Elevation is relative to the building: a building placed off its site's Z
+// also passes `buildingOrigin: { z }` in the frame. storeyElevations is empty
+// on a store restored from the cache, so check for the storey.
+const storeyElevation = store.spatialHierarchy?.storeyElevations.get(storeyId);
+if (storeyElevation === undefined) throw new Error(`No elevation for storey #${storeyId}`);
+const cut = storeyCutElevation(storeyElevation, 1.2, geometryResult.coordinateInfo);
+const drawing = await generateFloorPlan(geometryResult.meshes, cut, {
   includeHiddenLines: true,
   includeProjection: true,
 });

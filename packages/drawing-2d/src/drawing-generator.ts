@@ -238,7 +238,8 @@ export function createSectionConfig(
 }
 
 /**
- * Quick helper to generate a floor plan
+ * Quick helper to generate a floor plan. `elevation` is the render-frame Y of
+ * the cut; {@link storeyCutElevation} gives it for a height above a storey.
  */
 export async function generateFloorPlan(
   meshes: MeshData[],
@@ -249,10 +250,7 @@ export async function generateFloorPlan(
   try {
     await generator.initialize();
 
-    const config = createSectionConfig('y', elevation, {
-      projectionDepth: 3, // 3 meters below cut
-      scale: 100,
-    });
+    const config = createSectionConfig('y', elevation, { projectionDepth: 3, scale: 100 });
 
     return await generator.generate(meshes, config, options);
   } finally {

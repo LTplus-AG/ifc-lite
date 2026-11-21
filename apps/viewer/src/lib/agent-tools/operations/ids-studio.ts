@@ -98,6 +98,11 @@ export const idsOperations = [
     if (candidate.result !== undefined) { writeGuard(c); return candidate.result; }
     revision(candidate.revision);
     const contexts = await dependencies(c);
+    // A whole-document candidate replaces the open draft: save it first, as switching drafts does.
+    if (candidate.document && candidate.result === undefined && useViewerStore.getState().idsStudioDraftId
+      && !(await (await import('../../ids-studio/draft-viewer')).flushOpenIdsDraft())) {
+      throw new Error('The open IDS draft could not be saved. Save or close it before opening another document.');
+    }
     // Another apply of this token finished during the await: it dispatched once, so answer as a replay.
     if (candidate.result !== undefined) { writeGuard(c); return candidate.result; }
     revision(candidate.revision); writeGuard(c);

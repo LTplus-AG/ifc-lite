@@ -386,6 +386,7 @@ describe('loadFromCache — a superseded load writes nothing (#2301)', () => {
     let calls = 0;
     const result = await load(entry, () => ++calls >= 3);
     assert.ok(calls >= 3, 'the in-loop guard must have been reached');
+    assert.equal(result.superseded, true, 'the result says superseded, so the loader never reparses (r4655016554)');
     // Not one chunk may land: the flip happens while `readChunk(0)` is still in
     // flight, so the very first append is already superseded.
     assertStreamAbandoned(result, 0);

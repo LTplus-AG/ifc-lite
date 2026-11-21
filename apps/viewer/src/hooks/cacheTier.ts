@@ -196,7 +196,9 @@ export function decideCacheLoadOutcome(opts: {
   loadSucceeded: boolean;
   /** Has a newer load taken the active model slot in the meantime? */
   isStale: boolean;
+  /** Did `loadFromCache` report itself superseded (e.g. its model was removed while it adopted a snapshot)? */
+  superseded?: boolean;
 }): 'serve' | 'stale' | 'miss' {
-  if (opts.isStale) return 'stale';
+  if (opts.isStale || opts.superseded) return 'stale';
   return opts.loadSucceeded ? 'serve' : 'miss';
 }

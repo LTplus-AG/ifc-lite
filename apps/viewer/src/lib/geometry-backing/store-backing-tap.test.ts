@@ -254,6 +254,22 @@ describe('store geometry backing tap (test/debug only)', () => {
     await tap.stop();
   });
 
+  it('#10888 r4655022816 a released mesh appended in place after a prune-to-replay is never backed as complete', async () => {
+    const a = mesh(1, 0), b = mesh(2, 1);
+    const store = storeWith({ rel: [a, b] });
+    const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    drawAll();
+    await tap.seal();
+    releaseCpuMeshBuffers([a, b]);
+    const pruned = [a]; // a new array: a replay of the released `a` is staged
+    store.setState({ models: new Map([['rel', { geometryResult: { meshes: pruned }, idOffset: 0 }]]) });
+    append(store, 'rel', [b]); // the still-released `b` appended in place to that same array
+    drawAll();
+    const [status] = await tap.seal();
+    assert.equal(status.complete, false, 'emptied arrays are never acknowledged as the model\'s geometry');
+    await tap.stop();
+  });
+
   it('backs shard ids in the federated id space, as the drain uploads them', async () => {
     const store = storeWith({ fed: [mesh(1)] });
     store.setState((state) => ({ models: new Map([['fed', { ...state.models.get('fed')!, idOffset: 1000 }]]) }));

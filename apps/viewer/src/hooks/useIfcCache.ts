@@ -242,7 +242,7 @@ export function useIfcCache() {
         // sits ahead of the shard append, which is an active-slot write too:
         // shards from the old file would be instanced into the new model.
         if (superseded || isStale?.()) {
-          return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0 };
+          return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0, superseded: true };
         }
 
         meshCount = allMeshes.length;

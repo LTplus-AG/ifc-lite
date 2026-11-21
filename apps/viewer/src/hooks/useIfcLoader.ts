@@ -1197,11 +1197,12 @@ export function useIfcLoader() {
             // name the three outcomes explicitly.
             const cacheOutcome = decideCacheLoadOutcome({
               loadSucceeded: cacheLoadResult.success,
-              isStale: isStale(),
+              isStale: isStale(), superseded: cacheLoadResult.superseded === true, // a removed model's adoption reparses nothing (r4655016554)
             });
             if (cacheOutcome === 'stale') {
               // A newer load owns the active slot: write nothing, parse
-              // nothing. The newer load drives `setLoading`/progress itself.
+              // nothing. The newer load drives `setLoading`/progress itself; with none (model removed mid-adoption) settle ours.
+              if (!isStale()) { activity.cancelled = true; settleLoadUi(); }
               return;
             }
             if (cacheOutcome === 'serve') {

@@ -43,7 +43,12 @@ export interface ResupplyState {
 
 /** Whether a shard enqueued now (at `at`) may be backed; counts it toward the re-supply when the model is lost. */
 export function admitShard(state: ResupplyState, at: SupplyPoint): boolean {
-  if (!state.instancedLost) return true;
+  if (!state.instancedLost) {
+    // A shard at an accepted statement's own supply point is one the statement did not count: void it (r4655016564).
+    if (!state.supplied || !same(state.supplied, at)) return true;
+    state.instancedLost = true; state.lostAt = at; state.supplied = undefined;
+    return false;
+  }
   if (!state.lostAt || !after(at, state.lostAt)) return false;
   // A second reset or drop mid-supply leaves superseded fresh shards behind: never whole.
   const resupply = (state.resupply ??= { ...at, received: 0 });

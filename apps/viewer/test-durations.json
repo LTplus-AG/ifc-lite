@@ -2151,6 +2151,7 @@
     "src/lib/geo/wkt-projection.test.ts": 0.9,
     "src/lib/geometry-backing/cut-readback.federated.test.ts": 3.6,
     "src/lib/geometry-backing/generation-replay.test.ts": 0.9,
+    "src/lib/geometry-backing/instanced-resupply.test.ts": 0.6,
     "src/lib/geometry-backing/store-backing-tap.retention.test.ts": 1.1,
     "src/lib/geometry-backing/store-mesh-readback.test.ts": 1.8,
     "src/lib/geometry-cpu-appearance.test.ts": 4.8,

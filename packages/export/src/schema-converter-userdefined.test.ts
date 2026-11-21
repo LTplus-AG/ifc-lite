@@ -89,4 +89,10 @@ describe('IFC2X3 user-defined enum and label pairs (#11006)', () => {
       .toMatch(/,\.USERDEFINED\.,'CUSTOMPLAN'\);$/);
     expect(checks.warnings()).not.toContainEqual(expect.stringContaining('without the label their rule needs'));
   });
+  it.each(['$', '*'])('fills UserDefinedControlType when a comment precedes %s (#11006)', (unset) => {
+    const source = `#7=IFCWORKPLAN('g',#2,'P',$,$,'WP',$,$,$,$,$,$,$,.CUSTOMPLAN.,/* unset */${unset});`;
+    const checks = new EnumReconciliation();
+    expect(checks.apply(source, 'IFC2X3')).toMatch(/,\.USERDEFINED\.,'CUSTOMPLAN'\);$/);
+    expect(checks.warnings()).toEqual([]);
+  });
 });

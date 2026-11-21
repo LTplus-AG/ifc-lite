@@ -25,6 +25,7 @@ import { getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@if
 import { escapeStepString } from './step-serialization.js';
 import { readStepSlots, splitTopLevelStepArguments } from './step-argument-parser.js';
 import { breaksUserDefinedRule, userDefinedRule } from './schema-converter-userdefined.js';
+import { isUnset } from './schema-converter-userdefined-label.js';
 import { resolveMissingEnumMember, type EnumPolicyAttribute } from './schema-enum-policy.js';
 
 interface TargetEntity {
@@ -104,7 +105,7 @@ export class EnumReconciliation {
       switch (resolution.kind) {
         case 'userdefined':
           values[index] = '.USERDEFINED.';
-          if (values[resolution.labelIndex].trim() === '$') values[resolution.labelIndex] = `'${escapeStepString(member)}'`;
+          if (isUnset(values[resolution.labelIndex])) values[resolution.labelIndex] = `'${escapeStepString(member)}'`;
           else this.record('userdefined-label-occupied', where);
           changed = true;
           break;

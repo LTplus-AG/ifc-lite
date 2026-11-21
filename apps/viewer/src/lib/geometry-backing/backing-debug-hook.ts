@@ -20,7 +20,16 @@ export type GeometryBackingCommand =
   | { action: 'start'; options?: ModelBackingOptions }
   | { action: 'status' | 'seal' | 'stop' }
   /** TEST ONLY: release CPU geometry of every model after verifying its backing. */
-  | { action: 'release-for-test' };
+  | { action: 'release-for-test' }
+  /** TEST ONLY: magnetic snap at canvas CSS points, through readback when released. */
+  | { action: 'snap-probe-for-test'; points: Array<[number, number]> };
+
+export interface SnapProbe {
+  outcome: string;
+  expressId: number | null;
+  point: [number, number, number] | null;
+  snap: { type: string; position: [number, number, number] } | null;
+}
 
 let starting: Promise<StoreGeometryBackingTap> | undefined;
 let active: StoreGeometryBackingTap | undefined;
@@ -30,8 +39,20 @@ export function activeGeometryBackingTap(): StoreGeometryBackingTap | undefined 
 
 /** `renderer` is needed only by `release-for-test`; a test may start the tap
  * before the viewport has one, so the whole stream is observed. */
+type SnapProbeCommand = Extract<GeometryBackingCommand, { action: 'snap-probe-for-test' }>;
+// Each command's own result type: a backing command never reads as a snap probe, nor the reverse.
+export function geometryBackingCommand(store: StoreApi<ReleaseState>, renderer: Renderer | undefined, command: SnapProbeCommand):
+  Promise<SnapProbe[]>;
+export function geometryBackingCommand(store: StoreApi<ReleaseState>, renderer: Renderer | undefined,
+  command: Exclude<GeometryBackingCommand, SnapProbeCommand>): Promise<ModelBackingStatus[]>;
+export function geometryBackingCommand(store: StoreApi<ReleaseState>, renderer: Renderer | undefined, command: GeometryBackingCommand):
+  Promise<ModelBackingStatus[] | SnapProbe[]>;
 export async function geometryBackingCommand(store: StoreApi<ReleaseState>, renderer: Renderer | undefined, command: GeometryBackingCommand):
-  Promise<ModelBackingStatus[]> {
+  Promise<ModelBackingStatus[] | SnapProbe[]> {
+  if (command.action === 'snap-probe-for-test') {
+    if (!renderer) throw new Error('Snap probes need the viewport renderer');
+    return snapProbe(renderer, command.points);
+  }
   if (command.action === 'start') {
     if (!starting) {
       const pending = StoreGeometryBackingTap.start(store, command.options);
@@ -124,4 +145,30 @@ async function releaseForTest(tap: StoreGeometryBackingTap, store: StoreApi<Rele
   if (scene.isGeometryDataReleased() !== true) throw new Error('The scene refused to release; store geometry was kept');
   for (const meshes of lists) releaseCpuMeshBuffers(meshes);
   return tap.status();
+}
+
+/**
+ * The hover path's own sequence: readback (only when released), then the magnetic raycast, which, as on the
+ * hover path, runs only on an answered read. A refused one (`unavailable`: an instanced or unbacked front
+ * surface) reports no hit and no snap rather than whatever lies behind it, a point cloud included.
+ */
+async function snapProbe(renderer: Renderer, points: Array<[number, number]>): Promise<SnapProbe[]> {
+  const { feedReadbackAt } = await import('./readback-measure');
+  const { sceneGeometryReleased } = await import('./scene-released');
+  const out: SnapProbe[] = [];
+  for (const [x, y] of points) {
+    const outcome = sceneGeometryReleased(renderer) ? await feedReadbackAt(renderer, x, y, {}) : 'resident';
+    if (outcome !== 'fed' && outcome !== 'no-hit' && outcome !== 'resident') {
+      out.push({ outcome, expressId: null, point: null, snap: null });
+      continue;
+    }
+    const result = renderer.raycastSceneMagnetic(x, y, { edge: null, meshExpressId: null, lockStrength: 0 },
+      { snapOptions: { snapToVertices: true, snapToEdges: true, snapToFaces: true, screenSnapRadius: 40 } });
+    const hit = result.intersection;
+    const target = result.snapTarget;
+    out.push({ outcome, expressId: hit?.expressId ?? null,
+      point: hit ? [hit.point.x, hit.point.y, hit.point.z] : null,
+      snap: target ? { type: String(target.type), position: [target.position.x, target.position.y, target.position.z] } : null });
+  }
+  return out;
 }

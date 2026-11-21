@@ -36,9 +36,11 @@ export const coordinationFlowOperations = [
   }),
   coordination('flow.validate', 'Validate the active workflow wiring and inspect exact native node availability without running it.', ['read'], emptySchema, async () => {
     const doc = useViewerStore.getState().flowDoc; if (!doc) throw unavailable('Open a workflow first.');
-    const [{ validateFlowWiring, checkAvailability }, { flowRegistry, ensureFlowAiNodes, viewerFlowFeatures }] = await Promise.all([import('@ifc-lite/flow'), import('@/lib/flow/runner')]);
-    if (doc.nodes.some(node => node.type.startsWith('ai.'))) await ensureFlowAiNodes();
-    const registry = flowRegistry(); return { wiring: validateFlowWiring(doc, registry), availability: checkAvailability(doc, registry, viewerFlowFeatures(false)) };
+    const [{ validateFlowWiring, checkAvailability }, { flowRegistry, ensureFlowAiNodes, viewerFlowFeatures }, { isFeatureEnabled }] = await Promise.all([import('@ifc-lite/flow'), import('@/lib/flow/runner'), import('@/lib/features')]);
+    const ai = doc.nodes.some(node => node.type.startsWith('ai.')); if (ai) await ensureFlowAiNodes();
+    // The same feature set the native run preflights with, so availability here matches flow.run.
+    const features = viewerFlowFeatures(true, ai && isFeatureEnabled('ai.assistant'));
+    const registry = flowRegistry(); return { wiring: validateFlowWiring(doc, registry), availability: checkAvailability(doc, registry, features) };
   }),
   modelCoordination('flow.analyze', 'Execute the active graph through the native Flow scheduler with an explicit read-only core/model/table node allowlist. Returns terminal node reports and outputs; does not run scripts, network, publication or model-writing nodes.', ['read'], emptySchema, async (_, c) => {
     const s = useViewerStore.getState(), doc = s.flowDoc; if (!doc) throw unavailable('Open a workflow first.');

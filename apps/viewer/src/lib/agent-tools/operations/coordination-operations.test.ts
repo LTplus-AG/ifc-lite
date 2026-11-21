@@ -517,6 +517,14 @@ it('a refused panel save keeps the editor dirty, so script.open still guards the
   }
 });
 
+it('flow.validate reports node availability with the native run features (#10591 review)', async () => {
+  const doc: FlowDocument = { flowVersion: 1, id: 'validate-automation', name: 'Validate automation', inputs: [], outputs: [], nodes: [{ id: 'pdf', type: 'report.exportPdf', pos: [0, 0] }], edges: [], capabilities: [] };
+  useViewerStore.getState().setFlowDoc(doc);
+  const result = await execute<{ availability: Array<{ nodeId?: string; status: string }> }>('flow.validate');
+  assert.ok(result.availability.length > 0, 'the automation node is inspected');
+  assert.ok(result.availability.every(entry => entry.status !== 'unavailable'), JSON.stringify(result.availability));
+});
+
 it('Flow effect admission refuses future remote nodes and detects native HTTP Player POST overrides before any effect (#10525)', async () => {
   const { flowRegistry } = await import('@/lib/flow/runner'); let ran = false;
   flowRegistry().register({ type: 'future.remotePublication', title: 'Unreviewed future provider', category: 'test', inputs: [], outputs: [], params: [], capabilities: ['network.fetch:*'], requires: { network: true }, run() { ran = true; throw new Error('Unknown effect must never run'); } });

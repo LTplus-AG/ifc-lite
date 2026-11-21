@@ -216,9 +216,9 @@ describe('schema-converter', () => {
       expect(convertStepLine(line, 'IFC2X3', 'IFC4')).toBe(line); // left untouched
     });
 
-    it('does NOT pad a reordered IfcApproval (7→9, fully reordered)', () => {
-      const line = "#5=IFCAPPROVAL('desc','2020-01-01',$,$,$,'Name','Id');"; // 7 attrs
-      expect(convertStepLine(line, 'IFC2X3', 'IFC4')).toBe(line);
+    it('reconciles a reordered IfcApproval by its attribute map, never by padding (#10763)', () => {
+      const line = "#5=IFCAPPROVAL('desc',#9,$,$,$,'Name','Id');"; // 7 attrs
+      expect(convertStepLine(line, 'IFC2X3', 'IFC4')).toBe("#5=IFCAPPROVAL('Id','Name','desc',$,$,$,$,$,$);");
     });
   });
 

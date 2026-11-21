@@ -1,5 +1,35 @@
 # @ifc-lite/viewer-embed
 
+## 1.15.30
+
+### Patch Changes
+
+- Updated dependencies [[`3b2e398`](https://github.com/LTplus-AG/ifc-lite/commit/3b2e3985a97d3d21b44337a33cc8fe7aef477c91), [`ffa365b`](https://github.com/LTplus-AG/ifc-lite/commit/ffa365bd8a7887b5826dd4bbfd331edf1c39f6c1), [`8c30d45`](https://github.com/LTplus-AG/ifc-lite/commit/8c30d455cf70cbfb45a83a813d9d3c40e92bcdef), [`b95d529`](https://github.com/LTplus-AG/ifc-lite/commit/b95d529e4fe1fcc2cf25dd75809ef79bd57b7d20), [`054569a`](https://github.com/LTplus-AG/ifc-lite/commit/054569a4f3719b4bff505a45d1cbed4eb6520192), [`e18117d`](https://github.com/LTplus-AG/ifc-lite/commit/e18117daf0dc60f096d87c10d0567f8b2b7d9d54), [`1d6fccf`](https://github.com/LTplus-AG/ifc-lite/commit/1d6fccf36771a30dfee6d67ac04a320accc47b7e), [`1c90760`](https://github.com/LTplus-AG/ifc-lite/commit/1c9076074d07eea0811a713d227f3839a4fe9756), [`d4c8cf4`](https://github.com/LTplus-AG/ifc-lite/commit/d4c8cf47a8734084f69e661ac1aa1c33f1908adb), [`0ae24d5`](https://github.com/LTplus-AG/ifc-lite/commit/0ae24d5d962c5604ea957942a21b64a956aab4bf), [`bc8fd0c`](https://github.com/LTplus-AG/ifc-lite/commit/bc8fd0c4bac2c94f4e1ad5085ded2f6080c08d9b), [`9cf7b65`](https://github.com/LTplus-AG/ifc-lite/commit/9cf7b65a35dc016f7a09aedc4905f2178d4c6154), [`dfbd662`](https://github.com/LTplus-AG/ifc-lite/commit/dfbd662d53fcd53cd92b4d7cb800acc0f36f9126), [`1822664`](https://github.com/LTplus-AG/ifc-lite/commit/182266441ec66e9db3482b42f30d04b0f24193f8), [`7053690`](https://github.com/LTplus-AG/ifc-lite/commit/7053690af8cd5e2c0c6853a8a9e7215fe4f69db3), [`cedc6c4`](https://github.com/LTplus-AG/ifc-lite/commit/cedc6c4e595d2065aaf96a1133dd4b211c309b97), [`e0d3ed0`](https://github.com/LTplus-AG/ifc-lite/commit/e0d3ed0a1158a8848a293f9bd587a885ccb5f90b), [`259ca3f`](https://github.com/LTplus-AG/ifc-lite/commit/259ca3fcdc2dd78df1131f1ae27289d58b8fb073), [`38ef050`](https://github.com/LTplus-AG/ifc-lite/commit/38ef050d9585a468132f11c4ec822ceaf157d6b2), [`f3e347e`](https://github.com/LTplus-AG/ifc-lite/commit/f3e347ead2176f7120d5a2e0ffc572c141bfa7ad), [`5669c62`](https://github.com/LTplus-AG/ifc-lite/commit/5669c625b64fb2b9c5f58f006e9197ff4e363c1d), [`809ff80`](https://github.com/LTplus-AG/ifc-lite/commit/809ff8091ab3d2de47e7989eb51a8bce72e361d5), [`073de01`](https://github.com/LTplus-AG/ifc-lite/commit/073de014d989c750e5930b205cc35d87d8570a0c), [`809ff80`](https://github.com/LTplus-AG/ifc-lite/commit/809ff8091ab3d2de47e7989eb51a8bce72e361d5), [`d17f7cc`](https://github.com/LTplus-AG/ifc-lite/commit/d17f7cc862444e00c5bd6e9e060a19e32200e57e), [`089bcb5`](https://github.com/LTplus-AG/ifc-lite/commit/089bcb526e1ed474058ee7c75fa8abfffd13e2a6), [`80f01cc`](https://github.com/LTplus-AG/ifc-lite/commit/80f01cc596cd541237c8083f7b17b9e62b068f44), [`25de928`](https://github.com/LTplus-AG/ifc-lite/commit/25de928d55302ac75b40d2d241a13e819b0aea51), [`57b3409`](https://github.com/LTplus-AG/ifc-lite/commit/57b34097c81a8819715065bfaef71078d3478806), [`fe05a51`](https://github.com/LTplus-AG/ifc-lite/commit/fe05a5174d8bb63e87dddbe7e68295eb8d1bd035), [`fdaab23`](https://github.com/LTplus-AG/ifc-lite/commit/fdaab23931dd43752bfbc4f5492cae58b26e7c87), [`3026352`](https://github.com/LTplus-AG/ifc-lite/commit/3026352e3ba723fc77ba036a7c2d2b74681f8c19), [`c535b22`](https://github.com/LTplus-AG/ifc-lite/commit/c535b221a0c0ed237e7ec83637df5fb308c0138b), [`69a922b`](https://github.com/LTplus-AG/ifc-lite/commit/69a922b25ad0cec80086dbe7cba58d4a274c5a6c), [`ab86fcb`](https://github.com/LTplus-AG/ifc-lite/commit/ab86fcbcc5ec3bf9b6b86137684bc7dd1a3b89be), [`2088a50`](https://github.com/LTplus-AG/ifc-lite/commit/2088a50fbd535bf22d580ad3a8e05a13204cd967), [`0cf8a22`](https://github.com/LTplus-AG/ifc-lite/commit/0cf8a229c97224f4fde2afea554cd46ce1afcd81), [`4ae69dc`](https://github.com/LTplus-AG/ifc-lite/commit/4ae69dce625587b3b87826cb32247acd4408ebf8), [`a1c2588`](https://github.com/LTplus-AG/ifc-lite/commit/a1c25887acfaba313db68b556059c357c72283e1), [`1290376`](https://github.com/LTplus-AG/ifc-lite/commit/1290376565b6e437d39593d559be245502799a13), [`b888736`](https://github.com/LTplus-AG/ifc-lite/commit/b8887367aaa740c5e0584138d4273ce98ca5d9a5), [`60f75bf`](https://github.com/LTplus-AG/ifc-lite/commit/60f75bf1f8418cf4f1598c8cc570de55209ee268), [`97de03a`](https://github.com/LTplus-AG/ifc-lite/commit/97de03ad7c9a2ed240e744aee19d9b911338466b), [`6c2ece6`](https://github.com/LTplus-AG/ifc-lite/commit/6c2ece6857c330cc37b44386181c2a2022df1864), [`b0639bb`](https://github.com/LTplus-AG/ifc-lite/commit/b0639bba6b01401b222f70bbec54f006a732ab4e), [`1ad48ac`](https://github.com/LTplus-AG/ifc-lite/commit/1ad48ac88d255d9bcc6b5986072fdf4021ca247c), [`1264e71`](https://github.com/LTplus-AG/ifc-lite/commit/1264e71f714ef36e347b658b897e09a22294b3d2), [`79a3e8c`](https://github.com/LTplus-AG/ifc-lite/commit/79a3e8cd0a3998cbb674b7f25457f20f3b355fb8), [`d96b53a`](https://github.com/LTplus-AG/ifc-lite/commit/d96b53a32480683d51c6137f586385e123c93421), [`469ec7d`](https://github.com/LTplus-AG/ifc-lite/commit/469ec7d4750c1c47290aa7f6c8ffaba0d929751e), [`8c30d45`](https://github.com/LTplus-AG/ifc-lite/commit/8c30d455cf70cbfb45a83a813d9d3c40e92bcdef), [`0dc2c3a`](https://github.com/LTplus-AG/ifc-lite/commit/0dc2c3a52bf09c7f83ff04af9135a7032ba6ed29), [`e74604e`](https://github.com/LTplus-AG/ifc-lite/commit/e74604e31c1a6990a2c97261d05457012633d666), [`dcd0ae7`](https://github.com/LTplus-AG/ifc-lite/commit/dcd0ae7a56f177735abe0075a24aa8a246b02974), [`d706d3b`](https://github.com/LTplus-AG/ifc-lite/commit/d706d3b345155c06028a372bc27533fe7e492267), [`40dd89f`](https://github.com/LTplus-AG/ifc-lite/commit/40dd89f534f021f5ebfa6dca0ede28274adf168a)]:
+  - @ifc-lite/export@5.0.0
+  - @ifc-lite/renderer@7.3.0
+  - @ifc-lite/wasm@13.0.0
+  - @ifc-lite/geometry@8.3.0
+  - @ifc-lite/mutations@4.1.0
+  - @ifc-lite/mcp@0.31.0
+  - @ifc-lite/create@6.1.0
+  - @ifc-lite/sdk@10.1.0
+  - @ifc-lite/parser@11.0.0
+  - @ifc-lite/server-client@6.1.0
+  - @ifc-lite/geo@0.2.0
+  - @ifc-lite/ai@0.2.2
+  - @ifc-lite/clash@3.0.1
+  - @ifc-lite/flow-nodes@0.12.4
+  - @ifc-lite/diff@0.13.3
+  - @ifc-lite/rules@0.8.2
+  - @ifc-lite/flood-check@0.2.1
+  - @ifc-lite/ids@3.5.1
+  - @ifc-lite/ids-authoring@0.3.6
+  - @ifc-lite/query@2.5.6
+  - @ifc-lite/pointcloud@0.15.1
+  - @ifc-lite/site-context@0.1.1
+  - @ifc-lite/lists@3.3.1
+  - @ifc-lite/ids-agent@0.3.1
+
 ## 1.15.29
 
 ### Patch Changes

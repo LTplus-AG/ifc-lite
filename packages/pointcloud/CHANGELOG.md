@@ -1,5 +1,12 @@
 # @ifc-lite/pointcloud
 
+## 0.15.1
+
+### Patch Changes
+
+- Updated dependencies [[`40dd89f`](https://github.com/LTplus-AG/ifc-lite/commit/40dd89f534f021f5ebfa6dca0ede28274adf168a)]:
+  - @ifc-lite/geo@0.2.0
+
 ## 0.15.0
 
 ### Minor Changes

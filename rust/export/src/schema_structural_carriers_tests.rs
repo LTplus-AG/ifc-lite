@@ -115,9 +115,7 @@ fn writes_no_causes_for_a_caused_by_that_names_no_reaction_9668() {
     assert!(warnings.contains("IFCSTRUCTURALLINEARACTION.CausedBy has no slot in IFC4; its value is omitted"), "{warnings}");
 }
 
-/// /code-review on the #10789 restack: the warning uses the dropped count's
-/// comment-aware test, so a CausedBy holding only a comment and `$` is no
-/// omitted value (#10779).
+/// A CausedBy slot holding only a comment and `$` supplies no value (#10779).
 #[test]
 fn a_comment_only_caused_by_is_not_warned_as_omitted_10779() {
     let (_, warnings) = convert(&model("IFC2X3", &CAUSED.replace(",.F.,#20,", ",.F.,/* none */$,")), "IFC4");

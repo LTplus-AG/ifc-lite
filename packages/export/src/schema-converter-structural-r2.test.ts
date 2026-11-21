@@ -69,7 +69,6 @@ describe('structural conversion reports unrepresentable data #9668', () => {
     expect(out).not.toContain('#77');
     expect(diagnostics.warnings().join('\n')).toContain('IFCSTRUCTURALPOINTACTION.CausedBy has no slot in IFC4; its value is omitted');
   });
-  // /code-review on the #10789 restack: the warning uses the count's comment-aware test (#10779).
   it('reports nothing for a CausedBy holding only a comment and $', () => {
     const diagnostics = new EnumReconciliation();
     convertStepLine("#50=IFCSTRUCTURALPOINTACTION('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,.F.,/* none */$);", 'IFC2X3', 'IFC4', undefined, undefined, undefined, undefined, diagnostics);

@@ -114,7 +114,7 @@ const IFC4_TO_IFC4X3: Map<string, string> = new Map([
   // IfcBuildingElement → IfcBuiltElement (IFC4X3 rename)
   // Note: both exist in IFC4X3 for backwards compat, but IfcBuiltElement is canonical
 ]);
-const IFC2X3_TO_IFC4X3 = chainMaps(IFC2X3_UP, IFC4_TO_IFC4X3), IFC2X3_TO_IFC5 = chainMaps(IFC2X3_TO_IFC4, IFC4_TO_IFC4X3); // built once
+let ifc2x3ToIfc4x3: Map<string, string> | undefined, ifc2x3ToIfc5: Map<string, string> | undefined;
 
 // ─── IFC4X3 → IFC4 type renames ────────────────────────────────────────────
 const IFC4X3_TO_IFC4: Map<string, string> = new Map([
@@ -194,8 +194,8 @@ function getConversionMap(
   if (from === 'IFC4' && to === 'IFC5') return IFC4_TO_IFC4X3;
 
   // Multi-step: IFC2X3 → IFC4X3 = IFC2X3 → IFC4 → IFC4X3
-  if (from === 'IFC2X3' && to === 'IFC4X3') return IFC2X3_TO_IFC4X3;
-  if (from === 'IFC2X3' && to === 'IFC5') return IFC2X3_TO_IFC5;
+  if (from === 'IFC2X3' && to === 'IFC4X3') return ifc2x3ToIfc4x3 ??= chainMaps(IFC2X3_UP, IFC4_TO_IFC4X3);
+  if (from === 'IFC2X3' && to === 'IFC5') return ifc2x3ToIfc5 ??= chainMaps(IFC2X3_TO_IFC4, IFC4_TO_IFC4X3);
 
   // Multi-step: IFC4X3 → IFC2X3 = IFC4X3 → IFC4 → IFC2X3
   if ((from === 'IFC4X3' || from === 'IFC5') && to === 'IFC2X3') {

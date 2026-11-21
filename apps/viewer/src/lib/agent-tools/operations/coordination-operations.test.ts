@@ -15,6 +15,15 @@ import { readBCF } from '@ifc-lite/bcf';
 import { registerMountedFileHost } from '@/components/viewer/toolbar/mounted-file-host';
 import { setCollabEnabledOverride } from '@/lib/collab/config';
 import { useCollabShareReview } from '@/lib/collab/share-review';
+import { connectPeer, reviewedBatch } from '@/test/bcf-publication-fixture';
+import { deferred } from '@/test/race';
+import { createElement } from 'react';
+import { cleanup, click, render, waitFor } from '@/test/render.js';
+import { BCFPublicationPanel } from '@/components/viewer/bcf/BCFPublicationPanel';
+import { bcfDraftLibrary, saveDraftBatch } from '@/lib/bcf-drafts/draft-library';
+import { initializeBcfOutbox } from '@/lib/bcf-publication/outbox-store';
+import { useBcfPublicationReview, type BcfPublicationReview } from '@/lib/bcf-publication/review-candidate';
+import { loadBcfServerConfig, saveBcfServerConfig } from '@/services/bcf-server';
 import { LocalBackend } from '@/sdk/local-backend';
 import { seedCoincidentWalls } from '@/test/clash-run-fixture';
 import { useViewerStore } from '@/store';
@@ -236,4 +245,66 @@ it('#10589 refuses agent joins that would share local annotations without starti
     assert.match(response.text, /open the room invite link themselves/);
   }
   assert.equal(start.mock.callCount(), 0);
+});
+
+it('#10589 stages a publishable plan with the native default for an unsupported BCF topic type', async t => {
+  const peer = await connectPeer(t, { topicTypes: ['Task', 'Model Issue'], topicStatuses: ['Draft', 'Open', 'Closed'] });
+  const batch = await reviewedBatch();
+  await bcfDraftLibrary.initialize();
+  await initializeBcfOutbox();
+  assert.equal(await saveDraftBatch(batch), true);
+  t.after(() => useBcfPublicationReview.setState({ candidate: null }));
+
+  const { state, candidate } = await execute<{ state: string; candidate: BcfPublicationReview }>('bcf.preparePublication', {
+    batch_id: batch.id, project_id: peer.target.projectId, topic_types: [],
+  });
+  assert.equal(state, 'waiting-for-approval');
+  assert.deepEqual(candidate.topicTypes, { Clash: 'Model Issue' });
+  assert.equal(candidate.preflight.ok, true);
+  const creates = candidate.plan.record.entries.filter(entry => entry.operation === 'createTopic');
+  assert.equal(creates.length, batch.topics.length);
+  assert.ok(creates.every(entry => entry.payload.topic_type === 'Model Issue' && entry.topicTypeFrom === 'Clash'));
+  assert.equal(peer.state.receivedWrites, 0, 'preparing the plan does not write remotely');
+  const ui = render(createElement(BCFPublicationPanel, { batch, onRecordId: () => undefined, onUsers: () => undefined }));
+  try {
+    const publish = () => [...ui.querySelectorAll('button')].find(item => item.textContent?.startsWith('Publish '));
+    await waitFor(() => publish()?.disabled === false, 'native Publish is ready');
+    const picker = [...ui.querySelectorAll('select')].find(select => [...select.options].some(option => option.value === 'Model Issue'));
+    assert.equal(picker?.value, 'Model Issue', 'the staged mapping is visible on the native picker');
+    click(publish()!);
+    await waitFor(() => publish()?.disabled === false && peer.state.topics.size === batch.topics.length, 'the first approval publishes the staged plan');
+  } finally {
+    cleanup();
+  }
+});
+
+it('#10589 refuses to install a fetched BCF project after switching accounts', async t => {
+  const peer = await connectPeer(t);
+  const config = loadBcfServerConfig();
+  assert.ok(config);
+  const ready = deferred();
+  const release = deferred();
+  t.after(() => release.resolve());
+  const realFetch = globalThis.fetch;
+  t.mock.method(globalThis, 'fetch', async (...args: Parameters<typeof fetch>) => {
+    const response = await realFetch(...args);
+    const input = args[0];
+    const url = new URL(input instanceof Request ? input.url : input);
+    if (url.pathname.endsWith('/topics')) {
+      ready.resolve();
+      await release.promise;
+    }
+    return response;
+  });
+
+  const local = await execute<{ project_id: string }>('bcf.createProject', { value: 'Keep local project' });
+  const before = useViewerStore.getState().bcfProject;
+  const pull = assert.rejects(execute('bcf.pullProject', {
+    project_id: peer.target.projectId, project_name: peer.target.projectName, replace_project_id: local.project_id,
+  }), { code: ToolErrorCode.STATE_CHANGED, message: /account changed during synchronization/ });
+  await waitFor(() => ready.settled(), 'the old account response is in flight');
+  saveBcfServerConfig({ ...config, userId: 'other-coordinator@example.test' });
+  release.resolve();
+  await pull;
+  assert.equal(useViewerStore.getState().bcfProject, before);
 });

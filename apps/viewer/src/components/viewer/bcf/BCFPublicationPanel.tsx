@@ -67,6 +67,7 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
   const [report, setReport] = useState<DispatchReport | null>(null);
   const [connection, setConnection] = useState<PublicationConnection | null>(null);
   const [topicTypes, setTopicTypes] = useState<TopicTypeChoice>({});
+  const [stagedTypeSources, setStagedTypeSources] = useState<string[]>([]);
   // A type choice and a preflight result belong to one batch revision and server project.
   // Whatever moves the target (the project picker, or a reconnect to another
   // server) drops both, so neither is applied to or shown for a project the
@@ -103,6 +104,7 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
     reviewEpoch.current++;
     adopted.current = { id: candidate.id, targetKey: reviewKey(batch, candidate.target.serverUrl, candidate.target.userId, candidate.target.projectId) };
     setProjectId(candidate.target.projectId); setTopicTypes(candidate.topicTypes); setPreflight(candidate.preflight);
+    setStagedTypeSources([...new Set(candidate.plan.record.entries.flatMap(entry => entry.topicTypeFrom ? [entry.topicTypeFrom] : []))]);
     // As the native Check does, so the dialog can offer the server's assignees.
     reportedUsersKey.current = assigneeKey(candidate.target.serverUrl, candidate.target.userId, candidate.target.projectId);
     onUsers(candidate.preflight.extensions.user_id_type ?? []);
@@ -143,6 +145,7 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
   });
   const adopt = (result: PreflightReport) => {
     setPreflight(result);
+    setStagedTypeSources([]);
     setTopicTypes(current => preselectTopicTypes(result, current));
   };
   const check = () => act(async isCurrent => {
@@ -165,6 +168,10 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
     if (published.report.preflight) adopt(published.report.preflight);
   });
   const unknownTypes = unknownTopicTypes(preflight);
+  const allowedTypes = preflight?.extensions.topic_type ?? [];
+  const typeChoices = [...unknownTypes, ...stagedTypeSources
+    .filter(type => allowedTypes.length && !unknownTypes.some(unknown => unknown.type === type))
+    .map(type => ({ type, allowed: allowedTypes }))];
   // Preflight problems other than a topic type the picker resolves.
   const listedIssues = (preflight?.issues ?? []).filter(issue => !(issue.field === 'topic_type' && unknownTypes.some(item => item.type === issue.value)));
 
@@ -197,7 +204,7 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
           </ul>
         </output>
       )}
-      {unknownTypes.map(({ type, allowed }) => (
+      {typeChoices.map(({ type, allowed }) => (
         <label key={type} className="flex flex-wrap items-center gap-2 rounded bg-warn-surface px-2 py-1">
           {t('bcfDrafts.publish.topicType', { type })}
           <select className="h-7 min-w-0 flex-1 rounded border border-border bg-background" value={topicTypes[type] ?? ''} disabled={busy}

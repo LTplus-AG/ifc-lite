@@ -189,6 +189,33 @@
    "upOnly": [],
    "setOfOne": null,
    "why": "'Made subtype of IfcResourceLevelRelationship (attribute order changed).'"
+  },
+  {
+   "ifc2x3": "IFCPROCEDURE",
+   "ifc4": "IFCPROCEDURE",
+   "renamed": [["ProcedureID", "Identification"], ["ProcedureType", "PredefinedType"]],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "#10807. 'ProcedureType renamed to PredefinedType and made optional (upward compatible).' ProcedureID is the IFC2X3 identifier, Identification its IfcProcess home. LongDescription is new. IFC2X3 UserDefinedProcedureType has no IFC4 slot of its own and is dropped"
+  },
+  {
+   "ifc2x3": "IFCOBJECTIVE",
+   "ifc4": "IFCOBJECTIVE",
+   "renamed": [],
+   "retyped": ["CreationTime"],
+   "upOnly": ["BenchmarkValues"],
+   "setOfOne": ["BenchmarkValues", "BenchmarkValues"],
+   "why": "#10807. 'Attribute BenchmarkValues modified to be a LIST of IfcConstraint, attribute ResultValues replaced with IfcLogicalOperatorEnum.' An IFC2X3 IfcMetric is an IfcConstraint, so an upgrade wraps it; a downgrade drops it, even a single member, as IFC2X3 holds only an IfcMetric there, the converter cannot see the member's type, and the slot is optional. CreationTime went from IfcDateTimeSelect to IfcDateTime"
+  },
+  {
+   "ifc2x3": "IFCDOCUMENTINFORMATION",
+   "ifc4": "IFCDOCUMENTINFORMATION",
+   "renamed": [["DocumentId", "Identification"]],
+   "retyped": ["CreationTime", "LastRevisionTime", "ElectronicFormat", "ValidFrom", "ValidUntil"],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "#10807. 'Attribute renamed from DocumentId.' Location: 'New attribute added at the place of the removed attribute DocumentReferences' (now the inverse HasDocumentReferences; the link is lost, #10846). CreationTime and LastRevisionTime: 'changed to IfcDateTime'; ValidFrom and ValidUntil: 'changed to IfcDate'; ElectronicFormat: 'changed from entity data type to IfcIdentifier' (the MIME type sits in the referenced IFC2X3 record, so it is dropped)"
   }
  ]
 }

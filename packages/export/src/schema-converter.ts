@@ -7,8 +7,7 @@
  * Handles entity type renaming and attribute rewriting when converting
  * between IFC schema versions (IFC2X3, IFC4, IFC4X3, IFC5).
  *
- * This module works at the STEP text level: it rewrites entity type names
- * and adjusts attribute counts via regex replacement on raw STEP lines.
+ * Rewrites entity type names and slot layouts in STEP text.
  */
 
 import { structuralAttributes } from './schema-converter-structural.js';

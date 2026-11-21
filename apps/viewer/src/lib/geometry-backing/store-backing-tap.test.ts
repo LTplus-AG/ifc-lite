@@ -760,15 +760,17 @@ describe('store geometry backing tap (test/debug only)', () => {
   it('a fresh shard without the model statement never re-supplies lost instancing', async () => {
     const store = storeWith({ nl: [mesh(1)] });
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });
-    enqueueInstancedShards('nl', [shardBytes(77)], instancedShardGeneration());
-    drawAll(); // the renderer draws what was queued before any seal
-    await tap.seal();
-    store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
-    discardInstancedShards();
-    enqueueInstancedShards('nl', [shardBytes(90)], instancedShardGeneration());
-    drawAll(); // the renderer draws what was queued before any seal
-    const [status] = await tap.seal();
-    assert.equal(status.complete, false, 'no coverage proof, no completeness');
+    try { // stopped even if an assertion fails: never left subscribed to the shard queue (r4655067134)
+      enqueueInstancedShards('nl', [shardBytes(77)], instancedShardGeneration());
+      drawAll(); // the renderer draws what was queued before any seal
+      await tap.seal();
+      store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
+      discardInstancedShards();
+      enqueueInstancedShards('nl', [shardBytes(90)], instancedShardGeneration());
+      drawAll(); // the renderer draws what was queued before any seal
+      const [status] = await tap.seal();
+      assert.equal(status.complete, false, 'no coverage proof, no completeness');
+    } finally { await tap.stop(); }
   });
 
   it('#10884 a registered model without an id offset keeps its shards, in model 0\'s id space', async () => {
@@ -798,6 +800,8 @@ describe('store geometry backing tap (test/debug only)', () => {
       return pending;
     };
     await tap.seal();
+    // The first seal never acknowledges the generation that lacks mesh 3 (r4655067139); the second recovers it.
+    assert.notEqual(tap.replaySource('sa')?.backing, generation, 'the generation without the late mesh is not acknowledged');
     const [status] = await tap.seal();
     assert.equal(status.meshes, 3, 'the appended mesh is consumed');
     const candidate = tap.releaseCandidate('sa');

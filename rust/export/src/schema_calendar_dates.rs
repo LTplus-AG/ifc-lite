@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use ifc_lite_core::EntityScanner;
 
-use crate::schema_attr_maps::without_comments;
+use crate::step_slot::without_comments;
 use crate::step_ids::IdAllocator;
 use crate::step_record_frame::record_frame;
 use crate::step_slot::split_top_level_args;

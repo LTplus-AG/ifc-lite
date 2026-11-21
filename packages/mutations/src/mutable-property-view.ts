@@ -9,11 +9,10 @@ import { historyForEntity, purgeEntityHistory } from './indexed-mutation-history
 import { runSparseAtomic } from './sparse-atomic.js';
 import { readEntitySnapshot } from './entity-read-barrier.js';
 import { registerCooperativeOverlay } from './cooperative-overlay-access.js';
-import type { PropertyTable, PropertySet, Property, QuantitySet, Quantity } from '@ifc-lite/data';
+import { PropertyValueType, QuantityType, type PropertyTable, type PropertySet, type Property, type QuantitySet, type Quantity } from '@ifc-lite/data';
 import { quantityHistoryBefore } from './quantity-history-before.js';
 import { computeSetClaims, mutatedMembersForInstance } from './same-name-set-claims.js';
 import { encodeNonFiniteNumbers, decodeNonFiniteNumbers } from './nonfinite-json.js';
-import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 import type { IfcAttributeValue, PropertyValue, PropertyMutation, QuantityMutation, EntityTypeMutation, Mutation, NewEntity, EffectiveChange } from './types.js';
 import { propertyKey, quantityKey, attributeKey, generateMutationId } from './types.js';
 import { changesForEntity } from './effective-entity-changes.js';
@@ -44,18 +43,14 @@ export type QuantityBaseRevision = { readonly entityId: number; readonly setName
 export class MutablePropertyView extends MutableOverlayState {
   /** Bound to this instance's mutation registry, including across module copies. */
   trackEntityChanges(): EntityChangeTracker { return trackEntityChanges(this); }
-  private baseTable: PropertyTable | null;
   private onDemandExtractor: PropertyExtractor | null = null;
   private quantityExtractor: QuantityExtractor | null = null;
   private quantityBaseRevisions: ((view: MutablePropertyView) => Iterable<QuantityBaseRevision>) | null = null;
   private attributeExtractor: AttributeExtractor | null = null;
-  private modelId: string;
   private expressIdFloor(): number { return Math.max(this.sourceWatermark + 1, this.minNextExpressId()); }
 
-  constructor(baseTable: PropertyTable | null, modelId: string) {
+  constructor(private readonly baseTable: PropertyTable | null, private readonly modelId: string) {
     super();
-    this.baseTable = baseTable;
-    this.modelId = modelId;
     registerCooperativeOverlay(this, { modelId,
       transact: (edit, record) => runSparseAtomic(this, edit, record),
       capture: () => this.overlayState(),

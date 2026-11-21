@@ -144,11 +144,9 @@ fn map_4x3_to_4(t: &str) -> Option<&'static str> {
     })
 }
 
-/// IFC4X3 alignment and positioning types with no representation in IFC2X3 or
-/// IFC4, replaced by [`product_proxy`]. The positioning types used to be
-/// RENAMED to `IFCPROXY` instead, which kept their own attributes under the
-/// new name: `IFCALIGNMENT(…,.ROAD.)` became an 8-attribute `IFCPROXY` with an
-/// alignment enum in `ProxyType`, where IfcProxy takes 9 (EXPORT-MERGE-8, #7683).
+/// IFC4X3 alignment and positioning types replaced by [`product_proxy`] in
+/// IFC2X3 or IFC4. A bare rename would keep the wrong slot count and put the
+/// alignment enum in `ProxyType` (EXPORT-MERGE-8, #7683).
 pub(crate) fn should_skip_entity(t: &str, to: &str) -> bool {
     if to == "IFC4X3" || to == "IFC5" {
         return false;

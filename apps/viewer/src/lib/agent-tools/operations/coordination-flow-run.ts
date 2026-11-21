@@ -7,11 +7,13 @@ import { coordination, idSchema } from './coordination-common';
 import { coordinationOutputSchema } from './coordination-outputs';
 import type { ReviewProblem } from '@/lib/flow/review-session';
 import { mutationRefusal } from './mutation-refusal';
-import { internal, invalidInput, stale, unavailable } from './refusals';
+import { internal, invalidInput, parseJsonInput, stale, unavailable } from './refusals';
 
 function checkpointRefusal(problem: ReviewProblem | null, fallback: string) {
   const message = problem?.message ?? fallback;
-  return problem?.kind === 'not-saved' ? internal(message) : stale(message);
+  if (problem?.kind === 'not-saved' || (problem?.kind === 'refused' && problem.code === 'invalid')) return internal(message);
+  // The caller's digest names another proposal: re-sending it after re-inspecting cannot succeed.
+  return problem?.kind === 'refused' && problem.code === 'digest-mismatch' ? invalidInput('invalid-value', message) : stale(message);
 }
 interface RunInput { expected_json: string; inputs_json: string; resume_checkpoint_id: string; target_model_id: string; expected_mutation_version: number; expected_geometry_version: number }
 export const coordinationFlowRunOperations = [
@@ -27,7 +29,7 @@ export const coordinationFlowRunOperations = [
     if ((state.activeModelId ?? '') !== i.target_model_id || state.mutationVersion !== i.expected_mutation_version || state.geometryContentVersion !== i.expected_geometry_version) throw stale('Native default model binding or source revision changed; inspect Flow state before running.');
     if (!doc || flowToJson(doc) !== i.expected_json) throw stale('The open workflow differs from the exact requested graph.');
     if (!c.host.bim) throw unavailable('This host does not expose the native viewer SDK.');
-    const inputs: unknown = JSON.parse(i.inputs_json); if (!inputs || typeof inputs !== 'object' || Array.isArray(inputs)) throw invalidInput('invalid-value', 'Player values must be a JSON object.');
+    const inputs: unknown = parseJsonInput(i.inputs_json, 'inputs_json'); if (!inputs || typeof inputs !== 'object' || Array.isArray(inputs)) throw invalidInput('invalid-value', 'Player values must be a JSON object.');
     if (doc.nodes.some(node => node.type.startsWith('ai.'))) await ensureFlowAiNodes();
     const registry = flowRegistry(), { admitAgentFlowEffects } = await import('@/lib/flow/agent-effect-admission');
     const admission = admitAgentFlowEffects(doc, registry, inputs as Record<string, unknown>);
@@ -54,10 +56,10 @@ export const coordinationFlowRunOperations = [
   }, async (i, c) => {
     const { approveReview, useFlowReview } = await import('@/lib/flow/review-session'); const doc = useViewerStore.getState().flowDoc;
     if (!doc || useFlowReview.getState().checkpoint?.id !== i.checkpoint_id) throw stale('Native review checkpoint changed.');
-    return c.commitAsync(async () => { const checkpoint = await approveReview(i.proposal_digest, doc); if (!checkpoint) throw checkpointRefusal(useFlowReview.getState().problem, 'Native checkpoint approval refused.'); return { checkpoint }; });
+    return c.commitAsync(async () => { useFlowReview.setState({ problem: null }); const checkpoint = await approveReview(i.proposal_digest, doc); if (!checkpoint) throw checkpointRefusal(useFlowReview.getState().problem, 'Native checkpoint approval refused.'); return { checkpoint }; });
   }),
   coordination('flow.rejectReview', 'Reject one exact native review checkpoint without running downstream nodes.', ['configuration'], idSchema, async (i, c) => {
     const { rejectReview, useFlowReview } = await import('@/lib/flow/review-session'); if (useFlowReview.getState().checkpoint?.id !== i.id) throw stale('Native review checkpoint changed.');
-    return c.commitAsync(async () => { const checkpoint = await rejectReview(); if (!checkpoint) throw checkpointRefusal(useFlowReview.getState().problem, 'Native checkpoint rejection refused.'); return { checkpoint }; });
+    return c.commitAsync(async () => { useFlowReview.setState({ problem: null }); const checkpoint = await rejectReview(); if (!checkpoint) throw checkpointRefusal(useFlowReview.getState().problem, 'Native checkpoint rejection refused.'); return { checkpoint }; });
   }),
 ];

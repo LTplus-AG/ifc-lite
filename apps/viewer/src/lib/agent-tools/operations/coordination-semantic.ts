@@ -5,7 +5,7 @@ import { useSemanticSession } from '@/lib/semantic/session';
 import { validateCurrentSemantic } from '@/lib/semantic/validate-current';
 import { emptySchema } from './contract';
 import { coordination, textSchema, boolSchema } from './coordination-common';
-import { unavailable } from './refusals';
+import { invalidInput } from './refusals';
 export const coordinationSemanticOperations = [
   coordination('semantic.read', 'Read native semantic dataset, validation findings, profile and model-revision bindings.', ['read'], emptySchema, () => {
     const s = useSemanticSession.getState(); return { document: s.document, graph: s.graph, graph_format: s.graphFormat,
@@ -21,7 +21,7 @@ export const coordinationSemanticOperations = [
   }, async (i, c) => {
     const { useViewerStore } = await import('@/store');
     return c.commit(() => {
-      if (!useViewerStore.getState().models.get(i.model_id)?.ifcDataStore) throw unavailable('Revision binding requires a loaded IFC model.');
+      const model = useViewerStore.getState().models.get(i.model_id); if (!model) throw invalidInput('unknown-target', 'Unknown model_id.'); if (!model.ifcDataStore) throw invalidInput('wrong-target', 'Revision binding requires a loaded IFC model.');
       const session = useSemanticSession.getState(), revisions = new Map(session.revisions); revisions.set(i.revision, i.model_id); session.setRevisions(revisions); return { revisions: [...revisions] };
     });
   }),

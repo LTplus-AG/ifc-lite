@@ -5,7 +5,7 @@ import { parseCapabilities, type InstalledExtensionRecord } from '@ifc-lite/exte
 import { coordinationExtensions } from '@/services/coordination-hosts';
 import { useViewerStore } from '@/store';
 import { coordination } from './coordination-common';
-import { disabled, internal, invalidInput, stale } from './refusals';
+import { disabled, internal, invalidInput, parseJsonInput, stale } from './refusals';
 const identity = { expected_model_ids: { type: 'array' as const, maxItems: 1000, uniqueItems: true as const, items: { type: 'string' as const, minLength: 1, maxLength: 200 } }, expected_mutation_version: { type: 'integer' as const, minimum: 0 }, expected_geometry_version: { type: 'integer' as const, minimum: 0 }, extension_id: { type: 'string' as const, minLength: 1, maxLength: 200 }, expected_bundle_hash: { type: 'string' as const, minLength: 1, maxLength: 200 }, expected_version: { type: 'string' as const, minLength: 1, maxLength: 200 }, expected_grants_json: { type: 'string' as const, maxLength: 100000 } };
 async function installed(id: string, hash: string, version: string, grants: string): Promise<InstalledExtensionRecord> {
   const record = (await coordinationExtensions().listInstalled()).find(record => record.id === id);
@@ -31,7 +31,7 @@ export const coordinationExtensionNativeOperations = [
     const host = coordinationExtensions(), record = await installed(i.extension_id, i.expected_bundle_hash, i.expected_version, i.expected_grants_json); if (!record.enabled) throw disabled('Native extension is disabled.');
     const bundle = host.loader.getBundle(i.extension_id); if (!bundle?.manifest.contributes?.commands?.some(command => command.id === i.command_id)) throw invalidInput('wrong-target', 'This exact native bundle does not own that command.');
     validateNativeExtensionGrants(record);
-    const args: unknown = JSON.parse(i.args_json); if (!args || typeof args !== 'object' || Array.isArray(args)) throw invalidInput('invalid-value', 'Native command arguments must be a JSON object.');
+    const args: unknown = parseJsonInput(i.args_json, 'args_json'); if (!args || typeof args !== 'object' || Array.isArray(args)) throw invalidInput('invalid-value', 'Native command arguments must be a JSON object.');
     return c.commitAsync(async () => { await installed(i.extension_id, i.expected_bundle_hash, i.expected_version, i.expected_grants_json); c.checkpoint?.(); modelGuard(i); const result = await host.runCommand(i.command_id, i.extension_id, args as Record<string, unknown>, () => !c.signal?.aborted); if (!result) throw internal('Native command invocation produced no result.'); return { state: 'settled', extension_id: i.extension_id, result }; });
   }),
   coordination<{ extension_id: string; expected_bundle_hash: string; expected_version: string; expected_grants_json: string; expected_model_ids: string[]; expected_mutation_version: number; expected_geometry_version: number; exporter_id: string }>('extensions.runExporter', 'Invoke one exact enabled native extension exporter under its stored grants, await its actual bytes, and return a host-owned artifact. Native installed capability review remains authoritative; artifact creation does not assert that unknown external side effects succeeded.', ['configuration', 'model', 'view', 'network', 'artifact'], {

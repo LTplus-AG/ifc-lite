@@ -34,10 +34,10 @@ export const coordinationFlowOperations = [
       'model.select', 'model.byType', 'model.attribute', 'model.property', 'model.quantity', 'model.related', 'model.storey', 'model.contains', 'model.groupByStorey', 'model.groupByType',
       'table.fromEntities', 'table.longFormat', 'table.column', 'table.groupRows', 'table.pivot', 'table.rowCount']);
     const unsupported = doc.nodes.filter(node => !allowed.has(node.type));
-    if (unsupported.length || doc.capabilities.some(capability => capability !== 'model.read')) throw invalidInput('invalid-value', 'This analysis endpoint accepts only core/model/table reads with model.read grants. Run other graphs through the native Flow execution/review path.');
+    if (unsupported.length || doc.capabilities.some(capability => capability !== 'model.read')) throw invalidInput('wrong-target', 'This analysis endpoint accepts only core/model/table reads with model.read grants. Run other graphs through the native Flow execution/review path.');
     const registry = flowRegistry(), wiring = validateFlowWiring(doc, registry);
-    if (wiring.length) throw invalidInput('invalid-value', wiring.map(problem => problem.message).join('; '));
-    const parsed = parseCapabilities(doc.capabilities); if (!parsed.ok) throw invalidInput('invalid-value', 'Malformed Flow capabilities.');
+    if (wiring.length) throw invalidInput('wrong-target', wiring.map(problem => problem.message).join('; '));
+    const parsed = parseCapabilities(doc.capabilities); if (!parsed.ok) throw internal('Malformed Flow capabilities.');
     c.checkpoint?.();
     const result = await runFlow(doc, { host: { bim: c.model.bim, grants: parsed.value, defaultModelId: c.model.id, tables: viewerTableAccess(useViewerStore) }, registry, cache: new MemoCache(), signal: c.signal });
     c.checkpoint?.(); const latest = useViewerStore.getState();
@@ -48,10 +48,12 @@ export const coordinationFlowOperations = [
   coordination('flow.create', 'Create an empty native workflow using the existing storage and size limits.', ['configuration'], textSchema, (i, c) => c.commit(() => {
     const id = useViewerStore.getState().createFlow(i.value); if (!id) throw unavailable('Workflow creation refused by storage or size limits.'); return { id };
   })),
-  coordination('flow.save', 'Save the active workflow with native persistence refusal reporting.', ['configuration'], emptySchema, (_, c) => c.commit(() => {
-    const s = useViewerStore.getState(); if (!s.flowDoc) throw unavailable('No active workflow.'); s.saveFlow(); const live = useViewerStore.getState();
+  coordination('flow.save', 'Save the active workflow with native persistence refusal reporting.', ['configuration'], emptySchema, async (_, c) => { const { isFlowWithinSizeLimit } = await import('@/lib/flow/persistence'); return c.commit(() => {
+    const s = useViewerStore.getState(); if (!s.flowDoc) throw unavailable('No active workflow.'); if (!isFlowWithinSizeLimit(s.flowDoc)) throw invalidInput('limit', 'Workflow exceeds the native save size limit.');
+    // Only an error this save set is its refusal.
+    useViewerStore.setState({ flowStorageError: null }); s.saveFlow(); const live = useViewerStore.getState();
     if (live.flowStorageError) throw internal(live.flowStorageError); return { active_id: live.activeFlowId, dirty: live.flowDirty };
-  })),
+  }); }),
   coordination('flow.export', 'Export a saved flow with the native CLI-compatible serializer.', ['artifact'], idSchema, async (i, c) => {
     const { flowToJson } = await import('@/lib/flow/persistence'); const doc = saved(i.id).doc; c.checkpoint?.();
     return c.artifacts.create({ filename: 'workflow.flow.json', mimeType: 'application/json', data: flowToJson(doc) });

@@ -4,7 +4,7 @@
 import { coordinationSources } from '@/services/coordination-hosts';
 import { loadResolvedSourcePrefs, saveSourcePrefs, clearSourcePrefs, isPrefsConfigured } from '@/lib/sources/preferences';
 import { coordination, idSchema } from './coordination-common';
-import { invalidInput, unavailable } from './refusals';
+import { invalidInput } from './refusals';
 function provider(id: string) { const host = coordinationSources(), provider = host.get(id); if (!provider) throw invalidInput('unknown-target', 'Unknown source provider.'); return { host, provider }; }
 export const coordinationSourceSettingsOperations = [
   coordination<{ provider: string; values: Array<{ name: string; value: string }> }>('sources.configure', 'Patch only manifest-declared provider preferences through native storage. Credential values are accepted for the selected provider but never returned.', ['configuration'], {
@@ -25,14 +25,14 @@ export const coordinationSourceSettingsOperations = [
     provider(i.id); return c.commit(() => ({ provider: i.id, cleared: clearSourcePrefs(i.id) }));
   }),
   coordination('sources.testConnection', 'Run the selected provider native connection diagnostic with saved credentials and network sandbox.', ['network', 'read'], idSchema, async (i, c) => {
-    const { host, provider: source } = provider(i.id); if (!source.testConnection) throw unavailable('This provider does not implement a native connection test.');
+    const { host, provider: source } = provider(i.id); if (!source.testConnection) throw invalidInput('wrong-target', 'This provider does not implement a native connection test.');
     const prefs = loadResolvedSourcePrefs(source.manifest); c.checkpoint?.(); const result = await source.testConnection(host.createContext(source.manifest, prefs)); c.checkpoint?.();
     let message = result.message;
     for (const declaration of source.manifest.preferences.filter(pref => pref.type === 'password')) { const secret = prefs[declaration.name]; if (secret) message = message.split(secret).join('[redacted]'); }
     return { ...result, message };
   }),
   coordination('sources.signOut', 'Sign out through the selected native provider auth lifecycle; tokens remain private to that provider.', ['network', 'configuration'], idSchema, async (i, c) => {
-    const { host, provider: source } = provider(i.id); if (!source.auth) throw unavailable('This provider uses saved preferences rather than an interactive sign-in session.');
+    const { host, provider: source } = provider(i.id); if (!source.auth) throw invalidInput('wrong-target', 'This provider uses saved preferences rather than an interactive sign-in session.');
     const ctx = host.createContext(source.manifest, loadResolvedSourcePrefs(source.manifest));
     return c.commitAsync(async () => { await source.auth!.signOut(ctx); return { provider: i.id, signed_out: true }; });
   }),

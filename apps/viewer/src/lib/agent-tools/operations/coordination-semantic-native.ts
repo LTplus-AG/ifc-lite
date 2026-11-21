@@ -10,9 +10,9 @@ import { loadSemanticSource } from '@/lib/semantic/load-source';
 import { useViewerStore } from '@/store';
 import { coordination, textSchema } from './coordination-common';
 import { emptySchema } from './contract';
-import { disabled, invalidInput, stale } from './refusals';
+import { disabled, invalidInput, parseJsonInput, stale } from './refusals';
 function mappingOf(json: string): BindingMapping {
-  const value: unknown = JSON.parse(json); if (!value || typeof value !== 'object' || Array.isArray(value) || Object.values(value).some(item => typeof item !== 'string')) throw invalidInput('invalid-value', 'Native binding mapping must be a plain string-valued object.'); return value as BindingMapping;
+  const value: unknown = parseJsonInput(json, 'mapping_json'); if (!value || typeof value !== 'object' || Array.isArray(value) || Object.values(value).some(item => typeof item !== 'string')) throw invalidInput('invalid-value', 'Native binding mapping must be a plain string-valued object.'); return value as BindingMapping;
 }
 export const coordinationSemanticNativeOperations = [
   coordination<{ mode: 'local' | 'turtle' | 'nquads' | 'jsonld' | 'json' | 'sparql' | 'construct'; payload: string; query: string; mapping_json: string; related_selection: boolean; expected_data_version: number; expected_endpoint: string; expected_grant_generation: number }>('semantic.loadSource', 'Load bounded JSON/RDF or retrieve from the already exercised native endpoint grant through the same provider and validation worker as the panel. Related selection uses native identity/query resolution. Credentials/loopback/host grants cannot be supplied or broadened.', ['configuration', 'network'], {

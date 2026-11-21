@@ -8,7 +8,7 @@ import { coordinationComposition } from '@/services/coordination-loader';
 import { coordination, idSchema } from './coordination-common';
 import { emptySchema } from './contract';
 import type { ResolutionInput } from '@ifc-lite/merge';
-import { internal, invalidInput, stale, unavailable } from './refusals';
+import { internal, invalidInput, parseJsonInput, stale, unavailable } from './refusals';
 /** Existence check without loadLayer's structuredClone of the whole layer. */
 const requireLayer = (store: { hasLayer(id: string): boolean }, id: string) => { if (!store.hasLayer(id)) throw invalidInput('unknown-target', `No layer ${id} in the local store`); };
 const short = { type: 'string' as const, minLength: 1, maxLength: 1000 };
@@ -50,7 +50,7 @@ export const coordinationLayerWorkflowOperations = [
       const componentKey = item.component_key || undefined, conflict = conflictByKey.get(`${item.path}\0${componentKey ?? ''}`);
       if (!conflict) throw invalidInput('unknown-target', 'Resolution does not belong to the current native conflict queue.');
       if (item.choice !== 'edited') return { path: item.path, ...(componentKey ? { componentKey } : {}), choice: item.choice };
-      const attrs: unknown = JSON.parse(item.attributes_json); if (!attrs || typeof attrs !== 'object' || Array.isArray(attrs) || !componentKey || componentKey.startsWith('child:') || componentKey.startsWith('inherit:')) throw invalidInput('invalid-value', 'Only native editable component conflicts accept plain-object attributes.');
+      const attrs: unknown = parseJsonInput(item.attributes_json, 'attributes_json'); if (!attrs || typeof attrs !== 'object' || Array.isArray(attrs) || !componentKey || componentKey.startsWith('child:') || componentKey.startsWith('inherit:')) throw invalidInput('invalid-value', 'Only native editable component conflicts accept plain-object attributes.');
       return { path: item.path, componentKey, choice: item.choice, attributes: editedWithRemovals(conflict, attrs as Record<string, unknown>) };
     });
     return c.commitAsync(async () => { guard(); return { outcome: await executeMergeInto(target, store, i.candidate_id, resolutions, i.resolver, i.waivers), durability: 'native-best-effort' }; }, result => result.outcome.status === 'merged' || result.outcome.status === 'fast-forward');

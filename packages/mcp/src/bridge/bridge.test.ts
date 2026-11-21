@@ -11,10 +11,10 @@
  * 0, so the tests never depend on a fixed port.
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, expectTypeOf, it } from 'vitest';
 import type { CallToolResult, JsonRpcMessage, JsonRpcResponse, ToolDefinition } from '../protocol/index.js';
 import { startBridgeServer, type RunningBridge } from './run.js';
-import { BridgeCloseCode, BRIDGE_STATUS_TOOL, parsePairingFragment } from './bridge-protocol.js';
+import { BridgeCloseCode, BRIDGE_STATUS_TOOL, parsePairingFragment, parseServerMessage, type BridgeServerMessage } from './bridge-protocol.js';
 import {
   MUTATING_TOOL,
   READ_TOOL,
@@ -90,6 +90,45 @@ async function pair(agent: Agent, extra: Partial<Parameters<typeof pairTab>[0]> 
   tabs.push(paired.tab);
   return paired;
 }
+
+it('#11029: the legacy parser and union require explicit opt-in for acknowledgement frames', () => {
+  expectTypeOf<BridgeServerMessage['type']>().toEqualTypeOf<'welcome' | 'call' | 'cancel' | 'error'>();
+  const frame = JSON.stringify({ type: 'result-ack', sessionId: 'session', id: 'c1', accepted: true });
+  expectTypeOf<ReturnType<typeof parseServerMessage>>().toEqualTypeOf<import('./bridge-protocol.js').ParseResult<BridgeServerMessage>>();
+  expect(parseServerMessage(frame).ok).toBe(false);
+  expect(parseServerMessage(frame, { resultAck: true })).toEqual({
+    ok: true, value: { type: 'result-ack', sessionId: 'session', id: 'c1', accepted: true },
+  });
+});
+
+it('#11029: acknowledges only accepted intact results for the negotiated session', async () => {
+  const agent = await startAgent();
+  const { tab, welcome } = await pair(agent, { resultAck: true });
+  expect(welcome.resultAck).toBe(true);
+  const reply = (id: string, result: unknown) => tab.sendRaw({
+    type: 'result', sessionId: welcome.sessionId, id, resultAck: true, result,
+  });
+
+  const received = agent.call(READ_TOOL.name);
+  const first = await tab.next('call');
+  reply(first.id, textResult('retained token'));
+  expect((await received).content).toEqual([{ type: 'text', text: 'retained token' }]);
+  expect(await tab.next('result-ack')).toMatchObject({ id: first.id, accepted: true });
+
+  const cancelled = agent.call(READ_TOOL.name, {}, 987);
+  const second = await tab.next('call');
+  await agent.cancel(987);
+  await tab.next('cancel');
+  reply(second.id, textResult('expired token'));
+  expect(await tab.next('result-ack')).toMatchObject({ id: second.id, accepted: false });
+  expect((await cancelled).isError).toBe(true);
+
+  const malformed = agent.call(READ_TOOL.name);
+  const third = await tab.next('call');
+  reply(third.id, { content: 'invalid' });
+  expect(await tab.next('result-ack')).toMatchObject({ id: third.id, accepted: false });
+  expect((await malformed).isError).toBe(true);
+});
 
 describe('1. read-only pairing', () => {
   it('neither lists nor forwards a mutating tool', async () => {

@@ -344,22 +344,32 @@ describe('native Clash operation parity (#10525 follow-up)', () => {
     value(await sample(next));
   });
 
-  it('#11029: an acknowledged stale review has a stale token and releases its key', async () => {
-    value(await call('clash.run', runInput(), true));
-    let claim: import('../delivery').DeliveryClaim | undefined;
-    const prepare = () => dispatchMainViewerTool(host, 'viewer_operation_execute', {
-      operation_id: 'clash.classification.prepare', input: {}, idempotency_key: 'review',
-    }, { canEdit: () => true, onDelivery: next => { claim = next; } });
-    const { token } = value<{ token: string }>(await prepare());
-    assert.ok(claim);
-    value(await call('clash.run', runInput(), true));
-    claim.deliver();
-    const sample = await call('clash.classification.sample', { token, answer: '{}' }, true);
-    assert.equal(sample.errorCode, 'STATE_CHANGED', sample.text);
-    const fresh = value<{ token: string }>(await prepare());
-    assert.notEqual(fresh.token, token);
-    claim.drop();
-  });
+  for (const changed of ['findings', 'model'] as const) {
+    it(`#11029: acknowledgement releases the classification replay key if the ${changed} changed`, async () => {
+      value(await call('clash.run', runInput(), true));
+      const { chatActiveModel } = useViewerStore.getState();
+      let claim: import('../delivery').DeliveryClaim | undefined;
+      const prepare = () => dispatchMainViewerTool(host, 'viewer_operation_execute', {
+        operation_id: 'clash.classification.prepare', input: {}, idempotency_key: 'review',
+      }, { canEdit: () => true, onDelivery: next => { claim = next; } });
+      try {
+        if (changed === 'model') useViewerStore.setState({ chatActiveModel: 'claude-sonnet-5-5' });
+        const { token } = value<{ token: string }>(await prepare());
+        assert.ok(claim);
+        if (changed === 'findings') value(await call('clash.run', runInput(), true));
+        else useViewerStore.setState({ chatActiveModel: 'gpt-6.1-sol' });
+        claim.deliver();
+        const fresh = value<{ token: string }>(await prepare());
+        assert.notEqual(fresh.token, token, 'the same key must produce a fresh review');
+        const sample = await call('clash.classification.sample', { token, answer: '{}' }, true);
+        assert.equal(sample.errorCode, 'STATE_CHANGED', sample.text);
+        assert.match(sample.text, new RegExp(`${changed} changed`));
+      } finally {
+        claim?.drop();
+        useViewerStore.setState({ chatActiveModel });
+      }
+    });
+  }
 
   it('#11029: a keyed classification prepare retries after a staged slot frees', async () => {
     value(await call('clash.run', runInput(), true));

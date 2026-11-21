@@ -97,6 +97,7 @@ function CandidateReview({
   const [withViewpoint, setWithViewpoint] = useState(true);
   const automationReview = useLayerAutomationReview(state => state.candidate);
   const withdrawnBy = useRef<string | null>(null);
+  // Bumped whenever automation replaces or withdraws the staged draft, so a post in flight knows its draft is gone.
   const withdrawals = useRef(0);
   useEffect(() => {
     // Only an action aimed at this candidate and ref changes what this section has staged.
@@ -110,6 +111,7 @@ function CandidateReview({
       return;
     }
     if (!claimLayerAutomationReview(automationReview, 'review')) return;
+    withdrawals.current += 1;
     setStagedEntity(automationReview.entity);
     setTitle(automationReview.title); setDescription(automationReview.description); setWithViewpoint(automationReview.withViewpoint);
   }, [automationReview, candidateId, refName, stagedEntity]);
@@ -197,9 +199,8 @@ function CandidateReview({
           ...(viewpoint !== undefined ? { viewpoint } : {}),
         });
         if (!isCurrent()) return;
-        setStagedEntity(null);
-        setTitle('');
-        setDescription('');
+        // A newer staged draft that arrived during the post is not the one posted; leave it.
+        if (withdrawals.current === staging) { setStagedEntity(null); setTitle(''); setDescription(''); }
         await refresh();
         if (isCurrent()) toast.success(t('layersPanel.review.postedToast'));
       } catch (err) {

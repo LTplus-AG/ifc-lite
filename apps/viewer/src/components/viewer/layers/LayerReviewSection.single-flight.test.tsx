@@ -133,6 +133,25 @@ test('#10591 layer review posts nothing when a newer action withdraws the staged
   assert.equal(posts, 0);
 });
 
+test('#10591 layer review keeps a newer staged comment that arrives while a post is in flight', async () => {
+  let release!: () => void;
+  const gated = { ...client, postTopic: async () => { posts += 1; await new Promise<void>(resolve => { release = resolve; }); return {}; } } as unknown as LayerRegistryClient;
+  const first = { id: 'staged-first', candidateId: REVIEW.layerId, refName: REVIEW.into,
+    action: 'comment' as const, entity: WALL_A, title: 'First note', description: '', withViewpoint: false };
+  useLayerAutomationReview.setState({ candidate: first });
+  const ui = render(<LayerReviewSection client={gated} candidateId={REVIEW.layerId} refName={REVIEW.into} />);
+  const title = () => ui.querySelector<HTMLInputElement>('input[aria-label="Review comment title"]');
+  await waitFor(() => title()?.value === first.title, 'the first staged comment is visible');
+  const comment = [...ui.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Comment');
+  assert.ok(comment); click(comment);
+  await waitFor(() => posts === 1, 'the first post is in flight');
+  act(() => useLayerAutomationReview.setState({ candidate: { ...first, id: 'staged-second', title: 'Second note', entity: WALL_B } }));
+  await waitFor(() => title()?.value === 'Second note', 'the second staged comment is visible');
+  await act(async () => { release(); });
+  await settle();
+  assert.equal(title()?.value, 'Second note', 'the finished post did not clear the newer draft');
+});
+
 test('C-2 layer review: a viewpoint capture that resolves null toasts once and posts nothing', async () => {
   const { toast } = await import('@/components/ui/toast');
   const errors = mock.method(toast, 'error', () => undefined);

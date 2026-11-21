@@ -33,7 +33,9 @@ export function readbackFeeder(renderer: Renderer): ReadbackRaycastFeeder {
     // changes that end a backing generation, so a raycast never tests stale geometry.
     const owned = feeder;
     useViewerStore.subscribe((state, previous) => {
-      if (state.models !== previous.models || state.geometryContentVersion !== previous.geometryContentVersion) owned.clear();
+      // And on a hide/isolate change: a surface shown again in front was not fed (r4651015157).
+      if (state.models !== previous.models || state.geometryContentVersion !== previous.geometryContentVersion
+        || state.hiddenEntities !== previous.hiddenEntities || state.isolatedEntities !== previous.isolatedEntities) owned.clear();
     });
     // Fed pieces are placed at the scene's placement when they were read. A renderer-side placement change
     // (setModelTranslation/Rotation) moves the GPU geometry with no store change: drop them on its revision too.

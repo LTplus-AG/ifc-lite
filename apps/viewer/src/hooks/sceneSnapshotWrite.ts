@@ -25,6 +25,7 @@ import { idlePeriod } from '../lib/perf/afterLoadIdle.js';
 import { useViewerStore } from '../store/index.js';
 import { putSceneSnapshot, type SceneSnapshotWrite } from '../services/cacheService.js';
 import type { SnapshotCameraFit } from '../components/viewer/sceneSnapshotOwnership.js';
+import { TypeHiddenIndex } from '../components/viewer/type-hidden-index.js';
 
 /** A finished scene as the finalize swap left it, with what a reopen needs to draw it. */
 export interface CapturedScene {
@@ -32,7 +33,7 @@ export interface CapturedScene {
   /** The mesh each piece was queued from, by ordinal (the capture's own record). */
   sources: readonly MeshData[];
   fit: SnapshotCameraFit;
-  /** `sceneSnapshotKey` at the swap: the type visibility the batches were built under. */
+  /** `sceneSnapshotKey` at the swap: the batch policy the batches were built under. */
   key: string;
   /**
    * The scene's batch policy when the write runs. A capture taken before quantized
@@ -169,7 +170,8 @@ export async function writeCapturedScene(
     // Hydration matches pieces by ordinal; one it would refuse is not worth storing.
     const snapshot = target.meshOrder ? reorderSnapshotPieces(captured.snapshot, captured.sources, target.meshOrder) : captured.snapshot;
     if (!snapshot) return finish('order-mismatch');
-    const storedSnapshot = { ...snapshot, hostData: { ...captured.fit, shards: target.shards } };
+    // The type index lets a reopen hide type-hidden classes before its meshes decode (#10264).
+    const storedSnapshot = { ...snapshot, hostData: { ...captured.fit, shards: target.shards, typeIndex: TypeHiddenIndex.metadataOf(captured.sources) } };
     const blob = await encodeSceneSnapshotInSlices(storedSnapshot, sliceGap);
     const encodeMs = performance.now() - encodeStart;
     if (signal.aborted || gone()) return abandoned();

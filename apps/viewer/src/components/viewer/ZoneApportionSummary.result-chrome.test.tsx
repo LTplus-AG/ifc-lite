@@ -15,7 +15,7 @@ import { Scene } from '../../../../../packages/renderer/src/scene';
 import { ensureWasm } from '@/test/scan-slab-fixture';
 import { seedZoneExport } from '@/test/zone-export-fixture';
 import { fixtureModel } from '@/test/store-fixture';
-import { cleanup, click, render } from '@/test/render';
+import { cleanup, click, render, settle } from '@/test/render';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { setGlobalRendererRef } from '@/hooks/useBCF';
 import { computeZoneApportionmentForElement, computeZoneApportionmentNow, straddlerIdsFor } from '@/hooks/useZoneApportionment';
@@ -264,6 +264,7 @@ test('#7204 fresh native split captures current edited Name, class and GlobalId 
   const bytes=editedModelBytes(f.store,view),parsed=await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer,{disableWorkerScan:true}),persisted=parsed.entities.getExpressIdByGlobalId(guid);
   assert.ok(persisted>0);assert.equal(parsed.entities.getName(persisted),'Current native split [wall] ($)');assert.equal(parsed.entities.getTypeName(persisted),'IfcWall');
   const entry=computeZoneApportionmentNow(f.zoneSet);assert.equal(entry.byElement.size,1,'unchanged actual native body still clips');
+  await settle();
   const ui=render(<ZoneApportionSummary zoneSet={f.zoneSet}/>),evidence=region(ui).querySelector('ul[aria-label="Cached split source entities"]');assert.ok(evidence);
   assert.ok(region(ui).querySelector('[data-status="complete"]'),'current native revisions are captured after the edit');
   assert.ok((evidence.textContent??'').includes(parsed.entities.getGlobalId(persisted)));
@@ -280,6 +281,7 @@ test('#7204 native newly authored refused geometry still carries its actual expo
   const bytes=editedModelBytes(f.store,view),parsed=await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer,{disableWorkerScan:true}),guid=parsed.entities.getGlobalId(made.expressId);assert.equal(guid,'1$abcdefghijklmnopqrst','the actual native writer/export retains the deterministic metacharacter identity');assert.equal(parsed.entities.getName(made.expressId),'Authored cached [source] ($)');
   const globalId=useViewerStore.getState().toGlobalId(modelId,made.expressId),outcome=computeZoneApportionmentForElement(f.zoneSet,globalId);
   assert.equal(outcome.apportionment,null);assert.equal(outcome.refusal,'no-geometry','the newly authored body has not been loaded into the real CPU scene');
+  await settle();
   const ui=render(<ZoneApportionSummary zoneSet={f.zoneSet}/>),evidence=region(ui).querySelector('ul[aria-label="Cached split source entities"]');assert.ok(evidence);
   assert.ok((evidence.textContent??'').includes(guid));assert.ok((evidence.textContent??'').includes(parsed.entities.getName(made.expressId)));assert.ok((evidence.textContent??'').includes(parsed.entities.getTypeName(made.expressId)));
 });

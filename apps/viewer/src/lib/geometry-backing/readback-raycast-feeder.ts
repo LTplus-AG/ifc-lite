@@ -34,6 +34,8 @@ export interface ReadbackRaycastHost {
     Promise<{ expressId: number; modelIndex?: number; worldXYZ?: { x: number; y: number; z: number } } | null>;
   getScene(): Pick<SceneContents, 'placeAppearanceSource' | 'getEntityBoundingBox' | 'getInstancedEntityIds' | 'getInstancedEntityBounds'>;
   setReadbackRaycastMeshes(meshes: readonly MeshData[] | null, at?: { x: number; y: number }): void;
+  /** The view readback coverage is stamped with (`Renderer.readbackRaycastViewKey`). */
+  readbackRaycastViewKey?(): string;
 }
 
 export type FeedOutcome = 'resident' | 'fed' | 'no-hit' | 'unavailable' | 'cancelled';
@@ -99,6 +101,9 @@ export class ReadbackRaycastFeeder {
     this.controller = controller;
     const { signal } = controller;
     try {
+      // The view this ray is picked under: pieces chosen for it are installed only while it still holds,
+      // never stamped with a later view whose ray at the same pixel they were not chosen for (r4649782008).
+      const view = this.host.readbackRaycastViewKey?.();
       // The resident raycast passes through overlays the GPU pick sees (IfcAnnotation,
       // grids): re-pick with those hidden until the first raycastable surface.
       let hit = await this.host.pick(x, y, visibility);
@@ -110,6 +115,7 @@ export class ReadbackRaycastFeeder {
         hit = await this.host.pick(x, y, { ...visibility, hiddenIds: skipped });
         signal.throwIfAborted();
       }
+      if (view !== this.host.readbackRaycastViewKey?.()) return this.finish('cancelled'); // a miss under an older view says nothing
       if (!hit) { this.swap([], [], { x, y }); return this.finish('no-hit'); }
       const modelId = this.owner(hit.expressId);
       const backing = modelId ? this.source()?.backing(modelId) : undefined;
@@ -200,6 +206,10 @@ export class ReadbackRaycastFeeder {
         // These leases were never handed to `swap`: release them here, or a failed placement pins them.
         for (const lease of leases) lease.release();
         throw error;
+      }
+      if (view !== this.host.readbackRaycastViewKey?.()) {
+        for (const lease of leases) lease.release();
+        return this.finish('cancelled');
       }
       this.swap(leases, meshes, { x, y });
       return this.finish('fed');

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { createModelMutationView } from '@/utils/model-mutation-view';
+import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { useBulkExecutionScroll } from './useBulkExecutionScroll';
 import { useDialogOperation } from './authoring-operation';
 import { bulkDraftKey, useBulkCompletedDraft, useBulkTargetSource } from './useBulkDraft';
@@ -81,8 +81,6 @@ type ActionType = 'SET_PROPERTY' | 'DELETE_PROPERTY' | 'SET_ATTRIBUTE';
 export function BulkPropertyEditor(props: ToolDialogProps) {
   const { t, locale, revision } = useTranslation();
   const models = useViewerStore(s => s.models);
-  const getMutationView = useViewerStore((s) => s.getMutationView);
-  const registerMutationView = useViewerStore((s) => s.registerMutationView);
   const mutationViews = useViewerStore((s) => s.mutationViews);
   // The engine writes directly to a mutation view, so its live callback and
   // the Execute affordance both consult the same viewer permission policy.
@@ -185,18 +183,8 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
   // Ensure mutation view exists for selected model — only when dialog is open
   useEffect(() => {
     if (!open || !selectedModel?.ifcDataStore || !selectedModelId) return;
-
-    // Check if mutation view already exists
-    let mutationView = getMutationView(selectedModelId);
-    if (mutationView) return;
-
-    // Create new mutation view with on-demand property extractor
-    const dataStore = selectedModel.ifcDataStore;
-    mutationView = createModelMutationView(dataStore, selectedModelId);
-
-    // Register the mutation view
-    registerMutationView(selectedModelId, mutationView);
-  }, [open, selectedModel, selectedModelId, getMutationView, registerMutationView]);
+    getOrCreateMutationView(useViewerStore, selectedModelId);
+  }, [open, selectedModel?.ifcDataStore, selectedModelId]);
 
   // Create BulkQueryEngine instance — only when dialog is open
   const queryEngine = useMemo(() => {
@@ -217,12 +205,9 @@ export function BulkPropertyEditor(props: ToolDialogProps) {
   useEffect(() => {
     if (!open || targetSource === 'query') return;
     for (const modelId of targetGroups.keys()) {
-      const dataStore = models.get(modelId)?.ifcDataStore;
-      if (!dataStore || getMutationView(modelId)) continue;
-      const view = createModelMutationView(dataStore, modelId);
-      registerMutationView(modelId, view);
+      getOrCreateMutationView(useViewerStore, modelId);
     }
-  }, [open, targetSource, targetGroups, models, getMutationView, registerMutationView]);
+  }, [open, targetSource, targetGroups, models]);
 
   const targetEngines = useMemo(() => {
     const engines = new Map<string, BulkQueryEngine>();

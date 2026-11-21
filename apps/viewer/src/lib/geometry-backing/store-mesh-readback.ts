@@ -111,9 +111,16 @@ export async function leaseStoreMeshes(
     const budget = options.budgetBytes ?? DEFAULT_STORE_READBACK_BYTES;
     let leasedBytes = 0;
     const answered = new Map<MeshData, MeshData>();
-    for (const [modelId, byIndex] of needed) {
-      const backing = source?.backing(modelId);
+    // Every generation is captured before the first read, and each must still be current and complete after the last
+    // one: a model replaced while another model reads never answers from its superseded bytes (r4653239417, r4653239422).
+    const backings = new Map([...needed.keys()].map((modelId) => [modelId, source?.backing(modelId)]));
+    const usable = (modelId: string) => {
+      const backing = backings.get(modelId);
       if (!backing?.isCurrent || !backing.isComplete) throw new GeometryUnavailableError(`Model ${modelId} has no complete current backing`);
+      return backing;
+    };
+    for (const [modelId, byIndex] of needed) {
+      const backing = usable(modelId);
       const chunks = backing.directory.chunks;
       const total = chunks.reduce((sum, chunk) => sum + chunk.meshCount, 0);
       if (total !== lists.get(modelId)!.length) {
@@ -145,6 +152,7 @@ export async function leaseStoreMeshes(
         start = end;
       }
     }
+    for (const modelId of backings.keys()) usable(modelId);
     const meshes: MeshData[] = [];
     for (const mesh of wanted) {
       if (meshIsResident(mesh)) meshes.push(mesh);

@@ -66,6 +66,13 @@ describe('materializeShardOccurrences', () => {
     for (const v of backed[0].origin!.slice(0, 2)) assert.notEqual(v, Math.fround(v), 'sub-f32 precision survives (f32 spacing is 0.25 m here)');
   });
 
+  it('r4649781982 a byte budget refuses BEFORE the occurrence that would cross it is expanded', () => {
+    // Entity 11: template 0, 9 + 9 floats and 3 indices = 84 bytes. Entity 12: template 1, 120 bytes.
+    assert.throws(() => materializeShardOccurrences(shard(), 0, 'k', undefined, 84), RangeError, 'the second occurrence would cross 84 bytes');
+    assert.deepEqual(materializeShardOccurrences(shard(), 0, 'k', undefined, 204).map((m) => m.expressId), [11, 12], 'an exact fit is whole');
+    assert.throws(() => materializeShardOccurrences(shard(), 0, 'k', undefined, Number.NaN), RangeError, 'NaN is no budget');
+  });
+
   it('limits work to the wanted entities', () => {
     assert.deepEqual(materializeShardOccurrences(shard(), 0, 'k', (id) => id === 12).map((m) => m.expressId), [12]);
   });

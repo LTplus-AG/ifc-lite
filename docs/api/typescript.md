@@ -544,6 +544,8 @@ An appearance preview may carry an `AppearancePartition` whose `sourceGeometryIt
 
 `Scene` and `Section2DOverlayRenderer` are package-internal from 2.0: reach the scene through `getScene(): SceneContents`, and the 3D line overlays through `Renderer.setLineOverlay`. `PickingManager` is package-internal from 2.0 as well: its constructor takes the now-internal `Scene`, so an exported class nobody could construct would have been worse than no export. Pick through `Renderer.pick` / `Renderer.pickRect`.
 
+`SceneContents.translateMeshesForEntities` and `rotateMeshesForEntities` accept an optional callback that receives each affected flat mesh immediately before its vertex buffers change.
+
 ---
 
 ## @ifc-lite/export

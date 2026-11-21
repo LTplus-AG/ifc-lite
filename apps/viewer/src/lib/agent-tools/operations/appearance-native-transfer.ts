@@ -14,6 +14,7 @@ import { appearanceAssets } from '@/lib/appearance/model-assets';
 import { stageNativeScanTransfer } from '@/lib/appearance/appearance-native-transfer';
 import { commitAppearance } from '@/lib/appearance/command';
 import { refreshNativeScanBinding } from '@/lib/appearance/appearance-native-scan';
+import { internal, invalidInput, stale, unavailable } from './refusals';
 const settingsSchema: JSONSchemaType<ScanTransferSettings> = {
   type: 'object',
   properties: {
@@ -94,10 +95,10 @@ export const appearanceTransferOperations = [
     },
     async (i, c) => {
       const state = nativeScanState(c, i.token, i.version);
-      if (!state.result || !c.signal) throw new Error('Calculate and review a current native scan registration first.');
+      if (!state.result || !c.signal) throw unavailable('Calculate and review a current native scan registration first.');
       for (const express_id of i.express_ids) resolveRef(c.model, { express_id });
       const renderer = getGlobalRenderer();
-      if (!renderer) throw new Error('The native viewport is unavailable.');
+      if (!renderer) throw unavailable('The native viewport is unavailable.');
       const planner = createAppearancePlanner(),
         owner = { kind: 'draft' as const, id: crypto.randomUUID() };
       let adopted = false;
@@ -113,11 +114,11 @@ export const appearanceTransferOperations = [
         );
         assertToolActive(c);
         nativeScanState(c, i.token, i.version);
-        if (getGlobalRenderer() !== renderer) throw new Error('The native renderer changed during transfer.');
+        if (getGlobalRenderer() !== renderer) throw stale('The native renderer changed during transfer.');
         if (!output.plan || !output.transfer.applicable || !(output.transfer.coverage.observedRasterInteriorTexels > 0))
           return out({ ready: false, coverage: output.transfer });
         if (output.transfer.exclusions.length)
-          throw new Error(`Native transfer excludes target objects: ${JSON.stringify(output.transfer.exclusions)}`);
+          throw invalidInput('refused', `Native transfer excludes target objects: ${JSON.stringify(output.transfer.exclusions)}`);
         c.commit(() => {
           releaseNativeScanTransfer(state);
           const stage = stageNativeScanTransfer(output, c.model.id, renderer);
@@ -148,8 +149,8 @@ export const appearanceTransferOperations = [
       const state = nativeScanState(c, i.token, i.version),
         transfer = state.transfer,
         renderer = getGlobalRenderer();
-      if (!transfer || !renderer || renderer !== transfer.renderer)
-        throw new Error('No current native transfer preview or renderer changed.');
+      if (!transfer || !renderer) throw unavailable('A native transfer preview and renderer are required.');
+      if (renderer !== transfer.renderer) throw stale('Native transfer renderer changed.');
       return out(
         c.commit(() => {
           transfer.stage.preview = compareNativeAppearancePreview(
@@ -175,15 +176,16 @@ export const appearanceTransferOperations = [
         transfer = state.transfer,
         registration = state.result,
         renderer = getGlobalRenderer();
-      if (!transfer?.output.plan || !registration || !renderer || renderer !== transfer.renderer || !c.signal)
-        throw new Error('No current reviewed native transfer.');
+      if (!transfer?.output.plan || !registration || !renderer || !c.signal)
+        throw unavailable('No current reviewed native transfer.');
+      if (renderer !== transfer.renderer) throw stale('Native transfer renderer changed.');
       if (transfer.applied) return out(transfer.applied);
       const recovery = { request: registration.request, rebind: state.session.afterAppearance() };
       transfer.applying = true;
       try {
         await c.commitAsync(async () => {
           const preview = transfer.stage.preview ?? compareNativeAppearancePreview(renderer, transfer.stage.groups, null, false);
-          if (!preview) throw new Error('Native preview could not be restored.');
+          if (!preview) throw internal('Native preview could not be restored.');
           transfer.stage.preview = preview;
           try {
             await commitAppearance(
@@ -248,8 +250,8 @@ export const appearanceTransferOperations = [
     tokenInput,
     async (i, c) => {
       const state = nativeScanState(c, i.token, i.version, false);
-      if (state.transfer?.applying) throw new Error('The native transfer is being applied.');
-      if (!state.recovery || !c.signal) throw new Error('No native retained binding is available for recovery.');
+      if (state.transfer?.applying) throw unavailable('The native transfer is being applied.');
+      if (!state.recovery || !c.signal) throw unavailable('No native retained binding is available for recovery.');
       const planner = createAppearancePlanner();
       try {
         const refreshed = await refreshNativeScanBinding(state.session, state.recovery, planner, c.signal);
@@ -275,7 +277,7 @@ export const appearanceTransferOperations = [
     tokenInput,
     (i, c) => {
       const state = nativeScanState(c, i.token, i.version, false);
-      if (state.transfer?.applying) throw new Error('The native transfer is being applied.');
+      if (state.transfer?.applying) throw unavailable('The native transfer is being applied.');
       return out(
         c.commit(() => {
           releaseNativeScanTransfer(state);

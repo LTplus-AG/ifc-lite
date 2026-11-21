@@ -8,7 +8,7 @@ import { afterEach, test } from 'node:test';
 import { act } from 'react';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { PropertyValueType } from '@ifc-lite/data';
-import { cleanup, click, render, type as typeInput, waitFor } from '@/test/render';
+import { cleanup, click, render, settle, type as typeInput, waitFor } from '@/test/render';
 import { fixtureModel } from '@/test/store-fixture';
 import { loadDialogs } from '@/test/dialog-host';
 import { useViewerStore } from '@/store';
@@ -148,8 +148,10 @@ test('#6232 D4 edits land in the active set, grouped by element; undo takes them
     store().setProperty('A', 101, 'Pset_WallCommon', 'FireRating', 'EI60', PropertyValueType.Label);
     store().setProperty('A', 101, 'Pset_WallCommon', 'IsExternal', true, PropertyValueType.Boolean);
   });
+  await settle();
   const slab = await newSet(ui, 'Slab');
   act(() => { store().setProperty('A', 102, 'Pset_SlabCommon', 'LoadBearing', true, PropertyValueType.Boolean); });
+  await settle();
 
   assert.equal(store().changeSets.get(facade)?.mutations.length, 2);
   assert.equal(store().changeSets.get(slab)?.mutations.length, 1);
@@ -174,6 +176,7 @@ test('#6232 D4 the first edit with no active set starts "Unsaved changes"', asyn
   setup();
   const ui = await mount();
   act(() => { useViewerStore.getState().setProperty('A', 101, 'Pset_WallCommon', 'FireRating', 'EI30', PropertyValueType.Label); });
+  await settle();
   assert.deepEqual(names(ui), ['Unsaved changes']);
   assert.match(rows(ui)[0].textContent ?? '', /1 edit/);
   assert.equal(rows(ui)[0].dataset.active, 'true');
@@ -187,6 +190,7 @@ test('#6232 D4 Export downloads the set and Import brings it back as a new set w
     useViewerStore.getState().setProperty('A', 101, 'Pset_WallCommon', 'FireRating', 'EI90', PropertyValueType.Label);
     useViewerStore.getState().setProperty('A', 102, 'Pset_SlabCommon', 'LoadBearing', false, PropertyValueType.Boolean);
   });
+  await settle();
   await withCapturedDownloads(async (downloads) => {
     click(button(ui, 'Export Share me'));
     assert.equal(downloads.length, 1);

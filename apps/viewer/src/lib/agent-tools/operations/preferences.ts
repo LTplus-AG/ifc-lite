@@ -5,6 +5,7 @@ import type { JSONSchemaType } from 'ajv';
 import { useViewerStore } from '@/store';
 import { UNIT_ALTERNATIVES } from '@/lib/units/alternatives';
 import { viewerOperation, emptySchema } from './contract';
+import { invalidInput } from './refusals';
 
 function inspect() {
   const s = useViewerStore.getState();
@@ -52,7 +53,7 @@ export const preferenceOperations = [
   viewerOperation<{ unit_type: string; option_id: string | null }>(metadata('preferences.unitOverride', 'Set or clear a curated display-unit override. Does not change model values.'), {
     type: 'object', properties: { unit_type: { type: 'string', enum: Object.keys(UNIT_ALTERNATIVES) }, option_id: { anyOf: [{ type: 'string' }, { type: 'null', nullable: true }] } }, required: ['unit_type', 'option_id'], additionalProperties: false,
   } as unknown as JSONSchemaType<{ unit_type: string; option_id: string | null }>, i => {
-    if (i.option_id !== null && !UNIT_ALTERNATIVES[i.unit_type].some(option => option.id === i.option_id)) throw new Error('The display unit is not an alternative for this IFC unit type.');
+    if (i.option_id !== null && !UNIT_ALTERNATIVES[i.unit_type].some(option => option.id === i.option_id)) throw invalidInput('invalid-value', 'The display unit is not an alternative for this IFC unit type.');
     useViewerStore.getState().setUnitDisplayOverride(i.unit_type, i.option_id); return inspect();
   }),
   viewerOperation(metadata('preferences.unitReset', 'Clear every native display-unit override.'), emptySchema, () => { useViewerStore.getState().resetUnitDisplayOverrides(); return inspect(); }),

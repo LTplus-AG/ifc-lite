@@ -19,6 +19,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { useViewerStore } from '@/store';
 import { seedCoincidentWalls } from '@/test/clash-run-fixture.js';
+import { settle } from '@/test/render.js';
 import { ClashPanel } from './ClashPanel.js';
 
 Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { get: () => 800, configurable: true });
@@ -83,6 +84,7 @@ for (const modelCount of [1, 2] as const) {
       assert.ok(previous);
 
       await act(async () => useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 }));
+      await settle();
       assert.equal(useViewerStore.getState().clashResult, previous);
       // The panel has other live regions (the select-all status stays mounted); find the stale banner.
       const staleBanner = () => [...container!.querySelectorAll('output')].find((o) => /model changed/i.test(o.textContent ?? ''));

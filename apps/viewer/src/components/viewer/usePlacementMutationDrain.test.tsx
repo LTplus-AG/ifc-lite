@@ -13,10 +13,12 @@
 import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { useRef } from 'react';
+import { act, useRef, useState } from 'react';
 import { Renderer, type RenderPipeline } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, click, render, settle } from '@/test/render.js';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
+import { useViewerStore } from '@/store';
 import { usePlacementMutationDrain } from './usePlacementMutationDrain.js';
 
 afterEach(cleanup);
@@ -30,7 +32,7 @@ const triangle = (expressId: number, x: number): MeshData => ({
 });
 
 /** Element 7 at the origin, plus enough pieces far to -X to cross the BVH threshold. */
-function movableScene() {
+function movableScene(primary = triangle(7, 0)) {
   const renderer = new Renderer({ width: 256, height: 256,
     getBoundingClientRect: () => ({ width: 256, height: 256 }) } as unknown as HTMLCanvasElement);
   const device = {
@@ -41,7 +43,7 @@ function movableScene() {
   } as unknown as GPUDevice;
   const pipeline = { getUniformBufferSize: () => 256, getBindGroupLayout: () => ({}) } as unknown as RenderPipeline;
   Object.assign(renderer, { device: { isInitialized: () => true, getDevice: () => device }, pipeline });
-  const pieces = [triangle(7, 0)];
+  const pieces = [primary];
   for (let i = 0; i < 120; i++) pieces.push(triangle(100 + i, -1_000 - i * 20));
   renderer.getScene().appendToBatches(pieces, device, pipeline);
   return renderer;
@@ -77,5 +79,35 @@ describe('usePlacementMutationDrain', () => {
 
     assert.equal(pickAt(renderer, 5.25, 0.25), 7, 'the moved element is not pickable at its new place');
     assert.equal(pickAt(renderer, 0.25, 0.25), undefined, 'the moved element is still pickable at its old place');
+  });
+
+  it('a panel sees the published mesh position until the edit settles (#10535)', async () => {
+    const mesh = triangle(7, 0);
+    const renderer = movableScene(mesh);
+    const model = { ...fixtureModel('movement'), geometryResult: null };
+    useViewerStore.setState(fixtureModels(model));
+    useViewerStore.getState().appendGeometryBatch(model.id, [mesh]);
+    function CoordinateProbe() {
+      const geometry = useViewerStore((s) => s.models.get(model.id)?.geometryResult);
+      const [renderCount, rerender] = useState(0);
+      return <button type="button" onClick={() => rerender(renderCount + 1)}>
+        {renderCount}:{geometry?.meshes[0]?.positions[0]}
+      </button>;
+    }
+    try {
+      const ui = render(<CoordinateProbe />);
+      const button = ui.querySelector('button')!;
+      assert.equal(button.textContent, '0:0');
+      act(() => useViewerStore.setState((state) => ({ mutationVersion: state.mutationVersion + 1 })));
+      render(<MoveDrain renderer={renderer} pending={new Map([[7, [5, 0, 0]]])} />);
+      assert.equal(mesh.positions[0], 5, 'the renderer has already moved the triangle');
+      click(button, { detail: 1 });
+      assert.equal(button.textContent, '1:0');
+      await settle();
+      assert.equal(button.textContent, '1:5');
+    } finally {
+      cleanup();
+      useViewerStore.getState().resetViewerState();
+    }
   });
 });

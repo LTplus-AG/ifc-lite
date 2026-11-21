@@ -33,13 +33,13 @@
  * same.
  */
 
-import type { IfcDataStore } from '@ifc-lite/parser';
-import { extractGeoreferencingOnDemand } from '@ifc-lite/parser';
+import { extractGeoreferencingOnDemand, type IfcDataStore } from '@ifc-lite/parser';
+import { viewerAxisScales } from './viewer-georef-scale.js';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { COORDINATE_OPERATION_STEP_TYPES } from './georef-closure.js';
 import { BARE_REF_RE } from './reference-collector.js';
 import { getStepAttr, groupSubContextsByKey, planSubContextUnify } from './merged-subcontext.js';
-import { frameArgs, stepRecordFrame, withFrameArgs } from './step-record-frame.js';
+import { PROJECT_REPRESENTATION_CONTEXTS_ATTR, refsIn } from './merged-project-contexts.js';
 
 /** A resolved WorldCoordinateSystem frame: origin in metres and normalized axes. */
 export interface WcsSignature {
@@ -135,10 +135,15 @@ export function resolveContextWcsMetres(
   return { x: x * scale, y: y * scale, z: z * scale, axis, refDirection };
 }
 
+/** A model's first `IfcGeometricRepresentationContext`, the one the merge unifies. */
+function firstContextId(dataStore: IfcDataStore): number | undefined {
+  // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so this first source context is the merged input's current context
+  return (dataStore.entityIndex.byType.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [])[0];
+}
+
 /** `resolveContextWcsMetres` for a model's first `IfcGeometricRepresentationContext`, or null if it has none. */
 export function resolveModelContextWcs(dataStore: IfcDataStore, lengthUnitScale: number): WcsSignature | null {
-  // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so this first source context is the merged input's current context
-  const contextId = (dataStore.entityIndex.byType.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [])[0];
+  const contextId = firstContextId(dataStore);
   return contextId === undefined ? null : resolveContextWcsMetres(dataStore, contextId, lengthUnitScale);
 }
 
@@ -159,26 +164,66 @@ export interface GeorefSignature { placement: string; unitScale: number | null }
 
 /**
  * The {@link GeorefSignature} of `dataStore`'s first representation context, or null when no coordinate operation
- * sits on it. It reads the parser's georeference, which resolves the map unit, and fills IFC defaults (scale 1, no
- * rotation), so two spellings of one georeference agree; a CRS without a map unit uses the project's length unit
- * (`lengthUnitScale`). An operation the parser does not read as the model's georeference, and a geographic CRS
- * (whose height unit it does not read), match no other. Two contexts in one frame with different georeferences
+ * sits on it. It reads the parser's georeference, which resolves the map unit, fills IFC defaults (no rotation) and
+ * takes the scale the viewer gives geometry in `lengthUnitScale`, so two spellings of one georeference agree; a CRS
+ * without a map unit is read as metres, as the viewer reads it (#10886). An operation the parser does not read as the model's georeference, and a geographic CRS (whose
+ * height unit it does not read), match no other. Two contexts in one frame with different georeferences
  * place the same coordinates at two places on the map, so they must not be unified (#10798).
  */
 export function resolveModelContextGeorefSignature(dataStore: IfcDataStore, lengthUnitScale: number): GeorefSignature | null {
-  // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so these are the merged input's current context and operations
-  const { byType } = dataStore.entityIndex;
-  const contextId = (byType.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [])[0];
-  if (contextId === undefined || !COORDINATE_OPERATION_STEP_TYPES.some(type => (byType.get(type) ?? [])
-    .some(id => refId(getStepAttr(dataStore, id, 0)) === contextId))) return null;
+  const contextId = firstContextId(dataStore);
+  if (contextId === undefined || contextOperation(dataStore, contextId) === null) return null;
   const { mapConversion: op, projectedCRS: crs } = extractGeoreferencingOnDemand(dataStore) ?? {};
   if (!op || op.sourceCRS !== contextId) return { placement: 'unread', unitScale: null };
   return {
     placement: JSON.stringify([op.operation ?? 'mapConversion', crs?.kind, crs?.name, crs?.geodeticDatum, crs?.verticalDatum,
       crs?.mapProjection, crs?.mapZone, crs?.wellKnownText, op.eastings, op.northings, op.orthogonalHeight,
-      op.xAxisAbscissa ?? 1, op.xAxisOrdinate ?? 0, op.scale ?? 1, op.factorX ?? 1, op.factorY ?? 1, op.factorZ ?? 1]),
-    unitScale: crs?.mapUnitResolved === false || crs?.kind === 'geographic' ? null : crs?.mapUnitScale ?? lengthUnitScale,
+      op.xAxisAbscissa ?? 1, op.xAxisOrdinate ?? 0, ...viewerAxisScales(op, crs?.mapUnitScale, lengthUnitScale)]),
+    unitScale: crs?.mapUnitResolved === false || crs?.kind === 'geographic' ? null : crs?.mapUnitScale ?? 1,
   };
+}
+
+/**
+ * A context's coordinate operation, its target CRS (null for no CRS, or a CRS with an operation of its own, which is
+ * not compared) and its WKT ids, and `record`, all by value; two merge only when every attribute is equal (#10873).
+ */
+export interface ContextOperation { operation: number; crs: number | null; wkt: number[]; record: string }
+
+/** A value equal to nothing else, for a record that cannot be compared (unreadable, dangling, past the depth cut). */
+let incomparable = 0;
+/** A record by value: numbers parsed, `$` as null, a reference as its target, `depth` deep; `skip` leaves slots out. */
+function recordValue(dataStore: IfcDataStore, id: number, depth: number, skip: readonly number[] = []): unknown[] {
+  // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so this is the merged input's current record
+  const type = dataStore.entityIndex.byId.get(id)?.type, values: unknown[] = [type];
+  if (!type || depth < 0 || getStepAttr(dataStore, id, 0) === null) return [`incomparable ${++incomparable}`];
+  for (let index = 0, raw = getStepAttr(dataStore, id, 0); raw !== null; raw = getStepAttr(dataStore, id, ++index)) {
+    if (skip.includes(index)) continue;
+    const ref = refId(raw), number = Number(raw);
+    values.push(ref !== null ? recordValue(dataStore, ref, depth - 1) : raw === '$' ? null : Number.isFinite(number) ? number : raw);
+  }
+  return values;
+}
+
+/** The CRS record types a coordinate operation's TargetCRS can be. */
+const CRS_TYPES = new Set(['IFCPROJECTEDCRS', 'IFCGEOGRAPHICCRS']);
+
+/** The first coordinate operation whose SourceCRS is `contextId`, with its TargetCRS, or null when none is. */
+function contextOperation(dataStore: IfcDataStore, contextId: number): ContextOperation | null {
+  // @raw-entity-enumeration-ok MergeExporter uses a reparsed effective STEP snapshot, so these are the merged input's current records
+  const { byType, byId } = dataStore.entityIndex;
+  for (const type of COORDINATE_OPERATION_STEP_TYPES) {
+    for (const id of byType.get(type) ?? []) {
+      if (refId(getStepAttr(dataStore, id, 0)) !== contextId) continue;
+      const target = refId(getStepAttr(dataStore, id, 1));
+      const crs = target !== null && CRS_TYPES.has(byId.get(target)?.type?.toUpperCase() ?? '')
+        && !COORDINATE_OPERATION_STEP_TYPES.some(kind => byType.get(kind)?.some(op => refId(getStepAttr(dataStore, op, 0)) === target)) ? target : null;
+      const wkt = crs === null ? [] : (byType.get('IFCWELLKNOWNTEXT') ?? []).filter(text => refId(getStepAttr(dataStore, text, 1)) === crs);
+      const record = JSON.stringify([recordValue(dataStore, id, 4, [0, 1]), crs === null ? null : recordValue(dataStore, crs, 4),
+        wkt.map(text => recordValue(dataStore, text, 0, [1]))]);
+      return { operation: id, crs, wkt, record };
+    }
+  }
+  return null;
 }
 
 /**
@@ -196,6 +241,8 @@ export interface PrimaryContextState {
    * none, that of the first later model that unified onto it. {@link planInfrastructureUnify} updates it.
    */
   contextGeoref: GeorefSignature | null;
+  /** The shared context's coordinate operation and CRS, as output ids, which a later model's identical one maps onto. */
+  contextOperation: ContextOperation | null;
 }
 
 /** Build the {@link PrimaryContextState} for the primary model. */
@@ -203,13 +250,20 @@ export function resolvePrimaryContextState(
   dataStore: IfcDataStore,
   subContextIds: number[],
   primaryScale: number,
+  offset: number,
 ): PrimaryContextState {
+  const contextId = firstContextId(dataStore);
   return {
     subContextsByKey: groupSubContextsByKey(dataStore, subContextIds),
     contextWcs: resolveModelContextWcs(dataStore, primaryScale),
     contextGeoref: resolveModelContextGeorefSignature(dataStore, primaryScale),
+    contextOperation: contextId === undefined ? null : offsetOperation(contextOperation(dataStore, contextId), offset),
   };
 }
+
+const offsetOperation = (operation: ContextOperation | null, offset: number): ContextOperation | null =>
+  operation && { operation: operation.operation + offset, crs: operation.crs === null ? null : operation.crs + offset,
+    wkt: operation.wkt.map(id => id + offset), record: operation.record };
 
 /**
  * True when two resolved WCS frames are the same within tolerance, OR
@@ -231,12 +285,6 @@ function georefSignaturesCompatible(a: GeorefSignature | null, b: GeorefSignatur
   return a.placement === b.placement && a.unitScale !== null && b.unitScale !== null && unitScalesEqual(a.unitScale, b.unitScale);
 }
 
-/** 0-based attribute index of `IfcContext.RepresentationContexts` (IfcProject in IFC2X3 and IFC4, IfcProjectLibrary). */
-const PROJECT_REPRESENTATION_CONTEXTS_ATTR = 7;
-
-/** The `#N` references in an attribute slot of references (`$` has none); its comments are not read. */
-const refsIn = (slot: string): string[] => slot.replace(/\/\*[\s\S]*?\*\//g, '').match(/#\d+/g) ?? [];
-
 /**
  * Plan the whole shared-infrastructure dedup for one model — `MergedExporter`
  * delegates its entire "remap and skip duplicate infrastructure" step here.
@@ -246,8 +294,9 @@ const refsIn = (slot: string): string[] => slot.replace(/\/\*[\s\S]*?\*\//g, '')
  * WCS frame agrees with the primary model's (origin in metres AND
  * axis/refDirection orientation, so a differing length unit or a rotated frame
  * doesn't produce a false match) and its georeference agrees with the one on
- * the shared context (#10798); a mismatch leaves it un-remapped — kept as
- * this model's own root — so its untouched coordinates are never
+ * the shared context (#10798), and, when both carry a coordinate operation,
+ * both are into a CRS that starts no operation of its own and equal in every attribute (#10873); a mismatch
+ * leaves it un-remapped, kept as this model's own root, so its untouched coordinates are never
  * re-interpreted against the wrong frame.
  *
  * Its subcontexts (`IFCGEOMETRICREPRESENTATIONSUBCONTEXT`) go through
@@ -259,8 +308,10 @@ const refsIn = (slot: string): string[] => slot.replace(/\/\*[\s\S]*?\*\//g, '')
  * the parent means every child must be retained too, not just remapped in
  * isolation. Mutates `sharedRemap`/`skipEntityIds`, and records a unified
  * model's georeference on `firstModelContext.contextGeoref` when it had none.
- * Returns the top-level contexts it kept that one of the model's IfcProjects
- * listed (directly or through a subcontext), for {@link listKeptContexts}.
+ * A unified model's coordinate operation, identical by then, maps onto the
+ * shared context's. `modelOffset` is this model's output id offset. Returns
+ * the top-level contexts it kept that one of the model's IfcProjects listed
+ * (directly or through a subcontext), for {@link listKeptContexts}.
  *
  * `lengthUnitScale` is the scale THIS model's raw WCS coordinates resolve
  * under. Under assume-shared the caller asserts raw coordinates are already
@@ -280,15 +331,22 @@ export function planInfrastructureUnify(
   lengthUnitScale: number,
   sharedRemap: Map<number, number>,
   skipEntityIds: Set<number>,
+  modelOffset: number,
 ): number[] {
   // Computed once, up front — not per type in the loop below — so its result
   // does not depend on `IFCGEOMETRICREPRESENTATIONCONTEXT` iterating before
   // `IFCGEOMETRICREPRESENTATIONSUBCONTEXT` in `firstModelInfraMap`.
   // Two georeferences that differ keep this model's context, and its conversion with it, as its own root (#10798).
   const georef = resolveModelContextGeorefSignature(dataStore, lengthUnitScale);
+  const modelContextIds = modelInfra.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [];
+  // A context holds one coordinate operation (HasCoordinateOperation SET [0:1], #10873). Two equal in every attribute,
+  // both into a CRS that starts no operation of its own, become one below; any other pair keeps this context apart.
+  const own = modelContextIds.length > 0 ? contextOperation(dataStore, modelContextIds[0]) : null;
+  const shared = firstModelContext.contextOperation;
   const contextsCompatible = wcsSignaturesCompatible(firstModelContext.contextWcs,
     resolveModelContextWcs(dataStore, lengthUnitScale))
-    && georefSignaturesCompatible(firstModelContext.contextGeoref, georef);
+    && georefSignaturesCompatible(firstModelContext.contextGeoref, georef)
+    && !(own && shared && (own.crs === null || shared.crs === null || own.record !== shared.record));
   // Only the model's FIRST top-level context is (positionally) unified below;
   // any later sibling context — a model with both a 'Model' and a 'Plan'
   // context, say — is always retained. A subcontext may therefore unify ONLY
@@ -296,13 +354,19 @@ export function planInfrastructureUnify(
   // child of a retained sibling must stay with its parent, or its shape
   // representations get re-anchored onto the primary's frame while the parent
   // keeps its own.
-  const modelContextIds = modelInfra.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [];
   const firstContextIds = firstModelInfraMap.get('IFCGEOMETRICREPRESENTATIONCONTEXT') ?? [];
   const unifiedContextId = contextsCompatible && modelContextIds.length > 0 && firstContextIds.length > 0
     ? modelContextIds[0]
     : null;
   // This model's georeference now lands on the shared context, so a later model must agree with it too.
   if (unifiedContextId !== null) firstModelContext.contextGeoref ??= georef;
+  // A unified context's identical operation maps onto the shared one, with its CRS; the first to arrive is shared.
+  if (unifiedContextId !== null && own && shared && own.crs !== null && shared.crs !== null) {
+    sharedRemap.set(own.operation, shared.operation);
+    sharedRemap.set(own.crs, shared.crs);
+    // The CRS's WKT goes with it (IfcCoordinateReferenceSystem.WellKnownText is SET [0:1]).
+    for (const id of [own.operation, own.crs, ...own.wkt]) skipEntityIds.add(id);
+  } else if (unifiedContextId !== null && own && !shared) firstModelContext.contextOperation = offsetOperation(own, modelOffset);
   for (const [type, firstIds] of firstModelInfraMap) {
     const thisIds = modelInfra.get(type);
     if (!thisIds || firstIds.length === 0 || thisIds.length === 0) continue;
@@ -333,41 +397,4 @@ export function planInfrastructureUnify(
   // A project that lists a subcontext lists its root too (a root context has no ParentContext slot, so reads null).
   const projectListed = new Set([...listed, ...listed.map(id => refId(getStepAttr(dataStore, id, SUBCONTEXT_PARENT_CONTEXT_ATTR)))]);
   return modelContextIds.filter(id => !sharedRemap.has(id) && projectListed.has(id));
-}
-
-/**
- * List `contextIds` in the merged project's RepresentationContexts (#10798). A compatible later model's IfcProject
- * folds into the primary's, so a top-level context of it that was kept rather than unified (a different frame or
- * georeference, or a second context its own project listed) belongs to no project otherwise. Only
- * ids written to `lines` are listed.
- */
-export function listKeptContexts(lines: string[], projectId: number | undefined, contextIds: readonly number[]): void {
-  if (projectId === undefined || contextIds.length === 0) return;
-  const wanted = new Set(contextIds), written: number[] = [];
-  let projectIndex = -1;
-  // Stops once the project and every kept context are found.
-  for (let index = 0; index < lines.length && (projectIndex < 0 || written.length < wanted.size); index++) {
-    const id = leadingId(lines[index]);
-    if (id === projectId) projectIndex = index;
-    else if (wanted.has(id)) written.push(id);
-  }
-  if (projectIndex < 0 || written.length === 0) return;
-  const text = lines[projectIndex], frame = stepRecordFrame(text, { allowMissingSemicolon: true });
-  const args = frame && splitTopLevelStepArguments(frameArgs(text, frame));
-  if (!frame || !args || args.length <= PROJECT_REPRESENTATION_CONTEXTS_ATTR) return;
-  // The slot holds references only, so it is rewritten from them: `(#2) /* c */` and `$ /* c */` read as the list.
-  args[PROJECT_REPRESENTATION_CONTEXTS_ATTR] = `(${[...refsIn(args[PROJECT_REPRESENTATION_CONTEXTS_ATTR]), ...written.map(id => `#${id}`)].join(',')})`;
-  lines[projectIndex] = withFrameArgs(text, frame, args.join(','));
-}
-
-/** The `#N` a STEP line starts with, or -1; read by char code, as it runs over every line of a merge. */
-function leadingId(line: string): number {
-  if (line.charCodeAt(0) !== 35) return -1;
-  let id = 0, index = 1;
-  for (; index < line.length; index++) {
-    const digit = line.charCodeAt(index) - 48;
-    if (digit < 0 || digit > 9) break;
-    id = id * 10 + digit;
-  }
-  return index > 1 ? id : -1;
 }

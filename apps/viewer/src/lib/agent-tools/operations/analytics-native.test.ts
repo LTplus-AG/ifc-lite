@@ -70,7 +70,7 @@ async function seed(count: 1 | 2 = 1) {
   const commit = <T,>(write: () => T): T => { context.signal?.throwIfAborted(); context.checkpoint?.(); return write(); };
   context = { model: { ...model, store: model.store }, host, commit,
     commitAsync: async <T,>(write: () => Promise<T>): Promise<T> => { context.signal?.throwIfAborted(); context.checkpoint?.(); return write(); },
-    ownGeometry: async work => work(), artifacts: operationArtifacts(host, commit), canEdit: () => true };
+    ownGeometry: async work => work(), retain: () => {}, artifacts: operationArtifacts(host, commit), canEdit: () => true };
 }
 async function run<T>(id: string, input: unknown = {}, activeContext: OperationExecutionContext = context): Promise<T> {
   const entry: Operation | undefined = entries.find(row => row.id === id); assert.ok(entry, id);
@@ -83,12 +83,19 @@ describe('native analytics operations (#10525 deeper automation)', () => {
   beforeEach(async () => seed());
   it('runs all federation rows through the shared Lists service, paginates only the reply and records exact provenance', async () => {
     await seed(2); useViewerStore.setState({ listDefinitions: [list] });
-    const result = await run<{ rows: unknown[]; totalCount: number }>('lists.run', { id: list.id, offset: 1, limit: 2 });
+    const first = await run<{ next_offset: number; page_revision: string }>('lists.run', { id: list.id, offset: 0, limit: 1 });
+    assert.equal(first.next_offset, 1); assert.ok(first.page_revision);
+    const next = { id: list.id, offset: first.next_offset, page_revision: first.page_revision, limit: 2 };
+    const result = await run<{ rows: unknown[]; totalCount: number }>('lists.run', next);
     assert.equal(result.rows.length, 2); assert.equal(result.totalCount, 4);
     const stored = useViewerStore.getState().listResult; assert.ok(stored);
     assert.equal(stored.rows.length, 4); assert.equal(listRunDefinition(stored)?.id, list.id);
     assert.deepEqual(result.rows, stored.rows.slice(1, 3));
     assert.deepEqual(listRunModels(stored)?.models.map(row => row.id), ['A', 'B']);
+    // #10877: re-running an edited definition cannot publish a changed population as a continuation.
+    useViewerStore.setState({ listDefinitions: [{ ...list, entityTypes: [IfcTypeEnum.IfcDoor] }] });
+    await assert.rejects(run('lists.run', next), { code: 'STATE_CHANGED' });
+    assert.equal(useViewerStore.getState().listResult, stored);
   });
   it('native group X-ray uses exact federated members, toggles off and never releases a successor visibility owner', async () => {
     await seed(2); const { model: _model, ...viewer } = context;
@@ -430,6 +437,7 @@ describe('native analytics operations (#10525 deeper automation)', () => {
     } finally {
       publishDrawingExportFrame({ drawing: null, isPinned: false, cachedSheetTransformRef });
     }
+    await assert.rejects(run('drawing.centerDxf', { id: 'missing-dxf' }, viewerContext), { code: 'INVALID_INPUT', details: { reason: 'unknown-target' } });
     await run('drawing.centerDxf', { id: imported.id }, viewerContext);
     const underlay = useViewerStore.getState().dxfUnderlays.find(row => row.id === imported.id); assert.ok(underlay?.referenceFrame);
     const mapped = dxfPlaneDrawingMapper(underlay, useViewerStore.getState(), drawing.config.plane); assert.ok(mapped);

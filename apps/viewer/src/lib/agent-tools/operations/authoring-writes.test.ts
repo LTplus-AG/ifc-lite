@@ -49,6 +49,24 @@ function previewOtherModel() {
 describe('authoring operations write the named target (#10793)', () => {
   beforeEach(seed);
 
+  it('reports a refused native material assignment before marking the write committed (#10871)', async () => {
+    const state = useViewerStore.getState();
+    const dataStore = state.models.get(SAMPLE_MODEL)!.ifcDataStore!;
+    // A Cartesian point exists in the model but cannot receive an IfcRelAssociatesMaterial.
+    const express_id = dataStore.entityIndex.byType.get('IFCCARTESIANPOINT')?.[0];
+    assert.ok(express_id);
+    const view = state.mutationViews.get(SAMPLE_MODEL)!;
+    const before = view.getNewEntities().length;
+    const result = await invoke('authoring.material.createAndAssign', {
+      express_id, Name: 'Concrete', Color: '#808080', Category: '', Description: '',
+    });
+    const details = result.structured as { reason: string; committed?: boolean };
+    assert.equal(result.errorCode, 'INVALID_INPUT', result.text);
+    assert.equal(details.reason, 'refused');
+    assert.equal(details.committed, undefined);
+    assert.equal(view.getNewEntities().length, before, 'native refusal rolls back the new material');
+  });
+
   it('#21 a Rectangle profile writes the kind Width and Height (Depth for a column) that placement reads', async () => {
     answer(await invoke('authoring.defaults.profile', { owner: 'beam', profile_json: JSON.stringify({ Type: 'Rectangle', XDim: 0.25, YDim: 0.6 }), expected_defaults: defaults() }));
     answer(await invoke('authoring.defaults.profile', { owner: 'column', profile_json: JSON.stringify({ Type: 'Rectangle', XDim: 0.5, YDim: 0.7 }), expected_defaults: defaults() }));
@@ -93,6 +111,18 @@ describe('authoring operations write the named target (#10793)', () => {
     const { token } = raw<{ token: string }>(await invoke('authoring.prepare', { proposal_json }, false));
     const receipt = JSON.parse(raw<{ receipt_json: string }>(await invoke('authoring.apply', { token })).receipt_json) as { applied: Array<{ globalId: string }> };
     const wall = useViewerStore.getState().mutationViews.get(SAMPLE_MODEL)!.getNewEntities().find(row => row.type.toUpperCase() === 'IFCWALL' && row.attributes[0] === receipt.applied[0].globalId)!.expressId, before = useViewerStore.getState().undoStacks.get(SAMPLE_MODEL)?.length ?? 0;
+    // An invalid kind must not fall back to a relative attachment (#10871).
+    const topAttachment = () => useViewerStore.getState().mutationViews.get(SAMPLE_MODEL)?.getPropertyValue(wall, 'IfcLite_StoreyAttachment', 'TopConstraint');
+    const originalAttachment = topAttachment();
+    for (const constraint of [{}, { kind: 'unknown' }, { kind: 'storey' }, { kind: 'slab' }, { kind: 'roof' }, { kind: 'storey', storeyId: 1.5 }]) {
+      const result = await invoke('storeys.topConstraint', { express_id: wall, constraint_json: JSON.stringify(constraint) });
+      assert.equal(result.errorCode, 'INVALID_INPUT', result.text);
+      const details = result.structured as { reason: string; committed?: boolean };
+      assert.equal(details.reason, 'invalid-value');
+      assert.equal(details.committed, undefined);
+      assert.equal(topAttachment(), originalAttachment);
+      assert.equal(useViewerStore.getState().undoStacks.get(SAMPLE_MODEL)?.length ?? 0, before);
+    }
     const refs = answer<Array<{ expressId: number }>>(await invoke('storeys.topConstraint', { express_id: wall, constraint_json: JSON.stringify({ kind: 'storeyAbove' }) }));
     assert.deepEqual(refs.map(ref => ref.expressId), [wall]);
     assert.ok((useViewerStore.getState().undoStacks.get(SAMPLE_MODEL)?.length ?? 0) > before);

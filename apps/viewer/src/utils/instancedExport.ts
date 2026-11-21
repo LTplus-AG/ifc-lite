@@ -212,14 +212,16 @@ export function geometryReleased(geometryResult?: GeometryResult, modelIds?: Ite
  * and instanced occurrences are read back first, and `run` receives the operation's context to
  * pass to its `withInstancedMeshes` calls. Resident geometry gets an empty context, unchanged.
  */
-export async function withReleasedExportGeometry<T>(run: (context: ReleasedExportContext) => T | Promise<T>, modelIds?: Iterable<string>): Promise<T> {
+export async function withReleasedExportGeometry<T>(run: (context: ReleasedExportContext) => T | Promise<T>, modelIds?: Iterable<string>,
+  /** The resident geometry the export supplies, so an owner the store does not know is judged as the collector judges it. */
+  residentGeometry?: GeometryResult): Promise<T> {
   const scope = modelIds === undefined ? undefined : [...modelIds];
   const previous = exportTail;
   let finish!: () => void;
   exportTail = new Promise<void>((resolve) => { finish = resolve; });
   await previous;
   try {
-    if (!geometryReleased(undefined, scope)) return await run({ prepared: null, scope });
+    if (!geometryReleased(residentGeometry, scope)) return await run({ prepared: null, scope });
     const { prepareReleasedExport } = await import('@/lib/geometry-backing/export-readback');
     const renderer = getGlobalRenderer();
     return await run({ prepared: await prepareReleasedExport(getViewerState(), renderer?.getScene(), scope), scope });

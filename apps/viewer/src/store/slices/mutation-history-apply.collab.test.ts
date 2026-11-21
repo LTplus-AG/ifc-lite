@@ -12,7 +12,8 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { PropertyValueType } from '@ifc-lite/data';
 import { useViewerStore } from '@/store';
-import { WALL_ID, model, parseHelloWall, seed } from '@/test/agent-tools-fixture';
+import { WALL_ID, model, parseHelloWall, parseStep, seed } from '@/test/agent-tools-fixture';
+import { createMutateAdapter } from '@/sdk/adapters/mutate-adapter';
 
 const initial = useViewerStore.getState();
 /** A fresh session handle: undo replays inside its transaction. */
@@ -27,6 +28,7 @@ beforeEach(async () => {
     mirrorPropertyEdit: (...args) => { mirrored.push(['edit', ...args]); },
     mirrorPropertyDelete: (...args) => { mirrored.push(['delete', ...args]); },
     mirrorAttributeEdit: (...args) => { mirrored.push(['attribute', ...args]); },
+    mirrorPlacementEdit: (...args) => { mirrored.push(['placement', ...args]); },
   });
 });
 afterEach(() => useViewerStore.setState(initial));
@@ -122,5 +124,94 @@ describe('undo and redo publish what the forward edit published (#10695)', () =>
     useViewerStore.setState({ canCollabEdit: () => false });
     state().undo('hello');
     assert.deepEqual(take(), []);
+  });
+});
+
+describe('undo and redo the room did not get, or got differently (#10810)', () => {
+  const view = () => state().getMutationView('hello')!;
+
+  it('an edit to an unset attribute: undo publishes it unset, and drops the local overlay', () => {
+    state().setAttribute('hello', WALL_ID, 'Description', 'Typed', null);
+    take();
+    state().undo('hello');
+    assert.deepEqual(take(), [['attribute', 'hello', WALL_ID, 'Description', '$']]);
+    assert.deepEqual(view().getAttributeMutationsForEntity(WALL_ID), []);
+  });
+
+  it('an SDK attribute edit: undo publishes the value it replaced', () => {
+    useViewerStore.setState({ editEnabled: true });
+    createMutateAdapter(useViewerStore).setAttribute({ modelId: 'hello', expressId: WALL_ID }, 'Name', 'Renamed');
+    take();
+    state().undo('hello');
+    assert.deepEqual(take(), [['attribute', 'hello', WALL_ID, 'Name', 'Wall']]);
+  });
+
+  it('an SDK attribute edit in the legacy store: undo restores the session edit it replaced', async () => {
+    // The legacy store has its data store and view but no `models` entry.
+    useViewerStore.setState({ editEnabled: true, models: new Map(), ifcDataStore: await parseHelloWall(), mutationViews: new Map(), undoStacks: new Map() });
+    const sdk = createMutateAdapter(useViewerStore), wall = { modelId: 'legacy', expressId: WALL_ID };
+    sdk.setAttribute(wall, 'Name', 'First');
+    sdk.setAttribute(wall, 'Name', 'Second');
+    state().undo('__legacy__');
+    assert.deepEqual(state().mutationViews.get('__legacy__')?.getAttributeMutationsForEntity(WALL_ID), [{ name: 'Name', value: 'First' }]);
+    // The first edit's prior is the source Name, as for a federated model.
+    assert.equal(state().undoStacks.get('__legacy__')?.at(-1)?.oldValue, 'Wall');
+  });
+
+  it('an SDK edit of a Description the source writes as \'\' or $: undo publishes it as written', async () => {
+    const step = (description: string) => `ISO-10303-21;
+HEADER;FILE_DESCRIPTION((''),'2;1');FILE_NAME('d','',(''),(''),'','','');FILE_SCHEMA(('IFC4'));ENDSEC;
+DATA;
+#1=IFCPROJECT('0Project00000000000001',$,'P',$,$,$,$,$,$);
+#2=IFCWALL('0Wall00000000000000001',$,'W',${description},$,$,$,$,$);
+ENDSEC;END-ISO-10303-21;
+`;
+    const published: unknown[] = [];
+    for (const description of ["''", '$']) {
+      seed([model('d', await parseStep(new TextEncoder().encode(step(description))))]);
+      useViewerStore.setState({ editEnabled: true, collabRoomId: 'room-a', collabSession: session(), collabRoomModels: new Map([['d', { slotId: 'm0', pathPrefix: '/m0' }]]),
+        mirrorAttributeEdit: (...args) => { mirrored.push(['attribute', ...args]); } });
+      createMutateAdapter(useViewerStore).setAttribute({ modelId: 'd', expressId: 2 }, 'Description', 'Typed');
+      take();
+      state().undo('d');
+      published.push(take().map(call => call[4]));
+    }
+    assert.deepEqual(published, [[''], ['$']]);
+  });
+
+  it('a move: undo moves the room copy back, redo forward again', () => {
+    const moved = state().translateEntity('hello', WALL_ID, [1, 0, 0]);
+    assert.ok(moved.ok, 'reason' in moved ? moved.reason : '');
+    assert.deepEqual(take().filter(call => call[0] === 'placement'), [['placement', 'hello', WALL_ID, [1, 0, 0]]]);
+    state().undo('hello');
+    assert.deepEqual(take(), [['placement', 'hello', WALL_ID, [-1, -0, -0]]]);
+    state().redo('hello');
+    assert.deepEqual(take(), [['placement', 'hello', WALL_ID, [1, 0, 0]]]);
+  });
+
+  it('undoing a property delete restores its type locally too, not text', () => {
+    state().deleteProperty('hello', WALL_ID, 'Pset_WallCommon', 'IsExternal');
+    take();
+    state().undo('hello');
+    assert.deepEqual(take(), [['edit', 'hello', WALL_ID, 'Pset_WallCommon', 'IsExternal', true, PropertyValueType.Boolean, 'IFCBOOLEAN']]);
+    const row = view().getForEntity(WALL_ID).find(set => set.name === 'Pset_WallCommon')?.properties.find(p => p.name === 'IsExternal');
+    assert.equal(row?.type, PropertyValueType.Boolean);
+  });
+
+  it('undoing a property delete restores its unit too', () => {
+    view().setProperty(WALL_ID, 'Pset_Test', 'Width', 200, PropertyValueType.Real, 'mm', true, 'IFCLENGTHMEASURE');
+    state().deleteProperty('hello', WALL_ID, 'Pset_Test', 'Width');
+    state().undo('hello');
+    const row = view().getForEntity(WALL_ID).find(set => set.name === 'Pset_Test')?.properties.find(p => p.name === 'Width');
+    assert.deepEqual([row?.value, row?.unit], [200, 'mm']);
+  });
+
+  it('redoing an edit that cleared an attribute clears it again, never the text \'null\'', () => {
+    state().setAttribute('hello', WALL_ID, 'Description', null as unknown as string, 'Before');
+    state().undo('hello');
+    take();
+    state().redo('hello');
+    assert.deepEqual(take(), [['attribute', 'hello', WALL_ID, 'Description', '$']]);
+    assert.deepEqual(view().getAttributeMutationsForEntity(WALL_ID), [{ name: 'Description', value: '$' }]);
   });
 });

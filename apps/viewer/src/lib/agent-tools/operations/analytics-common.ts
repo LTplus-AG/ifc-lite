@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { canonicalJson } from '@ifc-lite/flow';
 import type { ViewerOperationContext, Effect } from './contract';
+import { parseJsonInput } from './refusals';
 export const idSchema = { type: 'object' as const, properties: { id: { type: 'string' as const, minLength: 1, maxLength: 200 } }, required: ['id' as const], additionalProperties: false as const };
 export const jsonSchema = { type: 'object' as const, properties: { content_json: { type: 'string' as const, minLength: 2, maxLength: 500_000 } }, required: ['content_json' as const], additionalProperties: false as const };
 export const artifactSchema = { type: 'object', properties: { artifact_id: { type: 'string' }, filename: { type: 'string' }, mime_type: { type: 'string' }, bytes: { type: 'integer', minimum: 0 } }, required: ['artifact_id', 'filename', 'mime_type', 'bytes'], additionalProperties: false };
@@ -18,5 +19,5 @@ export const removedSchema = { type: 'object', properties: { removed: { type: 's
 
 /** Compare a wire snapshot by JSON value, independent of property ordering. */
 export function matchesJsonSnapshot(value: unknown, expected: string): boolean {
-  return canonicalJson(value) === canonicalJson(JSON.parse(expected));
+  return canonicalJson(value) === canonicalJson(parseJsonInput(expected, 'expected_json'));
 }

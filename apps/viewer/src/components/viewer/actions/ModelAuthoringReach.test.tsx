@@ -8,7 +8,7 @@ import { afterEach, test } from 'node:test';
 import { act } from 'react';
 import { readWallJoinTarget } from '@ifc-lite/create';
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { render, click, cleanup } from '@/test/render';
+import { render, click, cleanup, settle } from '@/test/render';
 import { useViewerStore } from '@/store';
 import { seedAuthoringSample, SAMPLE_MODEL, GROUND_STOREY, parseIfc } from '@/test/authoring-sample-fixture';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
@@ -30,6 +30,7 @@ test('#7262 mounted native reach review shows actual planned end/length, disclos
     op:'element.trimExtend',mode:'extend',target:{globalId:before.entities.getGlobalId(id),ifcClass:'IfcWall',name:before.entities.getName(id)},expected:authoringReachEvidence(get(),SAMPLE_MODEL,id),
     click:[8000,(i?20:5)*1000],boundary:{line:{a:[10000,0],b:[10000,30000],tMin:0,tMax:1,reach:0}},
   }))}));
+  await settle();
   const mutations=view.getMutationCount(),ui=render(<ModelAuthoringReview batch={batch} origin="native reach review" />);
   assert.match(ui.textContent??'',/extend end · length 10000 mm/);
   assert.match(ui.textContent??'',/The preview shows the outer body; openings are not cut into the preview/);

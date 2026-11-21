@@ -4,6 +4,7 @@
 
 import { assistantContent } from '../assistant/persistence.js';
 import { clashGroupsContent } from '../clash/group-workspace.js';
+import { idsStudioDraftsContent } from '../ids-studio/draft-library.js';
 import { bcfDraftsContent } from '../bcf-drafts/draft-library.js';
 import { bcfOutboxContent } from '../bcf-publication/outbox-store.js';
 import { modelChangeContent } from '../actions/receipts.js';
@@ -27,6 +28,7 @@ export const CONTENT_DEFINITIONS = {
   document: documentContent,
   assistant: assistantContent,
   clashGroups: clashGroupsContent,
+  idsStudioDrafts: idsStudioDraftsContent,
   bcfDrafts: bcfDraftsContent,
   bcfOutbox: bcfOutboxContent,
   modelChanges: modelChangeContent,

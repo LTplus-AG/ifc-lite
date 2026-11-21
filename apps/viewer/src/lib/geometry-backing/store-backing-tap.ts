@@ -25,7 +25,7 @@ import { type InstancedShardSupply, type PendingInstancedShard, hasPendingInstan
 import { PreTapSupply } from './pre-tap-supply';
 import { isReleasedMesh } from '@/lib/released-mesh-provenance';
 import { applyFederationOffsetToShard } from '@/components/viewer/instancedFederationOffset';
-import { collectMeshAreas, type MeshAreaEntry } from '@/components/viewer/tools/measure-modes/mesh-area';
+import { addMeshAreas, type MeshAreas } from './released-mesh-areas';
 import { acceptStatement, admitShard, type ResupplyState, statementVoided, supplyPoint, type SupplyPoint } from './instanced-resupply';
 import { notifyReleasedGeometryMetadataChanged, setReleasedGeometryMetadata } from './released-geometry-metadata';
 import { type PreviousGeneration, replayStoreList } from './generation-replay';
@@ -60,8 +60,7 @@ interface Tracked extends ResupplyState {
   occurrences: number;
   /** The store list changed after a CPU release: this generation is kept durable but no longer answers. */
   stale?: Error;
-  /** Per-entity mesh area of this generation, summed as `collectMeshAreas` sums the whole list. */
-  areas: Map<number, MeshAreaEntry>;
+  areas: MeshAreas; // per-entity mesh area of this generation, summed as one pass over the whole list would
   flatSealed?: boolean; // instancing lost, every flat record flushed by a seal and nothing written since (`flatComplete`)
   /** Replaced (or removed) before its generation began: superseded as soon as it does (#10876). */
   replaced?: boolean;
@@ -133,21 +132,15 @@ export class StoreGeometryBackingTap {
     }));
     tap.sync(store.getState());
     // Only a complete, current generation answers; anything else is unavailable.
-    setReleasedGeometryMetadata({
-      bounds: (modelId, id) => {
-        const backing = tap.completeBacking(modelId);
-        return backing?.directory.summary(id)?.bounds;
-      },
-      area: (modelId, id) => (tap.completeBacking(modelId) ? tap.tracked.get(modelId)?.areas.get(id) : undefined),
-    });
+    setReleasedGeometryMetadata({ bounds: (modelId, id) => tap.completeBacking(modelId)?.directory.summary(id)?.bounds,
+      area: (modelId, id) => (tap.completeBacking(modelId) ? tap.tracked.get(modelId)?.areas.get(id) : undefined) });
     return tap;
   }
 
   get registryHandle(): GeometryBackingRegistry { return this.registry; }
 
   private completeBacking(modelId: string): ModelGeometryBacking | undefined {
-    const tracked = this.tracked.get(modelId);
-    const backing = tracked?.backing;
+    const tracked = this.tracked.get(modelId), backing = tracked?.backing;
     return backing && !tracked.failure && !tracked.stale && backing.isCurrent && backing.isComplete ? backing : undefined;
   }
 
@@ -296,12 +289,7 @@ export class StoreGeometryBackingTap {
     // Snapshot the suffix now: the array keeps growing in place.
     const slice = meshes.slice(from, to);
     tracked.members.push(...slice);
-    // Areas while the arrays are resident; pieces of one entity across slices add up
-    // exactly as one pass over the list would (`collectMeshAreas` groups by entity).
-    for (const [id, entry] of collectMeshAreas([slice])) {
-      const prior = tracked.areas.get(id);
-      tracked.areas.set(id, prior ? { area: prior.area + entry.area, incomplete: prior.incomplete || entry.incomplete } : entry);
-    }
+    addMeshAreas(tracked.areas, slice); // while the arrays are resident
     this.enqueue(tracked, async () => {
       for (let i = 0; i < slice.length; i += APPEND_BATCH) {
         await this.writer(tracked).append(slice.slice(i, i + APPEND_BATCH));

@@ -9,6 +9,7 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
+import { settle } from '@/test/render.js';
 import {
   FIXTURE_REL_CONTAINED_1,
   FIXTURE_OPENING,
@@ -347,10 +348,8 @@ describe('symbolic cache follows live spatial bucket mappings (#5236/#5249)', ()
       assert.equal(firstWorldY(rendered.annotation), 10, 'the first parse uses the initial storey elevation');
 
       target.spatialHierarchy!.storeyElevations.set(90, 25);
-      await act(async () => {
-        useViewerStore.setState({ mutationVersion: 1 } as never);
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      });
+      act(() => useViewerStore.setState({ mutationVersion: 1 } as never));
+      await settle();
 
       assert.equal(firstWorldY(rendered.annotation), 25,
         'the mounted symbolic hook must re-key and rebucket after mutationVersion changes');

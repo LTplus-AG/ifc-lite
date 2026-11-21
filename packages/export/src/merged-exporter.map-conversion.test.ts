@@ -173,11 +173,12 @@ describe('merged STEP export and map conversions (#10798)', () => {
     expect((await merge([dangling, dangling])).crs).toBe(2);
   });
 
-  it('keeps one WKT on the shared CRS, and leaves an operation into another context alone (#10873)', async () => {
+  it('keeps one WKT on the shared CRS, and keeps apart an invalid operation into another context (#10873)', async () => {
     const withWkt: Georef = { raw: `${METRE_CRS}\n#21=IFCMAPCONVERSION(#14,#20,${X});\n#22=IFCWELLKNOWNTEXT('PROJCS["CH1903+ / LV95"]',#20);` };
     const wkt = await merge([withWkt, withWkt], 'IFC4X3');
     expect([wkt.sources.length, wkt.crs, wkt.wkt]).toEqual([1, 1, 1]);
-    // IFC4X3 lets an operation's TargetCRS be another context: B's plan context, in its own frame, stays B's.
+    // IFC4X3 ADD2 requires TargetCRS to be a CRS (IfcCoordinateReferenceSystem), and IfcOpenShell rejects an operation
+    // into a context. A file that has one anyway keeps that context apart, so neither operation is lost.
     const planAt = (x: string): Georef => ({ raw: `#15=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Plan',2,1.E-05,#16,$);
 #16=IFCAXIS2PLACEMENT2D(#17,$);
 #17=IFCCARTESIANPOINT((${x},0.));
@@ -216,11 +217,12 @@ describe('merged STEP export and map conversions (#10798)', () => {
 
   it('tells apart the same numbers in different map units', async () => {
     expectApart(await merge([at(X), { values: X, unit: '#3' }]), 2);
-    // A CRS without a map unit uses the project's.
-    expectApart(await merge([{ values: X, unit: '$' }, { values: X, unit: '$', projectUnit: '#3' }], 'IFC4', 'normalize'), 2);
+    // A CRS without a map unit is read as metres whatever the project unit, as the viewer reads it (#10886).
+    for (const strategy of ['normalize', 'assume-shared'] as const) {
+      const unitless = await merge([{ values: X, unit: '$' }, { values: X, unit: '$', projectUnit: '#3' }], 'IFC4', strategy);
+      expect([unitless.contexts.length, unitless.sources.length, unitless.crs]).toEqual([1, 1, 1]);
+    }
     expect((await merge([{ values: X, unit: '$' }, { values: X, unit: '$' }])).contexts).toHaveLength(1);
-    // Under assume-shared the caller says every model is in the primary's unit, so the map unit is the primary's too.
-    expect((await merge([{ values: X, unit: '$' }, { values: X, unit: '$', projectUnit: '#3' }], 'IFC4', 'assume-shared')).contexts).toHaveLength(1);
     // Two spellings of one georeference (an explicit metre and the project's metre, an omitted and a unit scale) are
     // not equal records, so neither is dropped: each keeps its own context and operation (#10873).
     expectApart(await merge([at(X), { values: X, unit: '$' }]), 2);

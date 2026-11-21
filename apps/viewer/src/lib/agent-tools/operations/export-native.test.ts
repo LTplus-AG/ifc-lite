@@ -37,7 +37,7 @@ beforeEach(async () => {
   resetFeaturesForTest(); await seedCoincidentWalls(2, 4);
   const host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));
   const commit = <T,>(write: () => T) => { c.signal?.throwIfAborted(); return write(); };
-  c = { host, commit, commitAsync: async <T,>(write: () => Promise<T>) => write(), ownGeometry: async work => work(), artifacts: operationArtifacts(host, commit), canEdit: () => true };
+  c = { host, commit, commitAsync: async <T,>(write: () => Promise<T>) => write(), ownGeometry: async work => work(), retain: () => {}, artifacts: operationArtifacts(host, commit), canEdit: () => true };
 });
 async function run<T>(id: string, input: unknown): Promise<T> { const op = entries.find(entry => entry.id === id); assert.ok(op); const result = await op.execute(input, c); op.validateResult(JSON.parse(JSON.stringify(result))); return result as T; }
 async function bytes(id: string) { const read = await readArtifact(c.host, id, 0, 65536); assert.equal(read.next_offset, null); return Buffer.from(read.data, 'base64'); }

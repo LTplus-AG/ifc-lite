@@ -98,6 +98,12 @@ export class SourceRecords {
     return id === null ? undefined : this.store.entityIndex.byId.get(id)?.type.toUpperCase();
   }
 
+  text(id: number): string | undefined {
+    // @raw-entity-enumeration-ok this reads the unedited source for a conversion preview
+    const entry = this.store.entityIndex.byId.get(id);
+    return entry ? this.decode(entry) : undefined;
+  }
+
   slots(id: number | null): readonly string[] | undefined {
     if (id === null) return undefined;
     if (!this.cache.has(id)) {

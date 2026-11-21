@@ -4,8 +4,10 @@ import { getSchemaRegistryForVersion } from '@ifc-lite/parser';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { frameArgs, stepRecordHead, stepRecordFrame, withFrameArgs, type StepRecordFrame } from './step-record-frame.js';
 import { forEachExpressRef, referencesAnyExpressId } from './step-ref-scan.js';
-import { missingTypeRoute } from './schema-untranslatable.js';
-import type { IfcSchemaVersion } from './schema-converter.js';
+import { isRootedEntityType, missingTypeRoute } from './schema-untranslatable.js';
+import { convertEntityType, convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
+import { SourceRecords, type SourceStore } from './schema-converter-structural-source.js';
+import { StyleFlatten } from './schema-style-flatten.js';
 import { isStepValue, skipStepTrivia } from './step-slot-grammar.js';
 
 type OutputRecord = { id: number; type: string; line: string; raw: string; frame: StepRecordFrame | null };
@@ -112,7 +114,7 @@ function indexRequiredMembers(rec: OutputRecord, users: Map<number, Member[]>, t
   }
 }
 
-function cascadeOmissions(records: readonly (OutputRecord | undefined)[], seeds: ReadonlySet<number>, to: UpgradeSchema): Set<number> {
+function cascadeOmissions(records: Iterable<OutputRecord | undefined>, seeds: ReadonlySet<number>, to: UpgradeSchema): Set<number> {
   const dropped = new Set(seeds);
   const users = new Map<number, Member[]>();
   for (const rec of records) {
@@ -127,6 +129,42 @@ function cascadeOmissions(records: readonly (OutputRecord | undefined)[], seeds:
       if (--member.group.remaining < member.group.minimum) dropped.add(member.group.id);
     }
   }
+  return dropped;
+}
+
+/** Preview required-reference losses on the target layouts of an unedited source. */
+export function previewUpgradeDependents(store: SourceStore, from: IfcSchemaVersion, to: IfcSchemaVersion): Set<number> {
+  const seeds = new Set<number>();
+  if (!removesObsoleteResources(from, to) || from === 'IFC5' || (to !== 'IFC4' && to !== 'IFC4X3')) return seeds;
+  const routeOf = (type: string) => missingTypeRoute(type, from, to, attributes(type, from) !== undefined,
+    attributes(convertEntityType(type, from, to), to) !== undefined);
+  // @raw-entity-enumeration-ok the preview describes only the unedited parsed source
+  for (const [type, ids] of store.entityIndex.byType) {
+    if (routeOf(type.toUpperCase()) === 'omitted') for (const id of ids) seeds.add(id);
+  }
+  if (seeds.size === 0) return seeds;
+
+  const styles = StyleFlatten.fromStore(store, from, to);
+  const source = new SourceRecords(store);
+  function* projectedRecords(): Generator<OutputRecord | undefined> {
+    // @raw-entity-enumeration-ok this reads the unedited parsed source once after finding direct omissions
+    for (const id of store.entityIndex.byId.keys()) {
+      if (seeds.has(id)) continue;
+      const text = source.text(id);
+      if (text === undefined) continue;
+      const line = styles ? styles.apply(text) : text;
+      if (line === null) continue;
+      const parsed = record(line);
+      if (!parsed || (routeOf(parsed.type) === 'unrepresented' && !isRootedEntityType(parsed.type))) continue;
+      // The report can still describe other losses when a malformed record would abort the export.
+      if (parsed.frame && splitTopLevelStepArguments(parsed.raw) !== null) {
+        const converted = convertStepLine(line, from, to);
+        if (converted !== null) yield converted === line ? parsed : record(converted);
+      } else yield parsed;
+    }
+  }
+  const dropped = cascadeOmissions(projectedRecords(), seeds, to);
+  for (const id of seeds) dropped.delete(id);
   return dropped;
 }
 

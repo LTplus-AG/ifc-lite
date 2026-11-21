@@ -174,8 +174,7 @@ pub(crate) fn schema_attribute_names(schema: &str, entity_type: &str) -> Option<
 }
 
 /// Convert an entity type name between schemas (with multi-step chaining).
-/// The export path asks [`rename_type`] through `schema_plan`; this owned form
-/// is what the tests pin.
+/// This owned test helper uses the same [`rename_type`] as the schema plan.
 #[cfg(test)]
 pub(crate) fn convert_entity_type(entity_type: &str, from: &str, to: &str) -> String {
     let (from, to) = (canon(from), canon(to));
@@ -249,6 +248,7 @@ pub fn convert_step_line(
             }
         }
         converted = checks.enums.apply(converted, cto);
+        converted = checks.documents.apply(express_id, converted, &mut checks.attribute_values_dropped);
         if cto == "IFC2X3" { converted = checks.structural.after(express_id, converted); }
         (cto == "IFC4" && (cfrom != "IFC2X3" || crate::schema_attr_maps::upgrade_counts_ifc4_slots(&converted))).then(|| checks.ifc4_slots.count(&converted));
     }

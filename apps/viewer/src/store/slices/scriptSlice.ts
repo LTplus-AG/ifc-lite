@@ -129,7 +129,7 @@ export interface ScriptSlice {
   scriptAssistantTurnSnapshot: ScriptAssistantTurnSnapshot | null;
 
   // Actions
-  createScript: (name: string, code?: string, onRequiredPersistence?: (result: SaveResult) => void) => string;
+  createScript: (name: string, code?: string, persistence?: { onResult: (result: SaveResult) => void; required: boolean }) => string;
   saveActiveScript: () => SaveResult | undefined;
   deleteScript: (id: string) => SaveResult;
   renameScript: (id: string, name: string) => SaveResult | undefined;
@@ -213,7 +213,7 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
   scriptAssistantTurnSnapshot: null,
 
   // Actions
-  createScript: (name, code, onRequiredPersistence) => {
+  createScript: (name, code, persistence) => {
     const { savedScripts } = get();
     if (!canCreateScript(savedScripts.length)) {
       console.warn('[Scripts] Maximum script limit reached');
@@ -238,8 +238,8 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
     const updated = [...savedScripts, script];
     const result = saveScripts(updated);
     if (!result.ok) console.warn('[Scripts] Save failed:', result.message);
-    onRequiredPersistence?.(result);
-    if (onRequiredPersistence && !result.ok) return '';
+    persistence?.onResult(result);
+    if (persistence?.required && !result.ok) return '';
     set({
       savedScripts: updated,
       activeScriptId: id,

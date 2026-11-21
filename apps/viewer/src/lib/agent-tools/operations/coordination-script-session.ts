@@ -43,8 +43,10 @@ export const coordinationScriptSessionOperations = [
     type: 'object', properties: { name: { type: 'string', minLength: 1, maxLength: 200 }, source: { type: 'string', maxLength: 1000000 } }, required: ['name', 'source'], additionalProperties: false,
   }, (i, c) => c.commit(() => {
     const editor = useViewerStore.getState();
-    if (editor.scriptEditorDirty && !(editor.activeScriptId === null && i.source === editor.scriptEditorContent)) unsavedEdits('creating another');
-    let storage: SaveResult | undefined; const id = useViewerStore.getState().createScript(i.name, i.source, result => { storage = result; });
+    const savingDraft = editor.scriptEditorDirty && editor.activeScriptId === null && i.source === editor.scriptEditorContent;
+    if (editor.scriptEditorDirty && !savingDraft) unsavedEdits('creating another');
+    let storage: SaveResult | undefined;
+    const id = editor.createScript(i.name, i.source, { required: savingDraft, onResult: result => { storage = result; } });
     if (!id) {
       if (storage && !storage.ok) throw internal(`The new script could not be saved (${storage.reason}); the editor stayed open.`);
       const message = 'Native script size or count limit exceeded.';

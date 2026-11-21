@@ -75,6 +75,17 @@ function walls(): { id: number; start: Vec2; end: Vec2 }[] {
     });
 }
 
+/** Draw one wall from (-2, 1) to (3, 1) in the plan and let the plan re-cut. */
+async function placeWall(svg: Element): Promise<{ wall: { id: number; start: Vec2; end: Vec2 }; global: number }> {
+  act(() => useViewerStore.getState().startCommand('wall.place'));
+  planClick(svg, [-2, 1]);
+  planClick(svg, [3, 1]);
+  act(() => useViewerStore.getState().endCommand('cancel'));
+  await settle();
+  const [wall] = walls();
+  return { wall, global: toGlobalIdFromModels(useViewerStore.getState().models, MODEL_ID, wall.id) };
+}
+
 // Undo steps, not raw entries: a wall and its recorded top (#9013) are one step.
 const undoDepth = () => undoSteps(MODEL_ID);
 const near = (a: Vec2, b: Vec2) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-6;
@@ -200,13 +211,7 @@ describe('PlanView (#6232 M2.4)', () => {
     const ui = render(<PlanView layout="split" />);
     await settle();
     const svg = ui.querySelector('[data-plan-canvas]')!;
-    act(() => useViewerStore.getState().startCommand('wall.place'));
-    planClick(svg, [-2, 1]);
-    planClick(svg, [3, 1]);
-    act(() => useViewerStore.getState().endCommand('cancel'));
-    await settle();
-    const [wall] = walls();
-    const global = toGlobalIdFromModels(useViewerStore.getState().models, MODEL_ID, wall.id);
+    const { wall, global } = await placeWall(svg);
 
     planClick(svg, [0.5, 1]);
     let s = useViewerStore.getState();
@@ -317,5 +322,23 @@ describe('ModelWorkspaceSplit layouts (#6232 M2.4)', () => {
     assert.equal(useViewerStore.getState().modelLayout, 'plan');
     assert.ok(ui.querySelector('[data-plan-view]'));
     assert.equal(ui.querySelector('[data-probe-3d]'), probe, 'the 3D view kept its node through every switch');
+  });
+
+  it('the plan pane follows the scene inside an edit, as the 3D view does (#10535)', async () => {
+    act(() => useViewerStore.getState().setModelLayout('split'));
+    const ui = render(<ModelWorkspaceSplit><div data-probe-3d /></ModelWorkspaceSplit>);
+    await settle();
+    const svg = ui.querySelector('[data-plan-canvas]')!;
+    const { global } = await placeWall(svg);
+    act(() => useViewerStore.getState().setSelectedEntityId(null)); // placing selects the wall
+    assert.equal(ui.querySelector('[data-plan-selected]'), null);
+    // An edit whose mesh work has not drained holds the panels; the plan is not a panel.
+    act(() => useViewerStore.setState((st) => ({ pendingMeshEdits: {} as never, mutationVersion: st.mutationVersion + 1 })));
+    try {
+      act(() => useViewerStore.getState().setSelectedEntityId(global));
+      assert.ok(ui.querySelector(`[data-plan-selected="${global}"]`), 'a 3D selection highlights in the plan at once');
+    } finally {
+      act(() => useViewerStore.setState({ pendingMeshEdits: null }));
+    }
   });
 });

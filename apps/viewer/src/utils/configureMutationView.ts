@@ -64,10 +64,25 @@ export function resolveBaseAttributeValue(
  * `store/mutation-view-store-binding.ts` (#5672).
  */
 const baseStoreByView = new WeakMap<MutablePropertyView, IfcDataStore>();
+const inspectionSource = new WeakMap<MutablePropertyView, MutablePropertyView>();
 
 /** The store `view`'s base readers currently read, or `undefined` if it was never configured here. */
 export function mutationViewBaseStore(view: MutablePropertyView): IfcDataStore | undefined {
   return baseStoreByView.get(view);
+}
+
+/** Preserve source ownership alongside the detached overlay and base readers. */
+export function snapshotMutationViewForInspection(view: MutablePropertyView): MutablePropertyView {
+  const snapshot = view.snapshotForInspection();
+  inspectionSource.set(snapshot, view);
+  const base = baseStoreByView.get(view);
+  if (base) baseStoreByView.set(snapshot, base);
+  return snapshot;
+}
+
+/** Compare operation ownership against the live overlay across held rerenders. */
+export function mutationViewIdentity(view: MutablePropertyView | undefined): MutablePropertyView | undefined {
+  return view && (inspectionSource.get(view) ?? view);
 }
 
 /**

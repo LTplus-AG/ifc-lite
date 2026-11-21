@@ -124,7 +124,7 @@ describe('authoring operations write the named target (#10793)', () => {
     assert.equal(result.isError, true); assert.match(result.text, /storeyId/);
   });
 
-  it('#27 storeys.topConstraint attaches a wall top through the viewer backend', async () => {
+  it('#27 storeys.topConstraint attaches a wall top through the viewer backend', async t => {
     const above = host.models()[0].bim.store.addStorey(SAMPLE_MODEL, { Name: 'Level 1', Elevation: 3, referenceStoreyId: expressOf(GROUND_STOREY) });
     // The sample's own walls are SketchUp B-reps, which no top edit can resize; author an extruded one.
     const proposal_json = JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Wall', units: 'm', frame: 'storey-local', operations: [
@@ -153,6 +153,28 @@ describe('authoring operations write the named target (#10793)', () => {
       assert.equal((result.structured as { reason: string }).reason, reason);
       assert.equal(topAttachment(), originalAttachment);
       assert.equal(useViewerStore.getState().undoStacks.get(SAMPLE_MODEL)?.length ?? 0, before);
+    }
+    // Model untrusted non-finite elevations at the effective storey inventory boundary (#11060).
+    const model = host.models()[0], view = model.mutationView()!;
+    const elevations = model.store!.spatialHierarchy!.storeyElevations;
+    const homeId = expressOf(GROUND_STOREY), homeElevation = elevations.get(homeId)!;
+    const topWriter = t.mock.method(model.bim.store, 'setTopConstraint', () => []);
+    view.setPositionalAttribute(above.expressId, 9, null, true); // Read the hierarchy fallback for this authored target.
+    try {
+      for (const [home, target] of [[homeElevation, NaN], [NaN, 3], [homeElevation, Infinity], [-Infinity, 3]]) {
+        elevations.set(homeId, home); elevations.set(above.expressId, target);
+        const result = await invoke('storeys.topConstraint', {
+          express_id: wall, constraint_json: JSON.stringify({ kind: 'storey', storeyId: above.expressId }),
+        });
+        assert.equal(result.errorCode, 'INVALID_INPUT', result.text);
+        assert.deepEqual(result.structured, { reason: 'wrong-target' });
+      }
+      assert.equal(topWriter.mock.callCount(), 0);
+      assert.equal(topAttachment(), originalAttachment);
+      assert.equal(useViewerStore.getState().undoStacks.get(SAMPLE_MODEL)?.length ?? 0, before);
+    } finally {
+      elevations.set(homeId, homeElevation); elevations.delete(above.expressId);
+      view.removePositionalMutation(above.expressId, 9); topWriter.mock.restore();
     }
     const refs = answer<Array<{ expressId: number }>>(await invoke('storeys.topConstraint', { express_id: wall, constraint_json: JSON.stringify({ kind: 'storeyAbove' }) }));
     assert.deepEqual(refs.map(ref => ref.expressId), [wall]);

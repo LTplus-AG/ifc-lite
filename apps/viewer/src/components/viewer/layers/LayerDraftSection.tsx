@@ -17,8 +17,8 @@ import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { useIfc } from '@/hooks/useIfc';
 import { toast } from '@/components/ui/toast';
-import { getBrowserLayerStore, DEFAULT_LOCAL_REF } from '@/lib/layers/browser-store';
-import { publishCollabDraft, publishViewerDraft } from '@/lib/layers/publish';
+import { DEFAULT_LOCAL_REF } from '@/lib/layers/browser-store';
+import { publishLocalLayerDraft } from '@/lib/layers/draft-workflow';
 import { pendingCompositionMutations } from '@/lib/layers/pending';
 import { Users } from 'lucide-react';
 
@@ -54,27 +54,15 @@ export function LayerDraftSection() {
   }, [mutationVersion]);
 
   const publish = useCallback(async () => {
-    const state = useViewerStore.getState();
     const trimmedIntent = intent.trim();
     const trimmedAuthor = author.trim() || 'viewer-user';
     if (!trimmedIntent) return;
     window.localStorage.setItem(AUTHOR_STORAGE_KEY, trimmedAuthor);
     setBusy(true);
     try {
-      // Invert the composition bridge: expressId → path.
-      const idToPath = new Map<number, string>();
-      for (const [path, id] of state.layerStackPathToId ?? []) idToPath.set(id, path);
-
-      const store = await getBrowserLayerStore();
-      const result = publishViewerDraft({
-        store,
-        stackFiles: state.layerStack.map((e) => e.file),
-        mutations: pendingCompositionMutations(),
-        pathOf: (expressId) => idToPath.get(expressId),
-        intent: trimmedIntent,
-        authorPrincipal: trimmedAuthor,
-        refName: DEFAULT_LOCAL_REF,
-      });
+      const outcome = await publishLocalLayerDraft('viewer', trimmedIntent, trimmedAuthor, { addIfcxOverlays});
+      if (outcome.mode !== 'viewer') throw new Error('Unexpected native draft mode.');
+      const result = outcome.result;
       if (result.unresolved.length > 0 || result.skippedCount > 0) {
         // A partial publish must not recompose OR clear: the federation
         // reload resets viewer state and clearAllMutations would drop the
@@ -101,15 +89,6 @@ export function LayerDraftSection() {
         setIntent('');
         return;
       }
-      // The edits now live in the published layer; drop them as pending
-      // BEFORE the recompose (the federation reload resets viewer state,
-      // so nothing of value is lost by it).
-      useViewerStore.getState().clearAllMutations();
-      // Feed the published layer back into the live composition — the
-      // federation reload recaptures the stack, so it shows up on top.
-      const json = JSON.stringify(result.file);
-      const fileName = `${trimmedIntent.slice(0, 40).replace(/[^\w-]+/g, '-') || 'layer'}.ifcx`;
-      await addIfcxOverlays([new File([json], fileName, { type: 'application/json' })]);
       setIntent('');
       toast.success(
         t('layersPanel.draft.publishedSuccess', {
@@ -135,27 +114,8 @@ export function LayerDraftSection() {
     window.localStorage.setItem(AUTHOR_STORAGE_KEY, trimmedAuthor);
     setBusy(true);
     try {
-      const store = await getBrowserLayerStore();
-      const result = await publishCollabDraft({
-        store,
-        doc: session.doc,
-        baseline,
-        stackFiles: state.layerStack.map((e) => e.file),
-        intent: trimmedIntent,
-        authorPrincipal: trimmedAuthor,
-        // Anyone present since the baseline may have edits in the doc —
-        // including peers who already left.
-        hybrid: state.collabPeers.length > 0 || state.collabPeersSinceBaseline,
-        refName: DEFAULT_LOCAL_REF,
-      });
-      // The published layer absorbed everything since the fork point;
-      // move the fork forward so the next publish is delta-only. Local
-      // pending mutations are part of that layer, so clear them too.
-      useViewerStore.getState().resetCollabDraftBaseline();
-      useViewerStore.getState().clearAllMutations();
-      const json = JSON.stringify(result.file);
-      const fileName = `${trimmedIntent.slice(0, 40).replace(/[^\w-]+/g, '-') || 'session-layer'}.ifcx`;
-      await addIfcxOverlays([new File([json], fileName, { type: 'application/json' })]);
+      const outcome = await publishLocalLayerDraft('session', trimmedIntent, trimmedAuthor, { addIfcxOverlays});
+      const result = outcome.result;
       setIntent('');
       toast.success(
         t('layersPanel.draft.publishedSessionSuccess', {

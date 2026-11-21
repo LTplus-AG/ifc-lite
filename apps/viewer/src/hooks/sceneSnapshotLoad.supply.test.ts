@@ -17,15 +17,16 @@ import { adoptedSceneOutlivesEmptyGeometry } from '@/components/viewer/sceneSnap
 import { BufferWriter } from '@ifc-lite/cache';
 import { writeInstancedShards } from '../../../../packages/cache/src/sections/instanced-shards.js';
 import { encodeSceneSnapshot } from '@ifc-lite/renderer';
-import { useViewerStore } from '@/store';
 import { sceneSnapshotKey } from '@/components/viewer/sceneSnapshotOwnership';
 import { setGlobalRendererRef } from './useBCF';
+import { TypeHiddenIndex } from '@/components/viewer/type-hidden-index';
+import { acknowledgeSnapshotTypeIndex, snapshotTypeIndex, subscribeSnapshotTypeIndex } from '@/components/viewer/snapshot-type-index';
 import { adoptCachedSceneSnapshot, publishAdoptedSceneMeshes, type AdoptedSceneSnapshot } from './sceneSnapshotLoad';
 
 it('#10888 a discard during a deferred adoption: its shards are never stamped with the newer supply; nothing is registered', async () => {
   const modelId = 'snap-supply';
   const supply = instancedShardSupplyToken(modelId); // adoption begins
-  const adopted = { adoption: {}, shards: [new ArrayBuffer(8)], supply, fit: null, firstVisible: Promise.resolve() } as unknown as AdoptedSceneSnapshot;
+  const adopted = { adoption: {}, shards: [new ArrayBuffer(8)], supply, fit: null, typeToken: {}, firstVisible: Promise.resolve() } as unknown as AdoptedSceneSnapshot;
   discardInstancedShards(modelId); // the model is removed and re-added while the adoption awaits
   const open = { chunks: [], readChunk: async () => [], coordinateInfo: undefined } as never;
   const published = await publishAdoptedSceneMeshes(adopted, open, modelId, {} as never, undefined, undefined, NOOP_LOAD_TRACE, () => {});
@@ -39,7 +40,7 @@ it('#10888 a discard during a deferred adoption: its shards are never stamped wi
 it('#10888 a discard and re-add during the adopted chunk decode: the old read registers no adoption and appends no meshes', async () => {
   const modelId = 'snap-decode';
   const supply = instancedShardSupplyToken(modelId);
-  const adopted = { adoption: {}, shards: [], supply, fit: null, firstVisible: Promise.resolve() } as unknown as AdoptedSceneSnapshot;
+  const adopted = { adoption: {}, shards: [], supply, fit: null, typeToken: {}, firstVisible: Promise.resolve() } as unknown as AdoptedSceneSnapshot;
   let resume!: () => void;
   const gate = new Promise<void>((done) => { resume = done; });
   const old = { expressId: 1, positions: new Float32Array(9), normals: new Float32Array(9), indices: Uint32Array.from([0, 1, 2]), color: [1, 1, 1, 1] };
@@ -83,7 +84,8 @@ for (const discard of [false, true]) {
     const entry = new Blob([writer.build()]);
     const bounds = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } };
     const snapshot = await encodeSceneSnapshot({ policy: 'p', pieceCount: 0, nextSplitId: 0, sharedFrameOrigins: [], activeBuckets: [], batches: [],
-      hostData: { fitBounds: bounds, sceneBounds: bounds, shards: { offset: 0, size: entry.size } } }).arrayBuffer();
+      // A snapshot stores its type index (#10867); without one it is never adopted.
+      hostData: { fitBounds: bounds, sceneBounds: bounds, shards: { offset: 0, size: entry.size }, typeIndex: TypeHiddenIndex.metadataOf([]) } }).arrayBuffer();
     let resume!: () => void;
     const gate = new Promise<void>((done) => { resume = done; });
     let uploaded = 0;
@@ -92,10 +94,11 @@ for (const discard of [false, true]) {
       getCanvas: () => ({ clientWidth: 800, clientHeight: 600 }), clearCaches() {}, requestRender() {} };
     setGlobalRendererRef({ current: renderer as never });
     Object.assign(globalThis.navigator ?? Object.defineProperty(globalThis, 'navigator', { value: {}, configurable: true }).navigator, { gpu: {} });
-    const s = useViewerStore.getState();
     const cacheResult = { sceneSnapshot: { arrayBuffer: async () => { await gate; return snapshot; } },
-      sceneSnapshotKey: sceneSnapshotKey('p', s.typeViewMode, s.typeVisibility, s.structuralViewMode), buffer: entry };
-    const adopting = adoptCachedSceneSnapshot(cacheResult as never, modelId, undefined, NOOP_LOAD_TRACE);
+      sceneSnapshotKey: sceneSnapshotKey('p'), buffer: entry };
+    // The viewport's part (#10867): it commits the hidden ids of the installed type index, so adoption proceeds.
+    const stopViewport = subscribeSnapshotTypeIndex(() => acknowledgeSnapshotTypeIndex(snapshotTypeIndex()));
+    const adopting = adoptCachedSceneSnapshot(cacheResult as never, modelId, undefined, NOOP_LOAD_TRACE).finally(stopViewport);
     await new Promise((done) => setTimeout(done, 0)); // the adoption is reading its snapshot
     if (discard) discardInstancedShards(modelId); // the model is removed while it reads
     resume();

@@ -20,6 +20,8 @@ import { viewerOperation } from './registry';
 import type { ToolHost } from '../types';
 import { BACK_WALL, GROUND_STOREY, SAMPLE_MODEL, seedAuthoringSample } from '@/test/authoring-sample-fixture';
 import { fixtureModel } from '@/test/store-fixture';
+import { startWorkflowRun } from '@/lib/flow/run-session';
+import { placementFrameKey } from '@/lib/model-placement/persistence';
 import { resetFeaturesForTest } from '@/lib/features';
 
 const OTHER = 'other';
@@ -65,6 +67,26 @@ describe('authoring operations write the named target (#10793)', () => {
     assert.equal(details.reason, 'refused');
     assert.equal(details.committed, undefined);
     assert.equal(view.getNewEntities().length, before, 'native refusal rolls back the new material');
+  });
+
+  for (const [name, input] of [
+    ['authoring.type.create', { kind: 'wall', Name: 'Wall type', express_id: 0 }],
+    ['authoring.material.createAndAssign', { Name: 'Concrete', Color: '#808080', Category: '', Description: '' }],
+  ] as const) it(`${name} preserves the edit-mode denial (#11060)`, async () => {
+    useViewerStore.setState({ editEnabled: false });
+    const before = useViewerStore.getState().mutationVersion;
+    const payload = { express_id: expressOf(BACK_WALL), ...input };
+    const result = await invoke(name, payload);
+    assert.equal(result.errorCode, 'PERMISSION_DENIED', result.text);
+    assert.deepEqual(result.structured, { reason: 'disabled', denial: 'edit-mode' });
+    useViewerStore.setState({ editEnabled: true });
+    const workflow = startWorkflowRun();
+    try {
+      const busy = await workflow.withModelRead(() => invoke(name, payload));
+      assert.equal(busy.errorCode, 'UNSUPPORTED_OPERATION', busy.text);
+      assert.deepEqual(busy.structured, { reason: 'unavailable', denial: 'workflow-running' });
+    } finally { workflow.release(); }
+    assert.equal(useViewerStore.getState().mutationVersion, before);
   });
 
   it('#21 a Rectangle profile writes the kind Width and Height (Depth for a column) that placement reads', async () => {
@@ -123,11 +145,45 @@ describe('authoring operations write the named target (#10793)', () => {
       assert.equal(topAttachment(), originalAttachment);
       assert.equal(useViewerStore.getState().undoStacks.get(SAMPLE_MODEL)?.length ?? 0, before);
     }
+    for (const [id, reason] of [[Number.MAX_SAFE_INTEGER, 'unknown-target'], [expressOf(GROUND_STOREY), 'wrong-target']] as const) {
+      const result = await invoke('storeys.topConstraint', {
+        express_id: wall, constraint_json: JSON.stringify({ kind: 'storey', storeyId: id }),
+      });
+      assert.equal(result.errorCode, 'INVALID_INPUT', result.text);
+      assert.equal((result.structured as { reason: string }).reason, reason);
+      assert.equal(topAttachment(), originalAttachment);
+      assert.equal(useViewerStore.getState().undoStacks.get(SAMPLE_MODEL)?.length ?? 0, before);
+    }
     const refs = answer<Array<{ expressId: number }>>(await invoke('storeys.topConstraint', { express_id: wall, constraint_json: JSON.stringify({ kind: 'storeyAbove' }) }));
     assert.deepEqual(refs.map(ref => ref.expressId), [wall]);
     assert.ok((useViewerStore.getState().undoStacks.get(SAMPLE_MODEL)?.length ?? 0) > before);
     assert.equal(useViewerStore.getState().mutationViews.get(SAMPLE_MODEL)?.getPropertyValue(wall, 'IfcLite_StoreyAttachment', 'TopConstraint'),
       useViewerStore.getState().mutationViews.get(SAMPLE_MODEL)!.getNewEntities().find(row => row.expressId === above.expressId)!.attributes[0], 'the wall top follows the new storey');
+  });
+
+  it('classifies manifest binding and rotation refusals without publishing a placement (#11060)', async () => {
+    const s = useViewerStore.getState(), original = s.models.get(SAMPLE_MODEL)!;
+    useViewerStore.setState({ models: new Map([[SAMPLE_MODEL, { ...original, sourceContentHash: 'hash' }],
+      [OTHER, { ...fixtureModel(OTHER), sourceContentHash: 'hash', pointCloudHandleId: 1 }]]) });
+    const frame = placementFrameKey(useViewerStore.getState());
+    const entry = { instanceId: SAMPLE_MODEL, sourceContentHash: 'hash', translation: [0, 0, 0], locked: false };
+    const input = (frameKey: string, row: object, model_id?: string) => ({
+      content: JSON.stringify({ version: 1, units: 'm', axes: 'engineering-z-up', frameKey, models: [row] }),
+      bindings: model_id ? [{ saved_instance_id: SAMPLE_MODEL, model_id }] : [],
+      placement_revision: s.modelPlacement.revision,
+    });
+    for (const [payload, code, reason] of [
+      [input('wrong-frame', entry), 'INVALID_INPUT', 'wrong-target'],
+      [input(frame, { ...entry, sourceContentHash: 'missing' }), 'INVALID_INPUT', 'unknown-target'],
+      [input(frame, entry), 'INVALID_INPUT', 'conflict'],
+      [input(frame, { ...entry, sourceContentHash: 'different' }, SAMPLE_MODEL), 'INVALID_INPUT', 'wrong-target'],
+      [input(frame, { ...entry, rotation: { angle: 1, pivot: [0, 0, 0] } }, OTHER), 'UNSUPPORTED_OPERATION', 'unavailable'],
+    ] as const) {
+      const result = await invoke('placement.manifest.import', payload);
+      assert.equal(result.errorCode, code, result.text);
+      assert.equal((result.structured as { reason: string }).reason, reason);
+      assert.equal(useViewerStore.getState().modelPlacement, s.modelPlacement);
+    }
   });
 
   it('#30 rotating this model refuses to commit another model\'s pending move', async () => {

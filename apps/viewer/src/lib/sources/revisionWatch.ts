@@ -40,6 +40,7 @@ export async function watchSourceRevisions(
   sourceHost: SourceHost,
   sourceTags: ReadonlyMap<string, SourceTag>,
   signal?: AbortSignal,
+  onFailure?: (provider: string, projectId: string) => void,
 ): Promise<SourceRevisionUpdate[]> {
   interface Group {
     provider: string;
@@ -91,6 +92,7 @@ export async function watchSourceRevisions(
       }
     } catch (err) {
       if (signal?.aborted) break;
+      onFailure?.(group.provider, group.projectId);
       console.warn(
         `[sources] Revision watch failed for ${group.provider} project ${group.projectId}`,
         err,

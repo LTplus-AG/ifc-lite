@@ -5901,6 +5901,2514 @@ export const operationContracts: readonly OperationContract[] = [
     "exportName": "coordinationOperations"
   },
   {
+    "id": "influx.configure",
+    "version": 1,
+    "owner": "influx",
+    "description": "Save the native bounded Influx connection selection through the same query validator and secret-exclusion rule as Connect. Token remains ephemeral and is never persisted or returned.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "maxLength": 10000
+        },
+        "org": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "bucket": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "measurement": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "field": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "guidTag": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "unit": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "token": {
+          "type": "string",
+          "maxLength": 10000
+        },
+        "expected_config_json": {
+          "type": "string",
+          "maxLength": 20000
+        }
+      },
+      "required": [
+        "url",
+        "org",
+        "bucket",
+        "measurement",
+        "field",
+        "guidTag",
+        "unit",
+        "token",
+        "expected_config_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "saved": {
+          "type": "boolean"
+        },
+        "configuration": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "saved",
+        "configuration"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "layers.exportReview",
+    "version": 1,
+    "owner": "layers",
+    "description": "Export the configured registry review through the exact native Layers BCF ZIP writer. Reads the native review identity/topics and never publishes content.",
+    "needs": "viewer",
+    "effects": [
+      "network",
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "filename",
+        "mime_type",
+        "bytes"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export",
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "layers.loadStack",
+    "version": 1,
+    "owner": "layers",
+    "description": "Open an explicit IFCX stack using the exact native Load layer stack canonical composition loader. Current federation and mutation revision must match the inspected source before replacement; admitted reconstruction drains to actual native result.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1000,
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "content": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 5000000
+              }
+            },
+            "required": [
+              "name",
+              "content"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "expected_model_ids": {
+          "type": "array",
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "expected_mutation_version": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "files",
+        "expected_model_ids",
+        "expected_mutation_version"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "layers": {
+          "type": "array",
+          "items": {}
+        },
+        "model_ids": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "state",
+        "layers",
+        "model_ids"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "extensions.enable",
+    "version": 1,
+    "owner": "extensions",
+    "description": "Enable the exact installed bundle under its existing reviewed grants through native loader/activation. No grant is added. Extension activation retains native install review and current grants.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "model",
+      "view",
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "expected_model_ids": {
+          "type": "array",
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "expected_mutation_version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expected_geometry_version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "extension_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_bundle_hash": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_grants_json": {
+          "type": "string",
+          "maxLength": 100000
+        }
+      },
+      "required": [
+        "expected_model_ids",
+        "expected_mutation_version",
+        "expected_geometry_version",
+        "extension_id",
+        "expected_bundle_hash",
+        "expected_version",
+        "expected_grants_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "extension_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "state",
+        "extension_id"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "model": "native-reviewed",
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "extensions.runCommand",
+    "version": 1,
+    "owner": "extensions",
+    "description": "Invoke one exact enabled native extension command under its stored grants and sandbox budgets. Returns the actual settled native result. Unknown extension-owned side effects are not inferred as external publication success; native running evaluations drain to their actual outcome.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "model",
+      "view",
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "expected_model_ids": {
+          "type": "array",
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "expected_mutation_version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expected_geometry_version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "extension_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_bundle_hash": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_grants_json": {
+          "type": "string",
+          "maxLength": 100000
+        },
+        "command_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "args_json": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "expected_model_ids",
+        "expected_mutation_version",
+        "expected_geometry_version",
+        "extension_id",
+        "expected_bundle_hash",
+        "expected_version",
+        "expected_grants_json",
+        "command_id",
+        "args_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "extension_id": {
+          "type": "string"
+        },
+        "result": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "state",
+        "extension_id",
+        "result"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "model": "native-reviewed",
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "extensions.runExporter",
+    "version": 1,
+    "owner": "extensions",
+    "description": "Invoke one exact enabled native extension exporter under its stored grants, await its actual bytes, and return a host-owned artifact. Native installed capability review remains authoritative; artifact creation does not assert that unknown external side effects succeeded.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "model",
+      "view",
+      "network",
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "expected_model_ids": {
+          "type": "array",
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "expected_mutation_version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expected_geometry_version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "extension_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_bundle_hash": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_grants_json": {
+          "type": "string",
+          "maxLength": 100000
+        },
+        "exporter_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "expected_model_ids",
+        "expected_mutation_version",
+        "expected_geometry_version",
+        "extension_id",
+        "expected_bundle_hash",
+        "expected_version",
+        "expected_grants_json",
+        "exporter_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "extension_id": {
+          "type": "string"
+        },
+        "artifact": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "result": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "state",
+        "extension_id",
+        "artifact",
+        "result"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "model": "native-reviewed",
+      "artifact": "native-export",
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "extensions.flavors",
+    "version": 1,
+    "owner": "extensions",
+    "description": "Read the native flavor library and current persisted active pointer.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "flavors": {
+          "type": "array",
+          "items": {}
+        },
+        "active_id": {}
+      },
+      "required": [
+        "flavors",
+        "active_id"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "extensions.createFlavor",
+    "version": 1,
+    "owner": "extensions",
+    "description": "Create and activate a native flavor, optionally capturing the same live lenses/clash/sidebar state as New snapshot. No extension capability is installed or broadened.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 10000
+        },
+        "snapshot": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "description",
+        "snapshot"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "flavor": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "flavor"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "extensions.editFlavor",
+    "version": 1,
+    "owner": "extensions",
+    "description": "Rename, duplicate, capture the native live viewer state into, or delete one exact flavor revision through its native persisted service.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "expected_updated_at": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "rename",
+            "duplicate",
+            "capture",
+            "delete"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "id",
+        "expected_updated_at",
+        "action",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "state",
+        "id"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "extensions.switchFlavor",
+    "version": 1,
+    "owner": "extensions",
+    "description": "Run the complete native flavor switcher, retaining existing reviewed extension grants and reporting every refused saved-state restore. Activations retain their existing native install review and exact current grants; no new capability is granted.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "model",
+      "view",
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "expected_updated_at": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "id",
+        "expected_updated_at"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "unapplied": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "state",
+        "id",
+        "unapplied"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "model": "native-reviewed",
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "extensions.exportFlavor",
+    "version": 1,
+    "owner": "extensions",
+    "description": "Export the exact native flavor archive bytes, preserving snapshots and metadata through the canonical packer.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "filename",
+        "mime_type",
+        "bytes"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "extensions.importFlavor",
+    "version": 1,
+    "owner": "extensions",
+    "description": "Preview and validate bounded native flavor archive bytes before saving with explicit replace or save-as-new strategy. Does not activate, install bundled extensions or broaden grants.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "base64": {
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "strategy": {
+          "type": "string",
+          "enum": [
+            "replace",
+            "save-as-new"
+          ]
+        },
+        "new_id": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "expected_updated_at": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "base64",
+        "strategy",
+        "new_id",
+        "expected_updated_at"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "flavor": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "flavor"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "extensions.saveFlavorDefinition",
+    "version": 1,
+    "owner": "extensions",
+    "description": "Save one exact data-only flavor definition through the canonical strict validator. Supports the native portable merge/editor result while preserving an explicit existing revision guard; does not activate or grant capabilities.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "definition_json": {
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "expected_updated_at": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "definition_json",
+        "expected_updated_at"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "flavor": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "flavor"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "extensions.resetFlavors",
+    "version": 1,
+    "owner": "extensions",
+    "description": "Use the native Reset defaults lifecycle with its exact active pointer guard. Preserves native persistence refusal behavior.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "expected_active_id": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "expected_active_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "flavor": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "flavor"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "semantic.loadSource",
+    "version": 1,
+    "owner": "semantic",
+    "description": "Load bounded JSON/RDF or retrieve from the already exercised native endpoint grant through the same provider and validation worker as the panel. Related selection uses native identity/query resolution. Credentials/loopback/host grants cannot be supplied or broadened.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "local",
+            "turtle",
+            "nquads",
+            "jsonld",
+            "json",
+            "sparql",
+            "construct"
+          ]
+        },
+        "payload": {
+          "type": "string",
+          "maxLength": 5000000
+        },
+        "query": {
+          "type": "string",
+          "maxLength": 100000
+        },
+        "mapping_json": {
+          "type": "string",
+          "maxLength": 100000
+        },
+        "related_selection": {
+          "type": "boolean"
+        },
+        "expected_data_version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expected_endpoint": {
+          "type": "string",
+          "maxLength": 10000
+        },
+        "expected_grant_generation": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "mode",
+        "payload",
+        "query",
+        "mapping_json",
+        "related_selection",
+        "expected_data_version",
+        "expected_endpoint",
+        "expected_grant_generation"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "diagnostic": {
+          "type": "string"
+        },
+        "data_version": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "diagnostic",
+        "data_version"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "semantic.endpoint",
+    "version": 1,
+    "owner": "semantic",
+    "description": "Inspect only the identity/generation of the already exercised native endpoint grant; credentials and relay secrets remain private.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "endpoint": {},
+        "generation": {
+          "type": "number"
+        },
+        "configured": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "endpoint",
+        "generation",
+        "configured"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "semantic.profile",
+    "version": 1,
+    "owner": "semantic",
+    "description": "Import a native data-only profile/dictionary using the canonical validators, or restore the reference profile. Imported JSON cannot supply executable contexts or shapes.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "profile",
+            "dictionary",
+            "reference"
+          ]
+        },
+        "definition": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "kind",
+        "definition"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "profile",
+        "diagnostics"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "semantic.profileFromBsdd",
+    "version": 1,
+    "owner": "semantic",
+    "features": [
+      "privacy.third-party"
+    ],
+    "description": "Build the native data-only profile from an exact bSDD class using the same configured proxy as the profile control. Retains native third-party privacy gate and rejects a changed profile.",
+    "needs": "viewer",
+    "effects": [
+      "network",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "class_uri": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        }
+      },
+      "required": [
+        "class_uri"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "profile": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "profile",
+        "diagnostics"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "semantic.profileArtifact",
+    "version": 1,
+    "owner": "semantic",
+    "description": "Export the current native profile with generated data-only validation artifacts.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "filename",
+        "mime_type",
+        "bytes"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "semantic.links",
+    "version": 1,
+    "owner": "semantic",
+    "description": "Apply bounded native resource identity links through the exact parser used by the identity controls.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "links": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "links"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "semantic.identity",
+    "version": 1,
+    "owner": "semantic",
+    "description": "Configure the existing native identity strategy, profile field binding and resource URI template using canonical validation. Revision/model bindings remain explicit.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "strategy": {
+          "type": "string",
+          "enum": [
+            "ifc-global-id",
+            "resource-links",
+            "profile-fields",
+            "resource-uri"
+          ]
+        },
+        "GlobalId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "modelRevision": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "uri_mode": {
+          "type": "string",
+          "enum": [
+            "template",
+            "last-path-segment"
+          ]
+        },
+        "uri_template": {
+          "type": "string",
+          "maxLength": 10000
+        }
+      },
+      "required": [
+        "strategy",
+        "GlobalId",
+        "modelRevision",
+        "uri_mode",
+        "uri_template"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "strategy": {
+          "type": "string"
+        },
+        "identity_fields": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "uri_config": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "strategy",
+        "identity_fields",
+        "uri_config"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "semantic.export",
+    "version": 1,
+    "owner": "semantic",
+    "description": "Export the same native linked-records evidence bundle as the panel, including generated artifacts and original reference-profile disclaimer.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "filename",
+        "mime_type",
+        "bytes"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "semantic.resolveResource",
+    "version": 1,
+    "owner": "semantic",
+    "description": "Resolve an exact native linked record with the configured identity strategy, inspect its relationships, and optionally select its native ownership targets in one explicit model scope.",
+    "needs": "viewer",
+    "effects": [
+      "read",
+      "view",
+      "selection"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "resource_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "model_scope": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "select": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "resource_id",
+        "model_scope",
+        "select"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "resolution": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "related": {
+          "type": "array",
+          "items": {}
+        },
+        "selected": {}
+      },
+      "required": [
+        "resolution",
+        "related",
+        "selected"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "semantic.prepareProjection",
+    "version": 1,
+    "owner": "semantic",
+    "description": "Prepare the exact native IFC property projection and provenance for a linked installation in the explicitly bound model. Returns an opaque review plan; no IFC mutation occurs.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "resource_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "mapping_id": {
+          "type": "string",
+          "enum": [
+            "door-fire-rating",
+            "wall-thermal-transmittance"
+          ]
+        },
+        "policy": {
+          "type": "string",
+          "enum": [
+            "error",
+            "skip",
+            "overwrite"
+          ]
+        },
+        "expected_data_version": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "resource_id",
+        "mapping_id",
+        "policy",
+        "expected_data_version"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "plan_id": {
+          "type": "string"
+        },
+        "target": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "GlobalId": {
+          "type": "string"
+        },
+        "revision": {},
+        "property": {
+          "type": "string"
+        },
+        "previous": {},
+        "value": {},
+        "unit": {},
+        "policy": {
+          "type": "string"
+        },
+        "skip": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "plan_id",
+        "target",
+        "GlobalId",
+        "revision",
+        "property",
+        "previous",
+        "value",
+        "unit",
+        "policy",
+        "skip"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "semantic.applyProjection",
+    "version": 1,
+    "owner": "semantic",
+    "description": "Apply one exact prepared native projection through the canonical mutate adapter in its single native undo batch. Native permission, property conflict, model identity and revision guards are rechecked at commit.",
+    "needs": "model",
+    "effects": [
+      "model"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "applied": {
+          "type": "boolean"
+        },
+        "skipped": {
+          "type": "boolean"
+        },
+        "plan_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "applied",
+        "skipped",
+        "plan_id"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "model": "native-reviewed"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "layers.library",
+    "version": 1,
+    "owner": "layers",
+    "description": "Inspect native local content-addressed layers and refs. IndexedDB mirroring is native best effort, not a confirmed durable transaction.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "layer_ids": {
+          "type": "array",
+          "items": {}
+        },
+        "refs": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "durability": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "layer_ids",
+        "refs",
+        "durability"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "layers.export",
+    "version": 1,
+    "owner": "layers",
+    "description": "Export one exact immutable local IFCX layer using the native content-addressed store.",
+    "needs": "viewer",
+    "effects": [
+      "read",
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "filename",
+        "mime_type",
+        "bytes"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "layers.publishLocalDraft",
+    "version": 1,
+    "owner": "layers",
+    "description": "Publish the existing viewer or collaboration draft into the native local layer store, then recompose through the canonical native overlay loader. Partial unresolved edits are reported and retained. This does not publish to a remote registry.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "viewer",
+            "session"
+          ]
+        },
+        "intent": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "author": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "expected_mutation_version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expected_layer_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "minItems": 1,
+          "maxItems": 10000
+        }
+      },
+      "required": [
+        "mode",
+        "intent",
+        "author",
+        "expected_mutation_version",
+        "expected_layer_ids"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string"
+        },
+        "result": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "durability": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "state",
+        "mode",
+        "result",
+        "durability"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "layers.previewLocalMerge",
+    "version": 1,
+    "owner": "layers",
+    "description": "Preview the native three-way local-ref merge with an exact ref guard. The candidate remains immutable and no registry request occurs.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "ref_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "expected_ref_json": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "candidate_id",
+        "ref_name",
+        "expected_ref_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "checks": {
+          "type": "array",
+          "items": {}
+        },
+        "candidate_id": {
+          "type": "string"
+        },
+        "ref_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "outcome",
+        "checks",
+        "candidate_id",
+        "ref_json"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "layers.mergeLocal",
+    "version": 1,
+    "owner": "layers",
+    "description": "Execute the native local three-way merge with exact ref guard, native conflict edits/removal semantics and explicit check waivers. Reports policy failure and unresolved conflicts without claiming a committed merge.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "ref_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "expected_ref_json": {
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "resolver": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "resolutions": {
+          "type": "array",
+          "maxItems": 10000,
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              },
+              "component_key": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "choice": {
+                "type": "string",
+                "enum": [
+                  "ours",
+                  "theirs",
+                  "edited"
+                ]
+              },
+              "attributes_json": {
+                "type": "string",
+                "maxLength": 1000000
+              }
+            },
+            "required": [
+              "path",
+              "component_key",
+              "choice",
+              "attributes_json"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "waivers": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "type": "object",
+            "properties": {
+              "spec": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              }
+            },
+            "required": [
+              "spec",
+              "reason"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "candidate_id",
+        "ref_name",
+        "expected_ref_json",
+        "resolver",
+        "resolutions",
+        "waivers"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "durability": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "outcome",
+        "durability"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "layers.loadLocalRef",
+    "version": 1,
+    "owner": "layers",
+    "description": "Load one exact native local ref through the canonical federated IFCX loader, retaining native composition diagnostics.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ref_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "expected_ref_json": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "ref_name",
+        "expected_ref_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "loaded": {
+          "type": "number"
+        },
+        "ref_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "loaded",
+        "ref_name"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "layers.registry",
+    "version": 1,
+    "owner": "layers",
+    "description": "Inspect the configured native IFCX registry refs, layers and review list using its existing account token, without disclosing credentials or publishing a candidate.",
+    "needs": "viewer",
+    "effects": [
+      "read",
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "layers": {
+          "type": "array",
+          "items": {}
+        },
+        "refs": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "reviews": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "layers",
+        "refs",
+        "reviews"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "layers.prepareRegistryAction",
+    "version": 1,
+    "owner": "layers",
+    "description": "Stage an exact immutable layer/ref and optional entity-bound review comment in the real native Layers approval controls. Preview/open-review may upload the candidate, so no remote mutation is dispatched here.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view",
+      "selection"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "ref_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "merge",
+            "review",
+            "comment"
+          ]
+        },
+        "entity": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 100000
+        },
+        "with_viewpoint": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "ref_name",
+        "action",
+        "entity",
+        "title",
+        "description",
+        "with_viewpoint"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "candidate": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "state",
+        "candidate"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "sources.favourites",
+    "version": 1,
+    "owner": "sources",
+    "description": "Read only native favourites belonging to the current authenticated provider identity.",
+    "needs": "viewer",
+    "effects": [
+      "read",
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "favourites": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "provider",
+        "favourites"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "sources.toggleFavourite",
+    "version": 1,
+    "owner": "sources",
+    "description": "Toggle one exact native file/folder bookmark, stamped with the current provider identity. Does not accept a caller-supplied account identity.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "folder",
+            "file"
+          ]
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "project_name": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "file_area_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "file_area_name": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "container_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "container_name": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "file_id": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "file_name": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "provider",
+        "kind",
+        "project_id",
+        "project_name",
+        "file_area_id",
+        "file_area_name",
+        "container_id",
+        "container_name",
+        "file_id",
+        "file_name"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "added": {
+          "type": "boolean"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "items": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "added",
+        "ok",
+        "items"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "sources.renameFavourite",
+    "version": 1,
+    "owner": "sources",
+    "description": "Rename the label of one native bookmark owned by the current provider account.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 10000
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "provider",
+        "key",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "sources.removeFavourite",
+    "version": 1,
+    "owner": "sources",
+    "description": "Remove one native bookmark belonging to the current provider identity.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 10000
+        }
+      },
+      "required": [
+        "provider",
+        "key"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "removed": {
+          "type": "boolean"
+        },
+        "items": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "removed",
+        "items"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "sources.refreshRevisions",
+    "version": 1,
+    "owner": "sources",
+    "description": "Perform one native source revision-change pass for loaded tagged models; no recurring watcher is created. Reports provider failures and unsupported change-detection coverage.",
+    "needs": "viewer",
+    "effects": [
+      "network",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "updates": {},
+        "failures": {
+          "type": "array",
+          "items": {}
+        },
+        "unsupported_model_ids": {
+          "type": "array",
+          "items": {}
+        },
+        "partial": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "updates",
+        "failures",
+        "unsupported_model_ids",
+        "partial"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
     "id": "collab.join",
     "version": 1,
     "owner": "collab",
@@ -6173,6 +8681,109 @@ export const operationContracts: readonly OperationContract[] = [
     "policy": {
       "network": "native-provider"
     },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "script.execute",
+    "version": 1,
+    "owner": "script",
+    "description": "Execute the exact current native editor source/revision through the same preflight, QuickJS permission defaults, native edit/role guards, limits, diagnostics, epoch ownership and deterministic teardown as the UI. No network sandbox permission is granted.",
+    "needs": "viewer",
+    "effects": [
+      "read",
+      "configuration",
+      "view",
+      "selection",
+      "model",
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "expected_revision": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "expected_revision"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "result": {},
+        "error": {},
+        "diagnostics": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "state",
+        "result",
+        "error",
+        "diagnostics"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "model": "native-reviewed",
+      "artifact": "native-export"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "script.cancel",
+    "version": 1,
+    "owner": "script",
+    "description": "Cancel the exact currently executing native script epoch, including runs started by the editor, without cancelling a newer script.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "expected_epoch": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "expected_epoch"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "cancellation_requested": {
+          "type": "boolean"
+        },
+        "terminal": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "cancellation_requested",
+        "terminal"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
     "module": "coordination-index",
     "exportName": "coordinationOperations"
   },
@@ -6906,6 +9517,170 @@ export const operationContracts: readonly OperationContract[] = [
     "exportName": "coordinationOperations"
   },
   {
+    "id": "georeference.lookupEpsg",
+    "version": 1,
+    "owner": "properties",
+    "description": "Search code prefixes or names through the exact native offline EPSG index and viewer starter-code preference. This current control performs no external network lookup.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "results": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "results"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "georeference.realignmentState",
+    "version": 1,
+    "owner": "properties",
+    "description": "Inspect exact federation sources and revisions needed for a guarded native Re-align reload.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "model_ids": {
+          "type": "array",
+          "items": {}
+        },
+        "mutation_version": {
+          "type": "number"
+        },
+        "geometry_version": {
+          "type": "number"
+        },
+        "sources": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "model_ids",
+        "mutation_version",
+        "geometry_version",
+        "sources"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "georeference.realign",
+    "version": 1,
+    "owner": "properties",
+    "description": "Re-align by draining every retained source through the native federation addModel wrapper and canonical loader. Refuses missing sources before clearing; after admission it completes all reload attempts and reports partial failures.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "view",
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "expected_model_ids": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "expected_mutation_version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expected_geometry_version": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "expected_model_ids",
+        "expected_mutation_version",
+        "expected_geometry_version"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "loaded": {
+          "type": "number"
+        },
+        "total": {
+          "type": "number"
+        },
+        "failed": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "state",
+        "loaded",
+        "total",
+        "failed"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
     "id": "compare.exportReport",
     "version": 1,
     "owner": "compare",
@@ -7620,6 +10395,578 @@ export const operationContracts: readonly OperationContract[] = [
     "exportName": "coordinationOperations"
   },
   {
+    "id": "extensions.requestInstall",
+    "version": 1,
+    "owner": "extensions",
+    "description": "Validate exact bundle bytes and stage the native capability review. Returns waiting-for-capability-review; never installs, activates or grants a capability implicitly.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "extension_id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "state",
+        "extension_id",
+        "version"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "extensions.disable",
+    "version": 1,
+    "owner": "extensions",
+    "description": "Disable an already installed extension through its native teardown and persisted lifecycle. Does not revoke or roll back previously committed extension work.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "extension_id": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "extension_id",
+        "enabled"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "extensions.uninstall",
+    "version": 1,
+    "owner": "extensions",
+    "description": "Uninstall one exact installed extension through native runtime teardown, bundle removal and storage lifecycle.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "removed": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "removed"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "sources.configure",
+    "version": 1,
+    "owner": "sources",
+    "description": "Patch only manifest-declared provider preferences through native storage. Credential values are accepted for the selected provider but never returned.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "value": {
+                "type": "string",
+                "maxLength": 10000
+              }
+            },
+            "required": [
+              "name",
+              "value"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "provider",
+        "values"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "saved": {
+          "type": "boolean"
+        },
+        "configured": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "provider",
+        "saved",
+        "configured"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "sources.forgetPreferences",
+    "version": 1,
+    "owner": "sources",
+    "description": "Clear saved provider preferences and credentials through the native forget control. Does not delete remote files.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "cleared": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "provider",
+        "cleared"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "sources.testConnection",
+    "version": 1,
+    "owner": "sources",
+    "description": "Run the selected provider native connection diagnostic with saved credentials and network sandbox.",
+    "needs": "viewer",
+    "effects": [
+      "network",
+      "read"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "message"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "sources.signOut",
+    "version": 1,
+    "owner": "sources",
+    "description": "Sign out through the selected native provider auth lifecycle; tokens remain private to that provider.",
+    "needs": "viewer",
+    "effects": [
+      "network",
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "signed_out": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "provider",
+        "signed_out"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "flow.run",
+    "version": 1,
+    "owner": "flow",
+    "description": "Run the exact open native graph with its declared capabilities, provider/budget, write capture and checkpoint lifecycle. Returns completed, paused, failed or cancelled. Remote publication graphs return waiting-for-approval and require their exact native publication review; this operation never approves a proposal implicitly.",
+    "needs": "viewer",
+    "effects": [
+      "read",
+      "configuration",
+      "view",
+      "selection",
+      "model",
+      "artifact",
+      "network",
+      "publication"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "expected_json": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000000
+        },
+        "inputs_json": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 500000
+        },
+        "resume_checkpoint_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "target_model_id": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "expected_mutation_version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expected_geometry_version": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "expected_json",
+        "inputs_json",
+        "resume_checkpoint_id",
+        "target_model_id",
+        "expected_mutation_version",
+        "expected_geometry_version"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "result": {},
+        "error": {},
+        "checkpoint": {}
+      },
+      "required": [
+        "state",
+        "result",
+        "error",
+        "checkpoint"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "model": "native-reviewed",
+      "artifact": "native-export",
+      "network": "native-provider",
+      "publication": "native-reviewed"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "flow.review",
+    "version": 1,
+    "owner": "flow",
+    "description": "Read the native paused checkpoint, exact proposal digest, review state and storage problem.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "checkpoint": {},
+        "busy": {
+          "type": "boolean"
+        },
+        "problem": {}
+      },
+      "required": [
+        "checkpoint",
+        "busy",
+        "problem"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "flow.approveReview",
+    "version": 1,
+    "owner": "flow",
+    "description": "Approve only the exact native proposal digest against unchanged graph, Player values and source digests. Does not run the resumed graph.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "checkpoint_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "proposal_digest": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "checkpoint_id",
+        "proposal_digest"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "checkpoint": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "checkpoint"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "flow.rejectReview",
+    "version": 1,
+    "owner": "flow",
+    "description": "Reject one exact native review checkpoint without running downstream nodes.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "checkpoint": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "checkpoint"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
     "id": "assistant.captureEvidence",
     "version": 1,
     "owner": "assistant",
@@ -7754,6 +11101,93 @@ export const operationContracts: readonly OperationContract[] = [
         "error",
         "messages",
         "budget"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "sources.loadModel",
+    "version": 1,
+    "owner": "sources",
+    "description": "Download an exact native provider file and await canonical useIfcLoader.loadFile federation loading. Downloads support cancellation; after native load admission, cancellation waits for its actual terminal outcome.",
+    "needs": "viewer",
+    "effects": [
+      "network",
+      "configuration",
+      "view"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "project_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "container_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "file_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "revision_id": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "filename": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "provider",
+        "project_id",
+        "container_id",
+        "file_id",
+        "revision_id",
+        "filename"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "model_id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "model_id",
+        "name",
+        "state",
+        "bytes"
       ],
       "additionalProperties": true
     },
@@ -8920,6 +12354,1164 @@ export const operationContracts: readonly OperationContract[] = [
     "exportName": "coordinationOperations"
   },
   {
+    "id": "flow.read",
+    "version": 1,
+    "owner": "flow",
+    "description": "Inspect saved workflows, active graph, terminal result, errors and warnings.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "active_model_id": {},
+        "mutation_version": {
+          "type": "number"
+        },
+        "geometry_version": {
+          "type": "number"
+        },
+        "saved": {
+          "type": "array",
+          "items": {}
+        },
+        "active_id": {},
+        "document": {},
+        "running": {
+          "type": "boolean"
+        },
+        "result": {},
+        "error": {},
+        "warnings": {
+          "type": "array",
+          "items": {}
+        },
+        "progress": {}
+      },
+      "required": [
+        "active_model_id",
+        "mutation_version",
+        "geometry_version",
+        "saved",
+        "active_id",
+        "document",
+        "running",
+        "result",
+        "error",
+        "warnings",
+        "progress"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "flow.artifacts",
+    "version": 1,
+    "owner": "flow",
+    "description": "Read metadata for native generated workflow PDFs without copying binary data.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifacts": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "artifacts"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "flow.exportArtifact",
+    "version": 1,
+    "owner": "flow",
+    "description": "Return a host-owned artifact for an exact native generated PDF and its source-document signature.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "expected_document_signature": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "artifact_id",
+        "expected_document_signature"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "filename",
+        "mime_type",
+        "bytes"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "flow.validate",
+    "version": 1,
+    "owner": "flow",
+    "description": "Validate the active workflow wiring and inspect exact native node availability without running it.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "wiring": {
+          "type": "array",
+          "items": {}
+        },
+        "availability": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "wiring",
+        "availability"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "flow.analyze",
+    "version": 1,
+    "owner": "flow",
+    "description": "Execute the active graph through the native Flow scheduler with an explicit read-only core/model/table node allowlist. Returns terminal node reports and outputs; does not run scripts, network, publication or model-writing nodes.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "result": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "flow.open",
+    "version": 1,
+    "owner": "flow",
+    "description": "Open a known saved flow, cancelling any prior native workflow.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "active_id": {}
+      },
+      "required": [
+        "active_id"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "flow.create",
+    "version": 1,
+    "owner": "flow",
+    "description": "Create an empty native workflow using the existing storage and size limits.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "flow.save",
+    "version": 1,
+    "owner": "flow",
+    "description": "Save the active workflow with native persistence refusal reporting.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "active_id": {},
+        "dirty": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "active_id",
+        "dirty"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "flow.export",
+    "version": 1,
+    "owner": "flow",
+    "description": "Export a saved flow with the native CLI-compatible serializer.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "filename",
+        "mime_type",
+        "bytes"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "flow.replaceDocument",
+    "version": 1,
+    "owner": "flow",
+    "description": "Replace the editable graph using the native strict Flow parser and an exact current-document guard. Cancels an active graph run through the native setFlowDoc action.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "expected_json": {
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "document_json": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "expected_json",
+        "document_json"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "dirty": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "dirty"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "flow.serialize",
+    "version": 1,
+    "owner": "flow",
+    "description": "Read the exact native serialization used for guarded graph editing and CLI export.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "document_json": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_json"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "flow.import",
+    "version": 1,
+    "owner": "flow",
+    "description": "Import serialized workflow JSON through the native flow parser and bounded storage.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "flow.delete",
+    "version": 1,
+    "owner": "flow",
+    "description": "Delete one known saved workflow through native persistence and cancellation handling.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "deleted": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "deleted"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "flow.cancel",
+    "version": 1,
+    "owner": "flow",
+    "description": "Request cancellation of the active native workflow. Returns a cancellation request, never a fabricated terminal result.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "cancellation_requested": {
+          "type": "boolean"
+        },
+        "terminal": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "cancellation_requested",
+        "terminal"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "influx.read",
+    "version": 1,
+    "owner": "influx",
+    "description": "Read saved connection selection and native IFC sensor targets. Authentication token is never returned.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "configuration": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "targets": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "configuration",
+        "targets"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "influx.query",
+    "version": 1,
+    "owner": "influx",
+    "description": "Query the saved InfluxDB selection with a supplied ephemeral token. Native provider enforces a 60 minute and 10000 sample bound; returns terminal readings and model matches. Token is not persisted.",
+    "needs": "viewer",
+    "effects": [
+      "read",
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "readings": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "joined": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "readings",
+        "joined"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "layers.read",
+    "version": 1,
+    "owner": "layers",
+    "description": "Read ordered IFCX composition layers and provenance without copying source documents.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "layers": {
+          "type": "array",
+          "items": {}
+        },
+        "diff": {},
+        "busy": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "layers",
+        "diff",
+        "busy"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "layers.contribution",
+    "version": 1,
+    "owner": "layers",
+    "description": "Compute a layer contribution using the native IFCX stack diff service. Rejects a replaced composition; returns the actual diff.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "layer_id": {
+          "type": "string"
+        },
+        "diff": {}
+      },
+      "required": [
+        "layer_id",
+        "diff"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "loadReport.focusEntity",
+    "version": 1,
+    "owner": "loadReport",
+    "description": "Select a renderable entity captured in the targeted model load report and request native camera framing. Refuses diagnostics without captured geometry.",
+    "needs": "model",
+    "effects": [
+      "view",
+      "selection"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "express_id": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "express_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "selected": {
+          "type": "number"
+        },
+        "model_id": {
+          "type": "string"
+        },
+        "framing": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "selected",
+        "model_id",
+        "framing"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "loadReport.read",
+    "version": 1,
+    "owner": "loadReport",
+    "description": "Read existing per-model diagnostics, omissions and affected IFC entities; never infers a successful retry.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "reports": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "reports"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "loadReport.export",
+    "version": 1,
+    "owner": "loadReport",
+    "description": "Export native load diagnostic evidence as a host-owned JSON artifact.",
+    "needs": "viewer",
+    "effects": [
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "filename",
+        "mime_type",
+        "bytes"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "sources.read",
+    "version": 1,
+    "owner": "sources",
+    "description": "Inspect registered native file providers, capability declarations, credential readiness and loaded-model provenance without returning stored credentials.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "providers": {
+          "type": "array",
+          "items": {}
+        },
+        "failures": {
+          "type": "array",
+          "items": {}
+        },
+        "source_tags": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "providers",
+        "failures",
+        "source_tags"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "sources.browse",
+    "version": 1,
+    "owner": "sources",
+    "description": "Browse one bounded catalog page through an already configured native provider and its declared network sandbox. Interactive OAuth must first be completed through the provider sign-in control.",
+    "needs": "viewer",
+    "effects": [
+      "read",
+      "network"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "projects",
+            "containers",
+            "files"
+          ]
+        },
+        "project_id": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "container_id": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "query": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "cursor": {
+          "type": "string",
+          "maxLength": 10000
+        }
+      },
+      "required": [
+        "provider",
+        "kind",
+        "project_id",
+        "container_id",
+        "query",
+        "cursor"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "page": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "kind",
+        "page"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "network": "native-provider"
+    },
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "extensions.read",
+    "version": 1,
+    "owner": "extensions",
+    "description": "Read installed extension grants and state from the current native extension host.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "installed": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "installed"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "extensions.flows",
+    "version": 1,
+    "owner": "extensions",
+    "description": "Resolve and validate installed extension workflow contributions using the native loader and standard wiring validator.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "contributions": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "contributions"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "extensions.previewBundle",
+    "version": 1,
+    "owner": "extensions",
+    "description": "Validate base64 encoded .iflx bundle bytes through the native preview service. Does not install, activate, execute code or grant capabilities.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "validation": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "validation"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
     "id": "review.read",
     "version": 1,
     "owner": "review",
@@ -9205,6 +13797,1098 @@ export const operationContracts: readonly OperationContract[] = [
     "result": "value",
     "implementation": "native-store",
     "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "script.read",
+    "version": 1,
+    "owner": "script",
+    "description": "Inspect saved scripts, active source/revision, native execution state, diagnostics and terminal results.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "saved": {
+          "type": "array",
+          "items": {}
+        },
+        "active_id": {},
+        "source": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "number"
+        },
+        "execution_state": {
+          "type": "string"
+        },
+        "run_epoch": {
+          "type": "number"
+        },
+        "result": {},
+        "error": {},
+        "diagnostics": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "saved",
+        "active_id",
+        "source",
+        "revision",
+        "execution_state",
+        "run_epoch",
+        "result",
+        "error",
+        "diagnostics"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "script.preflight",
+    "version": 1,
+    "owner": "script",
+    "description": "Check supplied source with the exact native script preflight diagnostics without executing or granting sandbox capabilities.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "diagnostics": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "diagnostics"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "script.replace",
+    "version": 1,
+    "owner": "script",
+    "description": "Replace editor source through its native revision-aware semantic edit path. Does not execute source or widen sandbox permissions.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "expected_revision": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "source",
+        "expected_revision"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "appliedOpIds": {
+          "type": "array",
+          "items": {}
+        },
+        "revision": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "ok",
+        "appliedOpIds",
+        "revision"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "script.analyze",
+    "version": 1,
+    "owner": "script",
+    "description": "Run source in a fresh native QuickJS sandbox with query-only permissions and bounded time/heap. Returns actual terminal value/logs after deterministic teardown; cancellation disposes the VM.",
+    "needs": "model",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": "string",
+          "maxLength": 1000000
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30000
+        },
+        "memory_bytes": {
+          "type": "integer",
+          "minimum": 1048576,
+          "maximum": 67108864
+        }
+      },
+      "required": [
+        "source",
+        "timeout_ms",
+        "memory_bytes"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "logs": {
+          "type": "array",
+          "items": {}
+        },
+        "durationMs": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "logs",
+        "durationMs"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "script.save",
+    "version": 1,
+    "owner": "script",
+    "description": "Save the active script through native persistence.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "active_id": {},
+        "dirty": {
+          "type": "boolean"
+        },
+        "storage": {}
+      },
+      "required": [
+        "active_id",
+        "dirty",
+        "storage"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "script.create",
+    "version": 1,
+    "owner": "script",
+    "description": "Create a saved native script without executing it.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "source": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "name",
+        "source"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "storage": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "id",
+        "storage"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "script.open",
+    "version": 1,
+    "owner": "script",
+    "description": "Open an existing saved script using the native editor lifecycle.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "active_id": {},
+        "revision": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "active_id",
+        "revision"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "script.rename",
+    "version": 1,
+    "owner": "script",
+    "description": "Rename a known saved native script.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "storage": {}
+      },
+      "required": [
+        "id",
+        "name",
+        "storage"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "script.delete",
+    "version": 1,
+    "owner": "script",
+    "description": "Delete one saved script through its native lifecycle; this does not execute any source.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "deleted": {
+          "type": "string"
+        },
+        "storage": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "deleted",
+        "storage"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "script.undo",
+    "version": 1,
+    "owner": "script",
+    "description": "Undo through the native mounted editor history. Refuses absent editor hosts instead of claiming a silent undo.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "changed": {
+          "type": "boolean"
+        },
+        "revision": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "changed",
+        "revision"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "script.redo",
+    "version": 1,
+    "owner": "script",
+    "description": "Redo through the native mounted editor history. Refuses absent editor hosts instead of claiming a silent redo.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "changed": {
+          "type": "boolean"
+        },
+        "revision": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "changed",
+        "revision"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "collab.read",
+    "version": 1,
+    "owner": "collab",
+    "description": "Inspect session status, role, seed phase and peer presence without exposing room bearer/share tokens.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "room_id": {},
+        "role": {},
+        "peers": {
+          "type": "array",
+          "items": {}
+        },
+        "connecting": {
+          "type": "boolean"
+        },
+        "seed_phase": {
+          "type": "string"
+        },
+        "seed_progress": {},
+        "seed_failure": {},
+        "geometry_notice": {}
+      },
+      "required": [
+        "status",
+        "room_id",
+        "role",
+        "peers",
+        "connecting",
+        "seed_phase",
+        "seed_progress",
+        "seed_failure",
+        "geometry_notice"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "collab.leave",
+    "version": 1,
+    "owner": "collab",
+    "description": "Leave the current native room and run its complete local teardown. Does not delete a remote room.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "assistant.read",
+    "version": 1,
+    "owner": "assistant",
+    "description": "Read the native evidence assistant conversation, terminal messages, streaming status, evidence id and root budget without exposing provider credentials.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "messages": {
+          "type": "array",
+          "items": {}
+        },
+        "status": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "error": {},
+        "evidence_id": {},
+        "budget": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "output": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "messages",
+        "status",
+        "model",
+        "error",
+        "evidence_id",
+        "budget",
+        "output"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "assistant.cancel",
+    "version": 1,
+    "owner": "assistant",
+    "description": "Cancel the native evidence assistant request through its provider AbortController and conversation lifecycle.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "cancellation_requested": {
+          "type": "boolean"
+        },
+        "terminal": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "cancellation_requested",
+        "terminal"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "assistant.model",
+    "version": 1,
+    "owner": "assistant",
+    "description": "Set the assistant model through native entitlement coercion.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "semantic.read",
+    "version": 1,
+    "owner": "semantic",
+    "description": "Read native semantic dataset, validation findings, profile and model-revision bindings.",
+    "needs": "viewer",
+    "effects": [
+      "read"
+    ],
+    "capability": "read",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "graph": {
+          "type": "string"
+        },
+        "graph_format": {
+          "type": "string"
+        },
+        "findings": {
+          "type": "array",
+          "items": {}
+        },
+        "profile": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "data_version": {
+          "type": "number"
+        },
+        "revisions": {
+          "type": "array",
+          "items": {}
+        },
+        "strategy": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "graph",
+        "graph_format",
+        "findings",
+        "profile",
+        "data_version",
+        "revisions",
+        "strategy"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "semantic.graph",
+    "version": 1,
+    "owner": "semantic",
+    "description": "Replace the native editable RDF graph and invalidate prior validation evidence.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string",
+          "maxLength": 1000000
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "data_version": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "data_version"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "semantic.graphFormat",
+    "version": 1,
+    "owner": "semantic",
+    "description": "Set native RDF parser format and invalidate prior validation evidence.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "format": {
+          "type": "string",
+          "enum": [
+            "text/turtle",
+            "application/n-quads"
+          ]
+        }
+      },
+      "required": [
+        "format"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "graph_format": {
+          "type": "string"
+        },
+        "data_version": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "graph_format",
+        "data_version"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "semantic.bindRevision",
+    "version": 1,
+    "owner": "semantic",
+    "description": "Bind a semantic model revision to an exact loaded native model id.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "revision",
+        "model_id"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "revisions": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "revisions"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "semantic.validate",
+    "version": 1,
+    "owner": "semantic",
+    "description": "Validate the current RDF graph (true) or imported document (false) through the panel worker. Awaits actual validation and rejects changed datasets.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "graph": {
+          "type": "string"
+        },
+        "findings": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "graph",
+        "findings"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "semantic.restoreWorkspace",
+    "version": 1,
+    "owner": "semantic",
+    "description": "Restore a serialized native workspace using its strict portable codec; credentials and runtime model bindings are excluded by that codec.",
+    "needs": "viewer",
+    "effects": [
+      "configuration"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string",
+          "maxLength": 5242880
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "restored": {
+          "type": "boolean"
+        },
+        "data_version": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "restored",
+        "data_version"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {},
+    "module": "coordination-index",
+    "exportName": "coordinationOperations"
+  },
+  {
+    "id": "semantic.exportWorkspace",
+    "version": 1,
+    "owner": "semantic",
+    "description": "Save a portable semantic workspace through the native codec and return a JSON artifact.",
+    "needs": "viewer",
+    "effects": [
+      "configuration",
+      "artifact"
+    ],
+    "capability": "commands-and-edits",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "filename",
+        "mime_type",
+        "bytes"
+      ],
+      "additionalProperties": true
+    },
+    "result": "value",
+    "implementation": "native-store",
+    "policy": {
+      "artifact": "native-export"
+    },
     "module": "coordination-index",
     "exportName": "coordinationOperations"
   },

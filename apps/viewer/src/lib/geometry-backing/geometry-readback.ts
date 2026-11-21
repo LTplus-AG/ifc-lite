@@ -27,6 +27,11 @@ export class GeometryUnavailableError extends Error {
 
 export interface BackingSource {
   backing(modelId: string): ModelGeometryBacking | undefined;
+  /**
+   * The current generation is not complete only because its instancing was lost, and every flat
+   * record is whole and durable. Flat-only readers may use it where no instanced occurrence can be.
+   */
+  flatComplete?(modelId: string): boolean;
 }
 
 /** False for a mesh `releaseCpuMeshBuffers` emptied: it still counts geometry it no longer holds. */

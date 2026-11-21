@@ -26,6 +26,8 @@ export type GeometryBackingCommand =
 
 export interface SnapProbe {
   outcome: string;
+  error?: string;
+  instanced: boolean;
   expressId: number | null;
   point: [number, number, number] | null;
   snap: { type: string; position: [number, number, number] } | null;
@@ -153,20 +155,21 @@ async function releaseForTest(tap: StoreGeometryBackingTap, store: StoreApi<Rele
  * surface) reports no hit and no snap rather than whatever lies behind it, a point cloud included.
  */
 async function snapProbe(renderer: Renderer, points: Array<[number, number]>): Promise<SnapProbe[]> {
-  const { feedReadbackAt } = await import('./readback-measure');
+  const { feedReadbackAt, readbackFeeder } = await import('./readback-measure');
   const { sceneGeometryReleased } = await import('./scene-released');
   const out: SnapProbe[] = [];
   for (const [x, y] of points) {
     const outcome = sceneGeometryReleased(renderer) ? await feedReadbackAt(renderer, x, y, {}) : 'resident';
     if (outcome !== 'fed' && outcome !== 'no-hit' && outcome !== 'resident') {
-      out.push({ outcome, expressId: null, point: null, snap: null });
+      const error = outcome === 'unavailable' ? readbackFeeder(renderer).lastError?.message : undefined;
+      out.push({ outcome, ...(error ? { error } : {}), expressId: null, instanced: false, point: null, snap: null });
       continue;
     }
     const result = renderer.raycastSceneMagnetic(x, y, { edge: null, meshExpressId: null, lockStrength: 0 },
       { snapOptions: { snapToVertices: true, snapToEdges: true, snapToFaces: true, screenSnapRadius: 40 } });
     const hit = result.intersection;
     const target = result.snapTarget;
-    out.push({ outcome, expressId: hit?.expressId ?? null,
+    out.push({ outcome, expressId: hit?.expressId ?? null, instanced: hit ? renderer.getScene().isInstancedEntity(hit.expressId) : false,
       point: hit ? [hit.point.x, hit.point.y, hit.point.z] : null,
       snap: target ? { type: String(target.type), position: [target.position.x, target.position.y, target.position.z] } : null });
   }

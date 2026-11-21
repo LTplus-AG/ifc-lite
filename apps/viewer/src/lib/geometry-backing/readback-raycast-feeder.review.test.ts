@@ -5,9 +5,9 @@
 /**
  * #10880 review classes on the measure readback feeder: the neighbourhood byte
  * budget skips a chunk that does not fit without charging it; an entity that
- * has instanced occurrences is refused even when it also has flat pieces (the
- * GPU hit may be the occurrence in front); fed pieces are dropped when the
- * renderer moves a model without a store change.
+ * has both flat pieces and instanced occurrences is fed with both (the GPU hit
+ * may be the occurrence in front; #10884 reads occurrences back); fed pieces are
+ * dropped when the renderer moves a model without a store change.
  */
 
 import 'fake-indexeddb/auto';
@@ -27,12 +27,15 @@ function mesh(id: number, x: number, triangles = 1): MeshData {
   return { expressId: id, positions: Float32Array.from(positions), normals: new Float32Array(positions.length),
     indices: Uint32Array.from({ length: triangles * 3 }, (_, i) => i), color: [1, 1, 1, 1] };
 }
-function host(hit: { expressId: number; worldXYZ: { x: number; y: number; z: number } }, rotation: { angle: number; px: number; pz: number } | null = null) {
+type Box = { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } };
+function host(hit: { expressId: number; modelIndex?: number; worldXYZ: { x: number; y: number; z: number } },
+  rotation: { angle: number; px: number; pz: number } | null = null, instanced = new Map<number, Box>()) {
   const fed: Array<readonly MeshData[] | null> = [];
   const value: ReadbackRaycastHost = {
     pick: async () => hit,
     getScene: () => ({ isGeometryDataReleased: () => true, getEntityBoundingBox: () => ({ min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } }),
-      placeAppearanceSource: (m: MeshData) => m, getModelRotation: () => rotation }) as never,
+      placeAppearanceSource: (m: MeshData) => m, getModelRotation: () => rotation,
+      getInstancedEntityIds: () => instanced.keys(), getInstancedEntityBounds: (id: number) => instanced.get(id) ?? null }) as never,
     setReadbackRaycastMeshes: (meshes) => { fed.push(meshes); },
   };
   return { value, fed };
@@ -57,7 +60,7 @@ it('#10880 a chunk over the byte budget is skipped without consuming it: the lat
   } finally { await registry.close(); }
 });
 
-it('#10880 an entity with BOTH a flat piece and an instanced occurrence is refused: the GPU hit may be the occurrence in front', async () => {
+it('#10880/#10884 an entity with BOTH a flat piece and an instanced occurrence is fed with both: the GPU hit may be the occurrence in front', async () => {
   const registry = await GeometryBackingRegistry.open(database());
   try {
     const backing = await registry.begin('m');
@@ -66,10 +69,13 @@ it('#10880 an entity with BOTH a flat piece and an instanced occurrence is refus
     shard.instances = [{ ...shard.instances[0], entityId: 1 }]; // and an occurrence of the same entity, in front
     await backing.writer.appendInstancedShard(shard);
     await backing.writer.close();
-    const h = host({ expressId: 1, worldXYZ: { x: 0.1, y: 0, z: 0 } });
+    const h = host({ expressId: 1, modelIndex: 0, worldXYZ: { x: 0.1, y: 0, z: 0 } }, null,
+      new Map([[1, { min: { x: -1, y: -1, z: -1 }, max: { x: 1, y: 1, z: 1 } }]]));
     const feeder = new ReadbackRaycastFeeder(h.value, () => ({ backing: () => backing }), () => 'm');
-    assert.equal(await feeder.prepare(0, 0), 'unavailable', 'never measured through an unsupported front');
-    assert.match(feeder.lastError!.message, /instanced occurrences/);
+    assert.equal(await feeder.prepare(0, 0), 'fed', feeder.lastError?.message ?? 'not fed');
+    const fed = h.fed.at(-1)!;
+    assert.ok(fed.some((m) => m.expressId === 1 && !m.occurrenceKey?.startsWith('readback:')), 'its flat piece');
+    assert.ok(fed.some((m) => m.expressId === 1 && m.occurrenceKey?.startsWith('readback:')), 'and its occurrence, never one without the other');
   } finally { await registry.close(); }
 });
 
@@ -91,6 +97,24 @@ it('#10880 a renderer placement change (setModelTranslation) drops fed readback 
   set.length = 0;
   for (const listener of listeners) listener(); // a change notification with no placement change
   assert.deepEqual(set, [], 'an unrelated notification keeps fed pieces');
+});
+
+it('#10884 r4651015157 a hide or isolate change drops fed readback pieces: a surface shown again in front was never fed', async () => {
+  const { readbackFeeder } = await import('./readback-measure');
+  const { useViewerStore } = await import('@/store');
+  const set: Array<readonly MeshData[] | null> = [];
+  const renderer = {
+    getPickGeometryRevision: () => 1,
+    getScene: () => ({ onGeometryChange: () => () => {} }),
+    setReadbackRaycastMeshes: (meshes: readonly MeshData[] | null) => { set.push(meshes); },
+  };
+  readbackFeeder(renderer as never);
+  set.length = 0;
+  useViewerStore.setState({ hiddenEntities: new Set<number>() } as never); // B unhidden: the store replaces the set
+  assert.deepEqual(set, [null], 'the pieces fed while B was hidden are dropped');
+  set.length = 0;
+  useViewerStore.setState({ isolatedEntities: new Set<number>([7]) } as never);
+  assert.deepEqual(set, [null], 'and on an isolate change');
 });
 
 it('#10880 a rotated model fails closed: subtracting its offset alone would search the wrong neighbourhood', async () => {

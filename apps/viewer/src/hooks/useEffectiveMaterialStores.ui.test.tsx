@@ -95,7 +95,9 @@ it('refreshes material usage after each live revision without showing the stale 
     view.setPositionalAttribute(30, 4, [`#${created.expressId}`]);
     useViewerStore.setState({ mutationVersion: 2 });
   });
-  assert.equal(shown(), '', 'the previous revision is hidden while the new STEP snapshot loads');
+  // While the edit is held the panel is still on revision 1 and shows revision 1 (#10535);
+  // it never pairs a revision with another revision's index.
+  assert.equal(shown(), `11,${created.expressId}`, 'the held panel still shows the revision it is on');
   await waitForUsage(shown, String(created.expressId));
 });
 
@@ -131,7 +133,7 @@ it('material totals count reflects a deleted user and an overlay-created user (#
     ['0Wall00000000000000031', null, 'Wall C', null, null, null, null, null, null]);
   view.setPositionalAttribute(30, 4, ['#11', `#${created.expressId}`]);
   act(() => useViewerStore.setState({ mutationVersion: 2 }));
-  assert.equal(count(), undefined, 'stale totals are hidden while the edited snapshot reloads');
+  assert.equal(count(), '1', 'the held panel still shows the revision it is on (#10535)');
   await waitForUsage(count, '2');
 });
 
@@ -164,7 +166,8 @@ it('material tree sees live delete/create while a second model stays isolated (#
   view.deleteEntity(11);
   view.setPositionalAttribute(30, 4, [`#${created.expressId}`]);
   act(() => useViewerStore.setState({ mutationVersion: 2 }));
-  assert.equal(shown(), '', 'the previous federation snapshot is hidden while the next one loads');
+  assert.equal(shown(), [global('a', 11), global('a', created.expressId), global('b', 10), global('b', 11)].join(','),
+    'the held panel still shows the federation snapshot it is on (#10535)');
   await waitForUsage(shown, [global('a', created.expressId), global('b', 10), global('b', 11)].join(','));
 });
 

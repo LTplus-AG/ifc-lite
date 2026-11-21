@@ -9,11 +9,10 @@ import { historyForEntity, purgeEntityHistory } from './indexed-mutation-history
 import { runSparseAtomic } from './sparse-atomic.js';
 import { readEntitySnapshot } from './entity-read-barrier.js';
 import { registerCooperativeOverlay } from './cooperative-overlay-access.js';
-import type { PropertyTable, PropertySet, Property, QuantitySet, Quantity } from '@ifc-lite/data';
+import { PropertyValueType, QuantityType, type PropertyTable, type PropertySet, type Property, type QuantitySet, type Quantity } from '@ifc-lite/data';
 import { quantityHistoryBefore } from './quantity-history-before.js';
 import { computeSetClaims, mutatedMembersForInstance } from './same-name-set-claims.js';
 import { encodeNonFiniteNumbers, decodeNonFiniteNumbers } from './nonfinite-json.js';
-import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 import type { IfcAttributeValue, PropertyValue, PropertyMutation, QuantityMutation, EntityTypeMutation, Mutation, NewEntity, EffectiveChange } from './types.js';
 import { propertyKey, quantityKey, attributeKey, generateMutationId } from './types.js';
 import { changesForEntity } from './effective-entity-changes.js';
@@ -44,42 +43,46 @@ export type QuantityBaseRevision = { readonly entityId: number; readonly setName
 export class MutablePropertyView extends MutableOverlayState {
   /** Bound to this instance's mutation registry, including across module copies. */
   trackEntityChanges(): EntityChangeTracker { return trackEntityChanges(this); }
-  private baseTable: PropertyTable | null;
   private onDemandExtractor: PropertyExtractor | null = null;
   private quantityExtractor: QuantityExtractor | null = null;
   private quantityBaseRevisions: ((view: MutablePropertyView) => Iterable<QuantityBaseRevision>) | null = null;
   private attributeExtractor: AttributeExtractor | null = null;
-  private modelId: string;
   private expressIdFloor(): number { return Math.max(this.sourceWatermark + 1, this.minNextExpressId()); }
 
-  constructor(baseTable: PropertyTable | null, modelId: string) {
+  constructor(private readonly baseTable: PropertyTable | null, private readonly modelId: string) {
     super();
-    this.baseTable = baseTable;
-    this.modelId = modelId;
     registerCooperativeOverlay(this, { modelId,
       transact: (edit, record) => runSparseAtomic(this, edit, record),
       capture: () => this.overlayState(),
       rebuild: snapshot => {
-        const draft = new MutablePropertyView(this.baseTable, this.modelId);
+        const draft = this.detachedReadView(snapshot);
         draft.configureExpressIdAllocator(() => this.expressIdFloor());
-        draft.restoreOverlayState(snapshot);
         for (const id of draft.getAttributeOverrideEntityIds()) draft.indexAttributeOverride(id);
         return draft.overlayState();
       },
       matches: snapshot => this.matchesOverlayState(snapshot),
       publish: (snapshot, changedIds) => this.restoreOverlayState(snapshot, undefined, changedIds),
       draft: snapshot => {
-        const draft = new MutablePropertyView(this.baseTable, this.modelId);
+        const draft = this.detachedReadView(snapshot);
         draft.configureExpressIdAllocator(() => this.expressIdFloor());
-        draft.onDemandExtractor = this.onDemandExtractor;
-        draft.quantityExtractor = this.quantityExtractor;
-        draft.quantityBaseRevisions = this.quantityBaseRevisions;
-        draft.attributeExtractor = this.attributeExtractor;
-        draft.restoreOverlayState(snapshot, this.getMutationRevision());
         registerOverlayOrigin(draft, this);
         return draft;
       },
     });
+  }
+
+  /** Copy the effective overlay and its read configuration for inspection of
+   * this revision. Source data stays shared. Edits to the copy are detached. */
+  snapshotForInspection(): MutablePropertyView { return this.detachedReadView(this.copyOverlayState()); }
+
+  private detachedReadView(state: ReturnType<MutableOverlayState['copyOverlayState']>): MutablePropertyView {
+    const snapshot = new MutablePropertyView(this.baseTable, this.modelId);
+    snapshot.onDemandExtractor = this.onDemandExtractor;
+    snapshot.quantityExtractor = this.quantityExtractor;
+    snapshot.quantityBaseRevisions = this.quantityBaseRevisions;
+    snapshot.attributeExtractor = this.attributeExtractor;
+    snapshot.restoreOverlayState(state, this.getMutationRevision());
+    return snapshot;
   }
 
   /**
@@ -101,13 +104,8 @@ export class MutablePropertyView extends MutableOverlayState {
    */
   prepareAtomic<T>(edit: (draft: MutablePropertyView) => T): { result: T; validate(): void; commit(): void; rollback(): void } {
     const original = this.copyOverlayState();
-    const draft = new MutablePropertyView(this.baseTable, this.modelId);
+    const draft = this.detachedReadView(structuredClone(original));
     draft.configureExpressIdAllocator(() => this.expressIdFloor());
-    draft.onDemandExtractor = this.onDemandExtractor;
-    draft.quantityExtractor = this.quantityExtractor;
-    draft.quantityBaseRevisions = this.quantityBaseRevisions;
-    draft.attributeExtractor = this.attributeExtractor;
-    draft.restoreOverlayState(structuredClone(original), this.getMutationRevision());
     const result = edit(draft);
     if (result !== null && (typeof result === 'object' || typeof result === 'function')
       && 'then' in result && typeof result.then === 'function') {

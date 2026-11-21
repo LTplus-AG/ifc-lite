@@ -14,8 +14,9 @@
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
+import { act, Fragment, type ReactNode } from 'react';
 import type { MeshData } from '@ifc-lite/geometry';
+import * as store from '@/store';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { applyLevelDisplayMode } from '@/store/levelDisplay';
@@ -27,6 +28,14 @@ import { useVisibilityIsolation } from './useVisibilityIsolation.js';
 type Sets = ReturnType<typeof useVisibilityState>;
 let seen: Sets | null = null;
 let isolation: Set<number> | null = null;
+/**
+ * The probe reads what the 3D view reads, so it renders in the viewport's live
+ * scope (#10535) and sees an edit at once. Looked up by name: main has no scope,
+ * and there the store is live anyway.
+ */
+const ViewportScope: (props: { children: ReactNode }) => ReactNode =
+  (store as { LiveViewerScope?: (props: { children: ReactNode }) => ReactNode }).LiveViewerScope ?? Fragment;
+
 function Probe() {
   seen = useVisibilityState();
   isolation = useVisibilityIsolation();
@@ -71,7 +80,7 @@ beforeEach(async () => {
     hiddenEntities: new Set(), isolatedEntities: null, ghostExceptEntities: null,
     selectedStoreys: new Set(), levelDisplayMode: 'stacked',
   });
-  render(<Probe />);
+  render(<ViewportScope><Probe /></ViewportScope>);
 });
 
 afterEach(() => {

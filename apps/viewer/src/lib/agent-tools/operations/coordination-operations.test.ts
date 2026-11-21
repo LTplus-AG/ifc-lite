@@ -140,6 +140,13 @@ it('script create and delete refuse to drop the active script\'s unsaved edits (
   assert.ok(!useViewerStore.getState().savedScripts.some(script => script.id === second.id));
 });
 
+it('an unsaved draft with no saved script can be kept through script.create (#10591 review)', async () => {
+  useViewerStore.setState({ activeScriptId: null, scriptEditorContent: 'draft', scriptEditorDirty: true });
+  await assert.rejects(execute('script.create', { name: 'Other', source: 'other' }), /unsaved draft/);
+  const kept = await execute<{ id: string }>('script.create', { name: 'Kept draft', source: 'draft' });
+  assert.equal(useViewerStore.getState().savedScripts.find(script => script.id === kept.id)?.code, 'draft');
+});
+
 it('viewer contracts create and export BCF/Flow without any IFC model (#10525)', async () => {
   useViewerStore.setState({ models: new Map(), activeModelId: null, ifcDataStore: null, geometryResult: null });
   const call = (operation_id: string, input: unknown = {}) => dispatchMainViewerTool(context.host, 'viewer_operation_execute', { operation_id, input }, { canEdit: () => true });

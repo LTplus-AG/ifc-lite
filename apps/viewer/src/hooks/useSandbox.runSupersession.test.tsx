@@ -478,6 +478,21 @@ describe('useSandbox().execute() — cross-instance run supersession', () => {
     assert.deepEqual(useViewerStore.getState().scriptLastResult?.value, 'B-result');
   });
 
+  it("reset() still stops a run its own instance superseded after the newer run finished (#10591 review)", async () => {
+    let rFirst: ScriptResult | null | undefined;
+    let settled = false;
+    await act(async () => {
+      const pFirst = execute1!(GATED).then((r) => { settled = true; rFirst = r; });
+      await execute1!(UNGATED);
+      await waitForGates(1);
+      reset1!();
+      // Well inside the sandbox timeout: a run that only ends by timing out was never stopped.
+      await Promise.race([pFirst, new Promise((resolve) => setTimeout(resolve, 2_000))]);
+    });
+    assert.ok(settled, 'the superseded run must stop on reset without its host gate being released');
+    assert.equal(rFirst, null);
+  });
+
   it("reset() on instance A leaves a coherent state while a DIFFERENT instance's run is in flight", async () => {
     // The cross-instance half of the reset story, which the same-instance test
     // above cannot reach. `reset()` bumps the SHARED epoch, so instance B's

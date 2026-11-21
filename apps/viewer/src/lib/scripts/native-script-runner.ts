@@ -118,7 +118,8 @@ function augmentScriptError(message: string, code?: string): { message: string; 
 const activeRunners = new Set<NativeScriptRunner>();
 /** Per-invocation native lifecycle, shared by the editor/assistant UI and viewer operations. */
 export class NativeScriptRunner {
-  private active: Sandbox | null = null;
+  /** Every sandbox this runner's runs still hold, so dispose() reaches a superseded run too. */
+  private readonly live = new Set<Sandbox>();
   /**
    * This instance's own run counter. The store's `scriptRunEpoch` decides whether a run may
    * still publish to the shared script state; this one decides whether `execute()` returns the
@@ -175,9 +176,7 @@ export class NativeScriptRunner {
       if (torndown) return null;
       torndown = true;
       const message = sandbox ? disposeSandboxReportingAbort(sandbox) : null;
-      if (this.active === sandbox) {
-        this.active = null;
-      }
+      if (sandbox) this.live.delete(sandbox);
       return message;
     };
 
@@ -191,11 +190,10 @@ export class NativeScriptRunner {
 
       sandbox = await createViewerSandbox(bim, config);
       // Cancelled while the sandbox was being created: settle the store too, or it stays 'running'.
-      // Checked before taking `active`, so a cancelled run never displaces a newer run's sandbox.
       if (this.cancellationEpoch !== cancellationEpoch) { if (stillCurrent()) setExecutionState('idle'); return null; }
-      // A run this runner already superseded still runs (its result is discarded below), but it never
-      // takes `active` from the newer run, so cancel() reaches the run that is current.
-      if (stillCurrentLocally()) this.active = sandbox;
+      // A run this runner already superseded still runs (its result is discarded below); it is tracked
+      // with the newer one, so cancel() and dispose() stop both.
+      this.live.add(sandbox);
 
       const result = await sandbox.eval(code);
 
@@ -355,7 +353,7 @@ export class NativeScriptRunner {
     setError(null);
     setDiagnostics([]);
   }
-  dispose(): void { this.cancellationEpoch++; if (this.active) { disposeSandboxReportingAbort(this.active); this.active = null; } }
+  dispose(): void { this.cancellationEpoch++; for (const sandbox of this.live) disposeSandboxReportingAbort(sandbox); this.live.clear(); }
 }
 
 export function cancelNativeScriptRun(expectedEpoch: number): boolean {

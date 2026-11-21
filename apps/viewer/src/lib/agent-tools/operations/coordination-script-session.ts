@@ -5,7 +5,10 @@ import type { SaveResult } from '@/lib/scripts/persistence';
 import { useViewerStore } from '@/store';
 import { emptySchema } from './contract';
 import { modelCoordination, coordination, textSchema, idSchema } from './coordination-common';
-const unsavedEdits = (action: string): never => { throw new Error(`The active script has unsaved edits; save it before ${action}.`); };
+// With no saved script open, script.save cannot keep a draft; creating a script from its source does.
+const unsavedEdits = (action: string): never => { throw new Error(useViewerStore.getState().activeScriptId
+  ? `The active script has unsaved edits; save it before ${action}.`
+  : `The editor has an unsaved draft; keep it with script.create using the current editor source before ${action}.`); };
 export const coordinationScriptSessionOperations = [
   coordination('script.read', 'Inspect saved scripts, active source/revision, native execution state, diagnostics and terminal results.', ['read'], emptySchema, () => {
     const s = useViewerStore.getState(); return { saved: s.savedScripts, active_id: s.activeScriptId, source: s.scriptEditorContent, revision: s.scriptEditorRevision,
@@ -35,7 +38,8 @@ export const coordinationScriptSessionOperations = [
   coordination<{ name: string; source: string }>('script.create', 'Create a saved native script without executing it.', ['configuration'], {
     type: 'object', properties: { name: { type: 'string', minLength: 1, maxLength: 200 }, source: { type: 'string', maxLength: 1000000 } }, required: ['name', 'source'], additionalProperties: false,
   }, (i, c) => c.commit(() => {
-    if (useViewerStore.getState().scriptEditorDirty) unsavedEdits('creating another');
+    const editor = useViewerStore.getState();
+    if (editor.scriptEditorDirty && !(editor.activeScriptId === null && i.source === editor.scriptEditorContent)) unsavedEdits('creating another');
     let storage: SaveResult | undefined; const id = useViewerStore.getState().createScript(i.name, i.source, result => { storage = result; });
     if (!id) throw new Error('Native script size or count limit exceeded.'); return { id, storage };
   })),

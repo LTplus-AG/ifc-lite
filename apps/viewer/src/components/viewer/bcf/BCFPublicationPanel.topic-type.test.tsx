@@ -22,6 +22,7 @@ import { planDraftPublication } from '@/lib/bcf-publication/outbox-plan';
 import { preflightPublication } from '@/lib/bcf-publication/outbox-preflight';
 import { loadBcfServerConfig, saveBcfServerConfig } from '@/services/bcf-server';
 import { LOCAL_BCF_USER } from '@/test/bcf-http-server';
+import { deferred } from '@/test/race';
 
 afterEach(cleanup);
 
@@ -90,6 +91,44 @@ test('#10589 clears a native check after editing a batch in place', async t => {
   click(button(/^Edit batch$/));
   assert.ok(!ui.querySelector('output'), 'the previous revision review is gone');
   assert.equal(ui.querySelectorAll('select').length, 1, 'only the project picker remains');
+});
+
+test('#10589 keeps a newly staged review when an older Check finishes for the same target', async t => {
+  const peer = await connectPeer(t, { topicTypes: SERVER_TYPES });
+  const batch = await reviewedBatch();
+  const plan = await planDraftPublication(batch, undefined, peer.target);
+  const report = await preflightPublication(peer.connection.client, plan.record);
+  t.after(() => useBcfPublicationReview.setState({ candidate: null }));
+
+  const responseReady = deferred();
+  const releaseResponse = deferred();
+  t.after(() => releaseResponse.resolve());
+  const realFetch = globalThis.fetch;
+  t.mock.method(globalThis, 'fetch', async (...args: Parameters<typeof fetch>) => {
+    const response = await realFetch(...args);
+    const input = args[0];
+    const url = new URL(input instanceof Request ? input.url : input);
+    if (url.pathname.endsWith('/extensions')) {
+      responseReady.resolve();
+      await releaseResponse.promise;
+    }
+    return response;
+  });
+
+  const users: string[][] = [];
+  render(<BCFPublicationPanel batch={batch} onRecordId={() => undefined} onUsers={choices => users.push(choices)} />);
+  const check = () => button(/^Check project$/);
+  await waitFor(() => !check().disabled, 'project check is ready');
+  click(check());
+  await waitFor(() => responseReady.settled(), 'the older Check has a response held in flight');
+  const candidateUser = 'candidate@example.test';
+  act(() => {
+    stageBcfPublicationReview(batch, peer.target, {}, plan, { ...report, extensions: { ...report.extensions, user_id_type: [candidateUser] } }, Date.now() + 1);
+  });
+  assert.deepEqual(users, [[candidateUser]], 'the new candidate was adopted while Check was pending');
+  releaseResponse.resolve();
+  await waitFor(() => !check().disabled, 'the older Check completed');
+  assert.deepEqual(users, [[candidateUser]], 'the older response did not overwrite the candidate');
 });
 
 test('#10589 clears published assignee choices when switching accounts on the same server', async t => {

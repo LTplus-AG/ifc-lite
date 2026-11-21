@@ -99,6 +99,8 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
     // A choice the user made while the agent prepared outranks the candidate and keeps the user's own state.
     if (!bcfPublicationCandidateCurrent(candidate)) { useBcfPublicationReview.setState({ candidate: null }); return; }
     if (adopted.current?.id === candidate.id) return;
+    // An older Check can still be in flight even when the target stays the same.
+    reviewEpoch.current++;
     adopted.current = { id: candidate.id, targetKey: reviewKey(batch, candidate.target.serverUrl, candidate.target.userId, candidate.target.projectId) };
     setProjectId(candidate.target.projectId); setTopicTypes(candidate.topicTypes); setPreflight(candidate.preflight);
     // As the native Check does, so the dialog can offer the server's assignees.

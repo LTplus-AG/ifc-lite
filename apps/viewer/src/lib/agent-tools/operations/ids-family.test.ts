@@ -77,6 +77,23 @@ describe('complete native IDS Studio operation vocabulary (#10525 follow-up)', (
     const validation = await call<{ report: { summary: object } }>('ids.document.validate'); assert.ok(validation.report.summary);
     const lint = await call<{ diagnostics: object }>('ids.lint'); assert.ok(lint.diagnostics);
   });
+  it('rejects a validation.results continuation from a different specification population (#10877)', async () => {
+    const { content } = await call<{ content: string }>('ids.document.xml');
+    const spec = content.match(/<specification\s[^>]*>[\s\S]*?<\/specification>/)?.[0];
+    assert.ok(spec);
+    const second = spec.replace(/name="[^"]*"/, 'name="Second specification"');
+    const xml = content.replace('</specifications>', `${second}</specifications>`);
+    const run = (xml: string) => call<{ run_id: string }>('validation.ids.run', { xml, scope: 'whole', entity_ids: [] });
+    const { run_id } = await run(xml);
+    const first = await call<{ next_offset: number; page_revision: string }>('validation.results', { run_id, offset: 0, limit: 1 });
+    assert.equal(first.next_offset, 1); assert.ok(first.page_revision);
+    const cursor = { offset: first.next_offset, page_revision: first.page_revision, limit: 1 };
+    await call('validation.results', { run_id, ...cursor });
+    const changed = await run(content);
+    const result = await dispatchMainViewerTool(host, 'viewer_operation_inspect',
+      { model_id: SAMPLE_MODEL, operation_id: 'validation.results', input: { run_id: changed.run_id, ...cursor } });
+    assert.equal(result.errorCode, 'STATE_CHANGED', result.text);
+  });
   it('awaits the real BCF artifact sink and refuses publication after cancellation', async () => {
     const { runIdsBcfExport } = await import('@/hooks/ids/idsBcfExport');
     const { content } = await call<{ content: string }>('ids.document.xml');

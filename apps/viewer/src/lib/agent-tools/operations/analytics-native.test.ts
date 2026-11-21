@@ -83,12 +83,19 @@ describe('native analytics operations (#10525 deeper automation)', () => {
   beforeEach(async () => seed());
   it('runs all federation rows through the shared Lists service, paginates only the reply and records exact provenance', async () => {
     await seed(2); useViewerStore.setState({ listDefinitions: [list] });
-    const result = await run<{ rows: unknown[]; totalCount: number }>('lists.run', { id: list.id, offset: 1, limit: 2 });
+    const first = await run<{ next_offset: number; page_revision: string }>('lists.run', { id: list.id, offset: 0, limit: 1 });
+    assert.equal(first.next_offset, 1); assert.ok(first.page_revision);
+    const next = { id: list.id, offset: first.next_offset, page_revision: first.page_revision, limit: 2 };
+    const result = await run<{ rows: unknown[]; totalCount: number }>('lists.run', next);
     assert.equal(result.rows.length, 2); assert.equal(result.totalCount, 4);
     const stored = useViewerStore.getState().listResult; assert.ok(stored);
     assert.equal(stored.rows.length, 4); assert.equal(listRunDefinition(stored)?.id, list.id);
     assert.deepEqual(result.rows, stored.rows.slice(1, 3));
     assert.deepEqual(listRunModels(stored)?.models.map(row => row.id), ['A', 'B']);
+    // #10877: re-running an edited definition cannot publish a changed population as a continuation.
+    useViewerStore.setState({ listDefinitions: [{ ...list, entityTypes: [IfcTypeEnum.IfcDoor] }] });
+    await assert.rejects(run('lists.run', next), { code: 'STATE_CHANGED' });
+    assert.equal(useViewerStore.getState().listResult, stored);
   });
   it('native group X-ray uses exact federated members, toggles off and never releases a successor visibility owner', async () => {
     await seed(2); const { model: _model, ...viewer } = context;

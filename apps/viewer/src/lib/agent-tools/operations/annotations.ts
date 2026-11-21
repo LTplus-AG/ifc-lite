@@ -4,6 +4,8 @@
 import { useViewerStore } from '@/store';
 import { isToolAvailable } from '@/lib/features/tools';
 import { resolveRef } from '../refs';
+import { boundedMappedPage, pageInput, pageOutputProperties, type PageRequest } from './result-limit';
+import { stateRevision } from './state-revision';
 import { operation, viewerOperation, pointSchema } from './contract';
 const resultSchema = { type: 'object', properties: { id: { type: 'string' }, annotation_json: { type: 'string' }, persistence: { type: 'string' } }, required: ['id', 'annotation_json', 'persistence'], additionalProperties: false };
 const meta = (id: string, description: string) => ({ id, owner: 'viewport', description: `${description} Pins use renderer Y-up metres and native best-effort browser persistence. Native collaboration mirroring and role checks remain authoritative.`,
@@ -24,11 +26,13 @@ function create(position: [number, number, number], note: string, modelId: strin
   return result(id);
 }
 export const annotationOperations = [
-  viewerOperation<{ offset?: number; limit?: number }>({ id: 'annotations.read', owner: 'viewport', description: 'Read a bounded page of native annotation records, including attribution, timestamps and model/entity anchors in annotation_json.', effects: ['read'], capability: 'read', implementation: 'native-store', outputSchema: {
-    type: 'object', properties: { total: { type: 'integer' }, next_offset: { anyOf: [{ type: 'integer' }, { type: 'null' }] }, records: { type: 'array', items: { type: 'string' } } }, required: ['total', 'next_offset', 'records'], additionalProperties: false,
-  } }, { type: 'object', properties: { offset: { type: 'integer', minimum: 0, nullable: true }, limit: { type: 'integer', minimum: 1, maximum: 100, nullable: true } }, required: [], additionalProperties: false }, i => {
-    const entries = [...useViewerStore.getState().annotations.values()], offset = i.offset ?? 0, end = offset + (i.limit ?? 25);
-    return { total: entries.length, next_offset: end < entries.length ? end : null, records: entries.slice(offset, end).map(entry => JSON.stringify(entry)) };
+  viewerOperation<PageRequest>({ id: 'annotations.read', owner: 'viewport', description: 'Read a bounded page of native annotation records, including attribution, timestamps and model/entity anchors. Pass next_offset and page_revision to continue.', effects: ['read'], capability: 'read', implementation: 'native-store', outputSchema: {
+    type: 'object', properties: { total: { type: 'integer' }, ...pageOutputProperties, records: { type: 'array', items: { type: 'string' } } }, required: ['total', 'next_offset', 'page_revision', 'records'], additionalProperties: false,
+  } }, { ...pageInput, properties: { ...pageInput.properties, limit: { type: 'integer', minimum: 1, maximum: 100, nullable: true } } }, i => {
+    const entries = [...useViewerStore.getState().annotations.values()];
+    const { items: records, offset: _offset, ...page } = boundedMappedPage(entries, entry => JSON.stringify(entry),
+      { ...i, limit: i.limit ?? 25 }, null, stateRevision(entries));
+    return { ...page, records };
   }),
   viewerOperation<{ position: [number, number, number]; note: string }>(meta('annotations.create', 'Create a numerical free-space native annotation, preserving any already-open human draft.'), {
     type: 'object', properties: { position: pointSchema, note: { type: 'string', minLength: 1, maxLength: 2000 } }, required: ['position', 'note'], additionalProperties: false,

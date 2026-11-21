@@ -393,7 +393,6 @@ function convertRecord(
   // Those take a reviewed attribute map (#10763) or are left alone.
   // Appended attributes are optional, so `$` is a valid pad.
   //
-  // The two branches cannot both apply: each needs ITS OWN list strictly shorter.
   // Source attrs keyed on the ORIGINAL type; target on the (possibly renamed) type.
   let finalAttrs = attrsRaw;
   const targetTable = attrNameTable(toSchema);

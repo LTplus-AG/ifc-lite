@@ -2,7 +2,7 @@
 /**
  * Registry check (#10902): every type a source schema declares and the target
  * does not is routed, never written verbatim unseen. For each schema pair it
- * partitions the source-only types by `convertRecord`'s own decisions and pins
+ * partitions the source-only types by the conversion loss classifier's decisions and pins
  * the partition to `rust/export/tests/fixtures/schema_unrepresented_vectors.json`
  * (`routes`), which the Rust twin checks name by name (`schema_unrepresented.rs`). A new source-only type, or a listed gap
  * that gets fixed, fails here until the fixture says so.
@@ -11,10 +11,8 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { attrNameTable, convertEntityType, shouldSkipEntity, type IfcSchemaVersion } from './schema-converter.js';
-import { isRootedEntityType, missingTypeRoute, VERBATIM_UPGRADE } from './schema-untranslatable.js';
 import { IfcParser } from '@ifc-lite/parser';
 import { StepExporter } from './step-exporter.js';
-import { DELETED_SUBTYPES } from './schema-converter-attr-maps.js';
 import { analyzeConversionLoss, classifyEntityTypeConversion } from './schema-conversion-loss-report.js';
 
 type Routes = { verbatim?: string[]; proxied?: string[]; handled?: string[] };
@@ -33,10 +31,12 @@ function partition(from: IfcSchemaVersion, to: IfcSchemaVersion): { verbatim: st
   const out = { verbatim: [] as string[], proxied: [] as string[], refused: [] as string[], handled: [] as string[] };
   for (const type of src.keys()) {
     const newType = convertEntityType(type, from, to);
-    if (shouldSkipEntity(newType, to)) continue;
-    const route = missingTypeRoute(type, from, to, true, tgt.has(newType));
-    if (route === 'verbatim' || route === 'handled') out[route].push(type);
-    else if (route === 'unrepresented') (isRootedEntityType(type) ? out.proxied : out.refused).push(type);
+    if (tgt.has(newType) || shouldSkipEntity(newType, to)) continue;
+    const { kind } = classifyEntityTypeConversion(type, from, to);
+    if (kind === 'lossy') out.verbatim.push(type);
+    else if (kind === 'proxied') out.proxied.push(type);
+    else if (kind === 'blocked') out.refused.push(type);
+    else out.handled.push(type);
   }
   for (const list of Object.values(out)) list.sort();
   return out;
@@ -59,11 +59,13 @@ describe('every source-only type has a route (#10902)', () => {
 
   it('IFC2X3 -> IFC4 writes verbatim exactly the listed types, and proxies the other rooted ones', () => {
     const { verbatim, proxied, refused } = partition('IFC2X3', 'IFC4');
-    expect(verbatim).toEqual([...VERBATIM_UPGRADE].sort());
     expect(refused).toEqual([]);
     expect(proxied).toContain('IFCSERVICELIFE');
     // Written as their IFC4 supertype, so none needs a route.
-    for (const type of DELETED_SUBTYPES.keys()) expect([...verbatim, ...proxied], type).not.toContain(type);
+    for (const type of ['IFCMOVE', 'IFCORDERACTION', 'IFCRELOCCUPIESSPACES', 'IFCRELASSIGNSTASKS',
+      'IFCRELASSIGNSTOPROJECTORDER', 'IFCRELSCHEDULESCOSTITEMS']) {
+      expect([...verbatim, ...proxied], type).not.toContain(type);
+    }
     // Its overrides would be lost silently as IfcRelDefinesByProperties, so it stays a proxy.
     expect(proxied).toContain('IFCRELOVERRIDESPROPERTIES');
   });

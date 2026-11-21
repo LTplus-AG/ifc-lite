@@ -4,7 +4,7 @@
 import { useViewerStore } from '@/store';
 import { coordination, textSchema } from './coordination-common';
 import { emptySchema } from './contract';
-import { internal, invalidInput, stale, unavailable } from './refusals';
+import { decodedInput, internal, invalidInput, stale, unavailable } from './refusals';
 async function compared() {
   const [{ comparedModelIdentities }, { acceptedForPair }] = await Promise.all([import('@/lib/compare/identitySidecar'), import('@/lib/compare/acceptedIdentity')]);
   const state = useViewerStore.getState(), result = state.compareResult; if (!result || state.compareRunning || state.compareKeyProperty !== result.keyProperty) throw unavailable('A current completed native comparison/key scheme is required.');
@@ -21,7 +21,7 @@ export const coordinationPortableOperations = [
     const [{ createContentBackup, encodeContentBackup }, { reviewWorkspaceLibrary, useReviewWorkspaces }] = await Promise.all([import('@/lib/storage/content-backup'), import('@/lib/review/workspace')]); await reviewWorkspaceLibrary.initialize(); const state = useReviewWorkspaces.getState(); const backup = createContentBackup({ validation: [], comparison: [], document: [], reviewWorkspaces: state.entries }, { reviewWorkspaces: state.status }); backup.drafts = backup.drafts?.filter(draft => draft.kind === 'reviewWorkspaces'); return c.artifacts.create({ filename: 'review-workspace.json', mimeType: 'application/json', data: JSON.stringify(encodeContentBackup(backup), null, 2) });
   }),
   coordination('review.importWorkspace', 'Import only review-workspace records from a canonical native backup. Native atomic conflict planning preserves differing originals under fresh identities; no assistant answer becomes a review decision implicitly.', ['configuration'], textSchema, async (i, c) => {
-    const [{ parseContentBackup, importContentBackup }, { reviewWorkspaceLibrary, useReviewWorkspaces }] = await Promise.all([import('@/lib/storage/content-backup'), import('@/lib/review/workspace')]); const backup = parseContentBackup(i.value);
+    const [{ parseContentBackup, importContentBackup }, { reviewWorkspaceLibrary, useReviewWorkspaces }] = await Promise.all([import('@/lib/storage/content-backup'), import('@/lib/review/workspace')]); const backup = decodedInput('value', () => parseContentBackup(i.value), { json: true });
     if (Object.entries(backup.libraries).some(([kind, rows]) => kind !== 'reviewWorkspaces' && Array.isArray(rows) && rows.length) || backup.drafts?.some(draft => draft.kind !== 'reviewWorkspaces')) throw invalidInput('invalid-value', 'This endpoint accepts a review-only native backup.');
     const ready = await reviewWorkspaceLibrary.initialize(); if (!ready) throw internal('Native review storage is unavailable.');
     return c.commitAsync(async () => { let receipts: import('@/lib/storage/content-library').ContentCommitReceipt[] = []; const imported = await importContentBackup(backup, () => ({ validation: [], comparison: [], document: [], reviewWorkspaces: useReviewWorkspaces.getState().entries }), true, rows => { receipts = [...rows]; }); await reviewWorkspaceLibrary.refresh(receipts); return { imported, storage: useReviewWorkspaces.getState().status }; });

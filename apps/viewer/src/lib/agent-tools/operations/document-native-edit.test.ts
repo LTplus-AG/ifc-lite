@@ -53,6 +53,15 @@ it('#10525 pages large native documents and edits text without resending or losi
   assert.deepEqual(persisted.blocks[0].kind === 'text' && persisted.blocks[0].aiProvenance,
     document.blocks[0].kind === 'text' && document.blocks[0].aiProvenance);
   assert.deepEqual(persisted.aiReport, document.aiReport); assert.deepEqual(persisted.blocks[1], document.blocks[1]); assert.deepEqual(persisted.pageHeading, document.pageHeading);
+  for (const [name, invalid] of [
+    ['document.editPage', { patch_json: '[]' }],
+    ['document.editBlock', { block_id: 'narrative', patch_json: '{"unexpected":true}' }],
+    ['document.addBlock', { block_json: '{"kind":"unknown"}', before_id: '' }],
+  ] as const) {
+    await assert.rejects(run(name, { id: document.id, expected_revision: saved.revision, ...invalid }), {
+      code: 'INVALID_INPUT', details: { reason: 'invalid-value' },
+    });
+  }
   await run('document.editPage', { id: document.id, expected_revision: saved.revision, patch_json: '{"page":{"orientation":"landscape"},"pageHeading":{"text":"Edited heading"}}' });
   const pageSaved = (await loadDocuments()).find(row => row.id === document.id); assert.equal(pageSaved?.page.orientation, 'landscape'); assert.equal(pageSaved?.pageHeading?.logo?.dataUrl, dataUrl);
   assert.ok(await useViewerStore.getState().deleteDocument(library.documents[0].id));

@@ -34,7 +34,10 @@ export const coordinationScriptSessionOperations = [
     const live = useViewerStore.getState(); if (live.models !== inputs.models || live.mutationVersion !== inputs.mutationVersion || live.geometryContentVersion !== inputs.geometryContentVersion) throw stale('Model inputs changed during sandbox analysis.'); return result;
   }),
   coordination('script.save', 'Save the active script through native persistence.', ['configuration'], emptySchema, (_, c) => c.commit(() => {
-    const s = useViewerStore.getState(); if (!s.activeScriptId) throw unavailable('No active saved script.'); const storage = s.saveActiveScript(); return { active_id: s.activeScriptId, dirty: useViewerStore.getState().scriptEditorDirty, storage };
+    const s = useViewerStore.getState(); if (!s.activeScriptId) throw unavailable('No active saved script.'); const storage = s.saveActiveScript();
+    // The store clears dirty even when storage refuses the write; the edits are still unsaved.
+    if (storage && !storage.ok) useViewerStore.setState({ scriptEditorDirty: true });
+    return { active_id: s.activeScriptId, dirty: useViewerStore.getState().scriptEditorDirty, storage };
   })),
   coordination<{ name: string; source: string }>('script.create', 'Create a saved native script without executing it.', ['configuration'], {
     type: 'object', properties: { name: { type: 'string', minLength: 1, maxLength: 200 }, source: { type: 'string', maxLength: 1000000 } }, required: ['name', 'source'], additionalProperties: false,

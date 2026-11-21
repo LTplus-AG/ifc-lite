@@ -130,7 +130,8 @@ it('script operations expose native storage failure instead of claiming durabili
   try {
     const created = await execute<{ id: string; storage: { ok: boolean; reason: string } }>('script.create', { name: 'Quota fixture', source: 'console.log(1)' });
     assert.ok(created.id); assert.equal(created.storage.ok, false); assert.equal(created.storage.reason, 'quota_exceeded');
-    const saved = await execute<{ storage: { ok: boolean } }>('script.save'); assert.equal(saved.storage.ok, false);
+    const saved = await execute<{ dirty: boolean; storage: { ok: boolean } }>('script.save'); assert.equal(saved.storage.ok, false);
+    assert.equal(saved.dirty, true, 'a refused save leaves the edits unsaved');
   } finally {
     if (originalStorage) Object.defineProperty(globalThis, 'localStorage', originalStorage);
     else Reflect.deleteProperty(globalThis, 'localStorage');
@@ -138,6 +139,7 @@ it('script operations expose native storage failure instead of claiming durabili
 });
 
 it('script create and delete refuse to drop the active script\'s unsaved edits (#10591 review)', async () => {
+  useViewerStore.setState({ scriptEditorDirty: false });
   const first = await execute<{ id: string }>('script.create', { name: 'Dirty fixture', source: '1' });
   useViewerStore.setState({ scriptEditorContent: 'edited', scriptEditorDirty: true });
   await assert.rejects(execute('script.create', { name: 'Second', source: '2' }), /unsaved edits/);

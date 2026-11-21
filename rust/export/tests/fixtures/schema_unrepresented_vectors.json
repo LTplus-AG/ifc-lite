@@ -110,8 +110,15 @@
    "why": "an IFC2X3 or IFC4 source keeps main's behaviour for IFC4/IFC4X3 targets: its IFC2X3-only non-rooted record is written as it is, not refused (D59; BIMcollab_ARC, O-S1-BWK, 841_house)",
    "from": "IFC2X3",
    "to": "IFC4",
+   "line": "#5=IFCCALENDARDATE(1,1,2020);",
+   "expect": "#5=IFCCALENDARDATE(1,1,2020);"
+  },
+  {
+   "why": "#10777: an IFC2X3 property subtype IFC4 deleted is written as its IFC4 supertype, neither refused nor kept under its IFC2X3 name (these were D59's material-property records)",
+   "from": "IFC2X3",
+   "to": "IFC4",
    "line": "#5=IFCGENERALMATERIALPROPERTIES($,$,$,$,$);",
-   "expect": "#5=IFCGENERALMATERIALPROPERTIES($,$,$,$,$);"
+   "expect": "#5=IFCMATERIALPROPERTIES($,$,$,$);"
   },
   {
    "why": "control: IFC4 -> IFC4X3 of a record both declare (D59)",

@@ -5,6 +5,8 @@
 import '@/test/setup-dom.js';
 import 'fake-indexeddb/auto';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { MAX_DEFINITIONS, DEFINITION_LIBRARY_KEY } from '@/lib/validation/definition-library';
 import { beforeEach, describe, it } from 'node:test';
 import { createBimContext } from '@ifc-lite/sdk';
 import { LocalBackend } from '@/sdk/local-backend';
@@ -47,6 +49,44 @@ describe('complete native IDS Studio operation vocabulary (#10525 follow-up)', (
     await call('ids.candidate.apply', { token: preview.token }, true); assert.equal(useViewerStore.getState().idsStudioState!.history.past.length, 1);
     await call('ids.history', { document_revision: 1, direction: 'undo' }, true);
     assert.deepEqual(useViewerStore.getState().idsStudioState!.doc, original);
+  });
+  for (const [ops, reason] of [[{}, 'invalid-value'], [Array(501).fill(null), 'limit']] as const)
+    it(`distinguishes IDS operation array shape from its size (${reason}, #11060)`, async () => {
+      const result = await dispatchMainViewerTool(host, 'viewer_operation_inspect', {
+        operation_id: 'ids.operations.prepare', input: { document_revision: 0, ops_json: JSON.stringify(ops) },
+      }, { canEdit: () => true });
+      assert.equal(result.errorCode, 'INVALID_INPUT', result.text);
+      assert.equal((result.structured as { reason: string }).reason, reason);
+      const empty = await call<{ accepted: boolean }>('ids.operations.prepare', { document_revision: 0, ops_json: '[]' });
+      assert.equal(empty.accepted, true);
+    });
+  it('admits new definitions below capacity and replacements at capacity (#11060)', async t => {
+    const xml = readFileSync(new URL('../../../../public/samples/building-architecture.ids', import.meta.url), 'utf8');
+    const rules = { version: 1 as const, name: 'Wall rules', rules: [] };
+    const state = useViewerStore.getState(), previous = localStorage.getItem(DEFINITION_LIBRARY_KEY);
+    t.after(() => {
+      useViewerStore.setState(state);
+      if (previous === null) localStorage.removeItem(DEFINITION_LIBRARY_KEY); else localStorage.setItem(DEFINITION_LIBRARY_KEY, previous);
+    });
+    const entries = Array.from({ length: MAX_DEFINITIONS - 1 }, (_, i) => ({ kind: 'rules' as const, id: `rule-${i}`, file: rules }));
+    useViewerStore.setState({ validationDefinitions: { version: 1, entries, active: { rules: null, ids: null } }, validationDefinitionsWritable: true });
+    const run = (kind: 'rules' | 'ids', id: string) => dispatchMainViewerTool(host, 'viewer_operation_execute', {
+      operation_id: 'validation.definitions.write',
+      input: { action: `${kind}.import`, kind, id, content: kind === 'ids' ? xml : JSON.stringify(rules),
+        definition_revision: useViewerStore.getState().validationDefinitionRevision },
+    }, { canEdit: () => true });
+    const added = await run('ids', '');
+    assert.equal(added.isError, false, added.text);
+    for (const kind of ['rules', 'ids'] as const) {
+      const full = await run(kind, '');
+      assert.equal(full.errorCode, 'UNSUPPORTED_OPERATION', full.text);
+      assert.deepEqual(full.structured, { reason: 'unavailable' });
+      const id = useViewerStore.getState().validationDefinitions.entries.find(entry => entry.kind === kind)?.id;
+      assert.ok(id);
+      const replaced = await run(kind, id);
+      assert.equal(replaced.isError, false, replaced.text);
+    }
+    assert.equal(useViewerStore.getState().validationDefinitions.entries.length, MAX_DEFINITIONS);
   });
   it('reports grounded typo diagnostics without mutating the open document', async () => {
     const original = useViewerStore.getState().idsStudioState;

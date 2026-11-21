@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { readStoreyInventory } from '@ifc-lite/create';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { homeStoreyOf } from '../../../../../../packages/create/src/in-store/storey/storey-attachment.js';
 import type { AddStoreyParams, StoreyLevelEdit, StoreyDeleteMode, StoreyLevelPlan, StoreyDeletePlan, TopConstraint } from '@ifc-lite/create';
 import { useViewerStore } from '@/store';
 import { operation, emptySchema, type OperationContext } from './contract';
@@ -42,6 +45,16 @@ function parseTopConstraint(json: string): TopConstraint {
       throw invalidInput('invalid-value', 'constraint_json.kind must be fixed, storeyAbove, storey, slab or roof.');
   }
 }
+function assertStoreyTopTarget(model: OperationContext['model'], elementId: number, storeyId: number) {
+  const view = model.mutationView() ?? new MutablePropertyView(model.store.properties, model.id);
+  const inventory = readStoreyInventory(model.store, view, { lazyRelationships: true });
+  const target = inventory.storeys.find(storey => storey.expressId === storeyId);
+  if (!target) throw invalidInput('unknown-target', 'Unknown native storey.');
+  const homeId = homeStoreyOf(inventory, elementId);
+  const home = inventory.storeys.find(storey => storey.expressId === homeId);
+  if (!home || target.parentId !== home.parentId || target.elevation <= home.elevation)
+    throw invalidInput('wrong-target', 'The named storey must be above the element in the same building.');
+}
 export const storeyOperations = [
   operation(meta('storeys.read', 'Read all live native storey elevations, floor heights, element counts and constraints; source lengths are native metres.'), emptySchema, (_, c) => out(c.model.bim.store.listStoreyLevels(c.model.id))),
   operation<{ express_id: number; side: 'above' | 'below' }>(meta('storeys.suggest', 'Read the native naming/elevation suggestion above or below an explicit existing storey.'), {
@@ -75,5 +88,7 @@ export const storeyOperations = [
   }, (i, c) => { const ref = resolveRef(c.model, { express_id: i.express_id }); return out(c.commit(() => c.model.bim.store.renameStorey(ref, i.Name))); }),
   operation<{ express_id: number; constraint_json: string }>(meta('storeys.topConstraint', 'Set an element top using the native TopConstraint contract (fixed/storeyAbove/storey/slab). Uses native authoritative attachment and dimension checks and native Undo.', true), {
     type: 'object', properties: { express_id: { type: 'integer', minimum: 1 }, constraint_json: { type: 'string', maxLength: 200000 } }, required: ['express_id', 'constraint_json'], additionalProperties: false,
-  }, (i, c) => { const ref = resolveRef(c.model, { express_id: i.express_id }), constraint = parseTopConstraint(i.constraint_json); return out(c.commit(() => c.model.bim.store.setTopConstraint(ref, constraint))); }),
+  }, (i, c) => { const ref = resolveRef(c.model, { express_id: i.express_id }), constraint = parseTopConstraint(i.constraint_json);
+    if (constraint.kind === 'storey') assertStoreyTopTarget(c.model, ref.expressId, constraint.storeyId);
+    return out(c.commit(() => c.model.bim.store.setTopConstraint(ref, constraint))); }),
 ];

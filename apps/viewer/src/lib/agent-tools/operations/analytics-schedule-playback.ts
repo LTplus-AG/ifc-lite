@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { JSONSchemaType } from 'ajv';
-import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
 import { useViewerStore } from '@/store';
 import { acquireScheduleRuntime, holdBoundedSchedulePlayback } from '@/lib/schedule/runtime';
 import type { ToolHost } from '../types';

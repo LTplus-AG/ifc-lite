@@ -8,7 +8,7 @@ import { defineSliceTeardown } from '../teardown.js';
 import { placementFrameKey } from '@/lib/model-placement/persistence.js';
 import { appearanceAssets } from '@/lib/appearance/model-assets.js';
 import { createReferenceLeases } from '@/lib/appearance/references/leases.js';
-import { parseReferences, serializeReferences } from '@/lib/appearance/references/persistence.js';
+import { LockedAppearanceReferenceError, parseReferences, serializeReferences } from '@/lib/appearance/references/persistence.js';
 import { MAX_REFERENCES, MAX_REFERENCE_HISTORY, ownReference,
   type RegisteredAppearanceReference, type ReferenceCommand } from '@/lib/appearance/references/types.js';
 
@@ -129,7 +129,7 @@ export const createAppearanceReferenceSlice: StateCreator<ViewerState, [], [], A
       // deletes a locked reference. Missing assets remain in the restored list.
       for (const [id, record] of get().appearanceReferences) if (record.locked
         && JSON.stringify(records.get(id)) !== JSON.stringify(record)) {
-        throw new Error('Unlock existing drawing references before replacing their registration.');
+        throw new LockedAppearanceReferenceError('Unlock existing drawing references before replacing their registration.');
       }
       publish(records);
     },

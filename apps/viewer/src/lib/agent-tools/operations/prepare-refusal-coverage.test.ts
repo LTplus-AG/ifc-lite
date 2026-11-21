@@ -9,7 +9,7 @@ import { viewerOperations } from './registry';
 /**
  * Every operation that may hand its caller a new token or id is classified (#10918). One that stores a candidate for
  * that token registers its removal (retainCandidate / c.retain), which the executor runs when the result is refused;
- * the refusal tests in stale-tokens.test.ts and graph-prepare-refusal.test.ts drive that through the real executor.
+ * the refusal tests drive that through the real executor.
  * A new operation of this shape fails here until it is classified.
  */
 const PREPARE_LIKE = /(\.prepare|\.capture|\.start|\.run|\.preview|\.plan|\.draft)$/;
@@ -28,13 +28,10 @@ const REFUSAL_TESTED: Record<string, string> = {
   'authoring.structural.prepare': 'same graph store as authoring.group.prepare',
   'authoring.zone.prepare': 'same graph store as authoring.group.prepare',
   'authoring.room.prepare': 'same graph store as authoring.group.prepare',
-};
-/** Stores a candidate and registers its removal; an executor refusal test needs its own domain fixture (follow-up). */
-const RETAINED_UNTESTED: Record<string, string> = {
-  'storeys.prepare': 'retainCandidate in authoring-storeys.ts',
-  'clash.classification.prepare': 'retainCandidate in clash-native-classification.ts',
-  'appearance.capture.prepare': 'retainCandidate in appearance-native-capture.ts',
-  'appearance.scan.prepare': 'retainCandidate in appearance-native-scan.ts',
+  'storeys.prepare': 'domain-prepare-refusal: a refused storey candidate cannot apply',
+  'clash.classification.prepare': 'domain-prepare-refusal: a refused classification review cannot be sampled',
+  'appearance.capture.prepare': 'domain-prepare-refusal: a refused capture candidate is unknown',
+  'appearance.scan.prepare': 'domain-prepare-refusal: a refused scan session cannot be inspected',
 };
 /** Hands out no new stored token, or stores it inside a committed write (the executor keeps committed effects). */
 const NO_UNDELIVERED_CANDIDATE: Record<string, string> = {
@@ -67,7 +64,7 @@ const handsOutToken = (schema: unknown): boolean => {
 describe('operations that hand out a token are classified for refusal (#10918)', () => {
   const operations = viewerOperations(), ids = operations.map(entry => entry.id);
   it('every prepare-like operation, or one whose result carries a token, is in exactly one class', () => {
-    const classes = [REFUSAL_TESTED, RETAINED_UNTESTED, NO_UNDELIVERED_CANDIDATE];
+    const classes = [REFUSAL_TESTED, NO_UNDELIVERED_CANDIDATE];
     const unclassified = operations.filter(entry => (PREPARE_LIKE.test(entry.id) || handsOutToken(entry.outputSchema)) && !classes.some(map => entry.id in map))
       .map(entry => entry.id);
     const twice = ids.filter(id => classes.filter(map => id in map).length > 1);
@@ -75,7 +72,7 @@ describe('operations that hand out a token are classified for refusal (#10918)',
   });
   it('every classified id is a registered operation', () => {
     const registered = new Set(ids);
-    const stale = [REFUSAL_TESTED, RETAINED_UNTESTED, NO_UNDELIVERED_CANDIDATE].flatMap(Object.keys).filter(id => !registered.has(id));
+    const stale = [REFUSAL_TESTED, NO_UNDELIVERED_CANDIDATE].flatMap(Object.keys).filter(id => !registered.has(id));
     assert.deepEqual(stale, []);
   });
 });

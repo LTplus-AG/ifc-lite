@@ -26,3 +26,22 @@ it('keeps calendar dates, fractional seconds and timezone offsets across schema 
     expect(text).toContain('IFCCOORDINATEDUNIVERSALTIMEOFFSET(5,30,.AHEAD.);');
   }
 });
+
+it('warns when converting a duration with a non-second project TIMEUNIT (#10879)', async () => {
+  const bytes = readFileSync(new URL('../../../rust/export/tests/fixtures/schema_duration_timeunit.ifc', import.meta.url));
+  const parser = new IfcParser();
+  const legacy = await parser.parseColumnar(Uint8Array.from(bytes).buffer);
+  const upgraded = new StepExporter(legacy).export({ schema: 'IFC4' });
+  const modern = await parser.parseColumnar(Uint8Array.from(upgraded.content).buffer);
+  for (const [store, schema, duration] of [[legacy, 'IFC4', "'PT10S'"], [modern, 'IFC2X3', '10.']] as const) {
+    const merged = new MergedExporter([{ id: 'm', name: 'Plan', dataStore: store }]);
+    const options = { schema, projectStrategy: 'keep-first' } as const;
+    for (const result of [new StepExporter(store).export(options), merged.export(options), await merged.exportAsync(options)]) {
+      expect(new TextDecoder().decode(result.content)).toContain(`,'id',$,$,$,${duration},`);
+      expect(result.stats.warnings.join(' ')).toContain('assumed seconds');
+    }
+  }
+  const seconds = new TextEncoder().encode(bytes.toString().replace('IFCUNITASSIGNMENT((#6))', 'IFCUNITASSIGNMENT((#3))'));
+  const store = await parser.parseColumnar(seconds.buffer as ArrayBuffer);
+  expect(new StepExporter(store).export({ schema: 'IFC4' }).stats.warnings.join(' ')).not.toContain('assumed seconds');
+});

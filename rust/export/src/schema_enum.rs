@@ -267,6 +267,12 @@ impl ConversionChecks {
         }
     }
 
+    pub(crate) fn warnings_for_sources<'a>(&self, sources: impl Iterator<Item = &'a [u8]>) -> Vec<String> {
+        let mut warnings = self.warnings();
+        warnings.extend(self.forms.duration_warning(sources));
+        warnings
+    }
+
     /// Both checks' warnings, IFC4 slots first.
     pub(crate) fn warnings(&self) -> Vec<String> {
         let mut out = self.ifc4_slots.warnings();

@@ -364,7 +364,7 @@ fn emit<W: std::io::Write>(
         attribute_values_dropped: checks.attribute_values_dropped,
         property_mutations_refused,
         duplicate_records_dropped: index.duplicates.len(),
-    }, checks.warnings()))
+    }, checks.warnings_for_sources(std::iter::once(content))))
 }
 
 #[cfg(test)]

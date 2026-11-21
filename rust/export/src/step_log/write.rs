@@ -326,7 +326,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
 
     let mut warnings = std::mem::take(&mut pass.warnings);
     warnings.extend(slot_fill.warnings());
-    warnings.extend(checks.warnings());
+    warnings.extend(checks.warnings_for_sources(std::iter::once(content)));
     let refused = warnings.iter().filter(|w| w.contains("is not a number and the slot is REAL-typed")).count();
     Ok(LogExportStats {
         written,

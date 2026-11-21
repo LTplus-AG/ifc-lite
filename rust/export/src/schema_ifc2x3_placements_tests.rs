@@ -89,7 +89,8 @@ fn wraps_direct_styles_for_the_ifc2x3_target_10879() {
     let options = crate::StepOptions { schema: Some("IFC2X3".to_owned()), ..Default::default() };
     let step = crate::export_step(input, &options).unwrap();
     let (log, _) = crate::export_step_with_log(input, &options, &crate::MutationLog::default()).unwrap();
-    let merged = crate::export_merged(&[input], &crate::MergedOptions { schema: options.schema.clone(), ..Default::default() });
+    let (merged, stats) = crate::export_merged_models(&[crate::MergedModel::new(input)], &crate::MergedOptions { schema: options.schema.clone(), ..Default::default() });
+    assert_eq!(stats.written, merged.lines().filter(|line| line.starts_with('#')).count());
     for output in [&step, &log, &merged] {
         assert!(output.contains("#2=IFCSTYLEDITEM(#1,(#6),'Styled point');"), "{output}");
         assert!(output.contains("#6=IFCPRESENTATIONSTYLEASSIGNMENT((#3));"), "{output}");

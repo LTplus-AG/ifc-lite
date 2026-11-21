@@ -75,3 +75,23 @@ pub(super) fn to_seconds(token: &str) -> Option<String> {
     };
     total.is_finite().then(|| crate::step_log::format_step_real(sign * total))
 }
+
+pub(super) const TIME_UNIT_WARNING: &str = "Work-control duration conversion assumed seconds despite a non-second project TIMEUNIT. The exported duration or total float may have changed (#11192).";
+
+pub(super) fn has_non_second_project_time_unit(content: &[u8]) -> bool {
+    use ifc_lite_core::{AttributeValue, EntityDecoder, EntityScanner};
+    let mut projects = EntityScanner::new(content);
+    let mut decoder = EntityDecoder::new(content);
+    while let Some((id, ty, _, _)) = projects.next_entity() {
+        if !ty.eq_ignore_ascii_case("IFCPROJECT") { continue; }
+        let Some(assignment) = decoder.decode_by_id(id).ok().and_then(|p| p.ref_at(8)) else { continue };
+        let Some(units) = decoder.decode_by_id(assignment).ok()
+            .filter(|a| a.ifc_type.as_str() == "IFCUNITASSIGNMENT").and_then(|a| a.ref_list_at(0)) else { continue };
+        if units.into_iter().any(|unit| decoder.decode_by_id(unit).is_ok_and(|unit| {
+            unit.enum_at(1).is_some_and(|t| t.eq_ignore_ascii_case("TIMEUNIT"))
+                && !(unit.ifc_type.as_str() == "IFCSIUNIT" && matches!(unit.attr(2), Some(AttributeValue::Null))
+                    && unit.enum_at(3).is_some_and(|name| name.eq_ignore_ascii_case("SECOND")))
+        })) { return true; }
+    }
+    false
+}

@@ -499,7 +499,7 @@ export class MergedExporter {
     let federatedModelCount = 0;
     let normalizedModelCount = 0;
     const normalizeWarnings = new Set<string>();
-    const [slotFill, ifc4Slots, enums] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck(), new EnumReconciliation(true)]; // #4714, #5202, #5365
+    const [slotFill, ifc4Slots, enums] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck(), new EnumReconciliation(true, models.map((m) => m.dataStore))]; // #4714, #5202, #5365
 
     for (const model of models) {
       const offset = setup.modelOffsets.get(model.id)!;
@@ -634,7 +634,7 @@ export class MergedExporter {
     let normalizedModelCount = 0;
     const normalizeWarnings = new Set<string>(baked.warnings);
     const YIELD_INTERVAL = 2000;
-    const [slotFill, ifc4Slots, enums] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck(), new EnumReconciliation(true)]; // #4714, #5202, #5365
+    const [slotFill, ifc4Slots, enums] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck(), new EnumReconciliation(true, models.map((m) => m.dataStore))]; // #4714, #5202, #5365
 
     if (onProgress) onProgress({ phase: 'preparing', percent: 0, entitiesProcessed: 0, entitiesTotal: totalEntities });
 

@@ -95,13 +95,13 @@ fn typed_arg(body: &str) -> Option<(&str, &str)> {
 }
 
 /// `value` in the target's form (`None` to drop it), and how many values that lost.
-fn fix(value: &str, prefix: &str, rows: &[&str]) -> (Option<String>, usize) {
+fn fix(value: &str, prefix: &str, rows: &[&str], duration_converted: &mut bool) -> (Option<String>, usize) {
     let Some(start) = skip_step_trivia(value.as_bytes(), 0) else { return (Some(value.to_owned()), 0) };
     if value[start..].starts_with('(') {
         let Some(members) = list_items(value) else { return (Some(value.to_owned()), 0) };
         let (mut kept, mut lost) = (Vec::new(), 0);
         for member in &members {
-            let (fixed, n) = fix(member, &format!("{prefix}A"), rows);
+            let (fixed, n) = fix(member, &format!("{prefix}A"), rows, duration_converted);
             lost += n;
             kept.extend(fixed);
         }
@@ -130,6 +130,7 @@ fn fix(value: &str, prefix: &str, rows: &[&str]) -> (Option<String>, usize) {
     };
     // A set of references that could not be unwrapped loses each of them, and
     // at least one value, so an emptied slot is always named.
+    if fixed.is_some() && matches!(to, Some("D+" | "D-")) { *duration_converted = true; }
     let lost = match (fixed.is_none(), to) {
         (false, _) => 0,
         (true, Some("U1")) => inner().map_or(1, value_count).max(1),
@@ -145,6 +146,7 @@ pub(crate) struct ValueForms {
     dropped: BTreeMap<String, usize>,
     emptied: BTreeMap<String, usize>,
     dates: calendar_dates::CalendarDates,
+    duration_converted: bool,
 }
 
 impl ValueForms {
@@ -189,7 +191,7 @@ impl ValueForms {
                     continue;
                 }
             }
-            let (mut fixed, lost) = fix(slot, "", rows);
+            let (mut fixed, lost) = fix(slot, "", rows, &mut self.duration_converted);
             if lost > 0 && !whole.is_empty() {
                 // Positional members: every slot of the group goes whole, each named for what it held.
                 for &i in whole {
@@ -221,6 +223,11 @@ impl ValueForms {
             }
         }
         if changed { frame.with_args(&line, &args.join(",")) } else { line }
+    }
+
+    pub(crate) fn duration_warning<'a>(&self, mut sources: impl Iterator<Item = &'a [u8]>) -> Option<String> {
+        (self.duration_converted && sources.any(durations::has_non_second_project_time_unit))
+            .then(|| durations::TIME_UNIT_WARNING.to_owned())
     }
 
     /// One warning per kind, naming every slot a value was dropped from (#10847).

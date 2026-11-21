@@ -405,7 +405,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     warnings::push_merge_warnings(&mut stats, refused_refs_total, unrepresented_types_kept, &schema);
     stats.warnings.extend(slot_fill.warnings());
     stats.written = stats.written.saturating_add_signed(checks.finish_dates(&mut out));
-    stats.warnings.extend(checks.warnings());
+    stats.warnings.extend(checks.warnings_for_sources(models.iter().map(|m| m.content)));
     stats.warnings.extend(parents.apply_folds(&mut out)); // #5774 folds, after every model is written
     // One product per placement in IFC2X3 (#9209); the header holds no record to change.
     stats.written = stats.written.saturating_add_signed(crate::schema_ifc2x3_placements::place_text_for_schema(&schema, &mut out));

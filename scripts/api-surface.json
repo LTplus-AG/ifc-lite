@@ -5243,6 +5243,7 @@
     "resolveSpatialAnchor: function",
     "resolveWallJoinAnchor: function",
     "retargetInheritingLayerUsagesInStore: function",
+    "retireProductShape: function",
     "roofPlaneHeightAt: function",
     "roomCandidatesFromFaces: function",
     "roomFramePlanOffsets: function",

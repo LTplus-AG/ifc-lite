@@ -153,9 +153,8 @@ pub(crate) fn should_skip_entity(t: &str, to: &str) -> bool {
 
 /// Positional attribute names `entity_type` declares in the canonical schema
 /// `schema`, from core's EXPRESS registry: the one home for them (#7683).
-/// `None` for an undeclared type, and for IFC5, which has no EXPRESS
-/// registry (the TypeScript twin's `attrNameTable` answers `null` there too,
-/// so neither side adjusts an IFC5 record's attribute count).
+/// `None` for an undeclared type or IFC5, which has no EXPRESS registry.
+/// The TypeScript twin also preserves the IFC5 attribute count.
 pub(crate) fn schema_attribute_names(schema: &str, entity_type: &str) -> Option<&'static [&'static str]> {
     match schema {
         "IFC2X3" | "IFC4" | "IFC4X3" => ifc_lite_core::attribute_names_for_schema(schema, entity_type),

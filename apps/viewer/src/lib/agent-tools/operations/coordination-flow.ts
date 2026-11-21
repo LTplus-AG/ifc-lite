@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { FlowData, RunResult } from '@ifc-lite/flow';
+// This operation module is already lazy. A namespace import in Promise.all
+// retains the entire extensions barrel in the eager sandbox chunk.
+import { parseCapabilities } from '@ifc-lite/extensions';
 import { isContributedFlowId } from '@/services/extensions/host-flows';
 import { useViewerStore } from '@/store';
 import { emptySchema } from './contract';
@@ -44,8 +47,8 @@ export const coordinationFlowOperations = [
   }),
   modelCoordination('flow.analyze', 'Execute the active graph through the native Flow scheduler with an explicit read-only core/model/table node allowlist. Returns terminal node reports and outputs; does not run scripts, network, publication or model-writing nodes.', ['read'], emptySchema, async (_, c) => {
     const s = useViewerStore.getState(), doc = s.flowDoc; if (!doc) throw unavailable('Open a workflow first.');
-    const [{ runFlow, MemoCache, validateFlowWiring }, { parseCapabilities }, { flowRegistry }, { viewerTableAccess }] = await Promise.all([
-      import('@ifc-lite/flow'), import('@ifc-lite/extensions'), import('@/lib/flow/runner'), import('@/lib/flow/viewer-tables'),
+    const [{ runFlow, MemoCache, validateFlowWiring }, { flowRegistry }, { viewerTableAccess }] = await Promise.all([
+      import('@ifc-lite/flow'), import('@/lib/flow/runner'), import('@/lib/flow/viewer-tables'),
     ]);
     const allowed = new Set(['core.number', 'core.string', 'core.boolean', 'core.list', 'core.math', 'core.compare', 'core.concat', 'core.count', 'core.sum', 'core.filter', 'core.first', 'core.item', 'core.wrap', 'core.flatten', 'core.groupBy', 'core.keys', 'core.lookup',
       'model.select', 'model.byType', 'model.attribute', 'model.property', 'model.quantity', 'model.related', 'model.storey', 'model.contains', 'model.groupByStorey', 'model.groupByType',

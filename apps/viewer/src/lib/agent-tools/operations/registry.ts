@@ -11,7 +11,7 @@ import type { Operation } from './contract';
 import { internal, invalidInput } from './refusals';
 
 function lazyOperation(contract: OperationContract): Operation {
-  const { module, exportName, ...metadata } = contract;
+  const { module, exportName, candidateOnly, ...metadata } = contract;
   if (!metadata.outputSchema) throw internal(`Missing output contract: ${metadata.id}`);
   let implementation: Promise<Operation> | undefined;
   const load = () => implementation ??= (async () => {
@@ -21,7 +21,7 @@ function lazyOperation(contract: OperationContract): Operation {
     const candidates = loaded[exportName];
     if (!Array.isArray(candidates)) throw internal(`Missing native operations: ${module}.${exportName}`);
     const native = (candidates as Operation[]).find(candidate => candidate.id === metadata.id);
-    if (!native || contractFingerprint(publicOperationContract(native)) !== contractFingerprint(metadata)) {
+    if (!native || native.candidateOnly !== candidateOnly || contractFingerprint(publicOperationContract(native)) !== contractFingerprint(metadata)) {
       throw internal(`Native operation contract changed: ${metadata.id}. Rebuild the verified operation catalogue.`);
     }
     return native;
@@ -29,7 +29,7 @@ function lazyOperation(contract: OperationContract): Operation {
     // A transient import failure (chunk 404 after a redeploy, network drop) must stay retryable.
     implementation = undefined; throw error;
   });
-  return { ...metadata, ...operationValidators(metadata.id, metadata.inputSchema, metadata.outputSchema), load,
+  return { ...metadata, candidateOnly, ...operationValidators(metadata.id, metadata.inputSchema, metadata.outputSchema), load,
     async execute(input, context) { return (await load()).execute(input, context); },
   };
 }

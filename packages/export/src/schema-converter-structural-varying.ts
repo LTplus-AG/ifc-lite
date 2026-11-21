@@ -65,7 +65,7 @@ export class StructuralVarying {
       // With no action to convert, a downgrade still checks what names a configuration.
       : mode === 'downgrade' && present(['IFCSTRUCTURALLOADCONFIGURATION']);
     if (!work) return;
-    for (const id of byType.get('IFCSHAPEASPECT') ?? []) {
+    for (const id of source.ids('IFCSHAPEASPECT')) {
       const args = source.slots(id);
       const shape = refId(args?.[4]);
       if (shape === null) continue;
@@ -73,7 +73,7 @@ export class StructuralVarying {
       list.push({ id, representations: listItems(args?.[0] ?? '')?.length ?? -1 });
       this.aspects.set(shape, list);
     }
-    for (const id of mode === 'downgrade' ? byType.get('IFCSTRUCTURALLOADCONFIGURATION') ?? [] : []) {
+    for (const id of mode === 'downgrade' ? source.ids('IFCSTRUCTURALLOADCONFIGURATION') : []) {
       const values = listItems(source.slots(id)?.[1] ?? '')?.map(refId);
       if (values?.length && values.every((v) => v !== null)) this.configs.set(id, values as number[]);
     }

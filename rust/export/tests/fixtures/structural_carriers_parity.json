@@ -345,6 +345,27 @@
         "#21=IFCSTRUCTURALCURVEMEMBER('0XciGbSFPUkgAKmWK4M6tc',#5,'M',$,$,$,$,.RIGID_JOINED_MEMBER.);",
         "#30=IFCRELASSOCIATESPROFILEPROPERTIES('0hUSy$VNbHyPCNtxi3Mz27',#5,'Existing',$,(#21),#34,$,#33);"
       ]
+    },
+    {
+      "why": "the kept shape aspect supplies both varying load locations (#11007)",
+      "from": "IFC2X3",
+      "to": "IFC4",
+      "data": "#13=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#8,$);\n#18=IFCVERTEXPOINT(#7);\n#14=IFCTOPOLOGYREPRESENTATION(#13,'Reference','Vertex',(#18));\n#16=IFCTOPOLOGYREPRESENTATION(#13,'Reference','Vertex',(#18));\n#15=IFCPRODUCTDEFINITIONSHAPE($,$,(#14));\n#17=IFCSHAPEASPECT((#14),'Earlier copy',$,.U.,#15);\n#17=IFCSHAPEASPECT((#14,#16),$,$,.U.,#15);\n#19=IFCSTRUCTURALLOADLINEARFORCE('end',0.,0.,-9.,0.,0.,0.);\n#30=IFCSTRUCTURALLINEARACTIONVARYING('3AqvQc$eTFwQAT_AXxIZSF',#5,'Line',$,$,#9,#15,#11,.GLOBAL_COORDS.,.F.,$,.PROJECTED_LENGTH.,#17,(#19));",
+      "expect": [
+        "#2=IFCORGANIZATION($,'O',$,$,$);",
+        "#30=IFCSTRUCTURALCURVEACTION('3AqvQc$eTFwQAT_AXxIZSF',#5,'Line',$,$,#9,#15,#31,.GLOBAL_COORDS.,.F.,.PROJECTED_LENGTH.,.NOTDEFINED.);",
+        "#31=IFCSTRUCTURALLOADCONFIGURATION($,(#11,#19),$);"
+      ]
+    },
+    {
+      "why": "the kept shape aspect and load configuration restore the varying action (#11007)",
+      "from": "IFC4",
+      "to": "IFC2X3",
+      "data": "#13=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#8,$);\n#18=IFCVERTEXPOINT(#7);\n#14=IFCTOPOLOGYREPRESENTATION(#13,'Reference','Vertex',(#18));\n#16=IFCTOPOLOGYREPRESENTATION(#13,'Reference','Vertex',(#18));\n#15=IFCPRODUCTDEFINITIONSHAPE($,$,(#14));\n#17=IFCSHAPEASPECT((#14),'Earlier copy',$,.U.,#15);\n#17=IFCSHAPEASPECT((#14,#16),$,$,.U.,#15);\n#19=IFCSTRUCTURALLOADLINEARFORCE('end',0.,0.,-9.,0.,0.,0.);\n#31=IFCSTRUCTURALLOADCONFIGURATION($,(#11),$);\n#30=IFCSTRUCTURALCURVEACTION('3AqvQc$eTFwQAT_AXxIZSF',#5,'Line',$,$,#9,#15,#31,.GLOBAL_COORDS.,.F.,.PROJECTED_LENGTH.,.NOTDEFINED.);\n#31=IFCSTRUCTURALLOADCONFIGURATION($,(#11,#19),$);",
+      "expect": [
+        "#2=IFCORGANIZATION($,'O',$,$,$);",
+        "#30=IFCSTRUCTURALLINEARACTIONVARYING('3AqvQc$eTFwQAT_AXxIZSF',#5,'Line',$,$,#32,#15,#11,.GLOBAL_COORDS.,.F.,$,.PROJECTED_LENGTH.,#17,(#19));"
+      ]
     }
   ]
 }

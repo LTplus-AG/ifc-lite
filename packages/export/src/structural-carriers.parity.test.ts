@@ -25,10 +25,11 @@ async function selected(c: Case): Promise<string[]> {
   });
 }
 
-describe('structural carriers parity with rust/export #10597', () => {
+describe('structural carriers parity with rust/export (#10597, #11007)', () => {
   it.each(doc.cases)('$from -> $to: $why', async (c) => {
     if (process.env.IFC_LITE_REPIN_PARITY) console.log('PIN', JSON.stringify(await selected(c)));
-    expect(c.expect.some((line) => /^#\d+=IFCSTRUCTURAL/.test(line))).toBe(true);
-    expect(await selected(c)).toEqual(c.expect);
+    const records = await selected(c);
+    expect(records.some((line) => /^#\d+=IFCSTRUCTURAL/.test(line))).toBe(true);
+    expect(records).toEqual(c.expect);
   });
 });

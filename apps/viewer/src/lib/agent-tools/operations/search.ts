@@ -12,6 +12,7 @@ import { formatCsv, formatJson } from '@/lib/search/result-export';
 import { stampAnalysisReport, analysisStampFrom, analysisStampOf, isAnalysisStale } from '@/hooks/useAnalysisStaleness';
 import { viewerOperation, emptySchema } from './contract';
 import type { ViewerOperationContext } from './contract';
+import { internal, invalidInput, stale, unavailable, parseJsonInput } from './refusals';
 const nativeOutput = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 const metadata = (id: string, description: string, write = false) => ({ id, owner: 'search', description,
   effects: write ? ['configuration'] as const : ['read'] as const, capability: write ? 'commands-and-edits' as const : 'read' as const,
@@ -20,29 +21,29 @@ const wire = (value: unknown) => ({ native_json: JSON.stringify(value) });
 const expected = { type: 'string' as const, minLength: 1, maxLength: 1000000 };
 function configuration() { const s = useViewerStore.getState(); return JSON.stringify({ filter: s.searchFilter, query: s.searchQuery }); }
 function decode(content: string): { filter: SearchFilterStateValue; query: string } {
-  const value: unknown = JSON.parse(content);
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('A native filter/query configuration object is required.');
+  const value: unknown = parseJsonInput(content, 'configuration_json');
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw invalidInput('invalid-value', 'A native filter/query configuration object is required.');
   const outer = value as Record<string, unknown>, raw = outer.filter;
   if (Object.keys(outer).some(key => !['filter', 'query'].includes(key)) || typeof outer.query !== 'string' || outer.query.length > 1000
-    || !raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Invalid native filter/query configuration.');
+    || !raw || typeof raw !== 'object' || Array.isArray(raw)) throw invalidInput('invalid-value', 'Invalid native filter/query configuration.');
   const filter = raw as Record<string, unknown>, groups = parseFilterGroups(filter.groups);
   if (!groups || Object.keys(filter).some(key => !['groups', 'limit', 'capturedScope'].includes(key))
     || typeof filter.limit !== 'number' || !Number.isSafeInteger(filter.limit) || filter.limit < 0 || filter.limit > 100000
-    || (filter.capturedScope !== undefined && !isCapturedEntityScope(filter.capturedScope))) throw new Error('Invalid native Rules groups, limit or captured scope.');
+    || (filter.capturedScope !== undefined && !isCapturedEntityScope(filter.capturedScope))) throw invalidInput('invalid-value', 'Invalid native Rules groups, limit or captured scope.');
   return { filter: { groups, limit: filter.limit, ...(filter.capturedScope ? { capturedScope: filter.capturedScope } : {}) } as SearchFilterStateValue, query: outer.query };
 }
-function unchanged(value: string) { if (configuration() !== value) throw new Error('Native filter/query configuration changed; inspect again.'); }
+function unchanged(value: string) { if (configuration() !== value) throw stale('Native filter/query configuration changed; inspect again.'); }
 async function evaluate(c: ViewerOperationContext, value: string) {
   unchanged(value);
   const before = useViewerStore.getState(), stamp = analysisStampFrom(before), models = before.models;
-  if (!totalRuleCount(before.searchFilter.groups)) throw new Error('Native Filter Run requires at least one rule.');
+  if (!totalRuleCount(before.searchFilter.groups)) throw invalidInput('invalid-value', 'Native Filter Run requires at least one rule.');
   const result = await evaluateViewerFilter(before, before.searchFilter, before.searchQuery, {
     signal: c.signal, onProgress: (done, total) => c.progress?.({ phase: 'filter', done, total }),
   });
   c.checkpoint?.(); unchanged(value);
   const now = useViewerStore.getState();
   if (isAnalysisStale(stamp, now) || now.models !== models || now.ifcDataStore !== before.ifcDataStore
-    || now.modelTags !== before.modelTags || now.modelTagAssignments !== before.modelTagAssignments) throw new Error('Native filter source/tag revision changed during evaluation.');
+    || now.modelTags !== before.modelTags || now.modelTagAssignments !== before.modelTagAssignments) throw stale('Native filter source/tag revision changed during evaluation.');
   return { ...result, stamp };
 }
 export const searchOperations = [
@@ -54,18 +55,18 @@ export const searchOperations = [
     type: 'object', properties: { expected_json: expected, configuration_json: expected }, required: ['expected_json', 'configuration_json'], additionalProperties: false,
   }, (i, c) => {
     unchanged(i.expected_json); const next = decode(i.configuration_json);
-    if (useViewerStore.getState().searchFilterRunning) throw new Error('The native UI filter is running.');
+    if (useViewerStore.getState().searchFilterRunning) throw unavailable('The native UI filter is running.');
     c.commit(() => { unchanged(i.expected_json); const s = useViewerStore.getState(); s.setSearchFilter(next.filter); s.setSearchQuery(next.query); });
     return wire({ configuration_json: configuration() });
   }),
   viewerOperation<{ expected_json: string }>(metadata('filters.run', 'Await the exact native Search Filter engine and publish its actual complete result to the native Search UI. Returns a 100-row preview and accurate count/limit-hit status. Native text/captured-scope semantics, progress and cancellation match the UI; source/configuration changes refuse publication.', true), {
     type: 'object', properties: { expected_json: expected }, required: ['expected_json'], additionalProperties: false,
   }, async (i, c) => {
-    const before = useViewerStore.getState(); if (before.searchFilterRunning) throw new Error('The native UI filter is running.');
+    const before = useViewerStore.getState(); if (before.searchFilterRunning) throw unavailable('The native UI filter is running.');
     const result = await evaluate(c, i.expected_json);
     c.commit(() => {
       const s = useViewerStore.getState(); unchanged(i.expected_json);
-      if (s.searchFilterRunning || s.searchFilterResult !== before.searchFilterResult) throw new Error('Another native filter run superseded this request.');
+      if (s.searchFilterRunning || s.searchFilterResult !== before.searchFilterResult) throw stale('Another native filter run superseded this request.');
       s.setSearchFilterResult(stampAnalysisReport(result.result, result.stamp));
     });
     return wire({ total: result.result.rows.length, limit_hit: result.limitHit, columns: result.result.columns, preview: result.result.rows.slice(0, 100), run_ms: result.result.runMs });
@@ -83,13 +84,13 @@ export const searchOperations = [
   viewerOperation<{ expected_json: string; name: string; action: 'save' | 'delete'; expected_catalog_json: string }>(metadata('filters.preset', 'Save the exact current native filter or delete a named native preset using the same durable codec/catalog as the builder. expected_catalog_json must match JSON.stringify(presets) from filters.state. Reports native storage refusal without claiming persistence.', true), {
     type: 'object', properties: { expected_json: expected, name: { type: 'string', minLength: 1, maxLength: 80 }, action: { type: 'string', enum: ['save', 'delete'] }, expected_catalog_json: expected }, required: ['expected_json', 'name', 'action', 'expected_catalog_json'], additionalProperties: false,
   }, (i, c) => {
-    if (!i.name.trim()) throw new Error('A native filter preset name cannot be blank.');
+    if (!i.name.trim()) throw invalidInput('invalid-value', 'A native filter preset name cannot be blank.');
     unchanged(i.expected_json);
     return c.commit(() => {
-      if (JSON.stringify(loadSavedFilters()) !== i.expected_catalog_json) throw new Error('Native saved filter catalog changed.');
+      if (JSON.stringify(loadSavedFilters()) !== i.expected_catalog_json) throw stale('Native saved filter catalog changed.');
       const s = useViewerStore.getState();
       const saved = i.action === 'save' ? saveFilter(i.name, s.searchFilter.groups, s.searchFilter.capturedScope) : deleteSavedFilter(i.name);
-      if (!saved.persisted) throw new Error('Native filter preset persistence failed.');
+      if (!saved.persisted) throw internal('Native filter preset persistence failed.');
       return wire(saved);
     });
   }),

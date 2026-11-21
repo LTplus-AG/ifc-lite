@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { digestStrings } from '@/lib/bcf-drafts/draft-footer';
+import { stale } from './refusals';
 
 /**
  * A short expected-state token for `value`: its JSON length and a 64-bit digest of that JSON (#10794).
@@ -19,5 +20,5 @@ export const revisionInput = { type: 'string' as const, maxLength: 64 };
 
 /** Throw `message` when `value` no longer has the revision the caller read. */
 export function assertRevision(value: unknown, expected: string, message: string): void {
-  if (stateRevision(value) !== expected) throw new Error(message);
+  if (stateRevision(value) !== expected) throw stale(message);
 }

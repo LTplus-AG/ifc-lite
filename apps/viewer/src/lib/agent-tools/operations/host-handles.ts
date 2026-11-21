@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { ModelChangeReceipt } from '@/lib/actions/model-change-commit';
 import type { ToolHost } from '../types';
+import { unavailable } from './refusals';
 
 /**
  * Make room for one more host-owned handle (run, candidate) by dropping the oldest
@@ -34,7 +35,7 @@ export function admitCandidate<K, V>(handles: Map<K, V>, { cap, refusal, pending
     try { release(value); } catch (error) { console.warn('[viewer operations] Releasing a stale candidate failed:', error); }
   }
   // Refused before any candidate that can still apply is evicted (only stale ones are gone by now).
-  if (open + count > cap) throw new Error(refusal);
+  if (open + count > cap) throw unavailable(refusal);
   if (!evict) return;
   for (const [key, value] of handles) {
     if (handles.size + count <= cap) break;

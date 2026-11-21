@@ -17,7 +17,7 @@ import {
   type ClashRule,
 } from '@ifc-lite/clash';
 import { gatherClashElements } from '@/lib/clash/gather-elements';
-import { withResolvedClashSetFilters } from '@/lib/clash/set-filter-resolve';
+import { ClashSetFilterRefusal, withResolvedClashSetFilters } from '@/lib/clash/set-filter-resolve';
 import { rememberFederationIdentity, type ClashFederationIdentity } from '@/lib/clash/federation-identity';
 import { federationIsCurrent } from '@/lib/federation/federation-identity';
 import { definedModelTagIdsOf, evaluatorModelsFromState } from '@/lib/model-tags/evaluator-models';
@@ -26,6 +26,11 @@ import { allElementsRule, rememberRunRequest, type ClashRunRequest } from '@/lib
 import { posthog } from '@/lib/analytics';
 import { errorCaptureProps } from '@/lib/load-errors';
 import { nextFrameOrTimeout } from '@/utils/frameWait';
+
+/** Run refusals this module reports through clashError, each with its clashErrorKind (#10871). */
+const CLASH_NO_GEOMETRY = 'No model geometry is loaded. Load an IFC model first.';
+const CLASH_ALL_RULES_DISABLED = 'All rules are disabled — enable at least one in Clash settings (⚙).';
+const CLASH_RULE_GONE = 'That rule no longer exists — pick a rule to run, or restore it in Clash settings (⚙).';
 interface RunRefs {
   runEpochRef: { current: number };
   runAbortRef: { current: AbortController | null };
@@ -82,7 +87,7 @@ export function createClashDetection({ runEpochRef, runAbortRef, discardSolidPre
       const { elements, exclusions, federationIdentity } = gatherElements();
       guard.track(federationIdentity);
       if (elements.length === 0) {
-        state.setClashError('No model geometry is loaded. Load an IFC model first.');
+        state.setClashError(CLASH_NO_GEOMETRY, 'unavailable');
         return;
       }
       elementsByIdentity.current = new Map(elements.map((e) => [elementIdentity(e), e]));
@@ -106,7 +111,7 @@ export function createClashDetection({ runEpochRef, runAbortRef, discardSolidPre
     } catch (err) {
       if (!stillWanted(myEpoch)) return;
       console.error('[clash] detection run failed', err);
-      state.setClashError(err instanceof Error ? err.message : String(err));
+      state.setClashError(err instanceof Error ? err.message : String(err), 'internal');
       posthog.captureException(err, { context: 'clash_detection', ...errorCaptureProps(err) });
     } finally {
       releaseAbortableRun(abortController, runAbortRef);
@@ -137,7 +142,7 @@ export function createClashDetection({ runEpochRef, runAbortRef, discardSolidPre
       });
     } catch (err) {
       if (!stillWanted(myEpoch)) return;
-      state.setClashError(err instanceof Error ? err.message : String(err));
+      state.setClashError(err instanceof Error ? err.message : String(err), err instanceof ClashSetFilterRefusal ? 'refused' : 'internal');
       releaseAbortableRun(prepared.controller, runAbortRef);
       state.setClashRunning(false);
       return;
@@ -148,7 +153,7 @@ export function createClashDetection({ runEpochRef, runAbortRef, discardSolidPre
   const runMatrix = (): Promise<void> => {
     const enabled = useViewerStore.getState().clashPresets.filter((p) => p.enabled);
     if (enabled.length === 0) {
-      useViewerStore.getState().setClashError('All rules are disabled — enable at least one in Clash settings (⚙).');
+      useViewerStore.getState().setClashError(CLASH_ALL_RULES_DISABLED, 'unavailable');
       return Promise.resolve();
     }
     return runPresets(enabled, { kind: 'matrix' });
@@ -162,7 +167,7 @@ export function createClashDetection({ runEpochRef, runAbortRef, discardSolidPre
     if (!preset) {
       useViewerStore
         .getState()
-        .setClashError('That rule no longer exists — pick a rule to run, or restore it in Clash settings (⚙).');
+        .setClashError(CLASH_RULE_GONE, 'unknown-target');
       return Promise.resolve();
     }
     return runPresets([preset], { kind: 'preset', presetId, name: preset.name });
@@ -181,7 +186,7 @@ export function createClashDetection({ runEpochRef, runAbortRef, discardSolidPre
       if (!owns()) return;
       const { elements, exclusions, federationIdentity } = gatherElements();
       if (elements.length === 0) {
-        state.setClashError('No model geometry is loaded. Load an IFC model first.');
+        state.setClashError(CLASH_NO_GEOMETRY, 'unavailable');
         return;
       }
       const res = findDuplicates(elements, {
@@ -199,7 +204,7 @@ export function createClashDetection({ runEpochRef, runAbortRef, discardSolidPre
     } catch (err) {
       if (!stillWanted(myEpoch)) return;
       console.error('[clash] duplicate scan failed', err);
-      state.setClashError(err instanceof Error ? err.message : String(err));
+      state.setClashError(err instanceof Error ? err.message : String(err), 'internal');
       posthog.captureException(err, { context: 'clash_duplicates', ...errorCaptureProps(err) });
     } finally {
       releaseAbortableRun(abortController, runAbortRef);

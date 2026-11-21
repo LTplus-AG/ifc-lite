@@ -472,6 +472,20 @@ describe('loadFromCache — a superseded load writes nothing (#2301)', () => {
   });
 });
 
+describe('loadFromCache — a model discarded and re-added while its hit loads (#10888)', () => {
+  it('r4655084060 / r4655084108 a discard of the model\'s shard supply mid-load, isStale still false, streams and publishes nothing', async () => {
+    const entry = await buildCacheEntry();
+    useViewerStore.setState({ geometryResult: null, geometryStreamingActive: false });
+    let discarded = false;
+    // The model is removed and re-added under the same id while the hit reads (no newer load session).
+    const result = await load(entry, () => { if (!discarded) { discarded = true; discardInstancedShards('model-old'); } return false; });
+    assert.equal(result.success, false);
+    assert.equal(result.superseded, true, 'superseded: no fallback parse either');
+    assert.equal(useViewerStore.getState().geometryResult, null, 'the old entry never streams into the re-added model');
+    assert.equal(useViewerStore.getState().geometryStreamingActive, false);
+  });
+});
+
 describe('loadFromCache — bounding controls: the fix must not disable caching', () => {
   it('a NON-stale load still serves the entry and writes everything', async () => {
     // Without this, "guard every write" would pass every test above by

@@ -31,7 +31,7 @@ import { NOOP_LOAD_TRACE, type LoadTrace } from '@ifc-lite/load-trace';
 
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '../store/index.js';
-import { completeInstancedShardSupply, enqueueInstancedShards, instancedShardSupplyToken } from '../store/instancedShardQueue.js';
+import { completeInstancedShardSupply, enqueueInstancedShards, instancedShardSupplyCurrent, instancedShardSupplyToken } from '../store/instancedShardQueue.js';
 import { getCached, setCached, deleteCached, type CacheResult } from '../services/cacheService.js';
 import { recordFirstVisible } from '../lib/perf/loadTrace.js';
 import { publishMetadataAtMark } from '../lib/geometry-restore-gate.js';
@@ -127,18 +127,16 @@ export function useIfcCache() {
   ): Promise<CacheLoadResult> => {
     // Before any await: a reset during the IndexedDB reads supersedes this hit's shards.
     const shardGeneration = instancedShardSupplyToken(modelId);
+    const supplyMoved = (): CacheLoadResult | null => (instancedShardSupplyCurrent(modelId, shardGeneration) ? null : { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0, superseded: true }); // model discarded (maybe re-added) since: superseded, isStale or not (r4655084060)
     let adopted: AdoptedSceneSnapshot | null = null;
     // Compressed geometry chunks inflate on workers, which boot while the metadata decodes (only when there are any).
     const inflater = createCacheChunkInflater();
     try {
       const cacheLoadStart = performance.now();
 
-      // Re-check before the first write — and `setProgress` below IS a write
-      // into the shared (active-model) progress state, so the check has to come
-      // first: `getCached` was awaited by the caller, so a newer load can
-      // already own the active slot by now, and a superseded load posting
-      // "Loading from cache" over the newer load's progress is visible to the
-      // user even though no geometry moved.
+      // Re-check before the first write (`setProgress` below writes the shared, active-model progress): `getCached`
+      // was awaited by the caller, so a newer load can own the active slot by now, and a superseded load posting
+      // "Loading from cache" over its progress is visible to the user even though no geometry moved.
       if (isStale?.()) {
         return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0 };
       }
@@ -148,9 +146,11 @@ export function useIfcCache() {
       // Reset geometry first so Viewport detects this as a new file
       setGeometryResult(null);
       adopted = await adoptCachedSceneSnapshot(cacheResult, modelId, isStale, trace);
+      const afterAdoption = supplyMoved(); if (afterAdoption) return afterAdoption; // a null adoption may be this, not a miss
 
       const { dataStore, cacheBuffer, cacheBlob, headerInfo, geometrySection } =
         await decodeCachedMetadata(cacheResult, fallbackSourceBuffer, trace, inflater.prepare);
+      const afterMetadata = supplyMoved(); if (afterMetadata) return afterMetadata; // before metadata reaches a re-added model (r4655084108)
       // Reopen mark (user decision 2026-11-14): with the stored scene adopted, tree and properties go out before the geometry restore.
       const earlyPublished = adopted !== null && !isStale?.() && publishMetadataAtMark(modelId, dataStore, adopted.firstVisible, trace, isStale);
 

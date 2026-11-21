@@ -186,8 +186,7 @@ pub(crate) fn convert_entity_type(entity_type: &str, from: &str, to: &str) -> St
     rename_type(&u, from, to).map_or(u, str::to_string)
 }
 
-/// The renamed type for an uppercase `u` between two canonical schemas, or
-/// `None` when it keeps its name.
+/// The replacement for an uppercase type name when it changes between schemas.
 pub(crate) fn rename_type(u: &str, from: &str, to: &str) -> Option<&'static str> {
     if to == "IFC2X3" {
         if let Some(target) = crate::schema_mep::ifc2x3_type(u) {
@@ -195,8 +194,9 @@ pub(crate) fn rename_type(u: &str, from: &str, to: &str) -> Option<&'static str>
         }
     }
     match (from, to) {
-        // 2X3 → 4 (then 4 → 4X3 is a no-op rename-wise)
-        ("IFC2X3", "IFC4") | ("IFC2X3", "IFC4X3") | ("IFC2X3", "IFC5") => map_2x3_to_4(u),
+        // IFC5 has no attribute lists for the property subtype replacements (#10777).
+        ("IFC2X3", "IFC4") | ("IFC2X3", "IFC4X3") => map_2x3_to_4(u).or_else(|| crate::schema_attr_maps::upgrade_type(u)),
+        ("IFC2X3", "IFC5") => map_2x3_to_4(u),
         ("IFC4", "IFC2X3") => map_4_to_2x3(u),
         ("IFC4X3", "IFC4") | ("IFC5", "IFC4") => map_4x3_to_4(u),
         ("IFC4X3", "IFC2X3") | ("IFC5", "IFC2X3") => match map_4x3_to_4(u) {

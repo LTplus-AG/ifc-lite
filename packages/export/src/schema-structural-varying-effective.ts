@@ -12,7 +12,7 @@ import { skipStepTrivia } from './step-slot-grammar.js';
 const LOSS = 'The retained varying structural action has no complete load configuration; its varying locations and subsequent loads were omitted (#11037).';
 const MISSING_LOAD = 'The retained varying structural action has no usable AppliedLoad; the required IFC4 slot was left unset (#11037).';
 
-export function finishEffectiveVarying(lines: string[], noteLoss: (message: string) => void): number {
+export function finishEffectiveVarying(lines: string[], includeRelationships: boolean, noteLoss: (message: string) => void): number {
   // Most edited exports have no varying actions.
   if (!lines.some((line) => /IFCSTRUCTURAL(?:LINEAR|PLANAR)ACTIONVARYING/i.test(line))) return 0;
   const types = new Map<number, string>();
@@ -51,7 +51,7 @@ export function finishEffectiveVarying(lines: string[], noteLoss: (message: stri
     return shape && types.has(shape) && subshapes?.every((ref) => types.has(slotRef(ref) ?? 0)) ? args : undefined;
   });
   const carriers = new StructuralCarriers();
-  carriers.fromEmitted(source);
+  if (includeRelationships) carriers.fromEmitted(source);
   carriers.ids = plan.ids = () => next++;
   for (const [id, index] of candidates) {
     const record = readStepSlots(lines[index]);
@@ -59,7 +59,7 @@ export function finishEffectiveVarying(lines: string[], noteLoss: (message: stri
     const args = Array.from({ length: 14 }, (_, at) => record.slots[at] ?? '$');
     const present = (slot: string) => types.has(slotRef(slot) ?? 0);
     for (const slot of [1, 5, 6]) if (!present(args[slot])) args[slot] = '$';
-    const cause = next <= 0xffffffff ? carriers.noteCause(id, record.type, args, undefined) : null;
+    const cause = includeRelationships && next <= 0xffffffff ? carriers.noteCause(id, record.type, args, undefined) : null;
     if (cause) noteLoss(cause.message);
     const restored = next <= 0xffffffff ? plan.rewrite(id, record.type, args, new Set(cause ? ['CausedBy'] : [])) : undefined;
     if (restored?.body) {

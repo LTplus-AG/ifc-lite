@@ -4,7 +4,7 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, mock, test } from 'node:test';
-import { setImmediate } from 'node:timers/promises';
+import { setImmediate as nextTurn } from 'node:timers/promises';
 import { PLUGIN_API_VERSION, type FileSourceProvider } from '@ifc-lite/plugin-api';
 import { SourceHost } from '@/services/sources/source-host';
 import { attachCoordinationSources } from '@/services/coordination-hosts';
@@ -238,7 +238,7 @@ test('a queued source load rechecks permission when it actually reaches native a
     const pending = dispatchMainViewerTool(host, 'viewer_operation_execute', { operation_id: 'sources.loadModel', input: {
       provider: 'queue-fixture', project_id: 'project', container_id: 'container', file_id: 'file', revision_id: '', filename: 'fixture.ifc',
     } }, { canEdit: () => granted });
-    await received; await setImmediate(); granted = false; release(); await blocker;
+    await received; await nextTurn(); granted = false; release(); await blocker;
     const result = await pending;
     assert.equal(result.errorCode, 'READ_ONLY', result.text);
     assert.equal(loads, 0, 'waiting in a shared queue must not admit a later native write under a revoked grant');

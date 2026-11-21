@@ -104,3 +104,39 @@ fn the_plan_before_the_carry_drops_and_counts_the_label_10824() {
     let unterminated = "#7=IFCPROCEDURE('g',#2,'P',$,$,'P-1',.USERDEFINED.,'Flush')";
     assert_eq!(convert(unterminated, "IFC2X3", "IFC4").0, "#7=IFCPROCEDURE('g',#2,'P',$,'Flush','P-1',$,.USERDEFINED.);", "no ';'");
 }
+
+/// #10856: a member the target enum lacks becomes `.USERDEFINED.` with its
+/// name in the label, ObjectType up and UserDefinedFunction down (IFC2X3's
+/// short name for the label of DistributionPointFunction). Every IFC4/IFC4X3
+/// board member is in IFC2X3's point enum, so the member down is one the
+/// source enum lacks too: IfcDistributionBoard's `.DISPATCHINGBOARD.` on an
+/// IfcElectricDistributionBoard.
+#[test]
+fn a_point_or_board_member_the_target_lacks_is_reconciled_10856() {
+    for to in ["IFC4", "IFC4X3"] {
+        assert_eq!(
+            convert("#7=IFCELECTRICDISTRIBUTIONPOINT('g',#2,'n',$,$,$,$,'t',.ALARMPANEL.,$);", "IFC2X3", to).0,
+            "#7=IFCELECTRICDISTRIBUTIONBOARD('g',#2,'n',$,'ALARMPANEL',$,$,'t',.USERDEFINED.);",
+            "{to}"
+        );
+    }
+    assert_eq!(
+        convert("#7=IFCELECTRICDISTRIBUTIONBOARD('g',#2,'n',$,$,$,$,'t',.DISPATCHINGBOARD.);", "IFC4X3", "IFC2X3").0,
+        "#7=IFCELECTRICDISTRIBUTIONPOINT('g',#2,'n',$,$,$,$,'t',.USERDEFINED.,'DISPATCHINGBOARD');"
+    );
+    // The same short-name lookup, on a same-named type.
+    assert_eq!(
+        convert("#5=IFCDERIVEDUNIT((#6),.SOUNDPOWERLEVELUNIT.,$);", "IFC4", "IFC2X3").0,
+        "#5=IFCDERIVEDUNIT((#6),.USERDEFINED.,'SOUNDPOWERLEVELUNIT');"
+    );
+    let warnings = |line: &str, from: &str| {
+        let mut checks = ConversionChecks::default();
+        let out = convert_step_line(line, from, "IFC2X3", 7, &mut Ifc2x3SlotFill::new(None), Some(&mut checks)).unwrap();
+        (out, checks.enums.warnings())
+    };
+    assert_eq!(warnings("#7=IFCELECTRICDISTRIBUTIONBOARD('g',#2,'n',$,$,$,$,'t',.DISPATCHINGBOARD.);", "IFC4X3").1, Vec::<String>::new());
+    // A label already set keeps its value; the member name is reported lost.
+    let (out, w) = warnings("#5=IFCDERIVEDUNIT((#6),.SOUNDPOWERLEVELUNIT.,'dB');", "IFC4");
+    assert_eq!(out, "#5=IFCDERIVEDUNIT((#6),.USERDEFINED.,'dB');");
+    assert!(w.iter().any(|w| w.contains("label slot already held a value") && w.contains("IFCDERIVEDUNIT.UnitType .SOUNDPOWERLEVELUNIT.")), "{w:?}");
+}

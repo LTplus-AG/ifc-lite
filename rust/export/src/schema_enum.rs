@@ -185,6 +185,8 @@ pub(crate) struct ConversionChecks {
     pub(crate) structural: crate::schema_structural_diagnostics::StructuralDiagnostics,
     pub(crate) ifc4_slots: Ifc4SlotCheck,
     pub(crate) enums: EnumReconciliation,
+    /// The IfcDocumentInformation <-> IfcDocumentReference link (#10846).
+    pub(crate) documents: crate::schema_document_links::DocumentLinks,
     /// `convert_record`'s per-type decisions, resolved once per distinct type.
     pub(crate) plans: crate::schema_plan::PlanCache,
     /// Non-`$` source values the converted record has no slot for (#7683):
@@ -207,6 +209,7 @@ impl ConversionChecks {
         if !(unchanged && opts.included.is_none() && opts.attribute_mutations.is_empty() && opts.copy_on_write.is_empty()) {
             return checks;
         }
+        checks.documents = crate::schema_document_links::DocumentLinks::scan(content, from, to, kept);
         match (from, to) {
             ("IFC2X3", "IFC4") => {
                 checks.structural.varying = crate::schema_structural_varying::StructuralVarying::scan_ifc2x3(content, kept);
@@ -257,6 +260,7 @@ impl ConversionChecks {
     pub(crate) fn warnings(&self) -> Vec<String> {
         let mut out = self.ifc4_slots.warnings();
         out.extend(self.enums.warnings());
+        out.extend(self.documents.warnings());
         out.extend(self.structural.warnings());
         out
     }

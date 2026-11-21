@@ -143,6 +143,71 @@ describe('renderer-first edit window (#10535)', () => {
     assert.equal(panelSees.selected, 7, 'and on the selection made meanwhile');
   });
 
+  it('a panel rerender during a hold reads the previously published IFC property', () => {
+    const view = new MutablePropertyView(null, MODEL_ID);
+    view.setProperty(1, 'Pset_WallCommon', 'FireRating', 'REI30', PropertyValueType.Label);
+    useViewerStore.setState({ mutationViews: new Map([[MODEL_ID, view]]) });
+    function PropertyProbe() {
+      const current = useViewerStore((s) => s.mutationViews.get(MODEL_ID));
+      const [rerendered, setRerendered] = useState(false);
+      return <button type="button" onClick={() => setRerendered(true)}>
+        {rerendered ? 'rerendered' : 'initial'} {current?.getPropertyValue(1, 'Pset_WallCommon', 'FireRating')}
+      </button>;
+    }
+    const ui = render(<PropertyProbe />);
+    const button = ui.querySelector('button')!;
+    assert.match(button.textContent ?? '', /initial REI30/);
+    act(() => edit(view, 'REI60'));
+    click(button, { detail: 1 });
+    assert.match(button.textContent ?? '', /rerendered REI30/);
+  });
+
+  it('a panel rerender via getMutationView reads the previously published IFC property', () => {
+    const view = new MutablePropertyView(null, MODEL_ID);
+    view.setProperty(1, 'Pset_WallCommon', 'FireRating', 'REI30', PropertyValueType.Label);
+    useViewerStore.setState({ mutationViews: new Map([[MODEL_ID, view]]) });
+    function PropertyProbe() {
+      const current = useViewerStore((s) => s.getMutationView(MODEL_ID));
+      const [rerendered, setRerendered] = useState(false);
+      return <button type="button" onClick={() => setRerendered(true)}>
+        {rerendered ? 'rerendered' : 'initial'} {current?.getPropertyValue(1, 'Pset_WallCommon', 'FireRating')}
+      </button>;
+    }
+    const ui = render(<PropertyProbe />);
+    const button = ui.querySelector('button')!;
+    assert.match(button.textContent ?? '', /initial REI30/);
+    act(() => edit(view, 'REI60'));
+    click(button, { detail: 1 });
+    assert.match(button.textContent ?? '', /rerendered REI30/);
+  });
+
+  it('a panel rerender after an authored mesh append keeps the published mesh list', async () => {
+    const mesh = (expressId: number): import('@ifc-lite/geometry').MeshData => ({
+      expressId, positions: new Float32Array(9), indices: new Uint32Array([0, 1, 2]),
+      normals: new Float32Array(9), color: [1, 1, 1, 1],
+    });
+    const append = (id: number) => useViewerStore.getState().appendGeometryBatch(MODEL_ID, [mesh(id)]);
+    append(1);
+    function MeshProbe() {
+      const geometry = useViewerStore((s) => s.models.get(MODEL_ID)?.geometryResult);
+      const [rerendered, setRerendered] = useState(false);
+      return <button type="button" onClick={() => setRerendered(true)}>
+        {rerendered ? 'rerendered' : 'initial'} {geometry?.meshes.map(({ expressId }) => expressId).join(',')}
+      </button>;
+    }
+    const ui = render(<MeshProbe />);
+    const button = ui.querySelector('button')!;
+    assert.equal(button.textContent, 'initial 1');
+    act(() => {
+      edit(new MutablePropertyView(null, MODEL_ID), 'REI60');
+      append(2);
+    });
+    click(button, { detail: 1 });
+    assert.equal(button.textContent, 'rerendered 1');
+    await advance(SETTLE_MS);
+    assert.equal(button.textContent, 'rerendered 1,2');
+  });
+
   it('publishes the session reset during primary model replacement without waiting for a frame', () => {
     render(<PanelProbe />);
     const version = panelSees.version;

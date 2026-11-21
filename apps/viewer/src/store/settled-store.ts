@@ -21,9 +21,16 @@
 
 import { flushSync } from 'react-dom';
 import type { StoreApi } from 'zustand';
+import type { MeshData } from '@ifc-lite/geometry';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { getLegacySourceMutationView, isLegacySourceRef } from '@/sdk/adapters/model-compat';
+import { mutationViewBaseStore, snapshotMutationViewForInspection } from '@/utils/configureMutationView';
 import type { ViewerState } from './index.js';
+import { captureSettledGeometry } from './settled-geometry.js';
 
-type SettledApi = Pick<StoreApi<ViewerState>, 'getState' | 'getInitialState' | 'subscribe'>;
+type SettledApi = Pick<StoreApi<ViewerState>, 'getState' | 'getInitialState' | 'subscribe'> & {
+  preserveMeshBuffers(mesh: MeshData, rotates: boolean): void;
+};
 
 /** How long an edit may hold panels back before they publish anyway. */
 const SETTLE_CAP_MS = 250;
@@ -120,6 +127,42 @@ export function settledStoreOf(live: StoreApi<ViewerState>): SettledApi {
 
 function createSettledStore(live: StoreApi<ViewerState>): SettledApi {
   let settled = live.getState();
+  const copies = new WeakMap<MutablePropertyView, {
+    revision: number;
+    base: ReturnType<typeof mutationViewBaseStore>;
+    snapshot: MutablePropertyView;
+  }>();
+  const copyView = (view: MutablePropertyView) => {
+    const revision = view.getMutationRevision();
+    const base = mutationViewBaseStore(view);
+    const cached = copies.get(view);
+    if (cached?.revision === revision && cached.base === base) return cached.snapshot;
+    const snapshot = snapshotMutationViewForInspection(view);
+    copies.set(view, { revision, base, snapshot });
+    return snapshot;
+  };
+  // Capture before the next edit writes through a live overlay. The held
+  // store facade is only constructed if a reader actually asks for it.
+  const capture = (state: ViewerState) => {
+    const mutationViews = new Map<string, MutablePropertyView>();
+    for (const [id, view] of state.mutationViews) mutationViews.set(id, copyView(view));
+    const legacy = getLegacySourceMutationView(state);
+    const legacySnapshot = legacy && copyView(legacy);
+    const geometry = captureSettledGeometry(state);
+    let snapshot: ViewerState | undefined;
+    let models: ViewerState['models'] | undefined;
+    return {
+      getState: () => snapshot ??= {
+        ...state,
+        mutationViews,
+        getMutationView: (id) => isLegacySourceRef(state, id) ? legacySnapshot : mutationViews.get(id) ?? null,
+        geometryResult: geometry.geometryResult,
+        get models() { return models ??= geometry.models(); },
+      },
+      preserveMeshBuffers: geometry.preserveMeshBuffers,
+    };
+  };
+  let heldState: ReturnType<typeof capture> | undefined;
   // The first edit sets the cap and opens the window. A close token belongs to
   // one pair of frames and is cleared whenever new work restarts that wait.
   let cap: ReturnType<typeof setTimeout> | null = null;
@@ -130,6 +173,7 @@ function createSettledStore(live: StoreApi<ViewerState>): SettledApi {
   const notify = (next: ViewerState) => {
     const previous = settled;
     settled = next;
+    heldState = listeners.size > 0 ? capture(next) : undefined;
     for (const listener of listeners) listener(next, previous);
   };
 
@@ -215,11 +259,18 @@ function createSettledStore(live: StoreApi<ViewerState>): SettledApi {
   });
 
   return {
-    getState: () => settled,
+    getState: () => cap === null ? settled : heldState?.getState() ?? settled,
     getInitialState: () => live.getInitialState(),
+    preserveMeshBuffers: (mesh, rotates) => {
+      if (cap !== null) heldState?.preserveMeshBuffers(mesh, rotates);
+    },
     subscribe: (listener) => {
+      heldState ??= capture(settled);
       listeners.add(listener);
-      return () => { listeners.delete(listener); };
+      return () => {
+        listeners.delete(listener);
+        if (listeners.size === 0 && cap === null) heldState = undefined;
+      };
     },
   };
 }

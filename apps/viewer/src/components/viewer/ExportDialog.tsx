@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { createModelMutationView } from '@/utils/model-mutation-view';
+import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import type { ExportFormat, ExportSurface } from '@/lib/analytics-export-events';
 import { modelDisplayLabels } from '@/lib/model-labels.js';
 import { stepExportProgress } from '@/lib/export/step-progress.js';
@@ -77,7 +77,6 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
   const activeModelId = useViewerStore((s) => s.activeModelId);
   const dirtyModels = useViewerStore((s) => s.dirtyModels);
   const getMutationView = useViewerStore((s) => s.getMutationView);
-  const registerMutationView = useViewerStore((s) => s.registerMutationView);
   // Subscribed so the pending-changes count refreshes while the dialog is open
   // (getMutationView is a stable action ref). Schedule
   // edits don't bump mutationVersion, so the schedule fields are subscribed too.
@@ -180,18 +179,8 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
   // Ensure mutation view exists for selected model
   useEffect(() => {
     if (!selectedModel?.ifcDataStore || !selectedModelId) return;
-
-    // Check if mutation view already exists
-    let mutationView = getMutationView(selectedModelId);
-    if (mutationView) return;
-
-    // Create new mutation view with on-demand property extractor
-    const dataStore = selectedModel.ifcDataStore;
-    mutationView = createModelMutationView(dataStore, selectedModelId);
-
-    // Register the mutation view
-    registerMutationView(selectedModelId, mutationView);
-  }, [selectedModel, selectedModelId, getMutationView, registerMutationView]);
+    getOrCreateMutationView(useViewerStore, selectedModelId);
+  }, [selectedModel?.ifcDataStore, selectedModelId]);
 
   // Default schema to selected model's schema version
   useEffect(() => {

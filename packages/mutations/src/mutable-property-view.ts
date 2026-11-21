@@ -60,26 +60,34 @@ export class MutablePropertyView extends MutableOverlayState {
       transact: (edit, record) => runSparseAtomic(this, edit, record),
       capture: () => this.overlayState(),
       rebuild: snapshot => {
-        const draft = new MutablePropertyView(this.baseTable, this.modelId);
+        const draft = this.detachedReadView(snapshot);
         draft.configureExpressIdAllocator(() => this.expressIdFloor());
-        draft.restoreOverlayState(snapshot);
         for (const id of draft.getAttributeOverrideEntityIds()) draft.indexAttributeOverride(id);
         return draft.overlayState();
       },
       matches: snapshot => this.matchesOverlayState(snapshot),
       publish: (snapshot, changedIds) => this.restoreOverlayState(snapshot, undefined, changedIds),
       draft: snapshot => {
-        const draft = new MutablePropertyView(this.baseTable, this.modelId);
+        const draft = this.detachedReadView(snapshot);
         draft.configureExpressIdAllocator(() => this.expressIdFloor());
-        draft.onDemandExtractor = this.onDemandExtractor;
-        draft.quantityExtractor = this.quantityExtractor;
-        draft.quantityBaseRevisions = this.quantityBaseRevisions;
-        draft.attributeExtractor = this.attributeExtractor;
-        draft.restoreOverlayState(snapshot, this.getMutationRevision());
         registerOverlayOrigin(draft, this);
         return draft;
       },
     });
+  }
+
+  /** Copy the effective overlay and its read configuration for inspection of
+   * this revision. Source data stays shared. Edits to the copy are detached. */
+  snapshotForInspection(): MutablePropertyView { return this.detachedReadView(this.copyOverlayState()); }
+
+  private detachedReadView(state: ReturnType<MutableOverlayState['copyOverlayState']>): MutablePropertyView {
+    const snapshot = new MutablePropertyView(this.baseTable, this.modelId);
+    snapshot.onDemandExtractor = this.onDemandExtractor;
+    snapshot.quantityExtractor = this.quantityExtractor;
+    snapshot.quantityBaseRevisions = this.quantityBaseRevisions;
+    snapshot.attributeExtractor = this.attributeExtractor;
+    snapshot.restoreOverlayState(state, this.getMutationRevision());
+    return snapshot;
   }
 
   /**
@@ -101,13 +109,8 @@ export class MutablePropertyView extends MutableOverlayState {
    */
   prepareAtomic<T>(edit: (draft: MutablePropertyView) => T): { result: T; validate(): void; commit(): void; rollback(): void } {
     const original = this.copyOverlayState();
-    const draft = new MutablePropertyView(this.baseTable, this.modelId);
+    const draft = this.detachedReadView(structuredClone(original));
     draft.configureExpressIdAllocator(() => this.expressIdFloor());
-    draft.onDemandExtractor = this.onDemandExtractor;
-    draft.quantityExtractor = this.quantityExtractor;
-    draft.quantityBaseRevisions = this.quantityBaseRevisions;
-    draft.attributeExtractor = this.attributeExtractor;
-    draft.restoreOverlayState(structuredClone(original), this.getMutationRevision());
     const result = edit(draft);
     if (result !== null && (typeof result === 'object' || typeof result === 'function')
       && 'then' in result && typeof result.then === 'function') {

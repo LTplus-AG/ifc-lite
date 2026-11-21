@@ -7,7 +7,7 @@ import { viewerOperation, operation, emptySchema } from './contract';
 import { assertToolActive } from '../cancellation';
 import { resolveRef } from '../refs';
 import type { ToolHost } from '../types';
-import { evictOldest } from './host-handles';
+import { evictOldest, retainCandidate } from './host-handles';
 import { nativeCapturedSurfaces } from '@/lib/appearance/appearance-native-capture';
 import { coordinationModelAdder } from '@/services/coordination-loader';
 import { createBlankIfcFile } from '@/utils/createBlankIfc';
@@ -125,7 +125,7 @@ export const appearanceCaptureOperations = [
       capture.validate();
       evictOldest(owned(c), 32, (row) => !row.creating);
       const token = crypto.randomUUID();
-      owned(c).set(token, {
+      retainCandidate(c, owned(c), token, {
         capture,
         modelId: c.model.id,
         containerId: i.container_id,

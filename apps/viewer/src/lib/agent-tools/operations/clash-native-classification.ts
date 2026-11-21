@@ -9,7 +9,7 @@ import type { ClashGroupDraft } from '@/lib/assistant/clash-group-draft';
 import type { ClassifyPlan } from '@/lib/assistant/clash-classify-chunks';
 import type { EvidenceSnapshot } from '@/lib/assistant/evidence';
 import type { ApplyRefusal, ClashGroupApplyPlan, UndoRefusal } from '@/lib/clash/group-apply';
-import { evictOldest } from './host-handles';
+import { evictOldest, retainCandidate } from './host-handles';
 import { internal, invalidInput, stale, unavailable } from './refusals';
 const GROUP_WRITE_REFUSAL: Record<ApplyRefusal | UndoRefusal, (message: string) => ReturnType<typeof stale>> = {
   'stale-run': stale, 'workspace-changed': stale, conflict: stale,
@@ -95,7 +95,7 @@ export const clashClassificationOperations = [
         evidence = captureEvidence('clash');
       evictOldest(reviews(c), 32);
       const token = crypto.randomUUID();
-      reviews(c).set(token, { result: s.clashResult, plan, evidence, model: s.chatActiveModel });
+      retainCandidate(c, reviews(c), token, { result: s.clashResult, plan, evidence, model: s.chatActiveModel });
       return out({
         token,
         evidence,

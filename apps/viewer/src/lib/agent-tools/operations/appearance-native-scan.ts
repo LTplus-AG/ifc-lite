@@ -12,6 +12,7 @@ import { changeNativeScanPartition, appendNativeScanPair, registerNativeScanSess
 import { sourceLandmark, targetLandmark } from '@/lib/appearance/scan/landmarks';
 import { pointLandmark } from '@/lib/appearance/scan/point-source';
 import { createAppearancePlanner } from '@/lib/appearance/planner-worker-client';
+import { retainCandidate } from './host-handles';
 const outputSchema = {
   type: 'object',
   properties: { native_json: { type: 'string' } },
@@ -86,7 +87,7 @@ export const appearanceScanOperations = [
       session.validate();
       if (nativeScanStates(c).size >= 8) throw new Error('Native scan session capacity reached.');
       const token = crypto.randomUUID();
-      nativeScanStates(c).set(token, { session, pairs: [], version: 0 });
+      retainCandidate(c, nativeScanStates(c), token, { session, pairs: [], version: 0 }, { release: releaseNativeScanTransfer });
       return out({
         token,
         version: 0,

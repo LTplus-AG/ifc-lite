@@ -1185,11 +1185,11 @@
    "why": "appended attributes are padded (IFCCIVILELEMENT 8 -> 9), renamed to IFCBUILDINGELEMENTPROXY"
   },
   {
-   "expect": "#7=IFCCLASSIFICATION('a0','a1','a2','a3');",
+   "expect": "#7=IFCCLASSIFICATION('a0','a1',$,'a3');",
    "from": "IFC4",
    "line": "#7=IFCCLASSIFICATION('a0','a1','a2','a3','a4','a5','a6');",
    "to": "IFC2X3",
-   "why": "dropped trailing attributes are trimmed (IFCCLASSIFICATION 7 -> 4)"
+   "why": "dropped trailing attributes are trimmed (IFCCLASSIFICATION 7 -> 4); a placeholder string in a slot of another value form is written $ (#10847)"
   },
   {
    "expect": "#7=IFCCOLUMN('a0','a1','a2','a3','a4','a5','a6','a7');",
@@ -1381,11 +1381,11 @@
    "why": "dropped trailing attributes are trimmed (IFCMEMBER 9 -> 8)"
   },
   {
-   "expect": "#7=IFCMETRIC('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "expect": "#7=IFCMETRIC('a0','a1','a2','a3','a4',$,'a6','a7','a8','a9');",
    "from": "IFC4",
    "line": "#7=IFCMETRIC('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10');",
    "to": "IFC2X3",
-   "why": "dropped trailing attributes are trimmed (IFCMETRIC 11 -> 10)"
+   "why": "dropped trailing attributes are trimmed (IFCMETRIC 11 -> 10); a placeholder string in a slot of another value form is written $ (#10847)"
   },
   {
    "expect": "#7=IFCOPENINGELEMENT('a0','a1','a2','a3','a4','a5','a6','a7');",
@@ -1724,11 +1724,11 @@
    "why": "appended attributes are padded (IFCCIVILELEMENT 8 -> 9), renamed to IFCBUILDINGELEMENTPROXY"
   },
   {
-   "expect": "#7=IFCCLASSIFICATION('a0','a1','a2','a3');",
+   "expect": "#7=IFCCLASSIFICATION('a0','a1',$,'a3');",
    "from": "IFC4X3",
    "line": "#7=IFCCLASSIFICATION('a0','a1','a2','a3','a4','a5','a6');",
    "to": "IFC2X3",
-   "why": "dropped trailing attributes are trimmed (IFCCLASSIFICATION 7 -> 4)"
+   "why": "dropped trailing attributes are trimmed (IFCCLASSIFICATION 7 -> 4); a placeholder string in a slot of another value form is written $ (#10847)"
   },
   {
    "expect": "#7=IFCCOLUMN('a0','a1','a2','a3','a4','a5','a6','a7');",
@@ -1969,11 +1969,11 @@
    "why": "dropped trailing attributes are trimmed (IFCMEMBER 9 -> 8)"
   },
   {
-   "expect": "#7=IFCMETRIC('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "expect": "#7=IFCMETRIC('a0','a1','a2','a3','a4',$,'a6','a7','a8','a9');",
    "from": "IFC4X3",
    "line": "#7=IFCMETRIC('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10');",
    "to": "IFC2X3",
-   "why": "dropped trailing attributes are trimmed (IFCMETRIC 11 -> 10)"
+   "why": "dropped trailing attributes are trimmed (IFCMETRIC 11 -> 10); a placeholder string in a slot of another value form is written $ (#10847)"
   },
   {
    "expect": "#7=IFCOBJECTPLACEMENT();",
@@ -2578,18 +2578,18 @@
    "expect": "#7=IFCCOSTVALUE('a0','a1','a2','a3','a4','a5','a6','a7',$,$);"
   },
   {
-   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCCOSTVALUE 10 -> 8); renamed CostType->Category (#7739)",
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCCOSTVALUE 10 -> 8); renamed CostType->Category (#7739); a placeholder string in a slot of another value form is written $ (#10847)",
    "from": "IFC4",
    "to": "IFC2X3",
    "line": "#7=IFCCOSTVALUE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
-   "expect": "#7=IFCCOSTVALUE('a0','a1','a2','a3','a4','a5','a6','a7');"
+   "expect": "#7=IFCCOSTVALUE('a0','a1','a2','a3',$,$,'a6','a7');"
   },
   {
-   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCCOSTVALUE 10 -> 8); renamed CostType->Category (#7739)",
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCCOSTVALUE 10 -> 8); renamed CostType->Category (#7739); a placeholder string in a slot of another value form is written $ (#10847)",
    "from": "IFC4X3",
    "to": "IFC2X3",
    "line": "#7=IFCCOSTVALUE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
-   "expect": "#7=IFCCOSTVALUE('a0','a1','a2','a3','a4','a5','a6','a7');"
+   "expect": "#7=IFCCOSTVALUE('a0','a1','a2','a3',$,$,'a6','a7');"
   },
   {
    "why": "an in-place rename no longer blocks the trim/pad: padded (IFCSTAIRFLIGHT 12 -> 13); renamed NumberOfRiser->NumberOfRisers (#7739)",
@@ -2634,18 +2634,18 @@
    "expect": "#7=IFCWORKPLAN('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13');"
   },
   {
-   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCWORKPLAN 14 -> 15); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739)",
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCWORKPLAN 14 -> 15); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739); a placeholder string in a slot of another value form is written $ (#10847)",
    "from": "IFC4",
    "to": "IFC2X3",
    "line": "#7=IFCWORKPLAN('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13');",
-   "expect": "#7=IFCWORKPLAN('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13',$);"
+   "expect": "#7=IFCWORKPLAN('a0','a1','a2','a3','a4','a5',$,'a7','a8',$,$,$,$,'a13',$);"
   },
   {
-   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCWORKPLAN 14 -> 15); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739)",
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCWORKPLAN 14 -> 15); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739); a placeholder string in a slot of another value form is written $ (#10847)",
    "from": "IFC4X3",
    "to": "IFC2X3",
    "line": "#7=IFCWORKPLAN('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13');",
-   "expect": "#7=IFCWORKPLAN('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13',$);"
+   "expect": "#7=IFCWORKPLAN('a0','a1','a2','a3','a4','a5',$,'a7','a8',$,$,$,$,'a13',$);"
   },
   {
    "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCWORKSCHEDULE 15 -> 14); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739)",
@@ -2662,18 +2662,18 @@
    "expect": "#7=IFCWORKSCHEDULE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13');"
   },
   {
-   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCWORKSCHEDULE 14 -> 15); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739)",
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCWORKSCHEDULE 14 -> 15); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739); a placeholder string in a slot of another value form is written $ (#10847)",
    "from": "IFC4",
    "to": "IFC2X3",
    "line": "#7=IFCWORKSCHEDULE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13');",
-   "expect": "#7=IFCWORKSCHEDULE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13',$);"
+   "expect": "#7=IFCWORKSCHEDULE('a0','a1','a2','a3','a4','a5',$,'a7','a8',$,$,$,$,'a13',$);"
   },
   {
-   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCWORKSCHEDULE 14 -> 15); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739)",
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCWORKSCHEDULE 14 -> 15); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739); a placeholder string in a slot of another value form is written $ (#10847)",
    "from": "IFC4X3",
    "to": "IFC2X3",
    "line": "#7=IFCWORKSCHEDULE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13');",
-   "expect": "#7=IFCWORKSCHEDULE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13',$);"
+   "expect": "#7=IFCWORKSCHEDULE('a0','a1','a2','a3','a4','a5',$,'a7','a8',$,$,$,$,'a13',$);"
   },
   {
    "why": "an in-place rename no longer blocks the trim/pad: padded (IFCPROPERTYBOUNDEDVALUE 5 -> 6); renamed Description->Specification (#7739)",

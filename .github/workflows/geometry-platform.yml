@@ -270,7 +270,11 @@ jobs:
         run: ctest --test-dir "$RUNNER_TEMP/smlib-native" --output-on-failure
       - uses: ./.github/actions/setup-wasm-build
         with:
-          cache-prefix: geometry-platform
+          cache-prefix: geometry-platform-adapter-v1
+          pinned-rust-cache: 'true'
+          cache-bin: 'false'
+          # Seed from main using the full adapter build. Queue and PR runs restore only.
+          save-if: ${{ github.ref == 'refs/heads/main' && !inputs.bisect_sha && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
       - name: Real Rust subprocess integration
         id: native-consumers
         continue-on-error: true
@@ -636,7 +640,11 @@ jobs:
           cmake --build "$RUNNER_TEMP/smlib-native" --parallel 4
       - uses: ./.github/actions/setup-wasm-build
         with:
-          cache-prefix: geometry-platform
+          cache-prefix: geometry-platform-adapter-v1
+          pinned-rust-cache: 'true'
+          cache-bin: 'false'
+          # A shard builds only retained_compare. It must not seed the adapter cache.
+          save-if: 'false'
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:

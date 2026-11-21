@@ -116,6 +116,23 @@ for (const event of ['editing the title', 'clearing the title', 'staging a non-c
   });
 }
 
+test('#10591 layer review posts nothing when a newer action withdraws the staged comment during capture', async () => {
+  const staged = { id: 'staged-capture', candidateId: REVIEW.layerId, refName: REVIEW.into,
+    action: 'comment' as const, entity: WALL_A, title: 'Staged note', description: '', withViewpoint: true };
+  useLayerAutomationReview.setState({ candidate: staged });
+  const ui = render(<LayerReviewSection client={client} candidateId={REVIEW.layerId} refName={REVIEW.into} />);
+  const title = () => ui.querySelector<HTMLInputElement>('input[aria-label="Review comment title"]');
+  await waitFor(() => title()?.value === staged.title, 'the staged comment is visible');
+  act(() => useViewerStore.getState().setSelectedEntityIds([7]));
+  const comment = [...ui.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Comment');
+  assert.ok(comment); click(comment);
+  await waitFor(() => capture.frames() === 1, 'the viewpoint is capturing');
+  act(() => useLayerAutomationReview.setState({ candidate: { ...staged, id: 'staged-capture-merge', action: 'merge' } }));
+  await capture.release(1);
+  await settle();
+  assert.equal(posts, 0);
+});
+
 test('C-2 layer review: a viewpoint capture that resolves null toasts once and posts nothing', async () => {
   const { toast } = await import('@/components/ui/toast');
   const errors = mock.method(toast, 'error', () => undefined);

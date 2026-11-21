@@ -97,6 +97,7 @@ function CandidateReview({
   const [withViewpoint, setWithViewpoint] = useState(true);
   const automationReview = useLayerAutomationReview(state => state.candidate);
   const withdrawnBy = useRef<string | null>(null);
+  const withdrawals = useRef(0);
   useEffect(() => {
     // Only an action aimed at this candidate and ref changes what this section has staged.
     if (!automationReview || automationReview.candidateId !== candidateId || automationReview.refName !== refName) return;
@@ -105,7 +106,7 @@ function CandidateReview({
       // once per action, so re-running for a later staging change never repeats it.
       if (withdrawnBy.current === automationReview.id) return;
       withdrawnBy.current = automationReview.id;
-      if (stagedEntity !== null) { setStagedEntity(null); setTitle(''); setDescription(''); }
+      if (stagedEntity !== null) { withdrawals.current += 1; setStagedEntity(null); setTitle(''); setDescription(''); }
       return;
     }
     if (!claimLayerAutomationReview(automationReview, 'review')) return;
@@ -166,6 +167,7 @@ function CandidateReview({
 
   const postComment = useCallback(async () => {
     if (!review || !canPost) return;
+    const staging = withdrawals.current;
     await runAction(async ({ isCurrent }) => {
       try {
         let viewpoint: Record<string, unknown> | undefined;
@@ -186,8 +188,8 @@ function CandidateReview({
           const { snapshotData: _drop, ...serializable } = vp as BCFViewpoint & { snapshotData?: Uint8Array };
           viewpoint = serializable as unknown as Record<string, unknown>;
         }
-        // The section unmounted while the viewpoint was captured: post nothing.
-        if (!isCurrent()) return;
+        // The section unmounted, or a newer action withdrew this staged comment, while the viewpoint was captured.
+        if (!isCurrent() || withdrawals.current !== staging) return;
         await client.postTopic(review.id, {
           title: title.trim(),
           ...(description.trim().length > 0 ? { description: description.trim() } : {}),

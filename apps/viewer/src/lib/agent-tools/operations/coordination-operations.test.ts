@@ -44,7 +44,7 @@ beforeEach(async () => {
   useViewerStore.setState({ bcfProject: null, mutationVersion: 0, mutationViews: new Map() });
   const host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));
   const model = host.models()[0]; if (!model?.store) throw new Error('Fixture IFC store missing.');
-  context = { host, model: { ...model, store: model.store }, commit, commitAsync: async write => { checkpoint(); return write(); }, ownGeometry: async work => work(), checkpoint, artifacts: operationArtifacts(host, commit) };
+  context = { host, model: { ...model, store: model.store }, commit, commitAsync: async write => { checkpoint(); return write(); }, ownGeometry: async work => work(), retain: () => {}, checkpoint, artifacts: operationArtifacts(host, commit) };
 });
 it('round-trips authored BCF topics/comments through native ZIP writer and reader (#10525)', async () => {
   await execute('bcf.createProject', { value: 'Coordination evidence' });

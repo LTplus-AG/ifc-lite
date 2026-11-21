@@ -171,7 +171,7 @@ function cameraForBounds(bounds: AABB, distanceFactor: number): ViewerCameraStat
 
 /** Count members by a string-valued key. */
 function tally(members: Clash[], pick: (c: Clash) => string): Record<string, number> {
-  const out: Record<string, number> = {};
+  const out: Record<string, number> = Object.create(null);
   for (const m of members) {
     const k = pick(m);
     out[k] = (out[k] ?? 0) + 1;

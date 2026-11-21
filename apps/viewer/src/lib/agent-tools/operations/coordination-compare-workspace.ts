@@ -5,7 +5,8 @@ import { useViewerStore } from '@/store';
 import { coordination, idSchema, textSchema } from './coordination-common';
 import { emptySchema } from './contract';
 import { isUncachedCompareResult } from '@/lib/compare/publish-comparison';
-function result() { const state = useViewerStore.getState(); if (!state.compareResult) throw new Error('Run a native model comparison first.'); return { state, result: state.compareResult }; }
+import { invalidInput, stale, unavailable } from './refusals';
+function result() { const state = useViewerStore.getState(); if (!state.compareResult) throw unavailable('Run a native model comparison first.'); return { state, result: state.compareResult }; }
 export const coordinationCompareWorkspaceOperations = [
   coordination('compare.exportReport', 'Build CSV from the native comparison report serializer, including IFC fields, change classification and safe CSV escaping.', ['artifact'], emptySchema, async (_, c) => {
     const [{ buildCompareReport, reportToCsv }, { modelsAsCompared }] = await Promise.all([import('@/lib/compare/exportReport'), import('@/lib/compare/comparedModels')]);
@@ -23,13 +24,13 @@ export const coordinationCompareWorkspaceOperations = [
     type: 'object', properties: { id: { type: 'string', minLength: 1, maxLength: 200 }, name: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['id', 'name'], additionalProperties: false,
   }, (i, c) => c.commitAsync(async () => ({ id: i.id, saved: await useViewerStore.getState().renameSavedComparison(i.id, i.name) }), result => result.saved)),
   coordination('compare.deleteSavedReport', 'Delete one exact saved comparison through the native CAS content library.', ['configuration'], idSchema, (i, c) => c.commitAsync(async () => {
-    if (!useViewerStore.getState().savedComparisons.some(entry => entry.id === i.id)) throw new Error('Unknown saved comparison.');
+    if (!useViewerStore.getState().savedComparisons.some(entry => entry.id === i.id)) throw invalidInput('unknown-target', 'Unknown saved comparison.');
     return { id: i.id, deleted: await useViewerStore.getState().deleteSavedComparison(i.id) };
   }, result => result.deleted)),
   coordination('compare.openSavedReport', 'Focus one exact native immutable comparison report in its owning panel.', ['view', 'configuration'], idSchema, async (i, c) => {
     const { useSavedComparisonFocus } = await import('@/lib/panels/evidence-focus');
     return c.commit(() => {
-      if (!useViewerStore.getState().savedComparisons.some(entry => entry.id === i.id)) throw new Error('Unknown saved comparison.');
+      if (!useViewerStore.getState().savedComparisons.some(entry => entry.id === i.id)) throw invalidInput('unknown-target', 'Unknown saved comparison.');
       useSavedComparisonFocus.setState({ record: { comparisonId: i.id, key: '' } }); useViewerStore.getState().openWorkspacePanel('compare'); return { opened: i.id };
     });
   }),
@@ -38,7 +39,7 @@ export const coordinationCompareWorkspaceOperations = [
   }, (i, c) => c.commit(() => {
     const { state, result: current } = result();
     // The aliases were read under one authored key scheme; refuse them under another.
-    if (current.baseModelId !== i.base_model_id || current.headModelId !== i.head_model_id || current.keyProperty !== state.compareKeyProperty || (current.keyProperty ?? '') !== i.key_property) throw new Error('Comparison pair or authored key scheme changed.');
+    if (current.baseModelId !== i.base_model_id || current.headModelId !== i.head_model_id || current.keyProperty !== state.compareKeyProperty || (current.keyProperty ?? '') !== i.key_property) throw stale('Comparison pair or authored key scheme changed.');
     const pair = { baseModelId: i.base_model_id, headModelId: i.head_model_id, keyProperty: current.keyProperty };
     const refused = i.action === 'accept' ? state.acceptCompareIdentity(pair, [{ base: i.base, here: i.here, reason: i.reason }]) : [];
     if (i.action === 'reject') state.rejectCompareClaim(pair, i.base, i.here); if (i.action === 'remove') state.removeCompareIdentity(pair, i.base, i.here);
@@ -50,32 +51,32 @@ export const coordinationCompareWorkspaceOperations = [
     type: 'object', properties: { kind: { type: 'string', enum: ['clash', 'validation'] } }, required: ['kind'], additionalProperties: false,
   }, async (i: { kind: 'clash' | 'validation' }, c) => {
     const { captureClashRun, captureValidationRun } = await import('@/lib/compare/compare-analysis-state');
-    return c.commit(() => { const s = useViewerStore.getState(), captured = i.kind === 'clash' ? captureClashRun(s) : captureValidationRun(s); if (!captured) throw new Error('No native run is available to capture.'); return { id: s.addCompareRunCapture(captured), kind: captured.kind }; });
+    return c.commit(() => { const s = useViewerStore.getState(), captured = i.kind === 'clash' ? captureClashRun(s) : captureValidationRun(s); if (!captured) throw unavailable('No native run is available to capture.'); return { id: s.addCompareRunCapture(captured), kind: captured.kind }; });
   }),
   coordination('compare.runs', 'Read held native run captures and the current reconciliation result.', ['read'], emptySchema, () => ({ runs: useViewerStore.getState().compareRunCaptures, reconciliation: useViewerStore.getState().compareReconciliation })),
   coordination<{ base_run_id: string; head_run_id: string }>('compare.reconcile', 'Reconcile two exact held native runs against the current comparison; reports native compatibility/refusal reasons and does not infer resolved from missing coverage.', ['configuration'], {
     type: 'object', properties: { base_run_id: { type: 'string', minLength: 1, maxLength: 200 }, head_run_id: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['base_run_id', 'head_run_id'], additionalProperties: false,
   }, async (i, c) => {
     const { savedReconciliationOf } = await import('@/lib/compare/compare-reconcile-state');
-    return c.commit(() => { const s = useViewerStore.getState(), base = s.compareRunCaptures.find(run => run.id === i.base_run_id), head = s.compareRunCaptures.find(run => run.id === i.head_run_id); if (!base || !head) throw new Error('Unknown held analysis run.'); const saved = savedReconciliationOf(s, base, head); if (!saved) throw new Error('Run a model comparison first.'); s.setCompareReconciliation(saved); return { outcome: saved.outcome }; });
+    return c.commit(() => { const s = useViewerStore.getState(), base = s.compareRunCaptures.find(run => run.id === i.base_run_id), head = s.compareRunCaptures.find(run => run.id === i.head_run_id); if (!base || !head) throw invalidInput('unknown-target', 'Unknown held analysis run.'); const saved = savedReconciliationOf(s, base, head); if (!saved) throw unavailable('Run a model comparison first.'); s.setCompareReconciliation(saved); return { outcome: saved.outcome }; });
   }),
   coordination('compare.savedAnalysisRuns', 'Initialize and inspect immutable native analysis-run evidence and save status.', ['read'], emptySchema, async () => {
     const { analysisRunLibrary, useSavedAnalysisRuns } = await import('@/lib/compare/saved-analysis-runs'); await analysisRunLibrary.initialize(); const state = useSavedAnalysisRuns.getState(); return { runs: state.entries, storage: state.status };
   }),
   coordination('compare.saveAnalysisRun', 'Save one held native run through the portable source-identity codec and immutable analysis-run content library.', ['configuration'], idSchema, async (i, c) => {
     const [{ portableAnalysisRun }, { saveAnalysisRun }] = await Promise.all([import('@/lib/compare/saved-analysis-run-binding'), import('@/lib/compare/saved-analysis-runs')]);
-    const state = useViewerStore.getState(), run = state.compareRunCaptures.find(run => run.id === i.id); if (!run) throw new Error('Unknown held run.');
+    const state = useViewerStore.getState(), run = state.compareRunCaptures.find(run => run.id === i.id); if (!run) throw invalidInput('unknown-target', 'Unknown held run.');
     const portable = portableAnalysisRun(run, state); if (!portable.ok) return { saved: false, refusal: portable };
     return c.commitAsync(async () => ({ saved: await saveAnalysisRun(portable.saved), id: portable.saved.id }), result => result.saved);
   }),
   coordination('compare.bindSavedAnalysisRun', 'Bind saved evidence only to exactly matching native model content/placement, returning all native refusal reasons instead of guessing model identities.', ['configuration'], idSchema, async (i, c) => {
     const [{ bindSavedAnalysisRun }, { useSavedAnalysisRuns }] = await Promise.all([import('@/lib/compare/saved-analysis-run-binding'), import('@/lib/compare/saved-analysis-runs')]);
-    return c.commit(() => { const saved = useSavedAnalysisRuns.getState().entries.find(run => run.id === i.id); if (!saved) throw new Error('Unknown saved analysis run.'); const bound = bindSavedAnalysisRun(saved, useViewerStore.getState()); if (!bound.ok) return bound; return { ok: true, id: useViewerStore.getState().addCompareRunCapture(bound.run) }; });
+    return c.commit(() => { const saved = useSavedAnalysisRuns.getState().entries.find(run => run.id === i.id); if (!saved) throw invalidInput('unknown-target', 'Unknown saved analysis run.'); const bound = bindSavedAnalysisRun(saved, useViewerStore.getState()); if (!bound.ok) return bound; return { ok: true, id: useViewerStore.getState().addCompareRunCapture(bound.run) }; });
   }),
   coordination('compare.deleteSavedAnalysisRun', 'Delete one exact native immutable saved analysis run through its content library.', ['configuration'], idSchema, async (i, c) => {
-    const { deleteSavedAnalysisRun, useSavedAnalysisRuns } = await import('@/lib/compare/saved-analysis-runs'); if (!useSavedAnalysisRuns.getState().entries.some(run => run.id === i.id)) throw new Error('Unknown saved analysis run.'); return c.commitAsync(async () => ({ deleted: await deleteSavedAnalysisRun(i.id), id: i.id }), result => result.deleted);
+    const { deleteSavedAnalysisRun, useSavedAnalysisRuns } = await import('@/lib/compare/saved-analysis-runs'); if (!useSavedAnalysisRuns.getState().entries.some(run => run.id === i.id)) throw invalidInput('unknown-target', 'Unknown saved analysis run.'); return c.commitAsync(async () => ({ deleted: await deleteSavedAnalysisRun(i.id), id: i.id }), result => result.deleted);
   }),
   coordination('compare.removeRun', 'Remove one exact held run and invalidate reconciliation that depended on it.', ['configuration'], idSchema, (i, c) => c.commit(() => {
-    const s = useViewerStore.getState(); if (!s.compareRunCaptures.some(run => run.id === i.id)) throw new Error('Unknown held run.'); s.removeCompareRunCapture(i.id); return { removed: i.id };
+    const s = useViewerStore.getState(); if (!s.compareRunCaptures.some(run => run.id === i.id)) throw invalidInput('unknown-target', 'Unknown held run.'); s.removeCompareRunCapture(i.id); return { removed: i.id };
   })),
 ];

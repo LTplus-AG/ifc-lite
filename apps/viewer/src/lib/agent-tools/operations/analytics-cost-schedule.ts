@@ -8,6 +8,7 @@ import { buildCostCsvReport } from '@/lib/analysis/export-csv';
 import { selectCostTargets } from '@/lib/cost/select-targets';
 import { operation, viewerOperation, emptySchema } from './contract';
 import { metadata, artifactSchema, checkpoint } from './analytics-common';
+import { invalidInput, unavailable } from './refusals';
 const cost = (id: string, description: string, output: Record<string, unknown>) => metadata(id, 'cost', description, ['read'], output);
 function timeline() {
   const s = useViewerStore.getState();
@@ -30,7 +31,7 @@ export const analyticsCostScheduleOperations = [
   } satisfies JSONSchemaType<{ express_id: number; target: 'item' | 'value'; precision: number }>, (i, c) => {
     const graph = c.model.bim.cost.data(c.model.id);
     const exists = i.target === 'item' ? graph.CostItems.some(row => row.ref.expressId === i.express_id) : graph.CostValues.some(row => row.ref.expressId === i.express_id);
-    if (!exists) throw new Error('The requested cost record does not exist in this model.');
+    if (!exists) throw invalidInput('unknown-target', 'The requested cost record does not exist in this model.');
     const ref = { modelId: c.model.id, expressId: i.express_id };
     const evaluation = i.target === 'item' ? c.model.bim.cost.evaluateItem(ref, { Precision: i.precision }) : c.model.bim.cost.evaluateValue(ref, { Precision: i.precision });
     return { evaluation, assignments: i.target === 'item' ? getAssignedTargets(graph, ref) : [], schedules: i.target === 'item' ? getOwningSchedules(graph, ref) : [] };
@@ -38,7 +39,7 @@ export const analyticsCostScheduleOperations = [
   operation(metadata('cost.exportCsv', 'cost', 'Await the native Cost-panel CSV writer and effective item evaluations for the explicitly targeted model, including unresolved diagnostics.', ['read', 'artifact'], artifactSchema), emptySchema, async (_, c) => {
     const graph = c.model.bim.cost.data(c.model.id);
     const report = buildCostCsvReport([{ modelName: c.model.name, graph }], ref => c.model.bim.cost.evaluateItem(ref));
-    if (!report) throw new Error('The target model has no native cost items to export.'); checkpoint(c);
+    if (!report) throw unavailable('The target model has no native cost items to export.'); checkpoint(c);
     return c.artifacts.create({ filename: report.filename, mimeType: 'text/csv;charset=utf-8', data: report.content });
   }),
   operation<{ express_id: number }>(metadata('cost.selectAssigned', 'cost', 'Select all native assigned cost-item targets through the same two-channel Cost-panel handler. Camera framing is dispatched.', ['selection', 'view'], {
@@ -47,7 +48,7 @@ export const analyticsCostScheduleOperations = [
     type: 'object', properties: { express_id: { type: 'integer', minimum: 1 } }, required: ['express_id'], additionalProperties: false,
   } satisfies JSONSchemaType<{ express_id: number }>, (i, c) => {
     const graph = c.model.bim.cost.data(c.model.id);
-    if (!graph.CostItems.some(row => row.ref.expressId === i.express_id)) throw new Error('Unknown cost item in this model.');
+    if (!graph.CostItems.some(row => row.ref.expressId === i.express_id)) throw invalidInput('unknown-target', 'Unknown cost item in this model.');
     const refs = getAssignedTargets(graph, { modelId: c.model.id, expressId: i.express_id });
     checkpoint(c); c.commit(() => selectCostTargets(refs)); return { refs };
   }),
@@ -60,10 +61,10 @@ export const analyticsCostScheduleOperations = [
     type: 'object', properties: { work_schedule_id: { type: 'string', maxLength: 200 }, scale: { type: 'string', enum: ['hour', 'day', 'week', 'month', 'year'] }, time: { type: 'number' }, speed: { type: 'number', exclusiveMinimum: 0, maximum: 3650 }, loop: { type: 'boolean' }, animation: { type: 'boolean' } }, required: ['work_schedule_id', 'scale', 'time', 'speed', 'loop', 'animation'], additionalProperties: false,
   } satisfies JSONSchemaType<{ work_schedule_id: string; scale: 'hour' | 'day' | 'week' | 'month' | 'year'; time: number; speed: number; loop: boolean; animation: boolean }>, (i, c) => {
     const s = useViewerStore.getState();
-    if (!s.scheduleData || !s.scheduleRange) throw new Error('No native schedule timeline is loaded.');
-    if (s.scheduleSourceModelId !== c.model.id) throw new Error('The timeline belongs to a different or unattributed model.');
-    if (!(i.time >= s.scheduleRange.start && i.time <= s.scheduleRange.end)) throw new Error('Seek time lies outside the schedule range.');
-    if (i.work_schedule_id && !s.scheduleData.workSchedules.some(row => row.globalId === i.work_schedule_id)) throw new Error('Unknown work schedule.');
+    if (!s.scheduleData || !s.scheduleRange) throw unavailable('No native schedule timeline is loaded.');
+    if (s.scheduleSourceModelId !== c.model.id) throw invalidInput('wrong-target', 'The timeline belongs to a different or unattributed model.');
+    if (!(i.time >= s.scheduleRange.start && i.time <= s.scheduleRange.end)) throw invalidInput('invalid-value', 'Seek time lies outside the schedule range.');
+    if (i.work_schedule_id && !s.scheduleData.workSchedules.some(row => row.globalId === i.work_schedule_id)) throw invalidInput('unknown-target', 'Unknown work schedule.');
     checkpoint(c); c.commit(() => { s.setActiveWorkScheduleId(i.work_schedule_id); s.setGanttTimeScale(i.scale); s.seekSchedule(i.time); s.setPlaybackSpeed(i.speed); s.setPlaybackLoop(i.loop); s.setAnimationEnabled(i.animation); }); return timeline();
   }),
   viewerOperation(metadata('schedule.pause', 'gantt', 'Pause native playback and read its final timeline state.', ['view'], timelineSchema), emptySchema, (_, c) => { checkpoint(c); c.commit(() => useViewerStore.getState().pauseSchedule()); return timeline(); }),

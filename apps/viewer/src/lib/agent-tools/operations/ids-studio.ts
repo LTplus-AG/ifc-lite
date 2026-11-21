@@ -7,7 +7,7 @@ import type { StudioDocument, StudioOp } from '@ifc-lite/ids-authoring';
 import { useViewerStore } from '@/store';
 import { viewerOperation as nativeOperation, operation as modelOperation, emptySchema, type ViewerOperationContext } from './contract';
 import { assertToolActive } from '../cancellation';
-import { decodedInput, disabled, invalidInput, stale, unavailable, parseJsonInput } from './refusals';
+import { decodedInput, disabled, internal, invalidInput, parseJsonInput, stale, unavailable } from './refusals';
 import { admitCandidate, retainCandidate, candidateStillApplies } from './host-handles';
 
 const jsonOutput = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
@@ -36,8 +36,13 @@ async function dependencies(c: ViewerOperationContext) {
 }
 /** Callers re-check revision and grants after this await. */
 async function saveOpenDraft() {
-  const { saveOpenIdsDraft } = await import('@/lib/ids-studio/draft-viewer');
-  await saveOpenIdsDraft();
+  const { IdsDraftUnsavedError, saveOpenIdsDraft } = await import('@/lib/ids-studio/draft-viewer');
+  try {
+    await saveOpenIdsDraft();
+  } catch (error) {
+    if (error instanceof IdsDraftUnsavedError) throw internal(error.message, { save: error.reason });
+    throw error;
+  }
 }
 function read() {
   const state = useViewerStore.getState();

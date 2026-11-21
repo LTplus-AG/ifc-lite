@@ -5,6 +5,7 @@
 /** #10824: a `.USERDEFINED.` label carried through ObjectType, as the Rust twin does. Reached through convertStepLine. */
 import { describe, it, expect } from 'vitest';
 import { convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
+import { EnumReconciliation } from './schema-converter-enums.js';
 
 const up = (line: string, to: IfcSchemaVersion = 'IFC4') => convertStepLine(line, 'IFC2X3', to);
 const down = (line: string, from: IfcSchemaVersion = 'IFC4') => convertStepLine(line, from, 'IFC2X3');
@@ -46,5 +47,27 @@ describe('the .USERDEFINED. label (#10824)', () => {
     expect(down("#7=IFCELECTRICDISTRIBUTIONBOARD('g',#2,'n',$,'Custom',$,$,'t',.USERDEFINED.);"))
       .toBe("#7=IFCELECTRICDISTRIBUTIONPOINT('g',#2,'n',$,'Custom',$,$,'t',.USERDEFINED.,'Custom');");
     expect(down("#7=IFCPROCEDURE('g',#2,'P',$,'Flush','P-1',$,.SHUTDOWN.);")).toBe("#7=IFCPROCEDURE('g',#2,'P',$,'Flush','P-1',.SHUTDOWN.,$);");
+  });
+
+  it('reconciles a point or board member the target lacks, as Rust does (#10856)', () => {
+    const run = (line: string, from: IfcSchemaVersion, to: IfcSchemaVersion) => {
+      const enums = new EnumReconciliation();
+      return { out: convertStepLine(line, from, to, undefined, undefined, undefined, undefined, enums), warnings: enums.warnings() };
+    };
+    for (const to of ['IFC4', 'IFC4X3'] as const) {
+      expect(run("#7=IFCELECTRICDISTRIBUTIONPOINT('g',#2,'n',$,$,$,$,'t',.ALARMPANEL.,$);", 'IFC2X3', to).out, to)
+        .toBe("#7=IFCELECTRICDISTRIBUTIONBOARD('g',#2,'n',$,'ALARMPANEL',$,$,'t',.USERDEFINED.);");
+    }
+    // Down, the label is UserDefinedFunction, IFC2X3's short name for it. Every IFC4/IFC4X3 board member is in
+    // IFC2X3's point enum, so the member here is one the source enum lacks too: IfcDistributionBoard's
+    // `.DISPATCHINGBOARD.` written on an IfcElectricDistributionBoard.
+    expect(run("#7=IFCELECTRICDISTRIBUTIONBOARD('g',#2,'n',$,$,$,$,'t',.DISPATCHINGBOARD.);", 'IFC4X3', 'IFC2X3'))
+      .toEqual({ out: "#7=IFCELECTRICDISTRIBUTIONPOINT('g',#2,'n',$,$,$,$,'t',.USERDEFINED.,'DISPATCHINGBOARD');", warnings: [] });
+    expect(run('#5=IFCDERIVEDUNIT((#6),.SOUNDPOWERLEVELUNIT.,$);', 'IFC4', 'IFC2X3'))
+      .toEqual({ out: "#5=IFCDERIVEDUNIT((#6),.USERDEFINED.,'SOUNDPOWERLEVELUNIT');", warnings: [] });
+    // A label already set keeps its value; the member name is reported lost.
+    const occupied = run("#5=IFCDERIVEDUNIT((#6),.SOUNDPOWERLEVELUNIT.,'dB');", 'IFC4', 'IFC2X3');
+    expect(occupied.out).toBe("#5=IFCDERIVEDUNIT((#6),.USERDEFINED.,'dB');");
+    expect(occupied.warnings.join('\n')).toMatch(/label slot already held a value.*IFCDERIVEDUNIT\.UnitType \.SOUNDPOWERLEVELUNIT\./);
   });
 });

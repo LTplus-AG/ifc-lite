@@ -200,7 +200,8 @@ describe('released geometry readback for tools', () => {
     await backing.writer.append([mesh(1, 0)]);
     await backing.writer.appendInstancedShard(instancedShard()); // 501 opaque, 502 translucent
     const neighbour = instancedShard();
-    neighbour.instances = [{ ...neighbour.instances[0], entityId: 503 }];
+    // 504 is a backed opaque occurrence too, but far from the hit: only the distance check keeps it out (r4649781991).
+    neighbour.instances = [{ ...neighbour.instances[0], entityId: 503 }, { ...neighbour.instances[0], entityId: 504 }];
     await backing.writer.appendInstancedShard(neighbour);
     await backing.writer.close();
     const near = { min: { x: 99, y: -1, z: 4 }, max: { x: 101, y: 1, z: 6 } };
@@ -335,6 +336,22 @@ describe('released geometry readback for tools', () => {
     assert.equal(await feeder.prepare(0, 0), 'unavailable');
     assert.equal(h.fed.at(-1) ?? null, null, 'nothing was fed');
     assert.equal(open, 0, 'the flat leases taken before the failed occurrence placement were released');
+    await registry.close();
+  });
+
+  it('#10884 r4649782008 a preparation whose view changed during its reads is never installed under the new view', async () => {
+    const { registry, backing } = await backed([mesh(1, 0)]);
+    const h = host({ released: true, hit: { expressId: 1, modelIndex: 0, worldXYZ: { x: 100.2, y: 0.2, z: 5 } } });
+    let view = 'V';
+    const pick = h.value.pick;
+    h.value.readbackRaycastViewKey = () => view;
+    h.value.pick = async (x, y, options) => { const hit = await pick(x, y, options); view = "V'"; return hit; }; // the camera moves meanwhile
+    const feeder = new ReadbackRaycastFeeder(h.value, () => ({ backing: () => backing }), () => 'm');
+    assert.equal(await feeder.prepare(0, 0), 'cancelled');
+    assert.deepEqual(h.fed, [], 'nothing stamped with the later view');
+    view = 'V';
+    h.value.pick = pick;
+    assert.equal(await feeder.prepare(0, 0), 'fed', 'an unchanged view installs as before');
     await registry.close();
   });
 

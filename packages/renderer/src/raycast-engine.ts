@@ -105,10 +105,21 @@ export class RaycastEngine {
     readbackCovers(x: number, y: number): boolean {
         const at = this.readbackCoverage;
         const viewport = this.cssViewport(); // the ray through (x, y) also depends on the size it is unprojected in
-        if (!at || Math.hypot(at.x - x, at.y - y) > 1.5 || viewport?.width !== at.width || viewport?.height !== at.height) return false;
+        // Not `> 1.5`: a non-finite point (NaN) would compare false and cover every ray.
+        if (!at || !(Math.hypot(at.x - x, at.y - y) <= 1.5) || viewport?.width !== at.width || viewport?.height !== at.height) return false;
         const now = this.camera.getViewProjMatrix().m;
         for (let i = 0; i < 16; i++) if (now[i] !== at.viewProj[i]) return false;
         return true;
+    }
+
+    /**
+     * The view a readback preparation is made under, as `setReadbackMeshes` stamps it (view-projection and CSS
+     * viewport size). A host captures it before its pick and installs only if it is unchanged, so pieces
+     * chosen for one view are never stamped with a later one.
+     */
+    readbackViewKey(): string {
+        const viewport = this.cssViewport();
+        return `${Array.from(this.camera.getViewProjMatrix().m).join(',')}|${viewport?.width ?? 0}x${viewport?.height ?? 0}`;
     }
 
     /** Flat candidates near the ray, plus ray-culled instanced occurrences. */

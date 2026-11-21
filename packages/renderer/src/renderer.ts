@@ -3042,6 +3042,14 @@ export class Renderer {
     }
 
     /**
+     * The current view as readback coverage stamps it. Capture it before the pick a readback is prepared
+     * from, and install the pieces (`setReadbackRaycastMeshes`) only while it is unchanged.
+     */
+    readbackRaycastViewKey(): string {
+        return this.raycastEngine.readbackViewKey();
+    }
+
+    /**
      * Raycast with magnetic edge snapping: the "stick and slide along edges" experience.
      *
      * Note: x, y are CSS pixel coordinates relative to the canvas element.

@@ -14,12 +14,12 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { useViewerStore } from '@/store';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
-import { handleMeasureDown, handleMeasureUp } from './distanceClick.js';
+import { handleMeasureDown, handleMeasureUp, noteDistancePointerUp } from './distanceClick.js';
 import { handleMeasureTap } from './touchRouting.js';
 import { handlePointClick } from './measurePointMode.js';
 import { measureReadbacksIdle, setMeasureReadbackFeedForTest } from './measureReadbackGate.js';
 
-type Read = { x: number; settle: (outcome: string) => void };
+type Read = { x: number; settle: (outcome: string) => void; done?: boolean };
 let reads: Read[] = [];
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 /** Let the lazy gate's import settle and the queued read start. */
@@ -59,16 +59,40 @@ const down = (x: number) => new window.MouseEvent('pointerdown', { clientX: x, c
 const up = (x: number) => new window.MouseEvent('pointerup', { clientX: x, clientY: 5 }) as unknown as PointerEvent;
 /** The pointer controls call `handleMeasureUp` only with a measurement pending (useMouseControls). */
 function release(ctx: MouseHandlerContext, x: number): void {
+  noteDistancePointerUp(ctx.mouseState); // every measure-tool release, as the controls do
   if (ctx.activeMeasurementRef.current) handleMeasureUp(ctx, up(x));
   else ctx.mouseState.isDragging = false;
+}
+/** A pointerdown as the controls make it: a new press starts undragged. */
+function press(ctx: MouseHandlerContext, x: number): void {
+  ctx.mouseState.didDrag = false;
+  handleMeasureDown(ctx, down(x));
+}
+/** Settle every read in queue order, including those queued by earlier ones landing. */
+async function settleAll(outcome = 'fed'): Promise<void> {
+  for (let guard = 0; guard < 50; guard++) {
+    await settleImports();
+    const next = reads.find((read) => !read.done);
+    if (!next) break;
+    next.settle(outcome);
+  }
+  await measureReadbacksIdle();
 }
 
 beforeEach(() => {
   reads = [];
-  setMeasureReadbackFeedForTest((_r, x) => new Promise((settle) => { reads.push({ x, settle }); }));
+  setMeasureReadbackFeedForTest((_r, x) => new Promise((resolve) => {
+    const read: Read = { x, settle: (outcome) => { read.done = true; resolve(outcome); } };
+    reads.push(read);
+  }));
   useViewerStore.setState({ measureMode: 'drag', activeTool: 'measure' } as never);
 });
-afterEach(() => setMeasureReadbackFeedForTest(null));
+afterEach(async () => {
+  // A test that failed mid-gesture must not leave a read pending for the next test to queue behind.
+  for (const read of reads) if (!read.done) read.settle('cancelled');
+  await measureReadbacksIdle();
+  setMeasureReadbackFeedForTest(null);
+});
 
 describe('click-click distance over released geometry', () => {
   it('#10884 a quick first click whose release beats its readback still sets the start', async () => {
@@ -179,7 +203,9 @@ describe('#10884 click order over released geometry', () => {
     assert.deepEqual(log, ['start 10']);
     release(ctx, 300); // now released: an ordinary second click
     await settleImports();
-    reads[2]?.settle('fed');
+    assert.equal(reads[2]?.x, 300, 'the release reads its own point back');
+    assert.deepEqual(log, ['start 10'], 'nothing finishes before that read lands');
+    reads[2].settle('fed');
     await measureReadbacksIdle();
     assert.deepEqual(log, ['start 10', 'end 300', 'finished'], 'the second click finishes the distance');
   });
@@ -191,11 +217,41 @@ describe('#10884 click order over released geometry', () => {
     reads[0].settle('fed'); await measureReadbacksIdle();
     handleMeasureDown(ctx, down(300)); release(ctx, 300); // queued finish
     handleMeasureDown(ctx, down(500)); release(ctx, 500); // queued behind it, the distance still pending
-    await settleImports();
-    reads[1].settle('fed'); await tick();
-    reads[2].settle('fed');
-    await measureReadbacksIdle();
+    await settleAll();
     assert.deepEqual(log, ['start 10', 'end 300', 'finished', 'start 500'], 'no click is dropped: the third starts the next distance');
+  });
+});
+
+describe('#10884 a press keeps its own press point and drag behind a queued read', () => {
+  it('r4649781963 an unseen dragged second press never finishes at its press point after a later click resets the drag', async () => {
+    const { ctx, log } = releasedCtx();
+    press(ctx, 10); release(ctx, 10); // the first click, still reading back
+    press(ctx, 300); ctx.mouseState.didDrag = true; release(ctx, 400); // dragged; no start yet, so handleMeasureUp never runs
+    await settleImports();
+    reads[0].settle('fed'); await tick(); // the first start lands
+    press(ctx, 500); release(ctx, 500); // a third click resets the shared drag state and queues its finish
+    await settleAll();
+    assert.deepEqual(log, ['start 10', 'end 500', 'finished'], 'the dragged press leaves the start pending; the third click finishes');
+  });
+
+  it('r4649781967 a drag pressed while a finish is queued starts the next distance and finishes at its release', async () => {
+    const { ctx, log } = releasedCtx();
+    press(ctx, 10); release(ctx, 10);
+    await settleAll();
+    press(ctx, 300); release(ctx, 300); // its finish is queued
+    press(ctx, 500); ctx.mouseState.didDrag = true; release(ctx, 600); // pressed and dragged before that finish lands
+    await settleAll();
+    assert.deepEqual(log, ['start 10', 'end 300', 'finished', 'start 500', 'end 600', 'finished'], 'the drag measures 500 to 600, as resident');
+  });
+
+  it('r4649781971 a click pressed while a finish is queued starts the next distance at its PRESS point', async () => {
+    const { ctx, log } = releasedCtx();
+    press(ctx, 10); release(ctx, 10);
+    await settleAll();
+    press(ctx, 300); release(ctx, 300);
+    press(ctx, 500); release(ctx, 502); // within the click slop
+    await settleAll();
+    assert.deepEqual(log, ['start 10', 'end 300', 'finished', 'start 500'], 'started where pressed, as resident');
   });
 });
 

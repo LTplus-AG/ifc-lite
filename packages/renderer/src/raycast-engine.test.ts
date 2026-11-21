@@ -983,6 +983,17 @@ describe('RaycastEngine readback meshes (#10264)', () => {
     assert.equal(engine.raycastScene(400, 300), null, 'and its pieces never answer the new ray');
   });
 
+  it('r4649736566 readback pieces prepared at a non-finite point cover no ray', () => {
+    const scene = new Scene();
+    const quad = makeQuad({ expressId: 1, translate: [0, 0, -10], half: 8 });
+    addRegularQuad(scene, quad);
+    const engine = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50));
+    scene.releaseGeometryData();
+    engine.setReadbackMeshes([{ ...quad }], { x: Number.NaN, y: 300 });
+    assert.equal(engine.readbackCovers(400, 300), false, 'NaN distance is no coverage');
+    assert.equal(engine.raycastScene(400, 300), null, 'and the pieces answer no ray');
+  });
+
   it('prepared for one ray, readback pieces never answer another ray or view', () => {
     const scene = new Scene();
     const quad = makeQuad({ expressId: 1, translate: [0, 0, -10], half: 8 });

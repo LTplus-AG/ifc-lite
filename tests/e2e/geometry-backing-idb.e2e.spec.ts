@@ -12,21 +12,27 @@
 
 import { test, expect, type Page } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { startViewerDevServer, type ViewerDevServer } from './viewer-dev-server';
 
 type Registry = typeof import('../../apps/viewer/src/lib/geometry-backing/geometry-backing-registry');
 type Fixtures = typeof import('../../apps/viewer/src/lib/geometry-backing/geometry-backing.test-fixtures');
+type Geometry = typeof import('../../packages/geometry/src/index');
 declare global {
   // eslint-disable-next-line no-var
   var __backingSpec__: { registry?: InstanceType<Registry['GeometryBackingRegistry']> } | undefined;
 }
 
 let server: ViewerDevServer;
-test.beforeAll(async () => { server = await startViewerDevServer('geometry-backing'); });
+test.beforeAll(async () => {
+  // Every case navigates to a static document, so skip Vite's viewer entry scan.
+  server = await startViewerDevServer('geometry-backing', { scanViewerEntries: false });
+});
 test.afterAll(async () => { await server?.close(); });
 
 const REGISTRY = '/src/lib/geometry-backing/geometry-backing-registry.ts';
 const FIXTURES = '/src/lib/geometry-backing/geometry-backing.test-fixtures.ts';
+const GEOMETRY = `/@fs/${fileURLToPath(new URL('../../packages/geometry/src/index.ts', import.meta.url))}`;
 
 /** A same-origin document that does not boot the viewer app. */
 async function staticPage(page: Page): Promise<void> {
@@ -196,48 +202,97 @@ test('a closed page releases its Web Lock and the next page sweeps its geometry;
 });
 
 test('public IFC models: every streamed mesh reads back field-for-field from real IndexedDB', async ({ page }, info) => {
+  // #11070: the backing round trip only needs real WASM meshes. Booting the
+  // viewer here also loaded its dev-server module graph, renderer and store.
+  await staticPage(page);
   const rows = [];
   for (const sample of ['building-architecture.ifc', 'infra-bridge.ifc']) {
-    const loaded = page.waitForEvent('console', { predicate: (message) => message.text().includes(`[ifc-lite] Added model ${sample}`),
-      timeout: 180_000 });
-    await page.goto(new URL(`?model=/samples/${sample}`, server.url).href);
-    await loaded;
-    const row = await page.evaluate(async ([registryPath, fixturesPath, name]) => {
+    const row = await page.evaluate(async ([registryPath, geometryPath, name]) => {
       const { GeometryBackingRegistry } = await import(registryPath) as Registry;
-      const { describeMesh } = await import(fixturesPath) as Fixtures;
-      const state = (globalThis as unknown as { __ifc_lite_viewer_store__: { getState(): { geometryResult: { meshes: Parameters<Fixtures['describeMesh']>[0][] } | null } } })
-        .__ifc_lite_viewer_store__.getState();
-      const meshes = state.geometryResult?.meshes ?? [];
-      const registry = await GeometryBackingRegistry.open({ name: `geometry-backing-spec-${name}` });
-      const backing = await registry.begin(name, { chunkBytes: 1 << 20, queueBytes: 8 << 20 });
-      for (let i = 0; i < meshes.length; i += 64) await backing.writer.append(meshes.slice(i, i + 64));
-      await backing.writer.close();
-      const text = (value: unknown) => JSON.stringify(value, (_key, v) => typeof v === 'bigint' ? `bigint:${v}` : v);
-      let index = 0, mismatches = 0, fences = 0, readFences = 0, peak = 0;
-      for await (const batch of backing.reader.meshes()) {
-        peak = Math.max(peak, backing.reader.retainedBytes);
-        for (const mesh of batch) {
-          const original = meshes[index++];
-          if (text(describeMesh(mesh)) !== text(describeMesh(original))) mismatches++;
-          if (original.appearanceSource?.indices === original.indices) fences++;
-          if (mesh.appearanceSource?.indices === mesh.indices) readFences++;
+      const { GeometryProcessor } = await import(geometryPath) as Geometry;
+
+      // Compare typed-array views in place. The backing strips unused arena
+      // bytes and omits undefined fields when it writes a record.
+      const equal = (left: unknown, right: unknown): boolean => {
+        if (Object.is(left, right)) return true;
+        if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false;
+        if (ArrayBuffer.isView(left)) {
+          if (!ArrayBuffer.isView(right) || left.constructor !== right.constructor ||
+              left.byteLength !== right.byteLength) return false;
+          const a = new Uint8Array(left.buffer, left.byteOffset, left.byteLength);
+          const b = new Uint8Array(right.buffer, right.byteOffset, right.byteLength);
+          return a.every((byte, index) => byte === b[index]);
         }
+        if (Array.isArray(left) && Array.isArray(right)) {
+          return left.length === right.length && left.every((value, index) => equal(value, right[index]));
+        }
+        if (Object.getPrototypeOf(left) !== Object.prototype ||
+            Object.getPrototypeOf(right) !== Object.prototype) return false;
+        const a = left as Record<string, unknown>;
+        const b = right as Record<string, unknown>;
+        return Object.keys(a).every((key) => equal(a[key], b[key])) &&
+          Object.keys(b).every((key) => Object.hasOwn(a, key) || b[key] === undefined);
+      };
+      const response = await fetch(`/samples/${name}`);
+      if (!response.ok) throw new Error(`Could not fetch ${name} (HTTP ${response.status})`);
+      const buffer = new Uint8Array(await response.arrayBuffer());
+      const registry = await GeometryBackingRegistry.open({ name: `geometry-backing-spec-${name}` });
+      const processor = new GeometryProcessor();
+      try {
+        const backing = await registry.begin(name, { chunkBytes: 1 << 20, queueBytes: 8 << 20, decodedCacheBytes: 0 });
+        let meshes = 0, read = 0, mismatches = 0, fences = 0, readFences = 0, peak = 0;
+        let withAppearance = 0, withEntityIds = 0, completedMeshCount: number | undefined;
+        let chunkIndex = 0;
+        for await (const event of processor.processStreaming(buffer)) {
+          if (event.type === 'complete') completedMeshCount = event.totalMeshes;
+          if (event.type !== 'batch') continue;
+
+          // Flush and verify each producer batch before advancing the stream.
+          await backing.writer.append(event.meshes);
+          await backing.writer.flush();
+          meshes += event.meshes.length;
+          let batchRead = 0;
+          for (; chunkIndex < backing.directory.chunks.length; chunkIndex++) {
+            const lease = await backing.reader.leaseChunks([chunkIndex]);
+            try {
+              peak = Math.max(peak, backing.reader.retainedBytes);
+              for (const mesh of lease.meshes) {
+                const original = event.meshes[batchRead++];
+                const readFence = mesh.appearanceSource?.indices === mesh.indices;
+                const fence = original !== undefined && original.appearanceSource?.indices === original.indices;
+                if (!equal(original, mesh) || readFence !== fence) mismatches++;
+                if (readFence) readFences++;
+                if (fence) fences++;
+                if (original?.appearanceSource) withAppearance++;
+                if (original?.entityIds) withEntityIds++;
+              }
+            } finally {
+              lease.release();
+            }
+          }
+          if (batchRead !== event.meshes.length) {
+            throw new Error(`${name}: wrote ${event.meshes.length} meshes in batch, read ${batchRead}`);
+          }
+          read += batchRead;
+        }
+        await backing.writer.close();
+        const storedBytes = backing.directory.chunks.reduce((total, chunk) => total + chunk.bytes, 0);
+        return { name, meshes, read, completedMeshCount, mismatches, fences, readFences,
+          chunks: chunkIndex, storedBytes, peakDecodedBytes: peak, retainedDecodedBytes: backing.reader.retainedBytes,
+          withAppearance, withEntityIds, complete: backing.isComplete };
+      } finally {
+        processor.dispose();
+        await registry.close();
       }
-      let sourceBytes = 0;
-      for (const chunk of backing.directory.chunks) sourceBytes += chunk.bytes;
-      const out = { name, meshes: meshes.length, read: index, mismatches, fences, readFences,
-        chunks: backing.directory.chunks.length, storedBytes: sourceBytes, peakDecodedBytes: peak,
-        withAppearance: meshes.filter((mesh) => mesh.appearanceSource).length,
-        withEntityIds: meshes.filter((mesh) => mesh.entityIds).length, complete: backing.isComplete };
-      await registry.close();
-      return out;
-    }, [REGISTRY, FIXTURES, sample] as const);
+    }, [REGISTRY, GEOMETRY, sample] as const);
     rows.push(row);
-    expect(row.meshes).toBeGreaterThan(0);
-    expect(row.read).toBe(row.meshes);
-    expect(row.mismatches).toBe(0);
-    expect(row.readFences).toBe(row.fences);
-    expect(row.complete).toBe(true);
+    expect(row.meshes, sample).toBeGreaterThan(0);
+    expect(row.read, sample).toBe(row.meshes);
+    expect(row.completedMeshCount, sample).toBe(row.meshes);
+    expect(row.mismatches, sample).toBe(0);
+    expect(row.readFences, sample).toBe(row.fences);
+    expect(row.retainedDecodedBytes, sample).toBe(0);
+    expect(row.complete, sample).toBe(true);
   }
   await writeFile(info.outputPath('geometry-backing-public-models.json'), JSON.stringify(rows, null, 2));
 });

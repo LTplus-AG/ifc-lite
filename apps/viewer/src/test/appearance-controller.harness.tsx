@@ -20,6 +20,7 @@ import { appearanceAssets, modelAppearanceAssets } from '@/lib/appearance/model-
 import type { AppearanceWorker } from '@/lib/appearance/planner-worker-client.js';
 import type { AppearanceWorkerRequest, AppearanceWorkerResponse, AppearancePlan } from '@/lib/appearance/planner-types.js';
 import { fixtureModel } from './store-fixture.js';
+import { settle } from './render.js';
 import { registerLocale, setLocale } from '@/i18n';
 
 export const controllerPng = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII='), c => c.charCodeAt(0));
@@ -387,6 +388,7 @@ END-ISO-10303-21;`);
           await act(async () => { useViewerStore.getState().undo(MODEL); });
         } else if (scenario === 'stale-version') {
           await act(async () => { useViewerStore.getState().bumpMutationVersion(); });
+          await settle(); // panels see an edit once it settles (#10535)
           check(button('Apply').disabled, 'stale revision left Apply enabled');
           await click('Apply');
           await click('Discard');

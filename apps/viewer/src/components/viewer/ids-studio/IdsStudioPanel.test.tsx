@@ -10,6 +10,7 @@
  */
 
 import '@/test/setup-dom.js';
+import 'fake-indexeddb/auto';
 import { clearDownloads, downloadedNames } from '@/test/download-capture.js';
 import { installLayout } from '@/test/dom-layout.js';
 installLayout();
@@ -104,16 +105,51 @@ describe('IdsStudioPanel (IDS-030 … IDS-032)', () => {
 
   it('saves the document as .ids and .idsz, and closes it (IDS-040)', async () => {
     const fixture = await wallFixture();
-    useViewerStore.getState().idsStudioOpen(fixture.doc);
+    const exported = { ...fixture.doc, ids: { ...fixture.doc.ids, info: { title: 'Exported draft' } } };
+    useViewerStore.getState().idsStudioOpen(exported);
     clearDownloads();
     const ui = render(<IdsStudioPanel />);
     click(ui.querySelector('[aria-label="Save as IDS (.ids)"]') as HTMLElement);
     click(ui.querySelector('[aria-label="Save as Studio bundle (.idsz)"]') as HTMLElement);
-    assert.deepEqual(downloadedNames(), ['Fire-safety.ids', 'Fire-safety.idsz']);
+    assert.deepEqual(downloadedNames(), ['Exported-draft.ids', 'Exported-draft.idsz']);
     assert.equal(ui.querySelector('[role="alert"]'), null, 'no save error');
     click(ui.querySelector('[aria-label="Close the document"]') as HTMLElement);
-    assert.equal(useViewerStore.getState().idsStudioState, null);
+    await waitFor(() => useViewerStore.getState().idsStudioState === null, 'closing flushes its scheduled draft');
     assert.ok(byText(ui, 'button', 'New IDS'), 'the empty state is back');
+    const summary = byText(ui, 'summary', 'IDS drafts');
+    assert.ok(summary, 'export and close preserve the recoverable draft');
+    click(summary);
+    const savedDraft = [...ui.querySelectorAll('li')].find(row => row.textContent?.includes('Exported draft'));
+    assert.ok(savedDraft);
+    click(byText(savedDraft, 'button', 'Restore draft') as HTMLElement);
+    assert.deepEqual(doc(), exported);
+    assert.ok(byText(ui, '[role="status"]', 'Draft saved in this browser'));
+    click(byText(ui, 'button', 'Add specification') as HTMLElement);
+    assert.ok(byText(ui, '[role="status"]', 'Saving IDS draft…'));
+    assert.equal(byText(ui, '[role="status"]', 'Draft saved in this browser'), undefined);
+  });
+
+  it('resumes autosaving after browser storage refuses a draft write (#10585)', async ({ mock }) => {
+    const fixture = await wallFixture();
+    useViewerStore.getState().idsStudioOpen(fixture.doc);
+    const ui = render(<IdsStudioPanel />);
+    const status = (message: string) => byText(ui, '[role="status"]', message) !== undefined;
+    await waitFor(() => status('Draft saved in this browser'), 'the first snapshot commits');
+    const transaction = IDBDatabase.prototype.transaction;
+    const refusal = mock.method(IDBDatabase.prototype, 'transaction', function (this: IDBDatabase,
+      stores: string | string[], mode?: IDBTransactionMode, options?: IDBTransactionOptions) {
+      if (stores === 'items' && mode === 'readwrite') throw new DOMException('Storage full', 'QuotaExceededError');
+      return transaction.call(this, stores, mode, options);
+    });
+    try {
+      click(byText(ui, 'button', 'Add specification') as HTMLElement);
+      await waitFor(() => !!byText(ui, '[role="alert"]', 'The IDS draft could not be saved'), 'quota refusal reaches the editor');
+    } finally {
+      refusal.mock.restore();
+    }
+    click(byText(ui, 'button', 'Add specification') as HTMLElement);
+    await waitFor(() => status('Draft saved in this browser'), 'the next edit saves after quota recovers');
+    assert.equal(doc()?.ids.specifications.length, 3);
   });
 
   it('undoes and redoes with the panel keyboard shortcuts', async () => {

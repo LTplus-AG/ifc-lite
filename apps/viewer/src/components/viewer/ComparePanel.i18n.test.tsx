@@ -19,7 +19,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, click, render } from '@/test/render.js';
+import { cleanup, click, render, settle } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import { resolve } from '@/i18n/registry';
 import { en } from '@/i18n/en';
@@ -195,7 +195,7 @@ afterEach(() => {
 
 describe('ComparePanel localization (#4918)', () => {
   for (const modelCount of [2, 3] as const) {
-    it(`#5820 retains a stale comparison and shows Re-run (${modelCount} models)`, () => {
+    it(`#5820 retains a stale comparison and shows Re-run (${modelCount} models)`, async () => {
       useViewerStore.setState({
         models: new Map(Array.from({ length: modelCount }, (_, index) => {
           const id = String.fromCharCode(65 + index);
@@ -208,10 +208,12 @@ describe('ComparePanel localization (#4918)', () => {
       });
       const report = stampAnalysisReport(oneModifiedEntryResult(), captureAnalysisStamp());
       useViewerStore.setState({ compareResult: report });
+      await settle();
       const ui = render(<ComparePanel />);
       assert.equal(ui.querySelector('output'), null);
 
       act(() => useViewerStore.setState({ mutationVersion: 11 }));
+      await settle();
       assert.equal(useViewerStore.getState().compareResult, report);
       assert.match(ui.querySelector('output')?.textContent ?? '', /model changed/i);
       assert.ok(ui.querySelector('.opacity-60'), 'the old comparison is dimmed');
@@ -243,7 +245,7 @@ describe('ComparePanel localization (#4918)', () => {
     );
   });
 
-  it('translates the re-run action, count labels, and the focused change\'s BCF affordance', () => {
+  it('translates the re-run action, count labels, and the focused change\'s BCF affordance', async () => {
     useViewerStore.setState({
       models: new Map([
         ['A', model('A')],
@@ -254,6 +256,7 @@ describe('ComparePanel localization (#4918)', () => {
       compareResult: oneModifiedEntryResult(),
       compareSelectedKey: 'guid-1',
     });
+    await settle();
     const container = render(<ComparePanel onClose={() => {}} />);
     const englishDom = readableStrings(container);
     const afterDom = domAfterPseudo(container);

@@ -192,8 +192,7 @@ function CandidateReview({
   );
 
   const exportBcf = useCallback(async () => {
-    const topics = review?.topics;
-    if (!review || !topics?.length) return;
+    if (!review?.topics?.length) return;
     await runAction(async () => {
       try {
         const artifact = await layerReviewArtifact(review); downloadBlob(artifact.data, artifact.filename);

@@ -5,6 +5,9 @@ import { useViewerStore } from '@/store';
 import { viewerOperation } from './contract';
 import { assertToolActive } from '../cancellation';
 import { currentClashes } from './clash-native';
+import { revisionInput } from './state-revision';
+import { groupLibraryRevision } from './clash-group-revision';
+import { stale, unavailable } from './refusals';
 export const clashDraftOperations = [
   viewerOperation<{
     source: 'groups' | 'selection';
@@ -40,7 +43,7 @@ export const clashDraftOperations = [
           items: { type: 'string', minLength: 1, maxLength: 200 },
         },
         run_seq: { type: 'integer', minimum: 0 },
-        expected_groups: { type: 'string', maxLength: 1000000 },
+        expected_groups: revisionInput,
         name: { type: 'string', minLength: 1, maxLength: 200 },
         title: { type: 'string', minLength: 1, maxLength: 200 },
       },
@@ -63,13 +66,13 @@ export const clashDraftOperations = [
       ]);
       assertToolActive(c);
       const state = useViewerStore.getState();
-      if (state.clashRunSeq !== i.run_seq) throw new Error('Clash run changed.');
+      if (state.clashRunSeq !== i.run_seq) throw stale('Clash run changed.');
       const run = currentDraftRun();
-      if (!run) throw new Error('No native clash run.');
+      if (!run) throw unavailable('No native clash run.');
       const result = state.clashResult,
         library = useClashGroupLibrary.getState();
-      if (i.source === 'groups' && JSON.stringify(library.entries) !== i.expected_groups)
-        throw new Error('Manual groups changed.');
+      if (i.source === 'groups' && groupLibraryRevision(library) !== i.expected_groups)
+        throw stale('Manual groups changed.');
       const workspace = library.entries.find((row) => row.id === library.activeId);
       const batch =
         i.source === 'groups'
@@ -90,11 +93,10 @@ export const clashDraftOperations = [
         useViewerStore.getState().clashResult !== result ||
         useViewerStore.getState().clashRunSeq !== i.run_seq ||
         (i.source === 'groups' &&
-          (JSON.stringify(useClashGroupLibrary.getState().entries) !== i.expected_groups ||
-            useClashGroupLibrary.getState().activeId !== library.activeId))
+          groupLibraryRevision(useClashGroupLibrary.getState()) !== i.expected_groups)
       )
-        throw new Error('Native draft inputs changed during capture.');
-      if (!batch.topics.length) throw new Error('Native drafting produced no topics.');
+        throw stale('Native draft inputs changed during capture.');
+      if (!batch.topics.length) throw unavailable('Native drafting produced no topics.');
       const persisted = await c.commitAsync(() => saveDraftBatch(batch));
       return { batch_id: batch.id, topics: batch.topics.length, persisted };
     },

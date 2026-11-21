@@ -71,6 +71,7 @@ function fakeCtx(hit: { current: Hit }, snapEnabled = true) {
       getUp: () => ({ ...pose.up }),
     },
     renderer: {
+      getScene: () => ({}), // a resident scene: the #10264 measure readback gate asks first
       getPickClipRevision: () => clip.revision,
       getPickGeometryRevision: () => geometry.revision,
       raycastSceneMagnetic: (_x: number, _y: number, lock: { edge: unknown }, opts: { snapOptions: SnapOpts }) => (

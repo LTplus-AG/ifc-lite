@@ -20,6 +20,7 @@
       "@ifc-lite/cache": ["../../packages/cache/src"],
       "@ifc-lite/drawing-2d": ["../../packages/drawing-2d/src"],
       "@ifc-lite/export": ["../../packages/export/src"],
+      "@ifc-lite/export/merged-exporter": ["../../packages/export/src/merged-exporter"],
       "@ifc-lite/ids": ["../../packages/ids/src"],
       "@ifc-lite/ifcx": ["../../packages/ifcx/src"],
       "@ifc-lite/mutations": ["../../packages/mutations/src"],

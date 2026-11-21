@@ -22,7 +22,8 @@
 import { StructuralDiagnostics } from './schema-converter-structural-diagnostics.js';
 import { getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@ifc-lite/parser';
 import { escapeStepString } from './step-serialization.js';
-import { splitTopLevelStepArguments } from './step-argument-parser.js';
+import { readStepSlots, splitTopLevelStepArguments } from './step-argument-parser.js';
+import { breaksUserDefinedRule, userDefinedRule } from './schema-converter-userdefined.js';
 import { resolveMissingEnumMember, type EnumPolicyAttribute } from './schema-enum-policy.js';
 
 interface TargetEntity {
@@ -68,9 +69,20 @@ export class EnumReconciliation {
   /** Reuses this per-export collector so both STEP writers forward structural losses. */
   readonly structural = new StructuralDiagnostics();
   private readonly losses = new Map<Loss, Map<string, number>>();
+  /** Records written `.USERDEFINED.` with the label their rule needs unset, per type (#10780). */
+  private readonly unlabelled = new Map<string, number>();
 
-  /** Reconcile `line`, already converted to `toSchema`. */
+  /** Reconcile `line`, already converted to `toSchema`, then report a broken USERDEFINED rule (#10780). */
   apply(line: string, toSchema: SchemaVersionWithRegistry): string {
+    const out = this.reconcile(line, toSchema);
+    // Only a record that says USERDEFINED can break the rule; the rest stop here.
+    const record = /\.USERDEFINED\./i.test(out) ? readStepSlots(out) : null;
+    const rule = record ? userDefinedRule(toSchema, record.type) : undefined;
+    if (record && rule && breaksUserDefinedRule(record.slots, rule)) this.unlabelled.set(record.type, (this.unlabelled.get(record.type) ?? 0) + 1);
+    return out;
+  }
+
+  private reconcile(line: string, toSchema: SchemaVersionWithRegistry): string {
     const open = line.indexOf('(');
     const close = line.lastIndexOf(')');
     const eq = line.indexOf('=');
@@ -118,6 +130,10 @@ export class EnumReconciliation {
       // Every site is named: distinct sites are bounded by the ledger, so none is elided.
       const total = [...where.values()].reduce((a, b) => a + b, 0);
       out.push(`${total} enum value(s) the target schema does not define were ${LOSS_TEXT[loss]}: ${[...where.keys()].join(', ')} (#5365).`);
+    }
+    if (this.unlabelled.size > 0) {
+      const total = [...this.unlabelled.values()].reduce((a, b) => a + b, 0);
+      out.push(`${total} record(s) say PredefinedType .USERDEFINED. without the label their rule needs; none is invented: ${[...this.unlabelled.keys()].join(', ')} (#10780).`);
     }
     return [...out, ...this.structural.warnings()];
   }

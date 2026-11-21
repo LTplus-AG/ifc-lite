@@ -17,7 +17,8 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
-import { cleanup, press, render } from '@/test/render.js';
+import { cleanup, press } from '@/test/render.js';
+import { renderInViewport } from '@/test/viewport-scope';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { WallEndpointOverlay } from '@/components/viewer/tools/WallEndpointOverlay';
 import { emptyPlacementState, type PlacementState } from '@/lib/model-placement/state';
@@ -138,7 +139,7 @@ describe('wall.moveEndpoint (#6232 WP2)', () => {
         getViewpoint: () => null,
       },
     } as unknown as Partial<ReturnType<typeof useViewerStore.getState>>);
-    const ui = render(<WallEndpointOverlay />);
+    const ui = renderInViewport(<WallEndpointOverlay />);
     assert.deepEqual(projected[0], [0, 0, -0], 'start handle at the wall start');
     projected.length = 0;
 
@@ -186,7 +187,7 @@ describe('wall.moveEndpoint on an offset storey in a mm file (ledger follow-up t
         getViewpoint: () => null,
       },
     } as unknown as Partial<ReturnType<typeof useViewerStore.getState>>);
-    render(<WallEndpointOverlay />);
+    renderInViewport(<WallEndpointOverlay />);
     const [start, end] = projected;
     assert.ok(Math.abs(start[0] - 3) < 1e-6 && Math.abs(start[2] + 3) < 1e-6, `start handle at model (3, 3), got render ${start}`);
     assert.ok(Math.abs(end[0] - 7) < 1e-6 && Math.abs(end[2] + 3) < 1e-6, `end handle at model (7, 3), got render ${end}`);

@@ -2,19 +2,20 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useViewerStore } from '@/store';
+import { pageInput, type PageInput } from './result-limit';
 import { emptySchema } from './contract';
 import { bcfPage, bcfProjectMetadata, bcfTopicMetadata } from './coordination-bcf-metadata';
 import { coordination, idSchema, textSchema, boolSchema } from './coordination-common';
 function project() { const p = useViewerStore.getState().bcfProject; if (!p) throw new Error('Create or import a BCF project first.'); return p; }
 function topic(id: string) { const t = project().topics.get(id); if (!t) throw new Error('BCF topic does not exist.'); return t; }
 export const coordinationBcfOperations = [
-  coordination<{ offset?: number; limit?: number; topic_id?: string }>('bcf.read', 'Read bounded native project/topic metadata. Defaults to 20 topics with a 192 KiB page budget; use next_offset or topic_id, and bcf.comments/bcf.viewpoints for child pages. Screenshot/media bodies stay in native state for application and ZIP export. expected_modified is the exact native optimistic edit guard.', ['read'], {
-    type: 'object', properties: { offset: { type: 'integer', nullable: true, minimum: 0 }, limit: { type: 'integer', nullable: true, minimum: 1, maximum: 20 }, topic_id: { type: 'string', nullable: true, minLength: 1, maxLength: 200 } }, required: [], additionalProperties: false,
+  coordination<PageInput & { limit?: number; topic_id?: string }>('bcf.read', 'Read bounded native project/topic metadata. Defaults to 20 topics with a 192 KiB page budget; continue with next_offset and page_revision or select by topic_id, and bcf.comments/bcf.viewpoints for child pages. Screenshot/media bodies stay in native state for application and ZIP export. expected_modified is the exact native optimistic edit guard.', ['read'], {
+    type: 'object', properties: { ...pageInput.properties, limit: { type: 'integer', nullable: true, minimum: 1, maximum: 20 }, topic_id: { type: 'string', nullable: true, minLength: 1, maxLength: 200 } }, required: [], additionalProperties: false,
   }, i => {
     const s = useViewerStore.getState(), p = s.bcfProject, selected = i.topic_id ? p?.topics.get(i.topic_id) : undefined;
     if (i.topic_id && !selected) throw new Error('BCF topic does not exist.');
-    const rows = selected ? [selected] : p?.topics.values() ?? [], total = selected ? 1 : p?.topics.size ?? 0;
-    const page = bcfPage(rows, total, i.offset ?? 0, i.limit ?? 20, bcfTopicMetadata);
+    const rows = selected ? [selected] : p?.topics ?? [];
+    const page = bcfPage(rows, i, i.limit ?? 20, bcfTopicMetadata);
     return { project: p ? { ...bcfProjectMetadata(p), topics: page.items } : null, page: page.page, author: s.bcfAuthor.slice(0, 2000), author_complete: s.bcfAuthor.length <= 2000, active_topic_id: s.activeTopicId, overlay: s.bcfOverlayVisible };
   }),
   coordination('bcf.createProject', 'Create an empty local BCF project. Refuses to replace an existing project.', ['configuration'], textSchema, async (i, c) => {

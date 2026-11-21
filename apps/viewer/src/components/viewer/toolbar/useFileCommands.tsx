@@ -35,12 +35,16 @@ import { FederationSetupControls } from '../FederationSetupControls';
 import { FILE_ACCEPT, isModelSidecarFile, isSupportedModelFile } from '@/services/supported-model-files';
 import { captureModelTags, restoreModelTags } from '@/lib/model-tags/carry-over';
 
-// lazyChunk: a failed chunk renders nothing instead of unwinding the toolbar (#10772).
-// A failed load never mounts the dialog: clear the open request, and stop marking later ones open.
+// Share the import between the lazy UI and the operation that needs its consent surface.
 let shareChunkFailed = false;
-const ShareDialog = lazyChunk(() => import('../ShareDialog').then(module => ({ default: module.ShareDialog }), (error: unknown) => {
-  shareChunkFailed = true; useCollabShareReview.setState({ dialogOpen: false }); throw error;
-}));
+const importShareDialog = () => import('../ShareDialog').then(module => ({ default: module.ShareDialog }), (error: unknown) => {
+  shareChunkFailed = true;
+  useCollabShareReview.setState({ dialogOpen: false, candidate: null });
+  throw error;
+});
+let shareDialogLoad: ReturnType<typeof importShareDialog> | undefined;
+const loadShareDialog = () => shareDialogLoad ??= importShareDialog();
+const ShareDialog = lazyChunk(loadShareDialog);
 
 // FILE_ACCEPT offers `.dxf` while `isSupportedModelFile` rejects it: DXF
 // files are 2D reference underlays, not models, and split off to the DXF
@@ -362,7 +366,8 @@ export function useFileCommands(): FileCommands {
   }, [loadFile, addModel, clearAllModels]);
 
   useFileHostRegistration({ handleOpenClick, handleAddModelClick, handleRefresh,
-    openShareDialog: collabEnabled ? openShareDialog : undefined, loadFile });
+    openShareDialog: collabEnabled ? openShareDialog : undefined,
+    preloadShareDialog: collabEnabled ? loadShareDialog : undefined, loadFile });
 
   const fileInputs = (
     <>

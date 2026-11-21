@@ -175,6 +175,8 @@ export const EXPECTATIONS = Object.freeze({
   warned: ['loaded', 'refused', 'awaiting-decision', 'cancelled', 'killed-after-continue'],
   loaded: ['loaded'],
   refused: ['refused'],
+  // The consent dialog at a reported 8 GB, left unanswered (nightly lane, #10264 A2).
+  'awaiting-decision': ['awaiting-decision'],
 });
 
 /**

@@ -18,7 +18,7 @@ import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { IfcParser, type MapConversion } from '@ifc-lite/parser';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel } from '@/test/store-fixture';
-import { render, cleanup, waitFor, click } from '@/test/render';
+import { render, cleanup, waitFor, click, settle } from '@/test/render';
 import { spatialReferenceFromIfc } from '@/lib/geo/ifc-spatial-reference';
 import { SiteContextSection, useSiteContextAnchor } from './SiteContextSection';
 
@@ -140,6 +140,7 @@ test('removing the context anchor hides its note while context models stay loade
   await waitFor(() => !!note(), 'note for the loaded anchor');
   assert.ok(note()!.textContent?.includes(a.name));
   act(() => { useViewerStore.getState().removeModel(a.id); });
+  await settle();
   await waitFor(() => host.textContent?.includes('Load site context') === true, 'model B site context section', 5_000);
   // Compare a primitive so a regression
   // cannot make node:assert inspect the DOM's cyclic object graph (#10545).

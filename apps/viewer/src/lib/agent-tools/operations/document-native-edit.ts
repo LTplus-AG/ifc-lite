@@ -8,6 +8,8 @@ import { nativeDocumentRevision, patchNativeDocumentBlock, patchNativeDocumentPa
 import { nativeDocumentSummary, nativeBlockMetadata, nativeDocumentPageMetadata } from '@/lib/document/native-inspection';
 import { viewerOperation, type ViewerOperationContext } from './contract';
 import { metadata, checkpoint, idSchema } from './analytics-common';
+import { boundedMappedPage, pageInput, pageOutputProperties, type PageInput } from './result-limit';
+import { stateRevision } from './state-revision';
 const revisionSchema = { type: 'string' as const, pattern: '^sha256:[a-f0-9]{64}$' };
 const json = { type: 'string' as const, minLength: 2, maxLength: 100000 };
 const written = { type: 'object', properties: { id: { type: 'string' }, revision: { type: 'string' }, block_id: { type: ['string', 'null'] }, blocks: { type: 'integer' } }, required: ['id', 'revision', 'block_id', 'blocks'], additionalProperties: false };
@@ -21,12 +23,13 @@ async function persist(before: DocumentSpec, next: DocumentSpec, blockId: string
   return { id: next.id, revision: await nativeDocumentRevision(next), block_id: blockId, blocks: next.blocks.length };
 }
 export const documentNativeEditOperations = [
-  viewerOperation<{ id: string; offset: number; limit: number }>(metadata('document.inspect', 'document', 'Inspect one document revision/page metadata and a bounded page of block metadata. Large media bodies, evidence, generated text and long text are omitted/truncated; full native JSON remains available through document.export.', ['read'], { type: 'object', properties: { document: { type: 'object' }, page_metadata_json: { type: 'string' }, blocks: { type: 'array' }, total_blocks: { type: 'integer' }, next_offset: { type: ['integer', 'null'] } }, required: ['document', 'page_metadata_json', 'blocks', 'total_blocks', 'next_offset'], additionalProperties: false }), {
-    type: 'object', properties: { id: idSchema.properties.id, offset: { type: 'integer', minimum: 0 }, limit: { type: 'integer', minimum: 1, maximum: 20 } }, required: ['id', 'offset', 'limit'], additionalProperties: false,
-  } satisfies JSONSchemaType<{ id: string; offset: number; limit: number }>, async (i, c) => {
+  viewerOperation<PageInput & { id: string; offset: number; limit: number }>(metadata('document.inspect', 'document', 'Inspect one document revision/page metadata and a bounded page of block metadata. Large media bodies, evidence, generated text and long text are omitted/truncated; full native JSON remains available through document.export. Pass next_offset and page_revision to continue.', ['read'], { type: 'object', properties: { document: { type: 'object' }, page_metadata_json: { type: 'string' }, blocks: { type: 'array' }, total_blocks: { type: 'integer' }, ...pageOutputProperties }, required: ['document', 'page_metadata_json', 'blocks', 'total_blocks', 'next_offset', 'page_revision'], additionalProperties: false }), {
+    type: 'object', properties: { id: idSchema.properties.id, ...pageInput.properties, offset: { type: 'integer', minimum: 0 }, limit: { type: 'integer', minimum: 1, maximum: 20 } }, required: ['id', 'offset', 'limit'], additionalProperties: false,
+  } satisfies JSONSchemaType<PageInput & { id: string; offset: number; limit: number }>, async (i, c) => {
     const doc = current(i.id); const summary = await nativeDocumentSummary(doc); checkpoint(c); if (current(i.id) !== doc) throw new Error('Document changed during inspection.');
-    const blocks = doc.blocks.slice(i.offset, i.offset + i.limit).map((block, n) => nativeBlockMetadata(block, i.offset + n));
-    return { document: summary, page_metadata_json: nativeDocumentPageMetadata(doc), blocks, total_blocks: doc.blocks.length, next_offset: i.offset + blocks.length < doc.blocks.length ? i.offset + blocks.length : null };
+    const header = { document: summary, page_metadata_json: nativeDocumentPageMetadata(doc) };
+    const { items: blocks, total: total_blocks, offset: _offset, ...page } = boundedMappedPage(doc.blocks, nativeBlockMetadata, i, header, stateRevision(summary.revision));
+    return { ...header, ...page, blocks, total_blocks };
   }),
   viewerOperation<{ id: string; expected_revision: string; block_id: string; patch_json: string }>(metadata('document.editBlock', 'document', 'Patch only existing native editable fields on one block with a compact full-document SHA-256 guard. Unedited media and AI provenance remain intact; editing generated text keeps its authored-versus-generated distinction. null clears an optional native field. Native block-kind allowlists and full document validation run before native CAS persistence.', ['configuration'], written), {
     type: 'object', properties: { id: idSchema.properties.id, expected_revision: revisionSchema, block_id: idSchema.properties.id, patch_json: json }, required: ['id', 'expected_revision', 'block_id', 'patch_json'], additionalProperties: false,

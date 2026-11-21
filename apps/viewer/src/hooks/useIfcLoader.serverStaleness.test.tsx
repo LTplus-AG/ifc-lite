@@ -20,7 +20,7 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 const { useIfcLoader } = await import('./useIfcLoader.js');
 const { getProcessingServerUrl, setProcessingServerUrl } = await import('@/lib/processed-model');
 const { loadDialogs } = await import('@/test/dialog-host.js');
-const { click, waitFor } = await import('@/test/render.js');
+const { click, settle, waitFor } = await import('@/test/render.js');
 const { propertyModelBuffer } = await import('../../../../packages/server-client/test/fixtures/property-model.js');
 
 const PARQUET_RESULT: ParquetParseResponse = {
@@ -89,6 +89,7 @@ beforeEach(async () => {
     return null;
   });
   mock.method(GeometryProcessor.prototype, 'init', async () => { engineInits++; throw new Error('local fallback sentinel #9538'); });
+  await settle();
   container = document.createElement('div'); document.body.appendChild(container);
   const { ConfirmDialogHost } = await loadDialogs();
   root = createRoot(container); await act(async () => { root.render(<><Probe /><ConfirmDialogHost /></>); });

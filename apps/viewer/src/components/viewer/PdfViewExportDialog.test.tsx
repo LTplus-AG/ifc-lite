@@ -43,7 +43,7 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { createSyntheticDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '@/hooks/useBCF.js';
-import { render, click, cleanup, waitFor } from '@/test/render.js';
+import { render, click, cleanup, settle, waitFor } from '@/test/render.js';
 import { PdfViewExportDialog, type ViewPdfExporter } from './PdfViewExportDialog.js';
 import type { ViewPdfExportInput } from '@/lib/export/view-pdf/generate-view-pdf.js';
 
@@ -622,7 +622,7 @@ describe('PdfViewExportDialog follows a retype while open (#10246)', () => {
     document.body.innerHTML = '';
   });
 
-  it('draws a space retyped to a wall once its class is no longer hidden', () => {
+  it('draws a space retyped to a wall once its class is no longer hidden', async () => {
     // A 4 x 3 wall (501) and an 8 x 6 IfcSpace (502); Spaces are off by default, so only the wall is drawn.
     const space = { ...boxMesh({ x: 8, y: 6, z: 2 }), expressId: 502, ifcType: 'IfcSpace' };
     const geometry = { ...boxGeometry({ x: 8, y: 6, z: 2 }), meshes: [boxMesh(), space] };
@@ -648,6 +648,7 @@ describe('PdfViewExportDialog follows a retype while open (#10246)', () => {
       new StoreEditor(store, view).setEntityType(502, 'IfcWall');
       useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 });
     });
+    await settle();
     // 8 m x 6 m at 10 mm/m, plus margins and the scale band.
     assert.match(readout(), /Estimated page: 100 x 97 mm/);
   });

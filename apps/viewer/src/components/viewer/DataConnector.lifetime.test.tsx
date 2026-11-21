@@ -10,7 +10,7 @@ import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
-import { advance, cleanup, click, render } from '@/test/render';
+import { advance, cleanup, click, render, settle } from '@/test/render';
 import { setLocale } from '@/i18n';
 import { replayWorkspaceHistory } from '@/lib/model-placement/history';
 import { DataConnector } from './DataConnector';
@@ -31,6 +31,7 @@ beforeEach(async () => {
     mutationViews: new Map(), undoStacks: new Map(), redoStacks: new Map(), mutationBatchTags: new Map(),
     referenceUndo: [], referenceRedo: [], modelPlacement: original.modelPlacement,
     collabRole: null, editEnabled: true, loading: false });
+  await settle();
 });
 afterEach(() => { cleanup(); useViewerStore.setState(original); });
 function button(label: string | RegExp) {

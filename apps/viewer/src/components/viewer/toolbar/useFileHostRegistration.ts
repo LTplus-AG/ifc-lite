@@ -16,6 +16,7 @@ interface FileHostActions {
   handleAddModelClick: () => Promise<void>;
   handleRefresh: () => Promise<void>;
   openShareDialog?: () => void;
+  preloadShareDialog?: () => Promise<unknown>;
   loadFile: ReturnType<typeof useIfcLoader>['loadFile'];
 }
 function reportError(error: unknown) {
@@ -23,7 +24,7 @@ function reportError(error: unknown) {
   toast.error(error instanceof Error ? error.message : String(error));
 }
 export function useFileHostRegistration({ handleOpenClick, handleAddModelClick, handleRefresh,
-  openShareDialog, loadFile }: FileHostActions): void {
+  openShareDialog, preloadShareDialog, loadFile }: FileHostActions): void {
   const ownerRef = useRef<object | null>(null);
   // Only a real effect lifetime change retires an in-flight blank action.
   // Loader metadata and locale updates refresh callbacks on this same owner.
@@ -49,9 +50,10 @@ export function useFileHostRegistration({ handleOpenClick, handleAddModelClick, 
       },
       startBlank: () => { void startBlankModel(loadFile, () => ownerRef.current === owner && getMountedFileHost()?.owner === owner).catch(reportError); },
       openShareDialog,
+      preloadShareDialog,
     };
     return registerMountedFileHost(host);
-  }, [handleOpenClick, handleAddModelClick, handleRefresh, openShareDialog, loadFile]);
+  }, [handleOpenClick, handleAddModelClick, handleRefresh, openShareDialog, preloadShareDialog, loadFile]);
   useEffect(() => {
     const handler = () => { void handleOpenClick().catch(reportError); };
     window.addEventListener('ifc-lite:open-files', handler);

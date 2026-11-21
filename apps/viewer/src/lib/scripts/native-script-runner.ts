@@ -190,9 +190,10 @@ export class NativeScriptRunner {
       const { createViewerSandbox } = await import('@/lib/scripts/viewer-sandbox');
 
       sandbox = await createViewerSandbox(bim, config);
-      this.active = sandbox;
       // Cancelled while the sandbox was being created: settle the store too, or it stays 'running'.
+      // Checked before taking `active`, so a cancelled run never displaces a newer run's sandbox.
       if (this.cancellationEpoch !== cancellationEpoch) { if (stillCurrent()) setExecutionState('idle'); return null; }
+      this.active = sandbox;
 
       const result = await sandbox.eval(code);
 
@@ -319,21 +320,19 @@ export class NativeScriptRunner {
     }
   }
   ownsEpoch(epoch: number): boolean { return this.sharedEpoch === epoch; }
-  /** True when cancel() ran since the given cancellation count (see cancellationCount). */
+  /** True when cancel(), reset() or dispose() ran since the given cancellation count (see cancellationCount). */
   cancelledSince(count: number): boolean { return this.cancellationEpoch !== count; }
   get cancellationCount(): number { return this.cancellationEpoch; }
   cancel(): void {
-    this.cancellationEpoch++;
     if (useViewerStore.getState().scriptRunEpoch === this.sharedEpoch) this.reset();
     else { this.epoch++; this.dispose(); }
   }
   reset(): void {
     const { setScriptExecutionState: setExecutionState, setScriptError: setError, setScriptDiagnostics: setDiagnostics } = useViewerStore.getState();
     const setResult = (result: ScriptResult | null) => useViewerStore.getState().setScriptResult(result ? stampAnalysisReport(result, captureAnalysisStamp()) : null);
-    if (this.active) {
-      disposeSandboxReportingAbort(this.active);
-      this.active = null;
-    }
+    // dispose() advances the cancellation epoch, so this runner's own run still creating its sandbox
+    // stops before eval. Another runner's run only loses its store writes, through the shared epoch.
+    this.dispose();
     // Same reasoning as `useClash.clearAll()`/`useIDS.clearIDS()`: bump the
     // shared epoch so an in-flight run (this instance's or any other
     // runner instance's) that lands after this reset cannot

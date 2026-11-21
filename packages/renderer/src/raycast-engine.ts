@@ -41,6 +41,8 @@ export class RaycastEngine {
     private flatIndex: RaycastFlatIndex;
     private pointCloudProvider: PointCloudRayProvider | null = null;
     private sourceSnapCurves: readonly SourceSnapCurve[] = [];
+    /** Flat pieces read back for released geometry (#10264); empty when unused. */
+    private readbackMeshes: readonly MeshData[] = [];
 
     constructor(camera: Camera, scene: RaycastScene, canvas: HTMLCanvasElement) {
         this.camera = camera;
@@ -81,9 +83,22 @@ export class RaycastEngine {
         return piece => isEntityVisible(piece.expressId, hidden, isolated);
     }
 
+    /**
+     * Released geometry read back by the host for an imminent raycast or snap
+     * (#10264). They join the flat candidates under the same visibility and
+     * clip rules; `null` clears them. The host owns their lifetime and frame
+     * (place them with `SceneContents.placeAppearanceSource`).
+     */
+    setReadbackMeshes(meshes: readonly MeshData[] | null): void {
+        this.readbackMeshes = meshes ?? [];
+    }
+
     /** Flat candidates near the ray, plus ray-culled instanced occurrences. */
     private meshesForRay(options: PickOptions | undefined, ray: Ray): MeshData[] {
         const allMeshData = this.flatIndex.query(ray, this.visibilityFilter(options));
+        for (const piece of this.readbackMeshes) {
+            if (isEntityVisible(piece.expressId, options?.hiddenIds, options?.isolatedIds)) allMeshData.push(piece);
+        }
         const seenInstancedKeys = new Set<string>();
 
         // GPU-instanced occurrences live only in the shard, not meshDataMap. Materialize

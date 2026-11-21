@@ -18,7 +18,7 @@ import { act } from 'react';
 import type { ProfileSection } from '@ifc-lite/create';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
-import { blur, cleanup, render, type } from '@/test/render.js';
+import { blur, cleanup, render, settle, type, waitFor } from '@/test/render.js';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
 import { commitElementSize } from '@/lib/element-size-commit';
@@ -93,21 +93,25 @@ describe('a profiled beam or column through the rectangle size writes (#6232 D2)
     assert.equal(profileWrites(), 0);
   });
 
-  it('the inspector shows a hollow column\'s Width and Depth read-only and keeps its Height editable', () => {
+  it('the inspector shows a hollow column\'s Width and Depth read-only and keeps its Height editable', async () => {
     const id = column();
     select(id);
     const root = render(<ModelInspectorPanel />);
+    // The authored column reaches the inspector once its edit settles (#10535).
+    await waitFor(() => root.querySelector('input[aria-label="Width in metres"]')?.hasAttribute('readonly') ?? false, 'the hollow column reaches the inspector');
     assert.deepEqual(['Width', 'Depth', 'Height'].map((l) => input(root, `${l} in metres`).readOnly), [true, true, false]);
     const height = input(root, 'Height in metres');
     type(height, '4'); blur(height);
+    await settle();
     assert.equal(input(root, 'Height in metres').value, '4.00');
     assert.deepEqual(readElementProfile(s(), MODEL_ID, id), TUBE);
     assert.equal(profileWrites(), 0);
   });
 
-  it('a rectangle keeps every row editable', () => {
+  it('a rectangle keeps every row editable', async () => {
     const id = made(s().addBeam(MODEL_ID, STOREY, { Start: [0, 0, 3], End: [4, 0, 3], Width: 0.2, Height: 0.3 }));
     select(id);
+    await settle();
     const root = render(<ModelInspectorPanel />);
     assert.deepEqual(['Length', 'Width', 'Height'].map((l) => input(root, `${l} in metres`).readOnly), [false, false, false]);
   });

@@ -25,7 +25,7 @@ function Probe() {
   const merged = useFederatedGeometry(state.models, state.geometryResult, indices, state.geometryContentVersion);
   const filtered = useFilteredGeometry(merged, state.geometryContentVersion, state.typeVisibility, state.typeViewMode);
   mergedMeshes = merged?.meshes ?? [];
-  visible = filtered.filteredGeometry ?? [];
+  visible = (filtered.sceneGeometry ?? []).filter(mesh => !filtered.typeHidden.ids.has(mesh.expressId));
   return null;
 }
 function fingerprint(meshes: MeshData[]): string {

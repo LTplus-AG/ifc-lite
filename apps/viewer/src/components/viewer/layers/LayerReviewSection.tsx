@@ -96,17 +96,22 @@ function CandidateReview({
   const [description, setDescription] = useState('');
   const [withViewpoint, setWithViewpoint] = useState(true);
   const automationReview = useLayerAutomationReview(state => state.candidate);
+  const withdrawnBy = useRef<string | null>(null);
   useEffect(() => {
     // Only an action aimed at this candidate and ref changes what this section has staged.
     if (!automationReview || automationReview.candidateId !== candidateId || automationReview.refName !== refName) return;
     if (automationReview.action !== 'comment') {
-      setStagedEntity(null);
+      // A newer action withdraws a staged comment the user has not edited (editing releases the binding),
+      // once per action, so re-running for a later staging change never repeats it.
+      if (withdrawnBy.current === automationReview.id) return;
+      withdrawnBy.current = automationReview.id;
+      if (stagedEntity !== null) { setStagedEntity(null); setTitle(''); setDescription(''); }
       return;
     }
     if (!claimLayerAutomationReview(automationReview, 'review')) return;
     setStagedEntity(automationReview.entity);
     setTitle(automationReview.title); setDescription(automationReview.description); setWithViewpoint(automationReview.withViewpoint);
-  }, [automationReview, candidateId, refName]);
+  }, [automationReview, candidateId, refName, stagedEntity]);
   // One registry action at a time (C-2): a same-tick double press is refused
   // before React re-renders the buttons disabled.
   const flight = useAsyncRun();
@@ -275,7 +280,7 @@ function CandidateReview({
           />
           <textarea
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={(e) => { setStagedEntity(null); setDescription(e.target.value); }}
             rows={2}
             placeholder={t('layersPanel.review.descriptionPlaceholder')}
             aria-label={t('layersPanel.review.descriptionAriaLabel')}

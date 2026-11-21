@@ -99,6 +99,8 @@ for (const event of ['editing the title', 'clearing the title', 'staging a non-c
     act(() => useViewerStore.getState().setSelectedEntityIds([8]));
     if (event === 'staging a non-comment action') {
       act(() => useLayerAutomationReview.setState({ candidate: { ...staged, id: 'staged-merge', action: 'merge' } }));
+      await waitFor(() => title()?.value === '', 'the withdrawn staged comment is cleared, not posted on the new selection');
+      type(title()!, 'Manual note');
     } else if (event === 'clearing the title') {
       type(title()!, '');
       assert.ok(title()?.placeholder.includes(WALL_B), 'the empty title follows the live selection');

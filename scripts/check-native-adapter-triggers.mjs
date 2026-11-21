@@ -27,7 +27,9 @@
  *     does not cover it;
  *   - the nightly route that covers what merge-queue batches skip loses its
  *     coverage record, its range-carrying report or its bisect
- *     (nightlyProblems in scripts/lib/native-adapter-nightly.mjs).
+ *     (nightlyProblems in scripts/lib/native-adapter-nightly.mjs);
+ *   - a job of the split lane loses the gate, its own concurrency group or the
+ *     bisect checkout (splitProblems in scripts/lib/native-adapter-split.mjs).
  *
  * Manifests are parsed by hand, so a shape this parser cannot read throws
  * (`[dependencies.foo]` sub-tables, multi-line inline tables) rather than
@@ -52,6 +54,7 @@ import { permissionBlocks, workflowAsks } from './lib/workflow-permissions.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 import { BATCH_EXCLUDE, BATCH_KEEP, batchGlobs, decideBatch, scriptImports } from './lib/native-adapter-batch.mjs';
 import { jobBlock, NIGHTLY_IF, nightlyProblems, WORKFLOW } from './lib/native-adapter-nightly.mjs';
+import { laneJobBlocks, splitProblems } from './lib/native-adapter-split.mjs';
 
 export { jobBlock };
 
@@ -171,10 +174,9 @@ export function corpusJobProblems(text) {
   const out = [];
   const corpus = jobBlock(text, 'native-corpus');
   const result = jobBlock(text, 'native-corpus-result');
-  const main = jobBlock(text, 'native-adapter');
   if (corpus === null) return [`${WORKFLOW}: no native-corpus job; the nightly corpus must not run inside native-adapter`];
   if (result === null) out.push(`${WORKFLOW}: no native-corpus-result aggregate job over the shards`);
-  if (main !== null && /--manifest tests\/models\/manifest/.test(main)) out.push(`${WORKFLOW}: native-adapter runs the corpus itself; it belongs in the native-corpus job`);
+  for (const { id, block } of laneJobBlocks(text)) if (/--manifest tests\/models\/manifest/.test(block)) out.push(`${WORKFLOW}: ${id} runs the corpus itself; it belongs in the native-corpus job`);
   if (new RegExp(`^ {4}if: ${CORPUS_IF.replace(/[().|=&']/g, '\\$&')}\\s*$`, 'm').test(corpus) === false) out.push(`${WORKFLOW}: native-corpus must be gated on exactly: ${CORPUS_IF}`);
   const budget = corpus.match(/^ {4}timeout-minutes: (\d+)\s*$/m);
   if (!budget || Number(budget[1]) > 360) out.push(`${WORKFLOW}: native-corpus needs a literal timeout-minutes within GitHub's 360-minute limit`);
@@ -295,16 +297,15 @@ export function audit(root, exclude = BATCH_EXCLUDE, keep = BATCH_KEEP) {
       if (!coversAll(glob, batch)) failures.push(`${WORKFLOW}: BATCH_EXCLUDE drops ${glob}, which a merge-queue batch must always run on`);
     }
     // Every .mjs the lane runs with `node [--flags]`, and its scripts/ imports, must be able to trigger it, on a batch too.
-    // Only the job a labelled PR or a batch runs: the nightly-only jobs' scripts (nightly-range, the corpus) cannot change its verdict.
-    for (const script of scriptImports(root, [...(jobBlock(text, 'native-adapter') ?? text).matchAll(/\bnode (?:--[\w-]+(?:=\S+)? )*([\w./-]+\.mjs)\b/g)].map((m) => m[1]))) {
+    // Only the jobs a labelled PR or a batch runs (the monolith, the split): the nightly-only jobs' scripts (nightly-range, the corpus) cannot change its verdict.
+    for (const script of scriptImports(root, [...laneJobBlocks(text).map((j) => j.block).join('\n').matchAll(/\bnode (?:--[\w-]+(?:=\S+)? )*([\w./-]+\.mjs)\b/g)].map((m) => m[1]))) {
       if (!matchesAny(script, pr)) failures.push(`${WORKFLOW}: ${script} is run by (or imported by a script run by) the job but is not covered by on.pull_request.paths`);
       else if (!matchesAny(script, batch)) failures.push(`${WORKFLOW}: ${script} is run by (or imported by a script run by) the job but BATCH_EXCLUDE drops it from merge-queue batches`);
     }
   }
   const browser = jobBlock(text, 'browser-corpus');
   if (browser !== null && !/pnpm fixtures[\s\S]*browser\.mjs/.test(browser)) failures.push(`${WORKFLOW}: browser-corpus must download the corpus (pnpm fixtures) before comparing; the checkout does not hold the models`);
-  failures.push(...corpusJobProblems(text));
-  failures.push(...nightlyProblems(root, text));
+  failures.push(...corpusJobProblems(text), ...splitProblems(text), ...nightlyProblems(root, text));
   return failures;
 }
 

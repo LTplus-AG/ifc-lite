@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useSyncExternalStore } from 'react';
 import { getGlobalRenderer, subscribeGlobalRenderer } from './useBCF';
+import { objectIdentity } from '@/utils/objectIdentity';
 
 export function readSceneTriangleCounts(): ReadonlyMap<number, number> | null {
   const scene = getGlobalRenderer()?.getScene();
@@ -12,7 +13,7 @@ function subscribe(listener: () => void): () => void {
   let releaseScene: (() => void) | undefined;
   const bind = () => {
     releaseScene?.();
-    releaseScene = getGlobalRenderer()?.getScene().onGeometryChange?.(listener);
+    releaseScene = getGlobalRenderer()?.getScene?.()?.onGeometryChange?.(listener);
     listener();
   };
   const releaseRenderer = subscribeGlobalRenderer(bind);
@@ -24,3 +25,17 @@ function subscribe(listener: () => void): () => void {
 export function useSceneTriangleCounts() {
   return useSyncExternalStore(subscribe, readSceneTriangleCounts, () => null);
 }
+
+/** Cached IFC loads restore the instance buffers directly into the scene. */
+export function readInstancedSceneRevision(): string {
+  const renderer = getGlobalRenderer();
+  const count = renderer?.getScene?.()?.getInstancedEntityCount?.() ?? 0;
+  return count ? `${objectIdentity(renderer)}:${renderer?.getPickGeometryRevision?.() ?? count}` : '';
+}
+
+export function useInstancedSceneRevision(enabled: boolean): string {
+  return useSyncExternalStore(enabled ? subscribe : noSubscription, enabled ? readInstancedSceneRevision : emptyRevision, emptyRevision);
+}
+
+const emptyRevision = () => '';
+const noSubscription = () => () => {};

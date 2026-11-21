@@ -137,7 +137,7 @@ export function connectAgentBridge({ port, code, bim, WebSocket }: ConnectAgentB
     pairingCode: code,
     tools: mainViewerBridgeTools(),
     // The grant is read from the client at dispatch and again at the write: a revoke refuses what is not yet written.
-    dispatch: (name, args, signal) => dispatchMainViewerTool(host, name, args, { signal, canEdit: () => client.canEditNow() }),
+    dispatch: (name, args, signal, onDelivery) => dispatchMainViewerTool(host, name, args, { signal, onDelivery, canEdit: () => client.canEditNow() }),
     modelIdFor: (args) => modelIdForCall(host, args),
     // The Vite define is absent under the Node test runner.
     clientInfo: { name: 'ifc-lite viewer', version: typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev' },

@@ -165,6 +165,17 @@ describe('analyzeConversionLoss', () => {
     }] : []);
   });
 
+  it.each(['(#20)', '(#20,#21)'])('reports an up-only BenchmarkValues SET %s on downgrade (#10807)', async (set) => {
+    const text = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('objective.ifc','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n"
+      + `#5=IFCOBJECTIVE('id',$,'Objective',$,$,$,$,${set},$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n`;
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer);
+    const report = analyzeConversionLoss(store, 'IFC4', 'IFC2X3');
+    expect(report.entries.find(({ sourceType }) => sourceType === 'IFCOBJECTIVE')).toMatchObject({
+      expressIds: [5],
+      droppedAttributes: expect.arrayContaining(['BenchmarkValues']),
+    });
+  });
+
   it('skips a type the store lists with zero instances', () => {
     const report = analyzeConversionLoss(storeOf({ IFCSTRUCTURALLOADCONFIGURATION: [] }), 'IFC4', 'IFC2X3');
     expect(report.entries).toEqual([]);

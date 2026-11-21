@@ -91,6 +91,26 @@ pub(crate) const ATTR_MAPS: &[AttrMap] = &[
     same("IFCPERFORMANCEHISTORY"),
     AttrMap { renamed: &[("TaskId", "Identification")], ..same("IFCTASK") },
     same("IFCPROPERTYDEPENDENCYRELATIONSHIP"),
+    // #10824: renamed both ways (`map_2x3_to_4`, `schema_mep`); IFC4's
+    // PredefinedType replaces the function enum, and the IFC2X3 label is
+    // carried through ObjectType (`schema_userdefined_label`).
+    AttrMap {
+        renamed: &[("DistributionPointFunction", "PredefinedType")],
+        ..map("IFCELECTRICDISTRIBUTIONPOINT", "IFCELECTRICDISTRIBUTIONBOARD")
+    },
+    // #10807: same arity as IFC2X3, so the source layout shifted unnoticed.
+    AttrMap { renamed: &[("ProcedureID", "Identification"), ("ProcedureType", "PredefinedType")], ..same("IFCPROCEDURE") },
+    AttrMap {
+        retyped: &["CreationTime"],
+        up_only: &["BenchmarkValues"],
+        set_of_one: Some(("BenchmarkValues", "BenchmarkValues")),
+        ..same("IFCOBJECTIVE")
+    },
+    AttrMap {
+        renamed: &[("DocumentId", "Identification")],
+        retyped: &["CreationTime", "LastRevisionTime", "ElectronicFormat", "ValidFrom", "ValidUntil"],
+        ..same("IFCDOCUMENTINFORMATION")
+    },
 ];
 
 /// The map for writing `entity_type` as `new_type` from `cfrom` to `cto`, and
@@ -127,6 +147,10 @@ impl AttrMap {
     /// The source attribute (as named in the source list `src`) that fills the
     /// target attribute `name`, and how.
     fn source_of(&self, up: bool, name: &str, src: &[&'static str]) -> Option<(&'static str, How)> {
+        // An up-only attribute fills no IFC2X3 slot, however it would be reached.
+        if !up && self.up_only.contains(&name) {
+            return None;
+        }
         // A pair read from the target's side: (target name, source name).
         let from_target = |&(older, newer): &(&'static str, &'static str)| if up { (newer, older) } else { (older, newer) };
         if let Some((_, source)) = self.renamed.iter().map(from_target).find(|(target, _)| *target == name) {
@@ -135,8 +159,7 @@ impl AttrMap {
         if let Some((_, source)) = self.set_of_one.as_ref().map(from_target).filter(|(target, _)| *target == name) {
             return Some((source, if up { How::Wrap } else { How::Unwrap }));
         }
-        let carried = !self.retyped.contains(&name) && (up || !self.up_only.contains(&name));
-        src.iter().copied().find(|s| *s == name).filter(|_| carried).map(|s| (s, How::Value))
+        src.iter().copied().find(|s| *s == name).filter(|_| !self.retyped.contains(&name)).map(|s| (s, How::Value))
     }
 }
 
@@ -157,7 +180,7 @@ pub(crate) fn remap(map: &AttrMap, up: bool, values: &[String], src: &[&'static 
             Some((value, How::Value)) if holds_value(value) => out.push_str(value),
             // A SET is rebuilt, so comments around it or its members go.
             Some((value, how @ (How::Wrap | How::Unwrap))) => {
-                let bare = without_comments(value);
+                let bare = crate::step_slot::without_comments(value);
                 if !holds_value(&bare) {
                     out.push('$');
                 } else if let How::Unwrap = how {
@@ -188,29 +211,6 @@ fn first_member(value: &str) -> (&str, usize) {
         Some(first) => (first.trim(), held.count()),
         None => ("$", 0),
     }
-}
-
-/// `value` with each `/* ... */` comment read as a space, trimmed. Literals and comments
-/// end by the shared rules (`ref_spans`' scanner: a `''` or `\S\'` stays in
-/// the literal); an unclosed one runs to the end.
-fn without_comments(value: &str) -> String {
-    let bytes = value.as_bytes();
-    let (mut out, mut kept, mut i) = (String::with_capacity(value.len()), 0, 0);
-    while i < bytes.len() {
-        match bytes[i] {
-            b'\'' => i = ifc_lite_core::step_encoding::step_string_literal_end(bytes, i).unwrap_or(bytes.len()),
-            b'/' if bytes.get(i + 1) == Some(&b'*') => {
-                // A space where the comment was keeps the tokens it parted apart.
-                out.push_str(&value[kept..i]);
-                out.push(' ');
-                i = ifc_lite_core::skip_step_comment(bytes, i).unwrap_or(bytes.len());
-                kept = i;
-            }
-            _ => i += 1,
-        }
-    }
-    out.push_str(&value[kept..]);
-    out.trim().to_owned()
 }
 
 #[cfg(test)]

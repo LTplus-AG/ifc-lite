@@ -76,17 +76,19 @@ fn refused(line: &str, from: &str, to: &str) -> (String, usize, Vec<String>) {
 }
 
 /// The issue's case: IFC2X3 IfcWorkPlan's WorkControlType becomes IFC4's
-/// PredefinedType, `.USERDEFINED.` with ObjectType unset. It is reported, and
-/// nothing is invented.
+/// PredefinedType, `.USERDEFINED.` with ObjectType unset. With no IFC2X3 label
+/// either it is reported, and nothing is invented; a set UserDefinedControlType
+/// is carried into ObjectType (#10824), so that one is not.
 #[test]
 fn a_userdefined_record_without_its_label_is_reported_10780() {
-    let line = "#5=IFCWORKPLAN('g',#2,'P',$,$,'WP-1',#3,(#4),$,$,$,#6,$,.USERDEFINED.,'Custom');";
+    let line = "#5=IFCWORKPLAN('g',#2,'P',$,$,'WP-1',#3,(#4),$,$,$,#6,$,.USERDEFINED.,$);";
     let (out, n, warnings) = refused(line, "IFC2X3", "IFC4");
     assert!(out.contains(",.USERDEFINED.") && out.contains("'P',$,$,"), "{out}");
     assert_eq!(n, 1);
     assert!(warnings.iter().any(|w| w.contains("without the label their rule needs") && w.contains("IFCWORKPLAN")), "{warnings:?}");
     let labelled = line.replace("'P',$,$,", "'P',$,'Custom',");
     assert_eq!(refused(&labelled, "IFC2X3", "IFC4").1, 0, "ObjectType set");
+    assert_eq!(refused(&line.replace(".USERDEFINED.,$);", ".USERDEFINED.,'Custom');"), "IFC2X3", "IFC4").1, 0, "the IFC2X3 label is carried (#10824)");
 }
 
 #[test]

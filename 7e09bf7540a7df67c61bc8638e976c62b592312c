@@ -1,0 +1,9 @@
+all_scopes: false
+checking_base_sha: 2333dcf86fd90f2bbaccd4c8c6c592da99a95335
+previous_check_retries: []
+previous_failed_batches: []
+pull_requests:
+  - number: 10802
+    scopes: []
+queue_base_sha: d8f4a7062a0dfa028f3154544dd24233907d6c26
+scopes: []

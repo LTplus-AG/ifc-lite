@@ -23,6 +23,9 @@ it('converts the retained or edited varying action and its effective loads (#110
   const view = new MutablePropertyView(store.properties, 'varying');
   view.setPositionalAttribute(30, 13, ['#18', '#19']);
   const edited = new StepExporter(store, view).export({ schema: 'IFC4' });
+  expect(edited.stats.modifiedEntityCount).toBe(1);
+  expect(edited.stats.newEntityCount).toBe(2);
+  expect(new TextDecoder().decode(edited.content)).toContain('3 modifications');
   for (const [result, loads] of [[subset, '#11,#19,#18'], [edited, '#11,#18,#19']] as const) {
     const output = new TextDecoder().decode(result.content);
     const configuration = /#(\d+)=IFCSTRUCTURALLOADCONFIGURATION\(/.exec(output)?.[1];

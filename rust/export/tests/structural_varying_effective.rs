@@ -30,8 +30,10 @@ fn subset_and_edited_exports_convert_varying_actions_11037() {
     let log: ifc_lite_export::MutationLog = serde_json::from_value(serde_json::json!({"mutations": [
         edit("@13", serde_json::json!(["#18", "#19"]))
     ]})).unwrap();
-    let (output, _) = ifc_lite_export::export_step_with_log(text.as_bytes(), &opts, &log).unwrap();
+    let (output, stats) = ifc_lite_export::export_step_with_log(text.as_bytes(), &opts, &log).unwrap();
     assert!(output.contains("IFCSTRUCTURALLOADCONFIGURATION($,(#11,#18,#19),$);"), "{output}");
+    assert!(output.contains("3 modifications"), "{output}");
+    assert_eq!((stats.modified_entities, stats.new_entities), (1, 2));
     let log = serde_json::from_value(serde_json::json!({"mutations": [
         edit("@12", serde_json::json!("#9999"))
     ]})).unwrap();

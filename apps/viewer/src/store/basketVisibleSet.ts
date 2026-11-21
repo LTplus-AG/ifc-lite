@@ -409,11 +409,18 @@ function getVisibleGlobalIds(state: ViewerStateSnapshot): Set<number> {
     // ids, which include occurrences loaded from cache.
     const scene = getGlobalRenderer()?.getScene?.();
     for (const id of scene?.getInstancedEntityIds?.() ?? []) {
+      let dataStore = state.ifcDataStore;
+      let expressId = id;
       if (state.models.size > 0) {
         const owner = state.resolveGlobalIdFromModels(id);
-        if (!owner || !state.models.get(owner.modelId)?.visible) continue;
+        if (!owner) continue;
+        const model = state.models.get(owner.modelId);
+        if (!model?.visible) continue;
+        dataStore = model.ifcDataStore;
+        expressId = owner.expressId;
       }
-      if (isTypeVisible(retyped.get(id), state.typeVisibility)) addVisible(id);
+      const ifcType = retyped.get(id) ?? dataStore?.entities?.getTypeName(expressId);
+      if (isTypeVisible(ifcType, state.typeVisibility, state.structuralViewMode)) addVisible(id);
     }
   }
 

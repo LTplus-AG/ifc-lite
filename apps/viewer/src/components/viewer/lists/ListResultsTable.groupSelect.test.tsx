@@ -190,12 +190,17 @@ for (const federated of [false, true]) {
       totalTriangles: 0,
       totalVertices: 0,
     };
-    const model = { ...fixtureModel(modelId, { idOffset: offset }), geometryResult, maxExpressId: 13 };
+    const model = { ...fixtureModel(modelId, { idOffset: offset, entities: [
+      { expressId: 11, type: 'IfcWall' },
+      { expressId: 12, type: 'IfcSpace' },
+      { expressId: 13, type: 'IfcWall' },
+    ] }), geometryResult, maxExpressId: 13 };
     useViewerStore.setState({
       ...(federated ? fixtureModels({ ...fixtureModel('a'), maxExpressId: 20 }, model) : fixtureModels()),
       ifcDataStore: federated ? null : model.ifcDataStore,
       geometryResult: federated ? null : geometryResult,
       hiddenEntities: new Set([offset + 13]),
+      typeVisibility: { ...useViewerStore.getState().typeVisibility, spaces: true },
       typeViewMode: 'model',
       hasTypeGeometry: true,
     });
@@ -213,13 +218,13 @@ for (const federated of [false, true]) {
     const matching: ListResult = {
       ...result,
       totalCount: 3,
-      rows: [11, 12, 13].map((entityId) => ({ modelId, entityId, values: ['EG', 'Wall', 'Wall'] })),
+      rows: [11, 12, 13].map((entityId) => ({ modelId, entityId, values: ['EG', null, null] })),
     };
-    const ui = render(<ListResultsTable result={matching} grouping={{ ...byType, view: 'schedule' }} modelUnits={modelUnits} />);
+    const ui = render(<ListResultsTable result={matching} grouping={{ columnId: 'storey', sumColumnIds: [], view: 'schedule' }} modelUnits={modelUnits} />);
     await advance(5);
 
     // A cache hit can publish flat meshes before the renderer receives instances.
-    click(selectButton(ui, 'Wall'));
+    click(selectButton(ui, 'EG'));
     assert.deepEqual(selectedIds(), [offset + 11]);
     act(() => {
       instances.add(offset + 12);
@@ -227,13 +232,20 @@ for (const federated of [false, true]) {
       onGeometryChange?.();
     });
 
-    click(selectButton(ui, 'Wall'));
+    click(selectButton(ui, 'EG'));
 
     assert.deepEqual(selectedIds(), [offset + 11, offset + 12]);
     assert.deepEqual(useViewerStore.getState().selectedEntitiesSet, new Set([11, 12].map((expressId) => entityRefToString({ modelId, expressId }))));
 
+    act(() => useViewerStore.setState((state) => ({ typeVisibility: { ...state.typeVisibility, spaces: false } })));
+    click(selectButton(ui, 'EG'));
+    assert.deepEqual(selectedIds(), [offset + 11], 'the class toggle excludes the instanced IfcSpace');
+    act(() => useViewerStore.setState((state) => ({ typeVisibility: { ...state.typeVisibility, spaces: true } })));
+    click(selectButton(ui, 'EG'));
+    assert.deepEqual(selectedIds(), [offset + 11, offset + 12]);
+
     act(() => useViewerStore.setState({ typeViewMode: 'types' }));
-    click(selectButton(ui, 'Wall'));
+    click(selectButton(ui, 'EG'));
     assert.deepEqual(selectedIds(), [offset + 11]);
   });
 }

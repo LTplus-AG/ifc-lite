@@ -40,6 +40,8 @@ export const documentNativeReportDraftOperations = [
       // Only a document this candidate's own refused save staged may be overwritten.
       if (existing && (candidate.staged === undefined || JSON.stringify(existing) !== candidate.staged)) throw stale('Another native document already owns this prepared report identity.');
       // A save in flight is never evicted; a refused save stays revisable and records what it staged.
+      const blocked = contradictedClaims(candidate.draft);
+      if (blocked.length) throw invalidInput('refused', `Claims contradicted by the captured evidence must be edited or removed: ${blocked.map(claim => claim.id).join(', ')}`);
       c.checkpoint?.(); candidate.saving = true;
       let saved: boolean;
       const draft = candidate.draft;

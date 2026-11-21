@@ -174,8 +174,7 @@ pub(crate) fn schema_attribute_names(schema: &str, entity_type: &str) -> Option<
 }
 
 /// Convert an entity type name between schemas (with multi-step chaining).
-/// The export path asks [`rename_type`] through `schema_plan`; this owned form
-/// is what the tests pin.
+/// This owned test helper uses the same [`rename_type`] as the schema plan.
 #[cfg(test)]
 pub(crate) fn convert_entity_type(entity_type: &str, from: &str, to: &str) -> String {
     let (from, to) = (canon(from), canon(to));
@@ -242,6 +241,7 @@ pub fn convert_step_line(
     let mut checks = checks;
     let mut converted = convert_record(line, cfrom, cto, express_id, checks.as_deref_mut())?;
     converted = crate::schema_retyped::apply(converted, cfrom, cto, checks.as_deref_mut().map(|c| &mut c.attribute_values_dropped)); // #10778
+    converted = crate::schema_userdefined_label::carry(line, converted, cfrom, cto, checks.as_deref_mut().map(|c| &mut c.attribute_values_dropped)); // #10824
     if let Some(checks) = checks {
         if let Some(placement) = checks.structural.values.placement(express_id) {
             if let Some(repointed) = crate::step_log::replace_argument(&converted, 5, &format!("#{placement}")) {

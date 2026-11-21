@@ -91,6 +91,13 @@ pub(crate) const ATTR_MAPS: &[AttrMap] = &[
     same("IFCPERFORMANCEHISTORY"),
     AttrMap { renamed: &[("TaskId", "Identification")], ..same("IFCTASK") },
     same("IFCPROPERTYDEPENDENCYRELATIONSHIP"),
+    // #10824: renamed both ways (`map_2x3_to_4`, `schema_mep`); IFC4's
+    // PredefinedType replaces the function enum, and the IFC2X3 label is
+    // carried through ObjectType (`schema_userdefined_label`).
+    AttrMap {
+        renamed: &[("DistributionPointFunction", "PredefinedType")],
+        ..map("IFCELECTRICDISTRIBUTIONPOINT", "IFCELECTRICDISTRIBUTIONBOARD")
+    },
     // #10807: same arity as IFC2X3, so the source layout shifted unnoticed.
     AttrMap { renamed: &[("ProcedureID", "Identification"), ("ProcedureType", "PredefinedType")], ..same("IFCPROCEDURE") },
     AttrMap {

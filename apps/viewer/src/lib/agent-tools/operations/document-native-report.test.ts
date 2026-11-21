@@ -31,7 +31,7 @@ function discussion() {
 beforeEach(async () => {
   allowed = true; persisted.length = 0;
   const host = nativeHost(), commit = <T>(write: () => T) => { checkpoint(); return write(); };
-  context = { host, checkpoint, commit, commitAsync: async (write, didCommit) => { checkpoint(); const result = await write(); persisted.push(didCommit ? didCommit(result) : result !== false); return result; }, ownGeometry: async work => work(), artifacts: operationArtifacts(host, commit) };
+  context = { host, checkpoint, commit, commitAsync: async (write, didCommit) => { checkpoint(); const result = await write(); persisted.push(didCommit ? didCommit(result) : result !== false); return result; }, ownGeometry: async work => work(), retain: () => {}, artifacts: operationArtifacts(host, commit) };
   await useViewerStore.getState().initializeDocuments();
 });
 async function savedHumanReport() {

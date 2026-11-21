@@ -8,7 +8,7 @@ import { operation, emptySchema, type OperationContext } from './contract';
 import type { ToolHost } from '../types';
 import { assertToolActive } from '../cancellation';
 import { resolveRef } from '../refs';
-import { evictOldest } from './host-handles';
+import { evictOldest, retainCandidate } from './host-handles';
 import { invalidInput, stale, parseJsonInput } from './refusals';
 const outputSchema = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 const out = (value: unknown) => ({ native_json: JSON.stringify(value ?? null) });
@@ -34,7 +34,8 @@ export const storeyOperations = [
       if (params.storeyId !== ref.expressId) throw invalidInput('invalid-value', 'params_json.storeyId must name the express_id storey.'); const plan = c.model.bim.store.planStoreyEdit(c.model.id, params); preview = plan; data = { kind: 'edit', params, plan }; }
     else { const ref = resolveRef(c.model, { express_id: i.express_id }), params = parse<StoreyDeleteMode>(i.params_json), plan = c.model.bim.store.planStoreyDelete(ref, params); preview = plan; data = { kind: 'delete', expressId: ref.expressId, params, plan }; }
     evictOldest(owned(c), 64); const token = crypto.randomUUID();
-    owned(c).set(token, { data: structuredClone(data), modelId: c.model.id, store: c.model.store, revision: useViewerStore.getState().mutationVersion }); return out({ token, plan: preview });
+    retainCandidate(c, owned(c), token, { data: structuredClone(data), modelId: c.model.id, store: c.model.store, revision: useViewerStore.getState().mutationVersion });
+    return out({ token, plan: preview });
   }),
   operation<{ token: string }>(meta('storeys.apply', 'Apply the exact prepared native Storey plan with its native expected-plan checks, transaction/constraint updates, remeshing and Undo. A candidate applies once.', true), {
     type: 'object', properties: { token: { type: 'string', minLength: 1, maxLength: 100 } }, required: ['token'], additionalProperties: false,

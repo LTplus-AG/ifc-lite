@@ -30,6 +30,7 @@ import type { SVGExportOptions } from './svg-exporter.js';
 import { GPUSectionCutter } from './gpu-section-cutter.js';
 import { meshArraySource, type DrawingMeshSource } from './drawing-mesh-source.js';
 import { DrawingSession } from './drawing-session.js';
+import { generateWithOpeningSymbols, type PlanSymbolOptions } from './symbols/opening-symbols.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -238,23 +239,19 @@ export function createSectionConfig(
 }
 
 /**
- * Quick helper to generate a floor plan
+ * Quick helper to generate a floor plan. Doors and windows crossing the cut
+ * are drawn as symbols (`planSymbols`) unless `openingSymbols` is false.
  */
 export async function generateFloorPlan(
   meshes: MeshData[],
   elevation: number,
-  options?: Partial<GeneratorOptions>
+  options?: Partial<GeneratorOptions> & PlanSymbolOptions
 ): Promise<Drawing2D> {
   const generator = new Drawing2DGenerator();
   try {
     await generator.initialize();
-
-    const config = createSectionConfig('y', elevation, {
-      projectionDepth: 3, // 3 meters below cut
-      scale: 100,
-    });
-
-    return await generator.generate(meshes, config, options);
+    const config = createSectionConfig('y', elevation, { projectionDepth: 3, scale: 100 });
+    return await generateWithOpeningSymbols(meshes, config, options, (drawn) => generator.generate(drawn, config, options));
   } finally {
     generator.dispose();
   }

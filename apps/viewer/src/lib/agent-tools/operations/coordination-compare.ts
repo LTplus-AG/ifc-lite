@@ -6,6 +6,7 @@ import { useViewerStore } from '@/store';
 import { emptySchema } from './contract';
 import { modelCoordination, coordination, boolSchema } from './coordination-common';
 import { isNativeWorkflowBusy } from '@/lib/flow/run-session';
+import { invalidInput, stale, unavailable } from './refusals';
 interface CompareInput { head_model_id: string; scope: 'both' | 'data' | 'geometry'; excluded_types: string[]; match_by_content: boolean }
 export const comparisonInputSchema = { type: 'object', properties: {
   head_model_id: { type: 'string', minLength: 1, maxLength: 200 }, scope: { type: 'string', enum: ['both', 'data', 'geometry'] },
@@ -27,22 +28,22 @@ export const coordinationCompareOperations = [
     // The guards below need current state: anything that moved during the imports refuses the run.
     const afterImports = useViewerStore.getState();
     if (afterImports.models !== initial.models || afterImports.compareRunning || afterImports.compareResult !== initial.compareResult || afterImports.compareClearEpoch !== initial.compareClearEpoch)
-      throw new Error('The models or comparison changed while compare.run started; run it again.');
+      throw stale('The models or comparison changed while compare.run started; run it again.');
     const base = initial.models.get(c.model.id), head = initial.models.get(i.head_model_id);
-    if (!base || !head || initial.compareRunning) throw new Error('Load both models and wait for any native comparison to finish.');
+    if (!base || !head || initial.compareRunning) throw unavailable('Load both models and wait for any native comparison to finish.');
     // The same refusals as the panel's Run button (useCompare.runComparison).
-    if (isNativeWorkflowBusy()) throw new Error('A workflow is running; wait or cancel it.');
-    if (base.id === head.id) throw new Error('Pick two different models to compare.');
-    if (!base.ifcDataStore || !base.geometryResult || !head.ifcDataStore || !head.geometryResult) throw new Error('Both comparison models must be fully loaded.');
+    if (isNativeWorkflowBusy()) throw unavailable('A workflow is running; wait or cancel it.');
+    if (base.id === head.id) throw invalidInput('invalid-value', 'Pick two different models to compare.');
+    if (!base.ifcDataStore || !base.geometryResult || !head.ifcDataStore || !head.geometryResult) throw unavailable('Both comparison models must be fully loaded.');
     const built = await prepareComparison({ baseModel: base, headModel: head, contentVersion: initial.geometryContentVersion, mutationVersion: initial.mutationVersion, getMutationView: initial.getMutationView, keyProperty: i.key_property || undefined, signal: c.signal });
     try {
       c.checkpoint?.(); const live = useViewerStore.getState();
-      if (live.models.get(base.id) !== base || live.models.get(head.id) !== head || live.geometryContentVersion !== initial.geometryContentVersion || live.mutationVersion !== initial.mutationVersion || live.compareRunning) throw new Error('Comparison inputs changed during extraction.');
+      if (live.models.get(base.id) !== base || live.models.get(head.id) !== head || live.geometryContentVersion !== initial.geometryContentVersion || live.mutationVersion !== initial.mutationVersion || live.compareRunning) throw stale('Comparison inputs changed during extraction.');
       // A clear or a newer comparison published during extraction outranks this run.
-      if (live.compareResult !== initial.compareResult || live.compareClearEpoch !== initial.compareClearEpoch) throw new Error('The comparison was cleared or replaced during extraction.');
+      if (live.compareResult !== initial.compareResult || live.compareClearEpoch !== initial.compareClearEpoch) throw stale('The comparison was cleared or replaced during extraction.');
       // A panel option the user changed during extraction outranks this run's parameters.
       if (live.compareScope !== initial.compareScope || live.compareExcludedTypes !== initial.compareExcludedTypes || live.compareMatchByContent !== initial.compareMatchByContent || live.compareKeyProperty !== initial.compareKeyProperty || live.compareBaseModelId !== initial.compareBaseModelId || live.compareHeadModelId !== initial.compareHeadModelId)
-        throw new Error('The Compare panel options changed during extraction; run the comparison again.');
+        throw stale('The Compare panel options changed during extraction; run the comparison again.');
       return c.commit(() => {
         // Clearing first releases the panel's cached pair, so its option effect
         // cannot re-diff this result from fingerprints older than this run.
@@ -59,14 +60,14 @@ export const coordinationCompareOperations = [
   }, async (input, c) => {
     const [{ prepareComparison, comparePreparedPair }, { acceptedForPair }] = await Promise.all([import('@/lib/compare/run-comparison'), import('@/lib/compare/acceptedIdentity')]);
     const s = useViewerStore.getState(); const base = s.models.get(c.model.id), head = s.models.get(input.head_model_id);
-    if (!base || !head) throw new Error('Both comparison models must be loaded.');
+    if (!base || !head) throw invalidInput('unknown-target', 'Both comparison models must be loaded.');
     const version = s.geometryContentVersion, mutation = s.mutationVersion;
     c.checkpoint?.();
     // The same authored key selection as compare.run, so both match entities alike.
     const built = await prepareComparison({ baseModel: base, headModel: head, contentVersion: version, mutationVersion: mutation, getMutationView: s.getMutationView, keyProperty: input.key_property || undefined, signal: c.signal });
     try {
       c.checkpoint?.(); const live = useViewerStore.getState();
-      if (live.models.get(base.id) !== base || live.models.get(head.id) !== head || live.geometryContentVersion !== version || live.mutationVersion !== mutation) throw new Error('Comparison inputs changed; result discarded.');
+      if (live.models.get(base.id) !== base || live.models.get(head.id) !== head || live.geometryContentVersion !== version || live.mutationVersion !== mutation) throw stale('Comparison inputs changed; result discarded.');
       // The same accepted identity aliases compare.run publishes with, so both agree.
       const result = comparePreparedPair(built, { scope: input.scope, excludedTypes: input.excluded_types, matchByContent: input.match_by_content, acceptedIdentity: acceptedForPair(live.compareAcceptedIdentity, built) });
       return { ...result, comparedStores: undefined };

@@ -7,22 +7,23 @@ import { resolveRef } from '../refs';
 import { boundedMappedPage, pageInput, pageOutputProperties, type PageRequest } from './result-limit';
 import { stateRevision } from './state-revision';
 import { operation, viewerOperation, pointSchema } from './contract';
+import { disabled, invalidInput, parseJsonInput, stale, unavailable } from './refusals';
 const resultSchema = { type: 'object', properties: { id: { type: 'string' }, annotation_json: { type: 'string' }, persistence: { type: 'string' } }, required: ['id', 'annotation_json', 'persistence'], additionalProperties: false };
 const meta = (id: string, description: string) => ({ id, owner: 'viewport', description: `${description} Pins use renderer Y-up metres and native best-effort browser persistence. Native collaboration mirroring and role checks remain authoritative.`,
   features: ['tools.annotate'] as const, effects: ['configuration', 'network'] as const, capability: 'commands-and-edits' as const, implementation: 'native-store' as const,
   synchronous: true, policy: { network: 'native-provider' as const }, outputSchema: resultSchema });
-function enabled() { if (!isToolAvailable('annotate')) throw new Error('Annotation tools are disabled by the host.'); }
+function enabled() { if (!isToolAvailable('annotate')) throw disabled('Annotation tools are disabled by the host.'); }
 function result(id: string) {
   return { id, annotation_json: JSON.stringify(useViewerStore.getState().annotations.get(id) ?? null), persistence: 'native-browser-preferences-best-effort' };
 }
 function create(position: [number, number, number], note: string, modelId: string | null, expressId: number | null) {
   enabled();
   const s = useViewerStore.getState();
-  if (s.draft) throw new Error('An annotation draft is already open; finish or cancel it first.');
-  if (!note.trim()) throw new Error('A nonempty annotation note is required.');
+  if (s.draft) throw unavailable('An annotation draft is already open; finish or cancel it first.');
+  if (!note.trim()) throw invalidInput('invalid-value', 'A nonempty annotation note is required.');
   s.beginDraft({ x: position[0], y: position[1], z: position[2] }, expressId, modelId);
   const id = s.commitDraft(note);
-  if (!id) throw new Error('Native annotation creation refused.');
+  if (!id) throw invalidInput('refused', 'Native annotation creation refused.');
   return result(id);
 }
 export const annotationOperations = [
@@ -44,8 +45,9 @@ export const annotationOperations = [
     type: 'object', properties: { id: { type: 'string', minLength: 1, maxLength: 200 }, expected_json: { type: 'string', minLength: 1, maxLength: 10000 }, action: { type: 'string', enum: ['edit', 'delete', 'select'] }, note: { type: 'string', maxLength: 2000, nullable: true } }, required: ['id', 'expected_json', 'action'], additionalProperties: false,
   }, i => {
     enabled(); const s = useViewerStore.getState(), existing = s.annotations.get(i.id);
-    if (!existing || JSON.stringify(existing) !== i.expected_json) throw new Error('The annotation changed; inspect it again.');
-    if (i.action === 'edit') { if (typeof i.note !== 'string') throw new Error('note is required for edit.'); s.updateAnnotation(i.id, i.note); }
+    if (!existing) throw invalidInput('unknown-target', 'Unknown native annotation.');
+    if (JSON.stringify(existing) !== JSON.stringify(parseJsonInput(i.expected_json, 'expected_json'))) throw stale('The annotation changed; inspect it again.');
+    if (i.action === 'edit') { if (typeof i.note !== 'string') throw invalidInput('invalid-value', 'note is required for edit.'); s.updateAnnotation(i.id, i.note); }
     else if (i.action === 'delete') s.removeAnnotation(i.id); else s.selectAnnotation(i.id);
     return result(i.id);
   }),

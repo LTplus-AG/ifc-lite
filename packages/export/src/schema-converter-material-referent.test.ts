@@ -105,7 +105,7 @@ describe('the Material a downgraded IfcMaterialProperties names (#10763)', () =>
     expect(warnings.join('\n')).toContain('IfcMaterialProperties record(s) were not written');
   });
 
-  // /code-review on the #10911 restack: a member the export writes as another type, or one no record has, names no
+  // A member the export writes as another type, or one no record has, names no
   // material, so the set names no single one; only a member the export does not write is skipped. Twin of Rust.
   it('leaves the record out when a member is written as another type or is missing', async () => {
     const retyped = await editedExport(LAYERED, (view) => view.setEntityType(12, 'IfcPropertySingleValue'));

@@ -51,7 +51,7 @@ fn a_definition_of_two_materials_is_not_written_and_named_10763() {
     assert!(warnings.iter().any(|w| w.starts_with("1 IfcMaterialProperties record(s) were not written") && w.contains("#5 (IFCMATERIALLAYERSET)")), "{warnings:?}");
 }
 
-/// From /code-review: the record is checked as the export writes it, so an
+/// The record is checked as the export writes it, so an
 /// edit of `Material` is resolved as edited, and a record the export leaves
 /// out anyway is not reported.
 #[test]
@@ -80,7 +80,7 @@ fn the_written_record_is_what_is_checked_10763() {
     assert_eq!(stats.attribute_values_dropped, 0);
 }
 
-/// From /code-review: on the log path a created record is resolved as
+/// On the log path a created record is resolved as
 /// written, against source and created materials alike, even when the source
 /// holds no IfcMaterialProperties.
 #[test]
@@ -101,7 +101,7 @@ fn a_log_created_record_is_resolved_10763() {
     assert_eq!(record(&out, "#51="), "#51=IFCEXTENDEDMATERIALPROPERTIES(#60,(#6),$,'Q');", "{out}");
 }
 
-/// From /code-review: a copy-on-write copy is a material record as written.
+/// A copy-on-write copy is a material record as written.
 /// Layer #10 copied with Steel and set #13 pointed at the copy: the set now
 /// names two materials, so #5 is not written (it read Concrete alone before).
 #[test]
@@ -155,7 +155,7 @@ fn a_deleted_layer_leaves_its_set_one_material_10763() {
     assert!(!warnings.iter().any(|w| w.contains("IfcMaterialProperties record(s)")), "{warnings:?}");
 }
 
-/// /code-review on the #10911 restack: a set member the export still writes
+/// A set member the export still writes
 /// but no longer as a layer (retyped away), or one no record has, names no
 /// material, so the set names no single one and the record is left out; only
 /// a member the export does not write is skipped. Twin of the TypeScript case.
@@ -199,7 +199,7 @@ fn a_bare_record_is_checked_and_a_kept_duplicate_counts_10763() {
     assert_eq!(scanned.apply(5, "#5=IFCMATERIALPROPERTIES('P',$,(#6),#13);", "IFC4", &mut 0), None, "two materials: left out");
 }
 
-/// From /code-review on #10911: a record whose slots cannot be read is left
+/// A record whose slots cannot be read is left
 /// out and named, not written unchecked.
 #[test]
 fn an_unreadable_record_is_left_out_10763() {

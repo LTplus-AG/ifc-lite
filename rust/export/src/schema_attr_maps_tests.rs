@@ -78,6 +78,19 @@ fn approval_relationship_counts_only_discarded_members_10781() {
     assert_eq!(counts, [0, 2, 0]);
 }
 
+#[test]
+fn objective_downgrade_drops_benchmark_values_even_if_singleton_10807() {
+    let cases = ["$", "(#20)", "(#20,#21)"];
+    let outcomes = cases.map(|benchmark| {
+        let source = format!("#5=IFCOBJECTIVE('id',$,'Objective',$,$,$,$,{benchmark},$,$,$);");
+        let mut checks = ConversionChecks::default();
+        let out = convert_step_line(&source, "IFC4", "IFC2X3", 5, &mut Ifc2x3SlotFill::new(None), Some(&mut checks)).unwrap();
+        (out, checks.attribute_values_dropped)
+    });
+    assert_eq!(outcomes[1], (outcomes[0].0.clone(), outcomes[0].1 + 1));
+    assert_eq!(outcomes[2], (outcomes[0].0.clone(), outcomes[0].1 + 1));
+}
+
 /// What each direction cannot carry is counted, including the members of a
 /// SET past the first, and an up-only reference is dropped on the way down.
 #[test]

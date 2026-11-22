@@ -26,6 +26,9 @@ export function sourceArrayBuffer(buffer: ArrayBuffer | SharedArrayBuffer, count
   return countCopy(counter, new Uint8Array(buffer).slice().buffer);
 }
 
+/** The head every load reads for format detection (#6431: once, then reused). */
+export const FORMAT_HEAD_BYTES = 4096;
+
 /** Little-endian `PK\x03\x04`, the zip local-file-header signature. */
 const ZIP_LOCAL_HEADER = 0x04034b50;
 

@@ -66,8 +66,8 @@ function publishable(
 
 /** The three demo files, strongest last (the federation loader treats the
  *  first file as weakest). Exposed for tests. */
-export async function buildDemoLayerFiles(): Promise<File[]> {
-  const res = await fetch(SAMPLE_PATH);
+export async function buildDemoLayerFiles(signal?: AbortSignal): Promise<File[]> {
+  const res = await fetch(SAMPLE_PATH, signal ? { signal } : undefined);
   if (!res.ok) throw new Error(`demo stack fetch failed: ${res.status} ${SAMPLE_PATH}`);
   const baseText = await res.text();
   const base = JSON.parse(baseText) as IfcxFile;

@@ -296,9 +296,9 @@ describe('item 8: aggregate limits, text-only content, provenance', () => {
   });
 
   it.each([
-    ['a resource with a file:// URI', { type: 'resource', resource: { uri: 'file:///etc/passwd', text: 'x' } }],
-    ['an image', { type: 'image', data: 'AAAA', mimeType: 'image/png' }],
-  ])('refuses %s in result content', async (_label, entry) => {
+    ['a resource with a file:// URI', { type: 'resource', resource: { uri: 'file:///etc/passwd', text: 'x' } }, 'text and image content only'],
+    ['an image whose bytes are not the declared type', { type: 'image', data: 'AAAAAAAAAAAAAAAAAAAA', mimeType: 'image/png' }, 'file signature'],
+  ])('refuses %s in result content', async (_label, entry, why) => {
     const agent = await start();
     const { tab, welcome } = await paired(agent);
     const pending = agent.call(READ_TOOL.name);
@@ -306,7 +306,20 @@ describe('item 8: aggregate limits, text-only content, provenance', () => {
     tab.sendRaw({ type: 'result', sessionId: welcome.sessionId, id: c.id, result: { content: [entry] } });
     const result = await pending;
     expect(result.isError).toBe(true);
-    expect(result.content[0]).toMatchObject({ text: expect.stringContaining('text content only') });
+    expect(result.content[0]).toMatchObject({ text: expect.stringContaining(why) });
+  });
+
+  it('advertises image-content and forwards a valid image to the agent unchanged', async () => {
+    const agent = await start();
+    const { tab, welcome } = await paired(agent);
+    expect(welcome.features).toEqual(['image-content']);
+    const pending = agent.call(READ_TOOL.name);
+    const c = await tab.next('call');
+    const data = btoa(String.fromCharCode(0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1));
+    tab.sendRaw({ type: 'result', sessionId: welcome.sessionId, id: c.id, result: { content: [{ type: 'text', text: 'shot' }, { type: 'image', data, mimeType: 'image/jpeg' }] } });
+    const result = await pending;
+    expect(result.isError).toBeUndefined();
+    expect(result.content).toEqual([{ type: 'text', text: 'shot' }, { type: 'image', data, mimeType: 'image/jpeg' }]);
   });
 
   it('labels tab-supplied text as data in the instructions and in bridge_status', async () => {

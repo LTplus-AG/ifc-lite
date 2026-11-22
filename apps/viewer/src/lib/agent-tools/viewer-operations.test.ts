@@ -19,7 +19,10 @@ import { useViewerStore } from '@/store';
 import { seedCoincidentWalls } from '@/test/clash-run-fixture';
 import { resetFeaturesForTest } from '@/lib/features';
 import { createMainViewerToolHost } from './main-viewer-host';
-import { dispatchMainViewerTool } from './main-viewer-dispatch';
+import { dispatchMainViewerTool, mainViewerTool } from './main-viewer-dispatch';
+import { nativeExportRegistryInventory } from './operations/export-native-inventory';
+import { EXPORT_COMMAND_IDS } from '@/components/viewer/toolbar/export-commands';
+import { WORKSPACE_PANELS } from '@/lib/panels/registry';
 import { viewerOperations } from './operations/registry';
 import type { ToolHost } from './types';
 
@@ -36,6 +39,11 @@ const execute = (id: string, input: unknown = {}, extra: Record<string, unknown>
 const inspect = (id: string, input: unknown = {}, extra: Record<string, unknown> = {}) =>
   dispatchMainViewerTool(host, 'viewer_operation_inspect', { ...(viewerOperations().find(operation => operation.id === id)?.needs === 'model' ? { model_id: 'A' } : {}), operation_id: id, input, ...extra });
 const job = (job_id: string) => dispatchMainViewerTool(host, 'viewer_operation_job', { job_id });
+async function loadCoverageAudit() {
+  // Check the coverage tool is registered before importing its module, so a missing tool fails a test instead of the file load.
+  assert.ok(mainViewerTool('viewer_operation_coverage'), 'coverage is registered as a viewer tool');
+  return import('./operations/coverage');
+}
 function data<T>(value: { structured: unknown; isError: boolean; text: string }): T { assert.equal(value.isError, false, value.text); return value.structured as T; }
 /** Holds `ClashNamespace.run` until its abort signal fires and, unless `released`, until `release()`. */
 function holdClashRunner(t: { mock: { method: typeof import('node:test').mock.method } }, { released = false } = {}) {
@@ -267,6 +275,89 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
       const [a, b] = await Promise.all([inspect('viewport.pick', { x: 0.25, y: 0.5 }), inspect('viewport.pick', { x: 0.25, y: 0.5 })]);
       assert.equal(a.isError, false, a.text); assert.equal(b.isError, false, b.text);
     } finally { unregister(); }
+  });
+  it('audits every built-in panel, tool and export while retaining native boundaries', async () => {
+    const { viewerOperationCoverage } = await loadCoverageAudit();
+    const report = viewerOperationCoverage();
+    assert.equal(report.panel_count, WORKSPACE_PANELS.length); assert.equal(report.all_controls_automatable, false);
+    assert.deepEqual(new Set(report.panels.map(panel => panel.id)), new Set(WORKSPACE_PANELS.map(panel => panel.id)));
+    assert.deepEqual(report.panels.flatMap(panel => panel.gaps.map(gap => `${panel.id}: ${gap.id}: ${gap.reason}`)), []);
+    assert.deepEqual(report.tools.flatMap(tool => tool.gaps.map(gap => `${tool.id}: ${gap.id}: ${gap.reason}`)), []);
+    assert.deepEqual(report.exports.flatMap(item => item.gaps.map(gap => `${item.id}: ${gap.id}: ${gap.reason}`)), []);
+    assert.equal(report.complete, true);
+    assert.ok(report.panels.every(panel => panel.controls.length > 0));
+    assert.ok(report.panels.some(panel => panel.controls.some(control => control.classification === 'native-boundary')));
+    assert.ok(report.human_only.length > 0);
+    // Boundaries are classified controls, not prose notes (#10592 review).
+    const classes = (id: string) => report.panels.find(panel => panel.id === id)?.controls.map(control => control.classification) ?? [];
+    assert.ok(classes('lists').includes('presentation-only'));
+    assert.ok(classes('bcf').includes('native-boundary'));
+    assert.ok(classes('hierarchy').includes('native-boundary'), 'unload with unexported changes keeps its native confirmation');
+    // A joined control is marked grouped rather than claiming a per-control binding (#10592 review).
+    assert.ok(report.panels.find(panel => panel.id === 'bcf')?.controls.some(control => 'grouped' in control && control.grouped === true));
+    assert.ok(report.non_panel.find(row => row.id === 'preferences')?.notes?.length);
+    for (const id of ['contextual-entity', 'tours-mobile']) assert.ok(report.non_panel.find(row => row.id === id)?.notes?.some(note => note.includes('bound to an audited')), id);
+    assert.deepEqual(report.unbound_operations, [], 'every registered operation is bound to an audited control');
+    // Non-panel families are bound to audited controls too, and count toward complete.
+    assert.deepEqual(report.non_panel.flatMap(row => row.gaps.map(gap => `${row.id}: ${gap.id}: ${gap.reason}`)), []);
+  });
+  it('reports a toolbar export without an inventory entry as incomplete (#10592)', async () => {
+    const { viewerOperationCoverage } = await loadCoverageAudit();
+    const id = 'ion';
+    assert.ok(EXPORT_COMMAND_IDS.includes(id));
+    const inventory = nativeExportRegistryInventory.filter(row => row.registry_id !== id);
+    const report = viewerOperationCoverage(inventory);
+    // Ion has no registered operation, so only the toolbar comparison can detect the missing audit.
+    assert.deepEqual(report.unbound_operations, []);
+    assert.equal(report.complete, false);
+    const entry = report.exports.find(row => row.id === id);
+    assert.equal(entry?.complete, false);
+    assert.deepEqual(entry?.gaps.map(gap => gap.id), [id]);
+  });
+  it('only names registered tools in the control audit (#10592)', async () => {
+    const { auditedToolIds } = await loadCoverageAudit();
+    const { toolControlAudits } = await import('./operations/coverage-audit');
+    assert.deepEqual(Object.keys(toolControlAudits).filter(id => !auditedToolIds.includes(id)), []);
+  });
+  it('refuses bad operation tool arguments with the typed invalid-value reason (#10592)', async () => {
+    const badLimit = await dispatchMainViewerTool(host, 'viewer_operation_coverage', { section: 'tools', limit: 0 });
+    assert.equal(badLimit.isError, true); assert.equal((badLimit.structured as { reason?: string } | null)?.reason, 'invalid-value');
+    const badJob = await dispatchMainViewerTool(host, 'viewer_operation_job', { job_id: 42 });
+    assert.equal(badJob.isError, true); assert.equal((badJob.structured as { reason?: string } | null)?.reason, 'invalid-value');
+  });
+  it('summarizes coverage by default and serves bounded details on request (#10592)', async () => {
+    const coverage = (args: Record<string, unknown> = {}) => dispatchMainViewerTool(host, 'viewer_operation_coverage', args);
+    const summary = await coverage();
+    const overview = data<{ complete: boolean; exports: unknown[] }>(summary);
+    assert.equal(overview.complete, true);
+    assert.deepEqual(overview.exports.find(row => typeof row === 'object' && row !== null && 'id' in row && row.id === 'ion'),
+      { id: 'ion', complete: true, gap_count: 0, gap_ids: [] });
+    assert.ok(Buffer.byteLength(summary.text) < 20_000);
+
+    const { viewerOperationCoverage } = await loadCoverageAudit();
+    const full = viewerOperationCoverage();
+    const rows: typeof full.exports = [];
+    let offset: number | null = 0;
+    while (offset !== null) {
+      const page: { rows: typeof rows; total: number; offset: number; next_offset: number | null } =
+        data(await coverage({ section: 'exports', offset, limit: 5 }));
+      assert.equal(page.total, full.exports.length);
+      assert.equal(page.offset, offset);
+      assert.ok(page.rows.length > 0 && page.rows.length <= 5);
+      assert.equal(page.next_offset, offset + 5 < page.total ? offset + 5 : null);
+      rows.push(...page.rows);
+      offset = page.next_offset;
+    }
+    assert.deepEqual(rows, full.exports);
+
+    const detail = data<{ rows: typeof full.panels; next_offset: number | null }>(await coverage({ section: 'panels', row_id: 'appearance' }));
+    assert.deepEqual(detail.rows, full.panels.filter(row => row.id === 'appearance'));
+    assert.equal(detail.next_offset, null);
+    const boundaries = data<{ rows: typeof full.human_only }>(await coverage({ section: 'human_only', limit: 5 }));
+    assert.deepEqual(boundaries.rows, full.human_only);
+    for (const args of [{ limit: 1 }, { section: 'exports', limit: 6 }, { section: 'panels', row_id: 'ion' }, { section: 'nope' }]) {
+      assert.equal((await coverage(args)).errorCode, 'INVALID_INPUT');
+    }
   });
   it('refuses overflow coordinates and incomplete closed perimeters', async () => {
     assert.equal((await execute('measurements.distance', { start: [0, 0, 0], end: [1e308, 0, 0] })).isError, true);

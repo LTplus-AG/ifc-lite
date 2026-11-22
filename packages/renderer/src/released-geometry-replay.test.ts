@@ -286,6 +286,25 @@ describe('replayReleasedGeometry', () => {
     await scene.finalizeStreamingAsync(gpu, pipeline); // the successor finishes its own pass
     assert.equal(scene.isEphemeralStreaming(), false);
   });
+
+  it('#10937 a pre-loss replay awaiting its backing never resumes into the scene a recovery reset rebuilt', async () => {
+    const scene = new Scene();
+    const gpu = device();
+    let resume!: () => void;
+    const gate = new Promise<void>((done) => { resume = done; });
+    async function* preLoss(): AsyncGenerator<readonly MeshData[]> { yield [tri(1, 0, 0)]; await gate; yield [tri(2, 5, 0)]; }
+    const first = replayReleasedGeometry(host(scene, gpu).renderer, preLoss()); // no isCurrent: only the scene fences it
+    await new Promise((done) => setTimeout(done, 0));
+    scene.resetReleasedForRebuild(); // the device-recovery reset
+    const rebuild = replayReleasedGeometry(host(scene, gpu).renderer, batches([tri(3, 9, 0)])); // the recovery's own replay
+    resume();
+    assert.equal((await first).status, 'superseded', 'the reset superseded the pre-loss replay');
+    assert.equal((await rebuild).status, 'complete');
+    assert.deepEqual(drawnIds(scene), [3], 'only the rebuilt geometry: nothing pre-loss is duplicated or restored');
+    assert.equal(scene.getEntityBoundingBox(1), null);
+    assert.equal(scene.getEntityBoundingBox(2), null);
+  });
+
   it('#10903 an ephemeral append whose fragment allocation throws leaves no entity or placement bounds behind', () => {
     const scene = new Scene();
     scene.setEphemeralStreamingMode(true);

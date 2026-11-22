@@ -32,7 +32,7 @@ import { beginGeometryKernel, openGeometryEvents, runPickStart, claimFastGeometr
 import { memoryAccounting } from '../lib/perf/memoryAccounting.js';
 import { loadTracer, nextPaintOrTimeout } from '../lib/perf/loadTrace.js';
 import { countCopy } from '@ifc-lite/load-trace'; // #6957 full source-copy counters
-import { headIsZip, NO_ARCHIVE_IMAGES, sourceArrayBuffer } from './ingest/sourceBuffers.js';
+import { FORMAT_HEAD_BYTES, headIsZip, NO_ARCHIVE_IMAGES, sourceArrayBuffer } from './ingest/sourceBuffers.js';
 import { compactSource } from '../lib/source-compaction/source-compaction.js';
 import { runAfterModelSettled } from '../lib/perf/afterLoad.js';
 import {
@@ -88,7 +88,7 @@ import {
 } from './ingest/geometryHandleDisposal.js';
 import { inspectGaussianAdmission } from './ingest/gaussianAdmission.js';
 import { loadGaussianCapture } from './ingest/gaussianLoad.js';
-import { detectPointCloudFormat, ingestPointCloud } from './ingest/pointCloudIngest.js';
+import { detectPointCloudFormat } from './ingest/pointCloudFormat.js';
 import { bindPointCloudIdentity } from './ingest/pointCloudIdentity.js';
 import { pointCloudSpatialReferenceFromMetadata, preparePointCloudSpatialLoad } from './ingest/pointCloudSpatialLoad.js';
 import { removePointCloudScanCache } from './ingest/pointCloudScanCache.js';
@@ -420,12 +420,12 @@ export function useIfcLoader() {
       let format: ReturnType<typeof detectFormat> | NonNullable<ReturnType<typeof detectPointCloudFormat>> | 'landxml' = processedModel ? 'ifc' : isLandXmlFileName(file.name) ? 'landxml' : 'unknown';
       let loadedBufferByteLength = fileSize;
       let modelSourceIdentity = '';
-      // #7022: one full-source hash, awaited only for publication/cache.
-      let placementIdentity: Promise<string | undefined> = Promise.resolve(undefined);
-
+      let placementIdentity: Promise<string | undefined> = Promise.resolve(undefined); // #7022: one hash for publication/cache.
       let shardGeneration = instancedShardSupplyToken(modelId);
       const commitPrimarySession = () => {
-        if (target.kind === 'primary' && !primaryCommitted) { releaseCanceller.commit(); currentSession = ++loadSessionRef.current; sessionOwner.value = currentSession; primaryCommitted = true; }
+        if (target.kind !== 'primary' || primaryCommitted) return;
+        options?.beforePrimaryReset?.();
+        releaseCanceller.commit(); currentSession = ++loadSessionRef.current; sessionOwner.value = currentSession; primaryCommitted = true;
       };
       const initializeModel = () => {
         if (initialized) return;
@@ -710,7 +710,7 @@ export function useIfcLoader() {
       commitPrimarySession(); // supersede old work before the new pick starter installs its own watchers
       runPickStart({ file, target, kernel: geometryKernel, retry: options?.isResourceRetry === true || options?.tierOverride !== undefined, isCurrent }); // the one place work starts before the reset (ingest/pickStart.ts)
       initializeModel();
-      const headBuf = preflightHead ?? await file.slice(0, 4096).arrayBuffer();
+      const headBuf = preflightHead ?? await file.slice(0, FORMAT_HEAD_BYTES).arrayBuffer();
 
       if (isStale()) return;
       const gaussianAdmission = await inspectGaussianAdmission(file, headBuf);
@@ -857,11 +857,12 @@ export function useIfcLoader() {
         let { sourceSpatialReference, alignment } = await preparePointCloudSpatialLoad(
           file, format, sourceUnit, () => isCurrent(),
         );
-        // Never publish a decoded source reference, alignment availability, or
-        // metadata-refusal toast after its owning load has been superseded.
+        // Publish alignment metadata only while this load owns the session.
         if (isStale()) return;
         const setAlignmentAvailable = useViewerStore.getState().setPointCloudAlignmentAvailable;
         const alignmentEnabled = useViewerStore.getState().pointCloudAlignmentEnabled;
+        const { ingestPointCloud } = await import('./ingest/pointCloudIngest.js');
+        if (isStale()) return;
         const ingest = ingestPointCloud({
           format,
           blob,
@@ -876,10 +877,7 @@ export function useIfcLoader() {
           onSpatialMetadata: (metadata) => {
             sourceSpatialReference ??= pointCloudSpatialReferenceFromMetadata(format, metadata);
           },
-          // Session-guard the histogram writes: a superseded stream
-          // keeps publishing periodic counts until `done` settles, and
-          // an unguarded write would repopulate phantom classes after
-          // a newer load reset the store.
+          // A superseded stream may publish counts until `done` settles.
           onClassCounts: (handleId, counts) => {
             if (isCurrent()) {
               setClassCounts(handleId, counts);

@@ -144,11 +144,9 @@ fn map_4x3_to_4(t: &str) -> Option<&'static str> {
     })
 }
 
-/// IFC4X3 alignment and positioning types with no representation in IFC2X3 or
-/// IFC4, replaced by [`product_proxy`]. The positioning types used to be
-/// RENAMED to `IFCPROXY` instead, which kept their own attributes under the
-/// new name: `IFCALIGNMENT(…,.ROAD.)` became an 8-attribute `IFCPROXY` with an
-/// alignment enum in `ProxyType`, where IfcProxy takes 9 (EXPORT-MERGE-8, #7683).
+/// IFC4X3 alignment and positioning types replaced by [`product_proxy`] in
+/// IFC2X3 or IFC4. A bare rename would keep the wrong slot count and put the
+/// alignment enum in `ProxyType` (EXPORT-MERGE-8, #7683).
 pub(crate) fn should_skip_entity(t: &str, to: &str) -> bool {
     if to == "IFC4X3" || to == "IFC5" {
         return false;
@@ -243,12 +241,11 @@ pub fn convert_step_line(
     converted = crate::schema_retyped::apply(converted, cfrom, cto, checks.as_deref_mut().map(|c| &mut c.attribute_values_dropped)); // #10778
     converted = crate::schema_userdefined_label::carry(line, converted, cfrom, cto, checks.as_deref_mut().map(|c| &mut c.attribute_values_dropped)); // #10824
     if let Some(checks) = checks {
-        if let Some(placement) = checks.structural.values.placement(express_id) {
-            if let Some(repointed) = crate::step_log::replace_argument(&converted, 5, &format!("#{placement}")) {
-                converted = repointed;
-            }
+        if let Some(repointed) = checks.structural.values.placement(express_id).and_then(|p| crate::step_log::replace_argument(&converted, 5, &format!("#{p}"))) {
+            converted = repointed;
         }
         converted = checks.enums.apply(converted, cto);
+        converted = checks.documents.apply(express_id, converted, &mut checks.attribute_values_dropped);
         if cto == "IFC2X3" { converted = checks.structural.after(express_id, converted); }
         (cto == "IFC4" && (cfrom != "IFC2X3" || crate::schema_attr_maps::upgrade_counts_ifc4_slots(&converted))).then(|| checks.ifc4_slots.count(&converted));
     }

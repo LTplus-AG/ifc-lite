@@ -2149,6 +2149,7 @@
     "src/lib/geo/viewer-up-scale.test.ts": 0.5,
     "src/lib/geo/wkt-parser-patch.test.ts": 0.9,
     "src/lib/geo/wkt-projection.test.ts": 0.9,
+    "src/lib/geometry-backing/backing-debug-hook.snap-probe.test.ts": 3.3,
     "src/lib/geometry-backing/cut-readback.federated.test.ts": 3.6,
     "src/lib/geometry-backing/generation-replay.test.ts": 0.9,
     "src/lib/geometry-backing/instanced-resupply.test.ts": 0.6,

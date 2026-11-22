@@ -126,6 +126,113 @@ interface BimFileAttachment {
   hasTextContent: boolean;
 }
 
+// ── Script result surface types ───────────────────────────────────────
+//
+// Extracted by the generator from the sources below — these declarations are
+// the engine's own text, not a copy maintained in the generator:
+//   packages/sandbox/src/bridge-ui.ts
+//   packages/a2ui/src/builders.ts
+//   packages/a2ui/src/query.ts
+//   packages/a2ui/src/policy.ts
+//   packages/sdk/src/types.ts
+
+declare namespace BimUi {
+  export type ScriptUiSurface = Omit<SurfaceSpec, 'surfaceId' | 'sections'> & { sections: ScriptUiSection[] };
+
+  export interface SurfaceSpec {
+    surfaceId: string;
+    title?: string;
+    sections: SectionSpec[];
+    /** Wrap in a Card (default true). */
+    card?: boolean;
+  }
+
+  export type ScriptUiSection =
+    | Exclude<SectionSpec, { kind: 'table' | 'chart' | 'entity' | 'list' | 'actions' }>
+    | (Omit<SectionOf<'table'>, 'rows'> & { rows?: ScriptUiRow[] })
+    | (Omit<SectionOf<'chart'>, 'data'> & {
+        data?: (Omit<NonNullable<SectionOf<'chart'>['data']>[number], 'refs'> & { refs?: ScriptUiRef[] })[];
+      })
+    | (Omit<SectionOf<'entity'>, 'entity'> & { entity: ScriptUiRef })
+    | (Omit<SectionOf<'list'>, 'refs'> & { refs?: ScriptUiRef[] })
+    | (Omit<SectionOf<'actions'>, 'refs'> & { refs?: ScriptUiRef[] });
+
+  export type SectionSpec =
+    | { kind: 'text'; text: string; variant?: 'body' | 'caption' }
+    | { kind: 'callout'; text: string; tone?: Tone; title?: string }
+    | { kind: 'stats'; items: StatSpec[] }
+    | { kind: 'table'; columns: ColumnSpec[]; rows?: RowSpec[]; query?: IfcQuerySpec; title?: string; groupBy?: string; maxRows?: number }
+    | { kind: 'list'; refs?: string[]; query?: IfcQuerySpec; title?: string; label?: string }
+    | { kind: 'chart'; groupBy: string; data?: ChartDatum[]; query?: IfcQuerySpec; chart?: 'bar' | 'pie'; aggregate?: 'count' | 'sum'; path?: string; title?: string }
+    | { kind: 'legend'; by: string; query?: IfcQuerySpec; title?: string; apply?: 'manual' | 'onShow' }
+    | { kind: 'actions'; actions: ViewerAction[]; refs?: string[]; query?: IfcQuerySpec; color?: string; followUps?: { label: string; prompt: string }[] }
+    | { kind: 'entity'; entity: string; sections?: string[] };
+
+  type SectionOf<Kind extends SectionSpec['kind']> = Extract<SectionSpec, { kind: Kind }>;
+
+  export type ScriptUiRow = (Record<string, unknown> & { ref?: ScriptUiRef }) | { ref: ScriptUiRef };
+
+  export type ScriptUiRef = string | EntityRef;
+
+  export type Tone = 'neutral' | 'info' | 'success' | 'warn' | 'error';
+
+  export interface StatSpec {
+    label: string;
+    value?: number;
+    query?: IfcQuerySpec;
+    aggregate?: 'count' | 'sum' | 'avg' | 'min' | 'max';
+    path?: string;
+    unit?: string;
+    tone?: Tone;
+  }
+
+  export interface ColumnSpec {
+    path: string;
+    label?: string;
+  }
+
+  /** A script row: `ref` ("modelId:expressId") plus one value per column path. */
+  export type RowSpec = { ref?: string } & Record<string, unknown>;
+
+  export interface IfcQuerySpec {
+    /** IFC class names, case-insensitive (`IfcDoor`, `IFCWALL`). Empty or absent means every product. */
+    types?: string[];
+    where?: QueryCondition[];
+    /** Restrict to one storey, matched against the storey Name. */
+    storey?: string;
+    /** Restrict to one loaded model. */
+    modelId?: string;
+    limit?: number;
+  }
+
+  export interface ChartDatum {
+    label: string;
+    value: number;
+    refs?: string[];
+  }
+
+  export type ViewerAction = (typeof VIEWER_ACTIONS)[number];
+
+  /** Reference to a specific entity within a federated model set */
+  export interface EntityRef {
+    modelId: string;
+    expressId: number;
+  }
+
+  export interface QueryCondition {
+    /** A field path, see {@link parseFieldPath}. */
+    path: string;
+    op: QueryOperator;
+    value?: string | number | boolean;
+  }
+
+  const VIEWER_ACTIONS: readonly ['select', 'isolate', 'hide', 'show', 'colorize', 'flyTo', 'resetView', 'exportCsv'];
+
+  export type QueryOperator = (typeof QUERY_OPERATORS)[number];
+
+  const QUERY_OPERATORS: readonly ['eq', 'neq', 'contains', 'gt', 'gte', 'lt', 'lte', 'exists', 'missing'];
+}
+
 // ── Generic group lifecycle types ─────────────────────────────────────
 //
 // Extracted by the generator from the sources below — these declarations are
@@ -1615,6 +1722,27 @@ declare const bim: {
     ifc(entities?: BimEntity[], options?: { schema?: "IFC2X3" | "IFC4" | "IFC4X3"; filename?: string; includeMutations?: boolean; visibleOnly?: boolean }): string | Uint8Array;
     /** Trigger a browser file download with the given content. mimeType defaults to text/plain. */
     download(content: string, filename: string, mimeType?: string): void;
+  };
+  /** Present computed results as A2UI surfaces and return a host-generated surface ID. Limits per run are 8 surfaces, 2000 rows per table and 256 KiB of serialized surfaces. Example: const walls = bim.query.byType("IfcWall"); bim.ui.table({ columns: [{ path: "Name" }], rows: walls }); */
+  ui: {
+    /** Show a table with columns [{path, label?}] and either computed rows or an IFC query. Pass query results directly as rows, or map them to objects keyed by column path with an optional ref. */
+    table(spec: Omit<Extract<BimUi.ScriptUiSection, { kind: 'table' }>, 'kind'>): string;
+    /** Show KPI tiles from items [{label, value?, query?, aggregate?, path?, unit?, tone?}]. Supply a computed value or a query for each item. */
+    stats(spec: Omit<Extract<BimUi.ScriptUiSection, { kind: 'stats' }>, 'kind'>): string;
+    /** Show a bar or pie chart grouped by groupBy, with a query or computed data [{label, value, refs?}]. */
+    chart(spec: Omit<Extract<BimUi.ScriptUiSection, { kind: 'chart' }>, 'kind'>): string;
+    /** Show a colour legend grouped by the field path by, with an optional IFC query. */
+    legend(spec: Omit<Extract<BimUi.ScriptUiSection, { kind: 'legend' }>, 'kind'>): string;
+    /** Show viewer actions for refs or a query. Supply actions such as select, isolate, flyTo or exportCsv, and optional followUps [{label, prompt}]. */
+    actions(spec: Omit<Extract<BimUi.ScriptUiSection, { kind: 'actions' }>, 'kind'>): string;
+    /** Show a highlighted note with text and optional title and tone. */
+    callout(spec: Omit<Extract<BimUi.ScriptUiSection, { kind: 'callout' }>, 'kind'>): string;
+    /** Show an IFC entity card for an EntityRef object or a "modelId:expressId" string. */
+    entity(ref: BimUi.ScriptUiRef): string;
+    /** Show a compact entity list from refs or an IFC query, with an optional title and label field path. */
+    list(spec: Omit<Extract<BimUi.ScriptUiSection, { kind: 'list' }>, 'kind'>): string;
+    /** Show several sections in one surface. Pass { title?, card?, sections: [{ kind, ...fields }] }. Supported kinds are text, table, stats, chart, legend, actions, callout, entity and list. */
+    show(spec: BimUi.ScriptUiSurface): string;
   };
   /** Outbound HTTP requests, restricted to https: hosts covered by a granted network.fetch:<host> capability. */
   network: {

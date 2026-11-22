@@ -7,6 +7,7 @@
  * and execution results.
  */
 
+import type { ScriptResult } from '@ifc-lite/sandbox';
 import type { StateCreator } from 'zustand';
 import type { SavedScript, SaveResult } from '../../lib/scripts/persistence.js';
 import { loadSavedScripts, saveScripts, validateScriptName, canCreateScript, isScriptWithinSizeLimit } from '../../lib/scripts/persistence.js';
@@ -28,11 +29,7 @@ export interface LogEntry {
   timestamp: number;
 }
 
-export interface ScriptResult {
-  value: unknown;
-  logs: LogEntry[];
-  durationMs: number;
-}
+export type { ScriptResult } from '@ifc-lite/sandbox';
 
 export interface ScriptEditorApplyAdapter {
   apply: (

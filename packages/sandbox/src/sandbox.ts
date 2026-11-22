@@ -25,7 +25,6 @@ import type { BimContext } from '@ifc-lite/sdk';
 import type { SandboxConfig, ScriptResult, LogEntry } from './types.js';
 import { DEFAULT_LIMITS, DEFAULT_PERMISSIONS } from './types.js';
 import { buildBridge } from './bridge.js';
-import type { HostWorkQueue } from './bridge-async.js';
 import { transpileTypeScript } from './transpile.js';
 import {
   acquireQuickJSModule,
@@ -111,20 +110,7 @@ export class Sandbox {
   private module: QuickJSWASMModule | null = null;
   private runtime: QuickJSRuntime | null = null;
   private vm: QuickJSContext | null = null;
-  private logs: LogEntry[] = [];
-  /**
-   * Clears the log buffer *and* the bridge's capture budget. Set by init();
-   * eval() calls it instead of emptying `logs` itself, so the budget can never
-   * again be left latched across runs (#2099).
-   */
-  private resetLogs: (() => void) | null = null;
-  /**
-   * In-flight host promises returned by bridge methods (#2305). Set by init();
-   * `runEval` settles it between QuickJS job drains so a script that awaits an
-   * async `bim.*` call sees the real result, and so a host rejection reaches
-   * the script instead of escaping as an unhandled rejection.
-   */
-  private hostWork: HostWorkQueue | null = null;
+  private bridge: ReturnType<typeof buildBridge> | null = null;
   /**
    * The eval-result handle of the run currently in flight, if any (#2305).
    *
@@ -146,7 +132,6 @@ export class Sandbox {
    */
   private pendingEvalHandle: QuickJSHandle | null = null;
   private config: Required<SandboxConfig>;
-  private bridgeDispose: (() => void) | null = null;
   /** Mutable start time — updated by eval(), read by interrupt handler */
   private evalStartTime = 0;
   /**
@@ -266,11 +251,7 @@ export class Sandbox {
       this.vm = this.runtime.newContext();
 
       // Build the bim API inside the sandbox
-      const { logs, resetLogs, hostWork, dispose } = buildBridge(this.vm, this.sdk, this.config.permissions, { sandboxSessionId: this.sessionId }, this.config.network.grants, this.config.network.transport);
-      this.logs = logs;
-      this.resetLogs = resetLogs;
-      this.hostWork = hostWork;
-      this.bridgeDispose = dispose;
+      this.bridge = buildBridge(this.vm, this.sdk, this.config.permissions, { sandboxSessionId: this.sessionId }, this.config.network.grants, this.config.network.transport);
     } catch (err) {
       // dispose() is idempotent — it clears each field before freeing it, so
       // the bridge, vm and runtime are released in order and never twice.
@@ -310,13 +291,13 @@ export class Sandbox {
     if (this.isDisposed) {
       throw new Error(DISPOSED_MESSAGE);
     }
-    if (!this.vm || !this.resetLogs) {
+    const bridge = this.bridge;
+    if (!this.vm || !bridge) {
       throw new Error('Sandbox not initialized. Call init() first.');
     }
 
-    // Clear the previous run's logs and, with them, the capture budget that
-    // bounds them — the two are one operation (see buildConsole).
-    this.resetLogs();
+    // Reset the per-run output buffers and their budgets.
+    bridge.resetLogs();
 
     // Transpile TypeScript — always strip types for safety.
     // The transpiler is a no-op for plain JavaScript, and the heuristic
@@ -402,7 +383,7 @@ export class Sandbox {
       this.evalStartTime = 0;
 
       if (result.error) {
-        throw new ScriptError(describeError(this.vm, result.error), this.logs, durationMs);
+        throw new ScriptError(describeError(this.vm, result.error), bridge.logs, durationMs);
       }
 
       // The main body finished, but a drained job may have been cut short by
@@ -411,7 +392,7 @@ export class Sandbox {
       // a success hands the caller a silently truncated run, so surface the
       // same 'interrupted' ScriptError QuickJS raises for a main-body timeout.
       if (this.interrupted) {
-        throw new ScriptError('interrupted', this.logs, durationMs);
+        throw new ScriptError('interrupted', bridge.logs, durationMs);
       }
 
       // The main body finished, but when it hands back a promise — the shape
@@ -451,12 +432,12 @@ export class Sandbox {
       } catch (stateErr) {
         throw new ScriptError(
           `Sandbox realm became invalid during execution: ${stateErr instanceof Error ? stateErr.message : String(stateErr)}`,
-          this.logs,
+          bridge.logs,
           durationMs,
         );
       }
       if (rejectionMessage !== null) {
-        throw new ScriptError(rejectionMessage, this.logs, durationMs);
+        throw new ScriptError(rejectionMessage, bridge.logs, durationMs);
       }
 
       let value: unknown;
@@ -465,22 +446,20 @@ export class Sandbox {
       } catch (dumpErr) {
         throw new ScriptError(
           `Sandbox realm became invalid during execution: ${dumpErr instanceof Error ? dumpErr.message : String(dumpErr)}`,
-          this.logs,
+          bridge.logs,
           durationMs,
         );
       }
 
-      return {
-        value,
-        logs: [...this.logs],
-        durationMs,
-      };
+      const surfaces = bridge.takeSurfaces();
+      return { value, logs: [...bridge.logs], durationMs, ...(surfaces && { surfaces }) };
     } finally {
       // Belt-and-braces: the success path already zeroed this before the dumps,
       // but an unexpected throw from job draining would otherwise leave the CPU
       // interrupt armed against a stale start time, so the next VM code to run
       // in this realm (including teardown) would be cut short as a timeout.
       this.evalStartTime = 0;
+      bridge.takeSurfaces();
       // Cleared before the free so a `dispose()` racing this `finally` cannot
       // reach a handle this run is already releasing.
       this.pendingEvalHandle = null;
@@ -503,7 +482,7 @@ export class Sandbox {
    * than a single pass.
    */
   private async settleHostWork(): Promise<void> {
-    const hostWork = this.hostWork;
+    const hostWork = this.bridge?.hostWork;
     if (!hostWork) return;
     const timeoutMs = this.config.limits.timeoutMs ?? DEFAULT_LIMITS.timeoutMs;
     while (hostWork.size > 0) {
@@ -549,15 +528,13 @@ export class Sandbox {
    * and a fired `ABORT` latch (see quickjs-module.ts).
    */
   dispose(): void {
-    const bridgeDispose = this.bridgeDispose;
+    const bridge = this.bridge;
     const pendingEvalHandle = this.pendingEvalHandle;
     const vm = this.vm;
     const runtime = this.runtime;
     const module = this.module;
-    this.bridgeDispose = null;
+    this.bridge = null;
     this.pendingEvalHandle = null;
-    this.resetLogs = null;
-    this.hostWork = null;
     this.vm = null;
     this.runtime = null;
     this.module = null;
@@ -570,7 +547,7 @@ export class Sandbox {
     // lifetime, and leaving it alive is what makes `runtime.dispose()` abort
     // the module (#1922). The run itself observes the disposal and rejects.
     safeDispose(pendingEvalHandle ?? undefined);
-    bridgeDispose?.();
+    bridge?.dispose();
     vm?.dispose();
     if (!runtime) return;
     try {

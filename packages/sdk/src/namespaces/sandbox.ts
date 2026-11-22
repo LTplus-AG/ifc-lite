@@ -17,6 +17,7 @@
  * ```
  */
 
+import type { CreateSurfaceMessage } from '@ifc-lite/a2ui';
 import { RemoteBackend } from '../transport/remote-backend.js';
 
 // ============================================================================
@@ -38,6 +39,8 @@ export interface SandboxPermissions {
   lens?: boolean;
   /** Allow uploaded file access (default: true) */
   files?: boolean;
+  /** Allow bim.ui.* result surfaces (default: true) */
+  ui?: boolean;
 }
 
 export interface SandboxLimits {
@@ -63,6 +66,8 @@ export interface ScriptResult {
   logs: Array<{ level: 'log' | 'warn' | 'error' | 'info'; args: unknown[]; timestamp: number }>;
   /** Execution time in ms */
   durationMs: number;
+  /** A2UI message batches emitted by bim.ui during this run */
+  surfaces?: CreateSurfaceMessage[][];
 }
 
 // ============================================================================

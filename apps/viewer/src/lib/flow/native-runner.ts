@@ -16,7 +16,7 @@ import { preflightWorkflow, isAutomationGraph } from '@/lib/flow/preflight';
 import { startWorkflowRun } from '@/lib/flow/run-session';
 import { guardAnalysisRun } from '@/hooks/analysisRunGuard';
 import { writingNodes } from '@/lib/flow/publish-provenance';
-import { claimReview, finishReview, pauseForReview, releaseReviewClaim, useFlowReview } from '@/lib/flow/review-session';
+import { claimReview, finishReview, pauseForReview, releaseReviewClaim, startReviewClaim, useFlowReview } from '@/lib/flow/review-session';
 
 import type { BimContext } from '@ifc-lite/sdk';
 import type { NativeModelAdder } from '@/services/coordination-loader';
@@ -118,15 +118,22 @@ export class NativeFlowRunner {
         throw new Error('The default model changed during workflow preflight. Inspect Flow state before running again.');
       }
       if (resume) {
-        claimed = await claimReview(doc, preparedInputs, resume.id);
-        if (!claimed) throw new Error('the reviewed proposal could not be resumed');
-        if (defaultModelChanged()) {
-          // Nothing ran, so the claim goes back and the proposal stays resumable. If that write fails,
-          // the claim stays held and the catch below finishes it, still reporting the model change.
-          try { await releaseReviewClaim(claimed); claimed = null; }
-          catch (error) { console.warn('[flow] releasing an unstarted review claim failed', error); }
-          throw new Error('The default model changed while claiming the reviewed checkpoint.');
+        const reserved = await claimReview(doc, preparedInputs, resume.id, true);
+        if (!reserved) throw new Error('the reviewed proposal could not be resumed');
+        try {
+          if (defaultModelChanged()) throw new Error('The default model changed while claiming the reviewed checkpoint.');
+          session.check();
+          claimed = await startReviewClaim(reserved);
+          if (!claimed) throw new Error('The reviewed checkpoint could not be started.');
+        } finally {
+          if (!claimed) {
+            // A failed release leaves an unused reservation, which recovery can safely reopen.
+            try { await releaseReviewClaim(reserved); }
+            catch (error) { console.warn('[flow] releasing an unstarted review claim failed', error); }
+          }
         }
+        session.check();
+        if (defaultModelChanged()) throw new Error('The default model changed while starting the reviewed checkpoint.');
       }
       const ownedAddModel: typeof addModel = (file, options) => addModel(file, { ...options, workflowOwner: session.id });
       const automation = createAutomationHost(session, doc, ownedAddModel, (artifact) => {

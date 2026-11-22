@@ -24,7 +24,7 @@
  */
 
 import { digest } from './digest.js';
-import { CHECKPOINT_VERSION, registerOwnedClaim, nonPortable, proposalDigestOf, validPortableOutputs, type CheckpointState, type FlowCheckpoint } from './checkpoint-record.js';
+import { CHECKPOINT_VERSION, hasOwnedClaim, registerOwnedClaim, nonPortable, proposalDigestOf, validPortableOutputs, type CheckpointState, type FlowCheckpoint } from './checkpoint-record.js';
 
 export type CheckpointErrorCode =
   | 'invalid'
@@ -69,7 +69,8 @@ export function parseCheckpoint(value: unknown): FlowCheckpoint {
   if (!validPortableOutputs(value.outputs as Record<string, Record<string, unknown>>)) bad('outputs contain malformed or non-portable flow data');
   if (!Number.isFinite(value.createdAt) || !Number.isFinite(value.updatedAt)) bad('timestamps must be finite');
   if (value.claim !== undefined && (!isRecord(value.claim) || typeof value.claim.owner !== 'string' || !value.claim.owner.trim()
-    || !Number.isFinite(value.claim.leaseUntil) || !Number.isFinite(value.claim.at))) bad('invalid claim');
+    || !Number.isFinite(value.claim.leaseUntil) || !Number.isFinite(value.claim.at)
+    || (value.claim.reservationId !== undefined && (typeof value.claim.reservationId !== 'string' || !value.claim.reservationId)))) bad('invalid claim');
   if (value.review !== undefined && (!isRecord(value.review) || !['approved', 'rejected'].includes(String(value.review.decision))
     || typeof value.review.proposalDigest !== 'string' || !Number.isFinite(value.review.at))) bad('invalid review');
   const problems: string[] = [];
@@ -113,6 +114,8 @@ export interface ClaimInput {
   /** What the resume will read, digested the same way as at checkpoint time. */
   readonly sourceDigest: string;
   readonly leaseMs: number;
+  /** Reserve the checkpoint and persist a separate start before resuming. */
+  readonly deferStart?: boolean;
   readonly now?: number;
 }
 
@@ -137,9 +140,41 @@ export function claimCheckpoint(checkpoint: FlowCheckpoint, input: ClaimInput): 
     || !Number.isFinite(now + input.leaseMs) || now + input.leaseMs <= now) {
     throw new CheckpointError('invalid', 'the claim needs a finite positive lease and timestamp');
   }
-  const next: FlowCheckpoint = { ...checkpoint, state: 'applying', updatedAt: now, claim: { owner: input.owner, leaseUntil: now + input.leaseMs, at: now } };
+  const next: FlowCheckpoint = {
+    ...checkpoint, state: 'applying', updatedAt: now,
+    claim: { owner: input.owner, leaseUntil: now + input.leaseMs, at: now, ...(input.deferStart ? { reservationId: crypto.randomUUID() } : {}) },
+  };
   validatedClaims.set(next, { before: digest(checkpoint), after: digest(next) });
   return next;
+}
+
+function unstartedClaim(checkpoint: FlowCheckpoint, expected: FlowCheckpoint) {
+  const claim = checkpoint.claim, held = expected.claim;
+  if (checkpoint.id !== expected.id || checkpoint.state !== 'applying' || !claim?.reservationId || claim.reservationId !== held?.reservationId
+    || claim.owner !== held.owner || claim.at !== held.at || claim.leaseUntil !== held.leaseUntil) {
+    throw new CheckpointError('not-owner', 'the unstarted review claim is no longer held');
+  }
+  return claim;
+}
+
+/** Persist the start before any downstream work may use the approved outputs. */
+export function startCheckpoint(checkpoint: FlowCheckpoint, reserved: FlowCheckpoint, now = Date.now()): FlowCheckpoint {
+  assertTimestamp(now);
+  const { reservationId: _reservation, ...claim } = unstartedClaim(checkpoint, reserved);
+  if (!hasOwnedClaim(reserved)) throw new CheckpointError('not-owner', 'starting requires the original successful store claim');
+  if (digest(checkpoint) !== digest(reserved)) throw new CheckpointError('not-owner', 'the reserved checkpoint changed before starting');
+  if (claim.leaseUntil <= now) throw new CheckpointError('not-owner', 'the review claim expired before starting');
+  const next: FlowCheckpoint = { ...checkpoint, updatedAt: now, claim };
+  validatedClaims.set(next, { before: digest(checkpoint), after: digest(next) });
+  return next;
+}
+
+/** Return an unused reservation to review, retaining the approval. */
+export function releaseCheckpoint(checkpoint: FlowCheckpoint, reserved: FlowCheckpoint, now = Date.now()): FlowCheckpoint {
+  assertTimestamp(now);
+  unstartedClaim(checkpoint, reserved);
+  const { claim: _claim, ...reviewed } = checkpoint;
+  return { ...reviewed, state: 'reviewed', updatedAt: now };
 }
 
 /** Record how the owner's resume ended. A failed resume may have committed some effects. */
@@ -147,6 +182,7 @@ export function finishCheckpoint(checkpoint: FlowCheckpoint, owner: string, outc
   assertTimestamp(now);
   requireState(checkpoint, 'applying', 'not-owner');
   if (checkpoint.claim?.owner !== owner) throw new CheckpointError('not-owner', 'another owner holds this checkpoint');
+  if (checkpoint.claim.reservationId) throw new CheckpointError('not-owner', 'an unstarted checkpoint must be released');
   return {
     ...checkpoint,
     state: outcome.ok ? 'completed' : 'partially-committed',
@@ -155,10 +191,11 @@ export function finishCheckpoint(checkpoint: FlowCheckpoint, owner: string, outc
   };
 }
 
-/** A claim whose lease ran out without a finish: its effects are unknown, so it can never be applied again. */
+/** Recover an expired reservation or quarantine a resume with unknown effects. */
 export function recoverCheckpoint(checkpoint: FlowCheckpoint, now = Date.now()): FlowCheckpoint | null {
   assertTimestamp(now);
   if (checkpoint.state !== 'applying' || (checkpoint.claim && checkpoint.claim.leaseUntil > now)) return null;
+  if (checkpoint.claim?.reservationId) return releaseCheckpoint(checkpoint, checkpoint, now);
   return {
     ...checkpoint,
     state: 'partially-committed',

@@ -12,6 +12,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
+import * as checkpointTransitions from './checkpoint-state.js';
 import { CheckpointNotPortableError, checkpointProposal, createCheckpoint, graphDigest, resumeOutputs, type FlowCheckpoint } from './checkpoint-record.js';
 import {
   approveCheckpoint, CheckpointError, claimCheckpoint, finishCheckpoint, MemoryCheckpointStore, parseCheckpoint,
@@ -653,3 +654,34 @@ function testOwnerName({ pid, host, boot, start }: TestLockIdentity): string {
   // Unique fixture token with the protocol's UUID field layout.
   return `${pid}-v2-${host}-${boot ?? 'u'}-${start ?? 'u'}-${crypto.randomUUID()}`;
 }
+
+it('recovers an expired unstarted claim while keeping started claims conservative (#10591)', async () => {
+  const pending = await paused();
+  const approved = approveCheckpoint(pending, pending.proposalDigest);
+  const store = new MemoryCheckpointStore();
+  await store.write(approved, null);
+  const now = Date.now();
+  const reserve = () => updateCheckpoint(store, approved.id, current => claimCheckpoint(current, { ...claim('tab-a', now), deferStart: true }));
+  const reserved = await reserve();
+
+  const expireAt = reserved.claim!.leaseUntil;
+  expect(recoverCheckpoint(reserved, expireAt - 1)).toBeNull();
+  const recovered = recoverCheckpoint(reserved, expireAt);
+  expect(recovered).toMatchObject({ state: 'reviewed', review: approved.review });
+  expect(recovered?.claim).toBeUndefined();
+
+  const { releaseCheckpoint, startCheckpoint } = checkpointTransitions;
+  expect(() => resumeOutputs(reserved)).toThrow(/started/);
+  expect(() => finishCheckpoint(reserved, 'tab-a', { ok: false })).toThrow(/unstarted/);
+  expect(() => startCheckpoint(reserved, structuredClone(reserved))).toThrow(/original/);
+  const released = await updateCheckpoint(store, approved.id, current => releaseCheckpoint(current, reserved));
+  expect(released).toMatchObject({ state: 'reviewed', review: approved.review });
+  const replacement = await reserve();
+  await expect(updateCheckpoint(store, approved.id, current => releaseCheckpoint(current, reserved))).rejects.toMatchObject({ code: 'not-owner' });
+
+  const applying = await updateCheckpoint(store, approved.id, current => startCheckpoint(current, replacement));
+  expect(recoverCheckpoint(applying, applying.claim!.leaseUntil)?.state).toBe('partially-committed');
+  const host: Host = { sunk: [] };
+  expect((await runFlow(doc, { host, registry, resume: resumeOutputs(applying) })).ok).toBe(true);
+  expect(host.sunk).toEqual([['wall', 'unknown']]);
+});

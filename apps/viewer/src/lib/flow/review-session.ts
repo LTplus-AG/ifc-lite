@@ -19,8 +19,8 @@
  * resume and asks for a new run. Reloading the same files with no pending
  * edits is the same state, so a proposal that wrote nothing before its pause
  * can be approved after a reload. A tab that dies mid-resume
- * leaves `applying` behind; once its lease runs out the next load marks it
- * partially committed, never claimable again.
+ * leaves `applying` behind. Recovery restores approval for an unstarted
+ * reservation and marks a started resume partially committed.
  */
 
 import { create } from 'zustand';
@@ -29,7 +29,7 @@ import { AI_FEATURE } from '@ifc-lite/flow-nodes/ai';
 import { digest, type FlowDocument, type RunResult } from '@ifc-lite/flow';
 import {
   approveCheckpoint, CheckpointError, claimCheckpoint, createCheckpoint, finishCheckpoint, graphDigest,
-  recoverCheckpoint, rejectCheckpoint, updateCheckpoint, type FlowCheckpoint
+  recoverCheckpoint, rejectCheckpoint, releaseCheckpoint, startCheckpoint, updateCheckpoint, type FlowCheckpoint
 } from '@ifc-lite/flow/checkpoint';
 import { useViewerStore } from '@/store';
 import { flowRegistry } from './runner';
@@ -155,27 +155,23 @@ export function rejectReview(): Promise<FlowCheckpoint | null> {
 }
 
 /** Claim the approved checkpoint for this tab's resume, against the graph and inputs it will run with. */
-export function claimReview(doc: FlowDocument, inputs: Record<string, unknown>, checkpointId: string): Promise<FlowCheckpoint | null> {
+export function claimReview(doc: FlowDocument, inputs: Record<string, unknown>, checkpointId: string, deferStart = false): Promise<FlowCheckpoint | null> {
   return transition((c) => {
     const registry = flowRegistry();
     const aiAhead = doc.nodes.some(node => !Object.hasOwn(c.outputs, node.id) && registry.get(node.type)?.requires?.backend?.includes(AI_FEATURE));
     if (aiAhead && !restoreRootBudget(c.budget)) throw new BudgetReceiptError('Resuming downstream AI nodes requires the original root budget receipt. Run the graph again.');
-    return claimCheckpoint(c, { owner: TAB_OWNER, graphDigest: graphDigest(doc, inputs, registry), sourceDigest: viewerSourceDigest(), leaseMs: REVIEW_LEASE_MS });
+    return claimCheckpoint(c, { owner: TAB_OWNER, graphDigest: graphDigest(doc, inputs, registry), sourceDigest: viewerSourceDigest(), leaseMs: REVIEW_LEASE_MS, deferStart });
   }, checkpointId);
 }
 
+export function startReviewClaim(reserved: FlowCheckpoint): Promise<FlowCheckpoint | null> {
+  return transition((current) => startCheckpoint(current, reserved), reserved.id);
+}
+
 /** Return this tab's exact claim to review before any downstream work has started. */
-export async function releaseReviewClaim(claimed: FlowCheckpoint): Promise<void> {
-  const expectedClaim = claimed.claim;
-  const released = await updateCheckpoint(browserCheckpointStore, claimed.id, current => {
-    const { claim, ...reviewed } = current;
-    if (current.state !== 'applying' || !expectedClaim || claim?.owner !== TAB_OWNER
-      || claim.at !== expectedClaim.at || claim.leaseUntil !== expectedClaim.leaseUntil) {
-      throw new CheckpointError('not-owner', 'The unstarted review claim is no longer held by this run.');
-    }
-    return { ...reviewed, state: 'reviewed', updatedAt: Date.now() };
-  });
-  if (useFlowReview.getState().checkpoint?.id === claimed.id) useFlowReview.setState({ checkpoint: released });
+export async function releaseReviewClaim(reserved: FlowCheckpoint): Promise<void> {
+  const released = await updateCheckpoint(browserCheckpointStore, reserved.id, current => releaseCheckpoint(current, reserved));
+  if (useFlowReview.getState().checkpoint?.id === reserved.id) useFlowReview.setState({ checkpoint: released });
 }
 
 export function finishReview(result: RunResult | null, failure: string | undefined, claimed: FlowCheckpoint): Promise<FlowCheckpoint | null> {

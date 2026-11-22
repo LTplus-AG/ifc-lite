@@ -353,3 +353,51 @@ test('#10591 a cancelled pause does not replace another graph’s review when st
   assert.equal((await browserCheckpointStore.read(pausedId))?.checkpoint.state, 'prepared');
   assert.equal(useFlowReview.getState().checkpoint?.id, otherCheckpoint.id);
 });
+
+test('#10591 a failed release preserves a review when no downstream work started', async (t) => {
+  const { REVIEW_LEASE_MS } = await import('./review-session');
+  const { fixtureModel } = await import('@/test/store-fixture');
+  const model = await openFlowSample();
+  const modelId = useViewerStore.getState().activeModelId!;
+  useViewerStore.getState().addModel(fixtureModel('new-default', { idOffset: 1_000_000 }));
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-4o-mini' });
+  const doc = { ...example(), id: 'release-write-failure' };
+  useViewerStore.getState().openContributedFlow(doc);
+  await pausedRun(model, doc);
+  const approved = await approveReview(useFlowReview.getState().checkpoint!.proposalDigest, doc);
+  assert.ok(approved);
+
+  const write = browserCheckpointStore.write.bind(browserCheckpointStore);
+  let releaseAttempts = 0;
+  const failRelease = t.mock.method(browserCheckpointStore, 'write', async (checkpoint: FlowCheckpoint, expected: number | null) => {
+    if (checkpoint.state === 'applying') useViewerStore.getState().setActiveModel('new-default');
+    if (checkpoint.state === 'reviewed') {
+      releaseAttempts++;
+      throw new Error('Checkpoint storage is unavailable');
+    }
+    return write(checkpoint, expected);
+  });
+  const outcome = await new NativeFlowRunner(model.bim, async () => assert.fail('the graph needs no other model'))
+    .run({}, { resume: approved, expectedDefaultModelId: modelId });
+  assert.equal(outcome.state, 'failed');
+  assert.match(outcome.error ?? '', /default model changed while claiming/);
+  assert.equal(releaseAttempts, 1);
+  const written = roles(model);
+  assert.equal(written.facade + written.partition, 0);
+  assert.equal((await browserCheckpointStore.read(approved.id))?.checkpoint.state, 'applying');
+
+  failRelease.mock.restore();
+  t.mock.timers.enable({ apis: ['Date'], now: new Date(Date.now() + REVIEW_LEASE_MS + 1) });
+  useViewerStore.getState().setActiveModel(modelId);
+  await loadGraphReview(doc.id);
+  const recovered = useFlowReview.getState().checkpoint;
+  assert.ok(recovered);
+  assert.equal(recovered.id, approved.id);
+  assert.equal(recovered.state, 'reviewed');
+  assert.deepEqual(recovered.review, approved.review);
+  const retry = await new NativeFlowRunner(model.bim, async () => assert.fail('the graph needs no other model'))
+    .run({}, { resume: recovered, expectedDefaultModelId: modelId });
+  assert.equal(retry.state, 'completed');
+  assert.equal(retry.checkpoint?.id, approved.id);
+  assert.equal(requests, 1);
+});

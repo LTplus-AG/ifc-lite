@@ -17,7 +17,7 @@ export function captureNativeFlavor(target: Flavor): Flavor {
 }
 /** 8 hex chars; getRandomValues works on plain-HTTP origins, unlike randomUUID. */
 function randomSuffix(): string {
-  return Array.from(crypto.getRandomValues(new Uint8Array(4)), byte => byte.toString(16).padStart(2, '0')).join('');
+  return crypto.getRandomValues(new Uint32Array(1))[0].toString(16).padStart(8, '0');
 }
 export function createNativeFlavor(name: string, description: string, snapshot: boolean): Flavor {
   if (!name.trim()) throw new Error('A nonempty native flavor name is required.');

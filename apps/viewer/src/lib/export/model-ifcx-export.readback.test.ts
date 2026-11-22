@@ -65,3 +65,22 @@ it('#10887 r4647096042 exporting a resident model without maxExpressId while ano
     setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);
   }
 });
+
+it('#11216 exporting from a captured federation keeps newly loaded renderer indices', async (t) => {
+  const initial = useViewerStore.getState().models;
+  t.after(() => { useViewerStore.setState({ models: initial }); modelIndices(initial); });
+  const a = { id: 'exported' } as FederatedModel;
+  const b = { id: 'loaded-during-export' } as FederatedModel;
+  const models = new Map([[a.id, a]]);
+  useViewerStore.setState({ models });
+  modelIndices(models);
+
+  const pending = withIfcxModelGeometry({ modelId: a.id, geometryResult: null, idOffset: 0, models }, () => 'exported');
+  const live = new Map([...models, [b.id, b]]);
+  useViewerStore.setState({ models: live });
+  const index = modelIndices(live).get(b.id);
+  assert.notEqual(index, undefined);
+
+  assert.equal(await pending, 'exported');
+  assert.equal(modelIndices(live).get(b.id), index, 'export must not evict the live assignment');
+});

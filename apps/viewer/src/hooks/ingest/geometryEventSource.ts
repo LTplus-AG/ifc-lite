@@ -83,7 +83,7 @@ const EXACT_GEOMETRY_KERNEL: GeometryKernelLoad = {
  * a refusal offers it after switching the next load to the exact kernel.
  */
 export function beginGeometryKernel(
-  file: File,
+  file: File | undefined,
   target: { kind: 'primary' | 'federated' },
   retry: () => void,
   /**
@@ -93,7 +93,7 @@ export function beginGeometryKernel(
    */
   source: { hasSourceBytes: boolean },
 ): GeometryKernelLoad {
-  if (!source.hasSourceBytes) return EXACT_GEOMETRY_KERNEL;
+  if (!file || !source.hasSourceBytes) return EXACT_GEOMETRY_KERNEL;
   // `retainedKernel` is `null` in the default viewer (the alias maps to off.ts).
   return retainedKernel?.begin(file, target, retry) ?? EXACT_GEOMETRY_KERNEL;
 }

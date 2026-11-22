@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { isCopcHeader, parsePcdHeader, type DecodeWorkerFormat } from '@ifc-lite/pointcloud';
 
-import { detectPointCloudFormat } from '@/hooks/ingest/pointCloudIngest';
+import { detectPointCloudFormat } from '@/hooks/ingest/pointCloudFormat';
 
 /** Compression is content, not a filename convention (including renamed COPC). */
 export function positionedScanFormat(name: string, header: ArrayBuffer): DecodeWorkerFormat | null {

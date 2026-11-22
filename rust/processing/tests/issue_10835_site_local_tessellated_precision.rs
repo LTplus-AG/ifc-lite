@@ -10,6 +10,9 @@
 
 use ifc_lite_processing::{process, MeshFrame, ProcessingRequest, TessellationQuality};
 
+// The geometry override is process-global, so these tests must set it serially.
+static FRAME_POLICY: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 const BOX: &str = "((1,3,4),(1,4,2),(5,6,8),(5,8,7),(1,2,6),(1,6,5),(3,7,8),(3,8,4),(1,5,7),(1,7,3),(2,4,8),(2,8,6))";
 const QUADS: [&str; 6] = ["(1,3,4,2)", "(5,6,8,7)", "(1,2,6,5)", "(3,7,8,4)", "(1,5,7,3)", "(2,4,8,6)"];
 
@@ -21,13 +24,20 @@ enum Kind {
 
 /// The face set entity `#{id}` over point list `#{points}`, plus any faces it
 /// needs, numbered from `#{faces}`.
-fn face_set(kind: Kind, id: usize, points: usize, faces: usize) -> String {
+fn face_set(kind: Kind, id: usize, points: usize, faces: usize, unused_prefix: bool) -> String {
+    let indices = |text: &str| {
+        if unused_prefix {
+            text.chars().map(|c| if ('1'..='8').contains(&c) { char::from(c as u8 + 1) } else { c }).collect()
+        } else {
+            text.to_owned()
+        }
+    };
     match kind {
-        Kind::Triangulated => format!("#{id}=IFCTRIANGULATEDFACESET(#{points},$,.T.,{BOX},$);\n"),
+        Kind::Triangulated => format!("#{id}=IFCTRIANGULATEDFACESET(#{points},$,.T.,{},$);\n", indices(BOX)),
         Kind::Polygonal => {
             let mut out = String::new();
             let refs: Vec<String> = QUADS.iter().enumerate().map(|(f, quad)| {
-                out.push_str(&format!("#{}=IFCINDEXEDPOLYGONALFACE({quad});\n", faces + f));
+                out.push_str(&format!("#{}=IFCINDEXEDPOLYGONALFACE({});\n", faces + f, indices(quad)));
                 format!("#{}", faces + f)
             }).collect();
             out + &format!("#{id}=IFCPOLYGONALFACESET(#{points},.T.,({}),$);\n", refs.join(","))
@@ -41,6 +51,10 @@ fn tessellated(site: (f64, f64), boxes: &[(&str, f64)]) -> String {
 }
 
 fn tessellated_as(kind: Kind, site: (f64, f64), boxes: &[(&str, f64)]) -> String {
+    tessellated_with_prefix(kind, site, boxes, false)
+}
+
+fn tessellated_with_prefix(kind: Kind, site: (f64, f64), boxes: &[(&str, f64)], unused_prefix: bool) -> String {
     let mut data = String::new();
     let mut ids = Vec::new();
     for (i, (name, x)) in boxes.iter().enumerate() {
@@ -53,9 +67,12 @@ fn tessellated_as(kind: Kind, site: (f64, f64), boxes: &[(&str, f64)]) -> String
             .collect();
         // No face references this point. Including it in the anchor rounds
         // away the sub-millimetre gap when the positions narrow to f32.
+        if unused_prefix {
+            pts.insert(0, "(0.,0.,0.)".to_owned());
+        }
         pts.push("(1000000.,0.,0.)".to_owned());
         data.push_str(&format!("#{b}=IFCCARTESIANPOINTLIST3D(({}),$);\n", pts.join(",")));
-        data.push_str(&face_set(kind, b + 1, b, 1000 + 10 * i));
+        data.push_str(&face_set(kind, b + 1, b, 1000 + 10 * i, unused_prefix));
         data.push_str(&format!(
             "#{}=IFCSHAPEREPRESENTATION(#11,'Body','Tessellation',(#{}));\n\
              #{}=IFCPRODUCTDEFINITIONSHAPE($,$,(#{}));\n\
@@ -103,6 +120,7 @@ fn gaps(ifc: &str, pairs: &[(&str, &str)]) -> (MeshFrame, Vec<f64>) {
 
 #[test]
 fn site_local_face_set_far_from_the_site_keeps_its_sub_millimetre_gap() {
+    let _policy = FRAME_POLICY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     ifc_lite_geometry::local_frame_set_enabled_override(Some(true));
     let boxes = [("near-a", 10.0), ("near-b", 11.0003), ("far-a", 10000.0), ("far-b", 10001.0003)];
     let pairs = [("near-a", "near-b"), ("far-a", "far-b")];
@@ -115,6 +133,7 @@ fn site_local_face_set_far_from_the_site_keeps_its_sub_millimetre_gap() {
 
 #[test]
 fn site_local_polygonal_face_set_far_from_the_site_keeps_its_gap() {
+    let _policy = FRAME_POLICY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     ifc_lite_geometry::local_frame_set_enabled_override(Some(true));
     let boxes = [("far-a", 10000.0), ("far-b", 10001.0003)];
     let (frame, gaps) = gaps(&tessellated_as(Kind::Polygonal, (100.0, 100.0), &boxes), &[("far-a", "far-b")]);
@@ -124,6 +143,7 @@ fn site_local_polygonal_face_set_far_from_the_site_keeps_its_gap() {
 
 #[test]
 fn site_local_gap_on_opposite_side_of_the_rtc_is_preserved() {
+    let _policy = FRAME_POLICY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     ifc_lite_geometry::local_frame_set_enabled_override(Some(true));
     let boxes = [("far-a", -10001.0), ("far-b", -9999.9997)];
     for kind in [Kind::Triangulated, Kind::Polygonal] {
@@ -131,5 +151,22 @@ fn site_local_gap_on_opposite_side_of_the_rtc_is_preserved() {
         let (frame, gaps) = gaps(&source, &[("far-a", "far-b")]);
         assert!(matches!(frame, MeshFrame::SiteLocal { .. }), "{frame:?}");
         assert!((gaps[0] - 0.3).abs() < 0.01, "far gap {:.4} mm, file says 0.3000 mm", gaps[0]);
+    }
+}
+
+#[test]
+fn site_local_gap_ignores_an_unused_first_coordinate() {
+    let _policy = FRAME_POLICY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let boxes = [("far-a", -10001.0), ("far-b", -9999.9997)];
+    for kind in [Kind::Triangulated, Kind::Polygonal] {
+        let source = tessellated_with_prefix(kind, (100.0, 100.0), &boxes, true);
+        let pairs = [("far-a", "far-b")];
+        ifc_lite_geometry::local_frame_set_enabled_override(Some(false));
+        let (_, disabled) = gaps(&source, &pairs);
+        assert_eq!(disabled[0], 0.0);
+        ifc_lite_geometry::local_frame_set_enabled_override(Some(true));
+        let (frame, enabled) = gaps(&source, &pairs);
+        assert!(matches!(frame, MeshFrame::SiteLocal { .. }), "{frame:?}");
+        assert!((enabled[0] - 0.3).abs() < 0.01, "far gap {:.4} mm, file says 0.3000 mm", enabled[0]);
     }
 }

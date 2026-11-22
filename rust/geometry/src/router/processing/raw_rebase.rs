@@ -3,7 +3,7 @@
 //! Item-level RTC and local-anchor selection and bounds publication.
 
 use super::super::frame_parts::mesh_bounds;
-use super::super::rtc_offset::raw_coordinate::rtc_rebase_benefits;
+use super::super::rtc_offset::raw_coordinate::{is_raw_face_set, rtc_rebase_benefits};
 use super::super::GeometryRouter;
 use crate::Mesh;
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
@@ -115,12 +115,21 @@ impl GeometryRouter {
             return None;
         }
         let scale = self.unit_scale();
-        let point = self.representation_item_first_vertex_meters(item, decoder)?;
+        let local_frame = self.local_frame_enabled();
+        let referenced_centre = if local_frame && is_raw_face_set(&item.ifc_type) {
+            Some(self.representation_item_anchor_meters(item, decoder)?)
+        } else {
+            None
+        };
+        let point = referenced_centre
+            .or_else(|| self.representation_item_first_vertex_meters(item, decoder))?;
         let shifted = (point.0 - offset_meters.0, point.1 - offset_meters.1, point.2 - offset_meters.2);
         let rtc_benefits = rtc_rebase_benefits(point, shifted);
         // An item the model RTC already brings near keeps that rebase.
-        if self.local_frame_enabled() && crate::coord_is_large(point) && crate::coord_is_large(shifted) {
-            if let Some(anchor) = self.representation_item_anchor_meters(item, decoder) {
+        if local_frame && crate::coord_is_large(point) && crate::coord_is_large(shifted) {
+            if let Some(anchor) = referenced_centre
+                .or_else(|| self.representation_item_anchor_meters(item, decoder))
+            {
                 let anchor = (anchor.0.round(), anchor.1.round(), anchor.2.round());
                 return Some(RawRebase {
                     file_units: (anchor.0 / scale, anchor.1 / scale, anchor.2 / scale),

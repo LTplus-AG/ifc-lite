@@ -20,6 +20,15 @@ pub(in crate::router) fn rtc_rebase_benefits(point: (f64, f64, f64), shifted: (f
     coord_is_large(point) && magnitude(shifted) < magnitude(point)
 }
 
+pub(in crate::router) fn is_raw_face_set(kind: &IfcType) -> bool {
+    matches!(
+        kind,
+        IfcType::IfcTriangulatedFaceSet
+            | IfcType::IfcTriangulatedIrregularNetwork
+            | IfcType::IfcPolygonalFaceSet
+    )
+}
+
 impl GeometryRouter {
     pub(in crate::router) fn representation_item_first_vertex_meters(
         &self,
@@ -113,9 +122,10 @@ impl GeometryRouter {
         // checks come before the vertex probe.
         if !self.has_rtc_offset()
             || (self.processor_for(&item.ifc_type).is_none() && !self.member_face_selected(item, element))
-            || !self
-                .representation_item_first_vertex_meters(item, decoder)
-                .is_some_and(coord_is_large)
+            || !(self.local_frame_enabled() && is_raw_face_set(&item.ifc_type)
+                || self
+                    .representation_item_first_vertex_meters(item, decoder)
+                    .is_some_and(coord_is_large))
         {
             return Ok(None);
         }

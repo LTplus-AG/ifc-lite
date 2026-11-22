@@ -82,6 +82,13 @@ one pass's meshes; an error thrown by the source, or an aborted
 `options.signal`, rejects it.
 
 ```typescript
+import type { Drawing2DGenerator, DrawingMeshSource, SectionConfig } from '@ifc-lite/drawing-2d';
+import type { MeshData } from '@ifc-lite/geometry';
+
+declare const generator: Drawing2DGenerator, config: SectionConfig, signal: AbortSignal;
+declare const chunks: number[];                                                            // the host's stored chunk ids
+declare function leaseChunk(chunk: number): Promise<{ meshes: MeshData[]; release(): void }>; // reads one chunk back
+
 const source: DrawingMeshSource = {
   async *pass() {
     for (const chunk of chunks) {
@@ -96,6 +103,14 @@ const drawing = await generator.generateFromSource(source, config, { signal });
 To push chunks instead (each lease released before the next), use a session:
 
 ```typescript
+import type { Drawing2DGenerator, EntityKey, GeneratorOptions, SectionConfig } from '@ifc-lite/drawing-2d';
+import type { MeshData } from '@ifc-lite/geometry';
+
+declare const generator: Drawing2DGenerator, config: SectionConfig, options: Partial<GeneratorOptions>;
+declare const chunks: number[];                                                            // the host's stored chunk ids
+declare function leaseChunk(chunk: number): Promise<{ meshes: MeshData[]; release(): void }>; // reads one chunk back
+declare function chunksOf(entities: ReadonlySet<EntityKey>): number[];                     // the chunks holding these entities
+
 const session = generator.beginDrawing(config, options);
 for (const chunk of chunks) {
   const held = await leaseChunk(chunk);

@@ -54,6 +54,19 @@ describe('palette bridge commands: native actions and hostile callers', () => {
     assert.match(exact.text, /dispatch-only/);
   });
 
+  it('ranks natural-language queries and hints when nothing matches', async () => {
+    register(rows());
+    const ranked = (await run('viewer_commands', { query: 'zoom to fit the whole model', limit: 3 })).structured as {
+      commands: Array<{ command_id: string }>; hint?: string };
+    assert.ok(ranked.commands.some(command => command.command_id === 'view:fit'), JSON.stringify(ranked.commands));
+    assert.equal(ranked.hint, undefined);
+    const none = (await run('viewer_commands', { query: 'qqqxyzzy' })).structured as { total: number; hint: string };
+    assert.equal(none.total, 0);
+    assert.match(none.hint, /View/);
+    const unknown = (await run('viewer_commands', { command_id: 'view:fitt' })).structured as { hint: string };
+    assert.match(unknown.hint, /view:fit/);
+  });
+
   it('uses the same camera action as the palette, and refuses absent callbacks', async () => {
     register(rows());
     assert.equal((await invoke('view:fit')).errorCode, 'UNSUPPORTED_OPERATION');

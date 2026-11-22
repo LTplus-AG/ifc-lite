@@ -2,13 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { detectFormat } from '@ifc-lite/parser';
-import { headIsZip } from './sourceBuffers';
+import { FORMAT_HEAD_BYTES, headIsZip } from './sourceBuffers';
 import { inspectIfcArchiveAdmission } from './archiveServerAdmission';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { resolve as t } from '@/i18n/registry';
 import { inspectLocalIfcAdmission, localIfcBudget, localIfcWorkingSet } from './localIfcAdmission';
 import { sampleDenseGeometryShare } from './geometryDensity';
 import { supportsWasmSimd } from '@/lib/wasm-simd-support';
+import { nonModelContentMessage } from '@/lib/non-model-reasons';
 
 /** Consent belongs to one load, never to a later file/pairing/session. An
  * unwrapped source larger than the approved input needs a fresh decision. */
@@ -56,9 +57,15 @@ export async function preflightLocalIfcSource(file: File, options: {
   onFailure: (error: unknown) => void; finish: () => void;
 }): Promise<ArrayBuffer | null> {
   try {
-    const head = await file.slice(0, 4096).arrayBuffer();
+    const head = await file.slice(0, FORMAT_HEAD_BYTES).arrayBuffer();
+    if (!options.isCurrent()) { options.finish(); return null; }
+    const { nonModelContentReason, textStartsLikeStep } = await import('./nonModelContent');
     const format = detectFormat(head);
-    const unknownIfc = format === 'unknown' && (/\.(ifc|ifczip|ifcxml)$/i.test(file.name) || new TextDecoder().decode(head).trimStart().startsWith('ISO-10303-21'));
+    const unknownIfc = format === 'unknown' && (/\.(ifc|ifczip|ifcxml)$/i.test(file.name) || textStartsLikeStep(new TextDecoder().decode(head)));
+    if (!options.isCurrent()) { options.finish(); return null; }
+    // An error response saved or served as a model is refused here, before the primary reset (#9523).
+    const nonModel = await nonModelContentReason(file, head);
+    if (nonModel) throw new Error(nonModelContentMessage(nonModel));
     if (!options.isCurrent() || ((format === 'ifc' || unknownIfc || headIsZip(head)) && !await options.admit(file.size, head))) {
       options.finish(); return null;
     }

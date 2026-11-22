@@ -32,7 +32,7 @@ mod material;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write as _;
 
-use ifc_lite_processing::{process, MeshData};
+use ifc_lite_processing::{process, InstanceRecord, MeshData};
 
 use crate::error::ExportError;
 use crate::ifc5::{project_name, spatial_children};
@@ -69,6 +69,23 @@ impl Default for UsdOptions {
             instancing: true,
         }
     }
+}
+
+/// Index occurrences and register their materials after the full meshes.
+fn index_instance_materials<'a>(
+    instances: &'a [InstanceRecord],
+    finishes: &Finishes,
+    materials: &mut BTreeMap<MaterialKey, [f32; 4]>,
+) -> HashMap<u32, (&'a InstanceRecord, MaterialKey)> {
+    instances
+        .iter()
+        .enumerate()
+        .map(|(index, rec)| {
+            let key = MaterialKey::new(rec.color, finishes.instances[index]);
+            materials.entry(key).or_insert(rec.color);
+            (rec.express_id, (rec, key))
+        })
+        .collect()
 }
 
 /// Export the model in `content` (raw IFC/STEP bytes) as a `.usda` (ASCII USD) string.
@@ -111,15 +128,7 @@ pub fn export_usd(content: &[u8], opts: &UsdOptions) -> Result<String, ExportErr
 
     // De-baked instance occurrences (empty unless instancing is active + safe).
     let instances = input.instances();
-    let instances_by_id: HashMap<_, _> = instances
-        .iter()
-        .enumerate()
-        .map(|(index, rec)| {
-            let key = MaterialKey::new(rec.color, finishes.instances[index]);
-            materials.entry(key).or_insert(rec.color);
-            (rec.express_id, (rec, key))
-        })
-        .collect();
+    let instances_by_id = index_instance_materials(instances, &finishes, &mut materials);
 
     // One prototype per referenced template (sorted); its origin composes each occurrence's
     // local→world transform. Same mesh backs the prototype geometry AND its origin.

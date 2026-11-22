@@ -19,7 +19,7 @@ use super::jobs::{
     new_worker_placement_caches, new_worker_point_caches, run_job, WorkerPlacementCaches,
     WorkerPointCaches,
 };
-use super::pass_metadata::{populate_metadata, replay_deferred_styles};
+use super::pass_metadata::{element_material_fallbacks, populate_metadata, replay_deferred_styles};
 use super::phase_marks::{mark, Clock, Mark};
 use super::resolve::{Facts, Resolved};
 use super::run_snapshot::{self, RunSnapshot};
@@ -269,16 +269,7 @@ pub(super) fn run<'c>(
     } = resolved;
 
     let geometry_start = mark(Mark::GeometryStart, Clock::now());
-    // Material chain joined by the shared resolver (#407). The general-path
-    // element fallback is `style::element_material_fallback_color`, the rule
-    // the browser style wire carries too (PROCESSING-4); the full list feeds
-    // the opening sub-mesh transparent/opaque split (#913 §2.3).
-    let element_material_color: FxHashMap<u32, [f32; 4]> = element_material_colors
-        .iter()
-        .filter_map(|(&id, colors)| {
-            crate::style::element_material_fallback_color(colors).map(|c| (id, c))
-        })
-        .collect();
+    let element_material_color = element_material_fallbacks(&element_material_colors);
     let mut ctx = PassContext::new(
         content,
         req,

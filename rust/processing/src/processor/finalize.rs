@@ -10,6 +10,8 @@ use super::diagnostics;
 use super::pass::{cancelled, emit_finishes, PassContext, Passed};
 use super::phase_marks::{mark, Clock, Mark};
 use super::{csg_summary, instancing, ProcessingRequest, ProcessingResult, ProcessingSink};
+use crate::style::ModelFinishes;
+use crate::types::mesh::{InstanceRecord, MeshData};
 use crate::types::response::{CoordinateInfo, ModelMetadata, ProcessingStats};
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
@@ -78,6 +80,51 @@ impl CsgFailures {
     }
 }
 
+/// Count recovered meshes and announce the final batches at cancellation boundaries.
+fn emit_final_batches(
+    req: &ProcessingRequest,
+    sink: &mut dyn ProcessingSink,
+    mut finishes: Option<ModelFinishes<'_>>,
+    recovered: &[MeshData],
+    instances: &[InstanceRecord],
+    processed_jobs: usize,
+    total_jobs: usize,
+) -> (usize, usize, usize) {
+    let mut counts = (0, 0, 0);
+    if !recovered.is_empty() {
+        counts.0 = recovered.len();
+        counts.1 = recovered.iter().map(|mesh| mesh.vertex_count()).sum::<usize>();
+        counts.2 = recovered.iter().map(|mesh| mesh.triangle_count()).sum::<usize>();
+        if !cancelled(req) {
+            emit_finishes(sink, finishes.as_mut(), recovered);
+            sink.on_batch(recovered, processed_jobs, total_jobs);
+        }
+    }
+    if let Some(finishes) = finishes.as_mut().filter(|_| !instances.is_empty() && !cancelled(req)) {
+        let values: Vec<_> = instances
+            .iter()
+            .map(|record| finishes.finish_for_instance(record))
+            .collect();
+        sink.on_instance_finishes(&values);
+    }
+    counts
+}
+
+fn record_geometry_span(
+    geometry_span: &tracing::Span,
+    total_meshes: usize,
+    total_triangles: usize,
+    backstop_dropped: u64,
+    total_csg_failures: usize,
+    geometry_time: std::time::Duration,
+) {
+    geometry_span.record("mesh_count", total_meshes as u64);
+    geometry_span.record("triangle_count", total_triangles as u64);
+    geometry_span.record("backstop_count", backstop_dropped);
+    geometry_span.record("total_csg_failures", total_csg_failures as u64);
+    geometry_span.record("phase_ms", geometry_time.as_millis() as u64);
+}
+
 pub(super) fn finish(
     content: &[u8],
     req: &ProcessingRequest,
@@ -91,7 +138,7 @@ pub(super) fn finish(
         decoder,
         ctx,
         mut meshes,
-        mut finishes,
+        finishes,
         processed_jobs,
         total_jobs,
         mut total_meshes,
@@ -155,29 +202,13 @@ pub(super) fn finish(
         &mapped_item_cache,
         [rtc_offset.0, rtc_offset.1, rtc_offset.2],
     );
-    let recovered = &meshes[first_recovered..];
-    if !recovered.is_empty() {
-        total_meshes += recovered.len();
-        total_vertices += recovered.iter().map(|mesh| mesh.vertex_count()).sum::<usize>();
-        total_triangles += recovered.iter().map(|mesh| mesh.triangle_count()).sum::<usize>();
-        if !cancelled(req) {
-            emit_finishes(sink, finishes.as_mut(), recovered);
-            sink.on_batch(recovered, processed_jobs, total_jobs);
-        }
-    }
-    if let Some(finishes) = finishes.as_mut().filter(|_| !instances.is_empty() && !cancelled(req)) {
-        let values: Vec<_> = instances
-            .iter()
-            .map(|record| finishes.finish_for_instance(record))
-            .collect();
-        sink.on_instance_finishes(&values);
-    }
+    let (mesh_count, vertex_count, triangle_count) =
+        emit_final_batches(req, sink, finishes, &meshes[first_recovered..], &instances, processed_jobs, total_jobs);
+    total_meshes += mesh_count;
+    total_vertices += vertex_count;
+    total_triangles += triangle_count;
 
-    geometry_span.record("mesh_count", total_meshes as u64);
-    geometry_span.record("triangle_count", total_triangles as u64);
-    geometry_span.record("backstop_count", backstop_dropped);
-    geometry_span.record("total_csg_failures", total_csg_failures as u64);
-    geometry_span.record("phase_ms", geometry_time.as_millis() as u64);
+    record_geometry_span(&geometry_span, total_meshes, total_triangles, backstop_dropped, total_csg_failures, geometry_time);
 
     let total_time = mark(Mark::TotalEnd, total_start.elapsed());
     pipeline_span.record("element_count", total_jobs as u64);

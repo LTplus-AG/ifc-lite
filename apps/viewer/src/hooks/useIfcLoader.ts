@@ -2152,12 +2152,13 @@ export function useIfcLoader() {
     }
   }, [setLoading, setGeometryStreamingActive, setError, setProgress, setIfcDataStore, setGeometryResult, appendGeometryBatch, updateMeshColors, updateCoordinateInfo, loadFromCache, saveToCache, loadFromServer, revalidateServedCacheHit]);
 
-  const loadFile = useCallback((file: File, target?: LoadTarget, options?: ModelLoadOptions) => {
-    const processedModel = options?.processedModel;
-    return loadModel(processedModel ? { name: file.name, processedModel } : { file }, target, options);
-  }, [loadModel]);
-  const loadProcessedModel = useCallback(({ name, ...processedModel }: FiledProcessedModelRequest) =>
-    loadModel({ name, processedModel }), [loadModel]);
+  const loadFile = useCallback((file: File, target?: LoadTarget, options?: ModelLoadOptions) =>
+    loadModel({ file }, target, options), [loadModel]);
+  const loadProcessedModel = useCallback((
+    { name, ...processedModel }: FiledProcessedModelRequest,
+    target?: LoadTarget,
+    options?: Pick<ModelLoadOptions, 'onLoadError'>,
+  ) => loadModel({ name, processedModel }, target, options), [loadModel]);
 
   // Keep the ref pointed at the latest loadFile so a background revalidation can
   // trigger a reparse-reload without loadFile depending on itself.

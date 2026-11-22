@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Opening a processed model (`ModelLoadOptions.processedModel`): its reference
+ * Opening a processed model: its reference
  * in the form the server keys by, and why it could not be opened, worded for
  * the user, with whether trying again can help. Unlike an upload, a processed
  * model has no local fallback, so each cause gets its own message: a generic

@@ -29,6 +29,7 @@ import { ingestDxfFiles, splitDxfFiles } from '@/hooks/ingest/dxfIngest';
 import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { usePreparedModelFileRoute } from '@/hooks/ingest/usePreparedModelFileRoute';
 import { useFileHostRegistration } from './useFileHostRegistration';
+import { isIfcxModelFile, useAgentModelLoader } from './useAgentModelLoader';
 import { FederationSetupControls } from '../FederationSetupControls';
 
 import { FILE_ACCEPT, isModelSidecarFile, isSupportedModelFile } from '@/services/supported-model-files';
@@ -51,11 +52,6 @@ const ShareDialog = lazyChunk(loadShareDialog);
 
 /** Re-exported so the toolbar's existing call sites keep their import path. */
 export { isSupportedModelFile };
-
-/** Case-insensitive IFCX check (filenames are accepted case-insensitively). */
-function isIfcxModelFile(f: File): boolean {
-  return f.name.toLowerCase().endsWith('.ifcx');
-}
 
 export interface FileCommands {
   /**
@@ -156,6 +152,8 @@ export function useFileCommands(): FileCommands {
       window.removeEventListener('ifc-lite:load-layer-stack', stackHandler);
     };
   }, [loadFile, addModel, loadFederatedIfcx]);
+
+  useAgentModelLoader(loadFile, addModel, loadFederatedIfcx);
 
   const hasModelsLoaded = useViewerStore(selectHasModelsLoaded);
 

@@ -15,7 +15,7 @@ const HARDWARE_ARGS = ['--enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVul
   '--enable-unsafe-webgpu', '--ignore-gpu-blocklist', '--enable-gpu', '--use-webgpu-power-preference=default-high-performance',
   '--no-sandbox', '--disable-dev-shm-usage'];
 export default defineConfig({
-  testDir: '.', testMatch: /geometry-backing-(idb|release)\.e2e\.spec\.ts/,
+  testDir: '.', testMatch: /geometry-backing-(idb|release|mixed-export)\.e2e\.spec\.ts/,
   workers: 1, fullyParallel: false, retries: 0, timeout: 600_000,
   outputDir: '../../test-results/geometry-backing',
   reporter: [['list'], ['json', { outputFile: '../../test-results/geometry-backing-results.json' }]],

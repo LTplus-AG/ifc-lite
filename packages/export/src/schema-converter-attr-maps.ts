@@ -130,7 +130,10 @@ export function attrMapFor(
     return found?.ifc4 === newType ? { map: found, up: true } : undefined;
   }
   if (toSchema === 'IFC2X3' && (fromSchema === 'IFC4' || fromSchema === 'IFC4X3')) {
-    const found = getAttrMapIndex().byIfc4.get(entityType);
+    // IFC4X3 also declares the renamed IfcDistributionBoard with the same carried slots (#11021).
+    const source = fromSchema === 'IFC4X3' && entityType === 'IFCDISTRIBUTIONBOARD'
+      ? 'IFCELECTRICDISTRIBUTIONBOARD' : entityType;
+    const found = getAttrMapIndex().byIfc4.get(source);
     return found?.ifc2x3 === newType ? { map: found, up: false } : undefined;
   }
   return undefined;

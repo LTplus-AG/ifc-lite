@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import type { ExportSurface } from '@/lib/analytics-export-events';
 
-const CityJsonExportDialog = lazy(() =>
+const CityJsonExportDialog = lazyChunk(() =>
   import('./CityJsonExportDialog').then((m) => ({ default: m.CityJsonExportDialog })),
 );
 

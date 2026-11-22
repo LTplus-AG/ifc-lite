@@ -158,8 +158,10 @@ pub struct StepStats {
     /// member name (#5365). Non-zero means information was lost.
     pub enum_values_lost: usize,
     /// Enum values the target schema does not define and offers no valid
-    /// replacement for, so they were kept as written (#5365). Non-zero means
-    /// the file is not valid against its header.
+    /// replacement for, so they were kept as written (#5365), plus records
+    /// written with PredefinedType `.USERDEFINED.` and the label their type's
+    /// rule requires unset (#10780). Non-zero means the file is not valid
+    /// against its header.
     pub enum_values_refused: usize,
     /// Non-`$` source attribute values a schema conversion had no slot for in
     /// the target, so they are not in the output (#7683): the tail trimmed
@@ -168,7 +170,8 @@ pub struct StepStats {
     /// `IfcDistributionControlElement.ControlElementId` on an upgrade), an
     /// IFC4X3 alignment product's attributes past IfcProduct's when it becomes
     /// an `IFCPROXY` (its `PredefinedType`), and by-name remap sources with no
-    /// same-named target attribute. Counted per value. Non-zero means
+    /// same-named target attribute, and an upgraded IfcDocumentReference Name
+    /// that WR1 forbids beside its ReferencedDocument. Counted per value. Non-zero means
     /// information was lost; the TypeScript twin reports the same losses per
     /// type in `schema-conversion-loss-report.ts`.
     pub attribute_values_dropped: usize,

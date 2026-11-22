@@ -65,6 +65,23 @@ async function sceneOwners(page: Page, ids: number[]): Promise<number[]> {
   }), ids);
 }
 
+/**
+ * The ids the renderer would draw: present in the scene and not hidden or isolated away by the visibility it
+ * renders with. A type-hidden class stays in the scene and is hidden on the GPU (#10264, #10867), so "not
+ * drawn" rather than "not in the scene" is what hiding guarantees.
+ */
+async function drawnOwners(page: Page, ids: number[]): Promise<number[]> {
+  return page.evaluate((ids) => {
+    const { hiddenIds, isolatedIds } = globalThis.__ifc_lite_render_visibility__();
+    const hidden = new Set(hiddenIds), isolated = isolatedIds ? new Set(isolatedIds) : null;
+    return ids.filter((id) => {
+      const owner = globalThis.__ifc_lite_scene_owner__(id);
+      const inScene = owner.instance || (owner.flat?.length ?? 0) > 0;
+      return inScene && !hidden.has(id) && (isolated === null || isolated.has(id));
+    });
+  }, ids);
+}
+
 async function setTypeVisibility(page: Page, type: 'spaces' | 'openings' | 'site', visible: boolean): Promise<void> {
   await page.evaluate(({ type, visible }) => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
@@ -156,7 +173,7 @@ for (const federated of [false, true]) {
       expect(terrain.length).toBeGreaterThan(0);
       await expect.poll(() => sceneOwners(page, terrain)).toHaveLength(terrain.length);
       await setTypeVisibility(page, 'site', false);
-      await expect.poll(() => sceneOwners(page, terrain), { timeout: 30_000 }).toEqual([]);
+      await expect.poll(() => drawnOwners(page, terrain), { timeout: 30_000 }).toEqual([]);
       await setTypeVisibility(page, 'site', true);
     }
 
@@ -183,7 +200,7 @@ for (const federated of [false, true]) {
       return { spaces: counts.IfcSpace ?? 0, openings: counts.IfcOpeningElement ?? 0 };
     }, { timeout: 60_000 }).toEqual({ spaces: 0, openings: 0 });
     const openings = await modelIds(page, 0, 'IFCOPENINGELEMENT');
-    await expect.poll(() => sceneOwners(page, [...spaces, ...openings])).toEqual([]);
+    await expect.poll(() => drawnOwners(page, [...spaces, ...openings])).toEqual([]);
 
     // #5869 / Show All: it clears actionable reasons while retaining the
     // persisted type-visibility preference. #5882 names this kept reason.
@@ -276,5 +293,5 @@ test('#5895 Site visibility removes single-model IfcGeographicElement terrain', 
   await gpu.skipIfLost('the Site visibility reshape');
   await setTypeVisibility(page, 'site', false);
   await gpu.requireLiveGpu('the Site visibility reshape', () =>
-    expect.poll(() => sceneOwners(page, terrain), { timeout: 30_000 }).toEqual([]));
+    expect.poll(() => drawnOwners(page, terrain), { timeout: 30_000 }).toEqual([]));
 });

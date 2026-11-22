@@ -172,6 +172,7 @@ export {
   type GenerateSpacesResult,
   type BoundaryMode,
 } from './generate-spaces.js';
+export { polygonArea, pointInPolygon, type PolygonRing } from './polygon-2d.js';
 export {
   generateSpaces,
   listStoreys,
@@ -293,3 +294,4 @@ export { connectStructuralElementInStore } from './structural-physical-link.js';
 export type { StructuralMemberConnectionOptions } from './_structural-connection-options.js';
 
 export { getFootprintRoofPlaneParts } from './roof-plane-parts.js';
+export { retireProductShape } from './product-shape-retire.js';

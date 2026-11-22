@@ -6,16 +6,17 @@ import type { JSONSchemaType } from 'ajv';
 import { useViewerStore } from '@/store';
 import { isToolAvailable } from '@/lib/features/tools';
 import { viewerOperation as operation, emptySchema, pointSchema } from './contract';
+import { disabled, invalidInput, unavailable } from './refusals';
 
 const metadata = (id: string, description: string) => ({
   id, owner: 'measurements', description, effects: ['view'] as const,
   capability: 'commands-and-edits' as const, synchronous: true, implementation: 'native-store' as const,
 });
-function available() { if (!isToolAvailable('measure')) throw new Error('Measurement tools are disabled by the host.'); }
+function available() { if (!isToolAvailable('measure')) throw disabled('Measurement tools are disabled by the host.'); }
 function idle() {
   available();
   const s = useViewerStore.getState();
-  if (s.activeMeasurement || s.activePolyline || s.activeAngle || s.activeRadius) throw new Error('Finish or cancel the current interactive measurement first.');
+  if (s.activeMeasurement || s.activePolyline || s.activeAngle || s.activeRadius) throw unavailable('Finish or cancel the current interactive measurement first.');
 }
 const point = ([x, y, z]: [number, number, number]) => ({ x, y, z, screenX: 0, screenY: 0 });
 function inspect() {
@@ -38,7 +39,7 @@ export const measurementOperations = [
     required: ['points', 'closed'], additionalProperties: false,
   } satisfies JSONSchemaType<{ points: [number, number, number][]; closed: boolean }>, i => {
     idle();
-    if (i.closed && i.points.length < 3) throw new Error('A closed perimeter needs at least three points.');
+    if (i.closed && i.points.length < 3) throw invalidInput('invalid-value', 'A closed perimeter needs at least three points.');
     const s = useViewerStore.getState();
     const count = s.polylineMeasurements.length;
     s.startPolyline(point(i.points[0]));
@@ -46,7 +47,7 @@ export const measurementOperations = [
     s.finishPolyline(i.closed);
     if (useViewerStore.getState().polylineMeasurements.length !== count + 1) {
       s.cancelPolyline();
-      throw new Error('The native measurement service could not complete a polyline from these points.');
+      throw invalidInput('invalid-value', 'The native measurement service could not complete a polyline from these points.');
     }
     return useViewerStore.getState().polylineMeasurements.at(-1);
   }),
@@ -54,7 +55,7 @@ export const measurementOperations = [
     type: 'object', properties: { id: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['id'], additionalProperties: false,
   } satisfies JSONSchemaType<{ id: string }>, i => {
     available(); const s = useViewerStore.getState();
-    if (!s.measurements.some(m => m.id === i.id)) throw new Error('Unknown distance measurement.');
+    if (!s.measurements.some(m => m.id === i.id)) throw invalidInput('unknown-target', 'Unknown distance measurement.');
     s.deleteMeasurement(i.id); return { removed: i.id };
   }),
   operation(metadata('measurements.clear', 'Clear completed measurements using native clear behavior; preserves reference point and mode.'), emptySchema,

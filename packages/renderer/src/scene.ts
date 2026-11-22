@@ -6,6 +6,8 @@
  * Scene graph and mesh management
  */
 
+import { unionEntityWorldBounds } from './released-entity-bounds.js';
+import type { ReleasedMembershipHooks } from './released-template-membership.js';
 import { GeometryChangeSignal } from './geometry-change-signal.js';
 import { SceneTriangleCounts } from './triangle-counts.js';
 import { destroyInstancedTemplateGpu, type InstancedTemplateGPU, type InstancedOccurrence, type InstancedTemplateCpu } from './scene-instance-types.js';
@@ -47,7 +49,8 @@ import { StreamAssembly } from './scene-stream-assembly.js';
 import { mergeSameColorPieces } from './scene-mesh-pieces.js';
 import { resolvePrecisionBucket } from './scene-bucket-routing.js';
 import { residentBatchBytes, sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
-import { composeInstancedOverrideColor, writeOriginalInstancedColors } from './instanced-override-color.js';
+import { composeInstancedOverrideColor, originalColorWithAlpha } from './instanced-override-color.js';
+import { writeInstanceLane } from './instance-lane-write.js';
 import { bucketBaseKeyFor, colorKey, type MaterialKeySource, type SpatialChunkingConfig } from './chunk-grid.js';
 import { cloneOverrides, inheritedQuantization, type BatchQuantization } from './scene-derived-batches.js';
 import { EntityColorTable, entityIdPageKey } from './entity-color-table.js';
@@ -83,6 +86,7 @@ import {
   INSTANCE_FINISH_FLAGS_MASK,
 } from './instanced-render.js';
 import { translateInstanceRecord } from './scene-instance-translation.js';
+import { tombstoneInstanceRecords } from './instanced-tombstones.js';
 import { discardSceneGpuResourcesForRecovery, prepareSceneDeviceRecovery, repartitionHydratedRecoveryBucket, restoreSceneGpuResourcesAfterRecovery, type SceneDeviceRecoveryPreparation, type SceneRecoveryHost } from './scene-device-recovery.js';
 
 /** Consolidated per-bucket state — replaces six separate tracking maps. */
@@ -154,6 +158,7 @@ export class Scene {
   private authoredGeneration = 0;
   // Bumped wherever what a CPU pick can hit changes: see getPickGeometryRevision() (#8998).
   private pickGeometryRevision = 0;
+  private releasedMembership?: ReleasedMembershipHooks; private clearEpoch = 0; private replayEpoch = 0; // hooks: a released-scene recovery installs them; clear() moves clearEpoch (new content); every flat clear (reshape, recovery reset) moves replayEpoch (#10264)
   private triangleCounts = new SceneTriangleCounts();
   private geometryChanges = new GeometryChangeSignal();
   private bumpPickGeometryRevision(): void { this.pickGeometryRevision++; this.geometryChanges.changed(); }
@@ -251,6 +256,7 @@ export class Scene {
     this.evictHighlightMeshes(id);
   });
   private instancedHidden: Set<number> = new Set();               // currently hidden instanced express_ids (hide/isolate)
+  private readonly tombstonedTemplates = new Set<number>();         // template slots holding a deleted entity's records (#10639)
   private instancedOverridden: Set<number> = new Set();            // currently colour-overridden instanced express_ids
   private instancedGhosted: Set<number> = new Set();               // currently X-Ray ghosted instanced express_ids
   // The colours the instanced channel was last overridden with. Ghosting reads
@@ -1196,6 +1202,7 @@ export class Scene {
         this.createStreamingFragments(renderable, device, pipeline);
         for (const mesh of renderable) this.streamingFragmentIndexBudget -= mesh.indices.length;
       }
+      if (!retainStreamingGeometry) { unionEntityWorldBounds(this.boundingBoxes, meshDataArray); this.modelTranslations.unionReleasedEntityBounds(meshDataArray); } // after its fragments: a throw leaves no bounds
       if (!sourceCounted) { this.triangleCounts.noteSources(meshDataArray); this.geometryChanges.changed(); }
       return;
     }
@@ -1335,19 +1342,24 @@ export class Scene {
 
   /**
    * Tombstone a GPU-instanced entity on delete/split: set its HIDDEN flag on the
-   * GPU (both render + pick shaders discard it) before forgetting its occurrence
-   * locations, then drop all instanced state for it. The occurrence's buffer slots
-   * are not reclaimed (delete/split is rare) — hiding them is sufficient and never
-   * touches other entities' slots. Returns true if the id was instanced. (#1238)
+   * GPU (both render + pick shaders discard it) and in the CPU instance records
+   * that recovery and model moves re-upload, then drop all instanced state for
+   * it. The slots are not reclaimed (delete/split is rare) and never touch other
+   * entities' slots; `tombstonedTemplates` keeps the discarding shader on while
+   * they exist (#10639). Returns true if the id was instanced. (#1238)
    */
   private removeInstancedEntity(expressId: number): boolean {
-    if (!this.instancedEntityMap.has(expressId)) return false;
+    const occurrences = this.instancedEntityMap.get(expressId);
+    if (!occurrences) return false;
     const device = this.instancedDevice;
     if (device && !this.instanceSuppression.has(expressId)) {
       // Must set the flag while the occurrence locations are still in the map.
       this.instancedHidden.add(expressId);
       this.writeInstanceFlags(device, expressId);
     }
+    // Also with no device, where no flag write ran: the CPU record must carry the tombstone (#10639).
+    tombstoneInstanceRecords(this.instancedTemplateCpu, occurrences);
+    for (const o of occurrences) this.tombstonedTemplates.add(o.templateIndex);
     // Release the contribution-cull exemption BEFORE forgetting the occurrence
     // locations — deleting the map entry first would leak selectedCount and
     // leave the templates permanently uncullable.
@@ -1398,7 +1410,7 @@ export class Scene {
    * skips them and returns `false` so the caller can fall back
    * to a full reload if needed.
    */
-  translateMeshesForEntity(expressId: number, delta: [number, number, number]): boolean {
+  translateMeshesForEntity(expressId: number, delta: [number, number, number], beforeWrite?: (mesh: MeshData) => void): boolean {
     this.appearanceController?.cancelFor(expressId);
     // An entity can have flat meshes, GPU-instanced occurrences, or both. The
     // instanced occurrences live in the per-template instance buffers, NOT in
@@ -1409,7 +1421,7 @@ export class Scene {
     // instanced pass runs last and rebuilds that AABB from the moved occurrence
     // matrices, so a mixed flat+instanced entity never ends up with stranded
     // (null) instanced bounds.
-    const flatMoved = this.translateFlatMeshesForEntity(expressId, delta);
+    const flatMoved = this.translateFlatMeshesForEntity(expressId, delta, beforeWrite);
     const instancedMoved = this.translateInstancedEntity(expressId, delta);
     return flatMoved || instancedMoved;
   }
@@ -1456,7 +1468,7 @@ export class Scene {
     affectedKeys.add(newBucketKey);
   }
 
-  private translateFlatMeshesForEntity(expressId: number, delta: [number, number, number]): boolean {
+  private translateFlatMeshesForEntity(expressId: number, delta: [number, number, number], beforeWrite?: (mesh: MeshData) => void): boolean {
     this.streamWork.invalidate(); // positions move in place below
     const meshDataList = this.meshDataMap.get(expressId);
     if (!meshDataList || meshDataList.length === 0) return false;
@@ -1480,6 +1492,7 @@ export class Scene {
         }
         if (shared) continue;
       }
+      beforeWrite?.(meshData);
       const pos = meshData.positions;
       for (let i = 0; i < pos.length; i += 3) {
         pos[i] += dx;
@@ -1651,10 +1664,10 @@ export class Scene {
   }
 
   /** Bulk variant of `translateMeshesForEntity`. */
-  translateMeshesForEntities(updates: Map<number, [number, number, number]>): number {
+  translateMeshesForEntities(updates: Map<number, [number, number, number]>, beforeWrite?: (mesh: MeshData) => void): number {
     let count = 0;
     for (const [id, delta] of updates) {
-      if (this.translateMeshesForEntity(id, delta)) count++;
+      if (this.translateMeshesForEntity(id, delta, beforeWrite)) count++;
     }
     return count;
   }
@@ -1674,7 +1687,7 @@ export class Scene {
    * are not rotated (the collab edit path only rotates flat/authored meshes).
    * Returns true when a mesh was modified.
    */
-  rotateMeshesForEntity(expressId: number, angleRad: number, pivot: [number, number, number]): boolean {
+  rotateMeshesForEntity(expressId: number, angleRad: number, pivot: [number, number, number], beforeWrite?: (mesh: MeshData) => void): boolean {
     this.appearanceController?.cancelFor(expressId);
     this.streamWork.invalidate(); // positions rotate in place below
     const meshDataList = this.meshDataMap.get(expressId);
@@ -1697,6 +1710,7 @@ export class Scene {
       // Fold the per-element local-frame origin into the pivot (world = origin + pos).
       const px = pivot[0] - (meshData.origin?.[0] ?? 0);
       const pz = pivot[2] - (meshData.origin?.[2] ?? 0);
+      beforeWrite?.(meshData);
       const pos = meshData.positions;
       for (let i = 0; i < pos.length; i += 3) {
         const dx = pos[i] - px;
@@ -1746,10 +1760,10 @@ export class Scene {
   }
 
   /** Bulk variant of `rotateMeshesForEntity`. */
-  rotateMeshesForEntities(updates: Map<number, { angle: number; pivot: [number, number, number] }>): number {
+  rotateMeshesForEntities(updates: Map<number, { angle: number; pivot: [number, number, number] }>, beforeWrite?: (mesh: MeshData) => void): number {
     let count = 0;
     for (const [id, { angle, pivot }] of updates) {
-      if (this.rotateMeshesForEntity(id, angle, pivot)) count++;
+      if (this.rotateMeshesForEntity(id, angle, pivot, beforeWrite)) count++;
     }
     return count;
   }
@@ -2491,7 +2505,7 @@ export class Scene {
    * The caller must fall back to drawing the batch whole when this is false.
    */
   canPartitionBatch(batch: BatchedMesh): boolean {
-    if (this.geometryReleased || this.snapshots.hydrating) return false;
+    if (this.geometryReleased || this.snapshots.hydrating || batch.laneIds) return false; // laneIds: colour-merged (#10653)
     const bucket = this.buckets.get(batch.colorKey);
     const live = bucket !== undefined && bucket.batchedMesh === batch;
     if (live && bucket.meshData.length === 0) return false;
@@ -2807,7 +2821,7 @@ export class Scene {
    * no-op).
    */
   removeInstancedTemplatesForModel(modelIndex: number): number {
-    this.instanceSuppression.forgetModel(modelIndex);
+    this.instanceSuppression.forgetModel(modelIndex); this.releasedMembership?.drop(this, modelIndex);
     const freed = new Set<number>();
     for (let i = 0; i < this.instancedTemplates.length; i++) {
       const t = this.instancedTemplates[i];
@@ -2818,6 +2832,7 @@ export class Scene {
       freed.add(i);
     }
     if (freed.size === 0) return 0;
+    for (const slot of freed) this.tombstonedTemplates.delete(slot);
     this.bumpPickGeometryRevision();
 
     for (const [eid, occurrences] of this.instancedEntityMap) {
@@ -3310,13 +3325,15 @@ export class Scene {
 
   /**
    * True when the opaque instanced pass's fragment discards can fire: an
-   * occurrence carries the hidden bit (hide/isolate or an appearance
-   * suppression) or is translucent (the opacity routing). While false the
-   * renderer may draw that pass with the discard-free shader
-   * (opaque-draw-variants.ts). Conservative: any retained suppression counts.
+   * occurrence carries the hidden bit (hide/isolate, an appearance
+   * suppression, or a deleted entity's tombstone) or is translucent (the
+   * opacity routing). While false the renderer may draw that pass with the
+   * discard-free shader (opaque-draw-variants.ts). Conservative: any retained
+   * suppression counts, and a tombstone keeps the discard path until its
+   * model's templates are removed (slots are not reclaimed).
    */
   instancedMayDiscard(): boolean {
-    return this.instancedHidden.size > 0 || this.instanceSuppression.retained || this.hasTransparentInstances();
+    return this.instancedHidden.size > 0 || this.tombstonedTemplates.size > 0 || this.instanceSuppression.retained || this.hasTransparentInstances();
   }
 
   /**
@@ -3391,8 +3408,7 @@ export class Scene {
       const selectedBit = itemRestricted
         ? (loc.itemId === this.instancedSelectedItemId ? INSTANCE_FLAG_SELECTED : 0)
         : (eidSelected ? INSTANCE_FLAG_SELECTED : 0);
-      const buf = this.instancedTemplates[loc.templateIndex]?.instanceBuffer;
-      if (buf) device.queue.writeBuffer(buf, loc.byteOffset + INSTANCE_FLAGS_OFFSET, new Uint32Array([(selectedBit | hiddenBit | (loc.finishBits ?? 0)) >>> 0]));
+      this.writeInstanceSlot(device, loc, INSTANCE_FLAGS_OFFSET, new Uint32Array([(selectedBit | hiddenBit | (loc.finishBits ?? 0)) >>> 0]));
     }
   }
 
@@ -3404,22 +3420,23 @@ export class Scene {
     const locs = this.instancedEntityMap.get(eid);
     if (!locs) return;
     const data = new Float32Array([rgba[0], rgba[1], rgba[2], rgba[3]]);
-    for (const loc of locs) {
-      const buf = this.instancedTemplates[loc.templateIndex]?.instanceBuffer;
-      if (buf) device.queue.writeBuffer(buf, loc.byteOffset + INSTANCE_COLOR_OFFSET, data);
-    }
+    for (const loc of locs) this.writeInstanceSlot(device, loc, INSTANCE_COLOR_OFFSET, data);
   }
 
   private restoreInstanceColor(device: GPUDevice, eid: number): void {
     const locs = this.instancedEntityMap.get(eid);
     if (!locs) return;
-    for (const loc of locs) {
-      const buf = this.instancedTemplates[loc.templateIndex]?.instanceBuffer;
-      if (buf) device.queue.writeBuffer(buf, loc.byteOffset + INSTANCE_COLOR_OFFSET, new Float32Array(loc.originalColor));
-    }
+    for (const loc of locs) this.writeInstanceSlot(device, loc, INSTANCE_COLOR_OFFSET, originalColorWithAlpha(loc.originalColor, loc.originalColor[3]));
   }
 
-  private writeOriginalInstanceColors(device: GPUDevice, eid: number, alpha: number): void { writeOriginalInstancedColors(device, this.instancedEntityMap.get(eid) ?? [], this.instancedTemplates, INSTANCE_COLOR_OFFSET, alpha); }
+  private writeOriginalInstanceColors(device: GPUDevice, eid: number, alpha: number): void {
+    for (const loc of this.instancedEntityMap.get(eid) ?? []) this.writeInstanceSlot(device, loc, INSTANCE_COLOR_OFFSET, originalColorWithAlpha(loc.originalColor, alpha));
+  }
+
+  /** GPU and CPU record together, so a whole-buffer re-upload keeps the state (#10767). */
+  private writeInstanceSlot(device: GPUDevice, loc: InstancedOccurrence, lane: number, data: Uint32Array | Float32Array): void {
+    writeInstanceLane(device, this.instancedTemplates[loc.templateIndex]?.instanceBuffer, this.instancedTemplateCpu[loc.templateIndex]?.instanceData, loc.byteOffset + lane, data);
+  }
 
   /**
    * Build a textured mesh (#961): interleave position+normal+entityId+uv into one
@@ -3582,7 +3599,7 @@ export class Scene {
     this.instancedEntityMap.clear(); this.bumpPickGeometryRevision();
     this.instancedSelected.clear();
     this.instancedSelectedItemExpressId = this.instancedSelectedItemId = undefined;
-    this.instancedHidden.clear();
+    this.instancedHidden.clear(); this.tombstonedTemplates.clear();
     this.instancedOverridden.clear();
     this.instancedGhosted.clear();
     this.instancedGhostDirty = false;
@@ -3595,12 +3612,10 @@ export class Scene {
     this.instancedDevice = undefined;
   }
 
+  resetReleasedForRebuild(): void { this.destroyAllInstancedTemplates(); this.clearFlatGeometry(); this.setEphemeralStreamingMode(false); } // released device recovery (#10264): no flat or instanced piece, placements kept
   clear(): void {
-    this.modelTranslations.clear();
-    // GPU-instancing templates own their vertex/index/instance buffers.
-    // (Freed slots are holes whose buffers are already destroyed — skip them so
-    // a per-model removal followed by clear() can't double-destroy.)
-    this.destroyAllInstancedTemplates();
+    this.clearEpoch++; this.modelTranslations.clear(); this.releasedMembership?.forget(this); // new content; clearFlatGeometry() moves replayEpoch
+    this.destroyAllInstancedTemplates(); // templates own their buffers; freed slots are already-destroyed holes (no double-destroy)
     this.clearFlatGeometry();
   }
 
@@ -3614,7 +3629,7 @@ export class Scene {
    */
   clearFlatGeometry(): void {
     this.snapshots.onFlatCleared();
-    this.authoredGeneration++; this.authoredPreparations.invalidate();
+    this.replayEpoch++; this.authoredGeneration++; this.authoredPreparations.invalidate();
     this.instanceSuppression.restore();
     this.appearanceController?.forget();
     this.clearFlatBuffers();
@@ -3623,8 +3638,8 @@ export class Scene {
   /** Reconcile an ordinary source-geometry rebuild; exact surviving appearance
    * owners keep their original-instance history. Full reset remains separate. */
   clearFlatGeometryForRebuild(geometry: readonly MeshData[], models: ReadonlySet<number>, sourceGeometry = geometry): void {
-    this.snapshots.onFlatCleared();
-    this.authoredGeneration++; this.authoredPreparations.invalidate();
+    this.snapshots.onFlatCleared(); this.releasedMembership?.keepPresent(this, models);
+    this.replayEpoch++; this.authoredGeneration++; this.authoredPreparations.invalidate();
     const retained = this.appearanceController?.prepareRebuild(sourceGeometry, models) ?? new Set<number>();
     const discarded = this.appearanceController?.discardedForRebuild(retained) ?? [];
     // A discarded converted owner must not resurrect its obsolete type instance.

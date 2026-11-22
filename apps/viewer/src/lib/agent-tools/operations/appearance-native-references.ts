@@ -1,0 +1,339 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { useViewerStore } from '@/store';
+import { getGlobalRenderer } from '@/hooks/useBCF';
+import { viewerOperation, emptySchema, type ViewerOperationContext } from './contract';
+import { assertToolActive } from '../cancellation';
+import { decodeAppearanceSettings } from './appearance-native-common';
+import {
+  ReferenceAppearanceError,
+  prepareNativeAppearanceReference,
+  placeNativeAppearanceReference,
+  assertReferencePlacementCurrent,
+  type NativeAppearanceReference,
+} from '@/lib/appearance/appearance-native-reference';
+import { ownReference, type RegisteredAppearanceReference } from '@/lib/appearance/references/types';
+import type { AppearanceAssetOwner } from '@/lib/appearance/assets';
+import type { ToolHost } from '../types';
+import { appearanceAssets } from '@/lib/appearance/model-assets';
+import { restoreReferenceSource, referenceEditSettings } from '@/lib/appearance/references/edit';
+import { LockedAppearanceReferenceError, parseReferences } from '@/lib/appearance/references/persistence';
+import { placementFrameKey } from '@/lib/model-placement/persistence';
+import { decodedInput, invalidInput, stale, unavailable } from './refusals';
+const outputSchema = {
+  type: 'object',
+  properties: { native_json: { type: 'string' } },
+  required: ['native_json'],
+  additionalProperties: false,
+};
+const out = (value: unknown) => ({ native_json: JSON.stringify(value ?? null) });
+const meta = (id: string, description: string, write = false) => ({
+  id,
+  owner: 'appearance',
+  description,
+  effects: write ? (['configuration', 'view'] as const) : (['read'] as const),
+  capability: write ? ('commands-and-edits' as const) : ('read' as const),
+  implementation: 'native-store' as const,
+  outputSchema,
+});
+interface Candidate {
+  prepared: NativeAppearanceReference;
+  editing: RegisteredAppearanceReference | null;
+  owner: AppearanceAssetOwner;
+  renderer: NonNullable<ReturnType<typeof getGlobalRenderer>>;
+  draftId: string;
+  placed?: string;
+  placing?: boolean;
+  discard?: 'pending' | 'failed';
+}
+const hosts = new WeakMap<ToolHost, Map<string, Candidate>>();
+function release(value: Candidate) {
+  value.renderer.getReferenceImages().remove(value.draftId);
+  appearanceAssets.releaseOwner(value.owner);
+}
+/** Placed candidates hold no preview resources; only live previews count toward the cap. */
+function assertPreviewCapacity(c: ViewerOperationContext) {
+  let live = 0;
+  for (const row of candidates(c).values()) if (!row.placed) live++;
+  if (live >= 32) throw unavailable('Reference preview capacity reached.');
+}
+function candidates(c: ViewerOperationContext) {
+  let map = hosts.get(c.host);
+  if (!map) {
+    map = new Map();
+    hosts.set(c.host, map);
+    const owned = map;
+    c.host.lifetimeSignal?.addEventListener(
+      'abort',
+      () => {
+        for (const value of owned.values())
+          try { release(value); }
+          catch (error) { console.warn('[Appearance] Reference preview cleanup failed', error); }
+        owned.clear();
+      },
+      { once: true },
+    );
+  }
+  return map;
+}
+function rethrowReferenceRefusal(error: unknown): never {
+  if (error instanceof ReferenceAppearanceError) {
+    if (error.translationKey === 'appearance.reference.calibrate') throw unavailable(error.message);
+    if (error.translationKey === 'appearance.reference.sourceChanged') throw stale(error.message);
+  }
+  throw error;
+}
+const tokenInput = {
+  type: 'object' as const,
+  properties: { token: { type: 'string' as const, minLength: 1, maxLength: 100 } },
+  required: ['token' as const],
+  additionalProperties: false as const,
+};
+export const appearanceReferenceOperations = [
+  viewerOperation(
+    meta(
+      'appearance.references.read',
+      'Inspect native registered reference images, exact reference/history revision and immutable calibration/PDF lineage. This workspace has its own native Undo/Redo.',
+    ),
+    emptySchema,
+    () => {
+      const s = useViewerStore.getState();
+      return out({
+        references: [...s.appearanceReferences.values()],
+        revision: s.referenceRevision,
+        selected: s.selectedAppearanceReferenceId,
+        canUndo: s.referenceUndo.length > 0,
+        canRedo: s.referenceRedo.length > 0,
+      });
+    },
+  ),
+  viewerOperation<{ reference_id: string }>(
+    meta(
+      'appearance.references.restoreSource',
+      'Restore the exact native source/calibration settings of an existing registered reference for explicit editing. Uses immutable image digest and PDF lineage; never silently substitutes the current PDF raster.',
+      true,
+    ),
+    {
+      type: 'object',
+      properties: { reference_id: { type: 'string', minLength: 1, maxLength: 200 } },
+      required: ['reference_id'],
+      additionalProperties: false,
+    },
+    async (i, c) => {
+      assertToolActive(c);
+      const record = useViewerStore.getState().appearanceReferences.get(i.reference_id);
+      if (!record) throw invalidInput('unknown-target', 'Unknown native reference.');
+      const settings = referenceEditSettings(record);
+      return out(c.commit(() => ({ source: restoreReferenceSource(record), settings })));
+    },
+  ),
+  viewerOperation<{ source_id: string; expected_source: string; settings_json: string; edit_reference_id: string }>(
+    meta(
+      'appearance.references.prepare',
+      'Prepare and render a transient native calibrated reference candidate; does not register/history-commit it. Uses exact native calibration, immutable asset/PDF lineage, workspace frame and edit-identity checks. edit_reference_id empty creates a new reference.',
+      true,
+    ),
+    {
+      type: 'object',
+      properties: {
+        source_id: { type: 'string', minLength: 1, maxLength: 200 },
+        expected_source: { type: 'string', maxLength: 1000000 },
+        settings_json: { type: 'string', maxLength: 20000 },
+        edit_reference_id: { type: 'string', maxLength: 200 },
+      },
+      required: ['source_id', 'expected_source', 'settings_json', 'edit_reference_id'],
+      additionalProperties: false,
+    },
+    async (i, c) => {
+      const settings = await decodeAppearanceSettings(i.settings_json);
+      assertToolActive(c);
+      if (!c.signal) throw unavailable('A live cancellation signal is required.');
+      const s = useViewerStore.getState(),
+        source = s.appearanceSources.find((item) => item.id === i.source_id),
+        editing = i.edit_reference_id ? (s.appearanceReferences.get(i.edit_reference_id) ?? null) : null,
+        renderer = getGlobalRenderer();
+      if (!source) throw invalidInput('unknown-target', 'Unknown native appearance source.');
+      if (i.edit_reference_id && !editing) throw invalidInput('unknown-target', 'Unknown native reference to edit.');
+      if (JSON.stringify(source) !== i.expected_source) throw stale('Reference source changed since inspection.');
+      if (!renderer) throw unavailable('Native reference renderer is unavailable.');
+      for (const [token, row] of candidates(c)) if (row.placed) candidates(c).delete(token);
+      assertPreviewCapacity(c);
+      const owner = { kind: 'draft' as const, id: crypto.randomUUID() },
+        draftId = `agent-reference:${crypto.randomUUID()}`;
+      let adopted = false;
+      try {
+        const prepared = await prepareNativeAppearanceReference(
+          source,
+          settings,
+          placementFrameKey(s),
+          editing,
+          owner,
+          c.signal,
+        );
+        const assertInputsCurrent = () => {
+          if (getGlobalRenderer() !== renderer || (editing && useViewerStore.getState().appearanceReferences.get(editing.id) !== editing))
+            throw stale('Native reference inputs changed during preparation.');
+          assertReferencePlacementCurrent(prepared);
+        };
+        assertToolActive(c);
+        assertInputsCurrent();
+        await renderer
+          .getReferenceImages()
+          .set({ ...prepared.record, id: draftId, corners: prepared.corners, bitmap: prepared.bitmap }, c.signal);
+        assertToolActive(c);
+        const token = crypto.randomUUID();
+        c.commit(() => {
+          assertInputsCurrent();
+          assertPreviewCapacity(c);
+          candidates(c).set(token, { prepared, editing, renderer, owner, draftId });
+        });
+        adopted = true;
+        return out({ token, reference: prepared.record });
+      } catch (error) {
+        rethrowReferenceRefusal(error);
+      } finally {
+        if (!adopted) {
+          renderer.getReferenceImages().remove(draftId);
+          appearanceAssets.releaseOwner(owner);
+        }
+      }
+    },
+  ),
+  viewerOperation<{ token: string }>(
+    meta(
+      'appearance.references.place',
+      'Place/replace the exact prepared native reference as one native reference-history transaction. Rendering precedes a final live-authorized synchronous record commit; source/frame/edit changes or cancellation refuse without a new registered reference.',
+      true,
+    ),
+    tokenInput,
+    async (i, c) => {
+      const saved = candidates(c).get(i.token);
+      if (!saved) throw invalidInput('unknown-target', 'Unknown reference candidate for this host.');
+      if (saved.discard) throw unavailable('The reference candidate is being discarded.');
+      if (saved.placed) return out({ reference_id: saved.placed, placed: true });
+      assertToolActive(c);
+      if (!c.signal || getGlobalRenderer() !== saved.renderer) throw stale('Native renderer/session changed.');
+      if (saved.placing) throw unavailable('The reference candidate is being placed.');
+      saved.placing = true;
+      try {
+        const expected = ownReference(saved.prepared.record);
+        const current = useViewerStore.getState().appearanceReferences.get(expected.id);
+        if (!current || JSON.stringify(current) !== JSON.stringify(expected)) {
+          await placeNativeAppearanceReference(saved.prepared, saved.renderer, c.signal, saved.editing, (write) => c.commit(write));
+        } else {
+          c.commit(() => {
+            assertReferencePlacementCurrent(saved.prepared);
+            useViewerStore.getState().selectAppearanceReference(expected.id);
+          });
+        }
+        saved.placed = expected.id;
+        release(saved);
+        return out({ reference_id: expected.id, placed: true });
+      } catch (error) {
+        rethrowReferenceRefusal(error);
+      } finally {
+        saved.placing = false;
+      }
+    },
+  ),
+  viewerOperation<{ token: string }>(
+    meta(
+      'appearance.references.discard',
+      'Discard only the host-owned transient native reference preview, releasing its renderer/asset leases; leaves registered history intact.',
+      true,
+    ),
+    tokenInput,
+    async (i, c) => {
+      const saved = candidates(c).get(i.token);
+      if (!saved) throw invalidInput('unknown-target', 'Unknown reference candidate.');
+      if (saved.placing) throw unavailable('The reference candidate is being placed.');
+      assertToolActive(c);
+      if (saved.discard === 'pending') throw unavailable('The reference candidate is being discarded.');
+      saved.discard = 'pending';
+      try { release(saved); }
+      catch (error) { saved.discard = 'failed'; throw error; }
+      candidates(c).delete(i.token);
+      return out({ discarded: true });
+    },
+  ),
+  viewerOperation<{
+    action: 'update' | 'remove' | 'select' | 'undo' | 'redo' | 'import';
+    reference_id: string;
+    reference_revision: number;
+    visible: boolean;
+    locked: boolean;
+    opacity: number;
+    content: string;
+  }>(
+    meta(
+      'appearance.references.action',
+      'Update native reference visibility/lock/opacity, select/remove, Undo/Redo or import exact native exported reference definitions. Native workspace frame, locked-record and history/asset ownership rules stay authoritative. Image relink uses the browser file picker.',
+      true,
+    ),
+    {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['update', 'remove', 'select', 'undo', 'redo', 'import'] },
+        reference_id: { type: 'string', maxLength: 200 },
+        reference_revision: { type: 'integer', minimum: 0 },
+        visible: { type: 'boolean' },
+        locked: { type: 'boolean' },
+        opacity: { type: 'number', minimum: 0, maximum: 1 },
+        content: { type: 'string', maxLength: 10000000 },
+      },
+      required: ['action', 'reference_id', 'reference_revision', 'visible', 'locked', 'opacity', 'content'],
+      additionalProperties: false,
+    },
+    (i, c) =>
+      out(
+        c.commit(() => {
+          const s = useViewerStore.getState();
+          if (
+            (i.action === 'update' || i.action === 'remove' || (i.action === 'select' && i.reference_id)) &&
+            !s.appearanceReferences.has(i.reference_id)
+          )
+            throw invalidInput('unknown-target', 'Unknown reference.');
+          if (s.referenceRevision !== i.reference_revision) throw stale('Native reference workspace changed.');
+          if (s.collabRoomId) throw unavailable('Leave the shared room before editing native references.');
+          if (i.action === 'update')
+            s.updateAppearanceReference(i.reference_id, { visible: i.visible, locked: i.locked, opacity: i.opacity });
+          else if (i.action === 'remove') s.removeAppearanceReference(i.reference_id);
+          else if (i.action === 'select') s.selectAppearanceReference(i.reference_id || null);
+          else if (i.action === 'import') {
+            try {
+              s.importAppearanceReferences(i.content, (text, frame) =>
+                decodedInput('content', () => parseReferences(text, frame), { json: true }));
+            } catch (error) {
+              if (error instanceof LockedAppearanceReferenceError) throw invalidInput('wrong-target', error.message);
+              throw error;
+            }
+          }
+          else s.replayAppearanceReference(i.action);
+          return { revision: useViewerStore.getState().referenceRevision };
+        }),
+      ),
+  ),
+  viewerOperation(
+    {
+      ...meta(
+        'appearance.references.export',
+        'Export native registered reference definitions/calibration lineage as a host-owned artifact.',
+      ),
+      effects: ['artifact'],
+      capability: 'commands-and-edits',
+      policy: { artifact: 'native-export' },
+    },
+    emptySchema,
+    async (_, c) => {
+      assertToolActive(c);
+      return out(
+        await c.artifacts.create({
+          filename: 'appearance-references.json',
+          mimeType: 'application/json',
+          data: useViewerStore.getState().exportAppearanceReferences(),
+        }),
+      );
+    },
+  ),
+];

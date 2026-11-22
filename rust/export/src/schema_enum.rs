@@ -19,6 +19,7 @@ use crate::generated::enum_reconciliation::{
     EnumEntityRow, EnumOutcome, IFC2X3_ENUM_SLOTS, IFC4X3_ENUM_SLOTS, IFC4_ENUM_SLOTS,
 };
 use crate::schema_ifc4_slots::Ifc4SlotCheck;
+use crate::schema_userdefined_label::is_unset;
 use crate::step_slot::split_top_level_args;
 use std::collections::BTreeMap;
 
@@ -46,12 +47,16 @@ impl Loss {
 #[derive(Default)]
 pub(crate) struct EnumReconciliation {
     losses: BTreeMap<Loss, BTreeMap<String, usize>>,
+    /// Records written `.USERDEFINED.` with the label their rule needs unset, per type (#10780).
+    unlabelled: BTreeMap<String, usize>,
 }
 
 impl EnumReconciliation {
     /// Reconcile `line`, already converted to the canonical schema `to`.
     pub(crate) fn apply(&mut self, line: String, to: &str) -> String {
-        self.reconcile(&line, to).unwrap_or(line)
+        let line = self.reconcile(&line, to).unwrap_or(line);
+        self.check_user_defined(&line, to);
+        line
     }
 
     /// Values that lost information (label occupied, `.NOTDEFINED.`, `$`).
@@ -59,14 +64,34 @@ impl EnumReconciliation {
         [Loss::LabelOccupied, Loss::NotDefined, Loss::Omit].iter().map(|l| self.count(*l)).sum()
     }
 
-    /// Values kept as written because the target offers nothing valid.
+    /// Values kept as written because the target offers nothing valid,
+    /// including a `.USERDEFINED.` with no label (#10780).
     pub(crate) fn refused(&self) -> usize {
-        self.count(Loss::Refuse)
+        self.count(Loss::Refuse) + self.unlabelled.values().sum::<usize>()
+    }
+
+    /// Count `line` when it says `.USERDEFINED.` without the label its type's
+    /// rule requires in `to` (#10780). Nothing is written: no label is invented.
+    fn check_user_defined(&mut self, line: &str, to: &str) {
+        // Only a record that says USERDEFINED can break the rule; the rest stop here.
+        if !line.as_bytes().windows(13).any(|w| w.eq_ignore_ascii_case(b".USERDEFINED.")) { return; }
+        let Some((ty, args)) = crate::step_log::read_slots(line) else { return };
+        if crate::schema_userdefined::rule(to, &ty).is_some_and(|rule| crate::schema_userdefined::breaks(&args, rule)) {
+            *self.unlabelled.entry(ty).or_insert(0) += 1;
+        }
     }
 
     /// One warning per loss kind, naming what it happened to. Same text as
     /// the TypeScript twin's.
     pub(crate) fn warnings(&self) -> Vec<String> {
+        let unlabelled = (!self.unlabelled.is_empty()).then(|| {
+            let total: usize = self.unlabelled.values().sum();
+            let names: Vec<&str> = self.unlabelled.keys().map(String::as_str).collect();
+            format!(
+                "{total} record(s) say .USERDEFINED. without the label their rule needs; none is invented: {} (#10780).",
+                names.join(", ")
+            )
+        });
         self.losses
             .iter()
             .map(|(loss, where_)| {
@@ -79,6 +104,7 @@ impl EnumReconciliation {
                     names.join(", ")
                 )
             })
+            .chain(unlabelled)
             .collect()
     }
 
@@ -120,7 +146,7 @@ impl EnumReconciliation {
                 EnumOutcome::UserDefined(label) => {
                     values[index] = ".USERDEFINED.".to_string();
                     let label = &mut values[usize::from(label)];
-                    if label.trim() == "$" {
+                    if is_unset(label) {
                         *label = crate::step_text::quoted(&member);
                     } else {
                         self.record(Loss::LabelOccupied, where_);
@@ -160,6 +186,10 @@ pub(crate) struct ConversionChecks {
     pub(crate) structural: crate::schema_structural_diagnostics::StructuralDiagnostics,
     pub(crate) ifc4_slots: Ifc4SlotCheck,
     pub(crate) enums: EnumReconciliation,
+    /// The IfcDocumentInformation <-> IfcDocumentReference link (#10846).
+    pub(crate) documents: crate::schema_document_links::DocumentLinks,
+    /// Values a target slot's type cannot hold (#10847).
+    pub(crate) forms: crate::schema_value_forms::ValueForms,
     /// `convert_record`'s per-type decisions, resolved once per distinct type.
     pub(crate) plans: crate::schema_plan::PlanCache,
     /// Non-`$` source values the converted record has no slot for (#7683):
@@ -182,6 +212,7 @@ impl ConversionChecks {
         if !(unchanged && opts.included.is_none() && opts.attribute_mutations.is_empty() && opts.copy_on_write.is_empty()) {
             return checks;
         }
+        checks.documents = crate::schema_document_links::DocumentLinks::scan(content, from, to, kept);
         match (from, to) {
             ("IFC2X3", "IFC4") => {
                 checks.structural.varying = crate::schema_structural_varying::StructuralVarying::scan_ifc2x3(content, kept);
@@ -232,6 +263,8 @@ impl ConversionChecks {
     pub(crate) fn warnings(&self) -> Vec<String> {
         let mut out = self.ifc4_slots.warnings();
         out.extend(self.enums.warnings());
+        out.extend(self.documents.warnings());
+        out.extend(self.forms.warnings());
         out.extend(self.structural.warnings());
         out
     }

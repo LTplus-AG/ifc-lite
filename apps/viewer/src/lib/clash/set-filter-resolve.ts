@@ -26,6 +26,9 @@ import {
   type ClashSetFilters,
 } from './set-filter.js';
 
+/** A set filter that cannot be run safely: the run is refused, not failed (#10871). */
+export class ClashSetFilterRefusal extends Error {}
+
 export interface ResolveClashSetFilterOptions {
   signal?: AbortSignal;
   /** Largest set that may resolve; defaults to {@link CLASH_SET_FILTER_LIMIT}. */
@@ -61,7 +64,7 @@ export async function resolveClashSetFilter(
   // running on the readable remainder could widen the set. Refuse.
   const unreadable = unreadableRuleCount(filter);
   if (unreadable > 0) {
-    throw new Error(
+    throw new ClashSetFilterRefusal(
       `A clash set filter has ${unreadable === 1 ? 'an entry' : `${unreadable} entries`} this version cannot read. ` +
         'Open the rule and fix or remove the filter — the run was refused rather than run on the readable rules alone.',
     );
@@ -75,7 +78,7 @@ export async function resolveClashSetFilter(
     (rule) => (rule.kind === 'modelTag' ? unresolvedModelTagIds(rule, defined) : []),
   ));
   if (unresolved.length > 0) {
-    throw new Error(
+    throw new ClashSetFilterRefusal(
       `A clash set filter refers to ${unresolved.length === 1 ? 'a model tag' : `${unresolved.length} model tags`} that no longer exist${unresolved.length === 1 ? 's' : ''}. ` +
         'Fix or remove that rule — the run was refused rather than widened to models the rule never named.',
     );
@@ -88,7 +91,7 @@ export async function resolveClashSetFilter(
     definedModelTagIds: options.definedModelTagIds,
   });
   if (matched.length > limit) {
-    throw new Error(
+    throw new ClashSetFilterRefusal(
       `A clash set filter matched more than ${limit.toLocaleString()} elements. ` +
         'Narrow it — a run over a truncated set would report fewer clashes than the model has.',
     );

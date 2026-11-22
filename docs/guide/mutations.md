@@ -394,6 +394,8 @@ Edits accumulate in the same overlay used by `setProperty` / `setAttribute`. The
 
 Use `StoreEditor.runAtomic` to create or modify a related set of IFC entities together. The callback receives a detached editor; a thrown error leaves the live overlay, mutation history and express-ID allocator unchanged. `MutablePropertyView.runAtomic` provides the same operation with a draft view for property and quantity edits.
 
+Use `MutablePropertyView.snapshotForInspection()` when a reader needs to retain the current overlay revision. It copies the overlay and shares the source tables and read configuration. Changes made to the copy are detached from the live view.
+
 An untouched draft reads the same model revision and overlay contents as its live view. Initializing an editor's express-ID watermark does not change that model revision; transaction validation checks the allocator separately so an intervening watermark change cannot be overwritten by publication.
 
 ```typescript
@@ -1292,6 +1294,17 @@ history after validation. Invalid or host-only undo records drop the entire
 history and return `historyDroppedReason`, while retaining the valid edits.
 The journal's model IDs are preserved; bind host stacks to the same logical
 model. Rebuild meshes and host Revert state separately after restoring.
+
+When historical model aliases have their own overlays, use
+`prepareMutationViewMerge(preferred, historicalViews)` to stage their
+reconciliation. All the views must refer to the same parsed source. Distinct
+edits survive, and the preferred view wins where both edit the same field.
+Historical views are applied in priority order. The host can inspect its undo
+and redo entries with `isShadowed(mutation)` before committing. Ambiguous
+entity or whole-set overlaps throw during preparation. `commit()` refuses
+to publish if any input overlay changed after preparation. A successful commit
+updates the preferred view and leaves the historical views available to their
+owners.
 
 For asynchronous work on a fork, use
 `const fork = view.prepareAtomic(draft => draft).result` and leave that

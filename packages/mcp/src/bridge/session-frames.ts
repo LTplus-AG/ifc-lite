@@ -28,7 +28,10 @@ export function handleSessionFrame(s: BridgeSession, text: string, ctx: SessionF
     const why = clip(parsed.error, 300);
     // A malformed reply to a pending call fails that call now, not at its timeout.
     const id = looseId(text, s.id);
-    if (id !== null) s.failOne(id, 'malformed-result', (name) => `The viewer sent a malformed reply to '${name}': ${why}`);
+    if (id !== null) {
+      s.failOne(id, 'malformed-result', (name) => `The viewer sent a malformed reply to '${name}': ${why}`);
+      if (s.resultAck) s.send({ type: 'result-ack', sessionId: s.id, id, accepted: false });
+    }
     s.send({ type: 'error', code: BridgeErrorCode.INVALID_MESSAGE, message: why });
     return;
   }
@@ -42,7 +45,9 @@ export function handleSessionFrame(s: BridgeSession, text: string, ctx: SessionF
     return;
   }
   if (msg.type === 'result') {
-    if (!s.settle(msg.id, msg.result)) ctx.note('stray results', `ignored a result for call ${clip(msg.id, 64)}: not pending (unknown, answered or expired)`);
+    const accepted = s.settle(msg.id, msg.result);
+    if (s.resultAck && msg.resultAck) s.send({ type: 'result-ack', sessionId: s.id, id: msg.id, accepted });
+    if (!accepted) ctx.note('stray results', `ignored a result for call ${clip(msg.id, 64)}: not pending (unknown, answered or expired)`);
     return;
   }
   const before = ctx.effectivePermission();

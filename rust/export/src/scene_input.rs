@@ -52,7 +52,12 @@ impl SceneInput {
 
     /// The emittable meshes, in pipeline order.
     pub(crate) fn emittable(&self) -> impl Iterator<Item = &MeshData> + '_ {
-        self.emittable.iter().map(|&i| &self.result.meshes[i])
+        self.emittable_with_indices().map(|(_, mesh)| mesh)
+    }
+
+    /// Result indices are also the positions of any mesh side data collected by the sink.
+    pub(crate) fn emittable_with_indices(&self) -> impl Iterator<Item = (usize, &MeshData)> + '_ {
+        self.emittable.iter().map(|&i| (i, &self.result.meshes[i]))
     }
 
     /// The instance records to author: all of them when instancing is safe, else none.
@@ -96,11 +101,7 @@ fn request(layer_slicing: bool, index: Option<&Arc<EntityIndex>>) -> ProcessingR
 /// result (unbounded batches, default `retain_emitted_meshes` so templates survive).
 #[cfg(test)]
 pub(crate) fn run_instanced(content: &[u8], layer_slicing: bool) -> ProcessingResult {
-    run_instanced_with(content, layer_slicing, None)
-}
-
-fn run_instanced_with(content: &[u8], layer_slicing: bool, index: Option<&Arc<EntityIndex>>) -> ProcessingResult {
-    process(content, &request(layer_slicing, index).instancing(true), &mut ())
+    process(content, &request(layer_slicing, None).instancing(true), &mut ())
 }
 
 /// Choose the geometry result.
@@ -118,20 +119,29 @@ pub(crate) fn gather(
     layer_slicing: bool,
     index: Option<&Arc<EntityIndex>>,
 ) -> SceneInput {
-    let baked = || SceneInput::new(process(content, &request(layer_slicing, index), &mut ()), false);
-    if !instancing {
-        return baked();
+    gather_with(instancing, layer_slicing, index, |req| (process(content, &req, &mut ()), ())).0
+}
+
+/// Run the same selection with sink data that must come from the chosen pass.
+pub(crate) fn gather_with<T>(
+    instancing: bool,
+    layer_slicing: bool,
+    index: Option<&Arc<EntityIndex>>,
+    run: impl Fn(ProcessingRequest) -> (ProcessingResult, T),
+) -> (SceneInput, T) {
+    let req = request(layer_slicing, index);
+    if instancing {
+        let (result, side_data) = run(req.clone().instancing(true));
+        if result.instances.is_empty() {
+            return (SceneInput::new(result, false), side_data);
+        }
+        let input = SceneInput::new(result, true);
+        if all_instances_safe(&input) {
+            return (input, side_data);
+        }
     }
-    let r = run_instanced_with(content, layer_slicing, index);
-    if r.instances.is_empty() {
-        return SceneInput::new(r, false); // no repetition — the result is already complete
-    }
-    let input = SceneInput::new(r, true);
-    if all_instances_safe(&input) {
-        input
-    } else {
-        baked() // fallback: re-bake every occurrence
-    }
+    let (result, side_data) = run(req);
+    (SceneInput::new(result, false), side_data)
 }
 
 /// Gate that decides whether the id-keyed, one-prototype-per-template emitters can author

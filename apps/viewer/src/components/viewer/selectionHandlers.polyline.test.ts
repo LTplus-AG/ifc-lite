@@ -40,6 +40,7 @@ function fakeCtx(
     getDistance: () => 10,
   };
   const renderer = {
+    getScene: () => ({}), // a resident scene: the #10264 measure readback gate asks first
     raycastSceneMagnetic: () => ({
       intersection: hit ? { point: hit } : null,
       snapTarget: null,

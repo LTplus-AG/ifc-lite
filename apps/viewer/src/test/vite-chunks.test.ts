@@ -101,3 +101,36 @@ test('the installed QuickJS core still splits where the runtime group expects', 
   assert.notEqual(largest, 'index.mjs', 'the runtime lives outside the index, in a file the group claims');
 });
 
+test('the merged-export group claims the exporter and leaves shared helpers in their own groups', () => {
+  // merged-guid and merged-remap also serve other export paths. merged-bake loads with the STEP writer.
+  const group = chunks.mergedExportChunkGroup;
+  for (const id of [
+    '/repo/packages/export/src/merged-guid.js',
+    '/repo/packages/export/src/merged-remap.js',
+    '/repo/packages/export/src/merged-bake.js',
+  ]) assert.equal(group.test.test(id), false, id);
+  for (const id of [
+    '/repo/packages/export/src/merged-exporter.js',
+    '/repo/packages/export/src/merged-context.js',
+  ]) assert.equal(group.test.test(id), true, id);
+});
+
+test('#11247 claims STEP writers and conversion tables ahead of recursive exporters', () => {
+  const group = (chunks as Record<string, unknown>).stepExportChunkGroup as Group | undefined;
+  assert.ok(group, 'STEP export needs its own chunk group');
+  assert.ok(group.priority > 0, 'must outrank the recursive exporters group');
+  assert.equal(group.includeDependenciesRecursively, false);
+  for (const file of [
+    'step-exporter.ts',
+    'schema-converter.ts',
+    'schema-converter-ifc2x3-slots.ts',
+    'generated/ifc2x3-required-slots.ts',
+    'step-property-set-readers.ts',
+  ]) assert.ok(group.test.test(`/repo/packages/export/src/${file}`), file);
+  for (const file of [
+    'appearance-dependencies.ts',
+    'step-argument-parser.ts',
+    'step-coordinate-options.ts',
+    'declared-property-type.ts',
+  ]) assert.equal(group.test.test(`/repo/packages/export/src/${file}`), false, file);
+});

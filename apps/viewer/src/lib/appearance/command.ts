@@ -179,7 +179,12 @@ export async function commitAppearance(
     // IFC + GPU are ready. Publish the geometry and history entry together so
     // observers never see new IFC history paired with the old render buffers.
     published = true;
-    record(publication);
+    try { record(publication); }
+    catch (error) {
+      const last = useViewerStore.getState().undoStacks.get(modelId)?.at(-1);
+      if (!last || last.id !== applied.mutations.at(-1)?.id) throw error;
+      console.error('Appearance was committed, but a state observer failed', error);
+    }
   } catch (error) {
     if (!published) {
       failWithCleanup(error, [() => prepared.rollback(),

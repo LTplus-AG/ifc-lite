@@ -17,6 +17,8 @@ import type { ListRow } from '@ifc-lite/lists';
 import { useViewerStore } from '@/store';
 import { getVisibleBasketEntityRefsFromStore } from '@/store/basketVisibleSet';
 import { ownsCurrentIsolation } from '@/lib/visibility/ownership';
+import { instancedPassDrawn } from '@/lib/visibility/visible-bounds';
+import { useInstancedSceneRevision } from '@/hooks/useSceneTriangleCounts';
 
 export function useVisibleListRows(rows: ListRow[], filterByVisibility: boolean): ListRow[] {
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
@@ -26,6 +28,8 @@ export function useVisibleListRows(rows: ListRow[], filterByVisibility: boolean)
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
   const structuralViewMode = useViewerStore((s) => s.structuralViewMode);
+  const instancedDrawn = useViewerStore(instancedPassDrawn);
+  const instancedRevision = useInstancedSceneRevision(filterByVisibility && instancedDrawn);
   const models = useViewerStore((s) => s.models);
   const activeBasketViewId = useViewerStore((s) => s.activeBasketViewId);
   const geometryResult = useViewerStore((s) => s.geometryResult);
@@ -51,7 +55,7 @@ export function useVisibleListRows(rows: ListRow[], filterByVisibility: boolean)
     // they are listed so the filter re-runs when any of them changes.
   }, [
     rows, filterByVisibility, hiddenEntities, isolatedEntities, classFilter, lensHiddenIds,
-    selectedStoreys, typeVisibility, structuralViewMode, models, activeBasketViewId, geometryResult, listVisibilityOwned,
+    selectedStoreys, typeVisibility, structuralViewMode, instancedDrawn, instancedRevision, models, activeBasketViewId, geometryResult, listVisibilityOwned,
     mutationVersion, ifcDataStore, mutationViews,
   ]);
 }

@@ -173,6 +173,11 @@ export function installViewportDebugHooks(
     return measureCpuGeometryHeld({ models: state.models.values(), geometryResult: state.geometryResult,
       removedMeshes: state.removedMeshes.values(), renderer });
   };
+  // Test/debug-only live geometry backing (#10264). Loaded on first use; releases nothing.
+  host.__ifc_lite_geometry_backing__ = async (command: import('./geometry-backing/backing-debug-hook.js').GeometryBackingCommand) => {
+    const { geometryBackingCommand } = await import('./geometry-backing/backing-debug-hook.js');
+    return geometryBackingCommand(useViewerStore, renderer, command, visibility);
+  };
   // GPU click pick vs the exact CPU raycast over a texel grid, under the current
   // hide/isolate (#10264 S1). Loaded on first use; drives no frame or load path.
   host.__ifc_lite_pick_parity__ = async (request: Omit<PickParityRequest, 'options' | 'isAnnotationOwner'>) => {
@@ -266,6 +271,7 @@ export function clearViewportDebugHooks(): void {
   delete host.__ifc_lite_scene_identity__;
   delete host.__ifc_lite_capture_color_frame__;
   delete host.__ifc_lite_cpu_geometry_held__;
+  delete host.__ifc_lite_geometry_backing__;
   delete host.__ifc_lite_pick_parity__;
   delete host.__ifc_lite_capture_color_diagnostic__;
   delete host.__ifc_lite_view_projection__;

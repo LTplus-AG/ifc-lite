@@ -515,7 +515,7 @@ const CALL_SITE_FLOOR = {
   mirrorPropertyEdit: 1,
   mirrorPropertyDelete: 1,
   mirrorAttributeEdit: 1,
-  mirrorPlacementEdit: 3,
+  mirrorPlacementEdit: 5, // four moves' `publishMove(state, modelId, …)`, which mirrors and records them, and one rotate (#10810)
   mirrorEntityRemove: 1,
   mirrorEntityCreate: 1, // runInStoreElementBuilder: every add*, addColumn included
   mirrorEntityGeometry: 1, // requestRemesh: every re-mesh (add*, resize, their undo / redo), one call per re-meshed element (#6232)
@@ -526,10 +526,10 @@ const CALL_SITE_FLOOR = {
 {
   const entityActionNames = new Set(entityActions.map((a) => a.name));
   const seen = new Map();
-  const CALL_RE = /get\(\)\.((?:mirror|collab|readCollab)[A-Za-z]*)\(\s*([A-Za-z0-9_.()!]*)/g;
+  const CALL_RE = /(?:get\(\)\.((?:mirror|collab|readCollab)[A-Za-z]*)\(|\bpublishMove\([^,]*,)\s*([A-Za-z0-9_.()!]*)/g;
   for (const file of [mutation, mutationWallResize, remeshService, mutationRotateEntity]) {
     for (const m of file.clean.matchAll(CALL_RE)) {
-      const [, name, firstArg] = m;
+      const [, name = 'mirrorPlacementEdit', firstArg] = m;
       if (!entityActionNames.has(name)) continue;
       seen.set(name, (seen.get(name) ?? 0) + 1);
       if (firstArg !== 'modelId') {

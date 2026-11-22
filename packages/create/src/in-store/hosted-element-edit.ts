@@ -112,9 +112,9 @@ export function editHostedElementInStore(store: IfcDataStore, editor: StoreEdito
     };
     validateWallOpeningBounds(store, view, host, proposed, read.openingId);
     if (widthScale !== 1 || heightScale !== 1) {
-      scaleHostedShape(reader, draft, read.openingId, current.openingFrame, anchor, widthScale, heightScale);
+      scaleHostedShape(store, reader, draft, read.openingId, current.openingFrame, anchor, widthScale, heightScale);
       if (read.fillingId !== null && current.fillingFrame) {
-        scaleHostedShape(reader, draft, read.fillingId, current.fillingFrame, anchor, widthScale, heightScale);
+        scaleHostedShape(store, reader, draft, read.fillingId, current.fillingFrame, anchor, widthScale, heightScale);
       }
     }
     if (read.fillingId !== null && size) {

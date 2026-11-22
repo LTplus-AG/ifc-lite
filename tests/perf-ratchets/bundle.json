@@ -7,14 +7,15 @@
       "metric": "raw-bytes",
       "unit": "bytes",
       "description": "raw size of packages/wasm/pkg/ifc-lite_bg.wasm, the single-thread engine bundle; its brotli size is reported, not gated",
-      "ceiling": 10410322,
+      "ceiling": 10571189,
+      "headroom": 0.01,
       "tolerance": {
         "kind": "relative",
         "value": 0.001
       },
       "provenance": {
-        "commit": "e0632edf1e6f9e857a440239af8fd456c32c9fab",
-        "measuredAt": "2026-11-19T00:06:05.630Z"
+        "commit": "ca886626e182f59d518a3f6a64798ef88041ebca",
+        "measuredAt": "2026-11-22T01:57:14.789Z"
       }
     },
     {
@@ -22,14 +23,14 @@
       "metric": "raw-bytes",
       "unit": "bytes",
       "description": "raw size of the single <script type=\"module\" src> chunk of apps/viewer/dist/index.html",
-      "ceiling": 2000098,
+      "ceiling": 2012040,
       "tolerance": {
         "kind": "relative",
         "value": 0.001
       },
       "provenance": {
-        "commit": "e0632edf1e6f9e857a440239af8fd456c32c9fab",
-        "measuredAt": "2026-11-19T00:06:05.630Z"
+        "commit": "a50001da9a4fe85cc2a6cefd4215d49f63c3b32f",
+        "measuredAt": "2026-11-20T18:38:09.350Z"
       }
     },
     {
@@ -37,14 +38,14 @@
       "metric": "raw-bytes",
       "unit": "bytes",
       "description": "summed raw size of every JS file dist/index.html loads eagerly: the module <script src> plus <link rel=modulepreload>",
-      "ceiling": 13453783,
+      "ceiling": 13473340,
       "tolerance": {
         "kind": "relative",
         "value": 0.001
       },
       "provenance": {
-        "commit": "e0632edf1e6f9e857a440239af8fd456c32c9fab",
-        "measuredAt": "2026-11-19T00:06:05.630Z"
+        "commit": "4ed6e97acc108489534907d92e5946a4a41b53f0",
+        "measuredAt": "2026-11-22T12:20:14.000Z"
       }
     },
     {

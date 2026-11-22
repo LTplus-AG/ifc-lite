@@ -16,7 +16,7 @@ import {
 import { VIEWER_COMMAND_SPECS } from '@/lib/agent-tools/viewer-command-tools';
 import { MAIN_VIEWER_EDIT_TOOLS, MAIN_VIEWER_TOOL_ALLOWLIST } from '@/lib/agent-tools/main-viewer';
 import { BridgeClient, type BridgeClientOptions, type WebSocketLike } from './client';
-import type { AgentBridgeActivity, AgentBridgeStatus } from './state';
+import { foldActivity, type AgentBridgeActivity, type AgentBridgeStatus } from './state';
 import type { ToolOutcome } from './result-frame';
 import { mainViewerBridgeTools } from './session';
 
@@ -30,6 +30,7 @@ class FakeSocket implements WebSocketLike {
   onerror: WebSocketLike['onerror'] = null;
   readonly sent: string[] = [];
   failSend = false;
+  enforceBrowserCloseCodes = false;
   closedWith: { code?: number; reason?: string } | null = null;
   constructor(readonly url: string) {
     FakeSocket.last = this;
@@ -40,6 +41,9 @@ class FakeSocket implements WebSocketLike {
     this.sent.push(data);
   }
   close(code?: number, reason?: string): void {
+    if (this.enforceBrowserCloseCodes && code !== undefined && code !== 1000 && (code < 3000 || code > 4999)) {
+      throw new DOMException('Invalid WebSocket close code', 'InvalidAccessError');
+    }
     this.closedWith = { code, reason };
     this.readyState = 3;
   }
@@ -59,8 +63,8 @@ class FakeSocket implements WebSocketLike {
       return parsed.value as BridgeResultMessage;
     });
   }
-  welcome(sessionId = 'session-1'): void {
-    this.frame({ type: 'welcome', protocol: BRIDGE_PROTOCOL_VERSION, sessionId, permission: 'read-only', readOnlyCeiling: false, bridge: { name: 'ifc-lite-mcp', version: 't' } });
+  welcome(sessionId = 'session-1', resultAck?: true): void {
+    this.frame({ type: 'welcome', protocol: BRIDGE_PROTOCOL_VERSION, sessionId, resultAck, permission: 'read-only', readOnlyCeiling: false, bridge: { name: 'ifc-lite-mcp', version: 't' } });
   }
 }
 
@@ -100,11 +104,11 @@ function harness(overrides: Partial<BridgeClientOptions> = {}): Harness {
 }
 
 /** Connected and welcomed. */
-function paired(overrides: Partial<BridgeClientOptions> = {}): Harness {
+function paired(overrides: Partial<BridgeClientOptions> = {}, resultAck?: true): Harness {
   const h = harness(overrides);
   h.client.connect();
   h.socket().open();
-  h.socket().welcome();
+  h.socket().welcome('session-1', resultAck);
   return h;
 }
 
@@ -113,6 +117,8 @@ function call(socket: FakeSocket, id: string, name = 'count_entities', args: Rec
 }
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+const textOf = (block: BridgeResultMessage['result']['content'][number]): string => (block.type === 'text' ? block.text : '');
 
 /** A dispatch that waits for its signal, recording what it saw. */
 function blockingDispatch() {
@@ -123,6 +129,107 @@ function blockingDispatch() {
 }
 
 afterEach(() => { FakeSocket.last = null; });
+
+describe('bridge result acknowledgement (#11029)', () => {
+  function trackedDispatch(text = 'retained result') {
+    const dispatches: string[] = [];
+    const settled: string[] = [];
+    const dispatch: BridgeClientOptions['dispatch'] = async (name, _args, _signal, claim) => {
+      dispatches.push(name);
+      claim?.({ deliver: () => settled.push('delivered'), drop: () => settled.push('dropped') });
+      return { text, structured: { token: 'reviewed' }, isError: false };
+    };
+    return { dispatch, dispatches, settled };
+  }
+
+  it('reserves an admission slot until a matching acknowledgement and ignores a late abort', async () => {
+    const tracked = trackedDispatch();
+    const h = paired({ dispatch: tracked.dispatch, limits: { maxRunning: 1 } }, true);
+    const socket = h.socket();
+    try {
+      call(socket, 'first');
+      await flush();
+      assert.match(socket.sent.at(-1) ?? '', /"resultAck":true/);
+      call(socket, 'second');
+      socket.frame({ type: 'result-ack', sessionId: 'other-session', id: 'first', accepted: true });
+      await flush();
+      assert.equal(tracked.dispatches.length, 1);
+      assert.deepEqual(tracked.settled, []);
+      socket.frame({ type: 'result-ack', sessionId: 'session-1', id: 'first', accepted: true });
+      socket.frame({ type: 'cancel', sessionId: 'session-1', id: 'first', reason: 'cancelled' });
+      await flush();
+      assert.equal(tracked.dispatches.length, 2);
+      assert.deepEqual(tracked.settled, ['delivered']);
+      socket.frame({ type: 'result-ack', sessionId: 'session-1', id: 'second', accepted: false });
+      assert.deepEqual(tracked.settled, ['delivered', 'dropped']);
+    } finally {
+      h.client.disconnect();
+    }
+  });
+
+  it('drops a truncated result without asking the bridge to acknowledge it', async () => {
+    const tracked = trackedDispatch('x'.repeat(20_000));
+    const h = paired({ dispatch: tracked.dispatch, maxResultBytes: 8192 }, true);
+    try {
+      call(h.socket(), 'cut');
+      await flush();
+      const reply = JSON.parse(h.socket().sent.at(-1) ?? 'null');
+      assert.equal(reply.result.structuredContent.truncated, true);
+      assert.equal(reply.resultAck, undefined);
+      assert.deepEqual(tracked.settled, ['dropped']);
+    } finally {
+      h.client.disconnect();
+    }
+  });
+
+  it('releases the claim and admission slot when sending the result throws', async () => {
+    const tracked = trackedDispatch();
+    const h = paired({ dispatch: tracked.dispatch, limits: { maxRunning: 1 } }, true);
+    const socket = h.socket();
+    try {
+      socket.failSend = true;
+      call(socket, 'lost');
+      await flush();
+      assert.deepEqual(tracked.settled, ['dropped']);
+
+      socket.failSend = false;
+      call(socket, 'next');
+      await flush();
+      assert.equal(tracked.dispatches.length, 2);
+      socket.frame({ type: 'result-ack', sessionId: 'session-1', id: 'next', accepted: true });
+      assert.deepEqual(tracked.settled, ['dropped', 'delivered']);
+    } finally {
+      h.client.disconnect();
+    }
+  });
+
+  it('closes a pairing with an unconfirmed result and releases its claim', async () => {
+    const tracked = trackedDispatch();
+    const h = paired({ dispatch: tracked.dispatch, limits: { callTimeoutMs: 20 } }, true);
+    h.socket().enforceBrowserCloseCodes = true;
+    try {
+      call(h.socket(), 'unconfirmed');
+      await new Promise(resolve => setTimeout(resolve, 60));
+      assert.equal(h.socket().closedWith?.reason, 'result acknowledgement timeout');
+      assert.deepEqual(tracked.settled, ['dropped']);
+    } finally {
+      h.client.disconnect();
+    }
+  });
+
+  it('keeps the legacy dispatch delivery boundary when the peer omits negotiation', async () => {
+    const tracked = trackedDispatch();
+    const h = paired({ dispatch: tracked.dispatch });
+    try {
+      call(h.socket(), 'legacy');
+      await flush();
+      assert.doesNotMatch(h.socket().sent.at(-1) ?? '', /resultAck/);
+      assert.deepEqual(tracked.settled, []);
+    } finally {
+      h.client.disconnect();
+    }
+  });
+});
 
 describe('local agent bridge client: handshake (#9523)', () => {
   it('connects to 127.0.0.1 only when asked, and its hello is read-only with model and palette command tools', () => {
@@ -287,7 +394,7 @@ describe('local agent bridge client: calls (#9523)', () => {
     await flush();
     const result = h.socket().results()[0].result;
     assert.ok(new TextEncoder().encode(JSON.stringify(result)).byteLength <= 50_000, 'the result fits the limit');
-    const text = String(result.content[0].text);
+    const text = textOf(result.content[0]);
     assert.match(text, /\[Truncated by the viewer: the full result \(\d+ bytes\) is more than the bridge accepts/);
     assert.ok(text.startsWith('xxxx'), 'it keeps the start of the text');
     assert.equal((result.structuredContent as { truncated: boolean }).truncated, true);
@@ -307,8 +414,8 @@ describe('local agent bridge client: calls (#9523)', () => {
     await flush();
     const results = h.socket().results();
     assert.deepEqual(results.map((r) => r.id), ['big', 'deep'], 'both frames pass parseTabMessage');
-    assert.match(String(results[0].result.content[0].text), /result is \d+ bytes; the limit is 4194304/);
-    assert.match(String(results[1].result.content[0].text), /^deep\n\n\[Truncated by the viewer/);
+    assert.match(textOf(results[0].result.content[0]), /result is \d+ bytes; the limit is 4194304/);
+    assert.match(textOf(results[1].result.content[0]), /^deep\n\n\[Truncated by the viewer/);
   });
 
   it('the activity log has tool, model, duration and outcome, never arguments or results', async () => {
@@ -333,6 +440,84 @@ describe('local agent bridge client: calls (#9523)', () => {
     const logged = JSON.stringify(h.activity);
     assert.ok(!logged.includes(SECRET_ARG), 'no argument value in the log');
     assert.ok(!logged.includes(SECRET_RESULT), 'no result text in the log');
+  });
+
+  it('folds repeated searches without hiding distinct queries or recording their inputs (#9523 review)', async () => {
+    let clock = 100;
+    const h = paired({
+      now: () => clock,
+      dispatch: async () => {
+        clock += 10;
+        return { text: 'matches', structured: null, isError: false };
+      },
+    });
+    for (const [id, query] of [['c1', 'measure distance'], ['c2', 'color walls'], ['c3', 'color walls'], ['c4', 'color walls']]) {
+      call(h.socket(), id, 'viewer_operations', { query });
+      await flush();
+    }
+    const [first, second, third, fourth] = h.activity;
+    assert.ok(first && second && third && fourth);
+    const rows = foldActivity([fourth, ...foldActivity([third, second, first])]);
+    assert.deepEqual(rows.map(({ seq, startedAt, count }) => ({ seq, startedAt, count })), [
+      { seq: 4, startedAt: 130, count: 3 },
+      { seq: 1, startedAt: 100, count: undefined },
+    ]);
+    assert.doesNotMatch(JSON.stringify(rows), /measure distance|color walls/);
+  });
+
+  it('keeps the same read separate when the structured reply changes (#9523 review)', async () => {
+    let models: string[] = [];
+    const h = paired({ dispatch: async () => ({ text: 'Available models', structured: { models }, isError: false }) });
+    call(h.socket(), 'empty', 'model_list', {});
+    await flush();
+    models = ['house.ifc'];
+    call(h.socket(), 'loaded', 'model_list', {});
+    await flush();
+    call(h.socket(), 'unchanged', 'model_list', {});
+    await flush();
+
+    const rows = foldActivity([...h.activity].reverse());
+    assert.deepEqual(rows.map(({ seq, count }) => ({ seq, count })), [
+      { seq: 3, count: 2 },
+      { seq: 1, count: undefined },
+    ]);
+    assert.doesNotMatch(JSON.stringify(rows), /Available models|house\.ifc/);
+  });
+
+  it('folds identical read errors while keeping a different reply with the same error code separate (#10596)', async () => {
+    let message = 'Entity could not be found';
+    const h = paired({ dispatch: async () => ({
+      text: message, structured: null, isError: true, errorCode: 'ENTITY_NOT_FOUND',
+    }) });
+    call(h.socket(), 'first', 'get_entity', { express_id: 42 });
+    await flush();
+    call(h.socket(), 'retry', 'get_entity', { express_id: 42 });
+    await flush();
+    message = 'Entity was removed';
+    call(h.socket(), 'changed', 'get_entity', { express_id: 42 });
+    await flush();
+
+    const rows = foldActivity([...h.activity].reverse());
+    assert.deepEqual(rows.map(({ seq, count, errorCode }) => ({ seq, count, errorCode })), [
+      { seq: 3, count: undefined, errorCode: 'ENTITY_NOT_FOUND' },
+      { seq: 2, count: 2, errorCode: 'ENTITY_NOT_FOUND' },
+    ]);
+    assert.doesNotMatch(JSON.stringify(rows), /Entity could not be found|Entity was removed/);
+  });
+
+  it('keeps screenshot activity separate even when the bridge can only forward text (#9523 review)', async () => {
+    const h = paired({ dispatch: async () => ({
+      text: 'Viewport screenshot', structured: { width: 2, height: 1 }, isError: false,
+      image: { data: '/9j/2Q==', mimeType: 'image/jpeg' },
+    }) });
+    for (const id of ['first', 'second']) {
+      call(h.socket(), id, 'viewer_screenshot', {});
+      await flush();
+    }
+    assert.deepEqual(foldActivity([...h.activity].reverse()).map(({ seq, count }) => ({ seq, count })), [
+      { seq: 2, count: undefined },
+      { seq: 1, count: undefined },
+    ]);
   });
 });
 

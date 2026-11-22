@@ -4,6 +4,8 @@
 
 import type { SavedConversation } from '../assistant/persistence.js';
 import type { ClashGroupWorkspace } from '../clash/group-workspace.js';
+import type { IdsStudioDraft } from '../ids-studio/draft-codec.js';
+import { decodeBcfProject } from '../bcf-project/project-codec.js';
 import type { DraftBatch } from '../bcf-drafts/draft-types.js';
 import type { BcfPublication } from '../bcf-publication/outbox-types.js';
 import type { ModelChangeReceipt } from '../actions/model-change-commit.js';
@@ -28,6 +30,8 @@ import { BACKUP_DRAFT_PREFIX, draftRecoveryRows, forgetContentDrafts, mergeConte
 import { CONTENT_KINDS, CONTENT_POLICIES } from './content-kinds.js';
 import { CONTENT_DEFINITIONS, contentKindForLegacyKey } from './content-registry.js';
 import { decodeArtifactLibraries, encodeArtifactLibraries, type StandaloneArtifactLibraries } from './artifact-backup.js';
+import { commitLocalWorkImport, planLocalWorkImport, readLocalWorkBackup, type LocalWorkBackup } from './local-work-backup.js';
+import type { LocalWorkKey } from './local-work-codecs.js';
 
 export interface ContentLibraries extends StandaloneArtifactLibraries {
   validation: SavedValidationReport[];
@@ -36,6 +40,7 @@ export interface ContentLibraries extends StandaloneArtifactLibraries {
   /** Optional for backups written before assistant conversations existed. */
   assistant?: SavedConversation[];
   clashGroups?: ClashGroupWorkspace[];
+  idsStudioDrafts?: IdsStudioDraft[];
   bcfDrafts?: DraftBatch[];
   /** Imported outbox records always arrive blocked; see `quarantineImported`. */
   bcfOutbox?: BcfPublication[];
@@ -56,9 +61,11 @@ export interface ContentLibraries extends StandaloneArtifactLibraries {
   analysisRuns?: SavedAnalysisRun[];
 }
 export interface ContentBackup {
-  version: 1 | 2;
+  version: 1 | 2 | 3;
   exportedAt: string;
   libraries: ContentLibraries;
+  /** The current BCF working copy uses its own versioned codec. */
+  bcfProject?: string;
   /** Item-level status records distinguish unsaved drafts from committed evidence. */
   status?: Record<string, unknown>;
   /** Raw incomplete drafts stay recoverable without weakening durable validators. */
@@ -67,7 +74,7 @@ export interface ContentBackup {
 
 /** Export needs no database write/read: it works when browser storage is blocked. */
 export function createContentBackup(libraries: ContentLibraries, status?: Record<string, unknown>,
-  preservedDrafts: ContentDraftEvidence[] = []): ContentBackup {
+  preservedDrafts: ContentDraftEvidence[] = [], bcfProject?: string, local = readLocalWorkBackup()): ContentBackup {
   const copied = structuredClone(libraries), drafts: ContentDraftEvidence[] = [];
   const partition = <T extends { id: string }>(kind: ContentRow['kind'], entries: T[], decode: (raw: unknown) => T | null): T[] =>
     entries.flatMap(entry => {
@@ -76,17 +83,24 @@ export function createContentBackup(libraries: ContentLibraries, status?: Record
       drafts.push({ kind, id: entry.id, raw });
       return [];
     });
-  const artifactLibraries = decodeArtifactLibraries(encodeArtifactLibraries(copied));
+  const artifactLibraries = decodeArtifactLibraries(encodeArtifactLibraries({ ...copied, localWork: local.localWork }));
+  if (!Object.keys(artifactLibraries.localWork ?? {}).length) delete artifactLibraries.localWork;
   for (const kind of ['filters', 'lists', 'lenses'] as const) {
     if (!artifactLibraries[kind]?.length) delete artifactLibraries[kind];
   }
-  return { version: Object.keys(artifactLibraries).length ? 2 : 1, exportedAt: new Date().toISOString(), status, libraries: {
+  const recovery = mergeContentDrafts(parseContentDrafts(preservedDrafts), pendingContentDrafts(), local.drafts);
+  // Durable library partitioning below also adds incomplete session drafts.
+  const version = artifactLibraries.localWork || recovery.some(entry => entry.kind === 'localWork') ? 3
+    : Object.keys(artifactLibraries).length ? 2 : 1;
+  return { version, exportedAt: new Date().toISOString(), status,
+    ...(bcfProject === undefined ? {} : { bcfProject }), libraries: {
     ...artifactLibraries,
     validation: partition('validation', copied.validation, CONTENT_DEFINITIONS.validation.decode),
     comparison: partition('comparison', copied.comparison, CONTENT_DEFINITIONS.comparison.decode),
     document: partition('document', copied.document, CONTENT_DEFINITIONS.document.decode),
     ...(copied.assistant ? { assistant: partition('assistant', copied.assistant, CONTENT_DEFINITIONS.assistant.decode) } : {}),
     ...(copied.clashGroups ? { clashGroups: partition('clashGroups', copied.clashGroups, CONTENT_DEFINITIONS.clashGroups.decode) } : {}),
+    ...(copied.idsStudioDrafts ? { idsStudioDrafts: partition('idsStudioDrafts', copied.idsStudioDrafts, CONTENT_DEFINITIONS.idsStudioDrafts.decode) } : {}),
     ...(copied.bcfDrafts ? { bcfDrafts: partition('bcfDrafts', copied.bcfDrafts, CONTENT_DEFINITIONS.bcfDrafts.decode) } : {}),
     ...(copied.bcfOutbox ? { bcfOutbox: partition('bcfOutbox', copied.bcfOutbox, CONTENT_DEFINITIONS.bcfOutbox.decode) } : {}),
     ...(copied.modelChanges ? { modelChanges: partition('modelChanges', copied.modelChanges, CONTENT_DEFINITIONS.modelChanges.decode) } : {}),
@@ -97,10 +111,10 @@ export function createContentBackup(libraries: ContentLibraries, status?: Record
     ...(copied.assistantRecipes ? { assistantRecipes: partition('assistantRecipes', copied.assistantRecipes, CONTENT_DEFINITIONS.assistantRecipes.decode) } : {}),
     ...(copied.assistantPreferences ? { assistantPreferences: partition('assistantPreferences', copied.assistantPreferences, CONTENT_DEFINITIONS.assistantPreferences.decode) } : {}),
     ...(copied.analysisRuns ? { analysisRuns: partition('analysisRuns', copied.analysisRuns, CONTENT_DEFINITIONS.analysisRuns.decode) } : {}),
-  }, drafts: mergeContentDrafts(parseContentDrafts(preservedDrafts), pendingContentDrafts(), drafts) };
+  }, drafts: mergeContentDrafts(recovery, drafts) };
 }
 
-/** Guarded artifact rows remain portable; older whole-backup readers reject v2. */
+/** Keep each standalone artifact in its native portable representation. */
 export function encodeContentBackup(backup: ContentBackup): Omit<ContentBackup, 'libraries'> & { libraries: Record<string, unknown> } {
   return { ...backup, libraries: { ...backup.libraries, ...encodeArtifactLibraries(backup.libraries) } };
 }
@@ -109,12 +123,20 @@ export function parseContentBackup(text: string): ContentBackup {
   const value: unknown = JSON.parse(text);
   if (!value || typeof value !== 'object') throw new Error('Invalid library backup');
   const backup = value as Record<string, unknown>;
-  if ((backup.version !== 1 && backup.version !== 2) || !backup.libraries || typeof backup.libraries !== 'object') throw new Error('Unsupported library backup');
+  if ((backup.version !== 1 && backup.version !== 2 && backup.version !== 3) || !backup.libraries || typeof backup.libraries !== 'object') throw new Error('Unsupported library backup');
   const libraries = backup.libraries as Record<string, unknown>;
   if (backup.version === 1 && ['filters', 'lists', 'lenses'].some(kind => Object.hasOwn(libraries, kind))) {
     throw new Error('Standalone artifact libraries require backup version 2');
   }
-  const artifacts = backup.version === 2 ? decodeArtifactLibraries(libraries) : {};
+  const drafts = parseContentDrafts(backup.drafts);
+  if (backup.version !== 3 && (Object.hasOwn(libraries, 'localWork') || drafts.some(draft => draft.kind === 'localWork'))) {
+    throw new Error('Clash and validation work requires backup version 3');
+  }
+  const artifacts = backup.version >= 2 ? decodeArtifactLibraries(libraries) : {};
+  const bcfProject = backup.bcfProject;
+  if (bcfProject !== undefined && (typeof bcfProject !== 'string' || !decodeBcfProject(bcfProject))) {
+    throw new Error('Invalid BCF working copy');
+  }
   const parse = <T extends { id: string }>(kind: string, decode: (value: unknown) => T | null): T[] => {
     const values = libraries[kind];
     if (!Array.isArray(values)) throw new Error(`Invalid ${kind} library`);
@@ -136,6 +158,7 @@ export function parseContentBackup(text: string): ContentBackup {
     document: parse('document', CONTENT_DEFINITIONS.document.decode),
     ...(libraries.assistant !== undefined ? { assistant: parse('assistant', CONTENT_DEFINITIONS.assistant.decode) } : {}),
     ...(libraries.clashGroups !== undefined ? { clashGroups: parse('clashGroups', CONTENT_DEFINITIONS.clashGroups.decode) } : {}),
+    ...(libraries.idsStudioDrafts !== undefined ? { idsStudioDrafts: parse('idsStudioDrafts', CONTENT_DEFINITIONS.idsStudioDrafts.decode) } : {}),
     ...(libraries.bcfDrafts !== undefined ? { bcfDrafts: parse('bcfDrafts', CONTENT_DEFINITIONS.bcfDrafts.decode) } : {}),
     ...(libraries.bcfOutbox !== undefined ? { bcfOutbox: parse('bcfOutbox', CONTENT_DEFINITIONS.bcfOutbox.decode) } : {}),
     ...(libraries.modelChanges !== undefined ? { modelChanges: parse('modelChanges', CONTENT_DEFINITIONS.modelChanges.decode) } : {}),
@@ -146,7 +169,7 @@ export function parseContentBackup(text: string): ContentBackup {
     ...(libraries.assistantRecipes !== undefined ? { assistantRecipes: parse('assistantRecipes', CONTENT_DEFINITIONS.assistantRecipes.decode) } : {}),
     ...(libraries.assistantPreferences !== undefined ? { assistantPreferences: parse('assistantPreferences', CONTENT_DEFINITIONS.assistantPreferences.decode) } : {}),
     ...(libraries.analysisRuns !== undefined ? { analysisRuns: parse('analysisRuns', CONTENT_DEFINITIONS.analysisRuns.decode) } : {}),
-  }, drafts: parseContentDrafts(backup.drafts) };
+  }, ...(bcfProject === undefined ? {} : { bcfProject }), drafts };
 }
 
 /** A refused commit carries the canonical independent drafts; UI does not re-plan it. */
@@ -162,10 +185,23 @@ async function readImportRows(): Promise<ContentRow[]> {
   return rows;
 }
 
+export interface LocalWorkImportResult {
+  restored: LocalWorkKey[];
+  pending: LocalWorkBackup;
+  preserved: number;
+}
+
+interface LocalWorkImportOptions {
+  committed: (result: LocalWorkImportResult) => void;
+  canWrite?: (key: LocalWorkKey) => boolean;
+}
+
 /** Preserve originals on conflicts; atomic commit and refusal use one canonical plan. */
 export async function importContentBackup(backup: ContentBackup, readVisible?: () => ContentLibraries, allowCommit = true,
-  committed?: (rows: readonly ContentCommitReceipt[]) => void): Promise<number> {
-  const parsed = parseContentBackup(JSON.stringify(encodeContentBackup(backup))), drafts = parsed.drafts ?? [];
+  committed?: (rows: readonly ContentCommitReceipt[]) => void, localWork?: LocalWorkImportOptions): Promise<number> {
+  const parsed = parseContentBackup(JSON.stringify(encodeContentBackup(backup)));
+  const local = planLocalWorkImport(parsed.libraries.localWork ?? {}, localWork?.canWrite);
+  const drafts = mergeContentDrafts(parsed.drafts ?? [], local.drafts);
   stageContentDrafts(drafts);
   const prepared = await prepareContentImport(parsed.libraries), recovery = await draftRecoveryRows(drafts);
   let planned: ContentRow[] = [];
@@ -195,6 +231,7 @@ export async function importContentBackup(backup: ContentBackup, readVisible?: (
     rememberContentImports(planned);
     const entries: ContentLibraries = { validation: [], comparison: [], document: [],
       ...(parsed.libraries.assistant ? { assistant: [] } : {}), ...(parsed.libraries.clashGroups ? { clashGroups: [] } : {}),
+      ...(parsed.libraries.idsStudioDrafts ? { idsStudioDrafts: [] } : {}),
       ...(parsed.libraries.bcfDrafts ? { bcfDrafts: [] } : {}), ...(parsed.libraries.bcfOutbox ? { bcfOutbox: [] } : {}),
       ...(parsed.libraries.modelChanges ? { modelChanges: [] } : {}),
       ...(parsed.libraries.clashGroupApplications ? { clashGroupApplications: [] } : {}),
@@ -211,6 +248,7 @@ export async function importContentBackup(backup: ContentBackup, readVisible?: (
       if (current && (CONTENT_POLICIES[row.kind].immutableEvidence || sameReportEvidence(current, row.payload))) continue;
       if (row.kind === 'assistant') { const entry = CONTENT_DEFINITIONS.assistant.decode(row.payload); if (entry) (entries.assistant ??= []).push(entry); }
       if (row.kind === 'clashGroups') { const entry = CONTENT_DEFINITIONS.clashGroups.decode(row.payload); if (entry) (entries.clashGroups ??= []).push(entry); }
+      if (row.kind === 'idsStudioDrafts') { const entry = CONTENT_DEFINITIONS.idsStudioDrafts.decode(row.payload); if (entry) (entries.idsStudioDrafts ??= []).push(entry); }
       if (row.kind === 'bcfDrafts') { const entry = CONTENT_DEFINITIONS.bcfDrafts.decode(row.payload); if (entry) (entries.bcfDrafts ??= []).push(entry); }
       if (row.kind === 'bcfOutbox') { const entry = CONTENT_DEFINITIONS.bcfOutbox.decode(row.payload); if (entry) (entries.bcfOutbox ??= []).push(entry); }
       if (row.kind === 'modelChanges') { const entry = CONTENT_DEFINITIONS.modelChanges.decode(row.payload); if (entry) (entries.modelChanges ??= []).push(entry); }
@@ -230,7 +268,18 @@ export async function importContentBackup(backup: ContentBackup, readVisible?: (
   forgetContentDrafts(drafts); forgetContentImports(planned);
   committed?.(receipts);
   for (const kind of CONTENT_KINDS) announceContentChange(kind);
-  return planned.length;
+  const result = { ...commitLocalWorkImport(local), preserved: local.drafts.length };
+  if (localWork) localWork.committed(result);
+  else if (Object.keys(result.pending).length) throw new Error('Some clash or validation work could not be restored. Keep the original backup and retry.');
+  return planned.length + result.restored.length;
+}
+
+/** Conflicting input remains recoverable before any retry can report success. */
+export async function retryLocalWorkImport(incoming: LocalWorkBackup, canWrite?: (key: LocalWorkKey) => boolean): Promise<LocalWorkImportResult> {
+  const local = planLocalWorkImport(incoming, canWrite);
+  stageContentDrafts(local.drafts);
+  if (local.drafts.length && !await retryContentDrafts()) return { restored: [], pending: incoming, preserved: 0 };
+  return { ...commitLocalWorkImport(local), preserved: local.drafts.length };
 }
 
 /** Verify first-write provenance before claiming a whole refused import was saved. */
@@ -279,7 +328,7 @@ export async function retryContentDrafts(): Promise<boolean> {
   } catch (error) { console.warn('[User content] Draft evidence remains in this session', error); return false; }
 }
 
-export async function readContentRecovery(): Promise<RecoveryRow[]> {
+export async function readContentRecovery(onIncomplete?: () => void): Promise<RecoveryRow[]> {
   const rows: RecoveryRow[] = [];
   let failure: unknown;
   try {
@@ -295,11 +344,14 @@ export async function readContentRecovery(): Promise<RecoveryRow[]> {
       }
     } catch (error) { console.warn('[User content] Reading legacy originals failed', error); failure = error; }
   }
-  for (const [index, draft] of pendingContentDrafts().entries()) {
+  const local = readLocalWorkBackup();
+  if (!local.complete) failure ??= new Error('Could not fully read browser storage for preserved originals');
+  for (const [index, draft] of mergeContentDrafts(local.drafts, pendingContentDrafts()).entries()) {
     const raw = JSON.stringify(draft);
     if (!rows.some(row => row.raw === raw)) rows.push({ key: `${BACKUP_DRAFT_PREFIX}session:${index}`, raw, createdAt: Date.now() });
   }
   if (!rows.length && failure) throw failure;
+  if (failure) onIncomplete?.();
   return rows;
 }
 

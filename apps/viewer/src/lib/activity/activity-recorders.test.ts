@@ -72,7 +72,7 @@ describe('clash run recorder', () => {
 
   it('a run that errors is failed with the source message', () => {
     useViewerStore.getState().setClashRunning(true);
-    useViewerStore.getState().setClashError('No model geometry is loaded.');
+    useViewerStore.getState().setClashError('No model geometry is loaded.', 'unavailable');
     useViewerStore.getState().setClashRunning(false);
     assert.deepEqual([only().outcome, only().detail], ['failed', 'No model geometry is loaded.']);
   });

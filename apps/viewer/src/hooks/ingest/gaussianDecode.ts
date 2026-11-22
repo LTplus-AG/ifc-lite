@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
-import { createChunkDataPool, MemoryReadFileSystem, readPly, readSplat,
-  materializeToDataTable, type ChunkSource } from '@playcanvas/splat-transform';
+import { createChunkDataPool, MemoryReadFileSystem, readPly, readSplat, type ChunkSource } from '@playcanvas/splat-transform';
 import { inspectGaussianDecodeAdmission } from './gaussianAdmission.js';
 import { validateGaussianDecoded, type GaussianDecoded } from './gaussianDecoded.js';
+import { GAUSSIAN_LAYERS, materializeGaussianLayers } from './gaussianMaterialize.js';
 import { rebaseGaussianPositions } from './gaussianPositionRebase.js';
 
 /** Worker-only upstream decoder. This does not grant admission to the renderer. */
@@ -26,12 +26,12 @@ export async function decodeGaussianFile(file: File): Promise<GaussianDecoded> {
     const meta = source.meta;
     if (meta.numGaussians !== admission.count || meta.shBands !== admission.shDegree
       || meta.numLods !== 1 || meta.model !== 'default'
-      || !['position', 'geometric', 'color'].every(layer => meta.availableLayers.has(layer as 'position' | 'geometric' | 'color'))) {
+      || !GAUSSIAN_LAYERS.every(layer => meta.availableLayers.has(layer))) {
       throw new Error('Unsupported or inconsistent decoded Gaussian schema.');
     }
     // Only admitted Gaussian layers allocate output; unrelated PLY extras are
     // never materialized. Position locals are rebased before f32 narrowing.
-    const table = await materializeToDataTable(source, pool, new Set(['position', 'geometric', 'color']));
+    const table = await materializeGaussianLayers(source, pool);
     const position = rebaseGaussianPositions(bytes, admission.format, table.numRows, admission.recordStride, table.columns);
     return validateGaussianDecoded(table.numRows, meta.shBands, table.columns, position);
   } finally {

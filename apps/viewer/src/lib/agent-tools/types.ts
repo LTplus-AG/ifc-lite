@@ -12,6 +12,7 @@
  * tell which host it runs in and cannot reach host-only state.
  */
 
+import type { DeliveryClaim } from './delivery.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { BimContext, BsddNamespace } from '@ifc-lite/sdk';
@@ -114,9 +115,14 @@ export interface ModelEditor {
   apply(model: ReadyModel, expressId: number, request: AgentEditRequest, tool: string): AgentEdit;
 }
 
+/** Native commit admission and outcome, shared by callers on the same execution. */
+export interface ToolCommitState { committed: boolean; committing?: boolean }
+
 export interface ToolCallContext {
-  /** Set only by a native synchronous commit; cancellation cannot claim it rolled back. */
-  commitState?: { committed: boolean; committing?: boolean };
+  /** Register a share of an operation result and its execution's commit state. */
+  claimDelivery?: (claim: DeliveryClaim, commitState?: ToolCommitState) => void;
+  /** Cancellation cannot report rollback of a native commit. */
+  commitState?: ToolCommitState;
   /** Cancellation of the call; tools check it between asynchronous phases. */
   signal?: AbortSignal;
   /**
@@ -133,12 +139,20 @@ export interface ToolCallContext {
   canEdit?: () => boolean;
 }
 
+/** An image a tool returns alongside its text: `data` is base64 of the file bytes. */
+export interface AgentToolImage {
+  data: string;
+  mimeType: 'image/png' | 'image/jpeg';
+}
+
 /** What a tool returns on success. Failures are thrown as `ToolExecutionError`. */
 export interface ToolOutput {
   text: string;
   structured: unknown;
   /** Set by edit tools: what the call changed. */
   edit?: AgentEdit;
+  /** Set by tools that show the agent something (`viewer_screenshot`). Hosts that cannot carry images drop it. */
+  image?: AgentToolImage;
 }
 
 /**

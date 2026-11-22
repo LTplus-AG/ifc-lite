@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "this PR adds scripts/perf/cache-stream-report.mjs, so a derived revert deletes the module its witness imports (REVERT-BROKE-BUILD); this keeps the module and takes the noise floor from the baseline alone, so a delta smaller than the measured side's own swing is reported as a real saving.",
+  "key": "scripts/perf/cache-stream-report.mjs",
+  "mutation": "tests/evidence/cache-stream-rss-noise-9584/behaviour.oracle.patch",
+  "test": "scripts/perf/cache-stream-report.test.mjs"
+}

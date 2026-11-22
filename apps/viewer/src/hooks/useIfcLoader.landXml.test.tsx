@@ -18,6 +18,7 @@ import { toast } from '@/components/ui/toast';
 import { useViewerStore } from '@/store';
 import { isSupportedModelFile } from '@/services/supported-model-files';
 import { totalYupOffset } from '@ifc-lite/geometry/world-frame';
+import { deferred } from '@/test/race';
 import { useIfcLoader } from './useIfcLoader.js';
 
 function landXmlFile(name: string, offsets: number | readonly number[]): File {
@@ -103,6 +104,48 @@ afterEach(async () => {
 });
 
 describe('useIfcLoader LandXML route (#4937)', () => {
+  it('does not start parsing or publish progress after cancellation during LandXML admission (#10469)', async () => {
+    const source = landXmlFile('cancelled.xml', 100);
+    const readStarted = deferred();
+    const readReleased = deferred();
+    const slice = source.slice.bind(source);
+    source.slice = (start, end, contentType) => {
+      const part = slice(start, end, contentType);
+      if (start === 0 && end === source.size) {
+        const read = part.arrayBuffer.bind(part);
+        part.arrayBuffer = async () => {
+          readStarted.resolve();
+          await readReleased.promise;
+          return read();
+        };
+      }
+      return part;
+    };
+
+    const phases: string[] = [];
+    const unsubscribe = useViewerStore.subscribe((state, previous) => {
+      if (state.progress && state.progress !== previous.progress) phases.push(state.progress.phase);
+    });
+    try {
+      await act(async () => {
+        const pending = hookApi!.loadFile(source, { kind: 'primary' });
+        try {
+          await Promise.race([readStarted.promise, pending.then(() => assert.fail('The load ended before the fingerprint read'))]);
+          const cancel = useViewerStore.getState().activeLoadCanceller;
+          assert.ok(cancel);
+          cancel();
+        } finally {
+          readReleased.resolve();
+        }
+        await pending;
+      });
+      assert.ok(!phases.includes('Parsing LandXML TIN surfaces'), 'cancelled admission must never publish parsing progress');
+      assert.equal(useViewerStore.getState().models.size, 0);
+    } finally {
+      unsubscribe();
+    }
+  });
+
   it('loads a plan-only document through the canonical loader with Rust probes and resolution (#5046)', async () => {
     await act(async () => hookApi!.loadFile(planOnlyLandXmlFile('plan.xml', 2_600_000), { kind: 'primary' }));
     const model = Array.from(useViewerStore.getState().models.values())[0];

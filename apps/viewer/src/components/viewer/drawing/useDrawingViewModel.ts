@@ -11,6 +11,7 @@
 
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type React from 'react';
+import { drawingEntityColors } from '@/lib/drawing/export-colors';
 import { GraphicOverrideEngine } from '@ifc-lite/drawing-2d';
 import { useViewerStore } from '@/store';
 import type { Annotation2DTool } from '@/store/slices/drawing2DSlice';
@@ -144,15 +145,7 @@ export function useDrawingViewModel() {
   }, [getActiveOverrideRules, activePresetId, customOverrideRules, overridesEnabled]);
 
   // Build entity color map from mesh material colors (for "Use IFC Materials" mode)
-  const entityColorMap = useMemo(() => {
-    const map = new Map<number, [number, number, number, number]>();
-    if (geometryResult?.meshes) {
-      for (const mesh of geometryResult.meshes) {
-        if (mesh.expressId && mesh.color) map.set(mesh.expressId, mesh.color);
-      }
-    }
-    return map;
-  }, [geometryResult]);
+  const entityColorMap = useMemo(() => drawingEntityColors(geometryResult), [geometryResult]);
 
   const { viewTransform, setViewTransform, zoomIn, zoomOut, fitToView } = useViewControls({
     drawing, sectionPlane: drawnPlane, containerRef,

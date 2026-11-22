@@ -74,3 +74,98 @@ export const preloadHelperChunkGroup = {
   includeDependenciesRecursively: false,
   test: /vite\/preload-helper/,
 };
+
+/** The hosted entry validates hashes before it imports the viewer and its processing client. */
+export const processedModelRefChunkGroup = {
+  name: 'processed-model-ref',
+  priority: 50,
+  includeDependenciesRecursively: false,
+  test: /\/packages\/server-client\/src\/processed-model\.ts$/,
+};
+
+/** Keep idle scheduling in a small static chunk to stay within the stock entry byte ceiling. */
+export const wasmPrewarmChunkGroup = {
+  name: 'wasm-prewarm',
+  priority: 50,
+  includeDependenciesRecursively: false,
+  test: /\/apps\/viewer\/src\/lib\/wasm-prewarm\.ts$/,
+};
+
+/**
+ * The merged STEP export, which runs only when the user exports a federation. The viewer loads it through a dynamic
+ * import of `@ifc-lite/export/merged-exporter`; left to the recursive `exporters` group it would sit in that eager
+ * chunk. `merged-guid` and `merged-remap` are also used by other exporters. `merged-bake` loads with the STEP writer.
+ */
+export const mergedExportChunkGroup = {
+  name: 'merged-export',
+  priority: 50,
+  includeDependenciesRecursively: false,
+  test: /\/packages\/export\/src\/merged-(?!guid\.|remap\.|bake\.)[^/]*\.(ts|js)$/,
+};
+
+/**
+ * Claim STEP serialization and schema-conversion tables before the recursive
+ * exporters group shared by startup CSV, property and appearance helpers.
+ */
+export const stepExportChunkGroup = {
+  name: 'step-export',
+  priority: 50,
+  includeDependenciesRecursively: false,
+  test: new RegExp([
+    '/packages/export/src/(?:',
+    'schema-conver[^/]*|schema-style-flatten|generated/ifc(?:2x3|4)-required-slots',
+    '|step-(?:collection|exporter|internal-pset-ids|native-set-record|overlay-entities|pass-builder',
+    '|property-set[^/]*|pset-copy-on-write|shared-atom-retention|source-iteration|type-owned-quantities)',
+    '|anonymize-export|ifc5-exporter|merged-bake|section-export',
+    ')\\.(?:ts|js)$',
+  ].join('')),
+};
+
+/** A non-recursive group that claims exactly these `apps/viewer/src` modules (`.ts`, no query). */
+function allowlistGroup(name: string, modules: readonly string[]) {
+  const escaped = modules.map((module) => module.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'));
+  return { name, priority: 40, includeDependenciesRecursively: false, test: new RegExp(`/apps/viewer/src/(?:${escaped.join('|')})\\.ts$`) };
+}
+
+/**
+ * Agent operation modules (lazy, `lib/agent-tools/operations/generated/loaders.ts`)
+ * share small modules with the Drawing and Appearance panels. Left alone,
+ * Rolldown gives each shared module its own chunk, and every chunk adds a name
+ * to the entry's dynamic-import preload map plus its own import/export glue
+ * (#10587). These allowlists keep each family in one chunk.
+ *
+ * A group claims a module however it is imported, so every member must contain
+ * no `import()`, `?worker`/`?url` import or `new URL(...)`: otherwise the group
+ * would merge a deferred boundary into every chunk that shares it.
+ * src/test/vite-chunks.test.ts checks that each member still exists.
+ */
+export const drawingSharedModules = [
+  // Eager: the Drawing panel's host and DXF/point-cloud ingest.
+  'hooks/useDxfUnderlay', 'hooks/dxfUnderlayWorldLines', 'hooks/dxfUnderlayMath', 'hooks/dxfExportGeoref', 'hooks/pdfSectionLayout',
+  'hooks/ingest/dxfIngest', 'hooks/ingest/pointCloudScanCache', 'lib/drawing/element-tags', 'lib/drawing/drawing-runtime',
+  'lib/drawing2d-markup/dimension-graphics', 'components/viewer/tools/computePolygonArea', 'components/viewer/tools/formatDistance',
+  'services/coordination-loader', 'lib/renderer/line-overlay-rte', 'lib/geo/use-projection-kind', 'lib/geo/useAnchorGeoreference',
+] as const;
+export const drawingSharedChunkGroup = allowlistGroup('drawing-shared', drawingSharedModules);
+
+/** Lazy: small drawing and appearance modules the Drawing panel and operations share. */
+export const drawingLeavesModules = [
+  'lib/drawing/center-dxf', 'lib/drawing/dxf-text-layout', 'hooks/dxfDrawingBounds',
+  'lib/appearance/references/drawing', 'lib/appearance/face-masks', 'lib/appearance/settings',
+] as const;
+export const drawingLeavesChunkGroup = allowlistGroup('drawing-leaves', drawingLeavesModules);
+
+/**
+ * Lazy: capture, scan, transfer and preview workflows the Appearance panel and
+ * operations share. The textured-product family stays out because the Drawing
+ * panel's reference library imports it, and this group would then ride along.
+ */
+export const appearanceWorkflowsModules = [
+  'lib/appearance/appearance-native-preview', 'lib/appearance/appearance-native-scan', 'lib/appearance/appearance-native-scan-sources',
+  'lib/appearance/appearance-native-capture', 'lib/appearance/appearance-native-transfer', 'lib/appearance/raster-payload',
+  'lib/appearance/baked-images', 'lib/appearance/create-captured-mesh', 'lib/appearance/snapshot', 'lib/appearance/prepare-native-preview',
+  'lib/appearance/pdf/page-preview', 'lib/appearance/capture/region', 'lib/appearance/capture/source', 'lib/appearance/scan/landmarks',
+  'lib/appearance/scan/point-source', 'lib/appearance/scan/geometry-proof', 'lib/appearance/scan/session-source', 'lib/appearance/scan/session',
+  'lib/appearance/scan/transfer-frame', 'lib/appearance/scan/prepare-transfer', 'components/viewer/appearance/scan-validation-message',
+] as const;
+export const appearanceWorkflowsChunkGroup = allowlistGroup('appearance-workflows', appearanceWorkflowsModules);

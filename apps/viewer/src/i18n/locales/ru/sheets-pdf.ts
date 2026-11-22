@@ -100,6 +100,8 @@ export const sheetsPdfRu = {
   "sheetsPdf.pdfView.pageReadoutFits": "Примерный размер страницы: {width} x {height} мм (подходит для {paperName}). Размер экспортированной страницы соответствует размеру самого чертёжа и никогда не будет больше.",
   "sheetsPdf.pdfView.pageReadoutOversizeIso": "Примерный размер страницы: {width} x {height} мм (больше, чем любой лист стандарта ISO). Размер экспортируемой страницы соответствует размеру самого чертёжа и никогда не будет больше.",
   "sheetsPdf.pdfView.pageReadoutUnavailable": "Размер страницы пока недоступен. Загрузите модель и выберите допустимый масштаб.",
+  "sheetsPdf.pdfView.releasedLoading": "Геометрия модели считывается из локального хранилища…",
+  "sheetsPdf.pdfView.releasedUnavailable": "Геометрия модели пока недоступна в локальном хранилище. Экспорт станет доступен, как только она появится.",
   "sheetsPdf.pdfView.oversizeTitle": "Страница слишком большая для печати",
   "sheetsPdf.pdfView.oversizeDescription": "Для этого масштаба нужна страница {width} x {height} мм. Сторона страницы PDF не может превышать {maxDimension} мм. Выберите меньший масштаб.",
   "sheetsPdf.pdfView.perspectiveTitle": "Перспективная камера",

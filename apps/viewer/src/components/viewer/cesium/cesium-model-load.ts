@@ -5,7 +5,7 @@
 import type { MutableRefObject } from 'react';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import {
-  buildCesiumModelGLBParts, cesiumModelGLBKey, type CesiumGlobeBake, type CesiumModelGLBInput, type CesiumModelGLBPart,
+  buildCesiumModelForView, cesiumModelGLBKey, type CesiumGlobeBake, type CesiumModelGLBInput, type CesiumModelGLBPart,
 } from '@/lib/geo/cesium-model-glb';
 import type { CesiumBridge } from '@/lib/geo/cesium-bridge';
 import { buildViewerToEcefMatrix } from '@/lib/geo/cesium-viewer-frame';
@@ -70,7 +70,9 @@ export async function loadCesiumModel({
     } else {
       await new Promise((resolve) => setTimeout(resolve, 50));
       if (isSuperseded()) return;
-      const built = buildCesiumModelGLBParts(glbInput, globe);
+      // Released CPU geometry (#10264) is read back first; resident geometry builds as before.
+      // Scoped to the models this view shows (r4647377537): a released model outside it cannot refuse the build.
+      const built = await buildCesiumModelForView(glbInput, globe);
       parts = built.parts;
       glbCacheRef.current = built;
     }

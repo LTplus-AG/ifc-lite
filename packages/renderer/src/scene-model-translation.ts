@@ -9,6 +9,7 @@ import type { BoundingBox } from './scene-raycaster.js';
 import { foldOccurrenceWorldBox, INSTANCE_STRIDE_BYTES } from './instanced-render.js';
 import { worldAabbFromPieces } from './scene-geometry.js';
 import { invalidateInstancedRteDeltas } from './instanced-rte.js';
+import { batchEntities } from './batch-entities.js';
 
 type Triple = [number, number, number];
 interface CpuTemplate {
@@ -41,7 +42,7 @@ export function translateSceneModel(scene: TranslationScene, modelIndex: number,
   if (!scene.translations.set(modelIndex, translation)) return false;
   const releasedIds = new Set(scene.translations.releasedEntityIds(modelIndex));
   for (const batch of scene.batches) {
-    if ((batch.modelIndices?.[0] ?? 0) === modelIndex) for (const id of batch.expressIds) releasedIds.add(id);
+    if ((batch.modelIndices?.[0] ?? 0) === modelIndex) for (const id of batchEntities(batch)) releasedIds.add(id);
   }
   for (const mesh of [...scene.textured, ...scene.meshes]) if ((mesh.modelIndex ?? 0) === modelIndex) releasedIds.add(mesh.expressId);
   for (const id of releasedIds) {

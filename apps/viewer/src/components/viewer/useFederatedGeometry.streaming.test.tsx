@@ -25,7 +25,8 @@ import { useViewerStore, type FederatedModel } from '@/store';
 import { modelIndices } from '@/lib/model-placement/model-indices.js';
 import { carryReleasedMesh, meshGeometryCounts, hasMeshGeometryProvenance } from '@/lib/released-mesh-provenance.js';
 import { fixtureModel } from '@/test/store-fixture.js';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup } from '@/test/render.js';
+import { renderInViewport } from '@/test/viewport-scope';
 import { useFederatedGeometry } from './useFederatedGeometry.js';
 import { useFilteredGeometry } from './useFilteredGeometry.js';
 import { useAppearanceSourceGeometry } from './useAppearanceSourceGeometry.js';
@@ -45,7 +46,7 @@ function Probe() {
   const indices = useMemo(() => modelIndices(s.models), [s.models]);
   const merged = useFederatedGeometry(s.models, s.geometryResult, indices, s.geometryContentVersion);
   const filtered = useFilteredGeometry(merged, s.geometryContentVersion, s.typeVisibility, s.typeViewMode);
-  seen = { merged: merged?.meshes ?? [], filtered: filtered.filteredGeometry ?? [],
+  seen = { merged: merged?.meshes ?? [], filtered: filtered.sceneGeometry ?? [],
     replacement: filtered.geometryReplacementVersion, indices };
   return null;
 }
@@ -86,7 +87,7 @@ it('CPU copy bookkeeping allows discarded wrappers and released arrays to be col
 
 it('streams a single model into the viewport in order, with its model index (#7021)', () => {
   startLoad('m');
-  render(<Probe />);
+  renderInViewport(<Probe />);
   const appended: MeshData[] = [];
   for (let batch = 0; batch < 6; batch++) {
     const part = [mesh(), mesh('IfcOpeningElement'), mesh('IfcSlab')];
@@ -101,7 +102,7 @@ it('streams a single model into the viewport in order, with its model index (#70
 
 it('keeps in-place edits to a store mesh visible after the next write (#7021)', () => {
   startLoad('m');
-  render(<Probe />);
+  renderInViewport(<Probe />);
   append('m', [mesh(), mesh()]);
   // releaseGeometryMemory, alignment restores and the loader's colour pass
   // reassign fields on the store's own mesh objects.
@@ -116,7 +117,7 @@ it('keeps in-place edits to a store mesh visible after the next write (#7021)', 
 
 it('shows the replacement after a completion recolour swaps the mesh array (#7021)', () => {
   startLoad('m');
-  render(<Probe />);
+  renderInViewport(<Probe />);
   const a = mesh(), b = mesh();
   append('m', [a, b]);
   act(() => { useViewerStore.getState().updateMeshColors(new Map([[b.expressId, [0, 1, 0, 1]]])); });
@@ -128,7 +129,7 @@ it('shows the replacement after a completion recolour swaps the mesh array (#702
 
 it('stamps each model its own index once a second model joins (#7021)', () => {
   startLoad('a');
-  render(<Probe />);
+  renderInViewport(<Probe />);
   append('a', [mesh(), mesh()]);
   startLoad('b');
   append('b', [mesh()]);
@@ -147,7 +148,7 @@ it('costs O(appended meshes) per streamed append on a single model (#7021)', () 
   const read = () => perfCounters.read();
   const delta = (after: Record<string, number>, before: Record<string, number>, key: string) => (after[key] ?? 0) - (before[key] ?? 0);
   startLoad('m');
-  render(<Probe />);
+  renderInViewport(<Probe />);
   append('m', [mesh(), mesh()]);
   const mergedArray = seen!.merged, indexMap = seen!.indices;
   let total = 2;
@@ -169,7 +170,7 @@ it('costs O(appended meshes) per streamed append on a single model (#7021)', () 
 
 it('restamps a model that is removed and added back under a new index (#7021 review)', () => {
   startLoad('a');
-  render(<Probe />);
+  renderInViewport(<Probe />);
   append('a', [mesh()]);
   startLoad('b');
   append('b', [mesh()]);
@@ -186,7 +187,7 @@ it('restamps a model that is removed and added back under a new index (#7021 rev
 // actual viewport filter, without making the peer or fresh append unuploadable.
 for (const appendAfterRelease of [false, true]) it(`releases federated aliases${appendAfterRelease ? ' across batched appends' : ''} (#6584)`, () => {
   startLoad('a');
-  render(<Probe />);
+  renderInViewport(<Probe />);
   const first = mesh(); append('a', [first]);
   startLoad('b');
   const peer = mesh(); append('b', [peer]);
@@ -216,7 +217,7 @@ for (const appendAfterRelease of [false, true]) it(`releases federated aliases${
 });
 
 for (const replacement of ['colors', 'peer', 'clear'] as const) it(`empties federated aliases before batched ${replacement} replacement (#6584)`, () => {
-  startLoad('a'); render(<Probe />);
+  startLoad('a'); renderInViewport(<Probe />);
   const first = mesh(); append('a', [first]);
   startLoad('b'); const peer = mesh(); append('b', [peer]);
   act(() => { useViewerStore.getState().setActiveModel('a'); useViewerStore.setState({ boundedGeometryMode: true }); });
@@ -241,7 +242,7 @@ for (const replacement of ['colors', 'peer', 'clear'] as const) it(`empties fede
 // Retired consumers can outlive an immutable colour replacement. Release must
 // reach those aliases too; observing only the current source array is too late.
 it('releases previously retained federation wrappers after an earlier recolour (#6584)', () => {
-  startLoad('a'); render(<Probe />); const first = mesh(); append('a', [first]);
+  startLoad('a'); renderInViewport(<Probe />); const first = mesh(); append('a', [first]);
   startLoad('b'); const peer = mesh(); append('b', [peer]);
   act(() => { useViewerStore.getState().setActiveModel('a'); useViewerStore.setState({ boundedGeometryMode: true }); });
   const retained = seen!.merged.find(m => m.expressId === first.expressId)!;
@@ -254,7 +255,7 @@ it('releases previously retained federation wrappers after an earlier recolour (
 });
 
 it('canonical release empties shared copy fields and preserves independent updates (#6584)', () => {
-  startLoad('a'); render(<Probe />);
+  startLoad('a'); renderInViewport(<Probe />);
   const first = mesh(); first.geometryItemId = first.expressId;
   first.appearanceSource = { kind: 'canonical-item', indices: first.indices, sourceIndices: first.indices };
   append('a', [first]);
@@ -289,7 +290,7 @@ it('canonical release empties shared copy fields and preserves independent updat
 
 
 it('replacement geometry does not inherit counts for legitimately empty fields (#6584)', () => {
-  startLoad('a'); render(<Probe />);
+  startLoad('a'); renderInViewport(<Probe />);
   append('a', [mesh()]);
   const source = useViewerStore.getState().models.get('a')!.geometryResult!.meshes[0];
   act(() => { useViewerStore.setState({ boundedGeometryMode: true }); useViewerStore.getState().releaseGeometryMemory(); });
@@ -304,7 +305,7 @@ it('replacement geometry does not inherit counts for legitimately empty fields (
 
 
 it('colour reset preserves release ownership of retained viewport copies (#6584)', () => {
-  startLoad('a'); render(<Probe />); append('a', [mesh()]);
+  startLoad('a'); renderInViewport(<Probe />); append('a', [mesh()]);
   startLoad('b'); append('b', [mesh()]);
   act(() => useViewerStore.getState().setActiveModel('a'));
   const retained = seen!.merged.find(mesh => mesh.modelIndex === seen!.indices.get('a'))!;
@@ -326,7 +327,7 @@ it('appearance-source wrappers follow the canonical active-model CPU release (#6
     appearances = useAppearanceSourceGeometry(state.models, indices, state.geometryContentVersion);
     return null;
   }
-  render(<AppearanceProbe />);
+  renderInViewport(<AppearanceProbe />);
   const bIndex = modelIndices(useViewerStore.getState().models).get('b');
   const retained = appearances.find(mesh => mesh.modelIndex === bIndex)!;
   assert.equal(retained.positions.length, 9);
@@ -336,7 +337,7 @@ it('appearance-source wrappers follow the canonical active-model CPU release (#6
 });
 
 it('placed shallow copies retain placement while canonical release removes shared CPU bytes (#6584)', () => {
-  startLoad('a'); render(<Probe />); append('a', [mesh()]);
+  startLoad('a'); renderInViewport(<Probe />); append('a', [mesh()]);
   const source = useViewerStore.getState().models.get('a')!.geometryResult!.meshes[0];
   const placed = placedMesh(source, [2, 3, 4]);
   assert.deepEqual(placed.origin, [2, 4, -3]);

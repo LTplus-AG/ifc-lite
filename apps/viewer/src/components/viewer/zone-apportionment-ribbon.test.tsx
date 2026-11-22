@@ -18,6 +18,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { resolve } from '@/i18n/registry';
 import { panelTitleKey } from '@/lib/panels/registry';
 import { useViewerStore } from '@/store';
+import { settle } from '@/test/render.js';
 import { useWorkspacePanelControls } from './toolbar/useWorkspacePanelControls.js';
 import { ZoneApportionSummary } from './ZoneApportionSummary.js';
 import { ZoneVolumeBreakdown } from './ZoneVolumeBreakdown.js';
@@ -590,11 +591,12 @@ describe('#2508 zone apportionment reachability', () => {
       ));
     };
 
-    beforeEach(() => {
+    beforeEach(async () => {
       bcontainer = document.createElement('div');
       document.body.appendChild(bcontainer);
       broot = createRoot(bcontainer);
       useViewerStore.setState({ zoneSets: [ZONE_SET], zoneApportionment: new Map() });
+      await settle();
     });
 
     afterEach(() => {

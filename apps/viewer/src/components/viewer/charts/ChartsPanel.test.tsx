@@ -34,7 +34,7 @@ import { modelOverviewDashboard, newChartSpec } from '@/lib/charts/presets.js';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { fixtureModel } from '@/test/store-fixture.js';
-import { render, click, cleanup, type } from '@/test/render.js';
+import { render, click, cleanup, type, settle as settleEdit } from '@/test/render.js';
 import { ChartsPanel, ensureActiveDashboard } from './ChartsPanel.js';
 import { EMPTY_HINTS } from './ChartCard.js';
 import { chartBucketIdentity, chartColorOverrides, chartSelectionIsLive } from './useChart3DLink.js';
@@ -212,6 +212,7 @@ describe('ChartsPanel over a parsed model (#3944)', () => {
       overlayLayers: new Map(),
       cameraCallbacks: {},
     });
+    await settleEdit();
   });
   afterEach(() => cleanup());
 

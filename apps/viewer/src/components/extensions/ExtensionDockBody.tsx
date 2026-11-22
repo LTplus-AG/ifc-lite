@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import { validateWidget, type DockContribution, type SlotContribution } from '@ifc-lite/extensions';
 import { useExtensionHost } from '@/sdk/ExtensionHostProvider';
 import type { WidgetRendererContext } from './widget/WidgetRenderer';
@@ -13,7 +14,7 @@ import { useTranslation } from '@/i18n';
 
 // Empty dock slots must not load the widget DSL. Keep the command lifetime and
 // error boundary outside the deferred renderer so retirement remains immediate.
-const WidgetRenderer = lazy(() => import('./widget/WidgetRenderer').then(module => ({ default: module.WidgetRenderer })));
+const WidgetRenderer = lazyChunk(() => import('./widget/WidgetRenderer').then(module => ({ default: module.WidgetRenderer })));
 
 export function ExtensionDockBody({ contribution, beforeCommand }: { contribution: SlotContribution<DockContribution>; beforeCommand?: () => boolean }) {
   const { t } = useTranslation();

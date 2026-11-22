@@ -56,6 +56,7 @@ function fakeCtx(hit: { x: number; y: number; z: number } | null): MouseHandlerC
       getDistance: () => 10,
     },
     renderer: {
+      getScene: () => ({}), // a resident scene: the #10264 measure readback gate asks first
       raycastSceneMagnetic: () => ({
         intersection: hit ? { point: hit } : null,
         snapTarget: null,

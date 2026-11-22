@@ -15,6 +15,7 @@ import type {
   BCFComment,
   BCFViewpoint,
 } from '@ifc-lite/bcf';
+import { createBcfAutosave, type BcfAutosaveStatus } from '../../lib/bcf-project/autosave.js';
 
 // ============================================================================
 // Types
@@ -23,6 +24,7 @@ import type {
 export interface BCFSliceState {
   /** Current BCF project */
   bcfProject: BCFProject | null;
+  bcfAutosaveStatus: BcfAutosaveStatus;
   /** Currently active topic GUID */
   activeTopicId: string | null;
   /** Currently active viewpoint GUID */
@@ -42,7 +44,9 @@ export interface BCFSliceState {
 export interface BCFSlice extends BCFSliceState {
   // Project actions
   setBcfProject: (project: BCFProject | null) => void;
-  clearBcfProject: () => void;
+  clearBcfProject: () => Promise<boolean>;
+  initializeBcfAutosave: () => Promise<boolean>;
+  flushBcfAutosave: () => Promise<boolean>;
 
   // Topic actions
   setActiveTopic: (topicId: string | null) => void;
@@ -97,285 +101,295 @@ const getDefaultBcfAuthor = (): string => {
 // Slice Creator
 // ============================================================================
 
-export const createBcfSlice: StateCreator<BCFSlice, [], [], BCFSlice> = (set, get) => ({
-  // Initial state
-  bcfProject: null,
-  activeTopicId: null,
-  activeViewpointId: null,
-  bcfPanelVisible: false,
-  bcfLoading: false,
-  bcfError: null,
-  bcfAuthor: getDefaultBcfAuthor(),
-  bcfOverlayVisible: false,
-
-  // Project actions
-  setBcfProject: (bcfProject) => set({
-    bcfProject,
-    activeTopicId: null,
-    activeViewpointId: null,
-    bcfError: null,
-  }),
-
-  clearBcfProject: () => set({
+export const createBcfSlice: StateCreator<BCFSlice, [], [], BCFSlice> = (set, get) => {
+  const autosave = createBcfAutosave(() => get().bcfProject,
+    bcfProject => set({ bcfProject, activeTopicId: null, activeViewpointId: null }),
+    bcfAutosaveStatus => set({ bcfAutosaveStatus }));
+  const editProject = (edit: (state: BCFSlice) => Partial<BCFSlice>) => {
+    const before = get().bcfProject;
+    set(edit);
+    if (before !== get().bcfProject) autosave.changed();
+  };
+  const clearBcfProject = () => autosave.clear(() => {
+    set({ bcfProject: null, activeTopicId: null, activeViewpointId: null, bcfError: null });
+  });
+  const setBcfProject = (bcfProject: BCFProject | null) => {
+    if (!bcfProject) { void clearBcfProject(); return; }
+    set({ bcfProject, activeTopicId: null, activeViewpointId: null, bcfError: null });
+    autosave.changed(true);
+  };
+  return {
+    // Initial state
     bcfProject: null,
+    bcfAutosaveStatus: 'idle',
     activeTopicId: null,
     activeViewpointId: null,
+    bcfPanelVisible: false,
+    bcfLoading: false,
     bcfError: null,
-  }),
+    bcfAuthor: getDefaultBcfAuthor(),
+    bcfOverlayVisible: false,
 
-  // Topic actions
-  setActiveTopic: (activeTopicId) => set({
-    activeTopicId,
-    activeViewpointId: null, // Reset viewpoint when changing topic
-  }),
+    // Project actions
+    setBcfProject,
+    clearBcfProject,
+    initializeBcfAutosave: autosave.initialize,
+    flushBcfAutosave: autosave.flush,
 
-  addTopic: (topic) => set((state) => {
-    if (!state.bcfProject) return state;
+    // Topic actions
+    setActiveTopic: (activeTopicId) => set({
+      activeTopicId,
+      activeViewpointId: null, // Reset viewpoint when changing topic
+    }),
 
-    const newTopics = new Map(state.bcfProject.topics);
-    newTopics.set(topic.guid, topic);
+    addTopic: (topic) => editProject((state) => {
+      if (!state.bcfProject) return state;
 
-    return {
-      bcfProject: {
-        ...state.bcfProject,
-        topics: newTopics,
-      },
-      activeTopicId: topic.guid, // Auto-select new topic
-    };
-  }),
+      const newTopics = new Map(state.bcfProject.topics);
+      newTopics.set(topic.guid, topic);
 
-  updateTopic: (topicId, updates) => set((state) => {
-    if (!state.bcfProject) return state;
+      return {
+        bcfProject: {
+          ...state.bcfProject,
+          topics: newTopics,
+        },
+        activeTopicId: topic.guid, // Auto-select new topic
+      };
+    }),
 
-    const topic = state.bcfProject.topics.get(topicId);
-    if (!topic) return state;
+    updateTopic: (topicId, updates) => editProject((state) => {
+      if (!state.bcfProject) return state;
 
-    const newTopics = new Map(state.bcfProject.topics);
-    newTopics.set(topicId, {
-      ...topic,
-      ...updates,
-      modifiedDate: new Date().toISOString(),
-    });
+      const topic = state.bcfProject.topics.get(topicId);
+      if (!topic) return state;
 
-    return {
-      bcfProject: {
-        ...state.bcfProject,
-        topics: newTopics,
-      },
-    };
-  }),
+      const newTopics = new Map(state.bcfProject.topics);
+      newTopics.set(topicId, {
+        ...topic,
+        ...updates,
+        modifiedDate: new Date().toISOString(),
+      });
 
-  deleteTopic: (topicId) => set((state) => {
-    if (!state.bcfProject) return state;
+      return {
+        bcfProject: {
+          ...state.bcfProject,
+          topics: newTopics,
+        },
+      };
+    }),
 
-    const newTopics = new Map(state.bcfProject.topics);
-    newTopics.delete(topicId);
+    deleteTopic: (topicId) => editProject((state) => {
+      if (!state.bcfProject) return state;
 
-    return {
-      bcfProject: {
-        ...state.bcfProject,
-        topics: newTopics,
-      },
-      // Clear active topic if it was deleted
-      activeTopicId: state.activeTopicId === topicId ? null : state.activeTopicId,
-      activeViewpointId: state.activeTopicId === topicId ? null : state.activeViewpointId,
-    };
-  }),
+      const newTopics = new Map(state.bcfProject.topics);
+      newTopics.delete(topicId);
 
-  // Comment actions
-  addComment: (topicId, comment) => set((state) => {
-    if (!state.bcfProject) return state;
+      return {
+        bcfProject: {
+          ...state.bcfProject,
+          topics: newTopics,
+        },
+        // Clear active topic if it was deleted
+        activeTopicId: state.activeTopicId === topicId ? null : state.activeTopicId,
+        activeViewpointId: state.activeTopicId === topicId ? null : state.activeViewpointId,
+      };
+    }),
 
-    const topic = state.bcfProject.topics.get(topicId);
-    if (!topic) return state;
+    // Comment actions
+    addComment: (topicId, comment) => editProject((state) => {
+      if (!state.bcfProject) return state;
 
-    const newTopics = new Map(state.bcfProject.topics);
-    newTopics.set(topicId, {
-      ...topic,
-      comments: [...topic.comments, comment],
-      modifiedDate: new Date().toISOString(),
-    });
+      const topic = state.bcfProject.topics.get(topicId);
+      if (!topic) return state;
 
-    return {
-      bcfProject: {
-        ...state.bcfProject,
-        topics: newTopics,
-      },
-    };
-  }),
+      const newTopics = new Map(state.bcfProject.topics);
+      newTopics.set(topicId, {
+        ...topic,
+        comments: [...topic.comments, comment],
+        modifiedDate: new Date().toISOString(),
+      });
 
-  updateComment: (topicId, commentGuid, updates) => set((state) => {
-    if (!state.bcfProject) return state;
+      return {
+        bcfProject: {
+          ...state.bcfProject,
+          topics: newTopics,
+        },
+      };
+    }),
 
-    const topic = state.bcfProject.topics.get(topicId);
-    if (!topic) return state;
+    updateComment: (topicId, commentGuid, updates) => editProject((state) => {
+      if (!state.bcfProject) return state;
 
-    const commentIndex = topic.comments.findIndex((c) => c.guid === commentGuid);
-    if (commentIndex === -1) return state;
+      const topic = state.bcfProject.topics.get(topicId);
+      if (!topic) return state;
 
-    const newComments = [...topic.comments];
-    newComments[commentIndex] = {
-      ...newComments[commentIndex],
-      ...updates,
-      modifiedDate: new Date().toISOString(),
-    };
+      const commentIndex = topic.comments.findIndex((c) => c.guid === commentGuid);
+      if (commentIndex === -1) return state;
 
-    const newTopics = new Map(state.bcfProject.topics);
-    newTopics.set(topicId, {
-      ...topic,
-      comments: newComments,
-      modifiedDate: new Date().toISOString(),
-    });
+      const newComments = [...topic.comments];
+      newComments[commentIndex] = {
+        ...newComments[commentIndex],
+        ...updates,
+        modifiedDate: new Date().toISOString(),
+      };
 
-    return {
-      bcfProject: {
-        ...state.bcfProject,
-        topics: newTopics,
-      },
-    };
-  }),
+      const newTopics = new Map(state.bcfProject.topics);
+      newTopics.set(topicId, {
+        ...topic,
+        comments: newComments,
+        modifiedDate: new Date().toISOString(),
+      });
 
-  deleteComment: (topicId, commentGuid) => set((state) => {
-    if (!state.bcfProject) return state;
+      return {
+        bcfProject: {
+          ...state.bcfProject,
+          topics: newTopics,
+        },
+      };
+    }),
 
-    const topic = state.bcfProject.topics.get(topicId);
-    if (!topic) return state;
+    deleteComment: (topicId, commentGuid) => editProject((state) => {
+      if (!state.bcfProject) return state;
 
-    const newTopics = new Map(state.bcfProject.topics);
-    newTopics.set(topicId, {
-      ...topic,
-      comments: topic.comments.filter((c) => c.guid !== commentGuid),
-      modifiedDate: new Date().toISOString(),
-    });
+      const topic = state.bcfProject.topics.get(topicId);
+      if (!topic) return state;
 
-    return {
-      bcfProject: {
-        ...state.bcfProject,
-        topics: newTopics,
-      },
-    };
-  }),
+      const newTopics = new Map(state.bcfProject.topics);
+      newTopics.set(topicId, {
+        ...topic,
+        comments: topic.comments.filter((c) => c.guid !== commentGuid),
+        modifiedDate: new Date().toISOString(),
+      });
 
-  // Viewpoint actions
-  setActiveViewpoint: (activeViewpointId) => set({ activeViewpointId }),
+      return {
+        bcfProject: {
+          ...state.bcfProject,
+          topics: newTopics,
+        },
+      };
+    }),
 
-  addViewpoint: (topicId, viewpoint) => set((state) => {
-    if (!state.bcfProject) return state;
+    // Viewpoint actions
+    setActiveViewpoint: (activeViewpointId) => set({ activeViewpointId }),
 
-    const topic = state.bcfProject.topics.get(topicId);
-    if (!topic) return state;
+    addViewpoint: (topicId, viewpoint) => editProject((state) => {
+      if (!state.bcfProject) return state;
 
-    const newTopics = new Map(state.bcfProject.topics);
-    newTopics.set(topicId, {
-      ...topic,
-      viewpoints: [...topic.viewpoints, viewpoint],
-      modifiedDate: new Date().toISOString(),
-    });
+      const topic = state.bcfProject.topics.get(topicId);
+      if (!topic) return state;
 
-    return {
-      bcfProject: {
-        ...state.bcfProject,
-        topics: newTopics,
-      },
-      activeViewpointId: viewpoint.guid, // Auto-select new viewpoint
-    };
-  }),
+      const newTopics = new Map(state.bcfProject.topics);
+      newTopics.set(topicId, {
+        ...topic,
+        viewpoints: [...topic.viewpoints, viewpoint],
+        modifiedDate: new Date().toISOString(),
+      });
 
-  updateViewpoint: (topicId, viewpointGuid, updates) => set((state) => {
-    if (!state.bcfProject) return state;
+      return {
+        bcfProject: {
+          ...state.bcfProject,
+          topics: newTopics,
+        },
+        activeViewpointId: viewpoint.guid, // Auto-select new viewpoint
+      };
+    }),
 
-    const topic = state.bcfProject.topics.get(topicId);
-    if (!topic) return state;
+    updateViewpoint: (topicId, viewpointGuid, updates) => editProject((state) => {
+      if (!state.bcfProject) return state;
 
-    const viewpointIndex = topic.viewpoints.findIndex((v) => v.guid === viewpointGuid);
-    if (viewpointIndex === -1) return state;
+      const topic = state.bcfProject.topics.get(topicId);
+      if (!topic) return state;
 
-    const newViewpoints = [...topic.viewpoints];
-    newViewpoints[viewpointIndex] = {
-      ...newViewpoints[viewpointIndex],
-      ...updates,
-    };
+      const viewpointIndex = topic.viewpoints.findIndex((v) => v.guid === viewpointGuid);
+      if (viewpointIndex === -1) return state;
 
-    const newTopics = new Map(state.bcfProject.topics);
-    newTopics.set(topicId, {
-      ...topic,
-      viewpoints: newViewpoints,
-      modifiedDate: new Date().toISOString(),
-    });
+      const newViewpoints = [...topic.viewpoints];
+      newViewpoints[viewpointIndex] = {
+        ...newViewpoints[viewpointIndex],
+        ...updates,
+      };
 
-    return {
-      bcfProject: {
-        ...state.bcfProject,
-        topics: newTopics,
-      },
-    };
-  }),
+      const newTopics = new Map(state.bcfProject.topics);
+      newTopics.set(topicId, {
+        ...topic,
+        viewpoints: newViewpoints,
+        modifiedDate: new Date().toISOString(),
+      });
 
-  deleteViewpoint: (topicId, viewpointGuid) => set((state) => {
-    if (!state.bcfProject) return state;
+      return {
+        bcfProject: {
+          ...state.bcfProject,
+          topics: newTopics,
+        },
+      };
+    }),
 
-    const topic = state.bcfProject.topics.get(topicId);
-    if (!topic) return state;
+    deleteViewpoint: (topicId, viewpointGuid) => editProject((state) => {
+      if (!state.bcfProject) return state;
 
-    const newTopics = new Map(state.bcfProject.topics);
-    newTopics.set(topicId, {
-      ...topic,
-      viewpoints: topic.viewpoints.filter((v) => v.guid !== viewpointGuid),
-      modifiedDate: new Date().toISOString(),
-    });
+      const topic = state.bcfProject.topics.get(topicId);
+      if (!topic) return state;
 
-    return {
-      bcfProject: {
-        ...state.bcfProject,
-        topics: newTopics,
-      },
-      // Clear active viewpoint if it was deleted
-      activeViewpointId: state.activeViewpointId === viewpointGuid ? null : state.activeViewpointId,
-    };
-  }),
+      const newTopics = new Map(state.bcfProject.topics);
+      newTopics.set(topicId, {
+        ...topic,
+        viewpoints: topic.viewpoints.filter((v) => v.guid !== viewpointGuid),
+        modifiedDate: new Date().toISOString(),
+      });
 
-  // UI actions
-  setBcfPanelVisible: (bcfPanelVisible) => set({ bcfPanelVisible }),
+      return {
+        bcfProject: {
+          ...state.bcfProject,
+          topics: newTopics,
+        },
+        // Clear active viewpoint if it was deleted
+        activeViewpointId: state.activeViewpointId === viewpointGuid ? null : state.activeViewpointId,
+      };
+    }),
 
-  toggleBcfPanel: () => set((state) => ({ bcfPanelVisible: !state.bcfPanelVisible })),
+    // UI actions
+    setBcfPanelVisible: (bcfPanelVisible) => set({ bcfPanelVisible }),
 
-  setBcfLoading: (bcfLoading) => set({ bcfLoading }),
+    toggleBcfPanel: () => set((state) => ({ bcfPanelVisible: !state.bcfPanelVisible })),
 
-  setBcfError: (bcfError) => set({ bcfError }),
+    setBcfLoading: (bcfLoading) => set({ bcfLoading }),
 
-  setBcfAuthor: (bcfAuthor) => {
-    // Persist to localStorage (may fail in private browsing)
-    try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem('bcf-author', bcfAuthor);
+    setBcfError: (bcfError) => set({ bcfError }),
+
+    setBcfAuthor: (bcfAuthor) => {
+      // Persist to localStorage (may fail in private browsing)
+      try {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem('bcf-author', bcfAuthor);
+        }
+      } catch {
+        // localStorage not available
       }
-    } catch {
-      // localStorage not available
-    }
-    set({ bcfAuthor });
-  },
+      set({ bcfAuthor });
+    },
 
-  setBcfOverlayVisible: (bcfOverlayVisible) => set({ bcfOverlayVisible }),
+    setBcfOverlayVisible: (bcfOverlayVisible) => set({ bcfOverlayVisible }),
 
-  toggleBcfOverlay: () => set((state) => ({ bcfOverlayVisible: !state.bcfOverlayVisible })),
+    toggleBcfOverlay: () => set((state) => ({ bcfOverlayVisible: !state.bcfOverlayVisible })),
 
-  // Utility getters
-  getActiveTopic: () => {
-    const state = get();
-    if (!state.bcfProject || !state.activeTopicId) return null;
-    return state.bcfProject.topics.get(state.activeTopicId) || null;
-  },
+    // Utility getters
+    getActiveTopic: () => {
+      const state = get();
+      if (!state.bcfProject || !state.activeTopicId) return null;
+      return state.bcfProject.topics.get(state.activeTopicId) || null;
+    },
 
-  getActiveViewpoint: () => {
-    const state = get();
-    const topic = state.getActiveTopic();
-    if (!topic || !state.activeViewpointId) return null;
-    return topic.viewpoints.find((v) => v.guid === state.activeViewpointId) || null;
-  },
+    getActiveViewpoint: () => {
+      const state = get();
+      const topic = state.getActiveTopic();
+      if (!topic || !state.activeViewpointId) return null;
+      return topic.viewpoints.find((v) => v.guid === state.activeViewpointId) || null;
+    },
 
-  getTopics: () => {
-    const state = get();
-    if (!state.bcfProject) return [];
-    return Array.from(state.bcfProject.topics.values());
-  },
-});
+    getTopics: () => {
+      const state = get();
+      if (!state.bcfProject) return [];
+      return Array.from(state.bcfProject.topics.values());
+    },
+  };
+};

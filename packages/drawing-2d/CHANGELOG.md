@@ -1,5 +1,15 @@
 # @ifc-lite/drawing-2d
 
+## 5.1.1
+
+### Patch Changes
+
+- [#11160](https://github.com/LTplus-AG/ifc-lite/pull/11160) [`0c71074`](https://github.com/LTplus-AG/ifc-lite/commit/0c71074c8a337aa164c0ff5618c1f407742b92b2) Thanks [@quotentiroler](https://github.com/quotentiroler)! - `exportToSVG` draws cardinal floor plans north-up. It flipped paper Y for every view, but a plan cut projects render Z, which already points south, so plans came out mirrored with north at the bottom. Vertical sections and custom-plane cuts still flip, so model up stays at the top of the sheet.
+
+- [#11159](https://github.com/LTplus-AG/ifc-lite/pull/11159) [`19a96f3`](https://github.com/LTplus-AG/ifc-lite/commit/19a96f3594fb3e16c47b6d49f93119e8974bf7ec) Thanks [@quotentiroler](https://github.com/quotentiroler)! - `exportToSVG` defines a `<pattern>` for every hatch type a cut can be filled with. A cut `IfcRoof` filled with `url(#hatch-cross-hatch)` while the defs only carried `hatch-cross`, and `vertical`, `brick`, `insulation`, `earth` and `wood` had no definition at all, so those fills silently rendered empty.
+- Updated dependencies [[`b95d529`](https://github.com/LTplus-AG/ifc-lite/commit/b95d529e4fe1fcc2cf25dd75809ef79bd57b7d20), [`469ec7d`](https://github.com/LTplus-AG/ifc-lite/commit/469ec7d4750c1c47290aa7f6c8ffaba0d929751e), [`8c30d45`](https://github.com/LTplus-AG/ifc-lite/commit/8c30d455cf70cbfb45a83a813d9d3c40e92bcdef)]:
+  - @ifc-lite/geometry@8.3.0
+
 ## 5.1.0
 
 ### Minor Changes

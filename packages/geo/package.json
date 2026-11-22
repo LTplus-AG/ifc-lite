@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/geo",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Headless CRS engine for IFC-Lite: resolve a CRS, reproject to and from WGS84, grid convergence and scale factors, EGM96 undulation",
   "type": "module",
   "sideEffects": false,

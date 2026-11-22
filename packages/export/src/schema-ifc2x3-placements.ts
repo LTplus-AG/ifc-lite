@@ -44,6 +44,7 @@
  * pinned for both by `rust/export/tests/fixtures/schema_grid_placement_vectors.json`.
  */
 
+import { forEachExpressRef } from './step-ref-scan.js';
 import { withoutComments } from './step-comment-skip.js';
 import { formatStepReal } from '@ifc-lite/data';
 import { readStepSlots } from './step-argument-parser.js';
@@ -68,25 +69,6 @@ function append<T>(map: Map<number, T[]>, key: number, value: T): void {
   else map.set(key, [value]);
 }
 
-/** The `#n` references in `text` from `from` on, outside string literals. */
-function references(text: string, from: number): number[] {
-  const ids: number[] = [];
-  for (let i = from; i < text.length; i++) {
-    if (text[i] === "'") {
-      for (i++; i < text.length; i++) {
-        if (text[i] === "'" && text[i + 1] === "'") i++;
-        else if (text[i] === "'") break;
-      }
-    } else if (text[i] === '#') {
-      let j = i + 1;
-      while (j < text.length && text[j] >= '0' && text[j] <= '9') j++;
-      if (j > i + 1) ids.push(Number(text.slice(i + 1, j)));
-      i = j - 1;
-    }
-  }
-  return ids;
-}
-
 /** Who names each placement and intersection. */
 function users(records: Records): Users {
   const placements = new Set<number>();
@@ -100,10 +82,11 @@ function users(records: Records): Users {
   for (const rec of records.list) {
     if (!rec) continue;
     const hits: number[] = [];
-    for (const id of references(rec.text, rec.open)) {
+    forEachExpressRef(rec.text.slice(rec.open), (id) => {
       if (placements.has(id)) hits.push(id);
       else if (crossings.has(id)) crossings.set(id, crossings.get(id)! + 1);
-    }
+      return false;
+    });
     if (hits.length === 0) continue;
     const s = records.slots(rec);
     for (const id of new Set(hits)) {

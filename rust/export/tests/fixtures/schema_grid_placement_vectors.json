@@ -971,7 +971,7 @@
       "#10=IFCLOCALPLACEMENT($,#9);",
       "#20=IFCGRID('2$abcdefghijklmnopqrst1',$,$,$,$,#10,$,(#7),(#6),$);",
       "#30=IFCVIRTUALGRIDINTERSECTION((#7,#6),/* zero offsets */$);",
-      "#40=IFCGRIDPLACEMENT(#30,$/* no turn */);",
+      "#40=IFCGRIDPLACEMENT(#30,/* self-reference #40 is trivia */$);",
       "#41=IFCCARTESIANPOINT((0.,0.,1.5));",
       "#42=IFCDIRECTION((0.,0.,1.));",
       "#43=IFCDIRECTION((1.,0.,0.));",
@@ -996,7 +996,7 @@
       "#42=IFCDIRECTION((0.,0.,1.));",
       "#43=IFCDIRECTION((1.,0.,0.));",
       "#44=IFCAXIS2PLACEMENT3D(#41,/* default axis */$,$/* default ref */);",
-      "#45=IFCGRIDPLACEMENT(#30,$/* no turn */);",
+      "#45=IFCGRIDPLACEMENT(#30,/* self-reference #40 is trivia */$);",
       "#50=IFCCOLUMN('2$abcdefghijklmnopqrst5',$,'C',$,$,#45,$,$);"
      ]
     },
@@ -1017,7 +1017,7 @@
       "#10=IFCLOCALPLACEMENT($,#9);",
       "#20=IFCGRID('2$abcdefghijklmnopqrst1',$,$,$,$,#10,$,(#7),(#6),$);",
       "#30=IFCVIRTUALGRIDINTERSECTION((#7,#6),/* zero offsets */$);",
-      "#40=IFCGRIDPLACEMENT(#30,$/* no turn */);",
+      "#40=IFCGRIDPLACEMENT(#30,/* self-reference #40 is trivia */$);",
       "#41=IFCCARTESIANPOINT((0.25,0.,0.));",
       "#42=IFCDIRECTION((0.,0.,1.));",
       "#43=IFCDIRECTION((1.,0.,0.));",

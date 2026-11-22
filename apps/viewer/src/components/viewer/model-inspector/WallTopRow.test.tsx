@@ -11,7 +11,7 @@ import { seedModelingSession, MODEL_ID, STOREY, UPPER_STOREY } from '@/test/mode
 import { useViewerStore } from '@/store';
 import { act } from 'react';
 import { selectPickedGlobalId } from '../viewport-selection';
-import { render, cleanup, type, blur, click, press } from '@/test/render';
+import { render, cleanup, type, blur, click, press, settle } from '@/test/render';
 import { PropertyEditor } from '../PropertyEditor';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { setRequestRemesh } from '@/lib/commands/modeling/transaction';
@@ -114,15 +114,18 @@ it('#9334 a relative top resolves the current next storey after insertion, not t
 });
 
 // Round 5 W (#9296): exercise the controls and the shared viewport selection seam.
-it('#9296 wall offset controls preserve a storey top and undo each edit once', () => {
+it('#9296 wall offset controls preserve a storey top and undo each edit once', async () => {
   const s = useViewerStore.getState();
   const wall = s.addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Height: 3, Thickness: .2 });
   assert.ok('expressId' in wall);
+  await settle();
   const ui = render(<WallTopRow modelId={MODEL_ID} wallId={wall.expressId} />);
   assert.match(ui.textContent!, /To slab or roof…/);
   click(ui.querySelector('input[value="storeyAbove"]')!);
+  await settle();
   const top = ui.querySelector<HTMLInputElement>('#wall-top-offset')!;
   type(top, '-0.2'); blur(top);
+  await settle();
   assert.equal(top.value, '-0.200');
   assert.ok(Math.abs(s.readWallEndpoints(MODEL_ID, wall.expressId)!.height - 2.8) < 1e-6);
   const base = ui.querySelector<HTMLInputElement>('#wall-base-offset')!;
@@ -138,15 +141,17 @@ it('#9296 wall offset controls preserve a storey top and undo each edit once', (
   assert.equal(s.readWallEndpoints(MODEL_ID, wall.expressId)!.height, 3);
 });
 
-it('#9296 viewport slab pick attaches, follows a move and undoes once without selecting the slab', () => {
+it('#9296 viewport slab pick attaches, follows a move and undoes once without selecting the slab', async () => {
   const s = useViewerStore.getState();
   const wall = s.addWall(MODEL_ID, STOREY, { Start: [1, 1, 0], End: [4, 1, 0], Height: 3, Thickness: .2 });
   const slab = s.addSlab(MODEL_ID, STOREY, { Position: [0, 0, 3.4], Width: 6, Depth: 6, Thickness: .3, ExtrudedDirection: [0, 0, -1], Name: 'Floor L2' });
   assert.ok('expressId' in wall && 'expressId' in slab);
   s.setSelectedEntityId(wall.expressId);
+  await settle();
   const ui = render(<WallTopRow modelId={MODEL_ID} wallId={wall.expressId} />);
   click(ui.querySelector('input[value="element"]')!);
   act(() => selectPickedGlobalId(slab.expressId));
+  await settle();
   assert.equal(useViewerStore.getState().selectedEntityId, wall.expressId);
   assert.match(ui.textContent!, /Slab 'Floor L2' underside/);
   assert.ok(Math.abs(s.readWallEndpoints(MODEL_ID, wall.expressId)!.height - 3.1) < 1e-6);
@@ -160,11 +165,12 @@ it('#9296 viewport slab pick attaches, follows a move and undoes once without se
   assert.notEqual(readWallTop(MODEL_ID, wall.expressId).top, 'element');
 });
 
-it('#9296 invalid picks keep the wall selected; Escape cancels without an edit', () => {
+it('#9296 invalid picks keep the wall selected; Escape cancels without an edit', async () => {
   const s = useViewerStore.getState();
   const wall = s.addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Height: 3, Thickness: .2 });
   assert.ok('expressId' in wall);
   s.setSelectedEntityId(wall.expressId);
+  await settle();
   const ui = render(<WallTopRow modelId={MODEL_ID} wallId={wall.expressId} />);
   click(ui.querySelector('input[value="element"]')!);
   act(() => selectPickedGlobalId(wall.expressId));
@@ -174,61 +180,70 @@ it('#9296 invalid picks keep the wall selected; Escape cancels without an edit',
   assert.equal(s.readWallEndpoints(MODEL_ID, wall.expressId)!.height, 3);
 });
 
-it('#9296 the edited top offset follows a later floor-to-floor change', () => {
+it('#9296 the edited top offset follows a later floor-to-floor change', async () => {
   const s = useViewerStore.getState();
   const wall = s.addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Height: 3, Thickness: .2 });
   assert.ok('expressId' in wall);
+  await settle();
   const ui = render(<WallTopRow modelId={MODEL_ID} wallId={wall.expressId} />);
   click(ui.querySelector('input[value="storeyAbove"]')!);
+  await settle();
   const top = ui.querySelector<HTMLInputElement>('#wall-top-offset')!;
   type(top, '-0.2'); blur(top);
   act(() => { assert.ok(commitStoreyOp(useViewerStore, MODEL_ID, { kind: 'level', edit: { kind: 'floorHeight', storeyId: STOREY, Height: 3.4 } }).ok); });
   assert.ok(Math.abs(s.readWallEndpoints(MODEL_ID, wall.expressId)!.height - 3.2) < 1e-6);
+  await settle();
   assert.equal(top.value, '-0.200');
 });
 
-it('#9296 roof pick uses the existing underside clip, and Fixed detaches it', () => {
+it('#9296 roof pick uses the existing underside clip, and Fixed detaches it', async () => {
   const s = useViewerStore.getState();
   const wall = s.addWall(MODEL_ID, STOREY, { Start: [1, 1, 0], End: [4, 1, 0], Height: 3, Thickness: .2 });
   const roof = s.addRoof(MODEL_ID, STOREY, { Position: [0, 0, 4], Width: 6, Depth: 6, Thickness: .25, EdgeSlopes: [Math.PI / 6, 0, Math.PI / 6, 0], Name: 'Gable' });
   assert.ok('expressId' in wall && 'expressId' in roof);
+  await settle();
   const ui = render(<WallTopRow modelId={MODEL_ID} wallId={wall.expressId} />);
   click(ui.querySelector('input[value="element"]')!);
   act(() => selectPickedGlobalId(roof.expressId));
+  await settle();
   assert.match(ui.textContent!, /Roof 'Gable' underside/);
   assert.equal(readWallTop(MODEL_ID, wall.expressId).top, 'element');
   click(ui.querySelector('input[value="fixed"]')!);
   assert.equal(readWallTop(MODEL_ID, wall.expressId).top, 'fixed');
 });
 
-it('#9296 base offset on a fixed wall moves the wall without changing height and refuses inversion', () => {
+it('#9296 base offset on a fixed wall moves the wall without changing height and refuses inversion', async () => {
   const s = useViewerStore.getState();
   const wall = s.addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Height: 3, Thickness: .2 });
   assert.ok('expressId' in wall);
+  await settle();
   const ui = render(<WallTopRow modelId={MODEL_ID} wallId={wall.expressId} />);
   click(ui.querySelector('input[value="storeyAbove"]')!);
   const base = ui.querySelector<HTMLInputElement>('#wall-base-offset')!;
   type(base, '5'); blur(base);
   assert.match(ui.querySelector('[role="alert"]')!.textContent!, /at least/);
   assert.equal(s.readWallEndpoints(MODEL_ID, wall.expressId)!.start[2], 0);
+  await settle();
   click(ui.querySelector('input[value="fixed"]')!);
   type(base, '0.5'); blur(base);
   assert.equal(s.readWallEndpoints(MODEL_ID, wall.expressId)!.height, 3);
   assert.equal(s.readWallEndpoints(MODEL_ID, wall.expressId)!.start[2], .5);
 });
 
-it('#9296 roof coverage refusal appears inline and the existing target can be picked again', () => {
+it('#9296 roof coverage refusal appears inline and the existing target can be picked again', async () => {
   const s = useViewerStore.getState();
   const wall = s.addWall(MODEL_ID, STOREY, { Start: [1, 1, 0], End: [4, 1, 0], Height: 3, Thickness: .2 });
   const roof = s.addRoof(MODEL_ID, STOREY, { Position: [20, 20, 4], Width: 6, Depth: 6, Thickness: .25, EdgeSlopes: [Math.PI / 6, 0, Math.PI / 6, 0] });
   const slab = s.addSlab(MODEL_ID, STOREY, { Position: [0, 0, 3.4], Width: 6, Depth: 6, Thickness: .3, ExtrudedDirection: [0, 0, -1] });
   assert.ok('expressId' in wall && 'expressId' in roof && 'expressId' in slab);
+  await settle();
   const ui = render(<WallTopRow modelId={MODEL_ID} wallId={wall.expressId} />);
   click(ui.querySelector('input[value="element"]')!);
   act(() => selectPickedGlobalId(roof.expressId));
   assert.match(ui.querySelector('[role="alert"]')!.textContent!, /does not cover/);
   assert.equal(s.readWallEndpoints(MODEL_ID, wall.expressId)!.height, 3);
   act(() => selectPickedGlobalId(slab.expressId));
+  await settle();
   const repick = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Pick another slab or roof…');
   assert.ok(repick);
   click(repick);
@@ -238,7 +253,7 @@ it('#9296 roof coverage refusal appears inline and the existing target can be pi
 });
 
 
-it('#9296 picked attachment publishes its constraint to the collaboration property channel', () => {
+it('#9296 picked attachment publishes its constraint to the collaboration property channel', async () => {
   const s = useViewerStore.getState(), doc = createCollabDoc();
   createEntity(doc, '/Wall', { ifcClass: 'IfcWall' });
   const wall = s.addWall(MODEL_ID, STOREY, { Start: [1, 1, 0], End: [4, 1, 0], Height: 3, Thickness: .2 });
@@ -251,6 +266,7 @@ it('#9296 picked attachment publishes its constraint to the collaboration proper
     setPropertyValue(doc, '/Wall', pset, name, { type: 'IfcLabel', value: String(value) });
   } });
   try {
+    await settle();
     const ui = render(<WallTopRow modelId={MODEL_ID} wallId={wall.expressId} />);
     click(ui.querySelector('input[value="element"]')!);
     act(() => selectPickedGlobalId(slab.expressId));
@@ -261,16 +277,18 @@ it('#9296 picked attachment publishes its constraint to the collaboration proper
 });
 
 
-for (const kind of ['slab', 'roof'] as const) it(`#9296 an unnamed picked ${kind} keeps its derived Height read-only`, () => {
+for (const kind of ['slab', 'roof'] as const) it(`#9296 an unnamed picked ${kind} keeps its derived Height read-only`, async () => {
   const s = useViewerStore.getState();
   const wall = s.addWall(MODEL_ID, STOREY, { Start: [1, 1, 0], End: [4, 1, 0], Height: 3, Thickness: .2 });
   const params = { Position: [0, 0, 4] as [number, number, number], Width: 6, Depth: 6, Thickness: .3, Name: '' };
   const target = kind === 'slab' ? s.addSlab(MODEL_ID, STOREY, params) : s.addRoof(MODEL_ID, STOREY, params);
   assert.ok('expressId' in wall && 'expressId' in target);
   s.setSelectedEntityId(wall.expressId);
+  await settle();
   const ui = render(<ModelInspectorPanel />);
   click(ui.querySelector('input[value="element"]')!);
   act(() => selectPickedGlobalId(target.expressId));
+  await settle();
   assert.equal(readWallTop(MODEL_ID, wall.expressId).target?.from, `#${target.expressId}`);
   assert.equal(ui.querySelector<HTMLInputElement>('[aria-label="Height in metres"]')?.readOnly, true);
 });

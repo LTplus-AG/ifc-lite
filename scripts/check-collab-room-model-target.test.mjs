@@ -105,6 +105,35 @@ test('removing the re-mesh geometry mirror call fails the call-site floor (#6233
   assert.match(out, /mirrorEntityGeometry` is called 0×.*expected at least 1/);
 });
 
+test('a move published to the room must target the edited model (#10810)', () => {
+  const mutation = replaceOnce(realMutation, 'publishMove(get(), modelId, mutation, expressId, delta)', 'publishMove(get(), get().activeModelId, mutation, expressId, delta)');
+  const { status, out } = runOn({ mutation });
+  assert.equal(status, 1, out);
+  assert.match(out, /mutationSlice\.ts:\d+: `mirrorPlacementEdit` is handed `get\(\)\.activeModelId`/);
+});
+
+test('a move published from a state other than get() must target the edited model too (#10810)', () => {
+  const mutation = replaceOnce(realMutation, 'publishMove(get(), modelId, mutation, expressId, delta)', 'publishMove(s, s.activeModelId, mutation, expressId, delta)');
+  const { status, out } = runOn({ mutation });
+  assert.equal(status, 1, out);
+  assert.match(out, /`mirrorPlacementEdit` is handed `s\.activeModelId`/);
+});
+
+test('removing one published move fails the mirrorPlacementEdit floor (#10810)', () => {
+  const mutation = replaceOnce(realMutation, 'publishMove(get(), modelId, mutation, expressId, delta)', 'void delta');
+  const { status, out } = runOn({ mutation });
+  assert.equal(status, 1, out);
+  assert.match(out, /mirrorPlacementEdit` is called 4×.*expected at least 5/);
+});
+
+test('removing the published moves fails the mirrorPlacementEdit floor (#10810)', () => {
+  const mutation = realMutation.replaceAll('publishMove(get(), modelId,', 'void (modelId,');
+  assert.notEqual(mutation, realMutation);
+  const { status, out } = runOn({ mutation });
+  assert.equal(status, 1, out);
+  assert.match(out, /mirrorPlacementEdit` is called 1×.*expected at least 5/);
+});
+
 test('RED: a template literal spelling the required call, with the real call deleted, must not satisfy the guard', () => {
   // This is exactly the CodeRabbit-found hole: `blankNoise` used to leave
   // template-literal contents unblanked, so a backtick string containing

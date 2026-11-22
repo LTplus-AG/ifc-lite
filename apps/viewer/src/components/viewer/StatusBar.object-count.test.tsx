@@ -32,6 +32,7 @@ import { describe, it, beforeEach, after, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { expireStoreBusyCap, settleLoadWindow, untilReleased } from '@/test/load-window';
+import { settle } from '@/test/render';
 import { markModelLoadEnded } from '@/hooks/modelLoadEnd';
 import { createRoot, type Root } from 'react-dom/client';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
@@ -225,7 +226,7 @@ describe('StatusBar — "N elements" counts physical elements that have a shape 
     assert.equal(elementsText(container), '4 elements', 'no "/ N" fraction without a storey selection');
   });
 
-  it('updates whole-model and selected-storey counts for live edits under a historical legacy key (#10676)', () => {
+  it('updates whole-model and selected-storey counts for live edits under a historical legacy key (#10676)', async () => {
     const view = new MutablePropertyView(store.properties, 'legacy');
     view.setExpressIdWatermark(100);
     const editor = new StoreEditor(store, view);
@@ -236,10 +237,12 @@ describe('StatusBar — "N elements" counts physical elements that have a shape 
     act(() => useViewerStore.setState({
       mutationViews: new Map([['legacy', view]]), mutationVersion: 1,
     }));
+    await settle();
     assert.equal(elementsText(container), '3 elements');
 
     view.setEntityType(51, 'IfcAnnotation');
     act(() => useViewerStore.setState({ mutationVersion: 2 }));
+    await settle();
     assert.equal(elementsText(container), '2 elements');
 
     const created = editor.addEntity('IfcWall', []);
@@ -248,6 +251,7 @@ describe('StatusBar — "N elements" counts physical elements that have a shape 
       mutationVersion: 3,
       selectedStoreys: new Set([STOREY_ID]),
     }));
+    await settle();
     assert.equal(elementsText(container), '1 / 3 element');
   });
 

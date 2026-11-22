@@ -42,8 +42,16 @@ export async function readInstancedOccurrences(
   for await (const shard of backing.reader.instancedShards(options)) {
     const current = index++;
     if (needed.has(current)) {
-      for (const mesh of materializeShardOccurrences(shard, modelIndex, `readback:${backing.generation}:${current}:`,
-        (id) => entityIds.has(id))) {
+      let meshes: MeshData[];
+      try {
+        // Charged per occurrence before it is expanded: an over-budget read is refused without allocating it.
+        meshes = materializeShardOccurrences(shard, modelIndex, `readback:${backing.generation}:${current}:`,
+          (id) => entityIds.has(id), budget - bytes);
+      } catch (error) {
+        if (error instanceof RangeError) throw new GeometryUnavailableError(`Instanced readback exceeds its ${budget}-byte bound`);
+        throw error;
+      }
+      for (const mesh of meshes) {
         bytes += meshBytes(mesh);
         if (bytes > budget) throw new GeometryUnavailableError(`Instanced readback exceeds its ${budget}-byte bound`);
         out.push(mesh);

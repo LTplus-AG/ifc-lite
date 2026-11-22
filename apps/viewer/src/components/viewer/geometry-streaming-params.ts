@@ -17,10 +17,12 @@ export interface UseGeometryStreamingParams {
   /** Full loaded source geometry, including hidden models, for retained appearance history. */
   appearanceSourceGeometry?: readonly MeshData[];
   /** Monotonic counter — triggers the streaming effect even when the geometry
-   *  array reference is stable (incremental filtering reuses the same array). */
+   *  array reference is stable (the scene mirror reuses the same array). */
   geometryVersion?: number;
-  /** Existing filtered meshes changed; same-count replacements need a rebuild (#7047). */
+  /** Existing meshes changed; same-count replacements need a rebuild (#7047). */
   geometryReplacementVersion?: number;
+  /** Ids type visibility hides: uploaded, but left out of the camera fit (#10264). */
+  fitExcludedIds?: ReadonlySet<number> | null;
   /**
    * Monotonic counter that bumps whenever existing mesh data has been mutated
    * in place (e.g. realignFederation rewrote vertex positions). Length-based

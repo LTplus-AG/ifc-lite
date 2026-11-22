@@ -67,9 +67,10 @@ describe('IDS Studio inspector (IDS-033 … IDS-037)', () => {
     type(picker, 'FireRatng');
     press(picker, 'Enter');
     assert.deepEqual(property().baseName, { type: 'simpleValue', value: 'FireRating' }, 'nothing written');
-    const alert = ui.querySelector('[role="alert"]');
-    assert.ok(alert?.textContent?.includes('GATE-PROP-001'));
-    click(button(alert as HTMLElement, 'FireRating'));
+    const alert = [...ui.querySelectorAll<HTMLElement>('[role="alert"]')]
+      .find(item => item.textContent?.includes('GATE-PROP-001'));
+    assert.ok(alert);
+    click(button(alert, 'FireRating'));
     assert.equal(useViewerStore.getState().idsStudioRejection, null);
     assert.equal(useViewerStore.getState().idsStudioState?.history.past.length, 1);
   });

@@ -6,19 +6,9 @@
 
 import type { HostBounds } from './anchor.js';
 import type { ProfileSection } from './profile.js';
+import { polygonArea } from './polygon-2d.js';
 
 type Ring = ReadonlyArray<readonly [number, number]>;
-
-/** Shoelace area of a simple closed ring whose last point does not repeat its first. */
-export function polygonArea(ring: Ring): number {
-  let doubled = 0;
-  for (let i = 0; i < ring.length; i++) {
-    const [ax, ay] = ring[i];
-    const [bx, by] = ring[(i + 1) % ring.length];
-    doubled += ax * by - bx * ay;
-  }
-  return Math.abs(doubled) / 2;
-}
 
 export function polygonPerimeter(ring: Ring): number {
   let sum = 0;

@@ -12,7 +12,8 @@
  * `ViewerConfigError` and the entry shows an error instead of mounting.
  */
 
-import { normalizeProcessedModelHash } from '@ifc-lite/server-client';
+import { normalizeProcessedModelHash } from '@ifc-lite/server-client/processed-model';
+import { isLoopbackHostname } from '../loopback.js';
 import type { FeatureSelection } from './index';
 
 export interface ViewerRuntimeConfig {
@@ -63,7 +64,7 @@ const BAD_OPEN = 'open.processedModel';
 
 /**
  * A same-origin path (`/…`, not `//…`) or an absolute `https:` URL; `http:` only
- * from an `http:` page, where it is no downgrade. Kept in normalized form. No
+ * from an `http:` page or to a loopback host. Kept in normalized form. No
  * query, fragment or credentials: the client appends `/api/v1/…` to it.
  */
 function parseServer(value: unknown, pageUrl: string | undefined): { url: string } {
@@ -84,7 +85,7 @@ function parseServer(value: unknown, pageUrl: string | undefined): { url: string
     return { url: url.pathname };
   }
   const httpPage = pageUrl !== undefined && new URL(pageUrl).protocol === 'http:';
-  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && httpPage)) {
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && (httpPage || isLoopbackHostname(url.hostname)))) {
     invalid(BAD_SERVER);
   }
   return { url: url.href };

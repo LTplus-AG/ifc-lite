@@ -8,46 +8,41 @@ import { publicOperationContract, contractFingerprint, type OperationContract } 
 import { isFeatureEnabled } from '@/lib/features';
 import { PANEL_FEATURE } from '@/lib/panels/availability';
 import type { Operation } from './contract';
+import { internal, invalidInput } from './refusals';
 
 function lazyOperation(contract: OperationContract): Operation {
-  const { module, exportName, ...metadata } = contract;
-  if (!metadata.outputSchema) throw new Error(`Missing output contract: ${metadata.id}`);
-  let implementation: Promise<Operation> | undefined, loadedNative: Operation | undefined;
+  const { module, exportName, candidateOnly, ...metadata } = contract;
+  if (!metadata.outputSchema) throw internal(`Missing output contract: ${metadata.id}`);
+  let implementation: Promise<Operation> | undefined;
   const load = () => implementation ??= (async () => {
     const loader = operationLoaders[module];
-    if (!loader) throw new Error(`Missing operation module: ${module}`);
+    if (!loader) throw internal(`Missing operation module: ${module}`);
     const loaded = await loader();
     const candidates = loaded[exportName];
-    if (!Array.isArray(candidates)) throw new Error(`Missing native operations: ${module}.${exportName}`);
+    if (!Array.isArray(candidates)) throw internal(`Missing native operations: ${module}.${exportName}`);
     const native = (candidates as Operation[]).find(candidate => candidate.id === metadata.id);
-    if (!native || contractFingerprint(publicOperationContract(native)) !== contractFingerprint(metadata)) {
-      throw new Error(`Native operation contract changed: ${metadata.id}. Rebuild the verified operation catalogue.`);
+    if (!native || native.candidateOnly !== candidateOnly || contractFingerprint(publicOperationContract(native)) !== contractFingerprint(metadata)) {
+      throw internal(`Native operation contract changed: ${metadata.id}. Rebuild the verified operation catalogue.`);
     }
-    loadedNative = native;
     return native;
   })().catch((error: unknown) => {
     // A transient import failure (chunk 404 after a redeploy, network drop) must stay retryable.
     implementation = undefined; throw error;
   });
-  return { ...metadata, ...operationValidators(metadata.id, metadata.inputSchema, metadata.outputSchema), load,
+  return { ...metadata, candidateOnly, ...operationValidators(metadata.id, metadata.inputSchema, metadata.outputSchema), load,
     async execute(input, context) { return (await load()).execute(input, context); },
-    // A result exists only once execute ran, so the implementation is loaded by then.
-    discard(result, context) {
-      if (!loadedNative) console.warn(`[viewer operation] ${metadata.id}: discard before its implementation loaded`);
-      loadedNative?.discard?.(result, context);
-    },
   };
 }
 const entries = operationContracts.map(lazyOperation);
 const registry = new Map<string, Operation>();
 for (const entry of entries) {
-  if (registry.has(entry.id)) throw new Error(`Duplicate viewer operation: ${entry.id}`);
+  if (registry.has(entry.id)) throw internal(`Duplicate viewer operation: ${entry.id}`);
   registry.set(entry.id, entry);
 }
 export function viewerOperations(): readonly Operation[] { return entries; }
 export function viewerOperation(id: string): Operation {
   const entry = registry.get(id);
-  if (!entry) throw new Error(`Unknown viewer operation: ${id}`);
+  if (!entry) throw invalidInput('unknown-target', `Unknown viewer operation: ${id}`);
   return entry;
 }
 export function describeOperation(entry: Operation) {

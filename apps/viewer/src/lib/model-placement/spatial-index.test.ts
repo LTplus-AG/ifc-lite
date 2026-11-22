@@ -354,6 +354,23 @@ it('records the first placed build after a load as that load\'s bvh.build span, 
   assert.ok(builds[0].end !== null && builds[0].end >= builds[0].start, 'the span closes when the index publishes');
 });
 
+it('#10887 r4653239427 a placed build queued behind an export never publishes from geometry replaced while it waited', async () => {
+  const { withReleasedExportGeometry } = await import('@/utils/instancedExport');
+  const tri = (expressId: number, x: number): MeshData => ({ expressId, positions: new Float32Array([x, 0, 0, x + 1, 0, 0, x, 1, 0]),
+    indices: new Uint32Array([0, 1, 2]), normals: new Float32Array(9), color: [1, 1, 1, 1] });
+  const geometry = (mesh: MeshData) => ({ meshes: [mesh], totalTriangles: 1, totalVertices: 3,
+    coordinateInfo: { originShift: { x: 0, y: 0, z: 0 } } }) as unknown as GeometryResult;
+  const model = { ...fixtureModel('queued'), idOffset: 0, maxExpressId: 10, geometryResult: geometry(tri(1, 0)) } as unknown as FederatedModel;
+  useViewerStore.setState({ ...fixtureModels(model), modelPlacement: emptyPlacementState() });
+  let release!: () => void;
+  const held = withReleasedExportGeometry(() => new Promise<void>((resolve) => { release = resolve; })); // another export holds the queue
+  const build = buildPlacedSpatialIndex(useViewerStore.getState(), 'queued');
+  // The model's geometry is replaced (a reload, a re-bake) while the build waits, in the same store.
+  useViewerStore.setState({ models: new Map([['queued', { ...model, geometryResult: geometry(tri(1, 50)) }]]) } as never);
+  await settle('the placed build waits behind the held export'); release(); await held;
+  assert.equal(await build, false, 'never a placed index built from the superseded geometry');
+});
+
 it('builds no placed index while the scene is still draining or finalizing, then builds it once settled (L1)', async () => {
   const mesh: MeshData = { expressId: 5, positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
     indices: new Uint32Array([0, 1, 2]), normals: new Float32Array(9), color: [1, 1, 1, 1] };

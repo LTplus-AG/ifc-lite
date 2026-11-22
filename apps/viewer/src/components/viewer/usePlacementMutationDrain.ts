@@ -3,7 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useEffect, useRef, type MutableRefObject } from 'react';
+import type { MeshData } from '@ifc-lite/geometry';
 import type { Renderer } from '@ifc-lite/renderer';
+import { getViewerStoreApi, settledStoreOf } from '@/store';
 import { runGpuUpload } from './gpu-upload-guard.js';
 
 type PlacementMutation =
@@ -33,9 +35,11 @@ export function usePlacementMutationDrain(params: Params): void {
 
     if (pending !== null) {
       if (pending.size > 0) {
+        const settled = settledStoreOf(getViewerStoreApi());
+        const preserve = (mesh: MeshData) => settled.preserveMeshBuffers(mesh, kind === 'rotations');
         const moved = kind === 'translations'
-          ? scene.translateMeshesForEntities(pending)
-          : scene.rotateMeshesForEntities(pending);
+          ? scene.translateMeshesForEntities(pending, preserve)
+          : scene.rotateMeshesForEntities(pending, preserve);
         // Positions moved in place, keeping piece identity: the raycast BVH and
         // snap caches cannot tell, so drop them (see SnapDetector's cache note).
         if (moved > 0) renderer.clearCaches();

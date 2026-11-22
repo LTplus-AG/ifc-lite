@@ -1,0 +1,78 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * An atomic edit (a wall move that regenerates rooms) hands back its draft's mutation while history holds a committed
+ * copy, so the room's record of the move must land on that copy, or its undo never reaches peers (#10810).
+ */
+
+import '@/test/setup-dom.js';
+import { afterEach, beforeEach, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { useViewerStore } from '@/store';
+import { WALL_ID, model, parseHelloWall, seed } from '@/test/agent-tools-fixture';
+import { publishMove } from './mutation-room-history.js';
+
+const initial = useViewerStore.getState();
+let mirrored: unknown[][];
+beforeEach(async () => {
+  seed([model('hello', await parseHelloWall())]);
+  mirrored = [];
+  useViewerStore.setState({
+    collabRoomId: 'room-a', collabSession: { roomId: 'room-a', transact: (run: () => void) => run() } as never,
+    collabRoomModels: new Map([['hello', { slotId: 'm0', pathPrefix: '/m0' }]]),
+    mirrorPlacementEdit: (...args) => { mirrored.push(args); },
+  });
+});
+afterEach(() => useViewerStore.setState(initial));
+
+it('a move recorded against a copy of the committed mutation still mirrors its undo (#10810)', () => {
+  const committed = useViewerStore.getState().setPositionalAttribute('hello', WALL_ID, 0, 'Moved')!;
+  // As the slice does: the state read after the commit, whose history holds `committed`.
+  publishMove(useViewerStore.getState(), 'hello', { ...committed }, WALL_ID, [2, 0, 0]);
+  mirrored.length = 0;
+  useViewerStore.getState().undo('hello');
+  assert.deepEqual(mirrored, [['hello', WALL_ID, [-2, -0, -0]]]);
+});
+
+it('a peer edit of the moved element clears the move, whose mutation is another entity\'s (#10810)', () => {
+  // A move's mutation belongs to its placement point, not the element; this stands in for one with another entity.
+  const STOREY_ID = 42;
+  const committed = useViewerStore.getState().setPositionalAttribute('hello', STOREY_ID, 2, 'Moved')!;
+  publishMove(useViewerStore.getState(), 'hello', committed, WALL_ID, [2, 0, 0]);
+  useViewerStore.getState().invalidateHistoryForEntity('hello', WALL_ID);
+  const undo = useViewerStore.getState().undoStacks.get('hello') ?? [];
+  assert.equal(undo.some(mutation => mutation.id === committed.id), false);
+});
+
+it('a peer edit of the moved element clears the rest of the move\'s batch too (#10810)', () => {
+  // A move that regenerates rooms commits one batch: the point write holds the record, the room writes do not.
+  const point = useViewerStore.getState().setPositionalAttribute('hello', 42, 2, 'Moved')!;
+  const room = useViewerStore.getState().setPositionalAttribute('hello', 1, 2, 'Regenerated')!;
+  useViewerStore.setState(s => ({ mutationBatchTags: new Map(s.mutationBatchTags).set(point.id, 'move').set(room.id, 'move') }));
+  publishMove(useViewerStore.getState(), 'hello', point, WALL_ID, [2, 0, 0]);
+  useViewerStore.getState().invalidateHistoryForEntity('hello', WALL_ID);
+  const undo = useViewerStore.getState().undoStacks.get('hello') ?? [];
+  assert.deepEqual(undo.filter(mutation => mutation.id === point.id || mutation.id === room.id), []);
+});
+
+it('a peer edit of a room a move regenerated clears the whole move (#10810)', () => {
+  const point = useViewerStore.getState().setPositionalAttribute('hello', 42, 2, 'Moved')!;
+  const room = useViewerStore.getState().setPositionalAttribute('hello', 1, 2, 'Regenerated')!;
+  useViewerStore.setState(s => ({ mutationBatchTags: new Map(s.mutationBatchTags).set(point.id, 'move').set(room.id, 'move') }));
+  publishMove(useViewerStore.getState(), 'hello', point, WALL_ID, [2, 0, 0]);
+  useViewerStore.getState().invalidateHistoryForEntity('hello', 1);
+  const undo = useViewerStore.getState().undoStacks.get('hello') ?? [];
+  assert.deepEqual(undo.filter(mutation => mutation.id === point.id || mutation.id === room.id), []);
+});
+
+it('a peer edit of an element in a batch that is no move keeps the rest of that batch (#10810)', () => {
+  // A bulk edit tags many elements' writes with one batch; a peer touching one of them clears only that one.
+  const wall = useViewerStore.getState().setPositionalAttribute('hello', WALL_ID, 2, 'Bulk')!;
+  const storey = useViewerStore.getState().setPositionalAttribute('hello', 42, 2, 'Bulk')!;
+  useViewerStore.setState(s => ({ mutationBatchTags: new Map(s.mutationBatchTags).set(wall.id, 'bulk').set(storey.id, 'bulk') }));
+  useViewerStore.getState().invalidateHistoryForEntity('hello', WALL_ID);
+  const undo = (useViewerStore.getState().undoStacks.get('hello') ?? []).map(mutation => mutation.id);
+  assert.deepEqual([undo.includes(wall.id), undo.includes(storey.id)], [false, true]);
+});

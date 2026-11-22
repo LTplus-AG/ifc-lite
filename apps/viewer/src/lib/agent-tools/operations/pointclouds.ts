@@ -5,6 +5,7 @@
 import type { JSONSchemaType } from 'ajv';
 import { useViewerStore } from '@/store';
 import { viewerOperation as operation, emptySchema } from './contract';
+import { unavailable } from './refusals';
 const metadata = (id: string, description: string) => ({
   id, owner: 'pointclouds', description, effects: ['view'] as const,
   capability: 'commands-and-edits' as const, synchronous: true, implementation: 'native-store' as const,
@@ -24,7 +25,7 @@ export const pointCloudOperations = [
     required: ['mode'], additionalProperties: false,
   } satisfies JSONSchemaType<{ mode: 'rgb' | 'classification' | 'intensity' | 'height' | 'fixed' | 'deviation' }>, i => {
     const s = useViewerStore.getState();
-    if (i.mode === 'deviation' && !s.pointCloudDeviationComputed) throw new Error('Compute deviation through the native analysis first.');
+    if (i.mode === 'deviation' && !s.pointCloudDeviationComputed) throw unavailable('Compute deviation through the native analysis first.');
     s.setPointCloudColorMode(i.mode); return inspect();
   }),
   operation<{ pixels: number }>(metadata('pointclouds.pointSize', 'Set native point-cloud point size in pixels.'), {

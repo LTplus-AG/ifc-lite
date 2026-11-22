@@ -36,6 +36,11 @@ export function namedExpressIds(attrsRaw: string, ids: ReadonlySet<number>): Rea
 
 const NO_IDS: ReadonlySet<number> = new Set();
 
+/** True when `attrsRaw` names any record (`#id`) outside strings and comments. */
+export function namesAnyRecord(attrsRaw: string): boolean {
+  return forEachExpressRef(attrsRaw, () => true);
+}
+
 /**
  * Calls `visit` with each `#id` in `attrsRaw` outside strings and comments,
  * stopping at the first call that returns true; returns whether one did.

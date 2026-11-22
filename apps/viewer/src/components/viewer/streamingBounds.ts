@@ -38,6 +38,11 @@ export function computeBounds(meshes: MeshData[]): Bounds | null {
   return { min: { x: minX, y: minY, z: minZ }, max: { x: maxX, y: maxY, z: maxZ } };
 }
 
+/** `meshes` without the given entities' meshes; `meshes` itself when none are given (#10264). */
+export function withoutIds(meshes: MeshData[], ids: ReadonlySet<number> | null | undefined): MeshData[] {
+  return ids && ids.size > 0 ? meshes.filter((mesh) => !ids.has(mesh.expressId)) : meshes;
+}
+
 export function userMovedCamera(
   renderer: Renderer,
   snapshot: { px: number; py: number; pz: number; tx: number; ty: number; tz: number } | null,

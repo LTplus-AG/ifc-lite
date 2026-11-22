@@ -29,3 +29,5 @@ export {
     ENVIRONMENT_UNIFORM_SIZE,
 } from './environment.js';
 export type { LightingEnvironment, ResolvedEnvironment, SkyGradient, Vec3Color } from './environment.js';
+export { replayReleasedGeometry } from './released-geometry-replay-lazy.js';
+export type { ReleasedGeometryReplayOptions, ReleasedGeometryReplayResult } from './released-geometry-replay.js';

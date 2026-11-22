@@ -18,6 +18,7 @@
  * thing a stub would silently make vacuous.
  */
 
+import '@/test/setup-dom.js';
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -26,6 +27,10 @@ import {
   extractQuantitiesOnDemand,
   type IfcDataStore,
 } from '@ifc-lite/parser';
+import { createBimContext } from '@ifc-lite/sdk';
+import { LocalBackend } from '@/sdk/local-backend';
+import { createMainViewerToolHost } from '@/lib/agent-tools/main-viewer-host';
+import { dispatchMainViewerTool } from '@/lib/agent-tools/main-viewer-dispatch';
 import { StepExporter } from '@ifc-lite/export';
 import { useViewerStore } from '@/store/index.js';
 import { applyZoneWriteBack, removeZoneWriteBack } from './useZoneWriteBack.js';
@@ -415,17 +420,37 @@ describe('zone write-back: what a later run has to clean up', () => {
     assert.equal(removeZoneWriteBack(ZONE_SET).blocked, 'duplicate-set-name');
   });
 
-  it('removes from an element the assignment cache no longer holds', () => {
+  it('previews and removes earlier output on elements absent from current assignments (#10795 item 22)', async () => {
     // Geometry released to reclaim memory (#2183) drops the element from
     // `zoneAssignments`, but not its property set. The session's own mutation
     // history still names every element it wrote to.
     applyZoneWriteBack(ZONE_SET, 'mesh');
     useViewerStore.setState({ zoneAssignments: new Map() } as never);
 
-    const { removed } = removeZoneWriteBack(ZONE_SET);
-    assert.equal(removed, 2);
-    assert.equal(psetOn(WALL_ID, zonePropertySetName('Takt areas')), null);
-    assert.equal(psetOn(BEAM_ID, zonePropertySetName('Takt areas')), null);
+    const host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));
+    const revision = useViewerStore.getState().mutationVersion;
+    const preview = await dispatchMainViewerTool(host, 'viewer_operation_inspect', {
+      model_id: 'm1', operation_id: 'zones.writeback.prepare',
+      input: { set_id: ZONE_SET.id, model_ids: ['m1'], basis: 'mesh', action: 'remove' },
+    });
+    assert.equal(preview.isError, false, preview.text);
+    const { token, rows } = JSON.parse((preview.structured as { result: { native_json: string } }).result.native_json) as {
+      token: string;
+      rows: Array<{ modelId: string; expressId: number; psets: string[] }>;
+    };
+    assert.deepEqual(rows.map(row => [row.modelId, row.expressId]), [['m1', WALL_ID], ['m1', BEAM_ID]]);
+    const pset = zonePropertySetName('Takt areas');
+    assert.ok(rows.every(row => row.psets.includes(pset)));
+    assert.ok(psetOn(WALL_ID, pset));
+    assert.equal(useViewerStore.getState().mutationVersion, revision);
+
+    const applied = await dispatchMainViewerTool(host, 'viewer_operation_execute', {
+      model_id: 'm1', operation_id: 'zones.writeback.apply', input: { token },
+    }, { canEdit: () => true });
+    assert.equal(applied.isError, false, applied.text);
+    assert.equal(JSON.parse((applied.structured as { result: { native_json: string } }).result.native_json).removed, 2);
+    assert.equal(psetOn(WALL_ID, pset), null);
+    assert.equal(psetOn(BEAM_ID, pset), null);
   });
 
   it('does not touch another zone set\'s output', () => {

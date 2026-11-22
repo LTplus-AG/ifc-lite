@@ -63,10 +63,12 @@ describe('ScanCreateBar (#6894)', () => {
     const create = button(ui.root, /^Create 4 accepted elements in /)!;
     assert.ok(create && !create.disabled);
     await act(async () => create.click());
+    await waitFor(() => ui.root.querySelectorAll('li [data-scan-created]').length === 4, 'the created walls reach the panel');
     assert.match(ui.root.textContent ?? '', /4 elements created in .*, one undo step\./);
     assert.equal(ui.root.querySelectorAll('li [data-scan-created]').length, 4, 'the four walls show as Created');
     assert.equal(button(ui.root, /^Create accepted elements$/)?.disabled, true, 'nothing left to create');
     await act(async () => useViewerStore.getState().undo(primary.id));
+    await waitFor(() => ui.root.querySelectorAll('li [data-scan-created]').length === 0, 'the undo reaches the panel');
     assert.equal(ui.root.querySelectorAll('li [data-scan-created]').length, 0, 'undone: no longer created');
     assert.ok(button(ui.root, /^Create 4 accepted elements in /), 'and creatable again');
     await ui.unmount();
@@ -151,6 +153,7 @@ describe('ScanCreateBar (#6894)', () => {
     useViewerStore.setState({ activeModelId: reopened.id });
     assert.ok(useViewerStore.getState().scanDetectionRun, 'the run survives the reload');
     ui = await mount(run);
+    await waitFor(() => ui.root.querySelectorAll('li [data-scan-created]').length === 4, 'the reload reaches the panel');
     assert.equal(ui.root.querySelectorAll('li [data-scan-created]').length, 4, 'the four walls show as Created in the reopened copy');
     assert.equal(button(ui.root, /^Create accepted elements$/)?.disabled, true, 'nothing is offered for creation again');
     await ui.unmount();

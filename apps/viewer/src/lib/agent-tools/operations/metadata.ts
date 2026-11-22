@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { Operation } from './contract';
-export type OperationContract = Pick<Operation, 'id' | 'version' | 'owner' | 'features' | 'description' | 'needs' | 'effects' | 'capability' | 'inputSchema' | 'outputSchema' | 'result' | 'completion' | 'implementation' | 'policy'> & { module: string; exportName: string };
+export type OperationContract = Pick<Operation, 'id' | 'version' | 'owner' | 'features' | 'description' | 'needs' | 'effects' | 'capability' | 'inputSchema' | 'outputSchema' | 'result' | 'completion' | 'implementation' | 'policy' | 'candidateOnly'> & { module: string; exportName: string };
 /** Property ordering must not make an equivalent generated/native contract look different. */
 export function contractFingerprint(value: unknown): string {
   return JSON.stringify(value, (_key, item: unknown) => item && typeof item === 'object' && !Array.isArray(item)

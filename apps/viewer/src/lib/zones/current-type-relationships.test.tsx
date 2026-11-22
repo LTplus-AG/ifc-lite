@@ -18,7 +18,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { IfcParser, compressSource, compressSourceInPlace, readCurrentTypeQuantities, type IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { PropertiesPanel } from '@/components/viewer/PropertiesPanel';
-import { cleanup, render } from '@/test/render';
+import { cleanup, render, settle } from '@/test/render';
 import { fixtureModel } from '@/test/store-fixture';
 import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 
@@ -523,6 +523,7 @@ test('#9192 the panel shows each model its own inherited quantities at models.si
   const viewOfA = getOrCreateMutationView(useViewerStore, 'a'); assert.ok(viewOfA);
   viewOfA.setPositionalAttribute(30, 5, '#40');
   useViewerStore.setState(state => ({ mutationVersion: state.mutationVersion + 1 }));
+  await settle();
   const inA = panelFor('a', 10);
   assert.match(inA, /Qto_B/);
   assert.doesNotMatch(inA, /Qto_Own/);

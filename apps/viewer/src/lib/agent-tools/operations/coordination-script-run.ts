@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useViewerStore } from '@/store';
+import { scriptAdmissionRevision } from '@/store/slices/scriptSlice.revision';
 import { viewerOperation } from './contract';
 import { coordination } from './coordination-common';
 import { coordinationOutputSchema } from './coordination-outputs';
@@ -15,12 +16,12 @@ export const coordinationScriptRunOperations = [
     if (!c.host.bim) throw unavailable('This host does not expose the native viewer SDK.');
     const state = useViewerStore.getState(), source = state.scriptEditorContent;
     const refusal = 'Native editor revision changed or a script is already running.';
-    if (state.scriptEditorRevision !== i.expected_revision) throw stale(refusal);
+    if (scriptAdmissionRevision(state) !== i.expected_revision) throw stale(refusal);
     if (state.scriptExecutionState === 'running') throw unavailable(refusal);
     const runner = new NativeScriptRunner(c.host.bim, { permissions: { network: false, export: false, files: false } }), cancel = () => runner.cancel(); c.signal?.addEventListener('abort', cancel, { once: true });
     try {
       return await c.commitAsync(async () => {
-        if (useViewerStore.getState().scriptEditorRevision !== i.expected_revision) throw stale('Native editor changed before script admission.');
+        if (scriptAdmissionRevision(useViewerStore.getState()) !== i.expected_revision) throw stale('Native editor changed before script admission.');
         const cancellations = runner.cancellationCount; const pending = runner.execute(source); const epoch = useViewerStore.getState().scriptRunEpoch; if (c.signal?.aborted) cancel(); const result = await pending;
         // The store's error and diagnostics are this run's only while no later run has replaced its epoch.
         const own = useViewerStore.getState().scriptRunEpoch === epoch;

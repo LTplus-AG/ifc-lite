@@ -36,18 +36,12 @@ pub(crate) fn referenced_point_centre(
                 continue;
             };
             let outer = polygonal_plan::parse_index_loop(loop_values, pn.as_deref());
-            if !valid(&outer) {
+            let inner = polygonal_plan::parse_face_inner_indices(&face, pn.as_deref());
+            if !valid(&outer) || !inner.iter().all(|ring| valid(ring)) {
                 continue;
             }
-            for index in outer {
+            for index in outer.into_iter().chain(inner.into_iter().flatten()) {
                 include(index as usize - 1);
-            }
-            for ring in polygonal_plan::parse_face_inner_indices(&face, pn.as_deref()) {
-                if valid(&ring) {
-                    for index in ring {
-                        include(index as usize - 1);
-                    }
-                }
             }
         }
     } else {

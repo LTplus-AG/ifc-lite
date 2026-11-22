@@ -131,7 +131,7 @@ mod tests {
         ] {
             let source = format!("#23={entity}('Support',{values});");
             let convert = |line: &str, from, to| {
-                let mut checks = crate::schema_enum::ConversionChecks::new();
+                let mut checks = crate::schema_enum::ConversionChecks::default();
                 convert_step_line(line, from, to, 23, &mut Ifc2x3SlotFill::new(None), Some(&mut checks)).unwrap()
             };
             let ifc4 = convert(&source, "IFC2X3", "IFC4");

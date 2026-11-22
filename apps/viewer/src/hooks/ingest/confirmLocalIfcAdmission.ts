@@ -9,7 +9,6 @@ import { resolve as t } from '@/i18n/registry';
 import { inspectLocalIfcAdmission, localIfcBudget, localIfcWorkingSet } from './localIfcAdmission';
 import { sampleDenseGeometryShare } from './geometryDensity';
 import { supportsWasmSimd } from '@/lib/wasm-simd-support';
-import { nonModelContentReason, textStartsLikeStep } from './nonModelContent';
 import { nonModelContentMessage } from '@/lib/non-model-reasons';
 
 /** Consent belongs to one load, never to a later file/pairing/session. An
@@ -59,6 +58,8 @@ export async function preflightLocalIfcSource(file: File, options: {
 }): Promise<ArrayBuffer | null> {
   try {
     const head = await file.slice(0, FORMAT_HEAD_BYTES).arrayBuffer();
+    if (!options.isCurrent()) { options.finish(); return null; }
+    const { nonModelContentReason, textStartsLikeStep } = await import('./nonModelContent');
     const format = detectFormat(head);
     const unknownIfc = format === 'unknown' && (/\.(ifc|ifczip|ifcxml)$/i.test(file.name) || textStartsLikeStep(new TextDecoder().decode(head)));
     if (!options.isCurrent()) { options.finish(); return null; }

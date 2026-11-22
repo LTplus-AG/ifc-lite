@@ -11,7 +11,7 @@
 
 import { NON_MODEL_REASONS, type NonModelReason } from '@/lib/non-model-reasons';
 import { detectFormat } from '@ifc-lite/parser';
-import { detectPointCloudFormat } from './pointCloudIngest';
+import { detectPointCloudFormat } from './pointCloudFormat';
 import { FORMAT_HEAD_BYTES, headIsZip } from './sourceBuffers';
 
 /** Scan complete small JSON bodies and sniff HTML or XML roots within this prefix. */

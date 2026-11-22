@@ -94,8 +94,8 @@ describe('flowSlice', () => {
       if (key === 'ifc-lite-flows') throw new Error('Storage refused');
       setItem(key, value);
     });
-    state.deleteFlow(id);
-    assert.match(useViewerStore.getState().flowStorageError ?? '', /refused/);
+    assert.equal(state.deleteFlow(id), false);
+    assert.match(useViewerStore.getState().flowStorageError ?? '', /could not record/);
     assert.equal(useViewerStore.getState().flowDoc?.id, id);
     assert.equal(useViewerStore.getState().savedFlows[0]?.doc.id, id);
     assert.equal(loadSavedFlows()[0]?.doc.id, id);
@@ -103,12 +103,25 @@ describe('flowSlice', () => {
     assert.deepEqual(loadPlayerValues(id), { Width: 42 });
 
     write.mock.restore();
-    state.deleteFlow(id);
+    assert.equal(state.deleteFlow(id), true);
     assert.equal(useViewerStore.getState().flowStorageError, null);
     assert.equal(useViewerStore.getState().flowDoc, null);
     assert.equal(loadSavedFlows().length, 0);
     assert.equal(BrowserTrackingStore.read(id), undefined);
     assert.deepEqual(loadPlayerValues(id), {});
+  });
+
+  it('still deletes a graph storage never held, so a full storage cannot pin it in memory', (t) => {
+    const setItem = ls.setItem.bind(ls);
+    t.mock.method(ls, 'setItem', (key: string, value: string) => {
+      if (key === 'ifc-lite-flows') throw new Error('Quota exceeded');
+      setItem(key, value);
+    });
+    const id = useViewerStore.getState().createFlow('Memory only')!;
+    assert.equal(loadSavedFlows().length, 0);
+    assert.equal(useViewerStore.getState().deleteFlow(id), true);
+    assert.equal(useViewerStore.getState().savedFlows.length, 0);
+    assert.equal(useViewerStore.getState().flowDoc, null);
   });
 
   it('a session reset closes the panel and drops the last run, but keeps the saved graphs and the working copy', () => {

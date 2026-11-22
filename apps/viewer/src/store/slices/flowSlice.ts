@@ -146,8 +146,11 @@ export const createFlowSlice: StateCreator<FlowSlice, [], [], FlowSlice> = (set,
 
   deleteFlow: (id) => {
     const next = get().savedFlows.filter((f) => f.doc.id !== id);
-    if (!saveFlows(next)) {
-      set({ flowStorageError: 'Browser storage refused to delete the workflow.' });
+    const persisted = saveFlows(next);
+    // A memory-only delete of a stored graph would undo itself on reload, so it is
+    // refused; a graph storage never held (its save was refused too) is still removable.
+    if (!persisted && loadSavedFlows().some((f) => f.doc.id === id)) {
+      set({ flowStorageError: 'Browser storage could not record the deletion, so the workflow is kept.' });
       return false;
     }
     // The sidecar is the graph's; a graph deleted here and re-imported later
@@ -156,7 +159,7 @@ export const createFlowSlice: StateCreator<FlowSlice, [], [], FlowSlice> = (set,
     BrowserTrackingStore.clear(id);
     clearPlayerValues(id);
     const closing = get().activeFlowId === id;
-    set({ savedFlows: next, flowStorageError: null, ...(closing ? { activeFlowId: null, flowDoc: null, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null, flowLastRunWindow: null, flowArtifacts: [], flowProgress: null, flowRunWarnings: [] } : {}) });
+    set({ savedFlows: next, ...(persisted ? { flowStorageError: null } : {}), ...(closing ? { activeFlowId: null, flowDoc: null, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null, flowLastRunWindow: null, flowArtifacts: [], flowProgress: null, flowRunWarnings: [] } : {}) });
     return true;
   },
 

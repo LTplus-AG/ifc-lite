@@ -304,6 +304,10 @@ impl GeometryRouter {
         let scale = self.unit_scale();
         let point = self.representation_item_first_vertex_meters(item, decoder)?;
         let shifted = (point.0 - offset_meters.0, point.1 - offset_meters.1, point.2 - offset_meters.2);
+        // An item already in its placement frame must keep its existing bounds (#5684).
+        if !rtc_rebase_benefits(point, shifted) {
+            return None;
+        }
         // An item the model RTC already brings near keeps that rebase.
         if self.local_frame_enabled() && crate::coord_is_large(point) && crate::coord_is_large(shifted) {
             if let Some(anchor) = self.representation_item_anchor_meters(item, decoder) {
@@ -315,7 +319,7 @@ impl GeometryRouter {
                 });
             }
         }
-        rtc_rebase_benefits(point, shifted).then(|| RawRebase {
+        Some(RawRebase {
             file_units: (offset_meters.0 / scale, offset_meters.1 / scale, offset_meters.2 / scale),
             meters: offset_meters,
             anchored: false,

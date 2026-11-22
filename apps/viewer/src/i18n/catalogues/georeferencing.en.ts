@@ -38,7 +38,6 @@ export const georeferencingEn = {
   'properties.georef.noGeoreferencing': 'No georeferencing',
   'properties.georef.addGeoreferencing': 'Add Georeferencing',
   'properties.georef.reloadPrompt': 'Georeference saved. Reload loaded models to recompute 3D alignment?',
-  'properties.georef.reloadUnexportedChanges': 'Reloading can discard unexported changes. Export any changes you want to keep before reloading.',
   'properties.georef.reloadModels': 'Reload models',
   'properties.georef.reloadMissingSource': 'Cannot reload {name}: source file is not available', 'properties.georef.reloadPartial': 'Reloaded {loaded} of {total} models. Could not reload: {failed}.',
   'properties.georef.reloadSuccess': 'Reloaded models for edited georeferencing', 'properties.georef.reloadFailedWithMessage': 'Reload failed: {message}', 'properties.georef.reloadFailed': 'Reload failed',

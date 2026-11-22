@@ -35,7 +35,6 @@ export const georeferencingRu = {
   "properties.georef.noGeoreferencing": "Без геопривязки",
   "properties.georef.addGeoreferencing": "Добавить геопривязку",
   "properties.georef.reloadPrompt": "Геопривязка сохранена. Повторно загрузить открытые модели для перерасчёта совмещения в 3D?",
-  "properties.georef.reloadUnexportedChanges": "При перезагрузке неэкспортированные изменения могут быть потеряны. Перед перезагрузкой экспортируйте изменения, которые нужно сохранить.",
   "properties.georef.reloadModels": "Перезагрузить модели",
   "properties.georef.reloadMissingSource": "Невозможно перезагрузить {name}: исходный файл недоступен",
   "properties.georef.reloadPartial": "Повторно загружено моделей {loaded} из {total}. Не удалось повторно загрузить: {failed}.",

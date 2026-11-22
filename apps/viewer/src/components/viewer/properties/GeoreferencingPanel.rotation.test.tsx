@@ -13,6 +13,7 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore } from '@/store';
 import { en } from '@/i18n/en';
 import { exportModelStep } from '@/lib/export/model-step-export';
+import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 import { GeoreferencingPanel } from './GeoreferencingPanel';
 
 const initialState = useViewerStore.getState();
@@ -186,37 +187,41 @@ it('explains the rotation convention and omitted scale when editing is disabled 
   assert.equal(host.querySelector('input'), null);
 });
 
-it('requires confirmation before realigning models with unexported edits (#10591)', async () => {
+it('realigns without a confirm and keeps georef and property edits (#10591)', async () => {
   const { ConfirmDialogHost } = await import('@/components/ui/confirm-dialog');
   const source = fixture();
   const dataStore = await parse(source);
   const host = mount(dataStore);
   const current = useViewerStore.getState().models.get('m')!;
+  const clearAllModels = useViewerStore.getState().clearAllModels;
   let clears = 0;
   act(() => useViewerStore.setState({
     ...fixtureModels(
       { ...current, sourceFile: new File([source], 'first.ifc') },
       { ...fixtureModel('second', { idOffset: 1_000_000 }), sourceFile: new File([source], 'second.ifc') },
     ),
-    clearAllModels: () => { clears++; throw new Error('Unexpected federation reset'); },
+    clearAllModels: () => { clears++; clearAllModels(); },
   }));
   render(<ConfirmDialogHost />);
   const input = openEditor(host, ROTATION_LABEL);
   type(input, '30');
   press(input, 'Enter');
   await settle();
+  act(() => {
+    assert.ok(getOrCreateMutationView(useViewerStore, 'm'));
+    assert.ok(useViewerStore.getState().setAttribute('m', 1, 'Name', 'Edited'));
+  });
+  const view = useViewerStore.getState().mutationViews.get('m');
+  assert.ok(view);
 
   const reload = [...host.querySelectorAll('button')].find(button => button.textContent === en['properties.georef.reloadModels']);
   assert.ok(reload);
   click(reload);
   await settle();
-  assert.equal(clears, 0, 'confirmation must precede the reset');
-  const dialog = document.querySelector('[role="alertdialog"]');
-  assert.ok(dialog);
-  const cancel = [...dialog.querySelectorAll('button')].find(button => button.textContent === en['viewerShell.dialog.cancel']);
-  assert.ok(cancel);
-  click(cancel);
-  await settle();
-  assert.equal(clears, 0);
-  assert.equal(useViewerStore.getState().georefMutations.get('m')?.mapConversion?.xAxisAbscissa, Math.cos(Math.PI / 6));
+  assert.equal(document.querySelector('[role="alertdialog"]'), null, 'no confirm: the reload keeps these edits');
+  assert.equal(clears, 1, 'the realign ran');
+  const after = useViewerStore.getState();
+  assert.equal(after.georefMutations.get('m')?.mapConversion?.xAxisAbscissa, Math.cos(Math.PI / 6));
+  assert.equal(after.mutationViews.get('m'), view);
+  assert.deepEqual(view.getAttributeMutationsForEntity(1), [{ name: 'Name', value: 'Edited' }]);
 });

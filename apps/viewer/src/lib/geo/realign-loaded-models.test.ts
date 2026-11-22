@@ -8,7 +8,7 @@ import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { deferred } from '@/test/race';
 import { installModelLoadCanceller } from '@/hooks/modelLoadCanceller';
-import { assertWorkflowOwner, startWorkflowRun } from '@/lib/flow/run-session';
+import { assertWorkflowOwner, cancelFlowDocumentRun, startWorkflowRun } from '@/lib/flow/run-session';
 import { newFlowDocument } from '@/lib/flow/persistence';
 import { realignLoadedModels } from './realign-loaded-models';
 
@@ -93,6 +93,8 @@ it('keeps reloading when the flow document is edited mid-rebuild (#11263)', asyn
   const { setFlowDoc } = useViewerStore.getState();
   const flowDoc = newFlowDocument('Edited mid-rebuild');
   setFlowDoc(flowDoc);
+  // The Flow panel Stop button and flow.cancel stop flow runs only.
+  assert.equal(cancelFlowDocumentRun(), false);
   drain.resolve();
   assert.deepEqual(await pending, { state: 'completed', loaded: 3, total: 3, failed: [] });
   assert.deepEqual([...useViewerStore.getState().models.keys()].sort(), ['A', 'B', 'C']);

@@ -5,7 +5,6 @@ import { withReleasedExportGeometry } from '@/utils/instancedExport';
 import type { JSONSchemaType } from 'ajv';
 import { useViewerStore } from '@/store';
 import { getGlobalRenderer } from '@/hooks/useBCF';
-import { captureViewportFrame } from '@/lib/viewport-capture';
 import { modelExportFilename, activeModelName, dataUrlToBytes } from '@/lib/export/download';
 import { readViewPdfSource, readViewZoom, readCameraSnapshot } from '@/lib/export/view-pdf/view-pdf-export-source';
 import { deriveDisplayedScaleFactor, describePage } from '@/lib/export/view-pdf/view-pdf-scale';
@@ -16,13 +15,14 @@ import { produceNativeViewPdf } from '@/lib/export/native-view-pdf';
 import { viewerOperation } from './contract';
 import { exportMetadata } from './exports-common';
 import { nativeExportGuard, nativeArtifact } from './export-native-runtime';
+import { captureNativeViewport } from './native-viewport-frame';
 import { internal, invalidInput, stale, unavailable } from './refusals';
 export const exportNativeViewOperations = [
   viewerOperation<{ scope: 'current-view' }>(exportMetadata('exports.screenshot', 'Await the native viewport-frame capture and return real PNG bytes for the current rendered federation. Requires the live native renderer; this is a current-view snapshot with the same effects as the toolbar screenshot action.'), {
     type: 'object', properties: { scope: { type: 'string', const: 'current-view' } }, required: ['scope'], additionalProperties: false,
   } satisfies JSONSchemaType<{ scope: 'current-view' }>, async (_, c) => {
-    const s = useViewerStore.getState(); const check = nativeExportGuard(c, [...s.models.keys()]); check(); const renderer = getGlobalRenderer(); if (!renderer) throw unavailable('Native viewport renderer is not ready.');
-    const image = await captureViewportFrame(renderer, { read: canvas => canvas.toDataURL('image/png') }); check(); if (!image?.startsWith('data:image/png;base64,')) throw internal('Native viewport did not produce a PNG.');
+    const s = useViewerStore.getState(); const check = nativeExportGuard(c, [...s.models.keys()]); check();
+    const image = await captureNativeViewport(canvas => canvas.toDataURL('image/png'), c.signal); check(); if (!image?.startsWith('data:image/png;base64,')) throw internal('Native viewport did not produce a PNG.');
     const bytes = dataUrlToBytes(image); if (!bytes) throw internal('Native viewport did not produce a PNG.');
     return nativeArtifact(c, new Blob([bytes], { type: 'image/png' }), modelExportFilename(activeModelName(s), 'png', '_screenshot'), { scope: 'current-view' }, check);
   }),

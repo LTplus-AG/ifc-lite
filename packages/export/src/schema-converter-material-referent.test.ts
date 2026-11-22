@@ -124,6 +124,10 @@ describe('the Material a downgraded IfcMaterialProperties names (#10763)', () =>
     const preview = { ...store, entityIndex: { ...store.entityIndex, byId }, deferredEntityIndex: new Map([[8, material]]) };
     const report = analyzeConversionLoss(preview, 'IFC4', 'IFC2X3');
     expect(report.entries.find((entry) => entry.sourceType === 'IFCMATERIALPROPERTIES')).toBeUndefined();
+    const merged = new MergedExporter([{ id: 'one', name: 'one', dataStore: preview }]).export({ schema: 'IFC2X3' });
+    const output = new TextDecoder().decode(merged.content);
+    expect(output).toContain("#8=IFCMATERIAL('Concrete');");
+    expect(output).toContain("#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6),$,'Pset_x');");
   });
 
   // A member the export writes as another type, or one no record has, names no

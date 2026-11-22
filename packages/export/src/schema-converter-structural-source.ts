@@ -125,8 +125,7 @@ export class SourceRecords {
 
   /** The record's source text, as written. */
   text(id: number): string | undefined {
-    // @raw-entity-enumeration-ok same unedited source-only prepass
-    const entry = this.store.entityIndex.byId.get(id);
+    const entry = this.entry(id);
     return entry ? this.decode(entry) : undefined;
   }
 

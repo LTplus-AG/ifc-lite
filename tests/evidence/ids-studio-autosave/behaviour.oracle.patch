@@ -1,7 +1,0 @@
---- a/apps/viewer/src/lib/ids-studio/draft-session.ts
-+++ b/apps/viewer/src/lib/ids-studio/draft-session.ts
-@@ -46,3 +46,3 @@
-       clearTimeout(jobs.get(id)?.timer);
--      jobs.set(id, { doc, timer: setTimeout(() => { void flush(id); }, 0) });
-+      jobs.set(id, { doc, timer: setTimeout(() => { void flush(id); }, IDS_DRAFT_DEBOUNCE_MS) });
-       report(id, 'pending');

@@ -1,7 +1,0 @@
-{
-  "issue": 7955,
-  "why": "Keep the published released-geometry replay loadable while reintroducing the missing fence: a replay superseded by a newer reload, or interrupted by a device swap, keeps uploading stale batches into the scene and reports itself complete, so the host never replays again.",
-  "key": "packages/renderer/src/released-geometry-replay.ts",
-  "mutation": "tests/evidence/released-geometry-replay-10264/behaviour.oracle.patch",
-  "test": "packages/renderer/src/released-geometry-replay.test.ts"
-}

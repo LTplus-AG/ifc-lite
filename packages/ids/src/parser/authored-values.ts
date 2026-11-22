@@ -8,8 +8,8 @@
  * The parser fills a missing `@name` with `Specification <n>` and a missing
  * `<title>` with `Untitled IDS`, and the audit reads those texts as missing.
  * An author may write the same texts (both are `xs:string` in the XSD), so
- * the parser records here the objects whose value it read from the XML, and
- * the audit does not read an authored value as missing (#10542).
+ * the parser records the value it read from XML for each object. The audit
+ * only treats the current value as authored if it matches that record (#10542).
  *
  * The record lives beside the document rather than in it, so `parseIDS`
  * returns the same objects as before. A document built in code, or a copy
@@ -18,25 +18,25 @@
 
 import type { IDSInfo, IDSSpecification } from '../types.js';
 
-const authoredNames = new WeakSet<IDSSpecification>();
-const authoredTitles = new WeakSet<IDSInfo>();
+const authoredNames = new WeakMap<IDSSpecification, string>();
+const authoredTitles = new WeakMap<IDSInfo, string>();
 
 /** Record that the parser read `spec.name` from a non-empty `@name`. */
 export function markNameAuthored(spec: IDSSpecification): void {
-  authoredNames.add(spec);
+  authoredNames.set(spec, spec.name);
 }
 
-/** Whether `parseIDS` read this specification's name from the XML. */
+/** Whether the current name matches the one read from XML. */
 export function isNameAuthored(spec: IDSSpecification): boolean {
-  return authoredNames.has(spec);
+  return authoredNames.get(spec) === spec.name;
 }
 
 /** Record that the parser read `info.title` from a non-empty `<title>`. */
 export function markTitleAuthored(info: IDSInfo): void {
-  authoredTitles.add(info);
+  authoredTitles.set(info, info.title);
 }
 
-/** Whether `parseIDS` read this title from the XML. */
+/** Whether the current title matches the one read from XML. */
 export function isTitleAuthored(info: IDSInfo): boolean {
-  return authoredTitles.has(info);
+  return authoredTitles.get(info) === info.title;
 }

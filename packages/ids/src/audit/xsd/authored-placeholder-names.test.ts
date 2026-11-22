@@ -155,6 +155,13 @@ describe('#10542 controls: missing values, parseIDS and documents built in code 
     expect(nameAndTitleIssues(await auditIDSStructure(copy))).toEqual([MISSING_TITLE, MISSING_NAME(0)]);
   });
 
+  it('editing a parsed name and title to the fill-in labels does not mark those values as authored in XML', async () => {
+    const doc = parseIDS(ids(TITLE, ['name="Walls"']));
+    doc.info.title = 'Untitled IDS';
+    doc.specifications[0].name = 'Specification 3';
+    expect(nameAndTitleIssues(await auditIDSStructure(doc))).toEqual([MISSING_TITLE, MISSING_NAME(0)]);
+  });
+
   it('a parsed name or title changed in place to an empty one is reported', async () => {
     const doc = parseIDS(ids(TITLE, ['name="Specification 3"']));
     doc.info.title = ' ';

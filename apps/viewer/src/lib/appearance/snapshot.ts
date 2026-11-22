@@ -1,7 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { StepExporter } from '@ifc-lite/export';
 import { StoreEditor } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { appearanceRevision, captureAppearanceSource } from './command.js';
@@ -65,6 +64,8 @@ export async function prepareAppearanceSnapshot(
     }
     source.validate(current.mutationViews.get(modelId));
   };
+  const { StepExporter } = await import('@/lib/export/step-export-runtime');
+  checkAbort(signal); validate();
   const serialized = prepareAppearanceSerialization(modelId, dataStore, view);
   const exported = await new StepExporter(dataStore, serialized.view).exportAsync({
     schema, applyMutations: true, includeGeometry: true, visibleOnly: false,

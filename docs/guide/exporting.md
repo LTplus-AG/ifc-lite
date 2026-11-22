@@ -985,6 +985,10 @@ IFC spatial hierarchy as `Xform` prims, with `UsdGeomMesh` geometry, `UsdPreview
 materials, and IFC metadata (`ifc:class`, `ifc:GlobalId`, property/quantity sets) as custom
 attributes. It opens in usdview, Blender, and Omniverse.
 
+USD materials preserve authored metallic and roughness for both baked meshes
+and mapped occurrences. Occurrences can share a geometry prototype while
+binding different materials, even when their colours match.
+
 ```bash
 # whole-model export (entity filters do not apply to USD)
 ifc-lite export model.ifc --format usd --out model.usda

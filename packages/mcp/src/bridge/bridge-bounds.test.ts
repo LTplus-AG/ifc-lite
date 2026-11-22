@@ -169,3 +169,11 @@ describe('close() (CodeRabbit tab-bridge.ts:196)', () => {
     await new Promise<void>((ok) => probe.close(() => ok()));
   });
 });
+
+describe('utf8Length', () => {
+  it('counts exactly what TextEncoder writes, without encoding', async () => {
+    const { utf8Length } = await import('./json-bounds.js');
+    const samples = ['', 'abc', 'é', '€', '😀', 'a😀b', '\ud800', 'x\udc00y', '\ud83d', 'ü'.repeat(1000), 'mixed é€😀 text'];
+    for (const text of samples) expect(utf8Length(text)).toBe(new TextEncoder().encode(text).length);
+  });
+});

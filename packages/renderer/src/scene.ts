@@ -6,6 +6,8 @@
  * Scene graph and mesh management
  */
 
+import { unionEntityWorldBounds } from './released-entity-bounds.js';
+import type { ReleasedMembershipHooks } from './released-template-membership.js';
 import { GeometryChangeSignal } from './geometry-change-signal.js';
 import { SceneTriangleCounts } from './triangle-counts.js';
 import { destroyInstancedTemplateGpu, type InstancedTemplateGPU, type InstancedOccurrence, type InstancedTemplateCpu } from './scene-instance-types.js';
@@ -156,6 +158,7 @@ export class Scene {
   private authoredGeneration = 0;
   // Bumped wherever what a CPU pick can hit changes: see getPickGeometryRevision() (#8998).
   private pickGeometryRevision = 0;
+  private releasedMembership?: ReleasedMembershipHooks; private clearEpoch = 0; private replayEpoch = 0; // hooks: a released-scene recovery installs them; clear() moves clearEpoch (new content); every flat clear (reshape, recovery reset) moves replayEpoch (#10264)
   private triangleCounts = new SceneTriangleCounts();
   private geometryChanges = new GeometryChangeSignal();
   private bumpPickGeometryRevision(): void { this.pickGeometryRevision++; this.geometryChanges.changed(); }
@@ -1199,6 +1202,7 @@ export class Scene {
         this.createStreamingFragments(renderable, device, pipeline);
         for (const mesh of renderable) this.streamingFragmentIndexBudget -= mesh.indices.length;
       }
+      if (!retainStreamingGeometry) { unionEntityWorldBounds(this.boundingBoxes, meshDataArray); this.modelTranslations.unionReleasedEntityBounds(meshDataArray); } // after its fragments: a throw leaves no bounds
       if (!sourceCounted) { this.triangleCounts.noteSources(meshDataArray); this.geometryChanges.changed(); }
       return;
     }
@@ -2817,7 +2821,7 @@ export class Scene {
    * no-op).
    */
   removeInstancedTemplatesForModel(modelIndex: number): number {
-    this.instanceSuppression.forgetModel(modelIndex);
+    this.instanceSuppression.forgetModel(modelIndex); this.releasedMembership?.drop(this, modelIndex);
     const freed = new Set<number>();
     for (let i = 0; i < this.instancedTemplates.length; i++) {
       const t = this.instancedTemplates[i];
@@ -3608,12 +3612,10 @@ export class Scene {
     this.instancedDevice = undefined;
   }
 
+  resetReleasedForRebuild(): void { this.destroyAllInstancedTemplates(); this.clearFlatGeometry(); this.setEphemeralStreamingMode(false); } // released device recovery (#10264): no flat or instanced piece, placements kept
   clear(): void {
-    this.modelTranslations.clear();
-    // GPU-instancing templates own their vertex/index/instance buffers.
-    // (Freed slots are holes whose buffers are already destroyed — skip them so
-    // a per-model removal followed by clear() can't double-destroy.)
-    this.destroyAllInstancedTemplates();
+    this.clearEpoch++; this.modelTranslations.clear(); this.releasedMembership?.forget(this); // new content; clearFlatGeometry() moves replayEpoch
+    this.destroyAllInstancedTemplates(); // templates own their buffers; freed slots are already-destroyed holes (no double-destroy)
     this.clearFlatGeometry();
   }
 
@@ -3627,7 +3629,7 @@ export class Scene {
    */
   clearFlatGeometry(): void {
     this.snapshots.onFlatCleared();
-    this.authoredGeneration++; this.authoredPreparations.invalidate();
+    this.replayEpoch++; this.authoredGeneration++; this.authoredPreparations.invalidate();
     this.instanceSuppression.restore();
     this.appearanceController?.forget();
     this.clearFlatBuffers();
@@ -3636,8 +3638,8 @@ export class Scene {
   /** Reconcile an ordinary source-geometry rebuild; exact surviving appearance
    * owners keep their original-instance history. Full reset remains separate. */
   clearFlatGeometryForRebuild(geometry: readonly MeshData[], models: ReadonlySet<number>, sourceGeometry = geometry): void {
-    this.snapshots.onFlatCleared();
-    this.authoredGeneration++; this.authoredPreparations.invalidate();
+    this.snapshots.onFlatCleared(); this.releasedMembership?.keepPresent(this, models);
+    this.replayEpoch++; this.authoredGeneration++; this.authoredPreparations.invalidate();
     const retained = this.appearanceController?.prepareRebuild(sourceGeometry, models) ?? new Set<number>();
     const discarded = this.appearanceController?.discardedForRebuild(retained) ?? [];
     // A discarded converted owner must not resurrect its obsolete type instance.

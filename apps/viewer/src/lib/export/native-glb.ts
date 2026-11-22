@@ -16,10 +16,22 @@ import { resolve as t } from '@/i18n/registry';
 export interface NativeGlbSettings { visibleOnly: boolean; includeMetadata: boolean; lit: boolean; colorSource: 'rendering' | 'shading' }
 /** The native dialog's exact source-versus-mesh assembler. Released CPU geometry (#10264) is read back first. */
 export function produceNativeGlb(selectedModelId: string, selectedModel: { geometryResult: GeometryResult }, options: NativeGlbSettings, checkpoint = () => {}, onAssembler?: (fromSourceBytes: boolean) => void) {
-  return withReleasedExportGeometry((context) => assembleNativeGlb(selectedModelId, selectedModel, options, checkpoint, onAssembler, context), [selectedModelId]);
+  const rendererModelIndex = modelIndices.assignedIndex(selectedModelId);
+  return withReleasedExportGeometry(
+    (context) => assembleNativeGlb(selectedModelId, selectedModel, options, checkpoint, onAssembler, context, rendererModelIndex),
+    [selectedModelId],
+  );
 }
 
-async function assembleNativeGlb(selectedModelId: string, selectedModel: { geometryResult: GeometryResult }, options: NativeGlbSettings, checkpoint: () => void, onAssembler?: (fromSourceBytes: boolean) => void, context?: ReleasedExportContext) {
+async function assembleNativeGlb(
+  selectedModelId: string,
+  selectedModel: { geometryResult: GeometryResult },
+  options: NativeGlbSettings,
+  checkpoint: () => void,
+  onAssembler: ((fromSourceBytes: boolean) => void) | undefined,
+  context: ReleasedExportContext,
+  rendererModelIndex: number | undefined,
+) {
   const state = useViewerStore.getState(); const { typeVisibility, mergeLayers } = state;
   const live = state.models.get(selectedModelId);
   if (live && hasRetainedShapeOnlyModel(new Map([[selectedModelId, live]]))) throw new Error(t(RETAINED_SHAPE_ONLY_REASON));
@@ -86,7 +98,7 @@ async function assembleNativeGlb(selectedModelId: string, selectedModel: { geome
           selectedModel.geometryResult,
           federatedModel
             ? { modelId: federatedModel.id, idOffset: federatedModel.idOffset ?? 0, maxExpressId: federatedModel.maxExpressId ?? 0,
-              rendererModelIndex: modelIndices(state.models).get(federatedModel.id) } // as model-ifcx-export: excludes an overlapping-id collab model
+              rendererModelIndex }
             : null,
           context,
         );

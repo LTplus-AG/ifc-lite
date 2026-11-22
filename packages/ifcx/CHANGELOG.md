@@ -1,5 +1,14 @@
 # @ifc-lite/ifcx
 
+## 4.7.1
+
+### Patch Changes
+
+- [#11166](https://github.com/LTplus-AG/ifc-lite/pull/11166) [`90889b7`](https://github.com/LTplus-AG/ifc-lite/commit/90889b75e6e7063c2a120ee1eacdcb9a5aa863cd) Thanks [@quotentiroler](https://github.com/quotentiroler)! - `@ifc-lite/pointcloud/ifcx` exports the IFCx point attribute decoders (`POINTCLOUD_ATTR`, `POINTCLOUD_ATTR_KEYS`, `decodeIfcxPointAttribute`, `decodeIfcxPointSource` and their types) without the streaming sources. `@ifc-lite/ifcx` now imports from it, so bundling `@ifc-lite/ifcx` (and `@ifc-lite/sdk`, which depends on it) with esbuild or wrangler no longer reaches the LAZ decoder's Vite-only `laz-perf/lib/web/laz-perf.wasm?url` import and no longer needs the package aliased to its attribute module.
+- Updated dependencies [[`054569a`](https://github.com/LTplus-AG/ifc-lite/commit/054569a4f3719b4bff505a45d1cbed4eb6520192), [`1c90760`](https://github.com/LTplus-AG/ifc-lite/commit/1c9076074d07eea0811a713d227f3839a4fe9756), [`7053690`](https://github.com/LTplus-AG/ifc-lite/commit/7053690af8cd5e2c0c6853a8a9e7215fe4f69db3), [`38ef050`](https://github.com/LTplus-AG/ifc-lite/commit/38ef050d9585a468132f11c4ec822ceaf157d6b2), [`90889b7`](https://github.com/LTplus-AG/ifc-lite/commit/90889b75e6e7063c2a120ee1eacdcb9a5aa863cd), [`a1c2588`](https://github.com/LTplus-AG/ifc-lite/commit/a1c25887acfaba313db68b556059c357c72283e1)]:
+  - @ifc-lite/mutations@4.1.0
+  - @ifc-lite/pointcloud@0.16.0
+
 ## 4.7.0
 
 ### Minor Changes

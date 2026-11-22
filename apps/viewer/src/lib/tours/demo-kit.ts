@@ -34,29 +34,39 @@ export const DEMO_KIT_PATHS = {
  * The load pipeline registers a placeholder model record before parsing, so
  * `models.size > 0` alone is NOT "loaded".
  */
-export function waitForModelSettled(timeoutMs = 180_000): Promise<void> {
+export async function waitForModelSettled(timeoutMs = 180_000): Promise<void> {
+  if (!await waitForViewerState((s) => s.models.size > 0 && !s.loading && !s.geometryStreamingActive, timeoutMs)) {
+    throw new Error('model load did not settle in time');
+  }
+}
+
+/**
+ * Whether nothing is loading or streaming within `timeoutMs`. Unlike
+ * {@link waitForModelSettled} it needs no model, so a load that ended without
+ * opening one is seen at once.
+ */
+export function waitForLoadIdle(timeoutMs: number): Promise<boolean> {
+  return waitForViewerState((s) => !s.loading && !s.geometryStreamingActive, timeoutMs);
+}
+
+/** True as soon as `predicate` holds for the viewer store, false if `timeoutMs` passes first. */
+function waitForViewerState(predicate: (s: ViewerState) => boolean, timeoutMs: number): Promise<boolean> {
   const store = getViewerStoreApi();
-  const settled = (s: ViewerState) => s.models.size > 0 && !s.loading && !s.geometryStreamingActive;
-  return new Promise((resolve, reject) => {
-    if (settled(store.getState())) { resolve(); return; }
-    const timer = window.setTimeout(() => {
-      unsub();
-      reject(new Error('model load did not settle in time'));
-    }, timeoutMs);
+  if (predicate(store.getState())) return Promise.resolve(true);
+  if (timeoutMs <= 0) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const timer = window.setTimeout(() => { unsub(); resolve(false); }, timeoutMs);
     const unsub = store.subscribe((s) => {
-      if (settled(s)) {
-        window.clearTimeout(timer);
-        unsub();
-        resolve();
-      }
+      if (predicate(s)) { window.clearTimeout(timer); unsub(); resolve(true); }
     });
   });
 }
 
-async function fetchAsFile(path: string, name: string): Promise<File> {
+/** A sample shipped under `/samples`, as a `File`; refused when the host switched samples off. */
+export async function fetchSampleFile(path: string, name: string, signal?: AbortSignal): Promise<File> {
   // Every sample load comes through here; a host can switch sample models off (`lib/features`).
   if (!isFeatureEnabled('files.samples')) throw new Error('Sample models are switched off in this viewer');
-  const res = await fetch(path);
+  const res = await fetch(path, signal ? { signal } : undefined);
   if (!res.ok) throw new Error(`demo kit fetch failed: ${res.status} ${path}`);
   const blob = await res.blob();
   return new File([blob], name, { type: 'application/x-step' });
@@ -67,7 +77,7 @@ async function fetchAsFile(path: string, name: string): Promise<File> {
  * `loadFile` (the first-run card) and so need no bus event.
  */
 export function fetchDemoProjectFile(): Promise<File> {
-  return fetchAsFile(DEMO_KIT_PATHS.base, BASE_NAME);
+  return fetchSampleFile(DEMO_KIT_PATHS.base, BASE_NAME);
 }
 
 let demoProjectInFlight: Promise<void> | null = null;
@@ -133,7 +143,7 @@ export function isViewerEmpty(s: Pick<ViewerState, 'models' | 'ifcDataStore' | '
  * goes through the canonical `addModel` path with ID-offset registration.
  */
 export async function loadDemoRevB(): Promise<void> {
-  const file = await fetchAsFile(DEMO_KIT_PATHS.revB, REV_B_NAME);
+  const file = await fetchSampleFile(DEMO_KIT_PATHS.revB, REV_B_NAME);
   window.dispatchEvent(new CustomEvent(EVENT_ADD_MODEL, { detail: file }));
 }
 
@@ -157,7 +167,7 @@ export async function loadDemoRevisions(): Promise<void> {
  * but rev B carries an injected duct that clashes with an existing wall.
  */
 export async function loadDemoClashModel(): Promise<void> {
-  const file = await fetchAsFile(DEMO_KIT_PATHS.revB, REV_B_NAME);
+  const file = await fetchSampleFile(DEMO_KIT_PATHS.revB, REV_B_NAME);
   window.dispatchEvent(new CustomEvent(EVENT_LOAD_FILE, { detail: file }));
 }
 

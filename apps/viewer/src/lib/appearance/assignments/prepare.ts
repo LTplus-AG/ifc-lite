@@ -1,7 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { StepExporter } from '@ifc-lite/export';
 import { StoreEditor, type MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import type { AppearancePlanner } from '../planner-worker-client.js';
@@ -78,6 +77,8 @@ async function prepareAssignments(options: PrepareAssignmentsOptions) {
       shadow = view.prepareAtomic(draft => draft).result;
       shadows.set(modelId, shadow); snapshots.set(modelId, snapshot);
     } else {
+      const { StepExporter } = await import('@/lib/export/step-export-runtime');
+      validate();
       const exported = await new StepExporter(model.ifcDataStore, shadow).exportAsync({ schema: snapshot.schema,
         applyMutations: true, includeGeometry: true, visibleOnly: false, onProgress: validate });
       validate();

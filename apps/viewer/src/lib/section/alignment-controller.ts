@@ -106,6 +106,7 @@ export async function bindAlignment(modelId: string, expressId: number, distance
     }
     const state = useViewerStore.getState();
     const view = state.getMutationView(modelId);
+    owner = { modelId, expressId, store: model.ifcDataStore, mutationVersion: state.mutationVersion, distance };
     // Retain the compressed source envelope when untouched: inflation and
     // UTF-8 decoding belong in the disposable worker, never the render thread.
     let source;
@@ -116,7 +117,6 @@ export async function bindAlignment(modelId: string, expressId: number, distance
     } else {
       source = getWholeSourceForWorker(model.ifcDataStore);
     }
-    owner = { modelId, expressId, store: model.ifcDataStore, mutationVersion: state.mutationVersion, distance };
     client = new AlignmentClient();
     const opened = await client.request({ kind: 'open', source, expressId });
     if (version !== generation) return;
@@ -139,9 +139,10 @@ export async function bindAlignment(modelId: string, expressId: number, distance
 
 export async function setAlignmentDistance(distance: number): Promise<void> {
   const binding = useViewerStore.getState().sectionPlane.custom?.alignment;
-  if (!client || !binding || !owner || owner.modelId !== binding.modelId || owner.expressId !== binding.expressId
+  if (!binding || !owner || owner.modelId !== binding.modelId || owner.expressId !== binding.expressId
     || !Number.isFinite(distance)) return;
   if (useAlignmentToolState.getState().busy) { queuedDistance = distance; return; }
+  if (!client) return;
   const version = generation;
   const sequence = ++request;
   try {

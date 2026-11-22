@@ -22,6 +22,7 @@ import assert from 'node:assert/strict';
 import { act, useState } from 'react';
 import { render, click, cleanup } from '@/test/render.js';
 import { createSyntheticDataStore } from '@ifc-lite/parser';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import type { StartCollabOptions } from '@/store/slices/collabSlice.js';
@@ -104,6 +105,31 @@ afterEach(() => {
 });
 
 describe('ShareDialog: explicit federation scope (#4444, #4620)', () => {
+  for (const version of ['mutationVersion', 'geometryContentVersion'] as const) {
+    it(`#11247 releases the room claim if ${version} changes during seed preparation`, async t => {
+      const model = makeModel('a', 'fixture.ifc', 0);
+      const view = new MutablePropertyView(model.ifcDataStore!.properties ?? null, 'a');
+      const initialVersion = useViewerStore.getState()[version];
+      t.mock.method(view, 'getModifiedEntityCount', () => {
+        queueMicrotask(() => useViewerStore.setState({ [version]: initialVersion + 1 }));
+        return 0;
+      });
+      useViewerStore.setState({ models: new Map([['a', model]]), activeModelId: 'a', mutationViews: new Map([['a', view]]) });
+      t.after(() => useViewerStore.setState({ [version]: initialVersion, mutationViews: new Map() }));
+      window.localStorage.setItem('ifc-lite:collab:server-url', 'wss://relay.example');
+      const requests = t.mock.method(globalThis, 'fetch', async (_input: RequestInfo | URL) => Response.json({ token: 'fixture-token' }));
+      render(<ShareDialog open onOpenChange={() => {}} />);
+      const create = createLinkButton();
+      assert.ok(create);
+      click(create);
+      await settle();
+      assert.equal(useViewerStore.getState()[version], initialVersion + 1);
+      assert.deepEqual(starts, [], 'a stale seed must not reach startCollab');
+      assert.match(document.body.textContent ?? '', /No session was created/);
+      assert.ok(requests.mock.calls.some(({ arguments: [url] }) => String(url).endsWith('/collab/release')), 'the unused claim was released');
+    });
+  }
+
   it('opens with invalid spatial metadata and reports failure only after consent (#6565)', async (t) => {
     const invalid = makeModel('a', 'fixture.ifc', 0);
     invalid.geometryResult = buildGeometryResultFromMeshes([], {

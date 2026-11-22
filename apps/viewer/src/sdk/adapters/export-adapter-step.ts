@@ -13,7 +13,6 @@ import { getMutationViewForModel } from './mutation-view.js';
 import { spliceScheduleIntoExport } from './export-schedule-splice.js';
 import { viewerDrawingAnnotations } from '@/lib/export/viewer-drawing-annotations';
 import { isEntityRefArray, normalizeRefs } from './export-entity-refs.js';
-import type { EntityRef } from '@ifc-lite/sdk';
 
 /** Options for IFC STEP export */
 interface IfcExportOptions {

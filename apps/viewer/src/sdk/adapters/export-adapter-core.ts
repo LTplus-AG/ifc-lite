@@ -10,7 +10,7 @@ import type { EntityRef, EntityData, PropertySetData, QuantitySetData, ExportBac
 import { EntityNode, findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';
 import { escapeCsvCell } from '@ifc-lite/export';
 import { getModelForRef } from './model-compat.js';
-import { applyAttributeMutationsToEntityData, getMutationViewForModel } from './mutation-view.js';
+import { applyAttributeMutationsToEntityData } from './mutation-view.js';
 import { downloadFile, sanitizeFilename, buildExportFilename } from '../../lib/export/download.js';
 import { isFeatureEnabled } from '../../lib/features/index.js';
 
@@ -236,24 +236,7 @@ export function createExportAdapterWithWriter(store: StoreApi, getWriter: () => 
     ifc: createStepExportMethod(store, getWriter),
 
     download(content: string | Uint8Array, filename: string, mimeType?: string) {
-      // `filename` is API input (scripts pass arbitrary strings) — sanitize at
-      // this single chokepoint so every SDK download path honors the repo's
-      // filename contract, keeping a real extension intact.
-      //
-      // Split the extension off, then hand both halves to `buildExportFilename`
-      // rather than sanitizing them here: it is the canonical builder, and it
-      // caps the extension at EXTENSION_MAX_LENGTH and budgets the stem so the
-      // whole result fits. A local `[^\w]+` pass instead would silently rewrite
-      // legitimate extensions (`report.energy-json` -> `report.energyjson`,
-      // and anything non-ASCII outright) and skip the length budgeting.
-      const dot = filename.lastIndexOf('.');
-      const stem = dot > 0 ? filename.slice(0, dot) : filename;
-      const ext = dot > 0 ? filename.slice(dot + 1) : '';
-      const safe = ext
-        ? buildExportFilename(stem, ext)
-        : sanitizeFilename(filename, { fallback: 'export' });
-      const portable = portableIfcDownload(content, safe, mimeType ?? 'text/plain');
-      triggerDownload(content, portable.filename, portable.mime);
+      triggerDownload(content, filename, mimeType ?? 'text/plain');
       return undefined;
     },
   };
@@ -265,6 +248,12 @@ function triggerDownload(content: string | Uint8Array, filename: string, mimeTyp
   }
   // Scripts and extensions save files through here; a host can switch export off (`lib/features`).
   if (!isFeatureEnabled('export.files')) throw new Error('Export is switched off in this viewer');
-  downloadFile(content, filename, mimeType);
+  // Budget the stem and extension together so every SDK download gets the same safe name.
+  const dot = filename.lastIndexOf('.');
+  const safe = dot > 0 && dot < filename.length - 1
+    ? buildExportFilename(filename.slice(0, dot), filename.slice(dot + 1))
+    : sanitizeFilename(filename, { fallback: 'export' });
+  const portable = portableIfcDownload(content, safe, mimeType);
+  downloadFile(content, portable.filename, portable.mime);
   trackExportCompleted({ format: 'other', surface: 'script' });
 }

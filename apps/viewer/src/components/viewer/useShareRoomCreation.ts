@@ -89,6 +89,12 @@ export function useShareRoomCreation({ open, hasModel, collabRoomId, awaitingCon
           refuse();
           return;
         }
+        if (now.mutationVersion !== st.mutationVersion || now.geometryContentVersion !== st.geometryContentVersion
+          || now.models !== st.models || now.activeModelId !== st.activeModelId || now.collabRoomId !== st.collabRoomId) {
+          setNotice(t('shareDialog.roomCreationFailed'));
+          refuse();
+          return;
+        }
         owner.joining = true;
         await startCollab({
           roomId,

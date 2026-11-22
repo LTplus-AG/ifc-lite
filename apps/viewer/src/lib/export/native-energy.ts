@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { GeometryProcessor } from '@ifc-lite/geometry';
-import { StepExporter } from '@ifc-lite/export';
 import { useViewerStore } from '@/store';
 import type { SchemaVersion } from '@/store/types';
 import { hasRetainedGeometryModel, RETAINED_EXACT_ONLY_REASON } from '@/store/retainedGeometry';
@@ -102,6 +101,8 @@ export async function produceNativeEnergy(selectedModel: { id: string; name: str
       if (mutationSource) {
         const sv = selectedModel.schemaVersion || 'IFC4';
         const schema = sv.includes('2X3') ? 'IFC2X3' : sv.includes('4X3') ? 'IFC4X3' : 'IFC4';
+        const { StepExporter } = await import('@/lib/export/step-export-runtime');
+        checkpoint();
         const exporter = new StepExporter(mutationSource.dataStore, mutationSource.mutationView);
         out = await runExport(
           exporter.export({

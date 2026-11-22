@@ -6,7 +6,6 @@ import { contiguousSourceBytes } from '@ifc-lite/parser';
 import { nearestCardinalAxis } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { resolveExportModel } from '@/components/viewer/export-model-selection';
-import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { getWholeSourceForWorker } from '@/lib/overlay-parse/source-handoff';
 import { displayedTranslation, placementFor } from '@/lib/model-placement/state';
 import { AlignmentClient } from './alignment-client';
@@ -107,12 +106,17 @@ export async function bindAlignment(modelId: string, expressId: number, distance
     }
     const state = useViewerStore.getState();
     const view = state.getMutationView(modelId);
+    owner = { modelId, expressId, store: model.ifcDataStore, mutationVersion: state.mutationVersion, distance };
     // Retain the compressed source envelope when untouched: inflation and
     // UTF-8 decoding belong in the disposable worker, never the render thread.
-    const source = view?.hasPendingChanges()
-      ? contiguousSourceBytes(editedModelBytes(model.ifcDataStore, view)).toTransferable()
-      : getWholeSourceForWorker(model.ifcDataStore);
-    owner = { modelId, expressId, store: model.ifcDataStore, mutationVersion: state.mutationVersion, distance };
+    let source;
+    if (view?.hasPendingChanges()) {
+      const { editedModelBytes } = await import('@/lib/export/edited-model-bytes');
+      if (version !== generation) return;
+      source = contiguousSourceBytes(editedModelBytes(model.ifcDataStore, view)).toTransferable();
+    } else {
+      source = getWholeSourceForWorker(model.ifcDataStore);
+    }
     client = new AlignmentClient();
     const opened = await client.request({ kind: 'open', source, expressId });
     if (version !== generation) return;
@@ -135,9 +139,10 @@ export async function bindAlignment(modelId: string, expressId: number, distance
 
 export async function setAlignmentDistance(distance: number): Promise<void> {
   const binding = useViewerStore.getState().sectionPlane.custom?.alignment;
-  if (!client || !binding || !owner || owner.modelId !== binding.modelId || owner.expressId !== binding.expressId
+  if (!binding || !owner || owner.modelId !== binding.modelId || owner.expressId !== binding.expressId
     || !Number.isFinite(distance)) return;
   if (useAlignmentToolState.getState().busy) { queuedDistance = distance; return; }
+  if (!client) return;
   const version = generation;
   const sequence = ++request;
   try {

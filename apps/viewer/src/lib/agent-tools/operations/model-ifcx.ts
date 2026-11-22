@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useViewerStore } from '@/store';
-import { exportModelIfcx } from '@/lib/export/model-ifcx-export';
 import { modelExportFilename } from '@/lib/export/download';
 import { resolveExportVisibility } from '@/store/exportVisibility';
 import { hasRetainedShapeOnlyModel } from '@/store/retainedGeometry';
@@ -33,6 +32,7 @@ export const ifcxExportOperations = [
     // A changes-only file must not fall back to the full model, nor publish an empty one, when nothing is pending.
     if (i.changes_only && !view?.getMutations().length) throw unavailable('This model has no pending changes to export.');
     const visibility = resolveExportVisibility(state, id);
+    const { exportModelIfcx } = await import('@/lib/export/model-ifcx-export');
     const result = await exportModelIfcx({ modelId: id, dataStore: c.model.store, mutationView: view ?? undefined,
       geometryResult: model ? model.geometryResult : state.geometryResult, idOffset: model?.idOffset ?? 0,
       maxExpressId: model ? model.maxExpressId ?? 0 : undefined, models: state.models,

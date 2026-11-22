@@ -5,7 +5,8 @@
 /** The backing tap's per-model state and its status rows (#10264), kept apart from the tap's ingestion logic. */
 
 import type { MeshData } from '@ifc-lite/geometry';
-import type { PendingInstancedShard } from '@/store/instancedShardQueue';
+import { hasPendingInstancedShards, type PendingInstancedShard } from '@/store/instancedShardQueue';
+import { isReleasedMesh } from '@/lib/released-mesh-provenance';
 import type { MeshAreas } from './released-mesh-areas';
 import type { ResupplyState } from './instanced-resupply';
 import type { ModelGeometryBacking } from './geometry-backing-registry';
@@ -47,6 +48,7 @@ export interface Tracked extends ResupplyState {
   registered?: boolean;
   /** A seal is closing and acknowledging this generation: its writer takes no more appends (r4647508608). */
   sealing?: boolean;
+  revision: number; // the model's shard revision (`holdsDrawnShards`) whose set this generation holds
 }
 
 export interface ModelBackingStatus {
@@ -85,3 +87,18 @@ export function flatRecordsComplete(tracked: Tracked | undefined): boolean {
 
 /** Appends a generation's new members one by one: spreading a large suffix (~100k+) into one call overflows the stack (r4655067160). */
 export function appendMembers(target: MeshData[], items: readonly MeshData[]): void { for (const item of items) target.push(item); }
+
+/**
+ * The release allowlist (#10876): the model's current generation and the exact list it verified, only when
+ * it is registered, acknowledged (sealed) and current, idle-complete (every listed mesh consumed, no shard
+ * pending, carried or missed), not stale or failed, and backs resident arrays. Anything else: undefined.
+ */
+export function releaseCandidateOf(modelId: string, tracked: Tracked | undefined, acknowledged: Tracked | undefined, missedShards: boolean):
+  { backing: ModelGeometryBacking; meshes: MeshData[] } | undefined {
+  const backing = tracked?.backing, meshes = tracked?.meshes;
+  if (!tracked || !backing || !meshes || !tracked.registered || acknowledged !== tracked || tracked.stale
+    || tracked.failure || tracked.instancedLost || tracked.carrying || tracked.replaced || missedShards
+    || hasPendingInstancedShards(modelId)) return undefined;
+  if (!backing.isCurrent || !backing.isComplete || tracked.consumed !== meshes.length || meshes.some(isReleasedMesh)) return undefined;
+  return { backing, meshes };
+}

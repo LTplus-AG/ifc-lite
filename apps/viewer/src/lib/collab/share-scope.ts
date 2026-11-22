@@ -19,7 +19,6 @@ import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { createRoomSpatialContext } from './room-spatial-context';
 import type { GeorefMutationDataLike } from '@/lib/geo/effective-georef';
 import { IfcParser } from '@ifc-lite/parser';
-import { StepExporter } from '@ifc-lite/export';
 import { prepareAppearanceSerialization } from '@/lib/appearance/serialization';
 import { mapStepSchema } from '@/lib/export/artifact-naming';
 import { packagePortableIfcAsync } from '@/lib/export/portable-ifc';
@@ -205,6 +204,7 @@ export async function prepareShareSeed(
     if (item.isIfcx) continue;
     const view = mutationViews.get(item.modelId);
     if (view && view.getModifiedEntityCount() > 0) {
+      const { StepExporter } = await import('@/lib/export/step-export-runtime');
       const serialized = prepareAppearanceSerialization(item.modelId, item.store, view);
       const result = await new StepExporter(item.store, serialized.view).exportAsync({
         schema: mapStepSchema(item.schemaVersion ?? item.store.schemaVersion),

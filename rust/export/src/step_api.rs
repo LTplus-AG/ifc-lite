@@ -170,7 +170,8 @@ pub struct StepStats {
     /// `IfcDistributionControlElement.ControlElementId` on an upgrade), an
     /// IFC4X3 alignment product's attributes past IfcProduct's when it becomes
     /// an `IFCPROXY` (its `PredefinedType`), and by-name remap sources with no
-    /// same-named target attribute. Counted per value. Non-zero means
+    /// same-named target attribute, and an upgraded IfcDocumentReference Name
+    /// that WR1 forbids beside its ReferencedDocument. Counted per value. Non-zero means
     /// information was lost; the TypeScript twin reports the same losses per
     /// type in `schema-conversion-loss-report.ts`.
     pub attribute_values_dropped: usize,

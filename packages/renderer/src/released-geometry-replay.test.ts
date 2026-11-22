@@ -285,4 +285,12 @@ describe('replayReleasedGeometry', () => {
     await scene.finalizeStreamingAsync(gpu, pipeline); // the successor finishes its own pass
     assert.equal(scene.isEphemeralStreaming(), false);
   });
+  it('#10903 an ephemeral append whose fragment allocation throws leaves no entity or placement bounds behind', () => {
+    const scene = new Scene();
+    scene.setEphemeralStreamingMode(true);
+    (scene as unknown as { createStreamingFragments(): void }).createStreamingFragments = () => { throw new Error('allocation failed'); };
+    assert.throws(() => scene.appendToBatches([tri(7, 0, 0)], device(), pipeline, true), /allocation failed/);
+    assert.ok(!scene.getEntityBoundingBox(7), 'no entity box for geometry that never drew');
+    assert.deepEqual((scene as unknown as { modelTranslations: { releasedEntityIds(i: number): number[] } }).modelTranslations.releasedEntityIds(0), [], 'no placement bounds either');
+  });
 });

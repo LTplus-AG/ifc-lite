@@ -1190,7 +1190,6 @@ export class Scene {
       }
     }
 
-    if (isStreaming && !retainStreamingGeometry) { unionEntityWorldBounds(this.boundingBoxes, meshDataArray); this.modelTranslations.unionReleasedEntityBounds(meshDataArray); }
     if (isStreaming) {
       // STREAMING: Create small fragment batches from ONLY the new meshes.
       // Avoids the O(N²) cost of re-merging all accumulated data every batch.
@@ -1202,6 +1201,7 @@ export class Scene {
         this.createStreamingFragments(renderable, device, pipeline);
         for (const mesh of renderable) this.streamingFragmentIndexBudget -= mesh.indices.length;
       }
+      if (!retainStreamingGeometry) { unionEntityWorldBounds(this.boundingBoxes, meshDataArray); this.modelTranslations.unionReleasedEntityBounds(meshDataArray); } // after its fragments: a throw leaves no bounds
       if (!sourceCounted) { this.triangleCounts.noteSources(meshDataArray); this.geometryChanges.changed(); }
       return;
     }

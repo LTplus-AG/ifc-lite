@@ -149,6 +149,20 @@ export function claimReview(doc: FlowDocument, inputs: Record<string, unknown>):
   });
 }
 
+/** Return this tab's exact claim to review before any downstream work has started. */
+export async function releaseReviewClaim(claimed: FlowCheckpoint): Promise<void> {
+  const expectedClaim = claimed.claim;
+  const released = await updateCheckpoint(browserCheckpointStore, claimed.id, current => {
+    const { claim, ...reviewed } = current;
+    if (current.state !== 'applying' || !expectedClaim || claim?.owner !== TAB_OWNER
+      || claim.at !== expectedClaim.at || claim.leaseUntil !== expectedClaim.leaseUntil) {
+      throw new CheckpointError('not-owner', 'The unstarted review claim is no longer held by this run.');
+    }
+    return { ...reviewed, state: 'reviewed', updatedAt: Date.now() };
+  });
+  if (useFlowReview.getState().checkpoint?.id === claimed.id) useFlowReview.setState({ checkpoint: released });
+}
+
 export function finishReview(result: RunResult | null, failure?: string): Promise<FlowCheckpoint | null> {
   const message = failure ?? result?.log.find((l) => l.level === 'error')?.message;
   return transition((c) => finishCheckpoint(c, TAB_OWNER, { ok: !!result?.ok && failure === undefined, ...(message ? { message } : {}) }));

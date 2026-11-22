@@ -12,7 +12,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { attachCapturedLoad } from '@/lib/error-reports/correlation';
 import { useShallow } from 'zustand/react/shallow';
 import { type FederatedModel, useViewerStore } from '@/store';
-import { enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
+import { completeInstancedShardSupply, enqueueInstancedShards, instancedShardSupplyToken } from '@/store/instancedShardQueue';
 import { resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
 import { createModelLoadActivity, handOffToRetry, installModelLoadCanceller, LOAD_COMPLETE, settleOwnedLoadUi, watchLoadSupersession } from './modelLoadCanceller.js';
 import type { ModelLoadOptions } from './modelLoadOptions.js';
@@ -32,7 +32,7 @@ import { beginGeometryKernel, openGeometryEvents, runPickStart, claimFastGeometr
 import { memoryAccounting } from '../lib/perf/memoryAccounting.js';
 import { loadTracer, nextPaintOrTimeout } from '../lib/perf/loadTrace.js';
 import { countCopy } from '@ifc-lite/load-trace'; // #6957 full source-copy counters
-import { headIsZip, NO_ARCHIVE_IMAGES, sourceArrayBuffer } from './ingest/sourceBuffers.js';
+import { FORMAT_HEAD_BYTES, headIsZip, NO_ARCHIVE_IMAGES, sourceArrayBuffer } from './ingest/sourceBuffers.js';
 import { compactSource } from '../lib/source-compaction/source-compaction.js';
 import { runAfterModelSettled } from '../lib/perf/afterLoad.js';
 import {
@@ -88,7 +88,7 @@ import {
 } from './ingest/geometryHandleDisposal.js';
 import { inspectGaussianAdmission } from './ingest/gaussianAdmission.js';
 import { loadGaussianCapture } from './ingest/gaussianLoad.js';
-import { detectPointCloudFormat, ingestPointCloud } from './ingest/pointCloudIngest.js';
+import { detectPointCloudFormat } from './ingest/pointCloudFormat.js';
 import { bindPointCloudIdentity } from './ingest/pointCloudIdentity.js';
 import { pointCloudSpatialReferenceFromMetadata, preparePointCloudSpatialLoad } from './ingest/pointCloudSpatialLoad.js';
 import { removePointCloudScanCache } from './ingest/pointCloudScanCache.js';
@@ -420,12 +420,12 @@ export function useIfcLoader() {
       let format: ReturnType<typeof detectFormat> | NonNullable<ReturnType<typeof detectPointCloudFormat>> | 'landxml' = processedModel ? 'ifc' : isLandXmlFileName(file.name) ? 'landxml' : 'unknown';
       let loadedBufferByteLength = fileSize;
       let modelSourceIdentity = '';
-      // #7022: one full-source hash, awaited only for publication/cache.
-      let placementIdentity: Promise<string | undefined> = Promise.resolve(undefined);
-
-      let shardGeneration = instancedShardGeneration();
+      let placementIdentity: Promise<string | undefined> = Promise.resolve(undefined); // #7022: one hash for publication/cache.
+      let shardGeneration = instancedShardSupplyToken(modelId);
       const commitPrimarySession = () => {
-        if (target.kind === 'primary' && !primaryCommitted) { releaseCanceller.commit(); currentSession = ++loadSessionRef.current; sessionOwner.value = currentSession; primaryCommitted = true; }
+        if (target.kind !== 'primary' || primaryCommitted) return;
+        options?.beforePrimaryReset?.();
+        releaseCanceller.commit(); currentSession = ++loadSessionRef.current; sessionOwner.value = currentSession; primaryCommitted = true;
       };
       const initializeModel = () => {
         if (initialized) return;
@@ -442,7 +442,7 @@ export function useIfcLoader() {
           useViewerStore.getState().clearLayerStack();
         }
         primarySession?.settle(true);
-        shardGeneration = instancedShardGeneration(); // after our own reset: a later one supersedes our shards
+        shardGeneration = instancedShardSupplyToken(modelId); // after our own reset: a later one (or a discard of this model) supersedes our shards
 
         // Reset memory accounting so per-load summaries don't accumulate across files.
         memoryAccounting.reset();
@@ -630,9 +630,8 @@ export function useIfcLoader() {
           // entity id by `idOffset`, only known now (registerModelOffset ran above).
           // AFTER addModel: the drain runs in a later task, once React committed it,
           // so Viewport.tsx's `modelIdToIndex` / `modelIdToOffset` see this model.
-          if (instancedShards.length > 0) {
-            enqueueInstancedShards(modelId, instancedShards, shardGeneration);
-          }
+          if (instancedShards.length > 0) enqueueInstancedShards(modelId, instancedShards, shardGeneration);
+          completeInstancedShardSupply(modelId, instancedShards.length, shardGeneration); // the whole set, zero included
           return;
         }
 
@@ -711,7 +710,7 @@ export function useIfcLoader() {
       commitPrimarySession(); // supersede old work before the new pick starter installs its own watchers
       runPickStart({ file, target, kernel: geometryKernel, retry: options?.isResourceRetry === true || options?.tierOverride !== undefined, isCurrent }); // the one place work starts before the reset (ingest/pickStart.ts)
       initializeModel();
-      const headBuf = preflightHead ?? await file.slice(0, 4096).arrayBuffer();
+      const headBuf = preflightHead ?? await file.slice(0, FORMAT_HEAD_BYTES).arrayBuffer();
 
       if (isStale()) return;
       const gaussianAdmission = await inspectGaussianAdmission(file, headBuf);
@@ -858,11 +857,12 @@ export function useIfcLoader() {
         let { sourceSpatialReference, alignment } = await preparePointCloudSpatialLoad(
           file, format, sourceUnit, () => isCurrent(),
         );
-        // Never publish a decoded source reference, alignment availability, or
-        // metadata-refusal toast after its owning load has been superseded.
+        // Publish alignment metadata only while this load owns the session.
         if (isStale()) return;
         const setAlignmentAvailable = useViewerStore.getState().setPointCloudAlignmentAvailable;
         const alignmentEnabled = useViewerStore.getState().pointCloudAlignmentEnabled;
+        const { ingestPointCloud } = await import('./ingest/pointCloudIngest.js');
+        if (isStale()) return;
         const ingest = ingestPointCloud({
           format,
           blob,
@@ -877,10 +877,7 @@ export function useIfcLoader() {
           onSpatialMetadata: (metadata) => {
             sourceSpatialReference ??= pointCloudSpatialReferenceFromMetadata(format, metadata);
           },
-          // Session-guard the histogram writes: a superseded stream
-          // keeps publishing periodic counts until `done` settles, and
-          // an unguarded write would repopulate phantom classes after
-          // a newer load reset the store.
+          // A superseded stream may publish counts until `done` settles.
           onClassCounts: (handleId, counts) => {
             if (isCurrent()) {
               setClassCounts(handleId, counts);
@@ -1198,11 +1195,12 @@ export function useIfcLoader() {
             // name the three outcomes explicitly.
             const cacheOutcome = decideCacheLoadOutcome({
               loadSucceeded: cacheLoadResult.success,
-              isStale: isStale(),
+              isStale: isStale(), superseded: cacheLoadResult.superseded === true, // a removed model's adoption reparses nothing (r4655016554)
             });
             if (cacheOutcome === 'stale') {
               // A newer load owns the active slot: write nothing, parse
-              // nothing. The newer load drives `setLoading`/progress itself.
+              // nothing. The newer load drives `setLoading`/progress itself; with none (model removed mid-adoption) settle ours.
+              if (!isStale()) { activity.cancelled = true; settleLoadUi(); }
               return;
             }
             if (cacheOutcome === 'serve') {
@@ -1933,6 +1931,7 @@ export function useIfcLoader() {
                   return;
                 }
 
+                completeInstancedShardSupply(modelId, allInstancedShards.length, shardGeneration); // every streamed shard is queued
                 await trace.span('load.finalize', () => finalizeModel(dataStore, useViewerStore.getState().geometryResult, getViewerSchemaVersion(dataStore), {
                   loadState: 'complete',
                   // Only show "writing" when this file will actually be cached

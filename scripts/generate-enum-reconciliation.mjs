@@ -66,7 +66,7 @@ const REGISTRIES = {
   IFC4: await load('packages/parser/src/generated/schema-registry.ts'),
   IFC4X3: await load('packages/parser/src/generated/ifc4x3/schema-registry.ts'),
 };
-const { resolveMissingEnumMember } = await import(
+const { LABEL_CARRIES, resolveMissingEnumMember } = await import(
   pathToFileURL(join(ROOT, 'packages/export/src/schema-enum-policy.ts')).href
 );
 
@@ -125,21 +125,29 @@ const rustRows = { IFC2X3: new Map(), IFC4: new Map(), IFC4X3: new Map() };
 for (const [from, to] of DIRECTIONS) {
   const source = REGISTRIES[from];
   const target = REGISTRIES[to];
+  const sourceEntities = new Map(Object.entries(source.entities).map(([n, entity]) => [n.toUpperCase(), entity]));
   const rows = [];
   for (const [entityName, meta] of Object.entries(target.entities).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
     if (meta.isAbstract) continue;
     const upper = entityName.toUpperCase();
     // #10856: a rename target gets every enum slot, whatever the source enum.
     const renamed = (RENAME_TARGETS[from][to] ?? []).includes(upper);
+    const carried = to === 'IFC2X3' ? LABEL_CARRIES.find(([type]) => type === upper) : undefined;
+    const fromEntity = carried ? sourceEntities.get(carried[1]) : undefined;
+    const sourcePredefined = (fromEntity?.allAttributes ?? fromEntity?.attributes)?.find((a) => a.name === 'PredefinedType');
     const attributes = meta.allAttributes ?? meta.attributes;
     attributes.forEach((attribute, index) => {
       const members = Object.hasOwn(target.enums, attribute.type) ? target.enums[attribute.type] : undefined;
       if (!members) return;
-      const sourceMembers = Object.hasOwn(source.enums, attribute.type) ? source.enums[attribute.type] : [];
+      // IFC2X3 gave several of these enums a different slot name even
+      // when the record keeps its class name (e.g. IfcWorkPlan).
+      const remapped = carried?.[2] === attribute.name && sourcePredefined !== undefined;
+      const sourceEnum = remapped ? sourcePredefined.type : attribute.type;
+      const sourceMembers = Object.hasOwn(source.enums, sourceEnum) ? source.enums[sourceEnum] : [];
       const missing = sourceMembers.filter((m) => !members.includes(m));
-      if (missing.length === 0 && !renamed) return;
+      if (missing.length === 0 && !renamed && !remapped) return;
       const resolution = resolveMissingEnumMember(attributes, index, members);
-      rows.push({ entity: entityName, attribute: attribute.name, enumName: attribute.type, missing, renamed, resolution, attributes });
+      rows.push({ entity: entityName, attribute: attribute.name, enumName: attribute.type, missing, renamed, remapped, resolution, attributes });
       const row = rustRows[to].get(upper) ?? { arity: attributes.length, slots: new Map() };
       row.slots.set(index, { attribute: attribute.name, members, resolution });
       rustRows[to].set(upper, row);
@@ -154,7 +162,7 @@ for (const [from, to] of DIRECTIONS) {
   } else {
     lines.push('| Entity.Attribute | Enum | Members the target lacks | Written as |', '| --- | --- | --- | --- |');
     for (const r of rows) {
-      const lacks = [...r.missing, ...(r.renamed ? ['(renamed into this type: any member not listed)'] : [])];
+      const lacks = [...r.missing, ...(r.remapped ? ['(remapped into this slot: any member not listed)'] : r.renamed ? ['(renamed into this type: any member not listed)'] : [])];
       lines.push(`| ${r.entity}.${r.attribute} | ${r.enumName} | ${lacks.join(', ')} | ${describe(r.resolution, r.attributes)} |`);
     }
     lines.push('');

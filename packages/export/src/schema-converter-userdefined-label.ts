@@ -11,30 +11,23 @@
  * `ObjectType` is kept. Twin of Rust `schema_userdefined_label.rs`.
  */
 
+import { LABEL_CARRIES } from './schema-enum-policy.js';
 import { attrNameTable, type IfcSchemaVersion } from './schema-converter.js';
 import { readStepSlots } from './step-argument-parser.js';
 import { skipStepTrivia } from './step-slot-grammar.js';
 import { stepRecordHead } from './step-record-frame.js';
 
-/** `[IFC2X3 type, IFC4 type, IFC2X3 enum, IFC2X3 label]`; the IFC4 label is ObjectType. */
-const LABEL_CARRIES: readonly (readonly [string, string, string, string])[] = [
-  ['IFCPROCEDURE', 'IFCPROCEDURE', 'ProcedureType', 'UserDefinedProcedureType'],
-  ['IFCWORKPLAN', 'IFCWORKPLAN', 'WorkControlType', 'UserDefinedControlType'],
-  ['IFCWORKSCHEDULE', 'IFCWORKSCHEDULE', 'WorkControlType', 'UserDefinedControlType'],
-  ['IFCELECTRICDISTRIBUTIONPOINT', 'IFCELECTRICDISTRIBUTIONBOARD', 'DistributionPointFunction', 'UserDefinedFunction'],
-];
-
 const ifc4Like = (s: IfcSchemaVersion) => s === 'IFC4' || s === 'IFC4X3';
 
 /** True when `slot` is `token` (any case) with only whitespace and comments around it. */
-function isToken(slot: string | undefined, token: string): boolean {
+export function isToken(slot: string | undefined, token: string): boolean {
   const start = slot === undefined ? -1 : skipStepTrivia(slot, 0);
   return start !== -1 && slot!.slice(start, start + token.length).toUpperCase() === token
     && skipStepTrivia(slot!, start + token.length) === slot!.length;
 }
 
 /** No value: `$`, `*` or nothing, comments aside. A missing slot is not unset. */
-const isUnset = (slot: string | undefined) => slot !== undefined
+export const isUnset = (slot: string | undefined) => slot !== undefined
   && (isToken(slot, '$') || isToken(slot, '*') || skipStepTrivia(slot, 0) === slot.length);
 
 /** `converted`, written from `source` between the schemas, with the label carried. */

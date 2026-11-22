@@ -4,6 +4,12 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, mock, test } from 'node:test';
+import { setImmediate as nextTurn } from 'node:timers/promises';
+import { PLUGIN_API_VERSION, type FileSourceProvider } from '@ifc-lite/plugin-api';
+import { SourceHost } from '@/services/sources/source-host';
+import { attachCoordinationSources } from '@/services/coordination-hosts';
+import { attachCoordinationModelAdder } from '@/services/coordination-loader';
+import { enqueueSourceLoad } from '@/lib/sources/loadQueue';
 import { createBimContext } from '@ifc-lite/sdk';
 import { useViewerStore } from '@/store';
 import { LocalBackend } from '@/sdk/local-backend';
@@ -213,4 +219,28 @@ test('artifact download and deletion refuse a revoked grant even with a valid ow
     assert.equal(result.errorCode, 'READ_ONLY');
   }
   assert.equal(listArtifacts(host).length, 1);
+});
+
+test('a queued source load rechecks permission when it actually reaches native admission', async () => {
+  let release!: () => void, downloaded!: () => void, granted = true, loads = 0;
+  const blocker = enqueueSourceLoad(() => new Promise<void>(resolve => { release = resolve; }));
+  const received = new Promise<void>(resolve => { downloaded = resolve; });
+  const provider: FileSourceProvider = {
+    manifest: { name: 'queue-fixture', title: 'Queue fixture', api: PLUGIN_API_VERSION, auth: 'preferences', permissions: { network: [] }, preferences: [],
+      capabilities: { containerListing: 'direct-children', listFilesIsRecursive: false, revisionHistory: false, downloadHistoricalRevisions: false, changeDetection: false, search: false }, contributes: { fileSources: ['./provider.ts'] } },
+    listProjects: async () => ({ items: [] }), listContainers: async () => ({ items: [] }), listFiles: async () => ({ items: [] }),
+    download: async () => { downloaded(); return new ArrayBuffer(0); },
+  };
+  const source = new SourceHost(); assert.equal(source.register(provider), true);
+  const detachSource = attachCoordinationSources(source);
+  const detachLoader = attachCoordinationModelAdder(async () => { loads++; return null; });
+  try {
+    const pending = dispatchMainViewerTool(host, 'viewer_operation_execute', { operation_id: 'sources.loadModel', input: {
+      provider: 'queue-fixture', project_id: 'project', container_id: 'container', file_id: 'file', revision_id: '', filename: 'fixture.ifc',
+    } }, { canEdit: () => granted });
+    await received; await nextTurn(); granted = false; release(); await blocker;
+    const result = await pending;
+    assert.equal(result.errorCode, 'READ_ONLY', result.text);
+    assert.equal(loads, 0, 'waiting in a shared queue must not admit a later native write under a revoked grant');
+  } finally { release(); await blocker; detachLoader(); detachSource(); }
 });

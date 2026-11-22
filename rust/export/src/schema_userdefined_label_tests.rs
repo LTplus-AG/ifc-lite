@@ -140,3 +140,17 @@ fn a_point_or_board_member_the_target_lacks_is_reconciled_10856() {
     assert_eq!(out, "#5=IFCDERIVEDUNIT((#6),.USERDEFINED.,'dB');");
     assert!(w.iter().any(|w| w.contains("label slot already held a value") && w.contains("IFCDERIVEDUNIT.UnitType .SOUNDPOWERLEVELUNIT.")), "{w:?}");
 }
+
+#[test]
+fn distribution_board_function_and_labels_survive_the_ifc4x3_downgrade_11021() {
+    let common = "#7=IFCDISTRIBUTIONBOARD('g',#2,'n',$,$,$,$,'t',.SWITCHBOARD.);";
+    let novel = "#7=IFCDISTRIBUTIONBOARD('g',#2,'n',$,$,$,$,'t',.DISPATCHINGBOARD.);";
+    let custom = "#7=IFCDISTRIBUTIONBOARD('g',#2,'n',$,'Custom',$,$,'t',.USERDEFINED.);";
+    for (input, expected) in [
+        (common, "#7=IFCELECTRICDISTRIBUTIONPOINT('g',#2,'n',$,$,$,$,'t',.SWITCHBOARD.,$);"),
+        (novel, "#7=IFCELECTRICDISTRIBUTIONPOINT('g',#2,'n',$,$,$,$,'t',.USERDEFINED.,'DISPATCHINGBOARD');"),
+        (custom, "#7=IFCELECTRICDISTRIBUTIONPOINT('g',#2,'n',$,'Custom',$,$,'t',.USERDEFINED.,'Custom');"),
+    ] {
+        assert_eq!(convert(input, "IFC4X3", "IFC2X3"), (expected.to_owned(), 0, 0));
+    }
+}

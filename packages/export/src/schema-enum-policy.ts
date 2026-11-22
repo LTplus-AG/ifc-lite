@@ -43,6 +43,14 @@ export type EnumResolution =
   | { readonly kind: 'omit' }
   | { readonly kind: 'refuse' };
 
+/** `[IFC2X3 type, IFC4 type, IFC2X3 enum, IFC2X3 label]`; the IFC4 label is ObjectType. */
+export const LABEL_CARRIES: readonly (readonly [string, string, string, string])[] = [
+  ['IFCPROCEDURE', 'IFCPROCEDURE', 'ProcedureType', 'UserDefinedProcedureType'],
+  ['IFCWORKPLAN', 'IFCWORKPLAN', 'WorkControlType', 'UserDefinedControlType'],
+  ['IFCWORKSCHEDULE', 'IFCWORKSCHEDULE', 'WorkControlType', 'UserDefinedControlType'],
+  ['IFCELECTRICDISTRIBUTIONPOINT', 'IFCELECTRICDISTRIBUTIONBOARD', 'DistributionPointFunction', 'UserDefinedFunction'],
+];
+
 /** The user-defined label slot a `PredefinedType` pairs with, by supertype. */
 const PREDEFINED_TYPE_LABEL_SLOTS = ['ObjectType', 'ElementType', 'ProcessType', 'ResourceType'];
 

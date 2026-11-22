@@ -283,7 +283,7 @@ export function analyzeConversionLoss(
   if (fromSchema !== toSchema) {
     const { entityIndex, deferredEntityIndex, source } = store;
     const index = new SourceRecords({ entityIndex, deferredEntityIndex, source: source ?? EMPTY_SOURCE_BYTES });
-    let inventory = source || index.hasIndexedRecords() ? index : undefined;
+    let inventory = index.hasIndexedRecords() ? index : undefined;
     const typed: [string, readonly number[], EntityConversionInfo][] = [];
     // An IFC2X3 varying action classifies as identity, but the upgrade can report its CausedBy (`strandedAs`).
     const varying: [string, readonly number[]][] = [];

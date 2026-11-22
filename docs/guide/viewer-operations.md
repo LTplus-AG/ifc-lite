@@ -4,13 +4,20 @@ The viewer's local agent connection offers a bounded operation gateway alongside
 its existing model tools and command palette gateway. It uses native SDK adapters
 and store actions. Most services work with their panels closed; renderer and editor prerequisites remain explicit.
 
-`viewer_operation_coverage` reports the finite audit of every built-in panel,
-viewport tools and toolbar exports: concrete control bindings, missing bindings,
-presentation equivalents and native browser/credential/review boundaries. A complete
-audit means every listed control is classified; it does not mean every control can
-run unattended or that arbitrary third-party UI is automated.
-A control that lists more than one operation is marked `grouped`: the audit does not
-record which operation serves which part of it.
+`viewer_operation_coverage` returns a summary with each audited panel, viewport
+tool, toolbar export, and non-panel row's ID, completeness, gap count, and gap IDs.
+An audit is complete when all inventoried controls are classified and every
+registered operation has an implemented control binding. Some classified
+controls still require native browser, credential, or review interactions.
+
+Pass `section` (`panels`, `tools`, `exports`, `non_panel`, or `human_only`)
+to get detailed rows. Use `row_id` to inspect one row, for example
+`{"section":"panels","row_id":"appearance"}`. Use `limit` (default 3, maximum 5)
+and follow `next_offset` as the next request's `offset` until it is `null`.
+Detailed rows show control bindings, classifications, reasons, and any gaps.
+A control that lists several operations is marked `grouped`. The audit does not
+assign each operation to a specific part of that control.
+
 The full migration acceptance criteria are in
 [the architecture plan](../architecture/viewer-automation-plan.md).
 
@@ -21,7 +28,7 @@ The full migration acceptance criteria are in
 | `viewer_operation_execute` | Run a declared native operation with the current commands and edits grant. |
 | `viewer_operation_job` | Inspect an owned job's actual state, progress and result. |
 | `viewer_operation_cancel` | Request cancellation; inspect until the native runner settles. |
-| `viewer_operation_coverage` | Inspect control bindings, remaining gaps and host boundaries. |
+| `viewer_operation_coverage` | Summarize coverage or page through one section's control bindings and boundaries. |
 | `viewer_artifacts` | List connection-owned completed exports. |
 | `viewer_artifact_read` | Read a bounded base64 chunk of an export. |
 | `viewer_artifact_download` | Dispatch a native browser download; this does not confirm a saved file. |

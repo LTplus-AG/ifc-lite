@@ -5,6 +5,7 @@
 import type { ComponentType } from 'react';
 import { MeasureOverlay } from '@/components/viewer/tools/MeasurePanel';
 import { SectionBar, SectionScene } from './lazy-section-tool';
+import { TOOL_IDS } from './tool-ids';
 
 // Resolves once the Section tool's chunks are loaded (see `lazy-section-tool.tsx`).
 export { loadSectionTool } from './lazy-section-tool';
@@ -25,15 +26,14 @@ import '@/lib/commands/modeling/builtin';
  *
  * `ToolId` is the closed set of `activeTool` string literals in use across
  * the viewer (`store/slices/uiSlice.ts`'s `activeTool` is typed as a plain
- * `string`, so this is the one place that set is written down;
- * `isToolId` is the guard `ToolOverlays` uses to enter the table). Every
+ * `string`). The list lives in `tool-ids.ts`, and `ToolOverlays` uses
+ * `isToolId` to enter the table. Every
  * id gets a row, even an empty `{}` one, rather than making the table
  * `Partial`: a tool that has NOT declared a bar/scene/hint is still a
  * decision ("nothing here yet"), not an absence the table can't represent.
  */
 
 export { TOOL_IDS } from './tool-ids';
-import { TOOL_IDS } from './tool-ids';
 
 export type ToolId = (typeof TOOL_IDS)[number];
 

@@ -3,18 +3,27 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { operationArtifactSpecs, operationArtifactTools } from './operation-artifact-tools';
-import { boundedString, integer, invalid, keys } from './tool-args';
+import { boundedString, integer, invalid, keys, oneOf } from './tool-args';
+import { invalidInput } from './operations/refusals';
 import type { AgentInputSchema, AgentTool, ToolOutput } from './types';
 
 const executionSchema = { type: 'object', properties: {
   model_id: { type: 'string' }, operation_id: { type: 'string' }, input: { type: 'object' },
   expected_revision: { type: 'integer', minimum: 0 }, idempotency_key: { type: 'string', minLength: 1, maxLength: 200 }, background: { type: 'boolean' },
 }, required: ['operation_id'] } satisfies AgentInputSchema;
+const COVERAGE_SECTIONS = ['panels', 'tools', 'exports', 'non_panel', 'human_only'] as const;
+const MAX_COVERAGE_PAGE = 5;
+
 export const OPERATION_SPECS = {
   ...operationArtifactSpecs,
   viewer_operation_coverage: {
-    description: 'Read machine-readable migration coverage for all built-in panels, finite viewport tools and non-panel controls. Lists actual implemented IDs, remaining gaps and specific human-only host boundaries. A control marked grouped lists several operations together; which one serves which part of the control is not recorded. Partial coverage is never reported as complete.',
-    inputSchema: { type: 'object', properties: {} } satisfies AgentInputSchema, readOnly: true,
+    description: 'Summarize the built-in viewer coverage audit by row, including completeness and gap IDs. Pass section for a page of detailed control bindings and host boundaries, optionally filtered by row_id. Follow next_offset for additional rows. Grouped controls list several operations without assigning each to a specific part of the control.',
+    inputSchema: { type: 'object', properties: {
+      section: { type: 'string', enum: COVERAGE_SECTIONS },
+      row_id: { type: 'string', minLength: 1, maxLength: 200, description: 'Select one row in the requested section.' },
+      offset: { type: 'integer', minimum: 0 },
+      limit: { type: 'integer', minimum: 1, maximum: MAX_COVERAGE_PAGE, default: 3 },
+    } } satisfies AgentInputSchema, readOnly: true,
   },
   viewer_operations: {
     description: 'Search native parameterized viewer operations by natural-language task (query: "measure distance", "color walls", "screenshot"); results are ranked best first. operation_id describes one operation with its exact input/output schema. Workflow: model_list (model ids) → query_entities (express ids) → viewer_operations {query} → viewer_operations {operation_id} → viewer_operation_inspect (read-only) or viewer_operation_execute (needs the commands-and-edits grant the user toggles in the tab). Covers camera, section planes, visibility, selection, appearance, lighting, authoring review, analysis, documents, exports, sources and workflows. Discovery does not execute operations; opening panels is separate (viewer_commands).',
@@ -48,9 +57,30 @@ function jobId(args: Record<string, unknown>) {
 export const operationTools: Record<keyof typeof OPERATION_SPECS, AgentTool> = {
   ...operationArtifactTools,
   viewer_operation_coverage: { needs: 'none', async run(_host, args) {
-    if (Object.keys(args).length) invalid('Coverage accepts no arguments.');
+    keys(args, ['section', 'row_id', 'offset', 'limit']);
+    const section = oneOf(args, 'section', COVERAGE_SECTIONS);
+    if (!section && Object.keys(args).length) invalid('Pass a valid section to request coverage details.');
+    const row_id = boundedString(args, 'row_id', 200);
+    const offset = integer(args, 'offset', 0, 0, Number.MAX_SAFE_INTEGER);
+    const limit = integer(args, 'limit', 3, 1, MAX_COVERAGE_PAGE);
+
     const { viewerOperationCoverage } = await import('./operations/coverage');
-    return output(viewerOperationCoverage());
+    const report = viewerOperationCoverage();
+    if (section) {
+      const rows = row_id === undefined ? report[section] : report[section].filter(row => row.id === row_id);
+      if (row_id !== undefined && !rows.length) {
+        throw invalidInput('unknown-target', 'No coverage row has that ID in the requested section.');
+      }
+      // Coverage is static for this build, so the offset is stable across calls.
+      return output({ version: report.version, section, total: rows.length, offset,
+        next_offset: offset + limit < rows.length ? offset + limit : null, rows: rows.slice(offset, offset + limit) });
+    }
+
+    const { panels, tools, exports, non_panel, human_only, ...overview } = report;
+    const summarize = (rows: readonly { id: string; complete: boolean; gaps: readonly { id: string }[] }[]) =>
+      rows.map(({ id, complete, gaps }) => ({ id, complete, gap_count: gaps.length, gap_ids: gaps.map(gap => gap.id) }));
+    return output({ ...overview, panels: summarize(panels), tools: summarize(tools), exports: summarize(exports),
+      non_panel: summarize(non_panel), human_only: human_only.map(({ id }) => ({ id })) });
   } },
   viewer_operations: { needs: 'none', async run(_host, args) {
     keys(args, ['query', 'operation_id', 'offset', 'limit']);

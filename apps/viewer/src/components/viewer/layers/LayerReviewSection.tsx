@@ -205,10 +205,7 @@ function CandidateReview({
         });
         if (!isCurrent()) return;
         // A newer staged draft or an edit made during the post still belongs in the form.
-        if (withdrawals.current === staging) {
-          setStagedEntity(null);
-          if (edits.current === edited) { setTitle(''); setDescription(''); }
-        }
+        if (withdrawals.current === staging && edits.current === edited) { setStagedEntity(null); setTitle(''); setDescription(''); }
         await refresh();
         if (isCurrent()) toast.success(t('layersPanel.review.postedToast'));
       } catch (err) {

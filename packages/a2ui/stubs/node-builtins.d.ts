@@ -2,31 +2,22 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+/** Browser stand-in for `fs`/`path`; every function throws. See node-builtins.js. */
 type Unavailable = (...args: unknown[]) => never;
-
-export const existsSync: Unavailable;
-export const mkdirSync: Unavailable;
-export const readFileSync: Unavailable;
-export const realpathSync: Unavailable;
-export const rmSync: Unavailable;
-export const writeFileSync: Unavailable;
-export const dirname: Unavailable;
-export const join: Unavailable;
-export const sep: '/';
-export const posix: { sep: string; join: Unavailable; dirname: Unavailable };
-export const win32: typeof posix;
-
+export declare const existsSync: Unavailable;
+export declare const mkdirSync: Unavailable;
+export declare const readFileSync: Unavailable;
+export declare const realpathSync: Unavailable;
+export declare const rmSync: Unavailable;
+export declare const writeFileSync: Unavailable;
+export declare const dirname: Unavailable;
+export declare const join: Unavailable;
+export declare const sep: '/';
+export declare const posix: { sep: '/'; join: Unavailable; dirname: Unavailable };
+export declare const win32: { sep: '\\'; join: Unavailable; dirname: Unavailable };
 declare const stub: {
-  existsSync: typeof existsSync;
-  mkdirSync: typeof mkdirSync;
-  readFileSync: typeof readFileSync;
-  realpathSync: typeof realpathSync;
-  rmSync: typeof rmSync;
-  writeFileSync: typeof writeFileSync;
-  dirname: typeof dirname;
-  join: typeof join;
-  sep: typeof sep;
-  posix: typeof posix;
-  win32: typeof win32;
+  existsSync: Unavailable; mkdirSync: Unavailable; readFileSync: Unavailable; realpathSync: Unavailable;
+  rmSync: Unavailable; writeFileSync: Unavailable; dirname: Unavailable; join: Unavailable;
+  sep: '/'; posix: typeof posix; win32: typeof win32;
 };
 export default stub;

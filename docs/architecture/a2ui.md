@@ -74,8 +74,9 @@ Renderer functions (A2UI v1.0 functions, `allowedCallers` per `policy.ts`): `sel
 1. **Chat (Express)**: the system prompt carries the pruned catalog snippet. The model writes
    prose plus `<a2ui>` blocks; `StreamedAnswer` validates and renders while streaming. Invalid
    blocks render an error part and feed the existing repair loop.
-2. **Scripts**: `bim.ui.table/kpis/chart/legend/show` in the sandbox build surfaces from data
-   the script computed. The host validates with `validatePayload` before rendering.
+2. **Scripts**: `bim.ui.table/stats/chart/legend/actions/callout/entity/list/show` build surfaces
+   from script results. The sandbox validates the section specs and builds the A2UI messages on
+   the host.
 3. **External agents**: MCP tools return `application/a2ui+json` resources (MCP Apps hosts
    render them through the `ui://ifc-lite/a2ui-surface` app), and `viewer_show_ui` pushes a surface into
    a live viewer tab over the agent bridge.

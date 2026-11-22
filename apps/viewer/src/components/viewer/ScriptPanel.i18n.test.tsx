@@ -25,6 +25,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
+import { buildSurface } from '@ifc-lite/a2ui';
 import type { BimContext } from '@ifc-lite/sdk';
 import { BimReactContext } from '@/sdk/BimProvider.js';
 import { ExtensionHostContext } from '@/sdk/ExtensionHostProvider.js';
@@ -131,6 +132,19 @@ describe('ScriptPanel localization (#4918)', () => {
       container.querySelector('button[aria-label="Reset sandbox"]'),
       'expected the reset-sandbox icon button',
     );
+  });
+
+  it('shows a result surface summary and collapsed JSON in script output', () => {
+    const surfaces = [buildSurface({
+      surfaceId: 'script-1-1',
+      sections: [{ kind: 'callout', text: 'Walls found' }],
+    })];
+    useViewerStore.getState().setScriptResult({ value: undefined, logs: [], durationMs: 1, surfaces });
+    const container = renderPanel();
+    const summary = [...container.querySelectorAll('summary')].find((element) => element.textContent === '1 result surface');
+    assert.ok(summary);
+    assert.equal(summary.parentElement?.hasAttribute('open'), false);
+    assert.deepEqual(JSON.parse(summary.parentElement?.querySelector('pre')?.textContent ?? ''), surfaces);
   });
 
   it('shows the saved-script selector and its Delete menu item once a script exists', () => {

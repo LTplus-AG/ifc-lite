@@ -6,6 +6,7 @@
  * Types for the LLM chat integration.
  */
 
+import type { ScriptResult } from '@ifc-lite/sandbox';
 import type { RepairScope, ScriptDiagnostic } from './script-diagnostics.js';
 
 export type MessageRole = 'user' | 'assistant' | 'system';
@@ -33,7 +34,7 @@ export interface CodeBlock {
   code: string;
 }
 
-export interface CodeExecResult {
+export interface CodeExecResult extends Pick<ScriptResult, 'surfaces'> {
   status: 'running' | 'success' | 'error';
   logs?: Array<{ level: string; args: unknown[] }>;
   value?: unknown;

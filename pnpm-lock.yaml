@@ -2537,6 +2537,9 @@ importers:
 
   packages/sandbox:
     dependencies:
+      '@ifc-lite/a2ui':
+        specifier: workspace:^
+        version: link:../a2ui
       '@ifc-lite/extensions':
         specifier: workspace:^
         version: link:../extensions
@@ -2549,6 +2552,9 @@ importers:
       quickjs-emscripten:
         specifier: ^0.32.0
         version: 0.32.0
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
     devDependencies:
       '@ifc-lite/create':
         specifier: workspace:^
@@ -2571,6 +2577,9 @@ importers:
 
   packages/sdk:
     dependencies:
+      '@ifc-lite/a2ui':
+        specifier: workspace:^
+        version: link:../a2ui
       '@ifc-lite/bcf':
         specifier: workspace:^
         version: link:../bcf

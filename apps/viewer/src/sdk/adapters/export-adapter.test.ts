@@ -16,6 +16,8 @@ import { LocalBackend } from '../local-backend.js';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '../../store/index.js';
 
+await (await import('./export-adapter.js')).prepareSdkStepExport?.();
+
 test('resolveVisibilityFilterSets honors legacy single-model hidden and isolated state (routed through resolveExportVisibility, #4333 follow-up)', () => {
   useViewerStore.getState().resetViewerState();
   useViewerStore.setState({

@@ -20,11 +20,25 @@
  */
 
 import { useRef, useEffect, useMemo } from 'react';
-import { createBimContext, BimHost, type BimContext } from '@ifc-lite/sdk';
+import { createBimContext, BimHost, type BimContext, type SdkRequest } from '@ifc-lite/sdk';
 import { useViewerStore } from '../store/index.js';
 import { LocalBackend } from './local-backend.js';
+import { prepareSdkStepExport } from './adapters/export-adapter.js';
 
 const BROADCAST_CHANNEL = 'ifc-lite';
+
+class ViewerBimHost extends BimHost {
+  override dispatch(request: SdkRequest) {
+    if (request.namespace !== 'export' || request.method !== 'ifc') return super.dispatch(request);
+    // BimHost awaits the result before replying to a channel request.
+    const result = prepareSdkStepExport().then(() => {
+      const response = super.dispatch(request);
+      if (response.error) throw Object.assign(new Error(response.error.message), response.error);
+      return response.result;
+    });
+    return { id: request.id, result };
+  }
+}
 
 /**
  * Initialize the SDK with a local backend and start the BimHost.
@@ -45,7 +59,7 @@ export function useBimHost(): BimContext {
   useEffect(() => {
     const backend = backendRef.current;
     if (!backend) return;
-    const host = new BimHost(backend);
+    const host = new ViewerBimHost(backend);
 
     try {
       host.listenBroadcast(BROADCAST_CHANNEL);

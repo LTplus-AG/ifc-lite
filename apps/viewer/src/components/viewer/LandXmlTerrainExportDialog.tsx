@@ -33,7 +33,6 @@ import { useViewerStore } from '@/store';
 import { getSelectionBaseRefs } from '@/store/basketVisibleSet';
 import { entityRefToString, stringToEntityRef } from '@/store/types';
 import { downloadBlob } from '@/lib/export/download';
-import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import {
   landXmlTerrainFilename,
   resolveTerrainSelection,
@@ -105,6 +104,7 @@ export function LandXmlTerrainExportDialog({
     void (async () => {
       let outcome: TerrainPreflight;
       try {
+        const { editedModelBytes } = await import('@/lib/export/edited-model-bytes');
         const bytes = editedModelBytes(selection.store, getMutationView(selection.modelId));
         outcome = await runLandXmlTerrainExport(bytes, selection.productIds, createProcessor);
       } catch (error) {
@@ -134,6 +134,7 @@ export function LandXmlTerrainExportDialog({
       return { success: false, message: t('landXmlTerrainExport.noSelectionDescription') };
     }
     try {
+      const { editedModelBytes } = await import('@/lib/export/edited-model-bytes');
       const bytes = editedModelBytes(ready.selection.store, getMutationView(ready.selection.modelId));
       const outcome = await runLandXmlTerrainExport(bytes, ready.selection.productIds, createProcessor, {
         linearUnit,

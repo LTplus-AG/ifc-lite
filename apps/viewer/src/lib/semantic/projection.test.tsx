@@ -16,6 +16,8 @@ import { createExportAdapter } from '@/sdk/adapters/export-adapter';
 import { previewProjection, applyProjection, applyProjections } from './projection';
 import { useSemanticSession } from './session';
 
+await (await import('@/sdk/adapters/export-adapter')).prepareSdkStepExport?.();
+
 const original = useViewerStore.getState();
 const originalSession = useSemanticSession.getState();
 afterEach(() => { useViewerStore.setState(original, true); useSemanticSession.setState(originalSession, true); });

@@ -28,6 +28,8 @@ import { appearanceRevision, captureAppearanceSource, commitAppearance } from '.
 import { createStoreAdapter } from '@/sdk/adapters/store-adapter.js';
 import type { AppearancePlan } from './planner-types.js';
 
+await (await import('@/sdk/adapters/export-adapter.js')).prepareSdkStepExport?.();
+
 const MODEL = 'appearance-command';
 const owner = { kind: 'draft' as const, id: 'command-fixture' };
 const png = new Uint8Array(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64'));

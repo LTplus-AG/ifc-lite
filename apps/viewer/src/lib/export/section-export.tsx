@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useState } from 'react';
-import { exportSectionedStep, isGeorefRefusal, mergeWarningLabel, StepExporter, type SectionExportOptions, type MergeModelInput, type IfcSchemaVersion } from '@ifc-lite/export';
+import { exportSectionedStep, isGeorefRefusal, type SectionExportOptions, type MergeModelInput, type IfcSchemaVersion } from '@ifc-lite/export';
 import { IfcParser } from '@ifc-lite/parser';
 import { renderFrameWorldOffset, viewerToIfcAxes } from '@ifc-lite/geometry/world-frame';
 import { sharedRenderFrame } from '@/lib/render-frame/sharedRenderFrame';
@@ -72,6 +72,7 @@ export async function sectionMergeInputs(
   for (const input of inputs) {
     const options = optionsFor(input.id);
     if (!options) { result.push(input); continue; }
+    const { StepExporter, mergeWarningLabel } = await import('./step-export-runtime');
     const label = mergeWarningLabel(input, inputs);
     const crop = (georefMutations: MergeModelInput['georefMutations']) => new StepExporter(input.dataStore, input.mutationView).exportAsync({
       schema, visibleOnly: true, hiddenEntityIds: visibility.hidden.get(input.id), isolatedEntityIds: visibility.isolated.get(input.id),

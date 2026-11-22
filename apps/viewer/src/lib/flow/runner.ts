@@ -17,6 +17,7 @@
  *   generation and must not clear it.
  */
 
+import { prepareSdkStepExport } from '@/sdk/adapters/export-adapter';
 import { parseCapabilities } from '@ifc-lite/extensions';
 import { runFlow, checkAvailability, type FlowData, type HostFeatures, type FlowDocument, type MemoCache, type RunResult } from '@ifc-lite/flow';
 import { BROWSER_FEATURES, AUTOMATION_FEATURES, createStandardRegistry, invalidateGlobalIdIndex, referencedSecrets, type FlowHost } from '@ifc-lite/flow-nodes';
@@ -136,6 +137,12 @@ export async function runFlowInViewer(input: ViewerRunInput): Promise<RunResult>
   const unavailable = checkAvailability(input.doc, flowRegistry(), features, { inputs: input.inputs, restored: new Set(input.resume?.keys()) })
     .filter((n) => !input.resume?.has(n.nodeId) && (n.status === 'unknown' || n.status === 'unavailable'));
   if (unavailable.length) throw new Error(unavailable.map((n) => `${n.nodeId}: ${n.reasons.join(', ')}`).join('; '));
+  // Flow script nodes use the synchronous SDK inside their QuickJS VM.
+  if (parsed.value.some(({ scope, action }) => scope === 'export' && action === 'create') &&
+    input.doc.nodes.some(({ type, id }) => (type === 'script.run' || type === 'script.list') && !input.resume?.has(id))) {
+    await prepareSdkStepExport();
+    input.signal?.throwIfAborted();
+  }
   const tracking = new BrowserTrackingStore(input.doc.id, input.pin);
   const result = await input.bim.mutate.batchAsync(`flow:${input.doc.name}`, () =>
     runFlow(input.doc, {

@@ -9,7 +9,7 @@ import type { StoreApi } from './types.js';
 import type { EntityRef, EntityData, PropertySetData, QuantitySetData, ExportBackendMethods } from '@ifc-lite/sdk';
 import { EntityNode, findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';
 import { iterateEffectiveEntityIds } from '@ifc-lite/mutations';
-import { escapeCsvCell, StepExporter, type StepExportOptions } from '@ifc-lite/export';
+import { escapeCsvCell, type StepExportOptions } from '@ifc-lite/export';
 import { getDefaultModelId, getModelForRef } from './model-compat.js';
 import { applyAttributeMutationsToEntityData, getMutationViewForModel } from './mutation-view.js';
 import { serializeScheduleToStep, type ScheduleExtraction, type IfcDataStore } from '@ifc-lite/parser';
@@ -134,6 +134,13 @@ function* sourceEntityIds(store: IfcDataStore): IterableIterator<number> {
  */
 function escapeCsv(value: string, sep: string): string {
   return escapeCsvCell(value, { delimiter: sep });
+}
+
+let SdkStepExporter: typeof import('@ifc-lite/export').StepExporter | undefined;
+
+/** QuickJS scripts call export.ifc synchronously. Load the writer before exposing that capability. */
+export async function prepareSdkStepExport(): Promise<void> {
+  SdkStepExporter ??= (await import('@/lib/export/step-export-runtime')).StepExporter;
 }
 
 /**
@@ -379,11 +386,12 @@ export function createExportAdapter(store: StoreApi): ExportBackendMethods {
       const hiddenEntityIds = visibleOnly ? visibilityFilters.hiddenEntityIds : new Set<number>();
       const isolatedEntityIds = visibleOnly ? visibilityFilters.isolatedEntityIds : null;
 
+      if (!SdkStepExporter) throw new Error('STEP export was not prepared before starting the SDK call');
       const serialized = prepareAppearanceSerialization(
         modelId, model.ifcDataStore,
         mutationView ?? undefined,
       );
-      const exporter = new StepExporter(model.ifcDataStore, options.includeMutations === false ? serialized.view : viewerDrawingAnnotations(modelId, model.ifcDataStore, serialized.view));
+      const exporter = new SdkStepExporter(model.ifcDataStore, options.includeMutations === false ? serialized.view : viewerDrawingAnnotations(modelId, model.ifcDataStore, serialized.view));
       // Include georeferencing mutations if present
       const georefMutations = options.includeMutations !== false
         ? state.georefMutations?.get(modelId) ?? undefined

@@ -6,7 +6,6 @@ import { contiguousSourceBytes } from '@ifc-lite/parser';
 import { nearestCardinalAxis } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { resolveExportModel } from '@/components/viewer/export-model-selection';
-import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { getWholeSourceForWorker } from '@/lib/overlay-parse/source-handoff';
 import { displayedTranslation, placementFor } from '@/lib/model-placement/state';
 import { AlignmentClient } from './alignment-client';
@@ -109,9 +108,14 @@ export async function bindAlignment(modelId: string, expressId: number, distance
     const view = state.getMutationView(modelId);
     // Retain the compressed source envelope when untouched: inflation and
     // UTF-8 decoding belong in the disposable worker, never the render thread.
-    const source = view?.hasPendingChanges()
-      ? contiguousSourceBytes(editedModelBytes(model.ifcDataStore, view)).toTransferable()
-      : getWholeSourceForWorker(model.ifcDataStore);
+    let source;
+    if (view?.hasPendingChanges()) {
+      const { editedModelBytes } = await import('@/lib/export/edited-model-bytes');
+      if (version !== generation) return;
+      source = contiguousSourceBytes(editedModelBytes(model.ifcDataStore, view)).toTransferable();
+    } else {
+      source = getWholeSourceForWorker(model.ifcDataStore);
+    }
     owner = { modelId, expressId, store: model.ifcDataStore, mutationVersion: state.mutationVersion, distance };
     client = new AlignmentClient();
     const opened = await client.request({ kind: 'open', source, expressId });

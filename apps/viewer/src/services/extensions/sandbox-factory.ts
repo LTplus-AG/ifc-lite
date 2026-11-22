@@ -26,6 +26,7 @@
 
 import {
   assertMethodCall,
+  checkMethodCall,
   CapabilityDeniedError,
   type Capability,
   type RuntimeRunOptions,
@@ -36,6 +37,7 @@ import {
 } from '@ifc-lite/extensions';
 import { createSandbox, type Sandbox } from '@ifc-lite/sandbox';
 import type { BimContext } from '@ifc-lite/sdk';
+import { prepareSdkStepExport } from '@/sdk/adapters/export-adapter';
 import { describeSandboxAbort, SANDBOX_MODULE_RETIRED_MESSAGE } from '../../lib/sandboxAbort.js';
 
 export interface SandboxFactoryOptions {
@@ -53,6 +55,11 @@ export function createBimSandboxFactory(opts: SandboxFactoryOptions): RuntimeSan
       const gatedSdk = createOpts.grants
         ? wrapWithCapabilityGate(opts.sdk, createOpts.grants, createOpts.extensionId)
         : opts.sdk;
+      // Extension scripts call export.ifc synchronously inside QuickJS.
+      const canExportIfc = createOpts.permissions?.export !== false && (
+        !createOpts.grants || checkMethodCall('export', 'ifc', createOpts.grants).ok
+      );
+      if (canExportIfc) await prepareSdkStepExport();
       const sandbox = await createSandbox(gatedSdk, {
         permissions: createOpts.permissions,
         limits: createOpts.limits,

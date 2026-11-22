@@ -12,7 +12,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { attachCapturedLoad } from '@/lib/error-reports/correlation';
 import { useShallow } from 'zustand/react/shallow';
 import { type FederatedModel, useViewerStore } from '@/store';
-import { enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
+import { completeInstancedShardSupply, enqueueInstancedShards, instancedShardSupplyToken } from '@/store/instancedShardQueue';
 import { resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
 import { createModelLoadActivity, handOffToRetry, installModelLoadCanceller, LOAD_COMPLETE, settleOwnedLoadUi, watchLoadSupersession } from './modelLoadCanceller.js';
 import type { ModelLoadOptions } from './modelLoadOptions.js';
@@ -423,7 +423,7 @@ export function useIfcLoader() {
       // #7022: one full-source hash, awaited only for publication/cache.
       let placementIdentity: Promise<string | undefined> = Promise.resolve(undefined);
 
-      let shardGeneration = instancedShardGeneration();
+      let shardGeneration = instancedShardSupplyToken(modelId);
       const commitPrimarySession = () => {
         if (target.kind === 'primary' && !primaryCommitted) { releaseCanceller.commit(); currentSession = ++loadSessionRef.current; sessionOwner.value = currentSession; primaryCommitted = true; }
       };
@@ -442,7 +442,7 @@ export function useIfcLoader() {
           useViewerStore.getState().clearLayerStack();
         }
         primarySession?.settle(true);
-        shardGeneration = instancedShardGeneration(); // after our own reset: a later one supersedes our shards
+        shardGeneration = instancedShardSupplyToken(modelId); // after our own reset: a later one (or a discard of this model) supersedes our shards
 
         // Reset memory accounting so per-load summaries don't accumulate across files.
         memoryAccounting.reset();
@@ -630,9 +630,8 @@ export function useIfcLoader() {
           // entity id by `idOffset`, only known now (registerModelOffset ran above).
           // AFTER addModel: the drain runs in a later task, once React committed it,
           // so Viewport.tsx's `modelIdToIndex` / `modelIdToOffset` see this model.
-          if (instancedShards.length > 0) {
-            enqueueInstancedShards(modelId, instancedShards, shardGeneration);
-          }
+          if (instancedShards.length > 0) enqueueInstancedShards(modelId, instancedShards, shardGeneration);
+          completeInstancedShardSupply(modelId, instancedShards.length, shardGeneration); // the whole set, zero included
           return;
         }
 
@@ -1198,11 +1197,12 @@ export function useIfcLoader() {
             // name the three outcomes explicitly.
             const cacheOutcome = decideCacheLoadOutcome({
               loadSucceeded: cacheLoadResult.success,
-              isStale: isStale(),
+              isStale: isStale(), superseded: cacheLoadResult.superseded === true, // a removed model's adoption reparses nothing (r4655016554)
             });
             if (cacheOutcome === 'stale') {
               // A newer load owns the active slot: write nothing, parse
-              // nothing. The newer load drives `setLoading`/progress itself.
+              // nothing. The newer load drives `setLoading`/progress itself; with none (model removed mid-adoption) settle ours.
+              if (!isStale()) { activity.cancelled = true; settleLoadUi(); }
               return;
             }
             if (cacheOutcome === 'serve') {
@@ -1933,6 +1933,7 @@ export function useIfcLoader() {
                   return;
                 }
 
+                completeInstancedShardSupply(modelId, allInstancedShards.length, shardGeneration); // every streamed shard is queued
                 await trace.span('load.finalize', () => finalizeModel(dataStore, useViewerStore.getState().geometryResult, getViewerSchemaVersion(dataStore), {
                   loadState: 'complete',
                   // Only show "writing" when this file will actually be cached

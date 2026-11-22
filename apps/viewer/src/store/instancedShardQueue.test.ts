@@ -77,6 +77,46 @@ it('a full discard during a drain wins over restoring its unsettled shards', () 
   assert.equal(hasPendingInstancedShards(), false, 'the superseded batch is not resurrected');
 });
 
+for (const scope of ['full', 'model-scoped'] as const) {
+  it(`#10888 a ${scope} discard inside consume voids the taken, unsettled shard: reported withheld, never restored, a late settle ignored`, () => {
+    enqueueInstancedShards('a', [bytes(1)], instancedShardGeneration());
+    enqueueInstancedShards('b', [bytes(2)], instancedShardGeneration());
+    const events: InstancedShardQueueEvent[] = [];
+    const off = subscribeInstancedShards((event) => events.push(event));
+    try {
+      drainInstancedShards((shards, settle) => {
+        settle(shards[1], 'waiting');
+        discardInstancedShards(scope === 'full' ? undefined : 'a'); // fired from inside the consumer
+        settle(shards[0], 'uploaded'); // too late: 'a' was already voided
+      });
+      const discarded = events.filter((e) => e.kind === 'discarded');
+      assert.equal(discarded.length, 1, 'the discard reports the in-flight shards it voided');
+      assert.deepEqual(discarded[0].withheld?.map(value), scope === 'full' ? [1, 2] : [1], 'withheld names exactly the voided entries');
+      assert.equal(events.some((e) => e.kind === 'drained'), false, 'a voided shard is never reported drained');
+      assert.equal(hasPendingInstancedShards('a'), false, 'the voided shard is not restored');
+      assert.equal(hasPendingInstancedShards('b'), scope !== 'full', 'only a shard outside the discard stays waiting');
+    } finally {
+      off();
+    }
+  });
+}
+
+it('#10888 two entries sharing one ArrayBuffer are distinct: dropping one withholds only that entry', () => {
+  const shared = bytes(5);
+  enqueueInstancedShards('a', [shared, shared], instancedShardGeneration());
+  const events: InstancedShardQueueEvent[] = [];
+  const off = subscribeInstancedShards((event) => events.push(event));
+  let entries: readonly PendingInstancedShard[] = [];
+  try {
+    drainInstancedShards((shards, settle) => { entries = shards; settle(shards[0], 'uploaded'); settle(shards[1], 'dropped'); });
+    const dropped = events.find((e) => e.kind === 'dropped');
+    assert.equal(dropped?.withheld?.length, 1);
+    assert.equal(dropped?.withheld?.[0], entries[1], 'the withheld identity is the queue entry, not its bytes');
+  } finally {
+    off();
+  }
+});
+
 it('refuses a producer whose generation a full discard superseded', () => {
   const captured = instancedShardGeneration();
   discardInstancedShards();

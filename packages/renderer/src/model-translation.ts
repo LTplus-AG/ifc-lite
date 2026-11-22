@@ -6,7 +6,7 @@ import { renderableCoordinates } from './renderable-coordinates.js';
 import type { Mesh } from './types.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { BoundingBox } from './scene-raycaster.js';
-import { worldAabbFromPieces } from './scene-geometry.js';
+import { worldAabbFromPieces } from './scene-geometry.js'; import { unionBox } from './released-entity-bounds.js';
 
 type Offset = readonly [number, number, number];
 type Drawable = { origin?: [number, number, number]; bounds?: Bounds };
@@ -197,6 +197,15 @@ export class ModelTranslations {
       const bounds = new Map<number, BoundingBox>();
       for (const [index, group] of groups) { const box = worldAabbFromPieces(group); if (box) bounds.set(index, box); }
       this.releasedEntities.set(id, bounds);
+    }
+  }
+
+  /** `retainEntityBounds`, grown batch by batch for ephemeral replay (#10264). */
+  unionReleasedEntityBounds(meshes: readonly MeshData[]): void {
+    for (const mesh of meshes) {
+      const source = this.sourceMesh(mesh), index = source.modelIndex ?? 0, box = worldAabbFromPieces([source]);
+      const groups = this.releasedEntities.get(mesh.expressId) ?? new Map<number, BoundingBox>(), prior = groups.get(index);
+      if (box) { groups.set(index, prior ? unionBox(prior, box) : box); this.releasedEntities.set(mesh.expressId, groups); }
     }
   }
 

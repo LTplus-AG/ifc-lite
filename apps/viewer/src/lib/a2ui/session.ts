@@ -117,7 +117,12 @@ export class A2uiMessageSession {
     raws.forEach((raw, index) => {
       const start = offset + (index > 0 ? 1 : 0);
       const text = (index > 0 ? '\n' : '') + raw;
-      const fedHere = Math.max(0, this.streamText.length - offset);
+      let fedHere = Math.max(0, this.streamText.length - offset);
+      // The separator flushes whatever the parser held back of the previous block: credit it there.
+      if (index > 0 && fedHere === 0) {
+        this.feedBlock(index - 1, '\n');
+        fedHere = 1;
+      }
       if (fedHere < text.length) this.feedBlock(index, text.slice(fedHere));
       offset = start + raw.length;
     });

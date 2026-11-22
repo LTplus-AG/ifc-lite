@@ -163,7 +163,8 @@ fn checks_for(content: &[u8], source_label: &str, target: &str, opts: &StepOptio
     let unchanged = log.mutations.is_empty() && log.new_entities.is_empty() && log.georef_mutations.is_none();
     let mut checks = crate::schema_enum::ConversionChecks::for_source(content, source_label, target, opts, unchanged, &|id, start| src.span(id).is_some_and(|(kept, _)| kept == start), &mut || pass.allocate().ok());
     let written = pass.mutated_lines.iter().filter_map(|(id, (line, _))| Some((*id, line.as_deref()?))).chain(pass.created_lines.iter().map(|(id, l)| (*id, l.as_str())));
-    checks.materials.with_effective(crate::schema_convert::canon(source_label), &|id| pass.will_be_emitted(id), written);
+    let retained = |id| pass.will_be_emitted(id) && !matches!(pass.mutated_lines.get(&id), Some((None, _)));
+    checks.materials.with_effective(crate::schema_convert::canon(source_label), &retained, written);
     checks
 }
 

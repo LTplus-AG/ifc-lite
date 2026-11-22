@@ -105,6 +105,27 @@ describe('the Material a downgraded IfcMaterialProperties names (#10763)', () =>
     expect(warnings.join('\n')).toContain('IfcMaterialProperties record(s) were not written');
   });
 
+  it('does not name a material edited into a withheld relationship (#10911)', async () => {
+    const { lines, warnings } = await editedExport("#5=IFCMATERIALPROPERTIES('Pset_x',$,(#6),#8);", (view) => {
+      view.setEntityType(8, 'IfcRelAggregates');
+      view.setPositionalAttribute(8, 4, '#9');
+      view.setPositionalAttribute(8, 5, '(#1)');
+      view.deleteEntity(9);
+    });
+    expect(lines.some((line) => /^#(?:5|8)=/.test(line))).toBe(false);
+    expect(warnings.join('\n')).toContain('#5 (an unread record)');
+  });
+
+  it('can resolve a material indexed only in the deferred source (#10911)', async () => {
+    const store = await parse(model('IFC4', `${BASE}\n#5=IFCMATERIALPROPERTIES('Pset_x',$,(#6),#8);`));
+    const material = store.entityIndex.byId.get(8);
+    if (!material) throw new Error('fixture must index the material');
+    const byId = new Map([...store.entityIndex.byId].filter(([id]) => id !== 8));
+    const preview = { ...store, entityIndex: { ...store.entityIndex, byId }, deferredEntityIndex: new Map([[8, material]]) };
+    const report = analyzeConversionLoss(preview, 'IFC4', 'IFC2X3');
+    expect(report.entries.find((entry) => entry.sourceType === 'IFCMATERIALPROPERTIES')).toBeUndefined();
+  });
+
   // A member the export writes as another type, or one no record has, names no
   // material, so the set names no single one; only a member the export does not write is skipped. Twin of Rust.
   it('leaves the record out when a member is written as another type or is missing', async () => {
@@ -156,6 +177,18 @@ describe('the Material a downgraded IfcMaterialProperties names (#10763)', () =>
     expect(out).toContain('#8=IFCPROPERTYSINGLEVALUE(');
     expect(out).not.toContain('#5=');
     expect(result.stats.warnings.join('\n')).toContain('#5 (an unread record)');
+  });
+
+  it('reports an omitted material properties ID once when its kept occurrence is unresolved (#10911)', async () => {
+    const store = await parse(model('IFC4', `${BASE}
+#5=IFCMATERIALPROPERTIES('Earlier',$,(#6),#8);
+#5=IFCMATERIALPROPERTIES('Kept',$,(#6),#99);`));
+    store.entityIndex.byType.set('IFCMATERIALPROPERTIES', [5, 5]);
+    const report = analyzeConversionLoss(store, 'IFC4', 'IFC2X3');
+    expect(report.entries.find((entry) => entry.sourceType === 'IFCMATERIALPROPERTIES')).toMatchObject({ count: 1, expressIds: [5] });
+    const exported = new StepExporter(store).export({ schema: 'IFC2X3' });
+    expect(new TextDecoder().decode(exported.content)).not.toContain('#5=');
+    expect(exported.stats.warnings).toContain('1 IfcMaterialProperties record(s) were not written: IFC2X3 IfcExtendedMaterialProperties.Material must name one IfcMaterial, and theirs does not: #5 (an unread record) (#10763).');
   });
 
   it('checks a record without its semicolon like one with it (#10911)', () => {

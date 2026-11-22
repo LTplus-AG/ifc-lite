@@ -145,20 +145,21 @@ export class MaterialReferents {
  * The IfcMaterialProperties records of `store` an IFC4/IFC4X3 -> IFC2X3
  * export leaves out, with their attribute names, for the loss report.
  */
-export function materialPropertiesNotWritten(store: Pick<SourceStore, 'entityIndex'> & Partial<Pick<SourceStore, 'source'>>, from: string, to: string): { ids: number[]; attributes: readonly string[] } {
+export function materialPropertiesNotWritten(store: Pick<SourceStore, 'entityIndex'> & Partial<Pick<SourceStore, 'source' | 'deferredEntityIndex'>>, from: string, to: string): { ids: number[]; attributes: readonly string[] } {
   const attributes = attrNameTable(from as IfcSchemaVersion)?.get(PROPERTIES) ?? [];
   // As `apply`: no downgrade, or no Material to check, writes each one.
   if (!downgradesMaterial(from, to) || !attributes.includes('Material')) return { ids: [], attributes };
-  const { entityIndex, source: bytes } = store;
-  // @raw-entity-enumeration-ok this report reads a parsed source's own index, not a live view
-  const all = entityIndex.byType.get(PROPERTIES) ?? [];
+  const { entityIndex, deferredEntityIndex, source: bytes } = store;
   // Without the bytes (none, or a sourceless store's empty buffer) no record can be checked: the report is
   // pessimistic and names each, as a bare `convertStepLine` leaves each out. An export needs the bytes.
-  if (!bytes?.byteLength) return { ids: [...all], attributes };
+  if (!bytes?.byteLength) {
+    // @raw-entity-enumeration-ok type-only loss preview without source records
+    return { ids: [...new Set(entityIndex.byType.get(PROPERTIES))], attributes };
+  }
   // The writer's own decision for the source as parsed: each record through the `apply` the export runs.
-  const source = new SourceRecords({ entityIndex, source: bytes });
+  const source = new SourceRecords({ entityIndex, deferredEntityIndex, source: bytes });
   const referents = new MaterialReferents({ typeOf: (id) => source.type(id), slots: (id) => source.slots(id) });
-  return { ids: all.filter((id) => { const text = source.text(id); return text === undefined || referents.apply(text, from, to) === null; }), attributes };
+  return { ids: source.ids(PROPERTIES).filter((id) => { const text = source.text(id); return text === undefined || referents.apply(text, from, to) === null; }), attributes };
 }
 
 /**

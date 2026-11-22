@@ -229,6 +229,25 @@ fn unreadable_direct_and_layer_materials_leave_out_properties_10911() {
     }
 }
 
+#[test]
+fn omitted_duplicate_material_properties_are_counted_once_10911() {
+    let (out, dropped, warnings) = down("IFC4",
+        "#5=IFCMATERIALPROPERTIES('Earlier',$,(#6),#8);\n#5=IFCMATERIALPROPERTIES('Kept',$,(#6),#99);");
+    assert!(out.is_empty(), "{out}");
+    assert_eq!(dropped, 3);
+    assert!(warnings.iter().any(|warn| warn == "1 IfcMaterialProperties record(s) were not written: IFC2X3 IfcExtendedMaterialProperties.Material must name one IfcMaterial, and theirs does not: #5 (an unread record) (#10763)."), "{warnings:?}");
+}
+
+#[test]
+fn a_material_edited_into_a_withheld_relationship_is_not_named_10911() {
+    let source = model("IFC4", "#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\n#5=IFCMATERIALPROPERTIES('Pset_x',$,(#6),#8);\n#6=IFCPROPERTYSINGLEVALUE('p',$,IFCLABEL('v'),$);\n#8=IFCMATERIAL('Concrete',$,$);\n#9=IFCMATERIAL('Steel',$,$);");
+    let log = r##"{"mutations":[{"type":"UPDATE_ENTITY_TYPE","entityId":8,"entityType":"IfcRelAggregates"},{"type":"UPDATE_POSITIONAL_ATTRIBUTE","entityId":8,"attributeName":"@4","newValue":"#9"},{"type":"UPDATE_POSITIONAL_ATTRIBUTE","entityId":8,"attributeName":"@5","newValue":"(#1)"},{"type":"DELETE_ENTITY","entityId":9}]}"##;
+    let (out, warnings) = log_export(&source, log);
+    assert!(record(&out, "#8=").is_empty(), "{out}");
+    assert!(record(&out, "#5=").is_empty(), "{out}");
+    assert!(warnings.iter().any(|warn| warn.contains("#5 (an unread record)")), "{warnings:?}");
+}
+
 /// From CodeRabbit on #10911: a record without its ';' is checked like one
 /// with it, and a duplicate id left out does not hide the occurrence kept.
 #[test]

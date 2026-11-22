@@ -43,17 +43,19 @@ export function activeGeometryBackingTap(): StoreGeometryBackingTap | undefined 
  * before the viewport has one, so the whole stream is observed. */
 type SnapProbeCommand = Extract<GeometryBackingCommand, { action: 'snap-probe-for-test' }>;
 // Each command's own result type: a backing command never reads as a snap probe, nor the reverse.
-export function geometryBackingCommand(store: StoreApi<ReleaseState>, renderer: Renderer | undefined, command: SnapProbeCommand):
-  Promise<SnapProbe[]>;
+/** The viewport's derived visibility (store hides plus type-hidden ids, #10867): what its own picks run under. */
+type ProbeVisibility = () => { hiddenIds?: ReadonlySet<number>; isolatedIds?: ReadonlySet<number> | null };
+export function geometryBackingCommand(store: StoreApi<ReleaseState>, renderer: Renderer | undefined, command: SnapProbeCommand,
+  visibility?: ProbeVisibility): Promise<SnapProbe[]>;
 export function geometryBackingCommand(store: StoreApi<ReleaseState>, renderer: Renderer | undefined,
   command: Exclude<GeometryBackingCommand, SnapProbeCommand>): Promise<ModelBackingStatus[]>;
-export function geometryBackingCommand(store: StoreApi<ReleaseState>, renderer: Renderer | undefined, command: GeometryBackingCommand):
-  Promise<ModelBackingStatus[] | SnapProbe[]>;
-export async function geometryBackingCommand(store: StoreApi<ReleaseState>, renderer: Renderer | undefined, command: GeometryBackingCommand):
-  Promise<ModelBackingStatus[] | SnapProbe[]> {
+export function geometryBackingCommand(store: StoreApi<ReleaseState>, renderer: Renderer | undefined, command: GeometryBackingCommand,
+  visibility?: ProbeVisibility): Promise<ModelBackingStatus[] | SnapProbe[]>;
+export async function geometryBackingCommand(store: StoreApi<ReleaseState>, renderer: Renderer | undefined, command: GeometryBackingCommand,
+  visibility?: ProbeVisibility): Promise<ModelBackingStatus[] | SnapProbe[]> {
   if (command.action === 'snap-probe-for-test') {
     if (!renderer) throw new Error('Snap probes need the viewport renderer');
-    return snapProbe(renderer, command.points);
+    return snapProbe(renderer, command.points, visibility?.() ?? {});
   }
   if (command.action === 'start') {
     if (!starting) {
@@ -154,19 +156,23 @@ async function releaseForTest(tap: StoreGeometryBackingTap, store: StoreApi<Rele
  * hover path, runs only on an answered read. A refused one (`unavailable`: an instanced or unbacked front
  * surface) reports no hit and no snap rather than whatever lies behind it, a point cloud included.
  */
-async function snapProbe(renderer: Renderer, points: Array<[number, number]>): Promise<SnapProbe[]> {
+async function snapProbe(renderer: Renderer, points: Array<[number, number]>,
+  { hiddenIds, isolatedIds }: ReturnType<ProbeVisibility>): Promise<SnapProbe[]> {
   const { feedReadbackAt, readbackFeeder } = await import('./readback-measure');
   const { sceneGeometryReleased } = await import('./scene-released');
   const out: SnapProbe[] = [];
   for (const [x, y] of points) {
-    const outcome = sceneGeometryReleased(renderer) ? await feedReadbackAt(renderer, x, y, {}) : 'resident';
+    // Under the viewport's own visibility: type-hidden meshes are uploaded and hidden only by id (#10867).
+    const outcome = sceneGeometryReleased(renderer) ? await feedReadbackAt(renderer, x, y, { hiddenIds, isolatedIds }) : 'resident';
     if (outcome !== 'fed' && outcome !== 'no-hit' && outcome !== 'resident') {
       const error = outcome === 'unavailable' ? readbackFeeder(renderer).lastError?.message : undefined;
       out.push({ outcome, ...(error ? { error } : {}), expressId: null, instanced: false, point: null, snap: null });
       continue;
     }
     const result = renderer.raycastSceneMagnetic(x, y, { edge: null, meshExpressId: null, lockStrength: 0 },
-      { snapOptions: { snapToVertices: true, snapToEdges: true, snapToFaces: true, screenSnapRadius: 40 } });
+      // The raycast only reads these sets; the viewport hands them over read-only.
+      { hiddenIds: hiddenIds as Set<number> | undefined, isolatedIds: isolatedIds as Set<number> | null | undefined,
+        snapOptions: { snapToVertices: true, snapToEdges: true, snapToFaces: true, screenSnapRadius: 40 } });
     const hit = result.intersection;
     const target = result.snapTarget;
     out.push({ outcome, expressId: hit?.expressId ?? null, instanced: hit ? renderer.getScene().isInstancedEntity(hit.expressId) : false,

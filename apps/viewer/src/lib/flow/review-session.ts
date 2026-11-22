@@ -113,6 +113,7 @@ export async function loadGraphReview(graphId: string): Promise<void> {
 async function transition(
   change: (checkpoint: FlowCheckpoint) => FlowCheckpoint,
   id = useFlowReview.getState().checkpoint?.id,
+  retryStorage = false,
 ): Promise<FlowCheckpoint | null> {
   if (!id) return null;
   const visible = () => useFlowReview.getState().checkpoint?.id === id;
@@ -122,8 +123,13 @@ async function transition(
     if (visible()) useFlowReview.setState({ ...patch, busy: false });
     else if (wasVisible) useFlowReview.setState({ busy: false });
   };
+  const update = () => updateCheckpoint(browserCheckpointStore, id, change);
   try {
-    const next = await updateCheckpoint(browserCheckpointStore, id, change);
+    const next = await update().catch((error: unknown) => {
+      // A storage failure can be transient. Repeat the checkpoint CAS only.
+      if (!retryStorage || error instanceof CheckpointError) throw error;
+      return update();
+    });
     publish({ checkpoint: next });
     return next;
   } catch (error) {
@@ -178,5 +184,5 @@ export function finishReview(result: RunResult | null, failure: string | undefin
       throw new CheckpointError('not-owner', 'The review claim is no longer held by this run.');
     }
     return finishCheckpoint(c, TAB_OWNER, { ok: !!result?.ok && failure === undefined, ...(message ? { message } : {}) });
-  }, claimed.id);
+  }, claimed.id, true);
 }

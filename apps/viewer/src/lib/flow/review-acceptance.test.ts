@@ -21,7 +21,7 @@ import 'fake-indexeddb/auto';
 import test, { afterEach, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { MemoCache, type FlowDocument, type Table } from '@ifc-lite/flow';
-import { claimCheckpoint, graphDigest, resumeOutputs } from '@ifc-lite/flow/checkpoint';
+import { claimCheckpoint, graphDigest, resumeOutputs, type FlowCheckpoint } from '@ifc-lite/flow/checkpoint';
 import type { LoadedModel } from '@ifc-lite/mcp';
 import { useViewerStore } from '@/store';
 import { openFlowSample } from '@/test/flow-sample-fixture';
@@ -30,6 +30,7 @@ import { useRequestReceipts } from '@/lib/llm/request-receipts';
 import { viewerFlowAi } from './ai-host';
 import { browserCheckpointStore } from './checkpoint-store';
 import { flowExamples } from './examples';
+import { NativeFlowRunner } from './native-runner';
 import { approveReview, claimReview, finishReview, loadGraphReview, pauseForReview, rejectReview, useFlowReview } from './review-session';
 import { flowRegistry, runFlowInViewer } from './runner';
 
@@ -286,4 +287,39 @@ test('#10591 resume claims and finalizes the requested checkpoint while another 
   assert.equal((await browserCheckpointStore.read(first.id))?.checkpoint.state, 'completed');
   assert.equal((await browserCheckpointStore.read(second.id))?.checkpoint.state, 'reviewed');
   assert.equal(useFlowReview.getState().checkpoint?.id, second.id);
+});
+
+
+for (const refusedWrites of [1, 2]) test(`#10591 a resumed flow with ${refusedWrites} refused finalization writes only retries the checkpoint`, async (t) => {
+  const model = await openFlowSample();
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-4o-mini' });
+  const doc = example();
+  useViewerStore.getState().openContributedFlow(doc);
+  await pausedRun(model, doc);
+  const approved = await approveReview(useFlowReview.getState().checkpoint!.proposalDigest, doc);
+  assert.ok(approved);
+  const write = browserCheckpointStore.write.bind(browserCheckpointStore);
+  let attempts = 0;
+  t.mock.method(browserCheckpointStore, 'write', async (checkpoint: FlowCheckpoint, expected: number | null) => {
+    if (checkpoint.id === approved.id && checkpoint.state === 'completed' && ++attempts <= refusedWrites) {
+      throw new Error('Checkpoint storage is unavailable');
+    }
+    return write(checkpoint, expected);
+  });
+
+  const outcome = await new NativeFlowRunner(model.bim, async () => assert.fail('the graph needs no other model')).run({}, { resume: approved });
+  const written = roles(model);
+  assert.equal(written.facade + written.partition, 4, 'the resumed graph wrote its IFC changes');
+  assert.equal(requests, 1, 'the approved proposal was reused without another assistant request');
+  assert.equal(outcome.result?.ok, true);
+  if (refusedWrites === 1) {
+    assert.equal(outcome.state, 'completed');
+    assert.equal((await browserCheckpointStore.read(approved.id))?.checkpoint.state, 'completed');
+  } else {
+    assert.equal(outcome.state, 'failed');
+    assert.match(outcome.error ?? '', /effects may already exist.*checkpoint/i);
+    assert.equal(useViewerStore.getState().flowLastRun, outcome.result);
+    assert.equal((await browserCheckpointStore.read(approved.id))?.checkpoint.state, 'applying');
+  }
+  assert.equal(attempts, 2);
 });

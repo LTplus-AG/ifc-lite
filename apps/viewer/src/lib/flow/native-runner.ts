@@ -22,6 +22,8 @@ import type { BimContext } from '@ifc-lite/sdk';
 import type { NativeModelAdder } from '@/services/coordination-loader';
 export interface FlowRunOptions { readonly resume?: FlowCheckpoint; readonly expectedDefaultModelId?: string | null }
 export interface NativeFlowOutcome { state: 'completed' | 'paused' | 'failed' | 'cancelled'; result: RunResult | null; error: string | null; checkpoint: FlowCheckpoint | null }
+const FINALIZATION_FAILED = 'Workflow effects may already exist, but the review checkpoint could not be finalized.';
+
 function pendingMutationIds(): Set<string> {
   return new Set([...useViewerStore.getState().undoStacks.values()].flat().map(mutation => mutation.id));
 }
@@ -139,8 +141,11 @@ export class NativeFlowRunner {
         ...(claimed ? { resume: resumeOutputs(claimed) } : {}),
       });
       terminal = result;
-      if (claimed) finalized = await finishReview(result, undefined, claimed);
-      claimed = null;
+      if (claimed) {
+        finalized = await finishReview(result, undefined, claimed);
+        claimed = null;
+        if (!finalized) throw new Error(FINALIZATION_FAILED);
+      }
       // A proposal awaits review: nothing downstream ran. Save it before showing the run.
       if (result.ok && result.review.length > 0) await pauseForReview({ doc, result, inputs: preparedInputs, values: inputs ?? {}, budget: ai ? { ...ai.budget } : resume?.budget });
       session.check();
@@ -148,9 +153,11 @@ export class NativeFlowRunner {
       else setFlowRunning(false);
     } catch (err) {
       failure = err instanceof Error ? err.message : String(err);
-      if (claimed) await finishReview(null, failure, claimed);
-      if (owned()) setFlowLastRun(null, err instanceof Error ? err.message : String(err), record());
-      else setFlowRunning(false);
+      if (claimed && !await finishReview(null, failure, claimed)) failure = `${failure} ${FINALIZATION_FAILED}`;
+      if (owned()) {
+        const result = failure === FINALIZATION_FAILED ? terminal : null;
+        setFlowLastRun(result, failure, record(result ?? undefined));
+      } else setFlowRunning(false);
     } finally {
       signal?.removeEventListener('abort', cancel);
       unsubscribe();

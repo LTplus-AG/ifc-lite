@@ -1,6 +1,8 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+// Kept out of coordination-operations.test.ts: that file runs the script sandbox, whose esbuild.wasm
+// fallback logs ERR_UNKNOWN_FILE_EXTENSION, and CI's revert oracle then reads this test's red as a load failure.
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { it } from 'node:test';
@@ -13,6 +15,8 @@ import type { OperationExecutionContext } from './contract';
 import { coordinationScriptRunOperations } from './coordination-script-run';
 import { coordinationScriptSessionOperations } from './coordination-script-session';
 
+const operations = [...coordinationScriptSessionOperations, ...coordinationScriptRunOperations];
+
 it('refuses to replace or execute a different source after a native revision is reused (#10591 review)', async () => {
   const editor = useViewerStore.getState();
   const host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));
@@ -21,17 +25,15 @@ it('refuses to replace or execute a different source after a native revision is 
     host, commit, commitAsync: commit, ownGeometry: work => work(), retain() {},
     artifacts: operationArtifacts(host, commit),
   };
-  // Kept apart from coordination-operations.test.ts: that file runs the script sandbox, whose
-  // esbuild.wasm fallback logs ERR_UNKNOWN_FILE_EXTENSION and makes CI's revert oracle read a red as a load failure.
-  const execute = async (id: string, input: unknown) => {
-    const op = [...coordinationScriptSessionOperations, ...coordinationScriptRunOperations].find(op => op.id === id)!;
-    op.validate(input); const result = await op.execute(input, context); op.validateResult(result); return result;
+  const execute = async <T>(id: string, input: unknown = {}): Promise<T> => {
+    const op = operations.find(op => op.id === id); assert.ok(op, id);
+    op.validate(input); const result = await op.execute(input, context); op.validateResult(result); return result as T;
   };
 
   editor.setScriptEditorContent('1');
   editor.beginAssistantScriptTurn();
   editor.setScriptEditorContent('2');
-  const inspected = await execute('script.read', {}) as { revision: number; source: string };
+  const inspected = await execute<{ revision: number; source: string }>('script.read');
   assert.equal(inspected.source, '2');
   const nativeRevision = useViewerStore.getState().scriptEditorRevision;
   editor.rollbackAssistantScriptTurn();

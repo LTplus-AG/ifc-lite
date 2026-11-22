@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type JSZip from 'jszip';
+import { BCFArchiveFormatError } from './archive-errors.js';
 import type { ReportWarning } from './reader-warning.js';
 
 export function isMacOsxShadowPath(path: string): boolean {
@@ -63,7 +64,7 @@ export function resolveArchiveRoot(zip: JSZip): string {
     if (match && !isMacOsxShadowPath(match[1])) candidates.push(match[1]);
   });
   if (candidates.length !== 1) {
-    throw new Error(candidates.length === 0
+    throw new BCFArchiveFormatError(candidates.length === 0
       ? 'Invalid BCF file: missing bcf.version'
       : 'Invalid BCF file: ambiguous bcf.version files');
   }

@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 //! An IFC2X3 styled item references assignments instead of the styles directly.
 
-use ifc_lite_core::parser::parse_ref;
-
 use crate::schema_ifc2x3_records::{Rec, Records};
 use crate::schema_structural_axes::list_items;
+use crate::schema_structural_links::slot_ref;
 use crate::step_record_frame::record_frame;
 use crate::step_slot::slots_of;
 
@@ -18,7 +17,7 @@ pub(super) fn wrap_direct_styles(records: &Records<'_>, rec: &Rec<'_>, id: u32) 
     let mut styles = Vec::new();
     let mut assignments = Vec::new();
     for member in &members {
-        let style = records.get(parse_ref(member.as_bytes()), None)?;
+        let style = records.get(slot_ref(member), None)?;
         if style.ty == ASSIGNMENT {
             assignments.push(member.as_str());
         } else if ifc_lite_core::is_subtype_of_for_schema("IFC2X3", &style.ty, "IFCPRESENTATIONSTYLE") {

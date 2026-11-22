@@ -15,7 +15,7 @@ it('wraps direct IFC4X3 styles in an IFC2X3 style assignment (#10879)', async ()
     const text = new TextDecoder().decode(result.content);
     const count = 'totalEntityCount' in result.stats ? result.stats.totalEntityCount : result.stats.entityCount;
     expect(count).toBe(text.match(/^#\d+=/gm)?.length);
-    const id = /#(\d+)=IFCPRESENTATIONSTYLEASSIGNMENT\(\(#3\)\);/.exec(text)?.[1];
+    const id = /#(\d+)=IFCPRESENTATIONSTYLEASSIGNMENT\(\(\/\* style \*\/ #3 \/\* member \*\/\)\);/.exec(text)?.[1];
     expect(id).toBeDefined();
     expect(text).toContain("#2=IFCSTYLEDITEM(#1,(#" + id + "),'Styled point');");
     const edited = await parser.parseColumnar(Uint8Array.from(result.content).buffer);

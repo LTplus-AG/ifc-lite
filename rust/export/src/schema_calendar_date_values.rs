@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-use ifc_lite_core::parser::parse_ref;
+use crate::schema_structural_links::slot_ref;
 
 use super::super::durations::decimal_seconds;
 
@@ -67,7 +67,7 @@ fn legacy_clock<'a>(record: &DateRecord, read: &impl Fn(Option<u32>) -> Option<&
     }
     let trimmed = fraction.trim_end_matches('0');
     let second = if trimmed.is_empty() { format!("{whole:02}") } else { format!("{whole:02}.{trimmed}") };
-    let zone = if unset(z) { None } else { Some(legacy_zone(read(parse_ref(z.as_bytes()))?)?) };
+    let zone = if unset(z) { None } else { Some(legacy_zone(read(slot_ref(z))?)?) };
     let dst = if unset(dst) { 0 } else { dst.parse::<i16>().ok()? };
     if !(0..=2).contains(&dst) || (zone.is_none() && dst != 0) {
         return None;
@@ -80,9 +80,9 @@ fn legacy_clock<'a>(record: &DateRecord, read: &impl Fn(Option<u32>) -> Option<&
 }
 
 pub(super) fn from_legacy<'a>(source: &str, kind: Kind, read: impl Fn(Option<u32>) -> Option<&'a DateRecord>) -> Option<(String, bool)> {
-    let record = read(parse_ref(source.as_bytes()))?;
+    let record = read(slot_ref(source))?;
     let narrowed = matches!(kind, Kind::Date) && record.ty == "IFCDATEANDTIME";
-    let child = |slot: &str| read(parse_ref(slot.as_bytes()));
+    let child = |slot: &str| read(slot_ref(slot));
     let (day, clock) = match (kind, record.ty.as_str(), record.slots.as_slice()) {
         (Kind::Date, "IFCDATEANDTIME", [date, _]) => (Some(legacy_day(child(date)?)?), None),
         (Kind::Date, _, _) => (Some(legacy_day(record)?), None),

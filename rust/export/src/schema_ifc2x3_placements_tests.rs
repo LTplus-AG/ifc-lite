@@ -93,7 +93,7 @@ fn wraps_direct_styles_for_the_ifc2x3_target_10879() {
     assert_eq!(stats.written, merged.lines().filter(|line| line.starts_with('#')).count());
     for output in [&step, &log, &merged] {
         assert!(output.contains("#2=IFCSTYLEDITEM(#1,(#6),'Styled point');"), "{output}");
-        assert!(output.contains("#6=IFCPRESENTATIONSTYLEASSIGNMENT((#3));"), "{output}");
+        assert!(output.contains("#6=IFCPRESENTATIONSTYLEASSIGNMENT((/* style */ #3 /* member */));"), "{output}");
         let second = crate::export_step(output.as_bytes(), &options).unwrap();
         assert_eq!(second.matches("=IFCPRESENTATIONSTYLEASSIGNMENT(").count(), 1);
     }

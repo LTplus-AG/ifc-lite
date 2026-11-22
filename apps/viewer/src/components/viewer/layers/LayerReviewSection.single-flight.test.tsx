@@ -40,8 +40,8 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); useLayerAutomationReview.setState({ candidate: null }); useViewerStore.setState({ collabSelfToken: null }); capture.dispose(); mock.restoreAll(); document.body.innerHTML = ''; });
 
-async function readyToComment(): Promise<HTMLButtonElement> {
-  render(<LayerReviewSection client={client} candidateId="candidate-1" refName="main" />);
+async function readyToComment(registry = client): Promise<HTMLButtonElement> {
+  render(<LayerReviewSection client={registry} candidateId="candidate-1" refName="main" />);
   await waitFor(() => document.body.querySelector('input[aria-label="Review comment title"]') !== null, 'the review loaded');
   const title = document.body.querySelector<HTMLInputElement>('input[aria-label="Review comment title"]');
   assert.ok(title, 'title input');
@@ -164,6 +164,22 @@ test('#10591 layer review keeps an edit made during a manual post', async () => 
   await settle();
   assert.equal(post.mock.calls[0].arguments[1].title, 'Check this wall');
   assert.equal(title.value, 'A new note');
+});
+
+test('#10591 layer review keeps a draft edited back to its posted text while the post is in flight', async () => {
+  let release!: () => void;
+  const gated = { ...client, postTopic: async () => { posts += 1; await new Promise<void>(resolve => { release = resolve; }); return {}; } } as unknown as LayerRegistryClient;
+  const comment = await readyToComment(gated);
+  const title = document.querySelector<HTMLInputElement>('input[aria-label="Review comment title"]')!;
+  const description = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Review comment description"]')!;
+  click(comment);
+  await capture.release(1);
+  await waitFor(() => posts === 1, 'the post is in flight');
+  type(description, 'x');
+  type(description, '');
+  await act(async () => { release(); });
+  await settle();
+  assert.equal(title.value, 'Check this wall');
 });
 
 test('#10591 layer review posts nothing when the staged title is edited during capture', async () => {

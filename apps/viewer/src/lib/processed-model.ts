@@ -49,7 +49,8 @@ export function openProcessedModel(model: ProcessedModelRequest, options?: OpenP
   const override = options?.serverUrl;
   const request = override == null ? normalizedRequest(model) : { ...normalizedRequest(model), serverUrl: normalizeProcessingServerUrl(override) };
   hostRequested = true;
-  for (const listener of [...hostRequestListeners]) listener();
+  // A callback can unsubscribe or register a listener during notification.
+  for (const listener of Array.from(hostRequestListeners)) listener();
   fileRequest(request);
 }
 
@@ -112,7 +113,7 @@ export function onPendingProcessedModelChange(listener: () => void): () => void 
 function fileRequest(request: FiledProcessedModelRequest): void {
   pending = request;
   for (const listener of pendingListeners) listener();
-  for (const listener of [...listeners]) listener();
+  for (const listener of Array.from(listeners)) listener();
 }
 
 /** Apply the host's startup settings and provide the mounted viewer's controls. */

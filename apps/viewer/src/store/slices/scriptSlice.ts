@@ -87,13 +87,9 @@ export interface ScriptSlice {
    */
   scriptRunSeq: number;
   /**
-   * Monotonic token bumped by `useSandbox().execute()` at the START of every
-   * run, BEFORE any await. `useSandbox()` is instantiated independently in
-   * `ScriptPanel`, `ChatPanel`, `CommandPalette` and `ExecutableCodeBlock`
-   * (each gets its own `activeSandboxRef`/closure — there is no shared
-   * per-hook state), so a per-hook-instance guard (the `runEpochRef` shape
-   * `useClash`/`useIDS`/`useCompare` use) cannot detect a SECOND run started
-   * from a DIFFERENT component instance while the first is still in flight.
+   * Shared across ScriptPanel, ChatPanel, CommandPalette and ExecutableCodeBlock.
+   * useSandbox().execute() advances it before awaiting, so guards can detect
+   * runs started by another component instance.
    * This lives in the store instead so every instance reads/writes the same
    * counter. A run captures the value right after bumping it and re-checks
    * it, synchronously, before every terminal store write that follows an
@@ -121,6 +117,7 @@ export interface ScriptSlice {
   scriptPanelVisible: boolean;
   scriptDeleteConfirmId: string | null;
   scriptEditorRevision: number;
+  scriptEditorRevisionOffset: number;
   scriptEditorSelection: ScriptEditorSelection;
   scriptAppliedOpIds: Set<string>;
   scriptEditorApplyAdapter: ScriptEditorApplyAdapter | null;
@@ -205,6 +202,7 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
   scriptPanelVisible: loadStoredScriptPanelVisible(),
   scriptDeleteConfirmId: null,
   scriptEditorRevision: 0,
+  scriptEditorRevisionOffset: 0,
   scriptEditorSelection: { from: 0, to: 0 },
   scriptAppliedOpIds: new Set(),
   scriptEditorApplyAdapter: null,
@@ -493,6 +491,7 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
       scriptEditorContent: snapshot.content,
       scriptEditorSelection: snapshot.selection,
       scriptEditorRevision: snapshot.revision,
+      scriptEditorRevisionOffset: state.scriptEditorRevisionOffset + state.scriptEditorRevision - snapshot.revision + 1,
       scriptEditorDirty: true,
       scriptAppliedOpIds: new Set(),
       scriptAssistantTurnSnapshot: null,

@@ -10,9 +10,14 @@ import { internal, invalidInput, stale, unavailable } from './refusals';
 const unsavedEdits = (action: string): never => { throw unavailable(useViewerStore.getState().activeScriptId
   ? `The active script has unsaved edits; save it before ${action}.`
   : `The editor has an unsaved draft; keep it with script.create using the current editor source before ${action}.`); };
+// Rollback restores the native revision and advances the offset, so old operation tokens cannot recur.
+export function scriptAdmissionRevision(state: ReturnType<typeof useViewerStore.getState>): number {
+  return state.scriptEditorRevision + state.scriptEditorRevisionOffset;
+}
+
 export const coordinationScriptSessionOperations = [
   coordination('script.read', 'Inspect saved scripts, active source/revision, native execution state, diagnostics and terminal results.', ['read'], emptySchema, () => {
-    const s = useViewerStore.getState(); return { saved: s.savedScripts, active_id: s.activeScriptId, source: s.scriptEditorContent, revision: s.scriptEditorRevision,
+    const s = useViewerStore.getState(); return { saved: s.savedScripts, active_id: s.activeScriptId, source: s.scriptEditorContent, revision: scriptAdmissionRevision(s),
       execution_state: s.scriptExecutionState, run_epoch: s.scriptRunEpoch, result: s.scriptLastResult, error: s.scriptLastError, diagnostics: s.scriptLastDiagnostics };
   }),
   coordination('script.preflight', 'Check supplied source with the exact native script preflight diagnostics without executing or granting sandbox capabilities.', ['read'], textSchema, async i => {
@@ -21,9 +26,9 @@ export const coordinationScriptSessionOperations = [
   coordination<{ source: string; expected_revision: number }>('script.replace', 'Replace editor source through its native revision-aware semantic edit path. Does not execute source or widen sandbox permissions.', ['configuration'], {
     type: 'object', properties: { source: { type: 'string', maxLength: 1000000 }, expected_revision: { type: 'integer', minimum: 0 } }, required: ['source', 'expected_revision'], additionalProperties: false,
   }, (i: { source: string; expected_revision: number }, c) => c.commit(() => {
-    const s = useViewerStore.getState(); if (s.scriptEditorRevision !== i.expected_revision) throw stale('Script editor revision changed; refresh before replacing.');
+    const s = useViewerStore.getState(); if (scriptAdmissionRevision(s) !== i.expected_revision) throw stale('Script editor revision changed; refresh before replacing.');
     const result = s.replaceScriptContentFallback(i.source); if (!result.ok) throw invalidInput('refused', result.error ?? 'Native script edit refused.');
-    return { ...result, revision: useViewerStore.getState().scriptEditorRevision };
+    return { ...result, revision: scriptAdmissionRevision(useViewerStore.getState()) };
   })),
   modelCoordination<{ source: string; timeout_ms: number; memory_bytes: number }>('script.analyze', 'Run source in a fresh native QuickJS sandbox with query-only permissions and bounded time/heap. Returns actual terminal value/logs after deterministic teardown; cancellation disposes the VM.', ['read'], {
     type: 'object', properties: { source: { type: 'string', maxLength: 1000000 }, timeout_ms: { type: 'integer', minimum: 1, maximum: 30000 }, memory_bytes: { type: 'integer', minimum: 1048576, maximum: 67108864 } }, required: ['source', 'timeout_ms', 'memory_bytes'], additionalProperties: false,
@@ -59,7 +64,7 @@ export const coordinationScriptSessionOperations = [
     // A draft with no saved script would be dropped; a dirty saved script is saved here, and a failed save keeps it open.
     if (s.scriptEditorDirty && !s.activeScriptId) unsavedEdits('opening another');
     if (s.scriptEditorDirty) { const storage = s.saveActiveScript(); if (storage && !storage.ok) { throw internal(`The active script could not be saved (${storage.reason}); it stays open.`); } }
-    s.setActiveScriptId(i.id); return { active_id: useViewerStore.getState().activeScriptId, revision: useViewerStore.getState().scriptEditorRevision };
+    s.setActiveScriptId(i.id); return { active_id: useViewerStore.getState().activeScriptId, revision: scriptAdmissionRevision(useViewerStore.getState()) };
   })),
   coordination<{ id: string; name: string }>('script.rename', 'Rename a known saved native script.', ['configuration'], {
     type: 'object', properties: { id: { type: 'string', minLength: 1, maxLength: 200 }, name: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['id', 'name'], additionalProperties: false,
@@ -78,11 +83,11 @@ export const coordinationScriptSessionOperations = [
   })),
   coordination('script.undo', 'Undo through the native mounted editor history. Refuses absent editor hosts instead of claiming a silent undo.', ['configuration'], emptySchema, (_, c) => c.commit(() => {
     const state = useViewerStore.getState(); if (!state.scriptEditorApplyAdapter) throw unavailable('The script editor must be mounted to access its native history.');
-    const changed = state.scriptCanUndo; if (changed) state.undoScriptEditor(); return { changed, revision: useViewerStore.getState().scriptEditorRevision };
+    const changed = state.scriptCanUndo; if (changed) state.undoScriptEditor(); return { changed, revision: scriptAdmissionRevision(useViewerStore.getState()) };
   })),
   coordination('script.redo', 'Redo through the native mounted editor history. Refuses absent editor hosts instead of claiming a silent redo.', ['configuration'], emptySchema, (_, c) => c.commit(() => {
     const state = useViewerStore.getState(); if (!state.scriptEditorApplyAdapter) throw unavailable('The script editor must be mounted to access its native history.');
-    const changed = state.scriptCanRedo; if (changed) state.redoScriptEditor(); return { changed, revision: useViewerStore.getState().scriptEditorRevision };
+    const changed = state.scriptCanRedo; if (changed) state.redoScriptEditor(); return { changed, revision: scriptAdmissionRevision(useViewerStore.getState()) };
   })),
   coordination('collab.read', 'Inspect session status, role, seed phase and peer presence without exposing room bearer/share tokens.', ['read'], emptySchema, () => {
     const s = useViewerStore.getState(); return { status: s.collabStatus, room_id: s.collabRoomId, role: s.collabRole, peers: s.collabPeers,

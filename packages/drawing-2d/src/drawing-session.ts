@@ -112,7 +112,11 @@ export class DrawingSession {
   /** Cut and project one batch; keeps no reference to it. */
   async addGeometry(meshes: readonly MeshData[]): Promise<void> {
     this.enter('geometry');
-    if (this.gpuCutter) this.segmentBatches.push(await this.gpuCutter.cutMeshes([...meshes], this.config.plane));
+    if (this.gpuCutter) {
+      const segments = await this.gpuCutter.cutMeshes([...meshes], this.config.plane);
+      this.enter('geometry'); // cancelled, finished or aborted during the GPU cut: keep nothing of it
+      this.segmentBatches.push(segments);
+    }
     else for (const mesh of meshes) this.segmentBatches.push(this.cpuCutter!.cutSingleMesh(mesh).segments);
     this.opts.signal?.throwIfAborted();
     for (const mesh of meshes) this.totalTriangles += mesh.indices.length / 3;
@@ -247,6 +251,7 @@ export class DrawingSession {
     const processingTimeMs = performance.now() - this.startTime;
 
     this.report('complete', 1);
+    this.opts.signal?.throwIfAborted(); // aborted while finishing (e.g. from a progress callback): no drawing
 
     return {
       config,

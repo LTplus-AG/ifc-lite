@@ -224,6 +224,14 @@ describe('open surfaces: free-edge replay and multi-material shells (#10892 revi
     expect(drawingDigest(fed)).toBe(drawingDigest(array));
   });
 
+  it('an abort while finish() runs (from its progress callback at polygons/0) returns no drawing', async () => {
+    const controller = new AbortController();
+    const onProgress = (stage: string, progress: number) => { if (stage === 'polygons' && progress === 0) controller.abort(new Error('superseded')); };
+    const session = new Drawing2DGenerator().beginDrawing(plan(), { ...cutOnly, signal: controller.signal, onProgress });
+    await session.addGeometry([box(1, [0, 0, 0], [4, 3, 0.3])]);
+    expect(() => session.finish()).toThrow('superseded');
+  });
+
   it('finish() refuses a depth raster whose occlusion phase was never fed', async () => {
     const session = new Drawing2DGenerator().beginDrawing(plan(), STREAM_OPTIONS);
     await session.addGeometry(streamScene());

@@ -118,7 +118,10 @@ for (const chunk of chunks) {
 }
 const needs = session.endGeometry();
 // needs.depthRaster: feed every chunk again; otherwise only needs.openSurfaceEntities' meshes.
-for (const chunk of needs.depthRaster ? chunks : chunksOf(needs.openSurfaceEntities)) { /* session.addOcclusion(...) */ }
+for (const chunk of needs.depthRaster ? chunks : chunksOf(needs.openSurfaceEntities)) {
+  const held = await leaseChunk(chunk);
+  try { session.addOcclusion(held.meshes); } finally { held.release(); }
+}
 const drawing = session.finish(); // or session.cancel()
 ```
 

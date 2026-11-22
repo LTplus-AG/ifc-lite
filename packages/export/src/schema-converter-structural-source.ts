@@ -16,7 +16,7 @@ import { namedExpressIds, referencesAnyExpressId } from './step-ref-scan.js';
 export type ConversionMode = 'upgrade' | 'downgrade' | null;
 
 /** What the prepasses read: the source index and bytes. */
-export type SourceStore = Pick<IfcDataStore, 'entityIndex' | 'source'>;
+export type SourceStore = Pick<IfcDataStore, 'entityIndex' | 'deferredEntityIndex' | 'source'>;
 
 /** IFC2X3 -> IFC4 is an upgrade, IFC4 -> IFC2X3 a downgrade; the prepasses run for nothing else. */
 export const conversionMode = (from: string, to: string): ConversionMode =>
@@ -55,8 +55,14 @@ export function isSubtype(schema: 'IFC2X3' | 'IFC4', keyword: string | undefined
 
 /** Source records read by id, each decoded once. Lives only for one prepass. */
 export class SourceRecords {
+  private readonly keptIdsByType = new Map<string, readonly number[]>();
   private readonly cache = new Map<number, readonly string[] | undefined>();
   constructor(private readonly store: SourceStore) {}
+
+  hasIndexedRecords(): boolean {
+    // @raw-entity-enumeration-ok distinguish a parsed source index from type-only preview input
+    return this.store.entityIndex.byId.size > 0 || (this.store.deferredEntityIndex?.size ?? 0) > 0;
+  }
 
   private decode(entry: { byteOffset: number; byteLength: number }): string {
     return decodeRange(this.store.source, entry.byteOffset, entry.byteOffset + entry.byteLength);
@@ -79,30 +85,48 @@ export class SourceRecords {
    */
   *naming(targets: ReadonlySet<number>): Generator<{ id: number; named: ReadonlySet<number> }> {
     if (targets.size === 0) return;
+    const deferred = this.store.deferredEntityIndex;
     // @raw-entity-enumeration-ok same unedited source-only prepass
-    for (const [id, entry] of this.store.entityIndex.byId) {
-      const text = this.decode(entry);
-      const head = stepRecordHead(text);
-      const named = namedExpressIds(text.slice(head?.open ?? skipStepTrivia(text, 0) + 1), targets);
-      if (named.size) yield { id, named };
+    const primary = this.store.entityIndex.byId;
+    for (const index of deferred ? [primary, deferred] : [primary]) {
+      for (const [id, entry] of index) {
+        if (deferred && this.entry(id)?.byteOffset !== entry.byteOffset) continue;
+        const text = this.decode(entry);
+        const head = stepRecordHead(text);
+        const named = namedExpressIds(text.slice(head?.open ?? skipStepTrivia(text, 0) + 1), targets);
+        if (named.size) yield { id, named };
+      }
     }
   }
 
+  /** A repeated id belongs to its last record, at that record's position. */
   ids(type: string): readonly number[] {
+    const cached = this.keptIdsByType.get(type);
+    if (cached) return cached;
     // @raw-entity-enumeration-ok conversion prepass is enabled only for an unedited full-source export (step-pass-builder.ts)
-    return this.store.entityIndex.byType.get(type) ?? [];
+    const ids = this.store.entityIndex.byType.get(type) ?? [];
+    const last = new Map<number, number>();
+    ids.forEach((id, i) => last.set(id, i));
+    const kept = ids.filter((id, i) => last.get(id) === i && this.type(id) === type);
+    this.keptIdsByType.set(type, kept);
+    return kept;
+  }
+
+  private entry(id: number) {
+    // @raw-entity-enumeration-ok same unedited source-only prepass
+    const primary = this.store.entityIndex.byId.get(id);
+    const deferred = this.store.deferredEntityIndex?.get(id);
+    return deferred && (!primary || deferred.byteOffset > primary.byteOffset) ? deferred : primary;
   }
 
   type(id: number | null): string | undefined {
-    // @raw-entity-enumeration-ok same unedited source-only prepass
-    return id === null ? undefined : this.store.entityIndex.byId.get(id)?.type.toUpperCase();
+    return id === null ? undefined : this.entry(id)?.type.toUpperCase();
   }
 
   slots(id: number | null): readonly string[] | undefined {
     if (id === null) return undefined;
     if (!this.cache.has(id)) {
-      // @raw-entity-enumeration-ok same unedited source-only prepass
-      const entry = this.store.entityIndex.byId.get(id);
+      const entry = this.entry(id);
       this.cache.set(id, entry ? readStepSlots(this.decode(entry))?.slots : undefined);
     }
     return this.cache.get(id);

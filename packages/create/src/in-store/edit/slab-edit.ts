@@ -41,7 +41,7 @@ import {
   resolvePlacementChain,
 } from './placement-core.js';
 import { clipPolygonByLine, type Point2D, type PolygonClipResult } from './polygon-clip.js';
-import { polygonArea } from '../room-footprint-offset.js';
+import { polygonArea } from '../polygon-2d.js';
 import { resolveSolidPositionXform, slabExtrusionFrame, type Xform2D } from './slab-edit-frame.js';
 
 /**

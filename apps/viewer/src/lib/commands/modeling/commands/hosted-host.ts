@@ -23,8 +23,8 @@ import { readAttributes, resolvePlacementChain } from '@/lib/placement-core';
 import { resolveSlabEditChain } from '@/lib/slab-edit';
 import { readModelEditTarget } from '@/store/slices/mutation-modelling-records';
 import { effectiveSpatialContext } from '@/lib/effective-storey';
-import { pointInPolygon, type Point2D } from '@/lib/polygon-clip';
-import { hostPlanFrame, resolveHostAnchor } from '@ifc-lite/create';
+import type { Point2D } from '@/lib/polygon-clip';
+import { hostPlanFrame, pointInPolygon, resolveHostAnchor } from '@ifc-lite/create';
 import { effectiveStoreyId, type IfcDataStore } from '@ifc-lite/parser';
 import type { SnapResult, Vec2 } from '@/lib/snap/types';
 import { storeyWallAxes } from '@/lib/snap/sources/semantic-walls';
@@ -173,7 +173,7 @@ function slabCandidates(ctx: Pick<CommandContext, 'get' | 'modelId' | 'storeyId'
     }
     cache.slabs = { key, hosts };
   }
-  const candidates = cache.slabs.hosts.filter(host => host.footprint && pointInPolygon(host.footprint.map<Point2D>(p => [p[0], p[1]]), [...toHostLocal(host, s.local)]));
+  const candidates = cache.slabs.hosts.filter(host => host.footprint && pointInPolygon(...toHostLocal(host, s.local), host.footprint.map<Point2D>(p => [p[0], p[1]])));
   const height = state.session?.workplane?.kind === 'storey' ? state.session.workplane.offset : 0;
   candidates.sort((a,b) => Math.abs(a.origin[2]+a.z[1]-height)-Math.abs(b.origin[2]+b.z[1]-height));
   return candidates;

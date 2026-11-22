@@ -172,6 +172,7 @@ export {
   type GenerateSpacesResult,
   type BoundaryMode,
 } from './generate-spaces.js';
+export { polygonArea, pointInPolygon, type PolygonRing } from './polygon-2d.js';
 export {
   generateSpaces,
   listStoreys,

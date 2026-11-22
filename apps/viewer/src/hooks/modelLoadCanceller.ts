@@ -124,6 +124,9 @@ export function settleOwnedLoadUi(release: () => void, progress: LoadProgress = 
 const pendingLoads = new Map<() => void, () => void>();
 const pendingAdmissions = new Set<() => void>();
 
+/** Whether any model load is admitted and unfinished, including a primary still waiting to commit. */
+export function isModelLoadPending(): boolean { return pendingLoads.size > 0; }
+
 /** Work waiting to start a load, keyed to the newer load starts that supersede it. */
 const supersessionWatches = new Map<AbortController, 'primary' | 'any'>();
 

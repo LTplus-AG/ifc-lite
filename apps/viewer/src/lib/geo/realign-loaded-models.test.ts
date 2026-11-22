@@ -84,6 +84,42 @@ const flowCancel = () => {
   return op.execute({}, { commit: <T>(write: () => T) => write() } as never);
 };
 
+it('refuses to start while an admitted primary can still commit (#11263)', async () => {
+  // Deferred supersession: this primary would commit later and clear whatever federation exists then.
+  const releasePrimary = installModelLoadCanceller('primary', () => {}, () => null, undefined, () => true, true);
+  const before = useViewerStore.getState().models;
+  let adds = 0;
+  try {
+    await assert.rejects(realignLoadedModels(async () => { adds++; return null; }), /still loading/);
+    assert.equal(useViewerStore.getState().models, before, 'nothing was cleared');
+    assert.equal(adds, 0);
+    startWorkflowRun().release(); // and no lease was taken
+  } finally {
+    releasePrimary();
+  }
+});
+
+it('stops when models are cleared outside the lease mid-rebuild (#11263)', async () => {
+  const entered = deferred(), drain = deferred();
+  const attempted: string[] = [];
+  const pending = realignLoadedModels(async (_file, options) => {
+    const id = options!.modelId!;
+    attempted.push(id);
+    if (id === 'B') {
+      entered.resolve();
+      await drain.promise;
+    }
+    useViewerStore.getState().addModel(model(id));
+    return id;
+  });
+  await entered.promise;
+  useViewerStore.getState().clearAllModels(); // a multi-file open clears before its lease-checked load
+  drain.resolve();
+  const result = await pending;
+  assert.equal(result.state, 'superseded');
+  assert.deepEqual(attempted, ['A', 'B']);
+});
+
 it('keeps reloading when the flow document is edited mid-rebuild (#11263)', async () => {
   const entered = deferred(), drain = deferred();
   const pending = realignLoadedModels(async (_file, options) => {

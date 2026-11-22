@@ -34,13 +34,11 @@ import {
   supportsStandardGeoreferencing,
 } from '@/lib/geo/effective-georef';
 import { detectDoubleGeoreference } from '@/lib/geo/double-georeference';
-import { realignLoadedModels, MissingAlignmentSourceError } from '@/lib/geo/realign-loaded-models';
-import { isNativeWorkflowBusy } from '@/lib/flow/run-session';
+import { reloadModelsForAlignment } from './georef-realign';
 import { useIfc } from '@/hooks/useIfc';
-import { toast } from '@/components/ui/toast';
 import { resolveInstancedExportGate } from '@/utils/instancedExport';
 import { useTranslation } from '@/i18n';
-import { formatLocaleList, formatLocaleNumber } from '@/i18n/intlFormat';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { localizedApproxDistance, localizedRawValuesNote, localizedSiteAnchorUnitNote, localizedScaleOverride } from './georeference-i18n';
 import { GeorefRow, AngleRow } from './georef-rows';
 import { TerrainHeightButton } from './georef-terrain-height-button';
@@ -184,22 +182,8 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
     }
   }, [models.size]);
 
-  const reloadModelsForAlignment = useCallback(async () => {
-    if (isNativeWorkflowBusy()) {
-      toast.error(t('flowAssistant.preflightRunningWorkflow'));
-      return;
-    }
-    try {
-      const result = await realignLoadedModels(addModel);
-      setShowReloadPrompt(false);
-      if (result.state === 'partial') toast.error(t('properties.georef.reloadPartial', {
-        loaded: formatLocaleNumber(locale, result.loaded), total: formatLocaleNumber(locale, result.total), failed: formatLocaleList(locale, result.failed),
-      }));
-      else if (result.state === 'completed') toast.success(t('properties.georef.reloadSuccess'));
-    } catch (error) {
-      if (error instanceof MissingAlignmentSourceError) toast.error(t('properties.georef.reloadMissingSource', { name: error.modelName }));
-      else toast.error(error instanceof Error ? t('properties.georef.reloadFailedWithMessage', { message: error.message }) : t('properties.georef.reloadFailed'));
-    }
+  const reloadForAlignment = useCallback(async () => {
+    if (await reloadModelsForAlignment(addModel, { t, locale })) setShowReloadPrompt(false);
   }, [addModel, locale, t]);
 
   const handleSave = useCallback((entity: 'projectedCRS' | 'mapConversion', field: string, value: string | number) => {
@@ -318,7 +302,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
                 {t('properties.georef.reloadPrompt')}
               </p>
               <div className="mt-1.5 flex items-center gap-2">
-                <Button type="button" size="sm" onClick={reloadModelsForAlignment} disabled={loading} className="h-6 px-2 text-xs">
+                <Button type="button" size="sm" onClick={reloadForAlignment} disabled={loading} className="h-6 px-2 text-xs">
                   {t('properties.georef.reloadModels')}
                 </Button>
                 <Button type="button" variant="ghost" size="sm" onClick={() => setShowReloadPrompt(false)} className="h-6 px-2 text-xs font-normal text-muted-foreground">

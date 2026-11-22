@@ -534,11 +534,17 @@ back from its own storage instead, one bounded batch at a time:
 
 ```typescript
 import { replayReleasedGeometry } from '@ifc-lite/renderer';
+import type { MeshData } from '@ifc-lite/geometry';
+
+declare const storedSlices: string[];                            // the host's own stored batch keys
+declare function readBack(slice: string): Promise<MeshData[]>;  // reads one stored batch back
+declare const token: number, latest: () => number;               // the host's reload generation
+declare function retryLater(): void;
 
 async function* batches() {
   for (const slice of storedSlices) yield await readBack(slice); // model-local, as stored
 }
-const result = await replayReleasedGeometry(renderer, batches(), { isCurrent: () => token === latest });
+const result = await replayReleasedGeometry(renderer, batches(), { isCurrent: () => token === latest() });
 if (result.status !== 'complete') retryLater(); // superseded, cancelled or unavailable
 ```
 

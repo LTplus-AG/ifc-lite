@@ -34,8 +34,6 @@ function projectFireRating(resource: import('./types').SemanticResource, product
 import { PROFILE_ID, VOCAB } from './types';
 import { useSemanticSession } from './session';
 
-await (await import('@/sdk/adapters/export-adapter')).prepareSdkStepExport?.();
-
 const original = useViewerStore.getState();
 const session = useSemanticSession.getState();
 afterEach(() => { cleanup(); useViewerStore.setState(original, true); useSemanticSession.setState(session, true); });

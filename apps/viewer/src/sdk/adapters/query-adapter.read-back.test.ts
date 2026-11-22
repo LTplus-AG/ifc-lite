@@ -22,8 +22,6 @@ import { configureMutationView } from '@/utils/configureMutationView';
 import { createMutateAdapter } from './mutate-adapter.js';
 import { createQueryAdapter } from './query-adapter.js';
 
-await (await import('./export-adapter.js')).prepareSdkStepExport?.();
-
 const MODEL_ID = 'read-back-model';
 
 const FIXTURE = `ISO-10303-21;

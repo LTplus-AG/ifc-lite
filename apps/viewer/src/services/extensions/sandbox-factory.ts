@@ -37,7 +37,7 @@ import {
 } from '@ifc-lite/extensions';
 import { createSandbox, type Sandbox } from '@ifc-lite/sandbox';
 import type { BimContext } from '@ifc-lite/sdk';
-import { prepareSdkStepExport } from '@/sdk/adapters/export-adapter';
+import { prepareSandboxStepExport } from '@/sdk/sdk-step-writer';
 import { describeSandboxAbort, SANDBOX_MODULE_RETIRED_MESSAGE } from '../../lib/sandboxAbort.js';
 
 export interface SandboxFactoryOptions {
@@ -59,7 +59,7 @@ export function createBimSandboxFactory(opts: SandboxFactoryOptions): RuntimeSan
       const canExportIfc = createOpts.permissions?.export !== false && (
         !createOpts.grants || checkMethodCall('export', 'ifc', createOpts.grants).ok
       );
-      if (canExportIfc) await prepareSdkStepExport();
+      if (canExportIfc) await prepareSandboxStepExport();
       const sandbox = await createSandbox(gatedSdk, {
         permissions: createOpts.permissions,
         limits: createOpts.limits,

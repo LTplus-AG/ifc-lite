@@ -17,7 +17,7 @@
  *   generation and must not clear it.
  */
 
-import { prepareSdkStepExport } from '@/sdk/adapters/export-adapter';
+import { prepareSandboxStepExport } from '@/sdk/sdk-step-writer';
 import { parseCapabilities } from '@ifc-lite/extensions';
 import { runFlow, checkAvailability, type FlowData, type HostFeatures, type FlowDocument, type MemoCache, type RunResult } from '@ifc-lite/flow';
 import { BROWSER_FEATURES, AUTOMATION_FEATURES, createStandardRegistry, invalidateGlobalIdIndex, referencedSecrets, type FlowHost } from '@ifc-lite/flow-nodes';
@@ -140,7 +140,7 @@ export async function runFlowInViewer(input: ViewerRunInput): Promise<RunResult>
   // Flow script nodes use the synchronous SDK inside their QuickJS VM.
   if (parsed.value.some(({ scope, action }) => scope === 'export' && action === 'create') &&
     input.doc.nodes.some(({ type, id }) => (type === 'script.run' || type === 'script.list') && !input.resume?.has(id))) {
-    await prepareSdkStepExport();
+    await prepareSandboxStepExport();
     input.signal?.throwIfAborted();
   }
   const tracking = new BrowserTrackingStore(input.doc.id, input.pin);

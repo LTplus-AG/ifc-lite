@@ -18,8 +18,6 @@ import { createMutateAdapter } from '@/sdk/adapters/mutate-adapter';
 import { resolveResource, type SemanticResource } from '@ifc-lite/semantic';
 import { liveEntities, selectResources } from './viewer';
 import { previewProjection, applyProjection } from './projection';
-
-await (await import('@/sdk/adapters/export-adapter')).prepareSdkStepExport?.();
 const initial = useViewerStore.getState();
 afterEach(() => useViewerStore.setState(initial, true));
 

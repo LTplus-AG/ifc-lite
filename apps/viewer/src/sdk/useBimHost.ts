@@ -22,8 +22,9 @@
 import { useRef, useEffect, useMemo } from 'react';
 import { createBimContext, BimHost, type BimContext, type SdkRequest } from '@ifc-lite/sdk';
 import { useViewerStore } from '../store/index.js';
-import { LocalBackend } from './local-backend.js';
-import { prepareSdkStepExport } from './adapters/export-adapter.js';
+import { LocalBackendCore } from './local-backend-core.js';
+import { createExportAdapterWithWriter } from './adapters/export-adapter-core.js';
+import { getSdkStepWriter, prepareSdkStepExport } from './sdk-step-writer.js';
 
 const BROADCAST_CHANNEL = 'ifc-lite';
 
@@ -46,11 +47,11 @@ class ViewerBimHost extends BimHost {
  */
 export function useBimHost(): BimContext {
   const hostRef = useRef<BimHost | null>(null);
-  const backendRef = useRef<LocalBackend | null>(null);
+  const backendRef = useRef<LocalBackendCore | null>(null);
 
   // Create local backend and BimContext once — single shared backend
   const bim = useMemo(() => {
-    const backend = new LocalBackend(useViewerStore);
+    const backend = new LocalBackendCore(useViewerStore, createExportAdapterWithWriter(useViewerStore, getSdkStepWriter));
     backendRef.current = backend;
     return createBimContext({ backend });
   }, []);

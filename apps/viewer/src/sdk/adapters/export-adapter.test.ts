@@ -16,8 +16,6 @@ import { LocalBackend } from '../local-backend.js';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '../../store/index.js';
 
-await (await import('./export-adapter.js')).prepareSdkStepExport?.();
-
 test('resolveVisibilityFilterSets honors legacy single-model hidden and isolated state (routed through resolveExportVisibility, #4333 follow-up)', () => {
   useViewerStore.getState().resetViewerState();
   useViewerStore.setState({
@@ -942,4 +940,16 @@ describe('sdk.export.ifc() with no ref list exports the whole model (#4738)', ()
 
     assert.throws(() => bimOverViewer().export.ifc([]), /matched nothing/);
   });
+});
+
+it('#11247 returns STEP synchronously from a standalone adapter without preparation', () => {
+  useViewerStore.getState().resetViewerState();
+  try {
+    useViewerStore.setState({ ifcDataStore: buildFourEntityStore() });
+    const content = createExportAdapter(useViewerStore as unknown as StoreApi).ifc(undefined, { schema: 'IFC2X3' });
+    assert.match(decodeIfcOutput(content), /FILE_SCHEMA\(\('IFC2X3'\)\)/);
+    assert.match(decodeIfcOutput(content), /IFCWALL(?:STANDARDCASE)?\(/);
+  } finally {
+    useViewerStore.getState().resetViewerState();
+  }
 });

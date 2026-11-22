@@ -13,8 +13,6 @@ import { createExportAdapter } from '@/sdk/adapters/export-adapter.js';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 
-await (await import('@/sdk/adapters/export-adapter.js')).prepareSdkStepExport?.();
-
 const png = () => new Uint8Array(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64'));
 const source = `ISO-10303-21;
 HEADER;

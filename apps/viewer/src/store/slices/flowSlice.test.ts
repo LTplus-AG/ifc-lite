@@ -124,6 +124,29 @@ describe('flowSlice', () => {
     assert.equal(useViewerStore.getState().flowDoc, null);
   });
 
+  it('refuses a delete when an unreadable library cannot rule out that it holds the graph (#11258)', (t) => {
+    const setItem = ls.setItem.bind(ls);
+    t.mock.method(ls, 'setItem', (key: string, value: string) => {
+      // The library and its quarantine copy are both refused, so a damaged library stays in place.
+      if (key.startsWith('ifc-lite-flows')) throw new Error('Quota exceeded');
+      setItem(key, value);
+    });
+    const id = useViewerStore.getState().createFlow('Maybe stored')!;
+    savePlayerValues(id, { Width: 42 });
+    ls.store.set('ifc-lite-flows', '{not json');
+    assert.equal(useViewerStore.getState().deleteFlow(id), false);
+    assert.equal(useViewerStore.getState().savedFlows[0]?.doc.id, id);
+    assert.deepEqual(loadPlayerValues(id), { Width: 42 });
+
+    const getItem = ls.getItem.bind(ls);
+    t.mock.method(ls, 'getItem', (key: string) => {
+      if (key === 'ifc-lite-flows') throw new Error('Storage unreadable');
+      return getItem(key);
+    });
+    assert.equal(useViewerStore.getState().deleteFlow(id), false);
+    assert.deepEqual(loadPlayerValues(id), { Width: 42 });
+  });
+
   it('a session reset closes the panel and drops the last run, but keeps the saved graphs and the working copy', () => {
     useViewerStore.getState().createFlow('Kept');
     useViewerStore.setState({ flowPanelVisible: true, flowRunning: true, flowLastError: 'x', flowLastRunWindow: { start: 1, end: 2, doc: newFlowDocument('x'), mutationIds: new Set() } });

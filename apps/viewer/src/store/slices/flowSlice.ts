@@ -14,7 +14,7 @@
 import type { StateCreator } from 'zustand';
 import type { FlowDocument, RunResult } from '@ifc-lite/flow';
 import { isContributedFlowId } from '../../services/extensions/host-flows.js';
-import { BrowserTrackingStore, canCreateFlow, isFlowWithinSizeLimit, loadSavedFlows, newFlowDocument, saveFlows, type SavedFlow } from '../../lib/flow/persistence.js';
+import { BrowserTrackingStore, canCreateFlow, isFlowWithinSizeLimit, loadSavedFlows, newFlowDocument, saveFlows, storageMayHoldFlow, type SavedFlow } from '../../lib/flow/persistence.js';
 import type { WorkflowArtifact } from '../../lib/flow/artifact.js';
 import { cancelWorkflowRun } from '../../lib/flow/run-session.js';
 import { clearPlayerValues } from '../../lib/flow/player-values.js';
@@ -148,8 +148,9 @@ export const createFlowSlice: StateCreator<FlowSlice, [], [], FlowSlice> = (set,
     const next = get().savedFlows.filter((f) => f.doc.id !== id);
     const persisted = saveFlows(next);
     // A memory-only delete of a stored graph would undo itself on reload, so it is
-    // refused; a graph storage never held (its save was refused too) is still removable.
-    if (!persisted && loadSavedFlows().some((f) => f.doc.id === id)) {
+    // refused, as is one storage cannot rule out; a graph storage provably never
+    // held (its save was refused too) is still removable.
+    if (!persisted && storageMayHoldFlow(id)) {
       set({ flowStorageError: 'Browser storage could not record the deletion, so the workflow is kept.' });
       return false;
     }

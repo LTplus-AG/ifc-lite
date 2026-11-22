@@ -15,7 +15,7 @@ use super::OwnedConstructor;
 use super::retained::{RetainedSelection, RetainedPlanOperation, LogicalRetainedValue};
 use crate::construction::ConstructionReports;
 use crate::processors::diagnostic_capture;
-use crate::router::processing::RawRebase;
+use crate::router::raw_rebase::RawRebase;
 use crate::{Error, GeometryRouter, Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 

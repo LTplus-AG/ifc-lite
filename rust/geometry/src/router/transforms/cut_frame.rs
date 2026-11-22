@@ -144,7 +144,7 @@ impl GeometryRouter {
         // `root`; the host's own frame is what the capture promises.
         let bounds = at.to_host.filter(|_| !mesh.positions.is_empty()).map(|to_host| {
             let b = bounds_in(mesh, &to_host);
-            let enclose = super::super::processing::enclosing_f32;
+            let enclose = super::super::raw_rebase::enclosing_f32;
             let (lo, hi) = (b.min.map(|v| enclose(v, true)), b.max.map(|v| enclose(v, false)));
             [lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]]
         });

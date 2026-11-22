@@ -107,7 +107,7 @@ export const coordinationFlowOperations = [
     return { deleted: i.id };
   })),
   coordination('flow.cancel', 'Request cancellation of the active native workflow. Returns a cancellation request, never a fabricated terminal result.', ['configuration'], emptySchema, async (_, c) => {
-    const { cancelFlowDocumentRun } = await import('@/lib/flow/run-session');
-    return c.commit(() => ({ cancellation_requested: cancelFlowDocumentRun(), terminal: false }));
+    const { cancelFlowRun } = await import('@/lib/flow/run-session');
+    return c.commit(() => ({ cancellation_requested: cancelFlowRun(), terminal: false }));
   }),
 ];

@@ -51,7 +51,7 @@ export function startWorkflowRun(kind: WorkflowRun['kind'] = 'flow'): WorkflowRu
 }
 export function cancelWorkflowRun(): void { active?.cancel(); }
 /** Cancels a flow run only, never a federation realign holding the lease; true when one was asked to stop. */
-export function cancelFlowDocumentRun(): boolean { if (active?.kind !== 'flow') return false; active.cancel(); return true; }
+export function cancelFlowRun(): boolean { if (active?.kind !== 'flow') return false; active.cancel(); return true; }
 /** The running workflow's abort signal (aborted by every Stop/Cancel and by supersession), or null. */
 export function activeWorkflowSignal(): AbortSignal | null { return active?.controller.signal ?? null; }
 export function isNativeWorkflowBusy(): boolean { return active !== null; }

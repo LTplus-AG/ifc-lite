@@ -80,6 +80,23 @@ describe('opt-in emitted map-unit normalization (#6587)', () => {
     expect(attrs(ordinary, 38)).toEqual(attrs(input, 38));
   });
 
+  it('defaults a commented unset Scale and reuses a metre unit with a commented prefix (#11149)', async () => {
+    const source = body.replace('0.,1.,$);', '0.,1.,/* default scale */$);')
+      + '#44=IFCSIUNIT(*,.LENGTHUNIT.,$/* no prefix */,.METRE.);';
+    const { result, store } = await exported(await parse(file(source)));
+    expect(result.stats.warnings).toEqual([]);
+    expect(attrs(store, 37)[6]).toBe(44);
+    expect(attrs(store, 38)[7]).toBe(0.001);
+    expect(result.stats.newEntityCount).toBe(0);
+  });
+
+  it('uses project units when MapUnit is a commented unset slot (#11149)', async () => {
+    const source = body.replace('$,$,$,#2);', '$,$,$,$/* use project unit */);');
+    const { result, store } = await exported(await parse(file(source)));
+    expect(result.stats.warnings).toEqual([]);
+    expect(attrs(store, 38)[7]).toBe(0.001);
+  });
+
   it('sees effective named, positional and generated georeferencing edits without modifying the overlay', async () => {
     const input = await parse(file(body));
     const view = new MutablePropertyView(input.properties ?? null, 'geo');
@@ -167,9 +184,10 @@ describe('opt-in emitted map-unit normalization (#6587)', () => {
     expect(attrs(store, 38)).toEqual(attrs(input, 38));
   });
 
-  it.each(['UNKNOWN', 'FOOT'])('uses the declared conversion factor rather than a guessed %s name', async name => {
+  it.each([['UNKNOWN', '$'], ['FOOT', '/* unprefixed base unit */$']])(
+    'uses the declared conversion factor rather than a guessed %s name (#11149)', async (name, prefix) => {
     const source = body.replace("$,$,$,#2);", "$,$,$,#43);")
-      + `#41=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);\n#42=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.3048),#44);\n#43=IFCCONVERSIONBASEDUNIT(#41,.LENGTHUNIT.,'${name}',#42);\n#44=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);`;
+      + `#41=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);\n#42=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.3048),#44);\n#43=IFCCONVERSIONBASEDUNIT(#41,.LENGTHUNIT.,'${name}',#42);\n#44=IFCSIUNIT(*,.LENGTHUNIT.,${prefix},.METRE.);`;
     const input = await parse(file(source)); const { result, store } = await exported(input);
     expect(result.stats.warnings).toEqual([]);
     expect(attrs(store, 37)[6]).toBe(44);

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { withoutComments } from './step-comment-skip.js';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { OwnerHistoryFill } from './schema-converter-owner-history.js';
 import { IFC2X3_REQUIRED_SLOTS, type Ifc2x3RequiredSlot } from './generated/ifc2x3-required-slots.js';
@@ -98,7 +99,7 @@ export class Ifc2x3SlotFill {
     if (values === null || values.length !== row.arity) return line;
     let changed = false;
     for (const [index, , fill] of row.slots) {
-      if (values[index].trim() !== '$') continue;
+      if (withoutComments(values[index]) !== '$') continue;
       if (fill === null) {
         this.requiredUnfilled++;
         continue;

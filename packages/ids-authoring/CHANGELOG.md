@@ -1,5 +1,12 @@
 # @ifc-lite/ids-authoring
 
+## 0.3.6
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @ifc-lite/ids@3.5.1
+
 ## 0.3.5
 
 ### Patch Changes

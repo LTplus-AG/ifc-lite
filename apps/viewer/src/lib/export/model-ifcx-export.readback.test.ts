@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import { it } from 'node:test';
 import type { RefObject } from 'react';
 import type { StoreApi } from 'zustand';
-import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
+import { GeometryProcessor, type GeometryResult, type MeshData } from '@ifc-lite/geometry';
 import type { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import { setGlobalRendererRef } from '../../hooks/useBCF.js';
@@ -23,7 +23,9 @@ import { releaseCpuMeshBuffers } from '@/lib/geometry-cpu-release';
 import { geometryBackingCommand } from '@/lib/geometry-backing/backing-debug-hook';
 import type { TapState } from '@/lib/geometry-backing/store-backing-tap';
 import type { FederatedModel } from '@/store/types';
+import { fixtureModel } from '@/test/store-fixture';
 import { withIfcxModelGeometry } from './model-ifcx-export.js';
+import { produceNativeGlb } from './native-glb.js';
 
 function mesh(expressId: number, z: number, modelIndex?: number): MeshData {
   return { expressId, ifcType: 'IfcWall', positions: Float32Array.from([0, 0, z, 1, 0, z, 0, 1, z]),
@@ -64,4 +66,50 @@ it('#10887 r4647096042 exporting a resident model without maxExpressId while ano
     await geometryBackingCommand(store, undefined, { action: 'stop' });
     setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);
   }
+});
+
+it('#11216 exporting from a captured federation keeps newly loaded renderer indices', async (t) => {
+  const initial = useViewerStore.getState().models;
+  t.after(() => { useViewerStore.setState({ models: initial }); modelIndices(initial); });
+  const a = { id: 'exported' } as FederatedModel;
+  const b = { id: 'loaded-during-export' } as FederatedModel;
+  const models = new Map([[a.id, a]]);
+  useViewerStore.setState({ models });
+  modelIndices(models);
+
+  const pending = withIfcxModelGeometry({ modelId: a.id, geometryResult: null, idOffset: 0, models }, () => 'exported');
+  const live = new Map([...models, [b.id, b]]);
+  useViewerStore.setState({ models: live });
+  const index = modelIndices(live).get(b.id);
+  assert.notEqual(index, undefined);
+
+  assert.equal(await pending, 'exported');
+  assert.equal(modelIndices(live).get(b.id), index, 'export must not evict the live assignment');
+});
+
+it('#11216 GLB mesh collection preserves the renderer index of a model published during assembly', async (t) => {
+  const initial = useViewerStore.getState().models;
+  t.after(() => { useViewerStore.setState({ models: initial }); modelIndices(initial); });
+  const a = { ...fixtureModel('glb-exported'), maxExpressId: 100, geometryResult: result([mesh(1, 0)]) };
+  const b = fixtureModel('loaded-during-glb', { idOffset: 100 });
+  const models = new Map([[a.id, a]]);
+  useViewerStore.setState({ models });
+  modelIndices(models);
+  const live = new Map<string, FederatedModel>([...models, [b.id, b]]);
+  let assignedDuringExport: number | undefined;
+  // Keep the preparation, mesh collector and allocator real. Stub the wasm encoder.
+  t.mock.method(GeometryProcessor.prototype, 'init', async () => {});
+  t.mock.method(GeometryProcessor.prototype, 'exportGlbFromMeshes', () => Uint8Array.of(1));
+  t.mock.method(GeometryProcessor.prototype, 'dispose', () => {});
+
+  const exported = await produceNativeGlb(a.id, a, { visibleOnly: false, includeMetadata: false, lit: true, colorSource: 'rendering' },
+    undefined, () => {
+      // Publish synchronously after the assembler has read the store, before it collects the meshes.
+      useViewerStore.setState({ models: live });
+      assignedDuringExport = modelIndices(live).get(b.id);
+    });
+
+  assert.equal(exported.fromSourceBytes, false);
+  assert.notEqual(assignedDuringExport, undefined);
+  assert.equal(modelIndices(live).get(b.id), assignedDuringExport, 'GLB must not evict the live assignment');
 });

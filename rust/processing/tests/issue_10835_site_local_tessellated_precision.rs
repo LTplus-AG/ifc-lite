@@ -121,3 +121,15 @@ fn site_local_polygonal_face_set_far_from_the_site_keeps_its_gap() {
     assert!(matches!(frame, MeshFrame::SiteLocal { .. }), "{frame:?}");
     assert!((gaps[0] - 0.3).abs() < 0.01, "far gap {:.4} mm, file says 0.3000 mm", gaps[0]);
 }
+
+#[test]
+fn site_local_gap_on_opposite_side_of_the_rtc_is_preserved() {
+    ifc_lite_geometry::local_frame_set_enabled_override(Some(true));
+    let boxes = [("far-a", -10001.0), ("far-b", -9999.9997)];
+    for kind in [Kind::Triangulated, Kind::Polygonal] {
+        let source = tessellated_as(kind, (100.0, 100.0), &boxes);
+        let (frame, gaps) = gaps(&source, &[("far-a", "far-b")]);
+        assert!(matches!(frame, MeshFrame::SiteLocal { .. }), "{frame:?}");
+        assert!((gaps[0] - 0.3).abs() < 0.01, "far gap {:.4} mm, file says 0.3000 mm", gaps[0]);
+    }
+}

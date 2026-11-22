@@ -4835,6 +4835,7 @@
     "PointResolver: type",
     "PolygonAreaMarkupParams: interface",
     "PolygonAreaMarkupResult: interface",
+    "PolygonRing: type",
     "ProfileDef: type",
     "ProfileSection: type",
     "ProfileSectionType: type",
@@ -5200,6 +5201,8 @@
     "planStoreyReassignment: function",
     "planStoreyReassignmentCandidates: function",
     "planStructuralDerivation: function",
+    "pointInPolygon: function",
+    "polygonArea: function",
     "previewTypeLayerImpact: function",
     "productStoreyOrigin: function",
     "profileSectionExtent: function",
@@ -5243,6 +5246,7 @@
     "resolveSpatialAnchor: function",
     "resolveWallJoinAnchor: function",
     "retargetInheritingLayerUsagesInStore: function",
+    "retireProductShape: function",
     "roofPlaneHeightAt: function",
     "roomCandidatesFromFaces: function",
     "roomFramePlanOffsets: function",
@@ -9828,6 +9832,16 @@
     "streamPointCloud: function",
     "stripE57PageCrc: function",
     "voxelKeyId: function"
+  ],
+  "@ifc-lite/pointcloud/ifcx": [
+    "DecodedPointChunk: interface",
+    "IfcxPointSource: interface",
+    "POINTCLOUD_ATTR: const",
+    "POINTCLOUD_ATTR_KEYS: const",
+    "PointCloudBBox: interface",
+    "PointNormalState: type",
+    "decodeIfcxPointAttribute: function",
+    "decodeIfcxPointSource: function"
   ],
   "@ifc-lite/query": [
     "ComparisonOperator: type",

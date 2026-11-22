@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { ATTR, type ComposedNode, type UsdTransform } from './types.js';
-import { POINTCLOUD_ATTR_KEYS } from '@ifc-lite/pointcloud';
+import { POINTCLOUD_ATTR_KEYS } from '@ifc-lite/pointcloud/ifcx';
 import { getNodeLineage, type TraversalFrame } from './traversal.js';
 import { ImportWriter } from './imported-wire.js';
 

@@ -72,6 +72,7 @@ mod schema_structural_values;
 mod schema_structural_carriers;
 mod schema_structural_links;
 mod schema_document_links;
+mod schema_value_forms;
 mod schema_structural_varying;
 mod schema_mep;
 mod schema_detect;

@@ -205,6 +205,30 @@ it('BCF metadata stays below the executor limit with >1 MiB native screenshot me
     assert.equal(restored.comments[0].comment, 'Native comment updated with its exact inspected value.');
   } finally { clearGlobalRefs(); }
 });
+for (const [id, input, reason] of [
+  ['bcf.import', { base64: 'YQ==', replace_project_id: '' }, 'invalid-value'],
+  ['bcf.importDrafts', { value: 'YQ==' }, 'invalid-value'],
+  ['review.importWorkspace', { value: '{' }, 'invalid-value'],
+  ['review.importWorkspace', { value: '[]' }, 'invalid-value'],
+  ['compare.run', { head_model_id: 'missing', scope: 'both', excluded_types: [], match_by_content: false, key_property: '' }, 'unknown-target'],
+] as const) it(`${id} classifies invalid caller input (${reason}, #11060)`, async () => {
+  await assert.rejects(execute(id, input), { code: ToolErrorCode.INVALID_INPUT, details: { reason } });
+});
+
+it('returns stale when BCF topic or comment creation loses its project (#11060)', async () => {
+  for (const [name, input] of [
+    ['bcf.createTopic', { title: 'Pending topic', description: '', status: 'Open' }],
+    ['bcf.comment', { comment: 'Pending comment' }],
+  ] as const) {
+    await execute('bcf.createProject', { value: 'Transient' });
+    const topic = await execute<{ guid: string }>('bcf.createTopic', { title: 'Current topic', description: '', status: 'Open' });
+    const pending = execute(name, name === 'bcf.comment' ? { ...input, id: topic.guid } : input);
+    useViewerStore.setState({ bcfProject: null });
+    await assert.rejects(pending, { code: ToolErrorCode.STATE_CHANGED, details: { reason: 'stale' } });
+    assert.equal(useViewerStore.getState().bcfProject, null);
+  }
+});
+
 it('compare.run and collab.prepareRoom refuse what the native panel and dialog would refuse (#10589)', async () => {
   const model = context.model?.id; assert.ok(model);
   await assert.rejects(execute('compare.run', { head_model_id: model, scope: 'both', excluded_types: [], match_by_content: false, key_property: '' }), /two different models/);

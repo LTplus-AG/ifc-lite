@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 import { describe, it, expect } from 'vitest';
-import { convertStepLine } from './schema-converter.js';
+import { convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
 
 // #9668: the invariant is semantic stiffness, including IFC2X3's rigid -1
 // sentinel, and correct action slots rather than positional enum placement.
@@ -41,6 +41,20 @@ describe('structural schema conformance #9668', () => {
     const there = convertStepLine(source, 'IFC4', 'IFC2X3');
     expect(there).toBe('#23=IFCBOUNDARYNODECONDITION($,-1.,0.,$,$,$,$);');
     expect(convertStepLine(there!, 'IFC2X3', 'IFC4')).toContain('IFCBOOLEAN(.T.)');
+  });
+  it.each([
+    ['IFCBOUNDARYNODECONDITION', '1.,2.,3.,-1.,5.,6.'],
+    ['IFCBOUNDARYNODECONDITIONWARPING', '1.,2.,3.,4.,5.,6.,-1.'],
+    ['IFCBOUNDARYEDGECONDITION', '1.,2.,3.,-1.,5.,6.'],
+    ['IFCBOUNDARYFACECONDITION', '1.,-1.,3.'],
+  ])('%s uses the same stiffness measures and rigid sentinel in IFC4 and IFC4X3 (#10847)', (type, values) => {
+    const source = `#23=${type}('Support',${values});`;
+    const convert = (line: string, from: IfcSchemaVersion, to: IfcSchemaVersion) =>
+      convertStepLine(line, from, to, undefined, undefined, undefined, undefined, new EnumReconciliation());
+    const ifc4 = convert(source, 'IFC2X3', 'IFC4');
+    expect(ifc4).toContain('IFCBOOLEAN(.T.)');
+    expect(convert(source, 'IFC2X3', 'IFC4X3')).toBe(ifc4);
+    expect(convert(ifc4!, 'IFC4X3', 'IFC2X3')).toBe(source);
   });
   it('honors withheld load references before structural remapping', () => {
     const source = "#50=IFCSTRUCTURALLINEARACTION('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);";

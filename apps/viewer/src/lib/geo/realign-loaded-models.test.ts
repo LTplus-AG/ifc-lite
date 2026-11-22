@@ -9,6 +9,7 @@ import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { deferred } from '@/test/race';
 import { installModelLoadCanceller } from '@/hooks/modelLoadCanceller';
 import { assertWorkflowOwner, startWorkflowRun } from '@/lib/flow/run-session';
+import { newFlowDocument } from '@/lib/flow/persistence';
 import { realignLoadedModels } from './realign-loaded-models';
 
 const original = useViewerStore.getState();
@@ -74,4 +75,34 @@ it('owns the federation reload through ordinary add failures and releases on com
   assert.deepEqual(await pending, { state: 'partial', loaded: 2, total: 3, failed: ['B'] });
   assert.deepEqual(attempted, ['A', 'B', 'C']);
   startWorkflowRun().release();
+});
+
+it('keeps reloading when the flow document is edited mid-rebuild (#11263)', async () => {
+  const entered = deferred(), drain = deferred();
+  const pending = realignLoadedModels(async (_file, options) => {
+    assertWorkflowOwner(options?.workflowOwner);
+    const id = options!.modelId!;
+    if (id === 'A') {
+      entered.resolve();
+      await drain.promise;
+    }
+    useViewerStore.getState().addModel(model(id));
+    return id;
+  });
+  await entered.promise;
+  const { setFlowDoc } = useViewerStore.getState();
+  const flowDoc = newFlowDocument('Edited mid-rebuild');
+  setFlowDoc(flowDoc);
+  drain.resolve();
+  assert.deepEqual(await pending, { state: 'completed', loaded: 3, total: 3, failed: [] });
+  assert.deepEqual([...useViewerStore.getState().models.keys()].sort(), ['A', 'B', 'C']);
+
+  // A flow run is still stale once its document changes.
+  const flow = startWorkflowRun();
+  try {
+    setFlowDoc(flowDoc);
+    assert.equal(flow.controller.signal.aborted, true);
+  } finally {
+    flow.release();
+  }
 });

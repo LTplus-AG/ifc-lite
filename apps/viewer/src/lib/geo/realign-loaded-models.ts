@@ -13,7 +13,7 @@ export async function realignLoadedModels(addModel: NativeModelAdder) {
   const missing = snapshot.find(model => !model.sourceFile); if (missing) throw new MissingAlignmentSourceError(missing.name);
   // clearAllModels also empties sourceTags; a reloaded model gets its tag back so revision checks keep seeing it.
   const tags = new Map(state.sourceTags);
-  const workflow = startWorkflowRun();
+  const workflow = startWorkflowRun('realign');
   const supersession = watchLoadSupersession('primary');
   const failed: string[] = [];
   let loaded = 0;

@@ -48,6 +48,7 @@ const NO_UNDELIVERED_CANDIDATE: Record<string, string> = {
   'clash.classification.plan': 'reads a plan; stores nothing for the caller',
   'clash.run': 'runs into the viewer clash state, not a host candidate store',
   'filters.run': 'reads; stores nothing for the caller',
+  'flow.run': 'publishes the run result and any native review checkpoint inside c.commitAsync',
   'lists.run': 'reads; stores nothing for the caller',
   'presentation.capture': 'captures a view; stores nothing for the caller',
   'placement.translation.preview': 'computes a preview; stores nothing for the caller',

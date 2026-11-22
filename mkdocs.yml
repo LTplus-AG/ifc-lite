@@ -141,6 +141,7 @@ nav:
     - CLI Toolkit: guide/cli.md
     - Structural Analysis: guide/structural-analysis.md
     - MCP for AI Agents: guide/mcp.md
+    - Viewer Operations for Agents: guide/viewer-operations.md
     - 3D Viewer & Analysis: guide/viewer-api.md
     - Server Guide: guide/server.md
     - Native Cache Builder: guide/native-cache.md

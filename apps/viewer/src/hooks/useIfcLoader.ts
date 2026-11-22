@@ -238,8 +238,7 @@ export function useIfcLoader() {
   // Server operations from extracted hook
   const { loadFromServer } = useIfcServer();
 
-  // Latest `loadFile`, so the background revalidation can reload without being a dependency of `loadFile` itself (avoids a definition cycle). Kept current by
-  // the effect below.
+  // Break the dependency cycle between the file loader and cache revalidation.
   const loadFileRef = useRef<((file: File, target?: LoadTarget, options?: ModelLoadOptions) => Promise<void>) | null>(null);
 
   // Background revalidation of a SERVED cache hit (#4269): `ingest/cacheRevalidation.ts`.
@@ -2160,8 +2159,7 @@ export function useIfcLoader() {
     options?: Pick<ModelLoadOptions, 'onLoadError'>,
   ) => loadModel({ name, processedModel }, target, options), [loadModel]);
 
-  // Keep the ref pointed at the latest loadFile so a background revalidation can
-  // trigger a reparse-reload without loadFile depending on itself.
+  // Cache revalidation always uses the current file loader.
   useEffect(() => {
     loadFileRef.current = loadFile;
   }, [loadFile]);

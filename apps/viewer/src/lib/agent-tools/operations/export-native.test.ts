@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { beforeEach, describe, it } from 'node:test';
 import { GeometryProcessor } from '@ifc-lite/geometry';
 import { EMPTY_SOURCE_BYTES } from '@ifc-lite/parser';
@@ -209,6 +210,21 @@ describe('native export registry automation (#10525)', () => {
     await assert.rejects(run('exports.rhino', {
       target_model_id: 'A', settings: { ...DEFAULT_RHINO_EXPORT_SETTINGS, version: 99 },
     }), /Invalid exports\.rhino input/);
+  });
+  it('classifies energy formats that cannot produce any rooms (#11060)', async t => {
+    const url = new URL('../../../../../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
+    let source: Buffer<ArrayBuffer>;
+    try { source = await readFile(url); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      t.skip('Run pnpm build:wasm to exercise energy export'); return;
+    }
+    const { default: init } = await import('@ifc-lite/wasm');
+    await init({ module_or_path: source });
+    for (const format of ['dfjson', 'hbjson'] as const)
+      await assert.rejects(run('exports.energy', { target_model_id: 'A', format }), {
+        code: 'INVALID_INPUT', details: { reason: 'wrong-target' },
+      });
   });
   it('rejects unavailable native camera and unsupported terrain targets before emitting an artifact', async () => {
     await assert.rejects(run('exports.viewPdf', { scope: 'current-view', scale_mode: 'numerical', scale: 100, include_hidden_lines: false, render_mode: 'lines', include_scale_stamp: true }), /camera/);

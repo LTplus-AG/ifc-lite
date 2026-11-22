@@ -130,6 +130,16 @@ it('#9523 startup metadata matches every lazy agent bridge key and placeholder',
   assert.equal(lazyMessageParameters('agentBridge.notAKey'), null);
 });
 
+it('A2UI startup metadata matches every lazy a2ui key and placeholder', async () => {
+  const { a2uiEn } = await import('./catalogues/a2ui.en');
+  for (const [key, value] of Object.entries(a2uiEn)) {
+    const text = typeof value === 'string' ? value : Object.values(value).join(' ');
+    const parameters = [...new Set([...text.matchAll(/\{([A-Za-z][A-Za-z0-9_]*)\}/g)].map(match => match[1]))].sort();
+    assert.deepEqual(lazyMessageParameters(key), parameters, key);
+  }
+  assert.equal(lazyMessageParameters('a2ui.notAKey'), null);
+});
+
 it('#9352 attachment notices cover each shipped locale plural category', async () => {
   const { storeyManagerEn } = await import('./catalogues/storey-manager.en');
   const locales = [

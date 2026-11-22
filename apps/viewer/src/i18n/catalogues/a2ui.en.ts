@@ -10,7 +10,6 @@
 export const a2uiEn = {
   'a2ui.loading': 'Building the view…',
   'a2ui.surfaceLabel': 'Interactive answer',
-  'a2ui.missingChild': 'Missing part {id}',
   'a2ui.noValue': '—',
   'a2ui.noGroupValue': 'No value',
   'a2ui.empty': 'No matching elements.',

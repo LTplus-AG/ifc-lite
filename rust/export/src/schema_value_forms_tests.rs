@@ -207,6 +207,25 @@ fn calendar_dates_and_zoned_times_round_trip_10879() {
 }
 
 #[test]
+fn merged_dates_follow_the_written_classification_ids_10879() {
+    let model = |name: &str, day: u8| format!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('classification.ifc','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n\
+         #5=IFCCLASSIFICATION('Source','1',#6,'{name}');\n#6=IFCCALENDARDATE({day},2,2024);\nENDSEC;\nEND-ISO-10303-21;\n"
+    );
+    let first = model("First", 28);
+    let second = model("Second", 29);
+    let options = crate::MergedOptions { schema: Some("IFC4".into()), ..Default::default() };
+    let (output, stats) = crate::export_merged_with_stats(&[first.as_bytes(), second.as_bytes()], &options);
+    let classifications: Vec<_> = output.lines().filter(|line| line.contains("=IFCCLASSIFICATION(")).collect();
+    assert_eq!(classifications, [
+        "#5=IFCCLASSIFICATION('Source','1','2024-02-28','First',$,$,$);",
+        "#11=IFCCLASSIFICATION('Source','1','2024-02-29','Second',$,$,$);",
+    ], "{output}");
+    assert!(!output.contains("IFCCALENDARDATE("), "{output}");
+    assert!(stats.warnings.is_empty(), "{:?}", stats.warnings);
+}
+
+#[test]
 fn durations_warn_about_non_second_project_time_units_10879() {
     let input = include_bytes!("../tests/fixtures/schema_duration_timeunit.ifc");
     let upgrade = crate::StepOptions { schema: Some("IFC4".to_owned()), ..Default::default() };

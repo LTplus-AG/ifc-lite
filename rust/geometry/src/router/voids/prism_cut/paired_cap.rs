@@ -276,11 +276,12 @@ pub(super) fn has_oblique_paired_cap(pf: &PrismFrame, tris: &[PTri]) -> bool {
             bounds.iter().any(|edge| tri.p.iter().all(|&p| (pf.to2(p)[k] - edge[k]).abs() <= band))
         });
         !tris.iter().enumerate().any(|(index, tri)| {
-            !sided.iter().any(|side| side.contains(&index))
-                && !on_edge(tri, [lo, hi])
-                && !(on_edge(tri, [inner_lo, inner_hi])
-                    && tri.p.iter().all(|&p| direction * (dot(p, pf.d) - depth) <= band))
-                && tri_touches_slab_footprint(tri, pf, profile, depth - band, depth + band, 1.0e-8)
+            if sided.iter().any(|side| side.contains(&index)) || on_edge(tri, [lo, hi]) {
+                return false;
+            }
+            let on_finish = on_edge(tri, [inner_lo, inner_hi])
+                && tri.p.iter().all(|&p| direction * (dot(p, pf.d) - depth) <= band);
+            !on_finish && tri_touches_slab_footprint(tri, pf, profile, depth - band, depth + band, 1.0e-8)
         })
     })
 }

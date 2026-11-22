@@ -128,6 +128,27 @@ describe('native reviewed authoring operations (full automation follow-up #10525
     const name = state.getMutationView(SAMPLE_MODEL)?.getAttributeMutationsForEntity(expressId).find(row => row.name === 'Name')?.value;
     assert.equal(name ?? store.entities.getName(expressId), BACK_WALL_NAME);
   });
+  it('round-trips a change-set artifact larger than the inline import limit (#11214)', async () => {
+    const { id } = answer<{ id: string }>(await invoke('changeSets.create', { name: 'Large staged changes' }, true));
+    const state = useViewerStore.getState();
+    const expressId = state.models.get(SAMPLE_MODEL)!.ifcDataStore!.entities.getExpressIdByGlobalId(BACK_WALL);
+    const edit = state.setAttribute(SAMPLE_MODEL, expressId, 'Name', 'x'.repeat(1_000_001), BACK_WALL_NAME);
+    assert.ok(edit);
+    const artifact = answer<{ artifact_id: string; bytes: number }>(await invoke('changeSets.export', { id }, true));
+    assert.ok(artifact.bytes > 1_000_000);
+    const input = { artifact_id: artifact.artifact_id };
+    const otherHost = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));
+    const rejected = await dispatchMainViewerTool(otherHost, 'viewer_operation_execute', {
+      operation_id: 'changeSets.import', input,
+    }, { canEdit: () => true });
+    assert.equal(rejected.errorCode, 'INVALID_INPUT', rejected.text);
+    assert.equal(useViewerStore.getState().changeSets.size, 1);
+    const before = useViewerStore.getState().mutationVersion;
+    const imported = answer<{ id: string; applied: boolean }>(await invoke('changeSets.import', input, true));
+    assert.equal(imported.applied, false);
+    assert.deepEqual(useViewerStore.getState().changeSets.get(imported.id)?.mutations, [edit]);
+    assert.equal(useViewerStore.getState().mutationVersion, before);
+  });
   it('refuses malformed mutation rows before staging a change set (#10795 item 31)', async () => {
     const common = { id: 'wrong', timestamp: 0, modelId: SAMPLE_MODEL, entityId: 1 };
     for (const mutation of [

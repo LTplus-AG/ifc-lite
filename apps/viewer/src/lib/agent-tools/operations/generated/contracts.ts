@@ -19333,7 +19333,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "changeSets.import",
     "version": 1,
     "owner": "changeSets",
-    "description": "Import an exported native change-set record using its authoritative parser. This stages metadata and does not replay edits.",
+    "description": "Import a native change set from inline json or a host-owned JSON artifact_id (up to 16 MiB). This stages metadata and does not replay edits.",
     "needs": "viewer",
     "effects": [
       "configuration"
@@ -19344,13 +19344,40 @@ export const operationContracts: readonly OperationContract[] = [
       "properties": {
         "json": {
           "type": "string",
+          "nullable": true,
           "maxLength": 1000000
+        },
+        "artifact_id": {
+          "type": "string",
+          "nullable": true,
+          "minLength": 1,
+          "maxLength": 200
         }
       },
-      "required": [
-        "json"
-      ],
-      "additionalProperties": false
+      "required": [],
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "properties": {
+            "json": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "json"
+          ]
+        },
+        {
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "artifact_id"
+          ]
+        }
+      ]
     },
     "outputSchema": {
       "type": "object",

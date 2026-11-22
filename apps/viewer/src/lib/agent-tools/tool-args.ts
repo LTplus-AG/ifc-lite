@@ -11,6 +11,7 @@
 import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
 import { assertDispatchActive } from './cancellation';
 import type { ToolCallContext } from './types';
+import { invalidInput } from './operations/refusals';
 
 export type ToolErrorCodeValue = (typeof ToolErrorCode)[keyof typeof ToolErrorCode];
 
@@ -18,8 +19,9 @@ export function fail(code: ToolErrorCodeValue, message: string, hint?: string): 
   throw new ToolExecutionError({ code, message, ...(hint ? { hint } : {}) });
 }
 
+/** Caller input is wrong: the typed refusal shape of operations/refusals.ts, so agents can branch on details.reason. */
 export function invalid(message: string): never {
-  return fail(ToolErrorCode.INVALID_INPUT, message);
+  throw invalidInput('invalid-value', message);
 }
 
 /** Refuse unless the tab user allowed palette commands and edits. Call again after every await before acting. */

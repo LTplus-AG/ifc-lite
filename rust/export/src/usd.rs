@@ -27,18 +27,20 @@
 mod emit;
 mod fmt;
 mod instance;
+mod material;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write as _;
 
-use ifc_lite_processing::{InstanceRecord, MeshData};
+use ifc_lite_processing::{process, InstanceRecord, MeshData};
 
 use crate::error::ExportError;
 use crate::ifc5::{project_name, spatial_children};
-use crate::scene_input::gather;
+use crate::scene_input::gather_with;
 use crate::model::{build_export_model, EntityRow};
 use emit::{emit_material, emit_prim, write_header, Ctx};
-use fmt::{color_key, fmt_matrix4d, Namer};
+use fmt::{fmt_matrix4d, Namer};
+use material::{Finishes, MaterialKey};
 
 /// Deepest spatial nesting the recursive emitter follows before it stops recursing
 /// (the subtree is then caught by the leftover / Unassigned pass). IFC spatial trees
@@ -69,6 +71,23 @@ impl Default for UsdOptions {
     }
 }
 
+/// Index occurrences and register their materials after the full meshes.
+fn index_instance_materials<'a>(
+    instances: &'a [InstanceRecord],
+    finishes: &Finishes,
+    materials: &mut BTreeMap<MaterialKey, [f32; 4]>,
+) -> HashMap<u32, (&'a InstanceRecord, MaterialKey)> {
+    instances
+        .iter()
+        .enumerate()
+        .map(|(index, rec)| {
+            let key = MaterialKey::new(rec.color, finishes.instances[index]);
+            materials.entry(key).or_insert(rec.color);
+            (rec.express_id, (rec, key))
+        })
+        .collect()
+}
+
 /// Export the model in `content` (raw IFC/STEP bytes) as a `.usda` (ASCII USD) string.
 ///
 /// Fail-closed like the GLB exporters: a model with no emittable mesh and no
@@ -78,33 +97,38 @@ impl Default for UsdOptions {
 /// meshing pass.
 pub fn export_usd(content: &[u8], opts: &UsdOptions) -> Result<String, ExportError> {
     // Instancing-on when requested and every instance is safe; else the plain baked path.
-    let input = gather(content, opts.instancing, opts.layer_slicing, None);
+    let (input, finishes) = gather_with(opts.instancing, opts.layer_slicing, None, |req| {
+        let mut finishes = Finishes::default();
+        let features = req.features.finishes(true);
+        let result = process(content, &req.features(features), &mut finishes);
+        (result, finishes)
+    });
     let result = &input.result;
 
     // Emittable meshes (`scene_input::mesh_emittable`): the glTF `mesh_visible` sanity
     // gate plus all-finite coordinates and in-range indices, so a degenerate mesh can
     // never emit non-finite `point3f`/`normal3f` (an usda parse error) or an
     // out-of-range `faceVertexIndices` (an usdchecker error).
-    let visible: Vec<&MeshData> = input.emittable().collect();
-
     // Group full meshes by express id (an element may produce several submeshes), keeping a
     // first-appearance ORDER so the Unassigned bucket and output stay deterministic.
-    let mut meshes_by_id: HashMap<u32, Vec<&MeshData>> = HashMap::new();
+    let mut materials = BTreeMap::new();
+    let mut meshes_by_id: HashMap<u32, Vec<(&MeshData, MaterialKey)>> = HashMap::new();
     let mut mesh_order: Vec<u32> = Vec::new();
     {
         let mut seen: HashSet<u32> = HashSet::new();
-        for m in &visible {
+        for (index, m) in input.emittable_with_indices() {
             if seen.insert(m.express_id) {
                 mesh_order.push(m.express_id);
             }
-            meshes_by_id.entry(m.express_id).or_default().push(m);
+            let key = MaterialKey::new(m.color, finishes.meshes[index]);
+            materials.entry(key).or_insert(m.color);
+            meshes_by_id.entry(m.express_id).or_default().push((m, key));
         }
     }
 
     // De-baked instance occurrences (empty unless instancing is active + safe).
-    let instances: &[InstanceRecord] = input.instances();
-    let instances_by_id: HashMap<u32, &InstanceRecord> =
-        instances.iter().map(|r| (r.express_id, r)).collect();
+    let instances = input.instances();
+    let instances_by_id = index_instance_materials(instances, &finishes, &mut materials);
 
     // One prototype per referenced template (sorted); its origin composes each occurrence's
     // local→world transform. Same mesh backs the prototype geometry AND its origin.
@@ -116,7 +140,7 @@ pub fn export_usd(content: &[u8], opts: &UsdOptions) -> Result<String, ExportErr
             let tid = r.template_express_id;
             if seen.insert(tid) {
                 proto_ids.push(tid);
-                if let Some(m) = meshes_by_id.get(&tid).and_then(|v| v.first()) {
+                if let Some((m, _)) = meshes_by_id.get(&tid).and_then(|v| v.first()) {
                     template_origin.insert(tid, m.origin);
                 }
             }
@@ -157,7 +181,7 @@ pub fn export_usd(content: &[u8], opts: &UsdOptions) -> Result<String, ExportErr
     }
     for id in &mesh_order {
         if !info.contains_key(id) {
-            if let Some(m) = meshes_by_id.get(id).and_then(|v| v.first()) {
+            if let Some((m, _)) = meshes_by_id.get(id).and_then(|v| v.first()) {
                 info.insert(*id, (m.name.clone().unwrap_or_default(), m.ifc_type.clone()));
             }
         }
@@ -166,18 +190,6 @@ pub fn export_usd(content: &[u8], opts: &UsdOptions) -> Result<String, ExportErr
         info.entry(r.express_id)
             .or_insert_with(|| (r.name.clone().unwrap_or_default(), r.ifc_type.clone()));
     }
-
-    // Materials: distinct rounded RGBA keys over meshes AND instance occurrences (each
-    // occurrence colour needs a `/World/Looks` prim or its `material:binding` dangles).
-    let mut mat_color: HashMap<(i32, i32, i32, i32), [f32; 4]> = HashMap::new();
-    for m in &visible {
-        mat_color.entry(color_key(m.color)).or_insert(m.color);
-    }
-    for r in instances {
-        mat_color.entry(color_key(r.color)).or_insert(r.color);
-    }
-    let mut mat_keys: Vec<(i32, i32, i32, i32)> = mat_color.keys().copied().collect();
-    mat_keys.sort_unstable();
 
     let ctx = Ctx {
         children: &children,
@@ -208,10 +220,10 @@ pub fn export_usd(content: &[u8], opts: &UsdOptions) -> Result<String, ExportErr
     let mut world_names = Namer::new();
     world_names.reserve("Looks");
     world_names.reserve("Prototypes");
-    if !mat_keys.is_empty() {
+    if !materials.is_empty() {
         out.push_str("\n    def Scope \"Looks\"\n    {\n");
-        for key in &mat_keys {
-            emit_material(&mut out, 2, *key, mat_color[key]);
+        for (key, color) in materials {
+            emit_material(&mut out, 2, key, color);
         }
         out.push_str("    }\n");
     }
@@ -220,7 +232,7 @@ pub fn export_usd(content: &[u8], opts: &UsdOptions) -> Result<String, ExportErr
     if !proto_ids.is_empty() {
         out.push_str("\n    def Scope \"Prototypes\"\n    {\n");
         for tid in &proto_ids {
-            if let Some(m) = meshes_by_id.get(tid).and_then(|v| v.first()) {
+            if let Some((m, _)) = meshes_by_id.get(tid).and_then(|v| v.first()) {
                 instance::emit_prototype(&mut out, 2, &instance::proto_name(*tid), m);
             }
         }

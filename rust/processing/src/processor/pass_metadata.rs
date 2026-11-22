@@ -13,6 +13,21 @@ use ifc_lite_core::EntityDecoder;
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 
+pub(super) fn element_material_fallbacks(
+    colors_by_element: &FxHashMap<u32, Vec<[f32; 4]>>,
+) -> FxHashMap<u32, [f32; 4]> {
+    // Material chain joined by the shared resolver (#407). The general-path
+    // element fallback is `style::element_material_fallback_color`, the rule
+    // the browser style wire carries too (PROCESSING-4); the full list feeds
+    // the opening sub-mesh transparent/opaque split (#913 §2.3).
+    colors_by_element
+        .iter()
+        .filter_map(|(&id, colors)| {
+            crate::style::element_material_fallback_color(colors).map(|c| (id, c))
+        })
+        .collect()
+}
+
 /// Fill in a chunk's identity (GlobalId, Name, shape reference), then its
 /// appearance. The native pass decodes the identities in parallel with a
 /// thread-local decoder and resolves the appearances serially (cache-hit

@@ -45,12 +45,15 @@ fn tessellated_as(kind: Kind, site: (f64, f64), boxes: &[(&str, f64)]) -> String
     let mut ids = Vec::new();
     for (i, (name, x)) in boxes.iter().enumerate() {
         let b = 100 + 10 * i;
-        let pts: Vec<String> = (0..8)
+        let mut pts: Vec<String> = (0..8)
             .map(|v| {
                 let (dx, dy, dz) = ((v & 1) as f64, ((v >> 1) & 1) as f64, ((v >> 2) & 1) as f64);
                 format!("({:.4},{dy:.1},{dz:.1})", x + dx)
             })
             .collect();
+        // No face references this point. Including it in the anchor rounds
+        // away the sub-millimetre gap when the positions narrow to f32.
+        pts.push("(1000000.,0.,0.)".to_owned());
         data.push_str(&format!("#{b}=IFCCARTESIANPOINTLIST3D(({}),$);\n", pts.join(",")));
         data.push_str(&face_set(kind, b + 1, b, 1000 + 10 * i));
         data.push_str(&format!(

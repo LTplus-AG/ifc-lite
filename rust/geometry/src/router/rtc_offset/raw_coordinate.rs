@@ -70,7 +70,7 @@ impl GeometryRouter {
 
     /// Where a raw item is anchored when the per-mesh local frame rebases it
     /// by its own position (#10835), in metres: the centre of a face set's
-    /// point list's box, read in f64: per axis it is the point every vertex is
+    /// referenced vertices' box, read in f64: per axis it is the point every used vertex is
     /// nearest to in the worst case, so no other anchor (the model RTC, the
     /// first vertex) narrows a long face set more finely. Other raw items use
     /// their first vertex.
@@ -94,16 +94,9 @@ impl GeometryRouter {
         let Some(values) = point_list.filter(|values| values.len() >= 3) else {
             return self.representation_item_first_vertex_meters(item, decoder);
         };
-        let mut min = [f64::INFINITY; 3];
-        let mut max = [f64::NEG_INFINITY; 3];
-        for point in values.chunks_exact(3) {
-            for axis in 0..3 {
-                min[axis] = min[axis].min(point[axis]);
-                max[axis] = max[axis].max(point[axis]);
-            }
-        }
-        let centre = |axis: usize| (min[axis] + max[axis]) * 0.5 * self.unit_scale();
-        Some((centre(0), centre(1), centre(2)))
+        let centre = crate::processors::referenced_point_centre(item, decoder, &values)?;
+        let scale = self.unit_scale();
+        Some((centre[0] * scale, centre[1] * scale, centre[2] * scale))
     }
 
     /// The element-frame RTC offset a raw-coordinate `item` is meshed in, or

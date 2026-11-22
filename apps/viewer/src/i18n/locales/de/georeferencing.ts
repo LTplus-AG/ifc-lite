@@ -35,6 +35,7 @@ export const georeferencingDe = {
   'properties.georef.noGeoreferencing': 'Keine Georeferenzierung',
   'properties.georef.addGeoreferencing': 'Georeferenzierung hinzufügen',
   'properties.georef.reloadPrompt': 'Georeferenz gespeichert. Geladene Modelle neu laden, um die 3D-Ausrichtung neu zu berechnen?',
+  'properties.georef.reloadUnexportedChanges': 'Beim Neuladen können nicht exportierte Änderungen verloren gehen. Exportieren Sie die Änderungen, die Sie behalten möchten, vor dem Neuladen.',
   'properties.georef.reloadModels': 'Modelle neu laden',
   'properties.georef.reloadMissingSource': '{name} kann nicht neu geladen werden: Die Quelldatei ist nicht verfügbar',
   'properties.georef.reloadPartial': '{loaded} von {total} Modellen neu geladen. Nicht neu geladen werden konnten: {failed}.',

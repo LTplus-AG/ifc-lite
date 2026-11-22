@@ -34,12 +34,10 @@ import {
   supportsStandardGeoreferencing,
 } from '@/lib/geo/effective-georef';
 import { detectDoubleGeoreference } from '@/lib/geo/double-georeference';
-import { realignLoadedModels, MissingAlignmentSourceError } from '@/lib/geo/realign-loaded-models';
-import { useIfc } from '@/hooks/useIfc';
-import { toast } from '@/components/ui/toast';
+import { useReloadModelsForAlignment } from './useReloadModelsForAlignment';
 import { resolveInstancedExportGate } from '@/utils/instancedExport';
 import { useTranslation } from '@/i18n';
-import { formatLocaleList, formatLocaleNumber } from '@/i18n/intlFormat';
+import { formatLocaleNumber } from '@/i18n/intlFormat';
 import { localizedApproxDistance, localizedRawValuesNote, localizedSiteAnchorUnitNote, localizedScaleOverride } from './georeference-i18n';
 import { GeorefRow, AngleRow } from './georef-rows';
 import { TerrainHeightButton } from './georef-terrain-height-button';
@@ -79,7 +77,6 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
   const cesiumSourceModelId = useViewerStore(s => s.cesiumSourceModelId);
   const models = useViewerStore(s => s.models);
   const loading = useViewerStore(s => s.loading);
-  const { addModel } = useIfc();
   // This model's global-id bracket, scoping `LocationMap`'s KMZ export
   // (`withInstancedMeshes`) to just its own GPU-instanced occurrences — without
   // it, a federation of more than one loaded model leaks every OTHER model's
@@ -183,19 +180,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
     }
   }, [models.size]);
 
-  const reloadModelsForAlignment = useCallback(async () => {
-    try {
-      const result = await realignLoadedModels(addModel);
-      setShowReloadPrompt(false);
-      if (result.state === 'partial') toast.error(t('properties.georef.reloadPartial', {
-        loaded: formatLocaleNumber(locale, result.loaded), total: formatLocaleNumber(locale, result.total), failed: formatLocaleList(locale, result.failed),
-      }));
-      else if (result.state === 'completed') toast.success(t('properties.georef.reloadSuccess'));
-    } catch (error) {
-      if (error instanceof MissingAlignmentSourceError) toast.error(t('properties.georef.reloadMissingSource', { name: error.modelName }));
-      else toast.error(error instanceof Error ? t('properties.georef.reloadFailedWithMessage', { message: error.message }) : t('properties.georef.reloadFailed'));
-    }
-  }, [addModel, locale, t]);
+  const reloadModelsForAlignment = useReloadModelsForAlignment(setShowReloadPrompt);
 
   const handleSave = useCallback((entity: 'projectedCRS' | 'mapConversion', field: string, value: string | number) => {
     if (!modelId || !setGeorefField) return;

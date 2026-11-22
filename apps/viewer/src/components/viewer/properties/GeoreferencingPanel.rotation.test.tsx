@@ -5,6 +5,7 @@
 /** #6639: the displayed convention agrees with edited and exported IFC axes. */
 import '@/test/setup-dom.js';
 import { afterEach, it } from 'node:test';
+import { act } from 'react';
 import assert from 'node:assert/strict';
 import { IfcParser, extractGeoreferencingOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { cleanup, render, click, type, press, settle } from '@/test/render.js';
@@ -183,4 +184,39 @@ it('explains the rotation convention and omitted scale when editing is disabled 
   assert.match(host.textContent ?? '', /Counterclockwise/);
   assert.match(host.textContent ?? '', /Default: 1/);
   assert.equal(host.querySelector('input'), null);
+});
+
+it('requires confirmation before realigning models with unexported edits (#10591)', async () => {
+  const { ConfirmDialogHost } = await import('@/components/ui/confirm-dialog');
+  const source = fixture();
+  const dataStore = await parse(source);
+  const host = mount(dataStore);
+  const current = useViewerStore.getState().models.get('m')!;
+  let clears = 0;
+  act(() => useViewerStore.setState({
+    ...fixtureModels(
+      { ...current, sourceFile: new File([source], 'first.ifc') },
+      { ...fixtureModel('second', { idOffset: 1_000_000 }), sourceFile: new File([source], 'second.ifc') },
+    ),
+    clearAllModels: () => { clears++; throw new Error('Unexpected federation reset'); },
+  }));
+  render(<ConfirmDialogHost />);
+  const input = openEditor(host, ROTATION_LABEL);
+  type(input, '30');
+  press(input, 'Enter');
+  await settle();
+
+  const reload = [...host.querySelectorAll('button')].find(button => button.textContent === en['properties.georef.reloadModels']);
+  assert.ok(reload);
+  click(reload);
+  await settle();
+  assert.equal(clears, 0, 'confirmation must precede the reset');
+  const dialog = document.querySelector('[role="alertdialog"]');
+  assert.ok(dialog);
+  const cancel = [...dialog.querySelectorAll('button')].find(button => button.textContent === en['viewerShell.dialog.cancel']);
+  assert.ok(cancel);
+  click(cancel);
+  await settle();
+  assert.equal(clears, 0);
+  assert.equal(useViewerStore.getState().georefMutations.get('m')?.mapConversion?.xAxisAbscissa, Math.cos(Math.PI / 6));
 });

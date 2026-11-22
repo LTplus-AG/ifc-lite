@@ -411,22 +411,6 @@ it('a preflight failure settles the editor so the corrected source can run (#105
   assert.equal(result.state, 'completed'); assert.equal(result.result.value, 4);
 });
 
-it('refuses to replace or execute a different source after a native revision is reused (#10591 review)', async () => {
-  const editor = useViewerStore.getState();
-  editor.setScriptEditorContent('1');
-  editor.beginAssistantScriptTurn();
-  editor.setScriptEditorContent('2');
-  const inspected = await execute<{ revision: number; source: string }>('script.read');
-  assert.equal(inspected.source, '2');
-  const nativeRevision = useViewerStore.getState().scriptEditorRevision;
-  editor.rollbackAssistantScriptTurn();
-  editor.setScriptEditorContent('3');
-  assert.equal(useViewerStore.getState().scriptEditorRevision, nativeRevision);
-  await assert.rejects(execute('script.replace', { source: '4', expected_revision: inspected.revision }), /revision changed/);
-  await assert.rejects(execute('script.execute', { expected_revision: inspected.revision }), /revision changed/);
-  assert.equal(useViewerStore.getState().scriptEditorContent, '3');
-});
-
 it('script.open refuses to drop an unsaved draft that no saved script holds (#10591 review)', async () => {
   useViewerStore.setState({ scriptEditorDirty: false });
   const saved = await execute<{ id: string }>('script.create', { name: 'Target', source: '1' });

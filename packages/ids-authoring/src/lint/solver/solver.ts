@@ -24,7 +24,7 @@ import { samplePattern } from './sample.js';
 export type Tri = 'yes' | 'no' | 'unknown';
 
 export interface SolveOptions {
-  /** Entity names compare case-insensitively; values do not. */
+  /** Opt into case-insensitive string comparison. */
   caseInsensitive?: boolean;
 }
 

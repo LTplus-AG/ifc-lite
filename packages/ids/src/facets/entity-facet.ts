@@ -282,35 +282,10 @@ export function getMatchingEntityTypes(
   constraint: IDSConstraint,
   allTypes: string[]
 ): string[] {
-  switch (constraint.type) {
-    case 'simpleValue':
-      return allTypes.filter(
-        (t) => t.toUpperCase() === constraint.value.toUpperCase()
-      );
-    case 'enumeration':
-      return allTypes.filter((t) =>
-        constraint.values.some(
-          (v) => v.toUpperCase() === t.toUpperCase()
-        )
-      );
-    case 'pattern':
-      // Reject a catastrophic-backtracking or over-long pattern before
-      // compiling — this throws (`UnsafeRegexPatternError`), unlike the
-      // ordinary-malformed-pattern case below, because a rejected
-      // pattern must surface as an error to the caller, not silently
-      // resolve to "matches nothing".
-      assertGuardedRegexPattern(constraint.pattern);
-      try {
-        const regex = new RegExp(`^${constraint.pattern}$`, 'i');
-        return allTypes.filter((t) => regex.test(t));
-      } catch {
-        // Legitimately silent: an uncompilable pattern matches no entity type,
-        // and the IDS audit reports the bad pattern itself under
-        // W_REGEX_UNVERIFIED / the coherence regex check. Warning here would
-        // duplicate that per candidate-type resolution.
-        return [];
-      }
-    default:
-      return allTypes;
+  if (constraint.type === 'pattern') {
+    assertGuardedRegexPattern(constraint.pattern);
+  } else if (constraint.type !== 'enumeration' && constraint.type !== 'simpleValue') {
+    return allTypes;
   }
+  return allTypes.filter((entityType) => matchesEntityName(constraint, entityType));
 }

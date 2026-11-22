@@ -15,7 +15,13 @@ describe('getMatchingEntityTypes(pattern) — ReDoS guard', () => {
   });
 
   it('still resolves a legitimate entity-name pattern', () => {
-    const c: IDSPatternConstraint = { type: 'pattern', pattern: 'IfcWall.*' };
+    const c: IDSPatternConstraint = { type: 'pattern', pattern: 'IFCWALL.*' };
     expect(getMatchingEntityTypes(c, ALL_TYPES)).toEqual(['IfcWall', 'IfcWallStandardCase']);
+  });
+
+  it('uses the same uppercase, case-sensitive class names as validation (#10544)', () => {
+    expect(getMatchingEntityTypes({ type: 'pattern', pattern: 'IfcWall.*' }, ALL_TYPES)).toEqual([]);
+    expect(getMatchingEntityTypes({ type: 'enumeration', values: ['IFCWALL', 'IfcSlab'] }, ALL_TYPES))
+      .toEqual(['IfcWall']);
   });
 });

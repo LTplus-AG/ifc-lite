@@ -19,6 +19,7 @@ const one = (app: string, req = '', attrs = 'ifcVersion="IFC4"') => idsXml(specX
 const card = (min: string, max: string, app: string, req = '') =>
   idsXml(`<specification name="S" ifcVersion="IFC4"><applicability minOccurs="${min}" maxOccurs="${max}">${app}</applicability>${req ? `<requirements>${req}</requirements>` : ''}</specification>`);
 const W = entity('IFCWALL');
+const entityPattern = (value: string) => `<entity><name>${pattern(value)}</name></entity>`;
 const fr = (opts: Parameters<typeof property>[2] = {}) => property('Foo_Bar', 'FireRating', opts);
 const num = (inner: string) => restriction('xs:double', inner);
 
@@ -49,8 +50,9 @@ const FIXTURES: RuleFixtures[] = [
   },
   {
     code: 'IDSL-SPEC-001',
-    positive: [one(W, W), one(W + fr({ value: sv('EI60') }), fr()), one(W + fr({ value: sv('EI60') }), fr({ value: enumeration(['EI60', 'EI90']) }))],
-    negative: [one(W + fr({ value: sv('EI60') }), fr({ value: enumeration(['EI90']) })), one(W + fr(), fr({ dataType: 'IFCLABEL' })), one(W + fr(), fr({ cardinality: 'optional' }))],
+    positive: [one(W, W), one(W, entityPattern('IFCWALL.*')), one(W + fr({ value: sv('EI60') }), fr()), one(W + fr({ value: sv('EI60') }), fr({ value: enumeration(['EI60', 'EI90']) }))],
+    // #10544: an uppercase class does not imply a mixed-case pattern.
+    negative: [one(W, entityPattern('IfcWall.*')), one(W + fr({ value: sv('EI60') }), fr({ value: enumeration(['EI90']) })), one(W + fr(), fr({ dataType: 'IFCLABEL' })), one(W + fr(), fr({ cardinality: 'optional' }))],
     fixes: 1,
   },
   {

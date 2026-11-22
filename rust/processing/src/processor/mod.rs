@@ -175,5 +175,5 @@ pub(crate) fn process_observed(
     let observations = PassObservations {
         foreign_resource_scope: passed.ctx.foreign_resource_scope.load(std::sync::atomic::Ordering::Relaxed),
     };
-    (finalize::finish(content, passed, total_start, &pipeline_span, sink), observations)
+    (finalize::finish(content, req, passed, total_start, &pipeline_span, sink), observations)
 }

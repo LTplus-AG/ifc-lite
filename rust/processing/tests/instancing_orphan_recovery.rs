@@ -105,6 +105,61 @@ END-ISO-10303-21;"#);
 /// `IgnoreAll`, and the other 63 `IfcBuildingElementProxy` occurrences each
 /// materialize their own geometry normally.
 #[test]
+fn cancellation_suppresses_callbacks_for_recovered_meshes_10995() {
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    };
+
+    struct CancelAfterBatch {
+        cancelled: Arc<AtomicBool>,
+        batches: usize,
+        finish_batches: usize,
+    }
+
+    impl ProcessingSink for CancelAfterBatch {
+        fn on_finishes(&mut self, _finishes: &[Option<SpecularMaterial>]) {
+            self.finish_batches += 1;
+        }
+
+        fn on_batch(&mut self, meshes: &[MeshData], _processed: usize, _total: usize) {
+            if self.batches == 0 {
+                assert_eq!(meshes.len(), 1);
+                assert_eq!(meshes[0].express_id, 38);
+            }
+            self.batches += 1;
+            self.cancelled.store(true, Ordering::Relaxed);
+        }
+    }
+
+    // Give Proxy_1 a direct solid so a normal batch can request cancellation
+    // after the other occurrences have been collected in the same chunk.
+    let bytes = String::from_utf8(fixture_with_template_owner_as_window()).unwrap();
+    let bytes = bytes.replace(
+        "#33=IFCSHAPEREPRESENTATION(#5,'Body','MappedRepresentation',(#32));",
+        "#33=IFCSHAPEREPRESENTATION(#5,'Body','SweptSolid',(#12));",
+    );
+    let mut sink = CancelAfterBatch {
+        cancelled: Arc::new(AtomicBool::new(false)),
+        batches: 0,
+        finish_batches: 0,
+    };
+    let req = ProcessingRequest::full_pass()
+        .opening_filter(OpeningFilterMode::IgnoreAll)
+        .instancing(true)
+        .cancel(sink.cancelled.clone());
+    let features = req.features.finishes(true);
+    let result = process(bytes.as_bytes(), &req.features(features), &mut sink);
+    assert!(result.instances.is_empty());
+    assert_eq!(result.meshes.len(), 63, "collected geometry is still finalized");
+    assert_eq!(
+        (sink.batches, sink.finish_batches),
+        (1, 1),
+        "cancellation should suppress the recovered batch and its finishes",
+    );
+}
+
+#[test]
 fn flat_baseline_skips_the_window_and_meshes_the_rest() {
     let bytes = fixture_with_template_owner_as_window();
     let flat = run(&bytes, OpeningFilterMode::IgnoreAll, false);

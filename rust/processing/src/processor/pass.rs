@@ -215,10 +215,9 @@ struct ResolvedInputs {
     mapped_item_plan: FxHashMap<u32, (u32, u32)>,
 }
 
-/// Cooperative cancellation between chunks: the caller flipped the flag (e.g.
-/// its client disconnected), so stop meshing and emitting. The result is
-/// partial by contract; see `ProcessingRequest::cancel`.
-fn cancelled(req: &ProcessingRequest) -> bool {
+/// Whether the caller asked the pass to stop meshing and emitting. The
+/// result is partial by contract; see `ProcessingRequest::cancel`.
+pub(super) fn cancelled(req: &ProcessingRequest) -> bool {
     req.cancel
         .as_ref()
         .is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed))

@@ -7,9 +7,9 @@
 //! georeferencing and assemble the [`ProcessingResult`].
 
 use super::diagnostics;
-use super::pass::{emit_finishes, PassContext, Passed};
+use super::pass::{cancelled, emit_finishes, PassContext, Passed};
 use super::phase_marks::{mark, Clock, Mark};
-use super::{csg_summary, instancing, ProcessingResult, ProcessingSink};
+use super::{csg_summary, instancing, ProcessingRequest, ProcessingResult, ProcessingSink};
 use crate::types::response::{CoordinateInfo, ModelMetadata, ProcessingStats};
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
@@ -80,6 +80,7 @@ impl CsgFailures {
 
 pub(super) fn finish(
     content: &[u8],
+    req: &ProcessingRequest,
     passed: Passed<'_>,
     total_start: Clock,
     pipeline_span: &tracing::Span,
@@ -159,10 +160,12 @@ pub(super) fn finish(
         total_meshes += recovered.len();
         total_vertices += recovered.iter().map(|mesh| mesh.vertex_count()).sum::<usize>();
         total_triangles += recovered.iter().map(|mesh| mesh.triangle_count()).sum::<usize>();
-        emit_finishes(sink, finishes.as_mut(), recovered);
-        sink.on_batch(recovered, processed_jobs, total_jobs);
+        if !cancelled(req) {
+            emit_finishes(sink, finishes.as_mut(), recovered);
+            sink.on_batch(recovered, processed_jobs, total_jobs);
+        }
     }
-    if let Some(finishes) = finishes.as_mut().filter(|_| !instances.is_empty()) {
+    if let Some(finishes) = finishes.as_mut().filter(|_| !instances.is_empty() && !cancelled(req)) {
         let values: Vec<_> = instances
             .iter()
             .map(|record| finishes.finish_for_instance(record))

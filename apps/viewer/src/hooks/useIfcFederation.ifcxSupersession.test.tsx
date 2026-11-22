@@ -167,9 +167,7 @@ it('a composition that fails on its own reports the error and ends its load UI',
 });
 
 it('#10591 refuses a stack replacement when IFC edits change during its file read', async (t) => {
-  const { createBimContext } = await import('@ifc-lite/sdk');
-  const { LocalBackend } = await import('@/sdk/local-backend');
-  const { createMainViewerToolHost } = await import('@/lib/agent-tools/main-viewer-host');
+  const { viewerHost } = await import('@/test/agent-tools-fixture');
   const { operationArtifacts } = await import('@/lib/agent-tools/operations/artifacts');
   const { coordinationFinalControlOperations } = await import('@/lib/agent-tools/operations/coordination-final-controls');
   const { attachCoordinationComposition } = await import('@/services/coordination-loader');
@@ -190,7 +188,7 @@ it('#10591 refuses a stack replacement when IFC edits change during its file rea
     return arrayBuffer.call(this);
   });
 
-  const host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));
+  const host = viewerHost();
   const commit = <T,>(write: () => T) => write();
   const operation = coordinationFinalControlOperations.find(op => op.id === 'layers.loadStack')!;
   const pending = operation.execute({

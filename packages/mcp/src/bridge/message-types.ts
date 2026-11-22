@@ -49,6 +49,7 @@ export interface BridgeWelcomeMessage {
    */
   readOnlyCeiling: boolean;
   bridge: { name: string; version: string };
+  features?: string[];
   resultAck?: true;
 }
 

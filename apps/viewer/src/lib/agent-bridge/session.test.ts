@@ -49,10 +49,12 @@ it('twenty calls in a burst publish the activity log in a few batched updates', 
   for (let i = 0; i < 20; i++) {
     socket.onmessage?.({ data: JSON.stringify({ type: 'call', sessionId: 's', id: `c${i}`, name: 'model_list', arguments: {} }) });
   }
+  const counted = () => getAgentBridgeState().activity.reduce((sum, row) => sum + (row.count ?? 1), 0);
   const deadline = Date.now() + 5000;
-  while (getAgentBridgeState().activity.length < 20 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
+  while (counted() < 20 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
   stop();
-  assert.equal(getAgentBridgeState().activity.length, 20, 'every call has a row');
+  assert.equal(counted(), 20, 'every call is counted');
+  assert.equal(getAgentBridgeState().activity.length, 1, 'identical read calls fold into one row, across batches');
   assert.ok(activityUpdates <= 4, `published in ${activityUpdates} updates`);
   assert.equal(socket.sent.filter((frame) => frame.includes('"result"')).length, 20, 'and every call was answered');
 });

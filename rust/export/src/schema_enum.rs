@@ -258,10 +258,10 @@ impl ConversionChecks {
             };
             writeln!(body, "{record}")?;
         }
-        Ok(count + body.finish_with(|text| self.finish_typed_properties(text, ids))?)
+        Ok(count + body.finish_with(|text| self.finish_typed_properties(text, || ids))?)
     }
 
-    pub(crate) fn finish_typed_properties(&mut self, text: &[u8], ids: crate::step_ids::IdAllocator) -> Option<(Vec<u8>, usize)> {
+    pub(crate) fn finish_typed_properties(&mut self, text: &[u8], ids: impl FnOnce() -> crate::step_ids::IdAllocator) -> Option<(Vec<u8>, usize)> {
         self.typed_properties.finish(text, ids, &mut self.ifc4_slots, &mut self.attribute_values_dropped, &mut self.structural)
     }
 

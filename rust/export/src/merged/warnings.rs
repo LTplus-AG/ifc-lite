@@ -7,7 +7,10 @@
 
 use std::collections::BTreeSet;
 
+use ifc_lite_core::EntityScanner;
+
 use super::MergedStats;
+use crate::step_ids::IdAllocator;
 
 /// Push the merge-level warnings: federated models, oversized references
 /// refused while resolving closures, and types kept unconverted.
@@ -60,7 +63,15 @@ pub(super) fn finish_typed_output(
     parents: super::single_parents::ParentClaims,
     offset: u32,
 ) {
-    if let Some((text, added)) = checks.finish_typed_properties(out.as_bytes(), crate::step_ids::IdAllocator::after(offset)) {
+    if let Some((text, added)) = checks.finish_typed_properties(out.as_bytes(), || {
+        // Earlier conversion output may have used IDs beyond the model offset.
+        let mut max_id = offset;
+        let mut scanner = EntityScanner::new(out);
+        while let Some((id, _, _, _)) = scanner.next_entity() {
+            max_id = max_id.max(id);
+        }
+        IdAllocator::after(max_id)
+    }) {
         *out = String::from_utf8(text).expect("typed property rewrites preserve merged UTF-8 output");
         stats.written += added;
     }

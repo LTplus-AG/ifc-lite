@@ -126,12 +126,13 @@ impl TypedPropertyUpgrade {
     }
 
     pub(crate) fn finish(
-        &mut self, text: &[u8], mut ids: IdAllocator, slots: &mut Ifc4SlotCheck, dropped: &mut usize,
+        &mut self, text: &[u8], ids: impl FnOnce() -> IdAllocator, slots: &mut Ifc4SlotCheck, dropped: &mut usize,
         structural: &mut StructuralDiagnostics,
     ) -> Option<(Vec<u8>, usize)> {
         if self.drafts.is_empty() {
             return None;
         }
+        let mut ids = ids();
         let mut scanner = EntityScanner::new(text);
         let mut output = Vec::with_capacity(text.len());
         let mut appended = Vec::new();

@@ -19,6 +19,40 @@ fn scan_ids(step: &str) -> Vec<u32> {
 }
 
 #[test]
+fn merged_typed_property_ids_follow_synthesized_records_10797() {
+    use std::fmt::Write;
+
+    let schema = "IFC4";
+    let mut out = header::merged_header(&MergedOptions::default(), schema);
+    let mut checks = ConversionChecks::new();
+    let mut slots = Ifc2x3SlotFill::new(None);
+    checks.typed_properties.enabled = true;
+    let property = crate::schema_convert::convert_step_line(
+        "#2=IFCGENERALMATERIALPROPERTIES(#1,$,$,42.);", "IFC2X3", schema, 2,
+        &mut slots, Some(&mut checks),
+    ).unwrap();
+    writeln!(out, "#1=IFCMATERIAL('Concrete',$,$);\n{property}").unwrap();
+    // Model IDs end at #2. The finish pass receives a body with a synthesized #3 already present.
+    out.push_str("#3=IFCDIRECTION((1.,0.,0.));\n");
+    let mut stats = MergedStats {
+        models: 1, written: 3, federated_model_count: 0, unmerged_model_count: 0,
+        unit_rescale_required: false, dropped_container_count: 0, warnings: Vec::new(),
+    };
+    warnings::finish_typed_output(
+        &mut out, &mut stats, schema, &slots, &mut checks,
+        single_parents::ParentClaims::for_schema(schema), 2,
+    );
+
+    let ids = scan_ids(&out);
+    assert_eq!(ids.len(), ids.iter().copied().collect::<HashSet<_>>().len(), "{out}");
+    assert_eq!(stats.written, ids.len());
+    assert!(out.contains("#3=IFCDIRECTION((1.,0.,0.));"), "{out}");
+    assert!(out.contains("#4=IFCPROPERTYSINGLEVALUE('MassDensity',$,IFCMASSDENSITYMEASURE(42.),$);"), "{out}");
+    assert!(out.contains("#2=IFCMATERIALPROPERTIES('Pset_MaterialCommon',$,(#4),#1);"), "{out}");
+    assert_no_dangling(&out);
+}
+
+#[test]
 fn merge_two_models_unifies_project_and_offsets_ids() {
     let a = fixture_or_skip!("ara3d/duplex.ifc");
     let single = scan_ids(&String::from_utf8_lossy(&a)).len();

@@ -94,7 +94,7 @@ Renderer functions (A2UI v1.0 functions, `allowedCallers` per `policy.ts`): `sel
 - Unit: catalog document validates against the A2UI v1.0 catalog schema; every example in the
   prompt parses; builders produce payloads `validatePayload` accepts; policy table.
 - Viewer: component tests for each catalog component; chat stream with a split `<a2ui>` block.
-- E2E: load `AC20-FZK-Haus.ifc`, feed a recorded model reply, click a row, assert selection.
+- E2E: load `building-architecture.ifc`, play a recorded model reply, click a row, assert selection.
 - Eval: recorded prompts across free and BYOK models, pass@1 on producing a valid surface.
 - Bundle: `viewer-eager-js-bytes` unchanged; A2UI code only in on-demand chunks.
 
@@ -118,3 +118,59 @@ The one compile failure (qwen3.7-flash) was an Express syntax error the stream r
 part. The "clarify" case expected a ChoicePicker; every model instead ran a broad check, which is a
 reasonable answer, so that expectation was dropped. Replies asked for sorted tables, so
 `EntityTable` gained `sort`. Nine prompts is a smoke test, not a benchmark.
+
+## Viewer renderer (`apps/viewer`)
+
+Everything below loads on demand. The eager bundle carries only the text checks in
+`lib/llm/a2ui-blocks.ts`, the prompt hook in `lib/llm/a2ui-prompt.ts`, the `a2ui` field of a
+stored chat message and the seam in `lib/a2ui/surface-host.ts`.
+
+| Module | Role |
+|---|---|
+| `lib/a2ui/host.ts` | `A2uiViewerHost`: what a surface may read or do, implemented once over the SDK `BimContext` |
+| `lib/a2ui/query-eval.ts` | `IfcQuerySpec` → entity rows across every loaded model; field paths (built-ins, attributes, `Pset.Prop`, `Qto.Quantity`) |
+| `lib/a2ui/functions.ts` | IFC function implementations behind one gate that enforces `IFC_FUNCTION_POLICY` |
+| `lib/a2ui/catalog.ts` | renderer catalog: `createIfcCatalog` with the React components and host-bound functions |
+| `lib/a2ui/session.ts`, `chat-sessions.ts` | one `MessageProcessor` per chat message, fed while streaming, persisted, replayed |
+| `components/a2ui/` | the 20 components on shadcn primitives; `SegmentsView` orders prose, surfaces and errors |
+| `components/viewer/chat/A2uiChatContent.tsx` | the chat's lazy entry, mounted only for replies with an `<a2ui>` block or a stored record |
+
+Decisions worth knowing before changing it:
+
+- **Prose is split by the viewer, not the parser.** The Express parser drops a ```` ``` ```` fence next
+  to a tag (it reads it as a wrapper), which also dropped the closing fence of a code block right
+  before a surface. `splitA2uiReply` splits prose and blocks (a fence counts as a wrapper only when it
+  opens one) and the parser is fed the blocks alone; what it emits is credited to the block being fed.
+- **Persistence stores messages, not text.** A finalised message records its segments
+  (`ChatMessage.a2ui`); a reload applies the recorded messages to a fresh processor without the parser.
+  The streaming message's session is adopted by the final message when the text matches, so a surface
+  keeps its state (sort, applied colours) across finalisation.
+- **Aggregates count every match.** A query's `limit` (default 500) bounds the rows a table or list
+  shows; stats, charts and legends use every match unless the query set its own limit.
+- **Refs to unloaded models are inert, with a note.** Nothing falls back to the same express id in another model.
+- **One block per reply.** Two blocks in one reply both create surface `main` and the second is rejected,
+  so the chat rules tell the model to start a second block with `surface("<new id>")`. A rejected block
+  shows a notice with an "Ask to fix" button that sends a repair turn.
+- **Follow-ups are text.** The chat forwards text only, so an `Event`'s context travels as one
+  `(context: {...})` line after the prompt.
+- **System prompt.** `withA2uiPrompt` appends the catalog section (about 27 k characters, rendered by the
+  agent parser, cached after the first turn) before the personal overlay, so the shared prefix stays cacheable.
+- **Locales.** The English catalogue (`i18n/catalogues/a2ui.en.ts`) is lazy. It has no eager shape row in
+  `lazy-catalogue-shape.ts` yet, so a contributed locale cannot translate `a2ui.*` keys until one is added.
+
+Other code shows a surface through `lib/a2ui/surface-host.ts`:
+
+<!-- docs-check: skip -->
+```tsx
+<A2uiMessagesView messages={payload} onFollowUp={(text, context) => …} />
+```
+
+It validates with `validateIfcMessages` and renders inside the app's `BimProvider`.
+
+### Demo without an API key
+
+Open `/?model=/samples/building-architecture.ifc&a2uiDemo=1`. Once the model has loaded, the chat
+opens and plays a recorded reply (`lib/a2ui/demo-reply.ts`) through the same store fields a model
+stream writes, so the surfaces build while the text streams. No request leaves the browser. The
+reply targets the committed sample (4 walls, 3 slabs, 2 spaces, 1 roof); `session.test.ts` parses
+it with the real parser and `tests/e2e/a2ui-chat-surface.e2e.spec.ts` clicks its table.

@@ -16,7 +16,7 @@ import {
   type IfcFunctionName,
   type WireEntityRef,
 } from '@ifc-lite/a2ui';
-import { formatCsv } from '@/lib/search/result-export';
+import { escapeCsvCell } from '@ifc-lite/export';
 import { downloadFile } from '@/lib/export/download';
 import type { A2uiViewerHost } from './host.js';
 import { aggregate, aggregatePool, evaluateQuery, FieldReader } from './query-eval.js';
@@ -80,15 +80,21 @@ const DEFAULT_CSV_COLUMNS: CsvColumn[] = [
   { path: 'name' }, { path: 'type' }, { path: 'globalId' }, { path: 'storey' }, { path: 'modelId' },
 ];
 
-/** Build the CSV of a target. Cells go through the shared formula-injection guard. */
+function csvCell(value: unknown): string {
+  const text = value === undefined || value === null ? '' : typeof value === 'number' && !Number.isFinite(value) ? '' : String(value);
+  return escapeCsvCell(text, { delimiter: ',' });
+}
+
+/** Build the CSV of a target. Every cell goes through the shared formula-injection guard (CWE-1236). */
 export function entitiesCsv(host: A2uiViewerHost, refs: WireEntityRef[], columns: CsvColumn[] = DEFAULT_CSV_COLUMNS): string {
   const reader = new FieldReader(host);
   const cols = columns.length ? columns : DEFAULT_CSV_COLUMNS;
-  const rows = refs.flatMap((ref) => {
+  const lines = [cols.map((c) => csvCell(c.label ?? c.path)).join(',')];
+  for (const ref of refs) {
     const entity = host.entity(ref);
-    return entity ? [cols.map((c) => reader.value(entity, c.path))] : [];
-  });
-  return formatCsv({ columns: cols.map((c) => c.label ?? c.path), rows });
+    if (entity) lines.push(cols.map((c) => csvCell(reader.value(entity, c.path))).join(','));
+  }
+  return `${lines.join('\n')}\n`;
 }
 
 /**

@@ -62,7 +62,7 @@ describe('chat messages with A2UI surfaces', () => {
     const unsubscribe = useViewerStore.subscribe((s) => {
       if (s.chatStatus === 'streaming' && s.chatStreamingContent.includes('chart = ') && rows(container) > 0) sawStreamingTable = true;
     });
-    await playA2uiDemo();
+    await playA2uiDemo(useViewerStore);
     unsubscribe();
     assert.ok(sawStreamingTable, 'the table showed before the reply finished');
     await waitFor(() => rows(container) === 4, 'final message shows the table');
@@ -77,7 +77,7 @@ describe('chat messages with A2UI surfaces', () => {
   it('replays a recorded message after a reload, without the reply being parsed again', async () => {
     const { bim } = await seedA2uiModels();
     mount(bim);
-    await playA2uiDemo();
+    await playA2uiDemo(useViewerStore);
     await waitFor(() => !!useViewerStore.getState().chatMessages.at(-1)?.a2ui, 'record persisted');
     const record = useViewerStore.getState().chatMessages.at(-1)!.a2ui!;
     cleanup();

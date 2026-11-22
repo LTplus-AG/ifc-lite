@@ -10,38 +10,43 @@
  * no network request. Load the sample with `?model=/samples/building-architecture.ifc`.
  */
 
-import { useViewerStore } from '@/store';
+import type { useViewerStore } from '@/store';
 import { A2UI_DEMO_PROMPT, A2UI_DEMO_REPLY } from './demo-reply.js';
+
+/** The viewer store, passed in so this chunk imports nothing the entry already loaded. */
+export type DemoStore = Pick<typeof useViewerStore, 'getState' | 'subscribe'>;
 
 const CHUNK_CHARS = 32;
 const CHUNK_MS = 25;
 
-function modelReady(): boolean {
-  return [...useViewerStore.getState().models.values()].some((m) => !!m.ifcDataStore);
+function modelReady(store: DemoStore): boolean {
+  return [...store.getState().models.values()].some((m) => !!m.ifcDataStore);
 }
 
-export async function playA2uiDemo(reply = A2UI_DEMO_REPLY, prompt = A2UI_DEMO_PROMPT): Promise<void> {
-  const store = useViewerStore.getState();
+export async function playA2uiDemo(viewerStore: DemoStore, reply = A2UI_DEMO_REPLY, prompt = A2UI_DEMO_PROMPT): Promise<void> {
+  const store = viewerStore.getState();
   if (store.chatStatus === 'streaming' || store.chatStatus === 'sending') return;
+  // The chat lives in the script panel, so open both.
+  store.setScriptPanelVisible(true);
   store.setChatPanelVisible(true);
   store.addChatMessage({ id: crypto.randomUUID(), role: 'user', content: prompt, createdAt: Date.now() });
   store.setChatStatus('streaming');
   for (let end = CHUNK_CHARS; end < reply.length; end += CHUNK_CHARS) {
-    useViewerStore.getState().updateLastAssistantMessage(reply.slice(0, end));
+    viewerStore.getState().updateLastAssistantMessage(reply.slice(0, end));
     await new Promise((resolve) => setTimeout(resolve, CHUNK_MS));
   }
-  useViewerStore.getState().finalizeAssistantMessage(reply);
+  viewerStore.getState().finalizeAssistantMessage(reply);
 }
 
 /** Play the demo once, as soon as a model with data is loaded. */
-export function armA2uiDemo(): void {
-  if (modelReady()) {
-    void playA2uiDemo();
+export function armA2uiDemo(store: DemoStore): void {
+  if (modelReady(store)) {
+    void playA2uiDemo(store);
     return;
   }
-  const unsubscribe = useViewerStore.subscribe(() => {
-    if (!modelReady()) return;
+  const unsubscribe = store.subscribe(() => {
+    if (!modelReady(store)) return;
     unsubscribe();
-    void playA2uiDemo();
+    void playA2uiDemo(store);
   });
 }

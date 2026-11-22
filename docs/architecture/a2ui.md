@@ -121,9 +121,9 @@ reasonable answer, so that expectation was dropped. Replies asked for sorted tab
 
 ## Viewer renderer (`apps/viewer`)
 
-Everything below loads on demand. The eager bundle carries only the text checks in
-`lib/llm/a2ui-blocks.ts`, the prompt hook in `lib/llm/a2ui-prompt.ts`, the `a2ui` field of a
-stored chat message and the seam in `lib/a2ui/surface-host.ts`.
+Everything below loads on demand. The eager bundle carries only the validation of the `a2ui` field of
+a stored chat message, the `?a2uiDemo` check and the locale key table; the chat-side pieces
+(`lib/llm/a2ui-blocks.ts`, `lib/llm/a2ui-prompt.ts`) ride in the lazy chat chunk.
 
 | Module | Role |
 |---|---|
@@ -155,8 +155,9 @@ Decisions worth knowing before changing it:
   `(context: {...})` line after the prompt.
 - **System prompt.** `withA2uiPrompt` appends the catalog section (about 27 k characters, rendered by the
   agent parser, cached after the first turn) before the personal overlay, so the shared prefix stays cacheable.
-- **Locales.** The English catalogue (`i18n/catalogues/a2ui.en.ts`) is lazy. It has no eager shape row in
-  `lazy-catalogue-shape.ts` yet, so a contributed locale cannot translate `a2ui.*` keys until one is added.
+- **Locales.** The English catalogue (`i18n/catalogues/a2ui.en.ts`) is lazy and ships with French, German
+  and Italian translations; `i18n/a2ui-catalogue-shape.ts` is the small eager key/placeholder table that lets
+  a locale validate before the chunk loads.
 
 Other code shows a surface through `lib/a2ui/surface-host.ts`:
 

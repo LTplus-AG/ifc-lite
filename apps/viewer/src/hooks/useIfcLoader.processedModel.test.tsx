@@ -64,7 +64,7 @@ const model = () => useViewerStore.getState().models.values().next().value;
 function loadStored(...[request, target, options]: Parameters<NonNullable<typeof api>['loadProcessedModel']>) {
   const { name, ...processedModel } = request;
   // The revert oracle can run the shared behavior cases against main's source-file entry.
-  if (api!.loadProcessedModel) return api!.loadProcessedModel(request, target, options);
+  if (typeof api!.loadProcessedModel === 'function') return api!.loadProcessedModel(request, target, options);
   const fileOptions = { ...options, processedModel };
   return api!.loadFile(new File([], name), target, fileOptions);
 }

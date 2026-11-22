@@ -1,5 +1,23 @@
 # @ifc-lite/georef-check
 
+## 0.3.0
+
+### Minor Changes
+
+- [#10537](https://github.com/LTplus-AG/ifc-lite/pull/10537) [`0ae24d5`](https://github.com/LTplus-AG/ifc-lite/commit/0ae24d5d962c5604ea957942a21b64a956aab4bf) Thanks [@louistrue](https://github.com/louistrue)! - The georeferencing doctor: check and fix a model's georeferencing from the CLI, MCP and SDK.
+  
+  - SDK: `bim.georef.check({ allowNetwork? })` diagnoses with `@ifc-lite/georef-check`, using `@ifc-lite/data`'s EPSG catalogue and `@ifc-lite/geo` transformers resolved for the CRSs the diagnosis needs (names through `@ifc-lite/geo` first, then the catalogue). Offline by default; checks a missing capability prevented are listed in `skipped` with what would enable them. `bim.georef.planFixes(report, { choose?, values?, acceptApproximateDatum? })` gives every suggested fix a status (`ready`, `needs-value`, `review`, `manual`, `alternative`, `conflict`); `bim.georef.fix(plan)` applies only the `ready` ones, never a fix the checker marks uncertain. `bim.georef.setSite({ RefLatitude, RefLongitude, RefElevation })` writes IfcSite's position (IfcCompoundPlaneAngleMeasure to the millionth of a second), as one undo step; the doctor derives it from the map conversion only when that is plausible and the datum shift is not an approximation the user has not accepted.
+  - CLI: `ifc-lite georef check <file>` (human or `--json`; exit 1 on findings at or above `--fail-on`, default `error`; `--allow-network`) and `ifc-lite georef fix <file> --out F` (= `check --fix`; `--apply ID`, `--value PATH=V`, `--dry-run`, `--accept-approximate-datum`), which shows each change, writes a new file, verifies it reads back and checks it again.
+  - MCP: `georeferencing_check` (report and plan as JSON) and `georeferencing_fix`; `georeferencing_write` gains action `site`.
+  - georef-check: site latitude/longitude fixes are `apply.via: 'georef.site'`.
+  
+  The doctor refuses input/output aliases and verifies site fields before saving. Invalid user values stay unresolved; derived site values wait for a recheck if their conversion changes. Site writes retain ownership of their positional edits, and session reads match the exported first-valid-site selection.
+
+### Patch Changes
+
+- Updated dependencies [[`bc8fd0c`](https://github.com/LTplus-AG/ifc-lite/commit/bc8fd0c4bac2c94f4e1ad5085ded2f6080c08d9b), [`80f01cc`](https://github.com/LTplus-AG/ifc-lite/commit/80f01cc596cd541237c8083f7b17b9e62b068f44), [`1ad48ac`](https://github.com/LTplus-AG/ifc-lite/commit/1ad48ac88d255d9bcc6b5986072fdf4021ca247c)]:
+  - @ifc-lite/parser@11.0.0
+
 ## 0.2.0
 
 ### Minor Changes

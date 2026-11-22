@@ -4,7 +4,6 @@
 
 /** Bake a live mutation view into matching STEP bytes and a parsed store. */
 
-import { StepExporter } from '@ifc-lite/export';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { SchemaVersion } from '@/store/types';
@@ -17,6 +16,7 @@ export async function materializeEffectiveIfcStore(
 ): Promise<IfcDataStore> {
   const source = resolveEnergyExportMutationSource({ mutationView, dataStore: store, schemaVersion });
   if (!source) return store;
+  const { StepExporter } = await import('@/lib/export/step-export-runtime');
   const exported = new StepExporter(source.dataStore, source.mutationView).export({
     schema: source.dataStore.schemaVersion,
     applyMutations: true,

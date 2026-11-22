@@ -17,6 +17,8 @@
 //! before it. Events fire once per chunk, never per element. With
 //! `Features::finishes` on, `on_finishes` fires immediately before every
 //! `on_batch`, also for a batch whose meshes author no finish.
+//! Recovered instances are emitted as a final mesh batch. After all mesh
+//! batches, `on_instance_finishes` reports finishes for retained instances.
 
 use crate::mesh_frame::MeshFrame;
 use crate::style::SpecularMaterial;
@@ -66,6 +68,11 @@ pub trait ProcessingSink {
     /// [`ModelFinishes`](crate::style::ModelFinishes)'s, over the pass's own
     /// scan and index.
     fn on_finishes(&mut self, _finishes: &[Option<SpecularMaterial>]) {}
+    /// With `Features::finishes` on, called once after the mesh batches when
+    /// the result contains instances. Each entry belongs to the instance at
+    /// the same index in `ProcessingResult::instances`, with `None` when
+    /// its style authors no finish.
+    fn on_instance_finishes(&mut self, _finishes: &[Option<SpecularMaterial>]) {}
 }
 
 impl ProcessingSink for () {}

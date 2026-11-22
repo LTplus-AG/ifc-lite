@@ -19,6 +19,7 @@ use ifc_lite_processing::{InstanceRecord, MeshData};
 
 use super::emit::{write_display_material, write_geometry_body};
 use super::fmt::{fmt_matrix4d, indent_str};
+use super::material::MaterialKey;
 use crate::scene_input::transform_is_affine_finite;
 
 /// Prototype prim name for a template `express_id`.
@@ -68,6 +69,7 @@ pub(super) fn emit_instance_occurrence(
     indent: usize,
     name: &str,
     rec: &InstanceRecord,
+    material: MaterialKey,
     template_origin: &HashMap<u32, [f64; 3]>,
     purpose: Option<&str>,
 ) {
@@ -90,6 +92,6 @@ pub(super) fn emit_instance_occurrence(
     if let Some(p) = purpose {
         writeln!(out, "{inner}uniform token purpose = \"{p}\"").ok();
     }
-    write_display_material(out, indent, rec.color);
+    write_display_material(out, indent, rec.color, material);
     writeln!(out, "{pad}}}").ok();
 }

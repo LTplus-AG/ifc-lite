@@ -12,7 +12,7 @@ import { addWallToStore } from './wall.js';
 import { joinWallsInStore, resolveWallJoinAnchor } from './wall-join-edit.js';
 import { generateSpacesFromWalls } from './generate-spaces.js';
 import { roomChainInStore } from './room-store.js';
-import { polygonArea } from './room-footprint-offset.js';
+import { polygonArea } from './polygon-2d.js';
 import { addElementTypeToStore, assignTypeInStore } from './element-type.js';
 import { addMaterialLayerSetToStore, addMaterialLayerSetUsageToStore, assignMaterialInStore } from './material.js';
 import { readWallMetres } from './wall-size-edit.js';

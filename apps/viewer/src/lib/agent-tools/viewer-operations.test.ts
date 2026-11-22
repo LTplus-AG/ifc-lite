@@ -40,7 +40,7 @@ const inspect = (id: string, input: unknown = {}, extra: Record<string, unknown>
   dispatchMainViewerTool(host, 'viewer_operation_inspect', { ...(viewerOperations().find(operation => operation.id === id)?.needs === 'model' ? { model_id: 'A' } : {}), operation_id: id, input, ...extra });
 const job = (job_id: string) => dispatchMainViewerTool(host, 'viewer_operation_job', { job_id });
 async function loadCoverageAudit() {
-  // Assert through the existing dispatcher before loading the audit, which is new to this branch.
+  // Check the coverage tool is registered before importing its module, so a missing tool fails a test instead of the file load.
   assert.ok(mainViewerTool('viewer_operation_coverage'), 'coverage is registered as a viewer tool');
   return import('./operations/coverage');
 }

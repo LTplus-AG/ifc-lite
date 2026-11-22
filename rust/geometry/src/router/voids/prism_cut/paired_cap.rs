@@ -22,7 +22,7 @@ pub(super) fn adjust_paired_cap(pf: &mut PrismFrame, tris: &[PTri]) -> ExistingF
     }
     let mut floors = [None; 2];
     for (end, direction) in [(0, -1.0), (1, 1.0)] {
-        if let Some(pair) = paired_rectangle(pf, tris, end, Some(direction), 5.0e-7) {
+        if let Some(pair) = paired_rectangle(pf, tris, end, true, 5.0e-7) {
             pf.planes[end] = pair.depth + direction * 1.0e-9;
             floors[end] = pair.floor;
         }
@@ -68,17 +68,18 @@ pub(in crate::router::voids) fn paired_exact_jambs(
         bb: (lo2, hi2),
     };
     let band = flush_band_at(pf.corner_mag());
-    [0, 1].map(|end| jamb[end] && paired_rectangle(&pf, &tris, end, None, band).is_some())
+    [0, 1].map(|end| jamb[end] && paired_rectangle(&pf, &tris, end, false, band).is_some())
 }
 
 fn paired_rectangle(
     pf: &PrismFrame,
     tris: &[PTri],
     end: usize,
-    outside: Option<f64>,
+    require_outside: bool,
     distance_limit: f64,
 ) -> Option<PairedRectangle> {
     let initial = pf.planes[end];
+    let direction = if end == 0 { -1.0 } else { 1.0 };
     let mut target = None;
     let mut paired = [Vec::new(), Vec::new()];
     for (index, t) in tris.iter().enumerate() {
@@ -87,7 +88,7 @@ fn paired_rectangle(
         if x != y
             || y != z
             || distance.abs() > distance_limit
-            || outside.is_some_and(|sign| sign * distance <= 0.0)
+            || (require_outside && direction * distance <= 0.0)
         {
             continue;
         }
@@ -111,7 +112,7 @@ fn paired_rectangle(
         return None;
     };
     let profile = &pf.profiles[0];
-    let bound_slack = if outside.is_none() {
+    let bound_slack = if !require_outside {
         pf.corner_mag().max(1.0) * 4.0e-14
     } else {
         0.0
@@ -122,8 +123,7 @@ fn paired_rectangle(
     };
     let (outer, inner, floor) = if a == b {
         (a, None, None)
-    } else if outside.is_some()
-        && profile.len() == 4
+    } else if profile.len() == 4
         && profile
             .iter()
             .all(|p| (0..2).all(|k| p[k] == pf.bb.0[k] || p[k] == pf.bb.1[k]))
@@ -151,8 +151,7 @@ fn paired_rectangle(
         !paired.iter().flatten().any(|(i, ..)| *i == index)
             && !on_rectangle_boundary(t, pf, lo, hi)
             && !inner
-                .zip(outside)
-                .is_some_and(|([inner_lo, inner_hi], direction)| {
+                .is_some_and(|[inner_lo, inner_hi]| {
                     on_rectangle_boundary(t, pf, inner_lo, inner_hi)
                         && t.p
                             .iter()
@@ -296,4 +295,36 @@ fn quad_vertices(side: &[usize], tris: &[PTri]) -> Option<[V3; 4]> {
         }
     }
     vertices.try_into().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exact_jamb_preserves_a_floor_wider_than_the_finish() {
+        // The finish covers half of the aperture and meets the wider core at
+        // depth zero. The exact route should retain the authored cap (#10528).
+        let axes = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+        for end in [0, 1] {
+            let mut host = Mesh {
+                positions: vec![
+                    0.0, 0.0, 0.0, 4.0, 0.0, 0.0, 4.0, 3.0, 0.0, 0.0, 3.0, 0.0,
+                    0.0, 0.0, 0.0, 1.5, 0.0, 0.0, 1.5, 3.0, 0.0, 0.0, 3.0, 0.0,
+                ],
+                indices: vec![0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6],
+                ..Mesh::default()
+            };
+            if end == 1 {
+                for triangle in host.indices.chunks_exact_mut(3) {
+                    triangle.swap(1, 2);
+                }
+            }
+            let depths = if end == 0 { [0.0, 0.012] } else { [-0.012, 0.0] };
+            let jamb = [end == 0, end == 1];
+            let lo = [1.0, 1.0, depths[0]];
+            let hi = [2.0, 2.0, depths[1]];
+            assert_eq!(paired_exact_jambs(&host, axes, lo, hi, jamb), jamb);
+        }
+    }
 }

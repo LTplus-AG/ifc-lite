@@ -7,6 +7,7 @@ import {
   extractAllEntityAttributes,
   extractAllMaterialsOnDemand,
   getAttributeTypeForSchema,
+  isKnownType,
 } from '@ifc-lite/parser';
 import {
   RelationshipType,
@@ -212,6 +213,13 @@ export function createDataAccessor(
 
     getAttributeNames(expressId: number): string[] {
       return getEntityAttributes(expressId).map((a) => a.name);
+    },
+
+    isEntityReferenceAttribute(expressId, attrName) {
+      const entityType = accessor.getEntityType(expressId);
+      const name = findAttribute(expressId, attrName)?.name ?? attrName;
+      const type = entityType && getAttributeTypeForSchema(entityType, name, store.schemaVersion);
+      return !!type && isKnownType(type);
     },
 
     getAttributeXsdTypes(

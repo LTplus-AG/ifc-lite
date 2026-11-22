@@ -421,6 +421,8 @@ export interface IFCDataAccessor {
    * candidate, not just the small list of standard attribute names.
    */
   getAttributeNames?(expressId: number): string[];
+  /** Whether the attribute is declared as a reference to an IFC entity. */
+  isEntityReferenceAttribute?(expressId: number, attrName: string): boolean;
   /**
    * Get the XSD primitive types (`xs:integer`, `xs:double`, `xs:string`,
    * `xs:boolean`, `xs:date`, `xs:dateTime`, `xs:duration`) that the IFC

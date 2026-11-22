@@ -141,6 +141,29 @@ async function rows(xml: string, accessor: ReturnType<typeof createDataAccessor>
 }
 
 describe('#10543: an attribute facet finds GlobalId, OwnerHistory, ObjectPlacement and Representation', () => {
+  it('rejects value restrictions on both parsed and newly created references', async () => {
+    const { store, modelInfo } = await parse(step('IFC4'));
+    const accessor = createDataAccessor(store, undefined, {
+      isDeleted: () => false,
+      getNewEntities: () => [
+        { expressId: 900, type: 'IfcWall', attributes: ['2Wall00000000000000900', null, 'W-3', null, null, '#5'] },
+      ],
+    });
+    const name = simple('ObjectPlacement');
+    const xml = ids('IFC4', [
+      ['placement exists', name],
+      ['literal 5', name, `<value>${simple('5')}</value>`],
+      ['numeric pattern 5', name, '<value><xs:restriction base="xs:integer"><xs:pattern value="5"/></xs:restriction></value>'],
+      ['numeric bounds', name, '<value><xs:restriction base="xs:integer"><xs:minInclusive value="0"/></xs:restriction></value>'],
+    ]);
+    expect(await rows(xml, accessor, modelInfo)).toEqual([
+      ['placement exists', 'fail', 3, 1, ['W-2']],
+      ['literal 5', 'fail', 3, 3, ['W-1', 'W-2', 'W-3']],
+      ['numeric pattern 5', 'fail', 3, 3, ['W-1', 'W-2', 'W-3']],
+      ['numeric bounds', 'fail', 3, 3, ['W-1', 'W-2', 'W-3']],
+    ]);
+  });
+
   for (const schema of ['IFC2X3', 'IFC4', 'IFC4X3_ADD2']) {
     it(`${schema}: names, patterns and enumerations give IfcTester's rows`, async () => {
       const { store, modelInfo } = await parse(step(schema));

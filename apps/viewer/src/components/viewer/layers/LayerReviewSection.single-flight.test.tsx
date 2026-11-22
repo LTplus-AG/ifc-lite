@@ -152,6 +152,20 @@ test('#10591 layer review keeps a newer staged comment that arrives while a post
   assert.equal(title()?.value, 'Second note', 'the finished post did not clear the newer draft');
 });
 
+test('#10591 layer review keeps an edit made during a manual post', async () => {
+  const post = mock.method(client, 'postTopic');
+  const comment = await readyToComment();
+  const title = document.querySelector<HTMLInputElement>('input[aria-label="Review comment title"]')!;
+  click(comment);
+  await waitFor(() => capture.frames() === 1, 'the viewpoint is capturing');
+  type(title, 'A new note');
+  await capture.release(1);
+  await waitFor(() => posts === 1, 'the manual comment was submitted');
+  await settle();
+  assert.equal(post.mock.calls[0].arguments[1].title, 'Check this wall');
+  assert.equal(title.value, 'A new note');
+});
+
 test('#10591 layer review posts nothing when the staged title is edited during capture', async () => {
   const staged = { id: 'staged-edit-capture', candidateId: REVIEW.layerId, refName: REVIEW.into,
     action: 'comment' as const, entity: WALL_A, title: 'Staged note', description: '', withViewpoint: true };

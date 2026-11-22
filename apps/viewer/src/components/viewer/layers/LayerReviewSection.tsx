@@ -201,8 +201,12 @@ function CandidateReview({
           ...(viewpoint !== undefined ? { viewpoint } : {}),
         });
         if (!isCurrent()) return;
-        // A newer staged draft that arrived during the post is not the one posted; leave it.
-        if (withdrawals.current === staging) { setStagedEntity(null); setTitle(''); setDescription(''); }
+        // A newer staged draft or an edit made during the post still belongs in the form.
+        if (withdrawals.current === staging) {
+          setStagedEntity(null);
+          setTitle(current => current === title ? '' : current);
+          setDescription(current => current === description ? '' : current);
+        }
         await refresh();
         if (isCurrent()) toast.success(t('layersPanel.review.postedToast'));
       } catch (err) {

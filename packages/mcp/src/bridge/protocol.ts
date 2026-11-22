@@ -23,6 +23,7 @@
  *   tab    -> bridge  hello    { protocol, pairingCode, permission, tools, client? }
  *   bridge -> tab     welcome  { protocol, sessionId, permission, readOnlyCeiling, bridge, features? }
  *   bridge -> tab     call     { sessionId, id, name, arguments }
+ *   bridge -> tab     a2ui-surface { sessionId, id, surface } (opt-in via hello.a2uiSurface)
  *   tab    -> bridge  result   { sessionId, id, result }
  *   bridge -> tab     cancel   { sessionId, id, reason }
  *   tab    -> bridge  update   { sessionId, permission?, tools? }
@@ -50,7 +51,7 @@
 import type { BridgeHelloMessage, BridgeTabMessage, BridgeUpdateMessage } from './message-types.js';
 export type {
   BridgeHelloMessage, BridgeResultMessage, BridgeUpdateMessage, BridgeTabMessage,
-  BridgeWelcomeMessage, BridgeCallMessage, BridgeCancelMessage, BridgeErrorMessage, BridgeServerMessage, BridgeResultAckMessage,
+  BridgeWelcomeMessage, BridgeCallMessage, BridgeCancelMessage, BridgeErrorMessage, BridgeServerMessage, BridgeResultAckMessage, BridgeSurfaceMessage,
 } from './message-types.js';
 import { checkJsonBounds, checkSchemaShape, isRecord, utf8Length } from './json-bounds.js';
 import { clip, quoted } from './sanitize.js';
@@ -70,6 +71,7 @@ export const DEFAULT_BRIDGE_VIEWER_URL = 'https://ifclite.com';
 
 /** The bridge-owned tool, always listed. A tab may not register a tool with this name. */
 export const BRIDGE_STATUS_TOOL = 'bridge_status';
+export const BRIDGE_SURFACE_TOOL = 'viewer_show_ui';
 
 /** Key in the pairing link's URL fragment that marks it as a bridge pairing link. */
 export const PAIRING_FRAGMENT_KEY = 'mcp-bridge';
@@ -201,7 +203,7 @@ export function validateToolDescriptors(raw: unknown): ParseResult<BridgeToolDes
     if (typeof name !== 'string' || name.length === 0 || name.length > BRIDGE_LIMITS.maxToolNameLength || !TOOL_NAME.test(name)) {
       return { ok: false, error: `tools[${i}].name must match ${TOOL_NAME} and be 1-${BRIDGE_LIMITS.maxToolNameLength} characters` };
     }
-    if (name === BRIDGE_STATUS_TOOL) return { ok: false, error: `tools[${i}].name '${BRIDGE_STATUS_TOOL}' is reserved for the bridge` };
+    if (name === BRIDGE_STATUS_TOOL || name === BRIDGE_SURFACE_TOOL) return { ok: false, error: `tools[${i}].name '${BRIDGE_STATUS_TOOL}' is reserved for the bridge` };
     if (seen.has(name)) return { ok: false, error: `tools[${i}].name '${name}' is listed twice` };
     seen.add(name);
     if (typeof description !== 'string' || description.length > BRIDGE_LIMITS.maxDescriptionLength) {
@@ -296,7 +298,7 @@ export function parseTabMessage(text: string): ParseResult<BridgeTabMessage> {
       }
       return {
         ok: true,
-        value: { type: 'hello', protocol: raw.protocol, pairingCode: raw.pairingCode, permission: raw.permission, tools: tools.value, client, ...(raw.resultAck === true ? { resultAck: true } : {}) },
+        value: { type: 'hello', protocol: raw.protocol, pairingCode: raw.pairingCode, permission: raw.permission, tools: tools.value, client, ...(raw.a2uiSurface === true ? { a2uiSurface: true } : {}), ...(raw.resultAck === true ? { resultAck: true } : {}) },
       };
     }
     case 'result': {

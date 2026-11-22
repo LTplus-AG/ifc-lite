@@ -34,10 +34,12 @@
  *     each edit checks the grant synchronously with its write.
  */
 
+import { agentSurfaces } from './agent-surfaces.js';
 import {
   BRIDGE_FEATURE_IMAGE_CONTENT,
   BRIDGE_LIMITS,
   BRIDGE_PROTOCOL_VERSION,
+  BRIDGE_SURFACE_TOOL,
   normalizePairingCode,
   parseServerMessage,
   parseTabMessage,
@@ -228,6 +230,7 @@ export class BridgeClient {
       pairingCode: normalizePairingCode(this.opts.pairingCode),
       permission: 'read-only',
       resultAck: true,
+      a2uiSurface: true,
       tools: [...this.opts.tools],
       ...(this.opts.clientInfo ? { client: this.opts.clientInfo } : {}),
     };
@@ -266,7 +269,11 @@ export class BridgeClient {
           // Images only to a bridge that said it forwards them; an older one refuses the whole result.
           imageContent: msg.features?.includes(BRIDGE_FEATURE_IMAGE_CONTENT) === true,
           now: this.now,
-          dispatch: this.opts.dispatch,
+          dispatch: (name, args, signal, onDelivery) => {
+            if (name !== BRIDGE_SURFACE_TOOL) return this.opts.dispatch(name, args, signal, onDelivery);
+            agentSurfaces.push({ messages: args.messages as unknown[], title: args.title as string | undefined });
+            return Promise.resolve({ text: 'Surface delivered to the viewer.', structured: {}, isError: false });
+          },
           ...(msg.resultAck === true ? { onAckTimeout: () =>
             this.end({ kind: 'disconnected', reason: 'connection-lost' }, 1000, 'result acknowledgement timeout') } : {}),
           modelIdFor: this.opts.modelIdFor,
@@ -282,7 +289,13 @@ export class BridgeClient {
         });
         return;
       }
+      case 'a2ui-surface':
+        if (msg.sessionId === this.sessionId && this.runner && !this.runner.has(msg.id)) {
+          this.runner.admit({ type: 'call', name: BRIDGE_SURFACE_TOOL, sessionId: msg.sessionId, id: msg.id, arguments: msg.surface });
+        }
+        return;
       case 'call':
+        if (msg.name === BRIDGE_SURFACE_TOOL) return;
         if (!this.runner || msg.sessionId !== this.sessionId || this.runner.has(msg.id)) return;
         this.runner.admit(msg);
         return;

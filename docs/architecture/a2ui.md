@@ -77,8 +77,46 @@ Renderer functions (A2UI v1.0 functions, `allowedCallers` per `policy.ts`): `sel
 2. **Scripts**: `bim.ui.table/kpis/chart/legend/show` in the sandbox build surfaces from data
    the script computed. The host validates with `validatePayload` before rendering.
 3. **External agents**: MCP tools return `application/a2ui+json` resources (MCP Apps hosts
-   render them through the `ui://ifc-lite/a2ui` app), and `viewer_show_ui` pushes a surface into
+   render them through the `ui://ifc-lite/a2ui-surface` app), and `viewer_show_ui` pushes a surface into
    a live viewer tab over the agent bridge.
+
+## MCP result surfaces
+
+The model-serving MCP server computes `present_query` against its loaded IFC model.
+The query uses `IfcQuerySpec` and requires `columns`. It accepts optional `modelId`, `groupBy` and `title`.
+The count covers all matches. The table, grouped chart and action targets cover
+the rows included by `query.limit`. `present_ids_results` takes the
+`ids_validate` arguments and `present_clash_results` takes the `clash_check`
+arguments. Both accept an optional `title` and run the underlying check before
+building a surface.
+
+Each tool returns a text summary and an embedded `application/a2ui+json` resource.
+The entry tools advertise `_meta.ui.resourceUri` pointing to
+`ui://ifc-lite/a2ui-surface` with visibility `["model", "app"]`. The resource is
+self-contained HTML with MIME type `text/html;profile=mcp-app`. The iframe uses the
+web core message processor and the IFC catalog to bind data to DOM components.
+Query-only components say that the result is computed in the viewer. The iframe
+can read only the result it receives, and uses the host's JSON-RPC relay to call
+the app-only `a2ui_viewer_action` tool. Select, isolate, colorize, fly to and reset
+operate on the session's connected WebGL viewer. The session checks model-qualified
+refs before sending a command.
+
+To try it in Claude Desktop, configure the [stdio server](../guide/mcp.md#wiring-it-into-a-client)
+using the built MCP command and an absolute IFC path. Restart Claude Desktop and
+ask it to call `present_query` for `IfcWall` with columns `Name` and `type`,
+grouped by `storey`. An MCP Apps-enabled host can display the result; the same
+tool call includes a text summary for any host. To test the row actions, open the
+browser URL returned by `viewer_open` for that model and click a row in the app.
+See the [MCP Apps specification](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx)
+and the [A2UI MCP Apps guide](https://a2ui.org/guides/a2ui-in-mcp-apps/).
+
+In bridge mode, call `bridge_status` to pair a main viewer tab, then call
+`viewer_show_ui` with either a v1.0 `messages` array or a builder `spec`
+(`surfaceId`, `sections`, and optional `title` and `card`). The bridge validates
+the payload and waits for the paired tab to acknowledge storing it. The tab
+exposes the stored surfaces through `agentSurfaces` for the viewer panel. Tabs advertise support in
+`hello.a2uiSurface`; the bridge lists `viewer_show_ui` only for a tab supporting
+that frame.
 
 ## Trust rules
 

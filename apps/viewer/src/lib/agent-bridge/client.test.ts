@@ -901,3 +901,29 @@ describe('local agent bridge client: allowing edits (#9523)', () => {
     assert.ok(result && !JSON.stringify(result).includes('"mutating"'), 'the activity marker never goes over the wire');
   });
 });
+
+it('stores the paired bridge surface and acknowledges delivery without dispatching a viewer tool', async () => {
+  const h = harness({ dispatch: async () => { throw new Error('surface bypasses the viewer tool registry'); } });
+  h.client.connect();
+  const socket = h.socket();
+  socket.open();
+  assert.equal(socket.hello().a2uiSurface, true);
+  socket.welcome();
+  const { agentSurfaces } = await import('./agent-surfaces');
+  let updates = 0;
+  const stop = agentSurfaces.subscribe(() => { updates++; });
+  try {
+    const surface = { title: 'Floor results', messages: [{ version: '1.0', createSurface: { surfaceId: 'floor' } }] };
+    socket.frame({ type: 'a2ui-surface', sessionId: 'older-session', id: 'wrong', surface });
+    socket.frame({ type: 'call', sessionId: 'session-1', name: 'viewer_show_ui', id: 'wrong-type', arguments: surface });
+    socket.frame({ type: 'a2ui-surface', sessionId: 'session-1', id: 'c1', surface });
+    await flush();
+    assert.deepEqual(agentSurfaces.getSnapshot(), [surface]);
+    assert.equal(updates, 1);
+    assert.deepEqual(socket.results().map(({ id, result }) => [id, result.isError]), [['c1', undefined]]);
+  } finally {
+    stop();
+    agentSurfaces.clear();
+    h.client.disconnect();
+  }
+});

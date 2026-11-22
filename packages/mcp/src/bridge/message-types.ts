@@ -15,6 +15,7 @@ export interface BridgeHelloMessage {
   tools: BridgeToolDescriptor[];
   client?: { name: string; version?: string };
   resultAck?: true;
+  a2uiSurface?: true;
 }
 
 export interface BridgeResultMessage {
@@ -62,6 +63,14 @@ export interface BridgeCallMessage {
   arguments: Record<string, unknown>;
 }
 
+export interface BridgeSurfaceMessage {
+  type: 'a2ui-surface';
+  sessionId: string;
+  /** Uses the normal result/cancel lifecycle. */
+  id: string;
+  surface: { messages: unknown[]; title?: string };
+}
+
 export interface BridgeCancelMessage {
   type: 'cancel';
   sessionId: string;
@@ -78,6 +87,7 @@ export interface BridgeErrorMessage {
 export type BridgeServerMessage =
   | BridgeWelcomeMessage
   | BridgeCallMessage
+  | BridgeSurfaceMessage
   | BridgeCancelMessage
   | BridgeErrorMessage;
 

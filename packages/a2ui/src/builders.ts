@@ -46,7 +46,7 @@ export type SectionSpec =
   | { kind: 'table'; columns: ColumnSpec[]; rows?: RowSpec[]; query?: IfcQuerySpec; title?: string; groupBy?: string; sort?: { path: string; dir?: 'asc' | 'desc' }; maxRows?: number }
   | { kind: 'list'; refs?: string[]; query?: IfcQuerySpec; title?: string; label?: string }
   | { kind: 'chart'; groupBy: string; data?: ChartDatum[]; query?: IfcQuerySpec; chart?: 'bar' | 'pie'; aggregate?: 'count' | 'sum'; path?: string; title?: string }
-  | { kind: 'legend'; by: string; query?: IfcQuerySpec; title?: string; apply?: 'manual' | 'onShow' }
+  | { kind: 'legend'; by: string; data?: Array<{ label: string; color: string; refs?: string[] }>; query?: IfcQuerySpec; title?: string; apply?: 'manual' | 'onShow' }
   | { kind: 'actions'; actions: ViewerAction[]; refs?: string[]; query?: IfcQuerySpec; color?: string; followUps?: { label: string; prompt: string }[] }
   | { kind: 'entity'; entity: string; sections?: string[] };
 
@@ -169,7 +169,8 @@ function sectionComponent(id: string, base: string, section: SectionSpec, data: 
         title: section.title,
       });
     case 'legend':
-      return compact({ id, component: 'ColorLegend', by: section.by, query: section.query, title: section.title, apply: section.apply });
+      if (section.data) data[key] = { data: section.data };
+      return compact({ id, component: 'ColorLegend', by: section.by, query: section.query, data: section.data ? bind(`${base}/data`) : undefined, title: section.title, apply: section.apply });
     case 'actions':
       if (section.refs) data[key] = { refs: section.refs };
       return compact({

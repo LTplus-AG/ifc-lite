@@ -19,7 +19,8 @@
 import type { CallToolResult, JsonSchema } from '../protocol/index.js';
 import { ToolErrorCode, toolError, type ToolErrorCodeValue } from '../errors.js';
 import { ToolRegistry, type Tool } from '../tools/types.js';
-import { BRIDGE_STATUS_TOOL, type BridgeToolDescriptor } from './protocol.js';
+import { surfacePushTool } from './surface-push.js';
+import { BRIDGE_STATUS_TOOL, BRIDGE_SURFACE_TOOL, type BridgeToolDescriptor } from './protocol.js';
 import { BridgeCallError, type BridgeCallFailure, type TabBridge } from './tab-bridge.js';
 
 const FAILURE_CODE: Record<BridgeCallFailure, ToolErrorCodeValue> = {
@@ -173,10 +174,12 @@ function statusResult(bridge: TabBridge, pairNewTab: boolean): CallToolResult {
 
 export class BridgeToolRegistry extends ToolRegistry {
   private readonly status: Tool;
+  private readonly surface: Tool;
 
   constructor(private readonly bridge: TabBridge) {
     super();
     this.status = statusTool(bridge);
+    this.surface = surfacePushTool((args, signal) => forward(bridge, BRIDGE_SURFACE_TOOL, args, signal));
   }
 
   override register(): void {
@@ -185,6 +188,7 @@ export class BridgeToolRegistry extends ToolRegistry {
 
   override get(name: string): Tool | null {
     if (name === BRIDGE_STATUS_TOOL) return this.status;
+    if (name === BRIDGE_SURFACE_TOOL) return this.surface;
     const tab = this.bridge.tab();
     if (!tab) return notConnectedTool(this.bridge, name);
     const d = tab.tools.find((t) => t.name === name);
@@ -197,7 +201,7 @@ export class BridgeToolRegistry extends ToolRegistry {
     const tab = this.bridge.tab();
     if (!tab) return [this.status];
     const visible = tab.permission === 'read-only' ? tab.tools.filter((t) => t.readOnly) : tab.tools;
-    return [this.status, ...visible.map((d) => forwardedTool(this.bridge, d))];
+    return [this.status, ...(tab.a2uiSurface ? [this.surface] : []), ...visible.map((d) => forwardedTool(this.bridge, d))];
   }
 
   override has(name: string): boolean {

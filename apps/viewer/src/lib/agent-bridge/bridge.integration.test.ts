@@ -160,7 +160,7 @@ describe('viewer tab <-> real MCP bridge, end to end (#9523)', () => {
 
     const listed = (await mcp.request('tools/list')).tools as { name: string; annotations?: { readOnlyHint?: boolean } }[];
     assert.equal(listed[0].name, 'bridge_status');
-    assert.deepEqual(listed.slice(1).map((tool) => tool.name).sort(), [...MAIN_VIEWER_TOOL_ALLOWLIST, ...Object.entries(VIEWER_COMMAND_SPECS).filter(([, spec]) => spec.readOnly).map(([name]) => name)].sort());
+    assert.deepEqual(listed.slice(1).map((tool) => tool.name).sort(), ['viewer_show_ui', ...MAIN_VIEWER_TOOL_ALLOWLIST, ...Object.entries(VIEWER_COMMAND_SPECS).filter(([, spec]) => spec.readOnly).map(([name]) => name)].sort());
     assert.ok(listed.slice(1).every((tool) => tool.annotations?.readOnlyHint === true));
 
     // An unsaved edit in the viewer is what the agent reads.
@@ -301,6 +301,19 @@ describe('viewer tab <-> real MCP bridge, end to end (#9523)', () => {
       operation_id: 'measurements.read',
     } });
     assert.equal(read.isError, undefined, JSON.stringify(read));
+  });
+
+  it('delivers a validated surface into the paired read-only tab over MCP and WebSocket', async () => {
+    const result = await mcp.request('tools/call', { name: 'viewer_show_ui', arguments: {
+      title: 'Inspection', spec: { surfaceId: 'inspection', sections: [{ kind: 'text', text: 'Model results' }] },
+    } });
+    assert.equal(result.isError, undefined, JSON.stringify(result));
+    const { agentSurfaces } = await import('./agent-surfaces');
+    try {
+      assert.deepEqual(agentSurfaces.getSnapshot().map(({ title }) => title), ['Inspection']);
+    } finally {
+      agentSurfaces.clear();
+    }
   });
 
   it('the bridge shutting down ends the tab\'s session as bridge-shutdown', async () => {

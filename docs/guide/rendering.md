@@ -571,6 +571,40 @@ finalize or is interrupted by a device loss removes the fragments it uploaded
 and drops its bounds before returning, so replaying again never draws a batch
 twice. Picking and framing see a replay's bounds once it completes.
 
+### Device recovery of a released scene
+
+`recoverDevice()` restores an ordinary scene from its CPU pieces. A released
+scene has none, so it is refused with `cpu-geometry-released` unless the host
+registers a rebuild that puts the geometry back from its own storage:
+
+```typescript
+import { replayReleasedGeometry } from '@ifc-lite/renderer';
+import type { DecodedInstancedShard, MeshData } from '@ifc-lite/geometry';
+
+declare function storedFlatBatches(): AsyncIterable<MeshData[]>;            // the host's stored flat meshes
+declare function storedInstancedShards(): AsyncIterable<DecodedInstancedShard>; // and its stored instanced shards
+declare function modelIndexOf(shard: DecodedInstancedShard): number;          // the model each shard belongs to
+
+renderer.setReleasedSceneRebuild(async ({ device, pipeline, scene, instancedModelIndices, isCurrent, requestRender }) => {
+  const flat = await replayReleasedGeometry(
+    { getScene: () => scene, getGPUDevice: () => (isCurrent() ? device : null), getPipeline: () => pipeline, requestRender },
+    storedFlatBatches(), { isCurrent });
+  if (flat.status !== 'complete') return false;
+  for await (const shard of storedInstancedShards()) {
+    if (!instancedModelIndices.has(modelIndexOf(shard))) continue; // only templates the scene held
+    if (!isCurrent()) return false;
+    scene.addInstancedShard(device, shard, modelIndexOf(shard));
+  }
+  return true; // readiness is published only now
+});
+```
+
+The rebuild runs against the replacement device before the renderer reports
+ready. Model placements are kept; flat and instanced GPU state is reset first.
+Return `false` (or let `isCurrent()` go false) and the renderer stays lost with
+`scene-restore-failed`, so the host's recovery may retry. Pass `null` to refuse
+released scenes again.
+
 ### Magnetic Snap Configuration
 
 ```typescript

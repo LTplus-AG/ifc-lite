@@ -118,7 +118,8 @@ function augmentScriptError(message: string, code?: string): { message: string; 
 const activeRunners = new Set<NativeScriptRunner>();
 /** Per-invocation native lifecycle, shared by the editor/assistant UI and viewer operations. */
 export class NativeScriptRunner {
-  private active: Sandbox | null = null;
+  /** Every sandbox this runner's runs still hold, so dispose() reaches a superseded run too. */
+  private readonly live = new Set<Sandbox>();
   /**
    * This instance's own run counter. The store's `scriptRunEpoch` decides whether a run may
    * still publish to the shared script state; this one decides whether `execute()` returns the
@@ -128,6 +129,8 @@ export class NativeScriptRunner {
   private cancellationEpoch = 0;
   private running = 0;
   private sharedEpoch = -1;
+  /** Shared epochs of this runner's runs still in flight; a finished run's epoch is not cancellable. */
+  private readonly inFlight = new Set<number>();
   constructor(private readonly bim: BimContext, private readonly config?: SandboxConfig) {}
   async execute(code: string): Promise<ScriptResult | null> {
     const { bim, config } = this;
@@ -162,7 +165,7 @@ export class NativeScriptRunner {
       return null;
     }
 
-    this.running++; activeRunners.add(this);
+    this.running++; this.inFlight.add(myEpoch); activeRunners.add(this);
     let sandbox: Sandbox | null = null;
     let torndown = false;
     /**
@@ -175,9 +178,7 @@ export class NativeScriptRunner {
       if (torndown) return null;
       torndown = true;
       const message = sandbox ? disposeSandboxReportingAbort(sandbox) : null;
-      if (this.active === sandbox) {
-        this.active = null;
-      }
+      if (sandbox) this.live.delete(sandbox);
       return message;
     };
 
@@ -191,9 +192,10 @@ export class NativeScriptRunner {
 
       sandbox = await createViewerSandbox(bim, config);
       // Cancelled while the sandbox was being created: settle the store too, or it stays 'running'.
-      // Checked before taking `active`, so a cancelled run never displaces a newer run's sandbox.
       if (this.cancellationEpoch !== cancellationEpoch) { if (stillCurrent()) setExecutionState('idle'); return null; }
-      this.active = sandbox;
+      // A run this runner already superseded still runs (its result is discarded below); it is tracked
+      // with the newer one, so cancel() and dispose() stop both.
+      this.live.add(sandbox);
 
       const result = await sandbox.eval(code);
 
@@ -307,7 +309,7 @@ export class NativeScriptRunner {
       setError(runtime.message, runtime.diagnostics);
       return null;
     } finally {
-      if (--this.running === 0) activeRunners.delete(this);
+      this.inFlight.delete(myEpoch); if (--this.running === 0) activeRunners.delete(this);
       // Always dispose the sandbox after execution. A no-op on the success
       // path, which already settled itself above; this covers create/eval
       // throwing, and a teardown abort on the way out of a failed run.
@@ -319,7 +321,7 @@ export class NativeScriptRunner {
       }
     }
   }
-  ownsEpoch(epoch: number): boolean { return this.sharedEpoch === epoch; }
+  ownsEpoch(epoch: number): boolean { return this.sharedEpoch === epoch && this.inFlight.has(epoch); }
   /** True when cancel(), reset() or dispose() ran since the given cancellation count (see cancellationCount). */
   cancelledSince(count: number): boolean { return this.cancellationEpoch !== count; }
   get cancellationCount(): number { return this.cancellationEpoch; }
@@ -353,7 +355,7 @@ export class NativeScriptRunner {
     setError(null);
     setDiagnostics([]);
   }
-  dispose(): void { this.cancellationEpoch++; if (this.active) { disposeSandboxReportingAbort(this.active); this.active = null; } }
+  dispose(): void { this.cancellationEpoch++; for (const sandbox of this.live) disposeSandboxReportingAbort(sandbox); this.live.clear(); }
 }
 
 export function cancelNativeScriptRun(expectedEpoch: number): boolean {

@@ -4,7 +4,7 @@
 import { getMountedFileHost } from '@/components/viewer/toolbar/mounted-file-host';
 import { useViewerStore } from '@/store';
 import { coordination } from './coordination-common';
-import { disabled, stale } from './refusals';
+import { disabled, internal, invalidInput, stale, unavailable } from './refusals';
 export const coordinationCollabOperations = [
   coordination<{ room_id: string; token: string }>('collab.join', 'Join an exact room with a supplied existing token using native role parsing, sync/reconstruction and teardown. Never accepts a caller-chosen role or returns credentials. If joining would publish local annotations, the agent operation refuses and the user must open the invite link themselves.', ['network', 'configuration', 'view'], {
     type: 'object', properties: { room_id: { type: 'string', minLength: 1, maxLength: 200 }, token: { type: 'string', minLength: 1, maxLength: 10000 } }, required: ['room_id', 'token'], additionalProperties: false,
@@ -29,39 +29,39 @@ export const coordinationCollabOperations = [
   }),
   coordination<{ name: string; color: string }>('collab.identity', 'Edit the native local display identity and, when connected, its authorized presence record. Does not change account id, room token or role.', ['configuration', 'network'], {
     type: 'object', properties: { name: { type: 'string', minLength: 1, maxLength: 64 }, color: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$' } }, required: ['name', 'color'], additionalProperties: false,
-  }, (i, c) => c.commit(() => { if (!i.name.trim()) throw new Error('A nonempty native display name is required.'); useViewerStore.getState().setCollabIdentity({ name: i.name, color: i.color }); const identity = useViewerStore.getState().collabIdentity; return { name: identity.name, color: identity.color }; })),
+  }, (i, c) => c.commit(() => { if (!i.name.trim()) throw invalidInput('invalid-value', 'A nonempty native display name is required.'); useViewerStore.getState().setCollabIdentity({ name: i.name, color: i.color }); const identity = useViewerStore.getState().collabIdentity; return { name: identity.name, color: identity.color }; })),
   coordination<{ scope: 'active' | 'all'; role: 'viewer' | 'commenter' | 'editor'; expected_mutation_version: number; expected_geometry_version: number }>('collab.prepareRoom', 'Validate and prepare an exact native share scope/role for the real Share consent dialog. New room creation uploads models only after the native Create link approval. For an existing room the candidate waits until the user opens Share, so no invite is minted unasked; no token is returned.', ['configuration', 'view'], {
     type: 'object', properties: { scope: { type: 'string', enum: ['active', 'all'] }, role: { type: 'string', enum: ['viewer', 'commenter', 'editor'] }, expected_mutation_version: { type: 'integer', minimum: 0 }, expected_geometry_version: { type: 'integer', minimum: 0 } }, required: ['scope', 'role', 'expected_mutation_version', 'expected_geometry_version'], additionalProperties: false,
   }, async (i, c) => {
     const [{ prepareShareSeed, shareRefusesEveryModel }, { useCollabShareReview }, { isCollabSeedInFlight }, { isCollabEnabled }] = await Promise.all([import('@/lib/collab/share-scope'), import('@/lib/collab/share-review'), import('@/lib/collab/seed-phase'), import('@/lib/collab/config')]);
-    if (!isCollabEnabled()) throw new Error('Collaboration is not enabled in this viewer.');
+    if (!isCollabEnabled()) throw disabled('Collaboration is not enabled in this viewer.');
     // An open dialog keeps the user's current choices; a candidate is only applied as Share opens.
-    if (useCollabShareReview.getState().dialogOpen) throw new Error('The Share dialog is already open. Close it, then prepare the share again.');
+    if (useCollabShareReview.getState().dialogOpen) throw unavailable('The Share dialog is already open. Close it, then prepare the share again.');
     const state = useViewerStore.getState();
-    if (state.mutationVersion !== i.expected_mutation_version || state.geometryContentVersion !== i.expected_geometry_version) throw new Error('Model revisions changed before share preparation.');
-    if (state.collabRoomId && isCollabSeedInFlight(state.collabSeedPhase)) throw new Error('The native room seed is still in flight.');
+    if (state.mutationVersion !== i.expected_mutation_version || state.geometryContentVersion !== i.expected_geometry_version) throw stale('Model revisions changed before share preparation.');
+    if (state.collabRoomId && isCollabSeedInFlight(state.collabSeedPhase)) throw unavailable('The native room seed is still in flight.');
     const rank = { viewer: 0, commenter: 1, editor: 2, admin: 3 };
-    if (state.collabRole && rank[i.role] > rank[state.collabRole]) throw new Error('This native room role cannot grant the requested invite access.');
+    if (state.collabRole && rank[i.role] > rank[state.collabRole]) throw disabled('This native room role cannot grant the requested invite access.');
     // Only an admin mints role-scoped links; any other member can only forward the invite it holds.
-    if (state.collabRoomId && state.collabRole && state.collabRole !== 'admin') throw new Error('Only the room admin can prepare a role-scoped invite.');
-    if (!state.collabRoomId && shareRefusesEveryModel(state.models, state.activeModelId, i.scope)) throw new Error('No model in the selected native scope can be shared.');
+    if (state.collabRoomId && state.collabRole && state.collabRole !== 'admin') throw disabled('Only the room admin can prepare a role-scoped invite.');
+    if (!state.collabRoomId && shareRefusesEveryModel(state.models, state.activeModelId, i.scope)) throw unavailable('No model in the selected native scope can be shared.');
     const shareHost = getMountedFileHost();
-    if (!shareHost?.preloadShareDialog || !shareHost.openShareDialog) throw new Error('The Share consent dialog is unavailable in this viewer.');
+    if (!shareHost?.preloadShareDialog || !shareHost.openShareDialog) throw unavailable('The Share consent dialog is unavailable in this viewer.');
     try { await shareHost.preloadShareDialog(); }
-    catch (cause) { throw new Error('The Share consent dialog could not load. Reload the viewer before preparing a share.', { cause }); }
+    catch (cause) { throw internal('The Share consent dialog could not load. Reload the viewer before preparing a share.', { cause: cause instanceof Error ? cause.message : String(cause) }); }
     c.checkpoint?.();
     const prepared = state.collabRoomId ? null : await prepareShareSeed(state.models, state.mutationViews, state.activeModelId, i.scope, state.georefMutations); c.checkpoint?.();
     return c.commit(() => {
       const currentHost = getMountedFileHost();
       if (!currentHost?.openShareDialog || currentHost.owner !== shareHost.owner || currentHost.preloadShareDialog !== shareHost.preloadShareDialog) {
-        throw new Error('The Share consent dialog changed during share preparation.');
+        throw stale('The Share consent dialog changed during share preparation.');
       }
-      if (useCollabShareReview.getState().dialogOpen) throw new Error('The Share dialog is already open. Close it, then prepare the share again.');
+      if (useCollabShareReview.getState().dialogOpen) throw unavailable('The Share dialog is already open. Close it, then prepare the share again.');
       const live = useViewerStore.getState();
       if (!state.collabRoomId && i.scope === 'active' && live.activeModelId !== state.activeModelId) {
         throw stale('The active model changed during share preparation. Inspect the active model and prepare the share again.');
       }
-      if (live.models !== state.models || live.mutationVersion !== state.mutationVersion || live.geometryContentVersion !== state.geometryContentVersion || live.collabRoomId !== state.collabRoomId) throw new Error('Model scope or room changed during share preparation.');
+      if (live.models !== state.models || live.mutationVersion !== state.mutationVersion || live.geometryContentVersion !== state.geometryContentVersion || live.collabRoomId !== state.collabRoomId) throw stale('Model scope or room changed during share preparation.');
       const candidate = { id: crypto.randomUUID(), scope: i.scope, role: i.role, modelIds: prepared?.models.map(model => model.modelId) ?? [...state.collabRoomModels.keys()], activeModelId: state.activeModelId, loadedModelIds: [...state.models.keys()], mutationVersion: state.mutationVersion, geometryVersion: state.geometryContentVersion, roomId: state.collabRoomId };
       useCollabShareReview.setState({ candidate });
       // Opening the dialog on an existing room mints an invite at once, so only a
@@ -73,8 +73,8 @@ export const coordinationCollabOperations = [
   }),
   coordination<{ expected_room_id: string }>('collab.revokeInvite', 'Revoke the last native share link with the current native admin token. Does not disclose either token.', ['network', 'configuration'], {
     type: 'object', properties: { expected_room_id: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['expected_room_id'], additionalProperties: false,
-  }, (i, c) => c.commitAsync(async () => { const state = useViewerStore.getState(); if (state.collabRoomId !== i.expected_room_id || state.collabRole !== 'admin') throw new Error('The exact native room admin role is required.'); return { revoked: await state.revokeCollabLink() }; }, outcome => outcome.revoked)),
+  }, (i, c) => c.commitAsync(async () => { const state = useViewerStore.getState(); if (state.collabRoomId !== i.expected_room_id || state.collabRole !== 'admin') throw disabled('The exact native room admin role is required.'); return { revoked: await state.revokeCollabLink() }; }, outcome => outcome.revoked)),
   coordination<{ expected_room_id: string; peer_client_id: number }>('collab.removePeer', 'Use native room administration to disconnect an exact peer client id; server token authority remains authoritative.', ['network', 'configuration'], {
     type: 'object', properties: { expected_room_id: { type: 'string', minLength: 1, maxLength: 200 }, peer_client_id: { type: 'integer', minimum: 0 } }, required: ['expected_room_id', 'peer_client_id'], additionalProperties: false,
-  }, (i, c) => c.commitAsync(async () => { const state = useViewerStore.getState(); if (state.collabRoomId !== i.expected_room_id || state.collabRole !== 'admin') throw new Error('The exact native room admin role is required.'); if (!state.collabSession?.presence.awareness.getStates().has(i.peer_client_id)) throw new Error('Unknown native room peer.'); return { removed: await state.kickPeer(i.peer_client_id) }; }, outcome => outcome.removed)),
+  }, (i, c) => c.commitAsync(async () => { const state = useViewerStore.getState(); if (state.collabRoomId !== i.expected_room_id || state.collabRole !== 'admin') throw disabled('The exact native room admin role is required.'); if (!state.collabSession?.presence.awareness.getStates().has(i.peer_client_id)) throw invalidInput('unknown-target', 'Unknown native room peer.'); return { removed: await state.kickPeer(i.peer_client_id) }; }, outcome => outcome.removed)),
 ];

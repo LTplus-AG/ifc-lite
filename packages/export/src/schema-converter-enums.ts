@@ -20,6 +20,8 @@
  */
 
 import { StructuralDiagnostics } from './schema-converter-structural-diagnostics.js';
+import { DocumentLinks } from './schema-converter-document-links.js';
+import { ValueForms } from './schema-converter-value-forms.js';
 import { getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@ifc-lite/parser';
 import { escapeStepString } from './step-serialization.js';
 import { readStepSlots, splitTopLevelStepArguments } from './step-argument-parser.js';
@@ -68,6 +70,10 @@ const LOSS_TEXT: Record<Loss, string> = {
 export class EnumReconciliation {
   /** Reuses this per-export collector so both STEP writers forward structural losses. */
   readonly structural = new StructuralDiagnostics();
+  /** The IfcDocumentInformation <-> IfcDocumentReference link (#10846). */
+  readonly documents = new DocumentLinks();
+  /** Values a target slot's type cannot hold (#10847). */
+  readonly forms = new ValueForms();
   private readonly losses = new Map<Loss, Map<string, number>>();
   /** Records written `.USERDEFINED.` with the label their rule needs unset, per type (#10780). */
   private readonly unlabelled = new Map<string, number>();
@@ -135,7 +141,7 @@ export class EnumReconciliation {
       const total = [...this.unlabelled.values()].reduce((a, b) => a + b, 0);
       out.push(`${total} record(s) say PredefinedType .USERDEFINED. without the label their rule needs; none is invented: ${[...this.unlabelled.keys()].join(', ')} (#10780).`);
     }
-    return [...out, ...this.structural.warnings()];
+    return [...out, ...this.documents.warnings(), ...this.forms.warnings(), ...this.structural.warnings()];
   }
 
   private record(loss: Loss, where: string): void {

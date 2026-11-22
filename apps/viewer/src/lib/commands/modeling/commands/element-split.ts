@@ -29,7 +29,8 @@ import { resolve as translate } from '@/i18n/registry';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { notifySplitCommitted } from '@/components/viewer/wallSplitNotice';
 import { SplitScene } from '@/components/viewer/tools/SplitHud';
-import { pointInPolygon, type Point2D } from '@/lib/polygon-clip';
+import { pointInPolygon } from '@ifc-lite/create';
+import type { Point2D } from '@/lib/polygon-clip';
 import { shortcutLabel } from '@/lib/commands/shortcut-label';
 import type { Vec2 } from '@/lib/snap/types';
 import { joinedPartnersOf } from '@/store/slices/mutation-wall-joins';
@@ -124,7 +125,7 @@ function commitSlab(g: SplitGesture & { target: NonNullable<SplitGesture['target
   if (!result.ok) throw new Error(translate('splitTool.failed', { reason: result.reason }));
   // Select whichever half the second click landed in.
   const right = store().readSlabFootprint(modelId, result.right.expressId);
-  const inRight = right ? pointInPolygon(right.footprint, [g.cursor![0], g.cursor![1]]) : false;
+  const inRight = right ? pointInPolygon(g.cursor![0], g.cursor![1], right.footprint) : false;
   toast.success(`Slab split — ${shortcutLabel('edit.undo')} to undo`);
   return splitCommit(modelId, expressId, result, inRight ? result.right.expressId : result.left.expressId);
 }

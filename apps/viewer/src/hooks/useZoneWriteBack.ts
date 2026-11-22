@@ -285,65 +285,82 @@ export interface ZoneWriteBackRemoval {
   blocked: MutationDenialReason | 'duplicate-set-name' | null;
 }
 
-/**
- * Remove what any run wrote for one zone set, from every element.
- *
- * The inverse exists because the run does not enter the undo stack (see the
- * module doc). Three things it deliberately does not narrow:
- *
- *  - it visits EVERY element, not only the ones currently in the set, because
- *    an element that has since left it is exactly the one carrying a stale
- *    assignment nothing else will clear;
- *  - it matches on the set's ID rather than its name, so a rename does not
- *    strand the earlier output;
- *  - it counts only elements where something was actually deleted. A count of
- *    "removed from 12,000 elements" on a model that was never written to, with
- *    an unsaved-changes flag to match, is a false report of an edit.
- */
-export function removeZoneWriteBack(zoneSet: ZoneSet): ZoneWriteBackRemoval {
+interface ZoneRemovalTarget {
+  modelId: string;
+  expressId: number;
+  psets: string[];
+  qsets: string[];
+}
+
+interface PlannedZoneRemoval {
+  targets: ZoneRemovalTarget[];
+  contexts: Map<string, ModelContext | null>;
+  blocked: ZoneWriteBackRemoval['blocked'];
+}
+
+/** Inventory owned output, including prior writes on elements that left the zone. */
+export function planZoneRemoval(zoneSet: ZoneSet): PlannedZoneRemoval {
   const state = useViewerStore.getState();
-  // Reported rather than folded into `removed: 0`: "nothing to remove" and "you
-  // were not allowed to" are different answers, and only one of them means the
-  // user should do something next.
-  const permission = mutationPermission(state);
-  if (!permission.allowed) return { removed: 0, modelIds: [], blocked: permission.reason };
-  if (collidesByName(zoneSet)) return { removed: 0, modelIds: [], blocked: 'duplicate-set-name' };
   const contexts = new Map<string, ModelContext | null>();
-  const touchedModels = new Set<string>();
-  const targets = new Map<string, { context: ModelContext; modelId: string; expressId: number }>();
+  const permission = mutationPermission(state);
+  if (!permission.allowed) return { targets: [], contexts, blocked: permission.reason };
+  if (collidesByName(zoneSet)) return { targets: [], contexts, blocked: 'duplicate-set-name' };
+
+  const candidates = new Map<string, { modelId: string; expressId: number }>();
   const addTarget = (modelId: string, expressId: number) => {
-    const context = writableContextFor(modelId, contexts);
-    if (context) targets.set(`${modelId}:${expressId}`, { context, modelId, expressId });
+    if (canMutate(state, modelId)) candidates.set(`${modelId}:${expressId}`, { modelId, expressId });
   };
   for (const [globalId] of state.zoneAssignments) {
     const ref = resolveEntityRef(globalId);
     addTarget(ref.modelId, ref.expressId);
   }
-  // Geometry may have been released since a prior run. Session mutation
-  // history still names its output, so preserve those removal targets too.
+  // Geometry can be released before the related edits are exported.
   for (const [modelId, view] of state.mutationViews) {
     for (const mutation of view.getMutations()) {
       if (mutation.psetName?.startsWith(ZONE_SET_NAME_PREFIX)
         || mutation.psetName?.startsWith(ZONE_QUANTITY_SET_NAME_PREFIX)) addTarget(modelId, mutation.entityId);
     }
   }
-  // Removal is also an edit: finish every bounded inventory before deleting
-  // anything, and never interpret a refused quantity inventory as empty.
-  const inventories = [...targets.values()].map(target => ({ ...target,
-    qsets: quantitySetsFor(target.context, target.expressId) }));
-  let removed = 0;
-  for (const { context, modelId, expressId, qsets } of inventories) {
-    if (sweepZoneSets(context, expressId, zoneSet.id, qsets) === 0) continue;
+
+  const targets: ZoneRemovalTarget[] = [];
+  // Two model ids can resolve to one view (legacy single-model ids); plan each element once.
+  const planned = new Map<ModelContext['view'], Set<number>>();
+  // Complete every bounded inventory before applying any deletion.
+  for (const candidate of candidates.values()) {
+    const context = contextFor(candidate.modelId, contexts, false);
+    if (!context) continue;
+    let seen = planned.get(context.view);
+    if (!seen) planned.set(context.view, seen = new Set());
+    if (seen.has(candidate.expressId)) continue;
+    seen.add(candidate.expressId);
+    const sets = zoneSetsOnElement(context, candidate.expressId, zoneSet.id);
+    if (sets.psets.length || sets.qsets.length) targets.push({ ...candidate, ...sets });
+  }
+  // A stable order, so the reviewed digest does not depend on assignment or history order.
+  targets.sort((a, b) => (a.modelId < b.modelId ? -1 : a.modelId > b.modelId ? 1 : a.expressId - b.expressId));
+  return { targets, contexts, blocked: null };
+}
+
+/** Remove output owned by this zone set, including output written before a rename. A caller that already checked a plan passes it. */
+export function removeZoneWriteBack(zoneSet: ZoneSet, plan = planZoneRemoval(zoneSet)): ZoneWriteBackRemoval {
+  const { targets, contexts, blocked } = plan;
+  if (blocked) return { removed: 0, modelIds: [], blocked };
+
+  const touchedModels = new Set<string>();
+  const state = useViewerStore.getState();
+  for (const { modelId, expressId, psets, qsets } of targets) {
+    const view = contexts.get(modelId)!.view;
+    for (const name of psets) view.deletePropertySet(expressId, name);
+    for (const name of qsets) view.deleteQuantitySet(expressId, name);
+    if (!touchedModels.has(modelId) && !state.getMutationView(modelId)) state.registerMutationView(modelId, view);
     touchedModels.add(modelId);
-    removed++;
   }
 
   const modelIds = [...touchedModels];
-  if (modelIds.length > 0) useViewerStore.getState().markModelsDirty(modelIds);
-  return { removed, modelIds, blocked: null };
+  if (modelIds.length > 0) state.markModelsDirty(modelIds);
+  return { removed: targets.length, modelIds, blocked: null };
 }
 
-/** React-facing handles. */
 export function useZoneWriteBack() {
   const write = useCallback((zoneSet: ZoneSet, basis: VolumeBasis) => applyZoneWriteBack(zoneSet, basis), []);
   const remove = useCallback((zoneSet: ZoneSet) => removeZoneWriteBack(zoneSet), []);

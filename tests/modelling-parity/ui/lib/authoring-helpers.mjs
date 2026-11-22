@@ -28,7 +28,7 @@ async function inspector(s) {
   const button = s.page.getByRole('button', { name: 'Model inspector', exact: true });
   if (await button.isVisible()) await s.ui.click(button);
   else {
-    await s.ui.click(s.page.getByRole('button', { name: /^More panels/ }));
+    await s.ui.click(s.page.locator('button[data-rail-overflow]'));
     await s.ui.click(s.page.locator('[role=menuitem][data-panel-id=model]'));
   }
 }

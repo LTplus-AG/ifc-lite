@@ -5,7 +5,8 @@ import { convertEntityType } from './schema-converter.js';
 import { destabilizingUnknown, isStructuralAssignmentConversion } from './schema-converter-structural.js';
 import { StructuralAxes } from './schema-converter-structural-axes.js';
 import { CAUSED_BY, StructuralCarriers } from './schema-converter-structural-carriers.js';
-import { conversionMode, namesWithheld, slotUnset, SourceRecords, type SourceStore } from './schema-converter-structural-source.js';
+import { conversionMode, namesWithheld, SourceRecords, type SourceStore } from './schema-converter-structural-source.js';
+import { holdsValue, withoutComments } from './step-comment-skip.js';
 import { StructuralThickness, THICKNESS_WRITTEN } from './schema-converter-structural-thickness.js';
 import { StructuralLinks } from './schema-converter-structural-links.js';
 import { SHARED_CONFIGURATION, StructuralVarying, varyingTarget } from './schema-converter-structural-varying.js';
@@ -26,7 +27,8 @@ const LINK = 'IfcRelAssignsToProduct linking one structural member to its elemen
  */
 function strandedAs(entity: string, args: readonly string[], unconverted: boolean, reaction: boolean, cause: { restored: boolean } | null): string | null {
   const target = varyingTarget(entity);
-  if (!target || slotUnset(args[CAUSED_BY])) return null;
+  // The export's own warning test (#10779): `$`, `*` or empty, comments aside, is no value.
+  if (!target || !holdsValue(args[CAUSED_BY] ?? '')) return null;
   // An unconverted action naming no point reaction keeps CausedBy unreported.
   if (unconverted) return reaction ? entity : null;
   return cause?.restored ? null : target;
@@ -105,12 +107,13 @@ export class StructuralDiagnostics {
     this.carried.delete(id);
     src.forEach((attr, i) => {
       // CONST is intrinsic to IFC2X3 linear/planar actions, not lost data.
-      if (attr.name === 'PredefinedType' && rec.slots[i]?.trim() === '.CONST.'
+      if (attr.name === 'PredefinedType' && withoutComments(rec.slots[i] ?? '') === '.CONST.'
         && ['IFCSTRUCTURALCURVEACTION', 'IFCSTRUCTURALSURFACEACTION', 'IFCSTRUCTURALLINEARACTION', 'IFCSTRUCTURALPLANARACTION'].includes(rec.type)) return;
-      if (attr.name === 'DestabilizingLoad' && rec.slots[i]?.trim() === '$' && to === 'IFC2X3')
+      if (attr.name === 'DestabilizingLoad' && withoutComments(rec.slots[i] ?? '') === '$' && to === 'IFC2X3')
         this.record(destabilizingUnknown(rec.type));
       if (carried?.has(attr.name)) return;
-      if (!tgt.includes(attr.name) && rec.slots[i] && !['$', '*', ''].includes(rec.slots[i].trim())) {
+      // The dropped count's own test (#10779): a comment-only slot is no value.
+      if (!tgt.includes(attr.name) && holdsValue(rec.slots[i] ?? '')) {
         const effect = attr.name === 'ConditionCoordinateSystem' ? '; restraint directions in that coordinate system are not preserved' : '';
         this.record(`${rec.type}.${attr.name} has no slot in ${to}; its value is omitted${effect}`);
       }

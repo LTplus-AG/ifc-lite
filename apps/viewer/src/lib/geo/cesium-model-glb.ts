@@ -5,7 +5,9 @@
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { isEntityVisible, DEFAULT_GHOST_ALPHA, DEFAULT_MIN_CAST_ALPHA } from '@ifc-lite/renderer';
 import { getGlobalRenderer } from '../../hooks/useBCF.js';
-import { withInstancedMeshes } from '../../utils/instancedExport.js';
+import { withInstancedMeshes, withReleasedExportGeometry, type ReleasedExportContext } from '../../utils/instancedExport.js';
+import { useViewerStore } from '@/store';
+import { modelIndices } from '../model-placement/model-indices';
 import { buildMergedGLB } from './cesium-glb.js';
 import { bakeGlobeTiles } from './globe-glb.js';
 import type { GeoMapping } from './geo-warp.js';
@@ -127,11 +129,11 @@ export interface CesiumGlobeBake {
  * Each canonical visible mesh belongs to exactly one part, including instanced
  * occurrences and federated meshes; opaque window frames stay in the caster.
  */
-export function buildCesiumModelGLBParts(input: CesiumModelGLBInput, globe?: CesiumGlobeBake | null): {
+export function buildCesiumModelGLBParts(input: CesiumModelGLBInput, globe?: CesiumGlobeBake | null, context?: ReleasedExportContext): {
   parts: CesiumModelGLBPart[];
   key: string;
 } {
-  const visible = prepareVisibleMeshes(input);
+  const visible = prepareVisibleMeshes(input, context);
   const casting: MeshData[] = [];
   const receiving: MeshData[] = [];
   for (const mesh of visible) {
@@ -154,8 +156,34 @@ export function buildCesiumModelGLBParts(input: CesiumModelGLBInput, globe?: Ces
   return { parts, key: cesiumModelGLBKey(input, globe) };
 }
 
-function prepareVisibleMeshes(input: CesiumModelGLBInput): MeshData[] {
-  const complete = withInstancedMeshes(input.geometryResult, null);
+/**
+ * The models a world-view build reads (#10264 r4647377537): the owners of the flat meshes in its (merged,
+ * visibility-filtered) geometry, plus any model with no flat meshes of its own (all-instanced), which the
+ * view may still show. A released model outside the view needs no readback, so its missing or incomplete
+ * backing cannot refuse or skew this build. `undefined` (unscoped, as before) when an owner cannot be told.
+ */
+export function cesiumModelScope(geometryResult: GeometryResult,
+  models: ReadonlyMap<string, { geometryResult?: { meshes: readonly MeshData[] } | null }> = useViewerStore.getState().models): string[] | undefined {
+  if (models.size === 0) return undefined;
+  const byIndex = new Map([...modelIndices(models as never)].map(([id, index]) => [index, id]));
+  const sole = models.size === 1 ? [...models.keys()][0] : undefined;
+  const scope = new Set<string>();
+  for (const mesh of geometryResult.meshes) {
+    const owner = mesh.modelIndex !== undefined ? byIndex.get(mesh.modelIndex) : sole;
+    if (owner === undefined) return undefined;
+    scope.add(owner);
+  }
+  for (const [id, model] of models) if (!model.geometryResult?.meshes.length) scope.add(id);
+  return [...scope];
+}
+
+/** Build the world-view GLB parts, reading back exactly the released models the view shows. */
+export function buildCesiumModelForView(input: CesiumModelGLBInput, globe?: CesiumGlobeBake | null): Promise<{ parts: CesiumModelGLBPart[]; key: string }> {
+  return withReleasedExportGeometry((context) => buildCesiumModelGLBParts(input, globe, context), cesiumModelScope(input.geometryResult));
+}
+
+function prepareVisibleMeshes(input: CesiumModelGLBInput, context?: ReleasedExportContext): MeshData[] {
+  const complete = withInstancedMeshes(input.geometryResult, null, context);
   return filterVisibleMeshes(complete.meshes, input.hiddenIds, input.isolatedIds);
 }
 

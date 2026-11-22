@@ -7,8 +7,8 @@ import type { StudioDocument, StudioOp } from '@ifc-lite/ids-authoring';
 import { useViewerStore } from '@/store';
 import { viewerOperation as nativeOperation, operation as modelOperation, emptySchema, type ViewerOperationContext } from './contract';
 import { assertToolActive } from '../cancellation';
-import { decodedInput, disabled, invalidInput, stale, unavailable, parseJsonInput } from './refusals';
-import { admitCandidate, candidateStillApplies } from './host-handles';
+import { decodedInput, disabled, internal, invalidInput, parseJsonInput, stale, unavailable } from './refusals';
+import { admitCandidate, retainCandidate, candidateStillApplies } from './host-handles';
 
 const jsonOutput = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 function operation<T>(...args: Parameters<typeof nativeOperation<T>>) {
@@ -34,6 +34,16 @@ async function dependencies(c: ViewerOperationContext) {
   assertToolActive(c);
   return contexts;
 }
+/** Callers re-check revision and grants after this await. */
+async function saveOpenDraft() {
+  const { IdsDraftUnsavedError, saveOpenIdsDraft } = await import('@/lib/ids-studio/draft-viewer');
+  try {
+    await saveOpenIdsDraft();
+  } catch (error) {
+    if (error instanceof IdsDraftUnsavedError) throw internal(error.message, { save: error.reason });
+    throw error;
+  }
+}
 function read() {
   const state = useViewerStore.getState();
   return { revision: state.idsStudioRevision, document: state.idsStudioState?.doc ?? null,
@@ -50,7 +60,9 @@ function remember(c: ViewerOperationContext, candidate: Candidate) {
   const revision = useViewerStore.getState().idsStudioRevision, stillApplies = candidateStillApplies();
   admitCandidate(candidates(c), { cap: 64, refusal: 'IDS candidate capacity reached; apply or discard a pending candidate.',
     pending: entry => entry.result === undefined, canApply: entry => stillApplies(entry.result !== undefined, () => entry.revision === revision) });
-  const token = crypto.randomUUID(); candidates(c).set(token, candidate); return token;
+  const token = crypto.randomUUID();
+  retainCandidate(c, candidates(c), token, candidate, { keep: entry => entry.result !== undefined });
+  return token;
 }
 const tokenSchema: JSONSchemaType<{ token: string }> = { type: 'object', properties: { token: { type: 'string', minLength: 1, maxLength: 100 } }, required: ['token'], additionalProperties: false };
 const jsonSchema: JSONSchemaType<{ ops_json: string; document_revision: number }> = { type: 'object', properties: {
@@ -86,7 +98,8 @@ export const idsOperations = [
     const { validateOp } = await import('@ifc-lite/ids-authoring');
     const { dispatchStudioOps } = await import('@/lib/ids-studio/session');
     const raw: unknown = parseJsonInput(i.ops_json, 'ops_json');
-    if (!Array.isArray(raw) || raw.length > 500) throw invalidInput('limit', 'ops_json must contain at most 500 canonical StudioOps.');
+    if (!Array.isArray(raw)) throw invalidInput('invalid-value', 'ops_json must contain an array of canonical StudioOps.');
+    if (raw.length > 500) throw invalidInput('limit', 'ops_json must contain at most 500 canonical StudioOps.');
     const ops = raw.map(value => { const parsed = validateOp(value); if (!parsed.ok) throw invalidInput('invalid-value', JSON.stringify(parsed.errors)); return parsed.op; });
     revision(i.document_revision);
     const result = dispatchStudioOps(current(), ops, contexts.gate, { label: 'Agent IDS candidate' });
@@ -94,21 +107,30 @@ export const idsOperations = [
     return { accepted: true, token: remember(c, { revision: i.document_revision, ops: structuredClone(ops) }), document: result.state.doc, revision: i.document_revision };
   }),
   operation(meta('ids.candidate.apply', 'Apply exactly one prepared IDS candidate through native open or gated dispatch; one native history step for an op batch. Repeated apply does not duplicate edits.', true), tokenSchema, async (i, c) => {
-    const candidate = candidates(c).get(i.token);
+    const entries = candidates(c);
+    const candidate = entries.get(i.token);
     if (!candidate) throw invalidInput('unknown-target', 'Unknown IDS candidate for this model session.');
-    if (candidate.result !== undefined) { writeGuard(c); return candidate.result; }
+    const assertHeld = () => {
+      if (entries.get(i.token) !== candidate) throw stale('The IDS candidate was discarded. Prepare it again.');
+    };
+    const replay = () => {
+      writeGuard(c);
+      assertHeld();
+      return candidate.result;
+    };
+    if (candidate.result !== undefined) return replay();
     revision(candidate.revision);
     const contexts = await dependencies(c);
-    // A whole-document candidate replaces the open draft: save it first, as switching drafts does.
-    if (candidate.document && candidate.result === undefined && useViewerStore.getState().idsStudioDraftId
-      && !(await (await import('../../ids-studio/draft-viewer')).flushOpenIdsDraft())) {
-      throw new Error('The open IDS draft could not be saved. Save or close it before opening another document.');
+    // A whole-document candidate replaces the open draft. Check that it still owns the revision before saving.
+    if (candidate.document && candidate.result === undefined && useViewerStore.getState().idsStudioDraftId) {
+      revision(candidate.revision); writeGuard(c);
+      await saveOpenDraft();
     }
     // Another apply of this token finished during the await: it dispatched once, so answer as a replay.
-    if (candidate.result !== undefined) { writeGuard(c); return candidate.result; }
+    if (candidate.result !== undefined) return replay();
     revision(candidate.revision); writeGuard(c);
     candidate.result = c.commit(() => {
-      if (candidates(c).get(i.token) !== candidate) throw stale('The IDS candidate was discarded. Prepare it again.');
+      assertHeld();
       const state = useViewerStore.getState(); state.idsStudioSetContexts(contexts);
       if (candidate.document) state.idsStudioOpen(structuredClone(candidate.document));
       else {
@@ -155,7 +177,10 @@ export const idsOperations = [
   }),
   operation<{ document_revision: number }>(meta('ids.document.close', 'Close the native IDS document after checking its exact revision.', true), {
     type: 'object', properties: { document_revision: { type: 'integer', minimum: 0 } }, required: ['document_revision'], additionalProperties: false,
-  }, (i, c) => { revision(i.document_revision); writeGuard(c); return c.commit(() => { useViewerStore.getState().idsStudioClose(); return read(); }); }),
+  }, async (i, c) => {
+    revision(i.document_revision); writeGuard(c); await saveOpenDraft(); revision(i.document_revision); writeGuard(c);
+    return c.commit(() => { useViewerStore.getState().idsStudioClose(); return read(); });
+  }),
   operation<{ document_revision: number; view: 'inspector' | 'xml'; selection_id: string }>(meta('ids.settings', 'Set the native Studio view and selected document/spec/facet node; empty selection_id clears selection.', true), {
     type: 'object', properties: { document_revision: { type: 'integer', minimum: 0 }, view: { type: 'string', enum: ['inspector', 'xml'] }, selection_id: { type: 'string', maxLength: 100 } }, required: ['document_revision', 'view', 'selection_id'], additionalProperties: false,
   }, async (i, c) => {

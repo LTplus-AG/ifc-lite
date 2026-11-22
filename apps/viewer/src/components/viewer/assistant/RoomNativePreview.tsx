@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { roomChainInStore } from '../../../../../../packages/create/src/in-store/room-store.js';
-import { polygonArea } from '../../../../../../packages/create/src/in-store/room-footprint-offset.js';
+import { polygonArea } from '@ifc-lite/create';
 import { nativeRootName } from '@/lib/actions/native-edit-evidence';
 import type { RoomReview } from '@/lib/actions/room-review';
 import { useTranslation } from '@/i18n';

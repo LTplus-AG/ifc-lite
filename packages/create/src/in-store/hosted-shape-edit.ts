@@ -6,21 +6,23 @@
  * shared and immutable; each representation receives its own mapping wrapper.
  * IFC mapping supports independent axis scales, including nested mappings:
  * https://standards.buildingsmart.org/IFC/RELEASE/IFC4_3/HTML/lexical/IfcCartesianTransformationOperator3DnonUniform.htm */
+import type { IfcDataStore } from '@ifc-lite/parser';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { AnchorEntityReader } from './resolve-anchor.js';
 import { applyFrame, contextDimension, inverseFrame, refId, type Frame3, type Vec3 } from './host-geometry-frame.js';
 import { retainedHostedScale } from './hosted-scale-chain.js';
+import { retireProductShape } from './product-shape-retire.js';
 
 const ref = (id: number) => `#${id}`;
 
 export function scaleHostedShape(
-  reader: AnchorEntityReader, editor: StoreEditor, productId: number,
+  store: IfcDataStore, reader: AnchorEntityReader, editor: StoreEditor, productId: number,
   inHost: Frame3, hostAnchor: Vec3, widthScale: number, heightScale: number,
 ): void {
   const product = reader.entity(productId);
   const shapeId = product ? refId(product.attributes[6]) : null;
   const shape = shapeId === null ? null : reader.entity(shapeId);
-  if (shape?.type.toUpperCase() !== 'IFCPRODUCTDEFINITIONSHAPE' || !Array.isArray(shape.attributes[2])) {
+  if (shapeId === null || shape?.type.toUpperCase() !== 'IFCPRODUCTDEFINITIONSHAPE' || !Array.isArray(shape.attributes[2])) {
     throw new Error(`Representation of #${productId} cannot be resized without losing its geometry`);
   }
   const inverse = inverseFrame(inHost);
@@ -81,4 +83,5 @@ export function scaleHostedShape(
   };
   const nextShape = editor.addEntity('IfcProductDefinitionShape', [label(shape.attributes[0]), label(shape.attributes[1]), representations]).expressId;
   editor.setPositionalAttribute(productId, 6, ref(nextShape));
+  retireProductShape(store, editor, shapeId);
 }

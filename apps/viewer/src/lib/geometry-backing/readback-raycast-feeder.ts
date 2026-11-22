@@ -12,6 +12,11 @@
  * them to the renderer's raycast as readback pieces. The next synchronous
  * raycast and snap then answer exactly as over resident pieces.
  *
+ * Instanced occurrences come back from the backed shards (the flat backing
+ * never held them): the picked entity's own, and instanced neighbours whose
+ * retained scene bounds meet the same box, materialized as the renderer
+ * uploads them and placed the same way as flat pieces.
+ *
  * Bounded: one lease set at a time, capped by bytes; a newer pointer position
  * cancels an older prefetch. A model without a complete current backing gets
  * no readback pieces; the tool then finds no hit instead of a wrong one, and
@@ -22,12 +27,15 @@ import type { MeshData } from '@ifc-lite/geometry';
 import type { SceneContents } from '@ifc-lite/renderer';
 import type { MeshLease } from './backing-reader';
 import { type BackingSource, GeometryUnavailableError } from './geometry-readback';
+import { readInstancedOccurrences } from './instanced-readback';
 
 export interface ReadbackRaycastHost {
   pick(x: number, y: number, options?: { hiddenIds?: ReadonlySet<number>; isolatedIds?: ReadonlySet<number> | null }):
     Promise<{ expressId: number; modelIndex?: number; worldXYZ?: { x: number; y: number; z: number } } | null>;
-  getScene(): Pick<SceneContents, 'placeAppearanceSource' | 'getEntityBoundingBox'>;
-  setReadbackRaycastMeshes(meshes: readonly MeshData[] | null): void;
+  getScene(): Pick<SceneContents, 'placeAppearanceSource' | 'getEntityBoundingBox' | 'getInstancedEntityIds' | 'getInstancedEntityBounds'>;
+  setReadbackRaycastMeshes(meshes: readonly MeshData[] | null, at?: { x: number; y: number }): void;
+  /** The view readback coverage is stamped with (`Renderer.readbackRaycastViewKey`). */
+  readbackRaycastViewKey?(): string;
 }
 
 export type FeedOutcome = 'resident' | 'fed' | 'no-hit' | 'unavailable' | 'cancelled';
@@ -35,6 +43,10 @@ export type FeedOutcome = 'resident' | 'fed' | 'no-hit' | 'unavailable' | 'cance
 /** World half-size of the neighbourhood leased around a hit (snap reaches edges nearby). */
 const NEIGHBOURHOOD_METRES = 1;
 export const DEFAULT_FEED_BYTES = 64 * 1024 * 1024;
+/** Overlay layers re-picked through before giving up. */
+const MAX_SEE_THROUGH_LAYERS = 8;
+/** Instanced neighbours materialized around one hit, at most. */
+const MAX_INSTANCED_NEIGHBOURS = 256;
 
 function released(scene: object): boolean {
   return 'isGeometryDataReleased' in scene && typeof scene.isGeometryDataReleased === 'function'
@@ -75,6 +87,8 @@ export class ReadbackRaycastFeeder {
     /** Federated owner of a renderer/global id. */
     private readonly owner: (globalId: number) => string | undefined,
     private readonly budgetBytes = DEFAULT_FEED_BYTES,
+    /** False for ids the resident raycast never tests (annotation and grid overlays). */
+    private readonly raycastable: (globalId: number) => boolean = () => true,
   ) {}
 
   /** Prepare readback pieces for a raycast at canvas CSS (x, y). */
@@ -87,37 +101,65 @@ export class ReadbackRaycastFeeder {
     this.controller = controller;
     const { signal } = controller;
     try {
-      const hit = await this.host.pick(x, y, visibility);
+      // The view this ray is picked under: pieces chosen for it are installed only while it still holds,
+      // never stamped with a later view whose ray at the same pixel they were not chosen for (r4649782008).
+      const view = this.host.readbackRaycastViewKey?.();
+      // The resident raycast passes through overlays the GPU pick sees (IfcAnnotation,
+      // grids): re-pick with those hidden until the first raycastable surface.
+      let hit = await this.host.pick(x, y, visibility);
       signal.throwIfAborted();
-      if (!hit) { this.swap([], []); return this.finish('no-hit'); }
+      const skipped = new Set(visibility.hiddenIds ?? []);
+      for (let layer = 0; hit && !this.raycastable(hit.expressId); layer++) {
+        if (layer >= MAX_SEE_THROUGH_LAYERS) throw new GeometryUnavailableError(`More than ${MAX_SEE_THROUGH_LAYERS} overlays under the pointer`);
+        skipped.add(hit.expressId);
+        hit = await this.host.pick(x, y, { ...visibility, hiddenIds: skipped });
+        signal.throwIfAborted();
+      }
+      if (view !== this.host.readbackRaycastViewKey?.()) return this.finish('cancelled'); // a miss under an older view says nothing
+      if (!hit) { this.swap([], [], { x, y }); return this.finish('no-hit'); }
       const modelId = this.owner(hit.expressId);
       const backing = modelId ? this.source()?.backing(modelId) : undefined;
-      if (!modelId || !backing?.isCurrent || !backing.isComplete) {
+      const complete = !!backing?.isCurrent && backing.isComplete;
+      // Instancing lost, flat records whole: flat-only, and only where the scene itself shows no instanced occurrence.
+      const flatOnly = !complete && !!modelId && !!backing?.isCurrent && this.source()?.flatComplete?.(modelId) === true;
+      if (!modelId || !backing || !(complete || flatOnly)) {
         throw new GeometryUnavailableError(`No complete geometry backing for entity ${hit.expressId}`);
       }
       if (placementRotated(scene, hit.modelIndex)) {
         throw new GeometryUnavailableError(`Model ${modelId} is rotated; readback of rotated placements is not available yet`);
       }
       const leases: MeshLease[] = [];
+      let instanced: MeshData[] = [];
       try {
         const own = await backing.reader.leaseEntity(hit.expressId, { signal });
         leases.push(own);
-        // An instanced (or otherwise unbacked) front surface: feeding the flat
-        // neighbourhood alone would let the ray pass through it and measure
-        // whatever lies behind. Refuse instead of answering wrongly. An entity
-        // with BOTH flat pieces and instanced occurrences counts too: the GPU hit
-        // may be the occurrence in front of its own flat piece, and this layer
-        // cannot read occurrences back.
-        if (backing.directory.shardsOf(hit.expressId).length > 0) {
-          throw new GeometryUnavailableError(`Entity ${hit.expressId} has instanced occurrences; instanced readback for tools is not available yet`);
+        const instancedIds = new Set<number>();
+        if (backing.directory.shardsOf(hit.expressId).length > 0) instancedIds.add(hit.expressId);
+        // An unbacked front surface: feeding the neighbourhood alone would let
+        // the ray pass through it and measure whatever lies behind. Refuse.
+        if (own.meshes.length === 0 && instancedIds.size === 0) {
+          throw new GeometryUnavailableError(`Entity ${hit.expressId} has no backed geometry`);
         }
-        if (own.meshes.length === 0) throw new GeometryUnavailableError(`Entity ${hit.expressId} has no backed flat geometry`);
         const p = hit.worldXYZ;
         if (p) {
+          const r = NEIGHBOURHOOD_METRES;
+          // Instanced neighbours: the scene keeps occurrence bounds (placed frame) after release.
+          for (const id of scene.getInstancedEntityIds()) {
+            const b = scene.getInstancedEntityBounds(id);
+            if (!b || b.min.x > p.x + r || b.max.x < p.x - r || b.min.y > p.y + r || b.max.y < p.y - r
+              || b.min.z > p.z + r || b.max.z < p.z - r || this.owner(id) !== modelId || instancedIds.has(id)) continue;
+            // The resident raycast never tests a hidden (or non-isolated) occurrence: it neither counts nor is fed.
+            if (visibility.hiddenIds?.has(id) || (visibility.isolatedIds && !visibility.isolatedIds.has(id))) continue;
+            // Nor an overlay it never tests (an instanced annotation or grid), which the re-pick saw through.
+            if (skipped.has(id) || !this.raycastable(id)) continue;
+            // A truncated neighbourhood could snap differently from the resident scene: refuse, never omit.
+            if (instancedIds.size >= MAX_INSTANCED_NEIGHBOURS) throw new GeometryUnavailableError(`More than ${MAX_INSTANCED_NEIGHBOURS} instanced neighbours`);
+            instancedIds.add(id);
+          }
           // The hit is in the placed scene frame; directory bounds are model-local sources.
           const [dx, dy, dz] = modelOffset(scene, hit.modelIndex);
-          const x = p.x - dx, y = p.y - dy, z = p.z - dz, r = NEIGHBOURHOOD_METRES;
-          const chunks = backing.directory.chunksIntersecting([x - r, y - r, z - r], [x + r, y + r, z + r]);
+          const lx = p.x - dx, ly = p.y - dy, lz = p.z - dz;
+          const chunks = backing.directory.chunksIntersecting([lx - r, ly - r, lz - r], [lx + r, ly + r, lz + r]);
           // Greedy within the budget: a chunk that does not fit is skipped, never charged.
           let bytes = 0;
           const within = chunks.filter((index) => {
@@ -127,6 +169,18 @@ export class ReadbackRaycastFeeder {
             return true;
           });
           leases.push(await backing.reader.leaseChunks(within, { signal }));
+        }
+        if (flatOnly && (!p || instancedIds.size > 0 || scene.getInstancedEntityBounds(hit.expressId))) {
+          throw new GeometryUnavailableError(`Entity ${hit.expressId}'s neighbourhood holds instanced occurrences whose backing was lost`);
+        }
+        // Occurrences are materialized in their model's frame: a hit that does not say which model is refused,
+        // never placed as model 0's.
+        if (instancedIds.size > 0 && hit.modelIndex === undefined) {
+          throw new GeometryUnavailableError(`Instanced hit ${hit.expressId} carries no model index`);
+        }
+        instanced = flatOnly || instancedIds.size === 0 ? [] : await readInstancedOccurrences(backing, instancedIds, hit.modelIndex!, { signal });
+        if (own.meshes.length === 0 && !instanced.some((mesh) => mesh.expressId === hit.expressId)) {
+          throw new GeometryUnavailableError(`Instanced entity ${hit.expressId} has no backed opaque occurrence`);
         }
         signal.throwIfAborted();
       } catch (error) {
@@ -142,14 +196,22 @@ export class ReadbackRaycastFeeder {
           // Only what the scene draws: the store also holds type-filtered meshes
           // (spaces, openings) and class-2 type templates the scene never had.
           if ((mesh.geometryClass ?? 0) === 2 || scene.getEntityBoundingBox(mesh.expressId) === null) continue;
+          // Nor an overlay the resident raycast never tests (an annotation or grid the re-pick saw through), as for instanced neighbours.
+          if (mesh.expressId !== hit.expressId && (skipped.has(mesh.expressId) || !this.raycastable(mesh.expressId))) continue;
           meshes.push(place(scene, mesh));
         }
+        // Occurrences are model-local like flat sources; the same placement applies.
+        for (const mesh of instanced) meshes.push(place(scene, mesh));
       } catch (error) {
         // These leases were never handed to `swap`: release them here, or a failed placement pins them.
         for (const lease of leases) lease.release();
         throw error;
       }
-      this.swap(leases, meshes);
+      if (view !== this.host.readbackRaycastViewKey?.()) {
+        for (const lease of leases) lease.release();
+        return this.finish('cancelled');
+      }
+      this.swap(leases, meshes, { x, y });
       return this.finish('fed');
     } catch (error) {
       if (signal.aborted) return this.finish('cancelled');
@@ -167,8 +229,8 @@ export class ReadbackRaycastFeeder {
     return outcome;
   }
 
-  private swap(leases: MeshLease[], meshes: MeshData[]): void {
-    this.host.setReadbackRaycastMeshes(meshes.length > 0 ? meshes : null);
+  private swap(leases: MeshLease[], meshes: MeshData[], at?: { x: number; y: number }): void {
+    this.host.setReadbackRaycastMeshes(meshes.length > 0 ? meshes : null, at);
     for (const lease of this.leases) lease.release();
     this.leases = leases;
   }

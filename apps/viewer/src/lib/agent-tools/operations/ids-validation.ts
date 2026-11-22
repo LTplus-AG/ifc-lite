@@ -3,12 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useViewerStore } from '@/store';
+import { MAX_DEFINITIONS } from '@/lib/validation/definition-library';
 import { operation, viewerOperation, emptySchema } from './contract';
 import { assertToolActive } from '../cancellation';
 import type { ValidationReport } from '@ifc-lite/ids';
 import type { IdsReportBlock } from '@/lib/document/ids-report-types';
 import type { ToolHost } from '../types';
-import { evictOldest } from './host-handles';
+import { evictOldest, retainCandidate } from './host-handles';
 import { boundedPage, pageInput, type PageInput } from './result-limit';
 import { libraryPage } from './library-page';
 import { assertRevision, revisionInput, stateRevision } from './state-revision';
@@ -68,12 +69,16 @@ export const nativeValidationOperations = [
       const parsed = parseRuleSetFile(parseJsonInput(i.content, 'content')); if (!parsed.ok) throw invalidInput('invalid-value', parsed.error);
       return out(c.commit(() => { libraryRevision(i.definition_revision); const s = useViewerStore.getState();
         if (i.action === 'rules.draft') s.setValidationRuleSetDraft(parsed.file);
+        else if (!i.id && s.validationDefinitions.entries.length >= MAX_DEFINITIONS)
+          throw unavailable('The native validation definition library is full.');
         else if (!s.addValidationDefinition({ kind: 'rules', file: parsed.file }, i.id || undefined)) throw invalidInput('refused', s.validationDefinitionsError ?? 'Native definition was refused.');
         return { revision: useViewerStore.getState().validationDefinitionRevision, storageError: useViewerStore.getState().validationDefinitionsError };
       }));
     }
     if (i.action === 'ids.import') {
       const document = decodedInput('content', () => parseIDS(i.content)); return out(c.commit(() => { libraryRevision(i.definition_revision); const s = useViewerStore.getState();
+        if (!i.id && s.validationDefinitions.entries.length >= MAX_DEFINITIONS)
+          throw unavailable('The native validation definition library is full.');
         if (!s.addValidationDefinition({ kind: 'ids', xml: i.content, document }, i.id || undefined)) throw invalidInput('refused', s.validationDefinitionsError ?? 'Native IDS definition was refused.');
         return { revision: useViewerStore.getState().validationDefinitionRevision, storageError: useViewerStore.getState().validationDefinitionsError };
       }));
@@ -93,7 +98,8 @@ export const nativeValidationOperations = [
       ...(i.scope === 'subset' ? { entityIds: i.entity_ids } : {}) });
     assertToolActive(c); if (!sameInputs(inputs, runInputs(useViewerStore.getState(), 'ids'))) throw stale('Models changed during IDS validation.');
     if (c.host.models().find(model => model.id === c.model.id)?.store !== c.model.store) throw stale('Models changed during IDS validation.');
-    evictOldest(runs(c), 32); const id = crypto.randomUUID(); runs(c).set(id, { ...result, kind: 'ids', inputs, source: { modelId: c.model.id, store: c.model.store } });
+    evictOldest(runs(c), 32); const id = crypto.randomUUID();
+    retainCandidate(c, runs(c), id, { ...result, kind: 'ids', inputs, source: { modelId: c.model.id, store: c.model.store } });
     return out({ run_id: id, summary: result.report.summary, source: result.report.source });
   }),
   operation<{ express_ids: number[]; pset: string; name: string; facet_data_type: string; raw_value: string; title: string }>(meta('validation.fix.prepare', 'Draft a native IDS property correction from explicit target IDs and a supplied raw value. Uses native type inference, IDS-to-model unit conversion and expected-value capture, then the existing properties review/apply service.'), {
@@ -121,7 +127,8 @@ export const nativeValidationOperations = [
     const result = await runInformationCheck({ ruleSet: parsed.file, models, definedModelTagIds: definedModelTagIdsOf(s), reportModels: s.models, signal: c.signal });
     assertToolActive(c); if (!sameInputs(inputs, runInputs(useViewerStore.getState(), 'rules'))) throw stale('Models changed during validation. Discarded result.');
     if (c.host.models().find(model => model.id === c.model.id)?.store !== c.model.store) throw stale('Models changed during validation. Discarded result.');
-    evictOldest(runs(c), 32); const id = crypto.randomUUID(); runs(c).set(id, { ...result, kind: 'rules', inputs, source: { modelId: c.model.id, store: c.model.store } });
+    evictOldest(runs(c), 32); const id = crypto.randomUUID();
+    retainCandidate(c, runs(c), id, { ...result, kind: 'rules', inputs, source: { modelId: c.model.id, store: c.model.store } });
     return out({ run_id: id, summary: result.report.summary, source: result.report.source });
   }),
   operation<PageInput & { run_id: string; offset: number; limit: number }>(meta('validation.results', 'Inspect a bounded page of canonical native specification findings, preserving complete native entity/requirement diagnostics in each returned specification. Pass next_offset and page_revision to continue.'), {
@@ -148,17 +155,19 @@ export const nativeValidationOperations = [
   }, async (i, c) => {
     const { runIdsBcfExport } = await import('@/hooks/ids/idsBcfExport'); const value = run(c, i.run_id), s = useViewerStore.getState(); assertToolActive(c);
     let captured: { blob: Blob; filename: string } | undefined;
-    await runIdsBcfExport({ report: value.report, settings: { topicGrouping: i.topic_grouping, includePassingEntities: i.include_passing, includeCamera: i.include_camera, includeSnapshots: i.include_snapshots, loadIntoBcfPanel: false },
+    await runIdsBcfExport({ report: value.report, explicitSnapshots: true, settings: { topicGrouping: i.topic_grouping, includePassingEntities: i.include_passing, includeCamera: i.include_camera, includeSnapshots: i.include_snapshots, loadIntoBcfPanel: false },
       models: s.models, legacyGeometryResult: s.geometryResult, bcfAuthor: s.bcfAuthor, toViewerGlobalId: (modelId, expressId) => s.models.has(modelId) ? s.toGlobalId(modelId, expressId) : undefined,
       setBcfExportProgress: () => undefined, setBcfProject: s.setBcfProject, setBcfPanelVisible: s.setBcfPanelVisible, signal: c.signal,
       emit: (blob, filename) => { captured = { blob, filename }; } });
     assertToolActive(c); run(c, i.run_id); if (!captured) throw internal('The native BCF exporter produced no artifact.');
     return c.artifacts.create({ filename: captured.filename, mimeType: 'application/zip', data: captured.blob });
   }),
-  operation<{ run_id: string; name: string }>(meta('validation.report.save', 'Save an exact current validation result through the native durable report library.', 'configuration'), {
+  operation<{ run_id: string; name: string }>(meta('validation.report.save', 'Save an exact current validation result through the native report library and return its per-report storage status.', 'configuration'), {
     type: 'object', properties: { ...runInput.properties, name: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['run_id', 'name'], additionalProperties: false,
   }, async (i, c) => { const value = run(c, i.run_id); const id = await c.commitAsync(() => useViewerStore.getState().saveValidationReport(value.snapshot, i.name), saved => !!saved);
-    if (!id) throw internal('Native report persistence failed.'); return out({ id }); }),
+    if (!id) throw internal('Native report persistence failed.');
+    return out({ id, storage: useViewerStore.getState().validationReportsStorage.items[id] ?? null });
+  }),
   viewerOperation<PageInput>(meta('validation.reports.read', 'Read the native durable report library, one page at a time (pass next_offset as offset with the page_revision of the previous page until next_offset is null; a list that changed in between is refused, so read again from 0), and its persistence diagnostics with no model required. expected_reports is the whole library revision. storage summarizes the whole library (phase, recovered, entry_count, counts by save state) and maps the ids on this page to their save states; save states of removed entries page after the entries. Historical evidence never installs old entity IDs into the scene.'), pageInput, async (i, c) => {
     await useViewerStore.getState().initializeValidationReports(); assertToolActive(c); const s = useViewerStore.getState();
     const expected_reports = stateRevision(s.savedValidationReports), { entries: reports, page, storage } = libraryPage(s.savedValidationReports, s.validationReportsStorage, i, { expected_reports });
@@ -172,6 +181,7 @@ export const nativeValidationOperations = [
     const report = s.savedValidationReports.find(row => row.id === i.id);
     if (!report && i.action !== 'restore' && i.action !== 'retry') throw invalidInput('unknown-target', 'Unknown saved native report.');
     expected();
+    if (i.action === 'rename' && !i.name.trim()) throw invalidInput('invalid-value', 'A validation report name cannot be empty.');
     if (i.action === 'reuseManual' && report) {
       c.commit(() => { expected(); if (!s.reuseManualValidationReport(report)) throw unavailable('Native manual report reuse is unavailable for the current fingerprints.'); });
       return out({ reused: i.id });

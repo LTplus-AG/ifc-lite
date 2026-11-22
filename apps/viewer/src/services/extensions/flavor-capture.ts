@@ -11,7 +11,7 @@ export function captureNativeFlavor(target: Flavor): Flavor {
   return { ...target,
     lenses: state.savedLenses.map(lens => ({ id: lens.id, name: lens.name ?? lens.id, definition: encodeSavedLens(lens) as unknown as Flavor['lenses'][number]['definition'] })),
     settings: { ...target.settings, clash: captureClashConfig() } as Flavor['settings'],
-    layout: { ...target.layout, state: { ...target.layout.state, sidebar: state.serializeSidebarLayout() as unknown as Flavor['layout']['state'][string] } },
+    layout: { ...target.layout, state: { ...target.layout?.state, sidebar: state.serializeSidebarLayout() as unknown as Flavor['layout']['state'][string] } },
     updatedAt: new Date().toISOString(),
   };
 }

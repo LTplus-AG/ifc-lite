@@ -29,8 +29,8 @@ for (const { module, exportName } of operationModules) {
     try { compileOperationSchema(entry.inputSchema); compileOperationSchema(entry.outputSchema); }
     catch (error) { throw new Error(`Invalid schema for ${entry.id}`, { cause: error }); }
     seen.add(entry.id);
-    const { id, version, owner, features, description, needs, effects, capability, inputSchema, outputSchema, result, completion, implementation, policy } = entry;
-    contracts.push({ id, version, owner, features, description, needs, effects, capability, inputSchema, outputSchema, result, completion, implementation, policy, module, exportName });
+    const { id, version, owner, features, description, needs, effects, capability, inputSchema, outputSchema, result, completion, implementation, policy, candidateOnly } = entry;
+    contracts.push({ id, version, owner, features, description, needs, effects, capability, inputSchema, outputSchema, result, completion, implementation, policy, candidateOnly, module, exportName });
   }
 }
 const bindings = [

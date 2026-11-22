@@ -186,7 +186,7 @@
    403 packages/drawing-2d/src/sheet/scale-stamp.ts
    599 packages/drawing-2d/src/sheet/title-block-renderer.ts
    489 packages/drawing-2d/src/styles.ts
-   537 packages/drawing-2d/src/svg-exporter.ts
+   498 packages/drawing-2d/src/svg-exporter.ts
    530 packages/drawing-2d/src/symbols/door-symbol.ts
    807 packages/drawing-2d/src/types.ts
    592 packages/export/src/effective-index.ts
@@ -194,7 +194,7 @@
   1527 packages/export/src/merged-exporter.ts
    616 packages/export/src/parquet-exporter.ts
    999 packages/export/src/reference-collector.ts
-   468 packages/export/src/schema-converter.ts
+   469 packages/export/src/schema-converter.ts
    437 packages/extensions/src/testing/runner.ts
    638 packages/geometry/src/coordinate-handler.ts
   1545 packages/geometry/src/geometry-parallel.ts

@@ -8,6 +8,7 @@
  */
 
 import type { ChangeSet, Mutation } from '@ifc-lite/mutations';
+import { buildExportFilename, sanitizeFilename } from '@/lib/export/download';
 
 export interface ChangeSetSummary {
   id: string;
@@ -55,6 +56,6 @@ export function groupChangeSetByElement(changeSet: Pick<ChangeSet, 'mutations'>)
 
 /** A download name for an exported set: its name reduced to file-safe characters. */
 export function changeSetFileName(name: string): string {
-  const stem = name.trim().replace(/[^\p{L}\p{N}._-]+/gu, '-').replace(/^-+|-+$/g, '');
-  return `${stem || 'change-set'}.changeset.json`;
+  const stem = sanitizeFilename(name.replace(/\s+/g, '-'), { fallback: 'change-set' });
+  return buildExportFilename(stem, 'changeset.json');
 }

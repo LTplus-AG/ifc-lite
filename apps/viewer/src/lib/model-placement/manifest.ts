@@ -76,11 +76,14 @@ export function makePlacementManifest(
 
 /** Unambiguous fingerprint matching only. Duplicate sources need explicit instance
  * bindings, never a filename match or an ordinal that can shift after removal. */
+export class PlacementManifestTargetError extends Error {
+  constructor(readonly reason: 'unknown-target' | 'wrong-target' | 'conflict' | 'rotation', message: string) { super(message); }
+}
 export function resolvePlacementManifest(
   manifest: PlacementManifest, loaded: ReadonlyMap<string, { sourceContentHash?: string }>, frameKey: string,
   bindings: ReadonlyMap<string, string> = new Map(),
 ): Map<string, ModelPlacement> {
-  if (manifest.frameKey !== frameKey) throw new Error('The placement coordinate frame differs from this workspace.');
+  if (manifest.frameKey !== frameKey) throw new PlacementManifestTargetError('wrong-target', 'The placement coordinate frame differs from this workspace.');
   const result = new Map<string, ModelPlacement>();
   for (const entry of manifest.models) {
     const explicit = bindings.get(entry.instanceId);
@@ -89,13 +92,13 @@ export function resolvePlacementManifest(
         ? model.sourceContentHash === entry.sourceContentHash : id === entry.instanceId);
     const savedCopies = manifest.models.filter((item) => item.sourceContentHash === entry.sourceContentHash).length;
     if (candidates.length !== 1 || (!explicit && entry.sourceContentHash !== null && savedCopies > 1)) {
-      throw new Error('A source is missing or ambiguous. Bind each saved model instance to a loaded model.');
+      throw new PlacementManifestTargetError(candidates.length === 0 ? 'unknown-target' : 'conflict', 'A source is missing or ambiguous. Bind each saved model instance to a loaded model.');
     }
     const [id, model] = candidates[0];
     if (entry.sourceContentHash !== null && model?.sourceContentHash !== entry.sourceContentHash) {
-      throw new Error('A bound model has different source contents.');
+      throw new PlacementManifestTargetError('wrong-target', 'A bound model has different source contents.');
     }
-    if (result.has(id)) throw new Error('Two saved placements cannot target the same model instance.');
+    if (result.has(id)) throw new PlacementManifestTargetError('conflict', 'Two saved placements cannot target the same model instance.');
     const rotation = entry.rotation ?? ZERO_ROTATION;
     result.set(id, { translation: [...entry.translation],
       rotation: { angle: rotation.angle, pivot: [...rotation.pivot] }, locked: entry.locked });

@@ -76,10 +76,10 @@ export const operationTools: Record<keyof typeof OPERATION_SPECS, AgentTool> = {
     const { executeOperationRequest } = await import('./operations/executor');
     return output(await executeOperationRequest(host, args, ctx, false));
   } },
-  viewer_operation_job: { needs: 'none', async run(host, args) {
-    const id = jobId(args); const { operationJob } = await import('./operations/executor'); return output(operationJob(host, id));
+  viewer_operation_job: { needs: 'none', async run(host, args, ctx) {
+    const id = jobId(args); const { operationJob } = await import('./operations/executor'); return output(operationJob(host, id, false, ctx.claimDelivery));
   } },
-  viewer_operation_cancel: { needs: 'none', async run(host, args) {
-    const id = jobId(args); const { operationJob } = await import('./operations/executor'); return output(operationJob(host, id, true));
+  viewer_operation_cancel: { needs: 'none', async run(host, args, ctx) {
+    const id = jobId(args); const { operationJob } = await import('./operations/executor'); return output(operationJob(host, id, true, ctx.claimDelivery));
   } },
 };

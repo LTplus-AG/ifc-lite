@@ -15,11 +15,21 @@ import assert from 'node:assert/strict';
 import { it } from 'node:test';
 import { createStore } from 'zustand/vanilla';
 import type { MeshData } from '@ifc-lite/geometry';
-import { enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
+import { drainInstancedShards, enqueueInstancedShards as enqueueQueued, instancedShardGeneration } from '@/store/instancedShardQueue';
 import { releaseCpuMeshBuffers } from '@/lib/geometry-cpu-release';
 import { carryReleasedMesh } from '@/lib/released-mesh-provenance';
 import { StoreGeometryBackingTap, type TapState } from './store-backing-tap';
 import type { ReleaseState } from './backing-debug-hook';
+
+/**
+ * These #10876 cases predate #10888's draw contract (a shard backs only once the renderer drew it): the
+ * renderer draws each enqueued set at once, as the drain did when these invariants were written.
+ */
+function enqueueInstancedShards(...args: Parameters<typeof enqueueQueued>): ReturnType<typeof enqueueQueued> {
+  try { return enqueueQueued(...args); } finally {
+    drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); });
+  }
+}
 
 let names = 0;
 const database = () => ({ name: `tap-review-${process.pid}-${names++}`, locks: null });
@@ -291,7 +301,7 @@ const sceneStub = () => {
     renderer: { getScene: () => ({ releaseGeometryData: () => { released++; }, isGeometryDataReleased: () => released > 0 }) } as never };
 };
 
-it('#10876 a shard enqueued after release-for-test builds no successor from the released arrays; the verified generation stays', async () => {
+it('#10876/#10888 a shard enqueued after release-for-test builds its successor by replay, never from the released arrays', async () => {
   const { geometryBackingCommand, activeGeometryBackingTap } = await import('./backing-debug-hook');
   const meshes = [mesh(1), mesh(2)];
   const store = storeWith({ rel: meshes });
@@ -301,16 +311,27 @@ it('#10876 a shard enqueued after release-for-test builds no successor from the 
     const [released] = await geometryBackingCommand(store, scene.renderer, { action: 'release-for-test' });
     assert.equal(scene.released, 1, 'the verified model was released');
     const tap = activeGeometryBackingTap()!;
+    const verified = tap.backing('rel')!;
     enqueueInstancedShards('rel', [shardBytes(80)], instancedShardGeneration()); // after its arrays were released
     const [after] = await tap.seal();
-    assert.equal(after.generation, released.generation, 'no successor generation was built from the released arrays');
-    assert.equal(after.complete, false, 'and nothing reports the model complete without the new shard');
-    assert.match(after.error ?? '', /released/, 'the refusal is reported');
-    // The sync path too: an in-place append to the released list builds nothing from it.
+    // #10888 replaces #10876's interim refusal: the successor replays each released member from the verified
+    // generation's records (never the emptied arrays), carries the new shard, and only then retires the old one.
+    assert.notEqual(after.generation, released.generation, 'a successor generation');
+    assert.equal(after.complete, true, after.error ?? 'incomplete');
+    assert.equal(after.shards, 1, 'with the shard that arrived after release');
+    assert.equal(verified.isCurrent, false, 'the verified handle stopped answering when the successor began');
+    const lease = await tap.backing('rel')!.reader.leaseEntity(1);
+    assert.equal(lease.meshes[0].positions.length, 9, 'its records are the real arrays, never the emptied ones');
+    lease.release();
+    // The sync path too: an in-place append of a resident mesh replays the released members and adds the new one.
     meshes.push(mesh(3));
     store.setState({ geometryContentVersion: 0 });
     const [appended] = await tap.seal();
-    assert.equal(appended.generation, released.generation, 'an append after release builds no successor either');
+    assert.equal(appended.complete, true, appended.error ?? 'incomplete');
+    assert.equal(appended.meshes, 3);
+    const added = await tap.backing('rel')!.reader.leaseEntity(1);
+    assert.equal(added.meshes[0].positions.length, 9, 'still the real arrays');
+    added.release();
   } finally { await geometryBackingCommand(store, undefined, { action: 'stop' }); }
 });
 

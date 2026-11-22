@@ -5,7 +5,7 @@
 import { snapshotAttribute } from './imported-snapshot.js';
 import { ATTR, type ComposedNode, type UsdMesh, type UsdTransform } from './types.js';
 import { getFrameLineage, type TraversalFrame } from './traversal.js';
-import type { IfcxPointSource } from '@ifc-lite/pointcloud';
+import type { IfcxPointSource } from '@ifc-lite/pointcloud/ifcx';
 import type { TransformStack, ImportedOperationIdentity } from './imported-kernel.js';
 
 /** Authored JSON numbers, before the compatibility display staging in Rust. */

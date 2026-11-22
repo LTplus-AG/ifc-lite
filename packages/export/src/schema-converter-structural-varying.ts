@@ -4,6 +4,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { destabilizingUnknown } from './schema-converter-structural.js';
 import { listItems } from './schema-converter-structural-axes.js';
 import { refId } from './schema-ifc2x3-records.js';
+import { holdsValue, withoutComments } from './step-comment-skip.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
 import type { SourceRecords, SourceStore, StructuralRewrite } from './schema-converter-structural-source.js';
 
@@ -152,7 +153,7 @@ export class StructuralVarying {
     this.pending.push(`#${id}=IFCSTRUCTURALLOADCONFIGURATION($,(${loads.map((l) => `#${l}`).join(',')}),$);`);
     const losses = [FROM_IFC2X3];
     // A CausedBy IFC4 holds as a 'Causes' relationship (`StructuralCarriers.noteCause`) is not lost.
-    if (args[10].trim() !== '$' && !carried.has('CausedBy')) losses.push(`${entity}.CausedBy has no slot in IFC4; its value is omitted`);
+    if (holdsValue(args[10]) && !carried.has('CausedBy')) losses.push(`${entity}.CausedBy has no slot in IFC4; its value is omitted`);
     return { body: `${kind.ifc4}(${[...args.slice(0, 7), `#${id}`, args[8], args[9], args[11], '.NOTDEFINED.'].join(',')})`, losses };
   }
 
@@ -168,7 +169,7 @@ export class StructuralVarying {
     if (aspect === undefined) return undefined;
     const [first, ...rest] = values.map((v) => `#${v}`);
     // `inspect` reports this for the records it sees; a rewritten one skips it.
-    const losses = [TO_IFC2X3, ...(args[9].trim() === '$' ? [destabilizingUnknown(entity)] : [])];
+    const losses = [TO_IFC2X3, ...(withoutComments(args[9]) === '$' ? [destabilizingUnknown(entity)] : [])];
     // The upgrade writes the same loads and PredefinedType NOTDEFINED (`toIfc4`).
     const restored = [[config, ['Values']] as const, ...(predefined === '.NOTDEFINED.' ? [[id, ['PredefinedType']] as const] : [])];
     return { body: `${kind.ifc2x3}(${[...args.slice(0, 7), first, args[8], args[9], '$', args[10], `#${aspect}`, `(${rest.join(',')})`].join(',')})`, losses, restored };

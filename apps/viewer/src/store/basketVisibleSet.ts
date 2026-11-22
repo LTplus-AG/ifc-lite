@@ -11,25 +11,21 @@ import {
   type SpatialHierarchy,
 } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import type { GeometryResult } from '@ifc-lite/geometry';
 import type { EntityRef } from './types.js';
 import { entityRefToString, stringToEntityRef } from './types.js';
 import type { ViewerState } from './index.js';
 import { getViewerState } from './viewerStoreHandle.js';
 import { toGlobalIdFromModels } from './globalId.js';
 import { resolveViewHiddenEntities, retypedClasses } from '../lib/visibility/structural-view';
-import { isMeshTypeVisible } from './typeVisibilityFilter.js';
+import { isMeshTypeVisible, isTypeVisible } from './typeVisibilityFilter.js';
+import { instancedPassDrawn } from '../lib/visibility/visible-bounds';
+import { getGlobalRenderer, readInstancedSceneRevision } from '../lib/renderer-ref.js';
 import { collectAggregatedDescendants, type AggregationRelationships } from '../utils/aggregation.js';
 import { effectiveSpatialMembers } from '../lib/effective-spatial-members.js';
 import { objectIdentity } from '../utils/objectIdentity.js';
 
 type ViewerStateSnapshot = ViewerState;
-
-type VisibleCandidate = {
-  globalId: number;
-  modelId: string;
-  expressId: number;
-  ifcType?: string;
-};
 
 type BasketVisibleStats = {
   visibleCount: number;
@@ -74,7 +70,7 @@ export function visibilityFingerprint(state: ViewerStateSnapshot): string {
     state.classFilter ? digestNumberSet(state.classFilter.ids) : 'none',
     digestNumberSet(state.lensHiddenIds),
     digestNumberSet(state.selectedStoreys),
-    JSON.stringify(state.typeVisibility), state.structuralViewMode,
+    JSON.stringify(state.typeVisibility), state.structuralViewMode, instancedPassDrawn(state) ? readInstancedSceneRevision() : '',
     state.mutationVersion,
     // The structural mask, storey isolation and candidates read these objects
     // themselves; a collab reconstruct replaces them without a version bump.
@@ -346,45 +342,6 @@ function computeStoreyIsolation(state: ViewerStateSnapshot): Set<number> | null 
   return ids.size > 0 ? ids : null;
 }
 
-function collectVisibleCandidates(state: ViewerStateSnapshot): VisibleCandidate[] {
-  const candidates: VisibleCandidate[] = [];
-  // Shared mapping (`typeVisibilityFilter.ts`) so the basket's visible set and
-  // the viewport mesh filter never drift (#1480, #10119).
-  const retyped = retypedClasses(state);
-
-  if (state.models.size > 0) {
-    for (const [modelId, model] of state.models) {
-      if (!model.visible) continue;
-      // Native-metadata models have no parsed geometry result. Skip them
-      // — they can't contribute mesh-level visible candidates.
-      if (!model.geometryResult) continue;
-      const offset = model.idOffset ?? 0;
-      for (const mesh of model.geometryResult.meshes) {
-        if (!isMeshTypeVisible(mesh, state.typeVisibility, state.structuralViewMode, retyped)) continue;
-        const globalId = mesh.expressId;
-        candidates.push({
-          globalId,
-          modelId,
-          expressId: globalId - offset,
-          ifcType: mesh.ifcType,
-        });
-      }
-    }
-  } else if (state.geometryResult) {
-    for (const mesh of state.geometryResult.meshes) {
-      if (!isMeshTypeVisible(mesh, state.typeVisibility, state.structuralViewMode, retyped)) continue;
-      candidates.push({
-        globalId: mesh.expressId,
-        modelId: 'legacy',
-        expressId: mesh.expressId,
-        ifcType: mesh.ifcType,
-      });
-    }
-  }
-
-  return candidates;
-}
-
 /**
  * The isolation ALLOWLIST currently in force, in global-id space: storey
  * selection ∩ class filter ∩ manual isolation, or `null` when no isolation
@@ -422,21 +379,48 @@ export function computeIsolationFilterSet(state: ViewerStateSnapshot): Set<numbe
 }
 
 function getVisibleGlobalIds(state: ViewerStateSnapshot): Set<number> {
-  const candidates = collectVisibleCandidates(state);
-
   const globalHidden = new Set<number>(resolveViewHiddenEntities(state));
   for (const id of state.lensHiddenIds) {
     globalHidden.add(id);
   }
 
   const globalIsolation = computeIsolationFilterSet(state);
-
+  const retyped = retypedClasses(state);
   const visible = new Set<number>();
-  for (const candidate of candidates) {
-    if (globalIsolation !== null && !globalIsolation.has(candidate.globalId)) continue;
-    if (globalHidden.has(candidate.globalId)) continue;
-
-    visible.add(candidate.globalId);
+  const addVisible = (id: number) => {
+    if (!globalHidden.has(id) && (globalIsolation === null || globalIsolation.has(id))) visible.add(id);
+  };
+  const collect = (geometry: GeometryResult | null | undefined) => {
+    if (!geometry) return;
+    for (const mesh of geometry.meshes) {
+      if (isMeshTypeVisible(mesh, state.typeVisibility, state.structuralViewMode, retyped)) addVisible(mesh.expressId);
+    }
+  };
+  if (state.models.size === 0) {
+    collect(state.geometryResult);
+  } else {
+    for (const model of state.models.values()) {
+      if (model.visible) collect(model.geometryResult);
+    }
+  }
+  if (instancedPassDrawn(state)) {
+    // Fully instanced occurrences have no flat mesh. Use the renderer's global
+    // ids, which include occurrences loaded from cache.
+    const scene = getGlobalRenderer()?.getScene?.();
+    for (const id of scene?.getInstancedEntityIds?.() ?? []) {
+      let dataStore = state.ifcDataStore;
+      let expressId = id;
+      if (state.models.size > 0) {
+        const owner = state.resolveGlobalIdFromModels(id);
+        if (!owner) continue;
+        const model = state.models.get(owner.modelId);
+        if (!model?.visible) continue;
+        dataStore = model.ifcDataStore;
+        expressId = owner.expressId;
+      }
+      const ifcType = retyped.get(id) ?? dataStore?.entities?.getTypeName(expressId);
+      if (isTypeVisible(ifcType, state.typeVisibility, state.structuralViewMode)) addVisible(id);
+    }
   }
 
   return visible;

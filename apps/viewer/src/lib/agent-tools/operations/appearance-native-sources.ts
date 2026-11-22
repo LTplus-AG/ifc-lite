@@ -7,6 +7,7 @@ import { assertToolActive } from '../cancellation';
 import { getPdfDocument } from '@/lib/appearance/pdf/documents';
 import { pdfCalibrationFrame } from '@/lib/appearance/pdf/calibration';
 import { imageCalibrationFrame, rasterLandmarkAt, completeRasterCalibration } from '@/lib/appearance/raster-calibration';
+import { invalidInput, stale, unavailable } from './refusals';
 const outputSchema = {
   type: 'object',
   properties: { native_json: { type: 'string' } },
@@ -25,7 +26,7 @@ const meta = (id: string, description: string, write = false) => ({
 });
 function source(id: string) {
   const value = useViewerStore.getState().appearanceSources.find((item) => item.id === id);
-  if (!value) throw new Error('Unknown registered appearance source.');
+  if (!value) throw invalidInput('unknown-target', 'Unknown registered appearance source.');
   return value;
 }
 export const appearanceSourceOperations = [
@@ -83,11 +84,11 @@ export const appearanceSourceOperations = [
       const { rasterNativePdfSource } = await import('@/lib/appearance/appearance-native-pdf');
       assertToolActive(c);
       const value = source(i.source_id);
-      if (JSON.stringify(value) !== i.expected_source || !value.pdf)
-        throw new Error('The native PDF source changed or is unavailable.');
+      if (JSON.stringify(value) !== i.expected_source) throw stale('The native PDF source changed since inspection.');
+      if (!value.pdf) throw invalidInput('invalid-value', 'The native source is not a PDF.');
       if (i.crop_points.length !== 0 && i.crop_points.length !== 4)
-        throw new Error('crop_points must be empty or [left,top,width,height].');
-      if (!c.signal) throw new Error('A live cancellation signal is required.');
+        throw invalidInput('invalid-value', 'crop_points must be empty or [left,top,width,height].');
+      if (!c.signal) throw unavailable('A live cancellation signal is required.');
       const result = await rasterNativePdfSource(
         value.pdf.documentKey,
         {
@@ -150,7 +151,7 @@ export const appearanceSourceOperations = [
     async (i, c) => {
       assertToolActive(c);
       const value = source(i.source_id);
-      if (JSON.stringify(value) !== i.expected_source) throw new Error('The native source changed. Inspect again.');
+      if (JSON.stringify(value) !== i.expected_source) throw stale('The native source changed. Inspect again.');
       const frame =
         value.calibrationFrame ??
         (value.pdf ? pdfCalibrationFrame(value.pdf.recipe) : imageCalibrationFrame(value.width, value.height));
@@ -158,10 +159,10 @@ export const appearanceSourceOperations = [
         i.fractions.map((fraction) => rasterLandmarkAt(frame, fraction)),
         i.distance_metres,
       );
-      if (!calibration) throw new Error('Choose two distinct source landmarks and a positive metric distance.');
+      if (!calibration) throw invalidInput('invalid-value', 'Choose two distinct source landmarks and a positive metric distance.');
       return out(
         c.commit(() => {
-          if (source(i.source_id) !== value) throw new Error('The native source changed.');
+          if (useViewerStore.getState().appearanceSources.find(item => item.id === i.source_id) !== value) throw stale('The native source changed.');
           useViewerStore.getState().updateAppearanceSource({ ...value, calibration });
           return { calibration, expected_source: JSON.stringify(source(i.source_id)) };
         }),

@@ -12,6 +12,8 @@ import { changeNativeScanPartition, appendNativeScanPair, registerNativeScanSess
 import { sourceLandmark, targetLandmark } from '@/lib/appearance/scan/landmarks';
 import { pointLandmark } from '@/lib/appearance/scan/point-source';
 import { createAppearancePlanner } from '@/lib/appearance/planner-worker-client';
+import { retainCandidate } from './host-handles';
+import { invalidInput, unavailable } from './refusals';
 const outputSchema = {
   type: 'object',
   properties: { native_json: { type: 'string' } },
@@ -74,8 +76,8 @@ export const appearanceScanOperations = [
     },
     async (i, c) => {
       assertToolActive(c);
-      if (!c.signal) throw new Error('A live cancellation signal is required.');
-      if (nativeScanStates(c).size >= 8) throw new Error('Native scan session capacity reached.');
+      if (!c.signal) throw unavailable('A live cancellation signal is required.');
+      if (nativeScanStates(c).size >= 8) throw unavailable('Native scan session capacity reached.');
       const session = await prepareScanSession(
         i.source_model_id,
         i.source_kind === 'points' ? 'points' : i.mesh_ordinal,
@@ -84,9 +86,9 @@ export const appearanceScanOperations = [
       );
       assertToolActive(c);
       session.validate();
-      if (nativeScanStates(c).size >= 8) throw new Error('Native scan session capacity reached.');
+      if (nativeScanStates(c).size >= 8) throw unavailable('Native scan session capacity reached.');
       const token = crypto.randomUUID();
-      nativeScanStates(c).set(token, { session, pairs: [], version: 0 });
+      retainCandidate(c, nativeScanStates(c), token, { session, pairs: [], version: 0 }, { release: releaseNativeScanTransfer });
       return out({
         token,
         version: 0,
@@ -195,12 +197,12 @@ export const appearanceScanOperations = [
       const state = nativeScanState(c, i.token, i.version),
         renderer = getGlobalRenderer(),
         pending = state.pending;
-      if (!pending || !renderer) throw new Error('Choose a pending source landmark and mount the native viewport.');
+      if (!pending || !renderer) throw unavailable('Choose a pending source landmark and mount the native viewport.');
       const rect = renderer.getCanvas().getBoundingClientRect();
       if (i.viewport_x > rect.width || i.viewport_y > rect.height)
-        throw new Error('Choose a point inside the current viewport.');
+        throw invalidInput('invalid-value', 'Choose a point inside the current viewport.');
       const target = targetLandmark(state.session, renderer, i.viewport_x, i.viewport_y);
-      if (!target) throw new Error('Native target picking is currently unavailable.');
+      if (!target) throw unavailable('Native target picking is currently unavailable.');
       return c.commit(() => {
         const pairs = appendNativeScanPair(state.pairs, pending, target);
         releaseNativeScanTransfer(state);
@@ -222,7 +224,7 @@ export const appearanceScanOperations = [
     tokenInput,
     async (i, c) => {
       const state = nativeScanState(c, i.token, i.version);
-      if (!c.signal) throw new Error('A live cancellation signal is required.');
+      if (!c.signal) throw unavailable('A live cancellation signal is required.');
       const planner = createAppearancePlanner();
       try {
         const result = await registerNativeScanSession(state.session, state.pairs, planner, c.signal);
@@ -267,7 +269,7 @@ export const appearanceScanOperations = [
     async (i, c) => {
       return c.commit(() => {
         const state = nativeScanState(c, i.token, i.version, false);
-        if (state.transfer?.applying) throw new Error('The native transfer is being applied.');
+        if (state.transfer?.applying) throw unavailable('The native transfer is being applied.');
         if (i.action === 'cancelPending') {
           state.pending = undefined;
           state.version++;
@@ -282,7 +284,7 @@ export const appearanceScanOperations = [
           (i.action === 'removePair' || i.action === 'changePartition') &&
           !state.pairs.some((pair) => pair.correspondence.id === i.pair_id)
         )
-          throw new Error('Unknown native correspondence.');
+          throw invalidInput('unknown-target', 'Unknown native correspondence.');
         const pairs =
           i.action === 'clearPairs'
             ? []

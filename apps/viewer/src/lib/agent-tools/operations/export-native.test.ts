@@ -3,7 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { beforeEach, describe, it } from 'node:test';
+import { GeometryProcessor } from '@ifc-lite/geometry';
+import { EMPTY_SOURCE_BYTES } from '@ifc-lite/parser';
 import { createBimContext } from '@ifc-lite/sdk';
 import type { Renderer } from '@ifc-lite/renderer';
 import { clearGlobalRefs, setGlobalRendererRef } from '@/hooks/useBCF';
@@ -35,7 +38,7 @@ beforeEach(async () => {
   resetFeaturesForTest(); await seedCoincidentWalls(2, 4);
   const host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));
   const commit = <T,>(write: () => T) => { c.signal?.throwIfAborted(); return write(); };
-  c = { host, commit, commitAsync: async <T,>(write: () => Promise<T>) => write(), ownGeometry: async work => work(), artifacts: operationArtifacts(host, commit), canEdit: () => true };
+  c = { host, commit, commitAsync: async <T,>(write: () => Promise<T>) => write(), ownGeometry: async work => work(), retain: () => {}, artifacts: operationArtifacts(host, commit), canEdit: () => true };
 });
 async function run<T>(id: string, input: unknown): Promise<T> { const op = entries.find(entry => entry.id === id); assert.ok(op); const result = await op.execute(input, c); op.validateResult(JSON.parse(JSON.stringify(result))); return result as T; }
 async function bytes(id: string) { const read = await readArtifact(c.host, id, 0, 65536); assert.equal(read.next_offset, null); return Buffer.from(read.data, 'base64'); }
@@ -96,6 +99,39 @@ describe('native export registry automation (#10525)', () => {
     useViewerStore.setState({ models: new Map(), ifcDataStore: store, activeModelId: null });
     const legacy = await run<{ artifact: { artifact_id: string } }>('exports.json', { target_model_id: '__legacy__' });
     assert.match((await bytes(legacy.artifact.artifact_id)).toString('utf8'), /Wall/);
+  });
+  it('passes the native USD bytes directly to the artifact Blob (#10795 item 69)', async (t) => {
+    const models = new Map(useViewerStore.getState().models);
+    models.set('A', { ...models.get('A')!, sourceFile: new File(['ISO-10303-21;'], 'a.ifc') });
+    useViewerStore.setState({ models });
+    const usd = new TextEncoder().encode('#usda 1.0');
+    t.mock.method(GeometryProcessor.prototype, 'init', async () => {});
+    t.mock.method(GeometryProcessor.prototype, 'exportUsd', () => usd);
+    const OriginalBlob = globalThis.Blob;
+    const seen: BlobPart[] = [];
+    const RecordingBlob = class extends OriginalBlob {
+      constructor(parts?: BlobPart[], options?: BlobPropertyBag) {
+        super(parts, options);
+        if (options?.type === 'text/plain' && parts) seen.push(...parts);
+      }
+    };
+    globalThis.Blob = RecordingBlob;
+    try {
+      const result = await run<{ artifact: { artifact_id: string } }>('exports.usd', { target_model_id: 'A' });
+      assert.equal((await bytes(result.artifact.artifact_id)).toString('utf8'), '#usda 1.0');
+      assert.equal(seen[0], usd);
+    } finally {
+      globalThis.Blob = OriginalBlob;
+    }
+  });
+  it('refuses anonymization preview when the store has no original STEP bytes (#10795 item 73)', async () => {
+    const models = new Map(useViewerStore.getState().models);
+    const model = models.get('A')!;
+    models.set('A', { ...model, ifcDataStore: { ...model.ifcDataStore!, source: EMPTY_SOURCE_BYTES } });
+    useViewerStore.setState({ models });
+    await assert.rejects(run('exports.anonymized.prepare', anon), {
+      code: 'UNSUPPORTED_OPERATION', details: { reason: 'unavailable' }, message: /original IFC STEP source bytes/,
+    });
   });
   it('produces a native anonymized IFC, verifies membership before export and preserves source bytes', async () => {
     const store = useViewerStore.getState().models.get('A')?.ifcDataStore; assert.ok(store);
@@ -174,6 +210,21 @@ describe('native export registry automation (#10525)', () => {
     await assert.rejects(run('exports.rhino', {
       target_model_id: 'A', settings: { ...DEFAULT_RHINO_EXPORT_SETTINGS, version: 99 },
     }), /Invalid exports\.rhino input/);
+  });
+  it('classifies energy formats that cannot produce any rooms (#11060)', async t => {
+    const url = new URL('../../../../../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
+    let source: Buffer<ArrayBuffer>;
+    try { source = await readFile(url); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      t.skip('Run pnpm build:wasm to exercise energy export'); return;
+    }
+    const { default: init } = await import('@ifc-lite/wasm');
+    await init({ module_or_path: source });
+    for (const format of ['dfjson', 'hbjson'] as const)
+      await assert.rejects(run('exports.energy', { target_model_id: 'A', format }), {
+        code: 'INVALID_INPUT', details: { reason: 'wrong-target' },
+      });
   });
   it('rejects unavailable native camera and unsupported terrain targets before emitting an artifact', async () => {
     await assert.rejects(run('exports.viewPdf', { scope: 'current-view', scale_mode: 'numerical', scale: 100, include_hidden_lines: false, render_mode: 'lines', include_scale_stamp: true }), /camera/);

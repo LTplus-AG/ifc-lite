@@ -41,11 +41,12 @@ export const modelExportOperations = [
     current();
     if (!result.files.length) throw internal(`Native exporter produced no files: ${result.skipped.map(item => `${item.name}: ${item.reason}`).join('; ')}`);
     const first = result.files[0];
-    const data = result.files.length === 1 ? first.content : await zipArtifacts(result.files);
+    const single = result.files.length === 1;
+    const data = single ? first.content : await zipArtifacts(result.files);
     current();
-    const saved = await c.artifacts.create({ filename: result.files.length === 1 ? `${first.base}.${first.ext}` : 'ifc-lite-changes.zip',
-      mimeType: result.files.length === 1 ? first.mime : 'application/zip', data });
-    return { artifact: saved, files: result.files.map(file => ({ filename: `${file.base}.${file.ext}`, model_id: file.modelId, changes: file.changeCount, skipped_psets: file.skippedCount })),
+    const saved = await c.artifacts.create({ filename: single ? `${first.base}.${first.ext}` : 'ifc-lite-changes.zip',
+      mimeType: single ? first.mime : 'application/zip', data });
+    return { artifact: saved, files: result.files.map(file => ({ filename: single ? saved.filename : `${file.base}.${file.ext}`, model_id: file.modelId, changes: file.changeCount, skipped_psets: file.skippedCount })),
       skipped: result.skipped, schedule_spliced: result.scheduleSpliced };
   }),
 ];

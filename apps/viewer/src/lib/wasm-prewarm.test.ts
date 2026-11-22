@@ -4,6 +4,7 @@
 
 import { describe, it, mock } from 'node:test';
 import assert from 'node:assert';
+import { openProcessedModel, resetProcessedModelRequestsForTests } from './processed-model.js';
 import { scheduleFastPath, scheduleWasmPrewarm, shouldSkipPrewarm } from './wasm-prewarm.js';
 
 /**
@@ -38,8 +39,6 @@ describe('shouldSkipPrewarm', () => {
 });
 
 describe('prewarm without WebAssembly SIMD (#10784)', () => {
-  // The schedulers latch at module level; node:test runs each file in its own
-  // process, so this file's only scheduling test starts from fresh latches.
   it('downloads nothing the browser cannot compile, and stays eligible', () => {
     const idle = mock.fn((_run: () => void, _opts?: unknown) => 0);
     Object.defineProperty(globalThis, 'window', { value: { requestIdleCallback: idle }, configurable: true });
@@ -58,4 +57,30 @@ describe('prewarm without WebAssembly SIMD (#10784)', () => {
       Reflect.deleteProperty(globalThis, 'window');
     }
   });
+});
+
+it('skips the engine fetch if a processed model is filed before idle (#10822)', async () => {
+  const pending: (() => void)[] = [];
+  Object.defineProperty(globalThis, 'window', {
+    value: { requestIdleCallback: (run: () => void) => pending.push(run) }, configurable: true,
+  });
+  const fetch = mock.method(globalThis, 'fetch', async () => new Response(
+    new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]), { headers: { 'Content-Type': 'application/wasm' } },
+  ));
+  try {
+    // A fresh scheduler, with geometry loaded so its import cannot postpone the assertion.
+    const path = './wasm-prewarm.js?processed-model-test';
+    const prewarm: typeof import('./wasm-prewarm.js') = await import(path);
+    await import('@ifc-lite/geometry');
+    prewarm.scheduleWasmPrewarm();
+    assert.equal(pending.length, 1);
+    openProcessedModel({ sha256: 'a'.repeat(64), bytes: 0, name: 'stored.ifc' });
+    pending[0]();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(fetch.mock.callCount(), 0, 'the idle callback leaves the engine binary alone');
+  } finally {
+    fetch.mock.restore();
+    resetProcessedModelRequestsForTests();
+    Reflect.deleteProperty(globalThis, 'window');
+  }
 });

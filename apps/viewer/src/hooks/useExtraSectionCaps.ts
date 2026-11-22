@@ -22,7 +22,8 @@
 
 import { useEffect, useRef } from 'react';
 import { Drawing2DGenerator } from '@ifc-lite/drawing-2d';
-import type { GeometryResult } from '@ifc-lite/geometry';
+import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
+import { withCutGeometry } from '@/lib/geometry-backing/cut-readback';
 import { useViewerStore } from '@/store';
 import { capCutConfig, capSignature } from '@/lib/section/section-cut-config';
 import { cuttingSectionBoxCapPlanes } from '@/lib/section/section-box-caps';
@@ -30,6 +31,7 @@ import { visibleCutMeshes } from '@/lib/drawing/cut-meshes';
 import { useRetypedClasses } from './useViewerSelectors.js';
 import { createDrawingRequestQueue } from './drawingRequestQueue.js';
 import { isGeometryHeld } from '@/lib/pick-gating';
+import { useReleasedGeometryRevision } from '@/lib/geometry-backing/use-released-geometry-revision';
 
 export function useExtraSectionCaps(
   geometryResult: GeometryResult | null | undefined,
@@ -48,12 +50,14 @@ export function useExtraSectionCaps(
   const setCap = useViewerStore((s) => s.setSectionExtraCap);
   const prune = useViewerStore((s) => s.pruneSectionExtraCaps);
   const geometryHeld = useViewerStore((s) => isGeometryHeld(s));
+  // Released caps are cut from the backing: its availability or a content-version-only bump changes them in place.
+  const releasedRevision = useReleasedGeometryRevision();
 
   const queueRef = useRef<ReturnType<typeof createDrawingRequestQueue> | null>(null);
   if (!queueRef.current) queueRef.current = createDrawingRequestQueue();
   // Bumped whenever what the cuts are made FROM changes, so every parked cap goes stale at once.
   const modelStateRef = useRef({ token: 0, inputs: [] as unknown[] });
-  const inputs = [geometryResult, hiddenIds, isolatedIds, computedIsolatedIds, typeVisibility, structuralViewMode, retypedClasses, geometryHeld];
+  const inputs = [geometryResult, hiddenIds, isolatedIds, computedIsolatedIds, typeVisibility, structuralViewMode, retypedClasses, geometryHeld, releasedRevision];
   if (inputs.some((v, i) => v !== modelStateRef.current.inputs[i])) {
     modelStateRef.current = { token: modelStateRef.current.token + 1, inputs };
   }
@@ -67,13 +71,13 @@ export function useExtraSectionCaps(
 
   useEffect(() => {
     const queue = queueRef.current!;
-    prune(wanted.map((p) => p.id));
+    // A cap whose plane or model state changed is dropped NOW, before any cut: a held, failed or
+    // unavailable (released) read-back must never leave the old cap showing for the new cut.
+    const stale = wanted.filter((p) => caps[p.id]?.signature !== `${modelToken}:${capSignature(p)}`);
+    prune(wanted.filter((p) => !stale.includes(p)).map((p) => p.id));
     const cancel = () => queue.cancel();
     if (geometryHeld) return cancel;
-    if (wanted.length === 0 || !geometryResult) return cancel;
-
-    const stale = wanted.filter((p) => caps[p.id]?.signature !== `${modelToken}:${capSignature(p)}`);
-    if (stale.length === 0) return cancel;
+    if (wanted.length === 0 || !geometryResult || stale.length === 0) return cancel;
 
     void queue.request(async (isCurrent) => {
       const generator = new Drawing2DGenerator();
@@ -90,12 +94,13 @@ export function useExtraSectionCaps(
           if (isCurrent()) setCap(plane.id, { signature, cutPolygons: [], lines: [] });
           continue;
         }
-        const result = await generator.generate(meshes, config, {
+        // Released geometry (#10264): only the chunks meeting the plane are read back.
+        const result = await withCutGeometry(meshes, config.plane, 0, (cut) => generator.generate(cut as MeshData[], config, {
           includeHiddenLines: false,
           includeProjection: false,
           includeEdges: false,
           mergeLines: true,
-        });
+        }));
         if (!isCurrent()) return;
         setCap(plane.id, {
           signature,

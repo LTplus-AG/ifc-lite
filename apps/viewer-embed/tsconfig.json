@@ -32,6 +32,7 @@
       "@ifc-lite/lens": ["../../packages/lens/src"],
       "@ifc-lite/lists": ["../../packages/lists/src"],
       "@ifc-lite/server-client": ["../../packages/server-client/src"],
+      "@ifc-lite/server-client/processed-model": ["../../packages/server-client/src/processed-model.ts"],
       "@ifc-lite/embed-protocol": ["../../packages/embed-protocol/src"],
       "@ifc-lite/viewer-retained": ["../viewer/src/lib/retained/off.ts"]
     }

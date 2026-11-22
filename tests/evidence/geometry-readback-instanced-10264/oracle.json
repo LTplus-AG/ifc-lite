@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "Keep the new instanced readback modules loadable while reintroducing wrong-answer defects: no see-through past overlays the resident raycast ignores, no instanced neighbours, and backed shard ids outside the federated id space.",
+  "key": "apps/viewer/src/lib/geometry-backing/instanced-readback.ts",
+  "mutation": "tests/evidence/geometry-readback-instanced-10264/behaviour.oracle.patch",
+  "test": "apps/viewer/src/lib/geometry-backing/readback-raycast-feeder.test.ts"
+}

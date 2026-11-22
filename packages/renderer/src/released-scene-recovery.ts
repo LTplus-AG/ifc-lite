@@ -71,7 +71,9 @@ export async function recoverReleasedScene(
   const failed = (error?: unknown): DeviceRecoveryResult => {
     if (!ownsLifecycle(host, generation)) return { ok: false, reason: 'renderer-destroyed', superseded: true };
     host.deviceLost = true; host.ready = false;
-    if (contentAt !== undefined) scene.resetReleasedForRebuild(); // after this attempt's reset: drop what a failed rebuild restaged
+    // Drop what a failed rebuild restaged, but only while the scene is still this attempt's: a clear() or
+    // reshape (replay epoch) or template change since its reset hands the scene to newer content.
+    if (contentAt !== undefined && host.scene === scene && contentEpoch() === contentAt && releasedMembershipRevision(scene) === membershipAt) scene.resetReleasedForRebuild();
     host.teardown(false);
     return { ok: false, reason: 'scene-restore-failed', ...(error === undefined ? {} : { error }) };
   };

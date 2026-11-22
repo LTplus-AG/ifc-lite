@@ -88,6 +88,22 @@ describe('released scene device recovery (#10264)', () => {
     assert.deepStrictEqual(scene.instancedTemplateCpu, [], "no restaged template (or its CPU vertices) of A survives the failure");
   });
 
+  it('#10937 a clear and a new load during the rebuild: the stale failure never resets the new load away', async () => {
+    const { renderer, calls } = lostReleasedRenderer();
+    const scene = renderer.getScene() as unknown as { instancedTemplateCpu: unknown[]; replayEpoch: number };
+    renderer['scene']['resetReleasedForRebuild'] = () => { calls.push('reset'); scene.instancedTemplateCpu = []; }; // as the real reset drops templates
+    const newLoad = { positions: new Float32Array(9), normals: new Float32Array(9), indices: new Uint32Array(3) };
+    renderer.setReleasedSceneRebuild(async (context) => {
+      calls.push('rebuild');
+      scene.replayEpoch++; // a scene.clear() during the storage await...
+      scene.instancedTemplateCpu = [newLoad]; // ...and a new load's geometry
+      return context.isCurrent();
+    });
+    assert.equal((await renderer.recoverDevice()).ok, false, 'the stale rebuild fails');
+    assert.deepStrictEqual(calls.slice(-1), ['rebuild'], 'no reset after a clear moved the scene on');
+    assert.deepStrictEqual(scene.instancedTemplateCpu, [newLoad], "the new load's geometry survives the stale failure");
+  });
+
   it('#10937 an incomplete first attempt, then a complete retry, restores the ORIGINAL pre-loss instanced membership', async () => {
     const { renderer } = lostReleasedRenderer();
     const scene = renderer.getScene() as unknown as { getInstancedModelIndices: () => number[] };

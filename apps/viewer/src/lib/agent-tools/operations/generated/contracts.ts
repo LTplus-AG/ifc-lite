@@ -12933,7 +12933,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "flow.cancel",
     "version": 1,
     "owner": "flow",
-    "description": "Request cancellation of the active native workflow. Returns a cancellation request, never a fabricated terminal result.",
+    "description": "Request cancellation of the active native flow run. A Re-align holding the workflow lease is not cancelled; cancellation_requested is false then, so wait for it. Returns a cancellation request, never a fabricated terminal result.",
     "needs": "viewer",
     "effects": [
       "configuration"

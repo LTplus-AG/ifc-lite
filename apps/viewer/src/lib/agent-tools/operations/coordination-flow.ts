@@ -106,7 +106,7 @@ export const coordinationFlowOperations = [
     if (state.savedFlows.some(flow => flow.doc.id === i.id) || state.flowStorageError) throw internal(state.flowStorageError ?? 'Native workflow deletion refused.');
     return { deleted: i.id };
   })),
-  coordination('flow.cancel', 'Request cancellation of the active native workflow. Returns a cancellation request, never a fabricated terminal result.', ['configuration'], emptySchema, async (_, c) => {
+  coordination('flow.cancel', 'Request cancellation of the active native flow run. A Re-align holding the workflow lease is not cancelled; cancellation_requested is false then, so wait for it. Returns a cancellation request, never a fabricated terminal result.', ['configuration'], emptySchema, async (_, c) => {
     const { cancelFlowRun } = await import('@/lib/flow/run-session');
     return c.commit(() => ({ cancellation_requested: cancelFlowRun(), terminal: false }));
   }),

@@ -8,7 +8,8 @@ import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { deferred } from '@/test/race';
 import { installModelLoadCanceller } from '@/hooks/modelLoadCanceller';
-import { assertWorkflowOwner, cancelFlowRun, startWorkflowRun } from '@/lib/flow/run-session';
+import { assertWorkflowOwner, startWorkflowRun } from '@/lib/flow/run-session';
+import { coordinationFlowOperations } from '@/lib/agent-tools/operations/coordination-flow';
 import { newFlowDocument } from '@/lib/flow/persistence';
 import { realignLoadedModels } from './realign-loaded-models';
 
@@ -77,6 +78,12 @@ it('owns the federation reload through ordinary add failures and releases on com
   startWorkflowRun().release();
 });
 
+const flowCancel = () => {
+  const op = coordinationFlowOperations.find(candidate => candidate.id === 'flow.cancel');
+  assert.ok(op);
+  return op.execute({}, { commit: <T>(write: () => T) => write() } as never);
+};
+
 it('keeps reloading when the flow document is edited mid-rebuild (#11263)', async () => {
   const entered = deferred(), drain = deferred();
   const pending = realignLoadedModels(async (_file, options) => {
@@ -93,8 +100,8 @@ it('keeps reloading when the flow document is edited mid-rebuild (#11263)', asyn
   const { setFlowDoc } = useViewerStore.getState();
   const flowDoc = newFlowDocument('Edited mid-rebuild');
   setFlowDoc(flowDoc);
-  // The Flow panel Stop button and flow.cancel stop flow runs only.
-  assert.equal(cancelFlowRun(), false);
+  // flow.cancel (and the Flow panel Stop button, which shares its cancel) stops flow runs only.
+  assert.deepEqual(await flowCancel(), { cancellation_requested: false, terminal: false });
   drain.resolve();
   assert.deepEqual(await pending, { state: 'completed', loaded: 3, total: 3, failed: [] });
   assert.deepEqual([...useViewerStore.getState().models.keys()].sort(), ['A', 'B', 'C']);
@@ -106,5 +113,12 @@ it('keeps reloading when the flow document is edited mid-rebuild (#11263)', asyn
     assert.equal(flow.controller.signal.aborted, true);
   } finally {
     flow.release();
+  }
+  const cancelled = startWorkflowRun();
+  try {
+    assert.deepEqual(await flowCancel(), { cancellation_requested: true, terminal: false });
+    assert.equal(cancelled.controller.signal.aborted, true);
+  } finally {
+    cancelled.release();
   }
 });

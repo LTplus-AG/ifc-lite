@@ -61,7 +61,7 @@ export const exportNativeAnonymizedOperations = [
   } satisfies JSONSchemaType<Input & { expected_included_ids: number[] }>, async (i, c) => {
     const check = nativeExportGuard(c, [i.target_model_id]); check(); const p = await prepare(i, check);
     if (JSON.stringify([...p.included].sort((a, b) => a - b)) !== JSON.stringify([...i.expected_included_ids].sort((a, b) => a - b))) throw stale('Native anonymized membership changed since preview.');
-    const out = produceAnonymizedExport({ store: p.store, fileStem: i.file_stem, includedIds: p.included, options: toAnonymizeOptions(i.anonymize) });
+    const out = await produceAnonymizedExport({ store: p.store, fileStem: i.file_stem, includedIds: p.included, options: toAnonymizeOptions(i.anonymize) });
     // Keep this projection explicit. The coordinates removed from root placements stay private (#10695).
     const { entityCount, includedRootEntityCount, prunedRelationshipIds, droppedPropertySetIds, droppedPropertyReferenceIds, warnings, zeroedPlacements } = out.result.stats;
     const diagnostics = {

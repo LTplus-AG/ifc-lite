@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { MeshData } from '@ifc-lite/geometry';
-import { StepExporter } from '@ifc-lite/export';
 import { StoreEditor } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { getGlobalRenderer } from '@/hooks/useBCF';
@@ -74,6 +73,8 @@ export async function prepareScanSession(sourceModelId: string, selector: ScanSo
   const sourceHash = await computeFullSourceHashFromBlob(model.sourceFile); validate();
   if (!target.schemaVersion.startsWith('IFC4')) throw new Error('Choose an IFC4 or IFC4X3 destination.');
   const serialized = prepareAppearanceSerialization(targetModelId, target.ifcDataStore, view);
+  const { StepExporter } = await import('@/lib/export/step-export-runtime');
+  validate();
   const exported = await new StepExporter(target.ifcDataStore, serialized.view).exportAsync({ schema, applyMutations: true, includeGeometry: true, visibleOnly: false, onProgress: validate });
   validate();
   const bytes = typeof exported.content === 'string' ? new TextEncoder().encode(exported.content) : exported.content;

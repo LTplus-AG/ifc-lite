@@ -18,7 +18,7 @@ import { seedModelingSession } from '@/test/modeling-session-fixture';
 import { remeshOnApi, styleWireOnApi } from '../../../../packages/geometry/src/remesh/remesh-core.js';
 import { requestRemesh, setRemeshClientFactory } from '@/lib/remesh/remesh-service';
 import { toGlobalIdFromModels } from '@/store/globalId';
-import { cleanup, render } from '@/test/render';
+import { cleanup, render, waitFor } from '@/test/render';
 import { BimProvider, useBim } from './BimProvider';
 
 const SAMPLE = new URL('../../public/samples/hello-wall.ifc', import.meta.url);
@@ -64,6 +64,7 @@ for (const count of [1, 2] as const) it(`#6232 mounted BimProvider/${count} comm
       styleWire: async content => styleWireOnApi(api, content), remesh: async request => remeshOnApi(api, request) }));
     const captured: { bim?: BimContext } = {};
     render(<BimProvider><Consumer capture={captured} /></BimProvider>);
+    await waitFor(() => captured.bim !== undefined, 'SDK provider mounted');
     assert.ok(captured.bim, 'Mounted consumer obtains the actual provider-created context');
     const publicStore = captured.bim.store;
     const prior = await records(bytes()), peer = count === 2 ? await records(bytes('peer')) : null;

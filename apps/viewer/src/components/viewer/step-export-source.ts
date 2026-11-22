@@ -9,7 +9,7 @@
  * containers use their parsed STEP payload rather than the raw archive.
  */
 
-import { isGeorefRefusal, StepExporter, type StepExportOptions } from '@ifc-lite/export';
+import { isGeorefRefusal, type StepExportOptions } from '@ifc-lite/export';
 import { unwrapIfcZip, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { FederatedModel, SchemaVersion } from '@/store/types';
@@ -78,10 +78,13 @@ export async function resolveStepExportSource(
   georefMutations?: StepExportGeorefMutations,
 ): Promise<{ bytes: Uint8Array; warnings: string[] }> {
   const view = getMutationView(model.id);
-  const regenerate = (store: IfcDataStore, georef?: StepExportGeorefMutations) => new StepExporter(store, view ?? undefined).export({
-    schema: store.schemaVersion,
-    ...(georef ? { georefMutations: georef } : {}),
-  });
+  const regenerate = async (store: IfcDataStore, georef?: StepExportGeorefMutations) => {
+    const { StepExporter } = await import('@/lib/export/step-export-runtime');
+    return new StepExporter(store, view ?? undefined).export({
+      schema: store.schemaVersion,
+      ...(georef ? { georefMutations: georef } : {}),
+    });
+  };
   // Georeferencing edits live outside the mutation view, so they regenerate on their own. The exporter
   // throws on edits it cannot write (a partial position, IFC2X3); the export then goes ahead without them.
   const warnings: string[] = [];
@@ -89,7 +92,7 @@ export async function resolveStepExportSource(
     if (!writesSessionGeoref(model)) warnings.push(SESSION_GEOREF_NOT_WRITTEN);
     else {
       try {
-        const result = regenerate(model.ifcDataStore, georefMutations);
+        const result = await regenerate(model.ifcDataStore, georefMutations);
         return { bytes: result.content, warnings: result.stats.georeferencingWarnings ?? [] };
       } catch (error) {
         if (!isGeorefRefusal(error)) throw error;
@@ -98,7 +101,7 @@ export async function resolveStepExportSource(
     }
   }
   const mutationSource = resolveEnergyExportMutationSource({ mutationView: view, dataStore: model.ifcDataStore, schemaVersion: model.schemaVersion });
-  return { bytes: mutationSource ? regenerate(mutationSource.dataStore).content : await rawStepBytes(model), warnings };
+  return { bytes: mutationSource ? (await regenerate(mutationSource.dataStore)).content : await rawStepBytes(model), warnings };
 }
 
 /** {@link resolveStepExportSource} without session georeferencing, bytes only. */

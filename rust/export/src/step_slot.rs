@@ -107,6 +107,15 @@ pub(crate) fn without_comments(value: &str) -> String {
     out.trim().to_owned()
 }
 
+/// Compare a single slot token without treating surrounding comments as payload.
+pub(crate) fn slot_is(value: &str, token: &str) -> bool {
+    if value.contains("/*") {
+        without_comments(value) == token
+    } else {
+        value.trim() == token
+    }
+}
+
 #[cfg(test)]
 #[path = "step_slot_tests.rs"]
 mod tests;

@@ -13,7 +13,7 @@ export const IFC_EXPRESS_EXAMPLES: readonly { title: string; source: string }[] 
     title: 'Doors missing a fire rating, with 3D actions',
     source: `root = Column([summary, table, actions])
 summary = StatGroup([{label: "Doors without FireRating", query: {types: ["IfcDoor"], where: [{path: "Pset_DoorCommon.FireRating", op: "missing"}]}, tone: "warn"}, {label: "All doors", query: {types: ["IfcDoor"]}}])
-table = EntityTable([{path: "name", label: "Door"}, {path: "storey"}, {path: "Pset_DoorCommon.IsExternal", label: "External"}], {types: ["IfcDoor"], where: [{path: "Pset_DoorCommon.FireRating", op: "missing"}]}, groupBy="storey")
+table = EntityTable([{path: "name", label: "Door"}, {path: "storey"}, {path: "Pset_DoorCommon.IsExternal", label: "External"}], {types: ["IfcDoor"], where: [{path: "Pset_DoorCommon.FireRating", op: "missing"}]}, groupBy="storey", sort={path: "name"})
 actions = ActionBar(["isolate", "colorize", "flyTo", "exportCsv"], {types: ["IfcDoor"], where: [{path: "Pset_DoorCommon.FireRating", op: "missing"}]}, color="#e5484d", followUps=[{label: "Which rating should they have?", prompt: "Suggest fire ratings for these doors based on their location"}])`,
   },
   {

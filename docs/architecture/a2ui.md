@@ -97,3 +97,24 @@ Renderer functions (A2UI v1.0 functions, `allowedCallers` per `policy.ts`): `sel
 - E2E: load `AC20-FZK-Haus.ifc`, feed a recorded model reply, click a row, assert selection.
 - Eval: recorded prompts across free and BYOK models, pass@1 on producing a valid surface.
 - Bundle: `viewer-eager-js-bytes` unchanged; A2UI code only in on-demand chunks.
+
+## Generation eval (2026-11-22)
+
+`packages/a2ui/eval/run-eval.mjs` sends nine viewer-style questions about AC20-FZK-Haus to a model
+with the IFC catalog prompt (~26.5 k chars, Express format) and scores each reply with the real parser.
+First run, temperature 0.3, through OpenRouter:
+
+| Model | Replies | Compiled | Expected components | Literal facts typed |
+|---|---|---|---|---|
+| z-ai/glm-5.3-flash (free tier) | 9 | 9 | 8 | 0 |
+| qwen/qwen3.7-flash (free tier) | 9 | 8 | 6 | 0 |
+| qwen/qwen3-coder-next (free tier) | 6 (3 rate-limited) | 6 | 5 | 0 |
+| anthropic/claude-sonnet-5.5 | 9 | 9 | 8 | 0 |
+| anthropic/claude-haiku-5.5 | 9 | 9 | 8 | 0 |
+| openai/gpt-6-luna | 9 | 9 | 8 | 0 |
+| google/gemini-3.8-flash | 9 | 9 | 8 | 0 |
+
+The one compile failure (qwen3.7-flash) was an Express syntax error the stream reports as an error
+part. The "clarify" case expected a ChoicePicker; every model instead ran a broad check, which is a
+reasonable answer, so that expectation was dropped. Replies asked for sorted tables, so
+`EntityTable` gained `sort`. Nine prompts is a smoke test, not a benchmark.

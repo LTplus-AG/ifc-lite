@@ -21,6 +21,10 @@ export const EntityTableApi = {
       rows: C.DynamicValue.optional().describe('Data binding to a list of row objects with a "ref" key, when a script computed the rows'),
       title: C.DynamicString.optional(),
       groupBy: z.string().optional().describe('Field path to group rows by, e.g. storey or type'),
+      sort: z
+        .object({ path: z.string(), dir: z.enum(['asc', 'desc']).optional() })
+        .optional()
+        .describe('Initial sort, e.g. {path: "Qto_SpaceBaseQuantities.NetFloorArea", dir: "desc"}. Users can re-sort by clicking headers'),
       maxRows: z.number().optional().describe('Rows per page, default 50'),
       weight: WeightSchema.optional(),
     })

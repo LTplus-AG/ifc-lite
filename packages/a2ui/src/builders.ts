@@ -43,7 +43,7 @@ export type SectionSpec =
   | { kind: 'text'; text: string; variant?: 'body' | 'caption' }
   | { kind: 'callout'; text: string; tone?: Tone; title?: string }
   | { kind: 'stats'; items: StatSpec[] }
-  | { kind: 'table'; columns: ColumnSpec[]; rows?: RowSpec[]; query?: IfcQuerySpec; title?: string; groupBy?: string; maxRows?: number }
+  | { kind: 'table'; columns: ColumnSpec[]; rows?: RowSpec[]; query?: IfcQuerySpec; title?: string; groupBy?: string; sort?: { path: string; dir?: 'asc' | 'desc' }; maxRows?: number }
   | { kind: 'list'; refs?: string[]; query?: IfcQuerySpec; title?: string; label?: string }
   | { kind: 'chart'; groupBy: string; data?: ChartDatum[]; query?: IfcQuerySpec; chart?: 'bar' | 'pie'; aggregate?: 'count' | 'sum'; path?: string; title?: string }
   | { kind: 'legend'; by: string; query?: IfcQuerySpec; title?: string; apply?: 'manual' | 'onShow' }
@@ -142,6 +142,7 @@ function sectionComponent(id: string, base: string, section: SectionSpec, data: 
         rows: section.rows ? bind(`${base}/rows`) : undefined,
         title: section.title,
         groupBy: section.groupBy,
+        sort: section.sort,
         maxRows: section.maxRows,
       });
     case 'list':

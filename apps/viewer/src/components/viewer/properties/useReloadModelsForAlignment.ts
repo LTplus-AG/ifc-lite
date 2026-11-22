@@ -9,6 +9,7 @@ import { useTranslation } from '@/i18n';
 import { formatLocaleList, formatLocaleNumber } from '@/i18n/intlFormat';
 import { collectChangedModels, totalChangeCount } from '@/lib/export/model-changes';
 import { realignLoadedModels, MissingAlignmentSourceError } from '@/lib/geo/realign-loaded-models';
+import { isNativeWorkflowBusy } from '@/lib/flow/run-session';
 import { useViewerStore } from '@/store';
 
 export function useReloadModelsForAlignment(setShowReloadPrompt: (visible: boolean) => void) {
@@ -17,6 +18,10 @@ export function useReloadModelsForAlignment(setShowReloadPrompt: (visible: boole
   const { addModel } = useIfc();
   return useCallback(async () => {
     try {
+      if (isNativeWorkflowBusy()) {
+        toast.error(t('flowAssistant.preflightRunningWorkflow'));
+        return;
+      }
       const state = useViewerStore.getState();
       if (totalChangeCount(collectChangedModels(state)) > 0) {
         const confirmed = await confirmDialog({
@@ -27,7 +32,8 @@ export function useReloadModelsForAlignment(setShowReloadPrompt: (visible: boole
         if (!confirmed) return;
         const live = useViewerStore.getState();
         if (live.models !== state.models || live.mutationVersion !== state.mutationVersion
-          || live.scheduleData !== state.scheduleData || live.scheduleIsEdited !== state.scheduleIsEdited) {
+          || live.scheduleData !== state.scheduleData || live.scheduleIsEdited !== state.scheduleIsEdited
+          || live.scheduleSourceModelId !== state.scheduleSourceModelId) {
           toast.error(t('properties.georef.reloadFailed'));
           return;
         }

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect, vi } from 'vitest';
-import { IfcParser } from '@ifc-lite/parser';
+import { EMPTY_SOURCE_BYTES, IfcParser } from '@ifc-lite/parser';
 import { classifyEntityTypeConversion, analyzeConversionLoss } from './schema-conversion-loss-report.js';
 import { exportToStep } from './step-exporter.js';
 
@@ -89,6 +89,13 @@ describe('analyzeConversionLoss', () => {
   function storeOf(byType: Record<string, number[]>) {
     return { entityIndex: { byType: new Map(Object.entries(byType)), byId: new Map() as never } };
   }
+
+  it('keeps blocking entries in a type-only preview with a source placeholder (#11007)', () => {
+    const store = { ...storeOf({ IFCTRIANGULATEDFACESET: [42] }), source: EMPTY_SOURCE_BYTES };
+    const report = analyzeConversionLoss(store, 'IFC4', 'IFC2X3');
+    expect(report.hasBlocking).toBe(true);
+    expect(report.entries).toMatchObject([{ sourceType: 'IFCTRIANGULATEDFACESET', kind: 'blocked', expressIds: [42] }]);
+  });
 
   it('is empty when the schemas match', () => {
     const report = analyzeConversionLoss(storeOf({ IFCWALL: [1, 2] }), 'IFC4', 'IFC4');

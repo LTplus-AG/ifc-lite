@@ -8,7 +8,7 @@ import { stepRecordHead } from './step-record-frame.js';
 import { namedExpressIds } from './step-ref-scan.js';
 import { skipStepTrivia } from './step-slot-grammar.js';
 
-interface PendingDate { slot: number; kind: CalendarKind; up: boolean; lost: () => void }
+interface PendingDate { slot: number; kind: CalendarKind; up: boolean; lost: (narrowed: boolean) => void }
 
 function recordId(text: string): number {
   const match = /^#(\d+)/.exec(text.slice(skipStepTrivia(text, 0)));
@@ -22,7 +22,7 @@ export class CalendarDates {
 
   constructor(private readonly enabled: boolean) {}
 
-  defer(text: string, slot: number, operator: string, lost: () => void): boolean {
+  defer(text: string, slot: number, operator: string, lost: (narrowed: boolean) => void): boolean {
     if (!this.enabled) return false;
     const id = recordId(text);
     if (!id) return false;
@@ -58,8 +58,12 @@ export class CalendarDates {
       for (const date of dates) {
         const value = slots[date.slot];
         let fixed: string | null;
-        if (date.up) fixed = fromLegacyDate(value, date.kind, (id) => id === null ? undefined : carriers.get(id));
-        else {
+        let narrowed = false;
+        if (date.up) {
+          const result = fromLegacyDate(value, date.kind, (id) => id === null ? undefined : carriers.get(id));
+          fixed = result?.value ?? null;
+          narrowed = result?.narrowed ?? false;
+        } else {
           let candidate = next;
           const result = toLegacyDate(value, date.kind, () => candidate++);
           if (result && candidate - 1 <= 0xffffffff) {
@@ -68,7 +72,7 @@ export class CalendarDates {
             fixed = result.ref;
           } else fixed = null;
         }
-        if (fixed === null) date.lost();
+        if (fixed === null || narrowed) date.lost(narrowed);
         slots[date.slot] = fixed ?? '$';
       }
       lines[index] = record.prefix + slots.join(',') + record.suffix;

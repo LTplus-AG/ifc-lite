@@ -186,7 +186,9 @@ fn work_control_durations_convert_exact_seconds_and_refuse_calendar_months_10879
 fn calendar_dates_and_zoned_times_round_trip_10879() {
     let input = include_bytes!("../tests/fixtures/schema_calendar_dates.ifc");
     let up = crate::StepOptions { schema: Some("IFC4".to_owned()), ..Default::default() };
-    let up = crate::export_step(input, &up).unwrap();
+    let (up, stats, warnings) = crate::export_step_with_diagnostics(input, &up).unwrap();
+    assert_eq!(stats.attribute_values_dropped, 1);
+    assert!(warnings.iter().any(|warning| warning == "1 date value(s) kept the calendar date and dropped the time and any timezone: IFCCOSTVALUE.ApplicableDate (#10879)."), "{warnings:?}");
     assert!(up.contains("#1=IFCCLASSIFICATION('Source','1','2024-02-29','Classification',$,$,$);"), "{up}");
     assert!(up.contains("#3=IFCIRREGULARTIMESERIESVALUE('2024-02-29T10:30:15.5+05:30',(IFCREAL(1.)));"), "{up}");
     assert!(up.contains("#7=IFCCOSTVALUE('Estimate',$,$,$,'2024-02-29','2024-02-29','Materials',$,$,$);"), "{up}");
@@ -225,4 +227,13 @@ fn durations_warn_about_non_second_project_time_units_10879() {
     let seconds = std::str::from_utf8(input).unwrap().replace("IFCUNITASSIGNMENT((#6))", "IFCUNITASSIGNMENT((#3))");
     let (_, _, warnings) = crate::export_step_with_diagnostics(seconds.as_bytes(), &upgrade).unwrap();
     assert!(!warnings.iter().any(|warning| warning.contains("assumed seconds")), "{warnings:?}");
+}
+
+
+#[test]
+fn commented_typed_date_keeps_its_text_on_downgrade_10879() {
+    let line = "#5=IFCPROPERTYSINGLEVALUE('Date',$,IFCDATE(/* before */'2024-01-01'),$);";
+    let (out, dropped, _) = convert(line, "IFC4", "IFC2X3");
+    assert_eq!(out, "#5=IFCPROPERTYSINGLEVALUE('Date',$,IFCTEXT('2024-01-01'),$);");
+    assert_eq!(dropped, 0);
 }

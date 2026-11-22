@@ -143,6 +143,11 @@ describe('value forms a target slot rejects (#10847)', () => {
   });
 });
 
+it('keeps a typed date with a comment before the string (#10879)', () => {
+  const result = convert("#5=IFCPROPERTYSINGLEVALUE('Date',$,IFCDATE(/* before */'2024-01-01'),$);", 'IFC4', 'IFC2X3');
+  expect(result.out).toBe("#5=IFCPROPERTYSINGLEVALUE('Date',$,IFCTEXT('2024-01-01'),$);");
+});
+
 it('keeps the STEP text of newer typed values on downgrade (#10879)', () => {
   const result = convert(`#5=IFCPROPERTYLISTVALUE('n',$,(IFCDATETIME('2026-11-20T10:30:00Z'),IFCURIREFERENCE('https://example.org/a''b'),IFCBINARY("0A")),$);`, 'IFC4X3', 'IFC2X3');
   expect(result.out).toBe("#5=IFCPROPERTYLISTVALUE('n',$,(IFCTEXT('2026-11-20T10:30:00Z'),IFCTEXT('https://example.org/a''b')),$);");

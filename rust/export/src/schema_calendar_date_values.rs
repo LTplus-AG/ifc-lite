@@ -79,8 +79,9 @@ fn legacy_clock<'a>(record: &DateRecord, read: &impl Fn(Option<u32>) -> Option<&
     Some(Clock { hour, minute, second, zone })
 }
 
-pub(super) fn from_legacy<'a>(source: &str, kind: Kind, read: impl Fn(Option<u32>) -> Option<&'a DateRecord>) -> Option<String> {
+pub(super) fn from_legacy<'a>(source: &str, kind: Kind, read: impl Fn(Option<u32>) -> Option<&'a DateRecord>) -> Option<(String, bool)> {
     let record = read(parse_ref(source.as_bytes()))?;
+    let narrowed = matches!(kind, Kind::Date) && record.ty == "IFCDATEANDTIME";
     let child = |slot: &str| read(parse_ref(slot.as_bytes()));
     let (day, clock) = match (kind, record.ty.as_str(), record.slots.as_slice()) {
         (Kind::Date, "IFCDATEANDTIME", [date, _]) => (Some(legacy_day(child(date)?)?), None),
@@ -92,14 +93,14 @@ pub(super) fn from_legacy<'a>(source: &str, kind: Kind, read: impl Fn(Option<u32
         (Kind::DateTime, _, _) => return None,
     };
     let day = day.map_or_else(String::new, |Day { year, month, day }| format!("{year:04}-{month:02}-{day:02}"));
-    let Some(Clock { hour, minute, second, zone }) = clock else { return Some(format!("'{day}'")) };
+    let Some(Clock { hour, minute, second, zone }) = clock else { return Some((format!("'{day}'"), narrowed)) };
     let junction = if day.is_empty() { "" } else { "T" };
     let zone = match zone {
         None => String::new(),
         Some(0) => "Z".to_owned(),
         Some(zone) => format!("{}{:02}:{:02}", if zone < 0 { '-' } else { '+' }, zone.abs() / 60, zone.abs() % 60),
     };
-    Some(format!("'{day}{junction}{hour:02}:{minute:02}:{second}{zone}'"))
+    Some((format!("'{day}{junction}{hour:02}:{minute:02}:{second}{zone}'"), false))
 }
 
 fn digits(text: &str) -> bool {

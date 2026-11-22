@@ -161,6 +161,7 @@ export class ValueForms {
   /** Per `TYPE.Attribute`: values dropped, and those that left a required slot `$`. */
   private readonly dropped = new Map<string, number>();
   private readonly emptied = new Map<string, number>();
+  private readonly narrowedDates = new Map<string, number>();
   readonly dates: CalendarDates;
   private durationConverted = false;
   private readonly markDuration = () => { this.durationConverted = true; };
@@ -183,7 +184,7 @@ export class ValueForms {
       const form = rule.hasCalendar ? valueForm(withoutComments(slots[rule.index])) : null;
       const calendar = form === null ? null : rule.forms.get(form);
       if (calendar?.startsWith('C') && this.dates.defer(line, rule.index, calendar,
-        () => this.count(rule.required ? this.emptied : this.dropped, rule.where, 1))) continue;
+        (narrowed) => this.count(narrowed ? this.narrowedDates : rule.required ? this.emptied : this.dropped, rule.where, 1))) continue;
       const fixed = fix(slots[rule.index], '', rule, this.markDuration);
       if (fixed.lost && rule.whole.length) {
         // Positional members: every slot of the group goes whole, each named for what it held.
@@ -224,6 +225,9 @@ export class ValueForms {
       ...line(this.dropped, 'were dropped'),
       ...line(this.emptied, 'left a slot the target requires as $, so the file is not valid against its header'),
       ...this.dates.warnings(),
+      ...(this.narrowedDates.size ? [
+        `${[...this.narrowedDates.values()].reduce((sum, count) => sum + count, 0)} date value(s) kept the calendar date and dropped the time and any timezone: ${[...this.narrowedDates.keys()].sort().join(', ')} (#10879).`,
+      ] : []),
       ...(this.durationConverted && this.timeUnitSources.some(hasNonSecondProjectTimeUnit) ? [DURATION_TIME_UNIT_WARNING] : []),
     ];
   }

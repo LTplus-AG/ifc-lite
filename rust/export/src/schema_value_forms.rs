@@ -146,6 +146,7 @@ pub(crate) struct ValueForms {
     dropped: BTreeMap<String, usize>,
     emptied: BTreeMap<String, usize>,
     dates: calendar_dates::CalendarDates,
+    narrowed_dates: BTreeMap<String, usize>,
     duration_converted: bool,
 }
 
@@ -162,9 +163,9 @@ impl ValueForms {
     }
 
     pub(crate) fn finish_dates(&mut self, text: &str, dropped: &mut usize) -> Option<(String, isize)> {
-        self.dates.finish(text, |required, site| {
+        self.dates.finish(text, |required, narrowed, site| {
             *dropped += 1;
-            let into = if required { &mut self.emptied } else { &mut self.dropped };
+            let into = if narrowed { &mut self.narrowed_dates } else if required { &mut self.emptied } else { &mut self.dropped };
             *into.entry(site).or_default() += 1;
         })
     }
@@ -240,6 +241,11 @@ impl ValueForms {
         line(&self.dropped, "were dropped").into_iter()
             .chain(line(&self.emptied, "left a slot the target requires as $, so the file is not valid against its header"))
             .chain(self.dates.warning())
+            .chain((!self.narrowed_dates.is_empty()).then(|| format!(
+                "{} date value(s) kept the calendar date and dropped the time and any timezone: {} (#10879).",
+                self.narrowed_dates.values().sum::<usize>(),
+                self.narrowed_dates.keys().map(String::as_str).collect::<Vec<_>>().join(", "),
+            )))
             .collect()
     }
 }

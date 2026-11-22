@@ -14,6 +14,7 @@ it('keeps calendar dates, fractional seconds and timezone offsets across schema 
   expect(output).toContain("#1=IFCCLASSIFICATION('Source','1','2024-02-29','Classification',$,$,$);");
   expect(output).toContain("#3=IFCIRREGULARTIMESERIESVALUE('2024-02-29T10:30:15.5+05:30',(IFCREAL(1.)));");
   expect(output).toContain("#7=IFCCOSTVALUE('Estimate',$,$,$,'2024-02-29','2024-02-29','Materials',$,$,$);");
+  expect(primary.stats.warnings).toContain('1 date value(s) kept the calendar date and dropped the time and any timezone: IFCCOSTVALUE.ApplicableDate (#10879).');
   expect(output).not.toMatch(/=IFC(CALENDARDATE|DATEANDTIME|LOCALTIME|COORDINATEDUNIVERSALTIMEOFFSET)\(/);
   const converted = await parser.parseColumnar(Uint8Array.from(primary.content).buffer);
   const merged = new MergedExporter([{ id: 'm', name: 'Dates', dataStore: converted }]);

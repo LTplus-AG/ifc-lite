@@ -52,7 +52,7 @@ impl CalendarDates {
         true
     }
 
-    pub(super) fn finish(&mut self, text: &str, mut loss: impl FnMut(bool, String)) -> Option<(String, isize)> {
+    pub(super) fn finish(&mut self, text: &str, mut loss: impl FnMut(bool, bool, String)) -> Option<(String, isize)> {
         if self.pending.is_empty() {
             return None;
         }
@@ -72,12 +72,13 @@ impl CalendarDates {
                 let fixed = if date.up {
                     from_legacy(value, date.kind, |id| carriers.get(&id?))
                 } else {
-                    restored_date(value, date.kind, &mut ids, &mut appended)
+                    restored_date(value, date.kind, &mut ids, &mut appended).map(|value| (value, false))
                 };
-                if fixed.is_none() {
-                    loss(date.required, date.site);
+                let narrowed = fixed.as_ref().is_some_and(|(_, narrowed)| *narrowed);
+                if fixed.is_none() || narrowed {
+                    loss(date.required, narrowed, date.site);
                 }
-                *value = fixed.unwrap_or_else(|| "$".to_owned());
+                *value = fixed.map_or_else(|| "$".to_owned(), |(value, _)| value);
             }
             rewrites.insert(id, frame.with_args(line, &slots.join(",")));
         }

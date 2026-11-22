@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { IfcParser } from '@ifc-lite/parser';
 import { describe, expect, it } from 'vitest';
+import { MergedExporter } from './merged-exporter.js';
 import { StepExporter } from './step-exporter.js';
 
 interface Case {
@@ -34,12 +35,15 @@ END-ISO-10303-21;
 `;
       const store = await new IfcParser().parseColumnar(new TextEncoder().encode(input).buffer, { disableWorkerScan: true });
       const exporter = new StepExporter(store);
+      const merge = () => new MergedExporter([{ id: 'bounds', name: 'Bounds', dataStore: store }]).export({ schema: 'IFC2X3' });
       if (!row.expect) {
         expect(() => exporter.export({ schema: 'IFC2X3' })).toThrow(/#5.*IfcPropertyBoundedValue.*WR22/);
+        expect(merge).toThrow(/#5.*IfcPropertyBoundedValue.*WR22/);
         return;
       }
       const result = exporter.export({ schema: 'IFC2X3' });
       expect(new TextDecoder().decode(result.content)).toContain(row.expect);
+      expect(new TextDecoder().decode(merge().content)).toContain(row.expect);
       const losses = result.stats.warnings.filter(w => w.includes('IFCPROPERTYBOUNDEDVALUE.'));
       if (row.dropped) expect(losses).toEqual([expect.stringContaining(row.dropped)]);
       else expect(losses).toEqual([]);

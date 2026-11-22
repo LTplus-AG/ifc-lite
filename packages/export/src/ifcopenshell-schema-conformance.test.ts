@@ -696,11 +696,11 @@ describe.skipIf(!ifcopenshellAvailable())('surviving IFC2X3 bounded properties s
     ));
     const directory = mkdtempSync(join(tmpdir(), 'ifc-lite-11117-'));
     const paths: string[] = [];
-    for (const { from, line, expect: output } of vectors) {
+    for (const [i, { from, line, expect: output }] of vectors.entries()) {
       if (!output) continue;
       const input = stepFile10758(from === 'IFC4X3' ? 'IFC4X3_ADD2' : from, [line.replace(/^#5=/, '#10=')]);
       const store = await new IfcParser().parseColumnar(new TextEncoder().encode(input).buffer, { disableWorkerScan: true });
-      const path = join(directory, `${from}-bounded.ifc`);
+      const path = join(directory, `${from}-bounded-${i}.ifc`);
       writeFileSync(path, new StepExporter(store).export({ schema: 'IFC2X3' }).content);
       paths.push(path);
     }

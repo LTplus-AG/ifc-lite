@@ -104,6 +104,7 @@ export async function replayReleasedGeometry(
   renderer: Pick<Renderer, 'getScene' | 'getGPUDevice' | 'getPipeline' | 'requestRender'>,
   batches: AsyncIterable<readonly MeshData[]>,
   options: ReleasedGeometryReplayOptions = {},
+  calledAtEpoch?: number, // the scene's clear epoch when the public entry was called (`released-geometry-replay-lazy.ts`)
 ): Promise<ReleasedGeometryReplayResult> {
   const device = renderer.getGPUDevice();
   if (!device) return { status: 'unavailable', reason: 'no-device' };
@@ -111,7 +112,7 @@ export async function replayReleasedGeometry(
   if (!pipeline) return { status: 'unavailable', reason: 'no-pipeline' };
   const scene = renderer.getScene();
   // The scene's epoch when this replay was CALLED: a clear() while it waits for the pass voids it.
-  const calledAt = (scene as unknown as FragmentHost).clearEpoch;
+  const calledAt = calledAtEpoch ?? (scene as unknown as FragmentHost).clearEpoch;
   // One pass at a time per scene: wait for the previous replay to close its own pass.
   const prior = passes.get(scene) ?? Promise.resolve();
   let release!: () => void;

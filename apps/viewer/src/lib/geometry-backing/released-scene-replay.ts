@@ -20,22 +20,28 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import type { Renderer } from '@ifc-lite/renderer';
 import { isReleasedMesh } from '@/lib/released-mesh-provenance';
-import { releasedGeometryMetadataVersion, subscribeReleasedGeometryMetadata } from './released-geometry-metadata';
 
-const SLICE = 256;
-const RETRIES = 3;
-/** Scene epoch: every flat reshape (clear, new file, replacement, rebuild) starts a new one. */
-let epoch = 0;
-/** Replays of one epoch run one after another: each owns the scene's streaming pass while it runs. */
-let chain: Promise<unknown> = Promise.resolve();
+/** One replay attempt: `true` once complete; `'moved'` when only an Exploded lift change superseded it. */
+export type ReplayOnce = (renderer: Renderer, released: readonly MeshData[], isCurrent: () => boolean) => Promise<boolean | 'moved'>;
+export interface ReplayToken { readonly epoch: number }
 
-/** Parked replays of the current epoch, waiting for the backing's availability to change. */
-const parked = new Set<() => void>();
-
-/** Released replays not yet complete (queued, retrying or parked), each with the epoch it belongs to. */
-const unfinished = new Set<{ readonly epoch: number }>();
-/** The latest geometry pass's completion, held until every replay of the current epoch completed. */
-let waiter: (() => void) | null = null;
+/**
+ * Shared replay state. The replay itself (retries, parking, backing reads: `released-scene-replay-run.ts`)
+ * loads only when a released mesh is first replayed; release is off in product, so it stays out of the
+ * eager bundle.
+ */
+export const replayState = {
+  /** Scene epoch: every flat reshape (clear, new file, replacement, rebuild) starts a new one. */
+  epoch: 0,
+  /** Replays of one epoch run one after another: each owns the scene's streaming pass while it runs. */
+  chain: Promise.resolve() as Promise<unknown>,
+  /** Parked replays of the current epoch, waiting for the backing's availability to change. */
+  parked: new Set<() => void>(),
+  /** Released replays not yet complete (queued, retrying or parked), each with the epoch it belongs to. */
+  unfinished: new Set<ReplayToken>(),
+  /** The latest geometry pass's completion, held until every replay of the current epoch completed. */
+  waiter: null as (() => void) | null,
+};
 
 /**
  * Run `done` (a pass's "triangle counts complete") once no released replay of the current epoch is
@@ -43,22 +49,22 @@ let waiter: (() => void) | null = null;
  * epoch, counts as done. The latest pass replaces any earlier waiter; `null` withdraws it.
  */
 export function completeAfterReleasedReplays(done: (() => void) | null): void {
-  waiter = done;
+  replayState.waiter = done;
   settleWaiter();
 }
-function settleWaiter(): void {
+export function settleWaiter(): void {
+  const { waiter, unfinished, epoch } = replayState;
   if (!waiter || [...unfinished].some((replay) => replay.epoch === epoch)) return;
-  const done = waiter;
-  waiter = null;
-  done();
+  replayState.waiter = null;
+  waiter();
 }
 
 /** A flat reshape supersedes every replay in flight: it must not upload into the reshaped scene. */
 export function supersedeReleasedReplays(): void {
-  epoch++;
-  waiter = null; // the reshaping pass registers its own
-  for (const stop of [...parked]) stop();
-  for (const replay of [...unfinished]) if (replay.epoch !== epoch) unfinished.delete(replay);
+  const epoch = ++replayState.epoch;
+  replayState.waiter = null; // the reshaping pass registers its own
+  for (const stop of [...replayState.parked]) stop();
+  for (const replay of [...replayState.unfinished]) if (replay.epoch !== epoch) replayState.unfinished.delete(replay);
 }
 
 /**
@@ -66,101 +72,15 @@ export function supersedeReleasedReplays(): void {
  * A replay that fails in its own epoch retries, then parks until the backing changes;
  * one a reshape superseded is dropped (the newer pass owns its meshes).
  */
-export function splitReleasedForReplay(renderer: Renderer, meshes: MeshData[], replayOnce: typeof replay = replay): MeshData[] {
+export function splitReleasedForReplay(renderer: Renderer, meshes: MeshData[], replayOnce?: ReplayOnce): MeshData[] {
   if (!meshes.some(isReleasedMesh)) return meshes;
   const released = meshes.filter(isReleasedMesh);
-  const mine = epoch;
-  const isCurrent = () => mine === epoch;
-  const token = { epoch: mine };
-  unfinished.add(token);
-  // Complete only when it finished in its own epoch; a superseded one just stops counting.
-  const finish = (complete: boolean) => { if (unfinished.delete(token) && complete && isCurrent()) settleWaiter(); };
-  // The backing revision each attempt started from: a change during the LAST failing attempt
-  // lands before `park` subscribes, so park compares against it instead of losing that wake.
-  let seen = releasedGeometryMetadataVersion();
-  const run = async (): Promise<void> => {
-    for (let attempt = 1; attempt <= RETRIES && isCurrent(); attempt++) {
-      seen = releasedGeometryMetadataVersion();
-      try {
-        const outcome = await replayOnce(renderer, released, isCurrent);
-        if (outcome === true) { finish(true); return; }
-        if (outcome === 'moved') { attempt--; continue; } // the Exploded lift moved: retry at the new one, not a failure
-      } catch (error) {
-        console.error(`[GeometryBacking] released geometry replay attempt ${attempt} failed`, error);
-      }
-      if (attempt < RETRIES && isCurrent()) await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
-    }
-    if (isCurrent()) park(); else finish(false);
-  };
-  const attempt = async (): Promise<boolean | 'moved'> => {
-    try {
-      return isCurrent() && await replayOnce(renderer, released, isCurrent);
-    } catch (error) {
-      console.error('[GeometryBacking] parked released geometry replay failed', error);
-      return false;
-    }
-  };
-  const park = () => {
-    // One attempt at a time: `busy` covers queued AND in flight. A notification meanwhile is
-    // remembered and retried only if that attempt fails; success or disposal ends it all.
-    let done = false, busy = false, again = false;
-    const stop = () => { done = true; unsubscribe(); parked.delete(stop); };
-    const schedule = (): void => {
-      if (done) return;
-      if (!isCurrent()) { stop(); finish(false); return; }
-      if (busy) { again = true; return; }
-      busy = true;
-      again = false;
-      chain = chain.then(async () => {
-        const outcome = !done && isCurrent() && await attempt(), ok = outcome === true;
-        busy = false;
-        if (ok || !isCurrent()) { stop(); finish(ok); }
-        else if (again || outcome === 'moved') schedule();
-      });
-    };
-    const unsubscribe = subscribeReleasedGeometryMetadata(schedule);
-    parked.add(stop);
-    if (releasedGeometryMetadataVersion() !== seen) schedule(); // changed since the last attempt began
-  };
-  chain = chain.then(run, run);
+  const token: ReplayToken = { epoch: replayState.epoch };
+  replayState.unfinished.add(token);
+  const run = () => import('./released-scene-replay-run').then(({ runReleasedReplay }) => runReleasedReplay(renderer, released, token, replayOnce));
+  replayState.chain = replayState.chain.then(run, run);
   return meshes.filter((mesh) => !isReleasedMesh(mesh));
 }
 
 /** Settles once every replay queued so far has finished (tests). */
-export function releasedReplaysIdle(): Promise<void> { return chain.then(() => undefined); }
-
-/** `true` once complete; `'moved'` when only an Exploded lift change superseded it (retry at the new lift at once). */
-async function replay(renderer: Renderer, released: readonly MeshData[], isCurrent: () => boolean): Promise<boolean | 'moved'> {
-  const [{ replayReleasedGeometry }, { activeGeometryBackingTap }, { replayStoreList }, { canonicalStoreMesh }, { GeometryUnavailableError }, { getViewerState }] =
-    await Promise.all([import('@ifc-lite/renderer'), import('./backing-debug-hook'), import('./generation-replay'),
-      import('./store-mesh-readback'), import('./geometry-readback'), import('@/store/viewerStoreHandle')]);
-  const tap = activeGeometryBackingTap();
-  // The same arrival placement as a resident upload: the current Exploded lift, fenced entry by entry.
-  const [{ captureLevelLift }, { placeNewMeshesAtCurrentLevel }] = await Promise.all([import('@/lib/level-lift-fence'), import('@/lib/level-arrival')]);
-  const level = captureLevelLift(getViewerState());
-  // Each released mesh (or copy of one) by the model whose store list holds its source.
-  const owner = new Map<MeshData, string>();
-  for (const [modelId, model] of getViewerState().models) for (const mesh of model.geometryResult?.meshes ?? []) owner.set(mesh, modelId);
-  const byModel = new Map<string, MeshData[]>();
-  for (const mesh of released) {
-    const found = canonicalStoreMesh(mesh, owner);
-    if (!found) throw new GeometryUnavailableError(`Released mesh of entity ${mesh.expressId} belongs to no model`);
-    let group = byModel.get(found.at);
-    if (!group) byModel.set(found.at, (group = []));
-    group.push(mesh);
-  }
-  // A reload follows a content bump, so the model's CURRENT generation is still being
-  // rebuilt; the acknowledged one stays durable until that rebuild is acknowledged.
-  async function* batches(): AsyncGenerator<readonly MeshData[]> {
-    for (const [modelId, meshes] of byModel) {
-      const source = tap?.replaySource(modelId);
-      if (!source) throw new GeometryUnavailableError(`Model ${modelId} has no acknowledged backing to replay from`);
-      for await (const batch of replayStoreList(meshes, source, SLICE)) yield placeNewMeshesAtCurrentLevel([...batch], level.lift);
-    }
-  }
-  const result = await replayReleasedGeometry(renderer, batches(), { isCurrent: () => isCurrent() && level.current(getViewerState()) });
-  if (result.status === 'complete') return true;
-  if (result.status === 'superseded' && isCurrent() && !level.current(getViewerState())) return 'moved';
-  console.warn(`[GeometryBacking] released geometry replay ${result.status}; it will be retried`, result);
-  return false;
-}
+export function releasedReplaysIdle(): Promise<void> { return replayState.chain.then(() => undefined); }

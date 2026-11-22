@@ -87,11 +87,12 @@ it('#10903 an Exploded lift change during every bounded attempt never parks the 
     releaseCpuMeshBuffers(meshes);
     // The lift moves while each of the first three attempts uploads: every one is superseded by placement alone.
     const attempts: number[][] = [];
+    let last: MeshData[] = [];
     let ephemeral = false;
     const scene = { streamingFragments: [], batchedMeshes: [], boundingBoxes: new Map(), modelTranslations: { releasedEntities: new Map() },
       setEphemeralStreamingMode: (on: boolean) => { ephemeral = on; }, isEphemeralStreaming: () => ephemeral,
       appendToBatches: (batch: MeshData[]) => {
-        attempts.push(batch.map((m) => m.expressId));
+        attempts.push(batch.map((m) => m.expressId)); last = batch;
         if (attempts.length <= 3) useViewerStore.setState({ appliedEntityLevelOffsets: lift(1 + attempts.length) } as never);
       },
       finalizeStreamingAsync: async () => { ephemeral = false; } };
@@ -103,6 +104,10 @@ it('#10903 an Exploded lift change during every bounded attempt never parks the 
     await releasedReplaysIdle();
     assert.equal(attempts.length, 4, 'three placement-superseded attempts, then one at the settled lift');
     assert.equal(complete, true, 'the replay completed without any backing notification');
+    // The landed upload is placed at the settled lift (1 + 3 moves): entity 2's world Y spans [4, 5].
+    const lifted = last.find((m) => m.expressId === 2)!, oy = lifted.origin?.[1] ?? 0;
+    const ys = [lifted.positions[1], lifted.positions[4], lifted.positions[7]].map((y) => y + oy);
+    assert.deepEqual([Math.min(...ys), Math.max(...ys)], [4, 5], 'the settled retry uses the final lift');
   } finally {
     supersedeReleasedReplays();
     await geometryBackingCommand(tapStore, undefined, { action: 'stop' });

@@ -16,6 +16,7 @@ import { Scene } from './scene.js';
 import type { RenderPipeline } from './pipeline.js';
 import type { Renderer } from './renderer.js';
 import { replayReleasedGeometry } from './released-geometry-replay.js';
+import { replayReleasedGeometry as replayLazily } from './released-geometry-replay-lazy.js';
 
 Object.assign(globalThis, { GPUBufferUsage: { MAP_READ: 1, MAP_WRITE: 2, COPY_SRC: 4, COPY_DST: 8, INDEX: 16, VERTEX: 32, UNIFORM: 64, STORAGE: 128, INDIRECT: 256, QUERY_RESOLVE: 512 } });
 
@@ -240,7 +241,7 @@ describe('replayReleasedGeometry', () => {
     aCurrent = false; // B's reload supersedes A
     resumeA();
     assert.equal((await first).status, 'superseded');
-    while (!bAwaiting) await new Promise((done) => setTimeout(done, 0));
+    for (let tick = 0; !bAwaiting; tick++) { assert.ok(tick < 1000, 'replay B reached its second read'); await new Promise((done) => setTimeout(done, 0)); }
     assert.equal(scene.isEphemeralStreaming(), true, "A's close never finalized B's pass while B awaits its read");
     resumeB();
     assert.equal((await second).status, 'complete');
@@ -292,5 +293,13 @@ describe('replayReleasedGeometry', () => {
     assert.throws(() => scene.appendToBatches([tri(7, 0, 0)], device(), pipeline, true), /allocation failed/);
     assert.ok(!scene.getEntityBoundingBox(7), 'no entity box for geometry that never drew');
     assert.deepEqual((scene as unknown as { modelTranslations: { releasedEntityIds(i: number): number[] } }).modelTranslations.releasedEntityIds(0), [], 'no placement bounds either');
+  });
+  it('#10903 the public entry takes the clear epoch at call time: a clear() while its body loads supersedes it', async () => {
+    const scene = new Scene();
+    const gpu = device();
+    const pending = replayLazily(host(scene, gpu).renderer, batches([tri(4, 0, 0)]));
+    scene.clear(); // before the lazily loaded body runs
+    assert.equal((await pending).status, 'superseded');
+    assert.deepEqual(drawnIds(scene), [], 'nothing from before the clear is drawn');
   });
 });

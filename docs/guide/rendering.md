@@ -529,8 +529,12 @@ the same preparation an upload uses, then placed like flat pieces.
 ### Rebuilding a released scene
 
 When the scene must be rebuilt (a content reload: realign, rebase, collaboration),
-a host that released CPU geometry cannot upload the arrays again. It streams them
-back from its own storage instead, one bounded batch at a time:
+a host that released CPU geometry cannot upload the arrays again. It first removes
+the old flat geometry with `scene.clearFlatGeometry()` (not `clear()`, which also
+destroys the instanced templates the rebuild keeps), then streams the arrays back
+from its own storage, one bounded batch at a time. A replay that rejects (a read
+failed) has already rolled back, so the host retries it like a non-complete one,
+if that reload is still current:
 
 ```typescript
 import { replayReleasedGeometry } from '@ifc-lite/renderer';
@@ -544,8 +548,13 @@ declare function retryLater(): void;
 async function* batches() {
   for (const slice of storedSlices) yield await readBack(slice); // model-local, as stored
 }
-const result = await replayReleasedGeometry(renderer, batches(), { isCurrent: () => token === latest() });
-if (result.status !== 'complete') retryLater(); // superseded, cancelled or unavailable
+renderer.getScene().clearFlatGeometry(); // the old flat draw goes first; instanced templates stay
+try {
+  const result = await replayReleasedGeometry(renderer, batches(), { isCurrent: () => token === latest() });
+  if (result.status !== 'complete' && token === latest()) retryLater(); // cancelled or unavailable
+} catch {
+  if (token === latest()) retryLater(); // a read failed: the replay rolled back before rethrowing
+}
 ```
 
 Each batch is uploaded through the ephemeral streaming path (GPU fragments only,

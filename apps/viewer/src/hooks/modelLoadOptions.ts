@@ -18,6 +18,8 @@ export interface ModelLoadOptions {
    */
   processedModel?: ProcessedModelSource;
   sourceHandle?: FileSystemFileHandle;
+  /** Synchronous guard that may abort a primary load before it commits to replacing the scene. */
+  beforePrimaryReset?: () => void;
   /** Retry the owning operation (e.g. replacement), including its commit/cleanup. */
   retryOperation?: () => void;
   workflowOwner?: string;

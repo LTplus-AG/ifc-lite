@@ -7,8 +7,7 @@
  * Handles entity type renaming and attribute rewriting when converting
  * between IFC schema versions (IFC2X3, IFC4, IFC4X3, IFC5).
  *
- * This module works at the STEP text level: it rewrites entity type names
- * and adjusts attribute counts via regex replacement on raw STEP lines.
+ * Rewrites entity type names and slot layouts in STEP text.
  */
 
 import { structuralAttributes } from './schema-converter-structural.js';
@@ -27,7 +26,7 @@ import { productProxy } from './schema-converter-product-proxy.js';
 import { MEP_IFC2X3_TYPES } from './schema-converter-mep.js';
 import { isStrictAttrPrefix, replacedSlot } from './schema-converter-renames.js';
 import { carryUserDefinedLabel } from './schema-converter-userdefined-label.js';
-import { attrMapFor, remapByAttrMap, upgradeCountsIfc4Slots } from './schema-converter-attr-maps.js';
+import { attrMapFor, remapByAttrMap, upgradeCountsIfc4Slots, upgradeRename } from './schema-converter-attr-maps.js';
 import { retypeInPlace } from './schema-converter-retyped.js';
 
 export { computeWithheldRefIds } from './schema-untranslatable.js';
@@ -166,8 +165,8 @@ export function convertEntityType(
   if (fromSchema === toSchema) return entityType;
 
   const upper = entityType.toUpperCase();
-  const mepTarget = toSchema === 'IFC2X3' ? MEP_IFC2X3_TYPES.get(upper) : undefined;
-  if (mepTarget) return mepTarget;
+  const target = (toSchema === 'IFC2X3' ? MEP_IFC2X3_TYPES.get(upper) : undefined) ?? upgradeRename(upper, fromSchema, toSchema);
+  if (target) return target;
 
   const map = getConversionMap(fromSchema, toSchema);
   return map?.get(upper) ?? upper;

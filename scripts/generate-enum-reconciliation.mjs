@@ -80,7 +80,10 @@ const { LABEL_CARRIES, resolveMissingEnumMember } = await import(
  * `rename_targets_are_the_converters_10856` holds the list to `rename_type`.
  * Rust's slot table is per target schema, so its rows are the union over sources.
  */
-const UP_FROM_IFC2X3 = ['IFCBUILDINGELEMENTPROXY', 'IFCBURNERTYPE', 'IFCELECTRICDISTRIBUTIONBOARD', 'IFCRELASSIGNSTOPRODUCT'];
+const UP_FROM_IFC2X3 = [
+  'IFCBUILDINGELEMENTPROXY', 'IFCBURNERTYPE', 'IFCELECTRICDISTRIBUTIONBOARD',
+  'IFCMATERIALPROPERTIES', 'IFCPROFILEPROPERTIES', 'IFCRELASSIGNSTOPRODUCT',
+];
 // IFC4/IFC4X3 IfcMaterialProperties is not renamed down here: its downgrade waits on its Material referent (#10911).
 const RENAME_TARGETS = {
   IFC4X3: {

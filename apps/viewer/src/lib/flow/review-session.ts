@@ -93,13 +93,17 @@ export async function pauseForReview(input: {
   try {
     const checkpoint = createCheckpoint({ ...rest, registry: flowRegistry(), sourceDigest: viewerSourceDigest() });
     if (!(await browserCheckpointStore.write(checkpoint, null))) throw new Error('a checkpoint with this id already exists');
-    if (canPublish()) useFlowReview.setState({ checkpoint, values, executionInputs: structuredClone(input.inputs), problem: null });
+    if (canPublish()) useFlowReview.setState({ checkpoint, values, executionInputs: structuredClone(input.inputs), problem: null, busy: false });
     return checkpoint;
   } catch (error) {
-    if (canPublish()) useFlowReview.setState({ checkpoint: null, problem: problemOf(error) });
+    if (canPublish()) useFlowReview.setState({ checkpoint: null, problem: problemOf(error), busy: false });
     return null;
   }
 }
+
+/** Checkpoint writes in flight, by id: the card is busy while its own checkpoint has one. */
+const pendingWrites = new Map<string, number>();
+const pendingFor = (checkpoint: FlowCheckpoint | null): boolean => !!checkpoint && pendingWrites.has(checkpoint.id);
 
 /** Load the graph's latest checkpoint after recovering any whose owner vanished mid-resume. */
 export async function loadGraphReview(graphId: string): Promise<void> {
@@ -110,7 +114,8 @@ export async function loadGraphReview(graphId: string): Promise<void> {
   const latest = (await checkpointsOfGraph(graphId))[0] ?? null;
   const current = useFlowReview.getState();
   const same = current.checkpoint?.id === latest?.id;
-  useFlowReview.setState({ checkpoint: latest, values: same ? current.values : {}, executionInputs: same ? current.executionInputs : {}, problem: null });
+  useFlowReview.setState({ checkpoint: latest, values: same ? current.values : {}, executionInputs: same ? current.executionInputs : {}, problem: null,
+    busy: pendingFor(latest) });
 }
 
 async function transition(
@@ -120,25 +125,26 @@ async function transition(
 ): Promise<FlowCheckpoint | null> {
   if (!id) return null;
   const visible = () => useFlowReview.getState().checkpoint?.id === id;
-  const wasVisible = visible();
-  if (wasVisible) useFlowReview.setState({ busy: true, problem: null });
-  const publish = (patch: Partial<FlowReviewState>) => {
-    if (visible()) useFlowReview.setState({ ...patch, busy: false });
-    else if (wasVisible) useFlowReview.setState({ busy: false });
-  };
+  pendingWrites.set(id, (pendingWrites.get(id) ?? 0) + 1);
+  if (visible()) useFlowReview.setState({ busy: true, problem: null });
   const update = () => updateCheckpoint(browserCheckpointStore, id, change);
+  let next: FlowCheckpoint | null = null, patch: Partial<FlowReviewState>;
   try {
-    const next = await update().catch((error: unknown) => {
+    next = await update().catch((error: unknown) => {
       // A storage failure can be transient. Repeat the checkpoint CAS only.
       if (!retryStorage || error instanceof CheckpointError) throw error;
       return update();
     });
-    publish({ checkpoint: next });
-    return next;
+    patch = { checkpoint: next };
   } catch (error) {
-    publish({ problem: problemOf(error) });
-    return null;
+    patch = { problem: problemOf(error) };
   }
+  const left = pendingWrites.get(id)! - 1;
+  if (left) pendingWrites.set(id, left); else pendingWrites.delete(id);
+  // Whatever is displayed now, busy reflects its own pending writes.
+  if (visible()) useFlowReview.setState({ ...patch, busy: left > 0 });
+  else useFlowReview.setState({ busy: pendingFor(useFlowReview.getState().checkpoint) });
+  return next;
 }
 
 /** Approve the proposal the reviewer saw, named by its digest. */

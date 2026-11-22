@@ -403,3 +403,38 @@ test('#10591 a failed release preserves a review when no downstream work started
   assert.equal(retry.checkpoint?.id, approved.id);
   assert.equal(requests, 1);
 });
+
+test('#11262 the review card is busy only while its own checkpoint has a write in flight', async (t) => {
+  const { deferred } = await import('@/test/race');
+  const model = await openFlowSample();
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-4o-mini' });
+  const doc = example();
+  const other: FlowDocument = { ...doc, id: 'busy-other-graph' };
+  await pausedRun(model, other);
+  const b = useFlowReview.getState().checkpoint!;
+  await pausedRun(model, doc);
+  const a = useFlowReview.getState().checkpoint!;
+  const gates = new Map([[a.id, deferred()], [b.id, deferred()]]);
+  const write = browserCheckpointStore.write.bind(browserCheckpointStore);
+  t.mock.method(browserCheckpointStore, 'write', async (checkpoint: FlowCheckpoint, expected: number | null) => {
+    if (checkpoint.state === 'rejected') await gates.get(checkpoint.id)!.promise;
+    return write(checkpoint, expected);
+  });
+
+  const rejectA = rejectReview();
+  assert.equal(useFlowReview.getState().busy, true);
+  await loadGraphReview(other.id);
+  assert.equal(useFlowReview.getState().checkpoint?.id, b.id);
+  assert.equal(useFlowReview.getState().busy, false, 'B has no write in flight');
+  const rejectB = rejectReview();
+  await loadGraphReview(doc.id);
+  assert.equal(useFlowReview.getState().busy, true, 'A is still saving');
+  await loadGraphReview(other.id);
+  gates.get(a.id)!.resolve();
+  assert.equal((await rejectA)?.state, 'rejected');
+  assert.equal(useFlowReview.getState().busy, true, 'B is still saving');
+  assert.equal(useFlowReview.getState().checkpoint?.id, b.id);
+  gates.get(b.id)!.resolve();
+  assert.equal((await rejectB)?.state, 'rejected');
+  assert.equal(useFlowReview.getState().busy, false);
+});

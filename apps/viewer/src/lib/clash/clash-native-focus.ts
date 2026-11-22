@@ -46,7 +46,9 @@ export function createClashFocus(options: {
       }
       return resolved;
     }
-    return state.fromGlobalId(ref.ref);
+    const resolved = state.fromGlobalId(ref.ref);
+    if (!resolved && state.clashError !== CLASH_MODEL_UNLOADED_MESSAGE) state.setClashError(CLASH_MODEL_UNLOADED_MESSAGE, 'unavailable');
+    return resolved;
   };
   const applyFocusMode = (globalIds: number[], mode: ClashFocusMode): void => {
     if (mode === 'isolate') installClashIsolation(new Set(globalIds));

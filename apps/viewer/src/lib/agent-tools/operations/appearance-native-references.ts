@@ -7,6 +7,7 @@ import { viewerOperation, emptySchema, type ViewerOperationContext } from './con
 import { assertToolActive } from '../cancellation';
 import { decodeAppearanceSettings } from './appearance-native-common';
 import {
+  ReferenceAppearanceError,
   prepareNativeAppearanceReference,
   placeNativeAppearanceReference,
   assertReferencePlacementCurrent,
@@ -17,7 +18,7 @@ import type { AppearanceAssetOwner } from '@/lib/appearance/assets';
 import type { ToolHost } from '../types';
 import { appearanceAssets } from '@/lib/appearance/model-assets';
 import { restoreReferenceSource, referenceEditSettings } from '@/lib/appearance/references/edit';
-import { parseReferences } from '@/lib/appearance/references/persistence';
+import { LockedAppearanceReferenceError, parseReferences } from '@/lib/appearance/references/persistence';
 import { placementFrameKey } from '@/lib/model-placement/persistence';
 import { decodedInput, invalidInput, stale, unavailable } from './refusals';
 const outputSchema = {
@@ -75,6 +76,13 @@ function candidates(c: ViewerOperationContext) {
     );
   }
   return map;
+}
+function rethrowReferenceRefusal(error: unknown): never {
+  if (error instanceof ReferenceAppearanceError) {
+    if (error.translationKey === 'appearance.reference.calibrate') throw unavailable(error.message);
+    if (error.translationKey === 'appearance.reference.sourceChanged') throw stale(error.message);
+  }
+  throw error;
 }
 const tokenInput = {
   type: 'object' as const,
@@ -182,6 +190,8 @@ export const appearanceReferenceOperations = [
         });
         adopted = true;
         return out({ token, reference: prepared.record });
+      } catch (error) {
+        rethrowReferenceRefusal(error);
       } finally {
         if (!adopted) {
           renderer.getReferenceImages().remove(draftId);
@@ -220,6 +230,8 @@ export const appearanceReferenceOperations = [
         saved.placed = expected.id;
         release(saved);
         return out({ reference_id: expected.id, placed: true });
+      } catch (error) {
+        rethrowReferenceRefusal(error);
       } finally {
         saved.placing = false;
       }
@@ -289,8 +301,13 @@ export const appearanceReferenceOperations = [
           else if (i.action === 'remove') s.removeAppearanceReference(i.reference_id);
           else if (i.action === 'select') s.selectAppearanceReference(i.reference_id || null);
           else if (i.action === 'import') {
-            s.importAppearanceReferences(i.content, (text, frame) =>
-              decodedInput('content', () => parseReferences(text, frame), { json: true }));
+            try {
+              s.importAppearanceReferences(i.content, (text, frame) =>
+                decodedInput('content', () => parseReferences(text, frame), { json: true }));
+            } catch (error) {
+              if (error instanceof LockedAppearanceReferenceError) throw invalidInput('wrong-target', error.message);
+              throw error;
+            }
           }
           else s.replayAppearanceReference(i.action);
           return { revision: useViewerStore.getState().referenceRevision };

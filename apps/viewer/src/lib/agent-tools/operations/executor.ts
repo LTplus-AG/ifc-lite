@@ -356,7 +356,9 @@ export function operationJob(host: ToolHost, id: string, cancel = false, claimDe
       const aborted = host.lifetimeSignal?.aborted === true || (error instanceof DOMException && error.name === 'AbortError')
         || (error instanceof ToolExecutionError && error.code === ToolErrorCode.CANCELLED);
       if (!job.delivered && (aborted || (error instanceof ToolExecutionError && error.code === ToolErrorCode.STATE_CHANGED))) {
-        Object.assign(job.snapshot, { state: aborted ? 'cancelled' : 'failed', error: error instanceof Error ? error.message : 'Operation failed.', result: undefined });
+        const refusal = aborted ? cancelledDispatch() : operationFailure(error, job.snapshot.operation_id);
+        Object.assign(job.snapshot, { state: aborted ? 'cancelled' : 'failed', error: refusal.message, error_code: refusal.code,
+          error_details: refusal.details, result: undefined });
         if (!job.delivery.pending) job.discard();
       }
       throw error;

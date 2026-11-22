@@ -8,6 +8,14 @@ import { operation, viewerOperation, emptySchema } from './contract';
 import { assertToolActive } from '../cancellation';
 import { resolveRef } from '../refs';
 import { invalidInput, stale, decodedInput, parseJsonInput } from './refusals';
+import { mutationPermission } from '@/store/mutation-permission';
+import { mutationRefusal } from './mutation-refusal';
+
+function requireInspectorEdit(modelId: string) {
+  const permission = mutationPermission(useViewerStore.getState(), modelId);
+  if (!permission.allowed) throw mutationRefusal(permission.reason, modelId);
+}
+
 const kinds: AuthoredElementKind[] = ['wall', 'slab', 'beam', 'column', 'door', 'window', 'space', 'roof', 'plate', 'member'];
 const kindSchema = { type: 'string' as const, enum: kinds };
 const outputSchema = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
@@ -20,11 +28,13 @@ export const inspectorOperations = [
   operation<{ kind: AuthoredElementKind; Name: string; express_id: number }>(meta('authoring.type.create', 'Create a native element type through the Model inspector transaction. express_id=0 creates only the type; otherwise native typing and inherited layer-set behavior apply to that validated element.', true), {
     type: 'object', properties: { kind: kindSchema, Name: { type: 'string', minLength: 1, maxLength: 240 }, express_id: { type: 'integer', minimum: 0 } }, required: ['kind', 'Name', 'express_id'], additionalProperties: false,
   }, async (i, c) => { const { createElementType } = await import('@/components/viewer/model-inspector/inspector-edits'); if (i.express_id) resolveRef(c.model, { express_id: i.express_id }); assertToolActive(c);
+    requireInspectorEdit(c.model.id);
     const id = c.commit(() => { const created = createElementType(c.model.id, i.kind, i.Name, i.express_id || undefined); if (created === null) throw invalidInput('refused', 'The native inspector refused this type creation.'); return created; }); return out({ modelId: c.model.id, expressId: id });
   }),
   operation<{ express_id: number; Name: string; Color: string; Category: string; Description: string }>(meta('authoring.material.createAndAssign', 'Create and assign a material using the same native Model-inspector transaction, including supported color/category/description.', true), {
     type: 'object', properties: { express_id: { type: 'integer', minimum: 1 }, Name: { type: 'string', minLength: 1, maxLength: 240 }, Color: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$' }, Category: { type: 'string', maxLength: 240 }, Description: { type: 'string', maxLength: 2000 } }, required: ['express_id', 'Name', 'Color', 'Category', 'Description'], additionalProperties: false,
   }, async (i, c) => { const { setElementMaterial } = await import('@/components/viewer/model-inspector/inspector-edits'); const ref = resolveRef(c.model, { express_id: i.express_id }); assertToolActive(c);
+    requireInspectorEdit(c.model.id);
     c.commit(() => {
       const changed = setElementMaterial(c.model.id, ref.expressId, { Name: i.Name, Color: i.Color, Category: i.Category, Description: i.Description });
       if (!changed) throw invalidInput('refused', 'The native inspector refused this material edit.');

@@ -109,6 +109,16 @@ describe('operation results and expected-state tokens stay bounded (#10794)', ()
     }
   });
 
+  it('refuses a blank report rename before consulting storage (#11060)', async t => {
+    useViewerStore.setState({ savedValidationReports: [{ id: 'v1' }] as never, initializeValidationReports: async () => true });
+    const { token } = await readAll('validation.reports.read', 'reports');
+    const rename = t.mock.method(useViewerStore.getState(), 'renameValidationReport', async () => false);
+    const result = await run('validation.reports.manage', { action: 'rename', id: 'v1', name: '  ', expected_reports: token });
+    assert.equal(result.errorCode, 'INVALID_INPUT', result.text);
+    assert.equal((result.structured as { reason: string }).reason, 'invalid-value');
+    assert.equal(rename.mock.callCount(), 0);
+  });
+
   /** Every zones.read row, by following page.next_offset; each page must fit the limit on its own. */
   type ZoneRow = { kind: string; set?: { id: string; zone_count: number }; set_id?: string; zone?: { id: string }; global_id?: number };
   const zoneRows = async () => {

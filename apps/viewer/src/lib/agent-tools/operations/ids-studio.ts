@@ -98,7 +98,8 @@ export const idsOperations = [
     const { validateOp } = await import('@ifc-lite/ids-authoring');
     const { dispatchStudioOps } = await import('@/lib/ids-studio/session');
     const raw: unknown = parseJsonInput(i.ops_json, 'ops_json');
-    if (!Array.isArray(raw) || raw.length > 500) throw invalidInput('limit', 'ops_json must contain at most 500 canonical StudioOps.');
+    if (!Array.isArray(raw)) throw invalidInput('invalid-value', 'ops_json must contain an array of canonical StudioOps.');
+    if (raw.length > 500) throw invalidInput('limit', 'ops_json must contain at most 500 canonical StudioOps.');
     const ops = raw.map(value => { const parsed = validateOp(value); if (!parsed.ok) throw invalidInput('invalid-value', JSON.stringify(parsed.errors)); return parsed.op; });
     revision(i.document_revision);
     const result = dispatchStudioOps(current(), ops, contexts.gate, { label: 'Agent IDS candidate' });

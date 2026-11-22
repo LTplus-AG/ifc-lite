@@ -128,10 +128,18 @@ fn paired_rectangle(
             .iter()
             .all(|p| (0..2).all(|k| p[k] == pf.bb.0[k] || p[k] == pf.bb.1[k]))
     {
-        let floor_side = end;
-        let (outer, inner) = if floor_side == 0 { (a, b) } else { (b, a) };
-        if !inner.iter().all(|&point| contains(outer, point))
-            || !(0..2).all(|k| inner[0][k] < pf.bb.1[k] && pf.bb.0[k] < inner[1][k])
+        // Rectangle containment identifies the wider body even when both
+        // source shells use inward winding and swap the signed-area groups.
+        let (floor_side, outer, inner) = if b.iter().all(|&point| contains(a, point)) {
+            (0, a, b)
+        } else if a.iter().all(|&point| contains(b, point)) {
+            (1, b, a)
+        } else {
+            return None;
+        };
+        if !(0..2).all(|k| inner[0][k] < pf.bb.1[k] && pf.bb.0[k] < inner[1][k])
+            || (floor_side != end
+                && !shell_extends_from_face(tris, pf, outer, inner, target, direction))
         {
             return None;
         }
@@ -164,6 +172,30 @@ fn paired_rectangle(
     Some(PairedRectangle {
         depth: target,
         floor,
+    })
+}
+
+/// A reversed area group could also mean the finish is the wider body.
+/// Prove that the wider face has a side wall beyond the cap at a corner
+/// belonging to that face alone.
+fn shell_extends_from_face(
+    tris: &[PTri],
+    pf: &PrismFrame,
+    wider: [V2; 2],
+    narrower: [V2; 2],
+    depth: f64,
+    direction: f64,
+) -> bool {
+    let band = flush_band_at(pf.corner_mag());
+    tris.iter().any(|tri| {
+        on_rectangle_boundary(tri, pf, wider[0], wider[1])
+            && tri.p.iter().any(|&p| {
+                let xy = pf.to2(p);
+                dot(p, pf.d) == depth
+                    && (0..2).all(|k| xy[k] == wider[0][k] || xy[k] == wider[1][k])
+                    && (0..2).any(|k| xy[k] < narrower[0][k] || xy[k] > narrower[1][k])
+            })
+            && tri.p.iter().any(|&p| direction * (dot(p, pf.d) - depth) > band)
     })
 }
 

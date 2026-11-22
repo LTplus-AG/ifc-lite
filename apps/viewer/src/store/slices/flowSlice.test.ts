@@ -83,6 +83,34 @@ describe('flowSlice', () => {
     assert.deepEqual(loadPlayerValues(id), {});
   });
 
+  it('keeps the graph and its sidecars until a refused deletion can be retried (#10591)', (t) => {
+    const state = useViewerStore.getState();
+    const id = state.createFlow('Retry deletion')!;
+    new BrowserTrackingStore(id, 'content:x').save({ trackingKey: 'A/n', generation: 0, entries: {} });
+    savePlayerValues(id, { Width: 42 });
+
+    const setItem = ls.setItem.bind(ls);
+    const write = t.mock.method(ls, 'setItem', (key: string, value: string) => {
+      if (key === 'ifc-lite-flows') throw new Error('Storage refused');
+      setItem(key, value);
+    });
+    state.deleteFlow(id);
+    assert.match(useViewerStore.getState().flowStorageError ?? '', /refused/);
+    assert.equal(useViewerStore.getState().flowDoc?.id, id);
+    assert.equal(useViewerStore.getState().savedFlows[0]?.doc.id, id);
+    assert.equal(loadSavedFlows()[0]?.doc.id, id);
+    assert.ok(BrowserTrackingStore.read(id));
+    assert.deepEqual(loadPlayerValues(id), { Width: 42 });
+
+    write.mock.restore();
+    state.deleteFlow(id);
+    assert.equal(useViewerStore.getState().flowStorageError, null);
+    assert.equal(useViewerStore.getState().flowDoc, null);
+    assert.equal(loadSavedFlows().length, 0);
+    assert.equal(BrowserTrackingStore.read(id), undefined);
+    assert.deepEqual(loadPlayerValues(id), {});
+  });
+
   it('a session reset closes the panel and drops the last run, but keeps the saved graphs and the working copy', () => {
     useViewerStore.getState().createFlow('Kept');
     useViewerStore.setState({ flowPanelVisible: true, flowRunning: true, flowLastError: 'x', flowLastRunWindow: { start: 1, end: 2, doc: newFlowDocument('x'), mutationIds: new Set() } });

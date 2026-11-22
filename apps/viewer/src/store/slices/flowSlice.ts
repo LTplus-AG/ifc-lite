@@ -77,7 +77,7 @@ export interface FlowSlice {
   openFlow: (id: string) => void;
   /** Persist the working copy; a no-op when nothing is open. */
   saveFlow: () => void;
-  deleteFlow: (id: string) => void;
+  deleteFlow: (id: string) => boolean;
   /** Import a validated document as a new saved graph (a fresh id when one collides). */
   importFlow: (doc: FlowDocument) => string | null;
   /**
@@ -146,15 +146,18 @@ export const createFlowSlice: StateCreator<FlowSlice, [], [], FlowSlice> = (set,
 
   deleteFlow: (id) => {
     const next = get().savedFlows.filter((f) => f.doc.id !== id);
-    const persisted = saveFlows(next);
-    set({ flowStorageError: persisted ? null : 'Workflow is available in memory, but browser storage refused the save.' });
+    if (!saveFlows(next)) {
+      set({ flowStorageError: 'Browser storage refused to delete the workflow.' });
+      return false;
+    }
     // The sidecar is the graph's; a graph deleted here and re-imported later
     // under the same id must not inherit tracked elements it never made. The
     // Player's last-used inputs are the graph's too, for the same reason.
     BrowserTrackingStore.clear(id);
     clearPlayerValues(id);
     const closing = get().activeFlowId === id;
-    set({ savedFlows: next, ...(closing ? { activeFlowId: null, flowDoc: null, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null, flowLastRunWindow: null, flowArtifacts: [], flowProgress: null, flowRunWarnings: [] } : {}) });
+    set({ savedFlows: next, flowStorageError: null, ...(closing ? { activeFlowId: null, flowDoc: null, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null, flowLastRunWindow: null, flowArtifacts: [], flowProgress: null, flowRunWarnings: [] } : {}) });
+    return true;
   },
 
   importFlow: (doc) => {

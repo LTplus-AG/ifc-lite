@@ -21,7 +21,7 @@ import 'fake-indexeddb/auto';
 import test, { afterEach, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { MemoCache, type FlowDocument, type Table } from '@ifc-lite/flow';
-import { claimCheckpoint, graphDigest, resumeOutputs } from '@ifc-lite/flow/checkpoint';
+import { claimCheckpoint, graphDigest, resumeOutputs, type FlowCheckpoint } from '@ifc-lite/flow/checkpoint';
 import type { LoadedModel } from '@ifc-lite/mcp';
 import { useViewerStore } from '@/store';
 import { openFlowSample } from '@/test/flow-sample-fixture';
@@ -30,7 +30,8 @@ import { useRequestReceipts } from '@/lib/llm/request-receipts';
 import { viewerFlowAi } from './ai-host';
 import { browserCheckpointStore } from './checkpoint-store';
 import { flowExamples } from './examples';
-import { approveReview, claimReview, finishReview, loadGraphReview, pauseForReview, rejectReview, useFlowReview } from './review-session';
+import { NativeFlowRunner } from './native-runner';
+import { approveReview, claimReview, finishReview, loadGraphReview, pauseForReview, rejectReview, startReviewClaim, useFlowReview } from './review-session';
 import { flowRegistry, runFlowInViewer } from './runner';
 
 const initial = useViewerStore.getState();
@@ -51,6 +52,9 @@ function serveProxy(): void {
     return new Response(`${frames.map((f) => `data: ${JSON.stringify(f)}\n\n`).join('')}data: [DONE]\n\n`, { headers: { 'Content-Type': 'text/event-stream' } });
   }) as typeof fetch;
 }
+
+const claimVisibleReview = (doc: FlowDocument, inputs: Record<string, unknown>) =>
+  claimReview(doc, inputs, useFlowReview.getState().checkpoint!.id);
 
 const example = (): FlowDocument => ({ ...flowExamples().find((d) => d.id === 'example-ai-wall-roles')!, id: 'ai-roles-under-test' });
 const roles = (model: LoadedModel) => ({
@@ -90,7 +94,7 @@ test('#7039 viewer resume refuses missing budget receipts before claiming downst
     const pending = useFlowReview.getState().checkpoint;
     assert.ok(pending);
     assert.equal((await approveReview(pending.proposalDigest, doc))?.state, 'reviewed');
-    assert.equal(await claimReview(doc, {}), null);
+    assert.equal(await claimVisibleReview(doc, {}), null);
     assert.equal(useFlowReview.getState().problem!.kind, 'refused');
     assert.match(useFlowReview.getState().problem!.message, /requires the original root budget receipt/);
     assert.equal((await browserCheckpointStore.read(pending.id))?.checkpoint.state, 'reviewed');
@@ -129,12 +133,13 @@ test('#6923 the AI example pauses, writes nothing until approved, then resumes f
   assert.deepEqual(useFlowReview.getState().problem, { kind: 'refused', code: 'digest-mismatch', message: useFlowReview.getState().problem!.message });
   const approved = await approveReview(pending.proposalDigest, doc);
   assert.equal(approved?.state, 'reviewed');
-  const claimed = await claimReview(doc, {});
-  assert.equal(claimed?.state, 'applying');
+  const reserved = await claimVisibleReview(doc, {});
+  assert.equal(reserved?.state, 'applying');
+  const claimed = await startReviewClaim(reserved!);
 
   const replay = viewerFlowAi(claimed!.budget);
   const resumed = await runFlowInViewer({ doc, bim: model.bim, pin: activeTrackingPin()!, cache: new MemoCache(), ai: replay!.service, resume: resumeOutputs(claimed!) });
-  await finishReview(resumed);
+  await finishReview(resumed, undefined, claimed!);
   assert.equal(resumed.ok, true);
   assert.equal(requests, 1, 'the approved proposal is replayed, not requested again');
   assert.deepEqual(resumed.reports.map((r) => [r.nodeId, r.status]), [['walls', 'restored'], ['table', 'restored'], ['roles', 'restored'], ['apply', 'ok']]);
@@ -143,7 +148,7 @@ test('#6923 the AI example pauses, writes nothing until approved, then resumes f
   assert.equal(written.facade, written.external);
   assert.equal(useFlowReview.getState().checkpoint?.state, 'completed');
 
-  assert.equal(await claimReview(doc, {}), null, 'a completed checkpoint is never claimed again');
+  assert.equal(await claimVisibleReview(doc, {}), null, 'a completed checkpoint is never claimed again');
   assert.equal(useFlowReview.getState().problem?.kind, 'refused');
 });
 
@@ -155,18 +160,18 @@ test('#6923 an edit after review refuses the resume, and a rejected proposal end
   await approveReview(useFlowReview.getState().checkpoint!.proposalDigest, doc);
   // A later edit (any pending mutation) changes the model state the proposal was made for.
   useViewerStore.setState({ undoStacks: new Map([['arch', [{ id: 'later-edit' } as never]]]) });
-  assert.equal(await claimReview(doc, {}), null);
+  assert.equal(await claimVisibleReview(doc, {}), null);
   assert.deepEqual(useFlowReview.getState().problem, { kind: 'refused', code: 'sources-changed', message: useFlowReview.getState().problem!.message });
   useViewerStore.setState({ undoStacks: new Map() });
   // A changed parameter is a different graph.
   const edited = { ...doc, nodes: doc.nodes.map((n) => (n.id === 'roles' ? { ...n, params: { ...n.params, maxRows: 10 } } : n)) };
-  assert.equal(await claimReview(edited, {}), null);
+  assert.equal(await claimVisibleReview(edited, {}), null);
   const refused = useFlowReview.getState().problem;
   assert.equal(refused?.kind === 'refused' ? refused.code : null, 'graph-changed');
 
   await pausedRun(model, doc);
   assert.equal((await rejectReview())?.state, 'rejected');
-  assert.equal(await claimReview(doc, {}), null);
+  assert.equal(await claimVisibleReview(doc, {}), null);
   assert.deepEqual(roles(model).facade + roles(model).partition, 0);
 });
 
@@ -179,10 +184,10 @@ test('#6923 the same file reloaded under a new model id is the same source; anot
   const loaded = useViewerStore.getState().models.get('arch')!;
   useViewerStore.setState({ models: new Map([['arch-other', { ...loaded, id: 'arch-other', sourceContentHash: 'another-file' }]]) });
   useViewerStore.getState().setActiveModel('arch-other');
-  assert.equal(await claimReview(doc, {}), null);
+  assert.equal(await claimVisibleReview(doc, {}), null);
   useViewerStore.setState({ models: new Map([['arch-reloaded', { ...loaded, id: 'arch-reloaded' }]]) });
   useViewerStore.getState().setActiveModel('arch-reloaded');
-  assert.equal((await claimReview(doc, {}))?.state, 'applying');
+  assert.equal((await claimVisibleReview(doc, {}))?.state, 'applying');
 });
 
 test('#6923 a tab lost mid-resume leaves its checkpoint partially committed after the lease, never claimable', async () => {
@@ -199,7 +204,7 @@ test('#6923 a tab lost mid-resume leaves its checkpoint partially committed afte
   const recovered = useFlowReview.getState().checkpoint!;
   assert.equal(recovered.state, 'partially-committed');
   assert.match(recovered.outcome?.message ?? '', /downstream effects may be partial/);
-  assert.equal(await claimReview(doc, {}), null);
+  assert.equal(await claimVisibleReview(doc, {}), null);
 });
 
 test('#6923 without a chosen model the AI nodes have no service and the run refuses before any request', async () => {
@@ -222,7 +227,7 @@ test('#7040 switching the active source among already loaded models invalidates 
   await pausedRun(model, doc);
   await approveReview(useFlowReview.getState().checkpoint!.proposalDigest, doc);
   useViewerStore.getState().setActiveModel('second');
-  assert.equal(await claimReview(doc, {}), null);
+  assert.equal(await claimVisibleReview(doc, {}), null);
   const problem = useFlowReview.getState().problem;
   assert.equal(problem?.kind === 'refused' ? problem.code : null, 'sources-changed');
   assert.equal(useFlowReview.getState().checkpoint?.state, 'reviewed', 'a refused source switch does not consume approval');
@@ -236,7 +241,7 @@ test('#7040 switching the Assistant model after review refuses the continuing AI
   await pausedRun(model, doc);
   await approveReview(useFlowReview.getState().checkpoint!.proposalDigest, doc);
   useViewerStore.setState({ chatActiveModel: 'openai/gpt-4o' });
-  assert.equal(await claimReview(doc, {}), null);
+  assert.equal(await claimVisibleReview(doc, {}), null);
   const problem = useFlowReview.getState().problem;
   assert.equal(problem?.kind === 'refused' ? problem.code : null, 'sources-changed');
   assert.equal(useFlowReview.getState().checkpoint?.state, 'reviewed');
@@ -254,8 +259,182 @@ test('#7040 switching between two loaded instances of identical IFC bytes refuse
   await pausedRun(model, doc);
   await approveReview(useFlowReview.getState().checkpoint!.proposalDigest, doc);
   useViewerStore.getState().setActiveModel('duplicate');
-  assert.equal(await claimReview(doc, {}), null);
+  assert.equal(await claimVisibleReview(doc, {}), null);
   const problem = useFlowReview.getState().problem;
   assert.equal(problem?.kind === 'refused' ? problem.code : null, 'sources-changed');
   assert.equal(useFlowReview.getState().checkpoint?.state, 'reviewed');
+});
+
+test('#10591 resume claims and finalizes the requested checkpoint while another review is displayed', async () => {
+  const model = await openFlowSample();
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-4o-mini' });
+  const doc = example();
+  await pausedRun(model, doc);
+  const first = await approveReview(useFlowReview.getState().checkpoint!.proposalDigest, doc);
+  assert.ok(first);
+  await pausedRun(model, doc);
+  const second = await approveReview(useFlowReview.getState().checkpoint!.proposalDigest, doc);
+  assert.ok(second && second.id !== first.id);
+
+  const reserved = await claimReview(doc, {}, first.id);
+  assert.ok(reserved);
+  const claimed = await startReviewClaim(reserved);
+  assert.ok(claimed);
+  assert.equal(claimed.id, first.id);
+  const result = await runFlowInViewer({
+    doc, bim: model.bim, pin: activeTrackingPin()!, cache: new MemoCache(),
+    resume: resumeOutputs(claimed),
+  });
+  assert.equal(result.ok, true);
+  assert.equal((await finishReview(result, undefined, claimed))?.id, first.id);
+  assert.equal((await browserCheckpointStore.read(first.id))?.checkpoint.state, 'completed');
+  assert.equal((await browserCheckpointStore.read(second.id))?.checkpoint.state, 'reviewed');
+  assert.equal(useFlowReview.getState().checkpoint?.id, second.id);
+});
+
+for (const refusedWrites of [1, 2]) test(`#10591 a resumed flow with ${refusedWrites} refused finalization writes only retries the checkpoint`, async (t) => {
+  const model = await openFlowSample();
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-4o-mini' });
+  const doc = example();
+  useViewerStore.getState().openContributedFlow(doc);
+  await pausedRun(model, doc);
+  const approved = await approveReview(useFlowReview.getState().checkpoint!.proposalDigest, doc);
+  assert.ok(approved);
+  const write = browserCheckpointStore.write.bind(browserCheckpointStore);
+  let attempts = 0;
+  t.mock.method(browserCheckpointStore, 'write', async (checkpoint: FlowCheckpoint, expected: number | null) => {
+    if (checkpoint.id === approved.id && checkpoint.state === 'completed' && ++attempts <= refusedWrites) {
+      throw new Error('Checkpoint storage is unavailable');
+    }
+    return write(checkpoint, expected);
+  });
+
+  const outcome = await new NativeFlowRunner(model.bim, async () => assert.fail('the graph needs no other model')).run({}, { resume: approved });
+  const written = roles(model);
+  assert.equal(written.facade + written.partition, 4, 'the resumed graph wrote its IFC changes');
+  assert.equal(requests, 1, 'the approved proposal was reused without another assistant request');
+  assert.equal(outcome.result?.ok, true);
+  if (refusedWrites === 1) {
+    assert.equal(outcome.state, 'completed');
+    assert.equal((await browserCheckpointStore.read(approved.id))?.checkpoint.state, 'completed');
+  } else {
+    assert.equal(outcome.state, 'failed');
+    assert.match(outcome.error ?? '', /effects may already exist.*checkpoint/i);
+    assert.equal(useViewerStore.getState().flowLastRun, outcome.result);
+    assert.equal((await browserCheckpointStore.read(approved.id))?.checkpoint.state, 'applying');
+  }
+  assert.equal(attempts, 2);
+});
+
+test('#10591 a cancelled pause does not replace another graph’s review when storage settles', async (t) => {
+  const { deferred } = await import('@/test/race');
+  const model = await openFlowSample();
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-4o-mini' });
+  const doc = example();
+  const other: FlowDocument = { ...doc, id: 'other-graph-in-review' };
+  await pausedRun(model, other);
+  const otherCheckpoint = useFlowReview.getState().checkpoint!;
+  useViewerStore.getState().openContributedFlow(doc);
+  const entered = deferred<string>(), settleWrite = deferred();
+  const write = browserCheckpointStore.write.bind(browserCheckpointStore);
+  t.mock.method(browserCheckpointStore, 'write', async (checkpoint: FlowCheckpoint, expected: number | null) => {
+    if (checkpoint.graphId === doc.id && checkpoint.state === 'prepared') {
+      entered.resolve(checkpoint.id);
+      await settleWrite.promise;
+    }
+    return write(checkpoint, expected);
+  });
+
+  const run = new NativeFlowRunner(model.bim, async () => assert.fail('the graph needs no other model')).run();
+  const pausedId = await entered.promise;
+  useViewerStore.getState().openContributedFlow(other);
+  await loadGraphReview(other.id);
+  assert.equal(useFlowReview.getState().checkpoint?.id, otherCheckpoint.id);
+  settleWrite.resolve();
+  assert.equal((await run).state, 'cancelled');
+  assert.equal((await browserCheckpointStore.read(pausedId))?.checkpoint.state, 'prepared');
+  assert.equal(useFlowReview.getState().checkpoint?.id, otherCheckpoint.id);
+});
+
+test('#10591 a failed release preserves a review when no downstream work started', async (t) => {
+  const { REVIEW_LEASE_MS } = await import('./review-session');
+  const { fixtureModel } = await import('@/test/store-fixture');
+  const model = await openFlowSample();
+  const modelId = useViewerStore.getState().activeModelId!;
+  useViewerStore.getState().addModel(fixtureModel('new-default', { idOffset: 1_000_000 }));
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-4o-mini' });
+  const doc = { ...example(), id: 'release-write-failure' };
+  useViewerStore.getState().openContributedFlow(doc);
+  await pausedRun(model, doc);
+  const approved = await approveReview(useFlowReview.getState().checkpoint!.proposalDigest, doc);
+  assert.ok(approved);
+
+  const write = browserCheckpointStore.write.bind(browserCheckpointStore);
+  let releaseAttempts = 0;
+  const failRelease = t.mock.method(browserCheckpointStore, 'write', async (checkpoint: FlowCheckpoint, expected: number | null) => {
+    if (checkpoint.state === 'applying') useViewerStore.getState().setActiveModel('new-default');
+    if (checkpoint.state === 'reviewed') {
+      releaseAttempts++;
+      throw new Error('Checkpoint storage is unavailable');
+    }
+    return write(checkpoint, expected);
+  });
+  const outcome = await new NativeFlowRunner(model.bim, async () => assert.fail('the graph needs no other model'))
+    .run({}, { resume: approved, expectedDefaultModelId: modelId });
+  assert.equal(outcome.state, 'failed');
+  assert.match(outcome.error ?? '', /default model changed while claiming/);
+  assert.equal(releaseAttempts, 1);
+  const written = roles(model);
+  assert.equal(written.facade + written.partition, 0);
+  assert.equal((await browserCheckpointStore.read(approved.id))?.checkpoint.state, 'applying');
+
+  failRelease.mock.restore();
+  t.mock.timers.enable({ apis: ['Date'], now: new Date(Date.now() + REVIEW_LEASE_MS + 1) });
+  useViewerStore.getState().setActiveModel(modelId);
+  await loadGraphReview(doc.id);
+  const recovered = useFlowReview.getState().checkpoint;
+  assert.ok(recovered);
+  assert.equal(recovered.id, approved.id);
+  assert.equal(recovered.state, 'reviewed');
+  assert.deepEqual(recovered.review, approved.review);
+  const retry = await new NativeFlowRunner(model.bim, async () => assert.fail('the graph needs no other model'))
+    .run({}, { resume: recovered, expectedDefaultModelId: modelId });
+  assert.equal(retry.state, 'completed');
+  assert.equal(retry.checkpoint?.id, approved.id);
+  assert.equal(requests, 1);
+});
+
+test('#11262 the review card is busy only while its own checkpoint has a write in flight', async (t) => {
+  const { deferred } = await import('@/test/race');
+  const model = await openFlowSample();
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-4o-mini' });
+  const doc = example();
+  const other: FlowDocument = { ...doc, id: 'busy-other-graph' };
+  await pausedRun(model, other);
+  const b = useFlowReview.getState().checkpoint!;
+  await pausedRun(model, doc);
+  const a = useFlowReview.getState().checkpoint!;
+  const gates = new Map([[a.id, deferred()], [b.id, deferred()]]);
+  const write = browserCheckpointStore.write.bind(browserCheckpointStore);
+  t.mock.method(browserCheckpointStore, 'write', async (checkpoint: FlowCheckpoint, expected: number | null) => {
+    if (checkpoint.state === 'rejected') await gates.get(checkpoint.id)!.promise;
+    return write(checkpoint, expected);
+  });
+
+  const rejectA = rejectReview();
+  assert.equal(useFlowReview.getState().busy, true);
+  await loadGraphReview(other.id);
+  assert.equal(useFlowReview.getState().checkpoint?.id, b.id);
+  assert.equal(useFlowReview.getState().busy, false, 'B has no write in flight');
+  const rejectB = rejectReview();
+  await loadGraphReview(doc.id);
+  assert.equal(useFlowReview.getState().busy, true, 'A is still saving');
+  await loadGraphReview(other.id);
+  gates.get(a.id)!.resolve();
+  assert.equal((await rejectA)?.state, 'rejected');
+  assert.equal(useFlowReview.getState().busy, true, 'B is still saving');
+  assert.equal(useFlowReview.getState().checkpoint?.id, b.id);
+  gates.get(b.id)!.resolve();
+  assert.equal((await rejectB)?.state, 'rejected');
+  assert.equal(useFlowReview.getState().busy, false);
 });

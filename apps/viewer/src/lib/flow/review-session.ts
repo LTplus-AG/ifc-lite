@@ -19,8 +19,8 @@
  * resume and asks for a new run. Reloading the same files with no pending
  * edits is the same state, so a proposal that wrote nothing before its pause
  * can be approved after a reload. A tab that dies mid-resume
- * leaves `applying` behind; once its lease runs out the next load marks it
- * partially committed, never claimable again.
+ * leaves `applying` behind. Recovery restores approval for an unstarted
+ * reservation and marks a started resume partially committed.
  */
 
 import { create } from 'zustand';
@@ -29,7 +29,7 @@ import { AI_FEATURE } from '@ifc-lite/flow-nodes/ai';
 import { digest, type FlowDocument, type RunResult } from '@ifc-lite/flow';
 import {
   approveCheckpoint, CheckpointError, claimCheckpoint, createCheckpoint, finishCheckpoint, graphDigest,
-  recoverCheckpoint, rejectCheckpoint, updateCheckpoint, type FlowCheckpoint
+  recoverCheckpoint, rejectCheckpoint, releaseCheckpoint, startCheckpoint, updateCheckpoint, type FlowCheckpoint
 } from '@ifc-lite/flow/checkpoint';
 import { useViewerStore } from '@/store';
 import { flowRegistry } from './runner';
@@ -87,16 +87,23 @@ export function viewerSourceDigest(): string {
 /** Save a paused run's proposal as a `prepared` checkpoint and show it. Nothing downstream has run. */
 export async function pauseForReview(input: {
   doc: FlowDocument; result: RunResult; inputs: Record<string, unknown>; values: Record<string, unknown>; budget?: unknown;
-}): Promise<void> {
+  canPublish?: () => boolean;
+}): Promise<FlowCheckpoint | null> {
+  const { values, canPublish = () => true, ...rest } = input;
   try {
-    const { values, ...rest } = input;
     const checkpoint = createCheckpoint({ ...rest, registry: flowRegistry(), sourceDigest: viewerSourceDigest() });
     if (!(await browserCheckpointStore.write(checkpoint, null))) throw new Error('a checkpoint with this id already exists');
-    useFlowReview.setState({ checkpoint, values, executionInputs: structuredClone(input.inputs), problem: null });
+    if (canPublish()) useFlowReview.setState({ checkpoint, values, executionInputs: structuredClone(input.inputs), problem: null, busy: false });
+    return checkpoint;
   } catch (error) {
-    useFlowReview.setState({ checkpoint: null, problem: problemOf(error) });
+    if (canPublish()) useFlowReview.setState({ checkpoint: null, problem: problemOf(error), busy: false });
+    return null;
   }
 }
+
+/** Checkpoint writes in flight, by id: the card is busy while its own checkpoint has one. */
+const pendingWrites = new Map<string, number>();
+const pendingFor = (checkpoint: FlowCheckpoint | null): boolean => !!checkpoint && pendingWrites.has(checkpoint.id);
 
 /** Load the graph's latest checkpoint after recovering any whose owner vanished mid-resume. */
 export async function loadGraphReview(graphId: string): Promise<void> {
@@ -107,21 +114,37 @@ export async function loadGraphReview(graphId: string): Promise<void> {
   const latest = (await checkpointsOfGraph(graphId))[0] ?? null;
   const current = useFlowReview.getState();
   const same = current.checkpoint?.id === latest?.id;
-  useFlowReview.setState({ checkpoint: latest, values: same ? current.values : {}, executionInputs: same ? current.executionInputs : {}, problem: null });
+  useFlowReview.setState({ checkpoint: latest, values: same ? current.values : {}, executionInputs: same ? current.executionInputs : {}, problem: null,
+    busy: pendingFor(latest) });
 }
 
-async function transition(change: (checkpoint: FlowCheckpoint) => FlowCheckpoint): Promise<FlowCheckpoint | null> {
-  const current = useFlowReview.getState().checkpoint;
-  if (!current) return null;
-  useFlowReview.setState({ busy: true, problem: null });
+async function transition(
+  change: (checkpoint: FlowCheckpoint) => FlowCheckpoint,
+  id = useFlowReview.getState().checkpoint?.id,
+  retryStorage = false,
+): Promise<FlowCheckpoint | null> {
+  if (!id) return null;
+  const visible = () => useFlowReview.getState().checkpoint?.id === id;
+  pendingWrites.set(id, (pendingWrites.get(id) ?? 0) + 1);
+  if (visible()) useFlowReview.setState({ busy: true, problem: null });
+  const update = () => updateCheckpoint(browserCheckpointStore, id, change);
+  let next: FlowCheckpoint | null = null, patch: Partial<FlowReviewState>;
   try {
-    const next = await updateCheckpoint(browserCheckpointStore, current.id, change);
-    useFlowReview.setState({ checkpoint: next, busy: false });
-    return next;
+    next = await update().catch((error: unknown) => {
+      // A storage failure can be transient. Repeat the checkpoint CAS only.
+      if (!retryStorage || error instanceof CheckpointError) throw error;
+      return update();
+    });
+    patch = { checkpoint: next };
   } catch (error) {
-    useFlowReview.setState({ busy: false, problem: problemOf(error) });
-    return null;
+    patch = { problem: problemOf(error) };
   }
+  const left = pendingWrites.get(id)! - 1;
+  if (left) pendingWrites.set(id, left); else pendingWrites.delete(id);
+  // Whatever is displayed now, busy reflects its own pending writes.
+  if (visible()) useFlowReview.setState({ ...patch, busy: left > 0 });
+  else useFlowReview.setState({ busy: pendingFor(useFlowReview.getState().checkpoint) });
+  return next;
 }
 
 /** Approve the proposal the reviewer saw, named by its digest. */
@@ -140,30 +163,31 @@ export function rejectReview(): Promise<FlowCheckpoint | null> {
 }
 
 /** Claim the approved checkpoint for this tab's resume, against the graph and inputs it will run with. */
-export function claimReview(doc: FlowDocument, inputs: Record<string, unknown>): Promise<FlowCheckpoint | null> {
+export function claimReview(doc: FlowDocument, inputs: Record<string, unknown>, checkpointId: string): Promise<FlowCheckpoint | null> {
   return transition((c) => {
     const registry = flowRegistry();
     const aiAhead = doc.nodes.some(node => !Object.hasOwn(c.outputs, node.id) && registry.get(node.type)?.requires?.backend?.includes(AI_FEATURE));
     if (aiAhead && !restoreRootBudget(c.budget)) throw new BudgetReceiptError('Resuming downstream AI nodes requires the original root budget receipt. Run the graph again.');
-    return claimCheckpoint(c, { owner: TAB_OWNER, graphDigest: graphDigest(doc, inputs, registry), sourceDigest: viewerSourceDigest(), leaseMs: REVIEW_LEASE_MS });
-  });
+    return claimCheckpoint(c, { owner: TAB_OWNER, graphDigest: graphDigest(doc, inputs, registry), sourceDigest: viewerSourceDigest(), leaseMs: REVIEW_LEASE_MS, deferStart: true });
+  }, checkpointId);
+}
+
+export function startReviewClaim(reserved: FlowCheckpoint): Promise<FlowCheckpoint | null> {
+  return transition((current) => startCheckpoint(current, reserved), reserved.id);
 }
 
 /** Return this tab's exact claim to review before any downstream work has started. */
-export async function releaseReviewClaim(claimed: FlowCheckpoint): Promise<void> {
-  const expectedClaim = claimed.claim;
-  const released = await updateCheckpoint(browserCheckpointStore, claimed.id, current => {
-    const { claim, ...reviewed } = current;
-    if (current.state !== 'applying' || !expectedClaim || claim?.owner !== TAB_OWNER
-      || claim.at !== expectedClaim.at || claim.leaseUntil !== expectedClaim.leaseUntil) {
-      throw new CheckpointError('not-owner', 'The unstarted review claim is no longer held by this run.');
-    }
-    return { ...reviewed, state: 'reviewed', updatedAt: Date.now() };
-  });
-  if (useFlowReview.getState().checkpoint?.id === claimed.id) useFlowReview.setState({ checkpoint: released });
+export async function releaseReviewClaim(reserved: FlowCheckpoint): Promise<void> {
+  const released = await updateCheckpoint(browserCheckpointStore, reserved.id, current => releaseCheckpoint(current, reserved));
+  if (useFlowReview.getState().checkpoint?.id === reserved.id) useFlowReview.setState({ checkpoint: released });
 }
 
-export function finishReview(result: RunResult | null, failure?: string): Promise<FlowCheckpoint | null> {
+export function finishReview(result: RunResult | null, failure: string | undefined, claimed: FlowCheckpoint): Promise<FlowCheckpoint | null> {
   const message = failure ?? result?.log.find((l) => l.level === 'error')?.message;
-  return transition((c) => finishCheckpoint(c, TAB_OWNER, { ok: !!result?.ok && failure === undefined, ...(message ? { message } : {}) }));
+  return transition((c) => {
+    if (!c.claim || c.claim.at !== claimed.claim?.at || c.claim.leaseUntil !== claimed.claim?.leaseUntil) {
+      throw new CheckpointError('not-owner', 'The review claim is no longer held by this run.');
+    }
+    return finishCheckpoint(c, TAB_OWNER, { ok: !!result?.ok && failure === undefined, ...(message ? { message } : {}) });
+  }, claimed.id, true);
 }

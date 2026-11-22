@@ -44,6 +44,7 @@ async function execute<T>(id: string, input: unknown = {}): Promise<T> {
   const op = coordinationOperations.find(op => op.id === id); assert.ok(op, id);
   op.validate(input); const result = await op.execute(input, context); op.validateResult(result); return result as T;
 }
+const scriptRevision = async () => (await execute<{ revision: number }>('script.read')).revision;
 beforeEach(async () => {
   allowed = true; resetFeaturesForTest(); clearGlobalRefs(); await seedCoincidentWalls(1, 4);
   useViewerStore.setState({ bcfProject: null, mutationVersion: 0, mutationViews: new Map() });
@@ -396,18 +397,34 @@ it('native assistant send awaits the configured stream and preserves native evid
 it('full native editor execution reports terminal results before an IFC model exists (#10525)', async () => {
   useViewerStore.setState({ models: new Map(), activeModelId: null, ifcDataStore: null, geometryResult: null });
   await execute('script.create', { name: 'Native arithmetic', source: '2 + 2' });
-  const result = await execute<{ state: string; result: { value: unknown } }>('script.execute', { expected_revision: useViewerStore.getState().scriptEditorRevision });
+  const result = await execute<{ state: string; result: { value: unknown } }>('script.execute', { expected_revision: await scriptRevision() });
   assert.equal(result.state, 'completed'); assert.equal(result.result.value, 4);
 });
 
 it('a preflight failure settles the editor so the corrected source can run (#10591 review)', async () => {
   useViewerStore.setState({ scriptEditorDirty: false });
   await execute('script.create', { name: 'Preflight fixture', source: 'bim.nonexistent.call()' });
-  const refused = await execute<{ state: string }>('script.execute', { expected_revision: useViewerStore.getState().scriptEditorRevision });
+  const refused = await execute<{ state: string }>('script.execute', { expected_revision: await scriptRevision() });
   assert.equal(refused.state, 'failed'); assert.equal(useViewerStore.getState().scriptExecutionState, 'error');
   useViewerStore.getState().setScriptEditorContent('2 + 2');
-  const result = await execute<{ state: string; result: { value: unknown } }>('script.execute', { expected_revision: useViewerStore.getState().scriptEditorRevision });
+  const result = await execute<{ state: string; result: { value: unknown } }>('script.execute', { expected_revision: await scriptRevision() });
   assert.equal(result.state, 'completed'); assert.equal(result.result.value, 4);
+});
+
+it('refuses to replace or execute a different source after a native revision is reused (#10591 review)', async () => {
+  const editor = useViewerStore.getState();
+  editor.setScriptEditorContent('1');
+  editor.beginAssistantScriptTurn();
+  editor.setScriptEditorContent('2');
+  const inspected = await execute<{ revision: number; source: string }>('script.read');
+  assert.equal(inspected.source, '2');
+  const nativeRevision = useViewerStore.getState().scriptEditorRevision;
+  editor.rollbackAssistantScriptTurn();
+  editor.setScriptEditorContent('3');
+  assert.equal(useViewerStore.getState().scriptEditorRevision, nativeRevision);
+  await assert.rejects(execute('script.replace', { source: '4', expected_revision: inspected.revision }), /revision changed/);
+  await assert.rejects(execute('script.execute', { expected_revision: inspected.revision }), /revision changed/);
+  assert.equal(useViewerStore.getState().scriptEditorContent, '3');
 });
 
 it('script.open refuses to drop an unsaved draft that no saved script holds (#10591 review)', async () => {

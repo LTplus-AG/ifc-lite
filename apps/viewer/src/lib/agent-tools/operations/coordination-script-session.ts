@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { isScriptWithinSizeLimit, type SaveResult } from '@/lib/scripts/persistence';
 import { useViewerStore } from '@/store';
+import { scriptAdmissionRevision } from '@/store/slices/scriptSlice';
 import { emptySchema } from './contract';
 import { modelCoordination, coordination, textSchema, idSchema } from './coordination-common';
 import { internal, invalidInput, stale, unavailable } from './refusals';
@@ -10,11 +11,6 @@ import { internal, invalidInput, stale, unavailable } from './refusals';
 const unsavedEdits = (action: string): never => { throw unavailable(useViewerStore.getState().activeScriptId
   ? `The active script has unsaved edits; save it before ${action}.`
   : `The editor has an unsaved draft; keep it with script.create using the current editor source before ${action}.`); };
-// Rollback restores the native revision and advances the offset, so old operation tokens cannot recur.
-export function scriptAdmissionRevision(state: ReturnType<typeof useViewerStore.getState>): number {
-  return state.scriptEditorRevision + state.scriptEditorRevisionOffset;
-}
-
 export const coordinationScriptSessionOperations = [
   coordination('script.read', 'Inspect saved scripts, active source/revision, native execution state, diagnostics and terminal results.', ['read'], emptySchema, () => {
     const s = useViewerStore.getState(); return { saved: s.savedScripts, active_id: s.activeScriptId, source: s.scriptEditorContent, revision: scriptAdmissionRevision(s),

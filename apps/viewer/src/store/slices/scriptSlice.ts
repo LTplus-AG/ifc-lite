@@ -90,7 +90,7 @@ export interface ScriptSlice {
    * Shared across ScriptPanel, ChatPanel, CommandPalette and ExecutableCodeBlock.
    * useSandbox().execute() advances it before awaiting, so guards can detect
    * runs started by another component instance.
-   * This lives in the store instead so every instance reads/writes the same
+   * It lives in the store so every instance reads/writes the same
    * counter. A run captures the value right after bumping it and re-checks
    * it, synchronously, before every terminal store write that follows an
    * await (`setScriptResult`/`setScriptError`) — a stale run whose epoch no
@@ -117,6 +117,7 @@ export interface ScriptSlice {
   scriptPanelVisible: boolean;
   scriptDeleteConfirmId: string | null;
   scriptEditorRevision: number;
+  /** Advanced only by rollback; read through `scriptAdmissionRevision`. */
   scriptEditorRevisionOffset: number;
   scriptEditorSelection: ScriptEditorSelection;
   scriptAppliedOpIds: Set<string>;
@@ -185,6 +186,14 @@ function loadStoredScriptPanelVisible(): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Rollback restores the native revision, so a later edit can reuse a number a
+ * client already holds. Adding the offset keeps agent revision tokens monotonic.
+ */
+export function scriptAdmissionRevision(state: Pick<ScriptSlice, 'scriptEditorRevision' | 'scriptEditorRevisionOffset'>): number {
+  return state.scriptEditorRevision + state.scriptEditorRevisionOffset;
 }
 
 export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> = (set, get) => ({
@@ -491,7 +500,7 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
       scriptEditorContent: snapshot.content,
       scriptEditorSelection: snapshot.selection,
       scriptEditorRevision: snapshot.revision,
-      scriptEditorRevisionOffset: state.scriptEditorRevisionOffset + state.scriptEditorRevision - snapshot.revision + 1,
+      scriptEditorRevisionOffset: scriptAdmissionRevision(state) + 1 - snapshot.revision,
       scriptEditorDirty: true,
       scriptAppliedOpIds: new Set(),
       scriptAssistantTurnSnapshot: null,

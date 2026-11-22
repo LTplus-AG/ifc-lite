@@ -176,24 +176,3 @@ export function clipPolygonByLine(
 
   return { ok: true, left, right };
 }
-
-/**
- * Test helper: is `p` strictly inside `polygon` (ray-cast). Used by
- * the slab-split tool to figure out which half the user clicked on
- * after committing the cut, so we can move selection to that half.
- */
-export function pointInPolygon(polygon: Point2D[], p: Point2D): boolean {
-  if (polygon.length < 3) return false;
-  let inside = false;
-  let j = polygon.length - 1;
-  for (let i = 0; i < polygon.length; i++) {
-    const a = polygon[i];
-    const b = polygon[j];
-    const intersects =
-      (a[1] > p[1]) !== (b[1] > p[1]) &&
-      p[0] < ((b[0] - a[0]) * (p[1] - a[1])) / (b[1] - a[1] + EPS) + a[0];
-    if (intersects) inside = !inside;
-    j = i;
-  }
-  return inside;
-}

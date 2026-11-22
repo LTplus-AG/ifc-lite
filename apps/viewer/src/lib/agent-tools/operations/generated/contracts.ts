@@ -20236,9 +20236,9 @@ export const operationContracts: readonly OperationContract[] = [
     "description": "Recompute native assignments using the live renderer’s canonical entity bounds; returns element_count (every element evaluated, assigned or not) and the timing (read the assignments with zones.read). Requires a mounted renderer; never fabricates an empty successful evaluation.",
     "needs": "viewer",
     "effects": [
-      "read"
+      "configuration"
     ],
-    "capability": "read",
+    "capability": "commands-and-edits",
     "inputSchema": {
       "type": "object",
       "properties": {},
@@ -20315,9 +20315,9 @@ export const operationContracts: readonly OperationContract[] = [
     "description": "Run native proved-solid volume apportionment for a current zone set. Returns apportioned_count, refused_count, refusals by reason (no-geometry, unproved-solid, ...) and timing; the per-element rows are stored and read through zones.read as apportioned and refused rows.",
     "needs": "viewer",
     "effects": [
-      "read"
+      "configuration"
     ],
-    "capability": "read",
+    "capability": "commands-and-edits",
     "inputSchema": {
       "type": "object",
       "properties": {

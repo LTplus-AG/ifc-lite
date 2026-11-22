@@ -2,15 +2,15 @@
 
 //! Item-level RTC and local-anchor selection and bounds publication.
 
-use super::frame_parts::mesh_bounds;
-use super::rtc_offset::raw_coordinate::rtc_rebase_benefits;
-use super::GeometryRouter;
+use super::super::frame_parts::mesh_bounds;
+use super::super::rtc_offset::raw_coordinate::rtc_rebase_benefits;
+use super::super::GeometryRouter;
 use crate::Mesh;
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 
 /// The nearest f32 that does not shrink the interval: rounds a minimum down
 /// and a maximum up, so an f32 box always encloses the f64 geometry.
-pub(super) fn enclosing_f32(value: f64, is_min: bool) -> f32 {
+pub(in crate::router) fn enclosing_f32(value: f64, is_min: bool) -> f32 {
     let rounded = value as f32;
     match (is_min, (rounded as f64).partial_cmp(&value)) {
         (true, Some(std::cmp::Ordering::Greater)) => rounded.next_down(),

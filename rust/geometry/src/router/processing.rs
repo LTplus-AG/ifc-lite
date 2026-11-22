@@ -5,7 +5,9 @@
 //! Core element processing: resolving representations, processing items, and caching.
 
 use super::frame_parts::single_frame;
-use super::raw_rebase::RawRebase;
+use self::raw_rebase::RawRebase;
+
+pub(crate) mod raw_rebase;
 use super::GeometryRouter;
 use crate::{Mesh, Result, SubMeshCollection};
 

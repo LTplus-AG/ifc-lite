@@ -26,7 +26,6 @@ pub(crate) mod mapped_item;
 pub(crate) mod processing;
 mod processor;
 mod product_admission;
-pub(crate) mod raw_rebase;
 mod rtc_offset;
 pub(crate) mod structural;
 pub(crate) mod textured;

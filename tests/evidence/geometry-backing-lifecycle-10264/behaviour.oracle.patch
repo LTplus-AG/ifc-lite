@@ -1,0 +1,11 @@
+diff --git a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
+--- a/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
++++ b/apps/viewer/src/lib/geometry-backing/store-backing-tap.ts
+@@ -182,7 +182,6 @@
+     const preTap = this.preTap.lost(modelId); if (preTap && !next.instancedLost) { next.instancedLost = true; next.lostAt = preTap; } // drawn before the tap
+     const begun = (previous?.chain ?? Promise.resolve()).then(async () => {
+       next.backing = await this.registry.begin(key, this.options);
+-      for (const old of next.retained.splice(0)) await this.registry.invalidate(old, 'Replaced by a committed generation');
+       if (next.replaced) next.backing.supersede(); // replaced again before it began
+       if (shards === 'withhold' || (shards === 'carry' && (!next.instancedLost || next.resupply))) {
+         // Resolved after the chain. A re-supplying predecessor holds only fresh shards; `withhold` keeps all the scene drew.

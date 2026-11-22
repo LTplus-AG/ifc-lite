@@ -21,7 +21,7 @@ import { fixtureModel } from '@/test/store-fixture';
 import { setGlobalRendererRef } from '../hooks/useBCF.js';
 import { modelIndices } from '@/lib/model-placement/model-indices';
 import { releaseCpuMeshBuffers } from '@/lib/geometry-cpu-release';
-import { enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
+import { drainInstancedShards, enqueueInstancedShards, instancedShardGeneration } from '@/store/instancedShardQueue';
 import { geometryBackingCommand } from '@/lib/geometry-backing/backing-debug-hook';
 import type { TapState } from '@/lib/geometry-backing/store-backing-tap';
 import { GeometryUnavailableError } from '@/lib/geometry-backing/geometry-readback';
@@ -69,6 +69,7 @@ describe('exports over released geometry', () => {
     try {
       await geometryBackingCommand(store, undefined, { action: 'start', options: { database: { name: `export-readback-${process.pid}`, locks: null } } as never });
       enqueueInstancedShards('exp', [shardBytes(77)], instancedShardGeneration());
+      drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); }); // drawn before the seal
       const [status] = await geometryBackingCommand(store, undefined, { action: 'seal' }) as Array<{ complete: boolean }>;
       assert.equal(status.complete, true);
       const range = { modelId: 'exp', idOffset: 0, maxExpressId: 100 };
@@ -319,6 +320,7 @@ it('#10887 unscoped mixed exports combine backed geometry with resident flat and
       database: { name: `mixed-resident-export-${process.pid}`, locks: null },
     } as never });
     enqueueInstancedShards('mixed-A', [shardBytes(77)], instancedShardGeneration());
+    drainInstancedShards((shards, settle) => { for (const shard of shards) settle(shard, 'uploaded'); }); // drawn before the seal
     await geometryBackingCommand(source, undefined, { action: 'seal' });
     releaseCpuMeshBuffers(a.meshes);
     const combined: GeometryResult = { ...a, meshes: [...a.meshes, ...b.meshes], totalTriangles: 2, totalVertices: 6 };

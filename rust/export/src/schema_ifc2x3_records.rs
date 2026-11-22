@@ -10,7 +10,7 @@ use std::collections::HashMap;
 
 use crate::step_log::format_step_real;
 use crate::step_record_frame::{record_frame, record_head};
-use crate::step_slot::slots_of;
+use crate::step_slot::{slot_is, slots_of};
 
 pub(crate) const LOCAL: &str = "IFCLOCALPLACEMENT";
 pub(crate) const GRID_PLACEMENT: &str = "IFCGRIDPLACEMENT";
@@ -104,7 +104,7 @@ pub(crate) fn triple(v: &[f64]) -> String {
 }
 
 pub(crate) fn is_dollar(token: &str) -> bool {
-    token.trim() == "$"
+    slot_is(token, "$")
 }
 
 pub(crate) struct Records<'a> {

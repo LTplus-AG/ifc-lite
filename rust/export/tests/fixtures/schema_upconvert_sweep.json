@@ -2925,6 +2925,13 @@
   {"why":"#10824 reconciled by its attribute map (IFCELECTRICDISTRIBUTIONPOINT 10 -> IFCELECTRICDISTRIBUTIONBOARD 9)","from":"IFC2X3","to":"IFC4","line":"#7=IFCELECTRICDISTRIBUTIONPOINT('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');","expect":"#7=IFCELECTRICDISTRIBUTIONBOARD('a0','a1','a2','a3','a4','a5','a6','a7','a8');","lost":["UserDefinedFunction"]},
   {"why":"#10824 reconciled by its attribute map (IFCELECTRICDISTRIBUTIONPOINT 10 -> IFCELECTRICDISTRIBUTIONBOARD 9)","from":"IFC2X3","to":"IFC4X3","line":"#7=IFCELECTRICDISTRIBUTIONPOINT('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');","expect":"#7=IFCELECTRICDISTRIBUTIONBOARD('a0','a1','a2','a3','a4','a5','a6','a7','a8');","lost":["UserDefinedFunction"]},
   {"why":"#10824 reconciled by its attribute map (IFCELECTRICDISTRIBUTIONBOARD 9 -> IFCELECTRICDISTRIBUTIONPOINT 10)","from":"IFC4","to":"IFC2X3","line":"#7=IFCELECTRICDISTRIBUTIONBOARD('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCELECTRICDISTRIBUTIONPOINT('a0','a1','a2','a3','a4','a5','a6','a7','a8',$);","lost":[]},
-  {"why":"#10824 reconciled by its attribute map (IFCELECTRICDISTRIBUTIONBOARD 9 -> IFCELECTRICDISTRIBUTIONPOINT 10)","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCELECTRICDISTRIBUTIONBOARD('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCELECTRICDISTRIBUTIONPOINT('a0','a1','a2','a3','a4','a5','a6','a7','a8',$);","lost":[]}
+  {"why":"#10824 reconciled by its attribute map (IFCELECTRICDISTRIBUTIONBOARD 9 -> IFCELECTRICDISTRIBUTIONPOINT 10)","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCELECTRICDISTRIBUTIONBOARD('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCELECTRICDISTRIBUTIONPOINT('a0','a1','a2','a3','a4','a5','a6','a7','a8',$);","lost":[]},
+  {
+   "why": "#11149 an already unset replaced slot keeps its STEP comment",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,'p',#8,1.,2.,0.5,0.6,$,$,0.8,$,/* not given */$);",
+   "expect": "#7=IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,'p',#8,1.,2.,0.5,0.6,$,$,0.8,$,/* not given */$,$,$,$);"
+  }
  ]
 }

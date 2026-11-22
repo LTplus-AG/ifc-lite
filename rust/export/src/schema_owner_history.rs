@@ -11,7 +11,7 @@
 //!
 //! Twin of `packages/export/src/schema-converter-owner-history.ts`.
 
-use crate::step_slot::split_top_level_args;
+use crate::step_slot::{slot_is, split_top_level_args};
 
 /// The owner history a downgrade writes into `$` OwnerHistory slots, and how
 /// many records it could not fill. One per export: the exporter resolves the
@@ -74,7 +74,7 @@ impl OwnerHistoryFill {
             return None;
         }
         let mut slots = split_top_level_args(&line[open + 1..close])?;
-        if slots.get(1).map(|s| s.trim()) != Some("$") {
+        if !slots.get(1).is_some_and(|slot| slot_is(slot, "$")) {
             return None;
         }
         let Some(reference) = self.reference else {

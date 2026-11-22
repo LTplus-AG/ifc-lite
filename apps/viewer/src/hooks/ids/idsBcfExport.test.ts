@@ -110,6 +110,26 @@ async function archive(project: BCFProject) {
 }
 
 describe('#7974 actual viewer IDS BCF export', () => {
+  it('attributes the download but omits panel attribution for a host-owned artifact (#10795 item 64)', async (t) => {
+    const { posthog } = await import('@/lib/analytics');
+    const events: string[] = [];
+    t.mock.method(posthog, 'capture', (event: string) => events.push(event));
+    const run = setup(false);
+    let artifact: Blob | undefined;
+    await runIdsBcfExport({ ...run.params, emit: blob => { artifact = blob; } });
+    assert.ok(artifact?.size);
+    assert.ok(!events.includes('export_completed'));
+    await runIdsBcfExport(run.params);
+    assert.equal(events.filter(event => event === 'export_completed').length, 1);
+  });
+  it('honors an explicit no-capture setting even for grouped topics (#10795 item 65)', async () => {
+    const run = setup(false, false);
+    let artifact: Blob | undefined;
+    await runIdsBcfExport({ ...run.params, explicitSnapshots: true, emit: blob => { artifact = blob; } });
+    assert.ok(artifact?.size);
+    assert.equal(run.renders.length, 0);
+    assert.equal(run.exported().topics.size, 1);
+  });
   it('frames a federated assembly through its descendants and writes one grouped snapshot', async () => {
     const run = setup(true, true);
     const before = { ...run.camera.getPosition() };

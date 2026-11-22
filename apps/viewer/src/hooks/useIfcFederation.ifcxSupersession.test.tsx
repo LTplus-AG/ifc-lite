@@ -165,3 +165,42 @@ it('a composition that fails on its own reports the error and ends its load UI',
   assert.equal(after.loadingFileName, null);
   assert.equal(compositionRow()?.outcome, 'failed');
 });
+
+it('#10591 refuses a stack replacement when IFC edits change during its file read', async (t) => {
+  const { viewerHost } = await import('@/test/agent-tools-fixture');
+  const { operationArtifacts } = await import('@/lib/agent-tools/operations/artifacts');
+  const { coordinationFinalControlOperations } = await import('@/lib/agent-tools/operations/coordination-final-controls');
+  const { attachCoordinationComposition } = await import('@/services/coordination-loader');
+  const { deferred } = await import('@/test/race');
+  cleanups.push(attachCoordinationComposition(hookApi!));
+
+  const model = fixtureModel('keep');
+  useViewerStore.getState().addModel(model);
+  const { mutationVersion } = useViewerStore.getState();
+  const source = await ifcxFile('base.ifcx').text();
+  const entered = deferred(), allowRead = deferred();
+  const arrayBuffer = File.prototype.arrayBuffer;
+  t.mock.method(File.prototype, 'arrayBuffer', async function (this: File) {
+    if (this.name === 'held.ifcx') {
+      entered.resolve();
+      await allowRead.promise;
+    }
+    return arrayBuffer.call(this);
+  });
+
+  const host = viewerHost();
+  const commit = <T,>(write: () => T) => write();
+  const operation = coordinationFinalControlOperations.find(op => op.id === 'layers.loadStack')!;
+  const pending = operation.execute({
+    files: [{ name: 'held.ifcx', content: source }],
+    expected_model_ids: [model.id],
+    expected_mutation_version: mutationVersion,
+  }, { host, commit, commitAsync: commit, ownGeometry: work => work(), retain() {}, artifacts: operationArtifacts(host, commit) });
+
+  await entered.promise;
+  useViewerStore.setState({ mutationVersion: mutationVersion + 1 });
+  const refused = assert.rejects(pending, /federation or IFC edits changed/);
+  await act(async () => { allowRead.resolve(); await refused; });
+  assert.equal(useViewerStore.getState().models.get(model.id), model);
+  assert.equal(useViewerStore.getState().mutationVersion, mutationVersion + 1);
+});

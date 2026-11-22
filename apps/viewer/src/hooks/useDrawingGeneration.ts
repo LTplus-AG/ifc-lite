@@ -371,13 +371,9 @@ export function useDrawingGeneration({
       generator = new Drawing2DGenerator();
       await generator.initialize();
       if (!isCurrent()) return;
-      // Resident meshes as they are; released ones read back chunk by chunk (#10264).
-      const instancedAtStart = instancedEpoch();
-      // Loaded on first drawing: the geometry source and mesh filter stay out of the eager bundle.
-      const drawingSource = await import('@/lib/drawing/drawing-geometry-context');
-      if (!isCurrent()) return;
-      // Every instanced occurrence must be visible to the drawing, or it does not draw.
-      assertInstancedReady(useViewerStore.getState(), getGlobalRenderer());
+      // Resident meshes as they are, released ones read back chunk by chunk (#10264); the source loads on first drawing.
+      const instancedAtStart = instancedEpoch(), drawingSource = await import('@/lib/drawing/drawing-geometry-context');
+      if (!isCurrent()) return; assertInstancedReady(useViewerStore.getState(), getGlobalRenderer()); // every instanced occurrence is visible to it
       const geometry = await drawingSource.liveDrawingGeometry(geometryResult.meshes, isCurrent);
       if (!isCurrent()) return;
 

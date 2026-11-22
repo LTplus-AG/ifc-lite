@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { viewerDrawingAnnotations } from '@/lib/export/viewer-drawing-annotations';
-import { StepExporter, countStepEntities, type SectionExportOptions, type StepExportOptions } from '@ifc-lite/export';
+import { countStepEntities, type SectionExportOptions, type StepExportOptions } from '@ifc-lite/export';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { prepareAppearanceSerialization } from '../appearance/serialization.js';
@@ -27,6 +27,7 @@ export async function exportModelStep(input: {
   options: StepExportOptions;
   scheduleState: ExportScheduleState | null;
 }) {
+  const { StepExporter } = await import('@/lib/export/step-export-runtime');
   const { modelId, options } = input;
   const portable = stepExportSource(input.dataStore, input.mutationView, modelId);
   const dataStore = portable?.dataStore ?? input.dataStore;

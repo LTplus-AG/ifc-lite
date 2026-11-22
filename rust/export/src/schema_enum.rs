@@ -261,7 +261,7 @@ impl ConversionChecks {
         Ok(count + body.finish_with(|text| self.finish_typed_properties(text, ids))?)
     }
 
-    pub(crate) fn finish_typed_properties(&mut self, text: &str, ids: crate::step_ids::IdAllocator) -> Option<(String, usize)> {
+    pub(crate) fn finish_typed_properties(&mut self, text: &[u8], ids: crate::step_ids::IdAllocator) -> Option<(Vec<u8>, usize)> {
         self.typed_properties.finish(text, ids, &mut self.ifc4_slots, &mut self.attribute_values_dropped, &mut self.structural)
     }
 

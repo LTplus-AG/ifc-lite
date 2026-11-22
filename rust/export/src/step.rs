@@ -52,8 +52,7 @@ pub fn export_step_with_diagnostics(content: &[u8], opts: &StepOptions) -> std::
     // this same `io::Result`, see `schema_unrepresented::UnrepresentedEntityError`'s
     // `From` impl) — genuinely fallible now, unlike the `.expect` this replaced.
     let (stats, warnings) = emit(content, opts, &mut buf)?;
-    // Every byte came from the source by way of `from_utf8_lossy`, or from a
-    // `format!`, so this validates rather than converts.
+    // Source records and generated records are decoded before writing.
     let out = String::from_utf8(buf).expect("the writer emits UTF-8");
     Ok((out, stats, warnings))
 }
@@ -250,7 +249,7 @@ fn emit<W: std::io::Write>(
     for id in order {
         if included.contains(id) && !flatten.drops(*id) && !checks.drops(*id) {
             if let Some(&(s, e)) = line_of.get(id) {
-                let raw = String::from_utf8_lossy(&content[s..e]);
+                let raw = crate::schema_typed_properties::source_text(&content[s..e], checks.typed_properties.enabled);
                 // Apply root-attribute edits first (original-schema positions), then convert.
                 let edited = match merge_edits(muts_by_id.get(id), repointed.get(id)) {
                     Some(edits) => {
@@ -282,7 +281,7 @@ fn emit<W: std::io::Write>(
     // through `convert_step_line` like every other record.
     for (copy_id, source_id, edits) in copies.iter().filter(|c| !flatten.drops(c.0)) {
         if let Some(&(s0, e0)) = line_of.get(source_id) {
-            let raw = String::from_utf8_lossy(&content[s0..e0]);
+            let raw = crate::schema_typed_properties::source_text(&content[s0..e0], checks.typed_properties.enabled);
             // The caller's edits to the record belong to the copy too: the
             // copy is this element's version of that record, not a snapshot
             // taken before the caller touched it. Repointings do not, which is

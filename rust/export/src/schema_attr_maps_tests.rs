@@ -217,6 +217,7 @@ fn latin1_data_keeps_typed_mass_density_in_all_step_writers_10797() {
     let (logged, _) = crate::export_step_with_log(source, &opts, &crate::MutationLog::default()).unwrap();
     let merged = crate::export_merged(&[source], &crate::MergedOptions { schema: opts.schema, ..Default::default() });
     for (writer, output) in [("direct", direct), ("logged", logged), ("merged", merged)] {
+        assert!(output.contains("IFCMATERIAL('Béton',$,$);"), "{writer} damaged the material name:\n{output}");
         assert!(output.contains("IFCPROPERTYSINGLEVALUE('MassDensity',$,IFCMASSDENSITYMEASURE(42.),$);"),
             "{writer} dropped MassDensity:\n{output}");
     }

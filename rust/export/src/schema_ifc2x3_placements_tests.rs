@@ -97,7 +97,9 @@ fn typed_property_finish_runs_on_a_raw_latin1_held_body_10797() {
     writeln!(body, "{converted}").unwrap();
     let added = checks.finish(body, None, crate::step_ids::IdAllocator::after(2)).unwrap();
     assert_eq!(added, 1);
-    let text = String::from_utf8(output).unwrap();
+    let original = b"#1=IFCMATERIAL('B\xe9ton',$,$);\n";
+    assert!(output.starts_with(original), "{output:?}");
+    let text = std::str::from_utf8(&output[original.len()..]).unwrap();
     assert!(text.contains("#2=IFCMATERIALPROPERTIES('Pset_MaterialCommon',$,(#3),#1);"), "{text}");
     assert!(text.contains("#3=IFCPROPERTYSINGLEVALUE('MassDensity',$,IFCMASSDENSITYMEASURE(42.),$);"), "{text}");
 }

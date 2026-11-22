@@ -31,13 +31,11 @@ impl<'w> Body<'w> {
         self.finish_with(|_| None)
     }
 
-    pub(crate) fn finish_with(self, typed_properties: impl FnOnce(&str) -> Option<(String, usize)>) -> io::Result<isize> {
+    pub(crate) fn finish_with(self, typed_properties: impl FnOnce(&[u8]) -> Option<(Vec<u8>, usize)>) -> io::Result<isize> {
         let Some(held) = self.held else { return Ok(0) };
         if self.typed_properties {
-            // Match the STEP writers' lossy decoding so malformed bytes in
-            // another record cannot skip the typed-property rewrite.
-            if let Some((text, added)) = typed_properties(&String::from_utf8_lossy(&held)) {
-                self.out.write_all(text.as_bytes())?;
+            if let Some((bytes, added)) = typed_properties(&held) {
+                self.out.write_all(&bytes)?;
                 return Ok(added as isize);
             }
             return self.out.write_all(&held).map(|()| 0);

@@ -60,8 +60,8 @@ pub(super) fn finish_typed_output(
     parents: super::single_parents::ParentClaims,
     offset: u32,
 ) {
-    if let Some((text, added)) = checks.finish_typed_properties(out, crate::step_ids::IdAllocator::after(offset)) {
-        *out = text;
+    if let Some((text, added)) = checks.finish_typed_properties(out.as_bytes(), crate::step_ids::IdAllocator::after(offset)) {
+        *out = String::from_utf8(text).expect("typed property rewrites preserve merged UTF-8 output");
         stats.written += added;
     }
     stats.warnings.extend(slot_fill.warnings());

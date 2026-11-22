@@ -182,7 +182,7 @@ fn validate_log_options(opts: &StepOptions) -> io::Result<()> {
 
 fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &mut W) -> io::Result<LogExportStats> {
     validate_log_options(opts)?;
-    let src = Source::index(content);
+    let mut src = Source::index(content);
     // A created entity never reuses a source id (the mutation layer's
     // watermark allocates past the file's highest one), so a log that creates
     // one under a source id, even one it deletes again, was written against
@@ -202,6 +202,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     let target = opts.schema.clone().unwrap_or_else(|| source_label.clone());
     let converting = opts.schema.is_some() && crate::schema_convert::needs_conversion(&source_label, &target);
 
+    src.preserve_latin1 = crate::schema_typed_properties::applies(&source_label, &target);
     let target_is_ifc2x3 = crate::schema_convert::targets_ifc2x3(&target);
     if target_is_ifc2x3 && log.georef_mutations.as_ref().is_some_and(super::georef::requests_anything) {
         return Err(invalid(format!("export_step_with_log: {}", super::georef::IFC2X3_REFUSAL)));

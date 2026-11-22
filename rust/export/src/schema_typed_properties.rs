@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! IFC2X3 typed material and profile properties as IFC4 property records.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 use ifc_lite_core::parser::{is_step_value, parse_ref, parse_step_real, skip_step_trivia};
@@ -23,6 +24,21 @@ fn lookup(ty: &str) -> Option<&'static Row> {
     IFC2X3_TYPED_PROPERTIES
         .binary_search_by_key(&upper.as_deref().unwrap_or(ty), |row| row.0)
         .ok().map(|i| &IFC2X3_TYPED_PROPERTIES[i])
+}
+
+/// Keep valid UTF-8 and preserve legacy Latin-1 bytes as their characters
+/// when a typed-property writer needs a UTF-8 representation.
+pub(crate) fn source_text(bytes: &[u8], preserve_latin1: bool) -> Cow<'_, str> {
+    if !preserve_latin1 { return String::from_utf8_lossy(bytes); }
+    if let Ok(text) = std::str::from_utf8(bytes) {
+        return Cow::Borrowed(text);
+    }
+    let mut text = String::with_capacity(bytes.len());
+    for chunk in bytes.utf8_chunks() {
+        text.push_str(chunk.valid());
+        text.extend(chunk.invalid().iter().copied().map(char::from));
+    }
+    Cow::Owned(text)
 }
 
 pub(crate) fn applies(from: &str, to: &str) -> bool {
@@ -110,22 +126,22 @@ impl TypedPropertyUpgrade {
     }
 
     pub(crate) fn finish(
-        &mut self, text: &str, mut ids: IdAllocator, slots: &mut Ifc4SlotCheck, dropped: &mut usize,
+        &mut self, text: &[u8], mut ids: IdAllocator, slots: &mut Ifc4SlotCheck, dropped: &mut usize,
         structural: &mut StructuralDiagnostics,
-    ) -> Option<(String, usize)> {
+    ) -> Option<(Vec<u8>, usize)> {
         if self.drafts.is_empty() {
             return None;
         }
         let mut scanner = EntityScanner::new(text);
-        let mut output = String::with_capacity(text.len());
+        let mut output = Vec::with_capacity(text.len());
         let mut appended = Vec::new();
         let mut copied = 0;
         while let Some((id, _, start, end)) = scanner.next_entity() {
             let Some(draft) = self.drafts.remove(&id) else { continue };
-            let line = &text[start..end];
-            output.push_str(&text[copied..start]);
+            let line = source_text(&text[start..end], true);
+            output.extend_from_slice(&text[copied..start]);
             copied = end;
-            if let Some(replacement) = draft.emit(line, &mut ids, &mut appended) {
+            if let Some(replacement) = draft.emit(&line, &mut ids, &mut appended) {
                 let restored: usize = draft.groups.iter().map(|group| group.properties.len()).sum();
                 *dropped = dropped.saturating_sub(restored);
                 if draft.check_ifc4_slots {
@@ -134,19 +150,19 @@ impl TypedPropertyUpgrade {
                         structural.restore_omitted_value(draft.source_type, attribute, "IFC4");
                     }
                 }
-                output.push_str(&replacement);
+                output.extend_from_slice(replacement.as_bytes());
             } else {
                 self.refused += 1;
                 if draft.check_ifc4_slots {
-                    slots.count(line);
+                    slots.count(&line);
                 }
-                output.push_str(line);
+                output.extend_from_slice(&text[start..end]);
             }
         }
-        output.push_str(&text[copied..]);
+        output.extend_from_slice(&text[copied..]);
         for line in &appended {
-            output.push_str(line);
-            output.push('\n');
+            output.extend_from_slice(line.as_bytes());
+            output.push(b'\n');
         }
         Some((output, appended.len()))
     }

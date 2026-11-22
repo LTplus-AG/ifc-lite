@@ -86,6 +86,27 @@ describe('native Clash operation parity (#10525 follow-up)', () => {
     assert.equal(result.isError, true);
     assert.equal(useViewerStore.getState().clashRunSeq, seq);
   });
+  it('installs single-element focus before framing and preserves selection on missing fallback (#11060)', async t => {
+    const { run_seq } = value<{ run_seq: number }>(await call('clash.run', runInput(), true));
+    const initial = useViewerStore.getState(), result = initial.clashResult!;
+    const pair = result.clashes[0];
+    const framed = t.mock.fn(() => assert.ok(useViewerStore.getState().selectedEntityIds.has(pair.a.ref)));
+    useViewerStore.setState({ cameraCallbacks: { frameSelection: framed } });
+    t.after(() => useViewerStore.setState({ cameraCallbacks: initial.cameraCallbacks }));
+    const input = { clash_ids: [pair.id], run_seq, element: 'a', mode: 'highlight' };
+    value(await call('clash.focus', input, true));
+    assert.ok(useViewerStore.getState().selectedEntityIds.has(pair.a.ref));
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+    assert.equal(framed.mock.callCount(), 1);
+    const selected = useViewerStore.getState().selectedEntityIds;
+    useViewerStore.setState({ clashRawResult: null, clashResult: { ...result, clashes: [
+      { ...pair, a: { ...pair.a, model: 'unloaded', ref: Number.MAX_SAFE_INTEGER } }, ...result.clashes.slice(1),
+    ] } });
+    const absent = await call('clash.focus', input, true);
+    assert.equal(absent.errorCode, 'UNSUPPORTED_OPERATION', absent.text);
+    assert.equal((absent.structured as { reason: string }).reason, 'unavailable');
+    assert.equal(useViewerStore.getState().selectedEntityIds, selected);
+  });
   it('preserves native unavailable refusals for unresolved clash pairs and groups (#10871)', async () => {
     await seedCoincidentWalls(1, 3);
     const { run_seq } = value<{ run_seq: number }>(await call('clash.run', runInput(), true));

@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useViewerStore } from '@/store';
+import { MAX_DEFINITIONS } from '@/lib/validation/definition-library';
 import { operation, viewerOperation, emptySchema } from './contract';
 import { assertToolActive } from '../cancellation';
 import type { ValidationReport } from '@ifc-lite/ids';
@@ -68,12 +69,16 @@ export const nativeValidationOperations = [
       const parsed = parseRuleSetFile(parseJsonInput(i.content, 'content')); if (!parsed.ok) throw invalidInput('invalid-value', parsed.error);
       return out(c.commit(() => { libraryRevision(i.definition_revision); const s = useViewerStore.getState();
         if (i.action === 'rules.draft') s.setValidationRuleSetDraft(parsed.file);
+        else if (!i.id && s.validationDefinitions.entries.length >= MAX_DEFINITIONS)
+          throw unavailable('The native validation definition library is full.');
         else if (!s.addValidationDefinition({ kind: 'rules', file: parsed.file }, i.id || undefined)) throw invalidInput('refused', s.validationDefinitionsError ?? 'Native definition was refused.');
         return { revision: useViewerStore.getState().validationDefinitionRevision, storageError: useViewerStore.getState().validationDefinitionsError };
       }));
     }
     if (i.action === 'ids.import') {
       const document = decodedInput('content', () => parseIDS(i.content)); return out(c.commit(() => { libraryRevision(i.definition_revision); const s = useViewerStore.getState();
+        if (!i.id && s.validationDefinitions.entries.length >= MAX_DEFINITIONS)
+          throw unavailable('The native validation definition library is full.');
         if (!s.addValidationDefinition({ kind: 'ids', xml: i.content, document }, i.id || undefined)) throw invalidInput('refused', s.validationDefinitionsError ?? 'Native IDS definition was refused.');
         return { revision: useViewerStore.getState().validationDefinitionRevision, storageError: useViewerStore.getState().validationDefinitionsError };
       }));
@@ -176,6 +181,7 @@ export const nativeValidationOperations = [
     const report = s.savedValidationReports.find(row => row.id === i.id);
     if (!report && i.action !== 'restore' && i.action !== 'retry') throw invalidInput('unknown-target', 'Unknown saved native report.');
     expected();
+    if (i.action === 'rename' && !i.name.trim()) throw invalidInput('invalid-value', 'A validation report name cannot be empty.');
     if (i.action === 'reuseManual' && report) {
       c.commit(() => { expected(); if (!s.reuseManualValidationReport(report)) throw unavailable('Native manual report reuse is unavailable for the current fingerprints.'); });
       return out({ reused: i.id });

@@ -16,6 +16,7 @@ import type { OperationContext } from './contract';
 import { matchesJsonSnapshot, metadata, checkpoint, idSchema } from './analytics-common';
 import { decodedInput, invalidInput, stale, unavailable } from './refusals';
 import { mutationRefusal } from './mutation-refusal';
+import { requireModelSchedule } from './analytics-schedule-common';
 const output = { type: 'object', properties: { model_id: { type: ['string', 'null'] }, data: { type: ['object', 'null'] }, edited: { type: 'boolean' }, undo: { type: 'integer' }, redo: { type: 'integer' } }, required: ['model_id', 'data', 'edited', 'undo', 'redo'], additionalProperties: false };
 function inspect() { const s = useViewerStore.getState(); return { model_id: s.scheduleSourceModelId, data: s.scheduleData, edited: s.scheduleIsEdited, undo: s.scheduleUndoStack.length, redo: s.scheduleRedoStack.length }; }
 const receiptProperties = { model_id: output.properties.model_id, edited: output.properties.edited,
@@ -27,7 +28,7 @@ function receipt() {
 }
 function native(c: OperationContext) {
   const s = useViewerStore.getState(); const permission = mutationPermission(s, c.model.id); if (!permission.allowed) throw mutationRefusal(permission.reason, c.model.id);
-  if (s.scheduleSourceModelId !== c.model.id || !s.scheduleData) throw unavailable('Initialize the native timeline for this exact model first.');
+  requireModelSchedule(s, c.model.id);
   if (s.scheduleTransaction.active) throw unavailable('Finish the current Gantt edit before applying an operation.');
   checkpoint(c); return s;
 }
@@ -35,9 +36,8 @@ function task(c: OperationContext, id: string) { const s = native(c); const row 
 const write = (id: string, description: string) => ({ ...metadata(id, 'gantt', description, ['model'], receiptOutput), policy: { model: 'native-reviewed' as const } });
 export const analyticsScheduleEditOperations = [
   operation(metadata('schedule.nativeData', 'gantt', 'Read the actual Gantt edit snapshot and its own native undo/redo history; unlike STEP extraction this includes generated and edited tasks.', ['read'], output), emptySchema, (_, c) => {
-    const snapshot = inspect();
-    if (snapshot.model_id !== c.model.id) throw unavailable('No native timeline for the requested model.');
-    return snapshot;
+    requireModelSchedule(useViewerStore.getState(), c.model.id);
+    return inspect();
   }),
   operation(metadata('schedule.initialize', 'gantt', 'Initialize the native timeline for the explicitly targeted model using the effective parser extraction. Refuses replacing an edited timeline.', ['configuration'], receiptOutput), emptySchema, (_, c) => {
     const s = useViewerStore.getState(); if (s.scheduleTransaction.active || s.scheduleIsEdited || s.scheduleData?.tasks.some(task => !task.expressId || task.expressId <= 0)) {

@@ -8,7 +8,7 @@
  */
 
 import type { StateCreator } from 'zustand';
-import type { SavedScript } from '../../lib/scripts/persistence.js';
+import type { SavedScript, SaveResult } from '../../lib/scripts/persistence.js';
 import { loadSavedScripts, saveScripts, validateScriptName, canCreateScript, isScriptWithinSizeLimit } from '../../lib/scripts/persistence.js';
 import type { ScriptEditOperation, ScriptEditorSelection, ScriptEditorTextChange } from '../../lib/llm/types.js';
 import { applyScriptEditOperations } from '../../lib/llm/script-edit-ops.js';
@@ -129,10 +129,10 @@ export interface ScriptSlice {
   scriptAssistantTurnSnapshot: ScriptAssistantTurnSnapshot | null;
 
   // Actions
-  createScript: (name: string, code?: string) => string;
-  saveActiveScript: () => void;
-  deleteScript: (id: string) => void;
-  renameScript: (id: string, name: string) => void;
+  createScript: (name: string, code?: string, persistence?: { onResult: (result: SaveResult) => void; required: boolean }) => string;
+  saveActiveScript: () => SaveResult | undefined;
+  deleteScript: (id: string) => SaveResult;
+  renameScript: (id: string, name: string) => SaveResult | undefined;
   setActiveScriptId: (id: string | null) => void;
   setScriptEditorContent: (content: string) => void;
   setScriptExecutionState: (state: ScriptExecutionState) => void;
@@ -213,13 +213,12 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
   scriptAssistantTurnSnapshot: null,
 
   // Actions
-  createScript: (name, code) => {
+  createScript: (name, code, persistence) => {
     const { savedScripts } = get();
     if (!canCreateScript(savedScripts.length)) {
       console.warn('[Scripts] Maximum script limit reached');
       return '';
     }
-
     const validName = validateScriptName(name) ?? 'Untitled Script';
     const scriptCode = code ?? DEFAULT_CODE;
     if (!isScriptWithinSizeLimit(scriptCode)) {
@@ -237,6 +236,10 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
       version: 1,
     };
     const updated = [...savedScripts, script];
+    const result = saveScripts(updated);
+    if (!result.ok) console.warn('[Scripts] Save failed:', result.message);
+    persistence?.onResult(result);
+    if (persistence?.required && !result.ok) return '';
     set({
       savedScripts: updated,
       activeScriptId: id,
@@ -246,10 +249,6 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
       scriptEditorSelection: { from: script.code.length, to: script.code.length },
       scriptAppliedOpIds: new Set(),
     });
-    const result = saveScripts(updated);
-    if (!result.ok) {
-      console.warn('[Scripts] Save failed:', result.message);
-    }
     return id;
   },
 
@@ -261,11 +260,10 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
         ? { ...s, code: scriptEditorContent, updatedAt: Date.now() }
         : s,
     );
-    set({ savedScripts: updated, scriptEditorDirty: false });
     const result = saveScripts(updated);
-    if (!result.ok) {
-      console.warn('[Scripts] Save failed:', result.message);
-    }
+    if (!result.ok) console.warn('[Scripts] Save failed:', result.message);
+    set({ savedScripts: updated, scriptEditorDirty: !result.ok }); // a refused write leaves the edits unsaved
+    return result;
   },
 
   deleteScript: (id) => {
@@ -282,7 +280,7 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
       scriptEditorSelection: { from: scriptEditorContent.length, to: scriptEditorContent.length },
       scriptAppliedOpIds: new Set(),
     });
-    saveScripts(updated);
+    return saveScripts(updated);
   },
 
   renameScript: (id, name) => {
@@ -292,7 +290,7 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
       s.id === id ? { ...s, name: validName, updatedAt: Date.now() } : s,
     );
     set({ savedScripts: updated });
-    saveScripts(updated);
+    return saveScripts(updated);
   },
 
   setActiveScriptId: (activeScriptId) => {

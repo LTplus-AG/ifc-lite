@@ -16,6 +16,26 @@ const IFC2X3 = `#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);
 #7=IFCDOCUMENTREFERENCE('b.pdf','B1',$);`;
 
 describe('IfcDocumentInformation <-> IfcDocumentReference link (#10846)', () => {
+  it('excludes a document reference superseded by a deferred property atom (#11007)', async () => {
+    const ifc4 = `#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);
+#5=IFCDOCUMENTINFORMATION('D1','Doc',$,$,$,$,$,$,$,$,$,$,$,$,$,$,$);
+#6=IFCDOCUMENTREFERENCE('a.pdf','A1',$,$,#5);
+#7=IFCDOCUMENTREFERENCE('b.pdf','B1',$,$,#5);
+#6=IFCPROPERTYSINGLEVALUE('Replacement',$,IFCLABEL('Value'),$);`;
+    const bytes = new TextEncoder().encode(model('IFC4', ifc4));
+    const store = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, {
+      disableWorkerScan: true,
+      deferPropertyAtomIndex: true,
+    });
+    expect(store.entityIndex.byId.get(6)?.type).toBe('IFCDOCUMENTREFERENCE');
+    expect(store.deferredEntityIndex?.get(6)?.type).toBe('IFCPROPERTYSINGLEVALUE');
+    const report = analyzeConversionLoss(store, 'IFC4', 'IFC2X3');
+    expect(report.entries.find((e) => e.sourceType === 'IFCDOCUMENTREFERENCE'))
+      .toMatchObject({ expressIds: [7], droppedAttributes: ['Description'] });
+    expect(record(exportToStep(store, { schema: 'IFC2X3' }), 5))
+      .toBe("#5=IFCDOCUMENTINFORMATION('D1','Doc',$,(#7),$,$,$,$,$,$,$,$,$,$,$,$,$);");
+  });
+
   it('moves to each listed reference on an upgrade and back to the document on a downgrade', async () => {
     for (const schema of ['IFC4', 'IFC4X3'] as const) {
       const up = exportToStep(await parse(model('IFC2X3', IFC2X3)), { schema });

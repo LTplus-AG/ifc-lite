@@ -22,6 +22,7 @@ import { isFeatureEnabled } from '@/lib/features';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useBim } from './BimProvider.js';
 import { ExtensionHostService } from '@/services/extensions/host.js';
+import { attachCoordinationExtensions } from '@/services/coordination-hosts';
 import { isSafeMode } from '@/lib/safe-mode';
 import { toast } from '@/components/ui/toast';
 
@@ -42,6 +43,8 @@ export function ExtensionHostProvider({ children }: ExtensionHostProviderProps) 
   // Service identity must be stable across renders so subscribers don't
   // tear themselves down on every commit.
   const service = useMemo(() => new ExtensionHostService({ sdk: bim }), [bim]);
+
+  useEffect(() => attachCoordinationExtensions(service), [service]);
 
   const [, forceRender] = useState(0);
   useEffect(() => {

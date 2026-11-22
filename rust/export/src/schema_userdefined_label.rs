@@ -60,7 +60,7 @@ pub(crate) fn carry(source: &str, converted: String, cfrom: &str, cto: &str, dro
 }
 
 /// True when `slot` is `token` (any case) with only whitespace and comments around it.
-fn is_token(slot: &str, token: &str) -> bool {
+pub(crate) fn is_token(slot: &str, token: &str) -> bool {
     let bytes = slot.as_bytes();
     let Some(start) = ifc_lite_core::parser::skip_step_trivia(bytes, 0) else { return false };
     slot.get(start..start + token.len()).is_some_and(|t| t.eq_ignore_ascii_case(token))
@@ -72,7 +72,7 @@ fn is_userdefined(slot: &str) -> bool {
 }
 
 /// No value: `$`, `*` or nothing, comments aside.
-fn is_unset(slot: &str) -> bool {
+pub(crate) fn is_unset(slot: &str) -> bool {
     is_token(slot, "$") || is_token(slot, "*") || ifc_lite_core::parser::skip_step_trivia(slot.as_bytes(), 0) == Some(slot.len())
 }
 

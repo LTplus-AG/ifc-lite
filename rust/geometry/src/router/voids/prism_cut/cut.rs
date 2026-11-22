@@ -225,6 +225,31 @@ pub(super) fn cut_prism(
         return Err(4); // nothing to remove — a silent no-op belongs to the exact path
     }
 
+    let mut caps = reconstruct_caps(pf, &faces, &seams, tris, &aabbs, existing_floors)?;
+
+    if !partition_consistent(tris, &out, &inside, &aabbs) {
+        return Err(8);
+    }
+    if !has_measurable_region(&inside, &caps) {
+        return Err(4);
+    }
+
+    // The inside fragments and caps are not independently closed surfaces.
+    // Their divergence sums cannot measure removal (#4627). The extended
+    // cutter volumes instead bound the final audited result in the driver.
+    // The driver consolidates and audits the actual result before committing.
+    out.append(&mut caps);
+    Ok(out)
+}
+
+fn reconstruct_caps(
+    pf: &PrismFrame,
+    faces: &[Face],
+    seams: &[Vec<Seam>],
+    tris: &[PTri],
+    aabbs: &[(V3, V3)],
+    existing_floors: ExistingFloors,
+) -> Result<Vec<PTri>, usize> {
     // Canonical per-cap-plane breakpoints: the vertices of both adjacent
     // profiles plus every proper crossing between their ring edges. Injected
     // into the cap AND every strip bordering that plane, so the faces sharing
@@ -241,22 +266,9 @@ pub(super) fn cut_prism(
         if matches!(face, Face::Cap { j } if existing_floors.get(j).is_some_and(Option::is_some)) {
             continue;
         }
-        if !build_face_cap(pf, face, &seams[fi], &plane_pts, tris, &aabbs, &mut caps) {
+        if !build_face_cap(pf, face, &seams[fi], &plane_pts, tris, aabbs, &mut caps) {
             return Err(7);
         }
     }
-
-    if !partition_consistent(tris, &out, &inside, &aabbs) {
-        return Err(8);
-    }
-    if !has_measurable_region(&inside, &caps) {
-        return Err(4);
-    }
-
-    // The inside fragments and caps are not independently closed surfaces.
-    // Their divergence sums cannot measure removal (#4627). The extended
-    // cutter volumes instead bound the final audited result in the driver.
-    // The driver consolidates and audits the actual result before committing.
-    out.append(&mut caps);
-    Ok(out)
+    Ok(caps)
 }

@@ -103,7 +103,7 @@ export class NativeFlowRunner {
     const { resume, expectedDefaultModelId } = options;
     const defaultModelChanged = () =>
       expectedDefaultModelId !== undefined && useViewerStore.getState().activeModelId !== expectedDefaultModelId;
-    let finalized: FlowCheckpoint | null = null;
+    let finalized: FlowCheckpoint | null = null, paused: FlowCheckpoint | null = null, finalizeFailed = false;
     let claimed: FlowCheckpoint | null = null, terminal: RunResult | null = null, failure: string | null = null;
     try {
       // AI nodes get the Assistant's model, spending one root budget per run; a
@@ -118,7 +118,7 @@ export class NativeFlowRunner {
         throw new Error('The default model changed during workflow preflight. Inspect Flow state before running again.');
       }
       if (resume) {
-        const reserved = await claimReview(doc, preparedInputs, resume.id, true);
+        const reserved = await claimReview(doc, preparedInputs, resume.id);
         if (!reserved) throw new Error('the reviewed proposal could not be resumed');
         try {
           if (defaultModelChanged()) throw new Error('The default model changed while claiming the reviewed checkpoint.');
@@ -151,10 +151,11 @@ export class NativeFlowRunner {
       if (claimed) {
         finalized = await finishReview(result, undefined, claimed);
         claimed = null;
-        if (!finalized) throw new Error(FINALIZATION_FAILED);
+        finalizeFailed = !finalized;
+        if (finalizeFailed) throw new Error(FINALIZATION_FAILED);
       }
       // A proposal awaits review: nothing downstream ran. Save it before showing the run.
-      if (result.ok && result.review.length > 0) await pauseForReview({
+      if (result.ok && result.review.length > 0) paused = await pauseForReview({
         doc, result, inputs: preparedInputs, values: inputs ?? {}, budget: ai ? { ...ai.budget } : resume?.budget,
         canPublish: () => owned() && !session.controller.signal.aborted,
       });
@@ -165,7 +166,7 @@ export class NativeFlowRunner {
       failure = err instanceof Error ? err.message : String(err);
       if (claimed && !await finishReview(null, failure, claimed)) failure = `${failure} ${FINALIZATION_FAILED}`;
       if (owned()) {
-        const result = failure === FINALIZATION_FAILED ? terminal : null;
+        const result = finalizeFailed ? terminal : null;
         setFlowLastRun(result, failure, record(result ?? undefined));
       } else setFlowRunning(false);
     } finally {
@@ -179,7 +180,7 @@ export class NativeFlowRunner {
       this.running = false;
     }
     const heldCheckpoint = useFlowReview.getState().checkpoint;
-    const checkpoint = heldCheckpoint?.graphId === doc.id ? heldCheckpoint : null;
+    const checkpoint = paused ?? (heldCheckpoint?.graphId === doc.id ? heldCheckpoint : null);
     if (session.controller.signal.aborted) return { state: 'cancelled', result: terminal, error: failure, checkpoint: null };
     if (failure || !terminal?.ok) return { state: 'failed', result: terminal, error: failure ?? 'One or more native workflow nodes failed.', checkpoint: null };
     if (terminal.review.length) return { state: checkpoint?.state === 'prepared' ? 'paused' : 'failed', result: terminal,

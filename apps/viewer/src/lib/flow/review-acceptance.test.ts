@@ -31,7 +31,7 @@ import { viewerFlowAi } from './ai-host';
 import { browserCheckpointStore } from './checkpoint-store';
 import { flowExamples } from './examples';
 import { NativeFlowRunner } from './native-runner';
-import { approveReview, claimReview, finishReview, loadGraphReview, pauseForReview, rejectReview, useFlowReview } from './review-session';
+import { approveReview, claimReview, finishReview, loadGraphReview, pauseForReview, rejectReview, startReviewClaim, useFlowReview } from './review-session';
 import { flowRegistry, runFlowInViewer } from './runner';
 
 const initial = useViewerStore.getState();
@@ -133,8 +133,9 @@ test('#6923 the AI example pauses, writes nothing until approved, then resumes f
   assert.deepEqual(useFlowReview.getState().problem, { kind: 'refused', code: 'digest-mismatch', message: useFlowReview.getState().problem!.message });
   const approved = await approveReview(pending.proposalDigest, doc);
   assert.equal(approved?.state, 'reviewed');
-  const claimed = await claimVisibleReview(doc, {});
-  assert.equal(claimed?.state, 'applying');
+  const reserved = await claimVisibleReview(doc, {});
+  assert.equal(reserved?.state, 'applying');
+  const claimed = await startReviewClaim(reserved!);
 
   const replay = viewerFlowAi(claimed!.budget);
   const resumed = await runFlowInViewer({ doc, bim: model.bim, pin: activeTrackingPin()!, cache: new MemoCache(), ai: replay!.service, resume: resumeOutputs(claimed!) });
@@ -275,7 +276,9 @@ test('#10591 resume claims and finalizes the requested checkpoint while another 
   const second = await approveReview(useFlowReview.getState().checkpoint!.proposalDigest, doc);
   assert.ok(second && second.id !== first.id);
 
-  const claimed = await claimReview(doc, {}, first.id);
+  const reserved = await claimReview(doc, {}, first.id);
+  assert.ok(reserved);
+  const claimed = await startReviewClaim(reserved);
   assert.ok(claimed);
   assert.equal(claimed.id, first.id);
   const result = await runFlowInViewer({
@@ -288,7 +291,6 @@ test('#10591 resume claims and finalizes the requested checkpoint while another 
   assert.equal((await browserCheckpointStore.read(second.id))?.checkpoint.state, 'reviewed');
   assert.equal(useFlowReview.getState().checkpoint?.id, second.id);
 });
-
 
 for (const refusedWrites of [1, 2]) test(`#10591 a resumed flow with ${refusedWrites} refused finalization writes only retries the checkpoint`, async (t) => {
   const model = await openFlowSample();

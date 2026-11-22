@@ -12,11 +12,10 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import * as checkpointTransitions from './checkpoint-state.js';
 import { CheckpointNotPortableError, checkpointProposal, createCheckpoint, graphDigest, resumeOutputs, type FlowCheckpoint } from './checkpoint-record.js';
 import {
   approveCheckpoint, CheckpointError, claimCheckpoint, finishCheckpoint, MemoryCheckpointStore, parseCheckpoint,
-  recoverCheckpoint, rejectCheckpoint, updateCheckpoint,
+  recoverCheckpoint, rejectCheckpoint, releaseCheckpoint, startCheckpoint, updateCheckpoint,
 } from './checkpoint-state.js';
 import { FLOW_VERSION, type FlowDocument } from './document.js';
 import { NodeRegistry } from './registry.js';
@@ -670,7 +669,6 @@ it('recovers an expired unstarted claim while keeping started claims conservativ
   expect(recovered).toMatchObject({ state: 'reviewed', review: approved.review });
   expect(recovered?.claim).toBeUndefined();
 
-  const { releaseCheckpoint, startCheckpoint } = checkpointTransitions;
   expect(() => resumeOutputs(reserved)).toThrow(/started/);
   expect(() => finishCheckpoint(reserved, 'tab-a', { ok: false })).toThrow(/unstarted/);
   expect(() => startCheckpoint(reserved, structuredClone(reserved))).toThrow(/original/);

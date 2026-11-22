@@ -88,14 +88,16 @@ export function viewerSourceDigest(): string {
 export async function pauseForReview(input: {
   doc: FlowDocument; result: RunResult; inputs: Record<string, unknown>; values: Record<string, unknown>; budget?: unknown;
   canPublish?: () => boolean;
-}): Promise<void> {
+}): Promise<FlowCheckpoint | null> {
   const { values, canPublish = () => true, ...rest } = input;
   try {
     const checkpoint = createCheckpoint({ ...rest, registry: flowRegistry(), sourceDigest: viewerSourceDigest() });
     if (!(await browserCheckpointStore.write(checkpoint, null))) throw new Error('a checkpoint with this id already exists');
     if (canPublish()) useFlowReview.setState({ checkpoint, values, executionInputs: structuredClone(input.inputs), problem: null });
+    return checkpoint;
   } catch (error) {
     if (canPublish()) useFlowReview.setState({ checkpoint: null, problem: problemOf(error) });
+    return null;
   }
 }
 
@@ -155,12 +157,12 @@ export function rejectReview(): Promise<FlowCheckpoint | null> {
 }
 
 /** Claim the approved checkpoint for this tab's resume, against the graph and inputs it will run with. */
-export function claimReview(doc: FlowDocument, inputs: Record<string, unknown>, checkpointId: string, deferStart = false): Promise<FlowCheckpoint | null> {
+export function claimReview(doc: FlowDocument, inputs: Record<string, unknown>, checkpointId: string): Promise<FlowCheckpoint | null> {
   return transition((c) => {
     const registry = flowRegistry();
     const aiAhead = doc.nodes.some(node => !Object.hasOwn(c.outputs, node.id) && registry.get(node.type)?.requires?.backend?.includes(AI_FEATURE));
     if (aiAhead && !restoreRootBudget(c.budget)) throw new BudgetReceiptError('Resuming downstream AI nodes requires the original root budget receipt. Run the graph again.');
-    return claimCheckpoint(c, { owner: TAB_OWNER, graphDigest: graphDigest(doc, inputs, registry), sourceDigest: viewerSourceDigest(), leaseMs: REVIEW_LEASE_MS, deferStart });
+    return claimCheckpoint(c, { owner: TAB_OWNER, graphDigest: graphDigest(doc, inputs, registry), sourceDigest: viewerSourceDigest(), leaseMs: REVIEW_LEASE_MS, deferStart: true });
   }, checkpointId);
 }
 

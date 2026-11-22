@@ -162,10 +162,11 @@ export function startCheckpoint(checkpoint: FlowCheckpoint, reserved: FlowCheckp
   assertTimestamp(now);
   const { reservationId: _reservation, ...claim } = unstartedClaim(checkpoint, reserved);
   if (!hasOwnedClaim(reserved)) throw new CheckpointError('not-owner', 'starting requires the original successful store claim');
-  if (digest(checkpoint) !== digest(reserved)) throw new CheckpointError('not-owner', 'the reserved checkpoint changed before starting');
+  const before = digest(checkpoint);
+  if (before !== digest(reserved)) throw new CheckpointError('not-owner', 'the reserved checkpoint changed before starting');
   if (claim.leaseUntil <= now) throw new CheckpointError('not-owner', 'the review claim expired before starting');
   const next: FlowCheckpoint = { ...checkpoint, updatedAt: now, claim };
-  validatedClaims.set(next, { before: digest(checkpoint), after: digest(next) });
+  validatedClaims.set(next, { before, after: digest(next) });
   return next;
 }
 
@@ -173,6 +174,11 @@ export function startCheckpoint(checkpoint: FlowCheckpoint, reserved: FlowCheckp
 export function releaseCheckpoint(checkpoint: FlowCheckpoint, reserved: FlowCheckpoint, now = Date.now()): FlowCheckpoint {
   assertTimestamp(now);
   unstartedClaim(checkpoint, reserved);
+  if (!hasOwnedClaim(reserved)) throw new CheckpointError('not-owner', 'releasing requires the original successful store claim');
+  return toReviewed(checkpoint, now);
+}
+
+function toReviewed(checkpoint: FlowCheckpoint, now: number): FlowCheckpoint {
   const { claim: _claim, ...reviewed } = checkpoint;
   return { ...reviewed, state: 'reviewed', updatedAt: now };
 }
@@ -195,7 +201,7 @@ export function finishCheckpoint(checkpoint: FlowCheckpoint, owner: string, outc
 export function recoverCheckpoint(checkpoint: FlowCheckpoint, now = Date.now()): FlowCheckpoint | null {
   assertTimestamp(now);
   if (checkpoint.state !== 'applying' || (checkpoint.claim && checkpoint.claim.leaseUntil > now)) return null;
-  if (checkpoint.claim?.reservationId) return releaseCheckpoint(checkpoint, checkpoint, now);
+  if (checkpoint.claim?.reservationId) return toReviewed(checkpoint, now);
   return {
     ...checkpoint,
     state: 'partially-committed',

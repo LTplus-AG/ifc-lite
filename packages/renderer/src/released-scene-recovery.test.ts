@@ -74,6 +74,20 @@ describe('released scene device recovery (#10264)', () => {
     assert.equal(template.positions.length + template.normals.length + template.indices.length, 0, 'released like the original release did');
   });
 
+  it('#10937 a rebuild that restages model A, then fails on model B, leaves nothing of A behind', async () => {
+    const { renderer, calls } = lostReleasedRenderer();
+    const scene = renderer.getScene() as unknown as { instancedTemplateCpu: unknown[] };
+    renderer['scene']['resetReleasedForRebuild'] = () => { calls.push('reset'); scene.instancedTemplateCpu = []; }; // as the real reset drops templates
+    renderer.setReleasedSceneRebuild(async () => {
+      calls.push('rebuild');
+      scene.instancedTemplateCpu = [{ positions: new Float32Array(9), normals: new Float32Array(9), indices: new Uint32Array(3) }]; // A restaged
+      return false; // B's backing was incomplete
+    });
+    assert.equal((await renderer.recoverDevice()).ok, false);
+    assert.deepStrictEqual(calls.slice(-2), ['rebuild', 'reset'], 'the failed attempt resets what it restaged');
+    assert.deepStrictEqual(scene.instancedTemplateCpu, [], "no restaged template (or its CPU vertices) of A survives the failure");
+  });
+
   it('#10937 an incomplete first attempt, then a complete retry, restores the ORIGINAL pre-loss instanced membership', async () => {
     const { renderer } = lostReleasedRenderer();
     const scene = renderer.getScene() as unknown as { getInstancedModelIndices: () => number[] };

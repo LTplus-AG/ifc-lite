@@ -4,6 +4,7 @@
 import type { SceneContents } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import { supersedeReleasedReplays } from '@/lib/geometry-backing/released-scene-replay';
+import { noteSceneGeometry } from '@/lib/released-mesh-provenance';
 
 // Non-federated default: only the primary model (modelIndex 0, what
 // `addInstancedShard` has always defaulted new templates to) survives a
@@ -29,6 +30,7 @@ export function reshapeSceneKeepingPresentInstanced(
 ): void {
   const present = presentInstancedModelIndices ?? DEFAULT_PRESENT_INSTANCED_MODEL_INDICES;
   supersedeReleasedReplays(); // a replay in flight must not upload into the reshaped scene (#10264)
+  noteSceneGeometry(geometry); // and a released device recovery rebuilds what the scene draws
   if (scene.clearFlatGeometryForRebuild) scene.clearFlatGeometryForRebuild(geometry, present, appearanceSourceGeometry);
   else scene.clearFlatGeometry();
   for (const modelIndex of scene.getInstancedModelIndices()) {
@@ -45,5 +47,6 @@ export function reshapeSceneKeepingPresentInstanced(
  */
 export function clearSceneSupersedingReplays(scene: Pick<SceneContents, 'clear'>): void {
   supersedeReleasedReplays();
+  noteSceneGeometry([]); // the cleared scene draws nothing: a released device recovery must not draw an unloaded model back
   scene.clear();
 }

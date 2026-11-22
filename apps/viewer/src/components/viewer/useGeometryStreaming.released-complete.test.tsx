@@ -23,30 +23,26 @@ import '@/test/setup-dom.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, useMemo, useRef, useState } from 'react';
-import { createLoadTracer, type LoadTraceSnapshot } from '@ifc-lite/load-trace';
+import { createLoadTracer } from '@ifc-lite/load-trace';
 import type { CoordinateInfo, MeshData } from '@ifc-lite/geometry';
 import type { Renderer } from '@ifc-lite/renderer';
 import { Camera } from '../../../../../packages/renderer/src/camera.js';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { modelIndices } from '@/lib/model-placement/model-indices.js';
-import { flushPlacementGeometry } from '@/lib/model-placement/bounds-revision.js';
 import { publishLoadTrace } from '@/lib/perf/activeLoadTrace.js';
-import { isSceneSettled } from '@/lib/scene-settled.js';
 import { appearanceInstanceScene } from '@/test/appearance-instance-scene.js';
 import { cleanup, render } from '@/test/render.js';
 import { useFederatedGeometry } from './useFederatedGeometry.js';
 import { useGeometryStreaming } from './useGeometryStreaming.js';
 import { releaseCpuMeshBuffers } from '@/lib/geometry-cpu-release';
 import { releasedReplaysIdle, supersedeReleasedReplays } from '@/lib/geometry-backing/released-scene-replay';
-import { setPendingSceneSnapshot, withdrawPendingSceneSnapshot } from './sceneSnapshotOwnership.js';
+import { withdrawPendingSceneSnapshot } from './sceneSnapshotOwnership.js';
 
-let setStreaming: (streaming: boolean) => void = () => {};
 const adoption = {};
 
 function Viewport({ renderer }: { renderer: Renderer }) {
   const s = useViewerStore();
-  const [isStreaming, set] = useState(false);
-  setStreaming = set;
+  const [isStreaming] = useState(false);
   const indices = useMemo(() => modelIndices(s.models), [s.models]);
   const geometry = useFederatedGeometry(s.models, s.geometryResult, indices, s.geometryContentVersion);
   const rendererRef = useRef<Renderer | null>(renderer);

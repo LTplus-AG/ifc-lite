@@ -147,7 +147,10 @@ export class NativeFlowRunner {
         if (!finalized) throw new Error(FINALIZATION_FAILED);
       }
       // A proposal awaits review: nothing downstream ran. Save it before showing the run.
-      if (result.ok && result.review.length > 0) await pauseForReview({ doc, result, inputs: preparedInputs, values: inputs ?? {}, budget: ai ? { ...ai.budget } : resume?.budget });
+      if (result.ok && result.review.length > 0) await pauseForReview({
+        doc, result, inputs: preparedInputs, values: inputs ?? {}, budget: ai ? { ...ai.budget } : resume?.budget,
+        canPublish: () => owned() && !session.controller.signal.aborted,
+      });
       session.check();
       if (owned()) setFlowLastRun(result, undefined, record(result));
       else setFlowRunning(false);

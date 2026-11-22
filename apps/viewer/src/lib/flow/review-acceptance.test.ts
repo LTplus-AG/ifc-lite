@@ -323,3 +323,33 @@ for (const refusedWrites of [1, 2]) test(`#10591 a resumed flow with ${refusedWr
   }
   assert.equal(attempts, 2);
 });
+
+test('#10591 a cancelled pause does not replace another graph’s review when storage settles', async (t) => {
+  const { deferred } = await import('@/test/race');
+  const model = await openFlowSample();
+  useViewerStore.setState({ chatActiveModel: 'openai/gpt-4o-mini' });
+  const doc = example();
+  const other: FlowDocument = { ...doc, id: 'other-graph-in-review' };
+  await pausedRun(model, other);
+  const otherCheckpoint = useFlowReview.getState().checkpoint!;
+  useViewerStore.getState().openContributedFlow(doc);
+  const entered = deferred<string>(), settleWrite = deferred();
+  const write = browserCheckpointStore.write.bind(browserCheckpointStore);
+  t.mock.method(browserCheckpointStore, 'write', async (checkpoint: FlowCheckpoint, expected: number | null) => {
+    if (checkpoint.graphId === doc.id && checkpoint.state === 'prepared') {
+      entered.resolve(checkpoint.id);
+      await settleWrite.promise;
+    }
+    return write(checkpoint, expected);
+  });
+
+  const run = new NativeFlowRunner(model.bim, async () => assert.fail('the graph needs no other model')).run();
+  const pausedId = await entered.promise;
+  useViewerStore.getState().openContributedFlow(other);
+  await loadGraphReview(other.id);
+  assert.equal(useFlowReview.getState().checkpoint?.id, otherCheckpoint.id);
+  settleWrite.resolve();
+  assert.equal((await run).state, 'cancelled');
+  assert.equal((await browserCheckpointStore.read(pausedId))?.checkpoint.state, 'prepared');
+  assert.equal(useFlowReview.getState().checkpoint?.id, otherCheckpoint.id);
+});

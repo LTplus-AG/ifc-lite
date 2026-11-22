@@ -87,14 +87,15 @@ export function viewerSourceDigest(): string {
 /** Save a paused run's proposal as a `prepared` checkpoint and show it. Nothing downstream has run. */
 export async function pauseForReview(input: {
   doc: FlowDocument; result: RunResult; inputs: Record<string, unknown>; values: Record<string, unknown>; budget?: unknown;
+  canPublish?: () => boolean;
 }): Promise<void> {
+  const { values, canPublish = () => true, ...rest } = input;
   try {
-    const { values, ...rest } = input;
     const checkpoint = createCheckpoint({ ...rest, registry: flowRegistry(), sourceDigest: viewerSourceDigest() });
     if (!(await browserCheckpointStore.write(checkpoint, null))) throw new Error('a checkpoint with this id already exists');
-    useFlowReview.setState({ checkpoint, values, executionInputs: structuredClone(input.inputs), problem: null });
+    if (canPublish()) useFlowReview.setState({ checkpoint, values, executionInputs: structuredClone(input.inputs), problem: null });
   } catch (error) {
-    useFlowReview.setState({ checkpoint: null, problem: problemOf(error) });
+    if (canPublish()) useFlowReview.setState({ checkpoint: null, problem: problemOf(error) });
   }
 }
 

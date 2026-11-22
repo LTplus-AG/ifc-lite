@@ -5,7 +5,7 @@ import '@/test/setup-dom.js';
 import { beforeEach, afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { render, click, cleanup } from '@/test/render.js';
+import { render, click, cleanup, waitFor } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { AuthorTab } from '../ribbon/tabs/AuthorTab.js';
 import { CommandPalette } from '../CommandPalette.js';
@@ -31,6 +31,7 @@ describe('appearance entry points #4243', () => {
   });
   it('opens the workspace from the command palette', async () => {
     render(<BimProvider><CommandPalette open onOpenChange={() => {}} /></BimProvider>);
+    await waitFor(() => document.body.querySelector('[role="option"][aria-label="Appearance"]') !== null, 'palette mounted');
     const row = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')]
       .find(element => element.getAttribute('aria-label') === 'Appearance');
     assert.ok(row, 'The palette must expose Appearance');

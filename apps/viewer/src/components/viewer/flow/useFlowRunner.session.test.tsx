@@ -10,7 +10,7 @@ import { act } from 'react';
 import type { FlowDocument } from '@ifc-lite/flow';
 import { BimProvider } from '@/sdk/BimProvider';
 import { useViewerStore, type FederatedModel } from '@/store';
-import { render, cleanup, settle as settlePanels } from '@/test/render';
+import { render, cleanup, settle as settlePanels, waitFor } from '@/test/render';
 import { snapshotComparison } from '@/lib/compare/savedComparisons';
 import { comparisonModels, comparisonResult } from '@/test/saved-comparison-fixture';
 import { flowRegistry } from '@/lib/flow/runner';
@@ -79,7 +79,7 @@ function selections() {
   const report = snapshotComparison(comparisonResult('A', 'B'), comparisonModels(), 'Original evidence');
   return { 'import.files': { reports: [new File([JSON.stringify(report)], 'comparison.json')] } };
 }
-beforeEach(() => {
+beforeEach(async () => {
   entered = deferred(); settle = deferred(); nodeSignal = undefined; api = undefined;
   useViewerStore.setState({ ...initial, models: new Map(), activeModelId: null, flowDoc: graph(), flowRunning: false,
     flowLastRun: null, flowLastError: null, flowArtifacts: [], savedComparisons: [], documents: [], undoStacks: new Map(),
@@ -87,6 +87,7 @@ beforeEach(() => {
   resetActivityRecordersForTest();
   stopRecorders = startActivityRecorders(useViewerStore);
   render(<BimProvider><Probe /></BimProvider>);
+  await waitFor(() => api !== undefined, 'workflow SDK mounted');
 });
 afterEach(() => {
   settle.resolve();

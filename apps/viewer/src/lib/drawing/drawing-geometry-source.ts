@@ -199,7 +199,6 @@ export class DrawingGeometry {
   }
 
   private async *pass(keep: DrawingMeshFilter, options: DrawingSourceOptions): AsyncGenerator<readonly MeshData[]> {
-    const { deps } = this;
     this.fence();
     if (!this.released) {
       // The resident drawing, unchanged: the whole kept list in one batch.

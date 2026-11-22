@@ -17,7 +17,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use crate::schema_ifc2x3_records::ref_id;
 use crate::schema_structural_axes::list_items;
 use crate::step_record_frame::record_frame;
-use crate::step_slot::split_top_level_args;
+use crate::step_slot::{slot_is, split_top_level_args};
 
 /// One IFC2X3 varying action and the IFC4 action it becomes.
 struct Kind {
@@ -213,7 +213,7 @@ impl StructuralVarying {
         let tail = [format!("#{}", values[0]), args[8].clone(), args[9].clone(), "$".into(), args[10].clone(), format!("#{aspect}"), format!("({rest})")];
         let mut losses = vec![TO_IFC2X3.to_string()];
         // `inspect` reports this for the records it sees; a rewritten one skips it.
-        if args[9].trim() == "$" { losses.push(crate::schema_structural::destabilizing_unknown(entity)); }
+        if slot_is(&args[9], "$") { losses.push(crate::schema_structural::destabilizing_unknown(entity)); }
         Some((format!("{}({})", kind.ifc2x3, [&args[..7], &tail].concat().join(",")), losses, false))
     }
 
@@ -332,6 +332,15 @@ mod tests {
         // A planar load among the values: not a varying linear action, so the configuration stays and has no IFC2X3 form.
         let mixed = source.replace("(#20,#21)", "(#20,#22)");
         assert!(export_step_with_stats(mixed.as_bytes(), &to("IFC2X3")).is_err());
+    }
+
+    #[test]
+    fn reports_a_commented_unset_destabilizing_load_on_a_varying_action_11001() {
+        let line = "#30=IFCSTRUCTURALCURVEACTION('0d2HL$ILbNDhwyUI0qw12$',$,'Line',$,$,$,#10,#25,.GLOBAL_COORDS.,/* unknown */$,$,.LINEAR.);";
+        let source = model("IFC4", &format!("#25=IFCSTRUCTURALLOADCONFIGURATION($,(#20,#21),$);\n{line}"));
+        let (out, _, warnings) = export_step_with_diagnostics(source.as_bytes(), &to("IFC2X3")).unwrap();
+        assert!(record(&out, "#30=").starts_with("#30=IFCSTRUCTURALLINEARACTIONVARYING("), "{out}");
+        assert!(warnings.iter().any(|w| w.contains("IFCSTRUCTURALCURVEACTION.DestabilizingLoad is unknown")), "{warnings:?}");
     }
 
     #[test]

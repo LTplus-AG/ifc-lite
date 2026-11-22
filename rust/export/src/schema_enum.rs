@@ -187,6 +187,8 @@ pub(crate) struct ConversionChecks {
     pub(crate) enums: EnumReconciliation,
     /// The IfcDocumentInformation <-> IfcDocumentReference link (#10846).
     pub(crate) documents: crate::schema_document_links::DocumentLinks,
+    /// Values a target slot's type cannot hold (#10847).
+    pub(crate) forms: crate::schema_value_forms::ValueForms,
     /// `convert_record`'s per-type decisions, resolved once per distinct type.
     pub(crate) plans: crate::schema_plan::PlanCache,
     /// Non-`$` source values the converted record has no slot for (#7683):
@@ -261,6 +263,7 @@ impl ConversionChecks {
         let mut out = self.ifc4_slots.warnings();
         out.extend(self.enums.warnings());
         out.extend(self.documents.warnings());
+        out.extend(self.forms.warnings());
         out.extend(self.structural.warnings());
         out
     }

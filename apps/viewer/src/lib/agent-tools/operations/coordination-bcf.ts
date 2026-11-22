@@ -6,6 +6,7 @@ import { pageInput, type PageInput } from './result-limit';
 import { emptySchema } from './contract';
 import { bcfPage, bcfProjectMetadata, bcfTopicMetadata } from './coordination-bcf-metadata';
 import { coordination, idSchema, textSchema, boolSchema } from './coordination-common';
+import { bcfArchiveRefusal } from './coordination-bcf-input';
 import { decodedInput, invalidInput, stale, unavailable } from './refusals';
 function project() { const p = useViewerStore.getState().bcfProject; if (!p) throw unavailable('Create or import a BCF project first.'); return p; }
 function topic(id: string) { const t = project().topics.get(id); if (!t) throw invalidInput('unknown-target', 'BCF topic does not exist.'); return t; }
@@ -27,12 +28,12 @@ export const coordinationBcfOperations = [
     type: 'object', properties: { title: { type: 'string', minLength: 1, maxLength: 500 }, description: { type: 'string', maxLength: 10000 }, status: { type: 'string', minLength: 1, maxLength: 100 } }, required: ['title', 'description', 'status'], additionalProperties: false,
   }, async (i: { title: string; description: string; status: string }, c) => {
     const previousProject = project(); const { createBCFTopic } = await import('@ifc-lite/bcf');
-    const s = useViewerStore.getState(); const t = createBCFTopic({ title: i.title, description: i.description, topicStatus: i.status, author: s.bcfAuthor }); return c.commit(() => { if (project() !== previousProject) throw stale('BCF project changed during topic creation.'); s.addTopic(t); return bcfTopicMetadata(t); });
+    const s = useViewerStore.getState(); const t = createBCFTopic({ title: i.title, description: i.description, topicStatus: i.status, author: s.bcfAuthor }); return c.commit(() => { if (useViewerStore.getState().bcfProject !== previousProject) throw stale('BCF project changed during topic creation.'); s.addTopic(t); return bcfTopicMetadata(t); });
   }),
   coordination<{ id: string; comment: string }>('bcf.comment', 'Add a comment to an existing local BCF topic.', ['configuration'], {
     type: 'object', properties: { id: { type: 'string', minLength: 1, maxLength: 200 }, comment: { type: 'string', minLength: 1, maxLength: 10000 } }, required: ['id', 'comment'], additionalProperties: false,
   }, async (i: { id: string; comment: string }, c) => {
-    const previousProject = project(); topic(i.id); const { createBCFComment } = await import('@ifc-lite/bcf'); const s = useViewerStore.getState(); const comment = createBCFComment({ author: s.bcfAuthor, comment: i.comment }); return c.commit(() => { if (project() !== previousProject) throw stale('BCF project changed during comment creation.'); topic(i.id); s.addComment(i.id, comment); return comment; });
+    const previousProject = project(); topic(i.id); const { createBCFComment } = await import('@ifc-lite/bcf'); const s = useViewerStore.getState(); const comment = createBCFComment({ author: s.bcfAuthor, comment: i.comment }); return c.commit(() => { if (useViewerStore.getState().bcfProject !== previousProject) throw stale('BCF project changed during comment creation.'); topic(i.id); s.addComment(i.id, comment); return comment; });
   }),
   coordination('bcf.deleteTopic', 'Delete one local topic using the native deletion contract.', ['configuration'], idSchema, (i, c) => c.commit(() => { topic(i.id); useViewerStore.getState().deleteTopic(i.id); return { deleted: i.id }; })),
   coordination('bcf.selectTopic', 'Select a known BCF topic for inspection.', ['view'], idSchema, (i, c) => c.commit(() => { const t = topic(i.id); useViewerStore.getState().setActiveTopic(i.id); return bcfTopicMetadata(t); })),
@@ -67,7 +68,7 @@ export const coordinationBcfOperations = [
     if ((before?.projectId ?? '') !== i.replace_project_id) throw stale('BCF project changed; inspect before importing.');
     if (!/^[A-Za-z0-9+/]*={0,2}$/.test(i.base64)) throw invalidInput('invalid-value', 'Expected base64 BCF ZIP bytes.');
     const { readBCF } = await import('@ifc-lite/bcf'); const bytes = Uint8Array.from(decodedInput('base64', () => atob(i.base64)), character => character.charCodeAt(0));
-    const imported = await readBCF(bytes); c.checkpoint?.();
+    const imported = await readBCF(bytes).catch(bcfArchiveRefusal); c.checkpoint?.();
     return c.commit(() => {
       if (useViewerStore.getState().bcfProject !== before) throw stale('BCF project changed during import.');
       useViewerStore.getState().setBcfProject(imported); return { project_id: imported.projectId, topics: imported.topics.size };

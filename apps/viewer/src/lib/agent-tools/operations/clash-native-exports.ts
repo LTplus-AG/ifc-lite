@@ -67,7 +67,7 @@ export const clashExportOperations = [
   }>(
     meta(
       'clash.exportBcf',
-      'Export the native grouped BCF report with severity/finding scope, exact topic cap and optional native snapshots. Uses the same shared exporter as ClashPanel. Cancellation suppresses publication; a snapshot already capturing may settle.',
+      'Export the native grouped BCF report with severity/finding scope, a cap on finding topics, an extra overflow topic when truncated, and optional native snapshots. Uses the same shared exporter as ClashPanel. Cancellation suppresses publication; a snapshot already capturing may settle.',
     ),
     {
       type: 'object',

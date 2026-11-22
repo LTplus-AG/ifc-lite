@@ -2,13 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { JSONSchemaType } from 'ajv';
+import { canonicalJson } from '@ifc-lite/flow';
+import type { ListDefinition } from '@ifc-lite/lists';
 import { useViewerStore } from '@/store';
 import { entityExists } from '../refs';
 import { columnFromDraft, updateColumnInPlace, isEditableColumn, columnDefKey, draftDefKey } from '@/lib/lists/column-edit';
 import { presentListRows, activeListRowChannel, releaseListVisibility } from '@/lib/lists/list-visibility';
 import { viewerOperation, emptySchema } from './contract';
-import { matchesJsonSnapshot, metadata, checkpoint, idSchema } from './analytics-common';
-import { internal, invalidInput, stale } from './refusals';
+import { metadata, checkpoint, idSchema } from './analytics-common';
+import { internal, invalidInput, parseJsonInput, stale } from './refusals';
 const output = { type: 'object', properties: { applied: { type: 'boolean' } }, required: ['applied'], additionalProperties: false };
 export const analyticsListControlOperations = [
   viewerOperation<{ id: string; column_id: string; expected_json: string; source: 'property' | 'quantity'; set_name: string; property_name: string }>(metadata('lists.editColumn', 'lists', 'Use the native pencil-editor column-definition transformation, preserving column ID/order and custom labels; reject duplicates and stale complete definitions. This edits query configuration, never IFC values.', ['configuration'], output), {
@@ -16,9 +18,12 @@ export const analyticsListControlOperations = [
   } satisfies JSONSchemaType<{ id: string; column_id: string; expected_json: string; source: 'property' | 'quantity'; set_name: string; property_name: string }>, (i, c) => {
     const s = useViewerStore.getState(); const list = s.listDefinitions.find(row => row.id === i.id);
     if (!list) throw invalidInput('unknown-target', 'Unknown saved list.');
+    const expected = parseJsonInput(i.expected_json, 'expected_json') as Partial<ListDefinition> | null;
     const column = list.columns.find(row => row.id === i.column_id);
-    if (!column) throw invalidInput('unknown-target', 'Unknown list column.');
-    if (!matchesJsonSnapshot(list, i.expected_json)) throw stale('List definition changed since inspection.');
+    const reviewedColumn = !column && expected?.id === list.id && Array.isArray(expected.columns)
+      && expected.columns.some(row => row?.id === i.column_id);
+    if (!column && !reviewedColumn) throw invalidInput('unknown-target', 'Unknown list column.');
+    if (!column || canonicalJson(list) !== canonicalJson(expected)) throw stale('List definition changed since inspection.');
     if (!isEditableColumn(column)) throw invalidInput('invalid-value', 'The native pencil editor supports property/quantity columns only.');
     const draft = { source: i.source, setName: i.set_name, propName: i.property_name };
     if (!draft.propName.trim() || list.columns.some(row => row.id !== column.id && columnDefKey(row) === draftDefKey(draft))) throw invalidInput('invalid-value', 'Empty or duplicate native column definition.');

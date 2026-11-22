@@ -222,7 +222,7 @@ fn the_merged_writer_resolves_only_the_last_material_occurrence_10911() {
 fn unreadable_direct_and_layer_materials_leave_out_properties_10911() {
     let source = model("IFC4", "#8=IFCMATERIAL('Steel',$,$);\n#10=IFCMATERIALLAYER(#8,0.2,$,$,$,$,$);");
     let mut materials = super::MaterialReferents::scan(source.as_bytes(), "IFC4", "IFC2X3", true, &|_, _| true);
-    materials.with_effective("IFC4", |_| true, [(8, "#8=IFCMATERIAL('Steel',$,$;")]);
+    materials.with_effective("IFC4", &|_| true, [(8, "#8=IFCMATERIAL('Steel',$,$;")]);
     for referent in [8, 10] {
         let line = format!("#5=IFCMATERIALPROPERTIES('P',$,(#6),#{referent});");
         assert_eq!(materials.apply(5, &line, "IFC4", &mut 0), None, "{line}");

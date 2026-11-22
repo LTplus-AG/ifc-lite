@@ -22,17 +22,17 @@
 //! [`MaterialReferents::with_effective`]). Twin of
 //! `packages/export/src/schema-converter-material-referent.ts`.
 use std::borrow::Cow;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use crate::schema_structural_axes::list_items;
 use crate::schema_structural_links::{slot_ref, slot_unset};
+use crate::step_record_frame::record_frame;
+use crate::step_slot::slots_of;
+use crate::step_text::{apply_attr_mutations_counted, merge_edits};
 
 const MATERIAL: &str = "IFCMATERIAL";
 const PROPERTIES: &str = "IFCMATERIALPROPERTIES";
 /// The member lists of the IFC4 material sets.
 const MEMBERS: [&str; 3] = ["MaterialLayers", "MaterialProfiles", "MaterialConstituents"];
-
-/// A material record the export writes: `(UPPERCASE type, slots, its schema)`.
-type Record = (String, Vec<String>, &'static str);
 
 /// What a downgrade to IFC2X3 needs to know of the export's material records.
 /// Built only by [`MaterialReferents::scan`] (one source) or
@@ -42,10 +42,10 @@ type Record = (String, Vec<String>, &'static str);
 pub(crate) struct MaterialReferents {
     /// The export downgrades to IFC2X3, the one target with a narrower `Material`.
     armed: bool,
-    records: HashMap<u32, Record>,
+    records: HashMap<u32, String>,
     /// Material records the export does not write (deleted, filtered out). A record retyped away but
     /// still written is not one: it is in neither map, so a set naming it names no material.
-    gone: std::collections::HashSet<u32>,
+    gone: HashSet<u32>,
     /// Record id -> the type its `Material` names, for records not written.
     dropped: BTreeMap<u32, String>,
 }
@@ -60,29 +60,40 @@ fn ifc4_family(from: &str) -> Option<&'static str> {
     match from { "IFC4" => Some("IFC4"), "IFC4X3" => Some("IFC4X3"), _ => None }
 }
 
+fn record(text: &str) -> Option<(&str, Vec<&str>)> {
+    let frame = record_frame(text)?;
+    Some((frame.head.type_name(text), slots_of(frame.args(text))?))
+}
+
 /// The IfcMaterial `id` resolves to, or `None`; a set member in `gone` (not
 /// written) is left out of the set, as the writers leave it out of the list.
-fn resolve(records: &HashMap<u32, Record>, gone: &std::collections::HashSet<u32>, id: u32) -> Option<u32> {
-    let (ty, slots, schema) = records.get(&id)?;
-    if ty == MATERIAL { return Some(id); }
+fn resolve(records: &HashMap<u32, String>, gone: &HashSet<u32>, schema: &str, id: u32) -> Option<u32> {
+    let (ty, slots) = record(records.get(&id)?)?;
+    if ty.eq_ignore_ascii_case(MATERIAL) { return Some(id); }
     let names = crate::schema_convert::schema_attribute_names(schema, ty)?;
-    let material = |slot: &str| slot_ref(slot).filter(|m| records.get(m).is_some_and(|(t, ..)| t == MATERIAL));
+    let material = |slot: &str| {
+        let id = slot_ref(slot)?;
+        let (ty, _) = record(records.get(&id)?)?;
+        ty.eq_ignore_ascii_case(MATERIAL).then_some(id)
+    };
     if let Some(at) = names.iter().position(|n| *n == "Material") {
         return material(slots.get(at)?);
     }
     let at = names.iter().position(|n| MEMBERS.contains(n))?;
-    let mut found = BTreeSet::new();
+    let mut found = None;
     for member in list_items(slots.get(at)?)? {
         let member = slot_ref(&member)?;
         if gone.contains(&member) { continue; }
-        let (ty, member_slots, schema) = records.get(&member)?;
+        let (ty, member_slots) = record(records.get(&member)?)?;
         let at = crate::schema_convert::schema_attribute_names(schema, ty)?.iter().position(|n| *n == "Material")?;
-        let slot = member_slots.get(at)?;
+        let slot = *member_slots.get(at)?;
         // A member without a material (an air gap) names none.
         if slot_unset(slot) { continue; }
-        found.insert(material(slot)?);
+        let id = material(slot)?;
+        if found.is_some_and(|previous| previous != id) { return None; }
+        found = Some(id);
     }
-    (found.len() == 1).then(|| found.into_iter().next()).flatten()
+    found
 }
 
 impl MaterialReferents {
@@ -110,12 +121,13 @@ impl MaterialReferents {
     /// return `None`. `text_of` gives the text in the export's id space.
     /// `gate`: a type a model must hold to be scanned (a merge needs IFCMATERIALPROPERTIES;
     /// a single export, whose log may create one, any IFCMATERIAL record).
+    #[inline(never)]
     pub(crate) fn load_model(&mut self, content: &[u8], from: &str, gate: &str, id_of: &dyn Fn(u32, usize) -> Option<(u32, bool)>, text_of: &dyn Fn(&[u8]) -> String) {
         // A filtered-out ID can overlap a later model's output range.
         // Keep referents local to the model being emitted and accumulate its warnings.
         self.records.clear();
         self.gone.clear();
-        let Some(schema) = self.schema_for(from) else { return };
+        if self.schema_for(from).is_none() { return; }
         // A file without a record of `gate` needs no pass.
         if !content.windows(gate.len()).any(|w| w.eq_ignore_ascii_case(gate.as_bytes())) { return; }
         let mut scanner = ifc_lite_core::EntityScanner::new(content);
@@ -124,9 +136,7 @@ impl MaterialReferents {
             let Some((id, written)) = id_of(id, start) else { continue };
             // A record the export does not write is left out of a set that lists it.
             if !written { self.gone.insert(id); continue; }
-            if let Some((ty, slots)) = crate::step_log::read_slots(&text_of(&content[start..end])) {
-                self.records.insert(id, (ty, slots, schema));
-            }
+            self.records.insert(id, text_of(&content[start..end]));
         }
     }
 
@@ -135,90 +145,110 @@ impl MaterialReferents {
     /// it out of the list), and each of `lines` (an edited, copied or created
     /// record, as written, in `from`) replaces its record or, no longer a
     /// material (a retype), leaves the table.
-    pub(crate) fn with_effective<'l>(&mut self, from: &str, keep: impl Fn(u32) -> bool, lines: impl IntoIterator<Item = (u32, &'l str)>) {
-        let Some(schema) = self.schema_for(from) else { return };
-        let gone: Vec<u32> = self.records.keys().copied().filter(|id| !keep(*id)).collect();
-        for id in gone { self.records.remove(&id); self.gone.insert(id); }
+    pub(crate) fn with_effective<'l>(&mut self, from: &str, keep: &dyn Fn(u32) -> bool, lines: impl IntoIterator<Item = (u32, &'l str)>) {
+        if self.schema_for(from).is_none() { return; }
+        self.retain_written(keep);
         for (id, line) in lines {
             // Typed from the head first: most edited records are not materials.
             if !is_material(line) && !self.records.contains_key(&id) { continue; }
-            match crate::step_log::read_slots(line) {
-                Some((ty, slots)) if keep(id) && ty.starts_with(MATERIAL) => { self.gone.remove(&id); self.records.insert(id, (ty, slots, schema)); }
-                // Still written, but no material record (retyped away, or unreadable): no longer a record
-                // to read, yet not left out of a set's list either, so a set naming it names no material.
-                _ if keep(id) => { self.records.remove(&id); self.gone.remove(&id); }
-                _ => { self.records.remove(&id); self.gone.insert(id); }
-            }
+            self.replace_record(id, Cow::Borrowed(line), keep(id));
         }
     }
 
-    /// [`Self::with_effective`] for `step.rs`: the records as its emit loop
-    /// writes them, attribute edits and copy-on-write repointings applied, and
-    /// each copy under its own id.
+    #[inline(never)]
+    fn retain_written(&mut self, keep: &dyn Fn(u32) -> bool) {
+        self.records.retain(|id, _| {
+            if keep(*id) { return true; }
+            self.gone.insert(*id);
+            false
+        });
+    }
+
+    #[inline(never)]
+    fn replace_record(&mut self, id: u32, line: Cow<'_, str>, written: bool) {
+        if written {
+            self.gone.remove(&id);
+            if is_material(&line) {
+                self.records.insert(id, line.into_owned());
+                return;
+            }
+        } else {
+            self.gone.insert(id);
+        }
+        self.records.remove(&id);
+    }
+
+    /// Material edits and copies visible to the direct STEP writer.
+    #[inline(never)]
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn note_step(
         &mut self,
         from: &str,
         content: &[u8],
         spans: &HashMap<u32, (usize, usize)>,
-        included: &std::collections::HashSet<u32>,
+        included: &HashSet<u32>,
         muts: &HashMap<u32, BTreeMap<usize, String>>,
         repointed: &HashMap<u32, BTreeMap<usize, String>>,
         copies: &[crate::step_cow::Copy],
     ) {
         if self.schema_for(from).is_none() { return; }
-        let material = |id: &u32| spans.get(id).map(|&(s, e)| String::from_utf8_lossy(&content[s..e])).filter(|l| is_material(l));
-        let edited_ids: std::collections::HashSet<&u32> = muts.keys().chain(repointed.keys()).collect();
-        let mut lines: Vec<(u32, String)> = edited_ids.into_iter().filter_map(|id| {
-            Some((*id, crate::step_text::apply_attr_mutations_counted(&material(id)?, &*crate::step_text::merge_edits(muts.get(id), repointed.get(id))?, &mut 0)))
-        }).collect();
-        lines.extend(copies.iter().filter_map(|(copy, source, edits)| {
-            let mut all = muts.get(source).cloned().unwrap_or_default();
-            all.extend(edits.iter().map(|(i, v)| (*i, v.clone())));
-            Some((*copy, crate::step_text::renumber(&crate::step_text::apply_attr_mutations_counted(&material(source)?, &all, &mut 0), *copy)))
-        }));
-        let copy_ids: std::collections::HashSet<u32> = copies.iter().map(|c| c.0).collect();
-        self.with_effective(from, |id| included.contains(&id) || copy_ids.contains(&id), lines.iter().map(|(id, l)| (*id, l.as_str())));
+        self.retain_written(&|id| included.contains(&id));
+        let material = |id: &u32| {
+            let &(start, end) = spans.get(id)?;
+            let text = String::from_utf8_lossy(&content[start..end]);
+            is_material(&text).then_some(text)
+        };
+        for id in muts.keys().chain(repointed.keys().filter(|id| !muts.contains_key(id))) {
+            let Some(line) = material(id) else { continue };
+            let Some(edits) = merge_edits(muts.get(id), repointed.get(id)) else { continue };
+            self.replace_record(*id, apply_attr_mutations_counted(&line, &edits, &mut 0).into(), included.contains(id));
+        }
+        for (copy, source, edits) in copies {
+            let Some(line) = material(source) else { continue };
+            self.replace_record(*copy, crate::step_cow::apply_copy_edits(&line, muts.get(source), edits, &mut 0).into(), true);
+        }
     }
 
     /// `line`, record `id` in `from` before conversion, naming the material its
     /// `Material` resolves to; `None` when it names none, adding its values to `dropped`.
+    #[inline(never)]
     pub(crate) fn apply<'l>(&mut self, id: u32, line: &'l str, from: &str, dropped: &mut usize) -> Option<Cow<'l, str>> {
         let Some(schema) = self.schema_for(from) else { return Some(line.into()) };
         // The head names the type; most records stop before their slots are split.
         let Some(head) = crate::step_record_frame::record_head(line) else { return Some(line.into()) };
         if !head.type_name(line).eq_ignore_ascii_case(PROPERTIES) { return Some(line.into()); }
         let Some(at) = crate::schema_convert::schema_attribute_names(schema, PROPERTIES).and_then(|n| n.iter().position(|a| *a == "Material")) else { return Some(line.into()) };
-        // Read as written; `convert_record` also accepts a record without its ';', so failing that, with one added.
-        // A record that cannot be read either way is not checked, so it is left out too.
-        let mut framed = Cow::Borrowed(line);
-        let mut slots = crate::step_log::read_slots(line).map(|(_, s)| s);
-        if slots.is_none() {
-            framed = format!("{line};").into();
-            slots = crate::step_log::read_slots(&framed).map(|(_, s)| s);
-        }
-        let named = slots.as_ref().and_then(|s| s.get(at)).and_then(|s| slot_ref(s));
-        let kept = match (named, named.and_then(|r| resolve(&self.records, &self.gone, r))) {
-            // The frame and slot splitter `read_slots` used, so it rewrites any record that read.
-            (Some(r), Some(m)) if m != r => crate::step_log::replace_argument(&framed, at, &format!("#{m}")).map(|mut out| {
-                if matches!(framed, Cow::Owned(_)) { out.pop(); } // the ';' it was read with is the last character
-                Cow::Owned(out)
-            }),
-            (_, Some(_)) => Some(line.into()),
-            _ => None,
+        // The line converter also accepts a record without its terminating semicolon.
+        let padded;
+        let (text, frame) = if let Some(frame) = record_frame(line) {
+            (line, Some(frame))
+        } else {
+            padded = format!("{line};");
+            (padded.as_str(), record_frame(&padded))
         };
-        if kept.is_none() {
-            *dropped += slots.as_ref().map_or(1, |s| s.iter().filter(|s| !slot_unset(s)).count()); // unread: at least the record
-            let why = match (&slots, named) {
-                (None, _) => "unreadable",
-                (_, None) => "no Material",
-                (_, Some(r)) => self.records.get(&r).map_or("an unread record", |(t, ..)| t.as_str()),
-            };
-            self.dropped.insert(id, why.to_owned());
+        let parsed = frame.and_then(|frame| slots_of(frame.args(text)).map(|slots| (frame, slots)));
+        let named = parsed.as_ref().and_then(|(_, slots)| slots.get(at)).and_then(|s| slot_ref(s));
+        if let Some((reference, material)) = named.and_then(|r| resolve(&self.records, &self.gone, schema, r).map(|m| (r, m))) {
+            if material == reference { return Some(line.into()); }
+            let (frame, mut slots) = parsed?;
+            let replacement = format!("#{material}");
+            slots[at] = &replacement;
+            let mut out = frame.with_args(text, &slots.join(","));
+            if text.len() != line.len() { out.pop(); }
+            return Some(out.into());
         }
-        kept
+        *dropped += parsed.as_ref().map_or(1, |(_, slots)| slots.iter().filter(|s| !slot_unset(s)).count());
+        let why = match (&parsed, named) {
+            (None, _) => "unreadable".to_owned(),
+            (_, None) => "no Material".to_owned(),
+            (_, Some(r)) => self.records.get(&r).and_then(|text| record(text))
+                .map_or_else(|| "an unread record".to_owned(), |(ty, _)| ty.to_ascii_uppercase()),
+        };
+        self.dropped.insert(id, why);
+        None
     }
 
+    #[inline(never)]
     pub(crate) fn warnings(&self) -> Vec<String> {
         if self.dropped.is_empty() { return Vec::new(); }
         let sites: Vec<String> = self.dropped.iter().map(|(id, ty)| format!("#{id} ({ty})")).collect();

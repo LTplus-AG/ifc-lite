@@ -288,9 +288,7 @@ fn emit<W: std::io::Write>(
             // copy is this element's version of that record, not a snapshot
             // taken before the caller touched it. Repointings do not, which is
             // why they are resolved into their own map.
-            let mut muts = muts_by_id.get(source_id).cloned().unwrap_or_default();
-            muts.extend(edits.iter().map(|(i, v)| (*i, v.clone())));
-            let edited = apply_attr_mutations_counted(&raw, &muts, &mut attribute_edits_refused);
+            let edited = crate::step_cow::apply_copy_edits(&raw, muts_by_id.get(source_id), edits, &mut attribute_edits_refused);
             let Some(renumbered) = flatten.line(&source_schema, renumber(&edited, *copy_id)) else { continue };
             if converting {
                 let converted = crate::schema_convert::convert_step_line(

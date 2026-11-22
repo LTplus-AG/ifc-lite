@@ -101,6 +101,7 @@ export class NativeFlowRunner {
     const { resume, expectedDefaultModelId } = options;
     const defaultModelChanged = () =>
       expectedDefaultModelId !== undefined && useViewerStore.getState().activeModelId !== expectedDefaultModelId;
+    let finalized: FlowCheckpoint | null = null;
     let claimed: FlowCheckpoint | null = null, terminal: RunResult | null = null, failure: string | null = null;
     try {
       // AI nodes get the Assistant's model, spending one root budget per run; a
@@ -115,7 +116,7 @@ export class NativeFlowRunner {
         throw new Error('The default model changed during workflow preflight. Inspect Flow state before running again.');
       }
       if (resume) {
-        claimed = await claimReview(doc, preparedInputs);
+        claimed = await claimReview(doc, preparedInputs, resume.id);
         if (!claimed) throw new Error('the reviewed proposal could not be resumed');
         if (defaultModelChanged()) {
           // Nothing ran, so the claim goes back and the proposal stays resumable. If that write fails,
@@ -138,7 +139,7 @@ export class NativeFlowRunner {
         ...(claimed ? { resume: resumeOutputs(claimed) } : {}),
       });
       terminal = result;
-      if (claimed) await finishReview(result);
+      if (claimed) finalized = await finishReview(result, undefined, claimed);
       claimed = null;
       // A proposal awaits review: nothing downstream ran. Save it before showing the run.
       if (result.ok && result.review.length > 0) await pauseForReview({ doc, result, inputs: preparedInputs, values: inputs ?? {}, budget: ai ? { ...ai.budget } : resume?.budget });
@@ -147,7 +148,7 @@ export class NativeFlowRunner {
       else setFlowRunning(false);
     } catch (err) {
       failure = err instanceof Error ? err.message : String(err);
-      if (claimed) await finishReview(null, err instanceof Error ? err.message : String(err));
+      if (claimed) await finishReview(null, failure, claimed);
       if (owned()) setFlowLastRun(null, err instanceof Error ? err.message : String(err), record());
       else setFlowRunning(false);
     } finally {
@@ -166,6 +167,6 @@ export class NativeFlowRunner {
     if (failure || !terminal?.ok) return { state: 'failed', result: terminal, error: failure ?? 'One or more native workflow nodes failed.', checkpoint: null };
     if (terminal.review.length) return { state: checkpoint?.state === 'prepared' ? 'paused' : 'failed', result: terminal,
       error: checkpoint?.state === 'prepared' ? null : useFlowReview.getState().problem?.message ?? 'Native review checkpoint was not saved.', checkpoint };
-    return { state: 'completed', result: terminal, error: null, checkpoint };
+    return { state: 'completed', result: terminal, error: null, checkpoint: finalized ?? checkpoint };
   }
 }

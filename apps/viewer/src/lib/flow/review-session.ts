@@ -110,16 +110,24 @@ export async function loadGraphReview(graphId: string): Promise<void> {
   useFlowReview.setState({ checkpoint: latest, values: same ? current.values : {}, executionInputs: same ? current.executionInputs : {}, problem: null });
 }
 
-async function transition(change: (checkpoint: FlowCheckpoint) => FlowCheckpoint): Promise<FlowCheckpoint | null> {
-  const current = useFlowReview.getState().checkpoint;
-  if (!current) return null;
-  useFlowReview.setState({ busy: true, problem: null });
+async function transition(
+  change: (checkpoint: FlowCheckpoint) => FlowCheckpoint,
+  id = useFlowReview.getState().checkpoint?.id,
+): Promise<FlowCheckpoint | null> {
+  if (!id) return null;
+  const visible = () => useFlowReview.getState().checkpoint?.id === id;
+  const wasVisible = visible();
+  if (wasVisible) useFlowReview.setState({ busy: true, problem: null });
+  const publish = (patch: Partial<FlowReviewState>) => {
+    if (visible()) useFlowReview.setState({ ...patch, busy: false });
+    else if (wasVisible) useFlowReview.setState({ busy: false });
+  };
   try {
-    const next = await updateCheckpoint(browserCheckpointStore, current.id, change);
-    useFlowReview.setState({ checkpoint: next, busy: false });
+    const next = await updateCheckpoint(browserCheckpointStore, id, change);
+    publish({ checkpoint: next });
     return next;
   } catch (error) {
-    useFlowReview.setState({ busy: false, problem: problemOf(error) });
+    publish({ problem: problemOf(error) });
     return null;
   }
 }
@@ -140,13 +148,13 @@ export function rejectReview(): Promise<FlowCheckpoint | null> {
 }
 
 /** Claim the approved checkpoint for this tab's resume, against the graph and inputs it will run with. */
-export function claimReview(doc: FlowDocument, inputs: Record<string, unknown>): Promise<FlowCheckpoint | null> {
+export function claimReview(doc: FlowDocument, inputs: Record<string, unknown>, checkpointId: string): Promise<FlowCheckpoint | null> {
   return transition((c) => {
     const registry = flowRegistry();
     const aiAhead = doc.nodes.some(node => !Object.hasOwn(c.outputs, node.id) && registry.get(node.type)?.requires?.backend?.includes(AI_FEATURE));
     if (aiAhead && !restoreRootBudget(c.budget)) throw new BudgetReceiptError('Resuming downstream AI nodes requires the original root budget receipt. Run the graph again.');
     return claimCheckpoint(c, { owner: TAB_OWNER, graphDigest: graphDigest(doc, inputs, registry), sourceDigest: viewerSourceDigest(), leaseMs: REVIEW_LEASE_MS });
-  });
+  }, checkpointId);
 }
 
 /** Return this tab's exact claim to review before any downstream work has started. */
@@ -163,7 +171,12 @@ export async function releaseReviewClaim(claimed: FlowCheckpoint): Promise<void>
   if (useFlowReview.getState().checkpoint?.id === claimed.id) useFlowReview.setState({ checkpoint: released });
 }
 
-export function finishReview(result: RunResult | null, failure?: string): Promise<FlowCheckpoint | null> {
+export function finishReview(result: RunResult | null, failure: string | undefined, claimed: FlowCheckpoint): Promise<FlowCheckpoint | null> {
   const message = failure ?? result?.log.find((l) => l.level === 'error')?.message;
-  return transition((c) => finishCheckpoint(c, TAB_OWNER, { ok: !!result?.ok && failure === undefined, ...(message ? { message } : {}) }));
+  return transition((c) => {
+    if (!c.claim || c.claim.at !== claimed.claim?.at || c.claim.leaseUntil !== claimed.claim?.leaseUntil) {
+      throw new CheckpointError('not-owner', 'The review claim is no longer held by this run.');
+    }
+    return finishCheckpoint(c, TAB_OWNER, { ok: !!result?.ok && failure === undefined, ...(message ? { message } : {}) });
+  }, claimed.id);
 }

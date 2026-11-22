@@ -53,6 +53,18 @@
    ],
    "owner_history": { "1": "#9" },
    "unfilled": 0
+  },
+  {
+   "why": "#11149 STEP comments do not hide an unset OwnerHistory from the fill",
+   "schema": "IFC4",
+   "data": [
+    "#10=IFCWALL('2O2Fr$t4X7Zf8NOew3FLOH',/* no history */$,'Wall',$,$,$,$,$,$);",
+    "#5=IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);"
+   ],
+   "owner_history": {
+    "10": "#5"
+   },
+   "unfilled": 0
   }
  ]
 }

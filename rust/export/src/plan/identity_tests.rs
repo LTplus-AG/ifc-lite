@@ -466,6 +466,16 @@ fn a_modified_ifc2x3_object_without_an_owner_history_is_reported() {
     assert!(report.findings.is_empty(), "{:?}", report.findings);
 }
 
+#[test]
+fn a_commented_unset_optional_owner_history_has_no_finding_11149() {
+    let source = String::from_utf8(storey_with_typed_wall("IFC4")).unwrap()
+        .replace(&format!("'{}',$,", gid(10)), &format!("'{}',/* no owner */$,", gid(10)));
+    assert!(source.contains("/* no owner */$"), "the fixture wall must have no owner history");
+    let (_, report) = export(source.as_bytes(), vec![rename(10)], context());
+    assert_eq!(report.patched, 1, "{report:?}");
+    assert!(report.findings.is_empty(), "{:?}", report.findings);
+}
+
 /// An object the source marks read-only or locked is still written, since
 /// it was edited, keeps its State, and is reported.
 #[test]
@@ -1048,12 +1058,12 @@ fn an_empty_patch_is_refused() {
 /// An application reused by name and version that has no identifier is
 /// said to have none (#8154).
 #[test]
-fn a_reused_application_without_an_identifier_is_said_to_have_none() {
+fn a_reused_application_with_a_commented_unset_identifier_has_none_11149() {
     let schema = "IFC4";
     let src = String::from_utf8(source(schema, false)).unwrap();
     let ours = [
         build_record(schema, 171, "IFCORGANIZATION", &[("Name", "'ExampleOrg'".into())]),
-        build_record(schema, 173, "IFCAPPLICATION", &[("ApplicationDeveloper", "#171".into()), ("Version", "'2.1'".into()), ("ApplicationFullName", "'ExampleApp'".into())]),
+        build_record(schema, 173, "IFCAPPLICATION", &[("ApplicationDeveloper", "#171".into()), ("Version", "'2.1'".into()), ("ApplicationFullName", "'ExampleApp'".into()), ("ApplicationIdentifier", "/* no identifier */$".into())]),
     ];
     let src = src.replace("ENDSEC;\nEND-ISO", &format!("{}\nENDSEC;\nEND-ISO", ours.join("\n"))).into_bytes();
     let (_, report) = export(&src, vec![rename(10)], context());

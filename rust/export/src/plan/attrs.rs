@@ -10,6 +10,7 @@
 //! `PlacementRelTo` in IFC4X3 that shifts every slot after it — a caller
 //! resolving by name never notices either).
 
+use crate::step_slot::slot_is;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::index::FileIndex;
@@ -108,7 +109,7 @@ pub(crate) fn render_list_edits(
             Some(entries) => entries,
             // An unset list (`$`, e.g. a project with no contexts yet) takes
             // appends as a new list. Any other slot is left as written.
-            None if slot.trim() == "$" && edit.remove.is_empty() && edit.substitute.is_empty() => Vec::new(),
+            None if slot_is(&slot, "$") && edit.remove.is_empty() && edit.substitute.is_empty() => Vec::new(),
             None => continue,
         };
         edits_by_id.entry(id).or_default().insert(idx, edit.render(&entries));
@@ -139,7 +140,7 @@ pub(crate) fn build_record(file_schema: &str, id: u32, entity_type: &str, fields
             if usize::from(arity) == slots.len() {
                 for &(index, _, fill) in required {
                     let slot = &mut slots[usize::from(index)];
-                    if slot == "$" && !fill.is_empty() {
+                    if !fill.is_empty() && slot_is(slot, "$") {
                         *slot = fill.to_string();
                     }
                 }
@@ -180,7 +181,7 @@ pub(crate) fn unset_required(file_schema: &str, record: &str) -> Vec<&'static st
     let Some(args) = crate::step_slot::slots_of(frame.args(record)) else {
         return Vec::new();
     };
-    let unset = |index: u8| args.get(usize::from(index)).is_some_and(|a| a.trim() == "$");
+    let unset = |index: u8| args.get(usize::from(index)).is_some_and(|a| slot_is(a, "$"));
     if file_schema.to_ascii_uppercase().starts_with("IFC2X3") {
         return match crate::schema_ifc2x3_slots::required_slots(&entity_type) {
             Some((arity, slots)) if usize::from(arity) == args.len() => {
@@ -201,6 +202,21 @@ pub(crate) fn unset_required(file_schema: &str, record: &str) -> Vec<&'static st
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn append_and_validate_commented_unset_slots_11149() {
+        let source = b"#1=IFCPROJECT('g',$,'Project',$,$,$,$,/* no contexts */$,#2);";
+        let index = FileIndex::scan(source, &Default::default());
+        let edit = ListEdit { append: vec![3], ..Default::default() };
+        let mut rendered = HashMap::new();
+        render_list_edits(&index, HashMap::from([((1, 7), edit)]), &HashSet::new(), &mut rendered);
+        assert_eq!(rendered[&1][&7], "(#3)");
+
+        let required = unset_required("IFC2X3", "#4=IFCTABLEROW(/* no cells */$,.F.);");
+        assert_eq!(required, ["RowCells"]);
+        let row = build_record("IFC2X3", 4, "IFCTABLEROW", &[("IsHeading", "$/* use default */".into())]);
+        assert_eq!(row, "#4=IFCTABLEROW($,.F.);");
+    }
 
     #[test]
     fn name_is_always_index_2_on_a_root_subtype_in_every_bundled_schema() {

@@ -24,6 +24,7 @@ export function skipStepComment(text: string, i: number): number {
  *  end by the shared rules; an unclosed one runs to the end. Twin of Rust
  *  `step_slot::without_comments` (rust/export/src/step_slot.rs). */
 export function withoutComments(value: string): string {
+  if (!value.includes('/*')) return value.trim();
   let out = '';
   let kept = 0;
   for (let i = 0; i < value.length;) {
@@ -42,6 +43,6 @@ export function withoutComments(value: string): string {
  *  (#10779). Twin of Rust `schema_convert::holds_value`
  *  (rust/export/src/schema_convert.rs). */
 export function holdsValue(slot: string): boolean {
-  const v = slot.includes('/*') ? withoutComments(slot) : slot.trim();
+  const v = withoutComments(slot);
   return v !== '' && v !== '$' && v !== '*';
 }

@@ -1,5 +1,12 @@
 # @ifc-lite/flood-check
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [[`bc8fd0c`](https://github.com/LTplus-AG/ifc-lite/commit/bc8fd0c4bac2c94f4e1ad5085ded2f6080c08d9b), [`80f01cc`](https://github.com/LTplus-AG/ifc-lite/commit/80f01cc596cd541237c8083f7b17b9e62b068f44), [`1ad48ac`](https://github.com/LTplus-AG/ifc-lite/commit/1ad48ac88d255d9bcc6b5986072fdf4021ca247c)]:
+  - @ifc-lite/parser@11.0.0
+
 ## 0.2.0
 
 ### Minor Changes

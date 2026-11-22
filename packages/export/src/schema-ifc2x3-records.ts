@@ -11,6 +11,7 @@
  * `rust/export/src/schema_ifc2x3_records.rs`.
  */
 
+import { withoutComments } from './step-comment-skip.js';
 import { formatStepReal } from '@ifc-lite/data';
 import { readStepSlots, splitTopLevelStepArguments } from './step-argument-parser.js';
 import { stepRecordHead } from './step-record-frame.js';
@@ -122,7 +123,7 @@ export class Records {
     const s = this.slots(this.get(id, INTERSECTION));
     const axes = list(s?.[0])?.map(refId);
     if (!s || !axes || axes.length !== 2 || axes.includes(null)) return null;
-    const offsets = s[1]?.trim() === '$' ? [0, 0] : numbers(s[1], 2, 3);
+    const offsets = withoutComments(s[1] ?? '') === '$' ? [0, 0] : numbers(s[1], 2, 3);
     const a = this.axisLine(axes[0]!, straight);
     const b = this.axisLine(axes[1]!, straight);
     if (!offsets || !a || !b) return null;
@@ -145,7 +146,7 @@ export class Records {
   gridFrame(g: readonly string[]): GridFrame | null {
     const at = this.crossing(refId(g[0]), true);
     if (!at) return null;
-    if (g[1].trim() === '$') return { at, turn: null };
+    if (withoutComments(g[1]) === '$') return { at, turn: null };
     const toward = this.crossing(refId(g[1]), true);
     const ratios = toward ? null : this.vector(g[1], 'IFCDIRECTION');
     const v = toward ? [toward[0] - at[0], toward[1] - at[1]] : ratios;

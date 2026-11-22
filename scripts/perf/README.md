@@ -20,6 +20,16 @@ face-alignment tolerance alone also changed a separate authored recess in
 the source host before allowing a weld-induced bounds shift to extend the
 cutter through the core.
 
+## Narrow finish strips in the exact fallback (#11275)
+
+The exact route now retains the core in the narrow-strip regression. A
+bounded surface-intersection test covers the area that point parity probes
+miss. It runs only after the welded/source extension disagreement and
+insets the authored box to ignore contact on its flush faces.
+
+Meshes matched the base on FZK-Haus, ISSUE_129, Holter, and rvt01.
+Timing on the loaded host did not establish a throughput change.
+
 ## Native finishes for mapped occurrences (#10995)
 
 The worker-pool A/B on AC20-FZK-Haus found no measurable change in parse or

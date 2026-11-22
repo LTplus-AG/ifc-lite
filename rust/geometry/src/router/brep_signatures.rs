@@ -118,6 +118,13 @@ impl GeometryRouter {
             let mut refused = self.content_hash_oversized_ref_drops.borrow_mut();
             super::content_hash::item_signature(decoder, item.id, &mut memo, &mut refused)
         };
+        // A raw face set can carry a different f64 origin under the local-frame policy.
+        let structural = match item.ifc_type {
+            IfcType::IfcPolygonalFaceSet | IfcType::IfcTriangulatedFaceSet => {
+                super::content_hash::fold(structural, u64::from(self.local_frame_enabled()))
+            }
+            _ => structural,
+        };
         Some(super::content_hash::key_with_params(
             structural,
             self.tessellation_quality().to_index(),

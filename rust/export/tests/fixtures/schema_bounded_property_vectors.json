@@ -1,0 +1,25 @@
+[
+  {
+    "why": "a single unsupported upper bound",
+    "from": "IFC4",
+    "line": "#5=IFCPROPERTYBOUNDEDVALUE('Dates',$,IFCDATE('2026-12-01'),/* unset */$,$,$);"
+  },
+  {
+    "why": "two unsupported bounds",
+    "from": "IFC4X3",
+    "line": "#5=IFCPROPERTYBOUNDEDVALUE('Dates',$,IFCDATE('2026-12-02'),IFCDATE('2026-12-01'),$,$);"
+  },
+  {
+    "why": "a supported upper bound survives a rejected lower bound",
+    "from": "IFC4",
+    "line": "#5=IFCPROPERTYBOUNDEDVALUE('Limits',$,IFCINTEGER(5),IFCDATE('2026-12-01'),$,$);",
+    "expect": "#5=IFCPROPERTYBOUNDEDVALUE('Limits',$,IFCINTEGER(5),$,$);",
+    "dropped": "LowerBoundValue"
+  },
+  {
+    "why": "a one-sided supported lower bound",
+    "from": "IFC4X3",
+    "line": "#5=IFCPROPERTYBOUNDEDVALUE('Limits',$,$,IFCINTEGER(5),$,$);",
+    "expect": "#5=IFCPROPERTYBOUNDEDVALUE('Limits',$,$,IFCINTEGER(5),$);"
+  }
+]

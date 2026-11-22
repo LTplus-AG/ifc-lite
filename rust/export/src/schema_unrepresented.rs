@@ -60,10 +60,14 @@ pub struct UnrepresentedEntityError {
     pub express_id: u32,
     pub entity_type: String,
     pub to_schema: String,
+    pub(crate) reason: Option<&'static str>,
 }
 
 impl std::fmt::Display for UnrepresentedEntityError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(reason) = self.reason {
+            return write!(f, "Cannot convert #{} ({}) to {}: {reason}", self.express_id, self.entity_type, self.to_schema);
+        }
         write!(
             f,
             "Cannot convert #{} ({}) to {}: {} has no representation in {} and is not an IfcRoot \
@@ -118,6 +122,7 @@ pub(crate) fn resolve_unrepresented_entity(
         express_id,
         entity_type: entity_type.to_string(),
         to_schema: to.to_string(),
+        reason: None,
     })
 }
 

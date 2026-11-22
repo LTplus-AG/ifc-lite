@@ -526,6 +526,51 @@ new point, and prepare again when it is false. Instanced occurrences read back a
 decoded shards are expanded with `materializeShardOccurrences(shard, modelIndex, keyPrefix)`,
 the same preparation an upload uses, then placed like flat pieces.
 
+### Rebuilding a released scene
+
+When the scene must be rebuilt (a content reload: realign, rebase, collaboration),
+a host that released CPU geometry cannot upload the arrays again. It first removes
+the old flat geometry with `scene.clearFlatGeometry()` (not `clear()`, which also
+destroys the instanced templates the rebuild keeps), then streams the arrays back
+from its own storage, one bounded batch at a time. A replay that rejects (a read
+failed) has already rolled back, so the host retries it like a non-complete one,
+if that reload is still current:
+
+```typescript
+import { replayReleasedGeometry } from '@ifc-lite/renderer';
+import type { MeshData } from '@ifc-lite/geometry';
+
+declare const storedSlices: string[];                            // the host's own stored batch keys
+declare function readBack(slice: string): Promise<MeshData[]>;  // reads one stored batch back
+declare const token: number, latest: () => number;               // the host's reload generation
+declare function retryLater(): void;
+
+async function* batches() {
+  for (const slice of storedSlices) yield await readBack(slice); // model-local, as stored
+}
+renderer.getScene().clearFlatGeometry(); // the old flat draw goes first; instanced templates stay
+try {
+  const result = await replayReleasedGeometry(renderer, batches(), { isCurrent: () => token === latest() });
+  if (result.status !== 'complete' && token === latest()) retryLater(); // cancelled or unavailable
+} catch {
+  if (token === latest()) retryLater(); // a read failed: the replay rolled back before rethrowing
+}
+```
+
+Each batch is uploaded through the ephemeral streaming path (GPU fragments only,
+no CPU pieces); the scene's bucket lookup still references each batch's meshes
+until the pass finalizes. The scene keeps per-entity
+bounds, so picking and framing still work, and it ends in the released state it
+started from. Replays of one scene run one at a time, each in its own pass:
+starting a newer replay does not supersede an earlier one by itself. The host
+makes the earlier replay's `isCurrent` return `false` when it starts the newer
+one; an earlier replay without `isCurrent` runs on and can still complete. A
+replay is all or nothing. Its entity bounds reach the scene only when it
+completes. One that errors, is cancelled, is superseded (its `isCurrent` turned false), fails to
+finalize or is interrupted by a device loss removes the fragments it uploaded
+and drops its bounds before returning, so replaying again never draws a batch
+twice. Picking and framing see a replay's bounds once it completes.
+
 ### Magnetic Snap Configuration
 
 ```typescript

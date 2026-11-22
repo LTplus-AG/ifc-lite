@@ -36,7 +36,7 @@ describe('non-registry export attribution (#5844)', () => {
     assert.deepEqual(completed, [{ format: 'csv', surface: 'list_results', row_count: 1, column_count: 1 }]);
   });
 
-  it('attributes a clash preset file and a load report once each after their downloads', () => {
+  it('attributes only the load-report download when presets are written to a host sink (#10795 item 5)', () => {
     const completed: Record<string, unknown>[] = [];
     const downloads: string[] = [];
     const capture = mock.method(posthog, 'capture', (event: string, properties: Record<string, unknown>) => {
@@ -44,16 +44,17 @@ describe('non-registry export attribution (#5844)', () => {
     });
     const listener = (event: Event) => downloads.push((event as CustomEvent<{ kind: string }>).detail.kind);
     window.addEventListener(EVENT_FILE_DOWNLOADED, listener);
+    const artifacts: string[] = [];
     try {
-      exportPresets([]);
+      exportPresets([], content => artifacts.push(content));
       downloadLoadReportJSON([]);
     } finally {
       capture.mock.restore();
       window.removeEventListener(EVENT_FILE_DOWNLOADED, listener);
     }
-    assert.deepEqual(downloads, ['json', 'json']);
+    assert.deepEqual(downloads, ['json']);
+    assert.deepEqual(JSON.parse(artifacts[0]).presets, []);
     assert.deepEqual(completed, [
-      { format: 'json', surface: 'clash_results' },
       { format: 'json', surface: 'load_report' },
     ]);
   });

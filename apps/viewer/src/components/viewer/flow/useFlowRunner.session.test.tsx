@@ -10,7 +10,7 @@ import { act } from 'react';
 import type { FlowDocument } from '@ifc-lite/flow';
 import { BimProvider } from '@/sdk/BimProvider';
 import { useViewerStore, type FederatedModel } from '@/store';
-import { render, cleanup } from '@/test/render';
+import { render, cleanup, settle as settlePanels } from '@/test/render';
 import { snapshotComparison } from '@/lib/compare/savedComparisons';
 import { comparisonModels, comparisonResult } from '@/test/saved-comparison-fixture';
 import { flowRegistry } from '@/lib/flow/runner';
@@ -173,6 +173,7 @@ describe('mounted workflow run ownership (#6612)', () => {
     assert.equal(state.flowProgress, null);
     assert.equal(state.flowRunning, false);
     assert.equal(isNativeWorkflowBusy(), false);
+    await settlePanels(); // the reset was an edit; the hook sees the released lease once it settles
     assert.equal(api?.canRun, true, 'Run is offered again once the lease is released');
   });
 

@@ -7,6 +7,7 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
+import { StepExporter } from '@ifc-lite/export';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { IfcCreator } from '../ifc-creator.js';
 import { AnchorEntityReader, resolveSpatialAnchor } from './resolve-anchor.js';
@@ -17,6 +18,28 @@ import { localBodyExtent, placedBodyExtent } from './resolve-host.js';
 import { readHostedFill } from './hosted-fill-read.js';
 import { placementInAncestor, refId, transformBounds } from './host-geometry-frame.js';
 import { reanchorHostedOpeningsInStore, reassignHostedOpeningsInStore } from './hosted-placement-edit.js';
+
+/** Exported records without a ShapeOfProduct, or representations without exactly one owner (IfcShapeModel WR11). */
+function shapeOwnershipFaults(step: string): string[] {
+  const records = [...step.matchAll(/^#(\d+)=([A-Z0-9_]+)\((.*)\);\r?$/gm)];
+  const typeOf = new Map(records.map(([, id, type]) => [id, type]));
+  const referenced = new Set<string>();
+  const owners = new Map<string, number>();
+  for (const [, , type, args] of records) {
+    for (const [, ref] of args.replace(/'(?:[^']|'')*'/g, "''").matchAll(/#(\d+)/g)) {
+      referenced.add(ref);
+      if ((type === 'IFCPRODUCTDEFINITIONSHAPE' || type === 'IFCREPRESENTATIONMAP') && typeOf.get(ref) === 'IFCSHAPEREPRESENTATION') {
+        owners.set(ref, (owners.get(ref) ?? 0) + 1);
+      }
+    }
+  }
+  const faults: string[] = [];
+  for (const [id, type] of typeOf) {
+    if (type === 'IFCPRODUCTDEFINITIONSHAPE' && !referenced.has(id)) faults.push(`#${id} IfcProductDefinitionShape has no product`);
+    if (type === 'IFCSHAPEREPRESENTATION' && (owners.get(id) ?? 0) !== 1) faults.push(`#${id} IfcShapeRepresentation has ${owners.get(id) ?? 0} owners`);
+  }
+  return faults;
+}
 
 async function session() {
   const bytes = await readFile(new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url));
@@ -311,6 +334,24 @@ describe('hosted occurrence edit (#6232)', () => {
       expect(() => editHostedElementInStore(store, editor, first.expressId, { Offset: 5.9 })).toThrow(/overlaps opening/);
       expect(view.getMutations()).toEqual(before);
       expect(view.getNewEntities()).toEqual(records);
+    });
+  }
+
+  for (const Schema of ['IFC2X3', 'IFC4', 'IFC4X3'] as const) {
+    it(`retires the replaced ${Schema} product shapes, so repeated resizes export schema-valid ownership (#10960)`, async () => {
+      const creator = new IfcCreator({ Schema, LengthUnit: 'MILLIMETRE' });
+      const storey = creator.addIfcBuildingStorey({ Name: 'GF', Elevation: 0 });
+      const store = await new IfcParser().parseColumnar(new TextEncoder().encode(creator.toIfc().content).buffer, { disableWorkerScan: true });
+      const view = new MutablePropertyView(null, 'm'), editor = new StoreEditor(store, view);
+      const wall = addWallToStore(editor, resolveSpatialAnchor(store, storey, view), { Start: [0, 0, 0], End: [10, 0, 0], Height: 3, Thickness: 0.2 }).wallId;
+      const door = addHostedElementInStore(store, editor, wall, { kind: 'door', params: { Offset: 2, Width: 0.9, Height: 2 } });
+      const window = addHostedElementInStore(store, editor, wall, { kind: 'window', params: { Offset: 6, Width: 1.2, Height: 1.2, Sill: 0.9 } });
+      editHostedElementInStore(store, editor, door.expressId, { OverallWidth: 1.1 });
+      editHostedElementInStore(store, editor, door.expressId, { OverallWidth: 1.0, OverallHeight: 2.2 });
+      editHostedElementInStore(store, editor, window.expressId, { OverallHeight: 1.4, Offset: 5 });
+      const step = new TextDecoder().decode(new StepExporter(store, view).export({ schema: Schema, applyMutations: true }).content);
+      expect(shapeOwnershipFaults(step)).toEqual([]);
+      expect(readHostedElementSize(store, door.expressId, view)).toEqual({ OverallWidth: 1.0, OverallHeight: 2.2 });
     });
   }
 

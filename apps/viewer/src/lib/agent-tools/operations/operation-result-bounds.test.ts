@@ -87,7 +87,9 @@ describe('operation results and expected-state tokens stay bounded (#10794)', ()
   it('#4 clash.groups.read pages a group library over 1 MB and its expected_library token stays short', async (t: TestContext) => {
     t.mock.method(clashGroupLibrary, 'initialize', async () => true);
     const entries = Array.from({ length: 300 }, (_, i) => ({ version: 1, id: `w${i}`, name: `Workspace ${i} ${pad(4000)}`, groups: [] }));
-    useClashGroupLibrary.setState({ entries: entries as never });
+    const { status } = useClashGroupLibrary.getState();
+    t.after(() => useClashGroupLibrary.setState({ status }));
+    useClashGroupLibrary.setState({ entries: entries as never, status: { phase: 'ready', recovered: false, items: {} } });
     const { items, token } = await readAll<{ id: string }>('clash.groups.read', 'entries');
     assert.deepEqual(items.map(row => row.id), entries.map(row => row.id), 'every workspace once, in order'); assert.ok(token.length <= 64);
     assert.match((await run('clash.groups.library', { action: 'select', workspace_id: 'w1', expected_library: '1:0' })).text, /Group library changed/);
@@ -99,8 +101,22 @@ describe('operation results and expected-state tokens stay bounded (#10794)', ()
     useViewerStore.setState({ savedValidationReports: reports as never, initializeValidationReports: async () => true });
     const { items, token } = await readAll<{ id: string }>('validation.reports.read', 'reports');
     assert.deepEqual(items.map(row => row.id), reports.map(row => row.id), 'every report once, in order'); assert.ok(token.length <= 64);
-    assert.match((await run('validation.reports.manage', { action: 'rename', id: 'missing', name: 'N', expected_reports: '1:0' })).text, /library changed/);
-    assert.match((await run('validation.reports.manage', { action: 'rename', id: 'missing', name: 'N', expected_reports: token })).text, /Unknown saved native report/);
+    assert.match((await run('validation.reports.manage', { action: 'rename', id: 'v1', name: 'N', expected_reports: '1:0' })).text, /library changed/);
+    for (const expected_reports of ['1:0', token]) {
+      const missing = await run('validation.reports.manage', { action: 'rename', id: 'missing', name: 'N', expected_reports });
+      assert.equal(missing.errorCode, 'INVALID_INPUT', missing.text);
+      assert.equal((missing.structured as { reason: string }).reason, 'unknown-target');
+    }
+  });
+
+  it('refuses a blank report rename before consulting storage (#11060)', async t => {
+    useViewerStore.setState({ savedValidationReports: [{ id: 'v1' }] as never, initializeValidationReports: async () => true });
+    const { token } = await readAll('validation.reports.read', 'reports');
+    const rename = t.mock.method(useViewerStore.getState(), 'renameValidationReport', async () => false);
+    const result = await run('validation.reports.manage', { action: 'rename', id: 'v1', name: '  ', expected_reports: token });
+    assert.equal(result.errorCode, 'INVALID_INPUT', result.text);
+    assert.equal((result.structured as { reason: string }).reason, 'invalid-value');
+    assert.equal(rename.mock.callCount(), 0);
   });
 
   /** Every zones.read row, by following page.next_offset; each page must fit the limit on its own. */
@@ -326,11 +342,22 @@ describe('operation results and expected-state tokens stay bounded (#10794)', ()
       useViewerStore.getState().renameZoneSet(setId, `Renamed for ${action}`);
       assert.match((await run('zones.writeback.apply', { token: pending.token }, 'A')).text, /changed after review/, action);
     }
-    // A removal reads only the zone set, so a recompute of the assignments does not block it.
-    const removal = json<{ token: string }>(await run('zones.writeback.prepare', { set_id: setId, model_ids: ['A'], basis: 'unqualified', action: 'remove' }, 'A'));
+    // A removal digests the zone set and its planned targets, so a recompute that leaves the targets alone does not block it.
+    const removal = json<{ token: string; row_count: number }>(await run('zones.writeback.prepare', { set_id: setId, model_ids: ['A'], basis: 'unqualified', action: 'remove' }, 'A'));
+    assert.ok(removal.row_count > 0, 'the removal has written output to delete');
     useViewerStore.setState({ zoneAssignments: assigned(walls.slice(0, 5)) });
     const removed = await run('zones.writeback.apply', { token: removal.token }, 'A');
     assert.equal(removed.isError, false, removed.text);
+    // Planned targets are sorted, so the same targets in another assignment order do not block a removal (#10795 review).
+    useViewerStore.setState({ zoneAssignments: assigned(walls) });
+    const rewrite = json<{ token: string }>(await run('zones.writeback.prepare', { set_id: setId, model_ids: ['A'], basis: 'unqualified', action: 'write' }, 'A'));
+    assert.equal((await run('zones.writeback.apply', { token: rewrite.token }, 'A')).isError, false);
+    const reordered = json<{ token: string; row_count: number }>(await run('zones.writeback.prepare', { set_id: setId, model_ids: ['A'], basis: 'unqualified', action: 'remove' }, 'A'));
+    assert.ok(reordered.row_count > 1, 'several targets, so order matters');
+    useViewerStore.setState({ zoneAssignments: new Map([...useViewerStore.getState().zoneAssignments].reverse()) });
+    const kept = await run('zones.writeback.apply', { token: reordered.token }, 'A');
+    assert.equal(kept.isError, false, kept.text);
+    assert.equal(json<{ removed: number }>(kept).removed, reordered.row_count, 'the reordered removal deleted every planned element');
   });
 
   const anon = { target_model_id: 'A', seed_ids: [2], excluded_ids: [], excluded_types: [], file_stem: 'anonymous', anonymize: { ...DEFAULT_ANONYMIZE_TOGGLES },

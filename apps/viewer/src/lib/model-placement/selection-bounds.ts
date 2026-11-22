@@ -18,7 +18,7 @@ export function createPlacedEntityBoundsLookup(meshes: MeshData[] | null) {
   };
 }
 
-export function placedBoundsExcludingTypes(meshes: MeshData[], excluded: ReadonlySet<string>) {
-  const included = meshes.filter((mesh) => !mesh.ifcType || !excluded.has(mesh.ifcType));
+export function placedBoundsExcludingTypes(meshes: MeshData[], excluded: ReadonlySet<string>, hiddenIds?: ReadonlySet<number>) {
+  const included = meshes.filter((mesh) => (!mesh.ifcType || !excluded.has(mesh.ifcType)) && !hiddenIds?.has(mesh.expressId));
   return unionEntityBounds(null, [...new Set(included.map((mesh) => mesh.expressId))], createPlacedEntityBoundsLookup(included));
 }

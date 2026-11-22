@@ -3,15 +3,20 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { beforeEach, describe, it } from 'node:test';
 import { createBimContext } from '@ifc-lite/sdk';
 import { Raycaster } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import { LocalBackend } from '@/sdk/local-backend';
 import { useViewerStore } from '@/store';
-import { seedAuthoringSample, SAMPLE_MODEL, GROUND_STOREY } from '@/test/authoring-sample-fixture';
+import { seedAuthoringSample, SAMPLE_MODEL, BACK_WALL, GROUND_STOREY } from '@/test/authoring-sample-fixture';
 import { fixtureModel } from '@/test/store-fixture';
+import { type Renderer } from '@ifc-lite/renderer';
+import { setGlobalRendererRef, clearGlobalRefs } from '@/hooks/useBCF';
+import { placementFrameKey } from '@/lib/model-placement/persistence';
 import { emptyPlacementState } from '@/lib/model-placement/state';
+import { ownReference } from '@/lib/appearance/references/types';
 import { appearanceAssets, modelAppearanceAssets } from '@/lib/appearance/model-assets';
 import { PdfAppearanceSource } from '@/lib/appearance/pdf/source-document';
 import { registerPdfDocument, removePdfDocument } from '@/lib/appearance/pdf/documents';
@@ -22,7 +27,8 @@ import type { PdfRasterRecipe } from '@/lib/appearance/pdf/types';
 import { appendNativeScanPair, changeNativeScanPartition } from '@/lib/appearance/appearance-native-scan';
 import { sourceLandmark } from '@/lib/appearance/scan/landmarks';
 import { changeNativeFaceMask, faceMaskRequests } from '@/lib/appearance/face-masks';
-import type { AppearancePlan } from '@/lib/appearance/planner-types';
+import type { AppearancePlan, AppearanceWorkerRequest, AppearanceWorkerResponse } from '@/lib/appearance/planner-types';
+import type { AppearanceWorker } from '@/lib/appearance/planner-worker-client';
 import { createMainViewerToolHost } from '../main-viewer-host';
 import { dispatchMainViewerTool, type AgentToolResult } from '../main-viewer-dispatch';
 import { viewerOperation } from './registry';
@@ -32,12 +38,12 @@ const png = Uint8Array.from(
   (c) => c.charCodeAt(0),
 );
 let host: ToolHost;
-const call = (id: string, input: unknown = {}, write = false) =>
+const call = (id: string, input: unknown = {}, write = false, signal?: AbortSignal) =>
   dispatchMainViewerTool(
     host,
     write ? 'viewer_operation_execute' : 'viewer_operation_inspect',
     { ...(viewerOperation(id).needs === 'model' ? { model_id: SAMPLE_MODEL } : {}), operation_id: id, input },
-    { canEdit: () => true },
+    { canEdit: () => true, signal },
   );
 function value<T>(result: AgentToolResult): T {
   assert.equal(result.isError, false, result.text);
@@ -58,6 +64,135 @@ describe('native Appearance controls and ownership (#10525 follow-up)', () => {
     modelAppearanceAssets.unregisterAuthored('capture-source', 'fixture');
     appearanceAssets.clear();
     host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));
+  });
+  it('plans a real wall with a retained image digest and no registered source (#10871)', async t => {
+    const wasmUrl = new URL('../../../../../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
+    let wasm: Buffer<ArrayBuffer>;
+    try { wasm = await readFile(wasmUrl); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      t.skip('Build WASM with pnpm build:wasm to exercise the native appearance planner');
+      return;
+    }
+    const { default: init } = await import('@ifc-lite/wasm');
+    await init({ module_or_path: wasm });
+    const { runAppearanceCatalog, runAppearancePlanning } = await import('@/workers/appearance.worker');
+    // Keep the browser worker transport in-process while running the real native planner.
+    class InThreadWorker implements AppearanceWorker {
+      onmessage: AppearanceWorker['onmessage'] = null;
+      onerror: AppearanceWorker['onerror'] = null;
+      onmessageerror: AppearanceWorker['onmessageerror'] = null;
+      terminate() {}
+      postMessage(job: AppearanceWorkerRequest) {
+        const run = async (): Promise<AppearanceWorkerResponse> => {
+          if (job.type === 'catalog') return { type: 'catalog-complete', id: job.id, catalog: await runAppearanceCatalog(job.source, job.request) };
+          if (job.type === 'plan') return { type: 'complete', id: job.id, plan: await runAppearancePlanning(job.source, job.request) };
+          throw new Error(`Unexpected appearance job: ${job.type}`);
+        };
+        void run().then(
+          data => this.onmessage?.(new MessageEvent('message', { data })),
+          error => this.onmessage?.(new MessageEvent('message', { data: { type: 'error', id: job.id, message: String(error) } })),
+        );
+      }
+    }
+    const previousWorker = globalThis.Worker, previousBitmap = globalThis.createImageBitmap;
+    globalThis.Worker = InThreadWorker as unknown as typeof Worker;
+    globalThis.createImageBitmap = (async () => ({ width: 1, height: 1, close() {} })) as typeof createImageBitmap;
+    t.after(() => { globalThis.Worker = previousWorker; globalThis.createImageBitmap = previousBitmap; });
+
+    const asset = await appearanceAssets.add(png, { owner: { kind: 'draft', id: 'retained-plan-test' }, mimeType: 'image/png' });
+    const state = useViewerStore.getState();
+    const model = state.models.get(SAMPLE_MODEL)!;
+    // seedAuthoringSample uses a minimal viewer entry for this IFC4 fixture.
+    useViewerStore.setState({ models: new Map(state.models).set(SAMPLE_MODEL, { ...model, schemaVersion: 'IFC4' }) });
+    assert.deepEqual(state.appearanceSources, []);
+    const expressId = model.ifcDataStore!.entities.getExpressIdByGlobalId(BACK_WALL);
+    const plan = value<{ supported_product_ids: number[]; created_entities: number }>(
+      await call('appearance.plan', {
+        source_id: asset.id,
+        express_ids: [expressId],
+        settings_json: JSON.stringify({
+          representationPolicy: 'evaluatedOccurrence', kind: 'box', plane: 'xy',
+          repeatU: 1, repeatV: 1, tileWidth: 1, tileHeight: 1, tileDepth: 1,
+          rotationDegrees: 0, offsetU: 0, offsetV: 0, offsetW: 0, repeatS: true, repeatT: true,
+        }),
+      }, false, new AbortController().signal),
+    );
+    assert.deepEqual(plan.supported_product_ids, [expressId]);
+    assert.ok(plan.created_entities > 0);
+    assert.equal(useViewerStore.getState().mutationVersion, state.mutationVersion);
+  });
+
+  it('classifies missing calibration, source changes during prepare or place, and locked imports (#11060)', async t => {
+    const renderer = { getReferenceImages: () => ({ async set() {}, remove() {} }) } as unknown as Renderer;
+    setGlobalRendererRef({ current: renderer });
+    t.after(clearGlobalRefs);
+    const asset = await appearanceAssets.add(png, { owner: { kind: 'source', id: 'locked-reference-test' }, mimeType: 'image/png' });
+    const source = { id: asset.id, name: 'Drawing', assetId: asset.id, width: 1, height: 1 };
+    useViewerStore.getState().addAppearanceSource(source);
+    const settings_json = JSON.stringify({
+      representationPolicy: 'preserve', kind: 'planar', plane: 'xy', repeatU: 1, repeatV: 1,
+      tileWidth: 1, tileHeight: 1, tileDepth: 1, rotationDegrees: 0,
+      offsetU: 0, offsetV: 0, offsetW: 0, repeatS: false, repeatT: false,
+    });
+    const prepare = (expected_source: string, edit_reference_id = '') => call('appearance.references.prepare', {
+      source_id: asset.id, expected_source, settings_json, edit_reference_id,
+    }, true, new AbortController().signal);
+    const absent = await prepare(JSON.stringify(source));
+    const expected = ['UNSUPPORTED_OPERATION/unavailable'];
+    const actual = [`${absent.errorCode}/${(absent.structured as { reason: string }).reason}`];
+    const wasm = await readFile(new URL('../../../../../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url))
+      .catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error; return undefined; });
+    if (wasm) {
+      const { default: init } = await import('@ifc-lite/wasm');
+      await init({ module_or_path: wasm });
+      const calibrated = { ...source, calibration: { sourcePoints: [[0, 0], [1, 0]] as [[number, number], [number, number]], distanceMetres: 1 } };
+      useViewerStore.setState({ appearanceSources: [calibrated] });
+      const previous = globalThis.createImageBitmap;
+      globalThis.createImageBitmap = (async () => {
+        useViewerStore.setState({ appearanceSources: [{ ...calibrated, name: 'Replaced while decoding' }] });
+        return { width: 1, height: 1, close() {} };
+      }) as typeof createImageBitmap;
+      try {
+        const replaced = await prepare(JSON.stringify(calibrated));
+        expected.push('STATE_CHANGED/stale');
+        actual.push(`${replaced.errorCode}/${(replaced.structured as { reason: string }).reason}`);
+
+        globalThis.createImageBitmap = (async () => ({ width: 1, height: 1, close() {} })) as typeof createImageBitmap;
+        useViewerStore.setState({ appearanceSources: [calibrated] });
+        const place = (token: string) => call('appearance.references.place', { token }, true, new AbortController().signal);
+        const initial = value<{ token: string }>(await prepare(JSON.stringify(calibrated)));
+        const { reference_id } = value<{ reference_id: string }>(await place(initial.token));
+        const edit = value<{ token: string; reference: unknown }>(await prepare(JSON.stringify(calibrated), reference_id));
+        const newReference = value<{ token: string }>(await prepare(JSON.stringify(calibrated)));
+        const beforePlacement = useViewerStore.getState();
+        assert.deepEqual(ownReference(edit.reference), beforePlacement.appearanceReferences.get(reference_id));
+        useViewerStore.setState({ appearanceSources: [{ ...calibrated, name: 'Replaced after preparation' }] });
+        for (const { token } of [edit, newReference]) {
+          const refused = await place(token);
+          expected.push('STATE_CHANGED/stale');
+          actual.push(`${refused.errorCode}/${(refused.structured as { reason?: string } | undefined)?.reason}`);
+        }
+        const afterPlacement = useViewerStore.getState();
+        assert.equal(afterPlacement.appearanceReferences, beforePlacement.appearanceReferences);
+        assert.equal(afterPlacement.referenceRevision, beforePlacement.referenceRevision);
+        assert.equal(afterPlacement.referenceUndo, beforePlacement.referenceUndo);
+      } finally { globalThis.createImageBitmap = previous; }
+    } else t.diagnostic('Run pnpm build:wasm for the native source-replacement case');
+    const frameKey = placementFrameKey(useViewerStore.getState());
+    useViewerStore.getState().addAppearanceReference({ id: 'locked', sourceId: asset.id, assetId: asset.id, frameKey,
+      cornersIfcWorld: [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]], visible: true, locked: true, opacity: 1 });
+    const before = useViewerStore.getState();
+    const refused = await call('appearance.references.action', {
+      action: 'import', reference_id: '', reference_revision: before.referenceRevision,
+      visible: true, locked: false, opacity: 1,
+      content: JSON.stringify({ version: 1, units: 'm', axes: 'engineering-z-up', frameKey, references: [] }),
+    }, true);
+    expected.push('INVALID_INPUT/wrong-target');
+    actual.push(`${refused.errorCode}/${(refused.structured as { reason: string }).reason}`);
+    assert.deepEqual(actual, expected);
+    assert.equal(useViewerStore.getState().appearanceReferences, before.appearanceReferences);
+    assert.equal(useViewerStore.getState().referenceRevision, before.referenceRevision);
   });
   it('calibrates actual encoded image coordinates with no IFC loaded and refuses a stale source snapshot', async () => {
     const calibrationImage = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAMAAAACCAYAAACddGYaAAAADklEQVR4nGP4jwQYkDkANvEX6SAXxcIAAAAASUVORK5CYII='), c => c.charCodeAt(0));
@@ -200,10 +335,19 @@ describe('native Appearance controls and ownership (#10525 follow-up)', () => {
       target = s.models.get(SAMPLE_MODEL)!,
       source = {
         ...fixtureModel('capture-source'),
+        sourceFile: new File(['textured scan fixture'], 'fixture.glb'),
         loadedAt: 1,
         geometryResult: { ...target.geometryResult!, meshes: [mesh], totalTriangles: 2, totalVertices: 6 },
       };
-    useViewerStore.setState({ models: new Map(s.models).set(source.id, source) });
+    useViewerStore.setState({ models: new Map(s.models).set(target.id, { ...target, schemaVersion: 'IFC4' }).set(source.id, source) });
+    const signal = new AbortController().signal;
+    const scan = value<{ token: string; version: number }>(await call('appearance.scan.prepare', {
+      source_model_id: source.id, source_kind: 'mesh', mesh_ordinal: 0,
+    }, false, signal));
+    const missingPreview = await call('appearance.scan.transfer.compare', { token: scan.token, version: scan.version, original: true }, true, signal);
+    assert.equal(missingPreview.errorCode, 'UNSUPPORTED_OPERATION', missingPreview.text);
+    assert.equal((missingPreview.structured as { reason: string }).reason, 'unavailable');
+
     const container_id = target.ifcDataStore!.entities.getExpressIdByGlobalId(GROUND_STOREY);
     const prepared = value<{ token: string; triangles: number; positions: number }>(
       await call('appearance.capture.prepare', {
@@ -223,7 +367,7 @@ describe('native Appearance controls and ownership (#10525 follow-up)', () => {
     assert.match(refused.text, /changed|registration/i);
     assert.equal(useViewerStore.getState().mutationVersion, before);
   });
-  it('shares fingerprint-bound native face edits and whole-surface semantics', () => {
+  it('shares fingerprint-bound native face edits and classifies reviewed mask refusals (#10871)', async () => {
     const conversions: NonNullable<AppearancePlan['conversions']> = [
       {
         productId: 7,
@@ -240,6 +384,15 @@ describe('native Appearance controls and ownership (#10525 follow-up)', () => {
     ]);
     assert.equal(faceMaskRequests(changeNativeFaceMask(masks, conversions, 7, [0, 1]), [7]), undefined);
     assert.equal(faceMaskRequests(masks, [8]), undefined);
+    const { applyReviewedFaceMask } = await import('./appearance-native-faces') as Partial<typeof import('./appearance-native-faces')>;
+    assert.ok(applyReviewedFaceMask);
+    for (const [product_id, surface_fingerprint, triangles, code, reason] of [
+      [8, 'native-surface', [1], 'INVALID_INPUT', 'unknown-target'],
+      [7, 'changed-surface', [1], 'STATE_CHANGED', 'stale'],
+      [7, 'native-surface', [2], 'INVALID_INPUT', 'invalid-value'],
+    ] as const) {
+      assert.throws(() => applyReviewedFaceMask(masks, conversions, { product_id, surface_fingerprint, triangles }), { code, details: { reason } });
+    }
   });
   it('keeps real raycast source observations independent and refuses duplicate scan correspondences', () => {
     const mesh: MeshData = {

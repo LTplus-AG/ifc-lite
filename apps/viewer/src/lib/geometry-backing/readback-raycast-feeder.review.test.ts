@@ -99,6 +99,24 @@ it('#10880 a renderer placement change (setModelTranslation) drops fed readback 
   assert.deepEqual(set, [], 'an unrelated notification keeps fed pieces');
 });
 
+it('#10884 r4651015157 a hide or isolate change drops fed readback pieces: a surface shown again in front was never fed', async () => {
+  const { readbackFeeder } = await import('./readback-measure');
+  const { useViewerStore } = await import('@/store');
+  const set: Array<readonly MeshData[] | null> = [];
+  const renderer = {
+    getPickGeometryRevision: () => 1,
+    getScene: () => ({ onGeometryChange: () => () => {} }),
+    setReadbackRaycastMeshes: (meshes: readonly MeshData[] | null) => { set.push(meshes); },
+  };
+  readbackFeeder(renderer as never);
+  set.length = 0;
+  useViewerStore.setState({ hiddenEntities: new Set<number>() } as never); // B unhidden: the store replaces the set
+  assert.deepEqual(set, [null], 'the pieces fed while B was hidden are dropped');
+  set.length = 0;
+  useViewerStore.setState({ isolatedEntities: new Set<number>([7]) } as never);
+  assert.deepEqual(set, [null], 'and on an isolate change');
+});
+
 it('#10880 a rotated model fails closed: subtracting its offset alone would search the wrong neighbourhood', async () => {
   const registry = await GeometryBackingRegistry.open(database());
   try {

@@ -25,8 +25,8 @@
  * require every isolation channel to route through the same call.
  *
  * Why union rather than replace, and why an empty resolve still installs the
- * raw ids: `resolveHighlightIds` bounds-checks against the type-visibility
- * FILTERED mesh list (`ViewportContainer.tsx`'s `filteredGeometry`), and
+ * raw ids: `resolveHighlightIds` bounds-checks against the mesh list minus
+ * the ids type visibility hides (`Viewport.tsx`'s `typeHidden`), and
  * `TYPE_VISIBILITY_SEMANTIC_DEFAULTS` ships `spaces`, `spatialZones`,
  * `openings` and `virtualElements` OFF (`store/constants.ts`). So `[]` is what
  * the resolver answers for FOUR different situations that it cannot tell
@@ -34,7 +34,7 @@
  *
  *   - the ids are hidden by a type toggle right now (an `IfcSpace` at the
  *     shipped default), and render the moment the user flips it on;
- *   - their meshes have not streamed in yet (`filteredGeometry` is non-null
+ *   - their meshes have not streamed in yet (the scene list is non-null
  *     from the FIRST batch and grows incrementally, so a mesh that has not
  *     arrived reads exactly like one that does not exist);
  *   - they are geometry-less but have `IfcRelAggregates` parts that will

@@ -152,6 +152,10 @@ describe('decideCacheLoadOutcome', () => {
     );
   });
 
+  it('#10888 r4655016554 a load the cache reports superseded (model removed mid-adoption) is STALE, never a miss that reparses', () => {
+    assert.equal(decideCacheLoadOutcome({ loadSucceeded: false, isStale: false, superseded: true }), 'stale');
+  });
+
   it('reports MISS (fall through to server/WASM) for an ordinary failed hit', () => {
     // The bounding control for the whole fix: a real cache miss must keep
     // falling through to a fresh parse. An over-eager early return here would

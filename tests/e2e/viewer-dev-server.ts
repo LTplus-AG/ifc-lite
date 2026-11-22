@@ -21,7 +21,10 @@ export interface ViewerDevServer {
   close(): Promise<void>;
 }
 
-export async function startViewerDevServer(label: string): Promise<ViewerDevServer> {
+export async function startViewerDevServer(
+  label: string,
+  options: { scanViewerEntries?: boolean } = {},
+): Promise<ViewerDevServer> {
   const require = createRequire(join(ROOT, 'apps/viewer/package.json'));
   const { createServer } = await import(pathToFileURL(require.resolve('vite')).href);
   const cacheDir = await mkdtemp(join(tmpdir(), `ifc-${label}-`));
@@ -34,7 +37,11 @@ export async function startViewerDevServer(label: string): Promise<ViewerDevServ
     finally { await rm(cacheDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
   };
   try {
-    const created: Server = await createServer({ root: join(ROOT, 'apps/viewer'), cacheDir, logLevel: 'error', server: { host: '127.0.0.1', port: 0 } });
+    const created: Server = await createServer({
+      root: join(ROOT, 'apps/viewer'), cacheDir, logLevel: 'error',
+      server: { host: '127.0.0.1', port: 0 },
+      ...(options.scanViewerEntries === false ? { optimizeDeps: { entries: [] } } : {}),
+    });
     server = created;
     await created.listen();
     const url = created.resolvedUrls?.local[0] ?? '';

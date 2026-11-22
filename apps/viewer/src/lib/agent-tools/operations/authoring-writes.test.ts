@@ -20,6 +20,8 @@ import { viewerOperation } from './registry';
 import type { ToolHost } from '../types';
 import { BACK_WALL, GROUND_STOREY, SAMPLE_MODEL, seedAuthoringSample } from '@/test/authoring-sample-fixture';
 import { fixtureModel } from '@/test/store-fixture';
+import { startWorkflowRun } from '@/lib/flow/run-session';
+import { placementFrameKey } from '@/lib/model-placement/persistence';
 import { resetFeaturesForTest } from '@/lib/features';
 
 const OTHER = 'other';
@@ -48,6 +50,44 @@ function previewOtherModel() {
 
 describe('authoring operations write the named target (#10793)', () => {
   beforeEach(seed);
+
+  it('reports a refused native material assignment before marking the write committed (#10871)', async () => {
+    const state = useViewerStore.getState();
+    const dataStore = state.models.get(SAMPLE_MODEL)!.ifcDataStore!;
+    // A Cartesian point exists in the model but cannot receive an IfcRelAssociatesMaterial.
+    const express_id = dataStore.entityIndex.byType.get('IFCCARTESIANPOINT')?.[0];
+    assert.ok(express_id);
+    const view = state.mutationViews.get(SAMPLE_MODEL)!;
+    const before = view.getNewEntities().length;
+    const result = await invoke('authoring.material.createAndAssign', {
+      express_id, Name: 'Concrete', Color: '#808080', Category: '', Description: '',
+    });
+    const details = result.structured as { reason: string; committed?: boolean };
+    assert.equal(result.errorCode, 'INVALID_INPUT', result.text);
+    assert.equal(details.reason, 'refused');
+    assert.equal(details.committed, undefined);
+    assert.equal(view.getNewEntities().length, before, 'native refusal rolls back the new material');
+  });
+
+  for (const [name, input] of [
+    ['authoring.type.create', { kind: 'wall', Name: 'Wall type', express_id: 0 }],
+    ['authoring.material.createAndAssign', { Name: 'Concrete', Color: '#808080', Category: '', Description: '' }],
+  ] as const) it(`${name} preserves the edit-mode denial (#11060)`, async () => {
+    useViewerStore.setState({ editEnabled: false });
+    const before = useViewerStore.getState().mutationVersion;
+    const payload = { express_id: expressOf(BACK_WALL), ...input };
+    const result = await invoke(name, payload);
+    assert.equal(result.errorCode, 'PERMISSION_DENIED', result.text);
+    assert.deepEqual(result.structured, { reason: 'disabled', denial: 'edit-mode' });
+    useViewerStore.setState({ editEnabled: true });
+    const workflow = startWorkflowRun();
+    try {
+      const busy = await workflow.withModelRead(() => invoke(name, payload));
+      assert.equal(busy.errorCode, 'UNSUPPORTED_OPERATION', busy.text);
+      assert.deepEqual(busy.structured, { reason: 'unavailable', denial: 'workflow-running' });
+    } finally { workflow.release(); }
+    assert.equal(useViewerStore.getState().mutationVersion, before);
+  });
 
   it('#21 a Rectangle profile writes the kind Width and Height (Depth for a column) that placement reads', async () => {
     answer(await invoke('authoring.defaults.profile', { owner: 'beam', profile_json: JSON.stringify({ Type: 'Rectangle', XDim: 0.25, YDim: 0.6 }), expected_defaults: defaults() }));
@@ -84,7 +124,7 @@ describe('authoring operations write the named target (#10793)', () => {
     assert.equal(result.isError, true); assert.match(result.text, /storeyId/);
   });
 
-  it('#27 storeys.topConstraint attaches a wall top through the viewer backend', async () => {
+  it('#27 storeys.topConstraint attaches a wall top through the viewer backend', async t => {
     const above = host.models()[0].bim.store.addStorey(SAMPLE_MODEL, { Name: 'Level 1', Elevation: 3, referenceStoreyId: expressOf(GROUND_STOREY) });
     // The sample's own walls are SketchUp B-reps, which no top edit can resize; author an extruded one.
     const proposal_json = JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Wall', units: 'm', frame: 'storey-local', operations: [
@@ -93,11 +133,79 @@ describe('authoring operations write the named target (#10793)', () => {
     const { token } = raw<{ token: string }>(await invoke('authoring.prepare', { proposal_json }, false));
     const receipt = JSON.parse(raw<{ receipt_json: string }>(await invoke('authoring.apply', { token })).receipt_json) as { applied: Array<{ globalId: string }> };
     const wall = useViewerStore.getState().mutationViews.get(SAMPLE_MODEL)!.getNewEntities().find(row => row.type.toUpperCase() === 'IFCWALL' && row.attributes[0] === receipt.applied[0].globalId)!.expressId, before = useViewerStore.getState().undoStacks.get(SAMPLE_MODEL)?.length ?? 0;
+    // An invalid kind must not fall back to a relative attachment (#10871).
+    const topAttachment = () => useViewerStore.getState().mutationViews.get(SAMPLE_MODEL)?.getPropertyValue(wall, 'IfcLite_StoreyAttachment', 'TopConstraint');
+    const originalAttachment = topAttachment();
+    for (const constraint of [{}, { kind: 'unknown' }, { kind: 'storey' }, { kind: 'slab' }, { kind: 'roof' }, { kind: 'storey', storeyId: 1.5 }]) {
+      const result = await invoke('storeys.topConstraint', { express_id: wall, constraint_json: JSON.stringify(constraint) });
+      assert.equal(result.errorCode, 'INVALID_INPUT', result.text);
+      const details = result.structured as { reason: string; committed?: boolean };
+      assert.equal(details.reason, 'invalid-value');
+      assert.equal(details.committed, undefined);
+      assert.equal(topAttachment(), originalAttachment);
+      assert.equal(useViewerStore.getState().undoStacks.get(SAMPLE_MODEL)?.length ?? 0, before);
+    }
+    for (const [id, reason] of [[Number.MAX_SAFE_INTEGER, 'unknown-target'], [expressOf(GROUND_STOREY), 'wrong-target']] as const) {
+      const result = await invoke('storeys.topConstraint', {
+        express_id: wall, constraint_json: JSON.stringify({ kind: 'storey', storeyId: id }),
+      });
+      assert.equal(result.errorCode, 'INVALID_INPUT', result.text);
+      assert.equal((result.structured as { reason: string }).reason, reason);
+      assert.equal(topAttachment(), originalAttachment);
+      assert.equal(useViewerStore.getState().undoStacks.get(SAMPLE_MODEL)?.length ?? 0, before);
+    }
+    // Model untrusted non-finite elevations at the effective storey inventory boundary (#11060).
+    const model = host.models()[0], view = model.mutationView()!;
+    const elevations = model.store!.spatialHierarchy!.storeyElevations;
+    const homeId = expressOf(GROUND_STOREY), homeElevation = elevations.get(homeId)!;
+    const topWriter = t.mock.method(model.bim.store, 'setTopConstraint', () => []);
+    view.setPositionalAttribute(above.expressId, 9, null, true); // Read the hierarchy fallback for this authored target.
+    try {
+      for (const [home, target] of [[homeElevation, NaN], [NaN, 3], [homeElevation, Infinity], [-Infinity, 3]]) {
+        elevations.set(homeId, home); elevations.set(above.expressId, target);
+        const result = await invoke('storeys.topConstraint', {
+          express_id: wall, constraint_json: JSON.stringify({ kind: 'storey', storeyId: above.expressId }),
+        });
+        assert.equal(result.errorCode, 'INVALID_INPUT', result.text);
+        assert.deepEqual(result.structured, { reason: 'wrong-target' });
+      }
+      assert.equal(topWriter.mock.callCount(), 0);
+      assert.equal(topAttachment(), originalAttachment);
+      assert.equal(useViewerStore.getState().undoStacks.get(SAMPLE_MODEL)?.length ?? 0, before);
+    } finally {
+      elevations.set(homeId, homeElevation); elevations.delete(above.expressId);
+      view.removePositionalMutation(above.expressId, 9); topWriter.mock.restore();
+    }
     const refs = answer<Array<{ expressId: number }>>(await invoke('storeys.topConstraint', { express_id: wall, constraint_json: JSON.stringify({ kind: 'storeyAbove' }) }));
     assert.deepEqual(refs.map(ref => ref.expressId), [wall]);
     assert.ok((useViewerStore.getState().undoStacks.get(SAMPLE_MODEL)?.length ?? 0) > before);
     assert.equal(useViewerStore.getState().mutationViews.get(SAMPLE_MODEL)?.getPropertyValue(wall, 'IfcLite_StoreyAttachment', 'TopConstraint'),
       useViewerStore.getState().mutationViews.get(SAMPLE_MODEL)!.getNewEntities().find(row => row.expressId === above.expressId)!.attributes[0], 'the wall top follows the new storey');
+  });
+
+  it('classifies manifest binding and rotation refusals without publishing a placement (#11060)', async () => {
+    const s = useViewerStore.getState(), original = s.models.get(SAMPLE_MODEL)!;
+    useViewerStore.setState({ models: new Map([[SAMPLE_MODEL, { ...original, sourceContentHash: 'hash' }],
+      [OTHER, { ...fixtureModel(OTHER), sourceContentHash: 'hash', pointCloudHandleId: 1 }]]) });
+    const frame = placementFrameKey(useViewerStore.getState());
+    const entry = { instanceId: SAMPLE_MODEL, sourceContentHash: 'hash', translation: [0, 0, 0], locked: false };
+    const input = (frameKey: string, row: object, model_id?: string) => ({
+      content: JSON.stringify({ version: 1, units: 'm', axes: 'engineering-z-up', frameKey, models: [row] }),
+      bindings: model_id ? [{ saved_instance_id: SAMPLE_MODEL, model_id }] : [],
+      placement_revision: s.modelPlacement.revision,
+    });
+    for (const [payload, code, reason] of [
+      [input('wrong-frame', entry), 'INVALID_INPUT', 'wrong-target'],
+      [input(frame, { ...entry, sourceContentHash: 'missing' }), 'INVALID_INPUT', 'unknown-target'],
+      [input(frame, entry), 'INVALID_INPUT', 'conflict'],
+      [input(frame, { ...entry, sourceContentHash: 'different' }, SAMPLE_MODEL), 'INVALID_INPUT', 'wrong-target'],
+      [input(frame, { ...entry, rotation: { angle: 1, pivot: [0, 0, 0] } }, OTHER), 'UNSUPPORTED_OPERATION', 'unavailable'],
+    ] as const) {
+      const result = await invoke('placement.manifest.import', payload);
+      assert.equal(result.errorCode, code, result.text);
+      assert.equal((result.structured as { reason: string }).reason, reason);
+      assert.equal(useViewerStore.getState().modelPlacement, s.modelPlacement);
+    }
   });
 
   it('#30 rotating this model refuses to commit another model\'s pending move', async () => {

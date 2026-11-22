@@ -31,7 +31,7 @@ import type { ViewerState } from '@/store';
 import { createEntityBoundsLookup } from '@/utils/viewportUtils';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale';
 import { resolveLinearElementChain, MIN_LINEAR_SEGMENT_LENGTH, type LinearElementEditChain } from '@/lib/linear-element-edit';
-import { pointInPolygon, type Point2D } from '@/lib/polygon-clip';
+import { pointInPolygon } from '@ifc-lite/create';
 import { MIN_WALL_SEGMENT_LENGTH } from '@/lib/wall-edit';
 import type { Guide, SnapResult, Vec2 } from '@/lib/snap/types';
 import { labelOf, stepTypeOf, storeyCandidates, type TargetRef } from './multi-split-plan.js';
@@ -213,7 +213,7 @@ export function pickTarget(model: TrimExtendModel, local: Vec2, slack: number, e
       const end: Vec2 = [axis.p0[0] + axis.dir[0] * axis.length, axis.p0[1] + axis.dir[1] * axis.length];
       d = distanceToSegment(local, [axis.p0[0], axis.p0[1]], end) - target.width / 2;
       if (d > slack) continue;
-    } else if (target.outline.length >= 3 && pointInPolygon(target.outline as Point2D[], [local[0], local[1]])) {
+    } else if (target.outline.length >= 3 && pointInPolygon(local[0], local[1], target.outline)) {
       d = 0;
     } else continue;
     if (!best || d < best.d) best = { target, d };

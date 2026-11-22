@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { internal } from './refusals';
 
 /** Wire schemas for the original native operation slice. Feature codecs own rich nested records. */
 const number = { type: 'number' }, string = { type: 'string' }, boolean = { type: 'boolean' };
@@ -45,5 +46,5 @@ export function nativeResultSchema(id: string): Record<string, unknown> {
   if (id.startsWith('cost.')) return array(cost);
   if (id.startsWith('structural.')) return array(object({ expressId: { type: 'integer', minimum: 1 } }, ['expressId'], true));
   if (id === 'lens.presets' || id === 'clash.presets') return array(object({ id: string, name: string }, ['id', 'name'], true));
-  throw new Error(`Missing output schema for ${id}`);
+  throw internal(`Missing output schema for ${id}`);
 }

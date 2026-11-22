@@ -62,7 +62,7 @@ async function merge(georefs: (Georef | null)[], schema: 'IFC4' | 'IFC4X3' = 'IF
   const content = new TextDecoder().decode((await new MergedExporter(inputs).exportAsync({ schema, unitReconciliation })).content);
   const contexts: string[] = content.match(/^#\d+(?==IFCGEOMETRICREPRESENTATIONCONTEXT\()/gm) ?? [];
   const sources = [...content.matchAll(/=\s*(?:\/\*.*?\*\/\s*)?IFC(?:MAPCONVERSION(?:SCALED)?|RIGIDOPERATION)\((?:\/\*.*?\*\/\s*)?(#\d+),/g)].map(match => match[1]);
-  return { contexts, sources, listed: projectContexts(content) };
+  return { contexts, sources, listed: projectContexts(content), crs: content.match(/=\s*IFCPROJECTEDCRS\(/g)?.length ?? 0, wkt: content.match(/=\s*IFCWELLKNOWNTEXT\(/g)?.length ?? 0 };
 }
 
 /** Every georeference sits on its own context, each a context of the file. */
@@ -151,6 +151,59 @@ describe('merged STEP export and map conversions (#10798)', () => {
     expect(projects.flat().sort()).toEqual([...contexts].sort());
   });
 
+  it('keeps one conversion and one CRS on a context two models share the georeference of (#10873)', async () => {
+    for (const georefs of [[at(X), at(X)], [null, at(X), at(X)], [at(X), null, at(X)], [at(X), at(X), at(X)]]) {
+      const { contexts, sources, crs } = await merge(georefs);
+      expect(contexts, JSON.stringify(georefs)).toHaveLength(1);
+      expect(sources, 'HasCoordinateOperation is SET [0:1]').toEqual(contexts);
+      expect(crs).toBe(1);
+    }
+    // The shared georeference stays one when a different one arrives after it.
+    expectApart(await merge([at(X), at(X), at(Y)]), 2);
+  });
+
+  it('merges a georeference only when every attribute is equal, so no CRS data is lost (#10873)', async () => {
+    const described = (description: string): Georef => ({ raw: `#20=IFCPROJECTEDCRS('EPSG:2056','${description}',$,$,$,$,#2);\n#21=IFCMAPCONVERSION(#14,#20,${X});` });
+    const merged = await merge([described('LV95'), described('LV95 (survey 2024)')]);
+    expectApart(merged, 2);
+    expect(merged.crs).toBe(2);
+    expect((await merge([described('LV95'), described('LV95')])).crs).toBe(1);
+    // A record that cannot be read (here a MapUnit that points nowhere) is no evidence the two agree: neither is dropped.
+    const dangling: Georef = { raw: `#20=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,#99);\n#21=IFCMAPCONVERSION(#14,#20,${X});` };
+    expect((await merge([dangling, dangling])).crs).toBe(2);
+  });
+
+  it('keeps one WKT on the shared CRS, and keeps apart an invalid operation into another context (#10873)', async () => {
+    const withWkt: Georef = { raw: `${METRE_CRS}\n#21=IFCMAPCONVERSION(#14,#20,${X});\n#22=IFCWELLKNOWNTEXT('PROJCS["CH1903+ / LV95"]',#20);` };
+    const wkt = await merge([withWkt, withWkt], 'IFC4X3');
+    expect([wkt.sources.length, wkt.crs, wkt.wkt]).toEqual([1, 1, 1]);
+    // IFC4X3 ADD2 requires TargetCRS to be a CRS (IfcCoordinateReferenceSystem), and IfcOpenShell rejects an operation
+    // into a context. A file that has one anyway keeps that context apart, so neither operation is lost.
+    const planAt = (x: string): Georef => ({ raw: `#15=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Plan',2,1.E-05,#16,$);
+#16=IFCAXIS2PLACEMENT2D(#17,$);
+#17=IFCCARTESIANPOINT((${x},0.));
+#21=IFCRIGIDOPERATION(#14,#15,IFCLENGTHMEASURE(10.),IFCLENGTHMEASURE(20.),0.);` });
+    // Two operations into contexts cannot be told equal, so B's model context stays apart with its own operation.
+    const plans = await merge([planAt('0.'), planAt('500.')], 'IFC4X3');
+    expect(plans.contexts).toHaveLength(4);
+    // Both operations survive, each on its own model context.
+    expect(plans.sources).toEqual([plans.contexts[0], plans.contexts[2]]);
+    // B's model context, kept apart, is listed in the merged project; the plan contexts were never listed.
+    expect(plans.listed).toEqual([plans.contexts[0], plans.contexts[2]]);
+  });
+
+  it('keeps a context apart when its CRS has an operation of its own, so no CRS gets two (#10873)', async () => {
+    // IFC4X3 lets an operation start at a CRS; HasCoordinateOperation is SET [0:1] there too, and that operation is not compared.
+    const chained: Georef = { raw: `${METRE_CRS}\n#21=IFCMAPCONVERSION(#14,#20,${X});
+#23=IFCPROJECTEDCRS('EPSG:21781',$,$,$,$,$,#2);
+#24=IFCRIGIDOPERATION(#20,#23,IFCLENGTHMEASURE(10.),IFCLENGTHMEASURE(20.),0.);` };
+    const { contexts, listed, sources } = await merge([chained, chained], 'IFC4X3');
+    expect(contexts).toHaveLength(2);
+    expect([...listed].sort()).toEqual([...contexts].sort());
+    expect(sources).toHaveLength(4);
+    expect(new Set(sources).size, 'one operation per source').toBe(4);
+  });
+
   it('still unifies two models with the same map conversion, or where only one is georeferenced', async () => {
     expect((await merge([at(X), at(X)])).contexts).toHaveLength(1);
     expect((await merge([at(X), null])).contexts).toHaveLength(1);
@@ -164,14 +217,16 @@ describe('merged STEP export and map conversions (#10798)', () => {
 
   it('tells apart the same numbers in different map units', async () => {
     expectApart(await merge([at(X), { values: X, unit: '#3' }]), 2);
-    // A CRS without a map unit uses the project's.
-    expectApart(await merge([{ values: X, unit: '$' }, { values: X, unit: '$', projectUnit: '#3' }], 'IFC4', 'normalize'), 2);
+    // A CRS without a map unit is read as metres whatever the project unit, as the viewer reads it (#10886).
+    for (const strategy of ['normalize', 'assume-shared'] as const) {
+      const unitless = await merge([{ values: X, unit: '$' }, { values: X, unit: '$', projectUnit: '#3' }], 'IFC4', strategy);
+      expect([unitless.contexts.length, unitless.sources.length, unitless.crs]).toEqual([1, 1, 1]);
+    }
     expect((await merge([{ values: X, unit: '$' }, { values: X, unit: '$' }])).contexts).toHaveLength(1);
-    // Under assume-shared the caller says every model is in the primary's unit, so the map unit is the primary's too.
-    expect((await merge([{ values: X, unit: '$' }, { values: X, unit: '$', projectUnit: '#3' }], 'IFC4', 'assume-shared')).contexts).toHaveLength(1);
-    // Two spellings of one georeference agree: an explicit metre and the project's metre, an omitted and a unit scale.
-    expect((await merge([at(X), { values: X, unit: '$' }])).contexts).toHaveLength(1);
-    expect((await merge([at(X), at('2600000.,1200000.,500.,$,$,$')])).contexts).toHaveLength(1);
+    // Two spellings of one georeference (an explicit metre and the project's metre, an omitted and a unit scale) are
+    // not equal records, so neither is dropped: each keeps its own context and operation (#10873).
+    expectApart(await merge([at(X), { values: X, unit: '$' }]), 2);
+    expectApart(await merge([at(X), at('2600000.,1200000.,500.,$,$,$')]), 2);
     // A conversion-based unit compares by its factor, not by its record's id.
     expectApart(await merge([{ values: X, unit: '#4', factor: '0.3048' }, { values: X, unit: '#4', factor: '1.' }]), 2);
     expect((await merge([{ values: X, unit: '#4' }, { values: X, unit: '#4' }])).contexts).toHaveLength(1);
@@ -181,7 +236,8 @@ describe('merged STEP export and map conversions (#10798)', () => {
     const rigid = (eastings: number): Georef => ({ raw: `${METRE_CRS}
 #21=IFCRIGIDOPERATION(#14,#20,IFCLENGTHMEASURE(${eastings}.),IFCLENGTHMEASURE(1200000.),500.);` });
     expectApart(await merge([rigid(2600000), rigid(2700000)], 'IFC4X3'), 2);
-    expect((await merge([rigid(2600000), rigid(2600000)], 'IFC4X3')).contexts).toHaveLength(1);
+    const same = await merge([rigid(2600000), rigid(2600000)], 'IFC4X3');
+    expect([same.contexts.length, same.sources.length, same.crs]).toEqual([1, 1, 1]);
   });
 
   it('tells apart two scaled conversions with different factors', async () => {

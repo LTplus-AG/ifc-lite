@@ -103,6 +103,24 @@ describe('varying structural actions IFC2X3 <-> IFC4 #9668', () => {
     expect(records(new TextDecoder().decode(result.content), 'IFCRELASSIGNSTOPRODUCT')).toEqual([expect.stringMatching(/'Causes',\$,\(#40\),\$,#30\);$/)]);
   });
 
+  it('does not warn about a CausedBy that holds only a comment and $ (#10779)', async () => {
+    for (const empty of ['/* none */$', '*']) {
+      const store = await parse(IFC2X3.replace(',.F.,$,.PROJECTED_LENGTH.', `,.F.,${empty},.PROJECTED_LENGTH.`));
+      const result = new StepExporter(store).export({ schema: 'IFC4' });
+      expect(result.stats.warnings.join('\n'), empty).not.toContain('CausedBy has no slot in IFC4');
+      // The loss preview agrees with the export's warning.
+      const lost = analyzeConversionLoss(store, 'IFC2X3', 'IFC4').entries.filter((e) => e.droppedAttributes.includes('CausedBy'));
+      expect(lost, empty).toEqual([]);
+    }
+    // A short varying record has no CausedBy slot; it neither throws nor hides the others' losses.
+    const short = await parse(IFC2X3.replace(',.F.,$,.PROJECTED_LENGTH.', ',.F.,#99,.PROJECTED_LENGTH.')
+      .replace('#30=', '#90=IFCSTRUCTURALLINEARACTIONVARYING();\n#30='));
+    const stranded = analyzeConversionLoss(short, 'IFC2X3', 'IFC4').entries.filter((e) => e.droppedAttributes.includes('CausedBy'));
+    expect(stranded.flatMap((e) => e.expressIds)).toEqual([30]);
+    const withValue = new StepExporter(await parse(IFC2X3.replace(',.F.,$,.PROJECTED_LENGTH.', ',.F.,#99,.PROJECTED_LENGTH.'))).export({ schema: 'IFC4' });
+    expect(withValue.stats.warnings.join('\n')).toContain('IFCSTRUCTURALLINEARACTIONVARYING.CausedBy has no slot in IFC4');
+  });
+
   it('reports an unknown DestabilizingLoad and refuses loads of mixed types', async () => {
     // ProjectedOrTrue has no IFC2X3 default, so it stays `$` and the slot fill reports it, as for a constant action.
     const ifc4 = model('IFC4', `${SHARED}
@@ -115,6 +133,15 @@ describe('varying structural actions IFC2X3 <-> IFC4 #9668', () => {
     expect(line(out, 30)).toBe("#30=IFCSTRUCTURALLINEARACTIONVARYING('0d2HL$ILbNDhwyUI0qw12$',$,'Line',$,$,$,#10,#20,.GLOBAL_COORDS.,.F.,$,$,#11,(#21));");
     expect(line(out, 31)).toMatch(/^#31=IFCPROXY\(/);
     expect(result.stats.warnings.join('\n')).toContain('1 structural conversion record(s): IFCSTRUCTURALCURVEACTION.DestabilizingLoad is unknown');
+  });
+
+  it('reports a commented unset DestabilizingLoad on a rewritten varying action (#11001)', async () => {
+    const ifc4 = model('IFC4', `${SHARED}
+#25=IFCSTRUCTURALLOADCONFIGURATION($,(#20,#21),$);
+#30=IFCSTRUCTURALCURVEACTION('0d2HL$ILbNDhwyUI0qw12$',$,'Line',$,$,$,#10,#25,.GLOBAL_COORDS.,/* unknown */$,$,.LINEAR.);`);
+    const result = new StepExporter(await parse(ifc4)).export({ schema: 'IFC2X3' });
+    expect(line(new TextDecoder().decode(result.content), 30)).toMatch(/^#30=IFCSTRUCTURALLINEARACTIONVARYING\(/);
+    expect(result.stats.warnings.join('\n')).toContain('IFCSTRUCTURALCURVEACTION.DestabilizingLoad is unknown');
   });
 
   it('takes only distributions linear between the values', async () => {

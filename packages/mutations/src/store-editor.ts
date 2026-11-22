@@ -216,7 +216,7 @@ export class StoreEditor {
    * where the attribute has no symbolic name.
    */
   setPositionalAttribute(expressId: number, index: number, value: IfcAttributeValue): void {
-    this.view.setPositionalAttribute(expressId, index, value);
+    this.view.setPositionalAttribute(expressId, index, value ?? null);
   }
 
   /** Edit a named root attribute (Name, Description, ObjectType, …). */

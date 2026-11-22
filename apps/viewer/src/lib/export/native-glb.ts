@@ -9,13 +9,17 @@ import { buildHiddenIfcTypes, classFilterActive, isMeshTypeVisible } from '@/sto
 import { retypedClasses } from '@/lib/visibility/structural-view';
 import { resolveExportVisibility } from '@/store/exportVisibility';
 import { exportGlbFromGeometry } from './glb';
-import { withInstancedMeshes } from '@/utils/instancedExport';
+import { withInstancedMeshes, withReleasedExportGeometry, type ReleasedExportContext } from '@/utils/instancedExport';
 import { modelIndices } from '@/lib/model-placement/model-indices';
 import { resolveGlbSourceBytes } from '@/components/viewer/glb-export-source';
 import { resolve as t } from '@/i18n/registry';
 export interface NativeGlbSettings { visibleOnly: boolean; includeMetadata: boolean; lit: boolean; colorSource: 'rendering' | 'shading' }
-/** The native dialog's exact source-versus-mesh assembler. */
-export async function produceNativeGlb(selectedModelId: string, selectedModel: { geometryResult: GeometryResult }, options: NativeGlbSettings, checkpoint = () => {}, onAssembler?: (fromSourceBytes: boolean) => void) {
+/** The native dialog's exact source-versus-mesh assembler. Released CPU geometry (#10264) is read back first. */
+export function produceNativeGlb(selectedModelId: string, selectedModel: { geometryResult: GeometryResult }, options: NativeGlbSettings, checkpoint = () => {}, onAssembler?: (fromSourceBytes: boolean) => void) {
+  return withReleasedExportGeometry((context) => assembleNativeGlb(selectedModelId, selectedModel, options, checkpoint, onAssembler, context), [selectedModelId]);
+}
+
+async function assembleNativeGlb(selectedModelId: string, selectedModel: { geometryResult: GeometryResult }, options: NativeGlbSettings, checkpoint: () => void, onAssembler?: (fromSourceBytes: boolean) => void, context?: ReleasedExportContext) {
   const state = useViewerStore.getState(); const { typeVisibility, mergeLayers } = state;
   const live = state.models.get(selectedModelId);
   if (live && hasRetainedShapeOnlyModel(new Map([[selectedModelId, live]]))) throw new Error(t(RETAINED_SHAPE_ONLY_REASON));
@@ -77,12 +81,14 @@ export async function produceNativeGlb(selectedModelId: string, selectedModel: {
         // only for the legacy `__legacy__` slot, which is provably the sole
         // model loaded — nothing else to wrongly include, so `null` (no
         // filter) is correct there (#2865/#2878 follow-up).
+        // Released CPU geometry (#10264) is read back first (see the export entry's context).
         const exportGeometry = withInstancedMeshes(
           selectedModel.geometryResult,
           federatedModel
             ? { modelId: federatedModel.id, idOffset: federatedModel.idOffset ?? 0, maxExpressId: federatedModel.maxExpressId ?? 0,
               rendererModelIndex: modelIndices(state.models).get(federatedModel.id) } // as model-ifcx-export: excludes an overlapping-id collab model
             : null,
+          context,
         );
         const visibility = visibleOnly ? resolveExportVisibility(state, selectedModelId) : undefined;
         const globalHidden = visibility?.hiddenGlobalIds;

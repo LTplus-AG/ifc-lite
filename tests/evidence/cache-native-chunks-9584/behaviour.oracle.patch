@@ -1,12 +1,12 @@
 diff --git a/rust/cache/src/geometry/chunks.rs b/rust/cache/src/geometry/chunks.rs
 --- a/rust/cache/src/geometry/chunks.rs
 +++ b/rust/cache/src/geometry/chunks.rs
-@@ -54,7 +54,7 @@ pub(crate) fn group(meshes: &[CacheMesh]) -> Vec<Vec<usize>> {
-             open.len() - 1
+@@ -148,7 +148,7 @@ impl Grouper {
          });
-         let chunk = &mut open[slot];
--        if false && chunk.1 > 0 && chunk.1 + bytes > GEOMETRY_CHUNK_SOFT_BYTES {
-+        if chunk.1 > 0 && chunk.1 + bytes > GEOMETRY_CHUNK_SOFT_BYTES {
-             closed.push(std::mem::take(&mut chunk.0));
-             chunk.1 = 0;
-         }
+         let chunk = &mut self.open[slot];
+         let held = chunk.records.len();
+-        let closed = if false && held > 0 && held + bytes > GEOMETRY_CHUNK_SOFT_BYTES {
++        let closed = if held > 0 && held + bytes > GEOMETRY_CHUNK_SOFT_BYTES {
+             self.open_bytes -= held;
+             Some(store(std::mem::replace(chunk, OpenChunk::new()), self.compress))
+         } else {

@@ -12,9 +12,10 @@ import { evaluateDashboardChart } from '@/lib/charts/evaluate-dashboard-chart';
 import { sanitizeFilename } from '@/lib/export/download';
 import { viewerOperation, emptySchema } from './contract';
 import { matchesJsonSnapshot, metadata, idSchema, jsonSchema, artifactSchema, removedSchema, checkpoint } from './analytics-common';
+import { internal, invalidInput, stale, parseJsonInput, decodedInput } from './refusals';
 function savedDashboard(id: string) {
   const row = useViewerStore.getState().dashboards.find(item => item.id === id);
-  if (!row) throw new Error('Unknown dashboard.');
+  if (!row) throw invalidInput('unknown-target', 'Unknown dashboard.');
   return row;
 }
 function dashboard(id: string) { return structuredClone(savedDashboard(id)); }
@@ -32,19 +33,19 @@ export const analyticsChartOperations = [
   viewerOperation<{ content_json: string }>(metadata('charts.import', 'charts', 'Import full native chart definitions, aggregation, source filters, scope and layout with native ID remapping. Native storage failures are reported explicitly.', ['configuration'], {
     type: 'object', properties: { id: { type: 'string' }, charts: { type: 'integer' } }, required: ['id', 'charts'], additionalProperties: false,
   }), jsonSchema, (i, c) => {
-    const row = parseDashboardFile(i.content_json); checkpoint(c);
-    if (!c.commit(() => useViewerStore.getState().upsertDashboard(row))) throw new Error('The dashboard change is applied in this session, but could not be saved. Inspect the dashboard library before retrying.');
+    const row = decodedInput('content_json', () => parseDashboardFile(i.content_json), { json: true }); checkpoint(c);
+    if (!c.commit(() => useViewerStore.getState().upsertDashboard(row))) throw internal('The dashboard change is applied in this session, but could not be saved. Inspect the dashboard library before retrying.');
     return { id: row.id, charts: row.charts.length };
   }),
   viewerOperation<{ id: string; expected_json: string; content_json: string }>(metadata('charts.replace', 'charts', 'Edit a full native dashboard/chart definition with an expected snapshot conflict check. Includes chart sources, measures, dimensions, filters, scope and layout.', ['configuration'], { type: 'object', properties: { id: { type: 'string' } }, required: ['id'], additionalProperties: false }), {
     type: 'object', properties: { id: idSchema.properties.id, expected_json: jsonSchema.properties.content_json, content_json: jsonSchema.properties.content_json }, required: ['id', 'expected_json', 'content_json'], additionalProperties: false,
   } satisfies JSONSchemaType<{ id: string; expected_json: string; content_json: string }>, (i, c) => {
-    if (!matchesJsonSnapshot(dashboard(i.id), i.expected_json)) throw new Error('Dashboard changed since inspection.');
-    const value: unknown = JSON.parse(i.content_json); if (!isDashboardSpec(value) || value.id !== i.id) throw new Error('Invalid native dashboard or changed ID.');
-    checkpoint(c); if (!c.commit(() => useViewerStore.getState().upsertDashboard(value))) throw new Error('The dashboard change is applied in this session, but could not be saved. Inspect the dashboard library before retrying.'); return { id: i.id };
+    if (!matchesJsonSnapshot(dashboard(i.id), i.expected_json)) throw stale('Dashboard changed since inspection.');
+    const value: unknown = parseJsonInput(i.content_json, 'content_json'); if (!isDashboardSpec(value) || value.id !== i.id) throw invalidInput('invalid-value', 'Invalid native dashboard or changed ID.');
+    checkpoint(c); if (!c.commit(() => useViewerStore.getState().upsertDashboard(value))) throw internal('The dashboard change is applied in this session, but could not be saved. Inspect the dashboard library before retrying.'); return { id: i.id };
   }),
   viewerOperation<{ id: string }>(metadata('charts.delete', 'charts', 'Delete an existing dashboard through the native store.', ['configuration'], removedSchema), idSchema, (i, c) => {
-    dashboard(i.id); checkpoint(c); if (!c.commit(() => useViewerStore.getState().deleteDashboard(i.id))) throw new Error('Native dashboard deletion failed.'); return { removed: i.id };
+    dashboard(i.id); checkpoint(c); if (!c.commit(() => useViewerStore.getState().deleteDashboard(i.id))) throw internal('Native dashboard deletion failed.'); return { removed: i.id };
   }),
   viewerOperation<{ id: string; focus: 'highlight' | 'isolate' | 'ghost'; color_in_3d: boolean }>(metadata('charts.configure', 'charts', 'Select a dashboard and configure native chart focus and overlay behavior.', ['configuration', 'view'], {
     type: 'object', properties: { id: { type: 'string' }, focus: { type: 'string' }, color_in_3d: { type: 'boolean' } }, required: ['id', 'focus', 'color_in_3d'], additionalProperties: false,
@@ -62,9 +63,9 @@ export const analyticsChartOperations = [
     const target = savedDashboard(i.dashboard_id);
     const aggregation = await evaluateDashboardChart(structuredClone(target), i.chart_id, c.signal);
     checkpoint(c);
-    if (useViewerStore.getState().dashboards.find(row => row.id === i.dashboard_id) !== target) throw new Error('Chart dashboard changed during evaluation.');
-    if (focusFingerprint(aggregation) !== i.data_fingerprint) throw new Error('Chart source changed since inspection.');
-    if (i.items.some(item => !aggregation.series[item.seriesIndex]?.buckets[item.dataIndex])) throw new Error('Unknown chart mark.');
+    if (useViewerStore.getState().dashboards.find(row => row.id === i.dashboard_id) !== target) throw stale('Chart dashboard changed during evaluation.');
+    if (focusFingerprint(aggregation) !== i.data_fingerprint) throw stale('Chart source changed since inspection.');
+    if (i.items.some(item => !aggregation.series[item.seriesIndex]?.buckets[item.dataIndex])) throw invalidInput('unknown-target', 'Unknown chart mark.');
     c.commit(() => selectNativeChartItems(aggregation, i.items, useViewerStore.getState().chartFocusMode));
     const s = useViewerStore.getState(); return { selected_ids: [...s.selectedEntityIds], source: s.chartSliceSource };
   }),

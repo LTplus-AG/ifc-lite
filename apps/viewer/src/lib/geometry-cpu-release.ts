@@ -5,6 +5,7 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import { cpuMeshAliases } from './geometry-cpu-aliases';
 import { meshCpuReleaseBuffers, sharesCpuBuffer } from './geometry-cpu-buffers';
+import { notifyReleasedGeometryMetadataChanged } from './geometry-backing/released-geometry-metadata';
 import { retainReleasedMeshProvenance } from './released-mesh-provenance';
 
 const EMPTY_POSITIONS = new Float32Array(0);
@@ -46,4 +47,5 @@ export function releaseCpuMeshBuffers(meshes: MeshData[]): void {
       }
     }
   }
+  if (meshes.length > 0) notifyReleasedGeometryMetadataChanged();
 }

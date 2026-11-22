@@ -10,11 +10,13 @@
  * step it applies: it would republish writes a command never shared, and bypass a command's own rollback. Instead
  * the forward action records what it published, with the value types the room needs, and an undo or redo of that
  * mutation publishes its inverse in kind. A mutation with no record replays locally, as before. An attribute undo
- * needs the prior value the edit recorded; without one it replays locally and the user gets the room notice.
+ * needs the prior value the edit recorded; without one it replays locally and the user gets the room notice. A move
+ * records its element and delta, since its mutation is the placement point's.
  */
 
 import { PropertyValueType } from '@ifc-lite/data';
 import type { Mutation, MutablePropertyView } from '@ifc-lite/mutations';
+import { findPropertyInSets } from '@ifc-lite/query';
 import type { ViewerState } from '../index.js';
 import { roomSlotFor } from '@/lib/collab/room-model-target.js';
 
@@ -28,6 +30,11 @@ interface PublishedEdit {
   forward?: ValueTypes;
   /** The property's types before the edit, which an undo restores. Absent when it did not exist or was not loaded. */
   inverse?: ValueTypes;
+  /** The attribute's value before the edit, which an undo publishes: null when it was unset. Absent when the caller
+   * did not know it. */
+  attributePrior?: string | null;
+  /** A move's element and IFC-frame delta (metres), which an undo publishes reversed and a redo again. */
+  placement?: { entityId: number; delta: readonly [number, number, number] };
 }
 
 const published = new WeakMap<Mutation, PublishedEdit>();
@@ -45,8 +52,14 @@ export function mirroredSession(state: ViewerState, modelId: string): Session | 
 
 /** The effective property row before an edit, for the types its undo must restore. */
 export function propertyBefore(view: MutablePropertyView, entityId: number, psetName: string, propName: string): ValueTypes | undefined {
-  const row = view.getForEntity(entityId).find(set => set.name === psetName)?.properties.find(property => property.name === propName);
+  // Several sets can share a name; the property sits in whichever of them holds it.
+  const row = findPropertyInSets(view.getForEntity(entityId), psetName, propName);
   return row && { type: row.type, dataType: row.dataType };
+}
+
+/** The element a recorded move moved, whose mutation is its placement point's: a peer edit of it must clear the move. */
+export function movedEntityOf(mutation: Mutation): number | undefined {
+  return published.get(mutation)?.placement?.entityId;
 }
 
 /** Record that `mutation` was mirrored into `session`, so its undo and redo are too. */
@@ -54,19 +67,42 @@ export function rememberPublishedEdit(mutation: Mutation, session: Session, type
   published.set(mutation, { session: tokenOf(session), ...types });
 }
 
+/** Mirror a move into the room and record it against its mutation, so its undo and redo move the room's copy too. */
+export function publishMove(state: ViewerState, modelId: string, mutation: Mutation | null | undefined,
+  entityId: number, delta: readonly [number, number, number]): void {
+  state.mirrorPlacementEdit(modelId, entityId, [delta[0], delta[1], delta[2]]);
+  const session = mirroredSession(state, modelId);
+  if (!session || !mutation) return;
+  // History holds the committed copy of an atomic edit's mutation, so the record goes on that one, found by id from
+  // the stack's end, where a move just landed.
+  const stack = state.undoStacks.get(modelId) ?? [];
+  let committed = mutation;
+  for (let index = stack.length - 1; index >= 0; index--) {
+    if (stack[index].id === mutation.id) { committed = stack[index]; break; }
+  }
+  // A copy of the delta: the caller's array may be reused, as a drag's per-frame one is.
+  rememberPublishedEdit(committed, session, { placement: { entityId, delta: [delta[0], delta[1], delta[2]] } });
+}
+
 /** Send what an undo or redo step left, if it left anything; false when the room cannot be given the prior value. */
 function publishStep(state: ViewerState, modelId: string, mutation: Mutation, edit: PublishedEdit, direction: 'undo' | 'redo'): boolean {
   const { entityId, psetName, propName, attributeName } = mutation;
+  // A move's record sits on one mutation of its batch, whatever that mutation's own type.
+  if (edit.placement) {
+    const sign = direction === 'undo' ? -1 : 1, [x, y, z] = edit.placement.delta;
+    state.mirrorPlacementEdit(modelId, edit.placement.entityId, [sign * x, sign * y, sign * z]);
+    return true;
+  }
   if (mutation.type === 'UPDATE_ATTRIBUTE') {
     if (!attributeName) return true;
     if (direction === 'redo') {
-      if (mutation.newValue !== undefined) state.mirrorAttributeEdit(modelId, entityId, attributeName, mutation.newValue === null ? null : String(mutation.newValue));
+      if (mutation.newValue !== undefined) state.mirrorAttributeEdit(modelId, entityId, attributeName, mutation.newValue === null ? '$' : String(mutation.newValue));
       return true;
     }
-    // An undo restores a prior value only when the edit recorded one (the view stores null when the caller gave
-    // none): without it the original is not known here, a created entity's payload, a select or a reference slot.
-    if (mutation.oldValue === undefined || mutation.oldValue === null) return false;
-    state.mirrorAttributeEdit(modelId, entityId, attributeName, String(mutation.oldValue));
+    // An undo restores the prior value only when the forward caller recorded it: it is not known here for a created
+    // entity's payload, a select or a reference slot. An unset prior publishes `$`, as clearing the attribute does.
+    if (edit.attributePrior === undefined) return false;
+    state.mirrorAttributeEdit(modelId, entityId, attributeName, edit.attributePrior ?? '$');
     return true;
   }
   if (!psetName || !propName) return true;

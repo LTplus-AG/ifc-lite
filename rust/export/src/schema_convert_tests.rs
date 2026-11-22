@@ -786,6 +786,22 @@ fn values_without_a_target_slot_are_counted_7683() {
     assert_eq!(dropped("#1=IFCWALL('g',$,$,$,$,$,$,$,$);", "IFC2X3", "IFC4"), 0, "a pad loses nothing");
 }
 
+/// #10779: a comment is not a value, so a dropped slot holding only a comment
+/// and `$` (or `*`) loses nothing, while a value with a comment beside it does.
+#[test]
+fn a_comment_beside_no_value_is_not_counted_10779() {
+    let dropped = |line: &str| {
+        let mut checks = crate::schema_enum::ConversionChecks::new();
+        convert_step_line(line, "IFC4", "IFC2X3", 1, &mut none(), Some(&mut checks)).unwrap();
+        checks.attribute_values_dropped
+    };
+    assert_eq!(dropped("#1=IFCQUANTITYLENGTH('L',$,$,2.5,/* x */$);"), 0);
+    assert_eq!(dropped("#1=IFCQUANTITYLENGTH('L',$,$,2.5,$ /* x */);"), 0);
+    assert_eq!(dropped("#1=IFCQUANTITYLENGTH('L',$,$,2.5,/* x */);"), 0);
+    assert_eq!(dropped("#1=IFCQUANTITYLENGTH('L',$,$,2.5,/* x */'=a*b');"), 1);
+    assert_eq!(dropped("#1=IFCQUANTITYLENGTH('L',$,$,2.5,'/* not a comment */');"), 1, "a literal is a value");
+}
+
 /// #9668 review: spaces around '=' are normalized before the required-slot
 /// checker sees the converted record; an unknown Axis must still be counted.
 #[test]
@@ -827,4 +843,32 @@ fn a_slot_replaced_in_place_is_written_dollar_and_counted_10758() {
         ("#11=IFCTRANSPORTELEMENT('g',#5,'Crane',$,$,$,$,$,.NOTDEFINED.,$,$);".into(), 0, 1),
         "IFC2X3 has no CRANEWAY member"
     );
+}
+
+fn structural_action_warnings_with_slots(load: &str, kind: &str) -> String {
+    let source = format!("#50=IFCSTRUCTURALCURVEACTION('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,{load},.TRUE_LENGTH.,{kind});");
+    let mut checks = ConversionChecks::default();
+    convert_step_line(&source, "IFC4", "IFC2X3", 50, &mut Ifc2x3SlotFill::new(None), Some(&mut checks)).unwrap();
+    checks.warnings().join("\n")
+}
+
+#[test]
+fn structural_action_notices_classify_commented_load_and_type_11001() {
+    let unknown = structural_action_warnings_with_slots("/* unknown */$", ".CONST.");
+    assert!(unknown.contains("DestabilizingLoad is unknown"), "{unknown}");
+    assert!(!structural_action_warnings_with_slots("/* value */.F.", ".CONST.").contains("DestabilizingLoad is unknown"));
+}
+
+#[test]
+fn structural_action_notices_exempt_commented_constant_type_11001() {
+    let constant = structural_action_warnings_with_slots(".F.", "/* intrinsic */.CONST.");
+    assert!(!constant.contains("PredefinedType has no slot"), "{constant}");
+    assert!(structural_action_warnings_with_slots(".F.", "/* distinct */.LINEAR.").contains("PredefinedType has no slot"));
+}
+
+#[test]
+fn by_name_remap_writes_a_commented_unset_slot_as_dollar_11001() {
+    let source = "#5=IFCDOORTYPE('id',#1,/* none */$,$,$,$,$,'tag',$,.DOOR.,.SINGLE_SWING_LEFT.,.F.,$);";
+    let out = convert_step_line(source, "IFC4", "IFC2X3", 5, &mut Ifc2x3SlotFill::new(None), None).unwrap();
+    assert!(out.starts_with("#5=IFCDOORSTYLE('id',#1,$,"), "{out}");
 }

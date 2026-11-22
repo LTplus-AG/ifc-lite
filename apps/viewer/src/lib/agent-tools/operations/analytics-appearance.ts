@@ -4,7 +4,7 @@
 import type { JSONSchemaType } from 'ajv';
 import type { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
-import { mutationDenial } from '@/store/mutation-permission';
+import { mutationPermission } from '@/store/mutation-permission';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { compareNativeAppearancePreview } from '@/lib/appearance/appearance-native-preview';
 import { appearanceRevision, commitAppearance } from '@/lib/appearance/command';
@@ -19,6 +19,8 @@ import type { ToolHost } from '../types';
 import { entityExists } from '../refs';
 import { operation, referenceSchema, type OperationContext } from './contract';
 import { metadata, idSchema, checkpoint } from './analytics-common';
+import { invalidInput, stale, unavailable } from './refusals';
+import { mutationRefusal } from './mutation-refusal';
 export interface Settings extends AppearanceDraftSettings { representationPolicy: 'preserve' | 'evaluatedOccurrence' }
 export const settingsSchema: JSONSchemaType<Settings> = {
   type: 'object', properties: {
@@ -38,38 +40,38 @@ function owned(host: ToolHost) {
   return value;
 }
 function release(candidate: Candidate) { try { candidate.stage.session?.cancel(); } finally { appearanceAssets.releaseOwner(candidate.owner); } }
-function gate(modelId: string) { const denial = mutationDenial(useViewerStore.getState(), modelId); if (denial) throw new Error(denial); if (useViewerStore.getState().collabRoomId) throw new Error('Leave the shared room before changing appearance.'); }
+function gate(modelId: string) { const permission = mutationPermission(useViewerStore.getState(), modelId); if (!permission.allowed) throw mutationRefusal(permission.reason, modelId); if (useViewerStore.getState().collabRoomId) throw unavailable('Leave the shared room before changing appearance.'); }
 /** Shared native Compare seam for the appearance-owned operation module. */
 export function compareAnalyticsAppearancePreview(host: ToolHost, id: string, modelId: string, original: boolean) {
   const candidate = owned(host).get(id);
-  if (!candidate || candidate.modelId !== modelId) throw new Error('Unknown appearance candidate for this host/model.');
-  if (candidate.applying) throw new Error('The native appearance candidate is being applied.');
-  if (appearanceRevision(modelId) !== candidate.revision || getGlobalRenderer() !== candidate.renderer) throw new Error('Appearance model or renderer changed. Prepare a new candidate.');
+  if (!candidate || candidate.modelId !== modelId) throw invalidInput('unknown-target', 'Unknown appearance candidate for this host/model.');
+  if (candidate.applying) throw unavailable('The native appearance candidate is being applied.');
+  if (appearanceRevision(modelId) !== candidate.revision || getGlobalRenderer() !== candidate.renderer) throw stale('Appearance model or renderer changed. Prepare a new candidate.');
   candidate.stage.session = compareNativeAppearancePreview(candidate.renderer, candidate.stage.groups, candidate.stage.session, original);
   return { preview_visible: !original, model_id: modelId, preview_token: id };
 }
 /** Shared candidate preparation; native face-mask services supply already validated requests. */
 export async function prepareAnalyticsAppearanceCandidate(i: { source_id: string; express_ids: number[]; settings: Settings }, c: OperationContext, faceMasks?: AppearanceRequest['faceMasks']) {
-    gate(c.model.id); if (i.express_ids.some(id => !entityExists(c.model, id))) throw new Error('An appearance target is missing from the exact target model.');
+    gate(c.model.id); if (i.express_ids.some(id => !entityExists(c.model, id))) throw invalidInput('unknown-target', 'An appearance target is missing from the exact target model.');
     const selectedSource = useViewerStore.getState().appearanceSources.find(source => source.id === i.source_id);
-    if (!selectedSource) throw new Error('Unknown native appearance source. Register an image/PDF through the native source workflow first.');
-    const renderer = getGlobalRenderer(); if (!renderer) throw new Error('Native appearance renderer is unavailable.');
+    if (!selectedSource) throw invalidInput('unknown-target', 'Unknown native appearance source. Register an image/PDF through the native source workflow first.');
+    const renderer = getGlobalRenderer(); if (!renderer) throw unavailable('Native appearance renderer is unavailable.');
     const owner: AppearanceAssetOwner = { kind: 'draft', id: crypto.randomUUID() }; const planner = createAppearancePlanner();
     const signal = c.signal ?? new AbortController().signal; let adopted = false;
     try {
       checkpoint(c); const snapshot = await prepareAppearanceSnapshot(null, c.model.id, i.express_ids, planner, signal);
       const prepared = await prepareNativeAppearancePlan({ snapshot, productIds: i.express_ids, sourceId: i.source_id, selectedSource, settings: i.settings, planner, owner, signal, faceMasks });
-      if (!prepared.plan.items.length || prepared.plan.exclusions.length) throw new Error(prepared.plan.exclusions.map(row => row.reason).join('; ') || 'No supported native appearance surfaces.');
+      if (!prepared.plan.items.length || prepared.plan.exclusions.length) throw unavailable(prepared.plan.exclusions.map(row => row.reason).join('; ') || 'No supported native appearance surfaces.');
       snapshot.validate(); gate(c.model.id); checkpoint(c);
       const map = owned(c.host);
       const token = crypto.randomUUID();
       if (getGlobalRenderer() !== renderer || useViewerStore.getState().appearanceSources.find(source => source.id === i.source_id) !== selectedSource)
-        throw new Error('The native renderer or source changed during preview preparation.');
+        throw stale('The native renderer or source changed during preview preparation.');
       c.commit(() => {
         const replacements = [...map].filter(([, candidate]) => candidate.modelId === c.model.id);
-        if (map.size - replacements.length >= 16) throw new Error('Cancel an existing native appearance preview before preparing more.');
+        if (map.size - replacements.length >= 16) throw unavailable('Cancel an existing native appearance preview before preparing more.');
         if (replacements.some(([, candidate]) => candidate.applying))
-          throw new Error('An appearance candidate is being applied to this model.');
+          throw unavailable('An appearance candidate is being applied to this model.');
         for (const [key, candidate] of replacements) { release(candidate); map.delete(key); }
         const stage = stageNativeAppearancePreview(c.model.id, prepared, i.settings, renderer);
         map.set(token, { modelId: c.model.id, revision: snapshot.revision, renderer, prepared, stage, owner }); adopted = true;
@@ -80,9 +82,9 @@ export async function prepareAnalyticsAppearanceCandidate(i: { source_id: string
 /** Internal native inspection seam; operation adapters must return bounded surface metadata. */
 export function inspectAnalyticsAppearanceCandidate(host: ToolHost, id: string, modelId: string) {
   const candidate = owned(host).get(id);
-  if (!candidate || candidate.modelId !== modelId) throw new Error('Unknown appearance candidate for this host/model.');
-  if (candidate.applying) throw new Error('The native appearance candidate is being applied.');
-  if (appearanceRevision(modelId) !== candidate.revision || getGlobalRenderer() !== candidate.renderer) throw new Error('Appearance model or renderer changed. Prepare a new candidate.');
+  if (!candidate || candidate.modelId !== modelId) throw invalidInput('unknown-target', 'Unknown appearance candidate for this host/model.');
+  if (candidate.applying) throw unavailable('The native appearance candidate is being applied.');
+  if (appearanceRevision(modelId) !== candidate.revision || getGlobalRenderer() !== candidate.renderer) throw stale('Appearance model or renderer changed. Prepare a new candidate.');
   return { model_id: candidate.modelId, revision: candidate.revision, plan: candidate.prepared.plan, groups: candidate.stage.groups,
     original_shown: candidate.stage.session === null, applying: Boolean(candidate.applying) };
 }
@@ -96,11 +98,11 @@ export const analyticsAppearanceOperations = [
   operation<{ id: string }>({ ...metadata('appearance.applyPreview', 'appearance', 'Apply exactly one immutable, revision-bound native appearance candidate as one native IFC/history transaction. Native edit mode/role, source validation and collaboration gates remain authoritative.', ['model', 'view'], {
     type: 'object', properties: { model_id: { type: 'string' }, committed: { type: 'boolean' }, affected_products: { type: 'array', items: { type: 'integer' } } }, required: ['model_id', 'committed', 'affected_products'], additionalProperties: false,
   }), policy: { model: 'native-reviewed' } }, idSchema, async (i, c) => {
-    const map = owned(c.host); const candidate = map.get(i.id); if (!candidate || candidate.modelId !== c.model.id) throw new Error('Unknown appearance candidate for this host/model.');
-    gate(c.model.id); if (appearanceRevision(c.model.id) !== candidate.revision || getGlobalRenderer() !== candidate.renderer) throw new Error('Appearance model or renderer changed. Prepare a fresh preview.');
-    if (candidate.applying) throw new Error('The native appearance candidate is being applied.');
+    const map = owned(c.host); const candidate = map.get(i.id); if (!candidate || candidate.modelId !== c.model.id) throw invalidInput('unknown-target', 'Unknown appearance candidate for this host/model.');
+    gate(c.model.id); if (appearanceRevision(c.model.id) !== candidate.revision || getGlobalRenderer() !== candidate.renderer) throw stale('Appearance model or renderer changed. Prepare a fresh preview.');
+    if (candidate.applying) throw unavailable('The native appearance candidate is being applied.');
     const { session } = candidate.stage;
-    if (!session) throw new Error('Restore the native appearance preview before applying it.');
+    if (!session) throw unavailable('Restore the native appearance preview before applying it.');
     checkpoint(c); candidate.applying = true;
     try {
       await c.commitAsync(() => commitAppearance(c.model.id, candidate.prepared.assetIds, candidate.prepared.plan, candidate.renderer, session, candidate.stage.groups, candidate.prepared.source));
@@ -108,8 +110,8 @@ export const analyticsAppearanceOperations = [
     } finally { map.delete(i.id); release(candidate); }
   }),
   operation<{ id: string }>(metadata('appearance.cancelPreview', 'appearance', 'Discard a host-owned appearance preview and restore its native original render resources.', ['view'], { type: 'object', properties: { removed: { type: 'string' } }, required: ['removed'], additionalProperties: false }), idSchema, (i, c) => {
-    const map = owned(c.host); const candidate = map.get(i.id); if (!candidate || candidate.modelId !== c.model.id) throw new Error('Unknown appearance preview for this host/model.');
-    if (candidate.applying) throw new Error('The native appearance candidate is being applied.');
+    const map = owned(c.host); const candidate = map.get(i.id); if (!candidate || candidate.modelId !== c.model.id) throw invalidInput('unknown-target', 'Unknown appearance preview for this host/model.');
+    if (candidate.applying) throw unavailable('The native appearance candidate is being applied.');
     checkpoint(c); c.commit(() => { release(candidate); map.delete(i.id); }); return { removed: i.id };
   }),
 ];

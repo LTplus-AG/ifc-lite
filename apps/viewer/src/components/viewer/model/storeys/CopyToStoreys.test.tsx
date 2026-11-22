@@ -10,7 +10,7 @@ import { beforeEach, afterEach, it } from 'node:test';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
 import { seedModelingSession, MODEL_ID, STOREY } from '@/test/modeling-session-fixture';
-import { cleanup, click, render, waitFor } from '@/test/render';
+import { cleanup, click, render, settle, waitFor } from '@/test/render';
 import { WORKSPACE_SURFACE_COMMANDS } from '../../surface-commands-workspace';
 import { paletteAvailability } from '../../palette-availability';
 import { Toaster } from '@/components/ui/toast';
@@ -23,6 +23,7 @@ beforeEach(async () => {
   const result = useViewerStore.getState().addWall(MODEL_ID, STOREY, { Start: [0, 0, 0], End: [4, 0, 0], Height: 3, Thickness: 0.2 });
   assert.ok('expressId' in result);
   useViewerStore.getState().setSelectedEntityId(result.expressId);
+  await settle();
 });
 afterEach(() => {
   restore();

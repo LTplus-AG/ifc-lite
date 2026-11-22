@@ -9,6 +9,8 @@ import { hasRetainedGeometryModel, RETAINED_EXACT_ONLY_REASON } from '@/store/re
 import { ensureModelExportReady } from '@/services/desktop-export';
 import { resolveEnergyExportMutationSource } from '@/components/viewer/energy-export-source';
 import { resolve as t } from '@/i18n/registry';
+export class NoEnergyRoomsError extends Error {}
+
 /** Exact native energy dialog producer; preserves skipped-space diagnostics. */
 export async function produceNativeEnergy(selectedModel: { id: string; name: string; schemaVersion: SchemaVersion }, format: 'hbjson' | 'dfjson', checkpoint = () => {}) {
   if (hasRetainedGeometryModel(useViewerStore.getState().models)) throw new Error(t(RETAINED_EXACT_ONLY_REASON));
@@ -63,10 +65,9 @@ export async function produceNativeEnergy(selectedModel: { id: string; name: str
               throw new Error(t('geometryExport.shared.geometryEngineUnavailableError'));
             }
             const { content: hbjson, stats } = result; hbjsonStats = stats;
-            // The HBJSON exporter returns empty output when the model has no
-            // IfcSpace volumes.
-            if (hbjson.length === 0) {
-              throw new Error(t('geometryExport.energy.noIfcSpaceError'));
+            // A context-only HBJSON file can contain shades but no rooms.
+            if (hbjson.length === 0 || stats.rooms === 0) {
+              throw new NoEnergyRoomsError(t('geometryExport.energy.noIfcSpaceError'));
             }
             if (stats.skipped > 0) {
               hbjsonSkipNote = t('geometryExport.energy.skipNote', { skipped: stats.skipped, total: stats.spaces });
@@ -89,7 +90,7 @@ export async function produceNativeEnergy(selectedModel: { id: string; name: str
             0,
           );
           if (roomCount === 0) {
-            throw new Error(t('geometryExport.energy.noIfcSpaceError'));
+            throw new NoEnergyRoomsError(t('geometryExport.energy.noIfcSpaceError'));
           }
           return dfjson;
         } finally {

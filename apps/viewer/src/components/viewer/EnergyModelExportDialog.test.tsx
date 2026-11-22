@@ -123,8 +123,8 @@ describe('EnergyModelExportDialog WASM disposal', () => {
   it('disposes the GeometryProcessor WASM handle on the HBJSON success path', async () => {
     const initMock = mock.method(GeometryProcessor.prototype, 'init', async () => undefined);
     const exportMock = mock.method(GeometryProcessor.prototype, 'exportHbjsonWithStats', () => ({
-      content: new TextEncoder().encode('{"rooms":[]}'),
-      stats: cleanStats,
+      content: new TextEncoder().encode('{"rooms":[{"identifier":"Room_1"}]}'),
+      stats: { ...cleanStats, spaces: 1, rooms: 1 },
     }));
     const disposeMock = mock.method(GeometryProcessor.prototype, 'dispose', () => undefined);
     const completions: Record<string, unknown>[] = [];
@@ -165,6 +165,29 @@ describe('EnergyModelExportDialog WASM disposal', () => {
       initMock.mock.restore();
       exportMock.mock.restore();
       disposeMock.mock.restore();
+    }
+  });
+
+  it('refuses a context-only HBJSON model and still disposes the processor (#11060)', async () => {
+    const initMock = mock.method(GeometryProcessor.prototype, 'init', async () => undefined);
+    const exportMock = mock.method(GeometryProcessor.prototype, 'exportHbjsonWithStats', () => ({
+      content: new TextEncoder().encode('{"rooms":[],"orphaned_shades":[{"identifier":"Shade_1"}]}'),
+      stats: { ...cleanStats, shades: 1 },
+    }));
+    const disposeMock = mock.method(GeometryProcessor.prototype, 'dispose', () => undefined);
+    const analytics = mock.method(posthog, 'capture', (_event: string) => undefined);
+    try {
+      const container = renderDialog();
+      await clickExport(container, 'HBJSON');
+      const alert = document.body.querySelector('[role="alert"]');
+      assert.match(alert?.textContent ?? '', /No IfcSpace volumes found/);
+      assert.equal(disposeMock.mock.callCount(), 1);
+      assert.equal(analytics.mock.calls.some(({ arguments: args }) => args[0] === 'export_completed'), false);
+    } finally {
+      initMock.mock.restore();
+      exportMock.mock.restore();
+      disposeMock.mock.restore();
+      analytics.mock.restore();
     }
   });
 

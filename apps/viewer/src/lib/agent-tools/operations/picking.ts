@@ -6,6 +6,7 @@ import { getAgentViewportHost } from '@/lib/agent-bridge/viewport-host';
 import { captureViewportPick } from '@/components/viewer/viewportPickOwnership';
 import { resolveRef } from '../refs';
 import { viewerOperation } from './contract';
+import { stale, unavailable } from './refusals';
 function pickingOperation(id: string, method: 'gpu' | 'ray') {
   return viewerOperation<{ x: number; y: number }>({ id, owner: 'viewport',
   description: `Read the native ${method === 'gpu' ? 'GPU pick' : 'exact CPU visible-surface intersection (point/normal/triangle/barycentric coordinates)'} at normalized canvas coordinates (top-left 0,0; bottom-right approaches 1,1), using the exact mounted click visibility/clip/streaming options. Does not select or change the tool. Native camera/scene/viewport ownership guards reject stale picks. GPU work may drain after cancellation; cancelled results are suppressed. hit_json is the native pick/intersection result; ref_json is a validated model-qualified entity or null with an explicit reason.`,
@@ -14,19 +15,19 @@ function pickingOperation(id: string, method: 'gpu' | 'ray') {
   },
 }, { type: 'object', properties: { x: { type: 'number', minimum: 0, exclusiveMaximum: 1 }, y: { type: 'number', minimum: 0, exclusiveMaximum: 1 } }, required: ['x', 'y'], additionalProperties: false }, async (i, c) => {
   const host = getAgentViewportHost();
-  if (!host?.renderer.getGPUDevice()) throw new Error('A live mounted viewport is required for native picking.');
+  if (!host?.renderer.getGPUDevice()) throw unavailable('A live mounted viewport is required for native picking.');
   // Agent reads are independent: one pick must not invalidate another (exclusive: false).
   // Renderer-side changes (clip applied by a frame, streamed geometry) are not in the store stamp.
   const clip = host.renderer.getPickClipRevision(), geometry = host.renderer.getPickGeometryRevision();
   const request = captureViewportPick({ ...host, channel: 'agent', exclusive: false, getTool: () => useViewerStore.getState().activeTool,
     isOwnerCurrent: () => getAgentViewportHost() === host && host.renderer.getPickClipRevision() === clip
       && host.renderer.getPickGeometryRevision() === geometry });
-  if (request.rect.width <= 0 || request.rect.height <= 0 || request.pickOptions.isStreaming) throw new Error('The native viewport must be visible and finished loading before picking.');
+  if (request.rect.width <= 0 || request.rect.height <= 0 || request.pickOptions.isStreaming) throw unavailable('The native viewport must be visible and finished loading before picking.');
   const x = i.x * request.rect.width, y = i.y * request.rect.height;
   const hit = method === 'gpu' ? await host.renderer.pick(x, y, request.pickOptions)
     : host.renderer.raycastScene(x, y, request.pickOptions)?.intersection ?? null;
   c.checkpoint?.();
-  if (!request.current() || !host.renderer.getGPUDevice()) throw new Error('The native camera, scene or viewport changed during picking.');
+  if (!request.current() || !host.renderer.getGPUDevice()) throw stale('The native camera, scene or viewport changed during picking.');
   let ref: ReturnType<typeof resolveRef> | null = null, reason = hit ? 'unresolved_native_renderer_entity' : 'no_hit';
   if (hit) {
     // Read the store after the awaited pick: a model added or replaced meanwhile must not resolve the hit.
@@ -42,7 +43,7 @@ function pickingOperation(id: string, method: 'gpu' | 'ray') {
     }
   }
   c.checkpoint?.();
-  if (!request.current()) throw new Error('The native pick source changed during entity resolution.');
+  if (!request.current()) throw stale('The native pick source changed during entity resolution.');
   return { hit_json: JSON.stringify(hit), ref_json: JSON.stringify(ref), reason, width_css: request.rect.width, height_css: request.rect.height };
 });
 }

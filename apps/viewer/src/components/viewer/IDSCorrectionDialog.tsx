@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { createModelMutationView } from '@/utils/model-mutation-view';
+import { getOrCreateMutationView } from '@/sdk/adapters/mutation-view';
 /**
  * IDSCorrectionDialog — correct a failed IDS scalar-property requirement
  * for a chosen subset of failed entities (#3929).
@@ -85,7 +85,6 @@ export function IDSCorrectionDialog({
   const models = useIfc().models;
   const legacyIfcDataStore = useViewerStore((s) => s.ifcDataStore);
   const getMutationView = useViewerStore((s) => s.getMutationView);
-  const registerMutationView = useViewerStore((s) => s.registerMutationView);
   const setStoreProperty = useViewerStore((s) => s.setProperty);
   // Recompute from the audit snapshot when overlay deletions change (#5200).
   const mutationVersion = useViewerStore((s) => s.mutationVersion);
@@ -148,13 +147,8 @@ export function IDSCorrectionDialog({
       return;
     }
 
-    // Ensure a mutation view exists for this model — same lazy-init pattern
-    // the Bulk Property Editor and PropertiesPanel use.
-    let mutationView = getMutationView(modelId);
-    if (!mutationView) {
-      mutationView = createModelMutationView(dataStore, modelId);
-      registerMutationView(modelId, mutationView);
-    }
+    const mutationView = getOrCreateMutationView(useViewerStore, modelId);
+    if (!mutationView) return;
 
     setApplying(true);
     try {
@@ -218,10 +212,8 @@ export function IDSCorrectionDialog({
     dataStore,
     failedEntities,
     effectiveSelection,
-    getMutationView,
     modelId,
     rawValue,
-    registerMutationView,
     setStoreProperty,
     onRevalidate,
     t,

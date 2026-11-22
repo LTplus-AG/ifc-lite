@@ -11,7 +11,8 @@ import { diffCounters, perfCounters } from '@ifc-lite/load-trace';
 import { useViewerStore } from '@/store';
 import { modelIndices } from '@/lib/model-placement/model-indices.js';
 import { fixtureModel } from '@/test/store-fixture.js';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup } from '@/test/render.js';
+import { renderInViewport } from '@/test/viewport-scope';
 import { useAppearanceSourceGeometry } from './useAppearanceSourceGeometry.js';
 
 let sources: MeshData[] = [];
@@ -43,7 +44,7 @@ function mount() {
     useViewerStore.getState().upsertModel({ ...fixtureModel('a'), geometryResult: geometry([mesh(1), mesh(2)]) });
     useViewerStore.getState().upsertModel({ ...fixtureModel('b'), geometryResult: geometry([mesh(3)]) });
   });
-  return render(<Probe />);
+  return renderInViewport(<Probe />);
 }
 
 afterEach(() => {

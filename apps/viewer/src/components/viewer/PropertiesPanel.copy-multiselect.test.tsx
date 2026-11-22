@@ -14,7 +14,7 @@ import { afterEach, before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { act } from 'react';
-import { advance, cleanup, click, render } from '@/test/render.js';
+import { advance, cleanup, click, render, settle } from '@/test/render.js';
 import { parseStep } from '@/test/properties-panel-harness.js';
 import { latestToast } from '@/test/toasts.js';
 import { Toaster } from '@/components/ui/toast.js';
@@ -246,12 +246,13 @@ describe('Properties panel value copy and multi-selection summary (#5900)', () =
       views.a.deleteQuantitySet(72, 'Qto_WallBaseQuantities');
       useViewerStore.setState((state) => ({ mutationVersion: (state.mutationVersion ?? 0) + 1 }) as never);
     });
+    await settle();
     const panel = mount();
     assert.equal(panel.querySelector('button[aria-label="Copy Width"]'), null, 'the deleted qset\'s Width row is gone');
     assert.ok(panel.querySelector('button[aria-label="Copy FireRating"]'), 'properties are unaffected');
   });
 
-  it('shows authored IFC sets only when both selected slabs still have them (#5900 follow-up)', () => {
+  it('shows authored IFC sets only when both selected slabs still have them (#5900 follow-up)', async () => {
     // SketchUp 2024's buildingSMART sample has both Pset_SlabCommon and
     // Qto_SlabBaseQuantities on slab #52. Two loaded copies exercise federation.
     useViewerStore.setState({
@@ -275,6 +276,7 @@ describe('Properties panel value copy and multi-selection summary (#5900)', () =
     const sourceQsets = view.getQuantitiesForEntity(52);
     assert.ok(sourcePsets.some((set) => set.name === 'Pset_SlabCommon'));
     assert.ok(sourceQsets.some((set) => set.name === 'Qto_SlabBaseQuantities'));
+    await settle();
     const panel = mount();
     assert.match(panel.textContent ?? '', /FireRating/);
     assert.match(panel.textContent ?? '', /NetArea/);

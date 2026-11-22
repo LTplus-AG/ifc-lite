@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { ModelChangeReceipt } from '@/lib/actions/model-change-commit';
 import type { ToolHost } from '../types';
+import { unavailable } from './refusals';
 
 /**
  * Make room for one more host-owned handle (run, candidate) by dropping the oldest
@@ -14,6 +15,20 @@ export function evictOldest<K, V>(handles: Map<K, V>, cap: number, canEvict: (ha
     if (handles.size < cap) return;
     if (canEvict(handle)) handles.delete(key);
   }
+}
+
+/**
+ * Store `value` under `token` for the caller, and register its removal for when the caller never receives the result
+ * (the executor runs it). `keep` spares an entry that has since been applied; `release` frees what it holds.
+ */
+export function retainCandidate<V>(c: { retain(undo: () => void): void }, store: Map<string, V>, token: string, value: V,
+  { keep, release }: { keep?: (value: V) => boolean; release?: (value: V) => void } = {}): void {
+  store.set(token, value);
+  c.retain(() => {
+    const entry = store.get(token);
+    if (entry === undefined || keep?.(entry)) return;
+    store.delete(token); release?.(entry);
+  });
 }
 
 /**
@@ -34,7 +49,7 @@ export function admitCandidate<K, V>(handles: Map<K, V>, { cap, refusal, pending
     try { release(value); } catch (error) { console.warn('[viewer operations] Releasing a stale candidate failed:', error); }
   }
   // Refused before any candidate that can still apply is evicted (only stale ones are gone by now).
-  if (open + count > cap) throw new Error(refusal);
+  if (open + count > cap) throw unavailable(refusal);
   if (!evict) return;
   for (const [key, value] of handles) {
     if (handles.size + count <= cap) break;

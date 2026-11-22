@@ -31,7 +31,7 @@ import { NOOP_LOAD_TRACE, type LoadTrace } from '@ifc-lite/load-trace';
 
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '../store/index.js';
-import { enqueueInstancedShards, instancedShardGeneration } from '../store/instancedShardQueue.js';
+import { completeInstancedShardSupply, enqueueInstancedShards, instancedShardModelEpoch, instancedShardSupplyToken } from '../store/instancedShardQueue.js';
 import { getCached, setCached, deleteCached, type CacheResult } from '../services/cacheService.js';
 import { recordFirstVisible } from '../lib/perf/loadTrace.js';
 import { publishMetadataAtMark } from '../lib/geometry-restore-gate.js';
@@ -126,19 +126,17 @@ export function useIfcCache() {
     trace: LoadTrace = NOOP_LOAD_TRACE, // #6956: the J2 (warm open) spans land on the caller's load trace
   ): Promise<CacheLoadResult> => {
     // Before any await: a reset during the IndexedDB reads supersedes this hit's shards.
-    const shardGeneration = instancedShardGeneration();
+    const shardGeneration = instancedShardSupplyToken(modelId);
+    const supplyMoved = (): CacheLoadResult | null => (instancedShardModelEpoch(modelId) === shardGeneration.epoch ? null : { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0, superseded: true }); // this model discarded (maybe re-added) since: superseded, isStale or not (r4655084060); a full clear keeps the hit live (#9628), refusing only its shards
     let adopted: AdoptedSceneSnapshot | null = null;
     // Compressed geometry chunks inflate on workers, which boot while the metadata decodes (only when there are any).
     const inflater = createCacheChunkInflater();
     try {
       const cacheLoadStart = performance.now();
 
-      // Re-check before the first write — and `setProgress` below IS a write
-      // into the shared (active-model) progress state, so the check has to come
-      // first: `getCached` was awaited by the caller, so a newer load can
-      // already own the active slot by now, and a superseded load posting
-      // "Loading from cache" over the newer load's progress is visible to the
-      // user even though no geometry moved.
+      // Re-check before the first write (`setProgress` below writes the shared, active-model progress): `getCached`
+      // was awaited by the caller, so a newer load can own the active slot by now, and a superseded load posting
+      // "Loading from cache" over its progress is visible to the user even though no geometry moved.
       if (isStale?.()) {
         return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0 };
       }
@@ -148,9 +146,11 @@ export function useIfcCache() {
       // Reset geometry first so Viewport detects this as a new file
       setGeometryResult(null);
       adopted = await adoptCachedSceneSnapshot(cacheResult, modelId, isStale, trace);
+      const afterAdoption = supplyMoved(); if (afterAdoption) return afterAdoption; // a null adoption may be this, not a miss
 
       const { dataStore, cacheBuffer, cacheBlob, headerInfo, geometrySection } =
         await decodeCachedMetadata(cacheResult, fallbackSourceBuffer, trace, inflater.prepare);
+      const afterMetadata = supplyMoved(); if (afterMetadata) return afterMetadata; // before metadata reaches a re-added model (r4655084108)
       // Reopen mark (user decision 2026-11-14): with the stored scene adopted, tree and properties go out before the geometry restore.
       const earlyPublished = adopted !== null && !isStale?.() && publishMetadataAtMark(modelId, dataStore, adopted.firstVisible, trace, isStale);
 
@@ -177,8 +177,8 @@ export function useIfcCache() {
         // so a newer load can own the slot by now. The flag is global
         // (active-model) state — a superseded load raising it here, or lowering
         // it in the `finally` below, would drive the NEWER load's stream.
-        if (isStale?.()) {
-          return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0 };
+        if (isStale?.() || supplyMoved()) { // the model's supply moved during the reads: superseded too (r4655099399)
+          return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0, superseded: true };
         }
 
         let allMeshes: MeshData[] = [];
@@ -186,11 +186,13 @@ export function useIfcCache() {
         let firstVisible: Promise<void> | undefined;
         if (adopted) {
           firstVisible = adopted.firstVisible;
-          allMeshes = await publishAdoptedSceneMeshes(adopted, open, modelId, cacheResult, cacheKey, isStale, trace, appendGeometryBatch);
+          const published = await publishAdoptedSceneMeshes(adopted, open, modelId, cacheResult, cacheKey, isStale, trace, appendGeometryBatch);
+          if (published === null) superseded = true; else allMeshes = published; // superseded: `finally` abandons the adoption
         } else {
           if (await captureSceneSnapshotOfHit(cacheResult, cacheKey, { headerInfo }, isStale, trace, modelId)) {
             return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0 };
           }
+          const afterCapture = supplyMoved(); if (afterCapture) return afterCapture; // before the streaming flag is raised (r4655425345)
           getGlobalRenderer()?.getScene().limitStreamingFragments(CACHE_FIRST_PAINT_INDICES);
           setGeometryStreamingActive(true);
           try {
@@ -200,7 +202,7 @@ export function useIfcCache() {
               // to the event loop at the end of the body, so supersession can
               // land BETWEEN chunks. Without this, the remaining chunks of the
               // old file keep appending into the new model's geometry.
-              if (isStale?.()) {
+              if (isStale?.() || supplyMoved()) {
                 superseded = true;
                 break;
               }
@@ -240,8 +242,8 @@ export function useIfcCache() {
         // active slot mid-stream — including after the LAST chunk's yield. This
         // sits ahead of the shard append, which is an active-slot write too:
         // shards from the old file would be instanced into the new model.
-        if (superseded || isStale?.()) {
-          return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0 };
+        if (superseded || isStale?.() || supplyMoved()) {
+          return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0, superseded: true };
         }
 
         meshCount = allMeshes.length;
@@ -251,6 +253,7 @@ export function useIfcCache() {
         // were partitioned off the flat meshes).
         const shards = readCachedInstancedShards({ dataStore, cacheBuffer, cacheBlob, headerInfo, geometrySection });
         if (shards.length > 0 && !adopted) enqueueInstancedShards(modelId, shards, shardGeneration);
+        if (!adopted) completeInstancedShardSupply(modelId, shards.length, shardGeneration); // an adopted snapshot states its own
 
         // Measurement (post-pixel attribution): the store write, with its synchronous subscribers.
         if (!earlyPublished) trace.span('cache.publishStore', () => setIfcDataStore(dataStore));

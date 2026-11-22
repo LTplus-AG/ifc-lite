@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useEffect, useRef, useState } from 'react';
-import { DEFAULT_MAPPING, createSemanticProvider, generateArtifacts, asJsonLd,
-  type BindingMapping, type SparqlResults } from '@ifc-lite/semantic';
+import { DEFAULT_MAPPING, generateArtifacts, asJsonLd,
+  type SparqlResults } from '@ifc-lite/semantic';
 import { useViewerStore } from '@/store';
 import { createSelectionAdapter } from '@/sdk/adapters/selection-adapter';
 import { useIfcLoader } from '@/hooks/useIfcLoader';
@@ -14,10 +14,11 @@ import { useSemanticSession, savedSemanticWorkspace } from './session';
 import { liveEntities } from './viewer';
 import { queryForSelection } from './related-query';
 import { validateInWorker } from './validation-worker';
-import type { ValidationJob, ValidationOutput } from './validation-job';
+import { validateCurrentSemantic } from './validate-current';
+import type { ValidationJob } from './validation-job';
 
-export interface SourceInput { mode: string; payload: string; endpoint: string; host: string; query: string; mapping: BindingMapping; bearer?: string; relayProvider?: string; loopbackHttpOrigin?: string }
-export type ValidationExecutor = (job: ValidationJob, signal: AbortSignal) => Promise<ValidationOutput>;
+import { loadSemanticSource, type SourceInput, type ValidationExecutor } from './load-source';
+export type { SourceInput, ValidationExecutor } from './load-source';
 export function useSemanticPilot(execute: ValidationExecutor = validateInWorker) {
   const session = useSemanticSession();
   const { document, results, graph, revisions, profile, setDocument, setGraph, setResults, setFindings, setRevisions } = session;
@@ -41,50 +42,7 @@ export function useSemanticPilot(execute: ValidationExecutor = validateInWorker)
     return true;
   }
   function load(input: SourceInput, onRetrieved?: () => void) {
-    return run(async signal => {
-      let inputVersion = useSemanticSession.getState().dataVersion;
-      const models = useViewerStore.getState().models; const guard = () => inputVersion === useSemanticSession.getState().dataVersion && models === useViewerStore.getState().models && useSemanticSession.getState().profile === profile;
-      if (input.mode === 'turtle' || input.mode === 'nquads' || input.mode === 'jsonld') {
-        const value = await execute({ graph: input.payload, profile, graphFormat: input.mode === 'turtle' ? 'text/turtle' : input.mode === 'nquads' ? 'application/n-quads' : 'application/ld+json' }, signal);
-        if (!signal.aborted && guard()) { setGraph(value.graph); session.setGraphFormat('application/n-quads'); setDocument(undefined); setResults(undefined); setFindings(value.findings); setDiagnostic(value.diagnostic ?? ""); session.setReport(value.diagnostic ? undefined : value.report); }
-        else if (!signal.aborted) throw new Error('Loaded models changed during graph import');
-        return;
-      }
-      if (input.mode === 'local') {
-        if (new TextEncoder().encode(input.payload).length > 5 * 1024 * 1024) throw new Error('JSON exceeds the byte limit');
-        const validated = await execute({ document: JSON.parse(input.payload) as unknown, profile }, signal);
-        if (!signal.aborted && guard()) { setDocument(validated.document); setGraph(validated.graph); session.setGraphFormat('application/n-quads'); setFindings(validated.findings); setDiagnostic(validated.diagnostic ?? ""); session.setReport(validated.diagnostic ? undefined : validated.report); setResults(undefined); }
-        else if (!signal.aborted) throw new Error('Loaded models changed during import');
-        if (!signal.aborted && useSemanticSession.getState().profile === profile) session.setRetrievedAt(undefined); return;
-      }
-      const kind = input.mode === 'json' ? 'json' : input.mode === 'construct' ? 'construct' : 'select';
-      const response = await createSemanticProvider().read({ ...input, kind }, signal);
-      if (signal.aborted) return;
-      if (!guard()) throw new Error('Loaded models changed during retrieval; load the records again');
-      onRetrieved?.();
-      session.setRetrievedAt(response.retrievedAt);
-      session.setQueries([{ id: 'current', endpoint: input.endpoint, kind, query: input.query, mapping: input.mapping, profileId: profile.id }]);
-      if (response.kind === 'select') {
-        // Generic results are committed independently; a narrower projection may fail visibly.
-        setResults(response.value); session.setResultMapping(input.mapping); setDocument(undefined); setGraph(''); setFindings([]);
-        inputVersion = useSemanticSession.getState().dataVersion;
-        try { await accept({ results: response.value, source: response.source, mapping: input.mapping }, signal, response.value, guard); }
-        catch (failure) { if (!signal.aborted) setDiagnostic(failure instanceof Error ? failure.message : String(failure)); }
-      } else if (response.kind === 'construct') {
-        setGraph(response.value); session.setGraphFormat('text/turtle'); setDocument(undefined); setResults(undefined); setFindings([]);
-        inputVersion = useSemanticSession.getState().dataVersion;
-        try {
-          const validated = await execute({ graph: response.value, profile }, signal);
-          if (!signal.aborted && guard()) { setFindings(validated.findings); setDiagnostic(validated.diagnostic ?? ""); session.setReport(validated.diagnostic ? undefined : validated.report); }
-          else if (!signal.aborted) throw new Error('Loaded models changed during validation');
-        } catch (failure) { if (!signal.aborted) setDiagnostic(failure instanceof Error ? failure.message : String(failure)); }
-
-      } else {
-        const validated = await execute({ document: response.value, profile }, signal);
-        if (!signal.aborted && guard()) { setDocument(validated.document); setGraph(validated.graph); session.setGraphFormat('application/n-quads'); setFindings(validated.findings); setDiagnostic(validated.diagnostic ?? ""); session.setReport(validated.diagnostic ? undefined : validated.report); setResults(undefined); }
-        else if (!signal.aborted) throw new Error('Loaded models changed during validation');
-      }
-    });
+    return run(async signal => { const outcome = await loadSemanticSource(input, signal, execute, onRetrieved); if (!signal.aborted) setDiagnostic(outcome.diagnostic); });
   }
   function related(input: SourceInput, onRetrieved?: () => void) {
     try {
@@ -112,14 +70,8 @@ export function useSemanticPilot(execute: ValidationExecutor = validateInWorker)
   }
   function validate(suppliedGraph = false) {
     return run(async signal => {
-      const input = useSemanticSession.getState();
-      const value = await execute(suppliedGraph ? { graph: input.graph, graphFormat: input.graphFormat, profile: input.profile } : { document: input.document, profile: input.profile }, signal);
-      const latest = useSemanticSession.getState();
-      // A worker result describes its exact input, never a newer edited/restored dataset.
-      if (!signal.aborted && latest.dataVersion === input.dataVersion && latest.profile === input.profile && latest.graph === input.graph && latest.graphFormat === input.graphFormat && latest.document === input.document) {
-        setFindings(value.findings); setDiagnostic(value.diagnostic ?? '');
-        session.setReport(value.diagnostic ? undefined : value.report);
-      }
+      const value = await validateCurrentSemantic(suppliedGraph, signal, execute);
+      setDiagnostic(value.diagnostic ?? '');
     });
   }
   function editGraph(value: string) {

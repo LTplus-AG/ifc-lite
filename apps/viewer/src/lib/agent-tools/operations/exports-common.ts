@@ -4,6 +4,7 @@
 import { useViewerStore } from '@/store';
 import { isFeatureEnabled } from '@/lib/features';
 import type { ViewerOperationContext } from './contract';
+import { disabled, stale } from './refusals';
 export const exportOutputSchema = { type: 'object', properties: {
   artifact: { type: 'object', properties: { artifact_id: { type: 'string' }, filename: { type: 'string' }, mime_type: { type: 'string' }, bytes: { type: 'integer', minimum: 0 } }, required: ['artifact_id', 'filename', 'mime_type', 'bytes'], additionalProperties: false },
   diagnostics_json: { type: 'string' },
@@ -21,12 +22,12 @@ export function exportCheckpoint(c: ViewerOperationContext, modelIds: readonly s
   return () => {
     c.checkpoint?.();
     const now = useViewerStore.getState();
-    if (!isFeatureEnabled('export.files')) throw new Error('Export is switched off in this viewer.');
+    if (!isFeatureEnabled('export.files')) throw disabled('Export is switched off in this viewer.');
     if ((legacy && (now.models.size !== 0 || now.ifcDataStore !== before.ifcDataStore || now.geometryResult !== before.geometryResult))
       || now.mutationVersion !== before.mutationVersion || now.geometryContentVersion !== before.geometryContentVersion
       || models.some(([id, model]) => now.models.get(id) !== model)
       || now.modelPlacement !== before.modelPlacement || now.sceneState !== before.sceneState
       || now.scheduleData !== before.scheduleData || now.scheduleIsEdited !== before.scheduleIsEdited
-      || now.scheduleSourceModelId !== before.scheduleSourceModelId) throw new Error('Source, placement, scene or schedule changed during export. Inspect and retry.');
+      || now.scheduleSourceModelId !== before.scheduleSourceModelId) throw stale('Source, placement, scene or schedule changed during export. Inspect and retry.');
   };
 }

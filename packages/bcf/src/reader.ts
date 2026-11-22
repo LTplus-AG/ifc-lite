@@ -8,7 +8,8 @@
  * Parses .bcfzip files into BCFProject structure
  */
 
-import JSZip from 'jszip';
+import type JSZip from 'jszip';
+import { BCFArchiveFormatError, BCFResourceLimitError, loadBcfArchive } from './archive-errors.js';
 import { extractElement, unescapeXml, parseLabels, parseXsBoolean } from './xml-text.js';
 import type {
   BCFProject,
@@ -39,13 +40,6 @@ interface ExpansionBudget {
   used: number;
   limit: number;
 }
-
-/**
- * Raised when an archive blows a resource cap. Distinguishable so the
- * per-topic/per-viewpoint "skip malformed content" catch blocks rethrow it
- * instead of downgrading a detected zip bomb to a console warning.
- */
-class BCFResourceLimitError extends Error {}
 
 /** The subset of JSZip's (untyped) internal stream API the budget reader uses. */
 interface EntryStream {
@@ -194,7 +188,7 @@ export async function readBCF(
   }
 
   const warn = createWarningReporter(limits?.onWarning);
-  const zip = normalizeEntrySeparators(await JSZip.loadAsync(bytes), warn);
+  const zip = normalizeEntrySeparators(await loadBcfArchive(bytes), warn);
   assertArchiveWithinLimits(zip, maxEntries, maxExpandedBytes);
   const budget: ExpansionBudget = { used: 0, limit: maxExpandedBytes };
   const root = resolveArchiveRoot(zip);
@@ -228,14 +222,14 @@ async function readVersionFile(
 ): Promise<BCFVersion> {
   const versionFile = findArchiveEntry(zip, `${root}bcf.version`);
   if (!versionFile) {
-    throw new Error('Invalid BCF file: missing bcf.version');
+    throw new BCFArchiveFormatError('Invalid BCF file: missing bcf.version');
   }
 
   const content = await readEntryCapped(versionFile, 'string', budget);
   const versionMatch = content.match(/VersionId="([^"]+)"/);
 
   if (!versionMatch) {
-    throw new Error('Invalid BCF version file: could not parse VersionId');
+    throw new BCFArchiveFormatError('Invalid BCF version file: could not parse VersionId');
   }
 
   const versionId = versionMatch[1] as '2.1' | '3.0';

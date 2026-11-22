@@ -6,6 +6,7 @@
  * Scene graph and mesh management
  */
 
+import { unionEntityWorldBounds } from './released-entity-bounds.js';
 import { GeometryChangeSignal } from './geometry-change-signal.js';
 import { SceneTriangleCounts } from './triangle-counts.js';
 import { destroyInstancedTemplateGpu, type InstancedTemplateGPU, type InstancedOccurrence, type InstancedTemplateCpu } from './scene-instance-types.js';
@@ -156,6 +157,7 @@ export class Scene {
   private authoredGeneration = 0;
   // Bumped wherever what a CPU pick can hit changes: see getPickGeometryRevision() (#8998).
   private pickGeometryRevision = 0;
+  private clearEpoch = 0; // moved by every flat clear (clear(), reshapes): a replay begun before owns nothing after (#10264)
   private triangleCounts = new SceneTriangleCounts();
   private geometryChanges = new GeometryChangeSignal();
   private bumpPickGeometryRevision(): void { this.pickGeometryRevision++; this.geometryChanges.changed(); }
@@ -1199,6 +1201,7 @@ export class Scene {
         this.createStreamingFragments(renderable, device, pipeline);
         for (const mesh of renderable) this.streamingFragmentIndexBudget -= mesh.indices.length;
       }
+      if (!retainStreamingGeometry) { unionEntityWorldBounds(this.boundingBoxes, meshDataArray); this.modelTranslations.unionReleasedEntityBounds(meshDataArray); } // after its fragments: a throw leaves no bounds
       if (!sourceCounted) { this.triangleCounts.noteSources(meshDataArray); this.geometryChanges.changed(); }
       return;
     }
@@ -1406,7 +1409,7 @@ export class Scene {
    * skips them and returns `false` so the caller can fall back
    * to a full reload if needed.
    */
-  translateMeshesForEntity(expressId: number, delta: [number, number, number]): boolean {
+  translateMeshesForEntity(expressId: number, delta: [number, number, number], beforeWrite?: (mesh: MeshData) => void): boolean {
     this.appearanceController?.cancelFor(expressId);
     // An entity can have flat meshes, GPU-instanced occurrences, or both. The
     // instanced occurrences live in the per-template instance buffers, NOT in
@@ -1417,7 +1420,7 @@ export class Scene {
     // instanced pass runs last and rebuilds that AABB from the moved occurrence
     // matrices, so a mixed flat+instanced entity never ends up with stranded
     // (null) instanced bounds.
-    const flatMoved = this.translateFlatMeshesForEntity(expressId, delta);
+    const flatMoved = this.translateFlatMeshesForEntity(expressId, delta, beforeWrite);
     const instancedMoved = this.translateInstancedEntity(expressId, delta);
     return flatMoved || instancedMoved;
   }
@@ -1464,7 +1467,7 @@ export class Scene {
     affectedKeys.add(newBucketKey);
   }
 
-  private translateFlatMeshesForEntity(expressId: number, delta: [number, number, number]): boolean {
+  private translateFlatMeshesForEntity(expressId: number, delta: [number, number, number], beforeWrite?: (mesh: MeshData) => void): boolean {
     this.streamWork.invalidate(); // positions move in place below
     const meshDataList = this.meshDataMap.get(expressId);
     if (!meshDataList || meshDataList.length === 0) return false;
@@ -1488,6 +1491,7 @@ export class Scene {
         }
         if (shared) continue;
       }
+      beforeWrite?.(meshData);
       const pos = meshData.positions;
       for (let i = 0; i < pos.length; i += 3) {
         pos[i] += dx;
@@ -1659,10 +1663,10 @@ export class Scene {
   }
 
   /** Bulk variant of `translateMeshesForEntity`. */
-  translateMeshesForEntities(updates: Map<number, [number, number, number]>): number {
+  translateMeshesForEntities(updates: Map<number, [number, number, number]>, beforeWrite?: (mesh: MeshData) => void): number {
     let count = 0;
     for (const [id, delta] of updates) {
-      if (this.translateMeshesForEntity(id, delta)) count++;
+      if (this.translateMeshesForEntity(id, delta, beforeWrite)) count++;
     }
     return count;
   }
@@ -1682,7 +1686,7 @@ export class Scene {
    * are not rotated (the collab edit path only rotates flat/authored meshes).
    * Returns true when a mesh was modified.
    */
-  rotateMeshesForEntity(expressId: number, angleRad: number, pivot: [number, number, number]): boolean {
+  rotateMeshesForEntity(expressId: number, angleRad: number, pivot: [number, number, number], beforeWrite?: (mesh: MeshData) => void): boolean {
     this.appearanceController?.cancelFor(expressId);
     this.streamWork.invalidate(); // positions rotate in place below
     const meshDataList = this.meshDataMap.get(expressId);
@@ -1705,6 +1709,7 @@ export class Scene {
       // Fold the per-element local-frame origin into the pivot (world = origin + pos).
       const px = pivot[0] - (meshData.origin?.[0] ?? 0);
       const pz = pivot[2] - (meshData.origin?.[2] ?? 0);
+      beforeWrite?.(meshData);
       const pos = meshData.positions;
       for (let i = 0; i < pos.length; i += 3) {
         const dx = pos[i] - px;
@@ -1754,10 +1759,10 @@ export class Scene {
   }
 
   /** Bulk variant of `rotateMeshesForEntity`. */
-  rotateMeshesForEntities(updates: Map<number, { angle: number; pivot: [number, number, number] }>): number {
+  rotateMeshesForEntities(updates: Map<number, { angle: number; pivot: [number, number, number] }>, beforeWrite?: (mesh: MeshData) => void): number {
     let count = 0;
     for (const [id, { angle, pivot }] of updates) {
-      if (this.rotateMeshesForEntity(id, angle, pivot)) count++;
+      if (this.rotateMeshesForEntity(id, angle, pivot, beforeWrite)) count++;
     }
     return count;
   }
@@ -3607,10 +3612,9 @@ export class Scene {
   }
 
   clear(): void {
-    this.modelTranslations.clear();
-    // GPU-instancing templates own their vertex/index/instance buffers.
-    // (Freed slots are holes whose buffers are already destroyed — skip them so
-    // a per-model removal followed by clear() can't double-destroy.)
+    this.modelTranslations.clear(); // clearFlatGeometry() below moves clearEpoch
+    // GPU-instancing templates own their vertex/index/instance buffers. (Freed slots are holes whose
+    // buffers are already destroyed — skip them so a per-model removal then clear() can't double-destroy.)
     this.destroyAllInstancedTemplates();
     this.clearFlatGeometry();
   }
@@ -3625,7 +3629,7 @@ export class Scene {
    */
   clearFlatGeometry(): void {
     this.snapshots.onFlatCleared();
-    this.authoredGeneration++; this.authoredPreparations.invalidate();
+    this.clearEpoch++; this.authoredGeneration++; this.authoredPreparations.invalidate();
     this.instanceSuppression.restore();
     this.appearanceController?.forget();
     this.clearFlatBuffers();
@@ -3635,7 +3639,7 @@ export class Scene {
    * owners keep their original-instance history. Full reset remains separate. */
   clearFlatGeometryForRebuild(geometry: readonly MeshData[], models: ReadonlySet<number>, sourceGeometry = geometry): void {
     this.snapshots.onFlatCleared();
-    this.authoredGeneration++; this.authoredPreparations.invalidate();
+    this.clearEpoch++; this.authoredGeneration++; this.authoredPreparations.invalidate();
     const retained = this.appearanceController?.prepareRebuild(sourceGeometry, models) ?? new Set<number>();
     const discarded = this.appearanceController?.discardedForRebuild(retained) ?? [];
     // A discarded converted owner must not resurrect its obsolete type instance.

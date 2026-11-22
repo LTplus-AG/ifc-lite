@@ -23,6 +23,9 @@ export function noteInstancedShardModel(modelId: string): void {
   revisions.set(modelId, (revisions.get(modelId) ?? 0) + 1);
 }
 
+/** Every model that has handed shards to the renderer so far. */
+export function instancedShardModelIds(): string[] { return [...models]; }
+
 export function hasInstancedShards(modelId: string): boolean {
   return models.has(modelId);
 }

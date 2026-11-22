@@ -9,7 +9,7 @@ import { afterEach, test } from 'node:test';
 import { IfcParser } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
-import { cleanup, render } from '@/test/render';
+import { cleanup, render, waitFor } from '@/test/render';
 import { BimProvider, useBim } from './BimProvider';
 import type { BimContext } from '@ifc-lite/sdk';
 import { createViewerSandbox } from '@/lib/scripts/viewer-sandbox';
@@ -29,6 +29,7 @@ test('#11247 an export-enabled sandbox can export synchronously in its first scr
     return null;
   }
   render(<BimProvider><Capture /></BimProvider>);
+  await waitFor(() => captured.bim !== undefined, 'SDK provider mounted');
   assert.ok(captured.bim);
   const sandbox = await createViewerSandbox(captured.bim);
   try {

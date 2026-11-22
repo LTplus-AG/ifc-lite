@@ -4,24 +4,19 @@
 
 import type { StepExporter } from '@ifc-lite/export';
 
-let writer: typeof StepExporter | undefined;
-let loadFailure: Error | undefined;
+export type SdkStepWriter = () => typeof StepExporter;
 
-export async function prepareSdkStepExport(): Promise<void> {
-  writer ??= (await import('@/lib/export/step-export-runtime')).StepExporter;
-}
+let writer: Promise<SdkStepWriter> | undefined;
 
-export async function prepareSandboxStepExport(): Promise<void> {
-  try {
-    await prepareSdkStepExport();
-  } catch (cause) {
-    // Keep a stale-tab chunk failure on the export call. Other scripts can still run.
-    loadFailure = new Error('Could not load STEP export. Reload the viewer and try again.', { cause });
-    console.warn(loadFailure);
-  }
-}
-
-export function getSdkStepWriter(): typeof StepExporter {
-  if (writer) return writer;
-  throw loadFailure ?? new Error('STEP export was not prepared before starting the SDK call');
+/** React waits for this before publishing the synchronous SDK context. */
+export function loadSdkStepWriter(): Promise<SdkStepWriter> {
+  return writer ??= import('@/lib/export/step-export-runtime').then(
+    ({ StepExporter }) => () => StepExporter,
+    (cause: unknown) => {
+      // Allow the viewer and unrelated script operations to mount after a chunk failure.
+      const error = new Error('Could not load STEP export. Reload the viewer and try again.', { cause });
+      console.warn(error);
+      return () => { throw error; };
+    },
+  );
 }

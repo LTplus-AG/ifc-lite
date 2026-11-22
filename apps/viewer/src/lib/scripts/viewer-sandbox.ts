@@ -3,14 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { BimContext } from '@ifc-lite/sdk';
 import type { SandboxConfig, ScriptResult } from '@ifc-lite/sandbox';
-import { prepareSandboxStepExport } from '@/sdk/sdk-step-writer';
 import { disposeSandboxReportingAbort } from '@/lib/sandboxAbort';
 /** The panel's existing permission defaults, shared with parameterized native runners. */
 export async function createViewerSandbox(bim: BimContext, config?: SandboxConfig) {
-  const [{ createSandbox }] = await Promise.all([
-    import('@ifc-lite/sandbox'),
-    config?.permissions?.export !== false && prepareSandboxStepExport(),
-  ]);
+  const { createSandbox } = await import('@ifc-lite/sandbox');
   return createSandbox(bim, {
     permissions: { model: true, query: true, viewer: true, mutate: true, store: true, lens: true, export: true, files: true, ...config?.permissions },
     limits: { timeoutMs: 30_000, ...config?.limits },

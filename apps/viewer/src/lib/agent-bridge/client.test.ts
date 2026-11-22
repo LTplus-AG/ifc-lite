@@ -484,6 +484,27 @@ describe('local agent bridge client: calls (#9523)', () => {
     assert.doesNotMatch(JSON.stringify(rows), /Available models|house\.ifc/);
   });
 
+  it('folds identical read errors while keeping a different reply with the same error code separate (#10596)', async () => {
+    let message = 'Entity could not be found';
+    const h = paired({ dispatch: async () => ({
+      text: message, structured: null, isError: true, errorCode: 'ENTITY_NOT_FOUND',
+    }) });
+    call(h.socket(), 'first', 'get_entity', { express_id: 42 });
+    await flush();
+    call(h.socket(), 'retry', 'get_entity', { express_id: 42 });
+    await flush();
+    message = 'Entity was removed';
+    call(h.socket(), 'changed', 'get_entity', { express_id: 42 });
+    await flush();
+
+    const rows = foldActivity([...h.activity].reverse());
+    assert.deepEqual(rows.map(({ seq, count, errorCode }) => ({ seq, count, errorCode })), [
+      { seq: 3, count: undefined, errorCode: 'ENTITY_NOT_FOUND' },
+      { seq: 2, count: 2, errorCode: 'ENTITY_NOT_FOUND' },
+    ]);
+    assert.doesNotMatch(JSON.stringify(rows), /Entity could not be found|Entity was removed/);
+  });
+
   it('keeps screenshot activity separate even when the bridge can only forward text (#9523 review)', async () => {
     const h = paired({ dispatch: async () => ({
       text: 'Viewport screenshot', structured: { width: 2, height: 1 }, isError: false,

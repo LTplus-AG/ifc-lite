@@ -212,7 +212,7 @@ export class CallRunner {
     if (!this.live()) return { awaitingAck: false };
     try {
       const frame = buildResultFrame(this.opts.sessionId, call.id, toCallToolResult(outcome, this.opts.imageContent),
-        this.opts.maxResultBytes, !outcome.isError && !outcome.image, !!claim);
+        this.opts.maxResultBytes, !outcome.image, !!claim);
       if (frame.truncated) warn(`the result of ${call.name} was more than the bridge accepts and was truncated`);
       const awaitingAck = !!claim && !frame.truncated;
       if (claim && awaitingAck) {

@@ -187,6 +187,21 @@ test('#10591 layer review keeps a draft edited back to its posted text while the
   assert.equal(title.value, 'Check this wall');
 });
 
+test('#10591 layer review keeps a description typed while the post is in flight', async () => {
+  const { gate, gated } = gatedClient();
+  const comment = await readyToComment(gated);
+  const title = document.querySelector<HTMLInputElement>('input[aria-label="Review comment title"]')!;
+  const description = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Review comment description"]')!;
+  click(comment);
+  await capture.release(1);
+  await waitFor(() => posts === 1, 'the post is in flight');
+  type(description, 'Cracked plaster');
+  await act(async () => { gate.resolve(); });
+  await settle();
+  assert.equal(title.value, 'Check this wall');
+  assert.equal(description.value, 'Cracked plaster');
+});
+
 test('#10591 layer review posts nothing when the staged title is edited during capture', async () => {
   const staged = { id: 'staged-edit-capture', candidateId: REVIEW.layerId, refName: REVIEW.into,
     action: 'comment' as const, entity: WALL_A, title: 'Staged note', description: '', withViewpoint: true };

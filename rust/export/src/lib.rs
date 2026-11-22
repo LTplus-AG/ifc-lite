@@ -169,7 +169,7 @@ pub use kmz::{
     ifc_angle_to_kml_heading, try_export_kmz_collada_from_meshes, AltitudeMode, KmzOptions,
 };
 pub use merged::{
-    deterministic_global_id, export_merged, export_merged_models, export_merged_with_stats,
+    deterministic_global_id, export_merged, export_merged_models, export_merged_with_stats, try_export_merged,
     leading_rooted_global_id, ContainerMergeStrategy, MergedModel, MergedOptions, MergedStats,
     StoreyMergeStrategy, UnitReconciliation,
 };

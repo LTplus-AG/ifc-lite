@@ -101,7 +101,7 @@ impl IfcAPI {
             schema: if schema.is_empty() { None } else { Some(schema) },
             ..Default::default()
         };
-        ifc_lite_export::export_merged(&models, &opts)
+        ifc_lite_export::try_export_merged(&models, &opts)
             .map(String::into_bytes)
             .map_err(|error| JsError::new(&format!("exportMerged: {error}")))
     }

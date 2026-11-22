@@ -1302,7 +1302,7 @@ ENDSEC;\nEND-ISO-10303-21;\n"
     let model_a = model("proja");
     let model_b = model("projb");
 
-    let (merged, _) = export_merged_with_stats(
+    let merged = export_merged(
         &[model_a.as_bytes(), model_b.as_bytes()],
         &MergedOptions::default(),
     );
@@ -1444,7 +1444,7 @@ ENDSEC;\nEND-ISO-10303-21;\n";
 fn dropping_containers_keeps_a_real_model_intact() {
     let bytes = fixture_or_skip!("ara3d/duplex.ifc");
     let models = [bytes.as_slice(), bytes.as_slice()];
-    let (baseline, _) = export_merged_with_stats(&models, &MergedOptions::default());
+    let baseline = export_merged(&models, &MergedOptions::default());
     let opts = MergedOptions { drop_empty_containers: true, ..Default::default() };
     let (merged, stats) = export_merged_with_stats(&models, &opts);
 

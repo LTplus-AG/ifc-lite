@@ -24,6 +24,8 @@
 //! is set so the caller can gate that case to the JS path.
 
 mod empty;
+mod entry_points;
+pub use entry_points::try_export_merged;
 mod guid;
 mod header;
 mod line_edit;
@@ -134,15 +136,13 @@ pub struct MergedStats {
     pub warnings: Vec<String>,
 }
 
-/// Merge `models` (raw IFC byte slices) into one STEP/IFC string. Convenience
-/// wrapper over [`export_merged_models`] that exports each model in full.
-/// Returns `InvalidData` with the record diagnostic if the merge is refused.
-pub fn export_merged(models: &[&[u8]], opts: &MergedOptions) -> std::io::Result<String> {
-    let (out, stats) = export_merged_with_stats(models, opts);
-    if out.is_empty() {
-        return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, stats.warnings.join("\n")));
-    }
-    Ok(out)
+/// Merge whole models into a STEP file. A refused merge reports its diagnostic
+/// to stderr and returns an empty string. Use [`try_export_merged`] to handle the error.
+pub fn export_merged(models: &[&[u8]], opts: &MergedOptions) -> String {
+    try_export_merged(models, opts).unwrap_or_else(|error| {
+        eprintln!("{error}");
+        String::new()
+    })
 }
 
 /// Like [`export_merged`] but also returns coverage stats.

@@ -44,6 +44,8 @@
  * pinned for both by `rust/export/tests/fixtures/schema_grid_placement_vectors.json`.
  */
 
+import { forEachExpressRef } from './step-ref-scan.js';
+import { withoutComments } from './step-comment-skip.js';
 import { formatStepReal } from '@ifc-lite/data';
 import { readStepSlots } from './step-argument-parser.js';
 import {
@@ -67,25 +69,6 @@ function append<T>(map: Map<number, T[]>, key: number, value: T): void {
   else map.set(key, [value]);
 }
 
-/** The `#n` references in `text` from `from` on, outside string literals. */
-function references(text: string, from: number): number[] {
-  const ids: number[] = [];
-  for (let i = from; i < text.length; i++) {
-    if (text[i] === "'") {
-      for (i++; i < text.length; i++) {
-        if (text[i] === "'" && text[i + 1] === "'") i++;
-        else if (text[i] === "'") break;
-      }
-    } else if (text[i] === '#') {
-      let j = i + 1;
-      while (j < text.length && text[j] >= '0' && text[j] <= '9') j++;
-      if (j > i + 1) ids.push(Number(text.slice(i + 1, j)));
-      i = j - 1;
-    }
-  }
-  return ids;
-}
-
 /** Who names each placement and intersection. */
 function users(records: Records): Users {
   const placements = new Set<number>();
@@ -99,10 +82,11 @@ function users(records: Records): Users {
   for (const rec of records.list) {
     if (!rec) continue;
     const hits: number[] = [];
-    for (const id of references(rec.text, rec.open)) {
+    forEachExpressRef(rec.text.slice(rec.open), (id) => {
       if (placements.has(id)) hits.push(id);
       else if (crossings.has(id)) crossings.set(id, crossings.get(id)! + 1);
-    }
+      return false;
+    });
     if (hits.length === 0) continue;
     const s = records.slots(rec);
     for (const id of new Set(hits)) {
@@ -227,16 +211,16 @@ function lift(records: Records, kid: number, g: readonly string[]): { intersecti
   // Within the reader's tolerance: a frame composed through a turned grid
   // leaves residues like 6e-17 where it means zero.
   if (!l || l.length !== 2 || !a || a.length !== 3 || !at || Math.abs(at[0]) > EPS || Math.abs(at[1]) > EPS) return null;
-  const axis = a[1].trim() === '$' ? [0, 0, 1] : records.vector(a[1], 'IFCDIRECTION');
-  const ref = a[2].trim() === '$' ? [1, 0] : records.vector(a[2], 'IFCDIRECTION');
+  const axis = withoutComments(a[1]) === '$' ? [0, 0, 1] : records.vector(a[1], 'IFCDIRECTION');
+  const ref = withoutComments(a[2]) === '$' ? [1, 0] : records.vector(a[2], 'IFCDIRECTION');
   if (!axis || axis.length !== 3 || !(axis[2] > 0) || Math.abs(axis[0]) > EPS * axis[2] || Math.abs(axis[1]) > EPS * axis[2]) return null;
   if (!ref || !(ref[0] > 0) || Math.abs(ref[1]) > EPS * ref[0]) return null;
-  if (g[1].trim() !== '$' && !records.get(refId(g[1]), INTERSECTION)) return null;
+  if (withoutComments(g[1]) !== '$' && !records.get(refId(g[1]), INTERSECTION)) return null;
   const i = records.slots(records.get(refId(g[0]), INTERSECTION));
   if (!i || i.length !== 2 || !records.crossing(refId(g[0]))) return null;
   const dz = at[2] ?? 0;
   if (Math.abs(dz) <= EPS) return { intersection: null };
-  const offsets = i[1].trim() === '$' ? ['0.', '0.'] : list(i[1]);
+  const offsets = withoutComments(i[1]) === '$' ? ['0.', '0.'] : list(i[1]);
   if (!offsets || (offsets.length !== 2 && offsets.length !== 3)) return null;
   const z0 = offsets[2] === undefined ? 0 : num(offsets[2]);
   if (z0 === null) return null;
@@ -254,8 +238,8 @@ function free(records: Records, kid: number, frame: GridFrame): string[] | null 
   const a = records.slots(records.get(refId(l?.[1]), 'IFCAXIS2PLACEMENT3D'));
   const at = a && records.vector(a[0], 'IFCCARTESIANPOINT');
   if (!l || l.length !== 2 || !a || a.length !== 3 || !at) return null;
-  const axisGiven = a[1].trim() !== '$';
-  const refGiven = a[2].trim() !== '$';
+  const axisGiven = withoutComments(a[1]) !== '$';
+  const refGiven = withoutComments(a[2]) !== '$';
   const axis = axisGiven ? records.vector(a[1], 'IFCDIRECTION') : null;
   const ref = refGiven ? records.vector(a[2], 'IFCDIRECTION') : null;
   if ((axisGiven && !axis) || (refGiven && !ref)) return null;

@@ -13,6 +13,7 @@
 //! Split out of `schema_convert.rs` to stay under its line budget, same
 //! reason the TypeScript twin gives for its own split.
 
+use crate::step_slot::slot_is;
 use std::borrow::Cow;
 
 use crate::rooted_type::is_rooted_type;
@@ -140,7 +141,7 @@ pub(crate) fn product_proxy(prefix: &str, guid: &str, entity_type: &str, args: &
     let slot = |i: usize| args.get(i).map_or("$", String::as_str);
     // Name and ObjectType fall back to the quoted source type when the slot is `$`.
     let or_type = |i: usize| -> Cow<'_, str> {
-        if slot(i).trim() == "$" { Cow::Owned(format!("'{entity_type}'")) } else { Cow::Borrowed(slot(i)) }
+        if slot_is(slot(i), "$") { Cow::Owned(format!("'{entity_type}'")) } else { Cow::Borrowed(slot(i)) }
     };
     format!(
         "{prefix}IFCPROXY('{guid}',{},{},{},{},{},{},.NOTDEFINED.,$);",

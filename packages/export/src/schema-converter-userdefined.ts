@@ -14,7 +14,8 @@
 
 import type { SchemaVersionWithRegistry } from '@ifc-lite/parser';
 import { attrNameTable } from './schema-converter.js';
-import { skipStepTrivia } from './step-slot-grammar.js';
+import { LABEL_CARRIES } from './schema-enum-policy.js';
+import { isToken, isUnset } from './schema-converter-userdefined-label.js';
 
 const LABELS: readonly string[] = ['ObjectType', 'ElementType', 'ProcessType', 'ResourceType'];
 
@@ -53,10 +54,17 @@ function exempt(schema: SchemaVersionWithRegistry): ReadonlySet<string> {
   return set;
 }
 
-/** `[PredefinedType index, label index]` when `entityType` has the rule in `schema`. */
+/** `[enum index, label index]` when `entityType` has the rule in `schema`. */
 export function userDefinedRule(schema: SchemaVersionWithRegistry, entityType: string): readonly [number, number] | undefined {
   const names = attrNameTable(schema)?.get(entityType);
-  if (!names || !candidate(names) || exempt(schema).has(entityType)) return undefined;
+  if (!names) return undefined;
+  const pair = schema === 'IFC2X3' ? LABEL_CARRIES.find(([type]) => type === entityType) : undefined;
+  if (pair) {
+    const enumIndex = names.indexOf(pair[2]);
+    const labelIndex = names.indexOf(pair[3]);
+    return enumIndex >= 0 && labelIndex >= 0 ? [enumIndex, labelIndex] : undefined;
+  }
+  if (!candidate(names) || exempt(schema).has(entityType)) return undefined;
   return [names.indexOf('PredefinedType'), names.findIndex((n) => LABELS.includes(n))];
 }
 
@@ -64,12 +72,5 @@ export function userDefinedRule(schema: SchemaVersionWithRegistry, entityType: s
 export function breaksUserDefinedRule(args: readonly string[], [predefined, label]: readonly [number, number]): boolean {
   return args.length > Math.max(predefined, label)
     && isToken(args[predefined], '.USERDEFINED.')
-    && isToken(args[label], '$');
-}
-
-/** True when `slot` is `token` (any case) with only whitespace and comments around it. */
-function isToken(slot: string, token: string): boolean {
-  const start = skipStepTrivia(slot, 0);
-  return start !== -1 && slot.slice(start, start + token.length).toUpperCase() === token
-    && skipStepTrivia(slot, start + token.length) === slot.length;
+    && isUnset(args[label]);
 }

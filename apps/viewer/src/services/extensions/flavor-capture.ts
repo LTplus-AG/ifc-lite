@@ -15,12 +15,16 @@ export function captureNativeFlavor(target: Flavor): Flavor {
     updatedAt: new Date().toISOString(),
   };
 }
+/** 8 hex chars; getRandomValues works on plain-HTTP origins, unlike randomUUID. */
+function randomSuffix(): string {
+  return Array.from(crypto.getRandomValues(new Uint8Array(4)), byte => byte.toString(16).padStart(2, '0')).join('');
+}
 export function createNativeFlavor(name: string, description: string, snapshot: boolean): Flavor {
   if (!name.trim()) throw new Error('A nonempty native flavor name is required.');
   const now = new Date().toISOString();
   const stamp = now.replace(/[:.]/g, '-').toLowerCase();
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-  const flavor: Flavor = { schemaVersion: 1, id: `local.${slug || 'flavor'}.${stamp}.${crypto.randomUUID().slice(0, 8)}`, name, description, createdAt: now, updatedAt: now, extensions: [], lenses: [], savedQueries: [], keybindings: [], layout: { state: {} }, settings: {} };
+  const flavor: Flavor = { schemaVersion: 1, id: `local.${slug || 'flavor'}.${stamp}.${randomSuffix()}`, name, description, createdAt: now, updatedAt: now, extensions: [], lenses: [], savedQueries: [], keybindings: [], layout: { state: {} }, settings: {} };
   return snapshot ? captureNativeFlavor(flavor) : flavor;
 }
 

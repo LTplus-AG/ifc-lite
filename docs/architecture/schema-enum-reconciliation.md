@@ -21,8 +21,8 @@ into, which can receive any member of the source type's enum (#10856).
 | Direction | Entity attributes | Missing member entries | Rename-target slots | Refused |
 | --- | --- | --- | --- | --- |
 | IFC4X3 → IFC4 | 108 | 402 | 7 | 0 |
-| IFC4X3 → IFC2X3 | 80 | 216 | 18 | 10 |
-| IFC4 → IFC2X3 | 60 | 111 | 14 | 7 |
+| IFC4X3 → IFC2X3 | 83 | 216 | 18 | 10 |
+| IFC4 → IFC2X3 | 63 | 111 | 14 | 7 |
 | IFC2X3 → IFC4 | 24 | 71 | 4 | 0 |
 | IFC2X3 → IFC4X3 | 23 | 71 | 3 | 0 |
 | IFC4 → IFC4X3 | 0 | 0 | 0 | 0 |
@@ -168,7 +168,7 @@ into, which can receive any member of the source type's enum (#10856).
 | IfcDoorStyle.OperationType | IfcDoorStyleOperationEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
 | IfcDoorStyle.ConstructionType | IfcDoorStyleConstructionEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
 | IfcElectricApplianceType.PredefinedType | IfcElectricApplianceTypeEnum | FREESTANDINGELECTRICHEATER, FREESTANDINGWATERCOOLER, FREESTANDINGWATERHEATER, KITCHENMACHINE | `.USERDEFINED.`, name in `ElementType` |
-| IfcElectricDistributionPoint.DistributionPointFunction | IfcElectricDistributionPointFunctionEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `UserDefinedFunction` |
+| IfcElectricDistributionPoint.DistributionPointFunction | IfcElectricDistributionPointFunctionEnum | (remapped into this slot: any member not listed) | `.USERDEFINED.`, name in `UserDefinedFunction` |
 | IfcElectricFlowStorageDeviceType.PredefinedType | IfcElectricFlowStorageDeviceTypeEnum | CAPACITOR, COMPENSATOR, INDUCTOR, RECHARGER | `.USERDEFINED.`, name in `ElementType` |
 | IfcElectricGeneratorType.PredefinedType | IfcElectricGeneratorTypeEnum | CHP, ENGINEGENERATOR, STANDALONE | `.USERDEFINED.`, name in `ElementType` |
 | IfcElementAssembly.PredefinedType | IfcElementAssemblyTypeEnum | ABUTMENT, CROSS_BRACING, DECK, DILATATIONPANEL, ENTRANCEWORKS, GRID, MAST, PIER, PYLON, RAIL_MECHANICAL_EQUIPMENT_ASSEMBLY, SHELTER, SIGNALASSEMBLY, SUMPBUSTER, SUPPORTINGASSEMBLY, SUSPENSIONASSEMBLY, TRACKPANEL, TRACTION_SWITCHING_ASSEMBLY, TRAFFIC_CALMING_DEVICE, TURNOUTPANEL | `.USERDEFINED.`, name in `ObjectType` |
@@ -190,6 +190,7 @@ into, which can receive any member of the source type's enum (#10856).
 | IfcPile.PredefinedType | IfcPileTypeEnum | BORED, DRIVEN, JETGROUTING | `.USERDEFINED.`, name in `ObjectType` |
 | IfcPipeSegmentType.PredefinedType | IfcPipeSegmentTypeEnum | CULVERT | `.USERDEFINED.`, name in `ElementType` |
 | IfcPlateType.PredefinedType | IfcPlateTypeEnum | BASE_PLATE, COVER_PLATE, FLANGE_PLATE, GUSSET_PLATE, SPLICE_PLATE, STIFFENER_PLATE, WEB_PLATE | `.USERDEFINED.`, name in `ElementType` |
+| IfcProcedure.ProcedureType | IfcProcedureTypeEnum | (remapped into this slot: any member not listed) | `.USERDEFINED.`, name in `UserDefinedProcedureType` |
 | IfcProtectiveDeviceType.PredefinedType | IfcProtectiveDeviceTypeEnum | ANTI_ARCING_DEVICE, EARTHINGSWITCH, EARTHLEAKAGECIRCUITBREAKER, SPARKGAP, VOLTAGELIMITER | `.USERDEFINED.`, name in `ElementType` |
 | IfcPumpType.PredefinedType | IfcPumpTypeEnum | SUBMERSIBLEPUMP, SUMPPUMP | `.USERDEFINED.`, name in `ElementType` |
 | IfcRailing.PredefinedType | IfcRailingTypeEnum | FENCE | `.USERDEFINED.`, name in `ObjectType` |
@@ -224,6 +225,8 @@ into, which can receive any member of the source type's enum (#10856).
 | IfcWallType.PredefinedType | IfcWallTypeEnum | MOVABLE, PARAPET, PARTITIONING, RETAININGWALL, SOLIDWALL, WAVEWALL | `.USERDEFINED.`, name in `ElementType` |
 | IfcWindowStyle.ConstructionType | IfcWindowStyleConstructionEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
 | IfcWindowStyle.OperationType | IfcWindowStyleOperationEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
+| IfcWorkPlan.WorkControlType | IfcWorkControlTypeEnum | (remapped into this slot: any member not listed) | `.USERDEFINED.`, name in `UserDefinedControlType` |
+| IfcWorkSchedule.WorkControlType | IfcWorkControlTypeEnum | (remapped into this slot: any member not listed) | `.USERDEFINED.`, name in `UserDefinedControlType` |
 
 ## IFC4 → IFC2X3
 
@@ -247,7 +250,7 @@ into, which can receive any member of the source type's enum (#10856).
 | IfcDoorStyle.OperationType | IfcDoorStyleOperationEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
 | IfcDoorStyle.ConstructionType | IfcDoorStyleConstructionEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
 | IfcElectricApplianceType.PredefinedType | IfcElectricApplianceTypeEnum | FREESTANDINGELECTRICHEATER, FREESTANDINGWATERHEATER, FREESTANDINGWATERCOOLER, KITCHENMACHINE | `.USERDEFINED.`, name in `ElementType` |
-| IfcElectricDistributionPoint.DistributionPointFunction | IfcElectricDistributionPointFunctionEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `UserDefinedFunction` |
+| IfcElectricDistributionPoint.DistributionPointFunction | IfcElectricDistributionPointFunctionEnum | (remapped into this slot: any member not listed) | `.USERDEFINED.`, name in `UserDefinedFunction` |
 | IfcElectricGeneratorType.PredefinedType | IfcElectricGeneratorTypeEnum | CHP, ENGINEGENERATOR, STANDALONE | `.USERDEFINED.`, name in `ElementType` |
 | IfcEvaporatorType.PredefinedType | IfcEvaporatorTypeEnum | DIRECTEXPANSION | `.USERDEFINED.`, name in `ElementType` |
 | IfcFilterType.PredefinedType | IfcFilterTypeEnum | COMPRESSEDAIRFILTER | `.USERDEFINED.`, name in `ElementType` |
@@ -262,6 +265,7 @@ into, which can receive any member of the source type's enum (#10856).
 | IfcOwnerHistory.ChangeAction | IfcChangeActionEnum | NOTDEFINED | **refused**: kept as written, reported |
 | IfcPile.PredefinedType | IfcPileTypeEnum | BORED, DRIVEN, JETGROUTING | `.USERDEFINED.`, name in `ObjectType` |
 | IfcPipeSegmentType.PredefinedType | IfcPipeSegmentTypeEnum | CULVERT | `.USERDEFINED.`, name in `ElementType` |
+| IfcProcedure.ProcedureType | IfcProcedureTypeEnum | (remapped into this slot: any member not listed) | `.USERDEFINED.`, name in `UserDefinedProcedureType` |
 | IfcProtectiveDeviceType.PredefinedType | IfcProtectiveDeviceTypeEnum | EARTHLEAKAGECIRCUITBREAKER, EARTHINGSWITCH | `.USERDEFINED.`, name in `ElementType` |
 | IfcPumpType.PredefinedType | IfcPumpTypeEnum | SUBMERSIBLEPUMP, SUMPPUMP | `.USERDEFINED.`, name in `ElementType` |
 | IfcReinforcingBar.BarRole | IfcReinforcingBarRoleEnum | ANCHORING | `.NOTDEFINED.` (reported) |
@@ -289,6 +293,8 @@ into, which can receive any member of the source type's enum (#10856).
 | IfcWallType.PredefinedType | IfcWallTypeEnum | MOVABLE, PARAPET, PARTITIONING, SOLIDWALL | `.USERDEFINED.`, name in `ElementType` |
 | IfcWindowStyle.ConstructionType | IfcWindowStyleConstructionEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
 | IfcWindowStyle.OperationType | IfcWindowStyleOperationEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
+| IfcWorkPlan.WorkControlType | IfcWorkControlTypeEnum | (remapped into this slot: any member not listed) | `.USERDEFINED.`, name in `UserDefinedControlType` |
+| IfcWorkSchedule.WorkControlType | IfcWorkControlTypeEnum | (remapped into this slot: any member not listed) | `.USERDEFINED.`, name in `UserDefinedControlType` |
 
 ## IFC2X3 → IFC4
 

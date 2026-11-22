@@ -71,3 +71,21 @@ describe('the .USERDEFINED. label (#10824)', () => {
     expect(occupied.warnings.join('\n')).toMatch(/label slot already held a value.*IFCDERIVEDUNIT\.UnitType \.SOUNDPOWERLEVELUNIT\./);
   });
 });
+
+it('carries IFC4X3 distribution board function and labels to IFC2X3 (#11021)', () => {
+  const convert = (objectType: string, member: string) => {
+    const enums = new EnumReconciliation();
+    const input = "#7=IFCDISTRIBUTIONBOARD('g',#2,'n',$," + objectType + ",$,$,'t',." + member + ".);";
+    const out = convertStepLine(input, 'IFC4X3', 'IFC2X3', undefined, undefined, undefined, undefined, enums);
+    return { out, warnings: enums.warnings() };
+  };
+  expect(convert('$', 'SWITCHBOARD')).toEqual({
+    out: "#7=IFCELECTRICDISTRIBUTIONPOINT('g',#2,'n',$,$,$,$,'t',.SWITCHBOARD.,$);", warnings: [],
+  });
+  expect(convert('$', 'DISPATCHINGBOARD')).toEqual({
+    out: "#7=IFCELECTRICDISTRIBUTIONPOINT('g',#2,'n',$,$,$,$,'t',.USERDEFINED.,'DISPATCHINGBOARD');", warnings: [],
+  });
+  expect(convert("'Custom'", 'USERDEFINED')).toEqual({
+    out: "#7=IFCELECTRICDISTRIBUTIONPOINT('g',#2,'n',$,'Custom',$,$,'t',.USERDEFINED.,'Custom');", warnings: [],
+  });
+});

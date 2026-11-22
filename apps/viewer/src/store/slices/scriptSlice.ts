@@ -13,6 +13,7 @@ import { loadSavedScripts, saveScripts, validateScriptName, canCreateScript, isS
 import type { ScriptEditOperation, ScriptEditorSelection, ScriptEditorTextChange } from '../../lib/llm/types.js';
 import { applyScriptEditOperations } from '../../lib/llm/script-edit-ops.js';
 import type { ScriptDiagnostic } from '../../lib/llm/script-diagnostics.js';
+import { scriptAdmissionRevision } from './scriptSlice.revision.js';
 import {
   type ScriptMutationIntent,
   type ScriptReplacementSource,
@@ -87,14 +88,10 @@ export interface ScriptSlice {
    */
   scriptRunSeq: number;
   /**
-   * Monotonic token bumped by `useSandbox().execute()` at the START of every
-   * run, BEFORE any await. `useSandbox()` is instantiated independently in
-   * `ScriptPanel`, `ChatPanel`, `CommandPalette` and `ExecutableCodeBlock`
-   * (each gets its own `activeSandboxRef`/closure — there is no shared
-   * per-hook state), so a per-hook-instance guard (the `runEpochRef` shape
-   * `useClash`/`useIDS`/`useCompare` use) cannot detect a SECOND run started
-   * from a DIFFERENT component instance while the first is still in flight.
-   * This lives in the store instead so every instance reads/writes the same
+   * Shared across ScriptPanel, ChatPanel, CommandPalette and ExecutableCodeBlock.
+   * useSandbox().execute() advances it before awaiting, so guards can detect
+   * runs started by another component instance.
+   * It lives in the store so every instance reads/writes the same
    * counter. A run captures the value right after bumping it and re-checks
    * it, synchronously, before every terminal store write that follows an
    * await (`setScriptResult`/`setScriptError`) — a stale run whose epoch no
@@ -121,6 +118,7 @@ export interface ScriptSlice {
   scriptPanelVisible: boolean;
   scriptDeleteConfirmId: string | null;
   scriptEditorRevision: number;
+  scriptEditorRevisionOffset: number; // Advanced only by rollback; read through scriptAdmissionRevision.
   scriptEditorSelection: ScriptEditorSelection;
   scriptAppliedOpIds: Set<string>;
   scriptEditorApplyAdapter: ScriptEditorApplyAdapter | null;
@@ -205,6 +203,7 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
   scriptPanelVisible: loadStoredScriptPanelVisible(),
   scriptDeleteConfirmId: null,
   scriptEditorRevision: 0,
+  scriptEditorRevisionOffset: 0,
   scriptEditorSelection: { from: 0, to: 0 },
   scriptAppliedOpIds: new Set(),
   scriptEditorApplyAdapter: null,
@@ -493,6 +492,7 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
       scriptEditorContent: snapshot.content,
       scriptEditorSelection: snapshot.selection,
       scriptEditorRevision: snapshot.revision,
+      scriptEditorRevisionOffset: scriptAdmissionRevision(state) + 1 - snapshot.revision,
       scriptEditorDirty: true,
       scriptAppliedOpIds: new Set(),
       scriptAssistantTurnSnapshot: null,

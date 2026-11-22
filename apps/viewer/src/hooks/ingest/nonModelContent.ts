@@ -58,6 +58,7 @@ const XML_ERROR_SUFFIX = /(?:Error|Exception|Fault)(?:Report|Response)?$/;
 
 /** The STEP opening identifier (case-insensitive, with or without the hyphen). */
 const STEP_MARKER = /^ISO[- ]?10303-21/i;
+const STEP_IDENTIFIERS = ['ISO-10303-21', 'ISO 10303-21', 'ISO10303-21'];
 
 /**
  * Why the loaders could not open `file` (`null` when they may): an error response saved or served as a model,
@@ -132,7 +133,13 @@ export function textStartsLikeStep(text: string): boolean {
 function classifyStepHeader(lead: string | null): 'step' | 'incomplete' | 'other' {
   if (!lead) return 'incomplete';
   const marker = STEP_MARKER.exec(lead);
-  if (!marker) return 'other';
+  if (!marker) {
+    if (lead.length < STEP_IDENTIFIERS[0].length) {
+      const prefix = lead.toUpperCase();
+      if (STEP_IDENTIFIERS.some(identifier => identifier.startsWith(prefix))) return 'incomplete';
+    }
+    return 'other';
+  }
   const tail = afterStepComments(lead.slice(marker[0].length));
   if (!tail || tail === '/') return 'incomplete';
   return tail.startsWith(';') ? 'step' : 'other';

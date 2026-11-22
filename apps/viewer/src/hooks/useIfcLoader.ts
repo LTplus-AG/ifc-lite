@@ -420,12 +420,12 @@ export function useIfcLoader() {
       let format: ReturnType<typeof detectFormat> | NonNullable<ReturnType<typeof detectPointCloudFormat>> | 'landxml' = processedModel ? 'ifc' : isLandXmlFileName(file.name) ? 'landxml' : 'unknown';
       let loadedBufferByteLength = fileSize;
       let modelSourceIdentity = '';
-      // #7022: one full-source hash, awaited only for publication/cache.
-      let placementIdentity: Promise<string | undefined> = Promise.resolve(undefined);
-
+      let placementIdentity: Promise<string | undefined> = Promise.resolve(undefined); // #7022: one hash for publication/cache.
       let shardGeneration = instancedShardSupplyToken(modelId);
       const commitPrimarySession = () => {
-        if (target.kind === 'primary' && !primaryCommitted) { releaseCanceller.commit(); currentSession = ++loadSessionRef.current; sessionOwner.value = currentSession; primaryCommitted = true; }
+        if (target.kind !== 'primary' || primaryCommitted) return;
+        options?.beforePrimaryReset?.();
+        releaseCanceller.commit(); currentSession = ++loadSessionRef.current; sessionOwner.value = currentSession; primaryCommitted = true;
       };
       const initializeModel = () => {
         if (initialized) return;

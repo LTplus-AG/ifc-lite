@@ -22,7 +22,7 @@ export function useAgentModelLoader(
 ): void {
   // The same loaders, awaitable, for a connected agent (`viewer_open_model`).
   useEffect(() => registerAgentModelLoader({
-    loadFile: (file, modelId, onError) => loadFile(file, { kind: 'primary', modelId }, { onLoadError: onError }),
+    loadFile: (file, modelId, onError, beforePrimaryReset) => loadFile(file, { kind: 'primary', modelId }, { onLoadError: onError, beforePrimaryReset }),
     addModel: (file, onError) => {
       // The native Add Model re-composes an IFCX overlay or refuses IFCX on a non-IFCX model
       // (addSupportedFiles); an independent agent add would do neither, so it is refused here.

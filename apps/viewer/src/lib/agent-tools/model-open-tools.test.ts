@@ -149,6 +149,32 @@ describe('viewer_open_model (#9523 local agent bridge)', () => {
     assert.deepEqual(calls, []);
   });
 
+  it('refuses to discard edits made during native load preflight (#10596)', async () => {
+    useViewerStore.setState({ models: new Map([['old', model('old', 'a.ifc')]]) as never });
+    unregister();
+    unregister = registerAgentModelLoader({
+      loadFile: async (_file, _id, onError, beforePrimaryReset) => {
+        await Promise.resolve();
+        useViewerStore.setState({
+          georefMutations: new Map([['old', { projectedCRS: { Name: 'EPSG:2056' } }]]) as never,
+        });
+        try {
+          beforePrimaryReset();
+        } catch (error) {
+          // The native primary loader reports a failure and resolves.
+          onError(String(error));
+          return;
+        }
+        useViewerStore.getState().clearAllModels();
+      },
+      addModel: async () => null,
+      loadStack: async () => {},
+    });
+    await assert.rejects(run({ sample: 'demo', mode: 'replace' }), { code: 'STATE_CHANGED', message: /1 unexported change/ });
+    assert.ok(useViewerStore.getState().models.has('old'));
+    assert.ok(useViewerStore.getState().georefMutations.has('old'));
+  });
+
   it('fetches an https URL without credentials and rejects other schemes and non-model files', async () => {
     await run({ url: 'https://example.com/files/tower.ifc' });
     assert.deepEqual(calls, [{ kind: 'replace', names: ['tower.ifc'] }]);

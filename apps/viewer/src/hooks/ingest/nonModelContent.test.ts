@@ -73,6 +73,7 @@ it('#9523 recognises error responses under any model name', async () => {
     [utf16('  \n'), 'blank16b.ifc', /neither STEP/],
     [utf16('{"header":{"ifcxVersion":"ifcx_alpha"}}'), 'ifcx16.ifc', /neither STEP/],
     ['nope', 'pack.ifczip', /neither STEP/],
+    [`${' '.repeat(64 * 1024 - 6)}ISO-10`, 'step-prefix-at-eof.ifc', /neither STEP/], // #10596
   ];
   for (const [body, name, expected] of cases) assert.match(String(await reason(body, name)), expected, `${name}: ${String(body).slice(0, 40)}`);
 });
@@ -91,6 +92,7 @@ it('#9523 leaves every file a loader would open alone', async () => {
     ['VERSION 0.7\nFIELDS x y z\n', 'renamed-pcd.ifc'],
     [`${' '.repeat(5000)}${step}`, 'spaced.ifc'],
     [`${' '.repeat(64 * 1024)}${step}`, 'step-beyond-scan.ifc'],
+    [`${' '.repeat(64 * 1024 - 6)}${step}`, 'step-split-by-scan.ifc'], // #10596
     [zipSync({ 'model.ifc': strToU8(step) }), 'pack.ifczip'],
     [zipSync({ 'model.ifc': strToU8(step) }), 'zipped.ifc'],
     [ifcx, 'model.ifcx'],

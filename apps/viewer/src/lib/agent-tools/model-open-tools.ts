@@ -226,11 +226,18 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
   // The file commands may have remounted during the download; load through the current host.
   const liveLoader = getAgentModelLoader();
   if (!liveLoader) fail(ToolErrorCode.UNSUPPORTED_OPERATION, 'This viewer page has no file loader mounted. Retry after it has finished loading.');
-  if (request.mode === 'replace') {
-    const unexported = totalChangeCount(collectChangedModels(state));
-    if (unexported > 0) fail(ToolErrorCode.STATE_CHANGED,
-      `The loaded models have ${unexported} unexported change(s). Replacing them would discard those edits; ask the user to export or discard them, or use mode: 'add'.`);
-  }
+  let replacementRefusal: ToolExecutionError | undefined;
+  const ensureReplacementAllowed = () => {
+    if (replacementRefusal) throw replacementRefusal;
+    const unexported = totalChangeCount(collectChangedModels(store.getState()));
+    if (unexported === 0) return;
+    replacementRefusal = new ToolExecutionError({
+      code: ToolErrorCode.STATE_CHANGED,
+      message: `The loaded models have ${unexported} unexported change(s). Replacing them would discard those edits; ask the user to export or discard them, or use mode: 'add'.`,
+    });
+    throw replacementRefusal;
+  };
+  if (request.mode === 'replace') ensureReplacementAllowed();
 
   const before = state.models;
   const stack = files.length > 1;
@@ -249,7 +256,7 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
   // From here the load changes the session whatever happens to this call: it is not cancellable.
   if (ctx.commitState) ctx.commitState.committing = true;
   const load: Promise<string | null | void> = request.mode === 'add' ? liveLoader.addModel(files[0], onError)
-    : stack ? liveLoader.loadStack(files) : liveLoader.loadFile(files[0], primaryId!, onError);
+    : stack ? liveLoader.loadStack(files, ensureReplacementAllowed) : liveLoader.loadFile(files[0], primaryId!, onError, ensureReplacementAllowed);
   const stillLoading = (): ToolOutput => ({
     text: `${name} is still loading; it continues in the tab.${request.mode === 'replace' ? ' A replace closes the previous models as it proceeds.' : ''} `
       + 'Do not retry. Call model_list to see what is open; if the model never appears, the load failed: take a viewer_screenshot or ask the user what the viewer reports.',
@@ -257,9 +264,12 @@ async function openModel(args: Record<string, unknown>, ctx: ToolCallContext): P
     structured: { mode: request.mode, state: 'loading', loading: name, models: request.mode === 'add' ? snapshot().filter((m) => !m.new).map(publicModel) : [] },
   });
   const loaded = await within(load.then((id) => ({ id }), (err: unknown) => {
+    if (replacementRefusal) throw replacementRefusal;
     // The loader's own reason (onError) is more specific than the exception that ended it.
     return couldNotLoad(loadError ?? (err instanceof Error ? err.message : String(err)));
   }), deadline - Date.now());
+  // The native primary loader can report an error and resolve instead of rejecting.
+  if (replacementRefusal) throw replacementRefusal;
   if (!loaded) return stillLoading();
   // Stack layer ids can repeat. A successful composition publishes a fresh shared data store, so require
   // new layers with the expected names even when those ids were already present.

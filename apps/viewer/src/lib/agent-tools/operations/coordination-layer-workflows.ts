@@ -33,9 +33,11 @@ export const coordinationLayerWorkflowOperations = [
   coordination<{ candidate_id: string; ref_name: string; expected_ref_json: string }>('layers.previewLocalMerge', 'Preview the native three-way local-ref merge with an exact ref guard. The candidate remains immutable and no registry request occurs.', ['read'], refSchema, async (i, c) => {
     const [{ previewMergeInto, requiredCheckStatus }, store] = await Promise.all([import('@/lib/layers/merge'), getBrowserLayerStore()]);
     if (JSON.stringify(store.getRef(i.ref_name) ?? null) !== i.expected_ref_json) throw stale('Native local ref changed.'); requireLayer(store, i.candidate_id);
-    const outcome = await previewMergeInto({ kind: 'local', refName: i.ref_name }, store, i.candidate_id); c.checkpoint?.();
+    // Preview and checks both read the ref, so one guard after both covers every await.
+    const target = { kind: 'local' as const, refName: i.ref_name };
+    const [outcome, checks] = await Promise.all([previewMergeInto(target, store, i.candidate_id), requiredCheckStatus(target, store, i.candidate_id)]); c.checkpoint?.();
     if (JSON.stringify(store.getRef(i.ref_name) ?? null) !== i.expected_ref_json) throw stale('Native local ref changed during preview.');
-    return { outcome, checks: await requiredCheckStatus({ kind: 'local', refName: i.ref_name }, store, i.candidate_id), candidate_id: i.candidate_id, ref_json: i.expected_ref_json };
+    return { outcome, checks, candidate_id: i.candidate_id, ref_json: i.expected_ref_json };
   }),
   coordination<{ candidate_id: string; ref_name: string; expected_ref_json: string; resolver: string; resolutions: Array<{ path: string; component_key: string; choice: 'ours' | 'theirs' | 'edited'; attributes_json: string }>; waivers: Array<{ spec: string; reason: string }> }>('layers.mergeLocal', 'Execute the native local three-way merge with exact ref guard, native conflict edits/removal semantics and explicit check waivers. Reports policy failure and unresolved conflicts without claiming a committed merge.', ['configuration'], {
     type: 'object', properties: { candidate_id: short, ref_name: short, expected_ref_json: { type: 'string', maxLength: 1000000 }, resolver: short,

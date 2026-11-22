@@ -6,14 +6,31 @@ mod voids_common;
 #[path = "voids_common/split_wall.rs"]
 mod split_wall;
 
-#[cfg(feature = "csg_manifold_gate")]
 use ifc_lite_core::{build_entity_index, EntityDecoder};
 use ifc_lite_geometry::kernel::mesh_volume::mesh_volume;
 use ifc_lite_geometry::mesh_check::{Degenerate, EdgeLedger, VertexKey};
-#[cfg(feature = "csg_manifold_gate")]
-use ifc_lite_geometry::GeometryRouter;
+use ifc_lite_geometry::{GeometryRouter, Mesh};
 use split_wall::{analytic_volume, wall, Recess};
 use voids_common::production::{build_void_index_like_production, process_host_like_production};
+
+fn fixture_host(content: &str, expect_rtc: bool) -> (Mesh, GeometryRouter) {
+    let voids = build_void_index_like_production(content);
+    let mut decoder = EntityDecoder::with_index(content, build_entity_index(content));
+    let entity = decoder.decode_by_id(100).unwrap();
+    let mut router = GeometryRouter::with_scale(1.0);
+    let rtc = router
+        .detect_rtc_offset_for_file(content.as_bytes(), &mut decoder)
+        .expect("the fixture has a usable placement")
+        .offset();
+    assert_eq!(rtc != (0.0, 0.0, 0.0), expect_rtc, "unexpected RTC for the fixture");
+    router.set_rtc_offset(rtc);
+    // Measure in the production RTC frame so folding a far world origin
+    // back into f32 positions does not reintroduce quantization.
+    let mesh = router
+        .process_element_with_voids(&entity, &mut decoder, &voids)
+        .expect("the wall meshes");
+    (mesh, router)
+}
 
 #[cfg(feature = "csg_manifold_gate")]
 #[test]
@@ -24,19 +41,7 @@ fn split_recess_from_a_kilometre_away() {
             for step in 0..6 {
                 let offset = 2.0 + 0.137 * f64::from(step);
                 let content = wall([1000.0, 800.0], turn, offset, recess);
-                let voids = build_void_index_like_production(&content);
-                let mut decoder = EntityDecoder::with_index(&content, build_entity_index(&content));
-                let entity = decoder.decode_by_id(100).unwrap();
-                let mut router = GeometryRouter::with_scale(1.0);
-                let rtc = router
-                    .detect_rtc_offset_for_file(content.as_bytes(), &mut decoder)
-                    .expect("the fixture has a usable placement")
-                    .offset();
-                assert_ne!(rtc, (0.0, 0.0, 0.0), "the far fixture must use RTC");
-                router.set_rtc_offset(rtc);
-                let mesh = router
-                    .process_element_with_voids(&entity, &mut decoder, &voids)
-                    .unwrap();
+                let (mesh, router) = fixture_host(&content, true);
 
                 let ledger =
                     EdgeLedger::build(&mesh, VertexKey::GridMul(1.0e3), Degenerate::SkipTriangle);
@@ -79,7 +84,6 @@ fn split_recess_keeps_the_core_at_the_flush_interface() {
 /// opening. The whole-wall rotated case also exercises the oblique cut (#10528).
 #[test]
 fn recess_at_the_finish_interface_has_no_membrane() {
-    use ifc_lite_geometry::Mesh;
     let surface_area = |mesh: &Mesh| {
         let points = |index: u32| std::array::from_fn::<_, 3, _>(|axis|
             f64::from(mesh.positions[index as usize * 3 + axis]));
@@ -103,8 +107,7 @@ fn recess_at_the_finish_interface_has_no_membrane() {
     ] {
         for (recess, area) in [Recess::FromInterface, Recess::ToInterfaceAtTop].into_iter().zip(areas) {
             let content = split_wall::wall_with_finish(site, turn, 2.274, recess, length);
-            let voids = build_void_index_like_production(&content);
-            let mesh = process_host_like_production(&content, 100, &voids).expect("the wall meshes");
+            let (mesh, _) = fixture_host(&content, site != [0.0; 2]);
             let ledger = EdgeLedger::build(&mesh, VertexKey::GridMul(1.0e3), Degenerate::SkipTriangle);
             assert_eq!(ledger.unbalanced().count(), 0, "{site:?} {turn}° {recess:?}");
             let measured_area = surface_area(&mesh);

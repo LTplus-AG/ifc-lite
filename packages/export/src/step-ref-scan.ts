@@ -45,7 +45,7 @@ export function namesAnyRecord(attrsRaw: string): boolean {
  * Calls `visit` with each `#id` in `attrsRaw` outside strings and comments,
  * stopping at the first call that returns true; returns whether one did.
  */
-function forEachExpressRef(attrsRaw: string, visit: (id: number) => boolean): boolean {
+export function forEachExpressRef(attrsRaw: string, visit: (id: number) => boolean): boolean {
   for (let i = 0; i < attrsRaw.length; i++) {
     const ch = attrsRaw[i];
     if (ch === '/' && attrsRaw[i + 1] === '*') {

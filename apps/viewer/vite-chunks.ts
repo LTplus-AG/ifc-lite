@@ -94,14 +94,31 @@ export const wasmPrewarmChunkGroup = {
 /**
  * The merged STEP export, which runs only when the user exports a federation. The viewer loads it through a dynamic
  * import of `@ifc-lite/export/merged-exporter`; left to the recursive `exporters` group it would sit in that eager
- * chunk. `merged-guid` and `merged-remap` stay there: schema conversion and renumbering use them eagerly. So does
- * `merged-bake`, whose `mergeWarningLabel` the package root exports to the eager export dialog.
+ * chunk. `merged-guid` and `merged-remap` are also used by other exporters. `merged-bake` loads with the STEP writer.
  */
 export const mergedExportChunkGroup = {
   name: 'merged-export',
   priority: 50,
   includeDependenciesRecursively: false,
   test: /\/packages\/export\/src\/merged-(?!guid\.|remap\.|bake\.)[^/]*\.(ts|js)$/,
+};
+
+/**
+ * Claim STEP serialization and schema-conversion tables before the recursive
+ * exporters group shared by startup CSV, property and appearance helpers.
+ */
+export const stepExportChunkGroup = {
+  name: 'step-export',
+  priority: 50,
+  includeDependenciesRecursively: false,
+  test: new RegExp([
+    '/packages/export/src/(?:',
+    'schema-conver[^/]*|schema-style-flatten|generated/ifc(?:2x3|4)-required-slots',
+    '|step-(?:collection|exporter|internal-pset-ids|native-set-record|overlay-entities|pass-builder',
+    '|property-set[^/]*|pset-copy-on-write|shared-atom-retention|source-iteration|type-owned-quantities)',
+    '|anonymize-export|ifc5-exporter|merged-bake|section-export',
+    ')\\.(?:ts|js)$',
+  ].join('')),
 };
 
 /** A non-recursive group that claims exactly these `apps/viewer/src` modules (`.ts`, no query). */

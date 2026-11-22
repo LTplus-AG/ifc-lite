@@ -8,8 +8,9 @@
 //! `xformOpOrder`, `MaterialBindingAPI`, and `subdivisionScheme`.
 
 use super::emit::emit_attributes;
-use super::fmt::{color_key, escape_str, fmt_f32, fmt_f64, mat_name, sanitize_ident, Namer};
+use super::fmt::{escape_str, fmt_f32, fmt_f64, sanitize_ident, Namer};
 use super::instance::{emit_instance_occurrence, usd_transform_rows};
+use super::material::MaterialKey;
 use super::{export_usd, UsdOptions};
 use crate::scene_input::{instances_authorable, mesh_emittable, run_instanced};
 use crate::model::{EntityRow, PropValue, PropertySet};
@@ -532,9 +533,9 @@ fn number_formatting_never_emits_nan_or_inf() {
 
 #[test]
 fn color_key_clamps_out_of_gamut() {
-    let key = color_key([-0.1, 2.0, 0.5, f32::NAN]);
-    assert_eq!(key, (0, 100, 50, 0));
-    let name = mat_name(key);
+    let key = MaterialKey::new([-0.1, 2.0, 0.5, f32::NAN], None);
+    assert_eq!(key.color, (0, 100, 50, 0));
+    let name = key.name();
     assert!(name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'), "{name} illegal");
 }
 
@@ -859,7 +860,8 @@ fn emitted_matrix4d_roundtrips_usd_transform_rows() {
     origins.insert(7u32, origin);
 
     let mut out = String::new();
-    emit_instance_occurrence(&mut out, 3, "geom", &rec, &origins, None);
+    let key = MaterialKey::new(rec.color, None);
+    emit_instance_occurrence(&mut out, 3, "geom", &rec, key, &origins, None);
 
     // Exact equality: fmt_f64 is shortest-round-trip, so re-parsing is lossless.
     assert_eq!(parse_matrix4d(&out), expected, "emitted matrix4d text != authored rows");
@@ -881,8 +883,9 @@ fn emitted_matrix4d_roundtrips_usd_transform_rows() {
 fn material_and_display_colours_are_linear() {
     let mut out = String::new();
     let color = [0.5, 0.5, 0.5, 0.25];
-    super::emit::emit_material(&mut out, 0, color_key(color), color);
-    super::emit::write_display_material(&mut out, 0, color);
+    let key = MaterialKey::new(color, None);
+    super::emit::emit_material(&mut out, 0, key, color);
+    super::emit::write_display_material(&mut out, 0, color, key);
     let expected = 0.214_041_14_f32;
     let diffuse = out.lines().find(|l| l.contains("inputs:diffuseColor")).expect("diffuseColor");
     let display = out.lines().find(|l| l.contains("primvars:displayColor")).expect("displayColor");

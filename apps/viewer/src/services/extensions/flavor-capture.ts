@@ -17,8 +17,10 @@ export function captureNativeFlavor(target: Flavor): Flavor {
 }
 export function createNativeFlavor(name: string, description: string, snapshot: boolean): Flavor {
   if (!name.trim()) throw new Error('A nonempty native flavor name is required.');
-  const now = new Date().toISOString(), stamp = now.replace(/[:.]/g, '-').toLowerCase(), slug = name.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
-  const flavor: Flavor = { schemaVersion: 1, id: `local.${slug || 'flavor'}.${stamp}`, name, description, createdAt: now, updatedAt: now, extensions: [], lenses: [], savedQueries: [], keybindings: [], layout: { state: {} }, settings: {} };
+  const now = new Date().toISOString();
+  const stamp = now.replace(/[:.]/g, '-').toLowerCase();
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  const flavor: Flavor = { schemaVersion: 1, id: `local.${slug || 'flavor'}.${stamp}.${crypto.randomUUID()}`, name, description, createdAt: now, updatedAt: now, extensions: [], lenses: [], savedQueries: [], keybindings: [], layout: { state: {} }, settings: {} };
   return snapshot ? captureNativeFlavor(flavor) : flavor;
 }
 

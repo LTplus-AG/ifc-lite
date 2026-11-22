@@ -478,6 +478,46 @@ describe('useSandbox().execute() — cross-instance run supersession', () => {
     assert.deepEqual(useViewerStore.getState().scriptLastResult?.value, 'B-result');
   });
 
+  it("reset() still stops a run its own instance superseded after the newer run finished (#10591 review)", async () => {
+    let rFirst: ScriptResult | null | undefined;
+    let settled = false;
+    let stoppedByReset = false;
+    await act(async () => {
+      const pFirst = execute1!(GATED).then((r) => { settled = true; rFirst = r; });
+      await execute1!(UNGATED);
+      await waitForGates(1);
+      assert.equal(gates.length, 1, 'the superseded run must be parked on its host gate');
+      try {
+        reset1!();
+        // Well inside the sandbox timeout: a run that only ends by timing out was never stopped.
+        await Promise.race([pFirst, new Promise((resolve) => setTimeout(resolve, 2_000))]);
+        // Read before the cleanup can release the gate, which would settle the run anyway.
+        stoppedByReset = settled;
+      } finally {
+        // On failure the run is still parked; release it so it cannot leak into the next test.
+        if (!settled) { gates[0]!({ marker: 'leaked' }); await pFirst; }
+      }
+    });
+    assert.ok(stoppedByReset, 'the superseded run must stop on reset without its host gate being released');
+    assert.equal(rFirst, null);
+  });
+
+  it("script.cancel for a run that already finished cancels nothing, even while an older run is parked (#10591 review)", async () => {
+    let settled = false;
+    await act(async () => {
+      const pFirst = execute1!(GATED).then(() => { settled = true; });
+      await execute1!(UNGATED);
+      await waitForGates(1);
+      const finishedEpoch = useViewerStore.getState().scriptRunEpoch;
+      assert.equal(cancelNativeScriptRun(finishedEpoch), false, 'a finished run is not cancellable');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      assert.equal(settled, false, 'the parked older run was not disposed');
+      assert.equal(useViewerStore.getState().scriptLastResult?.value, 'B-result', 'the finished result stays published');
+      gates[0]!({ marker: 'released' });
+      await pFirst;
+    });
+  });
+
   it("reset() on instance A leaves a coherent state while a DIFFERENT instance's run is in flight", async () => {
     // The cross-instance half of the reset story, which the same-instance test
     // above cannot reach. `reset()` bumps the SHARED epoch, so instance B's

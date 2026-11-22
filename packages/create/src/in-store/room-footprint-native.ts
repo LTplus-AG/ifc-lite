@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** The native Room footprint policy shared by all hosts (#6232 D5). */
-import { polygonArea as polyArea } from './room-footprint-offset.js';
+import { polygonArea as polyArea } from './polygon-2d.js';
 import { readFaces, flattenRoomRects, type RoomPlate, type RoomPlateFactory, type LayoutFace, type Room, type Boundary, type Pt } from './room-layout-core.js';
 export interface RoomWallRect { corners: Pt[]; centreline: [Pt, Pt]; thickness: number }
 

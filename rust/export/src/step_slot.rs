@@ -83,6 +83,39 @@ pub(crate) fn is_step_value(value: &str) -> bool {
     !value.contains("/*") && core_is_step_value(value.as_bytes())
 }
 
+/// `value` with each `/* ... */` comment read as a space, trimmed. Literals
+/// and comments end by the shared rules (`ref_spans`' scanner: a `''` or `\S\'` stays in
+/// the literal); an unclosed one runs to the end. Twin of the TypeScript
+/// `withoutComments` (`step-comment-skip.ts`).
+pub(crate) fn without_comments(value: &str) -> String {
+    let bytes = value.as_bytes();
+    let (mut out, mut kept, mut i) = (String::with_capacity(value.len()), 0, 0);
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\'' => i = ifc_lite_core::step_encoding::step_string_literal_end(bytes, i).unwrap_or(bytes.len()),
+            b'/' if bytes.get(i + 1) == Some(&b'*') => {
+                // A space where the comment was keeps the tokens it parted apart.
+                out.push_str(&value[kept..i]);
+                out.push(' ');
+                i = ifc_lite_core::skip_step_comment(bytes, i).unwrap_or(bytes.len());
+                kept = i;
+            }
+            _ => i += 1,
+        }
+    }
+    out.push_str(&value[kept..]);
+    out.trim().to_owned()
+}
+
+/// Compare a single slot token without treating surrounding comments as payload.
+pub(crate) fn slot_is(value: &str, token: &str) -> bool {
+    if value.contains("/*") {
+        without_comments(value) == token
+    } else {
+        value.trim() == token
+    }
+}
+
 #[cfg(test)]
 #[path = "step_slot_tests.rs"]
 mod tests;

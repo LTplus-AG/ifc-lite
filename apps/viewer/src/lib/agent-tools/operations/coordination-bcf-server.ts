@@ -5,7 +5,7 @@ import { useViewerStore } from '@/store';
 import { bcfProjectMetadata } from './coordination-bcf-metadata';
 import { coordination, idSchema } from './coordination-common';
 import { emptySchema } from './contract';
-import { disabled, stale } from './refusals';
+import { disabled, invalidInput, stale, unavailable } from './refusals';
 /** The connection identity bcf.server reports; bcf.connect compares against the same shape. */
 export function bcfConnectionIdentity(config: { serverUrl: string; userId: string; projectId?: string; projectName?: string } | null) {
   return config ? { server_url: config.serverUrl, user_id: config.userId, project_id: config.projectId, project_name: config.projectName } : null;
@@ -27,7 +27,7 @@ export const coordinationBcfServerOperations = [
     const account = loadBcfServerConfig();
     if (!account) throw disabled('Sign in through the native BCF server control before pulling a project.');
     const before = useViewerStore.getState().bcfProject;
-    if ((before?.projectId ?? '') !== i.replace_project_id) throw new Error('Local BCF project changed; inspect before replacing.');
+    if ((before?.projectId ?? '') !== i.replace_project_id) throw stale('Local BCF project changed; inspect before replacing.');
     const pulled = await pullBcfServerProject(i.project_id, i.project_name, undefined, c.signal); c.checkpoint?.();
     return c.commit(() => {
       const live = loadBcfServerConfig();
@@ -48,8 +48,9 @@ export const coordinationBcfServerOperations = [
       import('@/services/bcf-server-config'), import('@/services/bcf-server'), import('@/lib/bcf-drafts/draft-library'), import('@/lib/bcf-publication/outbox-plan'), import('@/lib/bcf-publication/outbox-store'), import('@/lib/bcf-publication/outbox-server-rules'), import('@/lib/bcf-publication/outbox-preflight'), import('@/lib/bcf-publication/review-candidate'),
     ]);
     await bcfDraftLibrary.initialize(); const batch = useBcfDraftLibrary.getState().entries.find(batch => batch.id === i.batch_id), config = loadBcfServerConfig();
-    if (!batch || !config) throw new Error('Select an existing draft batch and sign in through the native BCF server control.');
-    if (new Set(i.topic_types.map(choice => choice.from)).size !== i.topic_types.length) throw new Error('Each native draft topic type needs one unambiguous mapping.');
+    if (!batch) throw invalidInput('unknown-target', 'Unknown draft batch.');
+    if (!config) throw unavailable('Sign in through the native BCF server control.');
+    if (new Set(i.topic_types.map(choice => choice.from)).size !== i.topic_types.length) throw invalidInput('invalid-value', 'Each native draft topic type needs one unambiguous mapping.');
     const client = await createConnectedClient(c.signal);
     const target = { serverUrl: config.serverUrl, projectId: i.project_id, userId: config.userId };
     const rules = publicationRules(config);
@@ -71,7 +72,7 @@ export const coordinationBcfServerOperations = [
       const live = loadBcfServerConfig();
       if (!live || !isSameBcfAccount(live, config) || useBcfDraftLibrary.getState().entries.find(item => item.id === batch.id) !== batch) throw stale('BCF account or draft batch changed during preflight.');
       // A user choice made while this prepared would make the panel discard it at once; say so instead.
-      if (!bcfPublicationCandidateCurrent({ requestedAt })) throw new Error('The publication controls changed while this was prepared; prepare and review again.');
+      if (!bcfPublicationCandidateCurrent({ requestedAt })) throw stale('The publication controls changed while this was prepared; prepare and review again.');
       const candidate = stageBcfPublicationReview(batch, target, topicTypes, plan, preflight, requestedAt);
       useBcfDraftLibrary.setState({ activeId: batch.id, dialogOpen: true }); useViewerStore.getState().openWorkspacePanel('bcf');
       return { state: 'waiting-for-approval', candidate };
@@ -79,11 +80,11 @@ export const coordinationBcfServerOperations = [
   }),
   coordination('bcf.publish', 'Present an already prepared exact publication candidate for the native Publish click. The bridge command grant cannot approve external BCF writes.', ['configuration', 'view'], idSchema, async (i, c) => {
     const [{ useBcfPublicationReview }, { useBcfDraftLibrary }, { loadBcfServerConfig }] = await Promise.all([import('@/lib/bcf-publication/review-candidate'), import('@/lib/bcf-drafts/draft-library'), import('@/services/bcf-server-config')]);
-    return c.commit(() => { const candidate = useBcfPublicationReview.getState().candidate; if (candidate?.id !== i.id) throw new Error('Publication candidate changed; prepare and review again.');
+    return c.commit(() => { const candidate = useBcfPublicationReview.getState().candidate; if (candidate?.id !== i.id) throw stale('Publication candidate changed; prepare and review again.');
       // An edited draft would be dropped by the panel's freshness check, leaving nothing to approve.
       // The panel drops a candidate for another account at once; refuse instead of reporting an approvable review.
-      const account = loadBcfServerConfig(); if (account?.serverUrl !== candidate.target.serverUrl || account?.userId !== candidate.target.userId) { useBcfPublicationReview.setState({ candidate: null }); throw new Error('The BCF account changed after preparation; prepare and review again.'); }
-      if (useBcfDraftLibrary.getState().entries.find(entry => entry.id === candidate.batchId)?.modifiedAt !== candidate.modifiedAt) { useBcfPublicationReview.setState({ candidate: null }); throw new Error('The draft changed after preparation; prepare and review again.'); }
+      const account = loadBcfServerConfig(); if (account?.serverUrl !== candidate.target.serverUrl || account?.userId !== candidate.target.userId) { useBcfPublicationReview.setState({ candidate: null }); throw stale('The BCF account changed after preparation; prepare and review again.'); }
+      if (useBcfDraftLibrary.getState().entries.find(entry => entry.id === candidate.batchId)?.modifiedAt !== candidate.modifiedAt) { useBcfPublicationReview.setState({ candidate: null }); throw stale('The draft changed after preparation; prepare and review again.'); }
       useBcfDraftLibrary.setState({ activeId: candidate.batchId, dialogOpen: true }); useViewerStore.getState().openWorkspacePanel('bcf'); return { state: 'waiting-for-approval', candidate_id: candidate.id, digest: candidate.digest }; });
   }),
 ];

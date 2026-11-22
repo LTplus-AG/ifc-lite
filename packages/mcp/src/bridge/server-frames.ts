@@ -11,6 +11,7 @@ import type {
   BridgeCallMessage,
   BridgeCancelMessage,
   BridgeErrorMessage,
+  BridgeResultAckMessage,
   BridgeServerMessage,
   BridgeWelcomeMessage,
   ParseResult,
@@ -23,7 +24,9 @@ function isPermission(v: unknown): boolean {
 }
 
 /** Parse a frame from the bridge (for the tab). Lenient: checks `type` and the fields the tab acts on. */
-export function parseServerMessage(text: string): ParseResult<BridgeServerMessage> {
+export function parseServerMessage(text: string, options: { resultAck: true }): ParseResult<BridgeServerMessage | BridgeResultAckMessage>;
+export function parseServerMessage(text: string): ParseResult<BridgeServerMessage>;
+export function parseServerMessage(text: string, options?: { resultAck: true }): ParseResult<BridgeServerMessage | BridgeResultAckMessage> {
   let raw: unknown;
   try {
     raw = JSON.parse(text);
@@ -50,6 +53,12 @@ export function parseServerMessage(text: string): ParseResult<BridgeServerMessag
     case 'cancel':
       if (typeof raw.sessionId !== 'string' || typeof raw.id !== 'string') return { ok: false, error: 'malformed cancel' };
       return { ok: true, value: raw as unknown as BridgeCancelMessage };
+    case 'result-ack':
+      if (!options?.resultAck) return { ok: false, error: `unknown message type ${quoted(raw.type, 32)}` };
+      if (typeof raw.sessionId !== 'string' || typeof raw.id !== 'string' || typeof raw.accepted !== 'boolean') {
+        return { ok: false, error: 'malformed result acknowledgement' };
+      }
+      return { ok: true, value: { type: 'result-ack', sessionId: raw.sessionId, id: raw.id, accepted: raw.accepted } };
     case 'error':
       if (typeof raw.code !== 'string' || typeof raw.message !== 'string') return { ok: false, error: 'malformed error' };
       return { ok: true, value: raw as unknown as BridgeErrorMessage };

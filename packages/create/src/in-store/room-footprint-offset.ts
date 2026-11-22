@@ -11,28 +11,7 @@
  */
 
 import type { Segment, Vec2 } from './auto-space-detect.js';
-
-/** Absolute polygon area (shoelace), m². */
-export function polygonArea(pts: Vec2[]): number {
-  let acc = 0;
-  for (let i = 0; i < pts.length; i++) {
-    const p = pts[i];
-    const q = pts[(i + 1) % pts.length];
-    acc += p[0] * q[1] - q[0] * p[1];
-  }
-  return Math.abs(acc) / 2;
-}
-
-/** Ray-cast point-in-polygon test. */
-export function pointInPolygon(x: number, y: number, poly: Vec2[]): boolean {
-  let inside = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const xi = poly[i][0], yi = poly[i][1];
-    const xj = poly[j][0], yj = poly[j][1];
-    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
-  }
-  return inside;
-}
+import { pointInPolygon, polygonArea } from './polygon-2d.js';
 
 /** Intersection of two lines given as point + unit direction; null if parallel. */
 function lineIntersect(

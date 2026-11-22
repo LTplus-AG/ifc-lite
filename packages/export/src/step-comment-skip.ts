@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { stepStringLiteralEnd } from '@ifc-lite/encoding';
+
 /**
  * Skip a comment-delimiter-bounded region atomically, starting at the index
  * of its opening `/` marker (caller has already checked `text[i] === '/' &&
@@ -16,4 +18,30 @@
 export function skipStepComment(text: string, i: number): number {
   const end = text.indexOf('*/', i + 2);
   return end === -1 ? text.length : end + 2;
+}
+
+/** `value` with each `/* ... *\/` comment read as a space, trimmed. Literals and comments
+ *  end by the shared rules; an unclosed one runs to the end. Twin of Rust
+ *  `step_slot::without_comments` (rust/export/src/step_slot.rs). */
+export function withoutComments(value: string): string {
+  let out = '';
+  let kept = 0;
+  for (let i = 0; i < value.length;) {
+    if (value[i] === "'") {
+      const end = stepStringLiteralEnd(value, i);
+      i = end === -1 ? value.length : end;
+    } else if (value.startsWith('/*', i)) {
+      out += `${value.slice(kept, i)} `; // a space keeps the tokens the comment parted apart
+      i = kept = skipStepComment(value, i);
+    } else i++;
+  }
+  return (out + value.slice(kept)).trim();
+}
+
+/** A slot that carries information: not `$`, `*` or empty once comments go
+ *  (#10779). Twin of Rust `schema_convert::holds_value`
+ *  (rust/export/src/schema_convert.rs). */
+export function holdsValue(slot: string): boolean {
+  const v = slot.includes('/*') ? withoutComments(slot) : slot.trim();
+  return v !== '' && v !== '$' && v !== '*';
 }

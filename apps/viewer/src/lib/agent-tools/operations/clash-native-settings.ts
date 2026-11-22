@@ -4,7 +4,8 @@
 import { useViewerStore } from '@/store';
 import { viewerOperation } from './contract';
 import { assertToolActive } from '../cancellation';
-import { currentClash, clashSettings } from './clash-native';
+import { IFC_ENTITY_NAMES } from '@ifc-lite/data';
+import { currentClash, clashSettings, clashViewSettingsSignature } from './clash-native';
 import { invalidInput, stale, parseJsonInput, saveRefusal } from './refusals';
 import type { SaveResult } from '@/lib/clash/persistence';
 const outputSchema = {
@@ -34,11 +35,12 @@ export const clashSettingsOperations = [
     focusMode: 'highlight' | 'isolate' | 'ghost';
     showRegionBox: boolean;
     statusFilter: Array<'open' | 'resolved' | 'accepted'>;
-    expected_settings: string;
+    expected_settings?: string | null;
+    expected_view_settings?: string | null;
   }>(
     meta(
       'clash.viewSettings',
-      'Set native sort/touching/review-status filters, focus mode and region-box display after inspecting the exact settings. These change presentation, not detection results.',
+      'Set native sort/touching/review-status filters, focus mode and region-box display. Use expected_view_settings from clash.state to guard the review filter too. Legacy callers may send expected_settings. If both are supplied, expected_view_settings takes precedence. These change presentation, not detection results.',
     ),
     {
       type: 'object',
@@ -53,23 +55,30 @@ export const clashSettingsOperations = [
           uniqueItems: true,
           items: { type: 'string', enum: ['open', 'resolved', 'accepted'] },
         },
-        expected_settings: { type: 'string', maxLength: 20000 },
+        expected_settings: { type: 'string', nullable: true, maxLength: 20000 },
+        expected_view_settings: { type: 'string', nullable: true, maxLength: 20000 },
       },
-      required: ['sortBy', 'hideTouching', 'focusMode', 'showRegionBox', 'statusFilter', 'expected_settings'],
+      required: ['sortBy', 'hideTouching', 'focusMode', 'showRegionBox', 'statusFilter'],
+      anyOf: [
+        { properties: { expected_settings: { type: 'string' } }, required: ['expected_settings'] },
+        { properties: { expected_view_settings: { type: 'string' } }, required: ['expected_view_settings'] },
+      ],
       additionalProperties: false,
     },
     (i, c) =>
       out(
         c.commit(() => {
           const s = useViewerStore.getState();
-          if (JSON.stringify(clashSettings()) !== i.expected_settings) throw stale('Clash settings changed.');
+          const expected = i.expected_view_settings ?? i.expected_settings;
+          const current = i.expected_view_settings != null ? clashViewSettingsSignature() : JSON.stringify(clashSettings());
+          if (current !== expected) throw stale('Clash settings changed.');
           s.setClashSortBy(i.sortBy);
           s.setClashHideTouching(i.hideTouching);
           s.setClashFocusMode(i.focusMode);
           s.setShowClashRegionBox(i.showRegionBox);
           for (const status of ['open', 'resolved', 'accepted'] as const)
             if (s.clashStatusFilter.has(status) !== i.statusFilter.includes(status)) s.toggleClashStatusFilter(status);
-          return { settings: clashSettings(), statusFilter: [...useViewerStore.getState().clashStatusFilter] };
+          return { settings: clashSettings(), expected_view_settings: clashViewSettingsSignature(), statusFilter: [...useViewerStore.getState().clashStatusFilter] };
         }),
       ),
   ),
@@ -254,8 +263,8 @@ export const clashSettingsOperations = [
             );
           }
           if (i.action === 'typeAny') {
-            const tag = i.tag.trim();
-            if (!tag) throw invalidInput('invalid-value', 'An IFC class is required.');
+            const tag = IFC_ENTITY_NAMES[i.tag.trim().toUpperCase()];
+            if (!tag) throw invalidInput('invalid-value', 'A known IFC class is required.');
             return saved(s.addClashExclusion(typeAnyExclusion(tag)));
           }
           const pair = currentClash(i.run_seq, i.clash_id);

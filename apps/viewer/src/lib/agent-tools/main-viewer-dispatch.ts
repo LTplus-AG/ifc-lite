@@ -14,6 +14,7 @@ import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
 import { isAbortError } from '@/lib/runs/abort';
 import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
 import { CATALOG } from '@/components/mcp/data';
+import type { DeliveryClaim } from './delivery.js';
 import { assertDispatchActive, cancelledDispatch } from './cancellation.js';
 import { viewerCommandTools, VIEWER_COMMAND_SPECS } from './viewer-command-tools.js';
 import { readTools } from './read-tools.js';
@@ -23,7 +24,7 @@ import { isFeatureEnabled } from '../features/index.js';
 import { costTools } from './cost-tools.js';
 import { mainViewerIdsTools } from './main-viewer-ids.js';
 import { EDIT_TOOL_NAMES, editNotAllowed, editTools, isEditTool } from './edit-tools.js';
-import type { AgentEdit, AgentTool, AgentToolImage, ModelHandle, ReadyModel, ToolHost, ToolNeeds, ToolOutput } from './types.js';
+import type { AgentEdit, AgentTool, AgentToolImage, ModelHandle, ReadyModel, ToolCommitState, ToolHost, ToolNeeds, ToolOutput } from './types.js';
 
 /** Every tool the main viewer serves. Each must be a `read`-scope catalog tool (enforced by test). */
 export const MAIN_VIEWER_TOOL_ALLOWLIST = [
@@ -190,7 +191,7 @@ function untilAborted<T>(work: Promise<T>, signal: AbortSignal | undefined, comm
   if (!signal) return work;
   return new Promise<T>((resolve, reject) => {
     const abort = () => { if (!committed()) reject(cancelledDispatch()); };
-    if (signal.aborted && !committed()) { abort(); return; }
+    if (signal.aborted) abort();
     if (!signal.aborted) signal.addEventListener('abort', abort, { once: true });
     work.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
   });
@@ -198,6 +199,8 @@ function untilAborted<T>(work: Promise<T>, signal: AbortSignal | undefined, comm
 
 export interface DispatchContext {
   signal?: AbortSignal;
+  /** A transport can take ownership of a successful result until it confirms delivery. */
+  onDelivery?: (claim: DeliveryClaim) => void;
   /**
    * Whether the user allows the agent to edit right now. Edit tools are
    * refused with READ_ONLY unless it returns true, checked before the call
@@ -223,6 +226,16 @@ export async function dispatchMainViewerTool(
 ): Promise<AgentToolResult> {
   const tool = mainViewerTool(toolName);
   if (!tool) return refusal(toolName);
+  let claim: DeliveryClaim | undefined;
+  let dropped = false;
+  let commitState: ToolCommitState = { committed: false };
+  const claimDelivery = (next: DeliveryClaim, sharedCommitState?: ToolCommitState) => {
+    if (dropped) next.drop();
+    else {
+      claim = next;
+      if (sharedCommitState) commitState = sharedCommitState;
+    }
+  };
   try {
     // Read-only is enforced here, not only by the bridge: it trusts the labels this tab sent.
     if (isEditTool(toolName)) {
@@ -236,9 +249,13 @@ export async function dispatchMainViewerTool(
     }
     const input = (args ?? {}) as Record<string, unknown>;
     assertDispatchActive(ctx.signal);
-    const commitState: { committed: boolean; committing?: boolean } = { committed: false };
     if (tool.needs === 'none') {
-      const out = await untilAborted(tool.run(host, input, { ...ctx, commitState }), ctx.signal, () => commitState.committed || commitState.committing === true);
+      const out = await untilAborted(tool.run(host, input, { signal: ctx.signal, canEdit: ctx.canEdit, commitState, claimDelivery }), ctx.signal, () => commitState.committed || commitState.committing === true);
+      if (claim) {
+        if (!commitState.committed) assertDispatchActive(ctx.signal);
+        if (ctx.onDelivery) ctx.onDelivery(claim);
+        else claim.deliver();
+      }
       return succeeded(out);
     }
     const model = usableModel(resolveModel(host, input), tool.needs, toolName);
@@ -251,6 +268,8 @@ export async function dispatchMainViewerTool(
     stillCurrent();
     return succeeded(out);
   } catch (caught) {
+    dropped = true;
+    claim?.drop();
     const err = isAbortError(caught) ? cancelledDispatch() : caught;
     if (err instanceof ToolExecutionError) {
       return { text: err.message, structured: err.details ?? null, isError: true, errorCode: err.code, hint: err.hint };

@@ -12,6 +12,7 @@ import { contactLineList } from '@/lib/clash/contact-lines';
 import { computeClashIntersectionSolid } from '@/lib/clash/intersection-solid';
 import { restoreOverridesForGhosting } from '@/lib/clash/ghost-color-overrides';
 import { focusClashGroup } from '@/lib/clash/group-focus';
+import { releaseOwnedClashVisibility } from '@/lib/clash/visibility-ownership';
 import { clashRefModelIsCurrent } from '@/lib/clash/federation-identity';
 interface SelectionRef {
   modelId: string;
@@ -45,7 +46,9 @@ export function createClashFocus(options: {
       }
       return resolved;
     }
-    return state.fromGlobalId(ref.ref);
+    const resolved = state.fromGlobalId(ref.ref);
+    if (!resolved && state.clashError !== CLASH_MODEL_UNLOADED_MESSAGE) state.setClashError(CLASH_MODEL_UNLOADED_MESSAGE, 'unavailable');
+    return resolved;
   };
   const applyFocusMode = (globalIds: number[], mode: ClashFocusMode): void => {
     if (mode === 'isolate') installClashIsolation(new Set(globalIds));
@@ -146,6 +149,8 @@ export function createClashFocus(options: {
     const ref = refOf(el);
     if (!ref) return false;
     state.clearEntitySelection();
+    state.setSelectedEntityIds([el.ref]);
+    state.addEntitiesToSelection([ref]);
     const one = new Map<number, [number, number, number, number]>([[el.ref, CLASH_COLOR_A]]);
     state.setClashHighlightColors(one);
     state.setPendingColorUpdates(one);
@@ -172,6 +177,7 @@ export function createClashFocus(options: {
       }
     }
     if (globalIds.size === 0) return;
+    releaseOwnedClashVisibility(state);
     state.setSelectedEntityIds([...globalIds]);
     state.addEntitiesToSelection(refs);
     state.setClashHighlightColors(null);

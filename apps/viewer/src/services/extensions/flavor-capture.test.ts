@@ -19,3 +19,8 @@ it('shared native flavor capture survives the real portable archive codec with c
   assert.ok(config); assert.equal(config.settings.tolerance, useViewerStore.getState().clashTolerance);
   assert.equal(await host.activeId(), undefined, 'packing and preview never activate an imported flavor');
 });
+it('capturing an older flavor saved without a layout adds the sidebar layout (#10591 review)', () => {
+  const legacy = { ...createNativeFlavor('Legacy fixture', '', false), layout: undefined } as unknown as Parameters<typeof captureNativeFlavor>[0];
+  const captured = captureNativeFlavor(legacy);
+  assert.ok(captured.layout.state.sidebar, 'the sidebar layout is captured');
+});

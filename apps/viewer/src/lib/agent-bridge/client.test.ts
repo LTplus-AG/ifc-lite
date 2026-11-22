@@ -30,6 +30,7 @@ class FakeSocket implements WebSocketLike {
   onerror: WebSocketLike['onerror'] = null;
   readonly sent: string[] = [];
   failSend = false;
+  enforceBrowserCloseCodes = false;
   closedWith: { code?: number; reason?: string } | null = null;
   constructor(readonly url: string) {
     FakeSocket.last = this;
@@ -40,6 +41,9 @@ class FakeSocket implements WebSocketLike {
     this.sent.push(data);
   }
   close(code?: number, reason?: string): void {
+    if (this.enforceBrowserCloseCodes && code !== undefined && code !== 1000 && (code < 3000 || code > 4999)) {
+      throw new DOMException('Invalid WebSocket close code', 'InvalidAccessError');
+    }
     this.closedWith = { code, reason };
     this.readyState = 3;
   }
@@ -59,8 +63,8 @@ class FakeSocket implements WebSocketLike {
       return parsed.value as BridgeResultMessage;
     });
   }
-  welcome(sessionId = 'session-1'): void {
-    this.frame({ type: 'welcome', protocol: BRIDGE_PROTOCOL_VERSION, sessionId, permission: 'read-only', readOnlyCeiling: false, bridge: { name: 'ifc-lite-mcp', version: 't' } });
+  welcome(sessionId = 'session-1', resultAck?: true): void {
+    this.frame({ type: 'welcome', protocol: BRIDGE_PROTOCOL_VERSION, sessionId, resultAck, permission: 'read-only', readOnlyCeiling: false, bridge: { name: 'ifc-lite-mcp', version: 't' } });
   }
 }
 
@@ -100,11 +104,11 @@ function harness(overrides: Partial<BridgeClientOptions> = {}): Harness {
 }
 
 /** Connected and welcomed. */
-function paired(overrides: Partial<BridgeClientOptions> = {}): Harness {
+function paired(overrides: Partial<BridgeClientOptions> = {}, resultAck?: true): Harness {
   const h = harness(overrides);
   h.client.connect();
   h.socket().open();
-  h.socket().welcome();
+  h.socket().welcome('session-1', resultAck);
   return h;
 }
 
@@ -125,6 +129,107 @@ function blockingDispatch() {
 }
 
 afterEach(() => { FakeSocket.last = null; });
+
+describe('bridge result acknowledgement (#11029)', () => {
+  function trackedDispatch(text = 'retained result') {
+    const dispatches: string[] = [];
+    const settled: string[] = [];
+    const dispatch: BridgeClientOptions['dispatch'] = async (name, _args, _signal, claim) => {
+      dispatches.push(name);
+      claim?.({ deliver: () => settled.push('delivered'), drop: () => settled.push('dropped') });
+      return { text, structured: { token: 'reviewed' }, isError: false };
+    };
+    return { dispatch, dispatches, settled };
+  }
+
+  it('reserves an admission slot until a matching acknowledgement and ignores a late abort', async () => {
+    const tracked = trackedDispatch();
+    const h = paired({ dispatch: tracked.dispatch, limits: { maxRunning: 1 } }, true);
+    const socket = h.socket();
+    try {
+      call(socket, 'first');
+      await flush();
+      assert.match(socket.sent.at(-1) ?? '', /"resultAck":true/);
+      call(socket, 'second');
+      socket.frame({ type: 'result-ack', sessionId: 'other-session', id: 'first', accepted: true });
+      await flush();
+      assert.equal(tracked.dispatches.length, 1);
+      assert.deepEqual(tracked.settled, []);
+      socket.frame({ type: 'result-ack', sessionId: 'session-1', id: 'first', accepted: true });
+      socket.frame({ type: 'cancel', sessionId: 'session-1', id: 'first', reason: 'cancelled' });
+      await flush();
+      assert.equal(tracked.dispatches.length, 2);
+      assert.deepEqual(tracked.settled, ['delivered']);
+      socket.frame({ type: 'result-ack', sessionId: 'session-1', id: 'second', accepted: false });
+      assert.deepEqual(tracked.settled, ['delivered', 'dropped']);
+    } finally {
+      h.client.disconnect();
+    }
+  });
+
+  it('drops a truncated result without asking the bridge to acknowledge it', async () => {
+    const tracked = trackedDispatch('x'.repeat(20_000));
+    const h = paired({ dispatch: tracked.dispatch, maxResultBytes: 8192 }, true);
+    try {
+      call(h.socket(), 'cut');
+      await flush();
+      const reply = JSON.parse(h.socket().sent.at(-1) ?? 'null');
+      assert.equal(reply.result.structuredContent.truncated, true);
+      assert.equal(reply.resultAck, undefined);
+      assert.deepEqual(tracked.settled, ['dropped']);
+    } finally {
+      h.client.disconnect();
+    }
+  });
+
+  it('releases the claim and admission slot when sending the result throws', async () => {
+    const tracked = trackedDispatch();
+    const h = paired({ dispatch: tracked.dispatch, limits: { maxRunning: 1 } }, true);
+    const socket = h.socket();
+    try {
+      socket.failSend = true;
+      call(socket, 'lost');
+      await flush();
+      assert.deepEqual(tracked.settled, ['dropped']);
+
+      socket.failSend = false;
+      call(socket, 'next');
+      await flush();
+      assert.equal(tracked.dispatches.length, 2);
+      socket.frame({ type: 'result-ack', sessionId: 'session-1', id: 'next', accepted: true });
+      assert.deepEqual(tracked.settled, ['dropped', 'delivered']);
+    } finally {
+      h.client.disconnect();
+    }
+  });
+
+  it('closes a pairing with an unconfirmed result and releases its claim', async () => {
+    const tracked = trackedDispatch();
+    const h = paired({ dispatch: tracked.dispatch, limits: { callTimeoutMs: 20 } }, true);
+    h.socket().enforceBrowserCloseCodes = true;
+    try {
+      call(h.socket(), 'unconfirmed');
+      await new Promise(resolve => setTimeout(resolve, 60));
+      assert.equal(h.socket().closedWith?.reason, 'result acknowledgement timeout');
+      assert.deepEqual(tracked.settled, ['dropped']);
+    } finally {
+      h.client.disconnect();
+    }
+  });
+
+  it('keeps the legacy dispatch delivery boundary when the peer omits negotiation', async () => {
+    const tracked = trackedDispatch();
+    const h = paired({ dispatch: tracked.dispatch });
+    try {
+      call(h.socket(), 'legacy');
+      await flush();
+      assert.doesNotMatch(h.socket().sent.at(-1) ?? '', /resultAck/);
+      assert.deepEqual(tracked.settled, []);
+    } finally {
+      h.client.disconnect();
+    }
+  });
+});
 
 describe('local agent bridge client: handshake (#9523)', () => {
   it('connects to 127.0.0.1 only when asked, and its hello is read-only with model and palette command tools', () => {

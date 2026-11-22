@@ -15,6 +15,7 @@ import type { AppearanceAssetOwner } from '@/lib/appearance/assets';
 import type { prepareMeshTransfer } from '@/lib/appearance/scan/prepare-transfer';
 import type { stageNativeScanTransfer } from '@/lib/appearance/appearance-native-transfer';
 import { appearanceAssets } from '@/lib/appearance/model-assets';
+import { invalidInput, stale, unavailable } from './refusals';
 type StagedTransfer = ReturnType<typeof stageNativeScanTransfer>;
 export interface NativeScanState {
   session: ScanSession;
@@ -57,11 +58,11 @@ export function nativeScanStates(c: { host: ToolHost }) {
 export function nativeScanState(c: OperationContext, token: string, version?: number, validate = true) {
   const value = nativeScanStates(c).get(token);
   if (!value || value.session.targetModelId !== c.model.id)
-    throw new Error('Unknown scan session for this host/target model.');
+    throw invalidInput('unknown-target', 'Unknown scan session for this host/target model.');
   if (version !== undefined && value.version !== version)
-    throw new Error('Scan correspondences or registration changed. Inspect again.');
+    throw stale('Scan correspondences or registration changed. Inspect again.');
   if (validate) {
-    if (value.transfer?.applying) throw new Error('The native scan transfer is being applied.');
+    if (value.transfer?.applying) throw unavailable('The native scan transfer is being applied.');
     value.session.validate();
   }
   return value;

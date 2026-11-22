@@ -3,10 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
-import { useViewerStore } from '@/store';
-import { assertToolActive, cancelledDispatch } from '../cancellation';
 import { isAbortError } from '@/lib/runs/abort';
-import type { ReadyModel, ToolCallContext, ToolHost } from '../types';
+import { useViewerStore } from '@/store';
+import { ResultDelivery } from '../delivery';
+import { assertToolActive, cancelledDispatch } from '../cancellation';
+import type { ReadyModel, ToolCallContext, ToolCommitState, ToolHost } from '../types';
 import { operationArtifacts } from './artifacts';
 import { contractFingerprint } from './metadata';
 import { MAX_RESULT_BYTES, utf8Bytes } from './result-limit';
@@ -27,16 +28,49 @@ export interface OperationJob {
   error_code?: string;
   error_details?: Record<string, unknown>;
 }
-interface LiveJob { snapshot: OperationJob; abort: AbortController; current(): void; discard(): void; delivered?: boolean }
+interface LiveJob { snapshot: OperationJob; abort: AbortController; current(): void; discard(): void; delivery: ResultDelivery; delivered?: boolean }
 const hosts = new WeakMap<ToolHost, Map<string, LiveJob>>();
 const MAX_JOBS = 32;
-interface AppliedRequest { signature: string; store: ReadyModel['store'] | undefined; result: Promise<unknown> }
+interface AppliedRequest {
+  signature: string;
+  store: ReadyModel['store'] | undefined;
+  result: Promise<unknown>;
+  delivery: ResultDelivery;
+  executionSignal?: AbortSignal;
+  commitState: ToolCommitState;
+}
 const applied = new WeakMap<ToolHost, Map<string, AppliedRequest>>();
 function jobs(host: ToolHost) {
   let owned = hosts.get(host);
   if (!owned) { owned = new Map(); hosts.set(host, owned); }
   return owned;
 }
+function collect(result: Promise<unknown>, delivery: ResultDelivery, context: ToolCallContext, commitState: ToolCommitState): Promise<unknown> {
+  const claim = delivery.claim(context.signal);
+  if (context.claimDelivery) {
+    context.claimDelivery(claim, commitState);
+    return result;
+  }
+  const { signal } = context;
+  return new Promise((resolve, reject) => {
+    const cancel = () => { claim.drop(); reject(cancelledDispatch()); };
+    const abort = () => { if (!commitState.committed && !commitState.committing) cancel(); };
+    if (signal?.aborted) abort();
+    else signal?.addEventListener('abort', abort, { once: true });
+    const detach = () => signal?.removeEventListener('abort', abort);
+    void result.then(value => {
+      detach();
+      if (signal?.aborted && !commitState.committed) { cancel(); return; }
+      claim.deliver();
+      resolve(value);
+    }, error => {
+      detach();
+      claim.drop();
+      reject(error);
+    });
+  });
+}
+
 /** A cause's details without its own `reason`, which a committed failure must not carry as a retry hint. */
 function withoutReason(details: Record<string, unknown> | undefined) {
   if (!details) return undefined;
@@ -98,10 +132,13 @@ export async function executeOperation(
   let nativeModel = model ? useViewerStore.getState().models.get(model.id) : undefined;
   const revision = useViewerStore.getState().mutationVersion;
   let activeRevision = revision;
-  let committed = false;
+  const commitState = context.commitState ?? { committed: false, committing: false };
+  let executionContext = context;
+  let demand: ResultDelivery | undefined;
   const check = () => {
     host.lifetimeSignal?.throwIfAborted();
-    assertToolActive(context);
+    assertToolActive(executionContext);
+    if (demand && !commitState.committing && !commitState.committed && !demand.hasActiveCaller) throw cancelledDispatch();
     const reason = operationUnavailable(entry);
     if (reason) throw disabled(reason);
     const now = model ? host.models().find(candidate => candidate.id === model.id) : undefined;
@@ -109,7 +146,7 @@ export async function executeOperation(
       || useViewerStore.getState().models.get(model.id) !== nativeModel)) {
       throw stale('Model replaced, closed, or edited during the operation. Discarded result.');
     }
-    if (writes && !context.canEdit?.()) throw new ToolExecutionError({ code: ToolErrorCode.READ_ONLY, message: 'Commands and edits grant was revoked or is absent.', details: { reason: 'read-only' } });
+    if (writes && !executionContext.canEdit?.()) throw new ToolExecutionError({ code: ToolErrorCode.READ_ONLY, message: 'Commands and edits grant was revoked or is absent.', details: { reason: 'read-only' } });
   };
   check();
   if (args.background !== undefined && typeof args.background !== 'boolean') invalid('background must be boolean.');
@@ -118,10 +155,20 @@ export async function executeOperation(
   if (args.background && args.idempotency_key !== undefined) invalid('Background reads do not accept idempotency_key.');
   const signature = typeof args.idempotency_key === 'string'
     ? contractFingerprint([model?.id ?? null, entry.id, args.input ?? {}, args.expected_revision ?? null]) : '';
-  const previous = typeof args.idempotency_key === 'string' ? applied.get(host)?.get(args.idempotency_key) : undefined;
+  const key = typeof args.idempotency_key === 'string' ? args.idempotency_key : undefined;
+  const requests = applied.get(host);
+  const previous = key === undefined ? undefined : requests?.get(key);
   if (previous) {
     if (previous.store !== model?.store || previous.signature !== signature) invalid('Idempotency key already belongs to another request or model.', 'conflict');
-    return previous.result;
+    if (previous.executionSignal?.aborted) {
+      // The last caller cancelled this execution. Wait for it to release native state before starting the same key.
+      // A native effect may already have run. Only retry if settlement released the key.
+      const retry = () => key !== undefined && requests?.get(key) === previous
+        ? previous.result
+        : executeOperation(host, model, args, context, readOnly);
+      return previous.result.then(retry, retry);
+    }
+    return collect(previous.result, previous.delivery, context, previous.commitState);
   }
   if (args.expected_revision !== undefined && args.expected_revision !== revision) {
     throw stale('The model revision changed. Inspect it again.');
@@ -130,32 +177,31 @@ export async function executeOperation(
   try { entry.validate(input); } catch (error) { invalid(error instanceof Error ? error.message : 'Invalid operation input.'); }
   let checkpoint = check;
   const markCommitted = () => {
-    committed = true;
-    if (context.commitState) context.commitState.committed = true;
+    commitState.committed = true;
     activeRevision = useViewerStore.getState().mutationVersion;
     nativeModel = model ? useViewerStore.getState().models.get(model.id) : undefined;
   };
   const commit = <T>(write: () => T): T => {
     if (!writes || readOnly) throw internal('A read operation cannot commit changes.');
     checkpoint();
-    if (context.commitState) context.commitState.committing = true;
+    commitState.committing = true;
     try {
       const value = write();
       markCommitted();
       return value;
-    } finally { if (context.commitState) context.commitState.committing = false; }
+    } finally { commitState.committing = false; }
   };
   const commitAsync = async <T>(write: () => Promise<T>, didCommit: (result: T) => boolean = value => value !== false): Promise<T> => {
     if (!writes || readOnly) throw internal('A read operation cannot admit durable writes.');
     checkpoint();
-    if (context.commitState) context.commitState.committing = true;
+    commitState.committing = true;
     try {
       const value = await write();
       if (didCommit(value)) {
         markCommitted();
       }
       return value;
-    } finally { if (context.commitState) context.commitState.committing = false; }
+    } finally { commitState.committing = false; }
   };
   const artifacts = operationArtifacts(host, write => {
     if (!entry.effects.includes('artifact')) throw internal('The operation did not declare artifact creation.');
@@ -172,49 +218,99 @@ export async function executeOperation(
     }
     return value;
   };
-  const operationContext = { ...context, checkpoint: check, model, host, commit, commitAsync, ownGeometry, artifacts };
-  const discardResult = (result: unknown) => {
-    try { entry.discard?.(result, operationContext); } catch (error) { console.warn('[viewer operation] discarding a refused result failed', error); }
-  };
-  /** The result after the final check, bounded and validated. A result refused here is never delivered, so what the
-   * handler stored for it is discarded; a committed write is not, since it already happened. */
-  const accepted = (result: unknown, finalCheck: () => void): unknown => {
-    try { finalCheck(); const bounded = boundedResult(result); entry.validateResult(bounded); return bounded; } catch (error) {
-      if (!committed) discardResult(result);
-      throw error;
+  const retained: Array<{ undo: () => void; deliver?: () => void | false }> = [];
+  const retain = (undo: () => void, deliver?: () => void | false) => { retained.push({ undo, deliver }); };
+  const operationContext = { checkpoint: check, model, host, commit, commitAsync, ownGeometry, retain, artifacts };
+  const settleResult = (delivered: boolean) => {
+    let replayable = true;
+    for (const record of retained.splice(0)) {
+      try {
+        if (delivered) {
+          if (record.deliver?.() === false) replayable = false;
+        } else {
+          record.undo();
+        }
+      } catch (error) { console.warn('[viewer operation] settling a retained result failed', error); }
     }
+    return replayable;
+  };
+  const discardResult = () => settleResult(false);
+  const accepted = (result: unknown, finalCheck: () => void): unknown => {
+    finalCheck();
+    const bounded = boundedResult(result);
+    entry.validateResult(bounded);
+    return bounded;
   };
   check();
   if (!args.background) {
-    const run = async (forget = () => {}) => {
+    const reversible = !writes || entry.candidateOnly === true;
+    // Keyed work belongs to all its callers, regardless of the operation's effects.
+    const executionAbort = key === undefined ? undefined : new AbortController();
+    if (executionAbort) {
+      const signals = host.lifetimeSignal ? [executionAbort.signal, host.lifetimeSignal] : [executionAbort.signal];
+      executionContext = { ...context, signal: AbortSignal.any(signals) };
+    }
+    let finished = false;
+    let acceptedForDelivery = false;
+    let forget = () => {};
+    const release = () => {
+      if (!finished) {
+        if (!commitState.committing && !commitState.committed) executionAbort?.abort();
+        return;
+      }
+      if (commitState.committed) return;
+      if (reversible && acceptedForDelivery) forget();
+      discardResult();
+    };
+    const delivery = new ResultDelivery(() => { if (!settleResult(true)) forget(); }, release);
+    if (executionAbort) demand = delivery;
+    const run = async () => {
       // Nothing native has run yet, so a keyed retry of this failure may run again (#10669).
-      try { await entry.load?.(); check(); } catch (error) { forget(); throw operationFailure(error, entry.id); }
+      try { await entry.load?.(); check(); if (!delivery.hasActiveCaller) throw cancelledDispatch(); } catch (error) { forget(); throw operationFailure(error, entry.id); }
       try {
-        const result = await entry.execute(input, operationContext);
-        const value = accepted(result, () => { if (!committed) check(); });
-        return { operation_id: entry.id, model_id: model?.id ?? null, revision: activeRevision, state: entry.completion ?? 'succeeded', committed, result: value };
+        const result = await entry.execute(input, { ...executionContext, ...operationContext });
+        const value = accepted(result, () => { if (!commitState.committed) check(); });
+        acceptedForDelivery = true;
+        return { operation_id: entry.id, model_id: model?.id ?? null, revision: activeRevision, state: entry.completion ?? 'succeeded', committed: commitState.committed, result: value };
       } catch (error) {
-        if (committed) throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR,
+        if (commitState.committed) throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR,
           message: error instanceof Error ? error.message : 'Operation failed after committing changes.',
-                  // reason stays 'internal': the write committed, so no retry reason may survive. The cause is kept beside it.
           details: { reason: 'internal', ...(error instanceof ToolExecutionError ? { cause_code: error.code, cause_reason: error.details?.reason, cause_details: withoutReason(error.details) } : {}),
             committed: true, revision: activeRevision, operation_id: entry.id, model_id: model?.id ?? null } });
+        // Reads and candidate-only handlers have no durable effects to deduplicate.
+        if (reversible) forget();
+        discardResult();
         throw operationFailure(error, entry.id);
+      } finally {
+        finished = true;
+        if (commitState.committed) retained.length = 0;
+        if (!delivery.pending) release();
       }
     };
-    if (typeof args.idempotency_key !== 'string') return run();
-    const prior = applied.get(host) ?? new Map<string, AppliedRequest>();
+    // Defer native work until the initiating caller has registered its claim.
+    const start = () => Promise.resolve().then(run);
+    if (key === undefined) return collect(start(), delivery, context, commitState);
+    const prior = requests ?? new Map<string, AppliedRequest>();
     applied.set(host, prior);
-    // Keep failed outcomes once the native handler ran: retrying a partially dispatched UI action must not duplicate it.
+    // Keep failed outcomes for irreversible native actions to avoid replaying partial effects.
     if (prior.size >= 100) throw unavailable('Host idempotency capacity reached (100 requests). Reconnect before creating further keyed requests.');
-    const key = args.idempotency_key, request: AppliedRequest = { signature, store: model?.store, result: Promise.resolve() };
+    const request: AppliedRequest = { signature, store: model?.store, result: start(), delivery, executionSignal: executionAbort?.signal, commitState };
     // Registered before run() starts, so even an immediate pre-dispatch failure can remove it.
     prior.set(key, request);
-    request.result = run(() => { if (prior.get(key) === request) prior.delete(key); });
-    return request.result;
+    forget = () => { if (prior.get(key) === request) prior.delete(key); };
+    return collect(request.result, delivery, context, commitState);
   }
   const owned = jobs(host);
-  for (const [id, job] of owned) if (owned.size >= MAX_JOBS && job.snapshot.state !== 'running') owned.delete(id);
+  // Finished jobs make room, delivered or failed ones first; an uncollected result goes only when nothing else can.
+  const uncollected = (job: LiveJob) => job.snapshot.state === 'succeeded' && !job.delivered;
+  for (const evictUncollected of [false, true]) {
+    for (const [id, job] of owned) {
+      if (owned.size < MAX_JOBS) break;
+      if (job.snapshot.state === 'running' || job.delivery.pending || uncollected(job) !== evictUncollected) continue;
+      owned.delete(id);
+      if (evictUncollected) job.discard(); // its result will never be collected
+    }
+  }
   if (owned.size >= MAX_JOBS) throw unavailable('This host already has 32 running operation jobs.');
   const controller = new AbortController();
   const abort = () => controller.abort();
@@ -224,13 +320,19 @@ export async function executeOperation(
   const snapshot: OperationJob = { id: crypto.randomUUID(), operation_id: entry.id, model_id: model?.id ?? null, revision, state: 'running' };
   const active = () => { controller.signal.throwIfAborted(); check(); };
   checkpoint = active;
-  owned.set(snapshot.id, { snapshot, abort: controller, current: check, discard: () => discardResult(snapshot.result) });
+  const job: LiveJob = { snapshot, abort: controller, current: check, discard: discardResult,
+    delivery: new ResultDelivery(() => { job.delivered = true; settleResult(true); }, () => {
+      // A still-collectible job can be polled again. A terminal refusal leaves only the existing claims.
+      if (snapshot.state === 'failed' || snapshot.state === 'cancelled') discardResult();
+    }) };
+  owned.set(snapshot.id, job);
   // Retain and settle the actual service promise. Cancellation never claims rollback.
-  void Promise.resolve().then(() => { active(); return entry.execute(input, { ...operationContext, signal: controller.signal, checkpoint: active, progress: detail => {
+  void Promise.resolve().then(() => { active(); return entry.execute(input, { ...context, ...operationContext, signal: controller.signal, checkpoint: active, progress: detail => {
       active(); snapshot.progress = detail;
     } }); })
     .then(result => { snapshot.result = accepted(result, active); snapshot.state = 'succeeded'; })
     .catch((error: unknown) => {
+      if (!commitState.committed) discardResult();
       snapshot.state = controller.signal.aborted ? 'cancelled' : 'failed';
       const refusal = controller.signal.aborted ? cancelledDispatch() : operationFailure(error, entry.id);
       snapshot.error = refusal.message;
@@ -243,24 +345,29 @@ export async function executeOperation(
   return { job: { ...snapshot } };
 }
 
-export function operationJob(host: ToolHost, id: string, cancel = false): OperationJob {
+export function operationJob(host: ToolHost, id: string, cancel = false, claimDelivery?: ToolCallContext['claimDelivery']): OperationJob {
   const job = jobs(host).get(id);
   if (!job) invalid('Unknown job for this viewer host.', 'unknown-target');
   if (cancel && job.snapshot.state === 'running') job.abort.abort();
   if (job.snapshot.state === 'succeeded') {
     try { job.current(); } catch (error) {
-      // A result never delivered and refused for good (the model changed, the host closed) never will be: discard
-      // what its handler stored, once. A delivered result is the caller's; a passing refusal (a disabled feature)
-      // keeps the job as it is, holding its candidate until the job is evicted or the host closes.
+      // A permanent refusal prevents new claims. Pending polls already hold the result; let one deliver it
+      // or discard it when they all drop. A temporary refusal leaves the job available for another poll.
       const aborted = host.lifetimeSignal?.aborted === true || (error instanceof DOMException && error.name === 'AbortError')
         || (error instanceof ToolExecutionError && error.code === ToolErrorCode.CANCELLED);
       if (!job.delivered && (aborted || (error instanceof ToolExecutionError && error.code === ToolErrorCode.STATE_CHANGED))) {
-        job.discard();
-        Object.assign(job.snapshot, { state: aborted ? 'cancelled' : 'failed', error: error instanceof Error ? error.message : 'Operation failed.', result: undefined });
+        const refusal = aborted ? cancelledDispatch() : operationFailure(error, job.snapshot.operation_id);
+        Object.assign(job.snapshot, { state: aborted ? 'cancelled' : 'failed', error: refusal.message, error_code: refusal.code,
+          error_details: refusal.details, result: undefined });
+        if (!job.delivery.pending) job.discard();
       }
       throw error;
     }
-    job.delivered = true;
+    if (!job.delivered) {
+      const claim = job.delivery.claim();
+      if (claimDelivery) claimDelivery(claim);
+      else claim.deliver();
+    }
   }
   // A cancellation request is observable, but terminal cancellation awaits runner settlement.
   return { ...job.snapshot, ...(cancel && job.snapshot.state === 'running' ? { cancellationRequested: true } : {}) };

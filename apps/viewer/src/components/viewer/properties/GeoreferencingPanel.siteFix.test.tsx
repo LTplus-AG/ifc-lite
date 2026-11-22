@@ -92,6 +92,7 @@ it('applies the site location fix as one undo step, re-checks, and exports it (#
   const fixed = siteValues(store);
   assert.ok(Math.abs((fixed.RefLatitude ?? 0) - 46.9479) < 1e-3 && Math.abs((fixed.RefLongitude ?? 0) - 7.4386) < 1e-3, JSON.stringify(fixed));
 
+  await settle();
   assert.equal(await settled(host), 'No problems found', `the finding clears once the edit is checked; listed: ${codes(host).join(', ')}`);
 
   const result = await exportModelStep({

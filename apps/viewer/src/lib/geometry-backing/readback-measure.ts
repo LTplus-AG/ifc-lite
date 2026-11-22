@@ -16,17 +16,26 @@ import { ReadbackRaycastFeeder, type FeedOutcome } from './readback-raycast-feed
 
 const feeders = new WeakMap<Renderer, ReadbackRaycastFeeder>();
 
+/** The resident raycast never tests annotation or grid overlays (same rule as `__ifc_lite_pick_parity__`). */
+function raycastable(globalId: number): boolean {
+  const ref = resolveEntityRef(globalId);
+  const type = useViewerStore.getState().models.get(ref.modelId)?.ifcDataStore?.entities.getTypeName(ref.expressId) ?? '';
+  return !/^Ifc(Annotation|Grid|GridAxis)$/i.test(type);
+}
+
 export function readbackFeeder(renderer: Renderer): ReadbackRaycastFeeder {
   let feeder = feeders.get(renderer);
   if (!feeder) {
     feeder = new ReadbackRaycastFeeder(renderer, () => activeGeometryBackingTap(),
-      (globalId) => resolveEntityRef(globalId).modelId);
+      (globalId) => resolveEntityRef(globalId).modelId, undefined, raycastable);
     feeders.set(renderer, feeder);
     // Pieces stay set on the renderer between hovers; drop them on the same
     // changes that end a backing generation, so a raycast never tests stale geometry.
     const owned = feeder;
     useViewerStore.subscribe((state, previous) => {
-      if (state.models !== previous.models || state.geometryContentVersion !== previous.geometryContentVersion) owned.clear();
+      // And on a hide/isolate change: a surface shown again in front was not fed (r4651015157).
+      if (state.models !== previous.models || state.geometryContentVersion !== previous.geometryContentVersion
+        || state.hiddenEntities !== previous.hiddenEntities || state.isolatedEntities !== previous.isolatedEntities) owned.clear();
     });
     // Fed pieces are placed at the scene's placement when they were read. A renderer-side placement change
     // (setModelTranslation/Rotation) moves the GPU geometry with no store change: drop them on its revision too.

@@ -122,33 +122,36 @@ export function buildResultFrame(
   result: BridgeCallResult,
   maxResultBytes: number = BRIDGE_LIMITS.maxResultBytes,
   digestForActivity = false,
+  resultAck = false,
 ): ResultFrame {
-  const frame = (r: BridgeCallResult): string =>
-    JSON.stringify({ type: 'result', sessionId, id, result: r } satisfies BridgeResultMessage);
+  const frame = (r: BridgeCallResult, ack = false): string =>
+    JSON.stringify({ type: 'result', sessionId, id, ...(ack ? { resultAck: true } : {}), result: r } satisfies BridgeResultMessage);
   // A frame is its result's JSON inside a fixed envelope, so a result's size is
   // its frame's size minus the envelope: one encode per check, not a re-stringify.
   const empty: BridgeCallResult = { content: [] };
   const emptyFrame = frame(empty);
   const emptyResult = JSON.stringify(empty);
   const envelopeBytes = byteLength(emptyFrame) - byteLength(emptyResult);
-  const resultBytes = (json: string): number => byteLength(json) - envelopeBytes;
-  const refusal = (json: string): string | null => {
+  const fullEmptyFrame = resultAck ? frame(empty, true) : emptyFrame;
+  const fullEnvelopeBytes = resultAck ? byteLength(fullEmptyFrame) - byteLength(emptyResult) : envelopeBytes;
+  const resultBytes = (json: string, ack = false): number => byteLength(json) - (ack ? fullEnvelopeBytes : envelopeBytes);
+  const refusal = (json: string, ack = false): string | null => {
     const checked = parseTabMessage(json);
     if (!checked.ok) return checked.error;
-    const bytes = resultBytes(json);
+    const bytes = resultBytes(json, ack);
     return bytes > maxResultBytes ? `result is ${bytes} bytes; the limit is ${maxResultBytes}` : null;
   };
-  const full = frame(result);
-  const why = refusal(full);
+  const full = frame(result, resultAck);
+  const why = refusal(full, resultAck);
   if (why === null) {
-    const envelopeChars = emptyFrame.length - emptyResult.length;
+    const envelopeChars = fullEmptyFrame.length - emptyResult.length;
     const resultDigest = digestForActivity && full.length - envelopeChars <= MAX_ACTIVITY_RESULT_CHARS
       // The serialised result begins after the prefix and ends before the envelope's closing brace.
       ? digest([sessionId, full.slice(envelopeChars - 1, -1)]) : undefined;
     return { json: full, truncated: false, resultDigest };
   }
 
-  const originalBytes = resultBytes(full);
+  const originalBytes = resultBytes(full, resultAck);
   const texts = result.content.filter((block) => block.type === 'text');
   const images = result.content.length - texts.length;
   if (images > 0) {

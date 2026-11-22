@@ -32,7 +32,7 @@ const { useIfcLoader } = await import('./useIfcLoader.js');
 const { processedModelFromQuery, useProcessedModelAutoload } = await import('./useProcessedModelAutoload.js');
 const { isStepSourceModel } = await import('@/components/viewer/step-export-source');
 const { getReportPrompt, clearLoadReport } = await import('@/lib/error-reports/context');
-const { openProcessedModel, resetProcessedModelRequestsForTests, setProcessingServerUrl, takeProcessedModelRequest } = await import('@/lib/processed-model');
+const { applyProcessingConfig, openProcessedModel, processedModelRequested, resetProcessedModelRequestsForTests, setProcessingServerUrl, takeProcessedModelRequest } = await import('@/lib/processed-model');
 const { useModelUrlAutoload } = await import('./useModelUrlAutoload.js');
 
 const sha256 = 'c'.repeat(64);
@@ -89,6 +89,17 @@ afterEach(async () => {
   window.history.replaceState(null, '', '/');
   resetProcessedModelRequestsForTests(); setProcessingServerUrl('http://localhost:9999');
   useViewerStore.getState().clearAllModels();
+});
+
+it('opens a stored result from a loopback server explicitly configured for an HTTPS viewer (#10822)', async () => {
+  mock.getter(window.location, 'href', () => 'https://viewer.example.org/');
+  mock.getter(window.location, 'hostname', () => 'viewer.example.org');
+  const url = 'http://localhost:8080/ifc';
+  applyProcessingConfig({ server: { url } });
+  await act(async () => { root.render(<Probe />); });
+  await act(async () => { await api!.loadFile(nameOnly(), { kind: 'primary' }, { processedModel }); });
+  assert.deepEqual(servers, [url]);
+  assert.equal(model()?.loadState, 'complete');
 });
 
 it('opens the stored result from the reference alone and publishes its properties', async () => {
@@ -327,6 +338,67 @@ for (const when of ['before the viewer mounts', 'after the viewer mounted'] as c
     assert.equal(model()?.fileSize, 7_000_000);
     assert.equal(engineInits, 0);
     assert.equal(takeProcessedModelRequest(), null, 'a request is loaded once');
+  });
+}
+
+for (const atStartup of [false, true]) {
+  it(atStartup
+    ? 'reschedules engine prewarm after a queued startup model settles on a low-memory device'
+    : 'does not fetch the engine at idle while mounted autoload owns the processed request', async () => {
+    stubWebGpu();
+    const idle: (() => void)[] = [];
+    const takeIdle = () => {
+      const run = idle.shift();
+      assert.ok(run, 'an idle callback is scheduled');
+      run();
+    };
+    Object.defineProperty(window, 'requestIdleCallback', {
+      configurable: true, value: (run: () => void) => idle.push(run),
+    });
+    Object.defineProperty(navigator, 'deviceMemory', { configurable: true, value: 2 });
+    const fetched: string[] = [];
+    const fetch = mock.method(globalThis, 'fetch', async (input: RequestInfo | URL) => {
+      fetched.push(String(input));
+      return new Response(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]), {
+        headers: { 'Content-Type': 'application/wasm' },
+      });
+    });
+    const result = deferred<ParquetParseResponse>();
+    const parse = mock.method(IfcServerClient.prototype, 'parseParquet', () => result.promise);
+    const open = () => openProcessedModel({ ...processedModel, name: 'stored.ifc' });
+    try {
+      const path = `../lib/wasm-prewarm.js?autoload-${atStartup}`;
+      const prewarm: typeof import('../lib/wasm-prewarm.js') = await import(path);
+      if (atStartup) open();
+      prewarm.scheduleWasmPrewarm();
+      assert.equal(idle.length, atStartup ? 0 : 1);
+      await act(async () => { root.render(<Probe fromUrl />); });
+      if (!atStartup) await act(async () => { open(); });
+      await waitFor(() => parse.mock.callCount() === 1, 'autoload reaches the server');
+      assert.equal(processedModelRequested(), false, 'autoload already took the request');
+      assert.equal(useViewerStore.getState().loading, true);
+
+      if (!atStartup) {
+        takeIdle();
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        assert.equal(fetch.mock.callCount(), 0, 'prewarm waits while the server request is in flight');
+      }
+      assert.equal(idle.length, 0);
+      await act(async () => {
+        result.resolve(stored());
+        await waitFor(() => !useViewerStore.getState().loading, 'processed load settles');
+      });
+      assert.equal(idle.length, 1, 'settling schedules prewarm without the fast path');
+      if (atStartup) {
+        takeIdle();
+        await waitFor(() => fetch.mock.callCount() === 1, 'idle callback fetches the engine');
+        assert.match(fetched[0], /\.wasm$/, 'prewarm fetches the engine binary');
+      }
+    } finally {
+      result.resolve(stored());
+      Reflect.deleteProperty(window, 'requestIdleCallback');
+      Reflect.deleteProperty(navigator, 'deviceMemory');
+    }
   });
 }
 

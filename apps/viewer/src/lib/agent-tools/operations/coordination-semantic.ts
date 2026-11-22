@@ -1,10 +1,16 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { LIMITS } from '@ifc-lite/semantic';
 import { useSemanticSession } from '@/lib/semantic/session';
 import { validateCurrentSemantic } from '@/lib/semantic/validate-current';
 import { emptySchema } from './contract';
 import { coordination, textSchema, boolSchema } from './coordination-common';
+import { invalidInput } from './refusals';
+const workspaceSchema = {
+  ...textSchema,
+  properties: { value: { type: 'string' as const, maxLength: LIMITS.bytes } },
+};
 export const coordinationSemanticOperations = [
   coordination('semantic.read', 'Read native semantic dataset, validation findings, profile and model-revision bindings.', ['read'], emptySchema, () => {
     const s = useSemanticSession.getState(); return { document: s.document, graph: s.graph, graph_format: s.graphFormat,
@@ -20,7 +26,7 @@ export const coordinationSemanticOperations = [
   }, async (i, c) => {
     const { useViewerStore } = await import('@/store');
     return c.commit(() => {
-      if (!useViewerStore.getState().models.get(i.model_id)?.ifcDataStore) throw new Error('Revision binding requires a loaded IFC model.');
+      const model = useViewerStore.getState().models.get(i.model_id); if (!model) throw invalidInput('unknown-target', 'Unknown model_id.'); if (!model.ifcDataStore) throw invalidInput('wrong-target', 'Revision binding requires a loaded IFC model.');
       const session = useSemanticSession.getState(), revisions = new Map(session.revisions); revisions.set(i.revision, i.model_id); session.setRevisions(revisions); return { revisions: [...revisions] };
     });
   }),
@@ -28,7 +34,7 @@ export const coordinationSemanticOperations = [
     const signal = c.signal ?? new AbortController().signal;
     return validateCurrentSemantic(i.value, signal, undefined, write => c.commit(write));
   }),
-  coordination('semantic.restoreWorkspace', 'Restore a serialized native workspace using its strict portable codec; credentials and runtime model bindings are excluded by that codec.', ['configuration'], textSchema, (i, c) => c.commit(() => { useSemanticSession.getState().restore(i.value); return { restored: true, data_version: useSemanticSession.getState().dataVersion }; })),
+  coordination('semantic.restoreWorkspace', 'Restore a serialized native workspace using its strict portable codec; credentials and runtime model bindings are excluded by that codec.', ['configuration'], workspaceSchema, (i, c) => c.commit(() => { useSemanticSession.getState().restore(i.value); return { restored: true, data_version: useSemanticSession.getState().dataVersion }; })),
   coordination('semantic.exportWorkspace', 'Save a portable semantic workspace through the native codec and return a JSON artifact.', ['configuration', 'artifact'], emptySchema, async (_, c) => {
     const data = c.commit(() => useSemanticSession.getState().save());
     return c.artifacts.create({ filename: 'semantic-workspace.json', mimeType: 'application/json', data });

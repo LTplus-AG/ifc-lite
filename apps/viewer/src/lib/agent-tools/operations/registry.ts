@@ -12,9 +12,9 @@ import type { Operation } from './contract';
 import { internal, invalidInput } from './refusals';
 
 function lazyOperation(contract: OperationContract): Operation {
-  const { module, exportName, ...metadata } = contract;
+  const { module, exportName, candidateOnly, ...metadata } = contract;
   if (!metadata.outputSchema) throw internal(`Missing output contract: ${metadata.id}`);
-  let implementation: Promise<Operation> | undefined, loadedNative: Operation | undefined;
+  let implementation: Promise<Operation> | undefined;
   const load = () => implementation ??= (async () => {
     const loader = operationLoaders[module];
     if (!loader) throw internal(`Missing operation module: ${module}`);
@@ -22,22 +22,16 @@ function lazyOperation(contract: OperationContract): Operation {
     const candidates = loaded[exportName];
     if (!Array.isArray(candidates)) throw internal(`Missing native operations: ${module}.${exportName}`);
     const native = (candidates as Operation[]).find(candidate => candidate.id === metadata.id);
-    if (!native || contractFingerprint(publicOperationContract(native)) !== contractFingerprint(metadata)) {
+    if (!native || native.candidateOnly !== candidateOnly || contractFingerprint(publicOperationContract(native)) !== contractFingerprint(metadata)) {
       throw internal(`Native operation contract changed: ${metadata.id}. Rebuild the verified operation catalogue.`);
     }
-    loadedNative = native;
     return native;
   })().catch((error: unknown) => {
     // A transient import failure (chunk 404 after a redeploy, network drop) must stay retryable.
     implementation = undefined; throw error;
   });
-  return { ...metadata, ...operationValidators(metadata.id, metadata.inputSchema, metadata.outputSchema), load,
+  return { ...metadata, candidateOnly, ...operationValidators(metadata.id, metadata.inputSchema, metadata.outputSchema), load,
     async execute(input, context) { return (await load()).execute(input, context); },
-    // A result exists only once execute ran, so the implementation is loaded by then.
-    discard(result, context) {
-      if (!loadedNative) console.warn(`[viewer operation] ${metadata.id}: discard before its implementation loaded`);
-      loadedNative?.discard?.(result, context);
-    },
   };
 }
 const entries = operationContracts.map(lazyOperation);

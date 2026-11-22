@@ -9,10 +9,13 @@ import { createBimContext } from '@ifc-lite/sdk';
 import { LocalBackend } from '@/sdk/local-backend';
 import { useViewerStore } from '@/store';
 import { seedCoincidentWalls } from '@/test/clash-run-fixture';
+import { deferred } from '@/test/race';
 import { createMainViewerToolHost } from '../main-viewer-host';
 import { dispatchMainViewerTool, type AgentToolResult } from '../main-viewer-dispatch';
 import type { ToolHost } from '../types';
 import { clashSettings } from './clash-native';
+import { executeOperation } from './executor';
+import { viewerOperation } from './registry';
 import { runRequestOf } from '@/lib/clash/run-request';
 let host: ToolHost;
 const call = (id: string, input: unknown = {}, write = false, canEdit: () => boolean = () => true) =>
@@ -82,6 +85,27 @@ describe('native Clash operation parity (#10525 follow-up)', () => {
     const result = await pending;
     assert.equal(result.isError, true);
     assert.equal(useViewerStore.getState().clashRunSeq, seq);
+  });
+  it('installs single-element focus before framing and preserves selection on missing fallback (#11060)', async t => {
+    const { run_seq } = value<{ run_seq: number }>(await call('clash.run', runInput(), true));
+    const initial = useViewerStore.getState(), result = initial.clashResult!;
+    const pair = result.clashes[0];
+    const framed = t.mock.fn(() => assert.ok(useViewerStore.getState().selectedEntityIds.has(pair.a.ref)));
+    useViewerStore.setState({ cameraCallbacks: { frameSelection: framed } });
+    t.after(() => useViewerStore.setState({ cameraCallbacks: initial.cameraCallbacks }));
+    const input = { clash_ids: [pair.id], run_seq, element: 'a', mode: 'highlight' };
+    value(await call('clash.focus', input, true));
+    assert.ok(useViewerStore.getState().selectedEntityIds.has(pair.a.ref));
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+    assert.equal(framed.mock.callCount(), 1);
+    const selected = useViewerStore.getState().selectedEntityIds;
+    useViewerStore.setState({ clashRawResult: null, clashResult: { ...result, clashes: [
+      { ...pair, a: { ...pair.a, model: 'unloaded', ref: Number.MAX_SAFE_INTEGER } }, ...result.clashes.slice(1),
+    ] } });
+    const absent = await call('clash.focus', input, true);
+    assert.equal(absent.errorCode, 'UNSUPPORTED_OPERATION', absent.text);
+    assert.equal((absent.structured as { reason: string }).reason, 'unavailable');
+    assert.equal(useViewerStore.getState().selectedEntityIds, selected);
   });
   it('preserves native unavailable refusals for unresolved clash pairs and groups (#10871)', async () => {
     await seedCoincidentWalls(1, 3);
@@ -187,6 +211,96 @@ describe('native Clash operation parity (#10525 follow-up)', () => {
     );
     assert.equal(page.clashes[0].review.status, 'accepted');
     assert.equal(page.clashes[0].review.comment, 'Designed overlap');
+  });
+  it('releases clash-owned isolation when highlighting all findings (#10795 item 8)', async () => {
+    await seedCoincidentWalls(1);
+    value(await call('clash.run', runInput(), true));
+    const ids = new Set([1]);
+    useViewerStore.setState({ isolatedEntities: ids, clashVisibilityOwned: { channel: 'isolate', ids } });
+    value(await call('clash.action', { action: 'highlightAll' }, true));
+    assert.equal(useViewerStore.getState().isolatedEntities, null);
+    assert.equal(useViewerStore.getState().clashVisibilityOwned, null);
+    assert.equal(useViewerStore.getState().selectedEntityIds.size, 2);
+  });
+  it('selects the resolved side before framing it (#10795 item 11)', async (t) => {
+    await seedCoincidentWalls(2);
+    const { toGlobalId } = useViewerStore.getState();
+    // The fixture seeds shifted meshes and model records, but skips loader registration.
+    useViewerStore.setState({ toGlobalId: (modelId, expressId) =>
+      modelId === 'B' && expressId === 1 ? 101 : toGlobalId(modelId, expressId) });
+    t.after(() => useViewerStore.setState({ toGlobalId }));
+    const { run_seq } = value<{ run_seq: number }>(await call('clash.run', runInput(), true));
+    const [pair] = useViewerStore.getState().clashResult!.clashes;
+    const side = pair.a.model === 'B' ? 'a' : 'b';
+    assert.equal(pair[side].model, 'B');
+    const frame = t.mock.fn(() => {
+      const state = useViewerStore.getState();
+      assert.equal(state.selectedEntityId, 101);
+      assert.deepEqual(state.selectedEntityIds, new Set([101]));
+      assert.deepEqual(state.selectedEntity, { modelId: 'B', expressId: 1 });
+    });
+    const callbacks = useViewerStore.getState().cameraCallbacks;
+    let scheduled: FrameRequestCallback | undefined;
+    t.mock.method(globalThis, 'requestAnimationFrame', (callback: FrameRequestCallback) => {
+      scheduled = callback;
+      return 1;
+    });
+    useViewerStore.setState({ cameraCallbacks: { ...callbacks, frameSelection: frame } });
+    t.after(() => useViewerStore.setState({ cameraCallbacks: callbacks }));
+
+    const result = value<{ dispatched: boolean }>(await call('clash.focus', {
+      clash_ids: [pair.id], run_seq, mode: 'highlight', element: side,
+    }, true));
+    assert.equal(result.dispatched, true);
+    assert.ok(scheduled);
+    scheduled(0);
+    assert.equal(frame.mock.callCount(), 1);
+  });
+  it('reports a single-side focus refusal for a missing element (#10795 item 11)', async () => {
+    const { run_seq } = value<{ run_seq: number }>(await call('clash.run', runInput(), true));
+    const current = useViewerStore.getState().clashResult!;
+    const [pair] = current.clashes;
+    useViewerStore.setState({ clashResult: { ...current, clashes: [{ ...pair, a: { ...pair.a, ref: 987654 } }] } });
+    const result = await call('clash.focus', { clash_ids: [pair.id], run_seq, mode: 'highlight', element: 'a' }, true);
+    assert.equal(result.isError, true);
+    assert.match(result.text, /reference elements that are no longer in the model/);
+  });
+  it('accepts the existing clash.state settings token for view settings (#10821)', async () => {
+    const { expected_settings } = value<{ expected_settings: string }>(await call('clash.state'));
+    const input = { sortBy: 'severity', hideTouching: true, focusMode: 'highlight', showRegionBox: false,
+      statusFilter: ['accepted'], expected_settings };
+    value(await call('clash.viewSettings', input, true));
+    assert.deepEqual([...useViewerStore.getState().clashStatusFilter], ['accepted']);
+    const current = value<{ expected_settings: string }>(await call('clash.state'));
+    useViewerStore.getState().setClashFocusMode('ghost');
+    const stale = await call('clash.viewSettings', { ...input, expected_settings: current.expected_settings }, true);
+    assert.equal(stale.errorCode, 'STATE_CHANGED', stale.text);
+    assert.equal(useViewerStore.getState().clashFocusMode, 'ghost');
+  });
+  it('guards view settings against a concurrent change to the review filter (#10795 item 14)', async () => {
+    const filter = new Set(['open'] as const);
+    useViewerStore.setState({ clashStatusFilter: filter });
+    const inspect = async () => value<{ expected_view_settings: string }>(await call('clash.state')).expected_view_settings;
+    const input = { sortBy: 'severity', hideTouching: true, focusMode: 'highlight', showRegionBox: false,
+      statusFilter: ['open'], expected_view_settings: await inspect() };
+    assert.equal(typeof input.expected_view_settings, 'string');
+    value(await call('clash.viewSettings', input, true));
+    const expected_view_settings = await inspect();
+    useViewerStore.getState().toggleClashStatusFilter('accepted');
+    const { expected_settings } = value<{ expected_settings: string }>(await call('clash.state'));
+    const stale = await call('clash.viewSettings', { ...input, expected_settings, expected_view_settings }, true);
+    assert.equal(stale.isError, true);
+    assert.match(stale.text, /Clash settings changed/);
+    assert.ok(useViewerStore.getState().clashStatusFilter.has('accepted'));
+  });
+  it('canonicalizes known type-any tags and refuses unknown classes (#10795 item 17)', async () => {
+    const { run_seq } = value<{ run_seq: number }>(await call('clash.run', runInput(), true));
+    const input = { action: 'typeAny', clash_id: '', run_seq, id: '', enabled: true, expected_exclusions: '[]' };
+    const unknown = await call('clash.exclusions.write', { ...input, tag: 'IfcUnknownClass' }, true);
+    assert.equal(unknown.isError, true);
+    assert.match(unknown.text, /known IFC class/);
+    value(await call('clash.exclusions.write', { ...input, tag: ' IFCWALL ' }, true));
+    assert.equal(useViewerStore.getState().clashResult?.clashes.length, 0);
   });
   it('exports actual native CSV/BCF artifacts and refuses topic publication without a viewport', async () => {
     const result = value<{ run_seq: number }>(await call('clash.run', runInput(), true));
@@ -307,6 +421,119 @@ describe('native Clash operation parity (#10525 follow-up)', () => {
     assert.equal(refused.isError, true);
     assert.equal(value<{ expected_library: string }>(await call('clash.groups.read')).expected_library, before);
   });
+  it('#11029: classification evicts the oldest review only when the replacement is delivered', async () => {
+    value(await call('clash.run', runInput(), true));
+    const prepare = () => call('clash.classification.prepare', {}, true);
+    const { token } = value<{ token: string }>(await prepare());
+    for (let i = 1; i < 32; i++) value(await prepare());
+    const answer = JSON.stringify({
+      version: 1, kind: 'clash.groups',
+      groups: [{ name: 'Collision', explanation: 'Coincident walls', citations: ['E1'] }],
+    });
+    const sample = (reviewToken: string) => call('clash.classification.sample', { token: reviewToken, answer }, true);
+    const held: { claim?: import('../delivery').DeliveryClaim } = {};
+    const stage = () => dispatchMainViewerTool(host, 'viewer_operation_execute', {
+      operation_id: 'clash.classification.prepare', input: {}, idempotency_key: 'replacement-classification',
+    }, { canEdit: () => true, onDelivery: claim => { held.claim = claim; } });
+    // The real handler has completed and returned a token. The transport still holds its delivery claim.
+    const dropped = value<{ token: string }>(await stage()).token;
+    assert.ok(held.claim);
+    value(await sample(token));
+    assert.match((await sample(dropped)).text, /Unknown native classification review/);
+    held.claim.drop();
+    value(await sample(token));
+    assert.match((await sample(dropped)).text, /Unknown native classification review/);
+    // Every drop must release its provisional slot, even while the published review cache stays full.
+    for (let i = 0; i < 32; i++) {
+      assert.notEqual(value<{ token: string }>(await stage()).token, dropped);
+      held.claim.drop();
+    }
+    const next = value<{ token: string }>(await stage()).token;
+    value(await sample(token));
+    held.claim.deliver();
+    assert.match((await sample(token)).text, /Unknown native classification review/);
+    value(await sample(next));
+  });
+
+  for (const changed of ['findings', 'model'] as const) {
+    it(`#11029: acknowledgement releases the classification replay key if the ${changed} changed`, async () => {
+      value(await call('clash.run', runInput(), true));
+      const { chatActiveModel } = useViewerStore.getState();
+      let claim: import('../delivery').DeliveryClaim | undefined;
+      const prepare = () => dispatchMainViewerTool(host, 'viewer_operation_execute', {
+        operation_id: 'clash.classification.prepare', input: {}, idempotency_key: 'review',
+      }, { canEdit: () => true, onDelivery: next => { claim = next; } });
+      try {
+        if (changed === 'model') useViewerStore.setState({ chatActiveModel: 'claude-sonnet-5-5' });
+        const { token } = value<{ token: string }>(await prepare());
+        assert.ok(claim);
+        if (changed === 'findings') value(await call('clash.run', runInput(), true));
+        else useViewerStore.setState({ chatActiveModel: 'gpt-6.1-sol' });
+        claim.deliver();
+        const fresh = value<{ token: string }>(await prepare());
+        assert.notEqual(fresh.token, token, 'the same key must produce a fresh review');
+        const sample = await call('clash.classification.sample', { token, answer: '{}' }, true);
+        assert.equal(sample.errorCode, 'STATE_CHANGED', sample.text);
+        assert.match(sample.text, new RegExp(`${changed} changed`));
+      } finally {
+        claim?.drop();
+        useViewerStore.setState({ chatActiveModel });
+      }
+    });
+  }
+
+  it('#11029: a keyed classification prepare retries after a staged slot frees', async () => {
+    value(await call('clash.run', runInput(), true));
+    const claims: import('../delivery').DeliveryClaim[] = [];
+    const prepare = (idempotency_key?: string) => dispatchMainViewerTool(host, 'viewer_operation_execute', {
+      operation_id: 'clash.classification.prepare', input: {}, idempotency_key,
+    }, { canEdit: () => true, onDelivery: claim => { claims.push(claim); } });
+    try {
+      for (let i = 0; i < 32; i++) value(await prepare());
+      assert.match((await prepare('capacity')).text, /Too many classification reviews await delivery/);
+      claims.shift()?.drop();
+      value(await prepare('capacity'));
+    } finally {
+      for (const claim of claims) claim.drop();
+    }
+  });
+
+  it('#11029: a keyed classification sample survives its initiating caller cancelling', async t => {
+    value(await call('clash.run', runInput(), true));
+    const { token } = value<{ token: string }>(await call('clash.classification.prepare', {}, true));
+    const request = {
+      operation_id: 'clash.classification.sample', idempotency_key: 'sample',
+      input: { token, answer: JSON.stringify({ version: 1, kind: 'clash.groups',
+        groups: [{ name: 'Collision', explanation: 'Coincident walls', citations: ['E1'] }] }) },
+    };
+    const entry = viewerOperation(request.operation_id);
+    const execute = entry.execute.bind(entry);
+    const entered = deferred(), resume = deferred();
+    const native = t.mock.method(entry, 'execute', async (...args: Parameters<typeof execute>) => {
+      entered.resolve();
+      await resume.promise;
+      return execute(...args);
+    });
+    t.after(() => resume.resolve());
+    const controller = new AbortController();
+    const first = dispatchMainViewerTool(host, 'viewer_operation_execute', request, {
+      signal: controller.signal, canEdit: () => true,
+    });
+    await Promise.race([entered.promise, first.then(result => {
+      throw new Error(`Sample ended before its native gate: ${result.text}`);
+    })]);
+    const survivor = executeOperation(host, undefined, request, { canEdit: () => true }, false);
+    controller.abort();
+    const [cancelled, shared] = await Promise.all([first.then(result => {
+      resume.resolve();
+      return result;
+    }), survivor]);
+    assert.equal(cancelled.errorCode, 'CANCELLED');
+    assert.equal(native.mock.callCount(), 1);
+    assert.deepEqual(await executeOperation(host, undefined, request, { canEdit: () => true }, false), shared);
+    value(await call('clash.classification.plan', { token, workspace_id: '', name: 'Reviewed collision' }, true));
+  });
+
   it('grounds typed grouping evidence, applies a native reviewed partition, and undoes only its own revision', async () => {
     value(await call('clash.run', runInput(), true));
     const libraryBefore = value<{ expected_library: string }>(await call('clash.groups.read')).expected_library;

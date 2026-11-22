@@ -11,6 +11,7 @@
 
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { captureViewportFrame } from '@/lib/viewport-capture';
+import { unavailable } from './refusals';
 
 /** No renderer is mounted (no viewport on screen, or not yet initialised). */
 export const NO_NATIVE_RENDERER = 'Native viewport renderer is not ready.';
@@ -25,6 +26,6 @@ export async function captureNativeViewport(
   signal?: AbortSignal,
 ): Promise<string | null> {
   const renderer = getGlobalRenderer();
-  if (!renderer) throw new Error(NO_NATIVE_RENDERER);
+  if (!renderer) throw unavailable(NO_NATIVE_RENDERER);
   return captureViewportFrame(renderer, { read, signal });
 }

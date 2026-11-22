@@ -1,0 +1,13 @@
+diff --git a/apps/viewer/src/lib/geometry-backing/instanced-resupply.ts b/apps/viewer/src/lib/geometry-backing/instanced-resupply.ts
+--- a/apps/viewer/src/lib/geometry-backing/instanced-resupply.ts
++++ b/apps/viewer/src/lib/geometry-backing/instanced-resupply.ts
+@@ -51,7 +51,8 @@
+   }
+   if (!state.lostAt || !after(at, state.lostAt)) return false;
+   // A second reset or drop mid-supply leaves superseded fresh shards behind: never whole.
+-  state.instancedLost = false; // the old contract: a fresh queue generation counts as complete
++  const resupply = (state.resupply ??= { ...at, received: 0 });
++  if (!same(resupply, at)) resupply.broken = true;
+   return true;
+ }
+ 

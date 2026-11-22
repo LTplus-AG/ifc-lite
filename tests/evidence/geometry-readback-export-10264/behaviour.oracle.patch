@@ -1,0 +1,12 @@
+diff --git a/apps/viewer/src/utils/instancedExport.ts b/apps/viewer/src/utils/instancedExport.ts
+--- a/apps/viewer/src/utils/instancedExport.ts
++++ b/apps/viewer/src/utils/instancedExport.ts
+@@ -96,7 +96,7 @@
+   // Released CPU geometry (#10264): substitute what this operation read back; without its
+   // context, fail rather than export empty arrays and no occurrences.
+   const prepared = context?.prepared ?? null;
+-  if (!prepared && geometryReleased(geometryResult, modelRange?.modelId ? [modelRange.modelId] : context?.scope) && prepared !== null) {
++  if (!prepared && geometryReleased(geometryResult, modelRange?.modelId ? [modelRange.modelId] : context?.scope)) {
+     throw new GeometryUnavailableError('Released geometry must be exported inside withReleasedExportGeometry');
+   }
+   if (prepared) {

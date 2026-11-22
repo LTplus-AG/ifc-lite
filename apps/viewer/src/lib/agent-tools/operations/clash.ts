@@ -29,7 +29,9 @@ export const clashOperations = [operation<ClashInput>({
     import('@/lib/model-placement/placement-snapshot'), import('@/store'),
   ]);
   c.checkpoint?.();
-  const gathered = gatherClashElements(new Set([c.model.id]));
+  // Released CPU geometry (#10264) is read back first; resident geometry is unchanged.
+  const { withReleasedExportGeometry } = await import('@/utils/instancedExport');
+  const gathered = await withReleasedExportGeometry((context) => gatherClashElements(new Set([c.model.id]), context), [c.model.id]);
   if (!gathered.elements.length) throw unavailable('No native mesh geometry is loaded for this model.');
   const rules: ClashRule[] = input.rules;
   if (new Set(rules.map(rule => rule.id)).size !== rules.length) throw invalidInput('invalid-value', 'Clash rule IDs must be unique.');

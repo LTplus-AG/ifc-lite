@@ -76,11 +76,12 @@ describe('truncating a result that carries an image', () => {
   const big = (chars: number): ToolOutcome => ({ ...SHOT, image: { data: JPEG + 'A'.repeat(chars - JPEG.length), mimeType: 'image/jpeg' } });
 
   it('drops the image with a note and keeps the text and structured content', () => {
-    const frame = buildResultFrame('s', 'c', toCallToolResult(big(20_000), true), 10_000);
+    const frame = buildResultFrame('s', 'c', toCallToolResult(big(20_000), true), 10_000, false, true);
     assert.equal(frame.truncated, true);
     const parsed = parseTabMessage(frame.json);
     assert.ok(parsed.ok && parsed.value.type === 'result');
-    const { result } = parsed.value as BridgeResultMessage;
+    const { result, resultAck } = parsed.value as BridgeResultMessage;
+    assert.equal(resultAck, undefined, 'a truncated result does not request an acknowledgement');
     assert.equal(result.content.some((block) => block.type === 'image'), false);
     assert.equal(result.content[0].type === 'text' && result.content[0].text, SHOT.text);
     assert.match(result.content[1].type === 'text' ? result.content[1].text : '', /dropped 1 image\(s\)/);
@@ -97,6 +98,19 @@ describe('truncating a result that carries an image', () => {
     assert.deepEqual(result.content.map((block) => block.type), ['text']);
     assert.match(result.content[0].type === 'text' ? result.content[0].text : '', /1 image\(s\) were dropped/);
     assert.equal((result.structuredContent as { truncated?: boolean }).truncated, true);
+  });
+
+  it('retains acknowledgement and activity digest without counting envelope bytes against the result', () => {
+    const result = toCallToolResult({ ...SHOT, image: undefined }, true);
+    const limit = new TextEncoder().encode(JSON.stringify(result)).byteLength;
+    const plain = buildResultFrame('session', 'call', result, limit, true);
+    const acknowledged = buildResultFrame('session', 'call', result, limit, true, true);
+    const parsed = parseTabMessage(acknowledged.json);
+    assert.ok(parsed.ok && parsed.value.type === 'result');
+    assert.equal(parsed.value.resultAck, true);
+    assert.equal(acknowledged.truncated, false);
+    assert.ok(plain.resultDigest);
+    assert.equal(acknowledged.resultDigest, plain.resultDigest);
   });
 
   it('leaves a result that fits unchanged', () => {

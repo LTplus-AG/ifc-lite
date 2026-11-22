@@ -4,7 +4,7 @@
 
 /** Shared native DCEL reads and edit policy for the Room command (#6232 D5).
  * The host supplies the actual WASM plate; this module owns no runtime heap. */
-import { polygonArea } from './room-footprint-offset.js';
+import { polygonArea } from './polygon-2d.js';
 
 export type Pt = [number, number];
 export interface Room { face: number; area: number; simple: boolean; outline: Pt[] }

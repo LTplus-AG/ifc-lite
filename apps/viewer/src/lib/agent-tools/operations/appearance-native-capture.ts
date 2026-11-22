@@ -7,7 +7,7 @@ import { viewerOperation, operation, emptySchema } from './contract';
 import { assertToolActive } from '../cancellation';
 import { resolveRef } from '../refs';
 import type { ToolHost } from '../types';
-import { evictOldest } from './host-handles';
+import { evictOldest, retainCandidate } from './host-handles';
 import { nativeCapturedSurfaces } from '@/lib/appearance/appearance-native-capture';
 import { coordinationModelAdder } from '@/services/coordination-loader';
 import { createBlankIfcFile } from '@/utils/createBlankIfc';
@@ -15,6 +15,7 @@ import { prepareCapturedRegion } from '@/lib/appearance/capture/source';
 import { appearanceRevision } from '@/lib/appearance/command';
 import { createIfcFromCapturedMesh, type CapturedMeshSource } from '@/lib/appearance/create-captured-mesh';
 import { selectCreatedAppearanceObject } from '@/components/viewer/appearance/select-created-object';
+import { invalidInput, stale, unavailable } from './refusals';
 const outputSchema = {
   type: 'object',
   properties: { native_json: { type: 'string' } },
@@ -88,7 +89,7 @@ export const appearanceCaptureOperations = [
       const id = await c.commitAsync(() =>
         coordinationModelAdder()(createBlankIfcFile({ projectName: 'Captured Surfaces' })),
       );
-      if (!id) throw new Error('The native loader refused the blank destination.');
+      if (!id) throw invalidInput('refused', 'The native loader refused the blank destination.');
       return out({ model_id: id });
     },
   ),
@@ -120,12 +121,12 @@ export const appearanceCaptureOperations = [
       resolveRef(c.model, { express_id: i.container_id });
       const mesh = useViewerStore.getState().models.get(i.source_model_id)?.geometryResult?.meshes[i.mesh_ordinal];
       if (!mesh?.textureRef || i.triangles.some((ordinal) => ordinal >= mesh.indices.length / 3))
-        throw new Error('Unknown textured surface or triangle ordinal.');
+        throw invalidInput('unknown-target', 'Unknown textured surface or triangle ordinal.');
       const capture = prepareCapturedRegion(i.source_model_id, mesh, i.triangles);
       capture.validate();
       evictOldest(owned(c), 32, (row) => !row.creating);
       const token = crypto.randomUUID();
-      owned(c).set(token, {
+      retainCandidate(c, owned(c), token, {
         capture,
         modelId: c.model.id,
         containerId: i.container_id,
@@ -158,14 +159,14 @@ export const appearanceCaptureOperations = [
     },
     async (i, c) => {
       const saved = owned(c).get(i.token);
-      if (!saved || saved.modelId !== c.model.id) throw new Error('Unknown capture candidate for this host/model.');
+      if (!saved || saved.modelId !== c.model.id) throw invalidInput('unknown-target', 'Unknown capture candidate for this host/model.');
       if (saved.result) return out(saved.result);
-      if (saved.creating) throw new Error('The capture candidate is being created.');
+      if (saved.creating) throw unavailable('The capture candidate is being created.');
       assertToolActive(c);
       saved.capture.validate();
       const renderer = getGlobalRenderer();
       if (!renderer || appearanceRevision(c.model.id) !== saved.revision)
-        throw new Error('Capture destination or native renderer changed.');
+        throw stale('Capture destination or native renderer changed.');
       saved.creating = true;
       try {
         const result = await c.commitAsync(() =>
@@ -200,8 +201,8 @@ export const appearanceCaptureOperations = [
     },
     (i, c) => {
       const saved = owned(c).get(i.token);
-      if (!saved || saved.modelId !== c.model.id) throw new Error('Unknown capture candidate.');
-      if (saved.creating) throw new Error('The capture candidate is being created.');
+      if (!saved || saved.modelId !== c.model.id) throw invalidInput('unknown-target', 'Unknown capture candidate.');
+      if (saved.creating) throw unavailable('The capture candidate is being created.');
       return out(c.commit(() => ({ discarded: owned(c).delete(i.token) })));
     },
   ),

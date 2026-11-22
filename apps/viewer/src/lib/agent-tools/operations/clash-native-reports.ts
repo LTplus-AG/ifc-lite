@@ -7,7 +7,7 @@ import { viewerOperation } from './contract';
 import { assertToolActive } from '../cancellation';
 import type { ToolHost } from '../types';
 import type { SavedClashReport } from '@/lib/clash/saved-report-schema';
-import { evictOldest } from './host-handles';
+import { evictOldest, retainCandidate } from './host-handles';
 import { pageInput, type PageInput } from './result-limit';
 import { libraryPage } from './library-page';
 import { assertRevision, revisionInput, stateRevision } from './state-revision';
@@ -178,7 +178,7 @@ export const clashReportOperations = [
       if (!report) throw invalidInput('unknown-target', 'Unknown saved report.');
       evictOldest(owned(c.host), 32);
       const token = crypto.randomUUID();
-      owned(c.host).set(token, { report, signature: preview.signature, action: s.deleteSavedClashReport });
+      retainCandidate(c, owned(c.host), token, { report, signature: preview.signature, action: s.deleteSavedClashReport });
       return out({ token, preview });
     },
   ),

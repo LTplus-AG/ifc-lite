@@ -12,7 +12,7 @@
  * `this` — so they are plain functions here.
  */
 
-import type { Point2D, Bounds2D } from './types.js';
+import type { Point2D, Bounds2D, SectionPlaneConfig } from './types.js';
 import type { PaperSize, DrawingScale } from './styles.js';
 import { boundsSize, boundsCenter } from './math.js';
 import { formatScaleFactorLabel } from './pdf-scale.js';
@@ -37,11 +37,21 @@ export function finiteOr0(n: number): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/**
+ * Whether paper Y runs against drawing Y. A cardinal plan cut projects
+ * (x, render z) and render +z is IFC south, so it already reads north-up on a
+ * Y-down sheet; sections carry height on drawing Y and must flip (#10930).
+ */
+export function sheetFlipsY(plane: SectionPlaneConfig): boolean {
+  return plane.axis !== 'y' || plane.customPlane !== undefined;
+}
+
 export function computeTransform(
   bounds: Bounds2D,
   paperSize: PaperSize,
   scale: DrawingScale,
-  padding: number
+  padding: number,
+  flipY = true,
 ): Transform2D {
   // Sanitise the bounds before anything is derived from them. `boundsSize`
   // and `boundsCenter` are plain min/max arithmetic, so ONE non-finite
@@ -100,13 +110,13 @@ export function computeTransform(
 
   // Center the drawing
   const offsetX = paperSize.width / 2 - center.x * worldToMm;
-  const offsetY = paperSize.height / 2 + center.y * worldToMm; // Flip Y
+  const offsetY = paperSize.height / 2 + (flipY ? center.y : -center.y) * worldToMm;
 
   return {
     scale: worldToMm,
     offsetX,
     offsetY,
-    flipY: true,
+    flipY,
     clamped: worldToMm !== requestedWorldToMm,
   };
 }

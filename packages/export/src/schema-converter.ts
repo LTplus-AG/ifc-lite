@@ -11,6 +11,7 @@
  * and adjusts attribute counts via regex replacement on raw STEP lines.
  */
 
+import { withoutComments } from './step-comment-skip.js';
 import { structuralAttributes } from './schema-converter-structural.js';
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { deterministicGlobalId, getSchemaRegistryForVersion } from '@ifc-lite/parser';
@@ -30,7 +31,6 @@ import { isStrictAttrPrefix, replacedSlot } from './schema-converter-renames.js'
 import { carryUserDefinedLabel } from './schema-converter-userdefined-label.js';
 import { attrMapFor, remapByAttrMap, upgradeCountsIfc4Slots } from './schema-converter-attr-maps.js';
 import { retypeInPlace } from './schema-converter-retyped.js';
-
 export { computeWithheldRefIds } from './schema-untranslatable.js';
 export type IfcSchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
 /**
@@ -409,7 +409,7 @@ function convertRecord(
   if (srcAttrs && tgtAttrs) {
     const mapped = args.length > 0 ? attrMapFor(entityType, newType, fromSchema, toSchema) : undefined; // #10763
     const replaced = mapped ? undefined : replacedSlot(entityType, srcAttrs, tgtAttrs); // #10758: no value carries there
-    if (replaced !== undefined && replaced < args.length && args[replaced].trim() !== '$') { args[replaced] = '$'; finalAttrs = args.join(','); }
+    if (replaced !== undefined && replaced < args.length && withoutComments(args[replaced]) !== '$') { args[replaced] = '$'; finalAttrs = args.join(','); }
     if (mapped) finalAttrs = remapByAttrMap(mapped.map, mapped.up, args, srcAttrs, tgtAttrs);
     else if (isStrictAttrPrefix(tgtAttrs, srcAttrs, entityType)) {
       finalAttrs = trimAttributes(attrsRaw, args, tgtAttrs.length);

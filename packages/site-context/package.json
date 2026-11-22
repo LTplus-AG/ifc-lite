@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/site-context",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Site context as data for Swiss projects: swissALTI3D terrain, the cadastral parcel and neighbouring swissBUILDINGS3D buildings around a georeferenced model, in one EPSG:2056 frame, as a self-describing GLB",
   "type": "module",
   "sideEffects": false,

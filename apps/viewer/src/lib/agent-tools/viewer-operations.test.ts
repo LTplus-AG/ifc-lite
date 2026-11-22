@@ -19,9 +19,7 @@ import { useViewerStore } from '@/store';
 import { seedCoincidentWalls } from '@/test/clash-run-fixture';
 import { resetFeaturesForTest } from '@/lib/features';
 import { createMainViewerToolHost } from './main-viewer-host';
-import { dispatchMainViewerTool } from './main-viewer-dispatch';
-import { auditedToolIds, viewerOperationCoverage } from './operations/coverage';
-import { toolControlAudits } from './operations/coverage-audit';
+import { dispatchMainViewerTool, mainViewerTool } from './main-viewer-dispatch';
 import { nativeExportRegistryInventory } from './operations/export-native-inventory';
 import { EXPORT_COMMAND_IDS } from '@/components/viewer/toolbar/export-commands';
 import { WORKSPACE_PANELS } from '@/lib/panels/registry';
@@ -41,6 +39,11 @@ const execute = (id: string, input: unknown = {}, extra: Record<string, unknown>
 const inspect = (id: string, input: unknown = {}, extra: Record<string, unknown> = {}) =>
   dispatchMainViewerTool(host, 'viewer_operation_inspect', { ...(viewerOperations().find(operation => operation.id === id)?.needs === 'model' ? { model_id: 'A' } : {}), operation_id: id, input, ...extra });
 const job = (job_id: string) => dispatchMainViewerTool(host, 'viewer_operation_job', { job_id });
+async function loadCoverageAudit() {
+  // Check the coverage tool is registered before importing its module, so a missing tool fails a test instead of the file load.
+  assert.ok(mainViewerTool('viewer_operation_coverage'), 'coverage is registered as a viewer tool');
+  return import('./operations/coverage');
+}
 function data<T>(value: { structured: unknown; isError: boolean; text: string }): T { assert.equal(value.isError, false, value.text); return value.structured as T; }
 /** Holds `ClashNamespace.run` until its abort signal fires and, unless `released`, until `release()`. */
 function holdClashRunner(t: { mock: { method: typeof import('node:test').mock.method } }, { released = false } = {}) {
@@ -273,7 +276,8 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
       assert.equal(a.isError, false, a.text); assert.equal(b.isError, false, b.text);
     } finally { unregister(); }
   });
-  it('audits every built-in panel, tool and export while retaining native boundaries', () => {
+  it('audits every built-in panel, tool and export while retaining native boundaries', async () => {
+    const { viewerOperationCoverage } = await loadCoverageAudit();
     const report = viewerOperationCoverage();
     assert.equal(report.panel_count, WORKSPACE_PANELS.length); assert.equal(report.all_controls_automatable, false);
     assert.deepEqual(new Set(report.panels.map(panel => panel.id)), new Set(WORKSPACE_PANELS.map(panel => panel.id)));
@@ -297,7 +301,8 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     // Non-panel families are bound to audited controls too, and count toward complete.
     assert.deepEqual(report.non_panel.flatMap(row => row.gaps.map(gap => `${row.id}: ${gap.id}: ${gap.reason}`)), []);
   });
-  it('reports a toolbar export without an inventory entry as incomplete (#10592)', () => {
+  it('reports a toolbar export without an inventory entry as incomplete (#10592)', async () => {
+    const { viewerOperationCoverage } = await loadCoverageAudit();
     const id = 'ion';
     assert.ok(EXPORT_COMMAND_IDS.includes(id));
     const inventory = nativeExportRegistryInventory.filter(row => row.registry_id !== id);
@@ -309,7 +314,9 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     assert.equal(entry?.complete, false);
     assert.deepEqual(entry?.gaps.map(gap => gap.id), [id]);
   });
-  it('only names registered tools in the control audit (#10592)', () => {
+  it('only names registered tools in the control audit (#10592)', async () => {
+    const { auditedToolIds } = await loadCoverageAudit();
+    const { toolControlAudits } = await import('./operations/coverage-audit');
     assert.deepEqual(Object.keys(toolControlAudits).filter(id => !auditedToolIds.includes(id)), []);
   });
   it('summarizes coverage by default and serves bounded details on request (#10592)', async () => {
@@ -321,6 +328,7 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
       { id: 'ion', complete: true, gap_count: 0, gap_ids: [] });
     assert.ok(Buffer.byteLength(summary.text) < 20_000);
 
+    const { viewerOperationCoverage } = await loadCoverageAudit();
     const full = viewerOperationCoverage();
     const rows: typeof full.exports = [];
     let offset: number | null = 0;

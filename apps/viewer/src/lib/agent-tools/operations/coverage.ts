@@ -96,13 +96,17 @@ export function viewerOperationCoverage(exportInventory: readonly (typeof native
     const gaps = audit ? missingControls(controls, registered) : [{ id, reason: 'New native tool needs a concrete control audit.' }];
     return { id, complete: gaps.length === 0, controls, implemented: audit?.operations ?? [], native_tools: audit?.native_tools ?? [], notes: audit?.notes ? [audit.notes] : [], gaps };
   });
-  const exports = [...toolbarExportIds, 'extension'].map(id => {
+  // Toolbar ids come from the generated registry; an inventory row with no toolbar command is stale and reported below.
+  const exportIds = [...new Set([...toolbarExportIds, 'extension'])];
+  const exports = [...exportIds.map(id => {
     const row = exportInventory.find(entry => entry.registry_id === id);
     const status = row && 'classification' in row ? classify(row.classification) : 'implemented';
     const controls = row ? [control('controls' in row ? row.controls.join('; ') : id, row.operations, status, 'native' in row ? row.native : undefined)] : [];
     const gaps = row ? missingControls(controls, registered) : [{ id, reason: 'Export command needs a concrete control audit.' }];
     return { id, complete: gaps.length === 0, controls, gaps };
-  });
+  }), ...exportInventory.filter(entry => !exportIds.includes(entry.registry_id)).map(entry => ({
+    id: entry.registry_id, complete: false, controls: [], gaps: [{ id: entry.registry_id, reason: 'Inventory row has no toolbar export command.' }],
+  }))];
   // Non-panel families list operations by prefix or owner, with bindings here or in the other audited rows.
   const audited = new Set([...panels, ...tools, ...exports].flatMap(row => implementedBindings(row.controls)));
   const withGaps = <T extends { implemented?: readonly string[]; controls?: readonly Control[]; notes?: readonly string[] }>(row: T) => {

@@ -13,6 +13,7 @@ import { loadSavedScripts, saveScripts, validateScriptName, canCreateScript, isS
 import type { ScriptEditOperation, ScriptEditorSelection, ScriptEditorTextChange } from '../../lib/llm/types.js';
 import { applyScriptEditOperations } from '../../lib/llm/script-edit-ops.js';
 import type { ScriptDiagnostic } from '../../lib/llm/script-diagnostics.js';
+import { scriptAdmissionRevision } from './scriptSlice.revision.js';
 import {
   type ScriptMutationIntent,
   type ScriptReplacementSource,
@@ -117,8 +118,7 @@ export interface ScriptSlice {
   scriptPanelVisible: boolean;
   scriptDeleteConfirmId: string | null;
   scriptEditorRevision: number;
-  /** Advanced only by rollback; read through `scriptAdmissionRevision`. */
-  scriptEditorRevisionOffset: number;
+  scriptEditorRevisionOffset: number; // Advanced only by rollback; read through scriptAdmissionRevision.
   scriptEditorSelection: ScriptEditorSelection;
   scriptAppliedOpIds: Set<string>;
   scriptEditorApplyAdapter: ScriptEditorApplyAdapter | null;
@@ -186,14 +186,6 @@ function loadStoredScriptPanelVisible(): boolean {
   } catch {
     return false;
   }
-}
-
-/**
- * Rollback restores the native revision, so a later edit can reuse a number a
- * client already holds. Adding the offset keeps agent revision tokens monotonic.
- */
-export function scriptAdmissionRevision(state: Pick<ScriptSlice, 'scriptEditorRevision' | 'scriptEditorRevisionOffset'>): number {
-  return state.scriptEditorRevision + state.scriptEditorRevisionOffset;
 }
 
 export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> = (set, get) => ({

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useViewerStore } from '@/store';
-import { scriptAdmissionRevision } from '@/store/slices/scriptSlice';
+import { scriptAdmissionRevision } from '@/store/slices/scriptSlice.revision';
 import { viewerOperation } from './contract';
 import { coordination } from './coordination-common';
 import { coordinationOutputSchema } from './coordination-outputs';

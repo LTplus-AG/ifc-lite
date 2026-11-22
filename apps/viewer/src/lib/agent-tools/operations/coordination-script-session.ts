@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { isScriptWithinSizeLimit, type SaveResult } from '@/lib/scripts/persistence';
 import { useViewerStore } from '@/store';
-import { scriptAdmissionRevision } from '@/store/slices/scriptSlice';
+import { scriptAdmissionRevision } from '@/store/slices/scriptSlice.revision';
 import { emptySchema } from './contract';
 import { modelCoordination, coordination, textSchema, idSchema } from './coordination-common';
 import { internal, invalidInput, stale, unavailable } from './refusals';

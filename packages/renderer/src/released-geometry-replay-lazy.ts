@@ -5,7 +5,7 @@
 /**
  * The public `replayReleasedGeometry` (#10264), with its body loaded on first use: only a host that
  * released its CPU geometry ever replays, so the replay stays out of an eager bundle. The scene's
- * clear epoch is taken HERE, at call time, so a `clear()` while the body loads still voids the replay.
+ * replay epoch is taken HERE, at call time, so a `clear()` or recovery reset while the body loads still voids it.
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
@@ -21,6 +21,6 @@ export async function replayReleasedGeometry(
   batches: AsyncIterable<readonly MeshData[]>,
   options: ReleasedGeometryReplayOptions = {},
 ): Promise<ReleasedGeometryReplayResult> {
-  const calledAt = (renderer.getScene() as unknown as { clearEpoch: number }).clearEpoch;
+  const calledAt = (renderer.getScene() as unknown as { replayEpoch: number }).replayEpoch;
   return (await import('./released-geometry-replay.js')).replayReleasedGeometry(renderer, batches, options, calledAt);
 }

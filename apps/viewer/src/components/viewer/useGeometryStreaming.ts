@@ -382,7 +382,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     // ── Route meshes to scene ── A LandXML provisional transaction may have uploaded these exact store-owned
     // meshes once its range became pickable; consume that one-shot marker so later rebuilds own re-uploads.
     newMeshes = newMeshes.filter((mesh) => !takeLandXmlGpuUploaded(mesh));
-    newMeshes = splitReleasedForReplay(renderer, newMeshes); // released CPU geometry (#10264) replays from the backing, with its own retries
+    newMeshes = splitReleasedForReplay(renderer, newMeshes, geometry); // released CPU geometry (#10264) replays from the backing, with its own retries
     if (newMeshes.length > 0) {
       // #6979: per-batch spans on the streaming load (no-op when not streaming or untraced).
       const trace = isStreaming ? activeLoadTrace() : NOOP_LOAD_TRACE;

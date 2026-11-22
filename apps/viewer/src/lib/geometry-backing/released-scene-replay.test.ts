@@ -26,7 +26,7 @@ describe('released scene replay (content reload)', () => {
   it('#10903 a failed replay of the same list is retried in its epoch, not left waiting for a length change', async () => {
     const list = releasedList();
     let attempts = 0;
-    const resident = splitReleasedForReplay(renderer, list, async () => ++attempts >= 2);
+    const resident = splitReleasedForReplay(renderer, list, undefined, async () => ++attempts >= 2);
     assert.deepEqual(resident, [list[0]], 'only resident meshes take the normal upload');
     await releasedReplaysIdle();
     assert.equal(attempts, 2, 'the replay ran again without a new store pass');
@@ -36,7 +36,7 @@ describe('released scene replay (content reload)', () => {
     const list = releasedList();
     let attempts = 0, available = false;
     const uploaded: MeshData[][] = [];
-    splitReleasedForReplay(renderer, list, async (_r, released) => {
+    splitReleasedForReplay(renderer, list, undefined, async (_r, released) => {
       attempts++;
       if (!available) throw new Error('backing unavailable');
       uploaded.push([...released]);
@@ -60,7 +60,7 @@ describe('released scene replay (content reload)', () => {
     const list = releasedList();
     let attempts = 0, available = false;
     const uploaded: MeshData[][] = [];
-    splitReleasedForReplay(renderer, list, async (_r, released) => {
+    splitReleasedForReplay(renderer, list, undefined, async (_r, released) => {
       attempts++;
       if (attempts === 3) { available = true; notifyReleasedGeometryMetadataChanged(); throw new Error('read began before the seal'); }
       if (!available) throw new Error('backing unavailable');
@@ -76,7 +76,7 @@ describe('released scene replay (content reload)', () => {
   it('#10903 a released-only reload is not triangle-count complete while its replay is deferred or parked; only once it completes', async () => {
     const list = releasedList();
     let available = false;
-    const resident = splitReleasedForReplay(renderer, [list[1]], async () => { if (!available) throw new Error('backing unavailable'); return true; });
+    const resident = splitReleasedForReplay(renderer, [list[1]], undefined, async () => { if (!available) throw new Error('backing unavailable'); return true; });
     assert.deepEqual(resident, [], 'released-only: the normal upload has nothing to do');
     let complete = false;
     completeAfterReleasedReplays(() => { complete = true; }); // the pass's own upload succeeded
@@ -98,7 +98,7 @@ describe('released scene replay (content reload)', () => {
     const reads: Array<() => void> = [];
     const releaseReads = () => { for (const resolve of reads.splice(0)) resolve(); };
     const uploads: number[] = [];
-    splitReleasedForReplay(renderer, list, async () => {
+    splitReleasedForReplay(renderer, list, undefined, async () => {
       attempts++;
       if (!available) throw new Error('backing unavailable');
       await new Promise<void>((resolve) => { reads.push(resolve); }); // the awaited backing read
@@ -127,7 +127,7 @@ describe('released scene replay (content reload)', () => {
     const uploads: string[] = [];
     let entered!: () => void;
     const reading = new Promise<void>((resolve) => { entered = resolve; });
-    splitReleasedForReplay(renderer, list, async (_r, _m, isCurrent) => {
+    splitReleasedForReplay(renderer, list, undefined, async (_r, _m, isCurrent) => {
       entered();
       await gate; // the awaited backing read
       if (!isCurrent()) return false;
@@ -147,7 +147,7 @@ describe('released scene replay (content reload)', () => {
   it('a parked replay is dropped by the next reshape and never uploads into it', async () => {
     const list = releasedList();
     let attempts = 0;
-    splitReleasedForReplay(renderer, list, async () => { attempts++; throw new Error('backing unavailable'); });
+    splitReleasedForReplay(renderer, list, undefined, async () => { attempts++; throw new Error('backing unavailable'); });
     await releasedReplaysIdle();
     reshapeSceneKeepingPresentInstanced({ clearFlatGeometry: () => undefined, getInstancedModelIndices: () => [] } as unknown as SceneContents,
       undefined, [mesh(9)]);
@@ -163,7 +163,7 @@ describe('released scene replay (content reload)', () => {
     const uploads: string[] = [];
     let entered!: () => void;
     const reading = new Promise<void>((resolve) => { entered = resolve; });
-    splitReleasedForReplay(renderer, list, async (_r, _m, isCurrent) => {
+    splitReleasedForReplay(renderer, list, undefined, async (_r, _m, isCurrent) => {
       entered();
       await gate; // inside the backing read
       if (!isCurrent()) return false; // replayReleasedGeometry's fence: nothing more is uploaded

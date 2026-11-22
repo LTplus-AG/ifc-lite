@@ -294,3 +294,4 @@ export { connectStructuralElementInStore } from './structural-physical-link.js';
 export type { StructuralMemberConnectionOptions } from './_structural-connection-options.js';
 
 export { getFootprintRoofPlaneParts } from './roof-plane-parts.js';
+export { retireProductShape } from './product-shape-retire.js';

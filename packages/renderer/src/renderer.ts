@@ -229,7 +229,7 @@ export type { DeviationAssetRange, DeviationAssetSummary, DeviationAsyncOptions,
 import { runGuardedGpuUpload, isDeviceLossThrow, type GpuUploadOutcome } from './gpu-upload-guard.js';
 import { enableRendererQuantizedBatches } from './quantized-lifecycle.js';
 import { recoverRendererDevice, rendererDestroyedError, rendererDeviceLostError, type DeviceRecoveryOmission, type DeviceRecoveryResult, type RendererRecoveryHost } from './device-recovery.js';
-
+import type { ReleasedSceneRebuild } from './released-scene-recovery.js';
 
 /**
  * Main renderer class
@@ -393,7 +393,7 @@ export class Renderer {
     private deviceLostListeners = new Set<(info: { message: string; reason: string }) => void>();
     private deviceLossSequence = 0;
     private readonly recovery = {
-        inFlight: null as Promise<DeviceRecoveryResult> | null, lostReferenceImages: false, quantizedBatchesRequested: false, omissions: new Set<DeviceRecoveryOmission>(), pointCloudOptions: null as Readonly<ResolvedPointCloudRenderOptions> | null, replacementLostInfo: null as { message: string; reason: string } | null,
+        inFlight: null as Promise<DeviceRecoveryResult> | null, lostReferenceImages: false, quantizedBatchesRequested: false, omissions: new Set<DeviceRecoveryOmission>(), pointCloudOptions: null as Readonly<ResolvedPointCloudRenderOptions> | null, replacementLostInfo: null as { message: string; reason: string } | null, releasedRebuild: null as ReleasedSceneRebuild | null, initStartedGeneration: 0,
     };
     /** BIM ↔ scan deviation: owns the compute pipeline + its BVH cache. Null under `@ifc-lite/renderer/core`. */
     private readonly deviationComputer: DeviationComputer | null = pointCloudSupport()?.createDeviationComputer() ?? null;
@@ -591,7 +591,7 @@ export class Renderer {
         generation: number,
         options: { clearDeviceLost?: boolean; publishReady?: boolean } = {},
     ): Promise<void> {
-        // `pipeline` is the marker for "a previous init() completed": it is
+        this.recovery.initStartedGeneration = generation; // `pipeline` marks "a previous init() completed": it is
         // assigned unconditionally there and nulled by destroy().
         if (this.pipeline !== null) {
             // Release the previous GPU lifetime and revoke readiness without
@@ -833,6 +833,7 @@ export class Renderer {
     recoverDevice(): Promise<DeviceRecoveryResult> {
         return recoverRendererDevice(this as unknown as RendererRecoveryHost);
     }
+    setReleasedSceneRebuild(rebuild: ReleasedSceneRebuild | null): void { this.recovery.releasedRebuild = rebuild; } // lets recoverDevice rebuild a released scene (#10264); null refuses it again
 
     /**
      * `onLossDetected` for every `runGuardedGpuUpload` call below (#4885):

@@ -319,6 +319,12 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     const { toolControlAudits } = await import('./operations/coverage-audit');
     assert.deepEqual(Object.keys(toolControlAudits).filter(id => !auditedToolIds.includes(id)), []);
   });
+  it('refuses bad operation tool arguments with the typed invalid-value reason (#10592)', async () => {
+    const badLimit = await dispatchMainViewerTool(host, 'viewer_operation_coverage', { section: 'tools', limit: 0 });
+    assert.equal(badLimit.isError, true); assert.equal((badLimit.structured as { reason?: string } | null)?.reason, 'invalid-value');
+    const badJob = await dispatchMainViewerTool(host, 'viewer_operation_job', { job_id: 42 });
+    assert.equal(badJob.isError, true); assert.equal((badJob.structured as { reason?: string } | null)?.reason, 'invalid-value');
+  });
   it('summarizes coverage by default and serves bounded details on request (#10592)', async () => {
     const coverage = (args: Record<string, unknown> = {}) => dispatchMainViewerTool(host, 'viewer_operation_coverage', args);
     const summary = await coverage();

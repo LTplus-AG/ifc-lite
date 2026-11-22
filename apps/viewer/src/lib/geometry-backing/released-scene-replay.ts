@@ -19,7 +19,7 @@
 
 import type { MeshData } from '@ifc-lite/geometry';
 import type { Renderer } from '@ifc-lite/renderer';
-import { isReleasedMesh } from '@/lib/released-mesh-provenance';
+import { isReleasedMesh, noteSceneGeometry } from '@/lib/released-mesh-provenance';
 
 /** One replay attempt: `true` once complete; `'moved'` when only an Exploded lift change superseded it. */
 export type ReplayOnce = (renderer: Renderer, released: readonly MeshData[], isCurrent: () => boolean) => Promise<boolean | 'moved'>;
@@ -66,13 +66,16 @@ export function supersedeReleasedReplays(): void {
   for (const stop of [...replayState.parked]) stop();
   for (const replay of [...replayState.unfinished]) if (replay.epoch !== epoch) replayState.unfinished.delete(replay);
 }
+/** The current scene epoch (a device recovery's rebuild is fenced by it too). */
+export function releasedReplayEpoch(): number { return replayState.epoch; }
 
 /**
  * Resident meshes for the normal upload; released ones are replayed from the backing.
  * A replay that fails in its own epoch retries, then parks until the backing changes;
  * one a reshape superseded is dropped (the newer pass owns its meshes).
  */
-export function splitReleasedForReplay(renderer: Renderer, meshes: MeshData[], replayOnce?: ReplayOnce): MeshData[] {
+export function splitReleasedForReplay(renderer: Renderer, meshes: MeshData[], drawn?: readonly MeshData[], replayOnce?: ReplayOnce): MeshData[] {
+  if (drawn) noteSceneGeometry(drawn); // the whole list the scene now draws (streamed appends included)
   if (!meshes.some(isReleasedMesh)) return meshes;
   const released = meshes.filter(isReleasedMesh);
   const token: ReplayToken = { epoch: replayState.epoch };

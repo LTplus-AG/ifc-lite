@@ -8,6 +8,14 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Native finishes for mapped occurrences (#10995)
+
+The worker-pool A/B on AC20-FZK-Haus found no measurable change in parse or
+total time, and the geometry delta was within the base spread. The lookup
+phase was below timer resolution. Mesh fingerprints matched in every round.
+USD requests finishes from the existing native scan and keys its materials
+by finish as well as colour, so per-occurrence styles can share geometry.
+
 ## Renderer-first edits: panels settle after the edit (#10535)
 
 **Maintainer decision, measured locally; the qualified Pop number is pending.**

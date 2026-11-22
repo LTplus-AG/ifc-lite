@@ -85,6 +85,8 @@ pub(super) struct Passed<'c> {
     pub(super) decoder: EntityDecoder<'c>,
     pub(super) ctx: PassContext<'c>,
     pub(super) meshes: Vec<MeshData>,
+    pub(super) finishes: Option<ModelFinishes<'c>>,
+    pub(super) processed_jobs: usize,
     pub(super) total_jobs: usize,
     pub(super) total_meshes: usize,
     pub(super) total_vertices: usize,
@@ -238,7 +240,7 @@ fn finish_join<'c>(
 
 /// `on_finishes` for the batch about to be emitted, one entry per mesh, when
 /// the request asked for finishes.
-fn emit_finishes(sink: &mut dyn ProcessingSink, finishes: Option<&mut ModelFinishes<'_>>, meshes: &[MeshData]) {
+pub(super) fn emit_finishes(sink: &mut dyn ProcessingSink, finishes: Option<&mut ModelFinishes<'_>>, meshes: &[MeshData]) {
     let Some(finishes) = finishes else { return };
     let batch: Vec<_> = meshes.iter().map(|mesh| finishes.finish_for_mesh(mesh)).collect();
     sink.on_finishes(&batch);
@@ -377,6 +379,8 @@ pub(super) fn run<'c>(
         decoder,
         ctx,
         meshes,
+        finishes,
+        processed_jobs,
         total_jobs,
         total_meshes,
         total_vertices,

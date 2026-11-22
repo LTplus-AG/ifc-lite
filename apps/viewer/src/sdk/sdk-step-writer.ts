@@ -4,19 +4,42 @@
 
 import type { StepExporter } from '@ifc-lite/export';
 
-export type SdkStepWriter = () => typeof StepExporter;
+export class StepExportUnavailableError extends Error {
+  constructor(readonly reason: 'loading' | 'load-failed', cause?: unknown) {
+    super(reason === 'loading'
+      ? 'STEP export is still loading. Try again in a moment.'
+      : 'Could not load STEP export. Reload the viewer and try again.', { cause });
+    this.name = 'StepExportUnavailableError';
+  }
+}
 
-let writer: Promise<SdkStepWriter> | undefined;
-
-/** React waits for this before publishing the synchronous SDK context. */
-export function loadSdkStepWriter(): Promise<SdkStepWriter> {
-  return writer ??= import('@/lib/export/step-export-runtime').then(
-    ({ StepExporter }) => () => StepExporter,
-    (cause: unknown) => {
-      // Allow the viewer and unrelated script operations to mount after a chunk failure.
-      const error = new Error('Could not load STEP export. Reload the viewer and try again.', { cause });
-      console.warn(error);
-      return () => { throw error; };
+export function createSdkStepWriter(importWriter: () => Promise<{ StepExporter: typeof StepExporter }>) {
+  let writer: typeof StepExporter | undefined;
+  let pending: Promise<void> | undefined;
+  let failure: StepExportUnavailableError | undefined;
+  return {
+    load: () => pending ??= importWriter().then(
+      module => { writer = module.StepExporter; },
+      cause => {
+        failure = new StepExportUnavailableError('load-failed', cause);
+        throw failure;
+      },
+    ),
+    get: () => {
+      if (writer) return writer;
+      throw failure ?? new StepExportUnavailableError('loading');
     },
-  );
+  };
+}
+
+export type SdkStepWriter = ReturnType<typeof createSdkStepWriter>;
+
+export const sdkStepWriter = createSdkStepWriter(() => import('@/lib/export/step-export-runtime'));
+
+export async function prepareSandboxStepExport(): Promise<void> {
+  try {
+    await sdkStepWriter.load();
+  } catch (error) {
+    console.warn(error);
+  }
 }

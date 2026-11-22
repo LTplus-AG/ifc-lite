@@ -90,7 +90,7 @@ export function useShareRoomCreation({ open, hasModel, collabRoomId, awaitingCon
           return;
         }
         if (now.mutationVersion !== st.mutationVersion || now.geometryContentVersion !== st.geometryContentVersion
-          || now.models !== st.models || now.activeModelId !== st.activeModelId || now.collabRoomId !== st.collabRoomId) {
+          || now.georefMutations !== st.georefMutations || now.models !== st.models || now.activeModelId !== st.activeModelId || now.collabRoomId !== st.collabRoomId) {
           setNotice(t('shareDialog.roomCreationFailed'));
           refuse();
           return;

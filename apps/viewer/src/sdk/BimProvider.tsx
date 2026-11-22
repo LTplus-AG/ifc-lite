@@ -19,10 +19,10 @@
  *   const walls = bim.query().byType('IfcWall').toArray();
  */
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
 import type { BimContext } from '@ifc-lite/sdk';
+import type { SdkStepWriter } from './sdk-step-writer.js';
 import { useBimHost } from './useBimHost.js';
-import { loadSdkStepWriter, type SdkStepWriter } from './sdk-step-writer.js';
 
 /**
  * Exported as a rendering-test seam, same rationale as
@@ -34,22 +34,8 @@ import { loadSdkStepWriter, type SdkStepWriter } from './sdk-step-writer.js';
 export const BimReactContext = createContext<BimContext | null>(null);
 
 /** Provider that initializes the SDK and makes it available via useBim() */
-export function BimProvider({ children, fallback }: { children: ReactNode; fallback?: ReactNode }) {
-  const [writer, setWriter] = useState<SdkStepWriter>();
-  useEffect(() => {
-    let mounted = true;
-    void loadSdkStepWriter().then(getWriter => {
-      if (mounted) setWriter(() => getWriter);
-    });
-    return () => { mounted = false; };
-  }, []);
-
-  if (!writer) return fallback;
-  return <ReadyBimProvider writer={writer}>{children}</ReadyBimProvider>;
-}
-
-function ReadyBimProvider({ children, writer }: { children: ReactNode; writer: SdkStepWriter }) {
-  const bim = useBimHost(writer);
+export function BimProvider({ children, stepWriter }: { children: ReactNode; stepWriter?: SdkStepWriter }) {
+  const bim = useBimHost(stepWriter);
   return (
     <BimReactContext.Provider value={bim}>
       {children}

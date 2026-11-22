@@ -105,13 +105,15 @@ afterEach(() => {
 });
 
 describe('ShareDialog: explicit federation scope (#4444, #4620)', () => {
-  for (const version of ['mutationVersion', 'geometryContentVersion'] as const) {
+  for (const version of ['mutationVersion', 'geometryContentVersion', 'georefMutations'] as const) {
     it(`#11247 releases the room claim if ${version} changes during seed preparation`, async t => {
       const model = makeModel('a', 'fixture.ifc', 0);
       const view = new MutablePropertyView(model.ifcDataStore!.properties ?? null, 'a');
       const initialVersion = useViewerStore.getState()[version];
+      const revised = typeof initialVersion === 'number' ? initialVersion + 1
+        : new Map(initialVersion).set('a', { mapConversion: { eastings: 10 } });
       t.mock.method(view, 'getModifiedEntityCount', () => {
-        queueMicrotask(() => useViewerStore.setState({ [version]: initialVersion + 1 }));
+        queueMicrotask(() => useViewerStore.setState({ [version]: revised }));
         return 0;
       });
       useViewerStore.setState({ models: new Map([['a', model]]), activeModelId: 'a', mutationViews: new Map([['a', view]]) });
@@ -123,7 +125,7 @@ describe('ShareDialog: explicit federation scope (#4444, #4620)', () => {
       assert.ok(create);
       click(create);
       await settle();
-      assert.equal(useViewerStore.getState()[version], initialVersion + 1);
+      assert.equal(useViewerStore.getState()[version], revised);
       assert.deepEqual(starts, [], 'a stale seed must not reach startCollab');
       assert.match(document.body.textContent ?? '', /No session was created/);
       assert.ok(requests.mock.calls.some(({ arguments: [url] }) => String(url).endsWith('/collab/release')), 'the unused claim was released');

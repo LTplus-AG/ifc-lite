@@ -123,7 +123,7 @@ export function App({ sourceProviders }: AppProps = {}) {
   return (
     <>
     {import.meta.env.VITE_MODEL_REPORTS_ENABLED === 'true' && <ErrorReportHost />}
-    <BimProvider fallback={<RouteFallback />}>
+    <BimProvider>
       <ExtensionHostProvider>
         <SourceHostProvider additionalProviders={sourceProviders}>
           <LensRuntimeHost />

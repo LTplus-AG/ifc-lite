@@ -23,6 +23,7 @@ import {
   BRIDGE_FEATURES,
   BRIDGE_LIMITS,
   BRIDGE_PROTOCOL_VERSION,
+  BRIDGE_SURFACE_TOOL,
   BridgeCloseCode,
   BridgeErrorCode,
   buildPairingUrl,
@@ -120,19 +121,17 @@ export class TabBridge {
     return this.changed.subscribe(listener);
   }
 
-  /** The paired tab, or null. */
   tab(): TabSnapshot | null {
     const s = this.active;
     if (!s) return null;
-    return { sessionId: s.id, permission: this.effectivePermission(s), tools: s.tools, client: s.client, connectedAt: s.connectedAt };
+    return { sessionId: s.id, permission: this.effectivePermission(s), tools: s.tools, a2uiSurface: s.a2uiSurface, client: s.client, connectedAt: s.connectedAt };
   }
 
-  /** The live pairing code, minting one if none is live. */
+  /** Return the live pairing code, minting one if none is live. */
   pairingCode(): string {
     return this.pairing.current();
   }
 
-  /** Retire any live code and mint a fresh one (to pair a replacement tab). */
   rotatePairingCode(): string {
     return this.pairing.rotate();
   }
@@ -155,6 +154,7 @@ export class TabBridge {
     if (!s) {
       return Promise.reject(new BridgeCallError('no-viewer', 'No connected viewer: no ifc-lite browser tab is paired with this bridge.'));
     }
+    if (name === BRIDGE_SURFACE_TOOL && s.a2uiSurface) return s.call(name, args, this.callTimeoutMs, signal);
     const tool = s.tools.find((t) => t.name === name);
     if (!tool) return Promise.reject(new BridgeCallError('unknown-tool', `The connected viewer does not offer a tool named '${name}'.`));
     if (!tool.readOnly && this.effectivePermission(s) === 'read-only') {
@@ -340,7 +340,7 @@ export class TabBridge {
     slot.paired = true;
     this.slots.delete(slot);
     const previous = this.active;
-    const session = new BridgeSession(ws, randomUUID(), hello.permission, hello.tools, hello.client, this.log, hello.resultAck === true);
+    const session = new BridgeSession(ws, randomUUID(), hello.permission, hello.tools, hello.client, this.log, hello.resultAck === true, hello.a2uiSurface === true);
     this.active = session;
     paired(session);
     if (previous) {

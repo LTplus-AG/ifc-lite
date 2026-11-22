@@ -54,6 +54,23 @@ references. Public `run_flow` routes `element.stair` / `element.railing` through
 Tracking is fresh per RPC call, so cross-call update/remove needs a persistent
 caller-owned tracking store. No separate creation or Redo RPC is added.
 
+## Interactive IFC results
+
+MCP Apps hosts can open interactive IFC result surfaces from the model-serving tools.
+
+| Tool | Inputs |
+| --- | --- |
+| `present_query` | `query` (IFC types, conditions, storey, modelId, limit), `columns` (field paths and optional labels), optional `modelId`, `groupBy` and `title` |
+| `present_ids_results` | The `ids_validate` inputs and an optional `title` |
+| `present_clash_results` | The `clash_check` inputs and an optional `title` |
+
+The tools include a text summary and an A2UI v1.0 payload rendered by
+`ui://ifc-lite/a2ui-surface`. Connect the browser viewer through `viewer_open` to
+use row selection and the other viewer controls. In `--bridge` mode,
+`viewer_show_ui` delivers validated messages or a builder spec to a compatible
+paired main viewer tab. See the [A2UI architecture guide](../../docs/architecture/a2ui.md#mcp-result-surfaces)
+for a Claude Desktop walkthrough.
+
 ## 3D viewer integration
 
 The server bundles the same WebGL viewer used by `ifc-lite view`. Once it is
@@ -132,7 +149,7 @@ The same `npx` command works as a stdio server in any MCP-aware client.
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |
 | Diff | `model_diff` (`by_content` for content-keyed matching), `quantity_diff` |
 | Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_3dm`, `export_pdf_report` |
-| Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
+| Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_select`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
 
 `join_walls` joins two straight walls in the same placement frame through the
 viewer/SDK core. It writes `IfcRelConnectsPathElements` and rewrites bodies and
@@ -457,6 +474,7 @@ protocol version `1`; `--bridge` carries them over a loopback WebSocket at
 |-----------|--------|--------|
 | tab → bridge | `hello` (first frame) | `protocol`, `pairingCode`, `permission`, `tools[]` (`name`, `title?`, `description`, `inputSchema`, `readOnly`), `client?`, `resultAck?` |
 | bridge → tab | `welcome` | `protocol`, `sessionId`, `permission` (effective), `readOnlyCeiling`, `bridge`, `features?` ([`image-content`]), `resultAck?` |
+| bridge → tab | `a2ui-surface` | `sessionId`, `id`, `surface` (messages and optional title), sent when the tab advertises `hello.a2uiSurface` |
 | bridge → tab | `call` | `sessionId`, `id`, `name`, `arguments` |
 | tab → bridge | `result` | `sessionId`, `id`, `result` (an MCP `CallToolResult` with text, and image content when `welcome.features` lists `image-content`, passed through), `resultAck?` |
 | bridge → tab | `result-ack` | `sessionId`, `id`, `accepted` |

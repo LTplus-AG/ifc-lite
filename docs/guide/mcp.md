@@ -406,6 +406,18 @@ For an `IfcSlab` host, `place_opening` accepts `Position: [x, y]` (opening centr
     and `raycast` need the WASM geometry pipeline; `gherkin_check` awaits the bSI
     Gherkin grammar; `export_pdf_report` is slated for a later release.
 
+### Interactive result surfaces
+
+Use `present_query`, `present_ids_results` or `present_clash_results` on the
+model-serving MCP server to compute IFC results and show a table, stats and
+viewer controls in an MCP Apps host. `present_query` takes a declarative query,
+a list of column paths such as `Name` and `Pset_DoorCommon.FireRating`, and an
+optional grouping field. The other tools accept the same arguments as
+`ids_validate` and `clash_check`. Each tool returns a text summary as well.
+Use `viewer_open` and open its URL to activate the result's viewer controls.
+For the paired main viewer, use `viewer_show_ui` in bridge mode to deliver a
+validated surface. See the [A2UI architecture guide](../architecture/a2ui.md#mcp-result-surfaces).
+
 ### Resources
 
 Live model state is exposed as MCP resources under the `ifc-lite://` URI scheme, so an agent can read current state without a tool round-trip:

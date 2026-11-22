@@ -136,8 +136,13 @@ pub struct MergedStats {
 
 /// Merge `models` (raw IFC byte slices) into one STEP/IFC string. Convenience
 /// wrapper over [`export_merged_models`] that exports each model in full.
-pub fn export_merged(models: &[&[u8]], opts: &MergedOptions) -> String {
-    export_merged_with_stats(models, opts).0
+/// Returns `InvalidData` with the record diagnostic if the merge is refused.
+pub fn export_merged(models: &[&[u8]], opts: &MergedOptions) -> std::io::Result<String> {
+    let (out, stats) = export_merged_with_stats(models, opts);
+    if out.is_empty() {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, stats.warnings.join("\n")));
+    }
+    Ok(out)
 }
 
 /// Like [`export_merged`] but also returns coverage stats.

@@ -797,6 +797,11 @@ const result = await exporter.exportAsync({
 await saveFile('merged.ifc', result.content);
 ```
 
+The Rust convenience function `ifc_lite_export::export_merged` returns
+`std::io::Result<String>`. If an IFC2X3 downgrade would leave an
+`IfcPropertyBoundedValue` without either bound, it returns `InvalidData` and
+identifies the record and the `WR22` rule.
+
 #### Mixed length units
 
 When the models use different length units, `unitReconciliation` controls the

@@ -101,11 +101,9 @@ impl IfcAPI {
             schema: if schema.is_empty() { None } else { Some(schema) },
             ..Default::default()
         };
-        let (out, stats) = ifc_lite_export::export_merged_with_stats(&models, &opts);
-        if out.is_empty() {
-            return Err(JsError::new(&format!("exportMerged: {}", stats.warnings.join("\n"))));
-        }
-        Ok(out.into_bytes())
+        ifc_lite_export::export_merged(&models, &opts)
+            .map(String::into_bytes)
+            .map_err(|error| JsError::new(&format!("exportMerged: {error}")))
     }
 }
 

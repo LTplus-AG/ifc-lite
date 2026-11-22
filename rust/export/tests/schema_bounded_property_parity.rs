@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 use ifc_lite_export::{
-    export_merged_models, export_merged_models_with_logs, export_step_with_diagnostics,
+    export_merged, export_merged_models, export_merged_models_with_logs, export_step_with_diagnostics,
     MergedModel, MergedOptions, StepOptions,
 };
 
@@ -38,6 +38,10 @@ fn ifc2x3_bounded_property_wr22_11117() {
         } else {
             let err = result.err().unwrap_or_else(|| panic!("{}: export accepted a property with no bounds", row.why)).to_string();
             assert!(err.contains("#5") && err.contains("IfcPropertyBoundedValue") && err.contains("WR22"), "{err}");
+            // Debug also accepts the old String return type so the revert oracle
+            // observes the silent output as an assertion failure.
+            let plain = format!("{:?}", export_merged(&[input.as_bytes()], &merged_options));
+            assert!(plain.starts_with("Err(") && plain.contains("#5") && plain.contains("WR22"), "{plain}");
             assert!(merged.is_empty(), "{}: merge returned an IFC file", row.why);
             assert_eq!(stats.written, 0);
             assert!(stats.warnings.iter().any(|warning| warning.contains("WR22")), "{:?}", stats.warnings);

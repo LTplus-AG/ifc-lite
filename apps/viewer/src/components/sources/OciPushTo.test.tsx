@@ -12,7 +12,7 @@ import { fixtureModel } from '@/test/store-fixture';
 import { useHandoffWorkspace } from '@/lib/registry/handoff-workspace';
 import { authorizeRepository, finishHandoff, prepareHandoff, resourceSession } from '@/lib/registry/handoff-auth';
 import { pullHandoff } from '@/lib/registry/handoff-client';
-import { HANDOFF_PROTOCOL, readHandoff, registryConnections } from '@/lib/registry/handoff-contract';
+import { HANDOFF_PROTOCOL, readHandoff, registryConnections, saveRegistryConnection } from '@/lib/registry/handoff-contract';
 import { startServer, closeAll, send, type Handler } from '../../../../../packages/oci/test/fake-registry.js';
 import { pushRegistry } from '../../../../../packages/oci/test/push-registry.js';
 import { installRegistryPopup, registryCallback } from '@/test/registry-oauth-fixture';
@@ -73,7 +73,7 @@ test('Push to publishes successive IFC versions and Browse reopens each pinned d
   const scope = 'repository:project/model:pull repository:project/model:push';
   const session = resourceSession({
     access_token: 'repository-token', token_type: 'Bearer', expires_in: 300, scope,
-  }, registry.origin, scope);
+  }, { registry: registry.origin, authorization_server: 'https://identity.example.test', client_id: 'ifc-lite' }, scope);
   useHandoffWorkspace.setState({ repositorySession: session });
   let ui = render(<OciPushTo onBusyChange={() => {}} />);
   const add = fileStoreForm(ui, 'Add file store');
@@ -146,6 +146,63 @@ test('Push to publishes successive IFC versions and Browse reopens each pinned d
   assert.equal(ui.querySelectorAll('a').length, 2);
   assert(registry.requests.some(request => request.url === next));
   assert(registry.requests.every(request => request.url !== '/v2/_catalog'));
+});
+
+test('browsing reauthorizes after the saved file store changes while Cloud Sources is closed (#9638)', async () => {
+  const repository = 'project/model';
+  const tagsPath = `/v2/${repository}/tags/list`;
+  let origin = '';
+  const server = await startServer(allowBrowser(async (req, res) => {
+    const headers = { 'Content-Type': 'application/json' };
+    if (req.url === '/.well-known/oauth-authorization-server') {
+      return send(res, { headers, body: JSON.stringify({
+        issuer: origin, authorization_endpoint: origin + '/authorize', token_endpoint: origin + '/token',
+        response_types_supported: ['code'], code_challenge_methods_supported: ['S256'],
+      }) });
+    }
+    if (req.url === '/token') {
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of req) chunks.push(chunk);
+      const client = new URLSearchParams(Buffer.concat(chunks).toString()).get('client_id');
+      return send(res, { headers, body: JSON.stringify({ access_token: client, token_type: 'Bearer', expires_in: 300 }) });
+    }
+    assert.equal(req.url, tagsPath);
+    if (!req.headers.authorization) return send(res, { status: 401 });
+    return send(res, { headers, body: JSON.stringify({ name: repository, tags: [] }) });
+  }));
+  origin = server.origin;
+  const connection = { registry: origin, authorization_server: origin, client_id: 'original-client' };
+  saveRegistryConnection(connection);
+  const popup = installRegistryPopup(registryCallback);
+
+  async function browseFromReopenedPanel() {
+    const ui = render(<OciPushTo onBusyChange={() => {}} />);
+    const folder = ui.querySelector<HTMLInputElement>('input[id$="-folder"]');
+    const browse = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Browse versions');
+    assert(folder && browse);
+    type(folder, repository);
+    click(browse);
+    await waitFor(() => browse.textContent !== 'Browse versions' || Boolean(ui.querySelector('[role=alert]')));
+    assert.equal(ui.querySelector('[role=alert]'), null);
+    cleanup();
+  }
+
+  try {
+    await browseFromReopenedPanel();
+    await browseFromReopenedPanel();
+    assert.equal(popup.opens(), 1, 'unchanged settings reuse the cached session');
+
+    // Another tab writes to shared storage while this tab has no panel mounted.
+    saveRegistryConnection({ ...connection, client_id: 'replacement-client' }, true);
+    await browseFromReopenedPanel();
+    const requests = server.requests.filter(request => request.url === tagsPath && request.authorization);
+    assert.deepEqual(requests.map(request => request.authorization), [
+      'Bearer original-client', 'Bearer original-client', 'Bearer replacement-client',
+    ]);
+    assert.equal(popup.opens(), 2);
+  } finally {
+    popup.restore();
+  }
 });
 
 test('OCI handoff requires callback issuer identification when advertised or when multiple issuers share the callback (#9638)', async () => {

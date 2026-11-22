@@ -13,7 +13,10 @@ import { useViewerStore } from '@/store';
 import { exportRegistryModel } from '@/lib/registry/export-model';
 import { authorizeRepository, resourceAllows, type ResourceSession } from '@/lib/registry/handoff-auth';
 import { browseRepositoryVersions, pushHandoff } from '@/lib/registry/handoff-client';
-import { connectionFor, HANDOFF_PATH, HANDOFF_PROTOCOL, registryConnections, type ArtifactSource, type OciHandoff, type RegistryConnection } from '@/lib/registry/handoff-contract';
+import {
+  connectionFor, HANDOFF_PATH, HANDOFF_PROTOCOL, registryConnectionIdentity, registryConnections,
+  type ArtifactSource, type OciHandoff, type RegistryConnection,
+} from '@/lib/registry/handoff-contract';
 import { clearFileStoreSessions, useHandoffWorkspace } from '@/lib/registry/handoff-workspace';
 import { FileStoreConnectionForm } from './FileStoreConnectionForm';
 
@@ -85,7 +88,10 @@ export function OciPushTo({ disabled = false, onBusyChange }: {
     try {
       const storedConnections = registryConnections();
       const connection = connectionFor(registry, storedConnections);
-      if (JSON.stringify(connection) !== JSON.stringify(selectedConnection)) clearFileStoreSessions(registry);
+      const identity = registryConnectionIdentity(connection);
+      const selectedIdentity = selectedConnection && registryConnectionIdentity(selectedConnection);
+      // Cached grants outlive the panel, so also check them against the saved connection.
+      clearFileStoreSessions(registry, identity === selectedIdentity ? identity : undefined);
       const { repositorySession, sourceSession } = useHandoffWorkspace.getState();
       setConnections(storedConnections);
       const previous = [repositorySession, sourceSession].find(session =>

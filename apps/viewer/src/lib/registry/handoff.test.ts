@@ -24,15 +24,15 @@ test('a handoff is a pinned content locator and accepts an independent authoriza
 
 test('ordinary OAuth responses support downscoping and require no Subsoil session or identity fields', () => {
   const requested='repository:project/model:pull,push';
-  const session=resourceSession({access_token:'opaque',token_type:'Bearer',expires_in:300,scope:'repository:project/model:pull'},connection.registry,requested);
+  const session=resourceSession({access_token:'opaque',token_type:'Bearer',expires_in:300,scope:'repository:project/model:pull'},connection,requested);
   assert.equal(session.scope,'repository:project/model:pull');
-  assert.throws(() => resourceSession({access_token:'opaque',token_type:'Bearer',expires_in:300,scope:'repository:other/model:pull'},connection.registry,requested));
+  assert.throws(() => resourceSession({access_token:'opaque',token_type:'Bearer',expires_in:300,scope:'repository:other/model:pull'},connection,requested));
 });
 
 test('push and pull use OCI and isolate source/destination tokens at the actual HTTP boundary', async () => {
   const fixture=pushRegistry({repository:'project/model',accept:authorization => authorization==='Bearer destination'});
   const server=await startServer(fixture.handler), scope='repository:project/model:pull,push';
-  const session=resourceSession({access_token:'destination',token_type:'Bearer',expires_in:300,scope},server.origin,scope);
+  const session=resourceSession({access_token:'destination',token_type:'Bearer',expires_in:300,scope},{...connection,registry:server.origin},scope);
   const bytes=new TextEncoder().encode('ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;');
   const saved=await pushHandoff(server.origin,'project/model','edited',bytes,'edited.ifc',session);
   const received=await pullHandoff(saved,session);

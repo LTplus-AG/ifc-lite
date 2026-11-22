@@ -26,6 +26,14 @@ export interface ArtifactSource { registry: string; repository: string; digest: 
 export interface ArtifactDestination { registry: string; repository: string }
 export interface OciHandoff { protocol: typeof HANDOFF_PROTOCOL; source: ArtifactSource; intent: 'view' | 'edit'; destination?: ArtifactDestination }
 
+export function registryConnectionIdentity(connection: RegistryConnection): string {
+  const exchange = connection.token_exchange;
+  return JSON.stringify([
+    connection.registry, connection.authorization_server, connection.client_id, connection.name,
+    exchange?.endpoint, exchange?.authorization_resource, exchange?.read_scope, exchange?.write_scope,
+  ]);
+}
+
 export function webAddress(value: string): URL {
   const url = new URL(value);
   if (url.username || url.password || url.hash || (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)))) {

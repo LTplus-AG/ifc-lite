@@ -14,9 +14,13 @@ interface HandoffWorkspace {
 /** Tokens and opened content remain in this tab's memory. */
 export const useHandoffWorkspace = create<HandoffWorkspace>(() => ({}));
 
-export function clearFileStoreSessions(registry: string) {
-  useHandoffWorkspace.setState(state => ({
-    sourceSession: state.sourceSession?.registry === registry ? undefined : state.sourceSession,
-    repositorySession: state.repositorySession?.registry === registry ? undefined : state.repositorySession,
-  }));
+export function clearFileStoreSessions(registry: string, keepIdentity?: string) {
+  const stale = (session?: ResourceSession) => session?.registry === registry && session.connectionIdentity !== keepIdentity;
+  useHandoffWorkspace.setState(state => {
+    const sourceSession = stale(state.sourceSession) ? undefined : state.sourceSession;
+    const repositorySession = stale(state.repositorySession) ? undefined : state.repositorySession;
+    return sourceSession === state.sourceSession && repositorySession === state.repositorySession
+      ? state
+      : { sourceSession, repositorySession };
+  });
 }

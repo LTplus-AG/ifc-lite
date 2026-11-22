@@ -5,9 +5,18 @@
 import { createAuthorizationRequest, waitForOAuthCallback } from '@ifc-lite/oauth-pkce';
 
 import { RegistryError, repositoryName, responseBytes } from './protocol';
-import { connectionFor, HANDOFF_CALLBACK, handoffContext, readHandoff, registryConnections, webAddress, type OciHandoff, type RegistryConnection, type TokenExchangeSettings } from './handoff-contract';
+import {
+  connectionFor, HANDOFF_CALLBACK, handoffContext, readHandoff, registryConnectionIdentity, registryConnections, webAddress,
+  type OciHandoff, type RegistryConnection, type TokenExchangeSettings,
+} from './handoff-contract';
 
-export interface ResourceSession { accessToken: string; expiresAt: number; registry: string; scope: string }
+export interface ResourceSession {
+  accessToken: string;
+  expiresAt: number;
+  registry: string;
+  scope: string;
+  connectionIdentity: string;
+}
 interface Metadata { authorization_endpoint: string; token_endpoint: string; issuerInCallback: boolean }
 interface AuthorizationRequest { scope: string; resource: string }
 interface Pending {
@@ -67,7 +76,7 @@ function bearerGrant(value: unknown): { token: string; expiresAt: number; scope?
   return { token: value.access_token, expiresAt: Date.now() + value.expires_in * 1000,
     scope: 'scope' in value && typeof value.scope === 'string' ? value.scope : undefined };
 }
-export function resourceSession(value: unknown, registry: string, requestedScope: string): ResourceSession {
+export function resourceSession(value: unknown, connection: RegistryConnection, requestedScope: string): ResourceSession {
   const grant = bearerGrant(value);
   const scope = grant.scope ?? requestedScope;
   const actions = (scopes: string) => new Set(scopes.split(/\s+/).filter(Boolean).flatMap(s => {
@@ -77,7 +86,8 @@ export function resourceSession(value: unknown, registry: string, requestedScope
   }));
   const requested = actions(requestedScope), granted = actions(scope);
   if (!granted.size || [...granted].some(a => !requested.has(a))) throw new RegistryError('The returned access exceeds the requested folders and actions.');
-  return { registry, scope, accessToken: grant.token, expiresAt: grant.expiresAt };
+  return { registry: connection.registry, scope, accessToken: grant.token, expiresAt: grant.expiresAt,
+    connectionIdentity: registryConnectionIdentity(connection) };
 }
 export function resourceAllows(session: ResourceSession, repository: string, action: 'pull' | 'push'): boolean {
   return session.expiresAt > Date.now() + 5000 && session.scope.split(/\s+/).some(s => {
@@ -113,7 +123,7 @@ export async function exchangeRegistryToken(connection: RegistryConnection, subj
   if (!response || typeof response !== 'object' || !('issued_token_type' in response) || response.issued_token_type !== accessTokenType) {
     throw new RegistryError('The token exchange did not issue registry access.');
   }
-  return resourceSession(response, connection.registry, scope);
+  return resourceSession(response, connection, scope);
 }
 function redeem(
   connection: RegistryConnection, tokenEndpoint: string, redirectUri: string,
@@ -163,7 +173,7 @@ export async function finishHandoff(href: string, signal: AbortSignal, connectio
   const reply = await redeem(connection, metadata.token_endpoint, p.redirectUri, code, p.verifier, authorization.resource, signal);
   const session = connection.token_exchange
     ? await exchangeRegistryToken(connection, bearerGrant(reply).token, p.scope, signal)
-    : resourceSession(reply, connection.registry, p.scope);
+    : resourceSession(reply, connection, p.scope);
   if (!resourceAllows(session, handoff.source.repository, 'pull')) throw new RegistryError('This account cannot open the selected folder.', 403);
   return { handoff, session };
 }
@@ -193,7 +203,7 @@ export async function authorizeRepository(connection: RegistryConnection, reposi
   const reply = await repositoryGrant(connection, authorizationRequest(connection, scope, write), signal, connections);
   const session = connection.token_exchange
     ? await exchangeRegistryToken(connection, bearerGrant(reply).token, scope, signal)
-    : resourceSession(reply, connection.registry, scope);
+    : resourceSession(reply, connection, scope);
   if (!resourceAllows(session, repository, 'pull') || (write && !resourceAllows(session, repository, 'push'))) {
     throw new RegistryError(write
       ? 'Ask the owner for permission to view and publish in this folder.'

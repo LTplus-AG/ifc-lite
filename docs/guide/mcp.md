@@ -469,7 +469,7 @@ The bridge advertises four viewer-native palette tools in addition to the model 
 
 For example, query walls with `query_entities`, select their ids with `viewer_select`, discover a command with `viewer_commands { "query": "frame" }`, then invoke `viewer_command_run { "command_id": "view:frame" }`. Discover again when the model, selection or enabled features change.
 
-The viewer also exposes its native feature operations, and `viewer_operation_coverage` reports which panel, tool and export controls they cover. See [viewer operations](viewer-operations.md).
+The viewer also exposes its native feature operations, and `viewer_operation_coverage` summarizes which controls they cover and lists gap IDs. Pass `section` for paged details or `section` and `row_id` for one row. See [viewer operations](viewer-operations.md).
 
 Discovery and selection reads work while read-only. Selection changes and command dispatch require the explicit commands-and-edits grant at every pairing; `--read-only` keeps them hidden. The tab checks the grant itself immediately before dispatch, even if a bridge forwards a forbidden call. Revoking it stops new actions; already dispatched asynchronous actions may continue.
 

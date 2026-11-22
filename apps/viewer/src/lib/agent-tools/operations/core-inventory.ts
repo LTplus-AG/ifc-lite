@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 export const coreControlInventory = [
   { owner: 'viewport', controls: [
+    { control: 'Visible entity and surface picking at numerical viewport coordinates', operations: ['viewport.pick', 'viewport.raycast'] },
     { control: 'Native numerical cut box/face plane, plane library, cap style/display and Undo', operations: ['section.nativeState', 'section.box', 'section.facePlane', 'section.customDistance', 'section.managePlane', 'section.capStyle', 'section.display', 'section.history'] },
     { control: 'Numerical free/anchored annotation placement and expected-snapshot edit/delete/select', operations: ['annotations.read', 'annotations.create', 'annotations.createAnchored', 'annotations.manage'] },
   ], notes: ['Native renderer ownership, effective visibility and clip state govern point/surface picking.'] },

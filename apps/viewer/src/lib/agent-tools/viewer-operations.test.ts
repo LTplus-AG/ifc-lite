@@ -20,7 +20,10 @@ import { seedCoincidentWalls } from '@/test/clash-run-fixture';
 import { resetFeaturesForTest } from '@/lib/features';
 import { createMainViewerToolHost } from './main-viewer-host';
 import { dispatchMainViewerTool } from './main-viewer-dispatch';
-import { viewerOperationCoverage } from './operations/coverage';
+import { auditedToolIds, viewerOperationCoverage } from './operations/coverage';
+import { toolControlAudits } from './operations/coverage-audit';
+import { nativeExportRegistryInventory } from './operations/export-native-inventory';
+import { EXPORT_COMMAND_IDS } from '@/components/viewer/toolbar/export-commands';
 import { WORKSPACE_PANELS } from '@/lib/panels/registry';
 import { viewerOperations } from './operations/registry';
 import type { ToolHost } from './types';
@@ -274,9 +277,9 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     const report = viewerOperationCoverage();
     assert.equal(report.panel_count, WORKSPACE_PANELS.length); assert.equal(report.all_controls_automatable, false);
     assert.deepEqual(new Set(report.panels.map(panel => panel.id)), new Set(WORKSPACE_PANELS.map(panel => panel.id)));
-    assert.deepEqual(report.panels.flatMap(panel => panel.gaps.map(gap => `${panel.id}: ${gap}`)), []);
-    assert.deepEqual(report.tools.flatMap(tool => tool.gaps.map(gap => `${tool.id}: ${gap}`)), []);
-    assert.deepEqual(report.exports.flatMap(item => item.gaps.map(gap => `${item.id}: ${gap}`)), []);
+    assert.deepEqual(report.panels.flatMap(panel => panel.gaps.map(gap => `${panel.id}: ${gap.id}: ${gap.reason}`)), []);
+    assert.deepEqual(report.tools.flatMap(tool => tool.gaps.map(gap => `${tool.id}: ${gap.id}: ${gap.reason}`)), []);
+    assert.deepEqual(report.exports.flatMap(item => item.gaps.map(gap => `${item.id}: ${gap.id}: ${gap.reason}`)), []);
     assert.equal(report.complete, true);
     assert.ok(report.panels.every(panel => panel.controls.length > 0));
     assert.ok(report.panels.some(panel => panel.controls.some(control => control.classification === 'native-boundary')));
@@ -292,7 +295,55 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     for (const id of ['contextual-entity', 'tours-mobile']) assert.ok(report.non_panel.find(row => row.id === id)?.notes?.some(note => note.includes('bound to an audited')), id);
     assert.deepEqual(report.unbound_operations, [], 'every registered operation is bound to an audited control');
     // Non-panel families are bound to audited controls too, and count toward complete.
-    assert.deepEqual(report.non_panel.flatMap(row => row.gaps.map(gap => `${row.id}: ${gap}`)), []);
+    assert.deepEqual(report.non_panel.flatMap(row => row.gaps.map(gap => `${row.id}: ${gap.id}: ${gap.reason}`)), []);
+  });
+  it('reports a toolbar export without an inventory entry as incomplete (#10592)', () => {
+    const id = 'ion';
+    assert.ok(EXPORT_COMMAND_IDS.includes(id));
+    const inventory = nativeExportRegistryInventory.filter(row => row.registry_id !== id);
+    const report = viewerOperationCoverage(inventory);
+    // Ion has no registered operation, so only the toolbar comparison can detect the missing audit.
+    assert.deepEqual(report.unbound_operations, []);
+    assert.equal(report.complete, false);
+    const entry = report.exports.find(row => row.id === id);
+    assert.equal(entry?.complete, false);
+    assert.deepEqual(entry?.gaps.map(gap => gap.id), [id]);
+  });
+  it('only names registered tools in the control audit (#10592)', () => {
+    assert.deepEqual(Object.keys(toolControlAudits).filter(id => !auditedToolIds.includes(id)), []);
+  });
+  it('summarizes coverage by default and serves bounded details on request (#10592)', async () => {
+    const coverage = (args: Record<string, unknown> = {}) => dispatchMainViewerTool(host, 'viewer_operation_coverage', args);
+    const summary = await coverage();
+    const overview = data<{ complete: boolean; exports: unknown[] }>(summary);
+    assert.equal(overview.complete, true);
+    assert.deepEqual(overview.exports.find(row => typeof row === 'object' && row !== null && 'id' in row && row.id === 'ion'),
+      { id: 'ion', complete: true, gap_count: 0, gap_ids: [] });
+    assert.ok(Buffer.byteLength(summary.text) < 20_000);
+
+    const full = viewerOperationCoverage();
+    const rows: typeof full.exports = [];
+    let offset: number | null = 0;
+    while (offset !== null) {
+      const page: { rows: typeof rows; total: number; offset: number; next_offset: number | null } =
+        data(await coverage({ section: 'exports', offset, limit: 5 }));
+      assert.equal(page.total, full.exports.length);
+      assert.equal(page.offset, offset);
+      assert.ok(page.rows.length > 0 && page.rows.length <= 5);
+      assert.equal(page.next_offset, offset + 5 < page.total ? offset + 5 : null);
+      rows.push(...page.rows);
+      offset = page.next_offset;
+    }
+    assert.deepEqual(rows, full.exports);
+
+    const detail = data<{ rows: typeof full.panels; next_offset: number | null }>(await coverage({ section: 'panels', row_id: 'appearance' }));
+    assert.deepEqual(detail.rows, full.panels.filter(row => row.id === 'appearance'));
+    assert.equal(detail.next_offset, null);
+    const boundaries = data<{ rows: typeof full.human_only }>(await coverage({ section: 'human_only', limit: 5 }));
+    assert.deepEqual(boundaries.rows, full.human_only);
+    for (const args of [{ limit: 1 }, { section: 'exports', limit: 6 }, { section: 'panels', row_id: 'ion' }, { section: 'nope' }]) {
+      assert.equal((await coverage(args)).errorCode, 'INVALID_INPUT');
+    }
   });
   it('refuses overflow coordinates and incomplete closed perimeters', async () => {
     assert.equal((await execute('measurements.distance', { start: [0, 0, 0], end: [1e308, 0, 0] })).isError, true);

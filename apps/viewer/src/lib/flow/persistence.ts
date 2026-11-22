@@ -87,6 +87,7 @@ export function loadSavedFlows(): SavedFlow[] {
  * False only when the stored library was read in full and does not hold `id`.
  * A damaged library that was quarantined reads as empty on reload too; one that
  * could not be preserved (not `writable`) may still hold entries dropped here.
+ * Like every read here, it quarantines a damaged library as a side effect.
  */
 export function storageMayHoldFlow(id: string): boolean {
   try {

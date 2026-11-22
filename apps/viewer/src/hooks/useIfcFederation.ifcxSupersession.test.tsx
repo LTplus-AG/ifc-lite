@@ -15,6 +15,7 @@
  */
 
 import '@/test/setup-dom.js';
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -164,4 +165,29 @@ it('a composition that fails on its own reports the error and ends its load UI',
   assert.equal(after.activeLoadCanceller, null, 'and no Cancel');
   assert.equal(after.loadingFileName, null);
   assert.equal(compositionRow()?.outcome, 'failed');
+});
+
+it('#10591 a federated IFCX load keeps its layer stack and path map, with path IDs in the renderer ID range', async () => {
+  const previous = fixtureModel('offset-model', { idOffset: 1_000_000 });
+  useViewerStore.getState().addModel(previous);
+  assert.equal(useViewerStore.getState().models.get(previous.id)?.idOffset, 1_000_000);
+
+  const file = new File([readFileSync(new URL('../../public/samples/hello-wall.ifcx', import.meta.url))],
+    'hello-wall.ifcx', { type: 'application/json' });
+  await act(async () => hookApi!.loadFederatedIfcx([file]));
+  const state = useViewerStore.getState();
+  assert.equal(state.models.has(previous.id), false);
+  assert.equal(state.layerStack.length, 1, 'the Layers panel keeps the published stack');
+  assert.ok(state.ifcDataStore, 'the composed data store stays published');
+  const model = [...state.models.values()].find(candidate => candidate.geometryResult?.meshes.length);
+  assert.ok(model, 'the actual composed sample contains meshes');
+  assert.equal(model.idOffset, 0);
+  const mesh = model.geometryResult!.meshes[0];
+  const pathEntry = [...(state.layerStackPathToId ?? [])].find(([, id]) => id === mesh.expressId);
+  assert.ok(pathEntry, 'the composed map can look up the rendered mesh');
+  // As LayerDiffView's selectPath does: select through the path map.
+  state.setSelectedEntityIds([pathEntry[1]]);
+  const selected = useViewerStore.getState().selectedEntityId;
+  assert.equal(selected, mesh.expressId);
+  assert.equal(state.resolveGlobalIdFromModels(selected)?.modelId, model.id);
 });

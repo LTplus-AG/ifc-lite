@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { SceneContents } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
-import { noteSceneGeometry, supersedeReleasedReplays } from '@/lib/geometry-backing/released-scene-replay';
+import { supersedeReleasedReplays } from '@/lib/geometry-backing/released-scene-replay';
+import { noteSceneGeometry } from '@/lib/released-mesh-provenance';
 
 // Non-federated default: only the primary model (modelIndex 0, what
 // `addInstancedShard` has always defaulted new templates to) survives a

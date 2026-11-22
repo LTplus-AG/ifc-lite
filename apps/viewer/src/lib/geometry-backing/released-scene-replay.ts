@@ -19,7 +19,7 @@
 
 import type { MeshData } from '@ifc-lite/geometry';
 import type { Renderer } from '@ifc-lite/renderer';
-import { isReleasedMesh } from '@/lib/released-mesh-provenance';
+import { isReleasedMesh, noteSceneGeometry } from '@/lib/released-mesh-provenance';
 
 /** One replay attempt: `true` once complete; `'moved'` when only an Exploded lift change superseded it. */
 export type ReplayOnce = (renderer: Renderer, released: readonly MeshData[], isCurrent: () => boolean) => Promise<boolean | 'moved'>;
@@ -75,7 +75,7 @@ export function releasedReplayEpoch(): number { return replayState.epoch; }
  * one a reshape superseded is dropped (the newer pass owns its meshes).
  */
 export function splitReleasedForReplay(renderer: Renderer, meshes: MeshData[], drawn?: readonly MeshData[], replayOnce?: ReplayOnce): MeshData[] {
-  if (drawn) sceneGeometry = drawn; // the whole list the scene now draws (streamed appends included)
+  if (drawn) noteSceneGeometry(drawn); // the whole list the scene now draws (streamed appends included)
   if (!meshes.some(isReleasedMesh)) return meshes;
   const released = meshes.filter(isReleasedMesh);
   const token: ReplayToken = { epoch: replayState.epoch };
@@ -87,12 +87,3 @@ export function splitReleasedForReplay(renderer: Renderer, meshes: MeshData[], d
 
 /** Settles once every replay queued so far has finished (tests). */
 export function releasedReplaysIdle(): Promise<void> { return replayState.chain.then(() => undefined); }
-
-/**
- * What the scene draws: the list of its latest flat reshape, hydration or upload pass (later appends
- * grow it in place). `undefined` until one is recorded: an EMPTY recorded list (every flat type
- * hidden, instancing only) is a real answer, not a missing one.
- */
-let sceneGeometry: readonly MeshData[] | undefined;
-export function noteSceneGeometry(geometry: readonly MeshData[] | undefined): void { sceneGeometry = geometry; }
-export function currentSceneGeometry(): readonly MeshData[] | undefined { return sceneGeometry; }

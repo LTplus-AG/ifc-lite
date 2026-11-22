@@ -35,3 +35,10 @@ export function keepPresentInReleasedMembership(scene: object, present: Readonly
 
 /** One model's templates were removed. */
 export function dropFromReleasedMembership(scene: object, modelIndex: number): void { kept.get(scene)?.delete(modelIndex); moved(scene); }
+
+/**
+ * The scene's reshape hooks, installed by the first released-scene recovery (this module loads with it):
+ * before any recovery nothing is kept and no revision is read, so the scene calls nothing.
+ */
+export const releasedMembershipHooks = { drop: dropFromReleasedMembership, forget: forgetReleasedMembership, keepPresent: keepPresentInReleasedMembership };
+export type ReleasedMembershipHooks = typeof releasedMembershipHooks;

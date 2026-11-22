@@ -29,7 +29,8 @@ import { modelIndices } from '@/lib/model-placement/model-indices';
 import { getViewerState } from '@/store/viewerStoreHandle';
 import { hasInstancedShards } from '@/store/instancedShardModels';
 import { activeGeometryBackingTap } from './backing-debug-hook';
-import { currentSceneGeometry, releasedReplayEpoch, supersedeReleasedReplays } from './released-scene-replay';
+import { releasedReplayEpoch, supersedeReleasedReplays } from './released-scene-replay';
+import { currentSceneGeometry } from '@/lib/released-mesh-provenance';
 import { liftedShardCopy, placedReleasedBatches } from './released-scene-replay-run';
 import { StaleGeometryGenerationError } from './backing-reader';
 

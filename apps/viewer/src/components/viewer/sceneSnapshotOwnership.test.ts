@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import type { Renderer } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import { adoptedSceneOutlivesEmptyGeometry, sceneSnapshotKey, setPendingSceneSnapshot, takeSceneSnapshotGeometry, takeSnapshotModelArrival, withdrawPendingSceneSnapshot } from './sceneSnapshotOwnership.js';
-import { currentSceneGeometry, noteSceneGeometry } from '@/lib/geometry-backing/released-scene-replay';
+import { currentSceneGeometry, noteSceneGeometry } from '@/lib/released-mesh-provenance';
 
 const bounds = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } };
 const point = { x: 1, y: 2, z: 3 };

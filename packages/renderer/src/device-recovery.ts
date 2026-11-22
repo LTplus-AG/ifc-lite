@@ -11,7 +11,6 @@ import type { PointCloudRenderer, ResolvedPointCloudRenderOptions } from './poin
 import type { Scene } from './scene.js';
 import type { ReleasedSceneRebuild } from './released-scene-recovery.js';
 import { releaseInstanceVertices } from './scene-model-translation.js';
-import { forgetReleasedMembership, keepReleasedMembership, keptReleasedMembership, releasedMembershipRevision } from './released-template-membership.js';
 
 /** GPU-only content that cannot be reconstructed after a device loss. */
 export type DeviceRecoveryOmission =
@@ -178,8 +177,7 @@ async function recoverRendererDeviceOnce(
     // Loaded on first use (released scenes only); nothing may have moved while it loaded.
     const { recoverReleasedScene } = await import('./released-scene-recovery.js');
     if (generation !== host.initGeneration || host.destroyed || host.deviceLossSequence !== lossSequence) return invalidatedRecovery(host);
-    return recoverReleasedScene(host, generation, rebuild, { WebGPUDevice, ownsLifecycle, releaseInstanceVertices,
-      forgetReleasedMembership, keepReleasedMembership, keptReleasedMembership, releasedMembershipRevision });
+    return recoverReleasedScene(host, generation, rebuild, { WebGPUDevice, ownsLifecycle, releaseInstanceVertices });
   }
   if (generation !== host.initGeneration || host.destroyed) {
     return invalidatedRecovery(host);

@@ -23,7 +23,7 @@ import type { RenderPipeline } from './pipeline.js';
 import type { Scene } from './scene.js';
 import type { SceneRecoveryHost } from './scene-device-recovery.js';
 import type { releaseInstanceVertices } from './scene-model-translation.js';
-import type { forgetReleasedMembership, keepReleasedMembership, keptReleasedMembership, releasedMembershipRevision } from './released-template-membership.js';
+import { forgetReleasedMembership, keepReleasedMembership, keptReleasedMembership, releasedMembershipHooks, releasedMembershipRevision } from './released-template-membership.js';
 
 /**
  * The eager renderer values this recovery uses, handed in by `device-recovery.ts`: this module loads on
@@ -33,10 +33,6 @@ export interface ReleasedRecoveryDeps {
   WebGPUDevice: typeof WebGPUDevice;
   ownsLifecycle: typeof ownsLifecycle;
   releaseInstanceVertices: typeof releaseInstanceVertices;
-  forgetReleasedMembership: typeof forgetReleasedMembership;
-  keepReleasedMembership: typeof keepReleasedMembership;
-  keptReleasedMembership: typeof keptReleasedMembership;
-  releasedMembershipRevision: typeof releasedMembershipRevision;
 }
 
 /** What a released-scene rebuild runs against: the replacement device, before readiness. */
@@ -57,10 +53,11 @@ export type ReleasedSceneRebuild = (context: ReleasedSceneRebuildContext) => Pro
 export async function recoverReleasedScene(
   host: RendererRecoveryHost, generation: number, rebuild: ReleasedSceneRebuild, deps: ReleasedRecoveryDeps,
 ): Promise<DeviceRecoveryResult> {
-  const { WebGPUDevice, ownsLifecycle, releaseInstanceVertices, forgetReleasedMembership, keepReleasedMembership, keptReleasedMembership,
-    releasedMembershipRevision } = deps;
+  const { WebGPUDevice, ownsLifecycle, releaseInstanceVertices } = deps;
   const lossSequence = host.deviceLossSequence;
   const scene = host.scene;
+  // From now on the scene's reshapes keep the released template membership (`released-template-membership.ts`).
+  (scene as unknown as { releasedMembership?: typeof releasedMembershipHooks }).releasedMembership = releasedMembershipHooks;
   // The scene's content epoch right after this recovery's reset: a clear() or reshape during the rebuild
   // replaces the content it restores (same object, device and init), so the rebuild is stale.
   let contentAt: number | undefined, membershipAt: number | undefined;

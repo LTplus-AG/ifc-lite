@@ -16,7 +16,7 @@ import type { MutableRefObject } from 'react';
 import type { Renderer, SceneContents } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { Bounds } from './streamingBounds.js';
-import { noteSceneGeometry } from '@/lib/geometry-backing/released-scene-replay';
+import { noteSceneGeometry } from '@/lib/released-mesh-provenance';
 
 /** The framing a snapshot was finalized under. */
 export interface SnapshotCameraFit {

@@ -59,6 +59,11 @@ export class SourceRecords {
   private readonly cache = new Map<number, readonly string[] | undefined>();
   constructor(private readonly store: SourceStore) {}
 
+  hasIndexedRecords(): boolean {
+    // @raw-entity-enumeration-ok distinguish a parsed source index from type-only preview input
+    return this.store.entityIndex.byId.size > 0 || (this.store.deferredEntityIndex?.size ?? 0) > 0;
+  }
+
   private decode(entry: { byteOffset: number; byteLength: number }): string {
     return decodeRange(this.store.source, entry.byteOffset, entry.byteOffset + entry.byteLength);
   }

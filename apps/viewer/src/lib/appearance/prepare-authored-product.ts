@@ -1,7 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { StepExporter } from '@ifc-lite/export';
 import { StoreEditor } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import { mutationDenial } from '@/store/mutation-permission';
@@ -39,6 +38,7 @@ export async function prepareAuthoredProduct(modelId: string, signal?: AbortSign
     source.validate(current.mutationViews.get(modelId));
     validateSource();
   };
+  const { StepExporter } = await import('@/lib/export/step-export-runtime');
   validate();
   const serialized = prepareAppearanceSerialization(modelId, model.ifcDataStore, view);
   const exported = await new StepExporter(model.ifcDataStore, serialized.view).exportAsync({

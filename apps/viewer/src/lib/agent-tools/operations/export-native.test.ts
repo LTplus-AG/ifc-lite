@@ -5,12 +5,15 @@ import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
 import { createBimContext } from '@ifc-lite/sdk';
+import type { Renderer } from '@ifc-lite/renderer';
+import { clearGlobalRefs, setGlobalRendererRef } from '@/hooks/useBCF';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { LocalBackend } from '@/sdk/local-backend';
 import { useViewerStore } from '@/store';
 import { seedCoincidentWalls } from '@/test/clash-run-fixture';
 import { resetFeaturesForTest } from '@/lib/features';
+import { dispatchMainViewerTool } from '../main-viewer-dispatch';
 import { createMainViewerToolHost } from '../main-viewer-host';
 import { operationArtifacts, readArtifact } from './artifacts';
 import type { Operation, ViewerOperationContext } from './contract';
@@ -32,7 +35,7 @@ beforeEach(async () => {
   resetFeaturesForTest(); await seedCoincidentWalls(2, 4);
   const host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));
   const commit = <T,>(write: () => T) => { c.signal?.throwIfAborted(); return write(); };
-  c = { host, commit, commitAsync: async <T,>(write: () => Promise<T>) => write(), ownGeometry: async work => work(), artifacts: operationArtifacts(host, commit), canEdit: () => true };
+  c = { host, commit, commitAsync: async <T,>(write: () => Promise<T>) => write(), ownGeometry: async work => work(), retain: () => {}, artifacts: operationArtifacts(host, commit), canEdit: () => true };
 });
 async function run<T>(id: string, input: unknown): Promise<T> { const op = entries.find(entry => entry.id === id); assert.ok(op); const result = await op.execute(input, c); op.validateResult(JSON.parse(JSON.stringify(result))); return result as T; }
 async function bytes(id: string) { const read = await readArtifact(c.host, id, 0, 65536); assert.equal(read.next_offset, null); return Buffer.from(read.data, 'base64'); }
@@ -116,6 +119,56 @@ describe('native export registry automation (#10525)', () => {
     const output = await produceNativeViewPdf({ view: { meshes: [...geometry.meshes], instancedMeshes: [], hiddenEntities: new Set(), isolatedEntities: null, computedIsolatedIds: null, typeVisibility: useViewerStore.getState().typeVisibility, modelVisibility: null },
       camera: { position: { x: 5, y: 5, z: 5 }, target: { x: 0, y: 0, z: 0 }, up: { x: 0, y: 1, z: 0 }, projectionMode: 'orthographic' }, section: null, scaleFactor: 100, renderMode: 'lines', includeScaleStamp: true });
     assert.ok(output.result.strokeCount > 0); assert.ok(output.result.page.widthMm > 0); assert.match(Buffer.from(await output.blob.arrayBuffer()).subarray(0, 8).toString('latin1'), /^%PDF-/);
+  });
+  it('rejects oversized numerical PDF scales and distinguishes an empty view (#11060)', async t => {
+    const camera = {
+      getPosition: () => ({ x: 50, y: 50, z: 200 }),
+      getTarget: () => ({ x: 50, y: 50, z: 0 }),
+      getUp: () => ({ x: 0, y: 1, z: 0 }),
+      getProjectionMode: () => 'orthographic',
+      getOrthoSize: () => 120,
+      getDistance: () => 200,
+      getFOV: () => Math.PI / 4,
+      getSceneBounds: () => ({ min: { x: 0, y: 0, z: 0 }, max: { x: 100, y: 100, z: 100 } }),
+    };
+    const renderer = {
+      getCamera: () => camera,
+      getScene: () => ({ getAllInstancedMeshData: () => [] }),
+    } as unknown as Renderer;
+    setGlobalRendererRef({ current: renderer });
+    t.after(clearGlobalRefs);
+
+    const models = new Map(useViewerStore.getState().models);
+    for (const [id, model] of models) {
+      const geometry = model.geometryResult;
+      assert.ok(geometry);
+      // Enlarge the fixture's real box mesh to span 100 metres.
+      const meshes = geometry.meshes.map(mesh => ({ ...mesh, positions: mesh.positions.map(value => value * 100) }));
+      models.set(id, { ...model, geometryResult: { ...geometry, meshes } });
+    }
+    useViewerStore.setState({ models });
+    const exportPdf = (scale: number) => dispatchMainViewerTool(c.host, 'viewer_operation_execute', {
+      operation_id: 'exports.viewPdf',
+      input: {
+        scope: 'current-view', scale_mode: 'numerical', scale,
+        include_hidden_lines: false, render_mode: 'lines', include_scale_stamp: true,
+      },
+    }, { canEdit: () => true });
+
+    const oversized = await exportPdf(1);
+    assert.equal(oversized.errorCode, 'INVALID_INPUT', oversized.text);
+    assert.equal((oversized.structured as { reason: string }).reason, 'limit');
+    assert.match(oversized.text, /larger scale denominator/i);
+
+    const printable = await exportPdf(1000);
+    assert.equal(printable.isError, false, printable.text);
+    const { result } = printable.structured as { result: { artifact: { artifact_id: string } } };
+    assert.match((await bytes(result.artifact.artifact_id)).toString('latin1'), /^%PDF-/);
+
+    useViewerStore.setState({ models: new Map([...models].map(([id, model]) => [id, { ...model, visible: false }])) });
+    const empty = await exportPdf(1);
+    assert.equal(empty.errorCode, 'UNSUPPORTED_OPERATION', empty.text);
+    assert.equal((empty.structured as { reason: string }).reason, 'unavailable');
   });
   it('rejects an unsupported Rhino version with otherwise valid settings (#10796)', async () => {
     await assert.rejects(run('exports.rhino', {

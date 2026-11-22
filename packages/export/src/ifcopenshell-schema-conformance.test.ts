@@ -609,3 +609,60 @@ describe.skipIf(!ifcopenshellAvailable())('a retyped currency converts schema-co
     runValidateOrThrow(files);
   }, IFCOPENSHELL_TEST_TIMEOUT_MS);
 });
+
+/**
+ * #10763: types whose attributes IFC4 inserted or reordered mid-list, as authored records of each schema.
+ * Left out: an IFC4 IfcApproval downgrades with the required ApprovalDateTime `$` (counted, not invented),
+ * and IfcCurrencyRelationship, which needs IfcMonetaryUnit records (their Currency is the #10778 case above).
+ */
+const SOURCES_10763 = {
+  IFC2X3: [
+    '#20=IFCCALENDARDATE(1,1,2020);', "#21=IFCAPPROVAL('desc',#20,'Approved','L1','Q','Approval A','A-1');",
+    "#22=IFCAPPROVAL($,#20,$,$,$,'Approval B','A-2');", "#23=IFCAPPROVALRELATIONSHIP(#22,#21,'d','rel');",
+    "#24=IFCTASK('2YvctVUKr0kugbFTf53O9L',#5,'Task',$,$,'T-1','Open',$,.F.,1);",
+    "#25=IFCLABORRESOURCE('3YvctVUKr0kugbFTf53O9L',#5,'Labor',$,$,'R-1','Group',$,$,'Plumber');",
+    "#26=IFCCOSTSCHEDULE('1ZvctVUKr0kugbFTf53O9L',#5,'Costs',$,$,$,$,$,'Draft',$,$,'CS-1',.BUDGET.);",
+    "#27=IFCPROPERTYSINGLEVALUE('A',$,IFCLABEL('x'),$);", "#28=IFCPROPERTYSINGLEVALUE('B',$,IFCLABEL('y'),$);",
+    "#29=IFCPROPERTYDEPENDENCYRELATIONSHIP(#27,#28,'dep',$,'B=A');",
+    "#30=IFCDOCUMENTINFORMATION('D-1','Doc',$,$,$,$,$,$,$,$,$,$,$,$,$,$,$);",
+    "#31=IFCDOCUMENTINFORMATION('D-2','Part',$,$,$,$,$,$,$,$,$,$,$,$,$,$,$);",
+    "#32=IFCDOCUMENTINFORMATIONRELATIONSHIP(#30,(#31),'part');",
+    // #10807: same arity in both schemas, so it passed through by position.
+    "#46=IFCPROCEDURE('1YvctVUKr0kugbFTf53O9L',#5,'Proc',$,$,'P-1',.CALIBRATION.,$);",
+    // #10824: the label of a .USERDEFINED. type moves to ObjectType.
+    "#47=IFCPROCEDURE('2XvctVUKr0kugbFTf53O9L',#5,'Proc2',$,$,'P-2',.USERDEFINED.,'Flush');",
+    "#34=IFCLIBRARYINFORMATION('Lib','1',#2,$,$);",
+    "#40=IFCIMAGETEXTURE(.T.,.T.,.TEXTURE.,$,'tex.png');",
+    "#41=IFCPERFORMANCEHISTORY('0XvctVUKr0kugbFTf53O9L',#5,'History',$,$,'Operation');",
+  ],
+  IFC4: [
+    "#24=IFCTASK('2YvctVUKr0kugbFTf53O9L',#5,'Task',$,$,'T-1',$,'Open',$,.F.,1,$,.CONSTRUCTION.);",
+    "#25=IFCLABORRESOURCE('3YvctVUKr0kugbFTf53O9L',#5,'Labor',$,$,'R-1','Plumber',$,$,$,.GENERAL.);",
+    "#26=IFCCOSTSCHEDULE('1ZvctVUKr0kugbFTf53O9L',#5,'Costs',$,$,'CS-1',.BUDGET.,'Draft',$,$);",
+    "#27=IFCPROPERTYSINGLEVALUE('A',$,IFCLABEL('x'),$);", "#28=IFCPROPERTYSINGLEVALUE('B',$,IFCLABEL('y'),$);",
+    "#29=IFCPROPERTYDEPENDENCYRELATIONSHIP('dep',$,#27,#28,'B=A');",
+    "#30=IFCDOCUMENTINFORMATION('D-1','Doc',$,$,$,$,$,$,$,$,$,$,$,$,$,$,$);",
+    "#31=IFCDOCUMENTINFORMATION('D-2','Part',$,$,$,$,$,$,$,$,$,$,$,$,$,$,$);",
+    "#32=IFCDOCUMENTINFORMATIONRELATIONSHIP($,$,#30,(#31),'part');",
+    "#46=IFCPROCEDURE('1YvctVUKr0kugbFTf53O9L',#5,'Proc',$,$,'P-1','Long text',.SHUTDOWN.);",
+    "#47=IFCPROCEDURE('2XvctVUKr0kugbFTf53O9L',#5,'Proc2',$,'Flush','P-2',$,.USERDEFINED.);",
+    "#34=IFCLIBRARYINFORMATION('Lib','1',#2,$,$,$);",
+    "#41=IFCPERFORMANCEHISTORY('0XvctVUKr0kugbFTf53O9L',#5,'History',$,$,'P-1','Operation',.NOTDEFINED.);",
+  ],
+};
+
+describe.skipIf(!ifcopenshellAvailable())('records with inserted or reordered attributes convert schema-conformant (#10763)', () => {
+  it('validates both sources as controls and both StepExporter conversions', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'ifc-lite-10763-'));
+    const files: string[] = [];
+    for (const [from, to] of [['IFC2X3', 'IFC4'], ['IFC4', 'IFC2X3']] as const) {
+      const source = join(directory, `${from}.ifc`);
+      writeFileSync(source, stepFile10758(from, SOURCES_10763[from]));
+      const store = await new IfcParser().parseColumnar(toArrayBuffer(readFileSync(source)), { disableWorkerScan: true });
+      const output = join(directory, `${from}-to-${to}.ifc`);
+      writeFileSync(output, new TextDecoder().decode(new StepExporter(store).export({ schema: to }).content));
+      files.push(source, output);
+    }
+    runValidateOrThrow(files);
+  }, IFCOPENSHELL_TEST_TIMEOUT_MS);
+});

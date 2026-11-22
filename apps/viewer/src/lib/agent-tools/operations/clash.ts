@@ -5,6 +5,7 @@
 import type { JSONSchemaType } from 'ajv';
 import type { ClashRule } from '@ifc-lite/sdk';
 import { operation } from './contract';
+import { invalidInput, stale, unavailable } from './refusals';
 
 interface ClashInput {
   rules: Array<{ id: string; name: string; a: string; b: string; mode: 'hard' | 'clearance'; tolerance: number; clearance: number }>;
@@ -31,14 +32,14 @@ export const clashOperations = [operation<ClashInput>({
   // Released CPU geometry (#10264) is read back first; resident geometry is unchanged.
   const { withReleasedExportGeometry } = await import('@/utils/instancedExport');
   const gathered = await withReleasedExportGeometry((context) => gatherClashElements(new Set([c.model.id]), context), [c.model.id]);
-  if (!gathered.elements.length) throw new Error('No native mesh geometry is loaded for this model.');
+  if (!gathered.elements.length) throw unavailable('No native mesh geometry is loaded for this model.');
   const rules: ClashRule[] = input.rules;
-  if (new Set(rules.map(rule => rule.id)).size !== rules.length) throw new Error('Clash rule IDs must be unique.');
+  if (new Set(rules.map(rule => rule.id)).size !== rules.length) throw invalidInput('invalid-value', 'Clash rule IDs must be unique.');
   const result = await c.model.bim.clash.run(gathered.elements, rules, { signal: c.signal, exclusions: gathered.exclusions, onProgress: progress => c.progress?.({ phase: progress.phase, done: progress.done, total: progress.total }) });
   c.checkpoint?.();
   const state = useViewerStore.getState();
   if (!federationIsCurrent(gathered.federationIdentity, state.models) || !jobPlacementIsCurrent(gathered.federationIdentity, state)) {
-    throw new Error('Geometry or placement changed during clash analysis. Discarded result.');
+    throw stale('Geometry or placement changed during clash analysis. Discarded result.');
   }
   return { result, groups: c.model.bim.clash.group(result), model_id: c.model.id };
 })];

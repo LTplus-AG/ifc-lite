@@ -56,6 +56,7 @@ export interface IdsStudioSlice {
   idsStudioState: StudioState | null;
   /** Bumps on every document change, undo and redo included. */
   idsStudioRevision: number;
+  idsStudioDraftId: string | null;
   idsStudioSelection: Uuid | null;
   /** Schema tables for the gate and lint; `null` while loading. */
   idsStudioContexts: StudioContexts | null;
@@ -65,7 +66,7 @@ export interface IdsStudioSlice {
   idsStudioFixPreview: IdsStudioFixPreview | null;
 
   /** Throws when the authoring runtime is not installed yet (see `loadIdsStudioRuntime`). */
-  idsStudioOpen: (doc: StudioDocument) => void;
+  idsStudioOpen: (doc: StudioDocument, draftId?: string) => void;
   idsStudioClose: () => void;
   /** Gate + commit as one undo step. Refused batches change nothing. */
   idsStudioDispatch: (ops: readonly StudioOp[], info?: StudioDispatchInfo) => IdsStudioDispatchOutcome;
@@ -116,15 +117,18 @@ export const createIdsStudioSlice: StateCreator<IdsStudioSlice, [], [], IdsStudi
     idsStudioRuntime: null,
     idsStudioState: null,
     idsStudioRevision: 0,
+    idsStudioDraftId: null,
     idsStudioSelection: null,
     idsStudioContexts: null,
     idsStudioRejection: null,
     idsStudioView: 'inspector',
     idsStudioFixPreview: null,
 
-    idsStudioOpen: (doc) => {
+    idsStudioOpen: (doc, draftId) => {
+      const rt = runtime();
       set({
-        idsStudioState: runtime().createStudioState(doc),
+        idsStudioState: rt.createStudioState(doc),
+        idsStudioDraftId: draftId ?? rt.uuidv7(),
         idsStudioRevision: get().idsStudioRevision + 1,
         idsStudioSelection: null,
         idsStudioRejection: null,
@@ -132,7 +136,7 @@ export const createIdsStudioSlice: StateCreator<IdsStudioSlice, [], [], IdsStudi
       });
     },
     idsStudioClose: () => {
-      set({ idsStudioState: null, idsStudioRevision: get().idsStudioRevision + 1, idsStudioSelection: null,
+      set({ idsStudioState: null, idsStudioDraftId: null, idsStudioRevision: get().idsStudioRevision + 1, idsStudioSelection: null,
         idsStudioRejection: null, idsStudioFixPreview: null });
     },
     idsStudioDispatch: (ops, info) => {

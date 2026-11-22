@@ -4,10 +4,11 @@
 
 /**
  * One-shot handoff from a finished-scene snapshot to Scene sync. Adopted batches
- * were captured from the geometry this effect queued: filtered by type
- * visibility, wrapped by federation. So the effect hydrates them with what it
- * receives, and a filter that changed since shows up as a mismatch, which falls
- * back to an ordinary upload.
+ * were captured from the geometry this effect queued: every mesh, wrapped by
+ * federation (type visibility hides ids on the GPU and no longer chooses
+ * pieces, #10264). So the effect hydrates them with what it receives, and
+ * geometry that changed since shows up as a mismatch, which falls back to an
+ * ordinary upload.
  */
 
 import { NOOP_LOAD_TRACE, perfCounters, type LoadTrace } from '@ifc-lite/load-trace';
@@ -28,13 +29,14 @@ let finalFitBounds: Bounds | null = null;
 let modelArrivalPending = false;
 
 /**
- * What a snapshot's bytes depend on: the renderer's policy, and the type filter
- * that chose its pieces. A hit under another filter streams and replaces the
- * snapshot, so a changed setting costs one ordinary open.
+ * What a snapshot's bytes depend on: the renderer's policy. Its batches hold
+ * every mesh, so type visibility, the Model/Types switch and the structural
+ * mode apply after adoption like any toggle (#10264). The suffix keeps entries
+ * written before that, whose pieces a type filter chose, from matching: they
+ * stream once and are replaced.
  */
-export function sceneSnapshotKey(policy: string, typeViewMode: string, typeVisibility: object, structuralViewMode = 'both'): string {
-  const key = `${policy}~${typeViewMode}~${JSON.stringify(typeVisibility)}`;
-  return structuralViewMode === 'both' ? key : `${key}~${structuralViewMode}`;
+export function sceneSnapshotKey(policy: string): string {
+  return `${policy}~all-meshes`;
 }
 
 /** The box the camera last framed for a load. Not readable back: the camera keeps only the pose it produced. */

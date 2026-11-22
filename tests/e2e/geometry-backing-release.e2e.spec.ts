@@ -265,12 +265,13 @@ for (const fixture of FIXTURES) {
     for (let i = 0; i < before.length; i++) {
       const a = before[i], b = after[i];
       expect(b.expressId, `probe ${i} entity (${JSON.stringify({ a, b })})`).toBe(a.expressId);
-      if (a.expressId === null) continue;
-      expect(b.outcome, `probe ${i} came from readback`).toBe('fed');
-      for (let k = 0; k < 3; k++) expect(Math.abs(b.point![k] - a.point![k]), `probe ${i} hit`).toBeLessThan(1e-6);
+      // Snap on every row, entity or not (a snap can come without a mesh hit, r4649782013).
       expect(b.snap === null, `probe ${i} snaps after release exactly when it snapped before`).toBe(a.snap === null);
       expect(b.snap?.type, `probe ${i} snap kind`).toBe(a.snap?.type);
       if (a.snap) for (let k = 0; k < 3; k++) expect(Math.abs(b.snap!.position[k] - a.snap.position[k]), `probe ${i} snap`).toBeLessThan(1e-6);
+      if (a.expressId === null) continue;
+      expect(b.outcome, `probe ${i} came from readback`).toBe('fed');
+      for (let k = 0; k < 3; k++) expect(Math.abs(b.point![k] - a.point![k]), `probe ${i} hit`).toBeLessThan(1e-6);
     }
     // A content-version reload after release (realign, rebase, collab): the scene rebuilds from the
     // store list, whose released members are replayed from the backing in bounded batches.

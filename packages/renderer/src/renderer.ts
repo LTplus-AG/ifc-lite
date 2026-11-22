@@ -541,6 +541,7 @@ export class Renderer {
         this.pickingManager.setAnnotationPickProvider((x, y, width, height, options, clip) =>
             this.overlays.annotationPicker.pick(this.camera, x, y, width, height, options, clip));
         this.raycastEngine = new RaycastEngine(this.camera, this.scene, this.canvas);
+        this.raycastEngine.viewStampExtra = () => String(this._pickClipRevision.revision); // a section change exposes other surfaces
     }
 
     /**
@@ -3040,6 +3041,8 @@ export class Renderer {
     readbackRaycastCovers(x: number, y: number): boolean {
         return this.raycastEngine.readbackCovers(x, y);
     }
+    /** The view readback coverage is stamped with: capture it before the pick, install only while it is unchanged. */
+    readbackRaycastViewKey(): string { return this.raycastEngine.readbackViewKey(); }
 
     /**
      * Raycast with magnetic edge snapping: the "stick and slide along edges" experience.

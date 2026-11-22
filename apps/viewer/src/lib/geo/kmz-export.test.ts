@@ -283,6 +283,29 @@ describe('buildKmzForResolvedGeoref — the model is not the flat mesh list', ()
   });
 });
 
+describe('buildKmzForResolvedGeoref with release off (#10887)', () => {
+  afterEach(() => setGlobalRendererRef({ current: null } as RefObject<Renderer | null>));
+  it('r4653239436 a range naming a model the store does not know exports its resident geometry, never a readback refusal', async () => {
+    const tri = { expressId: 7, positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), normals: new Float32Array(9),
+      indices: new Uint32Array([0, 1, 2]), color: [1, 1, 1, 1] } as unknown as MeshData;
+    const scene = { getAllInstancedMeshData: () => [] as MeshData[], getInstancedEntityCount: () => 0, isGeometryDataReleased: () => false };
+    setGlobalRendererRef({ current: { getScene: () => scene } as unknown as Renderer } as RefObject<Renderer | null>);
+    const seen: MeshData[][] = [];
+    const gp: KmzProcessor = { async init() {}, exportKmzFromMeshes(meshes) { seen.push(meshes as MeshData[]); return new Uint8Array([0x50, 0x4b]); }, dispose() {} };
+    const out = await buildKmzForResolvedGeoref({
+      conversion: { id: 1, sourceCRS: 0, targetCRS: 0, eastings: 311_988.181, northings: 5_996_148.565, orthogonalHeight: 0,
+        xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 1 },
+      crs: { id: 2, name: 'EPSG:25833', mapUnitScale: 1 } as ProjectedCRS,
+      coordinateInfo: undefined, lengthUnitScale: 1,
+      geometryResult: { meshes: [tri] } as GeometryResult,
+      instancedModelRange: { modelId: 'not-in-store', idOffset: 0, maxExpressId: 100 },
+      name: 'IFC Model',
+    }, () => gp);
+    assert.ok(out instanceof Uint8Array, 'the resident export is produced, as before this layer');
+    assert.deepStrictEqual(seen[0].map((m) => m.expressId), [7]);
+  });
+});
+
 describe('resolveKmzAltitude (#9480)', () => {
   it('writes the site height the World view uses for a unit-slipped site', () => {
     // Millimetre file, site at the UTM anchor's metre numbers, Z 14 read as 0.014 m.

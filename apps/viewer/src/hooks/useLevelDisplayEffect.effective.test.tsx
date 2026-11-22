@@ -11,7 +11,7 @@ import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { currentLevelYForModels, placeNewMeshesAtCurrentLevel } from '@/lib/level-arrival';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
-import { cleanup, render } from '@/test/render';
+import { cleanup, render, settle } from '@/test/render';
 import {
   FIXTURE_REL_CONTAINED_2,
   FIXTURE_BUILDING,
@@ -86,6 +86,7 @@ describe('Exploded level display with spatial edits (#5249)', () => {
       appliedEntityLevelOffsets: new Map(),
       pendingMeshTranslations: null,
     });
+    await settle();
     render(<LevelEffect />);
     const initial = useViewerStore.getState().pendingMeshTranslations;
     assert.deepEqual(initial?.get(OFFSET + FIXTURE_WALL_B), [0, 2, 0]);
@@ -97,6 +98,7 @@ describe('Exploded level display with spatial edits (#5249)', () => {
       view.setAttribute(FIXTURE_REL_CONTAINED_2, 'RelatingStructure', `#${FIXTURE_STOREY_1}`);
       useViewerStore.setState({ mutationVersion: 1 });
     });
+    await settle();
     const moved = useViewerStore.getState();
     assert.deepEqual(moved.pendingMeshTranslations?.get(OFFSET + FIXTURE_WALL_B), [0, -2, 0]);
     assert.deepEqual(moved.pendingMeshTranslations?.get(OFFSET + FIXTURE_WALL_C), [0, -2, 0]);
@@ -108,6 +110,7 @@ describe('Exploded level display with spatial edits (#5249)', () => {
       view.setAttribute(FIXTURE_REL_CONTAINED_2, 'RelatingStructure', `#${FIXTURE_STOREY_2}`);
       useViewerStore.setState({ mutationVersion: 2 });
     });
+    await settle();
     assert.deepEqual(useViewerStore.getState().pendingMeshTranslations?.get(OFFSET + FIXTURE_WALL_B), [0, 2, 0]);
 
     act(() => {
@@ -115,6 +118,7 @@ describe('Exploded level display with spatial edits (#5249)', () => {
       view.setAttribute(FIXTURE_STOREY_2, 'Elevation', '8');
       useViewerStore.setState({ mutationVersion: 3 });
     });
+    await settle();
     assert.deepEqual(useViewerStore.getState().pendingMeshTranslations?.get(OFFSET + FIXTURE_WALL_B), [0, -5, 0],
       'the edited elevation changes the live level offset');
   });
@@ -149,6 +153,7 @@ describe('Exploded level display with spatial edits (#5249)', () => {
       appliedEntityLevelOffsets: new Map(),
       pendingMeshTranslations: null,
     });
+    await settle();
     render(<LevelEffect />);
     assert.deepEqual(useViewerStore.getState().pendingMeshTranslations?.get(OFFSET + wall.expressId), [0, 4, 0]);
     assert.deepEqual(useViewerStore.getState().pendingMeshTranslations?.get(OFFSET + space.expressId), [0, 4, 0]);
@@ -158,6 +163,7 @@ describe('Exploded level display with spatial edits (#5249)', () => {
       view.deleteEntity(storey.expressId);
       useViewerStore.setState({ mutationVersion: 2 });
     });
+    await settle();
     assert.deepEqual(useViewerStore.getState().pendingMeshTranslations?.get(OFFSET + wall.expressId), [0, -4, 0]);
     assert.deepEqual(useViewerStore.getState().pendingMeshTranslations?.get(OFFSET + space.expressId), [0, -4, 0]);
   });
@@ -172,6 +178,7 @@ describe('Exploded level display with spatial edits (#5249)', () => {
       appliedStoreyOffsets: new Map(), appliedEntityLevelOffsets: new Map(),
       pendingMeshTranslations: null,
     });
+    await settle();
     render(<LevelEffect />);
     assert.equal(useViewerStore.getState().pendingMeshTranslations, null);
     assert.equal(useViewerStore.getState().appliedEntityLevelOffsets.size, 0);
@@ -198,6 +205,7 @@ describe('Exploded level display with spatial edits (#5249)', () => {
       appliedStoreyOffsets: new Map(), appliedEntityLevelOffsets: new Map(),
       pendingMeshTranslations: null,
     });
+    await settle();
     render(<LevelEffect onGeometryUpdate={onGeometryUpdate} />);
     assert.deepEqual(useViewerStore.getState().pendingMeshTranslations?.get(OFFSET + FIXTURE_WALL_B), [0, 2, 0]);
     const originalArrivalCount = arrivals.length;

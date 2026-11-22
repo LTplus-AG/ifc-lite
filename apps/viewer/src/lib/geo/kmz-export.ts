@@ -219,7 +219,7 @@ export async function buildKmzForResolvedGeoref(
   // Released CPU geometry (#10264) is read back first; resident geometry is unchanged.
   const meshes = await withReleasedExportGeometry((context) =>
     withInstancedMeshes(input.geometryResult, input.instancedModelRange, context).meshes as MeshData[],
-  input.instancedModelRange?.modelId ? [input.instancedModelRange.modelId] : undefined);
+  input.instancedModelRange?.modelId ? [input.instancedModelRange.modelId] : undefined, input.geometryResult);
   if (!meshes.length) return 'no-geometry';
   const { conversion, crs, coordinateInfo, lengthUnitScale } = input;
   const latLon = await reprojectToLatLon(conversion, crs, coordinateInfo, lengthUnitScale);

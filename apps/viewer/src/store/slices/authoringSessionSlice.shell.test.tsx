@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, render, settle } from '@/test/render.js';
 import { MODEL_ID, seedModelingSession } from '@/test/modeling-session-fixture';
 import '@/lib/commands/modeling/builtin';
 import { commandPointerDown, commandPointerMove } from '@/lib/commands/modeling/runtime';
@@ -36,6 +36,7 @@ beforeEach(async () => {
   localStorage.clear();
   useViewerStore.setState({ editEnabled: false, selectedEntityId: null, ...formFactorState(false) });
   useViewerStore.getState().showWorkspacePanel('changes');
+  await settle();
 });
 afterEach(() => {
   cleanup();
@@ -132,7 +133,7 @@ describe('Model workspace scene layer (#6232 M2.1)', () => {
     assert.equal(container.querySelector('[data-snap-kind="workplane"]'), null, 'leaving also clears the crosshair');
   });
 
-  it('the onboarding hint shows in Select until the first edit, then never again', () => {
+  it('the onboarding hint shows in Select until the first edit, then never again', async () => {
     render(<><ViewportHud /><ToolOverlays /></>);
     const hint = () => document.querySelector('[data-model-onboarding-hint]');
     act(() => { useViewerStore.getState().enterModelWorkspace(); });
@@ -143,6 +144,7 @@ describe('Model workspace scene layer (#6232 M2.1)', () => {
       commandPointerMove(at(4, 0)); commandPointerDown(at(4, 0));
     });
     act(() => { useViewerStore.getState().setActiveTool('select'); });
+    await settle();
     assert.equal(hint(), null, 'retired by the first wall');
     assert.equal(localStorage.getItem('ifc-lite:model-hint-seen'), '1');
   });

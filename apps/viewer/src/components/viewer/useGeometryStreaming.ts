@@ -33,7 +33,7 @@ import { useColorOverlaySync } from './useColorOverlaySync.js';
 import { useMeshEditDrain } from './useMeshEditDrain.js';
 import { invalidateLandXmlGpuOwnershipAfterSceneClear, takeLandXmlGpuUploaded } from '../../hooks/ingest/landXmlGpuOwnership.js';
 import { adoptedSceneOutlivesEmptyGeometry, noteFinalFitBounds, takeSceneSnapshotGeometry, takeSnapshotModelArrival } from './sceneSnapshotOwnership.js';
-import { computeBounds, type Bounds } from './streamingBounds.js';
+import { computeBounds, withoutIds, type Bounds } from './streamingBounds.js';
 import { activeLoadTrace, tracePhaseOnce } from '@/lib/perf/activeLoadTrace';
 
 let linearFitHintShown = false;
@@ -78,7 +78,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
     gpuRecoveryEpoch = 0,
     geometry,
     geometryVersion,
-    geometryReplacementVersion = 0,
+    geometryReplacementVersion = 0, fitExcludedIds,
     appearanceSourceGeometry,
     geometryContentVersion,
     coordinateInfo,
@@ -112,6 +112,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
   const lastReplacementVersionRef = useRef(geometryReplacementVersion);
   const cameraFittedRef = useRef(false);
   const robustFitAccRef = useRef(createRobustFitBoundsAccumulator());
+  const fitExcludedIdsRef = useRef(fitExcludedIds); fitExcludedIdsRef.current = fitExcludedIds; // read at finalize
   const finalBoundsRefittedRef = useRef(false);
   const cameraSnapshotRef = useRef<{ px: number; py: number; pz: number; tx: number; ty: number; tz: number } | null>(null);
   // Tracks which fit branch the post-load auto-fit took. Linear models get a
@@ -458,7 +459,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       // tail, leaving the shiftedBounds / computeBounds paths below untouched.
       // `sceneBoundsFull` is the FULL AABB and is what feeds setSceneBounds —
       // near/far clipping + section ranges must still cover the far meshes.
-      const rbEarly = geometry.length > 0 ? robustFitAccRef.current.update(geometry, { streaming: isStreaming }) : null;
+      const rbEarly = geometry.length > 0 ? robustFitAccRef.current.update(geometry, { streaming: isStreaming, excludedIds: fitExcludedIds }) : null;
       const robustEarly = rbEarly?.robust ?? null;
       let sceneBoundsFull: Bounds | null = null;
       if (robustEarly) {
@@ -491,7 +492,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
         }
       }
       if (!fitted && geometry.length > 0 && !isStreaming) {
-        const bounds = computeBounds(geometry);
+        const bounds = computeBounds(withoutIds(geometry, fitExcludedIds)) ?? computeBounds(geometry);
         if (bounds) {
           const canvas = renderer.getCanvas();
           const canvasShort = Math.min(canvas?.clientHeight ?? 0, canvas?.clientWidth ?? 0); // CSS px (#5383)
@@ -500,7 +501,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
             { viewportShortPx: canvasShort > 0 ? canvasShort : undefined },
           );
           geometryBoundsRef.current = bounds;
-          sceneBoundsFull = bounds;
+          sceneBoundsFull = fitExcludedIds?.size ? computeBounds(geometry) ?? bounds : bounds; // clipping covers type-hidden meshes too
           lastFitPolicyKindRef.current = policy.kind;
           fitted = true;
         }
@@ -582,7 +583,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
             && !appearanceSourceGeometry?.length) fitInstanceOnlyBounds({ renderer: r,
             cameraFittedRef, cameraSnapshotRef, geometryBoundsRef, finalBoundsRefittedRef,
             lastFitPolicyKindRef, complete: true });
-          refitCompletedStreamBounds({ renderer: r, geometryKernel, capturedGeometry, cameraFittedRef,
+          refitCompletedStreamBounds({ renderer: r, geometryKernel, capturedGeometry, fitExcludedIds: fitExcludedIdsRef.current, cameraFittedRef,
             finalBoundsRefittedRef, robustFitAccRef, cameraSnapshotRef,
             lastFitPolicyKindRef, geometryBoundsRef, trace,
             notifyLinearFit: () => {

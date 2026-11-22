@@ -18,7 +18,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, render, settle } from '@/test/render.js';
 import { registerLocale, setLocale, type Catalogue } from '@/i18n';
 import type { splitToolEn as SplitToolEnType } from '@/i18n/catalogues/split-tool.en';
 import { useViewerStore } from '@/store';
@@ -95,6 +95,7 @@ async function aim(): Promise<void> {
   act(() => s.startCommand('element.split'));
   const plane = (getCommandRuntime().gesture as SplitGesture).plane!;
   act(() => commandPointerMove({ local: [1.5, 0], render: plane.localToRender([1.5, 0, 0]), winner: null, guides: [], locked: false }));
+  await settle();
 }
 
 beforeEach(() => {

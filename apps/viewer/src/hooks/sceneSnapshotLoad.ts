@@ -16,7 +16,7 @@ import type { LoadTrace } from '@ifc-lite/load-trace';
 import type { StoreApi } from 'zustand';
 import { useViewerStore } from '../store/index.js';
 import { noteInstancedShardModel } from '../store/instancedShardModels.js';
-import { announceAdoptedInstancedShards, completeInstancedShardSupply, enqueueInstancedShards, instancedShardSupplyCurrent, instancedShardSupplyToken } from '../store/instancedShardQueue.js';
+import { announceAdoptedInstancedShards, completeInstancedShardSupply, enqueueInstancedShards, instancedShardModelEpoch, instancedShardSupplyCurrent, instancedShardSupplyToken } from '../store/instancedShardQueue.js';
 import { fitCameraToSnapshot, lastFinalFitBounds, sceneSnapshotKey, type SnapshotCameraFit, setPendingColdCapture, setPendingSceneSnapshot, withdrawPendingColdCapture, withdrawPendingSceneSnapshot } from '../components/viewer/sceneSnapshotOwnership.js';
 import { readPerfFlag } from '../lib/perf/flags.js';
 import { tapSceneSnapshot } from '../lib/perf/sceneIdentityTap.js';
@@ -24,12 +24,15 @@ import { recordFirstVisible } from '../lib/perf/loadTrace.js';
 import { clearSceneSnapshot, type CacheResult } from '../services/cacheService.js';
 import { isQuantizedEnabled } from '../utils/quantizedConfig.js';
 import { getGlobalRenderer } from './useBCF.js';
+import { clearSnapshotTypeIndex, installSnapshotTypeIndex } from '../components/viewer/snapshot-type-index.js';
 import type { DecodedCacheMetadata } from './ifcCacheDecode.js';
 import type { CapturedScene, SnapshotEntry } from './sceneSnapshotWrite.js';
 
 /** What the viewer stores beside the batches (sceneSnapshotWrite.ts): the fit they were finalized under, and where the shards are. */
 interface SnapshotHostData extends SnapshotCameraFit {
   shards: { offset: number; size: number } | null;
+  /** The captured meshes' type index (`TypeHiddenIndex.metadataOf`); entries without one are not adopted. */
+  typeIndex?: unknown;
 }
 
 export interface AdoptedSceneSnapshot {
@@ -40,6 +43,8 @@ export interface AdoptedSceneSnapshot {
   /** Every shard reached the scene; a failed upload means nothing may attest the set (#10264). */
   shardsUploaded: boolean;
   fit: SnapshotCameraFit;
+  /** This load's snapshot type index (snapshot-type-index.ts), cleared once its meshes are published. */
+  typeToken: object;
   firstVisible: Promise<void>;
 }
 
@@ -50,8 +55,7 @@ function snapshotsEnabled(): boolean {
 }
 
 function snapshotKey(scene: SceneContents): string {
-  const { typeVisibility, typeViewMode, structuralViewMode } = useViewerStore.getState();
-  return sceneSnapshotKey(scene.sceneSnapshotPolicy(), typeViewMode, typeVisibility, structuralViewMode);
+  return sceneSnapshotKey(scene.sceneSnapshotPolicy());
 }
 
 /** Level display moves pieces at arrival, so the batches would not be the cached geometry. */
@@ -140,13 +144,17 @@ export async function adoptCachedSceneSnapshot(
   const bytes = await trace.span('cache.snapshotRead', () => sceneSnapshot.arrayBuffer());
   const snapshot = decodeSceneSnapshot(bytes);
   const host = snapshot?.hostData as SnapshotHostData | undefined;
-  if (!snapshot || !host?.fitBounds || !host.sceneBounds || isStale?.()) return null;
+  // A snapshot without its type index would draw hidden classes until the meshes decode: stream instead.
+  if (!snapshot || !host?.fitBounds || !host.sceneBounds || !host.typeIndex || isStale?.()) return null;
   const shards = await readSnapshotShards(entry, host.shards);
-  // The last await: a reset or discard of the model since adoption began supersedes the snapshot itself,
+  // The last awaits: a reset or discard of the model since adoption began supersedes the snapshot itself,
   // whatever the optional isStale says. Nothing is adopted or uploaded; the hit streams instead.
   if (isStale?.() || !instancedShardSupplyCurrent(modelId, supply)) return null;
+  // The viewport hides the stored type index's ids under the current toggles before the first frame.
+  const typeToken = {};
+  if (!(await installSnapshotTypeIndex(typeToken, host.typeIndex)) || isStale?.() || !instancedShardSupplyCurrent(modelId, supply)) return failClosed(typeToken);
   const adoption = trace.span('scene.snapshotAdopt', () => scene.adoptSceneSnapshot(snapshot, device, pipeline), { batches: snapshot.batches.length });
-  if (!adoption) return null;
+  if (!adoption) return failClosed(typeToken);
   trace.milestone('scene.snapshotAdopted');
   tapSceneSnapshot('adopted', snapshot);
   const shardsUploaded = uploadSnapshotShards(scene, device, modelId, shards);
@@ -155,7 +163,12 @@ export async function adoptCachedSceneSnapshot(
   fitCameraToSnapshot(renderer, host);
   renderer.clearCaches();
   renderer.requestRender();
-  return { adoption, shards, supply, shardsUploaded, fit: host, firstVisible: recordFirstVisible(trace, trace.milestone('geometry.firstAppend')) };
+  return { adoption, shards, supply, shardsUploaded, fit: host, typeToken, firstVisible: recordFirstVisible(trace, trace.milestone('geometry.firstAppend')) };
+}
+
+function failClosed(typeToken: object): null {
+  clearSnapshotTypeIndex(typeToken);
+  return null;
 }
 
 /**
@@ -176,7 +189,11 @@ export async function publishAdoptedSceneMeshes(
 ): Promise<MeshData[] | null> {
   const shardGeneration = adopted.supply; // captured when adoption began: a reset or discard since supersedes the requeue below
   const chunks = await Promise.all(open.chunks.map((_, i) => trace.span('cache.chunkDecode', () => open.readChunk(i), { chunk: i })));
-  if (isStale?.() || !instancedShardSupplyCurrent(modelId, shardGeneration)) return null;
+  // Superseded by a discard of THIS model only; a full clear (#9628) keeps the hit live, and its shards are refused by the token below.
+  if (isStale?.() || instancedShardModelEpoch(modelId) !== shardGeneration.epoch) {
+    clearSnapshotTypeIndex(adopted.typeToken);
+    return null;
+  }
   const meshes = chunks.flat();
   setPendingSceneSnapshot(adopted.adoption, () => {
     enqueueInstancedShards(modelId, adopted.shards, shardGeneration);
@@ -184,6 +201,8 @@ export async function publishAdoptedSceneMeshes(
     forgetRefusedSnapshot(cacheResult, cacheKey);
   }, adopted.fit, trace, () => attestAdoptedShards(modelId, adopted, shardGeneration));
   append(modelId, meshes, open.coordinateInfo);
+  // The published meshes carry the same ids; the stored index stops answering in the same render.
+  clearSnapshotTypeIndex(adopted.typeToken);
   return meshes;
 }
 
@@ -198,6 +217,7 @@ function forgetRefusedSnapshot({ createdAt, fullSourceHash }: CacheResult, cache
 /** The load is over without serving its snapshot: the adopted batches must not outlive it. */
 export function abandonAdoptedSceneSnapshot(adopted: AdoptedSceneSnapshot | null): void {
   if (!adopted) return;
+  clearSnapshotTypeIndex(adopted.typeToken);
   withdrawPendingSceneSnapshot(adopted.adoption);
   getGlobalRenderer()?.getScene().abandonSceneSnapshot(adopted.adoption);
 }

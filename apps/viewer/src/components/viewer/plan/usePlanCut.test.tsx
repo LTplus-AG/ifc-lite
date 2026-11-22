@@ -20,7 +20,7 @@ import { ensureRoomWasm } from '@/test/room-walls-fixture';
 import { setElementSize } from '@/store/slices/mutation-element-size';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, render, settle as settleEdit } from '@/test/render.js';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import '@/lib/commands/modeling/builtin';
 import { resolveWorkplane } from '@/lib/commands/modeling/registry';
@@ -207,6 +207,7 @@ describe('usePlanCutDrawing', () => {
     // Another floor: the old cut must go at once, not after the debounce.
     floor = 10;
     act(() => useViewerStore.setState((s) => ({ mutationVersion: s.mutationVersion + 1 })));
+    await settleEdit();
     assert.equal(seen.length, 0, 'the previous floor is not drawn under the new one');
   });
 });

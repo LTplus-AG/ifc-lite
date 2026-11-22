@@ -9,7 +9,7 @@ import { Renderer } from '@ifc-lite/renderer';
 import { useModelPlacementSync } from '../useModelPlacementSync';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { act } from 'react';
-import { render, cleanup, click, type, press } from '@/test/render';
+import { render, cleanup, click, type, press, settle } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useViewerStore } from '@/store';
@@ -173,7 +173,7 @@ describe('model repositioning user interactions (#4226)', () => {
     assert.deepEqual(displayedTranslation(useViewerStore.getState().modelPlacement, 'scan'), [5, 0, 0]);
   });
 
-  it('branches shared redo history when an authoring edit follows an undone move, and vice versa', () => {
+  it('branches shared redo history when an authoring edit follows an undone move, and vice versa', async () => {
     const view = new MutablePropertyView(null, 'ifc');
     act(() => {
       useViewerStore.setState({ undoStacks: new Map(), redoStacks: new Map(), mutationViews: new Map([['ifc', view]]) });
@@ -185,6 +185,7 @@ describe('model repositioning user interactions (#4226)', () => {
     act(() => { useViewerStore.getState().setAttribute('ifc', 1, 'Name', 'Renamed'); });
     assert.equal(useViewerStore.getState().modelPlacement.redo.length, 0, 'new authoring edit discards the abandoned move branch');
     act(() => useViewerStore.getState().undo('ifc'));
+    await settle();
     type(input(ui, 'Delta X'), '7'); click(button(ui, 'Preview values')); click(button(ui, 'Apply'));
     assert.equal(useViewerStore.getState().redoStacks.size, 0, 'new move discards the abandoned authoring branch');
     click(button(ui, 'Undo placement')); click(button(ui, 'Redo placement'));
@@ -284,12 +285,13 @@ describe('model repositioning user interactions (#4226)', () => {
     });
   }
 
-  for (const locked of [false, true]) it(`closes a removed moving model and can reposition a survivor (locked=${locked})`, () => {
+  for (const locked of [false, true]) it(`closes a removed moving model and can reposition a survivor (locked=${locked})`, async () => {
     act(() => useViewerStore.getState().openReposition(['scan']));
     const ui = render(<><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot><LocalTab /></>);
     type(input(ui, 'Delta X'), '5'); click(button(ui, 'Preview values'));
     if (locked) click(button(ui, 'Lock scan'));
     act(() => useViewerStore.getState().removeModel('scan'));
+    await settle();
     assert.equal(ui.querySelector('[aria-label="Reposition models"]'), null);
     act(() => useViewerStore.getState().openReposition(['ifc']));
     type(input(ui, 'Delta X'), '2'); click(button(ui, 'Preview values')); click(button(ui, 'Apply'));

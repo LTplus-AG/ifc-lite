@@ -82,6 +82,11 @@ export async function ingestDxfFile(file: File, options: DxfIngestOptions = {}):
     return null;
   }
 
+  return ingestDxfText(text, file.name, capturedOptions);
+}
+
+/** Parse and register an already-read DXF using the same native ingestion path. */
+export function ingestDxfText(text: string, filename: string, capturedOptions: DxfIngestOptions = {}): string | null {
   let underlay: ReturnType<typeof importDxf>;
   try {
     if (capturedOptions.referenceFrame || capturedOptions.units) {
@@ -90,19 +95,19 @@ export async function ingestDxfFile(file: File, options: DxfIngestOptions = {}):
       // The converter owns their scales. Validate the declaration, not warnings.
       const knownUnits = Number.isInteger(document.insunits) && document.insunits >= 1 && document.insunits <= 24;
       if (capturedOptions.referenceFrame && !capturedOptions.units && !knownUnits) {
-        toast.error(resolve('drawingUnderlay.dxf.explicitUnitsRequired', { name: file.name }));
+        toast.error(resolve('drawingUnderlay.dxf.explicitUnitsRequired', { name: filename }));
         return null;
       }
-      underlay = convertDxfToUnderlay(document, file.name, capturedOptions.units
+      underlay = convertDxfToUnderlay(document, filename, capturedOptions.units
         ? { metersPerUnit: METERS_PER_UNIT[capturedOptions.units] } : undefined);
     } else {
       // Preserve survey/site-plan auto-unit conversion and its legacy heuristic.
-      underlay = importDxf(text, file.name);
+      underlay = importDxf(text, filename);
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`[dxfIngest] parsing "${file.name}" failed:`, err);
-    toast.error(`DXF import failed for "${file.name}": ${message}`);
+    console.error(`[dxfIngest] parsing "${filename}" failed:`, err);
+    toast.error(`DXF import failed for "${filename}": ${message}`);
     return null;
   }
 
@@ -111,12 +116,12 @@ export async function ingestDxfFile(file: File, options: DxfIngestOptions = {}):
     count += layer.paths.length + layer.fills.length + layer.texts.length;
   }
   if (count === 0) {
-    console.warn(`[dxfIngest] "${file.name}" contained no drawable 2D entities`, underlay.skipped, underlay.warnings);
-    toast.error(`"${file.name}" contains no drawable 2D entities.`);
+    console.warn(`[dxfIngest] "${filename}" contained no drawable 2D entities`, underlay.skipped, underlay.warnings);
+    toast.error(`"${filename}" contains no drawable 2D entities.`);
     return null;
   }
   if (underlay.warnings.length > 0) {
-    console.warn(`[dxfIngest] "${file.name}" import warnings:`, underlay.warnings);
+    console.warn(`[dxfIngest] "${filename}" import warnings:`, underlay.warnings);
   }
 
   const store = useViewerStore.getState();
@@ -169,11 +174,11 @@ export async function ingestDxfFile(file: File, options: DxfIngestOptions = {}):
     // drawing panel, so open it (the user still picks/moves the section).
     store.openPanelInHome('drawing', 'programmatic');
     toast.success(
-      `"${file.name}" imported as reference layer: ${count} elements on ${layerCount} layer${layerCount === 1 ? '' : 's'}${unitsNote}${georefNote}.`,
+      `"${filename}" imported as reference layer: ${count} elements on ${layerCount} layer${layerCount === 1 ? '' : 's'}${unitsNote}${georefNote}.`,
     );
   } else {
     toast.success(
-      `"${file.name}" imported as reference layer${unitsNote}. Load a model and open the 2D section view to see it.`,
+      `"${filename}" imported as reference layer${unitsNote}. Load a model and open the 2D section view to see it.`,
     );
   }
   return id;

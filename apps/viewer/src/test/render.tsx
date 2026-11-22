@@ -149,6 +149,38 @@ export async function advance(ms: number): Promise<void> {
   });
 }
 
+/** Captured at load: `settle()`'s frame wait stays bounded under mocked timers (its settled wait uses the test's). */
+const realSetTimeout = globalThis.setTimeout;
+const realClearTimeout = globalThis.clearTimeout;
+
+/**
+ * Let an edit reach the panels (#10535). While an edit is in flight, components
+ * outside the viewport read the state from before it; the store publishes the
+ * edit two frames after its geometry has drained, or at the settle cap. Call
+ * this after a store edit and before asserting on what a panel shows. Where
+ * the store has no settled view (main before #10535), the frames are all.
+ */
+export async function settle(): Promise<void> {
+  await act(async () => {
+    // The store queues its frames from a microtask; queue ours after them.
+    await Promise.resolve();
+    await Promise.resolve();
+    await new Promise<void>((resolve, reject) => {
+      // The deadline uses the real timers, so mocked ones cannot hang it.
+      const limit = realSetTimeout(() => reject(new Error('settle: no animation frame ran within 5 s; with frames run by hand, step them or use waitFor')), 5000);
+      requestAnimationFrame(() => requestAnimationFrame(() => realSetTimeout(() => { realClearTimeout(limit); resolve(); }, 0)));
+    });
+  });
+  // Imported here, not at the top, so plain render() users do not load the store.
+  type LiveApi = ReturnType<typeof import('@/store')['getViewerStoreApi']>;
+  const store: typeof import('@/store') & { settledStoreOf?: (live: LiveApi) => { getState(): unknown } } =
+    await import('@/store');
+  if (!store.settledStoreOf) return;
+  const live = store.getViewerStoreApi();
+  const settled = store.settledStoreOf(live);
+  await waitFor(() => settled.getState() === live.getState(), 'the held edit reaches the panels');
+}
+
 /**
  * Let React and the code under test run until `done()` holds, then return.
  *

@@ -8013,6 +8013,7 @@
     "BridgeErrorMessage: interface",
     "BridgeHelloMessage: interface",
     "BridgePermission: type",
+    "BridgeResultAckMessage: interface",
     "BridgeResultMessage: interface",
     "BridgeServerMessage: type",
     "BridgeTabMessage: type",
@@ -11261,6 +11262,13 @@
     "normalizeProcessedModelHash: function",
     "processedModelSize: function",
     "withNarrowedCoordinateSpace: function"
+  ],
+  "@ifc-lite/server-client/processed-model": [
+    "ProcessedModelRef: interface",
+    "assertProcessedModelHash: function",
+    "isProcessedModelRef: function",
+    "normalizeProcessedModelHash: function",
+    "processedModelSize: function"
   ],
   "@ifc-lite/site-context": [
     "BUILDING_SET: const",

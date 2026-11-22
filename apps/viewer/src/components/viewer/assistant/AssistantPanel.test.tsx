@@ -6,7 +6,7 @@ import '@/test/setup-dom.js';
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { render, click, type, press, cleanup, waitFor } from '@/test/render';
+import { render, click, type, press, cleanup, settle, waitFor } from '@/test/render';
 import { useViewerStore } from '@/store';
 import { AssistantSourceContext, AssistantAction } from './AssistantAction';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
@@ -34,7 +34,7 @@ afterEach(() => {
 });
 
 // #6813: real button wiring and rendered composer state, not source-string assertions.
-test('context action opens the registered assistant with frozen evidence and refresh clears the old conversation', () => {
+test('context action opens the registered assistant with frozen evidence and refresh clears the old conversation', async () => {
   useAssistantPlacement.setState({ placement: 'split' });
   useViewerStore.setState({ sidebarActivePanel: 'clash' });
   const source = render(<AssistantSourceContext panel="clash"><AssistantAction /></AssistantSourceContext>);
@@ -48,6 +48,7 @@ test('context action opens the registered assistant with frozen evidence and ref
   const send = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Send')!;
   assert.equal(send.disabled, false);
   act(() => useViewerStore.setState({ mutationVersion: initial.mutationVersion + 1 }));
+  await settle();
   assert.equal(textarea.disabled, true);
   assert.match(ui.textContent ?? '', /source or model has changed/);
   act(() => useAssistant.setState({ messages: [{ role: 'assistant', content: 'Old result' }] }));
@@ -144,7 +145,7 @@ test('opening the Assistant without evidence offers every source with its live s
   assert.equal(useAssistant.getState().snapshot?.source, 'loadReport', 'cancelling keeps the attached source');
 });
 
-test('citations open the captured row and clash rows offer the native model focus', () => {
+test('citations open the captured row and clash rows offer the native model focus', async () => {
   const clash: Clash = { id: 'c1', rule: 'coordination', status: 'hard', severity: 'major', distance: -0.02, distanceKind: 'estimate',
     a: { model: 'a', key: 'wall', ref: 1, tag: 'IfcWall' }, b: { model: 'a', key: 'pipe', ref: 2, tag: 'IfcPipeSegment' },
     point: [0, 0, 0], bounds: { min: [0, 0, 0], max: [1, 1, 1] } };
@@ -160,6 +161,7 @@ test('citations open the captured row and clash rows offer the native model focu
   assert.match(peek.textContent ?? '', /a\.tag\s*IfcWall/);
   assert.ok([...peek.querySelectorAll('button')].some(b => b.textContent === 'Show this clash in the model'), 'live clash rows can be focused');
   act(() => useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 }));
+  await settle();
   assert.equal([...ui.querySelectorAll('button')].some(b => b.textContent === 'Show this clash in the model'), false, 'stale evidence never drives the scene');
 });
 

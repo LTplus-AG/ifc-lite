@@ -43,8 +43,10 @@ export class RaycastEngine {
     private sourceSnapCurves: readonly SourceSnapCurve[] = [];
     /** Flat pieces read back for released geometry (#10264); empty when unused. */
     private readbackMeshes: readonly MeshData[] = [];
-    /** The one ray they were prepared for: canvas point and view-projection at set time. */
-    private readbackCoverage: { x: number; y: number; viewProj: Float32Array; width?: number; height?: number } | null = null;
+    /** The one ray they were prepared for: canvas point and view stamp at set time. */
+    private readbackCoverage: { x: number; y: number; view: string } | null = null;
+    /** Host state a ray's answer also depends on, folded into the view stamp (the renderer's pick-clip revision). */
+    viewStampExtra: () => string = () => '';
 
     constructor(camera: Camera, scene: RaycastScene, canvas: HTMLCanvasElement) {
         this.camera = camera;
@@ -85,30 +87,25 @@ export class RaycastEngine {
         return piece => isEntityVisible(piece.expressId, hidden, isolated);
     }
 
-    /**
-     * Released geometry read back by the host for an imminent raycast or snap
-     * (#10264). They join the flat candidates under the same visibility and
-     * clip rules; `null` clears them. The host owns their lifetime and frame
-     * (place them with `SceneContents.placeAppearanceSource`).
-     */
+    /** Released geometry read back for an imminent raycast or snap (#10264), under the same visibility and clip
+     *  rules as flat candidates; `null` clears. The host owns their lifetime and frame (`placeAppearanceSource`). */
     setReadbackMeshes(meshes: readonly MeshData[] | null, at?: { x: number; y: number }): void {
         this.readbackMeshes = meshes ?? [];
-        this.readbackCoverage = meshes && at ? { ...at, viewProj: this.camera.getViewProjMatrix().m, ...this.cssViewport() } : null;
+        this.readbackCoverage = meshes && at ? { x: at.x, y: at.y, view: this.readbackViewKey() } : null;
     }
 
-    /**
-     * Whether readback pieces answer a ray at (x, y). They hold the picked
-     * entity and its neighbourhood only, so a different ray (or view) could
-     * pass an unfed front surface and hit a fed one behind it: only the exact
-     * prepared ray, within a 1.5 CSS px radius under the same view and viewport size, may use them.
-     */
+    /** Whether readback pieces (a neighbourhood only: another ray could pass an unfed front surface) answer (x, y):
+     *  only the prepared ray, within a 1.5 CSS px radius, under the same view stamp. */
     readbackCovers(x: number, y: number): boolean {
-        const at = this.readbackCoverage;
-        const viewport = this.cssViewport(); // the ray through (x, y) also depends on the size it is unprojected in
-        if (!at || Math.hypot(at.x - x, at.y - y) > 1.5 || viewport?.width !== at.width || viewport?.height !== at.height) return false;
-        const now = this.camera.getViewProjMatrix().m;
-        for (let i = 0; i < 16; i++) if (now[i] !== at.viewProj[i]) return false;
-        return true;
+        const at = this.readbackCoverage; // `<= 1.5`, so a NaN distance covers nothing; the view includes the viewport size
+        return at !== null && Math.hypot(at.x - x, at.y - y) <= 1.5 && at.view === this.readbackViewKey();
+    }
+
+    /** Coverage's view stamp: the f64 ray inputs (pose, projection), the matrix, CSS viewport size and host extras. */
+    readbackViewKey(): string {
+        const v = this.cssViewport(), c = this.camera, at = (p: { x: number; y: number; z: number }) => `${p.x},${p.y},${p.z}`;
+        return [at(c.getPosition()), at(c.getTarget()), at(c.getUp()), c.getProjectionMode(), c.getFOV(), c.getOrthoSize(),
+            Array.from(c.getViewProjMatrix().m).join(','), `${v?.width ?? 0}x${v?.height ?? 0}`, this.viewStampExtra()].join('|');
     }
 
     /** Flat candidates near the ray, plus ray-culled instanced occurrences. */

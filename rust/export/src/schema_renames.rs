@@ -12,7 +12,8 @@
 //!
 //! Only renames reviewed as the same concept at the same index are listed;
 //! types where a schema inserted, reordered or retyped attributes stay out,
-//! because trimming or padding them would shift values into the wrong slots.
+//! because trimming or padding them would shift values into the wrong slots;
+//! `schema_attr_maps` reconciles those (#10763).
 //! Twin of `packages/export/src/schema-converter-renames.ts`; both are held to
 //! `tests/fixtures/schema_positional_renames.json`, and the conversions they
 //! allow to `tests/fixtures/schema_upconvert_sweep.json`.

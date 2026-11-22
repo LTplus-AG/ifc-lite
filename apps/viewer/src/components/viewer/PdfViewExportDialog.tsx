@@ -64,7 +64,7 @@ import { downloadBlob } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
 import { formatScaleFactorLabel, formatSheetScaleLabel } from '@ifc-lite/drawing-2d';
 import { collectViewMeshes } from '@/lib/export/view-pdf/collect-view-meshes';
-import { readViewPdfSource, readViewZoom } from '@/lib/export/view-pdf/view-pdf-export-source';
+import { readViewZoom } from '@/lib/export/view-pdf/view-pdf-export-source';
 import { resolveKeptHalfSpace } from '@/lib/export/view-pdf/view-section-plane';
 import {
   estimateViewPdfLayout,

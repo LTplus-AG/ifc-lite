@@ -189,7 +189,10 @@ it('a store first seen after its load settled (a cache hit publishes and settles
     document.body.appendChild(container);
     root = createRoot(container);
     await act(async () => { root!.render(<Probe />); });
-    await tick();
+    // The job reaches the queue through a lazily loaded module, which can take longer than one tick
+    // on a busy host: wait for its idle request rather than assuming it is already there.
+    await settleLoadWindow(() => idle.length > 0);
+    assert.ok(idle.length > 0, 'the settled store scheduled an idle parse');
     assert.equal(posts, 0, 'no parse in the commit that settled the load');
     await act(async () => { for (const cb of idle.splice(0)) cb({ didTimeout: false, timeRemaining: () => 50 }); });
     await tick();

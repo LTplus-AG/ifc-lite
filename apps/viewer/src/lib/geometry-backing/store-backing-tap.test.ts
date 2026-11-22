@@ -254,6 +254,22 @@ describe('store geometry backing tap (test/debug only)', () => {
     await tap.stop();
   });
 
+  it('#10888 r4655022816 a released mesh appended in place after a prune-to-replay is never backed as complete', async () => {
+    const a = mesh(1, 0), b = mesh(2, 1);
+    const store = storeWith({ rel: [a, b] });
+    const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    drawAll();
+    await tap.seal();
+    releaseCpuMeshBuffers([a, b]);
+    const pruned = [a]; // a new array: a replay of the released `a` is staged
+    store.setState({ models: new Map([['rel', { geometryResult: { meshes: pruned }, idOffset: 0 }]]) });
+    append(store, 'rel', [b]); // the still-released `b` appended in place to that same array
+    drawAll();
+    const [status] = await tap.seal();
+    assert.equal(status.complete, false, 'emptied arrays are never acknowledged as the model\'s geometry');
+    await tap.stop();
+  });
+
   it('backs shard ids in the federated id space, as the drain uploads them', async () => {
     const store = storeWith({ fed: [mesh(1)] });
     store.setState((state) => ({ models: new Map([['fed', { ...state.models.get('fed')!, idOffset: 1000 }]]) }));
@@ -744,15 +760,17 @@ describe('store geometry backing tap (test/debug only)', () => {
   it('a fresh shard without the model statement never re-supplies lost instancing', async () => {
     const store = storeWith({ nl: [mesh(1)] });
     const tap = await StoreGeometryBackingTap.start(store, { database: database() });
-    enqueueInstancedShards('nl', [shardBytes(77)], instancedShardGeneration());
-    drawAll(); // the renderer draws what was queued before any seal
-    await tap.seal();
-    store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
-    discardInstancedShards();
-    enqueueInstancedShards('nl', [shardBytes(90)], instancedShardGeneration());
-    drawAll(); // the renderer draws what was queued before any seal
-    const [status] = await tap.seal();
-    assert.equal(status.complete, false, 'no coverage proof, no completeness');
+    try { // stopped even if an assertion fails: never left subscribed to the shard queue (r4655067134)
+      enqueueInstancedShards('nl', [shardBytes(77)], instancedShardGeneration());
+      drawAll(); // the renderer draws what was queued before any seal
+      await tap.seal();
+      store.setState((state) => ({ geometryContentVersion: state.geometryContentVersion + 1 }));
+      discardInstancedShards();
+      enqueueInstancedShards('nl', [shardBytes(90)], instancedShardGeneration());
+      drawAll(); // the renderer draws what was queued before any seal
+      const [status] = await tap.seal();
+      assert.equal(status.complete, false, 'no coverage proof, no completeness');
+    } finally { await tap.stop(); }
   });
 
   it('#10884 a registered model without an id offset keeps its shards, in model 0\'s id space', async () => {
@@ -766,6 +784,51 @@ describe('store geometry backing tap (test/debug only)', () => {
     assert.equal(backing.isComplete, true, 'its instancing is backed, not lost');
     assert.deepEqual(backing.directory.shardsOf(5), [0]);
     await tap.stop();
+  });
+
+  it('#10888 r4655067145 a successor never seals complete without a shard its failed predecessor drew', async () => {
+    const list = [mesh(1)];
+    const store = storeWith({ fp: list });
+    const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    try {
+      enqueueInstancedShards('fp', [shardBytes(5)], instancedShardGeneration());
+      drawAll();
+      await tap.seal(); // acknowledged with shard A (entity 5)
+      append(store, 'fp', [mesh(2)]); // a successor carries A
+      enqueueInstancedShards('fp', [shardBytes(6)], instancedShardGeneration()); // shard B, drawn, only in that successor
+      drawAll();
+      await tap.whenIdle();
+      tap.backing('fp')!.writer.append = async () => { throw new Error('disk full'); }; // the successor's writer fails
+      append(store, 'fp', [mesh(3)]);
+      await tap.whenIdle();
+      // A flat edit: the next generation would fall back to the acknowledged one, which lacks B.
+      store.setState({ models: new Map([['fp', { geometryResult: { meshes: [...list] }, idOffset: 0 }]]) });
+      await tap.whenIdle();
+      const [status] = await tap.seal();
+      assert.equal(status.complete, false, 'never acknowledged complete without the failed generation\'s drawn shard');
+    } finally { await tap.stop(); }
+  });
+
+  it('#10888 r4655067178 a shard revision noted while the successor acknowledges never retires the last acknowledged generation', async () => {
+    const store = storeWith({ ackmiss: [mesh(1)] });
+    const tap = await StoreGeometryBackingTap.start(store, { database: database() });
+    try {
+      await tap.seal();
+      const first = tap.replaySource('ackmiss')!.backing!;
+      append(store, 'ackmiss', [mesh(2)]); // a successor stages beside the acknowledged generation
+      await tap.whenIdle();
+      const successor = tap.backing('ackmiss')!;
+      assert.notEqual(successor, first);
+      const acknowledge = successor.acknowledge.bind(successor);
+      successor.acknowledge = async () => {
+        const pending = acknowledge();
+        noteInstancedShardModel('ackmiss'); // a direct snapshot upload: the revision moves with no queue event
+        return pending;
+      };
+      await tap.seal();
+      assert.equal(tap.replaySource('ackmiss')?.backing, first, 'an unaccounted upload never retires the last acknowledged backing');
+      assert.equal(first.isDurablyComplete, true, 'and its records stay durable');
+    } finally { await tap.stop(); }
   });
 
   it('#10888 r4647508608 an in-place append while seal() awaits the acknowledgement is never acknowledged without it', async () => {
@@ -782,6 +845,8 @@ describe('store geometry backing tap (test/debug only)', () => {
       return pending;
     };
     await tap.seal();
+    // The first seal never acknowledges the generation that lacks mesh 3 (r4655067139); the second recovers it.
+    assert.notEqual(tap.replaySource('sa')?.backing, generation, 'the generation without the late mesh is not acknowledged');
     const [status] = await tap.seal();
     assert.equal(status.meshes, 3, 'the appended mesh is consumed');
     const candidate = tap.releaseCandidate('sa');

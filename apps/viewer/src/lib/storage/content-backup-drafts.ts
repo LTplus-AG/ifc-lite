@@ -4,10 +4,11 @@
 
 import type { RecoveryRow } from './content-database.js';
 import { isContentKind, type ContentKind } from './content-kinds.js';
+import { isLocalWorkOriginalKey } from './local-work-codecs.js';
 import { computeFullSourceHash } from '../../utils/sourceContentHash.js';
 
 /** Incomplete content is recovery evidence, never a relaxed durable-library entry. */
-export interface ContentDraftEvidence { kind: ContentKind; id: string; raw: string }
+export interface ContentDraftEvidence { kind: ContentKind | 'localWork'; id: string; raw: string }
 export const BACKUP_DRAFT_PREFIX = 'backup-draft:';
 const pending = new Map<string, ContentDraftEvidence>();
 const identity = (draft: ContentDraftEvidence): string => JSON.stringify(draft);
@@ -19,13 +20,15 @@ export function parseContentDrafts(value: unknown): ContentDraftEvidence[] {
   return value.map((raw: unknown) => {
     if (!raw || typeof raw !== 'object') throw new Error('Invalid draft recovery entry');
     const draft = raw as Record<string, unknown>;
-    if (!isContentKind(draft.kind)
+    if (!(isContentKind(draft.kind) || draft.kind === 'localWork')
       || typeof draft.id !== 'string' || !draft.id || typeof draft.raw !== 'string') {
       throw new Error('Invalid draft recovery entry');
     }
     const payload: unknown = JSON.parse(draft.raw);
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)
       || (payload as Record<string, unknown>).id !== draft.id) throw new Error('Draft recovery identity does not match');
+    if (draft.kind === 'localWork' && (!isLocalWorkOriginalKey(draft.id)
+      || typeof (payload as Record<string, unknown>).original !== 'string')) throw new Error('Invalid local work original');
     return { kind: draft.kind, id: draft.id, raw: draft.raw };
   });
 }

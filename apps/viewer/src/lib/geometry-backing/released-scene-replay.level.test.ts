@@ -20,7 +20,7 @@ import { releaseCpuMeshBuffers } from '@/lib/geometry-cpu-release';
 import { currentLevelYForModels, placeNewMeshesAtCurrentLevel } from '@/lib/level-arrival';
 import { geometryBackingCommand } from './backing-debug-hook';
 import type { TapState } from './store-backing-tap';
-import { releasedReplaysIdle, splitReleasedForReplay, supersedeReleasedReplays } from './released-scene-replay';
+import { completeAfterReleasedReplays, releasedReplaysIdle, splitReleasedForReplay, supersedeReleasedReplays } from './released-scene-replay';
 
 function mesh(expressId: number, z: number): MeshData {
   return { expressId, ifcType: 'IfcWall', positions: Float32Array.from([0, 0, z, 1, 0, z, 0, 1, z]),
@@ -66,6 +66,43 @@ it('#10903 an Exploded released content reload places replayed meshes exactly as
     const place = (m: MeshData) => ({ id: m.expressId, origin: m.origin ?? null, positions: [...m.positions] });
     assert.deepEqual(uploaded.map(place).sort((a, b) => a.id - b.id), resident.map(place).sort((a, b) => a.id - b.id),
       'entity 2 arrives lifted by 3.5, entity 1 unlifted: the same placement as the resident upload');
+  } finally {
+    supersedeReleasedReplays();
+    await geometryBackingCommand(tapStore, undefined, { action: 'stop' });
+  }
+});
+
+it('#10903 an Exploded lift change during every bounded attempt never parks the replay: it lands once the lift is stable', async () => {
+  const meshes = [mesh(1, 0), mesh(2, 4)];
+  const store = { id: 'lm' };
+  const geometryResult: GeometryResult = { meshes, totalTriangles: 2, totalVertices: 6, coordinateInfo: {} as GeometryResult['coordinateInfo'] };
+  const lift = (y: number) => new Map([['lm', { store, offsets: new Map([[2, y]]) }]]);
+  useViewerStore.setState({ models: new Map([['lm', { id: 'lm', idOffset: 0, maxExpressId: 10, geometryResult, ifcDataStore: store }]]),
+    appliedEntityLevelOffsets: lift(1) } as never);
+  const tapStore = useViewerStore as unknown as StoreApi<TapState>;
+  await geometryBackingCommand(tapStore, undefined, { action: 'start', options: { database: { name: `replay-lift-${process.pid}`, locks: null } } as never });
+  try {
+    const [status] = await geometryBackingCommand(tapStore, undefined, { action: 'seal' }) as Array<{ complete: boolean }>;
+    assert.equal(status.complete, true);
+    releaseCpuMeshBuffers(meshes);
+    // The lift moves while each of the first three attempts uploads: every one is superseded by placement alone.
+    const attempts: number[][] = [];
+    let ephemeral = false;
+    const scene = { streamingFragments: [], batchedMeshes: [], boundingBoxes: new Map(), modelTranslations: { releasedEntities: new Map() },
+      setEphemeralStreamingMode: (on: boolean) => { ephemeral = on; }, isEphemeralStreaming: () => ephemeral,
+      appendToBatches: (batch: MeshData[]) => {
+        attempts.push(batch.map((m) => m.expressId));
+        if (attempts.length <= 3) useViewerStore.setState({ appliedEntityLevelOffsets: lift(1 + attempts.length) } as never);
+      },
+      finalizeStreamingAsync: async () => { ephemeral = false; } };
+    const device = {}, pipeline = {};
+    const renderer = { getScene: () => scene, getGPUDevice: () => device, getPipeline: () => pipeline, requestRender() {} } as unknown as Renderer;
+    let complete = false;
+    splitReleasedForReplay(renderer, meshes);
+    completeAfterReleasedReplays(() => { complete = true; });
+    await releasedReplaysIdle();
+    assert.equal(attempts.length, 4, 'three placement-superseded attempts, then one at the settled lift');
+    assert.equal(complete, true, 'the replay completed without any backing notification');
   } finally {
     supersedeReleasedReplays();
     await geometryBackingCommand(tapStore, undefined, { action: 'stop' });

@@ -548,12 +548,16 @@ const result = await replayReleasedGeometry(renderer, batches(), { isCurrent: ()
 if (result.status !== 'complete') retryLater(); // superseded, cancelled or unavailable
 ```
 
-Each batch is uploaded through the ephemeral streaming path (GPU fragments only)
-and can be dropped as soon as the generator resumes. The scene keeps per-entity
+Each batch is uploaded through the ephemeral streaming path (GPU fragments only,
+no CPU pieces); the scene's bucket lookup still references each batch's meshes
+until the pass finalizes. The scene keeps per-entity
 bounds, so picking and framing still work, and it ends in the released state it
-started from. Replays of one scene run one at a time, each in its own pass. A
+started from. Replays of one scene run one at a time, each in its own pass:
+starting a newer replay does not supersede an earlier one by itself. The host
+makes the earlier replay's `isCurrent` return `false` when it starts the newer
+one; an earlier replay without `isCurrent` runs on and can still complete. A
 replay is all or nothing. Its entity bounds reach the scene only when it
-completes. One that errors, is cancelled, is superseded by a newer one, fails to
+completes. One that errors, is cancelled, is superseded (its `isCurrent` turned false), fails to
 finalize or is interrupted by a device loss removes the fragments it uploaded
 and drops its bounds before returning, so replaying again never draws a batch
 twice. Picking and framing see a replay's bounds once it completes.

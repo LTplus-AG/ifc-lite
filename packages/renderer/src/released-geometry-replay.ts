@@ -142,7 +142,7 @@ async function replayOwnPass(
   // Superseded (or the scene cleared) while waiting for the pass: never open one.
   let stopped = reason();
   if (stopped) return { status: stopped, batches: 0, meshes: 0 };
-  let ok = false;
+  let ok = false, failure: { error: unknown } | undefined;
   scene.setEphemeralStreamingMode(true);
   try {
     for await (const batch of batches) {
@@ -156,20 +156,22 @@ async function replayOwnPass(
     // The iterator's final next() is asynchronous too: re-check before committing.
     stopped ??= reason();
     ok = !stopped;
-  } finally {
-    // All or nothing: a replay that does not complete removes what it owns, so a retry never
-    // draws a batch twice. Its own pass is always closed (unless a clear() already did).
-    if (!ok) tx.rollBack();
-    try {
-      if (host.clearEpoch === tx.epoch && scene.isEphemeralStreaming()) await scene.finalizeStreamingAsync(device, pipeline);
-    } catch (error) {
-      tx.rollBack(); // a replay whose finalize failed is not complete either
-      if (host.clearEpoch === tx.epoch) scene.setEphemeralStreamingMode(false);
-      renderer.requestRender();
-      throw error;
-    }
-    renderer.requestRender();
+  } catch (error) {
+    failure = { error }; // rethrown once the pass is closed below
   }
+  // All or nothing: a replay that does not complete removes what it owns, so a retry never
+  // draws a batch twice. Its own pass is always closed (unless a clear() already did).
+  if (!ok) tx.rollBack();
+  try {
+    if (host.clearEpoch === tx.epoch && scene.isEphemeralStreaming()) await scene.finalizeStreamingAsync(device, pipeline);
+  } catch (error) {
+    tx.rollBack(); // a replay whose finalize failed is not complete either
+    if (host.clearEpoch === tx.epoch) scene.setEphemeralStreamingMode(false);
+    renderer.requestRender();
+    throw error;
+  }
+  renderer.requestRender();
+  if (failure) throw failure.error;
   // Finalization is asynchronous: a change during it must not report (or keep) a complete replay.
   stopped = reason();
   if (stopped) tx.rollBack(); else tx.commit();

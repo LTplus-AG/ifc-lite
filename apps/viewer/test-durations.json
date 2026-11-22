@@ -2154,7 +2154,7 @@
     "src/lib/geometry-backing/cut-readback.federated.test.ts": 3.6,
     "src/lib/geometry-backing/generation-replay.test.ts": 0.9,
     "src/lib/geometry-backing/instanced-resupply.test.ts": 0.6,
-    "src/lib/geometry-backing/released-scene-replay.level.test.ts": 3.8,
+    "src/lib/geometry-backing/released-scene-replay.level.test.ts": 6.4,
     "src/lib/geometry-backing/released-scene-replay.test.ts": 4.6,
     "src/lib/geometry-backing/store-backing-tap-model.test.ts": 0.6,
     "src/lib/geometry-backing/store-backing-tap.retention.test.ts": 1.1,

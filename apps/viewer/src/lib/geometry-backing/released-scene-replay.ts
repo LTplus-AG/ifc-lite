@@ -82,7 +82,9 @@ export function splitReleasedForReplay(renderer: Renderer, meshes: MeshData[], r
     for (let attempt = 1; attempt <= RETRIES && isCurrent(); attempt++) {
       seen = releasedGeometryMetadataVersion();
       try {
-        if (await replayOnce(renderer, released, isCurrent)) { finish(true); return; }
+        const outcome = await replayOnce(renderer, released, isCurrent);
+        if (outcome === true) { finish(true); return; }
+        if (outcome === 'moved') { attempt--; continue; } // the Exploded lift moved: retry at the new one, not a failure
       } catch (error) {
         console.error(`[GeometryBacking] released geometry replay attempt ${attempt} failed`, error);
       }
@@ -90,7 +92,7 @@ export function splitReleasedForReplay(renderer: Renderer, meshes: MeshData[], r
     }
     if (isCurrent()) park(); else finish(false);
   };
-  const attempt = async (): Promise<boolean> => {
+  const attempt = async (): Promise<boolean | 'moved'> => {
     try {
       return isCurrent() && await replayOnce(renderer, released, isCurrent);
     } catch (error) {
@@ -110,10 +112,10 @@ export function splitReleasedForReplay(renderer: Renderer, meshes: MeshData[], r
       busy = true;
       again = false;
       chain = chain.then(async () => {
-        const ok = !done && isCurrent() && await attempt();
+        const outcome = !done && isCurrent() && await attempt(), ok = outcome === true;
         busy = false;
         if (ok || !isCurrent()) { stop(); finish(ok); }
-        else if (again) schedule();
+        else if (again || outcome === 'moved') schedule();
       });
     };
     const unsubscribe = subscribeReleasedGeometryMetadata(schedule);
@@ -127,7 +129,8 @@ export function splitReleasedForReplay(renderer: Renderer, meshes: MeshData[], r
 /** Settles once every replay queued so far has finished (tests). */
 export function releasedReplaysIdle(): Promise<void> { return chain.then(() => undefined); }
 
-async function replay(renderer: Renderer, released: readonly MeshData[], isCurrent: () => boolean): Promise<boolean> {
+/** `true` once complete; `'moved'` when only an Exploded lift change superseded it (retry at the new lift at once). */
+async function replay(renderer: Renderer, released: readonly MeshData[], isCurrent: () => boolean): Promise<boolean | 'moved'> {
   const [{ replayReleasedGeometry }, { activeGeometryBackingTap }, { replayStoreList }, { canonicalStoreMesh }, { GeometryUnavailableError }, { getViewerState }] =
     await Promise.all([import('@ifc-lite/renderer'), import('./backing-debug-hook'), import('./generation-replay'),
       import('./store-mesh-readback'), import('./geometry-readback'), import('@/store/viewerStoreHandle')]);
@@ -156,6 +159,8 @@ async function replay(renderer: Renderer, released: readonly MeshData[], isCurre
     }
   }
   const result = await replayReleasedGeometry(renderer, batches(), { isCurrent: () => isCurrent() && level.current(getViewerState()) });
-  if (result.status !== 'complete') console.warn(`[GeometryBacking] released geometry replay ${result.status}; it will be retried`, result);
-  return result.status === 'complete';
+  if (result.status === 'complete') return true;
+  if (result.status === 'superseded' && isCurrent() && !level.current(getViewerState())) return 'moved';
+  console.warn(`[GeometryBacking] released geometry replay ${result.status}; it will be retried`, result);
+  return false;
 }

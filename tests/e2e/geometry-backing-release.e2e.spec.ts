@@ -307,6 +307,8 @@ for (const fixture of FIXTURES) {
     // model's instancing, its new generation is never complete, and released readback must then
     // fail closed (unavailable), never answer from a different or stale surface.
     const lost = reload.sealed[0].instancedLost === true;
+    // The loss witness itself: never a missing flag that would switch every fail-closed check off.
+    expect(lost, `instancing is lost exactly when the fixture has occurrences (${JSON.stringify(reload.sealed[0])})`).toBe(report.occurrences > 0);
     // The rebuilt scene itself, independent of readback: every GPU-picked texel names the same entity.
     const drawn = reload.gpuBefore.filter((id) => id !== null).length;
     const differing = reload.gpuBefore.filter((id, i) => id !== reload.gpuAfter[i]).length;
@@ -337,15 +339,18 @@ for (const fixture of FIXTURES) {
         continue;
       }
       expect(b.expressId, `reload probe ${i} entity (${JSON.stringify({ a, b })})`).toBe(a.expressId);
+      // Snap on every answered row, entity or not (a snap can come without a mesh hit).
+      expect(b.snap === null, `reload probe ${i} snaps exactly when it snapped before`).toBe(a.snap === null);
+      expect(b.snap?.type, `reload probe ${i} snap kind`).toBe(a.snap?.type);
+      if (a.snap) for (let k = 0; k < 3; k++) expect(Math.abs(b.snap!.position[k] - a.snap.position[k]), `reload probe ${i} snap`).toBeLessThan(1e-6);
       if (a.expressId === null) continue;
       if (!mustRefuse) flatHits++;
       for (let k = 0; k < 3; k++) expect(Math.abs(b.point![k] - a.point![k]), `reload probe ${i} hit`).toBeLessThan(1e-6);
-      expect(b.snap?.type, `reload probe ${i} snap kind`).toBe(a.snap?.type);
-      if (a.snap) for (let k = 0; k < 3; k++) expect(Math.abs(b.snap!.position[k] - a.snap.position[k]), `reload probe ${i} snap`).toBeLessThan(1e-6);
     }
     await writeFile(info.outputPath('reload-probes.json'), JSON.stringify({ lost, unavailable, expectedUnavailable, flatHits, probes: before.length,
       gpuTexels: reload.gpuBefore.length, gpuDrawn: drawn, gpuDiffering: differing }));
     expect(flatHits, 'flat hits away from instancing answered with full parity').toBeGreaterThan(0);
+    if (lost) expect(expectedUnavailable, 'a lost instanced fixture has probes that must fail closed').toBeGreaterThan(0);
     if (!lost) expect(unavailable, 'a complete reseal answers every probe').toBe(0);
     await page.evaluate(() => (globalThis as Probe).__ifc_lite_geometry_backing__!({ action: 'stop' }));
   });

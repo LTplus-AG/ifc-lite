@@ -1,5 +1,50 @@
 # @ifc-lite/mutations
 
+## 4.1.0
+
+### Minor Changes
+
+- [#10762](https://github.com/LTplus-AG/ifc-lite/pull/10762) [`1c90760`](https://github.com/LTplus-AG/ifc-lite/commit/1c9076074d07eea0811a713d227f3839a4fe9756) Thanks [@louistrue](https://github.com/louistrue)! - Add staged reconciliation for mutation views that share one source. Keep distinct edits from historical aliases, report shadowed fields to undo and redo hosts, and refuse ambiguous overlap or a stale commit.
+
+- [#10924](https://github.com/LTplus-AG/ifc-lite/pull/10924) [`7053690`](https://github.com/LTplus-AG/ifc-lite/commit/7053690af8cd5e2c0c6853a8a9e7215fe4f69db3) Thanks [@louistrue](https://github.com/louistrue)! - Add an inspection snapshot that preserves a mutation view's overlay revision without copying its source.
+  Allow scene placement callers to observe a flat mesh just before an in-place move or rotation.
+
+- [#10420](https://github.com/LTplus-AG/ifc-lite/pull/10420) [`38ef050`](https://github.com/LTplus-AG/ifc-lite/commit/38ef050d9585a468132f11c4ec822ceaf157d6b2) Thanks [@louistrue](https://github.com/louistrue)! - Reduce per-record attribute observer allocations and remove replaced authored geometry from the mutation journal without scanning unrelated session history. Bound the frozen entity snapshot memo while preserving held snapshots, exported mutations, detached drafts and compound undo order.
+  
+  Enumerate created IDs without materializing attribute snapshots during export index and collision checks.
+  
+  Add a constant-time relative creation-order query so bounded relationship lookups preserve canonical order after retargeting and inside nested drafts.
+  
+  Index requested positional reference slots with an unresolved bucket, and narrow opening host/fill reads while preserving conservative malformed-host refusals.
+  
+  Maintain ID-only storey planning inventories across geometry edits and unchanged atomic drafts. Plan exceptional placements and unequal-delta attachment groups in detail while retaining the complete moved product list, refusal and undo contracts. Expose a bounded, disposable entity-change cursor for derived inventories.
+  
+  Keep read-only derived inventories request-scoped so hierarchy dependency tracking stays correct without retaining mutation subscriptions for temporary views.
+  
+  Read attachment metadata GUIDs through borrowed snapshots during export so a save does not make later transactions copy every authored product as a mutable alias.
+  
+  Invalidate planning classifications when product GUIDs or placement classes change, preserving unresolved attachment notices and unreadable-placement refusals.
+  
+  Avoid cold reference-projection allocations for small relationship classes while bounding direct lookup work.
+  
+  Release completed transaction indexes and collect evicted read snapshots during synchronous sessions, while preserving retained draft views and already exposed mutable aliases.
+  
+  Keep borrow and exposure state in the shared attribute barrier to avoid duplicate weak-collection lookups and cache metadata allocations.
+  
+  Keep attribute barriers on their owning records as non-enumerable metadata, avoiding a session-wide weak-table insertion during a bounded edit. Metadata stays out of cloned and exported records.
+  
+  Clone appended mutation-journal rows as one detached batch instead of invoking serialization separately for each new mutation.
+  
+  Avoid typed-map work when both override indexes are empty and reuse the sparse draft's known map kind for positional reference queries.
+  
+  Classify sparse source opening candidates through canonical effective entity metadata before resolving their payloads, preserving unresolved candidates, retypes and refusal behavior.
+
+### Patch Changes
+
+- [#10860](https://github.com/LTplus-AG/ifc-lite/pull/10860) [`054569a`](https://github.com/LTplus-AG/ifc-lite/commit/054569a4f3719b4bff505a45d1cbed4eb6520192) Thanks [@louistrue](https://github.com/louistrue)! - A `DELETE_PROPERTY` mutation records the deleted row's `valueType` and `dataType`, so undoing the delete restores the property with its type, not as text, in the viewer and in the MCP server's undo. In a collab room, undo and redo now reach peers in the cases they missed: an edit to an unset attribute (inspector, reviewed changes, `bim.mutate.setAttribute`) and a move. Redoing an edit that cleared an attribute clears it again instead of writing the text `null`.
+
+- [#11106](https://github.com/LTplus-AG/ifc-lite/pull/11106) [`a1c2588`](https://github.com/LTplus-AG/ifc-lite/commit/a1c25887acfaba313db68b556059c357c72283e1) Thanks [@louistrue](https://github.com/louistrue)! - Record unset positional IFC attributes as STEP null values when edited through the viewer or CLI SDK, so the clear survives mutation history serialization and replay.
+
 ## 4.0.0
 
 ### Major Changes

@@ -25,9 +25,11 @@
  *
  * A missing source slot is written `$`.
  */
+import { withoutComments } from './step-comment-skip.js';
+
 export function productProxy(prefix: string, guid: string, entityType: string, args: readonly string[]): string {
   const slot = (i: number): string => args[i] ?? '$';
   // Name (IfcProxy WR1 requires it) and ObjectType fall back to the quoted source type.
-  const orType = (i: number): string => (slot(i).trim() === '$' ? `'${entityType}'` : slot(i));
+  const orType = (i: number): string => (withoutComments(slot(i)) === '$' ? `'${entityType}'` : slot(i));
   return `${prefix}IFCPROXY('${guid}',${slot(1)},${orType(2)},${slot(3)},${orType(4)},${slot(5)},${slot(6)},.NOTDEFINED.,$);`;
 }

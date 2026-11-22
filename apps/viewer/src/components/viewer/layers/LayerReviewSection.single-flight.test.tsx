@@ -17,6 +17,7 @@ import { useViewerStore } from '@/store';
 import { useLayerAutomationReview } from '@/lib/layers/automation-review';
 import { cleanup, click, render, type, waitFor } from '@/test/render.js';
 import { installHeldCapture, type HeldCapture } from '@/test/bcf-held-capture.js';
+import { deferred } from '@/test/race.js';
 import type { LayerRegistryClient, RegistryReviewSummary } from '@/lib/layers/registry-client';
 import { LayerReviewSection } from './LayerReviewSection.js';
 
@@ -40,8 +41,8 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); useLayerAutomationReview.setState({ candidate: null }); useViewerStore.setState({ collabSelfToken: null }); capture.dispose(); mock.restoreAll(); document.body.innerHTML = ''; });
 
-async function readyToComment(): Promise<HTMLButtonElement> {
-  render(<LayerReviewSection client={client} candidateId="candidate-1" refName="main" />);
+async function readyToComment(registry = client): Promise<HTMLButtonElement> {
+  render(<LayerReviewSection client={registry} candidateId="candidate-1" refName="main" />);
   await waitFor(() => document.body.querySelector('input[aria-label="Review comment title"]') !== null, 'the review loaded');
   const title = document.body.querySelector<HTMLInputElement>('input[aria-label="Review comment title"]');
   assert.ok(title, 'title input');
@@ -50,6 +51,12 @@ async function readyToComment(): Promise<HTMLButtonElement> {
   assert.ok(comment, 'Comment button');
   assert.equal(comment.disabled, false);
   return comment;
+}
+/** A client whose postTopic stays in flight until `gate` resolves. */
+function gatedClient() {
+  const gate = deferred();
+  const gated = { ...client, postTopic: async () => { posts += 1; await gate.promise; return {}; } } as unknown as LayerRegistryClient;
+  return { gate, gated };
 }
 const settle = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 100)); });
 
@@ -134,8 +141,7 @@ test('#10591 layer review posts nothing when a newer action withdraws the staged
 });
 
 test('#10591 layer review keeps a newer staged comment that arrives while a post is in flight', async () => {
-  let release!: () => void;
-  const gated = { ...client, postTopic: async () => { posts += 1; await new Promise<void>(resolve => { release = resolve; }); return {}; } } as unknown as LayerRegistryClient;
+  const { gate, gated } = gatedClient();
   const first = { id: 'staged-first', candidateId: REVIEW.layerId, refName: REVIEW.into,
     action: 'comment' as const, entity: WALL_A, title: 'First note', description: '', withViewpoint: false };
   useLayerAutomationReview.setState({ candidate: first });
@@ -147,10 +153,41 @@ test('#10591 layer review keeps a newer staged comment that arrives while a post
   await waitFor(() => posts === 1, 'the first post is in flight');
   act(() => useLayerAutomationReview.setState({ candidate: { ...first, id: 'staged-second', title: 'Second note', entity: WALL_B } }));
   await waitFor(() => title()?.value === 'Second note', 'the second staged comment is visible');
-  await act(async () => { release(); });
+  await act(async () => { gate.resolve(); });
   await settle();
   assert.equal(title()?.value, 'Second note', 'the finished post did not clear the newer draft');
 });
+
+test('#10591 layer review keeps an edit made while a manual post captures its viewpoint', async () => {
+  const post = mock.method(client, 'postTopic');
+  const comment = await readyToComment();
+  const title = document.querySelector<HTMLInputElement>('input[aria-label="Review comment title"]')!;
+  click(comment);
+  await waitFor(() => capture.frames() === 1, 'the viewpoint is capturing');
+  type(title, 'A new note');
+  await capture.release(1);
+  await waitFor(() => posts === 1, 'the manual comment was submitted');
+  await settle();
+  assert.equal(post.mock.calls[0].arguments[1].title, 'Check this wall');
+  assert.equal(title.value, 'A new note');
+});
+
+for (const [label, edits] of [['edited back to its posted text', ['x', '']], ['given a new description', ['Cracked plaster']]] as const) {
+  test(`#10591 layer review keeps a draft ${label} while the post is in flight`, async () => {
+    const { gate, gated } = gatedClient();
+    const comment = await readyToComment(gated);
+    const title = document.querySelector<HTMLInputElement>('input[aria-label="Review comment title"]')!;
+    const description = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Review comment description"]')!;
+    click(comment);
+    await capture.release(1);
+    await waitFor(() => posts === 1, 'the post is in flight');
+    for (const edit of edits) type(description, edit);
+    await act(async () => { gate.resolve(); });
+    await settle();
+    assert.equal(title.value, 'Check this wall');
+    assert.equal(description.value, edits.at(-1));
+  });
+}
 
 test('#10591 layer review posts nothing when the staged title is edited during capture', async () => {
   const staged = { id: 'staged-edit-capture', candidateId: REVIEW.layerId, refName: REVIEW.into,

@@ -33,6 +33,7 @@ it('keeps both same-millisecond creations and loads a legacy flavor ID (#10591)'
   const second = createNativeFlavor('Review', '', false);
   assert.equal(first.createdAt, now);
   assert.equal(second.createdAt, now);
+  assert.notEqual(first.id, second.id);
   const legacy = { ...first, id: 'local.review.2026-11-16t12-00-00-000z' };
   for (const flavor of [first, second, legacy]) {
     assert.equal(validateFlavor(flavor).ok, true);

@@ -14,7 +14,7 @@
 import type { StateCreator } from 'zustand';
 import type { FlowDocument, RunResult } from '@ifc-lite/flow';
 import { isContributedFlowId } from '../../services/extensions/host-flows.js';
-import { BrowserTrackingStore, canCreateFlow, isFlowWithinSizeLimit, loadSavedFlows, newFlowDocument, saveFlows, type SavedFlow } from '../../lib/flow/persistence.js';
+import { BrowserTrackingStore, canCreateFlow, isFlowWithinSizeLimit, loadSavedFlows, newFlowDocument, saveFlows, storageMayHoldFlow, type SavedFlow } from '../../lib/flow/persistence.js';
 import type { WorkflowArtifact } from '../../lib/flow/artifact.js';
 import { cancelWorkflowRun } from '../../lib/flow/run-session.js';
 import { clearPlayerValues } from '../../lib/flow/player-values.js';
@@ -77,7 +77,7 @@ export interface FlowSlice {
   openFlow: (id: string) => void;
   /** Persist the working copy; a no-op when nothing is open. */
   saveFlow: () => void;
-  deleteFlow: (id: string) => void;
+  deleteFlow: (id: string) => boolean;
   /** Import a validated document as a new saved graph (a fresh id when one collides). */
   importFlow: (doc: FlowDocument) => string | null;
   /**
@@ -147,14 +147,21 @@ export const createFlowSlice: StateCreator<FlowSlice, [], [], FlowSlice> = (set,
   deleteFlow: (id) => {
     const next = get().savedFlows.filter((f) => f.doc.id !== id);
     const persisted = saveFlows(next);
-    set({ flowStorageError: persisted ? null : 'Workflow is available in memory, but browser storage refused the save.' });
+    // A memory-only delete of a stored graph would undo itself on reload, so it is
+    // refused, as is one storage cannot rule out; a graph storage provably never
+    // held (its save was refused too) is still removable.
+    if (!persisted && storageMayHoldFlow(id)) {
+      set({ flowStorageError: 'Browser storage could not record the deletion, so the workflow is kept.' });
+      return false;
+    }
     // The sidecar is the graph's; a graph deleted here and re-imported later
     // under the same id must not inherit tracked elements it never made. The
     // Player's last-used inputs are the graph's too, for the same reason.
     BrowserTrackingStore.clear(id);
     clearPlayerValues(id);
     const closing = get().activeFlowId === id;
-    set({ savedFlows: next, ...(closing ? { activeFlowId: null, flowDoc: null, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null, flowLastRunWindow: null, flowArtifacts: [], flowProgress: null, flowRunWarnings: [] } : {}) });
+    set({ savedFlows: next, ...(persisted ? { flowStorageError: null } : {}), ...(closing ? { activeFlowId: null, flowDoc: null, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null, flowLastRunWindow: null, flowArtifacts: [], flowProgress: null, flowRunWarnings: [] } : {}) });
+    return true;
   },
 
   importFlow: (doc) => {

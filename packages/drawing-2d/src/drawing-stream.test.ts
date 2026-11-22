@@ -15,7 +15,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { Drawing2DGenerator } from './drawing-generator.js';
 import { makeEntityKey } from './types.js';
 import type { DrawingMeshSource, DrawingPass } from './drawing-mesh-source.js';
-import { drawingDigest, STREAM_OPTIONS, streamConfigs, streamScene, box, sheet } from './drawing-stream.fixtures.test.js';
+import { drawingDigest, multiMaterialShell, STREAM_OPTIONS, streamConfigs, streamScene, box, sheet } from './drawing-stream.fixtures.test.js';
 import golden from './drawing-stream.golden.json' with { type: 'json' };
 
 /** A source that leases each batch until the generator advances, and counts. */
@@ -205,4 +205,48 @@ describe('Drawing2DGenerator.beginDrawing (push session)', () => {
     controller.abort(new Error('superseded'));
     await expect(aborted.addGeometry(streamScene())).rejects.toThrow('superseded');
   });
+});
+
+describe('open surfaces: free-edge replay and multi-material shells (#10892 review)', () => {
+  const plan = () => streamConfigs().find((c) => c.name === 'plan')!.config;
+  const cutOnly = { ...STREAM_OPTIONS, includeProjection: false };
+
+  it('finish() refuses an open sheet whose replay was never fed, and the replay path still draws its free edges', async () => {
+    const open = [sheet(5, 2, 6, 4, 2.5)];
+    const skipped = new Drawing2DGenerator().beginDrawing(plan(), cutOnly);
+    await skipped.addGeometry(open);
+    expect(() => skipped.finish()).toThrow(/open-surface entities/);
+    // Still usable: feeding what endGeometry asked for completes it.
+    skipped.addOcclusion(open);
+    const fed = skipped.finish();
+    expect(fed.lines.some((line) => line.openSurfaceCut)).toBe(true);
+    const array = await new Drawing2DGenerator().generate(open, plan(), cutOnly);
+    expect(drawingDigest(fed)).toBe(drawingDigest(array));
+  });
+
+  it('finish() refuses a depth raster whose occlusion phase was never fed', async () => {
+    const session = new Drawing2DGenerator().beginDrawing(plan(), STREAM_OPTIONS);
+    await session.addGeometry(streamScene());
+    expect(session.endGeometry().depthRaster).toBe(true);
+    expect(() => session.finish()).toThrow(/occlusion phase/);
+  });
+
+  // Recorded by main's PRE-session generator (89b9ba6, `generate` over the same meshes): each layer's cut is an open
+  // chain, but free-edge and chain-end detection are both per entity there too, so the entity-wide loop closes.
+  const mainDigests = {
+    corner: 'f3f41ca6c90bbd32ade8d45c676e2f07bc5f51f673e452673750255a8bfb1c63',
+    midwall: '970c76f49c2601bbdcb9348567f2fec2b8a128c9090beab1b3a271aa5870e297',
+  };
+  for (const split of ['corner', 'midwall'] as const) {
+    it(`a two-material open shell (${split} split) draws exactly as main's pre-session generator, in any batching`, async () => {
+      const shell = multiMaterialShell(split);
+      const array = await new Drawing2DGenerator().generate(shell, plan(), STREAM_OPTIONS);
+      expect(drawingDigest(array)).toBe(mainDigests[split]);
+      expect(array.cutPolygons).toHaveLength(2);
+      expect(array.lines.some((line) => line.openSurfaceCut)).toBe(false);
+      // One layer per batch: the layers' chains only close across batches.
+      const { source } = leasingSource(shell, 1);
+      expect(drawingDigest(await new Drawing2DGenerator().generateFromSource(source, plan(), STREAM_OPTIONS))).toBe(mainDigests[split]);
+    });
+  }
 });

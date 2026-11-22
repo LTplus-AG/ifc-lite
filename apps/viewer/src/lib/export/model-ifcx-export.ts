@@ -20,6 +20,7 @@ type IfcxModelInput = {
  */
 export async function withIfcxModelGeometry<T>(input: IfcxModelInput,
   produce: (geometry: GeometryResult | null | undefined) => T | Promise<T>): Promise<T> {
+  const rendererModelIndex = modelIndices.assignedIndex(input.modelId);
   const { withInstancedMeshes, withReleasedExportGeometry } = await import('../../utils/instancedExport.js');
   return withReleasedExportGeometry((context) => {
     // A model the store knows always gets its own range; only the legacy single model (not in the map) keeps the
@@ -27,7 +28,7 @@ export async function withIfcxModelGeometry<T>(input: IfcxModelInput,
     const known = input.maxExpressId !== undefined || input.models.has(input.modelId);
     const range = known ? { modelId: input.modelId, idOffset: input.idOffset,
       maxExpressId: input.maxExpressId ?? input.models.get(input.modelId)?.maxExpressId ?? Number.MAX_SAFE_INTEGER - input.idOffset,
-      rendererModelIndex: modelIndices(input.models).get(input.modelId) } : null;
+      rendererModelIndex } : null;
     return produce(input.geometryResult ? withInstancedMeshes(input.geometryResult, range, context) : input.geometryResult);
   }, [input.modelId]);
 }

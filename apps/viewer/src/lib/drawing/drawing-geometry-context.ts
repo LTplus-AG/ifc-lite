@@ -20,9 +20,11 @@ import { displayedTranslation } from '@/lib/model-placement/state';
 import { sceneGeometryReleased } from '@/lib/geometry-backing/scene-released';
 import { hasInstancedShards } from '@/store/instancedShardModels';
 import { meshIsResident } from '@/lib/geometry-backing/geometry-readback';
-import { assertInstancedReady } from './drawing-instanced-presence';
 import type { ModelGeometryBacking } from '@/lib/geometry-backing/geometry-backing-registry';
 import { DrawingGeometry } from './drawing-geometry-source';
+
+// Loaded with this module on first drawing (`useDrawingGeneration`).
+export { drawingMeshFilter } from './drawing-mesh-filter';
 
 export async function liveDrawingGeometry(meshes: readonly MeshData[], isCurrent: () => boolean,
   renderer: Renderer | null = getGlobalRenderer()): Promise<DrawingGeometry> {
@@ -34,8 +36,7 @@ export async function liveDrawingGeometry(meshes: readonly MeshData[], isCurrent
     const tap = activeGeometryBackingTap();
     backing = (modelId) => tap?.backing(modelId);
   }
-  // Every instanced occurrence must be visible to the drawing, or it does not draw.
-  assertInstancedReady(state, renderer);
+  // The caller has already asserted every instanced occurrence is visible (`assertInstancedReady`), on this state.
   const indices = modelIndices(state.models);
   // Legacy single-model mode keeps no `models` entry: everything is one model.
   const legacy = state.models.size === 0;

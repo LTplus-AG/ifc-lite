@@ -50,8 +50,6 @@ import { markActiveDrawingGenerationCompleted } from '@/lib/drawing/active-canva
 import { constructionProjectionEnabled } from '@/lib/drawing/construction-projection';
 import { drawingWithMaterialLayerFills } from '@/lib/drawing/material-layer-fills';
 import { isGeometryHeld } from '@/lib/pick-gating';
-import { drawingMeshFilter } from '@/lib/drawing/drawing-mesh-filter';
-import { liveDrawingGeometry } from '@/lib/drawing/drawing-geometry-context';
 import { assertInstancedReady, DrawingGeometryPendingError, drawingHasGeometry, instancedEpoch, useInstancedDrawingRevision } from '@/lib/drawing/drawing-instanced-presence';
 import { getGlobalRenderer } from './useBCF.js';
 // The winding-robust Rust `meshOutline2d` binding (issue #979) is gitignored →
@@ -374,7 +372,13 @@ export function useDrawingGeneration({
       await generator.initialize();
       if (!isCurrent()) return;
       // Resident meshes as they are; released ones read back chunk by chunk (#10264).
-      const instancedAtStart = instancedEpoch(), geometry = await liveDrawingGeometry(geometryResult.meshes, isCurrent);
+      const instancedAtStart = instancedEpoch();
+      // Loaded on first drawing: the geometry source and mesh filter stay out of the eager bundle.
+      const drawingSource = await import('@/lib/drawing/drawing-geometry-context');
+      if (!isCurrent()) return;
+      // Every instanced occurrence must be visible to the drawing, or it does not draw.
+      assertInstancedReady(useViewerStore.getState(), getGlobalRenderer());
+      const geometry = await drawingSource.liveDrawingGeometry(geometryResult.meshes, isCurrent);
       if (!isCurrent()) return;
 
       // Convert semantic axis to geometric
@@ -516,7 +520,7 @@ export function useDrawingGeneration({
 
       // Which meshes the drawing cuts: the Model-view class gate, class
       // Visibility, hiding and both isolation channels (see `drawingMeshFilter`).
-      const keep = drawingMeshFilter({ meshes: geometryResult.meshes, typeVisibility, structuralViewMode, retypedClasses,
+      const keep = drawingSource.drawingMeshFilter({ meshes: geometryResult.meshes, typeVisibility, structuralViewMode, retypedClasses,
         hiddenIds: combinedHiddenIds, isolatedIds: combinedIsolatedIds, computedIsolatedIds });
 
       // If visibility filtered everything out, clear the drawing

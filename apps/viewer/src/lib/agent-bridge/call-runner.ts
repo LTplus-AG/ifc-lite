@@ -11,6 +11,7 @@
  */
 
 import type { BridgeCallMessage } from '@ifc-lite/mcp/bridge-protocol';
+import { digest } from '@ifc-lite/flow';
 import type { DeliveryClaim } from '../agent-tools/delivery';
 import type { AgentBridgeActivity } from './state';
 import { buildResultFrame, toCallToolResult, type ToolOutcome } from './result-frame';
@@ -28,12 +29,15 @@ interface InFlight {
   tool: string;
   modelId: string | null;
   startedAt: number;
+  argumentDigest?: string;
 }
 
 export interface CallRunnerOptions {
   sessionId: string;
   limits: CallLimits;
   maxResultBytes: number;
+  /** The bridge's welcome listed `image-content`: outcome images are sent as image blocks. */
+  imageContent: boolean;
   now: () => number;
   dispatch(name: string, args: Record<string, unknown>, signal: AbortSignal, onDelivery?: (claim: DeliveryClaim) => void): Promise<ToolOutcome>;
   modelIdFor?(args: Record<string, unknown>): string | null;
@@ -147,6 +151,8 @@ export class CallRunner {
       tool: call.name,
       modelId: this.modelIdFor(call.arguments),
       startedAt: this.now(),
+      // Digest the wire representation before dispatch can change it. The log keeps no argument values.
+      argumentDigest: digest([this.opts.sessionId, JSON.stringify(call.arguments)]),
     };
     this.inFlight.set(call.id, entry);
     let timedOut = false;
@@ -173,16 +179,19 @@ export class CallRunner {
       };
     }
     const cancelled = entry.controller.signal.aborted && !timedOut;
+    const finishedAt = this.now();
+    // A cancelled call is already settled on the bridge, and a closed socket has no one to answer.
+    const reply = !cancelled && stillPending
+      ? this.reply(call, outcome, !timedOut && !outcome.isError ? claim : undefined)
+      : undefined;
     // An applied edit is in the model whatever happened to the call, so its row always says what it changed.
     this.record(entry, {
       ...(cancelled ? { outcome: 'cancelled', errorCode: 'CANCELLED' }
         : outcome.isError ? { outcome: 'error', errorCode: outcome.errorCode ?? 'INTERNAL_ERROR' } : { outcome: 'ok' }),
       ...(outcome.edit ? { edit: outcome.edit } : {}),
-    });
-    // A cancelled call is already settled on the bridge, and a closed socket has no one to answer.
-    if (!cancelled && stillPending) {
-      if (this.reply(call, outcome, !timedOut && !outcome.isError ? claim : undefined)) return;
-    }
+      resultDigest: reply?.resultDigest,
+    }, finishedAt);
+    if (reply?.awaitingAck) return;
     claim?.drop();
     this.startNext();
   }
@@ -199,23 +208,24 @@ export class CallRunner {
     }, 0);
   }
 
-  private reply(call: BridgeCallMessage, outcome: ToolOutcome, claim?: DeliveryClaim): boolean {
-    if (!this.live()) return false;
+  private reply(call: BridgeCallMessage, outcome: ToolOutcome, claim?: DeliveryClaim): { resultDigest?: string; awaitingAck: boolean } {
+    if (!this.live()) return { awaitingAck: false };
     try {
-      const frame = buildResultFrame(this.opts.sessionId, call.id, toCallToolResult(outcome), this.opts.maxResultBytes, !!claim);
+      const frame = buildResultFrame(this.opts.sessionId, call.id, toCallToolResult(outcome, this.opts.imageContent),
+        this.opts.maxResultBytes, !outcome.image, !!claim);
       if (frame.truncated) warn(`the result of ${call.name} was more than the bridge accepts and was truncated`);
-      if (claim && !frame.truncated) {
+      const awaitingAck = !!claim && !frame.truncated;
+      if (claim && awaitingAck) {
         const timer = setTimeout(() => this.opts.onAckTimeout?.(), this.limits.callTimeoutMs);
         this.awaitingAck.set(call.id, { claim, timer });
-        this.opts.send(frame.json);
-        return true;
       }
       this.opts.send(frame.json);
+      return { resultDigest: frame.resultDigest, awaitingAck };
     } catch (err) {
       this.removeAck(call.id);
       warn(`could not send the result of ${call.name}`, err);
     }
-    return false;
+    return { awaitingAck: false };
   }
 
   private modelIdFor(args: Record<string, unknown>): string | null {
@@ -227,13 +237,14 @@ export class CallRunner {
     }
   }
 
-  private record(entry: InFlight, result: Pick<AgentBridgeActivity, 'outcome' | 'errorCode' | 'edit'>): void {
+  private record(entry: InFlight, result: Pick<AgentBridgeActivity, 'outcome' | 'errorCode' | 'edit' | 'resultDigest'>, finishedAt = this.now()): void {
     const row: AgentBridgeActivity = {
       seq: ++this.seq,
       tool: entry.tool,
       modelId: entry.modelId,
       startedAt: entry.startedAt,
-      durationMs: Math.max(0, this.now() - entry.startedAt),
+      durationMs: Math.max(0, finishedAt - entry.startedAt),
+      argumentDigest: entry.argumentDigest,
       ...(this.opts.mutates?.(entry.tool) ? { mutating: true } : {}),
       ...result,
     };

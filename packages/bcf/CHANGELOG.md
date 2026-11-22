@@ -1,5 +1,13 @@
 # @ifc-lite/bcf
 
+## 5.2.2
+
+### Patch Changes
+
+- [#11115](https://github.com/LTplus-AG/ifc-lite/pull/11115) [`cf65b36`](https://github.com/LTplus-AG/ifc-lite/commit/cf65b3686136786a72b3bfabf0f1222ab211e675) Thanks [@louistrue](https://github.com/louistrue)! - Distinguish malformed BCF archive errors from resource-limit errors so callers can classify import refusals.
+
+- [#11222](https://github.com/LTplus-AG/ifc-lite/pull/11222) [`327a733`](https://github.com/LTplus-AG/ifc-lite/commit/327a733e8acd386c5b2252cc605117175f9c8c20) Thanks [@louistrue](https://github.com/louistrue)! - Classify missing or ambiguous BCF archive version files as malformed archive errors.
+
 ## 5.2.1
 
 ### Patch Changes

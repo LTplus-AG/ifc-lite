@@ -8,9 +8,10 @@ use std::fmt::Write;
 use ifc_lite_processing::MeshData;
 
 use super::fmt::{
-    color_key, escape_str, fmt_f32, fmt_f64, indent_str, linear_color, mat_name, prim_name,
+    escape_str, fmt_f32, fmt_f64, indent_str, linear_color, prim_name,
     sanitize_ident, Namer,
 };
+use super::material::MaterialKey;
 use super::{UsdOptions, MAX_DEPTH};
 use crate::model::EntityRow;
 use ifc_lite_processing::InstanceRecord;
@@ -20,10 +21,10 @@ pub(super) struct Ctx<'a> {
     pub(super) children: &'a HashMap<u32, Vec<u32>>,
     pub(super) info: &'a HashMap<u32, (String, String)>,
     pub(super) by_id: &'a HashMap<u32, &'a EntityRow>,
-    pub(super) meshes_by_id: &'a HashMap<u32, Vec<&'a MeshData>>,
+    pub(super) meshes_by_id: &'a HashMap<u32, Vec<(&'a MeshData, MaterialKey)>>,
     /// Instanced occurrences (empty unless instancing is active): each emits a `def Mesh`
     /// referencing its prototype instead of a full mesh.
-    pub(super) instances_by_id: &'a HashMap<u32, &'a InstanceRecord>,
+    pub(super) instances_by_id: &'a HashMap<u32, (&'a InstanceRecord, MaterialKey)>,
     /// Template `express_id` → template mesh `origin` (for composing an occurrence's
     /// local→world transform).
     pub(super) template_origin: &'a HashMap<u32, [f64; 3]>,
@@ -68,20 +69,21 @@ pub(super) fn emit_prim(
 
     // An element is EITHER a de-baked instance occurrence (references a prototype) OR a
     // full mesh owner — never both, so the two branches don't double-draw.
-    if let Some(rec) = ctx.instances_by_id.get(&id) {
+    if let Some(&(rec, material)) = ctx.instances_by_id.get(&id) {
         let mesh_name = child_names.alloc("geom");
         super::instance::emit_instance_occurrence(
             out,
             indent + 1,
             &mesh_name,
             rec,
+            material,
             ctx.template_origin,
             purpose,
         );
     } else if let Some(meshes) = ctx.meshes_by_id.get(&id) {
-        for m in meshes {
+        for &(m, material) in meshes {
             let mesh_name = child_names.alloc("geom");
-            emit_mesh(out, indent + 1, &mesh_name, m, purpose);
+            emit_mesh(out, indent + 1, &mesh_name, m, material, purpose);
         }
     }
 
@@ -219,7 +221,7 @@ pub(super) fn write_geometry_body(out: &mut String, indent: usize, m: &MeshData)
 
 /// Write the per-occurrence display colour + `material:binding` at `indent+1`. Shared by
 /// full meshes and instance occurrences (each carries its own colour).
-pub(super) fn write_display_material(out: &mut String, indent: usize, color: [f32; 4]) {
+pub(super) fn write_display_material(out: &mut String, indent: usize, color: [f32; 4], key: MaterialKey) {
     let inner = indent_str(indent + 1);
     let c = linear_color(color);
     writeln!(
@@ -231,7 +233,7 @@ pub(super) fn write_display_material(out: &mut String, indent: usize, color: [f3
     )
     .ok();
     writeln!(out, "{inner}float[] primvars:displayOpacity = [{}]", fmt_f32(c[3])).ok();
-    writeln!(out, "{inner}rel material:binding = </World/Looks/{}>", mat_name(color_key(color))).ok();
+    writeln!(out, "{inner}rel material:binding = </World/Looks/{}>", key.name()).ok();
 }
 
 /// Emit one full `UsdGeomMesh` prim. `positions` are authored verbatim as object-LOCAL
@@ -242,6 +244,7 @@ pub(super) fn emit_mesh(
     indent: usize,
     name: &str,
     m: &MeshData,
+    material: MaterialKey,
     purpose: Option<&str>,
 ) {
     let pad = indent_str(indent);
@@ -255,7 +258,7 @@ pub(super) fn emit_mesh(
     if let Some(p) = purpose {
         writeln!(out, "{inner}uniform token purpose = \"{p}\"").ok();
     }
-    write_display_material(out, indent, m.color);
+    write_display_material(out, indent, m.color, material);
     // Per-mesh placement: the f64 origin as a double3 translate (omitted when zero —
     // local positions are then already the world coordinates).
     if m.origin.iter().any(|v| v.abs() > 0.0) {
@@ -272,18 +275,19 @@ pub(super) fn emit_mesh(
     writeln!(out, "{pad}}}").ok();
 }
 
-/// Emit one `UsdPreviewSurface` material for a rounded colour key.
+/// Emit one `UsdPreviewSurface` material for a colour and finish key.
 pub(super) fn emit_material(
     out: &mut String,
     indent: usize,
-    key: (i32, i32, i32, i32),
+    key: MaterialKey,
     color: [f32; 4],
 ) {
     let pad = indent_str(indent);
     let inner = indent_str(indent + 1);
     let inner2 = indent_str(indent + 2);
-    let name = mat_name(key);
+    let name = key.name();
     let c = linear_color(color);
+    let [metallic, roughness] = key.finish();
 
     writeln!(out, "{pad}def Material \"{name}\"").ok();
     writeln!(out, "{pad}{{").ok();
@@ -304,8 +308,8 @@ pub(super) fn emit_material(
     )
     .ok();
     writeln!(out, "{inner2}float inputs:opacity = {}", fmt_f32(c[3])).ok();
-    writeln!(out, "{inner2}float inputs:metallic = 0").ok();
-    writeln!(out, "{inner2}float inputs:roughness = 1").ok();
+    writeln!(out, "{inner2}float inputs:metallic = {}", fmt_f32(metallic)).ok();
+    writeln!(out, "{inner2}float inputs:roughness = {}", fmt_f32(roughness)).ok();
     writeln!(out, "{inner2}token outputs:surface").ok();
     writeln!(out, "{inner}}}").ok();
     writeln!(out, "{pad}}}").ok();

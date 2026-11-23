@@ -38,6 +38,7 @@ import { parsePython, PYTEST_MISSING_PATTERN } from './revert-oracle-python.mjs'
 import { ALL_SKIPPED, classifyExecuted, severityCandidates } from './revert-oracle-all-skipped.mjs';
 import { passVerdict } from './revert-oracle-pass-verdict.mjs';
 import { processResultGap } from './revert-oracle-process-result.mjs';
+import { loadErrorScope } from './revert-oracle-failure-text.mjs';
 import { isInertPath, isTestSupportPath } from './revert-oracle-inert.mjs';
 import { isDependencyVersionOnlyPackageJson } from './revert-oracle-version-bump.mjs';
 export { cargoRunner } from './revert-oracle-cargo.mjs';
@@ -293,10 +294,8 @@ export function parseRunnerOutput(run) {
   if (earlyProcessGap && (run.signal || run.exitCode === null)) return earlyProcessGap;
 
   // Load/collection evidence outranks assertion output; green processes may
-  // contain error-shaped fixture text without becoming failures (#4109).
-  // When tests failed, scan only their own errors: logs may carry load-error text (#11256).
-  const loadText = parsed.failed > 0 && !parsed.loadEvidence && parsed.failureText ? parsed.failureText : text;
-  const textualHit = run.exitCode === 0 && parsed.total > 0 ? null : firstMatch(loadText, LOAD_ERROR_PATTERNS);
+  // contain error-shaped fixture text without becoming failures (#4109, #11256).
+  const textualHit = run.exitCode === 0 && parsed.total > 0 ? null : firstMatch(loadErrorScope(family, text, parsed), LOAD_ERROR_PATTERNS);
   for (const hit of [textualHit, parsed.loadEvidence]) if (hit) evidence.push(hit);
   if (evidence.length > 0) {
     return { kind: LOAD_FAILURE, passed: parsed.passed, failed: parsed.failed, total: parsed.total, evidence };
@@ -342,10 +341,7 @@ function parseVitest(text) {
   const failed = num(/(\d+)\s+failed/.exec(summary));
   const totalM = /\((\d+)\)\s*$/.exec(summary);
   const total = totalM ? Number(totalM[1]) : (passed ?? 0) + (failed ?? 0);
-  // The failing tests' errors follow the `Failed Tests` banner; logs precede it.
-  const banner = /⎯ Failed Tests \d+ ⎯/.exec(text);
-  const failureText = banner ? text.slice(banner.index) : null;
-  return { passed: passed ?? 0, failed: failed ?? 0, total, loadEvidence, failureText };
+  return { passed: passed ?? 0, failed: failed ?? 0, total, loadEvidence };
 }
 
 function parseNodeTest(text) {
@@ -369,11 +365,7 @@ function parseNodeTest(text) {
       break;
     }
   }
-  // Each failing subtest's YAML block (`not ok` through the `...` at its own
-  // indent, not one inside an assert diff) holds its error; `#` lines are logs.
-  const blocks = [...text.matchAll(/^([ \t]*)not ok \d+ - .*$[\s\S]*?^\1  \.\.\.[ \t]*$/gm)].map((b) => b[0]);
-  const failureText = blocks.length > 0 ? blocks.join('\n') : null;
-  return { passed: pass ?? 0, failed: fail ?? 0, total, loadEvidence, failureText };
+  return { passed: pass ?? 0, failed: fail ?? 0, total, loadEvidence };
 }
 
 function parseCargo(text) {

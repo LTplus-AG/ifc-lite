@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { collect, pack, unpack, verdict } from './native-adapter-split.mjs';
-import { jobLaneSteps, judge, LANES, SPLIT_LANE_JOBS } from './lib/native-adapter-split.mjs';
+import { jobLaneSteps, judge, LANES, SPLIT_JUDGE, SPLIT_LANE_JOBS } from './lib/native-adapter-split.mjs';
 import { compareLayouts, m11nInvariants, markers, sameReference, timingFreeHash } from './lib/native-adapter-split-compare.mjs';
 
 const REPO = join(import.meta.dirname, '..');
@@ -200,8 +200,8 @@ test('m11-n compares by mesh invariants: SMLib order and quad diagonals do not c
   // Each face carries the set of positions its triangles use (here the square's four corners, then face 1's three).
   const faces = m11nInvariants(JSON.parse(m11n().toString())).exact[0].rows[0].parts[0].faces;
   assert.deepEqual(faces.map(([id, , , , used]) => [id, used]), [[0, ['[0,0,0]', '[0,1,0]', '[1,0,0]', '[1,1,0]']], [1, ['[0,0,1]', '[0,1,1]', '[1,0,1]']]]);
-  // The square's outline is its four sides, whichever diagonal splits it.
-  const outline = ['[0,0,0]|[0,1,0]', '[0,0,0]|[1,0,0]', '[0,1,0]|[1,1,0]', '[1,0,0]|[1,1,0]'];
+  // The square's outline is its four sides, walked counter-clockwise, whichever diagonal splits it.
+  const outline = ['[0,0,0]>[1,0,0]', '[0,1,0]>[0,0,0]', '[1,0,0]>[1,1,0]', '[1,1,0]>[0,1,0]'];
   for (const diagonal of [0, 1]) assert.deepEqual(m11nInvariants(JSON.parse(m11n({ diagonal }).toString())).exact[0].rows[0].parts[0].faces[0][5], outline, `diagonal ${diagonal}`);
   // Three of a face's triangles on one edge (0-1: [0,1,2], [0,1,3] and [0,1,5]) is a defect.
   const fanOn01 = (p) => { for (const v of [3, 5]) { p.indices.push(0, 1, v); p.normals.push(0, 0, 1, 0, 0, 1, 0, 0, 1); p.revisionLocalFaces.push(0); p.surfaceIndices.push(7); } };
@@ -216,6 +216,24 @@ test('m11-n compares by mesh invariants: SMLib order and quad diagonals do not c
   assert.equal(sameReference('temp/m11-n-native.json', flat, flat), false, 'zero-area triangle');
   // A non-mesh field still compares exactly.
   assert.equal(sameReference('temp/m11-n-native.json', m11n(), Buffer.from(m11n().toString().replace('"refused"', '"published"'))), false, 'row status');
+  // Orientation (#10858 review): reversing a triangle keeps its undirected edges, corners and
+  // unsigned area, but its front face turns. Isolated face 1 [4,5,6] -> [4,6,5], normals unchanged:
+  assert.equal(same(m11n({ edit: (p) => { p.indices.splice(6, 3, 4, 6, 5); } })), false, 'reversed isolated triangle');
+  // One half of the square reversed ([0,1,2] -> [0,2,1]), also under the other diagonal:
+  assert.equal(same(m11n({ edit: (p) => { p.indices.splice(0, 3, 0, 2, 1); } })), false, 'reversed half of the square');
+  assert.equal(same(m11n({ diagonal: 1, edit: (p) => { p.indices.splice(0, 3, 0, 3, 1); } })), false, 'reversed half, other diagonal');
+  // Every triangle reversed together with its normals: the outline walks the other way, still a mismatch.
+  const allFlipped = m11n({ edit: (p) => { for (let t = 0; t < p.indices.length; t += 3) [p.indices[t + 1], p.indices[t + 2]] = [p.indices[t + 2], p.indices[t + 1]]; p.normals = p.normals.map((x) => -x); } });
+  assert.equal(same(allFlipped), false, 'whole mesh flipped with its normals');
+  // Without normals the directed outline still catches a reversal.
+  const bare = (edit = () => {}) => m11n({ edit: (p) => { delete p.normals; edit(p); } });
+  assert.equal(sameReference('temp/m11-n-native.json', bare(), bare((p) => p.indices.splice(6, 3, 4, 6, 5))), false, 'reversed, no normals');
+  // Reordering, rotating each triangle's corners and the other diagonal still match, winding kept.
+  const rotated = m11n({ diagonal: 1, order: [2, 0, 1], vertexOrder: [5, 3, 0, 6, 1, 4, 2], edit: (p) => { for (let t = 0; t < p.indices.length; t += 3) p.indices.splice(t, 3, p.indices[t + 1], p.indices[t + 2], p.indices[t]); } });
+  assert.equal(same(rotated), true, 'reordered, rotated corners, other diagonal');
+  const faceAgainst = (b) => m11nInvariants(JSON.parse(b.toString())).exact[0].rows[0].parts[0].faces.map((f) => f[6]);
+  assert.deepEqual(faceAgainst(m11n()), [0, 0]);
+  assert.deepEqual(faceAgainst(m11n({ edit: (p) => { p.indices.splice(6, 3, 4, 6, 5); } })), [0, 1]);
   // Only m11-n is compared this way: the same reorder elsewhere still differs.
   assert.equal(sameReference('temp/m11-t-native-surface.json', m11n(), m11n({ order: [2, 1, 0] })), false);
 });
@@ -253,7 +271,7 @@ function layouts(base, edit = () => {}) {
   const tempOf = (job) => (job === 'na-native' ? temp : ['na-browser', 'na-cli-parity'].includes(job) ? restored : join(base, 'empty'));
   for (const job of SPLIT_LANE_JOBS) collect(job, join(base, 'split', `na-split-evidence-${job}`), tempOf(job), { ...env, STEPS_JSON: JSON.stringify(ok(jobLaneSteps(job))) }, root);
   edit(base);
-  return { mono: join(base, 'mono'), split: join(base, 'split'), needs: { 'native-adapter': { result: 'success' }, ...greenNeeds() }, root: REPO };
+  return { mono: join(base, 'mono'), split: join(base, 'split'), needs: { 'native-adapter': { result: 'success' }, ...greenNeeds(), [SPLIT_JUDGE]: { result: 'success' } }, root: REPO };
 }
 
 test('identical layouts match, with the split-only M1 reference and marker allowed', async (context) => {
@@ -341,7 +359,28 @@ test('timings come from the run\'s jobs listing when a token is present', async 
   ];
   const fetchImpl = async (url) => { assert.match(url, /\/runs\/7\/attempts\/1\/jobs/); return { ok: true, json: async () => ({ jobs }) }; };
   const report = await compareLayouts({ ...input, env: { GH_TOKEN: 't', GITHUB_REPOSITORY: 'o/r', GITHUB_RUN_ID: '7' }, fetchImpl });
+  assert.equal(report.match, true, report.markdown);
   assert.equal(report.timings.monoMinutes, 60);
   assert.equal(report.timings.splitCriticalMinutes, 32);
   assert.equal(report.timings.splitRunnerMinutes, 6 * 20 + 2);
+});
+
+test('a failed jobs-listing request costs the timings, never the comparison', async (context) => {
+  const input = layouts(scratch(context));
+  const fetchImpl = async () => { throw new Error('getaddrinfo ENOTFOUND'); };
+  const report = await compareLayouts({ ...input, env: { GH_TOKEN: 't', GITHUB_REPOSITORY: 'o/r', GITHUB_RUN_ID: '7' }, fetchImpl });
+  assert.equal(report.match, true, report.markdown);
+  assert.match(report.timings.note, /jobs listing failed \(getaddrinfo ENOTFOUND\); timings not read/);
+  assert.match(report.markdown, /\*\*MATCH\*\*/);
+});
+
+test('green lanes under a red or absent judge job are no green split', async (context) => {
+  for (const judgeJob of [{ result: 'failure' }, undefined]) {
+    const input = layouts(scratch(context));
+    if (judgeJob) input.needs[SPLIT_JUDGE] = judgeJob; else delete input.needs[SPLIT_JUDGE];
+    const report = await compareLayouts(input);
+    assert.equal(report.match, false, report.markdown);
+    assert.ok(report.problems.includes(`${SPLIT_JUDGE} result ${judgeJob?.result ?? 'absent'}: the split has no verdict of its own`), report.markdown);
+    assert.ok(report.problems.includes('verdicts differ: single green, split red'), report.markdown);
+  }
 });

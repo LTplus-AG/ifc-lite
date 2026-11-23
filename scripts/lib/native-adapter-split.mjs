@@ -147,8 +147,13 @@ export function splitProblems(text) {
     if (!block.includes(`\n    concurrency:\n      group: ${GROUP(id)}\n      cancel-in-progress: ${CANCEL}\n`)) {
       out.push(`${WORKFLOW}: split job ${id} needs its own job-level concurrency group ${GROUP(id)} (a shared group serialises or cancels sibling jobs) with cancel-in-progress only for labelled pull_request runs`);
     }
-    const listed = block.match(/^ {4}needs: \[([^\]]*)\]\s*$/m)?.[1].split(',').map((s) => s.trim()).filter(Boolean) ?? [];
-    if (listed.length !== needs.length || needs.some((n) => !listed.includes(n))) out.push(`${WORKFLOW}: split job ${id} must need exactly [${needs.join(', ')}]`);
+    // An absent key is a root job; any other form (a scalar `needs: na-wasm`, a block list) is
+    // unreadable here and must not pass as "no needs": GitHub would still serialise on it.
+    const declared = /^ {4}needs:/m.test(block);
+    const flow = block.match(/^ {4}needs: \[([^\]]*)\]\s*$/m);
+    const listed = flow ? flow[1].split(',').map((s) => s.trim()).filter(Boolean) : [];
+    if (declared && !flow) out.push(`${WORKFLOW}: split job ${id} declares needs: in a form this audit cannot read; write it as a flow list, needs: [${needs.join(', ')}], or drop the key for a root job`);
+    else if (listed.length !== needs.length || needs.some((n) => !listed.includes(n))) out.push(`${WORKFLOW}: split job ${id} must need exactly [${needs.join(', ')}]`);
     if (/^ {4}name:/m.test(block)) out.push(`${WORKFLOW}: split job ${id} must not set name: (the judge becomes native-adapter, which the coverage record reads by id)`);
     if (!/^ {4}continue-on-error: true\s*$/m.test(block)) out.push(`${WORKFLOW}: split job ${id} must be job-level continue-on-error while the monolith is the verdict (shadow phase)`);
     const budget = block.match(/^ {4}timeout-minutes: (\d+)\s*$/m);

@@ -90,6 +90,13 @@ export const stripVolatile = (v) => (Array.isArray(v) ? v.map(stripVolatile) : t
  *     its triangles uses. Another diagonal keeps a face's outline, so this does not
  *     depend on triangulation; [0,1,2],[0,1,3] in a square (one half covered twice,
  *     the other empty, same area) changes it (#10858 review);
+ *   - ORIENTATION, per face as well: the boundary edges are DIRECTED (the sense
+ *     its triangles walk them), and the number of triangles whose winding normal
+ *     points against their summed corner normals. Reversing a triangle ([0,1,2] ->
+ *     [0,2,1]) keeps its undirected edges, corners and unsigned area, so without
+ *     these a flipped front face compared equal (#10858 review). Both survive
+ *     reordering and the other diagonal: a consistently wound quad walks its
+ *     outline the same way under either split, and every triangle keeps its side;
  * as a coverage check, each face's total triangle area within 1e-9 relative;
  * and, in each copy on its own, no face may hold two triangles with the same
  * three positions, no edge may be shared by more than two of a face's
@@ -118,12 +125,18 @@ export function m11nInvariants(reference) {
       const id = revisionLocalFaces?.[t] ?? null;
       const surface = surfaceIndices?.[t] ?? null;
       const group = JSON.stringify([id, surface]);
-      const face = faces.get(group) ?? { id, surface, triangles: 0, corners: new Set(), area: 0, used: new Set(), edges: new Map() };
+      const face = faces.get(group) ?? { id, surface, triangles: 0, corners: new Set(), area: 0, used: new Set(), edges: new Map(), directed: new Map(), against: 0 };
       face.triangles += 1;
       const [a, b, c] = [0, 1, 2].map((k) => xyz(positions, indices[t * 3 + k]));
       const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], w = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-      const area = Math.hypot(u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]) / 2;
+      const cross = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
+      const area = Math.hypot(...cross) / 2;
       face.area += area;
+      // Winding against the corner normals: a reversed triangle turns its front face away.
+      if (Array.isArray(normals)) {
+        const n = [0, 1, 2].map((k) => xyz(normals, t * 3 + k)).reduce((s, q) => [s[0] + q[0], s[1] + q[1], s[2] + q[2]], [0, 0, 0]);
+        if (cross[0] * n[0] + cross[1] * n[1] + cross[2] * n[2] < 0) face.against += 1;
+      }
       const corners = [a, b, c].map((q) => JSON.stringify(q));
       // A corner normal belongs to its position (any diagonal keeps it): pairs, not a bare normal set.
       for (let k = 0; k < 3; k += 1) face.corners.add(JSON.stringify([[a, b, c][k], Array.isArray(normals) ? xyz(normals, t * 3 + k) : null]));
@@ -131,6 +144,8 @@ export function m11nInvariants(reference) {
       for (const [i, j] of [[0, 1], [1, 2], [2, 0]]) {
         const edge = [corners[i], corners[j]].sort().join('|');
         face.edges.set(edge, (face.edges.get(edge) ?? 0) + 1);
+        const directed = `${corners[i]}>${corners[j]}`;
+        face.directed.set(directed, (face.directed.get(directed) ?? 0) + 1);
       }
       const key = [...corners].sort().join('|');
       const faceSeen = seen.get(id) ?? new Set();
@@ -145,10 +160,11 @@ export function m11nInvariants(reference) {
       areas.push(faces.get(g).area);
       for (const [edge, n] of faces.get(g).edges) if (n > 2) defects.push(`face ${faces.get(g).id}: edge ${edge} shared by ${n} triangles`);
     }
-    const boundary = (face) => [...face.edges].filter(([, n]) => n === 1).map(([edge]) => edge).sort();
+    // Directed: the boundary is walked in the winding's sense, so a reversed triangle on it reverses an edge.
+    const boundary = (face) => [...face.directed.keys()].filter((d) => face.edges.get(d.split('>').sort().join('|')) === 1).sort();
     return {
       ...rest, vertices: vertices.sort(), triangleCount: indices.length / 3,
-      faces: groups.map((g) => { const f = faces.get(g); return [f.id, f.surface, f.triangles, [...f.corners].sort(), [...f.used].sort(), boundary(f)]; }),
+      faces: groups.map((g) => { const f = faces.get(g); return [f.id, f.surface, f.triangles, [...f.corners].sort(), [...f.used].sort(), boundary(f), f.against]; }),
     };
   };
   const exact = reference.map((model) => ({ ...model, rows: model.rows?.map((row) => (Array.isArray(row.parts) ? { ...row, parts: row.parts.map(part) } : row)) }));
@@ -224,11 +240,17 @@ const minutes = (a, b) => (Date.parse(b) - Date.parse(a)) / 60000;
 async function timings(env, fetchImpl = globalThis.fetch) {
   const { GH_TOKEN, GITHUB_REPOSITORY, GITHUB_RUN_ID, GITHUB_RUN_ATTEMPT = '1', GITHUB_API_URL = 'https://api.github.com' } = env;
   if (!GH_TOKEN || !GITHUB_REPOSITORY || !GITHUB_RUN_ID) return { note: 'no token or run id; timings not read' };
-  const res = await fetchImpl(`${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/attempts/${GITHUB_RUN_ATTEMPT}/jobs?per_page=100`, {
-    headers: { Authorization: `Bearer ${GH_TOKEN}`, Accept: 'application/vnd.github+json' },
-  });
-  if (!res.ok) return { note: `jobs listing HTTP ${res.status}; timings not read` };
-  const jobs = (await res.json()).jobs ?? [];
+  // Timings are report-only: a failed request must never cost the evidence verdict.
+  let jobs;
+  try {
+    const res = await fetchImpl(`${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/attempts/${GITHUB_RUN_ATTEMPT}/jobs?per_page=100`, {
+      headers: { Authorization: `Bearer ${GH_TOKEN}`, Accept: 'application/vnd.github+json' },
+    });
+    if (!res.ok) return { note: `jobs listing HTTP ${res.status}; timings not read` };
+    jobs = (await res.json()).jobs ?? [];
+  } catch (err) {
+    return { note: `jobs listing failed (${err?.message ?? err}); timings not read` };
+  }
   const find = (id) => jobs.find((j) => j.name === id || j.name?.endsWith(` / ${id}`));
   const done = (j) => j?.started_at && j?.completed_at;
   const mono = find('native-adapter');
@@ -253,8 +275,12 @@ export async function compareLayouts({ mono: monoDir, split: splitDir, needs, ro
   for (const [label, e] of [['native-adapter', mono], ...Object.entries(split)]) if (!e.present) problems.push(`no evidence from ${label} (${e.dir}); nothing of it was compared`);
   const monoGreen = needs?.['native-adapter']?.result === 'success';
   const j = judge(needs);
-  lines.push(`Verdict: single job **${needs?.['native-adapter']?.result ?? 'absent'}**, split judge **${j.ok ? 'success' : 'failure'}**`);
-  if (monoGreen !== j.ok) problems.push(`verdicts differ: single ${monoGreen ? 'green' : 'red'}, split ${j.ok ? 'green' : 'red'} (${j.problems.join('; ')})`);
+  // The judge job is the split's verdict: green lanes under a red or absent judge job are not a green split.
+  const judgeResult = needs?.[SPLIT_JUDGE]?.result ?? 'absent';
+  const splitGreen = j.ok && judgeResult === 'success';
+  lines.push(`Verdict: single job **${needs?.['native-adapter']?.result ?? 'absent'}**, split judge **${splitGreen ? 'success' : 'failure'}**`);
+  if (judgeResult !== 'success') problems.push(`${SPLIT_JUDGE} result ${judgeResult}: the split has no verdict of its own`);
+  if (monoGreen !== splitGreen) problems.push(`verdicts differ: single ${monoGreen ? 'green' : 'red'}, split ${splitGreen ? 'green' : 'red'}${j.problems.length ? ` (${j.problems.join('; ')})` : ''}`);
   for (const id of new Set(SPLIT_LANE_JOBS.map((job) => split[job].meta.head).filter(Boolean))) if (mono.meta.head && id !== mono.meta.head) problems.push(`split job commit ${id} is not the single job's ${mono.meta.head}`);
 
   lines.push('', '| lane | single job | split |', '|---|---|---|');

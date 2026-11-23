@@ -10,6 +10,7 @@ import test from 'node:test';
 import { audit, corpusJobProblems, crateClosure, eventPaths, jobBlock, pathDeps, workspaceDeps } from './check-native-adapter-triggers.mjs';
 import { parse as parseYaml } from 'yaml';
 import { permissionBlocks, scan } from './lib/workflow-permissions.mjs';
+import { SPLIT_LANE_JOBS } from './lib/native-adapter-split.mjs';
 
 const REPO = join(import.meta.dirname, '..');
 const WORKFLOW = '.github/workflows/geometry-platform.yml';
@@ -551,6 +552,13 @@ test('a partial split, a judge that misses a lane job or a lane step that is fat
   const fatal = copyTree(context);
   inJob(fatal, 'na-native', '        id: finish-join\n        continue-on-error: true\n', '        id: finish-join\n');
   assert.ok(audit(fatal).some((f) => f.includes('must run lane step finish-join with continue-on-error')));
+  // A scalar needs: on a root job still serialises it; the audit must not read it as no needs.
+  const scalar = copyTree(context);
+  inJob(scalar, 'na-native', '\n    continue-on-error: true\n', '\n    needs: na-wasm\n    continue-on-error: true\n');
+  assert.ok(audit(scalar).some((f) => f.includes('split job na-native declares needs: in a form this audit cannot read')));
+  const blockList = copyTree(context);
+  inJob(blockList, 'na-split-judge', /    needs: \[[^\]]*\]\n/, `    needs:\n${SPLIT_LANE_JOBS.map((j) => `      - ${j}\n`).join('')}`);
+  assert.ok(audit(blockList).some((f) => f.includes('split job na-split-judge declares needs: in a form this audit cannot read')));
   const noVerdict = copyTree(context);
   inJob(noVerdict, 'na-emscripten', `      verdict: \${{ steps.verdict.outputs.verdict }}\n`, '');
   assert.ok(audit(noVerdict).some((f) => f.includes('split job na-emscripten must end with an if: always() step id verdict')));

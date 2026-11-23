@@ -338,6 +338,8 @@ jobs:
           export IFCLITE_REQUIRE_SMLIB=1
           export IFCLITE_SMLIB_WORKER="$RUNNER_TEMP/smlib-native/ifclite_smlib_worker"
           export IFCLITE_M3_REFERENCE="$RUNNER_TEMP/m3-native-openings.json"
+          # The default step shell has no pipefail: without it `| tee` would hide a red cargo test.
+          set -o pipefail
           cargo test --locked -p ifc-lite-retained-native --features retained-runtime --test m3_native -- --nocapture | tee "$RUNNER_TEMP/m3-native.log"
           for witness in m3_prism_curved m3_synthetic_empty m3_scaled_cutter m3_nonbakeable_cutter m3_unsupported m3_kernel_failure m3_frames m3_lineage m3_reference m3_two_parts_two_openings m3_empty_opening_body; do
             grep -E "sdk witness executed: ${witness}\$" "$RUNNER_TEMP/m3-native.log"
@@ -769,6 +771,8 @@ jobs:
           export IFCLITE_REQUIRE_SMLIB=1
           export IFCLITE_SMLIB_WORKER="$RUNNER_TEMP/smlib-native/ifclite_smlib_worker"
           export IFCLITE_M3_REFERENCE="$RUNNER_TEMP/m3-native-openings.json"
+          # The default step shell has no pipefail: without it `| tee` would hide a red cargo test.
+          set -o pipefail
           cargo test --locked -p ifc-lite-retained-native --features retained-runtime --test m3_native -- --nocapture | tee "$RUNNER_TEMP/m3-native.log"
           for witness in m3_prism_curved m3_synthetic_empty m3_scaled_cutter m3_nonbakeable_cutter m3_unsupported m3_kernel_failure m3_frames m3_lineage m3_reference m3_two_parts_two_openings m3_empty_opening_body; do
             grep -E "sdk witness executed: ${witness}\$" "$RUNNER_TEMP/m3-native.log"

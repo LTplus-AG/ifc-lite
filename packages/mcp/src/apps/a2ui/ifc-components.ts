@@ -4,7 +4,7 @@
 
 import { SURFACE_ACTIONS, type SurfaceAction } from './constants.js';
 import { block, button, element, items, record, refs, text, value, viewerNote, type Props, type RendererAction } from './dom.js';
-import { foldGroups, resolveMaxGroups } from '@ifc-lite/a2ui';
+import { foldGroups, resolveMaxGroups, safeHexColor } from '@ifc-lite/a2ui';
 
 const actionLabels: Record<SurfaceAction, string> = {
   select: 'Select', isolate: 'Isolate', colorize: 'Colorize', flyTo: 'Fly to', resetView: 'Reset view',
@@ -116,8 +116,8 @@ function legend(p: Props, act: RendererAction): HTMLElement {
     const item = element('li');
     const swatch = element('span', undefined, 'swatch');
     swatch.setAttribute('aria-hidden', 'true');
-    const color = text(entry.color);
-    if (/^#[\da-f]{6}$/i.test(color)) swatch.style.backgroundColor = color;
+    const color = safeHexColor(entry.color, '');
+    if (color) swatch.style.backgroundColor = color;
     const targets = refs(entry.refs);
     item.append(swatch, targets.length
       ? button(text(entry.label), () => act('colorize', targets, color))

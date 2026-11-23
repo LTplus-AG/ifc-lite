@@ -11,7 +11,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createComponentImplementation } from '@a2ui/react';
-import { encodeRef, parseRefs, type WireEntityRef } from '@ifc-lite/a2ui';
+import { encodeRef, parseRefs, safeHexColor, type WireEntityRef } from '@ifc-lite/a2ui';
 import { ColorLegendApi } from '@ifc-lite/a2ui/catalog';
 import { LENS_PALETTE } from '@ifc-lite/lens';
 import { Button } from '@/components/ui/button';
@@ -33,10 +33,9 @@ function legendColor(index: number): string {
   return LENS_PALETTE[index % LENS_PALETTE.length];
 }
 
-const HEX = /^#[0-9a-f]{6}$/i;
 
 /**
- * Script data: `[{label, color, refs?}]`; a colour that is not #rrggbb falls back to the palette.
+ * Script data: `[{label, color, refs?}]`; a colour that is not #rgb or #rrggbb falls back to the palette.
  * Entries sharing a label merge (first colour wins), since a label is what the user toggles.
  * With `loaded`, refs to other models are dropped (they colour nothing) and named in `unloadedModels`.
  */
@@ -57,7 +56,7 @@ export function legendEntriesFromData(data: unknown, loaded?: ReadonlySet<string
       const seen = new Set(existing.refs.map(encodeRef));
       existing.refs = existing.refs.concat(parsed.filter((ref) => !seen.has(encodeRef(ref))));
     }
-    else byLabel.set(label, { label, color: typeof color === 'string' && HEX.test(color) ? color : legendColor(i), refs: parsed });
+    else byLabel.set(label, { label, color: safeHexColor(color, legendColor(i)), refs: parsed });
   });
   return { entries: [...byLabel.values()], unloadedModels: [...unloaded] };
 }

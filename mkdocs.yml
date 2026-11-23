@@ -245,6 +245,7 @@ nav:
   - Architecture:
     - Overview: architecture/overview.md
     - Viewer Automation (Proposed): architecture/viewer-automation-plan.md
+    - A2UI Result Surfaces: architecture/a2ui.md
     - Data Flow: architecture/data-flow.md
     - Parsing Pipeline: architecture/parsing-pipeline.md
     - Geometry Pipeline: architecture/geometry-pipeline.md

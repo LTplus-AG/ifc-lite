@@ -50,6 +50,7 @@ export interface FakeTabOptions {
   host?: string;
   protocol?: number;
   resultAck?: true;
+  a2uiSurface?: true;
   client?: { name: string; version?: string };
 }
 
@@ -156,6 +157,7 @@ export async function connectTab(opts: FakeTabOptions): Promise<FakeTab> {
     permission: opts.permission ?? 'read-only',
     tools: opts.tools ?? [READ_TOOL, MUTATING_TOOL],
     resultAck: opts.resultAck,
+    a2uiSurface: opts.a2uiSurface,
     client: opts.client ?? { name: 'fake-tab', version: '0' },
   });
   return opened.tab;

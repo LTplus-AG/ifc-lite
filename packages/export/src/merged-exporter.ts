@@ -19,6 +19,7 @@ import { collectReferencedEntityIds, getVisibleEntityIds, filterHiddenRefsFromRe
 import { collectStyleEntities, STYLE_RESCUE_TYPES } from './style-closure.js';
 import { collectGeoreferencingEntities } from './georef-closure.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
+import { classifyEntityTypeConversion } from './schema-conversion-loss-report.js';
 import { StyleFlatten } from './schema-style-flatten.js';
 import { firstWrittenOwnerHistoryRef, Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
 import { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
@@ -35,7 +36,7 @@ import { listKeptContexts } from './merged-project-contexts.js';
 import { remapEntityText } from './merged-remap.js';
 import { PlannerGuids } from './merged-planner-guids.js';
 import {
-  canUnifyByGlobalId, canUnifyConvertedType,
+  canUnifyByGlobalId,
   isRelationshipType,
   mintUniqueGuid,
   readLeadingGuid,
@@ -68,6 +69,11 @@ const SHARED_INFRASTRUCTURE_TYPES = new Set([
   'IFCGEOMETRICREPRESENTATIONCONTEXT',
   'IFCGEOMETRICREPRESENTATIONSUBCONTEXT',
 ]);
+
+function canUnifyConvertedType(type: string, from: IfcSchemaVersion, to: IfcSchemaVersion): boolean {
+  const { targetType, kind } = classifyEntityTypeConversion(type, from, to);
+  return kind !== 'blocked' && canUnifyByGlobalId(targetType);
+}
 
 /** SI prefix multipliers, for resolving prefixed area/volume units (rarely used). */
 const SI_PREFIX_MULTIPLIERS: Record<string, number> = {

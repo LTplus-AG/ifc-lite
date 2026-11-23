@@ -17,8 +17,6 @@ import { asSourceBytes } from '@ifc-lite/parser';
 import type { ExportEntityRef } from './entity-iteration.js';
 import { stepRecordHead } from './step-record-frame.js';
 import { skipStepTrivia } from './step-slot-grammar.js';
-import { classifyEntityTypeConversion } from './schema-conversion-loss-report.js';
-import type { IfcSchemaVersion } from './schema-converter.js';
 
 /**
  * An IfcGloballyUniqueId is exactly 22 characters of the buildingSMART base64
@@ -43,11 +41,6 @@ export function canUnifyByGlobalId(typeUpper: string, converted?: string): boole
   if (converted === undefined) return true;
   const head = stepRecordHead(converted);
   return head !== null && converted.slice(head.typeStart, head.typeEnd).toUpperCase() !== 'IFCPROXY';
-}
-
-export function canUnifyConvertedType(type: string, from: IfcSchemaVersion, to: IfcSchemaVersion): boolean {
-  const { targetType, kind } = classifyEntityTypeConversion(type, from, to);
-  return kind !== 'blocked' && canUnifyByGlobalId(targetType);
 }
 
 /**

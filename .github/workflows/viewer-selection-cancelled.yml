@@ -1,0 +1,40 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: Viewer selection cancellation
+
+on:
+  workflow_run:
+    workflows: [Test]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+  statuses: write
+
+jobs:
+  report:
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'cancelled' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # workflow_run executes on the default branch. Keep the privileged
+      # status writer on that trusted revision and consume no PR artifacts.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          sparse-checkout: scripts
+          persist-credentials: false
+      - name: Mark the cancelled Test run's pending viewer status as failed
+        run: node scripts/ci-viewer-select-status.mjs --cancelled
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          CANCELLED_RUN_ID: ${{ github.event.workflow_run.id }}
+          CANCELLED_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}

@@ -442,6 +442,10 @@ export class Scene {
     return this.spatialChunking;
   }
 
+  private arenaCopySource = false;
+  /** Create batch buffers with COPY_SRC so draw-stream arenas can copy them; set before geometry streams in. */
+  setDrawStreamArena(enabled: boolean): void { this.arenaCopySource = enabled; }
+
   // ─── GPU residency (issue #1682 phase 3a) ──────────────────────────────
   // The budget applies to bucket-owned colour/chunk batches (the evictable
   // set). Streaming fragments, partial sub-batches,
@@ -1037,6 +1041,12 @@ export class Scene {
       if (isEntityVisible(expressId, hiddenIds, isolatedIds) && ++count > limit) return true;
     }
     return false;
+  }
+
+  /** Flat (batched) pieces only, each once; no instanced materialisation (the draw stream's HLOD proxy source). */
+  forEachFlatMeshData(visit: (md: MeshData) => void): void {
+    const seen = new Set<MeshData>();
+    for (const pieces of this.meshDataMap.values()) for (const piece of pieces) { if (!seen.has(piece)) { seen.add(piece); visit(piece); } }
   }
 
   /**
@@ -2422,7 +2432,7 @@ export class Scene {
     const fragmentOf = bucketKey === undefined && !this.ephemeralStreamingMode ? ownerKey : undefined;
     let kept: ArrayBuffer | Float32Array | undefined; // a fragment's bytes, for a capture's assembled batch
     const result = (bucketKey !== undefined && this.streamWork.assemble(meshes, color, device, pipeline,
-      { id: this.nextBatchId, colorKey: bucketKey, origin, quantized: quantization, lod: this.lodBuildsEnabled, onMerged }))
+      { id: this.nextBatchId, colorKey: bucketKey, origin, quantized: quantization, lod: this.lodBuildsEnabled, onMerged, arenaCopySource: this.arenaCopySource }))
       || createSceneBatch(meshes, color, device, pipeline, {
       // A derived batch (no bucketKey) is a subset of ONE material-uniform
       // bucket, so its first piece's finish labels it like bucketBaseKey does (#5582).
@@ -2430,6 +2440,7 @@ export class Scene {
       origin,
       quantized: quantization, lod: this.lodBuildsEnabled,
       onMerged: onMerged ?? (fragmentOf !== undefined && this.snapshots.capturing ? (bytes) => { kept = bytes.vertexData; } : undefined),
+      arenaCopySource: this.arenaCopySource,
       ...(fragmentOf !== undefined ? { lattice: this.streamWork.latticeFor(fragmentOf), copySource: true } : {}),
     }, bucketKey);
     this.nextBatchId++; if (kept) this.streamWork.keepBytes(result, kept);

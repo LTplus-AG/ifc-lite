@@ -41,6 +41,8 @@ export interface BatchHighlightResources {
   pipeline: Pick<RenderPipeline, 'getUniformBufferSize' | 'getBindGroupLayout' | 'getBatchSelectionPipeline'>;
   /** Asks for a frame once a highlight pipeline that was still being built is ready. */
   onPipelineReady?: () => void;
+  /** Resolve wanted ids through the entity -> batch index instead of scanning every batch (`DrawStreamConfig.hlIndex`). */
+  entityIndex?: boolean;
 }
 
 /** What {@link BatchHighlight.sync} decided. */
@@ -92,7 +94,10 @@ export function batchesHolding(
   const blocked = new Set<number>();
   const found = new Set<number>();
   const list = scene.getBatchedMeshes();
-  for (let index = 0; index < list.length; index++) {
+  const candidates = resources.entityIndex ? entityBatchIndex(scene, list).candidates(ids) : null;
+  const count = candidates ? candidates.length : list.length;
+  for (let k = 0; k < count; k++) {
+    const index = candidates ? candidates[k]! : k;
     const batch = list[index]!;
     const models = batch.modelIndices;
     let holds = false;
@@ -122,6 +127,53 @@ export function batchesHolding(
     for (const id of batchEntities(batch)) if (ids.has(id)) blocked.add(id);
   }
   return { batches, evicted, blocked, found, awaitsPipeline };
+}
+
+/**
+ * Entity -> batch-index reverse index, so a selection
+ * or hover resync visits only the batches that hold a wanted id instead of
+ * every entry of every batch (O(selected) instead of O(elements) per resync).
+ * Rebuilt when the batch list, its length or the pick-geometry revision moves.
+ * Used when `BatchHighlightResources.entityIndex` is set.
+ */
+class EntityBatchIndex {
+  private readonly byId = new Map<number, number | number[]>();
+  constructor(readonly list: readonly BatchedMesh[], readonly length: number, readonly revision: number) {
+    const add = (id: number, index: number): void => {
+      const at = this.byId.get(id);
+      if (at === undefined) this.byId.set(id, index);
+      else if (typeof at === 'number') { if (at !== index) this.byId.set(id, [at, index]); }
+      else if (at[at.length - 1] !== index) at.push(index);
+    };
+    for (let index = 0; index < list.length; index++) {
+      const b = list[index]!;
+      for (const id of b.expressIds) add(id, index);
+      if (b.laneIds) for (const id of b.laneIds) add(id, index);
+    }
+  }
+  /** Ascending, de-duplicated batch indices holding any of `ids` (the full scan's visiting order). */
+  candidates(ids: ReadonlySet<number>): number[] {
+    const out: number[] = [];
+    for (const id of ids) {
+      const at = this.byId.get(id);
+      if (at === undefined) continue;
+      if (typeof at === 'number') out.push(at); else for (const i of at) out.push(i);
+    }
+    out.sort((x, y) => x - y);
+    let w = 0;
+    for (let r = 0; r < out.length; r++) if (r === 0 || out[r] !== out[r - 1]) out[w++] = out[r]!;
+    out.length = w;
+    return out;
+  }
+}
+
+let cachedIndex: EntityBatchIndex | null = null;
+function entityBatchIndex(scene: BatchHighlightScene, list: readonly BatchedMesh[]): EntityBatchIndex {
+  const revision = scene.getPickGeometryRevision();
+  if (!cachedIndex || cachedIndex.list !== list || cachedIndex.length !== list.length || cachedIndex.revision !== revision) {
+    cachedIndex = new EntityBatchIndex(list, list.length, revision);
+  }
+  return cachedIndex;
 }
 
 /** Whether the quantized highlight pipeline a batch waited for exists now (only quantized pipelines are built late). */

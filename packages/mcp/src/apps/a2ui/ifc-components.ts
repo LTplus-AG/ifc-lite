@@ -87,9 +87,12 @@ function chart(p: Props, act: RendererAction): HTMLElement {
   if (!data.length) return block(p.title, element('p', 'No groups.'));
   const maxGroups = Number(value(p.maxGroups));
   const limit = Number.isFinite(maxGroups) ? Math.max(1, Math.min(100, Math.floor(maxGroups))) : 12;
-  const shown = data.slice(0, limit);
+  // Same fold as the viewer: the limit - 1 largest groups by magnitude, in their order, plus Other.
+  let shown = data;
   if (data.length > limit) {
-    const other = data.slice(limit);
+    const largest = new Set([...data].sort((a, b) => Math.abs(Number(b.value)) - Math.abs(Number(a.value))).slice(0, Math.max(1, limit - 1)));
+    shown = data.filter((datum) => largest.has(datum));
+    const other = data.filter((datum) => !largest.has(datum));
     shown.push({ label: 'Other', value: other.reduce((sum, datum) => sum + Number(datum.value), 0), refs: other.flatMap(datum => refs(datum.refs)) });
   }
   const maximum = Math.max(1, ...shown.map(datum => Math.abs(Number(datum.value))));

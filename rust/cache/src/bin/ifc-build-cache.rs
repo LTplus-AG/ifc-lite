@@ -28,7 +28,14 @@ options:
                       (omitSourceHash: true)
   --no-compress       store every geometry chunk raw
                       (compressGeometryChunks: false)
+  -V, --version       print the crate and cache format versions
   -h, --help          print this help";
+
+enum Command {
+    Build(Args),
+    Help,
+    Version,
+}
 
 struct Args {
     input: PathBuf,
@@ -36,12 +43,13 @@ struct Args {
     options: CacheOptions,
 }
 
-fn parse(args: impl Iterator<Item = String>) -> Result<Option<Args>, String> {
+fn parse(args: impl Iterator<Item = String>) -> Result<Command, String> {
     let mut options = CacheOptions::default();
     let mut paths = Vec::new();
     for arg in args {
         match arg.as_str() {
-            "-h" | "--help" => return Ok(None),
+            "-h" | "--help" => return Ok(Command::Help),
+            "-V" | "--version" => return Ok(Command::Version),
             "--no-geometry" => options.include_geometry = false,
             "--omit-source-hash" => options.omit_source_hash = true,
             "--no-compress" => options.compress_geometry_chunks = false,
@@ -50,7 +58,7 @@ fn parse(args: impl Iterator<Item = String>) -> Result<Option<Args>, String> {
         }
     }
     match <[PathBuf; 2]>::try_from(paths) {
-        Ok([input, output]) => Ok(Some(Args { input, output, options })),
+        Ok([input, output]) => Ok(Command::Build(Args { input, output, options })),
         Err(paths) => Err(format!("expected an input and an output path, got {}", paths.len())),
     }
 }
@@ -99,15 +107,19 @@ fn run(args: Args) -> Result<CacheStats, String> {
 fn main() -> ExitCode {
     let usage = USAGE.replace("{VERSION}", &FORMAT_VERSION.to_string());
     match parse(std::env::args().skip(1)) {
-        Ok(None) => {
+        Ok(Command::Help) => {
             println!("{usage}");
+            ExitCode::SUCCESS
+        }
+        Ok(Command::Version) => {
+            println!("ifc-build-cache {} (format v{FORMAT_VERSION})", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
         }
         Err(message) => {
             eprintln!("ifc-build-cache: {message}\n\n{usage}");
             ExitCode::from(2)
         }
-        Ok(Some(args)) => match run(args) {
+        Ok(Command::Build(args)) => match run(args) {
             Ok(stats) => {
                 println!("{}", json(&stats));
                 ExitCode::SUCCESS

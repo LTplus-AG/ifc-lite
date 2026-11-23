@@ -55,4 +55,15 @@ describe('BrowserTrackingStore', () => {
     store.save(SET);
     assert.equal(store.persistError, undefined);
   });
+
+  it('without browser storage every call no-ops instead of throwing, and a save reports it is not durable', () => {
+    delete g.localStorage;
+    assert.equal(BrowserTrackingStore.read('g'), undefined);
+    BrowserTrackingStore.clear('g');
+    BrowserTrackingStore.clearByIdPrefix('g');
+    const store = new BrowserTrackingStore('g', 'content:a');
+    store.save(SET);
+    assert.match(store.persistError ?? '', /unavailable/);
+    assert.deepEqual(store.load('g/n'), SET);
+  });
 });

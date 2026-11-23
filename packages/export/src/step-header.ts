@@ -107,6 +107,7 @@ export function assembleExportResult(pass: ExportPass): StepExportResult {
   // so an in-place edit to a source entity is not in the file and never was —
   // the header merely used to claim otherwise.
   const { modifiedEntityCount, warnings: deltaWarnings } = pass.modifications.settle();
+  pass.newEntityCount += pass.enums.structural.finishEffectiveVarying(pass.entities);
   pass.enums.forms.dates.finish(pass.entities);
   pass.warnings.push(...deltaWarnings);
   pass.warnings.push(...pass.slotFill.warnings());

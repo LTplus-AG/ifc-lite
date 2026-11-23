@@ -39,6 +39,14 @@ inputs:
     description: 'Swatinem/rust-cache save-if; by default only a push to main or a merge_group batch writes the cache'
     required: false
     default: ${{ github.ref == 'refs/heads/main' || github.event_name == 'merge_group' }}
+  pinned-rust-cache:
+    description: 'Hash only the active Rust toolchain, retaining rust-cache lockfile hashing and fallback'
+    required: false
+    default: 'false'
+  cache-bin:
+    description: 'Whether to archive binaries installed in Cargo home'
+    required: false
+    default: 'true'
 
 outputs:
   cache-hit:
@@ -63,6 +71,12 @@ runs:
       with:
         prefix-key: ${{ inputs.cache-prefix }}
         shared-key: ${{ inputs.shared-key }}
+        # This rust-cache version's environment switch also disables lockfile
+        # hashing. Suppress only the inventory of inactive toolchains instead.
+        cmd-format: >-
+          ${{ inputs.pinned-rust-cache == 'true' &&
+          'bash -c "if [[ \"$*\" != \"rustup toolchain list --quiet\" ]]; then exec \"$@\"; fi" -- {0}' || '{0}' }}
+        cache-bin: ${{ inputs.cache-bin }}
         save-if: ${{ inputs.save-if }}
 
     # Downloaded directly rather than via jetli/wasm-pack-action, which always

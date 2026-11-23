@@ -8,7 +8,7 @@ use crate::mesh_check::{signed_volume, EdgeLedger};
 use crate::Mesh;
 use rustc_hash::FxHashMap;
 
-/// Union positive-volume shells without losing material, then exact-subtract
+/// Union consistently wound shells without losing material, then subtract
 /// the authored cutter under the same accept gates as the first attempt.
 pub(super) fn try_cut(host: &Mesh, cutter: &Mesh) -> Option<Mesh> {
     if crate::resource::check_current().is_err() || !strict_closed_mesh(cutter) {
@@ -19,14 +19,29 @@ pub(super) fn try_cut(host: &Mesh, cutter: &Mesh) -> Option<Mesh> {
         return None;
     }
     let ranges = EdgeLedger::closed_shell_ranges(host)?;
-    let shells: Vec<_> = ranges
+    let mut shells: Vec<_> = ranges
         .into_iter()
         .map(|range| shell(host, &host.indices[range]))
         .collect();
 
-    let source_volume = shells.iter().try_fold(0.0, |total, shell| {
-        let volume = signed_volume(shell);
-        (volume.is_finite() && volume > 0.0).then_some(total + volume)
+    // Normalize uniformly inward-wound solids for the union. Mixed signs
+    // may describe a solid and its cavity, so leave those hosts to the
+    // existing fallback instead of turning the cavity into material.
+    let winding = signed_volume(shells.first()?).signum();
+    let source_volume = shells.iter_mut().try_fold(0.0, |total, shell| {
+        let volume = winding * signed_volume(shell);
+        if !volume.is_finite() || volume <= 0.0 {
+            return None;
+        }
+        if winding < 0.0 {
+            for triangle in shell.indices.chunks_exact_mut(3) {
+                triangle.swap(1, 2);
+            }
+            for normal in &mut shell.normals {
+                *normal = -*normal;
+            }
+        }
+        Some(total + volume)
     })?;
 
     let clipper = ClippingProcessor::new();

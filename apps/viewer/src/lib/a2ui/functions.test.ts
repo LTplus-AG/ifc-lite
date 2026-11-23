@@ -89,6 +89,10 @@ describe('IFC function policy', () => {
     assert.equal(isColouringActive(host, 'legend|4'), true);
     runIfcFunction(host, 'resetView', {}, { caller: 'renderer', userActivated: true });
     assert.equal(isColouringActive(host, 'legend|4'), false);
+    // So does any other colouring painting over it.
+    markColouringActive(host, 'legend|4');
+    runIfcFunction(host, 'colorize', { query: { types: ['IfcWall'] } }, { caller: 'renderer', userActivated: true });
+    assert.equal(isColouringActive(host, 'legend|4'), false);
   });
 
   it('lets a live session auto-apply once per key and a replayed chat record never', async () => {

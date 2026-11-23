@@ -4,50 +4,15 @@
 
 //! Core element processing: resolving representations, processing items, and caching.
 
-use super::frame_parts::{mesh_bounds, single_frame};
+use super::frame_parts::single_frame;
+use self::raw_rebase::RawRebase;
+
+pub(crate) mod raw_rebase;
 use super::GeometryRouter;
 use crate::{Mesh, Result, SubMeshCollection};
 
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use std::rc::Rc;
-
-/// The nearest f32 that does not shrink the interval: rounds a minimum down
-/// and a maximum up, so an f32 box always encloses the f64 geometry.
-pub(super) fn enclosing_f32(value: f64, is_min: bool) -> f32 {
-    let rounded = value as f32;
-    match (is_min, (rounded as f64).partial_cmp(&value)) {
-        (true, Some(std::cmp::Ordering::Greater)) => rounded.next_down(),
-        (false, Some(std::cmp::Ordering::Less)) => rounded.next_up(),
-        _ => rounded,
-    }
-}
-
-/// Publish object-frame `local_bounds` for a mesh rebased by `offset`
-/// (metres, item frame). No-op for an empty mesh.
-///
-/// Public bounds stay in the pre-RTC object frame (the contract
-/// `local_to_world` pairs with), reconstituted from the rebased f32 positions
-/// in f64 and then rounded OUTWARD to the enclosing f32 box: at a 5,000,000 m
-/// offset the f32 ULP is 0.5 m, so a 0.125 m face would otherwise round both
-/// faces onto one value and publish a zero extent (#5026 review).
-fn publish_object_frame_bounds(mesh: &mut Mesh, offset: (f64, f64, f64)) {
-    if mesh.positions.is_empty() {
-        return;
-    }
-    let rebased = mesh_bounds(mesh);
-    let offset = [offset.0, offset.1, offset.2];
-    let mut bounds = [0.0f32; 6];
-    for axis in 0..3 {
-        let min = rebased[axis] as f64 + offset[axis];
-        let max = rebased[axis + 3] as f64 + offset[axis];
-        bounds[axis] = enclosing_f32(min, true);
-        bounds[axis + 3] = enclosing_f32(max, false);
-        if max > min && bounds[axis + 3] <= bounds[axis] {
-            bounds[axis + 3] = bounds[axis].next_up();
-        }
-    }
-    mesh.local_bounds = Some(bounds);
-}
 
 /// Scale mesh positions from file units to meters by `unit_scale`; a no-op at
 /// `1.0`. Source-free, so owned numerical recipes apply the same scaling.
@@ -64,12 +29,12 @@ pub(crate) fn scale_positions(mesh: &mut Mesh, unit_scale: f64) {
 /// Finish one item mesh at the boundary every item walk shares: strip
 /// out-of-bounds indices, scale file units to metres, and publish object-frame
 /// bounds when it was rebased by `rtc_offset` (metres, item frame).
-pub(crate) fn finish_item_mesh(mesh: &mut Mesh, unit_scale: f64, rtc_offset: Option<(f64, f64, f64)>) {
+pub(crate) fn finish_item_mesh(mesh: &mut Mesh, unit_scale: f64, rebase: Option<RawRebase>) {
     // Safety net: strip any out-of-bounds indices before downstream use
     mesh.validate_indices();
     scale_positions(mesh, unit_scale);
-    if let Some(offset) = rtc_offset {
-        publish_object_frame_bounds(mesh, offset);
+    if let Some(rebase) = rebase {
+        rebase.finish(mesh);
     }
 }
 
@@ -233,42 +198,19 @@ impl GeometryRouter {
         if !matches!(item.ifc_type, IfcType::IfcTriangulatedFaceSet | IfcType::IfcTriangulatedIrregularNetwork) {
             return None;
         }
-        let rtc = offset_meters.and_then(|offset| {
-            self.raw_item_rtc_file_units(item, decoder, offset)
-                .zip(Some(offset))
-        });
+        let rebase = offset_meters.and_then(|offset| self.raw_item_rebase(item, decoder, offset));
         let proc = crate::processors::TriangulatedFaceSetProcessor::new();
         let (mut mesh, uvs) = proc
-            .process_with_texture_rebased(item, decoder, map, rtc.map(|(file_units, _)| file_units))
+            .process_with_texture_rebased(item, decoder, map, rebase.map(|rebase| rebase.file_units))
             .ok()?;
         if mesh.is_empty() {
             return None;
         }
         self.scale_mesh(&mut mesh); // UVs are unaffected by scale
-        if let Some((_, offset)) = rtc {
-            publish_object_frame_bounds(&mut mesh, offset);
+        if let Some(rebase) = rebase {
+            rebase.finish(&mut mesh);
         }
         Some((mesh, uvs))
-    }
-
-    /// `offset_meters` in file units when rebasing `item` by it before f32
-    /// narrowing reduces the item's coordinate magnitude; `None` when there
-    /// is no model RTC or the item is not raw-coordinate geometry (#5684).
-    pub(crate) fn raw_item_rtc_file_units(
-        &self,
-        item: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        offset_meters: (f64, f64, f64),
-    ) -> Option<(f64, f64, f64)> {
-        (self.has_rtc_offset()
-            && self.representation_item_benefits_from_rtc(item, decoder, offset_meters))
-        .then(|| {
-            (
-                offset_meters.0 / self.unit_scale(),
-                offset_meters.1 / self.unit_scale(),
-                offset_meters.2 / self.unit_scale(),
-            )
-        })
     }
 
     /// Run an `IfcAlignment` through the dedicated alignment processor and

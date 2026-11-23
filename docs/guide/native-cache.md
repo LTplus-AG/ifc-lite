@@ -18,6 +18,8 @@ cargo install --locked --path rust/cache
 ifc-build-cache model.ifc model.ifclite
 ```
 
+Run `ifc-build-cache --version` (or `-V`) to check the installed crate version and the cache format it writes. The command prints one line to stdout in the form `ifc-build-cache <crate-version> (format v<format-version>)` and exits 0.
+
 | Flag | `BinaryCacheWriter` option | Effect |
 |------|----------------------------|--------|
 | `--no-geometry` | `includeGeometry: false` | Write the data sections only |

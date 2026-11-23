@@ -2388,6 +2388,17 @@ byte-identical GLB exports for the committed wall and ArchiCAD FZK fixtures. See
 `tests/evidence/packed-workflows/worker-packaging.json`. Keep the external Vite
 bundle in acceptance: a Node-only WASM pass cannot prove worker asset closure.
 
+## Oblique partial finishes at a recess floor (#11278)
+
+Deferring a proved partial oblique interface to the exact cut removes the
+membrane in the rotated fixture. The source quads must share corners and
+the wider projected rectangle must cover the aperture. This keeps the
+proof grounded in the source mesh when projected corners differ by f32
+rounding.
+
+Meshes matched the base on FZK-Haus, ISSUE_129, Holter, and rvt01.
+Timing on the loaded host did not establish a throughput change.
+
 ## Several cutting planes: caps and clip cost (#7545)
 
 Browser A/B of `main` against the branch on a real GPU (Chrome 155, NVIDIA Blackwell, WebGPU), production

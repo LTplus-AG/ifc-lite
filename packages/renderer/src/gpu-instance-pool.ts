@@ -80,7 +80,8 @@ export class GpuInstancePool {
   private stateDirtyHi = -1;
   private readonly templates = new Map<number, PoolTemplate>();
   private readonly groups = new DrawGroups();
-  private layoutDirty = true;
+  /** `registrations` the draw-group layout was last built for. */
+  private layoutGen = -1;
   private readonly palette = new ColourPalette();
   private paletteOffsetWords = 0;
   /** One bind group per cull view (they differ only in the uniform); null until `flush` rebuilds them. */
@@ -93,6 +94,8 @@ export class GpuInstancePool {
 
   constructor(device: GPUDevice) {
     this.device = device;
+    const l = device.limits;
+    this.maxOccurrences = l ? Math.floor(Math.min(l.maxBufferSize, l.maxStorageBufferBindingSize) / INSTANCE_STRIDE_BYTES) : Infinity;
     this.paramsBuffers = [0, 1, 2].map((v) => device.createBuffer({ label: `gpu-instance-pool-params-${v}`, size: PARAMS_BYTES, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }));
     const storage = (binding: number, type: GPUBufferBindingType): GPUBindGroupLayoutEntry => ({ binding, visibility: GPUShaderStage.COMPUTE, buffer: { type } });
     this.bindGroupLayout = device.createBindGroupLayout({
@@ -136,10 +139,7 @@ export class GpuInstancePool {
 
   private readonly freeRanges = new FreeRanges();
   /** Largest occurrence count whose biggest table (88 B records) fits one buffer and storage binding. */
-  private get maxOccurrences(): number {
-    const l = this.device.limits;
-    return l ? Math.floor(Math.min(l.maxBufferSize, l.maxStorageBufferBindingSize) / INSTANCE_STRIDE_BYTES) : Infinity;
-  }
+  private readonly maxOccurrences: number;
 
   /**
    * Register a template whose `count` occurrences were allocated at `base`:
@@ -150,7 +150,7 @@ export class GpuInstancePool {
     const group = this.groups.join(slot, geometry, count);
     this.templates.set(slot, { base, count, group, radii });
     this.writeSource(base, records, anchors, radii, group, 0, count, true);
-    this.layoutDirty = true; this.registrations++;
+    this.registrations++;
     return group;
   }
 
@@ -171,11 +171,10 @@ export class GpuInstancePool {
     const t = this.templates.get(slot);
     if (!t) return;
     this.templates.delete(slot);
-    for (let i = t.base; i < t.base + t.count; i++) this.setState(i, (this.state[i]! & ~POOL_STATE_SELECTED) | POOL_STATE_DEAD);
+    for (let i = t.base; i < t.base + t.count; i++) { this.palette.release(this.state[i]! >>> POOL_STATE_PALETTE_SHIFT); this.setState(i, (this.state[i]! & ~POOL_STATE_SELECTED) | POOL_STATE_DEAD); }
     this.groups.leave(t.group, slot);
     this.freeRanges.release(t.base, t.count);
-    this.registrations++; this.palette.freed = true;
-    this.layoutDirty = true;
+    this.registrations++;
   }
 
   /**
@@ -211,7 +210,7 @@ export class GpuInstancePool {
   private setState(i: number, value: number): void {
     value >>>= 0;
     if (this.state[i] === value) return;
-    this.state[i] = value >>> 0;
+    this.state[i] = value;
     if (i < this.stateDirtyLo) this.stateDirtyLo = i;
     if (i > this.stateDirtyHi) this.stateDirtyHi = i;
   }
@@ -230,16 +229,12 @@ export class GpuInstancePool {
       this.setState(occurrence, next);
     } else if (lane === INSTANCE_COLOR_OFFSET) {
       const c = data as Float32Array;
-      const idx = c[0] === originalColor[0] && c[1] === originalColor[1] && c[2] === originalColor[2] && c[3] === originalColor[3]
-        ? 0 : this.paletteIndex(c);
-      const old = cur >>> POOL_STATE_PALETTE_SHIFT;
-      if (old !== 0 && old !== idx) this.palette.freed = true; // the old entry may have lost its last user
-      this.setState(occurrence, (cur & 0xffff) | (idx << POOL_STATE_PALETTE_SHIFT));
+      this.palette.release(cur >>> POOL_STATE_PALETTE_SHIFT);
+      const idx = c[0] === originalColor[0] && c[1] === originalColor[1] && c[2] === originalColor[2] && c[3] === originalColor[3] ? 0
+        : this.palette.resolve(c, this.state.subarray(0, this.count), POOL_STATE_PALETTE_SHIFT, POOL_STATE_DEAD, (i, v) => this.setState(i, v));
+      this.palette.retain(idx);
+      this.setState(occurrence, (this.state[occurrence]! & 0xffff) | (idx << POOL_STATE_PALETTE_SHIFT)); // a compaction may have renumbered it
     }
-  }
-
-  private paletteIndex(c: Float32Array): number {
-    return this.palette.resolve(c, this.state.subarray(0, this.count), POOL_STATE_PALETTE_SHIFT, POOL_STATE_DEAD, (i, v) => this.setState(i, v));
   }
 
   /** Set or clear `bit` (USER_HIDDEN / ISOLATED) on one occurrence. */
@@ -260,7 +255,7 @@ export class GpuInstancePool {
     if (needed <= this.capacity) return;
     let cap = Math.max(65536, this.capacity);
     while (cap < needed) cap *= 2;
-    cap = Math.max(needed, Math.min(cap, this.maxOccurrences));
+    cap = Math.min(cap, this.maxOccurrences); // allocate keeps `needed` within it
     const d = this.device;
     const make = (label: string, bytes: number, usage: number) => d.createBuffer({ label, size: Math.max(16, bytes), usage });
     const srcRecords = make('gpu-instance-pool-records', cap * INSTANCE_STRIDE_BYTES, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC);
@@ -293,7 +288,7 @@ export class GpuInstancePool {
       this.bindGroups = null;
     }
     this.device.queue.writeBuffer(this.argsBuffer, 0, args);
-    this.layoutDirty = false;
+    this.layoutGen = this.registrations;
     this.palette.dirty = true;
   }
 
@@ -315,7 +310,7 @@ export class GpuInstancePool {
   /** Upload pending layout, palette and state edits. Call before `cull`. */
   flush(): void {
     if (this.count === 0) return;
-    if (this.layoutDirty) this.rebuildLayout();
+    if (this.layoutGen !== this.registrations) this.rebuildLayout();
     if (this.palette.dirty) this.writeMeta();
     if (this.stateDirtyHi >= this.stateDirtyLo) {
       const lo = this.stateDirtyLo, hi = this.stateDirtyHi + 1;

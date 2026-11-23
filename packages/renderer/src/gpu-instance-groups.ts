@@ -43,7 +43,7 @@ function hashGeometry(positions: Float32Array, normals: Float32Array, indices: U
 }
 
 /** Element-wise equality; Float32Arrays compare bit patterns (so -0/NaN match exactly). */
-function sameArray(a: ArrayLike<number>, b: ArrayLike<number>): boolean {
+export function sameArray(a: ArrayLike<number>, b: ArrayLike<number>): boolean {
   if (a.length !== b.length) return false;
   if (a instanceof Float32Array && b instanceof Float32Array) {
     const ua = new Uint32Array(a.buffer, a.byteOffset, a.length), ub = new Uint32Array(b.buffer, b.byteOffset, b.length);
@@ -136,62 +136,68 @@ export class ColourPalette {
     return idx;
   }
 
-  /** Keep only entries in `used` (0 always stays), renumbered densely; returns old -> new index. */
-  compact(used: ReadonlySet<number>): Map<number, number> {
-    const remap = new Map<number, number>();
-    const kept: number[] = [0, 0, 0, 0];
+  /** Live occurrences using each entry; an entry dropping to 0 can be reclaimed by compaction. */
+  private readonly uses = new Uint32Array(POOL_PALETTE_MAX + 1);
+  /** Set when an entry lost its last user since the last compaction. */
+  private reclaimable = false;
+
+  retain(idx: number): void { if (idx) this.uses[idx]!++; }
+  release(idx: number): void { if (idx && this.uses[idx] && --this.uses[idx]! === 0) this.reclaimable = true; }
+
+  /** Keep only entries still in use (0 always stays), renumbered densely in place; returns old -> new index. */
+  compact(): Int32Array {
+    const c = this.colours, n = c.length / 4, remap = new Int32Array(n);
     this.index.clear(); this.lastRef = null;
-    for (let old = 1; old < this.colours.length / 4; old++) {
-      if (!used.has(old)) continue;
-      const at = kept.length / 4;
-      const c = this.colours.slice(old * 4, old * 4 + 4);
-      kept.push(c[0]!, c[1]!, c[2]!, c[3]!); remap.set(old, at); this.index.set(`${c[0]},${c[1]},${c[2]},${c[3]}`, at);
+    let at = 1;
+    for (let old = 1; old < n; old++) {
+      if (!this.uses[old]) continue;
+      for (let k = 0; k < 4; k++) c[at * 4 + k] = c[old * 4 + k]!;
+      this.uses[at] = this.uses[old]!; remap[old] = at;
+      this.index.set(`${c[at * 4]},${c[at * 4 + 1]},${c[at * 4 + 2]},${c[at * 4 + 3]}`, at++);
     }
-    this.colours.length = kept.length;
-    for (let i = 0; i < kept.length; i++) this.colours[i] = kept[i]!;
-    this.dirty = true;
+    this.uses.fill(0, at);
+    c.length = at * 4;
+    this.dirty = true; this.reclaimable = false;
     return remap;
   }
 
-  /** Compact to the entries `states` (index in the bits above `shift`) still reference, rewriting them through `write`. */
-  compactStates(states: Uint32Array, shift: number, write: (i: number, value: number) => void): void {
-    const used = new Set<number>();
-    for (const v of states) used.add(v >>> shift);
-    const remap = this.compact(used);
-    const low = (1 << shift) - 1;
-    for (let i = 0; i < states.length; i++) {
-      const old = states[i]! >>> shift;
-      if (old) write(i, ((states[i]! & low) | ((remap.get(old) ?? 0) << shift)) >>> 0);
-    }
-  }
-
-  /** Set when an entry may have lost its last user (a recolour, a removed template): compaction may free space. */
-  freed = true;
-
   /**
-   * Index for colour `c` given the occurrence `states` (index in the bits
-   * above `shift`, DEAD words passed as `dead`): a full palette is compacted
-   * to the entries live states reference, at most once per `freed`; a palette
-   * full of live colours yields 0 (the record colour), warned once.
+   * Index for colour `c` (not yet retained). A full palette is compacted once
+   * an entry has lost its last user, rewriting the live `states` (index in
+   * the bits above `shift`; words with a `dead` bit never draw and are reset
+   * on reuse) through `write`; a palette full of live colours yields 0 (the
+   * record colour), warned once.
    */
   resolve(c: Float32Array, states: Uint32Array, shift: number, dead: number, write: (i: number, value: number) => void): number {
     let idx = this.indexOf(c);
     if (idx >= 0) return idx;
-    if (!this.freed) return 0;
-    this.freed = false;
-    // Dead words never draw; their stale index is reset when the range is reused.
-    this.compactStates(states.map((v) => (v & dead ? v & ((1 << shift) - 1) : v)), shift, write);
+    if (!this.reclaimable) { if (!this.warned) console.warn('[GpuInstancePool] colour palette full of live colours; further overrides fall back to the record colour'); this.warned = true; return 0; }
+    const remap = this.compact(), low = (1 << shift) - 1;
+    for (let i = 0; i < states.length; i++) {
+      const old = states[i]! >>> shift;
+      if (old && !(states[i]! & dead)) write(i, ((states[i]! & low) | (remap[old]! << shift)) >>> 0);
+    }
+    this.warned = false;
     idx = this.indexOf(c);
-    if (idx >= 0) return idx;
-    console.warn('[GpuInstancePool] colour palette full of live colours; further overrides fall back to the record colour');
-    return 0;
+    return idx >= 0 ? idx : 0;
   }
+
+  private warned = false;
 }
 
 /** Contiguous occurrence ranges of removed templates, handed out again first-fit. */
 export class FreeRanges {
+  /** Sorted by base, adjacent ranges merged, so a remove/add churn cannot fragment the pool. */
   private readonly ranges: { base: number; count: number }[] = [];
-  release(base: number, count: number): void { this.ranges.push({ base, count }); }
+  release(base: number, count: number): void {
+    let i = this.ranges.findIndex((r) => r.base > base);
+    if (i < 0) i = this.ranges.length;
+    this.ranges.splice(i, 0, { base, count });
+    const next = this.ranges[i + 1];
+    if (next && base + count === next.base) { this.ranges[i]!.count += next.count; this.ranges.splice(i + 1, 1); }
+    const prev = this.ranges[i - 1];
+    if (prev && prev.base + prev.count === base) { prev.count += this.ranges[i]!.count; this.ranges.splice(i, 1); }
+  }
   /** First of `count` reused occurrences, or -1 when no released range fits. */
   take(count: number): number {
     const i = this.ranges.findIndex((r) => r.count >= count);

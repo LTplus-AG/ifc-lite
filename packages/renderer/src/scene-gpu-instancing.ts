@@ -9,6 +9,7 @@
  * keeps its per-template path untouched while `pool` is null.
  */
 import { GpuInstancePool } from './gpu-instance-pool.js';
+import { sameArray } from './gpu-instance-groups.js';
 import { POOL_STATE_HOVER, POOL_STATE_ISOLATED, POOL_STATE_USER_HIDDEN } from './gpu-instance-cull.js';
 import { INSTANCE_STRIDE_BYTES } from './instanced-render.js';
 import type { InstancedOccurrence, InstancedTemplateCpu, InstancedTemplateGPU } from './scene-instance-types.js';
@@ -62,7 +63,7 @@ export class SceneInstancePool {
     if (!pool) return;
     const next: number[] = [];
     for (const loc of occurrences ?? []) if (loc.poolIndex !== undefined && loc.poolIndex >= 0 && inModel(loc)) next.push(loc.poolIndex);
-    if (next.length === this.hovered.length && next.every((v, i) => v === this.hovered[i])) return;
+    if (sameArray(next, this.hovered)) return;
     for (const i of this.hovered) pool.setVisibilityBit(i, POOL_STATE_HOVER, false);
     for (const i of next) pool.setVisibilityBit(i, POOL_STATE_HOVER, true);
     this.hovered = next;
@@ -120,7 +121,7 @@ export class SceneInstancePool {
    */
   rebuild(device: GPUDevice, templates: readonly (InstancedTemplateGPU | undefined)[], cpu: readonly (InstancedTemplateCpu | undefined)[],
     occurrences: ReadonlyMap<number, readonly InstancedOccurrence[]>, radiiBySlot: ReadonlyMap<number, Float32Array>): void {
-    this.current?.destroy();
+    this.clear();
     const pool = new GpuInstancePool(device);
     this.current = pool;
     const bases = new Map<number, number>();
@@ -128,6 +129,7 @@ export class SceneInstancePool {
       const t = templates[slot]; const c = cpu[slot]; const radii = radiiBySlot.get(slot);
       if (!t || !c || !radii) continue;
       const base = pool.allocate(t.instanceCount);
+      if (base < 0) { t.poolGroup = undefined; continue; } // past the device limits: not pooled, not drawn
       bases.set(slot, base);
       t.poolGroup = pool.addTemplate(slot, base, { vertexBuffer: t.vertexBuffer, indexBuffer: t.indexBuffer, indexCount: t.indexCount, positions: c.positions, normals: c.normals, indices: c.indices },
         c.instanceData, c.canonicalAnchors, radii);
@@ -138,7 +140,7 @@ export class SceneInstancePool {
         loc.poolIndex = base === undefined ? -1 : base + loc.byteOffset / INSTANCE_STRIDE_BYTES;
       }
     }
-    this.hidden = new Set(); this.isolated = new Set(); this.appliedRegistrations = -1; this.hovered = [];
+    this.appliedRegistrations = -1; // hide/isolate re-apply in full
   }
 
   /** Scene clear: drop the pool; the next instanced upload starts a new one if still enabled. */

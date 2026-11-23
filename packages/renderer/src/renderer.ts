@@ -1945,6 +1945,7 @@ export class Renderer {
             // GPU-driven instancing: upload state edits now; each view culls + compacts on the GPU right before the
             // passes that read it (orbit writes one uniform instead of repacking every delta on the CPU).
             const instancePool: GpuInstancePool | null = this.scene.getInstancedTemplates().length > 0 ? this.scene.getGpuInstancePool() : null;
+            if (instancePool) this.scene.setGpuPoolHover(options.hoverOutline?.id ?? null, options.hoverOutline?.modelIndex);
             instancePool?.flush();
 
             // Sun shadow-map pass (#2670, Phase 2). Off unless the caller opts
@@ -2106,7 +2107,6 @@ export class Renderer {
             // Build color attachments — skip objectId in single-target mode
             const splatFrame = this.gaussianLayer.frameReady(); // #8564: the Gaussian pass after this one loads colour and resolves MSAA
             const glass = splatFrame ? this.gaussianLayer.glassRecorder(this.pipeline.visibility) : null; // holds transparent IFC for the nearest-glass split
-            if (instancePool) this.scene.setGpuPoolHover(options.hoverOutline?.id ?? null, options.hoverOutline?.modelIndex);
             instancePool?.cull(encoder, poolCullParams(this.camera, rteCullCamera, rteCullFrustum.planes, resolveContributionThresholdPx(options.contributionCull, interacting),
                 this.canvas.height / this.pixelRatio), renderPassTimestampWrites(encoder, 'instance-cull'));
             const colorAttachments: GPURenderPassColorAttachment[] = [

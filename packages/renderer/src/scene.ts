@@ -3076,7 +3076,7 @@ export class Scene {
       const haveBox = Number.isFinite(lmnx);
       const pool = this.instancePool.ensure(device);
       const poolBase = pool ? pool.allocate(t.instanceCount) : -1;
-      const poolRadii = pool ? new Float32Array(t.instanceCount).fill(Infinity) : null;
+      const poolRadii = poolBase >= 0 ? new Float32Array(t.instanceCount).fill(Infinity) : null; // -1: past the device limits, not pooled
       for (let i = 0; i < t.instanceCount; i++) {
         const byteOffset = i * INSTANCE_STRIDE_BYTES;
         const eid = t.entityIds[i];
@@ -3092,7 +3092,7 @@ export class Scene {
           this.instancedEntityMap.set(eid, arr);
         }
         // #2985; no id column or the 0 sentinel ⇒ none. ASSIGNED, never conditionally spread: ONE object shape for records that outlive the shard.
-        arr.push({ templateIndex, byteOffset, originalColor, itemId: t.itemIds?.[i] || undefined, finishBits: (cdv.getUint32(byteOffset + INSTANCE_FLAGS_OFFSET, true) & INSTANCE_FINISH_FLAGS_MASK) >>> 0, poolIndex: pool ? poolBase + i : -1 });
+        arr.push({ templateIndex, byteOffset, originalColor, itemId: t.itemIds?.[i] || undefined, finishBits: (cdv.getUint32(byteOffset + INSTANCE_FLAGS_OFFSET, true) & INSTANCE_FINISH_FLAGS_MASK) >>> 0, poolIndex: poolBase >= 0 ? poolBase + i : -1 });
 
         // A shard can stream in AFTER a selection was recorded (its ids may
         // exist in earlier shards or the flat path). setInstancedSelection

@@ -4,7 +4,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { SceneInstancePool } from './scene-gpu-instancing.js';
-import { DrawGroups, ColourPalette } from './gpu-instance-groups.js';
+import { DrawGroups, ColourPalette, FreeRanges } from './gpu-instance-groups.js';
 import { INSTANCE_COLOR_OFFSET, INSTANCE_FLAG_HIDDEN, INSTANCE_FLAGS_OFFSET, INSTANCE_STRIDE_BYTES } from './instanced-render.js';
 import { GpuInstancePool } from './gpu-instance-pool.js';
 import { POOL_STATE_DEAD, POOL_STATE_HIDDEN, POOL_STATE_HOVER, POOL_STATE_USER_HIDDEN } from './gpu-instance-cull.js';
@@ -173,11 +173,13 @@ describe('GPU instance palette and groups (normals, compaction)', () => {
     assert.notEqual(groups.join(0, mk(Array(9).fill(0)), 1), groups.join(1, mk([0, 0, 1, 0, 0, 1, 0, 0, 1]), 1));
   });
 
-  it('compacts to the colours still referenced, renumbered densely', () => {
+  it('compacts to the colours still in use, renumbered densely', () => {
     const palette = new ColourPalette();
-    for (const r of [0.1, 0.2, 0.3]) palette.indexOf(new Float32Array([r, 0, 0, 1]));
-    const remap = palette.compact(new Set([2]));
-    assert.deepEqual([...remap], [[2, 1]]);
+    const idx = [0.1, 0.2, 0.3].map((r) => palette.indexOf(new Float32Array([r, 0, 0, 1])));
+    for (const i of idx) palette.retain(i);
+    palette.release(idx[0]!); palette.release(idx[2]!);
+    const remap = palette.compact();
+    assert.equal(remap[2], 1);
     assert.equal(palette.colours.length, 8);
     assert.equal(palette.indexOf(new Float32Array([Math.fround(0.2), 0, 0, 1])), 1);
   });
@@ -227,7 +229,7 @@ describe('GPU instance pool review wave 2', () => {
     assert.equal(state()[1]! & POOL_STATE_HOVER, 0);
   });
 
-  it('stops compacting a palette full of live colours until one is released', () => {
+  it('compacts a full palette only once an entry loses its last user', () => {
     const { device } = stateDevice();
     const pool = new GpuInstancePool(device);
     const n = 0xffff + 2;
@@ -236,19 +238,31 @@ describe('GPU instance pool review wave 2', () => {
     const colour = (k: number) => new Float32Array([k / n, 0.5, 0.25, 1]);
     for (let i = 0; i < 0xffff; i++) pool.writeLane(i, INSTANCE_COLOR_OFFSET, colour(i), white);
     let compactions = 0;
-    const palette = (pool as unknown as { palette: { compactStates: (...a: unknown[]) => void } }).palette;
-    const original = palette.compactStates.bind(palette);
-    palette.compactStates = (...a: unknown[]) => { compactions++; original(...a); };
+    const palette = (pool as unknown as { palette: ColourPalette }).palette;
+    const original = palette.compact.bind(palette);
+    palette.compact = () => { compactions++; return original(); };
     const warn = console.warn; console.warn = () => {};
     try {
-      pool.writeLane(0xffff, INSTANCE_COLOR_OFFSET, colour(0xffff), white);
+      pool.writeLane(0xffff, INSTANCE_COLOR_OFFSET, colour(0xffff), white); // full of live colours: no compaction
       pool.writeLane(0xffff + 1, INSTANCE_COLOR_OFFSET, colour(0xffff + 1), white);
+      assert.equal(compactions, 0);
+      pool.writeLane(5, INSTANCE_COLOR_OFFSET, new Float32Array(white), white); // occurrence 5 back to its own colour: its entry is free
+      pool.writeLane(0xffff, INSTANCE_COLOR_OFFSET, colour(0xffff), white);
+      assert.equal(compactions, 1);
     } finally { console.warn = warn; }
-    assert.equal(compactions, 1, 'one compaction, then the exhausted palette is remembered');
   });
 
   it('counts instanced entities, not only live GPU templates, in the switch guard (recovery)', () => {
     const scene = new SceneInstancePool();
     assert.equal(scene.setEnabled(true, true), false);
+  });
+});
+
+describe('GPU instance pool free ranges', () => {
+  it('merges adjacent released ranges so a larger template fits', () => {
+    const free = new FreeRanges();
+    free.release(8, 4); free.release(0, 4); free.release(4, 4);
+    assert.equal(free.take(12), 0);
+    assert.equal(free.take(1), -1);
   });
 });

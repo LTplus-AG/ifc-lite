@@ -15,6 +15,7 @@ import {
   encodeRef,
   isIfcFunction,
   parseRefs,
+  safeHexColor,
   type IfcFunctionName,
   type QueryProblem,
   type WireEntityRef,
@@ -78,11 +79,10 @@ export function resolveTarget(host: A2uiViewerHost, args: { refs?: unknown; quer
   return { refs: [...out.values()], unloadedModels: [...unloaded], problems: [], ...(cappedFrom !== undefined && { cappedFrom }) };
 }
 
-const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 const DEFAULT_HIGHLIGHT = '#e5484d';
 
 export function safeColor(value: unknown): string {
-  return typeof value === 'string' && HEX.test(value.trim()) ? value.trim() : DEFAULT_HIGHLIGHT;
+  return safeHexColor(value, DEFAULT_HIGHLIGHT);
 }
 
 export interface CsvColumn {

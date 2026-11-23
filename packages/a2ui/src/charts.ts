@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/** How a GroupChart folds its groups, shared by every IFC renderer so they draw the same bars. */
+/** Chart and colour rules shared by every IFC renderer, so they draw the same thing. */
 
 export const DEFAULT_MAX_GROUPS = 12;
 const MAX_GROUPS_CEILING = 100;
@@ -21,4 +21,12 @@ export function foldGroups<G extends { value: number }>(groups: readonly G[], ma
   const rest: G[] = [];
   for (const g of groups) (largest.has(g) ? head : rest).push(g);
   return [...head, other(rest)];
+}
+
+const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+
+/** A hex colour from untrusted surface data, or `fallback` for anything else (never arbitrary CSS). */
+export function safeHexColor(value: unknown, fallback: string): string {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  return HEX_COLOR.test(trimmed) ? trimmed : fallback;
 }

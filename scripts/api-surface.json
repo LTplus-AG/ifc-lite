@@ -42,7 +42,8 @@
     "parseFieldPath: function",
     "parseRef: function",
     "parseRefs: function",
-    "resolveMaxGroups: function"
+    "resolveMaxGroups: function",
+    "safeHexColor: function"
   ],
   "@ifc-lite/a2ui/agent": [
     "AgentToRendererMessage: type",

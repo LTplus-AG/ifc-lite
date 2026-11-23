@@ -23,6 +23,11 @@ export interface PoolGeometry {
 }
 
 export interface PoolGroup {
+  /** Second geometry hash and float count: the identity test once `released`. */
+  hash2: number;
+  floats: number;
+  /** The members' CPU arrays were dropped with the scene's geometry (`DrawGroups.releaseCpu`). */
+  released: boolean;
   /** Template slots sharing this geometry, with their own buffers. */
   members: { slot: number; vertexBuffer: GPUBuffer; indexBuffer: GPUBuffer; positions: Float32Array; normals: Float32Array; indices: Uint32Array; count: number }[];
   indexCount: number;
@@ -31,15 +36,21 @@ export interface PoolGroup {
   capacity: number;
 }
 
-/** Hash a template's geometry (positions, normals and indices bit patterns: the vertex buffer draws all of them). */
-function hashGeometry(positions: Float32Array, normals: Float32Array, indices: Uint32Array): number {
-  let h = 0x811c9dc5;
+/**
+ * Two independent 32-bit hashes of a template's geometry (positions, normals
+ * and indices bit patterns: the vertex buffer draws all of them). The first
+ * buckets; both together stand in for the full compare once a group's CPU
+ * arrays were released.
+ */
+function hashGeometry(positions: Float32Array, normals: Float32Array, indices: Uint32Array): [number, number] {
+  let h = 0x811c9dc5, k = 0x9747b28c;
+  const mix = (v: number): void => { h = Math.imul(h ^ v, 0x01000193); k = Math.imul(k ^ v, 0x5bd1e995); k ^= k >>> 13; };
   for (const f of [positions, normals]) {
     const p = new Uint32Array(f.buffer, f.byteOffset, f.length);
-    for (let i = 0; i < p.length; i++) h = Math.imul(h ^ p[i]!, 0x01000193);
+    for (let i = 0; i < p.length; i++) mix(p[i]!);
   }
-  for (let i = 0; i < indices.length; i++) h = Math.imul(h ^ indices[i]!, 0x01000193);
-  return (h ^ (positions.length * 31 + indices.length)) >>> 0;
+  for (let i = 0; i < indices.length; i++) mix(indices[i]!);
+  return [(h ^ (positions.length * 31 + indices.length)) >>> 0, k >>> 0];
 }
 
 /** Element-wise equality; Float32Arrays compare bit patterns (so -0/NaN match exactly). */
@@ -64,24 +75,32 @@ export class DrawGroups {
 
   /** Add template `slot` (`count` occurrences) to the group of identical geometry, creating it if new; returns the group. */
   join(slot: number, geometry: PoolGeometry, count: number): number {
-    const hash = hashGeometry(geometry.positions, geometry.normals, geometry.indices);
+    const [hash, hash2] = hashGeometry(geometry.positions, geometry.normals, geometry.indices);
     let group = -1;
     for (const g of this.byHash.get(hash) ?? []) {
       const candidate = this.groups[g]!;
-      const ref = candidate.members[0];
-      if (ref && candidate.indexCount === geometry.indexCount && sameArray(ref.indices, geometry.indices) && sameArray(ref.positions, geometry.positions) && sameArray(ref.normals, geometry.normals)) {
+      const ref = candidate.members.find((m) => m.positions.length > 0);
+      if (candidate.indexCount !== geometry.indexCount || candidate.floats !== geometry.positions.length) continue;
+      if (ref ? sameArray(ref.indices, geometry.indices) && sameArray(ref.positions, geometry.positions) && sameArray(ref.normals, geometry.normals)
+        : candidate.released && candidate.hash2 === hash2 && candidate.members.length > 0) {
         group = g;
         break;
       }
     }
     if (group < 0) {
       group = this.groups.length;
-      this.groups.push({ members: [], indexCount: geometry.indexCount, base: 0, capacity: 0 });
+      this.groups.push({ hash2, floats: geometry.positions.length, released: false, members: [], indexCount: geometry.indexCount, base: 0, capacity: 0 });
       const list = this.byHash.get(hash);
       if (list) list.push(group); else this.byHash.set(hash, [group]);
     }
     this.groups[group]!.members.push({ slot, vertexBuffer: geometry.vertexBuffer, indexBuffer: geometry.indexBuffer, positions: geometry.positions, normals: geometry.normals, indices: geometry.indices, count });
     return group;
+  }
+
+  /** Drop every member's CPU geometry (the scene released its own); GPU buffers and grouping stay. */
+  releaseCpu(): void {
+    const none = { positions: new Float32Array(), normals: new Float32Array(), indices: new Uint32Array() };
+    for (const g of this.groups) { g.released = true; for (const m of g.members) Object.assign(m, none); }
   }
 
   leave(group: number, slot: number): void {
@@ -163,19 +182,19 @@ export class ColourPalette {
 
   /**
    * Index for colour `c` (not yet retained). A full palette is compacted once
-   * an entry has lost its last user, rewriting the live `states` (index in
-   * the bits above `shift`; words with a `dead` bit never draw and are reset
-   * on reuse) through `write`; a palette full of live colours yields 0 (the
+   * an entry has lost its last user, rewriting every `states` word that
+   * references one (index in the bits above `shift`; removed occurrences hold
+   * none) through `write`; a palette full of live colours yields 0 (the
    * record colour), warned once.
    */
-  resolve(c: Float32Array, states: Uint32Array, shift: number, dead: number, write: (i: number, value: number) => void): number {
+  resolve(c: Float32Array, states: Uint32Array, shift: number, write: (i: number, value: number) => void): number {
     let idx = this.indexOf(c);
     if (idx >= 0) return idx;
     if (!this.reclaimable) { if (!this.warned) console.warn('[GpuInstancePool] colour palette full of live colours; further overrides fall back to the record colour'); this.warned = true; return 0; }
     const remap = this.compact(), low = (1 << shift) - 1;
     for (let i = 0; i < states.length; i++) {
       const old = states[i]! >>> shift;
-      if (old && !(states[i]! & dead)) write(i, ((states[i]! & low) | (remap[old]! << shift)) >>> 0);
+      if (old) write(i, ((states[i]! & low) | (remap[old]! << shift)) >>> 0); // live and temporarily-DEAD occurrences alike
     }
     this.warned = false;
     idx = this.indexOf(c);

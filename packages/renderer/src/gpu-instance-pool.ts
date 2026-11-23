@@ -171,7 +171,7 @@ export class GpuInstancePool {
     const t = this.templates.get(slot);
     if (!t) return;
     this.templates.delete(slot);
-    for (let i = t.base; i < t.base + t.count; i++) { this.palette.release(this.state[i]! >>> POOL_STATE_PALETTE_SHIFT); this.setState(i, (this.state[i]! & ~POOL_STATE_SELECTED) | POOL_STATE_DEAD); }
+    for (let i = t.base; i < t.base + t.count; i++) { this.palette.release(this.state[i]! >>> POOL_STATE_PALETTE_SHIFT); this.setState(i, (this.state[i]! & 0xffff & ~POOL_STATE_SELECTED) | POOL_STATE_DEAD); } // palette reference dropped with it
     this.groups.leave(t.group, slot);
     this.freeRanges.release(t.base, t.count);
     this.registrations++;
@@ -231,11 +231,14 @@ export class GpuInstancePool {
       const c = data as Float32Array;
       this.palette.release(cur >>> POOL_STATE_PALETTE_SHIFT);
       const idx = c[0] === originalColor[0] && c[1] === originalColor[1] && c[2] === originalColor[2] && c[3] === originalColor[3] ? 0
-        : this.palette.resolve(c, this.state.subarray(0, this.count), POOL_STATE_PALETTE_SHIFT, POOL_STATE_DEAD, (i, v) => this.setState(i, v));
+        : this.palette.resolve(c, this.state.subarray(0, this.count), POOL_STATE_PALETTE_SHIFT, (i, v) => this.setState(i, v));
       this.palette.retain(idx);
       this.setState(occurrence, (this.state[occurrence]! & 0xffff) | (idx << POOL_STATE_PALETTE_SHIFT)); // a compaction may have renumbered it
     }
   }
+
+  /** The scene released its CPU geometry: drop the draw groups' copies too (GPU buffers stay). */
+  releaseCpuGeometry(): void { this.groups.releaseCpu(); }
 
   /** Set or clear `bit` (USER_HIDDEN / ISOLATED) on one occurrence. */
   setVisibilityBit(occurrence: number, bit: number, on: boolean): void {

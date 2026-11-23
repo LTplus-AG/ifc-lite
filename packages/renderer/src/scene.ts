@@ -2203,7 +2203,7 @@ export class Scene {
     this.meshDataBucket = new Map();
     this.meshDataMap.clear(); this.bumpPickGeometryRevision();
     // Keep occurrence transforms for placement; release heavy template vertices.
-    releaseInstanceVertices(this.instancedTemplateCpu);
+    releaseInstanceVertices(this.instancedTemplateCpu); this.instancePool.pool?.releaseCpuGeometry(); // the pool's draw groups held the same arrays
     this.activeBucketKey.clear();
     this.lastDrawnFrame.clear();
     this.residencyRestoreQueue.clear();
@@ -2264,7 +2264,7 @@ export class Scene {
     // 2. Clear the heavy data structures — typed arrays become GC-eligible
     this.meshDataMap.clear(); this.bumpPickGeometryRevision();
     // Keep occurrence transforms for placement; release heavy template vertices.
-    releaseInstanceVertices(this.instancedTemplateCpu);
+    releaseInstanceVertices(this.instancedTemplateCpu); this.instancePool.pool?.releaseCpuGeometry(); // the pool's draw groups held the same arrays
     // Clear meshData arrays in each bucket (typed arrays become GC-eligible)
     // but keep the bucket shells so batchedMesh references remain valid
     for (const bucket of this.buckets.values()) {

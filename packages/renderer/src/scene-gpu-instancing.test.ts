@@ -119,19 +119,23 @@ describe('GPU instance draw groups and palette', () => {
 
 /** Pool state words as last uploaded (the fake device keeps a mirror of the state buffer). */
 function stateDevice(limits?: { maxBufferSize: number; maxStorageBufferBindingSize: number }): { device: GPUDevice; state: () => Uint32Array } {
-  let state = new Uint32Array(0);
+  // Each state buffer has its own zeroed storage, like a real replacement buffer: only its own uploads fill it.
+  let latest: { mirror: Uint32Array } | null = null;
   const device = {
     limits,
-    createBuffer: (d: GPUBufferDescriptor) => ({ size: d.size, usage: d.usage, label: d.label, destroy() {} }), createBindGroupLayout: () => ({}), createPipelineLayout: () => ({}),
+    createBuffer: (d: GPUBufferDescriptor) => {
+      const b = { size: d.size, usage: d.usage, label: d.label, destroy() {}, mirror: new Uint32Array(d.label === 'gpu-instance-pool-state' ? d.size / 4 : 0) };
+      if (d.label === 'gpu-instance-pool-state') latest = b;
+      return b;
+    },
+    createBindGroupLayout: () => ({}), createPipelineLayout: () => ({}),
     createShaderModule: () => ({}), createComputePipeline: () => ({}), createBindGroup: () => ({}), pushErrorScope() {}, popErrorScope: async () => null,
     createCommandEncoder: () => ({ copyBufferToBuffer() {}, finish: () => ({}) }),
-    queue: { submit() {}, writeBuffer: (b: { label?: string; size: number }, off: number, data: Uint32Array, lo = 0, n?: number) => {
-      if (b.label !== 'gpu-instance-pool-state') return;
-      if (state.length * 4 < b.size) { const next = new Uint32Array(b.size / 4); next.set(state); state = next; }
-      state.set(data.subarray(lo, lo + (n ?? data.length - lo)), off / 4);
+    queue: { submit() {}, writeBuffer: (b: { label?: string; mirror: Uint32Array }, off: number, data: Uint32Array, lo = 0, n?: number) => {
+      if (b.label === 'gpu-instance-pool-state') b.mirror.set(data.subarray(lo, lo + (n ?? data.length - lo)), off / 4);
     } },
   } as unknown as GPUDevice;
-  return { device, state: () => state };
+  return { device, state: () => latest?.mirror ?? new Uint32Array(0) };
 }
 
 describe('GPU instance pool state', () => {
@@ -307,5 +311,28 @@ describe('GPU instance pool growth (#11373)', () => {
     assert.equal(bindGroups.length - before, 3, 'one new bind group per cull view');
     for (const g of bindGroups.slice(before)) assert.equal(g.entries[6]!.resource.buffer.label, 'gpu-instance-pool-out-records');
     assert.equal(state()[1]! & POOL_STATE_HIDDEN, POOL_STATE_HIDDEN, 'state survives the growth');
+  });
+});
+
+describe('GPU instance palette compaction keeps temporarily-dead occurrences (#11373)', () => {
+  it('remaps the palette index of an occurrence that left the envelope, so it returns in its colour', () => {
+    const { device, state } = stateDevice();
+    const pool = new GpuInstancePool(device);
+    const geometry = { vertexBuffer: {} as GPUBuffer, indexBuffer: {} as GPUBuffer, indexCount: 3, positions: new Float32Array(9), normals: new Float32Array(9), indices: new Uint32Array([0, 1, 2]) };
+    const n = 0xffff + 2;
+    const records = new ArrayBuffer(n * INSTANCE_STRIDE_BYTES);
+    pool.addTemplate(0, pool.allocate(n), geometry, records, new Float64Array(n * 3), new Float32Array(n));
+    const white = [1, 1, 1, 1] as const;
+    const colour = (k: number) => new Float32Array([k / n, 0.25, 0.5, 1]);
+    for (let i = 0; i < 0xffff; i++) pool.writeLane(i, INSTANCE_COLOR_OFFSET, colour(i), white); // entries 1..65535
+    const anchors = new Float64Array(n * 3); anchors[1 * 3] = 2e9; // occurrence 1 (entry 2) leaves the envelope: DEAD for now
+    pool.refreshTemplate(0, records, anchors, [1]);
+    pool.writeLane(0, INSTANCE_COLOR_OFFSET, new Float32Array(white), white); // entry 1 loses its last user
+    const warn = console.warn; console.warn = () => {};
+    try { pool.writeLane(0xffff, INSTANCE_COLOR_OFFSET, colour(0xffff), white); } finally { console.warn = warn; } // compaction
+    pool.refreshTemplate(0, records, new Float64Array(n * 3), [1]); // back in the envelope
+    pool.flush();
+    assert.equal(state()[1]! & POOL_STATE_DEAD, 0);
+    assert.equal(state()[1]! >>> 16, 1, 'entry 2 moved to 1 and the occurrence followed it');
   });
 });

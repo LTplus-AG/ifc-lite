@@ -394,7 +394,7 @@ export function restoreSceneGpuResourcesAfterRecovery(
     }
     restoreInstancedAppearance(host, device);
   } catch (error) {
-    discardSceneGpuResourcesForRecovery(host);
+    discardSceneGpuResourcesForRecovery(host); host.dropGpuInstancePool?.(); // the pool may already have been rebuilt
     throw error;
   }
 }

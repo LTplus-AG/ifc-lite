@@ -2,7 +2,7 @@
 
 import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
-import { IfcParser } from '@ifc-lite/parser';
+import { ColumnarParser, IfcParser, StepTokenizer } from '@ifc-lite/parser';
 import { MergedExporter } from './merged-exporter.js';
 import { analyzeConversionLoss } from './schema-conversion-loss-report.js';
 import { StepExporter } from './step-exporter.js';
@@ -94,6 +94,28 @@ it.each(writerVectors)('writes matching STEP records in every writer for $name (
   for (const [writer, { content }] of outputs) {
     const records = decoder.decode(content).split('\n').map(line => line.slice(line.indexOf('=') + 1));
     expect(records, writer).toEqual(expect.arrayContaining(expected));
+  }
+});
+
+it('keeps Latin-1 typed text when a caller supplies a mixed-case entity type (#10797)', async () => {
+  const type = 'IfcMechanicalConcreteMaterialProperties';
+  const input = Uint8Array.from(Buffer.from("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n"
+    + "#1=IFCMATERIAL('Concrete');\n"
+    + `#2=${type}(#1,$,25000000000.,10000000000.,0.2,$,30000000.,0.02,$,'Béton',$,$);\n`
+    + 'ENDSEC;\nEND-ISO-10303-21;\n', 'latin1'));
+  const refs = [...new StepTokenizer(input).scanEntitiesFast()].map((ref) => ({
+    expressId: ref.expressId,
+    type: ref.expressId === 2 ? type : ref.type,
+    byteOffset: ref.offset,
+    byteLength: ref.length,
+    lineNumber: ref.line,
+  }));
+  const store = await new ColumnarParser().parseLite(input.buffer, refs);
+  const merged = new MergedExporter([{ id: 'mixed-case', name: 'typed', dataStore: store }]);
+  const options = { schema: 'IFC4' } as const;
+  const decoder = new TextDecoder('utf-8', { fatal: true });
+  for (const result of [new StepExporter(store).export(options), merged.export(options), await merged.exportAsync(options)]) {
+    expect(decoder.decode(result.content)).toContain("IFCPROPERTYSINGLEVALUE('Workability',$,IFCTEXT('Béton'),$);");
   }
 });
 

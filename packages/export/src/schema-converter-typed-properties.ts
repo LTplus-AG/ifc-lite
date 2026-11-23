@@ -36,7 +36,7 @@ export function decodeTypedPropertyRecord(
   if (from !== 'IFC2X3' || (to !== 'IFC4' && to !== 'IFC4X3') || !decoded.includes('�')) {
     return decoded;
   }
-  const row = rowFor(ref.type);
+  const row = rowFor(ref.type.toUpperCase());
   if (!row?.[2].some(([, fields]) => fields.some((field) => field.kind === 'text'))) {
     return decoded;
   }

@@ -1,0 +1,38 @@
+diff --git b/packages/renderer/src/batch-highlight.ts a/packages/renderer/src/batch-highlight.ts
+index d133a9cf2b..c956c99280 100644
+--- b/packages/renderer/src/batch-highlight.ts
++++ a/packages/renderer/src/batch-highlight.ts
+@@ -174,7 +174,7 @@ class EntityBatchIndex {
+     for (const id of ids) {
+       const at = this.byId.get(id);
+       if (at === undefined) continue;
+-      if (typeof at === 'number') out.push(at); else out.push(at[0]!);
++      if (typeof at === 'number') out.push(at); else for (const i of at) out.push(i);
+     }
+     out.sort((x, y) => x - y);
+     let w = 0;
+diff --git b/packages/renderer/src/draw-stream-config.ts a/packages/renderer/src/draw-stream-config.ts
+index d2c355a695..2e7faac72c 100644
+--- b/packages/renderer/src/draw-stream-config.ts
++++ a/packages/renderer/src/draw-stream-config.ts
+@@ -45,6 +45,7 @@ const NUMBER_KEYS = ['nodeCell', 'settleMs', 'hlodPx', 'hlodGrid', 'budgetMs'] a
+ export const DRAW_STREAM_CONFIG_KEYS: readonly (keyof DrawStreamConfig)[] = [...BOOLEAN_KEYS, ...NUMBER_KEYS];
+ 
+ function parseBoolean(raw: unknown): boolean | undefined {
++  if (raw === true || raw === 1 || raw === '1' || raw === 'true') return true;
+   if (raw === false || raw === 0 || raw === '0' || raw === 'false') return false;
+   return undefined;
+ }
+diff --git b/packages/renderer/src/draw-stream-types.ts a/packages/renderer/src/draw-stream-types.ts
+index 4828a647eb..a122297539 100644
+--- b/packages/renderer/src/draw-stream-types.ts
++++ a/packages/renderer/src/draw-stream-types.ts
+@@ -85,7 +85,7 @@ export function cellOf(min: readonly number[], max: readonly number[], cell: num
+ 
+ /** Grow `box` to contain the AABB `min`..`max`. */
+ export function growAabb(box: { min: number[]; max: number[] }, min: readonly number[], max: readonly number[]): void {
+-  void box; void min; void max;
++  for (let a = 0; a < 3; a++) { box.min[a] = Math.min(box.min[a]!, min[a]!); box.max[a] = Math.max(box.max[a]!, max[a]!); }
+ }
+ 
+ /** Bundle-cache index of an opaque draw mode. */

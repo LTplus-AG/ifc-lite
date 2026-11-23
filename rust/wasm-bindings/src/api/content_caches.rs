@@ -72,6 +72,7 @@ content_slots! {
     cached_instantiated_type_ids: Arc<rustc_hash::FxHashSet<u32>>,
     cached_type_geometry_plan: Arc<ifc_lite_processing::discovery::TypeGeometryPlan>,
     cached_mapped_instance_plan: ifc_lite_geometry::MappedInstancePlan,
+    cached_global_plan: super::gpu_meshes::global_plan::SharedGlobalPlan,
     cached_texture_index: Arc<rustc_hash::FxHashMap<u32, ifc_lite_geometry::ResolvedTextureMap>>,
     cached_indexed_colour_maps: Arc<IndexedColourCache>,
     cached_plane_angle_to_radians: f64,

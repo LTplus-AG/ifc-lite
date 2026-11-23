@@ -35,12 +35,16 @@ export function isRelationshipType(typeUpper: string): boolean {
   return typeUpper.startsWith('IFCREL');
 }
 
-/** A relationship or generic proxy cannot stand in for another rooted entity. */
-export function canUnifyByGlobalId(typeUpper: string, converted?: string): boolean {
-  if (isRelationshipType(typeUpper) || typeUpper === 'IFCPROXY') return false;
-  if (converted === undefined) return true;
+/** Relationships and conversion-created proxies keep distinct records. */
+export function canUnifyByGlobalId(sourceType: string, writtenType = sourceType): boolean {
+  return !isRelationshipType(sourceType) && !isRelationshipType(writtenType)
+    && (writtenType !== 'IFCPROXY' || sourceType === writtenType);
+}
+
+export function canUnifyEmittedRecord(sourceType: string, converted?: string): boolean {
+  if (converted === undefined) return canUnifyByGlobalId(sourceType);
   const head = stepRecordHead(converted);
-  return head !== null && converted.slice(head.typeStart, head.typeEnd).toUpperCase() !== 'IFCPROXY';
+  return head !== null && canUnifyByGlobalId(sourceType, converted.slice(head.typeStart, head.typeEnd).toUpperCase());
 }
 
 /**

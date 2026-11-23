@@ -38,7 +38,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::schema_detect::detect_schema;
 
-use guid::{can_unify_by_global_id, read_leading_guid, replace_global_id, GuidMinter};
+use guid::{can_unify_by_global_id, is_rooted_entity_type, read_leading_guid, replace_global_id, GuidMinter};
 pub use guid::{deterministic_global_id, extract_global_id_fast, leading_rooted_global_id};
 use line_edit::{rewrite_refs, LineDecision};
 use plan::{build_plan, model_salt, GuidRecord, ModelIndex, PlanCtx};
@@ -358,7 +358,8 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
             let ty = index.type_of.get(&id).map_or("", String::as_str);
             let Some(mut final_text) = parents.claim(ty, final_text, !is_first && compatible) else { continue };
 
-            if let Some(mut emitted) = plan.local_guids.contains_key(&id).then(|| read_leading_guid(&final_text)).flatten() {
+            let has_guid_slot = plan.local_guids.contains_key(&id) || (converting && is_rooted_entity_type(ty));
+            if let Some(mut emitted) = has_guid_slot.then(|| read_leading_guid(&final_text)).flatten() {
                 // A schema-conversion placeholder (an alignment/linear entity
                 // downgraded to IFCPROXY) is minted at emit time, AFTER GlobalId
                 // reconciliation, so it can still collide with a rooted GlobalId an

@@ -8,7 +8,7 @@
 use std::collections::HashSet;
 
 use crate::rooted_type::is_rooted_type;
-use ifc_lite_core::{guid, parser::StepRecord};
+use ifc_lite_core::{guid, parser::{keyword_starts_with, StepRecord}};
 
 /// Deterministic 22-char GlobalId from a seed, byte-identical to
 /// `@ifc-lite/parser`'s `deterministicGlobalId`. See [`ifc_lite_core::guid::deterministic`].
@@ -30,17 +30,26 @@ pub fn is_relationship_type(type_upper: &str) -> bool {
     type_upper.starts_with("IFCREL")
 }
 
-/// A relationship or generic proxy cannot stand in for another rooted entity.
+fn can_unify_types(source: &str, written: &str) -> bool {
+    !is_relationship_type(source) && !keyword_starts_with(written, "IFCREL")
+        && (!written.eq_ignore_ascii_case("IFCPROXY") || source == "IFCPROXY")
+}
+
+/// Relationships and conversion-created proxies keep distinct records.
 pub(super) fn can_unify_by_global_id(type_upper: &str, converted: Option<&str>) -> bool {
-    !is_relationship_type(type_upper) && type_upper != "IFCPROXY"
-        && converted.is_none_or(|line| StepRecord::parse(line.as_bytes()).is_some_and(|record| !record.keyword_is(b"IFCPROXY")))
+    match converted {
+        Some(line) => StepRecord::parse(line.as_bytes())
+            .and_then(|record| record.keyword())
+            .is_some_and(|written| can_unify_types(type_upper, written)),
+        None => can_unify_types(type_upper, type_upper),
+    }
 }
 
 pub(super) fn can_unify_converted_type(ty: &str, (from, to): (&'static str, &'static str)) -> bool {
     use crate::schema_plan::{plan_for, Plan};
     if from == to { return can_unify_by_global_id(ty, None); }
     match plan_for(ty, from, to) {
-        Plan::Write { renamed, .. } => can_unify_by_global_id(renamed.unwrap_or(ty), None),
+        Plan::Write { renamed, .. } => can_unify_types(ty, renamed.unwrap_or(ty)),
         Plan::ProductProxy | Plan::Unrepresented => false,
     }
 }

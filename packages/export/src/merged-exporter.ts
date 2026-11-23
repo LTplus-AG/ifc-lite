@@ -37,6 +37,8 @@ import { remapEntityText } from './merged-remap.js';
 import { PlannerGuids } from './merged-planner-guids.js';
 import {
   canUnifyByGlobalId,
+  canUnifyEmittedRecord,
+  isRootedType,
   isRelationshipType,
   mintUniqueGuid,
   readLeadingGuid,
@@ -72,7 +74,7 @@ const SHARED_INFRASTRUCTURE_TYPES = new Set([
 
 function canUnifyConvertedType(type: string, from: IfcSchemaVersion, to: IfcSchemaVersion): boolean {
   const { targetType, kind } = classifyEntityTypeConversion(type, from, to);
-  return kind !== 'blocked' && canUnifyByGlobalId(targetType);
+  return kind !== 'blocked' && kind !== 'proxied' && canUnifyByGlobalId(type, targetType);
 }
 
 /** SI prefix multipliers, for resolving prefixed area/volume units (rarely used). */
@@ -1215,7 +1217,7 @@ export class MergedExporter {
     }
 
     // Only an actual collision in the final output needs a re-stamp.
-    if (plan.localGuids.has(localId)) {
+    if (plan.localGuids.has(localId) || (converting && isRootedType(entityRef.type))) {
       let emittedGuid = readLeadingGuid(finalText);
       if (emittedGuid !== null) {
         if (guidToFinalId.has(emittedGuid)) {
@@ -1224,7 +1226,7 @@ export class MergedExporter {
         }
         guidToFinalId.set(emittedGuid, {
           finalId: localId + offset, scale: mode.effectiveScale,
-          canUnify: canUnifyByGlobalId((entityRef.type ?? '').toUpperCase(), converting ? finalText : undefined),
+          canUnify: canUnifyEmittedRecord((entityRef.type ?? '').toUpperCase(), converting ? finalText : undefined),
         });
       }
     }

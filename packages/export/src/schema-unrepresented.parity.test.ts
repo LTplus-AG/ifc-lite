@@ -71,6 +71,29 @@ it.each(fixture.cases.filter((c) => c.merge))('keeps two distinct proxy IDs when
   expect(c.expect).toContain(`IFCPROXY('${ids[0]}'`);
 });
 
+it.each(['IFC4', 'IFC2X3'] as const)('unifies native IFC4 proxies by GlobalId when exporting to %s (#11322)', async (to) => {
+  const guid = '0YvctVUKr0kugbFTf53O9L';
+  const models = await Promise.all(['First', 'Second'].map(async (id) => ({
+    id, name: id, dataStore: await parseModel('IFC4', `#5=IFCPROXY('${guid}',$,'${id}',$,$,$,$,.NOTDEFINED.,$);`),
+  })));
+  const out = new TextDecoder().decode(new MergedExporter(models).export({ schema: to }).content);
+  const proxies = [...out.matchAll(/^#\d+=IFCPROXY\('([^']+)',[^,]*,'([^']+)'/gm)];
+  expect(proxies.map(([, globalId, name]) => [globalId, name])).toEqual([[guid, 'First']]);
+});
+
+it('re-stamps a collision with a generated proxy GlobalId (#11322)', async () => {
+  const guid = '3lJWJ4oIi38uI5nMw7H8hx';
+  const proxy = await parseModel('IFC4X3', '#5=IFCRELPOSITIONS($,$,/* unnamed */$,$,#1,(#2));');
+  const wall = await parseModel('IFC4', `#1=IFCWALL('${guid}',$,'Wall',$,$,$,$,$,.NOTDEFINED.);`);
+  const out = new TextDecoder().decode(new MergedExporter([
+    { id: 'proxy', name: 'proxy', dataStore: proxy }, { id: 'wall', name: 'wall', dataStore: wall },
+  ]).export({ schema: 'IFC4' }).content);
+  const ids = [...out.matchAll(/^#\d+=(?:IFCPROXY|IFCWALL)\('([^']+)'/gm)].map((m) => m[1]);
+  expect(ids).toHaveLength(2);
+  expect(ids[0]).toBe(guid);
+  expect(ids[1]).not.toBe(guid);
+});
+
 it.each(['proxy', 'wall'] as const)('keeps the proxy and wall that share a GlobalId, %s first (#11322)', async (first) => {
   const guid = '0YvctVUKr0kugbFTf53O9L';
   const [proxy, wall] = await Promise.all([

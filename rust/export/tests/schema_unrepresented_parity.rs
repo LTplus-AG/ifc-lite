@@ -64,8 +64,41 @@ fn merging_models_keeps_distinct_proxy_global_ids_11322() {
         assert_eq!(ids.len(), 2, "{}: {merged}", c.why);
         assert!(ids.iter().all(|id| ifc_lite_core::guid::is_valid_global_id(id)), "{ids:?}");
         assert_ne!(ids[0], ids[1], "{}: {merged}", c.why);
-        assert!(c.expect.unwrap().contains(&format!("IFCPROXY('{}'", ids[0])));
+        let expected = c.expect.unwrap_or_else(|| panic!("missing expected output for {}", c.why));
+        assert!(expected.contains(&format!("IFCPROXY('{}'", ids[0])), "{}: {merged}", c.why);
     }
+}
+
+#[test]
+fn native_ifc4_proxies_unify_by_global_id_11322() {
+    let guid = "0YvctVUKr0kugbFTf53O9L";
+    let first = source("IFC4", &format!("#5=IFCPROXY('{guid}',$,'First',$,$,$,$,.NOTDEFINED.,$);"));
+    let second = source("IFC4", &format!("#5=IFCPROXY('{guid}',$,'Second',$,$,$,$,.NOTDEFINED.,$);"));
+    let models = [("First", &first), ("Second", &second)].map(|(id, content)| MergedModel {
+        content: content.as_bytes(), id: id.into(), included: None,
+    });
+    for schema in ["IFC4", "IFC2X3"] {
+        let options = MergedOptions { schema: Some(schema.into()), ..Default::default() };
+        let (merged, _) = export_merged_models(&models, &options);
+        let proxies: Vec<_> = merged.lines().filter(|line| line.contains("=IFCPROXY(")).collect();
+        assert_eq!(proxies.len(), 1, "{schema}: {merged}");
+        assert!(proxies[0].contains(&format!("'{guid}'")) && proxies[0].contains("'First'"), "{schema}: {merged}");
+    }
+}
+
+#[test]
+fn generated_proxy_global_id_collision_restamps_the_later_wall_11322() {
+    let guid = "3lJWJ4oIi38uI5nMw7H8hx";
+    let proxy = source("IFC4X3", "#5=IFCRELPOSITIONS($,$,/* unnamed */$,$,#1,(#2));");
+    let wall = source("IFC4", &format!("#1=IFCWALL('{guid}',$,'Wall',$,$,$,$,$,.NOTDEFINED.);"));
+    let models = [("proxy", &proxy), ("wall", &wall)].map(|(id, content)| MergedModel {
+        content: content.as_bytes(), id: id.into(), included: None,
+    });
+    let options = MergedOptions { schema: Some("IFC4".into()), ..Default::default() };
+    let (merged, _) = export_merged_models(&models, &options);
+    assert!(merged.contains(&format!("=IFCPROXY('{guid}'")), "{merged}");
+    assert!(merged.contains("=IFCWALL("), "{merged}");
+    assert_eq!(merged.matches(&format!("'{guid}'")).count(), 1, "{merged}");
 }
 
 #[test]

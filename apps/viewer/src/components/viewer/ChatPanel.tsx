@@ -42,7 +42,7 @@ import {
 } from './chat/chatPanelHelpers';
 import { LLM_PROXY_URL, runModelRequest } from '@/lib/llm/request-service';
 import type { UsageInfo } from '@/lib/llm/stream-client';
-import { beginScriptTask, currentScriptTask, ownsScriptTask, type ScriptTask } from '@/lib/llm/script-task';
+import { beginScriptTask, continuationRevision, currentScriptTask, ownsScriptTask, type ScriptTask } from '@/lib/llm/script-task';
 import { assembleScriptResponse, createScriptResponse } from '@/lib/llm/script-response';
 import { extractCodeBlocks } from '@/lib/llm/code-extractor';
 import { fetchUsageSnapshot } from '@/lib/llm/usage-quota';
@@ -483,7 +483,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
       : liveState.chatMessages;
     const liveScriptContext = {
       content: liveState.scriptEditorContent,
-      revision: liveState.scriptEditorRevision,
+      revision: continuationRevision(task, Boolean(continuationBase), liveState),
       selection: liveState.scriptEditorSelection,
     };
     const liveDiagnostics = liveState.scriptLastDiagnostics;
@@ -677,6 +677,7 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
     if (!ownsTask()) return;
     task.truncated = outcome.kind === 'truncated';
     task.continuationText = outcome.kind === 'truncated' ? assembleScriptResponse(outcome.text, continuationBase) : undefined;
+    task.continuationScript = outcome.kind === 'truncated' ? { revision: responseBaseRevision, content: responseBaseContent } : undefined;
     if (outcome.kind === 'completed' && ownsRequest()) {
       setLastFinishReason(null);
       await handleComplete(outcome.text);

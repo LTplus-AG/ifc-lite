@@ -128,10 +128,17 @@ fn paired_rectangle(
             .iter()
             .all(|p| (0..2).all(|k| p[k] == pf.bb.0[k] || p[k] == pf.bb.1[k]))
     {
-        let floor_side = end;
-        let (outer, inner) = if floor_side == 0 { (a, b) } else { (b, a) };
-        if !inner.iter().all(|&point| contains(outer, point))
-            || !(0..2).all(|k| inner[0][k] < pf.bb.1[k] && pf.bb.0[k] < inner[1][k])
+        // Rectangle containment identifies the wider body even when both
+        // source shells use inward winding and swap the signed-area groups.
+        let (floor_side, outer, inner) = if b.iter().all(|&point| contains(a, point)) {
+            (0, a, b)
+        } else if a.iter().all(|&point| contains(b, point)) {
+            (1, b, a)
+        } else {
+            return None;
+        };
+        if !(0..2).all(|k| inner[0][k] < pf.bb.1[k] && pf.bb.0[k] < inner[1][k])
+            || !shell_extends_from_face(tris, pf, outer, inner, target, direction)
         {
             return None;
         }
@@ -164,6 +171,30 @@ fn paired_rectangle(
     Some(PairedRectangle {
         depth: target,
         floor,
+    })
+}
+
+/// Prove that the wider face has a side wall beyond the cap at a corner
+/// belonging to that face alone. Either winding can put the finish in the
+/// expected signed-area group without supporting a floor.
+fn shell_extends_from_face(
+    tris: &[PTri],
+    pf: &PrismFrame,
+    wider: [V2; 2],
+    narrower: [V2; 2],
+    depth: f64,
+    direction: f64,
+) -> bool {
+    let band = flush_band_at(pf.corner_mag());
+    tris.iter().any(|tri| {
+        on_rectangle_boundary(tri, pf, wider[0], wider[1])
+            && tri.p.iter().any(|&p| {
+                let xy = pf.to2(p);
+                dot(p, pf.d) == depth
+                    && (0..2).all(|k| xy[k] == wider[0][k] || xy[k] == wider[1][k])
+                    && (0..2).any(|k| xy[k] < narrower[0][k] || xy[k] > narrower[1][k])
+            })
+            && tri.p.iter().any(|&p| direction * (dot(p, pf.d) - depth) > band)
     })
 }
 
@@ -311,33 +342,5 @@ fn quad_vertices(side: &[usize], tris: &[PTri]) -> Option<[V3; 4]> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn exact_jamb_preserves_a_floor_wider_than_the_finish() {
-        // The finish covers half of the aperture and meets the wider core at
-        // depth zero. The exact route should retain the authored cap (#10528).
-        let axes = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
-        for end in [0, 1] {
-            let mut host = Mesh {
-                positions: vec![
-                    0.0, 0.0, 0.0, 4.0, 0.0, 0.0, 4.0, 3.0, 0.0, 0.0, 3.0, 0.0,
-                    0.0, 0.0, 0.0, 1.5, 0.0, 0.0, 1.5, 3.0, 0.0, 0.0, 3.0, 0.0,
-                ],
-                indices: vec![0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6],
-                ..Mesh::default()
-            };
-            if end == 1 {
-                for triangle in host.indices.chunks_exact_mut(3) {
-                    triangle.swap(1, 2);
-                }
-            }
-            let depths = if end == 0 { [0.0, 0.012] } else { [-0.012, 0.0] };
-            let jamb = [end == 0, end == 1];
-            let lo = [1.0, 1.0, depths[0]];
-            let hi = [2.0, 2.0, depths[1]];
-            assert_eq!(paired_exact_jambs(&host, axes, lo, hi, jamb), jamb);
-        }
-    }
-}
+#[path = "paired_cap_tests.rs"]
+mod tests;

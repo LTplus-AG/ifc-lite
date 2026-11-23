@@ -62,6 +62,18 @@ export function legendEntriesFromData(data: unknown, loaded?: ReadonlySet<string
   return { entries: [...byLabel.values()], unloadedModels: [...unloaded] };
 }
 
+/** A short, order-sensitive fingerprint of every target ref (FNV-1a), cheap enough to recompute per render. */
+function refsSignature(entries: LegendEntry[]): string {
+  let hash = 0x811c9dc5;
+  let count = 0;
+  for (const e of entries) for (const ref of e.refs) {
+    const key = encodeRef(ref);
+    for (let i = 0; i < key.length; i++) hash = Math.imul(hash ^ key.charCodeAt(i), 0x01000193);
+    count++;
+  }
+  return `${count}:${(hash >>> 0).toString(36)}`;
+}
+
 export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ props }) => {
   const { t } = useTranslation();
   const { host, autoApply } = useA2uiRuntime();
@@ -81,8 +93,8 @@ export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ 
 
   const targets = entries.reduce((n, e) => n + e.refs.length, 0);
   const autoKey = useMemo(() => JSON.stringify([props.by, props.query ?? null, props.data ?? null]), [props.by, props.query, props.data]);
-  // The target count is part of the claim: refs that load later are a new colouring, not one already applied.
-  const claimKey = `${autoKey}|${targets}`;
+  // The resolved targets are part of the claim: refs that load later, or a swapped model, are a new colouring.
+  const claimKey = useMemo(() => `${autoKey}|${refsSignature(entries)}`, [autoKey, entries]);
   /** True when something was coloured; entries without loaded refs colour nothing and never report success. */
   const apply = (): boolean => {
     if (targets === 0) return false;

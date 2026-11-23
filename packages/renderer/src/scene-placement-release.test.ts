@@ -61,7 +61,7 @@ async function liveAfterGc(refs: WeakRef<object>[]): Promise<number> {
   return refs.filter((ref) => ref.deref() !== undefined).length;
 }
 
-describe('released geometry is not kept alive by placement copies', () => {
+describe('released geometry is not kept alive by placement copies (#11368)', () => {
   it('releaseGeometryData drops the placed copies, so an in-place release frees the arrays', async () => {
     const scene = new Scene(), { device, pipeline } = gpu();
     const store = [triangle(1), triangle(2)]; // the sources stay alive, as the viewer store keeps them

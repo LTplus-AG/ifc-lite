@@ -238,6 +238,8 @@ cargo add ifc-lite-core ifc-lite-geometry
 
 Additional crates: `ifc-lite-processing` (streaming/entity scan), `ifc-lite-export` (glTF/IFC5 export), and `ifc-lite-clash` (clash detection).
 
+The `ifc-build-cache` CLI, which builds the `.ifclite` cache natively, installs from the repository instead of crates.io: see [Native Cache Builder](native-cache.md#installation).
+
 ## Python Installation
 
 Native geometry tessellation for Python (no Node, no WASM) is published as [`ifclite-geom`](https://pypi.org/project/ifclite-geom/):

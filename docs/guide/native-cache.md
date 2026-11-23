@@ -6,11 +6,29 @@ The format is specified in [`packages/cache/SPEC.md`](https://github.com/LTplus-
 
 ## Installation
 
-The tool is distributed through cargo from this repository; there are no prebuilt binaries.
+The tool is distributed through cargo from this repository; there are no prebuilt binaries, and the crate is not published to crates.io.
+
+From a checkout:
 
 ```bash
 cargo install --locked --path rust/cache
 ```
+
+Without a checkout, pinned to a commit:
+
+```bash
+cargo install --locked --git https://github.com/LTplus-AG/ifc-lite --rev <commit> ifc-lite-cache
+```
+
+Pin a commit rather than a branch: the commit decides which format version the tool writes (see [Reader compatibility](#reader-compatibility)), and `--locked` then builds it with the `Cargo.lock` of that commit.
+
+A stable Rust toolchain builds the crate. The nightly pinned in `rust-toolchain.toml` is for the WASM build; rustup selects it only for commands run inside a checkout, so the `--git` form uses your default toolchain.
+
+## Reader compatibility
+
+`BinaryCacheReader` reads a cache written at its own `FORMAT_VERSION` or an older one, and rejects a newer one with `Unsupported format version` ([`SPEC.md` §11](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/cache/SPEC.md#11-reader-compatibility-current-reader)). The tool writes the single format version of the commit it was built from, and `ifc-build-cache --help` prints it.
+
+Build the tool from a commit whose format version is not above the `FORMAT_VERSION` that the `@ifc-lite/cache` release in your readers exports. When a format version bump reaches you, upgrade the readers first, then the tool.
 
 ## Usage
 
@@ -47,6 +65,7 @@ Every one of these is a value the format and the TypeScript reader already accep
 
 - Property and quantity tables are written empty, as `BinaryCacheWriter` writes them for a STEP-parsed store; re-attach on-demand extraction from the source on read, as the viewer does.
 - No `InstancedShards` section: every occurrence is a flat mesh.
+- The entity index's relationship-coverage trailer is written absent, so `selectionRelationshipIndex` reads back `undefined`, as it does for any store built without it.
 - Deflate streams differ from the TypeScript writer's (a different compressor), so stored chunk offsets and lengths differ while every uncompressed chunk payload is identical.
 
 The crate documentation (`rust/cache/src/lib.rs`) lists the remaining producer-provenance fields the native pipeline does not fill.

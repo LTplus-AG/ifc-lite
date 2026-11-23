@@ -162,7 +162,12 @@ export function evaluatePr(io, { pr, headSha, mainTip, ceilings, globs, measured
   }
 }
 
-function loadCache(path) {
+/** The filters from a workflow file on disk (test.yml by default). */
+export function loadFilterGlobs(path = '.github/workflows/test.yml') {
+  return readFilterGlobs(readFileSync(path, 'utf8'));
+}
+
+export function loadCache(path) {
   if (!path || !existsSync(path)) return null;
   try {
     const data = JSON.parse(readFileSync(path, 'utf8'));
@@ -211,7 +216,7 @@ export function run(opts, env = process.env, makeIo = createIo) {
   const cache = loadCache(opts.cache);
   const io = makeIo({ repo, cache });
   const evaluatedAt = new Date().toISOString();
-  const globs = readFilterGlobs(readFileSync('.github/workflows/test.yml', 'utf8'));
+  const globs = loadFilterGlobs();
   const mainTip = opts.mainSha ?? io.mainTip();
   const ceilings = io.ceilingsAt(mainTip);
   const targetUrl = env.GITHUB_RUN_ID ? `${env.GITHUB_SERVER_URL ?? 'https://github.com'}/${repo}/actions/runs/${env.GITHUB_RUN_ID}` : undefined;

@@ -91,6 +91,7 @@ jobs:
           restore-keys: base-stale-v1-
 
       - name: Judge
+        id: judge
         env:
           GH_TOKEN: ${{ github.token }}
           CI_BASE_STALE_GATE: ${{ vars.CI_BASE_STALE_GATE }}
@@ -111,11 +112,14 @@ jobs:
           path: ${{ runner.temp }}/base-stale-cache
           key: base-stale-v1-${{ github.run_id }}-${{ github.run_attempt }}
 
+      # The evidence the shadow period is counted from. Written by every run
+      # that judged (an empty file when there was nothing to judge or the
+      # rate floor skipped the sweep), so a missing file is a harness fault.
       - name: Upload the verdicts
-        if: always()
+        if: steps.judge.outcome == 'success'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: base-stale-verdicts
           path: ${{ runner.temp }}/base-stale/verdicts.jsonl
           retention-days: 30
-          if-no-files-found: warn
+          if-no-files-found: error

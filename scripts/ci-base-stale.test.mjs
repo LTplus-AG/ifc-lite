@@ -5,14 +5,15 @@
 // scripts/ci-base-stale.mjs: argument parsing, the path filters it derives
 // from the real test.yml, and the per-PR evaluation over a fake I/O layer.
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { evaluatePr, parseArgs, readFilterGlobs, run } from './ci-base-stale.mjs';
-import { matchesAny } from './lib/ci-path-coverage.mjs';
+import { fileURLToPath } from 'node:url';
+import { evaluatePr, loadCache, loadFilterGlobs, parseArgs, readFilterGlobs, run } from './ci-base-stale.mjs';
+import { prRelevance } from './lib/base-stale.mjs';
 
-const WORKFLOW = readFileSync(new URL('../.github/workflows/test.yml', import.meta.url), 'utf8');
+const WORKFLOW_PATH = fileURLToPath(new URL('../.github/workflows/test.yml', import.meta.url));
 
 test('parseArgs: the three modes and their required inputs', () => {
   assert.equal(parseArgs(['--sweep']).mode, 'sweep');
@@ -23,19 +24,21 @@ test('parseArgs: the three modes and their required inputs', () => {
   assert.throws(() => parseArgs(['--sweep', '--bogus']), /unknown option/);
 });
 
-test('the filters come from test.yml: the perf-ratchet job gates on rust, frontend and perf_ratchet', () => {
-  const { perfGlobs, rustGlobs } = readFilterGlobs(WORKFLOW);
-  assert.ok(rustGlobs.includes('rust/**'));
-  assert.ok(perfGlobs.includes('rust/**'), 'Rust inputs move the bundle and native ratchets');
-  assert.ok(perfGlobs.includes('tests/perf-ratchets/**'));
+test("relevance follows test.yml's filters: the paths that run the perf-ratchet job and the Rust lanes", () => {
+  const globs = loadFilterGlobs(WORKFLOW_PATH);
+  assert.deepEqual(prRelevance(['rust/geometry/src/lib.rs'], globs), { perf: true, rust: true, editsCeilings: false });
+  assert.deepEqual(prRelevance(['tests/perf-ratchets/bundle.json'], globs), { perf: true, rust: false, editsCeilings: true });
+  assert.deepEqual(prRelevance(['apps/viewer/src/App.tsx'], globs), { perf: true, rust: false, editsCeilings: false });
+  assert.deepEqual(prRelevance(['docs/guide/cli.md'], globs), { perf: false, rust: false, editsCeilings: false });
   // This script and its decision core are inputs of the job whose last step runs them.
   for (const f of ['scripts/ci-base-stale.mjs', 'scripts/lib/base-stale.mjs', 'scripts/lib/base-stale-io.mjs']) {
-    assert.ok(matchesAny(f, perfGlobs), `${f} must trigger the perf-ratchet job`);
+    assert.equal(prRelevance([f], globs).perf, true, `${f} must trigger the perf-ratchet job`);
   }
 });
 
-test('readFilterGlobs refuses a perf-ratchet job it cannot read the gate of', () => {
-  assert.throws(() => readFilterGlobs(WORKFLOW.replace(/\n {2}perf-ratchet:\n/, '\n  perf-ratchet-renamed:\n')), /no perf-ratchet job/);
+test('readFilterGlobs refuses a workflow whose perf-ratchet gate it cannot read', () => {
+  const noJob = ['jobs:', '  changes:', '    steps:', '      - with:', '          filters: |', '            rust:', "              - 'rust/**'", ''].join('\n');
+  assert.throws(() => readFilterGlobs(noJob), /no perf-ratchet job/);
 });
 
 const PROV = { commit: 'abcdef1234567', measuredAt: '2026-11-22T00:00:00.000Z' };
@@ -144,7 +147,7 @@ function runFake({ gate, cacheData = null, prs = [STALE_PR], existing = 'failure
   } finally {
     console.log = log;
   }
-  return { posts, reads, saved: JSON.parse(readFileSync(cachePath, 'utf8')) };
+  return { posts, reads, saved: loadCache(cachePath) };
 }
 
 test('run, on: a stale labelled PR gets a failure status; a fork gets nothing', () => {
@@ -204,5 +207,5 @@ test('run: a single-PR run keeps the sweep cache entries of other heads', () => 
   } finally {
     console.log = log;
   }
-  assert.deepEqual(JSON.parse(readFileSync(cachePath, 'utf8')).prFiles.other, ['a']);
+  assert.deepEqual(loadCache(cachePath).prFiles.other, ['a']);
 });

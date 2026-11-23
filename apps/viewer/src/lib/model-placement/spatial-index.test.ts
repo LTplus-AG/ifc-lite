@@ -82,6 +82,31 @@ it('publishes spatial queries at the moved position and prevents a late source b
   assert.deepEqual(Array.from(mesh.positions), [0, 0, 0, 1, 0, 0, 0, 1, 0], 'spatial indexing does not rewrite source vertices');
 });
 
+it('#11246 a queued spatial index build preserves the index of a newly loaded model', async (t) => {
+  const initial = useViewerStore.getState();
+  t.after(() => {
+    useViewerStore.setState(initial, true);
+    modelIndices(initial.models);
+  });
+  const mesh: MeshData = { expressId: 1, positions: Float32Array.from([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+    indices: Uint32Array.from([0, 1, 2]), normals: new Float32Array(9), color: [1, 1, 1, 1] };
+  const a = { ...fixtureModel('index-owner'), maxExpressId: 10,
+    geometryResult: { meshes: [mesh], totalTriangles: 1 } as GeometryResult };
+  const b = fixtureModel('loaded-while-indexing', { idOffset: 100 });
+  useViewerStore.setState({ ...fixtureModels(a), modelPlacement: emptyPlacementState() });
+  const captured = useViewerStore.getState();
+  modelIndices(captured.models);
+
+  const pending = buildPlacedSpatialIndex(captured, a.id);
+  const live = fixtureModels(a, b);
+  useViewerStore.setState(live);
+  const bIndex = modelIndices(live.models).get(b.id);
+  assert.notEqual(bIndex, undefined);
+
+  assert.equal(await pending, true, 'the captured model remained current and its index published');
+  assert.equal(modelIndices(live.models).get(b.id), bIndex, 'building the BVH must preserve the newer model index');
+});
+
 it('waits for GPU shard drain and indexes pure instances for primary and federated models (#5275)', async () => {
   const occurrence = (x: number, id: number, modelIndex: number): MeshData => ({
     expressId: id, modelIndex, positions: new Float32Array([x, 0, 0, x + 1, 0, 0, x, 1, 0]),

@@ -72,6 +72,15 @@ $/pick = ["IfcWall"]`));
     await waitFor(() => radios[1].checked && !radios[0].checked, 'choice moved');
   });
 
+  it('no selection does not mark an empty-string option as chosen (#11344)', async () => {
+    const { host } = await seedA2uiModels();
+    const { container } = await mountReply(host, block(`root = Column([pick])
+pick = ChoicePicker("Filter", _, [{label: "None", value: ""}, {label: "Walls", value: "IfcWall"}], $/pick)
+$/pick = []`));
+    await waitFor(() => container.querySelectorAll('input[type="radio"]').length === 2, 'two radios');
+    assert.deepEqual([...container.querySelectorAll<HTMLInputElement>('input[type="radio"]')].map((r) => r.checked), [false, false]);
+  });
+
   it('runs a function-call action (exportCsv) only when the button is clicked', async () => {
     const { host } = await seedA2uiModels();
     const { container } = await mountReply(host, block(`root = Column([go])

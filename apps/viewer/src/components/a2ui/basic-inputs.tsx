@@ -85,6 +85,8 @@ export const CheckBoxImpl = createComponentImplementation(CheckBoxApi, ({ props 
   </div>
 ));
 
+const NO_CHOICE = '\u0000none';
+
 export const ChoicePickerImpl = createComponentImplementation(ChoicePickerApi, ({ props }) => {
   const groupId = useId();
   const [filter, setFilter] = useState('');
@@ -106,7 +108,8 @@ export const ChoicePickerImpl = createComponentImplementation(ChoicePickerApi, (
         // Single choice: the viewer's radio group (arrow keys move the choice).
         <SegmentedControl
           label={label ?? ''}
-          value={selected[0] ?? ''}
+          // No selection must not match an option whose value is the empty string.
+          value={selected[0] ?? NO_CHOICE}
           options={options.map((o) => ({ value: o.value, label: String(o.label) }))}
           onValueChange={(value) => props.setValue([value])}
           className="flex-wrap self-start"

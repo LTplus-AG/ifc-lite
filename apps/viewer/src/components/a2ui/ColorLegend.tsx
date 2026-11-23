@@ -85,12 +85,13 @@ export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ 
   };
 
   useEffect(() => {
-    if (props.apply !== 'onShow' || entries.length === 0) return;
+    // Nothing to colour: claim nothing, so a remount never shows it as applied.
+    if (props.apply !== 'onShow' || targets === 0) return;
     const state = autoApply?.(JSON.stringify([props.by, props.query ?? null, props.data ?? null]));
     if (state === 'apply') apply();
     else if (state === 'applied') setApplied(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, when entries first exist
-  }, [props.apply, entries.length]);
+  }, [props.apply, targets]);
 
   const toggle = (entry: LegendEntry, visible: boolean) => {
     try {

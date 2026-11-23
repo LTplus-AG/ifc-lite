@@ -69,6 +69,10 @@ describe('IFC function policy', () => {
     assert.equal(target.refs.length, 5000);
     assert.equal(target.cappedFrom, 5001);
     assert.equal(resolveTarget(host, { query: { types: ['IfcWall'] } }).cappedFrom, undefined);
+    // An explicit ref covering the one match past the ceiling: nothing was left out.
+    const covered = resolveTarget({ ...host, candidates: () => many }, { query: { types: ['IfcWall'] }, refs: [`${wall.ref.modelId}:5001`] });
+    assert.equal(covered.refs.length, 5001);
+    assert.equal(covered.cappedFrom, undefined);
   });
 
   it('lets a live session auto-apply once per key and a replayed chat record never', async () => {

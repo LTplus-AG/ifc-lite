@@ -126,8 +126,16 @@ export function normalizeQuery(input: unknown): { spec: IfcQuerySpec; problems: 
       if (where.length) spec.where = where;
     }
   }
-  if (typeof raw.storey === 'string' && raw.storey.trim()) spec.storey = raw.storey.trim();
-  if (typeof raw.modelId === 'string' && raw.modelId.trim()) spec.modelId = raw.modelId.trim();
+  // A malformed filter is a problem, never silently dropped: dropping it would widen the query.
+  for (const key of ['storey', 'modelId'] as const) {
+    const value = raw[key];
+    if (value === undefined) continue;
+    if (typeof value === 'string' && value.trim()) spec[key] = value.trim();
+    else problems.push({ path: key, message: `${key} must be a non-empty string` });
+  }
+  if (raw.limit !== undefined && !(typeof raw.limit === 'number' && Number.isFinite(raw.limit))) {
+    problems.push({ path: 'limit', message: 'limit must be a number' });
+  }
   const limit = typeof raw.limit === 'number' && Number.isFinite(raw.limit) ? Math.floor(raw.limit) : DEFAULT_QUERY_LIMIT;
   spec.limit = Math.min(Math.max(limit, 1), MAX_QUERY_LIMIT);
   return { spec, problems };

@@ -44,6 +44,8 @@ describe('query spec', () => {
     const { problems } = normalizeQuery({ types: ['Door'], where: [{ path: 'Name', op: 'like', value: 'x' }, { path: 'Name', op: 'eq' }] });
     expect(problems.map((p) => p.path)).toEqual(['types', 'where[0].op', 'where[1].value']);
     expect(normalizeQuery('IfcDoor').problems).toHaveLength(1);
+    // A malformed storey, model or limit is reported, not dropped into a wider query.
+    expect(normalizeQuery({ types: ['IfcDoor'], storey: ['EG'], modelId: 7, limit: '10' }).problems.map((p) => p.path)).toEqual(['storey', 'modelId', 'limit']);
   });
 
   it('matches conditions', () => {

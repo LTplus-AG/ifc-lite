@@ -181,8 +181,9 @@ export function aggregate(reader: FieldReader, rows: A2uiEntity[], kind: Aggrega
   switch (kind) {
     case 'sum': return nums.reduce((a, b) => a + b, 0);
     case 'avg': return nums.reduce((a, b) => a + b, 0) / nums.length;
-    case 'min': return Math.min(...nums);
-    case 'max': return Math.max(...nums);
+    // reduce, not spread: an unlimited query can hold more matches than a call takes arguments.
+    case 'min': return nums.reduce((a, b) => (b < a ? b : a));
+    case 'max': return nums.reduce((a, b) => (b > a ? b : a));
   }
 }
 

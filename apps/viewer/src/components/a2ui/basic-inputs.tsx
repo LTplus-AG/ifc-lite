@@ -88,7 +88,8 @@ export const ChoicePickerImpl = createComponentImplementation(ChoicePickerApi, (
   const groupId = useId();
   const [filter, setFilter] = useState('');
   const selected = Array.isArray(props.value) ? props.value.map(String) : [];
-  const multiple = props.variant !== 'mutuallyExclusive';
+  // The A2UI default is mutuallyExclusive, as in the MCP App renderer.
+  const multiple = props.variant === 'multipleSelection';
   const options = (Array.isArray(props.options) ? props.options : [])
     .filter((o) => !filter || String(o.label).toLowerCase().includes(filter.toLowerCase()));
   const toggle = (value: string) => {

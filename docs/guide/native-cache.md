@@ -26,7 +26,7 @@ A stable Rust toolchain builds the crate. The nightly pinned in `rust-toolchain.
 
 ## Reader compatibility
 
-`BinaryCacheReader` reads a cache written at its own `FORMAT_VERSION` or an older one, and rejects a newer one with `Unsupported format version` ([`SPEC.md` §11](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/cache/SPEC.md#11-reader-compatibility-current-reader)). The tool writes the single format version of the commit it was built from, and `ifc-build-cache --help` prints it.
+`BinaryCacheReader` rejects a cache whose format version is above its own `FORMAT_VERSION`, with `Unsupported format version`. That check is an upper bound, not a promise that every older cache decodes: [`SPEC.md` §11](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/cache/SPEC.md#11-reader-compatibility-current-reader) lists what a cache from an older format version reads as, and which ones the reader refuses or misreads. The tool writes one format version, that of the commit it was built from, and `ifc-build-cache --help` prints it.
 
 Build the tool from a commit whose format version is not above the `FORMAT_VERSION` that the `@ifc-lite/cache` release in your readers exports. When a format version bump reaches you, upgrade the readers first, then the tool.
 

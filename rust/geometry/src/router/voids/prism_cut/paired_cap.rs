@@ -138,8 +138,7 @@ fn paired_rectangle(
             return None;
         };
         if !(0..2).all(|k| inner[0][k] < pf.bb.1[k] && pf.bb.0[k] < inner[1][k])
-            || (floor_side != end
-                && !shell_extends_from_face(tris, pf, outer, inner, target, direction))
+            || !shell_extends_from_face(tris, pf, outer, inner, target, direction)
         {
             return None;
         }
@@ -175,9 +174,9 @@ fn paired_rectangle(
     })
 }
 
-/// A reversed area group could also mean the finish is the wider body.
 /// Prove that the wider face has a side wall beyond the cap at a corner
-/// belonging to that face alone.
+/// belonging to that face alone. Either winding can put the finish in the
+/// expected signed-area group without supporting a floor.
 fn shell_extends_from_face(
     tris: &[PTri],
     pf: &PrismFrame,
@@ -339,12 +338,14 @@ mod tests {
         // depth zero. The exact route should retain the authored cap (#10528).
         let axes = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
         for end in [0, 1] {
+            let core_side_depth = if end == 0 { -0.2 } else { 0.2 };
             let mut host = Mesh {
                 positions: vec![
                     0.0, 0.0, 0.0, 4.0, 0.0, 0.0, 4.0, 3.0, 0.0, 0.0, 3.0, 0.0,
                     0.0, 0.0, 0.0, 1.5, 0.0, 0.0, 1.5, 3.0, 0.0, 0.0, 3.0, 0.0,
+                    4.0, 0.0, core_side_depth,
                 ],
-                indices: vec![0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6],
+                indices: vec![0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6, 1, 2, 8],
                 ..Mesh::default()
             };
             if end == 1 {
@@ -364,7 +365,7 @@ mod tests {
     fn exact_jamb_does_not_choose_a_wider_finish_as_the_floor_11276() {
         // The wide face is the bottom of the finish. Its exclusive corner
         // continues into the opening (+Z), while the narrower core lies below.
-        let host = Mesh {
+        let mut host = Mesh {
             positions: vec![
                 0.0, 0.0, 0.0, 4.0, 0.0, 0.0, 4.0, 3.0, 0.0, 0.0, 3.0, 0.0,
                 0.0, 0.0, 0.0, 1.5, 0.0, 0.0, 1.5, 3.0, 0.0, 0.0, 3.0, 0.0,
@@ -374,7 +375,16 @@ mod tests {
             ..Mesh::default()
         };
         let axes = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
-        let paired = paired_exact_jambs(&host, axes, [1.0, 1.0, 0.0], [2.0, 2.0, 0.012], [true, false]);
-        assert_eq!(paired, [false, false]);
+        for inward in [false, true] {
+            if inward {
+                for triangle in host.indices.chunks_exact_mut(3) {
+                    triangle.swap(1, 2);
+                }
+            }
+            let paired = paired_exact_jambs(
+                &host, axes, [1.0, 1.0, 0.0], [2.0, 2.0, 0.012], [true, false],
+            );
+            assert_eq!(paired, [false, false], "inward={inward}");
+        }
     }
 }

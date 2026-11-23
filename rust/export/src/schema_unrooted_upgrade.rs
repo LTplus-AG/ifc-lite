@@ -42,8 +42,9 @@ fn refs(value: &str) -> impl Iterator<Item = u32> + '_ {
     ref_spans(value.as_bytes()).filter_map(|span| span.id)
 }
 
-fn list_minimum(ty: &str, attribute: AttrSlot) -> Option<usize> {
-    if !attribute.aggregate {
+fn list_minimum(schema: SchemaVersion, ty: &str, attribute: AttrSlot) -> Option<usize> {
+    // The pruning bounds below describe IFC4. Check legacy aggregates whole.
+    if schema != SchemaVersion::Ifc4 || !attribute.aggregate {
         return None;
     }
     use crate::generated::ifc4_required_slots::IFC4_AGGREGATE_PRUNE_EXCEPTIONS;
@@ -66,6 +67,13 @@ fn list_members(value: &str) -> Option<Vec<&str>> {
         std::str::from_utf8(part).expect("STEP lexer trims only ASCII delimiters")
     }).collect();
     items.closed().then_some(parts)
+}
+
+fn read_slots<'a>(ty: &str, raw: &'a str) -> Option<(SchemaVersion, Vec<&'a str>, impl Iterator<Item = AttrSlot>)> {
+    let values = slots_of(raw)?;
+    let (schema, layout) = [SchemaVersion::Ifc4, SchemaVersion::Ifc2x3].into_iter()
+        .find_map(|schema| schema.attributes(ty).map(|layout| (schema, layout)))?;
+    (values.len() == layout.len()).then_some((schema, values, layout))
 }
 
 #[derive(Default)]
@@ -101,9 +109,7 @@ impl Dependencies {
     }
 
     fn record(&mut self, id: u32, ty: &str, raw: &str) {
-        let parsed = slots_of(raw).zip(SchemaVersion::Ifc4.attributes(ty))
-            .filter(|(values, layout)| values.len() == layout.len());
-        let Some((values, layout)) = parsed else {
+        let Some((schema, values, layout)) = read_slots(ty, raw) else {
             self.add(id, &[raw], 1);
             return;
         };
@@ -111,7 +117,7 @@ impl Dependencies {
             if attr.optional {
                 continue;
             }
-            match list_minimum(ty, attr).and_then(|min| Some((list_members(value)?, min))) {
+            match list_minimum(schema, ty, attr).and_then(|min| Some((list_members(value)?, min))) {
                 Some((members, min)) if min > 0 => self.add(id, &members, min),
                 Some(_) => {},
                 None => self.add(id, &[value], 1),
@@ -165,13 +171,12 @@ fn rewrite(line: &str, ty: &str, frame: RecordFrame, dropped: &HashSet<u32>) -> 
     if !touches(raw) {
         return None;
     }
-    let values = slots_of(raw)?;
-    let layout = SchemaVersion::Ifc4.attributes(ty)?;
+    let (schema, values, layout) = read_slots(ty, raw)?;
     let slots: Vec<String> = values.into_iter().zip(layout).map(|(value, attr)| {
         if !touches(value) {
             return value.to_owned();
         }
-        if let Some(min) = list_minimum(ty, attr) {
+        if let Some(min) = list_minimum(schema, ty, attr) {
             if let Some(mut members) = list_members(value) {
                 members.retain(|member| !touches(member));
                 if members.len() >= min {

@@ -15,14 +15,19 @@ type Slot = { value: string; optional: boolean; members: string[] | null; minimu
 type Group = { id: number; remaining: number; minimum: number };
 type Member = { group: Group; lost: boolean };
 
-const registry = () => getSchemaRegistryForVersion('IFC4').entities;
-let layouts: Map<string, readonly Attribute[]> | undefined;
+type UpgradeSchema = 'IFC4' | 'IFC2X3';
+const layouts = new Map<UpgradeSchema, Map<string, readonly Attribute[]>>();
 
-function attributes(type: string): readonly Attribute[] | undefined {
-  layouts ??= new Map(Object.entries(registry()).map(([name, info]) => [
-    name.toUpperCase(), info.allAttributes ?? info.attributes,
-  ]));
-  return layouts.get(type);
+function attributes(schema: UpgradeSchema, type: string): readonly Attribute[] | undefined {
+  let layout = layouts.get(schema);
+  if (!layout) {
+    const entities = getSchemaRegistryForVersion(schema).entities;
+    layout = new Map(Object.entries(entities).map(([name, info]) => [
+      name.toUpperCase(), info.allAttributes ?? info.attributes,
+    ]));
+    layouts.set(schema, layout);
+  }
+  return layout.get(type);
 }
 
 function recordId(line: string): number {
@@ -68,22 +73,24 @@ function listMembers(value: string): string[] | null {
   return null;
 }
 
-function slot(value: string, attribute?: Attribute): Slot {
-  const members = attribute?.isList || attribute?.isSet ? listMembers(value) : null;
+function slot(value: string, attribute?: Attribute, narrowAggregates = true): Slot {
+  const members = narrowAggregates && (attribute?.isList || attribute?.isSet) ? listMembers(value) : null;
   return { value, members, optional: attribute?.optional ?? false, minimum: members ? attribute?.arrayBounds?.[0] ?? 1 : 1 };
 }
 
-function readSlots(rec: OutputRecord): Slot[] {
+function readSlots(rec: OutputRecord): Slot[] | undefined {
   const values = rec.frame ? splitTopLevelStepArguments(rec.raw) : null;
-  const layout = attributes(rec.type);
-  // If the target layout cannot be established, the record is only safe when
-  // none of its references is lost. Treat the entire argument list as required.
-  if (!values || !layout || values.length !== layout.length) return [slot(rec.raw)];
-  return values.map((value, index) => slot(value, layout[index]));
+  const target = attributes('IFC4', rec.type);
+  // Retained IFC2X3 records use their own optional slots. Check legacy
+  // aggregates as whole slots because the pruning bounds are defined for IFC4.
+  const layout = target ?? attributes('IFC2X3', rec.type);
+  if (!values || !layout || values.length !== layout.length) return undefined;
+  return values.map((value, index) => slot(value, layout[index], target !== undefined));
 }
 
 function indexRequiredMembers(rec: OutputRecord, users: Map<number, Member[]>): void {
-  for (const part of readSlots(rec)) {
+  // Without a usable layout a lost reference makes the record unsafe to keep.
+  for (const part of readSlots(rec) ?? [slot(rec.raw)]) {
     if (part.optional || part.minimum === 0) continue;
     const members = part.members ?? [part.value];
     const group = { id: rec.id, remaining: members.length, minimum: part.minimum };
@@ -147,12 +154,10 @@ export function previewUpgradeDependents(store: SourceStore, from: IfcSchemaVers
 
 function rewrite(rec: OutputRecord, dropped: ReadonlySet<number>): string {
   if (!rec.frame || !referencesAnyExpressId(rec.raw, dropped)) return rec.line;
-  const layout = attributes(rec.type);
-  const values = splitTopLevelStepArguments(rec.raw);
-  if (!layout || !values || values.length !== layout.length) return rec.line;
-  const kept = values.map((value, index) => {
+  const parts = readSlots(rec);
+  if (!parts) return rec.line;
+  const kept = parts.map(({ value, members, minimum }) => {
     if (!referencesAnyExpressId(value, dropped)) return value;
-    const { members, minimum } = slot(value, layout[index]);
     const filtered = members?.filter((member) => !referencesAnyExpressId(member, dropped));
     return filtered && filtered.length >= minimum ? `(${filtered.join(',')})` : '$';
   });

@@ -135,6 +135,19 @@ fn prunes_references_to_removed_ifc2x3_resources_10970() {
 }
 
 #[test]
+fn clears_an_optional_representation_on_an_unconverted_varying_action_10970() {
+    let source = include_bytes!("../tests/fixtures/schema_unrooted_legacy_optional.ifc");
+    let opts = crate::StepOptions { schema: Some("IFC4".into()), ..Default::default() };
+    let direct = crate::export_step(source, &opts).unwrap();
+    let (logged, _) = crate::export_step_with_log(source, &opts, &crate::MutationLog::default()).unwrap();
+    let merged = crate::export_merged(&[source], &crate::MergedOptions { schema: opts.schema, ..Default::default() });
+    for (writer, output) in [("direct", direct), ("logged", logged), ("merged", merged)] {
+        assert!(output.contains("#30=IFCSTRUCTURALLINEARACTIONVARYING('3sXjCM_kPHN8ZCpuBhV_98',$,'A',$,$,$,$,#11,.GLOBAL_COORDS.,.F.,$,.TRUE_LENGTH.,$,$);"), "{writer}: {output}");
+        assert!(!output.lines().any(|line| ["#41=", "#42=", "#43="].iter().any(|prefix| line.starts_with(prefix))), "{writer}: {output}");
+    }
+}
+
+#[test]
 fn the_warnings_name_each_type_by_route_10902() {
     let mut plans = crate::schema_plan::PlanCache::default();
     for ty in ["IFCSERVICELIFE", "IFCSERVICELIFE", "IFCCALENDARDATE", "IFCWALL", "IFCSTRUCTURALLINEARACTIONVARYING"] {

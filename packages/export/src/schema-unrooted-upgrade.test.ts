@@ -38,3 +38,19 @@ it('prunes references to removed IFC2X3 resources using IFC4 slot cardinality (#
   const typeOnly = analyzeConversionLoss({ entityIndex: store.entityIndex }, 'IFC2X3', 'IFC4');
   expect(typeOnly.entries.some(entry => entry.sourceType === 'IFCCOMPOSITEPROFILEDEF')).toBe(false);
 });
+
+it('clears an optional Representation on an unconverted varying action (#10970)', async () => {
+  const raw = readFileSync(new URL('../../../rust/export/tests/fixtures/schema_unrooted_legacy_optional.ifc', import.meta.url));
+  const store = await new IfcParser().parseColumnar(Uint8Array.from(raw).buffer);
+  const merged = new MergedExporter([{ id: 'source', name: 'source', dataStore: store }]);
+  const options = { schema: 'IFC4' } as const;
+  for (const result of [new StepExporter(store).export(options), merged.export(options), await merged.exportAsync(options)]) {
+    const output = new TextDecoder().decode(result.content);
+    expect(output).toContain("#30=IFCSTRUCTURALLINEARACTIONVARYING('3sXjCM_kPHN8ZCpuBhV_98',$,'A',$,$,$,$,#11,.GLOBAL_COORDS.,.F.,$,.TRUE_LENGTH.,$,$);");
+    expect(output).not.toMatch(/^#(?:41|42|43)=/m);
+    expect(result.stats.warnings.some(warning => warning.includes('#30 (IFCSTRUCTURALLINEARACTIONVARYING) was omitted'))).toBe(false);
+  }
+  const report = analyzeConversionLoss(store, 'IFC2X3', 'IFC4');
+  expect(report.entries.find(entry => entry.sourceType === 'IFCPRODUCTDEFINITIONSHAPE')?.expressIds).toEqual([43]);
+  expect(report.describe().some(line => line.includes('IFCSTRUCTURALLINEARACTIONVARYING (#30) will be omitted'))).toBe(false);
+});

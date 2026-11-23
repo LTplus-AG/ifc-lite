@@ -76,8 +76,9 @@ export function verdictLines(b, a) {
  */
 export function pairTimeline(b, a) {
   const seg = [];
-  // A clip that errored before its load has no load span: hold its first frame for the load segment.
-  const lb = b.timeline.load ?? [0, 0.04], la = a.timeline.load ?? [0, 0.04];
+  // A clip that errored before or during its load has no load span: hold its last title-card frame.
+  const loadOf = (c) => c.timeline.load ?? [c.timeline.title?.[1] ?? 0, (c.timeline.title?.[1] ?? 0) + 0.04];
+  const lb = loadOf(b), la = loadOf(a);
   const loadLen = Math.max(lb[1] - lb[0], la[1] - la[0]);
   seg.push({ kind: 'load', length: loadLen, src: [(t) => Math.min(lb[0] + t, lb[1] - 0.04), (t) => Math.min(la[0] + t, la[1] - 0.04)],
     done: [(t) => t >= lb[1] - lb[0], (t) => t >= la[1] - la[0]] });

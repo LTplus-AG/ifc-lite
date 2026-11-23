@@ -13,7 +13,7 @@
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 
 /** Parse HGFILE lines from `text`; returns { files: Map(rel -> Buffer), incomplete: [rel] }. */
@@ -41,7 +41,7 @@ if (isMainEntry(import.meta.url)) {
   for (const [rel, buf] of files) {
     const dest = resolve(out, rel);
     const inside = relative(resolve(out), dest);
-    if (!inside || inside.startsWith('..') || isAbsolute(inside)) { console.error(`skip unsafe path ${rel}`); continue; }
+    if (!inside || inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside)) { console.error(`skip unsafe path ${rel}`); continue; }
     mkdirSync(dirname(dest), { recursive: true });
     writeFileSync(dest, buf);
     console.log(`${dest} ${buf.length} bytes`);

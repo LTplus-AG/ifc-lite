@@ -77,5 +77,4 @@ test('within/bounded: settle with the promise, time out with the fallback or a n
   assert.equal(await within(Promise.resolve('done'), 60000, () => 'late'), 'done');
   assert.equal(await within(new Promise(() => {}), 5, () => 'late'), 'late');
   await assert.rejects(bounded(new Promise(() => {}), 5, 'camera orbit'), /camera orbit timed out after 5 ms/);
-  // A settled race clears its timer: the 60 s bound above must not keep this test file alive.
 });

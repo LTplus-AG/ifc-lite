@@ -273,6 +273,7 @@ async function recordTier({ label, manifest, url, out, fps, loadSpeed, timeoutMs
   } catch (err) {
     clip.status = 'error';
     clip.failure = { kind: session.events.crashed ? 'renderer-crash' : 'harness-error', detail: String(err?.message ?? err).slice(0, 600) };
+    if (ticker) { clearInterval(ticker); ticker = null; }
     clip.peak ??= (await sampler.stop().catch(() => null))?.peak ?? null;
     return { clip, encoder, stop, session };
   } finally {

@@ -58,7 +58,8 @@ export const HARNESS_INIT = () => {
   wrap(globalThis.GPUQueue?.prototype, 'submit', (q) => {
     p.cur.submits++; p.queue = q; p.lastSubmit = performance.now();
     const a = p.after;
-    if (a && a.present !== null && !a.done) a.done = q.onSubmittedWorkDone().then(() => performance.now());
+    // The hook runs before the real submit: ask for completion in a microtask, once this frame's work is queued.
+    if (a && a.present !== null && !a.done) a.done = new Promise((r) => queueMicrotask(r)).then(() => q.onSubmittedWorkDone()).then(() => performance.now(), () => null);
   });
   wrap(globalThis.GPUCanvasContext?.prototype, 'getCurrentTexture', () => {
     p.cur.presents++; p.lastPresent = performance.now();
@@ -165,7 +166,8 @@ export const AFTER_FRAME = async ({ capMs }) => {
     if (performance.now() > end) return { presentMs: a.present === null ? null : a.present - a.ref, doneMs: null };
     await new Promise((resolve) => setTimeout(resolve, 4));
   }
-  return { presentMs: a.present - a.ref, doneMs: (await a.done) - a.ref };
+  const done = await Promise.race([a.done, new Promise((resolve) => setTimeout(() => resolve(null), Math.max(0, end - performance.now())))]);
+  return { presentMs: a.present - a.ref, doneMs: done === null ? null : done - a.ref };
 };
 
 /** In page: arm a pick measurement; the harness then clicks. Returns nothing. */
@@ -178,6 +180,7 @@ export const ARM_PICK = () => {
     const id = x.selectedEntityId ?? null;
     if (st.selectedAt === null && st.down !== null && id !== st.before) {
       st.selectedAt = performance.now(); st.selected = id;
+      // Frame watch from the selection change (earlier presents cannot show it), reported from pointerdown.
       globalThis.__hgProbe?.armFrame(st.selectedAt, st.down);
     }
   });

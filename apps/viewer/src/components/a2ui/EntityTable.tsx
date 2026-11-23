@@ -152,11 +152,11 @@ export const EntityTableImpl = createComponentImplementation(EntityTableApi, ({ 
           <span>{t('a2ui.table.caption', { shown: visible.length.toLocaleString(), total: sorted.length.toLocaleString() })}</span>
           {pages > 1 && (
             <span className="flex items-center gap-1">
-              <IconButton size="icon-xs" variant="ghost" label={t('a2ui.table.previous')} disabled={current === 0} onClick={() => setPage(current - 1)}>
+              <IconButton size="icon-xs" label={t('a2ui.table.previous')} disabled={current === 0} onClick={() => setPage(current - 1)}>
                 <ChevronLeft className="h-3.5 w-3.5" />
               </IconButton>
               <span>{t('a2ui.table.page', { page: current + 1, pages })}</span>
-              <IconButton size="icon-xs" variant="ghost" label={t('a2ui.table.next')} disabled={current >= pages - 1} onClick={() => setPage(current + 1)}>
+              <IconButton size="icon-xs" label={t('a2ui.table.next')} disabled={current >= pages - 1} onClick={() => setPage(current + 1)}>
                 <ChevronRight className="h-3.5 w-3.5" />
               </IconButton>
             </span>

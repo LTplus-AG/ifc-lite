@@ -359,4 +359,22 @@ mod tests {
             assert_eq!(paired_exact_jambs(&host, axes, lo, hi, jamb), jamb);
         }
     }
+
+    #[test]
+    fn exact_jamb_does_not_choose_a_wider_finish_as_the_floor_11276() {
+        // The wide face is the bottom of the finish. Its exclusive corner
+        // continues into the opening (+Z), while the narrower core lies below.
+        let host = Mesh {
+            positions: vec![
+                0.0, 0.0, 0.0, 4.0, 0.0, 0.0, 4.0, 3.0, 0.0, 0.0, 3.0, 0.0,
+                0.0, 0.0, 0.0, 1.5, 0.0, 0.0, 1.5, 3.0, 0.0, 0.0, 3.0, 0.0,
+                4.0, 0.0, 0.012, 1.5, 0.0, -0.2,
+            ],
+            indices: vec![0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 1, 2, 8, 4, 9, 5],
+            ..Mesh::default()
+        };
+        let axes = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+        let paired = paired_exact_jambs(&host, axes, [1.0, 1.0, 0.0], [2.0, 2.0, 0.012], [true, false]);
+        assert_eq!(paired, [false, false]);
+    }
 }

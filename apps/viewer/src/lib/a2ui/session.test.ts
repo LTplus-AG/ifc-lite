@@ -73,7 +73,7 @@ describe('A2uiMessageSession', () => {
     assert.equal(truncated.segments.at(-1)?.kind, 'error', 'an unclosed block is reported on close');
   });
 
-  it('places two blocks where they were written; a second block reusing surface main is rejected', async () => {
+  it('places blocks where they were written; later blocks without surface() get their own surface', async () => {
     const { host } = await seedA2uiModels();
     const reply = 'Walls:\n<a2ui>\nroot = StatGroup([{label: "Walls", query: {types: ["IfcWall"]}}])\n</a2ui>\nSlabs:\n<a2ui>\nsurface("slabs")\nroot = EntityList({types: ["IfcSlab"]})\n</a2ui>\nDone';
     for (const size of [3, reply.length]) {
@@ -82,9 +82,15 @@ describe('A2uiMessageSession', () => {
       const shape = session.segments.map((s) => (s.kind === 'surfaces' ? `surfaces:${s.surfaceIds.join(',')}` : s.kind));
       assert.deepEqual(shape, ['text', 'surfaces:main', 'text', 'surfaces:slabs', 'text'], `chunk ${size}`);
     }
+    for (const size of [1, 4, 1000]) {
+      const auto = new A2uiMessageSession(host);
+      feedInChunks(auto, 'A\n<a2ui>\nroot = Text("one")\n</a2ui>\nB\n<a2ui>root = Text("two")</a2ui>\nC\n<a2ui>\n\nroot = Text("three")\n</a2ui>', size);
+      const shape = auto.segments.map((s) => (s.kind === 'surfaces' ? `surfaces:${s.surfaceIds.join(',')}` : s.kind));
+      assert.deepEqual(shape, ['text', 'surfaces:main', 'text', 'surfaces:reply-2', 'text', 'surfaces:reply-3'], `chunk ${size}`);
+    }
     const clash = new A2uiMessageSession(host);
-    feedInChunks(clash, 'A\n<a2ui>\nroot = Text("one")\n</a2ui>\nB\n<a2ui>\nroot = Text("two")\n</a2ui>\nC', 4);
-    assert.deepEqual(kinds(clash.segments), ['text', 'surfaces', 'text', 'error', 'text']);
+    feedInChunks(clash, 'A\n<a2ui>\nsurface("x")\nroot = Text("one")\n</a2ui>\nB\n<a2ui>\nsurface("x")\nroot = Text("two")\n</a2ui>\nC', 4);
+    assert.deepEqual(kinds(clash.segments), ['text', 'surfaces', 'text', 'error', 'text'], 'an explicit duplicate surface is still rejected');
   });
 
   it('replays a persisted record without parsing, to the same surfaces', async () => {

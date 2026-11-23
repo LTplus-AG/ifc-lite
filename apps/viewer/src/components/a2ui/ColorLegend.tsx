@@ -11,7 +11,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createComponentImplementation } from '@a2ui/react';
-import type { WireEntityRef } from '@ifc-lite/a2ui';
+import { parseRefs, type WireEntityRef } from '@ifc-lite/a2ui';
 import { ColorLegendApi } from '@ifc-lite/a2ui/catalog';
 import { LENS_PALETTE } from '@ifc-lite/lens';
 import { Button } from '@/components/ui/button';
@@ -32,19 +32,33 @@ export function legendColor(index: number): string {
   return LENS_PALETTE[index % LENS_PALETTE.length];
 }
 
+const HEX = /^#[0-9a-f]{6}$/i;
+
+/** Script data: `[{label, color, refs?}]`; a colour that is not #rrggbb falls back to the palette. */
+export function legendEntriesFromData(data: unknown): LegendEntry[] | null {
+  if (!Array.isArray(data)) return null;
+  return data.flatMap((item, i) => {
+    if (!item || typeof item !== 'object' || typeof (item as { label?: unknown }).label !== 'string') return [];
+    const { label, color, refs } = item as { label: string; color?: unknown; refs?: unknown };
+    return [{ label, color: typeof color === 'string' && HEX.test(color) ? color : legendColor(i), refs: parseRefs(refs) }];
+  });
+}
+
 export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ props }) => {
   const { t } = useTranslation();
   const { host } = useA2uiRuntime();
-  const { result, reader } = useQueryResult(props.query ?? {});
+  const { result, reader } = useQueryResult(props.data === undefined ? props.query ?? {} : undefined);
   const [hidden, setHidden] = useState<ReadonlySet<string>>(() => new Set());
   const [applied, setApplied] = useState(false);
   const emptyLabel = t('a2ui.noGroupValue');
 
+  const scriptEntries = useMemo(() => legendEntriesFromData(props.data), [props.data]);
   const entries: LegendEntry[] = useMemo(() => {
+    if (scriptEntries) return scriptEntries;
     if (!result) return [];
     return groupRows(reader, aggregatePool(result), props.by, emptyLabel)
       .map((g, i) => ({ label: g.label, color: legendColor(i), refs: g.rows.map((r) => r.ref) }));
-  }, [result, reader, props.by, emptyLabel]);
+  }, [scriptEntries, result, reader, props.by, emptyLabel]);
 
   const apply = () => {
     try {
@@ -83,8 +97,8 @@ export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ 
   return (
     <div style={weightStyle(props.weight)} className="flex min-w-0 flex-col gap-1.5">
       {title && <div className="text-sm font-semibold">{title}</div>}
-      <ResultNotes result={result} shown={result?.total} />
-      {entries.length === 0 && !result?.unloadedModel && <Note>{t('a2ui.empty')}</Note>}
+      {!scriptEntries && <ResultNotes result={result} shown={result?.total} />}
+      {entries.length === 0 && (scriptEntries || !result?.unloadedModel) && <Note>{t('a2ui.empty')}</Note>}
       <ul className="flex flex-col gap-0.5 text-xs">
         {entries.map((entry) => (
           <li key={entry.label} data-a2ui-legend={entry.label} className="flex items-center gap-2">

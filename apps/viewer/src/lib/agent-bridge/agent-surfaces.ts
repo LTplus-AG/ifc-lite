@@ -19,6 +19,9 @@ export const agentSurfaces = {
   push(surface: AgentSurface): void {
     publish([...surfaces.slice(1 - MAX_SURFACES), surface]);
   },
+  dismiss(surface: AgentSurface): void {
+    if (surfaces.includes(surface)) publish(surfaces.filter((s) => s !== surface));
+  },
   clear(): void {
     if (surfaces.length) publish([]);
   },

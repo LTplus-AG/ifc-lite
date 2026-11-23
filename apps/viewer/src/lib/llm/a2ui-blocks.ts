@@ -80,6 +80,26 @@ export function splitA2uiReply(content: string): A2uiReplyPart[] {
   return parts;
 }
 
+/**
+ * Every Express block without `surface(...)` creates surface `main`, so a
+ * second such block in one reply would be rejected as a duplicate. Blocks after
+ * the first get their own surface unless their first line names one. The
+ * result only ever extends as `raw` streams in (the decision waits for the
+ * first line to complete), which the incremental parser feed relies on.
+ */
+export function targetBlockSurface(raw: string, index: number, closed: boolean): string {
+  if (index === 0 || !raw.startsWith(OPEN_TAG)) return raw;
+  const body = raw.slice(OPEN_TAG.length);
+  const start = body.search(/\S/);
+  if (start === -1) return OPEN_TAG;
+  const newline = body.indexOf('\n', start);
+  const closeAt = body.indexOf(CLOSE_TAG, start);
+  const lineEnd = newline === -1 ? (closed ? closeAt : -1) : closeAt === -1 ? newline : Math.min(newline, closeAt);
+  if (lineEnd === -1) return OPEN_TAG;
+  if (/^surface\s*\(/.test(body.slice(start, lineEnd))) return raw;
+  return `${OPEN_TAG}\nsurface("reply-${index + 1}")${body.startsWith('\n') ? '' : '\n'}${body}`;
+}
+
 /** The reply without its blocks: what a renderer-less view shows. */
 export function stripA2uiBlocks(content: string): string {
   return splitA2uiReply(content).map((p) => (p.kind === 'text' ? p.text : '\n')).join('');

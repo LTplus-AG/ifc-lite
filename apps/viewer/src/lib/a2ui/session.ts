@@ -21,7 +21,7 @@ import type { ReactCatalogComponent } from '@a2ui/react';
 import type { MessageProcessor } from '@a2ui/web_core/v1_0';
 import { createIfcAgent, type AgentToRendererMessage, type ResponseStream, type StreamPart } from '@ifc-lite/a2ui/agent';
 import type { PersistedA2ui, PersistedA2uiSegment } from '@/lib/llm/types';
-import { splitA2uiReply } from '@/lib/llm/a2ui-blocks';
+import { splitA2uiReply, targetBlockSurface } from '@/lib/llm/a2ui-blocks';
 import type { A2uiViewerHost } from './host.js';
 import { createRendererProcessor } from './catalog.js';
 import { routeAction, type FollowUpHandler } from './actions.js';
@@ -111,7 +111,8 @@ export class A2uiMessageSession {
     if (content === this.content) return true;
     this.content = content;
     const parts = splitA2uiReply(content);
-    const raws = parts.flatMap((p) => (p.kind === 'block' ? [p.raw] : []));
+    const blocks = parts.flatMap((p) => (p.kind === 'block' ? [p] : []));
+    const raws = blocks.map((b, index) => targetBlockSurface(b.raw, index, b.closed));
     // Blocks only grow at the end, so the parser's input only ever extends.
     let offset = 0;
     raws.forEach((raw, index) => {

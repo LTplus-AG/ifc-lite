@@ -102,10 +102,10 @@ export const ColorLegendApi = {
   schema: z
     .object({
       by: z.string().describe('Field path to colour by: type, storey, material or a property path'),
-      data: C.DynamicValue.optional().describe('Data binding to computed [{label, color, refs?}] legend entries'),
       query: IfcQuerySchema.optional(),
       title: C.DynamicString.optional(),
       apply: z.enum(['manual', 'onShow']).optional().describe('manual (default) shows an Apply button; onShow colours the model when rendered'),
+      data: C.DynamicValue.optional().describe('Data binding to computed [{label, color, refs?}] legend entries'),
       weight: WeightSchema.optional(),
     })
     .describe('Colour-by legend. Applies one colour per value to the 3D model; each entry toggles visibility.'),

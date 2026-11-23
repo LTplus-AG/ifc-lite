@@ -33,6 +33,21 @@ describe('IFC catalog document', () => {
     }
   });
 
+  it('keeps the Express positional order the prompt examples rely on', () => {
+    // Express maps positional arguments by property order, so inserting a property
+    // early silently rebinds every positional call (a query parsed as `data`).
+    const doc = ifcCatalogDocument() as { components: Record<string, { properties?: Record<string, unknown> }> };
+    const leading = (name: string, n: number) => Object.keys(doc.components[name].properties ?? {}).filter((k) => k !== 'component').slice(0, n);
+    expect(leading('EntityTable', 2)).toEqual(['columns', 'query']);
+    expect(leading('EntityList', 2)).toEqual(['query', 'refs']);
+    expect(leading('StatGroup', 1)).toEqual(['items']);
+    expect(leading('GroupChart', 2)).toEqual(['groupBy', 'query']);
+    expect(leading('ColorLegend', 2)).toEqual(['by', 'query']);
+    expect(leading('ActionBar', 2)).toEqual(['actions', 'query']);
+    expect(leading('EntityCard', 1)).toEqual(['entity']);
+    expect(leading('Callout', 1)).toEqual(['text']);
+  });
+
   it('rejects a renderer catalog that drops a component', () => {
     expect(() => createIfcCatalog({ components: IFC_CATALOG_COMPONENT_APIS.slice(1) })).toThrow(/missing \[Text\]/);
   });

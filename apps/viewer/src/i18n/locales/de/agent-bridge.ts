@@ -76,4 +76,8 @@ export const agentBridgeDe = {
   "agentBridge.panel.editChange": "{entity} · {field}: {before} → {after}",
   "agentBridge.panel.editDeleted": "{entity} · {field} gelöscht (war {before})",
   "agentBridge.panel.editUnchanged": "{entity} · {field} war bereits {after}; nichts geändert",
+  'agentBridge.surfaces.title': "Von deinem Agenten",
+  'agentBridge.surfaces.dismiss': "{title} schließen",
+  'agentBridge.surfaces.clear': "Alle entfernen",
+  'agentBridge.surfaces.untitled': "Agenten-Ergebnis",
 } satisfies Catalogue;

@@ -28,5 +28,13 @@ it('prunes references to removed IFC2X3 resources using IFC4 slot cardinality (#
   }
   const report = analyzeConversionLoss(store, 'IFC2X3', 'IFC4');
   expect(report.describe()).toContain('1 × IFCBEZIERCURVE (#3) will be omitted because IFC4 does not declare its type.');
+  expect(report.describe()).toContain('1 × IFCCRANERAILASHAPEPROFILEDEF (#19) will be omitted because IFC4 does not declare its type.');
   expect(report.describe()).toContain('1 × IFCRELAXATION (#22) will be omitted because IFC4 does not declare its type.');
+  const cascaded = [['IFCCOMPOSITECURVESEGMENT', 6], ['IFCCOMPOSITECURVE', 7], ['IFCCOMPOSITEPROFILEDEF', 21]] as const;
+  for (const [type, id] of cascaded) {
+    expect(report.entries.find(entry => entry.sourceType === type)).toMatchObject({ kind: 'lossy', expressIds: [id] });
+    expect(report.describe()).toContain(`1 × ${type} (#${id}) will be omitted because a required IFC4 attribute lost a reference.`);
+  }
+  const typeOnly = analyzeConversionLoss({ entityIndex: store.entityIndex }, 'IFC2X3', 'IFC4');
+  expect(typeOnly.entries.some(entry => entry.sourceType === 'IFCCOMPOSITEPROFILEDEF')).toBe(false);
 });

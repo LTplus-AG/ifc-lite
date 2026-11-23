@@ -4,7 +4,9 @@ import { getSchemaRegistryForVersion } from '@ifc-lite/parser';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { frameArgs, stepRecordHead, stepRecordFrame, withFrameArgs, type StepRecordFrame } from './step-record-frame.js';
 import { forEachExpressRef, referencesAnyExpressId } from './step-ref-scan.js';
-import { OMIT_ON_UPGRADE } from './schema-untranslatable.js';
+import { isRootedEntityType, missingTypeRoute, OMIT_ON_UPGRADE } from './schema-untranslatable.js';
+import { attrNameTable, convertEntityType, convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
+import { SourceRecords, type SourceStore } from './schema-converter-structural-source.js';
 import { isStepValue, skipStepTrivia } from './step-slot-grammar.js';
 
 type OutputRecord = { id: number; type: string; line: string; raw: string; frame: StepRecordFrame | null };
@@ -97,7 +99,7 @@ function indexRequiredMembers(rec: OutputRecord, users: Map<number, Member[]>): 
   }
 }
 
-function cascadeOmissions(records: readonly (OutputRecord | undefined)[], seeds: ReadonlySet<number>): Set<number> {
+function cascadeOmissions(records: Iterable<OutputRecord | undefined>, seeds: ReadonlySet<number>): Set<number> {
   const dropped = new Set(seeds);
   const users = new Map<number, Member[]>();
   for (const rec of records) {
@@ -112,6 +114,34 @@ function cascadeOmissions(records: readonly (OutputRecord | undefined)[], seeds:
       if (--member.group.remaining < member.group.minimum) dropped.add(member.group.id);
     }
   }
+  return dropped;
+}
+
+/** Evaluate the writer's required-reference cascade on the converted source layouts. */
+export function previewUpgradeDependents(store: SourceStore, from: IfcSchemaVersion, to: IfcSchemaVersion): Set<number> {
+  const seeds = new Set<number>();
+  if (from !== 'IFC2X3' || to !== 'IFC4') return seeds;
+  const source = new SourceRecords(store);
+  for (const type of OMIT_ON_UPGRADE) for (const id of source.ids(type)) seeds.add(id);
+  if (!seeds.size) return seeds;
+  const sourceLayout = attrNameTable(from);
+  const targetLayout = attrNameTable(to);
+  function* projectedRecords(): Generator<OutputRecord | undefined> {
+    for (const { id, text } of source.texts()) {
+      if (seeds.has(id)) continue;
+      const parsed = record(text);
+      if (!parsed) continue;
+      const route = missingTypeRoute(parsed.type, from, to, !!sourceLayout?.has(parsed.type),
+        !!targetLayout?.has(convertEntityType(parsed.type, from, to)));
+      if (route === 'unrepresented' && !isRootedEntityType(parsed.type)) continue;
+      if (parsed.frame && splitTopLevelStepArguments(parsed.raw) !== null) {
+        const converted = convertStepLine(text, from, to);
+        if (converted !== null) yield converted === text ? parsed : record(converted);
+      } else yield parsed;
+    }
+  }
+  const dropped = cascadeOmissions(projectedRecords(), seeds);
+  for (const id of seeds) dropped.delete(id);
   return dropped;
 }
 

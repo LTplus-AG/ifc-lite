@@ -197,6 +197,7 @@ pub(crate) struct ConversionChecks {
     pub(crate) materials: crate::schema_material_referent::MaterialReferents,
     /// `convert_record`'s per-type decisions, resolved once per distinct type.
     pub(crate) plans: crate::schema_plan::PlanCache,
+    pub(crate) merged: bool,
     /// Non-`$` source values the converted record has no slot for (#7683):
     /// a trimmed tail, an alignment proxy's attributes past IfcProduct's, and
     /// by-name remap sources with no same-named target attribute.

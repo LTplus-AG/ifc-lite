@@ -783,6 +783,7 @@ fn values_without_a_target_slot_are_counted_7683() {
         "ControlElementId"
     );
     assert_eq!(dropped("#1=IFCALIGNMENT('g',$,'A',$,$,#5,#6,.ROAD.);", "IFC4X3", "IFC4"), 1, "PredefinedType");
+    assert_eq!(dropped("#1=IFCRELPOSITIONS('0YvctVUKr0kugbFTf53O9L',$,'Grid','Description',#2,(#3));", "IFC4X3", "IFC4"), 3, "#11322: only Description and the two relationships are lost");
     assert_eq!(dropped("#1=IFCWALL('g',$,$,$,$,$,$,$,$);", "IFC2X3", "IFC4"), 0, "a pad loses nothing");
 }
 

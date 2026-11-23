@@ -337,7 +337,7 @@ function convertRecord(
   // proxy. Checked before `shouldSkipEntity` and the attribute-table lookup
   // below so it wins over both.
   if (withheldRefIds && withheldRefIds.size > 0 && referencesAnyExpressId(attrsRaw, withheldRefIds)) {
-    return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random, withheldRefIds !== undefined);
+    return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, args, toSchema, expressId, true);
   }
   structuralDiagnostics?.inspect(expressId, line, fromSchema, toSchema);
   if (structuralAxis) return `${prefix}${newType}(${args.join(',')},${structuralAxis});`;
@@ -400,7 +400,7 @@ function convertRecord(
   // `shouldSkipEntity` above only catches its hand-listed alignment types;
   // The same missing-type policy governs exports and loss previews (#10902).
   if (missingTypeRoute(entityType, fromSchema, toSchema, srcAttrs !== undefined, !targetTable || tgtAttrs !== undefined) === 'unrepresented') {
-    return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random, withheldRefIds !== undefined);
+    return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, args, toSchema, expressId, withheldRefIds !== undefined);
   }
   if (srcAttrs && tgtAttrs) {
     const mapped = args.length > 0 ? attrMapFor(entityType, newType, fromSchema, toSchema) : undefined; // #10763

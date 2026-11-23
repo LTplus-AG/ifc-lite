@@ -341,6 +341,8 @@ function ViewportContainerLive() {
     // Read the loaded state now, not at render: bundle preparation awaits
     // before routing, and a model that arrived meanwhile must be added to,
     // not replaced (#4476 review).
+    // Every branch's load is refused under a workflow lease; say so before any clear.
+    if (refuseWhileWorkflowBusy(t)) return;
     const current = viewerStoreApi.getState();
     const hasModelsLoaded = current.models.size > 0 || (current.geometryResult?.meshes?.length ?? 0) > 0;
     if (hasModelsLoaded) {
@@ -351,7 +353,6 @@ function ViewportContainerLive() {
       void loadFile(files[0], { kind: 'primary' }, { sourceHandle: handles?.[0] });
     } else {
       // Multiple files, no models loaded - start a fresh federation.
-      if (refuseWhileWorkflowBusy(t)) return;
       resetViewerState();
       clearAllModels();
       void loadFilesSequentially(files, handles);

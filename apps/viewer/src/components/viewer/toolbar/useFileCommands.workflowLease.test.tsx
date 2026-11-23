@@ -28,8 +28,10 @@ function Host() {
   return <>{commands.fileInputs}<Toaster /></>;
 }
 
+/** Runs inside each handle read, to start a workflow while Refresh awaits its reads. */
+let onRead: (() => void) | null = null;
 function handle(name: string): FileSystemFileHandle {
-  return { kind: 'file', name, getFile: async () => new File(['x'], name) } as unknown as FileSystemFileHandle;
+  return { kind: 'file', name, getFile: async () => { onRead?.(); return new File(['x'], name); } } as unknown as FileSystemFileHandle;
 }
 
 function model(id: string, loadedAt: number): FederatedModel {
@@ -56,6 +58,7 @@ beforeEach(() => {
 afterEach(() => {
   run?.release();
   run = null;
+  onRead = null;
   cleanup();
   useViewerStore.setState({ clearAllModels: original.clearAllModels, resetViewerState: original.resetViewerState, models: new Map() });
 });
@@ -80,6 +83,40 @@ describe('file commands refuse to clear the scene while a workflow holds the lea
     await act(async () => { await commands!.handleRefresh(); });
 
     assert.equal(clears, 0, 'the models map was not cleared');
+    assert.match(latestToast(), new RegExp(BUSY));
+  });
+
+  it('a single-model Refresh is refused with the busy message instead of throwing', async () => {
+    useViewerStore.setState({ models: new Map([['a', model('a', 1)]]) });
+    render(<Host />);
+    await act(async () => { await commands!.handleRefresh(); });
+
+    assert.equal(resets, 0, 'viewer state was not reset');
+    assert.equal(clears, 0, 'the models map was not cleared');
+    assert.match(latestToast(), new RegExp(BUSY));
+  });
+
+  it('a Refresh whose reads outlast the start of a workflow still leaves the models untouched', async () => {
+    run?.release();
+    run = null;
+    onRead = () => { run ??= startWorkflowRun(); };
+    render(<Host />);
+    await act(async () => { await commands!.handleRefresh(); });
+
+    assert.ok(run, 'the workflow started during the reads');
+    assert.equal(clears, 0, 'the models map was not cleared');
+    assert.match(latestToast(), new RegExp(BUSY));
+  });
+
+  it('a single-file Open is refused with the busy message', async () => {
+    const container = render(<Host />);
+    const input = container.querySelector<HTMLInputElement>('#file-input-open')!;
+    Object.defineProperty(input, 'files', { configurable: true, value: [new File(['x'], 'solo.ifc')] });
+    act(() => { input.dispatchEvent(new window.Event('change', { bubbles: true })); });
+    await advance(0);
+    await advance(0);
+
+    assert.equal(resets, 0, 'viewer state was not reset');
     assert.match(latestToast(), new RegExp(BUSY));
   });
 });

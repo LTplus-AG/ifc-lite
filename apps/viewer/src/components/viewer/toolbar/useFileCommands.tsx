@@ -159,12 +159,13 @@ export function useFileCommands(): FileCommands {
   const hasModelsLoaded = useViewerStore(selectHasModelsLoaded);
 
   const routeOpenedFiles = useCallback((supportedFiles: File[], handles?: (FileSystemFileHandle | undefined)[]) => {
+    // Every branch's load is refused under a workflow lease; say so before any clear.
+    if (refuseWhileWorkflowBusy(t)) return;
     if (supportedFiles.length === 1) {
       void loadFile(supportedFiles[0], { kind: 'primary' }, { sourceHandle: handles?.[0] });
       return;
     }
     const allIfcx = supportedFiles.every(isIfcxModelFile);
-    if (refuseWhileWorkflowBusy(t)) return;
     resetViewerState();
     clearAllModels();
     if (allIfcx) void loadFederatedIfcx(supportedFiles);
@@ -312,6 +313,9 @@ export function useFileCommands(): FileCommands {
       toast.error(`Refresh cancelled: couldn't re-read ${failedNames.join(', ')}. Keeping the loaded models.`);
       return;
     }
+
+    // A workflow may have started while the reads (and any permission prompt) were pending.
+    if (refuseWhileWorkflowBusy(t)) return;
 
     // Model tags die with the model; an explicit reload must keep them (#4215).
     const carry = captureModelTags(useViewerStore.getState());

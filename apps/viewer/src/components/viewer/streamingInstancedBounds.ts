@@ -5,6 +5,7 @@ import { useViewerStore } from '@/store';
 import type { MutableRefObject } from 'react';
 import type { Renderer } from '@ifc-lite/renderer';
 import { activeLoadTrace, tracePhaseOnce } from '@/lib/perf/activeLoadTrace';
+import { globalInstancingOn } from '@/lib/perf/flags';
 import { robustFitBoundsFull } from './robustFitBoundsAccumulator.js';
 import { userMovedCamera, type Bounds } from './streamingBounds.js';
 
@@ -16,12 +17,22 @@ interface FitParams {
   finalBoundsRefittedRef: MutableRefObject<boolean>;
   lastFitPolicyKindRef: MutableRefObject<'compact' | 'linear' | null>;
   complete: boolean;
+  /** At completion, fit even without an earlier partial fit: an exact load under the global
+   *  instance plan never takes the partial instance-only fit, so its completion is its first. */
+  initialAtCompletion?: boolean;
+}
+
+/** Whether a COMPLETED load may hold instanced geometry only: the retained kernel (#7955), or the global instance plan.
+ * The plan also streams flat geometry, so it never takes the partial instance-only fit, only the completion one. */
+export function instanceOnlyLoadPossible(geometryKernel: string | undefined): boolean {
+  return geometryKernel === 'retained' || globalInstancingOn();
 }
 
 /** #7955: called only after a shard-only arrival (or its empty-flat completion).
  * Use renderer-owned, already transformed bounds; never compose another frame. */
 export function fitInstanceOnlyBounds(p: FitParams): void {
-  if (p.complete ? !p.cameraFittedRef.current || p.finalBoundsRefittedRef.current : p.cameraFittedRef.current) return;
+  const initial = p.complete && !p.cameraFittedRef.current && p.initialAtCompletion === true;
+  if (p.complete ? (!p.cameraFittedRef.current && !initial) || p.finalBoundsRefittedRef.current : p.cameraFittedRef.current) return;
   const scene = p.renderer.getScene();
   const boxes = Array.from(scene.getInstancedEntityIds()).flatMap(id => {
     const b = scene.getInstancedEntityBounds(id);

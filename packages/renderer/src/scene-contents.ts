@@ -175,6 +175,9 @@ export interface SceneContents {
   getInstancedEntityBounds(expressId: number): BoundingBox | null;
   getInstancedEntityCount(): number;
   getInstancedEntityIds(): IterableIterator<number>;
+  /** Join keyed shard records into model-wide templates (global instance plan); off by default.
+   *  Optional so other `SceneContents` implementers keep compiling; absent means keyed records upload as before. */
+  setKeyedInstancing?(enabled: boolean): void;
   getInstancedModelIndices(): number[];
   removeInstancedTemplatesForModel(modelIndex: number): number;
   setInstancedVisible(visible: boolean): void;

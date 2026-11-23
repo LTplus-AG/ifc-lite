@@ -41,7 +41,7 @@ let linearFitHintShown = false;
 export { applyFederationOffsetToShard } from './instancedFederationOffset.js';
 
 import { refitCompletedStreamBounds } from './streamingCompletionBounds.js';
-import { fitInstanceOnlyBounds } from './streamingInstancedBounds.js';
+import { fitInstanceOnlyBounds, instanceOnlyLoadPossible } from './streamingInstancedBounds.js';
 import { usePlacementMutationDrain } from './usePlacementMutationDrain.js';
 import { useInstancedShardDrain } from './useInstancedShardDrain.js';
 import { useFinalizationRecoveryWake } from './useFinalizationRecoveryWake.js';
@@ -285,7 +285,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       lastGeometryLengthRef.current = 0;
       // Only preserve ownership established by a shard-only arrival below.
       // A filtered/released flat snapshot must keep its existing reset behavior.
-      lastGeometryRef.current = geometryKernel === 'retained' && lastGeometryRef.current?.length === 0 && !appearanceSourceGeometry?.length
+      lastGeometryRef.current = instanceOnlyLoadPossible(geometryKernel) && lastGeometryRef.current?.length === 0 && !appearanceSourceGeometry?.length
         && scene.getInstancedModelIndices().length > 0 ? geometry : null;
       if (!isStreaming) completeAfterReleasedReplays(() => scene.setTriangleCountReplayComplete?.(true)); // after pending released replays
       renderer.requestRender();
@@ -578,10 +578,10 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
             `finalize start geometryLength=${capturedGeometry?.length ?? 0} releaseAfterFinalize=${releaseGeometryAfterFinalize}`
           );
 
-          if (geometryKernel === 'retained' && capturedGeometry?.length === 0 && lastGeometryRef.current?.length === 0
+          if (instanceOnlyLoadPossible(geometryKernel) && capturedGeometry?.length === 0 && lastGeometryRef.current?.length === 0
             && !appearanceSourceGeometry?.length) fitInstanceOnlyBounds({ renderer: r,
             cameraFittedRef, cameraSnapshotRef, geometryBoundsRef, finalBoundsRefittedRef,
-            lastFitPolicyKindRef, complete: true });
+            lastFitPolicyKindRef, complete: true, initialAtCompletion: geometryKernel !== 'retained' });
           refitCompletedStreamBounds({ renderer: r, geometryKernel, capturedGeometry, fitExcludedIds: fitExcludedIdsRef.current, cameraFittedRef,
             finalBoundsRefittedRef, robustFitAccRef, cameraSnapshotRef,
             lastFitPolicyKindRef, geometryBoundsRef, trace,
@@ -681,7 +681,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
   // (NEW-1: two store writes and a Viewport render per streamed batch).
   useInstancedShardDrain({ rendererRef, isInitialized, gpuRecoveryEpoch, geometryKernel, geometry,
     appearanceSourceGeometry, currentLevelY, modelIdToIndex, modelIdToOffset, cameraFittedRef,
-    cameraSnapshotRef, geometryBoundsRef, finalBoundsRefittedRef, lastFitPolicyKindRef, lastGeometryRef });
+    cameraSnapshotRef, geometryBoundsRef, finalBoundsRefittedRef, lastFitPolicyKindRef, lastGeometryRef, isStreaming });
 
   usePlacementMutationDrain({ rendererRef, isInitialized, gpuRecoveryEpoch,
     kind: 'translations', pending: pendingMeshTranslations, clearPending: clearPendingMeshTranslations });

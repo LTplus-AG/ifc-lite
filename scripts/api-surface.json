@@ -7097,6 +7097,7 @@
     "pickWorkerCount: function",
     "prewarmSharedWasmModule: function",
     "projectedToLocalViewer: function",
+    "readGlobalInstancingFlag: function",
     "resolveSpatialPlacement: function",
     "terrainRefusalReason: function"
   ],

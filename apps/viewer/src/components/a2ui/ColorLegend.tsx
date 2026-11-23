@@ -90,7 +90,7 @@ export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ 
     const state = autoApply?.(JSON.stringify([props.by, props.query ?? null, props.data ?? null]));
     if (state === 'apply') apply();
     else if (state === 'applied') setApplied(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, when entries first exist
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, when something to colour first exists
   }, [props.apply, targets]);
 
   const toggle = (entry: LegendEntry, visible: boolean) => {

@@ -217,7 +217,7 @@ it('#10591 refuses a stack replacement when IFC edits change during its file rea
   assert.equal(useViewerStore.getState().mutationVersion, mutationVersion + 1);
 });
 
-it('#11254 refuses a local ref load when IFC edits appear during its file read', async (t) => {
+it('follow-up to #11254: refuses a local ref load when IFC edits appear during its file read', async (t) => {
   const { coordinationLayerWorkflowOperations } = await import('@/lib/agent-tools/operations/coordination-layer-workflows');
   const { attachCoordinationComposition } = await import('@/services/coordination-loader');
   const { getBrowserLayerStore } = await import('@/lib/layers/browser-store');
@@ -241,6 +241,8 @@ it('#11254 refuses a local ref load when IFC edits appear during its file read',
   await entered.promise;
   const edit = { mapConversion: { eastings: 1, northings: 2, orthogonalHeight: 0 }, projectedCRS: { name: 'EPSG:2056' } };
   useViewerStore.setState({ georefMutations: new Map([[model.id, edit]]) });
+  // clearAllModels keeps georef edits on purpose, so beforeEach would not drop this one.
+  cleanups.push(() => useViewerStore.setState({ georefMutations: new Map() }));
   const refused = assert.rejects(pending, /export or discard the unexported edits/);
   await act(async () => { allowRead.resolve(); await refused; });
   assert.equal(useViewerStore.getState().models.get(model.id), model);

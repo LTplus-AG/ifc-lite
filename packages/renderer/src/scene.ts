@@ -2162,7 +2162,7 @@ export class Scene {
   finishEphemeralStreaming(): void {
     this.snapshots.dropCapture();
     this.streamWork.clear();
-    this.streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
+    this.streamingFragmentIndexBudget = Number.POSITIVE_INFINITY; this.modelTranslations.forgetPlacements(); // before the early return: a rolled-back pass placed meshes too
     if (this.streamingFragments.length === 0) {
       this.ephemeralStreamingMode = false;
       return;
@@ -2241,7 +2241,7 @@ export class Scene {
       cachedWorldAabb(expressId, pieces, this.boundingBoxes);
     }
 
-    this.modelTranslations.retainEntityBounds(this.meshDataMap);
+    this.modelTranslations.retainEntityBounds(this.meshDataMap); this.modelTranslations.forgetPlacements(); // placed copies share the source arrays
     // 2. Clear the heavy data structures — typed arrays become GC-eligible
     this.meshDataMap.clear(); this.bumpPickGeometryRevision();
     // Keep occurrence transforms for placement; release heavy template vertices.

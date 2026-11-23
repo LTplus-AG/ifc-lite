@@ -98,7 +98,7 @@ fn an_upgrade_writes_each_route_and_names_it_10902() {
     let (out, _, warnings) = crate::step::export_step_with_diagnostics(src.as_bytes(), &opts).unwrap();
     let line = |id: &str| out.lines().find(|l| l.starts_with(id)).unwrap_or_default().to_owned();
     assert_eq!(line("#4="), "#4=IFCRELASSIGNSTOACTOR('0CvctVUKr0kugbFTf53O9L',$,$,$,(#2),$,#3,$);");
-    assert!(line("#7=").starts_with("#7=IFCPROXY(") && line("#7=").ends_with(",$,'IFCSERVICELIFE',$,$,$,$,.NOTDEFINED.,$);"), "{out}");
+    assert!(line("#7=") == "#7=IFCPROXY('0EvctVUKr0kugbFTf53O9L',$,'Life',$,$,$,$,.NOTDEFINED.,$);", "{out}");
     assert_eq!(line("#5="), "#5=IFCTASK('0DvctVUKr0kugbFTf53O9L',$,'Move',$,$,'T-1',$,'planned',$,.F.,1,$,$);");
     assert_eq!(line("#6="), "#6=IFCCALENDARDATE(1,2,2020);");
     let named = warnings.join("\n");
@@ -173,7 +173,7 @@ fn rooted_unrepresented_type_becomes_a_proxy() {
     // (used above for `missing_type_route`) is NOT a valid example here
     // -- it's an IfcGeometricRepresentationItem, not an IfcRoot subtype.
     let out =
-        resolve_unrepresented_entity("#100=", "IFCSTRUCTURALCURVEREACTION", "IFC2X3", 100)
+        resolve_unrepresented_entity("#100=", "IFCSTRUCTURALCURVEREACTION", &[], "IFC2X3", 100)
             .unwrap();
     assert!(out.contains("IFCPROXY"));
     assert!(out.contains("'IFCSTRUCTURALCURVEREACTION'"));
@@ -183,7 +183,7 @@ fn rooted_unrepresented_type_becomes_a_proxy() {
 fn non_rooted_unrepresented_type_errors() {
     // A representation item, not an IfcRoot subtype -- proxying it would
     // swap one illegal file for a differently-illegal one.
-    let err = resolve_unrepresented_entity("#101=", "IFCCARTESIANPOINTLIST3D", "IFC2X3", 101)
+    let err = resolve_unrepresented_entity("#101=", "IFCCARTESIANPOINTLIST3D", &[], "IFC2X3", 101)
         .unwrap_err();
     assert_eq!(err.express_id, 101);
     assert!(err.to_string().contains("IFCCARTESIANPOINTLIST3D"));

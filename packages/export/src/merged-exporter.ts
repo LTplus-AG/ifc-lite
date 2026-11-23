@@ -20,6 +20,7 @@ import { collectStyleEntities, STYLE_RESCUE_TYPES } from './style-closure.js';
 import { collectGeoreferencingEntities } from './georef-closure.js';
 import { noteUnrootedUpgradeSeed, omitUnrootedUpgrade } from './schema-converter-unrooted-upgrade.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
+import { classifyEntityTypeConversion } from './schema-conversion-loss-report.js';
 import { StyleFlatten } from './schema-style-flatten.js';
 import { firstWrittenOwnerHistoryRef, Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
 import { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
@@ -36,6 +37,9 @@ import { listKeptContexts } from './merged-project-contexts.js';
 import { remapEntityText } from './merged-remap.js';
 import { PlannerGuids } from './merged-planner-guids.js';
 import {
+  canUnifyByGlobalId,
+  canUnifyEmittedRecord,
+  isRootedType,
   isRelationshipType,
   mintUniqueGuid,
   readLeadingGuid,
@@ -68,6 +72,11 @@ const SHARED_INFRASTRUCTURE_TYPES = new Set([
   'IFCGEOMETRICREPRESENTATIONCONTEXT',
   'IFCGEOMETRICREPRESENTATIONSUBCONTEXT',
 ]);
+
+function canUnifyConvertedType(type: string, from: IfcSchemaVersion, to: IfcSchemaVersion): boolean {
+  const { targetType, kind } = classifyEntityTypeConversion(type, from, to);
+  return kind !== 'blocked' && kind !== 'proxied' && canUnifyByGlobalId(type, targetType);
+}
 
 /** SI prefix multipliers, for resolving prefixed area/volume units (rarely used). */
 const SI_PREFIX_MULTIPLIERS: Record<string, number> = {
@@ -169,8 +178,7 @@ interface ModelMergePlan {
   sharedRemap: Map<number, number>;
   /** Local express ids omitted from the output (unified or deduplicated). */
   skipEntityIds: Set<number>;
-  /** Local express id → fresh GlobalId, for federated entities whose id collides. */
-  guidRewrite: Map<number, string>;
+  modelId: string;
   /** Local express id → original GlobalId (rooted entities only). */
   localGuids: Map<number, string>;
   /** Empty spatial containers this model must not write (#3643); every line
@@ -193,6 +201,7 @@ interface ModelMergePlan {
 interface GuidRecord {
   finalId: number;
   scale: number;
+  canUnify: boolean;
 }
 
 /**
@@ -514,7 +523,7 @@ export class MergedExporter {
       const mode = this.resolveModelMode(model, isFirstModel, setup);
       if (!isFirstModel && !mode.compatible) federatedModelCount++;
       if (mode.normalized) { normalizedModelCount++; this.collectNormalizeCaveats(model, normalizeWarnings, mode.georef); }
-      const plan = this.planModel(model, completeIndex, isFirstModel, mode.compatible, mode.lengthFactor, setup, guidToFinalId);
+      const plan = this.planModel(model, completeIndex, isFirstModel, mode.compatible, mode.lengthFactor, setup, guidToFinalId, schema);
       this.applyContainerDrops(plan, containerDrops?.byModel.get(model.id));
       this.claimParents(model, plan, visibility, completeIndex, !isFirstModel && mode.compatible, setup);
       const written = (id: number) => (visibility === null || visibility.included.has(id)) && !plan.skipEntityIds.has(id);
@@ -658,7 +667,7 @@ export class MergedExporter {
       const mode = this.resolveModelMode(model, isFirstModel, setup);
       if (!isFirstModel && !mode.compatible) federatedModelCount++;
       if (mode.normalized) { normalizedModelCount++; this.collectNormalizeCaveats(model, normalizeWarnings, mode.georef); }
-      const plan = this.planModel(model, completeIndex, isFirstModel, mode.compatible, mode.lengthFactor, setup, guidToFinalId);
+      const plan = this.planModel(model, completeIndex, isFirstModel, mode.compatible, mode.lengthFactor, setup, guidToFinalId, schema);
       this.applyContainerDrops(plan, containerDrops?.byModel.get(model.id));
       this.claimParents(model, plan, visibility, completeIndex, !isFirstModel && mode.compatible, setup);
       const written = (id: number) => (visibility === null || visibility.included.has(id)) && !plan.skipEntityIds.has(id);
@@ -764,8 +773,9 @@ export class MergedExporter {
       const visibility = this.computeIncludedEntityIds(model, options, entities, source);
       const claimParents = () => {
         const typeOf = (id: number) => entities.get(id)!.type.toUpperCase(); // GlobalId unification the emit pass is sure to repeat (#5937)
+        const from = (model.dataStore.schemaVersion as IfcSchemaVersion) || 'IFC4', to = options.schema || 'IFC4';
         const unified = guids.plan({ guids: readLocalGuids(entities, source), typeOf, isFirst: index === 0, compatible: mode.compatible, offset: setup.modelOffsets.get(model.id)!,
-          effectiveScale: mode.effectiveScale, isIncluded: id => visibility === null || visibility.included.has(id), keepsGuids: !needsConversion((model.dataStore.schemaVersion as IfcSchemaVersion) || 'IFC4', options.schema || 'IFC4'),
+          effectiveScale: mode.effectiveScale, isIncluded: id => visibility === null || visibility.included.has(id), keepsGuids: !needsConversion(from, to), canUnify: type => canUnifyConvertedType(type, from, to),
           unifiedEarlier: id => sharedRemap.has(id) || (index > 0 && mode.compatible && setup.firstProjectIds.length > 0 && typeOf(id) === 'IFCPROJECT') });
         const withheld = { sharedRemap: new Map([...sharedRemap, ...unified]), skipEntityIds: new Set<number>(), relMemberStrip: new Map<number, Set<number>>() };
         this.claimParents(model, withheld, visibility, entities, index > 0 && mode.compatible, setup, claims);
@@ -1043,12 +1053,12 @@ export class MergedExporter {
     compatible: boolean,
     lengthFactor: number,
     setup: MergeSetup,
-    guidToFinalId: Map<string, GuidRecord>,
+    guidToFinalId: Map<string, GuidRecord>, targetSchema: IfcSchemaVersion,
   ): ModelMergePlan {
     const source = model.dataStore.source!;
     const sharedRemap = new Map<number, number>();
     const skipEntityIds = new Set<number>();
-    const guidRewrite = new Map<number, string>();
+    const sourceSchema = (model.dataStore.schemaVersion as IfcSchemaVersion) || 'IFC4';
     const relMemberStrip = new Map<number, Set<number>>();
 
     // One cheap pass to read each rooted entity's GlobalId (first attribute).
@@ -1078,34 +1088,24 @@ export class MergedExporter {
 
     if (!isFirstModel) {
       // GlobalId reconciliation against everything emitted by earlier models.
-      const pendingMinted = new Set<string>();
       for (const [id, guid] of localGuids) {
         if (skipEntityIds.has(id)) continue; // already unified/deduped above
         const prior = guidToFinalId.get(guid);
         if (prior === undefined) continue; // first occurrence — kept as-is
 
-        // Unify (drop + remap refs to the one instance) ONLY when this is a
-        // physical/spatial root AND both this model and the emitter share the
-        // primary unit. Two conditions force "keep + re-stamp" instead:
-        //   - Objectified relationships (IfcRel*): same GlobalId does not imply
-        //     the same membership (e.g. a storey-containment listing different
-        //     elements per discipline), so dropping one would orphan elements.
-        //   - The colliding instance was emitted in a different unit space
-        //     (a federated model), so unifying would reinterpret coordinates —
-        //     the very mis-scale this fix prevents, reached transitively.
+        // Both roots must share the primary unit. Keep and re-stamp collisions
+        // with relationships or generic proxies, which cannot replace a root.
         const type = (completeIndex.get(id)?.type ?? '').toUpperCase();
         const emitterIsPrimaryUnit = unitScalesEqual(prior.scale, setup.primaryScale);
-        const canUnify = compatible && emitterIsPrimaryUnit && !isRelationshipType(type);
+        const canUnify = compatible && emitterIsPrimaryUnit && prior.canUnify && canUnifyConvertedType(type, sourceSchema, targetSchema);
         if (canUnify) {
           sharedRemap.set(id, prior.finalId);
           skipEntityIds.add(id);
-        } else {
-          guidRewrite.set(id, mintUniqueGuid(guid, model.id, guidToFinalId, pendingMinted));
         }
       }
     }
 
-    return { sharedRemap, skipEntityIds, guidRewrite, localGuids, relMemberStrip };
+    return { sharedRemap, skipEntityIds, modelId: model.id, localGuids, relMemberStrip };
   }
 
   /**
@@ -1189,12 +1189,6 @@ export class MergedExporter {
     // Remap ids. Fast path: the first model (offset 0, no remaps) is byte-identical.
     let finalText = offset === 0 && plan.sharedRemap.size === 0 ? entityText : remapEntityText(entityText, offset, plan.sharedRemap);
 
-    // Re-stamp the GlobalId for a federated entity whose id collides.
-    const mintedGuid = plan.guidRewrite.get(localId);
-    if (mintedGuid !== undefined) {
-      finalText = replaceGlobalId(finalText, mintedGuid);
-    }
-
     // Normalize units: rescale every length/area/volume-valued datum, and the georeference (#10886), into the primary
     // unit. Done on the SOURCE-schema text (entityRef.type), before any schema conversion, so the schema-derived
     // attribute indices line up. Touches only numeric literals and the CRS unit, so the remap and re-stamp are safe.
@@ -1204,7 +1198,8 @@ export class MergedExporter {
       finalText = rescaleEntityLengths(finalText, entityRef.type.toUpperCase(), mode.lengthFactor, mode.areaFactor, mode.volumeFactor);
     }
 
-    if (needsConversion(sourceSchema, targetSchema)) {
+    const converting = needsConversion(sourceSchema, targetSchema);
+    if (converting) {
       // No `withheldRefIds` passed (6th arg omitted), so `resolveUnrepresentedEntity`
       // never takes its `allowOmit` branch here — this call cannot return `null`
       // (#4206). The federated pipeline does not yet compute that set in its own
@@ -1219,17 +1214,18 @@ export class MergedExporter {
       finalText = converted;
     }
 
-    // Record the emitted GlobalId → final express id + unit scale, for rooted
-    // entities only. Read it from the FINAL line, not the source: schema
-    // conversion can replace an unsupported rooted type with an IFCPROXY that
-    // carries a freshly-minted GlobalId, so the source guid would be stale.
-    // Emitted entities are not sharedRemap keys, so their final id is
-    // localId + offset.
-    if (plan.localGuids.has(localId)) {
-      const emittedGuid = readLeadingGuid(finalText)
-        ?? mintedGuid ?? plan.localGuids.get(localId);
-      if (emittedGuid !== undefined) {
-        guidToFinalId.set(emittedGuid, { finalId: localId + offset, scale: mode.effectiveScale });
+    // Only an actual collision in the final output needs a re-stamp.
+    if (plan.localGuids.has(localId) || (converting && isRootedType(entityRef.type))) {
+      let emittedGuid = readLeadingGuid(finalText);
+      if (emittedGuid !== null) {
+        if (guidToFinalId.has(emittedGuid)) {
+          emittedGuid = mintUniqueGuid(emittedGuid, plan.modelId, guidToFinalId, new Set());
+          finalText = replaceGlobalId(finalText, emittedGuid);
+        }
+        guidToFinalId.set(emittedGuid, {
+          finalId: localId + offset, scale: mode.effectiveScale,
+          canUnify: canUnifyEmittedRecord((entityRef.type ?? '').toUpperCase(), converting ? finalText : undefined),
+        });
       }
     }
 

@@ -13,11 +13,14 @@
 //! Split out of `schema_convert.rs` to stay under its line budget, same
 //! reason the TypeScript twin gives for its own split.
 
-use crate::step_slot::slot_is;
+use crate::step_slot::{slot_is, without_comments};
+use ifc_lite_core::guid::{deterministic, is_valid_global_id};
+use ifc_lite_core::step_encoding::decode_step_literal;
 use std::borrow::Cow;
 
 use crate::rooted_type::is_rooted_type;
-use crate::schema_convert::{placeholder_guid, schema_attribute_names};
+use crate::schema_convert::{holds_value, schema_attribute_names};
+use ifc_lite_core::slot::IfcRoot;
 
 /// IFC2X3 resources handled by the full writer's omission pass (#10970).
 /// Sorted for binary search. The shared routes fixture checks both twins.
@@ -177,10 +180,9 @@ impl From<UnrepresentedEntityError> for std::io::Error {
 ///
 /// A rooted (`IfcRoot`) entity safely becomes an `IFCPROXY` placeholder. Unlike
 /// `should_skip_entity`'s alignment types (`schema_convert::product_proxy`),
-/// it keeps none of its attributes: an `IfcRoot` is not necessarily an
+/// it keeps only its identity: an `IfcRoot` is not necessarily an
 /// `IfcProduct`, so its slots 5 and 6 need not be a placement and a
-/// representation. A
-/// non-rooted entity (a representation item or resource type referenced
+/// representation. A non-rooted entity (a representation item or resource type referenced
 /// POSITIONALLY) cannot take that fallback and returns an error instead of
 /// guessing; unlike the TypeScript twin, this crate has not yet ported the
 /// narrow `WITHHOLDABLE_UNROOTED_TYPES` omission mechanism (#5114/#5115), so
@@ -188,15 +190,37 @@ impl From<UnrepresentedEntityError> for std::io::Error {
 pub(crate) fn resolve_unrepresented_entity(
     prefix: &str,
     entity_type: &str,
+    args: &[String],
     to: &str,
     express_id: u32,
 ) -> Result<String, UnrepresentedEntityError> {
     if is_rooted_type(entity_type) {
-        return Ok(format!(
-            "{prefix}IFCPROXY('{}',$,'{}',$,$,$,$,.NOTDEFINED.,$);",
-            placeholder_guid(express_id),
-            entity_type
-        ));
+        // IfcRoot begins with GlobalId, OwnerHistory, Name in every schema.
+        let slot = |i: usize| {
+            let value = args.get(i).map_or("", String::as_str);
+            if value.contains("/*") {
+                Cow::Owned(without_comments(value))
+            } else {
+                Cow::Borrowed(value.trim())
+            }
+        };
+        let global_id = slot(IfcRoot::GLOBAL_ID.index());
+        let guid = global_id
+            .strip_prefix('\'')
+            .and_then(|s| s.strip_suffix('\''))
+            .filter(|id| is_valid_global_id(id));
+        let guid = guid.map_or_else(
+            || Cow::Owned(deterministic(&format!("ifcproxy:#{express_id}={entity_type}({})", args.join(",")))),
+            Cow::Borrowed,
+        );
+        let name = slot(IfcRoot::NAME.index());
+        // Use the source type when there is no meaningful Name for the proxy.
+        let name = if decode_step_literal(name.as_bytes()).is_some_and(|s| !s.trim().is_empty()) {
+            name
+        } else {
+            Cow::Owned(format!("'{entity_type}'"))
+        };
+        return Ok(format!("{prefix}IFCPROXY('{guid}',$,{name},$,$,$,$,.NOTDEFINED.,$);"));
     }
     Err(UnrepresentedEntityError {
         express_id,
@@ -204,6 +228,15 @@ pub(crate) fn resolve_unrepresented_entity(
         to_schema: to.to_string(),
         reason: None,
     })
+}
+
+/// Values without a destination on the generic proxy. GlobalId and Name have
+/// slots on the proxy even when the source needs a fallback for one of them.
+pub(crate) fn proxy_values_dropped(args: &[String]) -> usize {
+    args.iter()
+        .enumerate()
+        .filter(|(i, value)| *i != IfcRoot::GLOBAL_ID.index() && *i != IfcRoot::NAME.index() && holds_value(value))
+        .count()
 }
 
 /// The IFCPROXY one of `schema_convert::should_skip_entity`'s IFC4X3 alignment products

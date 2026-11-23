@@ -122,8 +122,11 @@ export class ModelTranslations {
   /**
    * Drop the source-keyed placements when the scene releases its CPU geometry. A placed copy shares its
    * source's typed arrays and the store keeps the source alive, so a source-keyed entry would hold every
-   * array past an in-place release. Placed copies still held elsewhere keep resolving to their source;
-   * `placeMesh` recreates a source's entry on demand.
+   * array past an in-place release. Placed-keyed entries stay: a placed copy holds the shared arrays as its
+   * own fields, so whoever retains the copy retains them anyway, and the entry adds only the copy -> source
+   * link (the source is alive in the store). Without that link a retained copy would be placed a second
+   * time. When nobody holds the copy, the weak key lets the entry go with it. `placeMesh` recreates a
+   * source's entry on demand.
    */
   forgetPlacements(): void { this.bySource = new WeakMap(); }
 

@@ -54,11 +54,18 @@ function releaseInPlace(sources: MeshData[]): WeakRef<object>[] {
   return refs;
 }
 
-/** Live old arrays after a full GC (WeakRef targets stay alive until the current job ends). */
+/**
+ * Live old arrays after full GCs. WeakRef targets stay alive until the current job ends, and one
+ * collection may leave an unreachable object, so yield and collect up to 10 times, stopping once all clear.
+ */
 async function liveAfterGc(refs: WeakRef<object>[]): Promise<number> {
-  await new Promise((resolve) => setImmediate(resolve));
-  gc();
-  return refs.filter((ref) => ref.deref() !== undefined).length;
+  let live = refs.length;
+  for (let round = 0; round < 10 && live > 0; round++) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    gc();
+    live = refs.filter((ref) => ref.deref() !== undefined).length;
+  }
+  return live;
 }
 
 describe('released geometry is not kept alive by placement copies (#11368)', () => {
@@ -89,7 +96,9 @@ describe('released geometry is not kept alive by placement copies (#11368)', () 
     const source = triangle(1);
     scene.appendToBatches([source], device, pipeline);
     const translations = (scene as unknown as { modelTranslations: ModelTranslations }).modelTranslations;
-    const placed = translations.placeMesh(source); // the scene's cached copy, as a highlight or appearance part holds it
+    // The scene's cached copy, as a highlight or appearance part holds it. Its holder keeps its arrays (they
+    // are the copy's own fields); the release keeps only the copy -> source link, so it is placed once.
+    const placed = translations.placeMesh(source);
     assert.deepEqual(placed.origin, [100, 0, 0]);
     scene.releaseGeometryData();
     assert.equal(translations.sourceMesh(placed), source);

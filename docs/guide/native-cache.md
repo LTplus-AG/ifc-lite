@@ -6,7 +6,9 @@ The format is specified in [`packages/cache/SPEC.md`](https://github.com/LTplus-
 
 ## Installation
 
-The tool is distributed through cargo from this repository; there are no prebuilt binaries.
+Prebuilt binaries are attached to [GitHub releases tagged `cache-cli-v*`](https://github.com/LTplus-AG/ifc-lite/releases?q=cache-cli-v). Download the tarball and its `.sha256` sidecar for your platform, verify the checksum, then extract the binary. The release notes give the cache format version written by that build.
+
+To build from source, run this from the repository root:
 
 ```bash
 cargo install --locked --path rust/cache

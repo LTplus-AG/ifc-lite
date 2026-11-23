@@ -1,0 +1,156 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: Cache CLI Binaries
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  build:
+    name: Build Cache CLI (${{ matrix.target }})
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'cache-cli-v')
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        # Match the release-server-binaries target and libc choices.
+        include:
+          - target: linux-x64
+            os: ubuntu-latest
+            rust-target: x86_64-unknown-linux-gnu
+          - target: linux-arm64
+            os: ubuntu-latest
+            rust-target: aarch64-unknown-linux-gnu
+          - target: linux-x64-musl
+            os: ubuntu-latest
+            rust-target: x86_64-unknown-linux-musl
+          - target: darwin-x64
+            os: macos-15
+            rust-target: x86_64-apple-darwin
+          - target: darwin-arm64
+            os: macos-15
+            rust-target: aarch64-apple-darwin
+          - target: win32-x64
+            os: windows-latest
+            rust-target: x86_64-pc-windows-msvc
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set Up Rust
+        # Cargo selects the pinned nightly in rust-toolchain.toml.
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-05
+        with:
+          toolchain: stable
+          targets: ${{ matrix.rust-target }}
+
+      - name: Install ARM64 GNU Linker
+        if: matrix.target == 'linux-arm64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Install cross
+        if: matrix.target == 'linux-x64-musl'
+        uses: taiki-e/install-action@b47b3b9ab771927700bcf4ef8a4f79e1d7c9a8cd # cross (snapshot pinned 2026-05)
+
+      - name: Install musl Tools
+        if: matrix.target == 'linux-x64-musl'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools musl-dev
+
+      - name: Build Cache CLI
+        shell: bash
+        env:
+          RUST_TARGET: ${{ matrix.rust-target }}
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+        run: |
+          if [[ "$RUST_TARGET" == x86_64-unknown-linux-musl ]]; then
+            cross build --locked --release -p ifc-lite-cache --bin ifc-build-cache --target "$RUST_TARGET"
+          else
+            CARGO_UNSTABLE_BUILD_STD=std,panic_abort cargo build --locked --release -p ifc-lite-cache --bin ifc-build-cache --target "$RUST_TARGET"
+          fi
+
+      - name: Create Tarball and Checksum
+        shell: bash
+        env:
+          RUST_TARGET: ${{ matrix.rust-target }}
+          ASSET_TARGET: ${{ matrix.target }}
+        run: |
+          binary=ifc-build-cache
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            binary+=.exe
+          fi
+          archive="ifc-build-cache-$ASSET_TARGET.tar.gz"
+          tar -czf "$archive" -C "target/$RUST_TARGET/release" "$binary"
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$archive" > "$archive.sha256"
+          else
+            shasum -a 256 "$archive" > "$archive.sha256"
+          fi
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ifc-build-cache-${{ matrix.target }}
+          path: |
+            ifc-build-cache-${{ matrix.target }}.tar.gz
+            ifc-build-cache-${{ matrix.target }}.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Attach Cache CLI Assets
+    if: github.event_name == 'release' && startsWith(github.event.release.tag_name, 'cache-cli-v')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: ifc-build-cache-*
+          merge-multiple: true
+          path: release-assets
+
+      - name: Attach Verified Assets and Record Cache Format
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          format_version=$(sed -nE 's/^pub const FORMAT_VERSION: u16 = ([0-9]+);$/\1/p' rust/cache/src/format.rs)
+          if [[ ! "$format_version" =~ ^[0-9]+$ ]]; then
+            echo "::error::Could not determine the cache format version from the release source"
+            exit 1
+          fi
+
+          cd release-assets
+          sha256sum --strict --check -- *.sha256
+          gh release upload "$RELEASE_TAG" --clobber -- *.tar.gz *.tar.gz.sha256
+
+          note="Cache format written by ifc-build-cache: v$format_version."
+          gh release view "$RELEASE_TAG" --json body --jq '.body // ""' > release-notes.md
+          if ! grep -Fxq -- "$note" release-notes.md; then
+            printf '\n%s\n' "$note" >> release-notes.md
+            gh release edit "$RELEASE_TAG" --notes-file release-notes.md
+          fi

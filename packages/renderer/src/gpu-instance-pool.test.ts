@@ -27,7 +27,7 @@ const vertex = (local: number, hi: number, lo: number) => f(f(local + hi) + lo);
 const cpuSplit = (d: number) => { const hi = f(d); return [hi, f(d - hi)] as const; };
 
 /** CPU mirror of the WGSL split, for tests: returns [s, e] per axis. */
-export function emulateGpuSplit(anchor: readonly [number, number, number], eye: readonly [number, number, number]): { s: number[]; e: number[] } {
+function emulateGpuSplit(anchor: readonly [number, number, number], eye: readonly [number, number, number]): { s: number[]; e: number[] } {
   const f = Math.fround;
   const s: number[] = [], e: number[] = [];
   for (let k = 0; k < 3; k++) {

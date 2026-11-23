@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "Keep released-scene device recovery loadable while dropping its post-rebuild fence: a rebuild that the replacement device's own loss superseded still publishes readiness, so the viewer draws and picks a partially rebuilt scene on a dead device.",
+  "key": "packages/renderer/src/released-scene-recovery.ts",
+  "mutation": "tests/evidence/released-scene-recovery-10264/behaviour.oracle.patch",
+  "test": "packages/renderer/src/released-scene-recovery.test.ts"
+}

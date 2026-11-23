@@ -1,5 +1,19 @@
 # @ifc-lite/server-client
 
+## 6.1.0
+
+### Minor Changes
+
+- [#11049](https://github.com/LTplus-AG/ifc-lite/pull/11049) [`1290376`](https://github.com/LTplus-AG/ifc-lite/commit/1290376565b6e437d39593d559be245502799a13) Thanks [@louistrue](https://github.com/louistrue)! - Expose processed-model reference helpers through `@ifc-lite/server-client/processed-model` so callers can validate references without loading the server client and its decoders.
+
+- [#10820](https://github.com/LTplus-AG/ifc-lite/pull/10820) [`e74604e`](https://github.com/LTplus-AG/ifc-lite/commit/e74604e31c1a6990a2c97261d05457012633d666) Thanks [@louistrue](https://github.com/louistrue)! - Accept an abort signal in parse options and use it for cache probes, uploads, and streamed responses. Cancelling a cache probe stops the read without starting an upload.
+
+### Patch Changes
+
+- [#10736](https://github.com/LTplus-AG/ifc-lite/pull/10736) [`469ec7d`](https://github.com/LTplus-AG/ifc-lite/commit/469ec7d4750c1c47290aa7f6c8ffaba0d929751e) Thanks [@louistrue](https://github.com/louistrue)! - Version geometry diagnostics as schema 6 when silent rectangular cuts are measured by surface area and volume. Older payloads retain their triangle-count semantics. When a browser load combines diagnostic batches from both versions, only measured batches contribute to the schema 6 count. The WASM pipeline diagnostics report publishes the same measured count as schema 2.
+
+- [#9386](https://github.com/LTplus-AG/ifc-lite/pull/9386) [`8c30d45`](https://github.com/LTplus-AG/ifc-lite/commit/8c30d455cf70cbfb45a83a813d9d3c40e92bcdef) Thanks [@louistrue](https://github.com/louistrue)! - Report representation work-budget refusals separately from unsupported or failed geometry, including the budget, limit, demand and affected product/source identity.
+
 ## 6.0.0
 
 ### Major Changes

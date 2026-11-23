@@ -41,7 +41,7 @@ import { CesiumOverlay } from './CesiumOverlay';
 import { CesiumPlacementGizmo } from './placement/CesiumPlacementGizmo';
 import { useSolarEnvironment } from '@/hooks/useSolarEnvironment';
 import { useSolarSweep } from '@/hooks/useSolarSweep';
-import { getViewerStoreApi, useViewerStore } from '@/store';
+import { getViewerStoreApi, useViewerStore, LiveViewerScope } from '@/store';
 import { isMeshTypeVisible } from '@/store/typeVisibilityFilter';
 import { useRetypedClasses } from '@/hooks/useViewerSelectors';
 import { hasInstancedShards } from '@/store/instancedShardModels';
@@ -91,7 +91,12 @@ const ScanDetectionOverlay = lazyChunk(() => import('./useScanDetectionOverlay')
     return { default: () => null };
   }));
 
+/** The viewport takes an edit's geometry in the edit's own task, so it reads live state (#10535). */
 export function ViewportContainer() {
+  return <LiveViewerScope><ViewportContainerLive /></LiveViewerScope>;
+}
+
+function ViewportContainerLive() {
   // Drive Stacked / Solo / Exploded level display from the slice.
   // Mount-once hook — it self-gates on mode + gap + model changes.
   useLevelDisplayEffect();

@@ -1,7 +1,0 @@
-{
-  "issue": 7955,
-  "why": "Keep the new backing modules loadable while reintroducing the reviewed GC, generation, session, copy-pressure and fidelity defects; real readback and race assertions must fail.",
-  "key": "apps/viewer/src/lib/geometry-backing/geometry-backing-registry.ts",
-  "mutation": "tests/evidence/live-geometry-backing-10264/behaviour.oracle.patch",
-  "test": "apps/viewer/src/lib/geometry-backing/geometry-backing.races.test.ts"
-}

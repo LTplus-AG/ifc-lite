@@ -83,6 +83,21 @@ export function loadSavedFlows(): SavedFlow[] {
   } catch (error) { console.warn('[Flow] Failed to read saved workflows', error); return []; }
 }
 
+/**
+ * False only when the stored library was read in full and does not hold `id`.
+ * A damaged library that was quarantined reads as empty on reload too; one that
+ * could not be preserved (not `writable`) may still hold entries dropped here.
+ * Like every read here, it quarantines a damaged library as a side effect.
+ */
+export function storageMayHoldFlow(id: string): boolean {
+  try {
+    const storage = optionalLocalStorage();
+    if (!storage) return true;
+    const { flows, writable } = readFlows(storage);
+    return !writable || flows.some((f) => f.doc.id === id);
+  } catch (error) { console.warn('[Flow] Failed to read saved workflows', error); return true; }
+}
+
 /** The caller retains its in-memory library when browser storage refuses a write. */
 export function saveFlows(flows: readonly SavedFlow[]): boolean {
   try {

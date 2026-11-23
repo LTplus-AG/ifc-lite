@@ -48,6 +48,11 @@ describe('attribute maps (#10763)', () => {
     expect(convertStepLine("#5=IFCAPPROVALRELATIONSHIP('n','d',#4,(#3,#6));", 'IFC4', 'IFC2X3')).toBe("#5=IFCAPPROVALRELATIONSHIP(#3,#4,'d','n');");
   });
 
+  it('reads a slot holding only a comment and $ as no value (#10779)', () => {
+    expect(convertStepLine("#5=IFCAPPROVAL(/* none */$,#9,$,$,$,'Name','Id');", 'IFC2X3', 'IFC4'))
+      .toBe("#5=IFCAPPROVAL('Id','Name',$,$,$,$,$,$,$);");
+  });
+
   it('drops comments around a SET when it is rebuilt, as Rust does', () => {
     const down = (attrs: string) => convertStepLine(`#5=IFCAPPROVALRELATIONSHIP(${attrs});`, 'IFC4', 'IFC2X3');
     const up = (attrs: string) => convertStepLine(`#5=IFCAPPROVALRELATIONSHIP(${attrs});`, 'IFC2X3', 'IFC4');
@@ -62,6 +67,21 @@ describe('attribute maps (#10763)', () => {
     expect(classifyEntityTypeConversion('IFCPROFILEPROPERTIES', 'IFC4', 'IFC2X3')).toEqual({
       targetType: 'IFCGENERALPROFILEPROPERTIES', kind: 'lossy', droppedAttributes: ['Name', 'Description', 'Properties'],
     });
+  });
+
+  it('upgrades the IFC2X3 property subtypes IFC4 deleted to the IFC4 supertype, naming every dropped measure (#10777)', () => {
+    expect(convertStepLine("#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6,#7),'d','Pset_x');", 'IFC2X3', 'IFC4'))
+      .toBe("#5=IFCMATERIALPROPERTIES('Pset_x','d',(#6,#7),#8);");
+    expect(convertStepLine('#5=IFCMECHANICALMATERIALPROPERTIES(#8,$,2.1E11,8.1E10,0.3,1.2E-5);', 'IFC2X3', 'IFC4'))
+      .toBe('#5=IFCMATERIALPROPERTIES($,$,$,#8);');
+    expect(classifyEntityTypeConversion('IFCMECHANICALMATERIALPROPERTIES', 'IFC2X3', 'IFC4')).toEqual({
+      targetType: 'IFCMATERIALPROPERTIES', kind: 'lossy',
+      droppedAttributes: ['DynamicViscosity', 'YoungModulus', 'ShearModulus', 'PoissonRatio', 'ThermalExpansionCoefficient'],
+    });
+    const ifc5 = "#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6,#7),'d','Pset_x');";
+    expect(convertStepLine(ifc5, 'IFC2X3', 'IFC5'), 'IFC5 has no attribute list to map onto').toBe(ifc5);
+    expect(classifyEntityTypeConversion('IFCRIBPLATEPROFILEPROPERTIES', 'IFC2X3', 'IFC4X3').droppedAttributes)
+      .toEqual(['ProfileName', 'Thickness', 'RibHeight', 'RibWidth', 'RibSpacing', 'Direction']);
   });
 
   it('drops an up-only reference on the way down and reports it', () => {

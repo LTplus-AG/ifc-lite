@@ -12,7 +12,8 @@ import { compileSharedWasmModule, DEFAULT_GEOM_HASH_TOLERANCE } from '@ifc-lite/
 import { hasSpareParserWorker, isSpareParserWorkerWarming, prepareSpareParser, releaseSpareParserWorker } from '@ifc-lite/parser/browser';
 import { useViewerStore } from '@/store';
 import { getGeomWorkerOverride, resolveLoadTessellationTier } from '@/store/constants';
-import { onPendingProcessedModelChange, processedModelRequested, serverUploadsEnabled } from '@/lib/processed-model';
+import { onPendingProcessedModelChange, processedModelRequested } from '@/lib/processed-model';
+import { serverUploadsEnabled } from '@/lib/processing-server';
 import { getPerfFlagDefinition, readPerfFlag } from '@/lib/perf/flags';
 import { isFeatureEnabled, type FeatureId } from '@/lib/features';
 import { mayWarmUp, scheduleWhenIdle } from '@/lib/warm-runtime-gate';

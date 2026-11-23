@@ -22,10 +22,23 @@ export type GeometryBackingCommand =
   /** TEST ONLY: release CPU geometry of every model after verifying its backing. */
   | { action: 'release-for-test' }
   /** TEST ONLY: magnetic snap at canvas CSS points, through readback when released. */
-  | { action: 'snap-probe-for-test'; points: Array<[number, number]> };
+  | { action: 'snap-probe-for-test'; points: Array<[number, number]> }
+  /** TEST ONLY: read the camera pose, or pin it first, so screen probes compare like for like. */
+  | { action: 'camera-for-test'; pose?: CameraPose }
+  /** TEST ONLY: the scene's own instanced occurrence bounds (placed frame), independent of any backing. */
+  | { action: 'instanced-bounds-for-test' }
+  /** TEST ONLY: destroy the live GPU device (a real loss), or read whether the renderer is lost / ready again. */
+  | { action: 'lose-device-for-test' | 'device-state-for-test' };
+
+type Xyz = { x: number; y: number; z: number };
+export interface CameraPose { position: Xyz; target: Xyz; up: Xyz }
+/** TEST ONLY: one instanced entity's occurrence bounds as the scene holds them (placed frame). */
+export interface InstancedOccurrenceBounds { id: number; bounds: ReturnType<ReturnType<Renderer['getScene']>['getInstancedEntityBounds']> }
 
 export interface SnapProbe {
   outcome: string;
+  error?: string;
+  instanced: boolean;
   expressId: number | null;
   point: [number, number, number] | null;
   snap: { type: string; position: [number, number, number] } | null;
@@ -33,6 +46,8 @@ export interface SnapProbe {
 
 let starting: Promise<StoreGeometryBackingTap> | undefined;
 let active: StoreGeometryBackingTap | undefined;
+/** The renderer the test-only release registered a released-scene rebuild on. */
+let rebuildOn: Renderer | undefined;
 
 /** The running tap, if a test or debug session started one. */
 export function activeGeometryBackingTap(): StoreGeometryBackingTap | undefined { return active; }
@@ -40,18 +55,48 @@ export function activeGeometryBackingTap(): StoreGeometryBackingTap | undefined 
 /** `renderer` is needed only by `release-for-test`; a test may start the tap
  * before the viewport has one, so the whole stream is observed. */
 type SnapProbeCommand = Extract<GeometryBackingCommand, { action: 'snap-probe-for-test' }>;
-// Each command's own result type: a backing command never reads as a snap probe, nor the reverse.
-export function geometryBackingCommand(store: StoreApi<ReleaseState>, renderer: Renderer | undefined, command: SnapProbeCommand):
-  Promise<SnapProbe[]>;
+type CameraCommand = Extract<GeometryBackingCommand, { action: 'camera-for-test' }>;
+type InstancedBoundsCommand = Extract<GeometryBackingCommand, { action: 'instanced-bounds-for-test' }>;
+type DeviceCommand = Extract<GeometryBackingCommand, { action: 'lose-device-for-test' | 'device-state-for-test' }>;
+export interface DeviceState { lost: boolean; ready: boolean }
+type BackingResult = ModelBackingStatus[] | SnapProbe[] | CameraPose[] | InstancedOccurrenceBounds[] | DeviceState[];
+/** The viewport's derived visibility (store hides plus type-hidden ids, #10867): what its own picks run under. */
+type ProbeVisibility = () => { hiddenIds?: ReadonlySet<number>; isolatedIds?: ReadonlySet<number> | null };
+// Each command's own result type: a backing command never reads as a probe, nor the reverse.
+export function geometryBackingCommand(store: StoreApi<ReleaseState>, renderer: Renderer | undefined, command: SnapProbeCommand,
+  visibility?: ProbeVisibility): Promise<SnapProbe[]>;
+export function geometryBackingCommand(store: StoreApi<ReleaseState>, renderer: Renderer | undefined, command: CameraCommand):
+  Promise<CameraPose[]>;
+export function geometryBackingCommand(store: StoreApi<ReleaseState>, renderer: Renderer | undefined, command: InstancedBoundsCommand):
+  Promise<InstancedOccurrenceBounds[]>;
+export function geometryBackingCommand(store: StoreApi<ReleaseState>, renderer: Renderer | undefined, command: DeviceCommand):
+  Promise<DeviceState[]>;
 export function geometryBackingCommand(store: StoreApi<ReleaseState>, renderer: Renderer | undefined,
-  command: Exclude<GeometryBackingCommand, SnapProbeCommand>): Promise<ModelBackingStatus[]>;
-export function geometryBackingCommand(store: StoreApi<ReleaseState>, renderer: Renderer | undefined, command: GeometryBackingCommand):
-  Promise<ModelBackingStatus[] | SnapProbe[]>;
-export async function geometryBackingCommand(store: StoreApi<ReleaseState>, renderer: Renderer | undefined, command: GeometryBackingCommand):
-  Promise<ModelBackingStatus[] | SnapProbe[]> {
+  command: Exclude<GeometryBackingCommand, SnapProbeCommand | CameraCommand | InstancedBoundsCommand | DeviceCommand>): Promise<ModelBackingStatus[]>;
+export function geometryBackingCommand(store: StoreApi<ReleaseState>, renderer: Renderer | undefined, command: GeometryBackingCommand,
+  visibility?: ProbeVisibility): Promise<BackingResult>;
+export async function geometryBackingCommand(store: StoreApi<ReleaseState>, renderer: Renderer | undefined, command: GeometryBackingCommand,
+  visibility?: ProbeVisibility): Promise<BackingResult> {
+  if (command.action === 'lose-device-for-test' || command.action === 'device-state-for-test') {
+    if (!renderer) throw new Error('Device actions need the viewport renderer');
+    if (command.action === 'lose-device-for-test') renderer.getGPUDevice()?.destroy();
+    return [{ lost: renderer.isDeviceLost(), ready: renderer.isReady() }];
+  }
+  if (command.action === 'camera-for-test') {
+    const camera = renderer?.getCamera();
+    if (!camera) throw new Error('Camera poses need the viewport renderer');
+    const { pose } = command;
+    if (pose) { camera.setPosition(pose.position.x, pose.position.y, pose.position.z); camera.setTarget(pose.target.x, pose.target.y, pose.target.z); camera.setUp(pose.up.x, pose.up.y, pose.up.z); }
+    return [{ position: { ...camera.getPosition() }, target: { ...camera.getTarget() }, up: { ...camera.getUp() } }];
+  }
+  if (command.action === 'instanced-bounds-for-test') {
+    if (!renderer) throw new Error('Instanced bounds need the viewport renderer');
+    const scene = renderer.getScene();
+    return [...scene.getInstancedEntityIds()].map((id) => ({ id, bounds: scene.getInstancedEntityBounds(id) }));
+  }
   if (command.action === 'snap-probe-for-test') {
     if (!renderer) throw new Error('Snap probes need the viewport renderer');
-    return snapProbe(renderer, command.points);
+    return snapProbe(renderer, command.points, visibility?.() ?? {});
   }
   if (command.action === 'start') {
     if (!starting) {
@@ -70,6 +115,8 @@ export async function geometryBackingCommand(store: StoreApi<ReleaseState>, rend
     return releaseForTest(tap, store, renderer);
   }
   const final = tap.status();
+  rebuildOn?.setReleasedSceneRebuild?.(null);
+  rebuildOn = undefined;
   active = undefined;
   starting = undefined;
   await tap.stop();
@@ -144,6 +191,10 @@ async function releaseForTest(tap: StoreGeometryBackingTap, store: StoreApi<Rele
   scene.releaseGeometryData();
   if (scene.isGeometryDataReleased() !== true) throw new Error('The scene refused to release; store geometry was kept');
   for (const meshes of lists) releaseCpuMeshBuffers(meshes);
+  // A device loss from here on rebuilds from the backing (no CPU restore); without this it is refused.
+  const { rebuildReleasedScene } = await import('./released-device-recovery');
+  renderer.setReleasedSceneRebuild?.(rebuildReleasedScene);
+  rebuildOn = renderer;
   return tap.status();
 }
 
@@ -152,21 +203,26 @@ async function releaseForTest(tap: StoreGeometryBackingTap, store: StoreApi<Rele
  * hover path, runs only on an answered read. A refused one (`unavailable`: an instanced or unbacked front
  * surface) reports no hit and no snap rather than whatever lies behind it, a point cloud included.
  */
-async function snapProbe(renderer: Renderer, points: Array<[number, number]>): Promise<SnapProbe[]> {
-  const { feedReadbackAt } = await import('./readback-measure');
+async function snapProbe(renderer: Renderer, points: Array<[number, number]>,
+  { hiddenIds, isolatedIds }: ReturnType<ProbeVisibility>): Promise<SnapProbe[]> {
+  const { feedReadbackAt, readbackFeeder } = await import('./readback-measure');
   const { sceneGeometryReleased } = await import('./scene-released');
   const out: SnapProbe[] = [];
   for (const [x, y] of points) {
-    const outcome = sceneGeometryReleased(renderer) ? await feedReadbackAt(renderer, x, y, {}) : 'resident';
+    // Under the viewport's own visibility: type-hidden meshes are uploaded and hidden only by id (#10867).
+    const outcome = sceneGeometryReleased(renderer) ? await feedReadbackAt(renderer, x, y, { hiddenIds, isolatedIds }) : 'resident';
     if (outcome !== 'fed' && outcome !== 'no-hit' && outcome !== 'resident') {
-      out.push({ outcome, expressId: null, point: null, snap: null });
+      const error = outcome === 'unavailable' ? readbackFeeder(renderer).lastError?.message : undefined;
+      out.push({ outcome, ...(error ? { error } : {}), expressId: null, instanced: false, point: null, snap: null });
       continue;
     }
     const result = renderer.raycastSceneMagnetic(x, y, { edge: null, meshExpressId: null, lockStrength: 0 },
-      { snapOptions: { snapToVertices: true, snapToEdges: true, snapToFaces: true, screenSnapRadius: 40 } });
+      // The raycast only reads these sets; the viewport hands them over read-only.
+      { hiddenIds: hiddenIds as Set<number> | undefined, isolatedIds: isolatedIds as Set<number> | null | undefined,
+        snapOptions: { snapToVertices: true, snapToEdges: true, snapToFaces: true, screenSnapRadius: 40 } });
     const hit = result.intersection;
     const target = result.snapTarget;
-    out.push({ outcome, expressId: hit?.expressId ?? null,
+    out.push({ outcome, expressId: hit?.expressId ?? null, instanced: hit ? renderer.getScene().isInstancedEntity(hit.expressId) : false,
       point: hit ? [hit.point.x, hit.point.y, hit.point.z] : null,
       snap: target ? { type: String(target.type), position: [target.position.x, target.position.y, target.position.z] } : null });
   }

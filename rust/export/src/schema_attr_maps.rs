@@ -82,12 +82,31 @@ pub(crate) const ATTR_MAPS: &[AttrMap] = &[
     AttrMap { retyped: &["RateDateTime"], ..same("IFCCURRENCYRELATIONSHIP") },
     same("IFCDOCUMENTINFORMATIONRELATIONSHIP"),
     AttrMap { retyped: &["VersionDate"], up_only: &["Publisher"], ..same("IFCLIBRARYINFORMATION") },
-    // IFC4 deleted this IFC2X3 subtype and made the abstract supertype concrete
-    // in its place, so a downgrade writes the deleted subtype
-    // (`schema_convert::map_4_to_2x3`). Downgrade only: nothing renames the
-    // IFC2X3 subtype on an upgrade. IfcMaterialProperties is left unmapped
-    // here: its Material referent must be resolved first (#10763 follow-up).
+    // IFC4 deleted these IFC2X3 subtypes and made the abstract supertype
+    // concrete in their place. A downgrade writes IfcGeneralProfileProperties
+    // (`schema_convert::map_4_to_2x3`); an IfcMaterialProperties downgrade waits
+    // on its Material referent (#10911). An IFC4 or IFC4X3 upgrade writes each
+    // as its IFC4 supertype (`upgrade_type`, #10777). The typed subtypes keep
+    // only `Material` or `ProfileDefinition`: IFC4 holds their measures as
+    // IfcProperty records, so each is counted dropped.
+    AttrMap {
+        renamed: &[("ExtendedProperties", "Properties")],
+        ..map("IFCEXTENDEDMATERIALPROPERTIES", "IFCMATERIALPROPERTIES")
+    },
     map("IFCGENERALPROFILEPROPERTIES", "IFCPROFILEPROPERTIES"),
+    map("IFCMECHANICALMATERIALPROPERTIES", "IFCMATERIALPROPERTIES"),
+    map("IFCMECHANICALCONCRETEMATERIALPROPERTIES", "IFCMATERIALPROPERTIES"),
+    map("IFCMECHANICALSTEELMATERIALPROPERTIES", "IFCMATERIALPROPERTIES"),
+    map("IFCTHERMALMATERIALPROPERTIES", "IFCMATERIALPROPERTIES"),
+    map("IFCHYGROSCOPICMATERIALPROPERTIES", "IFCMATERIALPROPERTIES"),
+    map("IFCGENERALMATERIALPROPERTIES", "IFCMATERIALPROPERTIES"),
+    map("IFCOPTICALMATERIALPROPERTIES", "IFCMATERIALPROPERTIES"),
+    map("IFCWATERPROPERTIES", "IFCMATERIALPROPERTIES"),
+    map("IFCFUELPROPERTIES", "IFCMATERIALPROPERTIES"),
+    map("IFCPRODUCTSOFCOMBUSTIONPROPERTIES", "IFCMATERIALPROPERTIES"),
+    map("IFCSTRUCTURALPROFILEPROPERTIES", "IFCPROFILEPROPERTIES"),
+    map("IFCSTRUCTURALSTEELPROFILEPROPERTIES", "IFCPROFILEPROPERTIES"),
+    map("IFCRIBPLATEPROFILEPROPERTIES", "IFCPROFILEPROPERTIES"),
     same("IFCPERFORMANCEHISTORY"),
     AttrMap { renamed: &[("TaskId", "Identification")], ..same("IFCTASK") },
     // IFC4 deleted both subtypes for IfcTask: an upgrade writes them as IfcTask
@@ -95,20 +114,38 @@ pub(crate) const ATTR_MAPS: &[AttrMap] = &[
     AttrMap { renamed: &[("TaskId", "Identification")], ..map("IFCMOVE", "IFCTASK") },
     AttrMap { renamed: &[("TaskId", "Identification")], ..map("IFCORDERACTION", "IFCTASK") },
     same("IFCPROPERTYDEPENDENCYRELATIONSHIP"),
+    // #10824: renamed both ways (`map_2x3_to_4`, `schema_mep`); IFC4's
+    // PredefinedType replaces the function enum, and the IFC2X3 label is
+    // carried through ObjectType (`schema_userdefined_label`).
+    AttrMap {
+        renamed: &[("DistributionPointFunction", "PredefinedType")],
+        ..map("IFCELECTRICDISTRIBUTIONPOINT", "IFCELECTRICDISTRIBUTIONBOARD")
+    },
+    // #10807: same arity as IFC2X3, so the source layout shifted unnoticed.
+    AttrMap { renamed: &[("ProcedureID", "Identification"), ("ProcedureType", "PredefinedType")], ..same("IFCPROCEDURE") },
+    AttrMap {
+        retyped: &["CreationTime"],
+        up_only: &["BenchmarkValues"],
+        set_of_one: Some(("BenchmarkValues", "BenchmarkValues")),
+        ..same("IFCOBJECTIVE")
+    },
+    AttrMap {
+        renamed: &[("DocumentId", "Identification")],
+        retyped: &["CreationTime", "LastRevisionTime", "ElectronicFormat", "ValidFrom", "ValidUntil"],
+        ..same("IFCDOCUMENTINFORMATION")
+    },
 ];
 
-/// An IFC2X3 subtype IFC4 deleted, written as its IFC4 supertype on an upgrade
-/// to IFC4 or IFC4X3 (#10902): IfcMove and IfcOrderAction through their map,
-/// the relationships by the prefix trim. Not `IfcRelOverridesProperties`, which
-/// would attach the values it overrides, nor IFC5, which has no registry to
-/// reconcile the attributes in. Twin of the TypeScript `DELETED_SUBTYPES`.
-pub(crate) fn deleted_subtype(t: &str) -> Option<&'static str> {
-    Some(match t {
-        "IFCMOVE" | "IFCORDERACTION" => "IFCTASK",
-        "IFCRELOCCUPIESSPACES" => "IFCRELASSIGNSTOACTOR",
-        "IFCRELASSIGNSTASKS" | "IFCRELASSIGNSTOPROJECTORDER" | "IFCRELSCHEDULESCOSTITEMS" => "IFCRELASSIGNSTOCONTROL",
-        _ => return None,
-    })
+/// The IFC4 type of an IFC2X3 subtype retired in IFC4. Attribute maps cover
+/// property and process subtypes; relationships retain their supertype slots.
+pub(crate) fn upgrade_type(ifc2x3: &str) -> Option<&'static str> {
+    ATTR_MAPS.iter().find(|m| m.ifc2x3 == ifc2x3 && m.ifc4 != m.ifc2x3)
+        .map(|m| m.ifc4)
+        .or(match ifc2x3 {
+            "IFCRELOCCUPIESSPACES" => Some("IFCRELASSIGNSTOACTOR"),
+            "IFCRELASSIGNSTASKS" | "IFCRELASSIGNSTOPROJECTORDER" | "IFCRELSCHEDULESCOSTITEMS" => Some("IFCRELASSIGNSTOCONTROL"),
+            _ => None,
+        })
 }
 
 /// The map for writing `entity_type` as `new_type` from `cfrom` to `cto`, and
@@ -121,6 +158,8 @@ pub(crate) fn attr_map(entity_type: &str, new_type: &str, cfrom: &str, cto: &str
         _ => return None,
     };
     let (src, tgt) = if up { (entity_type, new_type) } else { (new_type, entity_type) };
+    // IFC4X3 also declares the renamed IfcDistributionBoard with the same carried slots (#11021).
+    let tgt = if cfrom == "IFC4X3" && tgt == "IFCDISTRIBUTIONBOARD" { "IFCELECTRICDISTRIBUTIONBOARD" } else { tgt };
     ATTR_MAPS.iter().find(|m| m.ifc2x3 == src && m.ifc4 == tgt).map(|m| (m, up))
 }
 
@@ -145,6 +184,10 @@ impl AttrMap {
     /// The source attribute (as named in the source list `src`) that fills the
     /// target attribute `name`, and how.
     fn source_of(&self, up: bool, name: &str, src: &[&'static str]) -> Option<(&'static str, How)> {
+        // An up-only attribute fills no IFC2X3 slot, however it would be reached.
+        if !up && self.up_only.contains(&name) {
+            return None;
+        }
         // A pair read from the target's side: (target name, source name).
         let from_target = |&(older, newer): &(&'static str, &'static str)| if up { (newer, older) } else { (older, newer) };
         if let Some((_, source)) = self.renamed.iter().map(from_target).find(|(target, _)| *target == name) {
@@ -153,8 +196,7 @@ impl AttrMap {
         if let Some((_, source)) = self.set_of_one.as_ref().map(from_target).filter(|(target, _)| *target == name) {
             return Some((source, if up { How::Wrap } else { How::Unwrap }));
         }
-        let carried = !self.retyped.contains(&name) && (up || !self.up_only.contains(&name));
-        src.iter().copied().find(|s| *s == name).filter(|_| carried).map(|s| (s, How::Value))
+        src.iter().copied().find(|s| *s == name).filter(|_| !self.retyped.contains(&name)).map(|s| (s, How::Value))
     }
 }
 
@@ -175,7 +217,7 @@ pub(crate) fn remap(map: &AttrMap, up: bool, values: &[String], src: &[&'static 
             Some((value, How::Value)) if holds_value(value) => out.push_str(value),
             // A SET is rebuilt, so comments around it or its members go.
             Some((value, how @ (How::Wrap | How::Unwrap))) => {
-                let bare = without_comments(value);
+                let bare = crate::step_slot::without_comments(value);
                 if !holds_value(&bare) {
                     out.push('$');
                 } else if let How::Unwrap = how {
@@ -206,29 +248,6 @@ fn first_member(value: &str) -> (&str, usize) {
         Some(first) => (first.trim(), held.count()),
         None => ("$", 0),
     }
-}
-
-/// `value` with each `/* ... */` comment read as a space, trimmed. Literals and comments
-/// end by the shared rules (`ref_spans`' scanner: a `''` or `\S\'` stays in
-/// the literal); an unclosed one runs to the end.
-fn without_comments(value: &str) -> String {
-    let bytes = value.as_bytes();
-    let (mut out, mut kept, mut i) = (String::with_capacity(value.len()), 0, 0);
-    while i < bytes.len() {
-        match bytes[i] {
-            b'\'' => i = ifc_lite_core::step_encoding::step_string_literal_end(bytes, i).unwrap_or(bytes.len()),
-            b'/' if bytes.get(i + 1) == Some(&b'*') => {
-                // A space where the comment was keeps the tokens it parted apart.
-                out.push_str(&value[kept..i]);
-                out.push(' ');
-                i = ifc_lite_core::skip_step_comment(bytes, i).unwrap_or(bytes.len());
-                kept = i;
-            }
-            _ => i += 1,
-        }
-    }
-    out.push_str(&value[kept..]);
-    out.trim().to_owned()
 }
 
 #[cfg(test)]

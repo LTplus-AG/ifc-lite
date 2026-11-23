@@ -26,6 +26,7 @@
  */
 
 import { useViewerStore } from '@/store';
+import { viaReadback } from './measureReadback.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { pickMeasurePoint } from './measurePick.js';
 import { beginDistance, finishDistance, pressOutlivedReset, resetMeasurePress } from './distanceClick.js';
@@ -274,10 +275,15 @@ export function handleMeasureTap(ctx: MouseHandlerContext, x: number, y: number)
     handleMeasureClickAt(ctx, x, y);
     return;
   }
-  const point = pickMeasurePoint(ctx, x, y);
-  if (!point) return;
-  if (ctx.activeMeasurementRef.current) finishDistance(ctx, point, { x, y });
-  else beginDistance(ctx, point, { x, y });
+  const tap = () => {
+    const point = pickMeasurePoint(ctx, x, y);
+    if (!point) return;
+    if (ctx.activeMeasurementRef.current) finishDistance(ctx, point, { x, y });
+    else beginDistance(ctx, point, { x, y });
+  };
+  // A tap has no hover in front of it: released geometry reads its point back first (#10264). It is a
+  // placement, so a gesture reset (Esc, a mode or tool switch) before it lands drops it.
+  if (!viaReadback(ctx, 'place', tap, x, y)) tap();
 }
 
 /** The mouse controls' handler context, while registered: a touch tap in Section or the command tool runs through it (#9042). */

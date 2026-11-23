@@ -83,7 +83,7 @@ function resolveRefModel(input: TerrainSelectionInput, modelId: string): Resolve
  * whose model cannot be resolved, is counted in `skipped`.
  */
 export function resolveTerrainSelection(input: TerrainSelectionInput): TerrainSelection {
-  const byModel = new Map<string, { model: ResolvedModel; ids: number[] }>();
+  const byModel = new Map<string, { model: ResolvedModel; ids: Set<number> }>();
   let skipped = 0;
   for (const ref of input.refs) {
     const model = resolveRefModel(input, ref.modelId);
@@ -92,9 +92,9 @@ export function resolveTerrainSelection(input: TerrainSelectionInput): TerrainSe
       skipped += 1;
       continue;
     }
-    const entry = byModel.get(model.modelId) ?? { model, ids: [] };
+    const entry = byModel.get(model.modelId) ?? { model, ids: new Set<number>() };
     byModel.set(model.modelId, entry);
-    if (!entry.ids.includes(ref.expressId)) entry.ids.push(ref.expressId);
+    entry.ids.add(ref.expressId);
   }
   if (byModel.size === 0) return { kind: 'none', skipped };
   if (byModel.size > 1) return { kind: 'multiple-models', skipped, modelCount: byModel.size };
@@ -105,7 +105,7 @@ export function resolveTerrainSelection(input: TerrainSelectionInput): TerrainSe
     modelId: model.modelId,
     modelName: model.name,
     store: model.store,
-    productIds: ids,
+    productIds: [...ids],
   };
 }
 

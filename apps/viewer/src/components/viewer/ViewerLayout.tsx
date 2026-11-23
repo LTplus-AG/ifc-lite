@@ -46,7 +46,6 @@ import { LEFT_PANEL_DEFAULT_SIZE } from '@/store/layoutReset';
 
 /** Hierarchy's minimum width, % of the main row. */
 const LEFT_PANEL_MIN_SIZE = 10;
-import { useOverlayCompositor } from './schedule/useOverlayCompositor';
 import { ActivityTrayDialog } from './activity/ActivityTray';
 import { CommandPaletteHost as CommandPalette } from './CommandPaletteHost';
 import { SearchModal } from './SearchModal';
@@ -79,11 +78,6 @@ export function ViewerLayout() {
   useKeyboardShortcuts();
   // ⌘D / Ctrl+D to duplicate the current selection.
   useDuplicateShortcut();
-  // THE writer from the overlay-layer registry into the renderer's legacy
-  // hiddenEntities / pendingColorUpdates channels. Mounted once, here, for
-  // the whole session: a second instance would keep its own ownership map and
-  // double-write. Layer owners (4D animation, charts, …) only register layers.
-  useOverlayCompositor();
   // Bridge viewer state transitions into the extension action log so the idle pattern miner can surface one-click tool suggestions.
   useActionLogger();
   // Show the RFC §06 §7 privacy disclosure on first launch.

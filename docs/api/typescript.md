@@ -544,6 +544,8 @@ An appearance preview may carry an `AppearancePartition` whose `sourceGeometryIt
 
 `Scene` and `Section2DOverlayRenderer` are package-internal from 2.0: reach the scene through `getScene(): SceneContents`, and the 3D line overlays through `Renderer.setLineOverlay`. `PickingManager` is package-internal from 2.0 as well: its constructor takes the now-internal `Scene`, so an exported class nobody could construct would have been worse than no export. Pick through `Renderer.pick` / `Renderer.pickRect`.
 
+`SceneContents.translateMeshesForEntities` and `rotateMeshesForEntities` accept an optional callback that receives each affected flat mesh immediately before its vertex buffers change.
+
 ---
 
 ## @ifc-lite/export
@@ -1057,8 +1059,15 @@ function createTranslationService(locale: 'en' | 'de' | 'fr' | 'it'): Translatio
 class Drawing2DGenerator {
   initialize(): Promise<void>;
   generate(meshes: MeshData[], config: SectionConfig, options?: Partial<GeneratorOptions>): Promise<Drawing2D>;
+  // Same drawing from a replayable source, one batch at a time (see DrawingMeshSource)
+  generateFromSource(source: DrawingMeshSource, config: SectionConfig, options?: Partial<GeneratorOptions>): Promise<Drawing2D>;
+  // Push chunks one at a time: addGeometry → endGeometry → addOcclusion → finish | cancel
+  beginDrawing(config: SectionConfig, options?: Partial<GeneratorOptions>, profiles?: ProfileEntry[]): DrawingSession;
   dispose(): void;
 }
+
+interface DrawingMeshSource { pass(pass: 'geometry' | 'occlusion'): AsyncIterable<readonly MeshData[]>; }
+class StoreyFloorLevels { add(meshes): void; floors(): number[]; } // storeyFloorsFromMeshes, batch by batch
 
 function generateFloorPlan(meshes: MeshData[], elevation: number, options?: Partial<GeneratorOptions>): Promise<Drawing2D>;
 function generateSection(meshes: MeshData[], axis: 'x' | 'z', position: number, options?: Partial<GeneratorOptions>): Promise<Drawing2D>;

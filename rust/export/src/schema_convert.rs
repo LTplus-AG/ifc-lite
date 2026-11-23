@@ -14,7 +14,7 @@ use crate::schema_ifc2x3_slots::Ifc2x3SlotFill;
 use crate::schema_enum::ConversionChecks;
 use crate::schema_plan::{plan_for, Adjust, Plan};
 use crate::schema_unrepresented::{product_proxy, resolve_unrepresented_entity, UnrepresentedEntityError};
-use crate::step_slot::split_top_level_args;
+use crate::step_slot::{slot_is, split_top_level_args};
 
 /// Canonicalize a FILE_SCHEMA label to one of the four families we convert
 /// between. Re-export's default for a label naming no family is IFC4.
@@ -86,14 +86,6 @@ pub(crate) const BY_NAME_ATTR_REMAP_TYPES: &[&str] =
 /// through its own fill: `convertStepLine` applies one on every IFC2X3 target,
 /// substituting a throwaway when the caller passes none.
 ///
-/// The `trim` below has no twin, and that is a real divergence rather than a
-/// compensation: NEITHER splitter trims its tokens (measured:
-/// `splitTopLevelStepArguments("'a' ,  $  , #3 ")` returns
-/// `["'a' ", "  $  ", " #3 "]`). So a source slot written `  $  ` is
-/// normalised to `$` here and passed through verbatim there. It predates
-/// #4714, it is whitespace-only, and the four mandatory slots this doc is
-/// about are overwritten by the fill either way; left as found rather than
-/// changed on the way past.
 fn remap_attrs_by_name(values: &[String], src_names: &[&str], tgt_names: &[&str]) -> String {
     let mut by_name: std::collections::HashMap<&str, &str> = std::collections::HashMap::new();
     for (name, value) in src_names.iter().zip(values.iter()) {
@@ -102,7 +94,7 @@ fn remap_attrs_by_name(values: &[String], src_names: &[&str], tgt_names: &[&str]
     tgt_names
         .iter()
         .map(|name| {
-            let given = by_name.get(name).copied().filter(|v| v.trim() != "$");
+            let given = by_name.get(name).copied().filter(|v| !crate::step_slot::slot_is(v, "$"));
             given.unwrap_or("$")
         })
         .collect::<Vec<_>>()
@@ -116,9 +108,11 @@ fn values_without_a_name(values: &[String], src_names: &[&str], tgt_names: &[&st
     }).count()
 }
 
-/// A slot that carries information: not `$`, `*` or empty.
+/// A slot that carries information: not `$`, `*` or empty once comments go (#10779).
+/// Twin of the TypeScript `holdsValue` (`step-comment-skip.ts`).
 pub(crate) fn holds_value(slot: &str) -> bool {
-    !matches!(slot.trim(), "" | "$" | "*")
+    let bare = if slot.contains("/*") { Cow::Owned(crate::step_slot::without_comments(slot)) } else { Cow::Borrowed(slot.trim()) };
+    !matches!(&*bare, "" | "$" | "*")
 }
 
 fn map_4x3_to_4(t: &str) -> Option<&'static str> {
@@ -142,11 +136,9 @@ fn map_4x3_to_4(t: &str) -> Option<&'static str> {
     })
 }
 
-/// IFC4X3 alignment and positioning types with no representation in IFC2X3 or
-/// IFC4, replaced by [`product_proxy`]. The positioning types used to be
-/// RENAMED to `IFCPROXY` instead, which kept their own attributes under the
-/// new name: `IFCALIGNMENT(…,.ROAD.)` became an 8-attribute `IFCPROXY` with an
-/// alignment enum in `ProxyType`, where IfcProxy takes 9 (EXPORT-MERGE-8, #7683).
+/// IFC4X3 alignment and positioning types replaced by [`product_proxy`] in
+/// IFC2X3 or IFC4. A bare rename would keep the wrong slot count and put the
+/// alignment enum in `ProxyType` (EXPORT-MERGE-8, #7683).
 pub(crate) fn should_skip_entity(t: &str, to: &str) -> bool {
     if to == "IFC4X3" || to == "IFC5" {
         return false;
@@ -172,8 +164,7 @@ pub(crate) fn schema_attribute_names(schema: &str, entity_type: &str) -> Option<
 }
 
 /// Convert an entity type name between schemas (with multi-step chaining).
-/// The export path asks [`rename_type`] through `schema_plan`; this owned form
-/// is what the tests pin.
+/// This owned test helper uses the same [`rename_type`] as the schema plan.
 #[cfg(test)]
 pub(crate) fn convert_entity_type(entity_type: &str, from: &str, to: &str) -> String {
     let (from, to) = (canon(from), canon(to));
@@ -184,8 +175,7 @@ pub(crate) fn convert_entity_type(entity_type: &str, from: &str, to: &str) -> St
     rename_type(&u, from, to).map_or(u, str::to_string)
 }
 
-/// The renamed type for an uppercase `u` between two canonical schemas, or
-/// `None` when it keeps its name.
+/// The replacement for an uppercase type name when it changes between schemas.
 pub(crate) fn rename_type(u: &str, from: &str, to: &str) -> Option<&'static str> {
     if to == "IFC2X3" {
         if let Some(target) = crate::schema_mep::ifc2x3_type(u) {
@@ -193,9 +183,8 @@ pub(crate) fn rename_type(u: &str, from: &str, to: &str) -> Option<&'static str>
         }
     }
     match (from, to) {
-        // 2X3 → 4 (then 4 → 4X3 is a no-op rename-wise)
-        // ...and the subtypes IFC4 deleted, where a registry reconciles their attributes (#10902).
-        ("IFC2X3", "IFC4") | ("IFC2X3", "IFC4X3") => map_2x3_to_4(u).or_else(|| crate::schema_attr_maps::deleted_subtype(u)),
+        // IFC5 has no attribute lists for the property subtype replacements (#10777).
+        ("IFC2X3", "IFC4") | ("IFC2X3", "IFC4X3") => map_2x3_to_4(u).or_else(|| crate::schema_attr_maps::upgrade_type(u)),
         ("IFC2X3", "IFC5") => map_2x3_to_4(u),
         ("IFC4", "IFC2X3") => map_4_to_2x3(u),
         ("IFC4X3", "IFC4") | ("IFC5", "IFC4") => map_4x3_to_4(u),
@@ -242,13 +231,13 @@ pub fn convert_step_line(
     let mut checks = checks;
     let mut converted = convert_record(line, cfrom, cto, express_id, checks.as_deref_mut())?;
     converted = crate::schema_retyped::apply(converted, cfrom, cto, checks.as_deref_mut().map(|c| &mut c.attribute_values_dropped)); // #10778
+    converted = crate::schema_userdefined_label::carry(line, converted, cfrom, cto, checks.as_deref_mut().map(|c| &mut c.attribute_values_dropped)); // #10824
     if let Some(checks) = checks {
-        if let Some(placement) = checks.structural.values.placement(express_id) {
-            if let Some(repointed) = crate::step_log::replace_argument(&converted, 5, &format!("#{placement}")) {
-                converted = repointed;
-            }
+        if let Some(repointed) = checks.structural.values.placement(express_id).and_then(|p| crate::step_log::replace_argument(&converted, 5, &format!("#{p}"))) {
+            converted = repointed;
         }
-        converted = checks.enums.apply(converted, cto);
+        converted = checks.enums.apply(checks.forms.apply(converted, cfrom, cto, &mut checks.attribute_values_dropped), cto);
+        converted = checks.documents.apply(express_id, converted, &mut checks.attribute_values_dropped);
         if cto == "IFC2X3" { converted = checks.structural.after(express_id, converted); }
         (cto == "IFC4" && (cfrom != "IFC2X3" || crate::schema_attr_maps::upgrade_counts_ifc4_slots(&converted))).then(|| checks.ifc4_slots.count(&converted));
     }
@@ -342,7 +331,7 @@ fn convert_record(
             let new_type = renamed.unwrap_or(&entity_type);
             // #10758: a slot a schema replaced in place keeps no value across.
             let rebuilt;
-            let attrs = match replaced.filter(|&i| args.get(i).is_some_and(|v| v.trim() != "$")) {
+            let attrs = match replaced.filter(|&i| args.get(i).is_some_and(|v| !slot_is(v, "$"))) {
                 Some(i) => {
                     lost += usize::from(holds_value(&args[i]));
                     args[i] = "$".to_owned();

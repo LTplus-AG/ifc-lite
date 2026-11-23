@@ -20,6 +20,7 @@ import type { Duplex } from 'node:stream';
 import type { WebSocketServer, WebSocket, RawData } from 'ws';
 import { capUnpairedBytes, closeLoopback, listenLoopback, refuseUpgrade } from './loopback-server.js';
 import {
+  BRIDGE_FEATURES,
   BRIDGE_LIMITS,
   BRIDGE_PROTOCOL_VERSION,
   BridgeCloseCode,
@@ -339,7 +340,7 @@ export class TabBridge {
     slot.paired = true;
     this.slots.delete(slot);
     const previous = this.active;
-    const session = new BridgeSession(ws, randomUUID(), hello.permission, hello.tools, hello.client, this.log);
+    const session = new BridgeSession(ws, randomUUID(), hello.permission, hello.tools, hello.client, this.log, hello.resultAck === true);
     this.active = session;
     paired(session);
     if (previous) {
@@ -353,6 +354,8 @@ export class TabBridge {
       permission: this.effectivePermission(session),
       readOnlyCeiling: this.opts.readOnlyCeiling,
       bridge: this.opts.bridgeInfo,
+      features: [...BRIDGE_FEATURES],
+      ...(session.resultAck ? { resultAck: true } : {}),
     });
     // client name/version were clipped to one line by the parser.
     const who = hello.client ? `${hello.client.name}${hello.client.version ? ` ${hello.client.version}` : ''}` : 'a viewer tab';

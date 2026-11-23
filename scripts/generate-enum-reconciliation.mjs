@@ -25,9 +25,10 @@
  *    file, and `--check` fails until the new rows are committed and reviewed.
  *
  * Rows are keyed by the TARGET entity's enum attribute: a member of the
- * source enum of the same name that the target enum lacks. Entities the
- * target does not declare at all are handled by entity conversion (rename,
- * `IFCPROXY`), not here.
+ * source enum of the same name that the target enum lacks, or any enum slot
+ * of a type the direction renames records into (`RENAME_TARGETS`, #10856).
+ * Entities the target does not declare at all are handled by entity
+ * conversion (rename, `IFCPROXY`), not here.
  *
  * Run: `node scripts/generate-enum-reconciliation.mjs` to write the file,
  * `--check` to verify it is up to date.
@@ -65,9 +66,47 @@ const REGISTRIES = {
   IFC4: await load('packages/parser/src/generated/schema-registry.ts'),
   IFC4X3: await load('packages/parser/src/generated/ifc4x3/schema-registry.ts'),
 };
-const { resolveMissingEnumMember } = await import(
+const { LABEL_CARRIES, resolveMissingEnumMember } = await import(
   pathToFileURL(join(ROOT, 'packages/export/src/schema-enum-policy.ts')).href
 );
+
+/**
+ * Types a conversion RENAMES a record into, per direction (#10856). A
+ * renamed record carries the source type's enum into the target's slot, a
+ * different enum (IfcElectricDistributionPoint's function into
+ * IfcElectricDistributionBoard's PredefinedType), so every enum slot of these
+ * types is checked, as the TypeScript reconciler checks every slot. Listed by
+ * hand because the converter's rename tables need built packages; the Rust test
+ * `rename_targets_are_the_converters_10856` holds the list to `rename_type`.
+ * Rust's slot table is per target schema, so its rows are the union over sources.
+ */
+const UP_FROM_IFC2X3 = [
+  'IFCBUILDINGELEMENTPROXY', 'IFCBURNERTYPE', 'IFCELECTRICDISTRIBUTIONBOARD',
+  'IFCMATERIALPROPERTIES', 'IFCPROFILEPROPERTIES', 'IFCRELASSIGNSTOACTOR',
+  'IFCRELASSIGNSTOCONTROL', 'IFCRELASSIGNSTOPRODUCT', 'IFCTASK',
+];
+// IFC4/IFC4X3 IfcMaterialProperties is not renamed down here: its downgrade waits on its Material referent (#10911).
+const RENAME_TARGETS = {
+  IFC4X3: {
+    IFC4: ['IFCBUILDING', 'IFCBUILDINGELEMENTPROXY', 'IFCBUILDINGSTOREY', 'IFCCOMMUNICATIONSAPPLIANCE',
+      'IFCELECTRICDISTRIBUTIONBOARD', 'IFCFLOWSEGMENT', 'IFCFLOWTERMINAL', 'IFCFLOWTREATMENTDEVICE', 'IFCFOOTING',
+      'IFCSLAB'],
+    IFC2X3: ['IFCBUILDING', 'IFCBUILDINGELEMENTPROXY', 'IFCBUILDINGSTOREY', 'IFCDISTRIBUTIONCONTROLELEMENT',
+      'IFCDOORSTYLE', 'IFCELECTRICDISTRIBUTIONPOINT', 'IFCENERGYCONVERSIONDEVICE',
+      'IFCFLOWCONTROLLER', 'IFCFLOWFITTING', 'IFCFLOWMOVINGDEVICE', 'IFCFLOWSEGMENT', 'IFCFLOWSTORAGEDEVICE',
+      'IFCFLOWTERMINAL', 'IFCFLOWTREATMENTDEVICE', 'IFCFOOTING', 'IFCGASTERMINALTYPE',
+      'IFCGENERALPROFILEPROPERTIES', 'IFCSLAB', 'IFCSTRUCTURALLINEARACTION', 'IFCSTRUCTURALLOADGROUP',
+      'IFCSTRUCTURALPLANARACTION', 'IFCWINDOWSTYLE'],
+  },
+  IFC4: {
+    IFC2X3: ['IFCBUILDINGELEMENTPROXY', 'IFCDISTRIBUTIONCONTROLELEMENT', 'IFCDOORSTYLE', 'IFCELECTRICDISTRIBUTIONPOINT',
+      'IFCENERGYCONVERSIONDEVICE', 'IFCFLOWCONTROLLER', 'IFCFLOWFITTING',
+      'IFCFLOWMOVINGDEVICE', 'IFCFLOWSEGMENT', 'IFCFLOWSTORAGEDEVICE', 'IFCFLOWTERMINAL', 'IFCFLOWTREATMENTDEVICE',
+      'IFCGASTERMINALTYPE', 'IFCGENERALPROFILEPROPERTIES', 'IFCSTRUCTURALLINEARACTION', 'IFCSTRUCTURALLOADGROUP',
+      'IFCSTRUCTURALPLANARACTION', 'IFCWINDOWSTYLE'],
+  },
+  IFC2X3: { IFC4: UP_FROM_IFC2X3, IFC4X3: UP_FROM_IFC2X3 },
+};
 
 const DIRECTIONS = [
   ['IFC4X3', 'IFC4'], ['IFC4X3', 'IFC2X3'], ['IFC4', 'IFC2X3'],
@@ -90,33 +129,45 @@ const rustRows = { IFC2X3: new Map(), IFC4: new Map(), IFC4X3: new Map() };
 for (const [from, to] of DIRECTIONS) {
   const source = REGISTRIES[from];
   const target = REGISTRIES[to];
+  const sourceEntities = new Map(Object.entries(source.entities).map(([n, entity]) => [n.toUpperCase(), entity]));
   const rows = [];
   for (const [entityName, meta] of Object.entries(target.entities).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
     if (meta.isAbstract) continue;
+    const upper = entityName.toUpperCase();
+    // #10856: a rename target gets every enum slot, whatever the source enum.
+    const renamed = (RENAME_TARGETS[from][to] ?? []).includes(upper);
+    const carried = to === 'IFC2X3' ? LABEL_CARRIES.find(([type]) => type === upper) : undefined;
+    const fromEntity = carried ? sourceEntities.get(carried[1]) : undefined;
+    const sourcePredefined = (fromEntity?.allAttributes ?? fromEntity?.attributes)?.find((a) => a.name === 'PredefinedType');
     const attributes = meta.allAttributes ?? meta.attributes;
     attributes.forEach((attribute, index) => {
       const members = Object.hasOwn(target.enums, attribute.type) ? target.enums[attribute.type] : undefined;
-      const sourceMembers = members && Object.hasOwn(source.enums, attribute.type) ? source.enums[attribute.type] : undefined;
-      if (!sourceMembers) return;
+      if (!members) return;
+      // IFC2X3 gave several of these enums a different slot name even
+      // when the record keeps its class name (e.g. IfcWorkPlan).
+      const remapped = carried?.[2] === attribute.name && sourcePredefined !== undefined;
+      const sourceEnum = remapped ? sourcePredefined.type : attribute.type;
+      const sourceMembers = Object.hasOwn(source.enums, sourceEnum) ? source.enums[sourceEnum] : [];
       const missing = sourceMembers.filter((m) => !members.includes(m));
-      if (missing.length === 0) return;
+      if (missing.length === 0 && !renamed && !remapped) return;
       const resolution = resolveMissingEnumMember(attributes, index, members);
-      rows.push({ entity: entityName, attribute: attribute.name, enumName: attribute.type, missing, resolution, attributes });
-      const upper = entityName.toUpperCase();
+      rows.push({ entity: entityName, attribute: attribute.name, enumName: attribute.type, missing, renamed, remapped, resolution, attributes });
       const row = rustRows[to].get(upper) ?? { arity: attributes.length, slots: new Map() };
       row.slots.set(index, { attribute: attribute.name, members, resolution });
       rustRows[to].set(upper, row);
     });
   }
   const refused = rows.filter((r) => r.resolution.kind === 'refuse');
-  totals.push(`| ${from} → ${to} | ${rows.length} | ${rows.reduce((n, r) => n + r.missing.length, 0)} | ${refused.length} |`);
+  const renamedSlots = rows.filter((r) => r.renamed).length;
+  totals.push(`| ${from} → ${to} | ${rows.length} | ${rows.reduce((n, r) => n + r.missing.length, 0)} | ${renamedSlots} | ${refused.length} |`);
   const lines = [`## ${from} → ${to}`, ''];
   if (rows.length === 0) {
-    lines.push('No enum member of a shared enum is missing in this direction.', '');
+    lines.push('No enum member of a shared enum is missing in this direction, and no record is renamed into an enum-typed type.', '');
   } else {
     lines.push('| Entity.Attribute | Enum | Members the target lacks | Written as |', '| --- | --- | --- | --- |');
     for (const r of rows) {
-      lines.push(`| ${r.entity}.${r.attribute} | ${r.enumName} | ${r.missing.join(', ')} | ${describe(r.resolution, r.attributes)} |`);
+      const lacks = [...r.missing, ...(r.remapped ? ['(remapped into this slot: any member not listed)'] : r.renamed ? ['(renamed into this type: any member not listed)'] : [])];
+      lines.push(`| ${r.entity}.${r.attribute} | ${r.enumName} | ${lacks.join(', ')} | ${describe(r.resolution, r.attributes)} |`);
     }
     lines.push('');
   }
@@ -132,7 +183,8 @@ const text = [
   '(`packages/export/src/schema-converter-enums.ts`) writes what `schema-enum-policy.ts` decides, in order:',
   '',
   '1. `.USERDEFINED.` with the member name moved into the entity\'s label slot (`ObjectType`,',
-  '   `ElementType`, `ProcessType`, `ResourceType`, or `UserDefined<Attribute>`), when both exist.',
+  '   `ElementType`, `ProcessType`, `ResourceType`, or `UserDefined<Attribute>`, else IFC2X3\'s short',
+  '   `UserDefined<end of Attribute>` when exactly one fits), when both exist.',
   '   The meaning survives.',
   '2. `.NOTDEFINED.`, when the target enum has it. The kind is lost and reported.',
   '3. `$`, when the attribute is optional in the target. The value is lost and reported.',
@@ -140,10 +192,11 @@ const text = [
   '   and the export names it in its warnings.',
   '',
   'Nothing is ever mapped to an invented member. Each row below is one target entity attribute whose',
-  'enum lost members in that direction (#5365).',
+  'enum lost members in that direction (#5365), or an enum slot of a type the direction renames records',
+  'into, which can receive any member of the source type\'s enum (#10856).',
   '',
-  '| Direction | Entity attributes | Missing member entries | Refused |',
-  '| --- | --- | --- | --- |',
+  '| Direction | Entity attributes | Missing member entries | Rename-target slots | Refused |',
+  '| --- | --- | --- | --- | --- |',
   ...totals,
   '',
   ...sections,
@@ -184,6 +237,11 @@ function renderRs() {
     '    /// Kept as written: the target offers no valid value.',
     '    Refuse,',
     '}',
+    '',
+    '/// Types a conversion renames a record into, `(source, target, type)` (#10856):',
+    '/// every enum slot of each has a row. Held to `rename_type` by a test.',
+    '#[cfg(test)]',
+    `pub static RENAME_TARGETS: &[(&str, &str, &str)] = &[${DIRECTIONS.flatMap(([from, to]) => (RENAME_TARGETS[from][to] ?? []).map((t) => `("${from}", "${to}", "${t}")`)).join(', ')}];`,
     '',
     '/// `(slot index, attribute name, target enum members, outcome)`.',
     'pub type EnumSlot = (u8, &\'static str, &\'static [&\'static str], EnumOutcome);',

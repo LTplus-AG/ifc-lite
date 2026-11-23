@@ -16,7 +16,6 @@
  *   on load.
  */
 
-import { trackExportCompleted } from '@/lib/analytics';
 import { CLASH_RULE_PRESETS, type ClashReview } from '@ifc-lite/clash';
 import type { ClashExclusionRule } from './exclusions.js';
 import {
@@ -375,7 +374,6 @@ export function exportPresets(presets: ClashPreset[], emit: (content: string, fi
   const custom = presets.filter((p) => !p.builtin || builtinDiffersFromDefault(p));
   const json = JSON.stringify({ schemaVersion: SCHEMA_VERSION, presets: custom }, null, 2);
   emit(json, 'clash-rules.clash-presets.json', 'application/json');
-  trackExportCompleted({ format: 'json', surface: 'clash_results' });
 }
 
 /** Parse an exported file into custom presets (ids regenerated, `builtin` stripped). */

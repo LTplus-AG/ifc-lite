@@ -7,10 +7,10 @@
  * Handles entity type renaming and attribute rewriting when converting
  * between IFC schema versions (IFC2X3, IFC4, IFC4X3, IFC5).
  *
- * This module works at the STEP text level: it rewrites entity type names
- * and adjusts attribute counts via regex replacement on raw STEP lines.
+ * Rewrites entity type names and slot layouts in STEP text.
  */
 
+import { withoutComments } from './step-comment-skip.js';
 import { structuralAttributes } from './schema-converter-structural.js';
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { deterministicGlobalId, getSchemaRegistryForVersion } from '@ifc-lite/parser';
@@ -26,9 +26,9 @@ import { referencesAnyExpressId } from './step-ref-scan.js';
 import { productProxy } from './schema-converter-product-proxy.js';
 import { MEP_IFC2X3_TYPES } from './schema-converter-mep.js';
 import { isStrictAttrPrefix, replacedSlot } from './schema-converter-renames.js';
-import { attrMapFor, DELETED_SUBTYPES, remapByAttrMap, upgradeCountsIfc4Slots } from './schema-converter-attr-maps.js';
+import { carryUserDefinedLabel } from './schema-converter-userdefined-label.js';
+import { attrMapFor, DELETED_SUBTYPES, remapByAttrMap, upgradeCountsIfc4Slots, upgradeRename } from './schema-converter-attr-maps.js';
 import { retypeInPlace } from './schema-converter-retyped.js';
-
 export { computeWithheldRefIds } from './schema-untranslatable.js';
 
 export type IfcSchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
@@ -167,8 +167,8 @@ export function convertEntityType(
   if (fromSchema === toSchema) return entityType;
 
   const upper = entityType.toUpperCase();
-  const mepTarget = toSchema === 'IFC2X3' ? MEP_IFC2X3_TYPES.get(upper) : undefined;
-  if (mepTarget) return mepTarget;
+  const target = (toSchema === 'IFC2X3' ? MEP_IFC2X3_TYPES.get(upper) : undefined) ?? upgradeRename(upper, fromSchema, toSchema);
+  if (target) return target;
 
   const map = getConversionMap(fromSchema, toSchema);
   return map?.get(upper) ?? upper;
@@ -293,8 +293,9 @@ export function convertStepLine(
 ): string | null {
   if (fromSchema === toSchema) return line;
   let converted = retypeInPlace(convertRecord(line, fromSchema, toSchema, random, withheldRefIds, fromSchema === 'IFC2X3' && toSchema === 'IFC4' ? enums?.structural.axes.axis(line) : undefined, enums?.structural), fromSchema, toSchema); // #10778
+  converted = carryUserDefinedLabel(line, converted, fromSchema, toSchema); // #10824
   if (converted === null) return null;
-  if (enums && toSchema !== 'IFC5') converted = enums.structural.after(enums.apply(converted, toSchema), withheldRefIds);
+  if (enums && toSchema !== 'IFC5') converted = enums.structural.after(enums.documents.apply(enums.apply(enums.forms.apply(converted, fromSchema, toSchema), toSchema)), withheldRefIds);
   if (toSchema === 'IFC2X3') return (slots ?? new Ifc2x3SlotFill()).apply(converted);
   if (ifc4Slots && toSchema === 'IFC4' && (fromSchema !== 'IFC2X3' || upgradeCountsIfc4Slots(converted))) ifc4Slots.apply(converted);
   return converted;
@@ -366,8 +367,7 @@ function convertRecord(
     // in merged-exporter.ts, which seeds from the original id plus the model's
     // stable id.
     //
-    // A caller-supplied seeded source still wins, so an export that already
-    // pins its randomness keeps its existing behaviour.
+    // A caller-supplied seeded source still wins.
     const guid = random
       ? generateIfcGuid(random)
       : deterministicGlobalId(`ifcproxy:${prefix}${entityType}(${attrsRaw})`);
@@ -410,7 +410,7 @@ function convertRecord(
   if (srcAttrs && tgtAttrs) {
     const mapped = args.length > 0 ? attrMapFor(entityType, newType, fromSchema, toSchema) : undefined; // #10763
     const replaced = mapped ? undefined : replacedSlot(entityType, srcAttrs, tgtAttrs); // #10758: no value carries there
-    if (replaced !== undefined && replaced < args.length && args[replaced].trim() !== '$') { args[replaced] = '$'; finalAttrs = args.join(','); }
+    if (replaced !== undefined && replaced < args.length && withoutComments(args[replaced]) !== '$') { args[replaced] = '$'; finalAttrs = args.join(','); }
     if (mapped) finalAttrs = remapByAttrMap(mapped.map, mapped.up, args, srcAttrs, tgtAttrs);
     else if (isStrictAttrPrefix(tgtAttrs, srcAttrs, entityType)) {
       finalAttrs = trimAttributes(attrsRaw, args, tgtAttrs.length);

@@ -16,6 +16,7 @@ export { Raycaster } from './raycaster.js';
 export { SnapDetector, SnapType } from './snap-detector.js';
 export { BVH } from './bvh.js';
 export { hostsOtherEntities } from './mesh-entity-hosting.js';
+export { materializeShardOccurrences } from './scene-instance-materialization.js';
 export { OverlayIdSpaceExhaustedError } from './overlay-id-space-exhausted-error.js';
 export { FederationRegistry, federationRegistry, ModelRangeExtensionRefusedError } from './federation-registry.js';
 export type { ModelRange, GlobalIdLookup } from './federation-registry.js';
@@ -28,3 +29,6 @@ export {
     ENVIRONMENT_UNIFORM_SIZE,
 } from './environment.js';
 export type { LightingEnvironment, ResolvedEnvironment, SkyGradient, Vec3Color } from './environment.js';
+export { replayReleasedGeometry } from './released-geometry-replay-lazy.js';
+export type { ReleasedSceneRebuild, ReleasedSceneRebuildContext } from './released-scene-recovery.js';
+export type { ReleasedGeometryReplayOptions, ReleasedGeometryReplayResult } from './released-geometry-replay.js';

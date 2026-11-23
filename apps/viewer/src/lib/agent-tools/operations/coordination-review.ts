@@ -6,13 +6,14 @@ import { currentReviewWorkspace, useReviewWorkspaces } from '@/lib/review/worksp
 import { filterCards, facetOptions } from '@/lib/review/facets';
 import { coordination } from './coordination-common';
 import { emptySchema } from './contract';
+import { invalidInput, stale, unavailable } from './refusals';
 const selectedSchema = { type: 'object' as const, properties: {
   name: { type: 'string' as const, minLength: 1, maxLength: 200 },
   card_keys: { type: 'array' as const, minItems: 1, maxItems: 100, uniqueItems: true as const, items: { type: 'string' as const, minLength: 1, maxLength: 20000 } },
 }, required: ['name', 'card_keys'] as ('name' | 'card_keys')[], additionalProperties: false as const };
 function cards(keys: string[]) {
   const snapshot = captureReviewSnapshot(); const wanted = new Set(keys); const selected = snapshot.cards.filter(card => wanted.has(card.key));
-  if (selected.length !== keys.length) throw new Error('Some review cards no longer exist; refresh the review snapshot.');
+  if (selected.length !== keys.length) throw stale('Some review cards no longer exist; refresh the review snapshot.');
   return selected;
 }
 export const coordinationReviewOperations = [
@@ -25,11 +26,11 @@ export const coordinationReviewOperations = [
   }, async (i, c) => {
     const [{ openOriginal, EVIDENCE_PANEL }, { isPanelAvailable }, { useViewerStore }] = await Promise.all([import('@/lib/review/open'), import('@/lib/panels/availability'), import('@/store')]);
     const finding = captureReviewSnapshot().cards.flatMap(card => card.findings).find(finding => finding.id === i.finding_id);
-    if (!finding) throw new Error('Review finding is no longer present.');
-    if (!isPanelAvailable(EVIDENCE_PANEL[finding.evidence.kind])) throw new Error('The native evidence panel is unavailable.');
+    if (!finding) throw invalidInput('unknown-target', 'Review finding is no longer present.');
+    if (!isPanelAvailable(EVIDENCE_PANEL[finding.evidence.kind])) throw unavailable('The native evidence panel is unavailable.');
     return c.commit(() => {
-      const opened = openOriginal(finding, panel => { if (panel === 'properties') throw new Error('This finding has no workspace evidence panel.'); useViewerStore.getState().openWorkspacePanel(panel); });
-      if (!opened) throw new Error('The original evidence changed or no longer exists.'); return { opened: true, finding_id: finding.id };
+      const opened = openOriginal(finding, panel => { if (panel === 'properties') throw unavailable('This finding has no workspace evidence panel.'); useViewerStore.getState().openWorkspacePanel(panel); });
+      if (!opened) throw stale('The original evidence changed or no longer exists.'); return { opened: true, finding_id: finding.id };
     });
   }),
   coordination<{ facet: 'source' | 'model' | 'state' | 'decision' | 'discipline' | 'storey' | 'run'; values: string[] }>('review.filter', 'Filter native review cards by an explicit source, model, state or decision facet.', ['read'], {

@@ -15,6 +15,7 @@ import type { ModelChangeReceipt } from '@/lib/actions/model-change-commit';
 import { useActivityJournal } from '@/lib/activity/activity-journal';
 import { resetFeaturesForTest } from '@/lib/features';
 import type { ZoneSet } from '@/lib/zones';
+import { deferred } from '@/test/race';
 import { BACK_WALL, BACK_WALL_NAME, SAMPLE_MODEL, seedAuthoringSample } from '@/test/authoring-sample-fixture';
 import { wallFixture } from '@/test/ids-studio-fixture';
 import { loadIdsStudioRuntime } from '@/lib/ids-studio/runtime-loader';
@@ -35,8 +36,9 @@ import { setRemeshClientFactory } from '@/lib/remesh/remesh-service';
 import { clearModelLayouts } from '@/lib/rooms/room-layout';
 import { prepareRoomReview } from '@/lib/actions/room-review';
 import { createMainViewerToolHost } from '../main-viewer-host';
-import { dispatchMainViewerTool, type AgentToolResult } from '../main-viewer-dispatch';
+import { dispatchMainViewerTool, resolveModel, usableModel, type AgentToolResult } from '../main-viewer-dispatch';
 import type { ToolHost } from '../types';
+import { executeOperation } from './executor';
 import { viewerOperation } from './registry';
 import { idsOperations } from './ids-studio';
 import { isGroupingLens } from '@/lib/lens/custom-groupings';
@@ -315,6 +317,213 @@ describe('reviewed model candidates (#10792)', () => {
     assert.equal(storedReceipt(receipt.id)?.status, 'undone');
   });
 
+  const keyedPrepare = (ctx: Parameters<typeof dispatchMainViewerTool>[3]) =>
+    dispatchMainViewerTool(host, 'viewer_operation_inspect', {
+      model_id: SAMPLE_MODEL, operation_id: 'properties.prepare',
+      input: { proposal_json: rename('Keyed candidate') }, idempotency_key: 'prepare',
+    }, ctx);
+
+  it('#11029: cancellation after acceptance drops the candidate and allows a keyed retry', async () => {
+    const controller = new AbortController();
+    const entry = viewerOperation('properties.prepare');
+    const validate = entry.validateResult.bind(entry);
+    let token: string | undefined;
+    const spy = mock.method(entry, 'validateResult', (result: unknown) => {
+      validate(result);
+      token = (result as { token: string }).token;
+      queueMicrotask(() => controller.abort());
+    });
+    try {
+      const reply = await keyedPrepare({ signal: controller.signal });
+      assert.equal(reply.errorCode, 'CANCELLED');
+    } finally {
+      spy.mock.restore();
+    }
+    assert.ok(token);
+    assert.match((await invoke('authoring.discard', { token })).text, /Unknown reviewed candidate/);
+    const delivered = answer<{ token: string }>(await keyedPrepare({}));
+    assert.notEqual(delivered.token, token);
+    answer(await invoke('authoring.discard', { token: delivered.token }));
+  });
+
+  it('#11029: an undelivered keyed read with no candidate is recomputed after an edit', async () => {
+    const controller = new AbortController();
+    const entry = viewerOperation('authoring.nativeEvidence');
+    const validate = entry.validateResult.bind(entry);
+    const spy = mock.method(entry, 'validateResult', (result: unknown) => {
+      validate(result);
+      queueMicrotask(() => controller.abort());
+    });
+    const model = useViewerStore.getState().models.get(SAMPLE_MODEL)!;
+    const expressId = model.ifcDataStore!.entities.getExpressIdByGlobalId(BACK_WALL);
+    const read = (signal?: AbortSignal) => dispatchMainViewerTool(host, 'viewer_operation_inspect', {
+      model_id: SAMPLE_MODEL, operation_id: entry.id, input: { express_ids: [expressId] }, idempotency_key: 'evidence',
+    }, { signal });
+    try {
+      assert.equal((await read(controller.signal)).errorCode, 'CANCELLED');
+    } finally {
+      spy.mock.restore();
+    }
+    useViewerStore.getState().setAttribute(SAMPLE_MODEL, expressId, 'Name', 'Current evidence');
+    const retry = await read();
+    answer(retry);
+    assert.equal((retry.structured as { revision: number }).revision, useViewerStore.getState().mutationVersion);
+    assert.match(retry.text, /Current evidence/);
+  });
+
+  it('#11029: an abandoned keyed read cancels its native signal and releases the key', async () => {
+    const controller = new AbortController();
+    const entered = deferred<AbortSignal>();
+    const resume = deferred();
+    const entry = viewerOperation('authoring.nativeEvidence');
+    const execute = entry.execute.bind(entry);
+    const spy = mock.method(entry, 'execute', async (...args: Parameters<typeof execute>) => {
+      if (!entered.settled()) {
+        assert.ok(args[1].signal);
+        entered.resolve(args[1].signal);
+        await resume.promise;
+        args[1].signal.throwIfAborted();
+      }
+      return execute(...args);
+    });
+    const model = useViewerStore.getState().models.get(SAMPLE_MODEL)!;
+    const expressId = model.ifcDataStore!.entities.getExpressIdByGlobalId(BACK_WALL);
+    const read = (signal?: AbortSignal) => dispatchMainViewerTool(host, 'viewer_operation_inspect', {
+      model_id: SAMPLE_MODEL, operation_id: entry.id, input: { express_ids: [expressId] }, idempotency_key: 'evidence',
+    }, { signal });
+    try {
+      const first = read(controller.signal);
+      const nativeSignal = await Promise.race([
+        entered.promise,
+        first.then(result => { throw new Error(`Read completed before reaching the cancellation gate: ${result.text}`); }),
+      ]);
+      controller.abort();
+      assert.equal((await first).errorCode, 'CANCELLED');
+      assert.equal(nativeSignal.aborted, true);
+      const replacement = read();
+      resume.resolve();
+      assert.equal(answer<{ elements: unknown[] }>(await replacement).elements.length, 1);
+      assert.equal(spy.mock.callCount(), 2);
+    } finally {
+      resume.resolve();
+      spy.mock.restore();
+    }
+  });
+
+  it('#11093: a keyed retry waits for a signal-less abandoned prepare to release its candidate', async () => {
+    const entered = deferred<{ token: string; signal?: AbortSignal }>();
+    const resume = deferred();
+    const entry = viewerOperation('properties.prepare');
+    const execute = entry.execute.bind(entry);
+    let released = false;
+    const spy = mock.method(entry, 'execute', async (input: unknown, context: Parameters<typeof execute>[1]) => {
+      if (entered.settled()) {
+        assert.equal(released, true, 'replacement native work must wait for the original undo');
+        return execute(input, context);
+      }
+      const result = await execute(input, {
+        ...context,
+        retain: (undo, deliver) => context.retain(() => { undo(); released = true; }, deliver),
+      });
+      entered.resolve({ token: (result as { token: string }).token, signal: context.signal });
+      await resume.promise;
+      return result;
+    });
+    const args = { model_id: SAMPLE_MODEL, operation_id: entry.id,
+      input: { proposal_json: rename('Keyed candidate') }, idempotency_key: 'prepare' };
+    const model = usableModel(resolveModel(host, args), 'store', entry.id);
+    let claim: import('../delivery').DeliveryClaim | undefined;
+    let replacementClaim: import('../delivery').DeliveryClaim | undefined;
+    try {
+      const first = executeOperation(host, model, args, { claimDelivery: next => { claim = next; } }, true);
+      const { token, signal } = await Promise.race([
+        entered.promise,
+        first.then(() => { throw new Error('First prepare completed before the test could drop its claim.'); }),
+      ]);
+      assert.ok(claim);
+      claim.drop();
+      // executeOperation reaches the keyed lookup synchronously while the first handler is still paused.
+      const retry = executeOperation(host, model, args, { claimDelivery: next => {
+        assert.equal(released, true, 'retry must wait for cleanup before taking a new claim');
+        replacementClaim = next;
+      } }, true);
+      resume.resolve();
+      const [abandoned, replacement] = await Promise.allSettled([first, retry]);
+      if (replacement.status === 'rejected') throw replacement.reason;
+      assert.ok(replacementClaim);
+      replacementClaim.deliver();
+      assert.equal(spy.mock.callCount(), 2);
+      const fresh = (replacement.value as { result: { token: string } }).result;
+      assert.notEqual(fresh.token, token, 'retry must run after the abandoned execution settles');
+      assert.equal(abandoned.status, 'rejected');
+      assert.equal(signal?.aborted, true);
+      assert.match((await invoke('authoring.discard', { token })).text, /Unknown reviewed candidate/);
+      answer(await invoke('authoring.discard', { token: fresh.token }));
+    } finally {
+      resume.resolve();
+      spy.mock.restore();
+    }
+  });
+
+  it('#11029: a keyed result rejected by the executor can prepare again', async () => {
+    const entry = viewerOperation('properties.prepare');
+    const validate = entry.validateResult.bind(entry);
+    let rejected: string | undefined;
+    const spy = mock.method(entry, 'validateResult', (result: unknown) => {
+      const { token, ...invalid } = result as { token: string };
+      rejected = token;
+      validate(invalid);
+    });
+    try {
+      assert.equal((await keyedPrepare({})).isError, true);
+    } finally {
+      spy.mock.restore();
+    }
+    assert.ok(rejected);
+    assert.match((await invoke('authoring.discard', { token: rejected })).text, /Unknown reviewed candidate/);
+    const { token } = answer<{ token: string }>(await keyedPrepare({}));
+    assert.notEqual(token, rejected);
+    answer(await invoke('authoring.discard', { token }));
+  });
+
+  it('#11029: independent keyed claims share one token and a late drop keeps a delivered candidate', async () => {
+    const controller = new AbortController();
+    let delivery: import('../delivery').DeliveryClaim | undefined;
+    const [first, second] = await Promise.all([
+      keyedPrepare({ signal: controller.signal, onDelivery: claim => { delivery = claim; } }),
+      keyedPrepare({}),
+    ]);
+    const { token } = answer<{ token: string }>(first);
+    assert.equal(answer<{ token: string }>(second).token, token);
+    assert.ok(delivery);
+    controller.abort();
+    delivery.drop();
+    assert.equal(answer<{ token: string }>(await keyedPrepare({})).token, token);
+    answer(await invoke('authoring.discard', { token }));
+  });
+
+  it('#11029: concurrent keyed prepare survives cancellation of its initiating caller', async () => {
+    const controller = new AbortController();
+    const entry = viewerOperation('properties.prepare');
+    const validate = entry.validateResult.bind(entry);
+    const spy = mock.method(entry, 'validateResult', (result: unknown) => {
+      validate(result);
+      controller.abort();
+    });
+    try {
+      const [cancelled, surviving] = await Promise.all([
+        keyedPrepare({ signal: controller.signal }),
+        keyedPrepare({}),
+      ]);
+      assert.equal(cancelled.errorCode, 'CANCELLED');
+      const { token } = answer<{ token: string }>(surviving);
+      assert.equal(spy.mock.callCount(), 1);
+      answer(await invoke('authoring.discard', { token }));
+    } finally {
+      spy.mock.restore();
+    }
+  });
+
   it('#10918: a refused properties prepare keeps no candidate', async () => {
     const token = await refusedAfterToken('authoring-native', 'properties.prepare', { proposal_json: rename('Refused') });
     assert.match((await invoke('authoring.discard', { token })).text, /Unknown reviewed candidate/);
@@ -476,6 +685,74 @@ describe('multi-batch IDS corrections (#10792)', () => {
     const fix = await invoke('validation.fix.prepare', { express_ids, pset: 'Pset_Review', name: 'Checked', facet_data_type: '', raw_value: 'yes', title: 'Mark reviewed' });
     assert.match(fix.text, /At most 64/);
     answer(await invoke('authoring.apply', { token: applied }, true)); // still held: its replay answers
+  });
+
+  const prepareCorrection = async (raw_value = 'yes') => {
+    const express_ids = Array.from({ length: WALLS }, (_, i) => i + 1);
+    const { candidates } = answer<{ candidates: Array<{ token: string }> }>(await invoke('validation.fix.prepare',
+      { express_ids, pset: 'Pset_Review', name: 'Checked', facet_data_type: '', raw_value, title: 'Mark reviewed' }));
+    assert.equal(candidates.length, 2);
+    return candidates.map(row => row.token);
+  };
+  const applyBatch = async (token: string) => JSON.parse(answer<{ receipt_json: string }>(await invoke('authoring.apply', { token }, true)).receipt_json) as ModelChangeReceipt;
+
+  const checkedWalls = () => {
+    const view = useViewerStore.getState().mutationViews.get('walls')!;
+    return Array.from({ length: WALLS }, (_, index) => view.getPropertyValue(index + 1, 'Pset_Review', 'Checked'));
+  };
+
+  it('#10894: a correction over 500 changes applies batch by batch without re-preparing, in either order', async () => {
+    for (const [order, value] of [[[0, 1], 'yes'], [[1, 0], 'no']] as const) {
+      const tokens = await prepareCorrection(value);
+      let applied = 0;
+      for (const index of order) applied += (await applyBatch(tokens[index])).applied.length;
+      assert.equal(applied, WALLS, `every change applied, order ${order.join(',')}`);
+      assert.deepEqual(checkedWalls(), Array.from({ length: WALLS }, () => value), `effective wall values, order ${order.join(',')}`);
+    }
+  });
+
+  it('#10894: undoing an applied batch refuses the rest of its correction', async () => {
+    const [first, second] = await prepareCorrection();
+    const receipt = await applyBatch(first);
+    const { undoModelChanges } = await import('@/lib/actions/model-change-commit');
+    assert.deepEqual(undoModelChanges(useViewerStore, receipt), { ok: true });
+    assert.match((await invoke('authoring.apply', { token: second }, true)).text, /Model changed since preview/);
+  });
+
+  it('#10894: an element listed twice is withheld, never split across batches', async () => {
+    const express_ids = [...Array.from({ length: WALLS }, (_, i) => i + 1), 1];
+    const { converted, candidates } = answer<{ converted: { issues: Array<{ kind: string; element?: string }> }; candidates: Array<{ token: string }> }>(await invoke('validation.fix.prepare',
+      { express_ids, pset: 'Pset_Review', name: 'Checked', facet_data_type: '', raw_value: 'yes', title: 'Mark reviewed' }));
+    assert.deepEqual(converted.issues.filter(issue => issue.kind === 'ambiguous-key').map(issue => issue.element), [guid(1)], 'wall 1 is withheld, not split');
+    assert.equal(candidates.length, 1, 'the other 500 fit one batch');
+    const receipt = await applyBatch(candidates[0].token);
+    assert.equal(receipt.applied.length, WALLS - 1);
+    assert.equal(receipt.applied.some(row => row.globalId === guid(1)), false);
+  });
+
+  it('#10894: two sibling batches applied at once: one applies, the other is refused, then applies on retry', async () => {
+    const [first, second] = await prepareCorrection();
+    const before = checkedWalls();
+    // Both calls bind the revision when they start, and apply awaits its imports before committing, so the second to
+    // commit meets a revision the first moved.
+    const results = await Promise.all([invoke('authoring.apply', { token: first }, true), invoke('authoring.apply', { token: second }, true)]);
+    assert.equal(results.filter(result => result.isError).length, 1);
+    const winner = results.find(result => !result.isError)!, loser = results.find(result => result.isError)!;
+    assert.match(loser.text, /Model replaced, closed, or edited during the operation/);
+    const receipt = JSON.parse(answer<{ receipt_json: string }>(winner).receipt_json) as ModelChangeReceipt;
+    const winningWalls = new Set(receipt.applied.map(row => row.globalId));
+    assert.deepEqual(checkedWalls(), Array.from({ length: WALLS }, (_, index) =>
+      winningWalls.has(guid(index + 1)) ? 'yes' : before[index]), 'only the winning batch changed the model before retry');
+    const retried = (await applyBatch(results[0].isError ? first : second)).applied.length;
+    assert.equal(receipt.applied.length + retried, WALLS);
+    assert.deepEqual(checkedWalls(), Array.from({ length: WALLS }, () => 'yes'), 'the retry applied the remaining walls');
+  });
+
+  it('#10894: an edit outside the correction between its batches still refuses the rest', async () => {
+    const [first, second] = await prepareCorrection();
+    await applyBatch(first);
+    useViewerStore.getState().setAttribute(modelId, 1, 'Description', 'Unrelated edit');
+    assert.match((await invoke('authoring.apply', { token: second }, true)).text, /Model changed since preview/);
   });
 
   it('#68: a correction that cannot fit is refused whole and stages none of its batches', async () => {
@@ -656,6 +933,38 @@ describe('saved clash report deletion (#10792)', () => {
     answer(await invoke('clash.reports.save', { name: 'Coordination', run_seq: useViewerStore.getState().clashRunSeq }, true));
     return useViewerStore.getState().savedClashReports[0].id;
   }
+
+  it('#11213: a document committed before the tombstone prevents report deletion', async (t) => {
+    const { readContentRows } = await import('@/lib/storage/content-database');
+    const { DOCUMENT_VERSION } = await import('@/lib/document/types');
+    const id = await savedReport();
+    const { token } = answer<{ token: string }>(await invoke('clash.reports.delete.prepare', { id }));
+    const transaction = IDBDatabase.prototype.transaction;
+    let inserted = false;
+    t.mock.method(IDBDatabase.prototype, 'transaction', function (this: IDBDatabase,
+      stores: string | string[], mode?: IDBTransactionMode, options?: IDBTransactionOptions) {
+      if (!inserted && stores === 'items' && mode === 'readwrite') {
+        inserted = true;
+        const docId = 'new-cross-tab-reference';
+        transaction.call(this, 'items', 'readwrite').objectStore('items').put({
+          kind: 'document', id: docId, version: 1, revision: 1, createdAt: 1, modifiedAt: 1, deleted: false,
+          payload: { id: docId, version: DOCUMENT_VERSION, name: 'Concurrent Document',
+            page: { size: 'A4', orientation: 'portrait' }, blocks: [{ id: 'gate', kind: 'quality-gate', clashReportId: id }] },
+        });
+      }
+      return transaction.call(this, stores, mode, options);
+    });
+    const refused = await invoke('clash.reports.delete.apply', { token }, true);
+    assert.equal(inserted, true);
+    assert.equal(refused.isError, true, refused.text);
+    assert.equal((await readContentRows('clashReports')).find(row => row.id === id)?.deleted, false);
+    assert.ok(useViewerStore.getState().savedClashReports.some(row => row.id === id));
+
+    const reviewed = answer<{ token: string; preview: { total: number } }>(await invoke('clash.reports.delete.prepare', { id }));
+    assert.equal(reviewed.preview.total, 1, 'the new Document is now part of the review');
+    answer(await invoke('clash.reports.delete.apply', { token: reviewed.token }, true));
+    assert.equal((await readContentRows('clashReports')).find(row => row.id === id)?.deleted, true);
+  });
 
   it('#10918: a refused clash report deletion prepare keeps no candidate', async () => {
     const id = await savedReport();

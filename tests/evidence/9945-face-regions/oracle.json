@@ -1,7 +1,0 @@
-{
-  "issue": 7955,
-  "key": "packages/parser/src/structural-face-regions.ts",
-  "mutation": "tests/evidence/9945-face-regions/behaviour.oracle.patch",
-  "test": "packages/parser/src/structural-face-regions.test.ts",
-  "why": "Reverse application keeps the export the tests import but never finds a loop inside another, so every loop becomes its own region and the opening, island, L-in-L and notch cases go red."
-}

@@ -7,7 +7,7 @@ import type { StudioDocument, StudioOp } from '@ifc-lite/ids-authoring';
 import { useViewerStore } from '@/store';
 import { viewerOperation as nativeOperation, operation as modelOperation, emptySchema, type ViewerOperationContext } from './contract';
 import { assertToolActive } from '../cancellation';
-import { decodedInput, disabled, invalidInput, stale, unavailable, parseJsonInput } from './refusals';
+import { decodedInput, disabled, internal, invalidInput, parseJsonInput, stale, unavailable } from './refusals';
 import { admitCandidate, retainCandidate, candidateStillApplies } from './host-handles';
 
 const jsonOutput = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
@@ -36,8 +36,13 @@ async function dependencies(c: ViewerOperationContext) {
 }
 /** Callers re-check revision and grants after this await. */
 async function saveOpenDraft() {
-  const { saveOpenIdsDraft } = await import('@/lib/ids-studio/draft-viewer');
-  await saveOpenIdsDraft();
+  const { IdsDraftUnsavedError, saveOpenIdsDraft } = await import('@/lib/ids-studio/draft-viewer');
+  try {
+    await saveOpenIdsDraft();
+  } catch (error) {
+    if (error instanceof IdsDraftUnsavedError) throw internal(error.message, { save: error.reason });
+    throw error;
+  }
 }
 function read() {
   const state = useViewerStore.getState();
@@ -93,7 +98,8 @@ export const idsOperations = [
     const { validateOp } = await import('@ifc-lite/ids-authoring');
     const { dispatchStudioOps } = await import('@/lib/ids-studio/session');
     const raw: unknown = parseJsonInput(i.ops_json, 'ops_json');
-    if (!Array.isArray(raw) || raw.length > 500) throw invalidInput('limit', 'ops_json must contain at most 500 canonical StudioOps.');
+    if (!Array.isArray(raw)) throw invalidInput('invalid-value', 'ops_json must contain an array of canonical StudioOps.');
+    if (raw.length > 500) throw invalidInput('limit', 'ops_json must contain at most 500 canonical StudioOps.');
     const ops = raw.map(value => { const parsed = validateOp(value); if (!parsed.ok) throw invalidInput('invalid-value', JSON.stringify(parsed.errors)); return parsed.op; });
     revision(i.document_revision);
     const result = dispatchStudioOps(current(), ops, contexts.gate, { label: 'Agent IDS candidate' });

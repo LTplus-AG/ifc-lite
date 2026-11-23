@@ -13,24 +13,16 @@ import { resolveSpatialAnchor } from './resolve-anchor.js';
 import { toNativeLength, type SpatialAnchor } from './anchor.js';
 import { computeSlabSplitGeometry } from './edit/slab-edit.js';
 import { keepsFirstPiece } from './edit/split-guid.js';
-import { pointInPolygon, type Point2D } from './edit/polygon-clip.js';
+import type { Point2D } from './edit/polygon-clip.js';
+import { pointInPolygon, polygonArea } from './polygon-2d.js';
 import { cloneElementMetadata } from './edit/metadata-clone.js';
 import { planSlabOpeningCarry } from './edit/slab-opening-carry.js';
 import type { SlabSplitChain } from './edit/split-target.js';
 import type { ElementSplitResult, SplitEnvironment } from './element-split.js';
 import type { OrdinaryInStoreElement } from './ordinary-element.js';
-function polygonArea(points: readonly Point2D[]): number {
-  let a = 0;
-  points.forEach(([x1, y1], i) => {
-    const [x2, y2] = points[(i + 1) % points.length];
-    a += x1 * y2 - x2 * y1;
-  });
-  return Math.abs(a / 2);
-}
-
 /** Whether `polygon` holds `p` — on a vertex / edge counts, as a clipped half keeps the source's corners. */
 function holds(polygon: Point2D[], p: Point2D): boolean {
-  return polygon.some(([x, y]) => Math.abs(x - p[0]) < 1e-9 && Math.abs(y - p[1]) < 1e-9) || pointInPolygon(polygon, p);
+  return polygon.some(([x, y]) => Math.abs(x - p[0]) < 1e-9 && Math.abs(y - p[1]) < 1e-9) || pointInPolygon(p[0], p[1], polygon);
 }
 
 /**

@@ -18,19 +18,16 @@
  * exception with no indication of what ELSE in the file has the same
  * problem, since the export aborts on the FIRST record it cannot represent.
  *
- * `IfcDataStore.entityIndex.byType` already gives every distinct type
- * present with its express ids, and `classifyEntityTypeConversion`'s
- * decision depends only on the TYPE (the generated attribute tables are
- * positional-name lists, not per-instance data) — so a complete, honest loss
- * report is one pass over the distinct types, not the whole file (#4206: the
- * "the loss report ... names each attribute it could not carry" bar).
+ * Classify each distinct source type once using the attribute tables, then
+ * look up the kept IDs for the types with potential losses (#4206).
  */
 
-import { isStructuralBoundaryCondition, isStructuralAssignmentConversion } from './schema-converter-structural.js';
+import { isStructuralStiffnessConversion, isStructuralAssignmentConversion } from './schema-converter-structural.js';
 import { NO_ROUND_TRIP, structuralRoundTrip } from './schema-converter-structural-diagnostics.js';
-import { SourceRecords } from './schema-converter-structural-source.js';
 import { varyingTarget } from './schema-converter-structural-varying.js';
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { DocumentLinks } from './schema-converter-document-links.js';
+import { SourceRecords } from './schema-converter-structural-source.js';
+import { EMPTY_SOURCE_BYTES, type IfcDataStore } from '@ifc-lite/parser';
 import {
   convertEntityType,
   attrNameTable,
@@ -98,10 +95,10 @@ export function classifyEntityTypeConversion(
   const srcAttrs = attrNameTable(fromSchema)?.get(upper);
   // #9668: stiffness fields survive by semantic position and unit, despite
   // renamed Linear/Translational attributes and SELECT wrappers.
-  if (isStructuralBoundaryCondition(upper) && ((fromSchema === 'IFC2X3' && toSchema === 'IFC4') || (fromSchema === 'IFC4' && toSchema === 'IFC2X3')))
-    // IFC2X3 cannot retain the IFC4 SELECT member: boolean false and a zero
+  if (isStructuralStiffnessConversion(upper, fromSchema, toSchema))
+    // IFC2X3 cannot retain the stiffness SELECT member: boolean false and a zero
     // measure both become 0, preserving stiffness but losing that distinction.
-    return { targetType: upper, kind: fromSchema === 'IFC4' ? 'lossy' : 'renamed', droppedAttributes: [] };
+    return { targetType: upper, kind: toSchema === 'IFC2X3' ? 'lossy' : 'renamed', droppedAttributes: [] };
   // #9668: the two linked objects survive in IFC4's analytical assignment,
   // under differently named roles, but their original relationship kind is lost.
   if (isStructuralAssignmentConversion(upper, fromSchema, toSchema))
@@ -280,34 +277,58 @@ function entryAfterRestoration(
  * (#9668). Those carriers describe the default, unedited full export.
  */
 export function analyzeConversionLoss(
-  store: Pick<IfcDataStore, 'entityIndex'> & Partial<Pick<IfcDataStore, 'source'>>,
+  store: Pick<IfcDataStore, 'entityIndex'> & Partial<Pick<IfcDataStore, 'source' | 'deferredEntityIndex'>>,
   fromSchema: IfcSchemaVersion,
   toSchema: IfcSchemaVersion,
 ): ConversionLossReport {
   const entries: ConversionLossEntry[] = [];
   if (fromSchema !== toSchema) {
+    const { entityIndex, deferredEntityIndex, source } = store;
+    const index = new SourceRecords({ entityIndex, deferredEntityIndex, source: source ?? EMPTY_SOURCE_BYTES });
+    let inventory = index.hasIndexedRecords() ? index : undefined;
     const typed: [string, readonly number[], EntityConversionInfo][] = [];
     // An IFC2X3 varying action classifies as identity, but the upgrade can report its CausedBy (`strandedAs`).
     const varying: [string, readonly number[]][] = [];
-    // @raw-entity-enumeration-ok this report accepts only a source entityIndex and describes the parsed file's schema-conversion losses
-    for (const [sourceType, expressIds] of store.entityIndex.byType) {
-      if (expressIds.length === 0) continue;
+    // @raw-entity-enumeration-ok this report describes the parsed file's schema-conversion losses
+    for (const [sourceType, ids] of entityIndex.byType) {
+      if (ids.length === 0) continue;
       const info = classifyEntityTypeConversion(sourceType, fromSchema, toSchema);
-      if (info.kind !== 'identity' && info.kind !== 'renamed') typed.push([sourceType.toUpperCase(), expressIds, info]);
-      else if (fromSchema === 'IFC2X3' && varyingTarget(sourceType.toUpperCase())) varying.push([sourceType.toUpperCase(), expressIds]);
+      const isLoss = info.kind !== 'identity' && info.kind !== 'renamed';
+      if (!isLoss && !(fromSchema === 'IFC2X3' && varyingTarget(sourceType.toUpperCase()))) continue;
+      let expressIds: readonly number[] = ids;
+      try {
+        expressIds = inventory?.ids(sourceType) ?? ids;
+      } catch (error) {
+        console.warn('[analyzeConversionLoss] Could not resolve kept source records', error);
+        inventory = undefined;
+      }
+      if (expressIds.length === 0) continue;
+      if (isLoss) typed.push([sourceType.toUpperCase(), expressIds, info]);
+      else varying.push([sourceType.toUpperCase(), expressIds]);
     }
     // #9668: what an IFC2X3 <-> IFC4 structural carrier writes back on the round trip is not lost.
     // Only IfcStructural* records carry anything, and reading them needs the source bytes.
-    const carrying = (type: string, info: EntityConversionInfo) => type.startsWith('IFCSTRUCTURAL') && info.droppedAttributes.length > 0;
-    const { source } = store;
-    const { restored, stranded } = source
-      ? structuralRoundTrip({ entityIndex: store.entityIndex, source }, fromSchema, toSchema,
+    // #10846: nor is a document link the export moves to the other record.
+    const carrying = (type: string, info: EntityConversionInfo) => /^IFC(STRUCTURAL|DOCUMENT(INFORMATION|REFERENCE)$)/.test(type) && info.droppedAttributes.length > 0;
+    const records = source ? inventory : undefined;
+    const round = records && source
+      ? structuralRoundTrip({ entityIndex, deferredEntityIndex, source }, fromSchema, toSchema,
         [...typed.flatMap(([type, ids, info]) => (carrying(type, info) ? ids : [])), ...varying.flatMap(([, ids]) => ids)])
       : NO_ROUND_TRIP;
-    const records = source ? new SourceRecords({ entityIndex: store.entityIndex, source }) : undefined;
+    const links = new DocumentLinks();
+    try {
+      if (records) links.fromSource(records, fromSchema, toSchema);
+    } catch (error) {
+      // As for the carriers: the schema-only preview stands if the prepass fails.
+      console.warn('[analyzeConversionLoss] Could not evaluate document links', error);
+    }
+    const { stranded } = round;
+    const restored = new Map([...round.restored, ...links.restored]);
     for (const [sourceType, expressIds, info] of typed) {
       const mapped = records && toSchema === 'IFC2X3' ? attrMapFor(sourceType, info.targetType, fromSchema, toSchema) : undefined;
-      const narrowedSet = mapped?.map.setOfOne?.[1];
+      // A SET declared for an upgrade can still be dropped entirely on downgrade.
+      const setAttribute = mapped?.map.setOfOne?.[1];
+      const narrowedSet = setAttribute && !mapped?.map.upOnly.includes(setAttribute) ? setAttribute : undefined;
       const slot = narrowedSet ? attrNameTable(fromSchema)?.get(sourceType)?.indexOf(narrowedSet) ?? -1 : -1;
       const isRetained = (id: number, attribute: string) => {
         if (restored.get(id)?.has(attribute)) return true;
@@ -319,6 +340,11 @@ export function analyzeConversionLoss(
         ? entryAfterRestoration(sourceType, expressIds, info, isRetained)
         : { ...info, sourceType, count: expressIds.length, expressIds };
       if (entry) entries.push(entry);
+    }
+    // #10846: the classifier sees no IfcDocumentReference loss on an upgrade, but linking one drops its Name for WR1.
+    if (links.unnamed.size > 0) {
+      const expressIds = [...links.unnamed].sort((a, b) => a - b);
+      entries.push({ targetType: 'IFCDOCUMENTREFERENCE', kind: 'lossy', droppedAttributes: ['Name'], sourceType: 'IFCDOCUMENTREFERENCE', count: expressIds.length, expressIds });
     }
     for (const [sourceType, ids] of varying) {
       const byTarget = new Map<string, number[]>();

@@ -19,7 +19,8 @@ export function placementCoordinateInfo(source: CoordinateInfo | undefined,
     for (const [id, model] of models) {
       if (!model.visible) continue;
       const handle = model.pointCloudHandleId === undefined ? undefined : { id: model.pointCloudHandleId };
-      const live = renderer?.getModelPlacementBounds(indices.get(id) ?? 0, handle);
+      const modelIndex = indices.get(id);
+      const live = modelIndex === undefined ? undefined : renderer?.getModelPlacementBounds(modelIndex, handle);
       const bounds = live ?? model.geometryResult?.coordinateInfo?.shiftedBounds;
       if (!bounds) continue;
       const delta = live ? [0, 0, 0] : toRenderTranslation(displayedTranslation(placement, id));

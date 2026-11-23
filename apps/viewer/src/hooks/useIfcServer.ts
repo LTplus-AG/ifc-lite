@@ -27,7 +27,8 @@ import {
   type ProcessingStats,
 } from '@ifc-lite/server-client';
 
-import { getProcessingServerUrl, hasRuntimeProcessingServer, type ProcessedModelSource } from '../lib/processed-model.js';
+import type { ProcessedModelSource } from '../lib/processed-model.js';
+import { getProcessingServerUrl, hasRuntimeProcessingServer } from '../lib/processing-server.js';
 import { isServerAvailable, isServerReachable } from './ingest/serverAvailability.js';
 import { ProcessedModelUnavailable } from './ingest/processedModel.js';
 import {

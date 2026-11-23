@@ -21,8 +21,7 @@
 import type { IfcSchemaVersion } from './schema-converter.js';
 import { list } from './schema-ifc2x3-records.js';
 import { stepRecordHead } from './step-record-frame.js';
-import { skipStepComment } from './step-comment-skip.js';
-import { stepStringLiteralEnd } from '@ifc-lite/encoding';
+import { holdsValue, withoutComments } from './step-comment-skip.js';
 
 /** One reviewed IFC2X3 <-> IFC4 map. A same-named attribute in both lists is
  *  carried unless listed in `retyped` or, on a downgrade, `upOnly`. */
@@ -81,11 +80,26 @@ function getAttrMapIndex(): AttrMapIndex {
     same('IFCCURRENCYRELATIONSHIP', { retyped: ['RateDateTime'] }),
     same('IFCDOCUMENTINFORMATIONRELATIONSHIP'),
     same('IFCLIBRARYINFORMATION', { retyped: ['VersionDate'], upOnly: ['Publisher'] }),
-    // IFC4 deleted this IFC2X3 subtype for its now-concrete supertype, so a
-    // downgrade writes the deleted subtype (`IFC4_TO_IFC2X3`). Downgrade only:
-    // nothing renames the IFC2X3 subtype on an upgrade. IfcMaterialProperties is
-    // left unmapped here: its Material referent must be resolved first (#10763 follow-up).
+    // IFC4 deleted these IFC2X3 subtypes for its now-concrete supertype. A
+    // downgrade writes IfcGeneralProfileProperties (`IFC4_TO_IFC2X3`); an
+    // IfcMaterialProperties downgrade waits on its Material referent (#10911). An
+    // upgrade writes every one as its IFC4 supertype (#10777).
+    // The typed subtypes keep only Material or ProfileDefinition; their measures are dropped.
+    map('IFCEXTENDEDMATERIALPROPERTIES', 'IFCMATERIALPROPERTIES', { renamed: [['ExtendedProperties', 'Properties']] }),
     map('IFCGENERALPROFILEPROPERTIES', 'IFCPROFILEPROPERTIES'),
+    map('IFCMECHANICALMATERIALPROPERTIES', 'IFCMATERIALPROPERTIES'),
+    map('IFCMECHANICALCONCRETEMATERIALPROPERTIES', 'IFCMATERIALPROPERTIES'),
+    map('IFCMECHANICALSTEELMATERIALPROPERTIES', 'IFCMATERIALPROPERTIES'),
+    map('IFCTHERMALMATERIALPROPERTIES', 'IFCMATERIALPROPERTIES'),
+    map('IFCHYGROSCOPICMATERIALPROPERTIES', 'IFCMATERIALPROPERTIES'),
+    map('IFCGENERALMATERIALPROPERTIES', 'IFCMATERIALPROPERTIES'),
+    map('IFCOPTICALMATERIALPROPERTIES', 'IFCMATERIALPROPERTIES'),
+    map('IFCWATERPROPERTIES', 'IFCMATERIALPROPERTIES'),
+    map('IFCFUELPROPERTIES', 'IFCMATERIALPROPERTIES'),
+    map('IFCPRODUCTSOFCOMBUSTIONPROPERTIES', 'IFCMATERIALPROPERTIES'),
+    map('IFCSTRUCTURALPROFILEPROPERTIES', 'IFCPROFILEPROPERTIES'),
+    map('IFCSTRUCTURALSTEELPROFILEPROPERTIES', 'IFCPROFILEPROPERTIES'),
+    map('IFCRIBPLATEPROFILEPROPERTIES', 'IFCPROFILEPROPERTIES'),
     same('IFCPERFORMANCEHISTORY'),
     same('IFCTASK', { renamed: [['TaskId', 'Identification']] }),
     // IFC4 deleted both subtypes for IfcTask: an upgrade writes them as IfcTask
@@ -93,6 +107,13 @@ function getAttrMapIndex(): AttrMapIndex {
     map('IFCMOVE', 'IFCTASK', { renamed: [['TaskId', 'Identification']] }),
     map('IFCORDERACTION', 'IFCTASK', { renamed: [['TaskId', 'Identification']] }),
     same('IFCPROPERTYDEPENDENCYRELATIONSHIP'),
+    // #10824: renamed both ways (IFC2X3_TO_IFC4, the MEP table); the IFC2X3
+    // label is carried through ObjectType (`schema-converter-userdefined-label.ts`).
+    map('IFCELECTRICDISTRIBUTIONPOINT', 'IFCELECTRICDISTRIBUTIONBOARD', { renamed: [['DistributionPointFunction', 'PredefinedType']] }),
+    // #10807: same arity as IFC2X3, so the source layout shifted unnoticed.
+    same('IFCPROCEDURE', { renamed: [['ProcedureID', 'Identification'], ['ProcedureType', 'PredefinedType']] }),
+    same('IFCOBJECTIVE', { retyped: ['CreationTime'], upOnly: ['BenchmarkValues'], setOfOne: ['BenchmarkValues', 'BenchmarkValues'] }),
+    same('IFCDOCUMENTINFORMATION', { renamed: [['DocumentId', 'Identification']], retyped: ['CreationTime', 'LastRevisionTime', 'ElectronicFormat', 'ValidFrom', 'ValidUntil'] }),
   ];
   attrMapIndex = {
     maps,
@@ -100,6 +121,13 @@ function getAttrMapIndex(): AttrMapIndex {
     byIfc4: new Map(maps.map((m) => [m.ifc4, m])),
   };
   return attrMapIndex;
+}
+
+/** The reviewed supertype of an IFC2X3 property subtype (#10777). */
+export function upgradeRename(type: string, fromSchema: IfcSchemaVersion, toSchema: IfcSchemaVersion): string | undefined {
+  if (fromSchema !== 'IFC2X3' || (toSchema !== 'IFC4' && toSchema !== 'IFC4X3')) return undefined;
+  const target = getAttrMapIndex().byIfc2x3.get(type)?.ifc4;
+  return target === type ? undefined : target;
 }
 
 export function getAttrMaps(): readonly AttrMap[] {
@@ -113,7 +141,7 @@ export function getAttrMaps(): readonly AttrMap[] {
  * lost and reported). Not IfcRelOverridesProperties, which as
  * IfcRelDefinesByProperties would attach the values it overrides, nor IFC5,
  * which has no table to reconcile the attributes in. Twin of Rust
- * `schema_attr_maps::deleted_subtype`.
+ * `schema_attr_maps::upgrade_type`.
  */
 export const DELETED_SUBTYPES: ReadonlyMap<string, string> = new Map([
   ['IFCMOVE', 'IFCTASK'], ['IFCORDERACTION', 'IFCTASK'],
@@ -144,9 +172,12 @@ export function attrMapFor(
     return found?.ifc4 === newType ? { map: found, up: true } : undefined;
   }
   if (toSchema === 'IFC2X3' && (fromSchema === 'IFC4' || fromSchema === 'IFC4X3')) {
+    // IFC4X3 also declares the renamed IfcDistributionBoard with the same carried slots (#11021).
+    const source = fromSchema === 'IFC4X3' && entityType === 'IFCDISTRIBUTIONBOARD'
+      ? 'IFCELECTRICDISTRIBUTIONBOARD' : entityType;
     // Different IFC2X3 types can share the same IFC4 type.
     const found = getAttrMapIndex().byIfc2x3.get(newType);
-    return found?.ifc4 === entityType ? { map: found, up: false } : undefined;
+    return found?.ifc4 === source ? { map: found, up: false } : undefined;
   }
   return undefined;
 }
@@ -155,19 +186,15 @@ type Source = { name: string; how: 'value' | 'wrap' | 'unwrap' };
 
 /** The source attribute (in the source list `src`) that fills target `name`. */
 function sourceOf(map: AttrMap, up: boolean, name: string, src: readonly string[]): Source | undefined {
+  // An up-only attribute fills no IFC2X3 slot, however it would be reached.
+  if (!up && map.upOnly.includes(name)) return undefined;
   // Pairs are [IFC2X3 name, IFC4 name]; the target's side is the second on an upgrade.
   const [target, source] = up ? [1, 0] : [0, 1];
   const renamed = map.renamed.find((pair) => pair[target] === name);
   if (renamed) return { name: renamed[source], how: 'value' };
   if (map.setOfOne?.[target] === name) return { name: map.setOfOne[source], how: up ? 'wrap' : 'unwrap' };
-  const carried = !map.retyped.includes(name) && (up || !map.upOnly.includes(name));
+  const carried = !map.retyped.includes(name);
   return carried && src.includes(name) ? { name, how: 'value' } : undefined;
-}
-
-/** A slot that carries information: not `$`, `*` or empty. */
-function holdsValue(slot: string): boolean {
-  const v = slot.trim();
-  return v !== '' && v !== '$' && v !== '*';
 }
 
 /** The first member of a STEP list, or the value itself when it is not one. */
@@ -175,24 +202,6 @@ function firstMember(value: string): string {
   const members = list(value);
   if (members === null) return value;
   return members.find(holdsValue)?.trim() ?? '$';
-}
-
-/** `value` with each `/* ... *\/` comment read as a space, trimmed. Literals and comments
- *  end by the shared rules; an unclosed one runs to the end. Twin of Rust
- *  `without_comments`. */
-function withoutComments(value: string): string {
-  let out = '';
-  let kept = 0;
-  for (let i = 0; i < value.length;) {
-    if (value[i] === "'") {
-      const end = stepStringLiteralEnd(value, i);
-      i = end === -1 ? value.length : end;
-    } else if (value.startsWith('/*', i)) {
-      out += `${value.slice(kept, i)} `; // a space keeps the tokens the comment parted apart
-      i = kept = skipStepComment(value, i);
-    } else i++;
-  }
-  return (out + value.slice(kept)).trim();
 }
 
 /** `values` (in the source layout `src`) written in the target layout `tgt`.

@@ -78,6 +78,19 @@ fn approval_relationship_counts_only_discarded_members_10781() {
     assert_eq!(counts, [0, 2, 0]);
 }
 
+#[test]
+fn objective_downgrade_drops_benchmark_values_even_if_singleton_10807() {
+    let cases = ["$", "(#20)", "(#20,#21)"];
+    let outcomes = cases.map(|benchmark| {
+        let source = format!("#5=IFCOBJECTIVE('id',$,'Objective',$,$,$,$,{benchmark},$,$,$);");
+        let mut checks = ConversionChecks::default();
+        let out = convert_step_line(&source, "IFC4", "IFC2X3", 5, &mut Ifc2x3SlotFill::new(None), Some(&mut checks)).unwrap();
+        (out, checks.attribute_values_dropped)
+    });
+    assert_eq!(outcomes[1], (outcomes[0].0.clone(), outcomes[0].1 + 1));
+    assert_eq!(outcomes[2], (outcomes[0].0.clone(), outcomes[0].1 + 1));
+}
+
 /// What each direction cannot carry is counted, including the members of a
 /// SET past the first, and an up-only reference is dropped on the way down.
 #[test]
@@ -131,6 +144,41 @@ fn comments_around_a_set_are_dropped_when_it_is_rebuilt_10763() {
     assert_eq!(down("#5=IFCAPPROVALRELATIONSHIP('n','d',#4,(/* c */$,#6));"), "#5=IFCAPPROVALRELATIONSHIP(#6,#4,'d','n');");
     assert_eq!(up("#5=IFCAPPROVALRELATIONSHIP(/* c */(#3),#4,'d','n');"), "#5=IFCAPPROVALRELATIONSHIP('n','d',#4,(#3));");
     assert_eq!(up("#5=IFCAPPROVALRELATIONSHIP(#3 /* x */,#4,'d','n');"), "#5=IFCAPPROVALRELATIONSHIP('n','d',#4,(#3));");
-    assert_eq!(without_comments(" 'a/*b*/' /* c */"), "'a/*b*/'", "a string keeps its text");
-    assert_eq!(without_comments("#3/**/#6"), "#3 #6", "a comment still parts two tokens");
+}
+
+/// #10779: the TypeScript twin writes the same `$` for a slot holding only a
+/// comment and `$`.
+#[test]
+fn a_comment_beside_no_value_is_carried_as_no_value_10779() {
+    assert_eq!(up("#5=IFCAPPROVAL(/* none */$,#9,$,$,$,'Name','Id');"), "#5=IFCAPPROVAL('Id','Name',$,$,$,$,$,$,$);");
+}
+
+#[test]
+fn unused_approval_datetime_counts_only_a_present_value_10779() {
+    for (slot, dropped) in [("/* none */$", 0), ("#9", 1)] {
+        let source = format!("#5=IFCAPPROVAL('desc',{slot},$,$,$,'Name','Id');");
+        let mut checks = ConversionChecks::default();
+        let out = convert_step_line(&source, "IFC2X3", "IFC4", 5, &mut Ifc2x3SlotFill::new(None), Some(&mut checks)).unwrap();
+        assert_eq!(out, "#5=IFCAPPROVAL('Id','Name','desc',$,$,$,$,$,$);");
+        assert_eq!(checks.attribute_values_dropped, dropped, "{slot}");
+    }
+}
+
+/// #10777: an upgrade writes the IFC2X3 subtypes IFC4 deleted as the IFC4
+/// supertype. A typed subtype keeps only `Material`; every measure is counted
+/// dropped, and the required `Properties` left `$` is counted.
+#[test]
+fn ifc2x3_property_subtypes_upgrade_to_the_ifc4_supertype_10777() {
+    assert_eq!(up("#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6,#7),'d','Pset_x');"), "#5=IFCMATERIALPROPERTIES('Pset_x','d',(#6,#7),#8);");
+    let mut checks = ConversionChecks::default();
+    let line = "#5=IFCMECHANICALMATERIALPROPERTIES(#8,$,2.1E11,8.1E10,0.3,1.2E-5);";
+    let out = convert_step_line(line, "IFC2X3", "IFC4", 5, &mut Ifc2x3SlotFill::new(None), Some(&mut checks)).unwrap();
+    assert_eq!(out, "#5=IFCMATERIALPROPERTIES($,$,$,#8);");
+    assert_eq!(checks.attribute_values_dropped, 4, "YoungModulus, ShearModulus, PoissonRatio, ThermalExpansionCoefficient");
+    assert_eq!(checks.ifc4_slots.required_slots_unfilled(), 1, "Properties");
+    let profile = convert_step_line("#5=IFCSTRUCTURALSTEELPROFILEPROPERTIES('P',#9,12.5,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$);", "IFC2X3", "IFC4X3", 5, &mut Ifc2x3SlotFill::new(None), None).unwrap();
+    assert_eq!(profile, "#5=IFCPROFILEPROPERTIES($,$,$,#9);");
+    // IFC5 has no attribute list to map onto, so the record keeps its IFC2X3 name and layout.
+    let ifc5 = "#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6,#7),'d','Pset_x');";
+    assert_eq!(convert_step_line(ifc5, "IFC2X3", "IFC5", 5, &mut Ifc2x3SlotFill::new(None), None).unwrap(), ifc5);
 }

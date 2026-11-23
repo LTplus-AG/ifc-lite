@@ -19,27 +19,12 @@
  * HUD needs. The shared workspace bar remains visible in every layout.
  */
 
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle, type PanelImperativeHandle } from 'react-resizable-panels';
 import { useTranslation } from '@/i18n';
-import { useViewerStore } from '@/store';
+import { LiveViewerScope, useViewerStore } from '@/store';
 import { PlanView } from '../plan/PlanView';
-import { MODEL_3D_MIN_PX, PLAN_MIN_PX, effectiveModelLayout, planPaneResize, planPaneWidth, publishSplitWidth, splitFits } from './model-layout';
-
-/** The split's own width (the viewport panel beside the rail), kept current. */
-function useWidth(ref: React.RefObject<HTMLElement | null>): number {
-  const [width, setWidth] = useState(0);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const measure = () => setWidth(Math.round(el.getBoundingClientRect().width));
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [ref]);
-  return width;
-}
+import { MODEL_3D_MIN_PX, PLAN_MIN_PX, effectiveModelLayout, planPaneResize, planPaneWidth, splitFits, useMeasuredSplitWidth } from './model-layout';
 
 export function ModelWorkspaceSplit({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
@@ -49,11 +34,10 @@ export function ModelWorkspaceSplit({ children }: { children: ReactNode }) {
   const inWorkspace = useViewerStore((s) => s.workspaceMode === 'model');
   const [headerHost, setHeaderHost] = useState<HTMLDivElement | null>(null);
   const hostRef = useRef<HTMLDivElement>(null);
-  const width = useWidth(hostRef);
+  const width = useMeasuredSplitWidth(hostRef);
   const layout = effectiveModelLayout(pick, width);
   const planRef = useRef<PanelImperativeHandle>(null);
   const showPlan = inWorkspace && layout !== '3d';
-  useEffect(() => { publishSplitWidth(width); }, [width]);
 
   // Measure after entry has added the rail and inspector. This runs once per
   // session: reopening the sidebar is an intentional choice, kept until Split is picked again.
@@ -99,7 +83,10 @@ export function ModelWorkspaceSplit({ children }: { children: ReactNode }) {
         {inWorkspace && (
           <Panel id="model-plan-panel" collapsible collapsedSize="0px" panelRef={planRef} defaultSize={showPlan ? `${planPaneWidth(layout as 'plan' | 'split', width)}px` : '0px'} minSize={`${PLAN_MIN_PX}px`}>
             <div data-model-plan-pane aria-hidden={!showPlan} inert={!showPlan} className="h-full w-full">
-              <PlanView layout={layout} headerHost={headerHost} hidden={!showPlan} />
+              {/* A modelling surface like the 3D view: while shown, it follows an edit in its own task (#10535). */}
+              <LiveViewerScope live={showPlan}>
+                <PlanView layout={layout} headerHost={headerHost} hidden={!showPlan} />
+              </LiveViewerScope>
             </div>
           </Panel>
         )}

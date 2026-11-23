@@ -11,22 +11,22 @@ import type {
   BridgeCallMessage,
   BridgeCancelMessage,
   BridgeErrorMessage,
+  BridgeResultAckMessage,
   BridgeServerMessage,
   BridgeWelcomeMessage,
   ParseResult,
 } from './protocol.js';
+import { isRecord } from './json-bounds.js';
 import { clip, quoted } from './sanitize.js';
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
 
 function isPermission(v: unknown): boolean {
   return v === 'read-only' || v === 'read-write';
 }
 
 /** Parse a frame from the bridge (for the tab). Lenient: checks `type` and the fields the tab acts on. */
-export function parseServerMessage(text: string): ParseResult<BridgeServerMessage> {
+export function parseServerMessage(text: string, options: { resultAck: true }): ParseResult<BridgeServerMessage | BridgeResultAckMessage>;
+export function parseServerMessage(text: string): ParseResult<BridgeServerMessage>;
+export function parseServerMessage(text: string, options?: { resultAck: true }): ParseResult<BridgeServerMessage | BridgeResultAckMessage> {
   let raw: unknown;
   try {
     raw = JSON.parse(text);
@@ -37,7 +37,14 @@ export function parseServerMessage(text: string): ParseResult<BridgeServerMessag
   switch (raw.type) {
     case 'welcome':
       if (typeof raw.sessionId !== 'string' || !isPermission(raw.permission)) return { ok: false, error: 'malformed welcome' };
-      return { ok: true, value: raw as unknown as BridgeWelcomeMessage };
+      // `features` is optional (older bridges omit it); anything but strings is dropped, never fatal.
+      return {
+        ok: true,
+        value: {
+          ...(raw as unknown as BridgeWelcomeMessage),
+          features: Array.isArray(raw.features) ? raw.features.filter((f): f is string => typeof f === 'string') : [],
+        },
+      };
     case 'call':
       if (typeof raw.sessionId !== 'string' || typeof raw.id !== 'string' || typeof raw.name !== 'string' || !isRecord(raw.arguments)) {
         return { ok: false, error: 'malformed call' };
@@ -46,6 +53,12 @@ export function parseServerMessage(text: string): ParseResult<BridgeServerMessag
     case 'cancel':
       if (typeof raw.sessionId !== 'string' || typeof raw.id !== 'string') return { ok: false, error: 'malformed cancel' };
       return { ok: true, value: raw as unknown as BridgeCancelMessage };
+    case 'result-ack':
+      if (!options?.resultAck) return { ok: false, error: `unknown message type ${quoted(raw.type, 32)}` };
+      if (typeof raw.sessionId !== 'string' || typeof raw.id !== 'string' || typeof raw.accepted !== 'boolean') {
+        return { ok: false, error: 'malformed result acknowledgement' };
+      }
+      return { ok: true, value: { type: 'result-ack', sessionId: raw.sessionId, id: raw.id, accepted: raw.accepted } };
     case 'error':
       if (typeof raw.code !== 'string' || typeof raw.message !== 'string') return { ok: false, error: 'malformed error' };
       return { ok: true, value: raw as unknown as BridgeErrorMessage };

@@ -169,6 +169,42 @@ describe('change set actions (#6232 D4)', () => {
     assert.equal(store().activeChangeSetId, id);
   });
 
+  it('imports the main export format for a created entity carrying only its IFC class (#10795)', () => {
+    const mutation = { id: 'created-wall', type: 'CREATE_ENTITY', timestamp: 10, modelId: 'ifc', entityId: 89, entityType: 'IfcWall' };
+    const json = JSON.stringify({
+      version: 1,
+      changeSet: { id: 'original', name: 'Created entity', createdAt: 10, mutations: [mutation], applied: false },
+      exportedAt: 11,
+    });
+    const imported = store().importChangeSet(json);
+    assert.ok(imported);
+    assert.deepEqual(store().changeSets.get(imported)?.mutations, [mutation]);
+  });
+
+  it('re-imports its own export of a NaN quantity and an empty property name (#10795 review)', () => {
+    const quantity = { id: 'nan-volume', type: 'UPDATE_QUANTITY', timestamp: 10, modelId: 'A', entityId: 4, psetName: 'Qto_SpaceBaseQuantities', propName: 'NetVolume', newValue: Number.NaN };
+    const unnamed = { id: 'empty-name', type: 'CREATE_PROPERTY', timestamp: 11, modelId: 'A', entityId: 4, psetName: 'Pset_Test', propName: '', newValue: 'x' };
+    const qset = { id: 'nan-qset', type: 'CREATE_QUANTITY', timestamp: 12, modelId: 'A', entityId: 4, psetName: 'Qto_Test', newValue: [{ name: 'Area', value: Number.POSITIVE_INFINITY }] };
+    const unnamedSet = { id: 'empty-set', type: 'CREATE_PROPERTY_SET', timestamp: 13, modelId: 'A', entityId: 4, psetName: '', newValue: [{ name: '', value: 'y' }] };
+    const rows = [quantity, unnamed, qset, unnamedSet];
+    useViewerStore.setState({ changeSets: new Map([['source', { id: 'source', name: 'Own export', createdAt: 9, mutations: rows as unknown as Mutation[], applied: false }]]) });
+    const imported = store().importChangeSet(store().exportChangeSet('source')!);
+    assert.ok(imported);
+    // The export is plain JSON, so non-finite numbers come back as null and every name survives.
+    assert.deepEqual(store().changeSets.get(imported)?.mutations, JSON.parse(JSON.stringify(rows)));
+  });
+
+  it('still refuses an empty IFC class or entity type on import (#10795 review)', () => {
+    const rows = [
+      { id: 'c', type: 'CREATE_ENTITY', timestamp: 1, modelId: 'A', entityId: 5, attributeName: '' },
+      { id: 't', type: 'UPDATE_ENTITY_TYPE', timestamp: 1, modelId: 'A', entityId: 5, entityType: '' },
+    ];
+    for (const row of rows) {
+      const json = JSON.stringify({ version: 1, changeSet: { id: 'x', name: 'x', createdAt: 1, mutations: [row], applied: false } });
+      assert.equal(store().importChangeSet(json), null, row.type);
+    }
+  });
+
   it('import returns null for text that is not a change set', () => {
     for (const text of ['not json', '{}', '{"changeSet":{"name":"x"}}', 'null']) {
       assert.equal(store().importChangeSet(text), null, text);

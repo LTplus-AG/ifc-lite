@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect, vi } from 'vitest';
-import { IfcParser } from '@ifc-lite/parser';
+import { EMPTY_SOURCE_BYTES, IfcParser } from '@ifc-lite/parser';
 import { classifyEntityTypeConversion, analyzeConversionLoss } from './schema-conversion-loss-report.js';
 import { exportToStep } from './step-exporter.js';
 
@@ -90,6 +90,13 @@ describe('analyzeConversionLoss', () => {
     return { entityIndex: { byType: new Map(Object.entries(byType)), byId: new Map() as never } };
   }
 
+  it('keeps blocking entries in a type-only preview with a source placeholder (#11007)', () => {
+    const store = { ...storeOf({ IFCTRIANGULATEDFACESET: [42] }), source: EMPTY_SOURCE_BYTES };
+    const report = analyzeConversionLoss(store, 'IFC4', 'IFC2X3');
+    expect(report.hasBlocking).toBe(true);
+    expect(report.entries).toMatchObject([{ sourceType: 'IFCTRIANGULATEDFACESET', kind: 'blocked', expressIds: [42] }]);
+  });
+
   it('is empty when the schemas match', () => {
     const report = analyzeConversionLoss(storeOf({ IFCWALL: [1, 2] }), 'IFC4', 'IFC4');
     expect(report.hasLoss).toBe(false);
@@ -163,6 +170,17 @@ describe('analyzeConversionLoss', () => {
       sourceType: 'IFCAPPROVALRELATIONSHIP', targetType: 'IFCAPPROVALRELATIONSHIP',
       kind: 'lossy', count: lostIds.length, expressIds: lostIds, droppedAttributes: ['RelatedApprovals'],
     }] : []);
+  });
+
+  it.each(['(#20)', '(#20,#21)'])('reports an up-only BenchmarkValues SET %s on downgrade (#10807)', async (set) => {
+    const text = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('objective.ifc','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n"
+      + `#5=IFCOBJECTIVE('id',$,'Objective',$,$,$,$,${set},$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n`;
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer);
+    const report = analyzeConversionLoss(store, 'IFC4', 'IFC2X3');
+    expect(report.entries.find(({ sourceType }) => sourceType === 'IFCOBJECTIVE')).toMatchObject({
+      expressIds: [5],
+      droppedAttributes: expect.arrayContaining(['BenchmarkValues']),
+    });
   });
 
   it('skips a type the store lists with zero instances', () => {

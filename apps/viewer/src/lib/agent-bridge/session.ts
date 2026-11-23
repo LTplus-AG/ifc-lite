@@ -23,7 +23,7 @@ import type { ToolHost } from '@/lib/agent-tools/types';
 import { BridgeClient, type BridgeClientOptions, type LocalNetworkPermission } from './client';
 import {
   AGENT_BRIDGE_ACTIVITY_LIMIT, getAgentBridgeState, registerAgentBridgeControls, updateAgentBridgeState,
-  type AgentBridgeActivity, type AgentBridgePermission, type AgentBridgeStatus,
+  foldActivity, type AgentBridgeActivity, type AgentBridgePermission, type AgentBridgeStatus,
 } from './state';
 import { isFramed } from './pairing-fragment';
 import { ENDED_KEYS } from './outcome-keys';
@@ -105,7 +105,7 @@ function flushActivity(): void {
   if (pendingRows.length === 0) return;
   const rows = pendingRows.reverse();
   pendingRows = [];
-  updateAgentBridgeState({ activity: [...rows, ...getAgentBridgeState().activity].slice(0, AGENT_BRIDGE_ACTIVITY_LIMIT) });
+  updateAgentBridgeState({ activity: foldActivity([...rows, ...getAgentBridgeState().activity]).slice(0, AGENT_BRIDGE_ACTIVITY_LIMIT) });
 }
 
 function resetActivity(): void {
@@ -137,7 +137,7 @@ export function connectAgentBridge({ port, code, bim, WebSocket }: ConnectAgentB
     pairingCode: code,
     tools: mainViewerBridgeTools(),
     // The grant is read from the client at dispatch and again at the write: a revoke refuses what is not yet written.
-    dispatch: (name, args, signal) => dispatchMainViewerTool(host, name, args, { signal, canEdit: () => client.canEditNow() }),
+    dispatch: (name, args, signal, onDelivery) => dispatchMainViewerTool(host, name, args, { signal, onDelivery, canEdit: () => client.canEditNow() }),
     modelIdFor: (args) => modelIdForCall(host, args),
     // The Vite define is absent under the Node test runner.
     clientInfo: { name: 'ifc-lite viewer', version: typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev' },

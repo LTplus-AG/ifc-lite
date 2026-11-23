@@ -10,7 +10,8 @@ import { CONTENT_POLICIES, isContentKind, type ContentKind } from './content-kin
 
 const CONTENT_DATABASE = 'ifc-lite-user-content';
 export type ContentFailure = 'quota' | 'unavailable' | 'conflict' | 'invalid';
-export type ContentResult = { ok: true; revision: number } | { ok: false; reason: ContentFailure };
+type RefusedContentWrite = { ok: false; reason: ContentFailure; documentsChanged?: true };
+export type ContentResult = { ok: true; revision: number } | RefusedContentWrite;
 export interface ContentRow {
   kind: ContentKind;
   id: string;
@@ -88,11 +89,22 @@ export async function readContentRows(kind: ContentKind): Promise<ContentRow[]> 
   return rows.sort((left, right) => left.createdAt - right.createdAt);
 }
 
+type DocumentRevisions = ReadonlyMap<string, number>;
+const documentRevisions = (rows: ContentRow[]) => new Map(rows.filter(row => !row.deleted).map(row => [row.id, row.revision]));
+
+export async function readDocumentRevisions(): Promise<DocumentRevisions> {
+  const tx = await contentTransaction('items', 'readonly');
+  const done = transactionDone(tx);
+  const rows = requestValue(tx.objectStore('items').index('kind').getAll(IDBKeyRange.only('document'))) as Promise<ContentRow[]>;
+  const [entries] = await Promise.all([rows, done]);
+  return documentRevisions(entries);
+}
+
 export interface ContentWrite { kind: ContentKind; id: string; payload: unknown; expected: number }
-export type ContentBatchResult = { ok: true; rows: ContentRow[] } | { ok: false; reason: ContentFailure };
+export type ContentBatchResult = { ok: true; rows: ContentRow[] } | RefusedContentWrite;
 
 /** All revisions and evidence policies are checked before any write in this transaction. */
-export async function writeContentBatch(input: readonly ContentWrite[]): Promise<ContentBatchResult> {
+export async function writeContentBatch(input: readonly ContentWrite[], reviewedDocuments?: DocumentRevisions): Promise<ContentBatchResult> {
   if (!input.length || input.length > 100) return { ok: false, reason: 'invalid' };
   const identities = new Set<string>();
   for (const item of input) {
@@ -108,11 +120,25 @@ export async function writeContentBatch(input: readonly ContentWrite[]): Promise
   try { writes = structuredClone([...input]); }
   catch (error) { console.warn('[User content] Non-portable content transaction refused', error); return { ok: false, reason: 'invalid' }; }
   let failed: ContentFailure | null = null;
+  let documentsChanged = false;
   try {
     const tx = await contentTransaction('items', 'readwrite');
     const done = transactionDone(tx), store = tx.objectStore('items');
     const rows: ContentRow[] = [];
-    let remaining = writes.length;
+    let remaining = writes.length + (reviewedDocuments ? 1 : 0);
+    const ready = () => {
+      if (--remaining === 0 && !failed) for (const row of rows) store.put(row);
+    };
+    if (reviewedDocuments) {
+      const request = store.index('kind').getAll(IDBKeyRange.only('document'));
+      request.onsuccess = () => {
+        const current = documentRevisions(request.result as ContentRow[]);
+        documentsChanged = reviewedDocuments.size !== current.size
+          || [...reviewedDocuments].some(([id, revision]) => current.get(id) !== revision);
+        if (documentsChanged) failed ??= 'conflict';
+        ready();
+      };
+    }
     writes.forEach((item, index) => {
       const request = store.get([item.kind, item.id]);
       request.onsuccess = () => {
@@ -131,7 +157,7 @@ export async function writeContentBatch(input: readonly ContentWrite[]): Promise
           rows[index] = { kind: item.kind, id: item.id, version: 1, revision: item.expected + 1,
             createdAt: current?.createdAt ?? contentCreatedAt(), modifiedAt: Date.now(), deleted: item.payload === null,
             payload: item.payload, ...(importedFrom ? { importedFrom } : {}) };
-          if (--remaining === 0 && !failed) for (const row of rows) store.put(row);
+          ready();
         } catch (error) {
           failed = contentFailure(error);
           tx.abort();
@@ -139,6 +165,7 @@ export async function writeContentBatch(input: readonly ContentWrite[]): Promise
       };
     });
     await done;
+    if (documentsChanged) return { ok: false, reason: 'conflict', documentsChanged: true };
     if (failed) return { ok: false, reason: failed };
     for (const kind of new Set(writes.map(item => item.kind))) announceContentChange(kind);
     return { ok: true, rows };
@@ -146,7 +173,7 @@ export async function writeContentBatch(input: readonly ContentWrite[]): Promise
 }
 
 /** Existing single-item callers share the batch transaction and tombstone policy. */
-export async function writeContent(kind: ContentKind, id: string, payload: unknown, expected: number): Promise<ContentResult> {
-  const result = await writeContentBatch([{ kind, id, payload, expected }]);
+export async function writeContent(kind: ContentKind, id: string, payload: unknown, expected: number, reviewedDocuments?: DocumentRevisions): Promise<ContentResult> {
+  const result = await writeContentBatch([{ kind, id, payload, expected }], reviewedDocuments);
   return result.ok ? { ok: true, revision: result.rows[0].revision } : result;
 }

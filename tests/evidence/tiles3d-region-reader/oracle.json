@@ -1,6 +1,0 @@
-{
-  "issue": 7955,
-  "key": "packages/tiles3d/src/matrix.ts",
-  "mutation": "tests/evidence/tiles3d-region-reader/behaviour.oracle.patch",
-  "why": "The PR adds a whole new package, so reverting its production files leaves the tests unable to import anything. Reverse application keeps every export the tests import but flips the sign of the glTF y-up to 3D Tiles z-up rotation, so decoded swisstopo buildings land below and beside their tile region and the transform-chain, DACH_MAX and synthetic y-up tests go red."
-}

@@ -37,6 +37,7 @@ export const georeferencingFr = {
   'properties.georef.noGeoreferencing': 'Aucun géoréférencement',
   'properties.georef.addGeoreferencing': 'Ajouter un géoréférencement',
   'properties.georef.reloadPrompt': 'Géoréférencement enregistré. Recharger les modèles chargés pour recalculer l’alignement 3D ?',
+  'properties.georef.reloadLoadPending': 'Attendez la fin du chargement du modèle, puis rechargez.',
   'properties.georef.reloadModels': 'Recharger les modèles',
   'properties.georef.reloadMissingSource': 'Impossible de recharger {name} : le fichier source n’est pas disponible',
   'properties.georef.reloadPartial': '{loaded} modèles rechargés sur {total}. Rechargement impossible : {failed}.',

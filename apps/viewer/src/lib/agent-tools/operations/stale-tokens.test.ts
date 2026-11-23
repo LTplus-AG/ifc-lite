@@ -934,6 +934,38 @@ describe('saved clash report deletion (#10792)', () => {
     return useViewerStore.getState().savedClashReports[0].id;
   }
 
+  it('#11213: a document committed before the tombstone prevents report deletion', async (t) => {
+    const { readContentRows } = await import('@/lib/storage/content-database');
+    const { DOCUMENT_VERSION } = await import('@/lib/document/types');
+    const id = await savedReport();
+    const { token } = answer<{ token: string }>(await invoke('clash.reports.delete.prepare', { id }));
+    const transaction = IDBDatabase.prototype.transaction;
+    let inserted = false;
+    t.mock.method(IDBDatabase.prototype, 'transaction', function (this: IDBDatabase,
+      stores: string | string[], mode?: IDBTransactionMode, options?: IDBTransactionOptions) {
+      if (!inserted && stores === 'items' && mode === 'readwrite') {
+        inserted = true;
+        const docId = 'new-cross-tab-reference';
+        transaction.call(this, 'items', 'readwrite').objectStore('items').put({
+          kind: 'document', id: docId, version: 1, revision: 1, createdAt: 1, modifiedAt: 1, deleted: false,
+          payload: { id: docId, version: DOCUMENT_VERSION, name: 'Concurrent Document',
+            page: { size: 'A4', orientation: 'portrait' }, blocks: [{ id: 'gate', kind: 'quality-gate', clashReportId: id }] },
+        });
+      }
+      return transaction.call(this, stores, mode, options);
+    });
+    const refused = await invoke('clash.reports.delete.apply', { token }, true);
+    assert.equal(inserted, true);
+    assert.equal(refused.isError, true, refused.text);
+    assert.equal((await readContentRows('clashReports')).find(row => row.id === id)?.deleted, false);
+    assert.ok(useViewerStore.getState().savedClashReports.some(row => row.id === id));
+
+    const reviewed = answer<{ token: string; preview: { total: number } }>(await invoke('clash.reports.delete.prepare', { id }));
+    assert.equal(reviewed.preview.total, 1, 'the new Document is now part of the review');
+    answer(await invoke('clash.reports.delete.apply', { token: reviewed.token }, true));
+    assert.equal((await readContentRows('clashReports')).find(row => row.id === id)?.deleted, true);
+  });
+
   it('#10918: a refused clash report deletion prepare keeps no candidate', async () => {
     const id = await savedReport();
     const token = await refusedAfterToken('clash-native-reports', 'clash.reports.delete.prepare', { id });

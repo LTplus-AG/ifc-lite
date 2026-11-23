@@ -6788,7 +6788,9 @@
     "parseCheckpoint: function",
     "recoverCheckpoint: function",
     "rejectCheckpoint: function",
+    "releaseCheckpoint: function",
     "resumeOutputs: function",
+    "startCheckpoint: function",
     "updateCheckpoint: function"
   ],
   "@ifc-lite/flow/checkpoint-file": [

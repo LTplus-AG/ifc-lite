@@ -18,6 +18,8 @@ export {
   parseCheckpoint,
   recoverCheckpoint,
   rejectCheckpoint,
+  releaseCheckpoint,
+  startCheckpoint,
   updateCheckpoint,
 } from './checkpoint-state.js';
 export type { CheckpointErrorCode, CheckpointStore, ClaimInput, StoredCheckpoint } from './checkpoint-state.js';

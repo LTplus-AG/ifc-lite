@@ -9609,7 +9609,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "georeference.realign",
     "version": 1,
     "owner": "properties",
-    "description": "Re-align by draining every retained source through the native federation addModel wrapper and canonical loader. Refuses missing sources before clearing; after admission it completes all reload attempts and reports partial failures.",
+    "description": "Re-align by draining every retained source through the native federation addModel wrapper and canonical loader. Refuses missing sources or a pending model load before clearing; it reports partial failures and stops if a new primary replaces the federation.",
     "needs": "viewer",
     "effects": [
       "configuration",
@@ -12933,7 +12933,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "flow.cancel",
     "version": 1,
     "owner": "flow",
-    "description": "Request cancellation of the active native workflow. Returns a cancellation request, never a fabricated terminal result.",
+    "description": "Request cancellation of the active native flow run. A Re-align holding the workflow lease is not cancelled; cancellation_requested is false then, so wait for it. Returns a cancellation request, never a fabricated terminal result.",
     "needs": "viewer",
     "effects": [
       "configuration"
@@ -19333,7 +19333,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "changeSets.import",
     "version": 1,
     "owner": "changeSets",
-    "description": "Import an exported native change-set record using its authoritative parser. This stages metadata and does not replay edits.",
+    "description": "Import a native change set from inline json or a host-owned JSON artifact_id (up to 16 MiB). This stages metadata and does not replay edits.",
     "needs": "viewer",
     "effects": [
       "configuration"
@@ -19344,13 +19344,40 @@ export const operationContracts: readonly OperationContract[] = [
       "properties": {
         "json": {
           "type": "string",
+          "nullable": true,
           "maxLength": 1000000
+        },
+        "artifact_id": {
+          "type": "string",
+          "nullable": true,
+          "minLength": 1,
+          "maxLength": 200
         }
       },
-      "required": [
-        "json"
-      ],
-      "additionalProperties": false
+      "required": [],
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "properties": {
+            "json": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "json"
+          ]
+        },
+        {
+          "properties": {
+            "artifact_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "artifact_id"
+          ]
+        }
+      ]
     },
     "outputSchema": {
       "type": "object",
@@ -20236,9 +20263,9 @@ export const operationContracts: readonly OperationContract[] = [
     "description": "Recompute native assignments using the live renderer’s canonical entity bounds; returns element_count (every element evaluated, assigned or not) and the timing (read the assignments with zones.read). Requires a mounted renderer; never fabricates an empty successful evaluation.",
     "needs": "viewer",
     "effects": [
-      "read"
+      "configuration"
     ],
-    "capability": "read",
+    "capability": "commands-and-edits",
     "inputSchema": {
       "type": "object",
       "properties": {},
@@ -20315,9 +20342,9 @@ export const operationContracts: readonly OperationContract[] = [
     "description": "Run native proved-solid volume apportionment for a current zone set. Returns apportioned_count, refused_count, refusals by reason (no-geometry, unproved-solid, ...) and timing; the per-element rows are stored and read through zones.read as apportioned and refused rows.",
     "needs": "viewer",
     "effects": [
-      "read"
+      "configuration"
     ],
-    "capability": "read",
+    "capability": "commands-and-edits",
     "inputSchema": {
       "type": "object",
       "properties": {

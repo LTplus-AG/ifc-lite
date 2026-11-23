@@ -9,6 +9,7 @@ import type { ChangeOperation } from '@/lib/changes/change-operations';
 import type { ToolHost } from '../types';
 import { invalidInput, stale, unavailable } from './refusals';
 import { evictOldest, retainCandidate } from './host-handles';
+import { readJsonArtifactText } from './artifacts';
 
 const outputSchema = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 const out = (value: unknown) => ({ native_json: JSON.stringify(value ?? null) });
@@ -78,9 +79,24 @@ export const changesOperations = [
   }, async (i, c) => { const { activateChangeSet } = await import('@/lib/change-sets/change-set-actions'); return out(c.commit(() => { if (i.id) requireSet(i.id); activateChangeSet(i.id || null); return { active: i.id || null }; })); }),
   viewerOperation<{ id: string }>(meta('changeSets.discard', 'changeSets', 'Discard a set record through the native panel handler. The edits remain in the model, matching the panel behavior.', 'configuration'), idInput,
     async (i, c) => { const { discardChangeSet } = await import('@/lib/change-sets/change-set-actions'); return out(c.commit(() => { requireSet(i.id); discardChangeSet(i.id); return { discarded: i.id }; })); }),
-  viewerOperation<{ json: string }>(meta('changeSets.import', 'changeSets', 'Import an exported native change-set record using its authoritative parser. This stages metadata and does not replay edits.', 'configuration'), {
-    type: 'object', properties: { json: { type: 'string', maxLength: 1000000 } }, required: ['json'], additionalProperties: false,
-  }, async (i, c) => { const { importChangeSet } = await import('@/lib/change-sets/change-set-actions'); return out(c.commit(() => { const id = importChangeSet(i.json); if (!id) throw invalidInput('invalid-value', 'Invalid native change-set file.'); return { id, applied: false }; })); }),
+  viewerOperation<{ json?: string | null; artifact_id?: string | null }>(meta('changeSets.import', 'changeSets', 'Import a native change set from inline json or a host-owned JSON artifact_id (up to 16 MiB). This stages metadata and does not replay edits.', 'configuration'), {
+    type: 'object', properties: { json: { type: 'string', nullable: true, maxLength: 1000000 },
+      artifact_id: { type: 'string', nullable: true, minLength: 1, maxLength: 200 } }, required: [], additionalProperties: false,
+    oneOf: [
+      { properties: { json: { type: 'string' } }, required: ['json'] },
+      { properties: { artifact_id: { type: 'string' } }, required: ['artifact_id'] },
+    ],
+  }, async (i, c) => {
+    const { importChangeSet } = await import('@/lib/change-sets/change-set-actions');
+    assertToolActive(c);
+    const json = i.artifact_id == null ? i.json : await readJsonArtifactText(c.host, i.artifact_id, 16 * 1024 * 1024);
+    assertToolActive(c);
+    return out(c.commit(() => {
+      const id = json == null ? null : importChangeSet(json);
+      if (!id) throw invalidInput('invalid-value', 'Invalid native change-set file.');
+      return { id, applied: false };
+    }));
+  }),
   viewerOperation<{ id: string }>({ ...meta('changeSets.export', 'changeSets', 'Create a host-owned JSON artifact using the native change-set exporter.', 'artifact'), outputSchema: { type: 'object', properties: { artifact_id: { type: 'string' }, filename: { type: 'string' }, mime_type: { type: 'string' }, bytes: { type: 'integer' } }, required: ['artifact_id', 'filename', 'mime_type', 'bytes'] } }, idInput,
     async (i, c) => { const [{ exportChangeSet }, { changeSetFileName }] = await Promise.all([import('@/lib/change-sets/change-set-actions'), import('@/lib/change-sets/change-set-view')]);
       const set = requireSet(i.id), json = exportChangeSet(i.id); if (!json) throw unavailable('Change set is unavailable.'); assertToolActive(c);

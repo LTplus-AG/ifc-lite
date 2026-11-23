@@ -1,7 +1,0 @@
-{
-  "issue": 7955,
-  "key": "scripts/check-operation-refusals.mjs",
-  "mutation": "tests/evidence/viewer-operation-refusal-gate-10871/behaviour.oracle.patch",
-  "test": "scripts/check-operation-refusals.test.mjs",
-  "why": "The checker is a new module, so a complete revert removes the test import. Reverse application keeps the checker callable but permits plain Error, which makes the synthetic operation violations go red."
-}

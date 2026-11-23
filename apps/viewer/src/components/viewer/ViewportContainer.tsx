@@ -406,6 +406,7 @@ function ViewportContainerLive() {
           for (let i = 0; i < batch.length; i++) {
             const item = batch[i];
             if (!item) continue;
+            if (refuseWhileWorkflowBusy(t)) break; // a workflow took the lease between items
             batch[i] = null; // release the buffer once this iteration owns it
             // `item.name` comes from a remote provider's file listing — it is
             // untrusted input reaching a filename position (the File

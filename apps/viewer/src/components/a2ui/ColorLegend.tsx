@@ -62,7 +62,7 @@ export function legendEntriesFromData(data: unknown, loaded?: ReadonlySet<string
   return { entries: [...byLabel.values()], unloadedModels: [...unloaded] };
 }
 
-/** A short, order-sensitive fingerprint of every target ref (FNV-1a), cheap enough to recompute per render. */
+/** A short, order-sensitive fingerprint of every target ref (FNV-1a), so the claim key stays small. */
 function refsSignature(entries: LegendEntry[]): string {
   let hash = 0x811c9dc5;
   let count = 0;

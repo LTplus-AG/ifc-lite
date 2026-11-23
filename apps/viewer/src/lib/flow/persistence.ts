@@ -202,9 +202,9 @@ export class BrowserTrackingStore implements TrackingStore {
 
   private write(): void {
     const sidecar: TrackingSidecar = { version: TRACKING_SIDECAR_VERSION, pinnedTo: this.pinnedTo, sets: this.sets };
+    const storage = optionalLocalStorage();
+    if (!storage) { this.persistError = 'Browser storage is unavailable'; return; }
     try {
-      const storage = optionalLocalStorage();
-      if (!storage) throw new Error('Browser storage is unavailable');
       storage.setItem(TRACKING_PREFIX + this.graphId, JSON.stringify(sidecar));
       this.persistError = undefined;
     } catch (err) {

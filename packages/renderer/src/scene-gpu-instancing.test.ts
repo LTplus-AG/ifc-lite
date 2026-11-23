@@ -266,3 +266,28 @@ describe('GPU instance pool free ranges', () => {
     assert.equal(free.take(1), -1);
   });
 });
+
+describe('GPU instance pool growth', () => {
+  it('copies the source tables, keeps state and rebinds every view to the new buffers', () => {
+    const { device, state } = stateDevice();
+    const copies: { from?: string; to?: string; bytes: number }[] = [];
+    const bindGroups: { entries: { resource: { buffer: { label?: string } } }[] }[] = [];
+    const d = device as unknown as Record<string, unknown>;
+    d.createCommandEncoder = () => ({ copyBufferToBuffer: (a: { label?: string }, _o: number, b: { label?: string }, _p: number, bytes: number) => { copies.push({ from: a.label, to: b.label, bytes }); }, finish: () => ({}) });
+    d.createBindGroup = (desc: { entries: { resource: { buffer: { label?: string } } }[] }) => { bindGroups.push(desc); return {}; };
+    const geometry = { vertexBuffer: {} as GPUBuffer, indexBuffer: {} as GPUBuffer, indexCount: 3, positions: new Float32Array(9), normals: new Float32Array(9), indices: new Uint32Array([0, 1, 2]) };
+    const pool = new GpuInstancePool(device);
+    const records = new ArrayBuffer(2 * INSTANCE_STRIDE_BYTES);
+    new DataView(records).setUint32(INSTANCE_STRIDE_BYTES + INSTANCE_FLAGS_OFFSET, INSTANCE_FLAG_HIDDEN, true);
+    pool.addTemplate(0, pool.allocate(2), geometry, records, new Float64Array(6), new Float32Array(2));
+    pool.flush();
+    const before = bindGroups.length;
+    const big = 70_000; // past the first 65536-occurrence capacity
+    pool.addTemplate(1, pool.allocate(big), geometry, new ArrayBuffer(big * INSTANCE_STRIDE_BYTES), new Float64Array(big * 3), new Float32Array(big));
+    pool.flush();
+    assert.deepEqual(copies.map((c) => [c.from, c.bytes]), [['gpu-instance-pool-records', 2 * INSTANCE_STRIDE_BYTES], ['gpu-instance-pool-cull', 2 * 32]]);
+    assert.equal(bindGroups.length - before, 3, 'one new bind group per cull view');
+    for (const g of bindGroups.slice(before)) assert.equal(g.entries[6]!.resource.buffer.label, 'gpu-instance-pool-out-records');
+    assert.equal(state()[1]! & POOL_STATE_HIDDEN, POOL_STATE_HIDDEN, 'state survives the growth');
+  });
+});

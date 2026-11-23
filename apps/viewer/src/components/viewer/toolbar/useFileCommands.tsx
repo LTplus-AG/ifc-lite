@@ -332,30 +332,17 @@ export function useFileCommands(): FileCommands {
       const reloadedId = useViewerStore.getState().activeModelId;
       if (reloadedId) restoreModelTags(useViewerStore.getState(), carry, ok[0].model.id, reloadedId);
     } else {
-      // Rebuild the federation from fresh bytes, preserving id + order + state.
-      // Hold the lease like Re-align: a flow run started mid-rebuild would
-      // otherwise refuse the remaining adds and leave the federation partial.
+      // Rebuild from fresh bytes (id + order + state kept), holding the lease like Re-align so a flow run cannot refuse the remaining adds.
       const lease = startWorkflowRun('refresh');
       try {
         clearAllModels();
-        for (const r of ok) {
-          const reloadedId = await addModel(r.fresh, {
-            name: r.model.name,
-            modelId: r.model.id,
-            loadedAt: r.model.loadedAt,
-            visible: r.model.visible,
-            collapsed: r.model.collapsed,
-            sourceHandle: r.model.sourceHandle,
-            workflowOwner: lease.id,
-          });
-          if (reloadedId) restoreModelTags(useViewerStore.getState(), carry, r.model.id, reloadedId);
-          if (reloadedId && r.model.visible === false) {
-            useViewerStore.getState().setModelVisibility(r.model.id, false);
-          }
+        for (const { fresh, model } of ok) {
+          const { id, name, loadedAt, visible, collapsed, sourceHandle } = model;
+          const reloadedId = await addModel(fresh, { name, modelId: id, loadedAt, visible, collapsed, sourceHandle, workflowOwner: lease.id });
+          if (reloadedId) restoreModelTags(useViewerStore.getState(), carry, id, reloadedId);
+          if (reloadedId && visible === false) useViewerStore.getState().setModelVisibility(id, false);
         }
-      } finally {
-        lease.release();
-      }
+      } finally { lease.release(); }
     }
 
     // Any failed read returned early above, so reaching here means every

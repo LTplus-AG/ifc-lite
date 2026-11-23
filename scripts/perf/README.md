@@ -32,6 +32,16 @@ The native load probe matched mesh fingerprints on FZK-Haus, ISSUE_129,
 Holter, and `rvt01.ifc`. Timings were within the spread of the shared
 workstation runs.
 
+## Narrow finish strips in the exact fallback (#11275)
+
+The exact route now retains the core in the narrow-strip regression. A
+bounded surface-intersection test covers the area that point parity probes
+miss. It runs only after the welded/source extension disagreement and
+insets the authored box to ignore contact on its flush faces.
+
+Meshes matched the base on FZK-Haus, ISSUE_129, Holter, and rvt01.
+Timing on the loaded host did not establish a throughput change.
+
 ## Native finishes for mapped occurrences (#10995)
 
 The worker-pool A/B on AC20-FZK-Haus found no measurable change in parse or
@@ -2399,6 +2409,17 @@ Node consumer runs before and after produced identical mesh/triangle counts and
 byte-identical GLB exports for the committed wall and ArchiCAD FZK fixtures. See
 `tests/evidence/packed-workflows/worker-packaging.json`. Keep the external Vite
 bundle in acceptance: a Node-only WASM pass cannot prove worker asset closure.
+
+## Oblique partial finishes at a recess floor (#11278)
+
+Deferring a proved partial oblique interface to the exact cut removes the
+membrane in the rotated fixture. The source quads must share corners and
+the wider projected rectangle must cover the aperture. This keeps the
+proof grounded in the source mesh when projected corners differ by f32
+rounding.
+
+Meshes matched the base on FZK-Haus, ISSUE_129, Holter, and rvt01.
+Timing on the loaded host did not establish a throughput change.
 
 ## Several cutting planes: caps and clip cost (#7545)
 

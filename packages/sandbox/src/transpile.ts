@@ -57,16 +57,16 @@ function getEsbuild(): Promise<EsbuildLike | null> {
         // module-resolution mode without needing @ts-expect-error.
         const wasmMod = await import('esbuild-wasm/esbuild.wasm?url' as string);
         wasmURL = (wasmMod as { default: string }).default;
-      } catch {
+      } catch (err) {
         // Fallback: CDN. The version comes from the loaded host rather than a
         // literal — `initialize()` rejects a host/binary mismatch outright
         // ("Host version does not match binary version"), and a hard-coded
         // version cannot stay in step with a `^` dependency range (#2081).
         // Expected under bundlers that don't implement Vite's `?url` hint, but
         // it silently swaps a local asset for a network fetch — say so once.
-        // No error object: under Node it is ERR_UNKNOWN_FILE_EXTENSION or
-        // "Cannot find module", which reads as a test load failure (#11256).
-        console.warn('[ifc-lite/sandbox] esbuild.wasm not resolvable as a bundled asset, falling back to the CDN');
+        // The message only: the raw error object's code clutters Node test logs (#11256).
+        const reason = err instanceof Error ? err.message : String(err);
+        console.warn(`[ifc-lite/sandbox] esbuild.wasm not resolvable as a bundled asset, falling back to the CDN: ${reason}`);
         wasmURL = `https://unpkg.com/esbuild-wasm@${esbuild.version}/esbuild.wasm`;
       }
 

@@ -294,11 +294,8 @@ export function parseRunnerOutput(run) {
 
   // Load/collection evidence outranks assertion output; green processes may
   // contain error-shaped fixture text without becoming failures (#4109).
-  // When tests ran and some failed, only the failing tests' own errors count:
-  // product code may log load-error text (a caught dynamic import) beside an
-  // ordinary assertion failure (#11256).
-  const testsFailed = parsed.total > 0 && parsed.failed > 0 && !parsed.loadEvidence;
-  const loadText = testsFailed && parsed.failureText ? parsed.failureText : text;
+  // When tests failed, scan only their own errors: logs may carry load-error text (#11256).
+  const loadText = parsed.failed > 0 && !parsed.loadEvidence && parsed.failureText ? parsed.failureText : text;
   const textualHit = run.exitCode === 0 && parsed.total > 0 ? null : firstMatch(loadText, LOAD_ERROR_PATTERNS);
   for (const hit of [textualHit, parsed.loadEvidence]) if (hit) evidence.push(hit);
   if (evidence.length > 0) {
@@ -346,7 +343,7 @@ function parseVitest(text) {
   const totalM = /\((\d+)\)\s*$/.exec(summary);
   const total = totalM ? Number(totalM[1]) : (passed ?? 0) + (failed ?? 0);
   // The failing tests' errors follow the `Failed Tests` banner; logs precede it.
-  const banner = /⎯+ Failed Tests \d+ ⎯+/.exec(text);
+  const banner = /⎯ Failed Tests \d+ ⎯/.exec(text);
   const failureText = banner ? text.slice(banner.index) : null;
   return { passed: passed ?? 0, failed: failed ?? 0, total, loadEvidence, failureText };
 }
@@ -374,7 +371,7 @@ function parseNodeTest(text) {
   }
   // Each failing subtest's YAML block (`not ok` through its `...` line) holds
   // its error; `#` lines around them are the file's own logs.
-  const blocks = [...text.matchAll(/^\s*not ok \d+ - .*$[\s\S]*?^\s*\.\.\.\s*$/gm)].map((b) => b[0]);
+  const blocks = [...text.matchAll(/^[ \t]*not ok \d+ - .*$[\s\S]*?^[ \t]*\.\.\.[ \t]*$/gm)].map((b) => b[0]);
   const failureText = blocks.length > 0 ? blocks.join('\n') : null;
   return { passed: pass ?? 0, failed: fail ?? 0, total, loadEvidence, failureText };
 }

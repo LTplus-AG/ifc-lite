@@ -2,4 +2,4 @@
 "@ifc-lite/sandbox": patch
 ---
 
-The esbuild.wasm CDN fallback warning no longer logs the raw resolver error, which read as a module load failure in Node test output.
+The esbuild.wasm CDN fallback warning logs the resolver error's message instead of the raw error object.

@@ -199,6 +199,7 @@ async function main() {
   const page = await browser.newPage({ viewport: { width: W, height: H } });
   await page.goto(pathToFileURL(join(work, 'index.html')).href);
   const encoder = startEncoder(resolve(values.out), { fps, width: W, height: H, gop: 60 });
+  let enc = null;
   let frames = 0;
   const shoot = async (f, n = 1) => {
     await page.evaluate(SHOW, f);
@@ -256,10 +257,10 @@ async function main() {
       'showcase scene: footage only · timings diagnostic, not evidence'], 3);
   } finally {
     await browser.close();
-    const enc = await encoder.close();
-    if (enc.code !== 0) console.error(`ffmpeg exited ${enc.code}: ${enc.stderr.slice(0, 600)}`);
+    enc = await encoder.close();
     rmSync(work, { recursive: true, force: true });
   }
+  if (enc.code !== 0) throw new Error(`ffmpeg exited ${enc.code}: ${enc.stderr.slice(0, 600)}`);
   const mp4 = toMp4(resolve(values.out), resolve(values.out).replace(/\.webm$/, '.mp4'));
   const result = { out: resolve(values.out), mp4: mp4.mp4, mp4Reason: mp4.reason, seconds: frames / fps, summary };
   writeFileSync(resolve(values.out).replace(/\.webm$/, '.json'), `${JSON.stringify(result, null, 1)}\n`);

@@ -47,15 +47,18 @@ export function startEncoder(out, { fps = 20, width = 1600, height = 900, gop = 
   proc.stdin.on('error', (err) => { pipeError ??= err; });
   proc.on('close', (code) => { pipeError ??= new Error(`ffmpeg exited ${code}: ${stderr.slice(0, 300)}`); });
   const writable = () => !pipeError && !proc.stdin.destroyed;
+  const drained = () => new Promise((r) => { const go = () => { proc.stdin.off('drain', go); proc.off('close', go); r(); }; proc.stdin.once('drain', go); proc.once('close', go); });
   // Drift-free: frames owed are counted from an anchor, so the output keeps wall-clock time
   // (a timer that re-arms itself drifts late and makes the video play faster than real time).
-  let latest = null, periodMs = 1000 / fps, timer = null, written = 0, paused = true, anchor = Date.now(), emitted = 0;
+  let latest = null, periodMs = 1000 / fps, timer = null, written = 0, paused = true, anchor = Date.now(), emitted = 0, dropped = 0;
   const restart = () => { anchor = Date.now(); emitted = 0; };
   const tick = () => {
     timer = setTimeout(tick, Math.min(periodMs, 8));
     if (paused || !latest || !writable()) return;
     const due = Math.floor((Date.now() - anchor) / periodMs);
     if (due - emitted > fps * 2) emitted = due - 1; // a stalled event loop: skip ahead instead of bursting
+    // ffmpeg is behind: drop these frames rather than queue JPEGs in memory without bound.
+    if (proc.stdin.writableNeedDrain) { dropped += due - emitted; emitted = due; return; }
     while (emitted < due) { proc.stdin.write(latest); written++; emitted++; }
   };
   tick();
@@ -69,7 +72,10 @@ export function startEncoder(out, { fps = 20, width = 1600, height = 900, gop = 
     /** Write `seconds` of the current frame now (title and verdict cards). */
     async hold(seconds) {
       const was = paused; paused = true;
-      for (let i = 0; i < Math.round(seconds * fps) && latest && writable(); i++) { proc.stdin.write(latest); written++; }
+      for (let i = 0; i < Math.round(seconds * fps) && latest && writable(); i++) {
+        written++;
+        if (!proc.stdin.write(latest)) await drained();
+      }
       await new Promise((r) => setTimeout(r, 50));
       restart();
       paused = was;
@@ -79,12 +85,12 @@ export function startEncoder(out, { fps = 20, width = 1600, height = 900, gop = 
       for (let i = 0; i < n; i++) {
         if (!writable()) throw pipeError ?? new Error('ffmpeg input closed');
         written++;
-        if (!proc.stdin.write(jpeg)) {
-          await new Promise((r) => { const go = () => { proc.stdin.off('drain', go); proc.off('close', go); r(); }; proc.stdin.once('drain', go); proc.once('close', go); });
-        }
+        if (!proc.stdin.write(jpeg)) await drained();
       }
     },
     get seconds() { return written / fps; },
+    /** Live frames dropped because ffmpeg fell behind. */
+    get dropped() { return dropped; },
     async close() { clearTimeout(timer); proc.stdin.end(); return done; },
   };
 }

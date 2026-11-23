@@ -22,14 +22,16 @@ const round = (x, d = 1) => (x === null || x === undefined || !Number.isFinite(x
  * timestamp deltas (what a user sees), plus per-frame GPU submission.
  */
 export function frameSummary(records) {
+  // Ticks that drew nothing (the viewer's frame pacer skips draws while GPU frames are pending) are not
+  // frames a user sees: frame times, fps and per-frame counts come from the ticks that presented.
+  const shown = records.some((r) => 'presents' in r) ? records.filter((r) => r.presents > 0) : records;
   const deltas = [];
-  for (let i = 1; i < records.length; i++) deltas.push(records[i].ts - records[i - 1].ts);
-  const col = (k) => records.map((r) => r[k]).filter(Number.isFinite);
-  const rendered = records.filter((r) => r.presents > 0).length;
-  const spanMs = records.length > 1 ? records.at(-1).ts - records[0].ts : null;
+  for (let i = 1; i < shown.length; i++) deltas.push(shown[i].ts - shown[i - 1].ts);
+  const col = (k) => shown.map((r) => r[k]).filter(Number.isFinite);
+  const spanMs = shown.length > 1 ? shown.at(-1).ts - shown[0].ts : null;
   return {
-    frames: records.length, rendered,
-    fps: spanMs ? round(((records.length - 1) * 1000) / spanMs) : null,
+    frames: records.length, rendered: shown.length,
+    fps: spanMs ? round(((shown.length - 1) * 1000) / spanMs) : null,
     frameMs: { median: round(percentile(deltas, 0.5), 2), p95: round(percentile(deltas, 0.95), 2), p99: round(percentile(deltas, 0.99), 2),
       worst: round(deltas.length ? Math.max(...deltas) : null, 2) },
     cpuMs: { median: round(percentile(col('cpuMs'), 0.5), 2), p95: round(percentile(col('cpuMs'), 0.95), 2) },
@@ -65,7 +67,8 @@ export function summaryRow(r) {
     orbitMedianMs: cam.orbit?.frameMs?.median ?? null, orbitP95Ms: cam.orbit?.frameMs?.p95 ?? null, orbitP99Ms: cam.orbit?.frameMs?.p99 ?? null,
     orbitWorstMs: cam.orbit?.frameMs?.worst ?? null, zoomP95Ms: cam.zoom?.frameMs?.p95 ?? null, flyP95Ms: cam.fly?.frameMs?.p95 ?? null,
     trisPerFrame: cam.orbit?.trianglesPerFrame?.median ?? null, drawsPerFrame: cam.orbit?.drawsPerFrame?.median ?? null,
-    pickMs: round(median(hits.map((p) => p.frameDoneMs ?? p.ms)), 1), pickHits: `${hits.length}/${(it.picks ?? []).length}`,
+    // A hit whose highlighted frame never finished has no pick time (not its bare selection latency).
+    pickMs: round(median(hits.map((p) => p.frameDoneMs)), 1), pickHits: `${hits.length}/${(it.picks ?? []).length}`,
     hideMs: round(it.hideOne?.doneMs, 1), isolateMs: round(it.isolate?.doneMs, 1), sectionMs: round(it.sectionOn?.doneMs, 1),
   };
 }

@@ -220,7 +220,10 @@ export function generateScenario(dir, options) {
     try {
       const prev = JSON.parse(readFileSync(manifestPath, 'utf8'));
       // Reuse only bytes from this generator version: bump GENERATOR when the emitted STEP changes.
-      if (prev.generator === GENERATOR && JSON.stringify(prev.scenario) === JSON.stringify(s)) return { ...prev, reused: true };
+      // Paths come from the current directory: the models may have been moved since they were generated.
+      if (prev.generator === GENERATOR && JSON.stringify(prev.scenario) === JSON.stringify(s)) {
+        return { ...prev, files, models: prev.models?.map((m, i) => ({ ...m, file: files[i] })), reused: true };
+      }
     } catch (err) { console.warn(`huge-geometry-gen: ignoring unreadable manifest ${manifestPath}: ${err.message}`); }
   }
   const t0 = Date.now();

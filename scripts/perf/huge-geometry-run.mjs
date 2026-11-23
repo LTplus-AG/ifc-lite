@@ -46,6 +46,12 @@ export function parseTier(text) {
 const sh = (cmd, args) => { try { return execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return null; } };
 
 /** Host, GPU, build and source identity recorded in every result. */
+/** Measurement steps whose failure leaves the tier usable (browser memory APIs vary by build and host). */
+const OPTIONAL_STEPS = new Set(['gc', 'wasm-bytes', 'ua-memory']);
+
+/** Environment fields that make two result rows comparable (not label, load or time). */
+const comparableEnv = (e) => JSON.stringify([e?.host, e?.evidence, e?.pageGlobals, e?.gpu, e?.git?.head, e?.git?.dirty, e?.distIndexSha256]);
+
 export function environment(dist, evidence, label) {
   const index = join(dist, 'index.html');
   return { host: hostname(), label, evidence, pageGlobals: process.env.HUGE_GEOMETRY_GLOBALS ?? null,
@@ -85,6 +91,9 @@ export async function runOne({ baseUrl, manifest, timeoutMs, frames, skipGc = fa
     const post = await after.stop();
     result.sampling.peakAfterLoad = post.peak;
     if (session.events.crashed) { result.failure = { kind: 'renderer-crash', detail: 'page crashed after load (during camera/interactions)' }; return result; }
+    // Every step was attempted; a failed camera path or interaction still fails the tier (memory probes are best-effort).
+    const failed = result.errors.filter((e) => !OPTIONAL_STEPS.has(e.step));
+    if (failed.length) { result.failure = { kind: 'measure-error', detail: failed.map((e) => `${e.step}: ${e.error}`).join('; ').slice(0, 800) }; return result; }
     result.status = 'ok';
     return result;
   } catch (err) {
@@ -123,7 +132,15 @@ async function main() {
   const results = [];
   const summaryPath = join(out, 'summary.json');
   if (existsSync(summaryPath)) {
-    try { results.push(...JSON.parse(readFileSync(summaryPath, 'utf8')).results.filter((r) => !scenarios.includes(r.scenario?.scenario) || !tiers.includes(r.scenario?.nominal))); }
+    // Keep earlier rows unless this run replaces them (same scenario name, so another seed is kept), and only
+    // rows measured in a comparable environment: the summary carries one environment header.
+    const planned = new Set(scenarios.flatMap((s) => tiers.map((elements) => resolveScenario({ scenario: s, elements, seed }).name)));
+    try {
+      const kept = JSON.parse(readFileSync(summaryPath, 'utf8')).results.filter((r) => !planned.has(r.scenario?.name));
+      const same = kept.filter((r) => comparableEnv(r.environment) === comparableEnv(env));
+      if (same.length < kept.length) console.warn(`huge-geometry: dropping ${kept.length - same.length} earlier row(s) from another build/host/flags; use a new --out to keep them`);
+      results.push(...same);
+    }
     catch (err) { console.warn(`huge-geometry: ignoring unreadable ${summaryPath}: ${err.message}`); }
   }
   const save = () => {

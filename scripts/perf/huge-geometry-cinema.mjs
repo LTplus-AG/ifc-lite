@@ -251,6 +251,7 @@ async function recordTier({ label, manifest, url, out, fps, loadSpeed, timeoutMs
         } else { hud.caption = 'pick → nothing selected (GPU pick missed after programmatic camera moves)'; hud.captionTone = 'bad'; }
         await push();
         if (!got.at) beatErr(new Error('pick target off screen'));
+        else if (!got.sel) beatErr(new Error('pick selected nothing'));
       }
       const records = await bounded(running, shot.durationMs + 60000).catch((err) => { entry.error = String(err?.message ?? err).slice(0, 300); return []; });
       stalled = records.length > 1 ? 0 : stalled + 1;
@@ -330,6 +331,8 @@ async function main() {
       + "[--viewer-url URL | --dist DIR [--query 'a=1&b=2']] [--fps 30] [--load-speed 4] [--timeout-min 12]");
     process.exit(2);
   }
+  const emitMaxMb = Number(values['emit-max-mb']);
+  if (!(emitMaxMb > 0)) { console.error('--emit-max-mb must be a positive number'); process.exit(2); }
   const out = resolve(values.out);
   mkdirSync(join(out, 'clips'), { recursive: true });
   mkdirSync(join(out, 'stills'), { recursive: true });
@@ -354,9 +357,9 @@ async function main() {
       await r.session.close();
       await endCard(r.encoder, out, r.clip);
       const enc = await r.encoder.close();
-      if (enc.code !== 0) console.error(`ffmpeg exited ${enc.code}: ${enc.stderr.slice(0, 600)}`);
+      if (enc.code !== 0) throw new Error(`ffmpeg exited ${enc.code} for ${r.clip.name}: ${enc.stderr.slice(0, 600)}`);
       const clip = r.clip;
-      clip.video = { webm: join(out, 'clips', `${values.label}-${clip.name}.webm`), seconds: r.encoder.seconds, pathMs: totalMs(buildShots(manifest.showcase)) };
+      clip.video = { webm: join(out, 'clips', `${values.label}-${clip.name}.webm`), seconds: r.encoder.seconds, droppedFrames: r.encoder.dropped, pathMs: totalMs(buildShots(manifest.showcase)) };
       const mp4 = toMp4(clip.video.webm, clip.video.webm.replace(/\.webm$/, '.mp4'));
       clip.video.mp4 = mp4.mp4;
       clip.video.mp4Reason = mp4.reason;
@@ -371,7 +374,7 @@ async function main() {
           ...readdirSync(join(out, 'stills')).filter((f) => f.startsWith(`${values.label}-${clip.name}-`)).map((f) => join(out, 'stills', f))];
         for (const f of files) {
           const mb = statSync(f).size / 2 ** 20;
-          if (mb > Number(values['emit-max-mb'])) { console.log(`[cinema] not emitting ${f}: ${mb.toFixed(0)} MB > --emit-max-mb`); continue; }
+          if (mb > emitMaxMb) { console.log(`[cinema] not emitting ${f}: ${mb.toFixed(0)} MB > --emit-max-mb`); continue; }
           emitFile(f, f.slice(out.length + 1));
         }
       }

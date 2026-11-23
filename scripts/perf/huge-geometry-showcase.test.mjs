@@ -47,7 +47,7 @@ test('showcase: writes exactly the requested element count, and the counts add u
     assert.equal(Object.values(stats.perClass).reduce((x, y) => x + y, 0), n);
     assert.equal(stats.repeated + stats.unique, n);
     assert.equal(stats.repeated, [...text.matchAll(/=IFCMAPPEDITEM\(/g)].length);
-    assert.match(text, /END-ISO-10303-21;\n$/);
+    assert.equal(text.slice(-18), 'END-ISO-10303-21;\n', 'the model is complete');
   }
 });
 
@@ -64,7 +64,9 @@ test('showcase: the recorder block points at real elements with the right geomet
   const { hero, bbox, styles, buildings } = stats.showcase;
   const elementIds = new Set([...text.matchAll(ELEMENT)].map((m) => Number(m[1])));
   for (const id of hero.ids) assert.ok(elementIds.has(id), `hero id ${id} is not an element`);
-  assert.ok(hero.storey.ids.length > 20 && hero.storey.ids.every((id) => hero.ids.includes(id)));
+  const heroIds = new Set(hero.ids);
+  assert.ok(hero.storey.ids.length > 20);
+  for (const id of hero.storey.ids) assert.ok(heroIds.has(id), `storey id ${id} is not in the hero building`);
   assert.ok(hero.anchors.length >= 4);
   assert.ok(hero.pick && elementIds.has(hero.pick.id));
   assert.equal(hero.builtFloors, hero.floors, 'the hero tower is complete at 20k');
@@ -103,7 +105,7 @@ test('showcase: labelled, kept out of the measurement families and the ladder', 
   const s = ladder().resolveScenario({ look: 'showcase', elements: 1_000_000 });
   assert.equal(s.name, 'showcase-1M');
   assert.equal(s.look, 'showcase');
-  assert.match(s.label, /footage only/i);
+  assert.equal(s.label, sc().SHOWCASE_LABEL);
   assert.ok(!('showcase' in ladder().FAMILIES));
   assert.ok(ladder().planLadder().every((p) => p.scenario !== 'showcase'));
   assert.throws(() => ladder().resolveScenario({ look: 'showcase', elements: 10, models: 4 }), /single model/);
@@ -117,7 +119,7 @@ test('showcase: generateScenario writes a labelled manifest with the recorder bl
   try {
     const m = need(genModule, 'huge-geometry-gen.mjs').generateScenario(dir, { look: 'showcase', elements: 3000 });
     assert.equal(m.look, 'showcase');
-    assert.match(m.label, /footage only/i);
+    assert.equal(m.label, sc().SHOWCASE_LABEL);
     assert.equal(m.totals.elements, 3000);
     assert.equal(m.totals.repeated + m.totals.unique, 3000);
     assert.ok(m.showcase.hero.anchors.length > 0);

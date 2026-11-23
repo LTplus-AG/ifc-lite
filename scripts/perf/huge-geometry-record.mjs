@@ -160,6 +160,7 @@ async function main() {
   mkdirSync(stills, { recursive: true });
   const fps = Number(values.fps), webm = join(out, `${values.label}.webm`);
   const encoder = startEncoder(webm, { fps });
+  let enc = null;
   const { server, baseUrl } = await startViewerServer(() => resolve(values.dist));
   const tiers = values.tiers.split(',').map(parseTier);
   const record = { label: values.label, tiers: [] };
@@ -181,11 +182,11 @@ async function main() {
     }
   } finally {
     server.close();
-    const enc = await encoder.close();
-    if (enc.code !== 0) console.error(`ffmpeg exited ${enc.code}: ${enc.stderr.slice(0, 600)}`);
+    enc = await encoder.close();
   }
+  if (enc.code !== 0) throw new Error(`ffmpeg exited ${enc.code}: ${enc.stderr.slice(0, 600)}`);
   const mp4 = toMp4(webm, join(out, `${values.label}.mp4`));
-  record.video = { webm, mp4: mp4.mp4, mp4Reason: mp4.reason, seconds: encoder.seconds };
+  record.video = { webm, mp4: mp4.mp4, mp4Reason: mp4.reason, seconds: encoder.seconds, droppedFrames: encoder.dropped };
   writeFileSync(join(out, `${values.label}.json`), `${JSON.stringify(record, null, 1)}\n`);
   console.log(JSON.stringify(record.video));
 }

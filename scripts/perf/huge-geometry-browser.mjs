@@ -224,7 +224,8 @@ export async function loadModel(session, baseUrl, files, { timeoutMs, url = null
   const first = await Promise.race([loading, watchdog.then((w) => w ?? loading)]);
   const out = { adapter, memoryDialogContinued: continued, wallMs: Date.now() - started };
   if (first.ok) return { ...out, ok: true, timings: first.value };
-  const notices = await page.evaluate(NOTICES).catch(() => []);
+  // Bounded: after a timeout the page's main thread may still be blocked.
+  const notices = await withTimeout(page.evaluate(NOTICES).catch(() => []), 10000, () => []);
   const failure = classifyFailure({ crashed: first.crashed || events.crashed, deviceLost: first.deviceLost ?? deviceLossLine(events.console),
     storeError: first.storeError, pageErrors: events.pageErrors, timedOut: first.timedOut ?? (first.error ? String(first.error.message ?? first.error).slice(0, 600) : null),
     console: events.console });

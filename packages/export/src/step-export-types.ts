@@ -118,12 +118,9 @@ export interface StepExportOptions extends StepCoordinateNormalizationOptions, S
    * source used for `SpatialAnchor.guidRandom` to close that gap. Default
    * (omitted) behaviour for THESE ids is unchanged: random.
    *
-   * NOT the `IFCPROXY` placeholders any more (#2733). Those used to be minted
-   * from this source too, so an omitted `guidRandom` made every downgraded
-   * IFC4X3 entity differ on re-export. They are now derived from the source
-   * line when this is omitted, and only fall back to this source when it is
-   * supplied - so passing a seeded source still pins them, but NOT passing one
-   * no longer makes them random. See `convertStepLine`.
+   * Alignment proxies use this source when supplied and derive an ID from
+   * the source line otherwise (#2733). Other unrepresented rooted entities
+   * keep their GlobalId or use a shared deterministic fallback (#11322).
    */
   guidRandom?: RandomSource;
   /**

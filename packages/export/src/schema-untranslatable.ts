@@ -14,8 +14,9 @@
  * (`scripts/module-size-allowlist.txt`).
  */
 
-import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
+import { decodeStepStringLiteral, isValidIfcGuid } from '@ifc-lite/encoding';
 import { deterministicGlobalId, getInheritanceChainAcrossSchemas, type IfcDataStore } from '@ifc-lite/parser';
+import { withoutComments } from './step-comment-skip.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
 import type { EffectiveEntityIndex } from './effective-index.js';
 import { varyingTarget } from './schema-converter-structural-varying.js';
@@ -134,15 +135,25 @@ export function resolveUnrepresentedEntity(
   prefix: string,
   entityType: string,
   attrsRaw: string,
+  args: readonly string[],
   toSchema: IfcSchemaVersion,
-  random?: RandomSource,
+  expressId: number,
   allowOmit = false,
 ): string | null {
   if (isRootedEntityType(entityType)) {
-    const guid = random
-      ? generateIfcGuid(random)
-      : deterministicGlobalId(`ifcproxy:${prefix}${entityType}(${attrsRaw})`);
-    return `${prefix}IFCPROXY('${guid}',$,'${entityType}',$,$,$,$,.NOTDEFINED.,$);`;
+    // IfcRoot begins with GlobalId, OwnerHistory, Name in every schema.
+    const [globalIdSlot = '', , nameSlot = ''] = args;
+    const globalId = withoutComments(globalIdSlot);
+    const sourceGuid = globalId.startsWith("'") && globalId.endsWith("'") ? globalId.slice(1, -1) : '';
+    const guid = isValidIfcGuid(sourceGuid)
+      ? sourceGuid
+      : deterministicGlobalId(`ifcproxy:#${expressId}=${entityType}(${args.join(',')})`);
+    const name = withoutComments(nameSlot);
+    // Use the source type when there is no meaningful Name for the proxy.
+    const proxyName = name.startsWith("'") && name.endsWith("'")
+      && /\P{White_Space}/u.test(decodeStepStringLiteral(name.slice(1, -1)))
+      ? name : `'${entityType}'`;
+    return `${prefix}IFCPROXY('${guid}',$,${proxyName},$,$,$,$,.NOTDEFINED.,$);`;
   }
   if (allowOmit && WITHHOLDABLE_UNROOTED_TYPES.has(entityType)) return null;
   throw new Error(

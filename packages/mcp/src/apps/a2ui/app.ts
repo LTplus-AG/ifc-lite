@@ -3,11 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import {
-  BASIC_FUNCTIONS, MessageProcessor, NodeResolver, effect, getValue, isComponentNode,
+  MessageProcessor, NodeResolver, effect, getValue, isComponentNode,
   type ComponentApi, type FunctionImplementation,
 } from '@a2ui/web_core/v1_0';
 import { A2UI_MIME_TYPE } from '@ifc-lite/a2ui';
-import { createIfcCatalog, IFC_CATALOG_COMPONENT_APIS, IFC_CATALOG_FUNCTION_APIS } from '@ifc-lite/a2ui/catalog';
+import { basicFunctionImplementation, createIfcCatalog, IFC_CATALOG_COMPONENT_APIS, IFC_CATALOG_FUNCTION_APIS } from '@ifc-lite/a2ui/catalog';
 import type { CallToolResult } from '../../protocol/types.js';
 import { renderBasic } from './basic-components.js';
 import { SURFACE_ACTIONS } from './constants.js';
@@ -31,7 +31,7 @@ const components: DomComponent[] = IFC_CATALOG_COMPONENT_APIS.map((api) => ({
     : renderBasic(api.name, props, child, report),
 }));
 const functions: FunctionImplementation[] = IFC_CATALOG_FUNCTION_APIS.map((api) => {
-  const basic = BASIC_FUNCTIONS.find((fn) => fn.name === api.name);
+  const basic = basicFunctionImplementation(api.name);
   if (basic) return basic;
   return {
     ...api,

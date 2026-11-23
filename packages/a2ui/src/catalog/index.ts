@@ -22,6 +22,6 @@ export {
   IFC_COMPONENT_NAMES,
   BASIC_COMPONENT_NAMES,
 } from './components.js';
-export { IFC_FUNCTION_APIS, BASIC_FUNCTION_NAMES } from './functions.js';
+export { IFC_FUNCTION_APIS, BASIC_FUNCTION_NAMES, basicFunctionImplementation } from './functions.js';
 export { IFC_CATALOG_INSTRUCTIONS, IFC_EXPRESS_EXAMPLES } from './instructions.js';
 export { IfcQuerySchema, QueryConditionSchema, ColumnSchema, RefsSchema } from './schemas.js';

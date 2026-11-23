@@ -37,6 +37,7 @@ export const a2uiEn = {
   'a2ui.card.flyTo': 'Fly to',
   'a2ui.stat.unavailable': 'n/a',
   'a2ui.chart.other': 'Other',
+  'a2ui.chart.someNoNumbers': '{count} groups have no number at {path} and are left out.',
   'a2ui.chart.noNumbers': 'No element has a number at {path}, so there is nothing to sum.',
   'a2ui.chart.label': 'Chart of {title}. Pick a group to select it in 3D.',
   'a2ui.chart.groups': 'Groups',

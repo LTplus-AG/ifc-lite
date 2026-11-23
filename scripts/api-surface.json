@@ -74,6 +74,7 @@
     "QueryConditionSchema: const",
     "RefsSchema: const",
     "StatGroupApi: const",
+    "basicFunctionImplementation: function",
     "createIfcCatalog: function",
     "ifcCatalogDocument: function"
   ],

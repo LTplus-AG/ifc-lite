@@ -35,6 +35,7 @@ export const a2uiDe = {
   "a2ui.stat.unavailable": "k. A.",
   "a2ui.chart.other": "Sonstige",
   "a2ui.chart.noNumbers": "Kein Element hat eine Zahl unter {path}, daher gibt es nichts zu summieren.",
+  "a2ui.chart.someNoNumbers": "{count} Gruppen haben keine Zahl unter {path} und werden weggelassen.",
   "a2ui.chart.label": "Diagramm: {title}. Wählen Sie eine Gruppe, um sie in 3D auszuwählen.",
   "a2ui.chart.groups": "Gruppen",
   "a2ui.chart.selectGroup": "{group} auswählen: {value}",

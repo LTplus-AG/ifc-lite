@@ -8,7 +8,7 @@
  * table in `policy.ts` is the only place they are decided.
  */
 
-import type { FunctionApi } from '@a2ui/web_core/v1_0';
+import { BASIC_FUNCTIONS, V10_VALIDATION_FUNCTION_IMPLEMENTATIONS, type FunctionApi, type FunctionImplementation } from '@a2ui/web_core/v1_0';
 import { IFC_FUNCTION_POLICY, type IfcFunctionName } from '../policy.js';
 import { C, ColumnSchema, IfcQuerySchema, RefsSchema, z } from './schemas.js';
 
@@ -65,3 +65,14 @@ export const IFC_FUNCTION_APIS: FunctionApi[] = [
 
 /** Basic-catalog functions the IFC catalog keeps. */
 export const BASIC_FUNCTION_NAMES = ['formatString', 'formatNumber', 'pluralize', 'required', 'and', 'or', 'not'] as const;
+
+const BASIC_BY_NAME = new Map<string, FunctionImplementation>();
+// v1.0 validation first, so `required` and friends are the v1.0 ones, not the v0.9 ones in BASIC_FUNCTIONS.
+for (const fn of [...V10_VALIDATION_FUNCTION_IMPLEMENTATIONS, ...BASIC_FUNCTIONS]) {
+  if (!BASIC_BY_NAME.has(fn.name)) BASIC_BY_NAME.set(fn.name, fn);
+}
+
+/** The basic-catalog implementation every IFC renderer uses for `name`, or undefined for an IFC function. */
+export function basicFunctionImplementation(name: string): FunctionImplementation | undefined {
+  return BASIC_BY_NAME.get(name);
+}

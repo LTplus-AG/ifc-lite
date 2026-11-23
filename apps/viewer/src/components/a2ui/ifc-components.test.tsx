@@ -136,6 +136,15 @@ describe('IFC catalog components', () => {
     assert.equal(container.querySelectorAll('[data-a2ui-group]').length, 0);
   });
 
+  it('GroupChart: groups with no number at a sum path are left out and counted, not drawn as 0 (#11344)', async () => {
+    const { host } = await seedA2uiModels();
+    const reply = block('root = GroupChart("type", {types: ["IfcWall", "IfcSlab"]}, "bar", "sum", "Qto_WallBaseQuantities.NetVolume")');
+    const { container } = await mountReply(host, reply);
+    await waitFor(() => text(container).includes('left out'), 'note for the slab group');
+    const groups = [...container.querySelectorAll('[data-a2ui-group]')].map((g) => g.getAttribute('data-a2ui-group'));
+    assert.ok(groups.length > 0 && !groups.some((g) => /slab/i.test(g ?? '')), `slabs excluded, got ${groups.join(',')}`);
+  });
+
   it('ActionBar: actions act on the query result, export runs from the click, follow-ups post a turn', async () => {
     const { host: real } = await seedA2uiModels();
     const { host, calls } = recordingHost(real);

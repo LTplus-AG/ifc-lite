@@ -103,17 +103,21 @@ export const GroupChartImpl = createComponentImplementation(GroupChartApi, ({ pr
   const emptyLabel = t('a2ui.noGroupValue');
   const otherLabel = t('a2ui.chart.other');
 
-  const { groups, sumUnavailable } = useMemo(() => {
-    if (props.data !== undefined) return { groups: foldGroups(groupsFromData(props.data), max, otherLabel), sumUnavailable: false };
-    if (!result) return { groups: [], sumUnavailable: false };
+  const { groups, sumUnavailable, withoutNumber } = useMemo(() => {
+    const none = { groups: [] as ChartGroup[], sumUnavailable: false, withoutNumber: 0 };
+    if (props.data !== undefined) return { ...none, groups: foldGroups(groupsFromData(props.data), max, otherLabel) };
+    if (!result) return none;
     const pool = aggregatePool(result);
     // A sum with no path, or a path no match has a number at, is unavailable: never counts or zero bars in its place.
-    if (props.aggregate === 'sum' && !sumPath) return { groups: [], sumUnavailable: pool.length > 0 };
+    if (props.aggregate === 'sum' && !sumPath) return { ...none, sumUnavailable: pool.length > 0 };
     const raw = groupRows(reader, pool, props.groupBy, emptyLabel, sumPath ? { kind: 'sum', path: sumPath } : { kind: 'count' });
-    if (raw.length > 0 && raw.every((g) => g.value === undefined)) return { groups: [], sumUnavailable: true };
+    const measured = raw.filter((g): g is typeof g & { value: number } => g.value !== undefined);
+    if (raw.length > 0 && measured.length === 0) return { ...none, sumUnavailable: true };
+    // Groups with no number at the path have no total: left out and counted in a note, never drawn as 0.
     return {
-      groups: foldGroups(raw.map((g) => ({ label: g.label, value: g.value ?? 0, refs: g.rows.map((r) => encodeRef(r.ref)) })), max, otherLabel),
+      groups: foldGroups(measured.map((g) => ({ label: g.label, value: g.value, refs: g.rows.map((r) => encodeRef(r.ref)) })), max, otherLabel),
       sumUnavailable: false,
+      withoutNumber: raw.length - measured.length,
     };
   }, [props.data, props.aggregate, result, reader, props.groupBy, emptyLabel, sumPath, max, otherLabel]);
 
@@ -126,6 +130,7 @@ export const GroupChartImpl = createComponentImplementation(GroupChartApi, ({ pr
     <div style={weightStyle(props.weight)} className="flex min-w-0 flex-col gap-1.5">
       {title && <div className="text-sm font-semibold">{title}</div>}
       <ResultNotes result={result} shown={result?.total} />
+      {withoutNumber > 0 && <Note>{t('a2ui.chart.someNoNumbers', { count: withoutNumber, path: sumPath ?? '' })}</Note>}
       {sumUnavailable && <Note tone="warn">{t('a2ui.chart.noNumbers', { path: sumPath ?? props.path ?? 'path' })}</Note>}
       {groups.length === 0 && !sumUnavailable && !result?.unloadedModel && <Note>{t('a2ui.empty')}</Note>}
       {groups.length > 0 && (

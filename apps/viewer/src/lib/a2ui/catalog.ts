@@ -9,26 +9,15 @@
  * names match, so the renderer and the agent prompt cannot drift.
  */
 
-import {
-  BASIC_FUNCTIONS,
-  MessageProcessor,
-  V10_VALIDATION_FUNCTION_IMPLEMENTATIONS,
-  type ActionListener,
-  type FunctionImplementation,
-} from '@a2ui/web_core/v1_0';
+import { MessageProcessor, type ActionListener, type FunctionImplementation } from '@a2ui/web_core/v1_0';
 import type { ReactCatalogComponent } from '@a2ui/react';
 import { isIfcFunction } from '@ifc-lite/a2ui';
-import { createIfcCatalog, IFC_CATALOG_FUNCTION_APIS } from '@ifc-lite/a2ui/catalog';
+import { basicFunctionImplementation, createIfcCatalog, IFC_CATALOG_FUNCTION_APIS } from '@ifc-lite/a2ui/catalog';
 import { IFC_REACT_COMPONENTS } from '@/components/a2ui/implementations';
 import type { A2uiViewerHost } from './host.js';
 import { runIfcFunction } from './functions.js';
 
-/** v1.0 validation functions first, so `required` is the v1.0 one, not the v0.9 one. */
-const BASIC_BY_NAME = new Map<string, FunctionImplementation>();
-for (const fn of [...V10_VALIDATION_FUNCTION_IMPLEMENTATIONS, ...BASIC_FUNCTIONS]) {
-  if (!BASIC_BY_NAME.has(fn.name)) BASIC_BY_NAME.set(fn.name, fn);
-}
-
+/** IFC functions bound to `host`; basic ones come from the shared lookup (v1.0 validation first). */
 export function ifcFunctionImplementations(host: A2uiViewerHost): FunctionImplementation[] {
   return IFC_CATALOG_FUNCTION_APIS.map((api) => {
     if (isIfcFunction(api.name)) {
@@ -41,7 +30,7 @@ export function ifcFunctionImplementations(host: A2uiViewerHost): FunctionImplem
         }),
       } satisfies FunctionImplementation;
     }
-    const basic = BASIC_BY_NAME.get(api.name);
+    const basic = basicFunctionImplementation(api.name);
     if (!basic) throw new Error(`No implementation for basic function ${api.name}`);
     return basic;
   });

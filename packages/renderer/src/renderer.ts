@@ -1942,13 +1942,11 @@ export class Renderer {
             const encoder = traceRendererColorFrameEncoder(colorCapture, device.createCommandEncoder());
             beginRendererGpuTiming(this, device, encoder);
 
-            // GPU-driven instancing: upload state edits now; each view culls + compacts on the GPU right before the
-            // passes that read it (orbit writes one uniform instead of repacking every delta on the CPU).
+            // GPU-driven instancing: upload state edits, then each view culls + compacts on the GPU before the passes that read it.
             const instancePool: GpuInstancePool | null = this.scene.getInstancedTemplates().length > 0 ? this.scene.getGpuInstancePool() : null;
-            if (instancePool) this.scene.setGpuPoolHover(options.hoverOutline?.id ?? null, options.hoverOutline?.modelIndex);
-            instancePool?.flush();
+            if (instancePool) { this.scene.setGpuPoolHover(options.hoverOutline?.id ?? null, options.hoverOutline?.modelIndex); instancePool.flush(); }
             const colourCull = instancePool && poolCullParams(this.camera, rteCullCamera, rteCullFrustum.planes, resolveContributionThresholdPx(options.contributionCull, interacting), this.canvas.height / this.pixelRatio);
-            // Submitted ahead of this frame: the orthographic depth prepass is its own command buffer that runs before the main encoder.
+            // Own command buffer, submitted ahead of the frame: the orthographic depth prepass runs before the main encoder.
             if (instancePool && colourCull) { const pre = device.createCommandEncoder({ label: 'instance-cull' }); instancePool.cull(pre, colourCull); device.queue.submit([pre.finish()]); }
 
             // Sun shadow-map pass (#2670, Phase 2). Off unless the caller opts

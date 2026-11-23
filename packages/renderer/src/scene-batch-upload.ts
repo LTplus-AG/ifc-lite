@@ -143,7 +143,7 @@ export function createSceneBatch(
         BATCH_CONSTANTS.BYTES_PER_VERTEX / 4,
         merged.indices,
         cellSize,
-        { normalOffset: 3, frameOrigin: options.origin },
+        { frameOrigin: options.origin },
       );
       if (lodIndices) {
         lod1IndexBuffer = track(createStaticGpuBuffer(device, lodIndices, GPUBufferUsage.INDEX | arenaUsage));

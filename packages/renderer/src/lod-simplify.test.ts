@@ -217,8 +217,9 @@ function campusPieces(pieces: number) {
   return Array.from({ length: pieces }, (_, k) => {
     const entity = 100 + (k >> 1);
     const x = (k >> 1) * 4.375 + 0.375, y = 0.625, z = 0.125, d = 1 / 64;
-    const n = k & 1 ? [0, 0, 1] : [0, 1, 0];
-    const big = k & 1 ? [[x, y], [x + 2.5, y + 2.5], [x, y + 2.5]] : [[x, y], [x + 2.5, y], [x, y + 2.5]];
+    const odd = (k & 1) === 1;
+    const n = odd ? [0, 0, 1] : [0, 1, 0];
+    const big = odd ? [[x, y], [x + 2.5, y + 2.5], [x, y + 2.5]] : [[x, y], [x + 2.5, y], [x, y + 2.5]];
     return { entity, vertices: [...big, [x + d, y + d], [x + 2 * d, y + d], [x + d, y + 2 * d]].map(([px, py]) => [px, py, z, ...n]) };
   });
 }
@@ -257,30 +258,27 @@ describe('simplifyIndicesByClustering is a function of the batch contents (load 
   const origin: [number, number, number] = [0, 0, 0];
   // Exact binary fractions: every position is exact in both frames, so only the frame differs.
   const shifted: [number, number, number] = [3.5, -2.25, 7];
+  /** What the GPU draws at LOD1 for the batch the pieces make in `order`, in `frame`. */
+  const drawn = (order: readonly number[], frame: readonly [number, number, number]) => {
+    const { vertexData, indices } = batchOf(pieces, order, frame);
+    const lod = simplifyIndicesByClustering(vertexData, STRIDE, indices, 1, { frameOrigin: frame });
+    assert.ok(lod, 'the batch must simplify');
+    assert.strictEqual(lod.length, pieces.length * 3, 'every big triangle survives, every tiny one collapses');
+    return drawnTriangles(vertexData, lod, frame);
+  };
 
   it('draws the same triangles whatever order the pieces arrived in', () => {
-    const a = batchOf(pieces, inOrder, origin), b = batchOf(pieces, reversed, origin);
-    const lodA = simplifyIndicesByClustering(a.vertexData, STRIDE, a.indices, 1, { normalOffset: 3 });
-    const lodB = simplifyIndicesByClustering(b.vertexData, STRIDE, b.indices, 1, { normalOffset: 3 });
-    assert.ok(lodA && lodB, 'the batch must simplify');
-    assert.strictEqual(lodA.length, pieces.length * 3, 'every big triangle survives, every tiny one collapses');
-    assert.deepStrictEqual(drawnTriangles(b.vertexData, lodB, origin), drawnTriangles(a.vertexData, lodA, origin));
+    assert.deepStrictEqual(drawn(reversed, origin), drawn(inOrder, origin));
   });
 
   it('draws the same triangles whichever frame the batch is in', () => {
-    const a = batchOf(pieces, inOrder, origin), b = batchOf(pieces, inOrder, shifted);
-    const lodA = simplifyIndicesByClustering(a.vertexData, STRIDE, a.indices, 1, { normalOffset: 3, frameOrigin: origin });
-    const lodB = simplifyIndicesByClustering(b.vertexData, STRIDE, b.indices, 1, { normalOffset: 3, frameOrigin: shifted });
-    assert.ok(lodA && lodB, 'the batch must simplify');
-    assert.deepStrictEqual(drawnTriangles(b.vertexData, lodB, shifted), drawnTriangles(a.vertexData, lodA, origin));
+    assert.deepStrictEqual(drawn(inOrder, shifted), drawn(inOrder, origin));
   });
 
   it('elects the coincident vertex with the smaller normal, not the first one referenced', () => {
     for (const order of [inOrder, reversed]) {
-      const b = batchOf(pieces, order, origin);
-      const lod = simplifyIndicesByClustering(b.vertexData, STRIDE, b.indices, 1, { normalOffset: 3 })!;
       // Entity 100's shared corner (0.375, 0.625, 0.125): +Z (0,0,1) sorts before +Y (0,1,0).
-      const corners = drawnTriangles(b.vertexData, lod, origin).flatMap((t) => t.split(' ')).filter((r) => r.startsWith('0.375,0.625,0.125,'));
+      const corners = drawn(order, origin).flatMap((t) => t.split(' ')).filter((r) => r.startsWith('0.375,0.625,0.125,'));
       assert.deepStrictEqual([...new Set(corners)], ['0.375,0.625,0.125,0,0,1,100']);
     }
   });

@@ -19,14 +19,11 @@
  * same cell and collapse together. The no-weld invariant (#846) is untouched
  * because the full-detail LOD0 geometry is never modified.
  *
- * The result depends only on what the batch holds, never on how it got there.
- * A batch's pieces arrive in worker-completion order, and its vertex frame is
- * the model's shared frame, whose origin the first batch created sets. Both
- * vary between loads of the same file, so the grid is anchored in world space
- * (`frameOrigin`) and each cell elects its canonical vertex (smallest
- * position, then normal), not the first one referenced. Otherwise one load
- * drew different LOD1 triangles than the next: 5% of pixels differed between
- * two loads of a 100k-element campus at one camera.
+ * The result depends only on what the batch holds, never on how it got there:
+ * a batch's pieces arrive in worker-completion order, and its vertex frame's
+ * origin is set by whichever batch is created first. So the grid is anchored
+ * at the world origin (`frameOrigin`) and each cell elects its canonical
+ * vertex (smallest position, then normal), not the first one referenced.
  */
 
 /** Below this many source triangles a batch keeps LOD0 only. */
@@ -39,7 +36,7 @@ export const LOD_CELL_FRACTION = 0.02;
 export interface LodClusterLayout {
   /** Float offset of the u32 entity lane: 6 in the batch layout. Records shorter than this carry none. */
   idLaneOffset?: number;
-  /** Float offset of the normal (3 in the batch layout), which breaks ties between coincident vertices. */
+  /** Float offset of the normal, which breaks ties between coincident vertices: 3 (the batch layout) when records hold 7+ floats. */
   normalOffset?: number;
   /** World position of the records' frame origin; cells are anchored at the world origin. */
   frameOrigin?: readonly [number, number, number];
@@ -65,7 +62,7 @@ export function simplifyIndicesByClustering(
   strideFloats: number,
   indices: Uint32Array,
   cellSize: number,
-  { idLaneOffset = 6, normalOffset, frameOrigin = [0, 0, 0] }: LodClusterLayout = {},
+  { idLaneOffset = 6, normalOffset = strideFloats >= 7 ? 3 : undefined, frameOrigin = [0, 0, 0] }: LodClusterLayout = {},
 ): Uint32Array | null {
   const triangleCount = (indices.length / 3) | 0;
   if (triangleCount < LOD_MIN_TRIANGLES) return null;
@@ -90,7 +87,9 @@ export function simplifyIndicesByClustering(
   const vertexCount = strideFloats > 0 ? (vertexData.length / strideFloats) | 0 : 0;
   const cellOf = new Int32Array(vertexCount).fill(-1); // vertexIndex -> cell number, -1 = unset
   const cellOfKey = new Map<number | string, number>(); // exact cell key -> cell number
-  const representative: number[] = []; // cell number -> elected vertexIndex
+  // Cell number -> elected vertexIndex. Every cell holds a referenced vertex, so there are at most vertexCount.
+  const representative = new Int32Array(vertexCount);
+  let cells = 0;
   let cellOrigin: readonly [number, number, number] | undefined;
   const [ox, oy, oz] = frameOrigin;
 
@@ -104,19 +103,16 @@ export function simplifyIndicesByClustering(
   const idLane = strideFloats > idLaneOffset
     ? new Uint32Array(vertexData.buffer, vertexData.byteOffset, vertexData.length)
     : null;
-  const normals = normalOffset !== undefined && strideFloats >= normalOffset + 3 ? normalOffset : -1;
+  // Fields compared to elect a representative: position, then the normal when the records carry one.
+  const ranked = normalOffset !== undefined && strideFloats >= normalOffset + 3
+    ? [0, 1, 2, normalOffset, normalOffset + 1, normalOffset + 2] : [0, 1, 2];
 
-  /** Whether vertex `a` outranks `b` as its cell's representative: position, then normal, then index. */
+  /** Whether vertex `a` outranks `b` as its cell's representative: ranked fields, then index. */
   const precedes = (a: number, b: number): boolean => {
     const ba = a * strideFloats;
     const bb = b * strideFloats;
-    for (let k = 0; k < 3; k++) {
+    for (const k of ranked) {
       if (vertexData[ba + k] !== vertexData[bb + k]) return vertexData[ba + k] < vertexData[bb + k];
-    }
-    if (normals >= 0) {
-      for (let k = normals; k < normals + 3; k++) {
-        if (vertexData[ba + k] !== vertexData[bb + k]) return vertexData[ba + k] < vertexData[bb + k];
-      }
     }
     return a < b;
   };
@@ -159,9 +155,9 @@ export function simplifyIndicesByClustering(
       // letting it throw. Callers already handle null (`scene.ts` renders
       // LOD0), so nothing goes missing (issue #3028).
       if (cellOfKey.size >= MAX_MAP_ENTRIES) return -1;
-      cell = representative.length;
+      cell = cells++;
       cellOfKey.set(key, cell);
-      representative.push(vi);
+      representative[cell] = vi;
     } else if (precedes(vi, representative[cell])) {
       representative[cell] = vi;
     }

@@ -87,7 +87,7 @@ describe('A2UI presentation through MCP', () => {
     expect(rows[0].Name).toBeTruthy();
   });
 
-  it('treats a query without types as every product, like the viewer (#11344)', async () => {
+  it('does not filter a query without types to nothing (#11344)', async () => {
     const result = surface(await call('present_query', {
       query: { modelId, where: [{ path: 'Name', op: 'exists' }] }, columns: [{ path: 'Name' }],
     }));

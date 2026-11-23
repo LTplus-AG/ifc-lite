@@ -134,6 +134,14 @@ function targetRefs(host: A2uiViewerHost, name: string, args: Record<string, unk
  * here, so a reset from any surface, button or agent call clears them all.
  */
 const viewResetListeners = new WeakMap<A2uiViewerHost, Set<() => void>>();
+const colouringListeners = new WeakMap<A2uiViewerHost, Set<() => void>>();
+
+function listen(registry: WeakMap<A2uiViewerHost, Set<() => void>>, host: A2uiViewerHost, listener: () => void): () => void {
+  let listeners = registry.get(host);
+  if (!listeners) registry.set(host, listeners = new Set());
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
 
 /** The legend colouring a viewer shows now, by key; any other colouring or a reset ends it. */
 const activeColouring = new WeakMap<A2uiViewerHost, string>();
@@ -143,6 +151,12 @@ export function colourModel(host: A2uiViewerHost, groups: Parameters<A2uiViewerH
   host.colorize(groups);
   if (key === undefined) activeColouring.delete(host);
   else activeColouring.set(host, key);
+  for (const listener of colouringListeners.get(host) ?? []) listener();
+}
+
+/** Called after any colouring, so a legend whose colours were painted over drops its "applied" label. */
+export function onColouringChange(host: A2uiViewerHost, listener: () => void): () => void {
+  return listen(colouringListeners, host, listener);
 }
 
 export function isColouringActive(host: A2uiViewerHost, key: string): boolean {
@@ -151,10 +165,7 @@ export function isColouringActive(host: A2uiViewerHost, key: string): boolean {
 
 /** Per host, so one viewer's reset never clears another viewer's legends. */
 export function onViewReset(host: A2uiViewerHost, listener: () => void): () => void {
-  let listeners = viewResetListeners.get(host);
-  if (!listeners) viewResetListeners.set(host, listeners = new Set());
-  listeners.add(listener);
-  return () => { listeners.delete(listener); };
+  return listen(viewResetListeners, host, listener);
 }
 
 /**

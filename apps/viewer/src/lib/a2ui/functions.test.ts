@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 import { encodeRef, IFC_FUNCTION_POLICY } from '@ifc-lite/a2ui';
 import { seedA2uiModels } from '@/test/a2ui-fixture';
 import { ifcFunctionImplementations } from './catalog';
-import { assertAllowed, entitiesCsv, colourModel, isColouringActive, onViewReset, PolicyRefusal, resolveTarget, runIfcFunction, safeColor } from './functions';
+import { assertAllowed, entitiesCsv, colourModel, isColouringActive, onColouringChange, onViewReset, PolicyRefusal, resolveTarget, runIfcFunction, safeColor } from './functions';
 import { A2uiMessageSession } from './session';
 
 describe('IFC function policy', () => {
@@ -93,6 +93,13 @@ describe('IFC function policy', () => {
     colourModel(host, [], 'legend|4');
     runIfcFunction(host, 'colorize', { query: { types: ['IfcWall'] } }, { caller: 'renderer', userActivated: true });
     assert.equal(isColouringActive(host, 'legend|4'), false);
+    // Every colouring is announced, so mounted legends can drop a label that no longer holds.
+    let changes = 0;
+    const stopChanges = onColouringChange(host, () => { changes++; });
+    colourModel(host, [], 'legend|5');
+    runIfcFunction(host, 'colorize', { query: { types: ['IfcWall'] } }, { caller: 'renderer', userActivated: true });
+    stopChanges();
+    assert.equal(changes, 2);
   });
 
   it('lets a live session auto-apply once per key and a replayed chat record never', async () => {

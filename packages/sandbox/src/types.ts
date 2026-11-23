@@ -6,6 +6,7 @@
  * Types for @ifc-lite/sandbox
  */
 
+import type { CreateSurfaceMessage } from '@ifc-lite/a2ui';
 import type { Capability } from '@ifc-lite/extensions';
 import type { FetchTransport } from './network-request.js';
 
@@ -27,6 +28,8 @@ export interface SandboxPermissions {
   export?: boolean;
   /** Allow bim.files.* (uploaded file access) */
   files?: boolean;
+  /** Allow bim.ui.* result surfaces (default: true) */
+  ui?: boolean;
   /**
    * Allow bim.network.* (outbound fetch). Off by default — a script gets
    * this only when the running graph holds at least one `network.fetch:*`
@@ -72,6 +75,8 @@ export interface ScriptResult {
   logs: LogEntry[];
   /** Execution time in milliseconds */
   durationMs: number;
+  /** A2UI message batches emitted by bim.ui during this run */
+  surfaces?: CreateSurfaceMessage[][];
 }
 
 /**
@@ -109,6 +114,7 @@ export const DEFAULT_PERMISSIONS: Required<SandboxPermissions> = {
   lens: true,
   export: true,
   files: true,
+  ui: true,
   network: false,   // Off by default — the caller must derive this from real grants
 };
 

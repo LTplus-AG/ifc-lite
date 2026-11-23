@@ -54,6 +54,7 @@ export class ViewerManager {
   private modelId: string | null = null;
   private currentSelection: SelectionEvent[] = [];
   private listeners = new Set<SelectionListener>();
+  private listeningToEvents = false;
   private sseAbort: AbortController | null = null;
   private resolveModel: (id: string | null) => LoadedModel | null;
   /**
@@ -72,6 +73,10 @@ export class ViewerManager {
 
   isOpen(): boolean {
     return this.server !== null;
+  }
+
+  hasConnectedClient(): boolean {
+    return this.listeningToEvents && (this.server?.clientCount() ?? 0) > 1;
   }
 
   state(): ViewerState | null {
@@ -129,6 +134,7 @@ export class ViewerManager {
   close(): void {
     this.sseAbort?.abort();
     this.sseAbort = null;
+    this.listeningToEvents = false;
     if (this.server) {
       try { this.server.close(); } catch (err) {
         // Server already disposed — surface for diagnostics, then move on.
@@ -170,21 +176,30 @@ export class ViewerManager {
     }
   }
 
+  async selectEntities(model: LoadedModel, selection: SelectionEvent[]): Promise<void> {
+    await this.sendCommand('selectEntities', { ids: selection.map(({ expressId }) => expressId) });
+    if (this.modelId === model.id) this.publishSelection(selection, model);
+  }
+
   // ── internals ──────────────────────────────────────────────────────────
 
   private subscribeToEvents(): void {
     this.sseAbort = new AbortController();
-    void this.consumeSse(this.sseAbort.signal).catch((err: unknown) => {
+    const signal = this.sseAbort.signal;
+    void this.consumeSse(signal).catch((err: unknown) => {
       if ((err as { name?: string }).name === 'AbortError') return;
       // eslint-disable-next-line no-console
       console.error('[viewer-manager] SSE error', err);
+    }).finally(() => {
+      if (this.sseAbort?.signal === signal) this.listeningToEvents = false;
     });
   }
 
   private async consumeSse(signal: AbortSignal): Promise<void> {
     const url = `http://localhost:${this.port}/events`;
     const res = await fetch(url, { signal, headers: { Accept: 'text/event-stream' } });
-    if (!res.body) return;
+    if (!res.body || signal.aborted) return;
+    this.listeningToEvents = true;
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buf = '';
@@ -260,7 +275,11 @@ export class ViewerManager {
         globalId = undefined;
       }
     }
-    this.currentSelection = [{ expressId, ifcType, globalId }];
+    this.publishSelection([{ expressId, ifcType, globalId }], model);
+  }
+
+  private publishSelection(selection: SelectionEvent[], model: LoadedModel | null): void {
+    this.currentSelection = selection;
     for (const listener of this.listeners) {
       try { listener(this.currentSelection, model); }
       catch (err) {

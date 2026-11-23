@@ -26,7 +26,7 @@ import { buildIdsAccessor } from './ids-accessor.js';
 import { nativeReviewModel, reviewCaptures, reviewAccess } from './review-captures.js';
 import { buildDropCensusIssues, dropCensusJson } from './drop-census-issues.js';
 
-const idsValidate: Tool = {
+export const idsValidate = {
   name: 'ids_validate',
   description: 'Run an IDS rule set against the model. Either pass `ids_xml` inline or `ids_path` to read from disk.',
   scope: 'validate',
@@ -79,7 +79,7 @@ const idsValidate: Tool = {
       throw error;
     }
   },
-};
+} satisfies Tool;
 
 /**
  * Resolve IDS source from `ids_xml` (inline) or `ids_path` (disk),

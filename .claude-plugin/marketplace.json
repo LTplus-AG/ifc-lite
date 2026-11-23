@@ -1,0 +1,14 @@
+{
+  "name": "ifc-lite",
+  "owner": {
+    "name": "LTplus AG"
+  },
+  "description": "Claude Code plugins for ifc-lite, the open-source IFC / BIM toolkit.",
+  "plugins": [
+    {
+      "name": "ifc-lite",
+      "source": "./.claude",
+      "description": "IFC / BIM skill plus the ifc-lite viewer bridge with interactive A2UI surfaces."
+    }
+  ]
+}

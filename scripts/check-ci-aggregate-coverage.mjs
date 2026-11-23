@@ -123,15 +123,16 @@ export const UNJUDGED_BY_DESIGN = {
   // Keep this list short: the default has to be "blocking" for the aggregate
   // to mean anything.
   //
-  // Not a run gate: it runs a budget-capped SAMPLE of the viewer tests a
-  // fast-lane PR can reach, so its pass certifies nothing, and the merge queue
-  // still runs every viewer shard. Its verdict gates queue ENTRY instead, as
-  // the commit status `PR viewer selection` (.mergify.yml
-  // auto_merge_conditions), so a flake here never turns the Test run red,
-  // which would cost a full re-run on main (scripts/ci-viewer-select.mjs).
-  'viewer-tests-selected': 'sample of the viewer suite; gates queue entry through its own commit status, and the merge queue runs the full suite',
-  // Its companion: posts that status as pending before `build`, nothing else.
-  'viewer-selection-pending': 'only marks the `PR viewer selection` status pending; judges nothing',
+  // Not a gate on the RUN: it runs a budget-capped SAMPLE of the viewer tests
+  // a fast-lane PR can reach, and a red job would make the Test run fail,
+  // which ci-push-replay.mjs never replays. Its verdict gates QUEUE ENTRY
+  // instead, as the `PR viewer selection` commit status that .mergify.yml's
+  // auto_merge_conditions read (scripts/ci-viewer-select-status.mjs). The
+  // merge queue still runs every viewer shard.
+  'viewer-tests-selected': 'sample of the viewer suite; gates queue entry through the PR viewer selection status, not the run',
+  // Posts the full-lane verdict of that status from the shards' result. It
+  // tests nothing: the shards it reads are already in the aggregate's `needs`.
+  'viewer-shards-status': 'posts the full-lane PR viewer selection status from viewer-tests; tests nothing',
 };
 
 /**

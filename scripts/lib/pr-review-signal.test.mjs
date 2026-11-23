@@ -142,9 +142,9 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
     // Not in the aggregate's `needs`; with CI_PR_VIEWER_SELECT off it
     // publishes `skipped`, which is presence.
     'Viewer tests, advisory (selected for this PR)',
-    // Its companion, which marks the `PR viewer selection` status pending
-    // right after `changes`. `skipped` wherever the lane above is.
-    'Viewer tests, selection pending',
+    // The full-lane verdict of the `PR viewer selection` status
+    // (scripts/ci-viewer-select-status.mjs --shards); `skipped` on a fast-lane run.
+    'Viewer shards status (full lane)',
     // The release PR lean lane's own checks (scripts/ci-release-lane.mjs).
     // `skipped` on every other PR, and on the release PR unless the switch is on.
     'Release PR checks',

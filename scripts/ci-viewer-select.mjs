@@ -13,19 +13,17 @@
  * round the queue again. Running the few viewer tests a change can affect, on
  * the PR, tells the author in minutes.
  *
- * NOT RED IN THE RUN, BUT A QUEUE-ENTRY GATE. The job is not in the
+ * ADVISORY TO THE TEST RUN, A GATE ON QUEUE ENTRY. The job is not in the
  * aggregate's `needs`, it carries job-level `continue-on-error`, and `--run`
- * exits 0 when tests fail (with a warning annotation, the summary and a result
- * file in the artifact). A red job would turn the whole Test run's conclusion
- * to failure, and scripts/ci-push-replay.mjs replays only a PR run that
- * concluded success, so a flake here would cost a full re-run on the push to
- * main. Instead `--status` posts the verdict as a separate commit status,
- * STATUS_CONTEXT, on the PR head, and .mergify.yml keeps a PR whose status is
- * failed or pending out of the queue (`auto_merge_conditions`). A failed file
- * is retried once first when `CI_SHARD_RETRY=on`, as the queue's shards are,
- * so a file that passes on retry is a pass here too. The merge queue still
- * runs the whole suite. A pass here means "the sampled tests passed", never
- * "the viewer suite passes".
+ * exits 0 when tests fail. A red job would turn the whole Test run's
+ * conclusion to failure, and scripts/ci-push-replay.mjs replays only a PR run
+ * that concluded success, so a flake here would cost a full re-run on the push
+ * to main. Instead, `--run` writes its verdict (after the shards' one retry,
+ * scripts/lib/viewer-select-run.mjs) to result.json, and
+ * scripts/ci-viewer-select-status.mjs posts it as the `PR viewer selection`
+ * commit status on the PR head, which .mergify.yml's auto_merge_conditions
+ * require not to be failing or pending. A pass here means "the sampled tests
+ * passed", never "the viewer suite passes"; the queue's full run still is.
  *
  * THE SWITCH is the repo variable `CI_PR_VIEWER_SELECT`:
  *   unset / `off`  the job is skipped by its `if:`; nothing runs.
@@ -40,24 +38,19 @@
  * FAIL CLOSED. A changed file the graph cannot map (config, lockfile, build
  * scripts, WASM or Rust input, a file read at runtime) selects NOTHING extra and
  * is listed in the summary as unmapped. An error reading the diff or the graph
- * exits 1, which shows on the job but cannot fail the run; the status then
- * reads failure. A run that selects nothing is green with zero tests (its
- * status says no file was selected); the summary gives the counts, so green
- * here never means "the viewer tests passed".
+ * exits 1, which shows on the job but cannot fail the run. A run that selects nothing is green with zero
+ * tests, which is what an advisory job should say; the summary gives the
+ * counts, so green here never means "the viewer tests passed".
  *
  *   node scripts/ci-viewer-select.mjs --select <dir>
  *       writes <dir>/selection.json and <dir>/files.txt, outputs run/count
  *   node scripts/ci-viewer-select.mjs --run <dir>
  *       runs <dir>/files.txt with the viewer `test` script's own tsx command,
- *       retries failed files once (CI_SHARD_RETRY=on), writes
- *       <dir>/result.json, and exits 0 even when tests fail
- *   node scripts/ci-viewer-select.mjs --status <dir>
- *       posts STATUS_CONTEXT on HEAD_SHA (test.yml's viewer-selection-pending
- *       job set it pending): the verdict from RUN (the select step's `run` output), SELECT_OUTCOME and
- *       <dir>/result.json. Needs GITHUB_TOKEN with `statuses: write`.
+ *       retries failed files once, writes <dir>/result.json, exits 0 even
+ *       when tests fail
  */
 
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { appendFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -66,7 +59,7 @@ import { isBatchBranch } from './ci-pr-lane.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 import { parseManifest, pathHash } from './viewer-test-shards.mjs';
 import { median } from './lib/viewer-test-durations.mjs';
-import { STATUS_CONTEXT, postStatus, runSelected } from './lib/viewer-select-verdict.mjs';
+import { runSelectedTests } from './lib/viewer-select-run.mjs';
 import {
   affectedTests, buildGraph, createResolver, extensionless, isCodeFile, isViewerTest, packageNode,
 } from './lib/viewer-import-graph.mjs';
@@ -303,7 +296,7 @@ export function summaryLines(decision, sel) {
   const count = (cls) => sel.changes.filter((c) => c.class === cls).length;
   const mapped = sel.changes.filter((c) => c.class === 'graph').length;
   lines.push(
-    `A failure here sets status \`${STATUS_CONTEXT}\` to failure, which keeps the PR out of the merge queue. The queue still runs the whole viewer suite.`,
+    'Advisory only. The merge queue runs the whole viewer suite and remains the gate.',
     '',
     `- changed files: ${sel.changes.length} (${mapped} in the viewer import graph, ${count('deleted')} deletions nothing imports, ${count('unmapped') + count('unreached')} NOT covered: ${count('unmapped')} unmapped, ${count('unreached')} reached by no static import)`,
     `- viewer test files the changes reach: ${sel.selected.length} of ${sel.graph.tests}`,
@@ -337,26 +330,11 @@ function setOutputs(env, outputs) {
 export function run(argv, env = process.env, root = ROOT) {
   const [cmd, dir] = argv;
   if ((cmd !== '--select' && cmd !== '--run') || !dir) {
-    throw new Error('usage: --select <dir> | --run <dir> | --status <dir>');
+    throw new Error('usage: --select <dir> | --run <dir>');
   }
   if (cmd === '--run') {
-    const files = readFileSync(join(dir, 'files.txt'), 'utf8').split('\n').filter(Boolean);
-    if (files.length === 0) throw new Error('files.txt is empty; tsx would fall back to its default glob');
     const pkg = JSON.parse(readFileSync(join(root, VIEWER, 'package.json'), 'utf8'));
-    const result = runSelected({ files, dir, env, cwd: join(root, VIEWER), runner: runnerArgs(pkg.scripts?.test) });
-    writeFileSync(join(dir, 'result.json'), `${JSON.stringify(result)}\n`);
-    if (!result.passed) {
-      const which = result.failedFiles.length > 0 ? `: ${result.failedFiles.join(', ')}` : '';
-      const msg = `${files.length} selected viewer test file(s) ran and at least one failed (exit ${result.exitCode})${which}. Status \`${STATUS_CONTEXT}\` is failure, which keeps this PR out of the merge queue; see the log above.`;
-      console.log(`::warning title=Selected viewer tests failed::${msg}`);
-      writeSummary(env, ['', `**${msg}**`]);
-    } else {
-      const flaky = result.retry?.passed ? ` (${result.failedFiles.length} file(s) needed a retry: ${result.failedFiles.join(', ')})` : '';
-      if (flaky) console.log(`::warning title=Flaky selected viewer test file(s)::${result.failedFiles.join(', ')} passed only on retry`);
-      writeSummary(env, ['', `${files.length} selected viewer test file(s) passed${flaky}.`]);
-    }
-    // Not red: see the header for why a failure must not fail the Test run.
-    return 0;
+    return runSelectedTests({ root, viewer: VIEWER, dir, env, runner: runnerArgs(pkg.scripts?.test) });
   }
   const decision = decideViewerSelect({
     mode: env.CI_PR_VIEWER_SELECT, event: env.GITHUB_EVENT_NAME, lane: env.LANE, headRef: env.HEAD_REF, noop: env.NOOP,
@@ -385,8 +363,7 @@ export function run(argv, env = process.env, root = ROOT) {
 
 if (isMainEntry(import.meta.url)) {
   try {
-    const argv = process.argv.slice(2);
-    process.exitCode = argv[0] === '--status' ? await postStatus(argv) : run(argv);
+    process.exitCode = run(process.argv.slice(2));
   } catch (err) {
     console.error(`[ci-viewer-select] ERROR: ${err.message}`);
     process.exitCode = 1;

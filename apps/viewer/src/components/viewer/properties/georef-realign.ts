@@ -5,16 +5,13 @@
 import { toast } from '@/components/ui/toast';
 import type { UseTranslationResult } from '@/i18n';
 import { formatLocaleList, formatLocaleNumber } from '@/i18n/intlFormat';
-import { isNativeWorkflowBusy } from '@/lib/flow/run-session';
+import { refuseWhileWorkflowBusy } from '@/lib/flow/workflow-busy-refusal';
 import { realignLoadedModels, MissingAlignmentSourceError, ModelLoadPendingError } from '@/lib/geo/realign-loaded-models';
 import type { NativeModelAdder } from '@/services/coordination-loader';
 
 /** The panel's Re-align with localized refusals and outcome. True once the rebuild ran, so its prompt can close. */
 export async function reloadModelsForAlignment(addModel: NativeModelAdder, { t, locale }: Pick<UseTranslationResult, 't' | 'locale'>): Promise<boolean> {
-  if (isNativeWorkflowBusy()) {
-    toast.error(t('flowAssistant.preflightRunningWorkflow'));
-    return false;
-  }
+  if (refuseWhileWorkflowBusy(t)) return false;
   try {
     const result = await realignLoadedModels(addModel);
     if (result.state === 'partial') toast.error(t('properties.georef.reloadPartial', {

@@ -1,0 +1,13 @@
+diff --git a/apps/viewer/src/hooks/useDrawingGeneration.ts b/apps/viewer/src/hooks/useDrawingGeneration.ts
+index 6bc7b3f27d..19a57cdf14 100644
+--- a/apps/viewer/src/hooks/useDrawingGeneration.ts
++++ b/apps/viewer/src/hooks/useDrawingGeneration.ts
+@@ -202,7 +202,7 @@ export function useDrawingGeneration({
+ 
+   const computeDrawing = useCallback(async (isRegenerate = false, isCurrent: () => boolean = () => true) => { if (isGeometryHeld(useViewerStore.getState())) return;
+     // An instanced-only model has no flat meshes but still draws (#10264).
+-    if (!geometryResult?.meshes || geometryResult.meshes.length === 0 || !drawingHasGeometry(geometryResult.meshes.length, useViewerStore.getState(), getGlobalRenderer())) {
++    if (!geometryResult?.meshes || !drawingHasGeometry(geometryResult.meshes.length, useViewerStore.getState(), getGlobalRenderer())) {
+       // Clear the drawing when no geometry is available (e.g., all models hidden)
+       setDrawing(null);
+       setDrawingStatus('idle');

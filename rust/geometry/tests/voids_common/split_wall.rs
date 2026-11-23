@@ -37,6 +37,18 @@ pub(crate) fn wall_with_finish(
     wall_with_bodies(site, wall_turn_deg, wall_y, recess, bodies)
 }
 
+/// The core and the middle body both occupy the authored cutter.
+#[allow(dead_code)]
+pub(crate) fn wall_with_overlapping_bodies() -> String {
+    let bodies = format!(
+        "{}{}{}#50=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#63,#67,#71));",
+        extrusion(60, 0.0, WALL_LENGTH, 0.0, CORE + FINISH),
+        extrusion(64, 0.75, 2.75, CORE, CORE + FINISH),
+        extrusion(68, 3.1, 3.8, -0.02, 0.10),
+    );
+    wall_with_bodies([0.0; 2], 0.0, 2.274, Recess::FromInterface, bodies)
+}
+
 fn wall_with_bodies(site: [f64; 2], wall_turn_deg: f64, wall_y: f64, recess: Recess, bodies: String) -> String {
     let (wall_sin, wall_cos) = wall_turn_deg.to_radians().sin_cos();
     let (axis, start) = match recess {
@@ -129,4 +141,17 @@ fn extrusion(id: u32, x0: f64, x1: f64, y0: f64, y1: f64) -> String {
 
 pub(crate) fn analytic_volume() -> f64 {
     WALL_LENGTH * WALL_HEIGHT * (CORE + FINISH) - RECESS * RECESS * FINISH
+}
+
+/// Inward source triangles deliberately retain the authored winding.
+#[allow(dead_code)]
+pub(crate) fn inward_wall(recess: Recess) -> String {
+    let mut bodies = String::new();
+    for (id, end, y0, y1) in [(60, 4.0, 0.0, CORE), (64, 1.5, CORE, CORE + FINISH)] {
+        bodies += &format!("#{id}=IFCCARTESIANPOINTLIST3D(((0.,{y0:?},0.),({end:?},{y0:?},0.),({end:?},{y1:?},0.),(0.,{y1:?},0.),(0.,{y0:?},3.),({end:?},{y0:?},3.),({end:?},{y1:?},3.),(0.,{y1:?},3.)),$);\n");
+        let mesh = id + 1;
+        bodies += &format!("#{mesh}=IFCTRIANGULATEDFACESET(#{id},$,.F.,((1,2,3),(1,3,4),(5,7,6),(5,8,7),(1,6,2),(1,5,6),(2,7,3),(2,6,7),(3,8,4),(3,7,8),(4,5,1),(4,8,5)),$);\n");
+    }
+    bodies += "#50=IFCSHAPEREPRESENTATION(#13,'Body','Tessellation',(#61,#65));";
+    wall_with_bodies([0.; 2], 0., 2.411, recess, bodies)
 }

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-//! Split-wall recess regressions for #10512 and #10528.
+//! Split-wall recess regressions for #10512, #10528 and #11313.
 
 mod voids_common;
 #[path = "voids_common/split_wall.rs"]
@@ -78,6 +78,52 @@ fn split_recess_keeps_the_core_at_the_flush_interface() {
     }
 }
 
+
+#[test]
+fn flush_recess_beyond_the_finish_keeps_the_core() {
+    // #11313: the finish ends at x=0.5 m, before the recess at x=1–2 m.
+    // All 2.4 m³ of core and 0.018 m³ of finish should remain.
+    // At 2.137 m the manifold gate rejects the touching cut and hands
+    // the authored box to the legacy fallback.
+    for (turn, offset) in [(0.0, 2.274), (0.0, 2.137), (42.0, 2.001)] {
+        for site in [[0.0; 2], [1000.0, 800.0]] {
+            for recess in [Recess::FromInterface, Recess::ToInterfaceAtTop] {
+                let content = split_wall::wall_with_finish(site, turn, offset, recess, 0.5);
+                let (mesh, _) = fixture_host(&content, site != [0.0; 2]);
+                let volume = mesh_volume(&mesh);
+                let case = format!("{site:?} {turn}° {offset} m {recess:?}");
+                assert!((volume - 2.418).abs() < 0.0006, "{case}: {volume} m³");
+                let ledger = EdgeLedger::build(&mesh, VertexKey::GridMul(1.0e3), Degenerate::SkipTriangle);
+                assert_eq!(ledger.unbalanced().count(), 0, "{case}");
+            }
+        }
+    }
+}
+
+#[test]
+fn overlap_does_not_hide_material_inside_the_recess() {
+    use std::process::Command;
+    const PROBE: &str = "IFCLITE_PROBE_OVERLAPPING_RECESS";
+    if std::env::var_os(PROBE).is_none() {
+        let child = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "overlap_does_not_hide_material_inside_the_recess", "--nocapture"])
+            .env("IFC_LITE_PRISM_CUT", "0")
+            .env(PROBE, "1")
+            .output()
+            .unwrap();
+        assert!(child.status.success(), "{}", String::from_utf8_lossy(&child.stderr));
+        assert!(String::from_utf8_lossy(&child.stdout).contains("1 passed; 0 failed"));
+        return;
+    }
+
+    // #11313: parity counts both overlapping shells and sees air in the
+    // authored recess, even though it is filled up to the outer cap.
+    let content = split_wall::wall_with_overlapping_bodies();
+    let (mesh, _) = fixture_host(&content, false);
+    let cap_hits = |x| voids_common::production::count_ray_hits(&mesh, [x, 2.48, 1.8], [0.0, 1.0, 0.0]);
+    assert_eq!(cap_hits(4.4), 0, "the recess must clear the outer face");
+    assert!(cap_hits(3.4) > 0, "the wall face beside the recess must remain");
+}
 
 /// The two touching bodies contribute opposite interface faces. The finish
 /// must lose both sides of the recessed patch even when its end bisects the

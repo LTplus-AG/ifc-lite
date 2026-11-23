@@ -343,6 +343,8 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
     const pair = (sourceSchema === 'IFC2X3' && schema === 'IFC4') || (sourceSchema === 'IFC4' && schema === 'IFC2X3');
     if (pair) pass.enums.structural.fromStore(dataStore, sourceSchema, schema, source);
     pass.enums.documents.fromSource(source, sourceSchema, schema); // #10846
+  } else if (sourceSchema === 'IFC2X3' && schema === 'IFC4') {
+    pass.enums.structural.deferredVarying = { includeRelationships: options.includeRelationships !== false };
   }
   // #10763: what a downgraded IfcMaterialProperties.Material names, from the records this export
   // writes: the effective types (retypes, deletions, overlay-created records), each record's slots as

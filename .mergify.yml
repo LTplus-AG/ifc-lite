@@ -10,8 +10,9 @@
 # only with more runners.
 #
 # A labelled PR (other than Version Packages) enters the queue only once it is
-# ready: `PR review signal` green and no unresolved review thread
-# (`auto_merge_conditions`, at the foot). The label can go on early. Once
+# ready: `PR review signal` green, no unresolved review thread, and the `PR
+# viewer selection` status not failing or pending (`auto_merge_conditions`, at
+# the foot). The label can go on early. Once
 # queued, a push, removing the label, or a new review thread takes it out and
 # its queue run is lost: main's branch protection requires resolved
 # conversations, and Mergify adds that to every queue's conditions itself.
@@ -143,6 +144,20 @@ pull_request_rules:
 # run (Workflow Automation is not activated on this repo). This gate keeps a PR
 # out until its review has landed, so threads are found before a queue run
 # starts rather than during it.
+#
+# `PR viewer selection` is the commit status of the selected viewer tests on
+# a fast-lane PR (scripts/ci-viewer-select-status.mjs; test.yml keeps that job
+# advisory so a flake never turns the Test run red). The first job of every
+# same-repo PR run posts it: `pending` when the run gates (fast lane: then the
+# selected tests post success or failure; full lane: viewer-shards-status
+# posts it from the viewer shards), else `success` "not gated" (switch not
+# `on`, no frontend/Rust change). A later run on the sha replaces a hold an
+# earlier one left, never with success before its tests passed.
+# Negated, so an ABSENT status passes (fork PRs). Before
+# that first job posts, no lane has been created, so `PR review signal`, which
+# waits for the lanes, is not green either; a failed entry post fails open.
+# Statuses are per sha: a push starts clean. Here, not in queue_conditions:
+# those are re-checked while queued, and a re-run would dequeue the PR.
 merge_protections_settings:
   auto_merge_conditions:
     - or:
@@ -150,3 +165,5 @@ merge_protections_settings:
       - and:
         - check-success=PR review signal
         - "#review-threads-unresolved=0"
+        - -check-failure=PR viewer selection
+        - -check-pending=PR viewer selection

@@ -113,17 +113,17 @@ export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ 
     setHidden((prev) => (prev.size ? new Set() : prev));
     setApplied(false);
   };
-  // Swapping the payload first shows again what this legend hid, so no element stays hidden behind a checked box.
-  // (An unmount leaves the view as the user set it.)
-  const previous = useRef({ autoKey, entries, hidden });
+  // A new payload or a new target set (models loaded or swapped) first shows again what this legend hid,
+  // so no element stays hidden behind a checked box, and drops a stale "applied". An unmount leaves the view alone.
+  const previous = useRef({ claimKey, entries, hidden });
   useEffect(() => {
     const before = previous.current;
-    if (before.autoKey !== autoKey) {
+    if (before.claimKey !== claimKey) {
       const refs = before.entries.filter((e) => before.hidden.has(e.label)).flatMap((e) => e.refs);
       if (refs.length) host.show(refs);
       clearViewState();
     }
-    previous.current = { autoKey, entries, hidden };
+    previous.current = { claimKey, entries, hidden };
   });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- state setters are stable
   useEffect(() => onViewReset(host, clearViewState), [host]);

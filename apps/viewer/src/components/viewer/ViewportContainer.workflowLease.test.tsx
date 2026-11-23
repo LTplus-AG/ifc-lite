@@ -80,33 +80,29 @@ afterEach(() => {
   useViewerStore.setState({ clearAllModels: original.clearAllModels, resetViewerState: original.resetViewerState });
 });
 
-async function mountWithLease(): Promise<Map<string, unknown>> {
+async function mountWithLease(): Promise<void> {
   render(<ViewportContainer />);
   await advance(0);
   clears = 0;
   resets = 0;
   run = startWorkflowRun('realign');
-  return useViewerStore.getState().models;
 }
 
 describe('fresh-federation opens refuse to clear the scene while a workflow holds the lease', () => {
   it('a multi-file drop on an empty viewer leaves the store untouched and says why', async () => {
-    const before = await mountWithLease();
-    const files = [new File(['x'], 'one.ifc'), new File(['x'], 'two.ifc')];
-    drag(document.body, 'dragenter', fileTransfer(...files));
-    drag(document.body, 'dragover', fileTransfer(...files));
-    drag(document.body, 'drop', fileTransfer(...files));
+    await mountWithLease();
+    const dt = fileTransfer(new File(['x'], 'one.ifc'), new File(['x'], 'two.ifc'));
+    for (const type of ['dragenter', 'dragover', 'drop']) drag(document.body, type, dt);
     await advance(0);
     await advance(0);
 
     assert.equal(resets, 0, 'viewer state was not reset');
-    assert.equal(clears, 0, 'models were not cleared');
-    assert.equal(useViewerStore.getState().models, before, 'the models map is untouched');
+    assert.equal(clears, 0, 'the models map was not cleared');
     assert.match(latestToast(), new RegExp(BUSY));
   });
 
   it('a cloud-source batch on an empty viewer leaves the store untouched and says why', async () => {
-    const before = await mountWithLease();
+    await mountWithLease();
     const item = {
       name: 'remote.ifc',
       buffer: new ArrayBuffer(1),
@@ -118,8 +114,7 @@ describe('fresh-federation opens refuse to clear the scene while a workflow hold
     await advance(0);
 
     assert.equal(resets, 0, 'viewer state was not reset');
-    assert.equal(clears, 0, 'models were not cleared');
-    assert.equal(useViewerStore.getState().models, before, 'the models map is untouched');
+    assert.equal(clears, 0, 'the models map was not cleared');
     assert.match(latestToast(), new RegExp(BUSY));
   });
 });

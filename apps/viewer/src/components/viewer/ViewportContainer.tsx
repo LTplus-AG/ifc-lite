@@ -68,7 +68,7 @@ import { recordDownloadedSourceFile } from '@/lib/sources/persistence';
 import { sanitizeFilename } from '@/lib/export/download';
 import { enqueueSourceLoad } from '@/lib/sources/loadQueue';
 import { toast, Toaster } from '@/components/ui/toast';
-import { refuseSceneClearWhileWorkflowBusy } from '@/lib/flow/workflow-busy-refusal';
+import { refuseWhileWorkflowBusy } from '@/lib/flow/workflow-busy-refusal';
 import { reloadActiveModelInPlace } from './reloadActiveModel';
 import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { Upload, AlertTriangle, ChevronDown, ExternalLink, Plus } from 'lucide-react';
@@ -351,7 +351,7 @@ function ViewportContainerLive() {
       void loadFile(files[0], { kind: 'primary' }, { sourceHandle: handles?.[0] });
     } else {
       // Multiple files, no models loaded - start a fresh federation.
-      if (refuseSceneClearWhileWorkflowBusy(t)) return;
+      if (refuseWhileWorkflowBusy(t)) return;
       resetViewerState();
       clearAllModels();
       void loadFilesSequentially(files, handles);
@@ -392,7 +392,7 @@ function ViewportContainerLive() {
           const anyLoaded =
             store.models.size > 0 || (store.geometryResult?.meshes?.length ?? 0) > 0;
           if (!anyLoaded) {
-            if (refuseSceneClearWhileWorkflowBusy(t)) return;
+            if (refuseWhileWorkflowBusy(t)) return;
             resetViewerState();
             clearAllModels();
           }

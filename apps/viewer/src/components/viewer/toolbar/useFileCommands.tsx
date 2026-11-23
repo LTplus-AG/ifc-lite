@@ -21,7 +21,7 @@ import {
   readFreshFile,
 } from '@/services/file-system-access';
 import { toast } from '@/components/ui/toast';
-import { refuseSceneClearWhileWorkflowBusy } from '@/lib/flow/workflow-busy-refusal';
+import { refuseWhileWorkflowBusy } from '@/lib/flow/workflow-busy-refusal';
 import { lazyChunk } from '@/lib/lazy-chunk';
 import { useCollabShareReview } from '@/lib/collab/share-review';
 import { useTranslation } from '@/i18n';
@@ -164,7 +164,7 @@ export function useFileCommands(): FileCommands {
       return;
     }
     const allIfcx = supportedFiles.every(isIfcxModelFile);
-    if (refuseSceneClearWhileWorkflowBusy(t)) return;
+    if (refuseWhileWorkflowBusy(t)) return;
     resetViewerState();
     clearAllModels();
     if (allIfcx) void loadFederatedIfcx(supportedFiles);
@@ -290,6 +290,7 @@ export function useFileCommands(): FileCommands {
       .filter((m): m is FederatedModel & { sourceHandle: FileSystemFileHandle } => Boolean(m.sourceHandle))
       .sort((a, b) => (a.loadedAt ?? 0) - (b.loadedAt ?? 0));
     if (targets.length === 0) return;
+    if (refuseWhileWorkflowBusy(t)) return;
 
     // Re-read every handle BEFORE clearing anything, so a failed read never
     // leaves the viewer empty.
@@ -324,7 +325,6 @@ export function useFileCommands(): FileCommands {
       if (reloadedId) restoreModelTags(useViewerStore.getState(), carry, ok[0].model.id, reloadedId);
     } else {
       // Rebuild the federation from fresh bytes, preserving id + order + state.
-      if (refuseSceneClearWhileWorkflowBusy(t)) return;
       clearAllModels();
       for (const r of ok) {
         const reloadedId = await addModel(r.fresh, {

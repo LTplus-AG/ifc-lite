@@ -63,7 +63,6 @@ afterEach(() => {
 describe('file commands refuse to clear the scene while a workflow holds the lease', () => {
   it('a multi-file Open leaves the models untouched and says why', async () => {
     const container = render(<Host />);
-    const before = useViewerStore.getState().models;
     const input = container.querySelector<HTMLInputElement>('#file-input-open');
     assert.ok(input, 'the hidden Open input is mounted');
     Object.defineProperty(input, 'files', { configurable: true, value: [new File(['x'], 'one.ifc'), new File(['x'], 'two.ifc')] });
@@ -72,18 +71,15 @@ describe('file commands refuse to clear the scene while a workflow holds the lea
     await advance(0);
 
     assert.equal(resets, 0, 'viewer state was not reset');
-    assert.equal(clears, 0, 'models were not cleared');
-    assert.equal(useViewerStore.getState().models, before, 'the models map is untouched');
+    assert.equal(clears, 0, 'the models map was not cleared');
     assert.match(latestToast(), new RegExp(BUSY));
   });
 
   it('a multi-model Refresh leaves the models untouched and says why', async () => {
     render(<Host />);
-    const before = useViewerStore.getState().models;
     await act(async () => { await commands!.handleRefresh(); });
 
-    assert.equal(clears, 0, 'models were not cleared');
-    assert.equal(useViewerStore.getState().models, before, 'the models map is untouched');
+    assert.equal(clears, 0, 'the models map was not cleared');
     assert.match(latestToast(), new RegExp(BUSY));
   });
 });

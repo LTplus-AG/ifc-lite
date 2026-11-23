@@ -13,8 +13,12 @@ export function modelBounds(modelId: string) {
   if (!model) return null;
   // A capture frames by its Gaussian centres, never by an invented mesh box.
   if (model.gaussianSplat) return gaussianModelBounds(model);
+  const renderer = getGlobalRenderer();
+  if (!renderer) return null;
+  const modelIndex = modelIndices(state.models).get(modelId);
+  if (modelIndex === undefined) return null;
   const handle = model.pointCloudHandleId === undefined ? undefined : { id: model.pointCloudHandleId };
-  return getGlobalRenderer()?.getModelPlacementBounds(modelIndices(state.models).get(modelId) ?? 0, handle) ?? null;
+  return renderer.getModelPlacementBounds(modelIndex, handle) ?? null;
 }
 
 export function modelCenter(modelId: string): Translation | null {

@@ -9,6 +9,7 @@
  * Supports applying property and root attribute mutations before export.
  */
 
+import { pruneUnrootedUpgrade } from './schema-converter-unrooted-upgrade.js';
 import { hasGeorefEdits, IFC2X3_GEOREF_REFUSAL } from './step-coordinate-options.js';
 import type { IfcDataStore, IfcSourceHeader } from '@ifc-lite/parser';
 import { EntityExtractor, parseSourceHeader } from '@ifc-lite/parser';
@@ -251,6 +252,10 @@ export class StepExporter {
 
     // Complete map metadata adaptation before optional Rust planning and assembly.
     normalizeCoordinateMetadata(pass, options, () => allocatedExpressId(this.nextExpressId++));
+    pass.newEntityCount += pass.enums.structural.finishEffectiveVarying(pass.entities);
+    if (pass.sourceSchema === 'IFC2X3' && pass.schema === 'IFC4') {
+      pass.warnings.push(...pruneUnrootedUpgrade(pass.entities));
+    }
     return { pass };
   }
 

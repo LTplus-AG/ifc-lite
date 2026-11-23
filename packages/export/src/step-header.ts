@@ -29,7 +29,6 @@
  * `step-exporter.ts`.
  */
 
-import { pruneUnrootedUpgrade } from './schema-converter-unrooted-upgrade.js';
 import type { IfcSourceHeader } from '@ifc-lite/parser';
 import { generateHeader } from '@ifc-lite/parser';
 import { assembleStepBytes } from './step-file-assembly.js';
@@ -108,10 +107,6 @@ export function assembleExportResult(pass: ExportPass): StepExportResult {
   // so an in-place edit to a source entity is not in the file and never was —
   // the header merely used to claim otherwise.
   const { modifiedEntityCount, warnings: deltaWarnings } = pass.modifications.settle();
-  pass.newEntityCount += pass.enums.structural.finishEffectiveVarying(pass.entities);
-  if (pass.sourceSchema === 'IFC2X3' && pass.schema === 'IFC4') {
-    pass.warnings.push(...pruneUnrootedUpgrade(pass.entities));
-  }
   pass.warnings.push(...deltaWarnings);
   pass.warnings.push(...pass.slotFill.warnings());
   pass.warnings.push(...pass.ifc4Slots.warnings(), ...pass.enums.warnings());

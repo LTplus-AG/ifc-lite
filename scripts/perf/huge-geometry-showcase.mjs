@@ -33,8 +33,8 @@
  */
 
 import { ellipsoid, guid, prng, real } from './gen-dense-ifc.mjs';
-import { meshGrid, placement, writeShared } from './huge-geometry-shapes.mjs';
-import { BAY, BLOCK, blockPlan, mix } from './huge-geometry-showcase-city.mjs';
+import { meshGrid, mix, placement, writeShared } from './huge-geometry-shapes.mjs';
+import { BAY, BLOCK, blockPlan } from './huge-geometry-showcase-city.mjs';
 
 export { spiral } from './huge-geometry-showcase-city.mjs';
 

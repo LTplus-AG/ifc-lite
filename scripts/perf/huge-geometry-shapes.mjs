@@ -34,6 +34,18 @@ export function meshGrid(target) {
   return { rings, segs, triangles: 2 * segs * (rings - 1) };
 }
 
+/** One round of `mix`: fold a (possibly > 32-bit) value into the hash. */
+function mixRound(h, v) {
+  h = Math.imul(h ^ (v >>> 0), 0x85EBCA77) >>> 0;
+  h = Math.imul(h ^ Math.floor(v / 4294967296), 0xC2B2AE3D) >>> 0;
+  return (h ^ (h >>> 16)) >>> 0;
+}
+
+/** 32-bit mix of (seed, a, b): independent per-element streams. */
+export function mix(seed, a, b = 0) {
+  return mixRound(mixRound((seed ^ 0x9E3779B9) >>> 0, a), b);
+}
+
 /** Exact triangles a shape produces, or null when the geometry kernel decides. */
 export function shapeTriangles(part) {
   if (part.shape === 'box') return 12;

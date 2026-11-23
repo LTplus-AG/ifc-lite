@@ -40,7 +40,7 @@ import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { guid, prng } from './gen-dense-ifc.mjs';
-import { placement, shapeTriangles, writeItem, writeMappedShape, writeOpenings, writeProductShape, writePrototype, writeShared } from './huge-geometry-shapes.mjs';
+import { mix, placement, shapeTriangles, writeItem, writeMappedShape, writeOpenings, writeProductShape, writePrototype, writeShared } from './huge-geometry-shapes.mjs';
 import { resolveScenario } from './huge-geometry-ladder.mjs';
 import { generateShowcaseModel } from './huge-geometry-showcase.mjs';
 
@@ -51,17 +51,6 @@ const PALETTE = [[0.78, 0.76, 0.72], [0.55, 0.62, 0.70], [0.82, 0.55, 0.38], [0.
 export const CELL = 3;
 export const FLOOR = 3.5;
 export const CAMPUS = Object.freeze({ perBuilding: 2000, side: 10, pitch: 80, jitter: 15 });
-
-/** 32-bit mix of (seed, a, b): independent per-element streams. */
-export function mix(seed, a, b = 0) {
-  let h = (seed ^ 0x9E3779B9) >>> 0;
-  for (const v of [a, b]) {
-    h = Math.imul(h ^ (v >>> 0), 0x85EBCA77) >>> 0;
-    h = Math.imul(h ^ Math.floor(v / 4294967296), 0xC2B2AE3D) >>> 0;
-    h ^= h >>> 16;
-  }
-  return h >>> 0;
-}
 
 /** Part index of global element `i`: low-discrepancy, so parts interleave evenly in space. */
 export function partOf(parts, i) {
@@ -159,6 +148,7 @@ export function generateHugeModel(sink, s, m = 0) {
 
   const perPart = s.parts.map(() => ({ elements: 0, repeated: 0 }));
   let triangles = 0, trianglesExact = true, openings = 0;
+  const partTriangles = s.parts.map(shapeTriangles);
   for (let i = start; i < end; i++) {
     const k = partOf(s.parts, i), part = s.parts[k];
     const { x, y, storey } = layoutOf(s.layout, s.elements, i, s.seed);
@@ -182,7 +172,7 @@ export function generateHugeModel(sink, s, m = 0) {
     if (st.pending.length >= 5000) contain(st);
     perPart[k].elements++;
     if (repeated) perPart[k].repeated++;
-    const t = shapeTriangles(part);
+    const t = partTriangles[k];
     if (t === null) trianglesExact = false; else triangles += t;
   }
   const levels = [...storeys.keys()].sort((a, b) => a - b).map((f) => storeys.get(f));

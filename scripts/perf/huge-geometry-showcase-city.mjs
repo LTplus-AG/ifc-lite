@@ -9,20 +9,10 @@
  */
 
 import { prng } from './gen-dense-ifc.mjs';
+import { mix } from './huge-geometry-shapes.mjs';
 
 export const BLOCK = Object.freeze({ lot: 72, street: 16, pitch: 88 });
 export const BAY = 3.0;
-
-/** 32-bit mix of (seed, a, b) (same construction as huge-geometry-gen's `mix`). */
-export function mix(seed, a, b = 0) {
-  let h = (seed ^ 0x9E3779B9) >>> 0;
-  for (const v of [a, b]) {
-    h = Math.imul(h ^ (v >>> 0), 0x85EBCA77) >>> 0;
-    h = Math.imul(h ^ Math.floor(v / 4294967296), 0xC2B2AE3D) >>> 0;
-    h ^= h >>> 16;
-  }
-  return h >>> 0;
-}
 
 /** Square spiral: block index -> grid cell (0,0), (1,0), (1,1), (0,1), (-1,1), ... every cell exactly once. */
 export function spiral(n) {

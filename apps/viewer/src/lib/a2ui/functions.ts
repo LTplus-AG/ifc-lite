@@ -135,16 +135,18 @@ function targetRefs(host: A2uiViewerHost, name: string, args: Record<string, unk
  */
 const viewResetListeners = new WeakMap<A2uiViewerHost, Set<() => void>>();
 
-/** Colourings currently shown in a viewer (by legend key); a view reset clears them. */
-const activeColourings = new WeakMap<A2uiViewerHost, Set<string>>();
+/** The legend colouring a viewer shows now, by key; any other colouring or a reset ends it. */
+const activeColouring = new WeakMap<A2uiViewerHost, string>();
 
-/** Any new colouring paints over the earlier ones, so it becomes the only active one. */
-export function markColouringActive(host: A2uiViewerHost, key: string | null): void {
-  activeColourings.set(host, new Set(key === null ? [] : [key]));
+/** Colour the model; a legend passes its key so a remount can tell its colours are still on screen. */
+export function colourModel(host: A2uiViewerHost, groups: Parameters<A2uiViewerHost['colorize']>[0], key?: string): void {
+  host.colorize(groups);
+  if (key === undefined) activeColouring.delete(host);
+  else activeColouring.set(host, key);
 }
 
 export function isColouringActive(host: A2uiViewerHost, key: string): boolean {
-  return activeColourings.get(host)?.has(key) ?? false;
+  return activeColouring.get(host) === key;
 }
 
 /** Per host, so one viewer's reset never clears another viewer's legends. */
@@ -168,14 +170,10 @@ export function runIfcFunction(host: A2uiViewerHost, name: string, args: Record<
     case 'hide': return host.hide(targetRefs(host, name, args));
     case 'show': return host.show(targetRefs(host, name, args));
     case 'flyTo': return host.flyTo(targetRefs(host, name, args));
-    case 'colorize': {
-      host.colorize([{ refs: targetRefs(host, name, args), color: safeColor(args.color) }]);
-      markColouringActive(host, null);
-      return undefined;
-    }
+    case 'colorize': return colourModel(host, [{ refs: targetRefs(host, name, args), color: safeColor(args.color) }]);
     case 'resetView': {
       host.resetView();
-      activeColourings.get(host)?.clear();
+      activeColouring.delete(host);
       for (const listener of viewResetListeners.get(host) ?? []) listener();
       return undefined;
     }

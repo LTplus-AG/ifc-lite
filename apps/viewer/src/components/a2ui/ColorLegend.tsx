@@ -21,7 +21,7 @@ import { aggregatePool, groupRows } from '@/lib/a2ui/query-eval';
 import { weightStyle } from './basic-layout';
 import { Note, ResultNotes } from './notes';
 import { reportActionError, useA2uiRuntime, useModelsVersion, useQueryResult, useRunFunction } from './runtime';
-import { isColouringActive, markColouringActive, onViewReset } from '@/lib/a2ui/functions';
+import { colourModel, isColouringActive, onViewReset } from '@/lib/a2ui/functions';
 
 export interface LegendEntry {
   label: string;
@@ -87,8 +87,7 @@ export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ 
   const apply = (): boolean => {
     if (targets === 0) return false;
     try {
-      host.colorize(entries.map((e) => ({ refs: e.refs, color: e.color })));
-      markColouringActive(host, claimKey);
+      colourModel(host, entries.map((e) => ({ refs: e.refs, color: e.color })), claimKey);
       setApplied(true);
       return true;
     } catch (error) {

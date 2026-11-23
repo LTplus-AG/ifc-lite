@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 import { encodeRef, IFC_FUNCTION_POLICY } from '@ifc-lite/a2ui';
 import { seedA2uiModels } from '@/test/a2ui-fixture';
 import { ifcFunctionImplementations } from './catalog';
-import { assertAllowed, entitiesCsv, isColouringActive, markColouringActive, onViewReset, PolicyRefusal, resolveTarget, runIfcFunction, safeColor } from './functions';
+import { assertAllowed, entitiesCsv, colourModel, isColouringActive, onViewReset, PolicyRefusal, resolveTarget, runIfcFunction, safeColor } from './functions';
 import { A2uiMessageSession } from './session';
 
 describe('IFC function policy', () => {
@@ -85,12 +85,12 @@ describe('IFC function policy', () => {
     runIfcFunction(host, 'resetView', {}, { caller: 'renderer', userActivated: true });
     assert.equal(heard, 2);
     // A reset also ends every active colouring, so a remounted legend no longer claims it.
-    markColouringActive(host, 'legend|4');
+    colourModel(host, [], 'legend|4');
     assert.equal(isColouringActive(host, 'legend|4'), true);
     runIfcFunction(host, 'resetView', {}, { caller: 'renderer', userActivated: true });
     assert.equal(isColouringActive(host, 'legend|4'), false);
     // So does any other colouring painting over it.
-    markColouringActive(host, 'legend|4');
+    colourModel(host, [], 'legend|4');
     runIfcFunction(host, 'colorize', { query: { types: ['IfcWall'] } }, { caller: 'renderer', userActivated: true });
     assert.equal(isColouringActive(host, 'legend|4'), false);
   });

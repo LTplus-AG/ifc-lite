@@ -34,14 +34,21 @@ function legendColor(index: number): string {
 
 const HEX = /^#[0-9a-f]{6}$/i;
 
-/** Script data: `[{label, color, refs?}]`; a colour that is not #rrggbb falls back to the palette. */
-function legendEntriesFromData(data: unknown): LegendEntry[] | null {
+/**
+ * Script data: `[{label, color, refs?}]`; a colour that is not #rrggbb falls back to the palette.
+ * Entries sharing a label merge (first colour wins), since a label is what the user toggles.
+ */
+export function legendEntriesFromData(data: unknown): LegendEntry[] | null {
   if (!Array.isArray(data)) return null;
-  return data.flatMap((item, i) => {
-    if (!item || typeof item !== 'object' || typeof (item as { label?: unknown }).label !== 'string') return [];
+  const byLabel = new Map<string, LegendEntry>();
+  data.forEach((item, i) => {
+    if (!item || typeof item !== 'object' || typeof (item as { label?: unknown }).label !== 'string') return;
     const { label, color, refs } = item as { label: string; color?: unknown; refs?: unknown };
-    return [{ label, color: typeof color === 'string' && HEX.test(color) ? color : legendColor(i), refs: parseRefs(refs) }];
+    const existing = byLabel.get(label);
+    if (existing) existing.refs.push(...parseRefs(refs));
+    else byLabel.set(label, { label, color: typeof color === 'string' && HEX.test(color) ? color : legendColor(i), refs: parseRefs(refs) });
   });
+  return [...byLabel.values()];
 }
 
 export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ props }) => {

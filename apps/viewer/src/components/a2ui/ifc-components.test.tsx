@@ -19,6 +19,7 @@ import { MODEL_A, MODEL_B, seedA2uiModels, selectedRefs } from '@/test/a2ui-fixt
 import { block, mountReply, recordingHost } from '@/test/a2ui-render';
 import { A2UI_DEMO_REPLY } from '@/lib/a2ui/demo-reply';
 import { resetChatSessions } from '@/lib/a2ui/chat-sessions';
+import { legendEntriesFromData } from './ColorLegend';
 
 const LEFT_WALL = 315;
 const PLUMBING_WALL = 353;
@@ -101,6 +102,16 @@ describe('IFC catalog components', () => {
     const toggle = container.querySelector<HTMLInputElement>('[data-a2ui-legend="false"] input')!;
     click(toggle);
     assert.deepEqual(calls.hide.at(-1), [{ modelId: MODEL_A, expressId: PLUMBING_WALL }]);
+  });
+
+  it('ColorLegend: script entries sharing a label merge, so one toggle covers all of them', () => {
+    const entries = legendEntriesFromData([
+      { label: 'High', color: '#e5484d', refs: ['m:1'] },
+      { label: 'High', color: '#00ff00', refs: ['m:2'] },
+      { label: 'Low', color: 'red', refs: ['m:3'] },
+    ]);
+    assert.deepEqual(entries?.map((e) => [e.label, e.color, e.refs.map((r) => r.expressId)]), [['High', '#e5484d', [1, 2]], ['Low', entries?.[1].color, [3]]]);
+    assert.notEqual(entries?.[1].color, 'red', 'a non-hex colour falls back to the palette');
   });
 
   it('ActionBar: actions act on the query result, export runs from the click, follow-ups post a turn', async () => {

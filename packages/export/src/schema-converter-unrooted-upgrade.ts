@@ -4,7 +4,8 @@ import { getSchemaRegistryForVersion } from '@ifc-lite/parser';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { frameArgs, stepRecordHead, stepRecordFrame, withFrameArgs, type StepRecordFrame } from './step-record-frame.js';
 import { forEachExpressRef, referencesAnyExpressId } from './step-ref-scan.js';
-import { isRootedEntityType, missingTypeRoute } from './schema-untranslatable.js';
+import { isRootedEntityType, missingTypeRoute, VERBATIM_UPGRADE } from './schema-untranslatable.js';
+import { varyingTarget } from './schema-converter-structural-varying.js';
 import { convertEntityType, convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
 import { EnumReconciliation } from './schema-converter-enums.js';
 import { getCompleteEntityIndex, getMaxExpressId } from './entity-iteration.js';
@@ -94,9 +95,11 @@ function slot(value: string, attribute?: Attribute, narrowAggregates = true): Sl
 function readSlots(rec: OutputRecord, to: UpgradeSchema): Slot[] | undefined {
   const values = rec.frame ? splitTopLevelStepArguments(rec.raw, Number.MAX_SAFE_INTEGER) : null;
   const target = attributes(rec.type, to);
-  // Retained IFC2X3 records use their own optional slots. Check legacy
-  // aggregates as whole slots because the pruning bounds are defined for IFC4.
-  const layout = target ?? (to === 'IFC4' ? attributes(rec.type, 'IFC2X3') : undefined);
+  // Verbatim records and varying actions left unconverted in IFC4 keep their
+  // IFC2X3 optional slots. Check their aggregates as whole slots.
+  const retainedLegacy = target === undefined
+    && (VERBATIM_UPGRADE.has(rec.type) || (to === 'IFC4' && varyingTarget(rec.type) !== undefined));
+  const layout = target ?? (retainedLegacy ? attributes(rec.type, 'IFC2X3') : undefined);
   if (!values || !layout || values.length !== layout.length) return undefined;
   // Sectioned-spine sections and positions correspond by index. Withhold on any loss.
   const narrow = target !== undefined && rec.type !== 'IFCSECTIONEDSPINE';

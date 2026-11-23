@@ -297,3 +297,26 @@ fn omits_ifc2x3_resources_and_rewrites_ifc4x3_referrers_10971() {
     assert!(out.contains("#4=IFCGEOMETRICCURVESET((#5));"), "{out}");
     assert!(out.contains("#12=IFCSTYLEDITEM($,(#10),'keep #3 as text');"), "{out}");
 }
+
+#[test]
+fn clears_only_the_optional_zone_of_a_retained_local_time_in_ifc4x3_10971() {
+    // A damaged HourOffset refers to an obsolete curve, so the offset is pruned.
+    let source = include_bytes!("../tests/fixtures/schema_ifc4x3_legacy_optional.ifc");
+    let opts = crate::StepOptions { schema: Some("IFC4X3".into()), ..Default::default() };
+    let (direct, _, direct_warnings) = crate::export_step_with_diagnostics(source, &opts).unwrap();
+    let (logged, log_stats) = crate::export_step_with_log(source, &opts, &crate::MutationLog::default()).unwrap();
+    let (merged, merged_stats) = crate::export_merged_with_stats(
+        &[source], &crate::MergedOptions { schema: opts.schema, ..Default::default() },
+    );
+    for (writer, output, warnings) in [
+        ("direct", direct, direct_warnings),
+        ("logged", logged, log_stats.warnings),
+        ("merged", merged, merged_stats.warnings),
+    ] {
+        assert!(output.contains("#5=IFCLOCALTIME(10,30,15.,$,$);"), "{writer}: {output}");
+        assert!(output.contains("#7=IFCDATEANDTIME(#6,#5);"), "{writer}: {output}");
+        assert!(!output.lines().any(|line| line.starts_with("#3=") || line.starts_with("#4=")), "{writer}: {output}");
+        assert!(warnings.iter().any(|w| w.contains("#4 (IFCCOORDINATEDUNIVERSALTIMEOFFSET) was omitted")), "{writer}: {warnings:?}");
+        assert!(!warnings.iter().any(|w| w.contains("#5 (IFCLOCALTIME) was omitted")), "{writer}: {warnings:?}");
+    }
+}

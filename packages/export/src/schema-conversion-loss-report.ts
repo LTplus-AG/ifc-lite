@@ -3,15 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * A per-TYPE preview of what a schema conversion will do to the entities a
- * store actually contains, computed WITHOUT running the export.
- *
- * `convertStepLine` makes these decisions as it writes each record and
- * throws on the first unrepresentable non-rooted entity. The preview can
- * report other affected records without writing the export.
- *
- * Classify each distinct source type once using the attribute tables, then
- * look up the kept IDs for the types with potential losses (#4206).
+ * Preview schema conversion without writing the export. Classify each source
+ * type once, then look up the kept IDs for types with potential losses (#4206).
  */
 
 import { isStructuralStiffnessConversion, isStructuralAssignmentConversion } from './schema-converter-structural.js';
@@ -20,7 +13,6 @@ import { varyingTarget } from './schema-converter-structural-varying.js';
 import { DocumentLinks } from './schema-converter-document-links.js';
 import { SourceRecords } from './schema-converter-structural-source.js';
 import { describeEntry } from './schema-conversion-loss-description.js';
-import { previewUpgradeDependents } from './schema-converter-unrooted-upgrade.js';
 import { materialPropertiesNotWritten } from './schema-converter-material-referent.js';
 import { EMPTY_SOURCE_BYTES, type IfcDataStore } from '@ifc-lite/parser';
 import {

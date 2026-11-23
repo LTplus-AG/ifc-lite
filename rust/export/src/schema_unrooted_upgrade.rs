@@ -10,7 +10,8 @@ use ifc_lite_core::{AttrSlot, EntityScanner, SchemaVersion};
 use ifc_lite_core::parser::{is_step_value, StepListItems};
 
 use crate::schema_convert::{canon, schema_attribute_names};
-use crate::schema_unrepresented::{missing_type_route, Route};
+use crate::schema_structural_varying::StructuralVarying;
+use crate::schema_unrepresented::{missing_type_route, Route, VERBATIM_UPGRADE};
 use crate::step_record_frame::{record_frame, RecordFrame};
 use crate::step_slot::slots_of;
 use crate::step_text::ref_spans;
@@ -91,7 +92,9 @@ fn read_slots<'a>(target: SchemaVersion, ty: &str, raw: &'a str) -> Option<(Sche
     let values = slots_of(raw)?;
     let (schema, layout) = if let Some(layout) = target.attributes(ty) {
         (target, layout)
-    } else if target == SchemaVersion::Ifc4 {
+    } else if VERBATIM_UPGRADE.contains(&ty)
+        || (target == SchemaVersion::Ifc4 && StructuralVarying::is_varying(ty))
+    {
         (SchemaVersion::Ifc2x3, SchemaVersion::Ifc2x3.attributes(ty)?)
     } else {
         return None;

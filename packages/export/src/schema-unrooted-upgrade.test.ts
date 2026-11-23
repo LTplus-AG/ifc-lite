@@ -234,3 +234,23 @@ it('reports only the trimmed curve whose required basis is omitted in IFC4X3 (#1
   const sourceOnly = analyzeConversionLoss({ entityIndex: store.entityIndex }, 'IFC2X3', 'IFC4X3');
   expect(sourceOnly.entries.find(entry => entry.sourceType === 'IFCTRIMMEDCURVE')).toBeUndefined();
 });
+
+it('clears only the optional Zone of a retained IFC2X3 local time in IFC4X3 (#10971)', async () => {
+  // A damaged HourOffset refers to an obsolete curve, so the offset is pruned.
+  const raw = readFileSync(new URL('../../../rust/export/tests/fixtures/schema_ifc4x3_legacy_optional.ifc', import.meta.url));
+  const store = await new IfcParser().parseColumnar(Uint8Array.from(raw).buffer);
+  const merged = new MergedExporter([{ id: 'source', name: 'source', dataStore: store }]);
+  const options = { schema: 'IFC4X3' } as const;
+  for (const result of [new StepExporter(store).export(options), merged.export(options), await merged.exportAsync(options)]) {
+    const output = new TextDecoder().decode(result.content);
+    expect(output).toContain('#5=IFCLOCALTIME(10,30,15.,$,$);');
+    expect(output).toContain('#7=IFCDATEANDTIME(#6,#5);');
+    expect(output).not.toMatch(/^#(?:3|4)=/m);
+    expect(result.stats.warnings).toContainEqual(expect.stringContaining('#4 (IFCCOORDINATEDUNIVERSALTIMEOFFSET) was omitted'));
+    expect(result.stats.warnings).not.toContainEqual(expect.stringContaining('#5 (IFCLOCALTIME) was omitted'));
+  }
+  const description = analyzeConversionLoss(store, 'IFC2X3', 'IFC4X3').describe().join('\n');
+  expect(description).toContain('IFCCOORDINATEDUNIVERSALTIMEOFFSET (#4) will be omitted');
+  expect(description).not.toContain('IFCLOCALTIME (#5) will be omitted');
+  expect(description).not.toContain('IFCDATEANDTIME (#7) will be omitted');
+});

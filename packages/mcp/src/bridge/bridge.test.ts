@@ -92,7 +92,7 @@ async function pair(agent: Agent, extra: Partial<Parameters<typeof pairTab>[0]> 
 }
 
 it('#11029: the legacy parser and union require explicit opt-in for acknowledgement frames', () => {
-  expectTypeOf<BridgeServerMessage['type']>().toEqualTypeOf<'welcome' | 'call' | 'cancel' | 'error'>();
+  expectTypeOf<BridgeServerMessage['type']>().toEqualTypeOf<'welcome' | 'call' | 'a2ui-surface' | 'cancel' | 'error'>();
   const frame = JSON.stringify({ type: 'result-ack', sessionId: 'session', id: 'c1', accepted: true });
   expectTypeOf<ReturnType<typeof parseServerMessage>>().toEqualTypeOf<import('./bridge-protocol.js').ParseResult<BridgeServerMessage>>();
   expect(parseServerMessage(frame).ok).toBe(false);
@@ -459,4 +459,32 @@ describe('6. no connected viewer', () => {
     tab.close();
     await expect.poll(changed).toBe(2);
   });
+});
+
+it('delivers validated A2UI to a capable paired tab and waits for its result', async () => {
+  const agent = await startAgent({ readOnly: true });
+  const spec = { surfaceId: 'floor', sections: [{ kind: 'text', text: 'Floor results' }] };
+  expect(code(await agent.call('viewer_show_ui', { spec }))).toBe('VIEWER_NOT_CONNECTED');
+  await pair(agent);
+  expect(await agent.listTools()).not.toContain('viewer_show_ui');
+  const { tab, welcome } = await pair(agent, { code: agent.bridge.rotatePairingCode(), a2uiSurface: true });
+  expect(await agent.listTools()).toContain('viewer_show_ui');
+  expect(code(await agent.call('viewer_show_ui', { messages: [{ version: '1.0', createSurface: {} }] }))).toBe('INVALID_INPUT');
+  expect(tab.received.some(frame => frame.type === 'a2ui-surface')).toBe(false);
+  const delivery = agent.call('viewer_show_ui', { title: 'Results', spec });
+  const frame = await tab.next('a2ui-surface');
+  expect(frame).toMatchObject({
+    sessionId: welcome.sessionId,
+    surface: { title: 'Results', messages: [{ version: '1.0', createSurface: { surfaceId: 'floor' } }] },
+  });
+  // The title labels the viewer's panel only; the card does not repeat it.
+  expect(JSON.stringify(frame.surface.messages)).not.toContain('Results');
+  tab.reply(welcome.sessionId, frame.id, textResult('Delivered'));
+  await expect(delivery).resolves.toEqual(textResult('Delivered'));
+
+  const rawDelivery = agent.call('viewer_show_ui', { messages: frame.surface.messages });
+  const rawFrame = await tab.next('a2ui-surface');
+  expect(rawFrame.surface).toEqual({ messages: frame.surface.messages });
+  tab.reply(welcome.sessionId, rawFrame.id, textResult('Delivered'));
+  await expect(rawDelivery).resolves.toEqual(textResult('Delivered'));
 });

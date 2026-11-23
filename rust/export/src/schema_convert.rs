@@ -301,6 +301,7 @@ fn convert_record(
         }
         return Ok(format!("{prefix}{}({attrs});", rename_type(&entity_type, cfrom, cto).unwrap_or(&entity_type)));
     }
+    let merged = checks.as_ref().is_some_and(|c| c.merged);
     let (plan, dropped) = match checks {
         Some(c) => (c.plans.get(&entity_type, cfrom, cto), Some(&mut c.attribute_values_dropped)),
         None => (plan_for(&entity_type, cfrom, cto), None),
@@ -308,23 +309,21 @@ fn convert_record(
     let mut lost = 0usize;
     let out = match plan {
         Plan::ProductProxy => {
-            // The proxy carries a MINTED GlobalId, not the source entity's, and the
-            // authored identity is therefore lost on a downgrade. That is
-            // deliberate on the TypeScript twin (`convertStepLine` in
-            // `packages/export/src/schema-converter.ts`), which documents the
-            // counter-example and pins it in `merged-exporter.test.ts`: two
-            // federated models can legitimately carry the SAME alignment GlobalId,
-            // and copying the source id would unify two distinct alignments into
-            // one. The two implementations do not agree on WHAT to mint — this one
-            // derives from the express id, the TypeScript one from the whole source
-            // line — so the same model downgraded by each yields different proxy
-            // ids. Left as found; changing either is a decision for the maintainer,
-            // not a side effect of a round-trip test.
+            // Alignment proxies need a fresh ID. Merged export uses the same
+            // remapped-record seed in both writers. Single-model Rust exports
+            // retain their existing express-ID-based placeholder.
             lost = args.get(7..).unwrap_or_default().iter().filter(|v| holds_value(v)).count();
-            product_proxy(prefix, &placeholder_guid(express_id), &entity_type, &args)
+            let guid = if merged {
+                ifc_lite_core::guid::deterministic(&format!("ifcproxy:#{express_id}={entity_type}({attrs})"))
+            } else { placeholder_guid(express_id) };
+            product_proxy(prefix, &guid, &entity_type, &args)
         }
         // #5116, see `resolve_unrepresented_entity`'s doc.
-        Plan::Unrepresented => return resolve_unrepresented_entity(prefix, &entity_type, cto, express_id),
+        Plan::Unrepresented => {
+            let proxy = resolve_unrepresented_entity(prefix, &entity_type, &args, cto, express_id)?;
+            lost = crate::schema_unrepresented::proxy_values_dropped(&args);
+            proxy
+        }
         // The attribute list against the target schema (#7683): see
         // `schema_plan::plan_for` for which way it moves and why.
         Plan::Write { renamed, adjust, replaced } => {

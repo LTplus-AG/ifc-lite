@@ -42,6 +42,14 @@ describe('classifyEntityTypeConversion', () => {
     expect(info.droppedAttributes.length).toBeGreaterThan(0);
   });
 
+  it('reports only the attributes a generic proxy drops (#11322)', () => {
+    expect(classifyEntityTypeConversion('IFCRELPOSITIONS', 'IFC4X3', 'IFC4')).toEqual({
+      targetType: 'IFCPROXY',
+      kind: 'proxied',
+      droppedAttributes: ['OwnerHistory', 'Description', 'RelatingPositioningElement', 'RelatedProducts'],
+    });
+  });
+
   it('is blocked for a non-rooted type IFC2X3 has no representation for at all', () => {
     const info = classifyEntityTypeConversion('IFCSTRUCTURALLOADCONFIGURATION', 'IFC4', 'IFC2X3');
     expect(info.kind).toBe('blocked');

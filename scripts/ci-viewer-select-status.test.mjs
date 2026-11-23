@@ -98,7 +98,7 @@ test('final: failure names the failing files, and every missing verdict is a fai
 });
 
 /** A local stand-in for the API: records the POSTs, answers `code`. */
-async function withApi(code, fn) {
+async function withApi(code, fn, reads = {}) {
   const posts = [];
   const server = createServer((req, res) => {
     let body = '';
@@ -106,7 +106,7 @@ async function withApi(code, fn) {
     req.on('end', () => {
       if (req.method === 'GET') {
         res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ jobs: [{ name: 'Viewer tests, advisory (selected for this PR)', html_url: 'https://github.com/x/job/9' }] }));
+        res.end(JSON.stringify(reads[req.url] ?? { jobs: [{ name: 'Viewer tests, advisory (selected for this PR)', html_url: 'https://github.com/x/job/9' }] }));
         return;
       }
       posts.push({ url: req.url, auth: req.headers.authorization, body: JSON.parse(body) });
@@ -126,6 +126,40 @@ const SHA = 'a'.repeat(40);
 const env = (api, extra = {}) => ({
   GITHUB_API_URL: api, GITHUB_TOKEN: 't0k', GITHUB_REPOSITORY: REPO, GITHUB_RUN_ID: '7', GITHUB_RUN_ATTEMPT: '1',
   HEAD_SHA: SHA, HEAD_REPO: REPO, CI_PR_VIEWER_SELECT: 'on', ...extra,
+});
+
+test('cancelled Test completion fails only the pending status owned by that attempt', async () => {
+  const runUrl = `https://github.com/${REPO}/actions/runs/42`;
+  const pending = { context: STATUS_CONTEXT, state: 'pending', target_url: `${runUrl}/job/99` };
+  const cancelled = { head_sha: SHA, run_attempt: 1, conclusion: 'cancelled' };
+  const cases = [
+    { run: cancelled, statuses: [pending], expected: true },
+    { run: cancelled, statuses: [{ ...pending, target_url: runUrl }], expected: true },
+    { run: cancelled, statuses: [{ ...pending, target_url: `${runUrl}0` }], expected: false },
+    { run: cancelled, statuses: [{ ...pending, state: 'success' }], expected: false },
+    { run: cancelled, statuses: [], expected: false },
+    { run: { ...cancelled, run_attempt: 2 }, statuses: [pending], expected: false },
+    { run: { ...cancelled, conclusion: null }, statuses: [pending], expected: false },
+    { run: cancelled, statuses: [pending], headRepo: 'fork/ifc-lite', expected: false },
+  ];
+  for (const { run, statuses, headRepo, expected } of cases) {
+    await withApi(201, async (api, posts) => {
+      await main(['--cancelled'], env(api, {
+        HEAD_REPO: headRepo ?? REPO, CANCELLED_RUN_ID: '42', CANCELLED_RUN_ATTEMPT: '1',
+      }));
+      assert.deepEqual(posts, expected ? [{
+        url: `/repos/${REPO}/statuses/${SHA}`,
+        auth: 'Bearer t0k',
+        body: {
+          state: 'failure', context: STATUS_CONTEXT, target_url: runUrl,
+          description: 'Test was cancelled before the viewer verdict; re-run all jobs or push',
+        },
+      }] : []);
+    }, {
+      [`/repos/${REPO}/actions/runs/42`]: run,
+      [`/repos/${REPO}/commits/${SHA}/status?per_page=100`]: { statuses },
+    });
+  }
 });
 
 test('main --final posts the verdict on the head sha with the job link', async () => {

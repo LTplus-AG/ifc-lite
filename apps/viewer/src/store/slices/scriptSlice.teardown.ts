@@ -26,8 +26,7 @@ import { defineSliceTeardown, notApplicable } from '../teardown.js';
  * triggers must not close the panel it was run from. `savedScripts`,
  * `activeScriptId`, `scriptEditorContent`, `scriptEditorDirty`,
  * `scriptEditorSelection`, `scriptEditorRevision`, `scriptAppliedOpIds`, the
- * apply adapter, the undo/redo flags and the two
- * monotonic counters
+ * apply adapter, the undo/redo flags and the two monotonic counters
  * (`scriptRunSeq`, `scriptRunEpoch`) are absent for the same reason: none of
  * them is model state, and `resetViewerState` has never touched them.
  * `scriptRunEpoch` in particular is a supersession token compared across

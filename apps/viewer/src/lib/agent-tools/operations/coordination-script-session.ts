@@ -59,7 +59,7 @@ export const coordinationScriptSessionOperations = [
     // A draft with no saved script would be dropped; a dirty saved script is saved here, and a failed save keeps it open.
     if (s.scriptEditorDirty && !s.activeScriptId) unsavedEdits('opening another');
     if (s.scriptEditorDirty) { const storage = s.saveActiveScript(); if (storage && !storage.ok) { throw internal(`The active script could not be saved (${storage.reason}); it stays open.`); } }
-    s.setActiveScriptId(i.id); return { active_id: useViewerStore.getState().activeScriptId, revision: useViewerStore.getState().scriptEditorRevision };
+    s.setActiveScriptId(i.id); const next = useViewerStore.getState(); return { active_id: next.activeScriptId, revision: next.scriptEditorRevision };
   })),
   coordination<{ id: string; name: string }>('script.rename', 'Rename a known saved native script.', ['configuration'], {
     type: 'object', properties: { id: { type: 'string', minLength: 1, maxLength: 200 }, name: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['id', 'name'], additionalProperties: false,

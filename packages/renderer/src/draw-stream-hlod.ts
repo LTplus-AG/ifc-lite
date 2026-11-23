@@ -76,6 +76,9 @@ export class HlodTree {
   generation = 0;
   private lastCamera: Vec3 = [NaN, NaN, NaN];
   private deltaImage = new Float32Array(0);
+  private recordNodes: HlodNode[] = [];
+  /** Keys of nodes holding a record outside the eye envelope at the last camera: they must not draw their proxy. */
+  readonly outsideNodes = new Set<string>();
   private iota: GPUBuffer | null = null;
   private chunk: GPUBuffer | null = null;
   private chunkUsed = 0;
@@ -201,7 +204,7 @@ export class HlodTree {
       const count = p.ids.length;
       const vb = this.chunk; const at = this.chunkUsed; this.chunkUsed += count * 28;
       this.device.queue.writeBuffer(vb, at, p.vertices); // interleaved in the worker
-      n.draws.push({ vertexBuffer: vb, baseVertex: at / 28, count, record: this.addRecord(this.colours[p.slot]!, origin) });
+      n.draws.push({ vertexBuffer: vb, baseVertex: at / 28, count, record: this.addRecord(this.colours[p.slot]!, origin, n) });
       n.cpu.push({ slot: p.slot, positions: p.positions, ids: p.ids });
       n.tris += count / 3; this.stats.proxyTris += count / 3;
       this.ensureIota(count);
@@ -218,7 +221,7 @@ export class HlodTree {
     this.onReady();
   }
 
-  private addRecord(colour: [number, number, number, number], origin: Vec3): number {
+  private addRecord(colour: [number, number, number, number], origin: Vec3, node: HlodNode): number {
     const i = this.recordCount++;
     if (this.records.length < this.recordCount * STREAM_RECORD_FLOATS) {
       const next = new Float32Array(Math.max(64, this.recordCount * 2) * STREAM_RECORD_FLOATS); next.set(this.records); this.records = next;
@@ -229,7 +232,7 @@ export class HlodTree {
     r[o + 4] = this.scratch[mr]!; r[o + 5] = this.scratch[mr + 1]!; r[o + 6] = this.scratch[mr + 2]!; r[o + 7] = this.scratch[mr + 3]!;
     r[o + 12] = origin[0]; r[o + 13] = origin[1]; r[o + 14] = origin[2];
     u[o + 17] = 0xFFFFFFFF;
-    this.origins[i] = origin;
+    this.origins[i] = origin; this.recordNodes[i] = node;
     return i;
   }
 
@@ -270,7 +273,8 @@ export class HlodTree {
     const floats = this.recordCount * STREAM_DELTA_FLOATS;
     if (this.deltaImage.length < floats) this.deltaImage = new Float32Array(Math.max(floats, this.deltaImage.length * 2));
     const d = this.deltaImage;
-    for (let i = 0; i < this.recordCount; i++) rte.tryPackDrawableOrigin(this.origins[i]!, d, i * STREAM_DELTA_FLOATS);
+    this.outsideNodes.clear();
+    for (let i = 0; i < this.recordCount; i++) if (!rte.tryPackDrawableOrigin(this.origins[i]!, d, i * STREAM_DELTA_FLOATS)) this.outsideNodes.add(this.recordNodes[i]!.key);
     this.device.queue.writeBuffer(this.deltaBuffer, 0, d, 0, floats);
   }
 

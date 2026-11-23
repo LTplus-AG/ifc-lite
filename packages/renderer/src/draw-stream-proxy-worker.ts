@@ -19,17 +19,21 @@ export const PROXY_WORKER_SOURCE = `
 self.onmessage = (event) => {
   const { job, positions, ids, colors, indices, cell } = event.data;
   const inv = 1 / cell;
-  const cluster = new Map();
+  const clusters = new Map(); // per colour slot: cell key -> cluster index
+  // 17 bits per axis (cells clamped to +-65536): the key stays an exact integer below 2^53.
+  const axis = (q) => Math.min(65535, Math.max(-65536, Math.floor(q * inv))) + 65536;
   const sx = [], sy = [], sz = [], sn = [], sid = [];
   const bySlot = new Map();
   const seen = new Map();
   const k = [0, 0, 0];
   for (let t = 0; t < indices.length; t += 3) {
     const slot = colors[indices[t]];
+    let cluster = clusters.get(slot);
+    if (!cluster) { cluster = new Map(); clusters.set(slot, cluster); }
     for (let j = 0; j < 3; j++) {
       const v = indices[t + j];
       const x = positions[3 * v], y = positions[3 * v + 1], z = positions[3 * v + 2];
-      const key = (((Math.floor(x * inv) + 1024) * 2048 + (Math.floor(y * inv) + 1024)) * 2048 + (Math.floor(z * inv) + 1024)) * 1024 + slot;
+      const key = (axis(x) * 131072 + axis(y)) * 131072 + axis(z);
       let ci = cluster.get(key);
       if (ci === undefined) { ci = sx.length; cluster.set(key, ci); sx.push(0); sy.push(0); sz.push(0); sn.push(0); sid.push(ids[v]); }
       sx[ci] += x; sy[ci] += y; sz[ci] += z; sn[ci]++;
@@ -37,7 +41,7 @@ self.onmessage = (event) => {
     }
     if (k[0] === k[1] || k[1] === k[2] || k[0] === k[2]) continue;
     const a = Math.min(k[0], k[1], k[2]), c = Math.max(k[0], k[1], k[2]), b = k[0] + k[1] + k[2] - a - c;
-    const ab = a * 4194304 + b;
+    const ab = a * 67108864 + b;
     let cs = seen.get(ab);
     if (!cs) { cs = new Set(); seen.set(ab, cs); }
     if (cs.has(c)) continue;

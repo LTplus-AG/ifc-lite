@@ -19,7 +19,10 @@ function dist2(min: readonly number[], max: readonly number[], eye: { x: number;
  */
 export function collectStreamItems(f: StreamFrameInputs, nodes: readonly StreamNode[], h: HlodTree | null, links: HlodLinks, hlodPx: number): StreamItem[] {
   const items: StreamItem[] = [];
+  const visited = new Set<StreamNode>(); // a leaf spanning several HLOD nodes is reached once per node
   const visitLeaf = (node: StreamNode): void => {
+    if (visited.has(node)) return;
+    visited.add(node);
     if (!f.visible(node.min, node.max)) return;
     const px = f.projectedPx(node.min, node.max);
     if (f.contribPx > 0 && px < f.contribPx) return;
@@ -32,7 +35,7 @@ export function collectStreamItems(f: StreamFrameInputs, nodes: readonly StreamN
   const visit = (n: HlodNode): void => {
     if (n.state === 'empty' && n.children.length === 0 && !links.leavesByParent.has(n.key)) return;
     if (!f.visible(n.min, n.max)) return;
-    if (n.state === 'ready' && !links.dirty.has(n.key)) {
+    if (n.state === 'ready' && !links.allDirty && !links.dirty.has(n.key) && !h.outsideNodes.has(n.key)) {
       const d = Math.sqrt(aabbDist2(n.min, n.max, f.eye));
       if (d > 0 && n.error * pxPerMetre(f.projection, d) < hlodPx) { items.push({ proxy: n, d: d * d, px: f.projectedPx(n.min, n.max) }); return; }
     }

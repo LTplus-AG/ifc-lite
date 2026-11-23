@@ -69,7 +69,11 @@ export class DrawStream {
   private geomKey = '';
   private hlodBindGroup: GPUBindGroup | null = null;
   private hlodGeneration = -1;
-  private links: HlodLinks = { leavesByParent: new Map(), uncovered: [], dirty: new Set() };
+  /** Members the eye envelope rejected: they stay on the legacy path, which skips them. */
+  private readonly outsideEnvelope = new Set<BatchedMesh>();
+  /** Leaves holding such a member, not drawn until the resync hands it back. */
+  private readonly skipLeaves = new Set<StreamNode>();
+  private links: HlodLinks = { leavesByParent: new Map(), uncovered: [], dirty: new Set(), allDirty: false };
   private requestRender: () => void = () => {};
   private arena: GeometryArena | null = null;
   private readonly budget = new StreamDrawBudget();
@@ -109,16 +113,17 @@ export class DrawStream {
       this.arena = GeometryArena.build(this.device, batches, cellKey);
       if (!this.arena) console.warn('[draw-stream] arena unavailable: batch buffers lack COPY_SRC (enable the arena before geometry loads)');
     }
+    if (geomKey !== this.geomKey) this.outsideEnvelope.clear();
     this.geomKey = geomKey;
     const members: BatchedMesh[] = []; const legacy: BatchedMesh[] = []; const states: StreamBatchState[] = [];
     for (const b of batches) {
       // An evicted batch the arena holds still draws from its arena copy.
-      const st = b.bounds && (b.gpuResident !== false || this.arena?.slots.has(b)) ? eligible(b) : null;
+      const st = b.bounds && (b.gpuResident !== false || this.arena?.slots.has(b)) && !this.outsideEnvelope.has(b) ? eligible(b) : null;
       if (st) { members.push(b); states.push(st); } else legacy.push(b);
     }
     this.members = members; this.legacy = legacy;
     this.writeRecords(states);
-    this.nodes = buildStreamNodes(members, leafCell);
+    this.nodes = buildStreamNodes(members, leafCell); this.skipLeaves.clear();
     this.links = linkHlodLeaves(this.hlod, this.nodes, legacy, members, states, leafCell);
     this.lastCamera = [NaN, NaN, NaN];
     return true;
@@ -162,9 +167,11 @@ export class DrawStream {
     this.lastCamera = [cam[0], cam[1], cam[2]];
     const d = this.deltaImage; const zero: [number, number, number] = [0, 0, 0];
     for (let i = 0; i < this.members.length; i++) {
-      // drawableDeltaHigh at +0, drawableDeltaLow at +4: the legacy uniform layout
-      rte.tryPackDrawableOrigin(this.members[i]!.origin ?? zero, d, i * STREAM_DELTA_FLOATS);
+      // drawableDeltaHigh at +0, drawableDeltaLow at +4: the legacy uniform layout. A member outside
+      // the eye envelope is skipped by the legacy path: hand it back to it (resync) and skip its leaf now.
+      if (!rte.tryPackDrawableOrigin(this.members[i]!.origin ?? zero, d, i * STREAM_DELTA_FLOATS)) { this.outsideEnvelope.add(this.members[i]!); this.key = ''; }
     }
+    if (this.key === '') for (const n of this.nodes) if (n.members.some((i) => this.outsideEnvelope.has(this.members[i]!))) this.skipLeaves.add(n);
     if (this.members.length) this.device.queue.writeBuffer(this.deltaBuffer!, 0, d, 0, this.members.length * STREAM_DELTA_FLOATS);
   }
 
@@ -225,7 +232,8 @@ export class DrawStream {
     if (keyChanged) { this.bundleKey = bundleKey; this.invalidationCount++; for (const n of this.nodes) n.bundles.fill(null); }
     if (hlodChanged) { this.hlodGeneration = h.generation; this.hlodBindGroup = null; }
     if (keyChanged || hlodChanged) { if (h) for (const n of h.nodes()) n.bundle.fill(null); this.warmModes.fill(false); }
-    const items = collectStreamItems(f, this.nodes, h, this.links, this.config.hlodPx);
+    let items = collectStreamItems(f, this.nodes, h, this.links, this.config.hlodPx);
+    if (this.skipLeaves.size) items = items.filter((it) => !it.leaf || !this.skipLeaves.has(it.leaf));
     this.budget.apply(items, this.config.budgetMs, f.interacting, stats);
     items.sort((a, b) => a.d - b.d);
     for (const it of items) if (it.leaf) for (const i of it.leaf.members) drawn(this.members[i]!);
@@ -266,8 +274,7 @@ export class DrawStream {
       bundles.push(bundle);
     }
     if (bundles.length) f.pass.executeBundles(bundles);
-    // Bundles reset pass state; direct nodes bind everything themselves.
-    for (const it of direct) {
+    for (const it of direct) { // bundles reset pass state: direct nodes bind everything themselves
       if (it.proxy) this.encodeProxy(f.pass, it.proxy, f.mode, true);
       else this.encodeNode(f.pass, it.leaf, it.lod1, f.mode, true);
     }
@@ -325,7 +332,7 @@ export class DrawStream {
     const vis = f.ortho!;
     const binding = vis.getBinding();
     if (!binding) return;
-    const key = `${this.bundleKey}|${idOf(binding)}`;
+    const key = `${this.bundleKey}|${idOf(binding)}|${this.hlodGeneration}`; // a new HLOD generation destroyed the buffers proxies bound
     if (key !== this.orthoKey) {
       this.orthoKey = key;
       for (const n of this.nodes) n.ortho = [null, null, null, null];

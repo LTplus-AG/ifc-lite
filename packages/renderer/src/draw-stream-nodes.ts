@@ -30,22 +30,40 @@ export function buildStreamNodes(members: readonly BatchedMesh[], cell: number):
 }
 
 export interface HlodLinks {
-  /** Leaves under each level-1 HLOD node, by its key. */
+  /** Leaves under each level-1 HLOD node, by its key; a leaf spanning several level-1 cells is under each. */
   leavesByParent: Map<string, StreamNode[]>;
   /** Leaves no HLOD node covers: always visited directly. */
   uncovered: StreamNode[];
-  /** HLOD node keys over a legacy-path or colour-painted batch: these never draw their proxy. */
+  /** HLOD node keys that must never draw their proxy: over a legacy-path, colour-painted or shared leaf. */
   dirty: Set<string>;
+  /** Too many level-1 cells to mark: no proxy draws at all (every leaf is visited directly). */
+  allDirty: boolean;
+}
+
+/** Level-1 cells one AABB may touch before HLOD is given up for the frame set (chunking off, huge pieces). */
+const MAX_SPAN_CELLS = 64;
+
+/** Every level-1 cell (edge `2 * cell`) the AABB touches, or null past `MAX_SPAN_CELLS`. */
+function spannedCells(min: readonly number[], max: readonly number[], cell: number): Vec3[] | null {
+  const lo = cellOf(min, min, 2 * cell), hi = cellOf(max, max, 2 * cell);
+  if ((hi[0] - lo[0] + 1) * (hi[1] - lo[1] + 1) * (hi[2] - lo[2] + 1) > MAX_SPAN_CELLS) return null;
+  const out: Vec3[] = [];
+  for (let x = lo[0]; x <= hi[0]; x++) for (let y = lo[1]; y <= hi[1]; y++) for (let z = lo[2]; z <= hi[2]; z++) out.push([x, y, z]);
+  return out;
 }
 
 /**
- * Map leaf cells to their level-1 HLOD parent (growing parent bounds to
- * cover them) and mark every node holding a legacy-path or colour-painted
- * batch dirty.
+ * Link every leaf to each level-1 HLOD node its bounds touch (growing node
+ * bounds to cover it), and mark dirty every node touched by a legacy-path or
+ * colour-painted batch or by a leaf shared between nodes. Proxies are built
+ * from mesh pieces by piece centre, which always lies inside its batch's
+ * bounds, so marking by bounds (not centre) keeps a hidden or painted piece
+ * out of every proxy, and a node never refines into a region whose leaf it
+ * does not hold.
  */
 export function linkHlodLeaves(h: HlodTree | null, nodes: StreamNode[], legacy: readonly BatchedMesh[], members: readonly BatchedMesh[],
   states: readonly StreamBatchState[], cell: number): HlodLinks {
-  const links: HlodLinks = { leavesByParent: new Map(), uncovered: [], dirty: new Set() };
+  const links: HlodLinks = { leavesByParent: new Map(), uncovered: [], dirty: new Set(), allDirty: false };
   if (!h) { links.uncovered = nodes; return links; }
   const mark = (c: Vec3): void => {
     for (let level = 1; level < h.levels.length; level++) {
@@ -53,18 +71,29 @@ export function linkHlodLeaves(h: HlodTree | null, nodes: StreamNode[], legacy: 
       links.dirty.add(nodeKey(level, [c[0] >> s, c[1] >> s, c[2] >> s]));
     }
   };
-  for (const b of legacy) if (b.bounds) mark(cellOf(b.bounds.min, b.bounds.max, 2 * cell));
-  for (let i = 0; i < members.length; i++) if (states[i]!.overrideBits !== 0) { const bb = members[i]!.bounds!; mark(cellOf(bb.min, bb.max, 2 * cell)); }
+  const markBounds = (min: readonly number[], max: readonly number[]): void => {
+    const cells = spannedCells(min, max, cell);
+    if (cells) for (const c of cells) mark(c); else links.allDirty = true;
+  };
+  for (const b of legacy) if (b.bounds) markBounds(b.bounds.min, b.bounds.max);
+  for (let i = 0; i < members.length; i++) if (states[i]!.overrideBits !== 0) { const bb = members[i]!.bounds!; markBounds(bb.min, bb.max); }
   for (const leaf of nodes) {
-    const pc: Vec3 = [leaf.coords[0] >> 1, leaf.coords[1] >> 1, leaf.coords[2] >> 1];
-    const parent = h.levels[1]?.get(nodeKey(1, pc));
-    if (!parent) { links.uncovered.push(leaf); continue; }
-    const list = links.leavesByParent.get(parent.key);
-    if (list) list.push(leaf); else links.leavesByParent.set(parent.key, [leaf]);
-    for (let level = 1, c = pc; level < h.levels.length; level++, c = [c[0] >> 1, c[1] >> 1, c[2] >> 1]) {
-      const n = h.levels[level]?.get(nodeKey(level, c)); if (!n) break;
-      growAabb(n, leaf.min, leaf.max);
+    const cells = spannedCells(leaf.min, leaf.max, cell);
+    if (!cells) { links.allDirty = true; links.uncovered.push(leaf); continue; }
+    let linked = 0;
+    for (const pc of cells) {
+      const parent = h.levels[1]?.get(nodeKey(1, pc));
+      if (!parent) continue;
+      linked++;
+      const list = links.leavesByParent.get(parent.key);
+      if (list) list.push(leaf); else links.leavesByParent.set(parent.key, [leaf]);
+      for (let level = 1, c = pc; level < h.levels.length; level++, c = [c[0] >> 1, c[1] >> 1, c[2] >> 1]) {
+        const n = h.levels[level]?.get(nodeKey(level, c)); if (!n) break;
+        growAabb(n, leaf.min, leaf.max);
+      }
     }
+    if (linked === 0) links.uncovered.push(leaf);
+    if (cells.length > 1) for (const c of cells) mark(c);
   }
   return links;
 }

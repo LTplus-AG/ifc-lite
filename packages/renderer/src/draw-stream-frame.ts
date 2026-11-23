@@ -30,21 +30,37 @@ export interface StreamEligibilityInputs {
   requestRender?: () => void;
 }
 
+const keyHashes = new WeakMap<BatchedMesh, number>();
+/** Stable 32-bit hash of a batch's bucket key (FNV-1a), cached per batch. */
+function keyHash(b: BatchedMesh): number {
+  let h = keyHashes.get(b);
+  if (h === undefined) {
+    h = 0x811c9dc5;
+    for (let i = 0; i < b.colorKey.length; i++) h = Math.imul(h ^ b.colorKey.charCodeAt(i), 0x01000193) >>> 0;
+    keyHashes.set(b, h);
+  }
+  return h;
+}
+
 class DrawStreamGate {
   private signature = '';
   private changedAt = 0;
   private readonly scratch = new Uint32Array(4);
 
-  /** O(batches) add-only signature; the stream engages once it held for `settleMs`. */
-  settled(batches: readonly BatchedMesh[], config: DrawStreamConfig): boolean {
+  /**
+   * O(batches) signature of the batch set and the scene's geometry revision
+   * (a model move or edit); the stream engages once it held for `settleMs`.
+   */
+  settled(batches: readonly BatchedMesh[], config: DrawStreamConfig, revision: number): boolean {
     let sum = 0, resident = 0;
-    for (const b of batches) { sum = (sum + b.id * 2654435761) % 4294967296; if (b.gpuResident !== false) resident++; }
+    for (const b of batches) { sum = (sum + keyHash(b)) % 4294967296; if (b.gpuResident !== false) resident++; }
     // Residency is NOT part of the geometry signature. Over the GPU budget, a camera move
     // evicts offscreen batches; when that changed the signature, the stream went back to legacy,
     // waited `settleMs` and rebuilt its arena (a GB-scale GPU copy) and HLOD: 0.2-2 s frames on
     // small-unique 1M. Residency now only changes membership (the epoch below), and evicted batches
-    // the arena already copied keep drawing from the arena.
-    const sig = `${batches.length}:${sum}`;
+    // the arena already copied keep drawing from the arena. Batches hash by bucket key, not id: a
+    // batch restored from eviction is a new object with a new id but the same geometry.
+    const sig = `${batches.length}:${sum}:${revision}`;
     this.resident = resident;
     const now = performance.now();
     if (sig !== this.signature) { this.signature = sig; this.changedAt = now; }
@@ -96,9 +112,11 @@ export class RendererDrawStream {
    * Start a frame. Once the batch set has settled, sync the stream and return
    * the batches the per-batch loop still draws; otherwise return every batch.
    */
-  begin(device: GPUDevice, pipeline: RenderPipeline, batches: readonly BatchedMesh[], epoch: string, cell: number, inputs: StreamEligibilityInputs): readonly BatchedMesh[] {
+  begin(device: GPUDevice, pipeline: RenderPipeline, batches: readonly BatchedMesh[], revision: number, epoch: string, cell: number, inputs: StreamEligibilityInputs): readonly BatchedMesh[] {
     this.active = null;
-    if (!this.config.stream || !this.gate.settled(batches, this.config)) return batches;
+    if (!this.config.stream) return batches;
+    // Unsettled (a load, an unload, a model move): free the old arena, proxies and worker now.
+    if (!this.gate.settled(batches, this.config, revision)) { this.destroy(); return batches; }
     const stream = (this.stream ??= new DrawStream(device, pipeline, this.config));
     this.gate.sync(stream, batches, epoch, cell, inputs);
     this.active = stream;

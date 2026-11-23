@@ -7,7 +7,8 @@ import type { BatchedMesh } from './types.js';
 import { buildStreamNodes, linkHlodLeaves } from './draw-stream-nodes.js';
 import { collectStreamItems, StreamDrawBudget } from './draw-stream-cull.js';
 import { DrawStreamGate, RendererDrawStream } from './draw-stream-frame.js';
-import { nodeKey, type HlodNode, type HlodTree } from './draw-stream-hlod.js';
+import { HlodTree, nodeKey, proxySlotKey, type HlodNode } from './draw-stream-hlod.js';
+import type { MeshData } from '@ifc-lite/geometry';
 import { PROXY_WORKER_SOURCE } from './draw-stream-proxy-worker.js';
 import { resolveDrawStreamConfig } from './draw-stream-config.js';
 import { cellOf, pxPerMetre, type StreamFrameInputs, type StreamFrameStats } from './draw-stream-types.js';
@@ -200,5 +201,40 @@ describe('draw stream gate', () => {
       t.mock.timers.tick(10);
       assert.equal(frames, 1);
     } finally { gate.cancel(); }
+  });
+});
+
+describe('draw stream HLOD tree', () => {
+  it('keeps distinct authored colours in distinct proxy slots', () => {
+    assert.notEqual(proxySlotKey([0.5001, 0, 0, 1], undefined), proxySlotKey([0.5004, 0, 0, 1], undefined));
+    assert.notEqual(proxySlotKey([1, 0, 0, 1], { metallic: 1, roughness: 0.2 }), proxySlotKey([1, 0, 0, 1], undefined));
+  });
+
+  it('places a proxy in the frame its vertices were made relative to, even after the node bounds grow', () => {
+    const host = globalThis as Record<string, unknown>;
+    host.GPUBufferUsage ??= { MAP_READ: 1, COPY_SRC: 4, COPY_DST: 8, INDEX: 16, VERTEX: 32, UNIFORM: 64, STORAGE: 128, INDIRECT: 256 };
+    const posted: { job: number; positions: Float32Array }[] = [];
+    let worker: { onmessage: ((e: { data: unknown }) => void) | null } | null = null;
+    const savedWorker = host.Worker;
+    host.Worker = class { onmessage: ((e: { data: unknown }) => void) | null = null; onerror: unknown = null; constructor() { worker = this; } postMessage(m: { job: number; positions: Float32Array }) { posted.push(m); } terminate() {} };
+    let records: Float32Array | null = null;
+    const device = {
+      createBuffer: (d: GPUBufferDescriptor) => ({ size: d.size, label: d.label, destroy() {}, getMappedRange: () => new ArrayBuffer(d.size), unmap() {} }),
+      queue: { writeBuffer: (b: { label?: string }, _o: number, data: Float32Array) => { if (b.label === 'draw-stream-proxy-records') records = data; } },
+    } as unknown as GPUDevice;
+    try {
+      const tree = new HlodTree(device, 32, 24, () => {});
+      const piece = { expressId: 5, positions: new Float32Array([0, 0, 0, 4, 0, 0, 0, 4, 0]), normals: new Float32Array(9), indices: new Uint32Array([0, 1, 2]),
+        color: [1, 0, 0, 1], origin: [10, 0, 0] } as unknown as MeshData;
+      tree.build((visit) => visit(piece));
+      assert.equal(posted.length, 1);
+      const node = [...tree.levels[1]!.values()][0]!;
+      const atSubmit = [...node.origin!];
+      assert.equal(posted[0]!.positions[0], 10 - atSubmit[0]!, 'vertices relative to the submit-time centre, with the piece origin applied');
+      node.max[0] += 500; // the stream links a wide leaf and grows the node
+      worker!.onmessage!({ data: { job: posted[0]!.job, pieces: [{ slot: 0, positions: new Float32Array(9), ids: new Uint32Array(3), vertices: new Float32Array(21) }] } });
+      assert.deepEqual([records![12], records![13], records![14]], atSubmit.map((v) => Math.fround(v)));
+      tree.destroy();
+    } finally { host.Worker = savedWorker; }
   });
 });

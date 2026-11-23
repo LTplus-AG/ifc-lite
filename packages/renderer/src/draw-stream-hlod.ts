@@ -53,6 +53,8 @@ export interface HlodNode {
   /** Orthographic colour/depth bundle pair. */
   ortho: (GPURenderBundle | null)[];
   pieces?: MeshData[];
+  /** Frame the proxy's vertices are relative to, fixed at submit (later bound growth must not move it). */
+  origin?: Vec3;
 }
 
 interface ProxyPiece { slot: number; positions: Float32Array; ids: Uint32Array; vertices: Float32Array }
@@ -137,7 +139,7 @@ export class HlodTree {
   }
 
   private slotOf(color: readonly number[], finish: Finish | undefined): number {
-    const k = `${color[0]!.toFixed(3)},${color[1]!.toFixed(3)},${color[2]!.toFixed(3)},${color[3]!.toFixed(3)}|${finish?.metallic ?? ''},${finish?.roughness ?? ''}`;
+    const k = proxySlotKey(color, finish);
     let s = this.palette.get(k);
     if (s === undefined) { s = this.colours.length; this.palette.set(k, s); this.colours.push({ colour: [color[0]!, color[1]!, color[2]!, color[3]!], finish }); }
     return s;
@@ -169,7 +171,7 @@ export class HlodTree {
   }
 
   private submit(n: HlodNode): void {
-    const origin = centre(n);
+    const origin = n.origin = centre(n);
     // gather: level 1 from mesh pieces, higher levels from children's proxies
     let verts = 0, idx = 0;
     if (n.level === 1) for (const m of n.pieces!) { verts += m.positions.length / 3; idx += m.indices.length; }
@@ -187,7 +189,7 @@ export class HlodTree {
       else for (let i = 0; i < nv; i++) indices[t++] = base + i;
     };
     if (n.level === 1) for (const m of n.pieces!) put(m.positions, m.origin ?? [0, 0, 0], m.entityIds ? (i) => m.entityIds![i]! : () => m.expressId, this.slotOf(m.color, m.material), m.indices);
-    else for (const c of n.children) { const o = centre(c); for (const p of c.cpu) put(p.positions, o, (i) => p.ids[i]!, p.slot, null); }
+    else for (const c of n.children) { const o = c.origin ?? centre(c); for (const p of c.cpu) put(p.positions, o, (i) => p.ids[i]!, p.slot, null); }
     n.pieces = undefined;
     const job = this.nextJob++;
     this.jobs.set(job, n); n.state = 'pending';
@@ -197,7 +199,7 @@ export class HlodTree {
   private finish(job: number, pieces: ProxyPiece[]): void {
     const n = this.jobs.get(job); this.jobs.delete(job);
     if (!n) return;
-    const origin = centre(n);
+    const origin = n.origin ?? centre(n);
     // one node's pieces go contiguously into one shared proxy chunk
     let total = 0; for (const p of pieces) total += p.ids.length * 28;
     if (!this.chunk || this.chunkUsed + total > this.chunk.size) {
@@ -287,6 +289,11 @@ export class HlodTree {
     for (const c of this.chunks) c.destroy(); this.chunks = []; this.chunk = null;
     this.recordBuffer?.destroy(); this.deltaBuffer?.destroy(); this.iota?.destroy();
   }
+}
+
+/** Proxy colour-slot key: exact colour and finish, so distinct authored colours never merge into one slot. */
+export function proxySlotKey(color: readonly number[], finish: Finish | undefined): string {
+  return `${color[0]},${color[1]},${color[2]},${color[3]}|${finish?.metallic ?? ''},${finish?.roughness ?? ''}`;
 }
 
 export function centre(n: { min: Vec3; max: Vec3 }): Vec3 {

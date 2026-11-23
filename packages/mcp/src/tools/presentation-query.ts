@@ -15,8 +15,10 @@ type Attributes = ReturnType<LoadedModel['bim']['attributes']>;
 /** `attrs` loads the entity's attributes once (a source re-parse) however many fields read them. */
 function readField(model: LoadedModel, entity: EntityData, field: FieldPath, attrs: () => Attributes) {
   switch (field.kind) {
-    case 'attribute':
-      return attrs().find((a) => a.name.toLowerCase() === field.name.toLowerCase())?.value;
+    case 'attribute': {
+      const want = field.name.toLowerCase();
+      return attrs().find((a) => a.name.toLowerCase() === want)?.value;
+    }
     case 'property':
       return model.bim.property(entity.ref, field.set, field.name)
         ?? model.bim.quantity(entity.ref, field.set, field.name);

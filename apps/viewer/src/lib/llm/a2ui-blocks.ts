@@ -23,7 +23,7 @@ export function hasA2uiBlock(content: string): boolean {
 
 /** A fenced code block that wraps an A2UI block (models sometimes fence them), not a script that mentions the tag. */
 export function isA2uiFence(fence: string): boolean {
-  return fence.replace(/^```[^\n]*\n?/, '').trimStart().startsWith(OPEN_TAG);
+  return /^```[^\n]*\n?\s*<a2ui>/.test(fence);
 }
 
 export type A2uiReplyPart =

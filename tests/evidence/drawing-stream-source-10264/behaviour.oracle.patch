@@ -1,0 +1,12 @@
+diff --git a/packages/drawing-2d/src/drawing-session.ts b/packages/drawing-2d/src/drawing-session.ts
+--- a/packages/drawing-2d/src/drawing-session.ts
++++ b/packages/drawing-2d/src/drawing-session.ts
+@@ -153,7 +153,7 @@
+     const { config, occluderDepth } = this;
+     this.occluded = true;
+     for (const mesh of meshes) this.unfed.delete(makeEntityKey(mesh.modelIndex || 0, mesh.expressId));
+-    void meshes;
++    this.freeEdges!.add(meshes);
+     if (!this.classify) return;
+     const occluders = config.clipProjectionBands
+       ? meshes.map((mesh) => clipMeshToProjectionWindow(mesh, config.plane, 0, occluderDepth))

@@ -169,7 +169,6 @@
    432 packages/data/src/property-table.ts
    457 packages/data/src/step-serializers.ts
    508 packages/data/src/types.ts
-   541 packages/drawing-2d/src/drawing-generator.ts
    502 packages/drawing-2d/src/dxf/convert.ts
    706 packages/drawing-2d/src/dxf/parser.ts
    413 packages/drawing-2d/src/dxf/writer.ts
@@ -177,7 +176,7 @@
    565 packages/drawing-2d/src/gpu-section-cutter.ts
    470 packages/drawing-2d/src/graphic-overrides/presets.ts
    499 packages/drawing-2d/src/graphic-overrides/rule-engine.ts
-   572 packages/drawing-2d/src/index.ts
+   570 packages/drawing-2d/src/index.ts
    436 packages/drawing-2d/src/line-merger.ts
    417 packages/drawing-2d/src/object-styles.ts
    753 packages/drawing-2d/src/polygon-builder.ts

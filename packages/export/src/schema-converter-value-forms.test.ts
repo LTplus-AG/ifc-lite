@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /** #10847, as Rust `schema_value_forms_tests.rs`: a value the target slot's type cannot hold. */
+import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
 import { convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
 import { EnumReconciliation } from './schema-converter-enums.js';
@@ -13,6 +14,16 @@ const convert = (line: string, from: IfcSchemaVersion, to: IfcSchemaVersion) => 
   const enums = new EnumReconciliation();
   return { out: convertStepLine(line, from, to, undefined, undefined, undefined, undefined, enums), warnings: enums.warnings() };
 };
+
+const { durations } = JSON.parse(readFileSync(
+  new URL('../../../rust/export/tests/fixtures/schema_value_form_vectors.json', import.meta.url), 'utf8',
+)) as { durations: Array<{ label: string; from: IfcSchemaVersion; to: IfcSchemaVersion; line: string; expected: string; dropped: number }> };
+
+it.each(durations)('converts work-control duration consistently: $label (#10879)', ({ line, from, to, expected, dropped }) => {
+  const result = convert(line, from, to);
+  expect(result.out).toBe(expected);
+  expect(result.warnings).toHaveLength(dropped);
+});
 
 describe('value forms a target slot rejects (#10847)', () => {
   it("drops and names the issue's examples, both ways", () => {

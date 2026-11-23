@@ -5,6 +5,10 @@ import { expect, it } from 'vitest';
 import { MergedExporter } from './merged-exporter.js';
 import { StepExporter } from './step-exporter.js';
 
+const { calendarWarnings } = JSON.parse(readFileSync(
+  new URL('../../../rust/export/tests/fixtures/schema_value_form_vectors.json', import.meta.url), 'utf8',
+)) as { calendarWarnings: string[] };
+
 it('keeps calendar dates, fractional seconds and timezone offsets across schema versions (#10879)', async () => {
   const bytes = readFileSync(new URL('../../../rust/export/tests/fixtures/schema_calendar_dates.ifc', import.meta.url));
   const parser = new IfcParser();
@@ -14,7 +18,8 @@ it('keeps calendar dates, fractional seconds and timezone offsets across schema 
   expect(output).toContain("#1=IFCCLASSIFICATION('Source','1','2024-02-29','Classification',$,$,$);");
   expect(output).toContain("#3=IFCIRREGULARTIMESERIESVALUE('2024-02-29T10:30:15.5+05:30',(IFCREAL(1.)));");
   expect(output).toContain("#7=IFCCOSTVALUE('Estimate',$,$,$,'2024-02-29','2024-02-29','Materials',$,$,$);");
-  expect(primary.stats.warnings).toContain('1 date value(s) kept the calendar date and dropped the time and any timezone: IFCCOSTVALUE.ApplicableDate (#10879).');
+  expect(primary.stats.warnings).toEqual(calendarWarnings);
+  expect(primary.stats.entityCount).toBe([...output.matchAll(/^#\d+=/gm)].length);
   expect(output).not.toMatch(/=IFC(CALENDARDATE|DATEANDTIME|LOCALTIME|COORDINATEDUNIVERSALTIMEOFFSET)\(/);
   const converted = await parser.parseColumnar(Uint8Array.from(primary.content).buffer);
   const merged = new MergedExporter([{ id: 'm', name: 'Dates', dataStore: converted }]);

@@ -10,6 +10,36 @@ fn convert(line: &str, from: &str, to: &str) -> (String, usize, Vec<String>) {
     (out, checks.attribute_values_dropped, checks.forms.warnings())
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ParityVectors {
+    durations: Vec<DurationVector>,
+    calendar_warnings: Vec<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct DurationVector {
+    label: String,
+    from: String,
+    to: String,
+    line: String,
+    expected: String,
+    dropped: usize,
+}
+
+fn parity_vectors() -> ParityVectors {
+    serde_json::from_str(include_str!("../tests/fixtures/schema_value_form_vectors.json"))
+        .expect("valid shared value-form vectors")
+}
+
+#[test]
+fn work_control_duration_vectors_match_typescript_10879() {
+    for case in parity_vectors().durations {
+        let (out, dropped, warnings) = convert(&case.line, &case.from, &case.to);
+        assert_eq!((out, dropped, warnings.len()), (case.expected, case.dropped, case.dropped), "{}", case.label);
+    }
+}
+
 /// The issue's examples: a date reference in an IFC4 date string slot, a time
 /// measure in a duration string slot, a real in an IfcLagTime reference slot,
 /// and a date string in an IFC2X3 date reference slot.
@@ -188,7 +218,7 @@ fn calendar_dates_and_zoned_times_round_trip_10879() {
     let up = crate::StepOptions { schema: Some("IFC4".to_owned()), ..Default::default() };
     let (up, stats, warnings) = crate::export_step_with_diagnostics(input, &up).unwrap();
     assert_eq!(stats.attribute_values_dropped, 1);
-    assert!(warnings.iter().any(|warning| warning == "1 date value(s) kept the calendar date and dropped the time and any timezone: IFCCOSTVALUE.ApplicableDate (#10879)."), "{warnings:?}");
+    assert_eq!(warnings, parity_vectors().calendar_warnings);
     assert!(up.contains("#1=IFCCLASSIFICATION('Source','1','2024-02-29','Classification',$,$,$);"), "{up}");
     assert!(up.contains("#3=IFCIRREGULARTIMESERIESVALUE('2024-02-29T10:30:15.5+05:30',(IFCREAL(1.)));"), "{up}");
     assert!(up.contains("#7=IFCCOSTVALUE('Estimate',$,$,$,'2024-02-29','2024-02-29','Materials',$,$,$);"), "{up}");

@@ -98,7 +98,7 @@ export interface SceneRecoveryHost {
   ): WorldBox;
   refreshLiveInstancedTemplates(): void;
   gpuInstancePoolEnabled?(): boolean; // GPU-driven instancing: stand-in records now, the pool rebuilt from the restored templates
-  rebuildGpuInstancePool?(device: GPUDevice, radiiBySlot: ReadonlyMap<number, Float32Array>): void;
+  rebuildGpuInstancePool?(device: GPUDevice, radiiBySlot: ReadonlyMap<number, Float32Array>): void; dropGpuInstancePool?(): void;
 }
 
 export type SceneDeviceRecoveryPreparation =

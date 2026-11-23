@@ -4,6 +4,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { SceneInstancePool } from './scene-gpu-instancing.js';
+import { Scene } from './scene.js';
+import { restoredGpuRollback } from './scene-streaming-recovery.js';
 import { DrawGroups, ColourPalette, FreeRanges } from './gpu-instance-groups.js';
 import { INSTANCE_COLOR_OFFSET, INSTANCE_FLAG_HIDDEN, INSTANCE_FLAGS_OFFSET, INSTANCE_STRIDE_BYTES } from './instanced-render.js';
 import { GpuInstancePool } from './gpu-instance-pool.js';
@@ -252,9 +254,21 @@ describe('GPU instance pool review wave 2', () => {
     } finally { console.warn = warn; }
   });
 
-  it('counts instanced entities, not only live GPU templates, in the switch guard (recovery)', () => {
-    const scene = new SceneInstancePool();
-    assert.equal(scene.setEnabled(true, true), false);
+  it('Scene refuses the switch while instanced entities exist, even with no live GPU template (#11373, recovery)', () => {
+    const scene = new Scene();
+    const occurrences = (scene as unknown as { instancedEntityMap: Map<number, InstancedOccurrence[]> }).instancedEntityMap;
+    occurrences.set(1, [occ(0, 0)]); // device recovery dropped the GPU templates, the entities remain
+    const warn = console.warn; console.warn = () => {};
+    try { assert.equal(scene.setGpuInstancing(true), false); } finally { console.warn = warn; }
+    occurrences.clear();
+    assert.equal(scene.setGpuInstancing(true), true);
+  });
+
+  it('a failed recovery rollback also drops the pool rebuilt from the restored templates (#11373)', () => {
+    let dropped = 0;
+    const host = { batchedMeshes: [], texturedMeshes: [], instancedTemplates: [], sharedTextures: new Map(), dropGpuInstancePool: () => { dropped++; } };
+    restoredGpuRollback(host as unknown as Parameters<typeof restoredGpuRollback>[0])();
+    assert.equal(dropped, 1);
   });
 });
 

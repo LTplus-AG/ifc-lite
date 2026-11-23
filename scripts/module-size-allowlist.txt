@@ -244,7 +244,7 @@
    758 packages/renderer/src/pointcloud/point-cloud-spatial-index.ts
   3595 packages/renderer/src/renderer.ts
    462 packages/renderer/src/scene-raycaster.ts
-  4109 packages/renderer/src/scene.ts
+  4110 packages/renderer/src/scene.ts
    589 packages/renderer/src/section-2d-overlay.ts
    553 packages/renderer/src/shaders/main.wgsl.ts
    427 packages/renderer/src/shadow-pass.ts

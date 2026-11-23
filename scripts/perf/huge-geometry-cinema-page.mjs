@@ -81,7 +81,8 @@ export const CINE_HUD = () => {
     line(st.head ?? '', 'h');
     if (st.tag) line(st.tag, st.tone === 'bad' ? 'bad' : '');
     for (const l of st.lines ?? []) line(l);
-    const fr = p?.recording ? p.frames.slice(-40) : [];
+    // Same frames as the report's frameSummary (presented ticks only), so the video shows the reported numbers.
+    const fr = p?.recording ? (globalThis.__hgShownFrames ?? ((f) => f))(p.frames).slice(-40) : [];
     if (fr.length > 3) {
       const d = []; for (let i = 1; i < fr.length; i++) d.push(fr[i].ts - fr[i - 1].ts);
       const ms = median(d), last = fr.at(-1);

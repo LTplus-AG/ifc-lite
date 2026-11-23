@@ -27,6 +27,7 @@ import { DIALOG_MARKS, NOTICES, PAGE_PROBE } from './oom-load-probe-page.mjs';
 import { DIALOG_BUTTONS, MEMORY_WARNING, withTimeout } from './oom-load-probe-lib.mjs';
 import { COUNT_FRAMES, openAndWaitInteractive, openViewerPage } from './viewer-load-probe.mjs';
 import { HARNESS_INIT } from './huge-geometry-page.mjs';
+import { shownFrames } from './huge-geometry-report.mjs';
 
 export const ROOT = new URL('../..', import.meta.url).pathname.replace(/\/$/, '');
 export const VIEWPORT = Object.freeze({ width: 1600, height: 900 });
@@ -68,7 +69,8 @@ export async function launchGpu({ viewport = VIEWPORT, extraInit = [] } = {}) {
   const context = browser
     ? await browser.newContext({ viewport })
     : await chromium.launchPersistentContext(profileDir, { headless: true, viewport, args: gpuArgs(), timeout: 60000 });
-  for (const script of [COUNT_FRAMES, DIALOG_MARKS, HARNESS_INIT, ...pageGlobalsInit(), ...extraInit]) await context.addInitScript(script);
+  const shared = `globalThis.__hgShownFrames = ${shownFrames.toString()};`; // the report's frame filter, for live HUDs
+  for (const script of [COUNT_FRAMES, DIALOG_MARKS, HARNESS_INIT, shared, ...pageGlobalsInit(), ...extraInit]) await context.addInitScript(script);
   const page = context.pages()[0] ?? await context.newPage();
   const events = { console: [], pageErrors: [], crashed: false, closed: false };
   page.on('console', (m) => { if (events.console.length < 5000) events.console.push(`[${m.type()}] ${m.text().slice(0, 600)}`); });

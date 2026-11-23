@@ -21,10 +21,15 @@ const round = (x, d = 1) => (x === null || x === undefined || !Number.isFinite(x
  * Frame records of one camera path -> frame time distribution from rAF
  * timestamp deltas (what a user sees), plus per-frame GPU submission.
  */
+/**
+ * The frame records a user sees: ticks that drew nothing (the viewer's frame pacer skips draws while GPU
+ * frames are pending) are dropped. Self-contained, because the recorders' live HUDs run this same source in
+ * the page (`globalThis.__hgShownFrames`, installed by launchGpu) so videos show the reported numbers.
+ */
+export const shownFrames = (records) => (records.some((r) => 'presents' in r) ? records.filter((r) => r.presents > 0) : records);
+
 export function frameSummary(records) {
-  // Ticks that drew nothing (the viewer's frame pacer skips draws while GPU frames are pending) are not
-  // frames a user sees: frame times, fps and per-frame counts come from the ticks that presented.
-  const shown = records.some((r) => 'presents' in r) ? records.filter((r) => r.presents > 0) : records;
+  const shown = shownFrames(records);
   const deltas = [];
   for (let i = 1; i < shown.length; i++) deltas.push(shown[i].ts - shown[i - 1].ts);
   const col = (k) => shown.map((r) => r[k]).filter(Number.isFinite);

@@ -249,6 +249,7 @@ async function recordTier({ label, manifest, url, out, fps, loadSpeed, timeoutMs
           const match = got.sel.id === sc.hero.pick.id;
           hud.caption = `pick → #${got.sel.id} ${got.sel.type ?? ''} "${got.sel.name ?? ''}"${match ? '' : ` (expected #${sc.hero.pick.id})`}${used === 'click' ? '' : ` · after ${used}`}`;
           hud.captionTone = match ? 'good' : '';
+          if (!match) beatErr(new Error(`pick selected #${got.sel.id}, expected #${sc.hero.pick.id}`));
         } else { hud.caption = 'pick → nothing selected (GPU pick missed after programmatic camera moves)'; hud.captionTone = 'bad'; }
         await push();
         if (!got.at) beatErr(new Error('pick target off screen'));

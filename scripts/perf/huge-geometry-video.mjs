@@ -166,12 +166,14 @@ export const HUD_UPDATE = (state) => {
   if (!el) return;
   const p = globalThis.__hgProbe;
   let live = '';
-  if (p?.recording && p.frames.length > 2) {
+  // Same frames as the report's frameSummary (presented ticks only), so the video shows the reported numbers.
+  const fr = p?.recording ? (globalThis.__hgShownFrames ?? ((f) => f))(p.frames) : [];
+  if (fr.length > 2) {
     const d = [];
-    for (let i = 1; i < p.frames.length; i++) d.push(p.frames[i].ts - p.frames[i - 1].ts);
+    for (let i = 1; i < fr.length; i++) d.push(fr[i].ts - fr[i - 1].ts);
     d.sort((a, b) => a - b);
     const q = (x) => d[Math.min(d.length - 1, Math.ceil(x * d.length) - 1)].toFixed(1);
-    const last = p.frames.at(-1);
+    const last = fr.at(-1);
     live = `\nlive ${state.path}: median ${q(0.5)} ms · p95 ${q(0.95)} ms · worst ${d.at(-1).toFixed(0)} ms\n     draws ${last.draws} · tris/frame ${(last.tris / 1e6).toFixed(2)} M`;
   }
   const colour = state.tone === 'bad' ? '#ff8787' : state.tone === 'good' ? '#8ce99a' : '#a5d8ff';

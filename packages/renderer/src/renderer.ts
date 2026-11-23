@@ -25,7 +25,7 @@ export { reorderSnapshotPieces } from './scene-snapshot-batches.js';
 export { appearanceSourceTriangle, expandAppearanceCorners, equivalentAppearanceGeometry } from './appearance-uvs.js';
 export { sameCompanionParts } from './appearance-companions.js';
 export { invertAppearancePartition, validateAppearancePartition, type AppearancePreview, type AppearanceOwner, type AppearanceToken, type AppearanceChange, type AppearancePartition, type AppearancePartitionPart } from './appearance-preview.js';
-import { deferOpaqueVisibilityFrame } from './opaque-visibility-pass.js';
+import { deferOpaqueVisibilityFrame, setFrameLeadCommands } from './opaque-visibility-pass.js';
 import type { AppearancePreview } from './appearance-preview.js';
 import { createReferenceImageManager } from './reference-image-host.js';
 export type { ReferenceImages, ReferenceImageInput, ReferenceImageHit, ReferenceCorners } from './reference-image-types.js';
@@ -1946,8 +1946,8 @@ export class Renderer {
             const instancePool: GpuInstancePool | null = this.scene.getInstancedTemplates().length > 0 ? this.scene.getGpuInstancePool() : null;
             if (instancePool) { this.scene.setGpuPoolHover(options.hoverOutline?.id ?? null, options.hoverOutline?.modelIndex); instancePool.flush(); }
             const colourCull = instancePool && poolCullParams(this.camera, rteCullCamera, rteCullFrustum.planes, resolveContributionThresholdPx(options.contributionCull, interacting), this.canvas.height / this.pixelRatio);
-            // Own command buffer, submitted ahead of the frame: the orthographic depth prepass runs before the main encoder.
-            if (instancePool && colourCull) { const pre = device.createCommandEncoder({ label: 'instance-cull' }); instancePool.cull(pre, colourCull); device.queue.submit([pre.finish()]); }
+            const orthoPre = instancePool !== null && colourCull !== null && this.camera.getProjectionMode() === 'orthographic'; // its depth prepass is a separate, earlier command buffer
+            if (orthoPre) { const pre = device.createCommandEncoder({ label: 'instance-cull' }); instancePool.cull(pre, colourCull); setFrameLeadCommands(encoder, pre.finish()); }
 
             // Sun shadow-map pass (#2670, Phase 2). Off unless the caller opts
             // in; when off the hot path pays only this check and (once) an
@@ -2056,7 +2056,6 @@ export class Renderer {
                             : null,
                         extraPlanes: extraClipPlanes,
                     }, { cameraWorld: shadowEye, instancePool });
-                    if (instancePool && colourCull) instancePool.cull(encoder, colourCull); // the shadow cull replaced the colour view's output
 
                     // Shadow uniform: light matrix + sampling params. The kernel
                     // width follows the sun's angular size (physical, ~0.53°
@@ -2109,6 +2108,7 @@ export class Renderer {
             // Build color attachments — skip objectId in single-target mode
             const splatFrame = this.gaussianLayer.frameReady(); // #8564: the Gaussian pass after this one loads colour and resolves MSAA
             const glass = splatFrame ? this.gaussianLayer.glassRecorder(this.pipeline.visibility) : null; // holds transparent IFC for the nearest-glass split
+            if (instancePool && colourCull && (!orthoPre || shadowsThisFrame)) instancePool.cull(encoder, colourCull, renderPassTimestampWrites(encoder, 'instance-cull')); // (again, after the shadow view)
             const colorAttachments: GPURenderPassColorAttachment[] = [
                 {
                     // If MSAA enabled: render to multisample texture, resolve to swap chain

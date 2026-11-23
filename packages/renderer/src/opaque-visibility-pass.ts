@@ -4,6 +4,7 @@
 import { guardedMeshShader, unbiasedMeshShader, OPAQUE_VISIBILITY_GROUP } from './shaders/opaque-visibility.wgsl.js';
 import { mainShaderSource } from './shaders/main.wgsl.js';
 import { setOpaqueVisibilityCommands } from './opaque-visibility-commands.js';
+export { setFrameLeadCommands } from './opaque-visibility-commands.js';
 import { opaqueVisibilityTimestampWrites } from './renderer-frame-timing.js';
 import { emptyBindGroup } from './section-exclusions.js';
 

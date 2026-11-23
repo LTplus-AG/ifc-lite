@@ -41,15 +41,15 @@
  *               failure when one failed, or the job produced no verdict (a
  *               step broke, the build artifacts expired: they are kept one
  *               day, so a re-run of this job alone after that cannot work).
- *               A CANCELLED job posts nothing: its pending stays (fail
- *               closed), and a cancelling newer run on the same sha posts its
- *               own status, which a late "cancelled" post must not overwrite.
+ *               A cancelled job leaves its status to --cancelled.
  *               Exits 1 when the post fails, which shows on the advisory
  *               job; the pending status then still holds the gate.
  *   --shards    the full-lane verdict, from `viewer-shards-status` (needs
  *               changes + viewer-tests): success when every viewer shard
  *               passed, failure when one failed, nothing when they were
- *               cancelled or skipped (pending stays, as for --final).
+ *               cancelled or skipped.
+ *   --cancelled the trusted completion workflow marks a cancelled run’s
+ *               pending status as failure if that run still owns it.
  *
  * Every pending says "if stuck: re-run all jobs": a pending is stuck only
  * when its run was cancelled, timed out or broke before its verdict.
@@ -198,9 +198,38 @@ async function targetUrl(env) {
   }
 }
 
+// The completion workflow runs from the default branch and never checks out
+// the PR. A rerun uses the same run ID, so also verify the attempt.
+async function postCancellation(env) {
+  const { GITHUB_REPOSITORY: repo, HEAD_REPO: headRepo, HEAD_SHA: sha,
+    CANCELLED_RUN_ID: id, CANCELLED_RUN_ATTEMPT: attempt } = env;
+  if (!repo || repo !== headRepo) return 0;
+  if (!/^[0-9a-f]{40}$/.test(sha ?? '') || !/^\d+$/.test(id ?? '') || !/^\d+$/.test(attempt ?? '')) {
+    throw new Error('Invalid cancelled Test run identity');
+  }
+  const path = `repos/${repo}`;
+  const runUrl = `${env.GITHUB_SERVER_URL || 'https://github.com'}/${repo}/actions/runs/${id}`;
+  const run = await api(env, 'GET', `${path}/actions/runs/${id}`);
+  if (String(run.run_attempt) !== attempt || run.conclusion !== 'cancelled' || run.head_sha !== sha) return 0;
+
+  const { statuses } = await api(env, 'GET', `${path}/commits/${sha}/status?per_page=100`);
+  const current = statuses.find(({ context }) => context === STATUS_CONTEXT);
+  if (current?.state !== 'pending' ||
+      (current.target_url !== runUrl && !current.target_url?.startsWith(`${runUrl}/job/`))) return 0;
+
+  await api(env, 'POST', `${path}/statuses/${sha}`, {
+    state: 'failure',
+    context: STATUS_CONTEXT,
+    description: 'Test was cancelled before the viewer verdict; re-run all jobs or push',
+    target_url: runUrl,
+  });
+  return 0;
+}
+
 export async function main(argv, env = process.env) {
   const [cmd, dir] = argv;
-  if (cmd !== '--entry' && cmd !== '--shards' && !(cmd === '--final' && dir)) throw new Error('usage: --entry | --shards | --final <dir>');
+  if (cmd === '--cancelled') return postCancellation(env);
+  if (cmd !== '--entry' && cmd !== '--shards' && !(cmd === '--final' && dir)) throw new Error('usage: --entry | --shards | --final <dir> | --cancelled');
   const phase = cmd.slice(2);
   const decision = decideStatus({
     phase,

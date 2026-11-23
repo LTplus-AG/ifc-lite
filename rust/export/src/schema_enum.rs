@@ -215,6 +215,7 @@ impl ConversionChecks {
             forms: Default::default(),
             materials,
             plans: Default::default(),
+            merged: false,
             attribute_values_dropped: 0,
         }
     }

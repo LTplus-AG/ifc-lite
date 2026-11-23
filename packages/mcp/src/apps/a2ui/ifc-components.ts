@@ -86,7 +86,8 @@ function chart(p: Props, act: RendererAction): HTMLElement {
   const data = items(p.data).map(record).filter((d) => typeof d.value === 'number' && Number.isFinite(d.value));
   if (!data.length) return block(p.title, element('p', 'No groups.'));
   const maxGroups = Number(value(p.maxGroups));
-  const limit = Number.isFinite(maxGroups) ? Math.max(1, Math.min(100, Math.floor(maxGroups))) : 12;
+  // As in the viewer: a maxGroups of 1 or less means the default, so Other always has a group beside it.
+  const limit = Number.isFinite(maxGroups) && maxGroups > 1 ? Math.min(100, Math.floor(maxGroups)) : 12;
   // Same fold as the viewer: the limit - 1 largest groups by magnitude, in their order, plus Other.
   let shown = data;
   if (data.length > limit) {

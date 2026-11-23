@@ -10,6 +10,7 @@
  * nothing. They must refuse up front and leave the store alone.
  */
 import '@/test/setup-dom.js';
+import 'fake-indexeddb/auto';
 import { after, afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';

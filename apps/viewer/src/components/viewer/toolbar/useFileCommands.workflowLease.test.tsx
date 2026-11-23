@@ -9,6 +9,7 @@
  * leave the models alone.
  */
 import '@/test/setup-dom.js';
+import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';

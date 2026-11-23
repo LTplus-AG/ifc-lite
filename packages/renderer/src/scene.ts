@@ -2163,6 +2163,8 @@ export class Scene {
     this.snapshots.dropCapture();
     this.streamWork.clear();
     this.streamingFragmentIndexBudget = Number.POSITIVE_INFINITY;
+    // Also on the early return: a pass whose fragments were rolled back still placed its meshes.
+    this.modelTranslations.forgetPlacements(); // placed copies share the source arrays
     if (this.streamingFragments.length === 0) {
       this.ephemeralStreamingMode = false;
       return;
@@ -2179,7 +2181,6 @@ export class Scene {
     }
 
     this.modelTranslations.retainEntityBounds(this.meshDataMap);
-    this.modelTranslations.forgetPlacements(); // placed copies share the source arrays
     this.streamingFragments = []; this.fragmentPieces.retainOnly([]);
     this.buckets.clear();
     this.meshDataBucket = new Map();

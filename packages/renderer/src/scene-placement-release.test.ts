@@ -15,6 +15,7 @@ import { setFlagsFromString } from 'node:v8';
 import { runInNewContext } from 'node:vm';
 import type { MeshData } from '@ifc-lite/geometry';
 import { Scene } from './scene.js';
+import type { ModelTranslations } from './model-translation.js';
 import type { RenderPipeline } from './pipeline.js';
 
 (globalThis as Record<string, unknown>).GPUBufferUsage = {
@@ -80,5 +81,21 @@ describe('released geometry is not kept alive by placement copies', () => {
     const refs = releaseInPlace(store);
     assert.equal(await liveAfterGc(refs), 0);
     assert.equal(store.length, 2);
+  });
+
+  it('a placed copy still held after the release keeps resolving to its source, placed once', () => {
+    const scene = new Scene(), { device, pipeline } = gpu();
+    scene.setModelTranslation(0, [100, 0, 0]);
+    const source = triangle(1);
+    scene.appendToBatches([source], device, pipeline);
+    const translations = (scene as unknown as { modelTranslations: ModelTranslations }).modelTranslations;
+    const placed = translations.placeMesh(source); // the scene's cached copy, as a highlight or appearance part holds it
+    assert.deepEqual(placed.origin, [100, 0, 0]);
+    scene.releaseGeometryData();
+    assert.equal(translations.sourceMesh(placed), source);
+    assert.equal(translations.sourceFromPlaced(placed), source);
+    assert.equal(translations.placeMesh(placed), placed, 'not re-placed as if it were a source');
+    assert.deepEqual(placed.origin, [100, 0, 0]);
+    assert.notEqual(translations.placeMesh(source), placed, 'the source gets a fresh placement on demand');
   });
 });

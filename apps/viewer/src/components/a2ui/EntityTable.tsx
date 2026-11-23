@@ -15,6 +15,7 @@ import { createComponentImplementation } from '@a2ui/react';
 import { encodeRef } from '@ifc-lite/a2ui';
 import { EntityTableApi } from '@ifc-lite/a2ui/catalog';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
@@ -151,13 +152,13 @@ export const EntityTableImpl = createComponentImplementation(EntityTableApi, ({ 
           <span>{t('a2ui.table.caption', { shown: visible.length.toLocaleString(), total: sorted.length.toLocaleString() })}</span>
           {pages > 1 && (
             <span className="flex items-center gap-1">
-              <Button size="icon-xs" variant="ghost" aria-label={t('a2ui.table.previous')} disabled={current === 0} onClick={() => setPage(current - 1)}>
+              <IconButton size="icon-xs" variant="ghost" label={t('a2ui.table.previous')} disabled={current === 0} onClick={() => setPage(current - 1)}>
                 <ChevronLeft className="h-3.5 w-3.5" />
-              </Button>
+              </IconButton>
               <span>{t('a2ui.table.page', { page: current + 1, pages })}</span>
-              <Button size="icon-xs" variant="ghost" aria-label={t('a2ui.table.next')} disabled={current >= pages - 1} onClick={() => setPage(current + 1)}>
+              <IconButton size="icon-xs" variant="ghost" label={t('a2ui.table.next')} disabled={current >= pages - 1} onClick={() => setPage(current + 1)}>
                 <ChevronRight className="h-3.5 w-3.5" />
-              </Button>
+              </IconButton>
             </span>
           )}
         </div>

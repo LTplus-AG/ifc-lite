@@ -12,11 +12,13 @@ import { buildSystemPrompt } from './system-prompt';
 const kinds = (content: string) => splitA2uiReply(content).map((p) => (p.kind === 'text' ? `t:${p.text}` : `b:${p.closed}`));
 
 describe('splitA2uiReply', () => {
-  it('treats the tag inside a script as code, not a surface, and keeps the script runnable', () => {
-    const reply = 'Try:\n```js\nconst tag = "<a2ui>";\nconsole.log(tag);\n```\nDone';
-    assert.deepEqual(splitA2uiReply(reply).map((p) => p.kind), ['text']);
-    assert.equal(extractCodeBlocks(reply).length, 1);
-    assert.equal(extractCodeBlocks('```\n<a2ui>\nroot = Text("x")\n</a2ui>\n```').length, 0, 'a fenced surface is still not a script');
+  it('keeps a script that mentions the tag runnable, and a fenced surface out of the scripts', () => {
+    assert.equal(extractCodeBlocks('```js\nconst tag = "<a2ui>";\nconsole.log(tag);\n```').length, 1);
+    assert.equal(extractCodeBlocks('```\n<a2ui>\nroot = Text("x")\n</a2ui>\n```').length, 0);
+  });
+
+  it('renders a fenced surface with a blank line after the fence', () => {
+    assert.deepEqual(kinds('```a2ui\n\n<a2ui>\nroot = Text("x")\n</a2ui>\n```'), ['b:true']);
   });
 
   it('keeps the closing fence of a code block that sits right before a surface', () => {

@@ -11,6 +11,7 @@
 
 import {
   IFC_FUNCTION_POLICY,
+  MAX_QUERY_LIMIT,
   encodeRef,
   isIfcFunction,
   parseRefs,
@@ -64,8 +65,8 @@ export function resolveTarget(host: A2uiViewerHost, args: { refs?: unknown; quer
     const result = evaluateQuery(host, args.query);
     if (result.unloadedModel) unloaded.add(result.unloadedModel);
     if (result.problems.length) return { refs: [], unloadedModels: [...unloaded], problems: result.problems };
-    // The whole match set, like the stats and charts beside it, not the first page a table shows.
-    for (const row of aggregatePool(result)) out.set(row.key, row.ref);
+    // The whole match set, like the stats and charts beside it, up to the hard query ceiling.
+    for (const row of aggregatePool(result).slice(0, MAX_QUERY_LIMIT)) out.set(row.key, row.ref);
   }
   return { refs: [...out.values()], unloadedModels: [...unloaded], problems: [] };
 }

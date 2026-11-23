@@ -32,7 +32,7 @@ export type A2uiReplyPart =
   | { kind: 'block'; raw: string; closed: boolean };
 
 const FENCE_LINE = /^[ \t]*```/gm;
-const WRAPPER_OPEN = /```[A-Za-z0-9_-]*[ \t]*\r?\n[ \t]*$/;
+const WRAPPER_OPEN = /```[A-Za-z0-9_-]*[ \t]*\r?\n\s*$/;
 const WRAPPER_CLOSE = /^[ \t]*\r?\n?[ \t]*```[ \t]*(?=\r?\n|$)/;
 
 /**
@@ -62,12 +62,6 @@ export function splitA2uiReply(content: string): A2uiReplyPart[] {
     const wrapper = before.match(WRAPPER_OPEN);
     const fencesBefore = fences + (before.match(FENCE_LINE) ?? []).length;
     const wrapped = !!wrapper && fencesBefore % 2 === 1;
-    if (fencesBefore % 2 === 1 && !wrapped) {
-      // Inside a code block (a script that mentions the tag): text, not a surface.
-      pushText(content.slice(at, open + OPEN_TAG.length));
-      at = open + OPEN_TAG.length;
-      continue;
-    }
     if (wrapped && wrapper) before = before.slice(0, wrapper.index);
     pushText(before);
     const close = content.indexOf(CLOSE_TAG, open + OPEN_TAG.length);

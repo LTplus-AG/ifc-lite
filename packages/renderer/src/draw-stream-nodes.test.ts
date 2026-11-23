@@ -11,7 +11,7 @@ import { HlodTree, nodeKey, proxySlotKey, type HlodNode } from './draw-stream-hl
 import type { MeshData } from '@ifc-lite/geometry';
 import { PROXY_WORKER_SOURCE } from './draw-stream-proxy-worker.js';
 import { resolveDrawStreamConfig } from './draw-stream-config.js';
-import { cellOf, pxPerMetre, type StreamFrameInputs, type StreamFrameStats } from './draw-stream-types.js';
+import { cellOf, orthoSlot, pxPerMetre, type StreamFrameInputs, type StreamFrameStats } from './draw-stream-types.js';
 
 function batch(id: number, x: number, opts: { quantized?: boolean; lod1?: number; ids?: number } = {}): BatchedMesh {
   return {
@@ -236,5 +236,22 @@ describe('draw stream HLOD tree', () => {
       assert.deepEqual([records![12], records![13], records![14]], atSubmit.map((v) => Math.fround(v)));
       tree.destroy();
     } finally { host.Worker = savedWorker; }
+  });
+});
+
+describe('draw stream reconfigure and cache keys', () => {
+  it('re-arms the settle delay after a reset (configure)', () => {
+    const gate = new DrawStreamGate();
+    const batches = [batch(1, 0)];
+    assert.equal(gate.settled(batches, resolveDrawStreamConfig({ stream: true, settleMs: 0 }), 0), true);
+    gate.reset();
+    assert.equal(gate.settled(batches, resolveDrawStreamConfig({ stream: true, settleMs: 60_000 }), 0), false, 'same batches, but a new settle delay');
+    gate.cancel();
+  });
+
+  it('keys orthographic bundles by draw mode and LOD, like perspective ones', () => {
+    const slots = new Set<number>();
+    for (let mode = 0; mode < 4; mode++) for (const lod1 of [false, true]) { const s = orthoSlot(mode, lod1); assert.ok(!slots.has(s) && !slots.has(s + 1)); slots.add(s); slots.add(s + 1); }
+    assert.equal(slots.size, 16);
   });
 });

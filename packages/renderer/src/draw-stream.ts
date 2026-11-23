@@ -37,7 +37,7 @@ import { GeometryArena } from './draw-stream-arena.js';
 import { StreamPipelines } from './draw-stream-pipelines.js';
 import { buildStreamNodes, linkHlodLeaves, type HlodLinks } from './draw-stream-nodes.js';
 import { collectStreamItems, StreamDrawBudget } from './draw-stream-cull.js';
-import { cellOf, idOf, modeIndex, type StreamBatchState, type StreamFrameInputs, type StreamFrameStats, type StreamItem, type StreamNode } from './draw-stream-types.js';
+import { cellOf, idOf, modeIndex, orthoSlot, type StreamBatchState, type StreamFrameInputs, type StreamFrameStats, type StreamItem, type StreamNode } from './draw-stream-types.js';
 import type { DrawStreamConfig } from './draw-stream-config.js';
 import { DEFAULT_CHUNK_CELL_SIZE } from './chunk-grid.js';
 import type { MeshData } from '@ifc-lite/geometry';
@@ -105,7 +105,7 @@ export class DrawStream {
     if (this.config.hlod && forEachPiece && geomKey !== this.geomKey) {
       this.hlod?.destroy();
       this.hlod = new HlodTree(this.device, leafCell, this.config.hlodGrid, () => this.requestRender());
-      this.hlod.build(forEachPiece);
+      this.hlodGeneration = -1; this.hlodBindGroup = null; this.orthoKey = ''; this.hlod.build(forEachPiece); // a new tree restarts its generations
     }
     if (this.config.arena && geomKey !== this.geomKey) {
       this.arena?.destroy();
@@ -329,14 +329,13 @@ export class DrawStream {
    * replays both lists: the prepass folds into the same stream.
    */
   private encodeOrtho(f: StreamFrameInputs, items: readonly StreamItem[], stats: StreamFrameStats): void {
-    const vis = f.ortho!;
-    const binding = vis.getBinding();
+    const vis = f.ortho!, binding = vis.getBinding(), mi = modeIndex(f.mode);
     if (!binding) return;
     const key = `${this.bundleKey}|${idOf(binding)}|${this.hlodGeneration}`; // a new HLOD generation destroyed the buffers proxies bound
     if (key !== this.orthoKey) {
       this.orthoKey = key;
-      for (const n of this.nodes) n.ortho = [null, null, null, null];
-      if (this.hlod) for (const n of this.hlod.nodes()) n.ortho = [null, null];
+      for (const n of this.nodes) n.ortho = [];
+      if (this.hlod) for (const n of this.hlod.nodes()) n.ortho = [];
     }
     const colourEnc = (): GPURenderBundleEncoder => this.bundleEncoder('draw-stream-ortho-colour');
     const depthEnc = (): GPURenderBundleEncoder => this.bundleEncoder('draw-stream-ortho-depth', { sampleCount: vis.sampleCount() });
@@ -346,12 +345,13 @@ export class DrawStream {
     for (const it of items) {
       if (it.proxy) {
         const n = it.proxy; stats.proxiesDrawn++; stats.draws += n.draws.length; stats.tris += n.tris;
-        if (!n.ortho[0]) { const e = colourEnc(); this.encodeProxy(e, n, f.mode, true, colourOf, binding); n.ortho[0] = e.finish(); stats.bundlesRecorded++; }
-        if (!n.ortho[1]) { const e = depthEnc(); this.encodeProxy(e, n, f.mode, true, depthOf); n.ortho[1] = e.finish(); }
-        colour.push(n.ortho[0]); depth.push(n.ortho[1]);
+        const p = orthoSlot(mi, false);
+        if (!n.ortho[p]) { const e = colourEnc(); this.encodeProxy(e, n, f.mode, true, colourOf, binding); n.ortho[p] = e.finish(); stats.bundlesRecorded++; }
+        if (!n.ortho[p + 1]) { const e = depthEnc(); this.encodeProxy(e, n, f.mode, true, depthOf); n.ortho[p + 1] = e.finish(); }
+        colour.push(n.ortho[p]!); depth.push(n.ortho[p + 1]!);
         continue;
       }
-      const leaf = it.leaf; const lod1 = it.lod1; const o = lod1 ? 2 : 0;
+      const leaf = it.leaf; const lod1 = it.lod1; const o = orthoSlot(mi, lod1);
       stats.nodesDrawn++; stats.draws += leaf.members.length; stats.tris += lod1 ? leaf.tris1 : leaf.tris0; stats.entries += leaf.entries;
       if (!leaf.ortho[o]) { const e = colourEnc(); this.encodeNode(e, leaf, lod1, f.mode, true, colourOf, binding); leaf.ortho[o] = e.finish(); stats.bundlesRecorded++; }
       if (!leaf.ortho[o + 1]) { const e = depthEnc(); this.encodeNode(e, leaf, lod1, f.mode, true, depthOf); leaf.ortho[o + 1] = e.finish(); }

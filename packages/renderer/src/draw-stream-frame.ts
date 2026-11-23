@@ -75,6 +75,8 @@ export class DrawStreamGate {
 
   private wake: ReturnType<typeof setTimeout> | undefined;
   cancel(): void { clearTimeout(this.wake); this.wake = undefined; }
+  /** Forget the settled batch set: the next frame starts a new settle delay (a reconfigure). */
+  reset(): void { this.cancel(); this.signature = ''; this.changedAt = 0; }
 
   private resident = 0;
 
@@ -109,6 +111,7 @@ export class RendererDrawStream {
   configure(config: Readonly<DrawStreamConfig>): void {
     this.config = { ...config };
     this.destroy();
+    this.gate.reset();
   }
 
   /** Whether batch highlight resync resolves ids through the entity -> batch index. */

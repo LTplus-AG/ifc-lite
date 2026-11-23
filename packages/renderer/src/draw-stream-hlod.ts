@@ -50,7 +50,7 @@ export interface HlodNode {
   tris: number;
   /** Perspective bundles per opaque draw mode (index = discardFree * 2 + objectId). */
   bundle: (GPURenderBundle | null)[];
-  /** Orthographic colour/depth bundle pair. */
+  /** Orthographic colour/depth bundle pairs, per draw mode at `orthoSlot(mode, false)`. */
   ortho: (GPURenderBundle | null)[];
   pieces?: MeshData[];
   /** Frame the proxy's vertices are relative to, fixed at submit (later bound growth must not move it). */
@@ -135,7 +135,7 @@ export class HlodTree {
 
   private makeNode(level: number, coords: Vec3, size: number): HlodNode {
     return { level, key: nodeKey(level, coords), coords, min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity],
-      error: size / this.grid, children: [], state: 'idle', draws: [], cpu: [], tris: 0, bundle: [null, null, null, null], ortho: [null, null] };
+      error: size / this.grid, children: [], state: 'idle', draws: [], cpu: [], tris: 0, bundle: [null, null, null, null], ortho: [] };
   }
 
   private slotOf(color: readonly number[], finish: Finish | undefined): number {

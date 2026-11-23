@@ -16,7 +16,7 @@ export function buildStreamNodes(members: readonly BatchedMesh[], cell: number):
     const k = `${c[0]},${c[1]},${c[2]}`;
     let node = byCell.get(k);
     if (!node) {
-      node = { coords: c, min: [...bb.min], max: [...bb.max], members: [], tris0: 0, tris1: 0, entries: 0, bundles: [null, null, null, null, null, null, null, null], ortho: [null, null, null, null] };
+      node = { coords: c, min: [...bb.min], max: [...bb.max], members: [], tris0: 0, tris1: 0, entries: 0, bundles: [null, null, null, null, null, null, null, null], ortho: [] };
       byCell.set(k, node);
     }
     growAabb(node, bb.min, bb.max);

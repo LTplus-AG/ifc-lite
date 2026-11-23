@@ -28,7 +28,7 @@ export interface StreamNode {
   tris1: number;
   entries: number;
   bundles: (GPURenderBundle | null)[]; // [mode * 2 + lod], mode = discardFree * 2 + objectId
-  ortho: (GPURenderBundle | null)[];   // orthographic [colour0, depth0, colour1, depth1]
+  ortho: (GPURenderBundle | null)[];   // orthographic colour/depth pairs at orthoSlot(mode, lod)
 }
 
 /** A culled node this frame: a leaf at LOD0/LOD1, or a ready HLOD proxy standing in for a subtree. */
@@ -87,6 +87,9 @@ export function cellOf(min: readonly number[], max: readonly number[], cell: num
 export function growAabb(box: { min: number[]; max: number[] }, min: readonly number[], max: readonly number[]): void {
   for (let a = 0; a < 3; a++) { box.min[a] = Math.min(box.min[a]!, min[a]!); box.max[a] = Math.max(box.max[a]!, max[a]!); }
 }
+
+/** Orthographic bundle-pair index: [colour, depth] at `orthoSlot` and `+1`, per draw mode and LOD like perspective bundles. */
+export const orthoSlot = (mode: number, lod1: boolean): number => (mode * 2 + (lod1 ? 1 : 0)) * 2;
 
 /** Bundle-cache index of an opaque draw mode. */
 export const modeIndex = (m: OpaqueDrawMode): number => (m.discardFree ? 2 : 0) + (m.objectId ? 1 : 0);

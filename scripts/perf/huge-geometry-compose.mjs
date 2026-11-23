@@ -211,12 +211,12 @@ async function main() {
   try {
     const pairs = values.pair.map((p) => p.split(',').map(read));
     const clips = values.clip.map(read);
-    await card(values.title, [values.subtitle, ...pairs.map(([b, a]) => `${b.name}: ${values['before-label']} vs ${values['after-label']} on the same camera path`),
+    await card(values.title, [values.subtitle, ...pairs.map(([b]) => `${b.name}: ${values['before-label']} vs ${values['after-label']} on the same camera path`),
       ...clips.map((c) => `${c.label} · ${c.name}: ${c.status === 'ok' ? 'runs the full path' : `FAILED (${c.failure?.kind ?? c.status})`}`),
       'showcase scene: footage only, not a measurement family', 'all timings diagnostic, not evidence'].filter(Boolean), 4);
     for (const [b, a] of pairs) {
       await page.evaluate(SET_SOURCES, { b: local(b, 'b'), a: local(a, 'a'), solo: null });
-      const label = (txt, clip, colour) => `${esc(txt)}<div class="sub">${esc(clip.label)} · ${esc(clip.name)} · ${esc((clip.url ?? '').replace(/^https?:\/\/[^/]+/, ''))}</div>`;
+      const label = (txt, clip) => `${esc(txt)}<div class="sub">${esc(clip.label)} · ${esc(clip.name)} · ${esc((clip.url ?? '').replace(/^https?:\/\/[^/]+/, ''))}</div>`;
       const labels = [label(values['before-label'], b), label(values['after-label'], a)];
       const hb = headline(b), ha = headline(a);
       await card(`${b.name.replace(/^showcase-/, 'showcase ')}: ${values['before-label']} vs ${values['after-label']}`,

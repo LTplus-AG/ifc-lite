@@ -81,6 +81,22 @@
    "expect": "#5=IFCPROXY('0YvctVUKr0kugbFTf53O9L',$,'Grid',$,$,$,$,.NOTDEFINED.,$);"
   },
   {
+   "why": "#11322: padding around quoted GlobalId and Name slots preserves their values",
+   "from": "IFC4X3",
+   "to": "IFC4",
+   "line": "#5=IFCRELPOSITIONS( '0YvctVUKr0kugbFTf53O9L' ,$, \t'Grid' ,$,#1,(#2));",
+   "merge": true,
+   "expect": "#5=IFCPROXY('0YvctVUKr0kugbFTf53O9L',$,'Grid',$,$,$,$,.NOTDEFINED.,$);"
+  },
+  {
+   "why": "#11322: mixed comments and whitespace around both identity slots are STEP trivia",
+   "from": "IFC4X3",
+   "to": "IFC4",
+   "line": "#5=IFCRELPOSITIONS( /* ID */ '0YvctVUKr0kugbFTf53O9L' /* end ID */ ,$, /* Name */ 'Grid''s /* datum */' /* end Name */ ,$,#1,(#2));",
+   "merge": true,
+   "expect": "#5=IFCPROXY('0YvctVUKr0kugbFTf53O9L',$,'Grid''s /* datum */',$,$,$,$,.NOTDEFINED.,$);"
+  },
+  {
    "why": "#11322: an unset GlobalId is minted identically and an unset Name falls back to the source type",
    "from": "IFC4X3",
    "to": "IFC4",

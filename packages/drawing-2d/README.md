@@ -100,7 +100,7 @@ const source: DrawingMeshSource = {
 const drawing = await generator.generateFromSource(source, config, { signal });
 ```
 
-To push chunks instead (each lease released before the next), use a session:
+To push chunks instead (each lease released before the next), use a session. `finish()` throws until the occlusion phase has fed what `endGeometry()` asked for (every batch again for a depth raster, or the open-surface entities' meshes), so a skipped replay is refused rather than drawn without free edges:
 
 ```typescript
 import type { Drawing2DGenerator, EntityKey, GeneratorOptions, SectionConfig } from '@ifc-lite/drawing-2d';
@@ -118,7 +118,10 @@ for (const chunk of chunks) {
 }
 const needs = session.endGeometry();
 // needs.depthRaster: feed every chunk again; otherwise only needs.openSurfaceEntities' meshes.
-for (const chunk of needs.depthRaster ? chunks : chunksOf(needs.openSurfaceEntities)) { /* session.addOcclusion(...) */ }
+for (const chunk of needs.depthRaster ? chunks : chunksOf(needs.openSurfaceEntities)) {
+  const held = await leaseChunk(chunk);
+  try { session.addOcclusion(held.meshes); } finally { held.release(); }
+}
 const drawing = session.finish(); // or session.cancel()
 ```
 

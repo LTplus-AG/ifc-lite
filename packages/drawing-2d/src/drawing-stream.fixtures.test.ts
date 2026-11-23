@@ -34,6 +34,33 @@ export function sheet(expressId: number, x0: number, x1: number, z: number, heig
     indices: new Uint32Array([0, 1, 2, 0, 2, 3]), color: [0.5, 0.5, 0.9, 1] };
 }
 
+/** A single-sided vertical quad from (xa, za) to (xb, zb), 0..height in y: part of an open shell. */
+function wallQuad(xa: number, za: number, xb: number, zb: number, height: number): number[] {
+  return [xa, 0, za, xb, 0, zb, xb, height, zb, xa, height, za];
+}
+
+/**
+ * One open shell (#8664 review): a square tube of single-sided walls, open at both rims, as entity 20 with two
+ * material layers. Each layer's cut is an open chain; only the two together close the loop. `corner` splits the
+ * layers at two corners; `midwall` splits two walls in half, so the layers' section endpoints coincide mid-wall.
+ * Each layer has its own vertices (coincident, not shared), as separate sub-meshes do.
+ */
+export function multiMaterialShell(split: 'corner' | 'midwall', height = 3): MeshData[] {
+  const layer = (quads: number[][], materialId: number, color: [number, number, number, number]): MeshData => {
+    const positions = new Float32Array(quads.flat());
+    const indices = new Uint32Array(quads.flatMap((_, i) => [4 * i, 4 * i + 1, 4 * i + 2, 4 * i, 4 * i + 2, 4 * i + 3]));
+    return { expressId: 20, ifcType: 'IfcCovering', modelIndex: 0, positions, normals: new Float32Array(positions.length), indices,
+      color, materialId };
+  };
+  const a = split === 'corner'
+    ? [wallQuad(0, 0, 4, 0, height), wallQuad(0, 4, 0, 0, height)]
+    : [wallQuad(0, 0, 2, 0, height), wallQuad(0, 4, 0, 0, height), wallQuad(2, 4, 0, 4, height)];
+  const b = split === 'corner'
+    ? [wallQuad(4, 0, 4, 4, height), wallQuad(4, 4, 0, 4, height)]
+    : [wallQuad(2, 0, 4, 0, height), wallQuad(4, 0, 4, 4, height), wallQuad(4, 4, 2, 4, height)];
+  return [layer(a, 41, [0.9, 0.2, 0.2, 1]), layer(b, 42, [0.2, 0.9, 0.2, 1])];
+}
+
 /** Walls, a two-layer wall, an RTC-origin slab, an open sheet, an occluded post, a second model, an opening. */
 export function streamScene(): MeshData[] {
   return [

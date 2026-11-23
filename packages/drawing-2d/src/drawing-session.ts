@@ -24,6 +24,7 @@
 
 import type { MeshData } from '@ifc-lite/geometry';
 import type { CutSegment, Drawing2D, DrawingLine, EntityKey, LineCategory, ProfileEntry, SectionConfig, Bounds2D } from './types.js';
+import { makeEntityKey } from './types.js';
 import { SectionCutter } from './section-cutter.js';
 import { PolygonBuilder } from './polygon-builder.js';
 import { OpenSurfaceAccumulator, openSurfaceCandidates } from './open-surface.js';
@@ -76,6 +77,8 @@ export class DrawingSession {
   private classifiable: DrawingLine[] = [];
   private classify = false;
   private freeEdges: OpenSurfaceAccumulator | null = null;
+  private unfed = new Set<EntityKey>(); // open-surface candidates whose meshes the occlusion phase has not fed yet
+  private occluded = false;
   private readonly occluderDepth: number;
 
   constructor(
@@ -109,7 +112,11 @@ export class DrawingSession {
   /** Cut and project one batch; keeps no reference to it. */
   async addGeometry(meshes: readonly MeshData[]): Promise<void> {
     this.enter('geometry');
-    if (this.gpuCutter) this.segmentBatches.push(await this.gpuCutter.cutMeshes([...meshes], this.config.plane));
+    if (this.gpuCutter) {
+      const segments = await this.gpuCutter.cutMeshes([...meshes], this.config.plane);
+      this.enter('geometry'); // cancelled, finished or aborted during the GPU cut: keep nothing of it
+      this.segmentBatches.push(segments);
+    }
     else for (const mesh of meshes) this.segmentBatches.push(this.cpuCutter!.cutSingleMesh(mesh).segments);
     this.opts.signal?.throwIfAborted();
     for (const mesh of meshes) this.totalTriangles += mesh.indices.length / 3;
@@ -135,6 +142,7 @@ export class DrawingSession {
     this.classify = (opts.includeHiddenLines || !!config.clipProjectionBands) && this.classifiable.length > 0;
     const candidates = openSurfaceCandidates(this.cutSegments);
     this.freeEdges = new OpenSurfaceAccumulator(candidates);
+    this.unfed = new Set(candidates);
     if (this.classify) {
       this.report('hidden', 0);
       // The raster spans every line the drawing will classify or keep.
@@ -147,6 +155,8 @@ export class DrawingSession {
   addOcclusion(meshes: readonly MeshData[]): void {
     this.enter('occlusion');
     const { config, occluderDepth } = this;
+    this.occluded = true;
+    for (const mesh of meshes) this.unfed.delete(makeEntityKey(mesh.modelIndex || 0, mesh.expressId));
     this.freeEdges!.add(meshes);
     if (!this.classify) return;
     const occluders = config.clipProjectionBands
@@ -169,6 +179,13 @@ export class DrawingSession {
   finish(): Drawing2D {
     if (this.phase === 'geometry') this.endGeometry();
     this.enter('occlusion');
+    // What `endGeometry()` asked for must have been fed: otherwise the drawing would silently miss free
+    // edges (an open surface cut as closed) or occlusion. Throws before finishing, so the caller can feed it.
+    if ((this.classify && !this.occluded) || this.unfed.size > 0) {
+      throw new Error(this.classify && !this.occluded
+        ? 'Drawing session needs its occlusion phase (every batch again) before finish()'
+        : `Drawing session needs the meshes of ${this.unfed.size} open-surface entities in its occlusion phase before finish()`);
+    }
     this.phase = 'done';
     const { config, opts, cutSegments, classifiable } = this;
     // ─────────────────────────────────────────────────────────────────────────
@@ -234,6 +251,7 @@ export class DrawingSession {
     const processingTimeMs = performance.now() - this.startTime;
 
     this.report('complete', 1);
+    this.opts.signal?.throwIfAborted(); // aborted while finishing (e.g. from a progress callback): no drawing
 
     return {
       config,

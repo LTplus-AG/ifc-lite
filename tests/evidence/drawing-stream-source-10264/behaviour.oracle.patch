@@ -1,11 +1,10 @@
 diff --git a/packages/drawing-2d/src/drawing-session.ts b/packages/drawing-2d/src/drawing-session.ts
-index 6203917639..c49cc615b2 100644
 --- a/packages/drawing-2d/src/drawing-session.ts
 +++ b/packages/drawing-2d/src/drawing-session.ts
-@@ -147,7 +147,7 @@ export class DrawingSession {
-   addOcclusion(meshes: readonly MeshData[]): void {
-     this.enter('occlusion');
+@@ -153,7 +153,7 @@
      const { config, occluderDepth } = this;
+     this.occluded = true;
+     for (const mesh of meshes) this.unfed.delete(makeEntityKey(mesh.modelIndex || 0, mesh.expressId));
 -    void meshes;
 +    this.freeEdges!.add(meshes);
      if (!this.classify) return;

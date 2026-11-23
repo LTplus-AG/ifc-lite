@@ -126,6 +126,7 @@ export function useFileCommands(): FileCommands {
           console.warn('[useFileCommands] ifc-lite:load-file ignored - a load is already in progress');
           return;
         }
+        if (refuseWhileWorkflowBusy(t)) return;
         recordRecentFiles([{ name: file.name, size: file.size }]);
         void loadFile(file);
       }
@@ -152,7 +153,7 @@ export function useFileCommands(): FileCommands {
       window.removeEventListener('ifc-lite:add-model', addHandler);
       window.removeEventListener('ifc-lite:load-layer-stack', stackHandler);
     };
-  }, [loadFile, addModel, loadFederatedIfcx]);
+  }, [loadFile, addModel, loadFederatedIfcx, t]);
 
   useAgentModelLoader(loadFile, addModel, loadFederatedIfcx);
 
@@ -205,6 +206,8 @@ export function useFileCommands(): FileCommands {
     handles?: (FileSystemFileHandle | undefined)[],
   ) => {
     if (supportedFiles.length === 0) return;
+    // Every branch's load is refused under a workflow lease; an IFCX overlay would also reset the scene first.
+    if (refuseWhileWorkflowBusy(t)) return;
     const newFilesAreIfcx = supportedFiles.every(isIfcxModelFile);
     const existingIsIfcx = isIfcxDataStore(ifcDataStore);
 

@@ -18,6 +18,7 @@ import { advance, cleanup, render } from '@/test/render.js';
 import { latestToast } from '@/test/toasts.js';
 import { useViewerStore } from '@/store';
 import { startWorkflowRun, type WorkflowRun } from '@/lib/flow/run-session';
+import { cacheFileBlobs, recordRecentFiles } from '@/lib/recent-files';
 import { dispatchSourceDownload, type SourceDownloadItem } from '@/services/sources/source-host';
 import { fieldTelemetry } from '@/lib/perf/fieldTelemetryLoader.js';
 import { ViewportContainer } from './ViewportContainer.js';
@@ -115,6 +116,21 @@ describe('fresh-federation opens refuse to clear the scene while a workflow hold
 
     assert.equal(resets, 0, 'viewer state was not reset');
     assert.equal(clears, 0, 'the models map was not cleared');
+    assert.match(latestToast(), new RegExp(BUSY));
+  });
+
+  it('a recent file opened from the welcome card is refused with the busy message', async () => {
+    const file = new File(['x'], 'welcome-recent.ifc');
+    recordRecentFiles([{ name: file.name, size: file.size }]);
+    await cacheFileBlobs([file]);
+    await mountWithLease();
+    const button = [...document.querySelectorAll('button')].find((b) => b.textContent?.includes(file.name));
+    assert.ok(button, 'the recent file is listed');
+    act(() => { button.click(); });
+    await advance(0);
+    await advance(0);
+
+    assert.equal(resets, 0, 'viewer state was not reset');
     assert.match(latestToast(), new RegExp(BUSY));
   });
 });

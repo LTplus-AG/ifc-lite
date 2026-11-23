@@ -360,6 +360,10 @@ function ViewportContainerLive() {
   }, [loadFile, loadFilesSequentially, resetViewerState, clearAllModels, viewerStoreApi, t]);
 
   const prepareAndRoute = usePreparedModelFileRoute(routeLoad, setRecentFiles);
+  // The welcome card's recent files and demo load straight through loadFile.
+  const loadWelcomeFile = useCallback(async (file: File) => {
+    if (!refuseWhileWorkflowBusy(t)) await loadFile(file);
+  }, [loadFile, t]);
 
   // Cloud source providers (Dalux Build, etc.) download bytes outside the
   // viewer and hand them off via this event rather than calling addModel()
@@ -705,7 +709,7 @@ function ViewportContainerLive() {
             onOpenClick={() => { void handleOpenClick(); }}
             onStartBlank={() => { void handleStartBlank(); }}
             recentFiles={recentFiles}
-            loadFile={loadFile}
+            loadFile={loadWelcomeFile}
           />
 
           </div>

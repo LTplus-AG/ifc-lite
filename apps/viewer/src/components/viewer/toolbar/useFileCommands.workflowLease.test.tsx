@@ -60,7 +60,7 @@ afterEach(() => {
   run = null;
   onRead = null;
   cleanup();
-  useViewerStore.setState({ clearAllModels: original.clearAllModels, resetViewerState: original.resetViewerState, models: new Map() });
+  useViewerStore.setState({ clearAllModels: original.clearAllModels, resetViewerState: original.resetViewerState, models: new Map(), ifcDataStore: null });
 });
 
 describe('file commands refuse to clear the scene while a workflow holds the lease', () => {
@@ -117,6 +117,29 @@ describe('file commands refuse to clear the scene while a workflow holds the lea
     await advance(0);
 
     assert.equal(resets, 0, 'viewer state was not reset');
+    assert.match(latestToast(), new RegExp(BUSY));
+  });
+
+  it('a recent file opened from the command palette is refused with the busy message', async () => {
+    render(<Host />);
+    act(() => { window.dispatchEvent(new CustomEvent('ifc-lite:load-file', { detail: new File(['x'], 'recent.ifc') })); });
+    await advance(0);
+
+    assert.equal(resets, 0, 'viewer state was not reset');
+    assert.match(latestToast(), new RegExp(BUSY));
+  });
+
+  it('Add Model with an IFCX overlay is refused before it re-composes the scene', async () => {
+    useViewerStore.setState({ ifcDataStore: { schemaVersion: 'IFC5' } as never });
+    const container = render(<Host />);
+    const input = container.querySelector<HTMLInputElement>('#file-input-add')!;
+    Object.defineProperty(input, 'files', { configurable: true, value: [new File(['{}'], 'overlay.ifcx')] });
+    act(() => { input.dispatchEvent(new window.Event('change', { bubbles: true })); });
+    await advance(0);
+    await advance(0);
+
+    assert.equal(resets, 0, 'viewer state was not reset');
+    assert.equal(clears, 0, 'the models map was not cleared');
     assert.match(latestToast(), new RegExp(BUSY));
   });
 });

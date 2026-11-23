@@ -23,6 +23,7 @@ import {
   BUDGET_SECONDS, classifyChanges, decideViewerSelect, parseNameStatus, preloadsFromTestScript, runnerArgs,
   sampleWithinBudget, unmappableReason,
 } from './ci-viewer-select.mjs';
+import { STATUS_CONTEXT } from './lib/viewer-select-verdict.mjs';
 import { buildGraph, createResolver } from './lib/viewer-import-graph.mjs';
 import { UNJUDGED_BY_DESIGN, readAggregate, unwatched } from './check-ci-aggregate-coverage.mjs';
 
@@ -431,13 +432,35 @@ test('CLI --run refuses an empty file list rather than letting tsx glob everythi
   assert.match(r.stderr, /files\.txt is empty/); // @source-text-assertion-ok subject is the CLI's error output; the exit code is asserted above
 });
 
-function fakePnpm(exitCode) {
+/**
+ * A fake `pnpm` that plays node:test: it writes a TAP report to the last
+ * `--test-reporter-destination` it is given and exits with the attempt's
+ * code. `first` is the first attempt (all selected files), `retry` every
+ * single-file rerun; `tap: 'pass' | 'fail' | 'none'` picks the report.
+ */
+function fakePnpm({ first, retry = first }) {
   const bin = mkdtempSync(join(TMP, 'bin-'));
-  writeFileSync(join(bin, 'pnpm'), `#!/bin/sh\nexit ${exitCode}\n`, { mode: 0o755 });
+  const tap = (ok) => [
+    'TAP version 13', '# Subtest: renders', `${ok ? 'ok' : 'not ok'} 1 - renders`, '  ---', '  duration_ms: 1',
+    ...(ok ? [] : ["  location: 'LOCATION'", "  failureType: 'testCodeFailure'", "  error: 'boom'"]),
+    '  ...', '1..1', '# tests 1', '# suites 0', `# pass ${ok ? 1 : 0}`, `# fail ${ok ? 0 : 1}`, '# cancelled 0', '# skipped 0', '# todo 0', '# duration_ms 5', '',
+  ].join('\n');
+  const reports = JSON.stringify({ pass: tap(true), fail: tap(false) });
+  writeFileSync(join(bin, 'pnpm'), `#!${process.execPath}
+const { writeFileSync } = require('node:fs');
+const dest = process.argv.filter((a) => a.startsWith('--test-reporter-destination=')).at(-1).split('=')[1];
+const attempt = /retry-\\d+\\.tap$/.test(dest) ? ${JSON.stringify(retry)} : ${JSON.stringify(first)};
+const reports = ${reports};
+if (attempt.tap !== 'none') writeFileSync(dest, reports[attempt.tap].replace('LOCATION', process.cwd() + '/src/a.test.ts:3:1'));
+process.exit(attempt.exit);
+`, { mode: 0o755 });
   return bin;
 }
 
-function runCli(exitCode) {
+const PASS = { exit: 0, tap: 'pass' };
+const FAIL = { exit: 1, tap: 'fail' };
+
+function runCli(attempts, env = {}) {
   const root = fixtureRepo({ 'apps/viewer/src/lib/util.ts': 'export const x = 2;' });
   const dir = mkdtempSync(join(TMP, 'run-'));
   writeFileSync(join(dir, 'files.txt'), 'src/a.test.ts\n');
@@ -445,24 +468,52 @@ function runCli(exitCode) {
   writeFileSync(summary, '');
   const script = `import { run } from ${JSON.stringify(CLI)}; process.exitCode = run(process.argv.slice(1), process.env, ${JSON.stringify(root)});`;
   const r = spawnSync(process.execPath, ['--input-type=module', '-e', script, '--', '--run', dir], {
-    encoding: 'utf8', env: { PATH: `${fakePnpm(exitCode)}:${process.env.PATH}`, GITHUB_STEP_SUMMARY: summary },
+    encoding: 'utf8', env: { PATH: `${fakePnpm(attempts)}:${process.env.PATH}`, GITHUB_STEP_SUMMARY: summary, ...env },
   });
   return { ...r, result: JSON.parse(readFileSync(join(dir, 'result.json'), 'utf8')), summary: readFileSync(summary, 'utf8') };
 }
 
-test('CLI --run: failing tests are an advisory warning, exit 0, and recorded in result.json', () => {
-  const r = runCli(1);
+test('CLI --run: failing tests exit 0 with a warning, and result.json names the failed file', () => {
+  const r = runCli({ first: FAIL });
   assert.equal(r.status, 0, 'a test failure must not fail the Test run');
-  assert.deepEqual(r.result, { files: 1, exitCode: 1, signal: null });
-  assert.ok(r.stdout.includes('::warning title=Selected viewer tests (advisory)::')); // @source-text-assertion-ok subject is the CLI's emitted annotation
-  assert.match(r.summary, /at least one failed \(exit 1\)/); // @source-text-assertion-ok subject is the CLI's written step summary
+  assert.equal(r.result.passed, false);
+  assert.equal(r.result.exitCode, 1);
+  assert.deepEqual(r.result.failedFiles, ['src/a.test.ts']);
+  assert.equal(r.result.retry.plan.retry, false, 'CI_SHARD_RETRY unset: no retry');
+  assert.ok(r.stdout.includes('::warning title=Selected viewer tests failed::')); // @source-text-assertion-ok subject is the CLI's emitted annotation
+  assert.match(r.summary, /at least one failed \(exit 1\): src\/a\.test\.ts/); // @source-text-assertion-ok subject is the CLI's written step summary
 });
 
 test('CLI --run: passing tests exit 0 with no warning', () => {
-  const r = runCli(0);
+  const r = runCli({ first: PASS });
   assert.equal(r.status, 0);
-  assert.equal(r.result.exitCode, 0);
+  assert.deepEqual(r.result, { files: 1, exitCode: 0, signal: null, failedFiles: [], retry: null, passed: true });
   assert.ok(!r.stdout.includes('::warning')); // @source-text-assertion-ok subject is the CLI's emitted output
+});
+
+test('CLI --run, CI_SHARD_RETRY=on: a file that passes on retry is a pass, flagged as flaky', () => {
+  const r = runCli({ first: FAIL, retry: PASS }, { CI_SHARD_RETRY: 'on' });
+  assert.equal(r.status, 0);
+  assert.equal(r.result.passed, true);
+  assert.equal(r.result.exitCode, 1, 'the first attempt stays on record');
+  assert.equal(r.result.retry.passed, true);
+  assert.ok(r.stdout.includes('::warning title=Flaky selected viewer test file(s)::src/a.test.ts')); // @source-text-assertion-ok subject is the CLI's emitted annotation
+});
+
+test('CLI --run, CI_SHARD_RETRY=on: a file that fails again is a failure', () => {
+  const r = runCli({ first: FAIL, retry: FAIL }, { CI_SHARD_RETRY: 'on' });
+  assert.equal(r.status, 0);
+  assert.equal(r.result.passed, false);
+  assert.equal(r.result.retry.passed, false);
+  assert.match(r.result.retry.reason, /^src\/a\.test\.ts: /);
+});
+
+test('CLI --run, CI_SHARD_RETRY=on: FAIL CLOSED on a first attempt with no report, and in shadow', () => {
+  const none = runCli({ first: { exit: 1, tap: 'none' }, retry: PASS }, { CI_SHARD_RETRY: 'on' });
+  assert.equal(none.result.passed, false);
+  assert.equal(none.result.retry.plan.reason, 'the first attempt left no TAP file');
+  const shadow = runCli({ first: FAIL, retry: PASS }, { CI_SHARD_RETRY: 'shadow' });
+  assert.equal(shadow.result.passed, false, 'shadow keeps the first verdict, as on the shards');
 });
 
 // ---------------------------------------------------------------- the wiring
@@ -501,13 +552,44 @@ test('WIRING: the select step feeds the switch inputs, and every heavy step wait
   assert.equal(steps[select].env.NOOP, '${{ needs.changes.outputs.noop }}');
   assert.equal(steps[select].env.HEAD_REF, '${{ github.head_ref }}');
   /* eslint-enable no-template-curly-in-string */
-  const upload = steps.at(-1);
-  assert.equal(upload.name, 'Upload the selection', 'the upload is last, so it carries result.json');
+  const upload = steps.at(-2);
+  assert.equal(upload.name, 'Upload the selection', 'the upload follows the run, so it carries result.json');
   assert.equal(upload.if, "always() && steps.select.outputs.artifact == 'true'");
-  for (const s of steps.slice(select + 1, -1)) {
+  for (const s of steps.slice(select + 1, -2)) {
     assert.ok(String(s.if ?? '').startsWith("steps.select.outputs.run == 'true'"), `${s.name ?? s.uses ?? s.run} must wait on run`); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML; there is no runtime to drive instead
   }
-  assert.ok(steps.at(-2).run.includes('ci-viewer-select.mjs --run')); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML; there is no runtime to drive instead
+  assert.ok(steps.at(-3).run.includes('ci-viewer-select.mjs --run')); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML; there is no runtime to drive instead
+  assert.equal(steps.at(-3).env.CI_SHARD_RETRY, '${{ vars.CI_SHARD_RETRY }}'); // eslint-disable-line no-template-curly-in-string
+});
+
+test('WIRING: the status is posted pending before the tests and finally on always(), on the head SHA, never on a fork', () => {
+  const steps = JOB.steps;
+  const statusSteps = steps.filter((s) => String(s.run ?? '').includes('ci-viewer-select.mjs --status')); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML; there is no runtime to drive instead
+  assert.equal(statusSteps.length, 2);
+  const [pending, final] = statusSteps;
+  assert.equal(pending.env.PHASE, 'start');
+  assert.equal(pending['continue-on-error'], true, 'a failed pending post must not skip the tests');
+  assert.ok(steps.indexOf(pending) < steps.findIndex((s) => String(s.run ?? '').includes('--run')), 'pending before the tests'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML; there is no runtime to drive instead
+  assert.equal(final, steps.at(-1), 'the verdict is the last step');
+  assert.ok(String(final.if).startsWith('always() && '), 'a cancelled or failed run still replaces pending'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML; there is no runtime to drive instead
+  assert.equal(final.env.PHASE, undefined);
+  /* eslint-disable no-template-curly-in-string */
+  assert.equal(final.env.RUN, '${{ steps.select.outputs.run }}');
+  assert.equal(final.env.SELECT_OUTCOME, '${{ steps.select.outcome }}');
+  for (const s of statusSteps) {
+    assert.ok(String(s.if).endsWith('github.event.pull_request.head.repo.full_name == github.repository'), 'a fork token cannot write statuses'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML; there is no runtime to drive instead
+    assert.equal(s.env.HEAD_SHA, '${{ github.event.pull_request.head.sha }}', 'the PR head, which Mergify reads, not the merge commit');
+    assert.equal(s.env.GITHUB_TOKEN, '${{ github.token }}');
+  }
+  /* eslint-enable no-template-curly-in-string */
+  assert.deepEqual(JOB.permissions, { contents: 'read', statuses: 'write' }, 'statuses: write on this job only');
+});
+
+test('WIRING: .mergify.yml gates queue entry on the context this script posts', () => {
+  const mergify = readFileSync(join(REPO_ROOT, '.mergify.yml'), 'utf8');
+  const gate = JSON.stringify(parse(mergify).merge_protections_settings.auto_merge_conditions);
+  assert.ok(gate.includes(`-check-failure=${STATUS_CONTEXT}`)); // @source-text-assertion-ok subject is the parsed Mergify config
+  assert.ok(gate.includes(`-check-pending=${STATUS_CONTEXT}`)); // @source-text-assertion-ok subject is the parsed Mergify config
 });
 
 test('WIRING: the advisory job cannot fail the Test run, and says it is advisory', () => {

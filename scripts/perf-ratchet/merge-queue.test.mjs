@@ -27,12 +27,16 @@ const CEILING_FILES = readdirSync(join(REPO_ROOT, 'tests/perf-ratchets'))
   .filter((f) => f.endsWith('.json'))
   .map((f) => `tests/perf-ratchets/${f}`);
 
-/** @param {string} cond @param {{ labels: string[], draft: boolean, files: string[], head: string, statuses: string[], unresolvedThreads: number }} pr */
+/**
+ * `statuses` succeeded, `failed` failed, `pending` are still running; a
+ * context in none of them is absent.
+ * @param {string} cond @param {{ labels: string[], draft: boolean, files: string[], head: string, statuses: string[], failed: string[], pending: string[], unresolvedThreads: number }} pr
+ */
 function matches(cond, pr) {
   if (cond.or) return cond.or.some((c) => matches(c, pr));
   if (cond.and) return cond.and.every((c) => matches(c, pr));
   // @source-text-assertion-ok subject is the parsed config, evaluated as conditions
-  const [, negated, kind, arg] = /^(-?)(draft$|label=|files~=|head=|status-success=|check-success=|#review-threads-unresolved=)(.*)$/.exec(cond) ?? [];
+  const [, negated, kind, arg] = /^(-?)(draft$|label=|files~=|head=|status-success=|check-success=|check-failure=|check-pending=|#review-threads-unresolved=)(.*)$/.exec(cond) ?? [];
   if (!kind) throw new Error(`merge-queue.test.mjs cannot evaluate Mergify condition ${JSON.stringify(cond)}; teach matches() its meaning`);
   const hit = {
     draft: () => pr.draft,
@@ -43,6 +47,8 @@ function matches(cond, pr) {
     'head=': () => pr.head === arg,
     'status-success=': () => pr.statuses.includes(arg),
     'check-success=': () => pr.statuses.includes(arg),
+    'check-failure=': () => pr.failed.includes(arg),
+    'check-pending=': () => pr.pending.includes(arg),
     '#review-threads-unresolved=': () => pr.unresolvedThreads === Number(arg),
   }[kind]();
   return negated ? !hit : hit;
@@ -66,7 +72,7 @@ const entersQueue = (pr) => queueFor(pr) !== null && all(cfg.merge_protections_s
 const READY = ['CLA', 'PR review signal'];
 /** One ordinary PR and one ceiling PR, one per non-release queue. */
 const QUEUED_FILES = [['apps/viewer/src/main.tsx'], ['tests/perf-ratchets/bundle.json']];
-const pr = (files, extra = {}) => ({ labels: ['mergify-trial'], draft: false, files, head: 'feature/x', statuses: READY, unresolvedThreads: 0, ...extra });
+const pr = (files, extra = {}) => ({ labels: ['mergify-trial'], draft: false, files, head: 'feature/x', statuses: READY, failed: [], pending: [], unresolvedThreads: 0, ...extra });
 const RELEASE = 'changeset-release/main';
 
 test('a lowering PR like #8459 goes to the ceilings queue, for every committed ceiling family', () => {
@@ -127,4 +133,24 @@ test('a labelled PR waits outside the queue until its review gate is green and i
     assert.equal(entersQueue(pr(files, { unresolvedThreads: 2 })), false, 'review threads still open');
   }
   assert.ok(entersQueue(pr(['Cargo.toml'], { head: RELEASE, statuses: ['CLA'], unresolvedThreads: 1 })), 'the release PR has no review gate');
+});
+
+const SELECTION = 'PR viewer selection';
+
+test('a labelled PR waits outside the queue while its selected viewer tests fail or still run', () => {
+  for (const files of QUEUED_FILES) {
+    assert.equal(entersQueue(pr(files, { failed: [SELECTION] })), false, 'a selected viewer test file failed');
+    assert.equal(entersQueue(pr(files, { pending: [SELECTION] })), false, 'the selected viewer tests are still running');
+    assert.ok(entersQueue(pr(files, { statuses: [...READY, SELECTION] })), 'they passed');
+    assert.ok(entersQueue(pr(files)), 'no status at all (job skipped: full lane, docs only, fork) does not hold it');
+  }
+  assert.ok(entersQueue(pr(['Cargo.toml'], { head: RELEASE, statuses: ['CLA'], failed: [SELECTION] })), 'the release PR is exempt');
+});
+
+test('the selection status gates queue ENTRY only: no queue re-checks it while a PR is queued', () => {
+  // queue_conditions are re-evaluated while queued; a status there would
+  // dequeue a running check. merge_conditions are the queue run's own checks.
+  for (const q of cfg.queue_rules) {
+    for (const c of [...q.queue_conditions, ...q.merge_conditions]) assert.ok(!String(c).includes(SELECTION), `${q.name}: ${c}`);
+  }
 });

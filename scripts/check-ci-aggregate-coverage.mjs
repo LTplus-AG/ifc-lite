@@ -123,12 +123,13 @@ export const UNJUDGED_BY_DESIGN = {
   // Keep this list short: the default has to be "blocking" for the aggregate
   // to mean anything.
   //
-  // An early warning, not a gate: it runs a budget-capped SAMPLE of the viewer
-  // tests a fast-lane PR can reach, so its pass certifies nothing, and the
-  // merge queue still runs every viewer shard. Ships behind
-  // CI_PR_VIEWER_SELECT; promoting it into `needs` is an owner decision once
-  // shadow data shows its recall and flake rate (scripts/ci-viewer-select.mjs).
-  'viewer-tests-selected': 'advisory sample of the viewer suite; the merge queue runs the full suite',
+  // Not a run gate: it runs a budget-capped SAMPLE of the viewer tests a
+  // fast-lane PR can reach, so its pass certifies nothing, and the merge queue
+  // still runs every viewer shard. Its verdict gates queue ENTRY instead, as
+  // the commit status `PR viewer selection` (.mergify.yml
+  // auto_merge_conditions), so a flake here never turns the Test run red,
+  // which would cost a full re-run on main (scripts/ci-viewer-select.mjs).
+  'viewer-tests-selected': 'sample of the viewer suite; gates queue entry through its own commit status, and the merge queue runs the full suite',
 };
 
 /**

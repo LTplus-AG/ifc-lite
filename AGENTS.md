@@ -41,7 +41,7 @@ Filing issues is welcome and unrestricted: an audit producing twenty good issue 
 
 **The ~400-line rule is enforced on both sides**: for Rust by the `module_size_ratchet` test in `rust/processing/tests/`, for TypeScript by `scripts/check-module-size.mjs`. A new non-generated, non-test file over 400 lines fails unless it has an allowlist row, and an allowlisted file may not grow past its recorded budget. Prefer splitting to allowlisting. For a module whose bulk is `#[cfg(test)]`, the house pattern is a sibling `<name>_tests.rs` included via `#[cfg(test)] #[path = "<name>_tests.rs"] mod tests;` (see `stream_meta.rs`). The rule binds production modules only; test files are exempt, though a long test file should still be split where it has a genuine logical seam, never merely to hit a line count.
 
-**Do not trust any list of CI gates written down in this file.** The authoritative list of gates is `.github/workflows/`; the authoritative list of REQUIRED ones is the `main` ruleset, `gh api repos/:owner/:repo/rulesets`. Read them; a gate list in prose goes stale.
+**Do not trust any list of CI gates written down in this file.** The authoritative list of gates is `.github/workflows/`; REQUIRED ones are the `main` ruleset, `gh api repos/:owner/:repo/rulesets`. Read them; a gate list in prose goes stale.
 
 ## Before handing work back
 
@@ -53,8 +53,8 @@ tests may import only what main has, or the revert stops them loading. Reach a
 new module through entry points main has (a CLI, an export); for a pure new
 module, run `check-test-revert-oracle.mjs` with a surgical `--mutation <patch>`.
 
-**Push when ready.** Every push runs CI: verify locally or on the fleet first. Merge: label `mergify-trial` on `main`;
-open threads hold it. Never unlabel; no admin merge.
+**Push when ready:** each push runs CI; verify locally or on the fleet. Merge: label `mergify-trial` on `main`;
+open threads or a red `PR viewer selection` hold it. Never unlabel; no admin merge.
 
 ## IFC schema fidelity
 - User-facing APIs/exports/scripts use exact IFC EXPRESS names: PascalCase attributes (`GlobalId`, `Name`, `ObjectType`), full relationship names (`IfcRelAggregates`, not `Aggregates`). Never invent aliases.

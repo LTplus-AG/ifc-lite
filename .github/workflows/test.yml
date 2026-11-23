@@ -1615,16 +1615,28 @@ jobs:
   # reach through the static import graph, nearest first, within a time budget.
   # Switch: repo variable CI_PR_VIEWER_SELECT = off (default: this job is
   # skipped) | shadow (record the selection, run nothing) | on (run it).
-  # ADVISORY: deliberately NOT in the aggregate's `needs` (see
+  # NEVER RED IN THE RUN: deliberately NOT in the aggregate's `needs` (see
   # UNJUDGED_BY_DESIGN in scripts/check-ci-aggregate-coverage.mjs), and it
   # cannot fail the run: a failed Test run is never push-replayed
   # (scripts/ci-push-replay.mjs), so a flake here would re-run every lane on
   # main. Test failures exit 0 with a warning; continue-on-error covers the rest.
-  # The merge queue's full run is the gate.
+  # A QUEUE-ENTRY GATE INSTEAD: the last step posts the commit status
+  # `PR viewer selection` on the PR head (pending while the tests run), and
+  # .mergify.yml's auto_merge_conditions keep a PR whose status is failure or
+  # pending out of the queue. A failed file is retried once (CI_SHARD_RETRY=on),
+  # so a flake that passes on retry is success. The status is per head SHA: a
+  # push starts over, and a PR where this job is skipped has none, which passes.
+  # FORK PRs get a read-only token, so they post nothing and the queue's full
+  # run stays their gate. The merge queue's full run is still the merge gate.
   viewer-tests-selected:
     name: Viewer tests, advisory (selected for this PR)
     needs: [changes, build]
     continue-on-error: true
+    # Job-level permissions replace the workflow's: checkout reads contents,
+    # and the status steps write `PR viewer selection` (statuses only).
+    permissions:
+      contents: read
+      statuses: write
     if: >-
       github.event_name == 'pull_request' &&
       (vars.CI_PR_VIEWER_SELECT == 'shadow' || vars.CI_PR_VIEWER_SELECT == 'on') &&
@@ -1656,6 +1668,19 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: node scripts/ci-viewer-select.mjs --select "$RUNNER_TEMP/viewer-selection"
+      # Pending until the verdict below, so a PR whose review lands first does
+      # not enter the queue before its selected tests have finished. A failed
+      # post must not skip the tests (their `if:` implies success()).
+      - name: Mark the selection status pending
+        if: steps.select.outputs.run == 'true' && github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        run: node scripts/ci-viewer-select.mjs --status "$RUNNER_TEMP/viewer-selection"
+        env:
+          PHASE: start
+          GITHUB_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          CHECK_RUN_ID: ${{ job.check_run_id }}
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         if: steps.select.outputs.run == 'true'
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -1687,6 +1712,8 @@ jobs:
       - name: Run the selected viewer tests
         if: steps.select.outputs.run == 'true'
         run: node scripts/ci-viewer-select.mjs --run "$RUNNER_TEMP/viewer-selection"
+        env:
+          CI_SHARD_RETRY: ${{ vars.CI_SHARD_RETRY }}
       # Kept per PR run so a queue failure in a viewer test can be checked
       # against what this PR's selection covered (recall). Last, and on
       # always(), so it also carries result.json from the run.
@@ -1698,6 +1725,19 @@ jobs:
           path: ${{ runner.temp }}/viewer-selection/
           retention-days: 30
           if-no-files-found: error
+      # The verdict, on always(): a cancelled or crashed run must not leave
+      # `pending` behind as if it were still running. Success only when nothing
+      # ran or the selected files passed (after the retry); else failure.
+      - name: Post the selection status
+        if: always() && github.event.pull_request.head.repo.full_name == github.repository
+        run: node scripts/ci-viewer-select.mjs --status "$RUNNER_TEMP/viewer-selection"
+        env:
+          RUN: ${{ steps.select.outputs.run }}
+          SELECT_OUTCOME: ${{ steps.select.outcome }}
+          GITHUB_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          CHECK_RUN_ID: ${{ job.check_run_id }}
 
   node-guards:
     name: Node guards

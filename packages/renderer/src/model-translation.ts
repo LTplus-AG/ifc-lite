@@ -116,6 +116,13 @@ export class ModelTranslations {
     return true;
   }
 
+  /**
+   * Drop every cached placed copy when the scene releases its CPU geometry. A placed copy shares its
+   * source's typed arrays and the store keeps the source alive, so a kept entry would hold every array
+   * past an in-place release. `placeMesh` recreates an entry on demand.
+   */
+  forgetPlacements(): void { this.meshes = new WeakMap(); }
+
   /** Preserve source identity and source coordinates for export and re-alignment. */
   placeMesh(source: MeshData): MeshData {
     let entry = this.meshes.get(source);

@@ -2179,6 +2179,7 @@ export class Scene {
     }
 
     this.modelTranslations.retainEntityBounds(this.meshDataMap);
+    this.modelTranslations.forgetPlacements(); // placed copies share the source arrays
     this.streamingFragments = []; this.fragmentPieces.retainOnly([]);
     this.buckets.clear();
     this.meshDataBucket = new Map();
@@ -2242,6 +2243,7 @@ export class Scene {
     }
 
     this.modelTranslations.retainEntityBounds(this.meshDataMap);
+    this.modelTranslations.forgetPlacements(); // placed copies share the source arrays
     // 2. Clear the heavy data structures — typed arrays become GC-eligible
     this.meshDataMap.clear(); this.bumpPickGeometryRevision();
     // Keep occurrence transforms for placement; release heavy template vertices.

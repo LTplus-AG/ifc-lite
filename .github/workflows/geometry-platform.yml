@@ -250,8 +250,23 @@ jobs:
           ref: c9c5979f04cea8c38213004d4f04df0dcfb40d05
           path: upstream-smlib
           persist-credentials: false
-      - name: Install build tools
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build
+      - name: Ensure CMake and Ninja are available
+        shell: bash
+        run: |
+          missing=()
+          command -v cmake || missing+=(cmake)
+          command -v ninja || missing+=(ninja-build)
+          if (( ${#missing[@]} )); then
+            for attempt in 1 2 3; do
+              sudo apt-get install -y --no-install-recommends "${missing[@]}" && break
+              if (( attempt < 3 )); then
+                sleep $((attempt * 15))
+                sudo apt-get update || true
+              fi
+            done
+          fi
+          cmake --version
+          ninja --version
       - name: Build native owned boundary and worker
         run: |
           cmake -S native/smlib-adapter -B "$RUNNER_TEMP/smlib-native" -G Ninja \
@@ -383,7 +398,26 @@ jobs:
           IFCLITE_REQUIRE_SMLIB=1 IFCLITE_SMLIB_NATIVE_BUILD="$RUNNER_TEMP/smlib-native" \
             node --test scripts/smlib-open-tessellation.test.mjs | tee "$RUNNER_TEMP/open-tessellation.log"
           grep -F "sdk witness executed: open_tessellation_rebuilt_worker" "$RUNNER_TEMP/open-tessellation.log"
-      - run: pnpm exec playwright install --with-deps chromium
+      - name: Resolve Playwright version
+        id: playwright-version
+        shell: bash
+        run: |
+          version=$(pnpm exec playwright --version)
+          echo "version=${version#Version }" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright Chromium
+        id: playwright-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: native-adapter-chromium-ubuntu24.04-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright-version.outputs.version }}
+      - name: Install Playwright Chromium on cache miss
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install chromium
+      - name: Ensure Playwright Chromium system dependencies are available
+        run: |
+          # The dry run simulates apt and reports the missing packages for this image.
+          pnpm exec playwright install-deps --dry-run chromium ||
+            pnpm exec playwright install-deps chromium
       - name: Actual module Workers over the staged /smlib bundle
         id: browser-workers
         continue-on-error: true

@@ -20,11 +20,16 @@
  */
 export const HARNESS_INIT = () => {
   if (globalThis.__hgProbe) return;
-  const p = { recording: false, frames: [], cur: { draws: 0, tris: 0, indirect: 0, submits: 0, presents: 0 }, lastPresent: 0, lastSubmit: 0,
-    queue: null, wasm: [], after: null };
+  const p = { recording: false, frames: [], cur: { draws: 0, tris: 0, indirect: 0, submits: 0, presents: 0 },
+    wasm: [], after: null };
   // Arm a frame watch at an action's own time `from` (in page, so no harness round trip is counted): the first present
   // after it, the submit that follows, and that submit's GPU completion; all reported relative to `ref`.
-  p.armFrame = (from, ref = from) => { p.after = { from, ref, present: null, done: null }; };
+  // `done` settles with `{ at }` or `{ error }` once that frame's GPU work completes.
+  p.armFrame = (from, ref = from) => {
+    const a = { from, ref, present: null, submitted: false, finish: null };
+    a.done = new Promise((resolve) => { a.finish = resolve; });
+    p.after = a;
+  };
   globalThis.__hgProbe = p;
   const raf = globalThis.requestAnimationFrame.bind(globalThis);
   let pending = null;
@@ -56,14 +61,17 @@ export const HARNESS_INIT = () => {
   wrap(pass, 'drawIndirect', () => { p.cur.draws++; p.cur.indirect++; });
   wrap(pass, 'drawIndexedIndirect', () => { p.cur.draws++; p.cur.indirect++; });
   wrap(globalThis.GPUQueue?.prototype, 'submit', (q) => {
-    p.cur.submits++; p.queue = q; p.lastSubmit = performance.now();
+    p.cur.submits++;
     const a = p.after;
+    if (!a || a.present === null || a.submitted) return;
+    a.submitted = true;
     // The hook runs before the real submit: ask for completion in a microtask, once this frame's work is queued.
-    if (a && a.present !== null && !a.done) a.done = new Promise((r) => queueMicrotask(r)).then(() => q.onSubmittedWorkDone()).then(() => ({ at: performance.now() }), (err) => ({ error: String(err) }));
+    queueMicrotask(() => q.onSubmittedWorkDone().then(() => a.finish({ at: performance.now() }), (err) => a.finish({ error: String(err) })));
   });
   wrap(globalThis.GPUCanvasContext?.prototype, 'getCurrentTexture', () => {
-    p.cur.presents++; p.lastPresent = performance.now();
-    if (p.after && p.after.present === null && p.lastPresent > p.after.from) p.after.present = p.lastPresent;
+    p.cur.presents++;
+    const now = performance.now();
+    if (p.after && p.after.present === null && now > p.after.from) p.after.present = now;
   });
   const keep = (result) => {
     const exp = result?.instance?.exports ?? result?.exports;
@@ -161,16 +169,10 @@ export const CAMERA_PATH = async ({ kind, frames }) => {
 export const AFTER_FRAME = async ({ capMs }) => {
   const a = globalThis.__hgProbe.after;
   if (!a) return { presentMs: null, doneMs: null };
-  const end = performance.now() + capMs;
-  while (!a.done) {
-    if (performance.now() > end) return { presentMs: a.present === null ? null : a.present - a.ref, doneMs: null };
-    await new Promise((resolve) => setTimeout(resolve, 4));
-  }
-  // The GPU gets its own `capMs` from here, so a late present still has time to finish.
   let timer;
-  const done = await Promise.race([a.done, new Promise((resolve) => { timer = setTimeout(() => resolve({ error: `GPU work not done within ${capMs} ms` }), capMs); })]);
+  const done = await Promise.race([a.done, new Promise((resolve) => { timer = setTimeout(() => resolve({ error: `no rendered frame done within ${capMs} ms` }), capMs); })]);
   clearTimeout(timer);
-  return { presentMs: a.present - a.ref, doneMs: done.at === undefined ? null : done.at - a.ref, ...(done.error ? { doneError: done.error } : {}) };
+  return { presentMs: a.present === null ? null : a.present - a.ref, doneMs: done.at === undefined ? null : done.at - a.ref, doneError: done.error };
 };
 
 /** In page: arm a pick measurement; the harness then clicks. Returns nothing. */
@@ -197,7 +199,7 @@ export const READ_PICK = () => {
   const st = globalThis.__hgPick;
   st?.unsub?.();
   if (!st || st.down === null) return { hit: false, ms: null, id: null, reason: 'pointerdown not observed' };
-  return { hit: st.selectedAt !== null, ms: st.selectedAt === null ? null : st.selectedAt - st.down, id: st.selected, downAt: st.down };
+  return { hit: st.selectedAt !== null, ms: st.selectedAt === null ? null : st.selectedAt - st.down, id: st.selected };
 };
 
 /**
@@ -225,5 +227,5 @@ export const STORE_ACTION = ({ action, args }) => {
   const t = performance.now();
   globalThis.__hgProbe?.armFrame(t);
   s[action](...(args ?? []));
-  return { tAction: t, syncMs: performance.now() - t };
+  return { syncMs: performance.now() - t };
 };

@@ -24,7 +24,7 @@ import { join } from 'node:path';
 import { chromePids, vramOf } from './scenoptic-bench-sampling.mjs';
 import { DEVICE_LOSS_PATTERNS, isSoftwareAdapter } from './retained-qual-browser.mjs';
 import { DIALOG_MARKS, NOTICES, PAGE_PROBE } from './oom-load-probe-page.mjs';
-import { DIALOG_BUTTONS, MEMORY_WARNING } from './oom-load-probe-lib.mjs';
+import { DIALOG_BUTTONS, MEMORY_WARNING, withTimeout } from './oom-load-probe-lib.mjs';
 import { COUNT_FRAMES, openAndWaitInteractive, openViewerPage } from './viewer-load-probe.mjs';
 import { HARNESS_INIT } from './huge-geometry-page.mjs';
 
@@ -37,20 +37,8 @@ export function loadPlaywright() {
   return createRequire(join(ROOT, 'package.json'))('@playwright/test');
 }
 
-/**
- * Settle `promise`, or `onTimeout()` after `ms`. The timer is cleared either
- * way, so a long bound never keeps node alive after the work is done.
- */
-export function within(promise, ms, onTimeout) {
-  let timer;
-  const timeout = new Promise((resolve, reject) => {
-    timer = setTimeout(() => { try { resolve(onTimeout()); } catch (err) { reject(err); } }, ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
-}
-
-/** `promise`, or a rejection naming `what` after `ms`. */
-export const bounded = (promise, ms, what = 'step') => within(promise, ms, () => { throw new Error(`${what} timed out after ${ms} ms`); });
+/** `promise`, or a rejection naming `what` after `ms` (the timer is cleared once the promise settles). */
+export const bounded = (promise, ms, what = 'step') => withTimeout(promise, ms, () => { throw new Error(`${what} timed out after ${ms} ms`); });
 
 export function gpuArgs() {
   const fromHelper = (process.env.IFC_GPU_CHROME_ARGS ?? '').split(/\s+/).filter(Boolean);
@@ -89,7 +77,7 @@ export async function launchGpu({ viewport = VIEWPORT, extraInit = [] } = {}) {
   page.on('close', () => { events.closed = true; });
   return { context, page, profileDir, events, version: (browser ?? context.browser())?.version() ?? null, windowsPaths: Boolean(cdpUrl),
     async close() {
-      try { await Promise.race([context.close(), new Promise((_, rej) => setTimeout(() => rej(new Error('close timeout')), 30000))]); }
+      try { await bounded(context.close(), 30000, 'browser close'); }
       catch (err) { console.warn(`huge-geometry: browser close: ${err.message}`); }
       // A CDP-attached browser stays up for the next run: close() only disconnects it, which lets node exit.
       if (browser) { try { await browser.close(); } catch (err) { console.warn(`huge-geometry: CDP disconnect: ${err.message}`); } }
@@ -145,7 +133,7 @@ export function startSampler(profileDir, cdp, { intervalMs = 250, vramEveryMs = 
       const total = Object.values(by).reduce((a, b) => a + b, 0);
       let jsHeapMiB = last?.jsHeapMiB ?? null;
       try {
-        const m = await Promise.race([cdp.send('Performance.getMetrics'), new Promise((r) => setTimeout(() => r(null), 1500))]);
+        const m = await withTimeout(cdp.send('Performance.getMetrics'), 1500, () => null);
         const v = m?.metrics?.find((x) => x.name === 'JSHeapUsedSize')?.value;
         if (Number.isFinite(v)) jsHeapMiB = v / 2 ** 20;
       } catch { jsHeapMiB = last?.jsHeapMiB ?? null; /* page busy or gone: keep the previous value */ }
@@ -218,13 +206,13 @@ export async function loadModel(session, baseUrl, files, { timeoutMs, url = null
       const lost = deviceLossLine(events.console);
       if (lost) return { ok: false, deviceLost: lost };
       let snap = null;
-      try { snap = await Promise.race([page.evaluate(PAGE_PROBE), new Promise((r) => setTimeout(() => r(null), 5000))]); }
+      try { snap = await withTimeout(page.evaluate(PAGE_PROBE), 5000, () => null); }
       catch (err) { if (events.crashed || events.closed) return { ok: false, crashed: true }; console.warn(`huge-geometry: probe: ${err.message}`); }
       if (snap?.error) return { ok: false, storeError: snap.error, snap };
       if (snap) session.lastSnap = snap;
       const dialog = page.locator('[role=dialog],[role=alertdialog]').filter({ hasText: MEMORY_WARNING });
       // Bounded: on a starved page an unbounded locator call held this loop (and the timeout below) for 30+ minutes.
-      if (await Promise.race([dialog.count().catch(() => 0), new Promise((r) => setTimeout(() => r(0), 5000))])) {
+      if (await withTimeout(dialog.count().catch(() => 0), 5000, () => 0)) {
         await dialog.first().locator('button').filter({ hasText: DIALOG_BUTTONS.continue }).first().click({ timeout: 10000 })
           .catch((err) => console.warn(`huge-geometry: memory dialog: ${err.message}`));
         continued++;

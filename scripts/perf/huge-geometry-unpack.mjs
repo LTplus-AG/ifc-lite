@@ -13,7 +13,8 @@
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { isInsideResolved } from '../lib/released-smoke-checks.mjs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 
 /** Parse HGFILE lines from `text`; returns { files: Map(rel -> Buffer), incomplete: [rel] }. */
@@ -40,8 +41,7 @@ if (isMainEntry(import.meta.url)) {
   const { files, incomplete } = unpack(readFileSync(log, 'utf8'));
   for (const [rel, buf] of files) {
     const dest = resolve(out, rel);
-    const inside = relative(resolve(out), dest);
-    if (!inside || inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside)) { console.error(`skip unsafe path ${rel}`); continue; }
+    if (dest === resolve(out) || !isInsideResolved(resolve(out), dest)) { console.error(`skip unsafe path ${rel}`); continue; }
     mkdirSync(dirname(dest), { recursive: true });
     writeFileSync(dest, buf);
     console.log(`${dest} ${buf.length} bytes`);

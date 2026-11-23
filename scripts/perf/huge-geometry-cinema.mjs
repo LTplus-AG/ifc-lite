@@ -30,7 +30,8 @@ import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { generateScenario } from './huge-geometry-gen.mjs';
-import { ROOT, bounded, launchGpu, loadModel, startSampler, within } from './huge-geometry-browser.mjs';
+import { ROOT, bounded, launchGpu, loadModel, startSampler } from './huge-geometry-browser.mjs';
+import { withTimeout } from './oom-load-probe-lib.mjs';
 import { SCENE_STATS } from './huge-geometry-page.mjs';
 import { frameSummary } from './huge-geometry-report.mjs';
 import { parseTier } from './huge-geometry-run.mjs';
@@ -136,7 +137,7 @@ async function recordTier({ label, manifest, url, out, fps, loadSpeed, timeoutMs
     // A hard deadline over the whole load: on the PC a 2M load once hung past the harness's own timeout for 25 min.
     const deadlineMs = timeoutMs + 90000;
     console.log(`[cinema ${name}] loading (deadline ${Math.round(deadlineMs / 60000)} min)`);
-    const load = await within(loadModel(session, null, manifest.files, { timeoutMs, url }), deadlineMs,
+    const load = await withTimeout(loadModel(session, null, manifest.files, { timeoutMs, url }), deadlineMs,
       () => ({ ok: false, wallMs: Date.now() - started, adapter: null,
         failure: { kind: 'timeout', detail: `not interactive after ${Math.round(deadlineMs / 60000)} min (recorder deadline; no crash, no viewer error)` } }));
     clip.load = { ok: load.ok, timings: load.ok ? { firstFrameMs: load.timings.firstFrameMs, interactiveMs: load.timings.interactiveMs } : null,
@@ -274,13 +275,13 @@ async function recordTier({ label, manifest, url, out, fps, loadSpeed, timeoutMs
   } catch (err) {
     clip.status = 'error';
     clip.failure = { kind: session.events.crashed ? 'renderer-crash' : 'harness-error', detail: String(err?.message ?? err).slice(0, 600) };
-    if (ticker) { clearInterval(ticker); ticker = null; }
-    // Keep the load footage recorded up to the error, as the failed-load path does.
-    if (loadStart !== null) clip.timeline.load ??= [loadStart, mark()];
-    clip.peak ??= (await sampler.stop().catch(() => null))?.peak ?? null;
     return { clip, encoder, stop, session };
   } finally {
+    // One cleanup for every exit (a no-op where the path already did it).
     if (ticker) clearInterval(ticker);
+    // Keep the load footage recorded up to an error, as the failed-load path does.
+    if (loadStart !== null) clip.timeline.load ??= [loadStart, mark()];
+    clip.peak ??= (await sampler.stop().catch(() => null))?.peak ?? null;
   }
 }
 

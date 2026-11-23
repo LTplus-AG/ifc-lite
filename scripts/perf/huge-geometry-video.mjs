@@ -21,6 +21,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { withTimeout } from './oom-load-probe-lib.mjs';
 
 /** Playwright's bundled ffmpeg (PLAYWRIGHT_BROWSERS_PATH or ~/.cache/ms-playwright), newest first. */
 export function playwrightFfmpeg() {
@@ -97,7 +98,7 @@ export async function attachScreencast(context, page, encoder, { width = 1600, h
   });
   await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 80, maxWidth: width, maxHeight: height, everyNthFrame: 1 });
   // Bounded: on a crashed target these CDP calls never settle.
-  const within = (p) => Promise.race([p.catch(() => null), new Promise((r) => setTimeout(r, 5000))]);
+  const within = (p) => withTimeout(p.catch(() => null), 5000, () => null);
   return async () => { await within(cdp.send('Page.stopScreencast')); await within(cdp.detach()); };
 }
 

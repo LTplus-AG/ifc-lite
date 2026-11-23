@@ -17,7 +17,6 @@ async function prepare(input: Record<string, unknown>) {
   if (issue) throw new Error(issue);
   if (Buffer.byteLength(JSON.stringify(input)) > 512 * 1024) throw new Error('Surface exceeds 512 KiB.');
   const title = input.title as string | undefined;
-  // `title` labels the viewer's panel; the card keeps only the spec's own title, so it is not shown twice.
   const messages = input.messages === undefined ? buildSurface(input.spec as SurfaceSpec) : input.messages as unknown[];
   if (messages.some((message) => !isRecord(message) || message.version !== A2UI_PROTOCOL_VERSION
     || !['createSurface', 'updateComponents', 'updateDataModel', 'deleteSurface'].some((kind) => kind in message))) {
@@ -39,13 +38,13 @@ export function surfacePushTool(forward: (surface: Record<string, unknown>, sign
     inputSchema: {
       type: 'object', additionalProperties: false, anyOf: [{ required: ['messages'] }, { required: ['spec'] }],
       properties: {
-        title: { type: 'string', maxLength: 256 },
+        title: { type: 'string', maxLength: 256, description: 'Label of the viewer panel that holds the surface.' },
         messages: { type: 'array', minItems: 1, maxItems: 128, items: { type: 'object' } },
         spec: {
           type: 'object', required: ['surfaceId', 'sections'], additionalProperties: false,
           properties: {
             surfaceId: { type: 'string', maxLength: 128 },
-            title: { type: 'string', maxLength: 256 },
+            title: { type: 'string', maxLength: 256, description: 'Heading inside the card. Leave it out when the panel title already says it.' },
             card: { type: 'boolean' },
             sections: { type: 'array', minItems: 1, maxItems: 64, items: {
               type: 'object', required: ['kind'], properties: { kind: { type: 'string', enum: [...SECTION_KINDS] } },

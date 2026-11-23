@@ -43,7 +43,7 @@ const MAP_CONVERSION_WITHOUT_CONTEXT_WARNING =
  * case where an IfcProjectedCRS exists (or was written) but no context is
  * available to reference.
  */
-const MAP_CONVERSION_WITHOUT_CRS_WARNING =
+const MAP_CONVERSION_WITHOUT_CRS =
   'Cannot create IfcMapConversion: no IfcProjectedCRS was requested and none exists in the file to reference as TargetCRS. Nothing was written.';
 
 /**
@@ -232,12 +232,8 @@ export function applyGeoreferencingMutations(
     // CRS exists but no MapConversion — create just the conversion
     createMapConversion(pass, ctx, existingCrsIds[0], gm.mapConversion, gm.sourceCrs);
   } else if (gm.mapConversion && !existingMcIds?.length && !existingCrsIds?.length) {
-    // A map conversion was requested, but there is no IfcProjectedCRS to
-    // reference as TargetCRS: none was requested (the first branch above
-    // didn't fire) and none exists in the file. Both CREATE branches are
-    // skipped, so nothing is attempted — report the refusal so the
-    // caller isn't left with an empty stats.warnings and no hint (#2105).
-    reportMapConversionRefusedNoCrs(pass.warnings);
+    if (!gm.sourceCrs?.length) throw new Error(`${UNPLANNED_REFUSAL} ${MAP_CONVERSION_WITHOUT_CRS}`);
+    reportGeorefWarning(pass.warnings, MAP_CONVERSION_WITHOUT_CRS);
   }
 }
 
@@ -351,17 +347,6 @@ function reportGeorefWarning(warnings: string[], message: string): void {
 function reportMapConversionRefused(warnings: string[]): void {
   warnings.push(MAP_CONVERSION_WITHOUT_CONTEXT_WARNING);
   console.warn(`[StepExporter] ${MAP_CONVERSION_WITHOUT_CONTEXT_WARNING}`);
-}
-
-/**
- * Record that a requested IfcMapConversion could not be written because
- * there is no IfcProjectedCRS to attach it to — a different refusal from
- * {@link reportMapConversionRefused}: "no CRS to attach it to" rather than
- * "no context to reference" (#2105).
- */
-function reportMapConversionRefusedNoCrs(warnings: string[]): void {
-  warnings.push(MAP_CONVERSION_WITHOUT_CRS_WARNING);
-  console.warn(`[StepExporter] ${MAP_CONVERSION_WITHOUT_CRS_WARNING}`);
 }
 
 /**

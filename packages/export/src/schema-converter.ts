@@ -14,7 +14,7 @@ import { withoutComments } from './step-comment-skip.js';
 import { structuralAttributes } from './schema-converter-structural.js';
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { deterministicGlobalId, getSchemaRegistryForVersion } from '@ifc-lite/parser';
-import { resolveUnrepresentedEntity } from './schema-untranslatable.js';
+import { missingTypeRoute, resolveUnrepresentedEntity } from './schema-untranslatable.js';
 import { BY_NAME_ATTR_REMAP_TYPES, isGridPlacementInSourceLayout, remapRenamedAttributesByName } from './schema-converter-attr-remap.js';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { frameArgs, stepRecordFrame } from './step-record-frame.js';
@@ -27,7 +27,7 @@ import { productProxy } from './schema-converter-product-proxy.js';
 import { MEP_IFC2X3_TYPES } from './schema-converter-mep.js';
 import { isStrictAttrPrefix, replacedSlot } from './schema-converter-renames.js';
 import { carryUserDefinedLabel } from './schema-converter-userdefined-label.js';
-import { attrMapFor, remapByAttrMap, upgradeCountsIfc4Slots, upgradeRename } from './schema-converter-attr-maps.js';
+import { attrMapFor, DELETED_SUBTYPES, remapByAttrMap, upgradeCountsIfc4Slots, upgradeRename } from './schema-converter-attr-maps.js';
 import { retypeInPlace } from './schema-converter-retyped.js';
 export { computeWithheldRefIds } from './schema-untranslatable.js';
 
@@ -47,6 +47,7 @@ const IFC2X3_TO_IFC4: Map<string, string> = new Map([
   ['IFCEQUIPMENTELEMENT', 'IFCBUILDINGELEMENTPROXY'],
   ['IFCRELCONNECTSSTRUCTURALELEMENT', 'IFCRELASSIGNSTOPRODUCT'],
 ]);
+const IFC2X3_UP = new Map([...IFC2X3_TO_IFC4, ...DELETED_SUBTYPES]); // + the subtypes IFC4 deleted, not for IFC5 (#10902)
 
 // ─── IFC4 → IFC2X3 type renames (reverse) ──────────────────────────────────
 const IFC4_TO_IFC2X3: Map<string, string> = new Map([
@@ -113,6 +114,7 @@ const IFC4_TO_IFC4X3: Map<string, string> = new Map([
   // IfcBuildingElement → IfcBuiltElement (IFC4X3 rename)
   // Note: both exist in IFC4X3 for backwards compat, but IfcBuiltElement is canonical
 ]);
+let ifc2x3ToIfc4x3: Map<string, string> | undefined, ifc2x3ToIfc5: Map<string, string> | undefined;
 
 // ─── IFC4X3 → IFC4 type renames ────────────────────────────────────────────
 const IFC4X3_TO_IFC4: Map<string, string> = new Map([
@@ -180,7 +182,7 @@ function getConversionMap(
   from: IfcSchemaVersion,
   to: IfcSchemaVersion,
 ): Map<string, string> | null {
-  if (from === 'IFC2X3' && to === 'IFC4') return IFC2X3_TO_IFC4;
+  if (from === 'IFC2X3' && to === 'IFC4') return IFC2X3_UP;
   if (from === 'IFC4' && to === 'IFC2X3') return IFC4_TO_IFC2X3;
   if (from === 'IFC4' && to === 'IFC4X3') return IFC4_TO_IFC4X3;
   if (from === 'IFC4X3' && to === 'IFC4') return IFC4X3_TO_IFC4;
@@ -192,9 +194,8 @@ function getConversionMap(
   if (from === 'IFC4' && to === 'IFC5') return IFC4_TO_IFC4X3;
 
   // Multi-step: IFC2X3 → IFC4X3 = IFC2X3 → IFC4 → IFC4X3
-  if (from === 'IFC2X3' && (to === 'IFC4X3' || to === 'IFC5')) {
-    return chainMaps(IFC2X3_TO_IFC4, IFC4_TO_IFC4X3);
-  }
+  if (from === 'IFC2X3' && to === 'IFC4X3') return ifc2x3ToIfc4x3 ??= chainMaps(IFC2X3_UP, IFC4_TO_IFC4X3);
+  if (from === 'IFC2X3' && to === 'IFC5') return ifc2x3ToIfc5 ??= chainMaps(IFC2X3_TO_IFC4, IFC4_TO_IFC4X3);
 
   // Multi-step: IFC4X3 → IFC2X3 = IFC4X3 → IFC4 → IFC2X3
   if ((from === 'IFC4X3' || from === 'IFC5') && to === 'IFC2X3') {
@@ -398,12 +399,8 @@ function convertRecord(
   const srcAttrs = attrNameTable(fromSchema)?.get(entityType);
   const tgtAttrs = targetTable?.get(newType);
   // `shouldSkipEntity` above only catches its hand-listed alignment types;
-  // a type entirely unknown to `targetTable` (not merely a strict-prefix
-  // attribute mismatch, handled below) has no representation in `toSchema` at
-  // all — see `resolveUnrepresentedEntity` for why it can't just pass through.
-  // On IFC2X3 even with no source entry, as Rust's `has_representation`: a
-  // non-entity head (`#1=IFCLABEL('x');`) fails closed (#7683, D3).
-  if (targetTable && !tgtAttrs && (toSchema === 'IFC2X3' || (toSchema === 'IFC4' && fromSchema === 'IFC4X3' && srcAttrs))) {
+  // The same missing-type policy governs exports and loss previews (#10902).
+  if (missingTypeRoute(entityType, fromSchema, toSchema, srcAttrs !== undefined, !targetTable || tgtAttrs !== undefined) === 'unrepresented') {
     return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, args, toSchema, expressId, withheldRefIds !== undefined);
   }
   if (srcAttrs && tgtAttrs) {

@@ -17,7 +17,7 @@ use rustc_hash::FxHashMap;
 use crate::schema_attr_maps::{attr_map, AttrMap};
 use crate::schema_convert::{rename_type, schema_attribute_names, should_skip_entity, BY_NAME_ATTR_REMAP_TYPES};
 use crate::schema_renames::{is_strict_attr_prefix, replaced_slot};
-use crate::schema_unrepresented::has_representation;
+use crate::schema_unrepresented::{missing_type_route, missing_type_warnings, Named, Route};
 
 /// How a written record's attribute list is reconciled with the target type.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -54,14 +54,22 @@ pub(crate) enum Plan {
 /// `convertRecord`: proxy list, representation, then the prefix rules (source
 /// names keyed on the ORIGINAL type, target names on the renamed one).
 pub(crate) fn plan_for(entity_type: &str, cfrom: &'static str, cto: &'static str) -> Plan {
+    plan_and_route(entity_type, cfrom, cto).0
+}
+
+/// [`plan_for`] and the type's [`Route`], for the warnings (#10902).
+fn plan_and_route(entity_type: &str, cfrom: &'static str, cto: &'static str) -> (Plan, Route) {
     let renamed = rename_type(entity_type, cfrom, cto);
     let new_type = renamed.unwrap_or(entity_type);
+    // An alignment product has no representation in the target either: the
+    // warnings name it with the other proxies.
     if should_skip_entity(new_type, cto) {
-        return Plan::ProductProxy;
+        return (Plan::ProductProxy, Route::Unrepresented);
     }
     let src_names = schema_attribute_names(cfrom, entity_type);
-    if !has_representation(cfrom == "IFC4X3" && src_names.is_some(), new_type, cto) {
-        return Plan::Unrepresented;
+    let route = missing_type_route(entity_type, new_type, cfrom, cto, src_names.is_some());
+    if route == Route::Unrepresented {
+        return (Plan::Unrepresented, route);
     }
     // The two prefix branches cannot both apply: each needs its own list
     // strictly shorter.
@@ -81,7 +89,7 @@ pub(crate) fn plan_for(entity_type: &str, cfrom: &'static str, cto: &'static str
     };
     // A map decides every slot itself, as in the TypeScript twin.
     let replaced = src_names.zip(tgt_names).filter(|_| !matches!(adjust, Adjust::Mapped(..))).and_then(|(src, tgt)| replaced_slot(entity_type, src, tgt));
-    Plan::Write { renamed, adjust, replaced }
+    (Plan::Write { renamed, adjust, replaced }, route)
 }
 
 /// Index of a canonical schema family, for [`PlanCache`]'s per-pair maps.
@@ -97,21 +105,35 @@ fn family(schema: &str) -> usize {
 /// [`plan_for`], memoised per (source family, target family, type name). One
 /// map per schema pair, because a merged export converts models of different
 /// source schemas through one cache. Bounded by the distinct type names the
-/// input holds, which never exceeds its record count.
+/// input holds, which never exceeds its record count. Each entry counts the
+/// records asked for, so the warnings can name those of a type with no type of
+/// the target's own (#10902).
 #[derive(Default)]
 pub(crate) struct PlanCache {
-    by_pair: [FxHashMap<Box<str>, Plan>; 16],
+    by_pair: [FxHashMap<Box<str>, Cached>; 16],
+}
+
+struct Cached {
+    plan: Plan,
+    named: Option<Named>,
+    records: usize,
 }
 
 impl PlanCache {
     pub(crate) fn get(&mut self, entity_type: &str, cfrom: &'static str, cto: &'static str) -> Plan {
         let map = &mut self.by_pair[family(cfrom) * 4 + family(cto)];
-        if let Some(plan) = map.get(entity_type) {
-            return *plan;
+        if let Some(cached) = map.get_mut(entity_type) {
+            cached.records += 1;
+            return cached.plan;
         }
-        let plan = plan_for(entity_type, cfrom, cto);
-        map.insert(entity_type.into(), plan);
+        let (plan, route) = plan_and_route(entity_type, cfrom, cto);
+        map.insert(entity_type.into(), Cached { plan, named: route.named(entity_type), records: 1 });
         plan
+    }
+
+    /// The records written as a proxy or as they are, by type (#10902).
+    pub(crate) fn warnings(&self) -> Vec<String> {
+        missing_type_warnings(self.by_pair.iter().flatten().filter_map(|(ty, c)| c.named.map(|named| (&**ty, named, c.records))))
     }
 }
 

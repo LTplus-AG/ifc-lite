@@ -37,7 +37,7 @@ import {
 import { BY_NAME_ATTR_REMAP_TYPES } from './schema-converter-attr-remap.js';
 import { isStrictAttrPrefix, replacedSlot } from './schema-converter-renames.js';
 import { attrMapFor, attrsDroppedByMap, dropsSetMembers } from './schema-converter-attr-maps.js';
-import { isRootedEntityType } from './schema-untranslatable.js';
+import { isRootedEntityType, missingTypeRoute } from './schema-untranslatable.js';
 
 /** How one entity TYPE's data survives a schema conversion. */
 export type EntityConversionKind =
@@ -118,14 +118,16 @@ export function classifyEntityTypeConversion(
   const targetTable = attrNameTable(toSchema);
   const tgtAttrs = targetTable?.get(newType);
 
-  // Same condition as `convertRecord` (an IFC2X3 target refuses a type its
-  // table lacks even when the source table does not know it either, #7683).
-  if (targetTable && !tgtAttrs && (toSchema === 'IFC2X3' || (toSchema === 'IFC4' && fromSchema === 'IFC4X3' && srcAttrs))) {
+  // `convertRecord`'s own route for a type the target lacks (#10902).
+  const route = missingTypeRoute(upper, fromSchema, toSchema, srcAttrs !== undefined, !targetTable || tgtAttrs !== undefined);
+  if (route === 'unrepresented') {
     const dropped = srcAttrs ?? [];
     return isRootedEntityType(upper)
       ? { targetType: 'IFCPROXY', kind: 'proxied', droppedAttributes: dropped.filter((name) => name !== 'GlobalId' && name !== 'Name') }
       : { targetType: newType, kind: 'blocked', droppedAttributes: dropped };
   }
+  // Written under a name the target does not declare (D59, #10970, #10971): a reader drops all of it.
+  if (route === 'verbatim' && srcAttrs) return { targetType: newType, kind: 'lossy', droppedAttributes: srcAttrs };
 
   if (!srcAttrs || !tgtAttrs) {
     // Unknown to one of the tables (IFC5 has none) — the per-line converter

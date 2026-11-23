@@ -24,6 +24,8 @@
 //! is set so the caller can gate that case to the JS path.
 
 mod empty;
+mod entry_points;
+pub use entry_points::try_export_merged;
 mod guid;
 mod header;
 mod line_edit;
@@ -134,10 +136,13 @@ pub struct MergedStats {
     pub warnings: Vec<String>,
 }
 
-/// Merge `models` (raw IFC byte slices) into one STEP/IFC string. Convenience
-/// wrapper over [`export_merged_models`] that exports each model in full.
+/// Merge whole models into a STEP file. A refused merge reports its diagnostic
+/// to stderr and returns an empty string. Use [`try_export_merged`] to handle the error.
 pub fn export_merged(models: &[&[u8]], opts: &MergedOptions) -> String {
-    export_merged_with_stats(models, opts).0
+    try_export_merged(models, opts).unwrap_or_else(|error| {
+        eprintln!("{error}");
+        String::new()
+    })
 }
 
 /// Like [`export_merged`] but also returns coverage stats.
@@ -152,20 +157,13 @@ pub fn export_merged_with_stats(models: &[&[u8]], opts: &MergedOptions) -> (Stri
 
 /// Merge several parsed models into one STEP/IFC string, honoring per-model
 /// visibility, spatial-merge strategies, and unit reconciliation.
+/// An unrepresentable bounded property (#11117) yields empty output and a diagnostic.
 pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (String, MergedStats) {
     let schema = header::output_schema(models, opts);
 
     let mut out = header::merged_header(opts, &schema);
 
-    let mut stats = MergedStats {
-        models: models.len(),
-        written: 0,
-        federated_model_count: 0,
-        unmerged_model_count: 0,
-        unit_rescale_required: false,
-        dropped_container_count: 0,
-        warnings: Vec::new(),
-    };
+    let mut stats = MergedStats::new(models.len());
 
     if models.is_empty() {
         out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
@@ -330,7 +328,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                 // Pass the remapped id so a proxy that needs a generated GlobalId
                 // has a distinct seed even when two models share the same local id.
                 //
-                // Falls back to the UNCONVERTED line on `Err`, not `?`/panic: the
+                // Falls back to the UNCONVERTED line for unknown types: the
                 // merged API has no fallible signature (a separate, deliberate
                 // change; the TS twin documents the same scope, #5114), and a
                 // non-rooted type with no target representation is COMMON input
@@ -346,6 +344,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                     Some(&mut checks),
                 ) {
                     Ok(text) => text,
+                    Err(e) if e.reason.is_some() => return stats.refused(e),
                     Err(e) => {
                         unrepresented_types_kept.insert(e.entity_type);
                         remapped

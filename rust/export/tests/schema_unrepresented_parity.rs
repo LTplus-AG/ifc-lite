@@ -10,7 +10,7 @@
 //! `fixtures/schema_unrepresented_vectors.json`; the TypeScript half is
 //! `packages/export/src/schema-unrepresented.parity.test.ts`.
 
-use ifc_lite_export::{export_merged_models, export_step_json, MergedModel, MergedOptions};
+use ifc_lite_export::{export_merged_models, export_step, export_step_json, MergedModel, MergedOptions, StepOptions};
 
 #[derive(serde::Deserialize, Clone)]
 struct Case {
@@ -192,4 +192,17 @@ fn every_case_agrees_with_the_shared_fixture_7742() {
         }
     }
     assert!(bad.is_empty(), "{} mismatches:\n{}", bad.len(), bad.join("\n"));
+}
+
+#[test]
+fn an_upgrade_keeps_the_project_order_as_the_relating_control_10902() {
+    let source = include_bytes!("fixtures/ifc2x3-project-order.ifc");
+    for schema in ["IFC4", "IFC4X3"] {
+        let opts = StepOptions { schema: Some(schema.into()), ..Default::default() };
+        let out = export_step(source, &opts).unwrap();
+        let order = out.lines().find(|line| line.starts_with("#7=")).unwrap();
+        let assignment = out.lines().find(|line| line.starts_with("#8=")).unwrap();
+        assert!(order.starts_with("#7=IFCPROJECTORDER(") && order.ends_with(",'PO-7',.PURCHASEORDER.,'Issued',$);"), "{schema}: {order}");
+        assert!(assignment.starts_with("#8=IFCRELASSIGNSTOCONTROL(") && assignment.ends_with(",(#6),$,#7);"), "{schema}: {assignment}");
+    }
 }

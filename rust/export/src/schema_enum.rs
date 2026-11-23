@@ -267,6 +267,7 @@ impl ConversionChecks {
         out.extend(self.documents.warnings());
         out.extend(self.forms.warnings());
         out.extend(self.structural.warnings());
+        out.extend(self.plans.warnings());
         out
     }
 }

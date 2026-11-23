@@ -502,22 +502,14 @@ export class MCPServer {
 
   /** Broadcast a `notifications/resources/updated` to subscribers. */
   notifyResourceUpdated(uri: string): void {
-    if (!this.sink) return;
-    if (!this.subscriptions.has(uri)) return;
-    void this.sink.send(notification('notifications/resources/updated', { uri }));
+    if (this.subscriptions.has(uri)) this.notify('notifications/resources/updated', { uri });
   }
 
   /** Send any server notification, e.g. a host-specific channel event. Dropped while no client is attached. */
-  notify(method: string, params: Record<string, unknown>): void {
-    if (!this.sink) return;
-    void this.sink.send(notification(method, params));
-  }
+  notify(method: string, params: Record<string, unknown>): void { void this.sink?.send(notification(method, params)); }
 
   /** Notify clients that the tool list has changed (e.g., after model load). */
-  notifyToolsChanged(): void {
-    if (!this.sink) return;
-    void this.sink.send(notification('notifications/tools/list_changed', {}));
-  }
+  notifyToolsChanged(): void { this.notify('notifications/tools/list_changed', {}); }
 
   /** Read-only access to the auth scope for transports that need to gate access. */
   hasModelAccess(modelId: string): boolean {

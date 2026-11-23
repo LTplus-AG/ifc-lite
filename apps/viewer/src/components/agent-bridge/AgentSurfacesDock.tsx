@@ -15,12 +15,11 @@ import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { useTranslation } from '@/i18n';
-import { composeFollowUpPrompt } from '@/lib/a2ui/actions';
+import { followUpToChat } from '@/lib/a2ui/actions';
 import { A2uiMessagesView, type AgentToRendererMessage } from '@/lib/a2ui/surface-host';
 import { agentSurfaces, type AgentSurface } from '@/lib/agent-bridge/agent-surfaces';
 import { sendAgentUiEvent } from '@/lib/agent-bridge/session';
 import { toast } from '@/components/ui/toast';
-import { useViewerStore } from '@/store';
 
 const MAX_VISIBLE = 3;
 const keys = new WeakMap<object, number>();
@@ -44,10 +43,10 @@ export function AgentSurfacesDock() {
   const surfaces = useSyncExternalStore(agentSurfaces.subscribe, agentSurfaces.getSnapshot);
   const followUp = (surface: AgentSurface) => (text: string, context: Record<string, unknown>) => {
     if (sendAgentUiEvent({ surfaceId: surfaceIdOf(surface), name: 'ask', prompt: text, context })) {
-      toast.success(t('agentBridge.surfaces.sent'), 'agent-surface-sent');
+      toast.success(t('agentBridge.surfaces.sent'));
       return;
     }
-    useViewerStore.getState().queueChatPrompt(composeFollowUpPrompt(text, context));
+    followUpToChat(text, context);
   };
   if (surfaces.length === 0) return null;
   const visible = surfaces.slice(-MAX_VISIBLE).reverse();

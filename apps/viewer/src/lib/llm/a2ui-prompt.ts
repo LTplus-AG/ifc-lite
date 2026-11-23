@@ -10,11 +10,11 @@
  */
 
 /** Heading `buildSystemPrompt` puts before the personal overlay. */
-export const PERSONAL_CONTEXT_HEADING = '\n\n## PERSONAL CONTEXT';
+const PERSONAL_CONTEXT_HEADING = '\n\n## PERSONAL CONTEXT';
 
 let section: Promise<string> | undefined;
 
-export function loadA2uiPromptSection(): Promise<string> {
+function loadA2uiPromptSection(): Promise<string> {
   section ??= import('@/lib/a2ui/prompt')
     .then((m) => m.buildA2uiPromptSection())
     .catch((error: unknown) => {

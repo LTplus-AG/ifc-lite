@@ -28,14 +28,14 @@ export interface LegendEntry {
   refs: WireEntityRef[];
 }
 
-export function legendColor(index: number): string {
+function legendColor(index: number): string {
   return LENS_PALETTE[index % LENS_PALETTE.length];
 }
 
 const HEX = /^#[0-9a-f]{6}$/i;
 
 /** Script data: `[{label, color, refs?}]`; a colour that is not #rrggbb falls back to the palette. */
-export function legendEntriesFromData(data: unknown): LegendEntry[] | null {
+function legendEntriesFromData(data: unknown): LegendEntry[] | null {
   if (!Array.isArray(data)) return null;
   return data.flatMap((item, i) => {
     if (!item || typeof item !== 'object' || typeof (item as { label?: unknown }).label !== 'string') return [];

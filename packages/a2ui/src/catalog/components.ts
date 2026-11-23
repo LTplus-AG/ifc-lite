@@ -58,7 +58,7 @@ export const EntityCardApi = {
     .describe('Inspector card for one entity, read live from the model.'),
 };
 
-export const StatItemSchema = z
+const StatItemSchema = z
   .object({
     label: C.DynamicString,
     query: IfcQuerySchema.optional(),
@@ -111,7 +111,7 @@ export const ColorLegendApi = {
     .describe('Colour-by legend. Applies one colour per value to the 3D model; each entry toggles visibility.'),
 };
 
-export const FollowUpSchema = z
+const FollowUpSchema = z
   .object({
     label: z.string(),
     prompt: z.string().describe('Message sent to the assistant when clicked'),

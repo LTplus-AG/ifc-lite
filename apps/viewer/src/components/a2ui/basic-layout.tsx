@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils';
 type ChildRef = string | { id: string; basePath?: string };
 type BuildChild = ReactA2uiComponentProps<unknown>['buildChild'];
 
-export function renderChildren(children: unknown, buildChild: BuildChild): ReactNode[] {
+function renderChildren(children: unknown, buildChild: BuildChild): ReactNode[] {
   if (!Array.isArray(children)) return [];
   return (children as ChildRef[]).map((child, i) => {
     const id = typeof child === 'string' ? child : child.id;
@@ -63,7 +63,7 @@ const ALIGN: Record<string, string> = { start: 'items-start', center: 'items-cen
 
 export const TextImpl = createComponentImplementation(TextApi, ({ props }) => (
   <div style={weightStyle(props.weight)} className={cn(props.variant === 'caption' && 'text-xs text-muted-foreground')}>
-    <SafeMarkdown text={typeof props.text === 'string' ? props.text : String(props.text ?? '')} />
+    <SafeMarkdown text={String(props.text ?? '')} />
   </div>
 ));
 

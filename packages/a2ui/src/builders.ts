@@ -39,6 +39,9 @@ export interface ChartDatum {
   refs?: string[];
 }
 
+/** Every section kind `buildSurface` understands. */
+export const SECTION_KINDS = ['text', 'callout', 'stats', 'table', 'list', 'chart', 'legend', 'actions', 'entity'] as const;
+
 export type SectionSpec =
   | { kind: 'text'; text: string; variant?: 'body' | 'caption' }
   | { kind: 'callout'; text: string; tone?: Tone; title?: string }

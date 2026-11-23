@@ -76,6 +76,9 @@ export const DEFAULT_BRIDGE_VIEWER_URL = 'https://ifclite.com';
 export const BRIDGE_STATUS_TOOL = 'bridge_status';
 export const BRIDGE_SURFACE_TOOL = 'viewer_show_ui';
 
+/** Tools the bridge serves itself; a tab may not register these names. */
+export const BRIDGE_RESERVED_TOOLS: ReadonlySet<string> = new Set([BRIDGE_STATUS_TOOL, BRIDGE_SURFACE_TOOL, BRIDGE_UI_EVENTS_TOOL]);
+
 /** Key in the pairing link's URL fragment that marks it as a bridge pairing link. */
 export const PAIRING_FRAGMENT_KEY = 'mcp-bridge';
 
@@ -206,7 +209,7 @@ export function validateToolDescriptors(raw: unknown): ParseResult<BridgeToolDes
     if (typeof name !== 'string' || name.length === 0 || name.length > BRIDGE_LIMITS.maxToolNameLength || !TOOL_NAME.test(name)) {
       return { ok: false, error: `tools[${i}].name must match ${TOOL_NAME} and be 1-${BRIDGE_LIMITS.maxToolNameLength} characters` };
     }
-    if (name === BRIDGE_STATUS_TOOL || name === BRIDGE_SURFACE_TOOL || name === BRIDGE_UI_EVENTS_TOOL) return { ok: false, error: `tools[${i}].name '${name}' is reserved for the bridge` };
+    if (BRIDGE_RESERVED_TOOLS.has(name)) return { ok: false, error: `tools[${i}].name '${name}' is reserved for the bridge` };
     if (seen.has(name)) return { ok: false, error: `tools[${i}].name '${name}' is listed twice` };
     seen.add(name);
     if (typeof description !== 'string' || description.length > BRIDGE_LIMITS.maxDescriptionLength) {

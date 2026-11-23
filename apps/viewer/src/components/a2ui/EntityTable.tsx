@@ -35,7 +35,7 @@ export function useSelectAndFly(): (row: EntityRow) => void {
   };
 }
 
-export function rowKeyHandler(activate: () => void) {
+function rowKeyHandler(activate: () => void) {
   return (e: KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();

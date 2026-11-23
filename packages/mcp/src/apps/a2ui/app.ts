@@ -11,7 +11,7 @@ import { createIfcCatalog, IFC_CATALOG_COMPONENT_APIS, IFC_CATALOG_FUNCTION_APIS
 import type { CallToolResult } from '../../protocol/types.js';
 import { renderBasic } from './basic-components.js';
 import { SURFACE_ACTIONS } from './constants.js';
-import { element, refs, text, viewerNote, type Props, type RendererAction } from './dom.js';
+import { element, refs, text, VIEWER_NOTE, type Props, type RendererAction } from './dom.js';
 import { connectHost } from './host.js';
 import { ifcComponents } from './ifc-components.js';
 
@@ -39,7 +39,7 @@ const functions: FunctionImplementation[] = IFC_CATALOG_FUNCTION_APIS.map((api) 
       if (!context.isUserActivated) return undefined;
       const action = SURFACE_ACTIONS.find((name) => name === api.name);
       if (!action || (args.query && args.refs === undefined)) {
-        report(viewerNote().textContent ?? '');
+        report(VIEWER_NOTE);
         return undefined;
       }
       return callViewer(action, refs(args.refs), text(args.color) || undefined);

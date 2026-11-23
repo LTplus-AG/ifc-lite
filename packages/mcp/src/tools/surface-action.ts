@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { parseRefs, parseRef, MAX_QUERY_LIMIT } from '@ifc-lite/a2ui';
-import { A2UI_APP_URI, SURFACE_ACTIONS, SURFACE_ACTION_TOOL } from '../apps/a2ui/constants.js';
+import { A2UI_APP_URI, DEFAULT_HIGHLIGHT_COLOR, SURFACE_ACTIONS, SURFACE_ACTION_TOOL } from '../apps/a2ui/constants.js';
 import { toolError, ToolErrorCode, ToolExecutionError } from '../errors.js';
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
@@ -76,7 +76,7 @@ export const surfaceAction: Tool = {
     if (action !== 'select' && targets.some((ref) => !model.bim.entity(ref))) invalid('One or more entities are unavailable.');
     const args: Record<string, unknown> = { model_id: model.id };
     if (action !== 'resetView') args.express_ids = targets.map((ref) => ref.expressId);
-    if (action === 'colorize') args.color = color ?? '#bd621f';
+    if (action === 'colorize') args.color = color ?? DEFAULT_HIGHLIGHT_COLOR;
     return tools.get(ACTION_TO_TOOL[action as keyof typeof ACTION_TO_TOOL])!.handler(args, ctx);
   },
 };

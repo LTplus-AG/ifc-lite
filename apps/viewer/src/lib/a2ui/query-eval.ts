@@ -30,8 +30,18 @@ const lower = (s: string) => s.toLowerCase();
  */
 export class FieldReader {
   private readonly cache = new Map<string, unknown[]>();
+  /** Raw sets per entity, fetched once whatever the number of paths read from them. */
+  private readonly attrs = new Map<string, ReturnType<A2uiViewerHost['attributes']>>();
+  private readonly psets = new Map<string, ReturnType<A2uiViewerHost['properties']>>();
+  private readonly qsets = new Map<string, ReturnType<A2uiViewerHost['quantities']>>();
 
   constructor(private readonly host: A2uiViewerHost) {}
+
+  private once<T>(cache: Map<string, T>, entity: A2uiEntity, load: () => T): T {
+    let hit = cache.get(entity.key);
+    if (hit === undefined) cache.set(entity.key, hit = load());
+    return hit;
+  }
 
   /** Every value the path has on the entity (an entity can carry two same-named sets). */
   values(entity: A2uiEntity, path: FieldPath | string): unknown[] {
@@ -65,17 +75,17 @@ export class FieldReader {
     }
     if (path.kind === 'attribute') {
       const want = lower(path.name);
-      return this.host.attributes(entity.ref).filter((a) => lower(a.name) === want).map((a) => a.value);
+      return this.once(this.attrs, entity, () => this.host.attributes(entity.ref)).filter((a) => lower(a.name) === want).map((a) => a.value);
     }
     const set = lower(path.set);
     const name = lower(path.name);
     const out: unknown[] = [];
-    for (const pset of this.host.properties(entity.ref)) {
+    for (const pset of this.once(this.psets, entity, () => this.host.properties(entity.ref))) {
       if (lower(pset.name) !== set) continue;
       for (const p of pset.properties) if (lower(p.name) === name) out.push(p.value);
     }
     // Quantity sets answer `Qto_*.Name` paths, and also `BaseQuantities.Name`.
-    for (const qset of this.host.quantities(entity.ref)) {
+    for (const qset of this.once(this.qsets, entity, () => this.host.quantities(entity.ref))) {
       if (lower(qset.name) !== set) continue;
       for (const q of qset.quantities) if (lower(q.name) === name) out.push(q.value);
     }
@@ -97,7 +107,7 @@ function materialLabel(host: A2uiViewerHost, ref: WireEntityRef): string | undef
 }
 
 /** A condition holds when any value of the path satisfies it (missing: none present; neq: none equal). */
-export function entityMatches(reader: FieldReader, entity: A2uiEntity, cond: QueryCondition): boolean {
+function entityMatches(reader: FieldReader, entity: A2uiEntity, cond: QueryCondition): boolean {
   const values = reader.values(entity, cond.path);
   if (cond.op === 'missing') return values.length === 0;
   if (cond.op === 'exists') return values.length > 0;

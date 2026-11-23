@@ -10,6 +10,7 @@
 
 import type { ActionPayload } from '@a2ui/web_core/v1_0';
 import { eventToFollowUp } from '@ifc-lite/a2ui';
+import { useViewerStore } from '@/store';
 
 export type FollowUpHandler = (text: string, context: Record<string, unknown>) => void;
 
@@ -32,3 +33,8 @@ export function composeFollowUpPrompt(text: string, context: Record<string, unkn
   if (json.length > MAX_CONTEXT_CHARS) json = `${json.slice(0, MAX_CONTEXT_CHARS)}…`;
   return `${text}\n\n(context: ${json})`;
 }
+
+/** Continue a follow-up as the next user turn in the in-app chat. */
+export const followUpToChat: FollowUpHandler = (text, context) => {
+  useViewerStore.getState().queueChatPrompt(composeFollowUpPrompt(text, context));
+};

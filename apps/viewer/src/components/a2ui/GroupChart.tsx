@@ -23,7 +23,7 @@ import { weightStyle } from './basic-layout';
 import { Note, ResultNotes } from './notes';
 import { A2uiChartRendererContext, formatValue, useQueryResult, useRunFunction } from './runtime';
 
-export interface ChartGroup {
+interface ChartGroup {
   label: string;
   value: number;
   refs: string[];
@@ -50,7 +50,7 @@ function ChartCanvas({ kind, groups, label, onPick }: { kind: 'bar' | 'pie'; gro
 }
 
 /** Keep the largest `max - 1` groups and fold the rest into one. */
-export function foldGroups(groups: ChartGroup[], max: number, otherLabel: string): ChartGroup[] {
+function foldGroups(groups: ChartGroup[], max: number, otherLabel: string): ChartGroup[] {
   if (groups.length <= max) return groups;
   const head = groups.slice(0, Math.max(1, max - 1));
   const rest = groups.slice(head.length);
@@ -58,7 +58,7 @@ export function foldGroups(groups: ChartGroup[], max: number, otherLabel: string
 }
 
 /** Script data: `[{label, value, refs?}]`, malformed entries dropped. */
-export function groupsFromData(data: unknown): ChartGroup[] {
+function groupsFromData(data: unknown): ChartGroup[] {
   if (!Array.isArray(data)) return [];
   return data.flatMap((d) => {
     const item = d as { label?: unknown; value?: unknown; refs?: unknown };

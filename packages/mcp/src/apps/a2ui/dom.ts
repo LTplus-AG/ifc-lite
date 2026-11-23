@@ -53,6 +53,8 @@ export function block(title: unknown, child: Node, className?: string): HTMLElem
   return section;
 }
 
+export const VIEWER_NOTE = 'This result is computed in the viewer.';
+
 export function viewerNote(): HTMLElement {
-  return element('p', 'This result is computed in the viewer.', 'muted');
+  return element('p', VIEWER_NOTE, 'muted');
 }

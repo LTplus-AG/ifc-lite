@@ -49,7 +49,7 @@ export type FieldPath =
   | { kind: 'attribute'; name: string }
   | { kind: 'property'; set: string; name: string };
 
-export const BUILTIN_FIELDS = ['name', 'globalId', 'type', 'storey', 'material', 'modelId', 'description', 'objectType'] as const;
+const BUILTIN_FIELDS = ['name', 'globalId', 'type', 'storey', 'material', 'modelId', 'description', 'objectType'] as const;
 export type BuiltinField = (typeof BUILTIN_FIELDS)[number];
 
 const BUILTIN_LOOKUP = new Map<string, BuiltinField>(BUILTIN_FIELDS.map((key) => [key.toLowerCase(), key]));

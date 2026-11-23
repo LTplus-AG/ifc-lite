@@ -48,7 +48,7 @@ patchedDependencies:
     hash: 83b1103e23a0cbf66dc58d99008f032abc466b7dd415f19b82adc377d033a125
     path: patches/@a2ui__react@0.15.0.patch
   '@a2ui/web_core@0.15.0':
-    hash: 275fbec1898cbb1ceba94f27adb0bad320ee6dc383f966eae68719b10043befa
+    hash: 4cd64b3659b2322468db9a10794fe9bd6eeac0430b2ac21cdbfa621831ae96c3
     path: patches/@a2ui__web_core@0.15.0.patch
   '@luma.gl/splats@9.4.2':
     hash: 3dee701bf5033cd97faec32f8a1e18d652ada636df74d4cea3d7df7fdfb83e62
@@ -229,7 +229,7 @@ importers:
         version: 0.15.0(patch_hash=83b1103e23a0cbf66dc58d99008f032abc466b7dd415f19b82adc377d033a125)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7)
       '@a2ui/web_core':
         specifier: 0.15.0
-        version: 0.15.0(patch_hash=275fbec1898cbb1ceba94f27adb0bad320ee6dc383f966eae68719b10043befa)
+        version: 0.15.0(patch_hash=4cd64b3659b2322468db9a10794fe9bd6eeac0430b2ac21cdbfa621831ae96c3)
       '@anthropic-ai/sdk':
         specifier: ^1.8.0
         version: 1.8.0(zod@4.6.7)
@@ -1023,7 +1023,7 @@ importers:
         version: 0.1.0(patch_hash=bd6b6288fc34d3316476b90f1d913a17233648b125f38495225fcf47de20b8ac)
       '@a2ui/web_core':
         specifier: 0.15.0
-        version: 0.15.0(patch_hash=275fbec1898cbb1ceba94f27adb0bad320ee6dc383f966eae68719b10043befa)
+        version: 0.15.0(patch_hash=4cd64b3659b2322468db9a10794fe9bd6eeac0430b2ac21cdbfa621831ae96c3)
       zod:
         specifier: ^4.6.7
         version: 4.6.7
@@ -2198,7 +2198,7 @@ importers:
     devDependencies:
       '@a2ui/web_core':
         specifier: 0.15.0
-        version: 0.15.0(patch_hash=275fbec1898cbb1ceba94f27adb0bad320ee6dc383f966eae68719b10043befa)
+        version: 0.15.0(patch_hash=4cd64b3659b2322468db9a10794fe9bd6eeac0430b2ac21cdbfa621831ae96c3)
       '@mergifyio/vitest':
         specifier: ^2026.11.8
         version: 2026.11.8(vitest@5.1.0(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
@@ -8031,26 +8031,26 @@ snapshots:
 
   '@a2ui/agent@0.1.0(patch_hash=bd6b6288fc34d3316476b90f1d913a17233648b125f38495225fcf47de20b8ac)':
     dependencies:
-      '@a2ui/web_core': 0.15.0(patch_hash=275fbec1898cbb1ceba94f27adb0bad320ee6dc383f966eae68719b10043befa)
+      '@a2ui/web_core': 0.15.0(patch_hash=4cd64b3659b2322468db9a10794fe9bd6eeac0430b2ac21cdbfa621831ae96c3)
       antlr4ng: 3.0.16
 
-  '@a2ui/markdown-it@0.2.2(@a2ui/web_core@0.15.0(patch_hash=275fbec1898cbb1ceba94f27adb0bad320ee6dc383f966eae68719b10043befa))':
+  '@a2ui/markdown-it@0.2.2(@a2ui/web_core@0.15.0(patch_hash=4cd64b3659b2322468db9a10794fe9bd6eeac0430b2ac21cdbfa621831ae96c3))':
     dependencies:
-      '@a2ui/web_core': 0.15.0(patch_hash=275fbec1898cbb1ceba94f27adb0bad320ee6dc383f966eae68719b10043befa)
+      '@a2ui/web_core': 0.15.0(patch_hash=4cd64b3659b2322468db9a10794fe9bd6eeac0430b2ac21cdbfa621831ae96c3)
       dompurify: 3.4.18
       markdown-it: 14.3.3
 
   '@a2ui/react@0.15.0(patch_hash=83b1103e23a0cbf66dc58d99008f032abc466b7dd415f19b82adc377d033a125)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7)':
     dependencies:
-      '@a2ui/markdown-it': 0.2.2(@a2ui/web_core@0.15.0(patch_hash=275fbec1898cbb1ceba94f27adb0bad320ee6dc383f966eae68719b10043befa))
-      '@a2ui/web_core': 0.15.0(patch_hash=275fbec1898cbb1ceba94f27adb0bad320ee6dc383f966eae68719b10043befa)
+      '@a2ui/markdown-it': 0.2.2(@a2ui/web_core@0.15.0(patch_hash=4cd64b3659b2322468db9a10794fe9bd6eeac0430b2ac21cdbfa621831ae96c3))
+      '@a2ui/web_core': 0.15.0(patch_hash=4cd64b3659b2322468db9a10794fe9bd6eeac0430b2ac21cdbfa621831ae96c3)
       clsx: 2.1.1
       markdown-it: 14.3.3
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
       zod: 4.6.7
 
-  '@a2ui/web_core@0.15.0(patch_hash=275fbec1898cbb1ceba94f27adb0bad320ee6dc383f966eae68719b10043befa)':
+  '@a2ui/web_core@0.15.0(patch_hash=4cd64b3659b2322468db9a10794fe9bd6eeac0430b2ac21cdbfa621831ae96c3)':
     dependencies:
       '@lit/context': 1.1.6
       '@preact/signals-core': 1.14.5

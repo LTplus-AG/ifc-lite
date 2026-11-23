@@ -26,11 +26,11 @@ export function useViewerHost(): A2uiViewerHost | null {
 }
 
 /** Model-facing repair prompt for a rejected block. Sent to the assistant, so it stays English. */
-export function repairPrompt(error: string): string {
+function repairPrompt(error: string): string {
   return `Your last <a2ui> block was rejected by the viewer: ${error}\nSend the corrected <a2ui> block only.`;
 }
 
-export interface SegmentsViewProps {
+interface SegmentsViewProps {
   session: A2uiMessageSession;
   host: A2uiViewerHost;
   onFollowUp?: FollowUpHandler;

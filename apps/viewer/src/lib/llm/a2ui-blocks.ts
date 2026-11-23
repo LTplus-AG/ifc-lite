@@ -17,13 +17,9 @@
 const OPEN_TAG = '<a2ui>';
 const CLOSE_TAG = '</a2ui>';
 
+/** True when the text (a reply, or a fenced code block, which models sometimes use) holds an A2UI block. */
 export function hasA2uiBlock(content: string): boolean {
   return content.includes(OPEN_TAG);
-}
-
-/** A fenced code block whose body is an A2UI block (models sometimes fence them). */
-export function isA2uiFence(fence: string): boolean {
-  return fence.includes(OPEN_TAG);
 }
 
 export type A2uiReplyPart =

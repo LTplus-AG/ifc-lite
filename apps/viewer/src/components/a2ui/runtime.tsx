@@ -44,22 +44,51 @@ export function useModelsVersion(): unknown {
   return useMemo(() => ({ models, mutationVersion }), [models, mutationVersion]);
 }
 
-/** One reader per models version: field caches never outlive the data they read. */
-export function useFieldReader(): FieldReader {
+/**
+ * One reader and one result cache per host and models version, shared by
+ * every component on every surface: a stats row, table and chart over the
+ * same query scan the model once. Replaced when the models change.
+ */
+interface SharedEvaluation { models: unknown; mutationVersion: unknown; reader: FieldReader; results: Map<string, QueryResult> }
+const shared = new WeakMap<A2uiViewerHost, SharedEvaluation>();
+const MAX_CACHED_RESULTS = 256;
+
+function sharedEvaluation(host: A2uiViewerHost, models: unknown, mutationVersion: unknown): SharedEvaluation {
+  let entry = shared.get(host);
+  if (!entry || entry.models !== models || entry.mutationVersion !== mutationVersion) {
+    entry = { models, mutationVersion, reader: new FieldReader(host), results: new Map() };
+    shared.set(host, entry);
+  }
+  return entry;
+}
+
+function useSharedEvaluation(): SharedEvaluation {
   const { host } = useA2uiRuntime();
-  const version = useModelsVersion();
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- the version is the cache key
-  return useMemo(() => new FieldReader(host), [host, version]);
+  const models = useViewerStore((s) => s.models);
+  const mutationVersion = useViewerStore((s) => s.mutationVersion);
+  return useMemo(() => sharedEvaluation(host, models, mutationVersion), [host, models, mutationVersion]);
+}
+
+export function useFieldReader(): FieldReader {
+  return useSharedEvaluation().reader;
 }
 
 /** Evaluate a bound query live against the loaded models. */
 export function useQueryResult(query: unknown): { result: QueryResult | null; reader: FieldReader } {
   const { host } = useA2uiRuntime();
-  const reader = useFieldReader();
+  const evaluation = useSharedEvaluation();
   const key = query === undefined ? '' : JSON.stringify(query);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` stands for `query`
-  const result = useMemo(() => (query === undefined ? null : evaluateQuery(host, query, reader)), [host, reader, key]);
-  return { result, reader };
+  const result = useMemo(() => {
+    if (query === undefined) return null;
+    const hit = evaluation.results.get(key);
+    if (hit) return hit;
+    if (evaluation.results.size >= MAX_CACHED_RESULTS) evaluation.results.clear();
+    const fresh = evaluateQuery(host, query, evaluation.reader);
+    evaluation.results.set(key, fresh);
+    return fresh;
+  }, [host, evaluation, key]);
+  return { result, reader: evaluation.reader };
 }
 
 export function useTarget(args: { refs?: unknown; query?: unknown }): Target {

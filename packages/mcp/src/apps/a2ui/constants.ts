@@ -7,3 +7,6 @@ export const A2UI_APP_MIME_TYPE = 'text/html;profile=mcp-app';
 export const SURFACE_ACTION_TOOL = 'a2ui_viewer_action';
 export const SURFACE_ACTIONS = ['select', 'isolate', 'colorize', 'flyTo', 'resetView'] as const;
 export type SurfaceAction = typeof SURFACE_ACTIONS[number];
+
+/** Highlight colour for colorize when the surface names none. */
+export const DEFAULT_HIGHLIGHT_COLOR = '#bd621f';

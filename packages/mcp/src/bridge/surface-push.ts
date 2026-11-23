@@ -2,14 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { A2UI_PROTOCOL_VERSION, buildSurface, type SurfaceSpec } from '@ifc-lite/a2ui';
+import { A2UI_PROTOCOL_VERSION, buildSurface, SECTION_KINDS, type SurfaceSpec } from '@ifc-lite/a2ui';
 import { toolError, ToolErrorCode } from '../errors.js';
 import type { CallToolResult } from '../protocol/index.js';
 import type { Tool } from '../tools/types.js';
 import { checkJsonBounds, isRecord } from './json-bounds.js';
 import { BRIDGE_SURFACE_TOOL } from './protocol.js';
-
-const SECTION_KINDS = ['text', 'callout', 'stats', 'table', 'list', 'chart', 'legend', 'actions', 'entity'];
 
 async function prepare(input: Record<string, unknown>) {
   if ((input.messages === undefined) === (input.spec === undefined)) {
@@ -26,7 +24,7 @@ async function prepare(input: Record<string, unknown>) {
     || !['createSurface', 'updateComponents', 'updateDataModel', 'deleteSurface'].some((kind) => kind in message))) {
     throw new Error('Provide A2UI v1.0 surface and data messages.');
   }
-  if (Buffer.byteLength(JSON.stringify({ messages, title })) > 512 * 1024) throw new Error('Built surface exceeds 512 KiB.');
+  if (input.spec !== undefined && Buffer.byteLength(JSON.stringify({ messages, title })) > 512 * 1024) throw new Error('Built surface exceeds 512 KiB.');
   const { validateIfcMessages } = await import('@ifc-lite/a2ui/agent');
   const errors = validateIfcMessages(messages);
   if (errors.length) throw new Error(errors.join('\n'));
@@ -51,7 +49,7 @@ export function surfacePushTool(forward: (surface: Record<string, unknown>, sign
             title: { type: 'string', maxLength: 256 },
             card: { type: 'boolean' },
             sections: { type: 'array', minItems: 1, maxItems: 64, items: {
-              type: 'object', required: ['kind'], properties: { kind: { type: 'string', enum: SECTION_KINDS } },
+              type: 'object', required: ['kind'], properties: { kind: { type: 'string', enum: [...SECTION_KINDS] } },
             } },
           },
         },

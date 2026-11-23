@@ -9,10 +9,10 @@
  * message once it is final so a reload replays it.
  */
 
-import { useCallback, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
+import { useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
 import { useViewerStore } from '@/store';
 import type { ChatMessage } from '@/lib/llm/types';
-import { composeFollowUpPrompt } from '@/lib/a2ui/actions';
+import { followUpToChat } from '@/lib/a2ui/actions';
 import { sessionFor, syncSession, STREAMING_MESSAGE_ID } from '@/lib/a2ui/chat-sessions';
 import { SegmentsView, useViewerHost } from '@/components/a2ui/SegmentsView';
 
@@ -43,10 +43,6 @@ export default function A2uiChatContent({ message, isStreaming, renderText, fall
     }
   }, [host, id, content, a2ui, isStreaming, synced]);
 
-  const onFollowUp = useCallback((text: string, context: Record<string, unknown>) => {
-    useViewerStore.getState().queueChatPrompt(composeFollowUpPrompt(text, context));
-  }, []);
-
   if (!host || !synced) return <>{fallback}</>;
-  return <SegmentsView session={synced} host={host} onFollowUp={onFollowUp} renderText={renderText} />;
+  return <SegmentsView session={synced} host={host} onFollowUp={followUpToChat} renderText={renderText} />;
 }

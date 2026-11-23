@@ -10,10 +10,13 @@ import type { EntityData } from '@ifc-lite/sdk';
 import type { LoadedModel } from '../context.js';
 import { materialFallbackName } from '../material-naming.js';
 
-function readField(model: LoadedModel, entity: EntityData, field: FieldPath) {
+type Attributes = ReturnType<LoadedModel['bim']['attributes']>;
+
+/** `attrs` loads the entity's attributes once (a source re-parse) however many fields read them. */
+function readField(model: LoadedModel, entity: EntityData, field: FieldPath, attrs: () => Attributes) {
   switch (field.kind) {
     case 'attribute':
-      return model.bim.attributes(entity.ref).find((a) => a.name === field.name)?.value;
+      return attrs().find((a) => a.name === field.name)?.value;
     case 'property':
       return model.bim.property(entity.ref, field.set, field.name)
         ?? model.bim.quantity(entity.ref, field.set, field.name);
@@ -43,14 +46,16 @@ export function computePresentationQuery(
   let total = 0;
   for (const entity of model.bim.query().byType(...(spec.types ?? [])).toArray()) {
     signal.throwIfAborted();
+    let loaded: Attributes | undefined;
+    const attrs = () => (loaded ??= model.bim.attributes(entity.ref));
     if (spec.storey !== undefined && model.bim.storey(entity.ref)?.name.toLowerCase() !== spec.storey.toLowerCase()) continue;
-    if (!filters.every(({ condition, field }) => matchesCondition(readField(model, entity, field), condition))) continue;
+    if (!filters.every(({ condition, field }) => matchesCondition(readField(model, entity, field, attrs), condition))) continue;
     total++;
     if (rows.length >= limit) continue;
     const ref = encodeRef(entity.ref);
-    rows.push({ ...Object.fromEntries(fields.map(([path, field]) => [path, readField(model, entity, field) ?? null])), ref });
+    rows.push({ ...Object.fromEntries(fields.map(([path, field]) => [path, readField(model, entity, field, attrs) ?? null])), ref });
     if (groupField) {
-      const label = String(readField(model, entity, groupField) ?? '(missing)') || '(missing)';
+      const label = String(readField(model, entity, groupField, attrs) ?? '(missing)') || '(missing)';
       const group = groups.get(label) ?? { label, value: 0, refs: [] };
       group.value++;
       group.refs?.push(ref);

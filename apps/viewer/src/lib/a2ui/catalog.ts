@@ -47,7 +47,7 @@ export function ifcFunctionImplementations(host: A2uiViewerHost): FunctionImplem
   });
 }
 
-export function createRendererCatalog(host: A2uiViewerHost) {
+function createRendererCatalog(host: A2uiViewerHost) {
   return createIfcCatalog<ReactCatalogComponent, FunctionImplementation>({
     components: IFC_REACT_COMPONENTS,
     functions: ifcFunctionImplementations(host),

@@ -7,7 +7,7 @@
  */
 
 import type { CodeBlock } from './types.js';
-import { isA2uiFence } from './a2ui-blocks.js';
+import { hasA2uiBlock } from './a2ui-blocks.js';
 
 /**
  * Parse fenced code blocks from a markdown string.
@@ -27,7 +27,7 @@ export function extractCodeBlocks(markdown: string): CodeBlock[] {
     const language = match[1] || 'js';
     const code = match[2].trim();
     // A fenced <a2ui> block is UI for the renderer, never a script to run.
-    if (isA2uiFence(match[0])) continue;
+    if (hasA2uiBlock(match[0])) continue;
 
     // Only extract JS/TS code blocks (skip html, css, json, etc. unless they look like scripts)
     const isExecutable = ['js', 'javascript', 'ts', 'typescript', ''].includes(language.toLowerCase());

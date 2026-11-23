@@ -20,10 +20,9 @@ import type { FollowUpHandler } from './actions.js';
 
 export type { AgentToRendererMessage, FollowUpHandler };
 
-export interface A2uiMessagesViewProps {
-  messages: AgentToRendererMessage[];
-  onFollowUp?: FollowUpHandler;
-}
+import type { A2uiMessagesViewProps } from '@/components/a2ui/MessagesView';
+
+export type { A2uiMessagesViewProps };
 
 const LazyMessagesView = lazyChunk(() => import('@/components/a2ui/MessagesView'));
 

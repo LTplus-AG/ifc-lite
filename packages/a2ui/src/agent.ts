@@ -9,13 +9,12 @@
  *
  * Browser note: `@a2ui/agent` imports `fs` and `path` at module top for its
  * file-system catalog provider, which this module never calls. Browser
- * bundles alias both to `stubs/node-builtins.js` (see the viewer's Vite config).
+ * bundles alias both to a throwing stub (see the viewer's `vite-a2ui-node-builtins.ts`).
  */
 
 import {
   A2uiGenerator,
   CatalogConfig,
-  DirectJsonFormatFactory,
   ExpressFormatFactory,
   RendererState,
   validatePayload,
@@ -29,13 +28,6 @@ import type { MessageProcessor } from '@a2ui/web_core/v1_0';
 import { A2UI_PROTOCOL_VERSION, IFC_CATALOG_ID } from './policy.js';
 import { createIfcCatalog } from './catalog/catalog.js';
 
-export type IfcInferenceFormat = 'express' | 'json';
-
-export interface IfcAgentOptions {
-  /** `express` (default) is about a third of the tokens of `json`. */
-  format?: IfcInferenceFormat;
-}
-
 export interface IfcStreamOptions {
   /**
    * The renderer's processor when the same app renders the answer (a browser
@@ -45,36 +37,23 @@ export interface IfcStreamOptions {
 }
 
 export interface IfcAgent {
-  readonly format: IfcInferenceFormat;
-  readonly catalogId: string;
   /** Append to the system prompt. */
   readonly promptSnippet: string;
   /** Parse a complete reply. Throws `A2uiError` with `partialResults` on a bad block. */
   parse(reply: string): ResponsePart[];
   /** Stream a reply chunk by chunk. A rejected block yields an `error` part and parsing continues. */
   openStream(options?: IfcStreamOptions): ResponseStream<StreamPart>;
-  /** Validate messages produced elsewhere (scripts, MCP tools). Returns problems, empty when valid. */
-  validate(messages: unknown): string[];
 }
 
-let generatorCache: { format: IfcInferenceFormat; generator: A2uiGenerator } | undefined;
+let generator: A2uiGenerator | undefined;
 
-function generatorFor(format: IfcInferenceFormat): A2uiGenerator {
-  if (generatorCache?.format === format) return generatorCache.generator;
-  const factory = format === 'json' ? new DirectJsonFormatFactory() : new ExpressFormatFactory();
-  const generator = new A2uiGenerator([new CatalogConfig(createIfcCatalog())], undefined, factory);
-  generatorCache = { format, generator };
-  return generator;
-}
-
-export function createIfcAgent(options: IfcAgentOptions = {}): IfcAgent {
-  const format = options.format ?? 'express';
-  const processor: A2uiRequestProcessor = generatorFor(format).createProcessor({
+/** Express format: about a third of the tokens of direct JSON. */
+export function createIfcAgent(): IfcAgent {
+  generator ??= new A2uiGenerator([new CatalogConfig(createIfcCatalog())], undefined, new ExpressFormatFactory());
+  const processor: A2uiRequestProcessor = generator.createProcessor({
     [A2UI_PROTOCOL_VERSION]: { supportedCatalogIds: [IFC_CATALOG_ID] },
   });
   return {
-    format,
-    catalogId: IFC_CATALOG_ID,
     promptSnippet: processor.promptSnippet,
     parse: (reply) => processor.parseResponse(reply),
     openStream: (streamOptions = {}) =>
@@ -82,10 +61,10 @@ export function createIfcAgent(options: IfcAgentOptions = {}): IfcAgent {
         afterRejectedBlock: 'continue',
         ...(streamOptions.renderer ? { state: RendererState.of(streamOptions.renderer) } : {}),
       }),
-    validate: (messages) => validateIfcMessages(messages),
   };
 }
 
+/** Validate messages produced elsewhere (scripts, MCP tools). Returns problems, empty when valid. */
 const validationCatalog = { current: undefined as ReturnType<typeof createIfcCatalog> | undefined };
 
 export function validateIfcMessages(messages: unknown): string[] {

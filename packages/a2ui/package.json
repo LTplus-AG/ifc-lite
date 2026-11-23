@@ -18,15 +18,10 @@
     "./agent": {
       "types": "./dist/agent.d.ts",
       "import": "./dist/agent.js"
-    },
-    "./stubs/node-builtins": {
-      "types": "./stubs/node-builtins.d.ts",
-      "default": "./stubs/node-builtins.js"
     }
   },
   "files": [
-    "dist",
-    "stubs"
+    "dist"
   ],
   "scripts": {
     "build": "tsc",

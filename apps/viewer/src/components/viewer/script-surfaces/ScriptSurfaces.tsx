@@ -8,23 +8,18 @@
  * click away for script authors.
  */
 
-import { useCallback } from 'react';
+import { memo, useState } from 'react';
 import type { CreateSurfaceMessage } from '@ifc-lite/a2ui';
 import { useTranslation } from '@/i18n';
-import { composeFollowUpPrompt } from '@/lib/a2ui/actions';
+import { followUpToChat } from '@/lib/a2ui/actions';
 import { A2uiMessagesView, type AgentToRendererMessage } from '@/lib/a2ui/surface-host';
-import { useViewerStore } from '@/store';
 
 interface ScriptSurfacesProps {
   surfaces: CreateSurfaceMessage[][];
-  onFollowUp?: (text: string, context: Record<string, unknown>) => void;
 }
 
-export function ScriptSurfaces({ surfaces, onFollowUp }: ScriptSurfacesProps) {
+export const ScriptSurfaces = memo(function ScriptSurfaces({ surfaces }: ScriptSurfacesProps) {
   const { t } = useTranslation();
-  const toChat = useCallback((text: string, context: Record<string, unknown>) => {
-    useViewerStore.getState().queueChatPrompt(composeFollowUpPrompt(text, context));
-  }, []);
   if (!surfaces.length) return null;
   return (
     <div className="mt-1 flex flex-col gap-2 border-t border-border/50 pt-2" data-script-surfaces={surfaces.length}>
@@ -32,13 +27,21 @@ export function ScriptSurfaces({ surfaces, onFollowUp }: ScriptSurfacesProps) {
         <A2uiMessagesView
           key={batch[0]?.createSurface.surfaceId ?? index}
           messages={batch as unknown as AgentToRendererMessage[]}
-          onFollowUp={onFollowUp ?? toChat}
+          onFollowUp={followUpToChat}
         />
       ))}
-      <details className="text-muted-foreground">
-        <summary className="cursor-pointer">{t('scriptPanel.output.surfaces', { count: surfaces.length })}</summary>
-        <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all">{JSON.stringify(surfaces, null, 2)}</pre>
-      </details>
+      <RawPayload surfaces={surfaces} label={t('scriptPanel.output.surfaces', { count: surfaces.length })} />
     </div>
+  );
+});
+
+/** The raw payload, serialised only once the author opens it. */
+function RawPayload({ surfaces, label }: { surfaces: CreateSurfaceMessage[][]; label: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <details className="text-muted-foreground" onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary className="cursor-pointer">{label}</summary>
+      {open && <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all">{JSON.stringify(surfaces, null, 2)}</pre>}
+    </details>
   );
 }

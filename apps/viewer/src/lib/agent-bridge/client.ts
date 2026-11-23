@@ -56,6 +56,7 @@ import type { DeliveryClaim } from '../agent-tools/delivery';
 import type { ToolOutcome } from './result-frame';
 import { CALL_LIMITS, type CallLimits } from './call-admission';
 import { CallRunner } from './call-runner';
+import { sendUiEventFrame } from './ui-event-frame';
 import { WELCOME_TIMEOUT_CLOSE, statusForClose } from './close-outcome';
 
 
@@ -189,32 +190,11 @@ export class BridgeClient {
     return true;
   }
 
-  /**
-   * Send a user event from an agent-pushed surface back to the agent. False
-   * when not connected, when the bridge predates UI events, or when the event
-   * fails the bridge's own bounds; the caller then keeps it in the tab.
-   */
+  /** Send a click on an agent-pushed surface back to the agent; false when it cannot go (see `sendUiEventFrame`). */
   sendUiEvent(event: BridgeUiEvent): boolean {
-    if (this.current.kind !== 'connected' || !this.ws || !this.sessionId || !this.uiEvents) return false;
-    let json = JSON.stringify({ type: 'ui-event', sessionId: this.sessionId, event });
-    let valid = parseTabMessage(json);
-    if (!valid.ok && event.context !== undefined) {
-      // A large selection overflows the context bound; the prompt alone still reaches the agent.
-      const { context: _dropped, ...bare } = event;
-      json = JSON.stringify({ type: 'ui-event', sessionId: this.sessionId, event: bare });
-      valid = parseTabMessage(json);
-    }
-    if (!valid.ok) {
-      warn(`the UI event would be refused by the bridge: ${valid.error}`);
-      return false;
-    }
-    try {
-      this.ws.send(json);
-      return true;
-    } catch (err) {
-      warn('could not send the UI event to the bridge', err);
-      return false;
-    }
+    const ws = this.ws;
+    if (this.current.kind !== 'connected' || !ws || !this.sessionId || !this.uiEvents) return false;
+    return sendUiEventFrame((json) => ws.send(json), this.sessionId, event);
   }
 
   /** Open the socket and pair. Call once per client: a used pairing code is never resent. */

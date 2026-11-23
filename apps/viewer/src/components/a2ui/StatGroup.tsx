@@ -28,12 +28,12 @@ interface StatItem {
   tone?: string;
 }
 
-export interface StatValue {
+interface StatValue {
   value: number | undefined;
   result: QueryResult | null;
 }
 
-export function statValue(host: A2uiViewerHost, reader: FieldReader, item: StatItem): StatValue {
+function statValue(host: A2uiViewerHost, reader: FieldReader, item: StatItem): StatValue {
   if (typeof item.value === 'number') return { value: item.value, result: null };
   if (item.query === undefined) return { value: undefined, result: null };
   const result = evaluateQuery(host, item.query, reader);

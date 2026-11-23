@@ -8,7 +8,7 @@ import {
   buildSurface, encodeRef, normalizeQuery, parseFieldPath,
   type ColumnSpec, type RowSpec, type SectionSpec,
 } from '@ifc-lite/a2ui';
-import { A2UI_APP_URI, SURFACE_ACTIONS } from '../apps/a2ui/constants.js';
+import { A2UI_APP_URI, DEFAULT_HIGHLIGHT_COLOR, SURFACE_ACTIONS } from '../apps/a2ui/constants.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import type { CallToolResult, JsonSchema } from '../protocol/index.js';
 import { clashCheck } from './clash.js';
@@ -42,7 +42,7 @@ async function surfaceResult(summary: string, title: string, sections: SectionSp
 }
 
 function actions(refs: string[]): SectionSpec {
-  return { kind: 'actions', actions: refs.length ? [...SURFACE_ACTIONS] : [], refs: [...new Set(refs)], color: '#bd621f' };
+  return { kind: 'actions', actions: refs.length ? [...SURFACE_ACTIONS] : [], refs: [...new Set(refs)], color: DEFAULT_HIGHLIGHT_COLOR };
 }
 
 const querySchema: JsonSchema = {

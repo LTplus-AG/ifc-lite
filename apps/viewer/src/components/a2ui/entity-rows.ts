@@ -96,7 +96,7 @@ export function sortRows(rows: EntityRow[], sort: SortState | null): EntityRow[]
     .map((x) => x.row);
 }
 
-export interface RowGroup {
+interface RowGroup {
   label: string;
   rows: EntityRow[];
 }

@@ -174,6 +174,17 @@ b = ColorLegend("storey", {types: ["IfcWall"]})`));
     await waitFor(() => ![...container.querySelectorAll('button')].some((b) => b.textContent === 'Colours applied'), 'all cleared');
   });
 
+  it('a query with problems shows the problem, never "No matching elements" (#11344)', async () => {
+    const { host } = await seedA2uiModels();
+    const { container } = await mountReply(host, block(`root = Column([t, l, c, g])
+t = EntityTable([{path: "Name"}], {types: ["Door"]})
+l = EntityList({types: ["Door"]})
+c = GroupChart("type", {types: ["Door"]})
+g = ColorLegend("type", {types: ["Door"]})`));
+    await waitFor(() => text(container).includes('The query has a problem'), 'problem notes');
+    assert.ok(!text(container).includes('No matching elements'), text(container));
+  });
+
   it('ActionBar: actions act on the query result, export runs from the click, follow-ups post a turn', async () => {
     const { host: real } = await seedA2uiModels();
     const { host, calls } = recordingHost(real);

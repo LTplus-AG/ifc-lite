@@ -16,6 +16,7 @@ import { rowsFromQuery, rowsFromRefs } from './entity-rows';
 import { useSelectAndFly } from './EntityTable';
 import { Note, ResultNotes } from './notes';
 import { useA2uiRuntime, useQueryResult } from './runtime';
+import { resultUnavailable } from '@/lib/a2ui/query-eval';
 
 export const EntityListImpl = createComponentImplementation(EntityListApi, ({ props }) => {
   const { t } = useTranslation();
@@ -34,7 +35,7 @@ export const EntityListImpl = createComponentImplementation(EntityListApi, ({ pr
     <div style={weightStyle(props.weight)} className="flex min-w-0 flex-col gap-1">
       {title && <div className="text-sm font-semibold">{title}</div>}
       <ResultNotes result={result} unloadedModels={unloadedModels} />
-      {rows.length === 0 && !result?.unloadedModel && unloadedModels.length === 0 && <Note>{t('a2ui.empty')}</Note>}
+      {rows.length === 0 && !(result && resultUnavailable(result)) && unloadedModels.length === 0 && <Note>{t('a2ui.empty')}</Note>}
       {rows.length > 0 && <ul className="flex max-h-72 flex-col overflow-auto rounded-md border text-xs">
         {rows.map((row) => (
           <li key={row.key}>

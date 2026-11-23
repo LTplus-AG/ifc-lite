@@ -23,6 +23,7 @@ import { weightStyle } from './basic-layout';
 import { groupEntityRows, initialSort, isColumn, nextSort, rowsFromData, rowsFromQuery, sortRows, type Column, type EntityRow, type SortState } from './entity-rows';
 import { Note, ResultNotes } from './notes';
 import { formatValue, useA2uiRuntime, useQueryResult, useRunFunction } from './runtime';
+import { resultUnavailable } from '@/lib/a2ui/query-eval';
 
 const DEFAULT_PAGE = 50;
 
@@ -87,7 +88,7 @@ export const EntityTableImpl = createComponentImplementation(EntityTableApi, ({ 
       {title && <div className="text-sm font-semibold">{title}</div>}
       <ResultNotes result={result} unloadedModels={unloadedModels} />
       {rows.length === 0 ? (
-        result?.unloadedModel ? null : <Note>{t('a2ui.empty')}</Note>
+        result && resultUnavailable(result) ? null : <Note>{t('a2ui.empty')}</Note>
       ) : (
         <div className="max-h-96 overflow-auto rounded-md border">
           <Table className="text-xs">

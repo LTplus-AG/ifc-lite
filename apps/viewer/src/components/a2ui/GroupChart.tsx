@@ -18,7 +18,7 @@ import { LENS_PALETTE } from '@ifc-lite/lens';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
 import { readChartTheme, useEChart, type ChartSelectEvent } from '@/components/viewer/charts/useEChart';
-import { aggregatePool, groupRows } from '@/lib/a2ui/query-eval';
+import { aggregatePool, groupRows, resultUnavailable } from '@/lib/a2ui/query-eval';
 import { weightStyle } from './basic-layout';
 import { Note, ResultNotes } from './notes';
 import { A2uiChartRendererContext, formatValue, useQueryResult, useRunFunction } from './runtime';
@@ -127,7 +127,7 @@ export const GroupChartImpl = createComponentImplementation(GroupChartApi, ({ pr
       <ResultNotes result={result} shown={result?.total} />
       {withoutNumber > 0 && <Note>{t('a2ui.chart.someNoNumbers', { count: withoutNumber, path: sumPath ?? '' })}</Note>}
       {sumUnavailable && <Note tone="warn">{t('a2ui.chart.noNumbers', { path: sumPath ?? props.path ?? 'path' })}</Note>}
-      {groups.length === 0 && !sumUnavailable && !result?.unloadedModel && <Note>{t('a2ui.empty')}</Note>}
+      {groups.length === 0 && !sumUnavailable && !(result && resultUnavailable(result)) && <Note>{t('a2ui.empty')}</Note>}
       {groups.length > 0 && (
         <ChartBoundary>
           <ChartCanvas kind={kind} groups={groups} label={t('a2ui.chart.label', { title: title || props.groupBy })} onPick={selectGroup} />

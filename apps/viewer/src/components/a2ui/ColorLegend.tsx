@@ -17,7 +17,7 @@ import { LENS_PALETTE } from '@ifc-lite/lens';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useTranslation } from '@/i18n';
-import { aggregatePool, groupRows } from '@/lib/a2ui/query-eval';
+import { aggregatePool, groupRows, resultUnavailable } from '@/lib/a2ui/query-eval';
 import { weightStyle } from './basic-layout';
 import { Note, ResultNotes } from './notes';
 import { reportActionError, useA2uiRuntime, useModelsVersion, useQueryResult, useRunFunction } from './runtime';
@@ -159,7 +159,7 @@ export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ 
     <div style={weightStyle(props.weight)} className="flex min-w-0 flex-col gap-1.5">
       {title && <div className="text-sm font-semibold">{title}</div>}
       <ResultNotes result={result} shown={result?.total} unloadedModels={script?.unloadedModels} />
-      {entries.length === 0 && (scriptEntries || !result?.unloadedModel) && <Note>{t('a2ui.empty')}</Note>}
+      {entries.length === 0 && (scriptEntries || !(result && resultUnavailable(result))) && <Note>{t('a2ui.empty')}</Note>}
       <ul className="flex flex-col gap-0.5 text-xs">
         {entries.map((entry) => (
           <li key={entry.label} data-a2ui-legend={entry.label} className="flex items-center gap-2">

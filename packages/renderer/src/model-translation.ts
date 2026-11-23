@@ -6,6 +6,7 @@ import { renderableCoordinates } from './renderable-coordinates.js';
 import type { Mesh } from './types.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { BoundingBox } from './scene-raycaster.js';
+import { MeshPlacementCache } from './mesh-placement-cache.js';
 import { worldAabbFromPieces } from './scene-geometry.js'; import { unionBox } from './released-entity-bounds.js';
 
 type Offset = readonly [number, number, number];
@@ -46,11 +47,6 @@ function moveBounds(bounds: Bounds, delta: Offset): Bounds {
   return { min: sum(bounds.min, delta), max: sum(bounds.max, delta) };
 }
 
-interface MeshPlacement {
-  source: MeshData;
-  placed: MeshData;
-}
-
 interface BatchPlacement {
   modelIndex: number;
   origin: Offset;
@@ -64,7 +60,7 @@ export class ModelTranslations {
   private authored = new WeakMap<Mesh, { base: number[]; written: number[]; offset: Offset; bounds?: Bounds; writtenBounds?: Bounds }>();
   private offsets = new Map<number, Offset>();
   private yaws = new Map<number, ModelYaw>();
-  private meshes = new WeakMap<MeshData, MeshPlacement>();
+  private meshes = new MeshPlacementCache();
   private batches = new WeakMap<Drawable, BatchPlacement>();
   private instances = new WeakMap<ArrayBuffer, {
     base: Float64Array;
@@ -116,13 +112,15 @@ export class ModelTranslations {
     return true;
   }
 
+  /** Drop the source-keyed placed copies on a CPU release (why: `MeshPlacementCache`). */
+  forgetPlacements(): void { this.meshes.forgetSources(); }
+
   /** Preserve source identity and source coordinates for export and re-alignment. */
   placeMesh(source: MeshData): MeshData {
     let entry = this.meshes.get(source);
     if (!entry) {
       entry = { source, placed: { ...source } };
-      this.meshes.set(source, entry);
-      this.meshes.set(entry.placed, entry);
+      this.meshes.set(entry);
     }
     const delta = this.get(entry.source.modelIndex);
     entry.placed.origin = sum(entry.source.origin ?? ZERO, delta);
@@ -174,7 +172,7 @@ export class ModelTranslations {
     if (mesh.geometryAabb) source.geometryAabb = { ...mesh.geometryAabb,
       min: difference(mesh.geometryAabb.min, delta), max: difference(mesh.geometryAabb.max, delta) };
     const entry = { source, placed: mesh };
-    this.meshes.set(source, entry); this.meshes.set(mesh, entry);
+    this.meshes.set(entry);
     return source;
   }
 
@@ -391,7 +389,7 @@ export class ModelTranslations {
     this.offsets.clear();
     this.yaws.clear();
     this.authored = new WeakMap();
-    this.meshes = new WeakMap();
+    this.meshes = new MeshPlacementCache();
     this.batches = new WeakMap();
     this.instances = new WeakMap();
     this.releasedBounds = new WeakMap();

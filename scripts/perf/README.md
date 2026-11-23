@@ -20,6 +20,18 @@ face-alignment tolerance alone also changed a separate authored recess in
 the source host before allowing a weld-induced bounds shift to extend the
 cutter through the core.
 
+## Flush recesses beyond a finish strip (#11313)
+
+When a weld changes the rectangle extension decision, check the authored
+box against the source triangles. A box that encloses only air and touches
+the exterior wall face can be skipped. Probe the face beyond the cutter's
+edge as well as inside its footprint. An empty box alone also matches a
+reveal already modeled into the finish, as on wall #6934 in `rvt01.ifc`.
+
+The native load probe matched mesh fingerprints on FZK-Haus, ISSUE_129,
+Holter, and `rvt01.ifc`. Timings were within the spread of the shared
+workstation runs.
+
 ## Native finishes for mapped occurrences (#10995)
 
 The worker-pool A/B on AC20-FZK-Haus found no measurable change in parse or

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-//! Split-wall recess regressions for #10512 and #10528.
+//! Split-wall recess regressions for #10512, #10528 and #11313.
 
 mod voids_common;
 #[path = "voids_common/split_wall.rs"]
@@ -78,6 +78,22 @@ fn split_recess_keeps_the_core_at_the_flush_interface() {
     }
 }
 
+
+#[test]
+fn flush_recess_beyond_the_finish_keeps_the_core() {
+    // #11313: the finish ends at x=0.5 m, before the recess at x=1–2 m.
+    // All 2.4 m³ of core and 0.018 m³ of finish should remain.
+    for site in [[0.0; 2], [1000.0, 800.0]] {
+        for recess in [Recess::FromInterface, Recess::ToInterfaceAtTop] {
+            let content = split_wall::wall_with_finish(site, 0.0, 2.274, recess, 0.5);
+            let (mesh, _) = fixture_host(&content, site != [0.0; 2]);
+            let volume = mesh_volume(&mesh);
+            assert!((volume - 2.418).abs() < 0.0006, "{site:?} {recess:?}: {volume} m³");
+            let ledger = EdgeLedger::build(&mesh, VertexKey::GridMul(1.0e3), Degenerate::SkipTriangle);
+            assert_eq!(ledger.unbalanced().count(), 0, "{site:?} {recess:?}");
+        }
+    }
+}
 
 /// The two touching bodies contribute opposite interface faces. The finish
 /// must lose both sides of the recessed patch even when its end bisects the

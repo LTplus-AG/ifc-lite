@@ -140,7 +140,8 @@ export function decideStatus(input) {
   if (input.jobStatus === 'cancelled') return { post: false, reason: 'cancelled: the pending status stays, and a newer run on this sha posts its own' };
   const { selectOutcome, run, runOutcome, result } = input;
   if (selectOutcome !== 'success') return post('failure', `The selection step ended ${selectOutcome || 'unrun'}; ${RERUN}`);
-  if (run !== 'true') return post('success', 'No viewer test file selected for this change');
+  if (run === 'false') return post('success', 'No viewer test file selected for this change');
+  if (run !== 'true') return post('failure', `The selection step published no run decision (run=${JSON.stringify(String(run ?? ''))}); ${RERUN}`);
   if (input.downloadOutcome && input.downloadOutcome !== 'success') {
     return post('failure', `Build artifacts unavailable (kept 1 day; download ${input.downloadOutcome}); ${RERUN}`);
   }

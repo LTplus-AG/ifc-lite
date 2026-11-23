@@ -173,12 +173,15 @@ test('runSelectedTests: a retry that may hang is capped so the reporting reserve
   const started = Math.floor(Date.now() / 1000) - 10 * 60;
   f.env.JOB_STARTED_AT = String(started);
   const limits = recordTimeouts(f);
+  // The child computes its limits after this instant, so this bounds the clock it used
+  // from below without counting the time the child itself took to run.
+  const before = Date.now();
   const { result } = runIt(f, 'on');
   assert.equal(result.passed, true, 'the retry ran');
   const [first, retry] = limits();
   assert.ok(first <= 5 * 60, `first attempt ${first} s: 20 - 10 - 5 min`);
   const reserveStarts = (started + 20 * 60) * 1000 - REPORT_RESERVE_MS;
-  assert.ok(Date.now() + (retry + 30) * 1000 <= reserveStarts, `retry limit ${retry} s + 30 s kill-after ends before the reserve`);
+  assert.ok(before + (retry + 30) * 1000 <= reserveStarts, `retry limit ${retry} s + 30 s kill-after ends before the reserve`);
   assert.ok(retry >= 380, `and still uses the room it has (${retry} s)`);
 });
 

@@ -77,6 +77,13 @@ test('final: success when the files passed (a retry counts) or nothing was selec
   assert.deepEqual(final({ result: { files: 3, passed: true } }), { post: true, state: 'success', description: '3 selected files passed' });
   assert.equal(final({ result: { files: 1, passed: true, passedOnRetry: ['src/a.test.ts'] } }).description, '1 selected file passed (1 after a retry)');
   assert.equal(final({ run: 'false', runOutcome: 'skipped', result: null }).state, 'success');
+
+});
+
+test('final: a selection step that publishes no run decision fails instead of reading as nothing selected', () => {
+  assert.equal(final({ run: undefined, runOutcome: 'skipped', result: null }).state, 'failure');
+  assert.equal(final({ run: '', runOutcome: 'skipped', result: null }).state, 'failure');
+  assert.equal(final({ run: 'TRUE ', runOutcome: 'skipped', result: null }).state, 'failure');
 });
 
 test('final: failure names the failing files, and every missing verdict is a failure', () => {

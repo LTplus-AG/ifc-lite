@@ -14,7 +14,7 @@ use crate::schema_ifc2x3_slots::Ifc2x3SlotFill;
 use crate::schema_enum::ConversionChecks;
 use crate::schema_plan::{plan_for, Adjust, Plan};
 use crate::schema_unrepresented::{product_proxy, resolve_unrepresented_entity, UnrepresentedEntityError};
-use crate::step_slot::split_top_level_args;
+use crate::step_slot::{slot_is, split_top_level_args};
 
 /// Canonicalize a FILE_SCHEMA label to one of the four families we convert
 /// between. Re-export's default for a label naming no family is IFC4.
@@ -175,8 +175,7 @@ pub(crate) fn convert_entity_type(entity_type: &str, from: &str, to: &str) -> St
     rename_type(&u, from, to).map_or(u, str::to_string)
 }
 
-/// The renamed type for an uppercase `u` between two canonical schemas, or
-/// `None` when it keeps its name.
+/// The replacement for an uppercase type name when it changes between schemas.
 pub(crate) fn rename_type(u: &str, from: &str, to: &str) -> Option<&'static str> {
     if to == "IFC2X3" {
         if let Some(target) = crate::schema_mep::ifc2x3_type(u) {
@@ -184,8 +183,9 @@ pub(crate) fn rename_type(u: &str, from: &str, to: &str) -> Option<&'static str>
         }
     }
     match (from, to) {
-        // 2X3 → 4 (then 4 → 4X3 is a no-op rename-wise)
-        ("IFC2X3", "IFC4") | ("IFC2X3", "IFC4X3") | ("IFC2X3", "IFC5") => map_2x3_to_4(u),
+        // IFC5 has no attribute lists for the property subtype replacements (#10777).
+        ("IFC2X3", "IFC4") | ("IFC2X3", "IFC4X3") => map_2x3_to_4(u).or_else(|| crate::schema_attr_maps::upgrade_type(u)),
+        ("IFC2X3", "IFC5") => map_2x3_to_4(u),
         ("IFC4", "IFC2X3") => map_4_to_2x3(u),
         ("IFC4X3", "IFC4") | ("IFC5", "IFC4") => map_4x3_to_4(u),
         ("IFC4X3", "IFC2X3") | ("IFC5", "IFC2X3") => match map_4x3_to_4(u) {
@@ -236,7 +236,7 @@ pub fn convert_step_line(
         if let Some(repointed) = checks.structural.values.placement(express_id).and_then(|p| crate::step_log::replace_argument(&converted, 5, &format!("#{p}"))) {
             converted = repointed;
         }
-        converted = checks.enums.apply(checks.forms.apply(converted, cfrom, cto, &mut checks.attribute_values_dropped), cto);
+        converted = checks.enums.apply(checks.forms.apply(converted, cfrom, cto, express_id, &mut checks.attribute_values_dropped)?, cto);
         converted = checks.documents.apply(express_id, converted, &mut checks.attribute_values_dropped);
         if cto == "IFC2X3" { converted = checks.structural.after(express_id, converted); }
         (cto == "IFC4" && (cfrom != "IFC2X3" || crate::schema_attr_maps::upgrade_counts_ifc4_slots(&converted))).then(|| checks.ifc4_slots.count(&converted));
@@ -331,7 +331,7 @@ fn convert_record(
             let new_type = renamed.unwrap_or(&entity_type);
             // #10758: a slot a schema replaced in place keeps no value across.
             let rebuilt;
-            let attrs = match replaced.filter(|&i| args.get(i).is_some_and(|v| v.trim() != "$")) {
+            let attrs = match replaced.filter(|&i| args.get(i).is_some_and(|v| !slot_is(v, "$"))) {
                 Some(i) => {
                     lost += usize::from(holds_value(&args[i]));
                     args[i] = "$".to_owned();

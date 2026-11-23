@@ -10,7 +10,7 @@
  *   load    recorded per canonical load by modelLoadCanceller, independent of shared UI flags
  *   clash   native owned session, `clashRunning`/progress/error/result sequence; cancel uses that session
  *   ids     recorded by useIDS per native run, before its first progress update
- *   flow    `flowRunning`, `flowProgress`, `flowLastRun.ok`, `flowLastError`, the run's abort signal; cancel = `cancelWorkflowRun`
+ *   flow    `flowRunning`, `flowProgress`, `flowLastRun.ok`, `flowLastError`, the run's abort signal; cancel = `cancelFlowRun`
  *   ai      request-service in-flight entries and their receipts; cancel aborts the request
  *
  * A run that stops without an error and without a new result is recorded as
@@ -25,7 +25,7 @@ import { en } from '@/i18n/en';
 import type { TranslationKey } from '@/i18n';
 import type { ViewerState } from '@/store';
 import { activeClashRunSession } from '@/hooks/analysisRunCancellation';
-import { activeWorkflowSignal, cancelWorkflowRun } from '@/lib/flow/run-session';
+import { activeWorkflowSignal, cancelFlowRun } from '@/lib/flow/run-session';
 import { useRequestReceipts, type UsageReceipt } from '@/lib/llm/request-receipts';
 import {
   beginActivity, finishActivity, restoreActivityJournal, updateActivity, useActivityJournal, type ActivityJob,
@@ -91,7 +91,7 @@ function watchFlow(store: ViewerStoreLike): () => void {
       return {
         job: { kind: 'flow', title: 'activityTray.job.flow', panel: 'flow',
           // A captured callback can outlive journal cleanup; it owns this run only (#7122).
-          cancel: signal ? () => { if (activeWorkflowSignal() === signal) cancelWorkflowRun(); } : undefined,
+          cancel: signal ? () => { if (activeWorkflowSignal() === signal) cancelFlowRun(); } : undefined,
           ...(s.flowDoc?.name ? { subject: s.flowDoc.name } : {}) },
         baseline: { lastRun: s.flowLastRun, signal },
       };

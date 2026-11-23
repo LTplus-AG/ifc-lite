@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * `ModelLoadOptions.processedModel` opens a result the server already holds.
+ * `loadProcessedModel` opens a result the server already holds.
  *
  * The contract is mostly a NEGATIVE: the source file is not in this browser,
  * so nothing may read, hash, cache or upload it, and a miss may not reach the
@@ -61,7 +61,13 @@ function Probe({ fromUrl = false }: { fromUrl?: boolean }) {
 }
 function UrlEntry() { useProcessedModelAutoload(); return null; }
 const model = () => useViewerStore.getState().models.values().next().value;
-const nameOnly = () => new File([], 'stored.ifc');
+function loadStored(...[request, target, options]: Parameters<NonNullable<typeof api>['loadProcessedModel']>) {
+  const { name, ...processedModel } = request;
+  // The revert oracle can run the shared behavior cases against main's source-file entry.
+  if (typeof api!.loadProcessedModel === 'function') return api!.loadProcessedModel(request, target, options);
+  const fileOptions = { ...options, processedModel };
+  return api!.loadFile(new File([], name), target, fileOptions);
+}
 
 beforeEach(async () => {
   asked = []; engineInits = 0; uploads = 0; servers = []; clearLoadReport();
@@ -97,14 +103,14 @@ it('opens a stored result from a loopback server explicitly configured for an HT
   const url = 'http://localhost:8080/ifc';
   applyProcessingConfig({ server: { url } });
   await act(async () => { root.render(<Probe />); });
-  await act(async () => { await api!.loadFile(nameOnly(), { kind: 'primary' }, { processedModel }); });
+  await act(async () => { await loadStored({ ...processedModel, name: 'stored.ifc' }); });
   assert.deepEqual(servers, [url]);
   assert.equal(model()?.loadState, 'complete');
 });
 
 it('opens the stored result from the reference alone and publishes its properties', async () => {
   await act(async () => { root.render(<Probe />); });
-  await act(async () => { await api!.loadFile(nameOnly(), { kind: 'primary' }, { processedModel }); });
+  await act(async () => { await loadStored({ ...processedModel, name: 'stored.ifc' }); });
 
   assert.deepEqual(asked, [processedModel], 'the server client is handed the reference, never a File or bytes');
   assert.equal(uploads, 0);
@@ -145,7 +151,7 @@ for (const [cause, error, message, code, retryable] of CAUSES) {
     const errors: unknown[][] = [];
     mock.method(console, 'error', (...args: unknown[]) => { errors.push(args); });
     await act(async () => { root.render(<Probe />); });
-    await act(async () => { await api!.loadFile(nameOnly(), { kind: 'primary' }, { processedModel }); });
+    await act(async () => { await loadStored({ ...processedModel, name: 'stored.ifc' }); });
 
     assert.deepEqual(asked, [processedModel]);
     assert.equal(uploads, 0);
@@ -160,16 +166,16 @@ for (const [cause, error, message, code, retryable] of CAUSES) {
   });
 }
 
-it('the load option lowercases a hash for the model record, and refuses a malformed one without Retry', async () => {
+it('the load entry lowercases a hash for the model record, and refuses a malformed one without Retry', async () => {
   mock.method(console, 'error', () => {});
   await act(async () => { root.render(<Probe />); });
-  await act(async () => { await api!.loadFile(nameOnly(), { kind: 'primary' }, { processedModel: { sha256: sha256.toUpperCase(), bytes: 7 } }); });
+  await act(async () => { await loadStored({ name: 'stored.ifc', sha256: sha256.toUpperCase(), bytes: 7 }); });
   assert.deepEqual(model()?.processedModel, { sha256, bytes: 7 });
   assert.deepEqual(asked, [{ sha256, bytes: 7 }]);
 
   // The real client refuses the hash before any request; the card offers no Retry loop.
   mock.method(IfcServerClient.prototype, 'parseParquet', async () => { throw new TypeError('A processed model is named by the SHA-256 of its source file: 64 hex characters'); });
-  await act(async () => { await api!.loadFile(nameOnly(), { kind: 'primary' }, { processedModel: { sha256: 'not-a-hash', bytes: 7 } }); });
+  await act(async () => { await loadStored({ name: 'stored.ifc', sha256: 'not-a-hash', bytes: 7 }); });
   assert.equal(model()?.loadState, 'error');
   assert.equal(useViewerStore.getState().lastLoadRetry, null);
 });
@@ -180,7 +186,7 @@ it('retries decoder initialization and opens the same processed model (#10469)',
   mock.method(IfcServerClient.prototype, 'isParquetSupported', async () => ++attempts > 1);
   mock.method(console, 'error', () => {});
   await act(async () => { root.render(<Probe />); });
-  await act(async () => { await api!.loadFile(nameOnly(), { kind: 'primary' }, { processedModel }); });
+  await act(async () => { await loadStored({ ...processedModel, name: 'stored.ifc' }); });
 
   assert.equal(model()?.loadState, 'error');
   assert.equal(asked.length, 0, 'wait for decoder initialization before requesting the model');
@@ -205,7 +211,7 @@ for (const bytes of [0, undefined, Number.NaN, '12'] as const) it(`a model of un
     return rest;
   });
   await act(async () => { root.render(<Probe />); });
-  await act(async () => { await api!.loadFile(nameOnly(), { kind: 'primary' }, { processedModel: { sha256, bytes } as ProcessedModelRef }); }); // '12' and NaN as a host calling from JS might
+  await act(async () => { await loadStored({ ...({ sha256, bytes } as ProcessedModelRef), name: 'stored.ifc' }); }); // '12' and NaN as a host calling from JS might
   assert.deepEqual(streamed, { sha256, bytes: 0 });
   assert.deepEqual(asked, [], 'the one-shot route is not taken for an unknown size');
   assert.equal(model()?.loadState, 'complete');
@@ -220,7 +226,7 @@ for (const bytes of [0, undefined, Number.NaN, '12'] as const) it(`a model of un
 
 it('refuses a federated target, whose geometry the server replay cannot address', async () => {
   await act(async () => { root.render(<Probe />); });
-  await act(async () => { await api!.loadFile(nameOnly(), { kind: 'federated', modelId: 'second' }, { processedModel }); });
+  await act(async () => { await loadStored({ ...processedModel, name: 'stored.ifc' }, { kind: 'federated', modelId: 'second' }); });
   assert.deepEqual(asked, []);
   assert.match(useViewerStore.getState().error ?? '', /only be opened as the first model/);
   assert.equal(useViewerStore.getState().lastLoadRetry, null);
@@ -235,7 +241,7 @@ it('federated processed refusal leaves an in-flight primary load in control (#10
     return release.promise;
   });
   await act(async () => { root.render(<Probe />); });
-  const initialLoad = api!.loadFile(new File([], 'in-flight.ifc'), { kind: 'primary' }, { processedModel });
+  const initialLoad = loadStored({ ...processedModel, name: 'in-flight.ifc' });
   await started.promise;
   const initial = useViewerStore.getState();
   const refusals: string[] = [];
@@ -247,8 +253,8 @@ it('federated processed refusal leaves an in-flight primary load in control (#10
   });
   try {
     await act(async () => {
-      await api!.loadFile(nameOnly(), { kind: 'federated', modelId: 'refused' }, {
-        processedModel, onLoadError: message => { refusals.push(message); },
+      await loadStored({ ...processedModel, name: 'stored.ifc' }, { kind: 'federated', modelId: 'refused' }, {
+        onLoadError: message => { refusals.push(message); },
       });
     });
     const current = useViewerStore.getState();
@@ -402,6 +408,28 @@ for (const atStartup of [false, true]) {
   });
 }
 
+it('opens a host processed model without constructing a placeholder file (#10469)', async () => {
+  stubWebGpu();
+  const OriginalFile = globalThis.File;
+  const name = 'No source file.ifc';
+  globalThis.File = class extends OriginalFile {
+    constructor(parts: BlobPart[], fileName: string, options?: FilePropertyBag) {
+      if (fileName === name && parts.length === 0) throw new Error('A processed model has no source File');
+      super(parts, fileName, options);
+    }
+  };
+  try {
+    openProcessedModel({ sha256, bytes: 7_000_000, name });
+    await act(async () => { root.render(<Probe fromUrl />); });
+    await act(async () => { await waitFor(() => model()?.loadState === 'complete', 'the processed model loads'); });
+    assert.deepEqual(asked, [{ sha256, bytes: 7_000_000 }]);
+    assert.equal(model()?.name, name);
+    assert.equal(model()?.sourceFile, undefined);
+  } finally {
+    globalThis.File = OriginalFile;
+  }
+});
+
 it('openProcessedModel refuses a hash that is not a SHA-256 before anything is asked', async () => {
   assert.throws(() => openProcessedModel({ sha256: '../x', bytes: 1, name: 'x.ifc' }, { serverUrl: '/elsewhere' }), /SHA-256 of its source file/);
   assert.equal(takeProcessedModelRequest(), null);
@@ -414,7 +442,7 @@ it('with no processing server configured, the error says so and offers no Retry'
   mock.method(console, 'error', () => {});
   setProcessingServerUrl('');
   await act(async () => { root.render(<Probe />); });
-  await act(async () => { await api!.loadFile(nameOnly(), { kind: 'primary' }, { processedModel }); });
+  await act(async () => { await loadStored({ ...processedModel, name: 'stored.ifc' }); });
   assert.deepEqual(asked, [], 'nothing is asked of a server that does not exist');
   assert.match(useViewerStore.getState().error ?? '', /No processing server is configured/);
   assert.equal(useViewerStore.getState().lastLoadRetry, null);

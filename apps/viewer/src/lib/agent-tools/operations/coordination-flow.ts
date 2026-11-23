@@ -101,13 +101,12 @@ export const coordinationFlowOperations = [
     } return { id }; });
   }),
   coordination('flow.delete', 'Delete one known saved workflow through native persistence and cancellation handling.', ['configuration'], idSchema, (i, c) => c.commit(() => {
-    saved(i.id); useViewerStore.getState().deleteFlow(i.id); const state = useViewerStore.getState();
-    // deleteFlow clears flowStorageError on a persisted delete and sets it when storage refused, so the flow would return on reload.
-    if (state.savedFlows.some(flow => flow.doc.id === i.id) || state.flowStorageError) throw internal(state.flowStorageError ?? 'Native workflow deletion refused.');
+    saved(i.id);
+    if (!useViewerStore.getState().deleteFlow(i.id)) throw internal(useViewerStore.getState().flowStorageError ?? 'Native workflow deletion refused.');
     return { deleted: i.id };
   })),
-  coordination('flow.cancel', 'Request cancellation of the active native workflow. Returns a cancellation request, never a fabricated terminal result.', ['configuration'], emptySchema, async (_, c) => {
-    const { cancelWorkflowRun, isNativeWorkflowBusy } = await import('@/lib/flow/run-session');
-    return c.commit(() => { const running = isNativeWorkflowBusy(); cancelWorkflowRun(); return { cancellation_requested: running, terminal: false }; });
+  coordination('flow.cancel', 'Request cancellation of the active native flow run. A Re-align holding the workflow lease is not cancelled; cancellation_requested is false then, so wait for it. Returns a cancellation request, never a fabricated terminal result.', ['configuration'], emptySchema, async (_, c) => {
+    const { cancelFlowRun } = await import('@/lib/flow/run-session');
+    return c.commit(() => ({ cancellation_requested: cancelFlowRun(), terminal: false }));
   }),
 ];

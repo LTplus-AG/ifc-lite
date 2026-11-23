@@ -13,6 +13,7 @@
 //! Split out of `schema_convert.rs` to stay under its line budget, same
 //! reason the TypeScript twin gives for its own split.
 
+use crate::step_slot::slot_is;
 use std::borrow::Cow;
 
 use crate::rooted_type::is_rooted_type;
@@ -28,9 +29,9 @@ use crate::schema_convert::{placeholder_guid, schema_attribute_names};
 /// IFC4X3 and declares the type (`declared_in_source`): that is the #7742
 /// direction, IFC4X3-only resources that readers drop. IFC2X3 and IFC4 sources
 /// keep main's behaviour for IFC4/IFC4X3 targets (D59): their IFC2X3-only or
-/// IFC4-only non-rooted records (`IfcCalendarDate` on an `IfcClassification`,
-/// `IfcGeneralMaterialProperties`) are written as they are, because refusing
-/// them failed real files that export on main. IFC5 has no registry and
+/// IFC4-only non-rooted records (`IfcCalendarDate` on an `IfcClassification`)
+/// are written as they are, because refusing them failed real files that
+/// export on main. IFC5 has no registry and
 /// accepts everything. A name neither schema knows passes through.
 ///
 /// Until #7742 an IFC4 target was never checked here, so an IFC4X3 -> IFC4
@@ -60,10 +61,14 @@ pub struct UnrepresentedEntityError {
     pub express_id: u32,
     pub entity_type: String,
     pub to_schema: String,
+    pub(crate) reason: Option<&'static str>,
 }
 
 impl std::fmt::Display for UnrepresentedEntityError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(reason) = self.reason {
+            return write!(f, "Cannot convert #{} ({}) to {}: {reason}", self.express_id, self.entity_type, self.to_schema);
+        }
         write!(
             f,
             "Cannot convert #{} ({}) to {}: {} has no representation in {} and is not an IfcRoot \
@@ -118,6 +123,7 @@ pub(crate) fn resolve_unrepresented_entity(
         express_id,
         entity_type: entity_type.to_string(),
         to_schema: to.to_string(),
+        reason: None,
     })
 }
 
@@ -140,7 +146,7 @@ pub(crate) fn product_proxy(prefix: &str, guid: &str, entity_type: &str, args: &
     let slot = |i: usize| args.get(i).map_or("$", String::as_str);
     // Name and ObjectType fall back to the quoted source type when the slot is `$`.
     let or_type = |i: usize| -> Cow<'_, str> {
-        if slot(i).trim() == "$" { Cow::Owned(format!("'{entity_type}'")) } else { Cow::Borrowed(slot(i)) }
+        if slot_is(slot(i), "$") { Cow::Owned(format!("'{entity_type}'")) } else { Cow::Borrowed(slot(i)) }
     };
     format!(
         "{prefix}IFCPROXY('{guid}',{},{},{},{},{},{},.NOTDEFINED.,$);",

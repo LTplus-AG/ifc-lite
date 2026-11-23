@@ -1,7 +1,0 @@
-{
-  "issue": 7955,
-  "key": "apps/viewer/src/hooks/ingest/geometryDensity.ts",
-  "mutation": "tests/evidence/10264-density-admission/behaviour.oracle.patch",
-  "test": "apps/viewer/src/hooks/ingest/geometryDensity.test.ts",
-  "why": "Reverse application keeps every export the tests import but never counts dense record bytes, so a triangulated-mesh file samples as B-rep, preflight admits the dense file a 1 GB device must refuse, and the density cases go red."
-}

@@ -20,6 +20,24 @@ pub(crate) enum Recess {
 }
 
 pub(crate) fn wall(site: [f64; 2], wall_turn_deg: f64, wall_y: f64, recess: Recess) -> String {
+    wall_with_bodies(site, wall_turn_deg, wall_y, recess, split_bodies())
+}
+
+// The manifold unit tests include this fixture module for the three-body wall.
+// Only the integration tests use the two-body fixture.
+#[allow(dead_code)]
+pub(crate) fn wall_with_finish(
+    site: [f64; 2], wall_turn_deg: f64, wall_y: f64, recess: Recess, finish_length: f64,
+) -> String {
+    let bodies = format!(
+        "{}{}#50=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#63,#67));",
+        extrusion(60, 0.0, WALL_LENGTH, 0.0, CORE),
+        extrusion(64, 0.0, finish_length, CORE, CORE + FINISH),
+    );
+    wall_with_bodies(site, wall_turn_deg, wall_y, recess, bodies)
+}
+
+fn wall_with_bodies(site: [f64; 2], wall_turn_deg: f64, wall_y: f64, recess: Recess, bodies: String) -> String {
     let (wall_sin, wall_cos) = wall_turn_deg.to_radians().sin_cos();
     let (axis, start) = match recess {
         Recess::FromInterface => ("#15", CORE),
@@ -74,7 +92,6 @@ END-ISO-10303-21;
         site_x = site[0],
         site_y = site[1],
         half_recess = RECESS * 0.5,
-        bodies = split_bodies(),
     )
 }
 

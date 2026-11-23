@@ -38,7 +38,7 @@ export const SERVER_URL = import.meta.env?.VITE_IFC_SERVER_URL || import.meta.en
  *
  * This is the flag alone. Uploads go to the server only while a server URL is
  * also set, and that URL is read per load (`serverUploadsEnabled` in
- * `lib/processed-model.ts`) because a host may set it at runtime.
+ * `lib/processing-server.ts`) because a host may set it at runtime.
  */
 export const USE_SERVER = import.meta.env?.VITE_USE_SERVER === 'true';
 

@@ -24,6 +24,7 @@ import { firstWrittenOwnerHistoryRef, Ifc2x3SlotFill } from './schema-converter-
 import { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import { EnumReconciliation } from './schema-converter-enums.js';
 import { assembleStepBytes, assembleStepBlob } from './step-file-assembly.js';
+import { decodeTypedPropertyRecord } from './schema-converter-typed-properties.js';
 import { placeObjectsForSchema } from './schema-ifc2x3-placements.js';
 import { getCompleteEntityIndex, getMaxExpressId, type CompleteEntityIndex, type ExportEntityRef } from './entity-iteration.js';
 import { bakeMutatedModels, mergeWarningLabel, needsBake } from './merged-bake.js';
@@ -1133,7 +1134,7 @@ export class MergedExporter {
     slotFill: Ifc2x3SlotFill, ifc4Slots: Ifc4SlotCheck, enums: EnumReconciliation,
     styles?: StyleFlatten,
   ): string | null {
-    let entityText = decodeRange(source, entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength);
+    let entityText = decodeTypedPropertyRecord(source, entityRef, sourceSchema, targetSchema);
     // D57 style-assignment flatten, in LOCAL id space (before the remap).
     if (styles && (entityText = styles.apply(entityText) ?? '') === '') return null;
 

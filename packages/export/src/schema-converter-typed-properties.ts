@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
+import type { IfcSourceBytes } from '@ifc-lite/parser';
 import { IFC2X3_TYPED_PROPERTIES } from './generated/ifc2x3-typed-properties.js';
 import { readStepSlots } from './step-argument-parser.js';
 import { slotRef, slotUnset } from './schema-converter-structural-source.js';
@@ -14,6 +15,32 @@ let rows: ReadonlyMap<string, (typeof IFC2X3_TYPED_PROPERTIES)[number]> | undefi
 function rowFor(type: string) {
   return (rows ??= new Map(IFC2X3_TYPED_PROPERTIES.map((row) => [row[0], row]))).get(type);
 }
+
+// Recognize complete UTF-8 scalars so invalid bytes can retain their Latin-1
+// meaning without changing adjacent valid UTF-8.
+const UTF8_MULTIBYTE = /[\xc2-\xdf][\x80-\xbf]|\xe0[\xa0-\xbf][\x80-\xbf]|[\xe1-\xec\xee-\xef][\x80-\xbf]{2}|\xed[\x80-\x9f][\x80-\xbf]|\xf0[\x90-\xbf][\x80-\xbf]{2}|[\xf1-\xf3][\x80-\xbf]{3}|\xf4[\x80-\x8f][\x80-\xbf]{2}/g;
+
+export function decodeTypedPropertyRecord(
+  source: IfcSourceBytes,
+  ref: { type: string; byteOffset: number; byteLength: number },
+  from: IfcSchemaVersion,
+  to: IfcSchemaVersion,
+): string {
+  const end = ref.byteOffset + ref.byteLength;
+  const decoded = source.decodeUtf8(ref.byteOffset, end);
+  if (from !== 'IFC2X3' || (to !== 'IFC4' && to !== 'IFC4X3') || !decoded.includes('�')) {
+    return decoded;
+  }
+  const row = rowFor(ref.type);
+  if (!row?.[2].some(([, fields]) => fields.some((field) => field.kind === 'text'))) {
+    return decoded;
+  }
+  const decoder = new TextDecoder('utf-8', { ignoreBOM: true });
+  const byteString = Array.from(source.slice(ref.byteOffset, end), (byte) => String.fromCharCode(byte)).join('');
+  return byteString.replace(UTF8_MULTIBYTE, (sequence) =>
+    decoder.decode(Uint8Array.from(sequence, (char) => char.charCodeAt(0))));
+}
+
 type Group = { name: string; properties: { attribute: string; record: string }[] };
 type Draft = { sourceType: string; to: 'IFC4' | 'IFC4X3'; groups: Group[] };
 type Field = (typeof IFC2X3_TYPED_PROPERTIES)[number][2][number][1][number];

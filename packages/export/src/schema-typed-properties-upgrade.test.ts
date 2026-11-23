@@ -69,23 +69,30 @@ it('keeps typed MassDensity with raw Latin-1 in another DATA record (#10797)', a
     ['async merged', await merged.exportAsync(options)],
   ] as const;
   for (const [writer, result] of outputs) {
-    expect(new TextDecoder().decode(result.content), writer)
-      .toContain("IFCPROPERTYSINGLEVALUE('MassDensity',$,IFCMASSDENSITYMEASURE(42.),$);");
+    const output = new TextDecoder().decode(result.content);
+    expect(output, writer).toContain("IFCPROPERTYSINGLEVALUE('MassDensity',$,IFCMASSDENSITYMEASURE(42.),$);");
+    expect(output, writer).toContain("IFCMATERIAL('B�ton',$,$);");
   }
 });
 
-const writerVectors: Array<{ name: string; source: string; expected: string }> = JSON.parse(readFileSync(
+const writerVectors: Array<{ name: string; source: string; expected: string[] }> = JSON.parse(readFileSync(
   new URL('../../../rust/export/tests/fixtures/schema_typed_properties_writer_vectors.json', import.meta.url), 'utf8',
 ));
 
-it.each(writerVectors)('writes the same STEP record in every writer for $name (#10797)', async ({ name, source, expected }) => {
+it.each(writerVectors)('writes matching STEP records in every writer for $name (#10797)', async ({ name, source, expected }) => {
   const input = Buffer.from("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n"
     + source + '\nENDSEC;\nEND-ISO-10303-21;\n', 'latin1');
   const store = await new IfcParser().parseColumnar(Uint8Array.from(input).buffer);
   const merged = new MergedExporter([{ id: 'typed-vector', name, dataStore: store }]);
   const options = { schema: 'IFC4', projectStrategy: 'keep-first' } as const;
-  for (const { content } of [new StepExporter(store).export(options), merged.export(options), await merged.exportAsync(options)]) {
-    const records = new TextDecoder().decode(content).split('\n').map(line => line.slice(line.indexOf('=') + 1));
-    expect(records).toContain(expected);
+  const outputs = [
+    ['direct', new StepExporter(store).export(options)],
+    ['merged', merged.export(options)],
+    ['async merged', await merged.exportAsync(options)],
+  ] as const;
+  const decoder = new TextDecoder('utf-8', { fatal: true });
+  for (const [writer, { content }] of outputs) {
+    const records = decoder.decode(content).split('\n').map(line => line.slice(line.indexOf('=') + 1));
+    expect(records, writer).toEqual(expect.arrayContaining(expected));
   }
 });

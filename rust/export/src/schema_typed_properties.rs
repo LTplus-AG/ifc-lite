@@ -26,12 +26,19 @@ fn lookup(ty: &str) -> Option<&'static Row> {
         .ok().map(|i| &IFC2X3_TYPED_PROPERTIES[i])
 }
 
-/// Keep valid UTF-8 and preserve legacy Latin-1 bytes as their characters
-/// when a typed-property writer needs a UTF-8 representation.
+/// Preserve legacy Latin-1 bytes in records with text values to migrate.
 pub(crate) fn source_text(bytes: &[u8], preserve_latin1: bool) -> Cow<'_, str> {
-    if !preserve_latin1 { return String::from_utf8_lossy(bytes); }
-    if let Ok(text) = std::str::from_utf8(bytes) {
-        return Cow::Borrowed(text);
+    let decoded = String::from_utf8_lossy(bytes);
+    if !preserve_latin1 || matches!(&decoded, Cow::Borrowed(_)) {
+        return decoded;
+    }
+    let carries_text = record_head(&decoded)
+        .and_then(|head| lookup(head.type_name(&decoded)))
+        .is_some_and(|row| row.2.iter().any(|(_, fields)| {
+            fields.iter().any(|field| matches!(field.3, Kind::Text))
+        }));
+    if !carries_text {
+        return decoded;
     }
     let mut text = String::with_capacity(bytes.len());
     for chunk in bytes.utf8_chunks() {

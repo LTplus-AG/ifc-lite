@@ -54,6 +54,9 @@ describe('IFC function policy', () => {
     assert.throws(() => runIfcFunction(host, 'countEntities', bad, { caller: 'renderer', userActivated: false }), /types/);
     assert.throws(() => runIfcFunction(host, 'select', { ...bad, refs: [target.refs[0] ?? 'x:1'] }, { caller: 'agent', userActivated: false }), PolicyRefusal);
     assert.ok(resolveTarget(host, { query: { types: ['IfcWall'] } }).refs.length > 0);
+    const walls = { query: { types: ['IfcWall'] } };
+    assert.throws(() => runIfcFunction(host, 'sumQuantity', { ...walls, path: 'Qto_WallBaseQuantities.NetVolumee' }, { caller: 'renderer', userActivated: false }), /no matched entity has a number/);
+    assert.equal(runIfcFunction(host, 'sumQuantity', { query: { types: ['IfcDoor'] }, path: 'Qto_DoorBaseQuantities.Area' }, { caller: 'renderer', userActivated: false }), 0, 'an empty match set sums to a true 0');
   });
 
   it('lets a live session auto-apply once per key and a replayed chat record never', async () => {

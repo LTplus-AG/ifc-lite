@@ -37,7 +37,7 @@ function statValue(host: A2uiViewerHost, reader: FieldReader, item: StatItem): S
   if (typeof item.value === 'number') return { value: item.value, result: null };
   if (item.query === undefined) return { value: undefined, result: null };
   const result = evaluateQuery(host, item.query, reader);
-  if (result.unloadedModel) return { value: undefined, result };
+  if (result.unloadedModel || result.problems.length > 0) return { value: undefined, result };
   return { value: aggregate(reader, aggregatePool(result), item.aggregate ?? 'count', item.path), result };
 }
 

@@ -146,7 +146,12 @@ export function runIfcFunction(host: A2uiViewerHost, name: string, args: Record<
       const reader = new FieldReader(host);
       const result = evaluateQuery(host, args.query, reader);
       checkAggregate(name, result);
-      return aggregate(reader, aggregatePool(result), 'sum', typeof args.path === 'string' ? args.path : undefined) ?? 0;
+      const pool = aggregatePool(result);
+      if (pool.length === 0) return 0;
+      const sum = aggregate(reader, pool, 'sum', typeof args.path === 'string' ? args.path : undefined);
+      // Matches without a number at the path (a missing or misspelt path) are not a total of 0.
+      if (sum === undefined) throw new PolicyRefusal(name, `no matched entity has a number at ${typeof args.path === 'string' ? args.path : 'the path (none given)'}`);
+      return sum;
     }
     case 'exportCsv': {
       const refs = targetRefs(host, name, args);

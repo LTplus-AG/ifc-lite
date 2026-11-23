@@ -136,13 +136,13 @@ export function useFileCommands(): FileCommands {
     // replacing it (the compare tour loads demo revision B this way).
     const addHandler = (e: Event) => {
       const file = (e as CustomEvent<unknown>).detail;
-      if (file instanceof File) void addModel(file);
+      if (file instanceof File && !refuseWhileWorkflowBusy(t)) void addModel(file);
     };
     // Layer-stack variant: load a File[] as a composed .ifcx federation
     // (the Layers panel demo + tour dispatch this, see lib/layers/demo-stack).
     const stackHandler = (e: Event) => {
       const files = (e as CustomEvent<unknown>).detail;
-      if (Array.isArray(files) && files.every((f) => f instanceof File) && files.length > 0) {
+      if (Array.isArray(files) && files.every((f) => f instanceof File) && files.length > 0 && !refuseWhileWorkflowBusy(t)) {
         void loadFederatedIfcx(files as File[]);
       }
     };

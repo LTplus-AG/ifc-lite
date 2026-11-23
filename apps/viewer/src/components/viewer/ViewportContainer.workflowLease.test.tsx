@@ -79,6 +79,7 @@ afterEach(() => {
   restoreGpu?.();
   restoreGpu = null;
   useViewerStore.setState({ clearAllModels: original.clearAllModels, resetViewerState: original.resetViewerState });
+  localStorage.clear(); // the welcome-card test's recent-file entry
 });
 
 async function mountWithLease(): Promise<void> {
@@ -89,7 +90,7 @@ async function mountWithLease(): Promise<void> {
   run = startWorkflowRun('realign');
 }
 
-describe('fresh-federation opens refuse to clear the scene while a workflow holds the lease', () => {
+describe('fresh-federation opens refuse to clear the scene while a workflow holds the lease (#11335)', () => {
   it('a multi-file drop on an empty viewer leaves the store untouched and says why', async () => {
     await mountWithLease();
     const dt = fileTransfer(new File(['x'], 'one.ifc'), new File(['x'], 'two.ifc'));

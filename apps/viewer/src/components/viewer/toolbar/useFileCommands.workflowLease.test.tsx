@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { advance, cleanup, render } from '@/test/render.js';
-import { latestToast } from '@/test/toasts.js';
+import { latestToast, toastsFrom } from '@/test/toasts.js';
 import { Toaster } from '@/components/ui/toast';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { isNativeWorkflowBusy, startWorkflowRun, type WorkflowRun } from '@/lib/flow/run-session';
@@ -63,7 +63,7 @@ afterEach(() => {
   useViewerStore.setState({ clearAllModels: original.clearAllModels, resetViewerState: original.resetViewerState, models: new Map(), ifcDataStore: null });
 });
 
-describe('file commands refuse to clear the scene while a workflow holds the lease', () => {
+describe('file commands refuse to clear the scene while a workflow holds the lease (#11335)', () => {
   it('a multi-file Open leaves the models untouched and says why', async () => {
     const container = render(<Host />);
     const input = container.querySelector<HTMLInputElement>('#file-input-open');
@@ -160,5 +160,16 @@ describe('file commands refuse to clear the scene while a workflow holds the lea
     assert.ok(flowRefused, 'a flow run attempted mid-rebuild was refused');
     assert.match(latestToast(), /Refreshed 2 models/, 'every model went through its add without a lease refusal');
     assert.equal(isNativeWorkflowBusy(), false, 'the lease is released once the rebuild settles');
+  });
+
+  it('the add-model and layer-stack events are refused with the busy message', async () => {
+    render(<Host />);
+    for (const [type, detail] of [['ifc-lite:add-model', new File(['x'], 'rev-b.ifc')], ['ifc-lite:load-layer-stack', [new File(['{}'], 'stack.ifcx')]]] as const) {
+      const shown = toastsFrom(document.body, () => act(() => { window.dispatchEvent(new CustomEvent(type, { detail })); }));
+      await advance(0);
+      assert.match(shown, new RegExp(BUSY), `${type} shows the busy message`);
+    }
+    assert.equal(resets, 0, 'viewer state was not reset');
+    assert.equal(clears, 0, 'the models map was not cleared');
   });
 });

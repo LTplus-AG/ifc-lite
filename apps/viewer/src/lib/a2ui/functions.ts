@@ -71,7 +71,8 @@ export function resolveTarget(host: A2uiViewerHost, args: { refs?: unknown; quer
     // The whole match set, like the stats and charts beside it, up to the hard query ceiling (and the UI says so).
     const pool = aggregatePool(result);
     for (const row of pool.slice(0, MAX_QUERY_LIMIT)) out.set(row.key, row.ref);
-    if (pool.length > MAX_QUERY_LIMIT) cappedFrom = pool.length;
+    // Counted like `refs`: the explicit refs plus every match, so the note compares like with like.
+    if (pool.length > MAX_QUERY_LIMIT) cappedFrom = out.size + pool.length - MAX_QUERY_LIMIT;
   }
   return { refs: [...out.values()], unloadedModels: [...unloaded], problems: [], ...(cappedFrom !== undefined && { cappedFrom }) };
 }

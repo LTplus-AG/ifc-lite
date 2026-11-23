@@ -12,7 +12,7 @@ function literalFacts(text) {
   return scoreReply(agent, '<a2ui></a2ui>', { expectSurface: true, expect: [] }).literalFacts;
 }
 
-describe('scoreReply literal facts', () => {
+describe('scoreReply literal facts (#11344)', () => {
   it('flags a number next to a unit or entity word', () => {
     expect(literalFacts('120 m²')).toEqual(['120 m²']);
     expect(literalFacts('Area: 120 m² total')).toEqual(['Area: 120 m² total']);

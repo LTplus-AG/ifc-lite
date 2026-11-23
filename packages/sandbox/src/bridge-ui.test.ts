@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
 import type { BimContext, EntityData } from '@ifc-lite/sdk';
 import { validateIfcMessages } from '@ifc-lite/a2ui/agent';
 import { createSandbox, type Sandbox } from './sandbox.js';
@@ -65,8 +65,7 @@ describe('bim.ui in QuickJS', () => {
     const model = result.surfaces?.[0][0].createSurface;
     expect(model?.dataModel.s0).toMatchObject({ data: [{ label: 'High', color: '#e5484d', refs: ['m:1', 'm:2'] }] });
     // Type level: the declared input accepts the object refs the runtime takes.
-    const legend: ScriptUiSection = { kind: 'legend', by: 'share', data: [{ label: 'High', color: '#e5484d', refs: ['m:1', { modelId: 'm', expressId: 2 }] }] };
-    expect(legend.kind).toBe('legend');
+    expectTypeOf<{ kind: 'legend'; by: 'share'; data: [{ label: 'High'; color: '#e5484d'; refs: ['m:1', { modelId: 'm'; expressId: 2 }] }] }>().toMatchTypeOf<ScriptUiSection>();
     expect(model?.components).toContainEqual(expect.objectContaining({ id: 's1', sort: { path: 'Name', dir: 'desc' } }));
   });
 

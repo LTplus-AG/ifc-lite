@@ -90,7 +90,7 @@ describe('IFC catalog components', () => {
     assert.equal(selectedRefs(host).length, 4, 'a bar pick selects the walls');
   });
 
-  it('GroupChart: folding keeps the largest groups, not the first ones', () => {
+  it('GroupChart: folding keeps the largest groups, not the first ones (#11344)', () => {
     const g = (label: string, value: number) => ({ label, value, refs: [`m:${value}`] });
     const folded = foldGroups([g('a', 1), g('b', 2), g('big', 50), g('c', 3)], 3, 'Other');
     assert.deepEqual(folded.map((x) => [x.label, x.value]), [['big', 50], ['c', 3], ['Other', 3]]);

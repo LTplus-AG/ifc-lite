@@ -114,7 +114,7 @@ describe('A2uiMessageSession', () => {
     const next = syncSession({ id: STREAMING_MESSAGE_ID, content: 'A new turn' }, host, true);
     assert.notEqual(next, streaming);
     assert.equal(sessionFor({ id: 'final-1', content: A2UI_DEMO_REPLY }, host), final);
-    // Reuse without finalising in between: the live session must be reset, not extended.
+    // Reuse without finalising in between: the live session must be reset, not extended (#11344).
     const live = syncSession({ id: STREAMING_MESSAGE_ID, content: A2UI_DEMO_REPLY }, host, true);
     assert.equal(live.processor.getSurface('main') !== undefined, true, 'live session rendered the surface');
     let disposed = 0;

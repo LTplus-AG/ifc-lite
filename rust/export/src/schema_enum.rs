@@ -256,7 +256,22 @@ impl ConversionChecks {
             };
             writeln!(body, "{record}")?;
         }
-        Ok(count + body.finish()?)
+        Ok(count + body.finish_with(|text| self.forms.finish_dates(text, &mut self.attribute_values_dropped))?)
+    }
+
+    pub(crate) fn finish_dates(&mut self, text: &mut String) -> isize {
+        if let Some((rewritten, delta)) = self.forms.finish_dates(text, &mut self.attribute_values_dropped) {
+            *text = rewritten;
+            delta
+        } else {
+            0
+        }
+    }
+
+    pub(crate) fn warnings_for_sources<'a>(&self, sources: impl Iterator<Item = &'a [u8]>) -> Vec<String> {
+        let mut warnings = self.warnings();
+        warnings.extend(self.forms.duration_warning(sources));
+        warnings
     }
 
     /// Both checks' warnings, IFC4 slots first.

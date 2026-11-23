@@ -327,7 +327,7 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
     georeferencingWarnings: [],
     slotFill: new Ifc2x3SlotFill(),
     ifc4Slots: new Ifc4SlotCheck(),
-    enums: new EnumReconciliation(),
+    enums: new EnumReconciliation(true, [dataStore]),
     withheldRefIds: computeWithheldRefIds(dataStore, schema, effective),
     styleFlatten: StyleFlatten.fromStore(dataStore, sourceSchema, schema),
   };

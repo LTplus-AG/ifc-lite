@@ -21,8 +21,14 @@ function stringCellOracle(data: Float32Array, stride: number, indices: Uint32Arr
     const entity = stride > 6 ? lanes[offset + 6] : 0;
     return `${Math.floor(data[offset] / cellSize)},${Math.floor(data[offset + 1] / cellSize)},${Math.floor(data[offset + 2] / cellSize)},${entity}`;
   };
+  // Smallest first, NaN last, equal (or both NaN) falls through to the next field and then the index.
   const smaller = (a: number, b: number) => {
-    for (let k = 0; k < 3; k++) if (data[a * stride + k] !== data[b * stride + k]) return data[a * stride + k] < data[b * stride + k];
+    for (let k = 0; k < 3; k++) {
+      const x = data[a * stride + k], y = data[b * stride + k];
+      if (x === y || (Number.isNaN(x) && Number.isNaN(y))) continue;
+      if (Number.isNaN(x) || Number.isNaN(y)) return Number.isNaN(y);
+      return x < y;
+    }
     return a < b;
   };
   for (const vertex of indices) {

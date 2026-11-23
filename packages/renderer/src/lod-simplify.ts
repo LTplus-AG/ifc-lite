@@ -68,9 +68,9 @@ export function simplifyIndicesByClustering(
   /** The record layout; a number is the entity-lane offset alone (the older signature). */
   layout: LodClusterLayout | number = {},
 ): Uint32Array | null {
-  const {
-    idLaneOffset = 6, normalOffset = strideFloats >= 7 ? 3 : undefined, frameOrigin = [0, 0, 0],
-  }: LodClusterLayout = typeof layout === 'number' ? { idLaneOffset: layout } : layout;
+  // The older numeric form named the lane only: it gets no normal tie-break, as before.
+  const { idLaneOffset = 6, frameOrigin = [0, 0, 0] }: LodClusterLayout = typeof layout === 'number' ? { idLaneOffset: layout } : layout;
+  const normalOffset = typeof layout === 'number' ? undefined : layout.normalOffset ?? (strideFloats >= 7 ? 3 : undefined);
   const triangleCount = (indices.length / 3) | 0;
   if (triangleCount < LOD_MIN_TRIANGLES) return null;
   if (!(cellSize > 0) || !Number.isFinite(cellSize)) return null;
@@ -120,9 +120,10 @@ export function simplifyIndicesByClustering(
     const bb = b * strideFloats;
     for (const k of ranked) {
       const x = vertexData[ba + k], y = vertexData[bb + k];
-      if (x === y || (x !== x && y !== y)) continue;
+      const xNaN = Number.isNaN(x), yNaN = Number.isNaN(y);
+      if (x === y || (xNaN && yNaN)) continue;
       // NaN ranks last, so the order stays total and the election order-independent.
-      if (x !== x || y !== y) return y !== y;
+      if (xNaN || yNaN) return yNaN;
       return x < y;
     }
     return a < b;

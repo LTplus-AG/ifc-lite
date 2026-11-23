@@ -285,12 +285,22 @@ describe('simplifyIndicesByClustering is a function of the batch contents (load 
 });
 
 describe('simplifyIndicesByClustering layout argument', () => {
+  it('keeps the numeric form free of a normal tie-break, as before', () => {
+    // Entity 100's coincident corner: by index the +Y piece (piece 0) comes first; the normal rule would pick +Z.
+    const pieces = campusPieces(400);
+    const { vertexData, indices } = batchOf(pieces, pieces.map((_, k) => k), [0, 0, 0]);
+    const lod = simplifyIndicesByClustering(vertexData, STRIDE, indices, 1, 6)!;
+    const corners = drawnTriangles(vertexData, lod, [0, 0, 0]).flatMap((t) => t.split(' ')).filter((r) => r.startsWith('0.375,0.625,0.125,'));
+    assert.deepStrictEqual([...new Set(corners)], ['0.375,0.625,0.125,0,1,0,100']);
+  });
+
   it('still reads a bare number as the entity-lane offset', () => {
     const pieces = campusPieces(400);
     const order = pieces.map((_, k) => k);
     const { vertexData, indices } = batchOf(pieces, order, [0, 0, 0]);
-    assert.deepStrictEqual(simplifyIndicesByClustering(vertexData, STRIDE, indices, 1, 6),
-      simplifyIndicesByClustering(vertexData, STRIDE, indices, 1, { idLaneOffset: 6 }));
+    const numeric = simplifyIndicesByClustering(vertexData, STRIDE, indices, 1, 6);
+    assert.ok(numeric, 'the batch must simplify');
+    assert.strictEqual(numeric.length, pieces.length * 3, 'the lane offset is honoured: no cross-entity merges');
   });
 
   it('ranks a NaN normal last, whichever vertex comes first', () => {

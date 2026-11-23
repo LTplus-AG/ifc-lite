@@ -22,7 +22,7 @@ export const VALID_ACTIONS = new Set([
   'colorize', 'isolate', 'xray', 'flyto', 'highlight',
   'colorizeEntities', 'isolateEntities', 'hideEntities', 'showEntities', 'resetColorEntities',
   'section', 'clearSection', 'colorByStorey', 'addGeometry',
-  'showall', 'reset', 'picked', 'setView', 'removeCreated', 'camera',
+  'showall', 'reset', 'picked', 'selectEntities', 'setView', 'removeCreated', 'camera',
 ]);
 
 /** MIME types for served files */

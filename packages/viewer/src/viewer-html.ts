@@ -841,9 +841,7 @@ function showPickInfo(eid) {
   if (!info) return;
   const el = document.getElementById('pick-info');
   el.style.display = 'block';
-  // Build with textContent, not innerHTML. info.ifcType is safe today (a
-  // closed "Ifc..." literal set from the WASM parser), but this removes the
-  // file's last interpolation site that would depend on that staying true.
+  // Render model-supplied values as text.
   el.textContent = '';
   const row = (cls, text) => {
     const d = document.createElement('div');
@@ -966,9 +964,7 @@ function getEntityBoundsForFilter(filterFn) {
 
 function handleCommand(cmd) {
   showCmdLog(cmd.action);
-
   switch (cmd.action) {
-    // ── Type-based commands ──
     case 'colorize': {
       const color = resolveColor(cmd.color);
       for (const [eid, info] of entityMap) {
@@ -1013,8 +1009,6 @@ function handleCommand(cmd) {
       }
       break;
     }
-
-    // ── Entity ID-based commands (from streaming adapter) ──
     case 'colorizeEntities': {
       const color = resolveColor(cmd.color);
       for (const id of cmd.ids) { colorOverrides.set(id, color); markColorDirty(id); }
@@ -1049,13 +1043,18 @@ function handleCommand(cmd) {
       refreshColors();
       break;
     }
+    case 'selectEntities': {
+      const first = cmd.ids?.find(id => entityMap.has(id));
+      if (first !== undefined) showPickInfo(first);
+      else document.getElementById('pick-info').style.display = 'none';
+      break;
+    }
     case 'highlight': {
       for (const id of (cmd.ids || [])) { colorOverrides.set(id, [1, 0.9, 0, 1]); markColorDirty(id); }
       refreshColors();
       break;
     }
 
-    // ── Section plane ──
     case 'section': {
       sectionEnabled = true;
       // Accept both flat (cmd.axis/cmd.position) and nested (cmd.section.axis/position) formats

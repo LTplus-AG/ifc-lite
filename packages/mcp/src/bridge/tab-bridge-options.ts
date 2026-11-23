@@ -42,6 +42,7 @@ export interface TabSnapshot {
   /** Effective permission: the tab's grant capped by the ceiling. */
   permission: BridgePermission;
   tools: readonly BridgeToolDescriptor[];
+  a2uiSurface: boolean;
   client?: { name: string; version?: string };
   connectedAt: Date;
 }

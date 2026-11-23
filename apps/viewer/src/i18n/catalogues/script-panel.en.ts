@@ -68,6 +68,7 @@ export const scriptPanelEn = {
   'scriptPanel.output.bimCode': 'bim.*',
   'scriptPanel.output.sandboxHintSuffix': 'APIs for viewer / data / export side-effects.',
   'scriptPanel.output.fixWithLlmButton': 'Fix with LLM',
+  'scriptPanel.output.surfaces': { one: '{count} result surface', other: '{count} result surfaces' },
   'scriptPanel.output.returnLabel': 'Return:',
   'scriptPanel.output.emptyState': 'Press Run or {keys} to execute',
 

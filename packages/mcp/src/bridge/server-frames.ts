@@ -13,6 +13,7 @@ import type {
   BridgeErrorMessage,
   BridgeResultAckMessage,
   BridgeServerMessage,
+  BridgeSurfaceMessage,
   BridgeWelcomeMessage,
   ParseResult,
 } from './protocol.js';
@@ -50,6 +51,12 @@ export function parseServerMessage(text: string, options?: { resultAck: true }):
         return { ok: false, error: 'malformed call' };
       }
       return { ok: true, value: raw as unknown as BridgeCallMessage };
+    case 'a2ui-surface':
+      if (typeof raw.sessionId !== 'string' || typeof raw.id !== 'string' || !isRecord(raw.surface)
+        || !Array.isArray(raw.surface.messages) || (raw.surface.title !== undefined && typeof raw.surface.title !== 'string')) {
+        return { ok: false, error: 'malformed A2UI surface' };
+      }
+      return { ok: true, value: raw as unknown as BridgeSurfaceMessage };
     case 'cancel':
       if (typeof raw.sessionId !== 'string' || typeof raw.id !== 'string') return { ok: false, error: 'malformed cancel' };
       return { ok: true, value: raw as unknown as BridgeCancelMessage };

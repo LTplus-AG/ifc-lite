@@ -54,6 +54,8 @@ export class OpaqueVisibilityPass {
   private width = 0;
   private height = 0;
   private active = false;
+  /** Draw stream: the current frame's main and depth passes, for pre-recorded bundles. */
+  private frame: { main: GPURenderPassEncoder; depth: GPURenderPassEncoder } | null = null;
 
   constructor(private readonly device: GPUDevice, private readonly samples: number, private readonly sectionBinding?: () => GPUBindGroup) {}
 
@@ -102,6 +104,30 @@ export class OpaqueVisibilityPass {
       return typeof member === 'function' ? member.bind(target) : member;
     } });
   }
+
+  /**
+   * Draw stream (orthographic): the colour/depth variants of a registered
+   * base pipeline (throws the pending-compile signal like a proxied setPipeline).
+   */
+  variantsOf(base: GPURenderPipeline): { colour: GPURenderPipeline; depth: GPURenderPipeline | null } | undefined { return this.forPipeline(base); }
+
+  /**
+   * Draw stream (orthographic): replay pre-recorded bundles, depth ones into
+   * the geometric-depth prepass and colour ones into the main pass. Both
+   * passes lose their bound state; proxied draws that follow re-bind per draw.
+   */
+  executeStreamBundles(colour: GPURenderBundle[], depth: GPURenderBundle[]): boolean {
+    if (!this.frame || !this.active) return false;
+    if (depth.length) this.frame.depth.executeBundles(depth);
+    if (colour.length) this.frame.main.executeBundles(colour);
+    return true;
+  }
+
+  /** Whether this frame's main and depth passes are captured, so `executeStreamBundles` can replay into them. */
+  capturing(): boolean { return this.frame !== null && this.active; }
+
+  /** Sample count of the geometric-depth target (bundle encoder formats). */
+  sampleCount(): number { return this.samples; }
 
   /** The orthographic geometric-depth target while allocated, for render-target telemetry. */
   renderTarget(): GPUTexture | null { return this.texture; }
@@ -168,6 +194,7 @@ export class OpaqueVisibilityPass {
       colorAttachments: [],
       depthStencilAttachment: { view: this.texture!.createView(), depthClearValue: 0, depthLoadOp: 'clear', depthStoreOp: 'store' },
     });
+    this.frame = { main, depth: depthPass };
     let variant: Variants | undefined;
     const groups = new Map<number, unknown[]>(), vertices = new Map<number, unknown[]>();
     if (section) groups.set(3, [3, section]);
@@ -206,7 +233,7 @@ export class OpaqueVisibilityPass {
         if (key === 'setViewport' || key === 'setScissorRect' || key === 'setBlendConstant') raster.set(key, args);
         if (key === 'draw' || key === 'drawIndexed' || key === 'drawIndirect' || key === 'drawIndexedIndirect') return draw(key, args);
         if (key === 'executeBundles') throw new Error('Opaque visibility requires prepared draws, not an opaque render bundle');
-        if (key === 'end') { depthPass.end(); setOpaqueVisibilityCommands(encoder, before.finish()); }
+        if (key === 'end') { this.frame = null; depthPass.end(); setOpaqueVisibilityCommands(encoder, before.finish()); }
         return Reflect.apply(member, target, args);
       };
       methods.set(key, method); return method;

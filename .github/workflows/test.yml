@@ -1678,7 +1678,11 @@ jobs:
     permissions:
       contents: read
       statuses: write
+    # `always()` + the pending job: whenever pending was posted, this job
+    # runs and replaces it, even when `build` failed or the run was cancelled
+    # (the select step then does not run, and the status reads failure).
     if: >-
+      always() && needs.viewer-selection-pending.result == 'success' &&
       github.event_name == 'pull_request' &&
       (vars.CI_PR_VIEWER_SELECT == 'shadow' || vars.CI_PR_VIEWER_SELECT == 'on') &&
       needs.changes.outputs.lane == 'fast' &&
@@ -1701,6 +1705,7 @@ jobs:
       # job that runs when it should not still selects nothing.
       - name: Select viewer tests
         id: select
+        if: needs.build.result == 'success'
         env:
           CI_PR_VIEWER_SELECT: ${{ vars.CI_PR_VIEWER_SELECT }}
           LANE: ${{ needs.changes.outputs.lane }}
@@ -1760,6 +1765,7 @@ jobs:
         if: always() && github.event.pull_request.head.repo.full_name == github.repository
         run: node scripts/ci-viewer-select.mjs --status "$RUNNER_TEMP/viewer-selection"
         env:
+          BUILD_RESULT: ${{ needs.build.result }}
           RUN: ${{ steps.select.outputs.run }}
           SELECT_OUTCOME: ${{ steps.select.outcome }}
           GITHUB_TOKEN: ${{ github.token }}

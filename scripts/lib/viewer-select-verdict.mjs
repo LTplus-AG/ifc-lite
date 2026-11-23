@@ -36,7 +36,8 @@ export function runSelected({ files, dir, env, cwd, runner: [bin, ...args] }) {
   // A TAP copy for the retry to read; `timeoutSeconds` wraps it in coreutils
   // `timeout`, which signals the whole process group, as ci-shard-retry.mjs does.
   const tsx = (list, tap, timeoutSeconds) => {
-    const cmd = ['pnpm', 'exec', bin, ...args, '--test-reporter=tap', `--test-reporter-destination=${tap}`, ...list];
+    // The extra stdout reporter keeps results in the job log, as the shards' NODE_OPTIONS do.
+    const cmd = ['pnpm', 'exec', bin, ...args, '--test-reporter=tap', '--test-reporter-destination=stdout', '--test-reporter=tap', `--test-reporter-destination=${tap}`, ...list];
     const [exe, ...rest] = timeoutSeconds ? ['timeout', '--kill-after=30s', `${timeoutSeconds}s`, ...cmd] : cmd;
     return spawnSync(exe, rest, { cwd, stdio: 'inherit' });
   };
@@ -98,13 +99,14 @@ const clip = (s) => (s.length <= 140 ? s : `${s.slice(0, 139)}…`);
  * The verdict to post over the `pending` that test.yml's
  * viewer-selection-pending job set. Success only on
  * positive evidence: nothing selected to run, or a result that passed.
- * Anything else (a select step that failed, tests that did not finish, a
- * failure the retry did not clear) is failure.
+ * Anything else (a build that did not succeed, a select step that failed,
+ * tests that did not finish, a failure the retry did not clear) is failure.
  *
- * @param {{ run?: string, selectOutcome?: string, result?: object|null }} input
+ * @param {{ build?: string, run?: string, selectOutcome?: string, result?: object|null }} input
  * @returns {{ state: 'success'|'failure', description: string }}
  */
-export function selectionStatus({ run, selectOutcome, result }) {
+export function selectionStatus({ build, run, selectOutcome, result }) {
+  if (build !== 'success') return { state: 'failure', description: clip(`The build ended ${build || 'without a result'}, so the selected viewer tests could not run`) };
   if (selectOutcome !== 'success') return { state: 'failure', description: clip(`The test selection step ended ${selectOutcome || 'without running'}; re-run this job`) };
   if (run !== 'true') return { state: 'success', description: 'No viewer test file selected to run' };
   if (!result) return { state: 'failure', description: 'The selected viewer tests did not finish; re-run this job' };
@@ -122,18 +124,40 @@ function targetUrl(env) {
   return { target_url: /^\d+$/.test(env.CHECK_RUN_ID ?? '') ? `${env.RUN_URL}/job/${env.CHECK_RUN_ID}` : env.RUN_URL };
 }
 
-/** `--status <dir>`: post selectionStatus on the PR head. */
+/** The workflow run id in a status's target_url, or null. */
+export function runIdOf(url) {
+  const m = /\/actions\/runs\/(\d+)/.exec(String(url ?? ''));
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * `--status <dir>`: post selectionStatus on the PR head, unless a NEWER run
+ * (a higher run id in the context's latest target_url) already owns the
+ * status: an older run of the same SHA finishing late must not replace a
+ * newer run's pending or failure with its own success.
+ */
 export async function postStatus(argv, env = process.env, fetchImpl = globalThis.fetch) {
   const dir = argv[1];
   if (!dir) throw new Error('usage: --status <dir>');
   const resultPath = join(dir, 'result.json');
   const result = existsSync(resultPath) ? JSON.parse(readFileSync(resultPath, 'utf8')) : null;
-  const status = selectionStatus({ run: env.RUN, selectOutcome: env.SELECT_OUTCOME, result });
-  for (const name of ['GITHUB_TOKEN', 'GITHUB_REPOSITORY', 'HEAD_SHA']) if (!env[name]) throw new Error(`${name} is not set`);
+  const status = selectionStatus({ build: env.BUILD_RESULT, run: env.RUN, selectOutcome: env.SELECT_OUTCOME, result });
+  for (const name of ['GITHUB_TOKEN', 'GITHUB_REPOSITORY', 'HEAD_SHA', 'RUN_URL']) if (!env[name]) throw new Error(`${name} is not set`);
   const api = env.GITHUB_API_URL || 'https://api.github.com';
+  const headers = { authorization: `Bearer ${env.GITHUB_TOKEN}`, accept: 'application/vnd.github+json', 'content-type': 'application/json' };
+  // Newest first; the first entry for the context is its current state.
+  const seen = await fetchImpl(`${api}/repos/${env.GITHUB_REPOSITORY}/commits/${env.HEAD_SHA}/statuses?per_page=100`, { headers });
+  if (!seen.ok) throw new Error(`reading the statuses of ${env.HEAD_SHA} failed: HTTP ${seen.status} ${await seen.text()}`);
+  const current = (await seen.json()).find((s) => s.context === STATUS_CONTEXT);
+  const ours = runIdOf(env.RUN_URL);
+  const theirs = runIdOf(current?.target_url);
+  if (ours !== null && theirs !== null && theirs > ours) {
+    console.log(`[ci-viewer-select] ${STATUS_CONTEXT}: not posting ${status.state}; run ${theirs}, newer than this run ${ours}, owns it (${current.state})`);
+    return 0;
+  }
   const res = await fetchImpl(`${api}/repos/${env.GITHUB_REPOSITORY}/statuses/${env.HEAD_SHA}`, {
     method: 'POST',
-    headers: { authorization: `Bearer ${env.GITHUB_TOKEN}`, accept: 'application/vnd.github+json', 'content-type': 'application/json' },
+    headers,
     body: JSON.stringify({ state: status.state, context: STATUS_CONTEXT, description: status.description, ...targetUrl(env) }),
   });
   if (!res.ok) throw new Error(`posting ${STATUS_CONTEXT}=${status.state} on ${env.HEAD_SHA} failed: HTTP ${res.status} ${await res.text()}`);

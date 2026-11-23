@@ -566,7 +566,10 @@ test('WIRING: the status is pending from right after `changes`, on the same PRs,
   // Absent passes the Mergify gate, so pending must not wait for `build`.
   const PENDING = JOBS['viewer-selection-pending'];
   assert.deepEqual([PENDING.needs].flat(), ['changes']);
-  assert.equal(PENDING.if, JOB.if, 'pending exactly where the selected tests run');
+  // Whenever pending was posted the verdict job runs, even after a failed
+  // build or a cancel, so pending is always replaced.
+  assert.equal(JOB.if, `always() && needs.viewer-selection-pending.result == 'success' && ${PENDING.if}`, 'pending exactly where the selected tests run');
+  assert.equal(JOB.steps.find((s) => s.id === 'select').if, "needs.build.result == 'success'", 'no selection without a build');
   assert.deepEqual(JOB.needs, ['changes', 'build', 'viewer-selection-pending'], 'the verdict is posted after pending, never under it');
   assert.deepEqual(PENDING.permissions, { statuses: 'write' });
   const [post] = PENDING.steps;
@@ -583,6 +586,7 @@ test('WIRING: the status is pending from right after `changes`, on the same PRs,
   assert.ok(final.run.includes('ci-viewer-select.mjs --status'), 'the verdict is the last step'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML; there is no runtime to drive instead
   assert.ok(String(final.if).startsWith('always() && '), 'a cancelled or failed run still replaces pending'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML; there is no runtime to drive instead
   /* eslint-disable no-template-curly-in-string */
+  assert.equal(final.env.BUILD_RESULT, '${{ needs.build.result }}');
   assert.equal(final.env.RUN, '${{ steps.select.outputs.run }}');
   assert.equal(final.env.SELECT_OUTCOME, '${{ steps.select.outcome }}');
   for (const s of [post, final]) {

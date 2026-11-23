@@ -131,9 +131,19 @@ impl PlanCache {
         plan
     }
 
+    /// Remove a date carrier that the final pass pruned from the written body.
+    pub(crate) fn forget_verbatim(&mut self, ty: &str) {
+        for entry in self.by_pair.iter_mut().filter_map(|map| map.get_mut(ty)) {
+            if entry.named == Some(Named::Verbatim) && entry.records > 0 {
+                entry.records -= 1;
+                break;
+            }
+        }
+    }
+
     /// The records written as a proxy or as they are, by type (#10902).
     pub(crate) fn warnings(&self) -> Vec<String> {
-        missing_type_warnings(self.by_pair.iter().flatten().filter_map(|(ty, c)| c.named.map(|named| (&**ty, named, c.records))))
+        missing_type_warnings(self.by_pair.iter().flatten().filter(|(_, c)| c.records > 0).filter_map(|(ty, c)| c.named.map(|named| (&**ty, named, c.records))))
     }
 }
 

@@ -15,9 +15,10 @@ function varyingFixture(): string {
 }
 
 it('converts the retained or edited varying action and its effective loads (#11037)', async () => {
-  const body = varyingFixture();
+  const body = varyingFixture().replace('\nENDSEC;\nEND-ISO-10303-21;',
+    "\n#100=IFCCLASSIFICATION('Source','1',#101,'Classification');\n#101=IFCCALENDARDATE(29,2,2024);\nENDSEC;\nEND-ISO-10303-21;");
   const store = await new IfcParser().parseColumnar(new TextEncoder().encode(body).buffer);
-  const subset = new StepExporter(store).export({ schema: 'IFC4', subsetEntityIds: new Set([30, 20]) });
+  const subset = new StepExporter(store).export({ schema: 'IFC4', subsetEntityIds: new Set([30, 20, 100, 101]) });
   expect(subset.stats.newEntityCount).toBe(2);
   expect(new TextDecoder().decode(subset.content)).toContain('2 modifications');
   const view = new MutablePropertyView(store.properties, 'varying');
@@ -34,6 +35,8 @@ it('converts the retained or edited varying action and its effective loads (#110
     expect(output).toContain('#30=IFCSTRUCTURALCURVEACTION(');
     expect(output).toContain("'Causes',$,(#20),$,#30);");
     expect(output).not.toContain('IFCSTRUCTURALLINEARACTIONVARYING(');
+    expect(output).toContain("#100=IFCCLASSIFICATION('Source','1','2024-02-29','Classification',$,$,$);");
+    expect(output).not.toContain('IFCCALENDARDATE(');
   }
   view.setPositionalAttribute(30, 12, '#9999');
   const fallback = new StepExporter(store, view).export({ schema: 'IFC4' });

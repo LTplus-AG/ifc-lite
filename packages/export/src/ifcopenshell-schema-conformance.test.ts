@@ -691,3 +691,22 @@ describe.skipIf(!ifcopenshellAvailable())('boundary stiffness conversions use co
     runValidateOrThrow([upperPath, lowerPath]);
   }, IFCOPENSHELL_TEST_TIMEOUT_MS);
 });
+
+describe.skipIf(!ifcopenshellAvailable())('surviving IFC2X3 bounded properties satisfy WR22 (#11117)', () => {
+  it('validates the exported one-sided bounds with EXPRESS rules enabled', async () => {
+    const vectors: { from: 'IFC4' | 'IFC4X3'; line: string; expect?: string }[] = JSON.parse(readFileSync(
+      new URL('../../../rust/export/tests/fixtures/schema_bounded_property_vectors.json', import.meta.url), 'utf8',
+    ));
+    const directory = mkdtempSync(join(tmpdir(), 'ifc-lite-11117-'));
+    const paths: string[] = [];
+    for (const [i, { from, line, expect: output }] of vectors.entries()) {
+      if (!output) continue;
+      const input = stepFile10758(from === 'IFC4X3' ? 'IFC4X3_ADD2' : from, [line.replace(/^#5=/, '#10=')]);
+      const store = await new IfcParser().parseColumnar(new TextEncoder().encode(input).buffer, { disableWorkerScan: true });
+      const path = join(directory, `${from}-bounded-${i}.ifc`);
+      writeFileSync(path, new StepExporter(store).export({ schema: 'IFC2X3' }).content);
+      paths.push(path);
+    }
+    runValidateOrThrow(paths);
+  }, IFCOPENSHELL_TEST_TIMEOUT_MS);
+});

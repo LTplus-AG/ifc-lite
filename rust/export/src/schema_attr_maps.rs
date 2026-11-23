@@ -109,6 +109,10 @@ pub(crate) const ATTR_MAPS: &[AttrMap] = &[
     map("IFCRIBPLATEPROFILEPROPERTIES", "IFCPROFILEPROPERTIES"),
     same("IFCPERFORMANCEHISTORY"),
     AttrMap { renamed: &[("TaskId", "Identification")], ..same("IFCTASK") },
+    // IFC4 deleted both subtypes for IfcTask: an upgrade writes them as IfcTask
+    // (`deleted_subtype`), losing MoveFrom, MoveTo, PunchList and ActionID (#10902).
+    AttrMap { renamed: &[("TaskId", "Identification")], ..map("IFCMOVE", "IFCTASK") },
+    AttrMap { renamed: &[("TaskId", "Identification")], ..map("IFCORDERACTION", "IFCTASK") },
     same("IFCPROPERTYDEPENDENCYRELATIONSHIP"),
     // #10824: renamed both ways (`map_2x3_to_4`, `schema_mep`); IFC4's
     // PredefinedType replaces the function enum, and the IFC2X3 label is
@@ -132,11 +136,16 @@ pub(crate) const ATTR_MAPS: &[AttrMap] = &[
     },
 ];
 
-/// The IFC4 type an IFC2X3 type IFC4 deleted is written as on an IFC4 or IFC4X3
-/// upgrade (`rename_type`; not IFC5, which has no attribute list): the
-/// map that pairs it with another name (#10777).
+/// The IFC4 type of an IFC2X3 subtype retired in IFC4. Attribute maps cover
+/// property and process subtypes; relationships retain their supertype slots.
 pub(crate) fn upgrade_type(ifc2x3: &str) -> Option<&'static str> {
-    ATTR_MAPS.iter().find(|m| m.ifc2x3 == ifc2x3 && m.ifc4 != m.ifc2x3).map(|m| m.ifc4)
+    ATTR_MAPS.iter().find(|m| m.ifc2x3 == ifc2x3 && m.ifc4 != m.ifc2x3)
+        .map(|m| m.ifc4)
+        .or(match ifc2x3 {
+            "IFCRELOCCUPIESSPACES" => Some("IFCRELASSIGNSTOACTOR"),
+            "IFCRELASSIGNSTASKS" | "IFCRELASSIGNSTOPROJECTORDER" | "IFCRELSCHEDULESCOSTITEMS" => Some("IFCRELASSIGNSTOCONTROL"),
+            _ => None,
+        })
 }
 
 /// The map for writing `entity_type` as `new_type` from `cfrom` to `cto`, and

@@ -155,7 +155,7 @@ pub(in crate::router::voids) fn cutters<'a>(
 
 /// A weld can move the host bounds across the extension threshold even though
 /// the authored rectangle stops inside the source host (#10528). Check the
-/// centre and axial offsets because a finish can end inside the footprint.
+/// centre and axial offsets, then look for source faces inside the cutter.
 fn weld_shift_extends_recess(
     execution: &Execution,
     host: &Mesh,
@@ -179,4 +179,67 @@ fn weld_shift_extends_recess(
             step[axis] = quarter[axis];
             inside(centre - step) || inside(centre + step)
         })
+        || host_face_inside_opening(host, min, max)
+}
+
+// A narrow finish can sit between the parity probes. Its side face
+// intersects the interior of the authored box even when none of the probes
+// crosses the finish. Inset the box to discard contacts at its flush faces.
+fn host_face_inside_opening(host: &Mesh, min: Point3<f64>, max: Point3<f64>) -> bool {
+    let magnitude = min.coords.amax().max(max.coords.amax());
+    let inset = crate::router::voids::flush::flush_band_at(magnitude);
+    let lower = min.map(|x| x + inset);
+    let upper = max.map(|x| x - inset);
+    if (0..3).any(|axis| lower[axis] >= upper[axis]) {
+        return false;
+    }
+    host.indices.chunks_exact(3).any(|triangle| {
+        if triangle.iter().any(|&index| index as usize >= host.vertex_count()) {
+            return false;
+        }
+        let points = [triangle[0], triangle[1], triangle[2]].map(|index| {
+            let i = index as usize * 3;
+            Point3::new(host.positions[i] as f64, host.positions[i + 1] as f64, host.positions[i + 2] as f64)
+        });
+        (0..3).all(|axis| {
+            points.iter().any(|p| p[axis] >= lower[axis])
+                && points.iter().any(|p| p[axis] <= upper[axis])
+        }) && triangle_intersects_inset_box(points, lower, upper)
+    })
+}
+
+fn triangle_intersects_inset_box(
+    points: [Point3<f64>; 3],
+    lower: Point3<f64>,
+    upper: Point3<f64>,
+) -> bool {
+    if (points[1] - points[0]).cross(&(points[2] - points[0])).norm_squared() == 0.0 {
+        return false;
+    }
+    let mut polygon = points.to_vec();
+    let mut next = Vec::with_capacity(9);
+    for axis in 0..3 {
+        for (bound, sign) in [(lower[axis], -1.0), (upper[axis], 1.0)] {
+            let distance = |p: Point3<f64>| sign * (p[axis] - bound);
+            let mut previous = *polygon.last().unwrap();
+            let mut previous_distance = distance(previous);
+            for &point in &polygon {
+                let d = distance(point);
+                if (previous_distance <= 0.0) != (d <= 0.0) {
+                    next.push(previous + (point - previous) * (previous_distance / (previous_distance - d)));
+                }
+                if d <= 0.0 {
+                    next.push(point);
+                }
+                previous = point;
+                previous_distance = d;
+            }
+            if next.is_empty() {
+                return false;
+            }
+            std::mem::swap(&mut polygon, &mut next);
+            next.clear();
+        }
+    }
+    true
 }

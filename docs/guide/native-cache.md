@@ -17,8 +17,10 @@ cargo install --locked --path rust/cache
 Without a checkout, pinned to a commit:
 
 ```bash
-cargo install --locked --git https://github.com/LTplus-AG/ifc-lite --rev <commit> ifc-lite-cache
+cargo install --locked --git https://github.com/LTplus-AG/ifc-lite --rev 58d278b3b88e4484ccef336f024b4ca1051dd221 ifc-lite-cache
 ```
+
+That revision writes format v28. To build a different one, replace the hash with any commit on `main` whose format version your readers accept (see [Reader compatibility](#reader-compatibility)); `FORMAT_VERSION` in `rust/cache/src/format.rs` at that commit is the version it writes.
 
 Pin a commit rather than a branch: the commit decides which format version the tool writes (see [Reader compatibility](#reader-compatibility)), and `--locked` then builds it with the `Cargo.lock` of that commit.
 

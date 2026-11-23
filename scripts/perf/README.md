@@ -6131,6 +6131,10 @@ source face is identified by containment. A side wall at a corner
 exclusive to that face must extend beyond the authored cap for either
 signed-area group. Containment by itself could select a wider finish.
 
+The manifold-gated retry reorients uniformly inward-wound closed shells
+before the union. Mixed winding can represent a cavity and stays outside
+that recovery.
+
 Meshes matched the base on FZK-Haus, ISSUE_129, Holter, and rvt01.
 Timing on the loaded host did not establish a throughput change.
 

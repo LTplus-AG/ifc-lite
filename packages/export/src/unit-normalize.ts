@@ -214,47 +214,21 @@ export function toStepRealScaled(v: number): string {
   return formatStepReal(parseFloat(v.toPrecision(12)));
 }
 
-/**
- * Single token matcher used by {@link scaleNumberLiterals} over text OUTSIDE
- * string literals ({@link mapOutsideStepStrings}): a `#`-reference (kept
- * verbatim) or a REAL/INTEGER literal (rescaled). Refs are matched first so
- * their digits are never treated as numbers. The number alternative consumes an
- * optional exponent as one token, so `1.E-5` / `-2.5E2` scale the mantissa
- * without touching the exponent digits.
- */
-const NUMBER_TOKEN_RE = /#\d+|[+-]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][+-]?\d+)?/g;
+const NUMBER_SOURCE = /[+-]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][+-]?\d+)?/.source;
+const COMMENT_SOURCE = /\/\*[\s\S]*?(?:\*\/|$)/.source;
+const NUMBER_TOKEN_RE = new RegExp(String.raw`${COMMENT_SOURCE}|#\d+|${NUMBER_SOURCE}`, 'g');
 
-/**
- * Multiply every bare numeric literal in `text` by `factor`, leaving quoted
- * strings and `#`-references untouched. O(n) single pass — safe for the large
- * coordinate lists of tessellated geometry.
- */
+/** Scale coordinate literals and leave references, strings and comments intact. */
 export function scaleNumberLiterals(text: string, factor: number): string {
   return mapOutsideStepStrings(text, (code) => code.replace(NUMBER_TOKEN_RE, (tok) =>
-    tok.charCodeAt(0) === 0x23 /* # */ ? tok : toStepRealScaled(parseFloat(tok) * factor)));
+    tok.startsWith('#') || tok.startsWith('/') ? tok : toStepRealScaled(parseFloat(tok) * factor)));
 }
 
-/**
- * Scale the typed measures embedded in property/quantity values. Matches
- * `IFC[POSITIVE|NONNEGATIVE]LENGTHMEASURE(x)` (× lengthFactor), `IFCAREAMEASURE(x)`
- * (× areaFactor), `IFCVOLUMEMEASURE(x)` (× volumeFactor) and derived profile
- * measures outside STEP strings ({@link mapOutsideStepStrings}).
- *
- * A single non-word delimiter (`(`, `,`, whitespace, or start-of-input) is
- * captured before the keyword and restored, so a keyword can never be matched as
- * the suffix of a longer identifier — without a lookbehind, which some engines
- * (older Safari) reject at construction time and would break importing this module.
- *
- * Trivia (whitespace and/or a `/* ... *​/` comment) between the keyword and
- * `(` mirrors the entity/typed-value adjacency fix (packages/parser's
- * entity-extractor, #3205's Rust counterpart, #3789 for the comment case): a
- * STEP writer's line wrap or an inline comment can land there, and without
- * tolerating it the wrapped literal was skipped by this rewriter, leaving
- * the normalized file's other measures scaled but this one still in the
- * source unit.
- */
+const NUMERIC_SLOT = `(${STEP_TRIVIA})(${NUMBER_SOURCE})(${STEP_TRIVIA})`;
+const BARE_MEASURE_RE = new RegExp(`^${NUMERIC_SLOT}$`);
+// Consume other identifiers and comments whole so neither can contain a measure match.
 const TYPED_MEASURE_RE = new RegExp(
-  `(^|[^A-Za-z0-9_])(IFC(?:POSITIVE|NONNEGATIVE)?LENGTHMEASURE|IFCAREAMEASURE|IFCVOLUMEMEASURE|${[...PROFILE_MEASURE_POWERS.keys()].join('|')})${STEP_TRIVIA}\\(([^)]*)\\)`,
+  String.raw`(IFC(?:POSITIVE|NONNEGATIVE)?LENGTHMEASURE|IFCAREAMEASURE|IFCVOLUMEMEASURE|${[...PROFILE_MEASURE_POWERS.keys()].join('|')})${STEP_TRIVIA}\(${NUMERIC_SLOT}\)|${COMMENT_SOURCE}|[A-Za-z0-9_]+`,
   'gi',
 );
 
@@ -267,33 +241,28 @@ export function scaleTypedMeasures(
 ): string {
   return mapOutsideStepStrings(text, (code) => code.replace(
     TYPED_MEASURE_RE,
-    (_full, delim, keyword, num) => {
+    (full, keyword, before, num, after) => {
+      if (keyword === undefined) return full;
       const kw = keyword.toUpperCase();
       const factor = kw === 'IFCAREAMEASURE' ? areaFactor
         : kw === 'IFCVOLUMEMEASURE' ? volumeFactor
         : profileFactors?.get(kw) ?? lengthFactor ** (PROFILE_MEASURE_POWERS.get(kw) ?? 1);
-      return `${delim}${keyword}(${scaleMeasureNumber(num, factor)})`;
+      const scaled = scaleMeasureNumber(before, num, after, factor);
+      return scaled === undefined ? full : `${keyword}(${scaled})`;
     },
   ));
 }
 
-/** Scale the numeric content of one typed-measure token, preserving non-numeric ($) content. */
-function scaleMeasureNumber(num: string, factor: number): string {
-  const trimmed = num.trim();
-  const n = Number(trimmed);
-  if (trimmed === '' || !Number.isFinite(n)) return num;
-  return toStepRealScaled(n * factor);
+/** Replace only the number when its surrounding trivia includes comments. */
+function scaleMeasureNumber(before: string, num: string, after: string, factor: number): string | undefined {
+  const n = Number(num);
+  if (!Number.isFinite(n)) return undefined;
+  return `${before.includes('/*') ? before : ''}${toStepRealScaled(n * factor)}${after.includes('/*') ? after : ''}`;
 }
 
-/** Scale a single scalar attribute token by `factor` (skips `$`/`*`/non-bare-number). */
 function scaleScalarArg(arg: string, factor: number): string {
-  const trimmed = arg.trim();
-  if (trimmed === '' || trimmed === '$' || trimmed === '*') return arg;
-  const n = Number(trimmed);
-  // Only a bare real is a directly-typed length; a typed token (IFC…MEASURE(…))
-  // is left to the measure pass, so it is never scaled twice.
-  if (!Number.isFinite(n)) return arg;
-  return toStepRealScaled(n * factor);
+  const match = BARE_MEASURE_RE.exec(arg);
+  return match ? scaleMeasureNumber(match[1], match[2], match[3], factor) ?? arg : arg;
 }
 
 /**

@@ -1167,7 +1167,7 @@ describe('MergedExporter', () => {
   describe('unit normalization (#1475)', () => {
     // Primary = metres. Both models declare square-/cubic-metre area/volume units
     // (the Revit convention: millimetre lengths but metre-derived area/volume).
-    const metreModel = (extra: Array<[number, string, string]> = [], extraUnitIds: number[] = []): MergeModelInput => {
+    const metreModel = (extra: Array<[number, string, string]> = [], extraUnitIds: number[] = []): MockMergeModelInput => {
       const m = buildModel('primary', 'Primary-metre', [
         [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('primProj')}',$,'Primary',$,$,$,$,(#3),#2);`],
         [2, 'IFCUNITASSIGNMENT', `#2=IFCUNITASSIGNMENT((#8,#9,#10${extraUnitIds.map(id => `,#${id}`).join('')}));`],
@@ -1285,6 +1285,28 @@ describe('MergedExporter', () => {
         .export({ schema: 'IFC4', unitReconciliation: 'normalize' });
       const literal = /'Section datum',\$,IFC[A-Z]+MEASURE\(([^)]+)\)/.exec(decode(result.content))?.[1];
       expect(Number(literal)).toBe(expected);
+    });
+
+    it.each([
+      ['kg/m to kg/m', '.KILO.', '$', '.KILO.', '50.', true],
+      ['g/cm to kg/m', '$', '.CENTI.', '.KILO.', '5.', true],
+      ['g/cm to g/m without a primary derived-unit type entry', '$', '.CENTI.', '$', '5000.', false],
+    ])('normalizes declared mass per length from %s (#11329)', (_case, massPrefix, metrePrefix, primaryMass, expected, indexed) => {
+      const massPerLengthUnits = (mass: string, length: string): Array<[number, string, string]> => [
+        [19, 'IFCSIUNIT', `#19=IFCSIUNIT(*,.MASSUNIT.,${mass},.GRAM.);`],
+        [20, 'IFCSIUNIT', `#20=IFCSIUNIT(*,.LENGTHUNIT.,${length},.METRE.);`],
+        [21, 'IFCDERIVEDUNITELEMENT', '#21=IFCDERIVEDUNITELEMENT(#19,1);'],
+        [22, 'IFCDERIVEDUNITELEMENT', '#22=IFCDERIVEDUNITELEMENT(#20,-1);'],
+        [23, 'IFCDERIVEDUNIT', '#23=IFCDERIVEDUNIT((#21,#22),.MASSPERLENGTHUNIT.,$);'],
+      ];
+      const primary = metreModel(massPerLengthUnits(primaryMass, '$'), [23]);
+      if (!indexed) primary.dataStore.entityIndex.byType.delete('IFCDERIVEDUNIT');
+      const secondary = mmModel([
+        [18, 'IFCPROPERTYSINGLEVALUE', "#18=IFCPROPERTYSINGLEVALUE('Section weight',$,IFCMASSPERLENGTHMEASURE(50.),$);"],
+        ...massPerLengthUnits(massPrefix, metrePrefix),
+      ], [23]);
+      const result = new MergedExporter([primary, secondary]).export({ schema: 'IFC4', unitReconciliation: 'normalize' });
+      expect(decode(result.content)).toContain(`'Section weight',$,IFCMASSPERLENGTHMEASURE(${expected}),$`);
     });
 
     it('normalizes into the primary project’s declared derived unit (#11329)', () => {

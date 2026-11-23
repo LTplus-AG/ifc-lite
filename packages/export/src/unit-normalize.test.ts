@@ -53,6 +53,10 @@ describe('scaleNumberLiterals', () => {
   it('never touches #-references or quoted strings', () => {
     expect(scaleNumberLiterals("#5,'Room (3000)',100.", 0.001)).toBe("#5,'Room (3000)',0.1");
   });
+
+  it('leaves numeric text inside a STEP comment intact (#11329)', () => {
+    expect(scaleNumberLiterals("/* room's 100. */100.", 0.001)).toBe("/* room's 100. */0.1");
+  });
 });
 
 describe('scaleTypedMeasures', () => {
@@ -60,6 +64,14 @@ describe('scaleTypedMeasures', () => {
     // length ×0.001, area unchanged, volume unchanged (the Revit case).
     expect(scaleTypedMeasures('IFCLENGTHMEASURE(100.),IFCAREAMEASURE(4.),IFCVOLUMEMEASURE(8.)', 0.001, 1, 1))
       .toBe('IFCLENGTHMEASURE(0.1),IFCAREAMEASURE(4.),IFCVOLUMEMEASURE(8.)');
+  });
+
+  it.each([
+    ['/* mm */', ''],
+    ["/* section's value ) */ ", ' /* IFCMOMENTOFINERTIAMEASURE(9.) */'],
+  ])('scales a commented typed profile value and preserves its trivia (#11329)', (before, after) => {
+    expect(scaleTypedMeasures(`IFCMOMENTOFINERTIAMEASURE(${before}2.E12${after})`, 0.001, 1, 1))
+      .toBe(`IFCMOMENTOFINERTIAMEASURE(${before}2.${after})`);
   });
 
   it('scales area/volume when the model uses length-derived units', () => {
@@ -191,6 +203,15 @@ describe('rescaleEntityLengths (full entity lines)', () => {
   ])('keeps all geometric fields of %s in the normalized IFC2X3 units (#11329)', (type, input, expected) => {
     expect(rescaleEntityLengths(`#5=${type}(${input});`, type, 0.001, 1e-6, 1e-9))
       .toBe(`#5=${type}(${expected});`);
+  });
+
+  it('scales bare profile measures with comments on both sides of the number (#11329)', () => {
+    const line = "#5=IFCGENERALPROFILEPROPERTIES($,#3,/* section's kg/mm */0.002 /* 400 */,$,$,$,$);";
+    expect(rescaleEntityLengths(line, 'IFCGENERALPROFILEPROPERTIES', 0.001, 1, 1))
+      .toBe(line.replace('0.002', '2.'));
+    const declared = new Map([['IFCMASSPERLENGTHMEASURE', 0.1]]);
+    expect(rescaleEntityLengths(line, 'IFCGENERALPROFILEPROPERTIES', 0.001, 1, 1, declared))
+      .toBe(line.replace('0.002', '0.0002'));
   });
 
   it('normalizes implicit profile units even with comments, and keeps explicit units (#11329)', () => {

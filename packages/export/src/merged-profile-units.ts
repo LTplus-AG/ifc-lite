@@ -6,8 +6,7 @@ import { extractProjectUnits, measureUnit, type IfcDataStore, type ProjectUnits 
 import { PROFILE_MEASURE_POWERS } from './unit-normalize.js';
 
 export function readProfileProjectUnits({ source, entityIndex }: IfcDataStore): ProjectUnits | undefined {
-  // @raw-entity-enumeration-ok the unit assignment belongs to the baked merge input
-  if (source && entityIndex.byType.has('IFCDERIVEDUNIT')) return extractProjectUnits(source, entityIndex);
+  if (source) return extractProjectUnits(source, entityIndex);
 }
 
 function declaredScale(units: ProjectUnits | undefined, unitType: string, measure: string): number | undefined {

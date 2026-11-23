@@ -25,8 +25,7 @@
  *   IFCPROXY that carries a fresh GlobalId, so the source one is not recorded;
  * - a relationship: the claim pass itself may withhold it;
  * - an entity whose own GlobalId was already UNKNOWN.
- * A GlobalId one model writes twice is recorded as the emit pass records it:
- * the last copy in index order.
+ * The first copy a model writes keeps its GlobalId. Later copies are re-stamped.
  *
  * Containers are the one thing written or not by the plan being made. A
  * container unifies here only onto a container (and anything else only onto
@@ -54,6 +53,7 @@ export interface PlannerGuidModel {
   effectiveScale: number;
   /** Written with its source GlobalId unchanged: false when exported across schemas. */
   keepsGuids: boolean;
+  canUnify: (type: string) => boolean;
   /** Left out before GlobalId reconciliation: the unified IfcProject, a spatially unified container. */
   unifiedEarlier: (localId: number) => boolean;
   /** In the output at all (visibility closure). */
@@ -83,12 +83,12 @@ export class PlannerGuids {
       // An earlier record exists: the emit pass unifies or re-stamps, and never records this GlobalId again.
       settled.add(id);
       const prior = this.records.get(guid)!;
-      const canUnify = !model.isFirst && model.compatible && prior !== null && this.isPrimaryUnit(prior.scale) && canUnifyByGlobalId(type);
+      const canUnify = !model.isFirst && model.compatible && prior !== null && this.isPrimaryUnit(prior.scale) && model.canUnify(type);
       if (canUnify && prior.container === this.isContainer(type)) unified.set(id, prior.finalId);
     }
     const written = new Map<string, GuidRecord>();
     for (const [id, guid] of model.guids) {
-      if (settled.has(id) || model.unifiedEarlier(id) || !model.isIncluded(id)) continue;
+      if (written.has(guid) || settled.has(id) || model.unifiedEarlier(id) || !model.isIncluded(id)) continue;
       const type = model.typeOf(id);
       const known = model.keepsGuids && canUnifyByGlobalId(type);
       written.set(guid, known ? { finalId: id + model.offset, scale: model.effectiveScale, container: this.isContainer(type) } : null);

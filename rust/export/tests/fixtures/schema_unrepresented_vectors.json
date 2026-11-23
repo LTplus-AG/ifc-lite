@@ -73,6 +73,14 @@
    "expect": "#5=IFCPROXY('0YvctVUKr0kugbFTf53O9L',$,'Grid''s /* datum */, A',$,$,$,$,.NOTDEFINED.,$);"
   },
   {
+   "why": "#11322: a short comment before GlobalId also survives merged reconciliation",
+   "from": "IFC4X3",
+   "to": "IFC4",
+   "line": "#5=IFCRELPOSITIONS(/* note */'0YvctVUKr0kugbFTf53O9L',$,'Grid',$,#1,(#2));",
+   "merge": true,
+   "expect": "#5=IFCPROXY('0YvctVUKr0kugbFTf53O9L',$,'Grid',$,$,$,$,.NOTDEFINED.,$);"
+  },
+  {
    "why": "#11322: an unset GlobalId is minted identically and an unset Name falls back to the source type",
    "from": "IFC4X3",
    "to": "IFC4",

@@ -101,6 +101,40 @@ fn assert_proxy_wall_collision(wall_first: bool) {
 }
 
 #[test]
+fn walls_and_converted_nonrelationship_proxies_survive_in_both_orders_11322() {
+    let guid = "0YvctVUKr0kugbFTf53O9L";
+    for (from, to, line, minted_proxy) in [
+        ("IFC4", "IFC2X3", format!("#5=IFCSTRUCTURALCURVEREACTION('{guid}',$,'Reaction',$,$,$,$,#2,.GLOBAL_COORDS.,.DISCRETE.);"), false),
+        ("IFC4X3", "IFC4", format!("#5=IFCALIGNMENTSEGMENT('{guid}',$,'Segment',$,$,$,$,#2);"), true),
+    ] {
+        let proxy = source(from, &line);
+        let wall = source(from, &format!("#1=IFCWALL('{guid}',$,'Wall',$,$,$,$,$,.NOTDEFINED.);"));
+        for wall_first in [true, false] {
+            let mut models = [("proxy", &proxy), ("wall", &wall)].map(|(id, content)| MergedModel {
+                content: content.as_bytes(), id: id.into(), included: None,
+            });
+            if wall_first { models.reverse(); }
+            let options = MergedOptions { schema: Some(to.into()), ..Default::default() };
+            let (merged, _) = export_merged_models(&models, &options);
+            let roots: Vec<_> = merged.lines().filter_map(|line| {
+                let (_, body) = line.split_once('=')?;
+                let (ty, attrs) = body.split_once("('")?;
+                matches!(ty, "IFCPROXY" | "IFCWALL").then(|| (ty, attrs.split_once('\'').unwrap().0))
+            }).collect();
+            let want = if wall_first { ["IFCWALL", "IFCPROXY"] } else { ["IFCPROXY", "IFCWALL"] };
+            assert_eq!(roots.iter().map(|(ty, _)| *ty).collect::<Vec<_>>(), want, "{merged}");
+            let expected = match (minted_proxy, wall_first) {
+                (true, true) => [guid, "2r5SrPtCIW9JYNjX1BW7dv"],
+                (true, false) => ["1tUrwBAVKXXziaSy8PtiVv", guid],
+                (false, true) => [guid, "10eAHYqx8ewhIsCT7yemIL"],
+                (false, false) => [guid, "0tr9wqYqpdsHHEufgQ1Tzr"],
+            };
+            assert_eq!(roots.iter().map(|(_, id)| *id).collect::<Vec<_>>(), expected, "{merged}");
+        }
+    }
+}
+
+#[test]
 fn every_case_agrees_with_the_shared_fixture_7742() {
     let cases = cases();
     assert!(cases.iter().filter(|c| c.refuses).count() >= 8, "anti-vacuity: refusal rows");

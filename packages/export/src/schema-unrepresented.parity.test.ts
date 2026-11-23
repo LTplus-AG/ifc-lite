@@ -85,3 +85,26 @@ it.each(['proxy', 'wall'] as const)('keeps the proxy and wall that share a Globa
   expect(roots[0][2]).toBe(guid);
   expect(roots[1][2]).not.toBe(guid);
 });
+
+it.each([
+  ['IFC4', 'IFC2X3', 'IFCSTRUCTURALCURVEREACTION', false, 'wall'],
+  ['IFC4', 'IFC2X3', 'IFCSTRUCTURALCURVEREACTION', false, 'proxy'],
+  ['IFC4X3', 'IFC4', 'IFCALIGNMENTSEGMENT', true, 'wall'],
+  ['IFC4X3', 'IFC4', 'IFCALIGNMENTSEGMENT', true, 'proxy'],
+] as const)('keeps %s → %s %s and wall distinct (minted proxy: %s, %s first) (#11322)', async (from, to, type, mintedProxy, first) => {
+  const guid = '0YvctVUKr0kugbFTf53O9L';
+  const attributes = mintedProxy ? "$,'Segment',$,$,$,$,#2" : "$,'Reaction',$,$,$,$,#2,.GLOBAL_COORDS.,.DISCRETE.";
+  const [proxy, wall] = await Promise.all([
+    parseModel(from, `#5=${type}('${guid}',${attributes});`),
+    parseModel(from, `#1=IFCWALL('${guid}',$,'Wall',$,$,$,$,$,.NOTDEFINED.);`),
+  ]);
+  const models = [{ id: 'proxy', name: 'proxy', dataStore: proxy }, { id: 'wall', name: 'wall', dataStore: wall }];
+  if (first === 'wall') models.reverse();
+  const out = new TextDecoder().decode(new MergedExporter(models).export({ schema: to }).content);
+  const roots = [...out.matchAll(/^#\d+=(IFCPROXY|IFCWALL)\('([0-3][0-9A-Za-z_$]{21})',/gm)];
+  expect(roots.map((m) => m[1])).toEqual(first === 'wall' ? ['IFCWALL', 'IFCPROXY'] : ['IFCPROXY', 'IFCWALL']);
+  const expected = mintedProxy
+    ? first === 'wall' ? [guid, '2r5SrPtCIW9JYNjX1BW7dv'] : ['1tUrwBAVKXXziaSy8PtiVv', guid]
+    : first === 'wall' ? [guid, '10eAHYqx8ewhIsCT7yemIL'] : [guid, '0tr9wqYqpdsHHEufgQ1Tzr'];
+  expect(roots.map((m) => m[2])).toEqual(expected);
+});

@@ -36,6 +36,15 @@ pub(super) fn can_unify_by_global_id(type_upper: &str, converted: Option<&str>) 
         && converted.is_none_or(|line| StepRecord::parse(line.as_bytes()).is_some_and(|record| !record.keyword_is(b"IFCPROXY")))
 }
 
+pub(super) fn can_unify_converted_type(ty: &str, (from, to): (&'static str, &'static str)) -> bool {
+    use crate::schema_plan::{plan_for, Plan};
+    if from == to { return can_unify_by_global_id(ty, None); }
+    match plan_for(ty, from, to) {
+        Plan::Write { renamed, .. } => can_unify_by_global_id(renamed.unwrap_or(ty), None),
+        Plan::ProductProxy | Plan::Unrepresented => false,
+    }
+}
+
 /// True when `type_upper` is a **rooted** entity (an `IfcRoot` subtype). Delegates
 /// to the crate's shared, schema-driven [`crate::rooted_type::is_rooted_type`],
 /// which decides rootedness from the EXPRESS inheritance graph (plus the legacy

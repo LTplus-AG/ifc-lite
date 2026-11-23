@@ -227,7 +227,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     let mut minter = GuidMinter::new();
     let mut offset: u32 = 0;
     let mut slot_fill = Ifc2x3SlotFill::new(None);
-    let mut checks = ConversionChecks::new(); // IFC4-required `$` slots (#5307), enums (#5365)
+    let mut checks = ConversionChecks { merged: true, ..ConversionChecks::new() };
     let mut parents = single_parents::ParentClaims::for_schema(&schema); // one rel per single-valued inverse (#5727, #5802, #5774, #5923)
 
     for (i, model) in models.iter().enumerate() {
@@ -267,6 +267,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
             drop_plan.as_ref().and_then(|p| p.per_model.get(i)).filter(|d| !d.is_empty());
 
         let salt = model_salt(model, i);
+        let source_schema = detect_schema(model.content);
         let plan = build_plan(&index, is_first, compatible, PlanCtx {
             canonical_project,
             first_infra: &first_infra,
@@ -276,9 +277,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
             merge_storeys: opts.merge_storeys,
             primary_scale,
             guid_to_final: &guid_to_final,
-            emitted_guids: &emitted_guids,
-            minter: &mut minter,
-            salt: salt.clone(),
+            schemas: (crate::schema_convert::canon(&source_schema), crate::schema_convert::canon(&schema)),
         });
 
         // IFC2X3 `$` OwnerHistory: this model's first written one, else an earlier model's (#4686).
@@ -291,7 +290,6 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
         }
 
         // Emit.
-        let source_schema = detect_schema(model.content);
         let converting = crate::schema_convert::needs_conversion(&source_schema, &schema);
         let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(model.content, &source_schema, &schema); // D57
         flatten.retain_grids(|id| included.contains(&id) && !plan.skip.contains(&id));
@@ -328,10 +326,6 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
             } else {
                 rewrite_refs(bytes, offset, &|n| plan.shared_remap.get(&n).copied())
             };
-            let after_guid = match plan.guid_rewrite.get(&id) {
-                Some(g) => replace_global_id(&remapped, g),
-                None => remapped,
-            };
             let final_text = if converting {
                 // Pass the remapped id so a proxy that needs a generated GlobalId
                 // has a distinct seed even when two models share the same local id.
@@ -344,7 +338,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                 // abort a merge the single-model path only mis-converted before
                 // #5116, and wasm cannot unwind. Reported in `stats.warnings`.
                 match crate::schema_convert::convert_step_line(
-                    &after_guid,
+                    &remapped,
                     &source_schema,
                     &schema,
                     id.saturating_add(offset),
@@ -354,20 +348,17 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                     Ok(text) => text,
                     Err(e) => {
                         unrepresented_types_kept.insert(e.entity_type);
-                        after_guid.clone()
+                        remapped
                     }
                 }
             } else {
-                after_guid
+                remapped
             };
 
             let ty = index.type_of.get(&id).map_or("", String::as_str);
             let Some(mut final_text) = parents.claim(ty, final_text, !is_first && compatible) else { continue };
 
-            if let Some(local_guid) = plan.local_guids.get(&id) {
-                let mut emitted = read_leading_guid(&final_text)
-                    .or_else(|| plan.guid_rewrite.get(&id).cloned())
-                    .unwrap_or_else(|| local_guid.clone());
+            if let Some(mut emitted) = plan.local_guids.contains_key(&id).then(|| read_leading_guid(&final_text)).flatten() {
                 // A schema-conversion placeholder (an alignment/linear entity
                 // downgraded to IFCPROXY) is minted at emit time, AFTER GlobalId
                 // reconciliation, so it can still collide with a rooted GlobalId an
@@ -383,9 +374,6 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                     can_unify: can_unify_by_global_id(ty, converting.then_some(&final_text)) };
                 guid_to_final.insert(emitted.clone(), record);
                 emitted_guids.insert(emitted);
-                // Keep the first claimant under the source ID as well, even
-                // if conversion or re-stamping changed its emitted ID.
-                guid_to_final.entry(local_guid.clone()).or_insert(record);
             }
 
             out.push_str(&final_text);

@@ -6,6 +6,7 @@ import { readStepSlots } from './step-argument-parser.js';
 import { slotRef, slotUnset, type SourceRecords } from './schema-converter-structural-source.js';
 import { getMaxExpressId, type CompleteEntityIndex } from './entity-iteration.js';
 import { stepRecordHead } from './step-record-frame.js';
+import { decodeRange } from './source-ref-bounds.js';
 import { isStepValue, parseStepNumber, skipStepTrivia } from './step-slot-grammar.js';
 import type { StructuralDiagnostics } from './schema-converter-structural-diagnostics.js';
 import type { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
@@ -26,13 +27,13 @@ export function isTypedPropertyUpgrade(type: string, from: IfcSchemaVersion, to:
 const UTF8_MULTIBYTE = /[\xc2-\xdf][\x80-\xbf]|\xe0[\xa0-\xbf][\x80-\xbf]|[\xe1-\xec\xee-\xef][\x80-\xbf]{2}|\xed[\x80-\x9f][\x80-\xbf]|\xf0[\x90-\xbf][\x80-\xbf]{2}|[\xf1-\xf3][\x80-\xbf]{3}|\xf4[\x80-\x8f][\x80-\xbf]{2}/g;
 
 export function decodeTypedPropertyRecord(
-  source: IfcSourceBytes,
+  source: Uint8Array | IfcSourceBytes,
   ref: { type: string; byteOffset: number; byteLength: number },
   from: IfcSchemaVersion,
   to: IfcSchemaVersion,
 ): string {
   const end = ref.byteOffset + ref.byteLength;
-  const decoded = source.decodeUtf8(ref.byteOffset, end);
+  const decoded = decodeRange(source, ref.byteOffset, end);
   if (from !== 'IFC2X3' || (to !== 'IFC4' && to !== 'IFC4X3') || !decoded.includes('�')) {
     return decoded;
   }

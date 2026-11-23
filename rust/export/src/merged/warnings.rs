@@ -12,6 +12,26 @@ use ifc_lite_core::EntityScanner;
 use super::MergedStats;
 use crate::step_ids::IdAllocator;
 
+impl MergedStats {
+    pub(super) fn new(models: usize) -> Self {
+        Self {
+            models,
+            written: 0,
+            federated_model_count: 0,
+            unmerged_model_count: 0,
+            unit_rescale_required: false,
+            dropped_container_count: 0,
+            warnings: Vec::new(),
+        }
+    }
+
+    pub(super) fn refused(self, error: crate::schema_unrepresented::UnrepresentedEntityError) -> (String, Self) {
+        let mut stats = Self::new(self.models);
+        stats.warnings.push(error.to_string());
+        (String::new(), stats)
+    }
+}
+
 /// Push the merge-level warnings: federated models, oversized references
 /// refused while resolving closures, and types kept unconverted.
 pub(super) fn push_merge_warnings(

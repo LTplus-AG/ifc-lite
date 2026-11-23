@@ -235,7 +235,7 @@ pub fn convert_step_line(
         if let Some(repointed) = checks.structural.values.placement(express_id).and_then(|p| crate::step_log::replace_argument(&converted, 5, &format!("#{p}"))) {
             converted = repointed;
         }
-        converted = checks.enums.apply(checks.forms.apply(converted, cfrom, cto, &mut checks.attribute_values_dropped), cto);
+        converted = checks.enums.apply(checks.forms.apply(converted, cfrom, cto, express_id, &mut checks.attribute_values_dropped)?, cto);
         converted = checks.documents.apply(express_id, converted, &mut checks.attribute_values_dropped);
         if cto == "IFC2X3" { converted = checks.structural.after(express_id, converted); }
         let deferred = checks.typed_properties.capture(line, cfrom, cto, express_id);

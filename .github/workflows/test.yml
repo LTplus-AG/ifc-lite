@@ -2641,6 +2641,14 @@ jobs:
       # shell has a broken WebGPU device under software rendering.
       - name: Install Playwright video encoder
         run: pnpm exec playwright install ffmpeg
+      # The shard plan walks tests/e2e only (see scripts/ci-e2e-shards.mjs);
+      # Playwright's testDir is ./tests. Fail here, not by silently running a
+      # spec nowhere, if the two selections differ. Listing loads the specs
+      # and starts no browser or server.
+      - name: Check the shard plan covers every spec Playwright selects
+        run: |
+          pnpm exec playwright test --project=viewer-e2e-ci --list > "$RUNNER_TEMP/e2e-list.txt"
+          node scripts/ci-e2e-shards.mjs --check-list "$RUNNER_TEMP/e2e-list.txt"
       # CI_SHARD_RETRY (scripts/ci-shard-retry.mjs): see the viewer-tests job.
       # Unset, `continue-on-error` is false, the reporter list and
       # PLAYWRIGHT_JSON_OUTPUT_FILE expand to what they were, and the retry
@@ -2663,7 +2671,16 @@ jobs:
         # The test command must end before the 20-minute job limit so its
         # failure summary and test-results artifact survive a slow/hung test.
         # The list reporter also names completed tests while the job runs.
-        run: timeout --signal=INT --kill-after=30s 13m pnpm test:e2e:ci --shard=${{ matrix.shard }}/8 --reporter=list,@mergifyio/playwright${{ (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on') && ',json' || '' }}
+        # Files per shard come from scripts/ci-e2e-shards.mjs (bin-packed by
+        # measured duration), not Playwright's `--shard`, which splits by test
+        # count and left one shard at 13+ minutes while others took 3-5.
+        run: |
+          # To a file first, so a refusal fails the step (a failing process
+          # substitution would not) instead of running every spec unfiltered.
+          node scripts/ci-e2e-shards.mjs --shard ${{ matrix.shard }}/8 > "$RUNNER_TEMP/e2e-files.txt"
+          mapfile -t e2e_files < "$RUNNER_TEMP/e2e-files.txt"
+          [ "${#e2e_files[@]}" -gt 0 ]
+          timeout --signal=INT --kill-after=30s 13m pnpm test:e2e:ci "${e2e_files[@]}" --reporter=list,@mergifyio/playwright${{ (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on') && ',json' || '' }}
       - name: Retry the failed E2E tests once
         id: e2e_retry
         if: (success() || failure()) && steps.e2e.outcome == 'failure' && (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on')

@@ -13,7 +13,7 @@ export function coordinationModelAdder(): NativeModelAdder {
 }
 export interface NativeCompositionHost {
   addIfcxOverlays(files: File[]): Promise<void>;
-  loadFederatedIfcx(files: File[]): Promise<void>;
+  loadFederatedIfcx(files: File[], beforePrimaryReset?: () => void): Promise<void>;
 }
 const compositions = new Map<symbol, NativeCompositionHost>();
 export function attachCoordinationComposition(host: NativeCompositionHost): () => void {

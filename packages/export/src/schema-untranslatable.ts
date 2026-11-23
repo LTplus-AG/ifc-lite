@@ -18,6 +18,7 @@ import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { deterministicGlobalId, getInheritanceChainAcrossSchemas, type IfcDataStore } from '@ifc-lite/parser';
 import type { IfcSchemaVersion } from './schema-converter.js';
 import type { EffectiveEntityIndex } from './effective-index.js';
+import { varyingTarget } from './schema-converter-structural-varying.js';
 
 /**
  * Whether `type` is an IfcRoot subtype (has a GlobalId as its first
@@ -28,6 +29,73 @@ import type { EffectiveEntityIndex } from './effective-index.js';
  */
 export function isRootedEntityType(type: string): boolean {
   return getInheritanceChainAcrossSchemas(type).includes('IfcRoot');
+}
+
+/**
+ * IFC2X3-only types an IFC2X3 -> IFC4 upgrade writes as they are, under a name
+ * IFC4 does not declare, and the loss report lists as lossy. The non-rooted
+ * ones (D59) cannot become IFCPROXY (an IfcProduct), and leaving one out would
+ * leave its referrers pointing at nothing; refusing them failed real files that
+ * export on main. Twin of Rust `VERBATIM_UPGRADE`, both pinned by
+ * `schema_unrepresented_vectors.json`. An IFC2X3-only type NOT listed (and not
+ * a varying action, see {@link missingTypeRoute}) is proxied if rooted and
+ * refused if not, so a new one cannot slip through. Until #10879 and #10970
+ * land, every listed type is written as it is.
+ */
+export const VERBATIM_UPGRADE: ReadonlySet<string> = new Set([
+  // Dates: to become IFC4 date strings (#10879).
+  'IFCCALENDARDATE', 'IFCCOORDINATEDUNIVERSALTIMEOFFSET', 'IFCDATEANDTIME', 'IFCLOCALTIME',
+  // Everything else: to be left out with its references cleared, or mapped (#10970).
+  'IFC2DCOMPOSITECURVE', 'IFCANGULARDIMENSION', 'IFCANNOTATIONCURVEOCCURRENCE', 'IFCANNOTATIONFILLAREAOCCURRENCE',
+  'IFCANNOTATIONOCCURRENCE', 'IFCANNOTATIONSURFACE', 'IFCANNOTATIONSURFACEOCCURRENCE',
+  'IFCANNOTATIONSYMBOLOCCURRENCE', 'IFCANNOTATIONTEXTOCCURRENCE', 'IFCAPPLIEDVALUERELATIONSHIP',
+  'IFCAPPROVALACTORRELATIONSHIP', 'IFCAPPROVALPROPERTYRELATIONSHIP', 'IFCBEZIERCURVE', 'IFCCLASSIFICATIONITEM',
+  'IFCCLASSIFICATIONITEMRELATIONSHIP', 'IFCCLASSIFICATIONNOTATION', 'IFCCLASSIFICATIONNOTATIONFACET',
+  'IFCCONNECTIONPORTGEOMETRY', 'IFCCONSTRAINTAGGREGATIONRELATIONSHIP', 'IFCCONSTRAINTCLASSIFICATIONRELATIONSHIP',
+  'IFCCONSTRAINTRELATIONSHIP', 'IFCCRANERAILASHAPEPROFILEDEF', 'IFCCRANERAILFSHAPEPROFILEDEF', 'IFCDEFINEDSYMBOL',
+  'IFCDIAMETERDIMENSION', 'IFCDIMENSIONCALLOUTRELATIONSHIP', 'IFCDIMENSIONCURVE', 'IFCDIMENSIONCURVEDIRECTEDCALLOUT',
+  'IFCDIMENSIONCURVETERMINATOR', 'IFCDIMENSIONPAIR', 'IFCDOCUMENTELECTRONICFORMAT', 'IFCDRAUGHTINGCALLOUT',
+  'IFCDRAUGHTINGCALLOUTRELATIONSHIP', 'IFCDRAUGHTINGPREDEFINEDTEXTFONT', 'IFCENVIRONMENTALIMPACTVALUE',
+  'IFCEXTERNALLYDEFINEDSYMBOL', 'IFCFILLAREASTYLETILESYMBOLWITHSTYLE',
+  'IFCLINEARDIMENSION',
+  'IFCONEDIRECTIONREPEATFACTOR',
+  'IFCPREDEFINEDDIMENSIONSYMBOL', 'IFCPREDEFINEDPOINTMARKERSYMBOL',
+  'IFCPREDEFINEDSYMBOL', 'IFCPREDEFINEDTERMINATORSYMBOL', 'IFCPROJECTIONCURVE',
+  'IFCPROPERTYCONSTRAINTRELATIONSHIP', 'IFCRADIUSDIMENSION', 'IFCRATIONALBEZIERCURVE', 'IFCREFERENCESVALUEDOCUMENT',
+  'IFCRELAXATION',
+  'IFCSTRUCTUREDDIMENSIONCALLOUT', 'IFCSYMBOLSTYLE', 'IFCTERMINATORSYMBOL',
+  'IFCTEXTSTYLEWITHBOXCHARACTERISTICS', 'IFCTIMESERIESREFERENCERELATIONSHIP',
+  'IFCTWODIRECTIONREPEATFACTOR', 'IFCVERTEXBASEDTEXTUREMAP',
+]);
+
+/**
+ * What `convertRecord` does with a record of `entityType` in `toSchema`, given
+ * whether the source table (`inSource`) and the target table (`inTarget`, true
+ * when the target has none) declare its (possibly renamed) type. One rule for
+ * `convertRecord`, the loss report and the registry check (#10902); the Rust
+ * twin `missing_type_route` documents each case:
+ *  - `written`: the target declares it, or the source does not know the name;
+ *  - `unrepresented`: proxied if rooted, refused if not (`resolveUnrepresentedEntity`);
+ *  - `handled`: converted by another pass, so neither the loss report nor the
+ *    warnings name it here: an IFC2X3 varying action on an IFC4 target by the
+ *    structural pass, which reports it (#9668), an IfcPresentationStyleAssignment on an IFC4X3
+ *    target by style flattening (D57);
+ *  - `verbatim`: written as it is under a name the target lacks, and reported
+ *    lossy ({@link VERBATIM_UPGRADE}, or an IFC4X3 target, #10971).
+ */
+export function missingTypeRoute(entityType: string, fromSchema: IfcSchemaVersion, toSchema: IfcSchemaVersion, inSource: boolean, inTarget: boolean): 'written' | 'unrepresented' | 'handled' | 'verbatim' {
+  if (inTarget) return 'written';
+  // An IFC2X3 target refuses even a name no table knows (`#1=IFCLABEL('x');`, #7683).
+  if (toSchema === 'IFC2X3') return 'unrepresented';
+  if (!inSource) return 'written';
+  const type = entityType.toUpperCase();
+  // The structural pass converts and reports IFC2X3 <-> IFC4 only.
+  if (fromSchema === 'IFC2X3' && toSchema === 'IFC4' && varyingTarget(type)) return 'handled';
+  // `StyleFlatten.applies`, as Rust asks it; inline, as that module imports schema-converter.
+  if (toSchema === 'IFC4X3' && (fromSchema === 'IFC2X3' || fromSchema === 'IFC4') && type === 'IFCPRESENTATIONSTYLEASSIGNMENT') return 'handled';
+  if (toSchema !== 'IFC4') return 'verbatim';
+  if (fromSchema === 'IFC4X3') return 'unrepresented';
+  return fromSchema === 'IFC2X3' && !VERBATIM_UPGRADE.has(type) ? 'unrepresented' : 'verbatim';
 }
 
 /**

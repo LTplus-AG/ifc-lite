@@ -85,7 +85,8 @@ export function loadSavedFlows(): SavedFlow[] {
 
 /**
  * False when the stored library was read in full and does not hold `id`, or
- * when there is no browser storage at all, so nothing was ever persisted.
+ * when the host has no `localStorage` at all, so nothing was ever persisted.
+ * Storage that exists but is blocked (access throws) may still hold it.
  * A damaged library that was quarantined reads as empty on reload too; one that
  * could not be preserved (not `writable`) may still hold entries dropped here.
  * Like every read here, it quarantines a damaged library as a side effect.
@@ -93,10 +94,15 @@ export function loadSavedFlows(): SavedFlow[] {
 export function storageMayHoldFlow(id: string): boolean {
   try {
     const storage = optionalLocalStorage();
-    if (!storage) return false;
+    if (!storage) return localStorageBlocked();
     const { flows, writable } = readFlows(storage);
     return !writable || flows.some((f) => f.doc.id === id);
   } catch (error) { console.warn('[Flow] Failed to read saved workflows', error); return true; }
+}
+
+/** True when `localStorage` exists but reading it throws, as under a cookie policy. */
+function localStorageBlocked(): boolean {
+  try { void globalThis.localStorage; return false; } catch { return true; }
 }
 
 /** The caller retains its in-memory library when browser storage refuses a write. */

@@ -80,7 +80,8 @@ describe('an IFC2X3 -> IFC4 upgrade writes each route, and the loss report names
 #6=IFCCALENDARDATE(1,2,2020);
 #7=IFCSERVICELIFE('0EvctVUKr0kugbFTf53O9L',$,'Life',$,$,.ACTUALSERVICELIFE.,10.);
 #8=IFCRELASSIGNSTASKS('0FvctVUKr0kugbFTf53O9L',$,$,$,(#5),$,#9,$);
-#9=IFCWORKPLAN('0GvctVUKr0kugbFTf53O9L',$,'Plan',$,$,'WP1',#6,$,$,$,$,#6,$,$,$);
+#9=IFCWORKPLAN('0GvctVUKr0kugbFTf53O9L',$,'Plan',$,$,'WP1',$,$,$,$,$,$,$,$,$);
+#10=IFCCLASSIFICATION('Source','1',#6,'Classification');
 `;
   it('maps, renames, proxies or keeps each record, and reports them', async () => {
     const store = await parse('IFC2X3', text);
@@ -89,7 +90,8 @@ describe('an IFC2X3 -> IFC4 upgrade writes each route, and the loss report names
     expect(line(4)).toBe("#4=IFCRELASSIGNSTOACTOR('0CvctVUKr0kugbFTf53O9L',$,$,$,(#2),$,#3,$);");
     expect(line(7)).toBe("#7=IFCPROXY('0EvctVUKr0kugbFTf53O9L',$,'Life',$,$,$,$,.NOTDEFINED.,$);");
     expect(line(5)).toBe("#5=IFCTASK('0DvctVUKr0kugbFTf53O9L',$,'Move',$,$,'T-1',$,'planned',$,.F.,1,$,$);");
-    expect(line(6)).toBe('#6=IFCCALENDARDATE(1,2,2020);');
+    expect(line(6)).toBeUndefined();
+    expect(line(10)).toBe("#10=IFCCLASSIFICATION('Source','1','2020-02-01','Classification',$,$,$);");
     const entries = analyzeConversionLoss(store, 'IFC2X3', 'IFC4').entries;
     const entry = (type: string) => entries.find((e) => e.sourceType === type);
     // Its supertype holds every attribute, so nothing is lost to report.

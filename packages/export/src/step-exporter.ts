@@ -253,6 +253,7 @@ export class StepExporter {
     // Complete map metadata adaptation before optional Rust planning and assembly.
     normalizeCoordinateMetadata(pass, options, () => allocatedExpressId(this.nextExpressId++));
     pass.newEntityCount += pass.enums.structural.finishEffectiveVarying(pass.entities);
+    pass.enums.forms.dates.finish(pass.entities);
     if (pass.sourceSchema === 'IFC2X3' && pass.schema === 'IFC4') {
       pass.warnings.push(...pruneUnrootedUpgrade(pass.entities));
     }

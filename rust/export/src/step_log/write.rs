@@ -186,6 +186,12 @@ fn check_created_ids(src: &Source<'_>, log: &MutationLog) -> io::Result<()> {
     Ok(())
 }
 
+fn body_has(pass: &Pass<'_, '_>, content: &[u8], contains: impl Fn(&[u8]) -> bool) -> bool {
+    contains(content)
+        || pass.created_lines.iter().any(|(_, text)| contains(text.as_bytes()))
+        || pass.mutated_lines.values().filter_map(|(text, _)| text.as_deref()).any(|text| contains(text.as_bytes()))
+}
+
 fn validate_log_options(opts: &StepOptions) -> io::Result<()> {
     if opts.included.is_some() {
         return Err(invalid("export_step_with_log: `included` is not supported with a mutation log"));
@@ -272,17 +278,18 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
 
     let mut slot_fill = crate::schema_ifc2x3_slots::Ifc2x3SlotFill::new(pass.fallback_owner_history());
     let mut checks = crate::schema_enum::ConversionChecks::for_source(content, &source_label, &target, opts, log.mutations.is_empty() && log.new_entities.is_empty() && log.georef_mutations.is_none(), &|id, start| src.span(id).is_some_and(|(kept, _)| kept == start), &mut || pass.allocate().ok());
-    let has_varying = |bytes: &[u8]| checks.structural.buffers_varying(bytes);
-    let defer_varying = has_varying(content)
-        || pass.created_lines.iter().any(|(_, text)| has_varying(text.as_bytes()))
-        || pass.mutated_lines.values().filter_map(|(text, _)| text.as_deref()).any(|text| has_varying(text.as_bytes()));
+    let defer_varying = body_has(&pass, content, |bytes| checks.structural.buffers_varying(bytes));
+    let date_buffer = body_has(&pass, content, |bytes| {
+        crate::schema_value_forms::ValueForms::buffer_for_dates(bytes, &source_label, &target)
+    });
+    if target_is_ifc2x3 || date_buffer { checks.forms.enable_dates(); }
     let may_prune_upgrade = crate::schema_unrooted_upgrade::applies(&source_label, &target)
         && (!pass.overlay.retype_order.is_empty() || !pass.created_lines.is_empty()
             || crate::schema_unrooted_upgrade::seeds(content).next().is_some());
     let modifications = pass.new_entity_count + pass.ledger.modified_count();
     let header = |mut out: &mut dyn Write, added| write_header(&mut out, opts, content, converting, &target, modifications + added);
     if !defer_varying { header(out, 0)?; }
-    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, target_is_ifc2x3, defer_varying, may_prune_upgrade);
+    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, target_is_ifc2x3, defer_varying || date_buffer, may_prune_upgrade);
     let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(content, &source_label, &target); flatten.note_all(content, pass.mutated_lines.iter().filter_map(|(id, (t, _))| Some((*id, t.as_deref()?)))
         .chain(pass.generated.iter().chain(&pass.rewritten_lines).chain(&pass.georef_lines).chain(&pass.created_lines).map(|(id, l)| (*id, l.as_str()))));
     flatten.retain_grids(|id| !pass.skip.contains(&id) && !pass.is_deleted(id));
@@ -349,7 +356,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
 
     let mut warnings = std::mem::take(&mut pass.warnings);
     warnings.extend(slot_fill.warnings());
-    warnings.extend(checks.warnings());
+    warnings.extend(checks.warnings_for_sources(std::iter::once(content)));
     let refused = warnings.iter().filter(|w| w.contains("is not a number and the slot is REAL-typed")).count();
     Ok(LogExportStats {
         written,

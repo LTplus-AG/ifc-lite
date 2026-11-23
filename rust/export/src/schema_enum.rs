@@ -268,7 +268,32 @@ impl ConversionChecks {
             };
             writeln!(body, "{record}")?;
         }
-        Ok(count + body.finish_with_header(|text| self.structural.finish_effective_varying(text, &mut self.attribute_values_dropped), header, &mut self.upgrade_omissions)?)
+        // Date pruning changes the written count, but cannot undo a structural addition.
+        let varying_added = std::cell::Cell::new(0);
+        Ok(count + body.finish_with_header(|text| {
+            let varying = self.structural.finish_effective_varying(text, &mut self.attribute_values_dropped);
+            varying_added.set(varying.as_ref().map_or(0, |(_, added)| *added));
+            let source = varying.as_ref().map_or(text, |(body, _)| body.as_str());
+            match self.forms.finish_dates(source, &mut self.attribute_values_dropped, |ty| self.plans.forget_verbatim(ty)) {
+                Some((body, delta)) => Some((body, varying_added.get() + delta)),
+                None => varying,
+            }
+        }, |out, _| header(out, varying_added.get()), &mut self.upgrade_omissions)?)
+    }
+
+    pub(crate) fn finish_dates(&mut self, text: &mut String) -> isize {
+        if let Some((rewritten, delta)) = self.forms.finish_dates(text, &mut self.attribute_values_dropped, |ty| self.plans.forget_verbatim(ty)) {
+            *text = rewritten;
+            delta
+        } else {
+            0
+        }
+    }
+
+    pub(crate) fn warnings_for_sources<'a>(&self, sources: impl Iterator<Item = &'a [u8]>) -> Vec<String> {
+        let mut warnings = self.warnings();
+        warnings.extend(self.forms.duration_warning(sources));
+        warnings
     }
 
     /// Both checks' warnings, IFC4 slots first.

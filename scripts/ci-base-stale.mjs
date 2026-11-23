@@ -57,7 +57,7 @@ import { appendFileSync, existsSync, readdirSync, readFileSync, writeFileSync } 
 import { join } from 'node:path';
 import { gatingFilters, parseFilterBlock, splitJobs } from './lib/ci-path-coverage.mjs';
 import { combine, evaluatePerf, evaluateRust, parseGateMode, prRelevance, QUEUE_LABEL, STATUS_CONTEXT, statusFor, summaryLine } from './lib/base-stale.mjs';
-import { createIo } from './lib/base-stale-io.mjs';
+import { createIo, slim } from './lib/base-stale-io.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 import { loadMeasuredFile } from './perf-ratchet/ceilings.mjs';
 
@@ -120,11 +120,11 @@ export function readFilterGlobs(workflowText) {
 export function evaluatePr(io, { pr, headSha, mainTip, ceilings, globs, measured = null, prRun = null }) {
   const record = { pr, head: headSha, mainTip, testedBase: null, prRun: null };
   try {
-    const files = io.prFiles(pr);
+    const files = io.prFiles(pr, headSha);
     const rel = prRelevance(files, globs);
     let prMeasured = null;
     if (measured) {
-      prMeasured = measured.families;
+      prMeasured = measured.families.map(slim);
       record.testedBase = io.mergeParents(measured.mergeSha, headSha);
     } else if (rel.perf || rel.rust) {
       const m = io.prMeasurement(headSha, prRun);
@@ -173,12 +173,23 @@ function loadCache(path) {
   }
 }
 
-function saveCache(path, store, liveHeads) {
+/**
+ * A sweep prunes per-head entries to the heads it just judged (the labelled
+ * PRs); a single-PR run keeps every entry, or it would empty the sweep's cache.
+ */
+function saveCache(path, store, liveHeads, gateMode) {
   if (!path) return;
-  const prMeasurements = Object.fromEntries(Object.entries(store.prMeasurements).filter(([head]) => liveHeads.has(head)));
+  const live = (map) => Object.fromEntries(Object.entries(map ?? {}).filter(([head]) => !liveHeads || liveHeads.has(head)));
   // Main entries are immutable per tree; keep the newest 400 so the file stays small.
   const main = Object.entries(store.mainMeasurements).slice(-400);
-  writeFileSync(path, JSON.stringify({ version: 1, mainMeasurements: Object.fromEntries(main), prMeasurements }));
+  writeFileSync(path, JSON.stringify({
+    version: 1,
+    mainMeasurements: Object.fromEntries(main),
+    prMeasurements: live(store.prMeasurements),
+    prFiles: live(store.prFiles),
+    posted: live(store.posted),
+    lastMode: gateMode,
+  }));
 }
 
 function finish(opts, records, extra) {
@@ -193,12 +204,12 @@ function finish(opts, records, extra) {
   if (opts.jsonOut) writeFileSync(opts.jsonOut, records.map((r) => JSON.stringify({ ...r, ...extra, stats: undefined })).join('\n') + (records.length ? '\n' : ''));
 }
 
-export function run(opts, env = process.env) {
+export function run(opts, env = process.env, makeIo = createIo) {
   const repo = env.GITHUB_REPOSITORY;
   if (!repo) throw new Error('GITHUB_REPOSITORY is not set');
   const gateMode = parseGateMode(env.CI_BASE_STALE_GATE);
   const cache = loadCache(opts.cache);
-  const io = createIo({ repo, cache });
+  const io = makeIo({ repo, cache });
   const evaluatedAt = new Date().toISOString();
   const globs = readFilterGlobs(readFileSync('.github/workflows/test.yml', 'utf8'));
   const mainTip = opts.mainSha ?? io.mainTip();
@@ -238,7 +249,14 @@ export function run(opts, env = process.env) {
     let status = null;
     if (!fork && !opts.dryRun) {
       try {
-        const existing = gateMode === 'on' ? null : io.existingStatus(headSha, STATUS_CONTEXT);
+        // Shadow reads the existing status only where `on` may have left a
+        // non-success: always for a single PR; in a sweep, for every head on
+        // the first sweep after the gate left `on` (the in-run step's posts are
+        // not in this cache), then only for heads this workflow last posted a
+        // non-success on. A settled shadow sweep reads no statuses at all.
+        const leftOn = !cache || cache.lastMode === 'on';
+        const mayHold = opts.mode !== 'sweep' || leftOn || (io.store.posted[headSha] && io.store.posted[headSha] !== 'success');
+        const existing = gateMode === 'on' || !mayHold ? null : io.existingStatus(headSha, STATUS_CONTEXT);
         status = statusFor(rec, gateMode, existing);
         if (status) io.postStatus(headSha, STATUS_CONTEXT, status, targetUrl);
       } catch (err) {
@@ -248,7 +266,7 @@ export function run(opts, env = process.env) {
     }
     records.push({ ...rec, fork, posted: status });
   }
-  saveCache(opts.cache, io.store, new Set(records.map((r) => r.head)));
+  saveCache(opts.cache, io.store, opts.mode === 'sweep' ? new Set(records.map((r) => r.head)) : null, gateMode);
   finish(opts, records, { gateMode, mainTip, evaluatedAt, stats: io.stats });
   return 0;
 }

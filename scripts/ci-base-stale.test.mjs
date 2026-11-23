@@ -5,9 +5,11 @@
 // scripts/ci-base-stale.mjs: argument parsing, the path filters it derives
 // from the real test.yml, and the per-PR evaluation over a fake I/O layer.
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
-import { evaluatePr, parseArgs, readFilterGlobs } from './ci-base-stale.mjs';
+import { evaluatePr, parseArgs, readFilterGlobs, run } from './ci-base-stale.mjs';
 import { matchesAny } from './lib/ci-path-coverage.mjs';
 
 const WORKFLOW = readFileSync(new URL('../.github/workflows/test.yml', import.meta.url), 'utf8');
@@ -106,4 +108,101 @@ test('evaluatePr: the Rust half uses the same tested base', () => {
   assert.deepEqual(seen, ['base0000001', 'tip00000001']);
   assert.equal(r.verdict, 'stale');
   assert.deepEqual(r.rust.overlap, ['rust/core']);
+});
+
+// run(): what each mode posts, over a fake I/O layer and a temporary cache.
+
+const STALE_PR = { number: 5, headRefOid: 'head5', isDraft: false, isCrossRepository: false };
+const FORK_PR = { number: 6, headRefOid: 'head6', isDraft: false, isCrossRepository: true };
+const realCeilings = () => new Map([['bundle', ceilings.get('bundle')]]);
+
+function runFake({ gate, cacheData = null, prs = [STALE_PR], existing = 'failure', opts = {} }) {
+  const dir = mkdtempSync(join(tmpdir(), 'base-stale-run-'));
+  const cachePath = join(dir, 'cache.json');
+  if (cacheData) writeFileSync(cachePath, JSON.stringify(cacheData));
+  const posts = [];
+  const reads = [];
+  const makeIo = ({ cache }) => {
+    const store = { mainMeasurements: {}, prMeasurements: {}, prFiles: {}, posted: {}, ...(cache ?? {}) };
+    return {
+      ...fakeIo(),
+      store,
+      stats: { calls: 0, downloads: 0, cacheHits: 0 },
+      mainTip: () => 'tip00000001',
+      ceilingsAt: realCeilings,
+      coreRemaining: () => 5000,
+      queueCandidates: () => prs,
+      existingStatus: (sha) => { reads.push(sha); return existing; },
+      postStatus: (sha, context, status) => { posts.push({ sha, context, ...status }); store.posted[sha] = status.state; },
+    };
+  };
+  const env = { GITHUB_REPOSITORY: 'o/r', CI_BASE_STALE_GATE: gate };
+  const log = console.log;
+  console.log = () => {};
+  try {
+    run({ mode: 'sweep', cache: cachePath, dryRun: false, ...opts }, env, makeIo);
+  } finally {
+    console.log = log;
+  }
+  return { posts, reads, saved: JSON.parse(readFileSync(cachePath, 'utf8')) };
+}
+
+test('run, on: a stale labelled PR gets a failure status; a fork gets nothing', () => {
+  const { posts } = runFake({ gate: 'on', prs: [STALE_PR, FORK_PR] });
+  assert.equal(posts.length, 1);
+  assert.equal(posts[0].sha, 'head5');
+  assert.equal(posts[0].context, 'PR base staleness');
+  assert.equal(posts[0].state, 'failure');
+});
+
+test('run, shadow: a settled sweep reads no status and posts nothing, even for a stale PR', () => {
+  const { posts, reads, saved } = runFake({ gate: undefined, cacheData: { version: 1, lastMode: 'shadow' } });
+  assert.deepEqual(posts, []);
+  assert.deepEqual(reads, []);
+  assert.equal(saved.lastMode, 'shadow');
+});
+
+test('run, rollback: the first shadow sweep after `on` releases a failure the gate left', () => {
+  const { posts, reads } = runFake({ gate: 'shadow', cacheData: { version: 1, lastMode: 'on' } });
+  assert.deepEqual(reads, ['head5']);
+  assert.equal(posts.length, 1);
+  assert.equal(posts[0].state, 'success');
+  assert.match(posts[0].description, /shadow/);
+});
+
+test('run, shadow: a head the gate already left green is not posted again', () => {
+  const { posts } = runFake({ gate: 'shadow', cacheData: { version: 1, lastMode: 'on' }, existing: 'success' });
+  assert.deepEqual(posts, []);
+});
+
+test('run, dry run: nothing is read or posted in either mode', () => {
+  for (const gate of ['on', 'shadow']) {
+    const { posts, reads } = runFake({ gate, cacheData: { version: 1, lastMode: 'on' }, opts: { dryRun: true } });
+    assert.deepEqual([posts, reads], [[], []]);
+  }
+});
+
+test('run: a single-PR run keeps the sweep cache entries of other heads', () => {
+  const cacheData = { version: 1, lastMode: 'shadow', prFiles: { other: ['a'] }, prMeasurements: {}, mainMeasurements: {}, posted: {} };
+  const dir = mkdtempSync(join(tmpdir(), 'base-stale-run-'));
+  const cachePath = join(dir, 'cache.json');
+  writeFileSync(cachePath, JSON.stringify(cacheData));
+  const makeIo = ({ cache }) => ({
+    ...fakeIo(),
+    store: { mainMeasurements: {}, prMeasurements: {}, prFiles: {}, posted: {}, ...cache },
+    stats: { calls: 0, downloads: 0, cacheHits: 0 },
+    mainTip: () => 'tip00000001',
+    ceilingsAt: realCeilings,
+    pull: () => ({ head: { sha: 'head5', repo: { full_name: 'o/r' } } }),
+    existingStatus: () => null,
+    postStatus: () => {},
+  });
+  const log = console.log;
+  console.log = () => {};
+  try {
+    run({ mode: 'pr', pr: 5, cache: cachePath, dryRun: false }, { GITHUB_REPOSITORY: 'o/r' }, makeIo);
+  } finally {
+    console.log = log;
+  }
+  assert.deepEqual(JSON.parse(readFileSync(cachePath, 'utf8')).prFiles.other, ['a']);
 });

@@ -29,9 +29,14 @@ const NEGATIVE_TTL_MS = 2 * 60 * 60 * 1000;
 const COMPARE_FILE_CAP = 300;
 const COMPARE_COMMIT_CAP = 250;
 
+/** Only what the decision reads, so the cross-sweep cache stays small. */
+export function slim(measured) {
+  return { family: measured.family, commit: measured.commit, metrics: measured.metrics.map((m) => ({ id: m.id, value: m.value })) };
+}
+
 export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => Date.now() }) {
   const stats = { calls: 0, downloads: 0, cacheHits: 0 };
-  const store = cache ?? { mainMeasurements: {}, prMeasurements: {} };
+  const store = { mainMeasurements: {}, prMeasurements: {}, prFiles: {}, posted: {}, ...(cache ?? {}) };
 
   const api = (path, what) => {
     stats.calls += 1;
@@ -59,7 +64,7 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
         mkdirSync(out);
         writeFileSync(join(dir, `${name}.zip`), zip.stdout);
         execFileSync('unzip', ['-q', '-o', join(dir, `${name}.zip`), '-d', out]);
-        for (const f of readdirSync(out).filter((n) => n.endsWith('.json')).sort()) families.push(loadMeasuredFile(join(out, f)));
+        for (const f of readdirSync(out).filter((n) => n.endsWith('.json')).sort()) families.push(slim(loadMeasuredFile(join(out, f))));
       }
       return families;
     } finally {
@@ -170,14 +175,23 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
     return { files: files ?? [], commits: cmp.total_commits, capped };
   }
 
-  /** The PR's changed files (REST, paginated; GitHub stops at 3,000). */
-  function prFiles(number) {
+  /**
+   * The PR's changed files (REST, paginated; GitHub stops at 3,000). Cached
+   * per head SHA: a head's diff against its merge base does not change.
+   */
+  function prFiles(number, headSha = null) {
+    if (headSha && store.prFiles[headSha]) {
+      stats.cacheHits += 1;
+      return store.prFiles[headSha];
+    }
     stats.calls += 1;
     const out = execFileSync('gh', ['api', '--paginate', `repos/${repo}/pulls/${number}/files?per_page=100`, '--jq', '.[].filename'], {
       encoding: 'utf8',
       maxBuffer: 64 * 1024 * 1024,
     });
-    return out.split('\n').filter(Boolean);
+    const files = out.split('\n').filter(Boolean);
+    if (headSha) store.prFiles[headSha] = files;
+    return files;
   }
 
   /** Current main's ceiling files, family -> validated file. */
@@ -223,6 +237,7 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
     if (targetUrl) args.push('-f', `target_url=${targetUrl}`);
     stats.calls += 1;
     gh(args, `the ${context} status on ${sha}`);
+    store.posted[sha] = state;
   }
 
   /** Open, labelled, non-draft PRs on main, with their head SHA. */

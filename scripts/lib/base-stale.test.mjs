@@ -138,11 +138,32 @@ test('rust: no Rust move is fresh; not relevant, no base, unreadable or capped d
   assert.equal(rust(['rust/core/a.rs'], { files: ['rust/core/b.rs'], commits: 300, capped: true }).verdict, UNKNOWN);
 });
 
-test('rustScope maps crates, the workspace files and other paths', () => {
+test('rustScope maps crates and the workspace files; other filter paths have no scope', () => {
   assert.equal(rustScope('rust/geometry/src/kernel/x.rs'), 'rust/geometry');
   assert.equal(rustScope('Cargo.lock'), 'workspace');
   assert.equal(rustScope('apps/server/src/main.rs'), 'apps/server');
-  assert.equal(rustScope('scripts/build-wasm.sh'), 'scripts/build-wasm.sh');
+  assert.equal(rustScope('scripts/build-wasm.sh'), null);
+  assert.equal(rustScope('.github/workflows/test.yml'), null);
+});
+
+test('rust: both sides editing test.yml (in the rust filter) is not a Rust overlap', () => {
+  const r = evaluateRust({ relevant: true, prFiles: ['.github/workflows/test.yml', 'rust/core/a.rs'], rustGlobs: [...RUST, '.github/workflows/test.yml'], testedBase: 'a1', moved: { files: ['.github/workflows/test.yml'], commits: 3, capped: false } });
+  assert.equal(r.verdict, FRESH);
+  assert.equal(r.mainRustFiles, 1);
+});
+
+test('a fresh perf verdict leads with the metric closest to its allowance', () => {
+  const two = new Map([['bundle', ceilingFile([['roomy', 1000000], [EAGER, 13465339]])]]);
+  const r = evaluatePerf({
+    relevant: true,
+    prMeasured: [measured({ roomy: 10, [EAGER]: ALLOWED - 7 })],
+    testedBase: 'a1',
+    ceilings: two,
+    mainAtBase: main('a1', { roomy: 1, [EAGER]: 1 }),
+    mainLatest: main('b2', { roomy: 1, [EAGER]: 1 }),
+  });
+  assert.equal(r.verdict, FRESH);
+  assert.match(r.reasons[0], /viewer-eager-js-bytes: .* 7 to spare/);
 });
 
 test('combine: the worst part wins and keeps only its reasons', () => {

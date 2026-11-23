@@ -162,12 +162,15 @@ export function evaluatePerf({ relevant, editsCeilings = false, prMeasured, test
         });
       } else {
         const note = projected > entry.ceiling ? 'within tolerance' : 'at or under ceiling';
-        rows.push({ ...row, verdict: FRESH, reason: `${id}: projected ${projected} <= allowed ${allowed} (${note})` });
+        rows.push({ ...row, verdict: FRESH, reason: `${id}: projected ${projected} <= allowed ${allowed}, ${allowed - projected} to spare (${note})` });
       }
     }
   }
   const verdict = worst(rows.map((r) => r.verdict)) ?? UNKNOWN;
-  const reasons = rows.filter((r) => r.verdict === verdict).map((r) => r.reason);
+  // Tightest first, so the first reason of a fresh verdict is the metric
+  // closest to its allowance (the one to watch), not the first in the file.
+  const headroom = (r) => (r.projected === null || r.projected === undefined ? Infinity : (r.allowed - r.projected) / Math.max(r.allowed, 1));
+  const reasons = rows.filter((r) => r.verdict === verdict).sort((a, b) => headroom(a) - headroom(b)).map((r) => r.reason);
   if (rows.length === 0) reasons.push('the PR measurement matched no ceiling entry');
   if (verdict !== STALE && mainLatest?.behindTip > 0) {
     reasons.push(`main last measured at ${short(mainLatest.sha)}, ${mainLatest.behindTip} commit(s) behind its tip`);
@@ -179,15 +182,18 @@ export function evaluatePerf({ relevant, editsCeilings = false, prMeasured, test
 const WORKSPACE_RUST_FILES = new Set(['Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.cargo/config.toml']);
 
 /**
- * The scope a Rust-relevant path belongs to: `rust/<crate>`, `apps/server`,
- * `workspace` for the files every crate builds against, otherwise its first
- * two path segments (`scripts/retained-compare`, `packages/cli`).
+ * The scope a Rust-relevant path compiles in: `rust/<crate>`, `apps/server`,
+ * or `workspace` for the files every crate builds against. Anything else the
+ * `rust` filter carries (test.yml itself, harness scripts, the CLI's retained
+ * glue) re-triggers the Rust lanes but is not Rust source, so it has no scope
+ * and never overlaps: two PRs both editing test.yml is not a Rust conflict.
  */
 export function rustScope(path) {
   if (WORKSPACE_RUST_FILES.has(path)) return 'workspace';
   const parts = path.split('/');
   if (parts[0] === 'rust' && parts.length > 2) return `rust/${parts[1]}`;
-  return parts.length > 1 ? parts.slice(0, 2).join('/') : parts[0];
+  if (parts[0] === 'apps' && parts[1] === 'server' && parts.length > 2) return 'apps/server';
+  return null;
 }
 
 /**
@@ -217,8 +223,9 @@ export function evaluateRust({ relevant, prFiles, rustGlobs, testedBase, moved }
   if (mainRust.length === 0) {
     return { verdict: FRESH, reasons: [`main changed no Rust input since ${short(testedBase)} (${moved.commits} commits)`], mainRustFiles: 0, overlap: [] };
   }
-  const prScopes = new Set(prFiles.filter((f) => matchesAny(f, rustGlobs)).map(rustScope));
-  const mainScopes = new Set(mainRust.map(rustScope));
+  const scopes = (files) => new Set(files.filter((f) => matchesAny(f, rustGlobs)).map(rustScope).filter(Boolean));
+  const prScopes = scopes(prFiles);
+  const mainScopes = scopes(mainRust);
   // `workspace` overlaps only `workspace`. Main touches Cargo.toml/Cargo.lock
   // on every release (the version bump), and counting that against every
   // crate would make the scoped tier the coarse one. A dependency bump that
@@ -234,7 +241,7 @@ export function evaluateRust({ relevant, prFiles, rustGlobs, testedBase, moved }
   }
   return {
     verdict: FRESH,
-    reasons: [`main changed Rust only in ${[...mainScopes].join(', ')} since ${short(testedBase)}; the PR changes ${[...prScopes].join(', ')}`],
+    reasons: [`main changed Rust only in ${[...mainScopes].join(', ') || 'non-source paths'} since ${short(testedBase)}; the PR changes ${[...prScopes].join(', ') || 'no Rust source'}`],
     mainRustFiles: mainRust.length,
     overlap: [],
   };

@@ -17,9 +17,11 @@
 
 const models = new Set<string>();
 const revisions = new Map<string, number>();
+let sinceReset = false;
 
 export function noteInstancedShardModel(modelId: string): void {
   models.add(modelId);
+  sinceReset = true;
   revisions.set(modelId, (revisions.get(modelId) ?? 0) + 1);
 }
 
@@ -30,9 +32,14 @@ export function hasInstancedShards(modelId: string): boolean {
   return models.has(modelId);
 }
 
-/** Whether any model ever handed shards over (legacy single-model wiring registers no model to ask by id). */
+/** Whether any shards were handed over since the last full reset (legacy single-model wiring registers no model to ask by id). */
 export function anyInstancedShards(): boolean {
-  return models.size > 0;
+  return sinceReset;
+}
+
+/** A full queue reset (session reset, clear all): shards of an earlier load must not block a later one. */
+export function forgetInstancedShardsBeforeReset(): void {
+  sinceReset = false;
 }
 
 /** Monotonic across placement-hook remounts; a drained queue keeps no bytes. */

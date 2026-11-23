@@ -58,11 +58,18 @@ test.describe.configure({ timeout: 900_000 });
 const CANONICAL = `(${(d: Drawing): Canonical => {
   const r = (v: number) => (Math.round(v * 1e4) / 1e4 + 0).toFixed(4);
   const pt = (p: { x: number; y: number }) => `${r(p.x)},${r(p.y)}`;
+  // A ring keeps its connectivity: canonical start (smallest vertex) and direction, never sorted vertices.
+  const ring = (pts: Array<{ x: number; y: number }>) => {
+    let s = pts.map(pt); if (s.length > 1 && s[0] === s[s.length - 1]) s = s.slice(0, -1);
+    const min = [...s].sort()[0]; const forms: string[] = [];
+    for (const a of [s, [...s].reverse()]) a.forEach((v, i) => { if (v === min) forms.push([...a.slice(i), ...a.slice(0, i)].join(' ')); });
+    return forms.sort()[0] ?? '';
+  };
   const lines = d.lines.map((l) => [l.category, l.visibility, l.entityId, l.modelIndex, l.ifcType, l.openSurfaceCut ?? false,
     [pt(l.line.start), pt(l.line.end)].sort().join(' ')].join('|')).sort();
   const polygons = [...d.cutPolygons, ...(d.layerBaseCutPolygons ?? [])].map((p) => [p.entityId, p.modelIndex, p.ifcType,
-    p.fillColor ? JSON.stringify(p.fillColor) : '', p.polygon.outer.map(pt).sort().join(' '),
-    p.polygon.holes.map((h) => h.map(pt).sort().join(' ')).sort().join('/')].join('|')).sort();
+    p.fillColor ? JSON.stringify(p.fillColor) : '', ring(p.polygon.outer),
+    p.polygon.holes.map(ring).sort().join('/')].join('|')).sort();
   const { processingTimeMs: _t, ...stats } = d.stats;
   return { lines, polygons, stats };
 }})`;

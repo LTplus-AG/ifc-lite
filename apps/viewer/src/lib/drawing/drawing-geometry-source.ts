@@ -218,6 +218,8 @@ export class DrawingGeometry {
       }
     }
     if (options.instanced) yield* this.instanced(keep);
+    // A generation replaced after its own read returned (while another model's ran) still rejects the pass.
+    for (const [modelId, backing] of this.pinned) usableBacking(backing, modelId);
   }
 
   private async *backedFlat(modelId: string, modelIndex: number, keep: DrawingMeshFilter): AsyncGenerator<readonly MeshData[]> {

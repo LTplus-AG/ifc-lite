@@ -12,7 +12,8 @@
 
 import type { MeshData } from '@ifc-lite/geometry';
 import type { Renderer } from '@ifc-lite/renderer';
-import { useViewerStore } from '@/store';
+import { federationRegistry } from '@ifc-lite/renderer';
+import { useViewerStore, type ViewerState } from '@/store';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { modelIndices } from '@/lib/model-placement/model-indices';
@@ -25,6 +26,19 @@ import { DrawingGeometry } from './drawing-geometry-source';
 
 // Loaded with this module on first drawing (`useDrawingGeneration`).
 export { drawingMeshFilter } from './drawing-mesh-filter';
+
+/**
+ * The model owning a global id by its registered range (or the progressive
+ * registry's); `resolveEntityRef` would hand an id outside every range to the
+ * first model. Only one model at offset zero, or legacy mode, owns any id.
+ */
+export function drawingModelOf(state: Pick<ViewerState, 'models' | 'resolveGlobalIdFromModels'>, globalId: number): string | undefined {
+  if (state.models.size === 0) return 'legacy';
+  const owner = state.resolveGlobalIdFromModels(globalId)?.modelId ?? federationRegistry.fromGlobalId(globalId)?.modelId;
+  if (owner !== undefined) return state.models.has(owner) ? owner : undefined;
+  const [only] = state.models;
+  return state.models.size === 1 && only[1].idOffset === 0 ? only[0] : undefined;
+}
 
 export async function liveDrawingGeometry(meshes: readonly MeshData[], isCurrent: () => boolean,
   renderer: Renderer | null = getGlobalRenderer()): Promise<DrawingGeometry> {
@@ -41,10 +55,7 @@ export async function liveDrawingGeometry(meshes: readonly MeshData[], isCurrent
   // Legacy single-model mode keeps no `models` entry: everything is one model.
   const legacy = state.models.size === 0;
   return new DrawingGeometry(meshes, {
-    modelOf: (globalId) => {
-      const { modelId } = resolveEntityRef(globalId);
-      return legacy || state.models.has(modelId) ? modelId : undefined;
-    },
+    modelOf: (globalId) => drawingModelOf(state, globalId),
     visibleModels: legacy ? ['legacy'] : [...state.models].filter(([, model]) => model.visible).map(([id]) => id),
     modelIndexOf: (modelId) => indices.get(modelId) ?? 0,
     translationFor: (modelId) => displayedTranslation(state.modelPlacement, modelId),

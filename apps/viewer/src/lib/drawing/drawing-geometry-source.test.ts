@@ -72,10 +72,17 @@ function expandByHand(s: DecodedInstancedShard, modelIndex: number, ifcType: str
 function canonical(d: Drawing2D): { lines: string[]; polygons: string[]; stats: unknown } {
   const r = (v: number) => (Math.round(v * 1e4) / 1e4 + 0).toFixed(4);
   const pt = (p: { x: number; y: number }) => `${r(p.x)},${r(p.y)}`;
+  // A ring keeps its connectivity: canonical start (smallest vertex) and direction, never sorted vertices.
+  const ring = (pts: Array<{ x: number; y: number }>) => {
+    let s = pts.map(pt); if (s.length > 1 && s[0] === s[s.length - 1]) s = s.slice(0, -1);
+    const min = [...s].sort()[0]; const forms: string[] = [];
+    for (const a of [s, [...s].reverse()]) a.forEach((v, i) => { if (v === min) forms.push([...a.slice(i), ...a.slice(0, i)].join(' ')); });
+    return forms.sort()[0] ?? '';
+  };
   const lines = d.lines.map((l) => [l.category, l.visibility, l.entityId, l.modelIndex, l.ifcType, l.openSurfaceCut ?? false,
     [pt(l.line.start), pt(l.line.end)].sort().join(' ')].join('|')).sort();
   const polygons = [...d.cutPolygons, ...(d.layerBaseCutPolygons ?? [])].map((p) => [p.entityId, p.modelIndex, p.ifcType,
-    p.polygon.outer.map(pt).sort().join(' '), p.polygon.holes.map((h) => h.map(pt).sort().join(' ')).sort().join('/')].join('|')).sort();
+    ring(p.polygon.outer), p.polygon.holes.map(ring).sort().join('/')].join('|')).sort();
   const { processingTimeMs: _t, ...stats } = d.stats;
   return { lines, polygons, stats };
 }
@@ -99,7 +106,7 @@ interface World {
   registry: GeometryBackingRegistry; backings: Map<string, ModelGeometryBacking>;
 }
 
-async function world(): Promise<World> {
+async function world(decodedCacheBytes = 1024): Promise<World> {
   const shards = { a: shard([101, 102, 103, 104], 0), b: shard([201, 202, 203, 204], 0) };
   const registry = await GeometryBackingRegistry.open(database());
   const backings = new Map<string, ModelGeometryBacking>();
@@ -107,7 +114,7 @@ async function world(): Promise<World> {
   for (const id of ['a', 'b'] as const) {
     // A federated model's own list need not carry its index; the merged copies do.
     const store = flatModel(id).map(({ modelIndex: _index, ...mesh }) => mesh);
-    const backing = await registry.begin(id, { chunkBytes: 512, queueBytes: 1 << 16, decodedCacheBytes: 1024 });
+    const backing = await registry.begin(id, { chunkBytes: 512, queueBytes: 1 << 16, decodedCacheBytes });
     await backing.writer.append(store);
     await backing.writer.appendInstancedShard(shards[id]);
     await backing.writer.close();
@@ -172,7 +179,7 @@ function watchLeases(backing: ModelGeometryBacking) {
 describe('drawing geometry source over released geometry', () => {
   for (const [name, config] of CONFIGS) {
     it(`${name}: resident and released drawings both equal the independent complete-model oracle`, async () => {
-      const w = await world();
+      const w = await world(0); // no decoded cache: every released lease leaves no retained bytes
       const expected = canonical(await oracle(w, config));
       assert.ok(expected.lines.some((line) => line.includes('IfcColumn')), 'the oracle must draw instanced occurrences');
       // Checked on every drawing below, not only on the oracle.
@@ -203,6 +210,7 @@ describe('drawing geometry source over released geometry', () => {
         assert.equal(stats.peak, 1, 'one chunk lease at a time');
         assert.equal(stats.live, 0);
       }
+      for (const backing of w.backings.values()) assert.equal(backing.reader.retainedBytes, 0, 'every decoded chunk lease was released');
       await w.registry.close();
     });
   }
@@ -235,8 +243,25 @@ describe('drawing geometry source over released geometry', () => {
     await w.registry.close();
   });
 
-  it('aborts a superseded drawing before its next batch, releasing the lease', async () => {
+  it('rejects a drawing whose earlier model is replaced after its read returned, while a later model reads', async () => {
     const w = await world();
+    release(w);
+    const geometry = new DrawingGeometry(w.merged, deps(w, { scene: null }));
+    const original = w.backings.get('b')!.reader.meshes.bind(w.backings.get('b')!.reader);
+    let reads = 0;
+    w.backings.get('b')!.reader.meshes = async function* (options) {
+      // In the last (occlusion) pass, after model a's read returned: no later read of a would notice.
+      let first = ++reads === 2;
+      for await (const chunk of original(options)) { yield chunk; if (first) { first = false; await w.registry.begin('a'); } }
+    };
+    await assert.rejects(new Drawing2DGenerator().generateFromSource(geometry.source(keepAll, { instanced: false }), CONFIGS[0][1], OPTIONS),
+      GeometryUnavailableError);
+    assert.equal(reads, 2, 'the replacement happened in the last pass');
+    await w.registry.close();
+  });
+
+  it('aborts a superseded drawing before its next batch, releasing the lease', async () => {
+    const w = await world(0); // no decoded cache: a released lease leaves no retained bytes
     release(w);
     let current = true;
     const stats = watchLeases(w.backings.get('a')!);
@@ -248,6 +273,7 @@ describe('drawing geometry source over released geometry', () => {
     await assert.rejects(new Drawing2DGenerator().generateFromSource(watched, CONFIGS[0][1], OPTIONS), { name: 'AbortError' });
     assert.equal(stats.chunks, 2);
     assert.equal(stats.live, 0);
+    assert.equal(w.backings.get('a')!.reader.retainedBytes, 0);
     await w.registry.close();
   });
 

@@ -88,6 +88,7 @@ mod reconsolidate;
 mod rim_refine;
 mod tjunction_close;
 mod planar_correction;
+pub(super) mod paired_cap;
 #[cfg(test)]
 #[path = "prism_cut_tests.rs"]
 mod tests;

@@ -14,7 +14,7 @@ use crate::schema_ifc2x3_slots::Ifc2x3SlotFill;
 use crate::schema_enum::ConversionChecks;
 use crate::schema_plan::{plan_for, Adjust, Plan};
 use crate::schema_unrepresented::{product_proxy, resolve_unrepresented_entity, UnrepresentedEntityError};
-use crate::step_slot::split_top_level_args;
+use crate::step_slot::{slot_is, split_top_level_args};
 
 /// Canonicalize a FILE_SCHEMA label to one of the four families we convert
 /// between. Re-export's default for a label naming no family is IFC4.
@@ -331,7 +331,7 @@ fn convert_record(
             let new_type = renamed.unwrap_or(&entity_type);
             // #10758: a slot a schema replaced in place keeps no value across.
             let rebuilt;
-            let attrs = match replaced.filter(|&i| args.get(i).is_some_and(|v| v.trim() != "$")) {
+            let attrs = match replaced.filter(|&i| args.get(i).is_some_and(|v| !slot_is(v, "$"))) {
                 Some(i) => {
                     lost += usize::from(holds_value(&args[i]));
                     args[i] = "$".to_owned();

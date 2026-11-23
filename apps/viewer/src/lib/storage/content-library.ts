@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { contentFailure, readContentRows, writeContent, type ContentFailure, type ContentRow } from './content-database.js';
+import { contentFailure, readContentRows, readDocumentRevisions, writeContent, type ContentFailure, type ContentRow } from './content-database.js';
 import { sameReportEvidence } from '../flow/report-provenance.js';
 import { migrateContent, LegacyMigrationFailure, type ContentDefinition } from './content-migration.js';
 
@@ -131,24 +131,38 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
       dirty.set(id, value); status.items[id] = 'saving'; change(id, value);
     }
     const previous = queues.get(id) ?? Promise.resolve(true);
+    const restoreRefusedDeletion = () => {
+      if (generations.get(id) !== generation) return;
+      const authority = deletionGuards.get(id);
+      const original = authority?.replacement ?? authority?.original;
+      deletionGuards.delete(id);
+      if (dirty.get(id) === null) dirty.delete(id);
+      status.items[id] = 'conflict';
+      if (original && !read().some(entry => entry.id === id)) change(id, original);
+      else emit();
+    };
+    let reviewedDocuments: Awaited<ReturnType<typeof readDocumentRevisions>> | undefined;
     const deletionAllowed = async (): Promise<boolean> => {
       const authority = deletionGuards.get(id);
       if (beforeWrite && (!authority || authority.check !== beforeWrite || generations.get(id) !== generation)) return false;
       // Restore the actual own-import replacement before checking source identity.
       if (authority?.replacement && generations.get(id) === generation) change(id, authority.replacement);
+      // Capture the durable library before the callback rechecks its reviewed dependencies.
+      // The write transaction compares these revisions before it can commit the tombstone.
+      if (beforeWrite && definition.kind === 'clashReports') {
+        try { reviewedDocuments = await readDocumentRevisions(); }
+        catch (error) {
+          console.warn('[User content] Could not check Documents before report deletion:', error);
+          restoreRefusedDeletion();
+          return false;
+        }
+      }
       const permitted = !beforeWrite || await beforeWrite();
       // The callback can synchronously revoke itself or stage a newer draft.
       if (permitted && !authority?.replacement && (!beforeWrite
         || (deletionGuards.get(id) === authority && generations.get(id) === generation))) return true;
       // A newer native draft owns its own generation; never restore over it.
-      if (generations.get(id) === generation) {
-        const original = authority?.replacement ?? authority?.original;
-        deletionGuards.delete(id);
-        if (dirty.get(id) === null) dirty.delete(id);
-        status.items[id] = 'conflict';
-        if (original && !read().some(entry => entry.id === id)) change(id, original);
-        else emit();
-      }
+      restoreRefusedDeletion();
       return false;
     };
     const pending = previous.then(async (succeeded) => {
@@ -164,7 +178,8 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
         dirty.set(id, value); change(id, value);
       }
       const expected = revisions.get(id) ?? 0;
-      let result = await writeContent(definition.kind, id, entry, expected);
+      let result = await writeContent(definition.kind, id, entry, expected, reviewedDocuments);
+      if (!result.ok && result.documentsChanged) { restoreRefusedDeletion(); return false; }
       // Only an own commit receipt can advance a dirty row's expected revision.
       // Retry once with its latest reference-merged draft, never the stale snapshot.
       const acknowledged = revisions.get(id) ?? 0;
@@ -177,7 +192,8 @@ export function createContentLibrary<T extends { id: string }>(definition: Conte
           if (draft === null && !(await deletionAllowed())) return false;
           const latest = portableEntry(draft);
           if (draft !== null && !latest) { stage(id, draft, 'invalid'); return false; }
-          result = await writeContent(definition.kind, id, latest, acknowledged);
+          result = await writeContent(definition.kind, id, latest, acknowledged, reviewedDocuments);
+          if (!result.ok && result.documentsChanged) { restoreRefusedDeletion(); return false; }
         }
       }
       if (result.ok) revisions.set(id, result.revision);

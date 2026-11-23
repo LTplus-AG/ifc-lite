@@ -19,7 +19,7 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import type { Point2D, DrawingLine, Bounds2D, VisibilityState, SectionPlaneConfig } from './types.js';
 import { point2DLerp, point2DDistance, EPSILON } from './math.js';
-import { buildDepthRaster, type DepthRaster } from './hidden-line-raster.js';
+import { buildDepthRaster, createDepthRaster, rasterizeOccluders, type DepthRaster } from './hidden-line-raster.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -119,6 +119,22 @@ export class HiddenLineClassifier {
       bounds,
     );
     this.built = true;
+  }
+
+  /**
+   * Start an empty occluder buffer over `bounds`, to be filled batch by batch
+   * with {@link addOccluders} (a streamed drawing source). Same buffer as
+   * {@link buildDepthBuffer} over the concatenated batches.
+   */
+  beginDepthBuffer(bounds: Bounds2D): void {
+    this.raster = createDepthRaster(bounds, this.options.resolution);
+    this.built = true;
+  }
+
+  /** Rasterize one batch of occluders into the buffer {@link beginDepthBuffer} started. */
+  addOccluders(meshes: readonly MeshData[], plane: SectionPlaneConfig, occluderDepth: number): void {
+    if (!this.built) throw new Error('Depth buffer not started. Call beginDepthBuffer first.');
+    if (this.raster) rasterizeOccluders(this.raster, meshes, plane, occluderDepth, this.options.depthBias);
   }
 
   /**

@@ -17,7 +17,6 @@
  */
 
 import type { useViewerStore } from '@/store';
-import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { displayedTranslation } from '@/lib/model-placement/state';
 
 type ViewerState = ReturnType<typeof useViewerStore.getState>;
@@ -51,5 +50,8 @@ export function resolveGlbSourceBytes(
   // Edits with no parsed source to re-serialize: the held meshes still show them.
   const store = model.ifcDataStore;
   if (!store || store.source.byteLength === 0) return null;
-  return async () => editedModelBytes(store, view);
+  return async () => {
+    const { editedModelBytes } = await import('@/lib/export/edited-model-bytes');
+    return editedModelBytes(store, view);
+  };
 }

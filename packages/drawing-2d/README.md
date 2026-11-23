@@ -70,6 +70,61 @@ console.log(`${hatchLines.length} hatch lines`);
 generator.dispose();
 ```
 
+## Streamed geometry
+
+When the meshes are not one resident array (for example read back from local
+storage in chunks), give `generateFromSource` a `DrawingMeshSource`. The
+generator reads it in at most two passes (`'geometry'`, then `'occlusion'`
+when hidden lines or an open surface need it) and keeps no mesh: each batch
+can be released as soon as the generator asks for the next. Every pass must
+yield the same meshes in the same order. The drawing equals `generate` over
+one pass's meshes; an error thrown by the source, or an aborted
+`options.signal`, rejects it.
+
+```typescript
+import type { Drawing2DGenerator, DrawingMeshSource, SectionConfig } from '@ifc-lite/drawing-2d';
+import type { MeshData } from '@ifc-lite/geometry';
+
+declare const generator: Drawing2DGenerator, config: SectionConfig, signal: AbortSignal;
+declare const chunks: number[];                                                            // the host's stored chunk ids
+declare function leaseChunk(chunk: number): Promise<{ meshes: MeshData[]; release(): void }>; // reads one chunk back
+
+const source: DrawingMeshSource = {
+  async *pass() {
+    for (const chunk of chunks) {
+      const held = await leaseChunk(chunk);
+      try { yield held.meshes; } finally { held.release(); }
+    }
+  },
+};
+const drawing = await generator.generateFromSource(source, config, { signal });
+```
+
+To push chunks instead (each lease released before the next), use a session. `finish()` throws until the occlusion phase has fed what `endGeometry()` asked for (every batch again for a depth raster, or the open-surface entities' meshes), so a skipped replay is refused rather than drawn without free edges:
+
+```typescript
+import type { Drawing2DGenerator, EntityKey, GeneratorOptions, SectionConfig } from '@ifc-lite/drawing-2d';
+import type { MeshData } from '@ifc-lite/geometry';
+
+declare const generator: Drawing2DGenerator, config: SectionConfig, options: Partial<GeneratorOptions>;
+declare const chunks: number[];                                                            // the host's stored chunk ids
+declare function leaseChunk(chunk: number): Promise<{ meshes: MeshData[]; release(): void }>; // reads one chunk back
+declare function chunksOf(entities: ReadonlySet<EntityKey>): number[];                     // the chunks holding these entities
+
+const session = generator.beginDrawing(config, options);
+for (const chunk of chunks) {
+  const held = await leaseChunk(chunk);
+  try { await session.addGeometry(held.meshes); } finally { held.release(); }
+}
+const needs = session.endGeometry();
+// needs.depthRaster: feed every chunk again; otherwise only needs.openSurfaceEntities' meshes.
+for (const chunk of needs.depthRaster ? chunks : chunksOf(needs.openSurfaceEntities)) {
+  const held = await leaseChunk(chunk);
+  try { session.addOcclusion(held.meshes); } finally { held.release(); }
+}
+const drawing = session.finish(); // or session.cancel()
+```
+
 ## Graphic overrides
 
 Apply named graphic presets (architectural, fire-safety, structural, MEP, monochrome) via the override engine:

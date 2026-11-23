@@ -407,7 +407,7 @@ export function useIfcFederation(
     }
   }, [setLoading, setProgress, setGeometryResult, clearAllModels]);
 
-  const loadFederatedIfcx = useCallback(async (files: File[]): Promise<void> => {
+  const loadFederatedIfcx = useCallback(async (files: File[], beforePrimaryReset?: () => void): Promise<void> => {
     if (files.length === 0) {
       reportError('No files provided for federated loading', 'ifcx_federated_no_files', null); // no retry: empty list
       return;
@@ -417,8 +417,7 @@ export function useIfcFederation(
     // IFCX is JSON; SAB streaming would force a SAB→scratch copy in
     // safeUtf8Decode on top of the JSON string (net worse peak than
     // ArrayBuffer). Keep on file.arrayBuffer(). The copy is no longer
-    // *retained* since #2183 capped the scratch, but it is still a
-    // full-file transient the ArrayBuffer path does not pay.
+    // *retained* since #2183, but the ArrayBuffer path avoids it.
     const buffers: Array<{ buffer: ArrayBuffer; name: string }> = [];
     for (const file of files) {
       const buffer = await file.arrayBuffer();
@@ -430,6 +429,7 @@ export function useIfcFederation(
       buffers.push({ buffer, name: file.name });
     }
 
+    beforePrimaryReset?.();
     await loadFederatedIfcxFromBuffers(buffers);
   }, [loadFederatedIfcxFromBuffers]);
 

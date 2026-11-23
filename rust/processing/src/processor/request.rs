@@ -63,7 +63,10 @@ pub struct Features {
     pub quick_metadata_bootstrap: bool,
     /// Emit [`ProcessingSink::on_finishes`](super::ProcessingSink::on_finishes)
     /// before every batch: each mesh's IFC-authored finish (#5984), joined from
-    /// the pass's own scan instead of a second read of the file. Off by default.
+    /// the pass's own scan instead of a second read of the file. Instance
+    /// finishes are delivered by
+    /// [`ProcessingSink::on_instance_finishes`](super::ProcessingSink::on_instance_finishes).
+    /// Off by default.
     pub finishes: bool,
 }
 
@@ -125,8 +128,9 @@ pub struct ProcessingRequest {
     pub entity_ids: Option<Arc<HashSet<u32>>>,
     /// A prebuilt index of the SAME bytes, instead of building one inline.
     pub entity_index: Option<Arc<EntityIndex>>,
-    /// Cooperative cancellation between job chunks. A cancelled pass returns a
-    /// PARTIAL result that the caller must not present as complete.
+    /// Cooperative cancellation between job chunks and before final sink events.
+    /// A cancelled pass returns a PARTIAL result that the caller must not
+    /// present as complete.
     pub cancel: Option<Arc<AtomicBool>>,
 }
 

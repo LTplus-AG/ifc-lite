@@ -123,7 +123,7 @@ pub(in crate::router::voids) fn cutters<'a>(
                 if bounds != authored
                     && weld_changes_rectangle_extension(execution, original_host, authored, dir)
                 {
-                    if cutter_is_outside_source(original_host, authored, dir) {
+                    if cutter_is_outside_source(original_host, authored, dir, 0.0) {
                         continue;
                     }
                     // The manifold gate can retry with the authored cutter
@@ -190,17 +190,23 @@ fn rectangle_samples_material(host: &Mesh, min: Point3<f64>, max: Point3<f64>) -
 /// Beyond the end of a finish, a recess can touch the core but enclose
 /// only air (#11313). Prove that no source triangle enters the box's open
 /// interior. Compare at f32 precision, the format of both meshes.
-fn cutter_is_outside_source(
+pub(super) fn cutter_is_outside_source(
     host: &Mesh,
     (min, max): (Point3<f64>, Point3<f64>),
     dir: Vector3<f64>,
+    depth_roundoff: f64,
 ) -> bool {
     if !is_axis_aligned_direction(&dir) {
         return false;
     }
     let min = min.cast::<f32>().cast::<f64>();
     let max = max.cast::<f32>().cast::<f64>();
-    if (0..3).any(|axis| min[axis] >= max[axis]) {
+    let depth = dir.iamax();
+    let mut interior_min = min;
+    let mut interior_max = max;
+    interior_min[depth] += depth_roundoff;
+    interior_max[depth] -= depth_roundoff;
+    if (0..3).any(|axis| interior_min[axis] >= interior_max[axis]) {
         return false;
     }
     let separated = host.indices.chunks_exact(3).all(|tri| {
@@ -208,11 +214,11 @@ fn cutter_is_outside_source(
             return false;
         };
         (0..3).any(|axis| {
-            a[axis].max(b[axis]).max(c[axis]) <= min[axis]
-                || a[axis].min(b[axis]).min(c[axis]) >= max[axis]
+            a[axis].max(b[axis]).max(c[axis]) <= interior_min[axis]
+                || a[axis].min(b[axis]).min(c[axis]) >= interior_max[axis]
         })
     });
-    separated && cap_touches_exterior(host, min, max, dir.iamax())
+    separated && cap_touches_exterior(host, min, max, depth)
 }
 
 /// The exterior surface continues across the cutter's footprint. A recess

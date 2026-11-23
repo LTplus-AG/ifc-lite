@@ -20,11 +20,9 @@ use crate::types::mesh::MeshData;
 /// mesh's recorded source may be a material, the type default or a fallback
 /// it would not take once they resolve. A mesh whose own representation item
 /// reaches a styled item (itself, or through the mapped chase below it) takes
-/// that item's finish instead, from the join's own resolved index: the
-/// item-level step, which comes first once the styles are known, and what
-/// the colour-based join gave here before #10698. A finish production would
-/// take from a styled occurrence, the element fallback or a type map is not
-/// recovered in that chunk; that join did not recover them either.
+/// that item's finish instead, from the join's own resolved index. For an
+/// unstyled mesh, retain the element-fallback join when its emitted colour
+/// matches. This preserves finishes previously emitted before colour replay.
 pub(super) fn emit_finishes(
     sink: &mut dyn ProcessingSink,
     finishes: Option<&mut ModelFinishes<'_>>,
@@ -37,10 +35,14 @@ pub(super) fn emit_finishes(
         .iter()
         .zip(styles)
         .map(|(mesh, &style)| {
-            let style = match mesh.geometry_item_id {
-                Some(item) if styles_deferred => finishes.item_style_source(item).map_or(style, StyleSource::Style),
-                _ => style,
-            };
+            if styles_deferred {
+                if let Some(item_style) = mesh.geometry_item_id.and_then(|item| finishes.item_style_source(item)) {
+                    return finishes.finish_for_source(StyleSource::Style(item_style));
+                }
+                if matches!(style, StyleSource::Unstyled) {
+                    return finishes.finish_for_mesh(mesh);
+                }
+            }
             finishes.finish_for_source(style)
         })
         .collect();

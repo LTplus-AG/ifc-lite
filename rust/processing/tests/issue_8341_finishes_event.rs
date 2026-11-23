@@ -255,3 +255,24 @@ fn a_deferred_first_chunk_keeps_its_items_authored_finish_8341() {
         assert!(roughness.iter().all(|&(item, r)| item == Some(61) || r.is_none()), "{what}: a finish leaked to another item: {roughness:?}");
     }
 }
+
+#[test]
+fn a_deferred_unstyled_sibling_keeps_the_element_fallback_finish_10698() {
+    let ifc = DIRECT.replace("0.6,0.5,0.4", "0.6,0.6,0.6").replace(
+        "#103=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#61));",
+        "#103=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#61,#71));
+#71=IFCTRIANGULATEDFACESET(#49,$,.T.,((1,2,3),(1,2,4),(1,4,3),(2,3,4)),$);",
+    );
+    let request = ProcessingRequest::default()
+        .features(ProcessingRequest::default().features.finishes(true).presentation_layers(false))
+        .batching(Batching::new(1, 1).fast_first(true));
+    let mut sink = Recorder::default();
+    process(ifc.as_bytes(), &request, &mut sink);
+    let (mesh, finish) = sink.batches.iter()
+        .flat_map(|(meshes, finishes)| meshes.iter().zip(finishes.as_ref().expect("announced")))
+        .find(|(mesh, _)| mesh.geometry_item_id == Some(71))
+        .expect("unstyled sibling mesh");
+    assert_eq!(mesh.color, [0.6, 0.6, 0.6, 1.0]);
+    let roughness = finish.and_then(|f| f.roughness).expect("element fallback roughness");
+    assert!((roughness - 0.25).abs() < 0.001, "roughness {roughness}");
+}

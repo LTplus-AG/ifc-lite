@@ -6,6 +6,7 @@ import { renderableCoordinates } from './renderable-coordinates.js';
 import type { Mesh } from './types.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { BoundingBox } from './scene-raycaster.js';
+import { MeshPlacementCache } from './mesh-placement-cache.js';
 import { worldAabbFromPieces } from './scene-geometry.js'; import { unionBox } from './released-entity-bounds.js';
 
 type Offset = readonly [number, number, number];
@@ -46,11 +47,6 @@ function moveBounds(bounds: Bounds, delta: Offset): Bounds {
   return { min: sum(bounds.min, delta), max: sum(bounds.max, delta) };
 }
 
-interface MeshPlacement {
-  source: MeshData;
-  placed: MeshData;
-}
-
 interface BatchPlacement {
   modelIndex: number;
   origin: Offset;
@@ -64,10 +60,7 @@ export class ModelTranslations {
   private authored = new WeakMap<Mesh, { base: number[]; written: number[]; offset: Offset; bounds?: Bounds; writtenBounds?: Bounds }>();
   private offsets = new Map<number, Offset>();
   private yaws = new Map<number, ModelYaw>();
-  /** Placement by source mesh. The entry holds the placed copy, which shares the source's arrays. */
-  private bySource = new WeakMap<MeshData, MeshPlacement>();
-  /** Placement by placed copy: keyed weakly by the copy itself, so it never outlives its holders. */
-  private byPlaced = new WeakMap<MeshData, MeshPlacement>();
+  private meshes = new MeshPlacementCache();
   private batches = new WeakMap<Drawable, BatchPlacement>();
   private instances = new WeakMap<ArrayBuffer, {
     base: Float64Array;
@@ -119,26 +112,15 @@ export class ModelTranslations {
     return true;
   }
 
-  /**
-   * Drop the source-keyed placements when the scene releases its CPU geometry. A placed copy shares its
-   * source's typed arrays and the store keeps the source alive, so a source-keyed entry would hold every
-   * array past an in-place release. Placed-keyed entries stay: a placed copy holds the shared arrays as its
-   * own fields, so whoever retains the copy retains them anyway, and the entry adds only the copy -> source
-   * link (the source is alive in the store). Without that link a retained copy would be placed a second
-   * time. When nobody holds the copy, the weak key lets the entry go with it. `placeMesh` recreates a
-   * source's entry on demand.
-   */
-  forgetPlacements(): void { this.bySource = new WeakMap(); }
-
-  private entryOf(mesh: MeshData): MeshPlacement | undefined { return this.byPlaced.get(mesh) ?? this.bySource.get(mesh); }
+  /** Drop the source-keyed placed copies on a CPU release (why: `MeshPlacementCache`). */
+  forgetPlacements(): void { this.meshes.forgetSources(); }
 
   /** Preserve source identity and source coordinates for export and re-alignment. */
   placeMesh(source: MeshData): MeshData {
-    let entry = this.entryOf(source);
+    let entry = this.meshes.get(source);
     if (!entry) {
       entry = { source, placed: { ...source } };
-      this.bySource.set(source, entry);
-      this.byPlaced.set(entry.placed, entry);
+      this.meshes.set(entry);
     }
     const delta = this.get(entry.source.modelIndex);
     entry.placed.origin = sum(entry.source.origin ?? ZERO, delta);
@@ -181,7 +163,7 @@ export class ModelTranslations {
 
   /** Adopt detached appearance geometry already expressed in the placed frame. */
   sourceFromPlaced(mesh: MeshData): MeshData {
-    const existing = this.entryOf(mesh);
+    const existing = this.meshes.get(mesh);
     if (existing) return existing.source;
     const delta = this.get(mesh.modelIndex);
     const source: MeshData = { ...mesh, origin: difference(mesh.origin ?? ZERO, delta) };
@@ -190,11 +172,11 @@ export class ModelTranslations {
     if (mesh.geometryAabb) source.geometryAabb = { ...mesh.geometryAabb,
       min: difference(mesh.geometryAabb.min, delta), max: difference(mesh.geometryAabb.max, delta) };
     const entry = { source, placed: mesh };
-    this.bySource.set(source, entry); this.byPlaced.set(mesh, entry);
+    this.meshes.set(entry);
     return source;
   }
 
-  sourceMesh(mesh: MeshData): MeshData { return this.entryOf(mesh)?.source ?? mesh; }
+  sourceMesh(mesh: MeshData): MeshData { return this.meshes.get(mesh)?.source ?? mesh; }
 
   forgetEntityBounds(id: number): void { this.releasedEntities.delete(id); }
 
@@ -407,8 +389,7 @@ export class ModelTranslations {
     this.offsets.clear();
     this.yaws.clear();
     this.authored = new WeakMap();
-    this.bySource = new WeakMap();
-    this.byPlaced = new WeakMap();
+    this.meshes = new MeshPlacementCache();
     this.batches = new WeakMap();
     this.instances = new WeakMap();
     this.releasedBounds = new WeakMap();

@@ -123,8 +123,8 @@ export function createSceneBatch(
     // vertex buffer. Bucket-owned batches only (`bucketKey` present) — the
     // transient streaming fragments and partial/overlay sub-batches never pay
     // the build. Positions in `merged.vertexData` are relative to the batch
-    // origin, which is fine: clustering is translation-invariant as long as
-    // the cell size comes from the same-space bounds extent.
+    // origin; `frameOrigin` anchors the cells in world space, so the result
+    // does not depend on which batch set the shared frame (lod-simplify.ts).
     let lod1IndexBuffer: GPUBuffer | undefined;
     let lod1IndexCount: number | undefined;
     let lodIndices: Uint32Array | null | undefined;
@@ -143,6 +143,7 @@ export function createSceneBatch(
         BATCH_CONSTANTS.BYTES_PER_VERTEX / 4,
         merged.indices,
         cellSize,
+        { normalOffset: 3, frameOrigin: options.origin },
       );
       if (lodIndices) {
         lod1IndexBuffer = track(createStaticGpuBuffer(device, lodIndices, GPUBufferUsage.INDEX | arenaUsage));

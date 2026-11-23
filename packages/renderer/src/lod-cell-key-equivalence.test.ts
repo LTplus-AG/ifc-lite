@@ -6,22 +6,31 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { simplifyIndicesByClustering, LOD_MIN_TRIANGLES } from './lod-simplify.js';
 
-/** Independent cell-equivalence oracle: first referenced vertex wins each
- * full string tuple, then discard triangles with repeated representatives.
- * Deliberately has no numeric packing or per-vertex memoization (#3991).
+/** Independent cell-equivalence oracle: the smallest vertex (position, then
+ * index; these fixtures carry no normals) wins each full string tuple, then
+ * discard triangles with repeated representatives. Deliberately has no
+ * numeric packing or per-vertex memoization (#3991).
  */
 function stringCellOracle(data: Float32Array, stride: number, indices: Uint32Array, cellSize: number) {
   if (indices.length < LOD_MIN_TRIANGLES * 3 || !(cellSize > 0) || !Number.isFinite(cellSize)) return null;
   const lanes = new Uint32Array(data.buffer, data.byteOffset, data.length);
   const cells = new Map<string, number>();
   const representatives: number[] = [];
-  for (const vertex of indices) {
+  const keyOf = (vertex: number) => {
     const offset = vertex * stride;
     const entity = stride > 6 ? lanes[offset + 6] : 0;
-    const key = `${Math.floor(data[offset] / cellSize)},${Math.floor(data[offset + 1] / cellSize)},${Math.floor(data[offset + 2] / cellSize)},${entity}`;
-    if (!cells.has(key)) cells.set(key, vertex);
-    representatives.push(cells.get(key)!);
+    return `${Math.floor(data[offset] / cellSize)},${Math.floor(data[offset + 1] / cellSize)},${Math.floor(data[offset + 2] / cellSize)},${entity}`;
+  };
+  const smaller = (a: number, b: number) => {
+    for (let k = 0; k < 3; k++) if (data[a * stride + k] !== data[b * stride + k]) return data[a * stride + k] < data[b * stride + k];
+    return a < b;
+  };
+  for (const vertex of indices) {
+    const key = keyOf(vertex);
+    const held = cells.get(key);
+    if (held === undefined || smaller(vertex, held)) cells.set(key, vertex);
   }
+  for (const vertex of indices) representatives.push(cells.get(keyOf(vertex))!);
   const result: number[] = [];
   for (let i = 0; i < representatives.length; i += 3) {
     const [a, b, c] = representatives.slice(i, i + 3);
@@ -96,7 +105,7 @@ describe('issue #3991 exact LOD cell keys', () => {
     }
     assert.ok(result, 'the observed call must produce an accepted LOD');
     assert.equal(result.length, 120 * 3, 'the mesh must actually lose collapsed triangles');
-    assert.deepEqual(result, expected, 'numeric cells preserve first representatives and entity lanes');
+    assert.deepEqual(result, expected, 'numeric cells preserve canonical representatives and entity lanes');
     assert.equal(numericInsertions, 6, 'three occupied cells for each of two full-u32 entity lanes');
     assert.equal(stringInsertions, 0, 'eligible cells must use no string map keys');
   });
@@ -106,13 +115,13 @@ describe('issue #3991 exact LOD cell keys', () => {
     const result = simplifyIndicesByClustering(data, 7, indices, 1);
     assert.ok(result);
     // First survivor belongs to entity 0xffffffff; the next belongs to 1.
-    // Even though their positions coincide, each entity elects its own first
-    // referenced vertices. These exact representatives are picking identity.
+    // Even though their positions coincide, each entity elects its own
+    // smallest vertices. These exact representatives are picking identity.
     assert.deepEqual([...result.subarray(0, 6)], [0, 1, 2, 3, 16, 17]);
     assert.deepEqual(result, stringCellOracle(data, 7, indices, 1));
   });
 
-  it('preserves first-reference order when vertices are encountered out of index order', () => {
+  it('elects the same representatives when vertices are encountered out of index order', () => {
     const { data, indices } = fixture([[0, 0, 0], [4, 0, 0], [0, 4, 4]]);
     const reversed = new Uint32Array(indices.length);
     for (let t = 0; t < indices.length; t += 3) {

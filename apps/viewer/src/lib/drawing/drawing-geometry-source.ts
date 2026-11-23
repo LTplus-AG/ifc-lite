@@ -96,6 +96,8 @@ export class DrawingGeometry {
   readonly released: boolean;
 
   constructor(private readonly meshes: readonly MeshData[], private readonly deps: DrawingGeometryDeps) {
+    // Nothing to read back: the resident drawing needs no per-mesh ownership.
+    if (!deps.instancedReleased && meshes.every(meshIsResident)) { this.released = false; return; }
     for (const mesh of meshes) {
       const modelId = deps.modelOf(mesh.expressId);
       let run = this.runs[this.runs.length - 1];

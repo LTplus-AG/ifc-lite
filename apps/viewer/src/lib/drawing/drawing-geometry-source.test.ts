@@ -81,7 +81,7 @@ function canonical(d: Drawing2D): { lines: string[]; polygons: string[]; stats: 
   };
   const lines = d.lines.map((l) => [l.category, l.visibility, l.entityId, l.modelIndex, l.ifcType, l.openSurfaceCut ?? false,
     [pt(l.line.start), pt(l.line.end)].sort().join(' ')].join('|')).sort();
-  const polygons = [...d.cutPolygons, ...(d.layerBaseCutPolygons ?? [])].map((p) => [p.entityId, p.modelIndex, p.ifcType,
+  const polygons = [...d.cutPolygons.map((p) => ['cut', p] as const), ...(d.layerBaseCutPolygons ?? []).map((p) => ['base', p] as const)].map(([from, p]) => [from, p.entityId, p.modelIndex, p.ifcType,
     ring(p.polygon.outer), p.polygon.holes.map(ring).sort().join('/')].join('|')).sort();
   const { processingTimeMs: _t, ...stats } = d.stats;
   return { lines, polygons, stats };
@@ -280,14 +280,24 @@ describe('drawing geometry source over released geometry', () => {
   it('rejects a backing that does not hold exactly the model meshes', async () => {
     const w = await world();
     const extra = await w.registry.begin('a', { chunkBytes: 512 });
-    await extra.writer.append(flatModel('a').slice(1));
+    await extra.writer.append(flatModel('a').slice(0, -1)); // a matching prefix: only the count check can refuse it
     await extra.writer.appendInstancedShard(w.shards.a);
     await extra.writer.close();
     w.backings.set('a', extra);
     release(w);
     const geometry = new DrawingGeometry(w.merged, deps(w, { scene: null, instancedReleased: true }));
+    const count = flatModel('a').length;
     await assert.rejects(new Drawing2DGenerator().generateFromSource(geometry.source(keepAll, { instanced: true }), CONFIGS[0][1], OPTIONS),
-      GeometryUnavailableError);
+      { name: 'GeometryUnavailableError', message: `Model a's backing holds ${count - 1} meshes, the model ${count}` });
+    await w.registry.close();
+  });
+
+  it('a resident drawing with nothing released asks no per-mesh ownership', async () => {
+    const w = await world();
+    let asked = 0;
+    const geometry = new DrawingGeometry(w.merged, deps(w, { modelOf: (id) => { asked++; return modelOf(id); } }));
+    assert.equal(geometry.released, false);
+    assert.equal(asked, 0);
     await w.registry.close();
   });
 

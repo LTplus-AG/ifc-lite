@@ -65,6 +65,33 @@ export function assertInstancedReady(state: PresenceState, renderer: Pick<Render
   if (queued || (sinceEpoch !== undefined && instancedEpoch() !== sinceEpoch)) throw new DrawingGeometryPendingError();
 }
 
+/** How long a waiting drawing tolerates shards still queued with no shard activity at all. */
+export const instancedStall = { ms: 15_000 };
+
+/**
+ * After a `DrawingGeometryPendingError`, resolves when the drawing should be cut again: a drain,
+ * drop or discard, a renderer change, an already empty queue, or a superseding request. A queue
+ * that stops moving with shards still queued (the drain gave up after its retries, or the device
+ * never came back) emits nothing, so after `instancedStall.ms` with no activity it rejects instead
+ * of leaving the drawing 'generating'.
+ */
+export function instancedDrainSettled(isCurrent: () => boolean): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const poll = Math.min(100, instancedStall.ms / 4);
+    let seen = instancedEpoch(), quiet = 0;
+    const stop = () => { clearInterval(timer); stopShards(); stopRenderer(); };
+    const done = () => { stop(); resolve(); };
+    const stopShards = subscribeInstancedShards((event) => { if (event.kind !== 'enqueued') done(); });
+    const stopRenderer = subscribeGlobalRenderer(done);
+    const timer = setInterval(() => {
+      if (!isCurrent() || !hasPendingInstancedShards()) return done();
+      if (instancedEpoch() !== seen) { seen = instancedEpoch(); quiet = 0; return; }
+      if ((quiet += poll) < instancedStall.ms) return;
+      stop(); reject(new GeometryUnavailableError('Instanced geometry did not reach the scene; regenerate to retry'));
+    }, poll);
+  });
+}
+
 let epoch = 0;
 let watching = false;
 /** Counts every shard enqueue, drain or discard and renderer change, for the page's lifetime. */

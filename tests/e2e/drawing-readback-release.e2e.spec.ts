@@ -67,7 +67,7 @@ const CANONICAL = `(${(d: Drawing): Canonical => {
   };
   const lines = d.lines.map((l) => [l.category, l.visibility, l.entityId, l.modelIndex, l.ifcType, l.openSurfaceCut ?? false,
     [pt(l.line.start), pt(l.line.end)].sort().join(' ')].join('|')).sort();
-  const polygons = [...d.cutPolygons, ...(d.layerBaseCutPolygons ?? [])].map((p) => [p.entityId, p.modelIndex, p.ifcType,
+  const polygons = [...d.cutPolygons.map((p) => ['cut', p] as const), ...(d.layerBaseCutPolygons ?? []).map((p) => ['base', p] as const)].map(([from, p]) => [from, p.entityId, p.modelIndex, p.ifcType,
     p.fillColor ? JSON.stringify(p.fillColor) : '', ring(p.polygon.outer),
     p.polygon.holes.map(ring).sort().join('/')].join('|')).sort();
   const { processingTimeMs: _t, ...stats } = d.stats;

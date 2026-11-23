@@ -19,9 +19,10 @@ import type { Drawing2D } from '@ifc-lite/drawing-2d';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import type { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '../store/index.js';
-import { discardInstancedShards, enqueueInstancedShards, instancedShardGeneration } from '../store/instancedShardQueue.js';
+import { discardInstancedShards, drainInstancedShards, enqueueInstancedShards, instancedShardGeneration } from '../store/instancedShardQueue.js';
 import { setGlobalRendererRef } from './useBCF.js';
 import { useDrawingGeneration } from './useDrawingGeneration.js';
+import { instancedStall } from '../lib/drawing/drawing-instanced-presence.js';
 
 const POST = 700;
 
@@ -54,10 +55,11 @@ const INSTANCED_ONLY: GeometryResult = {
   },
 };
 
-interface Outcome { drawing: Drawing2D | null; error: string | null; progress: string | null }
+interface Outcome { drawing: Drawing2D | null; error: string | null; progress: string | null; log: string[] }
 
-async function generate(): Promise<Outcome> {
-  const out: Outcome = { drawing: null, error: null, progress: null };
+/** While the request runs: `during` sees the outcome so far (e.g. the wait), then the request must end. */
+async function generate(during?: (out: Outcome) => Promise<void>): Promise<Outcome> {
+  const out: Outcome = { drawing: null, error: null, progress: null, log: [] };
   let run: (() => Promise<void>) | null = null;
   function Harness(): null {
     const { generateDrawing } = useDrawingGeneration({
@@ -68,9 +70,9 @@ async function generate(): Promise<Outcome> {
       models: new Map(), panelVisible: false,
       typeVisibility: { spaces: true, spatialZones: true, openings: true, virtualElements: true, site: true, ifcAnnotations: true },
       drawing: null,
-      setDrawing: (d) => { out.drawing = d; },
+      setDrawing: (d) => { out.drawing = d; out.log.push('drawing'); },
       setDrawingStatus: () => {},
-      setDrawingProgress: (_p, phase) => { out.progress = phase; },
+      setDrawingProgress: (_p, phase) => { out.progress = phase; out.log.push(`progress:${phase}`); },
       setDrawingError: (e) => { out.error = e; },
     });
     run = generateDrawing;
@@ -82,7 +84,11 @@ async function generate(): Promise<Outcome> {
   try {
     await act(async () => { root = createRoot(container); root.render(<Harness />); });
     assert.ok(run, 'harness never rendered');
-    await act(async () => { await run!().catch((error: unknown) => { out.error = String(error); }); });
+    await act(async () => {
+      const request = run!().catch((error: unknown) => { out.error = String(error); });
+      await during?.(out);
+      await request;
+    });
     return out;
   } finally {
     if (root) await act(async () => { root!.unmount(); });
@@ -112,33 +118,69 @@ describe('useDrawingGeneration over instanced-only geometry (#10264)', () => {
     assert.match(error ?? '', /before the viewport renderer exists/);
   });
 
-  it('waits for queued shards to reach the scene instead of drawing without them', async () => {
+  const WAIT = 'progress:Waiting for instanced geometry...';
+  const settle = (ms: number) => new Promise((done) => setTimeout(done, ms));
+  const drainAll = () => drainInstancedShards((shards, done) => { for (const shard of shards) done(shard, 'uploaded'); });
+  const drew = (out: Outcome) => new Set([...(out.drawing?.lines ?? []).map((l) => l.entityId), ...(out.drawing?.cutPolygons ?? []).map((p) => p.entityId)]);
+  const withStall = (ms: number, body: () => Promise<void>) => async () => {
+    const restore = instancedStall.ms;
+    instancedStall.ms = ms;
+    try { await body(); } finally { instancedStall.ms = restore; }
+  };
+
+  it('r4661532635 waits for queued shards, then cuts again on the drain itself, with the panel closed', withStall(1000, async () => {
     setGlobalRendererRef({ current: renderer() });
     enqueueInstancedShards('legacy-model', [new ArrayBuffer(8)], instancedShardGeneration());
-    const { drawing, error, progress } = await generate();
-    assert.equal(drawing, null, 'no drawing while a shard is still queued');
-    assert.equal(error, null, 'waiting is not an error');
-    assert.equal(progress, 'Waiting for instanced geometry...');
-  });
+    const out = await generate(async (sofar) => {
+      await settle(30);
+      assert.equal(sofar.drawing, null, 'no drawing while a shard is still queued');
+      assert.equal(sofar.progress, 'Waiting for instanced geometry...');
+      drainAll();
+    });
+    assert.equal(out.error, null, 'waiting is not an error');
+    assert.ok(drew(out).has(POST), 'the request itself cut again after the drain');
+  }));
 
-  it('does not publish a cut during which a shard was queued; it waits for the drain', async () => {
-    // The shard arrives while the cutter reads the instanced pieces.
-    setGlobalRendererRef({ current: renderer(() => enqueueInstancedShards('legacy-model', [new ArrayBuffer(8)], instancedShardGeneration())) });
-    const { drawing, error, progress } = await generate();
-    assert.equal(drawing, null, 'the cut that missed the queued shard is not published');
-    assert.equal(error, null);
-    assert.equal(progress, 'Waiting for instanced geometry...');
-  });
+  it('r4661532635 a wait whose queue stops moving (load died, drain gave up) ends in an error, not generating forever', withStall(20, async () => {
+    setGlobalRendererRef({ current: renderer() });
+    enqueueInstancedShards('legacy-model', [new ArrayBuffer(8)], instancedShardGeneration()); // nothing will ever drain it
+    const out = await generate();
+    assert.equal(out.drawing, null, 'nothing is published without the instanced geometry');
+    assert.match(out.error ?? '', /did not reach the scene/);
+  }));
 
-  it('does not publish a cut during which a shard was queued and already drained', async () => {
+  it('r4661532635 a wait whose shards are discarded (model removed, clear-all) cuts again and publishes', withStall(1000, async () => {
+    setGlobalRendererRef({ current: renderer() });
+    enqueueInstancedShards('legacy-model', [new ArrayBuffer(8)], instancedShardGeneration());
+    const out = await generate(async () => { await settle(30); discardInstancedShards(); });
+    assert.equal(out.error, null);
+    assert.ok(drew(out).has(POST));
+  }));
+
+  it('does not publish a cut during which a shard was queued; it waits for the drain', withStall(1000, async () => {
+    // The shard arrives while the cutter reads the instanced pieces (the first cut only).
+    let first = true;
+    setGlobalRendererRef({ current: renderer(() => { if (first) { first = false; enqueueInstancedShards('legacy-model', [new ArrayBuffer(8)], instancedShardGeneration()); } }) });
+    const out = await generate(async (sofar) => {
+      await settle(30);
+      assert.equal(sofar.drawing, null, 'the cut that missed the queued shard is not published');
+      drainAll();
+    });
+    assert.equal(out.error, null);
+    assert.deepEqual(out.log.filter((e) => e === WAIT || e === 'drawing').slice(0, 2), [WAIT, 'drawing'], 'published only after the wait');
+  }));
+
+  it('does not publish a cut during which a shard was queued and already drained', withStall(1000, async () => {
     // Enqueued and gone again (drained/discarded) while the cutter reads the pieces: the queue is empty at publish time.
+    let first = true;
     setGlobalRendererRef({ current: renderer(() => {
+      if (!first) return;
+      first = false;
       enqueueInstancedShards('legacy-model', [new ArrayBuffer(8)], instancedShardGeneration());
       discardInstancedShards();
     }) });
-    const { drawing, error, progress } = await generate();
-    assert.equal(drawing, null, 'the cut that may have missed the drained shard is not published');
-    assert.equal(error, null);
-    assert.equal(progress, 'Waiting for instanced geometry...');
-  });
+    const out = await generate();
+    assert.equal(out.error, null);
+    assert.deepEqual(out.log.filter((e) => e === WAIT || e === 'drawing'), [WAIT, 'drawing'], 'the cut that may have missed it is not published; the next one is');
+  }));
 });

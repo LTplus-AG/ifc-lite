@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { FederatedModel } from '@/store';
-import { drawingModelOf } from './drawing-geometry-context';
+import { drawingEntityOf, drawingModelOf } from './drawing-geometry-context';
 
 const model = (idOffset: number) => ({ idOffset }) as FederatedModel;
 const ranges = (globalId: number) => (globalId >= 100 && globalId < 200 ? { modelId: 'a', expressId: globalId - 100 }
@@ -17,6 +17,8 @@ describe('drawing geometry ownership (#10264)', () => {
     assert.equal(drawingModelOf(state, 150), 'a');
     assert.equal(drawingModelOf(state, 250), 'b');
     assert.equal(drawingModelOf(state, 999), undefined);
+    // The class lookup's local id comes from the same lookup as its model.
+    assert.deepEqual(drawingEntityOf(state, 250), { modelId: 'b', expressId: 50 });
   });
 
   it('keeps the legacy and single offset-zero model cases', () => {

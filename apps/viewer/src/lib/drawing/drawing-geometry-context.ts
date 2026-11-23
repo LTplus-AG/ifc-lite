@@ -13,8 +13,7 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import type { Renderer } from '@ifc-lite/renderer';
 import { federationRegistry } from '@ifc-lite/renderer';
-import { useViewerStore, type ViewerState } from '@/store';
-import { resolveEntityRef } from '@/store/resolveEntityRef';
+import { useViewerStore, type EntityRef, type ViewerState } from '@/store';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { modelIndices } from '@/lib/model-placement/model-indices';
 import { displayedTranslation } from '@/lib/model-placement/state';
@@ -28,17 +27,21 @@ import { DrawingGeometry } from './drawing-geometry-source';
 export { drawingMeshFilter } from './drawing-mesh-filter';
 
 /**
- * The model owning a global id by its registered range (or the progressive
- * registry's); `resolveEntityRef` would hand an id outside every range to the
- * first model. Only one model at offset zero, or legacy mode, owns any id.
+ * The model (and local id) owning a global id by its registered range, or the
+ * progressive registry's; `resolveEntityRef` would hand an id outside every
+ * range to the first model. Only one model at offset zero, or legacy mode,
+ * owns any id. Model choice and class lookup both go through this one lookup.
  */
-export function drawingModelOf(state: Pick<ViewerState, 'models' | 'resolveGlobalIdFromModels'>, globalId: number): string | undefined {
-  if (state.models.size === 0) return 'legacy';
-  const owner = state.resolveGlobalIdFromModels(globalId)?.modelId ?? federationRegistry.fromGlobalId(globalId)?.modelId;
-  if (owner !== undefined) return state.models.has(owner) ? owner : undefined;
+export function drawingEntityOf(state: Pick<ViewerState, 'models' | 'resolveGlobalIdFromModels'>, globalId: number): EntityRef | undefined {
+  if (state.models.size === 0) return { modelId: 'legacy', expressId: globalId };
+  const ref = state.resolveGlobalIdFromModels(globalId) ?? federationRegistry.fromGlobalId(globalId);
+  if (ref) return state.models.has(ref.modelId) ? { modelId: ref.modelId, expressId: ref.expressId } : undefined;
   const [only] = state.models;
-  return state.models.size === 1 && only[1].idOffset === 0 ? only[0] : undefined;
+  return state.models.size === 1 && only[1].idOffset === 0 ? { modelId: only[0], expressId: globalId } : undefined;
 }
+
+export const drawingModelOf = (state: Pick<ViewerState, 'models' | 'resolveGlobalIdFromModels'>, globalId: number): string | undefined =>
+  drawingEntityOf(state, globalId)?.modelId;
 
 export async function liveDrawingGeometry(meshes: readonly MeshData[], isCurrent: () => boolean,
   renderer: Renderer | null = getGlobalRenderer()): Promise<DrawingGeometry> {
@@ -60,9 +63,9 @@ export async function liveDrawingGeometry(meshes: readonly MeshData[], isCurrent
     modelIndexOf: (modelId) => indices.get(modelId) ?? 0,
     translationFor: (modelId) => displayedTranslation(state.modelPlacement, modelId),
     typeOf: (globalId) => {
-      const ref = resolveEntityRef(globalId);
-      const store = legacy ? state.ifcDataStore : state.models.get(ref.modelId)?.ifcDataStore;
-      return store?.entities.getTypeName(ref.expressId) || undefined;
+      const ref = drawingEntityOf(state, globalId);
+      const store = legacy ? state.ifcDataStore : ref && state.models.get(ref.modelId)?.ifcDataStore;
+      return (ref && store?.entities.getTypeName(ref.expressId)) || undefined;
     },
     scene: renderer && !instancedReleased ? renderer.getScene() : null,
     instancedReleased,

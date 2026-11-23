@@ -845,11 +845,11 @@ export function useDrawingGeneration({
       // Always set status to ready (whether initial generation or regeneration)
       setDrawingStatus('ready');
     } catch (error) {
-      // Instanced shards still queued for the scene: the drain bumps
-      // `instancedRevision`, which requests this drawing again with them.
+      // Instanced shards still queued: the request waits for the queue to move and cuts again
+      // (`useDrawingRequests`), or ends in an error when it stops moving.
       if (error instanceof DrawingGeometryPendingError) {
         if (isCurrent()) setDrawingProgress(0, 'Waiting for instanced geometry...');
-        return;
+        throw error;
       }
       console.error('Drawing generation failed:', error);
       if (isCurrent()) setDrawingError(error instanceof Error ? error.message : 'Generation failed');

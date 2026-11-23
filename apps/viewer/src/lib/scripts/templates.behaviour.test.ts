@@ -106,7 +106,7 @@ async function runTemplate(name: string): Promise<string[]> {
 
   try {
     // Already transpiled above: skip the sandbox's own pass, whose esbuild-wasm
-    // probe cannot resolve in Node and logs a spurious fallback warning.
+    // probe cannot resolve in Node and logs a spurious "Cannot find module".
     const result = await sandbox.eval(js, { typescript: false });
     return (result.logs ?? []).map((l) => (l.args ?? []).map(String).join(' '));
   } finally {

@@ -1102,8 +1102,8 @@ test('a load error outranks green assertions elsewhere in the same run', () => {
   assert.equal(parseRunnerOutput({ family: 'vitest', stdout: mixed, stderr: '', exitCode: 1 }).kind, LOAD_FAILURE);
 });
 
-// The sandbox's esbuild-wasm probe logs this from inside a test that then
-// fails an ordinary assertion (#11256).
+// The sandbox's esbuild-wasm probe logged this (pre-fix format) from inside a
+// test that then failed an ordinary assertion (#11256).
 const SANDBOX_NOISE = "[ifc-lite/sandbox] esbuild.wasm not resolvable as a bundled asset, falling back to the CDN TypeError [ERR_UNKNOWN_FILE_EXTENSION]: Unknown file extension \".wasm\"";
 
 test('#11256: load-error text logged beside an assertion failure stays an assertion failure', () => {
@@ -1117,6 +1117,14 @@ test('#11256: load-error text logged beside an assertion failure stays an assert
   // Noise on stderr after the stdout summary sits past the banner: still the
   // conservative reading, never a false assertion failure.
   assert.equal(parseRunnerOutput({ family: 'vitest', stdout: VITEST_ASSERTION_FAILURE, stderr: SANDBOX_NOISE, exitCode: 1 }).kind, LOAD_FAILURE);
+});
+
+test("#11256: an assert diff's elided `...` line does not end the failing test's block early", () => {
+  const node = NODE_ASSERTION_FAILURE.replace(
+    '    1 !== 2\n',
+    '    1 !== 2\n    ...\n    TypeError: computeThing is not a function\n',
+  );
+  assert.equal(parseRunnerOutput({ family: 'node-test', stdout: node, stderr: '', exitCode: 1 }).kind, LOAD_FAILURE);
 });
 
 test('#11256: a failing test whose own error is a load error is still a load failure', () => {

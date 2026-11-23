@@ -369,9 +369,9 @@ function parseNodeTest(text) {
       break;
     }
   }
-  // Each failing subtest's YAML block (`not ok` through its `...` line) holds
-  // its error; `#` lines around them are the file's own logs.
-  const blocks = [...text.matchAll(/^[ \t]*not ok \d+ - .*$[\s\S]*?^[ \t]*\.\.\.[ \t]*$/gm)].map((b) => b[0]);
+  // Each failing subtest's YAML block (`not ok` through the `...` at its own
+  // indent, not one inside an assert diff) holds its error; `#` lines are logs.
+  const blocks = [...text.matchAll(/^([ \t]*)not ok \d+ - .*$[\s\S]*?^\1  \.\.\.[ \t]*$/gm)].map((b) => b[0]);
   const failureText = blocks.length > 0 ? blocks.join('\n') : null;
   return { passed: pass ?? 0, failed: fail ?? 0, total, loadEvidence, failureText };
 }

@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "Keep the instanced-presence module loadable while dropping the pre-publish queue check: a cut during which a shard was queued is then published without that occurrence.",
+  "key": "apps/viewer/src/lib/drawing/drawing-instanced-presence.ts",
+  "mutation": "tests/evidence/drawing-instanced-pending-10264/behaviour.oracle.patch",
+  "test": "apps/viewer/src/hooks/useDrawingGeneration.instanced.test.tsx"
+}

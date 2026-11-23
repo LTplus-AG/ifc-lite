@@ -477,6 +477,8 @@ it('delivers validated A2UI to a capable paired tab and waits for its result', a
     sessionId: welcome.sessionId,
     surface: { title: 'Results', messages: [{ version: '1.0', createSurface: { surfaceId: 'floor' } }] },
   });
+  // The title labels the viewer's panel only; the card does not repeat it.
+  expect(JSON.stringify(frame.surface.messages)).not.toContain('Results');
   tab.reply(welcome.sessionId, frame.id, textResult('Delivered'));
   await expect(delivery).resolves.toEqual(textResult('Delivered'));
 

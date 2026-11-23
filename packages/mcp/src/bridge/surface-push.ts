@@ -17,9 +17,8 @@ async function prepare(input: Record<string, unknown>) {
   if (issue) throw new Error(issue);
   if (Buffer.byteLength(JSON.stringify(input)) > 512 * 1024) throw new Error('Surface exceeds 512 KiB.');
   const title = input.title as string | undefined;
-  const messages = input.messages === undefined
-    ? buildSurface({ ...(input.spec as SurfaceSpec), ...(title === undefined ? {} : { title }) })
-    : input.messages as unknown[];
+  // `title` labels the viewer's panel; the card keeps only the spec's own title, so it is not shown twice.
+  const messages = input.messages === undefined ? buildSurface(input.spec as SurfaceSpec) : input.messages as unknown[];
   if (messages.some((message) => !isRecord(message) || message.version !== A2UI_PROTOCOL_VERSION
     || !['createSurface', 'updateComponents', 'updateDataModel', 'deleteSurface'].some((kind) => kind in message))) {
     throw new Error('Provide A2UI v1.0 surface and data messages.');

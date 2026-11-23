@@ -11,7 +11,6 @@ import type { ChatMessage, CodeExecResult, FileAttachment, PersistedA2ui } from 
 import { CHAT_MAX_MESSAGES, CHAT_MAX_STORED_MESSAGES } from '../../lib/llm/chat-limits.js';
 
 const MESSAGES_STORAGE_KEY = 'ifc-lite-chat-messages';
-const MAX_MESSAGES = CHAT_MAX_MESSAGES;
 
 export function getMessagesStorageKey(userId: string | null): string {
   return userId ? `${MESSAGES_STORAGE_KEY}:${userId}` : `${MESSAGES_STORAGE_KEY}:anonymous`;
@@ -71,8 +70,8 @@ export function persistMessages(messages: ChatMessage[], userId: string | null) 
 }
 
 export function trimChatMessages(messages: ChatMessage[]): ChatMessage[] {
-  if (messages.length <= MAX_MESSAGES) return messages;
-  return messages.slice(-MAX_MESSAGES);
+  if (messages.length <= CHAT_MAX_MESSAGES) return messages;
+  return messages.slice(-CHAT_MAX_MESSAGES);
 }
 
 function deserializeStoredMessage(value: Record<string, unknown>): ChatMessage[] {

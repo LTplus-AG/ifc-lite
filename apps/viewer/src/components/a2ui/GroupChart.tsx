@@ -53,8 +53,9 @@ function ChartCanvas({ kind, groups, label, onPick }: { kind: 'bar' | 'pie'; gro
 export function foldGroups(groups: ChartGroup[], max: number, otherLabel: string): ChartGroup[] {
   if (groups.length <= max) return groups;
   const largest = new Set([...groups].sort((a, b) => Math.abs(b.value) - Math.abs(a.value)).slice(0, Math.max(1, max - 1)));
-  const head = groups.filter((g) => largest.has(g));
-  const rest = groups.filter((g) => !largest.has(g));
+  const head: ChartGroup[] = [];
+  const rest: ChartGroup[] = [];
+  for (const g of groups) (largest.has(g) ? head : rest).push(g);
   return [...head, { label: otherLabel, value: rest.reduce((a, g) => a + g.value, 0), refs: rest.flatMap((g) => g.refs) }];
 }
 

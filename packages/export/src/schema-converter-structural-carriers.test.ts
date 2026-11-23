@@ -781,7 +781,8 @@ describe('curve member Axis IFC4 -> IFC2X3 -> IFC4 #9668', () => {
     // The upgrade reads it back and keeps the association, which is the source's.
     const up = await convert(down.step, 'IFC4');
     expect(line(up.step, 20)).toBe(line(own, 20));
-    expect(line(up.step, 40)).toBe(line(own, 40));
+    // #10777: the IFC2X3 profile properties IFC4 deleted become IfcProfileProperties; ProfileName has no IFC4 slot.
+    expect(line(up.step, 40)).toBe('#40=IFCPROFILEPROPERTIES($,$,$,$);');
   });
 
   it('fills the Axis orientation in a split-line association and keeps it in the preview', async () => {

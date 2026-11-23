@@ -222,3 +222,32 @@ fn latin1_data_keeps_typed_mass_density_in_all_step_writers_10797() {
             "{writer} dropped MassDensity:\n{output}");
     }
 }
+
+#[test]
+fn shared_typed_property_records_match_every_step_writer_10797() {
+    #[derive(serde::Deserialize)]
+    struct Case {
+        name: String,
+        source: String,
+        expected: String,
+    }
+    let cases: Vec<Case> = serde_json::from_str(include_str!(
+        "../tests/fixtures/schema_typed_properties_writer_vectors.json"
+    )).unwrap();
+    let opts = crate::StepOptions { schema: Some("IFC4".to_owned()), ..Default::default() };
+    let merge_opts = crate::MergedOptions { schema: opts.schema.clone(), ..Default::default() };
+    let mut failures = Vec::new();
+    for case in cases {
+        let input = format!("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n{}\nENDSEC;\nEND-ISO-10303-21;\n", case.source);
+        let input: Vec<u8> = input.chars().map(|c| u8::try_from(u32::from(c)).unwrap()).collect();
+        let direct = crate::export_step(&input, &opts).unwrap();
+        let (logged, _) = crate::export_step_with_log(&input, &opts, &crate::MutationLog::default()).unwrap();
+        let merged = crate::export_merged(&[&input], &merge_opts);
+        for (writer, output) in [("direct", direct), ("logged", logged), ("merged", merged)] {
+            if !output.lines().filter_map(|line| line.split_once('=')).any(|(_, body)| body == case.expected) {
+                failures.push(format!("{writer} {}: missing {}", case.name, case.expected));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}

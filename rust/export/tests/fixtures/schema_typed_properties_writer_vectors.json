@@ -1,0 +1,12 @@
+[
+  {
+    "name": "Latin-1 in a source with no typed properties",
+    "source": "#3=IFCMATERIAL('B\u00e9ton');",
+    "expected": "IFCMATERIAL('B\ufffdton',$,$);"
+  },
+  {
+    "name": "a STEP comment before a typed real",
+    "source": "#1=IFCMATERIAL('Steel');\n#2=IFCMECHANICALMATERIALPROPERTIES(#1,$,/*c*/2.E11,8.,0.3,1.2E-5);",
+    "expected": "IFCPROPERTYSINGLEVALUE('YoungModulus',$,IFCMODULUSOFELASTICITYMEASURE(/*c*/2.E11),$);"
+  }
+]

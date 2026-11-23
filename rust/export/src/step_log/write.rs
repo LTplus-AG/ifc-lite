@@ -202,7 +202,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     let target = opts.schema.clone().unwrap_or_else(|| source_label.clone());
     let converting = opts.schema.is_some() && crate::schema_convert::needs_conversion(&source_label, &target);
 
-    src.preserve_latin1 = crate::schema_typed_properties::applies(&source_label, &target);
+    src.preserve_latin1 = crate::schema_typed_properties::applies_to_source(content, &source_label, &target);
     let target_is_ifc2x3 = crate::schema_convert::targets_ifc2x3(&target);
     if target_is_ifc2x3 && log.georef_mutations.as_ref().is_some_and(super::georef::requests_anything) {
         return Err(invalid(format!("export_step_with_log: {}", super::georef::IFC2X3_REFUSAL)));
@@ -268,8 +268,8 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
 
     write_header(out, opts, content, converting, &target, pass.new_entity_count + pass.ledger.modified_count())?;
     // IFC2X3 places one product per placement (#9209): its records are held to adapt them.
-    let typed_properties = crate::schema_typed_properties::applies(&source_label, &target)
-        && (!pass.overlay.retype_order.is_empty() || !pass.created_lines.is_empty() || crate::schema_typed_properties::has_typed_records(content));
+    let typed_properties = src.preserve_latin1 || (crate::schema_typed_properties::applies(&source_label, &target)
+        && (!pass.overlay.retype_order.is_empty() || !pass.created_lines.is_empty()));
     let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, target_is_ifc2x3, typed_properties);
 
     let mut slot_fill = crate::schema_ifc2x3_slots::Ifc2x3SlotFill::new(pass.fallback_owner_history());

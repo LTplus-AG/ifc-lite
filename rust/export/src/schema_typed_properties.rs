@@ -13,7 +13,7 @@ use crate::schema_ifc4_slots::Ifc4SlotCheck;
 use crate::schema_structural_diagnostics::StructuralDiagnostics;
 use crate::step_ids::IdAllocator;
 use crate::step_record_frame::{record_frame, record_head};
-use crate::step_slot::slots_of;
+use crate::step_slot::{slots_of, without_comments};
 
 pub(crate) type Row = (&'static str, usize, &'static [(&'static str, &'static [Field])]);
 pub(crate) struct Field(pub(crate) usize, pub(crate) &'static str, pub(crate) &'static str, pub(crate) Kind);
@@ -45,7 +45,10 @@ pub(crate) fn applies(from: &str, to: &str) -> bool {
     canon(from) == "IFC2X3" && matches!(canon(to), "IFC4" | "IFC4X3")
 }
 
-pub(crate) fn has_typed_records(content: &[u8]) -> bool {
+pub(crate) fn applies_to_source(content: &[u8], from: &str, to: &str) -> bool {
+    if !applies(from, to) {
+        return false;
+    }
     let mut scan = EntityScanner::new(content);
     while let Some((_, ty, _, _)) = scan.next_entity() {
         if lookup(ty).is_some() {
@@ -59,6 +62,7 @@ impl Kind {
     fn accepts(&self, value: &str) -> bool {
         let bytes = value.as_bytes();
         match self {
+            Self::Number if value.contains("/*") => parse_step_real(without_comments(value).as_bytes()).is_some(),
             Self::Number => parse_step_real(bytes).is_some(),
             Self::Text => skip_step_trivia(bytes, 0).and_then(|start| bytes.get(start)) == Some(&b'\'')
                 && is_step_value(bytes),

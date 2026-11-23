@@ -294,7 +294,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
         // Emit.
         let source_schema = detect_schema(model.content);
         let converting = crate::schema_convert::needs_conversion(&source_schema, &schema);
-        let preserve_latin1 = crate::schema_typed_properties::applies(&source_schema, &schema);
+        let preserve_latin1 = crate::schema_typed_properties::applies_to_source(model.content, &source_schema, &schema);
         let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(model.content, &source_schema, &schema); // D57
         flatten.retain_grids(|id| included.contains(&id) && !plan.skip.contains(&id));
         for &id in &index.order {

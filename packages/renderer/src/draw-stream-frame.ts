@@ -54,7 +54,7 @@ export class DrawStreamGate {
   settled(batches: readonly BatchedMesh[], config: DrawStreamConfig, revision: number, requestRender?: () => void): boolean {
     let sum = 0, resident = 0;
     // Residency by batch identity: an eviction and a restore (a new object) in one interval still change it.
-    for (const b of batches) { sum = (sum + keyHash(b)) % 4294967296; if (b.gpuResident !== false) resident = (resident + b.id * 2654435761 + 1) % 4294967296; }
+    for (const b of batches) { sum = (sum + keyHash(b)) % 4294967296; if (b.gpuResident !== false) resident = (resident + (Math.imul(b.id, 0x9e3779b1) >>> 0) + 1) % 4294967296; }
     // Residency is NOT part of the geometry signature. Over the GPU budget, a camera move
     // evicts offscreen batches; when that changed the signature, the stream went back to legacy,
     // waited `settleMs` and rebuilt its arena (a GB-scale GPU copy) and HLOD: 0.2-2 s frames on

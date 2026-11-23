@@ -63,4 +63,16 @@ describe('highlight entity -> batch index', () => {
     assert.deepEqual(shape(batchesHolding(s, new Set([id]), 0, indexedResources)), shape(batchesHolding(s, new Set([id]), 0, scanResources)));
     assert.deepEqual(shape(batchesHolding(s, new Set([555555]), 0, indexedResources)).found, [555555]);
   });
+
+  it('sees an id swapped in at an index no query has touched, and adopts same-id restores', () => {
+    const list = campus(50, 4);
+    const s = scene(list);
+    batchesHolding(s, new Set([list[0]!.expressIds[0]!]), 0, indexedResources); // build
+    list[7] = { ...list[7]!, id: 2000, expressIds: [777001], modelIndices: [0] };
+    assert.deepEqual(shape(batchesHolding(s, new Set([777001]), 0, indexedResources)).found, [777001]);
+    const restored = { ...list[9]!, id: 3000 }; // same ids, new object
+    list[9] = restored;
+    const id = restored.expressIds[1]!;
+    assert.deepEqual(shape(batchesHolding(s, new Set([id]), 0, indexedResources)), shape(batchesHolding(s, new Set([id]), 0, scanResources)));
+  });
 });

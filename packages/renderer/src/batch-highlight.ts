@@ -138,8 +138,8 @@ export function batchesHolding(
  */
 class EntityBatchIndex {
   private readonly byId = new Map<number, number | number[]>();
-  /** The batch at each index when built: an in-place swap there (residency restore, recovery) invalidates it. */
-  private readonly batches: readonly BatchedMesh[];
+  /** The batch at each index when built, to notice in-place swaps (residency restore, recovery). */
+  private readonly batches: BatchedMesh[];
   constructor(readonly list: readonly BatchedMesh[], readonly length: number, readonly revision: number) {
     this.batches = [...list];
     const add = (id: number, index: number): void => {
@@ -154,9 +154,18 @@ class EntityBatchIndex {
       if (b.laneIds) for (const id of b.laneIds) add(id, index);
     }
   }
-  /** Whether every batch at `indices` is still the one indexed there. */
-  current(indices: readonly number[]): boolean {
-    for (const i of indices) if (this.list[i] !== this.batches[i]) return false;
+  /**
+   * Whether the index still describes the list: O(batches) identity checks,
+   * not O(entries). A batch swapped in place with the same ids (a residency
+   * restore) is adopted; any other swap needs a rebuild.
+   */
+  current(): boolean {
+    for (let i = 0; i < this.batches.length; i++) {
+      const now = this.list[i]!, then = this.batches[i]!;
+      if (now === then) continue;
+      if (!sameIds(now.expressIds, then.expressIds) || !sameIds(now.laneIds ?? [], then.laneIds ?? [])) return false;
+      this.batches[i] = now;
+    }
     return true;
   }
   /** Ascending, de-duplicated batch indices holding any of `ids` (the full scan's visiting order). */
@@ -175,19 +184,24 @@ class EntityBatchIndex {
   }
 }
 
+function sameIds(a: ArrayLike<number>, b: ArrayLike<number>): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
 /** One index per scene, so renderers sharing a page never evict each other's. */
 const indexByScene = new WeakMap<BatchHighlightScene, EntityBatchIndex>();
 /** Batch indices holding any of `ids`, from the scene's index (rebuilt when the list, revision or a candidate batch changed). */
 function indexedCandidates(scene: BatchHighlightScene, list: readonly BatchedMesh[], ids: ReadonlySet<number>): number[] {
   const revision = scene.getPickGeometryRevision();
   let index = indexByScene.get(scene);
-  let candidates = index && index.list === list && index.length === list.length && index.revision === revision ? index.candidates(ids) : null;
-  if (!index || !candidates || !index.current(candidates)) {
+  if (!index || index.list !== list || index.length !== list.length || index.revision !== revision || !index.current()) {
     index = new EntityBatchIndex(list, list.length, revision);
     indexByScene.set(scene, index);
-    candidates = index.candidates(ids);
   }
-  return candidates;
+  return index.candidates(ids);
 }
 
 /** Whether the quantized highlight pipeline a batch waited for exists now (only quantized pipelines are built late). */

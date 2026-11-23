@@ -191,12 +191,14 @@ describe('draw stream gate', () => {
     assert.equal(geom, first);
   });
 
-  it('asks for a frame when the settle delay ends', async () => {
+  it('asks for a frame when the settle delay ends', (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
     const gate = new DrawStreamGate();
     let frames = 0;
-    assert.equal(gate.settled([batch(1, 0)], resolveDrawStreamConfig({ stream: true, settleMs: 5 }), 0, () => { frames++; }), false);
-    await new Promise((r) => setTimeout(r, 40));
-    assert.equal(frames, 1);
-    gate.cancel();
+    try {
+      assert.equal(gate.settled([batch(1, 0)], resolveDrawStreamConfig({ stream: true, settleMs: 5 }), 0, () => { frames++; }), false);
+      t.mock.timers.tick(10);
+      assert.equal(frames, 1);
+    } finally { gate.cancel(); }
   });
 });

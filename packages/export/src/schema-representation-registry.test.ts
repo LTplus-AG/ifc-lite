@@ -88,7 +88,7 @@ describe('an IFC2X3 -> IFC4 upgrade writes each route, and the loss report names
     const out = new TextDecoder().decode(new StepExporter(store).export({ schema: 'IFC4' }).content).split('\n');
     const line = (id: number) => out.find((l) => l.startsWith(`#${id}=`));
     expect(line(4)).toBe("#4=IFCRELASSIGNSTOACTOR('0CvctVUKr0kugbFTf53O9L',$,$,$,(#2),$,#3,$);");
-    expect(line(7)).toMatch(/^#7=IFCPROXY\('[^']+',\$,'IFCSERVICELIFE',\$,\$,\$,\$,\.NOTDEFINED\.,\$\);$/);
+    expect(line(7)).toBe("#7=IFCPROXY('0EvctVUKr0kugbFTf53O9L',$,'Life',$,$,$,$,.NOTDEFINED.,$);");
     expect(line(5)).toBe("#5=IFCTASK('0DvctVUKr0kugbFTf53O9L',$,'Move',$,$,'T-1',$,'planned',$,.F.,1,$,$);");
     expect(line(6)).toBe('#6=IFCCALENDARDATE(1,2,2020);');
     const entries = analyzeConversionLoss(store, 'IFC2X3', 'IFC4').entries;

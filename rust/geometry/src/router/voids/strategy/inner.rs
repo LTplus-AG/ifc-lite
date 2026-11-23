@@ -108,7 +108,7 @@ impl Execution {
         // On the unified exact path every opening is a cheap box-vs-host cut, so
         // a budget-skipped opening is a correctness bug, not a perf guard.
 
-        let prepared = exact::prepare::cutters(self, ctx, wall_min, wall_max);
+        let prepared = exact::prepare::cutters(self, ctx, wall_min, wall_max, &original_host);
         let all_openings: Vec<&CutterKind> = prepared.ordered();
 
         // DISJOINT-CUTTER BATCHING: group cutters whose pad-inflated AABBs are

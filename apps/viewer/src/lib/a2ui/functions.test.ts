@@ -78,7 +78,7 @@ describe('IFC function policy', () => {
   it('tells every listener when the view resets, whoever reset it (#11344)', async () => {
     const { host } = await seedA2uiModels();
     let heard = 0;
-    const stop = onViewReset(() => { heard++; });
+    const stop = onViewReset(host, () => { heard++; });
     runIfcFunction(host, 'resetView', {}, { caller: 'agent', userActivated: false });
     runIfcFunction(host, 'resetView', {}, { caller: 'renderer', userActivated: true });
     stop();

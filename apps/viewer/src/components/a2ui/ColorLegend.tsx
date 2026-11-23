@@ -95,14 +95,14 @@ export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ 
 
   const autoKey = useMemo(() => JSON.stringify([props.by, props.query ?? null, props.data ?? null]), [props.by, props.query, props.data]);
   // A new payload starts with nothing hidden or applied; so does every legend after any legend's view reset.
-  useEffect(() => {
-    setHidden(new Set());
+  const clearViewState = () => {
+    setHidden((prev) => (prev.size ? new Set() : prev));
     setApplied(false);
-  }, [autoKey]);
-  useEffect(() => onViewReset(() => {
-    setHidden(new Set());
-    setApplied(false);
-  }), []);
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- a new payload is the trigger
+  useEffect(clearViewState, [autoKey]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- state setters are stable
+  useEffect(() => onViewReset(host, clearViewState), [host]);
   useEffect(() => {
     // Nothing to colour: claim nothing, so a remount never shows it as applied.
     if (props.apply !== 'onShow' || targets === 0) return;

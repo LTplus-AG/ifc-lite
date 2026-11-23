@@ -133,11 +133,14 @@ function targetRefs(host: A2uiViewerHost, name: string, args: Record<string, unk
  * holding view state (a legend's applied colours and hidden groups) listen
  * here, so a reset from any surface, button or agent call clears them all.
  */
-const viewResetListeners = new Set<() => void>();
+const viewResetListeners = new WeakMap<A2uiViewerHost, Set<() => void>>();
 
-export function onViewReset(listener: () => void): () => void {
-  viewResetListeners.add(listener);
-  return () => { viewResetListeners.delete(listener); };
+/** Per host, so one viewer's reset never clears another viewer's legends. */
+export function onViewReset(host: A2uiViewerHost, listener: () => void): () => void {
+  let listeners = viewResetListeners.get(host);
+  if (!listeners) viewResetListeners.set(host, listeners = new Set());
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
 }
 
 /**
@@ -156,7 +159,7 @@ export function runIfcFunction(host: A2uiViewerHost, name: string, args: Record<
     case 'colorize': return host.colorize([{ refs: targetRefs(host, name, args), color: safeColor(args.color) }]);
     case 'resetView': {
       host.resetView();
-      for (const listener of viewResetListeners) listener();
+      for (const listener of viewResetListeners.get(host) ?? []) listener();
       return undefined;
     }
     case 'getSelection': return host.getSelection().map(encodeRef);

@@ -13,7 +13,7 @@ import { StatGroupApi } from '@ifc-lite/a2ui/catalog';
 import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
 import type { A2uiViewerHost } from '@/lib/a2ui/host';
-import { aggregate, aggregatePool, evaluateQuery, type Aggregate, type FieldReader, type QueryResult } from '@/lib/a2ui/query-eval';
+import { aggregate, aggregatePool, evaluateQuery, type Aggregate, type FieldReader, type QueryResult, resultUnavailable } from '@/lib/a2ui/query-eval';
 import { weightStyle } from './basic-layout';
 import { ResultNotes, toneClass } from './notes';
 import { formatValue, useA2uiRuntime, useFieldReader } from './runtime';
@@ -37,7 +37,7 @@ function statValue(host: A2uiViewerHost, reader: FieldReader, item: StatItem): S
   if (typeof item.value === 'number') return { value: item.value, result: null };
   if (item.query === undefined) return { value: undefined, result: null };
   const result = evaluateQuery(host, item.query, reader);
-  if (result.unloadedModel || result.problems.length > 0) return { value: undefined, result };
+  if (resultUnavailable(result)) return { value: undefined, result };
   return { value: aggregate(reader, aggregatePool(result), item.aggregate ?? 'count', item.path), result };
 }
 

@@ -148,6 +148,11 @@ export function evaluateQuery(host: A2uiViewerHost, input: unknown, reader = new
   return { spec, rows: rows.slice(0, spec.limit), matches: rows, total: rows.length, explicitLimit, problems };
 }
 
+/** A result that must not produce a number: its query had problems or named an unloaded model. */
+export function resultUnavailable(result: QueryResult): boolean {
+  return result.problems.length > 0 || !!result.unloadedModel;
+}
+
 /** What an aggregate (stat, chart, legend, sum) runs over: every match unless the query set a limit. */
 export function aggregatePool(result: QueryResult): A2uiEntity[] {
   return result.explicitLimit ? result.rows : result.matches;
@@ -168,6 +173,8 @@ export type Aggregate = 'count' | 'sum' | 'avg' | 'min' | 'max';
 /** Aggregate a numeric path over rows. Rows without a number are skipped (count counts rows). */
 export function aggregate(reader: FieldReader, rows: A2uiEntity[], kind: Aggregate, path?: string): number | undefined {
   if (kind === 'count') return rows.length;
+  // An empty set sums to a true 0; rows with no number at the path have no total.
+  if (kind === 'sum' && rows.length === 0) return 0;
   if (!path) return undefined;
   const nums = rows.map((r) => toNumber(reader.value(r, path))).filter((n): n is number => n !== undefined);
   if (nums.length === 0) return undefined;

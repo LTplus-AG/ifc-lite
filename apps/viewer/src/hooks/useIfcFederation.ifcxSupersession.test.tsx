@@ -206,6 +206,49 @@ it('#10591 refuses a stack replacement when IFC edits change during its file rea
   assert.equal(useViewerStore.getState().mutationVersion, mutationVersion + 1);
 });
 
+it('#11254 refuses a local ref load when IFC edits appear during its file read', async (t) => {
+  const { viewerHost } = await import('@/test/agent-tools-fixture');
+  const { operationArtifacts } = await import('@/lib/agent-tools/operations/artifacts');
+  const { coordinationLayerWorkflowOperations } = await import('@/lib/agent-tools/operations/coordination-layer-workflows');
+  const { attachCoordinationComposition } = await import('@/services/coordination-loader');
+  const { getBrowserLayerStore } = await import('@/lib/layers/browser-store');
+  const { computeLayerId } = await import('@ifc-lite/ifcx');
+  const { deferred } = await import('@/test/race');
+  cleanups.push(attachCoordinationComposition(hookApi!));
+
+  const model = fixtureModel('keep');
+  useViewerStore.getState().addModel(model);
+  const layer = JSON.parse(await ifcxFile('base.ifcx').text());
+  layer.header.id = computeLayerId(layer);
+  const store = await getBrowserLayerStore();
+  store.storeLayer(layer);
+  const refName = `held-ref-${crypto.randomUUID()}`;
+  store.setRef(refName, { layers: [layer.header.id] });
+  const entered = deferred(), allowRead = deferred();
+  const arrayBuffer = File.prototype.arrayBuffer;
+  t.mock.method(File.prototype, 'arrayBuffer', async function (this: File) {
+    if (this.name === 'layer-0.ifcx') {
+      entered.resolve();
+      await allowRead.promise;
+    }
+    return arrayBuffer.call(this);
+  });
+
+  const host = viewerHost();
+  const commit = <T,>(write: () => T) => write();
+  const operation = coordinationLayerWorkflowOperations.find(op => op.id === 'layers.loadLocalRef')!;
+  const pending = operation.execute({ ref_name: refName, expected_ref_json: JSON.stringify(store.getRef(refName)) },
+    { host, commit, commitAsync: commit, ownGeometry: work => work(), retain() {}, artifacts: operationArtifacts(host, commit) });
+
+  await entered.promise;
+  const edit = { mapConversion: { eastings: 1, northings: 2, orthogonalHeight: 0 }, projectedCRS: { name: 'EPSG:2056' } };
+  useViewerStore.setState({ georefMutations: new Map([[model.id, edit]]) });
+  const refused = assert.rejects(pending, /export or discard the unexported edits/);
+  await act(async () => { allowRead.resolve(); await refused; });
+  assert.equal(useViewerStore.getState().models.get(model.id), model);
+  assert.equal(useViewerStore.getState().georefMutations.get(model.id), edit);
+});
+
 it('#10591 a federated IFCX load keeps its layer stack and path map, with path IDs in the renderer ID range', async () => {
   const previous = fixtureModel('offset-model', { idOffset: 1_000_000 });
   useViewerStore.getState().addModel(previous);

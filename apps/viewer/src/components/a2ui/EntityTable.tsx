@@ -68,7 +68,7 @@ export const EntityTableImpl = createComponentImplementation(EntityTableApi, ({ 
   }, [props.rows, result, host, reader]);
 
   const sorted = useMemo(() => sortRows(rows, sort), [rows, sort]);
-  const pageSize = typeof props.maxRows === 'number' && props.maxRows > 0 ? Math.floor(props.maxRows) : DEFAULT_PAGE;
+  const pageSize = typeof props.maxRows === 'number' && props.maxRows > 0 ? Math.max(1, Math.floor(props.maxRows)) : DEFAULT_PAGE;
   const pages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const current = Math.min(page, pages - 1);
   const visible = sorted.slice(current * pageSize, (current + 1) * pageSize);

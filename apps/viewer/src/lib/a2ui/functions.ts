@@ -21,7 +21,7 @@ import {
 import { escapeCsvCell } from '@ifc-lite/export';
 import { downloadFile } from '@/lib/export/download';
 import type { A2uiViewerHost } from './host.js';
-import { aggregate, aggregatePool, evaluateQuery, FieldReader } from './query-eval.js';
+import { aggregate, aggregatePool, evaluateQuery, FieldReader, type QueryResult } from './query-eval.js';
 
 interface CallContext {
   caller: 'renderer' | 'agent';
@@ -64,7 +64,8 @@ export function resolveTarget(host: A2uiViewerHost, args: { refs?: unknown; quer
     const result = evaluateQuery(host, args.query);
     if (result.unloadedModel) unloaded.add(result.unloadedModel);
     if (result.problems.length) return { refs: [], unloadedModels: [...unloaded], problems: result.problems };
-    for (const row of result.rows) out.set(row.key, row.ref);
+    // The whole match set, like the stats and charts beside it, not the first page a table shows.
+    for (const row of aggregatePool(result)) out.set(row.key, row.ref);
   }
   return { refs: [...out.values()], unloadedModels: [...unloaded], problems: [] };
 }
@@ -102,6 +103,12 @@ export function entitiesCsv(host: A2uiViewerHost, refs: WireEntityRef[], columns
   return `${lines.join('\n')}\n`;
 }
 
+/** A count or sum over a query that has problems or names an unloaded model is refused, not reported as 0. */
+function checkAggregate(name: string, result: QueryResult): void {
+  if (result.problems.length) throw new PolicyRefusal(name, describeProblems(result.problems));
+  if (result.unloadedModel) throw new PolicyRefusal(name, `model ${result.unloadedModel} is not loaded`);
+}
+
 function describeProblems(problems: QueryProblem[]): string {
   return `the query has problems, so it would act on more than was asked: ${problems.map((p) => `${p.path || 'query'}: ${p.message}`).join('; ')}`;
 }
@@ -131,13 +138,13 @@ export function runIfcFunction(host: A2uiViewerHost, name: string, args: Record<
     case 'getSelection': return host.getSelection().map(encodeRef);
     case 'countEntities': {
       const result = evaluateQuery(host, args.query);
-      if (result.problems.length) throw new PolicyRefusal(name, describeProblems(result.problems));
+      checkAggregate(name, result);
       return aggregatePool(result).length;
     }
     case 'sumQuantity': {
       const reader = new FieldReader(host);
       const result = evaluateQuery(host, args.query, reader);
-      if (result.problems.length) throw new PolicyRefusal(name, describeProblems(result.problems));
+      checkAggregate(name, result);
       return aggregate(reader, aggregatePool(result), 'sum', typeof args.path === 'string' ? args.path : undefined) ?? 0;
     }
     case 'exportCsv': {

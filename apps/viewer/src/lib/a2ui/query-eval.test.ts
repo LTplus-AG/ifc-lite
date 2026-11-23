@@ -55,6 +55,7 @@ describe('evaluateQuery', () => {
     assert.equal(missing.total, 4);
     const bad = evaluateQuery(host, { types: ['Wall'], where: [{ path: 'a b', op: 'eq', value: 1 }] });
     assert.deepEqual(bad.problems.map((p) => p.path), ['types', 'where[0].path']);
+    assert.equal(bad.total, 0, 'a query with problems yields nothing rather than every product');
   });
 
   it('resolves quantity-set paths for where, sums and groups (Qto_*, not only Pset_*)', async () => {

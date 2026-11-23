@@ -56,6 +56,16 @@ describe('bim.ui in QuickJS', () => {
     if (data) expect(model?.dataModel.s0).toMatchObject(data);
   });
 
+  it('keeps computed legend entries and the initial table sort', async () => {
+    const result = await run(`bim.ui.show({ sections: [
+      { kind: "legend", by: "share", data: [{ label: "High", color: "#e5484d", refs: ["m:1"] }] },
+      { kind: "table", columns: [{ path: "Name" }], rows: [{ ref: "m:1", Name: "A" }], sort: { path: "Name", dir: "desc" } },
+    ] })`);
+    const model = result.surfaces?.[0][0].createSurface;
+    expect(model?.dataModel.s0).toMatchObject({ data: [{ label: 'High', color: '#e5484d', refs: ['m:1'] }] });
+    expect(model?.components).toContainEqual(expect.objectContaining({ id: 's1', sort: { path: 'Name', dir: 'desc' } }));
+  });
+
   it('show keeps host IDs and catalog components even with injected keys', async () => {
     const result = await run(`
       bim.ui.show({

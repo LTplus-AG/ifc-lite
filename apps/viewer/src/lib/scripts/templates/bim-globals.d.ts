@@ -161,10 +161,10 @@ declare namespace BimUi {
     | { kind: 'text'; text: string; variant?: 'body' | 'caption' }
     | { kind: 'callout'; text: string; tone?: Tone; title?: string }
     | { kind: 'stats'; items: StatSpec[] }
-    | { kind: 'table'; columns: ColumnSpec[]; rows?: RowSpec[]; query?: IfcQuerySpec; title?: string; groupBy?: string; maxRows?: number }
+    | { kind: 'table'; columns: ColumnSpec[]; rows?: RowSpec[]; query?: IfcQuerySpec; title?: string; groupBy?: string; sort?: { path: string; dir?: 'asc' | 'desc' }; maxRows?: number }
     | { kind: 'list'; refs?: string[]; query?: IfcQuerySpec; title?: string; label?: string }
     | { kind: 'chart'; groupBy: string; data?: ChartDatum[]; query?: IfcQuerySpec; chart?: 'bar' | 'pie'; aggregate?: 'count' | 'sum'; path?: string; title?: string }
-    | { kind: 'legend'; by: string; query?: IfcQuerySpec; title?: string; apply?: 'manual' | 'onShow' }
+    | { kind: 'legend'; by: string; data?: Array<{ label: string; color: string; refs?: string[] }>; query?: IfcQuerySpec; title?: string; apply?: 'manual' | 'onShow' }
     | { kind: 'actions'; actions: ViewerAction[]; refs?: string[]; query?: IfcQuerySpec; color?: string; followUps?: { label: string; prompt: string }[] }
     | { kind: 'entity'; entity: string; sections?: string[] };
 

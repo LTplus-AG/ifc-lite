@@ -26,6 +26,7 @@ import {
   foldActivity, type AgentBridgeActivity, type AgentBridgePermission, type AgentBridgeStatus,
 } from './state';
 import { isFramed } from './pairing-fragment';
+import { agentSurfaces } from './agent-surfaces';
 import { ENDED_KEYS } from './outcome-keys';
 import { toast } from '@/components/ui/toast';
 import { registerEnglish } from '@/i18n';
@@ -127,6 +128,8 @@ export function connectAgentBridge({ port, code, bim, WebSocket }: ConnectAgentB
     return;
   }
   active?.disconnect();
+  // Surfaces belong to the agent that pushed them: a click must never reach a different agent.
+  agentSurfaces.clear();
   const lifetime = new AbortController();
   const host = createMainViewerToolHost(useViewerStore, bim, { editor: createMainViewerEditor(useViewerStore), lifetimeSignal: lifetime.signal });
   resetActivity();

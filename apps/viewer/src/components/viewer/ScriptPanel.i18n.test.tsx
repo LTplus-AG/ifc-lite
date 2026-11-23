@@ -143,8 +143,14 @@ describe('ScriptPanel localization (#4918)', () => {
     const container = renderPanel();
     const summary = [...container.querySelectorAll('summary')].find((element) => element.textContent === '1 result surface');
     assert.ok(summary);
-    assert.equal(summary.parentElement?.hasAttribute('open'), false);
-    assert.deepEqual(JSON.parse(summary.parentElement?.querySelector('pre')?.textContent ?? ''), surfaces);
+    const details = summary.parentElement as HTMLDetailsElement;
+    assert.equal(details.hasAttribute('open'), false);
+    assert.equal(details.querySelector('pre'), null, 'the payload is serialised only once opened');
+    act(() => {
+      details.open = true;
+      details.dispatchEvent(new Event('toggle'));
+    });
+    assert.deepEqual(JSON.parse(details.querySelector('pre')?.textContent ?? ''), surfaces);
   });
 
   it('shows the saved-script selector and its Delete menu item once a script exists', () => {

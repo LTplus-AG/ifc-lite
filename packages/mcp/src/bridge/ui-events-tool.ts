@@ -52,9 +52,10 @@ export const CHANNEL_NOTIFICATION = 'notifications/claude/channel';
 
 /** Params of the Claude Code channel notification for one event (`claude/channel`, research preview). */
 export function channelParams(event: ReceivedUiEvent): { content: string; meta: Record<string, string> } {
-  const context = event.context && event.name !== 'ask' ? ` Context: ${JSON.stringify(event.context)}` : '';
+  const { prompt: _prompt, ...rest } = event.context ?? {};
+  const context = Object.keys(rest).length ? ` Context: ${JSON.stringify(rest)}` : '';
   const content = event.prompt !== undefined && event.name === 'ask'
-    ? event.prompt
+    ? `${event.prompt}${context}`
     : `The user triggered "${event.name}" on surface ${event.surfaceId}${event.prompt ? ` (${event.prompt})` : ''}.${context}`;
   return { content, meta: { event_id: event.id, event: event.name, surface_id: event.surfaceId } };
 }

@@ -16,7 +16,7 @@ import { ExecutableCodeBlock } from './ExecutableCodeBlock';
 import type { ChatMessage as ChatMessageType } from '@/lib/llm/types';
 import { renderTextContent } from './renderTextContent';
 import { lazyChunk } from '@/lib/lazy-chunk';
-import { hasA2uiBlock, stripA2uiBlocks } from '@/lib/llm/a2ui-blocks';
+import { hasA2uiBlock, isA2uiFence, stripA2uiBlocks } from '@/lib/llm/a2ui-blocks';
 
 /** A2UI surfaces load with their own chunk, only for replies that carry an `<a2ui>` block. */
 const A2uiChatContent = lazyChunk(() => import('./A2uiChatContent'));
@@ -48,7 +48,7 @@ function splitContent(content: string): ContentPart[] {
       if (text) parts.push({ type: 'text', text });
     }
     const lang = match[0].match(/```(\w*)/)?.[1] ?? '';
-    const isExecutable = !hasA2uiBlock(match[0]) && (['js', 'javascript', 'ts', 'typescript', ''].includes(lang.toLowerCase())
+    const isExecutable = !isA2uiFence(match[0]) && (['js', 'javascript', 'ts', 'typescript', ''].includes(lang.toLowerCase())
       || match[0].includes('bim.'));
     if (isExecutable) {
       parts.push({ type: 'code', index: codeIndex });

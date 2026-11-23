@@ -16,7 +16,7 @@ type Attributes = ReturnType<LoadedModel['bim']['attributes']>;
 function readField(model: LoadedModel, entity: EntityData, field: FieldPath, attrs: () => Attributes) {
   switch (field.kind) {
     case 'attribute':
-      return attrs().find((a) => a.name === field.name)?.value;
+      return attrs().find((a) => a.name.toLowerCase() === field.name.toLowerCase())?.value;
     case 'property':
       return model.bim.property(entity.ref, field.set, field.name)
         ?? model.bim.quantity(entity.ref, field.set, field.name);

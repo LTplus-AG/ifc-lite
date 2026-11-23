@@ -17,9 +17,13 @@
 const OPEN_TAG = '<a2ui>';
 const CLOSE_TAG = '</a2ui>';
 
-/** True when the text (a reply, or a fenced code block, which models sometimes use) holds an A2UI block. */
 export function hasA2uiBlock(content: string): boolean {
   return content.includes(OPEN_TAG);
+}
+
+/** A fenced code block that wraps an A2UI block (models sometimes fence them), not a script that mentions the tag. */
+export function isA2uiFence(fence: string): boolean {
+  return fence.replace(/^```[^\n]*\n?/, '').trimStart().startsWith(OPEN_TAG);
 }
 
 export type A2uiReplyPart =
@@ -58,6 +62,12 @@ export function splitA2uiReply(content: string): A2uiReplyPart[] {
     const wrapper = before.match(WRAPPER_OPEN);
     const fencesBefore = fences + (before.match(FENCE_LINE) ?? []).length;
     const wrapped = !!wrapper && fencesBefore % 2 === 1;
+    if (fencesBefore % 2 === 1 && !wrapped) {
+      // Inside a code block (a script that mentions the tag): text, not a surface.
+      pushText(content.slice(at, open + OPEN_TAG.length));
+      at = open + OPEN_TAG.length;
+      continue;
+    }
     if (wrapped && wrapper) before = before.slice(0, wrapper.index);
     pushText(before);
     const close = content.indexOf(CLOSE_TAG, open + OPEN_TAG.length);

@@ -136,6 +136,8 @@ export function evaluateQuery(host: A2uiViewerHost, input: unknown, reader = new
   if (spec.modelId && !host.loadedModelIds().includes(spec.modelId)) {
     return { spec, rows: [], matches: [], total: 0, explicitLimit: false, problems, unloadedModel: spec.modelId };
   }
+  // A dropped type or condition would broaden the query: show the problems, never facts from a different query.
+  if (problems.length) return { spec, rows: [], matches: [], total: 0, explicitLimit: false, problems };
   let rows = host.candidates(spec.types, spec.modelId);
   if (spec.storey) {
     const storey = lower(spec.storey);

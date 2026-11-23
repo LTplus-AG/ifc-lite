@@ -55,6 +55,7 @@ const section = z.discriminatedUnion('kind', [
     rows: z.array(z.looseObject({ ref: entityRef.optional() })).max(MAX_TABLE_ROWS, rowLimit).optional(),
     query: z.object({ ...queryFields, limit: z.number().max(MAX_TABLE_ROWS, rowLimit).optional() }).optional(),
     title, groupBy: z.string().optional(), maxRows: z.number().max(MAX_TABLE_ROWS, rowLimit).optional(),
+    sort: z.object({ path: z.string(), dir: z.enum(['asc', 'desc']).optional() }).optional(),
   }),
   z.object({ kind: z.literal('list'), refs, query, title, label: z.string().optional() }),
   z.object({
@@ -65,6 +66,7 @@ const section = z.discriminatedUnion('kind', [
   }),
   z.object({
     kind: z.literal('legend'), by: z.string(), query, title, apply: z.enum(['manual', 'onShow']).optional(),
+    data: z.array(z.object({ label: z.string(), color: z.string(), refs })).optional(),
   }),
   z.object({
     kind: z.literal('actions'), actions: z.array(z.enum(VIEWER_ACTIONS)), refs, query,

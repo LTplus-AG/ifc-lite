@@ -65,6 +65,8 @@ export interface AssembleOptions {
   lod: boolean;
   /** A snapshot capture's sink: handed the assembled batch's bytes, which needs every run's kept bytes. */
   onMerged?: (bytes: MergedBatchBytes) => void;
+  /** Vertex and index buffers can be copied from (draw-stream arenas, `Scene.setDrawStreamArena`). */
+  arenaCopySource?: boolean;
 }
 
 /** Per-stream bookkeeping, from a stream's first append to its finalize swap. */
@@ -182,9 +184,10 @@ export class StreamAssembly {
     const track = (buffer: GPUBuffer): GPUBuffer => { allocated.push(buffer); return buffer; };
     try {
       const vertexBytes = vertexCount * stride;
+      const arenaUsage = options.arenaCopySource ? GPUBufferUsage.COPY_SRC : 0;
       const vertexBuffer = track(device.createBuffer({
         size: Math.max(4, Math.ceil(vertexBytes / 4) * 4),
-        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST | arenaUsage,
       }));
       const encoder = device.createCommandEncoder();
       let offset = 0;
@@ -196,7 +199,7 @@ export class StreamAssembly {
       }
       device.queue.submit([encoder.finish()]);
       perfTally('gpu.assembleCopy', offset);
-      const indexBuffer = track(createStaticGpuBuffer(device, indices, GPUBufferUsage.INDEX));
+      const indexBuffer = track(createStaticGpuBuffer(device, indices, GPUBufferUsage.INDEX | arenaUsage));
       const uniform = createBatchUniform(device, pipeline);
       uniformSlot = uniform.uniformSlot;
 
@@ -207,7 +210,7 @@ export class StreamAssembly {
         const cellSize = lodCellSizeForBounds(bounds.min, bounds.max);
         lodIndices = simplifyIndicesByClustering(positionsAndLanes(meshes, vertexCount, options.origin), 4, indices, cellSize, 3);
         if (lodIndices) {
-          lod1IndexBuffer = track(createStaticGpuBuffer(device, lodIndices, GPUBufferUsage.INDEX));
+          lod1IndexBuffer = track(createStaticGpuBuffer(device, lodIndices, GPUBufferUsage.INDEX | arenaUsage));
           lod1IndexCount = lodIndices.length;
         }
       }

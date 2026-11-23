@@ -7,7 +7,11 @@ import { useViewerStore } from '@/store';
 import { createRootBudget } from './root-budget';
 import type { RootBudget } from '@ifc-lite/ai';
 
-export interface ScriptTask { budget: RootBudget; truncated: boolean; continuationText?: string; cancel?: () => void }
+export interface ScriptTask {
+  budget: RootBudget; truncated: boolean; continuationText?: string; cancel?: () => void;
+  /** The editor state the truncated turn's edit ops target. */
+  continuationScript?: { revision: number; content: string };
+}
 let current: ScriptTask | null = null;
 
 export function beginScriptTask(): ScriptTask {
@@ -16,6 +20,15 @@ export function beginScriptTask(): ScriptTask {
 }
 export function currentScriptTask(): ScriptTask | null { return current; }
 export function ownsScriptTask(task: ScriptTask): boolean { return current === task; }
+/**
+ * Continue replays the truncated turn's ops, which carry the revision that turn began at.
+ * Rollback restored that content under a newer revision (revisions never repeat), so the
+ * old token is honoured only while the editor still holds exactly that content.
+ */
+export function continuationRevision(task: ScriptTask, continuing: boolean, live: { scriptEditorContent: string; scriptEditorRevision: number }): number {
+  const base = continuing ? task.continuationScript : undefined;
+  return base?.content === live.scriptEditorContent ? base.revision : live.scriptEditorRevision;
+}
 
 // Module ownership survives panel remounts. Clearing/changing the conversation
 // ends the task, so a delayed script execution cannot start a repair in a new chat.

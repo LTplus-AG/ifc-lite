@@ -49,7 +49,7 @@ const storey = bim.create.addIfcBuildingStorey(h, { Name: "Level 0", Elevation: 
   assert.ok(appliedContents.some((content) => content === initialScript));
 });
 
-test('a chat edit holding a revision issued before rollback is refused after rollback', () => {
+test('a chat edit holding a revision issued before rollback is refused after rollback (#11256 follow-up)', () => {
   const useScriptStore = create<ScriptSlice>()((...args) => createScriptSlice(...args));
   useScriptStore.getState().setScriptEditorContent('const a = 1;\n');
   useScriptStore.getState().beginAssistantScriptTurn();

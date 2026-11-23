@@ -68,6 +68,7 @@ import { recordDownloadedSourceFile } from '@/lib/sources/persistence';
 import { sanitizeFilename } from '@/lib/export/download';
 import { enqueueSourceLoad } from '@/lib/sources/loadQueue';
 import { toast, Toaster } from '@/components/ui/toast';
+import { refuseSceneClearWhileWorkflowBusy } from '@/lib/flow/workflow-busy-refusal';
 import { reloadActiveModelInPlace } from './reloadActiveModel';
 import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { Upload, AlertTriangle, ChevronDown, ExternalLink, Plus } from 'lucide-react';
@@ -350,11 +351,12 @@ function ViewportContainerLive() {
       void loadFile(files[0], { kind: 'primary' }, { sourceHandle: handles?.[0] });
     } else {
       // Multiple files, no models loaded - start a fresh federation.
+      if (refuseSceneClearWhileWorkflowBusy(t)) return;
       resetViewerState();
       clearAllModels();
       void loadFilesSequentially(files, handles);
     }
-  }, [loadFile, loadFilesSequentially, resetViewerState, clearAllModels, viewerStoreApi]);
+  }, [loadFile, loadFilesSequentially, resetViewerState, clearAllModels, viewerStoreApi, t]);
 
   const prepareAndRoute = usePreparedModelFileRoute(routeLoad, setRecentFiles);
 
@@ -390,6 +392,7 @@ function ViewportContainerLive() {
           const anyLoaded =
             store.models.size > 0 || (store.geometryResult?.meshes?.length ?? 0) > 0;
           if (!anyLoaded) {
+            if (refuseSceneClearWhileWorkflowBusy(t)) return;
             resetViewerState();
             clearAllModels();
           }
@@ -438,7 +441,7 @@ function ViewportContainerLive() {
     window.addEventListener(SOURCE_DOWNLOAD_EVENT, handleSourceDownload);
     return () =>
       window.removeEventListener(SOURCE_DOWNLOAD_EVENT, handleSourceDownload);
-  }, [addModel, resetViewerState, clearAllModels, sourceHost]);
+  }, [addModel, resetViewerState, clearAllModels, sourceHost, t]);
 
   // Window drops on any viewer chrome route through the same guarded loader.
   // Unsupported WebGPU reports through the shared load-error card (#5851).

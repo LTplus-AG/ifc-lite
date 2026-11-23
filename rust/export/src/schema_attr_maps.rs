@@ -159,7 +159,7 @@ pub(crate) fn attr_map(entity_type: &str, new_type: &str, cfrom: &str, cto: &str
     };
     let (src, tgt) = if up { (entity_type, new_type) } else { (new_type, entity_type) };
     // IFC4X3 also declares the renamed IfcDistributionBoard with the same carried slots (#11021).
-    let tgt = if cfrom == "IFC4X3" && tgt == "IFCDISTRIBUTIONBOARD" { "IFCELECTRICDISTRIBUTIONBOARD" } else { tgt };
+    let tgt = if (cfrom == "IFC4X3" || cto == "IFC4X3") && tgt == "IFCDISTRIBUTIONBOARD" { "IFCELECTRICDISTRIBUTIONBOARD" } else { tgt };
     ATTR_MAPS.iter().find(|m| m.ifc2x3 == src && m.ifc4 == tgt).map(|m| (m, up))
 }
 

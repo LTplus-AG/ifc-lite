@@ -34,8 +34,10 @@ import { isStrictAttrPrefix, replacedSlot } from './schema-converter-renames.js'
 import { previewTypedPropertyNames } from './schema-converter-typed-properties.js';
 import { getCompleteEntityIndex } from './entity-iteration.js';
 import { attrMapFor, attrsDroppedByMap, dropsSetMembers, DELETED_SUBTYPES } from './schema-converter-attr-maps.js';
+import { droppedIfc4x3SlotNames, needsIfc4x3SlotMap } from './schema-converter-ifc4x3-upgrade.js';
+import { previewUpgradeDependents } from './schema-converter-unrooted-upgrade.js';
 import { holdsValue } from './step-comment-skip.js';
-import { isRootedEntityType, missingTypeRoute, OMIT_ON_UPGRADE } from './schema-untranslatable.js';
+import { isRootedEntityType, missingTypeRoute } from './schema-untranslatable.js';
 
 /** How one entity TYPE's data survives a schema conversion. */
 export type EntityConversionKind =
@@ -131,6 +133,10 @@ export function classifyEntityTypeConversion(
     // Unknown to one of the tables (IFC5 has none) — the per-line converter
     // passes such lines through unexamined; nothing to report either way.
     return { targetType: newType, kind: upper === newType ? 'identity' : 'renamed', droppedAttributes: [] };
+  }
+
+  if (toSchema === 'IFC4X3' && upper !== newType && needsIfc4x3SlotMap(upper)) {
+    return { targetType: newType, kind: 'lossy', droppedAttributes: droppedIfc4x3SlotNames(upper, srcAttrs, tgtAttrs) };
   }
 
   if (srcAttrs.length === tgtAttrs.length && srcAttrs.every((name, i) => name === tgtAttrs[i])) {
@@ -382,9 +388,11 @@ export function analyzeConversionLoss(
     entries.sort((a, b) => a.sourceType.localeCompare(b.sourceType));
   }
   const describe = (entry: ConversionLossEntry) => {
-    if (dependent?.has(entry.expressIds[0])) return describeEntry(entry, 'a required IFC4 attribute lost a reference');
-    const seed = fromSchema === 'IFC2X3' && toSchema === 'IFC4' && OMIT_ON_UPGRADE.has(entry.sourceType);
-    return describeEntry(entry, seed ? 'IFC4 does not declare its type' : undefined);
+    if (dependent?.has(entry.expressIds[0])) return describeEntry(entry, `a required ${toSchema} attribute lost a reference`);
+    const sourceKnown = attrNameTable(fromSchema)?.has(entry.sourceType) ?? false;
+    const target = attrNameTable(toSchema);
+    const route = missingTypeRoute(entry.sourceType, fromSchema, toSchema, sourceKnown, !target || target.has(entry.targetType));
+    return describeEntry(entry, route === 'omitted' ? `${toSchema} does not declare its type` : undefined);
   };
   const hasBlocking = entries.some((e) => e.kind === 'blocked');
   return {

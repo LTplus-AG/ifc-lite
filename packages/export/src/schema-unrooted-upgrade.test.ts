@@ -216,3 +216,21 @@ it('reconciles a value form beside a remapped unit reference above u32 (#10970)'
     expect(result.stats.warnings).toContainEqual(expect.stringContaining('IFCPROPERTYSINGLEVALUE.NominalValue'));
   }
 });
+
+it('reports only the trimmed curve whose required basis is omitted in IFC4X3 (#10971)', async () => {
+  const raw = readFileSync(new URL('../../../rust/export/tests/fixtures/schema_unrooted_upgrade.ifc', import.meta.url), 'utf8');
+  const source = raw.replace('ENDSEC;\nEND-ISO',
+    '#32=IFCTRIMMEDCURVE(#3,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(1.)),.T.,.PARAMETER.);\n'
+    + '#33=IFCTRIMMEDCURVE(#36,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(1.)),.T.,.PARAMETER.);\n'
+    + '#34=IFCDIRECTION((1.,0.));\n#35=IFCVECTOR(#34,1.);\n#36=IFCLINE(#1,#35);\nENDSEC;\nEND-ISO');
+  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(source).buffer);
+  const out = new TextDecoder().decode(new StepExporter(store).export({ schema: 'IFC4X3' }).content);
+  expect(out).not.toMatch(/^#(?:3|6|7|32)=/m);
+  expect(out).toMatch(/^#33=IFCTRIMMEDCURVE/m);
+  const report = analyzeConversionLoss(store, 'IFC2X3', 'IFC4X3');
+  expect(report.entries.find(entry => entry.sourceType === 'IFCTRIMMEDCURVE')).toMatchObject({ kind: 'lossy', expressIds: [32] });
+  expect(report.entries.find(entry => entry.sourceType === 'IFCCOMPOSITECURVE')).toMatchObject({ kind: 'lossy', expressIds: [7] });
+  expect(report.describe()).toContain('1 × IFCTRIMMEDCURVE (#32) will be omitted because a required IFC4X3 attribute lost a reference.');
+  const sourceOnly = analyzeConversionLoss({ entityIndex: store.entityIndex }, 'IFC2X3', 'IFC4X3');
+  expect(sourceOnly.entries.find(entry => entry.sourceType === 'IFCTRIMMEDCURVE')).toBeUndefined();
+});

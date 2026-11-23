@@ -28,6 +28,7 @@ fn the_table_names_real_attributes_10824() {
 #[test]
 fn an_upgrade_writes_the_label_into_an_unset_object_type_10824() {
     for to in ["IFC4", "IFC4X3"] {
+        let board = if to == "IFC4X3" { "IFCDISTRIBUTIONBOARD" } else { "IFCELECTRICDISTRIBUTIONBOARD" };
         assert_eq!(
             convert("#7=IFCWORKPLAN('g',#2,'P',$,$,'WP',$,$,$,$,$,$,$,.USERDEFINED.,'Custom');", "IFC2X3", to),
             ("#7=IFCWORKPLAN('g',#2,'P',$,'Custom','WP',$,$,$,$,$,$,$,.USERDEFINED.);".to_owned(), 0, 0),
@@ -38,7 +39,7 @@ fn an_upgrade_writes_the_label_into_an_unset_object_type_10824() {
         );
         assert_eq!(
             convert("#7=IFCELECTRICDISTRIBUTIONPOINT('g',#2,'n',$,$,$,$,'t',.USERDEFINED.,'Custom');", "IFC2X3", to).0,
-            "#7=IFCELECTRICDISTRIBUTIONBOARD('g',#2,'n',$,'Custom',$,$,'t',.USERDEFINED.);"
+            format!("#7={board}('g',#2,'n',$,'Custom',$,$,'t',.USERDEFINED.);")
         );
     }
 }
@@ -114,9 +115,10 @@ fn the_plan_before_the_carry_drops_and_counts_the_label_10824() {
 #[test]
 fn a_point_or_board_member_the_target_lacks_is_reconciled_10856() {
     for to in ["IFC4", "IFC4X3"] {
+        let board = if to == "IFC4X3" { "IFCDISTRIBUTIONBOARD" } else { "IFCELECTRICDISTRIBUTIONBOARD" };
         assert_eq!(
             convert("#7=IFCELECTRICDISTRIBUTIONPOINT('g',#2,'n',$,$,$,$,'t',.ALARMPANEL.,$);", "IFC2X3", to).0,
-            "#7=IFCELECTRICDISTRIBUTIONBOARD('g',#2,'n',$,'ALARMPANEL',$,$,'t',.USERDEFINED.);",
+            format!("#7={board}('g',#2,'n',$,'ALARMPANEL',$,$,'t',.USERDEFINED.);"),
             "{to}"
         );
     }

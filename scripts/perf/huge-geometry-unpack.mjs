@@ -24,12 +24,15 @@ export function unpack(text) {
     const m = /^HGFILE (\S+) (\d+)\/(\d+) (\S*)$/.exec(line.trim());
     if (!m) continue;
     const [, rel, i, n, b64] = m;
-    if (!parts.has(rel)) parts.set(rel, { n: Number(n), chunks: new Map() });
-    parts.get(rel).chunks.set(Number(i), b64);
+    if (!parts.has(rel)) parts.set(rel, { n: Number(n), chunks: new Map(), bad: false });
+    const part = parts.get(rel), k = Number(i);
+    // Chunks are numbered 1..n with one total; anything else marks the file incomplete.
+    if (Number(n) !== part.n || k < 1 || k > part.n) part.bad = true;
+    else part.chunks.set(k, b64);
   }
   const files = new Map(), incomplete = [];
-  for (const [rel, { n, chunks }] of parts) {
-    if (chunks.size !== n) { incomplete.push(rel); continue; }
+  for (const [rel, { n, chunks, bad }] of parts) {
+    if (bad || n < 1 || chunks.size !== n) { incomplete.push(rel); continue; }
     files.set(rel, Buffer.from(Array.from({ length: n }, (_, k) => chunks.get(k + 1)).join(''), 'base64'));
   }
   return { files, incomplete };

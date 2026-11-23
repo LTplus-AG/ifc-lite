@@ -226,6 +226,8 @@ export function generateScenario(dir, options) {
       }
     } catch (err) { console.warn(`huge-geometry-gen: ignoring unreadable manifest ${manifestPath}: ${err.message}`); }
   }
+  // Invalidate the old manifest first: a run that fails part-way must not leave it vouching for mixed files.
+  rmSync(manifestPath, { force: true });
   const t0 = Date.now();
   const models = files.map((f, m) => writeHugeModel(f, s, m));
   const sum = (key) => models.reduce((acc, x) => acc + (x[key] ?? 0), 0);

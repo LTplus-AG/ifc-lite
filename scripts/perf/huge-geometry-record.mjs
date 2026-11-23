@@ -48,7 +48,8 @@ function hud(t) {
   ];
 }
 
-async function recordTier({ encoder, baseUrl, manifest, frames, timeoutMs, label, stills, ladder }) {
+async function recordTier({ encoder, baseUrl, manifest, frames, timeoutMs, label, stills, ladder, fps }) {
+  const speed = Math.round(fps * 0.2 * 10) / 10; // timelapse(200): one frame per 200 ms of real time
   const s = manifest.scenario;
   const t = { scenario: s.scenario, tier: tierLabel(s.nominal), elements: manifest.totals.elements, models: s.models, layout: s.layout,
     knownTriangles: manifest.totals.trianglesKnown, triangles: manifest.totals.triangles, fileMiB: manifest.totals.bytes / 2 ** 20, ladder,
@@ -70,10 +71,10 @@ async function recordTier({ encoder, baseUrl, manifest, frames, timeoutMs, label
     await session.page.waitForTimeout(400);
     await encoder.hold(2.5);
     const started = Date.now();
-    encoder.timelapse(200); // 20 fps output: load plays at 4x
+    encoder.timelapse(200);
     ticker = setInterval(() => {
       t.mem = sampler.peek();
-      if (!out.loaded) t.loadLine = `loading… ${((Date.now() - started) / 1000).toFixed(1)} s (video plays the load at 4× speed)`;
+      if (!out.loaded) t.loadLine = `loading… ${((Date.now() - started) / 1000).toFixed(1)} s (video plays the load at ${speed}× speed)`;
       state = { ...state, lines: hud(t) };
       void session.page.evaluate(HUD_INSTALL).then(paint).catch(() => null);
     }, 500);
@@ -171,7 +172,7 @@ async function main() {
         const manifest = generateScenario(resolve(values['models-dir']), { scenario, elements: tiers[i] });
         marks[i] = `[${tierLabel(tiers[i])}]`;
         const r = await recordTier({ encoder, baseUrl, manifest, frames: Number(values.frames), timeoutMs: Number(values['timeout-min']) * 60000,
-          label: values.label, stills, ladder: marks.join(' ') });
+          label: values.label, stills, ladder: marks.join(' '), fps });
         marks[i] = `${tierLabel(tiers[i])} ${r.status === 'ok' ? '✓' : '✗'}`;
         if (r.status !== 'ok') await verdictCard(encoder, stills, values.label, manifest, r);
         record.tiers.push({ ...r, videoSecond: encoder.seconds });

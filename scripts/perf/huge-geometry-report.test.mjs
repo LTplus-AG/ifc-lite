@@ -46,6 +46,8 @@ test('failure classification: crash beats device loss beats OOM beats store erro
   assert.equal(classifyFailure({ ...base, storeError: 'Failed', console: ['[error] RangeError: Array buffer allocation failed'] }).kind, 'out-of-memory');
   assert.equal(classifyFailure({ ...base, storeError: 'Model could not be loaded', timedOut: 't' }).kind, 'load-error');
   assert.equal(classifyFailure({ ...base, timedOut: 'not interactive after 60 s' }).kind, 'timeout');
+  assert.equal(classifyFailure({ ...base, loadError: 'Execution context was destroyed' }).kind, 'load-error');
+  assert.equal(classifyFailure({ ...base, loadError: 'boom', pageErrors: ['TypeError: x'] }).kind, 'page-error');
   assert.equal(classifyFailure(base).kind, 'unknown');
 });
 

@@ -45,6 +45,8 @@ export function startEncoder(out, { fps = 20, width = 1600, height = 900, gop = 
   // ffmpeg can die early (bad arguments, disk full): stop writing instead of crashing on EPIPE or waiting on 'drain' forever.
   let pipeError = null;
   proc.stdin.on('error', (err) => { pipeError ??= err; });
+  // A failed spawn (ENOENT, EACCES) emits 'error' and may never emit 'close'.
+  const spawnFailed = new Promise((resolve) => proc.on('error', (err) => { pipeError ??= err; resolve({ code: -1, stderr: String(err?.message ?? err) }); }));
   proc.on('close', (code) => { pipeError ??= new Error(`ffmpeg exited ${code}: ${stderr.slice(0, 300)}`); });
   const writable = () => !pipeError && !proc.stdin.destroyed;
   const drained = () => new Promise((r) => { const go = () => { proc.stdin.off('drain', go); proc.off('close', go); r(); }; proc.stdin.once('drain', go); proc.once('close', go); });
@@ -91,7 +93,7 @@ export function startEncoder(out, { fps = 20, width = 1600, height = 900, gop = 
     get seconds() { return written / fps; },
     /** Live frames dropped because ffmpeg fell behind. */
     get dropped() { return dropped; },
-    async close() { clearTimeout(timer); proc.stdin.end(); return done; },
+    async close() { clearTimeout(timer); proc.stdin.end(); return Promise.race([done, spawnFailed]); },
   };
 }
 

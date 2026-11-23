@@ -40,7 +40,7 @@ export async function settledMemory(page, cdp, sampler, errors, { skipGc = false
 }
 
 async function home(page) {
-  await page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks.home?.());
+  await bounded(page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks.home?.()), 30000, 'home');
   await page.waitForFunction(() => !globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks.isCameraTweening?.(), null, { timeout: 30000 });
   await page.waitForTimeout(300);
 }
@@ -73,19 +73,20 @@ async function timedAction(page, action, args) {
 export async function interactions(page, errors) {
   const out = { picks: [], hideOne: null, showAfterHide: null, isolate: null, showAfterIsolate: null, sectionOn: null, sectionOff: null };
   await step(errors, 'home', () => home(page));
-  const box = await page.locator('canvas').first().boundingBox();
+  const box = await step(errors, 'canvas-box', () => bounded(page.locator('canvas').first().boundingBox(), 30000, 'canvas box'));
+  if (!box) return out;
   for (const [fx, fy] of PICK_POINTS) {
     const pick = await step(errors, 'pick', async () => {
-      await page.evaluate(ARM_PICK);
-      await page.mouse.click(box.x + box.width * fx, box.y + box.height * fy);
+      await bounded(page.evaluate(ARM_PICK), 30000, 'arm pick');
+      await bounded(page.mouse.click(box.x + box.width * fx, box.y + box.height * fy), 30000, 'pick click');
       await page.waitForFunction(() => globalThis.__hgPick?.selectedAt !== null, null, { timeout: 15000 }).catch(() => null);
-      const r = await page.evaluate(READ_PICK);
+      const r = await bounded(page.evaluate(READ_PICK), 30000, 'read pick');
       if (!r.hit) return r;
       const f = await afterFrame(page);
       return { ...r, frameDoneMs: f.doneMs, frameDoneError: f.doneError };
     });
     if (pick) out.picks.push(pick);
-    await step(errors, 'clear-selection', () => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().clearSelection?.()));
+    await step(errors, 'clear-selection', () => bounded(page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().clearSelection?.()), 30000, 'clear selection'));
   }
   const hitId = out.picks.find((p) => p.hit)?.id;
   const sample = await step(errors, 'element-ids', () => bounded(page.evaluate(ELEMENT_IDS, { fraction: 0.1, limit: 200000 }), 60000, 'element ids'));

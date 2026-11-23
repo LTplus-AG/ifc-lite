@@ -150,8 +150,8 @@ export function startSampler(profileDir, cdp, { intervalMs = 250, vramEveryMs = 
 }
 
 /** Classify a failed load from its evidence. Order matters: the most specific symptom wins. */
-export function classifyFailure({ crashed, deviceLost, storeError, pageErrors, timedOut, console: lines }) {
-  const text = [storeError ?? '', ...(pageErrors ?? []), ...(lines ?? []).filter((l) => l.startsWith('[error]'))].join('\n');
+export function classifyFailure({ crashed, deviceLost, storeError, pageErrors, timedOut, loadError = null, console: lines }) {
+  const text = [storeError ?? '', loadError ?? '', ...(pageErrors ?? []), ...(lines ?? []).filter((l) => l.startsWith('[error]'))].join('\n');
   if (crashed) return { kind: 'renderer-crash', detail: 'page crashed (tab killed: OOM or renderer fault)' };
   if (deviceLost) return { kind: 'device-lost', detail: deviceLost };
   if (/out of memory|memory access out of bounds|Array buffer allocation failed|WebAssembly\.Memory|could not allocate memory|RangeError: Invalid array length|Invalid typed array length/i.test(text)) {
@@ -160,6 +160,7 @@ export function classifyFailure({ crashed, deviceLost, storeError, pageErrors, t
   if (storeError) return { kind: 'load-error', detail: String(storeError).slice(0, 600) };
   if (timedOut) return { kind: 'timeout', detail: timedOut };
   if (pageErrors?.length) return { kind: 'page-error', detail: pageErrors[0].slice(0, 600) };
+  if (loadError) return { kind: 'load-error', detail: loadError };
   return { kind: 'unknown', detail: 'load did not complete' };
 }
 
@@ -226,8 +227,10 @@ export async function loadModel(session, baseUrl, files, { timeoutMs, url = null
   if (first.ok) return { ...out, ok: true, timings: first.value };
   // Bounded: after a timeout the page's main thread may still be blocked.
   const notices = await withTimeout(page.evaluate(NOTICES).catch(() => []), 10000, () => []);
+  // A rejected load is a timeout only when it says so (a destroyed context or an upload failure is not).
+  const loadError = first.error ? String(first.error.message ?? first.error).slice(0, 600) : null;
   const failure = classifyFailure({ crashed: first.crashed || events.crashed, deviceLost: first.deviceLost ?? deviceLossLine(events.console),
-    storeError: first.storeError, pageErrors: events.pageErrors, timedOut: first.timedOut ?? (first.error ? String(first.error.message ?? first.error).slice(0, 600) : null),
-    console: events.console });
+    storeError: first.storeError, pageErrors: events.pageErrors, timedOut: first.timedOut ?? (/time(d)?\s?out/i.test(loadError ?? '') ? loadError : null),
+    loadError, console: events.console });
   return { ...out, ok: false, failure, notices, lastSnap: session.lastSnap ?? null };
 }

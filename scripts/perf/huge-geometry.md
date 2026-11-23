@@ -189,8 +189,9 @@ Record clips (one per tier; real GPU; the scene is generated on first use):
 
 ```bash
 ~/build-workers/ifc-gpu-check --limit 15 -- node scripts/perf/huge-geometry-cinema.mjs \
-  --label LANE --models-dir $H/models --out $H/video --tiers 250k,1M \
-  [--dist apps/viewer/dist] [--query 'flagA=1&flagB=on'] | [--viewer-url 'http://host:port/?flag=1']
+  --label LANE --models-dir $H/models --out $H/video --tiers 250k,1M
+# optional: --dist apps/viewer/dist --query 'flagA=1&flagB=on'
+# or, against a viewer served elsewhere: --viewer-url 'http://host:port/?flag=1'
 ```
 
 Each clip: title card, the load time-lapsed (`--load-speed`, default 4x), then

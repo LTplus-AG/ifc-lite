@@ -219,22 +219,23 @@ async function recordTier({ label, manifest, url, out, fps, loadSpeed, timeoutMs
         // the viewer's own frameEntities() tween onto the target then a click. The camera path resumes after.
         await sleep(shot.durationMs * 0.28);
         const tryClick = async () => {
-          const at = await page.evaluate(PROJECT, cal.map.apply(sc.hero.pick.centre)).catch(() => null);
+          // Every page call here is bounded: a tab that stops answering mid-pick must not hold the recorder.
+          const at = await withTimeout(page.evaluate(PROJECT, cal.map.apply(sc.hero.pick.centre)).catch(() => null), 5000, () => null);
           if (!at || at.x < 0 || at.y < 0 || at.x > 1600 || at.y > 900) return { at, sel: null };
           await page.mouse.move(at.x, at.y);
           await page.mouse.down(); await sleep(50); await page.mouse.up();
           let sel = null;
-          for (let i = 0; i < 10 && !sel; i++) { await sleep(80); sel = await page.evaluate(SELECTION).catch(() => null); }
+          for (let i = 0; i < 10 && !sel; i++) { await sleep(80); sel = await withTimeout(page.evaluate(SELECTION).catch(() => null), 5000, () => null); }
           return { at, sel };
         };
         const strategies = [
           ['click', async () => {}],
           ['wheel-nudge', async () => { await page.mouse.wheel(0, -1); await sleep(250); }],
-          ['home-tween', async () => { await page.evaluate(CAMERA_CALL, { call: 'home' }); await page.evaluate(TWEEN_DONE); }],
-          ['frame-tween', async () => { await page.evaluate(CAMERA_CALL, { call: 'frame', ids: [sc.hero.pick.id] }); await page.evaluate(TWEEN_DONE); }],
+          ['home-tween', async () => { await bounded(page.evaluate(CAMERA_CALL, { call: 'home' }), 5000); await bounded(page.evaluate(TWEEN_DONE), 30000); }],
+          ['frame-tween', async () => { await bounded(page.evaluate(CAMERA_CALL, { call: 'frame', ids: [sc.hero.pick.id] }), 5000); await bounded(page.evaluate(TWEEN_DONE), 30000); }],
         ];
         let got = { at: null, sel: null }, used = null;
-        await page.evaluate(CAMERA_HOLD, true).catch(() => null);
+        await withTimeout(page.evaluate(CAMERA_HOLD, true).catch(() => null), 5000, () => null);
         await sleep(150);
         try {
           for (const [k, prep] of strategies) {
@@ -242,7 +243,7 @@ async function recordTier({ label, manifest, url, out, fps, loadSpeed, timeoutMs
             got = await tryClick();
             if (got.sel) { used = k; break; }
           }
-        } finally { await page.evaluate(CAMERA_HOLD, false).catch(() => null); }
+        } finally { await withTimeout(page.evaluate(CAMERA_HOLD, false).catch(() => null), 5000, () => null); }
         entry.pick = { at: got.at, selected: got.sel, expected: sc.hero.pick.id, strategy: used };
         if (got.sel) {
           const match = got.sel.id === sc.hero.pick.id;

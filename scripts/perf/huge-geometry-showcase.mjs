@@ -39,7 +39,7 @@ import { BAY, BLOCK, blockPlan } from './huge-geometry-showcase-city.mjs';
 export { spiral } from './huge-geometry-showcase-city.mjs';
 
 export const SHOWCASE_LABEL = 'SHOWCASE look (footage only, not a measurement family)';
-export const SHOWCASE_VERSION = 1;
+export const SHOWCASE_VERSION = 2;
 export const FLOOR_H = 3.6;
 const HUES = 12;
 const BANDS = 8;
@@ -172,7 +172,7 @@ export function generateShowcaseModel(sink, s, m = 0) {
   };
 
   // Prototypes (the instanced share): trees, furniture, rooftop plant.
-  const trees = [0, 1, 2].map((k) => { const r = prng(mix(seed, 0x7EE, k)); return protoMap([box(0.35, 0.35, 2.6, ST('trunk')), canopy(r, 2.2 + 1.2 * r())], 'SurfaceModel'); });
+  const trees = [0, 1, 2].map((k) => { const r = prng(mix(seed, 0x7EE, k)); return protoMap([box(0.35, 0.35, 2.6, ST('trunk')), canopy(r, 2.2 + 1.2 * r())], 'SurfaceOrSolidModel'); });
   const furniture = [
     protoMap([box(1.6, 0.8, 0.05, ST('wood'), 0, 0, 0.72), box(0.45, 0.7, 0.7, ST('teal'), 0.5, 0, 0)], 'SweptSolid'),
     protoMap([box(2.4, 1.1, 0.05, ST('wood'), 0, 0, 0.74), box(0.6, 0.6, 0.72, ST('fan'), 0, 0, 0)], 'SweptSolid'),

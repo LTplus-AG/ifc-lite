@@ -18,7 +18,7 @@ import { getCanonicalEntityName, getSchemaRegistryForVersion, type SchemaVersion
 import { CalendarDates } from './schema-calendar-dates.js';
 import { valueForm, valueFormSlotsOf } from './schema-value-form-policy.js';
 import { getAttrMaps } from './schema-converter-attr-maps.js';
-import { withoutComments } from './step-comment-skip.js';
+import { holdsValue, withoutComments } from './step-comment-skip.js';
 import { listItems } from './schema-converter-structural-axes.js';
 import { readStepSlots } from './step-argument-parser.js';
 import { DURATION_TIME_UNIT_WARNING, durationFromSeconds, durationToSeconds, hasNonSecondProjectTimeUnit } from './schema-converter-durations.js';
@@ -173,7 +173,8 @@ export class ValueForms {
     if (!SCHEMAS.has(from) || !SCHEMAS.has(to) || from === to) return line;
     // The head names the type; most records stop before their slots are split.
     const head = stepRecordHead(line);
-    const { arity, rules } = head ? rulesFor(from, to, line.slice(head.typeStart, head.typeEnd).toUpperCase()) : NONE;
+    if (!head) return line;
+    const { arity, rules } = rulesFor(from, to, line.slice(head.typeStart, head.typeEnd).toUpperCase());
     const record = rules.length ? readStepSlots(line) : null;
     // A record whose arity is not the target's is left alone: slot i need not be attribute i.
     if (!record || record.slots.length !== arity) return line;
@@ -207,6 +208,11 @@ export class ValueForms {
         slots[rule.index] = value;
         changed = true;
       }
+    }
+    if (to === 'IFC2X3' && record.type === 'IFCPROPERTYBOUNDEDVALUE' && !holdsValue(slots[2]) && !holdsValue(slots[3])) {
+      // Leaving out the record could strand references from property sets or other resources.
+      const instance = line.slice(0, head.eq).trim();
+      throw new Error(`Cannot convert ${instance} (IfcPropertyBoundedValue) to IFC2X3: WR22 requires UpperBoundValue or LowerBoundValue, and neither bound can be carried.`);
     }
     return changed ? `${record.prefix}${slots.join(',')}${record.suffix}` : line;
   }

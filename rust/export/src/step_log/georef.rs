@@ -307,6 +307,9 @@ pub(crate) fn apply(pass: &mut Pass<'_, '_>, g: &GeorefMutations, file_schema: &
     } else if let (Some(mc), true, Some(&crs_id)) = (&g.map_conversion, mc_ids.is_empty(), crs_ids.first()) {
         create_map_conversion(pass, crs_id, mc, &g.source_crs, file_schema)?;
     } else if g.map_conversion.is_some() && mc_ids.is_empty() && crs_ids.is_empty() {
+        if g.source_crs.is_empty() {
+            return Err(Unwritable(format!("{UNPLANNED_REFUSAL} {WITHOUT_CRS}")));
+        }
         pass.warnings.push(WITHOUT_CRS.to_string());
     }
     Ok(())

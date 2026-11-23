@@ -153,6 +153,7 @@ export function rejectedForms(
   from: ValueFormAttribute,
   target: ValueFormRegistry,
   to: ValueFormAttribute,
+  allowTextFallback = true,
 ): string[] {
   const accepted = attributeForms(target, to);
   const own = definedType(source, from), slot = definedType(target, to);
@@ -168,7 +169,7 @@ export function rejectedForms(
     else if (from.type === 'IfcTimeMeasure' && to.type === 'IfcDuration' && form === 'R') rejected.push('R>D+');
     else if (from.type === 'IfcDuration' && to.type === 'IfcTimeMeasure' && form === 'S') rejected.push('S>D-');
     else if (calendar) rejected.push(form + '>' + calendar);
-    else if (stringAsText(source, target, form, accepted)) rejected.push(form + '>TEXT');
+    else if (allowTextFallback && stringAsText(source, target, form, accepted)) rejected.push(form + '>TEXT');
     else if (setOfAccepted(source, form, target, accepted)) rejected.push(`${form}>U1`);
     else if (form.endsWith('R') && accepted.has(`${form.slice(0, -1)}I`)) rejected.push(`${form}>${form.slice(0, -1)}I`);
     else rejected.push(form);
@@ -324,6 +325,9 @@ export function valueFormSlotsOf(source: Registry, target: Registry, from: strin
   const up = from === 'IFC2X3' && to !== 'IFC2X3';
   const map = from === 'IFC2X3' || to === 'IFC2X3' ? maps.find((m) => m.ifc2x3 === type && m.ifc4 === type) : undefined;
   const srcAttrs = s.allAttributes ?? s.attributes, tgtAttrs = t.allAttributes ?? t.attributes;
+  // Text preserves a label's contents, but cannot carry an unsupported bound's
+  // type or ordering. Leave the bound absent so IFC2X3 WR21 and WR22 still apply.
+  const allowTextFallback = to !== 'IFC2X3' || type !== 'IFCPROPERTYBOUNDEDVALUE';
   const out: ValueFormSlot[] = [];
   tgtAttrs.forEach((tgt, index) => {
     const pair = map?.renamed.find((p) => p[up ? 1 : 0] === tgt.name);
@@ -331,7 +335,7 @@ export function valueFormSlotsOf(source: Registry, target: Registry, from: strin
     if (map && (map.retyped.includes(name) || map.setOfOne?.includes(name) || (!up && map.upOnly.includes(name)))) return;
     if (DECIDED_ELSEWHERE.includes(`${type}.${tgt.name}`)) return;
     const src = srcAttrs.find((a) => a.name === name);
-    const rejected = src ? rejectedForms(source, src, target, tgt) : [];
+    const rejected = src ? rejectedForms(source, src, target, tgt, allowTextFallback) : [];
     if (!rejected.length) return;
     const group = POSITIONAL[type]?.find((g) => g.includes(tgt.name)) ?? [];
     const whole = group.map((a) => tgtAttrs.findIndex((t) => t.name === a)).filter((i) => i >= 0);

@@ -15,6 +15,7 @@ use std::collections::BTreeMap;
 use ifc_lite_core::parser::skip_step_trivia;
 use crate::generated::value_forms::{ValueFormSlot, VALUE_FORM_SLOTS};
 use crate::schema_structural_axes::list_items;
+use crate::schema_unrepresented::UnrepresentedEntityError;
 use crate::step_slot::split_top_level_args;
 
 #[path = "schema_durations.rs"]
@@ -172,23 +173,23 @@ impl ValueForms {
 
     /// `line`, already converted from `cfrom` to `cto`, with every slot in a
     /// form the target accepts; each value dropped is added to `dropped`.
-    pub(crate) fn apply(&mut self, line: String, cfrom: &str, cto: &str, id: u32, dropped: &mut usize) -> String {
-        let Some(frame) = crate::step_record_frame::record_frame(&line) else { return line };
+    pub(crate) fn apply(&mut self, line: String, cfrom: &str, cto: &str, express_id: u32, dropped: &mut usize) -> Result<String, UnrepresentedEntityError> {
+        let Some(frame) = crate::step_record_frame::record_frame(&line) else { return Ok(line) };
         let written = frame.head.type_name(&line);
         // The converter writes the type in upper case; anything else is copied once.
         let ty: std::borrow::Cow<str> = if written.bytes().any(|b| b.is_ascii_lowercase()) { written.to_ascii_uppercase().into() } else { written.into() };
-        let Ok(at) = VALUE_FORM_SLOTS.binary_search_by(|(f, t, name, _)| (*f, *t, *name).cmp(&(cfrom, cto, &*ty))) else { return line };
+        let Ok(at) = VALUE_FORM_SLOTS.binary_search_by(|(f, t, name, _)| (*f, *t, *name).cmp(&(cfrom, cto, &*ty))) else { return Ok(line) };
         let slots: &[ValueFormSlot] = VALUE_FORM_SLOTS[at].3;
-        let Some(mut args) = split_top_level_args(frame.args(&line)) else { return line };
+        let Some(mut args) = split_top_level_args(frame.args(&line)) else { return Ok(line) };
         // A record whose arity is not the target's is left alone: slot i need not be attribute i.
-        if crate::schema_convert::schema_attribute_names(cto, &ty).map(<[_]>::len) != Some(args.len()) { return line; }
+        if crate::schema_convert::schema_attribute_names(cto, &ty).map(<[_]>::len) != Some(args.len()) { return Ok(line); }
         let mut changed = false;
         for &(index, attribute, required, empty, whole, rows) in slots {
             let Some(slot) = args.get(usize::from(index)) else { continue };
             if self.dates.enabled && rows.iter().any(|row| row.contains(">C")) {
                 let body = crate::step_slot::without_comments(slot);
                 let op = value_form(&body).and_then(|form| rule(rows, &form).flatten());
-                if op.is_some_and(|op| self.dates.defer(id, index, op, required, || format!("{ty}.{attribute}"))) {
+                if op.is_some_and(|op| self.dates.defer(express_id, index, op, required, || format!("{ty}.{attribute}"))) {
                     continue;
                 }
             }
@@ -223,7 +224,16 @@ impl ValueForms {
                 changed = true;
             }
         }
-        if changed { frame.with_args(&line, &args.join(",")) } else { line }
+        if cto == "IFC2X3" && ty == "IFCPROPERTYBOUNDEDVALUE" && !args[2..4].iter().any(|arg| crate::schema_convert::holds_value(arg)) {
+            // Leaving out the record could strand references from property sets or other resources.
+            return Err(UnrepresentedEntityError {
+                express_id,
+                entity_type: "IfcPropertyBoundedValue".into(),
+                to_schema: cto.into(),
+                reason: Some("WR22 requires UpperBoundValue or LowerBoundValue, and neither bound can be carried."),
+            });
+        }
+        Ok(if changed { frame.with_args(&line, &args.join(",")) } else { line })
     }
 
     pub(crate) fn duration_warning<'a>(&self, mut sources: impl Iterator<Item = &'a [u8]>) -> Option<String> {

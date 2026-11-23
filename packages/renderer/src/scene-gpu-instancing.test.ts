@@ -5,7 +5,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { SceneInstancePool } from './scene-gpu-instancing.js';
 import { DrawGroups, ColourPalette } from './gpu-instance-groups.js';
-import { INSTANCE_STRIDE_BYTES } from './instanced-render.js';
+import { INSTANCE_FLAG_HIDDEN, INSTANCE_FLAGS_OFFSET, INSTANCE_STRIDE_BYTES } from './instanced-render.js';
+import { GpuInstancePool } from './gpu-instance-pool.js';
+import { POOL_STATE_DEAD, POOL_STATE_HIDDEN } from './gpu-instance-cull.js';
 import type { InstancedOccurrence, InstancedTemplateCpu, InstancedTemplateGPU } from './scene-instance-types.js';
 
 const host = globalThis as Record<string, unknown>;
@@ -26,7 +28,7 @@ function template(count: number): { gpu: InstancedTemplateGPU; cpu: InstancedTem
   const positions = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
   const indices = new Uint32Array([0, 1, 2]);
   const gpu = { vertexBuffer: {} as GPUBuffer, indexBuffer: {} as GPUBuffer, indexCount: 3, instanceCount: count } as InstancedTemplateGPU;
-  const cpu = { positions, indices, instanceData: new ArrayBuffer(count * INSTANCE_STRIDE_BYTES), canonicalAnchors: new Float64Array(count * 3) } as InstancedTemplateCpu;
+  const cpu = { positions, normals: new Float32Array(9), indices, instanceData: new ArrayBuffer(count * INSTANCE_STRIDE_BYTES), canonicalAnchors: new Float64Array(count * 3) } as InstancedTemplateCpu;
   return { gpu, cpu };
 }
 
@@ -90,7 +92,7 @@ describe('scene GPU instance pool', () => {
 });
 
 describe('GPU instance draw groups and palette', () => {
-  const geo = (p: number[]) => ({ vertexBuffer: {} as GPUBuffer, indexBuffer: {} as GPUBuffer, indexCount: 3, positions: new Float32Array(p), indices: new Uint32Array([0, 1, 2]) });
+  const geo = (p: number[], n: number[] = Array(9).fill(0)) => ({ vertexBuffer: {} as GPUBuffer, indexBuffer: {} as GPUBuffer, indexCount: 3, positions: new Float32Array(p), normals: new Float32Array(n), indices: new Uint32Array([0, 1, 2]) });
   it('lays out one compacted region per group and drops a removed template from it', () => {
     const groups = new DrawGroups();
     const g0 = groups.join(0, geo([0, 0, 0, 1, 0, 0, 0, 1, 0]), 5);
@@ -110,5 +112,72 @@ describe('GPU instance draw groups and palette', () => {
     assert.equal(palette.indexOf(new Float32Array([1, 0, 0, 1])), 1);
     assert.equal(palette.indexOf(new Float32Array([0, 1, 0, 1])), 2);
     assert.equal(palette.colours.length, 12);
+  });
+});
+
+/** Pool state words as last uploaded (the fake device keeps a mirror of the state buffer). */
+function stateDevice(): { device: GPUDevice; state: () => Uint32Array } {
+  let state = new Uint32Array(0);
+  const device = {
+    createBuffer: (d: GPUBufferDescriptor) => ({ size: d.size, usage: d.usage, label: d.label, destroy() {} }), createBindGroupLayout: () => ({}), createPipelineLayout: () => ({}),
+    createShaderModule: () => ({}), createComputePipeline: () => ({}), createBindGroup: () => ({}), pushErrorScope() {}, popErrorScope: async () => null,
+    createCommandEncoder: () => ({ copyBufferToBuffer() {}, finish: () => ({}) }),
+    queue: { submit() {}, writeBuffer: (b: { label?: string; size: number }, off: number, data: Uint32Array, lo = 0, n?: number) => {
+      if (b.label !== 'gpu-instance-pool-state') return;
+      if (state.length * 4 < b.size) { const next = new Uint32Array(b.size / 4); next.set(state); state = next; }
+      state.set(data.subarray(lo, lo + (n ?? data.length - lo)), off / 4);
+    } },
+  } as unknown as GPUDevice;
+  return { device, state: () => state };
+}
+
+describe('GPU instance pool state', () => {
+  const geometry = { vertexBuffer: {} as GPUBuffer, indexBuffer: {} as GPUBuffer, indexCount: 3, positions: new Float32Array(9), normals: new Float32Array(9), indices: new Uint32Array([0, 1, 2]) };
+
+  it('keeps a tombstone the CPU record holds (device-recovery rebuild)', () => {
+    const { device, state } = stateDevice();
+    const pool = new GpuInstancePool(device);
+    const records = new ArrayBuffer(2 * INSTANCE_STRIDE_BYTES);
+    new DataView(records).setUint32(INSTANCE_STRIDE_BYTES + INSTANCE_FLAGS_OFFSET, INSTANCE_FLAG_HIDDEN, true);
+    pool.addTemplate(0, pool.allocate(2), geometry, records, new Float64Array(6), new Float32Array(2));
+    pool.flush();
+    assert.deepEqual([state()[0]! & POOL_STATE_HIDDEN, state()[1]! & POOL_STATE_HIDDEN], [0, POOL_STATE_HIDDEN]);
+  });
+
+  it('brings an occurrence back once a move returns its anchor to the envelope', () => {
+    const { device, state } = stateDevice();
+    const pool = new GpuInstancePool(device);
+    const records = new ArrayBuffer(INSTANCE_STRIDE_BYTES);
+    pool.addTemplate(0, pool.allocate(1), geometry, records, new Float64Array([2e9, 0, 0]), new Float32Array(1));
+    pool.flush();
+    assert.equal(state()[0]! & POOL_STATE_DEAD, POOL_STATE_DEAD);
+    pool.refreshTemplate(0, records, new Float64Array([10, 0, 0]), [0]);
+    pool.flush();
+    assert.equal(state()[0]! & POOL_STATE_DEAD, 0);
+  });
+
+  it('drops the pool when the switch turns off', () => {
+    const scene = new SceneInstancePool(); scene.setEnabled(true, false);
+    scene.ensure(fakeDevice().device);
+    assert.equal(scene.setEnabled(false, false), true);
+    assert.equal(scene.pool, null);
+  });
+});
+
+describe('GPU instance palette and groups (normals, compaction)', () => {
+  it('separates templates that differ only in normals', () => {
+    const groups = new DrawGroups();
+    const p = [0, 0, 0, 1, 0, 0, 0, 1, 0];
+    const mk = (n: number[]) => ({ vertexBuffer: {} as GPUBuffer, indexBuffer: {} as GPUBuffer, indexCount: 3, positions: new Float32Array(p), normals: new Float32Array(n), indices: new Uint32Array([0, 1, 2]) });
+    assert.notEqual(groups.join(0, mk(Array(9).fill(0)), 1), groups.join(1, mk([0, 0, 1, 0, 0, 1, 0, 0, 1]), 1));
+  });
+
+  it('compacts to the colours still referenced, renumbered densely', () => {
+    const palette = new ColourPalette();
+    for (const r of [0.1, 0.2, 0.3]) palette.indexOf(new Float32Array([r, 0, 0, 1]));
+    const remap = palette.compact(new Set([2]));
+    assert.deepEqual([...remap], [[2, 1]]);
+    assert.equal(palette.colours.length, 8);
+    assert.equal(palette.indexOf(new Float32Array([Math.fround(0.2), 0, 0, 1])), 1);
   });
 });

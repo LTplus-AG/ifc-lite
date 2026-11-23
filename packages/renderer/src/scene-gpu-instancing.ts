@@ -32,6 +32,7 @@ export class SceneInstancePool {
       return false;
     }
     this.on = enabled;
+    this.clear(); // an emptied pool must not outlive the switch (passes take the pool path while one exists)
     return true;
   }
   private current: GpuInstancePool | null = null;
@@ -52,6 +53,14 @@ export class SceneInstancePool {
 
   /** GPU bytes held by the pool (source, state and compacted tables). */
   gpuBytes(): number { return this.current?.gpuBytes() ?? 0; }
+
+  /** Re-upload only the moved occurrences' records and anchors (an entity move). */
+  refreshOccurrences(moved: readonly InstancedOccurrence[], cpu: readonly (InstancedTemplateCpu | undefined)[]): void {
+    if (!this.current) return;
+    const bySlot = new Map<number, number[]>();
+    for (const loc of moved) { const list = bySlot.get(loc.templateIndex); const i = loc.byteOffset / INSTANCE_STRIDE_BYTES; if (list) list.push(i); else bySlot.set(loc.templateIndex, [i]); }
+    for (const [slot, indices] of bySlot) { const c = cpu[slot]; if (c) this.current.refreshTemplate(slot, c.instanceData, c.canonicalAnchors, indices); }
+  }
 
   /** Re-upload moved templates' records and anchors (radii are rigid-invariant). */
   refresh(slots: Iterable<number>, cpu: readonly (InstancedTemplateCpu | undefined)[]): void {
@@ -106,7 +115,7 @@ export class SceneInstancePool {
       if (!t || !c || !radii) continue;
       const base = pool.allocate(t.instanceCount);
       bases.set(slot, base);
-      t.poolGroup = pool.addTemplate(slot, base, { vertexBuffer: t.vertexBuffer, indexBuffer: t.indexBuffer, indexCount: t.indexCount, positions: c.positions, indices: c.indices },
+      t.poolGroup = pool.addTemplate(slot, base, { vertexBuffer: t.vertexBuffer, indexBuffer: t.indexBuffer, indexCount: t.indexCount, positions: c.positions, normals: c.normals, indices: c.indices },
         c.instanceData, c.canonicalAnchors, radii);
     }
     for (const list of occurrences.values()) {

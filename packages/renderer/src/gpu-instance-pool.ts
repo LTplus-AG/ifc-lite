@@ -53,7 +53,7 @@ import {
   ARGS_WORDS, CULL_BYTES, CULL_FLOATS, gpuInstanceCullWgsl, packCullParams, PARAMS_BYTES, POOL_STATE_PALETTE_SHIFT,
   POOL_STATE_DEAD, POOL_STATE_HIDDEN, POOL_STATE_SELECTED, UNBOUNDED_RADIUS, WORKGROUP, type PoolCullParams,
 } from './gpu-instance-cull.js';
-import { ColourPalette, DrawGroups } from './gpu-instance-groups.js';
+import { ColourPalette, DrawGroups, type PoolGeometry } from './gpu-instance-groups.js';
 
 export { occurrenceSphereRadius } from './gpu-instance-cull.js';
 
@@ -149,7 +149,7 @@ export class GpuInstancePool {
   addTemplate(
     slot: number,
     base: number,
-    geometry: { vertexBuffer: GPUBuffer; indexBuffer: GPUBuffer; indexCount: number; positions: Float32Array; indices: Uint32Array },
+    geometry: PoolGeometry,
     records: ArrayBuffer,
     anchors: Float64Array,
     radii: Float32Array,
@@ -157,16 +157,21 @@ export class GpuInstancePool {
     const count = radii.length;
     const group = this.groups.join(slot, geometry, count);
     this.templates.set(slot, { base, count, group, radii });
-    this.writeSource(base, records, anchors, radii, group);
+    this.writeSource(base, records, anchors, radii, group, 0, count, true);
     this.layoutDirty = true;
     return group;
   }
 
-  /** Re-upload a template's records and anchors after a placement moved them. */
-  refreshTemplate(slot: number, records: ArrayBuffer, anchors: Float64Array): void {
+  /**
+   * Re-upload records and anchors after a placement moved them: the whole
+   * template, or only the occurrences at `indices` (an entity move). A rigid
+   * move keeps each sphere's radius about its own anchor.
+   */
+  refreshTemplate(slot: number, records: ArrayBuffer, anchors: Float64Array, indices?: Iterable<number>): void {
     const t = this.templates.get(slot);
-    // A rigid move keeps each sphere's radius about its own anchor.
-    if (t) this.writeSource(t.base, records, anchors, t.radii, t.group);
+    if (!t) return;
+    if (!indices) { this.writeSource(t.base, records, anchors, t.radii, t.group, 0, t.count); return; }
+    for (const i of indices) if (i >= 0 && i < t.count) this.writeSource(t.base, records, anchors, t.radii, t.group, i, i + 1);
   }
 
   /** Mark a removed template's occurrences dead and drop it from its group. */
@@ -179,27 +184,32 @@ export class GpuInstancePool {
     this.layoutDirty = true;
   }
 
-  private writeSource(base: number, records: ArrayBuffer, anchors: Float64Array, radii: Float32Array, group: number): void {
-    const count = radii.length;
-    this.device.queue.writeBuffer(this.srcRecords!, base * INSTANCE_STRIDE_BYTES, records, 0, count * INSTANCE_STRIDE_BYTES);
-    const cull = new Float32Array(count * CULL_FLOATS);
+  /**
+   * Upload occurrences `lo..hi` of a template at `base`: records, cull entries
+   * and the DEAD bit (set outside the RTE source envelope, cleared once back
+   * in it). `takeHidden` carries a record's HIDDEN flag (a tombstone the CPU
+   * record holds, e.g. across device recovery) into the state word.
+   */
+  private writeSource(base: number, records: ArrayBuffer, anchors: Float64Array, radii: Float32Array, group: number, lo: number, hi: number, takeHidden = false): void {
+    this.device.queue.writeBuffer(this.srcRecords!, (base + lo) * INSTANCE_STRIDE_BYTES, records, lo * INSTANCE_STRIDE_BYTES, (hi - lo) * INSTANCE_STRIDE_BYTES);
+    const cull = new Float32Array((hi - lo) * CULL_FLOATS);
     const cullU = new Uint32Array(cull.buffer);
-    for (let i = 0; i < count; i++) {
+    const flags = takeHidden ? new DataView(records) : null;
+    for (let i = lo; i < hi; i++) {
       const ax = anchors[i * 3]!, ay = anchors[i * 3 + 1]!, az = anchors[i * 3 + 2]!;
-      const o = i * CULL_FLOATS;
+      const o = (i - lo) * CULL_FLOATS, at = base + i;
+      if (flags && (flags.getUint32(i * INSTANCE_STRIDE_BYTES + INSTANCE_FLAGS_OFFSET, true) & INSTANCE_FLAG_HIDDEN)) this.setState(at, this.state[at]! | POOL_STATE_HIDDEN);
       const ok = Math.abs(ax) <= MAX_RTE_SOURCE_ABS_METRES && Math.abs(ay) <= MAX_RTE_SOURCE_ABS_METRES && Math.abs(az) <= MAX_RTE_SOURCE_ABS_METRES;
-      if (!ok) {
-        // Outside the f64 source envelope (or non-finite): never drawable, like the CPU packer.
-        this.setState(base + i, this.state[base + i]! | POOL_STATE_DEAD);
-        continue;
-      }
+      // Outside the f64 source envelope (or non-finite): not drawable, like the CPU packer, until a move brings it back.
+      this.setState(at, ok ? this.state[at]! & ~POOL_STATE_DEAD : this.state[at]! | POOL_STATE_DEAD);
+      if (!ok) continue;
       // f64 → (high, low) f32 split, inlined (no per-occurrence allocation on multi-million uploads).
       const xh = Math.fround(ax), yh = Math.fround(ay), zh = Math.fround(az);
       const r = radii[i]!;
       cull[o] = xh; cull[o + 1] = yh; cull[o + 2] = zh; cull[o + 3] = Number.isFinite(r) && r >= 0 ? Math.min(r, UNBOUNDED_RADIUS) : UNBOUNDED_RADIUS;
       cull[o + 4] = ax - xh; cull[o + 5] = ay - yh; cull[o + 6] = az - zh; cullU[o + 7] = group;
     }
-    this.device.queue.writeBuffer(this.srcCull!, base * CULL_BYTES, cull);
+    this.device.queue.writeBuffer(this.srcCull!, (base + lo) * CULL_BYTES, cull);
   }
 
   // ── state ────────────────────────────────────────────────────────────
@@ -226,9 +236,26 @@ export class GpuInstancePool {
     } else if (lane === INSTANCE_COLOR_OFFSET) {
       const c = data as Float32Array;
       const idx = c[0] === originalColor[0] && c[1] === originalColor[1] && c[2] === originalColor[2] && c[3] === originalColor[3]
-        ? 0 : this.palette.indexOf(c);
+        ? 0 : this.paletteIndex(c);
       this.setState(occurrence, (cur & 0xffff) | (idx << POOL_STATE_PALETTE_SHIFT));
     }
+  }
+
+  /** Palette index of `c`; a full palette is compacted to the colours still referenced first. */
+  private paletteIndex(c: Float32Array): number {
+    let idx = this.palette.indexOf(c);
+    if (idx >= 0) return idx;
+    const used = new Set<number>();
+    for (let i = 0; i < this.count; i++) used.add(this.state[i]! >>> POOL_STATE_PALETTE_SHIFT);
+    const remap = this.palette.compact(used);
+    for (let i = 0; i < this.count; i++) {
+      const old = this.state[i]! >>> POOL_STATE_PALETTE_SHIFT;
+      if (old) this.setState(i, (this.state[i]! & 0xffff) | ((remap.get(old) ?? 0) << POOL_STATE_PALETTE_SHIFT));
+    }
+    idx = this.palette.indexOf(c);
+    if (idx >= 0) return idx;
+    console.warn('[GpuInstancePool] colour palette full of live colours; this override falls back to the record colour');
+    return 0;
   }
 
   /** Set or clear `bit` (USER_HIDDEN / ISOLATED) on one occurrence. */

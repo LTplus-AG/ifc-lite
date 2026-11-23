@@ -1590,7 +1590,7 @@ export class Scene {
     }
     if (!moved) return false;
     this.bumpPickGeometryRevision();
-    this.refreshPoolTemplates(occurrences.map((o) => o.templateIndex));
+    this.instancePool.refreshOccurrences(occurrences, this.instancedTemplateCpu);
 
     // Rebuild the cached world AABB from the moved occurrence matrices so pick /
     // measure / section bounds stay correct. A simple in-place shift is unsafe for
@@ -3114,7 +3114,7 @@ export class Scene {
         }
       }
       if (pool && poolRadii) {
-        template.poolGroup = pool.addTemplate(templateIndex, poolBase, { vertexBuffer, indexBuffer, indexCount: t.indices.length, positions: t.positions, indices: t.indices }, t.instanceBuffer, t.canonicalAnchors, poolRadii);
+        template.poolGroup = pool.addTemplate(templateIndex, poolBase, { vertexBuffer, indexBuffer, indexCount: t.indices.length, positions: t.positions, normals: t.normals, indices: t.indices }, t.instanceBuffer, t.canonicalAnchors, poolRadii);
       }
     }
     this.refreshLiveInstancedTemplates();

@@ -1,0 +1,121 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: Base-stale signal
+
+# Would a queued PR's last perf-ratchet / Rust result still hold on CURRENT
+# main? scripts/ci-base-stale.mjs carries the why, the decision and the
+# CI_BASE_STALE_GATE switch (unset = shadow: log and step summary only; `on` =
+# the `PR base staleness` commit status). This is an EARLIER signal, never a
+# gate in place of the merge queue, which still runs the full suite on the
+# exact merged tree.
+#
+# WHEN. An open PR is not re-run when main moves, so its verdict is re-judged:
+#   - on every push to main, for every open non-draft PR labelled
+#     `mergify-trial` (the PRs about to enter the queue);
+#   - when that label is added (the moment a PR asks for the queue);
+#   - in the PR's own Test run (test.yml, last step of `perf-ratchet`).
+# An unlabelled PR is judged against the main of its last run until one of
+# those happens; every logged verdict names the main it was judged against.
+#
+# COST. No install, no build: a blob-less checkout (history and trees, for the
+# Rust diff and the ceiling files), then a few API reads per labelled PR and
+# a few KiB of artifacts. Main's measurements are found by tree through the
+# `tested-tree-<tree>` artifact test.yml uploads. The workflow token shares
+# 1,000 requests/hour per repository, so answers that cannot change (a main
+# tree's measurement, a PR head's measuring run) are cached across sweeps, and
+# a sweep stops below 300 remaining requests rather than starve other lanes.
+#
+# EVIDENCE. Each run uploads `base-stale-verdicts` (JSONL, 30 days): one row
+# per PR with the verdict, its reasons, the PR head, the tested base, the main
+# tip and the trigger, which is what the shadow period is counted from.
+on:
+  push:
+    branches: [main]
+  # From the BASE branch, deliberately: this job never checks out or runs the
+  # PR's code. It reads the PR's file list and CI artifacts as data.
+  pull_request_target:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: 'PR number to judge (empty: sweep every labelled PR)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  # Artifacts of earlier Test runs: the PR's and main's measurements.
+  actions: read
+  pull-requests: read
+  # Only written with CI_BASE_STALE_GATE=on, or to release a status an
+  # earlier `on` left once the gate is back in shadow.
+  statuses: write
+
+concurrency:
+  # A newer main supersedes a sweep in flight; a re-label supersedes its own run.
+  group: base-stale-${{ github.event_name == 'pull_request_target' && format('pr-{0}', github.event.pull_request.number) || inputs.pr && format('pr-{0}', inputs.pr) || 'sweep' }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  judge:
+    name: Base-stale signal
+    if: github.event_name != 'pull_request_target' || github.event.label.name == 'mergify-trial'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          lfs: false
+          persist-credentials: false
+          # Full history without blobs: `git diff --name-only base..tip` and
+          # the ceiling files need commits and trees only. Main's diff since
+          # an old base then has no 300-file cap (see check-base-freshness.mjs).
+          fetch-depth: 0
+          filter: blob:none
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      - name: Restore the answers earlier sweeps cached
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/base-stale-cache
+          key: base-stale-v1-${{ github.run_id }}
+          restore-keys: base-stale-v1-
+
+      - name: Judge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_BASE_STALE_GATE: ${{ vars.CI_BASE_STALE_GATE }}
+          PR: ${{ github.event.pull_request.number || inputs.pr }}
+          TRIGGER: ${{ github.event_name == 'push' && 'main-push' || github.event_name == 'pull_request_target' && 'labeled' || 'dispatch' }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/base-stale-cache" "$RUNNER_TEMP/base-stale"
+          if [ -n "$PR" ]; then target=(--pr "$PR"); else target=(--sweep); fi
+          node scripts/ci-base-stale.mjs "${target[@]}" --trigger "$TRIGGER" \
+            --cache "$RUNNER_TEMP/base-stale-cache/cache.json" \
+            --json-out "$RUNNER_TEMP/base-stale/verdicts.jsonl"
+
+      - name: Save the cache
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/base-stale-cache
+          key: base-stale-v1-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Upload the verdicts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: base-stale-verdicts
+          path: ${{ runner.temp }}/base-stale/verdicts.jsonl
+          retention-days: 30
+          if-no-files-found: warn

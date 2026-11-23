@@ -3988,6 +3988,10 @@ jobs:
       contents: read
       # The sticky report comment (issues/comments endpoint on the PR).
       pull-requests: write
+      # The base-stale step: main's measurements are read from earlier runs'
+      # artifacts, and with CI_BASE_STALE_GATE=on its verdict is a commit status.
+      actions: read
+      statuses: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -4050,6 +4054,29 @@ jobs:
           elif [ "$CHECK_OUTCOME" != "success" ]; then
             gh api --method POST "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" -F body=@"$body_file"
           fi
+      # BASE-STALE SIGNAL (scripts/ci-base-stale.mjs). Would this measurement,
+      # and this run's Rust result, still hold on main as it is NOW? Main can
+      # move during the run, and an open PR is not re-run when it moves later;
+      # base-stale.yml re-judges labelled PRs on every push to main. This step
+      # is the PR-side refresh: a PR whose author merges main or pushes gets a
+      # new verdict here. It never changes this job's result
+      # (continue-on-error, and the script never exits 1). With
+      # CI_BASE_STALE_GATE unset it only logs; with `on` it posts the
+      # `PR base staleness` commit status Mergify can read. Not on a Mergify
+      # draft: that run IS the queue's full gate on the merged tree.
+      - name: Base-stale verdict (advisory unless CI_BASE_STALE_GATE is on)
+        if: always() && github.event_name == 'pull_request' && !startsWith(github.head_ref, 'mergify/merge-queue/')
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_BASE_STALE_GATE: ${{ vars.CI_BASE_STALE_GATE }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          node scripts/ci-base-stale.mjs --in-run --trigger pr-run --pr "$PR_NUMBER"
+          --head-sha "$HEAD_SHA" --merge-sha "$GITHUB_SHA" --measured-dir "$RUNNER_TEMP/perf-ratchet"
 
   # The release PR's own checks, for the lean lane (scripts/ci-release-lane.mjs).
   # Runs ONLY in a lean run, so it is skipped on every other run; its success

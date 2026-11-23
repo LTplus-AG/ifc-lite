@@ -84,14 +84,15 @@ export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ 
     }
   };
 
+  const autoKey = JSON.stringify([props.by, props.query ?? null, props.data ?? null]);
   useEffect(() => {
     // Nothing to colour: claim nothing, so a remount never shows it as applied.
     if (props.apply !== 'onShow' || targets === 0) return;
-    const state = autoApply?.(JSON.stringify([props.by, props.query ?? null, props.data ?? null]));
+    const state = autoApply?.(autoKey);
     if (state === 'apply') apply();
     else if (state === 'applied') setApplied(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, when something to colour first exists
-  }, [props.apply, targets]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per legend payload, when something to colour exists
+  }, [props.apply, targets, autoKey]);
 
   const toggle = (entry: LegendEntry, visible: boolean) => {
     try {

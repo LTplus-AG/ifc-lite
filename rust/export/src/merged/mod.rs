@@ -333,11 +333,8 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                 None => remapped,
             };
             let final_text = if converting {
-                // Pass the GLOBAL id (offset applied): a schema downgrade with no
-                // target type falls back to IFCPROXY with a `placeholder_guid(id)`
-                // GlobalId, so two models sharing a source-local id must not seed the
-                // same placeholder (Greptile P1). rewrite_refs already offset the
-                // line's own `#id`, so this keeps the proxy guid consistent with it.
+                // Pass the remapped id so a proxy that needs a generated GlobalId
+                // has a distinct seed even when two models share the same local id.
                 //
                 // Falls back to the UNCONVERTED line on `Err`, not `?`/panic: the
                 // merged API has no fallible signature (a separate, deliberate

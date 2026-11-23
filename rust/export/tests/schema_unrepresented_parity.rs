@@ -10,7 +10,7 @@
 //! `fixtures/schema_unrepresented_vectors.json`; the TypeScript half is
 //! `packages/export/src/schema-unrepresented.parity.test.ts`.
 
-use ifc_lite_export::export_step_json;
+use ifc_lite_export::{export_merged_models, export_step_json, MergedModel, MergedOptions};
 
 #[derive(serde::Deserialize, Clone)]
 struct Case {
@@ -22,6 +22,8 @@ struct Case {
     expect: Option<String>,
     #[serde(default)]
     refuses: bool,
+    #[serde(default)]
+    merge: bool,
 }
 
 fn cases() -> Vec<Case> {
@@ -30,18 +32,40 @@ fn cases() -> Vec<Case> {
     serde_json::from_value(doc["cases"].clone()).expect("cases deserialize")
 }
 
-/// Run one entity line through the real exporter, as `ifc-lite export` does.
-fn convert(c: &Case) -> Result<String, String> {
-    let src = format!(
+fn source(c: &Case) -> String {
+    format!(
         "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\n\
          FILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('{}'));\nENDSEC;\n\
          DATA;\n{}\nENDSEC;\nEND-ISO-10303-21;\n",
         c.from, c.line
-    );
+    )
+}
+
+/// Run one entity line through the real exporter, as `ifc-lite export` does.
+fn convert(c: &Case) -> Result<String, String> {
+    let src = source(c);
     let out = export_step_json(src.as_bytes(), Some(c.to.clone()), None, "").map_err(|e| e.to_string())?;
     let line = out.lines().find(|l| l.starts_with('#')).unwrap_or_else(|| panic!("no entity line:\n{out}"));
     // Rust keeps a spaced source's `#5 =` prefix, TS writes `#5=`: cosmetic.
     Ok(line.replacen("#5 =", "#5=", 1))
+}
+
+#[test]
+fn merging_models_keeps_distinct_proxy_global_ids_11322() {
+    for c in cases().into_iter().filter(|c| c.merge) {
+        let source = source(&c);
+        let models = ["a", "b"].map(|id| MergedModel { content: source.as_bytes(), id: id.into(), included: None });
+        let options = MergedOptions { schema: Some(c.to), ..Default::default() };
+        let (merged, _) = export_merged_models(&models, &options);
+        let ids: Vec<_> = merged.lines().filter_map(|line| {
+            let (_, body) = line.split_once('=')?;
+            Some(body.strip_prefix("IFCPROXY('")?.split_once('\'')?.0)
+        }).collect();
+        assert_eq!(ids.len(), 2, "{}: {merged}", c.why);
+        assert!(ids.iter().all(|id| ifc_lite_core::guid::is_valid_global_id(id)), "{ids:?}");
+        assert_ne!(ids[0], ids[1], "{}: {merged}", c.why);
+        assert!(c.expect.unwrap().contains(&format!("IFCPROXY('{}'", ids[0])));
+    }
 }
 
 #[test]

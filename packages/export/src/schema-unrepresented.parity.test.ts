@@ -12,6 +12,8 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { IfcParser } from '@ifc-lite/parser';
+import { MergedExporter } from './merged-exporter.js';
 import { convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
 
 interface Case {
@@ -21,6 +23,7 @@ interface Case {
   line: string;
   expect?: string;
   refuses?: boolean;
+  merge?: boolean;
 }
 
 const fixture: { cases: Case[] } = JSON.parse(
@@ -51,4 +54,15 @@ describe('convertStepLine matches the shared unrepresented-type vectors (#7742)'
       });
     }
   }
+});
+
+it.each(fixture.cases.filter((c) => c.merge))('keeps two distinct proxy IDs when merging copies: $why', async (c) => {
+  const step = `ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('${c.from}'));\nENDSEC;\nDATA;\n${c.line}\nENDSEC;\nEND-ISO-10303-21;\n`;
+  const dataStore = await new IfcParser().parseColumnar(new TextEncoder().encode(step).buffer);
+  const models = ['a', 'b'].map((id) => ({ id, name: id, dataStore }));
+  const merged = new TextDecoder().decode(new MergedExporter(models).export({ schema: c.to }).content);
+  const ids = [...merged.matchAll(/^#\d+=IFCPROXY\('([0-3][0-9A-Za-z_$]{21})',/gm)].map((m) => m[1]);
+  expect(ids).toHaveLength(2);
+  expect(new Set(ids).size).toBe(2);
+  expect(c.expect).toContain(`IFCPROXY('${ids[0]}'`);
 });

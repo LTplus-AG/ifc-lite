@@ -14,7 +14,7 @@
  * (`scripts/module-size-allowlist.txt`).
  */
 
-import { isValidIfcGuid } from '@ifc-lite/encoding';
+import { decodeStepStringLiteral, isValidIfcGuid } from '@ifc-lite/encoding';
 import { deterministicGlobalId, getInheritanceChainAcrossSchemas, type IfcDataStore } from '@ifc-lite/parser';
 import { withoutComments } from './step-comment-skip.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
@@ -81,8 +81,10 @@ export function resolveUnrepresentedEntity(
       ? sourceGuid
       : deterministicGlobalId(`ifcproxy:#${expressId}=${entityType}(${args.join(',')})`);
     const name = withoutComments(nameSlot);
-    // IfcProxy.WR1 requires a Name even when the source leaves it unset.
-    const proxyName = name.startsWith("'") && name.endsWith("'") ? name : `'${entityType}'`;
+    // Use the source type when there is no meaningful Name for the proxy.
+    const proxyName = name.startsWith("'") && name.endsWith("'")
+      && /\P{White_Space}/u.test(decodeStepStringLiteral(name.slice(1, -1)))
+      ? name : `'${entityType}'`;
     return `${prefix}IFCPROXY('${guid}',$,${proxyName},$,$,$,$,.NOTDEFINED.,$);`;
   }
   if (allowOmit && WITHHOLDABLE_UNROOTED_TYPES.has(entityType)) return null;

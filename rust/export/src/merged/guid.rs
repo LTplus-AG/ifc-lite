@@ -8,6 +8,7 @@
 use std::collections::HashSet;
 
 use crate::rooted_type::is_rooted_type;
+use ifc_lite_core::{guid, parser::StepRecord};
 
 /// Deterministic 22-char GlobalId from a seed, byte-identical to
 /// `@ifc-lite/parser`'s `deterministicGlobalId`. See [`ifc_lite_core::guid::deterministic`].
@@ -45,12 +46,25 @@ pub fn is_rooted_entity_type(type_upper: &str) -> bool {
 
 /// The leading 22-char GlobalId of a rooted entity's raw STEP line, or `None` if
 /// the type is not rooted or the first attribute is not a GlobalId string.
-/// Only inspects the first 128 bytes (a GlobalId is always the first attribute).
 pub fn extract_global_id_fast(type_upper: &str, line: &[u8]) -> Option<String> {
     if !is_rooted_entity_type(type_upper) {
         return None;
     }
-    ifc_lite_core::guid::leading_global_id(line).map(str::to_string)
+    leading_guid(line).map(str::to_string)
+}
+
+fn leading_guid(line: &[u8]) -> Option<&str> {
+    let head = &line[..line.len().min(128)];
+    // A comment can contain a fake opening parenthesis or GUID. Use the
+    // STEP reader for commented heads and when trivia runs past the window.
+    if !head.windows(2).any(|pair| pair == b"/*") {
+        if let Some(id) = guid::leading_global_id(head) {
+            return Some(id);
+        }
+    }
+    let first = StepRecord::parse(line)?.attrs().next()?;
+    let id = std::str::from_utf8(first.strip_prefix(b"'")?.strip_suffix(b"'")?).ok()?;
+    guid::is_global_id_shaped(id).then_some(id)
 }
 
 /// The uppercase entity type token of a `#id=TYPE(...)` line, tolerating
@@ -70,20 +84,22 @@ pub fn leading_rooted_global_id(line: &[u8]) -> Option<String> {
     extract_global_id_fast(&type_upper, line)
 }
 
-/// Read the GlobalId of an already-rendered STEP line (first `'…'` after the
-/// first `(`). Used to register the *actually emitted* GUID after remap /
+/// Read the GlobalId of an already-rendered STEP line. Used to register the
+/// *actually emitted* GUID after remap /
 /// re-stamp / schema conversion. Returns `None` when the first string is not a
 /// GlobalId (safe — the caller then falls back to the known local GUID).
 pub fn read_leading_guid(text: &str) -> Option<String> {
-    ifc_lite_core::guid::read_leading_global_id(text).map(str::to_string)
+    leading_guid(text.as_bytes()).map(str::to_string)
 }
 
 /// Rewrite the leading GlobalId field of a STEP line with `new_guid`. Safe
-/// because the GUID charset excludes the apostrophe, so the first `'…'`
-/// after `(` is exactly the GlobalId slot. Returns the input unchanged if no
-/// quoted first attribute is found.
+/// for a GlobalId-shaped first attribute, even when comments surround it.
 pub fn replace_global_id(text: &str, new_guid: &str) -> String {
-    ifc_lite_core::guid::replace_rendered_global_id(text, new_guid)
+    let Some(id) = leading_guid(text.as_bytes()) else { return text.to_owned() };
+    let start = id.as_ptr() as usize - text.as_ptr() as usize;
+    let mut out = text.to_owned();
+    out.replace_range(start..start + id.len(), new_guid);
+    out
 }
 
 /// Mints deterministic replacement GlobalIds that avoid collisions with both the

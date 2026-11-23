@@ -68,7 +68,8 @@
    "why": "#11322: a rooted IFC4X3-only type keeps its GlobalId and escaped Name",
    "from": "IFC4X3",
    "to": "IFC4",
-   "line": "#5=IFCRELPOSITIONS(/* GlobalId */'0YvctVUKr0kugbFTf53O9L',$,'Grid''s /* datum */, A',$,#1,(#2));",
+   "line": "#5=IFCRELPOSITIONS(/* GlobalId ('0Fake00000000000000000') in a comment long enough that the actual first attribute starts beyond the merge head window */'0YvctVUKr0kugbFTf53O9L',$,'Grid''s /* datum */, A',$,#1,(#2));",
+   "merge": true,
    "expect": "#5=IFCPROXY('0YvctVUKr0kugbFTf53O9L',$,'Grid''s /* datum */, A',$,$,$,$,.NOTDEFINED.,$);"
   },
   {
@@ -76,7 +77,29 @@
    "from": "IFC4X3",
    "to": "IFC4",
    "line": "#5=IFCRELPOSITIONS($,$,/* unnamed */$,$,#1,(#2));",
+   "merge": true,
    "expect": "#5=IFCPROXY('3lJWJ4oIi38uI5nMw7H8hx',$,'IFCRELPOSITIONS',$,$,$,$,.NOTDEFINED.,$);"
+  },
+  {
+   "why": "#11322: an empty Name falls back to the source type",
+   "from": "IFC4X3",
+   "to": "IFC4",
+   "line": "#5=IFCRELPOSITIONS('0YvctVUKr0kugbFTf53O9L',$,'',$,#1,(#2));",
+   "expect": "#5=IFCPROXY('0YvctVUKr0kugbFTf53O9L',$,'IFCRELPOSITIONS',$,$,$,$,.NOTDEFINED.,$);"
+  },
+  {
+   "why": "#11322: a whitespace-only Name falls back to the source type",
+   "from": "IFC4X3",
+   "to": "IFC4",
+   "line": "#5=IFCRELPOSITIONS('0YvctVUKr0kugbFTf53O9L',$,'   ',$,#1,(#2));",
+   "expect": "#5=IFCPROXY('0YvctVUKr0kugbFTf53O9L',$,'IFCRELPOSITIONS',$,$,$,$,.NOTDEFINED.,$);"
+  },
+  {
+   "why": "#11322: a STEP-encoded whitespace-only Name falls back to the source type",
+   "from": "IFC4X3",
+   "to": "IFC4",
+   "line": "#5=IFCRELPOSITIONS('0YvctVUKr0kugbFTf53O9L',$,'\\X2\\2003\\X0\\',$,#1,(#2));",
+   "expect": "#5=IFCPROXY('0YvctVUKr0kugbFTf53O9L',$,'IFCRELPOSITIONS',$,$,$,$,.NOTDEFINED.,$);"
   },
   {
    "why": "a type neither schema declares is not the registry's to judge: passed through",

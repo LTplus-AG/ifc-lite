@@ -15,10 +15,12 @@
 
 use crate::step_slot::{slot_is, without_comments};
 use ifc_lite_core::guid::{deterministic, is_valid_global_id};
+use ifc_lite_core::step_encoding::decode_step_literal;
 use std::borrow::Cow;
 
 use crate::rooted_type::is_rooted_type;
-use crate::schema_convert::schema_attribute_names;
+use crate::schema_convert::{holds_value, schema_attribute_names};
+use ifc_lite_core::slot::IfcRoot;
 
 /// True when `type_name` (the record's possibly renamed type) can be written
 /// into `to` as it is. Twin of the check in the TypeScript `convertRecord`,
@@ -111,8 +113,6 @@ pub(crate) fn resolve_unrepresented_entity(
 ) -> Result<String, UnrepresentedEntityError> {
     if is_rooted_type(entity_type) {
         // IfcRoot begins with GlobalId, OwnerHistory, Name in every schema.
-        const GLOBAL_ID_SLOT: usize = 0;
-        const NAME_SLOT: usize = 2;
         let slot = |i: usize| {
             let value = args.get(i).map_or("", String::as_str);
             if value.contains("/*") {
@@ -121,7 +121,7 @@ pub(crate) fn resolve_unrepresented_entity(
                 Cow::Borrowed(value.trim())
             }
         };
-        let global_id = slot(GLOBAL_ID_SLOT);
+        let global_id = slot(IfcRoot::GLOBAL_ID.index());
         let guid = global_id
             .strip_prefix('\'')
             .and_then(|s| s.strip_suffix('\''))
@@ -130,9 +130,9 @@ pub(crate) fn resolve_unrepresented_entity(
             || Cow::Owned(deterministic(&format!("ifcproxy:#{express_id}={entity_type}({})", args.join(",")))),
             Cow::Borrowed,
         );
-        let name = slot(NAME_SLOT);
-        // IfcProxy.WR1 requires a Name even when the source leaves it unset.
-        let name = if name.starts_with('\'') && name.ends_with('\'') {
+        let name = slot(IfcRoot::NAME.index());
+        // Use the source type when there is no meaningful Name for the proxy.
+        let name = if decode_step_literal(name.as_bytes()).is_some_and(|s| !s.trim().is_empty()) {
             name
         } else {
             Cow::Owned(format!("'{entity_type}'"))
@@ -144,6 +144,15 @@ pub(crate) fn resolve_unrepresented_entity(
         entity_type: entity_type.to_string(),
         to_schema: to.to_string(),
     })
+}
+
+/// Values without a destination on the generic proxy. GlobalId and Name have
+/// slots on the proxy even when the source needs a fallback for one of them.
+pub(crate) fn proxy_values_dropped(args: &[String]) -> usize {
+    args.iter()
+        .enumerate()
+        .filter(|(i, value)| *i != IfcRoot::GLOBAL_ID.index() && *i != IfcRoot::NAME.index() && holds_value(value))
+        .count()
 }
 
 /// The IFCPROXY one of `schema_convert::should_skip_entity`'s IFC4X3 alignment products

@@ -5,17 +5,33 @@
 // scripts/ci-base-stale.mjs: argument parsing, the path filters it derives
 // from the real test.yml, and the per-PR evaluation over a fake I/O layer.
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { evaluatePr, loadCache, loadFilterGlobs, parseArgs, readFilterGlobs, run } from './ci-base-stale.mjs';
-import { prRelevance } from './lib/base-stale.mjs';
+
+// Guarded imports (the scripts/perf-ratchet pattern, #6516): with the
+// production modules reverted, every test fails on the presence assertion
+// instead of the file dying at import with no assertion evaluated.
+async function load(rel) {
+  const url = new URL(rel, import.meta.url);
+  return existsSync(url) ? import(url.href) : null;
+}
+const cli = await load('./ci-base-stale.mjs');
+const core = await load('./lib/base-stale.mjs');
+const { evaluatePr, loadCache, loadFilterGlobs, parseArgs, readFilterGlobs, run } = cli ?? {};
+const { prRelevance } = core ?? {};
+function ct(name, body) {
+  test(name, () => {
+    assert.ok(cli && core, 'scripts/ci-base-stale.mjs or scripts/lib/base-stale.mjs is absent');
+    return body();
+  });
+}
 
 const WORKFLOW_PATH = fileURLToPath(new URL('../.github/workflows/test.yml', import.meta.url));
 
-test('parseArgs: the three modes and their required inputs', () => {
+ct('parseArgs: the three modes and their required inputs', () => {
   assert.equal(parseArgs(['--sweep']).mode, 'sweep');
   assert.deepEqual({ ...parseArgs(['--pr', '12']) }, { mode: 'pr', pr: 12, dryRun: false });
   assert.throws(() => parseArgs([]), /usage/);
@@ -24,7 +40,7 @@ test('parseArgs: the three modes and their required inputs', () => {
   assert.throws(() => parseArgs(['--sweep', '--bogus']), /unknown option/);
 });
 
-test("relevance follows test.yml's filters: the paths that run the perf-ratchet job and the Rust lanes", () => {
+ct("relevance follows test.yml's filters: the paths that run the perf-ratchet job and the Rust lanes", () => {
   const globs = loadFilterGlobs(WORKFLOW_PATH);
   assert.deepEqual(prRelevance(['rust/geometry/src/lib.rs'], globs), { perf: true, rust: true, editsCeilings: false });
   assert.deepEqual(prRelevance(['tests/perf-ratchets/bundle.json'], globs), { perf: true, rust: false, editsCeilings: true });
@@ -36,7 +52,7 @@ test("relevance follows test.yml's filters: the paths that run the perf-ratchet 
   }
 });
 
-test('readFilterGlobs refuses a workflow whose perf-ratchet gate it cannot read', () => {
+ct('readFilterGlobs refuses a workflow whose perf-ratchet gate it cannot read', () => {
   const noJob = ['jobs:', '  changes:', '    steps:', '      - with:', '          filters: |', '            rust:', "              - 'rust/**'", ''].join('\n');
   assert.throws(() => readFilterGlobs(noJob), /no perf-ratchet job/);
 });
@@ -60,14 +76,14 @@ function fakeIo(over = {}) {
   return new Proxy(io, { get: (t, k) => { calls.push(k); return t[k]; } });
 }
 
-test('evaluatePr: main grew past the ceiling since the PR measured -> stale', () => {
+ct('evaluatePr: main grew past the ceiling since the PR measured -> stale', () => {
   const r = evaluatePr(fakeIo(), { pr: 1, headSha: 'h', mainTip: 'tip00000001', ceilings, globs });
   assert.equal(r.verdict, 'stale');
   assert.equal(r.testedBase, 'base0000001');
   assert.equal(r.prRun, 7);
 });
 
-test('evaluatePr: main has not moved -> zero drift by construction, no main lookups', () => {
+ct('evaluatePr: main has not moved -> zero drift by construction, no main lookups', () => {
   const io = fakeIo({
     mainMeasurementAt: () => { throw new Error('must not look up main'); },
     latestMainMeasurement: () => { throw new Error('must not look up main'); },
@@ -76,31 +92,31 @@ test('evaluatePr: main has not moved -> zero drift by construction, no main look
   assert.equal(r.verdict, 'fresh');
 });
 
-test('evaluatePr: in-run measurement with an unreadable base is unknown, not fresh', () => {
+ct('evaluatePr: in-run measurement with an unreadable base is unknown, not fresh', () => {
   const io = fakeIo({ mergeParents: () => null });
   const r = evaluatePr(io, { pr: 1, headSha: 'h', mainTip: 't', ceilings, globs, measured: { families: [fam(10)], mergeSha: 'm' } });
   assert.equal(r.verdict, 'unknown');
   assert.match(r.reasons[0], /base could not be read/);
 });
 
-test('evaluatePr: no measurement for a relevant PR is unknown', () => {
+ct('evaluatePr: no measurement for a relevant PR is unknown', () => {
   const r = evaluatePr(fakeIo({ prMeasurement: () => null }), { pr: 1, headSha: 'h', mainTip: 't', ceilings, globs });
   assert.equal(r.verdict, 'unknown');
 });
 
-test('evaluatePr: an irrelevant PR is not-relevant without reading any measurement', () => {
+ct('evaluatePr: an irrelevant PR is not-relevant without reading any measurement', () => {
   const io = fakeIo({ prFiles: () => ['docs/a.md'], prMeasurement: () => { throw new Error('must not read'); } });
   assert.equal(evaluatePr(io, { pr: 1, headSha: 'h', mainTip: 't', ceilings, globs }).verdict, 'not-relevant');
 });
 
-test('evaluatePr: an I/O fault becomes an unknown verdict naming it, never a throw or a pass', () => {
+ct('evaluatePr: an I/O fault becomes an unknown verdict naming it, never a throw or a pass', () => {
   const io = fakeIo({ prFiles: () => { throw new Error('HTTP 502\nmore'); } });
   const r = evaluatePr(io, { pr: 1, headSha: 'h', mainTip: 't', ceilings, globs });
   assert.equal(r.verdict, 'unknown');
   assert.deepEqual(r.reasons, ['harness: HTTP 502']);
 });
 
-test('evaluatePr: the Rust half uses the same tested base', () => {
+ct('evaluatePr: the Rust half uses the same tested base', () => {
   let seen;
   const io = fakeIo({
     prFiles: () => ['rust/core/src/a.rs'],
@@ -150,7 +166,7 @@ function runFake({ gate, cacheData = null, prs = [STALE_PR], existing = 'failure
   return { posts, reads, saved: loadCache(cachePath) };
 }
 
-test('run, on: a stale labelled PR gets a failure status; a fork gets nothing', () => {
+ct('run, on: a stale labelled PR gets a failure status; a fork gets nothing', () => {
   const { posts } = runFake({ gate: 'on', prs: [STALE_PR, FORK_PR] });
   assert.equal(posts.length, 1);
   assert.equal(posts[0].sha, 'head5');
@@ -158,14 +174,14 @@ test('run, on: a stale labelled PR gets a failure status; a fork gets nothing', 
   assert.equal(posts[0].state, 'failure');
 });
 
-test('run, shadow: a settled sweep reads no status and posts nothing, even for a stale PR', () => {
+ct('run, shadow: a settled sweep reads no status and posts nothing, even for a stale PR', () => {
   const { posts, reads, saved } = runFake({ gate: undefined, cacheData: { version: 1, lastMode: 'shadow' } });
   assert.deepEqual(posts, []);
   assert.deepEqual(reads, []);
   assert.equal(saved.lastMode, 'shadow');
 });
 
-test('run, rollback: the first shadow sweep after `on` releases a failure the gate left', () => {
+ct('run, rollback: the first shadow sweep after `on` releases a failure the gate left', () => {
   const { posts, reads } = runFake({ gate: 'shadow', cacheData: { version: 1, lastMode: 'on' } });
   assert.deepEqual(reads, ['head5']);
   assert.equal(posts.length, 1);
@@ -173,19 +189,19 @@ test('run, rollback: the first shadow sweep after `on` releases a failure the ga
   assert.match(posts[0].description, /shadow/);
 });
 
-test('run, shadow: a head the gate already left green is not posted again', () => {
+ct('run, shadow: a head the gate already left green is not posted again', () => {
   const { posts } = runFake({ gate: 'shadow', cacheData: { version: 1, lastMode: 'on' }, existing: 'success' });
   assert.deepEqual(posts, []);
 });
 
-test('run, dry run: nothing is read or posted in either mode', () => {
+ct('run, dry run: nothing is read or posted in either mode', () => {
   for (const gate of ['on', 'shadow']) {
     const { posts, reads } = runFake({ gate, cacheData: { version: 1, lastMode: 'on' }, opts: { dryRun: true } });
     assert.deepEqual([posts, reads], [[], []]);
   }
 });
 
-test('run: a single-PR run keeps the sweep cache entries of other heads', () => {
+ct('run: a single-PR run keeps the sweep cache entries of other heads', () => {
   const cacheData = { version: 1, lastMode: 'shadow', prFiles: { other: ['a'] }, prMeasurements: {}, mainMeasurements: {}, posted: {} };
   const dir = mkdtempSync(join(tmpdir(), 'base-stale-run-'));
   const cachePath = join(dir, 'cache.json');

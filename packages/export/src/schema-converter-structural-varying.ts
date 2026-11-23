@@ -113,7 +113,9 @@ export class StructuralVarying {
     }
   }
 
-  private typeOf(id: number): string { return this.effectiveTypes?.get(id) ?? this.source?.type(id) ?? ''; }
+  private typeOf(id: number | null): string {
+    return id === null ? '' : this.effectiveTypes?.get(id) ?? this.source?.type(id) ?? '';
+  }
 
   /** The target record body for a varying action of either schema, or undefined. */
   rewrite(id: number, entity: string, args: readonly string[], carried: ReadonlySet<string>): StructuralRewrite | undefined {

@@ -3,7 +3,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use ifc_lite_core::{parser::parse_ref, EntityScanner};
+use ifc_lite_core::{parser::parse_ref, slot::IfcShapeAspect, EntityScanner};
 
 use crate::schema_convert::holds_value;
 use crate::schema_structural_axes::list_items;
@@ -115,8 +115,9 @@ fn incomplete_aspects(text: &str, records: &HashMap<u32, Record<'_>>) -> HashSet
             return None;
         }
         let retain = crate::schema_structural_varying::record(text.as_bytes(), rec.start, rec.end)
-            .is_some_and(|args| args.get(4).and_then(|shape| reference(shape, records)).is_some()
-                && args.first().and_then(|slot| list_items(slot)).is_some_and(|members|
+            .is_some_and(|args| args.get(IfcShapeAspect::PART_OF_PRODUCT_DEFINITION_SHAPE.index())
+                .and_then(|shape| reference(shape, records)).is_some()
+                && args.get(IfcShapeAspect::SHAPE_REPRESENTATIONS.index()).and_then(|slot| list_items(slot)).is_some_and(|members|
                     members.iter().all(|member| reference(member, records).is_some())));
         (!retain).then_some(id)
     }).collect()

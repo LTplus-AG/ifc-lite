@@ -37,6 +37,18 @@ pub(crate) fn wall_with_finish(
     wall_with_bodies(site, wall_turn_deg, wall_y, recess, bodies)
 }
 
+/// The core and the middle body both occupy the authored cutter.
+#[allow(dead_code)]
+pub(crate) fn wall_with_overlapping_bodies() -> String {
+    let bodies = format!(
+        "{}{}{}#50=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#63,#67,#71));",
+        extrusion(60, 0.0, WALL_LENGTH, 0.0, CORE + FINISH),
+        extrusion(64, 0.75, 2.75, CORE, CORE + FINISH),
+        extrusion(68, 3.1, 3.8, -0.02, 0.10),
+    );
+    wall_with_bodies([0.0; 2], 0.0, 2.274, Recess::FromInterface, bodies)
+}
+
 fn wall_with_bodies(site: [f64; 2], wall_turn_deg: f64, wall_y: f64, recess: Recess, bodies: String) -> String {
     let (wall_sin, wall_cos) = wall_turn_deg.to_radians().sin_cos();
     let (axis, start) = match recess {

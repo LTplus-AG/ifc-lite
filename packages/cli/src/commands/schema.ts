@@ -207,12 +207,14 @@ function withRuntimeQueryShape(schemas: any[]): any[] {
       doc: 'Query builder chain — start it with bim.query()',
       methods: prototypeMethods(QueryBuilder.prototype).map(describe('query')),
     },
-    // `network` exists only inside a sandboxed flow Script node, gated by its
-    // graph's `network.fetch:<host>` grants, and `ui` only in the viewer's
-    // sandbox, which renders the surfaces. A `run`/`eval` script's
-    // `BimContext` has neither, so documenting them here would hand agents a
-    // call that throws.
-    ...schemas.filter((ns) => !['query', 'network', 'ui'].includes(ns?.name)),
+    // Sandbox-only namespaces (`network` in flow Script nodes, `ui` in the
+    // viewer) are absent from a `run`/`eval` script's `BimContext`;
+    // documenting them would hand agents a call that throws.
+    ...schemas.filter((ns) => {
+      if (ns?.name === 'query') return false;
+      const target = (bimInstance as unknown as Record<string, unknown>)[ns?.name];
+      return target != null && (typeof target === 'object' || typeof target === 'function');
+    }),
   ];
 }
 

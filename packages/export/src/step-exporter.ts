@@ -28,7 +28,6 @@ import {
 } from './step-property-set-readers.js';
 import { type GeorefContext } from './step-georeferencing.js';
 import { collectModifications, type CollectionContext } from './step-collection.js';
-import { pruneUnrootedUpgrade } from './schema-converter-unrooted-upgrade.js';
 import { normalizeCoordinateMetadata } from './step-map-unit-normalization.js';
 import { normalizeMapGeometry } from './step-map-transform.js';
 import { reportStepExportProgress } from './step-export-progress.js';
@@ -252,7 +251,6 @@ export class StepExporter {
 
     // Complete map metadata adaptation before optional Rust planning and assembly.
     normalizeCoordinateMetadata(pass, options, () => allocatedExpressId(this.nextExpressId++));
-    if (sourceSchema === 'IFC2X3' && schema === 'IFC4') pass.warnings.push(...pruneUnrootedUpgrade(pass.entities));
     return { pass };
   }
 

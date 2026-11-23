@@ -6,7 +6,7 @@
 let active: WorkflowRun | null = null;
 export class WorkflowRun {
   /** `flow` runs a flow document; a document edit cancels only those. */
-  constructor(readonly kind: 'flow' | 'realign' = 'flow') {}
+  constructor(readonly kind: 'flow' | 'realign' | 'refresh' = 'flow') {}
   readonly id = crypto.randomUUID();
   readonly controller = new AbortController();
   readonly warnings: string[] = [];
@@ -50,7 +50,7 @@ export function startWorkflowRun(kind: WorkflowRun['kind'] = 'flow'): WorkflowRu
   return active;
 }
 export function cancelWorkflowRun(): void { active?.cancel(); }
-/** Cancels a flow run only, never a federation realign holding the lease; true when one was asked to stop. */
+/** Cancels a flow run only, never a federation rebuild (realign, refresh) holding the lease; true when one was asked to stop. */
 export function cancelFlowRun(): boolean { if (active?.kind !== 'flow') return false; active.cancel(); return true; }
 /** The running workflow's abort signal (aborted by every Stop/Cancel and by supersession), or null. */
 export function activeWorkflowSignal(): AbortSignal | null { return active?.controller.signal ?? null; }

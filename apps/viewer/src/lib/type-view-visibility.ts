@@ -98,10 +98,14 @@ export function isMeshVisibleInViewMode(
  * Model view does.
  */
 export function selectModelMeshes<T extends { geometryClass?: number }>(meshes: readonly T[]): T[] {
+  return meshes.filter(modelMeshGate(meshes));
+}
+
+/** `selectModelMeshes` as a per-mesh predicate resolved over `meshes`, for a
+ * drawing that reads its geometry in batches (#10264) rather than as this list. */
+export function modelMeshGate(meshes: readonly { geometryClass?: number }[]): (mesh: { geometryClass?: number }) => boolean {
   const hasOccurrenceGeometry = meshes.some((m) => meshClassIsPlaced(geometryClassOf(m)));
-  return meshes.filter((m) =>
-    isMeshVisibleInViewMode(geometryClassOf(m), 'model', hasOccurrenceGeometry),
-  );
+  return (m) => isMeshVisibleInViewMode(geometryClassOf(m), 'model', hasOccurrenceGeometry);
 }
 
 /**

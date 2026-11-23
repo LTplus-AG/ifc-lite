@@ -38,8 +38,9 @@
  *   `IfcQuantityVolume.VolumeValue` (× volume).
  * - **Typed measures in property values** — `IFCLENGTHMEASURE(x)` /
  *   `IFCPOSITIVELENGTHMEASURE(x)` / `IFCNONNEGATIVELENGTHMEASURE(x)` (× length),
- *   `IFCAREAMEASURE(x)` (× area), `IFCVOLUMEMEASURE(x)` (× volume), wherever they
- *   appear outside a quoted string.
+ *   `IFCAREAMEASURE(x)` (× area) and `IFCVOLUMEMEASURE(x)` (× volume).
+ * - **Derived profile measures** — typed values and IFC2X3 profile attributes
+ *   scale by the length-unit ratio raised to their dimensional exponent.
  *
  * ## What is NOT rescaled
  * - Unit-definition entities (`IfcSIUnit`, `IfcConversionBasedUnit`,
@@ -55,9 +56,10 @@
  *   length/area/volume measure, so they are excluded automatically.
  */
 
-import { getAllAttributesForEntity, STEP_TRIVIA } from '@ifc-lite/parser';
+import { getAllAttributesForEntity, getCanonicalEntityName, getSchemaRegistryForVersion, STEP_TRIVIA } from '@ifc-lite/parser';
 import { formatStepReal } from '@ifc-lite/data';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
+import { withoutComments } from './step-comment-skip.js';
 import { findOuterArgs, mapOutsideStepStrings } from './step-outer-args.js';
 
 /** IFC defined types whose values are lengths (STEP writes them as bare reals). */
@@ -65,6 +67,13 @@ const LENGTH_MEASURE_TYPES = new Set([
   'IfcLengthMeasure',
   'IfcPositiveLengthMeasure',
   'IfcNonNegativeLengthMeasure',
+]);
+
+const PROFILE_MEASURE_POWERS = new Map([
+  ['IFCMASSPERLENGTHMEASURE', -1],
+  ['IFCMOMENTOFINERTIAMEASURE', 4],
+  ['IFCSECTIONMODULUSMEASURE', 3],
+  ['IFCWARPINGCONSTANTMEASURE', 6],
 ]);
 
 /**
@@ -83,7 +92,7 @@ function isRescaleExcluded(typeUpper: string): boolean {
 }
 
 /**
- * Per-entity plan: which STEP attribute indices carry a length / area / volume,
+ * Per-entity plan: which STEP attribute indices carry dimensional values,
  * and where a self-describing unit override lives. Indices are 0-based STEP order.
  */
 export interface EntityLengthPlan {
@@ -95,6 +104,8 @@ export interface EntityLengthPlan {
   areaIdx: number[];
   /** Scalar volume attributes → scale by the volume factor. */
   volumeIdx: number[];
+  /** Scalar profile measures and their powers of the length factor. */
+  profileMeasures: { index: number; power: number }[];
   /**
    * Indices of unit-override attributes (`Unit` / `DefiningUnit` / `DefinedUnit`,
    * typed IfcNamedUnit or the IfcUnit SELECT). When ANY of them is a live
@@ -107,7 +118,7 @@ export interface EntityLengthPlan {
 }
 
 const EMPTY_PLAN: EntityLengthPlan = {
-  listIdx: [], scalarIdx: [], areaIdx: [], volumeIdx: [], unitGuardIdx: [], empty: true,
+  listIdx: [], scalarIdx: [], areaIdx: [], volumeIdx: [], profileMeasures: [], unitGuardIdx: [], empty: true,
 };
 
 /** Attribute names that hold a self-describing unit override for a value. */
@@ -131,7 +142,7 @@ function attrBaseType(type: string, flags: { isList: boolean; isArray: boolean; 
 }
 
 /**
- * Derive (and cache) the length/area/volume attribute plan for an uppercase STEP
+ * Derive (and cache) the dimensional attribute plan for an uppercase STEP
  * type name from the generated schema registry. Excluded types (unit definitions,
  * georeferencing) and unknown/abstract types return the empty plan.
  */
@@ -147,16 +158,24 @@ function buildEntityLengthPlan(typeUpper: string): EntityLengthPlan {
   if (isRescaleExcluded(typeUpper)) return EMPTY_PLAN;
 
   const attrs = getAllAttributesForEntity(typeUpper);
-  if (!attrs || attrs.length === 0) return EMPTY_PLAN;
+  const legacyProfile = !attrs.length && typeUpper.endsWith('PROFILEPROPERTIES');
+  const registry = legacyProfile ? getSchemaRegistryForVersion('IFC2X3') : undefined;
+  const legacyName = registry && getCanonicalEntityName(registry, typeUpper);
+  const fields = registry && legacyName ? registry.entities[legacyName]?.allAttributes ?? [] : attrs;
+  if (!fields.length) return EMPTY_PLAN;
 
   const listIdx: number[] = [];
   const scalarIdx: number[] = [];
   const areaIdx: number[] = [];
   const volumeIdx: number[] = [];
+  const profileMeasures: EntityLengthPlan['profileMeasures'] = [];
   const unitGuardIdx: number[] = [];
 
-  attrs.forEach((a, i) => {
+  fields.forEach((a, i) => {
     const { base, isList } = attrBaseType(a.type, a);
+    const power = PROFILE_MEASURE_POWERS.get(base.toUpperCase());
+    if (power !== undefined && !isList) profileMeasures.push({ index: i, power });
+    if (legacyProfile) return;
     if (LENGTH_MEASURE_TYPES.has(base)) {
       if (isList) listIdx.push(i);
       else scalarIdx.push(i);
@@ -174,8 +193,8 @@ function buildEntityLengthPlan(typeUpper: string): EntityLengthPlan {
   });
 
   const empty = listIdx.length === 0 && scalarIdx.length === 0
-    && areaIdx.length === 0 && volumeIdx.length === 0 && unitGuardIdx.length === 0;
-  return empty ? EMPTY_PLAN : { listIdx, scalarIdx, areaIdx, volumeIdx, unitGuardIdx, empty };
+    && areaIdx.length === 0 && volumeIdx.length === 0 && profileMeasures.length === 0 && unitGuardIdx.length === 0;
+  return empty ? EMPTY_PLAN : { listIdx, scalarIdx, areaIdx, volumeIdx, profileMeasures, unitGuardIdx, empty };
 }
 
 /**
@@ -218,8 +237,8 @@ export function scaleNumberLiterals(text: string, factor: number): string {
 /**
  * Scale the typed measures embedded in property/quantity values. Matches
  * `IFC[POSITIVE|NONNEGATIVE]LENGTHMEASURE(x)` (× lengthFactor), `IFCAREAMEASURE(x)`
- * (× areaFactor) and `IFCVOLUMEMEASURE(x)` (× volumeFactor), but never inside a
- * quoted string ({@link mapOutsideStepStrings} hands it only the text between them).
+ * (× areaFactor), `IFCVOLUMEMEASURE(x)` (× volumeFactor) and derived profile
+ * measures outside STEP strings ({@link mapOutsideStepStrings}).
  *
  * A single non-word delimiter (`(`, `,`, whitespace, or start-of-input) is
  * captured before the keyword and restored, so a keyword can never be matched as
@@ -235,7 +254,7 @@ export function scaleNumberLiterals(text: string, factor: number): string {
  * source unit.
  */
 const TYPED_MEASURE_RE = new RegExp(
-  `(^|[^A-Za-z0-9_])(IFC(?:POSITIVE|NONNEGATIVE)?LENGTHMEASURE|IFCAREAMEASURE|IFCVOLUMEMEASURE)${STEP_TRIVIA}\\(([^)]*)\\)`,
+  `(^|[^A-Za-z0-9_])(IFC(?:POSITIVE|NONNEGATIVE)?LENGTHMEASURE|IFCAREAMEASURE|IFCVOLUMEMEASURE|${[...PROFILE_MEASURE_POWERS.keys()].join('|')})${STEP_TRIVIA}\\(([^)]*)\\)`,
   'gi',
 );
 
@@ -251,7 +270,7 @@ export function scaleTypedMeasures(
       const kw = keyword.toUpperCase();
       const factor = kw === 'IFCAREAMEASURE' ? areaFactor
         : kw === 'IFCVOLUMEMEASURE' ? volumeFactor
-        : lengthFactor; // any *LENGTHMEASURE
+        : lengthFactor ** (PROFILE_MEASURE_POWERS.get(kw) ?? 1);
       return `${delim}${keyword}(${scaleMeasureNumber(num, factor)})`;
     },
   ));
@@ -277,7 +296,7 @@ function scaleScalarArg(arg: string, factor: number): string {
 }
 
 /**
- * Rescale every length/area/volume-valued datum of one STEP entity line.
+ * Rescale the dimensional data of one STEP entity line.
  *
  * `typeUpper` is the entity's uppercase STEP type (used for the schema-derived
  * plan). The line is expected to be a single `#id=TYPE(...);` statement. Returns
@@ -297,10 +316,10 @@ export function rescaleEntityLengths(
 
   const plan = getEntityLengthPlan(typeUpper);
   const hasStructural = plan.listIdx.length > 0 || plan.scalarIdx.length > 0
-    || plan.areaIdx.length > 0 || plan.volumeIdx.length > 0;
+    || plan.areaIdx.length > 0 || plan.volumeIdx.length > 0 || plan.profileMeasures.length > 0;
 
-  // A unit override only matters when there is a length, area or volume to scale.
-  if (!hasStructural && !line.includes('MEASURE')) return line;
+  // A unit override only matters when there is a dimensional value to scale.
+  if (!hasStructural && !/measure/i.test(line)) return line;
 
   const bounds = findOuterArgs(line);
   if (!bounds) return line;
@@ -319,14 +338,14 @@ export function rescaleEntityLengths(
     if (args === null) {
       throw new Error(
         `rescaleEntityLengths: cannot split "${typeUpper}"'s slots to rescale — refusing `
-        + `to silently leave its length/area/volume data in the wrong unit: ${line}`,
+        + `to silently leave its dimensional data in the wrong unit: ${line}`,
       );
     }
 
     // A live unit-override reference means the value is already in its own unit.
     skipValues = plan.unitGuardIdx.some((idx) => {
-      const u = args[idx]?.trim();
-      return u !== undefined && u !== '' && u !== '$' && u !== '*';
+      const u = withoutComments(args[idx] ?? '');
+      return u !== '' && u !== '$' && u !== '*';
     });
 
     if (!skipValues && hasStructural) {
@@ -342,13 +361,16 @@ export function rescaleEntityLengths(
       for (const idx of plan.volumeIdx) {
         if (args[idx] !== undefined) args[idx] = scaleScalarArg(args[idx], volumeFactor);
       }
+      for (const { index, power } of plan.profileMeasures) {
+        if (args[index] !== undefined) args[index] = scaleScalarArg(args[index], lengthFactor ** power);
+      }
       inner = args.join(',');
     }
   }
 
   // Typed measures live in property/quantity value slots (an IfcValue SELECT is
   // written with its explicit type). Skipped when the entity declares its own unit.
-  if (!skipValues && inner.includes('MEASURE')) {
+  if (!skipValues && /measure/i.test(inner)) {
     inner = scaleTypedMeasures(inner, lengthFactor, areaFactor, volumeFactor);
   }
 

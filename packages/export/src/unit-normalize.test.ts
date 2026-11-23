@@ -177,6 +177,22 @@ describe('getEntityLengthPlan (schema-derived)', () => {
 });
 
 describe('rescaleEntityLengths (full entity lines)', () => {
+  it('rescales bare IFC2X3 profile measures before schema conversion (#11329)', () => {
+    const line = "#5=IFCSTRUCTURALPROFILEPROPERTIES('Section',$,0.002,$,$,$,$,2.E12,$,$,$,4.E18,$,$,$,$,3.E9,$,$,$,$,$,$);";
+    expect(rescaleEntityLengths(line, 'IFCSTRUCTURALPROFILEPROPERTIES', 0.001, 1, 1)).toBe(
+      "#5=IFCSTRUCTURALPROFILEPROPERTIES('Section',$,2.,$,$,$,$,2.,$,$,$,4.,$,$,$,$,3.,$,$,$,$,$,$);",
+    );
+  });
+
+  it('normalizes implicit profile units even with comments, and keeps explicit units (#11329)', () => {
+    const withUnit = "#5=IFCPROPERTYSINGLEVALUE('Warping',$,ifcwarpingconstantmeasure(4.E18),#7);";
+    expect(rescaleEntityLengths(withUnit, 'IFCPROPERTYSINGLEVALUE', 0.001, 1, 1)).toBe(withUnit);
+    const implicit = withUnit.replace('#7', '/* project unit */$');
+    expect(rescaleEntityLengths(implicit, 'IFCPROPERTYSINGLEVALUE', 0.001, 1, 1)).toBe(
+      implicit.replace('(4.E18)', '(4.)'),
+    );
+  });
+
   it('leaves a line whose argument list it cannot delimit exactly as it found it', () => {
     // `findOuterArgs` is where a malformed record stops: it tracks quotes and
     // depth to find the `)` that closes the record's own `(`, so a line that

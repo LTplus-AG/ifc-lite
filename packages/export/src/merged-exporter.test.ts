@@ -1188,7 +1188,7 @@ describe('MergedExporter', () => {
     // Secondary = millimetres. A column at x=3000 mm, a storey at 3000 mm, a
     // 2500 mm extrusion depth, a 300 mm circle radius, a length quantity in mm and
     // an AREA quantity already in m² (Revit) that must NOT be length-rescaled.
-    const mmModel = (): MockMergeModelInput => {
+    const mmModel = (extra: Array<[number, string, string]> = []): MockMergeModelInput => {
       const m = buildModel('mm', 'Secondary-mm', [
         [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('mmProj')}',$,'Secondary',$,$,$,$,(#3),#2);`],
         [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#8,#9,#10));'],
@@ -1207,6 +1207,7 @@ describe('MergedExporter', () => {
         [15, 'IFCQUANTITYLENGTH', "#15=IFCQUANTITYLENGTH('Height',$,$,3000.,$);"],
         [16, 'IFCQUANTITYAREA', "#16=IFCQUANTITYAREA('Area',$,$,12.5,$);"],
         [17, 'IFCRELAGGREGATES', `#17=IFCRELAGGREGATES('${guid('mmAgg')}',$,$,$,#1,(#4));`],
+        ...extra,
       ]);
       m.lengthUnitScale = 0.001;
       return m;
@@ -1247,6 +1248,21 @@ describe('MergedExporter', () => {
       // Direction is never rescaled.
       expect(content).toContain('IFCDIRECTION((0.,0.,1.))');
       expect(findDanglingRefs(content)).toEqual([]);
+    });
+
+    it.each([
+      ['IFCMASSPERLENGTHMEASURE', '0.002', 2],
+      ['IFCMOMENTOFINERTIAMEASURE', '2.E12', 2],
+      ['IFCSECTIONMODULUSMEASURE', '3.E9', 3],
+      ['IFCWARPINGCONSTANTMEASURE', '4.E18', 4],
+    ])('normalizes %s from millimetres to metres (#11329)', (measure, value, expected) => {
+      const result = new MergedExporter([metreModel(), mmModel([
+        [18, 'IFCPROPERTYSINGLEVALUE', `#18=IFCPROPERTYSINGLEVALUE('Section datum',$,${measure}(${value}),$);`],
+      ])]).export({ schema: 'IFC4', unitReconciliation: 'normalize' });
+      const literal = new RegExp(`=IFCPROPERTYSINGLEVALUE\\('Section datum',\\$,${measure}\\(([^)]+)\\),\\$\\);`)
+        .exec(decode(result.content))?.[1];
+      expect(result.stats.normalizedModelCount).toBe(1);
+      expect(Number(literal)).toBe(expected);
     });
 
     it('does NOT length-rescale area quantities already in square metres (Revit)', () => {

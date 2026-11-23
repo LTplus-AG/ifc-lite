@@ -139,6 +139,10 @@ describe('IFC function policy', () => {
     assert.ok(csv.startsWith(`"'=HYPERLINK(""x"")"`) || csv.startsWith(`'=HYPERLINK`), csv.split('\n')[0]);
     assert.equal(csv.trim().split('\n').length, 5);
     assert.equal(safeColor('#12ab34'), '#12ab34');
+    assert.equal(safeColor('#abc'), '#abc');
+    // Alpha forms are not read by every colour parser downstream, so they fall back (#11344).
+    assert.equal(safeColor('#0f08'), '#e5484d');
+    assert.equal(safeColor('#11223344'), '#e5484d');
     assert.equal(safeColor('url(javascript:alert(1))'), '#e5484d');
   });
 });

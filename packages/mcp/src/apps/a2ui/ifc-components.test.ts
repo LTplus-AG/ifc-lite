@@ -14,8 +14,15 @@ beforeAll(async () => {
 });
 
 it('folds chart groups like the viewer: the largest maxGroups - 1, then Other (#11344)', () => {
-  const data = [{ label: 'a', value: 1 }, { label: 'b', value: 50 }, { label: 'c', value: 2 }, { label: 'd', value: 40 }];
-  const chart = ifcComponents.GroupChart({ data, maxGroups: 3 }, () => {});
-  const labels = [...chart.querySelectorAll('li')].map((li) => li.textContent?.replace(/\s*\(.*$/, ''));
-  expect(labels).toEqual(['b', 'd', 'Other']);
+  const data = [
+    { label: 'a', value: 1, refs: ['m:1'] }, { label: 'b', value: 50, refs: ['m:2'] },
+    { label: 'c', value: 2, refs: ['m:3'] }, { label: 'd', value: 40, refs: ['m:4'] },
+  ];
+  const acts: { action: string; targets: unknown[] }[] = [];
+  const chart = ifcComponents.GroupChart({ data, maxGroups: 3 }, (action, targets) => { acts.push({ action, targets }); });
+  const labels = [...chart.querySelectorAll('li')].map((li) => li.textContent);
+  expect(labels).toEqual(['b (50)', 'd (40)', 'Other (3)']);
+  // Other carries the folded groups' total and their refs, so picking it selects a and c.
+  (chart.querySelectorAll('button')[2] as unknown as { click(): void }).click();
+  expect(acts).toEqual([{ action: 'select', targets: ['m:1', 'm:3'] }]);
 });

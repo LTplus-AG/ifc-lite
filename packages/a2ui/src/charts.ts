@@ -23,7 +23,8 @@ export function foldGroups<G extends { value: number }>(groups: readonly G[], ma
   return [...head, other(rest)];
 }
 
-const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+// #rgb and #rrggbb only: the forms every colour parser downstream (viewer hexToRgba, MCP viewer_colorize) reads.
+const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
 /** A hex colour from untrusted surface data, or `fallback` for anything else (never arbitrary CSS). */
 export function safeHexColor(value: unknown, fallback: string): string {

@@ -394,10 +394,11 @@ function ViewportContainerLive() {
         // that their batch died rather than watching nothing happen.
         try {
           const store = useViewerStore.getState();
+          // Refuse on every branch: with models loaded each add would be refused one by one.
+          if (refuseWhileWorkflowBusy(t)) return;
           const anyLoaded =
             store.models.size > 0 || (store.geometryResult?.meshes?.length ?? 0) > 0;
           if (!anyLoaded) {
-            if (refuseWhileWorkflowBusy(t)) return;
             resetViewerState();
             clearAllModels();
           }

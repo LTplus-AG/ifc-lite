@@ -87,6 +87,14 @@ describe('A2UI presentation through MCP', () => {
     expect(rows[0].Name).toBeTruthy();
   });
 
+  it('treats a query without types as every product, like the viewer (#11344)', async () => {
+    const result = surface(await call('present_query', {
+      query: { modelId, where: [{ path: 'Name', op: 'exists' }] }, columns: [{ path: 'Name' }],
+    }));
+    const walls = await call('count_entities', { model_id: modelId, type: 'IfcWall' });
+    expect((result.dataModel.s0 as { v0: number }).v0).toBeGreaterThan(walls.structuredContent?.total as number);
+  });
+
   it('wraps IDS failure counts and model-qualified rows from the validator', async () => {
     const args = { model_id: modelId, ids_xml: `<ids xmlns="http://standards.buildingsmart.org/IDS">
       <info><title>Wall names</title></info>

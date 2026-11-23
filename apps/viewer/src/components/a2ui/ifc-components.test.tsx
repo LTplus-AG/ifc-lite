@@ -140,7 +140,7 @@ describe('IFC catalog components', () => {
     const { host } = await seedA2uiModels();
     const reply = block('root = GroupChart("type", {types: ["IfcWall", "IfcSlab"]}, "bar", "sum", "Qto_WallBaseQuantities.NetVolume")');
     const { container } = await mountReply(host, reply);
-    await waitFor(() => text(container).includes('left out'), 'note for the slab group');
+    await waitFor(() => text(container).includes('Left out, no number'), 'note for the slab group');
     const groups = [...container.querySelectorAll('[data-a2ui-group]')].map((g) => g.getAttribute('data-a2ui-group'));
     assert.ok(groups.length > 0 && !groups.some((g) => /slab/i.test(g ?? '')), `slabs excluded, got ${groups.join(',')}`);
   });

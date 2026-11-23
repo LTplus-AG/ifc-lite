@@ -66,8 +66,14 @@ export const coordinationLayerWorkflowOperations = [
       if (totalChangeCount(collectChangedModels(useViewerStore.getState())) > 0) throw unavailable('Loading a ref replaces the federation; export or discard the unexported edits first.');
     };
     // The loader awaits file reads before its reset, so the check runs again right before the reset.
-    return c.commitAsync(async () => { checkAdmission(); const files = refStackFiles(store, i.ref_name); await host.loadFederatedIfcx(files.map((file, index) => new File([JSON.stringify(file)], `layer-${index}.ifcx`, { type: 'application/json' })), checkAdmission); const loaded = useViewerStore.getState().layerStack;
-      if (files.some(file => !loaded.some(entry => entry.file.header.id === file.header.id))) throw internal('Native ref reconstruction did not load every requested layer.'); return { loaded: files.length, ref_name: i.ref_name }; });
+    return c.commitAsync(async () => {
+      checkAdmission();
+      const files = refStackFiles(store, i.ref_name);
+      await host.loadFederatedIfcx(files.map((file, index) => new File([JSON.stringify(file)], `layer-${index}.ifcx`, { type: 'application/json' })), checkAdmission);
+      const loaded = useViewerStore.getState().layerStack;
+      if (files.some(file => !loaded.some(entry => entry.file.header.id === file.header.id))) throw internal('Native ref reconstruction did not load every requested layer.');
+      return { loaded: files.length, ref_name: i.ref_name };
+    });
   }),
   coordination('layers.registry', 'Inspect the configured native IFCX registry refs, layers and review list using its existing account token, without disclosing credentials or publishing a candidate.', ['read', 'network'], emptySchema, async (_, c) => {
     const { LayerRegistryClient } = await import('@/lib/layers/registry-client'); const client = LayerRegistryClient.fromCollabConfig(useViewerStore.getState().collabSelfToken ?? undefined); if (!client) throw unavailable('Native layer registry is not configured.');

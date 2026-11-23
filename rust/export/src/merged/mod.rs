@@ -226,7 +226,8 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     let mut minter = GuidMinter::new();
     let mut offset: u32 = 0;
     let mut slot_fill = Ifc2x3SlotFill::new(None);
-    let mut checks = ConversionChecks { merged: true, ..ConversionChecks::new() };
+    let mut checks = ConversionChecks::new();
+    checks.merged = true;
     let mut parents = single_parents::ParentClaims::for_schema(&schema); // one rel per single-valued inverse (#5727, #5802, #5774, #5923)
 
     for (i, model) in models.iter().enumerate() {

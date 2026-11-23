@@ -9609,7 +9609,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "georeference.realign",
     "version": 1,
     "owner": "properties",
-    "description": "Re-align by draining every retained source through the native federation addModel wrapper and canonical loader. Refuses missing sources before clearing; after admission it completes all reload attempts and reports partial failures.",
+    "description": "Re-align by draining every retained source through the native federation addModel wrapper and canonical loader. Refuses missing sources or a pending model load before clearing; it reports partial failures and stops if a new primary replaces the federation.",
     "needs": "viewer",
     "effects": [
       "configuration",
@@ -12933,7 +12933,7 @@ export const operationContracts: readonly OperationContract[] = [
     "id": "flow.cancel",
     "version": 1,
     "owner": "flow",
-    "description": "Request cancellation of the active native workflow. Returns a cancellation request, never a fabricated terminal result.",
+    "description": "Request cancellation of the active native flow run. A Re-align holding the workflow lease is not cancelled; cancellation_requested is false then, so wait for it. Returns a cancellation request, never a fabricated terminal result.",
     "needs": "viewer",
     "effects": [
       "configuration"

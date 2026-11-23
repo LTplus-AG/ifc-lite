@@ -7,6 +7,7 @@
 
 use crate::program::openings::execute::Execution;
 use crate::router::voids::flush::flush_band_at;
+use crate::router::voids::geom::parity::axis_ray_crosses_mesh;
 use crate::router::voids::geom::{
     infer_box_penetration_dir, is_axis_aligned_direction, mesh_point, point_inside_mesh_agreed,
 };
@@ -302,7 +303,20 @@ fn cap_touches_exterior(host: &Mesh, min: Point3<f64>, max: Point3<f64>, depth: 
             point[depth] = cap - step;
             point_inside_mesh_agreed(host, point) == Some(false)
         };
-        touches(centre) && (0..3).filter(|&axis| axis != depth).any(|axis| {
+        if !touches(centre) {
+            return false;
+        }
+        // Even parity can hide material where closed shells overlap. An
+        // empty ray from inside the box, away from this cap, certifies that
+        // the probe is outside every closed shell regardless of winding.
+        let mut interior = centre;
+        interior[depth] = cap - step;
+        let mut away_from_cap = Vector3::zeros();
+        away_from_cap[depth] = -step.signum();
+        if axis_ray_crosses_mesh(host, interior, away_from_cap) {
+            return false;
+        }
+        (0..3).filter(|&axis| axis != depth).any(|axis| {
             [min[axis] - band, max[axis] + band].into_iter().any(|side| {
                 let mut beyond = centre;
                 beyond[axis] = side;

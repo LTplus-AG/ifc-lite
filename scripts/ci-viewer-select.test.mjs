@@ -505,7 +505,7 @@ test('CLI --run, CI_SHARD_RETRY=on: a file that fails again is a failure', () =>
   assert.equal(r.status, 0);
   assert.equal(r.result.passed, false);
   assert.equal(r.result.retry.passed, false);
-  assert.match(r.result.retry.reason, /^src\/a\.test\.ts: /);
+  assert.equal(r.result.retry.reason, 'src/a.test.ts: the retry exited 1');
 });
 
 test('CLI --run, CI_SHARD_RETRY=on: FAIL CLOSED on a first attempt with no report, and in shadow', () => {

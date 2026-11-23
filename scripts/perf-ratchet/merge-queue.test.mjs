@@ -150,7 +150,14 @@ test('a labelled PR waits outside the queue while its selected viewer tests fail
 test('the selection status gates queue ENTRY only: no queue re-checks it while a PR is queued', () => {
   // queue_conditions are re-evaluated while queued; a status there would
   // dequeue a running check. merge_conditions are the queue run's own checks.
-  for (const q of cfg.queue_rules) {
-    for (const c of [...q.queue_conditions, ...q.merge_conditions]) assert.ok(!String(c).includes(SELECTION), `${q.name}: ${c}`);
+  const queueRun = [...READY, 'Build + WASM + Rust + Node', 'Viewer tests (shard 0)', 'Rust tests (feature builds)'];
+  for (const files of [...QUEUED_FILES, ['Cargo.toml']]) {
+    const head = files[0] === 'Cargo.toml' ? RELEASE : 'feature/x';
+    const clean = pr(files, { head, statuses: queueRun });
+    for (const status of [{ failed: [SELECTION] }, { pending: [SELECTION] }]) {
+      const held = pr(files, { head, statuses: queueRun, ...status });
+      assert.equal(queueFor(held)?.name, queueFor(clean).name, `${JSON.stringify(files)} stays routed`);
+      for (const q of cfg.queue_rules) assert.equal(all(q.merge_conditions, held), all(q.merge_conditions, clean), q.name);
+    }
   }
 });

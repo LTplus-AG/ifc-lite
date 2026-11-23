@@ -24,7 +24,7 @@ import { elementPairExclusion } from '@/lib/clash/exclusions';
 import { readContentRows } from '@/lib/storage/content-database';
 import type { ContentKind } from '@/lib/storage/content-kinds';
 import { useViewerStore } from '@/store';
-import { cleanup, click, render, type } from '@/test/render';
+import { cleanup, click, render, settle as settleEdit, type } from '@/test/render';
 import { seedCoincidentWalls } from '@/test/clash-run-fixture';
 import { deleteSavedReport, detectCoincidentWalls, mountClashPanel, openSavedReports, publishCappedRun, saveCurrentResultAs, savedClashReports } from '@/test/clash-report-fixture';
 import { ChartsPanel } from './ChartsPanel';
@@ -311,6 +311,7 @@ describe('Saved clash reports as a chart source (#6947)', () => {
     const complete = await saveCurrentResultAs('Complete run');
     assert.deepEqual([complete.completeness.truncated, complete.completeness.stale], [undefined, false]);
     act(() => useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 }));
+    await settleEdit();
     assert.match(document.body.querySelector('[data-clash-report-current]')?.textContent ?? '', /It will be saved as: Models changed before saving\./);
     const stale = await saveCurrentResultAs('Edited before saving');
     assert.equal(stale.completeness.stale, true);

@@ -6,7 +6,8 @@
  * The one place a page applies the host's configuration: the viewer's
  * `mountViewer` and the embed entry both call it, once, before the first
  * render. With no configuration every feature is on. The viewer then starts
- * its locale with the configuration's `locale`; the embed has no translations.
+ * its locale with the configuration's `locale`, and applies `server` and `open`
+ * (`applyProcessingConfig` in lib/processed-model); the embed has neither.
  *
  * Analytics start here and nowhere else, after the feature set is fixed, so
  * a host that switches them off never contacts the analytics service.

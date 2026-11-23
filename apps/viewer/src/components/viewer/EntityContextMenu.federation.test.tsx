@@ -28,6 +28,7 @@ import type { FederatedModel } from '@/store/types.js';
 import { EntityContextMenu } from './EntityContextMenu.js';
 import { ElementsTab } from './ribbon/tabs/ElementsTab.js';
 import { TooltipProvider } from '@/components/ui/tooltip.js';
+import { settle } from '@/test/render.js';
 import { surfaceCommand, SURFACE_COMMANDS } from './surface-commands.js';
 import { DUPLICATE_CONTEXT_DIRECTIONS } from './surface-commands-context.js';
 import { resolveEnglish } from '@/i18n/registry.js';
@@ -193,9 +194,18 @@ describe('EntityContextMenu — federation-space selection', () => {
       assert.equal(menuItem('Delete entity').disabled, true);
       act(() => { useViewerStore.setState({ editEnabled: true }); });
       assert.equal(menuItem('Duplicate').disabled, false);
-      act(() => { menuItem('Duplicate').click(); });
+      const { screenX, screenY } = useViewerStore.getState().contextMenu;
+      // #11143: close and reopen at the same anchor in one settled publication.
+      act(() => {
+        menuItem('Duplicate').click();
+        useViewerStore.getState().openContextMenu(selectedId, screenX, screenY);
+      });
       assert.ok(lastUndoBatch('m1').some((m) => m.type === 'CREATE_ENTITY'));
       if (twoModels) assert.equal(useViewerStore.getState().undoStacks.has('m0'), false);
+
+      await settle();
+      assert.ok(document.querySelector('[role="menu"] [role="menuitem"][aria-haspopup="menu"]'),
+        'the directional Duplicate trigger returns when the menu is reopened at the same point');
 
       act(() => { useViewerStore.setState({ selectedEntityId: selectedId, selectedEntityIds: new Set([selectedId]) }); });
       openRibbonEntityActions(container, selectedId);

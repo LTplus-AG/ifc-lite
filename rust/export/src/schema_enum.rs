@@ -19,6 +19,7 @@ use crate::generated::enum_reconciliation::{
     EnumEntityRow, EnumOutcome, IFC2X3_ENUM_SLOTS, IFC4X3_ENUM_SLOTS, IFC4_ENUM_SLOTS,
 };
 use crate::schema_ifc4_slots::Ifc4SlotCheck;
+use crate::schema_userdefined_label::is_unset;
 use crate::step_slot::split_top_level_args;
 use std::collections::BTreeMap;
 
@@ -87,7 +88,7 @@ impl EnumReconciliation {
             let total: usize = self.unlabelled.values().sum();
             let names: Vec<&str> = self.unlabelled.keys().map(String::as_str).collect();
             format!(
-                "{total} record(s) say PredefinedType .USERDEFINED. without the label their rule needs; none is invented: {} (#10780).",
+                "{total} record(s) say .USERDEFINED. without the label their rule needs; none is invented: {} (#10780).",
                 names.join(", ")
             )
         });
@@ -145,7 +146,7 @@ impl EnumReconciliation {
                 EnumOutcome::UserDefined(label) => {
                     values[index] = ".USERDEFINED.".to_string();
                     let label = &mut values[usize::from(label)];
-                    if label.trim() == "$" {
+                    if is_unset(label) {
                         *label = crate::step_text::quoted(&member);
                     } else {
                         self.record(Loss::LabelOccupied, where_);
@@ -185,6 +186,10 @@ pub(crate) struct ConversionChecks {
     pub(crate) structural: crate::schema_structural_diagnostics::StructuralDiagnostics,
     pub(crate) ifc4_slots: Ifc4SlotCheck,
     pub(crate) enums: EnumReconciliation,
+    /// The IfcDocumentInformation <-> IfcDocumentReference link (#10846).
+    pub(crate) documents: crate::schema_document_links::DocumentLinks,
+    /// Values a target slot's type cannot hold (#10847).
+    pub(crate) forms: crate::schema_value_forms::ValueForms,
     /// `convert_record`'s per-type decisions, resolved once per distinct type.
     pub(crate) plans: crate::schema_plan::PlanCache,
     /// Non-`$` source values the converted record has no slot for (#7683):
@@ -207,6 +212,7 @@ impl ConversionChecks {
         if !(unchanged && opts.included.is_none() && opts.attribute_mutations.is_empty() && opts.copy_on_write.is_empty()) {
             return checks;
         }
+        checks.documents = crate::schema_document_links::DocumentLinks::scan(content, from, to, kept);
         match (from, to) {
             ("IFC2X3", "IFC4") => {
                 checks.structural.varying = crate::schema_structural_varying::StructuralVarying::scan_ifc2x3(content, kept);
@@ -257,6 +263,8 @@ impl ConversionChecks {
     pub(crate) fn warnings(&self) -> Vec<String> {
         let mut out = self.ifc4_slots.warnings();
         out.extend(self.enums.warnings());
+        out.extend(self.documents.warnings());
+        out.extend(self.forms.warnings());
         out.extend(self.structural.warnings());
         out
     }

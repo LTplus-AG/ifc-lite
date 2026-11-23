@@ -122,13 +122,16 @@ export class BackingDatabase {
    */
   async commit(stores: readonly string[], write: (tx: IDBTransaction) => void): Promise<void> {
     const done = await this.lifecycle.withConnection(() => this.connect(), (db) => {
+      // Only opening the transaction may meet a closed connection (and be retried on a reopened one).
       const tx = db.transaction([...stores], 'readwrite');
       try {
         write(tx);
       } catch (error) {
-        // Nothing committed: abort so the failed batch has no partial effect.
+        // Nothing committed: abort so the failed batch has no partial effect. Rejected, never thrown:
+        // a callback error (an InvalidStateError from a pending request's result, say) is not a closed
+        // connection, and a synchronous throw here would make withConnection run `write` a second time.
         tx.abort();
-        throw error;
+        return Promise.reject(error);
       }
       return new Promise<void>((resolve, reject) => {
         tx.oncomplete = () => resolve();
@@ -142,9 +145,11 @@ export class BackingDatabase {
   async read<T>(stores: readonly string[], read: (tx: IDBTransaction) => () => T): Promise<T> {
     const done = await this.lifecycle.withConnection(() => this.connect(), (db) => {
       const tx = db.transaction([...stores], 'readonly');
-      const collect = read(tx);
+      let collect: () => T;
+      try { collect = read(tx); } catch (error) { tx.abort(); return Promise.reject(error); }
       return new Promise<T>((resolve, reject) => {
-        tx.oncomplete = () => resolve(collect());
+        // A collector that throws rejects the read: the transaction is already complete, so nothing else would settle it.
+        tx.oncomplete = () => { try { resolve(collect()); } catch (error) { reject(error); } };
         tx.onabort = () => reject(abortError(tx));
       });
     });

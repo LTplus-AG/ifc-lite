@@ -6,7 +6,7 @@ import { registryProxy } from './registry-proxy.ts';
 import { viewerAliases } from './vite-aliases';
 import { collectPackageVersions } from './vite-package-versions';
 import { bundleAnalysis } from './vite-bundle-analysis';
-import { appearanceWorkflowsChunkGroup, drawingLeavesChunkGroup, drawingSharedChunkGroup, legacyManualChunk, preloadHelperChunkGroup, quickjsRuntimeChunkGroup, tslibChunkGroup } from './vite-chunks';
+import { appearanceWorkflowsChunkGroup, drawingLeavesChunkGroup, drawingSharedChunkGroup, legacyManualChunk, mergedExportChunkGroup, preloadHelperChunkGroup, processedModelRefChunkGroup, quickjsRuntimeChunkGroup, stepExportChunkGroup, tslibChunkGroup, wasmPrewarmChunkGroup } from './vite-chunks';
 import { defineConfig, loadEnv } from 'vite';
 import { retainedEngine } from './vite-plugins/retained-engine';
 import react from '@vitejs/plugin-react';
@@ -346,7 +346,11 @@ export default defineConfig(({ mode }) => {
             },
             tslibChunkGroup,
             quickjsRuntimeChunkGroup,
+            mergedExportChunkGroup,
+            stepExportChunkGroup,
             preloadHelperChunkGroup,
+            processedModelRefChunkGroup,
+            wasmPrewarmChunkGroup,
             drawingSharedChunkGroup,
             drawingLeavesChunkGroup,
             appearanceWorkflowsChunkGroup,

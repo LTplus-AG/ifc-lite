@@ -18,7 +18,7 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { PropertyValueType } from '@ifc-lite/data';
-import { advance, cleanup, click, press, render, type } from '@/test/render.js';
+import { advance, cleanup, click, press, render, settle, type } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
@@ -72,6 +72,7 @@ beforeEach(async () => {
     selectedEntityId: toGlobalIdFromModels(s().models, MODEL_ID, wall),
     propertiesActiveTab: 'properties',
   });
+  await settle();
 });
 
 afterEach(() => {
@@ -104,6 +105,7 @@ describe('a type made this session shows its property sets on its occurrences (#
     assert.match(container.textContent ?? '', /2 occurrences may reflect the update/, 'the scope counts both walls of the type');
     click(buttonByText('Apply To Type'));
     await advance(0);
+    await settle();
     assert.equal(fireRating(typeId), 'REI60');
     assert.equal(fireRating(wall), undefined, 'the wall holds no copy');
     assert.deepEqual(panelRows(container), [`${typeId}:${SET}:FireRating`]);
@@ -115,6 +117,7 @@ describe('a type made this session shows its property sets on its occurrences (#
     await editInherited(container, 'REI90');
     click(buttonByText('Override On This Element'));
     await advance(0);
+    await settle();
     assert.equal(fireRating(wall), 'REI90', 'the wall carries its own value');
     assert.equal(fireRating(typeId), 'REI30', 'the type keeps its value');
     assert.equal(fireRating(other), undefined, 'the other wall of the type still only inherits');
@@ -122,6 +125,7 @@ describe('a type made this session shows its property sets on its occurrences (#
 
     replayWorkspaceHistory(s(), 'undo');
     await advance(0);
+    await settle();
     assert.equal(fireRating(wall), undefined);
     assert.deepEqual(panelRows(container), [`${typeId}:${SET}:FireRating`]);
   });

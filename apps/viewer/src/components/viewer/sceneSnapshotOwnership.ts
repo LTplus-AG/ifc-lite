@@ -4,10 +4,11 @@
 
 /**
  * One-shot handoff from a finished-scene snapshot to Scene sync. Adopted batches
- * were captured from the geometry this effect queued: filtered by type
- * visibility, wrapped by federation. So the effect hydrates them with what it
- * receives, and a filter that changed since shows up as a mismatch, which falls
- * back to an ordinary upload.
+ * were captured from the geometry this effect queued: every mesh, wrapped by
+ * federation (type visibility hides ids on the GPU and no longer chooses
+ * pieces, #10264). So the effect hydrates them with what it receives, and
+ * geometry that changed since shows up as a mismatch, which falls back to an
+ * ordinary upload.
  */
 
 import { NOOP_LOAD_TRACE, perfCounters, type LoadTrace } from '@ifc-lite/load-trace';
@@ -15,6 +16,7 @@ import type { MutableRefObject } from 'react';
 import type { Renderer, SceneContents } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { Bounds } from './streamingBounds.js';
+import { noteSceneGeometry } from '@/lib/released-mesh-provenance';
 
 /** The framing a snapshot was finalized under. */
 export interface SnapshotCameraFit {
@@ -23,18 +25,19 @@ export interface SnapshotCameraFit {
   orbitAnchorBounds: Bounds | null;
 }
 
-let pending: { adoption: object; fit: SnapshotCameraFit | null; requeueShards: () => void; trace: LoadTrace } | null = null;
+let pending: { adoption: object; fit: SnapshotCameraFit | null; requeueShards: () => void; trace: LoadTrace; committedShards: () => void } | null = null;
 let finalFitBounds: Bounds | null = null;
 let modelArrivalPending = false;
 
 /**
- * What a snapshot's bytes depend on: the renderer's policy, and the type filter
- * that chose its pieces. A hit under another filter streams and replaces the
- * snapshot, so a changed setting costs one ordinary open.
+ * What a snapshot's bytes depend on: the renderer's policy. Its batches hold
+ * every mesh, so type visibility, the Model/Types switch and the structural
+ * mode apply after adoption like any toggle (#10264). The suffix keeps entries
+ * written before that, whose pieces a type filter chose, from matching: they
+ * stream once and are replaced.
  */
-export function sceneSnapshotKey(policy: string, typeViewMode: string, typeVisibility: object, structuralViewMode = 'both'): string {
-  const key = `${policy}~${typeViewMode}~${JSON.stringify(typeVisibility)}`;
-  return structuralViewMode === 'both' ? key : `${key}~${structuralViewMode}`;
+export function sceneSnapshotKey(policy: string): string {
+  return `${policy}~all-meshes`;
 }
 
 /** The box the camera last framed for a load. Not readable back: the camera keeps only the pose it produced. */
@@ -47,8 +50,9 @@ export function lastFinalFitBounds(): Bounds | null {
 }
 
 /** The next new geometry to sync belongs to this adoption; `requeueShards` hands its shards to the ordinary drain if refused. */
-export function setPendingSceneSnapshot(adoption: object, requeueShards: () => void = () => {}, fit: SnapshotCameraFit | null = null, trace: LoadTrace = NOOP_LOAD_TRACE): void {
-  pending = { adoption, fit, requeueShards, trace };
+export function setPendingSceneSnapshot(adoption: object, requeueShards: () => void = () => {}, fit: SnapshotCameraFit | null = null, trace: LoadTrace = NOOP_LOAD_TRACE,
+  committedShards: () => void = () => {}): void {
+  pending = { adoption, fit, requeueShards, trace, committedShards };
 }
 
 /** Frame the camera as the finished scene was, from a fresh pose. */
@@ -77,7 +81,11 @@ function settlePendingSnapshot(scene: SnapshotScene, geometry: readonly MeshData
   const settling = pending;
   pending = null;
   if (!settling) return false;
-  if (settling.trace.span('scene.snapshotHydrate', () => scene.hydrateSceneSnapshot(settling.adoption, geometry))) return true;
+  if (settling.trace.span('scene.snapshotHydrate', () => scene.hydrateSceneSnapshot(settling.adoption, geometry))) {
+    settling.committedShards(); // the directly uploaded shards are now the scene's own
+    noteSceneGeometry(geometry); // and this list is what it draws (the route step never sees a hydration)
+    return true;
+  }
   if (settling.trace.enabled) perfCounters.add('scene.snapshotHydrate.refused', 1);
   scene.removeInstancedTemplatesForModel(0);
   settling.requeueShards();

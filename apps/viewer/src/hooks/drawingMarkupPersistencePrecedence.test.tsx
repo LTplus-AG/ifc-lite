@@ -42,7 +42,7 @@ import { useDrawingMarkupRestoreOnLoad, __resetDrawingMarkupRestoreForTests } fr
 import { __setOverlayWorkerFactoryForTest } from '@/lib/overlay-parse/index.js';
 import { createEmptyFlatSymbolic } from '@/lib/overlay-parse/symbolic-flat.js';
 import { __resetSymbolicAnnotationsCacheForTests, getParseFor } from './symbolic-parse-cache.js';
-import { waitFor } from '@/test/render.js';
+import { settle, waitFor } from '@/test/render.js';
 import { loadDrawing2DEntry, saveDrawing2DEntry, clearAllDrawing2DEntries } from '@/store/slices/drawing2DSlice.persistence.js';
 import { getDefaultDrawing2DState } from '@/store/slices/drawing2DSlice.js';
 import { placementSourceIdentity } from '@/lib/model-placement/source-identity';
@@ -171,12 +171,13 @@ async function parseLanded(store: IfcDataStore): Promise<void> {
   await waitFor(() => getParseFor(store) !== undefined, 'the annotation parse lands in the cache');
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   clearAllDrawing2DEntries();
   __resetDrawingMarkupRestoreForTests();
   __resetSymbolicAnnotationsCacheForTests();
   useViewerStore.getState().resetViewerState();
   useViewerStore.getState().clearAllModels();
+  await settle();
 });
 
 afterEach(async () => {

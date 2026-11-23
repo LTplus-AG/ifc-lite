@@ -7538,6 +7538,24 @@
     }
    },
    "error": "Georeferencing was not exported: Cannot create IfcMapConversion from a partial edit"
+  },
+  {
+   "name": "georef-unplanned-map-conversion-without-target-crs",
+   "why": "#11259: even a complete unplanned position is refused if there is no projected CRS to reference.",
+   "source": "walls",
+   "log": {
+    "modelId": "model",
+    "mutations": [],
+    "exportedAt": 0,
+    "georefMutations": {
+     "mapConversion": {
+      "eastings": 2600000,
+      "northings": 1200000,
+      "orthogonalHeight": 500
+     }
+    }
+   },
+   "error": "Georeferencing was not exported: Cannot create IfcMapConversion: no IfcProjectedCRS was requested and none exists in the file to reference as TargetCRS. Nothing was written."
   }
  ]
 }

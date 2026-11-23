@@ -797,6 +797,12 @@ const result = await exporter.exportAsync({
 await saveFile('merged.ifc', result.content);
 ```
 
+Use Rust’s `ifc_lite_export::try_export_merged` to handle merge failures with
+`std::io::Result<String>`. If an IFC2X3 downgrade leaves an
+`IfcPropertyBoundedValue` without either bound, the error identifies the record
+and `WR22`. The string-returning `export_merged` logs the refusal to stderr
+and returns an empty string.
+
 #### Mixed length units
 
 When the models use different length units, `unitReconciliation` controls the
@@ -984,6 +990,10 @@ USD-*flavored JSON*. The stage is Z-up (`upAxis = "Z"`, `metersPerUnit = 1`) and
 IFC spatial hierarchy as `Xform` prims, with `UsdGeomMesh` geometry, `UsdPreviewSurface`
 materials, and IFC metadata (`ifc:class`, `ifc:GlobalId`, property/quantity sets) as custom
 attributes. It opens in usdview, Blender, and Omniverse.
+
+USD materials preserve authored metallic and roughness for both baked meshes
+and mapped occurrences. Occurrences can share a geometry prototype while
+binding different materials, even when their colours match.
 
 ```bash
 # whole-model export (entity filters do not apply to USD)

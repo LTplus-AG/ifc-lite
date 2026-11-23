@@ -11,6 +11,7 @@
  * synthetic per parse and never persisted.
  */
 
+import { claimLayerAutomationReview, useLayerAutomationReview } from '@/lib/layers/automation-review';
 import { trackExportCompleted } from '@/lib/analytics';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Download, MessageSquarePlus, RefreshCw } from 'lucide-react';
@@ -21,19 +22,23 @@ import { useTranslation } from '@/i18n';
 import { useBCF } from '@/hooks/useBCF';
 import { useAsyncRun } from '@/hooks/useAsyncRun';
 import { captureViewpointForCreate } from '@/hooks/bcf/capture-viewpoint-for-create';
-import {
-  addTopicToProject,
-  addViewpointToTopic,
-  createBCFProject,
-  createBCFTopic,
-  writeBCF,
-  type BCFViewpoint,
-} from '@ifc-lite/bcf';
-import { bcfExportFilename, downloadBlob } from '@/lib/export/download';
+import { layerReviewArtifact } from '@/lib/layers/review-artifact';
+import type { BCFViewpoint } from '@ifc-lite/bcf';
+import { downloadBlob } from '@/lib/export/download';
 import type { LayerRegistryClient, RegistryReviewSummary, RegistryReviewTopic } from '@/lib/layers/registry-client';
 import { ensureCandidateOnRegistry } from '@/lib/layers/merge';
 import { getBrowserLayerStore } from '@/lib/layers/browser-store';
 import { pathTail } from '@/lib/layers/stack';
+
+// The active selection wins, with the set as a fallback for single-select.
+function selectedLayerPath(activeId: number | null, selectedIds: ReadonlySet<number>, pathToId: ReadonlyMap<string, number> | null): string | null {
+  const target = activeId ?? selectedIds.values().next().value;
+  if (target == null || !pathToId) return null;
+  for (const [path, id] of pathToId) {
+    if (id === target) return path;
+  }
+  return null;
+}
 
 function TopicRow({ topic, onSelect }: { topic: RegistryReviewTopic; onSelect: (entity: string) => void }) {
   const { t } = useTranslation();
@@ -86,26 +91,47 @@ function CandidateReview({
   const pathToId = useViewerStore((s) => s.layerStackPathToId);
 
   const [review, setReview] = useState<RegistryReviewSummary | null>(null);
+  const [stagedEntity, setStagedEntity] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [withViewpoint, setWithViewpoint] = useState(true);
+  const automationReview = useLayerAutomationReview(state => state.candidate);
+  const withdrawnBy = useRef<string | null>(null);
+  // Bumped whenever automation replaces or withdraws the staged draft, so a post in flight knows its draft is gone.
+  const withdrawals = useRef(0);
+  // Bumped on every user edit, so a finished post knows whether the form still holds what it sent.
+  const edits = useRef(0);
+  // Taking over a staged draft by editing it also retires the post that was capturing for it.
+  const editDraft = () => { edits.current += 1; if (stagedEntity !== null) withdrawals.current += 1; setStagedEntity(null); };
+  useEffect(() => {
+    // Only an action aimed at this candidate and ref changes what this section has staged.
+    if (!automationReview || automationReview.candidateId !== candidateId || automationReview.refName !== refName) return;
+    if (automationReview.action !== 'comment') {
+      // A newer action withdraws a staged comment the user has not edited (editing releases the binding),
+      // once per action, so re-running for a later staging change never repeats it.
+      if (withdrawnBy.current === automationReview.id) return;
+      withdrawnBy.current = automationReview.id;
+      if (stagedEntity !== null) { withdrawals.current += 1; setStagedEntity(null); setTitle(''); setDescription(''); }
+      return;
+    }
+    if (!claimLayerAutomationReview(automationReview, 'review')) return;
+    withdrawals.current += 1;
+    setStagedEntity(automationReview.entity);
+    setTitle(automationReview.title); setDescription(automationReview.description); setWithViewpoint(automationReview.withViewpoint);
+  }, [automationReview, candidateId, refName, stagedEntity]);
   // One registry action at a time (C-2): a same-tick double press is refused
   // before React re-renders the buttons disabled.
   const flight = useAsyncRun();
   const busy = flight.busy;
   const runAction = flight.start;
 
-  // The commented entity is the ACTIVE 3D selection (last-selected wins,
-  // matching the selection slice), translated back to its composition
-  // path (path == IFC GUID); fall back to the set for single-select.
-  const selectedPath = useMemo(() => {
-    const target = activeEntityId ?? [...(selectedEntityIds ?? [])][0];
-    if (target === undefined || target === null || !pathToId) return null;
-    for (const [path, id] of pathToId) {
-      if (id === target) return path;
-    }
-    return null;
-  }, [activeEntityId, selectedEntityIds, pathToId]);
+  const selectedPath = useMemo(() => selectedLayerPath(activeEntityId, selectedEntityIds, pathToId),
+    [activeEntityId, selectedEntityIds, pathToId]);
+
+  const commentEntity = stagedEntity ?? selectedPath;
+  // A staged comment can keep its entity after selection changes. A viewpoint
+  // still captures the live selection, so require that entity for capture.
+  const canPost = !!commentEntity && (!withViewpoint || commentEntity === selectedPath) && title.trim().length > 0;
 
   const refreshTicket = useRef(0);
   const refresh = useCallback(async () => {
@@ -146,7 +172,9 @@ function CandidateReview({
   }), [runAction, client, candidateId, refName, refresh]);
 
   const postComment = useCallback(async () => {
-    if (!review || !selectedPath || title.trim().length === 0) return;
+    if (!review || !canPost) return;
+    const staging = withdrawals.current;
+    const edited = edits.current;
     await runAction(async ({ isCurrent }) => {
       try {
         let viewpoint: Record<string, unknown> | undefined;
@@ -155,24 +183,29 @@ function CandidateReview({
           const captured = await captureViewpointForCreate(
             () => createViewpointFromState({ includeSnapshot: true, includeSelection: true, includeHidden: false }),
             isCurrent, t('bcf.panel.captureViewpointFailed'), 'layer review');
-          if (!captured.ok) return;
+          if (!captured.ok || !isCurrent()) return;
+          const live = useViewerStore.getState();
+          if (selectedLayerPath(live.selectedEntityId, live.selectedEntityIds, live.layerStackPathToId) !== commentEntity) {
+            toast.error(t('bcf.panel.captureViewpointFailed'));
+            return;
+          }
           const vp = captured.viewpoint;
           // snapshotData is a Uint8Array (not JSON); the data-URL `snapshot`
           // field carries the image across the wire instead.
           const { snapshotData: _drop, ...serializable } = vp as BCFViewpoint & { snapshotData?: Uint8Array };
           viewpoint = serializable as unknown as Record<string, unknown>;
         }
-        // The section unmounted while the viewpoint was captured: post nothing.
-        if (!isCurrent()) return;
+        // The section unmounted, or a newer action withdrew this staged comment, while the viewpoint was captured.
+        if (!isCurrent() || withdrawals.current !== staging) return;
         await client.postTopic(review.id, {
           title: title.trim(),
           ...(description.trim().length > 0 ? { description: description.trim() } : {}),
-          entity: selectedPath,
+          entity: commentEntity,
           ...(viewpoint !== undefined ? { viewpoint } : {}),
         });
         if (!isCurrent()) return;
-        setTitle('');
-        setDescription('');
+        // A newer staged draft or an edit made during the post still belongs in the form.
+        if (withdrawals.current === staging && edits.current === edited) { setStagedEntity(null); setTitle(''); setDescription(''); }
         await refresh();
         if (isCurrent()) toast.success(t('layersPanel.review.postedToast'));
       } catch (err) {
@@ -181,7 +214,7 @@ function CandidateReview({
         if (isCurrent()) toast.error(err instanceof Error ? err.message : String(err));
       }
     });
-  }, [runAction, review, selectedPath, title, description, withViewpoint, createViewpointFromState, client, refresh, t]);
+  }, [runAction, review, commentEntity, canPost, title, description, withViewpoint, createViewpointFromState, client, refresh, t]);
 
   const selectEntity = useCallback(
     (entity: string) => {
@@ -192,23 +225,10 @@ function CandidateReview({
   );
 
   const exportBcf = useCallback(async () => {
-    const topics = review?.topics;
-    if (!review || !topics?.length) return;
+    if (!review?.topics?.length) return;
     await runAction(async () => {
       try {
-        const project = createBCFProject({ name: `review-${review.id.slice(0, 8)}` });
-        for (const t of topics) {
-          const topic = createBCFTopic({
-            title: t.title,
-            ...(t.description !== undefined ? { description: t.description } : {}),
-            author: t.author ?? 'anonymous',
-          });
-          topic.guid = t.guid;
-          topic.creationDate = t.createdAt;
-          addTopicToProject(project, topic);
-          if (t.viewpoint) addViewpointToTopic(topic, t.viewpoint as unknown as BCFViewpoint);
-        }
-        downloadBlob(await writeBCF(project), bcfExportFilename(`review-${review.id.slice(0, 8)}`));
+        const artifact = await layerReviewArtifact(review); downloadBlob(artifact.data, artifact.filename);
         trackExportCompleted({ format: 'bcfzip', surface: 'layer_review' });
       } catch (err) {
         toast.error(err instanceof Error ? err.message : String(err));
@@ -257,10 +277,10 @@ function CandidateReview({
           <input
             type="text"
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e) => { editDraft(); setTitle(e.target.value); }}
             placeholder={
-              selectedPath
-                ? t('layersPanel.review.commentPlaceholderWithEntity', { tail: pathTail(selectedPath) })
+              commentEntity
+                ? t('layersPanel.review.commentPlaceholderWithEntity', { tail: pathTail(commentEntity) })
                 : t('layersPanel.review.commentPlaceholderNoEntity')
             }
             aria-label={t('layersPanel.review.commentTitleAriaLabel')}
@@ -268,7 +288,7 @@ function CandidateReview({
           />
           <textarea
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={(e) => { editDraft(); setDescription(e.target.value); }}
             rows={2}
             placeholder={t('layersPanel.review.descriptionPlaceholder')}
             aria-label={t('layersPanel.review.descriptionAriaLabel')}
@@ -286,7 +306,7 @@ function CandidateReview({
             <Button
               size="sm"
               className="ml-auto h-6 gap-1 px-2 text-2xs"
-              disabled={busy || !selectedPath || title.trim().length === 0}
+              disabled={busy || !canPost}
               onClick={() => void postComment()}
             >
               <MessageSquarePlus className="size-3" aria-hidden />

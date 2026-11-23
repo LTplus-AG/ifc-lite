@@ -30,7 +30,8 @@ import { describe, expect, it } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { IfcParser } from '@ifc-lite/parser';
-import type { MutablePropertyView } from '@ifc-lite/mutations';
+import type { MutablePropertyView, Mutation } from '@ifc-lite/mutations';
+import { createBimContext } from '@ifc-lite/sdk';
 import { loadIfcFile } from './loader.js';
 import { HeadlessBackend } from './headless-backend.js';
 
@@ -44,6 +45,27 @@ DATA;
 #12=IFCDOORSTANDARDCASE('0000000000000000000012',$,'Exact door',$,$,$,$,$,$,$,$,$,$);
 #13=IFCRELAGGREGATES('0000000000000000000013',$,$,$,#1,(#12));
 ENDSEC;END-ISO-10303-21;`;
+
+it('round-trips a CLI SDK positional Name clear through mutation history (#11104)', async () => {
+  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(EXACT_TYPE_IFC).buffer as ArrayBuffer);
+  const backend = new HeadlessBackend(store, 'wall.ifc');
+  const bim = createBimContext({ backend });
+  const wall = { modelId: 'default', expressId: 3 };
+  expect(backend.query.entityData(wall)?.name).toBe('Unrelated');
+
+  bim.store.setPositionalAttribute(wall, 2, undefined);
+  const history = backend.getMutationView()?.getMutations();
+  expect(history).toHaveLength(1);
+  const rows = JSON.parse(JSON.stringify(history)) as Mutation[];
+  expect(rows[0]).toMatchObject({ type: 'UPDATE_POSITIONAL_ATTRIBUTE', entityId: wall.expressId, attributeName: '@2', newValue: null });
+
+  const replay = new HeadlessBackend(store, 'wall.ifc');
+  const view = replay.tableAccess(wall.modelId).mutationView;
+  expect(view).not.toBeNull();
+  view!.applyMutations(rows);
+  expect(view!.getPositionalMutationsForEntity(wall.expressId)?.get(2)).toBeNull();
+  expect(replay.query.entityData(wall)?.name).toBe('');
+});
 
 describe('HeadlessBackend query.related() overlay visibility', () => {
   it('preserves parsed endpoint subtype names after an unrelated edit', async () => {

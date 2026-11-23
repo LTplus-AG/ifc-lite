@@ -22,7 +22,7 @@
 
 use crate::generated::ifc2x3_required_slots::{Ifc2x3RequiredSlot, IFC2X3_REQUIRED_SLOTS};
 use crate::schema_owner_history::OwnerHistoryFill;
-use crate::step_slot::split_top_level_args;
+use crate::step_slot::{slot_is, split_top_level_args};
 
 /// The IFC2X3 required-slot fills for one export: the owner history to reuse,
 /// and how many slots of each kind stayed `$`. The exporter settles the owner
@@ -105,7 +105,7 @@ impl Ifc2x3SlotFill {
         let mut changed = false;
         for &(index, _name, fill) in slots {
             let slot = &mut values[usize::from(index)];
-            if slot.trim() != "$" {
+            if !slot_is(slot, "$") {
                 continue;
             }
             if fill.is_empty() {

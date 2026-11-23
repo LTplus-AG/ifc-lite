@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { extractGeoreferencingOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { readSiteValues } from '@ifc-lite/sdk/georef-doctor';
-import { advance, cleanup, click, press, render, type } from '@/test/render.js';
+import { advance, cleanup, click, press, render, settle, type } from '@/test/render.js';
 import { georefCheckFixture as fixture, parseIfcBytes as parse, seedGeorefModel as seed } from '@/test/georef-check-fixture.js';
 import { useViewerStore } from '@/store';
 import { exportModelStep } from '@/lib/export/model-step-export';
@@ -92,6 +92,7 @@ it('applies the site location fix as one undo step, re-checks, and exports it (#
   const fixed = siteValues(store);
   assert.ok(Math.abs((fixed.RefLatitude ?? 0) - 46.9479) < 1e-3 && Math.abs((fixed.RefLongitude ?? 0) - 7.4386) < 1e-3, JSON.stringify(fixed));
 
+  await settle();
   assert.equal(await settled(host), 'No problems found', `the finding clears once the edit is checked; listed: ${codes(host).join(', ')}`);
 
   const result = await exportModelStep({
@@ -105,6 +106,7 @@ it('applies the site location fix as one undo step, re-checks, and exports it (#
   assert.deepEqual(saved, fixed, 'and reads back as written');
 
   act(() => useViewerStore.getState().undo('m'));
+  await settle();
   assert.equal(view()?.getPositionalMutationsForEntity(SITE)?.size ?? 0, 0, 'one undo removes all three site edits');
   const undone = siteValues(store);
   assert.ok(Math.abs((undone.RefLatitude ?? 0) - BOSTON.RefLatitude) < 1e-9 && Math.abs((undone.RefLongitude ?? 0) - BOSTON.RefLongitude) < 1e-9, JSON.stringify(undone));

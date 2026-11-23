@@ -357,8 +357,11 @@ palette. Reads, selection inspection and palette discovery are available initial
 - **Tab-supplied data.** Tool names, titles, descriptions and results come from
   the tab and from model data. The bridge's MCP `instructions` and
   `bridge_status` say they are data, not instructions. Results may carry text
-  content and `structuredContent` only; images, resources (any URI) and other
-  content types fail the call.
+  content, `structuredContent` and images; resources (any URI) and other
+  content types fail the call. An image must be PNG, JPEG or WebP, its decoded
+  bytes must start with that type's file signature, and its `data` must be
+  canonical base64 of at most 3 MiB, at most 2 images per result. Images pass
+  to the agent unchanged as MCP `image` content.
 - **Bounds.** Before pairing, a connection may send at most 1.25 MiB in
   total (a hello carries at most 1 MiB of tool descriptors); more, and it is
   dropped before anything is parsed. A paired tab's frames over 16 MiB close
@@ -452,18 +455,25 @@ protocol version `1`; `--bridge` carries them over a loopback WebSocket at
 
 | Direction | `type` | Fields |
 |-----------|--------|--------|
-| tab → bridge | `hello` (first frame) | `protocol`, `pairingCode`, `permission`, `tools[]` (`name`, `title?`, `description`, `inputSchema`, `readOnly`), `client?` |
-| bridge → tab | `welcome` | `protocol`, `sessionId`, `permission` (effective), `readOnlyCeiling`, `bridge` |
+| tab → bridge | `hello` (first frame) | `protocol`, `pairingCode`, `permission`, `tools[]` (`name`, `title?`, `description`, `inputSchema`, `readOnly`), `client?`, `resultAck?` |
+| bridge → tab | `welcome` | `protocol`, `sessionId`, `permission` (effective), `readOnlyCeiling`, `bridge`, `features?` ([`image-content`]), `resultAck?` |
 | bridge → tab | `call` | `sessionId`, `id`, `name`, `arguments` |
-| tab → bridge | `result` | `sessionId`, `id`, `result` (an MCP `CallToolResult` with text content only, passed through) |
+| tab → bridge | `result` | `sessionId`, `id`, `result` (an MCP `CallToolResult` with text, and image content when `welcome.features` lists `image-content`, passed through), `resultAck?` |
+| bridge → tab | `result-ack` | `sessionId`, `id`, `accepted` |
 | bridge → tab | `cancel` | `sessionId`, `id`, `reason` (`cancelled` or `timeout`) |
 | tab → bridge | `update` | `sessionId`, `permission?`, `tools?` |
 | bridge → tab | `error` | `code`, `message`; fatal codes end the channel; on the WebSocket transport, a close with code (4400 invalid, 4401 pairing failed, 4408 handshake timeout, 4409 replaced, 4426 protocol mismatch, 4503 shutting down) |
+
+Consumers can parse acknowledgements with `parseServerMessage(text, { resultAck: true })`. Both peers opt in to result acknowledgements by sending `resultAck: true` in `hello` and `welcome`. An intact result marked `resultAck: true` receives a `result-ack` after the bridge checks the result against its pending calls. A result that settled the pending call has `accepted: true`. Pending acknowledgements occupy call slots. If confirmation never arrives, the viewer closes the pairing. Older peers continue using protocol version 1 with the original delivery behavior.
 
 **The tab's obligation:** while `welcome.readOnlyCeiling` is true or the
 effective `permission` is `read-only`, the tab must refuse every call that
 would change the model, whatever label it sent, and answer it with an
 `isError` result.
+
+**Images are opt-in per bridge:** send `image` content only when
+`welcome.features` lists `image-content`. A bridge from before the feature
+refuses the whole result, and the protocol version did not change for it.
 
 **Timing and size the tab must tolerate:** send the `hello` within 3 s of
 the socket opening and keep it (with every frame before pairing) under

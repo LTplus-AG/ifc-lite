@@ -9,7 +9,7 @@
  */
 
 import { isFeatureEnabled } from '@/lib/features';
-import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
+import React, { Suspense, useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { useViewerStore, isIfcxDataStore, type FederatedModel } from '@/store';
 import { useIfcLoader } from '@/hooks/useIfcLoader';
 import { useIfcFederation } from '@/hooks/useIfcFederation';
@@ -21,17 +21,30 @@ import {
   readFreshFile,
 } from '@/services/file-system-access';
 import { toast } from '@/components/ui/toast';
+import { lazyChunk } from '@/lib/lazy-chunk';
+import { useCollabShareReview } from '@/lib/collab/share-review';
 import { useTranslation } from '@/i18n';
 import { isCollabEnabled } from '@/lib/collab/config';
 import { ingestDxfFiles, splitDxfFiles } from '@/hooks/ingest/dxfIngest';
 import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { usePreparedModelFileRoute } from '@/hooks/ingest/usePreparedModelFileRoute';
 import { useFileHostRegistration } from './useFileHostRegistration';
-import { ShareDialog } from '../ShareDialog';
+import { isIfcxModelFile, useAgentModelLoader } from './useAgentModelLoader';
 import { FederationSetupControls } from '../FederationSetupControls';
 
 import { FILE_ACCEPT, isModelSidecarFile, isSupportedModelFile } from '@/services/supported-model-files';
 import { captureModelTags, restoreModelTags } from '@/lib/model-tags/carry-over';
+
+// Share the import between the lazy UI and the operation that needs its consent surface.
+let shareChunkFailed = false;
+const importShareDialog = () => import('../ShareDialog').then(module => ({ default: module.ShareDialog }), (error: unknown) => {
+  shareChunkFailed = true;
+  useCollabShareReview.setState({ dialogOpen: false, candidate: null });
+  throw error;
+});
+let shareDialogLoad: ReturnType<typeof importShareDialog> | undefined;
+const loadShareDialog = () => shareDialogLoad ??= importShareDialog();
+const ShareDialog = lazyChunk(loadShareDialog);
 
 // FILE_ACCEPT offers `.dxf` while `isSupportedModelFile` rejects it: DXF
 // files are 2D reference underlays, not models, and split off to the DXF
@@ -39,11 +52,6 @@ import { captureModelTags, restoreModelTags } from '@/lib/model-tags/carry-over'
 
 /** Re-exported so the toolbar's existing call sites keep their import path. */
 export { isSupportedModelFile };
-
-/** Case-insensitive IFCX check (filenames are accepted case-insensitively). */
-function isIfcxModelFile(f: File): boolean {
-  return f.name.toLowerCase().endsWith('.ifcx');
-}
 
 export interface FileCommands {
   /**
@@ -86,14 +94,22 @@ export function useFileCommands(): FileCommands {
   // `ifc-lite:open-share-dialog` event (RoomPanel's "Create a room") must
   // always find a live listener.
   const collabEnabled = useMemo(() => isCollabEnabled(), []);
-  const [shareDialogOpen, setShareDialogOpen] = useState(false);
-  const openShareDialog = useCallback(() => setShareDialogOpen(true), []);
+  // Defer the first mount until a user or agent requests sharing. Keep the
+  // dialog mounted after that so its close effects and room state still run.
+  const [shareDialogOpen, setShareDialogOpen] = useState<boolean | null>(null);
+  // Mark Share open at the request, before the lazy dialog mounts, so collab.prepareRoom refuses meanwhile.
+  // Set at the request itself, so an unmount before the next render still clears what this instance opened.
+  const shareRequestedRef = useRef(false); if (shareDialogOpen === false) shareRequestedRef.current = false;
+  const requestShareDialog = useCallback(() => { shareRequestedRef.current = true; if (!shareChunkFailed) useCollabShareReview.setState({ dialogOpen: true }); setShareDialogOpen(true); }, []);
+  const openShareDialog = requestShareDialog;
+  // This instance's dialog mounts under its component: a request it made must not stay open after it unmounts.
+  useEffect(() => () => { if (shareRequestedRef.current) useCollabShareReview.setState({ dialogOpen: false }); }, []);
   useEffect(() => {
     if (!collabEnabled) return;
-    const shareHandler = () => setShareDialogOpen(true);
+    const shareHandler = requestShareDialog;
     window.addEventListener('ifc-lite:open-share-dialog', shareHandler);
     return () => window.removeEventListener('ifc-lite:open-share-dialog', shareHandler);
-  }, [collabEnabled]);
+  }, [collabEnabled, requestShareDialog]);
 
   // Listen for programmatic file-load requests (from command palette recent files)
   useEffect(() => {
@@ -136,6 +152,8 @@ export function useFileCommands(): FileCommands {
       window.removeEventListener('ifc-lite:load-layer-stack', stackHandler);
     };
   }, [loadFile, addModel, loadFederatedIfcx]);
+
+  useAgentModelLoader(loadFile, addModel, loadFederatedIfcx);
 
   const hasModelsLoaded = useViewerStore(selectHasModelsLoaded);
 
@@ -327,7 +345,8 @@ export function useFileCommands(): FileCommands {
   }, [loadFile, addModel, clearAllModels]);
 
   useFileHostRegistration({ handleOpenClick, handleAddModelClick, handleRefresh,
-    openShareDialog: collabEnabled ? openShareDialog : undefined, loadFile });
+    openShareDialog: collabEnabled ? openShareDialog : undefined,
+    preloadShareDialog: collabEnabled ? loadShareDialog : undefined, loadFile });
 
   const fileInputs = (
     <>
@@ -349,7 +368,11 @@ export function useFileCommands(): FileCommands {
         onChange={handleAddModelSelect}
         className="hidden"
       /></>}
-      {collabEnabled && <ShareDialog open={shareDialogOpen} onOpenChange={setShareDialogOpen} />}
+      {collabEnabled && shareDialogOpen !== null && (
+        <Suspense fallback={null}>
+          <ShareDialog open={shareDialogOpen} onOpenChange={setShareDialogOpen} />
+        </Suspense>
+      )}
       <FederationSetupControls />
     </>
   );

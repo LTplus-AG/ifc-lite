@@ -24,7 +24,6 @@ import { listIonExportModels } from '../export-model-selection';
 import { buildCommandPaletteJsonEntities } from '../commandPaletteJsonExport';
 import { MESH_DERIVED_EXPORTS, EXACT_ONLY_EXPORTS } from '@/lib/export/native-policy';
 import { exportCsvFromBytes } from '@/lib/export/csv';
-import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { activeModelName, downloadFile, downloadDataUrl, modelExportFilename } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
 import { recordActivity } from '@/lib/activity/activity-journal';
@@ -122,6 +121,7 @@ export function useExportCommands(surface: ExportSurface) {
       await recordActivity({ kind: 'export', title: CSV_ACTIVITY_TITLE[type],
         subject: `${sourceName}${activeModelOnlyNote}` }, async () => {
         // The model as edited, not the file as loaded (#5397).
+        const { editedModelBytes } = await import('@/lib/export/edited-model-bytes');
         const bytes = editedModelBytes(sourceStore, mutationView);
         const csv = await exportCsvFromBytes(bytes, type, { includeProperties: type === 'entities' });
         downloadFile(csv, filename, 'text/csv');

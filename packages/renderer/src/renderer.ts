@@ -62,32 +62,8 @@ export { SymbolicTextAtlas } from './symbolic-text-atlas.js';
 // Section cap styling (hatch pattern ids + default colours). The cap itself
 // is now rendered by Section2DOverlayRenderer's fill pass; this module just
 // holds the styling primitives shared with the store and UI.
-export { DEFAULT_CAP_STYLE, HATCH_PATTERN_IDS } from './section-cap-style.js';
-export type { SectionCapStyle, HatchPatternId } from './section-cap-style.js';
-export { planeBasis, nearestCardinalAxis } from './section-plane-basis.js';
-export type { PlaneBasis, Vec3Tuple } from './section-plane-basis.js';
-export { capHighlightKey } from './section-2d-overlay.js';
-export { SECTION_BOX_CAP_FACES, sectionBoxCapKey } from './section-box-caps.js';
-export type { SectionBoxCapFace } from './section-box-caps.js';
-export type { Section2DOverlayOptions, Section2DOverlayCapStyle, CutPolygon2D, DrawingLine2D, LineOverlayChannel, LineOverlayOptions } from './section-2d-overlay.js';
-export { LINE_OVERLAY_CHANNELS } from './section-2d-overlay.js';
-export { Raycaster } from './raycaster.js';
-export { SnapDetector, SnapType } from './snap-detector.js';
-export { BVH } from './bvh.js';
-export { hostsOtherEntities } from './mesh-entity-hosting.js';
-export { OverlayIdSpaceExhaustedError } from './overlay-id-space-exhausted-error.js';
-export { FederationRegistry, federationRegistry, ModelRangeExtensionRefusedError } from './federation-registry.js';
-export type { ModelRange, GlobalIdLookup } from './federation-registry.js';
+export * from './renderer-exports.js';
 export * from './types.js';
-export { MAX_EXTRA_CLIP_PLANES } from './extra-clip-planes.js';
-export type { SectionPlaneFrame, SectionFrameInput } from './section-plane-frames.js';
-export {
-    resolveEnvironment,
-    deriveSkyGradient,
-    packEnvironmentUniforms,
-    ENVIRONMENT_UNIFORM_SIZE,
-} from './environment.js';
-export type { LightingEnvironment, ResolvedEnvironment, SkyGradient, Vec3Color } from './environment.js';
 export type { OverlayTheme, Rgba as OverlayThemeRgba } from './overlay-theme.js';
 export { DEFAULT_OVERLAY_THEME } from './overlay-theme.js';
 import { DEFAULT_OVERLAY_THEME, type OverlayTheme } from './overlay-theme.js';
@@ -253,7 +229,7 @@ export type { DeviationAssetRange, DeviationAssetSummary, DeviationAsyncOptions,
 import { runGuardedGpuUpload, isDeviceLossThrow, type GpuUploadOutcome } from './gpu-upload-guard.js';
 import { enableRendererQuantizedBatches } from './quantized-lifecycle.js';
 import { recoverRendererDevice, rendererDestroyedError, rendererDeviceLostError, type DeviceRecoveryOmission, type DeviceRecoveryResult, type RendererRecoveryHost } from './device-recovery.js';
-
+import type { ReleasedSceneRebuild } from './released-scene-recovery.js';
 
 /**
  * Main renderer class
@@ -417,7 +393,7 @@ export class Renderer {
     private deviceLostListeners = new Set<(info: { message: string; reason: string }) => void>();
     private deviceLossSequence = 0;
     private readonly recovery = {
-        inFlight: null as Promise<DeviceRecoveryResult> | null, lostReferenceImages: false, quantizedBatchesRequested: false, omissions: new Set<DeviceRecoveryOmission>(), pointCloudOptions: null as Readonly<ResolvedPointCloudRenderOptions> | null, replacementLostInfo: null as { message: string; reason: string } | null,
+        inFlight: null as Promise<DeviceRecoveryResult> | null, lostReferenceImages: false, quantizedBatchesRequested: false, omissions: new Set<DeviceRecoveryOmission>(), pointCloudOptions: null as Readonly<ResolvedPointCloudRenderOptions> | null, replacementLostInfo: null as { message: string; reason: string } | null, releasedRebuild: null as ReleasedSceneRebuild | null, initStartedGeneration: 0,
     };
     /** BIM ↔ scan deviation: owns the compute pipeline + its BVH cache. Null under `@ifc-lite/renderer/core`. */
     private readonly deviationComputer: DeviationComputer | null = pointCloudSupport()?.createDeviationComputer() ?? null;
@@ -565,6 +541,7 @@ export class Renderer {
         this.pickingManager.setAnnotationPickProvider((x, y, width, height, options, clip) =>
             this.overlays.annotationPicker.pick(this.camera, x, y, width, height, options, clip));
         this.raycastEngine = new RaycastEngine(this.camera, this.scene, this.canvas);
+        this.raycastEngine.viewStampExtra = () => String(this._pickClipRevision.revision); // a section change exposes other surfaces
     }
 
     /**
@@ -614,7 +591,7 @@ export class Renderer {
         generation: number,
         options: { clearDeviceLost?: boolean; publishReady?: boolean } = {},
     ): Promise<void> {
-        // `pipeline` is the marker for "a previous init() completed": it is
+        this.recovery.initStartedGeneration = generation; // `pipeline` marks "a previous init() completed": it is
         // assigned unconditionally there and nulled by destroy().
         if (this.pipeline !== null) {
             // Release the previous GPU lifetime and revoke readiness without
@@ -856,6 +833,7 @@ export class Renderer {
     recoverDevice(): Promise<DeviceRecoveryResult> {
         return recoverRendererDevice(this as unknown as RendererRecoveryHost);
     }
+    setReleasedSceneRebuild(rebuild: ReleasedSceneRebuild | null): void { this.recovery.releasedRebuild = rebuild; } // lets recoverDevice rebuild a released scene (#10264); null refuses it again
 
     /**
      * `onLossDetected` for every `runGuardedGpuUpload` call below (#4885):
@@ -3044,6 +3022,28 @@ export class Renderer {
     ): { intersection: Intersection; snap?: SnapTarget } | null {
         return this.raycastEngine.raycastScene(x, y, options, this.activePickClip());
     }
+
+    /**
+     * Released CPU geometry read back from local storage for the next raycast
+     * and snap (#10264). `raycastScene` / `raycastSceneMagnetic` test these
+     * pieces beside the resident ones, under the same visibility and section
+     * clip. Pass `null` to clear. Place them in the current model frame first
+     * (`getScene().placeAppearanceSource`); the caller keeps them alive.
+     *
+     * With `at`, the pieces answer only the ray through that canvas point under
+     * the current view (`readbackRaycastCovers`): a neighbourhood is not the
+     * whole scene, so another ray could pass an unfed front surface.
+     */
+    setReadbackRaycastMeshes(meshes: readonly MeshData[] | null, at?: { x: number; y: number }): void {
+        this.raycastEngine.setReadbackMeshes(meshes, at);
+    }
+
+    /** Whether the readback pieces were prepared for the ray at (x, y) under the current view. */
+    readbackRaycastCovers(x: number, y: number): boolean {
+        return this.raycastEngine.readbackCovers(x, y);
+    }
+    /** The view readback coverage is stamped with: capture it before the pick, install only while it is unchanged. */
+    readbackRaycastViewKey(): string { return this.raycastEngine.readbackViewKey(); }
 
     /**
      * Raycast with magnetic edge snapping: the "stick and slide along edges" experience.

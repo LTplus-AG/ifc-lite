@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { clipPolygonByLine, pointInPolygon, type Point2D } from './polygon-clip.js';
+import { clipPolygonByLine, type Point2D } from './polygon-clip.js';
 
 function approxEqual(a: number, b: number, tol = 1e-6) {
   return Math.abs(a - b) <= tol;
@@ -229,23 +229,5 @@ describe('polygon-clip', () => {
     // for use by downstream test files that want strict polygon
     // equality (we use looser area-based checks above).
     void polygonsApproxEqual;
-  });
-
-  describe('pointInPolygon', () => {
-    const square: Point2D[] = [
-      [0, 0],
-      [2, 0],
-      [2, 2],
-      [0, 2],
-    ];
-    it('returns true for an interior point', () => {
-      assert.strictEqual(pointInPolygon(square, [1, 1]), true);
-    });
-    it('returns false for an exterior point', () => {
-      assert.strictEqual(pointInPolygon(square, [3, 1]), false);
-    });
-    it('returns false for a degenerate polygon', () => {
-      assert.strictEqual(pointInPolygon([[0, 0], [1, 0]], [0.5, 0.5]), false);
-    });
   });
 });

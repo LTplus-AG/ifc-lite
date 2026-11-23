@@ -115,6 +115,29 @@ fn writes_no_causes_for_a_caused_by_that_names_no_reaction_9668() {
     assert!(warnings.contains("IFCSTRUCTURALLINEARACTION.CausedBy has no slot in IFC4; its value is omitted"), "{warnings}");
 }
 
+/// A CausedBy slot holding only a comment and `$` supplies no value (#10779).
+#[test]
+fn a_comment_only_caused_by_is_not_warned_as_omitted_10779() {
+    let (_, warnings) = convert(&model("IFC2X3", &CAUSED.replace(",.F.,#20,", ",.F.,/* none */$,")), "IFC4");
+    assert!(!warnings.contains("CausedBy has no slot"), "{warnings}");
+    // A comment beside a real value still holds it, so it is still reported.
+    let (_, warnings) = convert(&model("IFC2X3", &CAUSED.replace(",.F.,#20,", ",.F.,/* c */#9,")), "IFC4");
+    assert!(warnings.contains("IFCSTRUCTURALLINEARACTION.CausedBy has no slot in IFC4; its value is omitted"), "{warnings}");
+}
+
+#[test]
+fn a_deleted_structural_profile_subtype_names_what_it_drops_10777() {
+    let n = crate::schema_convert::schema_attribute_names("IFC2X3", "IFCSTRUCTURALSTEELPROFILEPROPERTIES").unwrap().len();
+    let record = format!("#40=IFCSTRUCTURALSTEELPROFILEPROPERTIES('HEA',#9,12.5{});", ",$".repeat(n - 3));
+    let (up, warnings) = convert(&model("IFC2X3", &record), "IFC4");
+    // Only ProfileDefinition carries; the measures are dropped, not shifted into another slot.
+    assert!(up.lines().any(|l| l == "#40=IFCPROFILEPROPERTIES($,$,$,#9);"), "{up}");
+    assert!(warnings.contains("IFCSTRUCTURALSTEELPROFILEPROPERTIES.PhysicalWeight has no slot in IFC4; its value is omitted"), "{warnings}");
+    let opts = StepOptions { schema: Some("IFC4".into()), ..StepOptions::default() };
+    let (_, stats, _) = export_step_with_diagnostics(model("IFC2X3", &record).as_bytes(), &opts).unwrap();
+    assert_eq!(stats.attribute_values_dropped, 2, "ProfileName and PhysicalWeight");
+}
+
 // A varying action that stays unconverted is no IFC4 product, so no 'Causes' relationship may name it.
 const GEOMETRY: &str = "#13=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#8,$);
 #14=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));
@@ -178,6 +201,25 @@ fn commented_varying_action_converts_before_its_causes_is_written_10597() {
     let (up, _) = convert(&model("IFC2X3", &[&geometry, REACTION, &action].join("\n")), "IFC4");
     assert!(record(&up, 30).starts_with("#30=IFCSTRUCTURALCURVEACTION("), "{up}");
     assert!(relationships(&up)[0].ends_with("'Causes',$,(#20),$,#30);"), "{up}");
+}
+
+/// #10779: a CausedBy holding only a comment and `$` is no value, so a converted
+/// varying action neither warns about it nor counts it dropped.
+#[test]
+fn a_commented_empty_caused_by_on_a_varying_action_is_not_reported_10779() {
+    let geometry = GEOMETRY.replace("IFCSHAPEASPECT((#16),", "IFCSHAPEASPECT((#14,#16,#16),");
+    let action = VARYING.replace(",.F.,#20,.TRUE_LENGTH.", ",.F.,/* none */$,.TRUE_LENGTH.");
+    let (up, warnings) = convert(&model("IFC2X3", &[&geometry, REACTION, &action].join("\n")), "IFC4");
+    assert!(record(&up, 30).starts_with("#30=IFCSTRUCTURALCURVEACTION("), "{up}");
+    assert!(!warnings.contains("CausedBy has no slot"), "{warnings}");
+    let opts = StepOptions { schema: Some("IFC4".into()), ..StepOptions::default() };
+    for (cause, warned, dropped) in [("/* none */$", false, 0), ("#999", true, 1)] {
+        let action = VARYING.replace(",.F.,#20,.TRUE_LENGTH.", &format!(",.F.,{cause},.TRUE_LENGTH."));
+        let source = model("IFC2X3", &[&geometry, REACTION, &action].join("\n"));
+        let (_, stats, warnings) = export_step_with_diagnostics(source.as_bytes(), &opts).unwrap();
+        assert_eq!(stats.attribute_values_dropped, dropped, "{cause}");
+        assert_eq!(warnings.iter().any(|w| w.contains("CausedBy has no slot")), warned, "{cause}: {warnings:?}");
+    }
 }
 
 #[test]

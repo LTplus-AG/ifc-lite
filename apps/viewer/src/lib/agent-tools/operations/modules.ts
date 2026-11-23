@@ -11,6 +11,7 @@ const modules = [
   ['measurements', 'measurementOperations'],
   ['pointclouds', 'pointCloudOperations'],
   ['clash', 'clashOperations'],
+  ['coordination-index', 'coordinationOperations'],
   ['analytics-lists', 'analyticsListOperations'],
   ['analytics-document', 'analyticsDocumentOperations'],
   ['analytics-charts', 'analyticsChartOperations'],

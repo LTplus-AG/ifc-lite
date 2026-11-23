@@ -29,7 +29,9 @@ import { getCompleteEntityIndex, getMaxExpressId, type CompleteEntityIndex, type
 import { bakeMutatedModels, mergeWarningLabel, needsBake } from './merged-bake.js';
 import type { StepGeoreferencingOptions } from './step-coordinate-options.js';
 import { rescaleEntityLengths, computeNormalizeFactor } from './unit-normalize.js';
-import { planInfrastructureUnify, resolvePrimaryContextState, type PrimaryContextState } from './merged-context.js';
+import { planInfrastructureUnify, resolvePrimaryContextState, unitScalesEqual, type PrimaryContextState } from './merged-context.js';
+import { MintedRecords, georefNormalizeCaveat, normalizeGeorefRecord, planGeorefNormalize, type GeorefNormalizePlan } from './merged-georef-normalize.js';
+import { listKeptContexts } from './merged-project-contexts.js';
 import { remapEntityText } from './merged-remap.js';
 import { PlannerGuids } from './merged-planner-guids.js';
 import {
@@ -66,9 +68,6 @@ const SHARED_INFRASTRUCTURE_TYPES = new Set([
   'IFCGEOMETRICREPRESENTATIONSUBCONTEXT',
 ]);
 
-/** Relative tolerance for comparing two length unit scale factors. */
-const UNIT_SCALE_TOLERANCE = 1e-6;
-
 /** SI prefix multipliers, for resolving prefixed area/volume units (rarely used). */
 const SI_PREFIX_MULTIPLIERS: Record<string, number> = {
   ATTO: 1e-18, FEMTO: 1e-15, PICO: 1e-12, NANO: 1e-9, MICRO: 1e-6, MILLI: 1e-3,
@@ -99,6 +98,10 @@ interface MergeSetup {
   firstModelInfraMap: Map<string, number[]>;
   /** Primary model's subcontexts-by-key and context WCS frame — see `merged-context.ts`. */
   firstModelContext: PrimaryContextState;
+  /** Kept top-level contexts that a folded model's own IfcProject listed, as output ids (#10798). */
+  keptContexts: number[];
+  /** Records a normalized model's georeference names, written once past every model's ids (#10886, #10915). */
+  minted: MintedRecords;
   /** IfcProject express ids of the primary model. */
   firstProjectIds: number[];
   /** Spatial lookup built from the primary model. */
@@ -155,6 +158,8 @@ interface ModelMode {
   effectiveScale: number;
   /** True when this (non-primary) model was rescaled into the primary unit. */
   normalized: boolean;
+  /** How a normalized model's georeference keeps its meaning (#10886). */
+  georef?: GeorefNormalizePlan;
 }
 
 /** Per-model plan: how this model's entities are remapped, skipped, or restamped. */
@@ -507,7 +512,7 @@ export class MergedExporter {
 
       const mode = this.resolveModelMode(model, isFirstModel, setup);
       if (!isFirstModel && !mode.compatible) federatedModelCount++;
-      if (mode.normalized) { normalizedModelCount++; this.collectNormalizeCaveats(model, normalizeWarnings); }
+      if (mode.normalized) { normalizedModelCount++; this.collectNormalizeCaveats(model, normalizeWarnings, mode.georef); }
       const plan = this.planModel(model, completeIndex, isFirstModel, mode.compatible, mode.lengthFactor, setup, guidToFinalId);
       this.applyContainerDrops(plan, containerDrops?.byModel.get(model.id));
       this.claimParents(model, plan, visibility, completeIndex, !isFirstModel && mode.compatible, setup);
@@ -529,6 +534,8 @@ export class MergedExporter {
 
       isFirstModel = false;
     }
+    listKeptContexts(allEntityLines, setup.firstProjectIds.length ? setup.firstProjectIds[0] + setup.firstModelOffset : undefined, setup.keptContexts);
+    setup.minted.appendTo(allEntityLines);
     for (const warning of [...slotFill.warnings(), ...ifc4Slots.warnings(), ...enums.warnings(), ...applyInverseFolds(allEntityLines, setup.parentClaims)]) normalizeWarnings.add(warning); // #5774 folds
 
     // Assemble final file as Uint8Array chunks to avoid V8 string length limit
@@ -651,7 +658,7 @@ export class MergedExporter {
 
       const mode = this.resolveModelMode(model, isFirstModel, setup);
       if (!isFirstModel && !mode.compatible) federatedModelCount++;
-      if (mode.normalized) { normalizedModelCount++; this.collectNormalizeCaveats(model, normalizeWarnings); }
+      if (mode.normalized) { normalizedModelCount++; this.collectNormalizeCaveats(model, normalizeWarnings, mode.georef); }
       const plan = this.planModel(model, completeIndex, isFirstModel, mode.compatible, mode.lengthFactor, setup, guidToFinalId);
       this.applyContainerDrops(plan, containerDrops?.byModel.get(model.id));
       this.claimParents(model, plan, visibility, completeIndex, !isFirstModel && mode.compatible, setup);
@@ -693,6 +700,8 @@ export class MergedExporter {
 
       isFirstModel = false;
     }
+    listKeptContexts(allEntityLines, setup.firstProjectIds.length ? setup.firstProjectIds[0] + setup.firstModelOffset : undefined, setup.keptContexts);
+    setup.minted.appendTo(allEntityLines);
     for (const warning of [...slotFill.warnings(), ...ifc4Slots.warnings(), ...enums.warnings(), ...applyInverseFolds(allEntityLines, setup.parentClaims)]) normalizeWarnings.add(warning); // #5774 folds
 
     // Assembly phase
@@ -744,7 +753,7 @@ export class MergedExporter {
   ): { byModel: Map<string, Set<number>>; count: number } | null {
     if (!options.dropEmptyContainers) return null;
     const claims = new InverseClaims(options.schema || 'IFC4', isStructureRelation);
-    const guids = new PlannerGuids(scale => this.unitsCompatible(scale, setup.primaryScale), isSpatialContainerType);
+    const guids = new PlannerGuids(scale => unitScalesEqual(scale, setup.primaryScale), isSpatialContainerType);
     const views: EmptyContainerModelView[] = models.map((model, index) => {
       const source = model.dataStore.source;
       if (!source || source.length === 0) return EMPTY_MODEL_VIEW;
@@ -795,9 +804,9 @@ export class MergedExporter {
    * Record advisories for a model being normalized. The rescaler derives its
    * length-attribute map from the IFC4 schema registry, so it may not cover
    * length attributes introduced by newer schemas (IFC4X3 alignment / linear
-   * referencing), and it deliberately leaves georeferencing untouched.
+   * referencing), and it keeps georeferencing offsets in the CRS unit (#10886).
    */
-  private collectNormalizeCaveats(model: MergeModelInput, warnings: Set<string>): void {
+  private collectNormalizeCaveats(model: MergeModelInput, warnings: Set<string>, georef: GeorefNormalizePlan | undefined): void {
     const schema = (model.dataStore.schemaVersion ?? '').toUpperCase(), label = mergeWarningLabel(model, this.models);
     if (NORMALIZE_UNCOVERED_SCHEMAS.has(schema)) {
       warnings.add(
@@ -806,13 +815,8 @@ export class MergedExporter {
         `lengths and radii) may not have been rescaled. Verify infrastructure geometry.`,
       );
     }
-    if (this.findEntitiesByType(model.dataStore, 'IFCMAPCONVERSION').length > 0) {
-      warnings.add(
-        `Model "${label}" carries georeferencing (IfcMapConversion), which normalize leaves ` +
-        `untouched. If the model was georeferenced in its own unit, review the merged coordinate ` +
-        `operation.`,
-      );
-    }
+    const georefCaveat = georefNormalizeCaveat(label, model.dataStore, georef);
+    if (georefCaveat) warnings.add(georefCaveat);
   }
 
   /**
@@ -839,7 +843,9 @@ export class MergedExporter {
       modelOffsets,
       firstModelOffset,
       firstModelInfraMap,
-      firstModelContext: resolvePrimaryContextState(firstModel.dataStore, firstModelInfraMap.get('IFCGEOMETRICREPRESENTATIONSUBCONTEXT') ?? [], primaryScale),
+      firstModelContext: resolvePrimaryContextState(firstModel.dataStore, firstModelInfraMap.get('IFCGEOMETRICREPRESENTATIONSUBCONTEXT') ?? [], primaryScale, firstModelOffset),
+      keptContexts: [],
+      minted: new MintedRecords(nextAvailableId),
       firstProjectIds: this.findEntitiesByType(firstModel.dataStore, 'IFCPROJECT'),
       spatialLookup: this.buildSpatialLookup(firstModel.dataStore),
       parentClaims: new InverseClaims(options.schema || 'IFC4'),
@@ -873,7 +879,7 @@ export class MergedExporter {
    */
   private resolveModelMode(model: MergeModelInput, isFirstModel: boolean, setup: MergeSetup): ModelMode {
     const modelScale = this.resolveUnitScale(model);
-    if (isFirstModel || setup.assumeShared || this.unitsCompatible(modelScale, setup.primaryScale)) {
+    if (isFirstModel || setup.assumeShared || unitScalesEqual(modelScale, setup.primaryScale)) {
       return { compatible: true, lengthFactor: 1, areaFactor: 1, volumeFactor: 1, effectiveScale: modelScale, normalized: false };
     }
     if (setup.normalize) {
@@ -889,6 +895,7 @@ export class MergedExporter {
         volumeFactor: computeNormalizeFactor(modelVolume, setup.primaryVolumeScale),
         effectiveScale: setup.primaryScale,
         normalized: true,
+        georef: planGeorefNormalize(model.dataStore, setup.minted, modelScale, setup.primaryScale),
       };
     }
     // auto: federate the differing-unit model, coordinates untouched.
@@ -977,14 +984,6 @@ export class MergedExporter {
     return 1.0;
   }
 
-  /** True when two length unit scales are equal within relative tolerance. */
-  private unitsCompatible(a: number, b: number): boolean {
-    if (a === b) return true;
-    const max = Math.max(Math.abs(a), Math.abs(b));
-    if (max === 0) return true;
-    return Math.abs(a - b) <= max * UNIT_SCALE_TOLERANCE;
-  }
-
   /**
    * Resolve the set of express ids to include for a model under visibility
    * filtering, or `null` when no filtering is requested (include everything).
@@ -1060,7 +1059,8 @@ export class MergedExporter {
     if (!isFirstModel && compatible) {
       // Remap this model's IfcProject references → first model's IfcProject.
       const projectIds = this.findEntitiesByType(model.dataStore, 'IFCPROJECT');
-      if (setup.firstProjectIds.length > 0) {
+      const folded = setup.firstProjectIds.length > 0; // a federated (incompatible) model never gets here and keeps its project
+      if (folded) {
         for (const pid of projectIds) {
           sharedRemap.set(pid, setup.firstProjectIds[0] + setup.firstModelOffset);
           skipEntityIds.add(pid);
@@ -1068,7 +1068,9 @@ export class MergedExporter {
       }
 
       // Remap and skip duplicate infrastructure (units, contexts) — WCS-gated; scale choice documented on planInfrastructureUnify (merged-context.ts).
-      planInfrastructureUnify(model.dataStore, this.findInfrastructureEntities(model.dataStore), setup.firstModelInfraMap, setup.firstModelContext, setup.firstModelOffset, setup.assumeShared ? setup.primaryScale : this.resolveUnitScale(model), sharedRemap, skipEntityIds);
+      const offset = setup.modelOffsets.get(model.id)!;
+      const kept = planInfrastructureUnify(model.dataStore, this.findInfrastructureEntities(model.dataStore), setup.firstModelInfraMap, setup.firstModelContext, setup.firstModelOffset, setup.assumeShared ? setup.primaryScale : this.resolveUnitScale(model), sharedRemap, skipEntityIds, offset);
+      if (folded) setup.keptContexts.push(...kept.map(id => id + offset)); // its project folded above
 
       // Unify spatial hierarchy: match Site, Building, Storey to first model.
       // Under normalize, this model's raw elevations are in its own unit, so the
@@ -1094,7 +1096,7 @@ export class MergedExporter {
         //     (a federated model), so unifying would reinterpret coordinates —
         //     the very mis-scale this fix prevents, reached transitively.
         const type = (completeIndex.get(id)?.type ?? '').toUpperCase();
-        const emitterIsPrimaryUnit = this.unitsCompatible(prior.scale, setup.primaryScale);
+        const emitterIsPrimaryUnit = unitScalesEqual(prior.scale, setup.primaryScale);
         const canUnify = compatible && emitterIsPrimaryUnit && !isRelationshipType(type);
         if (canUnify) {
           sharedRemap.set(id, prior.finalId);
@@ -1187,12 +1189,7 @@ export class MergedExporter {
     entityText = stripped;
 
     // Remap ids. Fast path: the first model (offset 0, no remaps) is byte-identical.
-    let finalText: string;
-    if (offset === 0 && plan.sharedRemap.size === 0) {
-      finalText = entityText;
-    } else {
-      finalText = remapEntityText(entityText, offset, plan.sharedRemap);
-    }
+    let finalText = offset === 0 && plan.sharedRemap.size === 0 ? entityText : remapEntityText(entityText, offset, plan.sharedRemap);
 
     // Re-stamp the GlobalId for a federated entity whose id collides.
     const mintedGuid = plan.guidRewrite.get(localId);
@@ -1200,11 +1197,12 @@ export class MergedExporter {
       finalText = replaceGlobalId(finalText, mintedGuid);
     }
 
-    // Normalize units: rescale every length/area/volume-valued datum into the
-    // primary unit. Done on the SOURCE-schema text (entityRef.type), before any
-    // schema conversion, so the schema-derived attribute indices line up. Touches
-    // only numeric literals, so id remaps and the GlobalId re-stamp above are safe.
-    if (mode.lengthFactor !== 1 || mode.areaFactor !== 1 || mode.volumeFactor !== 1) {
+    // Normalize units: rescale every length/area/volume-valued datum, and the georeference (#10886), into the primary
+    // unit. Done on the SOURCE-schema text (entityRef.type), before any schema conversion, so the schema-derived
+    // attribute indices line up. Touches only numeric literals and the CRS unit, so the remap and re-stamp are safe.
+    const georef = normalizeGeorefRecord(finalText, localId, mode.georef);
+    if (georef !== undefined) finalText = georef;
+    else if (mode.lengthFactor !== 1 || mode.areaFactor !== 1 || mode.volumeFactor !== 1) {
       finalText = rescaleEntityLengths(finalText, entityRef.type.toUpperCase(), mode.lengthFactor, mode.areaFactor, mode.volumeFactor);
     }
 

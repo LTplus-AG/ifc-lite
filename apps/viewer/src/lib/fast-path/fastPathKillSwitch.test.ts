@@ -10,11 +10,13 @@
  */
 
 import '@/test/setup-dom.js';
-import { afterEach, describe, it } from 'node:test';
+import { afterEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { getPerfFlagDefinition, readPerfFlag } from '@/lib/perf/flags';
 import { mayWarmUp } from '@/lib/warm-runtime-gate';
 import { resetFeaturesForTest, type FeatureId } from '@/lib/features';
+import { openProcessedModel, resetProcessedModelRequestsForTests, takeProcessedModelRequest } from '@/lib/processed-model';
+import { useViewerStore } from '@/store';
 import { fastPathSwitch, pageCanOpenModels, startFastPath } from './startFastPath';
 
 // Written out here, not read from startFastPath, so a source dropped there fails these tests.
@@ -84,4 +86,31 @@ describe('fast path kill switch', () => {
     setSearch('?model=samples/hello-wall.ifc');
     assert.equal(pageCanOpenModels(), true, '?model= autoloads a model with every picker off');
   });
+});
+
+it('arms warm-up after a queued processed-model load fails (#10822)', () => {
+  const priorWorker = globalThis.Worker;
+  globalThis.Worker = class {} as unknown as typeof Worker;
+  const originalIdle = window.requestIdleCallback;
+  const idle = mock.fn(() => 1);
+  window.requestIdleCallback = idle;
+  const store = useViewerStore.getState();
+  try {
+    openProcessedModel({ sha256: 'a'.repeat(64), bytes: 0, name: 'stored.ifc' });
+    startFastPath();
+    assert.equal(idle.mock.callCount(), 0, 'nothing prepares while autoload waits');
+    assert.ok(takeProcessedModelRequest());
+    store.setLoading(true);
+    idle.mock.resetCalls();
+    // Failure clears loading; the fast path should still be available for the next local pick.
+    store.setError('The processing server could not open the stored model.');
+    store.setLoading(false);
+    assert.equal(idle.mock.callCount(), 1, 'local spares are scheduled after the server load ends');
+  } finally {
+    globalThis.Worker = priorWorker;
+    window.requestIdleCallback = originalIdle;
+    store.setError(null);
+    store.setLoading(false);
+    resetProcessedModelRequestsForTests();
+  }
 });

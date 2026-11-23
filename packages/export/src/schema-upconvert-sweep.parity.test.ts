@@ -30,6 +30,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
+import { EnumReconciliation } from './schema-converter-enums.js';
 import { classifyEntityTypeConversion } from './schema-conversion-loss-report.js';
 import { readStepSlots } from './step-argument-parser.js';
 
@@ -58,7 +59,8 @@ describe('convertStepLine matches the shared cross-language upconversion sweep',
 
   it('every case agrees with the Rust converter', () => {
     const mismatches = fixture.cases
-      .map((c) => ({ c, got: convertStepLine(c.line, c.from, c.to) }))
+      // The export's own collector, as the Rust half's exporter runs it (#10847 checks value forms).
+      .map((c) => ({ c, got: convertStepLine(c.line, c.from, c.to, undefined, undefined, undefined, undefined, new EnumReconciliation()) }))
       .filter(({ c, got }) => got !== c.expect)
       .map(({ c, got }) => `${c.from}->${c.to} [${c.why}]\n  in     ${c.line}\n  expect ${c.expect}\n  got    ${got}`);
     expect(mismatches).toEqual([]);
@@ -68,9 +70,13 @@ describe('convertStepLine matches the shared cross-language upconversion sweep',
     const rows = fixture.cases.filter((c) => c.lost !== undefined);
     expect(rows.length).toBeGreaterThanOrEqual(8);
     for (const c of rows) {
-      const info = classifyEntityTypeConversion(readStepSlots(c.line)!.type, c.from, c.to);
+      const type = readStepSlots(c.line)!.type;
+      const info = classifyEntityTypeConversion(type, c.from, c.to);
       expect(info.droppedAttributes, `${c.from}->${c.to} [${c.why}]`).toEqual(c.lost);
-      expect(info.kind, `${c.from}->${c.to} [${c.why}]`).toBe(c.lost!.length > 0 ? 'lossy' : 'identity');
+      const target = readStepSlots(c.expect)!.type.toUpperCase();
+      expect(info.targetType, `${c.from}->${c.to} [${c.why}]`).toBe(target);
+      const unlost = target === type.toUpperCase() ? 'identity' : 'renamed';
+      expect(info.kind, `${c.from}->${c.to} [${c.why}]`).toBe(c.lost!.length > 0 ? 'lossy' : unlost);
     }
   });
 

@@ -24,7 +24,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { addCurtainWallIn } from '@/store/slices/mutation-curtain-grid';
 import { computeModelStats } from '@/components/viewer/properties/modelMetadataStats';
-import { cleanup, render } from '@/test/render';
+import { cleanup, render, settle } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { createHierarchyModelsSelector } from './hierarchy-models-selector';
@@ -176,6 +176,7 @@ describe('hierarchy rows of elements authored with geometry (#9026)', () => {
       return null;
     }
     render(<Probe />);
+    await settle(); // the panel shows the authoring edit once it settles (#10535)
     const group = tree.treeData.find((node) => node.id === 'type-IfcCurtainWall');
     assert.deepEqual(new Set(group?.globalIds), new Set(partIds.map(globalOf)));
     assert.deepEqual(group?.memberGlobalIds, [globalOf(expressId)]);
@@ -225,8 +226,11 @@ describe('hierarchy rows of elements authored with geometry (#9026)', () => {
     for (let placed = 1; placed <= 4; placed++) {
       let columnId = 0;
       act(() => { columnId = addColumn(); });
-      assert.ok(tree.treeData.some((node) => node.type === 'other-group'), `column ${placed} is shapeless until meshed`);
+      // Panels hold an edit until its geometry is in (#10535), so they never show
+      // the transient shapeless column; it is checked in the live tree.
+      assert.ok(spatialTree(liveModels()).some((node) => node.type === 'other-group'), `column ${placed} is shapeless until meshed`);
       act(() => deliverMeshes([columnId]));
+      await settle();
       assert.equal(tree.treeData.find((node) => node.type === 'other-group'), undefined, `column ${placed} left Other`);
       assert.equal(tree.treeData.find((node) => node.expressIds[0] === columnId)?.noGeometry, false);
     }

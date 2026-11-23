@@ -8,6 +8,7 @@ import { registerOverlayCapacity } from './overlay-capacity.js';
 import { registerWorkflowArtifactInvalidation } from '../lib/flow/artifact-lifetime.js';
 import { createAppearanceSlice, type AppearanceSlice } from './slices/appearanceSlice.js';
 import { create } from 'zustand';
+import { scopedViewerStore } from './live-scope.js';
 import { createViewerActions, type ViewerActions } from './createViewerActions.js';
 import { createLoadingSlice, type LoadingSlice } from './slices/loadingSlice.js';
 import { createSelectionSlice, type SelectionSlice } from './slices/selectionSlice.js';
@@ -289,4 +290,7 @@ export function getViewerStoreApi(): ViewerStoreApi {
   return store;
 }
 
-export const useViewerStore = getViewerStoreApi();
+// Hooks read the settled state outside a LiveViewerScope; the store API stays live (#10535).
+export const useViewerStore = scopedViewerStore(getViewerStoreApi());
+export { LiveViewerScope } from './live-scope.js';
+export { settledStoreOf } from './settled-store.js';

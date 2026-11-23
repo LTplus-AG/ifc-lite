@@ -9,6 +9,7 @@ import { resolveRef } from '../refs';
 import { isToolAvailable } from '@/lib/features/tools';
 import { viewerSdk } from './context';
 import { operation, viewerOperation, emptySchema, pointSchema, referenceSchema, type OperationContext } from './contract';
+import { disabled, invalidInput, unavailable } from './refusals';
 
 const view = (id: string, owner: string, description: string) => ({
   id, owner, description, features: id.startsWith('section.') ? ['tools.section'] as const : undefined, effects: ['view'] as const, synchronous: true, capability: 'commands-and-edits' as const, implementation: 'sdk' as const,
@@ -31,7 +32,7 @@ const cameraSchema: JSONSchemaType<CameraState> = {
   }, required: ['mode'], additionalProperties: false,
 };
 function sectionEnabled() {
-  if (!isToolAvailable('section')) throw new Error('Section tools are disabled by the host.');
+  if (!isToolAvailable('section')) throw disabled('Section tools are disabled by the host.');
 }
 
 export const viewOperations = [
@@ -52,17 +53,17 @@ export const viewOperations = [
   operation({ ...view('camera.frame', 'viewport', 'Frame validated entities using the native camera adapter; animation may continue.'), completion: 'dispatched' }, referenceSchema,
     (i, c) => {
       const r = refs(i, c);
-      if (!useViewerStore.getState().cameraCallbacks?.frameEntities) throw new Error('A mounted viewport camera is required.');
+      if (!useViewerStore.getState().cameraCallbacks?.frameEntities) throw unavailable('A mounted viewport camera is required.');
       c.model.bim.viewer.flyTo(r); return { dispatched: true };
     }),
   viewerOperation(read('camera.read', 'viewport', 'Inspect native camera. Coordinates are renderer Y-up metres.'), emptySchema,
     (_, c) => viewerSdk(c).viewer.getCamera()),
   viewerOperation(view('camera.set', 'viewport', 'Set native camera in renderer Y-up metres.'), cameraSchema,
     (i, c) => {
-      if (Object.values(i).some(value => value === null)) throw new Error('Camera values cannot be null.');
-      if (!useViewerStore.getState().cameraCallbacks?.applyViewpoint) throw new Error('A mounted viewport camera is required.');
-      if (i.up?.every(value => value === 0)) throw new Error('Camera up vector must be nonzero.');
-      if (i.position && i.target && i.position.every((value, index) => value === i.target?.[index])) throw new Error('Camera position and target must differ.');
+      if (Object.values(i).some(value => value === null)) throw invalidInput('invalid-value', 'Camera values cannot be null.');
+      if (!useViewerStore.getState().cameraCallbacks?.applyViewpoint) throw unavailable('A mounted viewport camera is required.');
+      if (i.up?.every(value => value === 0)) throw invalidInput('invalid-value', 'Camera up vector must be nonzero.');
+      if (i.position && i.target && i.position.every((value, index) => value === i.target?.[index])) throw invalidInput('invalid-value', 'Camera position and target must differ.');
       viewerSdk(c).viewer.setCamera(i); return viewerSdk(c).viewer.getCamera();
     }),
   viewerOperation(read('section.read', 'viewport', 'Inspect all cutting planes. Positions use renderer Y-up metres.'), emptySchema,

@@ -8,11 +8,12 @@
  */
 
 import type { StateCreator } from 'zustand';
-import type { SavedScript } from '../../lib/scripts/persistence.js';
+import type { SavedScript, SaveResult } from '../../lib/scripts/persistence.js';
 import { loadSavedScripts, saveScripts, validateScriptName, canCreateScript, isScriptWithinSizeLimit } from '../../lib/scripts/persistence.js';
 import type { ScriptEditOperation, ScriptEditorSelection, ScriptEditorTextChange } from '../../lib/llm/types.js';
 import { applyScriptEditOperations } from '../../lib/llm/script-edit-ops.js';
 import type { ScriptDiagnostic } from '../../lib/llm/script-diagnostics.js';
+import { scriptAdmissionRevision } from './scriptSlice.revision.js';
 import {
   type ScriptMutationIntent,
   type ScriptReplacementSource,
@@ -87,14 +88,10 @@ export interface ScriptSlice {
    */
   scriptRunSeq: number;
   /**
-   * Monotonic token bumped by `useSandbox().execute()` at the START of every
-   * run, BEFORE any await. `useSandbox()` is instantiated independently in
-   * `ScriptPanel`, `ChatPanel`, `CommandPalette` and `ExecutableCodeBlock`
-   * (each gets its own `activeSandboxRef`/closure — there is no shared
-   * per-hook state), so a per-hook-instance guard (the `runEpochRef` shape
-   * `useClash`/`useIDS`/`useCompare` use) cannot detect a SECOND run started
-   * from a DIFFERENT component instance while the first is still in flight.
-   * This lives in the store instead so every instance reads/writes the same
+   * Shared across ScriptPanel, ChatPanel, CommandPalette and ExecutableCodeBlock.
+   * useSandbox().execute() advances it before awaiting, so guards can detect
+   * runs started by another component instance.
+   * It lives in the store so every instance reads/writes the same
    * counter. A run captures the value right after bumping it and re-checks
    * it, synchronously, before every terminal store write that follows an
    * await (`setScriptResult`/`setScriptError`) — a stale run whose epoch no
@@ -121,6 +118,7 @@ export interface ScriptSlice {
   scriptPanelVisible: boolean;
   scriptDeleteConfirmId: string | null;
   scriptEditorRevision: number;
+  scriptEditorRevisionOffset: number; // Advanced only by rollback; read through scriptAdmissionRevision.
   scriptEditorSelection: ScriptEditorSelection;
   scriptAppliedOpIds: Set<string>;
   scriptEditorApplyAdapter: ScriptEditorApplyAdapter | null;
@@ -129,10 +127,10 @@ export interface ScriptSlice {
   scriptAssistantTurnSnapshot: ScriptAssistantTurnSnapshot | null;
 
   // Actions
-  createScript: (name: string, code?: string) => string;
-  saveActiveScript: () => void;
-  deleteScript: (id: string) => void;
-  renameScript: (id: string, name: string) => void;
+  createScript: (name: string, code?: string, persistence?: { onResult: (result: SaveResult) => void; required: boolean }) => string;
+  saveActiveScript: () => SaveResult | undefined;
+  deleteScript: (id: string) => SaveResult;
+  renameScript: (id: string, name: string) => SaveResult | undefined;
   setActiveScriptId: (id: string | null) => void;
   setScriptEditorContent: (content: string) => void;
   setScriptExecutionState: (state: ScriptExecutionState) => void;
@@ -205,6 +203,7 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
   scriptPanelVisible: loadStoredScriptPanelVisible(),
   scriptDeleteConfirmId: null,
   scriptEditorRevision: 0,
+  scriptEditorRevisionOffset: 0,
   scriptEditorSelection: { from: 0, to: 0 },
   scriptAppliedOpIds: new Set(),
   scriptEditorApplyAdapter: null,
@@ -213,13 +212,12 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
   scriptAssistantTurnSnapshot: null,
 
   // Actions
-  createScript: (name, code) => {
+  createScript: (name, code, persistence) => {
     const { savedScripts } = get();
     if (!canCreateScript(savedScripts.length)) {
       console.warn('[Scripts] Maximum script limit reached');
       return '';
     }
-
     const validName = validateScriptName(name) ?? 'Untitled Script';
     const scriptCode = code ?? DEFAULT_CODE;
     if (!isScriptWithinSizeLimit(scriptCode)) {
@@ -237,6 +235,10 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
       version: 1,
     };
     const updated = [...savedScripts, script];
+    const result = saveScripts(updated);
+    if (!result.ok) console.warn('[Scripts] Save failed:', result.message);
+    persistence?.onResult(result);
+    if (persistence?.required && !result.ok) return '';
     set({
       savedScripts: updated,
       activeScriptId: id,
@@ -246,10 +248,6 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
       scriptEditorSelection: { from: script.code.length, to: script.code.length },
       scriptAppliedOpIds: new Set(),
     });
-    const result = saveScripts(updated);
-    if (!result.ok) {
-      console.warn('[Scripts] Save failed:', result.message);
-    }
     return id;
   },
 
@@ -261,11 +259,10 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
         ? { ...s, code: scriptEditorContent, updatedAt: Date.now() }
         : s,
     );
-    set({ savedScripts: updated, scriptEditorDirty: false });
     const result = saveScripts(updated);
-    if (!result.ok) {
-      console.warn('[Scripts] Save failed:', result.message);
-    }
+    if (!result.ok) console.warn('[Scripts] Save failed:', result.message);
+    set({ savedScripts: updated, scriptEditorDirty: !result.ok }); // a refused write leaves the edits unsaved
+    return result;
   },
 
   deleteScript: (id) => {
@@ -282,7 +279,7 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
       scriptEditorSelection: { from: scriptEditorContent.length, to: scriptEditorContent.length },
       scriptAppliedOpIds: new Set(),
     });
-    saveScripts(updated);
+    return saveScripts(updated);
   },
 
   renameScript: (id, name) => {
@@ -292,7 +289,7 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
       s.id === id ? { ...s, name: validName, updatedAt: Date.now() } : s,
     );
     set({ savedScripts: updated });
-    saveScripts(updated);
+    return saveScripts(updated);
   },
 
   setActiveScriptId: (activeScriptId) => {
@@ -495,6 +492,7 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
       scriptEditorContent: snapshot.content,
       scriptEditorSelection: snapshot.selection,
       scriptEditorRevision: snapshot.revision,
+      scriptEditorRevisionOffset: scriptAdmissionRevision(state) + 1 - snapshot.revision,
       scriptEditorDirty: true,
       scriptAppliedOpIds: new Set(),
       scriptAssistantTurnSnapshot: null,

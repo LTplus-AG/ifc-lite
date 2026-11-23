@@ -38,6 +38,7 @@ import { useGeometryStreaming } from './useGeometryStreaming.js';
 import { useFilteredGeometry } from './useFilteredGeometry.js';
 
 let setStreaming: (streaming: boolean) => void = () => {};
+let typeHidden: ReadonlySet<number> = new Set();
 
 function Viewport({ renderer }: { renderer: Renderer }) {
   const s = useViewerStore();
@@ -46,10 +47,11 @@ function Viewport({ renderer }: { renderer: Renderer }) {
   const indices = useMemo(() => modelIndices(s.models), [s.models]);
   const geometry = useFederatedGeometry(s.models, s.geometryResult, indices, s.geometryContentVersion);
   const filtered = useFilteredGeometry(geometry, s.geometryContentVersion, s.typeVisibility, s.typeViewMode);
+  typeHidden = filtered.typeHidden.ids;
   const rendererRef = useRef<Renderer | null>(renderer);
   const geometryBoundsRef = useRef({ min: { x: -100, y: -100, z: -100 }, max: { x: 100, y: 100, z: 100 } });
   const clearColorRef = useRef<[number, number, number, number]>([0, 0, 0, 1]);
-  useGeometryStreaming({ rendererRef, geometry: filtered.filteredGeometry,
+  useGeometryStreaming({ rendererRef, geometry: filtered.sceneGeometry,
     appearanceSourceGeometry: geometry?.meshes, coordinateInfo: geometry?.coordinateInfo,
     geometryVersion: filtered.geometryVersion, geometryContentVersion: s.geometryContentVersion,
     geometryReplacementVersion: filtered.geometryReplacementVersion,
@@ -124,7 +126,9 @@ function mount() {
 type Native = ReturnType<typeof mount>;
 const flush = (native: Native) => native.scene.flushPending(native.device, native.pipeline, Infinity);
 
-it('revealing and hiding middle meshes rebuilds the filtered inventory without moving the camera (#7047)', async () => {
+// #10264: type visibility hides ids on the GPU; the uploaded scene never changes.
+for (const released of [false, true]) {
+it(`type toggles keep one upload of every mesh and only move the hidden ids${released ? ', after the CPU geometry is released' : ''} (#10264)`, async () => {
   const meshes = ifcMeshes().map((mesh, i) => ({ ...mesh, ifcType: i === 1 || i === 3 ? 'IfcSpace' : 'IfcWall' }));
   useViewerStore.setState({ typeVisibility: { ...useViewerStore.getState().typeVisibility, spaces: false } });
   useViewerStore.getState().upsertModel(model('ifc', meshes));
@@ -135,18 +139,28 @@ it('revealing and hiding middle meshes rebuilds the filtered inventory without m
     native.scene.forEachMeshData(mesh => { ids.push(mesh.expressId); });
     return ids.sort((a, b) => a - b);
   };
-  const walls = meshes.filter(mesh => mesh.ifcType === 'IfcWall').map(mesh => mesh.expressId);
-  assert.deepEqual(residentIds(), walls, 'initial filter excludes only spaces');
+  const all = meshes.map(mesh => mesh.expressId);
+  const spaces = meshes.filter(mesh => mesh.ifcType === 'IfcSpace').map(mesh => mesh.expressId);
+  assert.deepEqual(residentIds(), all, 'the initially hidden spaces are uploaded with the walls');
+  assert.deepEqual([...typeHidden].sort((a, b) => a - b), spaces, 'and hidden by id');
+  assert.equal(sceneTriangles(native.scene), IFC_TRIANGLES);
+  if (released) native.scene.releaseGeometryData();
+  const buffers = mock.method(native.device, 'createBuffer');
+  const append = mock.method(native.scene, 'appendToBatches');
+  const rebuild = mock.method(native.scene, 'clearFlatGeometryForRebuild');
   for (const visible of [true, false, true]) {
     await act(async () => { useViewerStore.getState().toggleTypeVisibility('spaces'); });
-    const expected = visible ? meshes.map(mesh => mesh.expressId) : walls;
-    assert.deepEqual(residentIds(), expected, 'every visible source mesh is resident exactly once');
-    assert.equal(sceneTriangles(native.scene), expected.length * 2);
+    assert.deepEqual([...typeHidden].sort((a, b) => a - b), visible ? [] : spaces, `spaces ${visible ? 'shown' : 'hidden'} by id`);
     assert.deepEqual({ position: native.camera.getPosition(), target: native.camera.getTarget() }, pose,
-      'a visibility rebuild retains the fitted camera');
+      'a type toggle retains the fitted camera');
   }
+  assert.equal(buffers.mock.callCount(), 0, 'no toggle creates a GPU buffer');
+  assert.equal(append.mock.callCount(), 0, 'no toggle uploads meshes');
+  assert.equal(rebuild.mock.callCount(), 0, 'no toggle clears the flat geometry');
+  assert.deepEqual(residentIds(), released ? [] : all, released ? 'released pieces stay released' : 'the same meshes stay resident');
   await act(async () => { useViewerStore.getState().toggleTypeVisibility('spaces'); });
 });
+}
 
 it('completion recolouring drains colours without re-uploading geometry (#7047)', async () => {
   const native = mount();

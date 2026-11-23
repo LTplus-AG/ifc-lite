@@ -19,7 +19,7 @@ use super::jobs::{
     new_worker_placement_caches, new_worker_point_caches, WorkerPlacementCaches,
     WorkerPointCaches,
 };
-use super::pass_metadata::{populate_metadata, replay_deferred_styles};
+use super::pass_metadata::{element_material_fallbacks, populate_metadata, replay_deferred_styles};
 use super::phase_marks::{mark, Clock, Mark};
 use super::resolve::{Facts, Resolved};
 use super::run_snapshot::{self, RunSnapshot};
@@ -84,6 +84,8 @@ pub(super) struct Passed<'c> {
     pub(super) decoder: EntityDecoder<'c>,
     pub(super) ctx: PassContext<'c>,
     pub(super) meshes: Vec<MeshData>,
+    pub(super) finishes: Option<ModelFinishes<'c>>,
+    pub(super) processed_jobs: usize,
     pub(super) total_jobs: usize,
     pub(super) total_meshes: usize,
     pub(super) total_vertices: usize,
@@ -212,10 +214,9 @@ struct ResolvedInputs {
     mapped_item_plan: FxHashMap<u32, (u32, u32)>,
 }
 
-/// Cooperative cancellation between chunks: the caller flipped the flag (e.g.
-/// its client disconnected), so stop meshing and emitting. The result is
-/// partial by contract; see `ProcessingRequest::cancel`.
-fn cancelled(req: &ProcessingRequest) -> bool {
+/// Whether the caller asked the pass to stop meshing and emitting. The
+/// result is partial by contract; see `ProcessingRequest::cancel`.
+pub(super) fn cancelled(req: &ProcessingRequest) -> bool {
     req.cancel
         .as_ref()
         .is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed))
@@ -233,6 +234,14 @@ fn finish_join<'c>(
     req.features.finishes.then(|| {
         ModelFinishes::from_spans(&facts.prepass_spans.styled_items, ctx.entity_index.decoder(content))
     })
+}
+
+/// `on_finishes` for the batch about to be emitted, one entry per mesh, when
+/// the request asked for finishes.
+pub(super) fn emit_finishes(sink: &mut dyn ProcessingSink, finishes: Option<&mut ModelFinishes<'_>>, meshes: &[MeshData]) {
+    let Some(finishes) = finishes else { return };
+    let batch: Vec<_> = meshes.iter().map(|mesh| finishes.finish_for_mesh(mesh)).collect();
+    sink.on_finishes(&batch);
 }
 
 pub(super) fn run<'c>(
@@ -259,16 +268,7 @@ pub(super) fn run<'c>(
     } = resolved;
 
     let geometry_start = mark(Mark::GeometryStart, Clock::now());
-    // Material chain joined by the shared resolver (#407). The general-path
-    // element fallback is `style::element_material_fallback_color`, the rule
-    // the browser style wire carries too (PROCESSING-4); the full list feeds
-    // the opening sub-mesh transparent/opaque split (#913 §2.3).
-    let element_material_color: FxHashMap<u32, [f32; 4]> = element_material_colors
-        .iter()
-        .filter_map(|(&id, colors)| {
-            crate::style::element_material_fallback_color(colors).map(|c| (id, c))
-        })
-        .collect();
+    let element_material_color = element_material_fallbacks(&element_material_colors);
     let mut ctx = PassContext::new(
         content,
         req,
@@ -365,6 +365,8 @@ pub(super) fn run<'c>(
         decoder,
         ctx,
         meshes,
+        finishes,
+        processed_jobs,
         total_jobs,
         total_meshes,
         total_vertices,

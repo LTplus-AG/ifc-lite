@@ -138,6 +138,8 @@ export const sheetsPdfEn = {
   'sheetsPdf.pdfView.pageReadoutFits': 'Estimated page: {width} x {height} mm (fits {paperName}). The exported page is sized to the drawing itself and will never be larger.',
   'sheetsPdf.pdfView.pageReadoutOversizeIso': 'Estimated page: {width} x {height} mm (larger than any ISO sheet). The exported page is sized to the drawing itself and will never be larger.',
   'sheetsPdf.pdfView.pageReadoutUnavailable': 'Page size is not available yet. Load a model and choose a valid scale.',
+  'sheetsPdf.pdfView.releasedLoading': 'Reading the model geometry back from local storage…',
+  'sheetsPdf.pdfView.releasedUnavailable': 'The model geometry is not available from local storage yet. Export becomes available as soon as it is.',
   'sheetsPdf.pdfView.oversizeTitle': 'Page too large to print',
   'sheetsPdf.pdfView.oversizeDescription': 'This scale needs a page of {width} x {height} mm. A PDF page cannot exceed {maxDimension} mm on a side. Choose a smaller scale.',
   'sheetsPdf.pdfView.perspectiveTitle': 'Perspective camera',

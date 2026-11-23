@@ -36,7 +36,7 @@ let viewport: ReturnType<typeof installViewport>;
 
 /** A GPU-free canonical viewport: counts the frames it renders and runs `onRender` inside each. */
 function installViewport() {
-  const state = { renders: 0, submit: true, onRender: () => {}, gpu: null as null | (() => Promise<void>) };
+  const state = { renders: 0, submit: true, onRender: () => {}, onOptions: () => {}, gpu: null as null | (() => Promise<void>) };
   const camera = {
     getPosition: () => ({ x: 10, y: 5, z: 20 }), getTarget: () => ({ x: 1, y: 2, z: 3 }), getUp: () => ({ x: 0, y: 1, z: 0 }),
     getFOV: () => Math.PI / 4, getProjectionMode: () => 'perspective', getOrthoSize: () => 10, getAspect: () => 16 / 9, getDistance: () => 10,
@@ -53,7 +53,7 @@ function installViewport() {
   canvas.toDataURL = () => PNG;
   setGlobalRendererRef({ current: renderer });
   setGlobalCanvasRef({ current: canvas });
-  const unregister = registerViewportCapture(renderer, canvas, () => ({}));
+  const unregister = registerViewportCapture(renderer, canvas, () => { state.onOptions(); return {}; });
   return { state, renderer, canvas, dispose: () => { unregister(); clearGlobalRefs(); } };
 }
 
@@ -99,6 +99,29 @@ describe('viewer operations: no effects after cancel and no stale captures (#107
     assert.equal(viewport.state.renders, 1, 'the cancelled capture rendered no frame');
   });
 
+  it('#10791: cancelling an agent screenshot while queued renders no frame', async () => {
+    let release = () => {};
+    const held = new Promise<void>(resolve => { release = resolve; });
+    let markFirstStarted = () => {};
+    const firstStarted = new Promise<void>(resolve => { markFirstStarted = resolve; });
+    viewport.state.gpu = () => { markFirstStarted(); return held; };
+    const first = captureViewportFrame(viewport.renderer, { read: () => 'first' });
+    await firstStarted; // The first request already read its options and owns the viewport.
+    const controller = new AbortController();
+    const queued = new Promise<void>(resolve => { viewport.state.onOptions = resolve; });
+    const screenshot = execute('exports.screenshot', { scope: 'current-view' }, controller.signal);
+    try {
+      await Promise.race([queued, screenshot.then(result => assert.fail(result.text))]);
+      controller.abort();
+    } finally {
+      release();
+      await first;
+    }
+    const result = await screenshot;
+    assert.equal(result.errorCode, 'CANCELLED', result.text);
+    assert.equal(viewport.state.renders, 1, 'only the first capture rendered');
+  });
+
   for (const kind of ['chart report', 'document'] as const)
     it(`#71: a cancelled ${kind} export takes no further snapshot frames`, async () => {
       const dataset = { source: 'elements' as const, columns: [{ id: 'T', label: 'Type', kind: 'category' as const }],
@@ -142,6 +165,15 @@ describe('viewer operations: no effects after cancel and no stale captures (#107
     await settle();
     assert.equal(controller.signal.aborted, true, 'cancelled after the focus scheduled its frame');
     assert.equal(framed, 0, 'no camera move after cancellation');
+    assert.equal(useViewerStore.getState().bcfProject, null);
+  });
+
+  it('reports superseded clash topic capture as stale (#10871)', async () => {
+    const { run_seq } = await clashRun();
+    viewport.state.onRender = () => useViewerStore.setState({ clashRunSeq: run_seq + 1 });
+    const result = await execute('clash.topic.create', { kind: 'report', clash_ids: [], run_seq, group_name: '', mode: 'highlight' });
+    assert.ok(viewport.state.renders > 0, 'the result changed during capture');
+    assert.equal(result.errorCode, 'STATE_CHANGED', result.text);
     assert.equal(useViewerStore.getState().bcfProject, null);
   });
 

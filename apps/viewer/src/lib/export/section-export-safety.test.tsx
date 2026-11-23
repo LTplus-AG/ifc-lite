@@ -14,7 +14,7 @@ import { renderFrameWorldOffset, viewerToIfcAxes } from '@ifc-lite/geometry/worl
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { clearGlobalRefs, setGlobalRendererRef } from '@/hooks/useBCF';
-import { render, click, cleanup, waitFor } from '@/test/render';
+import { render, click, cleanup, settle, waitFor } from '@/test/render';
 import { ExportDialog } from '@/components/viewer/ExportDialog';
 import { exportModelStep } from './model-step-export';
 
@@ -202,6 +202,7 @@ test('#7711 merged dialog download preserves authored placement in reopened worl
     ['n', { translation: [-0.25,0,0], rotation: { angle: Math.PI/2, pivot: [0,0,0] }, locked: false }],
   ]) } });
   enableSection();
+  await settle();
   render(<ExportDialog surface="ribbon" />);
   click(button('Export IFC'));
   const scope = document.querySelector('[role="combobox"]'); assert.ok(scope);

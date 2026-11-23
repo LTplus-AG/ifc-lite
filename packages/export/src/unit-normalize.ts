@@ -46,7 +46,8 @@
  *   `IfcMeasureWithUnit`, `IfcUnitAssignment`, …): their numbers define units, not
  *   data, and must survive verbatim.
  * - Georeferencing (`IfcMapConversion`): its offsets are in the map/CRS unit,
- *   independent of the project length unit.
+ *   independent of the project length unit. The merged exporter keeps every
+ *   coordinate operation away from this rescale (`merged-georef-normalize.ts`).
  * - A quantity or property that carries its own explicit unit reference (`Unit`,
  *   or `DefiningUnit`/`DefinedUnit` on `IfcPropertyTableValue`): its value is
  *   already in that unit, not the global one.
@@ -298,8 +299,8 @@ export function rescaleEntityLengths(
   const hasStructural = plan.listIdx.length > 0 || plan.scalarIdx.length > 0
     || plan.areaIdx.length > 0 || plan.volumeIdx.length > 0;
 
-  // Fast path: nothing structural, no unit override to weigh, and no typed measure.
-  if (!hasStructural && plan.unitGuardIdx.length === 0 && !line.includes('MEASURE')) return line;
+  // A unit override only matters when there is a length, area or volume to scale.
+  if (!hasStructural && !line.includes('MEASURE')) return line;
 
   const bounds = findOuterArgs(line);
   if (!bounds) return line;

@@ -41,6 +41,7 @@ function constraintFromPointerDown(): MeasurementConstraintEdge {
   const ctx = {
     canvas: document.createElement('canvas'),
     renderer: {
+      getScene: () => ({}), // a resident scene: the press picks synchronously
       raycastSceneMagnetic: () => ({
         intersection: { point: { x: 1, y: 2, z: 3 } },
         snapTarget: null,

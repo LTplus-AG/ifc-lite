@@ -12,6 +12,7 @@
  */
 
 import { stepStringLiteralEnd } from '@ifc-lite/encoding';
+import { skipStepComment } from './step-comment-skip.js';
 
 /**
  * Remap all #ID references in a STEP entity line.
@@ -20,6 +21,8 @@ import { stepStringLiteralEnd } from '@ifc-lite/encoding';
  * Only `#<digits>` tokens in code positions are rewritten; tokens inside
  * single-quoted STEP strings (e.g. a 'Room #205' Name or a 'http://x#42'
  * URL) are left untouched so string attribute values are not corrupted.
+ * A STEP comment is copied as it is too: an apostrophe in it opens no
+ * string, so the references after it are still remapped (#10968).
  */
 export function remapEntityText(
   entityText: string,
@@ -39,6 +42,14 @@ export function remapEntityText(
   let out = '';
   for (let i = 0; i < entityText.length; i++) {
     const char = entityText[i];
+
+    // An unclosed `/*` is no comment: read on, as before (#10968).
+    if (char === '/' && entityText[i + 1] === '*' && entityText.includes('*/', i + 2)) {
+      const stop = skipStepComment(entityText, i);
+      out += entityText.slice(i, stop);
+      i = stop - 1;
+      continue;
+    }
 
     if (char === "'") {
       // The literal is copied verbatim. Where it ends is the shared rule: `''`

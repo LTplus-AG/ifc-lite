@@ -71,6 +71,21 @@ describe('attribute maps (#10763)', () => {
     });
   });
 
+  it('upgrades the IFC2X3 property subtypes IFC4 deleted to the IFC4 supertype, naming every dropped measure (#10777)', () => {
+    expect(convertStepLine("#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6,#7),'d','Pset_x');", 'IFC2X3', 'IFC4'))
+      .toBe("#5=IFCMATERIALPROPERTIES('Pset_x','d',(#6,#7),#8);");
+    expect(convertStepLine('#5=IFCMECHANICALMATERIALPROPERTIES(#8,$,2.1E11,8.1E10,0.3,1.2E-5);', 'IFC2X3', 'IFC4'))
+      .toBe('#5=IFCMATERIALPROPERTIES($,$,$,#8);');
+    expect(classifyEntityTypeConversion('IFCMECHANICALMATERIALPROPERTIES', 'IFC2X3', 'IFC4')).toEqual({
+      targetType: 'IFCMATERIALPROPERTIES', kind: 'lossy',
+      droppedAttributes: ['DynamicViscosity', 'YoungModulus', 'ShearModulus', 'PoissonRatio', 'ThermalExpansionCoefficient'],
+    });
+    const ifc5 = "#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6,#7),'d','Pset_x');";
+    expect(convertStepLine(ifc5, 'IFC2X3', 'IFC5'), 'IFC5 has no attribute list to map onto').toBe(ifc5);
+    expect(classifyEntityTypeConversion('IFCRIBPLATEPROFILEPROPERTIES', 'IFC2X3', 'IFC4X3').droppedAttributes)
+      .toEqual(['ProfileName', 'Thickness', 'RibHeight', 'RibWidth', 'RibSpacing', 'Direction']);
+  });
+
   it('drops an up-only reference on the way down and reports it', () => {
     expect(convertStepLine("#5=IFCLIBRARYINFORMATION('n','v',#3,'2020-01-01','https://x',$);", 'IFC4', 'IFC2X3'))
       .toBe("#5=IFCLIBRARYINFORMATION('n','v',$,$,$);");

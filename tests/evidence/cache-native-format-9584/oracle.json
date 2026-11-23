@@ -1,7 +1,0 @@
-{
-  "issue": 7955,
-  "why": "PR #10356 adds the whole rust/cache crate, so a derived revert deletes the code its tests compile against (INCONCLUSIVE); this keeps the crate and moves SourceHashUnset to bit 4 (the prototype bug), so the header-flag assertions fail.",
-  "key": "rust/cache/src/format.rs",
-  "mutation": "tests/evidence/cache-native-format-9584/behaviour.oracle.patch",
-  "test": "rust/cache/tests/self_reproducible.rs"
-}

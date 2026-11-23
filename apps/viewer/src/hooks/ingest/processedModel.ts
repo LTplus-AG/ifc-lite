@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Opening a processed model (`ModelLoadOptions.processedModel`): its reference
+ * Opening a processed model: its reference
  * in the form the server keys by, and why it could not be opened, worded for
  * the user, with whether trying again can help. Unlike an upload, a processed
  * model has no local fallback, so each cause gets its own message: a generic
@@ -18,6 +18,10 @@ import { isNetworkUnavailableError } from '@/lib/cancelled-and-network-errors';
 import { formatLoadError } from '@/lib/load-error-message';
 import { messageOf } from '@/lib/load-errors';
 import { reportLoadFailure } from './loadFailureReport.js';
+
+export type ModelLoadSource =
+  | { file: File; name?: never; processedModel?: never }
+  | { file?: never; name: string; processedModel: ProcessedModelSource };
 
 /** `ref` with its hash lowercased, so the model record holds one spelling; a hash that is not a SHA-256 is kept for the client to refuse. A size that is not a positive integer becomes 0, unknown. */
 export function normalizedProcessedModel(ref: ProcessedModelSource): ProcessedModelRecord {

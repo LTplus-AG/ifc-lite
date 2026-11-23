@@ -166,3 +166,22 @@ fn unused_approval_datetime_counts_only_a_present_value_10779() {
         assert_eq!(checks.attribute_values_dropped, dropped, "{slot}");
     }
 }
+
+/// #10777: an upgrade writes the IFC2X3 subtypes IFC4 deleted as the IFC4
+/// supertype. A typed subtype keeps only `Material`; every measure is counted
+/// dropped, and the required `Properties` left `$` is counted.
+#[test]
+fn ifc2x3_property_subtypes_upgrade_to_the_ifc4_supertype_10777() {
+    assert_eq!(up("#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6,#7),'d','Pset_x');"), "#5=IFCMATERIALPROPERTIES('Pset_x','d',(#6,#7),#8);");
+    let mut checks = ConversionChecks::default();
+    let line = "#5=IFCMECHANICALMATERIALPROPERTIES(#8,$,2.1E11,8.1E10,0.3,1.2E-5);";
+    let out = convert_step_line(line, "IFC2X3", "IFC4", 5, &mut Ifc2x3SlotFill::new(None), Some(&mut checks)).unwrap();
+    assert_eq!(out, "#5=IFCMATERIALPROPERTIES($,$,$,#8);");
+    assert_eq!(checks.attribute_values_dropped, 4, "YoungModulus, ShearModulus, PoissonRatio, ThermalExpansionCoefficient");
+    assert_eq!(checks.ifc4_slots.required_slots_unfilled(), 1, "Properties");
+    let profile = convert_step_line("#5=IFCSTRUCTURALSTEELPROFILEPROPERTIES('P',#9,12.5,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$);", "IFC2X3", "IFC4X3", 5, &mut Ifc2x3SlotFill::new(None), None).unwrap();
+    assert_eq!(profile, "#5=IFCPROFILEPROPERTIES($,$,$,#9);");
+    // IFC5 has no attribute list to map onto, so the record keeps its IFC2X3 name and layout.
+    let ifc5 = "#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6,#7),'d','Pset_x');";
+    assert_eq!(convert_step_line(ifc5, "IFC2X3", "IFC5", 5, &mut Ifc2x3SlotFill::new(None), None).unwrap(), ifc5);
+}

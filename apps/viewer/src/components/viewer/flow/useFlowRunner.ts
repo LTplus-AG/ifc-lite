@@ -7,7 +7,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { useViewerStore } from '@/store';
 import { NativeFlowRunner, type FlowRunOptions } from '@/lib/flow/native-runner';
 import { isAutomationGraph } from '@/lib/flow/preflight';
-import { cancelWorkflowRun } from '@/lib/flow/run-session';
+import { cancelFlowRun } from '@/lib/flow/run-session';
 export type { FlowRunOptions } from '@/lib/flow/native-runner';
 /** React subscribes to the same viewer-owned state the native runner publishes. */
 export function useFlowRunner(): { run: (inputs?: Record<string, unknown>, options?: FlowRunOptions) => Promise<void>; canRun: boolean; cancel: () => void } {
@@ -21,5 +21,5 @@ export function useFlowRunner(): { run: (inputs?: Record<string, unknown>, optio
   }, [bim, runner]);
   const canRun = flowDoc !== null && !running && (activeModelId !== null || isAutomationGraph(flowDoc));
   const run = useCallback(async (inputs?: Record<string, unknown>, options?: FlowRunOptions) => { await runner.run(inputs, options); }, [runner]);
-  return { run, canRun, cancel: cancelWorkflowRun };
+  return { run, canRun, cancel: cancelFlowRun };
 }

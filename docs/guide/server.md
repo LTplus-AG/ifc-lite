@@ -1109,23 +1109,31 @@ still shows its link error.
 A host that builds its own entry does the same without a URL, and can name the
 server at runtime instead of at build time:
 
-<!-- docs-check: skip -->
 ```typescript
-import { openProcessedModel } from '@/lib/processed-model';
+import { mountViewer, type ProcessedModelRequest } from '@/bootstrap';
 
-// Only this request and its Retry use /ifc; local uploads keep the global server.
-openProcessedModel({ sha256, bytes, name }, { serverUrl: '/ifc' });
+function startViewer(container: HTMLElement, firstModel: ProcessedModelRequest) {
+  const viewer = mountViewer(container, {
+    processedModel: { ...firstModel, serverUrl: '/ifc' },
+  });
+
+  return (nextModel: ProcessedModelRequest) => {
+    viewer.openProcessedModel(nextModel, { serverUrl: '/ifc' });
+  };
+}
 ```
 
-The call may come before the viewer mounts; the request waits for it, and a
-`?processed=` or `?model=` in the page URL is then ignored (each logged once), so the host's model wins.
-A collaboration link (`?room=`) is refused the same way. When a host asks
-for its own model after a page room starts joining, the viewer leaves that room
-before opening the host's model. An independent room joined by the user keeps
-its own session.
-The `serverUrl` option applies only to this request and its Retry; it does not redirect local uploads.
-Without it, the load asks the global server as it stands when the load runs.
-`setProcessingServerUrl(url)` explicitly sets the global server. This URL replaces
+The `processedModel` option opens the first model at mount and takes precedence
+over a start model in the deployment configuration. The handle opens a later
+model in the same viewer. The host's model takes precedence over
+`?processed=` and `?model=` in the page URL. A collaboration link (`?room=`)
+also yields. If the page has started joining its room, the viewer leaves it
+before opening the host's model. A room the user joined independently keeps
+its session.
+
+Each `serverUrl` applies to that request and its Retry. Without it, the request
+uses the global server at load time. `viewer.setProcessingServerUrl(url)`
+sets that global server. This URL replaces
 `VITE_IFC_SERVER_URL` for every server request, so in a build with
 `VITE_USE_SERVER=true` it also receives the uploads of IFC files opened from
 disk. `VITE_USE_SERVER` still decides whether such uploads happen at all.

@@ -161,7 +161,7 @@
    "retyped": [],
    "upOnly": [],
    "setOfOne": null,
-   "why": "IFC2X3 IfcMaterialProperties is abstract. IFC4: 'Entity made non-abstract. The subtypes ... IfcExtendedMaterialProperties have been deleted, use IfcMaterialProperties instead.' A downgrade writes IfcExtendedMaterialProperties. Material: 'The datatype has been changed to supertype IfcMaterialDefinition'; IFC2X3 requires an IfcMaterial, so a downgrade resolves the referent (schema_material_referent.rs / schema-converter-material-referent.ts): an IfcMaterial is kept, a definition of exactly one IfcMaterial names it, and anything else leaves the record out, reported"
+   "why": "IFC2X3 IfcMaterialProperties is abstract. IFC4: 'Entity made non-abstract. The subtypes ... IfcExtendedMaterialProperties have been deleted, use IfcMaterialProperties instead.' An upgrade writes IfcMaterialProperties (#10777). A downgrade writes IfcExtendedMaterialProperties (#10911) and resolves its IfcMaterialDefinition to exactly one IfcMaterial. If the referent cannot be resolved, the converter omits the record and reports the loss"
   },
   {
    "ifc2x3": "IFCGENERALPROFILEPROPERTIES",
@@ -170,7 +170,124 @@
    "retyped": [],
    "upOnly": [],
    "setOfOne": null,
-   "why": "IFC2X3 IfcProfileProperties is abstract. IFC4: 'Entity made non-abstract. Subtypes IfcGeneralProfileProperties, IfcStructuralProfileProperties, and IfcStructuralSteelProfileProperties deleted. Attribute ProfileName deleted ... Attribute ProfileDefinition made mandatory.' A downgrade writes IfcGeneralProfileProperties"
+   "why": "IFC2X3 IfcProfileProperties is abstract. IFC4: 'Entity made non-abstract. Subtypes IfcGeneralProfileProperties, IfcStructuralProfileProperties, and IfcStructuralSteelProfileProperties deleted. Attribute ProfileName deleted ... Attribute ProfileDefinition made mandatory.' A downgrade writes IfcGeneralProfileProperties, an upgrade IfcProfileProperties (#10777)"
+  },
+  {
+   "ifc2x3": "IFCMECHANICALMATERIALPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "IfcMaterialProperties: 'The subtypes IfcMechanicalMaterialProperties, IfcThermalMaterialProperties, IfcHygroscopicMaterialProperties, IfcGeneralMaterialProperties, IfcOpticalMaterialProperties, IfcWaterProperties, IfcFuelProperties, IfcProductsOfCombustionProperties, IfcExtendedMaterialProperties have been deleted, use IfcMaterialProperties instead.' An upgrade writes IfcMaterialProperties. Only Material carries: IFC4 holds the measures as IfcProperty records (#10797), so each is dropped, and the required Properties stays $ and is counted"
+  },
+  {
+   "ifc2x3": "IFCMECHANICALCONCRETEMATERIALPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcMechanicalMaterialProperties"
+  },
+  {
+   "ifc2x3": "IFCMECHANICALSTEELMATERIALPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcMechanicalMaterialProperties"
+  },
+  {
+   "ifc2x3": "IFCTHERMALMATERIALPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcMechanicalMaterialProperties"
+  },
+  {
+   "ifc2x3": "IFCHYGROSCOPICMATERIALPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcMechanicalMaterialProperties"
+  },
+  {
+   "ifc2x3": "IFCGENERALMATERIALPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcMechanicalMaterialProperties"
+  },
+  {
+   "ifc2x3": "IFCOPTICALMATERIALPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcMechanicalMaterialProperties"
+  },
+  {
+   "ifc2x3": "IFCWATERPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcMechanicalMaterialProperties"
+  },
+  {
+   "ifc2x3": "IFCFUELPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcMechanicalMaterialProperties"
+  },
+  {
+   "ifc2x3": "IFCPRODUCTSOFCOMBUSTIONPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcMechanicalMaterialProperties"
+  },
+  {
+   "ifc2x3": "IFCSTRUCTURALPROFILEPROPERTIES",
+   "ifc4": "IFCPROFILEPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "IfcProfileProperties: 'Subtypes IfcGeneralProfileProperties, IfcStructuralProfileProperties, and IfcStructuralSteelProfileProperties deleted. Attribute ProfileName deleted, use ProfileDefinition.ProfileName instead.' An upgrade writes IfcProfileProperties. Only ProfileDefinition carries: the measures are dropped (#10797), and the required Properties stays $ and is counted"
+  },
+  {
+   "ifc2x3": "IFCSTRUCTURALSTEELPROFILEPROPERTIES",
+   "ifc4": "IFCPROFILEPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcStructuralProfileProperties"
+  },
+  {
+   "ifc2x3": "IFCRIBPLATEPROFILEPROPERTIES",
+   "ifc4": "IFCPROFILEPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "IFC4 has no IfcRibPlateProfileProperties either; as IfcStructuralProfileProperties"
   },
   {
    "ifc2x3": "IFCPERFORMANCEHISTORY",

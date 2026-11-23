@@ -62,7 +62,7 @@ export interface FlowCheckpoint {
   readonly createdAt: number;
   readonly updatedAt: number;
   readonly review?: { readonly decision: 'approved' | 'rejected'; readonly proposalDigest: string; readonly at: number };
-  readonly claim?: { readonly owner: string; readonly leaseUntil: number; readonly at: number };
+  readonly claim?: { readonly owner: string; readonly leaseUntil: number; readonly at: number; readonly reservationId?: string };
   readonly outcome?: { readonly ok: boolean; readonly at: number; readonly message?: string };
 }
 
@@ -229,10 +229,19 @@ export function registerPausedRun(result: RunResult, graphDigestAtEntry: string)
 const authorizedResumes = new WeakMap<object, { graph: string; outputs: string; expires: number }>();
 const ownedClaims = new WeakMap<object, string>();
 
+function ownershipDigest(checkpoint: FlowCheckpoint): string {
+  return digest({ id: checkpoint.id, graph: checkpoint.graphDigest,
+    source: checkpoint.sourceDigest, proposal: checkpoint.proposalDigest, claim: checkpoint.claim });
+}
+
 /** Internal: only a successful CAS claim yields a process-local ownership receipt. */
 export function registerOwnedClaim(checkpoint: FlowCheckpoint): void {
-  ownedClaims.set(checkpoint, digest({ id: checkpoint.id, graph: checkpoint.graphDigest,
-    source: checkpoint.sourceDigest, proposal: checkpoint.proposalDigest, claim: checkpoint.claim }));
+  ownedClaims.set(checkpoint, ownershipDigest(checkpoint));
+}
+
+/** Internal: check that the caller holds the original, unchanged receipt. */
+export function hasOwnedClaim(checkpoint: FlowCheckpoint): boolean {
+  return ownedClaims.get(checkpoint) === ownershipDigest(checkpoint);
 }
 
 /** Scheduler-only boundary: raw, changed, expired or reused maps cannot bypass review. */
@@ -258,12 +267,11 @@ export function resumeOutputs(checkpoint: FlowCheckpoint, now = Date.now()): Map
     || !Number.isFinite(now) || !Number.isFinite(checkpoint.claim.leaseUntil) || checkpoint.claim.leaseUntil <= Math.max(now, Date.now())) {
     throw new Error('only an actively claimed, approved checkpoint can supply resume outputs');
   }
-  const outputs = restoreMap(checkpoint);
-  const ownership = digest({ id: checkpoint.id, graph: checkpoint.graphDigest,
-    source: checkpoint.sourceDigest, proposal: checkpoint.proposalDigest, claim: checkpoint.claim });
-  if (ownedClaims.get(checkpoint) !== ownership) {
+  if (checkpoint.claim.reservationId) throw new Error('the checkpoint claim must be started before obtaining resume outputs');
+  if (!hasOwnedClaim(checkpoint)) {
     throw new Error('resume requires the original successful store claim; a persisted or already supplied claim cannot resume');
   }
+  const outputs = restoreMap(checkpoint);
   ownedClaims.delete(checkpoint);
   authorizedResumes.set(outputs, { graph: checkpoint.graphDigest, outputs: digest(portableOutputs(outputs)),
     expires: checkpoint.claim.leaseUntil });

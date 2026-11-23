@@ -98,7 +98,8 @@ export const GroupChartImpl = createComponentImplementation(GroupChartApi, ({ pr
   const run = useRunFunction();
   const { result, reader } = useQueryResult(props.data === undefined ? props.query ?? {} : undefined);
   const kind = props.kind === 'pie' ? 'pie' : 'bar';
-  const max = typeof props.maxGroups === 'number' && props.maxGroups > 1 ? Math.floor(props.maxGroups) : 12;
+  const floored = typeof props.maxGroups === 'number' ? Math.floor(props.maxGroups) : NaN;
+  const max = floored > 1 ? floored : 12;
   const sumPath = props.aggregate === 'sum' && typeof props.path === 'string' ? props.path : undefined;
   const emptyLabel = t('a2ui.noGroupValue');
   const otherLabel = t('a2ui.chart.other');

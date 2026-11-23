@@ -35,6 +35,14 @@ export function isRelationshipType(typeUpper: string): boolean {
   return typeUpper.startsWith('IFCREL');
 }
 
+/** A relationship or generic proxy cannot stand in for another rooted entity. */
+export function canUnifyByGlobalId(typeUpper: string, converted?: string): boolean {
+  if (isRelationshipType(typeUpper) || typeUpper === 'IFCPROXY') return false;
+  if (converted === undefined) return true;
+  const head = stepRecordHead(converted);
+  return head !== null && converted.slice(head.typeStart, head.typeEnd).toUpperCase() !== 'IFCPROXY';
+}
+
 /**
  * Whether `type` is an IfcRoot subtype — a schema-derived replacement for a
  * hand-maintained denylist of "non-rooted types whose first attribute happens

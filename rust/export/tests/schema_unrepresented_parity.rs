@@ -32,18 +32,18 @@ fn cases() -> Vec<Case> {
     serde_json::from_value(doc["cases"].clone()).expect("cases deserialize")
 }
 
-fn source(c: &Case) -> String {
+fn source(schema: &str, line: &str) -> String {
     format!(
         "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\n\
          FILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('{}'));\nENDSEC;\n\
          DATA;\n{}\nENDSEC;\nEND-ISO-10303-21;\n",
-        c.from, c.line
+        schema, line
     )
 }
 
 /// Run one entity line through the real exporter, as `ifc-lite export` does.
 fn convert(c: &Case) -> Result<String, String> {
-    let src = source(c);
+    let src = source(&c.from, &c.line);
     let out = export_step_json(src.as_bytes(), Some(c.to.clone()), None, "").map_err(|e| e.to_string())?;
     let line = out.lines().find(|l| l.starts_with('#')).unwrap_or_else(|| panic!("no entity line:\n{out}"));
     // Rust keeps a spaced source's `#5 =` prefix, TS writes `#5=`: cosmetic.
@@ -53,7 +53,7 @@ fn convert(c: &Case) -> Result<String, String> {
 #[test]
 fn merging_models_keeps_distinct_proxy_global_ids_11322() {
     for c in cases().into_iter().filter(|c| c.merge) {
-        let source = source(&c);
+        let source = source(&c.from, &c.line);
         let models = ["a", "b"].map(|id| MergedModel { content: source.as_bytes(), id: id.into(), included: None });
         let options = MergedOptions { schema: Some(c.to), ..Default::default() };
         let (merged, _) = export_merged_models(&models, &options);
@@ -66,6 +66,38 @@ fn merging_models_keeps_distinct_proxy_global_ids_11322() {
         assert_ne!(ids[0], ids[1], "{}: {merged}", c.why);
         assert!(c.expect.unwrap().contains(&format!("IFCPROXY('{}'", ids[0])));
     }
+}
+
+#[test]
+fn earlier_proxy_does_not_swallow_a_wall_with_the_same_global_id_11322() {
+    assert_proxy_wall_collision(false);
+}
+
+#[test]
+fn earlier_wall_and_later_proxy_keep_distinct_global_ids_11322() {
+    assert_proxy_wall_collision(true);
+}
+
+fn assert_proxy_wall_collision(wall_first: bool) {
+    let guid = "0YvctVUKr0kugbFTf53O9L";
+    let proxy = source("IFC4X3", &format!("#5=IFCRELPOSITIONS('{guid}',$,'R',$,#1,(#2));"));
+    let wall = source("IFC4", &format!("#1=IFCWALL('{guid}',$,'Wall',$,$,$,$,$,.NOTDEFINED.);"));
+    let mut models = [("proxy", &proxy), ("wall", &wall)].map(|(id, content)| MergedModel {
+        content: content.as_bytes(), id: id.into(), included: None,
+    });
+    if wall_first { models.reverse(); }
+    let options = MergedOptions { schema: Some("IFC4".into()), ..Default::default() };
+    let (merged, _) = export_merged_models(&models, &options);
+    let roots: Vec<_> = merged.lines().filter_map(|line| {
+        let (_, body) = line.split_once('=')?;
+        let (ty, attrs) = body.split_once("('")?;
+        matches!(ty, "IFCPROXY" | "IFCWALL").then(|| (ty, attrs.split_once('\'').unwrap().0))
+    }).collect();
+    let want = if wall_first { ["IFCWALL", "IFCPROXY"] } else { ["IFCPROXY", "IFCWALL"] };
+    assert_eq!(roots.iter().map(|(ty, _)| *ty).collect::<Vec<_>>(), want, "{merged}");
+    assert_eq!(roots[0].1, guid);
+    assert!(ifc_lite_core::guid::is_valid_global_id(roots[1].1));
+    assert_ne!(roots[1].1, guid);
 }
 
 #[test]

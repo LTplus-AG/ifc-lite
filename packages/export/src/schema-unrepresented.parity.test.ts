@@ -56,13 +56,32 @@ describe('convertStepLine matches the shared unrepresented-type vectors (#7742)'
   }
 });
 
+function parseModel(schema: IfcSchemaVersion, line: string) {
+  const step = `ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('${schema}'));\nENDSEC;\nDATA;\n${line}\nENDSEC;\nEND-ISO-10303-21;\n`;
+  return new IfcParser().parseColumnar(new TextEncoder().encode(step).buffer);
+}
+
 it.each(fixture.cases.filter((c) => c.merge))('keeps two distinct proxy IDs when merging copies: $why', async (c) => {
-  const step = `ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t','',(''),(''),'','','');\nFILE_SCHEMA(('${c.from}'));\nENDSEC;\nDATA;\n${c.line}\nENDSEC;\nEND-ISO-10303-21;\n`;
-  const dataStore = await new IfcParser().parseColumnar(new TextEncoder().encode(step).buffer);
+  const dataStore = await parseModel(c.from, c.line);
   const models = ['a', 'b'].map((id) => ({ id, name: id, dataStore }));
   const merged = new TextDecoder().decode(new MergedExporter(models).export({ schema: c.to }).content);
   const ids = [...merged.matchAll(/^#\d+=IFCPROXY\('([0-3][0-9A-Za-z_$]{21})',/gm)].map((m) => m[1]);
   expect(ids).toHaveLength(2);
   expect(new Set(ids).size).toBe(2);
   expect(c.expect).toContain(`IFCPROXY('${ids[0]}'`);
+});
+
+it.each(['proxy', 'wall'] as const)('keeps the proxy and wall that share a GlobalId, %s first (#11322)', async (first) => {
+  const guid = '0YvctVUKr0kugbFTf53O9L';
+  const [proxy, wall] = await Promise.all([
+    parseModel('IFC4X3', `#5=IFCRELPOSITIONS('${guid}',$,'R',$,#1,(#2));`),
+    parseModel('IFC4', `#1=IFCWALL('${guid}',$,'Wall',$,$,$,$,$,.NOTDEFINED.);`),
+  ]);
+  const models = [{ id: 'proxy', name: 'proxy', dataStore: proxy }, { id: 'wall', name: 'wall', dataStore: wall }];
+  if (first === 'wall') models.reverse();
+  const merged = new TextDecoder().decode(new MergedExporter(models).export({ schema: 'IFC4' }).content);
+  const roots = [...merged.matchAll(/^#\d+=(IFCPROXY|IFCWALL)\('([0-3][0-9A-Za-z_$]{21})',/gm)];
+  expect(roots.map((m) => m[1])).toEqual(first === 'proxy' ? ['IFCPROXY', 'IFCWALL'] : ['IFCWALL', 'IFCPROXY']);
+  expect(roots[0][2]).toBe(guid);
+  expect(roots[1][2]).not.toBe(guid);
 });

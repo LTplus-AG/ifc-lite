@@ -35,6 +35,7 @@ import { listKeptContexts } from './merged-project-contexts.js';
 import { remapEntityText } from './merged-remap.js';
 import { PlannerGuids } from './merged-planner-guids.js';
 import {
+  canUnifyByGlobalId,
   isRelationshipType,
   mintUniqueGuid,
   readLeadingGuid,
@@ -192,6 +193,7 @@ interface ModelMergePlan {
 interface GuidRecord {
   finalId: number;
   scale: number;
+  canUnify: boolean;
 }
 
 /**
@@ -1086,18 +1088,11 @@ export class MergedExporter {
         const prior = guidToFinalId.get(guid);
         if (prior === undefined) continue; // first occurrence — kept as-is
 
-        // Unify (drop + remap refs to the one instance) ONLY when this is a
-        // physical/spatial root AND both this model and the emitter share the
-        // primary unit. Two conditions force "keep + re-stamp" instead:
-        //   - Objectified relationships (IfcRel*): same GlobalId does not imply
-        //     the same membership (e.g. a storey-containment listing different
-        //     elements per discipline), so dropping one would orphan elements.
-        //   - The colliding instance was emitted in a different unit space
-        //     (a federated model), so unifying would reinterpret coordinates —
-        //     the very mis-scale this fix prevents, reached transitively.
+        // Both roots must share the primary unit. Keep and re-stamp collisions
+        // with relationships or generic proxies, which cannot replace a root.
         const type = (completeIndex.get(id)?.type ?? '').toUpperCase();
         const emitterIsPrimaryUnit = unitScalesEqual(prior.scale, setup.primaryScale);
-        const canUnify = compatible && emitterIsPrimaryUnit && !isRelationshipType(type);
+        const canUnify = compatible && emitterIsPrimaryUnit && prior.canUnify && canUnifyByGlobalId(type);
         if (canUnify) {
           sharedRemap.set(id, prior.finalId);
           skipEntityIds.add(id);
@@ -1206,7 +1201,8 @@ export class MergedExporter {
       finalText = rescaleEntityLengths(finalText, entityRef.type.toUpperCase(), mode.lengthFactor, mode.areaFactor, mode.volumeFactor);
     }
 
-    if (needsConversion(sourceSchema, targetSchema)) {
+    const converting = needsConversion(sourceSchema, targetSchema);
+    if (converting) {
       // No `withheldRefIds` passed (6th arg omitted), so `resolveUnrepresentedEntity`
       // never takes its `allowOmit` branch here — this call cannot return `null`
       // (#4206). The federated pipeline does not yet compute that set in its own
@@ -1231,7 +1227,10 @@ export class MergedExporter {
       const emittedGuid = readLeadingGuid(finalText)
         ?? mintedGuid ?? plan.localGuids.get(localId);
       if (emittedGuid !== undefined) {
-        guidToFinalId.set(emittedGuid, { finalId: localId + offset, scale: mode.effectiveScale });
+        guidToFinalId.set(emittedGuid, {
+          finalId: localId + offset, scale: mode.effectiveScale,
+          canUnify: canUnifyByGlobalId((entityRef.type ?? '').toUpperCase(), converting ? finalText : undefined),
+        });
       }
     }
 

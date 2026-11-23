@@ -38,10 +38,10 @@ use std::collections::{HashMap, HashSet};
 
 use crate::schema_detect::detect_schema;
 
-use guid::{read_leading_guid, replace_global_id, GuidMinter};
+use guid::{can_unify_by_global_id, read_leading_guid, replace_global_id, GuidMinter};
 pub use guid::{deterministic_global_id, extract_global_id_fast, leading_rooted_global_id};
 use line_edit::{rewrite_refs, LineDecision};
-use plan::{build_plan, model_salt, ModelIndex, PlanCtx};
+use plan::{build_plan, model_salt, GuidRecord, ModelIndex, PlanCtx};
 use crate::schema_ifc2x3_slots::Ifc2x3SlotFill;
 use crate::schema_enum::ConversionChecks;
 use units::resolve_model_modes;
@@ -222,7 +222,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     stats.dropped_container_count = drop_plan.as_ref().map_or(0, |p| p.count);
 
     // Running cross-model state.
-    let mut guid_to_final: HashMap<String, (u32, f64)> = HashMap::new();
+    let mut guid_to_final: HashMap<String, GuidRecord> = HashMap::new();
     let mut emitted_guids: HashSet<String> = HashSet::new();
     let mut minter = GuidMinter::new();
     let mut offset: u32 = 0;
@@ -379,17 +379,13 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                     final_text = replace_global_id(&final_text, &minted);
                     emitted = minted;
                 }
-                let final_id = id.saturating_add(offset);
-                guid_to_final.insert(emitted.clone(), (final_id, effective_scale));
+                let record = GuidRecord { final_id: id.saturating_add(offset), scale: effective_scale,
+                    can_unify: can_unify_by_global_id(ty, converting.then_some(&final_text)) };
+                guid_to_final.insert(emitted.clone(), record);
                 emitted_guids.insert(emitted);
-                // Also key reconciliation on the SOURCE GlobalId: schema conversion
-                // may have replaced this rooted entity's GlobalId with a proxy
-                // placeholder, so `emitted` is no longer the id a later compatible
-                // model would carry. Without this, that later model could not unify
-                // and would emit a second proxy for the same entity (CR #2952).
-                // `or_insert` never overwrites — a re-stamped duplicate keeps
-                // pointing at its first instance.
-                guid_to_final.entry(local_guid.clone()).or_insert((final_id, effective_scale));
+                // Keep the first claimant under the source ID as well, even
+                // if conversion or re-stamping changed its emitted ID.
+                guid_to_final.entry(local_guid.clone()).or_insert(record);
             }
 
             out.push_str(&final_text);

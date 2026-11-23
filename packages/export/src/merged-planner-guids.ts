@@ -36,7 +36,7 @@
  * along: the edges to them are withheld by the drop either way.
  */
 
-import { isRelationshipType } from './merged-guid.js';
+import { canUnifyByGlobalId } from './merged-guid.js';
 
 /** Where the emit pass will have recorded a GlobalId, or `null` when that is not knowable up front. */
 type GuidRecord = { finalId: number; scale: number; container: boolean } | null;
@@ -83,14 +83,14 @@ export class PlannerGuids {
       // An earlier record exists: the emit pass unifies or re-stamps, and never records this GlobalId again.
       settled.add(id);
       const prior = this.records.get(guid)!;
-      const canUnify = !model.isFirst && model.compatible && prior !== null && this.isPrimaryUnit(prior.scale) && !isRelationshipType(type);
+      const canUnify = !model.isFirst && model.compatible && prior !== null && this.isPrimaryUnit(prior.scale) && canUnifyByGlobalId(type);
       if (canUnify && prior.container === this.isContainer(type)) unified.set(id, prior.finalId);
     }
     const written = new Map<string, GuidRecord>();
     for (const [id, guid] of model.guids) {
       if (settled.has(id) || model.unifiedEarlier(id) || !model.isIncluded(id)) continue;
       const type = model.typeOf(id);
-      const known = model.keepsGuids && !isRelationshipType(type);
+      const known = model.keepsGuids && canUnifyByGlobalId(type);
       written.set(guid, known ? { finalId: id + model.offset, scale: model.effectiveScale, container: this.isContainer(type) } : null);
     }
     for (const [guid, record] of written) this.records.set(guid, record);

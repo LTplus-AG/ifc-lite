@@ -6,7 +6,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::guid::{extract_global_id_fast, is_relationship_type, GuidMinter};
+use super::guid::{can_unify_by_global_id, extract_global_id_fast, GuidMinter};
 use super::spatial::{
     ContainerMergeStrategy, SpatialLookup, StoreyMergeStrategy,
 };
@@ -248,6 +248,13 @@ pub(super) struct ModelPlan {
     pub(super) local_guids: HashMap<u32, String>,
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct GuidRecord {
+    pub(super) final_id: u32,
+    pub(super) scale: f64,
+    pub(super) can_unify: bool,
+}
+
 /// Immutable-ish context threaded into [`build_plan`].
 pub(super) struct PlanCtx<'a> {
     pub(super) canonical_project: Option<u32>,
@@ -257,7 +264,7 @@ pub(super) struct PlanCtx<'a> {
     pub(super) merge_buildings: ContainerMergeStrategy,
     pub(super) merge_storeys: StoreyMergeStrategy,
     pub(super) primary_scale: f64,
-    pub(super) guid_to_final: &'a HashMap<String, (u32, f64)>,
+    pub(super) guid_to_final: &'a HashMap<String, GuidRecord>,
     pub(super) emitted_guids: &'a HashSet<String>,
     pub(super) minter: &'a mut GuidMinter,
     pub(super) salt: String,
@@ -343,12 +350,12 @@ fn reconcile_global_ids(index: &ModelIndex, compatible: bool, plan: &mut ModelPl
             restamp.push((id, guid.clone()));
             continue;
         }
-        let Some(&(final_id, scale)) = ctx.guid_to_final.get(guid) else { continue };
+        let Some(prior) = ctx.guid_to_final.get(guid) else { continue };
         let ty = index.type_of.get(&id).map(String::as_str).unwrap_or("");
         let can_unify =
-            compatible && units_compatible(scale, ctx.primary_scale) && !is_relationship_type(ty);
+            compatible && prior.can_unify && units_compatible(prior.scale, ctx.primary_scale) && can_unify_by_global_id(ty, None);
         if can_unify {
-            plan.shared_remap.insert(id, final_id);
+            plan.shared_remap.insert(id, prior.final_id);
             plan.skip.insert(id);
         } else {
             restamp.push((id, guid.clone()));

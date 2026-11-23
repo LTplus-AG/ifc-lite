@@ -30,6 +30,12 @@ pub fn is_relationship_type(type_upper: &str) -> bool {
     type_upper.starts_with("IFCREL")
 }
 
+/// A relationship or generic proxy cannot stand in for another rooted entity.
+pub(super) fn can_unify_by_global_id(type_upper: &str, converted: Option<&str>) -> bool {
+    !is_relationship_type(type_upper) && type_upper != "IFCPROXY"
+        && converted.is_none_or(|line| StepRecord::parse(line.as_bytes()).is_some_and(|record| !record.keyword_is(b"IFCPROXY")))
+}
+
 /// True when `type_upper` is a **rooted** entity (an `IfcRoot` subtype). Delegates
 /// to the crate's shared, schema-driven [`crate::rooted_type::is_rooted_type`],
 /// which decides rootedness from the EXPRESS inheritance graph (plus the legacy

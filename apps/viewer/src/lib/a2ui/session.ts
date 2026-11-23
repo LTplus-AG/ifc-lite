@@ -65,16 +65,18 @@ export class A2uiMessageSession {
   private blocks: BlockResult[] = [];
   private readonly listeners = new Set<() => void>();
   private version = 0;
-  private readonly autoApplied = new Set<string>();
-
-  /** `live`: a reply or push arriving now. A replayed chat record is not live, so it never recolours the model on its own. */
-  constructor(host: A2uiViewerHost, readonly live = true) {
+  /**
+   * `live`: a reply or push arriving now. A replayed chat record is not live,
+   * so it never recolours the model on its own. `autoApplied` may be shared by
+   * every session built for the same payload, so a remount does not re-apply.
+   */
+  constructor(host: A2uiViewerHost, readonly live = true, private readonly autoApplied = new Set<string>()) {
     this.processor = createRendererProcessor(host, (action) => routeAction(action, this.onFollowUp));
   }
 
   /** Rebuild a persisted message: apply its recorded messages in order, no parsing. */
-  static replay(host: A2uiViewerHost, record: PersistedA2ui, content: string, live = false): A2uiMessageSession {
-    const session = new A2uiMessageSession(host, live);
+  static replay(host: A2uiViewerHost, record: PersistedA2ui, content: string, live = false, autoApplied?: Set<string>): A2uiMessageSession {
+    const session = new A2uiMessageSession(host, live, autoApplied);
     const segments: ChatSegment[] = [];
     for (const seg of record.segments) {
       if ('text' in seg) segments.push({ kind: 'text', text: seg.text });
@@ -95,11 +97,15 @@ export class A2uiMessageSession {
     return session;
   }
 
-  /** True once per key for a live session: an `onShow` effect runs when a surface first appears, not on every remount. */
-  claimAutoApply = (key: string): boolean => {
-    if (!this.live || this.autoApplied.has(key)) return false;
+  /**
+   * For an `onShow` effect: `apply` the first time a live surface shows it,
+   * `applied` when it already ran (a remount), `off` for a replayed record.
+   */
+  autoApply = (key: string): 'apply' | 'applied' | 'off' => {
+    if (this.autoApplied.has(key)) return 'applied';
+    if (!this.live) return 'off';
     this.autoApplied.add(key);
-    return true;
+    return 'apply';
   };
 
   subscribe = (listener: () => void): (() => void) => {

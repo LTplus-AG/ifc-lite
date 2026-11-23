@@ -60,14 +60,13 @@ export function resolveTarget(host: A2uiViewerHost, args: { refs?: unknown; quer
     if (!loaded.has(ref.modelId)) unloaded.add(ref.modelId);
     else out.set(encodeRef(ref), ref);
   }
-  let problems: QueryProblem[] = [];
   if (args.query !== undefined && args.query !== null) {
     const result = evaluateQuery(host, args.query);
     if (result.unloadedModel) unloaded.add(result.unloadedModel);
-    problems = result.problems;
-    if (problems.length === 0) for (const row of result.rows) out.set(row.key, row.ref);
+    if (result.problems.length) return { refs: [], unloadedModels: [...unloaded], problems: result.problems };
+    for (const row of result.rows) out.set(row.key, row.ref);
   }
-  return { refs: [...out.values()], unloadedModels: [...unloaded], problems };
+  return { refs: [...out.values()], unloadedModels: [...unloaded], problems: [] };
 }
 
 const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
@@ -103,6 +102,17 @@ export function entitiesCsv(host: A2uiViewerHost, refs: WireEntityRef[], columns
   return `${lines.join('\n')}\n`;
 }
 
+function describeProblems(problems: QueryProblem[]): string {
+  return `the query has problems, so it would act on more than was asked: ${problems.map((p) => `${p.path || 'query'}: ${p.message}`).join('; ')}`;
+}
+
+/** The target's refs, or a refusal naming the query's problems (never a silently broader or empty set). */
+function targetRefs(host: A2uiViewerHost, name: string, args: Record<string, unknown>): WireEntityRef[] {
+  const target = resolveTarget(host, args);
+  if (target.problems.length) throw new PolicyRefusal(name, describeProblems(target.problems));
+  return target.refs;
+}
+
 /**
  * Run one IFC function. Every caller (catalog function, component button,
  * agent call) comes through here, so the policy cannot be bypassed by picking
@@ -111,27 +121,27 @@ export function entitiesCsv(host: A2uiViewerHost, refs: WireEntityRef[], columns
 export function runIfcFunction(host: A2uiViewerHost, name: string, args: Record<string, unknown>, ctx: CallContext): unknown {
   assertAllowed(name, ctx);
   switch (name) {
-    case 'select': return host.select(resolveTarget(host, args).refs);
-    case 'isolate': return host.isolate(resolveTarget(host, args).refs);
-    case 'hide': return host.hide(resolveTarget(host, args).refs);
-    case 'show': return host.show(resolveTarget(host, args).refs);
-    case 'flyTo': return host.flyTo(resolveTarget(host, args).refs);
-    case 'colorize': return host.colorize([{ refs: resolveTarget(host, args).refs, color: safeColor(args.color) }]);
+    case 'select': return host.select(targetRefs(host, name, args));
+    case 'isolate': return host.isolate(targetRefs(host, name, args));
+    case 'hide': return host.hide(targetRefs(host, name, args));
+    case 'show': return host.show(targetRefs(host, name, args));
+    case 'flyTo': return host.flyTo(targetRefs(host, name, args));
+    case 'colorize': return host.colorize([{ refs: targetRefs(host, name, args), color: safeColor(args.color) }]);
     case 'resetView': return host.resetView();
     case 'getSelection': return host.getSelection().map(encodeRef);
     case 'countEntities': {
-      // A query with problems would count more than was asked for: no number rather than a wrong one.
       const result = evaluateQuery(host, args.query);
-      return result.problems.length ? null : aggregatePool(result).length;
+      if (result.problems.length) throw new PolicyRefusal(name, describeProblems(result.problems));
+      return aggregatePool(result).length;
     }
     case 'sumQuantity': {
       const reader = new FieldReader(host);
       const result = evaluateQuery(host, args.query, reader);
-      if (result.problems.length) return null;
+      if (result.problems.length) throw new PolicyRefusal(name, describeProblems(result.problems));
       return aggregate(reader, aggregatePool(result), 'sum', typeof args.path === 'string' ? args.path : undefined) ?? 0;
     }
     case 'exportCsv': {
-      const { refs } = resolveTarget(host, args);
+      const refs = targetRefs(host, name, args);
       const columns = Array.isArray(args.columns) ? (args.columns as CsvColumn[]).filter((c) => typeof c?.path === 'string') : undefined;
       downloadFile(entitiesCsv(host, refs, columns), 'ifc-entities.csv', 'text/csv;charset=utf-8');
       return undefined;

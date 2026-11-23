@@ -21,6 +21,14 @@ export interface A2uiMessagesViewProps {
   onFollowUp?: FollowUpHandler;
 }
 
+/** Auto-applied keys per payload, so a remounted script or dock surface does not recolour the model again. */
+const autoAppliedByPayload = new WeakMap<readonly unknown[], Set<string>>();
+function autoAppliedFor(messages: readonly unknown[]): Set<string> {
+  let keys = autoAppliedByPayload.get(messages);
+  if (!keys) autoAppliedByPayload.set(messages, keys = new Set());
+  return keys;
+}
+
 const noText = (_text: string, _codeStart: number, key: string) => ({ node: <span key={key} />, codeCount: 0 });
 
 export default function A2uiMessagesView({ messages, onFollowUp }: A2uiMessagesViewProps) {
@@ -34,7 +42,7 @@ export default function A2uiMessagesView({ messages, onFollowUp }: A2uiMessagesV
       setSession(null);
       return;
     }
-    const replayed = A2uiMessageSession.replay(host, { v: 1, segments: [{ messages }] }, '', true);
+    const replayed = A2uiMessageSession.replay(host, { v: 1, segments: [{ messages }] }, '', true, autoAppliedFor(messages));
     setSession(replayed);
     return () => replayed.dispose();
   }, [host, problems, messages]);

@@ -43,8 +43,8 @@ export function AgentSurfacesDock() {
   const { t } = useTranslation();
   const surfaces = useSyncExternalStore(agentSurfaces.subscribe, agentSurfaces.getSnapshot);
   const followUp = (surface: AgentSurface): FollowUpHandler => (text, context, event = ASK_EVENT) => {
-    // An ask carries the question; any other event goes back under its own name with its payload.
-    const sent = sendAgentUiEvent({ surfaceId: surfaceIdOf(surface), name: event, ...(event === ASK_EVENT ? { prompt: text } : {}), context });
+    // Every event goes back under its own name with its payload; the prompt is the question, or the event's label.
+    const sent = sendAgentUiEvent({ surfaceId: surfaceIdOf(surface), name: event, prompt: text, context });
     if (sent) {
       toast.success(t('agentBridge.surfaces.sent'));
       return;

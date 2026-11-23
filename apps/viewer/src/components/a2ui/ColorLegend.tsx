@@ -46,7 +46,7 @@ function legendEntriesFromData(data: unknown): LegendEntry[] | null {
 
 export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ props }) => {
   const { t } = useTranslation();
-  const { host, claimAutoApply } = useA2uiRuntime();
+  const { host, autoApply } = useA2uiRuntime();
   const { result, reader } = useQueryResult(props.data === undefined ? props.query ?? {} : undefined);
   const [hidden, setHidden] = useState<ReadonlySet<string>>(() => new Set());
   const [applied, setApplied] = useState(false);
@@ -72,8 +72,9 @@ export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ 
 
   useEffect(() => {
     if (props.apply !== 'onShow' || entries.length === 0) return;
-    if (!claimAutoApply?.(JSON.stringify([props.by, props.query ?? null, props.data ?? null]))) return;
-    apply();
+    const state = autoApply?.(JSON.stringify([props.by, props.query ?? null, props.data ?? null]));
+    if (state === 'apply') apply();
+    else if (state === 'applied') setApplied(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, when entries first exist
   }, [props.apply, entries.length]);
 

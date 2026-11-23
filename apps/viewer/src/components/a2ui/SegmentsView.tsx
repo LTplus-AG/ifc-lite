@@ -42,7 +42,7 @@ export function SegmentsView({ session, host, onFollowUp, renderText }: Segments
   const { t } = useTranslation();
   useSyncExternalStore(session.subscribe, session.getVersion, session.getVersion);
   session.onFollowUp = onFollowUp;
-  const runtime: A2uiRuntime = useMemo(() => ({ host, onFollowUp, claimAutoApply: session.claimAutoApply }), [host, onFollowUp, session]);
+  const runtime: A2uiRuntime = useMemo(() => ({ host, onFollowUp, autoApply: session.autoApply }), [host, onFollowUp, session]);
   let codeStart = 0;
   return (
     <A2uiRuntimeContext.Provider value={runtime}>

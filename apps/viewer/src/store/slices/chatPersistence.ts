@@ -8,9 +8,10 @@
  */
 
 import type { ChatMessage, CodeExecResult, FileAttachment, PersistedA2ui } from '../../lib/llm/types.js';
+import { CHAT_MAX_MESSAGES } from '../../lib/llm/chat-limits.js';
 
 const MESSAGES_STORAGE_KEY = 'ifc-lite-chat-messages';
-export const MAX_MESSAGES = 200;
+const MAX_MESSAGES = CHAT_MAX_MESSAGES;
 
 export function getMessagesStorageKey(userId: string | null): string {
   return userId ? `${MESSAGES_STORAGE_KEY}:${userId}` : `${MESSAGES_STORAGE_KEY}:anonymous`;

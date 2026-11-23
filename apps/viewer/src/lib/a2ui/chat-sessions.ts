@@ -11,13 +11,13 @@
  */
 
 import type { PersistedA2ui } from '@/lib/llm/types';
-import { MAX_MESSAGES } from '@/store/slices/chatPersistence';
+import { CHAT_MAX_MESSAGES } from '@/lib/llm/chat-limits';
 import type { A2uiViewerHost } from './host.js';
 import { A2uiMessageSession } from './session.js';
 
 export const STREAMING_MESSAGE_ID = 'streaming';
 // One per message the chat keeps, plus the reply in flight: a retained message never loses its live surface.
-const MAX_SESSIONS = MAX_MESSAGES + 1;
+const MAX_SESSIONS = CHAT_MAX_MESSAGES + 1;
 
 const sessions = new Map<string, A2uiMessageSession>();
 

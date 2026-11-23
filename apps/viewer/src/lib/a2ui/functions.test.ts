@@ -51,19 +51,22 @@ describe('IFC function policy', () => {
     const target = resolveTarget(host, bad);
     assert.deepEqual(target.refs, [], 'an invalid type is not dropped into an all-products query');
     assert.ok(target.problems.length > 0);
-    assert.equal(runIfcFunction(host, 'countEntities', bad, { caller: 'renderer', userActivated: false }), null);
+    assert.throws(() => runIfcFunction(host, 'countEntities', bad, { caller: 'renderer', userActivated: false }), /types/);
+    assert.throws(() => runIfcFunction(host, 'select', { ...bad, refs: [target.refs[0] ?? 'x:1'] }, { caller: 'agent', userActivated: false }), PolicyRefusal);
     assert.ok(resolveTarget(host, { query: { types: ['IfcWall'] } }).refs.length > 0);
   });
 
   it('lets a live session auto-apply once per key and a replayed chat record never', async () => {
     const { host } = await seedA2uiModels();
-    const live = new A2uiMessageSession(host);
-    assert.equal(live.claimAutoApply('legend'), true);
-    assert.equal(live.claimAutoApply('legend'), false, 'a remount does not recolour again');
+    const shared = new Set<string>();
+    const live = new A2uiMessageSession(host, true, shared);
+    assert.equal(live.autoApply('legend'), 'apply');
+    assert.equal(live.autoApply('legend'), 'applied', 'a remount shows it applied and does not recolour again');
+    const remounted = A2uiMessageSession.replay(host, { v: 1, segments: [] }, '', true, shared);
+    assert.equal(remounted.autoApply('legend'), 'applied', 'a new session for the same payload shares the claim');
     const replayed = A2uiMessageSession.replay(host, { v: 1, segments: [] }, '');
-    assert.equal(replayed.claimAutoApply('legend'), false);
-    live.dispose();
-    replayed.dispose();
+    assert.equal(replayed.autoApply('legend'), 'off');
+    for (const s of [live, remounted, replayed]) s.dispose();
   });
 
   it('lets the agent call view and read functions, and nothing outside the catalog', () => {

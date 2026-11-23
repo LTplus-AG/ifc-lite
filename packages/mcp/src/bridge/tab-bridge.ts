@@ -366,7 +366,6 @@ export class TabBridge {
       effectivePermission: () => this.effectivePermission(s),
       changed: () => this.changed.fire(),
       uiEvent: (event) => {
-        if (s !== this.active) return; // a replaced tab, still closing, speaks for no one
         if (!this.uiEvents.push(event)) this.noisy.note('ui events over the rate limit', 'dropped a ui-event over the rate limit');
       },
     });

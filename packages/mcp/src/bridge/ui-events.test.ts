@@ -126,8 +126,6 @@ describe('viewer_ui_events', () => {
     const second = await pairTab({ port: agent.r.bridge.port, code: agent.r.bridge.rotatePairingCode(), a2uiSurface: true });
     tabs.push(second.tab);
     expect(agent.r.bridge.uiEvents.size).toBe(0);
-    // The replaced tab's late clicks do not land in the new tab's inbox.
-    first.send({ surfaceId: 'walls', name: 'ask', prompt: 'late' });
     second.tab.sendRaw({ type: 'ui-event', sessionId: second.welcome.sessionId, event: { surfaceId: 'walls', name: 'ask', prompt: 'new' } });
     await expect.poll(() => agent.r.bridge.uiEvents.size).toBe(1);
     expect((await agent.call('viewer_ui_events')).structuredContent?.events).toMatchObject([{ prompt: 'new' }]);
@@ -143,8 +141,13 @@ describe('--channel', () => {
     const channel = () => agent.notes.find((n) => 'method' in n && n.method === 'notifications/claude/channel');
     await expect.poll(channel).toBeTruthy();
     expect(channel()).toMatchObject({ params: { content: 'Colour by storey', meta: { event_id: 'e1', event: 'ask', surface_id: 'walls' } } });
+    send({ surfaceId: 'rooms', name: 'pickRoom', prompt: 'Show room 1.02', context: { ref: 'm:9' } });
+    await expect.poll(() => agent.notes.filter((n) => 'method' in n && n.method === 'notifications/claude/channel').length).toBe(2);
+    expect(agent.notes.filter((n) => 'method' in n && n.method === 'notifications/claude/channel')[1]).toMatchObject({
+      params: { content: 'The user triggered "pickRoom" on surface rooms (Show room 1.02). Context: {"ref":"m:9"}', meta: { event: 'pickRoom' } },
+    });
     // Still queued, so a client that ignores channels loses nothing.
-    expect(agent.r.bridge.uiEvents.size).toBe(1);
+    expect(agent.r.bridge.uiEvents.size).toBe(2);
   });
 
   it('is off by default', async () => {

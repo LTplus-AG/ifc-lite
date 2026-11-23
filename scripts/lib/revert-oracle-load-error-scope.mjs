@@ -3,13 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The output to scan for load errors. When tests ran and failed, that is only
- * the failing tests' own error text: product code may log load-error text
- * beside an ordinary assertion failure (#11256). A file-level load failure,
- * or a family with no failure section, scans the whole output.
+ * The output `parseRunnerOutput` scans for load errors: only the failing tests'
+ * own error text when tests failed, since logs may carry load-error text beside
+ * an assertion failure (#11256); otherwise the whole output. Split out of
+ * `revert-oracle.mjs` to keep that file at its module-size budget.
  *
- * @param {string} family runner family
- * @param {string} text combined runner output
+ * @param {string} family
+ * @param {string} text
  * @param {{failed: number|null, loadEvidence?: string|null}} parsed
  * @returns {string}
  */

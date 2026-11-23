@@ -38,7 +38,7 @@ import { parsePython, PYTEST_MISSING_PATTERN } from './revert-oracle-python.mjs'
 import { ALL_SKIPPED, classifyExecuted, severityCandidates } from './revert-oracle-all-skipped.mjs';
 import { passVerdict } from './revert-oracle-pass-verdict.mjs';
 import { processResultGap } from './revert-oracle-process-result.mjs';
-import { loadErrorScope } from './revert-oracle-failure-text.mjs';
+import { loadErrorScope } from './revert-oracle-load-error-scope.mjs';
 import { isInertPath, isTestSupportPath } from './revert-oracle-inert.mjs';
 import { isDependencyVersionOnlyPackageJson } from './revert-oracle-version-bump.mjs';
 export { cargoRunner } from './revert-oracle-cargo.mjs';

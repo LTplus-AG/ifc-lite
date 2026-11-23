@@ -73,10 +73,6 @@ const LOSS_TEXT: Record<Loss, string> = {
 export class EnumReconciliation {
   readonly typedProperties: TypedPropertyUpgrade;
 
-  constructor(upgradeTypedProperties = false) {
-    this.typedProperties = new TypedPropertyUpgrade(upgradeTypedProperties);
-  }
-
   /** Reuses this per-export collector so both STEP writers forward structural losses. */
   readonly structural = new StructuralDiagnostics();
   /** The IfcDocumentInformation <-> IfcDocumentReference link (#10846). */
@@ -84,7 +80,10 @@ export class EnumReconciliation {
   /** Values a target slot's type cannot hold (#10847). */
   readonly forms: ValueForms;
 
-  constructor(deferDates = false, timeUnitSources?: readonly SourceStore[]) { this.forms = new ValueForms(deferDates, timeUnitSources); }
+  constructor(deferConversions = false, timeUnitSources?: readonly SourceStore[]) {
+    this.forms = new ValueForms(deferConversions, timeUnitSources);
+    this.typedProperties = new TypedPropertyUpgrade(deferConversions);
+  }
   private readonly losses = new Map<Loss, Map<string, number>>();
   /** Records written `.USERDEFINED.` with the label their rule needs unset, per type (#10780). */
   private readonly unlabelled = new Map<string, number>();

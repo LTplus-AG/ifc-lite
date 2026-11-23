@@ -28,7 +28,7 @@ import { FAMILIES, tierLabel } from './huge-geometry-ladder.mjs';
 import { ROOT, launchGpu, loadModel, startSampler } from './huge-geometry-browser.mjs';
 import { cameraPaths, settledMemory } from './huge-geometry-measure.mjs';
 import { parseTier } from './huge-geometry-run.mjs';
-import { HUD_INSTALL, HUD_UPDATE, attachScreencast, cardHtml, startEncoder, toMp4 } from './huge-geometry-video.mjs';
+import { HIDE_PRIVACY_NOTICE, HUD_INSTALL, HUD_UPDATE, attachScreencast, cardHtml, startEncoder, toMp4 } from './huge-geometry-video.mjs';
 import { startViewerServer } from './viewer-load-probe.mjs';
 
 const gb = (mib) => (Number.isFinite(mib) && mib > 0 ? (mib >= 1024 ? `${(mib / 1024).toFixed(2)} GB` : `${Math.round(mib)} MB`) : '–');
@@ -56,7 +56,7 @@ async function recordTier({ encoder, baseUrl, manifest, frames, timeoutMs, label
     loadLine: 'loading…', mem: null, extra: [] };
   const out = { name: s.name, status: 'failed' };
   encoder.pause();
-  const session = await launchGpu();
+  const session = await launchGpu({ extraInit: [HIDE_PRIVACY_NOTICE] });
   const stop = await attachScreencast(session.context, session.page, encoder);
   const cdp = await session.context.newCDPSession(session.page);
   await cdp.send('Performance.enable');
@@ -129,7 +129,7 @@ async function recordTier({ encoder, baseUrl, manifest, frames, timeoutMs, label
 /** A failure verdict card in a fresh browser (the failing tab may be dead), held for 5 s and saved as a still. */
 async function verdictCard(encoder, stills, label, manifest, r) {
   const s = manifest.scenario;
-  const session = await launchGpu();
+  const session = await launchGpu({ extraInit: [HIDE_PRIVACY_NOTICE] });
   try {
     const stop = await attachScreencast(session.context, session.page, encoder);
     const t = r.load?.timings;

@@ -43,16 +43,7 @@ export const FULLFRAME = () => {
       p.style.setProperty('contain', 'none', 'important'); p.style.setProperty('will-change', 'auto', 'important');
     }
   }
-  el.setAttribute('data-hg-fullframe', '');
-  // The first-visit privacy notice is not always a sonner toast: hide whatever fixed layer holds it.
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-  for (let t = walker.nextNode(); t; t = walker.nextNode()) {
-    if (!/stores an action log/i.test(t.textContent ?? '')) continue;
-    for (let p = t.parentElement; p && p !== document.body; p = p.parentElement) {
-      const pos = getComputedStyle(p).position;
-      if (pos === 'fixed' || pos === 'absolute') { p.style.setProperty('display', 'none', 'important'); break; }
-    }
-  }
+  el.setAttribute('data-hg-fullframe', ''); // the privacy notice is hidden by HIDE_PRIVACY_NOTICE (huge-geometry-video.mjs)
   return { tag: el.tagName, cls: String(el.className).slice(0, 80) };
 };
 

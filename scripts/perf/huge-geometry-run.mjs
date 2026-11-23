@@ -132,11 +132,11 @@ async function main() {
   const results = [];
   const summaryPath = join(out, 'summary.json');
   if (existsSync(summaryPath)) {
-    // Keep earlier rows unless this run replaces them (same scenario name, so another seed is kept), and only
-    // rows measured in a comparable environment: the summary carries one environment header.
-    const planned = new Set(scenarios.flatMap((s) => tiers.map((elements) => resolveScenario({ scenario: s, elements, seed }).name)));
+    // Keep earlier rows measured in a comparable environment (the summary carries one environment header). A row
+    // is replaced only when this run actually measures that scenario name again (below), so tiers the climb
+    // never reaches, and other seeds, keep their earlier results.
     try {
-      const kept = JSON.parse(readFileSync(summaryPath, 'utf8')).results.filter((r) => !planned.has(r.scenario?.name));
+      const kept = JSON.parse(readFileSync(summaryPath, 'utf8')).results;
       const same = kept.filter((r) => comparableEnv(r.environment) === comparableEnv(env));
       if (same.length < kept.length) console.warn(`huge-geometry: dropping ${kept.length - same.length} earlier row(s) from another build/host/flags; use a new --out to keep them`);
       results.push(...same);

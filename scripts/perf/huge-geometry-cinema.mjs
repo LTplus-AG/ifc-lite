@@ -35,7 +35,7 @@ import { withTimeout } from './oom-load-probe-lib.mjs';
 import { SCENE_STATS } from './huge-geometry-page.mjs';
 import { frameSummary } from './huge-geometry-report.mjs';
 import { parseTier } from './huge-geometry-run.mjs';
-import { attachScreencast, cardHtml, startEncoder, toMp4 } from './huge-geometry-video.mjs';
+import { HIDE_PRIVACY_NOTICE, attachScreencast, cardHtml, startEncoder, toMp4 } from './huge-geometry-video.mjs';
 import { buildShots, poseAt, ranFullPath, solveAxisMap, totalMs } from './huge-geometry-cinema-path.mjs';
 import { BEAT, BOUNDS_OF, CAMERA_CALL, CAMERA_HOLD, CANVAS_BOX, CINE_HUD, FULLFRAME, PROJECT, RUN_SHOT, SELECTION, TWEEN_DONE } from './huge-geometry-cinema-page.mjs';
 import { startViewerServer } from './viewer-load-probe.mjs';
@@ -94,7 +94,7 @@ async function recordTier({ label, manifest, url, out, fps, loadSpeed, timeoutMs
     styles: sc.styles, repeated: manifest.totals.repeated, fileMiB: manifest.totals.bytes / 2 ** 20, fps, loadSpeed, status: 'failed',
     timeline: { title: null, load: null, path: null, verdict: null, summary: null }, shots: [], evidence: 'diagnostic (screencast attached, shared GPU)' };
   const mark = () => encoder.seconds;
-  const session = await launchGpu();
+  const session = await launchGpu({ extraInit: [HIDE_PRIVACY_NOTICE] });
   const stop = await attachScreencast(session.context, session.page, encoder);
   const page = session.page;
   const cdp = await session.context.newCDPSession(page);
@@ -289,7 +289,7 @@ async function recordTier({ label, manifest, url, out, fps, loadSpeed, timeoutMs
 
 /** Summary (ok) or verdict (failed) card in a fresh browser, so a dead tab cannot block it. */
 async function endCard(encoder, out, clip) {
-  const session = await launchGpu();
+  const session = await launchGpu({ extraInit: [HIDE_PRIVACY_NOTICE] });
   try {
     const stop = await attachScreencast(session.context, session.page, encoder);
     const path = clip.shots.filter((x) => x.frames);

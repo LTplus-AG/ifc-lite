@@ -27,7 +27,8 @@ export function unpack(text) {
     if (!parts.has(rel)) parts.set(rel, { n: Number(n), chunks: new Map(), bad: false });
     const part = parts.get(rel), k = Number(i);
     // Chunks are numbered 1..n with one total; anything else marks the file incomplete.
-    if (Number(n) !== part.n || k < 1 || k > part.n) part.bad = true;
+    // A repeated chunk must carry the same payload (a re-emitted line); a different one is a conflict.
+    if (Number(n) !== part.n || k < 1 || k > part.n || (part.chunks.has(k) && part.chunks.get(k) !== b64)) part.bad = true;
     else part.chunks.set(k, b64);
   }
   const files = new Map(), incomplete = [];

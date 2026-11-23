@@ -140,4 +140,6 @@ test('remote outputs: HGFILE lines round-trip, incomplete files are refused', as
   // Two chunks of a two-chunk file, but numbered 0 and 1: the count matches, the file is still incomplete.
   assert.deepEqual(u.unpack('HGFILE y.bin 0/2 QQ==\nHGFILE y.bin 1/2 QQ==').incomplete, ['y.bin']);
   assert.deepEqual(u.unpack('HGFILE z.bin 1/2 QQ==\nHGFILE z.bin 2/3 QQ==').incomplete, ['z.bin'], 'conflicting totals');
+  assert.deepEqual(u.unpack('HGFILE d.bin 1/1 QQ==\nHGFILE d.bin 1/1 Qg==').incomplete, ['d.bin'], 'conflicting duplicate chunk');
+  assert.equal(u.unpack('HGFILE e.bin 1/1 QQ==\nHGFILE e.bin 1/1 QQ==').files.get('e.bin').toString(), 'A', 'an identical duplicate is fine');
 });

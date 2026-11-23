@@ -126,12 +126,35 @@ export const HUD_INSTALL = () => {
   el.style.cssText = 'position:fixed;left:286px;top:92px;z-index:2147483647;pointer-events:none;background:rgba(16,20,24,.86);color:#e9ecef;'
     + 'font:13px/1.45 ui-monospace,Menlo,monospace;padding:10px 12px;border-radius:6px;white-space:pre;box-shadow:0 2px 10px rgba(0,0,0,.35)';
   document.body.appendChild(el);
-  // The first-visit privacy notice would cover the viewport for the whole clip; hide it in the recording only.
-  const hideNotice = () => {
-    for (const n of document.querySelectorAll('[data-sonner-toast]')) if (/stores an action log/i.test(n.textContent ?? '')) n.style.display = 'none';
+};
+
+/**
+ * Init script for recordings only (`launchGpu({ extraInit: [HIDE_PRIVACY_NOTICE] })`): the first-visit
+ * privacy notice would cover the viewport for the whole clip. It is not always a sonner toast, so the
+ * nearest fixed or absolute layer holding its text is hidden, now and whenever it is added again.
+ */
+export const HIDE_PRIVACY_NOTICE = () => {
+  const NOTICE = /stores an action log/i;
+  const hideIn = (root) => {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let t = walker.nextNode(); t; t = walker.nextNode()) {
+      if (!NOTICE.test(t.textContent ?? '')) continue;
+      for (let p = t.parentElement; p && p !== document.body; p = p.parentElement) {
+        const pos = getComputedStyle(p).position;
+        if (pos === 'fixed' || pos === 'absolute') { p.style.setProperty('display', 'none', 'important'); break; }
+      }
+    }
   };
-  hideNotice();
-  new MutationObserver(hideNotice).observe(document.body, { childList: true, subtree: true });
+  const start = () => {
+    hideIn(document.body);
+    new MutationObserver((records) => {
+      for (const r of records) for (const n of r.addedNodes) {
+        const el = n.nodeType === 1 ? n : n.parentElement;
+        if (el && NOTICE.test(el.textContent ?? '')) hideIn(el);
+      }
+    }).observe(document.body, { childList: true, subtree: true });
+  };
+  if (document.body) start(); else document.addEventListener('DOMContentLoaded', start, { once: true });
 };
 
 /**

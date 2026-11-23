@@ -207,6 +207,29 @@ fn calendar_dates_and_zoned_times_round_trip_10879() {
 }
 
 #[test]
+fn direct_upgrade_finishes_classification_dates_10879() {
+    let input = include_bytes!("../tests/fixtures/schema_calendar_dates.ifc");
+    let options = crate::StepOptions { schema: Some("IFC4".into()), ..Default::default() };
+    let (output, stats, warnings) = crate::export_step_with_diagnostics(input, &options).unwrap();
+    assert_finished_classification_date(&output, stats.written, &warnings);
+}
+
+#[test]
+fn logged_upgrade_finishes_classification_dates_10879() {
+    let input = include_bytes!("../tests/fixtures/schema_calendar_dates.ifc");
+    let options = crate::StepOptions { schema: Some("IFC4".into()), ..Default::default() };
+    let (output, stats) = crate::export_step_with_log(input, &options, &crate::MutationLog::default()).unwrap();
+    assert_finished_classification_date(&output, stats.written, &stats.warnings);
+}
+
+fn assert_finished_classification_date(output: &str, written: usize, warnings: &[String]) {
+    assert!(output.contains("#1=IFCCLASSIFICATION('Source','1','2024-02-29','Classification',$,$,$);"), "{output}");
+    assert!(!output.contains("=IFCCALENDARDATE("), "{output}");
+    assert_eq!(written, output.lines().filter(|line| line.starts_with('#')).count());
+    assert!(!warnings.iter().any(|warning| warning.contains("IFCCALENDARDATE")), "{warnings:?}");
+}
+
+#[test]
 fn merged_dates_follow_the_written_classification_ids_10879() {
     let model = |name: &str, day: u8| format!(
         "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('classification.ifc','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n\

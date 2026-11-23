@@ -14,9 +14,8 @@ import { cn } from '@/lib/utils';
 import { weightStyle } from './basic-layout';
 import { rowsFromQuery, rowsFromRefs } from './entity-rows';
 import { useSelectAndFly } from './EntityTable';
-import { Note, ResultNotes } from './notes';
+import { ResultNotes } from './notes';
 import { useA2uiRuntime, useQueryResult } from './runtime';
-import { resultUnavailable } from '@/lib/a2ui/query-eval';
 
 export const EntityListImpl = createComponentImplementation(EntityListApi, ({ props }) => {
   const { t } = useTranslation();
@@ -34,8 +33,7 @@ export const EntityListImpl = createComponentImplementation(EntityListApi, ({ pr
   return (
     <div style={weightStyle(props.weight)} className="flex min-w-0 flex-col gap-1">
       {title && <div className="text-sm font-semibold">{title}</div>}
-      <ResultNotes result={result} unloadedModels={unloadedModels} />
-      {rows.length === 0 && !(result && resultUnavailable(result)) && unloadedModels.length === 0 && <Note>{t('a2ui.empty')}</Note>}
+      <ResultNotes result={result} unloadedModels={unloadedModels} empty={rows.length === 0} />
       {rows.length > 0 && <ul className="flex max-h-72 flex-col overflow-auto rounded-md border text-xs">
         {rows.map((row) => (
           <li key={row.key}>

@@ -51,24 +51,29 @@ export function Note({ tone = 'neutral', children }: { tone?: Tone; children: Re
   );
 }
 
-/** Notes for a query result and for refs whose model is not loaded. */
-export function ResultNotes({ result, unloadedModels = [], problems = [], shown, total: totalOverride }: { result?: QueryResult | null; unloadedModels?: string[]; problems?: QueryProblem[]; shown?: number; total?: number }) {
+/**
+ * Notes for a query result and for refs whose model is not loaded. With `empty`, says "No matching elements"
+ * only when no other note already explains why nothing is shown.
+ */
+export function ResultNotes({ result, unloadedModels = [], problems = [], shown, total: totalOverride, empty = false }: { result?: QueryResult | null; unloadedModels?: string[]; problems?: QueryProblem[]; shown?: number; total?: number; empty?: boolean }) {
   const { t } = useTranslation();
   const { host } = useA2uiRuntime();
   const unloaded = [...new Set([...unloadedModels, ...(result?.unloadedModel ? [result.unloadedModel] : [])])];
   const visible = shown ?? result?.rows.length ?? 0;
   const total = totalOverride ?? result?.total ?? 0;
+  const allProblems = [...problems, ...(result?.problems ?? [])];
   return (
     <>
       {unloaded.map((model) => (
         <Note key={`m:${model}`} tone="warn">{t('a2ui.unloadedModel', { model: host.modelName(model) ?? model })}</Note>
       ))}
-      {[...problems, ...(result?.problems ?? [])].map((p, i) => (
+      {allProblems.map((p, i) => (
         <Note key={`p:${i}`} tone="warn">{t('a2ui.queryProblem', { path: p.path || 'query', message: p.message })}</Note>
       ))}
       {total > visible && visible > 0 && (
         <Note>{t('a2ui.truncated', { shown: visible.toLocaleString(), total: total.toLocaleString() })}</Note>
       )}
+      {empty && unloaded.length === 0 && allProblems.length === 0 && <Note>{t('a2ui.empty')}</Note>}
     </>
   );
 }

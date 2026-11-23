@@ -20,12 +20,8 @@
  * - STATE TABLE, one u32 per occurrence: selected, hidden and dead bits plus a
  *   16-bit colour-palette index. Hide/isolate/select/recolour of any number of
  *   occurrences edits a CPU mirror and uploads the dirty span in ONE write.
- * - CULL PASS (compute): per occurrence, reject dead/hidden, form the
- *   camera-relative split `(anchorHi - eyeHi) + (anchorLo - eyeLo)` with an
- *   error-free TwoSum, frustum-test and contribution-test the sphere, then
- *   append the record (state applied: palette colour, selected bit) and its
- *   split to its group's compacted region and bump that group's
- *   `drawIndexedIndirect` instance count with an atomic.
+ * - CULL PASS (compute, `gpu-instance-cull.ts`) compacts survivors per draw group
+ *   (`gpu-instance-groups.ts`); a camera move writes one 192-byte uniform.
  *
  * The compacted streams have exactly the layout `INSTANCED_VERTEX_BUFFERS`
  * already reads (slot 1: 88-byte record, slot 2: 32-byte high/low split), so
@@ -35,15 +31,6 @@
  * nor `indirect-first-instance` (missing on Firefox). The fallback cost is
  * one `drawIndexedIndirect` per draw group per pass, encoded on the CPU even
  * when the GPU found it empty.
- *
- * DRAW GROUPS: templates whose geometry is byte-identical (hash, then a full
- * compare) share one group, so the same window from forty worker batches is
- * one draw instead of forty. That raises effective instancing across batch
- * calls without touching Rust (the per-batch Rust split still decides WHICH
- * geometry is instanced).
- *
- * CAMERA: a camera move writes one 192-byte uniform. CPU orbit cost no longer
- * depends on the occurrence count.
  */
 
 import { MAX_RTE_SOURCE_ABS_METRES } from './relative-to-eye.js';
@@ -53,7 +40,7 @@ import {
   ARGS_WORDS, CULL_BYTES, CULL_FLOATS, gpuInstanceCullWgsl, packCullParams, PARAMS_BYTES, POOL_STATE_PALETTE_SHIFT,
   POOL_STATE_DEAD, POOL_STATE_HIDDEN, POOL_STATE_SELECTED, POOL_VIEW_COLOUR, UNBOUNDED_RADIUS, WORKGROUP, type PoolCullParams, type PoolCullView,
 } from './gpu-instance-cull.js';
-import { ColourPalette, DrawGroups, type PoolGeometry } from './gpu-instance-groups.js';
+import { ColourPalette, DrawGroups, FreeRanges, type PoolGeometry } from './gpu-instance-groups.js';
 
 export { occurrenceSphereRadius, POOL_VIEW_COLOUR, POOL_VIEW_PICK, POOL_VIEW_SHADOW, type PoolCullView } from './gpu-instance-cull.js';
 
@@ -126,32 +113,44 @@ export class GpuInstancePool {
   }
 
   get occurrenceCount(): number { return this.count; }
+  /** Bumped by every template add or removal: occurrence state may be fresh (reused or new ranges). */
+  registrations = 0;
 
-  /** Reserve `count` contiguous occurrence ids; returns the first. */
+  /**
+   * Reserve `count` contiguous occurrence ids; returns the first, reusing a
+   * removed template's range when one fits, or -1 past the device's buffer
+   * limits (those occurrences are not drawn; the error says so).
+   */
   allocate(count: number): number {
+    const reused = this.freeRanges.take(count);
+    if (reused >= 0) { for (let i = reused; i < reused + count; i++) this.setState(i, 0); return reused; }
+    if (this.count + count > this.maxOccurrences) {
+      console.error(`[GpuInstancePool] ${this.count + count} occurrences exceed this device's buffer limits (${this.maxOccurrences}); the rest are not drawn`);
+      return -1;
+    }
     const base = this.count;
     this.ensureCapacity(base + count);
     this.count += count;
     return base;
   }
 
+  private readonly freeRanges = new FreeRanges();
+  /** Largest occurrence count whose biggest table (88 B records) fits one buffer and storage binding. */
+  private get maxOccurrences(): number {
+    const l = this.device.limits;
+    return l ? Math.floor(Math.min(l.maxBufferSize, l.maxStorageBufferBindingSize) / INSTANCE_STRIDE_BYTES) : Infinity;
+  }
+
   /**
    * Register a template whose `count` occurrences were allocated at `base`:
    * upload its records and cull data, and join (or create) its draw group (returned).
    */
-  addTemplate(
-    slot: number,
-    base: number,
-    geometry: PoolGeometry,
-    records: ArrayBuffer,
-    anchors: Float64Array,
-    radii: Float32Array,
-  ): number {
+  addTemplate(slot: number, base: number, geometry: PoolGeometry, records: ArrayBuffer, anchors: Float64Array, radii: Float32Array): number {
     const count = radii.length;
     const group = this.groups.join(slot, geometry, count);
     this.templates.set(slot, { base, count, group, radii });
     this.writeSource(base, records, anchors, radii, group, 0, count, true);
-    this.layoutDirty = true;
+    this.layoutDirty = true; this.registrations++;
     return group;
   }
 
@@ -174,6 +173,8 @@ export class GpuInstancePool {
     this.templates.delete(slot);
     for (let i = t.base; i < t.base + t.count; i++) this.setState(i, (this.state[i]! & ~POOL_STATE_SELECTED) | POOL_STATE_DEAD);
     this.groups.leave(t.group, slot);
+    this.freeRanges.release(t.base, t.count);
+    this.registrations++; this.palette.freed = true;
     this.layoutDirty = true;
   }
 
@@ -208,6 +209,7 @@ export class GpuInstancePool {
   // ── state ────────────────────────────────────────────────────────────
 
   private setState(i: number, value: number): void {
+    value >>>= 0;
     if (this.state[i] === value) return;
     this.state[i] = value >>> 0;
     if (i < this.stateDirtyLo) this.stateDirtyLo = i;
@@ -230,19 +232,14 @@ export class GpuInstancePool {
       const c = data as Float32Array;
       const idx = c[0] === originalColor[0] && c[1] === originalColor[1] && c[2] === originalColor[2] && c[3] === originalColor[3]
         ? 0 : this.paletteIndex(c);
+      const old = cur >>> POOL_STATE_PALETTE_SHIFT;
+      if (old !== 0 && old !== idx) this.palette.freed = true; // the old entry may have lost its last user
       this.setState(occurrence, (cur & 0xffff) | (idx << POOL_STATE_PALETTE_SHIFT));
     }
   }
 
-  /** Palette index of `c`; a full palette is compacted to the colours still referenced first. */
   private paletteIndex(c: Float32Array): number {
-    let idx = this.palette.indexOf(c);
-    if (idx >= 0) return idx;
-    this.palette.compactStates(this.state.subarray(0, this.count), POOL_STATE_PALETTE_SHIFT, (i, v) => this.setState(i, v));
-    idx = this.palette.indexOf(c);
-    if (idx >= 0) return idx;
-    console.warn('[GpuInstancePool] colour palette full of live colours; this override falls back to the record colour');
-    return 0;
+    return this.palette.resolve(c, this.state.subarray(0, this.count), POOL_STATE_PALETTE_SHIFT, POOL_STATE_DEAD, (i, v) => this.setState(i, v));
   }
 
   /** Set or clear `bit` (USER_HIDDEN / ISOLATED) on one occurrence. */
@@ -263,6 +260,7 @@ export class GpuInstancePool {
     if (needed <= this.capacity) return;
     let cap = Math.max(65536, this.capacity);
     while (cap < needed) cap *= 2;
+    cap = Math.max(needed, Math.min(cap, this.maxOccurrences));
     const d = this.device;
     const make = (label: string, bytes: number, usage: number) => d.createBuffer({ label, size: Math.max(16, bytes), usage });
     const srcRecords = make('gpu-instance-pool-records', cap * INSTANCE_STRIDE_BYTES, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC);

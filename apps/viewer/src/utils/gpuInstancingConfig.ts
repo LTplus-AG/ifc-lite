@@ -19,8 +19,7 @@ export function isGpuInstancingEnabled(): boolean {
 
 /** Hand the flag to a fresh renderer before instanced shards stream in; a no-op when off. */
 export function configureGpuInstancing(renderer: Pick<Renderer, 'setGpuInstancing'>): boolean {
-  if (!isGpuInstancingEnabled()) return false;
-  renderer.setGpuInstancing(true);
+  if (!isGpuInstancingEnabled() || !renderer.setGpuInstancing(true)) return false;
   console.log('[Viewport] GPU-driven instancing on');
   return true;
 }

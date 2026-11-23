@@ -2106,6 +2106,7 @@ export class Renderer {
             // Build color attachments — skip objectId in single-target mode
             const splatFrame = this.gaussianLayer.frameReady(); // #8564: the Gaussian pass after this one loads colour and resolves MSAA
             const glass = splatFrame ? this.gaussianLayer.glassRecorder(this.pipeline.visibility) : null; // holds transparent IFC for the nearest-glass split
+            if (instancePool) this.scene.setGpuPoolHover(options.hoverOutline?.id ?? null, options.hoverOutline?.modelIndex);
             instancePool?.cull(encoder, poolCullParams(this.camera, rteCullCamera, rteCullFrustum.planes, resolveContributionThresholdPx(options.contributionCull, interacting),
                 this.canvas.height / this.pixelRatio), renderPassTimestampWrites(encoder, 'instance-cull'));
             const colorAttachments: GPURenderPassColorAttachment[] = [
@@ -3217,9 +3218,9 @@ export class Renderer {
      * templates already uploaded stay on the per-template path until the
      * scene is cleared.
      */
-    setGpuInstancing(enabled: boolean): void {
-        this.scene.setGpuInstancing(enabled);
+    setGpuInstancing(enabled: boolean): boolean {
         this.requestRender();
+        return this.scene.setGpuInstancing(enabled); // false: refused while instanced geometry exists
     }
 
     /** MEASURED external surface, not the 4400-line `Scene`: widening `SceneContents` is a published-API decision, not a detail — see `scene-contents.ts`. */

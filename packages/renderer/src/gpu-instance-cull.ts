@@ -6,6 +6,14 @@
  * The compute side of GPU-driven instancing (`gpu-instance-pool.ts`): the
  * occurrence state bits, the cull/compact WGSL, the error-free f64 eye split
  * it mirrors, and the packing of its per-frame uniform.
+ *
+ * Per occurrence: reject dead/hidden, form the camera-relative split
+ * `(anchorHi - eyeHi) + (anchorLo - eyeLo)` with an error-free TwoSum,
+ * frustum-test and contribution-test the sphere (selected and hovered
+ * occurrences are exempt from the latter), then append the record (state
+ * applied: palette colour, selected bit) and its split to its group's
+ * compacted region and bump that group's `drawIndexedIndirect` instance
+ * count with an atomic.
  */
 import { MAX_RTE_EYE_RELATIVE_METRES } from './relative-to-eye.js';
 import { INSTANCE_COLOR_OFFSET, INSTANCE_FLAGS_OFFSET, INSTANCE_STRIDE_BYTES } from './instanced-render.js';
@@ -18,6 +26,8 @@ export const POOL_STATE_DEAD = 4;
 export const POOL_STATE_USER_HIDDEN = 8;
 /** Member of the active isolation set; with isolation on, only members draw. */
 export const POOL_STATE_ISOLATED = 16;
+/** Hovered: exempt from the contribution cull like a selection, so the hover outline never loses it. */
+export const POOL_STATE_HOVER = 32;
 export const POOL_STATE_PALETTE_SHIFT = 16;
 export const POOL_PALETTE_MAX = 0xffff;
 
@@ -56,6 +66,7 @@ struct Params {
 @group(0) @binding(7) var<storage, read_write> outDeltas: array<vec4<f32>>;
 
 const STATE_SELECTED: u32 = ${POOL_STATE_SELECTED}u;
+const STATE_FOCUS: u32 = ${POOL_STATE_SELECTED | POOL_STATE_HOVER}u;
 const STATE_REJECT: u32 = ${POOL_STATE_HIDDEN | POOL_STATE_DEAD | POOL_STATE_USER_HIDDEN}u;
 const STATE_ISOLATED: u32 = ${POOL_STATE_ISOLATED}u;
 const FLAG_ISOLATION: u32 = ${PARAM_FLAG_ISOLATION}u;
@@ -113,7 +124,7 @@ fn cull(@builtin(workgroup_id) wg: vec3<u32>, @builtin(local_invocation_index) l
       if (dot(pl.xyz, d) + pl.w < -radius) { return; }
     }
   }
-  if ((P.counts.z & FLAG_CONTRIB) != 0u && !selected && radius < 1.0e37) {
+  if ((P.counts.z & FLAG_CONTRIB) != 0u && (st & STATE_FOCUS) == 0u && radius < 1.0e37) {
     var px = 1.0e30;
     if ((P.counts.z & FLAG_ORTHO) != 0u) {
       px = radius * P.viewDir.w;

@@ -9,7 +9,7 @@
  * keeps its per-template path untouched while `pool` is null.
  */
 import { GpuInstancePool } from './gpu-instance-pool.js';
-import { POOL_STATE_ISOLATED, POOL_STATE_USER_HIDDEN } from './gpu-instance-cull.js';
+import { POOL_STATE_HOVER, POOL_STATE_ISOLATED, POOL_STATE_USER_HIDDEN } from './gpu-instance-cull.js';
 import { INSTANCE_STRIDE_BYTES } from './instanced-render.js';
 import type { InstancedOccurrence, InstancedTemplateCpu, InstancedTemplateGPU } from './scene-instance-types.js';
 
@@ -40,7 +40,9 @@ export class SceneInstancePool {
   private hidden = new Set<number>();
   private isolated = new Set<number>();
   /** Pool occurrence count when the sets above were applied (late shards need re-application). */
-  private appliedOccurrences = 0;
+  private appliedRegistrations = 0;
+  /** Pool indices carrying the HOVER bit. */
+  private hovered: number[] = [];
 
   /** The pool, or null when the per-template path is active. */
   get pool(): GpuInstancePool | null { return this.current; }
@@ -53,6 +55,18 @@ export class SceneInstancePool {
 
   /** GPU bytes held by the pool (source, state and compacted tables). */
   gpuBytes(): number { return this.current?.gpuBytes() ?? 0; }
+
+  /** Mark the hovered entity's occurrences (`modelIndex` scoped) so the contribution cull keeps them for the hover outline. */
+  setHover(occurrences: readonly InstancedOccurrence[] | undefined, inModel: (loc: InstancedOccurrence) => boolean): void {
+    const pool = this.current;
+    if (!pool) return;
+    const next: number[] = [];
+    for (const loc of occurrences ?? []) if (loc.poolIndex !== undefined && loc.poolIndex >= 0 && inModel(loc)) next.push(loc.poolIndex);
+    if (next.length === this.hovered.length && next.every((v, i) => v === this.hovered[i])) return;
+    for (const i of this.hovered) pool.setVisibilityBit(i, POOL_STATE_HOVER, false);
+    for (const i of next) pool.setVisibilityBit(i, POOL_STATE_HOVER, true);
+    this.hovered = next;
+  }
 
   /** Re-upload only the moved occurrences' records and anchors (an entity move). */
   refreshOccurrences(moved: readonly InstancedOccurrence[], cpu: readonly (InstancedTemplateCpu | undefined)[]): void {
@@ -80,7 +94,7 @@ export class SceneInstancePool {
     const pool = this.current;
     if (!pool) return;
     // A shard that streamed in since the last apply carries fresh (zero) state: re-apply all.
-    const full = pool.occurrenceCount !== this.appliedOccurrences;
+    const full = pool.registrations !== this.appliedRegistrations;
     const apply = (prev: Set<number>, next: Ids, bit: number): Set<number> => {
       const nextSet = new Set<number>();
       for (const eid of next ?? []) if (occurrences.has(eid)) nextSet.add(eid);
@@ -94,7 +108,7 @@ export class SceneInstancePool {
     this.hidden = apply(this.hidden, hiddenIds, POOL_STATE_USER_HIDDEN);
     this.isolated = apply(this.isolated, isolatedIds, POOL_STATE_ISOLATED);
     pool.setIsolationActive(isolatedIds != null);
-    this.appliedOccurrences = pool.occurrenceCount;
+    this.appliedRegistrations = pool.registrations;
   }
 
   /**
@@ -124,12 +138,12 @@ export class SceneInstancePool {
         loc.poolIndex = base === undefined ? -1 : base + loc.byteOffset / INSTANCE_STRIDE_BYTES;
       }
     }
-    this.hidden = new Set(); this.isolated = new Set(); this.appliedOccurrences = -1;
+    this.hidden = new Set(); this.isolated = new Set(); this.appliedRegistrations = -1; this.hovered = [];
   }
 
   /** Scene clear: drop the pool; the next instanced upload starts a new one if still enabled. */
   clear(): void {
     this.current?.destroy(); this.current = null;
-    this.hidden = new Set(); this.isolated = new Set(); this.appliedOccurrences = 0;
+    this.hidden = new Set(); this.isolated = new Set(); this.appliedRegistrations = 0; this.hovered = [];
   }
 }

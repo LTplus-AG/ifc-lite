@@ -6,6 +6,10 @@
  * Bookkeeping of GPU-driven instancing (`gpu-instance-pool.ts`) that needs no
  * GPU: draw groups (templates with byte-identical geometry share one indirect
  * draw) and the override colour palette the occurrence state indexes.
+ *
+ * Draw groups (hash, then a full compare of positions, normals and indices)
+ * make the same window from forty worker batches one draw instead of forty,
+ * raising effective instancing across batch calls without touching Rust.
  */
 import { POOL_PALETTE_MAX } from './gpu-instance-cull.js';
 
@@ -141,9 +145,10 @@ export class ColourPalette {
       if (!used.has(old)) continue;
       const at = kept.length / 4;
       const c = this.colours.slice(old * 4, old * 4 + 4);
-      kept.push(...c); remap.set(old, at); this.index.set(`${c[0]},${c[1]},${c[2]},${c[3]}`, at);
+      kept.push(c[0]!, c[1]!, c[2]!, c[3]!); remap.set(old, at); this.index.set(`${c[0]},${c[1]},${c[2]},${c[3]}`, at);
     }
-    this.colours.length = 0; this.colours.push(...kept);
+    this.colours.length = kept.length;
+    for (let i = 0; i < kept.length; i++) this.colours[i] = kept[i]!;
     this.dirty = true;
     return remap;
   }
@@ -158,5 +163,41 @@ export class ColourPalette {
       const old = states[i]! >>> shift;
       if (old) write(i, ((states[i]! & low) | ((remap.get(old) ?? 0) << shift)) >>> 0);
     }
+  }
+
+  /** Set when an entry may have lost its last user (a recolour, a removed template): compaction may free space. */
+  freed = true;
+
+  /**
+   * Index for colour `c` given the occurrence `states` (index in the bits
+   * above `shift`, DEAD words passed as `dead`): a full palette is compacted
+   * to the entries live states reference, at most once per `freed`; a palette
+   * full of live colours yields 0 (the record colour), warned once.
+   */
+  resolve(c: Float32Array, states: Uint32Array, shift: number, dead: number, write: (i: number, value: number) => void): number {
+    let idx = this.indexOf(c);
+    if (idx >= 0) return idx;
+    if (!this.freed) return 0;
+    this.freed = false;
+    // Dead words never draw; their stale index is reset when the range is reused.
+    this.compactStates(states.map((v) => (v & dead ? v & ((1 << shift) - 1) : v)), shift, write);
+    idx = this.indexOf(c);
+    if (idx >= 0) return idx;
+    console.warn('[GpuInstancePool] colour palette full of live colours; further overrides fall back to the record colour');
+    return 0;
+  }
+}
+
+/** Contiguous occurrence ranges of removed templates, handed out again first-fit. */
+export class FreeRanges {
+  private readonly ranges: { base: number; count: number }[] = [];
+  release(base: number, count: number): void { this.ranges.push({ base, count }); }
+  /** First of `count` reused occurrences, or -1 when no released range fits. */
+  take(count: number): number {
+    const i = this.ranges.findIndex((r) => r.count >= count);
+    if (i < 0) return -1;
+    const r = this.ranges[i]!, base = r.base;
+    if (r.count === count) this.ranges.splice(i, 1); else { r.base += count; r.count -= count; }
+    return base;
   }
 }

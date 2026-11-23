@@ -2789,7 +2789,9 @@ export class Scene {
    * Call before geometry streams in; templates already uploaded stay on the
    * per-template path until the scene is cleared.
    */
-  setGpuInstancing(enabled: boolean): void { this.instancePool.setEnabled(enabled, this.liveInstancedTemplates.length > 0); }
+  setGpuInstancing(enabled: boolean): boolean { return this.instancePool.setEnabled(enabled, this.instancedEntityMap.size > 0 || this.liveInstancedTemplates.length > 0); }
+  /** GPU pool: keep the hovered entity's occurrences past the contribution cull (hover outline). */
+  setGpuPoolHover(id: number | null, model?: number): void { this.instancePool.setHover(id === null ? undefined : this.instancedEntityMap.get(id), (loc) => model === undefined || this.instancedTemplates[loc.templateIndex]?.modelIndex === model); }
 
   /** The GPU-driven instance pool, or null when the per-template path is active. */
   getGpuInstancePool(): GpuInstancePool | null { return this.instancePool.pool; }

@@ -21,7 +21,7 @@ describe('GPU-driven instancing config', () => {
   it('is off with no flag set and leaves the renderer untouched', () => {
     assert.equal(isGpuInstancingEnabled(), false);
     const calls: boolean[] = [];
-    assert.equal(configureGpuInstancing({ setGpuInstancing: (on) => calls.push(on) }), false);
+    assert.equal(configureGpuInstancing({ setGpuInstancing: (on) => { calls.push(on); return true; } }), false);
     assert.deepEqual(calls, []);
   });
 
@@ -29,11 +29,16 @@ describe('GPU-driven instancing config', () => {
     setSearch('?perf.gpuInstancing=1');
     assert.equal(isGpuInstancingEnabled(), true);
     const calls: boolean[] = [];
-    assert.equal(configureGpuInstancing({ setGpuInstancing: (on) => calls.push(on) }), true);
+    assert.equal(configureGpuInstancing({ setGpuInstancing: (on) => { calls.push(on); return true; } }), true);
     assert.deepEqual(calls, [true]);
     Reflect.deleteProperty(globalThis, 'location');
     g.__IFC_LITE_GPU_INSTANCING = true;
     assert.equal(isGpuInstancingEnabled(), true);
+  });
+
+  it('reports a refused switch as off', () => {
+    setSearch('?perf.gpuInstancing=1');
+    assert.equal(configureGpuInstancing({ setGpuInstancing: () => false }), false);
   });
 
   it('lets an explicit global beat the URL param', () => {

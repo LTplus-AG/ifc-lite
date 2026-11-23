@@ -5,9 +5,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { SceneInstancePool } from './scene-gpu-instancing.js';
 import { DrawGroups, ColourPalette } from './gpu-instance-groups.js';
-import { INSTANCE_FLAG_HIDDEN, INSTANCE_FLAGS_OFFSET, INSTANCE_STRIDE_BYTES } from './instanced-render.js';
+import { INSTANCE_COLOR_OFFSET, INSTANCE_FLAG_HIDDEN, INSTANCE_FLAGS_OFFSET, INSTANCE_STRIDE_BYTES } from './instanced-render.js';
 import { GpuInstancePool } from './gpu-instance-pool.js';
-import { POOL_STATE_DEAD, POOL_STATE_HIDDEN } from './gpu-instance-cull.js';
+import { POOL_STATE_DEAD, POOL_STATE_HIDDEN, POOL_STATE_HOVER, POOL_STATE_USER_HIDDEN } from './gpu-instance-cull.js';
 import type { InstancedOccurrence, InstancedTemplateCpu, InstancedTemplateGPU } from './scene-instance-types.js';
 
 const host = globalThis as Record<string, unknown>;
@@ -116,9 +116,10 @@ describe('GPU instance draw groups and palette', () => {
 });
 
 /** Pool state words as last uploaded (the fake device keeps a mirror of the state buffer). */
-function stateDevice(): { device: GPUDevice; state: () => Uint32Array } {
+function stateDevice(limits?: { maxBufferSize: number; maxStorageBufferBindingSize: number }): { device: GPUDevice; state: () => Uint32Array } {
   let state = new Uint32Array(0);
   const device = {
+    limits,
     createBuffer: (d: GPUBufferDescriptor) => ({ size: d.size, usage: d.usage, label: d.label, destroy() {} }), createBindGroupLayout: () => ({}), createPipelineLayout: () => ({}),
     createShaderModule: () => ({}), createComputePipeline: () => ({}), createBindGroup: () => ({}), pushErrorScope() {}, popErrorScope: async () => null,
     createCommandEncoder: () => ({ copyBufferToBuffer() {}, finish: () => ({}) }),
@@ -179,5 +180,75 @@ describe('GPU instance palette and groups (normals, compaction)', () => {
     assert.deepEqual([...remap], [[2, 1]]);
     assert.equal(palette.colours.length, 8);
     assert.equal(palette.indexOf(new Float32Array([Math.fround(0.2), 0, 0, 1])), 1);
+  });
+});
+
+describe('GPU instance pool review wave 2', () => {
+  const geometry = { vertexBuffer: {} as GPUBuffer, indexBuffer: {} as GPUBuffer, indexCount: 3, positions: new Float32Array(9), normals: new Float32Array(9), indices: new Uint32Array([0, 1, 2]) };
+  const occ = (templateIndex: number, i: number, poolIndex?: number): InstancedOccurrence => ({ templateIndex, byteOffset: i * INSTANCE_STRIDE_BYTES, originalColor: [1, 1, 1, 1], poolIndex });
+
+  it('reuses a removed template\'s range, with fresh state, and re-applies hide to it', () => {
+    const { device, state } = stateDevice();
+    const scene = new SceneInstancePool(); scene.setEnabled(true, false);
+    const pool = scene.ensure(device)!;
+    const a = pool.allocate(4);
+    pool.addTemplate(0, a, geometry, new ArrayBuffer(4 * INSTANCE_STRIDE_BYTES), new Float64Array(12), new Float32Array(4));
+    pool.removeTemplate(0);
+    const b = pool.allocate(4);
+    assert.equal(b, a, 'the dead range is reused');
+    assert.equal(pool.occurrenceCount, 4, 'no growth');
+    pool.addTemplate(1, b, geometry, new ArrayBuffer(4 * INSTANCE_STRIDE_BYTES), new Float64Array(12), new Float32Array(4));
+    const occurrences = new Map([[7, [occ(1, 2, b + 2)]]]);
+    scene.applyVisibility(occurrences, new Set([7]), null);
+    pool.flush();
+    assert.equal(state()[b]! & POOL_STATE_DEAD, 0);
+    assert.equal(state()[b + 2]! & POOL_STATE_USER_HIDDEN, POOL_STATE_USER_HIDDEN);
+  });
+
+  it('refuses occurrences past the device buffer limits instead of binding an oversized buffer', () => {
+    const { device } = stateDevice({ maxBufferSize: 100 * INSTANCE_STRIDE_BYTES, maxStorageBufferBindingSize: 100 * INSTANCE_STRIDE_BYTES });
+    const pool = new GpuInstancePool(device);
+    assert.equal(pool.allocate(60), 0);
+    assert.equal(pool.allocate(60), -1);
+    assert.equal(pool.allocate(40), 60);
+  });
+
+  it('marks the hovered model-scoped occurrences, and clears them when hover moves', () => {
+    const { device, state } = stateDevice();
+    const scene = new SceneInstancePool(); scene.setEnabled(true, false);
+    const pool = scene.ensure(device)!;
+    pool.addTemplate(0, pool.allocate(3), geometry, new ArrayBuffer(3 * INSTANCE_STRIDE_BYTES), new Float64Array(9), new Float32Array(3));
+    const locs = [occ(0, 0, 0), occ(0, 1, 1)];
+    scene.setHover(locs, (loc) => loc.poolIndex === 1); // only model-matching occurrence
+    pool.flush();
+    assert.deepEqual([state()[0]! & POOL_STATE_HOVER, state()[1]! & POOL_STATE_HOVER], [0, POOL_STATE_HOVER]);
+    scene.setHover(undefined, () => true);
+    pool.flush();
+    assert.equal(state()[1]! & POOL_STATE_HOVER, 0);
+  });
+
+  it('stops compacting a palette full of live colours until one is released', () => {
+    const { device } = stateDevice();
+    const pool = new GpuInstancePool(device);
+    const n = 0xffff + 2;
+    pool.addTemplate(0, pool.allocate(n), geometry, new ArrayBuffer(n * INSTANCE_STRIDE_BYTES), new Float64Array(n * 3), new Float32Array(n));
+    const white = [1, 1, 1, 1] as const;
+    const colour = (k: number) => new Float32Array([k / n, 0.5, 0.25, 1]);
+    for (let i = 0; i < 0xffff; i++) pool.writeLane(i, INSTANCE_COLOR_OFFSET, colour(i), white);
+    let compactions = 0;
+    const palette = (pool as unknown as { palette: { compactStates: (...a: unknown[]) => void } }).palette;
+    const original = palette.compactStates.bind(palette);
+    palette.compactStates = (...a: unknown[]) => { compactions++; original(...a); };
+    const warn = console.warn; console.warn = () => {};
+    try {
+      pool.writeLane(0xffff, INSTANCE_COLOR_OFFSET, colour(0xffff), white);
+      pool.writeLane(0xffff + 1, INSTANCE_COLOR_OFFSET, colour(0xffff + 1), white);
+    } finally { console.warn = warn; }
+    assert.equal(compactions, 1, 'one compaction, then the exhausted palette is remembered');
+  });
+
+  it('counts instanced entities, not only live GPU templates, in the switch guard (recovery)', () => {
+    const scene = new SceneInstancePool();
+    assert.equal(scene.setEnabled(true, true), false);
   });
 });

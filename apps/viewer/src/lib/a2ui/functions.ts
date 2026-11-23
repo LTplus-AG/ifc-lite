@@ -63,6 +63,7 @@ export function resolveTarget(host: A2uiViewerHost, args: { refs?: unknown; quer
     if (!loaded.has(ref.modelId)) unloaded.add(ref.modelId);
     else out.set(encodeRef(ref), ref);
   }
+  let cappedFrom: number | undefined;
   if (args.query !== undefined && args.query !== null) {
     const result = evaluateQuery(host, args.query);
     if (result.unloadedModel) unloaded.add(result.unloadedModel);
@@ -70,9 +71,9 @@ export function resolveTarget(host: A2uiViewerHost, args: { refs?: unknown; quer
     // The whole match set, like the stats and charts beside it, up to the hard query ceiling (and the UI says so).
     const pool = aggregatePool(result);
     for (const row of pool.slice(0, MAX_QUERY_LIMIT)) out.set(row.key, row.ref);
-    if (pool.length > MAX_QUERY_LIMIT) return { refs: [...out.values()], unloadedModels: [...unloaded], problems: [], cappedFrom: pool.length };
+    if (pool.length > MAX_QUERY_LIMIT) cappedFrom = pool.length;
   }
-  return { refs: [...out.values()], unloadedModels: [...unloaded], problems: [] };
+  return { refs: [...out.values()], unloadedModels: [...unloaded], problems: [], ...(cappedFrom !== undefined && { cappedFrom }) };
 }
 
 const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;

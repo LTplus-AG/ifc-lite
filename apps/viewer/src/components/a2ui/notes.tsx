@@ -52,11 +52,12 @@ export function Note({ tone = 'neutral', children }: { tone?: Tone; children: Re
 }
 
 /** Notes for a query result and for refs whose model is not loaded. */
-export function ResultNotes({ result, unloadedModels = [], problems = [], shown }: { result?: QueryResult | null; unloadedModels?: string[]; problems?: QueryProblem[]; shown?: number }) {
+export function ResultNotes({ result, unloadedModels = [], problems = [], shown, total: totalOverride }: { result?: QueryResult | null; unloadedModels?: string[]; problems?: QueryProblem[]; shown?: number; total?: number }) {
   const { t } = useTranslation();
   const { host } = useA2uiRuntime();
   const unloaded = [...new Set([...unloadedModels, ...(result?.unloadedModel ? [result.unloadedModel] : [])])];
   const visible = shown ?? result?.rows.length ?? 0;
+  const total = totalOverride ?? result?.total ?? 0;
   return (
     <>
       {unloaded.map((model) => (
@@ -65,8 +66,8 @@ export function ResultNotes({ result, unloadedModels = [], problems = [], shown 
       {[...problems, ...(result?.problems ?? [])].map((p, i) => (
         <Note key={`p:${i}`} tone="warn">{t('a2ui.queryProblem', { path: p.path || 'query', message: p.message })}</Note>
       ))}
-      {result && result.total > visible && visible > 0 && (
-        <Note>{t('a2ui.truncated', { shown: visible.toLocaleString(), total: result.total.toLocaleString() })}</Note>
+      {total > visible && visible > 0 && (
+        <Note>{t('a2ui.truncated', { shown: visible.toLocaleString(), total: total.toLocaleString() })}</Note>
       )}
     </>
   );

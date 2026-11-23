@@ -84,7 +84,7 @@ export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ 
     }
   };
 
-  const autoKey = JSON.stringify([props.by, props.query ?? null, props.data ?? null]);
+  const autoKey = useMemo(() => JSON.stringify([props.by, props.query ?? null, props.data ?? null]), [props.by, props.query, props.data]);
   useEffect(() => {
     // Nothing to colour: claim nothing, so a remount never shows it as applied.
     if (props.apply !== 'onShow' || targets === 0) return;

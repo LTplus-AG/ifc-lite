@@ -24,7 +24,7 @@ index d2c355a695..2e7faac72c 100644
    return undefined;
  }
 diff --git b/packages/renderer/src/draw-stream-types.ts a/packages/renderer/src/draw-stream-types.ts
-index 4828a647eb..a122297539 100644
+index 5b8733285f..917f218116 100644
 --- b/packages/renderer/src/draw-stream-types.ts
 +++ a/packages/renderer/src/draw-stream-types.ts
 @@ -85,7 +85,7 @@ export function cellOf(min: readonly number[], max: readonly number[], cell: num
@@ -35,4 +35,4 @@ index 4828a647eb..a122297539 100644
 +  for (let a = 0; a < 3; a++) { box.min[a] = Math.min(box.min[a]!, min[a]!); box.max[a] = Math.max(box.max[a]!, max[a]!); }
  }
  
- /** Bundle-cache index of an opaque draw mode. */
+ /** Orthographic bundle-pair index: [colour, depth] at `orthoSlot` and `+1`, per draw mode and LOD like perspective bundles. */

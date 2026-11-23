@@ -25,7 +25,7 @@ export interface A2uiRuntime {
   host: A2uiViewerHost;
   onFollowUp?: FollowUpHandler;
   /** See `A2uiMessageSession.autoApply`; absent means never auto-apply. */
-  autoApply?: (key: string) => 'apply' | 'applied' | 'off';
+  autoApply?: (key: string, apply: () => boolean) => 'applied' | 'off';
 }
 
 export const A2uiRuntimeContext = createContext<A2uiRuntime | null>(null);

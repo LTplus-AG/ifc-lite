@@ -79,12 +79,18 @@ describe('IFC function policy', () => {
     const { host } = await seedA2uiModels();
     const shared = new Set<string>();
     const live = new A2uiMessageSession(host, true, shared);
-    assert.equal(live.autoApply('legend'), 'apply');
-    assert.equal(live.autoApply('legend'), 'applied', 'a remount shows it applied and does not recolour again');
+    let runs = 0;
+    const ok = () => { runs++; return true; };
+    assert.equal(live.autoApply('failing', () => false), 'off', 'a failed apply is not recorded');
+    assert.equal(live.autoApply('failing', ok), 'applied', 'so the next mount tries again');
+    assert.equal(live.autoApply('legend', ok), 'applied');
+    assert.equal(live.autoApply('legend', ok), 'applied', 'a remount shows it applied and does not recolour again');
+    assert.equal(runs, 2);
     const remounted = A2uiMessageSession.replay(host, { v: 1, segments: [] }, '', true, shared);
-    assert.equal(remounted.autoApply('legend'), 'applied', 'a new session for the same payload shares the claim');
+    assert.equal(remounted.autoApply('legend', ok), 'applied', 'a new session for the same payload shares the claim');
     const replayed = A2uiMessageSession.replay(host, { v: 1, segments: [] }, '');
-    assert.equal(replayed.autoApply('legend'), 'off');
+    assert.equal(replayed.autoApply('legend', ok), 'off');
+    assert.equal(runs, 2, 'neither a remount nor a replay recolours');
     for (const s of [live, remounted, replayed]) s.dispose();
   });
 

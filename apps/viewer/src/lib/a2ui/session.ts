@@ -98,14 +98,15 @@ export class A2uiMessageSession {
   }
 
   /**
-   * For an `onShow` effect: `apply` the first time a live surface shows it,
-   * `applied` when it already ran (a remount), `off` for a replayed record.
+   * For an `onShow` effect: runs `apply` the first time a live surface shows
+   * it and records the key only when `apply` reports success. `applied` when
+   * it already succeeded (a remount), `off` for a replayed record or a failure.
    */
-  autoApply = (key: string): 'apply' | 'applied' | 'off' => {
+  autoApply = (key: string, apply: () => boolean): 'applied' | 'off' => {
     if (this.autoApplied.has(key)) return 'applied';
-    if (!this.live) return 'off';
+    if (!this.live || !apply()) return 'off';
     this.autoApplied.add(key);
-    return 'apply';
+    return 'applied';
   };
 
   subscribe = (listener: () => void): (() => void) => {

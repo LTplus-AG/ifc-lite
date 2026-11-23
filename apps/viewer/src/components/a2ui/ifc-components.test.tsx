@@ -145,6 +145,17 @@ describe('IFC catalog components', () => {
     assert.ok(groups.length > 0 && !groups.some((g) => /slab/i.test(g ?? '')), `slabs excluded, got ${groups.join(',')}`);
   });
 
+  it('ColorLegend: script refs to a model that is not loaded are noted, never applied (#11344)', async () => {
+    const { host: real } = await seedA2uiModels();
+    const { host, calls } = recordingHost(real);
+    const { container } = await mountReply(host, block(`root = ColorLegend("share", _, _, "onShow", $/entries)
+$/entries = [{label: "Elsewhere", color: "#e5484d", refs: ["unloaded-model:12"]}]`));
+    await waitFor(() => !!container.querySelector('[data-a2ui-legend="Elsewhere"]'), 'entry');
+    assert.equal(calls.colorize.length, 0, 'nothing to colour, nothing applied');
+    assert.ok(text(container).includes('unloaded-model'), text(container));
+    assert.equal(button(container, 'Apply colours')?.disabled, true);
+  });
+
   it('ActionBar: actions act on the query result, export runs from the click, follow-ups post a turn', async () => {
     const { host: real } = await seedA2uiModels();
     const { host, calls } = recordingHost(real);

@@ -20,7 +20,7 @@ import { useTranslation } from '@/i18n';
 import { aggregatePool, groupRows } from '@/lib/a2ui/query-eval';
 import { weightStyle } from './basic-layout';
 import { Note, ResultNotes } from './notes';
-import { reportActionError, useA2uiRuntime, useQueryResult } from './runtime';
+import { reportActionError, useA2uiRuntime, useModelsVersion, useQueryResult } from './runtime';
 
 export interface LegendEntry {
   label: string;
@@ -63,24 +63,37 @@ export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ 
   const [applied, setApplied] = useState(false);
   const emptyLabel = t('a2ui.noGroupValue');
 
+  const models = useModelsVersion();
   const scriptEntries = useMemo(() => legendEntriesFromData(props.data), [props.data]);
-  const entries: LegendEntry[] = useMemo(() => {
-    if (scriptEntries) return scriptEntries;
-    if (!result) return [];
-    return groupRows(reader, aggregatePool(result), props.by, emptyLabel)
-      .map((g, i) => ({ label: g.label, color: legendColor(i), refs: g.rows.map((r) => r.ref) }));
-  }, [scriptEntries, result, reader, props.by, emptyLabel]);
+  // Script refs to models that are not loaded colour nothing: dropped from the targets and named in a note.
+  const { entries, unloadedModels } = useMemo(() => {
+    if (scriptEntries) {
+      const loaded = new Set(host.loadedModelIds());
+      const unloaded = new Set<string>();
+      for (const e of scriptEntries) for (const r of e.refs) if (!loaded.has(r.modelId)) unloaded.add(r.modelId);
+      const kept = scriptEntries.map((e) => ({ ...e, refs: e.refs.filter((r) => loaded.has(r.modelId)) }));
+      return { entries: kept, unloadedModels: [...unloaded] };
+    }
+    if (!result) return { entries: [] as LegendEntry[], unloadedModels: [] };
+    return {
+      entries: groupRows(reader, aggregatePool(result), props.by, emptyLabel)
+        .map((g, i) => ({ label: g.label, color: legendColor(i), refs: g.rows.map((r) => r.ref) })),
+      unloadedModels: [],
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `models` stands for the loaded set
+  }, [scriptEntries, result, reader, props.by, emptyLabel, host, models]);
 
   const targets = entries.reduce((n, e) => n + e.refs.length, 0);
-  const apply = () => {
-    // Entries without refs colour nothing: never report success for that.
-    if (targets === 0) return;
+  /** True when something was coloured; entries without loaded refs colour nothing and never report success. */
+  const apply = (): boolean => {
+    if (targets === 0) return false;
     try {
-      // Colouring is a view change on the user's click: the host only ever touches loaded models.
       host.colorize(entries.map((e) => ({ refs: e.refs, color: e.color })));
       setApplied(true);
+      return true;
     } catch (error) {
       reportActionError(error, t);
+      return false;
     }
   };
 
@@ -88,9 +101,7 @@ export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ 
   useEffect(() => {
     // Nothing to colour: claim nothing, so a remount never shows it as applied.
     if (props.apply !== 'onShow' || targets === 0) return;
-    const state = autoApply?.(autoKey);
-    if (state === 'apply') apply();
-    else if (state === 'applied') setApplied(true);
+    if (autoApply?.(autoKey, apply) === 'applied') setApplied(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per legend payload, when something to colour exists
   }, [props.apply, targets, autoKey]);
 
@@ -113,7 +124,7 @@ export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ 
   return (
     <div style={weightStyle(props.weight)} className="flex min-w-0 flex-col gap-1.5">
       {title && <div className="text-sm font-semibold">{title}</div>}
-      {!scriptEntries && <ResultNotes result={result} shown={result?.total} />}
+      {scriptEntries ? <ResultNotes unloadedModels={unloadedModels} /> : <ResultNotes result={result} shown={result?.total} />}
       {entries.length === 0 && (scriptEntries || !result?.unloadedModel) && <Note>{t('a2ui.empty')}</Note>}
       <ul className="flex flex-col gap-0.5 text-xs">
         {entries.map((entry) => (
@@ -131,7 +142,7 @@ export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ 
       </ul>
       {entries.length > 0 && (
         <div className="flex gap-1.5">
-          <Button size="sm" variant={applied ? 'outline' : 'default'} disabled={targets === 0} onClick={apply}>
+          <Button size="sm" variant={applied ? 'outline' : 'default'} disabled={targets === 0} onClick={() => { apply(); }}>
             {applied ? t('a2ui.legend.applied') : t('a2ui.legend.apply')}
           </Button>
           <Button size="sm" variant="ghost" onClick={() => { host.resetView(); setApplied(false); setHidden(new Set()); }}>

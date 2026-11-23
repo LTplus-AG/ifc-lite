@@ -119,7 +119,7 @@ export {
 export type { ProjectionBand, ProjectionBandDepths } from './projection-bands.js';
 
 // Current-floor scoping + feature-element exclusion (issue #979 follow-up)
-export { currentFloorBands, storeyFloorsFromMeshes } from './storey-bands.js';
+export { currentFloorBands, storeyFloorsFromMeshes, StoreyFloorLevels } from './storey-bands.js';
 export type { StoreyFloorMesh } from './storey-bands.js';
 export { isFeatureElementType } from './feature-elements.js';
 
@@ -242,13 +242,11 @@ export { GPUSectionCutter, isGPUComputeAvailable } from './gpu-section-cutter.js
 // HIGH-LEVEL GENERATOR
 // ═══════════════════════════════════════════════════════════════════════════
 
-export {
-  Drawing2DGenerator,
-  createSectionConfig,
-  generateFloorPlan,
-  generateSection,
-} from './drawing-generator.js';
+export { Drawing2DGenerator, createSectionConfig, generateFloorPlan, generateSection } from './drawing-generator.js';
 export type { GeneratorOptions, GeneratorProgress } from './drawing-generator.js';
+export type { DrawingMeshSource, DrawingPass } from './drawing-mesh-source.js';
+export { DrawingSession } from './drawing-session.js';
+export type { DrawingOcclusionNeeds, DrawingSessionOptions } from './drawing-session.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MATH UTILITIES

@@ -10,7 +10,8 @@
  * this spec is the browser proof. Release of CPU geometry stays disabled.
  */
 
-import { test, expect, type Page } from '@playwright/test';
+import { type Page } from '@playwright/test';
+import { test, expect } from './gpu-browser';
 import { writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { startViewerDevServer, type ViewerDevServer } from './viewer-dev-server';

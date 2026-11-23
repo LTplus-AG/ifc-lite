@@ -13,7 +13,8 @@
 import { existsSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { expect, test, type Page } from '@playwright/test';
+import { type Page } from '@playwright/test';
+import { expect, test } from './gpu-browser';
 import { startViewerDevServer, type ViewerDevServer } from './viewer-dev-server';
 
 type MeshData = import('@ifc-lite/geometry').MeshData;

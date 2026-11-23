@@ -1167,10 +1167,10 @@ describe('MergedExporter', () => {
   describe('unit normalization (#1475)', () => {
     // Primary = metres. Both models declare square-/cubic-metre area/volume units
     // (the Revit convention: millimetre lengths but metre-derived area/volume).
-    const metreModel = (): MergeModelInput => {
+    const metreModel = (extra: Array<[number, string, string]> = [], extraUnitIds: number[] = []): MergeModelInput => {
       const m = buildModel('primary', 'Primary-metre', [
         [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('primProj')}',$,'Primary',$,$,$,$,(#3),#2);`],
-        [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#8,#9,#10));'],
+        [2, 'IFCUNITASSIGNMENT', `#2=IFCUNITASSIGNMENT((#8,#9,#10${extraUnitIds.map(id => `,#${id}`).join('')}));`],
         [3, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#7,$);"],
         [4, 'IFCSITE', `#4=IFCSITE('${guid('primSite')}',$,'Site',$,$,$,$,$,$,$);`],
         [5, 'IFCWALL', `#5=IFCWALL('${guid('primWall')}',$,'PW',$,$,#6,$,$);`],
@@ -1180,6 +1180,7 @@ describe('MergedExporter', () => {
         [9, 'IFCSIUNIT', '#9=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);'],
         [10, 'IFCSIUNIT', '#10=IFCSIUNIT(*,.VOLUMEUNIT.,$,.CUBIC_METRE.);'],
         [11, 'IFCRELAGGREGATES', `#11=IFCRELAGGREGATES('${guid('primAgg')}',$,$,$,#1,(#4));`],
+        ...extra,
       ]);
       m.lengthUnitScale = 1.0;
       return m;
@@ -1188,10 +1189,10 @@ describe('MergedExporter', () => {
     // Secondary = millimetres. A column at x=3000 mm, a storey at 3000 mm, a
     // 2500 mm extrusion depth, a 300 mm circle radius, a length quantity in mm and
     // an AREA quantity already in m² (Revit) that must NOT be length-rescaled.
-    const mmModel = (extra: Array<[number, string, string]> = []): MockMergeModelInput => {
+    const mmModel = (extra: Array<[number, string, string]> = [], extraUnitIds: number[] = []): MockMergeModelInput => {
       const m = buildModel('mm', 'Secondary-mm', [
         [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('mmProj')}',$,'Secondary',$,$,$,$,(#3),#2);`],
-        [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#8,#9,#10));'],
+        [2, 'IFCUNITASSIGNMENT', `#2=IFCUNITASSIGNMENT((#8,#9,#10${extraUnitIds.map(id => `,#${id}`).join('')}));`],
         [3, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#7,$);"],
         [4, 'IFCSITE', `#4=IFCSITE('${guid('mmSite')}',$,'Site',$,$,$,$,$,$,$);`],
         [5, 'IFCCOLUMN', `#5=IFCCOLUMN('${guid('mmCol')}',$,'MC',$,$,#6,$,$);`],
@@ -1263,6 +1264,41 @@ describe('MergedExporter', () => {
         .exec(decode(result.content))?.[1];
       expect(result.stats.normalizedModelCount).toBe(1);
       expect(Number(literal)).toBe(expected);
+    });
+
+    it.each([
+      ['MASSPERLENGTH', -1, '50.', 50],
+      ['MOMENTOFINERTIA', 4, '2.E-5', 2e-5],
+      ['SECTIONMODULUS', 3, '3.E-4', 3e-4],
+      ['WARPINGCONSTANT', 6, '4.E-8', 4e-8],
+    ])('uses the declared %s unit in a millimetre project (#11329)', (kind, exponent, input, expected) => {
+      const elements = kind === 'MASSPERLENGTH' ? '#21,#22' : '#22';
+      const secondary = mmModel([
+        [18, 'IFCPROPERTYSINGLEVALUE', `#18=IFCPROPERTYSINGLEVALUE('Section datum',$,IFC${kind}MEASURE(${input}),$);`],
+        [19, 'IFCSIUNIT', '#19=IFCSIUNIT(*,.MASSUNIT.,.KILO.,.GRAM.);'],
+        [20, 'IFCSIUNIT', '#20=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+        [21, 'IFCDERIVEDUNITELEMENT', '#21=IFCDERIVEDUNITELEMENT(#19,1);'],
+        [22, 'IFCDERIVEDUNITELEMENT', `#22=IFCDERIVEDUNITELEMENT(#20,${exponent});`],
+        [23, 'IFCDERIVEDUNIT', `#23=IFCDERIVEDUNIT((${elements}),.${kind}UNIT.,$);`],
+      ], [23]);
+      const result = new MergedExporter([metreModel(), secondary])
+        .export({ schema: 'IFC4', unitReconciliation: 'normalize' });
+      const literal = /'Section datum',\$,IFC[A-Z]+MEASURE\(([^)]+)\)/.exec(decode(result.content))?.[1];
+      expect(Number(literal)).toBe(expected);
+    });
+
+    it('normalizes into the primary project’s declared derived unit (#11329)', () => {
+      const primary = metreModel([
+        [18, 'IFCSIUNIT', '#18=IFCSIUNIT(*,.LENGTHUNIT.,.CENTI.,.METRE.);'],
+        [19, 'IFCDERIVEDUNITELEMENT', '#19=IFCDERIVEDUNITELEMENT(#18,3);'],
+        [20, 'IFCDERIVEDUNIT', '#20=IFCDERIVEDUNIT((#19),.SECTIONMODULUSUNIT.,$);'],
+      ], [20]);
+      const secondary = mmModel([
+        [18, 'IFCPROPERTYSINGLEVALUE', "#18=IFCPROPERTYSINGLEVALUE('Section datum',$,IFCSECTIONMODULUSMEASURE(2000.),$);"],
+      ]);
+      const result = new MergedExporter([primary, secondary])
+        .export({ schema: 'IFC4', unitReconciliation: 'normalize' });
+      expect(decode(result.content)).toContain("'Section datum',$,IFCSECTIONMODULUSMEASURE(2.)");
     });
 
     it('does NOT length-rescale area quantities already in square metres (Revit)', () => {

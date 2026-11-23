@@ -184,6 +184,15 @@ describe('rescaleEntityLengths (full entity lines)', () => {
     );
   });
 
+  it.each([
+    ['IFCGENERALPROFILEPROPERTIES', '$,#3,0.0045,1000.,$,$,60000.', '$,#3,4.5,1.,$,$,0.06'],
+    ['IFCSTRUCTURALPROFILEPROPERTIES', '$,#3,0.0045,1000.,$,$,60000.,$,$,$,$,$,60.,-40.,5000.,4000.,$,$,$,$,$,$,$',
+      '$,#3,4.5,1.,$,$,0.06,$,$,$,$,$,0.06,-0.04,0.005,0.004,$,$,$,$,$,$,$'],
+  ])('keeps all geometric fields of %s in the normalized IFC2X3 units (#11329)', (type, input, expected) => {
+    expect(rescaleEntityLengths(`#5=${type}(${input});`, type, 0.001, 1e-6, 1e-9))
+      .toBe(`#5=${type}(${expected});`);
+  });
+
   it('normalizes implicit profile units even with comments, and keeps explicit units (#11329)', () => {
     const withUnit = "#5=IFCPROPERTYSINGLEVALUE('Warping',$,ifcwarpingconstantmeasure(4.E18),#7);";
     expect(rescaleEntityLengths(withUnit, 'IFCPROPERTYSINGLEVALUE', 0.001, 1, 1)).toBe(withUnit);

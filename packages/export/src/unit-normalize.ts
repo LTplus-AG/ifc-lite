@@ -40,7 +40,7 @@
  *   `IFCPOSITIVELENGTHMEASURE(x)` / `IFCNONNEGATIVELENGTHMEASURE(x)` (× length),
  *   `IFCAREAMEASURE(x)` (× area) and `IFCVOLUMEMEASURE(x)` (× volume).
  * - **Derived profile measures** — typed values and IFC2X3 profile attributes
- *   scale by the length-unit ratio raised to their dimensional exponent.
+ *   use the ratio of declared units when available and powers of length otherwise.
  *
  * ## What is NOT rescaled
  * - Unit-definition entities (`IfcSIUnit`, `IfcConversionBasedUnit`,
@@ -69,7 +69,7 @@ const LENGTH_MEASURE_TYPES = new Set([
   'IfcNonNegativeLengthMeasure',
 ]);
 
-const PROFILE_MEASURE_POWERS = new Map([
+export const PROFILE_MEASURE_POWERS: ReadonlyMap<string, number> = new Map([
   ['IFCMASSPERLENGTHMEASURE', -1],
   ['IFCMOMENTOFINERTIAMEASURE', 4],
   ['IFCSECTIONMODULUSMEASURE', 3],
@@ -104,8 +104,8 @@ export interface EntityLengthPlan {
   areaIdx: number[];
   /** Scalar volume attributes → scale by the volume factor. */
   volumeIdx: number[];
-  /** Scalar profile measures and their powers of the length factor. */
-  profileMeasures: { index: number; power: number }[];
+  /** Scalar profile measures and their STEP type names. */
+  profileMeasures: { index: number; measure: string; power: number }[];
   /**
    * Indices of unit-override attributes (`Unit` / `DefiningUnit` / `DefinedUnit`,
    * typed IfcNamedUnit or the IfcUnit SELECT). When ANY of them is a live
@@ -173,9 +173,9 @@ function buildEntityLengthPlan(typeUpper: string): EntityLengthPlan {
 
   fields.forEach((a, i) => {
     const { base, isList } = attrBaseType(a.type, a);
-    const power = PROFILE_MEASURE_POWERS.get(base.toUpperCase());
-    if (power !== undefined && !isList) profileMeasures.push({ index: i, power });
-    if (legacyProfile) return;
+    const measure = base.toUpperCase();
+    const power = PROFILE_MEASURE_POWERS.get(measure);
+    if (power !== undefined && !isList) profileMeasures.push({ index: i, measure, power });
     if (LENGTH_MEASURE_TYPES.has(base)) {
       if (isList) listIdx.push(i);
       else scalarIdx.push(i);
@@ -263,6 +263,7 @@ export function scaleTypedMeasures(
   lengthFactor: number,
   areaFactor: number,
   volumeFactor: number,
+  profileFactors?: ReadonlyMap<string, number>,
 ): string {
   return mapOutsideStepStrings(text, (code) => code.replace(
     TYPED_MEASURE_RE,
@@ -270,7 +271,7 @@ export function scaleTypedMeasures(
       const kw = keyword.toUpperCase();
       const factor = kw === 'IFCAREAMEASURE' ? areaFactor
         : kw === 'IFCVOLUMEMEASURE' ? volumeFactor
-        : lengthFactor ** (PROFILE_MEASURE_POWERS.get(kw) ?? 1);
+        : profileFactors?.get(kw) ?? lengthFactor ** (PROFILE_MEASURE_POWERS.get(kw) ?? 1);
       return `${delim}${keyword}(${scaleMeasureNumber(num, factor)})`;
     },
   ));
@@ -309,8 +310,9 @@ export function rescaleEntityLengths(
   lengthFactor: number,
   areaFactor: number,
   volumeFactor: number,
+  profileFactors?: ReadonlyMap<string, number>,
 ): string {
-  if (lengthFactor === 1 && areaFactor === 1 && volumeFactor === 1) return line;
+  if (lengthFactor === 1 && areaFactor === 1 && volumeFactor === 1 && !profileFactors?.size) return line;
   if (!Number.isFinite(lengthFactor) || !Number.isFinite(areaFactor) || !Number.isFinite(volumeFactor)) return line;
   if (isRescaleExcluded(typeUpper)) return line;
 
@@ -361,8 +363,8 @@ export function rescaleEntityLengths(
       for (const idx of plan.volumeIdx) {
         if (args[idx] !== undefined) args[idx] = scaleScalarArg(args[idx], volumeFactor);
       }
-      for (const { index, power } of plan.profileMeasures) {
-        if (args[index] !== undefined) args[index] = scaleScalarArg(args[index], lengthFactor ** power);
+      for (const { index, measure, power } of plan.profileMeasures) {
+        if (args[index] !== undefined) args[index] = scaleScalarArg(args[index], profileFactors?.get(measure) ?? lengthFactor ** power);
       }
       inner = args.join(',');
     }
@@ -371,7 +373,7 @@ export function rescaleEntityLengths(
   // Typed measures live in property/quantity value slots (an IfcValue SELECT is
   // written with its explicit type). Skipped when the entity declares its own unit.
   if (!skipValues && /measure/i.test(inner)) {
-    inner = scaleTypedMeasures(inner, lengthFactor, areaFactor, volumeFactor);
+    inner = scaleTypedMeasures(inner, lengthFactor, areaFactor, volumeFactor, profileFactors);
   }
 
   return line.slice(0, bounds.open + 1) + inner + line.slice(bounds.close);

@@ -8,6 +8,7 @@ import { useMemo, useState } from 'react';
 import { createComponentImplementation } from '@a2ui/react';
 import { encodeRef } from '@ifc-lite/a2ui';
 import { EntityListApi } from '@ifc-lite/a2ui/catalog';
+import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
 import { weightStyle } from './basic-layout';
@@ -37,21 +38,22 @@ export const EntityListImpl = createComponentImplementation(EntityListApi, ({ pr
       {rows.length > 0 && <ul className="flex max-h-72 flex-col overflow-auto rounded-md border text-xs">
         {rows.map((row) => (
           <li key={row.key}>
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="sm"
               disabled={!row.live}
               data-a2ui-row={row.ref ? encodeRef(row.ref) : undefined}
               aria-label={t('a2ui.list.itemLabel', { name: row.label })}
               aria-pressed={activeKey === row.key}
               onClick={() => { setActiveKey(row.key); selectAndFly(row); }}
               className={cn(
-                'flex w-full items-center justify-between gap-2 px-2 py-1 text-left hover:bg-accent disabled:opacity-60',
+                'h-auto w-full justify-between gap-2 rounded-none px-2 py-1 text-left text-xs font-normal',
                 activeKey === row.key && 'bg-active-surface text-active',
               )}
             >
               <span className="truncate">{row.label}</span>
               <span className="shrink-0 text-2xs text-muted-foreground">{String(row.read('type') ?? '')}</span>
-            </button>
+            </Button>
           </li>
         ))}
       </ul>}

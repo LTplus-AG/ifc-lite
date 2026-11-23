@@ -36,6 +36,11 @@ test('a recorded A2UI reply renders a live EntityTable whose row click selects t
   await page.waitForFunction(() => !!globalThis.__ifc_lite_viewer_store__, undefined, { timeout: 120_000 });
   await waitForModel(page);
 
+  // Wait for the finalised message (the streaming copy unmounts when the reply ends).
+  await page.waitForFunction(() => {
+    const state = globalThis.__ifc_lite_viewer_store__.getState();
+    return state.chatStatus === 'idle' && !!state.chatMessages.at(-1)?.a2ui;
+  }, undefined, { timeout: 60_000 });
   const rows = page.locator('[data-a2ui-row]');
   await expect(rows).toHaveCount(4, { timeout: 60_000 });
   await expect(page.locator('[data-a2ui-stat]')).toHaveCount(4);

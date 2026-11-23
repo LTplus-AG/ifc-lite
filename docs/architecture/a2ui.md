@@ -143,8 +143,9 @@ Decisions worth knowing before changing it:
   opens one) and the parser is fed the blocks alone; what it emits is credited to the block being fed.
 - **Persistence stores messages, not text.** A finalised message records its segments
   (`ChatMessage.a2ui`); a reload applies the recorded messages to a fresh processor without the parser.
-  The streaming message's session is adopted by the final message when the text matches, so a surface
-  keeps its state (sort, applied colours) across finalisation.
+  The streaming message's session is adopted by the final message when the text matches, so the
+  surfaces are not rebuilt and their data model (bound input values) carries over. The chat remounts the
+  message element at finalisation, so React-local view state (a re-sorted column, the table page) resets.
 - **Aggregates count every match.** A query's `limit` (default 500) bounds the rows a table or list
   shows; stats, charts and legends use every match unless the query set its own limit.
 - **Refs to unloaded models are inert, with a note.** Nothing falls back to the same express id in another model.

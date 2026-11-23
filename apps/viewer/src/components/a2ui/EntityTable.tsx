@@ -97,16 +97,17 @@ export const EntityTableImpl = createComponentImplementation(EntityTableApi, ({ 
                   const dir = sort?.path === col.path ? sort.dir : null;
                   return (
                     <TableHead key={col.path} aria-sort={dir === 'asc' ? 'ascending' : dir === 'desc' ? 'descending' : 'none'} className="h-8 px-2">
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1 font-medium hover:text-foreground"
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 gap-1 px-1 text-xs font-medium"
                         aria-label={t('a2ui.table.sortBy', { column: label })}
                         onClick={() => { setSort(nextSort(sort, col.path)); setPage(0); }}
                       >
                         {label}
                         {dir === 'asc' && <ArrowUp className="h-3 w-3" aria-hidden />}
                         {dir === 'desc' && <ArrowDown className="h-3 w-3" aria-hidden />}
-                      </button>
+                      </Button>
                     </TableHead>
                   );
                 })}
@@ -135,7 +136,7 @@ export const EntityTableImpl = createComponentImplementation(EntityTableApi, ({ 
                       className={cn(row.live ? 'cursor-pointer' : 'opacity-60', activeKey === row.key && 'bg-active-surface')}
                     >
                       {columns.map((col) => (
-                        <TableCell key={col.path} className="max-w-[16rem] truncate px-2 py-1">{formatValue(row.read(col.path), noValue)}</TableCell>
+                        <TableCell key={col.path} className="max-w-64 truncate px-2 py-1">{formatValue(row.read(col.path), noValue)}</TableCell>
                       ))}
                     </TableRow>
                   ))}

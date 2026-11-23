@@ -138,7 +138,7 @@ export const SliderImpl = createComponentImplementation(SliderApi, ({ props }) =
         <Label htmlFor={id} className="text-xs">{String(props.label ?? '')}</Label>
         <output htmlFor={id} className="tabular-nums text-muted-foreground">{value.toLocaleString()}</output>
       </div>
-      <input id={id} type="range" min={min} max={max} step={step} value={value} onChange={(e) => props.setValue(Number(e.target.value))} className="w-full accent-primary" />
+      <Input id={id} type="range" min={min} max={max} step={step} value={value} onChange={(e) => props.setValue(Number(e.target.value))} className="h-5 border-0 p-0 shadow-none accent-primary" />
       <ValidationErrors errors={props.validationErrors} />
     </div>
   );

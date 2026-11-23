@@ -15,6 +15,7 @@ import { encodeRef } from '@ifc-lite/a2ui';
 import { GroupChartApi } from '@ifc-lite/a2ui/catalog';
 import type { ChartItem, EChartsOptionObject } from '@ifc-lite/charts';
 import { LENS_PALETTE } from '@ifc-lite/lens';
+import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
 import { readChartTheme, useEChart, type ChartSelectEvent } from '@/components/viewer/charts/useEChart';
 import { aggregatePool, groupRows } from '@/lib/a2ui/query-eval';
@@ -129,17 +130,18 @@ export const GroupChartImpl = createComponentImplementation(GroupChartApi, ({ pr
         <ul aria-label={t('a2ui.chart.groups')} className="flex flex-wrap gap-1">
           {groups.map((g, i) => (
             <li key={`${g.label}:${i}`}>
-              <button
-                type="button"
+              <Button
+                variant="outline"
+                size="segment"
                 disabled={g.refs.length === 0}
                 data-a2ui-group={g.label}
                 aria-label={t('a2ui.chart.selectGroup', { group: g.label, value: formatValue(g.value, '') })}
                 onClick={() => selectGroup(g)}
-                className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-2xs hover:bg-accent disabled:opacity-60"
+                className="gap-1"
               >
-                <span className="max-w-[10rem] truncate">{g.label}</span>
+                <span className="max-w-40 truncate">{g.label}</span>
                 <span className="tabular-nums text-muted-foreground">{formatValue(g.value, '')}</span>
-              </button>
+              </Button>
             </li>
           ))}
         </ul>

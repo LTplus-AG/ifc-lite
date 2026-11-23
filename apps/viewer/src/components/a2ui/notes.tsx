@@ -23,18 +23,18 @@ export type Tone = 'neutral' | 'info' | 'success' | 'warn' | 'error';
 
 const TONE_CLASS: Record<Tone, string> = {
   neutral: 'border-border bg-muted/40',
-  info: 'border-sky-500/40 bg-sky-500/10',
-  success: 'border-emerald-500/40 bg-emerald-500/10',
-  warn: 'border-amber-500/50 bg-amber-500/10',
-  error: 'border-destructive/50 bg-destructive/10',
+  info: 'border-info-border bg-info-surface',
+  success: 'border-ok-border bg-ok-surface',
+  warn: 'border-warn-border bg-warn-surface',
+  error: 'border-danger-border bg-danger-surface',
 };
 
 const TONE_ICON: Record<Tone, ReactNode> = {
   neutral: <Info className="h-4 w-4 text-muted-foreground" aria-hidden />,
-  info: <Info className="h-4 w-4 text-sky-600 dark:text-sky-400" aria-hidden />,
-  success: <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden />,
-  warn: <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" aria-hidden />,
-  error: <XCircle className="h-4 w-4 text-destructive" aria-hidden />,
+  info: <Info className="h-4 w-4 text-info" aria-hidden />,
+  success: <CheckCircle2 className="h-4 w-4 text-ok" aria-hidden />,
+  warn: <AlertTriangle className="h-4 w-4 text-warn" aria-hidden />,
+  error: <XCircle className="h-4 w-4 text-danger" aria-hidden />,
 };
 
 export function toneClass(tone: unknown): string {

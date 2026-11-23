@@ -225,6 +225,15 @@ export const PERF_FLAGS = [
     bindings: { urlParam: 'perf.sceneIdentity' },
   },
   {
+    id: 'drawStream',
+    kind: 'ramp',
+    owner: '@louistrue',
+    removalCondition: 'Flat-batch draw stream (bundles, shared arenas, far-field HLOD, highlight index; huge-geometry campaign): delete with the per-batch opaque loop once the stream ships on by default, or delete the stream if it is dropped. The global takes an object of DrawStreamConfig keys; each key also reads its own m6.<key> URL param.',
+    introducedAt: '2026-11-23',
+    default: null,
+    bindings: { global: '__IFC_LITE_M6__', urlParam: 'm6.stream' },
+  },
+  {
     id: 'perfTrace',
     kind: 'kill-switch',
     owner: '@louistrue',

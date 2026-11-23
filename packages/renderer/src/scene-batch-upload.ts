@@ -38,6 +38,8 @@ export function createSceneBatch(
     lattice?: LatticeFrame;
     /** The vertex buffer can be copied from (a fragment a finalize may assemble from). */
     copySource?: boolean;
+    /** Vertex and index buffers can be copied from (draw-stream arenas, `Scene.setDrawStreamArena`). */
+    arenaCopySource?: boolean;
   },
   bucketKey?: string,
 ): BatchedMesh {
@@ -101,7 +103,8 @@ export function createSceneBatch(
         'its partial-batch depth will not match the base geometry (#4832).',
       );
     }
-    const vertexUsage = GPUBufferUsage.VERTEX | (options.copySource ? GPUBufferUsage.COPY_SRC : 0);
+    const arenaUsage = options.arenaCopySource ? GPUBufferUsage.COPY_SRC : 0;
+    const vertexUsage = GPUBufferUsage.VERTEX | (options.copySource ? GPUBufferUsage.COPY_SRC : 0) | arenaUsage;
     if (quantizedData) {
       vertexBuffer = track(createStaticGpuBuffer(device, quantizedData.vertexData, vertexUsage));
       quantized = { min: quantizedData.quantMin, step: quantizedData.step };
@@ -110,7 +113,7 @@ export function createSceneBatch(
     }
 
     // Create index buffer
-    const indexBuffer = track(createStaticGpuBuffer(device, merged.indices, GPUBufferUsage.INDEX));
+    const indexBuffer = track(createStaticGpuBuffer(device, merged.indices, GPUBufferUsage.INDEX | arenaUsage));
 
     const uniform = createBatchUniform(device, pipeline);
     uniformSlot = uniform.uniformSlot;
@@ -142,7 +145,7 @@ export function createSceneBatch(
         cellSize,
       );
       if (lodIndices) {
-        lod1IndexBuffer = track(createStaticGpuBuffer(device, lodIndices, GPUBufferUsage.INDEX));
+        lod1IndexBuffer = track(createStaticGpuBuffer(device, lodIndices, GPUBufferUsage.INDEX | arenaUsage));
         lod1IndexCount = lodIndices.length;
       }
     }

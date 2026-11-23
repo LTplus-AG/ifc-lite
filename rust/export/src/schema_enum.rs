@@ -256,11 +256,11 @@ impl ConversionChecks {
             };
             writeln!(body, "{record}")?;
         }
-        Ok(count + body.finish_with(|text| self.forms.finish_dates(text, &mut self.attribute_values_dropped))?)
+        Ok(count + body.finish_with(|text| self.forms.finish_dates(text, &mut self.attribute_values_dropped, |ty| self.plans.forget_verbatim(ty)))?)
     }
 
     pub(crate) fn finish_dates(&mut self, text: &mut String) -> isize {
-        if let Some((rewritten, delta)) = self.forms.finish_dates(text, &mut self.attribute_values_dropped) {
+        if let Some((rewritten, delta)) = self.forms.finish_dates(text, &mut self.attribute_values_dropped, |ty| self.plans.forget_verbatim(ty)) {
             *text = rewritten;
             delta
         } else {
@@ -281,6 +281,7 @@ impl ConversionChecks {
         out.extend(self.documents.warnings());
         out.extend(self.forms.warnings());
         out.extend(self.structural.warnings());
+        out.extend(self.plans.warnings());
         out
     }
 }

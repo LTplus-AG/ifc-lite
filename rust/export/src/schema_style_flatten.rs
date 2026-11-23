@@ -21,7 +21,7 @@ use std::collections::{HashMap, HashSet};
 use crate::schema_grid_frames::{GridFrames, GRID, GRID_PLACEMENT, INTERSECTION};
 use crate::step_slot::split_top_level_args;
 
-const ASSIGNMENT: &str = "IFCPRESENTATIONSTYLEASSIGNMENT";
+pub(crate) const ASSIGNMENT: &str = "IFCPRESENTATIONSTYLEASSIGNMENT";
 /// Deepest list nesting [`StyleFlatten::strip`] reads (IFC nests three).
 const MAX_DEPTH: usize = 8;
 

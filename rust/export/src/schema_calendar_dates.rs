@@ -52,7 +52,7 @@ impl CalendarDates {
         true
     }
 
-    pub(super) fn finish(&mut self, text: &str, mut loss: impl FnMut(bool, bool, String)) -> Option<(String, isize)> {
+    pub(super) fn finish(&mut self, text: &str, mut loss: impl FnMut(bool, bool, String), pruned: impl FnMut(&str)) -> Option<(String, isize)> {
         if self.pending.is_empty() {
             return None;
         }
@@ -85,7 +85,7 @@ impl CalendarDates {
         self.pending.clear();
         let used = retained_carriers(text, &carriers, &rewrites);
         self.retained = used.len();
-        Some(finish_text(text, &carriers, &used, &rewrites, &appended))
+        Some(finish_text(text, &carriers, &used, &rewrites, &appended, pruned))
     }
     pub(super) fn warning(&self) -> Option<String> {
         (self.retained != 0).then(|| format!(
@@ -160,14 +160,15 @@ fn retained_carriers(text: &str, carriers: &HashMap<u32, DateRecord>, rewrites: 
 
 fn finish_text(
     text: &str, carriers: &HashMap<u32, DateRecord>, retained: &HashSet<u32>,
-    rewrites: &HashMap<u32, String>, appended: &[String],
+    rewrites: &HashMap<u32, String>, appended: &[String], mut pruned: impl FnMut(&str),
 ) -> (String, isize) {
     let mut cut = 0;
     let mut output = String::with_capacity(text.len());
     let mut removed = 0;
     let mut scanner = EntityScanner::new(text);
     while let Some((id, _, a, b)) = scanner.next_entity() {
-        if carriers.contains_key(&id) && !retained.contains(&id) {
+        if let Some(date) = carriers.get(&id).filter(|_| !retained.contains(&id)) {
+            pruned(&date.ty);
             output.push_str(&text[cut..a]);
             let tail = &text[b..];
             let separator = if tail.starts_with("\r\n") { 2 } else { usize::from(tail.starts_with('\n')) };

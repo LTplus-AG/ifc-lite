@@ -129,6 +129,7 @@ test('#11247 claims STEP writers and conversion tables ahead of recursive export
     'schema-ifc2x3-placements.ts',
     'schema-ifc2x3-style-assignments.ts',
     'schema-value-form-policy.ts',
+    'schema-untranslatable.ts',
     'generated/ifc2x3-required-slots.ts',
     'step-header.ts',
     'step-property-set-readers.ts',

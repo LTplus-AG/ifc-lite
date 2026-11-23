@@ -163,12 +163,12 @@ impl ValueForms {
             && calendar_dates::has_carriers(content)
     }
 
-    pub(crate) fn finish_dates(&mut self, text: &str, dropped: &mut usize) -> Option<(String, isize)> {
+    pub(crate) fn finish_dates(&mut self, text: &str, dropped: &mut usize, pruned: impl FnMut(&str)) -> Option<(String, isize)> {
         self.dates.finish(text, |required, narrowed, site| {
             *dropped += 1;
             let into = if narrowed { &mut self.narrowed_dates } else if required { &mut self.emptied } else { &mut self.dropped };
             *into.entry(site).or_default() += 1;
-        })
+        }, pruned)
     }
 
     /// `line`, already converted from `cfrom` to `cto`, with every slot in a

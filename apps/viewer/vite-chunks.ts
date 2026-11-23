@@ -117,7 +117,7 @@ export const stepExportChunkGroup = {
     '|schema-calendar-date(?:s|-values)|schema-value-form-policy|schema-ifc2x3-(?:placements|style-assignments)',
     '|step-(?:collection|exporter|header|internal-pset-ids|native-set-record|overlay-entities|pass-builder',
     '|property-set[^/]*|pset-copy-on-write|shared-atom-retention|source-iteration|type-owned-quantities)',
-    '|anonymize-export|ifc5-exporter|merged-bake|section-export',
+    '|anonymize-export|ifc5-exporter|merged-bake|schema-untranslatable|section-export',
     ')\\.(?:ts|js)$',
   ].join('')),
 };

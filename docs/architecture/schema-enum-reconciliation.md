@@ -23,8 +23,8 @@ into, which can receive any member of the source type's enum (#10856).
 | IFC4X3 → IFC4 | 108 | 402 | 7 | 0 |
 | IFC4X3 → IFC2X3 | 83 | 216 | 18 | 10 |
 | IFC4 → IFC2X3 | 63 | 111 | 14 | 7 |
-| IFC2X3 → IFC4 | 24 | 71 | 4 | 0 |
-| IFC2X3 → IFC4X3 | 23 | 71 | 3 | 0 |
+| IFC2X3 → IFC4 | 27 | 71 | 7 | 0 |
+| IFC2X3 → IFC4X3 | 24 | 71 | 4 | 0 |
 | IFC4 → IFC4X3 | 0 | 0 | 0 | 0 |
 
 ## IFC4X3 → IFC4
@@ -315,6 +315,8 @@ into, which can receive any member of the source type's enum (#10856).
 | IfcOwnerHistory.ChangeAction | IfcChangeActionEnum | MODIFIEDADDED, MODIFIEDDELETED | `.NOTDEFINED.` (reported) |
 | IfcProtectiveDevice.PredefinedType | IfcProtectiveDeviceTypeEnum | EARTHFAILUREDEVICE | `.USERDEFINED.`, name in `ObjectType` |
 | IfcProtectiveDeviceType.PredefinedType | IfcProtectiveDeviceTypeEnum | EARTHFAILUREDEVICE | `.USERDEFINED.`, name in `ElementType` |
+| IfcRelAssignsToActor.RelatedObjectsType | IfcObjectTypeEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
+| IfcRelAssignsToControl.RelatedObjectsType | IfcObjectTypeEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
 | IfcRelAssignsToProduct.RelatedObjectsType | IfcObjectTypeEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
 | IfcSpaceHeater.PredefinedType | IfcSpaceHeaterTypeEnum | SECTIONALRADIATOR, PANELRADIATOR, TUBULARRADIATOR, BASEBOARDHEATER, FINNEDTUBEUNIT, UNITHEATER | `.USERDEFINED.`, name in `ObjectType` |
 | IfcSpaceHeaterType.PredefinedType | IfcSpaceHeaterTypeEnum | SECTIONALRADIATOR, PANELRADIATOR, TUBULARRADIATOR, BASEBOARDHEATER, FINNEDTUBEUNIT, UNITHEATER | `.USERDEFINED.`, name in `ElementType` |
@@ -322,6 +324,7 @@ into, which can receive any member of the source type's enum (#10856).
 | IfcStructuralLoadGroup.PredefinedType | IfcLoadGroupTypeEnum | LOAD_COMBINATION_GROUP | `.USERDEFINED.`, name in `ObjectType` |
 | IfcTank.PredefinedType | IfcTankTypeEnum | PREFORMED, SECTIONAL | `.USERDEFINED.`, name in `ObjectType` |
 | IfcTankType.PredefinedType | IfcTankTypeEnum | PREFORMED, SECTIONAL | `.USERDEFINED.`, name in `ElementType` |
+| IfcTask.PredefinedType | IfcTaskTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
 | IfcWasteTerminal.PredefinedType | IfcWasteTerminalTypeEnum | GREASEINTERCEPTOR, OILINTERCEPTOR, PETROLINTERCEPTOR | `.USERDEFINED.`, name in `ObjectType` |
 | IfcWasteTerminalType.PredefinedType | IfcWasteTerminalTypeEnum | GREASEINTERCEPTOR, OILINTERCEPTOR, PETROLINTERCEPTOR | `.USERDEFINED.`, name in `ElementType` |
 
@@ -350,6 +353,7 @@ into, which can receive any member of the source type's enum (#10856).
 | IfcStructuralLoadGroup.PredefinedType | IfcLoadGroupTypeEnum | LOAD_COMBINATION_GROUP | `.USERDEFINED.`, name in `ObjectType` |
 | IfcTank.PredefinedType | IfcTankTypeEnum | PREFORMED, SECTIONAL | `.USERDEFINED.`, name in `ObjectType` |
 | IfcTankType.PredefinedType | IfcTankTypeEnum | PREFORMED, SECTIONAL | `.USERDEFINED.`, name in `ElementType` |
+| IfcTask.PredefinedType | IfcTaskTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
 | IfcWasteTerminal.PredefinedType | IfcWasteTerminalTypeEnum | GREASEINTERCEPTOR, OILINTERCEPTOR, PETROLINTERCEPTOR | `.USERDEFINED.`, name in `ObjectType` |
 | IfcWasteTerminalType.PredefinedType | IfcWasteTerminalTypeEnum | GREASEINTERCEPTOR, OILINTERCEPTOR, PETROLINTERCEPTOR | `.USERDEFINED.`, name in `ElementType` |
 

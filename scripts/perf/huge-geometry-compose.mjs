@@ -167,7 +167,7 @@ const SHOW = async (f) => {
 };
 
 const shotNums = (s, clip) => {
-  if (!s) return clip.status === 'ok' ? '' : `FAILED: ${clip.failure?.kind ?? clip.status}`;
+  if (!s) return ranFullPath(clip) ? '' : `FAILED: ${clip.failure?.kind ?? clip.status}`;
   if (!s.frames) return `${s.name}: ${s.error ?? 'no frames'}`;
   const f = s.frames;
   return `${s.name}: frame median ${f.frameMs.median} ms · p95 ${f.frameMs.p95} ms · worst ${Math.round(f.frameMs.worst)} ms\n`
@@ -214,7 +214,7 @@ async function main() {
     const pairs = values.pair.map((p) => p.split(',').map(read));
     const clips = values.clip.map(read);
     await card(values.title, [values.subtitle, ...pairs.map(([b]) => `${b.name}: ${values['before-label']} vs ${values['after-label']} on the same camera path`),
-      ...clips.map((c) => `${c.label} · ${c.name}: ${c.status === 'ok' ? 'runs the full path' : `FAILED (${c.failure?.kind ?? c.status})`}`),
+      ...clips.map((c) => `${c.label} · ${c.name}: ${ranFullPath(c) ? 'runs the full path' : `FAILED (${c.failure?.kind ?? c.status})`}`),
       'showcase scene: footage only, not a measurement family', 'all timings diagnostic, not evidence'].filter(Boolean), 4);
     for (const [b, a] of pairs) {
       await page.evaluate(SET_SOURCES, { b: local(b, 'b'), a: local(a, 'a'), solo: null });
@@ -235,7 +235,7 @@ async function main() {
               nums: [b, a].map((c) => `load (video ${c.loadSpeed}× speed)`), caption: 'loading the showcase city' });
           } else {
             const [sb, sa] = seg.shots;
-            await shoot({ labels, t: seg.src.map((f) => f(t)), badges: [b.status === 'ok' || sb ? null : { text: 'FAILED', tone: 'bad' }, a.status === 'ok' || sa ? null : { text: 'FAILED', tone: 'bad' }],
+            await shoot({ labels, t: seg.src.map((f) => f(t)), badges: [ranFullPath(b) || sb ? null : { text: 'FAILED', tone: 'bad' }, ranFullPath(a) || sa ? null : { text: 'FAILED', tone: 'bad' }],
               nums: [shotNums(sb, b), shotNums(sa, a)], caption: seg.caption });
           }
         }

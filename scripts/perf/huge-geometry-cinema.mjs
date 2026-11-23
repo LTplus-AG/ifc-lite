@@ -335,7 +335,7 @@ async function main() {
     process.exit(2);
   }
   const emitMaxMb = Number(values['emit-max-mb']);
-  if (!(emitMaxMb > 0)) { console.error('--emit-max-mb must be a positive number'); process.exit(2); }
+  if (!Number.isFinite(emitMaxMb) || emitMaxMb <= 0) { console.error('--emit-max-mb must be a positive finite number'); process.exit(2); }
   const out = resolve(values.out);
   mkdirSync(join(out, 'clips'), { recursive: true });
   mkdirSync(join(out, 'stills'), { recursive: true });

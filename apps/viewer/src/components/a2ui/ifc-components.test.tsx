@@ -156,6 +156,24 @@ $/entries = [{label: "Elsewhere", color: "#e5484d", refs: ["unloaded-model:12"]}
     assert.equal(button(container, 'Apply colours')?.disabled, true);
   });
 
+  it('ActionBar: a query that matched nothing says so (#11344)', async () => {
+    const { host } = await seedA2uiModels();
+    const { container } = await mountReply(host, block('root = ActionBar(["isolate"], {types: ["IfcDoor"]})'));
+    await waitFor(() => text(container).includes('No matching elements'), 'empty note');
+  });
+
+  it('ColorLegend: a reset from one legend clears the applied state of every legend (#11344)', async () => {
+    const { host } = await seedA2uiModels();
+    const { container } = await mountReply(host, block(`root = Column([a, b])
+a = ColorLegend("type", {types: ["IfcWall"]})
+b = ColorLegend("storey", {types: ["IfcWall"]})`));
+    await waitFor(() => [...container.querySelectorAll('button')].filter((b) => b.textContent === 'Apply colours').length === 2, 'two legends');
+    click([...container.querySelectorAll('button')].find((b) => b.textContent === 'Apply colours')!);
+    await waitFor(() => [...container.querySelectorAll('button')].some((b) => b.textContent === 'Colours applied'), 'first applied');
+    click([...container.querySelectorAll('button')].filter((b) => b.textContent === 'Reset view').at(-1)!);
+    await waitFor(() => ![...container.querySelectorAll('button')].some((b) => b.textContent === 'Colours applied'), 'all cleared');
+  });
+
   it('ActionBar: actions act on the query result, export runs from the click, follow-ups post a turn', async () => {
     const { host: real } = await seedA2uiModels();
     const { host, calls } = recordingHost(real);

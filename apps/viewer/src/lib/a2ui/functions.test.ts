@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 import { encodeRef, IFC_FUNCTION_POLICY } from '@ifc-lite/a2ui';
 import { seedA2uiModels } from '@/test/a2ui-fixture';
 import { ifcFunctionImplementations } from './catalog';
-import { assertAllowed, entitiesCsv, PolicyRefusal, resolveTarget, runIfcFunction, safeColor } from './functions';
+import { assertAllowed, entitiesCsv, onViewReset, PolicyRefusal, resolveTarget, runIfcFunction, safeColor } from './functions';
 import { A2uiMessageSession } from './session';
 
 describe('IFC function policy', () => {
@@ -73,6 +73,17 @@ describe('IFC function policy', () => {
     const covered = resolveTarget({ ...host, candidates: () => many }, { query: { types: ['IfcWall'] }, refs: [`${wall.ref.modelId}:5001`] });
     assert.equal(covered.refs.length, 5001);
     assert.equal(covered.cappedFrom, undefined);
+  });
+
+  it('tells every listener when the view resets, whoever reset it (#11344)', async () => {
+    const { host } = await seedA2uiModels();
+    let heard = 0;
+    const stop = onViewReset(() => { heard++; });
+    runIfcFunction(host, 'resetView', {}, { caller: 'agent', userActivated: false });
+    runIfcFunction(host, 'resetView', {}, { caller: 'renderer', userActivated: true });
+    stop();
+    runIfcFunction(host, 'resetView', {}, { caller: 'renderer', userActivated: true });
+    assert.equal(heard, 2);
   });
 
   it('lets a live session auto-apply once per key and a replayed chat record never', async () => {

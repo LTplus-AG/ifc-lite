@@ -20,7 +20,8 @@ import { useTranslation } from '@/i18n';
 import { aggregatePool, groupRows } from '@/lib/a2ui/query-eval';
 import { weightStyle } from './basic-layout';
 import { Note, ResultNotes } from './notes';
-import { reportActionError, useA2uiRuntime, useModelsVersion, useQueryResult } from './runtime';
+import { reportActionError, useA2uiRuntime, useModelsVersion, useQueryResult, useRunFunction } from './runtime';
+import { onViewReset } from '@/lib/a2ui/functions';
 
 export interface LegendEntry {
   label: string;
@@ -64,6 +65,7 @@ export function legendEntriesFromData(data: unknown, loaded?: ReadonlySet<string
 export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ props }) => {
   const { t } = useTranslation();
   const { host, autoApply } = useA2uiRuntime();
+  const run = useRunFunction();
   const { result, reader } = useQueryResult(props.data === undefined ? props.query ?? {} : undefined);
   const [hidden, setHidden] = useState<ReadonlySet<string>>(() => new Set());
   const [applied, setApplied] = useState(false);
@@ -92,6 +94,15 @@ export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ 
   };
 
   const autoKey = useMemo(() => JSON.stringify([props.by, props.query ?? null, props.data ?? null]), [props.by, props.query, props.data]);
+  // A new payload starts with nothing hidden or applied; so does every legend after any legend's view reset.
+  useEffect(() => {
+    setHidden(new Set());
+    setApplied(false);
+  }, [autoKey]);
+  useEffect(() => onViewReset(() => {
+    setHidden(new Set());
+    setApplied(false);
+  }), []);
   useEffect(() => {
     // Nothing to colour: claim nothing, so a remount never shows it as applied.
     if (props.apply !== 'onShow' || targets === 0) return;
@@ -139,7 +150,7 @@ export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ 
           <Button size="sm" variant={applied ? 'outline' : 'default'} disabled={targets === 0} onClick={apply}>
             {applied ? t('a2ui.legend.applied') : t('a2ui.legend.apply')}
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => { host.resetView(); setApplied(false); setHidden(new Set()); }}>
+          <Button size="sm" variant="ghost" onClick={() => run('resetView', {})}>
             {t('a2ui.legend.reset')}
           </Button>
         </div>

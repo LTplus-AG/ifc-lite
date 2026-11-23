@@ -129,6 +129,18 @@ function targetRefs(host: A2uiViewerHost, name: string, args: Record<string, unk
 }
 
 /**
+ * Reset view clears colours and visibility in the whole viewer. Components
+ * holding view state (a legend's applied colours and hidden groups) listen
+ * here, so a reset from any surface, button or agent call clears them all.
+ */
+const viewResetListeners = new Set<() => void>();
+
+export function onViewReset(listener: () => void): () => void {
+  viewResetListeners.add(listener);
+  return () => { viewResetListeners.delete(listener); };
+}
+
+/**
  * Run one IFC function. Every caller (catalog function, component button,
  * agent call) comes through here, so the policy cannot be bypassed by picking
  * a different entry point.
@@ -142,7 +154,11 @@ export function runIfcFunction(host: A2uiViewerHost, name: string, args: Record<
     case 'show': return host.show(targetRefs(host, name, args));
     case 'flyTo': return host.flyTo(targetRefs(host, name, args));
     case 'colorize': return host.colorize([{ refs: targetRefs(host, name, args), color: safeColor(args.color) }]);
-    case 'resetView': return host.resetView();
+    case 'resetView': {
+      host.resetView();
+      for (const listener of viewResetListeners) listener();
+      return undefined;
+    }
     case 'getSelection': return host.getSelection().map(encodeRef);
     case 'countEntities': {
       const result = evaluateQuery(host, args.query);

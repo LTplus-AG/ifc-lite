@@ -251,7 +251,7 @@ function drawnTriangles(vertexData: Float32Array, lod: Uint32Array, frame: reado
 }
 
 describe('simplifyIndicesByClustering is a function of the batch contents (load order)', () => {
-  const pieces = campusPieces(200);
+  const pieces = campusPieces(400); // 800 triangles: above LOD_MIN_TRIANGLES
   const inOrder = pieces.map((_, k) => k);
   const reversed = [...inOrder].reverse();
   const origin: [number, number, number] = [0, 0, 0];

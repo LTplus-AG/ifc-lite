@@ -399,11 +399,7 @@ function convertRecord(
   const srcAttrs = attrNameTable(fromSchema)?.get(entityType);
   const tgtAttrs = targetTable?.get(newType);
   // `shouldSkipEntity` above only catches its hand-listed alignment types;
-  // a type entirely unknown to `targetTable` (not merely a strict-prefix
-  // attribute mismatch, handled below) has no representation in `toSchema` at
-  // all — see `resolveUnrepresentedEntity` for why it can't just pass through.
-  // Which targets and sources refuse or proxy it: `missingTypeRoute`, shared
-  // with the loss report and Rust's `missing_type_route` (#7683, #7742, #10902).
+  // The same missing-type policy governs exports and loss previews (#10902).
   if (missingTypeRoute(entityType, fromSchema, toSchema, srcAttrs !== undefined, !targetTable || tgtAttrs !== undefined) === 'unrepresented') {
     return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random, withheldRefIds !== undefined);
   }

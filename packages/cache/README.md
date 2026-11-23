@@ -96,6 +96,10 @@ const rawKey = xxhash64(buffer);     // same hash as a bigint
 
 The cache keys models by the xxHash64 of the source IFC, and `reader.validate(cacheBuffer, sourceBuffer)` uses the same hash to detect when the source has changed.
 
+## Building a cache outside the browser
+
+`ifc-build-cache` is a native CLI that writes this format from an IFC file without a browser or the WASM heap, so a server, a build step or a function can prepare the cache that `BinaryCacheReader` then reads. It installs through cargo from the repository. See the [Native Cache Builder guide](https://ifclite.dev/docs/guide/native-cache/) for installation, which format version a build writes, and what a native cache leaves out.
+
 ## Format versioning
 
 The byte-level layout, the reader's compatibility rules and the conformance criterion for another writer are specified in [`SPEC.md`](./SPEC.md).

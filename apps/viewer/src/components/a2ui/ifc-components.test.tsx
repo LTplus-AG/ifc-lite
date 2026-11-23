@@ -182,6 +182,8 @@ l = EntityList({types: ["Door"]})
 c = GroupChart("type", {types: ["Door"]})
 g = ColorLegend("type", {types: ["Door"]})`));
     await waitFor(() => text(container).includes('The query has a problem'), 'problem notes');
+    // One warning per renderer, so none of the four can drop its own.
+    assert.equal(text(container).split('The query has a problem').length - 1, 4, text(container));
     assert.ok(!text(container).includes('No matching elements'), text(container));
   });
 

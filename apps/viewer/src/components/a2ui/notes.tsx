@@ -15,6 +15,7 @@ import { createComponentImplementation } from '@a2ui/react';
 import { CalloutApi } from '@ifc-lite/a2ui/catalog';
 import { useTranslation } from '@/i18n';
 import { cn } from '@/lib/utils';
+import type { QueryProblem } from '@ifc-lite/a2ui';
 import type { QueryResult } from '@/lib/a2ui/query-eval';
 import { SafeMarkdown, weightStyle } from './basic-layout';
 import { useA2uiRuntime } from './runtime';
@@ -51,7 +52,7 @@ export function Note({ tone = 'neutral', children }: { tone?: Tone; children: Re
 }
 
 /** Notes for a query result and for refs whose model is not loaded. */
-export function ResultNotes({ result, unloadedModels = [], shown }: { result?: QueryResult | null; unloadedModels?: string[]; shown?: number }) {
+export function ResultNotes({ result, unloadedModels = [], problems = [], shown }: { result?: QueryResult | null; unloadedModels?: string[]; problems?: QueryProblem[]; shown?: number }) {
   const { t } = useTranslation();
   const { host } = useA2uiRuntime();
   const unloaded = [...new Set([...unloadedModels, ...(result?.unloadedModel ? [result.unloadedModel] : [])])];
@@ -61,7 +62,7 @@ export function ResultNotes({ result, unloadedModels = [], shown }: { result?: Q
       {unloaded.map((model) => (
         <Note key={`m:${model}`} tone="warn">{t('a2ui.unloadedModel', { model: host.modelName(model) ?? model })}</Note>
       ))}
-      {result?.problems.map((p, i) => (
+      {[...problems, ...(result?.problems ?? [])].map((p, i) => (
         <Note key={`p:${i}`} tone="warn">{t('a2ui.queryProblem', { path: p.path || 'query', message: p.message })}</Note>
       ))}
       {result && result.total > visible && visible > 0 && (

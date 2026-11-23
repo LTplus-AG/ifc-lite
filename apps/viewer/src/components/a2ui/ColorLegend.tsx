@@ -9,7 +9,7 @@
  * once on first render. Each entry's checkbox hides or shows its group.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createComponentImplementation } from '@a2ui/react';
 import { parseRefs, type WireEntityRef } from '@ifc-lite/a2ui';
 import { ColorLegendApi } from '@ifc-lite/a2ui/catalog';
@@ -46,7 +46,7 @@ function legendEntriesFromData(data: unknown): LegendEntry[] | null {
 
 export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ props }) => {
   const { t } = useTranslation();
-  const { host } = useA2uiRuntime();
+  const { host, claimAutoApply } = useA2uiRuntime();
   const { result, reader } = useQueryResult(props.data === undefined ? props.query ?? {} : undefined);
   const [hidden, setHidden] = useState<ReadonlySet<string>>(() => new Set());
   const [applied, setApplied] = useState(false);
@@ -70,10 +70,9 @@ export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ 
     }
   };
 
-  const autoApplied = useRef(false);
   useEffect(() => {
-    if (props.apply !== 'onShow' || autoApplied.current || entries.length === 0) return;
-    autoApplied.current = true;
+    if (props.apply !== 'onShow' || entries.length === 0) return;
+    if (!claimAutoApply?.(JSON.stringify([props.by, props.query ?? null, props.data ?? null]))) return;
     apply();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, when entries first exist
   }, [props.apply, entries.length]);

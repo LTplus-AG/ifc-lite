@@ -15,7 +15,8 @@ import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { useTranslation } from '@/i18n';
-import { followUpToChat } from '@/lib/a2ui/actions';
+import { ASK_EVENT } from '@ifc-lite/a2ui';
+import { followUpToChat, type FollowUpHandler } from '@/lib/a2ui/actions';
 import { A2uiMessagesView, type AgentToRendererMessage } from '@/lib/a2ui/surface-host';
 import { agentSurfaces, type AgentSurface } from '@/lib/agent-bridge/agent-surfaces';
 import { sendAgentUiEvent } from '@/lib/agent-bridge/session';
@@ -41,8 +42,10 @@ function surfaceIdOf(surface: AgentSurface): string {
 export function AgentSurfacesDock() {
   const { t } = useTranslation();
   const surfaces = useSyncExternalStore(agentSurfaces.subscribe, agentSurfaces.getSnapshot);
-  const followUp = (surface: AgentSurface) => (text: string, context: Record<string, unknown>) => {
-    if (sendAgentUiEvent({ surfaceId: surfaceIdOf(surface), name: 'ask', prompt: text, context })) {
+  const followUp = (surface: AgentSurface): FollowUpHandler => (text, context, event = ASK_EVENT) => {
+    // An ask carries the question; any other event goes back under its own name with its payload.
+    const sent = sendAgentUiEvent({ surfaceId: surfaceIdOf(surface), name: event, ...(event === ASK_EVENT ? { prompt: text } : {}), context });
+    if (sent) {
       toast.success(t('agentBridge.surfaces.sent'));
       return;
     }

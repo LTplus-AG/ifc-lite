@@ -10,7 +10,7 @@
 import type { ChatMessage, CodeExecResult, FileAttachment, PersistedA2ui } from '../../lib/llm/types.js';
 
 const MESSAGES_STORAGE_KEY = 'ifc-lite-chat-messages';
-const MAX_MESSAGES = 200;
+export const MAX_MESSAGES = 200;
 
 export function getMessagesStorageKey(userId: string | null): string {
   return userId ? `${MESSAGES_STORAGE_KEY}:${userId}` : `${MESSAGES_STORAGE_KEY}:anonymous`;
@@ -48,7 +48,8 @@ export function persistMessages(messages: ChatMessage[], userId: string | null) 
       codeBlocks: m.codeBlocks,
       attachments: m.attachments,
       // Serialize Map as array of entries
-      execResults: m.execResults ? Array.from(m.execResults.entries()) : undefined,
+      // Script surfaces (up to 256 KiB a run) stay in memory: storing them would fill the quota and lose the history.
+      execResults: m.execResults ? Array.from(m.execResults.entries(), ([i, r]) => [i, withoutSurfaces(r)]) : undefined,
       a2ui: m.a2ui,
     }));
     localStorage.setItem(getMessagesStorageKey(userId), JSON.stringify(toStore));
@@ -122,4 +123,9 @@ function isValidAttachment(value: unknown): value is FileAttachment {
     && typeof attachment.name === 'string'
     && typeof attachment.type === 'string'
     && typeof attachment.size === 'number';
+}
+
+function withoutSurfaces(result: CodeExecResult): CodeExecResult {
+  const { surfaces: _surfaces, ...rest } = result;
+  return rest;
 }

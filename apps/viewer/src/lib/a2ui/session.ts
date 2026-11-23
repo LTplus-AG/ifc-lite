@@ -65,14 +65,16 @@ export class A2uiMessageSession {
   private blocks: BlockResult[] = [];
   private readonly listeners = new Set<() => void>();
   private version = 0;
+  private readonly autoApplied = new Set<string>();
 
-  constructor(host: A2uiViewerHost) {
+  /** `live`: a reply or push arriving now. A replayed chat record is not live, so it never recolours the model on its own. */
+  constructor(host: A2uiViewerHost, readonly live = true) {
     this.processor = createRendererProcessor(host, (action) => routeAction(action, this.onFollowUp));
   }
 
   /** Rebuild a persisted message: apply its recorded messages in order, no parsing. */
-  static replay(host: A2uiViewerHost, record: PersistedA2ui, content: string): A2uiMessageSession {
-    const session = new A2uiMessageSession(host);
+  static replay(host: A2uiViewerHost, record: PersistedA2ui, content: string, live = false): A2uiMessageSession {
+    const session = new A2uiMessageSession(host, live);
     const segments: ChatSegment[] = [];
     for (const seg of record.segments) {
       if ('text' in seg) segments.push({ kind: 'text', text: seg.text });
@@ -92,6 +94,13 @@ export class A2uiMessageSession {
     session.closed = true;
     return session;
   }
+
+  /** True once per key for a live session: an `onShow` effect runs when a surface first appears, not on every remount. */
+  claimAutoApply = (key: string): boolean => {
+    if (!this.live || this.autoApplied.has(key)) return false;
+    this.autoApplied.add(key);
+    return true;
+  };
 
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);

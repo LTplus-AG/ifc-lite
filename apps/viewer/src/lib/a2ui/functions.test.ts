@@ -16,7 +16,8 @@ import assert from 'node:assert/strict';
 import { IFC_FUNCTION_POLICY } from '@ifc-lite/a2ui';
 import { seedA2uiModels } from '@/test/a2ui-fixture';
 import { ifcFunctionImplementations } from './catalog';
-import { assertAllowed, entitiesCsv, PolicyRefusal, runIfcFunction, safeColor } from './functions';
+import { assertAllowed, entitiesCsv, PolicyRefusal, resolveTarget, runIfcFunction, safeColor } from './functions';
+import { A2uiMessageSession } from './session';
 
 describe('IFC function policy', () => {
   beforeEach(() => clearDownloads());
@@ -42,6 +43,27 @@ describe('IFC function policy', () => {
     assert.throws(() => exportCsv.execute({ query: { types: ['IfcWall'] } }, passive), PolicyRefusal);
     assert.throws(() => exportCsv.execute({ query: { types: ['IfcWall'] } }, idle), PolicyRefusal);
     assert.deepEqual(downloadedNames(), []);
+  });
+
+  it('selects and counts nothing when the query has a problem, instead of running broader than written', async () => {
+    const { host } = await seedA2uiModels();
+    const bad = { query: { types: ['Wall'] } };
+    const target = resolveTarget(host, bad);
+    assert.deepEqual(target.refs, [], 'an invalid type is not dropped into an all-products query');
+    assert.ok(target.problems.length > 0);
+    assert.equal(runIfcFunction(host, 'countEntities', bad, { caller: 'renderer', userActivated: false }), null);
+    assert.ok(resolveTarget(host, { query: { types: ['IfcWall'] } }).refs.length > 0);
+  });
+
+  it('lets a live session auto-apply once per key and a replayed chat record never', async () => {
+    const { host } = await seedA2uiModels();
+    const live = new A2uiMessageSession(host);
+    assert.equal(live.claimAutoApply('legend'), true);
+    assert.equal(live.claimAutoApply('legend'), false, 'a remount does not recolour again');
+    const replayed = A2uiMessageSession.replay(host, { v: 1, segments: [] }, '');
+    assert.equal(replayed.claimAutoApply('legend'), false);
+    live.dispose();
+    replayed.dispose();
   });
 
   it('lets the agent call view and read functions, and nothing outside the catalog', () => {

@@ -100,7 +100,8 @@ export class UiEventInbox {
   private readonly waiters = new Set<() => void>();
   private readonly listeners = new Set<(event: ReceivedUiEvent) => void>();
   private counter = 0;
-  dropped = 0;
+  /** Events lost to the queue cap or the rate limit since the last `take`. */
+  private dropped = 0;
 
   constructor(private readonly now: () => number = Date.now) {}
 
@@ -130,8 +131,11 @@ export class UiEventInbox {
     return () => { this.listeners.delete(listener); };
   }
 
-  /** Drain queued events; with none, wait up to `waitMs` (or until `signal` aborts) for the first. */
-  async take(waitMs: number, signal?: AbortSignal): Promise<ReceivedUiEvent[]> {
+  /**
+   * Drain queued events, with the number dropped since the last drain; with
+   * none queued, wait up to `waitMs` (or until `signal` aborts) for the first.
+   */
+  async take(waitMs: number, signal?: AbortSignal): Promise<{ events: ReceivedUiEvent[]; dropped: number }> {
     if (this.queue.length === 0 && waitMs > 0 && !signal?.aborted) {
       await new Promise<void>((resolve) => {
         const done = (): void => {
@@ -145,15 +149,18 @@ export class UiEventInbox {
         this.waiters.add(done);
       });
     }
-    const out = this.queue;
+    const events = this.queue;
+    const dropped = this.dropped;
     this.queue = [];
-    return out;
+    this.dropped = 0;
+    return { events, dropped };
   }
 
   /** A new tab paired: its predecessor's unread events do not carry over. */
   clear(): void {
     this.queue = [];
     this.recent = [];
+    this.dropped = 0;
   }
 
   get size(): number {

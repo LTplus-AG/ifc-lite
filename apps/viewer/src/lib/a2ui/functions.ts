@@ -15,6 +15,7 @@ import {
   isIfcFunction,
   parseRefs,
   type IfcFunctionName,
+  type QueryProblem,
   type WireEntityRef,
 } from '@ifc-lite/a2ui';
 import { escapeCsvCell } from '@ifc-lite/export';
@@ -46,6 +47,8 @@ export interface Target {
   refs: WireEntityRef[];
   /** Model ids the target named that are not loaded; their refs are dropped, and the UI says so. */
   unloadedModels: string[];
+  /** Problems in the target's query. A query with problems selects nothing: it would run broader than written. */
+  problems: QueryProblem[];
 }
 
 /** Resolve `{refs?, query?}` to loaded refs. Refs to unloaded models are inert. */
@@ -57,12 +60,14 @@ export function resolveTarget(host: A2uiViewerHost, args: { refs?: unknown; quer
     if (!loaded.has(ref.modelId)) unloaded.add(ref.modelId);
     else out.set(encodeRef(ref), ref);
   }
+  let problems: QueryProblem[] = [];
   if (args.query !== undefined && args.query !== null) {
     const result = evaluateQuery(host, args.query);
     if (result.unloadedModel) unloaded.add(result.unloadedModel);
-    for (const row of result.rows) out.set(row.key, row.ref);
+    problems = result.problems;
+    if (problems.length === 0) for (const row of result.rows) out.set(row.key, row.ref);
   }
-  return { refs: [...out.values()], unloadedModels: [...unloaded] };
+  return { refs: [...out.values()], unloadedModels: [...unloaded], problems };
 }
 
 const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
@@ -114,10 +119,16 @@ export function runIfcFunction(host: A2uiViewerHost, name: string, args: Record<
     case 'colorize': return host.colorize([{ refs: resolveTarget(host, args).refs, color: safeColor(args.color) }]);
     case 'resetView': return host.resetView();
     case 'getSelection': return host.getSelection().map(encodeRef);
-    case 'countEntities': return aggregatePool(evaluateQuery(host, args.query)).length;
+    case 'countEntities': {
+      // A query with problems would count more than was asked for: no number rather than a wrong one.
+      const result = evaluateQuery(host, args.query);
+      return result.problems.length ? null : aggregatePool(result).length;
+    }
     case 'sumQuantity': {
       const reader = new FieldReader(host);
-      return aggregate(reader, aggregatePool(evaluateQuery(host, args.query, reader)), 'sum', typeof args.path === 'string' ? args.path : undefined) ?? 0;
+      const result = evaluateQuery(host, args.query, reader);
+      if (result.problems.length) return null;
+      return aggregate(reader, aggregatePool(result), 'sum', typeof args.path === 'string' ? args.path : undefined) ?? 0;
     }
     case 'exportCsv': {
       const { refs } = resolveTarget(host, args);

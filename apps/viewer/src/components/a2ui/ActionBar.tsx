@@ -54,7 +54,7 @@ export const ActionBarImpl = createComponentImplementation(ActionBarApi, ({ prop
 
   return (
     <div style={weightStyle(props.weight)} className="flex flex-col gap-1.5">
-      <ResultNotes unloadedModels={target.unloadedModels} />
+      <ResultNotes unloadedModels={target.unloadedModels} problems={target.problems} />
       {actions.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
           {actions.map((action) => (

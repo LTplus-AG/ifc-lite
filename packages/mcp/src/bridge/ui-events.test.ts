@@ -77,12 +77,12 @@ describe('UiEventInbox', () => {
     t = 5000;
     for (let i = 0; i < UI_EVENT_LIMITS.maxQueued; i++) { t += 200; inbox.push({ surfaceId: 's', name: 'ask' }); }
     expect(inbox.size).toBe(UI_EVENT_LIMITS.maxQueued);
-    expect(inbox.dropped).toBe(1 + UI_EVENT_LIMITS.maxPerSecond);
-    await inbox.take(0);
+    expect((await inbox.take(0)).dropped).toBe(1 + UI_EVENT_LIMITS.maxPerSecond);
     const waiting = inbox.take(10_000);
     t += 1000;
     inbox.push({ surfaceId: 's', name: 'ask', prompt: 'next' });
-    await expect(waiting).resolves.toMatchObject([{ prompt: 'next' }]);
+    // The drop count is a delta: it was reported once and starts again from zero.
+    await expect(waiting).resolves.toMatchObject({ events: [{ prompt: 'next' }], dropped: 0 });
   });
 
   it('stops waiting when the call is cancelled', async () => {
@@ -90,7 +90,7 @@ describe('UiEventInbox', () => {
     const abort = new AbortController();
     const waiting = inbox.take(60_000, abort.signal);
     abort.abort();
-    await expect(waiting).resolves.toEqual([]);
+    await expect(waiting).resolves.toEqual({ events: [], dropped: 0 });
   });
 });
 
@@ -126,6 +126,11 @@ describe('viewer_ui_events', () => {
     const second = await pairTab({ port: agent.r.bridge.port, code: agent.r.bridge.rotatePairingCode(), a2uiSurface: true });
     tabs.push(second.tab);
     expect(agent.r.bridge.uiEvents.size).toBe(0);
+    // The replaced tab's late clicks do not land in the new tab's inbox.
+    first.send({ surfaceId: 'walls', name: 'ask', prompt: 'late' });
+    second.tab.sendRaw({ type: 'ui-event', sessionId: second.welcome.sessionId, event: { surfaceId: 'walls', name: 'ask', prompt: 'new' } });
+    await expect.poll(() => agent.r.bridge.uiEvents.size).toBe(1);
+    expect((await agent.call('viewer_ui_events')).structuredContent?.events).toMatchObject([{ prompt: 'new' }]);
   });
 });
 

@@ -24,6 +24,8 @@ registerEnglish(a2uiEn);
 export interface A2uiRuntime {
   host: A2uiViewerHost;
   onFollowUp?: FollowUpHandler;
+  /** See `A2uiMessageSession.claimAutoApply`; absent means never auto-apply. */
+  claimAutoApply?: (key: string) => boolean;
 }
 
 export const A2uiRuntimeContext = createContext<A2uiRuntime | null>(null);

@@ -35,14 +35,14 @@ export function uiEventsTool(inbox: UiEventInbox, channel: boolean): Tool {
     annotations: { readOnlyHint: true },
     async handler(input, ctx): Promise<CallToolResult> {
       const wait = Math.min(MAX_WAIT_SECONDS, Math.max(0, Number(input.wait_seconds ?? 0) || 0));
-      const events = await inbox.take(wait * 1000, ctx.signal);
+      const { events, dropped } = await inbox.take(wait * 1000, ctx.signal);
       const lines = events.length === 0
         ? ['No new viewer UI events.']
         : events.map((e) => `[${e.id}] ${e.name} on ${e.surfaceId}${e.prompt ? `: ${e.prompt}` : ''}`);
-      if (inbox.dropped > 0) lines.push(`${inbox.dropped} events were dropped (queue full or over the rate limit).`);
+      if (dropped > 0) lines.push(`${dropped} events were dropped since the last read (queue full or over the rate limit).`);
       return {
         content: [{ type: 'text', text: [...lines, '', PROVENANCE].join('\n') }],
-        structuredContent: { events, dropped: inbox.dropped, provenance: PROVENANCE },
+        structuredContent: { events, dropped, provenance: PROVENANCE },
       };
     },
   };

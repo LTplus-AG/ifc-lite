@@ -88,7 +88,6 @@ export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ 
   const queryEntries: LegendEntry[] = useMemo(() => (script || !result ? [] : groupRows(reader, aggregatePool(result), props.by, emptyLabel)
     .map((g, i) => ({ label: g.label, color: legendColor(i), refs: g.rows.map((r) => r.ref) }))), [script, result, reader, props.by, emptyLabel]);
   const entries = script?.entries ?? queryEntries;
-  const scriptEntries = script?.entries;
 
   const targets = entries.reduce((n, e) => n + e.refs.length, 0);
   const autoKey = useMemo(() => JSON.stringify([props.by, props.query ?? null, props.data ?? null]), [props.by, props.query, props.data]);

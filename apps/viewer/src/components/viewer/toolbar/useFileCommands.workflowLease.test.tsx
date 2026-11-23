@@ -17,7 +17,7 @@ import { advance, cleanup, render } from '@/test/render.js';
 import { latestToast } from '@/test/toasts.js';
 import { Toaster } from '@/components/ui/toast';
 import { useViewerStore, type FederatedModel } from '@/store';
-import { startWorkflowRun, type WorkflowRun } from '@/lib/flow/run-session';
+import { isNativeWorkflowBusy, startWorkflowRun, type WorkflowRun } from '@/lib/flow/run-session';
 import { useFileCommands, type FileCommands } from './useFileCommands.js';
 
 const BUSY = 'A workflow is running; wait or cancel it first';
@@ -141,5 +141,24 @@ describe('file commands refuse to clear the scene while a workflow holds the lea
     assert.equal(resets, 0, 'viewer state was not reset');
     assert.equal(clears, 0, 'the models map was not cleared');
     assert.match(latestToast(), new RegExp(BUSY));
+  });
+
+  it('a multi-model Refresh holds the lease through its rebuild, so a flow run cannot start mid-way', async () => {
+    run?.release();
+    run = null;
+    let flowRefused = false;
+    useViewerStore.setState({
+      clearAllModels: () => {
+        clears++;
+        try { run = startWorkflowRun(); } catch { flowRefused = true; }
+      },
+    });
+    render(<Host />);
+    await act(async () => { await commands!.handleRefresh(); });
+
+    assert.equal(clears, 1, 'the rebuild ran');
+    assert.ok(flowRefused, 'a flow run attempted mid-rebuild was refused');
+    assert.match(latestToast(), /Refreshed 2 models/, 'every model went through its add without a lease refusal');
+    assert.equal(isNativeWorkflowBusy(), false, 'the lease is released once the rebuild settles');
   });
 });

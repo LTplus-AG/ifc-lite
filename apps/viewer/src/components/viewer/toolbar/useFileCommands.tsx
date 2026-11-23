@@ -22,6 +22,7 @@ import {
 } from '@/services/file-system-access';
 import { toast } from '@/components/ui/toast';
 import { refuseWhileWorkflowBusy } from '@/lib/flow/workflow-busy-refusal';
+import { startWorkflowRun } from '@/lib/flow/run-session';
 import { lazyChunk } from '@/lib/lazy-chunk';
 import { useCollabShareReview } from '@/lib/collab/share-review';
 import { useTranslation } from '@/i18n';
@@ -332,20 +333,28 @@ export function useFileCommands(): FileCommands {
       if (reloadedId) restoreModelTags(useViewerStore.getState(), carry, ok[0].model.id, reloadedId);
     } else {
       // Rebuild the federation from fresh bytes, preserving id + order + state.
-      clearAllModels();
-      for (const r of ok) {
-        const reloadedId = await addModel(r.fresh, {
-          name: r.model.name,
-          modelId: r.model.id,
-          loadedAt: r.model.loadedAt,
-          visible: r.model.visible,
-          collapsed: r.model.collapsed,
-          sourceHandle: r.model.sourceHandle,
-        });
-        if (reloadedId) restoreModelTags(useViewerStore.getState(), carry, r.model.id, reloadedId);
-        if (reloadedId && r.model.visible === false) {
-          useViewerStore.getState().setModelVisibility(r.model.id, false);
+      // Hold the lease like Re-align: a flow run started mid-rebuild would
+      // otherwise refuse the remaining adds and leave the federation partial.
+      const lease = startWorkflowRun('refresh');
+      try {
+        clearAllModels();
+        for (const r of ok) {
+          const reloadedId = await addModel(r.fresh, {
+            name: r.model.name,
+            modelId: r.model.id,
+            loadedAt: r.model.loadedAt,
+            visible: r.model.visible,
+            collapsed: r.model.collapsed,
+            sourceHandle: r.model.sourceHandle,
+            workflowOwner: lease.id,
+          });
+          if (reloadedId) restoreModelTags(useViewerStore.getState(), carry, r.model.id, reloadedId);
+          if (reloadedId && r.model.visible === false) {
+            useViewerStore.getState().setModelVisibility(r.model.id, false);
+          }
         }
+      } finally {
+        lease.release();
       }
     }
 

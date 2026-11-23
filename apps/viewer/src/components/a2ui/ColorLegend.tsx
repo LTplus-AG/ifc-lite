@@ -9,7 +9,7 @@
  * once on first render. Each entry's checkbox hides or shows its group.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createComponentImplementation } from '@a2ui/react';
 import { encodeRef, parseRefs, type WireEntityRef } from '@ifc-lite/a2ui';
 import { ColorLegendApi } from '@ifc-lite/a2ui/catalog';
@@ -21,7 +21,7 @@ import { aggregatePool, groupRows } from '@/lib/a2ui/query-eval';
 import { weightStyle } from './basic-layout';
 import { Note, ResultNotes } from './notes';
 import { reportActionError, useA2uiRuntime, useModelsVersion, useQueryResult, useRunFunction } from './runtime';
-import { onViewReset } from '@/lib/a2ui/functions';
+import { isColouringActive, markColouringActive, onViewReset } from '@/lib/a2ui/functions';
 
 export interface LegendEntry {
   label: string;
@@ -80,11 +80,15 @@ export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ 
   const scriptEntries = script?.entries;
 
   const targets = entries.reduce((n, e) => n + e.refs.length, 0);
+  const autoKey = useMemo(() => JSON.stringify([props.by, props.query ?? null, props.data ?? null]), [props.by, props.query, props.data]);
+  // The target count is part of the claim: refs that load later are a new colouring, not one already applied.
+  const claimKey = `${autoKey}|${targets}`;
   /** True when something was coloured; entries without loaded refs colour nothing and never report success. */
   const apply = (): boolean => {
     if (targets === 0) return false;
     try {
       host.colorize(entries.map((e) => ({ refs: e.refs, color: e.color })));
+      markColouringActive(host, claimKey);
       setApplied(true);
       return true;
     } catch (error) {
@@ -93,22 +97,32 @@ export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ 
     }
   };
 
-  const autoKey = useMemo(() => JSON.stringify([props.by, props.query ?? null, props.data ?? null]), [props.by, props.query, props.data]);
   // A new payload starts with nothing hidden or applied; so does every legend after any legend's view reset.
   const clearViewState = () => {
     setHidden((prev) => (prev.size ? new Set() : prev));
     setApplied(false);
   };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- a new payload is the trigger
-  useEffect(clearViewState, [autoKey]);
+  // Swapping the payload first shows again what this legend hid, so no element stays hidden behind a checked box.
+  // (An unmount leaves the view as the user set it.)
+  const previous = useRef({ autoKey, entries, hidden });
+  useEffect(() => {
+    const before = previous.current;
+    if (before.autoKey !== autoKey) {
+      const refs = before.entries.filter((e) => before.hidden.has(e.label)).flatMap((e) => e.refs);
+      if (refs.length) host.show(refs);
+      clearViewState();
+    }
+    previous.current = { autoKey, entries, hidden };
+  });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- state setters are stable
   useEffect(() => onViewReset(host, clearViewState), [host]);
   useEffect(() => {
     // Nothing to colour: claim nothing, so a remount never shows it as applied.
     if (props.apply !== 'onShow' || targets === 0) return;
-    if (autoApply?.(autoKey, apply) === 'applied') setApplied(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per legend payload, when something to colour exists
-  }, [props.apply, targets, autoKey]);
+    // A remount shows "applied" only while that colouring is still on screen (no reset since).
+    if (autoApply?.(claimKey, apply) === 'applied' && isColouringActive(host, claimKey)) setApplied(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per legend payload and target set
+  }, [props.apply, claimKey]);
 
   const toggle = (entry: LegendEntry, visible: boolean) => {
     try {

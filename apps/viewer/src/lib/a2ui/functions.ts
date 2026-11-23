@@ -135,6 +135,19 @@ function targetRefs(host: A2uiViewerHost, name: string, args: Record<string, unk
  */
 const viewResetListeners = new WeakMap<A2uiViewerHost, Set<() => void>>();
 
+/** Colourings currently shown in a viewer (by legend key); a view reset clears them. */
+const activeColourings = new WeakMap<A2uiViewerHost, Set<string>>();
+
+export function markColouringActive(host: A2uiViewerHost, key: string): void {
+  let keys = activeColourings.get(host);
+  if (!keys) activeColourings.set(host, keys = new Set());
+  keys.add(key);
+}
+
+export function isColouringActive(host: A2uiViewerHost, key: string): boolean {
+  return activeColourings.get(host)?.has(key) ?? false;
+}
+
 /** Per host, so one viewer's reset never clears another viewer's legends. */
 export function onViewReset(host: A2uiViewerHost, listener: () => void): () => void {
   let listeners = viewResetListeners.get(host);
@@ -159,6 +172,7 @@ export function runIfcFunction(host: A2uiViewerHost, name: string, args: Record<
     case 'colorize': return host.colorize([{ refs: targetRefs(host, name, args), color: safeColor(args.color) }]);
     case 'resetView': {
       host.resetView();
+      activeColourings.get(host)?.clear();
       for (const listener of viewResetListeners.get(host) ?? []) listener();
       return undefined;
     }

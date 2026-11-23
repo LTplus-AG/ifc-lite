@@ -57,7 +57,7 @@ function record(line: string): OutputRecord | undefined {
 }
 
 /** Collect direct omissions only from the source model that is being upgraded. */
-export function noteUpgradeSeed(line: string, seeds: Set<number>, from: IfcSchemaVersion, to: IfcSchemaVersion): void {
+function noteUpgradeSeed(line: string, seeds: Set<number>, from: IfcSchemaVersion, to: IfcSchemaVersion): void {
   if (!removesObsoleteResources(from, to)) return;
   const head = stepRecordHead(line);
   if (!head) return;
@@ -193,7 +193,7 @@ function rewrite(rec: OutputRecord, dropped: ReadonlySet<number>, to: UpgradeSch
 }
 
 /** Run after conversion so every reference is in the final id space and slot. */
-export function pruneUpgrade(lines: string[], seeds: ReadonlySet<number>, to: IfcSchemaVersion, onOmitted?: (id: number) => void): string[] {
+function pruneUpgrade(lines: string[], seeds: ReadonlySet<number>, to: IfcSchemaVersion, onOmitted?: (id: number) => void): string[] {
   if (seeds.size === 0 || (to !== 'IFC4' && to !== 'IFC4X3')) return [];
   const records = lines.map(record);
   const dropped = cascadeOmissions(records, seeds, to);
@@ -212,6 +212,33 @@ export function pruneUpgrade(lines: string[], seeds: ReadonlySet<number>, to: If
   return warnings;
 }
 
+/** Keep records that will be omitted out of the next model's GlobalId reconciliation. */
+export class MergedUpgradePruning {
+  private readonly seeds = new Set<number>();
+  private omitted = new Set<number>();
+
+  constructor(private readonly target: IfcSchemaVersion) {}
+
+  note(line: string, from: IfcSchemaVersion): void {
+    noteUpgradeSeed(line, this.seeds, from, this.target);
+  }
+
+  forgetOmittedGuids<T extends { finalId: number }>(lines: string[], start: number, guids: Map<string, T>): void {
+    if (!this.seeds.size || (this.target !== 'IFC4' && this.target !== 'IFC4X3')) return;
+    const previousCount = this.omitted.size;
+    for (const id of this.seeds) this.omitted.add(id);
+    // Model offsets keep emitted ids disjoint. Remaps can refer back to an
+    // earlier model, so index this model with the omissions already known.
+    this.omitted = cascadeOmissions(lines.slice(start).map(record), this.omitted, this.target);
+    if (this.omitted.size > previousCount) {
+      for (const [guid, record] of guids) if (this.omitted.has(record.finalId)) guids.delete(guid);
+    }
+  }
+
+  finish(lines: string[]): string[] {
+    return pruneUpgrade(lines, this.seeds, this.target);
+  }
+}
 
 /** Single-model output contains only converted records, including pending edits. */
 export function pruneUpgradeFromSource(lines: string[], from: IfcSchemaVersion, to: IfcSchemaVersion, onOmitted: (id: number) => void): string[] {

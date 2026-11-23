@@ -175,8 +175,7 @@ struct Record {
     frame: Option<RecordFrame>,
 }
 
-fn index(text: &str, seeds: &HashSet<u32>, schema: SchemaVersion) -> (Vec<Record>, HashSet<u32>) {
-    let mut scanner = EntityScanner::new(text);
+fn index(text: &str, seeds: &HashSet<u32>, schema: SchemaVersion, mut scanner: EntityScanner<'_>) -> (Vec<Record>, HashSet<u32>) {
     let mut records = Vec::new();
     let mut dependencies = Dependencies::default();
     while let Some((id, name, start, end)) = scanner.next_entity() {
@@ -189,6 +188,12 @@ fn index(text: &str, seeds: &HashSet<u32>, schema: SchemaVersion) -> (Vec<Record
         records.push(Record { id, ty, span: start..end, frame });
     }
     (records, dependencies.cascade(seeds))
+}
+
+/// Find omissions in one emitted model body, including references to earlier omissions.
+pub(crate) fn omitted_in_body(body: &str, known: &HashSet<u32>, to: &str) -> Option<HashSet<u32>> {
+    let schema = SchemaVersion::from_file_schema(canon(to))?;
+    Some(index(body, known, schema, EntityScanner::new_at(body, 0)).1)
 }
 
 fn rewrite(schema: SchemaVersion, line: &str, ty: &str, frame: RecordFrame, dropped: &HashSet<u32>) -> Option<String> {
@@ -223,7 +228,7 @@ pub(crate) fn prune(text: &str, seeds: &HashSet<u32>, to: &str) -> Option<(Strin
     let to = canon(to);
     let schema = SchemaVersion::from_file_schema(to)?;
     let issue = if schema == SchemaVersion::Ifc4 { 10970 } else { 10971 };
-    let (records, dropped) = index(text, seeds, schema);
+    let (records, dropped) = index(text, seeds, schema, EntityScanner::new(text));
     let mut out = String::with_capacity(text.len());
     let mut warnings = Vec::new();
     let mut copied = 0;

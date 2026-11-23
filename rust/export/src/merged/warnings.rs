@@ -5,11 +5,11 @@
 //! The diagnostics a finished merge reports in [`MergedStats::warnings`],
 //! split out of `mod.rs` so the emit loop stays within its size budget.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use ifc_lite_core::EntityScanner;
 
-use super::MergedStats;
+use super::{plan::GuidRecord, MergedStats};
 use crate::step_ids::IdAllocator;
 
 impl MergedStats {
@@ -30,6 +30,39 @@ impl MergedStats {
         stats.warnings.push(error.to_string());
         (String::new(), stats)
     }
+}
+
+/// A later model can no longer unify onto a record the schema pass will prune.
+pub(super) fn forget_omitted_guids(
+    body: &str, schema: &str, seeds: &HashSet<u32>, omitted: &mut HashSet<u32>,
+    guids: &mut HashMap<String, GuidRecord>, emitted: &mut HashSet<String>,
+) {
+    if seeds.is_empty() {
+        return;
+    }
+    let previous_count = omitted.len();
+    omitted.extend(seeds.iter().copied());
+    // Model offsets are disjoint. Only remaps to earlier models can carry an
+    // omission across models, so scan this model against the known ids.
+    let Some(dropped) = crate::schema_unrooted_upgrade::omitted_in_body(body, omitted, schema) else { return };
+    if dropped.len() > previous_count {
+        guids.retain(|guid, record| {
+            if dropped.contains(&record.final_id) {
+                emitted.remove(guid);
+                return false;
+            }
+            true
+        });
+    }
+    *omitted = dropped;
+}
+
+pub(super) fn unmerged_tail(stats: &mut MergedStats, merged: usize, total: usize) {
+    stats.unmerged_model_count = total - merged;
+    stats.warnings.push(format!(
+        "merged EXPRESS id space would exceed u32::MAX; stopped after {merged} model(s), {} model(s) not merged.",
+        stats.unmerged_model_count
+    ));
 }
 
 /// Push the merge-level warnings: federated models, oversized references

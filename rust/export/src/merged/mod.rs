@@ -180,6 +180,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     // gap in the merge (#3752).
     let mut refused_refs_total = 0usize;
     let mut upgrade_seeds = HashSet::new();
+    let mut upgrade_omissions = HashSet::new();
     // #5116: a non-rooted type with no representation in the target schema
     // (e.g. `IfcCartesianPointList3D` downgraded to IFC2X3) cannot become an
     // `IFCPROXY` either, so `convert_step_line` errs instead of guessing.
@@ -238,11 +239,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
         // tail is reported for the caller to gate. `plan::next_offset` is the single
         // home for that bound — the drop pre-pass stops at the same model.
         let Some(next) = plan::next_offset(offset, &included) else {
-            stats.unmerged_model_count = models.len() - i;
-            stats.warnings.push(format!(
-                "merged EXPRESS id space would exceed u32::MAX; stopped after {i} model(s), {} model(s) not merged.",
-                models.len() - i
-            ));
+            warnings::unmerged_tail(&mut stats, i, models.len());
             break;
         };
         // A repeated id writes only its last record (EXPORT-MERGE-18, #7683).
@@ -291,6 +288,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
         let converting = index.add_materials(&mut checks.materials, &source_schema, &schema, &included, &plan, offset);
         let upgrading = crate::schema_unrooted_upgrade::Upgrade::between(&source_schema, &schema);
         let preserve_latin1 = crate::schema_typed_properties::applies_to_source(model.content, &source_schema, &schema);
+        let model_start = out.len();
         let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(model.content, &source_schema, &schema); // D57
         flatten.retain_grids(|id| included.contains(&id) && !plan.skip.contains(&id));
         for &id in &index.order {
@@ -388,6 +386,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
             stats.written += 1;
         }
 
+        if i + 1 < models.len() { warnings::forget_omitted_guids(&out[model_start..], &schema, &upgrade_seeds, &mut upgrade_omissions, &mut guid_to_final, &mut emitted_guids); }
         offset = next;
     }
 

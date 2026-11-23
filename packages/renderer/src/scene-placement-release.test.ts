@@ -76,6 +76,8 @@ describe('released geometry is not kept alive by placement copies (#11368)', () 
     scene.releaseGeometryData();
     const refs = releaseInPlace(store);
     assert.equal(await liveAfterGc(refs), 0);
+    // The scene (and its placement cache) must outlive the GC checks, or the test passes vacuously.
+    assert.equal(scene.isGeometryDataReleased(), true);
     assert.equal(store.length, 2);
   });
 
@@ -87,6 +89,7 @@ describe('released geometry is not kept alive by placement copies (#11368)', () 
     scene.finishEphemeralStreaming();
     const refs = releaseInPlace(store);
     assert.equal(await liveAfterGc(refs), 0);
+    assert.equal(scene.isEphemeralStreaming(), false, 'the scene is still reachable here');
     assert.equal(store.length, 2);
   });
 

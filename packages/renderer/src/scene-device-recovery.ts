@@ -12,6 +12,7 @@ import type { TexturedMesh } from './scene.js';
 import { destroyGpuResources, splitMeshDataForBufferLimit } from './scene-geometry.js';
 import { cloneOverrides } from './scene-derived-batches.js';
 import { foldOccurrenceWorldBox, INSTANCE_STRIDE_BYTES } from './instanced-render.js';
+import { occurrenceSphereRadius, poolStandInBuffer } from './gpu-instance-pool.js';
 import { composeInstancedOverrideColor } from './instanced-override-color.js';
 import { BATCH_CONSTANTS } from './constants.js';
 import { createSceneBatchShell } from './scene-batch-upload.js';
@@ -96,6 +97,8 @@ export interface SceneRecoveryHost {
     maxX: number, maxY: number, maxZ: number,
   ): WorldBox;
   refreshLiveInstancedTemplates(): void;
+  gpuInstancePoolEnabled?(): boolean; // GPU-driven instancing: stand-in records now, the pool rebuilt from the restored templates
+  rebuildGpuInstancePool?(device: GPUDevice, radiiBySlot: ReadonlyMap<number, Float32Array>): void;
 }
 
 export type SceneDeviceRecoveryPreparation =
@@ -296,6 +299,7 @@ function restoreFlatBuckets(
 function restoreInstancedTemplates(host: SceneRecoveryHost, device: GPUDevice): void {
   host.instancedDevice = device;
   host.instancedTemplates = new Array(host.instancedTemplateCpu.length);
+  const pooled = host.gpuInstancePoolEnabled?.() === true, radiiBySlot = new Map<number, Float32Array>();
   for (let slot = 0; slot < host.instancedTemplateCpu.length; slot++) {
     const cpu = host.instancedTemplateCpu[slot];
     if (!cpu) continue;
@@ -316,9 +320,10 @@ function restoreInstancedTemplates(host: SceneRecoveryHost, device: GPUDevice): 
       }
       vertexBuffer = createStaticGpuBuffer(device, vertexData, GPUBufferUsage.VERTEX);
       indexBuffer = createStaticGpuBuffer(device, cpu.indices, GPUBufferUsage.INDEX);
-      instanceBuffer = createStaticGpuBuffer(device, cpu.instanceData, GPUBufferUsage.VERTEX);
       const instanceCount = cpu.instanceData.byteLength / INSTANCE_STRIDE_BYTES;
-      rteDeltas = createInstancedRteDeltaStream(device, instanceCount);
+      instanceBuffer = pooled ? poolStandInBuffer(device) : createStaticGpuBuffer(device, cpu.instanceData, GPUBufferUsage.VERTEX);
+      rteDeltas = createInstancedRteDeltaStream(device, pooled ? 0 : instanceCount);
+      if (pooled) radiiBySlot.set(slot, new Float32Array(instanceCount).fill(Infinity));
       host.instancedTemplates[slot] = {
         modelIndex: cpu.modelIndex, vertexBuffer, indexBuffer, indexCount: cpu.indices.length,
         instanceBuffer, instanceCount, canonicalAnchors: cpu.canonicalAnchors, rteDeltas,
@@ -340,9 +345,11 @@ function restoreInstancedTemplates(host: SceneRecoveryHost, device: GPUDevice): 
         cpu.localMin[0], cpu.localMin[1], cpu.localMin[2], cpu.localMax[0], cpu.localMax[1], cpu.localMax[2],
       );
       foldOccurrenceWorldBox(template, world);
+      const radii = radiiBySlot.get(occurrence.templateIndex), at = occurrence.byteOffset / INSTANCE_STRIDE_BYTES; if (radii) radii[at] = occurrenceSphereRadius(world, cpu.canonicalAnchors, at);
       if (host.instancedSelected.has(eid)) template.selectedCount++;
     }
   }
+  if (pooled) host.rebuildGpuInstancePool?.(device, radiiBySlot);
   host.refreshLiveInstancedTemplates();
 }
 

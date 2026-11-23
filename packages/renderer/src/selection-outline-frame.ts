@@ -46,6 +46,7 @@ import type { IndividualMeshGpu } from './individual-mesh-upload.js';
 import type { HoveredMesh, SelectableMesh } from './selection-mask-pass.js';
 import type { InstancedMaskFrame, InstancedMaskTemplate } from './selection-mask-pipelines.js';
 import type { InstancedTemplateGPU } from './scene-instance-types.js';
+import type { GpuInstancePool } from './gpu-instance-pool.js';
 import type { BatchedMesh, ClipBox, ExtraClipPlane, Mesh } from './types.js';
 
 export interface SelectionOutlineSource {
@@ -70,6 +71,8 @@ export interface SelectionOutlineSource {
   instancedTemplates?: readonly InstancedTemplateGPU[];
   /** Instanced templates holding an occurrence of `hoveredId` (#5745). */
   instancedHovered?: readonly InstancedMaskTemplate[];
+  /** GPU-driven instancing: draw the mask from the pool's compacted streams. */
+  instancePool?: GpuInstancePool | null;
 }
 
 /**
@@ -180,6 +183,7 @@ function buildInstancedMaskFrame(source: SelectionOutlineSource): InstancedMaskF
     selected,
     hovered,
     hoveredId: source.hoveredId ?? 0,
+    pool: source.instancePool ?? null,
   };
 }
 

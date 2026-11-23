@@ -161,7 +161,7 @@
    "retyped": [],
    "upOnly": [],
    "setOfOne": null,
-   "why": "IFC2X3 IfcMaterialProperties is abstract. IFC4: 'Entity made non-abstract. The subtypes ... IfcExtendedMaterialProperties have been deleted, use IfcMaterialProperties instead.' An upgrade writes IfcMaterialProperties (#10777); a downgrade waits on the Material referent (#10911). Material: 'The datatype has been changed to supertype IfcMaterialDefinition'; carried, because IFC2X3 requires it"
+   "why": "IFC2X3 IfcMaterialProperties is abstract. IFC4: 'Entity made non-abstract. The subtypes ... IfcExtendedMaterialProperties have been deleted, use IfcMaterialProperties instead.' An upgrade writes IfcMaterialProperties (#10777). A downgrade writes IfcExtendedMaterialProperties (#10911) and resolves its IfcMaterialDefinition to exactly one IfcMaterial. If the referent cannot be resolved, the converter omits the record and reports the loss"
   },
   {
    "ifc2x3": "IFCGENERALPROFILEPROPERTIES",

@@ -22,6 +22,7 @@
 import { StructuralDiagnostics } from './schema-converter-structural-diagnostics.js';
 import { DocumentLinks } from './schema-converter-document-links.js';
 import { ValueForms } from './schema-converter-value-forms.js';
+import { MaterialReferents } from './schema-converter-material-referent.js';
 import { getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@ifc-lite/parser';
 import { escapeStepString } from './step-serialization.js';
 import { readStepSlots, splitTopLevelStepArguments } from './step-argument-parser.js';
@@ -75,6 +76,13 @@ export class EnumReconciliation {
   readonly documents = new DocumentLinks();
   /** Values a target slot's type cannot hold (#10847). */
   readonly forms = new ValueForms();
+  /** The IfcMaterial a downgraded IfcMaterialProperties names (#10763). */
+  readonly materials: MaterialReferents;
+
+  /** `materials`: the export's material records (#10763); without them every downgraded IfcMaterialProperties is left out and reported. */
+  constructor(materials = new MaterialReferents()) {
+    this.materials = materials;
+  }
   private readonly losses = new Map<Loss, Map<string, number>>();
   /** Records written `.USERDEFINED.` with the label their rule needs unset, per type (#10780). */
   private readonly unlabelled = new Map<string, number>();
@@ -142,7 +150,7 @@ export class EnumReconciliation {
       const total = [...this.unlabelled.values()].reduce((a, b) => a + b, 0);
       out.push(`${total} record(s) say .USERDEFINED. without the label their rule needs; none is invented: ${[...this.unlabelled.keys()].join(', ')} (#10780).`);
     }
-    return [...out, ...this.documents.warnings(), ...this.forms.warnings(), ...this.structural.warnings()];
+    return [...out, ...this.documents.warnings(), ...this.forms.warnings(), ...this.materials.warnings(), ...this.structural.warnings()];
   }
 
   private record(loss: Loss, where: string): void {

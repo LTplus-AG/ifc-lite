@@ -16,7 +16,7 @@ import type { FlowDocument, RunResult } from '@ifc-lite/flow';
 import { isContributedFlowId } from '../../services/extensions/host-flows.js';
 import { BrowserTrackingStore, canCreateFlow, isFlowWithinSizeLimit, loadSavedFlows, newFlowDocument, saveFlows, storageMayHoldFlow, type SavedFlow } from '../../lib/flow/persistence.js';
 import type { WorkflowArtifact } from '../../lib/flow/artifact.js';
-import { cancelWorkflowRun } from '../../lib/flow/run-session.js';
+import { cancelFlowRun } from '../../lib/flow/run-session.js';
 import { clearPlayerValues } from '../../lib/flow/player-values.js';
 
 /** A finished run's time window and the graph document that ran in it. */
@@ -184,7 +184,7 @@ export const createFlowSlice: StateCreator<FlowSlice, [], [], FlowSlice> = (set,
   openContributedFlow: (doc) => set({ activeFlowId: null, flowDoc: doc, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null, flowLastRunWindow: null, flowArtifacts: [], flowProgress: null, flowRunWarnings: [] }),
   closeFlow: () => set({ activeFlowId: null, flowDoc: null, flowDirty: false, flowSelectedNodeId: null, flowLastRun: null, flowLastError: null, flowLastRunWindow: null, flowArtifacts: [], flowProgress: null, flowRunWarnings: [] }),
 
-  setFlowDoc: (doc) => { cancelWorkflowRun(); set({ flowDoc: doc, flowDirty: true, flowLastRun: null, flowLastError: null, flowLastRunWindow: null, flowArtifacts: [], flowProgress: null, flowRunWarnings: [] }); },
+  setFlowDoc: (doc) => { cancelFlowRun(); set({ flowDoc: doc, flowDirty: true, flowLastRun: null, flowLastError: null, flowLastRunWindow: null, flowArtifacts: [], flowProgress: null, flowRunWarnings: [] }); },
   setFlowSelectedNodeId: (id) => set({ flowSelectedNodeId: id }),
   setFlowRunning: (running) => set({ flowRunning: running }),
   setFlowLastRun: (run, error = null, window = null) => set({ flowLastRun: run, flowLastError: error, flowLastRunWindow: window, flowRunning: false }),

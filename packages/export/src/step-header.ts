@@ -108,6 +108,7 @@ export function assembleExportResult(pass: ExportPass): StepExportResult {
   // the header merely used to claim otherwise.
   const { modifiedEntityCount, warnings: deltaWarnings } = pass.modifications.settle();
   pass.newEntityCount += pass.enums.structural.finishEffectiveVarying(pass.entities);
+  pass.enums.forms.dates.finish(pass.entities);
   pass.warnings.push(...deltaWarnings);
   pass.warnings.push(...pass.slotFill.warnings());
   pass.warnings.push(...pass.ifc4Slots.warnings(), ...pass.enums.warnings());

@@ -34,6 +34,7 @@ export const a2uiFr = {
   "a2ui.card.flyTo": "Cadrer",
   "a2ui.stat.unavailable": "n.d.",
   "a2ui.chart.other": "Autres",
+  "a2ui.chart.noNumbers": "Aucun élément n’a de nombre pour {path}, il n’y a donc rien à additionner.",
   "a2ui.chart.label": "Graphique : {title}. Choisissez un groupe pour le sélectionner en 3D.",
   "a2ui.chart.groups": "Groupes",
   "a2ui.chart.selectGroup": "Sélectionner {group} : {value}",

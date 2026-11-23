@@ -117,8 +117,14 @@ export const ChoicePickerImpl = createComponentImplementation(ChoicePickerApi, (
             >
               {String(o.label)}
             </Button>
-          ) : (
+          ) : multiple ? (
             <Checkbox key={o.value} checked={on} onCheckedChange={() => toggle(o.value)} label={String(o.label)} />
+          ) : (
+            // Single choice: native radios, so arrow keys move the choice as in any radio group.
+            <label key={o.value} className="flex items-center gap-2 text-sm">
+              <input type="radio" name={groupId} value={o.value} checked={on} onChange={() => toggle(o.value)} className="accent-primary" />
+              {String(o.label)}
+            </label>
           );
         })}
       </div>

@@ -11,7 +11,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { createComponentImplementation } from '@a2ui/react';
-import { parseRefs, type WireEntityRef } from '@ifc-lite/a2ui';
+import { encodeRef, parseRefs, type WireEntityRef } from '@ifc-lite/a2ui';
 import { ColorLegendApi } from '@ifc-lite/a2ui/catalog';
 import { LENS_PALETTE } from '@ifc-lite/lens';
 import { Button } from '@/components/ui/button';
@@ -46,7 +46,10 @@ export function legendEntriesFromData(data: unknown): LegendEntry[] | null {
     const { label, color, refs } = item as { label: string; color?: unknown; refs?: unknown };
     const parsed = parseRefs(refs);
     const existing = byLabel.get(label);
-    if (existing) existing.refs = existing.refs.concat(parsed);
+    if (existing) {
+      const seen = new Set(existing.refs.map(encodeRef));
+      existing.refs = existing.refs.concat(parsed.filter((ref) => !seen.has(encodeRef(ref))));
+    }
     else byLabel.set(label, { label, color: typeof color === 'string' && HEX.test(color) ? color : legendColor(i), refs: parsed });
   });
   return [...byLabel.values()];
@@ -68,7 +71,10 @@ export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ 
       .map((g, i) => ({ label: g.label, color: legendColor(i), refs: g.rows.map((r) => r.ref) }));
   }, [scriptEntries, result, reader, props.by, emptyLabel]);
 
+  const targets = entries.reduce((n, e) => n + e.refs.length, 0);
   const apply = () => {
+    // Entries without refs colour nothing: never report success for that.
+    if (targets === 0) return;
     try {
       // Colouring is a view change on the user's click: the host only ever touches loaded models.
       host.colorize(entries.map((e) => ({ refs: e.refs, color: e.color })));
@@ -123,7 +129,7 @@ export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ 
       </ul>
       {entries.length > 0 && (
         <div className="flex gap-1.5">
-          <Button size="sm" variant={applied ? 'outline' : 'default'} onClick={apply}>
+          <Button size="sm" variant={applied ? 'outline' : 'default'} disabled={targets === 0} onClick={apply}>
             {applied ? t('a2ui.legend.applied') : t('a2ui.legend.apply')}
           </Button>
           <Button size="sm" variant="ghost" onClick={() => { host.resetView(); setApplied(false); setHidden(new Set()); }}>

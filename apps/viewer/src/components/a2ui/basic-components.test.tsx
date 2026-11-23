@@ -60,6 +60,18 @@ $/storey = ""`));
     );
   });
 
+  it('a ChoicePicker without a variant is a single-choice radio group, the A2UI default (#11344)', async () => {
+    const { host } = await seedA2uiModels();
+    const { container } = await mountReply(host, block(`root = Column([pick])
+pick = ChoicePicker("Type", _, [{label: "Walls", value: "IfcWall"}, {label: "Slabs", value: "IfcSlab"}], $/pick)
+$/pick = ["IfcWall"]`));
+    await waitFor(() => container.querySelectorAll('input[type="radio"]').length === 2, 'two radios');
+    const radios = [...container.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
+    assert.deepEqual(radios.map((r) => r.checked), [true, false]);
+    click(radios[1]);
+    await waitFor(() => radios[1].checked && !radios[0].checked, 'choice moved');
+  });
+
   it('runs a function-call action (exportCsv) only when the button is clicked', async () => {
     const { host } = await seedA2uiModels();
     const { container } = await mountReply(host, block(`root = Column([go])

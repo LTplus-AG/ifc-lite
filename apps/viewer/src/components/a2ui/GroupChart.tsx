@@ -18,7 +18,7 @@ import { LENS_PALETTE } from '@ifc-lite/lens';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
 import { readChartTheme, useEChart, type ChartSelectEvent } from '@/components/viewer/charts/useEChart';
-import { aggregatePool, groupRows } from '@/lib/a2ui/query-eval';
+import { aggregate, aggregatePool, groupRows } from '@/lib/a2ui/query-eval';
 import { weightStyle } from './basic-layout';
 import { Note, ResultNotes } from './notes';
 import { A2uiChartRendererContext, formatValue, useQueryResult, useRunFunction } from './runtime';
@@ -100,6 +100,9 @@ export const GroupChartImpl = createComponentImplementation(GroupChartApi, ({ pr
   const kind = props.kind === 'pie' ? 'pie' : 'bar';
   const max = typeof props.maxGroups === 'number' && props.maxGroups > 1 ? Math.floor(props.maxGroups) : 12;
   const sumPath = props.aggregate === 'sum' && typeof props.path === 'string' ? props.path : undefined;
+  // A sum with no path, or a path no match has a number at, is unavailable: never counts or zero bars in its place.
+  const sumUnavailable = props.data === undefined && props.aggregate === 'sum' && !!result && aggregatePool(result).length > 0
+    && (sumPath === undefined || aggregate(reader, aggregatePool(result), 'sum', sumPath) === undefined);
   const emptyLabel = t('a2ui.noGroupValue');
   const otherLabel = t('a2ui.chart.other');
 
@@ -110,8 +113,8 @@ export const GroupChartImpl = createComponentImplementation(GroupChartApi, ({ pr
         ? groupRows(reader, aggregatePool(result), props.groupBy, emptyLabel, sumPath ? { kind: 'sum', path: sumPath } : { kind: 'count' })
           .map((g) => ({ label: g.label, value: g.value, refs: g.rows.map((r) => encodeRef(r.ref)) }))
         : [];
-    return foldGroups(raw, max, otherLabel);
-  }, [props.data, result, reader, props.groupBy, emptyLabel, sumPath, max, otherLabel]);
+    return sumUnavailable ? [] : foldGroups(raw, max, otherLabel);
+  }, [props.data, result, reader, props.groupBy, emptyLabel, sumPath, max, otherLabel, sumUnavailable]);
 
   const selectGroup = useCallback((group: ChartGroup | undefined) => {
     if (group?.refs.length) run('select', { refs: group.refs });
@@ -122,7 +125,8 @@ export const GroupChartImpl = createComponentImplementation(GroupChartApi, ({ pr
     <div style={weightStyle(props.weight)} className="flex min-w-0 flex-col gap-1.5">
       {title && <div className="text-sm font-semibold">{title}</div>}
       <ResultNotes result={result} shown={result?.total} />
-      {groups.length === 0 && !result?.unloadedModel && <Note>{t('a2ui.empty')}</Note>}
+      {sumUnavailable && <Note tone="warn">{t('a2ui.chart.noNumbers', { path: sumPath ?? props.path ?? 'path' })}</Note>}
+      {groups.length === 0 && !sumUnavailable && !result?.unloadedModel && <Note>{t('a2ui.empty')}</Note>}
       {groups.length > 0 && (
         <ChartBoundary>
           <ChartCanvas kind={kind} groups={groups} label={t('a2ui.chart.label', { title: title || props.groupBy })} onPick={selectGroup} />

@@ -123,6 +123,19 @@ describe('IFC catalog components', () => {
     assert.notEqual(entries?.[1].color, 'red', 'a non-hex colour falls back to the palette');
   });
 
+  it('ColorLegend: merged entries count each entity once (#11344)', () => {
+    const entries = legendEntriesFromData([{ label: 'High', color: '#e5484d', refs: ['m:1'] }, { label: 'High', color: '#e5484d', refs: ['m:1', 'm:2'] }]);
+    assert.deepEqual(entries?.[0].refs.map((r) => r.expressId), [1, 2]);
+  });
+
+  it('GroupChart: a sum with no number at its path says so instead of drawing zero bars (#11344)', async () => {
+    const { host } = await seedA2uiModels();
+    const reply = block('root = GroupChart("storey", {types: ["IfcWall"]}, "bar", "sum", "Qto_WallBaseQuantities.NetVolum")');
+    const { container } = await mountReply(host, reply);
+    await waitFor(() => text(container).includes('nothing to sum'), 'unavailable note');
+    assert.equal(container.querySelectorAll('[data-a2ui-group]').length, 0);
+  });
+
   it('ActionBar: actions act on the query result, export runs from the click, follow-ups post a turn', async () => {
     const { host: real } = await seedA2uiModels();
     const { host, calls } = recordingHost(real);

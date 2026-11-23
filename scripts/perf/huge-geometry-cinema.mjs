@@ -36,7 +36,7 @@ import { SCENE_STATS } from './huge-geometry-page.mjs';
 import { frameSummary } from './huge-geometry-report.mjs';
 import { parseTier } from './huge-geometry-run.mjs';
 import { attachScreencast, cardHtml, startEncoder, toMp4 } from './huge-geometry-video.mjs';
-import { buildShots, poseAt, solveAxisMap, totalMs } from './huge-geometry-cinema-path.mjs';
+import { buildShots, poseAt, ranFullPath, solveAxisMap, totalMs } from './huge-geometry-cinema-path.mjs';
 import { BEAT, BOUNDS_OF, CAMERA_CALL, CAMERA_HOLD, CANVAS_BOX, CINE_HUD, FULLFRAME, PROJECT, RUN_SHOT, SELECTION, TWEEN_DONE } from './huge-geometry-cinema-page.mjs';
 import { startViewerServer } from './viewer-load-probe.mjs';
 
@@ -295,8 +295,10 @@ async function endCard(encoder, out, clip) {
     const path = clip.shots.filter((x) => x.frames);
     const med = (k) => { const v = path.map((x) => x.frames.frameMs[k]).filter(Number.isFinite).sort((a, b) => a - b); return v.length ? v[Math.floor(v.length / 2)] : null; };
     const t = clip.load?.timings;
-    const ok = clip.status === 'ok';
+    const ok = ranFullPath(clip);
+    const beatErrors = clip.shots.filter((x) => x.beatError).map((x) => `${x.name}: ${x.beatError}`);
     const lines = ok ? [
+      ...(beatErrors.length ? [`beat failed · ${beatErrors.join(' · ').slice(0, 200)}`] : []),
       `load ${(t.interactiveMs / 1000).toFixed(1)} s · first frame ${t.firstFrameMs === null ? '–' : (t.firstFrameMs / 1000).toFixed(1)} s · ${fmt(clip.elements)} elements · ${mtris(clip.scene?.triangles)} scene triangles`,
       `camera path: frame median ${med('median') ?? '–'} ms · p95 ${med('p95') ?? '–'} ms (median over shots)`,
       ...path.map((x) => `  ${x.name.padEnd(10)} median ${x.frames.frameMs.median} ms · p95 ${x.frames.frameMs.p95} · ${x.frames.drawsPerFrame.median} draws${x.pick ? ` · picked #${x.pick.selected?.id ?? '–'}` : ''}`),

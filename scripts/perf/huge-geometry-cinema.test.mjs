@@ -29,7 +29,13 @@ const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 test('camera path: a pure function of the manifest (same tier, same path)', () => {
   const a = P().buildShots(showcaseOf(30000)), b = P().buildShots(showcaseOf(30000));
   assert.deepEqual(a, b);
-  for (const shot of a) for (const u of [0, 0.37, 1]) assert.deepEqual(P().poseAt(shot, u), P().poseAt(shot, u));
+  // Two independent builds give the same poses, and every shot actually moves from its start to its end.
+  a.forEach((shot, i) => { for (const u of [0, 0.37, 1]) assert.deepEqual(P().poseAt(shot, u), P().poseAt(b[i], u)); });
+  for (const shot of a) {
+    const p0 = P().poseAt(shot, 0), p1 = P().poseAt(shot, 1);
+    assert.ok(dist(p0.eye, p1.eye) > 1e-3 || dist(p0.target, p1.target) > 1e-3, `${shot.name} does not move`);
+  }
+  assert.ok(dist(P().poseAt(a[0], 0).eye, P().poseAt(a.at(-1), 1).eye) > 1, 'the path ends somewhere other than where it starts');
 });
 
 test('camera path: shots chain without jumps, cover every beat, and keep moving', () => {

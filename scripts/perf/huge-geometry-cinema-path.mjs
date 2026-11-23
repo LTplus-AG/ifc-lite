@@ -29,6 +29,9 @@ export function orbitEye({ target, az, el, dist }) {
 }
 
 /** `{ eye, target }` of `shot` at shot fraction `u` in [0, 1]. */
+/** A clip that loaded and ran the whole camera path; one failed beat (`interaction-error`) still did. */
+export const ranFullPath = (clip) => clip.status === 'ok' || clip.status === 'interaction-error';
+
 export function poseAt(shot, u) {
   let v = Math.min(1, Math.max(0, u));
   if (shot.hold) {

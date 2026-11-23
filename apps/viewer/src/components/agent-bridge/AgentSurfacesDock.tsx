@@ -40,9 +40,9 @@ export function AgentSurfacesDock() {
     <aside
       aria-label={t('agentBridge.surfaces.title')}
       data-agent-surfaces={surfaces.length}
-      className="pointer-events-auto fixed right-3 top-14 z-30 flex max-h-[calc(100vh-5rem)] w-[min(26rem,calc(100%-1.5rem))] flex-col gap-2 overflow-y-auto"
+      className="pointer-events-none fixed bottom-3 right-3 top-14 z-30 flex w-96 max-w-full flex-col gap-2 overflow-y-auto"
     >
-      <div className="flex items-center justify-between rounded-md bg-background/90 px-2 py-1 text-xs text-muted-foreground shadow-sm backdrop-blur">
+      <div className="pointer-events-auto flex items-center justify-between rounded-md bg-background/90 px-2 py-1 text-xs text-muted-foreground shadow-sm backdrop-blur">
         <span>{t('agentBridge.surfaces.title')}</span>
         {surfaces.length > 1 && (
           <Button size="sm" variant="ghost" onClick={() => agentSurfaces.clear()}>{t('agentBridge.surfaces.clear')}</Button>
@@ -51,7 +51,7 @@ export function AgentSurfacesDock() {
       {visible.map((surface) => {
         const title = surface.title ?? t('agentBridge.surfaces.untitled');
         return (
-          <section key={keyOf(surface)} className="rounded-lg border bg-background/95 p-3 shadow-md backdrop-blur">
+          <section key={keyOf(surface)} className="pointer-events-auto rounded-lg border bg-background/95 p-3 shadow-md backdrop-blur">
             <header className="mb-2 flex items-center justify-between gap-2">
               <h2 className="truncate text-sm font-semibold">{title}</h2>
               <IconButton className="h-6 w-6" label={t('agentBridge.surfaces.dismiss', { title })} onClick={() => agentSurfaces.dismiss(surface)}>

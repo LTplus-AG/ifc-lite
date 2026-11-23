@@ -4,8 +4,9 @@
 
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { getDrawStreamConfig, HUGE_GEOMETRY_DRAW_STREAM } from './drawStreamConfig.js';
-import { isGpuInstancingEnabled } from './gpuInstancingConfig.js';
+import { configureDrawStream, getDrawStreamConfig, HUGE_GEOMETRY_DRAW_STREAM } from './drawStreamConfig.js';
+import { configureGpuInstancing, isGpuInstancingEnabled } from './gpuInstancingConfig.js';
+import { activePerfFlags, recordAppliedPerfFlag } from '../lib/perf/flags.js';
 import { isHugeGeometryEnabled } from './hugeGeometryConfig.js';
 
 const g = globalThis as Record<string, unknown>;
@@ -16,6 +17,7 @@ function setSearch(search: string): void {
 
 afterEach(() => {
   for (const name of ['__IFC_LITE_HUGE', '__IFC_LITE_M6__', '__IFC_LITE_GPU_INSTANCING']) delete g[name];
+  recordAppliedPerfFlag('drawStream', undefined); recordAppliedPerfFlag('gpuInstancing', undefined);
   Reflect.deleteProperty(globalThis, 'location');
 });
 
@@ -68,5 +70,37 @@ describe('PostHog ramps for the huge-geometry paths', () => {
     setSearch('?m6.stream=0&perf.gpuInstancing=0');
     assert.equal(getDrawStreamConfig(posthog({ 'perf-draw-stream': true })).stream, false);
     assert.equal(isGpuInstancingEnabled(posthog({ 'perf-gpu-instancing': true })), false);
+  });
+});
+
+describe('telemetry arms report what the renderer applied', () => {
+  const renderer = { setDrawStreamConfig() {}, setGpuInstancing: () => true };
+  const log = console.log;
+
+  it('reports no arm for a session that ran the default paths', () => {
+    console.log = () => {};
+    try { configureDrawStream(renderer); configureGpuInstancing(renderer); } finally { console.log = log; }
+    const arms = activePerfFlags();
+    assert.equal(arms.drawStream, undefined);
+    assert.equal(arms.gpuInstancing, undefined);
+  });
+
+  it('reports the umbrella-applied paths as on (no PostHog re-read)', () => {
+    setSearch('?perf.huge=1');
+    console.log = () => {};
+    try { configureDrawStream(renderer); configureGpuInstancing(renderer); } finally { console.log = log; }
+    const arms = activePerfFlags();
+    assert.deepEqual([arms.drawStream, arms.gpuInstancing, arms.hugeGeometry], ['true', 'true', 'true']);
+  });
+
+  it('reports a refused switch as off', () => {
+    setSearch('?perf.gpuInstancing=1');
+    configureGpuInstancing({ setGpuInstancing: () => false });
+    assert.equal(activePerfFlags().gpuInstancing, undefined);
+  });
+
+  it('keeps the umbrella for an unrecognised explicit value', () => {
+    setSearch('?perf.huge=1&perf.gpuInstancing=maybe');
+    assert.equal(isGpuInstancingEnabled(), true);
   });
 });

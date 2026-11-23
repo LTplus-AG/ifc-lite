@@ -11,6 +11,7 @@ import {
   type DrawStreamOverrides,
   type Renderer,
 } from '@ifc-lite/renderer';
+import { recordAppliedPerfFlag } from '../lib/perf/flags.js';
 import { isHugeGeometryEnabled, readRampFlag } from './hugeGeometryConfig.js';
 
 /** What the huge-geometry umbrella turns on: stream, arenas, HLOD and the highlight index (no frame budget). */
@@ -39,6 +40,7 @@ export function getDrawStreamConfig(readFeatureFlag?: (key: string) => unknown):
  */
 export function configureDrawStream(renderer: Pick<Renderer, 'setDrawStreamConfig'>): boolean {
   const config = getDrawStreamConfig();
+  recordAppliedPerfFlag('drawStream', config.stream); // the telemetry arm is what ran
   if (!config.stream && !config.hlIndex) return false;
   renderer.setDrawStreamConfig(config);
   console.log(`[Viewport] draw stream on (stream=${config.stream}, arena=${config.arena}, hlod=${config.hlod})`);

@@ -239,7 +239,7 @@ export const PERF_FLAGS = [
     owner: '@louistrue',
     removalCondition: 'Flat-batch draw stream (bundles, shared arenas, far-field HLOD, highlight index; huge-geometry campaign): delete with the per-batch opaque loop once the stream ships on by default, or delete the stream if it is dropped. The global takes an object of DrawStreamConfig keys; each key also reads its own m6.<key> URL param.',
     introducedAt: '2026-11-23',
-    default: null,
+    default: false,
     bindings: { global: '__IFC_LITE_M6__', urlParam: 'm6.stream', posthogKey: 'perf-draw-stream' },
   },
   {
@@ -325,6 +325,17 @@ export function resolvePerfFlag(
   return undefined;
 }
 
+const appliedFlags = new Map<PerfFlagId, unknown>();
+
+/**
+ * Record the value a read-once flag was applied with (renderer init), so the
+ * telemetry arm reports what ran, not a later re-read: a PostHog ramp can
+ * load after init, and an umbrella flag can decide a path without the ramp.
+ */
+export function recordAppliedPerfFlag(id: PerfFlagId, value: unknown): void {
+  if (value === undefined) appliedFlags.delete(id); else appliedFlags.set(id, value); // undefined: read the flag again
+}
+
 const MAX_STATE_LENGTH = 64;
 
 function compactState(value: unknown): string {
@@ -352,7 +363,7 @@ function effectiveState(value: unknown, fallback: PerfFlagDefault): unknown {
 export function activePerfFlags(): Record<string, string> {
   const active: Record<string, string> = {};
   for (const flag of PERF_FLAGS) {
-    const value = readPerfFlag(flag.id);
+    const value = appliedFlags.has(flag.id) ? appliedFlags.get(flag.id) : readPerfFlag(flag.id);
     if (value === undefined || value === null) continue;
     const state = compactState(effectiveState(value, flag.default));
     if (state !== compactState(flag.default)) active[flag.id] = state;

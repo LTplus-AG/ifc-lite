@@ -44,9 +44,10 @@ export function legendEntriesFromData(data: unknown): LegendEntry[] | null {
   data.forEach((item, i) => {
     if (!item || typeof item !== 'object' || typeof (item as { label?: unknown }).label !== 'string') return;
     const { label, color, refs } = item as { label: string; color?: unknown; refs?: unknown };
+    const parsed = parseRefs(refs);
     const existing = byLabel.get(label);
-    if (existing) existing.refs.push(...parseRefs(refs));
-    else byLabel.set(label, { label, color: typeof color === 'string' && HEX.test(color) ? color : legendColor(i), refs: parseRefs(refs) });
+    if (existing) existing.refs = existing.refs.concat(parsed);
+    else byLabel.set(label, { label, color: typeof color === 'string' && HEX.test(color) ? color : legendColor(i), refs: parsed });
   });
   return [...byLabel.values()];
 }

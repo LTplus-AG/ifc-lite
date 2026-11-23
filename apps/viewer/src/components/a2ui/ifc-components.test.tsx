@@ -110,7 +110,8 @@ describe('IFC catalog components', () => {
       { label: 'High', color: '#00ff00', refs: ['m:2'] },
       { label: 'Low', color: 'red', refs: ['m:3'] },
     ]);
-    assert.deepEqual(entries?.map((e) => [e.label, e.color, e.refs.map((r) => r.expressId)]), [['High', '#e5484d', [1, 2]], ['Low', entries?.[1].color, [3]]]);
+    assert.deepEqual(entries?.map((e) => [e.label, e.refs.map((r) => r.expressId)]), [['High', [1, 2]], ['Low', [3]]]);
+    assert.equal(entries?.[0].color, '#e5484d', 'the first colour wins');
     assert.notEqual(entries?.[1].color, 'red', 'a non-hex colour falls back to the palette');
   });
 

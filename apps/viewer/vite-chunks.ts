@@ -116,7 +116,8 @@ export const stepExportChunkGroup = {
     'schema-conver[^/]*|schema-style-flatten|generated/ifc(?:2x3|4)-required-slots',
     '|step-(?:collection|exporter|internal-pset-ids|native-set-record|overlay-entities|pass-builder',
     '|property-set[^/]*|pset-copy-on-write|shared-atom-retention|source-iteration|type-owned-quantities)',
-    '|anonymize-export|ifc5-exporter|merged-bake|section-export',
+    '|anonymize-export|ifc5-exporter|merged-bake|schema-untranslatable|section-export',
+    '|schema-structural-varying-effective',
     ')\\.(?:ts|js)$',
   ].join('')),
 };

@@ -45,3 +45,26 @@ test('#7093 Continue assembles a script split across two truncated turns before 
   assert.deepEqual(useRequestReceipts.getState().receipts.map(receipt => receipt.outcome), ['truncated', 'truncated', 'completed']);
   assert.equal(posts, 3);
 });
+
+test('Continue replays JSON script edits from a truncated turn after its rollback (#11256 follow-up)', async t => {
+  const op = "console.log('continued edit');";
+  const parts = [`\`\`\`ifc-script-edits\n{"scriptEdits":[{"opId":"cont-1","type":"append","baseRevision":0,"text":${JSON.stringify(op)}}]}\n\`\`\`\n`, 'Done.'];
+  let posts = 0;
+  globalThis.fetch = (async (_input, init) => {
+    if (init?.method !== 'POST') return new Response('{}');
+    const index = posts++;
+    return new Response(chatFrames(parts[index] ?? parts[1], index === 0 ? 'length' : 'stop'), { headers: { 'Content-Type': 'text/event-stream' } });
+  }) as typeof fetch;
+  const native = await mountNative(t); if (!native) return;
+  act(() => useViewerStore.setState({ chatAutoExecute: false }));
+  send(native.ui);
+  await waitFor(() => useRequestReceipts.getState().receipts.length === 1 && !['sending', 'streaming'].includes(useViewerStore.getState().chatStatus), 'truncated turn settles');
+  // The truncated turn applied its op, then rolled it back.
+  assert.equal(useViewerStore.getState().scriptEditorContent, '');
+  const button = [...native.ui.querySelectorAll('button')].find(candidate => candidate.textContent === 'Continue');
+  assert.ok(button);
+  click(button);
+  await waitFor(() => useRequestReceipts.getState().receipts.length >= 2 && !['sending', 'streaming'].includes(useViewerStore.getState().chatStatus), 'continuation settles');
+  assert.doesNotMatch(useViewerStore.getState().chatError ?? '', /revision conflict/);
+  assert.equal(useViewerStore.getState().scriptEditorContent, op);
+});

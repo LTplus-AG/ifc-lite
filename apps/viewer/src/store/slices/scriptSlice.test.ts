@@ -38,13 +38,37 @@ const storey = bim.create.addIfcBuildingStorey(h, { Name: "Level 0", Elevation: 
 
   assert.equal(applyResult.ok, true);
   assert.match(useScriptStore.getState().scriptEditorContent, /facadeOnly/);
+  const turnRevision = useScriptStore.getState().scriptEditorRevision;
 
   useScriptStore.getState().rollbackAssistantScriptTurn();
 
   assert.equal(useScriptStore.getState().scriptEditorContent, initialScript);
   assert.equal(useScriptStore.getState().scriptAssistantTurnSnapshot, null);
-  assert.equal(useScriptStore.getState().scriptEditorRevision, baseRevision);
+  // Content goes back, the revision moves forward: no revision number is ever reissued.
+  assert.equal(useScriptStore.getState().scriptEditorRevision, turnRevision + 1);
   assert.ok(appliedContents.some((content) => content === initialScript));
+});
+
+test('a chat edit holding a revision issued before rollback is refused after rollback (#11256 follow-up)', () => {
+  const useScriptStore = create<ScriptSlice>()((...args) => createScriptSlice(...args));
+  useScriptStore.getState().setScriptEditorContent('const a = 1;\n');
+  useScriptStore.getState().beginAssistantScriptTurn();
+  useScriptStore.getState().setScriptEditorContent('const a = 2;\n');
+  const heldRevision = useScriptStore.getState().scriptEditorRevision;
+
+  useScriptStore.getState().rollbackAssistantScriptTurn();
+  useScriptStore.getState().setScriptEditorContent('const b = 3;\n');
+
+  const result = useScriptStore.getState().applyScriptEditOps([{
+    opId: 'stale-chat-edit',
+    type: 'append',
+    baseRevision: heldRevision,
+    text: 'const stale = true;\n',
+  }]);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.status, 'revision_conflict');
+  assert.equal(useScriptStore.getState().scriptEditorContent, 'const b = 3;\n');
 });
 
 test('resetScriptEditorForNewChat clears the editor and detaches the active script', () => {

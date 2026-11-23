@@ -132,6 +132,13 @@ jobs:
     # timeout does NOT cancel the run: the aggregate would still run, every lane
     # would read `skipped`, and before the map entry above that was a green gate.
     timeout-minutes: 5
+    # The workflow's reads, plus the `PR viewer selection` entry status (last step).
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+      actions: read
+      statuses: write
     outputs:
       rust: ${{ steps.all.outputs.rust || steps.filter.outputs.rust }}
       frontend: ${{ steps.all.outputs.frontend || steps.filter.outputs.frontend }}
@@ -716,6 +723,28 @@ jobs:
         id: wasm
         if: steps.noop.outputs.noop != 'true'
         run: echo "eligible=$(bash scripts/ci-wasm-prebuilt-eligible.sh)" >> "$GITHUB_OUTPUT"
+      # The `PR viewer selection` queue-entry status, from the first job of
+      # the run (scripts/ci-viewer-select-status.mjs --entry): `pending` when
+      # viewer-tests-selected (fast lane) or the viewer shards (full lane,
+      # viewer-shards-status) will gate this run, else `success` "not gated"
+      # (switch not `on`, no frontend/Rust change). Last, so
+      # it reads the final lane and filter outputs; posts nothing on a no-op
+      # edit, a batch PR or a fork. A failed post exits 0 (fails open).
+      - name: Post the PR viewer selection entry status
+        if: github.event_name == 'pull_request'
+        run: node scripts/ci-viewer-select-status.mjs --entry
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CI_PR_VIEWER_SELECT: ${{ vars.CI_PR_VIEWER_SELECT }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          EVENT: ${{ github.event_name }}
+          # The same expressions as this job's `outputs:` above.
+          LANE: ${{ steps.lane.outputs.lane || 'full' }}
+          BATCH: ${{ steps.lane.outputs.batch || (startsWith(github.head_ref, 'mergify/merge-queue/') && 'true' || 'false') }}
+          NOOP: ${{ steps.noop.outputs.noop || 'false' }}
+          FRONTEND: ${{ steps.all.outputs.frontend || steps.filter.outputs.frontend }}
+          RUST: ${{ steps.all.outputs.rust || steps.filter.outputs.rust }}
 
   # Shared install + WASM + workspace build. Uploads built dist/ for the
   # downstream JS jobs; Rust jobs do their own checkout + cargo cache
@@ -1609,22 +1638,88 @@ jobs:
           test_step_outcome: ${{ steps.viewer_retry.outcome }}
           job_name: viewer-tests (shard ${{ matrix.shard }})
 
+  # The full-lane verdict of the `PR viewer selection` status: on a full-lane
+  # PR run the `changes` job posted `pending` ("waiting for the viewer
+  # shards"), and this posts success only when every shard passed, failure
+  # when one failed, nothing when they were cancelled or skipped (the pending
+  # stays, as for the selected tests). So a full-lane run on a sha an earlier
+  # fast run held never releases it before the shards have actually passed.
+  # !cancelled(), not always(): a cancelled run posts nothing either way, so
+  # it need not start a runner. Advisory to the run like the job below.
+  viewer-shards-status:
+    name: Viewer shards status (full lane)
+    needs: [changes, viewer-tests]
+    continue-on-error: true
+    # Runs exactly when the shards reached a verdict, which is when they ran:
+    # the full lane with a frontend or Rust change (their own `if:`, so no
+    # second copy of the lane test, which ci-pr-lane.test.mjs keeps to the
+    # aggregate's FAST_SKIPPED_JOBS). Cancelled or skipped shards: no post.
+    # Pinned against gateApplies() in scripts/ci-viewer-select-status.test.mjs.
+    if: >-
+      !cancelled() &&
+      github.event_name == 'pull_request' &&
+      vars.CI_PR_VIEWER_SELECT == 'on' &&
+      needs.changes.outputs.batch != 'true' &&
+      needs.changes.outputs.noop != 'true' &&
+      (needs.viewer-tests.result == 'success' || needs.viewer-tests.result == 'failure')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # The checkout reads this public repo; the only write is the status.
+    permissions:
+      contents: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Post the full-lane PR viewer selection status
+        run: node scripts/ci-viewer-select-status.mjs --shards
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CI_PR_VIEWER_SELECT: ${{ vars.CI_PR_VIEWER_SELECT }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          EVENT: ${{ github.event_name }}
+          LANE: ${{ needs.changes.outputs.lane }}
+          BATCH: ${{ needs.changes.outputs.batch }}
+          NOOP: ${{ needs.changes.outputs.noop }}
+          FRONTEND: ${{ needs.changes.outputs.frontend }}
+          RUST: ${{ needs.changes.outputs.rust }}
+          SHARDS_RESULT: ${{ needs.viewer-tests.result }}
+
   # SELECTED VIEWER TESTS on a fast-lane PR (scripts/ci-viewer-select.mjs).
   # The fast lane skips the shards above, so a viewer failure otherwise first
   # shows in the merge queue. This runs the viewer test files the PR's changes
-  # reach through the static import graph, nearest first, within a time budget.
+  # reach through the static import graph, nearest first, within a time budget,
+  # and retries a failed file once under CI_SHARD_RETRY like the shards.
   # Switch: repo variable CI_PR_VIEWER_SELECT = off (default: this job is
   # skipped) | shadow (record the selection, run nothing) | on (run it).
-  # ADVISORY: deliberately NOT in the aggregate's `needs` (see
+  # ADVISORY TO THE RUN: deliberately NOT in the aggregate's `needs` (see
   # UNJUDGED_BY_DESIGN in scripts/check-ci-aggregate-coverage.mjs), and it
   # cannot fail the run: a failed Test run is never push-replayed
   # (scripts/ci-push-replay.mjs), so a flake here would re-run every lane on
-  # main. Test failures exit 0 with a warning; continue-on-error covers the rest.
-  # The merge queue's full run is the gate.
+  # main. Test failures exit 0; continue-on-error covers the rest.
+  # A GATE ON QUEUE ENTRY instead: in `on`, the verdict is the commit status
+  # `PR viewer selection` on the PR head (scripts/ci-viewer-select-status.mjs).
+  # The `changes` job's last step posts it `pending` when this job (fast lane)
+  # or the viewer shards (full lane, verdict from `viewer-shards-status`) will
+  # gate the run, else `success` "not gated" (switch not `on`, no frontend/Rust
+  # change); this job re-posts pending, then success or failure.
+  # .mergify.yml's auto_merge_conditions keep a PR whose status is failing or
+  # pending out of the queue; absent (fork PR) passes. Per sha, so a push
+  # starts clean. A flake: re-run this job within a day (build-output is kept
+  # one day); after that, re-run all jobs or push. A stuck pending (run
+  # cancelled or broken before its verdict) says "if stuck: re-run all jobs".
+  # ROLLBACK: CI_PR_VIEWER_SELECT=off releases every held PR on its next run
+  # (push, or close and reopen), which posts "not gated". The queue's full run
+  # is still the full gate.
   viewer-tests-selected:
     name: Viewer tests, advisory (selected for this PR)
     needs: [changes, build]
     continue-on-error: true
+    # Keep in step with gateApplies() in scripts/ci-viewer-select-status.mjs.
     if: >-
       github.event_name == 'pull_request' &&
       (vars.CI_PR_VIEWER_SELECT == 'shadow' || vars.CI_PR_VIEWER_SELECT == 'on') &&
@@ -1634,7 +1729,15 @@ jobs:
       (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true')
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
     timeout-minutes: 20
+    permissions:
+      contents: read
+      # Artifact download, and the status step's job-URL lookup.
+      actions: read
+      # The `PR viewer selection` commit status (fork PRs: read-only, not posted).
+      statuses: write
     steps:
+      # The CI_SHARD_RETRY retry budget is what is left of timeout-minutes.
+      - run: echo "JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
@@ -1644,6 +1747,24 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
+      # The entry status again, from this job's own inputs: a re-run of this
+      # job alone (the flake remedy) first turns an old verdict back to
+      # `pending`, so the gate is closed while it retests.
+      - name: Post the PR viewer selection status as pending
+        run: node scripts/ci-viewer-select-status.mjs --entry
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          # Links this job, so a stuck pending points at what to re-run.
+          JOB_NAME: Viewer tests, advisory (selected for this PR)
+          CI_PR_VIEWER_SELECT: ${{ vars.CI_PR_VIEWER_SELECT }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          EVENT: ${{ github.event_name }}
+          LANE: ${{ needs.changes.outputs.lane }}
+          BATCH: ${{ needs.changes.outputs.batch }}
+          NOOP: ${{ needs.changes.outputs.noop }}
+          FRONTEND: ${{ needs.changes.outputs.frontend }}
+          RUST: ${{ needs.changes.outputs.rust }}
       # Re-derives the switch from the same inputs as the `if:` above, so a
       # job that runs when it should not still selects nothing.
       - name: Select viewer tests
@@ -1665,7 +1786,10 @@ jobs:
           cache: pnpm
       - if: steps.select.outputs.run == 'true'
         run: pnpm install --frozen-lockfile
+      # build-output is kept one day: a re-run of this job alone after that
+      # fails here, and the status then says "re-run all jobs or push".
       - name: Download build artifacts
+        id: download
         if: steps.select.outputs.run == 'true'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -1685,8 +1809,30 @@ jobs:
         if: steps.select.outputs.run == 'true'
         run: pnpm fixtures:check
       - name: Run the selected viewer tests
+        id: run
         if: steps.select.outputs.run == 'true'
         run: node scripts/ci-viewer-select.mjs --run "$RUNNER_TEMP/viewer-selection"
+        env:
+          CI_SHARD_RETRY: ${{ vars.CI_SHARD_RETRY }}
+          JOB_TIMEOUT_MINUTES: '20'  # this job's timeout-minutes
+      # The verdict as the queue-entry status, also when a step failed: a
+      # broken job posts failure. Not always(): on cancellation the runner
+      # re-tests this, skips it (or cancels it mid-post), so a cancelled run
+      # cannot land a late verdict over the cancelling run's pending.
+      - name: Post the PR viewer selection status
+        if: ${{ !cancelled() }}
+        run: node scripts/ci-viewer-select-status.mjs --final "$RUNNER_TEMP/viewer-selection"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CI_PR_VIEWER_SELECT: ${{ vars.CI_PR_VIEWER_SELECT }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          JOB_NAME: Viewer tests, advisory (selected for this PR)
+          JOB_STATUS: ${{ job.status }}
+          SELECT_OUTCOME: ${{ steps.select.outcome }}
+          SELECT_RUN: ${{ steps.select.outputs.run }}
+          DOWNLOAD_OUTCOME: ${{ steps.download.outcome }}
+          RUN_OUTCOME: ${{ steps.run.outcome }}
       # Kept per PR run so a queue failure in a viewer test can be checked
       # against what this PR's selection covered (recall). Last, and on
       # always(), so it also carries result.json from the run.
@@ -2639,6 +2785,14 @@ jobs:
       # shell has a broken WebGPU device under software rendering.
       - name: Install Playwright video encoder
         run: pnpm exec playwright install ffmpeg
+      # The shard plan walks tests/e2e only (see scripts/ci-e2e-shards.mjs);
+      # Playwright's testDir is ./tests. Fail here, not by silently running a
+      # spec nowhere, if the two selections differ. Listing loads the specs
+      # and starts no browser or server.
+      - name: Check the shard plan covers every spec Playwright selects
+        run: |
+          pnpm exec playwright test --project=viewer-e2e-ci --list > "$RUNNER_TEMP/e2e-list.txt"
+          node scripts/ci-e2e-shards.mjs --check-list "$RUNNER_TEMP/e2e-list.txt"
       # CI_SHARD_RETRY (scripts/ci-shard-retry.mjs): see the viewer-tests job.
       # Unset, `continue-on-error` is false, the reporter list and
       # PLAYWRIGHT_JSON_OUTPUT_FILE expand to what they were, and the retry
@@ -2661,7 +2815,16 @@ jobs:
         # The test command must end before the 20-minute job limit so its
         # failure summary and test-results artifact survive a slow/hung test.
         # The list reporter also names completed tests while the job runs.
-        run: timeout --signal=INT --kill-after=30s 13m pnpm test:e2e:ci --shard=${{ matrix.shard }}/8 --reporter=list,@mergifyio/playwright${{ (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on') && ',json' || '' }}
+        # Files per shard come from scripts/ci-e2e-shards.mjs (bin-packed by
+        # measured duration), not Playwright's `--shard`, which splits by test
+        # count and left one shard at 13+ minutes while others took 3-5.
+        run: |
+          # To a file first, so a refusal fails the step (a failing process
+          # substitution would not) instead of running every spec unfiltered.
+          node scripts/ci-e2e-shards.mjs --shard ${{ matrix.shard }}/8 > "$RUNNER_TEMP/e2e-files.txt"
+          mapfile -t e2e_files < "$RUNNER_TEMP/e2e-files.txt"
+          [ "${#e2e_files[@]}" -gt 0 ]
+          timeout --signal=INT --kill-after=30s 13m pnpm test:e2e:ci "${e2e_files[@]}" --reporter=list,@mergifyio/playwright${{ (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on') && ',json' || '' }}
       - name: Retry the failed E2E tests once
         id: e2e_retry
         if: (success() || failure()) && steps.e2e.outcome == 'failure' && (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on')

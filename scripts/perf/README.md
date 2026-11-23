@@ -20,6 +20,30 @@ face-alignment tolerance alone also changed a separate authored recess in
 the source host before allowing a weld-induced bounds shift to extend the
 cutter through the core.
 
+## Flush recesses beyond a finish strip (#11313)
+
+When a weld changes the rectangle extension decision, check the authored
+box against the source triangles. A box that encloses only air and touches
+the exterior wall face can be skipped. Probe the face beyond the cutter's
+edge as well as inside its footprint. An empty box alone also matches a
+reveal already modeled into the finish, as on wall #6934 in `rvt01.ifc`.
+Require clear passage from the box interior away from the touching cap.
+This catches intersections that even parity can hide in overlapping shells.
+
+The native load probe matched mesh fingerprints on FZK-Haus, ISSUE_129,
+Holter, and `rvt01.ifc`. Timings were within the spread of the shared
+workstation runs.
+
+## Narrow finish strips in the exact fallback (#11275)
+
+The exact route now retains the core in the narrow-strip regression. A
+bounded surface-intersection test covers the area that point parity probes
+miss. It runs only after the welded/source extension disagreement and
+insets the authored box to ignore contact on its flush faces.
+
+Meshes matched the base on FZK-Haus, ISSUE_129, Holter, and rvt01.
+Timing on the loaded host did not establish a throughput change.
+
 ## Native finishes for mapped occurrences (#10995)
 
 The worker-pool A/B on AC20-FZK-Haus found no measurable change in parse or
@@ -2387,6 +2411,17 @@ Node consumer runs before and after produced identical mesh/triangle counts and
 byte-identical GLB exports for the committed wall and ArchiCAD FZK fixtures. See
 `tests/evidence/packed-workflows/worker-packaging.json`. Keep the external Vite
 bundle in acceptance: a Node-only WASM pass cannot prove worker asset closure.
+
+## Oblique partial finishes at a recess floor (#11278)
+
+Deferring a proved partial oblique interface to the exact cut removes the
+membrane in the rotated fixture. The source quads must share corners and
+the wider projected rectangle must cover the aperture. This keeps the
+proof grounded in the source mesh when projected corners differ by f32
+rounding.
+
+Meshes matched the base on FZK-Haus, ISSUE_129, Holter, and rvt01.
+Timing on the loaded host did not establish a throughput change.
 
 ## Several cutting planes: caps and clip cost (#7545)
 
@@ -6102,6 +6137,20 @@ selector itself. Applying it to the established horizontal-depth route changed
 real heavy-model cuts even though small synthetic cases remained green; the
 heavy census caught that overreach, and restoring the old horizontal route
 removed every branch-caused census delta.
+
+## Flush recesses on inward-wound source shells (#11276)
+
+The inward-wound recess fixture loses its extra membrane when the wider
+source face is identified by containment. A side wall at a corner
+exclusive to that face must extend beyond the authored cap for either
+signed-area group. Containment by itself could select a wider finish.
+
+The manifold-gated retry reorients uniformly inward-wound closed shells
+before the union. Mixed winding can represent a cavity and stays outside
+that recovery.
+
+Meshes matched the base on FZK-Haus, ISSUE_129, Holter, and rvt01.
+Timing on the loaded host did not establish a throughput change.
 
 ## Hole-wall winding and host-derived wall frames (#5410)
 

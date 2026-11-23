@@ -37,14 +37,20 @@ const HEX = /^#[0-9a-f]{6}$/i;
 /**
  * Script data: `[{label, color, refs?}]`; a colour that is not #rrggbb falls back to the palette.
  * Entries sharing a label merge (first colour wins), since a label is what the user toggles.
+ * With `loaded`, refs to other models are dropped (they colour nothing) and named in `unloadedModels`.
  */
-export function legendEntriesFromData(data: unknown): LegendEntry[] | null {
+export function legendEntriesFromData(data: unknown, loaded?: ReadonlySet<string>): { entries: LegendEntry[]; unloadedModels: string[] } | null {
   if (!Array.isArray(data)) return null;
   const byLabel = new Map<string, LegendEntry>();
+  const unloaded = new Set<string>();
   data.forEach((item, i) => {
     if (!item || typeof item !== 'object' || typeof (item as { label?: unknown }).label !== 'string') return;
     const { label, color, refs } = item as { label: string; color?: unknown; refs?: unknown };
-    const parsed = parseRefs(refs);
+    const parsed = parseRefs(refs).filter((ref) => {
+      if (!loaded || loaded.has(ref.modelId)) return true;
+      unloaded.add(ref.modelId);
+      return false;
+    });
     const existing = byLabel.get(label);
     if (existing) {
       const seen = new Set(existing.refs.map(encodeRef));
@@ -52,7 +58,7 @@ export function legendEntriesFromData(data: unknown): LegendEntry[] | null {
     }
     else byLabel.set(label, { label, color: typeof color === 'string' && HEX.test(color) ? color : legendColor(i), refs: parsed });
   });
-  return [...byLabel.values()];
+  return { entries: [...byLabel.values()], unloadedModels: [...unloaded] };
 }
 
 export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ props }) => {
@@ -64,24 +70,12 @@ export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ 
   const emptyLabel = t('a2ui.noGroupValue');
 
   const models = useModelsVersion();
-  const scriptEntries = useMemo(() => legendEntriesFromData(props.data), [props.data]);
-  // Script refs to models that are not loaded colour nothing: dropped from the targets and named in a note.
-  const { entries, unloadedModels } = useMemo(() => {
-    if (scriptEntries) {
-      const loaded = new Set(host.loadedModelIds());
-      const unloaded = new Set<string>();
-      for (const e of scriptEntries) for (const r of e.refs) if (!loaded.has(r.modelId)) unloaded.add(r.modelId);
-      const kept = scriptEntries.map((e) => ({ ...e, refs: e.refs.filter((r) => loaded.has(r.modelId)) }));
-      return { entries: kept, unloadedModels: [...unloaded] };
-    }
-    if (!result) return { entries: [] as LegendEntry[], unloadedModels: [] };
-    return {
-      entries: groupRows(reader, aggregatePool(result), props.by, emptyLabel)
-        .map((g, i) => ({ label: g.label, color: legendColor(i), refs: g.rows.map((r) => r.ref) })),
-      unloadedModels: [],
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `models` stands for the loaded set
-  }, [scriptEntries, result, reader, props.by, emptyLabel, host, models]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `models` stands for the loaded set
+  const script = useMemo(() => legendEntriesFromData(props.data, new Set(host.loadedModelIds())), [props.data, host, models]);
+  const queryEntries: LegendEntry[] = useMemo(() => (script || !result ? [] : groupRows(reader, aggregatePool(result), props.by, emptyLabel)
+    .map((g, i) => ({ label: g.label, color: legendColor(i), refs: g.rows.map((r) => r.ref) }))), [script, result, reader, props.by, emptyLabel]);
+  const entries = script?.entries ?? queryEntries;
+  const scriptEntries = script?.entries;
 
   const targets = entries.reduce((n, e) => n + e.refs.length, 0);
   /** True when something was coloured; entries without loaded refs colour nothing and never report success. */
@@ -124,7 +118,7 @@ export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ 
   return (
     <div style={weightStyle(props.weight)} className="flex min-w-0 flex-col gap-1.5">
       {title && <div className="text-sm font-semibold">{title}</div>}
-      {scriptEntries ? <ResultNotes unloadedModels={unloadedModels} /> : <ResultNotes result={result} shown={result?.total} />}
+      <ResultNotes result={result} shown={result?.total} unloadedModels={script?.unloadedModels} />
       {entries.length === 0 && (scriptEntries || !result?.unloadedModel) && <Note>{t('a2ui.empty')}</Note>}
       <ul className="flex flex-col gap-0.5 text-xs">
         {entries.map((entry) => (
@@ -142,7 +136,7 @@ export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ 
       </ul>
       {entries.length > 0 && (
         <div className="flex gap-1.5">
-          <Button size="sm" variant={applied ? 'outline' : 'default'} disabled={targets === 0} onClick={() => { apply(); }}>
+          <Button size="sm" variant={applied ? 'outline' : 'default'} disabled={targets === 0} onClick={apply}>
             {applied ? t('a2ui.legend.applied') : t('a2ui.legend.apply')}
           </Button>
           <Button size="sm" variant="ghost" onClick={() => { host.resetView(); setApplied(false); setHidden(new Set()); }}>

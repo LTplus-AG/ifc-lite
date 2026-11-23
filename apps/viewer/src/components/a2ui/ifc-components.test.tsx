@@ -117,7 +117,7 @@ describe('IFC catalog components', () => {
       { label: 'High', color: '#e5484d', refs: ['m:1'] },
       { label: 'High', color: '#00ff00', refs: ['m:2'] },
       { label: 'Low', color: 'red', refs: ['m:3'] },
-    ]);
+    ])?.entries;
     assert.deepEqual(entries?.map((e) => [e.label, e.refs.map((r) => r.expressId)]), [['High', [1, 2]], ['Low', [3]]]);
     assert.equal(entries?.[0].color, '#e5484d', 'the first colour wins');
     assert.notEqual(entries?.[1].color, 'red', 'a non-hex colour falls back to the palette');
@@ -125,7 +125,7 @@ describe('IFC catalog components', () => {
 
   it('ColorLegend: merged entries count each entity once (#11344)', () => {
     const entries = legendEntriesFromData([{ label: 'High', color: '#e5484d', refs: ['m:1'] }, { label: 'High', color: '#e5484d', refs: ['m:1', 'm:2'] }]);
-    assert.deepEqual(entries?.[0].refs.map((r) => r.expressId), [1, 2]);
+    assert.deepEqual(entries?.entries[0].refs.map((r) => r.expressId), [1, 2]);
   });
 
   it('GroupChart: a sum with no number at its path says so instead of drawing zero bars (#11344)', async () => {

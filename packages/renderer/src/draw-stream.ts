@@ -237,7 +237,7 @@ export class DrawStream {
     this.budget.apply(items, this.config.budgetMs, f.interacting, stats);
     items.sort((a, b) => a.d - b.d);
     for (const it of items) if (it.leaf) for (const i of it.leaf.members) drawn(this.members[i]!);
-    if (f.ortho && this.config.bundles) { this.encodeOrtho(f, items, stats); return stats; }
+    if (f.ortho?.capturing() && this.config.bundles) { this.encodeOrtho(f, items, stats); return stats; } // else uncaptured: draw directly
     const useBundles = this.config.bundles && f.allowBundles;
     const bundles: GPURenderBundle[] = [];
     const newBundle = (): GPURenderBundleEncoder => this.bundleEncoder('draw-stream-node');

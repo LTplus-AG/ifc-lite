@@ -1043,10 +1043,10 @@ export class Scene {
     return false;
   }
 
-  /** Flat (batched) pieces only, each once; no instanced materialisation (the draw stream's HLOD proxy source). */
+  /** Batch-owned pieces only (not textured, not instanced), each once: the draw stream's HLOD proxy source. */
   forEachFlatMeshData(visit: (md: MeshData) => void): void {
     const seen = new Set<MeshData>();
-    for (const pieces of this.meshDataMap.values()) for (const piece of pieces) { if (!seen.has(piece)) { seen.add(piece); visit(piece); } }
+    for (const pieces of this.meshDataMap.values()) for (const piece of pieces) { if (!seen.has(piece) && this.meshDataBucket.has(piece)) { seen.add(piece); visit(piece); } }
   }
 
   /**

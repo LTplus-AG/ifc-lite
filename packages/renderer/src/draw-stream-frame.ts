@@ -42,7 +42,7 @@ function keyHash(b: BatchedMesh): number {
   return h;
 }
 
-class DrawStreamGate {
+export class DrawStreamGate {
   private signature = '';
   private changedAt = 0;
   private readonly scratch = new Uint32Array(4);
@@ -51,9 +51,10 @@ class DrawStreamGate {
    * O(batches) signature of the batch set and the scene's geometry revision
    * (a model move or edit); the stream engages once it held for `settleMs`.
    */
-  settled(batches: readonly BatchedMesh[], config: DrawStreamConfig, revision: number): boolean {
+  settled(batches: readonly BatchedMesh[], config: DrawStreamConfig, revision: number, requestRender?: () => void): boolean {
     let sum = 0, resident = 0;
-    for (const b of batches) { sum = (sum + keyHash(b)) % 4294967296; if (b.gpuResident !== false) resident++; }
+    // Residency by batch identity: an eviction and a restore (a new object) in one interval still change it.
+    for (const b of batches) { sum = (sum + keyHash(b)) % 4294967296; if (b.gpuResident !== false) resident = (resident + b.id * 2654435761 + 1) % 4294967296; }
     // Residency is NOT part of the geometry signature. Over the GPU budget, a camera move
     // evicts offscreen batches; when that changed the signature, the stream went back to legacy,
     // waited `settleMs` and rebuilt its arena (a GB-scale GPU copy) and HLOD: 0.2-2 s frames on
@@ -63,9 +64,17 @@ class DrawStreamGate {
     const sig = `${batches.length}:${sum}:${revision}`;
     this.resident = resident;
     const now = performance.now();
-    if (sig !== this.signature) { this.signature = sig; this.changedAt = now; }
+    if (sig !== this.signature) {
+      this.signature = sig; this.changedAt = now;
+      // An idle viewer renders nothing more: ask for the frame that engages the stream.
+      clearTimeout(this.wake);
+      if (requestRender && config.settleMs > 0) this.wake = setTimeout(requestRender, config.settleMs + 1);
+    }
     return now - this.changedAt >= config.settleMs;
   }
+
+  private wake: ReturnType<typeof setTimeout> | undefined;
+  cancel(): void { clearTimeout(this.wake); this.wake = undefined; }
 
   private resident = 0;
 
@@ -116,7 +125,7 @@ export class RendererDrawStream {
     this.active = null;
     if (!this.config.stream) return batches;
     // Unsettled (a load, an unload, a model move): free the old arena, proxies and worker now.
-    if (!this.gate.settled(batches, this.config, revision)) { this.destroy(); return batches; }
+    if (!this.gate.settled(batches, this.config, revision, inputs.requestRender)) { this.dropStream(); return batches; }
     const stream = (this.stream ??= new DrawStream(device, pipeline, this.config));
     this.gate.sync(stream, batches, epoch, cell, inputs);
     this.active = stream;
@@ -136,6 +145,11 @@ export class RendererDrawStream {
 
   /** Drop the stream's GPU records, arenas, bundles and proxies (config change, device loss, teardown). */
   destroy(): void {
+    this.gate.cancel();
+    this.dropStream();
+  }
+
+  private dropStream(): void {
     this.stream?.destroy();
     this.stream = null;
     this.active = null;

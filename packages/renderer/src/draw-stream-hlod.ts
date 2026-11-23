@@ -26,6 +26,8 @@ import { STREAM_DELTA_FLOATS, STREAM_RECORD_FLOATS } from './shaders/main-stream
 import { packMeshMaterial } from './mesh-material.js';
 import { MESH_UNIFORM_FLOATS, MESH_UNIFORM_OFFSET } from './mesh-rte-uniforms.js';
 import type { RelativeToEyeFrame } from './relative-to-eye.js';
+
+type Finish = MeshData['material'];
 import { growAabb, type Vec3 } from './draw-stream-types.js';
 
 export interface ProxyDraw { vertexBuffer: GPUBuffer; baseVertex: number; count: number; record: number }
@@ -66,7 +68,8 @@ export class HlodTree {
   private jobs = new Map<number, HlodNode>();
   private nextJob = 1;
   private readonly palette = new Map<string, number>();
-  private readonly colours: [number, number, number, number][] = [];
+  /** Proxy colour slots: colour and surface finish, as the source pieces drew them. */
+  private readonly colours: { colour: [number, number, number, number]; finish: Finish | undefined }[] = [];
   private records = new Float32Array(0);
   private recordCount = 0;
   private origins: Vec3[] = [];
@@ -97,9 +100,10 @@ export class HlodTree {
     const size1 = this.leafCell * 2;
     forEachPiece((m) => {
       const p = m.positions; if (p.length < 9) return;
+      const [ox, oy, oz] = m.origin ?? [0, 0, 0]; // positions are relative to the piece's own frame
       let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
       for (let i = 0; i < p.length; i += 3) {
-        const x = p[i]!, y = p[i + 1]!, z = p[i + 2]!;
+        const x = p[i]! + ox, y = p[i + 1]! + oy, z = p[i + 2]! + oz;
         if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; if (z < z0) z0 = z; if (z > z1) z1 = z;
       }
       const c: Vec3 = [Math.floor((x0 + x1) / 2 / size1), Math.floor((y0 + y1) / 2 / size1), Math.floor((z0 + z1) / 2 / size1)];
@@ -132,10 +136,10 @@ export class HlodTree {
       error: size / this.grid, children: [], state: 'idle', draws: [], cpu: [], tris: 0, bundle: [null, null, null, null], ortho: [null, null] };
   }
 
-  private slotOf(color: readonly number[]): number {
-    const k = `${color[0]!.toFixed(3)},${color[1]!.toFixed(3)},${color[2]!.toFixed(3)},${color[3]!.toFixed(3)}`;
+  private slotOf(color: readonly number[], finish: Finish | undefined): number {
+    const k = `${color[0]!.toFixed(3)},${color[1]!.toFixed(3)},${color[2]!.toFixed(3)},${color[3]!.toFixed(3)}|${finish?.metallic ?? ''},${finish?.roughness ?? ''}`;
     let s = this.palette.get(k);
-    if (s === undefined) { s = this.colours.length; this.palette.set(k, s); this.colours.push([color[0]!, color[1]!, color[2]!, color[3]!]); }
+    if (s === undefined) { s = this.colours.length; this.palette.set(k, s); this.colours.push({ colour: [color[0]!, color[1]!, color[2]!, color[3]!], finish }); }
     return s;
   }
 
@@ -182,7 +186,7 @@ export class HlodTree {
       if (tri) for (let i = 0; i < tri.length; i++) indices[t++] = base + tri[i]!;
       else for (let i = 0; i < nv; i++) indices[t++] = base + i;
     };
-    if (n.level === 1) for (const m of n.pieces!) put(m.positions, [0, 0, 0], m.entityIds ? (i) => m.entityIds![i]! : () => m.expressId, this.slotOf(m.color), m.indices);
+    if (n.level === 1) for (const m of n.pieces!) put(m.positions, m.origin ?? [0, 0, 0], m.entityIds ? (i) => m.entityIds![i]! : () => m.expressId, this.slotOf(m.color, m.material), m.indices);
     else for (const c of n.children) { const o = centre(c); for (const p of c.cpu) put(p.positions, o, (i) => p.ids[i]!, p.slot, null); }
     n.pieces = undefined;
     const job = this.nextJob++;
@@ -221,14 +225,14 @@ export class HlodTree {
     this.onReady();
   }
 
-  private addRecord(colour: [number, number, number, number], origin: Vec3, node: HlodNode): number {
+  private addRecord({ colour, finish }: { colour: [number, number, number, number]; finish: Finish | undefined }, origin: Vec3, node: HlodNode): number {
     const i = this.recordCount++;
     if (this.records.length < this.recordCount * STREAM_RECORD_FLOATS) {
       const next = new Float32Array(Math.max(64, this.recordCount * 2) * STREAM_RECORD_FLOATS); next.set(this.records); this.records = next;
     }
     const r = this.records; const u = new Uint32Array(r.buffer); const o = i * STREAM_RECORD_FLOATS;
     r[o] = colour[0]; r[o + 1] = colour[1]; r[o + 2] = colour[2]; r[o + 3] = colour[3];
-    packMeshMaterial(this.scratch, colour[3]); const mr = MESH_UNIFORM_OFFSET.metallicRoughness;
+    packMeshMaterial(this.scratch, colour[3], finish); const mr = MESH_UNIFORM_OFFSET.metallicRoughness;
     r[o + 4] = this.scratch[mr]!; r[o + 5] = this.scratch[mr + 1]!; r[o + 6] = this.scratch[mr + 2]!; r[o + 7] = this.scratch[mr + 3]!;
     r[o + 12] = origin[0]; r[o + 13] = origin[1]; r[o + 14] = origin[2];
     u[o + 17] = 0xFFFFFFFF;

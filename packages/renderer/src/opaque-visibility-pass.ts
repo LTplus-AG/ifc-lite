@@ -123,6 +123,9 @@ export class OpaqueVisibilityPass {
     return true;
   }
 
+  /** Whether this frame's main and depth passes are captured, so `executeStreamBundles` can replay into them. */
+  capturing(): boolean { return this.frame !== null && this.active; }
+
   /** Sample count of the geometric-depth target (bundle encoder formats). */
   sampleCount(): number { return this.samples; }
 

@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import type { BatchedMesh } from './types.js';
 import { buildStreamNodes, linkHlodLeaves } from './draw-stream-nodes.js';
 import { collectStreamItems, StreamDrawBudget } from './draw-stream-cull.js';
-import { RendererDrawStream } from './draw-stream-frame.js';
+import { DrawStreamGate, RendererDrawStream } from './draw-stream-frame.js';
 import { nodeKey, type HlodNode, type HlodTree } from './draw-stream-hlod.js';
 import { PROXY_WORKER_SOURCE } from './draw-stream-proxy-worker.js';
 import { resolveDrawStreamConfig } from './draw-stream-config.js';
@@ -158,5 +158,45 @@ describe('draw stream proxy simplifier keys', () => {
     const out = reply as { pieces: { slot: number; ids: Uint32Array }[] } | null;
     assert.deepEqual(out!.pieces.map((p) => p.slot).sort((a, b) => a - b), [0, 1024]);
     assert.equal(out!.pieces.find((p) => p.slot === 0)!.ids.length, 6, 'the far triangle is its own, not merged into the near one');
+  });
+});
+
+describe('draw stream gate', () => {
+  const config = resolveDrawStreamConfig({ stream: true, settleMs: 0 });
+  const inputs = { visibility: () => 'all', alpha: () => 1, colorOverrides: null, colorOverrideGen: 0, emphasize: false, xrayActive: false };
+  const keyOf = (gate: DrawStreamGate, batches: BatchedMesh[]): string => {
+    let key = '';
+    const stream = { config, sync: (_b: unknown, _g: string, k: string) => { key = k; return true; } } as unknown as Parameters<DrawStreamGate['sync']>[0];
+    assert.equal(gate.settled(batches, config, 0), true);
+    gate.sync(stream, batches, 'e', 32, inputs);
+    return key;
+  };
+
+  it('changes the sync key when one batch is evicted and another restored in the same interval', () => {
+    const a = batch(1, 0), b = { ...batch(2, 40), gpuResident: false };
+    const gate = new DrawStreamGate();
+    const before = keyOf(gate, [a, b]);
+    const restored = { ...b, id: 99, gpuResident: true }, evicted = { ...a, gpuResident: false };
+    assert.notEqual(keyOf(gate, [evicted, restored]), before, 'same resident count, different resident batches');
+  });
+
+  it('keeps the geometry signature across a residency swap (no arena/HLOD rebuild)', () => {
+    let geom = '';
+    const gate = new DrawStreamGate();
+    const stream = { config, sync: (_b: unknown, g: string) => { geom = g; return true; } } as unknown as Parameters<DrawStreamGate['sync']>[0];
+    const a = batch(1, 0);
+    gate.settled([a], config, 0); gate.sync(stream, [a], 'e', 32, inputs); const first = geom;
+    const restored = { ...a, id: 7 };
+    gate.settled([restored], config, 0); gate.sync(stream, [restored], 'e', 32, inputs);
+    assert.equal(geom, first);
+  });
+
+  it('asks for a frame when the settle delay ends', async () => {
+    const gate = new DrawStreamGate();
+    let frames = 0;
+    assert.equal(gate.settled([batch(1, 0)], resolveDrawStreamConfig({ stream: true, settleMs: 5 }), 0, () => { frames++; }), false);
+    await new Promise((r) => setTimeout(r, 40));
+    assert.equal(frames, 1);
+    gate.cancel();
   });
 });

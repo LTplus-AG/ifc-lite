@@ -53,4 +53,14 @@ describe('highlight entity -> batch index', () => {
     list.push({ ...list[3]!, id: 999, expressIds: [777777], modelIndices: [0] });
     assert.deepEqual(shape(batchesHolding(s, new Set([777777]), 0, indexedResources)).found, [777777]);
   });
+
+  it('rebuilds when a candidate batch was swapped in place without a revision bump', () => {
+    const list = campus(50, 4);
+    const s = scene(list);
+    const id = list[3]!.expressIds[0]!;
+    assert.deepEqual(shape(batchesHolding(s, new Set([id]), 0, indexedResources)).found, [id]);
+    list[3] = { ...list[3]!, id: 1000, expressIds: [555555], modelIndices: [0] }; // in place, same length and revision
+    assert.deepEqual(shape(batchesHolding(s, new Set([id]), 0, indexedResources)), shape(batchesHolding(s, new Set([id]), 0, scanResources)));
+    assert.deepEqual(shape(batchesHolding(s, new Set([555555]), 0, indexedResources)).found, [555555]);
+  });
 });

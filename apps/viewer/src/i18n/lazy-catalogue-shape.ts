@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { retainedCatalogueShape } from './retained-catalogue-shape';
+import { a2uiMessageParameters } from './a2ui-catalogue-shape';
 import { registryCatalogueShape } from './registry-catalogue-shape';
 import { structuralDeriveShape, type StructuralDeriveKey } from './structural-derive-catalogue-shape';
 import type { flowReviewEn } from './catalogues/flow-review.en';
@@ -395,5 +396,5 @@ export function lazyMessageParameters(key: string): readonly string[] | null {
     const tail = key.slice('reviewWorkspace.'.length);
     return Object.hasOwn(reviewMessageShape, tail) ? reviewMessageShape[tail as WorkspaceReviewKey] : null;
   }
-  return null;
+  return a2uiMessageParameters(key);
 }

@@ -124,7 +124,6 @@
    561 apps/viewer/src/services/ifc-cache.ts
    559 apps/viewer/src/store/basketVisibleSet.ts
    444 apps/viewer/src/store/constants.ts
-   452 apps/viewer/src/store/slices/chatSlice.ts
    992 apps/viewer/src/store/slices/clashSlice.ts
   1201 apps/viewer/src/store/slices/collabSlice.ts
    877 apps/viewer/src/store/slices/drawing2DSlice.ts

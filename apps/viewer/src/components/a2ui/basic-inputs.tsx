@@ -13,6 +13,7 @@ import { createComponentImplementation } from '@a2ui/react';
 import { ButtonApi, CheckBoxApi, ChoicePickerApi, SliderApi, TextFieldApi } from '@a2ui/web_core/v1_0';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -101,6 +102,16 @@ export const ChoicePickerImpl = createComponentImplementation(ChoicePickerApi, (
     <div style={weightStyle(props.weight)} className="flex flex-col gap-1.5">
       {label && <span id={groupId} className="text-xs font-medium">{label}</span>}
       {props.filterable && <Input value={filter} onChange={(e) => setFilter(e.target.value)} aria-label={label} className="h-7" />}
+      {!multiple && props.displayStyle !== 'chips' ? (
+        // Single choice: the viewer's radio group (arrow keys move the choice).
+        <SegmentedControl
+          label={label ?? ''}
+          value={selected[0] ?? ''}
+          options={options.map((o) => ({ value: o.value, label: String(o.label) }))}
+          onValueChange={(value) => props.setValue([value])}
+          className="flex-wrap self-start"
+        />
+      ) : (
       <div role={multiple ? 'group' : 'radiogroup'} aria-labelledby={label ? groupId : undefined} className={cn('flex gap-1.5', props.displayStyle === 'chips' ? 'flex-row flex-wrap' : 'flex-col')}>
         {options.map((o) => {
           const on = selected.includes(o.value);
@@ -117,17 +128,12 @@ export const ChoicePickerImpl = createComponentImplementation(ChoicePickerApi, (
             >
               {String(o.label)}
             </Button>
-          ) : multiple ? (
-            <Checkbox key={o.value} checked={on} onCheckedChange={() => toggle(o.value)} label={String(o.label)} />
           ) : (
-            // Single choice: native radios, so arrow keys move the choice as in any radio group.
-            <label key={o.value} className="flex items-center gap-2 text-sm">
-              <input type="radio" name={groupId} value={o.value} checked={on} onChange={() => toggle(o.value)} className="accent-primary" />
-              {String(o.label)}
-            </label>
+            <Checkbox key={o.value} checked={on} onCheckedChange={() => toggle(o.value)} label={String(o.label)} />
           );
         })}
       </div>
+      )}
       <ValidationErrors errors={props.validationErrors} />
     </div>
   );

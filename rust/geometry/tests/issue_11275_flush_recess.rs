@@ -24,6 +24,10 @@ fn exact_fallback_keeps_core_under_narrow_finish_strip_11275() {
             .output()
             .unwrap();
         assert!(child.status.success(), "{}", String::from_utf8_lossy(&child.stderr));
+        assert!(
+            String::from_utf8_lossy(&child.stdout).contains("1 passed; 0 failed"),
+            "the child must execute the narrow-strip regression"
+        );
         return;
     }
     let content = split_wall::wall_with_finish([0.; 2], 0., 2.274, Recess::ToInterfaceAtTop, 1.05);

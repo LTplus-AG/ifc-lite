@@ -21,6 +21,7 @@
 
 import { StructuralDiagnostics } from './schema-converter-structural-diagnostics.js';
 import { DocumentLinks } from './schema-converter-document-links.js';
+import type { SourceStore } from './schema-converter-structural-source.js';
 import { ValueForms } from './schema-converter-value-forms.js';
 import { MaterialReferents } from './schema-converter-material-referent.js';
 import { getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@ifc-lite/parser';
@@ -75,13 +76,13 @@ export class EnumReconciliation {
   /** The IfcDocumentInformation <-> IfcDocumentReference link (#10846). */
   readonly documents = new DocumentLinks();
   /** Values a target slot's type cannot hold (#10847). */
-  readonly forms = new ValueForms();
+  readonly forms: ValueForms;
   /** The IfcMaterial a downgraded IfcMaterialProperties names (#10763). */
   readonly materials: MaterialReferents;
 
-  /** `materials`: the export's material records (#10763); without them every downgraded IfcMaterialProperties is left out and reported. */
-  constructor(materials = new MaterialReferents()) {
-    this.materials = materials;
+  constructor(deferDates = false, timeUnitSources?: readonly SourceStore[]) {
+    this.forms = new ValueForms(deferDates, timeUnitSources);
+    this.materials = new MaterialReferents();
   }
   private readonly losses = new Map<Loss, Map<string, number>>();
   /** Records written `.USERDEFINED.` with the label their rule needs unset, per type (#10780). */

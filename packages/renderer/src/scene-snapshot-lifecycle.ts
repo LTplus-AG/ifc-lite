@@ -37,6 +37,8 @@ export interface SceneSnapshotHost {
   meshes: Mesh[];
   nextSplitId: number;
   nextBatchId: number;
+  /** Batch buffers need COPY_SRC for draw-stream arenas (`Scene.setDrawStreamArena`). */
+  arenaCopySource: boolean;
   cachedMaxBufferSize: number;
   sharedFrameOrigins: Map<number, [number, number, number]>;
   activeBucketKey: Map<string, string>;
@@ -169,7 +171,7 @@ export class SceneSnapshotLifecycle {
     if (snapshot.batches.some((b) => b.vertexData.byteLength > maxBuffer || b.indices.byteLength > maxBuffer)) return null;
     let staged: BatchedMesh[];
     try {
-      staged = stageSnapshotBatches(snapshot, device, pipeline, scene.nextBatchId);
+      staged = stageSnapshotBatches(snapshot, device, pipeline, scene.nextBatchId, scene.arenaCopySource);
     } catch (err) {
       console.warn('[Scene] snapshot batches could not be staged', err);
       return null;

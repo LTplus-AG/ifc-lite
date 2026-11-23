@@ -133,10 +133,9 @@ export function normalizeQuery(input: unknown): { spec: IfcQuerySpec; problems: 
     if (typeof value === 'string' && value.trim()) spec[key] = value.trim();
     else problems.push({ path: key, message: `${key} must be a non-empty string` });
   }
-  if (raw.limit !== undefined && !(typeof raw.limit === 'number' && Number.isFinite(raw.limit))) {
-    problems.push({ path: 'limit', message: 'limit must be a number' });
-  }
-  const limit = typeof raw.limit === 'number' && Number.isFinite(raw.limit) ? Math.floor(raw.limit) : DEFAULT_QUERY_LIMIT;
+  const limitOk = typeof raw.limit === 'number' && Number.isFinite(raw.limit);
+  if (raw.limit !== undefined && !limitOk) problems.push({ path: 'limit', message: 'limit must be a number' });
+  const limit = limitOk ? Math.floor(raw.limit as number) : DEFAULT_QUERY_LIMIT;
   spec.limit = Math.min(Math.max(limit, 1), MAX_QUERY_LIMIT);
   return { spec, problems };
 }

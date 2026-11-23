@@ -68,6 +68,7 @@ import { recordDownloadedSourceFile } from '@/lib/sources/persistence';
 import { sanitizeFilename } from '@/lib/export/download';
 import { enqueueSourceLoad } from '@/lib/sources/loadQueue';
 import { toast, Toaster } from '@/components/ui/toast';
+import { refuseWhileWorkflowBusy } from '@/lib/flow/workflow-busy-refusal';
 import { reloadActiveModelInPlace } from './reloadActiveModel';
 import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { Upload, AlertTriangle, ChevronDown, ExternalLink, Plus } from 'lucide-react';
@@ -340,6 +341,8 @@ function ViewportContainerLive() {
     // Read the loaded state now, not at render: bundle preparation awaits
     // before routing, and a model that arrived meanwhile must be added to,
     // not replaced (#4476 review).
+    // Every branch's load is refused under a workflow lease; say so before any clear.
+    if (refuseWhileWorkflowBusy(t)) return;
     const current = viewerStoreApi.getState();
     const hasModelsLoaded = current.models.size > 0 || (current.geometryResult?.meshes?.length ?? 0) > 0;
     if (hasModelsLoaded) {
@@ -354,9 +357,13 @@ function ViewportContainerLive() {
       clearAllModels();
       void loadFilesSequentially(files, handles);
     }
-  }, [loadFile, loadFilesSequentially, resetViewerState, clearAllModels, viewerStoreApi]);
+  }, [loadFile, loadFilesSequentially, resetViewerState, clearAllModels, viewerStoreApi, t]);
 
   const prepareAndRoute = usePreparedModelFileRoute(routeLoad, setRecentFiles);
+  // The welcome card's recent files and demo load straight through loadFile.
+  const loadWelcomeFile = useCallback(async (file: File) => {
+    if (!refuseWhileWorkflowBusy(t)) await loadFile(file);
+  }, [loadFile, t]);
 
   // Cloud source providers (Dalux Build, etc.) download bytes outside the
   // viewer and hand them off via this event rather than calling addModel()
@@ -387,6 +394,8 @@ function ViewportContainerLive() {
         // that their batch died rather than watching nothing happen.
         try {
           const store = useViewerStore.getState();
+          // Refuse on every branch: with models loaded each add would be refused one by one.
+          if (refuseWhileWorkflowBusy(t)) return;
           const anyLoaded =
             store.models.size > 0 || (store.geometryResult?.meshes?.length ?? 0) > 0;
           if (!anyLoaded) {
@@ -397,6 +406,7 @@ function ViewportContainerLive() {
           for (let i = 0; i < batch.length; i++) {
             const item = batch[i];
             if (!item) continue;
+            if (refuseWhileWorkflowBusy(t)) break; // a workflow took the lease between items
             batch[i] = null; // release the buffer once this iteration owns it
             // `item.name` comes from a remote provider's file listing — it is
             // untrusted input reaching a filename position (the File
@@ -438,7 +448,7 @@ function ViewportContainerLive() {
     window.addEventListener(SOURCE_DOWNLOAD_EVENT, handleSourceDownload);
     return () =>
       window.removeEventListener(SOURCE_DOWNLOAD_EVENT, handleSourceDownload);
-  }, [addModel, resetViewerState, clearAllModels, sourceHost]);
+  }, [addModel, resetViewerState, clearAllModels, sourceHost, t]);
 
   // Window drops on any viewer chrome route through the same guarded loader.
   // Unsupported WebGPU reports through the shared load-error card (#5851).
@@ -701,7 +711,7 @@ function ViewportContainerLive() {
             onOpenClick={() => { void handleOpenClick(); }}
             onStartBlank={() => { void handleStartBlank(); }}
             recentFiles={recentFiles}
-            loadFile={loadFile}
+            loadFile={loadWelcomeFile}
           />
 
           </div>

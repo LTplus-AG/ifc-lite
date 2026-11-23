@@ -680,12 +680,11 @@ ENDSEC;\nEND-ISO-10303-21;\n";
 }
 
 #[test]
-fn converted_rooted_entity_keeps_source_globalid_for_later_unify() {
+fn converted_alignment_proxies_stay_distinct_with_a_shared_source_globalid() {
     // Two IFC4X3 models sharing one IfcAlignmentSegment (a rooted entity) GlobalId,
     // exported to IFC4 where the segment has no counterpart and is downgraded to a
-    // proxy with a generated placeholder GlobalId. The first model must still
-    // register the SOURCE GlobalId, so the second model's copy unifies with it
-    // instead of emitting a second proxy (CR #2952).
+    // proxy with a generated placeholder GlobalId. Both proxies survive, as in
+    // the TypeScript writer, because a generic proxy cannot be a merge target.
     let shared = "0aBcDeFgHiJkLmNoPqRsT1"; // 22 charset chars
     let model = |proj: &str| {
         format!(
@@ -700,9 +699,7 @@ ENDSEC;\nEND-ISO-10303-21;\n"
     let opts = MergedOptions { schema: Some("IFC4".to_string()), ..Default::default() };
     let (merged, _) = export_merged_with_stats(&[a.as_bytes(), b.as_bytes()], &opts);
 
-    // The shared segment became exactly one proxy (the second unified with the
-    // first), and no rooted GlobalId is emitted twice.
-    assert_eq!(type_count(&merged, "=IFCPROXY("), 1, "shared converted entity unified, not duplicated");
+    assert_eq!(type_count(&merged, "=IFCPROXY("), 2, "both converted records survive");
     let guids = leading_guids(&merged);
     let mut unique = guids.clone();
     unique.sort();

@@ -167,13 +167,16 @@ class EntityBatchIndex {
   }
 }
 
-let cachedIndex: EntityBatchIndex | null = null;
+/** One index per scene, so renderers sharing a page never evict each other's. */
+const indexByScene = new WeakMap<BatchHighlightScene, EntityBatchIndex>();
 function entityBatchIndex(scene: BatchHighlightScene, list: readonly BatchedMesh[]): EntityBatchIndex {
   const revision = scene.getPickGeometryRevision();
-  if (!cachedIndex || cachedIndex.list !== list || cachedIndex.length !== list.length || cachedIndex.revision !== revision) {
-    cachedIndex = new EntityBatchIndex(list, list.length, revision);
+  let index = indexByScene.get(scene);
+  if (!index || index.list !== list || index.length !== list.length || index.revision !== revision) {
+    index = new EntityBatchIndex(list, list.length, revision);
+    indexByScene.set(scene, index);
   }
-  return cachedIndex;
+  return index;
 }
 
 /** Whether the quantized highlight pipeline a batch waited for exists now (only quantized pipelines are built late). */

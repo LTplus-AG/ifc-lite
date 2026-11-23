@@ -77,7 +77,8 @@ export class RendererDrawStream {
   private active: DrawStream | null = null;
   private readonly gate = new DrawStreamGate();
 
-  getConfig(): Readonly<DrawStreamConfig> { return this.config; }
+  /** Whether the stream may engage at all (callers skip building its frame inputs otherwise). */
+  get enabled(): boolean { return this.config.stream; }
 
   /** Replace the config; the current stream is dropped and rebuilds on the next settled frame. */
   configure(config: Readonly<DrawStreamConfig>): void {
@@ -112,9 +113,7 @@ export class RendererDrawStream {
     const stream = this.active;
     if (!stream) throw new Error('RendererDrawStream.encode: the stream did not engage this frame');
     stream.prepareFrame(frameUniforms, rte);
-    const stats = stream.encode(inputs);
-    stream.forEachDrawnBatch(drawn);
-    return stats;
+    return stream.encode(inputs, drawn);
   }
 
   /** Drop the stream's GPU records, arenas, bundles and proxies (config change, device loss, teardown). */

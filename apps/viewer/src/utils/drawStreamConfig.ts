@@ -29,7 +29,8 @@ export function getDrawStreamConfig(): DrawStreamConfig {
  * needs COPY_SRC at upload). A no-op when every path is off, so the renderer
  * keeps its defaults untouched.
  */
-export function configureDrawStream(renderer: Pick<Renderer, 'setDrawStreamConfig'>, config: DrawStreamConfig = getDrawStreamConfig()): boolean {
+export function configureDrawStream(renderer: Pick<Renderer, 'setDrawStreamConfig'>): boolean {
+  const config = getDrawStreamConfig();
   if (!config.stream && !config.hlIndex) return false;
   renderer.setDrawStreamConfig(config);
   console.log(`[Viewport] draw stream on (stream=${config.stream}, arena=${config.arena}, hlod=${config.hlod})`);

@@ -15,7 +15,8 @@ export class StreamPipelines {
   /** group(0): frame uniform, per-member records, per-member origin deltas. */
   readonly bindGroupLayout: GPUBindGroupLayout;
   private readonly layout: GPUPipelineLayout;
-  private readonly pipelines = new Map<string, GPURenderPipeline>();
+  /** Indexed by quantized * 4 + discardFree * 2 + objectId. */
+  private pipelines: (GPURenderPipeline | undefined)[] = [];
   private modules: { full: GPUShaderModule; fast: GPUShaderModule; fullSource: string; fastSource: string } | null = null;
 
   constructor(private readonly device: GPUDevice, private readonly pipeline: RenderPipeline) {
@@ -31,8 +32,8 @@ export class StreamPipelines {
 
   /** The stream pipeline for a vertex layout and opaque draw mode, built on first use. */
   get(quantized: boolean, mode: OpaqueDrawMode): GPURenderPipeline {
-    const key = `${quantized ? 'q' : 'f'}${mode.discardFree ? 1 : 0}${mode.objectId ? 1 : 0}`;
-    let p = this.pipelines.get(key);
+    const slot = (quantized ? 4 : 0) + (mode.discardFree ? 2 : 0) + (mode.objectId ? 1 : 0);
+    let p = this.pipelines[slot];
     if (p) return p;
     if (!this.modules) {
       const fullSource = streamShaderSource(mainShaderSource); const fastSource = streamShaderSource(opaqueFastShaderSource);
@@ -44,13 +45,13 @@ export class StreamPipelines {
     const frag = base.fragment!;
     const module = mode.discardFree ? this.modules.fast : this.modules.full;
     const targets = [...frag.targets].map((t, i) => (i === 1 && t && !mode.objectId ? { ...t, writeMask: 0 } : t));
-    const descriptor: GPURenderPipelineDescriptor = { ...base, label: `draw-stream-${key}`, layout: this.layout,
+    const descriptor: GPURenderPipelineDescriptor = { ...base, label: `draw-stream-${slot}`, layout: this.layout,
       vertex: { module, entryPoint: quantized ? 'vs_stream_quantized' : 'vs_stream', buffers: quantized ? QUANTIZED_VERTEX_BUFFERS : MESH_VERTEX_BUFFERS },
       fragment: { ...frag, module, targets } };
     p = this.pipeline.visibility.create(descriptor, mode.discardFree ? this.modules.fastSource : this.modules.fullSource);
-    this.pipelines.set(key, p);
+    this.pipelines[slot] = p;
     return p;
   }
 
-  clear(): void { this.pipelines.clear(); }
+  clear(): void { this.pipelines = []; }
 }

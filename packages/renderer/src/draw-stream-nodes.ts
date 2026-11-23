@@ -5,7 +5,7 @@
 /** Spatial nodes of the draw stream and their links into the HLOD tree (`draw-stream.ts`). */
 import type { BatchedMesh } from './types.js';
 import { nodeKey, type HlodTree } from './draw-stream-hlod.js';
-import { cellOf, type StreamBatchState, type StreamNode, type Vec3 } from './draw-stream-types.js';
+import { cellOf, growAabb, type StreamBatchState, type StreamNode, type Vec3 } from './draw-stream-types.js';
 
 /** Group stream members into one node per `cell`-sized chunk cell (members with bounds only). */
 export function buildStreamNodes(members: readonly BatchedMesh[], cell: number): StreamNode[] {
@@ -19,7 +19,7 @@ export function buildStreamNodes(members: readonly BatchedMesh[], cell: number):
       node = { coords: c, min: [...bb.min], max: [...bb.max], members: [], tris0: 0, tris1: 0, entries: 0, bundles: [null, null, null, null, null, null, null, null], ortho: [null, null, null, null] };
       byCell.set(k, node);
     }
-    for (let a = 0; a < 3; a++) { node.min[a] = Math.min(node.min[a]!, bb.min[a]!); node.max[a] = Math.max(node.max[a]!, bb.max[a]!); }
+    growAabb(node, bb.min, bb.max);
     node.members.push(i); node.entries += b.expressIds.length;
     node.tris0 += b.indexCount / 3; node.tris1 += (b.lod1IndexBuffer && b.lod1IndexCount ? b.lod1IndexCount : b.indexCount) / 3;
   }
@@ -63,7 +63,7 @@ export function linkHlodLeaves(h: HlodTree | null, nodes: StreamNode[], legacy: 
     if (list) list.push(leaf); else links.leavesByParent.set(parent.key, [leaf]);
     for (let level = 1, c = pc; level < h.levels.length; level++, c = [c[0] >> 1, c[1] >> 1, c[2] >> 1]) {
       const n = h.levels[level]?.get(nodeKey(level, c)); if (!n) break;
-      for (let a = 0; a < 3; a++) { n.min[a] = Math.min(n.min[a]!, leaf.min[a]!); n.max[a] = Math.max(n.max[a]!, leaf.max[a]!); }
+      growAabb(n, leaf.min, leaf.max);
     }
   }
   return links;

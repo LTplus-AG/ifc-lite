@@ -39,6 +39,7 @@ import { buildStreamNodes, linkHlodLeaves, type HlodLinks } from './draw-stream-
 import { collectStreamItems, StreamDrawBudget } from './draw-stream-cull.js';
 import { cellOf, idOf, modeIndex, type StreamBatchState, type StreamFrameInputs, type StreamFrameStats, type StreamItem, type StreamNode } from './draw-stream-types.js';
 import type { DrawStreamConfig } from './draw-stream-config.js';
+import { DEFAULT_CHUNK_CELL_SIZE } from './chunk-grid.js';
 import type { MeshData } from '@ifc-lite/geometry';
 
 export type { StreamBatchState, StreamFrameInputs, StreamFrameStats } from './draw-stream-types.js';
@@ -73,8 +74,11 @@ export class DrawStream {
   private arena: GeometryArena | null = null;
   private readonly budget = new StreamDrawBudget();
   private orthoKey = '';
-  private prewarmCursor = 0;
-  private altPrewarmCursor = 0;
+  /** Prewarm resume positions: this frame's mode, and the other discard mode. */
+  private readonly prewarmCursors = [0, 0];
+  /** Per mode index: prewarm found nothing left to record (cleared on any invalidation). */
+  private readonly warmModes = [false, false, false, false];
+  private warmReady = 0;
   private syncCount = 0;
   private invalidationCount = 0;
 
@@ -92,8 +96,8 @@ export class DrawStream {
     forEachPiece?: (visit: (m: MeshData) => void) => void, requestRender?: () => void): boolean {
     if (requestRender) this.requestRender = requestRender;
     if (key === this.key && geomKey === this.geomKey) return false;
-    this.key = key; this.syncCount++;
-    const leafCell = cell > 0 ? cell : 32;
+    this.key = key; this.syncCount++; this.warmModes.fill(false);
+    const leafCell = cell > 0 ? cell : DEFAULT_CHUNK_CELL_SIZE;
     if (this.config.hlod && forEachPiece && geomKey !== this.geomKey) {
       this.hlod?.destroy();
       this.hlod = new HlodTree(this.device, leafCell, this.config.hlodGrid, () => this.requestRender());
@@ -149,19 +153,6 @@ export class DrawStream {
     this.deltaImage = new Float32Array(n * STREAM_DELTA_FLOATS);
   }
 
-  /** Leaves drawn by the last `encode`, whose member batches count as drawn for GPU residency. */
-  private readonly drawnLeaves: StreamNode[] = [];
-
-  /**
-   * Visit every batch the last `encode` drew (leaf members; proxies stand in for, and
-   * do not keep warm, the batches below them). The residency budget evicts
-   * least-recently-drawn batches: without this, every stream-drawn batch looked
-   * never drawn, was evicted, fell back to legacy and forced a resync.
-   */
-  forEachDrawnBatch(visit: (b: BatchedMesh) => void): void {
-    for (const leaf of this.drawnLeaves) for (const i of leaf.members) { const b = this.members[i]; if (b) visit(b); }
-  }
-
   /** Write the frame uniform and, when the camera moved, every member's origin delta. */
   prepareFrame(frameUniforms: Float32Array, rte: RelativeToEyeFrame): void {
     this.device.queue.writeBuffer(this.frameBuffer, 0, frameUniforms);
@@ -189,12 +180,7 @@ export class DrawStream {
   private encodeNode(enc: GPURenderPassEncoder | GPURenderBundleEncoder, node: StreamNode, lod1: boolean, mode: OpaqueDrawMode, bindAll: boolean,
     map: (p: GPURenderPipeline) => GPURenderPipeline = (p) => p, group2?: GPUBindGroup): number {
     let bound: GPURenderPipeline | null = null; let draws = 0;
-    if (bindAll) {
-      enc.setBindGroup(0, this.ensureBindGroup());
-      enc.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
-      enc.setBindGroup(2, group2 ?? emptyBindGroup(this.device));
-      enc.setBindGroup(3, sectionExclusions(this.device).bindGroup);
-    }
+    if (bindAll) { enc.setBindGroup(0, this.ensureBindGroup()); this.bindFrameGroups(enc, group2); }
     let vb: GPUBuffer | null = null; let ib: GPUBuffer | null = null;
     for (const i of node.members) {
       const b = this.members[i]!;
@@ -219,12 +205,16 @@ export class DrawStream {
     return draws;
   }
 
-  /** Cull nodes, sort them front to back, and draw (bundles where allowed). */
-  encode(f: StreamFrameInputs): StreamFrameStats {
+  /**
+   * Cull nodes, sort them front to back, and draw (bundles where allowed).
+   * `drawn` visits every member of a drawn leaf (proxies stand in for, and do
+   * not keep warm, the batches below them): the residency budget evicts
+   * least-recently-drawn batches, so stream-drawn ones must count as drawn.
+   */
+  encode(f: StreamFrameInputs, drawn: (b: BatchedMesh) => void): StreamFrameStats {
     const h = this.hlod;
     const stats: StreamFrameStats = { nodes: this.nodes.length, nodesDrawn: 0, draws: 0, tris: 0, bundlesRecorded: 0, entries: 0, syncs: this.syncCount, invalidations: this.invalidationCount, arenaBytes: this.arena?.bytes ?? 0, budgetDraws: 0, budgetCut: 0,
       proxiesDrawn: 0, proxyReady: h?.stats.ready ?? 0, proxyNodes: h?.stats.nodes ?? 0, proxyBuildMs: h?.stats.buildMs ?? 0, proxyBytes: h?.stats.proxyBytes ?? 0 };
-    this.drawnLeaves.length = 0;
     if (this.members.length === 0) return stats;
     const bg = this.ensureBindGroup();
     // Bundles are cached per draw mode: the viewer's effects governor toggles edges (object-id
@@ -234,16 +224,15 @@ export class DrawStream {
     const keyChanged = bundleKey !== this.bundleKey, hlodChanged = h !== null && h.generation !== this.hlodGeneration;
     if (keyChanged) { this.bundleKey = bundleKey; this.invalidationCount++; for (const n of this.nodes) n.bundles.fill(null); }
     if (hlodChanged) { this.hlodGeneration = h.generation; this.hlodBindGroup = null; }
-    if (h && (keyChanged || hlodChanged)) for (const l of h.levels) if (l) for (const n of l.values()) n.bundle.fill(null);
+    if (keyChanged || hlodChanged) { if (h) for (const n of h.nodes()) n.bundle.fill(null); this.warmModes.fill(false); }
     const items = collectStreamItems(f, this.nodes, h, this.links, this.config.hlodPx);
     this.budget.apply(items, this.config.budgetMs, f.interacting, stats);
     items.sort((a, b) => a.d - b.d);
-    for (const it of items) if (it.leaf) this.drawnLeaves.push(it.leaf);
+    for (const it of items) if (it.leaf) for (const i of it.leaf.members) drawn(this.members[i]!);
     if (f.ortho && this.config.bundles) { this.encodeOrtho(f, items, stats); return stats; }
     const useBundles = this.config.bundles && f.allowBundles;
     const bundles: GPURenderBundle[] = [];
-    const base = this.pipeline.getStreamBase();
-    const newBundle = (): GPURenderBundleEncoder => this.device.createRenderBundleEncoder({ label: 'draw-stream-node', colorFormats: [base.colorFormat, 'rgba8unorm'], depthStencilFormat: base.depthFormat, sampleCount: base.sampleCount });
+    const newBundle = (): GPURenderBundleEncoder => this.bundleEncoder('draw-stream-node');
     // At most RECORD_PER_FRAME first-sight recordings per frame. A node past the cap
     // draws directly this frame (≈0.1 ms for a 30-draw node vs ≈0.9 ms to record its bundle)
     // and prewarm records it later, so a camera move onto hundreds of unseen nodes right after
@@ -293,38 +282,36 @@ export class DrawStream {
    * the frame that first sees them (the campus x2 p99 spike).
    */
   private prewarm(newBundle: () => GPURenderBundleEncoder, mode: OpaqueDrawMode, stats: StreamFrameStats): void {
-    let budget = PREWARM_PER_FRAME;
-    const leaves = this.nodes.length;
     const mi = modeIndex(mode);
-    for (let scanned = 0; budget > 0 && scanned < leaves * 2; scanned++) {
-      const k = this.prewarmCursor++ % (leaves * 2);
-      const node = this.nodes[k >> 1]!; const slot = mi * 2 + (k & 1);
-      if (node.bundles[slot]) continue;
-      const enc = newBundle(); this.encodeNode(enc, node, (k & 1) === 1, mode, true); node.bundles[slot] = enc.finish(); budget--; stats.bundlesRecorded++;
-    }
-    if (this.hlod && budget > 0) {
-      for (const l of this.hlod.levels) {
-        if (!l || budget <= 0) continue;
-        for (const n of l.values()) {
-          if (budget <= 0) break;
-          if (n.state !== 'ready' || n.bundle[mi]) continue;
-          const enc = newBundle(); this.encodeProxy(enc, n, mode, true); n.bundle[mi] = enc.finish(); budget--; stats.bundlesRecorded++;
-        }
+    const ready = this.hlod?.stats.ready ?? 0; // a proxy turning ready adds a bundle to record
+    if (ready !== this.warmReady) { this.warmReady = ready; this.warmModes.fill(false); }
+    if (this.warmModes[mi]) return; // every slot this prewarm covers is recorded: skip the scans
+    let budget = this.warmLeaves(newBundle, mode, PREWARM_PER_FRAME, 0, stats);
+    if (this.hlod) {
+      for (const n of this.hlod.nodes()) {
+        if (budget <= 0) break;
+        if (n.state !== 'ready' || n.bundle[mi]) continue;
+        const enc = newBundle(); this.encodeProxy(enc, n, mode, true); n.bundle[mi] = enc.finish(); budget--; stats.bundlesRecorded++;
       }
     }
     // Once this mode is warm, warm the other discard mode too. A section plane (or a
     // translucent override) flips the opaque pass to the discarding variant, and its first frame
     // otherwise recorded or directly encoded every visible node (section toggle 38 -> 134 ms).
-    if (budget > 0) {
-      const alt: OpaqueDrawMode = { ...mode, discardFree: !mode.discardFree };
-      const ai = modeIndex(alt);
-      for (let scanned = 0; budget > 0 && scanned < leaves * 2; scanned++) {
-        const k = this.altPrewarmCursor++ % (leaves * 2);
-        const node = this.nodes[k >> 1]!; const slot = ai * 2 + (k & 1);
-        if (node.bundles[slot]) continue;
-        const enc = newBundle(); this.encodeNode(enc, node, (k & 1) === 1, alt, true); node.bundles[slot] = enc.finish(); budget--; stats.bundlesRecorded++;
-      }
+    if (budget > 0) budget = this.warmLeaves(newBundle, { ...mode, discardFree: !mode.discardFree }, budget, 1, stats);
+    // Nothing left to record: stay idle until a resync, a bundle invalidation or a new ready proxy.
+    if (budget === PREWARM_PER_FRAME) this.warmModes[mi] = true;
+  }
+
+  /** Record up to `budget` missing leaf bundles (both LODs) for `mode`, resuming at cursor `c`; returns the budget left. */
+  private warmLeaves(newBundle: () => GPURenderBundleEncoder, mode: OpaqueDrawMode, budget: number, c: 0 | 1, stats: StreamFrameStats): number {
+    const slots = this.nodes.length * 2; const mi = modeIndex(mode);
+    for (let scanned = 0; budget > 0 && scanned < slots; scanned++) {
+      const k = this.prewarmCursors[c]++ % slots;
+      const node = this.nodes[k >> 1]!; const slot = mi * 2 + (k & 1);
+      if (node.bundles[slot]) continue;
+      const enc = newBundle(); this.encodeNode(enc, node, (k & 1) === 1, mode, true); node.bundles[slot] = enc.finish(); budget--; stats.bundlesRecorded++;
     }
+    return budget;
   }
 
   /**
@@ -342,11 +329,10 @@ export class DrawStream {
     if (key !== this.orthoKey) {
       this.orthoKey = key;
       for (const n of this.nodes) n.ortho = [null, null, null, null];
-      if (this.hlod) for (const l of this.hlod.levels) if (l) for (const n of l.values()) n.ortho = [null, null];
+      if (this.hlod) for (const n of this.hlod.nodes()) n.ortho = [null, null];
     }
-    const base = this.pipeline.getStreamBase();
-    const colourEnc = (): GPURenderBundleEncoder => this.device.createRenderBundleEncoder({ label: 'draw-stream-ortho-colour', colorFormats: [base.colorFormat, 'rgba8unorm'], depthStencilFormat: base.depthFormat, sampleCount: base.sampleCount });
-    const depthEnc = (): GPURenderBundleEncoder => this.device.createRenderBundleEncoder({ label: 'draw-stream-ortho-depth', colorFormats: [], depthStencilFormat: 'depth32float', sampleCount: vis.sampleCount() });
+    const colourEnc = (): GPURenderBundleEncoder => this.bundleEncoder('draw-stream-ortho-colour');
+    const depthEnc = (): GPURenderBundleEncoder => this.bundleEncoder('draw-stream-ortho-depth', { sampleCount: vis.sampleCount() });
     const colourOf = (p: GPURenderPipeline): GPURenderPipeline => vis.variantsOf(p)?.colour ?? p;
     const depthOf = (p: GPURenderPipeline): GPURenderPipeline => { const d = vis.variantsOf(p)?.depth; if (!d) throw new Error('draw stream: orthographic depth variant missing'); return d; };
     const colour: GPURenderBundle[] = []; const depth: GPURenderBundle[] = [];
@@ -378,14 +364,24 @@ export class DrawStream {
     ] });
     enc.setPipeline(map(this.pipelines.get(false, mode)));
     enc.setBindGroup(0, this.hlodBindGroup);
-    if (bindAll) {
-      enc.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
-      enc.setBindGroup(2, group2 ?? emptyBindGroup(this.device));
-      enc.setBindGroup(3, sectionExclusions(this.device).bindGroup);
-    }
+    if (bindAll) this.bindFrameGroups(enc, group2);
     enc.setIndexBuffer(iota, 'uint32');
     let vb: GPUBuffer | null = null;
     for (const d of n.draws) { if (d.vertexBuffer !== vb) { enc.setVertexBuffer(0, d.vertexBuffer); vb = d.vertexBuffer; } enc.drawIndexed(d.count, 1, 0, d.baseVertex, d.record); }
+  }
+
+  /** Groups 1-3 a bundle or a direct draw after a bundle replay must bind itself. */
+  private bindFrameGroups(enc: GPURenderPassEncoder | GPURenderBundleEncoder, group2?: GPUBindGroup): void {
+    enc.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
+    enc.setBindGroup(2, group2 ?? emptyBindGroup(this.device));
+    enc.setBindGroup(3, sectionExclusions(this.device).bindGroup);
+  }
+
+  private bundleEncoder(label: string, depthOnly?: { sampleCount: number }): GPURenderBundleEncoder {
+    const base = this.pipeline.getStreamBase();
+    return this.device.createRenderBundleEncoder(depthOnly
+      ? { label, colorFormats: [], depthStencilFormat: 'depth32float', sampleCount: depthOnly.sampleCount }
+      : { label, colorFormats: [base.colorFormat, 'rgba8unorm'], depthStencilFormat: base.depthFormat, sampleCount: base.sampleCount });
   }
 
   destroy(): void {

@@ -83,6 +83,11 @@ export function cellOf(min: readonly number[], max: readonly number[], cell: num
   return [Math.floor((min[0]! + max[0]!) / 2 / cell), Math.floor((min[1]! + max[1]!) / 2 / cell), Math.floor((min[2]! + max[2]!) / 2 / cell)];
 }
 
+/** Grow `box` to contain the AABB `min`..`max`. */
+export function growAabb(box: { min: number[]; max: number[] }, min: readonly number[], max: readonly number[]): void {
+  for (let a = 0; a < 3; a++) { box.min[a] = Math.min(box.min[a]!, min[a]!); box.max[a] = Math.max(box.max[a]!, max[a]!); }
+}
+
 /** Bundle-cache index of an opaque draw mode. */
 export const modeIndex = (m: OpaqueDrawMode): number => (m.discardFree ? 2 : 0) + (m.objectId ? 1 : 0);
 

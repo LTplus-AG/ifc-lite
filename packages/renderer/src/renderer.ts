@@ -2276,8 +2276,8 @@ export class Renderer {
                 };
 
                 // Draw stream: once engaged, plain opaque whole batches move to it; the rest stay in this loop.
-                const loopBatches = this.drawStream.begin(device, this.pipeline, allBatchedMeshes,
-                    `${this._partialBatchEpoch}|${xray.active}|${options.emphasizeOverrides === true}|${hasVisibilityFiltering}`, this.scene.getSpatialChunking()?.cellSize ?? 32, {
+                const loopBatches = !this.drawStream.enabled ? allBatchedMeshes : this.drawStream.begin(device, this.pipeline, allBatchedMeshes,
+                    `${this._partialBatchEpoch}|${xray.active}|${options.emphasizeOverrides === true}|${hasVisibilityFiltering}`, this.scene.getSpatialChunking()?.cellSize ?? 0, {
                         visibility: (b) => (hasVisibilityFiltering ? this._batchVisibility.classify(b, this._visibilityVersion, options.hiddenIds, options.isolatedIds) : 'all'),
                         alpha: (b) => alphaForBatch(b, b.color[3]), colorOverrides, colorOverrideGen, emphasize: options.emphasizeOverrides === true, xrayActive: xray.active,
                         forEachPiece: (visit) => this.scene.forEachFlatMeshData(visit), requestRender: () => this.requestRender(),
@@ -3185,7 +3185,6 @@ export class Renderer {
         this.requestRender();
     }
 
-    getDrawStreamConfig(): Readonly<DrawStreamConfig> { return this.drawStream.getConfig(); }
 
 
     /** MEASURED external surface, not the 4400-line `Scene`: widening `SceneContents` is a published-API decision, not a detail — see `scene-contents.ts`. */

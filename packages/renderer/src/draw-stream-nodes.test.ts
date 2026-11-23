@@ -103,6 +103,7 @@ describe('renderer draw stream glue', () => {
     assert.equal(glue.begin(device, pipeline, batches, 'e', 32, inputs), batches);
     assert.equal(glue.engaged, false);
     assert.equal(glue.highlightIndex, false);
+    assert.equal(glue.enabled, false);
     assert.throws(() => glue.encode(new Float32Array(4), {} as Parameters<RendererDrawStream['encode']>[1], frame(), () => {}));
   });
 
@@ -112,6 +113,6 @@ describe('renderer draw stream glue', () => {
     assert.equal(glue.begin(device, pipeline, batches, 'e', 32, inputs), batches);
     assert.equal(glue.engaged, false);
     assert.equal(glue.highlightIndex, true, 'the stream implies the highlight index');
-    assert.equal(glue.getConfig().stream, true);
+    assert.equal(glue.enabled, true);
   });
 });

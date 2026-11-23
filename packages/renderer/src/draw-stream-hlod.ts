@@ -26,8 +26,7 @@ import { STREAM_DELTA_FLOATS, STREAM_RECORD_FLOATS } from './shaders/main-stream
 import { packMeshMaterial } from './mesh-material.js';
 import { MESH_UNIFORM_FLOATS, MESH_UNIFORM_OFFSET } from './mesh-rte-uniforms.js';
 import type { RelativeToEyeFrame } from './relative-to-eye.js';
-
-type Vec3 = [number, number, number];
+import { growAabb, type Vec3 } from './draw-stream-types.js';
 
 export interface ProxyDraw { vertexBuffer: GPUBuffer; baseVertex: number; count: number; record: number }
 
@@ -76,6 +75,7 @@ export class HlodTree {
   /** Bumped when the record/delta buffers are reallocated (bind group + bundles go stale). */
   generation = 0;
   private lastCamera: Vec3 = [NaN, NaN, NaN];
+  private deltaImage = new Float32Array(0);
   private iota: GPUBuffer | null = null;
   private chunk: GPUBuffer | null = null;
   private chunkUsed = 0;
@@ -104,7 +104,7 @@ export class HlodTree {
       let n = l1.get(k);
       if (!n) { n = this.makeNode(1, c, size1); n.pieces = []; l1.set(k, n); }
       n.pieces!.push(m);
-      grow(n, [x0, y0, z0], [x1, y1, z1]);
+      growAabb(n, [x0, y0, z0], [x1, y1, z1]);
     });
     this.levels.length = 0; this.levels[1] = l1;
     let level = 1;
@@ -115,7 +115,7 @@ export class HlodTree {
         const k = nodeKey(level + 1, c);
         let n = up.get(k);
         if (!n) { n = this.makeNode(level + 1, c, size); up.set(k, n); }
-        n.children.push(child); grow(n, child.min, child.max);
+        n.children.push(child); growAabb(n, child.min, child.max);
       }
       this.levels[++level] = up;
     }
@@ -155,6 +155,7 @@ export class HlodTree {
   private startWorker(): Worker {
     const url = URL.createObjectURL(new Blob([PROXY_WORKER_SOURCE], { type: 'text/javascript' }));
     const w = new Worker(url);
+    URL.revokeObjectURL(url); // the worker has its script; keep no blob alive per tree
     w.onmessage = (e: MessageEvent<{ job: number; pieces: ProxyPiece[] }>) => this.finish(e.data.job, e.data.pieces);
     w.onerror = (e) => console.warn('[draw-stream hlod] proxy worker failed', e.message);
     return w;
@@ -210,7 +211,7 @@ export class HlodTree {
     for (const c of n.children) c.cpu = [];
     this.stats.ready++;
     this.flushRecords();
-    if (this.jobs.size === 0 && [...this.levels].every((l) => !l || [...l.values()].every((x) => x.state === 'ready' || x.state === 'empty'))) {
+    if (this.jobs.size === 0 && [...this.nodes()].every((x) => x.state === 'ready' || x.state === 'empty')) {
       this.stats.buildMs = performance.now() - this.buildStart;
     }
     this.pump();
@@ -256,14 +257,21 @@ export class HlodTree {
 
   iotaBuffer(): GPUBuffer | null { return this.iota; }
 
+  /** Every node of every level. */
+  *nodes(): Generator<HlodNode> {
+    for (const level of this.levels) if (level) yield* level.values();
+  }
+
   prepareFrame(rte: RelativeToEyeFrame): void {
     if (!this.deltaBuffer || this.recordCount === 0) return;
     const cam = rte.getCameraWorld();
     if (cam[0] === this.lastCamera[0] && cam[1] === this.lastCamera[1] && cam[2] === this.lastCamera[2]) return;
     this.lastCamera = [cam[0], cam[1], cam[2]];
-    const d = new Float32Array(this.recordCount * STREAM_DELTA_FLOATS);
+    const floats = this.recordCount * STREAM_DELTA_FLOATS;
+    if (this.deltaImage.length < floats) this.deltaImage = new Float32Array(Math.max(floats, this.deltaImage.length * 2));
+    const d = this.deltaImage;
     for (let i = 0; i < this.recordCount; i++) rte.tryPackDrawableOrigin(this.origins[i]!, d, i * STREAM_DELTA_FLOATS);
-    this.device.queue.writeBuffer(this.deltaBuffer, 0, d);
+    this.device.queue.writeBuffer(this.deltaBuffer, 0, d, 0, floats);
   }
 
   destroy(): void {
@@ -271,10 +279,6 @@ export class HlodTree {
     for (const c of this.chunks) c.destroy(); this.chunks = []; this.chunk = null;
     this.recordBuffer?.destroy(); this.deltaBuffer?.destroy(); this.iota?.destroy();
   }
-}
-
-function grow(n: HlodNode, min: readonly number[], max: readonly number[]): void {
-  for (let a = 0; a < 3; a++) { n.min[a] = Math.min(n.min[a]!, min[a]!); n.max[a] = Math.max(n.max[a]!, max[a]!); }
 }
 
 export function centre(n: { min: Vec3; max: Vec3 }): Vec3 {

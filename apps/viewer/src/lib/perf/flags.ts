@@ -240,7 +240,7 @@ export const PERF_FLAGS = [
     removalCondition: 'Flat-batch draw stream (bundles, shared arenas, far-field HLOD, highlight index; huge-geometry campaign): delete with the per-batch opaque loop once the stream ships on by default, or delete the stream if it is dropped. The global takes an object of DrawStreamConfig keys; each key also reads its own m6.<key> URL param.',
     introducedAt: '2026-11-23',
     default: null,
-    bindings: { global: '__IFC_LITE_M6__', urlParam: 'm6.stream' },
+    bindings: { global: '__IFC_LITE_M6__', urlParam: 'm6.stream', posthogKey: 'perf-draw-stream' },
   },
   {
     id: 'gpuInstancing',
@@ -249,7 +249,16 @@ export const PERF_FLAGS = [
     removalCondition: 'GPU-driven instancing (compute cull, indirect draws; huge-geometry campaign): delete with the per-template instanced path once it ships on by default, or delete the pool if it is dropped.',
     introducedAt: '2026-11-23',
     default: false,
-    bindings: { global: '__IFC_LITE_GPU_INSTANCING', urlParam: 'perf.gpuInstancing' },
+    bindings: { global: '__IFC_LITE_GPU_INSTANCING', urlParam: 'perf.gpuInstancing', posthogKey: 'perf-gpu-instancing' },
+  },
+  {
+    id: 'hugeGeometry',
+    kind: 'ramp',
+    owner: '@louistrue',
+    removalCondition: 'Umbrella for the huge-geometry render paths (draw stream with arenas, HLOD and highlight index, plus GPU-driven instancing); delete once those ship on by default or are dropped.',
+    introducedAt: '2026-11-23',
+    default: false,
+    bindings: { global: '__IFC_LITE_HUGE', urlParam: 'perf.huge' },
   },
   {
     id: 'perfTrace',

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { Renderer } from '@ifc-lite/renderer';
-import { readPerfFlag } from '../lib/perf/flags.js';
+import { isHugeGeometryEnabled, isPerfFlagOn, readRampFlag } from './hugeGeometryConfig.js';
 
 /**
  * GPU-driven instancing (`@ifc-lite/renderer` gpu-instance-pool.ts), OFF by
@@ -11,10 +11,13 @@ import { readPerfFlag } from '../lib/perf/flags.js';
  * per-template CPU culls and repacks. Read once at renderer init, before
  * instanced shards stream in:
  *   ?perf.gpuInstancing=1   or   globalThis.__IFC_LITE_GPU_INSTANCING = 1
+ * When unset, the huge-geometry umbrella (`hugeGeometryConfig.ts`) decides,
+ * then the `perf-gpu-instancing` PostHog ramp.
  */
-export function isGpuInstancingEnabled(): boolean {
-  const raw = readPerfFlag('gpuInstancing');
-  return raw === 1 || raw === true;
+export function isGpuInstancingEnabled(readFeatureFlag?: (key: string) => unknown): boolean {
+  const huge = isHugeGeometryEnabled();
+  const raw = readRampFlag('gpuInstancing', huge, readFeatureFlag);
+  return raw !== undefined && raw !== null ? isPerfFlagOn(raw) : huge;
 }
 
 /** Hand the flag to a fresh renderer before instanced shards stream in; a no-op when off. */

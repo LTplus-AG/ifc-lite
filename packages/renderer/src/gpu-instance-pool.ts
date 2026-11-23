@@ -51,11 +51,11 @@ import { INSTANCE_COLOR_OFFSET, INSTANCE_FLAGS_OFFSET, INSTANCE_FLAG_HIDDEN, INS
 import { INSTANCED_RTE_DELTA_STRIDE_BYTES } from './instanced-rte.js';
 import {
   ARGS_WORDS, CULL_BYTES, CULL_FLOATS, gpuInstanceCullWgsl, packCullParams, PARAMS_BYTES, POOL_STATE_PALETTE_SHIFT,
-  POOL_STATE_DEAD, POOL_STATE_HIDDEN, POOL_STATE_SELECTED, UNBOUNDED_RADIUS, WORKGROUP, type PoolCullParams,
+  POOL_STATE_DEAD, POOL_STATE_HIDDEN, POOL_STATE_SELECTED, POOL_VIEW_COLOUR, UNBOUNDED_RADIUS, WORKGROUP, type PoolCullParams, type PoolCullView,
 } from './gpu-instance-cull.js';
 import { ColourPalette, DrawGroups, type PoolGeometry } from './gpu-instance-groups.js';
 
-export { occurrenceSphereRadius } from './gpu-instance-cull.js';
+export { occurrenceSphereRadius, POOL_VIEW_COLOUR, POOL_VIEW_PICK, POOL_VIEW_SHADOW, type PoolCullView } from './gpu-instance-cull.js';
 
 
 interface PoolTemplate {
@@ -66,13 +66,6 @@ interface PoolTemplate {
   radii: Float32Array;
 }
 
-/**
- * Cull views. Each has its own uniform, so several culls can be recorded into
- * one encoder (each before the pass that reads its output): the colour view's
- * camera, the sun shadow (every live occurrence casts), and a pick.
- */
-export const POOL_VIEW_COLOUR = 0, POOL_VIEW_SHADOW = 1, POOL_VIEW_PICK = 2;
-export type PoolCullView = typeof POOL_VIEW_COLOUR | typeof POOL_VIEW_SHADOW | typeof POOL_VIEW_PICK;
 
 /**
  * A pooled template's 16 B stand-in for its per-template instance records: the
@@ -245,13 +238,7 @@ export class GpuInstancePool {
   private paletteIndex(c: Float32Array): number {
     let idx = this.palette.indexOf(c);
     if (idx >= 0) return idx;
-    const used = new Set<number>();
-    for (let i = 0; i < this.count; i++) used.add(this.state[i]! >>> POOL_STATE_PALETTE_SHIFT);
-    const remap = this.palette.compact(used);
-    for (let i = 0; i < this.count; i++) {
-      const old = this.state[i]! >>> POOL_STATE_PALETTE_SHIFT;
-      if (old) this.setState(i, (this.state[i]! & 0xffff) | ((remap.get(old) ?? 0) << POOL_STATE_PALETTE_SHIFT));
-    }
+    this.palette.compactStates(this.state.subarray(0, this.count), POOL_STATE_PALETTE_SHIFT, (i, v) => this.setState(i, v));
     idx = this.palette.indexOf(c);
     if (idx >= 0) return idx;
     console.warn('[GpuInstancePool] colour palette full of live colours; this override falls back to the record colour');

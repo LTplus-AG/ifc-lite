@@ -147,4 +147,16 @@ export class ColourPalette {
     this.dirty = true;
     return remap;
   }
+
+  /** Compact to the entries `states` (index in the bits above `shift`) still reference, rewriting them through `write`. */
+  compactStates(states: Uint32Array, shift: number, write: (i: number, value: number) => void): void {
+    const used = new Set<number>();
+    for (const v of states) used.add(v >>> shift);
+    const remap = this.compact(used);
+    const low = (1 << shift) - 1;
+    for (let i = 0; i < states.length; i++) {
+      const old = states[i]! >>> shift;
+      if (old) write(i, ((states[i]! & low) | ((remap.get(old) ?? 0) << shift)) >>> 0);
+    }
+  }
 }

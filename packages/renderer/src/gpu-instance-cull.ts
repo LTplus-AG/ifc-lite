@@ -253,3 +253,11 @@ export function poolCullParams(camera: PoolCullCamera, eye: readonly [number, nu
     },
   };
 }
+
+/**
+ * Cull views. Each has its own uniform, so several culls can be recorded into
+ * one encoder (each before the pass that reads its output): the colour view's
+ * camera, the sun shadow (every live occurrence casts), and a pick.
+ */
+export const POOL_VIEW_COLOUR = 0, POOL_VIEW_SHADOW = 1, POOL_VIEW_PICK = 2;
+export type PoolCullView = typeof POOL_VIEW_COLOUR | typeof POOL_VIEW_SHADOW | typeof POOL_VIEW_PICK;

@@ -273,17 +273,37 @@ impl ConversionChecks {
         }
         // Varying actions mint ids above the final DATA ids, including typed properties.
         let typed_added = body.rewrite_held(|text| self.finish_typed_properties(text, || ids));
-        let mut varying_added = 0;
+        // Date pruning changes the written count, but cannot undo a structural addition.
+        let varying_added = std::cell::Cell::new(0);
         let body_delta = body.finish_with_header(|text| {
-            let (rewritten, added) = self.structural.finish_effective_varying(text, &mut self.attribute_values_dropped)?;
-            varying_added = usize::try_from(added).unwrap_or_default();
-            Some((rewritten, added))
-        }, header)?;
-        Ok((count + typed_added as isize + body_delta, typed_added + varying_added))
+            let varying = self.structural.finish_effective_varying(text, &mut self.attribute_values_dropped);
+            varying_added.set(varying.as_ref().map_or(0, |(_, added)| *added));
+            let source = varying.as_ref().map_or(text, |(body, _)| body.as_str());
+            match self.forms.finish_dates(source, &mut self.attribute_values_dropped, |ty| self.plans.forget_verbatim(ty)) {
+                Some((body, delta)) => Some((body, varying_added.get() + delta)),
+                None => varying,
+            }
+        }, |out, _| header(out, varying_added.get()))?;
+        Ok((count + typed_added as isize + body_delta, typed_added + varying_added.get() as usize))
     }
 
     pub(crate) fn finish_typed_properties(&mut self, text: &[u8], ids: impl FnOnce() -> crate::step_ids::IdAllocator) -> Option<(Vec<u8>, usize)> {
         self.typed_properties.finish(text, ids, &mut self.ifc4_slots, &mut self.attribute_values_dropped, &mut self.structural)
+    }
+
+    pub(crate) fn finish_dates(&mut self, text: &mut String) -> isize {
+        if let Some((rewritten, delta)) = self.forms.finish_dates(text, &mut self.attribute_values_dropped, |ty| self.plans.forget_verbatim(ty)) {
+            *text = rewritten;
+            delta
+        } else {
+            0
+        }
+    }
+
+    pub(crate) fn warnings_for_sources<'a>(&self, sources: impl Iterator<Item = &'a [u8]>) -> Vec<String> {
+        let mut warnings = self.warnings();
+        warnings.extend(self.forms.duration_warning(sources));
+        warnings
     }
 
     /// Both checks' warnings, IFC4 slots first.

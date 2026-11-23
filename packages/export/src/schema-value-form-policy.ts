@@ -153,6 +153,7 @@ export function rejectedForms(
   from: ValueFormAttribute,
   target: ValueFormRegistry,
   to: ValueFormAttribute,
+  allowTextFallback = true,
 ): string[] {
   const accepted = attributeForms(target, to);
   const own = definedType(source, from), slot = definedType(target, to);
@@ -162,13 +163,33 @@ export function rejectedForms(
       rejected.push(...narrowedPayload(source, target, form));
       continue;
     }
+    const calendar = calendarKind(from.type, to.type, form);
     if (own && 'SRIEB'.includes(form) && accepted.has(`T:${own}`)) rejected.push(`${form}>T:${own}`);
     else if (slot && form === `T:${slot}`) rejected.push(`${form}>U`);
+    else if (from.type === 'IfcTimeMeasure' && to.type === 'IfcDuration' && form === 'R') rejected.push('R>D+');
+    else if (from.type === 'IfcDuration' && to.type === 'IfcTimeMeasure' && form === 'S') rejected.push('S>D-');
+    else if (calendar) rejected.push(form + '>' + calendar);
+    else if (allowTextFallback && stringAsText(source, target, form, accepted)) rejected.push(form + '>TEXT');
     else if (setOfAccepted(source, form, target, accepted)) rejected.push(`${form}>U1`);
     else if (form.endsWith('R') && accepted.has(`${form.slice(0, -1)}I`)) rejected.push(`${form}>${form.slice(0, -1)}I`);
     else rejected.push(form);
   }
   return rejected.sort();
+}
+
+const CALENDAR = { IfcDate: 'DATE', IfcDateTime: 'DATETIME', IfcTime: 'TIME' } as const;
+const LEGACY_CALENDAR = {
+  IfcCalendarDate: ['DATE'], IfcDateAndTime: ['DATETIME'], IfcLocalTime: ['TIME'],
+  IfcDateTimeSelect: ['DATE', 'DATETIME', 'TIME'],
+} as const satisfies Readonly<Record<string, readonly string[]>>;
+
+function calendarKind(from: string, to: string, form: string): string | undefined {
+  const modern = form === '#' ? to : from;
+  const legacy = form === '#' ? from : to;
+  if ((form !== '#' && form !== 'S') || !Object.hasOwn(CALENDAR, modern) || !Object.hasOwn(LEGACY_CALENDAR, legacy)) return undefined;
+  const kind = CALENDAR[modern as keyof typeof CALENDAR];
+  const kinds: readonly string[] = LEGACY_CALENDAR[legacy as keyof typeof LEGACY_CALENDAR];
+  return kinds.includes(kind) ? (form === '#' ? 'C+:' : 'C-:') + kind : undefined;
 }
 
 /** A registry's spelling of the UPPERCASE defined type `upper`. */
@@ -180,6 +201,14 @@ function payloadForms(reg: ValueFormRegistry, name: string | undefined): string[
   const out: Forms = new Map();
   collect(reg, reg.types[name], '', false, out, new Set());
   return [...out.keys()].every((f) => 'SRIEB'.includes(f)) ? [...out.keys()] : [];
+}
+
+/** Preserve the string of a defined type unavailable in a target IfcValue slot. */
+function stringAsText(source: ValueFormRegistry, target: ValueFormRegistry, form: string, accepted: Forms): boolean {
+  const typed = /^(A*)T:(.+)$/.exec(form);
+  if (!typed || !accepted.has(typed[1] + 'T:IFCTEXT') || typeNamed(target, typed[2])) return false;
+  const forms = payloadForms(source, typeNamed(source, typed[2]));
+  return forms.length === 1 && forms[0] === 'S';
 }
 
 /** For a typed member both sides take, the payload forms the target's defined type no longer holds. */
@@ -256,8 +285,7 @@ export interface ValueFormSlot {
  * pass writes, or more than the invalid value.
  */
 const DECIDED_ELSEWHERE: readonly string[] = [
-  // StyleFlatten (#7742) writes IfcPresentationStyle members into IFC4X3; the way
-  // down needs a new IfcPresentationStyleAssignment record, and dropping loses the colours.
+  // StyleFlatten (#7742) expands assignments on upgrade; IFC2X3 output wraps direct styles (#10879).
   'IFCSTYLEDITEM.Styles',
   // #10778 converts the currency between the IFC2X3 enumeration and the IFC4 label.
   'IFCMONETARYUNIT.Currency',
@@ -297,6 +325,9 @@ export function valueFormSlotsOf(source: Registry, target: Registry, from: strin
   const up = from === 'IFC2X3' && to !== 'IFC2X3';
   const map = from === 'IFC2X3' || to === 'IFC2X3' ? maps.find((m) => m.ifc2x3 === type && m.ifc4 === type) : undefined;
   const srcAttrs = s.allAttributes ?? s.attributes, tgtAttrs = t.allAttributes ?? t.attributes;
+  // Text preserves a label's contents, but cannot carry an unsupported bound's
+  // type or ordering. Leave the bound absent so IFC2X3 WR21 and WR22 still apply.
+  const allowTextFallback = to !== 'IFC2X3' || type !== 'IFCPROPERTYBOUNDEDVALUE';
   const out: ValueFormSlot[] = [];
   tgtAttrs.forEach((tgt, index) => {
     const pair = map?.renamed.find((p) => p[up ? 1 : 0] === tgt.name);
@@ -304,7 +335,7 @@ export function valueFormSlotsOf(source: Registry, target: Registry, from: strin
     if (map && (map.retyped.includes(name) || map.setOfOne?.includes(name) || (!up && map.upOnly.includes(name)))) return;
     if (DECIDED_ELSEWHERE.includes(`${type}.${tgt.name}`)) return;
     const src = srcAttrs.find((a) => a.name === name);
-    const rejected = src ? rejectedForms(source, src, target, tgt) : [];
+    const rejected = src ? rejectedForms(source, src, target, tgt, allowTextFallback) : [];
     if (!rejected.length) return;
     const group = POSITIONAL[type]?.find((g) => g.includes(tgt.name)) ?? [];
     const whole = group.map((a) => tgtAttrs.findIndex((t) => t.name === a)).filter((i) => i >= 0);

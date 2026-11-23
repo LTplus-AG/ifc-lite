@@ -103,3 +103,19 @@ fn typed_property_finish_runs_on_a_raw_latin1_held_body_10797() {
     assert!(text.contains("#2=IFCMATERIALPROPERTIES('Pset_MaterialCommon',$,(#3),#1);"), "{text}");
     assert!(text.contains("#3=IFCPROPERTYSINGLEVALUE('MassDensity',$,IFCMASSDENSITYMEASURE(42.),$);"), "{text}");
 }
+
+#[test]
+fn wraps_direct_styles_for_the_ifc2x3_target_10879() {
+    let input = include_bytes!("../tests/fixtures/schema_styled_item_downgrade.ifc");
+    let options = crate::StepOptions { schema: Some("IFC2X3".to_owned()), ..Default::default() };
+    let step = crate::export_step(input, &options).unwrap();
+    let (log, _) = crate::export_step_with_log(input, &options, &crate::MutationLog::default()).unwrap();
+    let (merged, stats) = crate::export_merged_models(&[crate::MergedModel::new(input)], &crate::MergedOptions { schema: options.schema.clone(), ..Default::default() });
+    assert_eq!(stats.written, merged.lines().filter(|line| line.starts_with('#')).count());
+    for output in [&step, &log, &merged] {
+        assert!(output.contains("#2=IFCSTYLEDITEM(#1,(#6),'Styled point');"), "{output}");
+        assert!(output.contains("#6=IFCPRESENTATIONSTYLEASSIGNMENT((/* style */ #3 /* member */));"), "{output}");
+        let second = crate::export_step(output.as_bytes(), &options).unwrap();
+        assert_eq!(second.matches("=IFCPRESENTATIONSTYLEASSIGNMENT(").count(), 1);
+    }
+}

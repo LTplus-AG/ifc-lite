@@ -225,7 +225,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     let mut minter = GuidMinter::new();
     let mut offset: u32 = 0;
     let mut slot_fill = Ifc2x3SlotFill::new(None);
-    let mut checks = ConversionChecks { merged: true, ..ConversionChecks::new() };
+    let mut checks = ConversionChecks { merged: true, ..ConversionChecks::new() }; checks.forms.enable_dates();
     checks.typed_properties.enabled = true;
     let mut parents = single_parents::ParentClaims::for_schema(&schema); // one rel per single-valued inverse (#5727, #5802, #5774, #5923)
 
@@ -389,7 +389,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     }
 
     warnings::push_merge_warnings(&mut stats, refused_refs_total, unrepresented_types_kept, &schema);
-    warnings::finish_typed_output(&mut out, &mut stats, &schema, &slot_fill, &mut checks, parents, offset);
+    warnings::finish_typed_output(&mut out, &mut stats, &schema, &slot_fill, &mut checks, parents, offset, models);
     (out, stats)
 }
 

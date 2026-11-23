@@ -22,6 +22,7 @@
 import { TypedPropertyUpgrade } from './schema-converter-typed-properties.js';
 import { StructuralDiagnostics } from './schema-converter-structural-diagnostics.js';
 import { DocumentLinks } from './schema-converter-document-links.js';
+import type { SourceStore } from './schema-converter-structural-source.js';
 import { ValueForms } from './schema-converter-value-forms.js';
 import { getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@ifc-lite/parser';
 import { escapeStepString } from './step-serialization.js';
@@ -81,7 +82,9 @@ export class EnumReconciliation {
   /** The IfcDocumentInformation <-> IfcDocumentReference link (#10846). */
   readonly documents = new DocumentLinks();
   /** Values a target slot's type cannot hold (#10847). */
-  readonly forms = new ValueForms();
+  readonly forms: ValueForms;
+
+  constructor(deferDates = false, timeUnitSources?: readonly SourceStore[]) { this.forms = new ValueForms(deferDates, timeUnitSources); }
   private readonly losses = new Map<Loss, Map<string, number>>();
   /** Records written `.USERDEFINED.` with the label their rule needs unset, per type (#10780). */
   private readonly unlabelled = new Map<string, number>();

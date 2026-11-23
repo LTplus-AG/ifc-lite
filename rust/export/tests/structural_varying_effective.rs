@@ -10,8 +10,13 @@ fn varying_fixture() -> String {
 
 #[test]
 fn subset_and_edited_exports_convert_varying_actions_11037() {
-    let text = varying_fixture();
-    let subset = ifc_lite_export::StepOptions { schema: Some("IFC4".into()), included: Some([30, 20].into_iter().collect()), ..Default::default() };
+    let text = varying_fixture().replace("\nENDSEC;\nEND-ISO-10303-21;",
+        "\n#100=IFCCLASSIFICATION('Source','1',#101,'Classification');\n#101=IFCCALENDARDATE(29,2,2024);\nENDSEC;\nEND-ISO-10303-21;");
+    let assert_dates = |output: &str| {
+        assert!(output.contains("#100=IFCCLASSIFICATION('Source','1','2024-02-29','Classification',$,$,$);"), "{output}");
+        assert!(!output.contains("IFCCALENDARDATE("), "{output}");
+    };
+    let subset = ifc_lite_export::StepOptions { schema: Some("IFC4".into()), included: Some([30, 20, 100, 101].into_iter().collect()), ..Default::default() };
     let edited = ifc_lite_export::StepOptions {
         schema: subset.schema.clone(),
         attribute_mutations: vec![ifc_lite_export::AttrMutation { express_id: 30, index: 13, value: "(#18,#19)".into() }],
@@ -24,6 +29,7 @@ fn subset_and_edited_exports_convert_varying_actions_11037() {
         assert!(output.contains(&format!("IFCSTRUCTURALLOADCONFIGURATION($,({loads}),$);")), "{output}");
         assert!(!output.contains("IFCSTRUCTURALLINEARACTIONVARYING("), "{output}");
         assert!(output.contains("'Causes',$,(#20),$,#30);"), "{output}");
+        assert_dates(&output);
     }
     let opts = ifc_lite_export::StepOptions { schema: Some("IFC4".into()), ..Default::default() };
     let edit = |slot, value| serde_json::json!({"type":"UPDATE_POSITIONAL_ATTRIBUTE", "entityId":30, "attributeName":slot, "newValue":value});
@@ -34,6 +40,8 @@ fn subset_and_edited_exports_convert_varying_actions_11037() {
     assert!(output.contains("IFCSTRUCTURALLOADCONFIGURATION($,(#11,#18,#19),$);"), "{output}");
     assert!(output.contains("3 modifications"), "{output}");
     assert_eq!((stats.modified_entities, stats.new_entities), (1, 2));
+    assert_eq!(stats.written, output.lines().filter(|line| line.starts_with('#')).count());
+    assert_dates(&output);
     let log = serde_json::from_value(serde_json::json!({"mutations": [
         edit("@12", serde_json::json!("#9999"))
     ]})).unwrap();

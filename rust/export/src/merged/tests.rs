@@ -880,6 +880,32 @@ fn incompatible_units_federate_and_flag_under_normalize() {
 }
 
 #[test]
+fn typed_property_measures_stay_in_the_federated_models_units_10797() {
+    let metres = build_model("A", false, "Terrain", "Level 1");
+    let millimetres = include_str!("../../tests/fixtures/schema_typed_properties_upgrade.ifc")
+        .replace("0.02,'plastic'", "20.,'plastic'")
+        .replace("4.5,$,$,$,0.06", "4.5,$,$,$,60000.")
+        .replace("DATA;\n", concat!(
+            "DATA;\n",
+            "#10=IFCPROJECT('1123456789012345678901',$,'Project',$,$,$,$,$,#11);\n",
+            "#11=IFCUNITASSIGNMENT((#12,#13));\n",
+            "#12=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);\n",
+            "#13=IFCSIUNIT(*,.AREAUNIT.,.MILLI.,.SQUARE_METRE.);\n",
+        ));
+    let opts = MergedOptions {
+        schema: Some("IFC4".into()),
+        unit_reconciliation: UnitReconciliation::Normalize,
+        ..Default::default()
+    };
+    let (merged, stats) = export_merged_with_stats(&[metres.as_bytes(), millimetres.as_bytes()], &opts);
+    assert_eq!(stats.federated_model_count, 1);
+    assert!(stats.unit_rescale_required);
+    assert!(merged.contains("IFCPROPERTYSINGLEVALUE('MaxAggregateSize',$,IFCPOSITIVELENGTHMEASURE(20.),$);"));
+    assert!(merged.contains("IFCPROPERTYSINGLEVALUE('CrossSectionArea',$,IFCAREAMEASURE(60000.),$);"));
+    assert_no_dangling(&merged);
+}
+
+#[test]
 fn assume_shared_unifies_across_declared_units() {
     // Same GlobalIds, different declared units. AssumeShared skips the
     // compatibility check and unifies into one project regardless.

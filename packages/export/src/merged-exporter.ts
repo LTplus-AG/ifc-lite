@@ -24,7 +24,7 @@ import { firstWrittenOwnerHistoryRef, Ifc2x3SlotFill } from './schema-converter-
 import { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import { EnumReconciliation } from './schema-converter-enums.js';
 import { assembleStepBytes, assembleStepBlob } from './step-file-assembly.js';
-import { decodeTypedPropertyRecord } from './schema-converter-typed-properties.js';
+import { decodeTypedPropertyRecord, isTypedPropertyUpgrade } from './schema-converter-typed-properties.js';
 import { placeObjectsForSchema } from './schema-ifc2x3-placements.js';
 import { getCompleteEntityIndex, getMaxExpressId, type CompleteEntityIndex, type ExportEntityRef } from './entity-iteration.js';
 import { bakeMutatedModels, mergeWarningLabel, needsBake } from './merged-bake.js';
@@ -1198,13 +1198,14 @@ export class MergedExporter {
       finalText = replaceGlobalId(finalText, mintedGuid);
     }
 
-    // Normalize units: rescale every length/area/volume-valued datum, and the georeference (#10886), into the primary
-    // unit. Done on the SOURCE-schema text (entityRef.type), before any schema conversion, so the schema-derived
-    // attribute indices line up. Touches only numeric literals and the CRS unit, so the remap and re-stamp are safe.
+    // Normalize in the source schema while its attribute indices still match the record.
+    // Only numeric literals and the georeference (#10886) change here.
     const georef = normalizeGeorefRecord(finalText, localId, mode.georef);
     if (georef !== undefined) finalText = georef;
     else if (mode.lengthFactor !== 1 || mode.areaFactor !== 1 || mode.volumeFactor !== 1) {
-      finalText = rescaleEntityLengths(finalText, entityRef.type.toUpperCase(), mode.lengthFactor, mode.areaFactor, mode.volumeFactor);
+      const type = entityRef.type.toUpperCase();
+      const legacySchema = isTypedPropertyUpgrade(type, sourceSchema, targetSchema) ? 'IFC2X3' : undefined;
+      finalText = rescaleEntityLengths(finalText, type, mode.lengthFactor, mode.areaFactor, mode.volumeFactor, legacySchema);
     }
 
     if (needsConversion(sourceSchema, targetSchema)) {

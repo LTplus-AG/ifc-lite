@@ -185,7 +185,7 @@ impl Draft {
         let frame = record_frame(line)?;
         let parts = slots_of(frame.args(line))?;
         let [_, _, _, reference] = parts.as_slice() else { return None };
-        parse_ref(reference.as_bytes())?;
+        parse_ref(without_comments(reference).as_bytes())?;
         let size = self.groups.iter().map(|group| group.properties.len() + 1).sum::<usize>() - 1;
         let size = u32::try_from(size).ok()?;
         let first = ids.reserve(size)?;

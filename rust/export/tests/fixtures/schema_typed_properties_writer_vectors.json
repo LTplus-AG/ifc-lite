@@ -14,6 +14,14 @@
     ]
   },
   {
+    "name": "trivia around a typed property's material reference",
+    "source": "#1=IFCMATERIAL('Steel');\n#2=IFCGENERALMATERIALPROPERTIES( #1,$,$,7850.);\n#3=IFCGENERALMATERIALPROPERTIES(/* before */#1 /* after */,$,$,7800.);",
+    "expected": [
+      "IFCPROPERTYSINGLEVALUE('MassDensity',$,IFCMASSDENSITYMEASURE(7850.),$);",
+      "IFCPROPERTYSINGLEVALUE('MassDensity',$,IFCMASSDENSITYMEASURE(7800.),$);"
+    ]
+  },
+  {
     "name": "Latin-1 in an unrelated name and a typed text value",
     "source": "#3=IFCMATERIAL('B\u00e9ton');\n#4=IFCMECHANICALCONCRETEMATERIALPROPERTIES(#3,$,25000000000.,10000000000.,0.2,$,30000000.,0.02,'B\u00e9ton et acier lamin\u00c3\u00a9',$,$,$);",
     "expected": [

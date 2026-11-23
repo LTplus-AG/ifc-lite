@@ -96,3 +96,58 @@ it.each(writerVectors)('writes matching STEP records in every writer for $name (
     expect(records, writer).toEqual(expect.arrayContaining(expected));
   }
 });
+
+it('uses the last STEP id on each export of the same typed properties (#10797)', async () => {
+  const source = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n"
+    + "#1=IFCMATERIAL('Steel');\n#4294967294=IFCGENERALMATERIALPROPERTIES(#1,$,$,7850.);\n"
+    + 'ENDSEC;\nEND-ISO-10303-21;\n';
+  const data = await new IfcParser().parseColumnar(new TextEncoder().encode(source).buffer);
+  const exporter = new StepExporter(data);
+  const options = { schema: 'IFC4' } as const;
+  const property = "#4294967295=IFCPROPERTYSINGLEVALUE('MassDensity',$,IFCMASSDENSITYMEASURE(7850.),$);";
+  const decoder = new TextDecoder();
+  expect(decoder.decode(exporter.export(options).content)).toContain(property);
+  expect(decoder.decode(exporter.export(options).content)).toContain(property);
+});
+
+it('reports the typed value whose allocation would exceed the STEP id limit (#10797)', async () => {
+  const source = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n"
+    + "#1=IFCMATERIAL('Steel');\n#4294967294=IFCGENERALMATERIALPROPERTIES(#1,$,$,7850.);\n"
+    + '#2=IFCGENERALMATERIALPROPERTIES(#1,$,$,7800.);\nENDSEC;\nEND-ISO-10303-21;\n';
+  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(source).buffer);
+  const exported = new StepExporter(store).export({ schema: 'IFC4' });
+  const content = new TextDecoder().decode(exported.content);
+  expect(content).toContain('IFCMASSDENSITYMEASURE(7800.)');
+  expect(content).not.toContain('IFCMASSDENSITYMEASURE(7850.)');
+  expect(analyzeConversionLoss(store, 'IFC2X3', 'IFC4').entries).toContainEqual(expect.objectContaining({
+    sourceType: 'IFCGENERALMATERIALPROPERTIES',
+    expressIds: [4294967294],
+    droppedAttributes: ['MassDensity'],
+  }));
+});
+
+it('normalizes converted typed property lengths and areas in sync and async merges (#10797)', async () => {
+  const parser = new IfcParser();
+  const read = (source: string) => parser.parseColumnar(new TextEncoder().encode(source).buffer);
+  const unitAssignment = (prefix: string, guid: string) =>
+    `#10=IFCPROJECT('${guid}',$,'Project',$,$,$,$,$,#11);\n`
+    + '#11=IFCUNITASSIGNMENT((#12,#13));\n'
+    + `#12=IFCSIUNIT(*,.LENGTHUNIT.,${prefix},.METRE.);\n`
+    + `#13=IFCSIUNIT(*,.AREAUNIT.,${prefix},.SQUARE_METRE.);\n`;
+  const primary = await read("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n"
+    + unitAssignment('$', '0123456789012345678901') + 'ENDSEC;\nEND-ISO-10303-21;\n');
+  const fixture = readFileSync(new URL('../../../rust/export/tests/fixtures/schema_typed_properties_upgrade.ifc', import.meta.url), 'utf8');
+  const secondary = await read(fixture.replace("0.02,'plastic'", "/* mm */20.,'plastic'").replace('4.5,$,$,$,0.06', '4.5,$,$,$,60000.')
+    .replace('DATA;\n', 'DATA;\n' + unitAssignment('.MILLI.', '1123456789012345678901')));
+  const exporter = new MergedExporter([
+    { id: 'm', name: 'metres', dataStore: primary, lengthUnitScale: 1 },
+    { id: 'mm', name: 'millimetres', dataStore: secondary, lengthUnitScale: 0.001 },
+  ]);
+  const options = { schema: 'IFC4', unitReconciliation: 'normalize' } as const;
+  for (const result of [exporter.export(options), await exporter.exportAsync(options)]) {
+    expect(result.stats.normalizedModelCount).toBe(1);
+    const output = new TextDecoder().decode(result.content);
+    expect(output).toContain("IFCPROPERTYSINGLEVALUE('MaxAggregateSize',$,IFCPOSITIVELENGTHMEASURE(0.02),$);");
+    expect(output).toContain("IFCPROPERTYSINGLEVALUE('CrossSectionArea',$,IFCAREAMEASURE(0.06),$);");
+  }
+});

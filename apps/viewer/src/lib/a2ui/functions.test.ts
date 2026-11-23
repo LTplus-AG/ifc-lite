@@ -61,6 +61,16 @@ describe('IFC function policy', () => {
     assert.equal(runIfcFunction(host, 'sumQuantity', { query: { types: ['IfcDoor'] }, path: 'Qto_DoorBaseQuantities.Area' }, { caller: 'renderer', userActivated: false }), 0, 'an empty match set sums to a true 0');
   });
 
+  it('says when an action target hits the 5,000 query ceiling (#11344)', async () => {
+    const { host } = await seedA2uiModels();
+    const [wall] = host.candidates(['IfcWall'], undefined);
+    const many = Array.from({ length: 5001 }, (_, i) => ({ ...wall, key: `${wall.ref.modelId}:${i + 1}`, ref: { modelId: wall.ref.modelId, expressId: i + 1 } }));
+    const target = resolveTarget({ ...host, candidates: () => many }, { query: { types: ['IfcWall'] } });
+    assert.equal(target.refs.length, 5000);
+    assert.equal(target.cappedFrom, 5001);
+    assert.equal(resolveTarget(host, { query: { types: ['IfcWall'] } }).cappedFrom, undefined);
+  });
+
   it('lets a live session auto-apply once per key and a replayed chat record never', async () => {
     const { host } = await seedA2uiModels();
     const shared = new Set<string>();

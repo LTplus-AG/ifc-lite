@@ -50,6 +50,8 @@ export interface Target {
   unloadedModels: string[];
   /** Problems in the target's query. A query with problems selects nothing: it would run broader than written. */
   problems: QueryProblem[];
+  /** Query matches before the hard ceiling cut them to `refs`; set only when it did. */
+  cappedFrom?: number;
 }
 
 /** Resolve `{refs?, query?}` to loaded refs. Refs to unloaded models are inert. */
@@ -65,8 +67,10 @@ export function resolveTarget(host: A2uiViewerHost, args: { refs?: unknown; quer
     const result = evaluateQuery(host, args.query);
     if (result.unloadedModel) unloaded.add(result.unloadedModel);
     if (result.problems.length) return { refs: [], unloadedModels: [...unloaded], problems: result.problems };
-    // The whole match set, like the stats and charts beside it, up to the hard query ceiling.
-    for (const row of aggregatePool(result).slice(0, MAX_QUERY_LIMIT)) out.set(row.key, row.ref);
+    // The whole match set, like the stats and charts beside it, up to the hard query ceiling (and the UI says so).
+    const pool = aggregatePool(result);
+    for (const row of pool.slice(0, MAX_QUERY_LIMIT)) out.set(row.key, row.ref);
+    if (pool.length > MAX_QUERY_LIMIT) return { refs: [...out.values()], unloadedModels: [...unloaded], problems: [], cappedFrom: pool.length };
   }
   return { refs: [...out.values()], unloadedModels: [...unloaded], problems: [] };
 }

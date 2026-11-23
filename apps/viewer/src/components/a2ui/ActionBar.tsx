@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { useTranslation, type TranslationKey } from '@/i18n';
 import { safeColor } from '@/lib/a2ui/functions';
 import { weightStyle } from './basic-layout';
-import { ResultNotes } from './notes';
+import { Note, ResultNotes } from './notes';
 import { useA2uiRuntime, useRunFunction, useTarget } from './runtime';
 
 const ACTION_LABEL: Record<ViewerAction, TranslationKey> = {
@@ -55,6 +55,9 @@ export const ActionBarImpl = createComponentImplementation(ActionBarApi, ({ prop
   return (
     <div style={weightStyle(props.weight)} className="flex flex-col gap-1.5">
       <ResultNotes unloadedModels={target.unloadedModels} problems={target.problems} />
+      {target.cappedFrom !== undefined && (
+        <Note>{t('a2ui.truncated', { shown: target.refs.length.toLocaleString(), total: target.cappedFrom.toLocaleString() })}</Note>
+      )}
       {actions.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
           {actions.map((action) => (

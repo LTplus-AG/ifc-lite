@@ -130,6 +130,8 @@ export const UNJUDGED_BY_DESIGN = {
   // auto_merge_conditions), so a flake here never turns the Test run red,
   // which would cost a full re-run on main (scripts/ci-viewer-select.mjs).
   'viewer-tests-selected': 'sample of the viewer suite; gates queue entry through its own commit status, and the merge queue runs the full suite',
+  // Its companion: posts that status as pending before `build`, nothing else.
+  'viewer-selection-pending': 'only marks the `PR viewer selection` status pending; judges nothing',
 };
 
 /**

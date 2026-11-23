@@ -95,16 +95,16 @@ export const STATUS_CONTEXT = 'PR viewer selection';
 const clip = (s) => (s.length <= 140 ? s : `${s.slice(0, 139)}…`);
 
 /**
- * The status to post. `phase` start is pending; otherwise success only on
+ * The verdict to post over the `pending` that test.yml's
+ * viewer-selection-pending job set. Success only on
  * positive evidence: nothing selected to run, or a result that passed.
  * Anything else (a select step that failed, tests that did not finish, a
  * failure the retry did not clear) is failure.
  *
- * @param {{ phase?: string, run?: string, selectOutcome?: string, result?: object|null }} input
- * @returns {{ state: 'pending'|'success'|'failure', description: string }}
+ * @param {{ run?: string, selectOutcome?: string, result?: object|null }} input
+ * @returns {{ state: 'success'|'failure', description: string }}
  */
-export function selectionStatus({ phase, run, selectOutcome, result }) {
-  if (phase === 'start') return { state: 'pending', description: 'Running the viewer test files this PR reaches' };
+export function selectionStatus({ run, selectOutcome, result }) {
   if (selectOutcome !== 'success') return { state: 'failure', description: clip(`The test selection step ended ${selectOutcome || 'without running'}; re-run this job`) };
   if (run !== 'true') return { state: 'success', description: 'No viewer test file selected to run' };
   if (!result) return { state: 'failure', description: 'The selected viewer tests did not finish; re-run this job' };
@@ -128,7 +128,7 @@ export async function postStatus(argv, env = process.env, fetchImpl = globalThis
   if (!dir) throw new Error('usage: --status <dir>');
   const resultPath = join(dir, 'result.json');
   const result = existsSync(resultPath) ? JSON.parse(readFileSync(resultPath, 'utf8')) : null;
-  const status = selectionStatus({ phase: env.PHASE, run: env.RUN, selectOutcome: env.SELECT_OUTCOME, result });
+  const status = selectionStatus({ run: env.RUN, selectOutcome: env.SELECT_OUTCOME, result });
   for (const name of ['GITHUB_TOKEN', 'GITHUB_REPOSITORY', 'HEAD_SHA']) if (!env[name]) throw new Error(`${name} is not set`);
   const api = env.GITHUB_API_URL || 'https://api.github.com';
   const res = await fetchImpl(`${api}/repos/${env.GITHUB_REPOSITORY}/statuses/${env.HEAD_SHA}`, {

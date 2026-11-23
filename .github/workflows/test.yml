@@ -1609,6 +1609,45 @@ jobs:
           test_step_outcome: ${{ steps.viewer_retry.outcome }}
           job_name: viewer-tests (shard ${{ matrix.shard }})
 
+  # `PR viewer selection` = pending, as early as possible: right after
+  # `changes`, on exactly the PRs viewer-tests-selected (below) runs on. Without
+  # it the status is ABSENT while `build` runs, absence passes .mergify.yml's
+  # gate, and a PR whose review lands in that window would enter the queue
+  # before its selected tests start. viewer-tests-selected waits on this job
+  # and always posts the verdict over it. Not in the aggregate (see
+  # UNJUDGED_BY_DESIGN): it only writes a status. A fork's token cannot write
+  # statuses, so its step is skipped there (at step level: a skipped job would
+  # skip viewer-tests-selected too).
+  viewer-selection-pending:
+    name: Viewer tests, selection pending
+    needs: changes
+    if: >-
+      github.event_name == 'pull_request' &&
+      (vars.CI_PR_VIEWER_SELECT == 'shadow' || vars.CI_PR_VIEWER_SELECT == 'on') &&
+      needs.changes.outputs.lane == 'fast' &&
+      needs.changes.outputs.batch != 'true' &&
+      needs.changes.outputs.noop != 'true' &&
+      (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      statuses: write
+    steps:
+      - name: Mark the selection status pending
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        # A failed post leaves the status absent, never the tests skipped.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: >-
+          gh api --method POST "repos/$REPO/statuses/$HEAD_SHA"
+          -f state=pending -f 'context=PR viewer selection'
+          -f 'description=Waiting for the build, then the viewer test files this PR reaches'
+          -f "target_url=$RUN_URL" --silent
+
   # SELECTED VIEWER TESTS on a fast-lane PR (scripts/ci-viewer-select.mjs).
   # The fast lane skips the shards above, so a viewer failure otherwise first
   # shows in the merge queue. This runs the viewer test files the PR's changes
@@ -1621,7 +1660,8 @@ jobs:
   # (scripts/ci-push-replay.mjs), so a flake here would re-run every lane on
   # main. Test failures exit 0 with a warning; continue-on-error covers the rest.
   # A QUEUE-ENTRY GATE INSTEAD: the last step posts the commit status
-  # `PR viewer selection` on the PR head (pending while the tests run), and
+  # `PR viewer selection` on the PR head (viewer-selection-pending, below,
+  # posts `pending` as soon as `changes` decides this job runs), and
   # .mergify.yml's auto_merge_conditions keep a PR whose status is failure or
   # pending out of the queue. A failed file is retried once (CI_SHARD_RETRY=on),
   # so a flake that passes on retry is success. The status is per head SHA: a
@@ -1630,10 +1670,11 @@ jobs:
   # run stays their gate. The merge queue's full run is still the merge gate.
   viewer-tests-selected:
     name: Viewer tests, advisory (selected for this PR)
-    needs: [changes, build]
+    # After the pending post, so the verdict can never be overwritten by it.
+    needs: [changes, build, viewer-selection-pending]
     continue-on-error: true
     # Job-level permissions replace the workflow's: checkout reads contents,
-    # and the status steps write `PR viewer selection` (statuses only).
+    # and the status step writes `PR viewer selection` (statuses only).
     permissions:
       contents: read
       statuses: write
@@ -1668,19 +1709,6 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: node scripts/ci-viewer-select.mjs --select "$RUNNER_TEMP/viewer-selection"
-      # Pending until the verdict below, so a PR whose review lands first does
-      # not enter the queue before its selected tests have finished. A failed
-      # post must not skip the tests (their `if:` implies success()).
-      - name: Mark the selection status pending
-        if: steps.select.outputs.run == 'true' && github.event.pull_request.head.repo.full_name == github.repository
-        continue-on-error: true
-        run: node scripts/ci-viewer-select.mjs --status "$RUNNER_TEMP/viewer-selection"
-        env:
-          PHASE: start
-          GITHUB_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          CHECK_RUN_ID: ${{ job.check_run_id }}
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         if: steps.select.outputs.run == 'true'
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0

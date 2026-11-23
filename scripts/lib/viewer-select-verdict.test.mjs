@@ -21,8 +21,7 @@ import { STATUS_CONTEXT, postStatus, selectionStatus } from './viewer-select-ver
 const TMP = mkdtempSync(join(tmpdir(), 'viewer-select-verdict-'));
 test.after(() => rmSync(TMP, { recursive: true, force: true }));
 
-test('status: pending at the start; success only on nothing to run or a pass', () => {
-  assert.equal(selectionStatus({ phase: 'start' }).state, 'pending');
+test('status: success only on nothing to run or a pass', () => {
   assert.deepEqual(selectionStatus({ run: 'false', selectOutcome: 'success' }), { state: 'success', description: 'No viewer test file selected to run' });
   const pass = { files: 3, exitCode: 0, failedFiles: [], retry: null, passed: true };
   assert.deepEqual(selectionStatus({ run: 'true', selectOutcome: 'success', result: pass }), { state: 'success', description: '3 selected viewer test file(s) passed' });

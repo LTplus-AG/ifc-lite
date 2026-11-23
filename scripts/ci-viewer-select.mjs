@@ -52,8 +52,8 @@
  *       retries failed files once (CI_SHARD_RETRY=on), writes
  *       <dir>/result.json, and exits 0 even when tests fail
  *   node scripts/ci-viewer-select.mjs --status <dir>
- *       posts STATUS_CONTEXT on HEAD_SHA: `pending` with PHASE=start, else the
- *       verdict from RUN (the select step's `run` output), SELECT_OUTCOME and
+ *       posts STATUS_CONTEXT on HEAD_SHA (test.yml's viewer-selection-pending
+ *       job set it pending): the verdict from RUN (the select step's `run` output), SELECT_OUTCOME and
  *       <dir>/result.json. Needs GITHUB_TOKEN with `statuses: write`.
  */
 

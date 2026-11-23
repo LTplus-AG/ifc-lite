@@ -562,27 +562,36 @@ test('WIRING: the select step feeds the switch inputs, and every heavy step wait
   assert.equal(steps.at(-3).env.CI_SHARD_RETRY, '${{ vars.CI_SHARD_RETRY }}'); // eslint-disable-line no-template-curly-in-string
 });
 
-test('WIRING: the status is posted pending before the tests and finally on always(), on the head SHA, never on a fork', () => {
+test('WIRING: the status is pending from right after `changes`, on the same PRs, and the verdict is posted over it', () => {
+  // Absent passes the Mergify gate, so pending must not wait for `build`.
+  const PENDING = JOBS['viewer-selection-pending'];
+  assert.deepEqual([PENDING.needs].flat(), ['changes']);
+  assert.equal(PENDING.if, JOB.if, 'pending exactly where the selected tests run');
+  assert.deepEqual(JOB.needs, ['changes', 'build', 'viewer-selection-pending'], 'the verdict is posted after pending, never under it');
+  assert.deepEqual(PENDING.permissions, { statuses: 'write' });
+  const [post] = PENDING.steps;
+  assert.equal(post['continue-on-error'], true, 'a failed post must not skip the selected tests');
+  // gh api -f form fields, as the step passes them.
+  const fields = Object.fromEntries([...post.run.matchAll(/-f (?:'([^']*)'|"([^"]*)"|(\S+))/g)]
+    .map((m) => (m[1] ?? m[2] ?? m[3]).split(/=(.*)/s).slice(0, 2)));
+  assert.equal(fields.state, 'pending');
+  assert.equal(fields.context, STATUS_CONTEXT, 'the context the verdict and .mergify.yml use');
+
   const steps = JOB.steps;
-  const statusSteps = steps.filter((s) => String(s.run ?? '').includes('ci-viewer-select.mjs --status')); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML; there is no runtime to drive instead
-  assert.equal(statusSteps.length, 2);
-  const [pending, final] = statusSteps;
-  assert.equal(pending.env.PHASE, 'start');
-  assert.equal(pending['continue-on-error'], true, 'a failed pending post must not skip the tests');
-  assert.ok(steps.indexOf(pending) < steps.findIndex((s) => String(s.run ?? '').includes('--run')), 'pending before the tests'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML; there is no runtime to drive instead
-  assert.equal(final, steps.at(-1), 'the verdict is the last step');
+  const final = steps.at(-1);
+  assert.equal(steps.filter((s) => String(s.run ?? '').includes('ci-viewer-select.mjs --status')).length, 1); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML; there is no runtime to drive instead
+  assert.ok(final.run.includes('ci-viewer-select.mjs --status'), 'the verdict is the last step'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML; there is no runtime to drive instead
   assert.ok(String(final.if).startsWith('always() && '), 'a cancelled or failed run still replaces pending'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML; there is no runtime to drive instead
-  assert.equal(final.env.PHASE, undefined);
   /* eslint-disable no-template-curly-in-string */
   assert.equal(final.env.RUN, '${{ steps.select.outputs.run }}');
   assert.equal(final.env.SELECT_OUTCOME, '${{ steps.select.outcome }}');
-  for (const s of statusSteps) {
+  for (const s of [post, final]) {
     assert.ok(String(s.if).endsWith('github.event.pull_request.head.repo.full_name == github.repository'), 'a fork token cannot write statuses'); // @source-text-assertion-ok workflow wiring pin: the subject IS the YAML; there is no runtime to drive instead
     assert.equal(s.env.HEAD_SHA, '${{ github.event.pull_request.head.sha }}', 'the PR head, which Mergify reads, not the merge commit');
-    assert.equal(s.env.GITHUB_TOKEN, '${{ github.token }}');
   }
+  assert.equal(final.env.GITHUB_TOKEN, '${{ github.token }}');
   /* eslint-enable no-template-curly-in-string */
-  assert.deepEqual(JOB.permissions, { contents: 'read', statuses: 'write' }, 'statuses: write on this job only');
+  assert.deepEqual(JOB.permissions, { contents: 'read', statuses: 'write' }, 'statuses: write on these two jobs only');
 });
 
 test('WIRING: .mergify.yml gates queue entry on the context this script posts', () => {

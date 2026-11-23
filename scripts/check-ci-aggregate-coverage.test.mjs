@@ -150,11 +150,12 @@ test('CI redesign step 5: the CSG accept gates are JUDGED, not exempt, and only 
   assert.ok(agg.needs.includes('rust-full'), 'rust-full (the moved feature legs) must be a dependency of the aggregate');
   assert.ok(agg.judged.includes('rust-full'), 'rust-full must be judged by the results map');
   assert.ok(!('csg-accept-gates' in UNJUDGED_BY_DESIGN), 'a judged job must not also be exempt');
-  // The one exemption: a budget-capped SAMPLE of the viewer suite on fast-lane
-  // PRs (scripts/ci-viewer-select.mjs). Its pass certifies nothing and the
-  // merge queue runs every shard. Adding another entry is a decision; make it
-  // here, not by loosening this line.
-  assert.deepEqual(Object.keys(UNJUDGED_BY_DESIGN), ['viewer-tests-selected']);
+  // The exemptions: a budget-capped SAMPLE of the viewer suite on fast-lane
+  // PRs (scripts/ci-viewer-select.mjs), and the job that marks its commit
+  // status pending. Its pass certifies nothing and the merge queue runs every
+  // shard. Adding another entry is a decision; make it here, not by loosening
+  // this line.
+  assert.deepEqual(Object.keys(UNJUDGED_BY_DESIGN), ['viewer-tests-selected', 'viewer-selection-pending']);
 });
 
 test('every exemption carries a stated reason', () => {

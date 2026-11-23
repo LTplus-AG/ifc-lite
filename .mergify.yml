@@ -147,8 +147,9 @@ pull_request_rules:
 #
 # `PR viewer selection` is the commit status test.yml's viewer-tests-selected
 # job posts on the PR head (scripts/ci-viewer-select.mjs): failure when a
-# viewer test file the PR reaches failed, after one retry; pending while they
-# run. Written as NOT failure and NOT pending, so a PR without the status
+# viewer test file the PR reaches failed, after one retry; pending from right
+# after `changes` until they finish. Written as NOT failure and NOT pending,
+# so a PR without the status
 # (full lane, docs only, fork, switch off) is not held. It is per head SHA, so
 # a push starts over and an old commit's failure cannot hold the PR. Here, not
 # in queue_conditions: those are re-checked while queued and would dequeue a

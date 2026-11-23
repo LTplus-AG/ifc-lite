@@ -1,7 +1,0 @@
-{
-  "issue": 7955,
-  "key": "packages/sdk/src/georef/site-angle.ts",
-  "mutation": "tests/evidence/georef-site-angle-sign/sign.oracle.patch",
-  "why": "Reverse application keeps every export but negates only the degrees of a southern or western angle, breaking IfcCompoundPlaneAngleMeasure's ConsistentSign rule; the WHERE-rule and sign cases in site-write.test.ts go red.",
-  "test": "packages/sdk/src/georef/site-write.test.ts"
-}

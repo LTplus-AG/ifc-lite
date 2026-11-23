@@ -31,6 +31,7 @@ import './harden-dom-mutations';
 // takes a local-agent pairing link's one-time code out of the address bar
 // (#9523). Imports nothing; see lib/agent-bridge/pairing-fragment.ts.
 import './lib/agent-bridge/pairing-fragment.boot';
+import './registry-launch-location';
 // Before react-dom too: under ?perfTrace=1, switches the #6957 counters on
 // before the store and renderer exist, and counts React commits.
 import './lib/perf/reactCommits';

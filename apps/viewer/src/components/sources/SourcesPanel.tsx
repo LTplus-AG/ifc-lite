@@ -2,8 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { Suspense, useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { lazyChunk } from '@/lib/lazy-chunk';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { ConnectionTestResult } from '@ifc-lite/plugin-api';
 import { useSourceHost } from '@/services/sources/SourceHostProvider';
 import { SourceSettingsDialog } from './SourceSettingsDialog';
@@ -30,7 +29,7 @@ import {
   type SourceRevisionUpdate,
 } from '@/lib/sources/revisionWatch';
 
-const RegistrySource = lazyChunk(() => import('./RegistrySource').then(module => ({ default: module.RegistrySource })));
+import { RegistrySources } from './RegistrySources';
 
 interface SourcesPanelProps {
   onClose: () => void;
@@ -324,10 +323,8 @@ export function SourcesPanel({ onClose, registryEnabled = import.meta.env?.VITE_
         />
 
         <ul className="space-y-2">
-          {registryEnabled && <Suspense fallback={null}>
-            <RegistrySource expanded={browsing === 'oci-registry'} navigationDisabled={downloading} onBusyChange={setRegistryBusy}
-              onToggle={() => { if (navigationLock.current.busy) return; didAutoOpen.current = true; setBrowseTarget(null); setBrowsing(previous => previous === 'oci-registry' ? null : 'oci-registry'); }} />
-          </Suspense>}
+          {registryEnabled && <RegistrySources expanded={browsing === 'oci-registry'} navigationDisabled={downloading} onBusyChange={setRegistryBusy}
+            onToggle={() => { if (navigationLock.current.busy) return; didAutoOpen.current = true; setBrowseTarget(null); setBrowsing(previous => previous === 'oci-registry' ? null : 'oci-registry'); }} />}
           {[...providers].sort((a, b) => Number(pins.ids.includes(b.manifest.name)) - Number(pins.ids.includes(a.manifest.name))).map((p) => (
             <SourceProviderRow
               key={p.manifest.name}

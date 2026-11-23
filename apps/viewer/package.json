@@ -132,7 +132,8 @@
     "@ifc-lite/source-autodesk": "workspace:^",
     "@ifc-lite/ids-agent": "workspace:^",
     "@playcanvas/splat-transform": "3.11.2",
-    "playcanvas": "2.24.1"
+    "playcanvas": "2.24.1",
+    "@ifc-lite/oci": "workspace:^"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^21.0.4",

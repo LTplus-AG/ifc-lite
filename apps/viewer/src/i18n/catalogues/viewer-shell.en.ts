@@ -45,6 +45,7 @@ export const viewerShellEn = {
   'viewerShell.chunkLabel.mcpPage': 'MCP page',
   'viewerShell.chunkLabel.mcpPlayground': 'MCP playground',
   'viewerShell.chunkLabel.rteGpuWitness': 'RTE GPU witness',
+  'viewerShell.chunkLabel.registryModel': 'Registry model',
 
   'viewerShell.dialog.close': 'Close',
   'viewerShell.dialog.confirmTitle': 'Confirm action',

@@ -10,8 +10,8 @@ import { render, click, cleanup, type, waitFor } from '@/test/render';
 import { SourceHostProvider } from '@/services/sources/SourceHostProvider';
 import { clearRegistrySession, useRegistryWorkspace } from '@/lib/registry/workspace';
 import { OCI_MANIFEST_TYPE, sha256 } from '@/lib/registry/artifacts';
+import { HANDOFF_PROTOCOL, saveRegistryConnection } from '@/lib/registry/handoff-contract';
 import { SourcesPanel } from './SourcesPanel';
-import { resolveEnglish } from '@/i18n/registry';
 import { installRegistryPopup, registryCallback, registryOAuthConfig, registryTokenReply } from '@/test/registry-oauth-fixture';
 const initialFetch = globalThis.fetch;
 
@@ -28,11 +28,29 @@ function button(ui: HTMLElement, name: string): HTMLButtonElement {
 }
 afterEach(async () => { await act(async () => { cleanup(); clearRegistrySession(); }); globalThis.fetch = initialFetch; });
 
-test('Model registry uses a registry sign-in action without viewer credentials (#8310)', async () => {
-  const disabled = await mount(false);
-  assert(!disabled.textContent?.includes('Model registry'));
-  assert.equal(resolveEnglish('registry.title'), 'registry.title', 'the disabled feature must not load its English catalogue (#8310)');
+test('the registry flag gates file-store controls and handoff authorization (#9638)', async t => {
+  const enabled = await mount();
+  await waitFor(() => Boolean(enabled.textContent?.includes('Add file store')), 'the enabled viewer offers file-store setup');
   cleanup();
+
+  const registry = 'https://files.example.test';
+  saveRegistryConnection({ registry, authorization_server: 'https://issuer.example.test', client_id: 'viewer' });
+  t.after(() => { localStorage.clear(); window.history.replaceState(null, '', '/'); });
+  const disabled = await mount(false);
+  assert.doesNotMatch(disabled.textContent ?? '', /Model registry|Add file store|Browse versions|Push to…/);
+  cleanup();
+
+  const fetch = t.mock.method(globalThis, 'fetch', async () => Response.json({}));
+  const handoff = { protocol: HANDOFF_PROTOCOL, intent: 'view', source: { registry, repository: 'project/model', digest: 'sha256:' + 'a'.repeat(64) } };
+  window.history.replaceState(null, '', '/open-artifact#handoff=' + Buffer.from(JSON.stringify(handoff)).toString('base64url'));
+  const { default: RegistryLaunchRoute } = await import('./RegistryLaunchRoute');
+  let ui!: HTMLElement;
+  await act(async () => { ui = render(<RegistryLaunchRoute />); });
+  assert.match(ui.textContent ?? '', /Registry access is not enabled in this viewer/);
+  assert.equal(fetch.mock.callCount(), 0);
+});
+
+test('Model registry uses a registry sign-in action without viewer credentials (#8310)', async () => {
   globalThis.fetch = async input => new URL(String(input)).pathname === '/oauth/config'
     ? Response.json(registryOAuthConfig('http://127.0.0.1:5000')) : Response.json({ error: 'invalid_grant' }, { status: 401 });
   const ui = await mount();

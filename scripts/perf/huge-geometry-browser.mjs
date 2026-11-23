@@ -37,6 +37,21 @@ export function loadPlaywright() {
   return createRequire(join(ROOT, 'package.json'))('@playwright/test');
 }
 
+/**
+ * Settle `promise`, or `onTimeout()` after `ms`. The timer is cleared either
+ * way, so a long bound never keeps node alive after the work is done.
+ */
+export function within(promise, ms, onTimeout) {
+  let timer;
+  const timeout = new Promise((resolve, reject) => {
+    timer = setTimeout(() => { try { resolve(onTimeout()); } catch (err) { reject(err); } }, ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+/** `promise`, or a rejection naming `what` after `ms`. */
+export const bounded = (promise, ms, what = 'step') => within(promise, ms, () => { throw new Error(`${what} timed out after ${ms} ms`); });
+
 export function gpuArgs() {
   const fromHelper = (process.env.IFC_GPU_CHROME_ARGS ?? '').split(/\s+/).filter(Boolean);
   return [...(fromHelper.length ? fromHelper : DEFAULT_GPU_ARGS), '--use-webgpu-power-preference=default-high-performance',

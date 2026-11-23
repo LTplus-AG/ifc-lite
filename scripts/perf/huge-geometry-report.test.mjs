@@ -71,3 +71,11 @@ test('tier labels parse', () => {
   assert.equal(parseTier('250000'), 250000);
   assert.throws(() => parseTier('1e6'), /bad tier/);
 });
+
+test('within/bounded: settle with the promise, time out with the fallback or a named error', async () => {
+  const { within, bounded } = need(browser, 'huge-geometry-browser.mjs');
+  assert.equal(await within(Promise.resolve('done'), 60000, () => 'late'), 'done');
+  assert.equal(await within(new Promise(() => {}), 5, () => 'late'), 'late');
+  await assert.rejects(bounded(new Promise(() => {}), 5, 'camera orbit'), /camera orbit timed out after 5 ms/);
+  // A settled race clears its timer: the 60 s bound above must not keep this test file alive.
+});

@@ -21,7 +21,10 @@
 export const HARNESS_INIT = () => {
   if (globalThis.__hgProbe) return;
   const p = { recording: false, frames: [], cur: { draws: 0, tris: 0, indirect: 0, submits: 0, presents: 0 }, lastPresent: 0, lastSubmit: 0,
-    queue: null, wasm: [] };
+    queue: null, wasm: [], after: null };
+  // Arm a frame watch at an action's own time `from` (in page, so no harness round trip is counted): the first present
+  // after it, the submit that follows, and that submit's GPU completion; all reported relative to `ref`.
+  p.armFrame = (from, ref = from) => { p.after = { from, ref, present: null, done: null }; };
   globalThis.__hgProbe = p;
   const raf = globalThis.requestAnimationFrame.bind(globalThis);
   let pending = null;
@@ -52,8 +55,15 @@ export const HARNESS_INIT = () => {
   wrap(pass, 'drawIndexed', (_, a) => { p.cur.draws++; p.cur.tris += ((a[0] ?? 0) * (a[1] ?? 1)) / 3; });
   wrap(pass, 'drawIndirect', () => { p.cur.draws++; p.cur.indirect++; });
   wrap(pass, 'drawIndexedIndirect', () => { p.cur.draws++; p.cur.indirect++; });
-  wrap(globalThis.GPUQueue?.prototype, 'submit', (q) => { p.cur.submits++; p.queue = q; p.lastSubmit = performance.now(); });
-  wrap(globalThis.GPUCanvasContext?.prototype, 'getCurrentTexture', () => { p.cur.presents++; p.lastPresent = performance.now(); });
+  wrap(globalThis.GPUQueue?.prototype, 'submit', (q) => {
+    p.cur.submits++; p.queue = q; p.lastSubmit = performance.now();
+    const a = p.after;
+    if (a && a.present !== null && !a.done) a.done = q.onSubmittedWorkDone().then(() => performance.now());
+  });
+  wrap(globalThis.GPUCanvasContext?.prototype, 'getCurrentTexture', () => {
+    p.cur.presents++; p.lastPresent = performance.now();
+    if (p.after && p.after.present === null && p.lastPresent > p.after.from) p.after.present = p.lastPresent;
+  });
   const keep = (result) => {
     const exp = result?.instance?.exports ?? result?.exports;
     for (const v of Object.values(exp ?? {})) if (v instanceof WebAssembly.Memory && !p.wasm.includes(v)) p.wasm.push(v);
@@ -142,32 +152,34 @@ export const CAMERA_PATH = async ({ kind, frames }) => {
 };
 
 /**
- * In page: resolves `{ presentMs, doneMs }` after `tAction`: the first
- * rendered frame after it, and the GPU queue reporting that frame's work
- * done. Null fields when nothing rendered within `capMs`.
+ * In page: resolves `{ presentMs, doneMs }` of the watch `__hgProbe.armFrame`
+ * set at the action: the first rendered frame after it, and the GPU queue
+ * reporting that frame's work done, relative to the watch's `ref`. Null
+ * fields when nothing rendered within `capMs`.
  */
-export const AFTER_FRAME = async ({ tAction, capMs }) => {
-  const p = globalThis.__hgProbe;
-  const end = tAction + capMs;
-  for (;;) {
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-    if (p.lastPresent > tAction && p.lastSubmit >= p.lastPresent) {
-      const presentMs = p.lastPresent - tAction;
-      await p.queue.onSubmittedWorkDone();
-      return { presentMs, doneMs: performance.now() - tAction };
-    }
-    if (performance.now() > end) return { presentMs: null, doneMs: null };
+export const AFTER_FRAME = async ({ capMs }) => {
+  const a = globalThis.__hgProbe.after;
+  if (!a) return { presentMs: null, doneMs: null };
+  const end = performance.now() + capMs;
+  while (!a.done) {
+    if (performance.now() > end) return { presentMs: a.present === null ? null : a.present - a.ref, doneMs: null };
+    await new Promise((resolve) => setTimeout(resolve, 4));
   }
+  return { presentMs: a.present - a.ref, doneMs: (await a.done) - a.ref };
 };
 
 /** In page: arm a pick measurement; the harness then clicks. Returns nothing. */
 export const ARM_PICK = () => {
   const s = globalThis.__ifc_lite_viewer_store__;
   const st = { down: null, selectedAt: null, selected: null, before: s.getState().selectedEntityId ?? null };
+  if (globalThis.__hgProbe) globalThis.__hgProbe.after = null; // no stale watch from an earlier action
   globalThis.__hgPick?.unsub?.();
   st.unsub = s.subscribe((x) => {
     const id = x.selectedEntityId ?? null;
-    if (st.selectedAt === null && st.down !== null && id !== st.before) { st.selectedAt = performance.now(); st.selected = id; }
+    if (st.selectedAt === null && st.down !== null && id !== st.before) {
+      st.selectedAt = performance.now(); st.selected = id;
+      globalThis.__hgProbe?.armFrame(st.selectedAt, st.down);
+    }
   });
   const canvas = document.querySelector('canvas');
   canvas.addEventListener('pointerdown', () => { st.down ??= performance.now(); }, { capture: true, once: true });
@@ -205,6 +217,7 @@ export const STORE_ACTION = ({ action, args }) => {
   const s = globalThis.__ifc_lite_viewer_store__.getState();
   if (typeof s[action] !== 'function') throw new Error(`store action ${action} unavailable`);
   const t = performance.now();
+  globalThis.__hgProbe?.armFrame(t);
   s[action](...(args ?? []));
   return { tAction: t, syncMs: performance.now() - t };
 };

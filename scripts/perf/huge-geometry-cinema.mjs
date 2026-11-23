@@ -30,7 +30,7 @@ import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { generateScenario } from './huge-geometry-gen.mjs';
-import { ROOT, launchGpu, loadModel, startSampler } from './huge-geometry-browser.mjs';
+import { ROOT, bounded, launchGpu, loadModel, startSampler, within } from './huge-geometry-browser.mjs';
 import { SCENE_STATS } from './huge-geometry-page.mjs';
 import { frameSummary } from './huge-geometry-report.mjs';
 import { parseTier } from './huge-geometry-run.mjs';
@@ -43,7 +43,6 @@ const gb = (mib) => (Number.isFinite(mib) && mib > 0 ? (mib >= 1024 ? `${(mib / 
 const fmt = (n) => (Number.isFinite(n) ? Math.round(n).toLocaleString('en-US') : '–');
 const mtris = (n) => (Number.isFinite(n) && n > 0 ? `${(n / 1e6).toFixed(1)} M` : '–');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const bounded = (p, ms) => Promise.race([p, sleep(ms).then(() => { throw new Error(`timed out after ${ms} ms`); })]);
 const HIGHLIGHT = [1.0, 0.82, 0.1, 1];
 const SAMPLES_PER_SECOND = 60;
 
@@ -135,10 +134,10 @@ async function recordTier({ label, manifest, url, out, fps, loadSpeed, timeoutMs
     }, 500);
     // A hard deadline over the whole load: on the PC a 2M load once hung past the harness's own timeout for 25 min.
     const deadlineMs = timeoutMs + 90000;
-    console.log(`[cinema ${name}] loading (deadline ${Math.round((timeoutMs + 90000) / 60000)} min)`);
-    const load = await Promise.race([loadModel(session, null, manifest.files, { timeoutMs, url }),
-      sleep(deadlineMs).then(() => ({ ok: false, wallMs: Date.now() - started, adapter: null,
-        failure: { kind: 'timeout', detail: `not interactive after ${Math.round(deadlineMs / 60000)} min (recorder deadline; no crash, no viewer error)` } }))]);
+    console.log(`[cinema ${name}] loading (deadline ${Math.round(deadlineMs / 60000)} min)`);
+    const load = await within(loadModel(session, null, manifest.files, { timeoutMs, url }), deadlineMs,
+      () => ({ ok: false, wallMs: Date.now() - started, adapter: null,
+        failure: { kind: 'timeout', detail: `not interactive after ${Math.round(deadlineMs / 60000)} min (recorder deadline; no crash, no viewer error)` } }));
     clip.load = { ok: load.ok, timings: load.ok ? { firstFrameMs: load.timings.firstFrameMs, interactiveMs: load.timings.interactiveMs } : null,
       failure: load.failure ?? null, wallMs: load.wallMs, adapter: load.adapter };
     console.log(`[cinema ${name}] load ${load.ok ? 'ok' : `failed: ${load.failure?.kind}`} after ${((load.wallMs ?? 0) / 1000).toFixed(0)} s`);
@@ -274,6 +273,7 @@ async function recordTier({ label, manifest, url, out, fps, loadSpeed, timeoutMs
   } catch (err) {
     clip.status = 'error';
     clip.failure = { kind: session.events.crashed ? 'renderer-crash' : 'harness-error', detail: String(err?.message ?? err).slice(0, 600) };
+    clip.peak ??= (await sampler.stop().catch(() => null))?.peak ?? null;
     return { clip, encoder, stop, session };
   } finally {
     if (ticker) clearInterval(ticker);

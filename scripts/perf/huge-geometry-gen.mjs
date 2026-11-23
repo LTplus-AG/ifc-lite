@@ -48,6 +48,7 @@ const GOLDEN = 0.6180339887498949;
 const SILVER = 0.4142135623730951;
 const PALETTE = [[0.78, 0.76, 0.72], [0.55, 0.62, 0.70], [0.82, 0.55, 0.38], [0.45, 0.62, 0.45], [0.86, 0.80, 0.52],
   [0.62, 0.50, 0.70], [0.40, 0.55, 0.62], [0.70, 0.42, 0.42]];
+const GENERATOR = 'huge-geometry-gen/1';
 export const CELL = 3;
 export const FLOOR = 3.5;
 export const CAMPUS = Object.freeze({ perBuilding: 2000, side: 10, pitch: 80, jitter: 15 });
@@ -218,13 +219,14 @@ export function generateScenario(dir, options) {
   if (existsSync(manifestPath) && files.every((f) => existsSync(f))) {
     try {
       const prev = JSON.parse(readFileSync(manifestPath, 'utf8'));
-      if (JSON.stringify(prev.scenario) === JSON.stringify(s)) return { ...prev, reused: true };
+      // Reuse only bytes from this generator version: bump GENERATOR when the emitted STEP changes.
+      if (prev.generator === GENERATOR && JSON.stringify(prev.scenario) === JSON.stringify(s)) return { ...prev, reused: true };
     } catch (err) { console.warn(`huge-geometry-gen: ignoring unreadable manifest ${manifestPath}: ${err.message}`); }
   }
   const t0 = Date.now();
   const models = files.map((f, m) => writeHugeModel(f, s, m));
   const sum = (key) => models.reduce((acc, x) => acc + (x[key] ?? 0), 0);
-  const manifest = { generator: 'huge-geometry-gen/1', scenario: s, files, models,
+  const manifest = { generator: GENERATOR, scenario: s, files, models,
     totals: { elements: sum('elements'), openings: sum('openings'), entities: sum('entities'), bytes: sum('bytes'),
       triangles: models.every((x) => x.triangles !== null) ? sum('triangles') : null, trianglesKnown: sum('trianglesKnown') },
     genSeconds: (Date.now() - t0) / 1000 };

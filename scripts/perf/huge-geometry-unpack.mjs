@@ -13,7 +13,7 @@
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join, normalize } from 'node:path';
+import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 
 /** Parse HGFILE lines from `text`; returns { files: Map(rel -> Buffer), incomplete: [rel] }. */
@@ -39,8 +39,9 @@ if (isMainEntry(import.meta.url)) {
   if (!log || !out) { console.error('usage: huge-geometry-unpack.mjs LOG OUT_DIR'); process.exit(2); }
   const { files, incomplete } = unpack(readFileSync(log, 'utf8'));
   for (const [rel, buf] of files) {
-    const dest = normalize(join(out, rel));
-    if (!dest.startsWith(normalize(out))) { console.error(`skip unsafe path ${rel}`); continue; }
+    const dest = resolve(out, rel);
+    const inside = relative(resolve(out), dest);
+    if (!inside || inside.startsWith('..') || isAbsolute(inside)) { console.error(`skip unsafe path ${rel}`); continue; }
     mkdirSync(dirname(dest), { recursive: true });
     writeFileSync(dest, buf);
     console.log(`${dest} ${buf.length} bytes`);

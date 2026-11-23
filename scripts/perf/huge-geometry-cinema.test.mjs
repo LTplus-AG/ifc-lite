@@ -108,6 +108,16 @@ test('composer: pair timeline aligns shots by name and holds a failed clip', () 
   assert.equal(seg2[1].src[0](2), 40 - 0.04, 'the failed clip holds its last load frame');
 });
 
+test('composer: a clip that errored before its load still composes', () => {
+  const c = need(composeModule, 'huge-geometry-compose.mjs');
+  const errored = { status: 'error', timeline: { title: [0, 3], load: null, path: null }, shots: [] };
+  const ok = { status: 'ok', timeline: { load: [3, 11], path: [11, 18] }, shots: [{ name: 'fly-in', caption: 'fly-in', start: 11, end: 18 }] };
+  const seg = c.pairTimeline(errored, ok);
+  assert.deepEqual(seg.map((s) => s.kind), ['load', 'shot']);
+  assert.equal(seg[0].length, 8);
+  assert.ok(seg[1].src[0](1) >= 0);
+});
+
 test('remote outputs: HGFILE lines round-trip, incomplete files are refused', async () => {
   const u = await load('./huge-geometry-unpack.mjs');
   need(u, 'huge-geometry-unpack.mjs');

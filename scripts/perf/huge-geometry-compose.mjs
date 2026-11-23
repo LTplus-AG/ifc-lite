@@ -60,7 +60,7 @@ export function verdictLines(b, a) {
   if (!a.ok) return [`after FAILED (${a.failure ?? a.status}); before loaded in ${b.loadS?.toFixed(1)} s`];
   if (!b.ok) return [`before FAILED (${b.failure ?? b.status}); after loads in ${a.loadS?.toFixed(1)} s and runs the full path`];
   const ratio = (x, y, what, unit, digits = 1) => {
-    if (!Number.isFinite(x) || !Number.isFinite(y) || y <= 0) return null;
+    if (!Number.isFinite(x) || !Number.isFinite(y) || x <= 0 || y <= 0) return null;
     const r = x / y;
     const dir = r >= 1.05 ? `${r.toFixed(2)}× lower` : r <= 0.95 ? `${(1 / r).toFixed(2)}× higher` : 'about the same';
     return `${what}: ${x.toFixed(digits)} → ${y.toFixed(digits)} ${unit} (${dir})`;
@@ -76,7 +76,8 @@ export function verdictLines(b, a) {
  */
 export function pairTimeline(b, a) {
   const seg = [];
-  const lb = b.timeline.load, la = a.timeline.load;
+  // A clip that errored before its load has no load span: hold its first frame for the load segment.
+  const lb = b.timeline.load ?? [0, 0.04], la = a.timeline.load ?? [0, 0.04];
   const loadLen = Math.max(lb[1] - lb[0], la[1] - la[0]);
   seg.push({ kind: 'load', length: loadLen, src: [(t) => Math.min(lb[0] + t, lb[1] - 0.04), (t) => Math.min(la[0] + t, la[1] - 0.04)],
     done: [(t) => t >= lb[1] - lb[0], (t) => t >= la[1] - la[0]] });
@@ -177,7 +178,7 @@ async function main() {
     clip: { type: 'string', multiple: true, default: [] }, 'before-label': { type: 'string', default: 'before' }, 'after-label': { type: 'string', default: 'after' },
     verdict: { type: 'string' }, fps: { type: 'string', default: '30' }, subtitle: { type: 'string', default: '' },
   } });
-  if (!values.out || (!values.pair.length && !values.clip.length)) {
+  if (!values.out?.endsWith('.webm') || (!values.pair.length && !values.clip.length)) {
     console.error('usage: huge-geometry-compose.mjs --out FILE.webm [--title T] [--pair before.json,after.json ...] [--clip a.json ...] '
       + '[--before-label L] [--after-label L] [--verdict TEXT] [--fps 30]');
     process.exit(2);

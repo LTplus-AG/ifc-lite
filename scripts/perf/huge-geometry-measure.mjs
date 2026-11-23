@@ -10,14 +10,12 @@
  */
 
 import { userAgentMemory } from './retained-qual-browser.mjs';
+import { bounded } from './huge-geometry-browser.mjs';
 import { AFTER_FRAME, ARM_PICK, CAMERA_PATH, ELEMENT_IDS, READ_PICK, SCENE_STATS, STORE_ACTION, WASM_BYTES } from './huge-geometry-page.mjs';
 import { frameSummary } from './huge-geometry-report.mjs';
 
 export const CAMERA_PATHS = Object.freeze(['orbit', 'zoom', 'fly']);
 const PICK_POINTS = [[0.5, 0.5], [0.4, 0.45], [0.6, 0.55], [0.45, 0.6], [0.55, 0.4]];
-
-const bounded = (promise, ms, what) => Promise.race([promise,
-  new Promise((_, reject) => setTimeout(() => reject(new Error(`${what} timed out after ${ms} ms`)), ms))]);
 
 async function step(errors, name, fn) {
   try { return await fn(); } catch (err) {
@@ -61,13 +59,13 @@ export async function cameraPaths(page, frames, errors, { onPath } = {}) {
   return out;
 }
 
-async function afterFrame(page, tAction) {
-  return bounded(page.evaluate(AFTER_FRAME, { tAction, capMs: 60000 }), 90000, 'next frame');
+async function afterFrame(page) {
+  return bounded(page.evaluate(AFTER_FRAME, { capMs: 60000 }), 90000, 'next frame');
 }
 
 async function timedAction(page, action, args) {
   const r = await bounded(page.evaluate(STORE_ACTION, { action, args }), 120000, action);
-  const f = await afterFrame(page, r.tAction);
+  const f = await afterFrame(page);
   return { syncMs: r.syncMs, presentMs: f.presentMs, doneMs: f.doneMs };
 }
 
@@ -83,7 +81,7 @@ export async function interactions(page, errors) {
       await page.waitForFunction(() => globalThis.__hgPick?.selectedAt !== null, null, { timeout: 15000 }).catch(() => null);
       const r = await page.evaluate(READ_PICK);
       if (!r.hit) return r;
-      const f = await afterFrame(page, r.downAt);
+      const f = await afterFrame(page);
       return { ...r, frameDoneMs: f.doneMs };
     });
     if (pick) out.picks.push(pick);

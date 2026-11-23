@@ -6124,6 +6124,16 @@ real heavy-model cuts even though small synthetic cases remained green; the
 heavy census caught that overreach, and restoring the old horizontal route
 removed every branch-caused census delta.
 
+## Flush recesses on inward-wound source shells (#11276)
+
+The inward-wound recess fixture loses its extra membrane when the wider
+source face is identified by containment. A side wall at a corner
+exclusive to that face must extend beyond the authored cap for either
+signed-area group. Containment by itself could select a wider finish.
+
+Meshes matched the base on FZK-Haus, ISSUE_129, Holter, and rvt01.
+Timing on the loaded host did not establish a throughput change.
+
 ## Hole-wall winding and host-derived wall frames (#5410)
 
 Correctness change, no performance claim. Extruded profile holes now emit side

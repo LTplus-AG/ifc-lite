@@ -128,11 +128,9 @@ export const ColorLegendImpl = createComponentImplementation(ColorLegendApi, ({ 
   // eslint-disable-next-line react-hooks/exhaustive-deps -- state setters are stable
   useEffect(() => onViewReset(host, clearViewState), [host]);
   // Another legend or a colorize action painted over these colours: no longer applied (and not re-applied).
-  const claimRef = useRef(claimKey);
-  claimRef.current = claimKey;
   useEffect(() => onColouringChange(host, () => {
-    if (!isColouringActive(host, claimRef.current)) setApplied(false);
-  }), [host]);
+    if (!isColouringActive(host, claimKey)) setApplied(false);
+  }), [host, claimKey]);
   useEffect(() => {
     // Nothing to colour: claim nothing, so a remount never shows it as applied.
     if (props.apply !== 'onShow' || targets === 0) return;

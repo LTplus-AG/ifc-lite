@@ -143,6 +143,10 @@ function listen(registry: WeakMap<A2uiViewerHost, Set<() => void>>, host: A2uiVi
   return () => { listeners.delete(listener); };
 }
 
+function emit(registry: WeakMap<A2uiViewerHost, Set<() => void>>, host: A2uiViewerHost): void {
+  for (const listener of registry.get(host) ?? []) listener();
+}
+
 /** The legend colouring a viewer shows now, by key; any other colouring or a reset ends it. */
 const activeColouring = new WeakMap<A2uiViewerHost, string>();
 
@@ -151,7 +155,7 @@ export function colourModel(host: A2uiViewerHost, groups: Parameters<A2uiViewerH
   host.colorize(groups);
   if (key === undefined) activeColouring.delete(host);
   else activeColouring.set(host, key);
-  for (const listener of colouringListeners.get(host) ?? []) listener();
+  emit(colouringListeners, host);
 }
 
 /** Called after any colouring, so a legend whose colours were painted over drops its "applied" label. */
@@ -185,7 +189,7 @@ export function runIfcFunction(host: A2uiViewerHost, name: string, args: Record<
     case 'resetView': {
       host.resetView();
       activeColouring.delete(host);
-      for (const listener of viewResetListeners.get(host) ?? []) listener();
+      emit(viewResetListeners, host);
       return undefined;
     }
     case 'getSelection': return host.getSelection().map(encodeRef);

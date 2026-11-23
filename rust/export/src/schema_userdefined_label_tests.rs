@@ -47,6 +47,25 @@ fn an_upgrade_writes_the_label_into_an_unset_object_type_10824() {
 /// A set ObjectType is kept, and the IFC2X3 label is then dropped and
 /// counted; a label beside another member is not carried.
 #[test]
+fn an_upgrade_carries_a_label_with_a_mixed_case_target_head_10971() {
+    let mut dropped = 1;
+    let work_plan = carry(
+        "#7=IfcWorkPlan('g',#2,'P',$,$,'WP',$,$,$,$,$,$,$,.USERDEFINED.,'Custom');",
+        "#7=IfcWorkPlan('g',#2,'P',$,$,'WP',$,$,$,$,$,$,$,.USERDEFINED.);".into(),
+        "IFC2X3", "IFC4", Some(&mut dropped),
+    );
+    assert_eq!(work_plan, "#7=IfcWorkPlan('g',#2,'P',$,'Custom','WP',$,$,$,$,$,$,$,.USERDEFINED.);");
+    assert_eq!(dropped, 0);
+
+    let board = carry(
+        "#8=IfcElectricDistributionPoint('g',#2,'n',$,$,$,$,'t',.USERDEFINED.,'Custom');",
+        "#8=IfcDistributionBoard('g',#2,'n',$,$,$,$,'t',.USERDEFINED.);".into(),
+        "IFC2X3", "IFC4X3", None,
+    );
+    assert_eq!(board, "#8=IfcDistributionBoard('g',#2,'n',$,'Custom',$,$,'t',.USERDEFINED.);");
+}
+
+#[test]
 fn a_set_object_type_or_another_member_keeps_the_label_dropped_10824() {
     let (out, dropped, _) = convert("#7=IFCWORKPLAN('g',#2,'P',$,'Mine','WP',$,$,$,$,$,$,$,.USERDEFINED.,'Custom');", "IFC2X3", "IFC4");
     assert_eq!((out.as_str(), dropped), ("#7=IFCWORKPLAN('g',#2,'P',$,'Mine','WP',$,$,$,$,$,$,$,.USERDEFINED.);", 1));

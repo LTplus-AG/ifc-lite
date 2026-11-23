@@ -651,6 +651,9 @@ importers:
 
   apps/viewer-embed:
     dependencies:
+      '@ifc-lite/a2ui':
+        specifier: workspace:^
+        version: link:../../packages/a2ui
       '@ifc-lite/ai':
         specifier: workspace:^
         version: link:../../packages/ai

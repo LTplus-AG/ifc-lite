@@ -15,3 +15,4 @@ export * from './policy.js';
 export * from './refs.js';
 export * from './query.js';
 export * from './builders.js';
+export * from './charts.js';

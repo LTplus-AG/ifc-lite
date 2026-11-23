@@ -7,6 +7,7 @@
     "ChartDatum: interface",
     "ColumnSpec: interface",
     "CreateSurfaceMessage: interface",
+    "DEFAULT_MAX_GROUPS: const",
     "DEFAULT_QUERY_LIMIT: const",
     "FieldPath: type",
     "FollowUp: interface",
@@ -34,12 +35,14 @@
     "describeQuery: function",
     "encodeRef: function",
     "eventToFollowUp: function",
+    "foldGroups: function",
     "isIfcFunction: function",
     "matchesCondition: function",
     "normalizeQuery: function",
     "parseFieldPath: function",
     "parseRef: function",
-    "parseRefs: function"
+    "parseRefs: function",
+    "resolveMaxGroups: function"
   ],
   "@ifc-lite/a2ui/agent": [
     "AgentToRendererMessage: type",

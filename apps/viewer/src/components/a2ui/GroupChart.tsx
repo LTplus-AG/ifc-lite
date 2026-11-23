@@ -11,7 +11,7 @@
 
 import { Component, useCallback, useContext, useMemo, type ReactNode } from 'react';
 import { createComponentImplementation } from '@a2ui/react';
-import { encodeRef } from '@ifc-lite/a2ui';
+import { encodeRef, foldGroups, resolveMaxGroups } from '@ifc-lite/a2ui';
 import { GroupChartApi } from '@ifc-lite/a2ui/catalog';
 import type { ChartItem, EChartsOptionObject } from '@ifc-lite/charts';
 import { LENS_PALETTE } from '@ifc-lite/lens';
@@ -49,14 +49,9 @@ function ChartCanvas({ kind, groups, label, onPick }: { kind: 'bar' | 'pie'; gro
   return <div ref={ref} aria-hidden="true" title={label} className="h-48 w-full" />;
 }
 
-/** Keep the largest `max - 1` groups in their given order and fold the rest into one. */
-export function foldGroups(groups: ChartGroup[], max: number, otherLabel: string): ChartGroup[] {
-  if (groups.length <= max) return groups;
-  const largest = new Set([...groups].sort((a, b) => Math.abs(b.value) - Math.abs(a.value)).slice(0, Math.max(1, max - 1)));
-  const head: ChartGroup[] = [];
-  const rest: ChartGroup[] = [];
-  for (const g of groups) (largest.has(g) ? head : rest).push(g);
-  return [...head, { label: otherLabel, value: rest.reduce((a, g) => a + g.value, 0), refs: rest.flatMap((g) => g.refs) }];
+/** The shared fold, with this renderer's Other group. */
+function foldChartGroups(groups: ChartGroup[], max: number, otherLabel: string): ChartGroup[] {
+  return foldGroups(groups, max, (rest) => ({ label: otherLabel, value: rest.reduce((a, g) => a + g.value, 0), refs: rest.flatMap((g) => g.refs) }));
 }
 
 /** Script data: `[{label, value, refs?}]`, malformed entries dropped. */
@@ -98,15 +93,14 @@ export const GroupChartImpl = createComponentImplementation(GroupChartApi, ({ pr
   const run = useRunFunction();
   const { result, reader } = useQueryResult(props.data === undefined ? props.query ?? {} : undefined);
   const kind = props.kind === 'pie' ? 'pie' : 'bar';
-  const floored = typeof props.maxGroups === 'number' ? Math.floor(props.maxGroups) : NaN;
-  const max = floored > 1 ? floored : 12;
+  const max = resolveMaxGroups(props.maxGroups);
   const sumPath = props.aggregate === 'sum' && typeof props.path === 'string' ? props.path : undefined;
   const emptyLabel = t('a2ui.noGroupValue');
   const otherLabel = t('a2ui.chart.other');
 
   const { groups, sumUnavailable, withoutNumber } = useMemo(() => {
     const none = { groups: [] as ChartGroup[], sumUnavailable: false, withoutNumber: 0 };
-    if (props.data !== undefined) return { ...none, groups: foldGroups(groupsFromData(props.data), max, otherLabel) };
+    if (props.data !== undefined) return { ...none, groups: foldChartGroups(groupsFromData(props.data), max, otherLabel) };
     if (!result) return none;
     const pool = aggregatePool(result);
     // A sum with no path, or a path no match has a number at, is unavailable: never counts or zero bars in its place.
@@ -116,7 +110,7 @@ export const GroupChartImpl = createComponentImplementation(GroupChartApi, ({ pr
     if (raw.length > 0 && measured.length === 0) return { ...none, sumUnavailable: true };
     // Groups with no number at the path have no total: left out and counted in a note, never drawn as 0.
     return {
-      groups: foldGroups(measured.map((g) => ({ label: g.label, value: g.value, refs: g.rows.map((r) => encodeRef(r.ref)) })), max, otherLabel),
+      groups: foldChartGroups(measured.map((g) => ({ label: g.label, value: g.value, refs: g.rows.map((r) => encodeRef(r.ref)) })), max, otherLabel),
       sumUnavailable: false,
       withoutNumber: raw.length - measured.length,
     };

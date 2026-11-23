@@ -4,6 +4,7 @@
 
 import { SURFACE_ACTIONS, type SurfaceAction } from './constants.js';
 import { block, button, element, items, record, refs, text, value, viewerNote, type Props, type RendererAction } from './dom.js';
+import { foldGroups, resolveMaxGroups } from '@ifc-lite/a2ui';
 
 const actionLabels: Record<SurfaceAction, string> = {
   select: 'Select', isolate: 'Isolate', colorize: 'Colorize', flyTo: 'Fly to', resetView: 'Reset view',
@@ -85,17 +86,8 @@ function chart(p: Props, act: RendererAction): HTMLElement {
   if (value(p.data) === undefined && p.query) return block(p.title, viewerNote());
   const data = items(p.data).map(record).filter((d) => typeof d.value === 'number' && Number.isFinite(d.value));
   if (!data.length) return block(p.title, element('p', 'No groups.'));
-  const maxGroups = Math.floor(Number(value(p.maxGroups)));
-  // As in the viewer: a maxGroups below 2 means the default, so Other always has a group beside it.
-  const limit = Number.isFinite(maxGroups) && maxGroups > 1 ? Math.min(100, maxGroups) : 12;
-  // Same fold as the viewer: the limit - 1 largest groups by magnitude, in their order, plus Other.
-  let shown = data;
-  if (data.length > limit) {
-    const largest = new Set([...data].sort((a, b) => Math.abs(Number(b.value)) - Math.abs(Number(a.value))).slice(0, Math.max(1, limit - 1)));
-    shown = data.filter((datum) => largest.has(datum));
-    const other = data.filter((datum) => !largest.has(datum));
-    shown.push({ label: 'Other', value: other.reduce((sum, datum) => sum + Number(datum.value), 0), refs: other.flatMap(datum => refs(datum.refs)) });
-  }
+  const shown = foldGroups(data.map((d): Props & { value: number } => ({ ...d, value: Number(d.value) })), resolveMaxGroups(value(p.maxGroups)),
+    (other) => ({ label: 'Other', value: other.reduce((sum, datum) => sum + datum.value, 0), refs: other.flatMap(datum => refs(datum.refs)) }));
   const maximum = Math.max(1, ...shown.map(datum => Math.abs(Number(datum.value))));
   const chart = element('ul', undefined, 'chart');
   for (const datum of shown) {

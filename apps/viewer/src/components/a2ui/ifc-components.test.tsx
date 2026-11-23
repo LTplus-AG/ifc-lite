@@ -20,7 +20,7 @@ import { block, mountReply, recordingHost } from '@/test/a2ui-render';
 import { A2UI_DEMO_REPLY } from '@/lib/a2ui/demo-reply';
 import { resetChatSessions } from '@/lib/a2ui/chat-sessions';
 import { legendEntriesFromData } from './ColorLegend';
-import { foldGroups } from './GroupChart';
+import { foldGroups } from '@ifc-lite/a2ui';
 
 const LEFT_WALL = 315;
 const PLUMBING_WALL = 353;
@@ -92,7 +92,7 @@ describe('IFC catalog components', () => {
 
   it('GroupChart: folding keeps the largest groups, not the first ones (#11344)', () => {
     const g = (label: string, value: number) => ({ label, value, refs: [`m:${value}`] });
-    const folded = foldGroups([g('a', 1), g('b', 2), g('big', 50), g('c', 3)], 3, 'Other');
+    const folded = foldGroups([g('a', 1), g('b', 2), g('big', 50), g('c', 3)], 3, (rest) => ({ label: 'Other', value: rest.reduce((n, x) => n + x.value, 0), refs: rest.flatMap((x) => x.refs) }));
     assert.deepEqual(folded.map((x) => [x.label, x.value]), [['big', 50], ['c', 3], ['Other', 3]]);
     assert.deepEqual(folded[2].refs, ['m:1', 'm:2']);
   });

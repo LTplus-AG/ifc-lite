@@ -101,3 +101,11 @@ describe('follow-ups', () => {
     expect(eventToFollowUp('approve', undefined).userText).toBe('Action: approve');
   });
 });
+
+describe('chart folding (#11344)', () => {
+  it('resolves maxGroups like every renderer: floor, below 2 is the default, capped', async () => {
+    const { resolveMaxGroups, DEFAULT_MAX_GROUPS } = await import('./charts.js');
+    expect([resolveMaxGroups(undefined), resolveMaxGroups(1), resolveMaxGroups(1.5), resolveMaxGroups(2.9), resolveMaxGroups(1e6)])
+      .toEqual([DEFAULT_MAX_GROUPS, DEFAULT_MAX_GROUPS, DEFAULT_MAX_GROUPS, 2, 100]);
+  });
+});

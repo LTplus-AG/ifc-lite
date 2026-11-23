@@ -109,8 +109,15 @@ export class StructuralCarriers {
     if (source.ids('IFCSTRUCTURALLOADGROUP').length) this.findLoadCases(source);
   }
 
+  /** Arm the cause carrier from the edited or filtered records being written. */
+  fromEmitted(source: Pick<SourceRecords, 'ids' | 'slots' | 'type'>): void {
+    this.mode = 'upgrade';
+    this.causesWritten = this.readCauses(source, 'IFC2X3');
+    this.reactions = new Set(source.ids('IFCSTRUCTURALPOINTREACTION'));
+  }
+
   /** Action id -> the reactions 'Causes' relationships name for it. */
-  private readCauses(source: SourceRecords, schema: 'IFC2X3' | 'IFC4'): Map<number, Set<number>> {
+  private readCauses(source: Pick<SourceRecords, 'ids' | 'slots' | 'type'>, schema: 'IFC2X3' | 'IFC4'): Map<number, Set<number>> {
     const causes = new Map<number, Set<number>>();
     for (const id of source.ids('IFCRELASSIGNSTOPRODUCT')) {
       const args = source.slots(id);

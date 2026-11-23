@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "Keep the drawing source loadable while dropping the per-mesh identity check: a backing with the model's count and id range but another entity in place of a store mesh then draws the wrong entity.",
+  "key": "apps/viewer/src/lib/drawing/drawing-geometry-source.ts",
+  "mutation": "tests/evidence/drawing-backed-identity-10264/behaviour.oracle.patch",
+  "test": "apps/viewer/src/lib/drawing/drawing-geometry-source.test.ts"
+}

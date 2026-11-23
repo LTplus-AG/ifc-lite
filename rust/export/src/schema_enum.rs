@@ -211,6 +211,7 @@ impl ConversionChecks {
         let (from, to) = (crate::schema_convert::canon(from), crate::schema_convert::canon(to));
         let mut checks = Self::new();
         if !(unchanged && opts.included.is_none() && opts.attribute_mutations.is_empty() && opts.copy_on_write.is_empty()) {
+            checks.structural.defer_varying = from == "IFC2X3" && to == "IFC4";
             return checks;
         }
         checks.documents = crate::schema_document_links::DocumentLinks::scan(content, from, to, kept);
@@ -242,9 +243,19 @@ impl ConversionChecks {
     /// Append the records a conversion created, then finish `body`; the change in record count.
     pub(crate) fn finish(
         &mut self,
+        body: crate::schema_ifc2x3_body::Body<'_>,
+        slots: Option<&mut crate::schema_ifc2x3_slots::Ifc2x3SlotFill>,
+        ids: crate::step_ids::IdAllocator,
+    ) -> std::io::Result<isize> {
+        self.finish_with_header(body, slots, ids, |_, _| Ok(()))
+    }
+
+    pub(crate) fn finish_with_header(
+        &mut self,
         mut body: crate::schema_ifc2x3_body::Body<'_>,
         mut slots: Option<&mut crate::schema_ifc2x3_slots::Ifc2x3SlotFill>,
         ids: crate::step_ids::IdAllocator,
+        header: impl FnOnce(&mut dyn std::io::Write, isize) -> std::io::Result<()>,
     ) -> std::io::Result<isize> {
         use std::io::Write as _;
         let mut added = self.structural.added();
@@ -258,7 +269,9 @@ impl ConversionChecks {
             };
             writeln!(body, "{record}")?;
         }
-        Ok(count + body.finish_with(|text| self.finish_typed_properties(text, || ids))?)
+        // Varying actions mint ids above the final DATA ids, including typed properties.
+        let typed_added = body.rewrite_held(|text| self.finish_typed_properties(text, || ids));
+        Ok(count + typed_added as isize + body.finish_with_header(|text| self.structural.finish_effective_varying(text, &mut self.attribute_values_dropped), header)?)
     }
 
     pub(crate) fn finish_typed_properties(&mut self, text: &[u8], ids: impl FnOnce() -> crate::step_ids::IdAllocator) -> Option<(Vec<u8>, usize)> {

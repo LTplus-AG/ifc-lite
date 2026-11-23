@@ -6,10 +6,14 @@
 //! set the exact passes iterate, synthesised rectangles first.
 
 use crate::program::openings::execute::Execution;
-use crate::router::voids::geom::infer_box_penetration_dir;
+use crate::router::voids::flush::flush_band_at;
+use crate::router::voids::geom::parity::axis_ray_crosses_mesh;
+use crate::router::voids::geom::{
+    infer_box_penetration_dir, is_axis_aligned_direction, mesh_point, point_inside_mesh_agreed,
+};
 use crate::router::voids::malformed_opening_repair::opening_obb_if_malformed;
 use crate::router::voids::{CutterKind, VoidContext};
-use crate::{GeometryRouter, Mesh, Point3};
+use crate::{GeometryRouter, Mesh, Point3, Vector3};
 
 /// Subdivide an opening-dense host before the exact passes.
 pub(in crate::router::voids) fn refine_dense_host(mut result: Mesh, ctx: &VoidContext) -> Mesh {
@@ -97,8 +101,6 @@ pub(in crate::router::voids) fn cutters<'a>(
     for opening in &ctx.merged_openings {
         match opening {
             CutterKind::Rectangular(open_min, open_max, extrusion_dir) => {
-                #[cfg(feature = "csg_manifold_gate")]
-                unextended_rectangles.push([*open_min, *open_max]);
                 // Penetration axis: the authored extrusion dir when present,
                 // else inferred from how the box pierces the host (issue
                 // #1337). Carrying a concrete dir downstream keeps the
@@ -111,24 +113,31 @@ pub(in crate::router::voids) fn cutters<'a>(
                 // here before; keep the synthesized box identical for the
                 // dirless case (the inferred dir only steers the later
                 // through-host extension, not the box bounds).
-                let (final_min, final_max) = if extrusion_dir.is_some() {
+                let mut bounds = if extrusion_dir.is_some() {
                     execution.extend_opening_along_direction(
                         *open_min, *open_max, wall_min, wall_max, dir,
                     )
                 } else {
                     (*open_min, *open_max)
                 };
-                // The manifold gate can reject the extended cut and retry
-                // with the authored cutter against the union of the host
-                // shells (#10512). Keep that recovery path intact.
-                let (final_min, final_max) = if !cfg!(feature = "csg_manifold_gate")
-                    && (final_min, final_max) != (*open_min, *open_max)
-                    && weld_shift_extends_recess(execution, original_host, *open_min, *open_max, dir)
+                let authored = (*open_min, *open_max);
+                if bounds != authored
+                    && weld_changes_rectangle_extension(execution, original_host, authored, dir)
                 {
-                    (*open_min, *open_max)
-                } else {
-                    (final_min, final_max)
-                };
+                    if cutter_is_outside_source(original_host, authored, dir, 0.0) {
+                        continue;
+                    }
+                    // The manifold gate can retry with the authored cutter
+                    // against the union of the host shells (#10512).
+                    if !cfg!(feature = "csg_manifold_gate")
+                        && rectangle_samples_material(original_host, *open_min, *open_max)
+                    {
+                        bounds = authored;
+                    }
+                }
+                #[cfg(feature = "csg_manifold_gate")]
+                unextended_rectangles.push([*open_min, *open_max]);
+                let (final_min, final_max) = bounds;
                 let box_mesh = GeometryRouter::make_box_mesh(final_min, final_max);
                 synth_rect.push(CutterKind::NonRectangular(
                     box_mesh,
@@ -153,29 +162,27 @@ pub(in crate::router::voids) fn cutters<'a>(
     }
 }
 
-/// A weld can move the host bounds across the extension threshold even though
-/// the authored rectangle stops inside the source host (#10528). Check the
-/// centre and axial offsets, then look for source faces inside the cutter.
-fn weld_shift_extends_recess(
+/// The caller has already found that the welded host would extend the box.
+fn weld_changes_rectangle_extension(
     execution: &Execution,
     host: &Mesh,
-    min: Point3<f64>,
-    max: Point3<f64>,
-    dir: crate::Vector3<f64>,
+    (min, max): (Point3<f64>, Point3<f64>),
+    dir: Vector3<f64>,
 ) -> bool {
     let (host_min, host_max) = host.bounds();
-    if execution.extend_opening_along_direction(min, max, host_min.cast(), host_max.cast(), dir)
-        != (min, max)
-    {
-        return false;
-    }
+    execution.extend_opening_along_direction(min, max, host_min.cast(), host_max.cast(), dir)
+        == (min, max)
+}
 
+/// Look for a recess in the source host (#10528). Include axial offsets
+/// because a finish can end inside the footprint.
+fn rectangle_samples_material(host: &Mesh, min: Point3<f64>, max: Point3<f64>) -> bool {
     let centre = Point3::from((min.coords + max.coords) * 0.5);
     let quarter = (max - min) * 0.25;
-    let inside = |point| crate::router::voids::parity::point_inside_mesh_agreed(host, point) == Some(true);
+    let inside = |point| point_inside_mesh_agreed(host, point) == Some(true);
     inside(centre)
         || (0..3).any(|axis| {
-            let mut step = crate::Vector3::zeros();
+            let mut step = Vector3::zeros();
             step[axis] = quarter[axis];
             inside(centre - step) || inside(centre + step)
         })
@@ -242,4 +249,79 @@ fn triangle_intersects_inset_box(
         }
     }
     true
+}
+
+/// Beyond the end of a finish, a recess can touch the core but enclose
+/// only air (#11313). Prove that no source triangle enters the box's open
+/// interior. Compare at f32 precision, the format of both meshes.
+pub(super) fn cutter_is_outside_source(
+    host: &Mesh,
+    (min, max): (Point3<f64>, Point3<f64>),
+    dir: Vector3<f64>,
+    depth_roundoff: f64,
+) -> bool {
+    if !is_axis_aligned_direction(&dir) {
+        return false;
+    }
+    let min = min.cast::<f32>().cast::<f64>();
+    let max = max.cast::<f32>().cast::<f64>();
+    let depth = dir.iamax();
+    let mut interior_min = min;
+    let mut interior_max = max;
+    interior_min[depth] += depth_roundoff;
+    interior_max[depth] -= depth_roundoff;
+    if (0..3).any(|axis| interior_min[axis] >= interior_max[axis]) {
+        return false;
+    }
+    let separated = host.indices.chunks_exact(3).all(|tri| {
+        let [Some(a), Some(b), Some(c)] = [tri[0], tri[1], tri[2]].map(|i| mesh_point(host, i)) else {
+            return false;
+        };
+        (0..3).any(|axis| {
+            a[axis].max(b[axis]).max(c[axis]) <= interior_min[axis]
+                || a[axis].min(b[axis]).min(c[axis]) >= interior_max[axis]
+        })
+    });
+    separated && cap_touches_exterior(host, min, max, depth)
+}
+
+/// The exterior surface continues across the cutter's footprint. A recess
+/// already carved into a finish can also enclose air, but its floor ends at
+/// the edge of the authored box (rvt01.ifc #6934).
+fn cap_touches_exterior(host: &Mesh, min: Point3<f64>, max: Point3<f64>, depth: usize) -> bool {
+    let centre = Point3::from((min.coords + max.coords) * 0.5);
+    let band = flush_band_at(min[depth].abs().max(max[depth].abs()));
+    if max[depth] - min[depth] <= 2.0 * band {
+        return false;
+    }
+    [(min[depth], -band), (max[depth], band)].into_iter().any(|(cap, step)| {
+        let touches = |mut point: Point3<f64>| {
+            point[depth] = cap + step;
+            if point_inside_mesh_agreed(host, point) != Some(true) {
+                return false;
+            }
+            point[depth] = cap - step;
+            point_inside_mesh_agreed(host, point) == Some(false)
+        };
+        if !touches(centre) {
+            return false;
+        }
+        // Even parity can hide material where closed shells overlap. An
+        // empty ray from inside the box, away from this cap, certifies that
+        // the probe is outside every closed shell regardless of winding.
+        let mut interior = centre;
+        interior[depth] = cap - step;
+        let mut away_from_cap = Vector3::zeros();
+        away_from_cap[depth] = -step.signum();
+        if axis_ray_crosses_mesh(host, interior, away_from_cap) {
+            return false;
+        }
+        (0..3).filter(|&axis| axis != depth).any(|axis| {
+            [min[axis] - band, max[axis] + band].into_iter().any(|side| {
+                let mut beyond = centre;
+                beyond[axis] = side;
+                touches(beyond)
+            })
+        })
+    })
 }

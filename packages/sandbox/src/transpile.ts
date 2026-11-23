@@ -64,7 +64,9 @@ function getEsbuild(): Promise<EsbuildLike | null> {
         // version cannot stay in step with a `^` dependency range (#2081).
         // Expected under bundlers that don't implement Vite's `?url` hint, but
         // it silently swaps a local asset for a network fetch — say so once.
-        console.warn('[ifc-lite/sandbox] esbuild.wasm not resolvable as a bundled asset, falling back to the CDN', err);
+        // The message only: the raw error object's code clutters Node test logs (#11256).
+        const reason = err instanceof Error ? err.message : String(err);
+        console.warn(`[ifc-lite/sandbox] esbuild.wasm not resolvable as a bundled asset, falling back to the CDN: ${reason}`);
         wasmURL = `https://unpkg.com/esbuild-wasm@${esbuild.version}/esbuild.wasm`;
       }
 

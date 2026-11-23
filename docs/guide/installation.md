@@ -222,15 +222,7 @@ cargo build --release -p ifc-lite-server
 
 ## Rust Installation
 
-Add to your `Cargo.toml`:
-
-```toml
-[dependencies]
-ifc-lite-core = "19"
-ifc-lite-geometry = "19"
-```
-
-Or install via cargo:
+Use Cargo to add the crates to your project's `Cargo.toml`:
 
 ```bash
 cargo add ifc-lite-core ifc-lite-geometry

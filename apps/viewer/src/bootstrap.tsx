@@ -39,6 +39,7 @@ import { loadTracerReady } from './lib/perf/loadTrace';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
+import { useViewerStore } from './store';
 import './index.css';
 import 'maplibre-gl/dist/maplibre-gl.css';
 // Wire the placement-edit helpers' parser-backed source reader. Pure
@@ -159,6 +160,11 @@ export function mountViewer(container: HTMLElement, options: ViewerBootstrapOpti
   // switch, a host that leaves no way to open a model). It stays here, not in prepareViewer, so a hosted start whose
   // configuration fails never spawns workers.
   scheduleFastPath();
+
+  // `?a2uiDemo=1` plays a recorded A2UI chat reply once a model loads (docs/architecture/a2ui.md).
+  if (new URLSearchParams(window.location.search).has('a2uiDemo')) {
+    import('./lib/a2ui/demo').then((m) => m.armA2uiDemo(useViewerStore), (error: unknown) => console.warn('[a2ui] demo unavailable', error));
+  }
 
   // Decode the schema tables a first interaction reads once a load has
   // settled and the page is idle (lib/schema-tables/warm-schema-tables.ts).

@@ -506,13 +506,13 @@ describe('useDrawingGeneration latest inputs (#3921)', () => {
 
 // Hold a REAL cutter result at its async boundary, rather than fabricating meshes.
 it('never publishes a superseded cut that completes after replacement (#3921)', async () => {
-  const original = Drawing2DGenerator.prototype.generate;
+  const original = Drawing2DGenerator.prototype.generateFromSource;
   let signal!: () => void;
   let release!: () => void;
   const started = new Promise<void>(resolve => { signal = resolve; });
   const held = new Promise<void>(resolve => { release = resolve; });
   let calls = 0;
-  Drawing2DGenerator.prototype.generate = async function (...args) {
+  Drawing2DGenerator.prototype.generateFromSource = async function (...args) {
     const first = ++calls === 1;
     const result = await original.call(this, ...args);
     if (first) { signal(); await held; }
@@ -525,7 +525,7 @@ it('never publishes a superseded cut that completes after replacement (#3921)', 
     assert.deepEqual(h.publications, [new Set([400, 401])], 'the completed old cut must not publish');
   } finally {
     release();
-    Drawing2DGenerator.prototype.generate = original;
+    Drawing2DGenerator.prototype.generateFromSource = original;
     await h.dispose();
   }
 });
@@ -548,7 +548,7 @@ it('keeps a repainted production canvas stale until regeneration publishes its r
     drawing2DPanelVisible: true,
     textAnnotation2DEditing: null,
   });
-  const original = Drawing2DGenerator.prototype.generate;
+  const original = Drawing2DGenerator.prototype.generateFromSource;
   const originalResizeObserver = globalThis.ResizeObserver;
   const originalWindowResizeObserver = window.ResizeObserver;
   class ImmediateResizeObserver implements ResizeObserver {
@@ -583,7 +583,7 @@ it('keeps a repainted production canvas stale until regeneration publishes its r
     assert.ok(harness.captureButton, 'the production BCF panel exposes 2D capture');
     assert.equal(harness.captureButton.disabled, false,
       `the production canvas painted the initial drawing (${harness.canvas?.width}x${harness.canvas?.height}, client ${harness.canvas?.clientWidth}x${harness.canvas?.clientHeight})`);
-    Drawing2DGenerator.prototype.generate = async function (...args) {
+    Drawing2DGenerator.prototype.generateFromSource = async function (...args) {
       signal();
       await held;
       return original.call(this, ...args);
@@ -601,7 +601,7 @@ it('keeps a repainted production canvas stale until regeneration publishes its r
     assert.equal(harness.captureButton?.disabled, false, 'the completed replacement becomes capturable after its paint');
   } finally {
     release();
-    Drawing2DGenerator.prototype.generate = original;
+    Drawing2DGenerator.prototype.generateFromSource = original;
     Object.defineProperty(globalThis, 'ResizeObserver', { configurable: true, writable: true, value: originalResizeObserver });
     Object.defineProperty(window, 'ResizeObserver', { configurable: true, writable: true, value: originalWindowResizeObserver });
     mock.restoreAll();

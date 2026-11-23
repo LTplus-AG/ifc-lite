@@ -368,6 +368,15 @@ needs every chunk again (`depthRaster`), or only the meshes of
 before the next one is taken. Joins across chunks, occlusion and projection
 stay the same, because `generate` drives this same session.
 
+The viewer uses it for the Drawing panel and the 3D section overlay. Resident
+models are cut as before. A model whose CPU arrays were released (today only
+by the test-only release, #10264) is read back from its local backing one
+chunk at a time, and its instanced occurrences are expanded from the backed
+shards in bounded groups. A backing that is missing, incomplete or replaced
+while it is read fails the drawing instead of drawing partial geometry.
+GPU-instanced occurrences are cut like flat geometry in both cases; before,
+the drawing left them out.
+
 ## Viewer Integration
 
 In the IFClite viewer:

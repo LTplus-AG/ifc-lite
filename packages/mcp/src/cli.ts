@@ -70,6 +70,10 @@ function printHelp(): void {
                             ${DEFAULT_BRIDGE_VIEWER_URL}). Its origin replaces the
                             default in the allowed origins; add
                             --allow-origin ${DEFAULT_BRIDGE_VIEWER_URL} to keep it.
+    --channel               With --bridge: also push clicks on agent surfaces
+                            into a Claude Code session as channel messages
+                            (research preview; start Claude Code with a
+                            channel flag naming this server).
     --version, -v           Print version.
     --help, -h              This message.
 
@@ -114,7 +118,7 @@ async function main(): Promise<void> {
     process.exitCode = 0;
     return;
   }
-  if (opts.bridge) {
+  if (opts.bridge || opts.channel) {
     await runBridge(opts);
     return;
   }
@@ -258,6 +262,7 @@ async function runBridge(opts: CliOptions): Promise<void> {
       version: VERSION,
       port,
       readOnly: opts.readOnly,
+      channel: opts.channel,
       viewerUrl: opts.bridgeViewerUrl,
       extraOrigins: opts.allowedOrigins,
       allowInsecureOrigins: opts.insecure,

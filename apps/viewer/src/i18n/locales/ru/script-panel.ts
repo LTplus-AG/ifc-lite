@@ -44,6 +44,12 @@ export const scriptPanelRu = {
   "scriptPanel.output.bimCode": "bim.*",
   "scriptPanel.output.sandboxHintSuffix": "API для действий с просмотром / данными / экспортом.",
   "scriptPanel.output.fixWithLlmButton": "Исправить с помощью LLM",
+  "scriptPanel.output.surfaces": {
+    one: "{count} представление результатов",
+    few: "{count} представления результатов",
+    many: "{count} представлений результатов",
+    other: "{count} представления результатов",
+  },
   "scriptPanel.output.returnLabel": "Результат:",
   "scriptPanel.output.emptyState": "Нажмите Запустить или {keys} для выполнения",
   "scriptPanel.deleteDialog.title": "Удалить скрипт",

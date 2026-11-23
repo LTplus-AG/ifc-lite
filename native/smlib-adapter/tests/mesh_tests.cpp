@@ -95,8 +95,10 @@ void verify(uint64_t session,ifclite_smlib_handle solid,double expected,bool cyl
 }
 }
 void run_mesh_diagonals_tests();
+void run_mesh_canonical_tests();
 void run_mesh_tests() {
     run_mesh_diagonals_tests();
+    run_mesh_canonical_tests();
     uint64_t session; ok(ifclite_smlib_session_create(&session));
     ifclite_smlib_handle box,cylinder,a,b,result;
     ok(ifclite_smlib_box(session,0,0,0,2,2,2,&box)); verify(session,box,8,false,true);

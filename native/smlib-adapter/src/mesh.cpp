@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 #include "mesh.hpp"
 #include "empty.hpp"
+#include "mesh_canonical.hpp"
 #include "mesh_diagonals.hpp"
 #include <SmApiBrep.h>
 #include <SmBrep.h>
 #include <SmCone.h>
+#include <SmPlane.h>
 #include <SmPoly.h>
 #include <array>
 #include <cmath>
@@ -72,24 +74,37 @@ std::unique_ptr<AdapterMesh> tessellate_mesh(SmBrep* solid, double chord, double
             if (inserted.second) mesh->positions.insert(mesh->positions.end(),{point.x,point.y,point.z});
             mesh->indices.push_back(inserted.first->second);
         }
-        const double ux=points[1].x-points[0].x, uy=points[1].y-points[0].y, uz=points[1].z-points[0].z;
-        const double vx=points[2].x-points[0].x, vy=points[2].y-points[0].y, vz=points[2].z-points[0].z;
-        const double nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx;
-        const double length=std::hypot(nx,ny,nz);
-        ensure(std::isfinite(length) && length > 0,"degenerate tessellation triangle");
+        // Degenerate unless some corner's cross product is nonzero, whichever
+        // corner the SDK lists first (order_mesh recomputes the normal).
+        std::array<double,3> normal{};
+        ensure(flat_normal({points[0].x,points[0].y,points[0].z},{points[1].x,points[1].y,points[1].z},
+            {points[2].x,points[2].y,points[2].z},normal),"degenerate tessellation triangle");
         for (unsigned corner=0; corner<3; ++corner)
-            mesh->normals.insert(mesh->normals.end(),{nx/length,ny/length,nz/length});
+            mesh->normals.insert(mesh->normals.end(),{normal[0],normal[1],normal[2]});
         mesh->faces.push_back(source->second);
     }
     std::vector<std::optional<CylinderPatch>> cylinders(source_faces.GetSize());
+    std::vector<bool> planar(source_faces.GetSize());
     for (ULONG i=0;i<source_faces.GetSize();++i) {
         auto* surface=source_faces[i]->GetSurface();
+        planar[i]=surface->IsKindOf(SmPlane_TYPE);
         if (!surface->IsKindOf(SmCone_TYPE)) continue;
         CylinderPatch patch; double semi_angle=0;
         if (static_cast<SmCone*>(surface)->GetCanonical(patch.frame,patch.radius,semi_angle)==SM_SUCCESS &&
             semi_angle==0 && std::isfinite(patch.radius) && patch.radius>0) cylinders[i]=patch;
     }
-    normalize_mesh_diagonals(*mesh,angle,chord,cylinders);
+    // The SDK enumerates polygons, vertices and corners in heap-address order,
+    // which varies between runs on the same input. Order first, so the
+    // cylinder flips walk canonical IDs; then retriangulate planar faces and
+    // order again. Positions and source-face IDs are unchanged.
+    order_mesh(*mesh);
+    normalize_mesh_diagonals(*mesh,angle,chord,cylinders,canonical_grid(*mesh));
+    const auto counts=canonical_planar_faces_or_keep(*mesh,planar);
+    // The strict topology report describes the mesh that is returned. The
+    // retriangulation falls back to the SDK's split rather than add boundary
+    // or spine edges, so this refuses only what the SDK's own mesh would.
+    mesh->info.boundary_edges=counts.boundary; mesh->info.spine_edges=counts.spine;
+    ensure(!counts.boundary && !counts.spine,"solid tessellation has boundary or spine edges");
     mesh->info.vertex_count = uint32_t(mesh->positions.size()/3);
     mesh->info.triangle_count = uint32_t(mesh->indices.size()/3);
     ensure(mesh->info.vertex_count && mesh->info.triangle_count,"nonempty solid produced empty tessellation");

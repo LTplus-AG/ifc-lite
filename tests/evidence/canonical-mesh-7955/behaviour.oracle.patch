@@ -1,0 +1,17 @@
+--- a/native/smlib-adapter/src/mesh.cpp
++++ b/native/smlib-adapter/src/mesh.cpp
+@@ -93,8 +93,13 @@
+         if (static_cast<SmCone*>(surface)->GetCanonical(patch.frame,patch.radius,semi_angle)==SM_SUCCESS &&
+             semi_angle==0 && std::isfinite(patch.radius) && patch.radius>0) cylinders[i]=patch;
+     }
++    // The SDK enumerates polygons, vertices and corners in heap-address order,
++    // which varies between runs on the same input. Order first, so the
++    // cylinder flips walk canonical IDs; then retriangulate planar faces and
++    // order again. Positions and source-face IDs are unchanged.
++    order_mesh(*mesh);
+     normalize_mesh_diagonals(*mesh,angle,chord,cylinders,canonical_grid(*mesh));
+-    const auto counts=edge_counts(*mesh);
++    const auto counts=canonical_planar_faces_or_keep(*mesh,planar);
+     // The strict topology report describes the mesh that is returned. The
+     // retriangulation falls back to the SDK's split rather than add boundary
+     // or spine edges, so this refuses only what the SDK's own mesh would.

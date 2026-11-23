@@ -8,5 +8,7 @@ struct CylinderPatch { SmAxis2Placement frame; double radius; };
 
 // Normalize the diagonal of convex, same-source-face triangle pairs without
 // moving vertices or changing their boundary. Throws on work-budget exhaustion.
+// With grid > 0 (canonical_grid), "shorter" means shorter on that grid, so the
+// SDK's ULP noise cannot flip a near-tie; 0 compares exact lengths.
 void normalize_mesh_diagonals(AdapterMesh& mesh, double angle_degrees, double chord,
-    const std::vector<std::optional<CylinderPatch>>& cylinders);
+    const std::vector<std::optional<CylinderPatch>>& cylinders, double grid = 0);

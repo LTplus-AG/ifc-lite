@@ -327,7 +327,7 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
     georeferencingWarnings: [],
     slotFill: new Ifc2x3SlotFill(),
     ifc4Slots: new Ifc4SlotCheck(),
-    enums: new EnumReconciliation(),
+    enums: new EnumReconciliation(true, [dataStore]),
     withheldRefIds: computeWithheldRefIds(dataStore, schema, effective),
     styleFlatten: StyleFlatten.fromStore(dataStore, sourceSchema, schema),
   };
@@ -339,6 +339,8 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
     const pair = (sourceSchema === 'IFC2X3' && schema === 'IFC4') || (sourceSchema === 'IFC4' && schema === 'IFC2X3');
     if (pair) pass.enums.structural.fromStore(dataStore, sourceSchema, schema, source);
     pass.enums.documents.fromSource(source, sourceSchema, schema); // #10846
+  } else if (sourceSchema === 'IFC2X3' && schema === 'IFC4') {
+    pass.enums.structural.deferredVarying = { includeRelationships: options.includeRelationships !== false };
   }
   // The same object, deliberately. See the file header.
   return pass;

@@ -43,6 +43,7 @@ export const MCP_BOOLEAN_FLAGS: readonly string[] = [
   '--viewer',
   '--open',
   '--bridge',
+  '--channel',
   '--help',
   '-h',
   '--version',
@@ -61,6 +62,7 @@ export const MCP_SUBCOMMAND_UNSUPPORTED_FLAGS: readonly string[] = [
   '--bridge',
   '--bridge-port',
   '--bridge-viewer-url',
+  '--channel',
 ];
 
 /** True when `arg` consumes the next argv token. */
@@ -91,6 +93,8 @@ export interface CliOptions {
    * `parseArgs` always sets it.
    */
   bridge?: boolean;
+  /** `--channel` (bridge only): push viewer UI events as Claude Code channel messages. */
+  channel?: boolean;
   /** `--bridge-port`; undefined means `DEFAULT_BRIDGE_PORT`. 0 picks a free port. */
   bridgePort?: number;
   /** `--bridge-viewer-url`: base of the pairing link; its origin may connect. */
@@ -132,6 +136,7 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (arg === '--viewer-port') opts.viewerPort = Number(argv[++i] ?? 0);
     else if (arg === '--open') { opts.autoViewer = true; opts.openBrowser = true; }
     else if (arg === '--bridge') opts.bridge = true;
+    else if (arg === '--channel') opts.channel = true;
     else if (arg === '--bridge-port' || arg === '--bridge-viewer-url') {
       // A missing operand (end of argv, or the next flag) is a usage error,
       // not a silent fall-back to the default port or viewer URL.
@@ -166,7 +171,7 @@ export function parseArgs(argv: string[]): CliOptions {
  * model of its own and speaks stdio only.
  */
 export function bridgeConflict(opts: CliOptions): string | null {
-  if (!opts.bridge) return null;
+  if (!opts.bridge) return opts.channel ? '--channel needs --bridge: it pushes events from the paired viewer tab.' : null;
   if (opts.bridgeMissingOperand?.length) return `${opts.bridgeMissingOperand.join(', ')} needs a value.`;
   if (opts.files.length > 0) return `--bridge serves the model open in a browser tab and loads no files; drop ${opts.files.join(', ')}.`;
   if (opts.transport !== 'stdio') return '--bridge speaks MCP over stdio only; drop --transport http.';

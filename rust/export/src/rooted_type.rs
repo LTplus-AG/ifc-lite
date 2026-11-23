@@ -26,9 +26,8 @@
 // Wired into `merged.rs`'s GlobalId reconciliation (`export_merged_with_stats`),
 // which previously carried its own near-identical copy of this same
 // schema-driven check -- exactly the "two lists that must agree" drift shape
-// this module's own doc warns about (see #3015). The leading-GlobalId scan
-// itself lives in `ifc_lite_core::guid::leading_global_id`; the merged
-// exporter's `extract_global_id_fast` is `is_rooted_type` plus that scan.
+// this module's own doc warns about (see #3015). The merged exporter's
+// `extract_global_id_fast` combines this check with a STEP GlobalId scan.
 
 use ifc_lite_core::IfcType;
 

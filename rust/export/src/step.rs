@@ -241,7 +241,9 @@ fn emit<W: std::io::Write>(
     crate::step_header::write_header(out, opts, source_header.as_ref(), header_schema)?;
     // IFC2X3 places one product per placement (#9209): its records are held to adapt them.
     use std::io::Write as _;
-    let mut body = crate::schema_ifc2x3_placements::Body::new(&mut *out, targets_ifc2x3);
+    let date_buffer = crate::schema_value_forms::ValueForms::buffer_for_dates(content, &source_schema, &schema);
+    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, targets_ifc2x3, date_buffer || checks.structural.buffers_varying(content));
+    if targets_ifc2x3 || date_buffer { checks.forms.enable_dates(); }
 
     let mut written = 0usize;
     for id in order {
@@ -362,7 +364,7 @@ fn emit<W: std::io::Write>(
         attribute_values_dropped: checks.attribute_values_dropped,
         property_mutations_refused,
         duplicate_records_dropped: index.duplicates.len(),
-    }, checks.warnings()))
+    }, checks.warnings_for_sources(std::iter::once(content))))
 }
 
 #[cfg(test)]

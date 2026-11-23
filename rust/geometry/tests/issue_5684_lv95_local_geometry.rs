@@ -450,3 +450,29 @@ fn issue_5684_mixed_item_rtc_frames_merge_after_placement() {
         }
     }
 }
+
+#[test]
+fn shared_brep_cache_preserves_the_local_frame_policy_10835() {
+    let points = MEMBER_POINTS.map(|p| [p[0] + 10000.0, p[1], p[2]]);
+    let source = fixture(Shape::Brep, &points, MEMBER_FACES, [0.0; 3], false);
+    let cache = GeometryRouter::new_dedup_cache();
+    let signatures = GeometryRouter::new_brep_signature_cache();
+    let mesh = |local_frame, cache| {
+        let mut decoder = EntityDecoder::new(&source);
+        let mut router = GeometryRouter::with_scale_and_local_frame(1.0, local_frame);
+        router.set_rtc_offset((100.0, 0.0, 0.0));
+        router.enable_content_dedup_shared(cache);
+        router.enable_shared_brep_signature_cache(signatures.clone());
+        let item = decoder.decode_by_id(900).expect("faceted BRep");
+        router.process_representation_item(&item, &mut decoder).expect("member")
+    };
+
+    let absolute = mesh(false, cache.clone());
+    let shared_local = mesh(true, cache);
+    let fresh_local = mesh(true, GeometryRouter::new_dedup_cache());
+
+    assert!(!fresh_local.indices.is_empty());
+    assert_ne!(absolute.origin, fresh_local.origin);
+    assert_eq!(shared_local.origin, fresh_local.origin);
+    assert_eq!(shared_local.positions, fresh_local.positions);
+}

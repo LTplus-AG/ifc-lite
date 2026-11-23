@@ -17,7 +17,7 @@ import { coordinationScriptSessionOperations } from './coordination-script-sessi
 
 const operations = [...coordinationScriptSessionOperations, ...coordinationScriptRunOperations];
 
-it('refuses to replace or execute a different source after a native revision is reused (#10591 review)', async () => {
+it('refuses to replace or execute a different source after a native rollback (#10591 review)', async () => {
   const editor = useViewerStore.getState();
   const host = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));
   const commit = <T>(write: () => T) => write();
@@ -38,7 +38,8 @@ it('refuses to replace or execute a different source after a native revision is 
   const nativeRevision = useViewerStore.getState().scriptEditorRevision;
   editor.rollbackAssistantScriptTurn();
   editor.setScriptEditorContent('3');
-  assert.equal(useViewerStore.getState().scriptEditorRevision, nativeRevision);
+  // Rollback advances the revision, so a later edit cannot land on the number script.read issued.
+  assert.ok(useViewerStore.getState().scriptEditorRevision > nativeRevision);
   await assert.rejects(execute('script.replace', { source: '4', expected_revision: inspected.revision }), /revision changed/);
   await assert.rejects(execute('script.execute', { expected_revision: inspected.revision }), /revision changed/);
   assert.equal(useViewerStore.getState().scriptEditorContent, '3');

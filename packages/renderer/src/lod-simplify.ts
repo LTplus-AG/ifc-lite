@@ -24,6 +24,9 @@
  * origin is set by whichever batch is created first. So the grid is anchored
  * at the world origin (`frameOrigin`) and each cell elects its canonical
  * vertex (smallest position, then normal), not the first one referenced.
+ * Exact up to the f32 rounding of frame-relative positions: when two loads
+ * pick different frame origins, a vertex within rounding of a cell edge can
+ * still land in the neighbouring cell (2 batches of 2439 on a 100k campus).
  */
 
 /** Below this many source triangles a batch keeps LOD0 only. */
@@ -62,8 +65,12 @@ export function simplifyIndicesByClustering(
   strideFloats: number,
   indices: Uint32Array,
   cellSize: number,
-  { idLaneOffset = 6, normalOffset = strideFloats >= 7 ? 3 : undefined, frameOrigin = [0, 0, 0] }: LodClusterLayout = {},
+  /** The record layout; a number is the entity-lane offset alone (the older signature). */
+  layout: LodClusterLayout | number = {},
 ): Uint32Array | null {
+  const {
+    idLaneOffset = 6, normalOffset = strideFloats >= 7 ? 3 : undefined, frameOrigin = [0, 0, 0],
+  }: LodClusterLayout = typeof layout === 'number' ? { idLaneOffset: layout } : layout;
   const triangleCount = (indices.length / 3) | 0;
   if (triangleCount < LOD_MIN_TRIANGLES) return null;
   if (!(cellSize > 0) || !Number.isFinite(cellSize)) return null;
@@ -87,8 +94,8 @@ export function simplifyIndicesByClustering(
   const vertexCount = strideFloats > 0 ? (vertexData.length / strideFloats) | 0 : 0;
   const cellOf = new Int32Array(vertexCount).fill(-1); // vertexIndex -> cell number, -1 = unset
   const cellOfKey = new Map<number | string, number>(); // exact cell key -> cell number
-  // Cell number -> elected vertexIndex. Every cell holds a referenced vertex, so there are at most vertexCount.
-  const representative = new Int32Array(vertexCount);
+  // Cell number -> elected vertexIndex, grown with the occupied cells (at most vertexCount).
+  let representative = new Int32Array(Math.max(1, Math.min(vertexCount, 1024)));
   let cells = 0;
   let cellOrigin: readonly [number, number, number] | undefined;
   const [ox, oy, oz] = frameOrigin;
@@ -112,7 +119,11 @@ export function simplifyIndicesByClustering(
     const ba = a * strideFloats;
     const bb = b * strideFloats;
     for (const k of ranked) {
-      if (vertexData[ba + k] !== vertexData[bb + k]) return vertexData[ba + k] < vertexData[bb + k];
+      const x = vertexData[ba + k], y = vertexData[bb + k];
+      if (x === y || (x !== x && y !== y)) continue;
+      // NaN ranks last, so the order stays total and the election order-independent.
+      if (x !== x || y !== y) return y !== y;
+      return x < y;
     }
     return a < b;
   };
@@ -156,6 +167,11 @@ export function simplifyIndicesByClustering(
       // LOD0), so nothing goes missing (issue #3028).
       if (cellOfKey.size >= MAX_MAP_ENTRIES) return -1;
       cell = cells++;
+      if (cell === representative.length) {
+        const grown = new Int32Array(Math.max(cell + 1, Math.min(vertexCount, representative.length * 2)));
+        grown.set(representative);
+        representative = grown;
+      }
       cellOfKey.set(key, cell);
       representative[cell] = vi;
     } else if (precedes(vi, representative[cell])) {

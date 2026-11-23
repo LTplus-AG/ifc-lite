@@ -284,6 +284,28 @@ describe('simplifyIndicesByClustering is a function of the batch contents (load 
   });
 });
 
+describe('simplifyIndicesByClustering layout argument', () => {
+  it('still reads a bare number as the entity-lane offset', () => {
+    const pieces = campusPieces(400);
+    const order = pieces.map((_, k) => k);
+    const { vertexData, indices } = batchOf(pieces, order, [0, 0, 0]);
+    assert.deepStrictEqual(simplifyIndicesByClustering(vertexData, STRIDE, indices, 1, 6),
+      simplifyIndicesByClustering(vertexData, STRIDE, indices, 1, { idLaneOffset: 6 }));
+  });
+
+  it('ranks a NaN normal last, whichever vertex comes first', () => {
+    const pieces = campusPieces(400);
+    // Piece 1 (entity 100, +Z normal) gets a NaN normal: piece 0's +Y corner must win in either order.
+    pieces[1].vertices = pieces[1].vertices.map(([x, y, z]) => [x, y, z, NaN, 0, 1]);
+    for (const order of [pieces.map((_, k) => k), pieces.map((_, k) => k).reverse()]) {
+      const { vertexData, indices } = batchOf(pieces, order, [0, 0, 0]);
+      const lod = simplifyIndicesByClustering(vertexData, STRIDE, indices, 1)!;
+      const corners = drawnTriangles(vertexData, lod, [0, 0, 0]).flatMap((t) => t.split(' ')).filter((r) => r.startsWith('0.375,0.625,0.125,'));
+      assert.deepStrictEqual([...new Set(corners)], ['0.375,0.625,0.125,0,1,0,100']);
+    }
+  });
+});
+
 describe('simplifyIndicesByClustering at the V8 Map ceiling (issue #3028)', () => {
   // The defect this guards needs more than 2^24 - 1 distinct referenced
   // vertices in ONE batch, which is ~16.7 million. There is no cheap fixture

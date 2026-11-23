@@ -338,11 +338,9 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     for (id, line) in appended.filter(|(id, _)| !flatten.drops(*id)) {
         written += usize::from(write_line(&mut body, line, *id, converting, &source_label, &target, &mut slot_fill, &mut checks, &flatten)?);
     }
-    let mut deferred_entities = 0;
-    let delta = checks.finish_with_header(body, target_is_ifc2x3.then_some(&mut slot_fill), pass.ids, |out, count| {
+    let (delta, deferred_entities) = checks.finish_with_header(body, target_is_ifc2x3.then_some(&mut slot_fill), pass.ids, |out, count| {
         if !defer_varying { return Ok(()); }
-        deferred_entities = usize::try_from(count).unwrap_or_default();
-        header(out, deferred_entities)
+        header(out, usize::try_from(count).unwrap_or_default())
     })?;
     written = written.checked_add_signed(delta).unwrap_or(written);
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;

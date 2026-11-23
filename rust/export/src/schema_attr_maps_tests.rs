@@ -203,6 +203,9 @@ fn keeps_typed_ifc2x3_measures_as_property_single_values_10797() {
                 assert!(output.contains(text), "{schema}: {text}\n{output}");
             }
         }
+        assert_eq!(log_stats.new_entities, 9, "{schema}: eight values and one extra property set");
+        assert_eq!(logged.lines().filter(|line| line.starts_with('#')).count(),
+            log_stats.total + log_stats.new_entities, "{schema}");
         assert_eq!(log_stats.step.attribute_values_dropped, 0);
         assert_eq!(stats.attribute_values_dropped, 0);
     }

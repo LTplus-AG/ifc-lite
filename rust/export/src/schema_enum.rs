@@ -248,16 +248,17 @@ impl ConversionChecks {
         slots: Option<&mut crate::schema_ifc2x3_slots::Ifc2x3SlotFill>,
         ids: crate::step_ids::IdAllocator,
     ) -> std::io::Result<isize> {
-        self.finish_with_header(body, slots, ids, |_, _| Ok(()))
+        self.finish_with_header(body, slots, ids, |_, _| Ok(())).map(|(delta, _)| delta)
     }
 
+    /// Return the DATA record delta and the number of records minted by the deferred passes.
     pub(crate) fn finish_with_header(
         &mut self,
         mut body: crate::schema_ifc2x3_body::Body<'_>,
         mut slots: Option<&mut crate::schema_ifc2x3_slots::Ifc2x3SlotFill>,
         ids: crate::step_ids::IdAllocator,
         header: impl FnOnce(&mut dyn std::io::Write, isize) -> std::io::Result<()>,
-    ) -> std::io::Result<isize> {
+    ) -> std::io::Result<(isize, usize)> {
         use std::io::Write as _;
         let mut added = self.structural.added();
         added.extend(self.structural.values.added());
@@ -272,7 +273,13 @@ impl ConversionChecks {
         }
         // Varying actions mint ids above the final DATA ids, including typed properties.
         let typed_added = body.rewrite_held(|text| self.finish_typed_properties(text, || ids));
-        Ok(count + typed_added as isize + body.finish_with_header(|text| self.structural.finish_effective_varying(text, &mut self.attribute_values_dropped), header)?)
+        let mut varying_added = 0;
+        let body_delta = body.finish_with_header(|text| {
+            let (rewritten, added) = self.structural.finish_effective_varying(text, &mut self.attribute_values_dropped)?;
+            varying_added = usize::try_from(added).unwrap_or_default();
+            Some((rewritten, added))
+        }, header)?;
+        Ok((count + typed_added as isize + body_delta, typed_added + varying_added))
     }
 
     pub(crate) fn finish_typed_properties(&mut self, text: &[u8], ids: impl FnOnce() -> crate::step_ids::IdAllocator) -> Option<(Vec<u8>, usize)> {

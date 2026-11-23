@@ -56,12 +56,18 @@ import type { FileSourceProviderFactory } from './services/sources/source-host';
 // After the pairing-fragment strip, like every module that may report (pairing-fragment.boot.test.ts).
 import './lib/analytics';
 import { applyRuntimeConfig } from './lib/features/runtime-start';
-import { applyProcessingConfig } from './lib/processed-model';
+import {
+  applyProcessingConfig,
+  type FiledProcessedModelRequest,
+  type OpenProcessedModelOptions,
+  type ProcessedModelRequest,
+} from './lib/processed-model';
 import { linkIconFont } from './lib/features/icon-font';
 import type { ViewerRuntimeConfig } from './lib/features/runtime-config';
 
 export type { FileSourceProviderFactory } from './services/sources/source-host';
 export type { ViewerRuntimeConfig } from './lib/features/runtime-config';
+export type { OpenProcessedModelOptions, ProcessedModelRequest } from './lib/processed-model';
 
 export interface ViewerBootstrapOptions {
   /**
@@ -86,6 +92,15 @@ export interface ViewerBootstrapOptions {
    * not happen.
    */
   readonly config?: ViewerRuntimeConfig;
+  /** Initial processed model. Takes precedence over the configured start model and page URL. */
+  readonly processedModel?: FiledProcessedModelRequest;
+}
+
+export interface ViewerHandle {
+  /** Open a stored model, optionally using a processing server for that request and its Retry. */
+  openProcessedModel(model: ProcessedModelRequest, options?: OpenProcessedModelOptions): void;
+  /** Change the default processing server for subsequent requests, including enabled uploads. */
+  setProcessingServerUrl(url: string): void;
 }
 
 let prepared = false;
@@ -117,13 +132,13 @@ export function prepareViewer(): void {
 }
 
 /** Mounts the viewer into `container`. Call once, from the app entry. */
-export function mountViewer(container: HTMLElement, options: ViewerBootstrapOptions = {}): void {
+export function mountViewer(container: HTMLElement, options: ViewerBootstrapOptions = {}): ViewerHandle {
   prepareViewer();
   // The feature set and analytics, then the locale, before anything renders.
   const config = applyRuntimeConfig(options.config);
   void startLocales(config?.locale);
   // The processing server and a start model; the viewer's autoload takes the request once it mounts.
-  applyProcessingConfig(config);
+  const handle = applyProcessingConfig(config, options.processedModel);
   // Pull the engine binary down before a local pick, once the start model is known.
   scheduleWasmPrewarm();
   // The model tree's icon font, a third-party request; viewer only (the embed has no tree).
@@ -151,4 +166,6 @@ export function mountViewer(container: HTMLElement, options: ViewerBootstrapOpti
   // until a model has loaded.
   void import('./lib/schema-tables/warm-schema-tables').then(({ startSchemaTableWarm }) => { startSchemaTableWarm(); })
     .catch((err: unknown) => { console.warn('[schema-table warm] not started:', err); });
+
+  return handle;
 }

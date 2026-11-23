@@ -1,6 +1,0 @@
-{
-  "issue": 7955,
-  "key": "apps/viewer/src/lib/storage/browser-storage.ts",
-  "mutation": "tests/evidence/browser-storage-persistence/behaviour.oracle.patch",
-  "why": "Removing the remembered-attempt guard makes denied and failed requests eligible to prompt again. Keep the new storage module loadable so tests can observe that behavior."
-}

@@ -99,8 +99,10 @@ function CandidateReview({
   const withdrawnBy = useRef<string | null>(null);
   // Bumped whenever automation replaces or withdraws the staged draft, so a post in flight knows its draft is gone.
   const withdrawals = useRef(0);
+  // Bumped on every user edit, so a finished post knows whether the form still holds what it sent.
+  const edits = useRef(0);
   // Taking over a staged draft by editing it also retires the post that was capturing for it.
-  const releaseStaged = () => { if (stagedEntity !== null) withdrawals.current += 1; setStagedEntity(null); };
+  const editDraft = () => { edits.current += 1; if (stagedEntity !== null) withdrawals.current += 1; setStagedEntity(null); };
   useEffect(() => {
     // Only an action aimed at this candidate and ref changes what this section has staged.
     if (!automationReview || automationReview.candidateId !== candidateId || automationReview.refName !== refName) return;
@@ -172,6 +174,7 @@ function CandidateReview({
   const postComment = useCallback(async () => {
     if (!review || !canPost) return;
     const staging = withdrawals.current;
+    const edited = edits.current;
     await runAction(async ({ isCurrent }) => {
       try {
         let viewpoint: Record<string, unknown> | undefined;
@@ -201,8 +204,8 @@ function CandidateReview({
           ...(viewpoint !== undefined ? { viewpoint } : {}),
         });
         if (!isCurrent()) return;
-        // A newer staged draft that arrived during the post is not the one posted; leave it.
-        if (withdrawals.current === staging) { setStagedEntity(null); setTitle(''); setDescription(''); }
+        // A newer staged draft or an edit made during the post still belongs in the form.
+        if (withdrawals.current === staging && edits.current === edited) { setStagedEntity(null); setTitle(''); setDescription(''); }
         await refresh();
         if (isCurrent()) toast.success(t('layersPanel.review.postedToast'));
       } catch (err) {
@@ -274,7 +277,7 @@ function CandidateReview({
           <input
             type="text"
             value={title}
-            onChange={(e) => { releaseStaged(); setTitle(e.target.value); }}
+            onChange={(e) => { editDraft(); setTitle(e.target.value); }}
             placeholder={
               commentEntity
                 ? t('layersPanel.review.commentPlaceholderWithEntity', { tail: pathTail(commentEntity) })
@@ -285,7 +288,7 @@ function CandidateReview({
           />
           <textarea
             value={description}
-            onChange={(e) => { releaseStaged(); setDescription(e.target.value); }}
+            onChange={(e) => { editDraft(); setDescription(e.target.value); }}
             rows={2}
             placeholder={t('layersPanel.review.descriptionPlaceholder')}
             aria-label={t('layersPanel.review.descriptionAriaLabel')}

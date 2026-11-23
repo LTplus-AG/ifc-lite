@@ -1,6 +1,0 @@
-{
-  "issue": 7955,
-  "key": "packages/site-context/src/buildings-mesh.ts",
-  "mutation": "tests/evidence/site-context-buildings/behaviour.oracle.patch",
-  "why": "Reverse application keeps every export but stops reversing a neighbour whose shared edge runs the same way, so winding is no longer made consistent across a building and the swisstopo tiles' mixed winding survives: the synthetic box and L-prism normal tests and the recorded Bern outward-volume and sky-facing-roof test go red."
-}

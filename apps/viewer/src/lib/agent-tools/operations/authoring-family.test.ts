@@ -15,6 +15,7 @@ import type { ToolHost } from '../types';
 import { BACK_WALL, BACK_WALL_NAME, GROUND_STOREY, SAMPLE_MODEL, seedAuthoringSample, danglingReferences } from '@/test/authoring-sample-fixture';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { resetFeaturesForTest } from '@/lib/features';
+import { setGlobalRendererRef } from '@/hooks/useBCF';
 let host: ToolHost;
 async function seed() {
   resetFeaturesForTest(); await seedAuthoringSample();
@@ -38,6 +39,28 @@ const proposal = () => JSON.stringify({ version: 1, kind: 'model.authoring', tit
 ] });
 describe('native reviewed authoring operations (full automation follow-up #10525)', () => {
   beforeEach(seed);
+  it('requires write admission before publishing zone calculations (#11215)', async () => {
+    const timing = { elapsedMs: 0, elementCount: 0, zoneSetCount: 0, computedAt: 1 };
+    useViewerStore.setState({ zoneAssignmentTiming: timing, zoneApportionment: new Map() });
+    setGlobalRendererRef({ current: { getScene: () => ({ getBounds: () => null, getMeshDataPieces: () => [] }) } } as never);
+    try {
+      const rejected = await invoke('zones.assign', {}, false, false);
+      assert.equal(rejected.isError, true, rejected.text);
+      assert.equal(useViewerStore.getState().zoneAssignmentTiming, timing);
+      answer(await invoke('zones.assign', {}, true));
+      assert.notEqual(useViewerStore.getState().zoneAssignmentTiming, timing);
+
+      const set_id = useViewerStore.getState().createZoneSet('Admission');
+      const refused = await invoke('zones.apportion', { set_id }, true, false);
+      assert.equal(refused.errorCode, 'READ_ONLY', refused.text);
+      assert.equal(useViewerStore.getState().zoneApportionment.has(set_id), false);
+      answer(await invoke('zones.apportion', { set_id }, true));
+      assert.equal(useViewerStore.getState().zoneApportionment.has(set_id), true);
+    } finally {
+      setGlobalRendererRef({ current: null });
+    }
+  });
+
   it('exports.modelIfcx refuses a changes-only export when the model has no pending changes', async () => {
     useViewerStore.setState({ mutationViews: new Map() });
     const result = await invoke('exports.modelIfcx', { changes_only: true, include_geometry: false, apply_mutations: true, visible_only: false, only_known_properties: false }, true);
@@ -128,6 +151,27 @@ describe('native reviewed authoring operations (full automation follow-up #10525
     const name = state.getMutationView(SAMPLE_MODEL)?.getAttributeMutationsForEntity(expressId).find(row => row.name === 'Name')?.value;
     assert.equal(name ?? store.entities.getName(expressId), BACK_WALL_NAME);
   });
+  it('round-trips a change-set artifact larger than the inline import limit (#11214)', async () => {
+    const { id } = answer<{ id: string }>(await invoke('changeSets.create', { name: 'Large staged changes' }, true));
+    const state = useViewerStore.getState();
+    const expressId = state.models.get(SAMPLE_MODEL)!.ifcDataStore!.entities.getExpressIdByGlobalId(BACK_WALL);
+    const edit = state.setAttribute(SAMPLE_MODEL, expressId, 'Name', 'x'.repeat(1_000_001), BACK_WALL_NAME);
+    assert.ok(edit);
+    const artifact = answer<{ artifact_id: string; bytes: number }>(await invoke('changeSets.export', { id }, true));
+    assert.ok(artifact.bytes > 1_000_000);
+    const input = { artifact_id: artifact.artifact_id };
+    const otherHost = createMainViewerToolHost(useViewerStore, createBimContext({ backend: new LocalBackend(useViewerStore) }));
+    const rejected = await dispatchMainViewerTool(otherHost, 'viewer_operation_execute', {
+      operation_id: 'changeSets.import', input,
+    }, { canEdit: () => true });
+    assert.equal(rejected.errorCode, 'INVALID_INPUT', rejected.text);
+    assert.equal(useViewerStore.getState().changeSets.size, 1);
+    const before = useViewerStore.getState().mutationVersion;
+    const imported = answer<{ id: string; applied: boolean }>(await invoke('changeSets.import', input, true));
+    assert.equal(imported.applied, false);
+    assert.deepEqual(useViewerStore.getState().changeSets.get(imported.id)?.mutations, [edit]);
+    assert.equal(useViewerStore.getState().mutationVersion, before);
+  });
   it('refuses malformed mutation rows before staging a change set (#10795 item 31)', async () => {
     const common = { id: 'wrong', timestamp: 0, modelId: SAMPLE_MODEL, entityId: 1 };
     for (const mutation of [
@@ -171,7 +215,7 @@ describe('native reviewed authoring operations (full automation follow-up #10525
     answer(await invoke('zones.box.write', { set_id: made.set_id, zone_id: '', name: 'A', center: [0, 1, 0], size: [3, 2, 3], rotationY: 0, expected_configuration: snapshot }, true));
     assert.equal(useViewerStore.getState().zoneSets[0].zones.length, 1);
     assert.equal((await invoke('zones.set.edit', { set_id: made.set_id, action: 'rename', name: 'Changed', visible: true, expected_configuration: snapshot }, true)).isError, true);
-    assert.equal((await invoke('zones.assign')).isError, true, 'a missing renderer must not be an empty successful evaluation');
+    assert.equal((await invoke('zones.assign', {}, true)).isError, true, 'a missing renderer must not be an empty successful evaluation');
   });
   it('adds native inspector properties transactionally and refuses a stale inherited-property snapshot', async () => {
     const state = useViewerStore.getState(), store = state.models.get(SAMPLE_MODEL)!.ifcDataStore!, express_id = store.entities.getExpressIdByGlobalId(BACK_WALL);

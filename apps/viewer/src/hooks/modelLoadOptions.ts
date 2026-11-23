@@ -3,20 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { TessellationQuality } from '@ifc-lite/geometry';
-import type { ProcessedModelSource } from '@/lib/processed-model';
 import type { LandXmlGeorefAssumptions } from './ingest/landXmlGeorefAssumptions.js';
 
 /** Terminal Gaussian load result; publication alone is not completion. */
 export type GaussianLoadOutcome = 'completed' | 'cancelled' | 'failed';
 
 export interface ModelLoadOptions {
-  /**
-   * Open a model the processing server has already processed, named by the
-   * SHA-256 of its source file. The `File` passed alongside carries the display
-   * name only: no source bytes are read, hashed, cached or uploaded, and there
-   * is no local fallback. Primary target only.
-   */
-  processedModel?: ProcessedModelSource;
   sourceHandle?: FileSystemFileHandle;
   /** Synchronous guard that may abort a primary load before it commits to replacing the scene. */
   beforePrimaryReset?: () => void;

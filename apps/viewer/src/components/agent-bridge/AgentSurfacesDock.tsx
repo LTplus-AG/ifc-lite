@@ -57,7 +57,7 @@ export function AgentSurfacesDock() {
     <aside
       aria-label={t('agentBridge.surfaces.title')}
       data-agent-surfaces={surfaces.length}
-      className="pointer-events-none fixed bottom-3 right-3 top-14 z-30 flex w-96 max-w-full flex-col gap-2 overflow-y-auto"
+      className="pointer-events-none fixed bottom-3 right-4 top-32 z-30 flex w-96 max-w-full flex-col gap-2 overflow-y-auto"
     >
       <div className="pointer-events-auto flex items-center justify-between rounded-md bg-background/90 px-2 py-1 text-xs text-muted-foreground shadow-sm backdrop-blur">
         <span>{t('agentBridge.surfaces.title')}</span>

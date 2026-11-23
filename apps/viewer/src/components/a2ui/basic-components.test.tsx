@@ -79,6 +79,8 @@ a = Row([Text("left"), Divider(), Text("right")])
 b = Callout("Careful", "warn", "Heads up")`));
     await waitFor(() => container.querySelectorAll('[role="tab"]').length === 2, 'two tabs');
     assert.ok(container.textContent?.includes('left') && container.textContent.includes('right'));
-    assert.ok(container.querySelector('[role="separator"], [data-orientation]'), 'divider');
+    // Scope to the Row: Radix Tabs also carry data-orientation.
+    const row = [...container.querySelectorAll('div')].filter((d) => d.textContent === 'leftright').at(-1);
+    assert.ok(row?.querySelector('[role="separator"], [data-orientation]'), 'divider inside the row');
   });
 });

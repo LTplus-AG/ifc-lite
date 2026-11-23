@@ -76,7 +76,12 @@ describe('A2UI presentation through MCP', () => {
       query: { modelId, types: ['IfcWall'], limit: 1, where: [{ path: 'Name', op: 'exists' }] },
       columns: [{ path: 'Name' }], groupBy: 'type',
     }));
-    expect(result.dataModel.s0).toMatchObject({ v1: 1 });
+    // Every fixture wall has a Name, so the whole-match count is the wall count.
+    const count = await call('count_entities', { model_id: modelId, type: 'IfcWall' });
+    const stats = result.dataModel.s0 as { v0: number; v1: number };
+    expect(stats.v1).toBe(1);
+    expect(stats.v0).toBe(count.structuredContent?.total);
+    expect(stats.v0).toBeGreaterThan(stats.v1);
     const { rows } = result.dataModel.s1 as { rows: { Name: string }[] };
     expect(rows).toHaveLength(1);
     expect(rows[0].Name).toBeTruthy();

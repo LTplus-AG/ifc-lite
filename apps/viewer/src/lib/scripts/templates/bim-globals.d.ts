@@ -148,10 +148,13 @@ declare namespace BimUi {
   }
 
   export type ScriptUiSection =
-    | Exclude<SectionSpec, { kind: 'table' | 'chart' | 'entity' | 'list' | 'actions' }>
+    | Exclude<SectionSpec, { kind: 'table' | 'chart' | 'legend' | 'entity' | 'list' | 'actions' }>
     | (Omit<SectionOf<'table'>, 'rows'> & { rows?: ScriptUiRow[] })
     | (Omit<SectionOf<'chart'>, 'data'> & {
         data?: (Omit<NonNullable<SectionOf<'chart'>['data']>[number], 'refs'> & { refs?: ScriptUiRef[] })[];
+      })
+    | (Omit<SectionOf<'legend'>, 'data'> & {
+        data?: (Omit<NonNullable<SectionOf<'legend'>['data']>[number], 'refs'> & { refs?: ScriptUiRef[] })[];
       })
     | (Omit<SectionOf<'entity'>, 'entity'> & { entity: ScriptUiRef })
     | (Omit<SectionOf<'list'>, 'refs'> & { refs?: ScriptUiRef[] })

@@ -86,7 +86,13 @@ describe('IFC agent', () => {
     expect(parts.filter((p) => p.type === 'text').map((p) => (p as { text: string }).text).join('')).toContain('After.');
   });
 
+  it('rejects an EntityTable column with an empty path', () => {
+    const table = (path: string) => [{ version: '1.0', createSurface: { surfaceId: 't', catalogId: IFC_CATALOG_ID, components: [{ id: 'root', component: 'EntityTable', columns: [{ path }], query: { types: ['IfcWall'] } }] } }];
+    expect(validateIfcMessages(table('Name'))).toEqual([]);
+    expect(validateIfcMessages(table(''))).not.toEqual([]);
+  });
+
   it('validates hand-written payloads', () => {
-    expect(validateIfcMessages([{ version: '1.0', createSurface: { surfaceId: 'x', catalogId: IFC_CATALOG_ID, components: [{ id: 'root', component: 'Nope' }] } }])).not.toEqual([]);
+    expect(validateIfcMessages([{ version: '1.0', createSurface: { surfaceId: 'x', catalogId: IFC_CATALOG_ID, components: [{ id: 'root', component: 'Nope' }] } }]).join(' ')).toContain("Unknown component type 'Nope'");
   });
 });

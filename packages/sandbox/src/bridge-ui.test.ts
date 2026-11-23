@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { BimContext, EntityData } from '@ifc-lite/sdk';
 import { validateIfcMessages } from '@ifc-lite/a2ui/agent';
 import { createSandbox, type Sandbox } from './sandbox.js';
+import type { ScriptUiSection } from './bridge-ui.js';
 
 const wall: EntityData = {
   ref: { modelId: 'federation:west', expressId: 42 },
@@ -58,11 +59,14 @@ describe('bim.ui in QuickJS', () => {
 
   it('keeps computed legend entries and the initial table sort', async () => {
     const result = await run(`bim.ui.show({ sections: [
-      { kind: "legend", by: "share", data: [{ label: "High", color: "#e5484d", refs: ["m:1"] }] },
+      { kind: "legend", by: "share", data: [{ label: "High", color: "#e5484d", refs: ["m:1", { modelId: "m", expressId: 2 }] }] },
       { kind: "table", columns: [{ path: "Name" }], rows: [{ ref: "m:1", Name: "A" }], sort: { path: "Name", dir: "desc" } },
     ] })`);
     const model = result.surfaces?.[0][0].createSurface;
-    expect(model?.dataModel.s0).toMatchObject({ data: [{ label: 'High', color: '#e5484d', refs: ['m:1'] }] });
+    expect(model?.dataModel.s0).toMatchObject({ data: [{ label: 'High', color: '#e5484d', refs: ['m:1', 'm:2'] }] });
+    // Type level: the declared input accepts the object refs the runtime takes.
+    const legend: ScriptUiSection = { kind: 'legend', by: 'share', data: [{ label: 'High', color: '#e5484d', refs: ['m:1', { modelId: 'm', expressId: 2 }] }] };
+    expect(legend.kind).toBe('legend');
     expect(model?.components).toContainEqual(expect.objectContaining({ id: 's1', sort: { path: 'Name', dir: 'desc' } }));
   });
 

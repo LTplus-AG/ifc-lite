@@ -20,6 +20,7 @@ import { block, mountReply, recordingHost } from '@/test/a2ui-render';
 import { A2UI_DEMO_REPLY } from '@/lib/a2ui/demo-reply';
 import { resetChatSessions } from '@/lib/a2ui/chat-sessions';
 import { legendEntriesFromData } from './ColorLegend';
+import { foldGroups } from './GroupChart';
 
 const LEFT_WALL = 315;
 const PLUMBING_WALL = 353;
@@ -89,6 +90,13 @@ describe('IFC catalog components', () => {
     assert.equal(selectedRefs(host).length, 4, 'a bar pick selects the walls');
   });
 
+  it('GroupChart: folding keeps the largest groups, not the first ones', () => {
+    const g = (label: string, value: number) => ({ label, value, refs: [`m:${value}`] });
+    const folded = foldGroups([g('a', 1), g('b', 2), g('big', 50), g('c', 3)], 3, 'Other');
+    assert.deepEqual(folded.map((x) => [x.label, x.value]), [['big', 50], ['c', 3], ['Other', 3]]);
+    assert.deepEqual(folded[2].refs, ['m:1', 'm:2']);
+  });
+
   it('ColorLegend: one colour per value, applied only on Apply; entries toggle visibility', async () => {
     const { host: real } = await seedA2uiModels();
     const { host, calls } = recordingHost(real);
@@ -130,7 +138,8 @@ describe('IFC catalog components', () => {
   });
 
   it('EntityCard follows the selection and EntityList marks refs to unloaded models inert', async () => {
-    const { host } = await seedA2uiModels({ federated: true });
+    const { host: real } = await seedA2uiModels({ federated: true });
+    const { host, calls } = recordingHost(real);
     const reply = block(`root = Column([card, list])
 card = EntityCard("selection", ["attributes", "quantities"])
 list = EntityList(_, $/refs)
@@ -144,5 +153,8 @@ $/refs = ["${MODEL_B}:${LEFT_WALL}", "gone:${LEFT_WALL}"]`);
     assert.deepEqual(selectedRefs(host), [`${MODEL_B}:${LEFT_WALL}`]);
     await waitFor(() => text(container).includes('house - outer wall - house left'), 'card shows the selected wall');
     assert.ok(text(container).includes('NetVolume'), 'quantities section');
+    // Both models hold the same wall; the card's own ref tells them apart.
+    click(button(container, 'Fly to')!);
+    assert.deepEqual(calls.flyTo.at(-1), [{ modelId: MODEL_B, expressId: LEFT_WALL }], 'card reads model B');
   });
 });

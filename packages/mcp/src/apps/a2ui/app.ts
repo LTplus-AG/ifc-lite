@@ -52,12 +52,12 @@ let dispose: (() => void) | undefined;
 function render(result: CallToolResult): void {
   const payloads = result.content.flatMap((block) => block.type === 'resource' && block.resource?.mimeType === A2UI_MIME_TYPE
     && typeof block.resource.text === 'string' ? [block.resource.text] : []);
+  dispose?.();
+  dispose = undefined;
   if (!payloads.length) {
     root.replaceChildren(element('p', result.content.find((block) => block.type === 'text')?.text || 'No IFC surface was returned.'));
     return;
   }
-  dispose?.();
-  dispose = undefined;
   const processor = new MessageProcessor([catalog]);
   try {
     for (const payload of payloads) {

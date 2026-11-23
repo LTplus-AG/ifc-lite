@@ -5,7 +5,7 @@
 /**
  * A recorded assistant reply for the A2UI demo (`?a2uiDemo=1`), written for
  * `public/samples/building-architecture.ifc`. Every number on the surface is a
- * query the viewer evaluates; the prose states none. `demo.test.ts` parses it
+ * query the viewer evaluates; the prose states none. `session.test.ts` parses it
  * with the real agent parser, so it cannot drift from the catalog.
  */
 

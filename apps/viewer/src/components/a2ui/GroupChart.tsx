@@ -49,11 +49,12 @@ function ChartCanvas({ kind, groups, label, onPick }: { kind: 'bar' | 'pie'; gro
   return <div ref={ref} aria-hidden="true" title={label} className="h-48 w-full" />;
 }
 
-/** Keep the largest `max - 1` groups and fold the rest into one. */
-function foldGroups(groups: ChartGroup[], max: number, otherLabel: string): ChartGroup[] {
+/** Keep the largest `max - 1` groups in their given order and fold the rest into one. */
+export function foldGroups(groups: ChartGroup[], max: number, otherLabel: string): ChartGroup[] {
   if (groups.length <= max) return groups;
-  const head = groups.slice(0, Math.max(1, max - 1));
-  const rest = groups.slice(head.length);
+  const largest = new Set([...groups].sort((a, b) => b.value - a.value).slice(0, Math.max(1, max - 1)));
+  const head = groups.filter((g) => largest.has(g));
+  const rest = groups.filter((g) => !largest.has(g));
   return [...head, { label: otherLabel, value: rest.reduce((a, g) => a + g.value, 0), refs: rest.flatMap((g) => g.refs) }];
 }
 

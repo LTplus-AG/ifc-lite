@@ -351,12 +351,12 @@ const AGENT_BRIDGE_TAILS = new Set(('row.title row.description row.connect dialo
   + 'failure.framed ended.flooded row.showActivity row.hideActivity failure.permissionPrompt dialog.permissionWait '
   + 'chip.connectedCommands panel.sinceCommands panel.allowCommands panel.allowCommandsHint '
   + 'chip.connectedEdits panel.sinceEdits panel.allowEdits panel.allowEditsHint panel.editsCeiling panel.edit panel.editChange '
-  + 'panel.editDeleted panel.editUnchanged panel.repeated').split(' '));
+  + 'panel.editDeleted panel.editUnchanged panel.repeated surfaces.title surfaces.dismiss surfaces.clear surfaces.untitled surfaces.sent').split(' '));
 const AGENT_BRIDGE_PARAMETERS: Record<string, readonly string[]> = {
   'dialog.reads': ['port'], 'dialog.target': ['port'], 'dialog.replaces': ['port'], 'panel.since': ['port', 'time'], 'panel.error': ['code'], 'panel.duration': ['ms'],
   'failure.unreachable': ['port'], 'failure.origin': ['origin'], 'panel.sinceEdits': ['port', 'time'], 'panel.editChange': ['after', 'before', 'entity', 'field'],
   'panel.sinceCommands': ['port', 'time'],
-  'panel.editDeleted': ['before', 'entity', 'field'], 'panel.editUnchanged': ['after', 'entity', 'field'], 'panel.repeated': ['count'],
+  'panel.editDeleted': ['before', 'entity', 'field'], 'panel.editUnchanged': ['after', 'entity', 'field'], 'panel.repeated': ['count'], 'surfaces.dismiss': ['title'],
 };
 
 export function lazyMessageParameters(key: string): readonly string[] | null {

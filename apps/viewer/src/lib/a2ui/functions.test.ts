@@ -13,7 +13,7 @@ import '@/test/setup-dom.js';
 import { clearDownloads, downloadedNames } from '@/test/download-capture.js';
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { IFC_FUNCTION_POLICY } from '@ifc-lite/a2ui';
+import { encodeRef, IFC_FUNCTION_POLICY } from '@ifc-lite/a2ui';
 import { seedA2uiModels } from '@/test/a2ui-fixture';
 import { ifcFunctionImplementations } from './catalog';
 import { assertAllowed, entitiesCsv, PolicyRefusal, resolveTarget, runIfcFunction, safeColor } from './functions';
@@ -52,7 +52,9 @@ describe('IFC function policy', () => {
     assert.deepEqual(target.refs, [], 'an invalid type is not dropped into an all-products query');
     assert.ok(target.problems.length > 0);
     assert.throws(() => runIfcFunction(host, 'countEntities', bad, { caller: 'renderer', userActivated: false }), /types/);
-    assert.throws(() => runIfcFunction(host, 'select', { ...bad, refs: [target.refs[0] ?? 'x:1'] }, { caller: 'agent', userActivated: false }), PolicyRefusal);
+    const wall = encodeRef(host.candidates(['IfcWall'], undefined)[0].ref);
+    assert.throws(() => runIfcFunction(host, 'select', { ...bad, refs: [wall] }, { caller: 'agent', userActivated: false }), /query has problems/);
+    assert.deepEqual(host.getSelection(), [], 'nothing was selected');
     assert.ok(resolveTarget(host, { query: { types: ['IfcWall'] } }).refs.length > 0);
     const walls = { query: { types: ['IfcWall'] } };
     assert.throws(() => runIfcFunction(host, 'sumQuantity', { ...walls, path: 'Qto_WallBaseQuantities.NetVolumee' }, { caller: 'renderer', userActivated: false }), /no matched entity has a number/);
@@ -73,11 +75,13 @@ describe('IFC function policy', () => {
   });
 
   it('lets the agent call view and read functions, and nothing outside the catalog', () => {
-    for (const [name, policy] of Object.entries(IFC_FUNCTION_POLICY)) {
+    const agentCallable = ['select', 'isolate', 'hide', 'show', 'colorize', 'flyTo', 'resetView', 'getSelection', 'countEntities', 'sumQuantity'];
+    for (const name of Object.keys(IFC_FUNCTION_POLICY)) {
       const call = () => assertAllowed(name, { caller: 'agent', userActivated: false });
-      if (policy.agentCallable && !policy.userActivation) assert.doesNotThrow(call, name);
+      if (agentCallable.includes(name)) assert.doesNotThrow(call, name);
       else assert.throws(call, PolicyRefusal, name);
     }
+    assert.deepEqual(Object.keys(IFC_FUNCTION_POLICY).filter((n) => !agentCallable.includes(n)), ['exportCsv']);
     assert.throws(() => assertAllowed('eval', { caller: 'renderer', userActivated: true }), PolicyRefusal);
   });
 

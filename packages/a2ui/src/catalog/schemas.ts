@@ -37,7 +37,7 @@ export const IfcQuerySchema = z
 
 export const ColumnSchema = z
   .object({
-    path: z.string().describe('Field path (see query.where.path) or, for script rows, the row key'),
+    path: z.string().min(1).describe('Field path (see query.where.path) or, for script rows, the row key'),
     label: z.string().optional().describe('Header text. Defaults to the path'),
   })
   .describe('Table column');

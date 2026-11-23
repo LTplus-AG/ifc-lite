@@ -8,7 +8,7 @@
  */
 
 import type { ChatMessage, CodeExecResult, FileAttachment, PersistedA2ui } from '../../lib/llm/types.js';
-import { CHAT_MAX_MESSAGES } from '../../lib/llm/chat-limits.js';
+import { CHAT_MAX_MESSAGES, CHAT_MAX_STORED_MESSAGES } from '../../lib/llm/chat-limits.js';
 
 const MESSAGES_STORAGE_KEY = 'ifc-lite-chat-messages';
 const MAX_MESSAGES = CHAT_MAX_MESSAGES;
@@ -24,7 +24,8 @@ export function loadStoredMessages(userId: string | null): ChatMessage[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw) as Array<Record<string, unknown>>;
     return trimChatMessages(parsed.flatMap(deserializeStoredMessage));
-  } catch {
+  } catch (err) {
+    console.warn('[chat] Could not load chat history from localStorage; starting empty.', err);
     return [];
   }
 }
@@ -40,8 +41,7 @@ export function __resetChatPersistWarningForTests(): void {
 /** Persist messages to localStorage. */
 export function persistMessages(messages: ChatMessage[], userId: string | null) {
   try {
-    // Only keep last 50 messages in storage to avoid quota issues
-    const toStore = trimChatMessages(messages).slice(-50).map((m) => ({
+    const toStore = messages.slice(-CHAT_MAX_STORED_MESSAGES).map((m) => ({
       id: m.id,
       role: m.role,
       content: m.content,
@@ -109,7 +109,10 @@ function isPersistedA2ui(value: unknown): value is PersistedA2ui {
   return record.v === 1 && Array.isArray(record.segments) && record.segments.every((seg: unknown) => {
     if (!seg || typeof seg !== 'object') return false;
     const s = seg as Record<string, unknown>;
-    return typeof s.text === 'string' || typeof s.error === 'string' || Array.isArray(s.messages);
+    // Same branch order as A2uiMessageSession.replay.
+    if ('text' in s) return typeof s.text === 'string';
+    if ('error' in s) return typeof s.error === 'string';
+    return Array.isArray(s.messages);
   });
 }
 

@@ -26,7 +26,11 @@ async function waitForModel(page: Page): Promise<void> {
 function selection(page: Page) {
   return page.evaluate(() => {
     const state = globalThis.__ifc_lite_viewer_store__.getState();
-    return { globalIds: [...state.selectedEntityIds], refs: [...state.selectedEntitiesSet], modelIds: [...state.models.keys()] };
+    const modelIds = [...state.models.keys()];
+    return {
+      globalIds: [...state.selectedEntityIds], selectedId: state.selectedEntityId, refs: [...state.selectedEntitiesSet], modelIds,
+      wallGlobalId: state.toGlobalId(modelIds[0], 315),
+    };
   });
 }
 
@@ -56,5 +60,8 @@ test('a recorded A2UI reply renders a live EntityTable whose row click selects t
   const modelId = after.modelIds[0];
   expect(await rows.first().getAttribute('data-a2ui-row')).toBe(`${modelId}:315`);
   expect(after.refs).toContain(`${modelId}:315`);
+  // The highlight channel must name the same wall as the property channel.
+  expect(after.globalIds).toEqual([after.wallGlobalId]);
+  expect(after.selectedId).toBe(after.wallGlobalId);
   await page.screenshot({ path: info.outputPath('a2ui-chat-surface-selected.png') });
 });

@@ -114,6 +114,16 @@ describe('A2uiMessageSession', () => {
     const next = syncSession({ id: STREAMING_MESSAGE_ID, content: 'A new turn' }, host, true);
     assert.notEqual(next, streaming);
     assert.equal(sessionFor({ id: 'final-1', content: A2UI_DEMO_REPLY }, host), final);
+    // Reuse without finalising in between: the live session must be reset, not extended.
+    const live = syncSession({ id: STREAMING_MESSAGE_ID, content: A2UI_DEMO_REPLY }, host, true);
+    assert.equal(live.processor.getSurface('main') !== undefined, true, 'live session rendered the surface');
+    let disposed = 0;
+    const dispose = live.dispose.bind(live);
+    live.dispose = () => { disposed++; dispose(); };
+    const reset = syncSession({ id: STREAMING_MESSAGE_ID, content: 'Another turn' }, host, true);
+    assert.equal(reset === live, false, 'a new session');
+    assert.equal(disposed, 1, 'the replaced session was disposed');
+    assert.equal(reset.processor.getSurface('main') === undefined, true, 'the new session starts empty');
   });
 });
 
@@ -135,6 +145,14 @@ describe('chat persistence of A2UI messages', () => {
     raw[raw.length - 1].a2ui = { v: 2, segments: 'nope' };
     localStorage.setItem(key, JSON.stringify(raw));
     assert.equal(loadStoredMessages(null).find((m) => m.id === id)?.a2ui, undefined);
+    const loadWith = (segments: unknown[]) => {
+      raw[raw.length - 1].a2ui = { v: 1, segments };
+      localStorage.setItem(key, JSON.stringify(raw));
+      return loadStoredMessages(null).find((m) => m.id === id)?.a2ui;
+    };
+    assert.equal(loadWith([{ text: { bad: true }, messages: [] }]), undefined, 'replay would read the bad text branch');
+    assert.equal(loadWith([{ error: 7, messages: [] }]), undefined);
+    assert.ok(loadWith([{ text: 'ok' }, { error: 'e' }, { messages: [] }]), 'every valid variant is kept');
   });
 
   it('never extracts a fenced <a2ui> block as a script', () => {

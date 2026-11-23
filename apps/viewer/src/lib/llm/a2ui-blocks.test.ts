@@ -34,6 +34,13 @@ describe('splitA2uiReply', () => {
     assert.deepEqual(code.map((c) => c.code), ['bim.query()'], 'the wrapped block is not a script');
   });
 
+  it('leaves a tag inside inline code as prose', () => {
+    const reply = 'Use the `<a2ui>` tag to build surfaces. Anything else?';
+    assert.deepEqual(kinds(reply), [`t:${reply}`]);
+    assert.deepEqual(kinds('See `x` <a2ui>\nroot = Text("x")\n</a2ui>'), ['t:See `x` ', 'b:true']);
+    assert.deepEqual(kinds('Mention `<a2ui>`.\n<a2ui>\nroot = Text("x")\n</a2ui>'), ['t:Mention `<a2ui>`.\n', 'b:true']);
+  });
+
   it('treats a block still streaming as unclosed, and partial tags as prose until complete', () => {
     assert.deepEqual(kinds('Hi <a2'), ['t:Hi <a2']);
     assert.deepEqual(kinds('Hi <a2ui>\nroot = Te'), ['t:Hi ', 'b:false']);

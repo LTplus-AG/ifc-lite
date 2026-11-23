@@ -9,7 +9,8 @@
  * next to an entity word is a literal fact).
  */
 
-const FACT_PATTERN = /\b\d+(?:[.,]\d+)?\s*(?:doors?|windows?|walls?|slabs?|spaces?|rooms?|elements?|entities|m²|m2|sqm|items?)\b/i;
+// The end check is a lookahead, not `\b`: `\b` cannot match after `²`.
+const FACT_PATTERN = /\b\d+(?:[.,]\d+)?\s*(?:doors?|windows?|walls?|slabs?|spaces?|rooms?|elements?|entities|m²|m2|sqm|items?)(?![\p{L}\p{N}_])/iu;
 
 export function scoreReply(agent, text, testCase) {
   let parts;

@@ -72,12 +72,16 @@ describe('UiEventInbox', () => {
   it('rate-limits, caps the queue and wakes a waiting reader', async () => {
     let t = 0;
     const inbox = new UiEventInbox(() => t);
-    for (let i = 0; i < UI_EVENT_LIMITS.maxPerSecond; i++) expect(inbox.push({ surfaceId: 's', name: 'ask' })).toBe(true);
-    expect(inbox.push({ surfaceId: 's', name: 'ask' })).toBe(false);
+    for (let i = 0; i < UI_EVENT_LIMITS.maxPerSecond; i++) expect(inbox.push({ surfaceId: 's', name: 'ask', prompt: `old ${i}` })).toBe(true);
+    expect(inbox.push({ surfaceId: 's', name: 'ask', prompt: 'limited' })).toBe(false);
     t = 5000;
-    for (let i = 0; i < UI_EVENT_LIMITS.maxQueued; i++) { t += 200; inbox.push({ surfaceId: 's', name: 'ask' }); }
+    const newest = Array.from({ length: UI_EVENT_LIMITS.maxQueued }, (_, i) => `new ${i}`);
+    for (const prompt of newest) { t += 200; inbox.push({ surfaceId: 's', name: 'ask', prompt }); }
     expect(inbox.size).toBe(UI_EVENT_LIMITS.maxQueued);
-    expect((await inbox.take(0)).dropped).toBe(1 + UI_EVENT_LIMITS.maxPerSecond);
+    const drained = await inbox.take(0);
+    expect(drained.dropped).toBe(1 + UI_EVENT_LIMITS.maxPerSecond);
+    // The oldest events make room: the newest stay, in arrival order.
+    expect(drained.events.map((e) => e.prompt)).toEqual(newest);
     const waiting = inbox.take(10_000);
     t += 1000;
     inbox.push({ surfaceId: 's', name: 'ask', prompt: 'next' });

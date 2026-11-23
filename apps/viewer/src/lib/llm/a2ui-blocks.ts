@@ -36,6 +36,18 @@ const WRAPPER_OPEN = /```[A-Za-z0-9_-]*[ \t]*\r?\n\s*$/;
 const WRAPPER_CLOSE = /^[ \t]*\r?\n?[ \t]*```[ \t]*(?=\r?\n|$)/;
 
 /**
+ * The next open tag that is not inside an inline code span (an odd number of
+ * backticks before it on its line, not counting a leading fence marker).
+ */
+function findOpenTag(content: string, from: number): number {
+  for (let at = content.indexOf(OPEN_TAG, from); at !== -1; at = content.indexOf(OPEN_TAG, at + OPEN_TAG.length)) {
+    const line = content.slice(content.lastIndexOf('\n', at - 1) + 1, at).replace(/^[ \t]*`{3,}/, '');
+    if ((line.match(/`/g) ?? []).length % 2 === 0) return at;
+  }
+  return -1;
+}
+
+/**
  * Split a reply, complete or still streaming, into prose and blocks in order.
  * An unclosed block runs to the end. A fence line directly around a block is
  * dropped only when it opens a fence (an odd fence count so far), so the
@@ -53,7 +65,7 @@ export function splitA2uiReply(content: string): A2uiReplyPart[] {
     else parts.push({ kind: 'text', text });
   };
   while (at < content.length) {
-    const open = content.indexOf(OPEN_TAG, at);
+    const open = findOpenTag(content, at);
     if (open === -1) {
       pushText(content.slice(at));
       break;

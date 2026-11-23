@@ -174,6 +174,11 @@ describe('A2UI presentation through MCP', () => {
       const event = await reader.read();
       expect(new TextDecoder().decode(event.value)).toContain(JSON.stringify({ action: 'selectEntities', ids: [expressId] }));
       expect(server.viewer.state()?.selection).toMatchObject([{ expressId }]);
+      // An empty or non-hex legend colour falls back to the default instead of failing in viewer_colorize (#11344).
+      for (const color of ['', 'not-a-colour']) {
+        const coloured = await call(SURFACE_ACTION_TOOL, { action: 'colorize', refs: [ref], color });
+        expect(coloured.isError, JSON.stringify(coloured)).not.toBe(true);
+      }
     } finally {
       signal.abort();
       await call('viewer_close', {});

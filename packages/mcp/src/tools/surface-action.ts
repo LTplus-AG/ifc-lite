@@ -51,6 +51,8 @@ export const viewerSelect: Tool = {
 
 const tools = new Map([...viewerTools, viewerSelect].map((tool) => [tool.name, tool]));
 
+const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+
 export const surfaceAction: Tool = {
   name: SURFACE_ACTION_TOOL,
   description: 'Run a visual action from an IFC result surface on its model-qualified entities.',
@@ -76,7 +78,8 @@ export const surfaceAction: Tool = {
     if (action !== 'select' && targets.some((ref) => !model.bim.entity(ref))) invalid('One or more entities are unavailable.');
     const args: Record<string, unknown> = { model_id: model.id };
     if (action !== 'resetView') args.express_ids = targets.map((ref) => ref.expressId);
-    if (action === 'colorize') args.color = color ?? DEFAULT_HIGHLIGHT_COLOR;
+    // Same rule as the viewer's safeColor: anything but a hex colour (an empty legend colour too) gets the default.
+    if (action === 'colorize') args.color = typeof color === 'string' && HEX_COLOR.test(color.trim()) ? color.trim() : DEFAULT_HIGHLIGHT_COLOR;
     return tools.get(ACTION_TO_TOOL[action as keyof typeof ACTION_TO_TOOL])!.handler(args, ctx);
   },
 };

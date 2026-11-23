@@ -59,7 +59,7 @@ export const HARNESS_INIT = () => {
     p.cur.submits++; p.queue = q; p.lastSubmit = performance.now();
     const a = p.after;
     // The hook runs before the real submit: ask for completion in a microtask, once this frame's work is queued.
-    if (a && a.present !== null && !a.done) a.done = new Promise((r) => queueMicrotask(r)).then(() => q.onSubmittedWorkDone()).then(() => performance.now(), () => null);
+    if (a && a.present !== null && !a.done) a.done = new Promise((r) => queueMicrotask(r)).then(() => q.onSubmittedWorkDone()).then(() => ({ at: performance.now() }), (err) => ({ error: String(err) }));
   });
   wrap(globalThis.GPUCanvasContext?.prototype, 'getCurrentTexture', () => {
     p.cur.presents++; p.lastPresent = performance.now();
@@ -166,8 +166,11 @@ export const AFTER_FRAME = async ({ capMs }) => {
     if (performance.now() > end) return { presentMs: a.present === null ? null : a.present - a.ref, doneMs: null };
     await new Promise((resolve) => setTimeout(resolve, 4));
   }
-  const done = await Promise.race([a.done, new Promise((resolve) => setTimeout(() => resolve(null), Math.max(0, end - performance.now())))]);
-  return { presentMs: a.present - a.ref, doneMs: done === null ? null : done - a.ref };
+  // The GPU gets its own `capMs` from here, so a late present still has time to finish.
+  let timer;
+  const done = await Promise.race([a.done, new Promise((resolve) => { timer = setTimeout(() => resolve({ error: `GPU work not done within ${capMs} ms` }), capMs); })]);
+  clearTimeout(timer);
+  return { presentMs: a.present - a.ref, doneMs: done.at === undefined ? null : done.at - a.ref, ...(done.error ? { doneError: done.error } : {}) };
 };
 
 /** In page: arm a pick measurement; the harness then clicks. Returns nothing. */

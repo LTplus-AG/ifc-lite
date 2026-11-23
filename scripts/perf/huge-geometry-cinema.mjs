@@ -111,7 +111,7 @@ async function recordTier({ label, manifest, url, out, fps, loadSpeed, timeoutMs
     idle: 'loading…', mem: '', caption: '', foot: 'diagnostic timings, not evidence' };
   // Bounded: a tab frozen by a huge scene must not stall the recorder.
   const push = () => bounded(page.evaluate((st) => { globalThis.__hgCine = st; }, hud), 5000).catch(() => null);
-  let ticker = null;
+  let ticker = null, loadStart = null;
   try {
     // Title card.
     const t0 = mark();
@@ -124,7 +124,8 @@ async function recordTier({ label, manifest, url, out, fps, loadSpeed, timeoutMs
     await encoder.hold(3);
     clip.timeline.title = [t0, mark()];
     // Load, time-lapsed; the canvas is lifted to fill the frame as soon as the viewer exists.
-    const loadStart = mark(), started = Date.now();
+    loadStart = mark();
+    const started = Date.now();
     encoder.timelapse(1000 / fps * loadSpeed);
     let loaded = false;
     ticker = setInterval(() => {
@@ -274,6 +275,8 @@ async function recordTier({ label, manifest, url, out, fps, loadSpeed, timeoutMs
     clip.status = 'error';
     clip.failure = { kind: session.events.crashed ? 'renderer-crash' : 'harness-error', detail: String(err?.message ?? err).slice(0, 600) };
     if (ticker) { clearInterval(ticker); ticker = null; }
+    // Keep the load footage recorded up to the error, as the failed-load path does.
+    if (loadStart !== null) clip.timeline.load ??= [loadStart, mark()];
     clip.peak ??= (await sampler.stop().catch(() => null))?.peak ?? null;
     return { clip, encoder, stop, session };
   } finally {

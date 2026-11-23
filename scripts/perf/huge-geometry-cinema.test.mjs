@@ -115,7 +115,7 @@ test('composer: a clip that errored before its load still composes', () => {
   const seg = c.pairTimeline(errored, ok);
   assert.deepEqual(seg.map((s) => s.kind), ['load', 'shot']);
   assert.equal(seg[0].length, 8);
-  assert.equal(seg[1].src[0](1), 3, 'the errored pane holds its last title-card frame');
+  assert.ok(Math.abs(seg[1].src[0](1) - (3 - 0.04)) < 1e-9, 'the errored pane holds its last title-card frame');
 });
 
 test('remote outputs: HGFILE lines round-trip, incomplete files are refused', async () => {

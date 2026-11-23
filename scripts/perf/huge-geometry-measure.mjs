@@ -66,7 +66,7 @@ async function afterFrame(page) {
 async function timedAction(page, action, args) {
   const r = await bounded(page.evaluate(STORE_ACTION, { action, args }), 120000, action);
   const f = await afterFrame(page);
-  return { syncMs: r.syncMs, presentMs: f.presentMs, doneMs: f.doneMs };
+  return { syncMs: r.syncMs, presentMs: f.presentMs, doneMs: f.doneMs, ...(f.doneError ? { doneError: f.doneError } : {}) };
 }
 
 /** Pick latency: click, selection change, highlighted frame done; then hide/isolate/section. */
@@ -82,7 +82,7 @@ export async function interactions(page, errors) {
       const r = await page.evaluate(READ_PICK);
       if (!r.hit) return r;
       const f = await afterFrame(page);
-      return { ...r, frameDoneMs: f.doneMs };
+      return { ...r, frameDoneMs: f.doneMs, ...(f.doneError ? { frameDoneError: f.doneError } : {}) };
     });
     if (pick) out.picks.push(pick);
     await step(errors, 'clear-selection', () => page.evaluate(() => globalThis.__ifc_lite_viewer_store__.getState().clearSelection?.()));

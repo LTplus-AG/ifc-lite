@@ -121,7 +121,8 @@ const pssOf = (pid) => {
  * returns peaks and the last sample.
  */
 export function startSampler(profileDir, cdp, { intervalMs = 250, vramEveryMs = 2000 } = {}) {
-  const peak = { totalPssMiB: 0, rendererPssMiB: 0, gpuPssMiB: 0, jsHeapMiB: 0, vramMiB: 0 };
+  // null until sampled: an unsampled metric (process memory on CDP-attached Windows Chrome) is absent, not 0.
+  const peak = { totalPssMiB: null, rendererPssMiB: null, gpuPssMiB: null, jsHeapMiB: null, vramMiB: null };
   let last = null, pids = [], scanned = 0, vramAt = 0, busy = false, samples = 0;
   const tick = async () => {
     if (busy) return;
@@ -139,8 +140,10 @@ export function startSampler(profileDir, cdp, { intervalMs = 250, vramEveryMs = 
       } catch { jsHeapMiB = last?.jsHeapMiB ?? null; /* page busy or gone: keep the previous value */ }
       let vramMiB = last?.vramMiB ?? null;
       if (Date.now() - vramAt > vramEveryMs) { vramAt = Date.now(); vramMiB = vramOf(pids); }
-      last = { t: Date.now(), totalPssMiB: total, rendererPssMiB: by.renderer ?? 0, gpuPssMiB: by['gpu-process'] ?? 0, jsHeapMiB, vramMiB, byType: by };
-      for (const k of Object.keys(peak)) if (Number.isFinite(last[k])) peak[k] = Math.max(peak[k], last[k]);
+      const procs = pids.length > 0; // no visible Chrome processes: PSS was not sampled
+      last = { t: Date.now(), totalPssMiB: procs ? total : null, rendererPssMiB: procs ? by.renderer ?? 0 : null,
+        gpuPssMiB: procs ? by['gpu-process'] ?? 0 : null, jsHeapMiB, vramMiB, byType: by };
+      for (const k of Object.keys(peak)) if (Number.isFinite(last[k])) peak[k] = Math.max(peak[k] ?? -Infinity, last[k]);
       samples++;
     } finally { busy = false; }
   };

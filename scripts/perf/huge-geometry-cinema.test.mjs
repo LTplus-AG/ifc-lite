@@ -86,6 +86,8 @@ test('composer: verdict states only what both clips measured', () => {
   const failed = { status: 'failed', failure: { kind: 'renderer-crash' }, shots: [] };
   assert.match(c.verdictLines(c.headline(failed), c.headline(ok(10, 10, 90)))[0], /before FAILED \(renderer-crash\)/);
   assert.match(c.verdictLines(c.headline(ok(10, 10, 90)), c.headline(failed))[0], /after FAILED/);
+  // One failed beat (e.g. a pick miss) is not a failed clip: both clips' numbers are still compared.
+  assert.match(c.verdictLines(c.headline({ ...ok(30, 40, 900), status: 'interaction-error' }), c.headline(ok(10, 10, 90)))[0], /^load: 30\.0 → 10\.0 s/);
 });
 
 test('composer: pair timeline aligns shots by name and holds a failed clip', () => {

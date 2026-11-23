@@ -157,7 +157,8 @@ export const BEAT = ({ action, ids, colour }) => {
   const need = (name) => { if (typeof s[name] !== 'function') throw new Error(`store action ${name} unavailable`); return s[name]; };
   if (action === 'isolate') need('isolateEntities')(ids);
   else if (action === 'show-all') need('showAll')();
-  else if (action === 'section-on') { need('setSectionPlaneAxis')('down'); need('setSectionPlanePosition')(100); }
+  // setSectionPlaneAxis already enables the cut (sectionSlice.ts); enabling explicitly keeps the beat independent of that.
+  else if (action === 'section-on') { need('setSectionPlaneAxis')('down'); need('setSectionPlaneEnabled')(true); need('setSectionPlanePosition')(100); }
   else if (action === 'section-off') need('setSectionPlaneEnabled')(false);
   else if (action === 'colour-on') {
     need('registerOverlayLayer')({ id: 'hg-showcase-beat', priority: 250, hiddenIds: null, colorOverrides: new Map(ids.map((id) => [id, colour])) });

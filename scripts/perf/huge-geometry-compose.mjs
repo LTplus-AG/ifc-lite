@@ -45,7 +45,8 @@ const gb = (mib) => (Number.isFinite(mib) && mib > 0 ? (mib >= 1024 ? `${(mib / 
 export function headline(clip) {
   const shots = (clip.shots ?? []).filter((s) => s.frames);
   return {
-    ok: clip.status === 'ok', status: clip.status, failure: clip.failure?.kind ?? null,
+    // A clip that loaded and ran the whole path with one failed beat still measured load, frames and draws.
+    ok: clip.status === 'ok' || clip.status === 'interaction-error', status: clip.status, failure: clip.failure?.kind ?? null,
     loadS: clip.load?.timings ? clip.load.timings.interactiveMs / 1000 : null,
     firstFrameS: clip.load?.timings?.firstFrameMs != null ? clip.load.timings.firstFrameMs / 1000 : null,
     frameMedianMs: med(shots.map((s) => s.frames.frameMs.median)), frameP95Ms: med(shots.map((s) => s.frames.frameMs.p95)),

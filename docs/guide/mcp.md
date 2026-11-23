@@ -416,7 +416,11 @@ optional grouping field. The other tools accept the same arguments as
 `ids_validate` and `clash_check`. Each tool returns a text summary as well.
 Use `viewer_open` and open its URL to activate the result's viewer controls.
 For the paired main viewer, use `viewer_show_ui` in bridge mode to deliver a
-validated surface. See the [A2UI architecture guide](../architecture/a2ui.md#mcp-result-surfaces).
+validated surface. When the user clicks a follow-up on it, the click comes back
+to the agent: `viewer_ui_events` returns the queued events (pass `wait_seconds`
+to wait for the next one), and with `--channel` each click is also pushed into a
+Claude Code session as a channel message. See the
+[A2UI architecture guide](../architecture/a2ui.md#mcp-result-surfaces).
 
 ### Resources
 
@@ -540,7 +544,28 @@ A failed native library save carries the library's reason in `details.save`. Sto
 
 === "Claude Code"
 
-    Register the server with the `claude mcp add` command:
+    The repository is a plugin marketplace. The `ifc-lite` plugin bundles the
+    `use-ifclite` skill and the viewer bridge (`--bridge --channel`):
+
+    ```bash
+    claude plugin marketplace add LTplus-AG/ifc-lite
+    claude plugin install ifc-lite@ifc-lite
+    ```
+
+    Ask Claude to connect to the viewer; it calls `bridge_status` and gives you
+    a pairing link. Surfaces it shows with `viewer_show_ui` appear over the
+    viewport, and a follow-up you click there comes back to Claude. To have
+    clicks arrive in the session on their own, start Claude Code with the
+    plugin as a channel (research preview):
+
+    ```bash
+    claude --dangerously-load-development-channels plugin:ifc-lite@ifc-lite
+    ```
+
+    Without the flag, Claude reads the clicks with `viewer_ui_events`.
+
+    To serve a file instead of a viewer tab, register the server with the
+    `claude mcp add` command:
 
     ```bash
     claude mcp add ifc-lite -- npx -y @ifc-lite/mcp /abs/path/to/model.ifc

@@ -86,4 +86,5 @@ export const agentBridgeEn = {
   'agentBridge.surfaces.dismiss': "Dismiss {title}",
   'agentBridge.surfaces.clear': "Clear all",
   'agentBridge.surfaces.untitled': "Agent result",
+  'agentBridge.surfaces.sent': "Sent to your agent",
 } as const;

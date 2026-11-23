@@ -507,6 +507,12 @@ export class MCPServer {
     void this.sink.send(notification('notifications/resources/updated', { uri }));
   }
 
+  /** Send any server notification, e.g. a host-specific channel event. Dropped while no client is attached. */
+  notify(method: string, params: Record<string, unknown>): void {
+    if (!this.sink) return;
+    void this.sink.send(notification(method, params));
+  }
+
   /** Notify clients that the tool list has changed (e.g., after model load). */
   notifyToolsChanged(): void {
     if (!this.sink) return;

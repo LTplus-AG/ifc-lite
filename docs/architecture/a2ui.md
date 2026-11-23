@@ -119,6 +119,18 @@ exposes the stored surfaces through `agentSurfaces` for the viewer panel. Tabs a
 `hello.a2uiSurface`; the bridge lists `viewer_show_ui` only for a tab supporting
 that frame.
 
+Clicks travel back. The bridge advertises `ui-events` in `welcome.features`; the
+tab then sends a follow-up click on an agent surface as a `ui-event` frame
+(`surfaceId`, `name`, `prompt`, `context`), bounded to a 4,000-character prompt,
+8 KiB of context and 10 events per second. The agent reads them with
+`viewer_ui_events` (optionally waiting for the next one). With `--channel` the
+bridge also declares the Claude Code `claude/channel` capability and pushes each
+event as a `notifications/claude/channel` message, so a click arrives in a
+running Claude Code session as a turn of its own. Events stay queued either way,
+so a client that ignores channels loses nothing. The repository root is a
+Claude Code plugin marketplace whose `ifc-lite` plugin (`.claude/`) bundles the
+`use-ifclite` skill and this bridge.
+
 ## Trust rules
 
 - Surfaces are data. No HTML, no scripts, no URLs except allow-listed ones.

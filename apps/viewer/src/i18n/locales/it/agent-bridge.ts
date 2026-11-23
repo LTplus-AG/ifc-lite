@@ -80,4 +80,5 @@ export const agentBridgeIt = {
   'agentBridge.surfaces.dismiss': "Chiudi {title}",
   'agentBridge.surfaces.clear': "Cancella tutto",
   'agentBridge.surfaces.untitled': "Risultato dell'agente",
+  'agentBridge.surfaces.sent': "Inviato al tuo agente",
 } satisfies Catalogue;

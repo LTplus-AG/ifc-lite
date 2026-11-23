@@ -37,6 +37,7 @@
 import { agentSurfaces } from './agent-surfaces.js';
 import {
   BRIDGE_FEATURE_IMAGE_CONTENT,
+  BRIDGE_FEATURE_UI_EVENTS,
   BRIDGE_LIMITS,
   BRIDGE_PROTOCOL_VERSION,
   BRIDGE_SURFACE_TOOL,
@@ -45,6 +46,7 @@ import {
   parseTabMessage,
   type BridgeHelloMessage,
   type BridgeToolDescriptor,
+  type BridgeUiEvent,
   type BridgeUpdateMessage,
 } from '@ifc-lite/mcp/bridge-protocol';
 import type {
@@ -120,6 +122,8 @@ function warn(message: string, err?: unknown): void {
 export class BridgeClient {
   private ws: WebSocketLike | null = null;
   private sessionId: string | null = null;
+  /** The bridge accepts `ui-event` frames (welcome.features). */
+  private uiEvents = false;
   private opened = false;
   private ended = false;
   private lastFrameError: string | null = null;
@@ -183,6 +187,34 @@ export class BridgeClient {
     }
     if (permission === 'read-write') this.setStatus({ ...status, permission });
     return true;
+  }
+
+  /**
+   * Send a user event from an agent-pushed surface back to the agent. False
+   * when not connected, when the bridge predates UI events, or when the event
+   * fails the bridge's own bounds; the caller then keeps it in the tab.
+   */
+  sendUiEvent(event: BridgeUiEvent): boolean {
+    if (this.current.kind !== 'connected' || !this.ws || !this.sessionId || !this.uiEvents) return false;
+    let json = JSON.stringify({ type: 'ui-event', sessionId: this.sessionId, event });
+    let valid = parseTabMessage(json);
+    if (!valid.ok && event.context !== undefined) {
+      // A large selection overflows the context bound; the prompt alone still reaches the agent.
+      const { context: _dropped, ...bare } = event;
+      json = JSON.stringify({ type: 'ui-event', sessionId: this.sessionId, event: bare });
+      valid = parseTabMessage(json);
+    }
+    if (!valid.ok) {
+      warn(`the UI event would be refused by the bridge: ${valid.error}`);
+      return false;
+    }
+    try {
+      this.ws.send(json);
+      return true;
+    } catch (err) {
+      warn('could not send the UI event to the bridge', err);
+      return false;
+    }
   }
 
   /** Open the socket and pair. Call once per client: a used pairing code is never resent. */
@@ -262,6 +294,7 @@ export class BridgeClient {
         }
         this.clearWelcomeTimer();
         this.sessionId = msg.sessionId;
+        this.uiEvents = msg.features?.includes(BRIDGE_FEATURE_UI_EVENTS) === true;
         this.runner = new CallRunner({
           sessionId: msg.sessionId,
           limits: this.limits,

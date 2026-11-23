@@ -27,6 +27,7 @@
  *   tab    -> bridge  result   { sessionId, id, result }
  *   bridge -> tab     cancel   { sessionId, id, reason }
  *   tab    -> bridge  update   { sessionId, permission?, tools? }
+ *   tab    -> bridge  ui-event { sessionId, event } (once welcome.features lists ui-events)
  *   bridge -> tab     error    { code, message }  (followed by a close on fatal codes)
  *
  * `hello` must be the first frame and arrive within the handshake timeout.
@@ -58,6 +59,8 @@ import { clip, quoted } from './sanitize.js';
 import { BRIDGE_IMAGE_LIMITS, validateResultContent, type BridgeContent } from './result-content.js';
 
 export { BRIDGE_FEATURE_IMAGE_CONTENT, BRIDGE_FEATURES } from './result-content.js';
+export { BRIDGE_FEATURE_UI_EVENTS, BRIDGE_UI_EVENTS_TOOL, UI_EVENT_LIMITS, type BridgeUiEvent, type BridgeUiEventMessage } from './ui-events.js';
+import { BRIDGE_UI_EVENTS_TOOL, parseUiEvent } from './ui-events.js';
 export type { BridgeContent, BridgeImageContent, BridgeImageMimeType, BridgeTextContent } from './result-content.js';
 
 /** Bumped on any incompatible change. The bridge rejects any other value. */
@@ -203,7 +206,7 @@ export function validateToolDescriptors(raw: unknown): ParseResult<BridgeToolDes
     if (typeof name !== 'string' || name.length === 0 || name.length > BRIDGE_LIMITS.maxToolNameLength || !TOOL_NAME.test(name)) {
       return { ok: false, error: `tools[${i}].name must match ${TOOL_NAME} and be 1-${BRIDGE_LIMITS.maxToolNameLength} characters` };
     }
-    if (name === BRIDGE_STATUS_TOOL || name === BRIDGE_SURFACE_TOOL) return { ok: false, error: `tools[${i}].name '${BRIDGE_STATUS_TOOL}' is reserved for the bridge` };
+    if (name === BRIDGE_STATUS_TOOL || name === BRIDGE_SURFACE_TOOL || name === BRIDGE_UI_EVENTS_TOOL) return { ok: false, error: `tools[${i}].name '${name}' is reserved for the bridge` };
     if (seen.has(name)) return { ok: false, error: `tools[${i}].name '${name}' is listed twice` };
     seen.add(name);
     if (typeof description !== 'string' || description.length > BRIDGE_LIMITS.maxDescriptionLength) {
@@ -321,6 +324,11 @@ export function parseTabMessage(text: string): ParseResult<BridgeTabMessage> {
         msg.tools = tools.value;
       }
       return { ok: true, value: msg };
+    }
+    case 'ui-event': {
+      if (typeof raw.sessionId !== 'string') return { ok: false, error: 'ui-event.sessionId must be a string' };
+      const event = parseUiEvent(raw.event);
+      return event.ok ? { ok: true, value: { type: 'ui-event', sessionId: raw.sessionId, event: event.value } } : event;
     }
     default:
       return { ok: false, error: `unknown message type ${quoted(raw.type, 32)}` };

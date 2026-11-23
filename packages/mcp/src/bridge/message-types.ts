@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { BridgeCallResult, BridgeErrorCode, BridgePermission, BridgeToolDescriptor } from './protocol.js';
+import type { BridgeUiEventMessage } from './ui-events.js';
 
 // ── tab -> bridge ────────────────────────────────────────────────────────
 
@@ -34,7 +35,7 @@ export interface BridgeUpdateMessage {
   tools?: BridgeToolDescriptor[];
 }
 
-export type BridgeTabMessage = BridgeHelloMessage | BridgeResultMessage | BridgeUpdateMessage;
+export type BridgeTabMessage = BridgeHelloMessage | BridgeResultMessage | BridgeUpdateMessage | BridgeUiEventMessage;
 
 // ── bridge -> tab ────────────────────────────────────────────────────────
 

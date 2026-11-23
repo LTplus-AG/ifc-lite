@@ -33,7 +33,7 @@ import { VIEWER_COMMAND_SPECS } from '@/lib/agent-tools/viewer-command-tools';
 import { MAIN_VIEWER_EDIT_TOOLS, MAIN_VIEWER_TOOL_ALLOWLIST } from '@/lib/agent-tools/main-viewer';
 import { useAgentChangeLabels } from '@/lib/changes/agent-change-labels';
 import type { WebSocketConstructor, WebSocketLike } from './client';
-import { connectAgentBridge, disconnectAgentBridge, setAgentBridgePermission } from './session';
+import { connectAgentBridge, disconnectAgentBridge, sendAgentUiEvent, setAgentBridgePermission } from './session';
 import { getAgentBridgeState, resetAgentBridgeStateForTests } from './state';
 
 const HELLO_WALL = new URL('../../../public/samples/hello-wall.ifc', import.meta.url);
@@ -160,7 +160,7 @@ describe('viewer tab <-> real MCP bridge, end to end (#9523)', () => {
 
     const listed = (await mcp.request('tools/list')).tools as { name: string; annotations?: { readOnlyHint?: boolean } }[];
     assert.equal(listed[0].name, 'bridge_status');
-    assert.deepEqual(listed.slice(1).map((tool) => tool.name).sort(), ['viewer_show_ui', ...MAIN_VIEWER_TOOL_ALLOWLIST, ...Object.entries(VIEWER_COMMAND_SPECS).filter(([, spec]) => spec.readOnly).map(([name]) => name)].sort());
+    assert.deepEqual(listed.slice(1).map((tool) => tool.name).sort(), ['viewer_show_ui', 'viewer_ui_events', ...MAIN_VIEWER_TOOL_ALLOWLIST, ...Object.entries(VIEWER_COMMAND_SPECS).filter(([, spec]) => spec.readOnly).map(([name]) => name)].sort());
     assert.ok(listed.slice(1).every((tool) => tool.annotations?.readOnlyHint === true));
 
     // An unsaved edit in the viewer is what the agent reads.
@@ -314,6 +314,16 @@ describe('viewer tab <-> real MCP bridge, end to end (#9523)', () => {
     } finally {
       agentSurfaces.clear();
     }
+  });
+
+  it('hands a follow-up click on an agent surface back to the agent', async () => {
+    const waiting = mcp.request('tools/call', { name: 'viewer_ui_events', arguments: { wait_seconds: 5 } });
+    assert.equal(sendAgentUiEvent({ surfaceId: 'inspection', name: 'ask', prompt: 'Which walls are external?', context: { refs: ['m:7'] } }), true);
+    const result = await waiting;
+    assert.equal(result.isError, undefined, JSON.stringify(result));
+    assert.deepEqual((result.structuredContent as { events: { surfaceId: string; prompt: string; context: unknown }[] }).events.map(({ surfaceId, prompt, context }) => ({ surfaceId, prompt, context })), [
+      { surfaceId: 'inspection', prompt: 'Which walls are external?', context: { refs: ['m:7'] } },
+    ]);
   });
 
   it('the bridge shutting down ends the tab\'s session as bridge-shutdown', async () => {

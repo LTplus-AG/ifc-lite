@@ -4,19 +4,22 @@
 
 /**
  * Surfaces an external agent pushed with `viewer_show_ui`, stacked newest
- * first over the viewport. Loaded only once a surface arrives. The bridge
- * has no channel back to the agent for UI events yet, so follow-up buttons
- * continue in the in-app chat.
+ * first over the viewport. Loaded only once a surface arrives. Follow-up
+ * buttons go back to that agent as UI events (`viewer_ui_events`, or a Claude
+ * Code channel message); with a bridge that predates them they continue in
+ * the in-app chat.
  */
 
-import { useCallback, useSyncExternalStore } from 'react';
+import { useSyncExternalStore } from 'react';
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { useTranslation } from '@/i18n';
 import { composeFollowUpPrompt } from '@/lib/a2ui/actions';
 import { A2uiMessagesView, type AgentToRendererMessage } from '@/lib/a2ui/surface-host';
-import { agentSurfaces } from '@/lib/agent-bridge/agent-surfaces';
+import { agentSurfaces, type AgentSurface } from '@/lib/agent-bridge/agent-surfaces';
+import { sendAgentUiEvent } from '@/lib/agent-bridge/session';
+import { toast } from '@/components/ui/toast';
 import { useViewerStore } from '@/store';
 
 const MAX_VISIBLE = 3;
@@ -28,12 +31,24 @@ function keyOf(surface: object): number {
   return key;
 }
 
+function surfaceIdOf(surface: AgentSurface): string {
+  for (const message of surface.messages) {
+    const id = (message as { createSurface?: { surfaceId?: unknown } }).createSurface?.surfaceId;
+    if (typeof id === 'string' && id) return id;
+  }
+  return 'agent-surface';
+}
+
 export function AgentSurfacesDock() {
   const { t } = useTranslation();
   const surfaces = useSyncExternalStore(agentSurfaces.subscribe, agentSurfaces.getSnapshot);
-  const toChat = useCallback((text: string, context: Record<string, unknown>) => {
+  const followUp = (surface: AgentSurface) => (text: string, context: Record<string, unknown>) => {
+    if (sendAgentUiEvent({ surfaceId: surfaceIdOf(surface), name: 'ask', prompt: text, context })) {
+      toast.success(t('agentBridge.surfaces.sent'), 'agent-surface-sent');
+      return;
+    }
     useViewerStore.getState().queueChatPrompt(composeFollowUpPrompt(text, context));
-  }, []);
+  };
   if (surfaces.length === 0) return null;
   const visible = surfaces.slice(-MAX_VISIBLE).reverse();
   return (
@@ -58,7 +73,7 @@ export function AgentSurfacesDock() {
                 <X className="h-3.5 w-3.5" />
               </IconButton>
             </header>
-            <A2uiMessagesView messages={surface.messages as AgentToRendererMessage[]} onFollowUp={toChat} />
+            <A2uiMessagesView messages={surface.messages as AgentToRendererMessage[]} onFollowUp={followUp(surface)} />
           </section>
         );
       })}

@@ -80,4 +80,5 @@ export const agentBridgeFr = {
   'agentBridge.surfaces.dismiss': "Fermer {title}",
   'agentBridge.surfaces.clear': "Tout effacer",
   'agentBridge.surfaces.untitled': "Résultat de l'agent",
+  'agentBridge.surfaces.sent': "Envoyé à votre agent",
 } satisfies Catalogue;

@@ -34,23 +34,16 @@ import {
 } from './bridge-protocol.js';
 import { hostAllowed, normalizeOrigin, originAllowed } from './guards.js';
 import { PairingCodes } from './pairing.js';
-import {
-  DEFAULT_CALL_TIMEOUT_MS,
-  DEFAULT_CLOSE_GRACE_MS,
-  DEFAULT_HANDSHAKE_TIMEOUT_MS,
-  type TabBridgeOptions,
-  type TabSnapshot,
-  type PairingStats,
-  type Slot,
-} from './tab-bridge-options.js';
+import { DEFAULT_CALL_TIMEOUT_MS, DEFAULT_CLOSE_GRACE_MS, DEFAULT_HANDSHAKE_TIMEOUT_MS } from './tab-bridge-options.js';
+import type { TabBridgeOptions, TabSnapshot, PairingStats, Slot } from './tab-bridge-options.js';
 import { BLOCKED_LINE, ChangeSignal, CoalescedLog, PairingGate } from './rate-limits.js';
 import { clip } from './sanitize.js';
 import { describeThrown } from '../errors.js';
 import { BridgeCallError, BridgeSession, failSocket, rawToString } from './session.js';
 import { handleSessionFrame } from './session-frames.js';
+import { UiEventInbox } from './ui-events.js';
 
 export { BridgeCallError, type BridgeCallFailure } from './session.js';
-
 export { DEFAULT_CALL_TIMEOUT_MS, DEFAULT_CLOSE_GRACE_MS, DEFAULT_HANDSHAKE_TIMEOUT_MS, type TabBridgeOptions, type TabSnapshot } from './tab-bridge-options.js';
 
 export class TabBridge {
@@ -60,6 +53,8 @@ export class TabBridge {
   private readonly maxPendingHandshakes: number;
   private readonly closeGraceMs: number;
   private readonly origins = new Set<string>();
+  /** User events from the paired tab's agent surfaces, unread by the agent. */
+  readonly uiEvents = new UiEventInbox();
   private readonly pairing = new PairingCodes();
   private readonly gate: PairingGate;
   private readonly noisy: CoalescedLog;
@@ -342,6 +337,7 @@ export class TabBridge {
     const previous = this.active;
     const session = new BridgeSession(ws, randomUUID(), hello.permission, hello.tools, hello.client, this.log, hello.resultAck === true, hello.a2uiSurface === true);
     this.active = session;
+    this.uiEvents.clear();
     paired(session);
     if (previous) {
       previous.failAll('replaced', 'Another viewer tab was paired and replaced this one before it answered.');
@@ -369,6 +365,9 @@ export class TabBridge {
       log: this.log,
       effectivePermission: () => this.effectivePermission(s),
       changed: () => this.changed.fire(),
+      uiEvent: (event) => {
+        if (!this.uiEvents.push(event)) this.noisy.note('ui events over the rate limit', 'dropped a ui-event over the rate limit');
+      },
     });
   }
 

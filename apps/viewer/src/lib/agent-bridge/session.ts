@@ -14,7 +14,7 @@
  */
 
 import type { BimContext } from '@ifc-lite/sdk';
-import type { BridgeToolDescriptor } from '@ifc-lite/mcp/bridge-protocol';
+import type { BridgeToolDescriptor, BridgeUiEvent } from '@ifc-lite/mcp/bridge-protocol';
 import { useViewerStore } from '@/store';
 import {
   createMainViewerEditor, createMainViewerToolHost, dispatchMainViewerTool, mainViewerToolDefinitions,
@@ -159,6 +159,11 @@ export function connectAgentBridge({ port, code, bim, WebSocket }: ConnectAgentB
   });
   active = client;
   client.connect();
+}
+
+/** Hand a click on an agent-pushed surface back to the agent. False when no bridge takes it. */
+export function sendAgentUiEvent(event: BridgeUiEvent): boolean {
+  return active?.sendUiEvent(event) ?? false;
 }
 
 /** Close the connection at the user's request. */

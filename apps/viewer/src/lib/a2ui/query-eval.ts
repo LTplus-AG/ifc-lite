@@ -190,7 +190,8 @@ export function aggregate(reader: FieldReader, rows: A2uiEntity[], kind: Aggrega
 export interface Group {
   label: string;
   rows: A2uiEntity[];
-  value: number;
+  /** Undefined for a sum when no member has a number at the path: no total, not 0. */
+  value: number | undefined;
 }
 
 /** Group rows by a field path (missing values group under `emptyLabel`), largest first. */
@@ -212,6 +213,6 @@ export function groupRows(
   return [...groups].map(([label, members]) => ({
     label,
     rows: members,
-    value: measure.kind === 'count' ? members.length : aggregate(reader, members, 'sum', measure.path) ?? 0,
-  })).sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
+    value: measure.kind === 'count' ? members.length : aggregate(reader, members, 'sum', measure.path),
+  })).sort((a, b) => (b.value ?? 0) - (a.value ?? 0) || a.label.localeCompare(b.label));
 }

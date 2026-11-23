@@ -18,7 +18,7 @@ import { LENS_PALETTE } from '@ifc-lite/lens';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
 import { readChartTheme, useEChart, type ChartSelectEvent } from '@/components/viewer/charts/useEChart';
-import { aggregate, aggregatePool, groupRows } from '@/lib/a2ui/query-eval';
+import { aggregatePool, groupRows } from '@/lib/a2ui/query-eval';
 import { weightStyle } from './basic-layout';
 import { Note, ResultNotes } from './notes';
 import { A2uiChartRendererContext, formatValue, useQueryResult, useRunFunction } from './runtime';
@@ -100,21 +100,22 @@ export const GroupChartImpl = createComponentImplementation(GroupChartApi, ({ pr
   const kind = props.kind === 'pie' ? 'pie' : 'bar';
   const max = typeof props.maxGroups === 'number' && props.maxGroups > 1 ? Math.floor(props.maxGroups) : 12;
   const sumPath = props.aggregate === 'sum' && typeof props.path === 'string' ? props.path : undefined;
-  // A sum with no path, or a path no match has a number at, is unavailable: never counts or zero bars in its place.
-  const sumUnavailable = props.data === undefined && props.aggregate === 'sum' && !!result && aggregatePool(result).length > 0
-    && (sumPath === undefined || aggregate(reader, aggregatePool(result), 'sum', sumPath) === undefined);
   const emptyLabel = t('a2ui.noGroupValue');
   const otherLabel = t('a2ui.chart.other');
 
-  const groups = useMemo(() => {
-    const raw = props.data !== undefined
-      ? groupsFromData(props.data)
-      : result
-        ? groupRows(reader, aggregatePool(result), props.groupBy, emptyLabel, sumPath ? { kind: 'sum', path: sumPath } : { kind: 'count' })
-          .map((g) => ({ label: g.label, value: g.value, refs: g.rows.map((r) => encodeRef(r.ref)) }))
-        : [];
-    return sumUnavailable ? [] : foldGroups(raw, max, otherLabel);
-  }, [props.data, result, reader, props.groupBy, emptyLabel, sumPath, max, otherLabel, sumUnavailable]);
+  const { groups, sumUnavailable } = useMemo(() => {
+    if (props.data !== undefined) return { groups: foldGroups(groupsFromData(props.data), max, otherLabel), sumUnavailable: false };
+    if (!result) return { groups: [], sumUnavailable: false };
+    const pool = aggregatePool(result);
+    // A sum with no path, or a path no match has a number at, is unavailable: never counts or zero bars in its place.
+    if (props.aggregate === 'sum' && !sumPath) return { groups: [], sumUnavailable: pool.length > 0 };
+    const raw = groupRows(reader, pool, props.groupBy, emptyLabel, sumPath ? { kind: 'sum', path: sumPath } : { kind: 'count' });
+    if (raw.length > 0 && raw.every((g) => g.value === undefined)) return { groups: [], sumUnavailable: true };
+    return {
+      groups: foldGroups(raw.map((g) => ({ label: g.label, value: g.value ?? 0, refs: g.rows.map((r) => encodeRef(r.ref)) })), max, otherLabel),
+      sumUnavailable: false,
+    };
+  }, [props.data, props.aggregate, result, reader, props.groupBy, emptyLabel, sumPath, max, otherLabel]);
 
   const selectGroup = useCallback((group: ChartGroup | undefined) => {
     if (group?.refs.length) run('select', { refs: group.refs });

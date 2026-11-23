@@ -250,14 +250,14 @@ fn on_rectangle_boundary(triangle: &PTri, pf: &PrismFrame, lo: V2, hi: V2) -> bo
 
 /// When a cap meets an oblique source interface, f32 rounding makes its
 /// vertices disagree in prism depth. Defer the cut only when the two sides
-/// share all four source vertices and cover the aperture.
+/// share source corners and the wider side covers the aperture.
 pub(super) fn has_oblique_paired_cap(pf: &PrismFrame, tris: &[PTri]) -> bool {
     if pf.planes.len() != 2 || pf.d.iter().filter(|value| value.abs() > 1.0e-14).count() < 2 {
         return false;
     }
     let band = flush_band_at(pf.corner_mag());
     let profile = &pf.profiles[0];
-    pf.planes.iter().any(|&depth| {
+    pf.planes.iter().enumerate().any(|(end, &depth)| {
         let mut sided = [Vec::new(), Vec::new()];
         for (index, tri) in tris.iter().enumerate() {
             if tri.p.iter().any(|&p| (dot(p, pf.d) - depth).abs() > band) {
@@ -274,46 +274,59 @@ pub(super) fn has_oblique_paired_cap(pf: &PrismFrame, tris: &[PTri]) -> bool {
             }
             group.push(index);
         }
-        let [Some(first), Some(other)] = sided.each_ref().map(|side| quad_vertices(side, tris))
+        let [Some(first), Some(second)] = sided.each_ref().map(|side| quad_vertices(side, tris))
         else {
             return false;
         };
-        if !first.iter().all(|point| other.contains(point)) {
+        let (outer, inner, direction) = if end == 0 {
+            (first, second, -1.0)
+        } else {
+            (second, first, 1.0)
+        };
+        // The slabs must touch on the source mesh. Sharing two corners
+        // lets a partial finish end inside the opening without admitting
+        // separate near-coplanar quads that happen to sit in the band.
+        let shared = outer.iter().filter(|p| inner.contains(p)).count();
+        if shared < 2 {
             return false;
         }
-        let projected = first.map(|point| pf.to2(point));
-        let lo = std::array::from_fn::<_, 2, _>(|k| {
-            projected.iter().map(|p| p[k]).fold(f64::INFINITY, f64::min)
-        });
-        let hi = std::array::from_fn::<_, 2, _>(|k| {
-            projected
-                .iter()
-                .map(|p| p[k])
-                .fold(f64::NEG_INFINITY, f64::max)
-        });
-        let corners = [lo, [lo[0], hi[1]], [hi[0], lo[1]], hi];
-        if (0..2).any(|k| hi[k] - lo[k] <= 2.0 * band)
-            || !corners.iter().all(|corner| {
-                projected
-                    .iter()
-                    .any(|p| (0..2).all(|k| (p[k] - corner[k]).abs() <= band))
-            })
-            || !profile
-                .iter()
-                .all(|p| (0..2).all(|k| lo[k] - band <= p[k] && p[k] <= hi[k] + band))
+        let (Some([lo, hi]), Some([inner_lo, inner_hi])) = (
+            projected_rectangle(pf, outer, band),
+            projected_rectangle(pf, inner, band),
+        ) else {
+            return false;
+        };
+        let contains = |p: V2| (0..2).all(|k| lo[k] - band <= p[k] && p[k] <= hi[k] + band);
+        if !profile.iter().copied().all(contains)
+            || !inner.map(|p| pf.to2(p)).into_iter().all(contains)
+            || !(0..2).all(|k| inner_lo[k] < pf.bb.1[k] && pf.bb.0[k] < inner_hi[k])
         {
             return false;
         }
+        let on_edge = |tri: &PTri, bounds: [V2; 2]| (0..2).any(|k| {
+            bounds.iter().any(|edge| tri.p.iter().all(|&p| (pf.to2(p)[k] - edge[k]).abs() <= band))
+        });
         !tris.iter().enumerate().any(|(index, tri)| {
-            !sided.iter().any(|side| side.contains(&index))
-                && !(0..2).any(|k| {
-                    [lo[k], hi[k]]
-                        .iter()
-                        .any(|edge| tri.p.iter().all(|&p| (pf.to2(p)[k] - edge).abs() <= band))
-                })
-                && tri_touches_slab_footprint(tri, pf, profile, depth - band, depth + band, 1.0e-8)
+            if sided.iter().any(|side| side.contains(&index)) || on_edge(tri, [lo, hi]) {
+                return false;
+            }
+            let on_finish = on_edge(tri, [inner_lo, inner_hi])
+                && tri.p.iter().all(|&p| direction * (dot(p, pf.d) - depth) <= band);
+            !on_finish && tri_touches_slab_footprint(tri, pf, profile, depth - band, depth + band, 1.0e-8)
         })
     })
+}
+
+fn projected_rectangle(pf: &PrismFrame, corners: [V3; 4], band: f64) -> Option<[V2; 2]> {
+    let projected = corners.map(|point| pf.to2(point));
+    let lo = std::array::from_fn(|k| projected.iter().map(|p| p[k]).fold(f64::INFINITY, f64::min));
+    let hi = std::array::from_fn(|k| projected.iter().map(|p| p[k]).fold(f64::NEG_INFINITY, f64::max));
+    let corners = [lo, [lo[0], hi[1]], [hi[0], lo[1]], hi];
+    ((0..2).all(|k| hi[k] - lo[k] > 2.0 * band)
+        && corners.iter().all(|corner| {
+            projected.iter().any(|p| (0..2).all(|k| (p[k] - corner[k]).abs() <= band))
+        }))
+    .then_some([lo, hi])
 }
 
 fn quad_vertices(side: &[usize], tris: &[PTri]) -> Option<[V3; 4]> {

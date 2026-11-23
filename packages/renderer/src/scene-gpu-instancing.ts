@@ -143,6 +143,13 @@ export class SceneInstancePool {
     this.appliedRegistrations = -1; // hide/isolate re-apply in full
   }
 
+  /**
+   * A failed device recovery dropped the pool after templates were restored:
+   * switch the path off with it, so a retry restores every template with full
+   * records and no later upload starts a pool that would skip them.
+   */
+  disable(): void { this.on = false; this.clear(); }
+
   /** Scene clear: drop the pool; the next instanced upload starts a new one if still enabled. */
   clear(): void {
     this.current?.destroy(); this.current = null;

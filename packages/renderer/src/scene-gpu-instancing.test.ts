@@ -118,9 +118,10 @@ describe('GPU instance draw groups and palette', () => {
 });
 
 /** Pool state words as last uploaded (the fake device keeps a mirror of the state buffer). */
-function stateDevice(limits?: { maxBufferSize: number; maxStorageBufferBindingSize: number }): { device: GPUDevice; state: () => Uint32Array } {
+function stateDevice(limits?: { maxBufferSize: number; maxStorageBufferBindingSize: number }): { device: GPUDevice; state: () => Uint32Array; meta: () => Uint32Array } {
   // Each state buffer has its own zeroed storage, like a real replacement buffer: only its own uploads fill it.
   let latest: { mirror: Uint32Array } | null = null;
+  let meta = new Uint32Array(0); // the last group-base + palette upload
   const device = {
     limits,
     createBuffer: (d: GPUBufferDescriptor) => {
@@ -133,9 +134,10 @@ function stateDevice(limits?: { maxBufferSize: number; maxStorageBufferBindingSi
     createCommandEncoder: () => ({ copyBufferToBuffer() {}, finish: () => ({}) }),
     queue: { submit() {}, writeBuffer: (b: { label?: string; mirror: Uint32Array }, off: number, data: Uint32Array, lo = 0, n?: number) => {
       if (b.label === 'gpu-instance-pool-state') b.mirror.set(data.subarray(lo, lo + (n ?? data.length - lo)), off / 4);
+      if (b.label === 'gpu-instance-pool-meta' && off === 0) meta = data.slice(lo, lo + (n ?? data.length - lo));
     } },
   } as unknown as GPUDevice;
-  return { device, state: () => latest?.mirror ?? new Uint32Array(0) };
+  return { device, state: () => latest?.mirror ?? new Uint32Array(0), meta: () => meta };
 }
 
 describe('GPU instance pool state', () => {
@@ -268,6 +270,18 @@ describe('GPU instance pool review wave 2', () => {
     assert.equal(scene.setGpuInstancing(true), true);
   });
 
+  it('a failed recovery switches the pool off with it, so restored templates and later uploads stay on the per-template path (#11373)', () => {
+    const scene = new Scene();
+    const pools = (scene as unknown as { instancePool: SceneInstancePool }).instancePool;
+    const { device } = fakeDevice();
+    assert.equal(scene.setGpuInstancing(true), true);
+    assert.ok(pools.ensure(device), 'a pool exists before the failed recovery');
+    scene.dropGpuInstancePool(); // the catch in restoreSceneGpuResourcesAfterRecovery / the streaming rollback
+    assert.equal(scene.getGpuInstancePool(), null);
+    assert.equal(pools.enabled, false, 'switched off: a retry restores templates with full per-template records');
+    assert.equal(pools.ensure(device), null, 'a later instanced upload starts no pool that would skip them');
+  });
+
   it('a failed recovery rollback also drops the pool rebuilt from the restored templates (#11373)', () => {
     let dropped = 0;
     const host = { batchedMeshes: [], texturedMeshes: [], instancedTemplates: [], sharedTextures: new Map(), dropGpuInstancePool: () => { dropped++; } };
@@ -316,7 +330,7 @@ describe('GPU instance pool growth (#11373)', () => {
 
 describe('GPU instance palette compaction keeps temporarily-dead occurrences (#11373)', () => {
   it('remaps the palette index of an occurrence that left the envelope, so it returns in its colour', () => {
-    const { device, state } = stateDevice();
+    const { device, state, meta } = stateDevice();
     const pool = new GpuInstancePool(device);
     const geometry = { vertexBuffer: {} as GPUBuffer, indexBuffer: {} as GPUBuffer, indexCount: 3, positions: new Float32Array(9), normals: new Float32Array(9), indices: new Uint32Array([0, 1, 2]) };
     const n = 0xffff + 2;
@@ -334,5 +348,8 @@ describe('GPU instance palette compaction keeps temporarily-dead occurrences (#1
     pool.flush();
     assert.equal(state()[1]! & POOL_STATE_DEAD, 0);
     assert.equal(state()[1]! >>> 16, 1, 'entry 2 moved to 1 and the occurrence followed it');
+    const paletteAt = 4; // one draw group: its base word, padded to 4, then rgba per entry
+    const rgba = new Float32Array(meta().buffer, (paletteAt + 1 * 4) * 4, 4);
+    assert.deepEqual([...rgba], [...colour(1)], 'entry 1 holds occurrence 1\'s colour, not the one it replaced');
   });
 });

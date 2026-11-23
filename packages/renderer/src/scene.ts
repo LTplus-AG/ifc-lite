@@ -2800,7 +2800,7 @@ export class Scene {
   gpuInstancePoolEnabled(): boolean { return this.instancePool.enabled && this.instancePool.pool !== null; }
 
   /** Device recovery: rebuild the pool on the replacement device (`SceneInstancePool.rebuild`). */
-  dropGpuInstancePool(): void { this.instancePool.clear(); }
+  dropGpuInstancePool(): void { this.instancePool.disable(); } // the per-template path from here on
   rebuildGpuInstancePool(device: GPUDevice, radiiBySlot: ReadonlyMap<number, Float32Array>): void {
     this.instancePool.rebuild(device, this.instancedTemplates, this.instancedTemplateCpu, this.instancedEntityMap, radiiBySlot);
     this.instancedVisibilityDirty = true;

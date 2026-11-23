@@ -324,7 +324,7 @@ fn convert_record(
             product_proxy(prefix, &placeholder_guid(express_id), &entity_type, &args)
         }
         // #5116, see `resolve_unrepresented_entity`'s doc.
-        Plan::Unrepresented => return resolve_unrepresented_entity(prefix, &entity_type, cto, express_id),
+        Plan::Unrepresented => return resolve_unrepresented_entity(prefix, &entity_type, &args, cto, express_id),
         // The attribute list against the target schema (#7683): see
         // `schema_plan::plan_for` for which way it moves and why.
         Plan::Write { renamed, adjust, replaced } => {

@@ -41,17 +41,7 @@ fn convert(c: &Case) -> Result<String, String> {
     let out = export_step_json(src.as_bytes(), Some(c.to.clone()), None, "").map_err(|e| e.to_string())?;
     let line = out.lines().find(|l| l.starts_with('#')).unwrap_or_else(|| panic!("no entity line:\n{out}"));
     // Rust keeps a spaced source's `#5 =` prefix, TS writes `#5=`: cosmetic.
-    let line = line.replacen("#5 =", "#5=", 1);
-    let line = line.as_str();
-    // The twins mint an IFCPROXY GlobalId differently: mask it.
-    Ok(match line.find("IFCPROXY('") {
-        Some(at) => {
-            let start = at + "IFCPROXY('".len();
-            let end = start + line[start..].find('\'').expect("closing quote");
-            format!("{}<MINTED>{}", &line[..start - 1], &line[end + 1..])
-        }
-        None => line.to_string(),
-    })
+    Ok(line.replacen("#5 =", "#5=", 1))
 }
 
 #[test]

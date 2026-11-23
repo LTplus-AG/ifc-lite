@@ -47,8 +47,7 @@ describe('convertStepLine matches the shared unrepresented-type vectors (#7742)'
           expect(() => convertStepLine(line, c.from, c.to)).toThrow(/no representation/);
           return;
         }
-        const got = convertStepLine(line, c.from, c.to) ?? '';
-        expect(got.replace(/IFCPROXY\('[^']*'/, 'IFCPROXY(<MINTED>')).toBe(c.expect);
+        expect(convertStepLine(line, c.from, c.to)).toBe(c.expect);
       });
     }
   }

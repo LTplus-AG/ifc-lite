@@ -337,7 +337,7 @@ function convertRecord(
   // proxy. Checked before `shouldSkipEntity` and the attribute-table lookup
   // below so it wins over both.
   if (withheldRefIds && withheldRefIds.size > 0 && referencesAnyExpressId(attrsRaw, withheldRefIds)) {
-    return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random, withheldRefIds !== undefined);
+    return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, args, toSchema, expressId, true);
   }
   structuralDiagnostics?.inspect(expressId, line, fromSchema, toSchema);
   if (structuralAxis) return `${prefix}${newType}(${args.join(',')},${structuralAxis});`;
@@ -404,7 +404,7 @@ function convertRecord(
   // On IFC2X3 even with no source entry, as Rust's `has_representation`: a
   // non-entity head (`#1=IFCLABEL('x');`) fails closed (#7683, D3).
   if (targetTable && !tgtAttrs && (toSchema === 'IFC2X3' || (toSchema === 'IFC4' && fromSchema === 'IFC4X3' && srcAttrs))) {
-    return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random, withheldRefIds !== undefined);
+    return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, args, toSchema, expressId, withheldRefIds !== undefined);
   }
   if (srcAttrs && tgtAttrs) {
     const mapped = args.length > 0 ? attrMapFor(entityType, newType, fromSchema, toSchema) : undefined; // #10763

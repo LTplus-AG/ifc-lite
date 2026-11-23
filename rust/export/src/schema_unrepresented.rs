@@ -13,11 +13,12 @@
 //! Split out of `schema_convert.rs` to stay under its line budget, same
 //! reason the TypeScript twin gives for its own split.
 
-use crate::step_slot::slot_is;
+use crate::step_slot::{slot_is, without_comments};
+use ifc_lite_core::guid::{deterministic, is_valid_global_id};
 use std::borrow::Cow;
 
 use crate::rooted_type::is_rooted_type;
-use crate::schema_convert::{placeholder_guid, schema_attribute_names};
+use crate::schema_convert::schema_attribute_names;
 
 /// True when `type_name` (the record's possibly renamed type) can be written
 /// into `to` as it is. Twin of the check in the TypeScript `convertRecord`,
@@ -94,10 +95,9 @@ impl From<UnrepresentedEntityError> for std::io::Error {
 ///
 /// A rooted (`IfcRoot`) entity safely becomes an `IFCPROXY` placeholder. Unlike
 /// `should_skip_entity`'s alignment types (`schema_convert::product_proxy`),
-/// it keeps none of its attributes: an `IfcRoot` is not necessarily an
+/// it keeps only its identity: an `IfcRoot` is not necessarily an
 /// `IfcProduct`, so its slots 5 and 6 need not be a placement and a
-/// representation. A
-/// non-rooted entity (a representation item or resource type referenced
+/// representation. A non-rooted entity (a representation item or resource type referenced
 /// POSITIONALLY) cannot take that fallback and returns an error instead of
 /// guessing; unlike the TypeScript twin, this crate has not yet ported the
 /// narrow `WITHHOLDABLE_UNROOTED_TYPES` omission mechanism (#5114/#5115), so
@@ -105,15 +105,39 @@ impl From<UnrepresentedEntityError> for std::io::Error {
 pub(crate) fn resolve_unrepresented_entity(
     prefix: &str,
     entity_type: &str,
+    args: &[String],
     to: &str,
     express_id: u32,
 ) -> Result<String, UnrepresentedEntityError> {
     if is_rooted_type(entity_type) {
-        return Ok(format!(
-            "{prefix}IFCPROXY('{}',$,'{}',$,$,$,$,.NOTDEFINED.,$);",
-            placeholder_guid(express_id),
-            entity_type
-        ));
+        // IfcRoot begins with GlobalId, OwnerHistory, Name in every schema.
+        const GLOBAL_ID_SLOT: usize = 0;
+        const NAME_SLOT: usize = 2;
+        let slot = |i: usize| {
+            let value = args.get(i).map_or("", String::as_str);
+            if value.contains("/*") {
+                Cow::Owned(without_comments(value))
+            } else {
+                Cow::Borrowed(value.trim())
+            }
+        };
+        let global_id = slot(GLOBAL_ID_SLOT);
+        let guid = global_id
+            .strip_prefix('\'')
+            .and_then(|s| s.strip_suffix('\''))
+            .filter(|id| is_valid_global_id(id));
+        let guid = guid.map_or_else(
+            || Cow::Owned(deterministic(&format!("ifcproxy:#{express_id}={entity_type}({})", args.join(",")))),
+            Cow::Borrowed,
+        );
+        let name = slot(NAME_SLOT);
+        // IfcProxy.WR1 requires a Name even when the source leaves it unset.
+        let name = if name.starts_with('\'') && name.ends_with('\'') {
+            name
+        } else {
+            Cow::Owned(format!("'{entity_type}'"))
+        };
+        return Ok(format!("{prefix}IFCPROXY('{guid}',$,{name},$,$,$,$,.NOTDEFINED.,$);"));
     }
     Err(UnrepresentedEntityError {
         express_id,
@@ -189,7 +213,7 @@ mod tests {
         // (used above for `has_representation`) is NOT a valid example here
         // -- it's an IfcGeometricRepresentationItem, not an IfcRoot subtype.
         let out =
-            resolve_unrepresented_entity("#100=", "IFCSTRUCTURALCURVEREACTION", "IFC2X3", 100)
+            resolve_unrepresented_entity("#100=", "IFCSTRUCTURALCURVEREACTION", &[], "IFC2X3", 100)
                 .unwrap();
         assert!(out.contains("IFCPROXY"));
         assert!(out.contains("'IFCSTRUCTURALCURVEREACTION'"));
@@ -199,7 +223,7 @@ mod tests {
     fn non_rooted_unrepresented_type_errors() {
         // A representation item, not an IfcRoot subtype -- proxying it would
         // swap one illegal file for a differently-illegal one.
-        let err = resolve_unrepresented_entity("#101=", "IFCCARTESIANPOINTLIST3D", "IFC2X3", 101)
+        let err = resolve_unrepresented_entity("#101=", "IFCCARTESIANPOINTLIST3D", &[], "IFC2X3", 101)
             .unwrap_err();
         assert_eq!(err.express_id, 101);
         assert!(err.to_string().contains("IFCCARTESIANPOINTLIST3D"));

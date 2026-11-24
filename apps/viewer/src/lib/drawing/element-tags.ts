@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { effectiveMetadataRecord, extractPropertiesOnDemand, extractQuantitiesOnDemand, ProjectUnits } from '@ifc-lite/parser';
+import { effectiveMetadataRecord, extractPropertiesOnDemand, extractQuantitiesOnDemand, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import { QuantityType } from '@ifc-lite/data';
 import { currentProjectUnitContext } from '@/lib/units/current-project-unit-context';
 import { resolveQuantityDisplay } from '@/lib/units/display';
@@ -10,6 +10,13 @@ import type { Drawing2D, DrawingPolygon } from '@ifc-lite/drawing-2d';
 import { useViewerStore } from '@/store';
 import { toGlobalIdForRef } from '@/store/globalId';
 import type { Point2D, TagAnnotation2D, TextAnnotation2D } from '@/store/slices/drawing2DSlice';
+
+/** True unless the first IfcProject's UnitsInContext is explicitly unset ($). */
+function projectDeclaresUnits(store: IfcDataStore, view: Parameters<typeof effectiveMetadataRecord>[2]): boolean {
+  const id = store.entityIndex.byType.get('IFCPROJECT')?.[0];
+  const record = id === undefined ? null : effectiveMetadataRecord(store, id, view);
+  return !record || record.attributes[record.names.indexOf('UnitsInContext')] !== null;
+}
 
 /** Live IFC values, including named/positional edits and overlay-created entities. */
 export function resolveElementTagLabel(tag: TagAnnotation2D): string | null {
@@ -37,8 +44,10 @@ export function resolveElementTagLabel(tag: TagAnnotation2D): string | null {
   if (!quantity || typeof quantity.value !== 'number' || !Number.isFinite(quantity.value)) return name || 'IfcSpace';
   // The value is in the file's own AREAUNIT (or the quantity's explicit Unit), never pre-converted to m².
   const context = currentProjectUnitContext(store, view);
-  const { unit } = resolveQuantityDisplay(quantity.value, QuantityType.Area, context.value ?? ProjectUnits.empty(), {}, quantity, context.status !== 'unavailable');
-  // An unreadable unit shows no area rather than a number under a guessed unit.
+  // A project with no UnitsInContext (optional in IFC4) declares nothing, so SI defaults apply, as for geometry.
+  const undeclared = context.status === 'unavailable' && !projectDeclaresUnits(store, view);
+  const { unit } = resolveQuantityDisplay(quantity.value, QuantityType.Area, context.value ?? ProjectUnits.empty(), {}, quantity, context.status !== 'unavailable' || undeclared);
+  // Declared but unreadable units show no area rather than a number under a guessed unit.
   return unit ? `${name || 'IfcSpace'} · ≈ ${Number(quantity.value.toFixed(2))} ${unit}` : name || 'IfcSpace';
 }
 

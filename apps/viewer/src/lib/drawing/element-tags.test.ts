@@ -24,10 +24,7 @@ FILE_NAME('','',(''),(''),'','','');
 FILE_SCHEMA(('IFC4'));
 ENDSEC;
 DATA;
-#1=IFCPROJECT('0Project00000000000001',$,'Project',$,$,$,$,$,#2);
-#2=IFCUNITASSIGNMENT((#3,#4));
-#3=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
-#4=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);
+#1=IFCPROJECT('0Project00000000000001',$,'Project',$,$,$,$,$,$);
 #10=IFCDOOR('0Door00000000000000010',$,'Entrance',$,$,$,$,$,2.1,0.9,$,$,$);
 #11=IFCWINDOW('0Window000000000000011',$,'Window',$,$,$,$,'W-01',1.2,1.0,$,$,$);
 #20=IFCSPACE('0Space0000000000000020',$,'Office',$,$,$,$,$,.ELEMENT.,.INTERNAL.,$);
@@ -162,7 +159,7 @@ it('#9296 the cut centroid wins over projection fragments of the same element', 
 });
 
 /** A space whose NetFloorArea is authored in the model's own units (the value is NOT pre-converted to SI). */
-async function unitFixture(units: string, area: string) {
+async function unitFixture(units: string, area: string, unitsRef = '#2') {
   const source = `ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION((''),'2;1');
@@ -170,7 +167,7 @@ FILE_NAME('','',(''),(''),'','','');
 FILE_SCHEMA(('IFC4'));
 ENDSEC;
 DATA;
-#1=IFCPROJECT('0Project00000000000001',$,'Project',$,$,$,$,$,#2);
+#1=IFCPROJECT('0Project00000000000001',$,'Project',$,$,$,$,$,${unitsRef});
 ${units}
 #20=IFCSPACE('0Space0000000000000020',$,'Office',$,$,$,$,$,.ELEMENT.,.INTERNAL.,$);
 #21=IFCQUANTITYAREA('NetFloorArea',$,$,${area},$);
@@ -203,3 +200,18 @@ it('space tag area keeps m\u00b2 in a millimetre-length model whose AREAUNIT is 
   // Control: the label follows AREAUNIT, not LENGTHUNIT.
   assert.equal(resolveElementTagLabel(tag(20)), 'Office · ≈ 12000000 m²');
 });
+
+it('space tag area keeps m\u00b2 when the project declares no unit assignment (IFC4 UnitsInContext is optional)', async () => {
+  await unitFixtureUndeclared('12.5');
+  assert.equal(resolveElementTagLabel(tag(20)), 'Office \u00b7 \u2248 12.5 m\u00b2');
+});
+
+it('space tag area is omitted when the declared unit assignment is unreadable', async () => {
+  await unitFixture(`#2=IFCUNITASSIGNMENT((#3,#4));
+#3=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#4=IFCCONVERSIONBASEDUNIT(#9,.AREAUNIT.,'broken',#9);
+#9=IFCDIMENSIONALEXPONENTS(2,0,0,0,0,0,0);`, '12.5');
+  assert.equal(resolveElementTagLabel(tag(20)), 'Office');
+});
+
+const unitFixtureUndeclared = (area: string) => unitFixture('', area, '$');

@@ -289,3 +289,34 @@ describe('DxfWriter non-finite coordinate handling (PR #1871 review)', () => {
     }
   });
 });
+
+describe('DxfWriter layer names are case-insensitive', () => {
+  const layerRecords = (dxf: string): string[] => {
+    const lines = dxf.split('\n');
+    const out: string[] = [];
+    for (let i = 0; i < lines.length - 3; i++) {
+      if (lines[i] === '0' && lines[i + 1] === 'LAYER') out.push(lines[i + 3]);
+    }
+    return out;
+  };
+
+  it('never writes two LAYER records whose names differ only by case', () => {
+    const w = new DxfWriter();
+    const a = w.layer('Walls', '#ff0000');
+    const b = w.layer('walls', '#00ff00');
+    const c = w.layer('WALLS', '#0000ff');
+    expect(new Set([a, b, c].map(n => n.toUpperCase())).size).toBe(3);
+    const names = layerRecords(w.toString());
+    expect(new Set(names.map(n => n.toUpperCase())).size).toBe(names.length);
+  });
+
+  it('does not let a user layer take the reserved Defpoints name or duplicate layer 0', () => {
+    const w = new DxfWriter();
+    const d = w.layer('defpoints', '#000000');
+    const z = w.layer('0', '#000000');
+    expect(d.toUpperCase()).not.toBe('DEFPOINTS');
+    const names = layerRecords(w.toString());
+    expect(names.filter(n => n.toUpperCase() === '0')).toHaveLength(1);
+    expect(z).toBe('0');
+  });
+});

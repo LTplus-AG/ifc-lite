@@ -6,17 +6,9 @@
  * A per-TYPE preview of what a schema conversion will do to the entities a
  * store actually contains, computed WITHOUT running the export.
  *
- * `schema-converter.ts`'s `convertStepLine` already makes every one of these
- * decisions per RECORD, but only as a side effect of producing bytes (or, for
- * a non-rooted type with no target representation, throwing —
- * `resolveUnrepresentedEntity`'s documented, intentional behaviour for e.g.
- * `IFCTRIANGULATEDFACESET` into IFC2X3: there is no valid IFC2X3 substitute
- * for a representation item, so guessing one would ship a differently-broken
- * file). Before this module, a caller's only way to learn what a conversion
- * would do — or that it cannot complete at all — was to attempt the full
- * export and either inspect `stats.warnings` after the fact or catch the
- * exception with no indication of what ELSE in the file has the same
- * problem, since the export aborts on the FIRST record it cannot represent.
+ * `convertStepLine` makes these decisions as it writes each record and
+ * throws on the first unrepresentable non-rooted entity. The preview can
+ * report other affected records without writing the export.
  *
  * Classify each distinct source type once using the attribute tables, then
  * look up the kept IDs for the types with potential losses (#4206).
@@ -39,6 +31,8 @@ import {
 } from './schema-converter.js';
 import { BY_NAME_ATTR_REMAP_TYPES } from './schema-converter-attr-remap.js';
 import { isStrictAttrPrefix, replacedSlot } from './schema-converter-renames.js';
+import { previewTypedPropertyNames } from './schema-converter-typed-properties.js';
+import { getCompleteEntityIndex } from './entity-iteration.js';
 import { attrMapFor, attrsDroppedByMap, dropsSetMembers } from './schema-converter-attr-maps.js';
 import { isRootedEntityType, missingTypeRoute, OMIT_ON_UPGRADE } from './schema-untranslatable.js';
 
@@ -332,19 +326,29 @@ export function analyzeConversionLoss(
     }
     const { stranded } = round;
     const restored = new Map([...round.restored, ...links.restored]);
+    const typedUpgrade = fromSchema === 'IFC2X3' && (toSchema === 'IFC4' || toSchema === 'IFC4X3');
+    const retainedTyped = records && typedUpgrade
+      ? previewTypedPropertyNames(records, getCompleteEntityIndex(store), typed.flatMap(([type, ids, info]) => {
+        const reference = info.targetType === 'IFCMATERIALPROPERTIES' ? 'Material'
+          : info.targetType === 'IFCPROFILEPROPERTIES' ? 'ProfileDefinition' : undefined;
+        const referenceSlot = reference ? attrNameTable(fromSchema)?.get(type)?.indexOf(reference) ?? -1 : -1;
+        return referenceSlot >= 0 ? [{ type, ids, referenceSlot }] : [];
+      }))
+      : undefined;
     for (const [sourceType, expressIds, info] of typed) {
       const mapped = records && toSchema === 'IFC2X3' ? attrMapFor(sourceType, info.targetType, fromSchema, toSchema) : undefined;
       // A SET declared for an upgrade can still be dropped entirely on downgrade.
       const setAttribute = mapped?.map.setOfOne?.[1];
       const narrowedSet = setAttribute && !mapped?.map.upOnly.includes(setAttribute) ? setAttribute : undefined;
-      const slot = narrowedSet ? attrNameTable(fromSchema)?.get(sourceType)?.indexOf(narrowedSet) ?? -1 : -1;
+      const attributes = attrNameTable(fromSchema)?.get(sourceType);
+      const slot = narrowedSet ? attributes?.indexOf(narrowedSet) ?? -1 : -1;
       const isRetained = (id: number, attribute: string) => {
-        if (restored.get(id)?.has(attribute)) return true;
+        if (restored.get(id)?.has(attribute) || retainedTyped?.get(id)?.has(attribute)) return true;
         if (attribute !== narrowedSet) return false;
         const value = records?.slots(id)?.[slot];
         return value !== undefined && !dropsSetMembers(value);
       };
-      const entry = carrying(sourceType, info) || slot >= 0
+      const entry = carrying(sourceType, info) || slot >= 0 || expressIds.some((id) => retainedTyped?.has(id))
         ? entryAfterRestoration(sourceType, expressIds, info, isRetained)
         : { ...info, sourceType, count: expressIds.length, expressIds };
       if (entry) entries.push(entry);

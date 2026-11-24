@@ -160,9 +160,7 @@ pub fn export_merged_with_stats(models: &[&[u8]], opts: &MergedOptions) -> (Stri
 /// An unrepresentable bounded property (#11117) yields empty output and a diagnostic.
 pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (String, MergedStats) {
     let schema = header::output_schema(models, opts);
-
     let mut out = header::merged_header(opts, &schema);
-
     let mut stats = MergedStats::new(models.len());
 
     if models.is_empty() {
@@ -220,7 +218,6 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     let drop_plan = empty::plan_drops(models, opts, &spatial_lookup, &modes);
     stats.dropped_container_count = drop_plan.as_ref().map_or(0, |p| p.count);
 
-    // Running cross-model state.
     let mut guid_to_final: HashMap<String, GuidRecord> = HashMap::new();
     let mut emitted_guids: HashSet<String> = HashSet::new();
     let mut minter = GuidMinter::new();
@@ -229,6 +226,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     let mut checks = ConversionChecks::new(crate::schema_material_referent::MaterialReferents::for_target(crate::schema_convert::canon(&schema)));
     checks.merged = true;
     checks.forms.enable_dates();
+    checks.typed_properties.enabled = true;
     let mut parents = single_parents::ParentClaims::for_schema(&schema); // one rel per single-valued inverse (#5727, #5802, #5774, #5923)
 
     for (i, model) in models.iter().enumerate() {
@@ -290,9 +288,9 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
             }).map(|id| id.saturating_add(offset)));
         }
 
-        // Emit.
         let converting = index.add_materials(&mut checks.materials, &source_schema, &schema, &included, &plan, offset);
         let upgrading = crate::schema_unrooted_upgrade::applies(&source_schema, &schema);
+        let preserve_latin1 = crate::schema_typed_properties::applies_to_source(model.content, &source_schema, &schema);
         let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(model.content, &source_schema, &schema); // D57
         flatten.retain_grids(|id| included.contains(&id) && !plan.skip.contains(&id));
         for &id in &index.order {
@@ -300,6 +298,8 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                 continue;
             }
             let Some(bytes) = index.line_bytes(id) else { continue };
+            let source_text = preserve_latin1.then(|| crate::schema_typed_properties::source_text(bytes, true));
+            let bytes = source_text.as_deref().map_or(bytes, str::as_bytes);
             // A dropped container is never written, and any line naming one is
             // rewritten without it (or dropped with it), so the merge emits no
             // reference to a line it did not write — no clean-up pass needed.
@@ -392,7 +392,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     }
 
     warnings::push_merge_warnings(&mut stats, refused_refs_total, unrepresented_types_kept, &schema);
-    warnings::finish_output(&mut out, &mut stats, &schema, &slot_fill, &mut checks, parents, &upgrade_seeds, models);
+    warnings::finish_output(&mut out, &mut stats, &schema, &slot_fill, &mut checks, parents, &upgrade_seeds, offset, models);
     (out, stats)
 }
 

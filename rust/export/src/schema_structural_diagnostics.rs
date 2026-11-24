@@ -61,6 +61,17 @@ impl StructuralDiagnostics {
         }
     }
 
+    /// Clear one omission once the writer has emitted a replacement property.
+    pub(crate) fn restore_omitted_value(&mut self, entity: &str, attribute: &str, to: &str) {
+        let message = format!("{entity}.{attribute} has no slot in {to}; its value is omitted");
+        if let Some(count) = self.losses.get_mut(&message) {
+            *count -= 1;
+            if *count == 0 {
+                self.losses.remove(&message);
+            }
+        }
+    }
+
     pub(crate) fn buffers_varying(&self, content: &[u8]) -> bool {
         self.defer_varying && varying_effective::contains_varying(content)
     }

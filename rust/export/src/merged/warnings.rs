@@ -7,7 +7,10 @@
 
 use std::collections::BTreeSet;
 
+use ifc_lite_core::EntityScanner;
+
 use super::MergedStats;
+use crate::step_ids::IdAllocator;
 
 impl MergedStats {
     pub(super) fn new(models: usize) -> Self {
@@ -80,8 +83,21 @@ pub(super) fn finish_output(
     checks: &mut crate::schema_enum::ConversionChecks,
     parents: super::single_parents::ParentClaims,
     upgrade_seeds: &std::collections::HashSet<u32>,
+    offset: u32,
     models: &[super::MergedModel],
 ) {
+    if let Some((text, added)) = checks.finish_typed_properties(out.as_bytes(), || {
+        // Earlier conversion output may have used IDs beyond the model offset.
+        let mut max_id = offset;
+        let mut scanner = EntityScanner::new(out);
+        while let Some((id, _, _, _)) = scanner.next_entity() {
+            max_id = max_id.max(id);
+        }
+        IdAllocator::after(max_id)
+    }) {
+        *out = String::from_utf8(text).expect("typed property rewrites preserve merged UTF-8 output");
+        stats.written += added;
+    }
     stats.warnings.extend(slot_fill.warnings());
     stats.written = stats.written.saturating_add_signed(checks.finish_dates(out));
     stats.warnings.extend(checks.warnings_for_sources(models.iter().map(|m| m.content)));

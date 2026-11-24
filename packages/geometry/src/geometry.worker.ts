@@ -39,6 +39,7 @@ import { takeWasmPanicStash } from './wasm-panic-forward.js';
 import { traceGeometryWorkerMessage, meterTypedArrayArgs, countCopy, postPrepassEvent } from './worker-trace.js'; // #6956 spans, #6957 counters
 import { isColumnLengthRefusal } from './wasm-column-refusal.js';
 import { annotatePrepassComplete } from './omitted-type-records.js'; // F2 #8341
+import { WorkerGlobalPlan, type GeometryWorkerAddKeyPlanMessage, type GlobalKeyPlanningField, type GlobalPlanColumns, type IfcAPIWithPrepassColumns } from './global-instance-plan.js';
 
 export interface GeometryWorkerInitMessage {
   type: 'init';
@@ -155,7 +156,7 @@ export interface GeometryWorkerSetEntityIndexMessage {
  * caches on content swap), so the injected values survive. Absent ⇒ the
  * worker's lazy per-batch build (the byte-identical fallback) runs instead.
  */
-export interface GeometryWorkerSetPrepassColumnsMessage {
+export interface GeometryWorkerSetPrepassColumnsMessage extends GlobalPlanColumns {
   type: 'set-prepass-columns';
   referencedRepmaps: Uint32Array;
   instantiatedTypeIds: Uint32Array;
@@ -188,7 +189,7 @@ export interface GeometryWorkerScanShardMessage {
   rangeEnd: number;
 }
 
-export interface GeometryWorkerPrePassMessage {
+export interface GeometryWorkerPrePassMessage extends GlobalKeyPlanningField {
   type: 'prepass-streaming';
   sourceFingerprint?: SharedArrayBuffer;
   sharedBuffer: SharedArrayBuffer;
@@ -266,6 +267,7 @@ export type GeometryWorkerRequest =
   | GeometryWorkerSetStylesMessage
   | GeometryWorkerSetEntityIndexMessage
   | GeometryWorkerSetPrepassColumnsMessage
+  | GeometryWorkerAddKeyPlanMessage
   | GeometryWorkerSetMergeLayersMessage
   | GeometryWorkerSetInstancingMessage
   | GeometryWorkerSetComputeGeometryHashesMessage
@@ -331,7 +333,7 @@ export interface GeometryWorkerStylesShardResultMessage {
  * (stitched) entity index columns, and styles resolution EXTERNAL (no styles
  * event from this call — the host finalizes via finalize-styles below).
  */
-export interface GeometryWorkerPrePassShardedMessage {
+export interface GeometryWorkerPrePassShardedMessage extends GlobalKeyPlanningField {
   type: 'prepass-streaming-sharded';
   sourceFingerprint?: SharedArrayBuffer;
   sharedBuffer: SharedArrayBuffer;
@@ -556,27 +558,6 @@ type IfcAPIWithMerge = IfcAPI & {
   setSourceBytes?: (data: Uint8Array) => void;
 };
 
-/**
- * Narrow wrapper for the pre-pass column setters (issue #957 / #563). Optional
- * so a staged/older engine binary without them degrades to the byte-identical
- * lazy per-worker rebuild instead of throwing.
- */
-type IfcAPIWithPrepassColumns = IfcAPI & {
-  setReferencedRepmaps?: (ids: Uint32Array) => void;
-  setInstantiatedTypeIds?: (ids: Uint32Array) => void;
-  /** #1623 Phase 3: install the don't-bake plan (RepresentationMap ids repeated
-   *  >= 2x). Optional so an older engine binary degrades to full materialize. */
-  setMappedInstancePlan?: (ids: Uint32Array) => void;
-  setMaterialLayerIndex?: (
-    elementIds: Uint32Array,
-    axis: Uint32Array,
-    layerCounts: Uint32Array,
-    directionSense: Float64Array,
-    offset: Float64Array,
-    layerMaterialIds: Uint32Array,
-    layerThicknesses: Float64Array,
-  ) => void;
-};
 
 /**
  * Push the cached `mergeLayersFlag` onto the IfcAPI. Idempotent — only
@@ -674,6 +655,7 @@ function applyEntityIndexToApi(): void {
  */
 let cachedPrepassColumns: GeometryWorkerSetPrepassColumnsMessage | null = null;
 let prepassColumnsApplied: boolean = false;
+const workerGlobalPlan = new WorkerGlobalPlan(); // global instance plan: replayed with the columns
 
 /**
  * Push the cached pre-pass columns onto the IfcAPI (once per API). MUST run
@@ -705,6 +687,7 @@ function applyPrepassColumnsToApi(): void {
       c.mliLayerThicknesses,
     );
   }
+  workerGlobalPlan.apply(ifcApi, c);
   prepassColumnsApplied = true;
 }
 
@@ -1418,6 +1401,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
     if (e.data.type === 'prepass-streaming-sharded') {
       // Sharded pre-pass main call: prebuilt (stitched) index, external styles.
       const ifcApi = await ensureInit();
+      (ifcApi as IfcAPIWithPrepassColumns).setGlobalKeyPlanning?.(e.data.globalInstancing === true);
       (self as unknown as Worker).postMessage({ type: 'prepass-progress', phase: 'parsing' });
       const { sharedBuffer, indexIds, indexStarts, indexLengths, indexClasses } = e.data;
       const sourceFingerprint = e.data.sourceFingerprint;
@@ -1494,6 +1478,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
 
     if (e.data.type === 'prepass-streaming') {
       const ifcApi = await ensureInit();
+      (ifcApi as IfcAPIWithPrepassColumns).setGlobalKeyPlanning?.(e.data.globalInstancing === true);
       (self as unknown as Worker).postMessage({ type: 'prepass-progress', phase: 'parsing' });
       const sharedBuffer = e.data.sharedBuffer;
       const sourceFingerprint = e.data.sourceFingerprint;
@@ -1670,7 +1655,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       // the IfcAPI's pre-pass columns either way.
       cachedEntityIndex = null;
       cachedPrepassColumns = null;
-      prepassColumnsApplied = false;
+      prepassColumnsApplied = false; workerGlobalPlan.clear();
       forgetAppliedFinishes(ifcApi); // Rust clears finishes even when the index is rejected.
       ifcApi.setEntityIndex(e.data.ids, e.data.starts, e.data.lengths);
       cachedEntityIndex = { ids: e.data.ids, starts: e.data.starts, lengths: e.data.lengths };
@@ -1690,6 +1675,11 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       cachedPrepassColumns = e.data;
       prepassColumnsApplied = false;
       applyPrepassColumnsToApi();
+      return;
+    }
+
+    if (e.data.type === 'add-key-plan') { // global instance plan: planned jobs of the next chunk
+      workerGlobalPlan.record(api as IfcAPIWithPrepassColumns | null, e.data);
       return;
     }
 
@@ -1754,7 +1744,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       // reused worker cannot replay a previous load's referenced-repmaps /
       // material-layer index. The next load re-populates via set-prepass-columns.
       cachedPrepassColumns = null;
-      prepassColumnsApplied = false;
+      prepassColumnsApplied = false; workerGlobalPlan.clear();
       // Release this worker's reference to the session source bytes and drop the
       // applied flag. The wasm-side copy is reclaimed on worker termination (the
       // pool is per-load) or overwritten by the next load's setSourceBytes on a

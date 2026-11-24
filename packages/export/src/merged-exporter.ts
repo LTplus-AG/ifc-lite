@@ -26,6 +26,7 @@ import { firstWrittenOwnerHistoryRef, Ifc2x3SlotFill } from './schema-converter-
 import { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import { EnumReconciliation } from './schema-converter-enums.js';
 import { assembleStepBytes, assembleStepBlob } from './step-file-assembly.js';
+import { decodeTypedPropertyRecord, isTypedPropertyUpgrade } from './schema-converter-typed-properties.js';
 import { placeObjectsForSchema } from './schema-ifc2x3-placements.js';
 import { getCompleteEntityIndex, getMaxExpressId, type CompleteEntityIndex, type ExportEntityRef } from './entity-iteration.js';
 import { bakeMutatedModels, mergeWarningLabel, needsBake } from './merged-bake.js';
@@ -102,6 +103,7 @@ interface SpatialLookup {
 /** Shared, model-independent state computed once per merge. */
 interface MergeSetup {
   /** ID offset applied to each model's express ids, keyed by model id. */
+  nextAvailableId: number;
   modelOffsets: Map<string, number>;
   /** Offset of the first (primary) model — always 0, but kept explicit. */
   firstModelOffset: number;
@@ -547,6 +549,7 @@ export class MergedExporter {
     }
     listKeptContexts(allEntityLines, setup.firstProjectIds.length ? setup.firstProjectIds[0] + setup.firstModelOffset : undefined, setup.keptContexts);
     setup.minted.appendTo(allEntityLines);
+    enums.typedProperties.finish(allEntityLines, ifc4Slots, setup.nextAvailableId, enums.structural);
     for (const warning of finishMergedConversion(allEntityLines, slotFill, ifc4Slots, enums, setup.parentClaims)) normalizeWarnings.add(warning);
     for (const warning of omitUnrootedUpgrade(allEntityLines, upgradeSeeds)) normalizeWarnings.add(warning);
 
@@ -712,6 +715,7 @@ export class MergedExporter {
     }
     listKeptContexts(allEntityLines, setup.firstProjectIds.length ? setup.firstProjectIds[0] + setup.firstModelOffset : undefined, setup.keptContexts);
     setup.minted.appendTo(allEntityLines);
+    enums.typedProperties.finish(allEntityLines, ifc4Slots, setup.nextAvailableId, enums.structural);
     for (const warning of finishMergedConversion(allEntityLines, slotFill, ifc4Slots, enums, setup.parentClaims)) normalizeWarnings.add(warning);
     for (const warning of omitUnrootedUpgrade(allEntityLines, upgradeSeeds)) normalizeWarnings.add(warning);
 
@@ -851,7 +855,7 @@ export class MergedExporter {
     const firstModelOffset = modelOffsets.get(firstModel.id)!;
     const firstModelInfraMap = this.findInfrastructureEntities(firstModel.dataStore);
     return {
-      modelOffsets,
+      modelOffsets, nextAvailableId,
       firstModelOffset,
       firstModelInfraMap,
       firstModelContext: resolvePrimaryContextState(firstModel.dataStore, firstModelInfraMap.get('IFCGEOMETRICREPRESENTATIONSUBCONTEXT') ?? [], primaryScale, firstModelOffset),
@@ -1134,7 +1138,7 @@ export class MergedExporter {
     slotFill: Ifc2x3SlotFill, ifc4Slots: Ifc4SlotCheck, enums: EnumReconciliation,
     styles?: StyleFlatten,
   ): string | null {
-    let entityText = decodeRange(source, entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength);
+    let entityText = decodeTypedPropertyRecord(source, entityRef, sourceSchema, targetSchema);
     // D57 style-assignment flatten, in LOCAL id space (before the remap).
     if (styles && (entityText = styles.apply(entityText) ?? '') === '') return null;
 
@@ -1192,13 +1196,14 @@ export class MergedExporter {
     // Remap ids. Fast path: the first model (offset 0, no remaps) is byte-identical.
     let finalText = offset === 0 && plan.sharedRemap.size === 0 ? entityText : remapEntityText(entityText, offset, plan.sharedRemap);
 
-    // Normalize units: rescale every length/area/volume-valued datum, and the georeference (#10886), into the primary
-    // unit. Done on the SOURCE-schema text (entityRef.type), before any schema conversion, so the schema-derived
-    // attribute indices line up. Touches only numeric literals and the CRS unit, so the remap and re-stamp are safe.
+    // Normalize in the source schema while its attribute indices still match the record.
+    // Only numeric literals and the georeference (#10886) change here.
     const georef = normalizeGeorefRecord(finalText, localId, mode.georef);
     if (georef !== undefined) finalText = georef;
     else if (mode.lengthFactor !== 1 || mode.areaFactor !== 1 || mode.volumeFactor !== 1) {
-      finalText = rescaleEntityLengths(finalText, entityRef.type.toUpperCase(), mode.lengthFactor, mode.areaFactor, mode.volumeFactor);
+      const type = entityRef.type.toUpperCase();
+      const legacySchema = isTypedPropertyUpgrade(type, sourceSchema, targetSchema) ? 'IFC2X3' : undefined;
+      finalText = rescaleEntityLengths(finalText, type, mode.lengthFactor, mode.areaFactor, mode.volumeFactor, legacySchema);
     }
 
     const converting = needsConversion(sourceSchema, targetSchema);

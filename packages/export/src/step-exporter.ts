@@ -67,7 +67,7 @@ import {
 export class StepExporter {
   private dataStore: IfcDataStore;
   private mutationView: MutablePropertyView | null;
-  private nextExpressId: number;
+  private nextExpressId = 1;
   private entityExtractor: EntityExtractor | null;
   /**
    * The owner-history memos the property-set and quantity-set generators read.
@@ -91,11 +91,6 @@ export class StepExporter {
     this.dataStore = dataStore;
     this.isReadableSourceRef = createSourceRefReader(dataStore.source);
     this.mutationView = mutationView || null;
-    const maxExisting = this.findMaxExpressId();
-    const overlayWatermark = typeof mutationView?.peekNextExpressId === 'function'
-      ? mutationView.peekNextExpressId() - 1
-      : 0;
-    this.nextExpressId = Math.max(maxExisting, overlayWatermark) + 1;
     this.entityExtractor = dataStore.source ? new EntityExtractor(dataStore.source) : null;
   }
 
@@ -111,6 +106,9 @@ export class StepExporter {
   }
 
   private preparePass(options: StepExportOptions): { pass: ExportPass } | { result: StepExportResult } {
+    const overlayNextId = this.mutationView?.peekNextExpressId?.() ?? 1;
+    this.nextExpressId = Math.max(this.findMaxExpressId() + 1, overlayNextId);
+
     // Both owner-history caches are per-EXPORT, not per-exporter: they now
     // depend on `willBeEmitted`, which depends on this call's options. Reusing
     // one exporter for a `visibleOnly` export and then a full one would
@@ -252,6 +250,7 @@ export class StepExporter {
 
     // Complete map metadata adaptation before optional Rust planning and assembly.
     normalizeCoordinateMetadata(pass, options, () => allocatedExpressId(this.nextExpressId++));
+    this.nextExpressId = pass.enums.typedProperties.finish(pass.entities, pass.ifc4Slots, this.nextExpressId, pass.enums.structural);
     pass.newEntityCount += pass.enums.structural.finishEffectiveVarying(pass.entities);
     pass.enums.forms.dates.finish(pass.entities);
     if (pass.sourceSchema === 'IFC2X3' && pass.schema === 'IFC4') {

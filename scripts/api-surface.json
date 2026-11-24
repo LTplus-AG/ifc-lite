@@ -7097,6 +7097,7 @@
     "pickWorkerCount: function",
     "prewarmSharedWasmModule: function",
     "projectedToLocalViewer: function",
+    "readGlobalInstancingFlag: function",
     "resolveSpatialPlacement: function",
     "terrainRefusalReason: function"
   ],
@@ -11577,6 +11578,7 @@
     "ClashIntersectionSolidJs: class",
     "ClashRunResult: class",
     "ClashSession: class",
+    "CompactBatch: class",
     "Contours2D: class",
     "ENGINE_BINARY_URL: const",
     "ExtrusionDefinitionJs: interface",
@@ -11729,6 +11731,7 @@
     "ClashIntersectionSolidJs: class",
     "ClashRunResult: class",
     "ClashSession: class",
+    "CompactBatch: class",
     "Contours2D: class",
     "ENGINE_BINARY_URL: const",
     "ExtrusionDefinitionJs: interface",

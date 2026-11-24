@@ -50,6 +50,10 @@ interface BuildContext {
    *  SpatialHierarchy field docs); covers aggregated descendants too, unlike `elementToStorey`. */
   elementToContainer: Map<number, number>;
   visited: Set<number>;
+  /** Storeys with the spatial children they aggregate, in visit order; the
+   *  claim-through-spaces pass runs over these once every direct containment
+   *  is in, so storey visit order cannot decide a contested element. */
+  spaceClaims: Array<{ storeyId: number; childNodes: SpatialNode[] }>;
   canonicalParent: Map<number, number>; // childId -> its one allowed builder (#4095)
   /** Spatial-structure nodes buildNode will actually visit from IfcProject
    *  (see computeReachableSpatialNodes) - set once IfcProject is known, #4310. */
@@ -107,6 +111,7 @@ export class SpatialHierarchyBuilder {
       elementToStorey: new Map(),
       elementToContainer: new Map(),
       visited: new Set(),
+      spaceClaims: [],
       canonicalParent: computeCanonicalParent(entities, relationships),
       reachableSpatialNodes: new Set(), // filled in below once IfcProject is known
       attrSource,
@@ -129,6 +134,7 @@ export class SpatialHierarchyBuilder {
     ctx.reachableSpatialNodes = computeReachableSpatialNodes(projectIds[0], ctx.canonicalParent);
 
     const projectNode = this.buildNode(projectIds[0], ctx);
+    claimThroughSpaces(ctx);
 
     if (ctx.byStorey.size === 0) {
       console.warn('[SpatialHierarchyBuilder] No storeys found in spatial hierarchy');
@@ -321,31 +327,9 @@ export class SpatialHierarchyBuilder {
           ctx.elementToStorey.set(childId, expressId);
         }
       }
-      // An element contained in one of those spaces (or in a space nested in
-      // it) is on this storey as well, with its aggregated parts. The edited
-      // path (`effectiveStoreyResolver`) already walks through the space; the
-      // parsed model must answer the same. Direct storey containment still
-      // wins: it is set above, or by its own storey's visit, which overwrites.
-      const claimThroughSpaces = (nodes: SpatialNode[]): void => {
-        for (const node of nodes) {
-          if (!isSpaceLikeSpatialType(node.type)) continue;
-          for (const elementId of node.elements) {
-            if (!ctx.elementToStorey.has(elementId)) ctx.elementToStorey.set(elementId, expressId);
-            const stack: number[] = [elementId];
-            const seen = new Set<number>(stack);
-            while (stack.length > 0) {
-              for (const kid of relationships.getRelated(stack.pop() as number, RelationshipType.Aggregates, 'forward')) {
-                if (seen.has(kid)) continue;
-                seen.add(kid);
-                if (!ctx.elementToStorey.has(kid)) ctx.elementToStorey.set(kid, expressId);
-                stack.push(kid);
-              }
-            }
-          }
-          claimThroughSpaces(node.children);
-        }
-      };
-      claimThroughSpaces(childNodes);
+      // An element contained in one of those spaces is on this storey as well;
+      // that claim runs after the whole traversal (see claimThroughSpaces).
+      ctx.spaceClaims.push({ storeyId: expressId, childNodes });
     }
 
     // Attribute every directly-contained element AND its aggregated descendants
@@ -377,5 +361,39 @@ export class SpatialHierarchyBuilder {
     }
 
     return { expressId, type: typeEnum, name, longName, elevation, children: childNodes, elements: containedElements };
+  }
+}
+
+/**
+ * An element contained in a space a storey aggregates (or in a space nested in
+ * it) is on that storey too, with its aggregated parts. The edited path
+ * (`effectiveStoreyResolver`) already walks through the space; the parsed
+ * model must answer the same. It runs once every storey has been visited so
+ * direct containment, and the parts of a directly contained element, always
+ * win whatever order the storeys were visited in.
+ */
+function claimThroughSpaces(ctx: BuildContext): void {
+  const { relationships, elementToStorey } = ctx;
+  for (const { storeyId, childNodes } of ctx.spaceClaims) {
+    const walk = (nodes: SpatialNode[]): void => {
+      for (const node of nodes) {
+        if (!isSpaceLikeSpatialType(node.type)) continue;
+        for (const elementId of node.elements) {
+          if (!elementToStorey.has(elementId)) elementToStorey.set(elementId, storeyId);
+          const stack: number[] = [elementId];
+          const seen = new Set<number>(stack);
+          while (stack.length > 0) {
+            for (const kid of relationships.getRelated(stack.pop() as number, RelationshipType.Aggregates, 'forward')) {
+              if (seen.has(kid)) continue;
+              seen.add(kid);
+              if (!elementToStorey.has(kid)) elementToStorey.set(kid, storeyId);
+              stack.push(kid);
+            }
+          }
+        }
+        walk(node.children);
+      }
+    };
+    walk(childNodes);
   }
 }

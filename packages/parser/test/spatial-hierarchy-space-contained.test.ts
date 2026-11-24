@@ -59,4 +59,16 @@ describe('elementToStorey for elements a storey reaches only through an IfcSpace
     );
     expect(hierarchy.elementToStorey.get(7)).toBe(5);
   });
+
+  it('keeps the parts of a directly contained element on its storey, whatever order the storeys are visited', () => {
+    // Storey 4 aggregates a space containing E (with part P); storey 5 contains E directly.
+    const hierarchy = build(
+      [...SPATIAL, [6, 'IFCSPACE'], [7, 'IFCFURNISHINGELEMENT'], [8, 'IFCBUILDINGELEMENTPART']],
+      [...SPATIAL_EDGES,
+        [4, 6, RelationshipType.Aggregates], [6, 7, RelationshipType.ContainsElements],
+        [5, 7, RelationshipType.ContainsElements], [7, 8, RelationshipType.Aggregates]],
+    );
+    expect(hierarchy.elementToStorey.get(7)).toBe(5);
+    expect(hierarchy.elementToStorey.get(8)).toBe(5);
+  });
 });

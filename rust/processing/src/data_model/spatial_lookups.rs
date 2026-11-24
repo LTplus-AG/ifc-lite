@@ -151,6 +151,18 @@ fn claim_through_spaces(
         }
     }
     let mut owned: FxHashSet<u32> = element_to_storey.iter().map(|(e, _)| *e).collect();
+    // The aggregated parts of a directly contained element belong to its own
+    // storey (packages/parser propagates it to them), so the space claim must
+    // not hand them to another storey. They get no row here: only the
+    // elements the claim itself reaches do.
+    let mut pending: Vec<u32> = owned.iter().copied().collect();
+    while let Some(id) = pending.pop() {
+        for kid in parts.get(&id).into_iter().flatten() {
+            if owned.insert(*kid) {
+                pending.push(*kid);
+            }
+        }
+    }
     let mut storeys: Vec<u32> = project_reachable
         .iter()
         .copied()

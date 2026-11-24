@@ -3036,7 +3036,9 @@ DATA;
 #12=IFCRELAGGREGATES('Agg00000000000000000003',$,$,$,#3,(#4,#5));
 #6=IFCSPACE('Spac0000000000000000001',$,'Room',$,$,$,$,$,$,$,$);
 #7=IFCFLOWSEGMENT('Pump0000000000000001',$,'Pump',$,$,$,$,$);
+#8=IFCBUILDINGELEMENTPART('Part000000000000000001',$,'Part',$,$,$,$,$);
 #20=IFCRELAGGREGATES('Agg00000000000000000010',$,$,$,#4,(#6));
+#22=IFCRELAGGREGATES('Agg00000000000000000012',$,$,$,#7,(#8));
 #30=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#7),#6);
 #31=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000002',$,$,$,(#7),#5);
 ENDSEC;
@@ -3047,4 +3049,6 @@ END-ISO-10303-21;
 fn direct_storey_containment_wins_over_a_space_on_another_storey() {
     let dm = extract_data_model_checked(SPACE_CONTAINED_DIRECT_WINS_IFC);
     assert_eq!(storey_of(&dm, 7), Some(5));
+    // The part of a directly contained element is not handed to the space's storey.
+    assert_ne!(storey_of(&dm, 8), Some(4), "part of a directly contained element");
 }

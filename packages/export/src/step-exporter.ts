@@ -9,7 +9,7 @@
  * Supports applying property and root attribute mutations before export.
  */
 
-import { finishStepConversion } from './step-conversion-finish.js';
+import { finishStepConversion } from './schema-converter-step-finish.js';
 import { hasGeorefEdits, IFC2X3_GEOREF_REFUSAL } from './step-coordinate-options.js';
 import type { IfcDataStore, IfcSourceHeader } from '@ifc-lite/parser';
 import { EntityExtractor, parseSourceHeader } from '@ifc-lite/parser';

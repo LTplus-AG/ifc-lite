@@ -25,10 +25,10 @@ import { BY_NAME_ATTR_REMAP_TYPES } from './schema-converter-attr-remap.js';
 import { isStrictAttrPrefix, replacedSlot } from './schema-converter-renames.js';
 import { previewTypedPropertyNames } from './schema-converter-typed-properties.js';
 import { getCompleteEntityIndex } from './entity-iteration.js';
-import { attrMapFor, attrsDroppedByMap, dropsSetMembers, DELETED_SUBTYPES } from './schema-converter-attr-maps.js';
+import { attrMapFor, attrsDroppedByMap, dropsSetMembers } from './schema-converter-attr-maps.js';
 import { droppedIfc4x3SlotNames, needsIfc4x3SlotMap } from './schema-converter-ifc4x3-upgrade.js';
 import { previewUpgradeDependents } from './schema-converter-unrooted-upgrade.js';
-import { holdsValue } from './step-comment-skip.js';
+import { isUnsetSourceAttribute } from './schema-conversion-loss-unset.js';
 import { isRootedEntityType, missingTypeRoute } from './schema-untranslatable.js';
 
 /** How one entity TYPE's data survives a schema conversion. */
@@ -334,13 +334,11 @@ export function analyzeConversionLoss(
       const narrowedSet = setAttribute && !mapped?.map.upOnly.includes(setAttribute) ? setAttribute : undefined;
       const attributes = attrNameTable(fromSchema)?.get(sourceType);
       const slot = narrowedSet ? attributes?.indexOf(narrowedSet) ?? -1 : -1;
-      // #11326: an IFC4-deleted subtype's own attributes have no IfcTask slot, so only a populated one is lost.
-      const unsetSlots = records && DELETED_SUBTYPES.has(sourceType) && attrMapFor(sourceType, info.targetType, fromSchema, toSchema)?.up
-        ? attributes : undefined;
+      // #11326: a type-wide drop loses only the slots the record populated (a map-less IFCREL* or IfcWorkPlan included).
+      const unsetSlots = records && info.kind === 'lossy' && info.droppedAttributes.length > 0;
       const isRetained = (id: number, attribute: string) => {
         if (restored.get(id)?.has(attribute) || retainedTyped?.get(id)?.has(attribute)) return true;
-        const own = unsetSlots ? records?.slots(id)?.[unsetSlots.indexOf(attribute)] : undefined;
-        if (own !== undefined && !holdsValue(own)) return true;
+        if (unsetSlots && isUnsetSourceAttribute(records, attributes, id, attribute)) return true;
         if (attribute !== narrowedSet) return false;
         const value = records?.slots(id)?.[slot];
         return value !== undefined && !dropsSetMembers(value);

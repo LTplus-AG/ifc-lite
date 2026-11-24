@@ -404,3 +404,19 @@ fn a_node_is_the_rounded_sum_of_origin_and_position() {
     nodes.dedup();
     assert_eq!(nodes, expected);
 }
+
+/// A NaN or infinite normal would poison its node's sum and oct-encode to garbage: such a mesh
+/// stays on the f32 path, untouched.
+#[test]
+fn a_non_finite_normal_refuses_the_mesh() {
+    for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+        let mut c = MeshCollection::new();
+        let mut mesh = flat_box(1, [0.0, 0.0, 0.0], 1.0);
+        mesh.normals[40] = bad;
+        c.add(mesh);
+        let b = c.encode_compact(32.0);
+        assert_eq!(b.mesh_count(), 0, "{bad}");
+        assert_eq!(b.refusals[Refusal::NonFinite as usize], 1, "{bad}: {:?}", b.refusals);
+        assert_eq!(c.meshes[0].positions.len(), 72);
+    }
+}

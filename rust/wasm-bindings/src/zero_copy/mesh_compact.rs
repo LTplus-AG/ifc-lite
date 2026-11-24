@@ -82,7 +82,7 @@ enum Refusal {
     Textured = 0,
     /// Fewer than three vertices or indices, or no triangle left after welding.
     Empty = 1,
-    /// A non-finite coordinate.
+    /// A non-finite coordinate or normal.
     NonFinite = 2,
     /// Express id past the 24-bit entity lane.
     IdRange = 3,
@@ -222,10 +222,11 @@ fn frame_bounds(mesh: &MeshDataJs) -> Result<[f64; 6], Refusal> {
     }
     let o = mesh.origin;
     let mut b = [f64::INFINITY, f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
-    for p in mesh.positions.chunks_exact(3) {
+    for (p, n) in mesh.positions.chunks_exact(3).zip(mesh.normals.chunks_exact(3)) {
         for axis in 0..3 {
             let w = o[axis] + p[axis] as f64;
-            if !w.is_finite() {
+            // A non-finite normal would poison its node's sum and oct-encode to garbage.
+            if !w.is_finite() || !n[axis].is_finite() {
                 return Err(Refusal::NonFinite);
             }
             b[axis] = b[axis].min(w);

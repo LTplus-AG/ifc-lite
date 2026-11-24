@@ -526,6 +526,12 @@ export class IfcAPI {
     free(): void;
     [Symbol.dispose](): void;
     /**
+     * Record the content-key plan index of planned jobs (`planIndex` of the
+     * pre-pass `jobs` events; unplanned entries are skipped). Effective only
+     * once `setGlobalInstancePlan` armed the load. Mismatched lengths record nothing.
+     */
+    addGlobalKeyPlan(job_ids: Uint32Array, plan_index: Uint32Array): void;
+    /**
      * Run the pre-pass ONCE and return serialized results for worker distribution.
      * Takes raw bytes (&[u8]) to avoid TextDecoder overhead.
      */
@@ -1318,6 +1324,23 @@ export class IfcAPI {
      * next batch scans the bytes it is given.
      */
     setEntityIndex(ids: Uint32Array, starts: Uint32Array, lengths: Uint32Array): void;
+    /**
+     * Arm the global instance plan for this load. `source_ids` and `counts`
+     * are the pre-pass columns' `mappedInstancePlan` and
+     * `mappedInstanceCounts` (model-wide `IfcMappedItem` count per source);
+     * only sources at or above the instancing gate are kept. Mismatched
+     * lengths disarm the plan, which leaves the per-batch decision in charge.
+     * Installed after `setEntityIndex`, which clears it on a content swap.
+     * Arming starts the plan over, key plan included: call `addGlobalKeyPlan` after it.
+     */
+    setGlobalInstancePlan(source_ids: Uint32Array, counts: Uint32Array): void;
+    /**
+     * Plan content keys in the streaming pre-pass of THIS instance: hash every
+     * job's geometry items before the first dispatch, emit a
+     * `global-key-plan` event and each job's `planIndex` with its chunk.
+     * Off by default; off leaves the pre-pass events unchanged.
+     */
+    setGlobalKeyPlanning(on: boolean): void;
     /**
      * Install the pre-computed set of type ids that an `IfcRelDefinesByType`
      * instantiates (#957 follow-up), so the worker's first type-product batch
@@ -2699,6 +2722,7 @@ export interface InitOutput {
     readonly gridaxisjs_gridId: (a: number) => number;
     readonly gridaxisjs_start: (a: number) => number;
     readonly gridaxisjs_tag: (a: number, b: number) => void;
+    readonly ifcapi_addGlobalKeyPlan: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly ifcapi_buildPrePassOnce: (a: number, b: number, c: number) => number;
     readonly ifcapi_buildPrePassStreaming: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
     readonly ifcapi_buildPrePassStreamingSharded: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number) => void;
@@ -2775,6 +2799,8 @@ export interface InitOutput {
     readonly ifcapi_segmentScanPoints: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_setComputeGeometryHashes: (a: number, b: number, c: number) => void;
     readonly ifcapi_setEntityIndex: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
+    readonly ifcapi_setGlobalInstancePlan: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly ifcapi_setGlobalKeyPlanning: (a: number, b: number) => void;
     readonly ifcapi_setInstantiatedTypeIds: (a: number, b: number, c: number) => void;
     readonly ifcapi_setMappedInstancePlan: (a: number, b: number, c: number) => void;
     readonly ifcapi_setMaterialLayerIndex: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number) => void;

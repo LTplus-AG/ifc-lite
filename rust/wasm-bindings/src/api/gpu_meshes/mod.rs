@@ -21,7 +21,11 @@ mod batch_from_source;
 pub(in crate::api) mod batch_host;
 mod batch_partition;
 mod instancing;
+mod global_instancing;
+mod global_key_plan;
+pub(crate) mod global_plan;
 pub(crate) mod prepass;
+mod prepass_key_plan;
 mod prepass_mode;
 mod prepass_discovery;
 mod prepass_index;
@@ -58,3 +62,7 @@ mod c4_11a_tests;
 #[cfg(test)]
 #[path = "c4_7b_tests.rs"]
 mod c4_7b_tests;
+
+#[cfg(test)]
+#[path = "global_instancing_parity_tests.rs"]
+mod global_instancing_parity_tests;

@@ -8,7 +8,7 @@
  * libs) are lazy-loaded so they never touch the initial bundle.
  */
 
-import { downloadBlob, sanitizeFilename } from '../../export/download';
+import { csvBlob, downloadBlob, sanitizeFilename } from '../../export/download';
 import { trackExportCompleted } from '../../analytics';
 import { toCsv } from './csv';
 import type { ExportModel } from './model';
@@ -24,7 +24,7 @@ export const EXPORT_LABELS: Record<ExportFormat, string> = {
 /** Produce the real native writer artifact before delivery by UI or automation. */
 export async function createListArtifact(format: ExportFormat, model: ExportModel): Promise<{ blob: Blob; filename: string }> {
   const name = sanitizeFilename(model.title, { fallback: 'list' });
-  if (format === 'csv') return { blob: new Blob([toCsv(model)], { type: 'text/csv;charset=utf-8;' }), filename: `${name}.csv` };
+  if (format === 'csv') return { blob: csvBlob(toCsv(model), 'text/csv;charset=utf-8;'), filename: `${name}.csv` };
   if (format === 'xlsx') {
     const { toXlsx } = await import('./xlsx');
     return { blob: await toXlsx(model), filename: `${name}.xlsx` };

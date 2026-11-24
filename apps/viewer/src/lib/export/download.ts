@@ -198,8 +198,34 @@ export function downloadFile(
     downloadBlob(content, filename);
     return;
   }
+  if (isCsvMime(mime) && !(content instanceof ArrayBuffer)) {
+    downloadBlob(csvBlob(content, mime), filename);
+    return;
+  }
   const part: BlobPart = content instanceof Uint8Array ? new Uint8Array(content) : content;
   downloadBlob(new Blob([part], { type: mime }), filename);
+}
+
+const UTF8_BOM = [0xef, 0xbb, 0xbf] as const;
+
+function isCsvMime(mime: string): boolean {
+  return /^text\/csv\b/i.test(mime.trim());
+}
+
+/**
+ * A CSV `Blob` that opens correctly in Excel. Excel on Windows decodes a
+ * double-clicked `.csv` as the ANSI code page unless the file starts with a
+ * UTF-8 byte-order mark (`Sală` would show as `SalÄƒ`), so every user-facing
+ * CSV is saved with one. Adds it once: content that already starts with a BOM
+ * is left alone. Not for CSV a program reads from a pipe (the CLI), where a BOM
+ * is a stray first-column byte.
+ */
+export function csvBlob(content: string | Uint8Array, mime = 'text/csv;charset=utf-8'): Blob {
+  if (typeof content === 'string') {
+    return new Blob([content.charCodeAt(0) === 0xfeff ? '' : '\uFEFF', content], { type: mime });
+  }
+  const hasBom = UTF8_BOM.every((byte, i) => content[i] === byte);
+  return new Blob([hasBom ? new Uint8Array(0) : new Uint8Array(UTF8_BOM), new Uint8Array(content)], { type: mime });
 }
 
 /**

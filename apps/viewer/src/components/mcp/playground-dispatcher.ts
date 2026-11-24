@@ -80,7 +80,7 @@ export type { AnthropicInputSchema, AnthropicToolDef } from './playground-tool-d
 import { getThreeWebglVerdict } from './three-webgl-support';
 import { playgroundFiles } from './playground-files';
 import { playgroundUploads } from './playground-uploads';
-import { bcfExportFilename, sanitizeFilename } from '../../lib/export/download';
+import { bcfExportFilename, csvBlob, sanitizeFilename } from '../../lib/export/download';
 import { playgroundCostTools } from './playground-cost';
 import { effectiveTypeCounts } from '@/lib/agent-tools/effective';
 import { explainIds, validateIdsAgainst } from '@/lib/agent-tools/ids-tools';
@@ -906,7 +906,7 @@ const IMPLS: Record<string, ToolImpl> = {
     const refs = (filterType ? m.bim.query().byType(filterType).toArray() : m.bim.query().toArray()).map((e) => e.ref);
     const csv = m.bim.export.csv(refs, { columns: cols, separator: sep });
     const filename = coerceFilename(args.file_path as string | undefined, 'csv', filterType ?? 'entities');
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const blob = csvBlob(csv, 'text/csv');
     const file = playgroundFiles.add({
       filename, mimeType: 'text/csv', size: blob.size, blob,
       source: 'export_csv', description: `${refs.length} row(s) · ${cols.join(', ')}`,

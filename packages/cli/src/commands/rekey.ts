@@ -42,6 +42,8 @@ type Row = Record<string, string>;
 
 /** RFC 4180-ish CSV: quoted fields, doubled quotes, CRLF or LF. */
 export function parseCsv(text: string): { header: string[]; rows: Row[] } {
+  // A BOM (Excel and the viewer's CSV downloads write one) is not part of the first header.
+  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
   const records: string[][] = [];
   let field = '';
   let record: string[] = [];

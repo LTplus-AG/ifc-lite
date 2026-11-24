@@ -1588,7 +1588,7 @@ export class MeshCollection {
      * docs) and empty its vertex arrays. `cell_size` is the spatial cell size
      * in metres at the base level (step 2^-10 m), snapped to that lattice;
      * it must lie in [2^-9, 32] m so a window (65,535 steps) holds any mesh
-     * that starts in its cell and is no wider than the cell. Outside that
+     * that starts in its cell and is narrower than the cell. Outside that
      * range nothing is encoded and the collection is left as it was.
      */
     encodeCompact(cell_size: number): CompactBatch;

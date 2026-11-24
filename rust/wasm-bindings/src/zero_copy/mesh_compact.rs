@@ -64,7 +64,8 @@ fn step_of(level: u32) -> f64 {
 const Q_MAX: i64 = 65535;
 /// Highest picking id the 24-bit entity lane carries (`packEntityLane`).
 const MAX_LANE_ID: u32 = 0x00FF_FFFF;
-/// Cell sizes `encode_compact` accepts: two base steps, up to half a base window.
+/// Cell sizes `encode_compact` accepts: two base steps, up to half a base window (rounded up: a
+/// mesh exactly as wide as a 32 m cell can miss its window by a step and move one level coarser).
 const MIN_CELL_METRES: f64 = 1.0 / 512.0;
 const MAX_CELL_METRES: f64 = 32.0;
 /// Bytes per vertex record.
@@ -89,8 +90,9 @@ enum Refusal {
     Extent = 4,
     /// More welded vertices than u16 indices address.
     WeldedVertices = 5,
-    /// Loses more than 1% of its area to triangles the base lattice collapses, and no finer level
-    /// holds it (whatever stops the retry there: the collapse is why it left the base level).
+    /// Loses more than 1% of its area to triangles the lattice collapses: at the base level with
+    /// no finer level holding it (whatever stops the retry there, the collapse is why it left the
+    /// base level), or at the coarser level for a mesh too wide for the base window.
     Collapse = 6,
     /// No per-vertex normals, or corners no stored normal can witness.
     Normals = 7,
@@ -321,7 +323,7 @@ impl MeshCollection {
     /// docs) and empty its vertex arrays. `cell_size` is the spatial cell size
     /// in metres at the base level (step 2^-10 m), snapped to that lattice;
     /// it must lie in [2^-9, 32] m so a window (65,535 steps) holds any mesh
-    /// that starts in its cell and is no wider than the cell. Outside that
+    /// that starts in its cell and is narrower than the cell. Outside that
     /// range nothing is encoded and the collection is left as it was.
     #[wasm_bindgen(js_name = encodeCompact)]
     pub fn encode_compact(&mut self, cell_size: f64) -> CompactBatch {

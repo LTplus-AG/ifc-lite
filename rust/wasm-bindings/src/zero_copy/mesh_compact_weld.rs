@@ -173,6 +173,7 @@ pub(super) fn weld_mesh(mesh: &MeshDataJs, window: [i64; 3], step: f64, s: &mut 
             // `origin + position` first, exactly as the bounds were formed: the f64 sum is the frame
             // coordinate, so a point shared by meshes with different origins lands on one node.
             let node = round_half_up((o[axis] + p[axis] as f64) * inv - window[axis] as f64) as i64;
+            // Defensive: `cell_window` admitted the bounds through this same expression.
             if !(0..=Q_MAX).contains(&node) {
                 return Err(Refusal::Extent);
             }

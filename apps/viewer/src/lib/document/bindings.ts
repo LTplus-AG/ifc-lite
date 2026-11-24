@@ -26,7 +26,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import { normalizeIfcTypeName } from '@ifc-lite/parser';
 import { EntityFlags, IfcTypeEnum, IfcTypeEnumFromString, type SpatialNode } from '@ifc-lite/data';
 import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
-import { createListDataProvider } from '../lists/adapter.js';
+import { createProjectUnitListDataProvider } from '../lists/project-unit-quantities.js';
 import type { ListDataProvider } from '@ifc-lite/lists';
 import { iterateEffectiveChartRows } from '../charts/datasets/effective-elements.js';
 import { effectiveAttribute, effectiveProperty, effectivePropertyPaths, findEffectiveElementId } from './effective-binding-fields.js';
@@ -103,7 +103,7 @@ const providers = new WeakMap<IfcDataStore, ListDataProvider>();
 function providerFor(model: BindingModel): ListDataProvider {
   let provider = providers.get(model.store);
   if (!provider) {
-    provider = createListDataProvider(model.store, model.name);
+    provider = createProjectUnitListDataProvider(model.store, model.name);
     providers.set(model.store, provider);
   }
   return provider;

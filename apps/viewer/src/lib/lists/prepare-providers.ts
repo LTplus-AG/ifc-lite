@@ -4,7 +4,7 @@
 import { extractProjectUnits, ProjectUnits } from '@ifc-lite/parser';
 import type { ViewerState } from '@/store';
 import type { RenderFrameOffsets } from '@/components/viewer/tools/measure-modes/coordinates';
-import { createListDataProvider } from './index';
+import { createProjectUnitListDataProvider } from './project-unit-quantities';
 import type { ModelProviderPair } from './run-list';
 import { makeWorldPositionGetter } from '../geo/entity-world-position';
 import { zoneVolumeSiScale } from '../units/zone-volume-scale';
@@ -38,7 +38,7 @@ export function prepareListProviders(state: ListProviderState, renderFrame: Rend
       },
       getWorldPosition: makeWorldPositionGetter(store, geometry, renderFrame, toGlobalId),
     };
-    pairs.push({ modelId, store, mutationView: view, provider: createListDataProvider(store, name, zoneContext, view) });
+    pairs.push({ modelId, store, mutationView: view, provider: createProjectUnitListDataProvider(store, name, zoneContext, view) });
   }
   return { pairs, providers: pairs.map((pair) => pair.provider), stores: pairs.map((pair) => pair.store), modelUnits, hasData: pairs.length > 0 };
 }

@@ -12,8 +12,11 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { IfcParser } from '@ifc-lite/parser';
 import { executeList, type ListDefinition } from '@ifc-lite/lists';
-import { IfcTypeEnum } from '@ifc-lite/data';
+import { IfcTypeEnum, QuantityType } from '@ifc-lite/data';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import { createListDataProvider } from './adapter.js';
+import { createProjectUnitListDataProvider } from './project-unit-quantities.js';
 
 const STEP = `ISO-10303-21;
 HEADER;
@@ -53,7 +56,7 @@ describe('list quantity totals honour a member Unit', () => {
   it('sums an explicit-unit quantity in project units', async () => {
     const bytes = new TextEncoder().encode(STEP);
     const store = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
-    const provider = createListDataProvider(store);
+    const provider = createProjectUnitListDataProvider(store);
     const def: ListDefinition = {
       id: 'l', name: 'n', createdAt: 0, updatedAt: 0, entityTypes: [IfcTypeEnum.IfcWall], conditions: [], groups: [],
       columns: [
@@ -65,5 +68,22 @@ describe('list quantity totals honour a member Unit', () => {
     const r = executeList(def, provider, 'm');
     assert.deepEqual(r.rows.map(x => x.values[1]), [10, 5, 3, 7]);
     assert.equal(r.summary?.sums.a, 25);
+  });
+
+  it('converts an overlay-edited quantity that keeps its own unit, and the plain provider keeps the scale', async () => {
+    const bytes = new TextEncoder().encode(STEP);
+    const store = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
+    const view = new MutablePropertyView(store.properties, 'm');
+    view.setQuantityExtractor(id => extractQuantitiesOnDemand(store, id));
+    // W2's own unit is mm2: an edit to 7,000,000 stays in mm2 (7 m2).
+    view.setQuantity(11, 'Qto_WallBaseQuantities', 'NetSideArea', 7_000_000, QuantityType.Area);
+    const plain = createListDataProvider(store, '', undefined, view);
+    const edited = plain.getQuantitySets(11).flatMap(set => set.quantities).find(q => q.name === 'NetSideArea');
+    assert.equal(edited?.value, 7_000_000, 'the plain provider (charts) does not convert');
+    const unedited = createListDataProvider(store).getQuantitySets(11)[0].quantities[0] as { explicitUnitSiScale?: number };
+    assert.equal(unedited.explicitUnitSiScale, 1e-6, 'the plain provider keeps the explicit unit scale');
+    const provider = createProjectUnitListDataProvider(store, '', undefined, view);
+    const converted = provider.getQuantitySets(11).flatMap(set => set.quantities).find(q => q.name === 'NetSideArea');
+    assert.equal(converted?.value, 7);
   });
 });

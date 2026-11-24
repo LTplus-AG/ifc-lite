@@ -74,8 +74,8 @@ export function SavedComparisonLibrary({ result, running }: { result: CompareRes
     <section className="shrink-0 border-b px-3 py-2 text-xs space-y-2" aria-label={t('comparePanel.saved.title')} data-saved-comparisons>
       <div className="font-semibold">{t('comparePanel.saved.title')}</div>
       <SavedComparisonHistoryNotice />
-      <div className="flex gap-2">
-        <input className="min-w-0 flex-1 rounded border bg-background px-2" value={name} onChange={(e) => setName(e.target.value)}
+      <div className="flex flex-wrap gap-2">
+        <input className="min-w-[8rem] flex-1 rounded border bg-background px-2" value={name} onChange={(e) => setName(e.target.value)}
           aria-label={t('comparePanel.saved.name')} placeholder={result ? `${result.baseName} → ${result.headName}` : t('comparePanel.saved.name')} />
         <Button size="sm" variant="outline" disabled={!canSave} onClick={saveCurrent}>{t('comparePanel.saved.save')}</Button>
       </div>

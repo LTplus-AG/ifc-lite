@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { cn } from '@/lib/utils';
 import { useEffect, useState } from 'react';
 import { Crosshair, Pencil } from 'lucide-react';
 import type { Clash } from '@ifc-lite/clash';
@@ -85,17 +86,17 @@ function GroupHeader({ group, draft, resolve, focusClashes, apply }: {
         disabled={!live.length} onClick={() => focusClashes(live)}>
         <Crosshair className="h-3.5 w-3.5" />
       </IconButton>
-    </h4> : <form className="flex items-center gap-1" onSubmit={event => {
+    </h4> : <form className="flex flex-wrap items-center gap-1" onSubmit={event => {
       event.preventDefault();
       if (apply(renameDraftGroup(draft, group.key, renaming))) setRenaming(null);
     }}>
-      <input aria-label={t('clashApply.groupName')} className={`${field} flex-1`} maxLength={100} value={renaming}
+      <input aria-label={t('clashApply.groupName')} className={cn(field, 'min-w-[8rem] flex-1')} maxLength={100} value={renaming}
         onChange={event => setRenaming(event.target.value)} />
       <Button type="submit" size="sm" className="h-7">{t('clashApply.saveName')}</Button>
       <Button type="button" size="sm" variant="ghost" className="h-7" onClick={() => setRenaming(null)}>{t('clashApply.cancelRename')}</Button>
     </form>}
-    {others.length > 0 && <div className="flex items-center gap-1">
-      <select aria-label={t('clashApply.mergeInto', { name: group.name })} className={`${field} flex-1`} value={mergeTarget}
+    {others.length > 0 && <div className="flex flex-wrap items-center gap-1">
+      <select aria-label={t('clashApply.mergeInto', { name: group.name })} className={cn(field, 'min-w-[8rem] flex-1')} value={mergeTarget}
         onChange={event => setMergeTarget(event.target.value)}>
         <option value="">{t('clashApply.mergeInto', { name: group.name })}</option>
         {others.map(other => <option key={other.key} value={other.key}>{other.name}</option>)}

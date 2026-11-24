@@ -13,6 +13,7 @@
  * beside the lighting environment, because it is scene-global.
  */
 import { ENTITY_COLOR_EMPTY_KEY, ENTITY_COLOR_HEADER_WORDS, OVERRIDE_PARAM_EMPHASIZE, OVERRIDE_PARAM_PAINT } from '../entity-color-table.js';
+import { PAINTED_DEPTH_NUDGE_BIT } from './depth-nudge.wgsl.js';
 
 export const entityColorTableWgsl = `
         @binding(5) @group(1) var<storage, read> entityColorTable: array<u32>;
@@ -20,6 +21,8 @@ export const entityColorTableWgsl = `
         const ENTITY_COLOR_HEADER: u32 = ${ENTITY_COLOR_HEADER_WORDS}u;
         const OVERRIDE_PAINT: u32 = ${OVERRIDE_PARAM_PAINT}u;
         const OVERRIDE_EMPHASIZE: u32 = ${OVERRIDE_PARAM_EMPHASIZE}u;
+        // Declared here, not beside nudgedClipZ: the unbiased depth prepass replaces that block.
+        const PAINTED_DEPTH_NUDGE_BIT: u32 = ${PAINTED_DEPTH_NUDGE_BIT}u;
 
         fn entityColorSlotHash(key: u32) -> u32 {
           var h = key;
@@ -48,6 +51,13 @@ export const entityColorTableWgsl = `
         // batch, its selection redraw and the masks all rank it alike (depth-nudge.wgsl.ts).
         fn paintedNudgeBit(id: u32) -> u32 {
           return select(0u, PAINTED_DEPTH_NUDGE_BIT, entityOverrideById(id).a >= 0.0);
+        }
+
+        // The flat path's lane: a draw without an id anchor cannot name the entity (its
+        // colour is not painted either), so it ranks unpainted, as sectionEntityFromLane does.
+        fn lanePaintedNudgeBit(lane: u32) -> u32 {
+          if (uniforms.overrideParams.x == 0xFFFFFFFFu) { return 0u; }
+          return paintedNudgeBit(resolveLaneEntityId(uniforms.overrideParams.x, lane));
         }
 
         // The table's colour for a full scene id; alpha < 0 = none.

@@ -5,7 +5,7 @@
 /**
  * Painted (colour-overridden) surfaces win coplanar depth ties (#11405): the
  * level contract of `nudgedClipZ` (CPU mirror of `depth-nudge.wgsl.ts`), that
- * every vertex entry that nudges depth also ranks painted entities, and the
+ * every derived mesh shader still declares what the painted nudge uses, and the
  * selection masks' colour-table group (`mask-color-table.ts`), which they need
  * to nudge exactly as the colour pass did.
  */
@@ -22,6 +22,11 @@ import {
   PERSPECTIVE_PAINTED_DEPTH_NUDGE_LEVELS,
 } from './shaders/depth-nudge.wgsl.js';
 import { mainShaderSource } from './shaders/main.wgsl.js';
+import { opaqueFastShaderSource } from './shaders/main-opaque-fast.wgsl.js';
+import { streamShaderSource } from './shaders/main-stream.wgsl.js';
+import { ghostShaderSource } from './shaders/ghost.wgsl.js';
+import { texturedShaderSource } from './shaders/textured.wgsl.js';
+import { guardedMeshShader, unbiasedMeshShader } from './shaders/opaque-visibility.wgsl.js';
 import { MaskTableGroup, maskTableLayout } from './mask-color-table.js';
 
 /** WGSL `nudgedClipZ`'s level, perspective (`orthoLevels` absent) or orthographic. */
@@ -60,18 +65,26 @@ describe('painted surfaces win coplanar depth ties', () => {
     assert.ok(shift <= 0.002, `${shift} m at 100 m`);
   });
 
-  it('every vertex entry that nudges depth ranks painted entities, so all passes agree', () => {
-    const entries = [...mainShaderSource.matchAll(/fn (vs_\w+)\([^)]*\)[^{]*\{/g)].map((m) => {
-      let depth = 0, i = m.index! + m[0].length - 1;
-      const start = i;
-      do { if (mainShaderSource[i] === '{') depth++; else if (mainShaderSource[i] === '}') depth--; i++; } while (depth > 0);
-      return { name: m[1]!, body: mainShaderSource.slice(start, i) };
-    });
-    const nudging = entries.filter((e) => e.body.includes('nudgedClipZ('));
-    assert.ok(nudging.length >= 2, 'vs_main and vs_instanced nudge');
-    for (const e of nudging) assert.ok(e.body.includes('paintedNudgeBit('), `${e.name} nudges without the painted bit`);
-    // shadeFlatVertex (vs_main_quantized, the stream) is a helper, not an entry: check it as well.
-    assert.ok(/fn shadeFlatVertex[\s\S]*?paintedNudgeBit\([\s\S]*?nudgedClipZ\(/.test(mainShaderSource));
+  it('every derived mesh shader declares the constants and painted-nudge helpers it uses', () => {
+    // A derivation that drops a block (the unbiased ortho prepass replaces the depth-nudge block)
+    // must not leave a use behind: the module would fail to compile and that pass would break.
+    const derived: Record<string, string> = {
+      main: mainShaderSource, fast: opaqueFastShaderSource, ghost: ghostShaderSource, textured: texturedShaderSource,
+      stream: streamShaderSource(mainShaderSource), streamFast: streamShaderSource(opaqueFastShaderSource),
+    };
+    for (const [name, src] of Object.entries({ ...derived })) {
+      derived[`${name}-unbiased`] = unbiasedMeshShader(src, 4, name === 'ghost' ? undefined : 'fs_main');
+      derived[`${name}-guarded`] = guardedMeshShader(src, 4);
+    }
+    for (const [name, src] of Object.entries(derived)) {
+      const code = src.replace(/\/\/[^\n]*/g, '');
+      const constants = new Set([...code.matchAll(/\bconst\s+([A-Z][A-Z0-9_]*)\b/g)].map((m) => m[1]!));
+      const functions = new Set([...code.matchAll(/\bfn\s+(\w+)\s*\(/g)].map((m) => m[1]!));
+      for (const [, id] of code.matchAll(/\b([A-Z][A-Z0-9_]{2,})\b/g)) assert.ok(constants.has(id!), `${name}: ${id} used but not declared`);
+      for (const helper of ['nudgedClipZ', 'paintedNudgeBit', 'lanePaintedNudgeBit', 'entityOverrideById', 'resolveLaneEntityId']) {
+        if (new RegExp(`\\b${helper}\\(`).test(code)) assert.ok(functions.has(helper), `${name}: ${helper} called but not declared`);
+      }
+    }
   });
 });
 

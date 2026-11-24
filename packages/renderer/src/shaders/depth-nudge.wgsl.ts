@@ -79,7 +79,11 @@
 /** Orthographic: NDC depth between adjacent hash levels, eight units of a 24-bit depth buffer. */
 export const ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL = 8 * 2 ** -24;
 
-/** Orthographic: the furthest any surface moves toward the camera, in metres. */
+/**
+ * Orthographic: the furthest an unpainted surface moves toward the camera, in
+ * metres. A painted one (`PAINTED_DEPTH_NUDGE_BIT`) may move up to a quarter
+ * further: its levels sit above these, so it wins a tie with any of them.
+ */
 export const ORTHOGRAPHIC_MAX_DEPTH_NUDGE_METRES = 0.025;
 
 /** Largest mesh hash (`zHash` is masked to 8 bits). */
@@ -116,6 +120,11 @@ export const PERSPECTIVE_OVERLAY_DEPTH_LIFT = 5e-5;
  */
 export const PAINTED_DEPTH_NUDGE_BIT = 256;
 
+/** Orthographic: levels the overlay lift clears, painted levels included (WGSL `overlayLiftedClipZ`; CPU picking). */
+export function orthographicOverlayLiftLevels(levels: number): number {
+  return levels + Math.max(levels >> 2, 1) + 1;
+}
+
 /** Perspective: levels painted surfaces rank on, above `PERSPECTIVE_DEPTH_NUDGE_LEVELS`. */
 export const PERSPECTIVE_PAINTED_DEPTH_NUDGE_LEVELS = PERSPECTIVE_DEPTH_NUDGE_LEVELS >> 2;
 
@@ -128,7 +137,6 @@ const projectionWgsl = `
         const ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL: f32 = ${ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL};
         const ORTHOGRAPHIC_MAX_DEPTH_NUDGE_METRES: f32 = ${ORTHOGRAPHIC_MAX_DEPTH_NUDGE_METRES};
         const MAX_DEPTH_NUDGE_HASH: f32 = ${MAX_DEPTH_NUDGE_HASH}.0;
-        const PAINTED_DEPTH_NUDGE_BIT: u32 = ${PAINTED_DEPTH_NUDGE_BIT}u;
 
         fn isOrthographicProjection(viewProj: mat4x4<f32>) -> bool {
           return viewProj[0][3] == 0.0 && viewProj[1][3] == 0.0 && viewProj[2][3] == 0.0 && viewProj[3][3] == 1.0;

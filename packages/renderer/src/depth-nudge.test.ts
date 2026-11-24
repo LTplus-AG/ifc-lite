@@ -24,6 +24,7 @@ import {
   PERSPECTIVE_DEPTH_NUDGE_PER_LEVEL,
   PERSPECTIVE_MAX_DEPTH_NUDGE_RELATIVE,
   PERSPECTIVE_OVERLAY_DEPTH_LIFT,
+  orthographicOverlayLiftLevels,
 } from './shaders/depth-nudge.wgsl.js';
 
 /** One unit of a 24-bit depth buffer, in NDC. */
@@ -48,10 +49,9 @@ function paintedLevels(levels: number): number {
   return Math.max(levels >> 2, 1);
 }
 
-/** WGSL ortho overlay lift: above every level, painted ones included. */
+/** WGSL ortho overlay lift (shared with CPU annotation picking): above every level, painted ones included. */
 function overlayLift(depthRange: number): number {
-  const levels = nudgeLevels(depthRange);
-  return Math.max(PERSPECTIVE_OVERLAY_DEPTH_LIFT, (levels + paintedLevels(levels) + 1) * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL);
+  return Math.max(PERSPECTIVE_OVERLAY_DEPTH_LIFT, orthographicOverlayLiftLevels(nudgeLevels(depthRange)) * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL);
 }
 
 /** A kilometre site, the scale the issue's glitches showed at. */

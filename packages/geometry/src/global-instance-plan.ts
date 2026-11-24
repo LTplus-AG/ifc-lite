@@ -17,7 +17,7 @@
  */
 
 import type { IfcAPI } from '@ifc-lite/wasm';
-import { readGlobalInstancingFlag } from './perf-flags.js';
+import { globalInstancingApplies } from './perf-flags.js';
 
 /** Unplanned job (the pre-pass's `KEY_PLAN_NONE`). */
 const KEY_PLAN_NONE = 0xffff_ffff;
@@ -73,16 +73,16 @@ export interface GlobalKeyPlanningField {
   globalInstancing?: boolean;
 }
 
-/** Field for the pre-pass request: plan content keys when the flag is on. */
-export function globalKeyPlanningField(): GlobalKeyPlanningField {
-  return readGlobalInstancingFlag() ? { globalInstancing: true } : {};
+/** Field for the pre-pass request: plan content keys when the plan applies. */
+export function globalKeyPlanningField(byteLength: number): GlobalKeyPlanningField {
+  return globalInstancingApplies(byteLength) ? { globalInstancing: true } : {};
 }
 
-/** Prepass-columns fields for the workers: the counts when the flag is on and they match the plan. */
-export function globalPlanColumns(evt: Record<string, unknown>): GlobalPlanColumns {
+/** Prepass-columns fields for the workers: the counts when the plan applies and they match the plan. */
+export function globalPlanColumns(evt: Record<string, unknown>, byteLength: number): GlobalPlanColumns {
   const plan = evt.mappedInstancePlan as Uint32Array | undefined;
   const counts = evt.mappedInstanceCounts as Uint32Array | undefined;
-  if (!readGlobalInstancingFlag() || !plan || !counts || counts.length !== plan.length) return {};
+  if (!globalInstancingApplies(byteLength) || !plan || !counts || counts.length !== plan.length) return {};
   return { globalInstancing: true, mappedInstanceCounts: counts.slice() };
 }
 

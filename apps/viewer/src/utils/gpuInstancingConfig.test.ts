@@ -4,7 +4,7 @@
 
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { configureGpuInstancing, isGpuInstancingEnabled } from './gpuInstancingConfig.js';
+import { configureGpuInstancing, configureKeyedInstancing, isGpuInstancingEnabled } from './gpuInstancingConfig.js';
 
 const g = globalThis as Record<string, unknown>;
 
@@ -45,5 +45,16 @@ describe('GPU-driven instancing config', () => {
     setSearch('?perf.gpuInstancing=1');
     g.__IFC_LITE_GPU_INSTANCING = 0;
     assert.equal(isGpuInstancingEnabled(), false);
+  });
+});
+
+describe('keyed instancing config (#11390 follow-up)', () => {
+  it('joins keyed records unless the global instance plan is explicitly killed', () => {
+    for (const [search, on] of [['', true], ['?perf.globalInstancing=1', true], ['?perf.globalInstancing=0', false]] as const) {
+      setSearch(search);
+      const scene = { keyedInstancing: { enabled: !on } };
+      assert.equal(configureKeyedInstancing(scene), on, search || 'unset');
+      assert.equal(scene.keyedInstancing.enabled, on);
+    }
   });
 });

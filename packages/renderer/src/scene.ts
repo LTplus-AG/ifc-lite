@@ -250,7 +250,7 @@ export class Scene {
    *  release — every reader already tolerates a missing entry. */
   private instancedTemplateCpu: (InstancedTemplateCpu | undefined)[] = [];
   readonly keyedInstancing = new KeyedInstancing(); // model-wide templates of keyed shards (global instance plan)
-  setKeyedInstancing(enabled: boolean): void { this.keyedInstancing.enabled = enabled; }
+  hasKeyedTemplates(): boolean { return this.keyedInstancing.receivedKeyedShards; } // the global instance plan applied to a model here
   private instancedDevice?: GPUDevice;                              // cached for per-instance flag/colour writeBuffer updates
   private instancedSelected: Set<number> = new Set();              // currently flag-selected instanced express_ids
   private instancedSelectedItemExpressId?: number; private instancedSelectedItemId?: number;  // #4382: RenderOptions.selectedItemId

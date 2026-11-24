@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { Renderer } from '@ifc-lite/renderer';
-import { recordAppliedPerfFlag } from '../lib/perf/flags.js';
-import { isHugeGeometryEnabled, isPerfFlagOn, readRampFlag } from './hugeGeometryConfig.js';
+import { readPerfFlag, recordAppliedPerfFlag } from '../lib/perf/flags.js';
+import { isHugeGeometryEnabled, isPerfFlagOff, isPerfFlagOn, readRampFlag } from './hugeGeometryConfig.js';
 
 /**
  * GPU-driven instancing (`@ifc-lite/renderer` gpu-instance-pool.ts), OFF by
@@ -19,7 +19,7 @@ export function isGpuInstancingEnabled(readFeatureFlag?: (key: string) => unknow
   const huge = isHugeGeometryEnabled();
   const raw = readRampFlag('gpuInstancing', huge, readFeatureFlag);
   if (isPerfFlagOn(raw)) return true;
-  return raw === false || raw === 0 || raw === '0' || raw === 'false' ? false : huge; // unrecognised values do not override
+  return isPerfFlagOff(raw) ? false : huge; // unrecognised values do not override
 }
 
 /** Hand the flag to a fresh renderer before instanced shards stream in; a no-op when off. */
@@ -28,4 +28,14 @@ export function configureGpuInstancing(renderer: Pick<Renderer, 'setGpuInstancin
   recordAppliedPerfFlag('gpuInstancing', on); // the telemetry arm is what ran
   if (on) console.log('[Viewport] GPU-driven instancing on');
   return on;
+}
+
+/**
+ * The scene joins keyed instanced records (global instance plan) by default, on every upload path, so a reopen
+ * draws like its cold load. An explicit `?perf.globalInstancing=0` is the kill switch for the join as well: a reopen
+ * of a snapshot cached with the plan then draws one template per record, as before the plan. Read once at init.
+ */
+export function configureKeyedInstancing(scene: { keyedInstancing: { enabled: boolean } }): boolean {
+  scene.keyedInstancing.enabled = !isPerfFlagOff(readPerfFlag('globalInstancing'));
+  return scene.keyedInstancing.enabled;
 }

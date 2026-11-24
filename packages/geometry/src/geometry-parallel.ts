@@ -1267,7 +1267,7 @@ export async function* processParallel(
                 type: 'set-prepass-columns' as const,
                 referencedRepmaps: rRepmaps,
                 instantiatedTypeIds: rTypeIds,
-                mappedInstancePlan: rMappedPlan, ...globalPlanColumns(evt),
+                mappedInstancePlan: rMappedPlan, ...globalPlanColumns(evt, buffer.length),
                 mliElementIds: mIds,
                 mliAxis: mAxis,
                 mliLayerCounts: mCounts,
@@ -1416,7 +1416,7 @@ export async function* processParallel(
       }
       prepassWorker.postMessage({
         type: 'prepass-streaming-sharded',
-        sourceFingerprint: options?.sourceFingerprint, ...globalKeyPlanningField(),
+        sourceFingerprint: options?.sourceFingerprint, ...globalKeyPlanningField(buffer.length),
         sharedBuffer,
         chunkSize: 50_000,
         ...(visibilityFilter?.disabledTypes ? { disabledTypes: visibilityFilter.disabledTypes } : {}),
@@ -1429,7 +1429,7 @@ export async function* processParallel(
     } else {
       prepassWorker.postMessage({
         type: 'prepass-streaming',
-        sourceFingerprint: options?.sourceFingerprint, ...globalKeyPlanningField(),
+        sourceFingerprint: options?.sourceFingerprint, ...globalKeyPlanningField(buffer.length),
         sharedBuffer,
         chunkSize: 50_000,
         ...(visibilityFilter?.disabledTypes ? { disabledTypes: visibilityFilter.disabledTypes } : {}),

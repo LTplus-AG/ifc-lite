@@ -9,6 +9,11 @@ export function isPerfFlagOn(raw: unknown): boolean {
   return raw === true || raw === 1 || raw === '1' || raw === 'true';
 }
 
+/** An explicit off (a kill switch), as opposed to unset or an unrecognised value. */
+export function isPerfFlagOff(raw: unknown): boolean {
+  return raw === false || raw === 0 || raw === '0' || raw === 'false';
+}
+
 /**
  * Huge-geometry umbrella, OFF by default: `?perf.huge=1` or
  * `globalThis.__IFC_LITE_HUGE = 1` turns on the recommended render paths

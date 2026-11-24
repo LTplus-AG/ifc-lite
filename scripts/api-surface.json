@@ -7005,6 +7005,7 @@
     "EntityWorldAabb: interface",
     "ExtrusionDefinitions: type",
     "GEOMETRY_PERF_FLAG_BINDINGS: const",
+    "GLOBAL_INSTANCING_MIN_BYTES: const",
     "GeometryBatch: interface",
     "GeometryDiagnostics: interface",
     "GeometryMeshingSettings: interface",

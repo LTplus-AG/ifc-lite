@@ -53,8 +53,8 @@ export function refitCompletedStreamBounds(params: Params): void {
     let exactBounds = robust ?? rb?.fit ?? computeBounds(withoutIds(capturedGeometry, fitExcludedIds)) ?? fullBounds;
     // #7955: retained flat walls and grouped columns share one final framing
     // extent. Keep exact's existing robust fit and telemetry unchanged.
-    if (instanceOnlyLoadPossible(geometryKernel)) { // the global instance plan instances part of an exact load too
-      const scene = renderer.getScene();
+    const scene = renderer.getScene();
+    if (instanceOnlyLoadPossible(geometryKernel, scene)) { // the global instance plan instances part of an exact load too
       for (const id of scene.getInstancedEntityIds()) {
         const instance = scene.getInstancedEntityBounds(id);
         if (!instance) continue;

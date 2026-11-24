@@ -149,8 +149,8 @@ describe('property-set readers read a PAGE-operand literal whole (#7589)', () =>
   };
 
   it('reads the set name to the literal end', () => {
-    expect(getPropertySetName(ctx, 5)).toBe(String.raw`Para \S\' 5`);
-    expect(getElementQuantityName(ctx, 6)).toBe(String.raw`Art \S\' 7`);
+    expect(getPropertySetName(ctx, 5)).toBe('Para \u00A7 5');
+    expect(getElementQuantityName(ctx, 6)).toBe('Art \u00A7 7');
   });
 
   it('finds the owner history after a PAGE-operand GlobalId', () => {

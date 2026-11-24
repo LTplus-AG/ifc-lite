@@ -19,7 +19,7 @@
 
 import type { IfcDataStore, IfcAttributeValue, EntityExtractor } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { generateIfcGuid, stepStringLiteralEnd, type RandomSource } from '@ifc-lite/encoding';
+import { decodeStepStringLiteral, generateIfcGuid, stepStringLiteralEnd, type RandomSource } from '@ifc-lite/encoding';
 import { createSourceRefReader, decodeRange } from './source-ref-bounds.js';
 import { findLengthUnitReference, normalizeMapUnitName } from './step-map-unit.js';
 import { authoredEntityRefs, type EffectiveEntityIndex } from './effective-index.js';
@@ -154,7 +154,11 @@ export function entityLineText(ctx: PropertySetContext, entityId: number): strin
 }
 
 /**
- * Get the name of a property set by parsing the entity
+ * Get the DECODED name of a property set by parsing the entity: the value the
+ * mutation overlay and every caller's name set carry, with `''`, `\\` and the
+ * `\X2\`/`\X4\`/`\X\`/`\S\` directives resolved. The raw text never equals
+ * it for a name holding a quote, a backslash or a non-ASCII letter, so a
+ * comparison against the raw form silently misses that set.
  */
 export function getPropertySetName(ctx: PropertySetContext, psetId: number): string | null {
   const entityText = currentSetLine(ctx, psetId);
@@ -165,22 +169,23 @@ export function getPropertySetName(ctx: PropertySetContext, psetId: number): str
 }
 
 /**
- * The raw text of the literal opening where `prefix` (global, ending at the
+ * The decoded text of the literal opening where `prefix` (global, ending at the
  * opening `'`) first matches with a literal that closes. Read whole by the
  * shared rule, so `''` and a `\S\'` PAGE operand do not cut the name short
- * (#7589).
+ * (#7589), then decoded by the one literal decoder.
  */
 function rawThirdLiteral(entityText: string, prefix: RegExp): string | null {
   for (const match of entityText.matchAll(prefix)) {
     const open = match.index + match[0].length - 1;
     const end = stepStringLiteralEnd(entityText, open);
-    if (end !== -1) return entityText.slice(open + 1, end - 1);
+    if (end !== -1) return decodeStepStringLiteral(entityText.slice(open + 1, end - 1));
   }
   return null;
 }
 
 /**
- * Get the name of an element quantity set by parsing the entity
+ * Get the DECODED name of an element quantity set by parsing the entity (see
+ * {@link getPropertySetName}).
  */
 export function getElementQuantityName(ctx: PropertySetContext, entityId: number): string | null {
   const entityText = entityLineText(ctx, entityId);

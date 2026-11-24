@@ -20,26 +20,33 @@
 
 use crate::types::mesh::{InstanceRecord, MeshData, RawInstanceOccurrence};
 use rustc_hash::FxHashMap;
+use crate::element::StyleSource;
 
 /// Resolve the collected don't-bake occurrences into [`InstanceRecord`]s against the
 /// retained template meshes. `meshes` is mutated ONLY by APPENDING recovered orphan
 /// flats — templates and every other mesh are left untouched (byte-identical) — so
 /// this is a no-op on the flat path (`raw` empty).
 pub(super) fn finalize_instances(
-    raw: Vec<RawInstanceOccurrence>,
+    raw: Vec<(RawInstanceOccurrence, StyleSource)>,
     meshes: &mut Vec<MeshData>,
     mapped_item_cache: &ifc_lite_geometry::SharedMappedItemCache,
     rtc: [f64; 3],
-) -> Vec<InstanceRecord> {
+) -> (Vec<InstanceRecord>, Vec<StyleSource>, Vec<StyleSource>) {
     if raw.is_empty() {
-        return Vec::new();
+        return (Vec::new(), Vec::new(), Vec::new());
     }
     // rep_identity ⇒ the template mesh's index (the min-id occurrence that materialized).
     let template_by_rep = index_templates_by_rep(meshes.iter(), |i, _| i);
 
-    let mut records: Vec<InstanceRecord> = Vec::new();
-    let mut orphan_flats: Vec<MeshData> = Vec::new();
-    for (rep, occs) in group_occurrences_by_rep(raw) {
+    let mut records = Vec::new();
+    let mut orphan_flats = Vec::new();
+    let mut groups = FxHashMap::<_, Vec<_>>::default();
+    for (occ, style) in raw {
+        groups.entry(occ.rep_identity).or_default().push((occ, style));
+    }
+    let mut groups: Vec<_> = groups.into_iter().collect();
+    groups.sort_by_key(|(rep, _)| *rep);
+    for (rep, occs) in groups {
         // Template present (the common, expected case): emit template-relative records.
         if let Some(&t_idx) = template_by_rep.get(&rep) {
             if let Some(im) = meshes[t_idx].instance.as_ref() {
@@ -47,13 +54,13 @@ pub(super) fn finalize_instances(
                 let template_express_id = meshes[t_idx].express_id;
                 let mut batch = Vec::with_capacity(occs.len());
                 let mut all_ok = true;
-                for occ in &occs {
+                for (occ, style) in &occs {
                     match ifc_lite_geometry::instance_rel_row_major_f32(
                         &occ.world_transform,
                         &m_ref,
                         rtc,
                     ) {
-                        Some(transform) => batch.push(InstanceRecord {
+                        Some(transform) => batch.push((InstanceRecord {
                             express_id: occ.express_id,
                             ifc_type: occ.ifc_type.clone(),
                             global_id: occ.global_id.clone(),
@@ -64,7 +71,7 @@ pub(super) fn finalize_instances(
                             rep_identity: rep,
                             transform,
                             geometry_item_id: occ.geometry_item_id,
-                        }),
+                        }, *style)),
                         // Singular m_ref (degenerate placement) ⇒ recover flat instead.
                         None => {
                             all_ok = false;
@@ -82,7 +89,10 @@ pub(super) fn finalize_instances(
         // from the shared source registry. Effectively unreachable for the eligible
         // single-solid type-instanced set (their template occurrence always
         // materializes), but guarantees no geometry is ever dropped.
-        if !recover_occurrences_flat(rep, &occs, mapped_item_cache, rtc, &mut orphan_flats) {
+        if !recover_occurrences(
+            rep, occs.iter().map(|(occ, style)| (occ, *style)), mapped_item_cache, rtc,
+            |mesh, style| orphan_flats.push((mesh, style)),
+        ) {
             tracing::warn!(
                 source_id = rep as u32,
                 occurrences = occs.len(),
@@ -92,10 +102,15 @@ pub(super) fn finalize_instances(
     }
     // The occurrences arrived in parallel-collection (nondeterministic) order; sort
     // both outputs by element id so the instanced result is deterministic run to run.
-    records.sort_by_key(|r| (r.express_id, r.rep_identity));
-    orphan_flats.sort_by_key(|m| m.express_id);
-    meshes.append(&mut orphan_flats);
-    records
+    records.sort_by_key(|(record, _)| (record.express_id, record.rep_identity));
+    orphan_flats.sort_by_key(|(mesh, _)| mesh.express_id);
+    let (records, styles) = records.into_iter().unzip();
+    let mut recovered_styles = Vec::with_capacity(orphan_flats.len());
+    for (mesh, style) in orphan_flats {
+        meshes.push(mesh);
+        recovered_styles.push(style);
+    }
+    (records, styles, recovered_styles)
 }
 
 /// Group don't-bake occurrences by shared-template key (`rep_identity`, the
@@ -160,6 +175,19 @@ pub fn recover_occurrences_flat(
     rtc: [f64; 3],
     out: &mut Vec<MeshData>,
 ) -> bool {
+    recover_occurrences(
+        rep, occs.iter().map(|occ| (occ, ())), mapped_item_cache, rtc,
+        |mesh, ()| out.push(mesh),
+    )
+}
+
+fn recover_occurrences<'a, T>(
+    rep: u128,
+    occs: impl IntoIterator<Item = (&'a RawInstanceOccurrence, T)>,
+    mapped_item_cache: &ifc_lite_geometry::SharedMappedItemCache,
+    rtc: [f64; 3],
+    mut emit: impl FnMut(MeshData, T),
+) -> bool {
     // Mapped rep_identity is the RepresentationMap source id (always < 2^32); a
     // direct-solid tag never reaches this don't-bake path.
     let source_id = rep as u32;
@@ -171,13 +199,13 @@ pub fn recover_occurrences_flat(
     let Some(source) = source else {
         return false;
     };
-    for occ in occs {
+    for (occ, context) in occs {
         let (positions, normals, indices) =
             ifc_lite_geometry::bake_source_at_world(&source, &occ.world_transform, rtc);
         if positions.is_empty() || indices.is_empty() {
             continue;
         }
-        out.push(
+        emit(
             MeshData::new(
                 occ.express_id,
                 occ.ifc_type.clone(),
@@ -197,6 +225,7 @@ pub fn recover_occurrences_flat(
             // the absence is indistinguishable from "this geometry has none".
             // `false` = the id is a representation item, never a material (#3199).
             .with_style_metadata(None, occ.geometry_item_id, false),
+            context,
         );
     }
     true
@@ -249,13 +278,14 @@ mod orphan_recovery_tests {
     fn an_orphan_recovered_flat_reports_its_item_id() {
         // No mesh carries this rep_identity ⇒ no template ⇒ the orphan branch.
         let mut meshes: Vec<MeshData> = Vec::new();
-        let records = finalize_instances(
-            vec![occurrence(7, Some(ITEM_ID))],
+        let (records, _, recovered_styles) = finalize_instances(
+            vec![(occurrence(7, Some(ITEM_ID)), StyleSource::Style(42))],
             &mut meshes,
             &cache_with_source(),
             [0.0, 0.0, 0.0],
         );
 
+        assert_eq!(recovered_styles, [StyleSource::Style(42)]);
         assert!(records.is_empty(), "an orphan emits no InstanceRecord");
         assert_eq!(meshes.len(), 1, "the orphan must be recovered flat, not dropped");
         assert_eq!(
@@ -274,7 +304,7 @@ mod orphan_recovery_tests {
         // not on a fabricated `#0` a host would follow to nothing.
         let mut meshes: Vec<MeshData> = Vec::new();
         finalize_instances(
-            vec![occurrence(7, None)],
+            vec![(occurrence(7, None), StyleSource::Unstyled)],
             &mut meshes,
             &cache_with_source(),
             [0.0, 0.0, 0.0],

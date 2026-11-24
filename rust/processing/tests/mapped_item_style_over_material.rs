@@ -221,10 +221,15 @@ fn a_material_colour_equal_to_a_glossy_occurrence_borrows_no_finish() {
 #[derive(Default)]
 struct Recorder {
     pending: Vec<Option<SpecularMaterial>>,
+    instance_finishes: Vec<Option<SpecularMaterial>>,
     meshes: Vec<(MeshData, Option<SpecularMaterial>)>,
 }
 
 impl ProcessingSink for Recorder {
+    fn on_instance_finishes(&mut self, finishes: &[Option<SpecularMaterial>]) {
+        self.instance_finishes = finishes.to_vec();
+    }
+
     fn on_finishes(&mut self, finishes: &[Option<SpecularMaterial>]) {
         self.pending = finishes.to_vec();
     }
@@ -262,4 +267,22 @@ fn roughness(finish: Option<SpecularMaterial>) -> Option<f32> {
 /// The smallest x of a mesh's vertices (positions are placed, relative to `origin`).
 fn world_min_x(mesh: &MeshData) -> f64 {
     mesh.positions.chunks_exact(3).map(|p| f64::from(p[0]) + mesh.origin[0]).fold(f64::INFINITY, f64::min)
+}
+
+#[test]
+fn native_instances_keep_same_colour_occurrence_finishes_10698() {
+    let request = ProcessingRequest::full_pass().instancing(true);
+    let features = request.features.finishes(true);
+    let mut sink = Recorder::default();
+    let result = process(MAPPED_ITEM_STYLE_IFC.as_bytes(), &request.features(features), &mut sink);
+    assert_eq!(result.instances.len(), sink.instance_finishes.len());
+    let mut finishes: Vec<_> = result.instances.iter().zip(sink.instance_finishes)
+        .filter(|(instance, _)| instance.express_id == 100)
+        .map(|(instance, finish)| {
+            assert!(approx_eq(instance.color, DARK));
+            roughness(finish).expect("authored occurrence finish")
+        })
+        .collect();
+    finishes.sort_by(f32::total_cmp);
+    assert_eq!(finishes, [0.2, 0.8]);
 }

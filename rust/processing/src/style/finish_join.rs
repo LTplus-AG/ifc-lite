@@ -49,7 +49,7 @@
 use crate::prepass::{resolve_geometry_finishes, PrepassSpans, Span};
 use crate::style::{GeometryStyleInfo, SpecularMaterial};
 use crate::element::StyleSource;
-use crate::types::mesh::{InstanceRecord, MeshData};
+use crate::types::mesh::MeshData;
 use ifc_lite_core::{EntityDecoder, EntityIndex, EntityScanner, IfcType};
 use rustc_hash::FxHashMap;
 
@@ -262,10 +262,6 @@ impl<'c> ModelFinishes<'c> {
     /// The finish `mesh` carries, by the module's rule.
     pub fn finish_for_mesh(&mut self, mesh: &MeshData) -> Option<SpecularMaterial> {
         self.finish_for_item(mesh.express_id, mesh.geometry_item_id, mesh.color)
-    }
-
-    pub(crate) fn finish_for_instance(&mut self, instance: &InstanceRecord) -> Option<SpecularMaterial> {
-        self.finish_for_item(instance.express_id, instance.geometry_item_id, instance.color)
     }
 
     fn finish_for_item(

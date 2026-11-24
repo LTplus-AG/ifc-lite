@@ -7,11 +7,11 @@
 //! georeferencing and assemble the [`ProcessingResult`].
 
 use super::diagnostics;
-use super::pass::{cancelled, emit_finishes, PassContext, Passed};
+use super::pass::{cancelled, PassContext, Passed};
 use super::phase_marks::{mark, Clock, Mark};
 use super::{csg_summary, instancing, ProcessingRequest, ProcessingResult, ProcessingSink};
 use crate::style::ModelFinishes;
-use crate::types::mesh::{InstanceRecord, MeshData};
+use crate::types::mesh::MeshData;
 use crate::types::response::{CoordinateInfo, ModelMetadata, ProcessingStats};
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
@@ -86,9 +86,9 @@ fn emit_final_batches(
     sink: &mut dyn ProcessingSink,
     mut finishes: Option<ModelFinishes<'_>>,
     recovered: &[MeshData],
-    instances: &[InstanceRecord],
-    processed_jobs: usize,
-    total_jobs: usize,
+    recovered_styles: &[crate::element::StyleSource],
+    instance_styles: &[crate::element::StyleSource],
+    progress: (usize, usize),
 ) -> (usize, usize, usize) {
     let mut counts = (0, 0, 0);
     if !recovered.is_empty() {
@@ -96,14 +96,14 @@ fn emit_final_batches(
         counts.1 = recovered.iter().map(|mesh| mesh.vertex_count()).sum::<usize>();
         counts.2 = recovered.iter().map(|mesh| mesh.triangle_count()).sum::<usize>();
         if !cancelled(req) {
-            emit_finishes(sink, finishes.as_mut(), recovered);
-            sink.on_batch(recovered, processed_jobs, total_jobs);
+            super::pass_finishes::emit_finishes(sink, finishes.as_mut(), recovered, recovered_styles, false);
+            sink.on_batch(recovered, progress.0, progress.1);
         }
     }
-    if let Some(finishes) = finishes.as_mut().filter(|_| !instances.is_empty() && !cancelled(req)) {
-        let values: Vec<_> = instances
+    if let Some(finishes) = finishes.as_mut().filter(|_| !instance_styles.is_empty() && !cancelled(req)) {
+        let values: Vec<_> = instance_styles
             .iter()
-            .map(|record| finishes.finish_for_instance(record))
+            .map(|&style| finishes.finish_for_source(style))
             .collect();
         sink.on_instance_finishes(&values);
     }
@@ -194,7 +194,7 @@ pub(super) fn finish(
     // path (no armed plan => no occurrences collected). `meshes` is only appended to
     // (orphan recovery), so the flat output stays byte-identical.
     let first_recovered = meshes.len();
-    let instances = instancing::finalize_instances(
+    let (instances, instance_styles, recovered_styles) = instancing::finalize_instances(
         raw_instance_collector
             .into_inner()
             .unwrap_or_else(|poisoned| poisoned.into_inner()),
@@ -203,7 +203,7 @@ pub(super) fn finish(
         [rtc_offset.0, rtc_offset.1, rtc_offset.2],
     );
     let (mesh_count, vertex_count, triangle_count) =
-        emit_final_batches(req, sink, finishes, &meshes[first_recovered..], &instances, processed_jobs, total_jobs);
+        emit_final_batches(req, sink, finishes, &meshes[first_recovered..], &recovered_styles, &instance_styles, (processed_jobs, total_jobs));
     total_meshes += mesh_count;
     total_vertices += vertex_count;
     total_triangles += triangle_count;

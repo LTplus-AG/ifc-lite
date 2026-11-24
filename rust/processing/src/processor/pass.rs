@@ -68,7 +68,7 @@ pub(super) struct PassContext<'c> {
     pub(super) indexed_colour_split_ids: Option<Arc<FxHashSet<u32>>>,
     /// The don't-bake occurrences of every chunk/thread; resolved into
     /// `InstanceRecord`s against the retained template meshes after the pass.
-    pub(super) raw_instance_collector: std::sync::Mutex<Vec<RawInstanceOccurrence>>,
+    pub(super) raw_instance_collector: std::sync::Mutex<Vec<(RawInstanceOccurrence, crate::element::StyleSource)>>,
     /// One slot per rayon worker, indexed by thread index (see `jobs.rs`).
     pub(super) worker_point_caches: WorkerPointCaches,
     pub(super) worker_placement_caches: WorkerPlacementCaches,
@@ -234,14 +234,6 @@ fn finish_join<'c>(
     req.features.finishes.then(|| {
         ModelFinishes::from_spans(&facts.prepass_spans.styled_items, ctx.entity_index.decoder(content))
     })
-}
-
-/// `on_finishes` for the batch about to be emitted, one entry per mesh, when
-/// the request asked for finishes.
-pub(super) fn emit_finishes(sink: &mut dyn ProcessingSink, finishes: Option<&mut ModelFinishes<'_>>, meshes: &[MeshData]) {
-    let Some(finishes) = finishes else { return };
-    let batch: Vec<_> = meshes.iter().map(|mesh| finishes.finish_for_mesh(mesh)).collect();
-    sink.on_finishes(&batch);
 }
 
 pub(super) fn run<'c>(

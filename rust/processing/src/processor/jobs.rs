@@ -268,7 +268,7 @@ fn mesh_job(
     };
     // `into_parts` gives one source per mesh, in order; they are paired again
     // below once the diagnostics have read the plain output.
-    let (produced, mesh_styles, _) = produced.into_parts();
+    let (produced, mesh_styles, occurrence_styles) = produced.into_parts();
 
     // The warm cache is moved back to the worker by `WorkerCacheGuard::drop`, on
     // every exit path.
@@ -289,7 +289,7 @@ fn mesh_job(
     // collector (resolved into InstanceRecords later; empty on the flat path).
     if !produced.instance_occurrences.is_empty() {
         if let Ok(mut acc) = ctx.raw_instance_collector.lock() {
-            acc.extend(produced.instance_occurrences);
+            acc.extend(produced.instance_occurrences.into_iter().zip(occurrence_styles));
         }
     }
 

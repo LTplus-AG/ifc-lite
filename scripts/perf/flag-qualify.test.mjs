@@ -10,10 +10,11 @@ import { describe, it } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { deflateSync } from 'node:zlib';
 import {
-  FLAG_PRESETS, compareArms, decodePng, encodePng, failingTests, flagBootScript, flagSetLabel, injectBootScript,
-  failingTestFiles, markdownTable, noRegression, testPatternFor, overall, parseFlagSet, pixelStats, registryFlagSpec, resolveModels, suiteRows,
-  unitInjectable, unitPreloadSource, withNodeImport, writeFlaggedDist,
+  FLAG_PRESETS, compareArms, failingTests, flagBootScript, flagSetLabel, injectBootScript, failingTestFiles,
+  markdownTable, noRegression, testPatternFor, overall, parseFlagSet, registryFlagSpec, resolveModels,
+  suiteRows, unitInjectable, unitPreloadSource, withNodeImport, writeFlaggedDist,
 } from './flag-qualify-lib.mjs';
+import { decodePng, encodePng, pixelStats } from './flag-qualify-pixels.mjs';
 
 const image = (width, height, fill = [10, 20, 30, 255]) => {
   const data = new Uint8Array(width * height * 4);
@@ -94,11 +95,16 @@ describe('flagBootScript', () => {
   });
 });
 
+/** Run a page's inline scripts in document order in `sandbox`, as a browser would before its modules. */
+function runPageScripts(markup, sandbox) {
+  for (const [, body] of markup.matchAll(/<script(?: [^>]*)?>([^<]*)<\/script>/g)) if (body.trim()) runInNewContext(body, sandbox);
+  return sandbox;
+}
+
 describe('flagged dist', () => {
-  it('puts the boot script first in <head>, before the module script', () => {
-    const html = injectBootScript('<html><head lang="en"><script type="module" src="/a.js"></script></head></html>', 'BOOT');
-    assert.ok(html.indexOf('BOOT') < html.indexOf('type="module"'));
-    assert.match(html, /<head lang="en">\n<script data-ifc-lite-qualify>BOOT<\/script>/);
+  it('runs the boot script before every script the page already had', () => {
+    const page = injectBootScript('<html><head lang="en"><script>order.push("app")</script></head></html>', 'order.push("boot")');
+    assert.deepEqual([...runPageScripts(page, { order: [] }).order], ['boot', 'app']);
     assert.throws(() => injectBootScript('<html></html>', 'x'), /no <head>/);
   });
 
@@ -110,9 +116,13 @@ describe('flagged dist', () => {
       writeFileSync(join(dir, 'dist/assets/a.js'), 'x');
       writeFlaggedDist(join(dir, 'dist'), join(dir, 'on'), drawStream());
       assert.ok(lstatSync(join(dir, 'on/assets')).isSymbolicLink(), 'the build is linked, not copied');
-      assert.match(readFileSync(join(dir, 'on/index.html'), 'utf8'), /m6\.stream/);
+      // Behaviour, not text: run the scripts the flagged page runs before its app, in page order.
+      const page = { URL, location: { href: 'http://x/' }, history: { state: null, replaceState: (_s, _t, url) => { page.location.href = String(url); } } };
+      page.globalThis = page;
+      runPageScripts(readFileSync(join(dir, 'on/index.html'), 'utf8'), page);
+      assert.equal(page.__IFC_LITE_M6__, 1);
+      assert.equal(new URL(page.location.href).searchParams.get('m6.stream'), '1');
       assert.equal(readFileSync(join(dir, 'on/assets/a.js'), 'utf8'), 'x');
-      assert.doesNotMatch(readFileSync(join(dir, 'dist/index.html'), 'utf8'), /m6\.stream/);
       assert.equal(JSON.parse(readFileSync(join(dir, 'on/qualify-flags.json'), 'utf8')).name, 'drawStream');
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });

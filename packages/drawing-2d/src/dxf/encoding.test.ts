@@ -16,6 +16,15 @@
 
 import { describe, expect, it } from 'vitest';
 import { encodeDxfCp1252 } from './encoding.js';
+import { DxfWriter } from './writer.js';
+import { parseDxf } from './parser.js';
+
+/** Bytes as a string, one char per byte; `cp1252` also maps the en dash (0x96) the fixtures use, since Node's latin1 decoder leaves 0x80-0x9F as C1 controls. */
+function ascii(bytes: Uint8Array, cp1252 = false): string {
+  let out = '';
+  for (const b of bytes) out += cp1252 && b === 0x96 ? '\u2013' : String.fromCharCode(b);
+  return out;
+}
 
 function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join(' ');
@@ -43,10 +52,34 @@ describe('encodeDxfCp1252', () => {
     expect(hadUnmappable).toBe(false);
   });
 
-  it('replaces a code point with no windows-1252 representation with "?" (0x3F) and reports hadUnmappable', () => {
-    const { bytes, hadUnmappable } = encodeDxfCp1252('日本語');
-    expect(Array.from(bytes)).toEqual([0x3f, 0x3f, 0x3f]);
-    expect(hadUnmappable).toBe(true);
+  it('spells a BMP code point outside windows-1252 as \\U+XXXX (uppercase hex) and keeps hadUnmappable false', () => {
+    const { bytes, hadUnmappable, hadEscaped } = encodeDxfCp1252('日本語');
+    expect(ascii(bytes)).toBe('\\U+65E5\\U+672C\\U+8A9E');
+    expect(hadUnmappable).toBe(false);
+    expect(hadEscaped).toBe(true);
+  });
+
+  it('keeps Romanian, Czech and Polish text readable instead of "?"', () => {
+    expect(ascii(encodeDxfCp1252('Sală de ședințe – Etaj 2, 25 m²').bytes)).toBe(
+      'Sal\\U+0103 de \\U+0219edin\\U+021Be \x96 Etaj 2, 25 m\xb2',
+    );
+    expect(ascii(encodeDxfCp1252('Łódź').bytes)).toBe('\\U+0141\xf3d\\U+017A');
+    expect(ascii(encodeDxfCp1252('Příčka').bytes)).toBe('P\\U+0159\xed\\U+010Dka');
+  });
+
+  it('writes a literal backslash before U+ as \\U+005C so it cannot read as an escape', () => {
+    expect(ascii(encodeDxfCp1252('a\\U+0041b').bytes)).toBe('a\\U+005CU+0041b');
+    expect(ascii(encodeDxfCp1252('C:\\dir').bytes)).toBe('C:\\dir'); // other backslashes untouched
+  });
+
+  it('round-trips through ifc-lite\'s own parser (writer -> bytes -> parseDxf)', () => {
+    for (const label of ['Sală de ședințe – Etaj 2, 25 m²', 'Łódź', 'Příčka', 'a\\U+0041b', '日本']) {
+      const w = new DxfWriter();
+      w.addText({ x: 0, y: 0 }, label, 2.5, 'TXT');
+      const doc = parseDxf(ascii(encodeDxfCp1252(w.toString()).bytes, true));
+      const t = doc.entities.find((e) => e.kind === 'text');
+      expect(t && 'text' in t ? t.text : undefined).toBe(label);
+    }
   });
 
   it('replaces an unassigned windows-1252 C1 slot (e.g. U+0081, never assigned in cp1252) the same way', () => {

@@ -21,11 +21,18 @@
  * (0x00-0x7F and 0xA0-0xFF encode identically) but replaces Latin-1's
  * 0x80-0x9F C1 control block with 27 printable characters (curly quotes,
  * en/em dash, €, …) — the ones a Western European label is actually likely
- * to contain. A character outside windows-1252 entirely (CJK, Cyrillic,
- * emoji) has no single-byte R12 representation at all, so it becomes `?`,
- * matching {@link sanitizeDxfLayerName}'s reasoning: an unrepresentable
- * character predictably becomes a placeholder rather than corrupting every
- * byte after it.
+ * to contain.
+ *
+ * A BMP character outside windows-1252 (Romanian ă ș ț, Czech č ř ž, Polish
+ * ł ś, Cyrillic, CJK) is written as the DXF Unicode escape `\U+XXXX` (four
+ * uppercase hex digits), which AutoCAD and `ezdxf` decode in pre-R2007 text
+ * (Autodesk DXF Reference, "Text control codes and special characters").
+ * The escape is pure ASCII, so it cannot corrupt neighbouring bytes. A
+ * literal backslash that is followed by `U+` is itself written as `\U+005C`
+ * so user text can never be misread as an escape; DXF defines no `\\`
+ * escape for TEXT (only MTEXT), so no other backslash needs touching.
+ * Astral code points (emoji) have no four-digit escape and, like lone
+ * surrogates, become `?`.
  */
 
 /** windows-1252 byte -> code point for the 0x80-0x9F range that diverges from Latin-1; `undefined` = unassigned. */
@@ -67,26 +74,49 @@ function encodeCodePoint(codePoint: number): number {
 
 export interface Cp1252EncodeResult {
   bytes: Uint8Array;
-  /** True when at least one code point had no windows-1252 representation and was replaced with `?`. */
+  /** True when at least one code point could not be represented at all and was replaced with `?` (information lost). */
   hadUnmappable: boolean;
+  /** True when at least one BMP code point outside windows-1252 was written as a `\U+XXXX` escape (nothing lost). */
+  hadEscaped: boolean;
+}
+
+/** True for a code point that has a four-digit `\U+XXXX` spelling: BMP, not a surrogate half, not a C1 control. */
+function isEscapable(codePoint: number): boolean {
+  return codePoint >= 0x100 && codePoint <= 0xffff && !(codePoint >= 0xd800 && codePoint <= 0xdfff);
 }
 
 /**
  * Encode a full DXF document string (as produced by
  * {@link DxfWriter.toString}) to windows-1252 bytes — the encoding its own
- * `$DWGCODEPAGE ANSI_1252` header variable declares. Iterates by code
- * point (not UTF-16 code unit) so a surrogate pair is treated as the one
- * astral character it represents, not two spurious replacements.
+ * `$DWGCODEPAGE ANSI_1252` header variable declares — with characters
+ * outside that code page spelled as `\U+XXXX` (see the module comment).
+ * Iterates by code point (not UTF-16 code unit) so a surrogate pair is
+ * treated as the one astral character it represents.
  */
 export function encodeDxfCp1252(text: string): Cp1252EncodeResult {
-  const bytes = new Uint8Array(text.length); // upper bound: one byte per UTF-16 unit, astral pairs only shrink it.
-  let len = 0;
+  const bytes: number[] = [];
   let hadUnmappable = false;
-  for (const ch of text) {
+  let hadEscaped = false;
+  const pushAscii = (s: string): void => { for (let i = 0; i < s.length; i++) bytes.push(s.charCodeAt(i)); };
+  const chars = Array.from(text);
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
     const codePoint = ch.codePointAt(0) ?? REPLACEMENT_BYTE;
+    if (codePoint === 0x5c && chars[i + 1] === 'U' && chars[i + 2] === '+') {
+      pushAscii('\\U+005C'); // a literal backslash before `U+` must not read as an escape
+      hadEscaped = true;
+      continue;
+    }
     const byte = encodeCodePoint(codePoint);
-    if (byte === REPLACEMENT_BYTE && codePoint !== REPLACEMENT_BYTE) hadUnmappable = true;
-    bytes[len++] = byte;
+    if (byte === REPLACEMENT_BYTE && codePoint !== REPLACEMENT_BYTE) {
+      if (isEscapable(codePoint)) {
+        pushAscii(`\\U+${codePoint.toString(16).toUpperCase().padStart(4, '0')}`);
+        hadEscaped = true;
+        continue;
+      }
+      hadUnmappable = true;
+    }
+    bytes.push(byte);
   }
-  return { bytes: bytes.subarray(0, len), hadUnmappable };
+  return { bytes: Uint8Array.from(bytes), hadUnmappable, hadEscaped };
 }

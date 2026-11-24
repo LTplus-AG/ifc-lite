@@ -17,7 +17,8 @@ import { encodeDxfCp1252 } from '@ifc-lite/drawing-2d';
 export function isStandardFontChar(char: string): boolean {
   if (char === '\n' || char === '\t') return true;
   const code = char.codePointAt(0)!;
-  return code >= 0x20 && code !== 0x7f && !encodeDxfCp1252(char).hadUnmappable;
+  const r = encodeDxfCp1252(char);
+  return code >= 0x20 && code !== 0x7f && !(r.hadUnmappable || r.hadEscaped);
 }
 
 /** Plain-text spellings for symbols models and IFC files commonly carry. */

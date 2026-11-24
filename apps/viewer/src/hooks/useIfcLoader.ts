@@ -106,6 +106,8 @@ import { loadFailureReporter, settleKernelRefusal } from './ingest/loadFailureRe
 import { revalidateServedCache, type ServedCacheHit } from './ingest/cacheRevalidation.js';
 import { reportRenderStats } from '../utils/renderStatsReport.js';
 import { nextFrameOrTimeout } from '../utils/frameWait.js';
+import { compactCellSizeForLoad } from '../utils/compactGeometryFlag.js';
+import { isCompactCellSize, meshTriangleCount, meshVertexCount } from '@ifc-lite/geometry/compact';
 import { visibilityWitness } from '../utils/visibilityWitness.js';
 import { buildModelLoadedPayload, captureModelLoaded, clearModelLoadedSnapshot, snapshotFromGeometry } from '../utils/loadTelemetry.js';
 import { classifyLoadError, errorCaptureProps, type LoadErrorKind } from '../lib/load-errors.js';
@@ -1303,7 +1305,7 @@ export function useIfcLoader() {
       // `ifc-lite_bg.wasm` from `import.meta.url`), so this is the one stage a
       // first-visit user can fail in before a single IFC byte is touched.
       loadStage = 'engine-init';
-      await trace.span('engine.init', () => geometryProcessor.init());
+      await trace.span('engine.init', () => Promise.all([geometryProcessor.init(), compactCellSizeForLoad(target.kind).then((size) => { geometryProcessor.compactCellSize = size; })])); if (isStale()) return; // ?compactGeom's code is fetched beside the engine; a load superseded during the wait stops here
       loadStage = 'parse';
       // Issue #924: enable RTC-invariant per-entity geometry fingerprints so
       // the model-compare feature can detect geometry changes. The hash rides
@@ -1874,7 +1876,7 @@ export function useIfcLoader() {
                 const hasTexturedMeshes = allMeshes.some((m) => m.texture || m.textureRef);
                 if (hasTexturedMeshes) console.log('[useIfc] Skipping cache write: model carries surface textures the cache format does not persist yet (#1781)');
                 const cacheCoordinateInfo = finalCoordinateInfo;
-                const cacheable = cachePlan.shouldCache && !hasTexturedMeshes && !skippedHungElements && !omittedTypeRecords && allMeshes.length > 0 && !!cacheCoordinateInfo;
+                const cacheable = cachePlan.shouldCache && !hasTexturedMeshes && !isCompactCellSize(geometryProcessor.compactCellSize) && !skippedHungElements && !omittedTypeRecords && allMeshes.length > 0 && !!cacheCoordinateInfo;
                 const writeCache = (meshes: MeshData[]) => cacheCoordinateInfo && trace.span('cache.write', () => saveToCache(cacheKey, dataStore, {
                   meshes, coordinateInfo: cacheCoordinateInfo,
                   totalVertices: meshes.reduce((sum, m) => sum + m.positions.length / 3, 0),
@@ -2043,11 +2045,11 @@ export function useIfcLoader() {
       }
 
       const totalElapsedMs = trace.finish({ loadPath: 'wasm', cacheTier: cachePlan.tier });
-      const totalVertices = allMeshes.reduce((sum, m) => sum + m.positions.length / 3, 0);
+      const totalVertices = allMeshes.reduce((sum, m) => sum + meshVertexCount(m), 0); // without decoding a compact mesh
       console.log(
         `[ifc-lite] ${file.name} (${fileSizeMB.toFixed(1)}MB) → ${allMeshes.length} meshes, ${(totalVertices / 1000).toFixed(0)}k verts in ${(totalElapsedMs / 1000).toFixed(1)}s`
       );
-      const totalTriangles = allMeshes.reduce((sum, m) => sum + m.indices.length / 3, 0);
+      const totalTriangles = allMeshes.reduce((sum, m) => sum + meshTriangleCount(m), 0);
       // Single home for this payload — see `utils/loadTelemetry.ts` for why
       // `was_hidden: false` and `total_csg_failures: 0` must survive to the
       // wire. captureModelLoaded also retains the snapshot for the device-loss

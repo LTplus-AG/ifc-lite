@@ -73,6 +73,13 @@ export function canFilterOnGpu(batch: Pick<BatchedMesh, 'expressIds' | 'laneIds'
 export class BatchVisibilityCache {
   private epoch = -1;
   private cache = new WeakMap<BatchedMesh, BatchVisibility>();
+  /**
+   * Entry count each verdict was computed for. A compact page (compact-store.ts) is one batch object
+   * that keeps growing while a model streams, so a page judged "all visible" must be judged again once
+   * a later mesh joins it: a mesh hidden by id that arrived after the visible meshes of its cell would
+   * otherwise be drawn (a type-library mesh, on a host whose batch order put it last).
+   */
+  private sizes = new WeakMap<BatchedMesh, number>();
 
   classify(
     batch: BatchedMesh,
@@ -82,12 +89,14 @@ export class BatchVisibilityCache {
   ): BatchVisibility {
     if (epoch !== this.epoch) {
       this.cache = new WeakMap();
+      this.sizes = new WeakMap();
       this.epoch = epoch;
     }
     let vis = this.cache.get(batch);
-    if (vis === undefined) {
+    if (vis === undefined || this.sizes.get(batch) !== batch.expressIds.length) {
       vis = classifyBatch(batch, hiddenIds, isolatedIds);
       this.cache.set(batch, vis);
+      this.sizes.set(batch, batch.expressIds.length);
     }
     return vis;
   }

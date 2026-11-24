@@ -1,0 +1,6 @@
+{
+  "issue": 7955,
+  "why": "Judge members by the node's size again and sort f32 members first (the drawStream qualification divergences): the per-member pick and submission-order tests must go red.",
+  "key": "packages/renderer/src/draw-stream-picks.ts",
+  "mutation": "tests/evidence/draw-stream-member-picks/behaviour.oracle.patch"
+}

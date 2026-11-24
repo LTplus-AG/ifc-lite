@@ -5,7 +5,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { BatchedMesh } from './types.js';
 import { buildStreamNodes, linkHlodLeaves } from './draw-stream-nodes.js';
-import { collectStreamItems, memberPicks, StreamDrawBudget } from './draw-stream-cull.js';
+import { collectStreamItems, StreamDrawBudget } from './draw-stream-cull.js';
+import { memberPicks } from './draw-stream-picks.js';
 import { DrawStream } from './draw-stream.js';
 import { DrawStreamGate, RendererDrawStream } from './draw-stream-frame.js';
 import { HlodTree, nodeKey, proxySlotKey, type HlodNode } from './draw-stream-hlod.js';
@@ -83,7 +84,7 @@ describe('draw stream culling', () => {
     const [node] = buildStreamNodes(cell, 32);
     const px = (min: number[]) => ({ 0: 400, 2: 20, 4: 20, 6: 0.2 })[min[0]!] ?? 0;
     const f = fake({ projectedPx: px, contribPx: 0.5, lodPx: 48 });
-    assert.ok((frame().projectedPx([0, 0, 0], [32, 1, 1])) >= 48, 'the node as a whole is above the LOD threshold');
+    assert.ok(f.projectedPx(node!.min, node!.max) >= 48, 'judged as a whole (the old per-node pick), the node is above the LOD threshold: every member at LOD0');
     const picks = memberPicks(f, node!, cell);
     assert.ok(picks instanceof Uint8Array);
     assert.deepEqual([...picks], [MemberPick.Lod0, MemberPick.Lod1, MemberPick.AnyLod, MemberPick.Cull]);

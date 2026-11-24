@@ -1,5 +1,5 @@
 diff --git a/scripts/perf/flag-qualify-lib.mjs b/scripts/perf/flag-qualify-lib.mjs
-index 5d9691ce90..896083d175 100644
+index 61fdb7cf01..a48743148a 100644
 --- a/scripts/perf/flag-qualify-lib.mjs
 +++ b/scripts/perf/flag-qualify-lib.mjs
 @@ -30,7 +30,7 @@ export function registryFlagSpec(id, registrySource) {
@@ -20,15 +20,15 @@ index 5d9691ce90..896083d175 100644
    }
    if (changed) history.replaceState(history.state, '', url);
    globalThis.__IFC_LITE_QUALIFY_FLAGS__ = forced;
-@@ -215,7 +215,7 @@ export function compareArms(off, on, { pixelMaxPct = 0.1, threshold = 8, readFil
+@@ -221,7 +221,7 @@ export function compareArms(off, on, { pixelMaxPct = 0.1, threshold = 8, readFil
      // differs by clearly more than that (twice main's own difference plus the gate).
      const noisy = noisePct !== null && noisePct > pixelMaxPct;
-     const verdict = !noisy ? (cmp.stats.overPct <= pixelMaxPct ? 'pass' : 'fail')
+     const gated = !noisy ? (cmp.stats.overPct <= pixelMaxPct ? 'pass' : 'fail')
 -      : cmp.stats.overPct > 20 * noisePct + pixelMaxPct ? 'fail' : 'skip';
 +      : cmp.stats.overPct > 2 * noisePct + pixelMaxPct ? 'fail' : 'skip';
+     const verdict = gated === 'pass' && !settled ? 'skip' : gated;
      add(area, `${id} pixels`, verdict,
        `${noisy && verdict === 'skip' ? 'inconclusive, main is not deterministic here: ' : ''}${cmp.stats.overPct}% > ${threshold}/255 (max ${cmp.stats.max}, ${cmp.stats.isolatedPct}% isolated; gate ${pixelMaxPct}%${noisePct === null ? '' : `, main vs main ${noisePct}%`})${unstable}`, diff || b.frame.path);
-   }
 diff --git a/scripts/perf/flag-qualify-pixels.mjs b/scripts/perf/flag-qualify-pixels.mjs
 index 229d9dafa9..d84f84ba80 100644
 --- a/scripts/perf/flag-qualify-pixels.mjs

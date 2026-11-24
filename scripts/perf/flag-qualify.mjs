@@ -114,6 +114,7 @@ async function unitStage(flagSet, out, values) {
   }
   await buildDeps(values, out);
   const shards = Number(values.shards ?? 4);
+  if (!Number.isSafeInteger(shards) || shards < 1) throw new Error(`--shards must be a positive integer, got ${values.shards}`);
   // Flags off re-runs only the files that failed flags on, when the reporter named them all.
   return suiteStage(out, 'unit', 'viewer unit suite', (arm, on) => unitArm(arm === 'on' ? flagSet : null, out,
     { shards, arm, files: on?.files?.length ? on.files : null }));

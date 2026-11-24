@@ -179,14 +179,18 @@ export function compareArms(off, on, { pixelMaxPct = 0.1, threshold = 8, readFil
   const image = (path) => { if (!decoded.has(path)) decoded.set(path, decodePng(readFile(path))); return decoded.get(path); };
   const add = (area, check, verdict, detail, evidence = '') => rows.push({ area, check, verdict, detail, evidence, model: on.model });
   const loadDetail = (r) => (r.load?.ok ? `ok ${ms(r.load.wallMs)}` : `failed: ${r.load?.failure?.kind ?? r.errors?.[0] ?? 'no load'}`);
+  // An arm that threw (before or after loading) ran only part of the script: never let that pass or skip quietly.
+  const armErrors = () => {
+    if (on.errors?.length) add('load', 'flags-on run completed', 'error', on.errors.join('; ').slice(0, 300));
+    if (off.errors?.length) add('load', 'flags-off run completed', 'error', off.errors.join('; ').slice(0, 300));
+  };
   if (!on.load?.ok) {
     add('load', 'loads', off.load?.ok ? 'fail' : 'skip', `on ${loadDetail(on)}; off ${loadDetail(off)}`);
+    armErrors();
     return rows;
   }
   add('load', 'loads', 'pass', `on ${loadDetail(on)}; off ${loadDetail(off)}`);
-  // An arm that threw after loading ran only part of the script: never let the missing steps pass.
-  if (on.errors?.length) add('load', 'flags-on run completed', 'error', on.errors.join('; ').slice(0, 300));
-  if (off.errors?.length) add('load', 'flags-off run completed', 'error', off.errors.join('; ').slice(0, 300));
+  armErrors();
   for (const id of Object.keys(off.steps ?? {})) if (!on.steps?.[id]) add('load', `${id} ran flags-on`, 'error', 'step missing from the flags-on run');
   add('load', 'flag forced on', on.forced ? 'pass' : 'fail', on.forced ? JSON.stringify(on.forced).slice(0, 160) : 'boot script did not run');
   if (!off.load?.ok) return rows;
@@ -208,14 +212,17 @@ export function compareArms(off, on, { pixelMaxPct = 0.1, threshold = 8, readFil
     const cmp = compareImages(image(a.frame.path), image(b.frame.path), { threshold });
     if (!cmp.stats) { add(area, `${id} pixels`, 'fail', `frame sizes differ ${cmp.sizeMismatch.join('x')}`, b.frame.path); continue; }
     const diff = cmp.stats.over ? writeDiff(`${on.model}-${id}`, encodePng(diffImage(cmp.a, cmp.b, { threshold }))) : '';
-    const unstable = a.frame.stable && b.frame.stable ? '' : '; a readback was not stable';
+    // A capture that was not idle, or whose two readbacks differed, may be a transient frame: it cannot pass.
+    const settled = a.frame.idle !== false && b.frame.idle !== false && a.frame.stable && b.frame.stable;
+    const unstable = settled ? '' : '; a capture was not idle or its readbacks differed';
     const again = noise?.steps?.[id]?.frame;
     const noisePct = again ? compareImages(image(a.frame.path), image(again.path), { threshold }).stats?.overPct ?? null : null;
     // Main differing from itself past the gate makes the step inconclusive, unless the flag
     // differs by clearly more than that (twice main's own difference plus the gate).
     const noisy = noisePct !== null && noisePct > pixelMaxPct;
-    const verdict = !noisy ? (cmp.stats.overPct <= pixelMaxPct ? 'pass' : 'fail')
+    const gated = !noisy ? (cmp.stats.overPct <= pixelMaxPct ? 'pass' : 'fail')
       : cmp.stats.overPct > 2 * noisePct + pixelMaxPct ? 'fail' : 'skip';
+    const verdict = gated === 'pass' && !settled ? 'skip' : gated;
     add(area, `${id} pixels`, verdict,
       `${noisy && verdict === 'skip' ? 'inconclusive, main is not deterministic here: ' : ''}${cmp.stats.overPct}% > ${threshold}/255 (max ${cmp.stats.max}, ${cmp.stats.isolatedPct}% isolated; gate ${pixelMaxPct}%${noisePct === null ? '' : `, main vs main ${noisePct}%`})${unstable}`, diff || b.frame.path);
   }
@@ -274,11 +281,20 @@ export function resolveModels(specs, { root, realDir = null, listDir = () => [] 
 
 /** Failing test names in node:test spec or TAP output (TAP when piped on Node < 24) or Playwright list output. */
 export function failingTests(text) {
+  // node:test's summary names each failure's file (`test at FILE:L:C`, then `✖ title`): key by file and
+  // title there, since titles repeat across files. Without a summary, fall back to every failure line.
+  const source = String(text);
+  const summary = source.split(/^✖ failing tests:\s*$/m)[1];
   const names = new Set();
-  for (const line of String(text).split('\n')) {
+  let file = null;
+  for (const line of (summary ?? source).split('\n')) {
+    const at = /^test at (\S+?):\d+:\d+/.exec(line);
+    if (at) { file = at[1]; continue; }
     const m = /^\s*✖\s+(.+?)(?:\s+\(\d[\d.]*m?s\))?\s*$/.exec(line) ?? /^\s*\d+\)\s+\[[\w-]+\]\s+›\s+(.+?)\s*$/.exec(line)
       ?? /^\s*not ok \d+ - (.+?)(?:\s+#.*)?\s*$/.exec(line);
-    if (m && !/^failing tests:?$/i.test(m[1])) names.add(m[1]);
+    if (!m || /^failing tests:?$/i.test(m[1])) continue;
+    names.add(summary && file ? `${file} › ${m[1]}` : m[1]);
+    if (summary) file = null;
   }
   return [...names].sort();
 }

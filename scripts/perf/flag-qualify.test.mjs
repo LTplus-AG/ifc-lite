@@ -232,6 +232,20 @@ describe('compareArms', () => {
     assert.equal(compareArms(arm('off', { load: { ok: false } }), arm('on', { load: { ok: false } }), options)[0].verdict, 'skip');
   });
 
+  it('reports both arms errors when neither loaded', () => {
+    const v = compareArms(arm('off', { load: null, errors: ['no GPU'] }), arm('on', { load: null, errors: ['no GPU'] }), options);
+    assert.deepEqual(v.map((r) => [r.check, r.verdict]), [['loads', 'skip'], ['flags-on run completed', 'error'], ['flags-off run completed', 'error']]);
+  });
+
+  it('never passes pixels from a capture that was not idle or not stable', () => {
+    const unsettled = { path: 'u-on', idle: true, stable: false };
+    files.set('u-on', encodePng(image(10, 10)));
+    const off = arm('off', { steps: { home: { ok: true, frame: frame('u-off', image(10, 10)) } } });
+    const row = compareArms(off, arm('on', { steps: { home: { ok: true, frame: unsettled } } }), options).find((r) => r.check === 'home pixels');
+    assert.equal(row.verdict, 'skip');
+    assert.match(row.detail, /not idle or its readbacks differed/);
+  });
+
   it('errors when an arm stopped after loading', () => {
     const off = arm('off', { steps: { home: { ok: true } } });
     const v = verdicts(compareArms(off, arm('on', { errors: ['scene never settled'] }), options));
@@ -274,9 +288,15 @@ describe('resolveModels', () => {
 
 describe('suite results', () => {
   it('reads failing tests from node:test and Playwright list output', () => {
-    const text = ['✔ fine (1.2ms)', '✖ draw stream keeps picking (12.5ms)', '  ✖ nested case (3ms)', '✖ failing tests:',
+    const text = ['✔ fine (1.2ms)', '✖ draw stream keeps picking (12.5ms)', '  ✖ nested case (3ms)',
       '  1) [viewer-e2e-ci] › tests/e2e/viewer-smoke.e2e.spec.ts:10:5 › loads a model', 'not ok 3 - tap case # time=1ms', 'ok 4 - fine'].join('\n');
     assert.deepEqual(failingTests(text), ['draw stream keeps picking', 'nested case', 'tap case', 'tests/e2e/viewer-smoke.e2e.spec.ts:10:5 › loads a model']);
+  });
+
+  it('keys node:test summary failures by file, so a title repeated in another file is not confused', () => {
+    const text = ['✖ same title (1ms)', '✖ failing tests:', '', 'test at src/a.test.ts:1:2', '✖ same title (1ms)', '  AssertionError',
+      'test at src/b.test.ts:3:4', '✖ other (2ms)'].join('\n');
+    assert.deepEqual(failingTests(text), ['src/a.test.ts › same title', 'src/b.test.ts › other']);
   });
 
   it('names the failing test files and matches exactly those', () => {

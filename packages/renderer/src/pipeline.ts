@@ -662,9 +662,6 @@ export class RenderPipeline {
         });
     }
 
-    /** The bound entity colour table (#6076): the selection masks nudge painted depth from it too. */
-    getEntityColorTableBuffer(): GPUBuffer { return this.entityColorTableBuffer; }
-
     /** Bind the scene's entity colour table (#6076); null binds the empty one. Rebuilds only on change. */
     setEntityColorTableBuffer(buffer: GPUBuffer | null): void {
         const next = buffer ?? this.emptyEntityColorTable;

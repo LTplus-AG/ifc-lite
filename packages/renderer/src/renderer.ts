@@ -2902,7 +2902,7 @@ export class Renderer {
                 pixelRatio: this.pixelRatio,
                 // EDL only when point clouds are loaded and the user enabled it.
                 edl: this.edlOptions.enabled && this.pointCloudRenderer?.hasAssets() ? this.edlOptions : null,
-                selectionOutline, geometricVisibility: this.pipeline.visibility.getBinding(), entityColorTable: this.pipeline.getEntityColorTableBuffer(),
+                selectionOutline, geometricVisibility: this.pipeline.visibility.getBinding(), entityColorTable: this.scene.getEntityColorTable().getBuffer(),
             });
 
             // Internal opt-in witness metadata: snapshot synchronously alongside the submitted copy.

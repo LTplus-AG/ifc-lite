@@ -9,7 +9,7 @@
  * the manifest's ETag is its sha256 (`vite-plugins/retained-engine.ts`).
  */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 
@@ -40,10 +40,13 @@ async function readManifest(fetcher: typeof fetch): Promise<EngineInfo> {
 export function RetainedEngineDetails({ fetcher = fetch }: { fetcher?: typeof fetch }) {
   const { t } = useTranslation();
   const [info, setInfo] = useState<EngineInfo | null>(null);
+  // Each open and each close takes a new number; an answer applies only while its request is still the latest.
+  const request = useRef(0);
   const toggle = () => {
+    const mine = ++request.current;
     if (info) { setInfo(null); return; }
     setInfo({ state: 'loading' });
-    void readManifest(fetcher).then(setInfo);
+    void readManifest(fetcher).then((next) => { if (request.current === mine) setInfo(next); });
   };
   return (
     <div className="min-w-0 text-xs">

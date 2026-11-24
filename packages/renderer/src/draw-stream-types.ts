@@ -29,10 +29,23 @@ export interface StreamNode {
   entries: number;
   bundles: (GPURenderBundle | null)[]; // [mode * 2 + lod], mode = discardFree * 2 + objectId
   ortho: (GPURenderBundle | null)[];   // orthographic colour/depth pairs at orthoSlot(mode, lod)
+  /** Smallest member bounding-sphere radius: a lower bound on every member's projected size. */
+  minRadius: number;
+  /** Bundles of the last mixed-LOD draw, valid while `key` (cache keys and mode) and its `picks` hold. */
+  mixed?: { key: string; picks: Uint8Array; bundles: GPURenderBundle[] };
 }
 
-/** A culled node this frame: a leaf at LOD0/LOD1, or a ready HLOD proxy standing in for a subtree. */
-export type StreamItem = ({ leaf: StreamNode; lod1: boolean; proxy?: undefined } | { proxy: HlodNode; leaf?: undefined; lod1?: undefined }) & { d: number; px: number };
+/**
+ * A culled node this frame: a leaf whose members all draw at LOD0 or all at
+ * LOD1 (its cached bundles apply), a leaf whose members differ (`picks`, one
+ * `MemberPick` per member, drawn without a cached bundle), or a ready HLOD
+ * proxy standing in for a subtree.
+ */
+export type StreamItem = ({ leaf: StreamNode; lod1: boolean; picks?: Uint8Array; proxy?: undefined } | { proxy: HlodNode; leaf?: undefined; lod1?: undefined; picks?: undefined }) & { d: number; px: number };
+
+/** A member's draw this frame, decided per batch like the per-batch loop: contribution-culled, LOD0, LOD1, or either LOD (no LOD1 range). */
+export const MemberPick = { Cull: 0, Lod0: 1, Lod1: 2, AnyLod: 3 } as const;
+export type MemberPick = (typeof MemberPick)[keyof typeof MemberPick];
 
 export interface StreamFrameStats {
   nodes: number; nodesDrawn: number; draws: number; tris: number; bundlesRecorded: number; entries: number;

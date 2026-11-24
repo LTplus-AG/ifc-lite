@@ -16,17 +16,19 @@ export function buildStreamNodes(members: readonly BatchedMesh[], cell: number):
     const k = `${c[0]},${c[1]},${c[2]}`;
     let node = byCell.get(k);
     if (!node) {
-      node = { coords: c, min: [...bb.min], max: [...bb.max], members: [], tris0: 0, tris1: 0, entries: 0, bundles: [null, null, null, null, null, null, null, null], ortho: [] };
+      node = { coords: c, min: [...bb.min], max: [...bb.max], members: [], tris0: 0, tris1: 0, entries: 0, bundles: [null, null, null, null, null, null, null, null], ortho: [], minRadius: Infinity };
       byCell.set(k, node);
     }
     growAabb(node, bb.min, bb.max);
+    node.minRadius = Math.min(node.minRadius, 0.5 * Math.hypot(bb.max[0] - bb.min[0], bb.max[1] - bb.min[1], bb.max[2] - bb.min[2]));
     node.members.push(i); node.entries += b.expressIds.length;
     node.tris0 += b.indexCount / 3; node.tris1 += (b.lod1IndexBuffer && b.lod1IndexCount ? b.lod1IndexCount : b.indexCount) / 3;
   }
-  const nodes = [...byCell.values()];
-  // f32 members first, then quantized: one pipeline switch per node at most.
-  for (const n of nodes) n.members.sort((a, b) => Number(!!members[a]!.quantized) - Number(!!members[b]!.quantized));
-  return nodes;
+  // Members stay in submission order, the legacy loop's tie-break: under reverse-Z `greater`, the
+  // first of two coincident surfaces wins, and coincident duplicates (a federated revision) share
+  // one AABB and so one node. Sorting f32 members first drew a quantized model's copy over the
+  // other one's colour override (#11370 qualification, federation).
+  return [...byCell.values()];
 }
 
 export interface HlodLinks {

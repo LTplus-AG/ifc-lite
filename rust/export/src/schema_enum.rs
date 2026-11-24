@@ -215,6 +215,7 @@ impl ConversionChecks {
             documents: Default::default(),
             forms: Default::default(),
             materials,
+            upgrade_omissions: Vec::new(),
             plans: Default::default(),
             merged: false,
             attribute_values_dropped: 0,

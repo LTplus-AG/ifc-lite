@@ -26,7 +26,6 @@ import type { Renderer } from '@ifc-lite/renderer';
 import { decodeInstancedShard, type MeshData } from '@ifc-lite/geometry';
 import { liftNewInstancedOccurrences } from '@/lib/level-arrival';
 import { activeLoadTrace } from '@/lib/perf/activeLoadTrace';
-import { globalInstancingOn } from '@/lib/perf/flags';
 import { useViewerStore } from '@/store';
 import { drainInstancedShards, hasPendingInstancedShards, noteDroppedInstancedShards, subscribeInstancedShards } from '@/store/instancedShardQueue';
 import { applyFederationOffsetToShard } from './instancedFederationOffset.js';
@@ -103,7 +102,6 @@ export function useInstancedShardDrain(params: InstancedShardDrainParams): void 
               if (shard) {
                 applyFederationOffsetToShard(shard, idOffset);
                 liftNewInstancedOccurrences(shard, p.currentLevelY ?? new Map());
-                if (globalInstancingOn()) scene.setKeyedInstancing?.(true); // keyed records join model-wide templates
                 trace.span('instanced.upload', () => scene.addInstancedShard(device, shard, modelIndex));
                 uploaded++;
                 outcome = 'uploaded';
@@ -116,7 +114,7 @@ export function useInstancedShardDrain(params: InstancedShardDrainParams): void 
           }
           noteDroppedInstancedShards('ownerless', ownerless.length, ownerless);
           if (uploaded === 0) return;
-          if (instanceOnlyLoadPossible(p.geometryKernel) && p.geometry?.length === 0 && !p.appearanceSourceGeometry?.length
+          if (instanceOnlyLoadPossible(p.geometryKernel, scene) && p.geometry?.length === 0 && !p.appearanceSourceGeometry?.length
             && scene.getInstancedModelIndices().length > 0) {
             // A shard-only arrival owns the load. The retained kernel fits now. An exact load under
             // the global instance plan may still stream flat geometry, so it fits at completion: in

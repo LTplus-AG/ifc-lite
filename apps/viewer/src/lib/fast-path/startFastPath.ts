@@ -14,7 +14,7 @@ import { useViewerStore } from '@/store';
 import { getGeomWorkerOverride, resolveLoadTessellationTier } from '@/store/constants';
 import { onPendingProcessedModelChange, processedModelRequested } from '@/lib/processed-model';
 import { serverUploadsEnabled } from '@/lib/processing-server';
-import { getPerfFlagDefinition, globalInstancingOn, readPerfFlag } from '@/lib/perf/flags';
+import { getPerfFlagDefinition, readPerfFlag } from '@/lib/perf/flags';
 import { isFeatureEnabled, type FeatureId } from '@/lib/features';
 import { mayWarmUp, scheduleWhenIdle } from '@/lib/warm-runtime-gate';
 import { registerPickStarter } from '@/hooks/ingest/pickStart';
@@ -45,9 +45,7 @@ let runtime: FastPathRuntime | null = null;
  * one-line change. With it off nothing is prepared and every load meshes as before.
  */
 export function fastPathSwitch(): unknown {
-  // The fast path meshes in a spare worker prepared before the load, without the global instance plan's
-  // pre-pass: under that flag every load takes the planned path.
-  if (globalInstancingOn()) return false;
+  // The global instance plan applies only past this tier (`GLOBAL_INSTANCING_MIN_BYTES`), so it keeps the fast path.
   return readPerfFlag('fastPath') ?? getPerfFlagDefinition('fastPath').default;
 }
 

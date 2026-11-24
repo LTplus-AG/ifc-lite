@@ -71,3 +71,24 @@ export function readGlobalInstancingFlag(): boolean {
   const v = readPerfFlagRaw(GEOMETRY_PERF_FLAG_BINDINGS.globalInstancing);
   return v === 1 || v === '1' || v === true || v === 'true';
 }
+
+/**
+ * Smallest source the plan applies to: the viewer's uncached small-file tier
+ * (its fast path, `FAST_PATH_MAX_BYTES`, which pins this value) keeps the
+ * per-batch decision. A small model gains little from model-wide templates,
+ * and deciding by the file alone keeps every load of one file, fast path or
+ * pool, cold or reopened, on the same instancing.
+ */
+export const GLOBAL_INSTANCING_MIN_BYTES = 10 * 1024 * 1024;
+
+/** The small-file tier: the viewer's fast path takes these files, the global instance plan never applies to them.
+ *  One predicate for both sides, so no size is ever both or neither. */
+export function inSmallFileTier(byteLength: number): boolean {
+  return byteLength < GLOBAL_INSTANCING_MIN_BYTES;
+}
+
+/** Whether the plan applies to a source of `byteLength` bytes (the bytes the pool meshes: for a compressed source,
+ *  its decompressed IFC): the flag is on and the source is past the small tier. */
+export function globalInstancingApplies(byteLength: number): boolean {
+  return !inSmallFileTier(byteLength) && readGlobalInstancingFlag();
+}

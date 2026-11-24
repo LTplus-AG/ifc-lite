@@ -35,6 +35,9 @@ function frame(over: Partial<StreamFrameInputs> = {}): StreamFrameInputs {
   };
 }
 
+/** A frame whose `projectedPx` is faked: a tiny viewport keeps the node lower bound (`memberPicks`) out of the way. */
+const fake = (over: Partial<StreamFrameInputs>): StreamFrameInputs => frame({ projection: { ortho: false, orthoHalfHeight: 1, fovYRadians: Math.PI / 2, viewportHeightPx: 1e-6 }, ...over });
+
 describe('draw stream nodes', () => {
   it('groups members by chunk cell, totals triangles per LOD and keeps submission order', () => {
     const members = [batch(1, 0.2, { quantized: true }), batch(2, 0.5, { lod1: 9 }), batch(3, 40), batch(4, 0.7)];
@@ -66,7 +69,7 @@ describe('draw stream culling', () => {
   const links = linkHlodLeaves(null, nodes, [], [], [], 32);
 
   it('drops invisible and sub-contribution nodes and picks LOD1 below the LOD threshold', () => {
-    const items = collectStreamItems(frame({
+    const items = collectStreamItems(fake({
       visible: (min) => min[0] < 60, projectedPx: (min) => (min[0] < 30 ? 50 : 5), contribPx: 2, lodPx: 10,
     }), nodes, null, links, 2, members);
     assert.equal(items.length, 2);
@@ -79,23 +82,23 @@ describe('draw stream culling', () => {
     const cell = [batch(1, 0, { lod1: 6 }), batch(2, 2, { lod1: 6 }), batch(3, 4), batch(4, 6, { lod1: 6 })];
     const [node] = buildStreamNodes(cell, 32);
     const px = (min: number[]) => ({ 0: 400, 2: 20, 4: 20, 6: 0.2 })[min[0]!] ?? 0;
-    const f = frame({ projectedPx: px, contribPx: 0.5, lodPx: 48 });
+    const f = fake({ projectedPx: px, contribPx: 0.5, lodPx: 48 });
     assert.ok((frame().projectedPx([0, 0, 0], [32, 1, 1])) >= 48, 'the node as a whole is above the LOD threshold');
     const picks = memberPicks(f, node!, cell);
     assert.ok(picks instanceof Uint8Array);
     assert.deepEqual([...picks], [MemberPick.Lod0, MemberPick.Lod1, MemberPick.AnyLod, MemberPick.Cull]);
-    assert.equal(memberPicks(frame({ projectedPx: () => 20, lodPx: 48 }), node!, cell), MemberPick.Lod1, 'a member with no LOD1 range does not split a LOD1 node');
-    assert.equal(memberPicks(frame({ projectedPx: () => 0.1, contribPx: 0.5 }), node!, cell), MemberPick.Cull);
-    const culledThenAny = memberPicks(frame({ projectedPx: (min) => (min[0] === 4 ? 20 : 0.1), contribPx: 0.5, lodPx: 48 }), node!, cell);
+    assert.equal(memberPicks(fake({ projectedPx: () => 20, lodPx: 48 }), node!, cell), MemberPick.Lod1, 'a member with no LOD1 range does not split a LOD1 node');
+    assert.equal(memberPicks(fake({ projectedPx: () => 0.1, contribPx: 0.5 }), node!, cell), MemberPick.Cull);
+    const culledThenAny = memberPicks(fake({ projectedPx: (min) => (min[0] === 4 ? 20 : 0.1), contribPx: 0.5, lodPx: 48 }), node!, cell);
     assert.deepEqual([...(culledThenAny as Uint8Array)], [MemberPick.Cull, MemberPick.Cull, MemberPick.AnyLod, MemberPick.Cull], 'a drawn member without LOD1 never joins a culled node');
-    const anyThenCulled = memberPicks(frame({ projectedPx: (min) => (min[0] === 4 ? 20 : 0.1), contribPx: 0.5, lodPx: 48 }), buildStreamNodes([cell[2]!, cell[0]!], 32)[0]!, [cell[2]!, cell[0]!]);
+    const anyThenCulled = memberPicks(fake({ projectedPx: (min) => (min[0] === 4 ? 20 : 0.1), contribPx: 0.5, lodPx: 48 }), buildStreamNodes([cell[2]!, cell[0]!], 32)[0]!, [cell[2]!, cell[0]!]);
     assert.deepEqual([...(anyThenCulled as Uint8Array)], [MemberPick.AnyLod, MemberPick.Cull]);
-    assert.equal(memberPicks(frame({ projectedPx: () => 0.1 }), node!, cell), MemberPick.Lod0, 'culling and LOD off: everything at LOD0');
+    assert.equal(memberPicks(fake({ projectedPx: () => 0.1 }), node!, cell), MemberPick.Lod0, 'culling and LOD off: everything at LOD0');
     const [item] = collectStreamItems(f, [node!], null, linkHlodLeaves(null, [node!], [], [], [], 32), 2, cell);
     assert.ok(item?.picks, 'a mixed node carries its picks');
   });
 
-  it('draws a mixed node per member, without a cached bundle, and keeps only drawn members warm', () => {
+  it('draws a mixed node per member and keeps only drawn members warm', () => {
     const draws: [number, number][] = []; const executed: unknown[] = [];
     const pass = { setPipeline() {}, setBindGroup() {}, setVertexBuffer() {}, setIndexBuffer(b: { tag?: string }) { draws.push([b.tag === 'lod1' ? 1 : 0, -1]); },
       drawIndexed(count: number, _n: number, _f: number, _b: number, first: number) { draws[draws.length - 1]![1] = first; void count; }, executeBundles(b: unknown[]) { executed.push(...b); } };
@@ -110,16 +113,47 @@ describe('draw stream culling', () => {
     g.GPUBufferUsage ??= { COPY_SRC: 4, COPY_DST: 8, INDEX: 16, VERTEX: 32, UNIFORM: 64, STORAGE: 128 }; g.GPUShaderStage ??= { VERTEX: 1, FRAGMENT: 2, COMPUTE: 4 };
     const cell = [batch(1, 0, { lod1: 6 }), batch(2, 2, { lod1: 6 }), batch(3, 6, { lod1: 6 })];
     for (const b of cell) (b as { lod1IndexBuffer: unknown }).lod1IndexBuffer = { tag: 'lod1' };
-    const stream = new DrawStream(device, pipeline, resolveDrawStreamConfig({ stream: true }));
+    const stream = new DrawStream(device, pipeline, resolveDrawStreamConfig({ stream: true, bundles: false }));
     stream.sync(cell, 'g', 'k', 32, () => ({ alpha: 1, anchor: null, overrideBits: 0 }));
     stream.prepareFrame(new Float32Array(4), { getCameraWorld: () => [0, 0, 0], tryPackDrawableOrigin: () => true } as unknown as Parameters<DrawStream['prepareFrame']>[1]);
     const drawn: number[] = [];
     const px = (min: number[]) => ({ 0: 400, 2: 20, 6: 0.2 })[min[0]!] ?? 0;
-    const s = stream.encode(frame({ pass: pass as unknown as GPURenderPassEncoder, projectedPx: px, contribPx: 0.5, lodPx: 48 }), (b) => drawn.push(b.id));
+    const s = stream.encode(fake({ pass: pass as unknown as GPURenderPassEncoder, projectedPx: px, contribPx: 0.5, lodPx: 48 }), (b) => drawn.push(b.id));
     assert.deepEqual(draws, [[0, 0], [1, 1]], 'member 0 at LOD0, member 1 at LOD1, member 2 culled');
     assert.deepEqual(drawn, [1, 2]);
-    assert.equal(executed.length, 0, 'no bundle stands in for a mixed node');
-    assert.equal(s.directNodes, 1);
+    assert.deepEqual([s.draws, s.tris], [2, 10 + 2], 'stats count the drawn members at their LOD');
+  });
+
+  it('skips per-member projection when even the smallest member at the far corner is above both thresholds', () => {
+    const cell = [batch(1, 0, { lod1: 6 }), batch(2, 2, { lod1: 6 })];
+    const [node] = buildStreamNodes(cell, 32);
+    let projected = 0;
+    const near = frame({ projectedPx: () => { projected++; return 1; }, contribPx: 0.5, lodPx: 48, eye: { x: 0, y: 0, z: 5 } });
+    assert.equal(memberPicks(near, node!, cell), MemberPick.Lod0, 'unit boxes a few metres away span hundreds of px at 1000 px / 90°');
+    assert.equal(projected, 0);
+    const far = frame({ projectedPx: () => { projected++; return 1; }, contribPx: 0.5, lodPx: 48, eye: { x: 0, y: 0, z: 5000 } });
+    assert.equal(memberPicks(far, node!, cell), MemberPick.Lod1, 'far away: each member is projected');
+    assert.equal(projected, 2);
+  });
+
+  it('caches a mixed node\'s bundle for its pick pattern and re-records when the pattern changes', () => {
+    const executed: unknown[][] = []; let recorded = 0; const env = {}; // one environment group: the bundle-cache key holds
+    const enc = () => ({ setPipeline() {}, setBindGroup() {}, setVertexBuffer() {}, setIndexBuffer() {}, drawIndexed() {}, finish: () => ({ n: ++recorded }) });
+    const device = { createBindGroupLayout: () => ({}), createPipelineLayout: () => ({}), createBindGroup: () => ({}), createShaderModule: () => ({}),
+      createBuffer: (d: GPUBufferDescriptor) => ({ size: d.size, destroy() {} }), queue: { writeBuffer() {} }, createRenderBundleEncoder: enc } as unknown as GPUDevice;
+    const pipeline = { getStreamBase: () => ({ environmentLayout: {}, descriptor: { fragment: { targets: [] } }, colorFormat: 'bgra8unorm', depthFormat: 'depth32float', sampleCount: 1 }),
+      visibility: { create: () => ({}) }, getEnvironmentBindGroup: () => env } as unknown as ConstructorParameters<typeof DrawStream>[1];
+    const cell = [batch(1, 0, { lod1: 6 }), batch(2, 2, { lod1: 6 })];
+    const stream = new DrawStream(device, pipeline, resolveDrawStreamConfig({ stream: true }));
+    stream.sync(cell, 'g', 'k', 32, () => ({ alpha: 1, anchor: null, overrideBits: 0 }));
+    stream.prepareFrame(new Float32Array(4), { getCameraWorld: () => [0, 0, 0], tryPackDrawableOrigin: () => true } as unknown as Parameters<DrawStream['prepareFrame']>[1]);
+    const pass = { executeBundles: (b: unknown[]) => { executed.push([...b]); } } as unknown as GPURenderPassEncoder;
+    const at = (px: Record<number, number>) => fake({ pass, projectedPx: (min) => px[min[0]!] ?? 0, lodPx: 48 });
+    stream.encode(at({ 0: 400, 2: 20 }), () => {}); const first = executed.at(-1)![0];
+    stream.encode(at({ 0: 400, 2: 20 }), () => {});
+    assert.equal(executed.at(-1)![0], first, 'same picks: the cached bundle replays');
+    stream.encode(at({ 0: 20, 2: 400 }), () => {});
+    assert.notEqual(executed.at(-1)![0], first, 'new picks: a new bundle');
   });
 
   it('converts world size to screen px for perspective and orthographic cameras', () => {

@@ -34,7 +34,7 @@ import { HlodTree, type HlodNode } from './draw-stream-hlod.js';
 import { GeometryArena } from './draw-stream-arena.js';
 import { StreamPipelines } from './draw-stream-pipelines.js';
 import { buildStreamNodes, linkHlodLeaves, type HlodLinks } from './draw-stream-nodes.js';
-import { collectStreamItems, StreamDrawBudget } from './draw-stream-cull.js';
+import { collectStreamItems, pickedLoad, picksHash, StreamDrawBudget } from './draw-stream-cull.js';
 import { cellOf, idOf, MemberPick, modeIndex, orthoSlot, type StreamBatchState, type StreamFrameInputs, type StreamFrameStats, type StreamItem, type StreamNode } from './draw-stream-types.js';
 import type { DrawStreamConfig } from './draw-stream-config.js';
 import { DEFAULT_CHUNK_CELL_SIZE } from './chunk-grid.js';
@@ -231,17 +231,17 @@ export class DrawStream {
     if (this.skipLeaves.size) items = items.filter((it) => !it.leaf || !this.skipLeaves.has(it.leaf));
     this.budget.apply(items, this.config.budgetMs, f.interacting, stats);
     items.sort((a, b) => a.d - b.d);
-    for (const it of items) if (it.leaf) it.leaf.members.forEach((i, k) => { if (it.picks?.[k] !== MemberPick.Cull) drawn(this.members[i]!); });
+    for (const it of items) if (it.leaf) for (let k = 0; k < it.leaf.members.length; k++) if (it.picks?.[k] !== MemberPick.Cull) drawn(this.members[it.leaf.members[k]!]!);
     if (f.ortho?.capturing() && this.config.bundles) { this.encodeOrtho(f, items, stats); return stats; } // else uncaptured: draw directly
     const useBundles = this.config.bundles && f.allowBundles;
     const bundles: GPURenderBundle[] = [];
     const newBundle = (): GPURenderBundleEncoder => this.bundleEncoder('draw-stream-node');
-    // At most RECORD_PER_FRAME first-sight recordings per frame. A node past the cap
-    // draws directly this frame (≈0.1 ms for a 30-draw node vs ≈0.9 ms to record its bundle)
-    // and prewarm records it later, so a camera move onto hundreds of unseen nodes right after
-    // HLOD converges no longer records them all at once (a 395 ms frame in the huge-geometry campaign).
-    let recordBudget = RECORD_PER_FRAME;
-    const direct: StreamItem[] = [];
+    // At most RECORD_PER_FRAME first-sight recordings per frame. A node past the cap draws directly this
+    // frame (≈0.1 ms for a 30-draw node vs ≈0.9 ms to record its bundle) and prewarm records it later, so a
+    // camera move onto hundreds of unseen nodes no longer records them all at once (a 395 ms frame).
+    let recordBudget = RECORD_PER_FRAME, directNodes = 0;
+    // A direct node flushes the bundles sorted before it, keeping front-to-back order (bundles reset pass state: it binds everything).
+    const direct = (draw: () => void): void => { if (bundles.length) { f.pass.executeBundles(bundles); bundles.length = 0; } draw(); directNodes++; };
     for (const it of items) {
       if (it.proxy) {
         const n = it.proxy;
@@ -249,32 +249,28 @@ export class DrawStream {
         if (!useBundles) { this.encodeProxy(f.pass, n, f.mode, false); continue; }
         let pb = n.bundle[mi];
         if (!pb) {
-          if (recordBudget <= 0) { direct.push(it); continue; }
+          if (recordBudget <= 0) { direct(() => this.encodeProxy(f.pass, n, f.mode, true)); continue; }
           const enc = newBundle(); this.encodeProxy(enc, n, f.mode, true); pb = enc.finish(); n.bundle[mi] = pb; stats.bundlesRecorded++; recordBudget--;
         }
         bundles.push(pb);
         continue;
       }
-      const v = it;
-      stats.nodesDrawn++; stats.draws += v.leaf.members.length; stats.tris += v.lod1 ? v.leaf.tris1 : v.leaf.tris0; stats.entries += v.leaf.entries;
-      if (!useBundles) { this.encodeNode(f.pass, v.leaf, v.picks ?? v.lod1, f.mode, false); continue; }
-      if (v.picks) { direct.push(it); continue; } // members at different LODs: no cached bundle fits
-      const slot = mi * 2 + (v.lod1 ? 1 : 0);
-      let bundle = v.leaf.bundles[slot];
+      const v = it, lod = v.picks ?? v.lod1, slot = mi * 2 + (v.lod1 ? 1 : 0);
+      const load = v.picks ? pickedLoad(v.leaf, v.picks, this.members) : { draws: v.leaf.members.length, tris: v.lod1 ? v.leaf.tris1 : v.leaf.tris0 };
+      stats.nodesDrawn++; stats.draws += load.draws; stats.tris += load.tris; stats.entries += v.leaf.entries;
+      if (!useBundles) { this.encodeNode(f.pass, v.leaf, lod, f.mode, false); continue; }
+      // Members at different LODs: one bundle per node for the last pick pattern (stable while the camera rests).
+      const mixedKey = v.picks ? `${this.bundleKey}|${mi}|${picksHash(v.picks)}` : '';
+      let bundle = v.picks ? (v.leaf.mixed?.key === mixedKey ? v.leaf.mixed.bundles[0]! : null) : v.leaf.bundles[slot];
       if (!bundle) {
-        if (recordBudget <= 0) { direct.push(it); continue; }
-        const enc = newBundle();
-        this.encodeNode(enc, v.leaf, v.lod1, f.mode, true);
-        bundle = enc.finish(); v.leaf.bundles[slot] = bundle; stats.bundlesRecorded++; recordBudget--;
+        if (recordBudget <= 0) { direct(() => this.encodeNode(f.pass, v.leaf, lod, f.mode, true)); continue; }
+        const enc = newBundle(); this.encodeNode(enc, v.leaf, lod, f.mode, true); bundle = enc.finish(); stats.bundlesRecorded++; recordBudget--;
+        if (v.picks) v.leaf.mixed = { key: mixedKey, bundles: [bundle] }; else v.leaf.bundles[slot] = bundle;
       }
       bundles.push(bundle);
     }
     if (bundles.length) f.pass.executeBundles(bundles);
-    for (const it of direct) { // bundles reset pass state: direct nodes bind everything themselves
-      if (it.proxy) this.encodeProxy(f.pass, it.proxy, f.mode, true);
-      else this.encodeNode(f.pass, it.leaf, it.picks ?? it.lod1, f.mode, true);
-    }
-    stats.directNodes = direct.length;
+    stats.directNodes = directNodes;
     if (useBundles) this.prewarm(newBundle, f.mode, stats);
     return stats;
   }
@@ -344,10 +340,15 @@ export class DrawStream {
         continue;
       }
       const leaf = it.leaf; const lod1 = it.lod1; const o = orthoSlot(mi, lod1);
-      stats.nodesDrawn++; stats.draws += leaf.members.length; stats.tris += lod1 ? leaf.tris1 : leaf.tris0; stats.entries += leaf.entries;
-      if (it.picks) { // members at different LODs: this frame's own pair, not cached
-        const c = colourEnc(), d = depthEnc(); this.encodeNode(c, leaf, it.picks, f.mode, true, colourOf, binding); this.encodeNode(d, leaf, it.picks, f.mode, true, depthOf);
-        colour.push(c.finish()); depth.push(d.finish()); continue;
+      const load = it.picks ? pickedLoad(leaf, it.picks, this.members) : { draws: leaf.members.length, tris: lod1 ? leaf.tris1 : leaf.tris0 };
+      stats.nodesDrawn++; stats.draws += load.draws; stats.tris += load.tris; stats.entries += leaf.entries;
+      if (it.picks) { // members at different LODs: one pair for the last pick pattern
+        const key = `${this.orthoKey}|${mi}|${picksHash(it.picks)}`;
+        if (leaf.mixed?.key !== key) {
+          const c = colourEnc(), d = depthEnc(); this.encodeNode(c, leaf, it.picks, f.mode, true, colourOf, binding); this.encodeNode(d, leaf, it.picks, f.mode, true, depthOf);
+          leaf.mixed = { key, bundles: [c.finish(), d.finish()] }; stats.bundlesRecorded++;
+        }
+        colour.push(leaf.mixed.bundles[0]!); depth.push(leaf.mixed.bundles[1]!); continue;
       }
       if (!leaf.ortho[o]) { const e = colourEnc(); this.encodeNode(e, leaf, lod1, f.mode, true, colourOf, binding); leaf.ortho[o] = e.finish(); stats.bundlesRecorded++; }
       if (!leaf.ortho[o + 1]) { const e = depthEnc(); this.encodeNode(e, leaf, lod1, f.mode, true, depthOf); leaf.ortho[o + 1] = e.finish(); }

@@ -8,11 +8,9 @@ import type { HlodLinks } from './draw-stream-nodes.js';
 import type { BatchedMesh } from './types.js';
 import { aabbDist2, pxPerMetre, type StreamFrameInputs, type StreamFrameStats, type StreamItem, type StreamNode, MemberPick } from './draw-stream-types.js';
 
-/**
- * The nodes to draw this frame: frustum- and contribution-culled leaves, and
- * where a clean HLOD node's error projects below `hlodPx`, its proxy instead
- * of the subtree.
- */
+/** Reused per-member picks while a node is decided (copied out only when its members differ). */
+let scratch = new Uint8Array(64);
+
 /**
  * Each member's draw from its OWN projected size, exactly as the per-batch
  * loop decides a batch (contribution cull, then LOD1 below `lodPx`): a node
@@ -23,27 +21,55 @@ import { aabbDist2, pxPerMetre, type StreamFrameInputs, type StreamFrameStats, t
  */
 export function memberPicks(f: StreamFrameInputs, node: StreamNode, members: readonly BatchedMesh[]): MemberPick | Uint8Array {
   if (!(f.contribPx > 0) && !(f.lodPx > 0)) return MemberPick.Lod0;
+  // Every member at least `minRadius`, no farther than the node's far corner: when even that projects
+  // above both thresholds, all members draw at LOD0 without projecting each (most near nodes).
+  const far = Math.sqrt(farDist2(node.min, node.max, f.eye));
+  if (node.minRadius * pxPerMetre(f.projection, far) * 0.999 >= Math.max(f.contribPx, f.lodPx)) return MemberPick.Lod0;
   const pickOf = (k: number): MemberPick => {
     const b = members[node.members[k]!]!, px = b.bounds ? f.projectedPx(b.bounds.min, b.bounds.max) : Infinity;
     if (f.contribPx > 0 && px < f.contribPx) return MemberPick.Cull;
     if (!(b.lod1IndexBuffer && b.lod1IndexCount)) return MemberPick.AnyLod;
     return f.lodPx > 0 && px < f.lodPx ? MemberPick.Lod1 : MemberPick.Lod0;
   };
-  // Allocate per-member picks only once two members disagree (most nodes agree: no per-frame garbage).
-  let common = -1, drawsAny = false;
+  let common = -1, mixed = false, drawsAny = false;
+  if (scratch.length < node.members.length) scratch = new Uint8Array(node.members.length * 2);
   for (let k = 0; k < node.members.length; k++) {
-    const s = pickOf(k);
-    // AnyLod (no LOD1 range) agrees with either LOD, never with Cull.
-    const agrees = s === MemberPick.AnyLod ? common !== MemberPick.Cull : common < 0 ? !(s === MemberPick.Cull && drawsAny) : s === common;
-    if (s === MemberPick.AnyLod) drawsAny = true; else if (common < 0) common = s;
-    if (agrees) continue;
-    const picks = new Uint8Array(node.members.length);
-    for (let j = 0; j < picks.length; j++) picks[j] = j === k ? s : pickOf(j);
-    return picks;
+    const s = scratch[k] = pickOf(k);
+    if (s === MemberPick.AnyLod) drawsAny = true; // agrees with either LOD, never with Cull
+    else if (common < 0) common = s; else if (s !== common) mixed = true;
   }
+  if (mixed || (common === MemberPick.Cull && drawsAny)) return scratch.slice(0, node.members.length); // copied only when mixed
   return common < 0 ? MemberPick.Lod0 : common as MemberPick;
 }
 
+function farDist2(min: readonly number[], max: readonly number[], p: { x: number; y: number; z: number }): number {
+  const dx = Math.max(p.x - min[0]!, max[0]! - p.x), dy = Math.max(p.y - min[1]!, max[1]! - p.y), dz = Math.max(p.z - min[2]!, max[2]! - p.z);
+  return dx * dx + dy * dy + dz * dz;
+}
+
+/** Draws and triangles of a mixed node this frame (culled members excluded). */
+export function pickedLoad(node: StreamNode, picks: Uint8Array, members: readonly BatchedMesh[]): { draws: number; tris: number } {
+  let draws = 0, tris = 0;
+  for (let k = 0; k < picks.length; k++) {
+    if (picks[k] === MemberPick.Cull) continue;
+    const b = members[node.members[k]!]!; draws++;
+    tris += (picks[k] === MemberPick.Lod1 ? b.lod1IndexCount! : b.indexCount) / 3;
+  }
+  return { draws, tris };
+}
+
+/** FNV-1a of a mixed node's picks, for its bundle-cache key. */
+export function picksHash(picks: Uint8Array): number {
+  let h = 0x811c9dc5;
+  for (let k = 0; k < picks.length; k++) h = Math.imul(h ^ picks[k]!, 0x01000193);
+  return h >>> 0;
+}
+
+/**
+ * The nodes to draw this frame: frustum- and contribution-culled leaves, and
+ * where a clean HLOD node's error projects below `hlodPx`, its proxy instead
+ * of the subtree.
+ */
 export function collectStreamItems(f: StreamFrameInputs, nodes: readonly StreamNode[], h: HlodTree | null, links: HlodLinks, hlodPx: number,
   members: readonly BatchedMesh[]): StreamItem[] {
   const items: StreamItem[] = [];
@@ -54,8 +80,7 @@ export function collectStreamItems(f: StreamFrameInputs, nodes: readonly StreamN
     if (!f.visible(node.min, node.max)) return;
     const pick = memberPicks(f, node, members);
     if (pick === MemberPick.Cull) return;
-    const item = { leaf: node, lod1: pick === MemberPick.Lod1, d: aabbDist2(node.min, node.max, f.eye), px: f.projectedPx(node.min, node.max) };
-    items.push(typeof pick === 'number' ? item : { ...item, picks: pick });
+    items.push({ leaf: node, lod1: pick === MemberPick.Lod1, picks: typeof pick === 'number' ? undefined : pick, d: aabbDist2(node.min, node.max, f.eye), px: f.projectedPx(node.min, node.max) });
   };
   if (!h || !h.roots.length) {
     for (const leaf of nodes) visitLeaf(leaf);

@@ -29,6 +29,10 @@ export interface StreamNode {
   entries: number;
   bundles: (GPURenderBundle | null)[]; // [mode * 2 + lod], mode = discardFree * 2 + objectId
   ortho: (GPURenderBundle | null)[];   // orthographic colour/depth pairs at orthoSlot(mode, lod)
+  /** Smallest member bounding-sphere radius: a lower bound on every member's projected size. */
+  minRadius: number;
+  /** Bundles of the last mixed-LOD draw (`StreamItem.picks`), valid while `key` (cache keys, mode, picks hash) holds. */
+  mixed?: { key: string; bundles: GPURenderBundle[] };
 }
 
 /**

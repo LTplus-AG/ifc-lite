@@ -16,10 +16,11 @@ export function buildStreamNodes(members: readonly BatchedMesh[], cell: number):
     const k = `${c[0]},${c[1]},${c[2]}`;
     let node = byCell.get(k);
     if (!node) {
-      node = { coords: c, min: [...bb.min], max: [...bb.max], members: [], tris0: 0, tris1: 0, entries: 0, bundles: [null, null, null, null, null, null, null, null], ortho: [] };
+      node = { coords: c, min: [...bb.min], max: [...bb.max], members: [], tris0: 0, tris1: 0, entries: 0, bundles: [null, null, null, null, null, null, null, null], ortho: [], minRadius: Infinity };
       byCell.set(k, node);
     }
     growAabb(node, bb.min, bb.max);
+    node.minRadius = Math.min(node.minRadius, 0.5 * Math.hypot(bb.max[0] - bb.min[0], bb.max[1] - bb.min[1], bb.max[2] - bb.min[2]));
     node.members.push(i); node.entries += b.expressIds.length;
     node.tris0 += b.indexCount / 3; node.tris1 += (b.lod1IndexBuffer && b.lod1IndexCount ? b.lod1IndexCount : b.indexCount) / 3;
   }

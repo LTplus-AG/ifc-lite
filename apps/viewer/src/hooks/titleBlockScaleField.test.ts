@@ -38,4 +38,15 @@ describe('titleBlockWithEffectiveScale', () => {
     const ok = blockSaying('1:100');
     assert.equal(titleBlockWithEffectiveScale(ok, 100, 10), ok);
   });
+
+  it('leaves a scale field alone when auto-populate is off (#11458)', () => {
+    const tb = {
+      ...blockSaying('x'),
+      fields: DEFAULT_TITLE_BLOCK_FIELDS.map((f) => (f.id === 'scale'
+        ? { ...f, autoPopulate: false, autoPopulateSource: 'drawing.scale', value: 'As indicated' }
+        : { ...f })),
+    } as TitleBlockConfig;
+    assert.equal(scaleValue(titleBlockWithEffectiveScale(tb, 100, 10)), 'As indicated');
+    assert.equal(titleBlockWithEffectiveScale(tb, 100, 10), tb);
+  });
 });

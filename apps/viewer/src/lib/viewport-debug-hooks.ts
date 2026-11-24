@@ -10,6 +10,7 @@ import { activeVisibilityReasons } from '@/lib/visibility/visibility-reasons';
 import { useViewerStore } from '@/store';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { isSceneSettled } from '@/lib/scene-settled';
+import { isSectionDrawingSettled } from '@/lib/section-drawing-settled';
 import { geometryRestoreBackstopFires } from './geometry-restore-gate.js';
 import type { PickParityRequest } from './perf/pickParity.js';
 
@@ -135,8 +136,10 @@ export function installViewportDebugHooks(
   // Constant-time read of the renderer-owned snapshot; no scene collection walks.
   host.__ifc_lite_render_frame__ = () => renderer.getFrameStats();
   // Constant-time: the viewer's own settled rule (store not streaming, no pending shards, no queued meshes,
-  // no streaming fragments, no finalize running). The load scoreboard gates its interactive mark on it.
-  host.__ifc_lite_scene_settled__ = () => isSceneSettled();
+  // no streaming fragments, no finalize running), and a wanted section drawing (cap, 2D panel) caught up
+  // with the live cut, so a screenshot never races the cap (#11428). The load scoreboard gates its
+  // interactive mark on it; a load with no section open is unaffected.
+  host.__ifc_lite_scene_settled__ = () => isSceneSettled() && isSectionDrawingSettled(useViewerStore.getState());
   host.__ifc_lite_render_stats__ = () => ({
     gpuTiming: renderer.getGpuFrameTiming(),
     adapter: renderer.getAdapterInfo(),

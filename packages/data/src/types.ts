@@ -235,7 +235,7 @@ export interface SpatialHierarchy {
   bySpace: Map<number, number[]>;     // spaceId -> element IDs
   storeyElevations: Map<number, number>;  // storeyId -> elevation (z)
   storeyHeights: Map<number, number>;     // storeyId -> floor-to-floor height (calculated from elevation differences)
-  elementToStorey: Map<number, number>;  // elementId -> storeyId (reverse lookup)
+  elementToStorey: Map<number, number>;  // elementId -> storeyId (reverse lookup); includes elements contained in an IfcSpace the storey aggregates, and aggregated parts
   /**
    * elementId -> the nearest spatial container node that ultimately contains
    * it, at ANY level (storey, IfcSpace / IfcSpatialZone, or an infrastructure

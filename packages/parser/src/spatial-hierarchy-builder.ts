@@ -321,6 +321,31 @@ export class SpatialHierarchyBuilder {
           ctx.elementToStorey.set(childId, expressId);
         }
       }
+      // An element contained in one of those spaces (or in a space nested in
+      // it) is on this storey as well, with its aggregated parts. The edited
+      // path (`effectiveStoreyResolver`) already walks through the space; the
+      // parsed model must answer the same. Direct storey containment still
+      // wins: it is set above, or by its own storey's visit, which overwrites.
+      const claimThroughSpaces = (nodes: SpatialNode[]): void => {
+        for (const node of nodes) {
+          if (!isSpaceLikeSpatialType(node.type)) continue;
+          for (const elementId of node.elements) {
+            if (!ctx.elementToStorey.has(elementId)) ctx.elementToStorey.set(elementId, expressId);
+            const stack: number[] = [elementId];
+            const seen = new Set<number>(stack);
+            while (stack.length > 0) {
+              for (const kid of relationships.getRelated(stack.pop() as number, RelationshipType.Aggregates, 'forward')) {
+                if (seen.has(kid)) continue;
+                seen.add(kid);
+                if (!ctx.elementToStorey.has(kid)) ctx.elementToStorey.set(kid, expressId);
+                stack.push(kid);
+              }
+            }
+          }
+          claimThroughSpaces(node.children);
+        }
+      };
+      claimThroughSpaces(childNodes);
     }
 
     // Attribute every directly-contained element AND its aggregated descendants

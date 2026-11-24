@@ -296,5 +296,5 @@
    531 scripts/review/run-reviewer.mjs
    688 scripts/source-text-assertion-detect.mjs
    504 scripts/test-geometry-regression.mjs
-  2069 scripts/test-wasm-contract.mjs
+  2070 scripts/test-wasm-contract.mjs
    678 scripts/typecheck-tests.mjs

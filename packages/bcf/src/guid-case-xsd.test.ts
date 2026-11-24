@@ -25,6 +25,7 @@ const COMMENT = 'BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB';
 const VIEWPOINT = 'CCCCCCCC-CCCC-4CCC-8CCC-CCCCCCCCCCCC';
 const RELATED = 'DDDDDDDD-DDDD-4DDD-8DDD-DDDDDDDDDDDD';
 const DOCREF = 'EEEEEEEE-EEEE-4EEE-8EEE-EEEEEEEEEEEE';
+const DOCGUID = '11111111-AAAA-4AAA-8AAA-AAAAAAAAAAAA';
 
 function project(version: '2.1' | '3.0'): BCFProject {
   return {
@@ -34,7 +35,10 @@ function project(version: '2.1' | '3.0'): BCFProject {
       guid: TOPIC, title: 'Upper', topicType: 'Issue', topicStatus: 'Open',
       creationDate: '2026-01-02T03:04:05Z', creationAuthor: 'a@example.invalid',
       relatedTopics: [RELATED],
-      documentReferences: [{ guid: DOCREF, url: 'https://example.invalid/d.pdf' }],
+      documentReferences: [
+        { guid: DOCREF, url: 'https://example.invalid/d.pdf' },
+        { documentGuid: DOCGUID },
+      ],
       comments: [{ guid: COMMENT, date: '2026-01-02T03:04:05Z', author: 'a@example.invalid', comment: 'c', viewpointGuid: VIEWPOINT }],
       viewpoints: [{
         guid: VIEWPOINT,
@@ -80,11 +84,31 @@ describe('uppercase GUIDs', () => {
     expect(topic.comments[0].viewpointGuid).toBe(VIEWPOINT.toLowerCase());
     expect(topic.viewpoints[0].guid).toBe(VIEWPOINT.toLowerCase());
     expect(topic.relatedTopics).toEqual([RELATED.toLowerCase()]);
+    expect(topic.documentReferences.map((d) => d.documentGuid).filter(Boolean)).toEqual([DOCGUID.toLowerCase()]);
   });
 
   it('are left exactly as given in BCF 2.1, whose schema accepts either case', async () => {
     const { errors, zip } = await validateAll('2.1');
     expect(errors).toEqual([]);
     expect(Object.keys(zip.files).some((n) => n.startsWith(`${TOPIC}/`))).toBe(true);
+  });
+});
+
+describe('guids that differ only by case', () => {
+  it('are refused by the 3.0 writer instead of silently merged', async () => {
+    const p = project('3.0');
+    const a = [...p.topics.values()][0];
+    const lower = TOPIC.toLowerCase();
+    p.topics.set(lower, { ...a, guid: lower });
+    await expect(writeBCF(p)).rejects.toThrow(new RegExp(`${TOPIC}.*${lower}|${lower}.*${TOPIC}`));
+  });
+
+  it('are kept distinct by the 2.1 writer, whose schema is case-insensitive', async () => {
+    const p = project('2.1');
+    const a = [...p.topics.values()][0];
+    const lower = TOPIC.toLowerCase();
+    p.topics.set(lower, { ...a, guid: lower });
+    const back = await readBCF(await writeBCF(p));
+    expect(back.topics.size).toBe(2);
   });
 });

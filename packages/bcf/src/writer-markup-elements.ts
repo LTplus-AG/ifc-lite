@@ -189,7 +189,7 @@ export function writeDocumentReference(
   if (version === '3.0') {
     let content = `\n    <DocumentReference${guidAttr}>`;
     if (docRef.documentGuid) {
-      content += `\n      <DocumentGuid>${escapeXml(docRef.documentGuid)}</DocumentGuid>`;
+      content += `\n      <DocumentGuid>${escapeXml(bcfGuid(docRef.documentGuid, version))}</DocumentGuid>`;
     } else {
       const url = docRef.url ?? docRef.referencedDocument;
       if (url) {

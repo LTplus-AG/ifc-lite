@@ -253,3 +253,38 @@ fn slightly_rotated_vertical_slot_cuts_only_the_slot() {
         }
     }
 }
+
+/// #11321: an axis-aligned recess whose profile carries a collinear point is
+/// still the box its bounds describe. The extra vertex sits mid-edge, on a
+/// face of the bounds but not at a corner, and must not push the opening off
+/// the Rectangular kind or make its wall seed a rotated frame.
+#[test]
+fn axis_aligned_recess_with_a_collinear_profile_point_stays_rectangular() {
+    use ifc_lite_geometry::OpeningKindDiag;
+    for turn in [0.0, 90.0] {
+        for length in [1.0, 4.0] {
+            let content = split_wall::wall_with_finish([0.0; 2], turn, 2.274, Recess::FromInterface, length)
+                .replace(
+                    "#122=IFCRECTANGLEPROFILEDEF(.AREA.,'Recess',#121,1.0,1.0);",
+                    "#126=IFCCARTESIANPOINT((0.,0.));#127=IFCCARTESIANPOINT((0.5,0.));\
+                     #128=IFCCARTESIANPOINT((1.,0.));#129=IFCCARTESIANPOINT((1.,1.));\
+                     #130=IFCCARTESIANPOINT((0.,1.));\
+                     #131=IFCPOLYLINE((#126,#127,#128,#129,#130,#126));\
+                     #122=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,'Recess',#131);",
+                );
+            assert!(content.contains("IFCARBITRARYCLOSEDPROFILEDEF"));
+            let (mesh, router) = fixture_host(&content, false);
+            let kinds: Vec<_> = router
+                .take_host_opening_diagnostics()
+                .remove(&100)
+                .expect("the wall records its openings")
+                .openings
+                .iter()
+                .map(|opening| opening.kind)
+                .collect();
+            assert_eq!(kinds, [OpeningKindDiag::Rectangular], "{turn}° finish {length} m");
+            let delta = (mesh_volume(&mesh) - finish_wall_volume(length)) * 1000.0;
+            assert!(delta.abs() < 0.6, "{turn}° finish {length} m: {delta:+.3} L");
+        }
+    }
+}

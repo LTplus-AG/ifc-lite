@@ -39,6 +39,8 @@ export interface SanitizeFilenameOptions {
  * are trimmed off the ends). `fallback` is returned verbatim when the result is
  * empty, so pass a clean token like `'list'` / `'model'`.
  */
+const WINDOWS_RESERVED_STEM = /^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/i;
+
 export function sanitizeFilename(name: string, options: SanitizeFilenameOptions = {}): string {
   const fallback = options.fallback ?? 'file';
   const maxLength = options.maxLength ?? 60;
@@ -49,8 +51,11 @@ export function sanitizeFilename(name: string, options: SanitizeFilenameOptions 
     .replace(/[^\p{L}\p{N}._ -]+/gu, '-')
     .replace(/^[\s.-]+|[\s.-]+$/g, '') // trim leading/trailing space, dot or hyphen
     .slice(0, maxLength)
+    .replace(/[\uD800-\uDBFF]$/, '') // slice() counts UTF-16 units: drop a cut-in-half surrogate pair
     .replace(/[\s.-]+$/, ''); // re-trim in case slice() left a trailing separator
-  return cleaned || fallback;
+  // Windows refuses `CON`, `NUL`, `COM1`... as a file stem whatever the extension
+  // (`CON.pdf` too), so a model named for one gets a leading underscore.
+  return cleaned ? (WINDOWS_RESERVED_STEM.test(cleaned) ? `_${cleaned}` : cleaned) : fallback;
 }
 
 /** No real file extension is longer than this; caps a pathological input. */

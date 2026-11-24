@@ -7,6 +7,22 @@ import assert from 'node:assert';
 import { sanitizeFilename, buildExportFilename, modelExportFilename, stripExtension } from './download.js';
 
 describe('sanitizeFilename', () => {
+  it('prefixes Windows reserved device names, with or without an extension part', () => {
+    assert.strictEqual(sanitizeFilename('CON'), '_CON');
+    assert.strictEqual(sanitizeFilename('nul'), '_nul');
+    assert.strictEqual(sanitizeFilename('Com1.model'), '_Com1.model');
+    assert.strictEqual(modelExportFilename('AUX.ifc', 'pdf'), '_AUX.pdf');
+    assert.strictEqual(sanitizeFilename('CONSTRUCTION'), 'CONSTRUCTION');
+    assert.strictEqual(sanitizeFilename('COM10'), 'COM10');
+  });
+
+  it('never leaves half a surrogate pair when truncating', () => {
+    const name = `${'a'.repeat(59)}\u{20000}\u{20000}`;
+    const out = sanitizeFilename(name);
+    assert.strictEqual(out, 'a'.repeat(59));
+    assert.ok(out.isWellFormed());
+  });
+
   it('preserves uppercase letters (issue #1299)', () => {
     assert.strictEqual(sanitizeFilename('DRAWINGS'), 'DRAWINGS');
     assert.strictEqual(sanitizeFilename('MyList'), 'MyList');

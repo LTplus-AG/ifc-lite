@@ -206,7 +206,7 @@ fn body_has(pass: &Pass<'_, '_>, content: &[u8], contains: impl Fn(&[u8]) -> boo
         || pass.mutated_lines.values().filter_map(|(text, _)| text.as_deref()).any(|text| contains(text.as_bytes()))
 }
 
-fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &mut W) -> io::Result<LogExportStats> {
+fn validate_log_options(opts: &StepOptions) -> io::Result<()> {
     if opts.included.is_some() {
         return Err(invalid("export_step_with_log: `included` is not supported with a mutation log"));
     }
@@ -215,13 +215,19 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
             "export_step_with_log: pass edits in the log, not in StepOptions' attribute/property/copy-on-write vectors",
         ));
     }
-    let src = Source::index(content);
+    Ok(())
+}
+
+fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &mut W) -> io::Result<LogExportStats> {
+    validate_log_options(opts)?;
+    let mut src = Source::index(content);
     check_created_ids(&src, log)?;
     let family = schema_family(content);
     let source_label = detect_schema(content);
     let target = opts.schema.clone().unwrap_or_else(|| source_label.clone());
     let converting = opts.schema.is_some() && crate::schema_convert::needs_conversion(&source_label, &target);
 
+    src.preserve_latin1 = crate::schema_typed_properties::applies_to_source(content, &source_label, &target);
     let target_is_ifc2x3 = crate::schema_convert::targets_ifc2x3(&target);
     if target_is_ifc2x3 && log.georef_mutations.as_ref().is_some_and(super::georef::requests_anything) {
         return Err(invalid(format!("export_step_with_log: {}", super::georef::IFC2X3_REFUSAL)));
@@ -285,8 +291,11 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     generate(&mut pass, collected).map_err(unwritable)?;
     write_created(&mut pass).map_err(unwritable)?;
 
+    let typed_properties = src.preserve_latin1 || (crate::schema_typed_properties::applies(&source_label, &target)
+        && (!pass.overlay.retype_order.is_empty() || !pass.created_lines.is_empty()));
     let mut slot_fill = crate::schema_ifc2x3_slots::Ifc2x3SlotFill::new(pass.fallback_owner_history());
     let mut checks = checks_for(content, &source_label, &target, opts, log, &src, &mut pass); // #10763: its material records too
+    checks.typed_properties.enabled = typed_properties;
     let defer_varying = body_has(&pass, content, |bytes| checks.structural.buffers_varying(bytes));
     let date_buffer = body_has(&pass, content, |bytes| {
         crate::schema_value_forms::ValueForms::buffer_for_dates(bytes, &source_label, &target)
@@ -295,7 +304,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     let modifications = pass.new_entity_count + pass.ledger.modified_count();
     let header = |mut out: &mut dyn Write, added| write_header(&mut out, opts, content, converting, &target, modifications + added);
     if !defer_varying { header(out, 0)?; }
-    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, target_is_ifc2x3, defer_varying || date_buffer);
+    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, target_is_ifc2x3, defer_varying || date_buffer || typed_properties);
     let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(content, &source_label, &target); flatten.note_all(content, pass.mutated_lines.iter().filter_map(|(id, (t, _))| Some((*id, t.as_deref()?)))
         .chain(pass.generated.iter().chain(&pass.rewritten_lines).chain(&pass.georef_lines).chain(&pass.created_lines).map(|(id, l)| (*id, l.as_str()))));
     flatten.retain_grids(|id| !pass.skip.contains(&id) && !pass.is_deleted(id));
@@ -351,11 +360,9 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     for (id, line) in appended.filter(|(id, _)| !flatten.drops(*id)) {
         written += usize::from(write_line(&mut body, line, *id, converting, &source_label, &target, &mut slot_fill, &mut checks, &flatten)?);
     }
-    let mut deferred_entities = 0;
-    let delta = checks.finish_with_header(body, target_is_ifc2x3.then_some(&mut slot_fill), |out, count| {
+    let (delta, deferred_entities) = checks.finish_with_header(body, target_is_ifc2x3.then_some(&mut slot_fill), pass.ids, |out, count| {
         if !defer_varying { return Ok(()); }
-        deferred_entities = usize::try_from(count).unwrap_or_default();
-        header(out, deferred_entities)
+        header(out, usize::try_from(count).unwrap_or_default())
     })?;
     written = written.checked_add_signed(delta).unwrap_or(written);
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;

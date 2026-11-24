@@ -37,6 +37,8 @@ import {
 } from './schema-converter.js';
 import { BY_NAME_ATTR_REMAP_TYPES } from './schema-converter-attr-remap.js';
 import { isStrictAttrPrefix, replacedSlot } from './schema-converter-renames.js';
+import { previewTypedPropertyNames } from './schema-converter-typed-properties.js';
+import { getCompleteEntityIndex } from './entity-iteration.js';
 import { attrMapFor, attrsDroppedByMap, dropsSetMembers } from './schema-converter-attr-maps.js';
 import { isRootedEntityType, missingTypeRoute } from './schema-untranslatable.js';
 
@@ -324,19 +326,29 @@ export function analyzeConversionLoss(
     }
     const { stranded } = round;
     const restored = new Map([...round.restored, ...links.restored]);
+    const typedUpgrade = fromSchema === 'IFC2X3' && (toSchema === 'IFC4' || toSchema === 'IFC4X3');
+    const retainedTyped = records && typedUpgrade
+      ? previewTypedPropertyNames(records, getCompleteEntityIndex(store), typed.flatMap(([type, ids, info]) => {
+        const reference = info.targetType === 'IFCMATERIALPROPERTIES' ? 'Material'
+          : info.targetType === 'IFCPROFILEPROPERTIES' ? 'ProfileDefinition' : undefined;
+        const referenceSlot = reference ? attrNameTable(fromSchema)?.get(type)?.indexOf(reference) ?? -1 : -1;
+        return referenceSlot >= 0 ? [{ type, ids, referenceSlot }] : [];
+      }))
+      : undefined;
     for (const [sourceType, expressIds, info] of typed) {
       const mapped = records && toSchema === 'IFC2X3' ? attrMapFor(sourceType, info.targetType, fromSchema, toSchema) : undefined;
       // A SET declared for an upgrade can still be dropped entirely on downgrade.
       const setAttribute = mapped?.map.setOfOne?.[1];
       const narrowedSet = setAttribute && !mapped?.map.upOnly.includes(setAttribute) ? setAttribute : undefined;
-      const slot = narrowedSet ? attrNameTable(fromSchema)?.get(sourceType)?.indexOf(narrowedSet) ?? -1 : -1;
+      const attributes = attrNameTable(fromSchema)?.get(sourceType);
+      const slot = narrowedSet ? attributes?.indexOf(narrowedSet) ?? -1 : -1;
       const isRetained = (id: number, attribute: string) => {
-        if (restored.get(id)?.has(attribute)) return true;
+        if (restored.get(id)?.has(attribute) || retainedTyped?.get(id)?.has(attribute)) return true;
         if (attribute !== narrowedSet) return false;
         const value = records?.slots(id)?.[slot];
         return value !== undefined && !dropsSetMembers(value);
       };
-      const entry = carrying(sourceType, info) || slot >= 0
+      const entry = carrying(sourceType, info) || slot >= 0 || expressIds.some((id) => retainedTyped?.has(id))
         ? entryAfterRestoration(sourceType, expressIds, info, isRetained)
         : { ...info, sourceType, count: expressIds.length, expressIds };
       if (entry) entries.push(entry);

@@ -25,6 +25,14 @@ impl<'w> Body<'w> {
         self.finish_with_header(|_| None, |_, _| Ok(()))
     }
 
+    /// Apply a byte-preserving pass before adaptations that read the DATA as text.
+    pub(crate) fn rewrite_held(&mut self, rewrite: impl FnOnce(&[u8]) -> Option<(Vec<u8>, usize)>) -> usize {
+        let Some(held) = self.held.as_mut() else { return 0 };
+        let Some((rewritten, added)) = rewrite(held) else { return 0 };
+        *held = rewritten;
+        added
+    }
+
     /// Adapt a held section, then write its header with the final delta before writing DATA.
     pub(crate) fn finish_with_header(
         self,

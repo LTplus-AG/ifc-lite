@@ -195,6 +195,7 @@ pub(crate) struct ConversionChecks {
     pub(crate) forms: crate::schema_value_forms::ValueForms,
     /// The IfcMaterial a downgraded IfcMaterialProperties names (#10763).
     pub(crate) materials: crate::schema_material_referent::MaterialReferents,
+    pub(crate) typed_properties: crate::schema_typed_properties::TypedPropertyUpgrade,
     /// `convert_record`'s per-type decisions, resolved once per distinct type.
     pub(crate) plans: crate::schema_plan::PlanCache,
     pub(crate) merged: bool,
@@ -214,6 +215,7 @@ impl ConversionChecks {
             documents: Default::default(),
             forms: Default::default(),
             materials,
+            typed_properties: Default::default(),
             plans: Default::default(),
             merged: false,
             attribute_values_dropped: 0,
@@ -262,16 +264,19 @@ impl ConversionChecks {
         &mut self,
         body: crate::schema_ifc2x3_body::Body<'_>,
         slots: Option<&mut crate::schema_ifc2x3_slots::Ifc2x3SlotFill>,
+        ids: crate::step_ids::IdAllocator,
     ) -> std::io::Result<isize> {
-        self.finish_with_header(body, slots, |_, _| Ok(()))
+        self.finish_with_header(body, slots, ids, |_, _| Ok(())).map(|(delta, _)| delta)
     }
 
+    /// Return the DATA record delta and the number of records minted by the deferred passes.
     pub(crate) fn finish_with_header(
         &mut self,
         mut body: crate::schema_ifc2x3_body::Body<'_>,
         mut slots: Option<&mut crate::schema_ifc2x3_slots::Ifc2x3SlotFill>,
+        ids: crate::step_ids::IdAllocator,
         header: impl FnOnce(&mut dyn std::io::Write, isize) -> std::io::Result<()>,
-    ) -> std::io::Result<isize> {
+    ) -> std::io::Result<(isize, usize)> {
         use std::io::Write as _;
         let mut added = self.structural.added();
         added.extend(self.structural.values.added());
@@ -284,9 +289,11 @@ impl ConversionChecks {
             };
             writeln!(body, "{record}")?;
         }
+        // Varying actions mint ids above the final DATA ids, including typed properties.
+        let typed_added = body.rewrite_held(|text| self.finish_typed_properties(text, || ids));
         // Date pruning changes the written count, but cannot undo a structural addition.
         let varying_added = std::cell::Cell::new(0);
-        Ok(count + body.finish_with_header(|text| {
+        let body_delta = body.finish_with_header(|text| {
             let varying = self.structural.finish_effective_varying(text, &mut self.attribute_values_dropped);
             varying_added.set(varying.as_ref().map_or(0, |(_, added)| *added));
             let source = varying.as_ref().map_or(text, |(body, _)| body.as_str());
@@ -294,7 +301,12 @@ impl ConversionChecks {
                 Some((body, delta)) => Some((body, varying_added.get() + delta)),
                 None => varying,
             }
-        }, |out, _| header(out, varying_added.get()))?)
+        }, |out, _| header(out, varying_added.get()))?;
+        Ok((count + typed_added as isize + body_delta, typed_added + varying_added.get() as usize))
+    }
+
+    pub(crate) fn finish_typed_properties(&mut self, text: &[u8], ids: impl FnOnce() -> crate::step_ids::IdAllocator) -> Option<(Vec<u8>, usize)> {
+        self.typed_properties.finish(text, ids, &mut self.ifc4_slots, &mut self.attribute_values_dropped, &mut self.structural)
     }
 
     pub(crate) fn finish_dates(&mut self, text: &mut String) -> isize {
@@ -321,6 +333,7 @@ impl ConversionChecks {
         out.extend(self.materials.warnings());
         out.extend(self.structural.warnings());
         out.extend(self.plans.warnings());
+        out.extend(self.typed_properties.warning());
         out
     }
 }

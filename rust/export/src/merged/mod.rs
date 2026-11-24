@@ -226,6 +226,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     let mut offset: u32 = 0;
     let mut slot_fill = Ifc2x3SlotFill::new(None);
     let mut checks = ConversionChecks { merged: true, ..ConversionChecks::new(crate::schema_material_referent::MaterialReferents::for_target(crate::schema_convert::canon(&schema))) }; checks.forms.enable_dates();
+    checks.typed_properties.enabled = true;
     let mut parents = single_parents::ParentClaims::for_schema(&schema); // one rel per single-valued inverse (#5727, #5802, #5774, #5923)
 
     for (i, model) in models.iter().enumerate() {
@@ -289,6 +290,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
 
         // Emit.
         let converting = index.add_materials(&mut checks.materials, &source_schema, &schema, &included, &plan, offset);
+        let preserve_latin1 = crate::schema_typed_properties::applies_to_source(model.content, &source_schema, &schema);
         let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(model.content, &source_schema, &schema); // D57
         flatten.retain_grids(|id| included.contains(&id) && !plan.skip.contains(&id));
         for &id in &index.order {
@@ -296,6 +298,8 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                 continue;
             }
             let Some(bytes) = index.line_bytes(id) else { continue };
+            let source_text = preserve_latin1.then(|| crate::schema_typed_properties::source_text(bytes, true));
+            let bytes = source_text.as_deref().map_or(bytes, str::as_bytes);
             // A dropped container is never written, and any line naming one is
             // rewritten without it (or dropped with it), so the merge emits no
             // reference to a line it did not write — no clean-up pass needed.
@@ -385,13 +389,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     }
 
     warnings::push_merge_warnings(&mut stats, refused_refs_total, unrepresented_types_kept, &schema);
-    stats.warnings.extend(slot_fill.warnings());
-    stats.written = stats.written.saturating_add_signed(checks.finish_dates(&mut out));
-    stats.warnings.extend(checks.warnings_for_sources(models.iter().map(|m| m.content)));
-    stats.warnings.extend(parents.apply_folds(&mut out)); // #5774 folds, after every model is written
-    // One product per placement in IFC2X3 (#9209); the header holds no record to change.
-    stats.written = stats.written.saturating_add_signed(crate::schema_ifc2x3_placements::place_text_for_schema(&schema, &mut out));
-    out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
+    warnings::finish_typed_output(&mut out, &mut stats, &schema, &slot_fill, &mut checks, parents, offset, models);
     (out, stats)
 }
 

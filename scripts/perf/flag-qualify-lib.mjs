@@ -169,11 +169,14 @@ const ms = (v) => (Number.isFinite(v) ? `${Math.round(v)} ms` : 'n/a');
  * the same build. A check the flags-off arm also fails is a main defect, not
  * the flag's: it is skipped with the reason. `readFile(path)` reads a frame;
  * `writeDiff(name, pngBytes)` stores a diff image and returns its path.
- * `noise` is a second flags-off arm. A step where main differs from itself by
- * more than `pixelMaxPct` is inconclusive (`skip`), unless the flag differs by
- * more than twice that plus the gate.
+ * `noise` holds more flags-off arms. Flags on passes a step when it matches any
+ * flags-off load (main can render a step in more than one state between loads).
+ * Otherwise a step where main differs from itself by more than `pixelMaxPct`
+ * is inconclusive (`skip`), unless the flag differs by more than twice that
+ * plus the gate.
  */
-export function compareArms(off, on, { pixelMaxPct = 0.1, threshold = 8, readFile, writeDiff, small = false, noise = null } = {}) {
+export function compareArms(off, on, { pixelMaxPct = 0.1, threshold = 8, readFile, writeDiff, small = false, noise = [] } = {}) {
+  noise = [noise].flat().filter(Boolean); // gpu.json from before --noise-loads holds one arm
   const rows = [];
   const decoded = new Map();
   const image = (path) => { if (!decoded.has(path)) decoded.set(path, decodePng(readFile(path))); return decoded.get(path); };
@@ -183,6 +186,9 @@ export function compareArms(off, on, { pixelMaxPct = 0.1, threshold = 8, readFil
   const armErrors = () => {
     if (on.errors?.length) add('load', 'flags-on run completed', 'error', on.errors.join('; ').slice(0, 300));
     if (off.errors?.length) add('load', 'flags-off run completed', 'error', off.errors.join('; ').slice(0, 300));
+    noise.forEach((arm, i) => {
+      if (arm.errors?.length || !arm.load?.ok) add('load', `flags-off load ${i + 2} completed`, 'error', (arm.errors?.join('; ') || 'did not load').slice(0, 300));
+    });
   };
   if (!on.load?.ok) {
     add('load', 'loads', off.load?.ok ? 'fail' : 'skip', `on ${loadDetail(on)}; off ${loadDetail(off)}`);
@@ -211,20 +217,37 @@ export function compareArms(off, on, { pixelMaxPct = 0.1, threshold = 8, readFil
     if (!a.frame || !b.frame) continue;
     const cmp = compareImages(image(a.frame.path), image(b.frame.path), { threshold });
     if (!cmp.stats) { add(area, `${id} pixels`, 'fail', `frame sizes differ ${cmp.sizeMismatch.join('x')}`, b.frame.path); continue; }
-    const diff = cmp.stats.over ? writeDiff(`${on.model}-${id}`, encodePng(diffImage(cmp.a, cmp.b, { threshold }))) : '';
     // A capture that was not idle, or whose two readbacks differed, may be a transient frame: it cannot pass.
-    const settled = a.frame.idle !== false && b.frame.idle !== false && a.frame.stable && b.frame.stable;
+    const clean = (f) => f.idle !== false && f.stable;
+    const settled = clean(a.frame) && clean(b.frame);
     const unstable = settled ? '' : '; a capture was not idle or its readbacks differed';
-    const again = noise?.steps?.[id]?.frame;
-    const noisePct = again ? compareImages(image(a.frame.path), image(again.path), { threshold }).stats?.overPct ?? null : null;
-    // Main differing from itself past the gate makes the step inconclusive, unless the flag
-    // differs by clearly more than that (twice main's own difference plus the gate).
+    // Main can render a step in more than one state between loads (a coplanar tie that the
+    // load-order-dependent frame origin decides): flags on matching ANY flags-off load is one of
+    // main's own states. Only a load whose run and step completed with a settled capture counts.
+    const extra = noise.map((arm, i) => ({ arm, load: i + 2, f: arm.steps?.[id]?.frame }))
+      .filter(({ arm, f }) => arm.load?.ok && !arm.errors?.length && arm.steps?.[id]?.ok === true && f && clean(f)); // a missing step is never clean
+    // Main's own difference between loads; a size mismatch is as far apart as frames get.
+    const noisePct = extra.length
+      ? Math.max(...extra.map(({ f }) => compareImages(image(a.frame.path), image(f.path), { threshold }).stats?.overPct ?? Infinity)) : null;
+    let best = { cmp, load: 1 };
+    if (cmp.stats.overPct > pixelMaxPct) {
+      for (const { f, load } of extra) {
+        const next = compareImages(image(f.path), image(b.frame.path), { threshold });
+        if (next.stats && next.stats.overPct < best.cmp.stats.overPct) best = { cmp: next, load };
+      }
+    }
+    const { stats } = best.cmp;
+    const diff = stats.over ? writeDiff(`${on.model}-${id}`, encodePng(diffImage(best.cmp.a, best.cmp.b, { threshold }))) : '';
+    // Still different from every flags-off load: inconclusive where main differs from itself past the
+    // gate, unless the flag differs by clearly more (twice main's own difference plus the gate).
     const noisy = noisePct !== null && noisePct > pixelMaxPct;
-    const gated = !noisy ? (cmp.stats.overPct <= pixelMaxPct ? 'pass' : 'fail')
-      : cmp.stats.overPct > 2 * noisePct + pixelMaxPct ? 'fail' : 'skip';
+    const gated = stats.overPct <= pixelMaxPct ? 'pass' : noisy && stats.overPct <= 2 * noisePct + pixelMaxPct ? 'skip' : 'fail';
     const verdict = gated === 'pass' && !settled ? 'skip' : gated;
+    const prefix = best.load > 1 && gated === 'pass' ? `matches flags-off load ${best.load}, one of main's own states; `
+      : noisy && verdict === 'skip' ? 'inconclusive, main is not deterministic here: ' : '';
+    const noiseNote = noisePct === null ? '' : `, main vs main up to ${noisePct}%`;
     add(area, `${id} pixels`, verdict,
-      `${noisy && verdict === 'skip' ? 'inconclusive, main is not deterministic here: ' : ''}${cmp.stats.overPct}% > ${threshold}/255 (max ${cmp.stats.max}, ${cmp.stats.isolatedPct}% isolated; gate ${pixelMaxPct}%${noisePct === null ? '' : `, main vs main ${noisePct}%`})${unstable}`, diff || b.frame.path);
+      `${prefix}${stats.overPct}% > ${threshold}/255 vs flags-off load ${best.load} (max ${stats.max}, ${stats.isolatedPct}% isolated; gate ${pixelMaxPct}%${noiseNote})${unstable}`, diff || b.frame.path);
   }
   return rows;
 }

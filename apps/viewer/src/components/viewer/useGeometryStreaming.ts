@@ -285,7 +285,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
       lastGeometryLengthRef.current = 0;
       // Only preserve ownership established by a shard-only arrival below.
       // A filtered/released flat snapshot must keep its existing reset behavior.
-      lastGeometryRef.current = instanceOnlyLoadPossible(geometryKernel) && lastGeometryRef.current?.length === 0 && !appearanceSourceGeometry?.length
+      lastGeometryRef.current = instanceOnlyLoadPossible(geometryKernel, scene) && lastGeometryRef.current?.length === 0 && !appearanceSourceGeometry?.length
         && scene.getInstancedModelIndices().length > 0 ? geometry : null;
       if (!isStreaming) completeAfterReleasedReplays(() => scene.setTriangleCountReplayComplete?.(true)); // after pending released replays
       renderer.requestRender();
@@ -578,7 +578,7 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
             `finalize start geometryLength=${capturedGeometry?.length ?? 0} releaseAfterFinalize=${releaseGeometryAfterFinalize}`
           );
 
-          if (instanceOnlyLoadPossible(geometryKernel) && capturedGeometry?.length === 0 && lastGeometryRef.current?.length === 0
+          if (instanceOnlyLoadPossible(geometryKernel, r.getScene()) && capturedGeometry?.length === 0 && lastGeometryRef.current?.length === 0
             && !appearanceSourceGeometry?.length) fitInstanceOnlyBounds({ renderer: r,
             cameraFittedRef, cameraSnapshotRef, geometryBoundsRef, finalBoundsRefittedRef,
             lastFitPolicyKindRef, complete: true, initialAtCompletion: geometryKernel !== 'retained' });

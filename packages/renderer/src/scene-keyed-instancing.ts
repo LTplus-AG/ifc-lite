@@ -113,9 +113,17 @@ function keyedCapacityFor(n: number): number {
 export class KeyedInstancing {
   private readonly slots = new Map<string, KeyedSlot>();
   private readonly sealedModels = new Set<number>();
-  /** Off by default: keyed records upload as before unless the host opts in
-   *  (the viewer's `globalInstancing` flag), cached keyed shards included. */
-  enabled = false;
+  /** On by default: only the global instance plan writes keyed shards, so a keyed
+   *  shard joins whatever path uploads it (stream, adopted snapshot, recovery) and
+   *  whatever a flag reads now. Setting this to false opts the scene out. */
+  enabled = true;
+  /** Models that received keyed shards while enabled (the plan applied to them), joined or not. */
+  private readonly keyedModels = new Set<number>();
+
+  /** Whether any model still in the scene received keyed shards: the global instance plan applied to it. */
+  get receivedKeyedShards(): boolean {
+    return this.keyedModels.size > 0;
+  }
 
   /** Open keyed slots (diagnostics). */
   get openSlots(): number {
@@ -134,6 +142,7 @@ export class KeyedInstancing {
     keyed: KeyedAppend[];
   } {
     const keys = shard.templateKeys;
+    if (this.enabled && !this.keyedModels.has(modelIndex) && keys?.some((key) => key !== '')) this.keyedModels.add(modelIndex);
     if (!this.enabled || !keys || !eligible || this.sealedModels.has(modelIndex)) return { plain: prepared, keyed: [] };
     const plain: InstancedRenderTemplate[] = [];
     const keyed: KeyedAppend[] = [];
@@ -255,10 +264,12 @@ export class KeyedInstancing {
     const prefix = `${modelIndex}|`;
     for (const key of [...this.slots.keys()]) if (key.startsWith(prefix)) this.slots.delete(key);
     this.sealedModels.delete(modelIndex);
+    this.keyedModels.delete(modelIndex);
   }
 
   clear(): void {
     this.slots.clear();
     this.sealedModels.clear();
+    this.keyedModels.clear();
   }
 }

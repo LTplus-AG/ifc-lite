@@ -17,14 +17,27 @@ use ifc_lite_geometry::mesh_check::{Degenerate, EdgeLedger, VertexKey};
 use ifc_lite_geometry::GeometryRouter;
 use voids_common::production::build_void_index_like_production;
 
+/// With the gate, the kernel's cut is rejected and the #635 fallback runs.
+#[cfg(feature = "csg_manifold_gate")]
 #[test]
-fn directionless_recess_beyond_the_finish_keeps_the_core_11318() {
+fn gate_rejected_directionless_recess_keeps_the_core_11318() {
+    keeps_the_core("gate_rejected_directionless_recess_keeps_the_core_11318");
+}
+
+/// Without the gate, the exact cut is the reference the fallback must match.
+#[cfg(not(feature = "csg_manifold_gate"))]
+#[test]
+fn exact_directionless_recess_keeps_the_core_11318() {
+    keeps_the_core("exact_directionless_recess_keeps_the_core_11318");
+}
+
+fn keeps_the_core(test_name: &str) {
     use std::process::Command;
     const PROBE: &str = "IFCLITE_PROBE_DIRECTIONLESS_RECESS_11318";
     if std::env::var_os(PROBE).is_none() {
         // Force the exact route, which hands a rejected cut to the fallback.
         let child = Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", "directionless_recess_beyond_the_finish_keeps_the_core_11318", "--nocapture"])
+            .args(["--exact", test_name, "--nocapture"])
             .env("IFC_LITE_PRISM_CUT", "0")
             .env(PROBE, "1")
             .output()
@@ -46,7 +59,6 @@ fn directionless_recess_beyond_the_finish_keeps_the_core_11318() {
         let mesh = router.process_element_with_voids(&wall, &mut decoder, &voids).expect("the wall meshes");
         let open = EdgeLedger::build(&mesh, VertexKey::GridMul(1.0e3), Degenerate::SkipTriangle).unbalanced().count();
         let volume = mesh_volume(&mesh);
-        println!("y={offset}: {volume:.6} m³, {open} unbalanced edges, failures {:?}", router.take_csg_failures());
         if open != 0 || (volume - 2.418).abs() > 0.0006 {
             failures.push(format!("y={offset}: {volume:.6} m³, {open} unbalanced edges"));
         }

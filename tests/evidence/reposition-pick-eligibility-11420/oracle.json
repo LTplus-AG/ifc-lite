@@ -1,0 +1,6 @@
+{
+  "issue": 7955,
+  "why": "Keep the pick-eligibility exports loadable while dropping reference narrowing, the reference prompt variant and the empty-expected guard, and removing a ru catalogue key: the eligibility, prompt, message and catalogue tests must go red.",
+  "key": "apps/viewer/src/lib/model-placement/pick-eligibility.ts",
+  "mutation": "tests/evidence/reposition-pick-eligibility-11420/behaviour.oracle.patch"
+}

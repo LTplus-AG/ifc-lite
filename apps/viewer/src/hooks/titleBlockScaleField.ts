@@ -38,9 +38,11 @@ export function titleBlockWithEffectiveScale(
   // `drawing.replaceSheet` carries whatever text it was saved with, so it can
   // disagree with `scale.factor` even when nothing was clamped. Its value is
   // therefore always derived from the scale the drawing was placed at.
+  // Only while auto-populate is on, as `autoPopulateTitleBlock` (`sheetSlice.ts`) skips a field with it off:
+  // a user who turned it off keeps their text (#11458).
   // A field that merely has the id 'scale' keeps the clamp-only behaviour.
   const needsValue = (field: TitleBlockConfig['fields'][number]): boolean =>
-    field.autoPopulateSource === 'drawing.scale'
+    field.autoPopulate && field.autoPopulateSource === 'drawing.scale'
       ? field.value !== label
       : clamped && field.id === 'scale';
   if (!titleBlock.fields.some(needsValue)) return titleBlock;

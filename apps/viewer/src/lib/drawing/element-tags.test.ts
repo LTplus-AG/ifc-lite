@@ -24,7 +24,10 @@ FILE_NAME('','',(''),(''),'','','');
 FILE_SCHEMA(('IFC4'));
 ENDSEC;
 DATA;
-#1=IFCPROJECT('0Project00000000000001',$,'Project',$,$,$,$,$,$);
+#1=IFCPROJECT('0Project00000000000001',$,'Project',$,$,$,$,$,#2);
+#2=IFCUNITASSIGNMENT((#3,#4));
+#3=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#4=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);
 #10=IFCDOOR('0Door00000000000000010',$,'Entrance',$,$,$,$,$,2.1,0.9,$,$,$);
 #11=IFCWINDOW('0Window000000000000011',$,'Window',$,$,$,$,'W-01',1.2,1.0,$,$,$);
 #20=IFCSPACE('0Space0000000000000020',$,'Office',$,$,$,$,$,.ELEMENT.,.INTERNAL.,$);
@@ -156,4 +159,47 @@ it('#9296 the cut centroid wins over projection fragments of the same element', 
   const polygon = (x: number, isCut: boolean) => ({ polygon: { outer: [{x,y:0},{x:x+2,y:0},{x:x+2,y:2},{x,y:2}], holes: [] },
     entityId: 10, modelIndex: 0, ifcType: 'IfcDoor', isCut });
   assert.deepEqual(resolveElementTagAnchor(tag(10), [polygon(0,true), polygon(10,false)], 10), { x: 1.2, y: 1.3 });
+});
+
+/** A space whose NetFloorArea is authored in the model's own units (the value is NOT pre-converted to SI). */
+async function unitFixture(units: string, area: string) {
+  const source = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0Project00000000000001',$,'Project',$,$,$,$,$,#2);
+${units}
+#20=IFCSPACE('0Space0000000000000020',$,'Office',$,$,$,$,$,.ELEMENT.,.INTERNAL.,$);
+#21=IFCQUANTITYAREA('NetFloorArea',$,$,${area},$);
+#22=IFCELEMENTQUANTITY('0Quantity0000000000022',$,'Qto_SpaceBaseQuantities',$,$,(#21));
+#23=IFCRELDEFINESBYPROPERTIES('0Rel000000000000000023',$,$,$,(#20),#22);
+ENDSEC;
+END-ISO-10303-21;`;
+  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(source).buffer, { disableWorkerScan: true });
+  const view = new MutablePropertyView(store.properties, 'm');
+  useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('m'), ifcDataStore: store }), mutationViews: new Map([['m', view]]) });
+}
+
+it('space tag area carries the file\'s declared AREAUNIT, not a hard-coded m\u00b2', async () => {
+  // Imperial authoring: AREAUNIT is the conversion-based square foot (0.09290304 m\u00b2), as Revit-style exports declare it.
+  await unitFixture(`#2=IFCUNITASSIGNMENT((#3,#4));
+#3=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#4=IFCCONVERSIONBASEDUNIT(#5,.AREAUNIT.,'square foot',#6);
+#5=IFCDIMENSIONALEXPONENTS(2,0,0,0,0,0,0);
+#6=IFCMEASUREWITHUNIT(IFCAREAMEASURE(0.09290304),#7);
+#7=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);`, '1076.39');
+  const label = resolveElementTagLabel(tag(20));
+  assert.ok(label && !label.endsWith(' m\u00b2'), `label must not claim m\u00b2 for a square-foot value: ${label}`);
+  assert.match(label ?? '', /1076\.39 (sq ?ft|ft\u00b2|square foot)/i);
+});
+
+it('space tag area keeps m\u00b2 in a millimetre-length model whose AREAUNIT is SI square metre', async () => {
+  await unitFixture(`#2=IFCUNITASSIGNMENT((#3,#4));
+#3=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#4=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);`, '12000000');
+  // Control: the label follows AREAUNIT, not LENGTHUNIT.
+  assert.equal(resolveElementTagLabel(tag(20)), 'Office · ≈ 12000000 m²');
 });

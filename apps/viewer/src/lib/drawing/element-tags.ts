@@ -2,7 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { effectiveMetadataRecord, extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
+import { effectiveMetadataRecord, extractPropertiesOnDemand, extractQuantitiesOnDemand, ProjectUnits } from '@ifc-lite/parser';
+import { QuantityType } from '@ifc-lite/data';
+import { currentProjectUnitContext } from '@/lib/units/current-project-unit-context';
+import { resolveQuantityDisplay } from '@/lib/units/display';
 import type { Drawing2D, DrawingPolygon } from '@ifc-lite/drawing-2d';
 import { useViewerStore } from '@/store';
 import { toGlobalIdForRef } from '@/store/globalId';
@@ -29,10 +32,14 @@ export function resolveElementTagLabel(tag: TagAnnotation2D): string | null {
   }
   const base = (id: number) => extractQuantitiesOnDemand(store, id);
   const sets = view ? view.getQuantitiesForEntity(tag.entityId, view.hasQuantityBase() ? undefined : base) : base(tag.entityId);
-  const area = sets.filter(set => set.name === 'Qto_SpaceBaseQuantities')
-    .flatMap(set => set.quantities).find(quantity => quantity.name === 'NetFloorArea')?.value;
-  return typeof area === 'number' && Number.isFinite(area)
-    ? `${name || 'IfcSpace'} · ≈ ${Number(area.toFixed(2))} m²` : name || 'IfcSpace';
+  const quantity = sets.filter(set => set.name === 'Qto_SpaceBaseQuantities')
+    .flatMap(set => set.quantities).find(candidate => candidate.name === 'NetFloorArea');
+  if (!quantity || typeof quantity.value !== 'number' || !Number.isFinite(quantity.value)) return name || 'IfcSpace';
+  // The value is in the file's own AREAUNIT (or the quantity's explicit Unit), never pre-converted to m².
+  const context = currentProjectUnitContext(store, view);
+  const { unit } = resolveQuantityDisplay(quantity.value, QuantityType.Area, context.value ?? ProjectUnits.empty(), {}, quantity, context.status !== 'unavailable');
+  // An unreadable unit shows no area rather than a number under a guessed unit.
+  return unit ? `${name || 'IfcSpace'} · ≈ ${Number(quantity.value.toFixed(2))} ${unit}` : name || 'IfcSpace';
 }
 
 /** Area-weighted cut centroid. All fragments contribute, so tessellation order cannot move a tag. */

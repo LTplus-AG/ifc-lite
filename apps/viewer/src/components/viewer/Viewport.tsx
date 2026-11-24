@@ -48,6 +48,7 @@ import { getLodScreenPx } from '../../utils/lodConfig.js';
 import { isQuantizedEnabled } from '../../utils/quantizedConfig.js';
 import { configureDrawStream } from '../../utils/drawStreamConfig.js';
 import { configureGpuInstancing } from '../../utils/gpuInstancingConfig.js';
+import { forgetAppliedRenderPaths } from '../../utils/hugeGeometryConfig.js';
 import { unionEntityBounds, getThemeClearColor, hasPendingMeasurementState, type BoundingBox3D } from '../../utils/viewportUtils.js';
 import { registerAgentViewportHost } from '@/lib/agent-bridge/viewport-host';
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '../../hooks/useBCF.js';
@@ -1108,7 +1109,7 @@ export function Viewport({
       rendererRef.current = null;
       // Free all WebGPU resources held by this renderer instance.
       // destroy() is idempotent, so this is safe even if init() rejected.
-      renderer.destroy();
+      renderer.destroy(); forgetAppliedRenderPaths(); // telemetry stops reporting this renderer's paths
       // Clear BCF global refs to prevent memory leaks
       clearGlobalRefs();
       clearViewportDebugHooks();

@@ -208,7 +208,7 @@ export function downloadFile(
 
 const UTF8_BOM = [0xef, 0xbb, 0xbf] as const;
 
-function isCsvMime(mime: string): boolean {
+export function isCsvMime(mime: string): boolean {
   return /^text\/csv\b/i.test(mime.trim());
 }
 

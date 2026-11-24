@@ -38,7 +38,7 @@ import {
   type WorldAabb,
 } from './geometrySummary.js';
 import { totalYupOffset } from '../geo/coordinate-frame.js';
-import { downloadBlob, sanitizeFilename } from '../export/download.js';
+import { csvBlob, downloadBlob, sanitizeFilename } from '../export/download.js';
 
 export type { CompareReportRow } from './reportRows.js';
 
@@ -326,6 +326,13 @@ export function reportToJson(report: CompareReport): string {
   return JSON.stringify(report, null, 2);
 }
 
+/** The downloadable file body: CSV goes through `csvBlob` so Excel reads it as UTF-8 (#11452). */
+export function compareReportBlob(report: CompareReport, format: 'csv' | 'json'): Blob {
+  return format === 'csv'
+    ? csvBlob(reportToCsv(report), 'text/csv;charset=utf-8;')
+    : new Blob([reportToJson(report)], { type: 'application/json;charset=utf-8;' });
+}
+
 /** Build + download the change report as a CSV or JSON file.
  *  `excludedTypesDisplay` carries the blacklist in its original IFC casing for
  *  the report header (the engine echo is uppercase-normalized). */
@@ -338,8 +345,6 @@ export function downloadCompareReport(
   const report = buildCompareReport(result, models, excludedTypesDisplay);
   const modelName = (s: string) => sanitizeFilename(s, { fallback: 'model', maxLength: 40 });
   const name = `compare-${modelName(report.baseModel)}-vs-${modelName(report.headModel)}`;
-  const body = format === 'csv' ? reportToCsv(report) : reportToJson(report);
-  const type = format === 'csv' ? 'text/csv;charset=utf-8;' : 'application/json;charset=utf-8;';
-  downloadBlob(new Blob([body], { type }), `${name}.${format}`);
+  downloadBlob(compareReportBlob(report, format), `${name}.${format}`);
   trackExportCompleted({ format, surface: 'compare_panel' });
 }

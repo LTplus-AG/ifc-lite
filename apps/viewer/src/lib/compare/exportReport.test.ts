@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { buildCompareReport, reportToCsv, reportToJson, type CompareReport } from './exportReport.js';
+import { buildCompareReport, compareReportBlob, reportToCsv, reportToJson, type CompareReport } from './exportReport.js';
 import type { CompareResult } from '../../store/slices/compareSlice.js';
 import type { FederatedModel } from '../../store/types.js';
 
@@ -811,5 +811,15 @@ describe('buildCompareReport - spatial re-parenting (#5309)', () => {
       },
     } as unknown as CompareResult;
     assert.strictEqual(buildCompareReport(result, new Map()).rows[0].change, 'Container changed');
+  });
+});
+
+describe('compareReportBlob (#11452)', () => {
+  it('saves the CSV with a UTF-8 BOM so Excel decodes accents, and leaves JSON BOM-free', async () => {
+    const csv = new Uint8Array(await compareReportBlob(report, 'csv').arrayBuffer());
+    assert.deepStrictEqual([...csv.slice(0, 3)], [0xef, 0xbb, 0xbf]);
+    assert.notDeepStrictEqual([...csv.slice(3, 6)], [0xef, 0xbb, 0xbf]);
+    const json = new Uint8Array(await compareReportBlob(report, 'json').arrayBuffer());
+    assert.strictEqual(json[0], 0x7b);
   });
 });

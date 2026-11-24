@@ -20,6 +20,18 @@ describe('sanitizeSheetName', () => {
     expect(b.length).toBeLessThanOrEqual(31);
     expect(sanitizeSheetName('ROOMS', ['Rooms'])).toBe('ROOMS (2)');
   });
+  it('measures the 31-character limit in UTF-16 units, never splitting a surrogate pair', () => {
+    const emoji = sanitizeSheetName('😀'.repeat(31));
+    expect(emoji.length).toBeLessThanOrEqual(31);
+    expect(emoji).toBe('😀'.repeat(15));
+    const mixed = sanitizeSheetName(`${'a'.repeat(30)}😀`);
+    expect(mixed.length).toBeLessThanOrEqual(31);
+    expect(mixed).toBe('a'.repeat(30));
+    const suffixed = sanitizeSheetName('😀'.repeat(31), ['😀'.repeat(15)]);
+    expect(suffixed.length).toBeLessThanOrEqual(31);
+    expect(suffixed.endsWith(' (2)')).toBe(true);
+    expect(suffixed).toBe(`${'😀'.repeat(13)} (2)`);
+  });
   it('handles empty, apostrophes and History', () => {
     expect(sanitizeSheetName('')).toBe('Sheet1');
     expect(sanitizeSheetName("'a'")).toBe('a');

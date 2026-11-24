@@ -37,4 +37,25 @@ describe('toXlsx Excel limits', () => {
     const cell = wb.worksheets[0].getCell(5, 1).value as string;
     assert.ok(cell.length <= 32767, String(cell.length));
   });
+  it('caps a long column header, group label and totals row', async () => {
+    const long = 'x'.repeat(40000);
+    const cols: ColumnDefinition[] = [
+      { id: 'n', source: 'attribute', propertyName: 'Name', label: long },
+      { id: 'q', source: 'quantity', propertyName: 'Area' },
+    ];
+    const rows: ListRow[] = [{ entityId: 1, modelId: 'm', values: [long, 1] }];
+    const model = buildExportModel({
+      title: 't', columns: cols, rows, numericCols: [false, true], columnWidths: [120, 120], generatedAt: 'now',
+      grouping: { columnId: 'n', columnIds: ['n'], sumColumnIds: ['q'] },
+    });
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(await (await toXlsx(model)).arrayBuffer() as never);
+    const ws = wb.worksheets[0];
+    let checked = 0;
+    ws.eachRow((row) => row.eachCell((cell) => {
+      if (typeof cell.value === 'string') { checked += 1; assert.ok(cell.value.length <= 32767, String(cell.value.length)); }
+    }));
+    assert.ok(checked >= 4, `header, group, member and total strings were all checked (${checked})`);
+  });
 });

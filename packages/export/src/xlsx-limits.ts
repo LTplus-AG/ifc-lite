@@ -18,15 +18,24 @@ export const XLSX_MAX_CELL_CHARS = 32767;
 
 const ILLEGAL_SHEET_CHARS = /[\\/?*[\]:\u0000-\u001f]/g;
 
+/** Whole code points of `text` whose UTF-16 length stays within `units`: Excel counts UTF-16 units, and an emoji is two. */
+function takeUtf16Units(text: string, units: number): string {
+  let out = '';
+  for (const point of text) {
+    if (out.length + point.length > units) break;
+    out += point;
+  }
+  return out;
+}
+
 function fit(base: string, suffix: string): string {
-  const room = XLSX_MAX_SHEET_NAME - suffix.length;
-  return `${Array.from(base).slice(0, room).join('').trimEnd()}${suffix}`;
+  return `${takeUtf16Units(base, XLSX_MAX_SHEET_NAME - suffix.length).trimEnd()}${suffix}`;
 }
 
 /**
  * A worksheet name Excel accepts, derived deterministically from `name`:
  * illegal characters (`\ / ? * [ ] :` and controls) become `-`, leading and
- * trailing apostrophes are dropped, the result is cut to 31 characters, an
+ * trailing apostrophes are dropped, the result is cut to 31 UTF-16 units (Excel's measure; whole code points only), an
  * empty result becomes `fallback`, and the reserved name `History` is
  * suffixed. Excel compares names case-insensitively, so when the result
  * collides with one in `taken` a ` (2)`, ` (3)` ... suffix is appended
@@ -35,7 +44,7 @@ function fit(base: string, suffix: string): string {
 export function sanitizeSheetName(name: string, taken: Iterable<string> = [], fallback = 'Sheet1'): string {
   const used = new Set(Array.from(taken, (t) => t.toLowerCase()));
   let base = name.replace(ILLEGAL_SHEET_CHARS, '-').replace(/^'+|'+$/g, '').trim();
-  base = Array.from(base).slice(0, XLSX_MAX_SHEET_NAME).join('').trimEnd().replace(/^'+|'+$/g, '');
+  base = takeUtf16Units(base, XLSX_MAX_SHEET_NAME).trimEnd().replace(/^'+|'+$/g, '');
   if (!base) base = fallback;
   if (base.toLowerCase() === 'history') base = fit(base, ' (1)');
   let candidate = base;

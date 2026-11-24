@@ -202,6 +202,38 @@ fn an_incomplete_varying_action_reports_an_uncarried_cause_and_an_unusable_load_
 }
 
 #[test]
+fn an_incomplete_varying_action_reports_only_the_slots_that_held_a_value_11354() {
+    let opts = StepOptions { schema: Some("IFC4".into()), ..StepOptions::default() };
+    for (slots, expected, dropped) in [
+        ("$,$", None, 0),
+        ("#17,$", Some("its varying locations were omitted"), 1),
+        ("$,(#11,#11)", Some("its subsequent loads were omitted"), 1),
+        ("#17,(#11,#11)", Some("its varying locations and subsequent loads were omitted"), 2),
+    ] {
+        let action = VARYING.replace(",#17,(#11,#11));", &format!(",{slots});"));
+        let (up, stats, warnings) = export_step_with_diagnostics(model("IFC2X3", &[GEOMETRY, REACTION, &action].join("\n")).as_bytes(), &opts).unwrap();
+        let warnings = warnings.join("\n");
+        assert!(record(&up, 30).ends_with(".CONST.);"), "{up}");
+        assert_eq!(stats.attribute_values_dropped, dropped, "{slots}");
+        match expected {
+            Some(text) => assert!(warnings.contains(&format!("no complete load configuration; {text}")), "{slots}: {warnings}"),
+            None => assert!(!warnings.contains("varying locations") && !warnings.contains("subsequent loads") && !warnings.contains("no complete load configuration"), "{slots}: {warnings}"),
+        }
+    }
+}
+
+#[test]
+fn an_applied_load_that_is_an_ifc4_load_configuration_is_kept_11354() {
+    let opts = StepOptions { schema: Some("IFC4".into()), ..StepOptions::default() };
+    let action = VARYING.replace(",#15,#11,", ",#15,#40,");
+    let source = model("IFC2X3", &[GEOMETRY, REACTION, &action, "#40=IFCSTRUCTURALLOADCONFIGURATION($,(#11),$);"].join("\n"));
+    let (up, stats, warnings) = export_step_with_diagnostics(source.as_bytes(), &opts).unwrap();
+    assert!(record(&up, 30).contains(",#15,#40,.GLOBAL_COORDS."), "{up}");
+    assert!(!warnings.iter().any(|w| w.contains("no usable AppliedLoad")), "{warnings:?}");
+    assert_eq!(stats.attribute_values_dropped, 2, "VaryingAppliedLoadLocation, SubsequentAppliedLoads");
+}
+
+#[test]
 fn an_incomplete_varying_action_keeps_a_commented_applied_load_11354() {
     let opts = StepOptions { schema: Some("IFC4".into()), ..StepOptions::default() };
     for slot in ["#11", "#11 /* initial load */", "/* x */#11", "/* x */ #11 /* y */"] {

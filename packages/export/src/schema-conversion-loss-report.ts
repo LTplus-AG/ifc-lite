@@ -10,6 +10,7 @@
 import { isStructuralStiffnessConversion, isStructuralAssignmentConversion } from './schema-converter-structural.js';
 import { NO_ROUND_TRIP, structuralRoundTrip } from './schema-converter-structural-diagnostics.js';
 import { varyingTarget } from './schema-converter-structural-varying.js';
+import { varyingLossEntries } from './schema-conversion-loss-varying.js';
 import { DocumentLinks } from './schema-converter-document-links.js';
 import { SourceRecords } from './schema-converter-structural-source.js';
 import { describeEntry } from './schema-conversion-loss-description.js';
@@ -316,7 +317,6 @@ export function analyzeConversionLoss(
       // As for the carriers: the schema-only preview stands if the prepass fails.
       console.warn('[analyzeConversionLoss] Could not evaluate document links', error);
     }
-    const { stranded } = round;
     const restored = new Map([...round.restored, ...links.restored]);
     const typedUpgrade = fromSchema === 'IFC2X3' && (toSchema === 'IFC4' || toSchema === 'IFC4X3');
     const retainedTyped = records && typedUpgrade
@@ -360,22 +360,7 @@ export function analyzeConversionLoss(
     if (notWritten.ids.length) {
       entries.push({ sourceType: 'IFCMATERIALPROPERTIES', targetType: 'IFCEXTENDEDMATERIALPROPERTIES', kind: 'lossy', droppedAttributes: [...notWritten.attributes], count: notWritten.ids.length, expressIds: notWritten.ids });
     }
-    for (const [sourceType, ids] of varying) {
-      const byTarget = new Map<string, number[]>();
-      for (const id of ids) {
-        const targetType = stranded.get(id);
-        if (!targetType) continue;
-        const list = byTarget.get(targetType) ?? [];
-        list.push(id);
-        byTarget.set(targetType, list);
-      }
-      const groups = [...byTarget].map(([targetType, expressIds]) => ({ targetType, droppedAttributes: ['CausedBy'], count: expressIds.length, expressIds }));
-      if (!groups.length) continue;
-      const expressIds = groups.flatMap((group) => group.expressIds);
-      // Several groups: each names its own target, and the entry keeps the classifier's (the source type).
-      const targetType = groups.length > 1 ? sourceType : groups[0].targetType;
-      entries.push({ targetType, kind: 'lossy', droppedAttributes: ['CausedBy'], sourceType, count: expressIds.length, expressIds, ...(groups.length > 1 ? { recordGroups: groups } : {}) });
-    }
+    entries.push(...varyingLossEntries(varying, round));
     if (omittedByType.size) addDependentOmissions(entries, omittedByType, fromSchema, toSchema);
     entries.sort((a, b) => a.sourceType.localeCompare(b.sourceType));
   }

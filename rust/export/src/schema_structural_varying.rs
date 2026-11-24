@@ -73,6 +73,8 @@ struct Source {
     aspects: HashMap<u32, Vec<(u32, Option<usize>)>>,
     /// Types of the loads IFC2X3 also has, the only values a varying action can hold.
     loads: HashMap<u32, String>,
+    /// Ids of the records IFC4 counts as an IfcStructuralLoad, which the constant fallback keeps as AppliedLoad (#11354).
+    ifc4_loads: HashSet<u32>,
     /// IFC4 IfcStructuralLoadConfiguration id -> its values.
     configs: HashMap<u32, Vec<u32>>,
     /// The actions this direction converts from, with their arguments.
@@ -108,6 +110,7 @@ impl Source {
             if !shape && !ty.get(..13).is_some_and(|p| p.eq_ignore_ascii_case("IFCSTRUCTURAL")) { continue; }
             if !kept(id, start) { continue; }
             let ty = ty.to_ascii_uppercase();
+            if ifc_lite_core::is_subtype_of_for_schema("IFC4", &ty, "IFCSTRUCTURALLOAD") { source.ifc4_loads.insert(id); }
             if ifc_lite_core::SchemaVersion::Ifc2x3.is_subtype_of(&ty, "IfcStructuralLoad") { source.loads.insert(id, ty); continue; }
             let kind = KINDS.iter().find(|k| if upgrade { k.ifc2x3 == ty } else { k.ifc4 == ty });
             let config = !upgrade && ty == "IFCSTRUCTURALLOADCONFIGURATION";
@@ -146,9 +149,9 @@ impl StructuralVarying {
             let Some(location) = ref_id(Some(&args[12])) else { continue };
             if source.convertible(kind, &args[6], &loads, Some(location)).is_some() { result.planned.insert(*id, (*kind, loads)); }
         }
-        // Every other action of the attributes IFC2X3 gives it keeps its initial load (#11354).
+        // Every other action of the attributes IFC2X3 gives it keeps its initial load, when IFC4 counts it as a load (#11354).
         for (id, _, args) in source.actions.iter().filter(|(id, _, args)| args.len() == 14 && !result.planned.contains_key(id)) {
-            let load = slot_ref(&args[7]).is_some_and(|load| source.loads.contains_key(&load));
+            let load = slot_ref(&args[7]).is_some_and(|load| source.ifc4_loads.contains(&load));
             result.constants.insert(*id, load);
         }
         result

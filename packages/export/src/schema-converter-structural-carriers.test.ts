@@ -474,6 +474,27 @@ ${geometry.replace('(#16),', aspect)}
       }
     });
 
+    it('reports only the attributes that held a value when the load configuration is missing (#11354)', async () => {
+      const both = (slots: string) => convert(varying('(#16),').replace(',#17,(#11,#11));', `,${slots});`), 'IFC4');
+      const none = await both('$,$');
+      expect(line(none.step, 30)).toMatch(/\.CONST\.\);$/);
+      expect(none.warnings).not.toMatch(/varying locations|subsequent loads|no complete load configuration/);
+      const location = (await both('#17,$')).warnings;
+      expect(location).toContain('no complete load configuration; its varying locations were omitted');
+      expect(location).not.toContain('subsequent loads');
+      const subsequent = (await both('$,(#11,#11)')).warnings;
+      expect(subsequent).toContain('no complete load configuration; its subsequent loads were omitted');
+      expect(subsequent).not.toContain('varying locations');
+      expect((await both('#17,(#11,#11)')).warnings).toContain('its varying locations and subsequent loads were omitted');
+    });
+
+    it('keeps an AppliedLoad that is an IfcStructuralLoadConfiguration, which IFC4 counts as a load (#11354)', async () => {
+      const text = varying('(#16),').replace(',#9,#15,#11,', ',#9,#15,#40,').replace('ENDSEC;\nEND', '#40=IFCSTRUCTURALLOADCONFIGURATION($,(#11),$);\nENDSEC;\nEND');
+      const up = await convert(text, 'IFC4');
+      expect(line(up.step, 30)).toContain(',#15,#40,.GLOBAL_COORDS.');
+      expect(up.warnings).not.toContain('no usable AppliedLoad');
+    });
+
     it('leaves the complete configuration conversion alone', async () => {
       const up = await convert(planar(varying('(#14,#16,#16),')), 'IFC4');
       expect(line(up.step, 30)).toMatch(/^#30=IFCSTRUCTURALSURFACEACTION\(.*\.NOTDEFINED\.\);$/);
@@ -503,6 +524,21 @@ ENDSEC;\nEND`), why: 'converted, among several causes', target: 'IFCSTRUCTURALCU
       expect(entry ? { target: entry.targetType, ids: entry.expressIds } : null, why).toEqual(target && { target, ids: [30] });
       if (target) expect(line(step, 30), why).toMatch(new RegExp(`^#30=${target}\\(`));
     }
+  });
+
+  // #11354: the full export writes an incomplete varying action constant, which drops what the configuration would have held.
+  it('IFC2X3 -> IFC4: names the varying locations and subsequent loads an incomplete varying action loses (#11354)', async () => {
+    const key = 'IFCSTRUCTURALLINEARACTIONVARYING';
+    const incomplete = varying('(#16),');
+    expect(await lossIds(incomplete, 'IFC2X3', 'IFC4')).toMatchObject({ [`${key}.VaryingAppliedLoadLocation`]: [30], [`${key}.SubsequentAppliedLoads`]: [30] });
+    // Only a populated slot is lost, as the export's own warning says.
+    const locationOnly = await lossIds(incomplete.replace(',#17,(#11,#11));', ',#17,$);'), 'IFC2X3', 'IFC4');
+    expect(locationOnly).toMatchObject({ [`${key}.VaryingAppliedLoadLocation`]: [30] });
+    expect(Object.keys(locationOnly)).not.toContain(`${key}.SubsequentAppliedLoads`);
+    expect(Object.keys(await lossIds(incomplete.replace(',#17,(#11,#11));', ',$,$);'), 'IFC2X3', 'IFC4'))).not.toContain(`${key}.VaryingAppliedLoadLocation`);
+    // A configuration holds a complete action's values: nothing to report.
+    const complete = await lossIds(varying('(#14,#16,#16),'), 'IFC2X3', 'IFC4');
+    expect(Object.keys(complete).filter((k) => k.startsWith(`${key}.`) && !k.endsWith('.CausedBy'))).toEqual([]);
   });
 
   it('keeps one entry for the type, naming each record group under the type the export writes it as', async () => {

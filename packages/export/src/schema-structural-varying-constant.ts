@@ -3,7 +3,22 @@
 import { holdsValue } from './step-comment-skip.js';
 import type { StructuralRewrite } from './schema-converter-structural-source.js';
 
-const LOSS = 'The retained varying structural action has no complete load configuration; its varying locations and subsequent loads were omitted (#11037).';
+/** The slots a configuration would have held, with the words the warning uses. */
+const OMITTED_SLOTS = [
+  { slot: 12, attribute: 'VaryingAppliedLoadLocation', words: 'varying locations' },
+  { slot: 13, attribute: 'SubsequentAppliedLoads', words: 'subsequent loads' },
+] as const;
+const lossFor = (words: readonly string[]): string => `The retained varying structural action has no complete load configuration; its ${words.join(' and ')} were omitted (#11037).`;
+
+/**
+ * The IFC2X3 attributes the constant action drops of `args` (the 14 attributes
+ * of a varying action): VaryingAppliedLoadLocation and SubsequentAppliedLoads
+ * when they hold a value, and AppliedLoad when `load` is false and it holds one.
+ * What the loss preview names (#11354).
+ */
+export function constantActionLosses(args: readonly string[], load: boolean): string[] {
+  return [...(load || !holdsValue(args[7]) ? [] : ['AppliedLoad']), ...OMITTED_SLOTS.filter((o) => holdsValue(args[o.slot])).map((o) => o.attribute)];
+}
 const MISSING_LOAD = 'The retained varying structural action has no usable AppliedLoad; the required IFC4 slot was left unset (#11037).';
 
 /**
@@ -17,7 +32,9 @@ const MISSING_LOAD = 'The retained varying structural action has no usable Appli
  * IfcStructuralLoad. `carried`: a 'Causes' relationship holds the CausedBy.
  */
 export function constantAction(target: string, entity: string, args: readonly string[], load: boolean, carried: boolean): StructuralRewrite {
-  const losses = [LOSS];
+  const omitted = OMITTED_SLOTS.filter((o) => holdsValue(args[o.slot])).map((o) => o.words);
+  // Reported only when a slot held a value, and naming only those (#11354).
+  const losses = omitted.length ? [lossFor(omitted)] : [];
   if (!load) losses.push(MISSING_LOAD);
   if (!carried && holdsValue(args[10])) losses.push(`${entity}.CausedBy has no slot in IFC4; its value is omitted (#11037).`);
   const applied = load ? args[7] : '$';

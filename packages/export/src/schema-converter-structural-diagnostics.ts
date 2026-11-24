@@ -49,6 +49,8 @@ export class StructuralDiagnostics {
   private readonly restored = new Map<number, Set<string>>();
   /** Source record id -> the type an IFC2X3 varying action is written as when the export reports its CausedBy (`strandedAs`). */
   private readonly stranded = new Map<number, string>();
+  /** Source record id -> the attributes of an IFC2X3 varying action the constant fallback drops (`StructuralVarying.constantLosses`). */
+  private readonly constantDropped = new Map<number, readonly string[]>();
 
   /** `roundTrip`: also find what the reverse conversion restores (`structuralRoundTrip`); an export does not. */
   constructor(private readonly roundTrip = false) { this.carriers.roundTrip = roundTrip; }
@@ -167,6 +169,10 @@ export class StructuralDiagnostics {
         ?? this.thickness.rewrite(id, entity, args) ?? this.axes.rewrite(id, args, withheld);
     if (!rewrite || (withheld && rewrite.body !== null && referencesAnyExpressId(rewrite.body, withheld))) return undefined;
     rewrite.losses.forEach((loss) => this.record(loss));
+    if (this.roundTrip) {
+      const dropped = this.varying.constantLosses(entity, args);
+      if (dropped.length) this.constantDropped.set(id, dropped);
+    }
     rewrite.restored?.forEach(([source, attributes]) => this.restore(source, attributes));
     // A rewritten record skips `inspect`, which would free this.
     this.carried.delete(id);
@@ -181,7 +187,7 @@ export class StructuralDiagnostics {
   }
 
   /** What `rewrite` found: per source record id, the attributes a carrier writes back on the reverse conversion, and the target type of a varying action whose CausedBy the export reports. */
-  roundTripResult(): StructuralRoundTrip { return { restored: this.restored, stranded: this.stranded }; }
+  roundTripResult(): StructuralRoundTrip { return { restored: this.restored, stranded: this.stranded, constantDropped: this.constantDropped }; }
 
   /** Convert retained varying actions and return the number of records appended. */
   finishEffectiveVarying(lines: string[]): number {
@@ -205,10 +211,12 @@ export class StructuralDiagnostics {
 export interface StructuralRoundTrip {
   readonly restored: ReadonlyMap<number, ReadonlySet<string>>;
   readonly stranded: ReadonlyMap<number, string>;
+  /** Source record id -> the attributes of an IFC2X3 varying action the export writes constant and so drops (#11354). */
+  readonly constantDropped: ReadonlyMap<number, readonly string[]>;
 }
 
 /** The round trip of a file the carriers do not run for. */
-export const NO_ROUND_TRIP: StructuralRoundTrip = { restored: new Map(), stranded: new Map() };
+export const NO_ROUND_TRIP: StructuralRoundTrip = { restored: new Map(), stranded: new Map(), constantDropped: new Map() };
 
 export function structuralRoundTrip(store: SourceStore, from: string, to: string, ids: readonly number[]): StructuralRoundTrip {
   if (!conversionMode(from, to) || !ids.length) return NO_ROUND_TRIP;

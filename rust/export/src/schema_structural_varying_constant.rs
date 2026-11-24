@@ -8,7 +8,11 @@
 //! `packages/export/src/schema-structural-varying-constant.ts`.
 use crate::schema_convert::holds_value;
 
-pub(crate) const LOSS: &str = "The retained varying structural action has no complete load configuration; its varying locations and subsequent loads were omitted (#11037).";
+/// The slots a configuration would have held: VaryingAppliedLoadLocation, SubsequentAppliedLoads.
+const OMITTED_SLOTS: [(usize, &str); 2] = [(12, "varying locations"), (13, "subsequent loads")];
+fn loss(omitted: &[&str]) -> String {
+    format!("The retained varying structural action has no complete load configuration; its {} were omitted (#11037).", omitted.join(" and "))
+}
 pub(crate) const MISSING_LOAD: &str = "The retained varying structural action has no usable AppliedLoad; the required IFC4 slot was left unset (#11037).";
 
 /// The target body, its loss warnings and the attribute values it drops.
@@ -21,8 +25,10 @@ pub(crate) struct Constant {
 /// `args` are the 14 IFC2X3 attributes of the varying action `ty`. `load`: AppliedLoad
 /// names an IfcStructuralLoad. `cause_carried`: a 'Causes' relationship holds the CausedBy.
 pub(crate) fn constant_action(target: &str, ty: &str, args: &[String], load: bool, cause_carried: bool) -> Constant {
-    let mut warnings = vec![LOSS.to_owned()];
-    let mut dropped = 0;
+    let omitted: Vec<&str> = OMITTED_SLOTS.iter().filter(|(at, _)| holds_value(&args[*at])).map(|(_, name)| *name).collect();
+    // Reported only when a slot held a value, and naming only those (#11354).
+    let mut warnings = if omitted.is_empty() { vec![] } else { vec![loss(&omitted)] };
+    let mut dropped = omitted.len();
     let mut applied = args[7].as_str();
     if !load {
         dropped += usize::from(holds_value(applied));
@@ -33,7 +39,6 @@ pub(crate) fn constant_action(target: &str, ty: &str, args: &[String], load: boo
         warnings.push(format!("{ty}.CausedBy has no slot in IFC4; its value is omitted (#11037)."));
         dropped += 1;
     }
-    dropped += [12, 13].into_iter().filter(|&at| holds_value(&args[at])).count();
     let body = format!("{target}({},{applied},{},{},{},.CONST.)", args[..7].join(","), args[8], args[9], args[11]);
     Constant { body, warnings, dropped }
 }

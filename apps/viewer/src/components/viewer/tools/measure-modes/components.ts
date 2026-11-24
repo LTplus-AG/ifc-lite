@@ -63,7 +63,9 @@ export function distanceComponents(start: Point3, end: Point3): DistanceComponen
  */
 export function formatSignedDistance(meters: number, overrides: Record<string, string> = {}): string {
   const magnitude = formatDistance(Math.abs(meters), overrides);
-  return meters < 0 ? `-${magnitude}` : magnitude;
+  // A delta that rounds to zero in the printed unit is unsigned: `-0 m` and
+  // `-0.0 mm` report a direction for nothing.
+  return meters < 0 && magnitude !== formatDistance(0, overrides) ? `-${magnitude}` : magnitude;
 }
 
 /** One-line per-axis readout, e.g. `dX 3.000 m  dY 12.000 m  dZ 4.000 m`. */

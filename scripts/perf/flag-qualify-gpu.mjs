@@ -107,28 +107,30 @@ const action = (name, ...args) => (page) => page.evaluate(([n, a]) => {
   return s[n](...a);
 }, [name, args]);
 
-/** How long `drawing2DStatus` must hold at ready/error: covers a generation that starts after a stale `ready`. */
+/** How long the section must hold settled: covers a generation that starts after a stale `ready`. */
 const SECTION_DRAWING_HOLD_MS = 1500;
 
-/** In page: resolves with `drawing2DStatus` once it has held at ready/error for `holdMs` (or a timeout note). */
+/**
+ * In page: resolves with `drawing2DStatus` once the section has held settled for `holdMs` (or a timeout
+ * note). Settled is the viewer's own `__ifc_lite_scene_settled__`, which covers a wanted section drawing
+ * (#11445); a build without that falls back to the drawing status, where `idle` means nothing was asked
+ * for (only the section tool or the drawing panel requests one).
+ */
 export const WAIT_SECTION_DRAWING = async ({ holdMs, timeoutMs = 120000, pollMs = 100 }) => {
   const store = globalThis.__ifc_lite_viewer_store__;
+  const settledHook = globalThis.__ifc_lite_scene_settled__;
+  const settled = () => (typeof settledHook === 'function' ? settledHook() === true
+    : ['ready', 'error', 'idle'].includes(store.getState().drawing2DStatus));
   let heldSince = null;
   for (const end = performance.now() + timeoutMs; performance.now() < end;) {
-    const st = store.getState().drawing2DStatus;
-    if (st === 'ready' || st === 'error') { heldSince ??= performance.now(); if (performance.now() - heldSince >= holdMs) return st; }
+    if (settled()) { heldSince ??= performance.now(); if (performance.now() - heldSince >= holdMs) return store.getState().drawing2DStatus; }
     else heldSince = null;
     await new Promise((r) => setTimeout(r, pollMs));
   }
   return `timeout (${store.getState().drawing2DStatus})`;
 };
 
-/**
- * Enable the section plane and wait for its cut drawing: the 3D cap is drawn
- * from a section drawing generated asynchronously, which can arrive after the
- * renderer has gone idle, so a capture would miss the cap. Follow-up: once the
- * viewer's `__ifc_lite_scene_settled__` covers the section drawing, wait on that.
- */
+/** Enable the section plane and wait until the scene, including any section drawing, has settled. */
 async function sectionWithDrawing(page) {
   await action('setSectionPlaneEnabled', true)(page);
   return { facts: { sectionDrawing: await page.evaluate(WAIT_SECTION_DRAWING, { holdMs: SECTION_DRAWING_HOLD_MS }) } };

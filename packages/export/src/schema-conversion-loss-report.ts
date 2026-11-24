@@ -6,17 +6,9 @@
  * A per-TYPE preview of what a schema conversion will do to the entities a
  * store actually contains, computed WITHOUT running the export.
  *
- * `schema-converter.ts`'s `convertStepLine` already makes every one of these
- * decisions per RECORD, but only as a side effect of producing bytes (or, for
- * a non-rooted type with no target representation, throwing —
- * `resolveUnrepresentedEntity`'s documented, intentional behaviour for e.g.
- * `IFCTRIANGULATEDFACESET` into IFC2X3: there is no valid IFC2X3 substitute
- * for a representation item, so guessing one would ship a differently-broken
- * file). Before this module, a caller's only way to learn what a conversion
- * would do — or that it cannot complete at all — was to attempt the full
- * export and either inspect `stats.warnings` after the fact or catch the
- * exception with no indication of what ELSE in the file has the same
- * problem, since the export aborts on the FIRST record it cannot represent.
+ * `convertStepLine` makes these decisions as it writes each record and
+ * throws on the first unrepresentable non-rooted entity. The preview can
+ * report other affected records without writing the export.
  *
  * Classify each distinct source type once using the attribute tables, then
  * look up the kept IDs for the types with potential losses (#4206).
@@ -27,6 +19,8 @@ import { NO_ROUND_TRIP, structuralRoundTrip } from './schema-converter-structura
 import { varyingTarget } from './schema-converter-structural-varying.js';
 import { DocumentLinks } from './schema-converter-document-links.js';
 import { SourceRecords } from './schema-converter-structural-source.js';
+import { describeEntry } from './schema-conversion-loss-description.js';
+import { previewUpgradeDependents } from './schema-converter-unrooted-upgrade.js';
 import { materialPropertiesNotWritten } from './schema-converter-material-referent.js';
 import { EMPTY_SOURCE_BYTES, type IfcDataStore } from '@ifc-lite/parser';
 import {
@@ -40,7 +34,7 @@ import { isStrictAttrPrefix, replacedSlot } from './schema-converter-renames.js'
 import { previewTypedPropertyNames } from './schema-converter-typed-properties.js';
 import { getCompleteEntityIndex } from './entity-iteration.js';
 import { attrMapFor, attrsDroppedByMap, dropsSetMembers } from './schema-converter-attr-maps.js';
-import { isRootedEntityType, missingTypeRoute } from './schema-untranslatable.js';
+import { isRootedEntityType, missingTypeRoute, OMIT_ON_UPGRADE } from './schema-untranslatable.js';
 
 /** How one entity TYPE's data survives a schema conversion. */
 export type EntityConversionKind =
@@ -129,8 +123,8 @@ export function classifyEntityTypeConversion(
       ? { targetType: 'IFCPROXY', kind: 'proxied', droppedAttributes: dropped.filter((name) => name !== 'GlobalId' && name !== 'Name') }
       : { targetType: newType, kind: 'blocked', droppedAttributes: dropped };
   }
-  // Written under a name the target does not declare (D59, #10970, #10971): a reader drops all of it.
-  if (route === 'verbatim' && srcAttrs) return { targetType: newType, kind: 'lossy', droppedAttributes: srcAttrs };
+  // A type the target does not declare loses all of its attributes (D59, #10970, #10971).
+  if ((route === 'verbatim' || route === 'omitted') && srcAttrs) return { targetType: newType, kind: 'lossy', droppedAttributes: srcAttrs };
 
   if (!srcAttrs || !tgtAttrs) {
     // Unknown to one of the tables (IFC5 has none) — the per-line converter
@@ -208,26 +202,20 @@ export interface ConversionLossReport {
   describe(): string[];
 }
 
-const MAX_IDS_NAMED = 8;
-
-function describeEntry(entry: ConversionLossEntry): string {
-  const ids = entry.expressIds.slice(0, MAX_IDS_NAMED).map((id) => `#${id}`).join(', ');
-  const more = entry.expressIds.length > MAX_IDS_NAMED ? `, +${entry.expressIds.length - MAX_IDS_NAMED} more` : '';
-  const attrs = entry.droppedAttributes.length > 0 ? ` — loses ${entry.droppedAttributes.join(', ')}` : '';
-  switch (entry.kind) {
-    case 'blocked':
-      return (
-        `${entry.count} × ${entry.sourceType} (${ids}${more}) has no representation in this schema and is ` +
-        `not an IfcRoot subtype: conversion cannot write these records at all${attrs}.`
-      );
-    case 'proxied':
-      return (
-        `${entry.count} × ${entry.sourceType} (${ids}${more}) has no representation in this schema: these ` +
-        `become generic IFCPROXY placeholders, losing their own type${attrs}.`
-      );
-    case 'lossy':
-    default:
-      return `${entry.count} × ${entry.sourceType} → ${entry.targetType} (${ids}${more})${attrs}.`;
+function addDependentOmissions(entries: ConversionLossEntry[], omittedByType: Map<string, number[]>, from: IfcSchemaVersion, to: IfcSchemaVersion): void {
+  const existing = new Map(entries.map(entry => [entry.sourceType, entry]));
+  for (const [sourceType, expressIds] of omittedByType) {
+    const group = { targetType: convertEntityType(sourceType, from, to), expressIds, count: expressIds.length,
+      droppedAttributes: attrNameTable(from)?.get(sourceType) ?? [] };
+    const entry = existing.get(sourceType);
+    if (!entry) {
+      entries.push({ ...group, sourceType, kind: 'lossy' });
+      continue;
+    }
+    entry.recordGroups = [...(entry.recordGroups ?? [{ ...entry }]), group];
+    entry.expressIds = [...entry.expressIds, ...expressIds];
+    entry.count = entry.expressIds.length;
+    entry.droppedAttributes = [...new Set([...entry.droppedAttributes, ...group.droppedAttributes])];
   }
 }
 
@@ -284,11 +272,15 @@ export function analyzeConversionLoss(
   toSchema: IfcSchemaVersion,
 ): ConversionLossReport {
   const entries: ConversionLossEntry[] = [];
+  const { entityIndex, deferredEntityIndex, source } = store;
+  const dependent = source?.byteLength
+    ? previewUpgradeDependents({ entityIndex, deferredEntityIndex, source }, fromSchema, toSchema)
+    : undefined;
   if (fromSchema !== toSchema) {
-    const { entityIndex, deferredEntityIndex, source } = store;
     const index = new SourceRecords({ entityIndex, deferredEntityIndex, source: source ?? EMPTY_SOURCE_BYTES });
     let inventory = index.hasIndexedRecords() ? index : undefined;
     const typed: [string, readonly number[], EntityConversionInfo][] = [];
+    const omittedByType = new Map<string, number[]>();
     // An IFC2X3 varying action classifies as identity, but the upgrade can report its CausedBy (`strandedAs`).
     const varying: [string, readonly number[]][] = [];
     // @raw-entity-enumeration-ok this report describes the parsed file's schema-conversion losses
@@ -296,7 +288,8 @@ export function analyzeConversionLoss(
       if (ids.length === 0) continue;
       const info = classifyEntityTypeConversion(sourceType, fromSchema, toSchema);
       const isLoss = info.kind !== 'identity' && info.kind !== 'renamed';
-      if (!isLoss && !(fromSchema === 'IFC2X3' && varyingTarget(sourceType.toUpperCase()))) continue;
+      const varyingAction = fromSchema === 'IFC2X3' && varyingTarget(sourceType.toUpperCase());
+      if (!dependent?.size && !isLoss && !varyingAction) continue;
       let expressIds: readonly number[] = ids;
       try {
         expressIds = inventory?.ids(sourceType) ?? ids;
@@ -304,9 +297,16 @@ export function analyzeConversionLoss(
         console.warn('[analyzeConversionLoss] Could not resolve kept source records', error);
         inventory = undefined;
       }
+      if (dependent?.size) {
+        const omitted = expressIds.filter(id => dependent.has(id));
+        if (omitted.length) {
+          omittedByType.set(sourceType.toUpperCase(), omitted);
+          expressIds = expressIds.filter(id => !dependent.has(id));
+        }
+      }
       if (expressIds.length === 0) continue;
       if (isLoss) typed.push([sourceType.toUpperCase(), expressIds, info]);
-      else varying.push([sourceType.toUpperCase(), expressIds]);
+      else if (varyingAction) varying.push([sourceType.toUpperCase(), expressIds]);
     }
     // #9668: what an IFC2X3 <-> IFC4 structural carrier writes back on the round trip is not lost.
     // Only IfcStructural* records carry anything, and reading them needs the source bytes.
@@ -379,8 +379,14 @@ export function analyzeConversionLoss(
       const targetType = groups.length > 1 ? sourceType : groups[0].targetType;
       entries.push({ targetType, kind: 'lossy', droppedAttributes: ['CausedBy'], sourceType, count: expressIds.length, expressIds, ...(groups.length > 1 ? { recordGroups: groups } : {}) });
     }
+    if (omittedByType.size) addDependentOmissions(entries, omittedByType, fromSchema, toSchema);
     entries.sort((a, b) => a.sourceType.localeCompare(b.sourceType));
   }
+  const describe = (entry: ConversionLossEntry) => {
+    if (dependent?.has(entry.expressIds[0])) return describeEntry(entry, 'a required IFC4 attribute lost a reference');
+    const seed = fromSchema === 'IFC2X3' && toSchema === 'IFC4' && OMIT_ON_UPGRADE.has(entry.sourceType);
+    return describeEntry(entry, seed ? 'IFC4 does not declare its type' : undefined);
+  };
   const hasBlocking = entries.some((e) => e.kind === 'blocked');
   return {
     fromSchema,
@@ -389,6 +395,6 @@ export function analyzeConversionLoss(
     hasLoss: entries.length > 0,
     hasBlocking,
     describe: () => entries.flatMap((entry) => entry.recordGroups
-      ?.map((group) => describeEntry({ ...entry, ...group })) ?? [describeEntry(entry)]),
+      ?.map((group) => describe({ ...entry, ...group })) ?? [describe(entry)]),
   };
 }

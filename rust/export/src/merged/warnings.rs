@@ -75,13 +75,14 @@ pub(super) fn push_merge_warnings(
 
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn finish_typed_output(
+pub(super) fn finish_output(
     out: &mut String,
     stats: &mut MergedStats,
     schema: &str,
     slot_fill: &crate::schema_ifc2x3_slots::Ifc2x3SlotFill,
     checks: &mut crate::schema_enum::ConversionChecks,
     parents: super::single_parents::ParentClaims,
+    upgrade_seeds: &std::collections::HashSet<u32>,
     offset: u32,
     models: &[super::MergedModel],
 ) {
@@ -103,5 +104,10 @@ pub(super) fn finish_typed_output(
     stats.warnings.extend(parents.apply_folds(out)); // #5774 folds, after every model is written
     // One product per placement in IFC2X3 (#9209); the header holds no record to change.
     stats.written = stats.written.saturating_add_signed(crate::schema_ifc2x3_placements::place_text_for_schema(schema, out));
+    if let Some((pruned, _, losses)) = crate::schema_unrooted_upgrade::prune(out, upgrade_seeds) {
+        *out = pruned;
+        stats.written -= losses.len();
+        stats.warnings.extend(losses);
+    }
     out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
 }

@@ -59,7 +59,7 @@ export function refitCompletedStreamBounds(params: Params): void {
         const instance = scene.getInstancedEntityBounds(id);
         if (!instance) continue;
         fullBounds = unionBounds(fullBounds, instance);
-        exactBounds = unionBounds(exactBounds, instance);
+        if (!fitExcludedIds?.has(id)) exactBounds = unionBounds(exactBounds, instance); // type-hidden: clipped, not framed
       }
     }
     // Pin (or clear) the robust orbit-pivot anchor. setSceneBounds gets

@@ -81,8 +81,14 @@ export function readGlobalInstancingFlag(): boolean {
  */
 export const GLOBAL_INSTANCING_MIN_BYTES = 10 * 1024 * 1024;
 
+/** The small-file tier: the viewer's fast path takes these files, the global instance plan never applies to them.
+ *  One predicate for both sides, so no size is ever both or neither. */
+export function inSmallFileTier(byteLength: number): boolean {
+  return byteLength < GLOBAL_INSTANCING_MIN_BYTES;
+}
+
 /** Whether the plan applies to a source of `byteLength` bytes (the bytes the pool meshes: for a compressed source,
  *  its decompressed IFC): the flag is on and the source is past the small tier. */
 export function globalInstancingApplies(byteLength: number): boolean {
-  return byteLength >= GLOBAL_INSTANCING_MIN_BYTES && readGlobalInstancingFlag();
+  return !inSmallFileTier(byteLength) && readGlobalInstancingFlag();
 }

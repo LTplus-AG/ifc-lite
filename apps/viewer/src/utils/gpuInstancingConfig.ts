@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { Renderer } from '@ifc-lite/renderer';
+import type { Renderer, SceneContents } from '@ifc-lite/renderer';
 import { readPerfFlag, recordAppliedPerfFlag } from '../lib/perf/flags.js';
 import { isHugeGeometryEnabled, isPerfFlagOff, isPerfFlagOn, readRampFlag } from './hugeGeometryConfig.js';
 
@@ -35,7 +35,8 @@ export function configureGpuInstancing(renderer: Pick<Renderer, 'setGpuInstancin
  * draws like its cold load. An explicit `?perf.globalInstancing=0` is the kill switch for the join as well: a reopen
  * of a snapshot cached with the plan then draws one template per record, as before the plan. Read once at init.
  */
-export function configureKeyedInstancing(scene: { keyedInstancing: { enabled: boolean } }): boolean {
+export function configureKeyedInstancing(scene: Pick<SceneContents, 'keyedInstancing'>): boolean {
+  if (!scene.keyedInstancing) return false;
   scene.keyedInstancing.enabled = !isPerfFlagOff(readPerfFlag('globalInstancing'));
   return scene.keyedInstancing.enabled;
 }

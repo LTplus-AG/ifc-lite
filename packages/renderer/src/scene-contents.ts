@@ -178,6 +178,8 @@ export interface SceneContents {
   /** Whether a model in the scene received keyed shards: the global instance plan applied to it. Optional so other
    *  `SceneContents` implementers keep compiling; absent reads as no. */
   hasKeyedTemplates?(): boolean;
+  /** The keyed-record join (global instance plan); `enabled` is on by default, false opts the scene out. */
+  readonly keyedInstancing?: { enabled: boolean };
   getInstancedModelIndices(): number[];
   removeInstancedTemplatesForModel(modelIndex: number): number;
   setInstancedVisible(visible: boolean): void;

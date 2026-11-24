@@ -18,8 +18,9 @@ import { resetFeaturesForTest, type FeatureId } from '@/lib/features';
 import { openProcessedModel, resetProcessedModelRequestsForTests, takeProcessedModelRequest } from '@/lib/processed-model';
 import { useViewerStore } from '@/store';
 import { fastPathSwitch, pageCanOpenModels, startFastPath } from './startFastPath';
-import { FAST_PATH_MAX_BYTES } from './fastPathRuntime';
-import { GLOBAL_INSTANCING_MIN_BYTES } from '@ifc-lite/geometry';
+import { FAST_PATH_MAX_BYTES, fastPathEligible } from './fastPathRuntime';
+import type { PickStartContext } from '@/hooks/ingest/pickStart';
+import { GLOBAL_INSTANCING_MIN_BYTES, inSmallFileTier } from '@ifc-lite/geometry';
 
 // Written out here, not read from startFastPath, so a source dropped there fails these tests.
 const MODEL_SOURCES: readonly FeatureId[] = ['files.local', 'files.samples', 'files.sources', 'files.federation-setup'];
@@ -94,6 +95,10 @@ describe('fast path kill switch', () => {
     assert.equal(mayWarmUp(fastPathSwitch(), desktop), true);
     assert.equal(GLOBAL_INSTANCING_MIN_BYTES, FAST_PATH_MAX_BYTES,
       'one threshold: every file the fast path can take keeps the per-batch decision, on either path');
+    const pick = (size: number) => ({ target: { kind: 'primary' }, kernel: { kind: 'exact' }, retry: false, file: { name: 'a.ifc', size } }) as unknown as PickStartContext;
+    for (const size of [FAST_PATH_MAX_BYTES - 1, FAST_PATH_MAX_BYTES]) {
+      assert.equal(fastPathEligible(pick(size)), inSmallFileTier(size), `${size} B: the fast path takes exactly the small tier`);
+    }
   });
 });
 

@@ -33,11 +33,11 @@ index 7bc1b7c18c..f6753ce0cb 100644
  }
  
  /** Context from the store's models map and the preview's moving ids. */
-@@ -66,6 +67,7 @@ export function rejectedPickMessage(
-   const expected = eligiblePickModelIds(role, modelIds, ctx).map(nameOf).join(', ');
+@@ -69,6 +70,7 @@ export function rejectedPickMessage(
+   const expected = eligiblePickModelIds(role, all, ctx).map(label).join(', ');
    // Nothing eligible (e.g. the only moving model is hidden): naming a model to
    // pick instead would end the sentence on an empty list.
 +  if (expected === '') return generic;
-   const hit = nameOf(hitModelId);
+   const hit = label(hitModelId);
    if (role === 'source') return { key: 'repositionPanel.errorNotMoving', params: { hit, expected } };
    if (ctx.moving.has(hitModelId)) return { key: 'repositionPanel.errorIsMoving', params: { hit, expected } };

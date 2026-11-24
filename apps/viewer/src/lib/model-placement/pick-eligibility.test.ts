@@ -78,3 +78,42 @@ test('no hit, a hidden model or an eligible model keep the generic message', () 
     assert.equal(eligibility.rejectedPickMessage('target', hit, ctx(['a']), models.keys(), nameOf).key, 'repositionPanel.errorNoPoint');
   }
 });
+
+test('models sharing a display name get an ordinal, unique names stay plain', () => {
+  const dup = new Map([['a', 'A.ifc'], ['b', 'B.ifc'], ['c', 'A.ifc']]);
+  const labels = eligibility.modelLabels(dup.keys(), (id) => dup.get(id)!);
+  assert.deepEqual([...labels], [['a', 'A.ifc (1)'], ['b', 'B.ifc'], ['c', 'A.ifc (2)']]);
+});
+
+test('the wrong-model message tells same-named models apart', () => {
+  const dupNames: Record<string, string> = { a: 'X.ifc', b: 'X.ifc', c: 'X.ifc', h: 'H.ifc' };
+  const r = eligibility.rejectedPickMessage('source', 'b', ctx(['a', 'c']), models.keys(), (id) => dupNames[id]);
+  assert.deepEqual(r.params, { hit: 'X.ifc (2)', expected: 'X.ifc (1), X.ifc (3)' });
+});
+
+test('a model whose every entity is hidden or outside the isolation set is not offered', () => {
+  const ids: Record<string, number[]> = { a: [1, 2], b: [3, 4], c: [5], h: [6] };
+  const entityIds = (id: string) => ids[id] ?? [];
+  const pick = (hidden: number[], isolated: number[] | null) =>
+    eligibility.pickableModelIds(['a', 'b', 'c'], entityIds, new Set(hidden), isolated && new Set(isolated));
+  assert.deepEqual(pick([], null), ['a', 'b', 'c']);
+  assert.deepEqual(pick([3, 4], null), ['a', 'c']);       // b fully hidden
+  assert.deepEqual(pick([3], null), ['a', 'b', 'c']);     // b partly hidden stays
+  assert.deepEqual(pick([], [1, 5]), ['a', 'c']);         // b outside isolation
+  assert.deepEqual(eligibility.pickableModelIds(['x'], () => [], new Set([1]), null), ['x']); // unknown geometry is kept
+});
+
+test('the explaining raycast sees the same hidden and isolation sets the pick uses', () => {
+  const store = { hiddenEntities: new Set([9]), isolatedEntities: null as Set<number> | null };
+  assert.deepEqual(eligibility.explainRaycastFilter(store), { hiddenIds: store.hiddenEntities, isolatedIds: undefined });
+  store.isolatedEntities = new Set([1]);
+  assert.equal(eligibility.explainRaycastFilter(store).isolatedIds, store.isolatedEntities);
+});
+
+test('the explained hit prefers the snap target and maps to a model', () => {
+  const modelOf = (id: number) => (id < 100 ? 'a' : 'b');
+  assert.equal(eligibility.hitModelId({ snapTarget: { expressId: 150 }, intersection: { expressId: 5 } }, modelOf), 'b');
+  assert.equal(eligibility.hitModelId({ snapTarget: null, intersection: { expressId: 5 } }, modelOf), 'a');
+  assert.equal(eligibility.hitModelId({ snapTarget: null, intersection: null }, modelOf), null);
+  assert.equal(eligibility.hitModelId({ snapTarget: { expressId: 0 }, intersection: null }, modelOf), 'a');
+});

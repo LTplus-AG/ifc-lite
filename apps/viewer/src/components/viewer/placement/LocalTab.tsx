@@ -23,7 +23,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { displayedTranslation, placementFor } from '@/lib/model-placement/state';
 import type { MoveConstraint } from '@/lib/model-placement/translation';
-import { eligiblePickModelIds, pickContext, pickPromptKey } from '@/lib/model-placement/pick-eligibility';
+import { eligiblePickModelIds, modelEntityIds, modelLabels, pickableModelIds, pickContext, pickPromptKey } from '@/lib/model-placement/pick-eligibility';
 import { frameModels } from '@/lib/model-placement/scene';
 import { useRepositionRuntime, type RepositionRuntime } from '@/lib/model-placement/reposition-runtime';
 import { openRepositionModels } from '@/lib/model-placement/commands';
@@ -55,12 +55,16 @@ function frame(runtime: RepositionRuntime, ids: readonly string[]) {
 function pickPrompt(
   t: ReturnType<typeof useTranslation>['t'], role: 'source' | 'target',
   before: ReadonlyMap<string, unknown> | undefined, reference: string, models: ReturnType<typeof useViewerStore.getState>['models'],
+  hidden: ReadonlySet<number>, isolated: ReadonlySet<number> | null,
 ): string {
-  const ids = eligiblePickModelIds(role, models.keys(), pickContext(new Set(before?.keys()), reference, models));
+  const eligible = eligiblePickModelIds(role, models.keys(), pickContext(new Set(before?.keys()), reference, models));
+  // Name only models with something left to pick: not fully hidden or outside the isolation set.
+  const ids = pickableModelIds(eligible, (id) => modelEntityIds(models.get(id)), hidden, isolated);
+  const labels = modelLabels(models.keys(), (id) => models.get(id)?.name ?? id);
   const key = pickPromptKey(role, ids.length, reference !== '');
   return key === 'repositionPanel.pickPrompt'
     ? t(key, { role: t(PICK_ROLE_KEYS[role]) })
-    : t(key, { models: ids.map((id) => models.get(id)?.name ?? id).join(', ') });
+    : t(key, { models: ids.map((id) => labels.get(id) ?? id).join(', ') });
 }
 
 export function LocalTab() {
@@ -68,6 +72,8 @@ export function LocalTab() {
   const models = useViewerStore((s) => s.models);
   const placement = useViewerStore((s) => s.modelPlacement);
   const snapEnabled = useViewerStore((s) => s.snapEnabled);
+  const hidden = useViewerStore((s) => s.hiddenEntities);
+  const isolated = useViewerStore((s) => s.isolatedEntities);
   const repositionOpen = useViewerStore((s) => s.repositionOpen);
   const runtime = useRepositionRuntime();
   const [pending, setPending] = useState<readonly string[]>([]);
@@ -163,7 +169,7 @@ export function LocalTab() {
         </label>
       </div>
       <output className="block">
-        {runtime.role ? pickPrompt(t, runtime.role, preview?.before, runtime.reference, models) : t('repositionPanel.previewPrompt')}
+        {runtime.role ? pickPrompt(t, runtime.role, preview?.before, runtime.reference, models, hidden, isolated) : t('repositionPanel.previewPrompt')}
         {runtime.hover ? ` ${t('repositionPanel.hoverDetail', { kind: t(HOVER_KIND_KEYS[runtime.hover.kind]), name: models.get(runtime.hover.modelId)?.name ?? '' })}` : ''}
       </output>
 

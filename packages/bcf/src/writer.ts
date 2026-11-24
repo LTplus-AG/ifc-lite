@@ -41,6 +41,7 @@ import {
   xsdRequiredString,
 } from './xsd-required-string.js';
 import { generateUuid } from '@ifc-lite/encoding';
+import { bcfGuid } from './xsd-guid.js';
 import { viewpointFileName, type ViewpointFileName } from './writer-viewpoint-filename.js';
 import { BcfArchive } from './writer-archive.js';
 
@@ -188,7 +189,7 @@ async function writeTopicFolder(
   version: '2.1' | '3.0',
   usedFolderNames: Set<string>,
 ): Promise<void> {
-  const folderName = sanitizeZipComponent(topic.guid, usedFolderNames, 'topic');
+  const folderName = sanitizeZipComponent(bcfGuid(topic.guid, version), usedFolderNames, 'topic');
 
   // Sanitize each viewpoint GUID once, up front, so the markup <Viewpoint>
   // reference (written below) and the zip entry (written in
@@ -197,7 +198,7 @@ async function writeTopicFolder(
   // the same way topic folders are disambiguated above.
   const usedViewpointNames = new Set<string>();
   const viewpointBaseNames = topic.viewpoints.map((vp) =>
-    sanitizeZipComponent(vp.guid, usedViewpointNames, 'viewpoint'),
+    sanitizeZipComponent(bcfGuid(vp.guid, version), usedViewpointNames, 'viewpoint'),
   );
 
   // Derive the actual archive file names ONCE, so viewpointXml (markup) and
@@ -312,7 +313,7 @@ function writeMarkupFile(
   }
 
   content += `
-  <Topic Guid="${escapeXml(topic.guid)}"${topic.topicType ? ` TopicType="${escapeXml(topic.topicType)}"` : ''}${topic.topicStatus ? ` TopicStatus="${escapeXml(topic.topicStatus)}"` : ''}>
+  <Topic Guid="${escapeXml(bcfGuid(topic.guid, version))}"${topic.topicType ? ` TopicType="${escapeXml(topic.topicType)}"` : ''}${topic.topicStatus ? ` TopicStatus="${escapeXml(topic.topicStatus)}"` : ''}>
     <Title>${escapeXml(topic.title)}</Title>`;
 
   // Order below (Title, Priority, Index, Labels, CreationDate,
@@ -412,7 +413,7 @@ function writeMarkupFile(
     // under <Topic>.
     if (version === '3.0') content += `\n    <RelatedTopics>`;
     for (const relatedGuid of topic.relatedTopics) {
-      content += `\n    <RelatedTopic Guid="${escapeXml(relatedGuid)}"/>`;
+      content += `\n    <RelatedTopic Guid="${escapeXml(bcfGuid(relatedGuid, version))}"/>`;
     }
     if (version === '3.0') content += `\n    </RelatedTopics>`;
   }
@@ -423,12 +424,12 @@ function writeMarkupFile(
   const commentXml = (indent: string) =>
     topic.comments
       .map((comment) => {
-        let c = `\n${indent}<Comment Guid="${escapeXml(comment.guid)}">`;
+        let c = `\n${indent}<Comment Guid="${escapeXml(bcfGuid(comment.guid, version))}">`;
         c += `\n${indent}  <Date>${xsdDateTime(comment.date, 'Comment/Date', `comment "${comment.guid}"`)}</Date>`;
         c += `\n${indent}  <Author>${xsdRequiredString(comment.author, 'Comment/Author', `comment "${comment.guid}"`, version)}</Author>`;
         c += `\n${indent}  <Comment>${escapeXml(comment.comment)}</Comment>`;
         if (comment.viewpointGuid) {
-          c += `\n${indent}  <Viewpoint Guid="${escapeXml(comment.viewpointGuid)}"/>`;
+          c += `\n${indent}  <Viewpoint Guid="${escapeXml(bcfGuid(comment.viewpointGuid, version))}"/>`;
         }
         const commentModifiedDate = xsdOptionalDateTime(comment.modifiedDate);
         if (commentModifiedDate) {
@@ -459,7 +460,7 @@ function writeMarkupFile(
         const filename = viewpointFileNames[i].viewpointFile;
         const snapshotName = `${viewpointFileNames[i].snapshotBase}.${snapshotExt(viewpoint)}`;
 
-        let v = `\n${indent}<${viewpointEntryTag} Guid="${escapeXml(viewpoint.guid)}">`;
+        let v = `\n${indent}<${viewpointEntryTag} Guid="${escapeXml(bcfGuid(viewpoint.guid, version))}">`;
         v += `\n${indent}  <Viewpoint>${filename}</Viewpoint>`;
         // Driven off the ALREADY-resolved snapshot bytes (see
         // writeTopicFolder), not off `viewpoint.snapshot`/`snapshotData`'s
@@ -518,7 +519,7 @@ async function writeViewpointFiles(
 
   // Write viewpoint XML - use buildingSMART standard format
   let content = `<?xml version="1.0" encoding="UTF-8"?>
-<VisualizationInfo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" Guid="${escapeXml(viewpoint.guid)}">`;
+<VisualizationInfo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" Guid="${escapeXml(bcfGuid(viewpoint.guid, version))}">`;
 
   // Write components
   if (viewpoint.components) {

@@ -21,6 +21,7 @@ import type {
 } from './types.js';
 import { xsdDouble, xsdPointElement } from './numeric.js';
 import { escapeXml } from './xml-text.js';
+import { bcfGuid } from './xsd-guid.js';
 import { xsdOptionalDateTime } from './xsd-required-string.js';
 import { uuidFromSeed } from '@ifc-lite/encoding';
 
@@ -183,7 +184,7 @@ export function writeDocumentReference(
       ? docRef.guid || uuidFromSeed(`${topicGuid}|${docKey}|${index}`)
       : docRef.guid;
   if (version === '3.0' && !docRef.guid) docRef.guid = guid;
-  const guidAttr = guid ? ` Guid="${escapeXml(guid)}"` : '';
+  const guidAttr = guid ? ` Guid="${escapeXml(bcfGuid(guid, version))}"` : '';
 
   if (version === '3.0') {
     let content = `\n    <DocumentReference${guidAttr}>`;

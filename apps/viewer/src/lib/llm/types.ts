@@ -6,6 +6,7 @@
  * Types for the LLM chat integration.
  */
 
+import type { ScriptResult } from '@ifc-lite/sandbox';
 import type { RepairScope, ScriptDiagnostic } from './script-diagnostics.js';
 
 export type MessageRole = 'user' | 'assistant' | 'system';
@@ -22,6 +23,20 @@ export interface ChatMessage {
   execResults?: Map<number, CodeExecResult>;
   /** Attached files (user messages only) */
   attachments?: FileAttachment[];
+  /** A2UI surfaces this assistant message carried, recorded for replay on reload. */
+  a2ui?: PersistedA2ui;
+}
+
+/**
+ * One assistant message's parsed reply: prose, A2UI messages and rejected
+ * blocks in order. A reload replays the messages into a fresh renderer instead
+ * of re-parsing the text, so a surface comes back exactly as it was shown.
+ */
+export type PersistedA2uiSegment = { text: string } | { messages: unknown[] } | { error: string };
+
+export interface PersistedA2ui {
+  v: 1;
+  segments: PersistedA2uiSegment[];
 }
 
 export interface CodeBlock {
@@ -33,7 +48,7 @@ export interface CodeBlock {
   code: string;
 }
 
-export interface CodeExecResult {
+export interface CodeExecResult extends Pick<ScriptResult, 'surfaces'> {
   status: 'running' | 'success' | 'error';
   logs?: Array<{ level: string; args: unknown[] }>;
   value?: unknown;

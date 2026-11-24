@@ -6,11 +6,31 @@ The format is specified in [`packages/cache/SPEC.md`](https://github.com/LTplus-
 
 ## Installation
 
-The tool is distributed through cargo from this repository; there are no prebuilt binaries.
+The tool is distributed through cargo from this repository; there are no prebuilt binaries, and the crate is not published to crates.io.
+
+From a checkout:
 
 ```bash
 cargo install --locked --path rust/cache
 ```
+
+Without a checkout, pinned to a commit:
+
+```bash
+cargo install --locked --git https://github.com/LTplus-AG/ifc-lite --rev 58d278b3b88e4484ccef336f024b4ca1051dd221 ifc-lite-cache
+```
+
+That revision writes format v28. To build a different one, replace the hash with any commit on `main` whose format version your readers accept (see [Reader compatibility](#reader-compatibility)); `FORMAT_VERSION` in `rust/cache/src/format.rs` at that commit is the version it writes.
+
+Pin a commit rather than a branch: the commit decides which format version the tool writes (see [Reader compatibility](#reader-compatibility)), and `--locked` then builds it with the `Cargo.lock` of that commit.
+
+A stable Rust toolchain builds the crate. The nightly pinned in `rust-toolchain.toml` is for the WASM build; rustup selects it only for commands run inside a checkout, so the `--git` form uses your default toolchain.
+
+## Reader compatibility
+
+`BinaryCacheReader` rejects a cache whose format version is above its own `FORMAT_VERSION`, with `Unsupported format version`. That check is an upper bound, not a promise that every older cache decodes: [`SPEC.md` §11](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/cache/SPEC.md#11-reader-compatibility-current-reader) lists what a cache from an older format version reads as, and which ones the reader refuses or misreads. The tool writes one format version, that of the commit it was built from, and `ifc-build-cache --help` prints it.
+
+Build the tool from a commit whose format version is not above the `FORMAT_VERSION` that the `@ifc-lite/cache` release in your readers exports. When a format version bump reaches you, upgrade the readers first, then the tool.
 
 ## Usage
 
@@ -49,6 +69,7 @@ Every one of these is a value the format and the TypeScript reader already accep
 
 - Property and quantity tables are written empty, as `BinaryCacheWriter` writes them for a STEP-parsed store; re-attach on-demand extraction from the source on read, as the viewer does.
 - No `InstancedShards` section: every occurrence is a flat mesh.
+- The entity index's relationship-coverage trailer is written absent, so `selectionRelationshipIndex` reads back `undefined`, as it does for any store built without it.
 - Deflate streams differ from the TypeScript writer's (a different compressor), so stored chunk offsets and lengths differ while every uncompressed chunk payload is identical.
 
 The crate documentation (`rust/cache/src/lib.rs`) lists the remaining producer-provenance fields the native pipeline does not fill.

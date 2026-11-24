@@ -51,6 +51,8 @@ import { resolvePrecisionBucket } from './scene-bucket-routing.js';
 import { residentBatchBytes, sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { composeInstancedOverrideColor, originalColorWithAlpha } from './instanced-override-color.js';
 import { writeInstanceLane } from './instance-lane-write.js';
+import { occurrenceSphereRadius, poolStandInBuffer, type GpuInstancePool } from './gpu-instance-pool.js';
+import { SceneInstancePool } from './scene-gpu-instancing.js';
 import { bucketBaseKeyFor, colorKey, type MaterialKeySource, type SpatialChunkingConfig } from './chunk-grid.js';
 import { cloneOverrides, inheritedQuantization, type BatchQuantization } from './scene-derived-batches.js';
 import { EntityColorTable, entityIdPageKey } from './entity-color-table.js';
@@ -238,6 +240,8 @@ export class Scene {
    *  never recycled. Iterate `getInstancedTemplates()` (compacted, cached) for
    *  the draw/pick/accounting walks — never this array directly. */
   private instancedTemplates: (InstancedTemplateGPU | undefined)[] = [];
+  /** GPU-driven instancing: occurrence tables + compute cull (scene-gpu-instancing.ts). No pool = the per-template path. */
+  private readonly instancePool = new SceneInstancePool();
   /** Compacted live view of `instancedTemplates`, rebuilt on mutation. */
   private liveInstancedTemplates: InstancedTemplateGPU[] = [];
   private instancedVisible = true;                                  // GPU-instancing: hidden in Types view mode (instanced geometry is class-0 occurrences)
@@ -1581,11 +1585,12 @@ export class Scene {
       // the cached device so CPU-only tests still exercise the matrix math.
       const gpu = this.instancedTemplates[occ.templateIndex];
       if (gpu) invalidateInstancedRteDeltas(gpu.rteDeltas);
-      if (device && gpu) device.queue.writeBuffer(gpu.instanceBuffer, b + 48, translation);
+      if (device && gpu && gpu.instanceBuffer.size >= b + 60) device.queue.writeBuffer(gpu.instanceBuffer, b + 48, translation);
       moved = true;
     }
     if (!moved) return false;
     this.bumpPickGeometryRevision();
+    this.instancePool.refreshOccurrences(occurrences, this.instancedTemplateCpu);
 
     // Rebuild the cached world AABB from the moved occurrence matrices so pick /
     // measure / section bounds stay correct. A simple in-place shift is unsafe for
@@ -1596,6 +1601,9 @@ export class Scene {
     this.recomputeInstancedBounds(expressId);
     return true;
   }
+
+  /** Re-upload moved templates' records and anchors into the GPU pool (radii are rigid-invariant). */
+  refreshPoolTemplates(slots: Iterable<number>): void { this.instancePool.refresh(slots, this.instancedTemplateCpu); }
 
   /** Recompute an instanced entity's cached world AABB by unioning the transformed
    *  template AABB across its occurrences (using their CURRENT matrices). Used after
@@ -1645,6 +1653,7 @@ export class Scene {
       templates: this.instancedTemplates, cpu: this.instancedTemplateCpu, occurrences: this.instancedEntityMap,
       device: this.instancedDevice, evictHighlight: (id: number) => this.evictHighlightMeshes(id, true),
       clearPartial: () => this.dropAllPartialCaches(),
+      placedTemplate: (slot: number) => this.refreshPoolTemplates([slot]),
       unionBounds: (id: number, view: DataView, offset: number, anchors: Float64Array, min: [number, number, number], max: [number, number, number]) =>
         this.unionInstancedWorldAabb(id, view, offset, anchors, ...min, ...max) };
   }
@@ -2194,7 +2203,7 @@ export class Scene {
     this.meshDataBucket = new Map();
     this.meshDataMap.clear(); this.bumpPickGeometryRevision();
     // Keep occurrence transforms for placement; release heavy template vertices.
-    releaseInstanceVertices(this.instancedTemplateCpu);
+    releaseInstanceVertices(this.instancedTemplateCpu); this.instancePool.pool?.releaseCpuGeometry(); // the pool's draw groups held the same arrays
     this.activeBucketKey.clear();
     this.lastDrawnFrame.clear();
     this.residencyRestoreQueue.clear();
@@ -2255,7 +2264,7 @@ export class Scene {
     // 2. Clear the heavy data structures — typed arrays become GC-eligible
     this.meshDataMap.clear(); this.bumpPickGeometryRevision();
     // Keep occurrence transforms for placement; release heavy template vertices.
-    releaseInstanceVertices(this.instancedTemplateCpu);
+    releaseInstanceVertices(this.instancedTemplateCpu); this.instancePool.pool?.releaseCpuGeometry(); // the pool's draw groups held the same arrays
     // Clear meshData arrays in each bucket (typed arrays become GC-eligible)
     // but keep the bucket shells so batchedMesh references remain valid
     for (const bucket of this.buckets.values()) {
@@ -2760,7 +2769,9 @@ export class Scene {
    * calls, intended for on-demand telemetry, not per-frame use.
    */
   getResidentGpuBytes(): ResidentGpuBytes {
-    return sumResidentGpuBytes({
+    // GPU-driven instancing: the pool's source, state and compacted tables are instanced bytes too.
+    const pool = this.instancePool.gpuBytes();
+    const sum = sumResidentGpuBytes({
       // Evicted batches are metadata shells — their destroyed buffers still
       // report .size, so they must be excluded from the resident sum.
       batches: this.batchedMeshes.filter((b) => b.gpuResident !== false),
@@ -2770,14 +2781,31 @@ export class Scene {
       // Live templates only — freed slots are holes with destroyed buffers.
       instanced: this.liveInstancedTemplates,
     });
+    return pool > 0 ? { ...sum, instanced: sum.instanced + pool, total: sum.total + pool } : sum;
   }
 
   /**
-   * Toggle the instanced draw pass. Instanced geometry is class-0 occurrences
-   * (the Model view); hide it in the Types view mode, where the flat path shows
-   * the class-1/2 type library instead. Buffers stay uploaded — just not drawn —
-   * so toggling back is free.
+   * Switch new instanced uploads to the GPU-driven pool (`gpu-instance-pool.ts`).
+   * Call before geometry streams in; templates already uploaded stay on the
+   * per-template path until the scene is cleared.
    */
+  setGpuInstancing(enabled: boolean): boolean { return this.instancePool.setEnabled(enabled, this.instancedEntityMap.size > 0 || this.liveInstancedTemplates.length > 0); }
+  /** GPU pool: keep the hovered entity's occurrences past the contribution cull (hover outline). */
+  setGpuPoolHover(id: number | null, model?: number): void { this.instancePool.setHover(id === null ? undefined : this.instancedEntityMap.get(id), (loc) => model === undefined || this.instancedTemplates[loc.templateIndex]?.modelIndex === model); }
+
+  /** The GPU-driven instance pool, or null when the per-template path is active. */
+  getGpuInstancePool(): GpuInstancePool | null { return this.instancePool.pool; }
+
+  /** Device recovery: pooled templates restore with stand-in records. */
+  gpuInstancePoolEnabled(): boolean { return this.instancePool.enabled && this.instancePool.pool !== null; }
+
+  /** Device recovery: rebuild the pool on the replacement device (`SceneInstancePool.rebuild`). */
+  dropGpuInstancePool(): void { this.instancePool.disable(); } // the per-template path from here on
+  rebuildGpuInstancePool(device: GPUDevice, radiiBySlot: ReadonlyMap<number, Float32Array>): void {
+    this.instancePool.rebuild(device, this.instancedTemplates, this.instancedTemplateCpu, this.instancedEntityMap, radiiBySlot);
+    this.instancedVisibilityDirty = true;
+  }
+
   setInstancedVisible(visible: boolean): void {
     this.instancedVisible = visible;
   }
@@ -2838,6 +2866,7 @@ export class Scene {
       const t = this.instancedTemplates[i];
       if (!t || t.modelIndex !== modelIndex) continue;
       destroyInstancedTemplateGpu(t);
+      this.instancePool.pool?.removeTemplate(i);
       this.instancedTemplates[i] = undefined;
       this.instancedTemplateCpu[i] = undefined;
       freed.add(i);
@@ -2984,14 +3013,12 @@ export class Scene {
         t.canonicalMatrixTranslations,
       );
       const instSize = t.instanceCount * INSTANCE_STRIDE_BYTES;
-      const instanceBuffer = createStaticGpuBuffer(
-        device,
-        new Uint8Array(t.instanceBuffer, 0, instSize),
-        GPUBufferUsage.VERTEX,
-      );
+      // GPU pool: it holds the records and every pass draws from it, so no per-template records or delta stream (stand-ins keep the shape).
+      const pooled = this.instancePool.enabled;
+      const instanceBuffer = pooled ? poolStandInBuffer(device) : createStaticGpuBuffer(device, new Uint8Array(t.instanceBuffer, 0, instSize), GPUBufferUsage.VERTEX);
       let rteDeltas: InstancedRteDeltaStream;
       try {
-        rteDeltas = createInstancedRteDeltaStream(device, t.instanceCount);
+        rteDeltas = createInstancedRteDeltaStream(device, pooled ? 0 : t.instanceCount);
       } catch (error) {
         // Nothing references this template's buffers yet; free them rather than leak them.
         vertexBuffer.destroy(); indexBuffer.destroy(); instanceBuffer.destroy();
@@ -3048,6 +3075,9 @@ export class Scene {
       // geometry. (Templates with no finite local box — empty geometry — are skipped.)
       const cdv = new DataView(t.instanceBuffer);
       const haveBox = Number.isFinite(lmnx);
+      const pool = this.instancePool.ensure(device);
+      const poolBase = pool ? pool.allocate(t.instanceCount) : -1;
+      const poolRadii = poolBase >= 0 ? new Float32Array(t.instanceCount).fill(Infinity) : null; // -1: past the device limits, not pooled
       for (let i = 0; i < t.instanceCount; i++) {
         const byteOffset = i * INSTANCE_STRIDE_BYTES;
         const eid = t.entityIds[i];
@@ -3063,7 +3093,7 @@ export class Scene {
           this.instancedEntityMap.set(eid, arr);
         }
         // #2985; no id column or the 0 sentinel ⇒ none. ASSIGNED, never conditionally spread: ONE object shape for records that outlive the shard.
-        arr.push({ templateIndex, byteOffset, originalColor, itemId: t.itemIds?.[i] || undefined, finishBits: (cdv.getUint32(byteOffset + INSTANCE_FLAGS_OFFSET, true) & INSTANCE_FINISH_FLAGS_MASK) >>> 0 });
+        arr.push({ templateIndex, byteOffset, originalColor, itemId: t.itemIds?.[i] || undefined, finishBits: (cdv.getUint32(byteOffset + INSTANCE_FLAGS_OFFSET, true) & INSTANCE_FINISH_FLAGS_MASK) >>> 0, poolIndex: poolBase >= 0 ? poolBase + i : -1 });
 
         // A shard can stream in AFTER a selection was recorded (its ids may
         // exist in earlier shards or the flat path). setInstancedSelection
@@ -3083,7 +3113,11 @@ export class Scene {
           // per-frame instanced frustum/contribution culls. Non-finite boxes
           // poison the template so it fails OPEN (never culled).
           foldOccurrenceWorldBox(template, w);
+          if (poolRadii) poolRadii[i] = occurrenceSphereRadius(w, t.canonicalAnchors, i);
         }
+      }
+      if (pool && poolRadii) {
+        template.poolGroup = pool.addTemplate(templateIndex, poolBase, { vertexBuffer, indexBuffer, indexCount: t.indices.length, positions: t.positions, normals: t.normals, indices: t.indices }, t.instanceBuffer, t.canonicalAnchors, poolRadii);
       }
     }
     this.refreshLiveInstancedTemplates();
@@ -3270,6 +3304,7 @@ export class Scene {
     }
     this.instancedVisibilityDirty = false;
     this.lastInstancedVisibilityVersion = visibilityVersion;
+    if (this.instancePool.pool) { this.instancePool.applyVisibility(this.instancedEntityMap, hiddenIds, isolatedIds); return; }
     // Recompute the effective hidden set over all instanced occurrences and diff vs
     // the current one; only flips touch the GPU buffer.
     const next = new Set<number>();
@@ -3344,6 +3379,8 @@ export class Scene {
    * model's templates are removed (slots are not reclaimed).
    */
   instancedMayDiscard(): boolean {
+    // The pool compacts hidden, suppressed and tombstoned occurrences out; only opacity routing discards.
+    if (this.instancePool.pool) return this.hasTransparentInstances();
     return this.instancedHidden.size > 0 || this.tombstonedTemplates.size > 0 || this.instanceSuppression.retained || this.hasTransparentInstances();
   }
 
@@ -3446,6 +3483,12 @@ export class Scene {
 
   /** GPU and CPU record together, so a whole-buffer re-upload keeps the state (#10767). */
   private writeInstanceSlot(device: GPUDevice, loc: InstancedOccurrence, lane: number, data: Uint32Array | Float32Array): void {
+    // GPU-driven pool: the state table owns selection/visibility/colour; one flush per frame uploads it.
+    const pool = this.instancePool.pool;
+    if (pool && loc.poolIndex !== undefined && loc.poolIndex >= 0) {
+      pool.writeLane(loc.poolIndex, lane, data, loc.originalColor);
+      return;
+    }
     writeInstanceLane(device, this.instancedTemplates[loc.templateIndex]?.instanceBuffer, this.instancedTemplateCpu[loc.templateIndex]?.instanceData, loc.byteOffset + lane, data);
   }
 
@@ -3606,6 +3649,7 @@ export class Scene {
     this.instancedTemplates = [];
     this.liveInstancedTemplates = [];
     this.instancedTemplateCpu = [];
+    this.instancePool.clear();
     this.instanceSuppression.forget();
     this.instancedEntityMap.clear(); this.bumpPickGeometryRevision();
     this.instancedSelected.clear();

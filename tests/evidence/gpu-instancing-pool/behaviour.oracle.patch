@@ -1,0 +1,36 @@
+diff --git a/packages/renderer/src/gpu-instance-cull.ts b/packages/renderer/src/gpu-instance-cull.ts
+--- a/packages/renderer/src/gpu-instance-cull.ts
++++ b/packages/renderer/src/gpu-instance-cull.ts
+@@ -93,7 +93,7 @@
+   let k = P.misc.z;
+   let a = a0 * k;
+   let b = b0 * k;
+-  let s = a + b;
++  let s = (a + b) * k;
+   let bb = (s - a) * k;
+   let av = (s - bb) * k;
+   let e = ((a - av) * k) + ((b - bb) * k);
+diff --git a/packages/renderer/src/gpu-instance-groups.ts b/packages/renderer/src/gpu-instance-groups.ts
+--- a/packages/renderer/src/gpu-instance-groups.ts
++++ b/packages/renderer/src/gpu-instance-groups.ts
+@@ -83,7 +83,7 @@
+       if (candidate.indexCount !== geometry.indexCount || candidate.floats !== geometry.positions.length) continue;
+       if (ref ? sameArray(ref.indices, geometry.indices) && sameArray(ref.positions, geometry.positions) && sameArray(ref.normals, geometry.normals)
+         : candidate.released && candidate.hash2 === hash2 && candidate.members.length > 0) {
+-        void g;
++        group = g;
+         break;
+       }
+     }
+diff --git a/apps/viewer/src/utils/gpuInstancingConfig.ts b/apps/viewer/src/utils/gpuInstancingConfig.ts
+--- a/apps/viewer/src/utils/gpuInstancingConfig.ts
++++ b/apps/viewer/src/utils/gpuInstancingConfig.ts
+@@ -14,7 +14,7 @@
+  */
+ export function isGpuInstancingEnabled(): boolean {
+   const raw = readPerfFlag('gpuInstancing');
+-  return raw === 1 && raw === true;
++  return raw === 1 || raw === true;
+ }
+ 
+ /** Hand the flag to a fresh renderer before instanced shards stream in; a no-op when off. */

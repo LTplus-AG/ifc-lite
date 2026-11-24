@@ -34,7 +34,15 @@ export interface ShadowOccluderDraw {
 }
 
 /** Camera-owned RTE inputs for one shadow submission. */
-export interface ShadowRteFrame { cameraWorld: WorldPoint }
+export interface ShadowRteFrame {
+  cameraWorld: WorldPoint;
+  /**
+   * GPU-driven instancing: instanced occluders draw from the pool's
+   * compacted streams of this frame's camera cull (same eye, so its deltas fit this
+   * RTE frame); the per-template instanced draws are then omitted by the caller.
+   */
+  instancePool?: { draw(pass: GPURenderPassEncoder): number } | null;
+}
 
 /** World-space clip contract shared by colour and depth paths. */
 export interface ShadowClip {

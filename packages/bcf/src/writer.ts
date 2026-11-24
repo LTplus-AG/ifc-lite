@@ -339,7 +339,15 @@ function writeMarkupFile(
     content += `\n    <Index>${xsdInt(topic.index, 'Topic/Index', `topic "${topic.guid}"`)}</Index>`;
   }
 
-  if (topic.labels && topic.labels.length > 0) {
+  // BCF 3.0 types `Label` as NonEmptyOrBlankString (minLength 1 after
+  // whitespace collapse), so an empty or blank label (e.g. an untouched UI
+  // tag field) cannot be written; `Label` is `minOccurs="0"`, so it is
+  // omitted. 2.1's `Labels` is a plain xs:string and keeps every entry.
+  const labels =
+    version === '3.0'
+      ? (topic.labels ?? []).filter((l) => !XML_WHITESPACE_ONLY.test(l))
+      : (topic.labels ?? []);
+  if (labels.length > 0) {
     // BCF 3.0's markup.xsd wraps labels in ONE `<Labels>` container holding
     // repeated `<Label>` children (Labels -> Label*); repeating `<Labels>text
     // </Labels>` once per label -- the 2.1 shape, where `<Labels>` itself is
@@ -348,12 +356,12 @@ function writeMarkupFile(
     // because the content type is 'element-only'"). 2.1 is left as-is.
     if (version === '3.0') {
       content += `\n    <Labels>`;
-      for (const label of topic.labels) {
+      for (const label of labels) {
         content += `\n      <Label>${escapeXml(label)}</Label>`;
       }
       content += `\n    </Labels>`;
     } else {
-      for (const label of topic.labels) {
+      for (const label of labels) {
         content += `\n    <Labels>${escapeXml(label)}</Labels>`;
       }
     }
@@ -426,7 +434,13 @@ function writeMarkupFile(
         let c = `\n${indent}<Comment Guid="${escapeXml(comment.guid)}">`;
         c += `\n${indent}  <Date>${xsdDateTime(comment.date, 'Comment/Date', `comment "${comment.guid}"`)}</Date>`;
         c += `\n${indent}  <Author>${xsdRequiredString(comment.author, 'Comment/Author', `comment "${comment.guid}"`, version)}</Author>`;
-        c += `\n${indent}  <Comment>${escapeXml(comment.comment)}</Comment>`;
+        // 3.0 declares the text `minOccurs="0"` but NonEmptyOrBlankString, so
+        // an empty/blank text (a comment that only carries a viewpoint) is
+        // written as NO element; the reader maps an absent one back to ''.
+        // 2.1 requires the element and allows an empty xs:string.
+        if (version === '2.1' || !XML_WHITESPACE_ONLY.test(comment.comment)) {
+          c += `\n${indent}  <Comment>${escapeXml(comment.comment)}</Comment>`;
+        }
         if (comment.viewpointGuid) {
           c += `\n${indent}  <Viewpoint Guid="${escapeXml(comment.viewpointGuid)}"/>`;
         }

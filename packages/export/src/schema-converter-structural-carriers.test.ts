@@ -397,12 +397,12 @@ describe('CausedBy of an unconverted varying action #9668', () => {
 ${geometry.replace('(#16),', aspect)}
 #30=IFCSTRUCTURALLINEARACTIONVARYING('3sXjCM_kPHN8ZCpuBhV_98',#5,'V',$,$,#9,#15,#11,.GLOBAL_COORDS.,.F.,#20,.TRUE_LENGTH.,#17,(#11,#11));`);
 
-  it('writes no Causes relationship and reports CausedBy omitted', async () => {
+  it('writes the constant action and its Causes relationship for the incomplete configuration (#11354)', async () => {
     const up = await convert(varying('(#16),'), 'IFC4');
-    expect(line(up.step, 30)).toMatch(/^#30=IFCSTRUCTURALLINEARACTIONVARYING\(/);
-    expect(records(up.step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([]);
-    expect(up.warnings).toContain("CausedBy of a varying action that stays unconverted is kept only in that IFC2X3 record");
-    expect(up.warnings).not.toContain('CausedBy is written as');
+    expect(line(up.step, 30)).toMatch(/^#30=IFCSTRUCTURALCURVEACTION\(.*\.CONST\.\);$/);
+    expect(records(up.step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([expect.stringMatching(/'Causes',\$,\(#20\),\$,#30\);$/)]);
+    expect(up.warnings).not.toContain('CausedBy of a varying action that stays unconverted');
+    expect(up.warnings).toContain('CausedBy is written as');
   });
 
   it('still writes it for a varying action that converts', async () => {
@@ -413,13 +413,74 @@ ${geometry.replace('(#16),', aspect)}
     expect(up.warnings).not.toContain('stays unconverted');
   });
 
+  // #11354: the full, unedited export falls back to the constant action, as the subset export does (#11128).
+  describe('constant fallback for an incomplete varying action in a full export #11354', () => {
+    const PLANAR_LOADS = `#18=IFCSTRUCTURALLOADPLANARFORCE('p',0.,0.,-1.);\n`;
+    const planar = (text: string): string => text
+      .replace('\n#30=IFCSTRUCTURALLINEARACTIONVARYING(', `\n${PLANAR_LOADS}#30=IFCSTRUCTURALPLANARACTIONVARYING(`)
+      .replace(',#9,#15,#11,', ',#9,#15,#18,').replace('#17,(#11,#11));', '#17,(#18,#18));');
+    const attributeCount = async (entity: string): Promise<number> => {
+      const { getSchemaRegistryForVersion, getCanonicalEntityName } = await import('@ifc-lite/parser');
+      const registry = getSchemaRegistryForVersion('IFC4');
+      const meta = registry.entities[getCanonicalEntityName(registry, entity) ?? ''];
+      return (meta.allAttributes ?? meta.attributes).length;
+    };
+    /** The record is a known IFC4 entity written with exactly its attribute count. */
+    const expectIfc4Shape = async (step: string, id: number): Promise<void> => {
+      const record = /^#\d+=([A-Z0-9_]+)\((.*)\);$/.exec(line(step, id) ?? '');
+      expect(record, `#${id}`).not.toBeNull();
+      expect(record![2].split(',').length, record![1]).toBe(await attributeCount(record![1]));
+    };
+
+    it('writes a linear action as IfcStructuralCurveAction .CONST., keeps its load, and links the reaction', async () => {
+      const up = await convert(varying('(#16),'), 'IFC4');
+      expect(line(up.step, 30)).toBe("#30=IFCSTRUCTURALCURVEACTION('3sXjCM_kPHN8ZCpuBhV_98',#5,'V',$,$,#9,#15,#11,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);");
+      expect(up.step).not.toContain('IFCSTRUCTURALLINEARACTIONVARYING');
+      expect(up.step).not.toContain('IFCSTRUCTURALLOADCONFIGURATION');
+      expect(records(up.step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([expect.stringMatching(/'Causes',\$,\(#20\),\$,#30\);$/)]);
+      expect(up.warnings).toContain('no complete load configuration');
+      expect(up.warnings).toContain('CausedBy is written as');
+      expect(up.warnings).not.toContain('stays unconverted');
+      expect(up.warnings).not.toContain('CausedBy has no slot');
+      await expectIfc4Shape(up.step, 30);
+    });
+
+    it('writes a planar action as IfcStructuralSurfaceAction .CONST., keeps its load, and links the reaction', async () => {
+      const up = await convert(planar(varying('(#16),')), 'IFC4');
+      expect(line(up.step, 30)).toBe("#30=IFCSTRUCTURALSURFACEACTION('3sXjCM_kPHN8ZCpuBhV_98',#5,'V',$,$,#9,#15,#18,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);");
+      expect(up.step).not.toContain('IFCSTRUCTURALPLANARACTIONVARYING');
+      expect(up.step).not.toContain('IFCSTRUCTURALLOADCONFIGURATION');
+      expect(records(up.step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([expect.stringMatching(/'Causes',\$,\(#20\),\$,#30\);$/)]);
+      expect(up.warnings).toContain('no complete load configuration');
+      expect(up.warnings).toContain('CausedBy is written as');
+      await expectIfc4Shape(up.step, 30);
+    });
+
+    it('reports an omitted CausedBy that names no reaction, and an AppliedLoad that is no load', async () => {
+      const noReaction = await convert(varying('(#16),').replace(',.F.,#20,.TRUE_LENGTH.', ',.F.,#9,.TRUE_LENGTH.'), 'IFC4');
+      expect(line(noReaction.step, 30)).toMatch(/^#30=IFCSTRUCTURALCURVEACTION\(.*\.CONST\.\);$/);
+      expect(records(noReaction.step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([]);
+      expect(noReaction.warnings).toContain('IFCSTRUCTURALLINEARACTIONVARYING.CausedBy has no slot in IFC4; its value is omitted');
+      const noLoad = await convert(varying('(#16),').replace(',#9,#15,#11,', ',#9,#15,#9,'), 'IFC4');
+      expect(line(noLoad.step, 30)).toContain(',#15,$,.GLOBAL_COORDS.,');
+      expect(noLoad.warnings).toContain('no usable AppliedLoad');
+    });
+
+    it('leaves the complete configuration conversion alone', async () => {
+      const up = await convert(planar(varying('(#14,#16,#16),')), 'IFC4');
+      expect(line(up.step, 30)).toMatch(/^#30=IFCSTRUCTURALSURFACEACTION\(.*\.NOTDEFINED\.\);$/);
+      expect(up.step).toMatch(/IFCSTRUCTURALLOADCONFIGURATION\(\$,\(#18,#18,#18\),\$\);/);
+      expect(up.warnings).not.toContain('no complete load configuration');
+    });
+  });
+
   // #10597: the type classifier calls an IFC2X3 varying action identity, so the preview asks the carriers per record.
   it('names CausedBy lost in the loss preview exactly when the export reports it', async () => {
     const cases = [
-      { text: varying('(#16),'), why: 'unconverted, naming a reaction', target: 'IFCSTRUCTURALLINEARACTIONVARYING' },
+      { text: varying('(#16),'), why: 'incomplete configuration, held by Causes', target: null },
       { text: varying('(#14,#16,#16),'), why: 'converted, held by Causes', target: null },
       { text: varying('(#14,#16,#16),').replace(',.F.,#20,', ',.F.,#12,'), why: 'converted, naming no reaction', target: 'IFCSTRUCTURALCURVEACTION' },
-      { text: varying('(#16),').replace(',.F.,#20,', ',.F.,#12,'), why: 'unconverted, kept in its own record', target: null },
+      { text: varying('(#16),').replace(',.F.,#20,', ',.F.,#12,'), why: 'incomplete configuration, naming no reaction', target: 'IFCSTRUCTURALCURVEACTION' },
       // A source 'Causes' naming another reaction: IFC4 holds both, so the downgrade cannot restore CausedBy.
       { text: varying('(#14,#16,#16),').replace('ENDSEC;\nEND', `#23=IFCSTRUCTURALPOINTREACTION('1KQ0efL39PrP5DeqBwaUNp',#5,'R2',$,$,#9,$,#12,.GLOBAL_COORDS.);
 #31=IFCRELASSIGNSTOPRODUCT('1aaaaaaaaaaaaaaaaaaaaa',#5,'Causes',$,(#23),$,#30);
@@ -437,10 +498,10 @@ ENDSEC;\nEND`), why: 'converted, among several causes', target: 'IFCSTRUCTURALCU
   });
 
   it('keeps one entry for the type, naming each record group under the type the export writes it as', async () => {
-    // #30 converts and names no reaction; #31 stays unconverted (one aspect representation for two loads) and names one.
+    // #30 converts and names no reaction; #31 is malformed (13 of the 14 attributes), so it stays unconverted, and names a reaction.
     const text = varying('(#14,#16,#16),').replace(',.F.,#20,', ',.F.,#12,') .replace('ENDSEC;\nEND', `#18=IFCPRODUCTDEFINITIONSHAPE($,$,(#14));
 #19=IFCSHAPEASPECT((#16),'Coverage aspect',$,.T.,#18);
-#31=IFCSTRUCTURALLINEARACTIONVARYING('4sXjCM_kPHN8ZCpuBhV_98',#5,'W',$,$,#9,#18,#11,.GLOBAL_COORDS.,.F.,#20,.TRUE_LENGTH.,#19,(#11,#11));
+#31=IFCSTRUCTURALLINEARACTIONVARYING('4sXjCM_kPHN8ZCpuBhV_98',#5,'W',$,$,#9,#18,#11,.GLOBAL_COORDS.,.F.,#20,.TRUE_LENGTH.,#19);
 ENDSEC;\nEND`);
     const step = (await convert(text, 'IFC4')).step;
     expect(line(step, 30)).toMatch(/^#30=IFCSTRUCTURALCURVEACTION\(/);
@@ -457,8 +518,8 @@ ENDSEC;\nEND`);
     ]);
   });
 
-  it('reports no CausedBy message for a CausedBy that names no point reaction', async () => {
-    const up = await convert(varying('(#16),').replace(',.F.,#20,.TRUE_LENGTH.', ',.F.,#9,.TRUE_LENGTH.'), 'IFC4');
+  it('reports no CausedBy-kept message for a malformed varying action whose CausedBy names no point reaction', async () => {
+    const up = await convert(varying('(#16),').replace(',.F.,#20,.TRUE_LENGTH.', ',.F.,#9,.TRUE_LENGTH.').replace(',#17,(#11,#11));', ',#17);'), 'IFC4');
     expect(records(up.step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([]);
     // No CausedBy message of any kind (every Causes message names CausedBy too).
     expect(up.warnings).not.toContain('CausedBy');

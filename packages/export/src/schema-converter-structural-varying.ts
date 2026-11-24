@@ -5,7 +5,8 @@ import { listItems } from './schema-converter-structural-axes.js';
 import { refId } from './schema-ifc2x3-records.js';
 import { holdsValue, withoutComments } from './step-comment-skip.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
-import type { SourceRecords, StructuralRewrite } from './schema-converter-structural-source.js';
+import { isSubtype, type SourceRecords, type StructuralRewrite } from './schema-converter-structural-source.js';
+import { constantAction } from './schema-structural-varying-constant.js';
 
 /**
  * IFC2X3's varying actions and the IFC4 actions they become. IFC4 dropped
@@ -140,10 +141,24 @@ export class StructuralVarying {
 
   /**
    * IFC2X3 -> IFC4, when this prepass is armed: whether this IFC2X3 varying
-   * action stays unconverted (no IFC4 entity holds it then). False when unarmed.
+   * action stays unconverted (no IFC4 entity holds it then). Every record of the
+   * 14 attributes IFC2X3 gives it is written, as a configuration or as a constant
+   * action (`constant`), so only a malformed one stays. False when unarmed.
    */
   staysUnconverted(entity: string, args: readonly string[]): boolean {
-    return this.upgrading && KINDS.some((k) => k.ifc2x3 === entity) && !this.upgradeLoads(entity, args);
+    return this.upgrading && KINDS.some((k) => k.ifc2x3 === entity) && args.length !== 14;
+  }
+
+  /**
+   * The constant IFC4 action for a varying action no configuration holds (#11037,
+   * #11354): its initial load and PredefinedType CONST. Undefined unless the
+   * record is an IFC2X3 varying action of 14 attributes.
+   */
+  constant(entity: string, args: readonly string[], carried: ReadonlySet<string>): StructuralRewrite | undefined {
+    const target = varyingTarget(entity);
+    if (!target || args.length !== 14) return undefined;
+    const load = isSubtype('IFC4', this.typeOf(refId(args[7])), 'IfcStructuralLoad');
+    return constantAction(target, entity, args, load, carried.has('CausedBy'));
   }
 
   /** Armed for IFC2X3 -> IFC4, with the exporter's id allocator. */
@@ -159,7 +174,7 @@ export class StructuralVarying {
 
   private toIfc4(entity: string, args: readonly string[], carried: ReadonlySet<string>): StructuralRewrite | undefined {
     const found = this.upgradeLoads(entity, args);
-    if (!found) return undefined;
+    if (!found) return this.upgrading ? this.constant(entity, args, carried) : undefined;
     const { kind, loads } = found;
     const id = this.ids!();
     this.pending.push(`#${id}=IFCSTRUCTURALLOADCONFIGURATION($,(${loads.map((l) => `#${l}`).join(',')}),$);`);

@@ -75,6 +75,7 @@ mod schema_document_links;
 mod schema_value_forms;
 mod schema_material_referent;
 mod schema_structural_varying;
+mod schema_structural_varying_constant;
 mod schema_mep;
 mod schema_detect;
 mod schema_ifc2x3_body;

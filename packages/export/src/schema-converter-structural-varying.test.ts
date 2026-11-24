@@ -69,7 +69,8 @@ describe('varying structural actions IFC2X3 <-> IFC4 #9668', () => {
     ] as const) {
       const change = (source: string) => source.replace(`IFCSHAPEASPECT(${representations},`, `IFCSHAPEASPECT(${replacement},`);
       const upgraded = exportToStep(await parse(change(IFC2X3)), { schema: 'IFC4' });
-      expect(line(upgraded, id)).toContain(id === 30 ? '=IFCSTRUCTURALLINEARACTIONVARYING(' : '=IFCSTRUCTURALPLANARACTIONVARYING(');
+      // No configuration holds the locations: the constant action (#11354).
+      expect(line(upgraded, id)).toMatch(id === 30 ? /=IFCSTRUCTURALCURVEACTION\(.*\.CONST\.\);$/ : /=IFCSTRUCTURALSURFACEACTION\(.*\.CONST\.\);$/);
       const downgraded = exportToStep(await parse(change(validIfc4)), { schema: 'IFC2X3' });
       expect(line(downgraded, id)).toMatch(new RegExp(`^#${id}=IFCPROXY\\(`));
     }
@@ -169,10 +170,10 @@ describe('varying structural actions IFC2X3 <-> IFC4 #9668', () => {
     expect(result.stats.warnings.join('\n')).toContain('1 structural conversion record(s): an IFC4 curve or surface action');
   });
 
-  it('converts only what converts back: a location aspect elsewhere leaves the action as before', async () => {
+  it('converts only what converts back: a location aspect elsewhere writes the constant action (#11354)', async () => {
     // #13 places #12, not #10, so a downgrade could not find the locations again.
     const out = exportToStep(await parse(IFC2X3.replace(',#11,(#21));', ',#13,(#21));')), { schema: 'IFC4' });
-    expect(line(out, 30)).toMatch(/^#30=IFCSTRUCTURALLINEARACTIONVARYING\(/);
+    expect(line(out, 30)).toMatch(/^#30=IFCSTRUCTURALCURVEACTION\(.*\.CONST\.\);$/);
     expect(records(out, 'IFCSTRUCTURALLOADCONFIGURATION')).toEqual(['#32=IFCSTRUCTURALLOADCONFIGURATION($,(#22,#23,#24),$);']);
   });
 

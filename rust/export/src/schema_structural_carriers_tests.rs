@@ -141,7 +141,7 @@ fn a_structural_profile_subtype_reports_only_unpreserved_values_10797() {
     assert_eq!(stats.attribute_values_dropped, 1, "ProfileName");
 }
 
-// A varying action that stays unconverted is no IFC4 product, so no 'Causes' relationship may name it.
+// A varying action that stays unconverted (here: 13 of its 14 attributes) is no IFC4 product, so no 'Causes' relationship may name it.
 const GEOMETRY: &str = "#13=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#8,$);
 #14=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));
 #15=IFCPRODUCTDEFINITIONSHAPE($,$,(#14));
@@ -151,11 +151,54 @@ const VARYING: &str = "#30=IFCSTRUCTURALLINEARACTIONVARYING('3sXjCM_kPHN8ZCpuBhV
 
 #[test]
 fn an_unconverted_varying_action_gets_no_causes_9668() {
-    let (up, warnings) = convert(&model("IFC2X3", &[GEOMETRY, REACTION, VARYING].join("\n")), "IFC4");
+    let action = VARYING.replace(",#17,(#11,#11));", ",#17);");
+    let (up, warnings) = convert(&model("IFC2X3", &[GEOMETRY, REACTION, &action].join("\n")), "IFC4");
     assert!(record(&up, 30).starts_with("#30=IFCSTRUCTURALLINEARACTIONVARYING("), "{up}");
     assert!(relationships(&up).is_empty(), "{up}");
     assert!(warnings.contains("CausedBy of a varying action that stays unconverted is kept only in that IFC2X3 record"), "{warnings}");
     assert!(!warnings.contains("CausedBy is written as"), "{warnings}");
+}
+
+// #11354: the full, unedited export falls back to the constant action, as the subset export does (#11128).
+const PLANAR_LOAD: &str = "#18=IFCSTRUCTURALLOADPLANARFORCE('p',0.,0.,-1.);";
+fn planar(action: &str) -> String {
+    action.replace("LINEARACTIONVARYING", "PLANARACTIONVARYING").replace(",#15,#11,", ",#15,#18,").replace("(#11,#11)", "(#18,#18)")
+}
+
+#[test]
+fn an_incomplete_varying_action_is_written_constant_and_linked_to_its_reaction_11354() {
+    for (action, load, target, extra) in [
+        (VARYING.to_owned(), "#11", "IFCSTRUCTURALCURVEACTION", ""),
+        (planar(VARYING), "#18", "IFCSTRUCTURALSURFACEACTION", PLANAR_LOAD),
+    ] {
+        let source = model("IFC2X3", &[GEOMETRY, REACTION, extra, &action].join("\n"));
+        let opts = StepOptions { schema: Some("IFC4".into()), ..StepOptions::default() };
+        let (up, stats, warnings) = export_step_with_diagnostics(source.as_bytes(), &opts).unwrap();
+        let warnings = warnings.join("\n");
+        assert_eq!(record(&up, 30), format!("#30={target}('3sXjCM_kPHN8ZCpuBhV_98',#5,'V',$,$,#9,#15,{load},.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);"), "{up}");
+        assert!(!up.contains("ACTIONVARYING(") && !up.contains("IFCSTRUCTURALLOADCONFIGURATION("), "{up}");
+        assert_eq!(relationships(&up).len(), 1, "{up}");
+        assert!(relationships(&up)[0].starts_with("#31=") && relationships(&up)[0].ends_with("'Causes',$,(#20),$,#30);"), "{up}");
+        assert!(warnings.contains("no complete load configuration") && warnings.contains("CausedBy is written as"), "{warnings}");
+        assert!(!warnings.contains("stays unconverted") && !warnings.contains("CausedBy has no slot"), "{warnings}");
+        // The omitted VaryingAppliedLoadLocation and SubsequentAppliedLoads are the only values lost.
+        assert_eq!(stats.attribute_values_dropped, 2, "{up}");
+    }
+}
+
+#[test]
+fn an_incomplete_varying_action_reports_an_uncarried_cause_and_an_unusable_load_11354() {
+    let opts = StepOptions { schema: Some("IFC4".into()), ..StepOptions::default() };
+    let action = VARYING.replace(",.F.,#20,.TRUE_LENGTH.", ",.F.,#9,.TRUE_LENGTH.");
+    let (up, stats, warnings) = export_step_with_diagnostics(model("IFC2X3", &[GEOMETRY, REACTION, &action].join("\n")).as_bytes(), &opts).unwrap();
+    assert!(record(&up, 30).ends_with(".TRUE_LENGTH.,.CONST.);") && relationships(&up).is_empty(), "{up}");
+    assert!(warnings.iter().any(|w| w.contains("IFCSTRUCTURALLINEARACTIONVARYING.CausedBy has no slot in IFC4")), "{warnings:?}");
+    assert_eq!(stats.attribute_values_dropped, 3, "CausedBy, VaryingAppliedLoadLocation, SubsequentAppliedLoads");
+    let action = VARYING.replace(",#15,#11,", ",#15,#9,");
+    let (up, stats, warnings) = export_step_with_diagnostics(model("IFC2X3", &[GEOMETRY, REACTION, &action].join("\n")).as_bytes(), &opts).unwrap();
+    assert!(record(&up, 30).contains(",#15,$,.GLOBAL_COORDS."), "{up}");
+    assert!(warnings.iter().any(|w| w.contains("no usable AppliedLoad")), "{warnings:?}");
+    assert_eq!(stats.attribute_values_dropped, 3, "AppliedLoad, VaryingAppliedLoadLocation, SubsequentAppliedLoads");
 }
 
 #[test]

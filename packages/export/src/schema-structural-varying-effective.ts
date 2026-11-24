@@ -1,16 +1,12 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 import { StructuralCarriers } from './schema-converter-structural-carriers.js';
 import { StructuralVarying, varyingTarget } from './schema-converter-structural-varying.js';
 import { listItems } from './schema-converter-structural-axes.js';
-import { slotRef, slotUnset } from './schema-converter-structural-source.js';
+import { slotRef } from './schema-converter-structural-source.js';
 import { readStepSlots } from './step-argument-parser.js';
 import { stepRecordHead } from './step-record-frame.js';
 import { skipStepTrivia } from './step-slot-grammar.js';
-
-const LOSS = 'The retained varying structural action has no complete load configuration; its varying locations and subsequent loads were omitted (#11037).';
-const MISSING_LOAD = 'The retained varying structural action has no usable AppliedLoad; the required IFC4 slot was left unset (#11037).';
 
 export function finishEffectiveVarying(lines: string[], includeRelationships: boolean, noteLoss: (message: string) => void): number {
   // Most edited exports have no varying actions.
@@ -61,20 +57,11 @@ export function finishEffectiveVarying(lines: string[], includeRelationships: bo
     for (const slot of [1, 5, 6]) if (!present(args[slot])) args[slot] = '$';
     const cause = includeRelationships && next <= 0xffffffff ? carriers.noteCause(id, record.type, args, undefined) : null;
     if (cause) noteLoss(cause.message);
-    const restored = next <= 0xffffffff ? plan.rewrite(id, record.type, args, new Set(cause ? ['CausedBy'] : [])) : undefined;
-    if (restored?.body) {
-      for (const warning of restored.losses) noteLoss(warning);
-      lines[index] = '#' + id + '=' + restored.body + ';';
-      continue;
-    }
-    const sourceLoad = types.get(slotRef(args[7]) ?? 0);
-    const load = sourceLoad && getInheritanceChainAcrossSchemas(sourceLoad).includes('IfcStructuralLoad') ? args[7] : '$';
-    const target = varyingTarget(record.type)!;
-    lines[index] = '#' + id + '=' + target + '(' + [...args.slice(0, 7), load, args[8],
-      args[9], args[11], '.CONST.'].join(',') + ');';
-    noteLoss(LOSS);
-    if (load === '$') noteLoss(MISSING_LOAD);
-    if (!cause && !slotUnset(args[10])) noteLoss(record.type + '.CausedBy has no slot in IFC4; its value is omitted (#11037).');
+    const carried = new Set(cause ? ['CausedBy'] : []);
+    const restored = (next <= 0xffffffff ? plan.rewrite(id, record.type, args, carried) : undefined) ?? plan.constant(record.type, args, carried);
+    if (!restored?.body) continue;
+    for (const warning of restored.losses) noteLoss(warning);
+    lines[index] = '#' + id + '=' + restored.body + ';';
   }
   const added = [...plan.added(), ...carriers.added()];
   for (const line of added) lines.push(line);

@@ -90,21 +90,21 @@ impl StructuralDiagnostics {
 
     /// A record written as another entity from source-derived facts
     /// (`StructuralLinks`, `StructuralVarying`, each armed only for its schema
-    /// pair): the target body and whether the rewrite dropped a CausedBy value.
-    pub(crate) fn rewrite(&mut self, id: u32, entity: &str, args: &[String]) -> Option<(String, bool)> {
+    /// pair): the target body and the attribute values the rewrite dropped.
+    pub(crate) fn rewrite(&mut self, id: u32, entity: &str, args: &[String]) -> Option<(String, usize)> {
         if let Some((body, message)) = self.values.rewrite(id) {
             self.record(message.into());
-            return Some((body, false));
+            return Some((body, 0));
         }
         if let Some((body, axis_carried)) = self.axes.carriers.rewrite(id, entity, args) {
             if axis_carried {
                 self.record("IFC4 Axis is written as IfcRelAssociatesProfileProperties.ProfileOrientation in the analysis model frame".into());
             }
-            return Some((body, false));
+            return Some((body, 0));
         }
         let cause = self.cause(id, entity);
         let rewritten = match self.links.link(entity, args) {
-            Some(attrs) => Some((format!("IFCRELCONNECTSSTRUCTURALELEMENT({attrs})"), vec![LINK.to_string()], false)),
+            Some(attrs) => Some((format!("IFCRELCONNECTSSTRUCTURALELEMENT({attrs})"), vec![LINK.to_string()], 0)),
             None => self.varying.rewrite(id, entity, args, cause.is_some()),
         };
         // Queue the relationship only once the varying rewrite has produced an IFC4 action.
@@ -116,9 +116,9 @@ impl StructuralDiagnostics {
             self.record(message.into());
             self.carriers.write(id);
         }
-        let (body, losses, cause_dropped) = rewritten?;
+        let (body, losses, dropped) = rewritten?;
         losses.into_iter().for_each(|loss| self.record(loss));
-        Some((body, cause_dropped))
+        Some((body, dropped))
     }
 
     /// The message for an action whose CausedBy a 'Causes' relationship holds, or None.
@@ -133,8 +133,8 @@ impl StructuralDiagnostics {
         let actions: BTreeSet<u32> = self.carriers.needs_ids().chain(self.varying.needs_ids()).collect();
         for action in actions {
             let configured = self.varying.plans(action);
-            // A varying action that stays unconverted gets no relationship.
-            let caused = self.carriers.needs_id(action, configured);
+            // A varying action that stays unconverted gets no relationship; a constant one does (#11354).
+            let caused = self.carriers.needs_id(action, self.varying.converts(action));
             let relationship = if caused { let Some(id) = allocate() else { return }; Some(id) } else { None };
             // When only one id fits, converting the action takes priority over carrying CausedBy.
             let configuration = if configured { let Some(id) = allocate().or(relationship) else { return }; Some(id) } else { None };

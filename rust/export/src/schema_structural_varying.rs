@@ -52,6 +52,8 @@ const TO_IFC2X3: &str = "an IFC4 curve or surface action with an IfcStructuralLo
 pub(crate) struct StructuralVarying {
     /// IFC2X3 -> IFC4: convertible varying action id -> (kind, loads), until [`Self::assign`] gives it a configuration id.
     planned: BTreeMap<u32, (&'static Kind, Vec<u32>)>,
+    /// IFC2X3 -> IFC4: varying action id -> whether its AppliedLoad is a load, for the actions no configuration holds. They are written constant (#11354).
+    constants: HashMap<u32, bool>,
     /// Armed for IFC2X3 -> IFC4.
     upgrading: bool,
     /// IFC2X3 -> IFC4: varying action id -> (kind, loads, the id allocated for its configuration).
@@ -143,6 +145,11 @@ impl StructuralVarying {
             let Some(location) = ref_id(Some(&args[12])) else { continue };
             if source.convertible(kind, &args[6], &loads, Some(location)).is_some() { result.planned.insert(*id, (*kind, loads)); }
         }
+        // Every other action of the attributes IFC2X3 gives it keeps its initial load (#11354).
+        for (id, _, args) in source.actions.iter().filter(|(id, _, args)| args.len() == 14 && !result.planned.contains_key(id)) {
+            let load = ref_id(Some(&args[7])).is_some_and(|load| source.loads.contains_key(&load));
+            result.constants.insert(*id, load);
+        }
         result
     }
 
@@ -164,9 +171,12 @@ impl StructuralVarying {
         if let Some((kind, loads)) = self.planned.remove(&action) { self.upgrades.insert(action, (kind, loads, id)); }
     }
 
-    /// Whether this is an IFC2X3 varying action the upgrade leaves unconverted.
+    /// Whether the upgrade writes this varying action as an IFC4 action: with a configuration, or constant.
+    pub(crate) fn converts(&self, id: u32) -> bool { self.planned.contains_key(&id) || self.constants.contains_key(&id) }
+
+    /// Whether this is an IFC2X3 varying action the upgrade leaves unconverted: only one without the 14 attributes IFC2X3 gives it.
     pub(crate) fn stays_unconverted(&self, id: u32, entity: &str) -> bool {
-        self.upgrading && Self::is_varying(entity) && !self.upgrades.contains_key(&id)
+        self.upgrading && Self::is_varying(entity) && !self.upgrades.contains_key(&id) && !self.constants.contains_key(&id)
     }
 
     /// IFC4 -> IFC2X3: the actions that become varying actions and the configurations they consume.
@@ -198,9 +208,9 @@ impl StructuralVarying {
         result
     }
 
-    /// The target body, loss warnings, and whether the rewrite dropped a CausedBy value.
+    /// The target body, loss warnings, and the attribute values the rewrite dropped.
     /// `cause_carried`: a 'Causes' relationship holds the action's CausedBy, so it is not lost.
-    pub(crate) fn rewrite(&mut self, id: u32, entity: &str, args: &[String], cause_carried: bool) -> Option<(String, Vec<String>, bool)> {
+    pub(crate) fn rewrite(&mut self, id: u32, entity: &str, args: &[String], cause_carried: bool) -> Option<(String, Vec<String>, usize)> {
         if let Some((kind, loads, config)) = self.upgrades.get(&id).filter(|(k, ..)| k.ifc2x3 == entity && args.len() == 14) {
             let values = loads.iter().map(|l| format!("#{l}")).collect::<Vec<_>>().join(",");
             self.pending.insert(*config, format!("#{config}=IFCSTRUCTURALLOADCONFIGURATION($,({values}),$);"));
@@ -210,7 +220,12 @@ impl StructuralVarying {
             let cause_dropped = !cause_carried && crate::schema_convert::holds_value(cause);
             if cause_dropped { losses.push(format!("{entity}.CausedBy has no slot in IFC4; its value is omitted")); }
             let body = [&args[..7], &[format!("#{config}"), args[8].clone(), args[9].clone(), args[11].clone(), ".NOTDEFINED.".into()]].concat();
-            return Some((format!("{}({})", kind.ifc4, body.join(",")), losses, cause_dropped));
+            return Some((format!("{}({})", kind.ifc4, body.join(",")), losses, usize::from(cause_dropped)));
+        }
+        if let Some(&load) = self.constants.get(&id).filter(|_| args.len() == 14) {
+            let target = Self::target(entity)?;
+            let constant = crate::schema_structural_varying_constant::constant_action(target, entity, args, load, cause_carried);
+            return Some((constant.body, constant.warnings, constant.dropped));
         }
         let (kind, values, aspect) = self.downgrades.get(&id).filter(|(k, ..)| k.ifc4 == entity && args.len() == 12)?;
         let rest = values[1..].iter().map(|v| format!("#{v}")).collect::<Vec<_>>().join(",");
@@ -218,7 +233,7 @@ impl StructuralVarying {
         let mut losses = vec![TO_IFC2X3.to_string()];
         // `inspect` reports this for the records it sees; a rewritten one skips it.
         if slot_is(&args[9], "$") { losses.push(crate::schema_structural::destabilizing_unknown(entity)); }
-        Some((format!("{}({})", kind.ifc2x3, [&args[..7], &tail].concat().join(",")), losses, false))
+        Some((format!("{}({})", kind.ifc2x3, [&args[..7], &tail].concat().join(",")), losses, 0))
     }
 
     /// Whether the record is a configuration every referrer of which became a varying action.
@@ -279,7 +294,10 @@ mod tests {
         ] {
             let change = |s: &str| s.replace(&format!("IFCSHAPEASPECT({old},"), &format!("IFCSHAPEASPECT({new},"));
             let (out, _) = export_step_with_stats(change(&source).as_bytes(), &to("IFC4")).unwrap();
-            assert_eq!(record(&out, id), if id == "#30=" { LINE } else { AREA });
+            // No configuration holds the locations: the constant action (#11354).
+            let (target, source_record) = if id == "#30=" { ("IFCSTRUCTURALCURVEACTION(", LINE) } else { ("IFCSTRUCTURALSURFACEACTION(", AREA) };
+            assert!(record(&out, id).starts_with(&format!("{id}{target}")) && record(&out, id).ends_with(".CONST.);"), "{out}");
+            assert!(!out.contains(source_record), "{out}");
             assert!(export_step_with_stats(change(&ifc4).as_bytes(), &to("IFC2X3")).is_err());
         }
     }
@@ -349,10 +367,11 @@ mod tests {
 
     #[test]
     fn converts_only_what_converts_back_9668() {
+        // A varying action no configuration can hold is written constant (#11354).
         // #13 places #12, not #10, so a downgrade could not find #30's locations again.
         let source = model("IFC2X3", &format!("{}\n{AREA}", LINE.replace(",#11,(#21));", ",#13,(#21));")));
         let (out, _) = export_step_with_stats(source.as_bytes(), &to("IFC4")).unwrap();
-        assert!(record(&out, "#30=").starts_with("#30=IFCSTRUCTURALLINEARACTIONVARYING("), "{out}");
+        assert!(record(&out, "#30=").starts_with("#30=IFCSTRUCTURALCURVEACTION(") && record(&out, "#30=").ends_with(".CONST.);"), "{out}");
         assert_eq!(configs(&out), ["#32=IFCSTRUCTURALLOADCONFIGURATION($,(#22,#23,#24),$);"]);
     }
 

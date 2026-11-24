@@ -5,16 +5,14 @@ use std::collections::{HashMap, HashSet};
 
 use ifc_lite_core::{parser::parse_ref, slot::IfcShapeAspect, EntityScanner};
 
-use crate::schema_convert::holds_value;
 use crate::schema_structural_axes::list_items;
 use crate::schema_structural_carriers::StructuralCarriers;
 use crate::schema_structural_varying::StructuralVarying;
+use crate::schema_structural_varying_constant::constant_action;
 use crate::step_ids::IdAllocator;
 use crate::step_record_frame::record_frame;
 use crate::step_slot::split_top_level_args;
 
-const LOSS: &str = "The retained varying structural action has no complete load configuration; its varying locations and subsequent loads were omitted (#11037).";
-const MISSING_LOAD: &str = "The retained varying structural action has no usable AppliedLoad; the required IFC4 slot was left unset (#11037).";
 
 pub(super) fn contains_varying(content: &[u8]) -> bool {
     let mut scan = EntityScanner::new(content);
@@ -74,12 +72,12 @@ pub(super) fn finish(text: &str) -> Option<EffectiveResult> {
             result.warnings.push(message.to_owned());
             carriers.write(id);
         }
-        let body = if let Some((body, warnings, cause_dropped)) = plan.rewrite(id, &ty, &args, cause.is_some()) {
-            result.dropped += usize::from(cause_dropped);
+        let body = if let Some((body, warnings, dropped)) = plan.rewrite(id, &ty, &args, cause.is_some()) {
+            result.dropped += dropped;
             result.warnings.extend(warnings);
             body
         } else {
-            fallback(&ty, &mut args, &records, cause.is_some(), &mut result)
+            fallback(&ty, &args, &records, cause.is_some(), &mut result)
         };
         result.body.push_str(&format!("#{id}={body};"));
     }
@@ -124,20 +122,13 @@ fn incomplete_aspects(text: &str, records: &HashMap<u32, Record<'_>>) -> HashSet
     }).collect()
 }
 
-fn fallback(ty: &str, args: &mut [String], records: &HashMap<u32, Record<'_>>, cause_carried: bool, result: &mut EffectiveResult) -> String {
-    let actual = reference(&args[7], records);
+/// An action `StructuralVarying::rewrite` does not know (its scan could not read the record): the constant action all the same.
+fn fallback(ty: &str, args: &[String], records: &HashMap<u32, Record<'_>>, cause_carried: bool, result: &mut EffectiveResult) -> String {
     let target = StructuralVarying::target(ty).expect("indexed only varying actions");
-    let load_type = actual.map(|r| r.ty.to_ascii_uppercase());
-    if !load_type.is_some_and(|ty| ifc_lite_core::is_subtype_of_for_schema("IFC4", &ty, "IFCSTRUCTURALLOAD")) {
-        result.dropped += usize::from(holds_value(&args[7]));
-        args[7] = "$".to_owned();
-        result.warnings.push(MISSING_LOAD.to_owned());
-    }
-    if !cause_carried && holds_value(&args[10]) {
-        result.warnings.push(format!("{ty}.CausedBy has no slot in IFC4; its value is omitted (#11037)."));
-        result.dropped += 1;
-    }
-    result.dropped += [12, 13].into_iter().filter(|&at| holds_value(&args[at])).count();
-    result.warnings.push(LOSS.to_owned());
-    format!("{target}({},{},.CONST.)", args[..10].join(","), args[11])
+    let load = reference(&args[7], records)
+        .is_some_and(|r| ifc_lite_core::is_subtype_of_for_schema("IFC4", &r.ty.to_ascii_uppercase(), "IFCSTRUCTURALLOAD"));
+    let constant = constant_action(target, ty, args, load, cause_carried);
+    result.dropped += constant.dropped;
+    result.warnings.extend(constant.warnings);
+    constant.body
 }

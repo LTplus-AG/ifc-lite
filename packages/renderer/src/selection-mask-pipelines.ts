@@ -24,6 +24,7 @@ import { INSTANCED_RTE_DELTA_SLOT, INSTANCED_VERTEX_BUFFERS, MESH_VERTEX_BUFFERS
 import { drawInstanceRuns, uploadInstancedRteDeltas, type InstanceRun } from './instanced-rte.js';
 import type { WorldPoint } from './relative-to-eye.js';
 import type { InstancedTemplateGPU } from './scene-instance-types.js';
+import type { GpuInstancePool } from './gpu-instance-pool.js';
 import { mainShaderSource } from './shaders/main.wgsl.js';
 import { PIPELINE_CONSTANTS } from './constants.js';
 import { opaqueVisibilityLayout } from './opaque-visibility-pass.js';
@@ -103,7 +104,7 @@ export function createMaskPipelines(
 /** What the instanced mask draws of a template: its geometry and its instance records. */
 export type InstancedMaskTemplate = Pick<
   InstancedTemplateGPU,
-  'vertexBuffer' | 'indexBuffer' | 'indexCount' | 'instanceBuffer' | 'instanceCount' | 'canonicalAnchors' | 'rteDeltas'
+  'vertexBuffer' | 'indexBuffer' | 'indexCount' | 'instanceBuffer' | 'instanceCount' | 'canonicalAnchors' | 'rteDeltas' | 'poolGroup'
 >;
 
 export interface InstancedMaskFrame {
@@ -124,6 +125,8 @@ export interface InstancedMaskFrame {
   selected: readonly InstancedMaskTemplate[];
   /** Templates holding an occurrence of `hoveredId`; empty when nothing is hovered. */
   hovered: readonly InstancedMaskTemplate[];
+  /** GPU-driven pool: draw these templates' groups from its compacted streams instead of their own buffers. */
+  pool?: GpuInstancePool | null;
   hoveredId: number;
 }
 
@@ -151,6 +154,7 @@ export class InstancedSelectionMask {
   private readonly hoverScratch = new Uint32Array(4);
   /** This frame's drawable runs per template, from `prepare`. */
   private runs = new Map<InstancedMaskTemplate, readonly InstanceRun[]>();
+  private pool: GpuInstancePool | null = null;
 
   constructor(device: GPUDevice, meshBindGroupLayout: GPUBindGroupLayout, sampleCount: number) {
     this.sampleCount = sampleCount;
@@ -206,6 +210,8 @@ export class InstancedSelectionMask {
     this.device.queue.writeBuffer(this.meshUniform.buffer, 0, uniforms);
     this.hoverScratch[0] = frame.hoveredId >>> 0;
     this.device.queue.writeBuffer(this.hoverBuffer, 0, this.hoverScratch);
+    this.pool = frame.pool ?? null;
+    if (this.pool) { this.runs.clear(); return; }
     // Without this a template the colour pass culled this frame would read a
     // delta stream packed for an older camera (or never packed at all).
     const templates = [...new Set([...frame.selected, ...frame.hovered])];
@@ -223,6 +229,12 @@ export class InstancedSelectionMask {
     pass.setBindGroup(3, sectionExclusions(this.device).bindGroup);
     pass.setBindGroup(0, this.meshUniform.bindGroup);
     pass.setBindGroup(SELECTION_MASK_HOVER_GROUP, this.hoverBindGroup);
+    if (this.pool) {
+      // The frame's cull already compacted these groups (selection bit applied).
+      const groups = [...new Set(templates.map((t) => t.poolGroup).filter((g): g is number => g !== undefined && g >= 0))];
+      this.pool.draw(pass, groups);
+      return;
+    }
     for (const t of templates) {
       pass.setVertexBuffer(0, t.vertexBuffer);
       pass.setVertexBuffer(1, t.instanceBuffer);

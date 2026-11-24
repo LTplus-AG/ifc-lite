@@ -161,7 +161,7 @@
    "retyped": [],
    "upOnly": [],
    "setOfOne": null,
-   "why": "IFC2X3 IfcMaterialProperties is abstract. IFC4: 'Entity made non-abstract. The subtypes ... IfcExtendedMaterialProperties have been deleted, use IfcMaterialProperties instead.' An upgrade writes IfcMaterialProperties (#10777); a downgrade waits on the Material referent (#10911). Material: 'The datatype has been changed to supertype IfcMaterialDefinition'; carried, because IFC2X3 requires it"
+   "why": "IFC2X3 IfcMaterialProperties is abstract. IFC4: 'Entity made non-abstract. The subtypes ... IfcExtendedMaterialProperties have been deleted, use IfcMaterialProperties instead.' An upgrade writes IfcMaterialProperties (#10777). A downgrade writes IfcExtendedMaterialProperties (#10911) and resolves its IfcMaterialDefinition to exactly one IfcMaterial. If the referent cannot be resolved, the converter omits the record and reports the loss"
   },
   {
    "ifc2x3": "IFCGENERALPROFILEPROPERTIES",
@@ -306,6 +306,24 @@
    "upOnly": [],
    "setOfOne": null,
    "why": "'Attributes TaskTime and PredefinedType added.' Identification (IfcProcess) and LongDescription are inherited and inserted before Status; TaskId is the IFC2X3 identifier"
+  },
+  {
+   "ifc2x3": "IFCMOVE",
+   "ifc4": "IFCTASK",
+   "renamed": [["TaskId", "Identification"]],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "IFC4 deleted this IFC2X3 subtype of IfcTask; an upgrade writes it as IfcTask, TaskId as Identification (#10902). MoveFrom, MoveTo and PunchList have no IfcTask slot and are lost"
+  },
+  {
+   "ifc2x3": "IFCORDERACTION",
+   "ifc4": "IFCTASK",
+   "renamed": [["TaskId", "Identification"]],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "IFC4 deleted this IFC2X3 subtype of IfcTask; an upgrade writes it as IfcTask, TaskId as Identification (#10902). ActionID has no IfcTask slot and is lost"
   },
   {
    "ifc2x3": "IFCPROPERTYDEPENDENCYRELATIONSHIP",

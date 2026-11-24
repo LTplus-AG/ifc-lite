@@ -81,8 +81,8 @@ function getAttrMapIndex(): AttrMapIndex {
     same('IFCDOCUMENTINFORMATIONRELATIONSHIP'),
     same('IFCLIBRARYINFORMATION', { retyped: ['VersionDate'], upOnly: ['Publisher'] }),
     // IFC4 deleted these IFC2X3 subtypes for its now-concrete supertype. A
-    // downgrade writes IfcGeneralProfileProperties (`IFC4_TO_IFC2X3`); an
-    // IfcMaterialProperties downgrade waits on its Material referent (#10911). An
+    // downgrade writes IfcGeneralProfileProperties or IfcExtendedMaterialProperties.
+    // The material downgrade resolves its Material referent before remapping. An
     // upgrade writes every one as its IFC4 supertype (#10777).
     // The typed subtypes keep only Material or ProfileDefinition; their measures are dropped.
     map('IFCEXTENDEDMATERIALPROPERTIES', 'IFCMATERIALPROPERTIES', { renamed: [['ExtendedProperties', 'Properties']] }),
@@ -102,6 +102,10 @@ function getAttrMapIndex(): AttrMapIndex {
     map('IFCRIBPLATEPROFILEPROPERTIES', 'IFCPROFILEPROPERTIES'),
     same('IFCPERFORMANCEHISTORY'),
     same('IFCTASK', { renamed: [['TaskId', 'Identification']] }),
+    // IFC4 deleted both subtypes for IfcTask: an upgrade writes them as IfcTask
+    // (`DELETED_SUBTYPES`), losing MoveFrom, MoveTo, PunchList and ActionID (#10902).
+    map('IFCMOVE', 'IFCTASK', { renamed: [['TaskId', 'Identification']] }),
+    map('IFCORDERACTION', 'IFCTASK', { renamed: [['TaskId', 'Identification']] }),
     same('IFCPROPERTYDEPENDENCYRELATIONSHIP'),
     // #10824: renamed both ways (IFC2X3_TO_IFC4, the MEP table); the IFC2X3
     // label is carried through ObjectType (`schema-converter-userdefined-label.ts`).
@@ -129,6 +133,22 @@ export function upgradeRename(type: string, fromSchema: IfcSchemaVersion, toSche
 export function getAttrMaps(): readonly AttrMap[] {
   return getAttrMapIndex().maps;
 }
+
+/**
+ * IFC2X3 subtypes IFC4 deleted, written as their IFC4 supertype on an upgrade
+ * to IFC4 or IFC4X3 (#10902): IfcMove and IfcOrderAction through their map
+ * above, the relationships by the prefix trim (identical lists, or TimeForTask
+ * lost and reported). Not IfcRelOverridesProperties, which as
+ * IfcRelDefinesByProperties would attach the values it overrides, nor IFC5,
+ * which has no table to reconcile the attributes in. Twin of Rust
+ * `schema_attr_maps::upgrade_type`.
+ */
+export const DELETED_SUBTYPES: ReadonlyMap<string, string> = new Map([
+  ['IFCMOVE', 'IFCTASK'], ['IFCORDERACTION', 'IFCTASK'],
+  ['IFCRELOCCUPIESSPACES', 'IFCRELASSIGNSTOACTOR'],
+  ['IFCRELASSIGNSTASKS', 'IFCRELASSIGNSTOCONTROL'], ['IFCRELASSIGNSTOPROJECTORDER', 'IFCRELASSIGNSTOCONTROL'],
+  ['IFCRELSCHEDULESCOSTITEMS', 'IFCRELASSIGNSTOCONTROL'],
+]);
 
 /** True when an IFC4 `line` upgraded from IFC2X3 gets its required slots
  *  counted: a structural record, or one a map wrote, which can leave a

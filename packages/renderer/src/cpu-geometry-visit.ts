@@ -10,6 +10,7 @@
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
+import { INSTANCE_STRIDE_BYTES } from './instanced-render.js';
 
 export type CpuGeometryKind = 'positions' | 'normals' | 'indices' | 'other';
 /** `owner` names the holder (e.g. `scene.buckets`); the same view may arrive under several owners. */
@@ -59,7 +60,9 @@ export function visitSceneCpuGeometry(scene: SceneCpuGeometryHost, visit: CpuGeo
   for (const cpu of scene.instancedTemplateCpu) {
     if (!cpu) continue;
     visitMeshArrays('scene.instancedTemplates', cpu, visit);
-    if (cpu.instanceData?.byteLength) visit('scene.instancedTemplates', new Uint8Array(cpu.instanceData), 'other');
+    // Live records only: an open keyed slot's block has capacity beyond them.
+    const live = cpu.canonicalAnchors ? (cpu.canonicalAnchors.length / 3) * INSTANCE_STRIDE_BYTES : cpu.instanceData?.byteLength ?? 0;
+    if (cpu.instanceData?.byteLength) visit('scene.instancedTemplates', new Uint8Array(cpu.instanceData, 0, Math.min(live, cpu.instanceData.byteLength)), 'other');
     if (cpu.canonicalAnchors) visit('scene.instancedTemplates', cpu.canonicalAnchors, 'other');
     if (cpu.canonicalMatrixTranslations) visit('scene.instancedTemplates', cpu.canonicalMatrixTranslations, 'other');
   }

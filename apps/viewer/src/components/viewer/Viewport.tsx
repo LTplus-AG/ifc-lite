@@ -46,6 +46,8 @@ import { getSpatialChunkingConfig } from '../../utils/spatialChunkConfig.js';
 import { getGpuResidencyBudgetBytes, getHostResidencyBudgetBytes } from '../../utils/gpuBudgetConfig.js';
 import { getLodScreenPx } from '../../utils/lodConfig.js';
 import { isQuantizedEnabled } from '../../utils/quantizedConfig.js';
+import { configureDrawStream } from '../../utils/drawStreamConfig.js';
+import { configureGpuInstancing } from '../../utils/gpuInstancingConfig.js';
 import { unionEntityBounds, getThemeClearColor, hasPendingMeasurementState, type BoundingBox3D } from '../../utils/viewportUtils.js';
 import { registerAgentViewportHost } from '@/lib/agent-bridge/viewport-host';
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '../../hooks/useBCF.js';
@@ -613,6 +615,8 @@ export function Viewport({
 
     renderer.init().then(() => {
       if (aborted) return;
+      configureDrawStream(renderer); // flat-batch draw stream (m6.* flags), OFF by default
+      configureGpuInstancing(renderer); // GPU-driven instancing (perf.gpuInstancing), OFF by default
       // Spatial chunk bucketing (issue #1682 phase 2) — must be configured
       // before any geometry streams into the scene. ON by default since the
       // flip sweep; kill switch __IFC_LITE_CHUNKS = 0.

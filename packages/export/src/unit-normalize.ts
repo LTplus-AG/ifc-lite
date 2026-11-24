@@ -146,23 +146,30 @@ function attrBaseType(type: string, flags: { isList: boolean; isArray: boolean; 
  * type name from the generated schema registry. Excluded types (unit definitions,
  * georeferencing) and unknown/abstract types return the empty plan.
  */
-export function getEntityLengthPlan(typeUpper: string): EntityLengthPlan {
-  const cached = planCache.get(typeUpper);
+export function getEntityLengthPlan(typeUpper: string, legacySchema?: 'IFC2X3'): EntityLengthPlan {
+  const key = legacySchema ? `${legacySchema}:${typeUpper}` : typeUpper;
+  const cached = planCache.get(key);
   if (cached !== undefined) return cached;
-  const plan = buildEntityLengthPlan(typeUpper);
-  planCache.set(typeUpper, plan);
+  const plan = buildEntityLengthPlan(typeUpper, legacySchema);
+  planCache.set(key, plan);
   return plan;
 }
 
-function buildEntityLengthPlan(typeUpper: string): EntityLengthPlan {
+function sourceAttributes(typeUpper: string, legacySchema?: 'IFC2X3') {
+  if (!legacySchema) return getAllAttributesForEntity(typeUpper);
+  const registry = getSchemaRegistryForVersion(legacySchema);
+  const name = getCanonicalEntityName(registry, typeUpper);
+  return name ? registry.entities[name].allAttributes : undefined;
+}
+
+function buildEntityLengthPlan(typeUpper: string, legacySchema?: 'IFC2X3'): EntityLengthPlan {
   if (isRescaleExcluded(typeUpper)) return EMPTY_PLAN;
 
-  const attrs = getAllAttributesForEntity(typeUpper);
-  const legacyProfile = !attrs.length && typeUpper.endsWith('PROFILEPROPERTIES');
-  const registry = legacyProfile ? getSchemaRegistryForVersion('IFC2X3') : undefined;
-  const legacyName = registry && getCanonicalEntityName(registry, typeUpper);
-  const fields = registry && legacyName ? registry.entities[legacyName]?.allAttributes ?? [] : attrs;
-  if (!fields.length) return EMPTY_PLAN;
+  let fields = sourceAttributes(typeUpper, legacySchema);
+  if (!legacySchema && !fields?.length && typeUpper.endsWith('PROFILEPROPERTIES')) {
+    fields = sourceAttributes(typeUpper, 'IFC2X3');
+  }
+  if (!fields?.length) return EMPTY_PLAN;
 
   const listIdx: number[] = [];
   const scalarIdx: number[] = [];
@@ -280,12 +287,13 @@ export function rescaleEntityLengths(
   areaFactor: number,
   volumeFactor: number,
   profileFactors?: ReadonlyMap<string, number>,
+  legacySchema?: 'IFC2X3',
 ): string {
   if (lengthFactor === 1 && areaFactor === 1 && volumeFactor === 1 && !profileFactors?.size) return line;
   if (!Number.isFinite(lengthFactor) || !Number.isFinite(areaFactor) || !Number.isFinite(volumeFactor)) return line;
   if (isRescaleExcluded(typeUpper)) return line;
 
-  const plan = getEntityLengthPlan(typeUpper);
+  const plan = getEntityLengthPlan(typeUpper, legacySchema);
   const hasStructural = plan.listIdx.length > 0 || plan.scalarIdx.length > 0
     || plan.areaIdx.length > 0 || plan.volumeIdx.length > 0 || plan.profileMeasures.length > 0;
 

@@ -389,6 +389,55 @@ export class ClashSession {
 }
 
 /**
+ * One batch's compact records, returned by [`MeshCollection::encode_compact`].
+ * Every getter copies its column into a new typed array.
+ */
+export class CompactBatch {
+    private constructor();
+    free(): void;
+    [Symbol.dispose](): void;
+    /**
+     * Six f64 per encoded mesh: its AABB in the collection's frame (Y-up,
+     * RTC-relative `origin + position`), min x, y, z then max x, y, z.
+     */
+    readonly bounds: Float64Array;
+    /**
+     * Three i32 per encoded mesh: its cell indices at its level.
+     */
+    readonly cells: Int32Array;
+    /**
+     * Mesh-local u16 triangle indices.
+     */
+    readonly indices: Uint16Array;
+    /**
+     * Number of encoded meshes (table rows).
+     */
+    readonly meshCount: number;
+    /**
+     * 12 bytes per welded vertex: u16 x, y, z offsets, u16 oct normal, u32 entity lane.
+     */
+    readonly records: Uint8Array;
+    /**
+     * Meshes left on the f32 path, by reason: textured, empty, non-finite, id
+     * range, extent, welded vertices, collapse, normals, index range.
+     */
+    readonly refusals: Uint32Array;
+    /**
+     * Six u32 per encoded mesh: mesh index in the collection, vertex start,
+     * vertex count, index start, index count, lattice level (step = 2^-level m).
+     */
+    readonly table: Uint32Array;
+    /**
+     * `[inVertices, inTriangles, outVertices, outTriangles]` over the encoded meshes.
+     */
+    readonly totals: Float64Array;
+    /**
+     * Three f64 per encoded mesh: its window origin in units of its level's step.
+     */
+    readonly windows: Float64Array;
+}
+
+/**
  * A set of closed 2D rings, grouped into disjoint shapes.
  *
  * Rings carry no duplicated closing vertex (connect the last point back to
@@ -1535,6 +1584,15 @@ export class MeshCollection {
     free(): void;
     [Symbol.dispose](): void;
     /**
+     * Encode every eligible mesh into compact GPU records (see the module
+     * docs) and empty its vertex arrays. `cell_size` is the spatial cell size
+     * in metres at the base level (step 2^-10 m), snapped to that lattice;
+     * it must lie in [2^-9, 32] m so a window (65,535 steps) holds any mesh
+     * that starts in its cell and is narrower than the cell. Outside that
+     * range nothing is encoded and the collection is left as it was.
+     */
+    encodeCompact(cell_size: number): CompactBatch;
+    /**
      * Get mesh at index (clones — non-destructive). Prefer `takeMesh` on the
      * hot streaming path; this stays for callers that read meshes more than once.
      */
@@ -2632,6 +2690,7 @@ export interface InitOutput {
     readonly __wbg_clashintersectionsolidjs_free: (a: number, b: number) => void;
     readonly __wbg_clashrunresult_free: (a: number, b: number) => void;
     readonly __wbg_clashsession_free: (a: number, b: number) => void;
+    readonly __wbg_compactbatch_free: (a: number, b: number) => void;
     readonly __wbg_contours2d_free: (a: number, b: number) => void;
     readonly __wbg_gridaxiscollection_free: (a: number, b: number) => void;
     readonly __wbg_gridaxisjs_free: (a: number, b: number) => void;
@@ -2680,6 +2739,15 @@ export interface InitOutput {
     readonly clashsession_ingest: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => void;
     readonly clashsession_new: () => number;
     readonly clashsession_runRule: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => number;
+    readonly compactbatch_bounds: (a: number) => number;
+    readonly compactbatch_cells: (a: number) => number;
+    readonly compactbatch_indices: (a: number) => number;
+    readonly compactbatch_meshCount: (a: number) => number;
+    readonly compactbatch_records: (a: number) => number;
+    readonly compactbatch_refusals: (a: number) => number;
+    readonly compactbatch_table: (a: number) => number;
+    readonly compactbatch_totals: (a: number) => number;
+    readonly compactbatch_windows: (a: number) => number;
     readonly contours2d_bounds: (a: number) => number;
     readonly contours2d_coords: (a: number) => number;
     readonly contours2d_fromMeshOutline: (a: number) => number;
@@ -2802,6 +2870,7 @@ export interface InitOutput {
     readonly meshOutline2d: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly meshcollection_buildingRotation: (a: number, b: number) => void;
     readonly meshcollection_diagnostics: (a: number) => number;
+    readonly meshcollection_encodeCompact: (a: number, b: number) => number;
     readonly meshcollection_geometryAabbValues: (a: number) => number;
     readonly meshcollection_geometryClosureFlags: (a: number) => number;
     readonly meshcollection_geometryHashCount: (a: number) => number;

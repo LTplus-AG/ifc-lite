@@ -65,6 +65,7 @@ impl ExactState {
 pub(in crate::router::voids) struct CutContext<'a> {
     pub(in crate::router::voids) execution: &'a Execution,
     pub(in crate::router::voids) clipper: &'a ClippingProcessor,
+    pub(in crate::router::voids) original_host: &'a Mesh,
     #[cfg(feature = "csg_manifold_gate")]
     pub(in crate::router::voids) unextended_rectangles: &'a [[Point3<f64>; 2]],
     /// The host's bounds before the exact passes (the extension reference).

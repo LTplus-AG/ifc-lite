@@ -10,6 +10,7 @@
  * `resources/list`) and how to resolve dynamic ones via URI matching.
  */
 
+import { a2uiResourceProvider } from './a2ui.js';
 import { extractGeoreferencingOnDemand } from '@ifc-lite/parser';
 import { foldedEntityCount, pendingMutationsField, pendingOverlay } from '@ifc-lite/sdk/headless';
 import { buildSpatialTree } from '../spatial-tree.js';
@@ -299,6 +300,7 @@ class ViewerStatusProvider implements ResourceProvider {
 
 export function defaultResourceProviders(): ResourceProvider[] {
   return [
+    a2uiResourceProvider,
     new ServerManifestProvider(),
     new ManifestProvider(),
     new EntityProvider(),

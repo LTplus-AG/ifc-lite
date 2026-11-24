@@ -13,17 +13,19 @@
 import type { IfcDataStore, IfcSourceBytes, ProjectUnits } from '@ifc-lite/parser';
 import { asSourceBytes } from '@ifc-lite/parser';
 import { decodeIfcString, stepStringLiteralEnd } from '@ifc-lite/encoding';
-import { buildMergedHeader } from './merged-header.js';
+import { buildMergedHeader, finishMergedConversion } from './merged-header.js';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { collectReferencedEntityIds, getVisibleEntityIds, filterHiddenRefsFromRelationshipLine } from './reference-collector.js';
 import { collectStyleEntities, STYLE_RESCUE_TYPES } from './style-closure.js';
 import { collectGeoreferencingEntities } from './georef-closure.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
+import { classifyEntityTypeConversion } from './schema-conversion-loss-report.js';
 import { StyleFlatten } from './schema-style-flatten.js';
 import { firstWrittenOwnerHistoryRef, Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
 import { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import { EnumReconciliation } from './schema-converter-enums.js';
 import { assembleStepBytes, assembleStepBlob } from './step-file-assembly.js';
+import { decodeTypedPropertyRecord, isTypedPropertyUpgrade } from './schema-converter-typed-properties.js';
 import { placeObjectsForSchema } from './schema-ifc2x3-placements.js';
 import { getCompleteEntityIndex, getMaxExpressId, type CompleteEntityIndex, type ExportEntityRef } from './entity-iteration.js';
 import { bakeMutatedModels, mergeWarningLabel, needsBake } from './merged-bake.js';
@@ -34,8 +36,12 @@ import { planInfrastructureUnify, resolvePrimaryContextState, unitScalesEqual, t
 import { MintedRecords, georefNormalizeCaveat, normalizeGeorefRecord, planGeorefNormalize, type GeorefNormalizePlan } from './merged-georef-normalize.js';
 import { listKeptContexts } from './merged-project-contexts.js';
 import { remapEntityText } from './merged-remap.js';
+import { armMergedModel } from './schema-converter-material-referent.js';
 import { PlannerGuids } from './merged-planner-guids.js';
 import {
+  canUnifyByGlobalId,
+  canUnifyEmittedRecord,
+  isRootedType,
   isRelationshipType,
   mintUniqueGuid,
   readLeadingGuid,
@@ -49,7 +55,7 @@ import {
   isStructureRelation,
   type EmptyContainerModelView,
 } from './merged-empty-containers.js';
-import { InverseClaims, claimInverses, applyRelMemberStrip, applyInverseFolds, type InverseClaimInput } from './merged-inverse-claims.js';
+import { InverseClaims, claimInverses, applyRelMemberStrip, type InverseClaimInput } from './merged-inverse-claims.js';
 
 /**
  * UTF-8 decode of `[start, end)` of a model's source, accepting either the raw
@@ -68,6 +74,11 @@ const SHARED_INFRASTRUCTURE_TYPES = new Set([
   'IFCGEOMETRICREPRESENTATIONCONTEXT',
   'IFCGEOMETRICREPRESENTATIONSUBCONTEXT',
 ]);
+
+function canUnifyConvertedType(type: string, from: IfcSchemaVersion, to: IfcSchemaVersion): boolean {
+  const { targetType, kind } = classifyEntityTypeConversion(type, from, to);
+  return kind !== 'blocked' && kind !== 'proxied' && canUnifyByGlobalId(type, targetType);
+}
 
 /** SI prefix multipliers, for resolving prefixed area/volume units (rarely used). */
 const SI_PREFIX_MULTIPLIERS: Record<string, number> = {
@@ -92,6 +103,7 @@ interface SpatialLookup {
 /** Shared, model-independent state computed once per merge. */
 interface MergeSetup {
   /** ID offset applied to each model's express ids, keyed by model id. */
+  nextAvailableId: number;
   modelOffsets: Map<string, number>;
   /** Offset of the first (primary) model — always 0, but kept explicit. */
   firstModelOffset: number;
@@ -169,8 +181,7 @@ interface ModelMergePlan {
   sharedRemap: Map<number, number>;
   /** Local express ids omitted from the output (unified or deduplicated). */
   skipEntityIds: Set<number>;
-  /** Local express id → fresh GlobalId, for federated entities whose id collides. */
-  guidRewrite: Map<number, string>;
+  modelId: string;
   /** Local express id → original GlobalId (rooted entities only). */
   localGuids: Map<number, string>;
   /** Empty spatial containers this model must not write (#3643); every line
@@ -193,6 +204,7 @@ interface ModelMergePlan {
 interface GuidRecord {
   finalId: number;
   scale: number;
+  canUnify: boolean;
 }
 
 /**
@@ -500,7 +512,7 @@ export class MergedExporter {
     let federatedModelCount = 0;
     let normalizedModelCount = 0;
     const normalizeWarnings = new Set<string>();
-    const [slotFill, ifc4Slots, enums] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck(), new EnumReconciliation()]; // #4714, #5202, #5365
+    const [slotFill, ifc4Slots, enums] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck(), new EnumReconciliation(true, models.map((m) => m.dataStore))]; // #4714, #5202, #5365
 
     for (const model of models) {
       const offset = setup.modelOffsets.get(model.id)!;
@@ -514,10 +526,10 @@ export class MergedExporter {
       const mode = this.resolveModelMode(model, isFirstModel, setup);
       if (!isFirstModel && !mode.compatible) federatedModelCount++;
       if (mode.normalized) { normalizedModelCount++; this.collectNormalizeCaveats(model, normalizeWarnings, mode.georef); }
-      const plan = this.planModel(model, completeIndex, isFirstModel, mode.compatible, mode.lengthFactor, setup, guidToFinalId);
+      const plan = this.planModel(model, completeIndex, isFirstModel, mode.compatible, mode.lengthFactor, setup, guidToFinalId, schema);
       this.applyContainerDrops(plan, containerDrops?.byModel.get(model.id));
       this.claimParents(model, plan, visibility, completeIndex, !isFirstModel && mode.compatible, setup);
-      const written = (id: number) => (visibility === null || visibility.included.has(id)) && !plan.skipEntityIds.has(id);
+      const written = armMergedModel(enums.materials, model.dataStore, (id) => (visibility === null || visibility.included.has(id)) && !plan.skipEntityIds.has(id), offset, plan.sharedRemap);
       if (schema === 'IFC2X3') {
         // @raw-entity-enumeration-ok sync merge rejects overlays, so this is an unedited source index
         slotFill.prefer(firstWrittenOwnerHistoryRef(model.dataStore.entityIndex.byType.get('IFCOWNERHISTORY'), written, offset));
@@ -537,9 +549,9 @@ export class MergedExporter {
     }
     listKeptContexts(allEntityLines, setup.firstProjectIds.length ? setup.firstProjectIds[0] + setup.firstModelOffset : undefined, setup.keptContexts);
     setup.minted.appendTo(allEntityLines);
-    for (const warning of [...slotFill.warnings(), ...ifc4Slots.warnings(), ...enums.warnings(), ...applyInverseFolds(allEntityLines, setup.parentClaims)]) normalizeWarnings.add(warning); // #5774 folds
+    enums.typedProperties.finish(allEntityLines, ifc4Slots, setup.nextAvailableId, enums.structural);
+    for (const warning of finishMergedConversion(allEntityLines, slotFill, ifc4Slots, enums, setup.parentClaims)) normalizeWarnings.add(warning);
 
-    // Assemble final file as Uint8Array chunks to avoid V8 string length limit
     if (onProgress) onProgress({ phase: 'assembling', percent: 0.9, entitiesProcessed: allEntityLines.length, entitiesTotal: allEntityLines.length });
     const content = assembleStepBytes(header, placeObjectsForSchema(schema, allEntityLines)); // #9209
 
@@ -623,7 +635,6 @@ export class MergedExporter {
     const allEntityLines: string[] = [];
     const guidToFinalId = new Map<string, GuidRecord>();
 
-    // First pass: count total entities for progress
     let totalEntities = 0;
     for (const model of models) {
       totalEntities += getCompleteEntityIndex(model.dataStore).size;
@@ -635,7 +646,7 @@ export class MergedExporter {
     let normalizedModelCount = 0;
     const normalizeWarnings = new Set<string>(baked.warnings);
     const YIELD_INTERVAL = 2000;
-    const [slotFill, ifc4Slots, enums] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck(), new EnumReconciliation()]; // #4714, #5202, #5365
+    const [slotFill, ifc4Slots, enums] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck(), new EnumReconciliation(true, models.map((m) => m.dataStore))]; // #4714, #5202, #5365
 
     if (onProgress) onProgress({ phase: 'preparing', percent: 0, entitiesProcessed: 0, entitiesTotal: totalEntities });
 
@@ -660,10 +671,10 @@ export class MergedExporter {
       const mode = this.resolveModelMode(model, isFirstModel, setup);
       if (!isFirstModel && !mode.compatible) federatedModelCount++;
       if (mode.normalized) { normalizedModelCount++; this.collectNormalizeCaveats(model, normalizeWarnings, mode.georef); }
-      const plan = this.planModel(model, completeIndex, isFirstModel, mode.compatible, mode.lengthFactor, setup, guidToFinalId);
+      const plan = this.planModel(model, completeIndex, isFirstModel, mode.compatible, mode.lengthFactor, setup, guidToFinalId, schema);
       this.applyContainerDrops(plan, containerDrops?.byModel.get(model.id));
       this.claimParents(model, plan, visibility, completeIndex, !isFirstModel && mode.compatible, setup);
-      const written = (id: number) => (visibility === null || visibility.included.has(id)) && !plan.skipEntityIds.has(id);
+      const written = armMergedModel(enums.materials, model.dataStore, (id) => (visibility === null || visibility.included.has(id)) && !plan.skipEntityIds.has(id), offset, plan.sharedRemap);
       if (schema === 'IFC2X3') {
         // @raw-entity-enumeration-ok async merge first bakes and reparses edited models into source snapshots
         slotFill.prefer(firstWrittenOwnerHistoryRef(model.dataStore.entityIndex.byType.get('IFCOWNERHISTORY'), written, offset));
@@ -703,9 +714,9 @@ export class MergedExporter {
     }
     listKeptContexts(allEntityLines, setup.firstProjectIds.length ? setup.firstProjectIds[0] + setup.firstModelOffset : undefined, setup.keptContexts);
     setup.minted.appendTo(allEntityLines);
-    for (const warning of [...slotFill.warnings(), ...ifc4Slots.warnings(), ...enums.warnings(), ...applyInverseFolds(allEntityLines, setup.parentClaims)]) normalizeWarnings.add(warning); // #5774 folds
+    enums.typedProperties.finish(allEntityLines, ifc4Slots, setup.nextAvailableId, enums.structural);
+    for (const warning of finishMergedConversion(allEntityLines, slotFill, ifc4Slots, enums, setup.parentClaims)) normalizeWarnings.add(warning);
 
-    // Assembly phase
     if (onProgress) {
       onProgress({ phase: 'assembling', percent: 0.9, entitiesProcessed: totalEntities, entitiesTotal: totalEntities });
     }
@@ -767,8 +778,9 @@ export class MergedExporter {
       const visibility = this.computeIncludedEntityIds(model, options, entities, source);
       const claimParents = () => {
         const typeOf = (id: number) => entities.get(id)!.type.toUpperCase(); // GlobalId unification the emit pass is sure to repeat (#5937)
+        const from = (model.dataStore.schemaVersion as IfcSchemaVersion) || 'IFC4', to = options.schema || 'IFC4';
         const unified = guids.plan({ guids: readLocalGuids(entities, source), typeOf, isFirst: index === 0, compatible: mode.compatible, offset: setup.modelOffsets.get(model.id)!,
-          effectiveScale: mode.effectiveScale, isIncluded: id => visibility === null || visibility.included.has(id), keepsGuids: !needsConversion((model.dataStore.schemaVersion as IfcSchemaVersion) || 'IFC4', options.schema || 'IFC4'),
+          effectiveScale: mode.effectiveScale, isIncluded: id => visibility === null || visibility.included.has(id), keepsGuids: !needsConversion(from, to), canUnify: type => canUnifyConvertedType(type, from, to),
           unifiedEarlier: id => sharedRemap.has(id) || (index > 0 && mode.compatible && setup.firstProjectIds.length > 0 && typeOf(id) === 'IFCPROJECT') });
         const withheld = { sharedRemap: new Map([...sharedRemap, ...unified]), skipEntityIds: new Set<number>(), relMemberStrip: new Map<number, Set<number>>() };
         this.claimParents(model, withheld, visibility, entities, index > 0 && mode.compatible, setup, claims);
@@ -841,7 +853,7 @@ export class MergedExporter {
     const firstModelOffset = modelOffsets.get(firstModel.id)!;
     const firstModelInfraMap = this.findInfrastructureEntities(firstModel.dataStore);
     return {
-      modelOffsets,
+      modelOffsets, nextAvailableId,
       firstModelOffset,
       firstModelInfraMap,
       firstModelContext: resolvePrimaryContextState(firstModel.dataStore, firstModelInfraMap.get('IFCGEOMETRICREPRESENTATIONSUBCONTEXT') ?? [], primaryScale, firstModelOffset),
@@ -1045,12 +1057,12 @@ export class MergedExporter {
     compatible: boolean,
     lengthFactor: number,
     setup: MergeSetup,
-    guidToFinalId: Map<string, GuidRecord>,
+    guidToFinalId: Map<string, GuidRecord>, targetSchema: IfcSchemaVersion,
   ): ModelMergePlan {
     const source = model.dataStore.source!;
     const sharedRemap = new Map<number, number>();
     const skipEntityIds = new Set<number>();
-    const guidRewrite = new Map<number, string>();
+    const sourceSchema = (model.dataStore.schemaVersion as IfcSchemaVersion) || 'IFC4';
     const relMemberStrip = new Map<number, Set<number>>();
 
     // One cheap pass to read each rooted entity's GlobalId (first attribute).
@@ -1080,34 +1092,24 @@ export class MergedExporter {
 
     if (!isFirstModel) {
       // GlobalId reconciliation against everything emitted by earlier models.
-      const pendingMinted = new Set<string>();
       for (const [id, guid] of localGuids) {
         if (skipEntityIds.has(id)) continue; // already unified/deduped above
         const prior = guidToFinalId.get(guid);
         if (prior === undefined) continue; // first occurrence — kept as-is
 
-        // Unify (drop + remap refs to the one instance) ONLY when this is a
-        // physical/spatial root AND both this model and the emitter share the
-        // primary unit. Two conditions force "keep + re-stamp" instead:
-        //   - Objectified relationships (IfcRel*): same GlobalId does not imply
-        //     the same membership (e.g. a storey-containment listing different
-        //     elements per discipline), so dropping one would orphan elements.
-        //   - The colliding instance was emitted in a different unit space
-        //     (a federated model), so unifying would reinterpret coordinates —
-        //     the very mis-scale this fix prevents, reached transitively.
+        // Both roots must share the primary unit. Keep and re-stamp collisions
+        // with relationships or generic proxies, which cannot replace a root.
         const type = (completeIndex.get(id)?.type ?? '').toUpperCase();
         const emitterIsPrimaryUnit = unitScalesEqual(prior.scale, setup.primaryScale);
-        const canUnify = compatible && emitterIsPrimaryUnit && !isRelationshipType(type);
+        const canUnify = compatible && emitterIsPrimaryUnit && prior.canUnify && canUnifyConvertedType(type, sourceSchema, targetSchema);
         if (canUnify) {
           sharedRemap.set(id, prior.finalId);
           skipEntityIds.add(id);
-        } else {
-          guidRewrite.set(id, mintUniqueGuid(guid, model.id, guidToFinalId, pendingMinted));
         }
       }
     }
 
-    return { sharedRemap, skipEntityIds, guidRewrite, localGuids, relMemberStrip };
+    return { sharedRemap, skipEntityIds, modelId: model.id, localGuids, relMemberStrip };
   }
 
   /**
@@ -1133,7 +1135,7 @@ export class MergedExporter {
     slotFill: Ifc2x3SlotFill, ifc4Slots: Ifc4SlotCheck, enums: EnumReconciliation,
     styles?: StyleFlatten,
   ): string | null {
-    let entityText = decodeRange(source, entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength);
+    let entityText = decodeTypedPropertyRecord(source, entityRef, sourceSchema, targetSchema);
     // D57 style-assignment flatten, in LOCAL id space (before the remap).
     if (styles && (entityText = styles.apply(entityText) ?? '') === '') return null;
 
@@ -1191,47 +1193,42 @@ export class MergedExporter {
     // Remap ids. Fast path: the first model (offset 0, no remaps) is byte-identical.
     let finalText = offset === 0 && plan.sharedRemap.size === 0 ? entityText : remapEntityText(entityText, offset, plan.sharedRemap);
 
-    // Re-stamp the GlobalId for a federated entity whose id collides.
-    const mintedGuid = plan.guidRewrite.get(localId);
-    if (mintedGuid !== undefined) {
-      finalText = replaceGlobalId(finalText, mintedGuid);
-    }
-
-    // Normalize units: rescale every length/area/volume-valued datum, and the georeference (#10886), into the primary
-    // unit. Done on the SOURCE-schema text (entityRef.type), before any schema conversion, so the schema-derived
-    // attribute indices line up. Touches only numeric literals and the CRS unit, so the remap and re-stamp are safe.
+    // Normalize in the source schema while its attribute indices still match the record.
+    // Only numeric literals and the georeference (#10886) change here.
     const georef = normalizeGeorefRecord(finalText, localId, mode.georef);
     if (georef !== undefined) finalText = georef;
     else if (mode.lengthFactor !== 1 || mode.areaFactor !== 1 || mode.volumeFactor !== 1) {
-      finalText = rescaleEntityLengths(finalText, entityRef.type.toUpperCase(), mode.lengthFactor, mode.areaFactor, mode.volumeFactor, mode.profileFactors);
+      const type = entityRef.type.toUpperCase();
+      const legacySchema = isTypedPropertyUpgrade(type, sourceSchema, targetSchema) ? 'IFC2X3' : undefined;
+      finalText = rescaleEntityLengths(finalText, type, mode.lengthFactor, mode.areaFactor, mode.volumeFactor, mode.profileFactors, legacySchema);
     }
 
-    if (needsConversion(sourceSchema, targetSchema)) {
-      // No `withheldRefIds` passed (6th arg omitted), so `resolveUnrepresentedEntity`
-      // never takes its `allowOmit` branch here — this call cannot return `null`
-      // (#4206). The federated pipeline does not yet compute that set in its own
-      // offset/remapped id space, so it keeps this function's older, unconditional
-      // "proxy or throw" contract rather than risk a wrong omission in the wrong
-      // id space; the same LoadConfiguration/AppliedLoad case that would omit in
-      // `StepExporter` still throws here, unchanged from before this fix.
+    const converting = needsConversion(sourceSchema, targetSchema);
+    if (converting) {
+      // No `withheldRefIds` (6th arg), so `resolveUnrepresentedEntity` never omits here (#4206): the federated
+      // pipeline has no such set in its offset id space, and keeps "proxy or throw" rather than omit in the
+      // wrong space. The only `null` is a material record the referent check left out (#10763); any other
+      // still throws, as the LoadConfiguration/AppliedLoad case `StepExporter` would omit does.
       const converted = convertStepLine(finalText, sourceSchema, targetSchema, undefined, slotFill, undefined, ifc4Slots, enums);
       if (converted === null) {
+        if (enums.materials.leftOut(localId + offset)) return null; // a material record not written (#10763)
         throw new Error(`Internal error: schema conversion of #${localId + offset}=${entityRef.type} returned null with no withheldRefIds supplied.`);
       }
       finalText = converted;
     }
 
-    // Record the emitted GlobalId → final express id + unit scale, for rooted
-    // entities only. Read it from the FINAL line, not the source: schema
-    // conversion can replace an unsupported rooted type with an IFCPROXY that
-    // carries a freshly-minted GlobalId, so the source guid would be stale.
-    // Emitted entities are not sharedRemap keys, so their final id is
-    // localId + offset.
-    if (plan.localGuids.has(localId)) {
-      const emittedGuid = readLeadingGuid(finalText)
-        ?? mintedGuid ?? plan.localGuids.get(localId);
-      if (emittedGuid !== undefined) {
-        guidToFinalId.set(emittedGuid, { finalId: localId + offset, scale: mode.effectiveScale });
+    // Only an actual collision in the final output needs a re-stamp.
+    if (plan.localGuids.has(localId) || (converting && isRootedType(entityRef.type))) {
+      let emittedGuid = readLeadingGuid(finalText);
+      if (emittedGuid !== null) {
+        if (guidToFinalId.has(emittedGuid)) {
+          emittedGuid = mintUniqueGuid(emittedGuid, plan.modelId, guidToFinalId, new Set());
+          finalText = replaceGlobalId(finalText, emittedGuid);
+        }
+        guidToFinalId.set(emittedGuid, {
+          finalId: localId + offset, scale: mode.effectiveScale,
+          canUnify: canUnifyEmittedRecord((entityRef.type ?? '').toUpperCase(), converting ? finalText : undefined),
+        });
       }
     }
 

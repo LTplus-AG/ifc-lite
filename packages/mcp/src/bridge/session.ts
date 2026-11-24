@@ -13,7 +13,7 @@
 
 import type { WebSocket, RawData } from 'ws';
 import { describeThrown } from '../errors.js';
-import { BRIDGE_LIMITS } from './protocol.js';
+import { BRIDGE_LIMITS, BRIDGE_SURFACE_TOOL } from './protocol.js';
 import type {
   BridgeCallResult,
   BridgePermission,
@@ -63,6 +63,7 @@ export class BridgeSession {
     readonly client: { name: string; version?: string } | undefined,
     private readonly log: (line: string) => void,
     readonly resultAck = false,
+    readonly a2uiSurface = false,
   ) {}
 
   send(msg: BridgeServerMessage | BridgeResultAckMessage): void {
@@ -81,7 +82,10 @@ export class BridgeSession {
     let frame: string;
     try {
       // 1e999 parses to Infinity and would silently go out as null: refuse it.
-      frame = JSON.stringify({ type: 'call', sessionId: this.id, id, name, arguments: args }, (_key, v: unknown) => {
+      const envelope = name === BRIDGE_SURFACE_TOOL
+        ? { type: 'a2ui-surface', sessionId: this.id, id, surface: args }
+        : { type: 'call', sessionId: this.id, id, name, arguments: args };
+      frame = JSON.stringify(envelope, (_key, v: unknown) => {
         if (typeof v === 'number' && !Number.isFinite(v)) throw new Error('arguments contain a non-finite number');
         return v;
       });

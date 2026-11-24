@@ -40,6 +40,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ifc-lite/a2ui": "workspace:^",
     "@ifc-lite/bcf": "workspace:^",
     "@ifc-lite/clash": "workspace:^",
     "@ifc-lite/create": "workspace:^",

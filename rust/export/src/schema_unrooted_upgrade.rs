@@ -189,8 +189,8 @@ fn rewrite(line: &str, ty: &str, frame: RecordFrame, dropped: &HashSet<u32>) -> 
     Some(frame.with_args(line, &slots.join(",")))
 }
 
-/// Return the rewritten text, record count removed and warnings in output order.
-pub(crate) fn prune(text: &str, seeds: &HashSet<u32>) -> Option<(String, usize, Vec<String>)> {
+/// Return the rewritten text, omitted IDs and warnings for the records removed.
+pub(crate) fn prune(text: &str, seeds: &HashSet<u32>) -> Option<(String, HashSet<u32>, Vec<String>)> {
     if seeds.is_empty() {
         return None;
     }
@@ -218,5 +218,5 @@ pub(crate) fn prune(text: &str, seeds: &HashSet<u32>) -> Option<(String, usize, 
         }
     }
     out.push_str(&text[copied..]);
-    Some((out, warnings.len(), warnings))
+    Some((out, dropped, warnings))
 }

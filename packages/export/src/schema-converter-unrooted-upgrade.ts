@@ -6,6 +6,8 @@ import { frameArgs, stepRecordHead, stepRecordFrame, withFrameArgs, type StepRec
 import { forEachExpressRef, referencesAnyExpressId } from './step-ref-scan.js';
 import { isRootedEntityType, missingTypeRoute, OMIT_ON_UPGRADE } from './schema-untranslatable.js';
 import { attrNameTable, convertEntityType, convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
+import { EnumReconciliation } from './schema-converter-enums.js';
+import { getCompleteEntityIndex, getMaxExpressId } from './entity-iteration.js';
 import { SourceRecords, type SourceStore } from './schema-converter-structural-source.js';
 import { isStepValue, skipStepTrivia } from './step-slot-grammar.js';
 
@@ -30,7 +32,8 @@ function attributes(schema: UpgradeSchema, type: string): readonly Attribute[] |
   return layout.get(type);
 }
 
-function recordId(line: string): number {
+/** Written STEP ids include safe-integer merge offsets; source indexes remain u32. */
+export function outputRecordId(line: string): number {
   const start = skipStepTrivia(line, 0);
   return Number(/^#(\d+)/.exec(line.slice(start))?.[1]);
 }
@@ -38,26 +41,26 @@ function recordId(line: string): number {
 function record(line: string): OutputRecord | undefined {
   const head = stepRecordHead(line);
   if (head === null) return undefined;
-  const id = recordId(line);
-  if (!(id <= 0xffffffff)) return undefined;
+  const id = outputRecordId(line);
+  if (!Number.isSafeInteger(id)) return undefined;
   const type = line.slice(head.typeStart, head.typeEnd).toUpperCase();
   const frame = stepRecordFrame(line);
   const raw = frame ? frameArgs(line, frame) : line.slice(head.open + 1);
   return { id, type, line, raw, frame };
 }
 
-/** Collect a direct omission only from the IFC2X3 input of an IFC4 upgrade. */
+/** A record emitted by an IFC2X3 input of an IFC4 upgrade, in output id space. */
 export function noteUnrootedUpgradeSeed(line: string, seeds: Set<number>): void {
   const head = stepRecordHead(line);
   if (head && OMIT_ON_UPGRADE.has(line.slice(head.typeStart, head.typeEnd).toUpperCase())) {
-    const id = recordId(line);
-    if (id <= 0xffffffff) seeds.add(id);
+    const id = outputRecordId(line);
+    if (Number.isSafeInteger(id)) seeds.add(id);
   }
 }
 
 function listMembers(value: string): string[] | null {
   const open = skipStepTrivia(value, 0);
-  if (value[open] !== '(' || !isStepValue(value)) return null;
+  if (value[open] !== '(' || !isStepValue(value, Number.MAX_SAFE_INTEGER)) return null;
   // isStepValue verifies that the outer list is followed only by STEP trivia.
   // Look past its comments before choosing the closing parenthesis.
   let end = value.length;
@@ -65,7 +68,7 @@ function listMembers(value: string): string[] | null {
     const close = value.lastIndexOf(')', end - 1);
     if (close <= open) return null;
     if (skipStepTrivia(value, close + 1) === value.length) {
-      const items = splitTopLevelStepArguments(value.slice(open + 1, close));
+      const items = splitTopLevelStepArguments(value.slice(open + 1, close), Number.MAX_SAFE_INTEGER);
       if (items !== null) return items;
     }
     end = close;
@@ -79,7 +82,7 @@ function slot(value: string, attribute?: Attribute, narrowAggregates = true): Sl
 }
 
 function readSlots(rec: OutputRecord): Slot[] | undefined {
-  const values = rec.frame ? splitTopLevelStepArguments(rec.raw) : null;
+  const values = rec.frame ? splitTopLevelStepArguments(rec.raw, Number.MAX_SAFE_INTEGER) : null;
   const target = attributes('IFC4', rec.type);
   // Retained IFC2X3 records use their own optional slots. Check legacy
   // aggregates as whole slots because the pruning bounds are defined for IFC4.
@@ -133,6 +136,10 @@ export function previewUpgradeDependents(store: SourceStore, from: IfcSchemaVers
   if (!seeds.size) return seeds;
   const sourceLayout = attrNameTable(from);
   const targetLayout = attrNameTable(to);
+  const enums = new EnumReconciliation(true, [store]);
+  enums.structural.fromStore(store, from, to, source);
+  let nextId = getMaxExpressId(getCompleteEntityIndex(store)) + 1;
+  enums.structural.ids = () => nextId++;
   function* projectedRecords(): Generator<OutputRecord | undefined> {
     for (const { id, text } of source.texts()) {
       if (seeds.has(id)) continue;
@@ -142,10 +149,11 @@ export function previewUpgradeDependents(store: SourceStore, from: IfcSchemaVers
         !!targetLayout?.has(convertEntityType(parsed.type, from, to)));
       if (route === 'unrepresented' && !isRootedEntityType(parsed.type)) continue;
       if (parsed.frame && splitTopLevelStepArguments(parsed.raw) !== null) {
-        const converted = convertStepLine(text, from, to);
+        const converted = convertStepLine(text, from, to, undefined, undefined, undefined, undefined, enums);
         if (converted !== null) yield converted === text ? parsed : record(converted);
       } else yield parsed;
     }
+    yield* enums.structural.added().map(record);
   }
   const dropped = cascadeOmissions(projectedRecords(), seeds);
   for (const id of seeds) dropped.delete(id);
@@ -165,7 +173,7 @@ function rewrite(rec: OutputRecord, dropped: ReadonlySet<number>): string {
 }
 
 /** Run after conversion so every reference is in the final id space and slot. */
-export function omitUnrootedUpgrade(lines: string[], seeds: ReadonlySet<number>): string[] {
+export function omitUnrootedUpgrade(lines: string[], seeds: ReadonlySet<number>, onOmitted?: (id: number) => void): string[] {
   if (seeds.size === 0) return [];
   const records = lines.map(record);
   const dropped = cascadeOmissions(records, seeds);
@@ -173,6 +181,7 @@ export function omitUnrootedUpgrade(lines: string[], seeds: ReadonlySet<number>)
   let next = 0;
   for (const [index, rec] of records.entries()) {
     if (rec && dropped.has(rec.id)) {
+      onOmitted?.(rec.id);
       const reason = seeds.has(rec.id) ? 'the IFC4 schema does not declare its type' : 'a required IFC4 attribute lost a reference';
       warnings.push(`#${rec.id} (${rec.type}) was omitted because ${reason} (#10970).`);
     } else {
@@ -185,8 +194,8 @@ export function omitUnrootedUpgrade(lines: string[], seeds: ReadonlySet<number>)
 
 
 /** Single-model output contains only converted records, including pending edits. */
-export function pruneUnrootedUpgrade(lines: string[]): string[] {
+export function pruneUnrootedUpgrade(lines: string[], onOmitted: (id: number) => void): string[] {
   const seeds = new Set<number>();
   for (const line of lines) noteUnrootedUpgradeSeed(line, seeds);
-  return omitUnrootedUpgrade(lines, seeds);
+  return omitUnrootedUpgrade(lines, seeds, onOmitted);
 }

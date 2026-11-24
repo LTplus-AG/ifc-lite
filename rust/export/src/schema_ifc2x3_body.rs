@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! DATA section assembly for IFC2X3 output and conversions that need file-wide references.
 
+use std::collections::HashSet;
 use std::io::{self, Write};
 
 use crate::schema_ifc2x3_placements::place_each_object_once;
@@ -38,7 +39,7 @@ impl<'w> Body<'w> {
     pub(crate) fn finish_with_header(
         self,
         deferred: impl FnOnce(&str) -> Option<(String, isize)>,
-        header: impl FnOnce(&mut dyn Write, isize) -> io::Result<()>,
+        header: impl FnOnce(&mut dyn Write, &HashSet<u32>) -> io::Result<()>,
         warnings: &mut Vec<String>,
     ) -> io::Result<isize> {
         let Some(held) = self.held else { return Ok(0) };
@@ -48,16 +49,17 @@ impl<'w> Body<'w> {
             let added = rewritten.as_ref().map_or(0, |(_, n)| *n);
             if self.prune_upgrade {
                 use crate::schema_unrooted_upgrade::{prune, seeds};
-                if let Some((pruned, removed, losses)) = prune(source, &seeds(source.as_bytes()).collect()) {
+                if let Some((pruned, omitted, losses)) = prune(source, &seeds(source.as_bytes()).collect()) {
+                    let removed = losses.len() as isize;
                     warnings.extend(losses);
-                    return Some((pruned, added - removed as isize, added));
+                    return Some((pruned, added - removed, omitted));
                 }
             }
             if let Some(placed) = self.ifc2x3.then(|| place_each_object_once(source)).flatten() {
                 let delta = added + placed.added as isize - placed.removed as isize;
-                Some((placed.body, delta, added))
+                Some((placed.body, delta, HashSet::new()))
             } else {
-                rewritten.map(|(body, delta)| (body, delta, added))
+                rewritten.map(|(body, delta)| (body, delta, HashSet::new()))
             }
         };
         let adapted = match std::str::from_utf8(&held) {
@@ -71,8 +73,8 @@ impl<'w> Body<'w> {
                 })
             }
         };
-        let (bytes, count, added) = adapted.unwrap_or((held, 0, 0));
-        header(self.out, added)?;
+        let (bytes, count, omitted) = adapted.unwrap_or_else(|| (held, 0, HashSet::new()));
+        header(self.out, &omitted)?;
         self.out.write_all(&bytes)?;
         Ok(count)
     }

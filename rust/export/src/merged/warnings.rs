@@ -104,9 +104,9 @@ pub(super) fn finish_output(
     stats.warnings.extend(parents.apply_folds(out)); // #5774 folds, after every model is written
     // One product per placement in IFC2X3 (#9209); the header holds no record to change.
     stats.written = stats.written.saturating_add_signed(crate::schema_ifc2x3_placements::place_text_for_schema(schema, out));
-    if let Some((pruned, removed, losses)) = crate::schema_unrooted_upgrade::prune(out, upgrade_seeds) {
+    if let Some((pruned, _, losses)) = crate::schema_unrooted_upgrade::prune(out, upgrade_seeds) {
         *out = pruned;
-        stats.written -= removed;
+        stats.written -= losses.len();
         stats.warnings.extend(losses);
     }
     out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");

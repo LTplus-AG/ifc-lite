@@ -268,7 +268,7 @@ impl ConversionChecks {
         slots: Option<&mut crate::schema_ifc2x3_slots::Ifc2x3SlotFill>,
         ids: crate::step_ids::IdAllocator,
     ) -> std::io::Result<isize> {
-        self.finish_with_header(body, slots, ids, |_, _| Ok(())).map(|(delta, _)| delta)
+        self.finish_with_header(body, slots, ids, |_, _, _| Ok(())).map(|(delta, _)| delta)
     }
 
     /// Return the DATA record delta and the number of records minted by the deferred passes.
@@ -277,7 +277,7 @@ impl ConversionChecks {
         mut body: crate::schema_ifc2x3_body::Body<'_>,
         mut slots: Option<&mut crate::schema_ifc2x3_slots::Ifc2x3SlotFill>,
         ids: crate::step_ids::IdAllocator,
-        header: impl FnOnce(&mut dyn std::io::Write, isize) -> std::io::Result<()>,
+        header: impl FnOnce(&mut dyn std::io::Write, usize, &std::collections::HashSet<u32>) -> std::io::Result<()>,
     ) -> std::io::Result<(isize, usize)> {
         use std::io::Write as _;
         let mut added = self.structural.added();
@@ -293,18 +293,26 @@ impl ConversionChecks {
         }
         // Varying actions mint ids above the final DATA ids, including typed properties.
         let typed_added = body.rewrite_held(|text| self.finish_typed_properties(text, || ids));
-        // Date pruning changes the written count, but cannot undo a structural addition.
-        let varying_added = std::cell::Cell::new(0);
+        let varying_ids = std::cell::RefCell::new(Vec::new());
+        let surviving_deferred = std::cell::Cell::new(typed_added);
         let body_delta = body.finish_with_header(|text| {
-            let varying = self.structural.finish_effective_varying(text, &mut self.attribute_values_dropped);
-            varying_added.set(varying.as_ref().map_or(0, |(_, added)| *added));
-            let source = varying.as_ref().map_or(text, |(body, _)| body.as_str());
+            let varying = self.structural.finish_effective_varying(text, &mut self.attribute_values_dropped)
+                .map(|(text, ids)| { varying_ids.replace(ids); text });
+            let added = varying_ids.borrow().len() as isize;
+            let source = varying.as_deref().unwrap_or(text);
             match self.forms.finish_dates(source, &mut self.attribute_values_dropped, |ty| self.plans.forget_verbatim(ty)) {
-                Some((body, delta)) => Some((body, varying_added.get() + delta)),
-                None => varying,
+                Some((body, delta)) => Some((body, added + delta)),
+                None => varying.map(|body| (body, added)),
             }
-        }, |out, _| header(out, varying_added.get()), &mut self.upgrade_omissions)?;
-        Ok((count + typed_added as isize + body_delta, typed_added + varying_added.get() as usize))
+        }, |out, omitted| {
+            let varying = varying_ids.borrow().iter().filter(|id| !omitted.contains(id)).count();
+            // Typed properties reserve a contiguous range starting at the supplied allocator.
+            let typed_removed = ids.peek().map_or(0, |first| omitted.iter()
+                .filter(|id| id.checked_sub(first).is_some_and(|offset| (offset as usize) < typed_added)).count());
+            surviving_deferred.set(typed_added - typed_removed + varying);
+            header(out, varying, omitted)
+        }, &mut self.upgrade_omissions)?;
+        Ok((count + typed_added as isize + body_delta, surviving_deferred.get()))
     }
 
     pub(crate) fn finish_typed_properties(&mut self, text: &[u8], ids: impl FnOnce() -> crate::step_ids::IdAllocator) -> Option<(Vec<u8>, usize)> {

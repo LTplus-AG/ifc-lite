@@ -305,9 +305,10 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     let may_prune_upgrade = crate::schema_unrooted_upgrade::applies(&source_label, &target)
         && (!pass.overlay.retype_order.is_empty() || !pass.created_lines.is_empty()
             || crate::schema_unrooted_upgrade::seeds(content).next().is_some());
-    let modifications = pass.new_entity_count + pass.ledger.modified_count();
-    let header = |mut out: &mut dyn Write, added| write_header(&mut out, opts, content, converting, &target, modifications + added);
-    if !defer_varying { header(out, 0)?; }
+    let mut new_entities = pass.new_entity_count;
+    let delay_header = defer_varying || may_prune_upgrade;
+    let header = |mut out: &mut dyn Write, created| write_header(&mut out, opts, content, converting, &target, pass.ledger.modified_count() + created);
+    if !delay_header { header(out, new_entities)?; }
     let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, target_is_ifc2x3, defer_varying || date_buffer || typed_properties, may_prune_upgrade);
     let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(content, &source_label, &target); flatten.note_all(content, pass.mutated_lines.iter().filter_map(|(id, (t, _))| Some((*id, t.as_deref()?)))
         .chain(pass.generated.iter().chain(&pass.rewritten_lines).chain(&pass.georef_lines).chain(&pass.created_lines).map(|(id, l)| (*id, l.as_str()))));
@@ -364,9 +365,11 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     for (id, line) in appended.filter(|(id, _)| !flatten.drops(*id)) {
         written += usize::from(write_line(&mut body, line, *id, converting, &source_label, &target, &mut slot_fill, &mut checks, &flatten)?);
     }
-    let (delta, deferred_entities) = checks.finish_with_header(body, target_is_ifc2x3.then_some(&mut slot_fill), pass.ids, |out, count| {
-        if !defer_varying { return Ok(()); }
-        header(out, usize::try_from(count).unwrap_or_default())
+    let (delta, deferred_entities) = checks.finish_with_header(body, target_is_ifc2x3.then_some(&mut slot_fill), pass.ids, |out, varying, omitted| {
+        if !delay_header { return Ok(()); }
+        new_entities -= pass.generated.iter().chain(&pass.georef_lines).chain(&pass.created_lines)
+            .filter(|(id, _)| omitted.contains(id)).count();
+        header(out, new_entities + varying)
     })?;
     written = written.checked_add_signed(delta).unwrap_or(written);
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
@@ -378,7 +381,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     Ok(LogExportStats {
         written,
         total: src.order.len(),
-        new_entities: pass.new_entity_count + deferred_entities,
+        new_entities: new_entities + deferred_entities,
         modified_entities: pass.ledger.modified_count(),
         warnings,
         step: StepCounters {

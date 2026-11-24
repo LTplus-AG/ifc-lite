@@ -189,3 +189,54 @@ fn non_rooted_unrepresented_type_errors() {
     assert!(err.to_string().contains("IFCCARTESIANPOINTLIST3D"));
     assert!(err.to_string().contains("IFC2X3"));
 }
+
+#[test]
+fn merged_pruning_respects_the_checked_output_id_bound_10970() {
+    let first = |id| format!("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#{id}=IFCCARTESIANPOINT((0.,0.));\nENDSEC;\nEND-ISO-10303-21;");
+    let second = b"ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n\
+#1=IFCBEZIERCURVE(1,(#2,#3),.UNSPECIFIED.,.F.,.F.);\n\
+#2=IFCCARTESIANPOINT((0.,0.));\n#3=IFCCARTESIANPOINT((1.,1.));\n\
+#4=IFCPOLYLINE((#2,#3));\n#5=IFCGEOMETRICCURVESET((#1,#4));\nENDSEC;\nEND-ISO-10303-21;";
+    let options = crate::MergedOptions { schema: Some("IFC4".into()), ..Default::default() };
+    let (output, stats) = crate::export_merged_with_stats(&[first(u32::MAX - 5).as_bytes(), second], &options);
+    assert_eq!(stats.unmerged_model_count, 0);
+    assert!(!output.contains("#4294967291="), "{output}");
+    assert!(output.contains("#4294967295=IFCGEOMETRICCURVESET((#4294967294));"), "{output}");
+    assert!(stats.warnings.iter().any(|warning| warning.contains("#4294967291 (IFCBEZIERCURVE) was omitted")));
+    let (output, stats) = crate::export_merged_with_stats(&[first(u32::MAX).as_bytes(), second], &options);
+    assert_eq!(stats.unmerged_model_count, 1);
+    assert!(!output.contains("IFCGEOMETRICCURVESET"), "{output}");
+}
+
+#[test]
+fn logged_pruning_keeps_creation_counts_separate_from_source_and_deferred_records_10970() {
+    let source = include_str!("../tests/fixtures/schema_unrooted_legacy_optional.ifc")
+        .replace("#30=", "#18=IFCSTRUCTURALLOADLINEARFORCE('additional',0.,0.,-6.,0.,0.,0.);\n\
+#19=IFCSTRUCTURALLOADLINEARFORCE('additional',0.,0.,-7.,0.,0.,0.);\n\
+#16=IFCSHAPEASPECT((#42,#42,#42),$,$,.T.,#43);\n#30=")
+        .replace("#11,.GLOBAL_COORDS.,.F.,$,.TRUE_LENGTH.,$,$);", "#11,.GLOBAL_COORDS.,.F.,$,.TRUE_LENGTH.,#16,(#18,#19));");
+    let log = crate::MutationLog::from_json(r#"{"newEntities":[
+        {"expressId":44,"type":"IfcRelaxation","attributes":[0.1,0.5]},
+        {"expressId":45,"type":"IfcCartesianPoint","attributes":[[2,3]]}
+    ]}"#).unwrap();
+    let opts = crate::StepOptions { schema: Some("IFC4".into()), ..Default::default() };
+    let (output, stats) = crate::export_step_with_log(source.as_bytes(), &opts, &log).unwrap();
+    assert!(!output.contains("#44=") && !output.contains("#41="), "{output}");
+    assert!(output.contains("#45=IFCCARTESIANPOINT("), "{output}");
+    assert!(output.contains("#46=IFCSTRUCTURALLOADCONFIGURATION("), "{output}");
+    assert_eq!(stats.new_entities, 2);
+    assert!(output.contains("2 modifications"), "{output}");
+}
+
+#[test]
+fn logged_pruning_settles_header_without_a_deferred_varying_pass_10970() {
+    let source = b"ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#1=IFCCARTESIANPOINT((0.,0.));\nENDSEC;\nEND-ISO-10303-21;";
+    let log = crate::MutationLog::default().with_new_entities(vec![
+        crate::LogNewEntity::new(2, "IfcRelaxation", vec![serde_json::json!(0.1), serde_json::json!(0.5)]),
+    ]);
+    let opts = crate::StepOptions { schema: Some("IFC4".into()), ..Default::default() };
+    let (output, stats) = crate::export_step_with_log(source, &opts, &log).unwrap();
+    assert!(output.contains("#1=IFCCARTESIANPOINT("), "{output}");
+    assert!(!output.contains("#2=") && !output.contains("Re-exported by ifc-lite"), "{output}");
+    assert_eq!((stats.written, stats.new_entities), (1, 0));
+}

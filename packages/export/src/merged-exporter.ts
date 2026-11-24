@@ -1193,8 +1193,9 @@ export class MergedExporter {
     if (stripped === null) return null;
     entityText = stripped;
 
-    // Remap ids. Fast path: the first model (offset 0, no remaps) is byte-identical.
-    let finalText = offset === 0 && plan.sharedRemap.size === 0 ? entityText : remapEntityText(entityText, offset, plan.sharedRemap);
+    const converting = needsConversion(sourceSchema, targetSchema);
+    const remapIds = offset !== 0 || plan.sharedRemap.size !== 0;
+    let finalText = remapIds ? remapEntityText(entityText, offset, plan.sharedRemap, converting) : entityText;
 
     // Normalize in the source schema while its attribute indices still match the record.
     // Only numeric literals and the georeference (#10886) change here.
@@ -1206,13 +1207,13 @@ export class MergedExporter {
       finalText = rescaleEntityLengths(finalText, type, mode.lengthFactor, mode.areaFactor, mode.volumeFactor, legacySchema);
     }
 
-    const converting = needsConversion(sourceSchema, targetSchema);
     if (converting) {
       // No `withheldRefIds` (6th arg), so `resolveUnrepresentedEntity` never omits here (#4206): the federated
       // pipeline has no such set in its offset id space, and keeps "proxy or throw" rather than omit in the
       // wrong space. The only `null` is a material record the referent check left out (#10763); any other
       // still throws, as the LoadConfiguration/AppliedLoad case `StepExporter` would omit does.
-      const converted = convertStepLine(finalText, sourceSchema, targetSchema, undefined, slotFill, undefined, ifc4Slots, enums);
+      const converted = convertStepLine(finalText, sourceSchema, targetSchema, undefined, slotFill, undefined, ifc4Slots, enums,
+        remapIds ? Number.MAX_SAFE_INTEGER : undefined);
       if (converted === null) {
         if (enums.materials.leftOut(localId + offset)) return null; // a material record not written (#10763)
         throw new Error(`Internal error: schema conversion of #${localId + offset}=${entityRef.type} returned null with no withheldRefIds supplied.`);

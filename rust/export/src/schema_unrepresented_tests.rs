@@ -106,6 +106,22 @@ fn an_upgrade_writes_each_route_and_names_it_10902() {
     assert!(named.contains("which readers may reject: IFCCALENDARDATE (1)."), "{named}");
 }
 
+/// #11326, twin of the TypeScript loss report: IfcMove and IfcOrderAction attributes with no
+/// IfcTask slot count as dropped only when the record populated them.
+#[test]
+fn an_upgrade_counts_only_populated_move_and_order_action_slots_11326() {
+    let dropped = |data: &str| {
+        let src = format!("ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t.ifc','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n{data}\nENDSEC;\nEND-ISO-10303-21;\n");
+        let opts = crate::step::StepOptions { schema: Some("IFC4".into()), ..Default::default() };
+        crate::export_step_with_stats(src.as_bytes(), &opts).unwrap().1.attribute_values_dropped
+    };
+    let head = "'0DvctVUKr0kugbFTf53O9L',$,'M',$,$,'T',$,$,.F.,1";
+    assert_eq!(dropped(&format!("#5=IFCMOVE({head},$,$,$);\n#6=IFCORDERACTION({head},$);")), 0);
+    assert_eq!(dropped(&format!("#5=IFCMOVE({head},#9,$,$);")), 1);
+    assert_eq!(dropped(&format!("#5=IFCMOVE({head},$,#9,('p'));")), 2);
+    assert_eq!(dropped(&format!("#6=IFCORDERACTION({head},'A-1');")), 1);
+}
+
 #[test]
 fn prunes_references_to_removed_ifc2x3_resources_10970() {
     let source = include_bytes!("../tests/fixtures/schema_unrooted_upgrade.ifc");

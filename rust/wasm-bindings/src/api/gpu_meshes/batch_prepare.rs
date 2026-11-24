@@ -27,7 +27,7 @@ pub(super) struct BatchSetup<'a> {
 }
 
 impl IfcAPI {
-    pub(super) fn prepare_batch<'a>(&self, content: &'a [u8], wire: &BatchWire<'_>, arm_instancing: bool) -> BatchSetup<'a> {
+    pub(super) fn prepare_batch<'a>(&self, content: &'a [u8], wire: &BatchWire<'_>, arm_instancing: bool, global_plan: Option<&super::global_plan::SharedGlobalPlan>) -> BatchSetup<'a> {
         let BatchWire { jobs_flat, unit_scale, rtc_x, rtc_y, rtc_z, needs_shift, void_keys, void_counts, void_values, style_ids, style_colors, plane_angle_to_radians, .. } = *wire;
         let material_element_ids = &wire.material_element_ids;
         let material_color_counts = &wire.material_color_counts;
@@ -51,7 +51,13 @@ impl IfcAPI {
 
         // Only partitioned output can recover sub-threshold don't-bake meshes.
         // Shifted models and geometry hashing keep the materialized path.
-        let instancing_armed = arm_instancing && !needs_shift && hash_tolerance.is_none();
+        // A global instance plan instances MATERIALIZED meshes, so it disarms
+        // the per-batch don't-bake placeholders: every mesh, and every geometry
+        // fingerprint, is exactly what the unarmed batch produces.
+        if let Some(plan) = global_plan {
+            super::global_plan::resolve_mapped_items(plan, &mut decoder);
+        }
+        let instancing_armed = arm_instancing && !needs_shift && hash_tolerance.is_none() && global_plan.is_none();
         let instance_plan = if instancing_armed {
             self.mapped_instance_plan()
         } else {

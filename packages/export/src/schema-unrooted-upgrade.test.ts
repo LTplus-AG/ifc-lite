@@ -40,6 +40,27 @@ it('prunes references to removed IFC2X3 resources using IFC4 slot cardinality (#
   expect(typeOnly.entries.some(entry => entry.sourceType === 'IFCCOMPOSITEPROFILEDEF')).toBe(false);
 });
 
+it('reports populated task losses alongside cascaded omissions (#11326, #10970)', async () => {
+  const store = await parse(envelope([
+    '#1=IFCBEZIERCURVE(1,(#2,#3),.UNSPECIFIED.,.F.,.F.);',
+    '#2=IFCCARTESIANPOINT((0.,0.));',
+    '#3=IFCCARTESIANPOINT((1.,1.));',
+    '#4=IFCGEOMETRICCURVESET((#1));',
+    "#5=IFCORDERACTION('0EvctVUKr0kugbFTf53O95',$,'O',$,$,'T',$,$,.F.,1,/* unset */$);",
+    "#6=IFCORDERACTION('0EvctVUKr0kugbFTf53O96',$,'O',$,$,'T',$,$,.F.,1,'A');",
+  ].join('\n')));
+  const report = analyzeConversionLoss(store, 'IFC2X3', 'IFC4');
+  expect(report.describe()).toContain('1 × IFCGEOMETRICCURVESET (#4) will be omitted because a required IFC4 attribute lost a reference.');
+  expect(report.entries.find(e => e.sourceType === 'IFCORDERACTION')).toMatchObject({
+    droppedAttributes: ['ActionID'], expressIds: [6], count: 1,
+  });
+  const { content } = new StepExporter(store).export({ schema: 'IFC4' });
+  const output = new TextDecoder().decode(content);
+  expect(output).not.toMatch(/^#(?:1|4)=/m);
+  expect(output).toMatch(/^#5=IFCTASK\(/m);
+  expect(output).toMatch(/^#6=IFCTASK\(/m);
+});
+
 it('clears an optional Representation on an unconverted varying action (#10970)', async () => {
   const raw = readFileSync(new URL('../../../rust/export/tests/fixtures/schema_unrooted_legacy_optional.ifc', import.meta.url));
   const store = await new IfcParser().parseColumnar(Uint8Array.from(raw).buffer);

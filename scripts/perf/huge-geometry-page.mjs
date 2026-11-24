@@ -204,15 +204,17 @@ export const READ_PICK = () => {
 
 /**
  * In page: candidate element ids for hide/isolate: up to `limit` distinct ids
- * of geometry the scene holds (global ids), sampled evenly.
+ * of geometry the scene holds (global ids), sampled evenly. `sorted` samples
+ * the sorted ids: mesh order is worker completion order, so only a sorted
+ * sample is the same set on every load.
  */
-export const ELEMENT_IDS = ({ fraction, limit }) => {
+export const ELEMENT_IDS = ({ fraction, limit, sorted = false }) => {
   const s = globalThis.__ifc_lite_viewer_store__.getState();
   const models = [...(s.models?.values?.() ?? [])];
   const results = models.length ? models.map((m) => m.geometryResult) : [s.geometryResult];
   const ids = new Set();
   for (const g of results) for (const m of g?.meshes ?? []) ids.add(m.expressId);
-  const all = [...ids];
+  const all = sorted ? [...ids].sort((a, b) => a - b) : [...ids];
   const want = Math.min(limit, Math.max(1, Math.round(all.length * fraction)));
   const step = Math.max(1, Math.floor(all.length / want));
   const out = [];

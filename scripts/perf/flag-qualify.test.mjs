@@ -383,9 +383,19 @@ describe('section drawing wait', () => {
       assert.ok(fake.polls() > 4, 'resolved only after the final ready held, not on the stale one');
       globalThis.__ifc_lite_viewer_store__ = scripted(['generating']).store;
       assert.equal(await WAIT_SECTION_DRAWING({ holdMs: 20, timeoutMs: 30, pollMs: 1 }), 'timeout (generating)');
+      // Nothing requested a drawing (the section tool is not active): idle is settled, not a 120 s wait.
+      globalThis.__ifc_lite_viewer_store__ = scripted(['idle']).store;
+      assert.equal(await WAIT_SECTION_DRAWING({ holdMs: 5, timeoutMs: 1000, pollMs: 1 }), 'idle');
+      // The viewer's settled hook wins over the status when the build has it (#11445).
+      let calls = 0;
+      globalThis.__ifc_lite_scene_settled__ = () => ++calls > 3;
+      globalThis.__ifc_lite_viewer_store__ = scripted(['generating']).store;
+      assert.equal(await WAIT_SECTION_DRAWING({ holdMs: 5, pollMs: 1 }), 'generating');
+      assert.ok(calls > 3, 'waited for the hook to report settled');
+      delete globalThis.__ifc_lite_scene_settled__;
       globalThis.__ifc_lite_viewer_store__ = scripted(['generating', 'error']).store;
       assert.equal(await WAIT_SECTION_DRAWING({ holdMs: 5, pollMs: 1 }), 'error');
-    } finally { delete globalThis.__ifc_lite_viewer_store__; }
+    } finally { delete globalThis.__ifc_lite_viewer_store__; delete globalThis.__ifc_lite_scene_settled__; }
   });
 });
 

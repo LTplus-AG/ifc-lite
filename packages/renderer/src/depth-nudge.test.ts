@@ -128,6 +128,12 @@ describe('depth nudge (#6729)', () => {
 });
 
 describe('overlay depth lift (#812, #6729)', () => {
+  it('orthographic: the lift clears unpainted and painted levels (literal)', () => {
+    assert.equal(orthographicOverlayLiftLevels(256), 256 + 63 + 1);
+    assert.equal(orthographicOverlayLiftLevels(9), 9 + 2 + 1);
+    assert.equal(orthographicOverlayLiftLevels(1), 1 + 1 + 1);
+  });
+
   it('orthographic: text and lines stay above the most-nudged face, depth bias included', () => {
     for (const range of [0.5, 10, 100, 205, 1_000, 1_560, 10_000, 100_000]) {
       const levels = nudgeLevels(range);

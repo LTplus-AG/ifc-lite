@@ -13,6 +13,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   MAX_DEPTH_NUDGE_HASH,
+  ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL,
+  ORTHOGRAPHIC_MAX_DEPTH_NUDGE_METRES,
   PAINTED_DEPTH_NUDGE_BIT,
   PERSPECTIVE_DEPTH_NUDGE_LEVEL_SHIFT,
   PERSPECTIVE_DEPTH_NUDGE_LEVELS,
@@ -48,10 +50,29 @@ describe('painted surfaces win coplanar depth ties', () => {
       const topUnpainted = Math.max(...HASHES.map((h) => level(h, ortho)));
       const bottomPainted = Math.min(...HASHES.map((h) => level(h | PAINTED_DEPTH_NUDGE_BIT, ortho)));
       assert.ok(bottomPainted > topUnpainted, `${bottomPainted} > ${topUnpainted}`);
-      const painted = new Set(HASHES.map((h) => level(h | PAINTED_DEPTH_NUDGE_BIT, ortho)));
-      assert.ok(painted.size >= Math.min(ortho === undefined ? 8 : orthographicPaintedLevels(ortho), 8), 'painted entities still rank among themselves');
     });
   }
+
+  it('gives painted surfaces their own levels: a quarter of the unpainted steps, at least one (literal counts)', () => {
+    for (const [levels, painted] of [[1, 1], [2, 1], [5, 1], [7, 1], [9, 2], [52, 12], [256, 63]] as const) {
+      assert.equal(orthographicPaintedLevels(levels), painted, `${levels} levels`);
+    }
+    const distinct = (ortho?: number) => new Set(HASHES.map((h) => level(h | PAINTED_DEPTH_NUDGE_BIT, ortho))).size;
+    assert.equal(distinct(), 8, 'perspective: 8 painted levels, so coplanar painted entities still rank');
+    assert.equal(distinct(256), 63);
+    assert.equal(distinct(52), 12);
+    assert.equal(distinct(7), 1);
+  });
+
+  it('keeps a painted surface within 1.25 times the orthographic metre bound wherever five levels exist', () => {
+    for (const range of [0.5, 10, 100, 205, 1_000, 1_560, 4_000, 7_400]) {
+      const steps = ORTHOGRAPHIC_MAX_DEPTH_NUDGE_METRES / (range * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL);
+      const levels = Math.min(Math.max(Math.floor(steps), 0), MAX_DEPTH_NUDGE_HASH) + 1;
+      const top = Math.max(...HASHES.map((h) => level(h | PAINTED_DEPTH_NUDGE_BIT, levels)));
+      const metres = top * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL * range;
+      assert.ok(metres <= 1.25 * ORTHOGRAPHIC_MAX_DEPTH_NUDGE_METRES * (1 + 1e-12), `${range} m: ${metres} m`);
+    }
+  });
 
   it('leaves unpainted levels where they were: a scene without overrides is unchanged', () => {
     for (const h of HASHES) assert.equal(level(h), h >> PERSPECTIVE_DEPTH_NUDGE_LEVEL_SHIFT);

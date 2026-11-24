@@ -115,14 +115,17 @@ export const PERSPECTIVE_OVERLAY_DEPTH_LIFT = 5e-5;
  * themselves (`PERSPECTIVE_PAINTED_DEPTH_NUDGE_LEVELS`, a quarter of the
  * orthographic levels) so coplanar painted entities still rank. They move
  * at most `PERSPECTIVE_MAX_PAINTED_DEPTH_NUDGE_RELATIVE` (1.95 mm at 100 m)
- * and orthographically 1.25 times the metre bound; unpainted surfaces do not
+ * and orthographically 1.25 times the metre bound: `(levels - 1) >> 2` painted
+ * levels above the `levels - 1 <= bound / level` unpainted steps. With fewer
+ * than five levels (depth ranges beyond about 4 km) the one painted level a
+ * tie needs can exceed that by up to one level. Unpainted surfaces do not
  * move at all differently, so a scene without overrides is unchanged.
  */
 export const PAINTED_DEPTH_NUDGE_BIT = 256;
 
 /** Orthographic: levels painted surfaces rank on, above the `levels` unpainted ones (WGSL `orthographicPaintedLevels`). */
 export function orthographicPaintedLevels(levels: number): number {
-  return Math.max(levels >> 2, 1);
+  return Math.max((levels - 1) >> 2, 1);
 }
 
 /** Orthographic: levels the overlay lift clears, painted levels included (WGSL `overlayLiftedClipZ`; CPU picking). */
@@ -153,9 +156,9 @@ const projectionWgsl = `
           return u32(clamp(floor(steps), 0.0, MAX_DEPTH_NUDGE_HASH)) + 1u;
         }
 
-        // Levels above the unpainted ones for painted surfaces: a quarter as many, at least one.
+        // Levels above the unpainted ones for painted surfaces: a quarter of the unpainted steps, at least one.
         fn orthographicPaintedLevels(levels: u32) -> u32 {
-          return max(levels >> 2u, 1u);
+          return max((levels - 1u) >> 2u, 1u);
         }
 
         fn orthographicOffsetInsideDepthRange(clip: vec4<f32>, ndcOffset: f32) -> f32 {

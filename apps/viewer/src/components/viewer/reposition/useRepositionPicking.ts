@@ -10,6 +10,8 @@ import { getGlobalRenderer } from '@/hooks/useBCF';
 import { resolveEntityRef, useViewerStore } from '@/store';
 import { fromRenderTranslation, orthogonalAxis, constrainTranslation, subtractTranslation } from '@/lib/model-placement/translation';
 import type { PlacementAnchor } from '@/lib/model-placement/state';
+import { isEligiblePickModel, pickContext, rejectedPickMessage } from '@/lib/model-placement/pick-eligibility';
+import { resolve } from '@/i18n/registry';
 
 export type PickRole = 'source' | 'target' | null;
 
@@ -24,8 +26,8 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
     const state = useViewerStore.getState(), preview = state.modelPlacement.preview;
     if (!preview) return;
     const allowed = new Set<number>();
-    const accepts = (id: string) => (role === 'source') === preview.before.has(id) && state.models.get(id)?.visible &&
-      (role === 'source' || !reference || id === reference);
+    const ctx = pickContext(new Set(preview.before.keys()), reference, state.models);
+    const accepts = (id: string) => isEligiblePickModel(role, id, ctx);
     for (const [id, model] of state.models) {
       if (!accepts(id)) continue;
       for (const mesh of model.geometryResult?.meshes ?? []) {
@@ -39,6 +41,25 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
     let lastRevision = state.modelPlacement.revision;
     const previousCursor = canvas.style.cursor;
     canvas.style.cursor = 'crosshair';
+    const cast = (event: PointerEvent, current: ReturnType<typeof useViewerStore.getState>, isolatedIds: Set<number> | undefined) => {
+      const rect = canvas.getBoundingClientRect();
+      return renderer.raycastSceneMagnetic(event.clientX - rect.left, event.clientY - rect.top,
+        edgeLock, {
+          hiddenIds: current.hiddenEntities, isolatedIds,
+          snapOptions: { snapToVertices: current.snapEnabled, snapToEdges: current.snapEnabled,
+            snapToFaces: current.snapEnabled, snapToPointClouds: true, screenSnapRadius: 12 },
+        });
+    };
+    /** Click-only: what an unrestricted raycast (same hidden/isolation) hit, to explain a refusal. */
+    const explainMiss = (event: PointerEvent): string => {
+      const current = useViewerStore.getState();
+      const result = cast(event, current, current.isolatedEntities ?? undefined);
+      const id = result.snapTarget?.expressId ?? result.intersection?.expressId;
+      const hitModel = id === undefined ? null : resolveEntityRef(id).modelId;
+      const message = rejectedPickMessage(role, hitModel, pickContext(ctx.moving, reference, current.models),
+        current.models.keys(), (modelId) => current.models.get(modelId)?.name ?? modelId);
+      return resolve(message.key, message.params);
+    };
     const pick = (event: PointerEvent): PlacementAnchor | null => {
       const current = useViewerStore.getState();
       if (!current.modelPlacement.preview) return null;
@@ -46,15 +67,9 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
         edgeLock = { edge: null, meshExpressId: null, lockStrength: 0 };
       }
       lastRevision = current.modelPlacement.revision;
-      const rect = canvas.getBoundingClientRect();
       const isolatedIds = current.isolatedEntities === null ? allowed
         : new Set([...allowed].filter((id) => current.isolatedEntities?.has(id)));
-      const result = renderer.raycastSceneMagnetic(event.clientX - rect.left, event.clientY - rect.top,
-        edgeLock, {
-          hiddenIds: current.hiddenEntities, isolatedIds,
-          snapOptions: { snapToVertices: current.snapEnabled, snapToEdges: current.snapEnabled,
-            snapToFaces: current.snapEnabled, snapToPointClouds: true, screenSnapRadius: 12 },
-        });
+      const result = cast(event, current, isolatedIds);
       if (result.edgeLock.shouldRelease) edgeLock = { edge: null, meshExpressId: null, lockStrength: 0 };
       else if (result.edgeLock.shouldLock && result.edgeLock.edge) edgeLock = {
         edge: result.edgeLock.edge, meshExpressId: result.edgeLock.meshExpressId, lockStrength: EDGE_LOCK_DEFAULTS.INITIAL_STRENGTH,
@@ -100,7 +115,7 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
       }
       if (refuseCaptureHeldPick(renderer)) return;
       const hit = pick(event);
-      if (!hit) { onError('No eligible point found. Zoom closer, choose another point, or enter coordinates.'); return; }
+      if (!hit) { onError(explainMiss(event)); return; }
       try {
         updateAnchor(event, hit);
         nextRole = role === 'source' ? 'target' : null;

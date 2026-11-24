@@ -23,6 +23,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { displayedTranslation, placementFor } from '@/lib/model-placement/state';
 import type { MoveConstraint } from '@/lib/model-placement/translation';
+import { eligiblePickModelIds, pickContext, pickPromptKey } from '@/lib/model-placement/pick-eligibility';
 import { frameModels } from '@/lib/model-placement/scene';
 import { useRepositionRuntime, type RepositionRuntime } from '@/lib/model-placement/reposition-runtime';
 import { openRepositionModels } from '@/lib/model-placement/commands';
@@ -49,6 +50,17 @@ const CONSTRAINTS = ['free', 'x', 'y', 'z', 'xy', 'xz', 'yz'] as const;
 function frame(runtime: RepositionRuntime, ids: readonly string[]) {
   try { frameModels(ids); }
   catch (err) { runtime.setError(err instanceof Error ? err.message : String(err)); }
+}
+
+function pickPrompt(
+  t: ReturnType<typeof useTranslation>['t'], role: 'source' | 'target',
+  before: ReadonlyMap<string, unknown> | undefined, reference: string, models: ReturnType<typeof useViewerStore.getState>['models'],
+): string {
+  const ids = eligiblePickModelIds(role, models.keys(), pickContext(new Set(before?.keys()), reference, models));
+  const key = pickPromptKey(role, ids.length, reference !== '');
+  return key === 'repositionPanel.pickPrompt'
+    ? t(key, { role: t(PICK_ROLE_KEYS[role]) })
+    : t(key, { models: ids.map((id) => models.get(id)?.name ?? id).join(', ') });
 }
 
 export function LocalTab() {
@@ -151,7 +163,7 @@ export function LocalTab() {
         </label>
       </div>
       <output className="block">
-        {runtime.role ? t('repositionPanel.pickPrompt', { role: t(PICK_ROLE_KEYS[runtime.role]) }) : t('repositionPanel.previewPrompt')}
+        {runtime.role ? pickPrompt(t, runtime.role, preview?.before, runtime.reference, models) : t('repositionPanel.previewPrompt')}
         {runtime.hover ? ` ${t('repositionPanel.hoverDetail', { kind: t(HOVER_KIND_KEYS[runtime.hover.kind]), name: models.get(runtime.hover.modelId)?.name ?? '' })}` : ''}
       </output>
 

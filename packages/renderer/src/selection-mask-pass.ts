@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { emptyBindGroup, sectionExclusions, withSectionExclusions } from './section-exclusions.js';
+import { MaskTableGroup, maskTableLayout } from './mask-color-table.js';
 /**
  * Selection/hover mask pass (#5390): draws the selected and hovered
  * meshes into two resolved targets the edge
@@ -82,6 +83,8 @@ export interface SelectionMaskFrame {
   /** GPU-instanced occurrences to outline (#5745); absent or null when none are selected or hovered. */
   instanced?: InstancedMaskFrame | null;
   geometricVisibility?: GPUBindGroup;
+  /** The scene's entity colour table: masks nudge painted entities' depth as the colour pass did. */
+  entityColorTable?: GPUBuffer | null;
 }
 
 export interface SelectionMaskViews {
@@ -118,6 +121,7 @@ export class SelectionMaskPass {
   /** One owned uniform buffer + bind group per hovered piece, grown on demand. */
   private hoverUniforms: { buffer: GPUBuffer; bindGroup: GPUBindGroup }[] = [];
   private destroyed = false;
+  private tableGroup: MaskTableGroup;
 
   constructor(device: WebGPUDevice, meshBindGroupLayout: GPUBindGroupLayout, sampleCount: number) {
     this.device = device.getDevice();
@@ -125,7 +129,8 @@ export class SelectionMaskPass {
     this.meshBindGroupLayout = meshBindGroupLayout;
 
     this.sampleCount = sampleCount;
-    this.layout = this.device.createPipelineLayout({ bindGroupLayouts: withSectionExclusions(this.device, [this.meshBindGroupLayout]) });
+    this.layout = this.device.createPipelineLayout({ bindGroupLayouts: withSectionExclusions(this.device, [this.meshBindGroupLayout, maskTableLayout(this.device, false)]) });
+    this.tableGroup = new MaskTableGroup(this.device);
     this.vertexModule = this.device.createShaderModule({ label: 'selection-mask-vs', code: mainShaderSource });
     this.fragmentModule = this.device.createShaderModule({
       label: 'selection-mask-fs',
@@ -183,8 +188,8 @@ export class SelectionMaskPass {
         }],
         ...(visible ? { depthStencilAttachment: { view: frame.depthView, depthReadOnly: true, stencilReadOnly: true } } : {}),
       });
-      // Group 1 is padding in both mesh mask layouts; group 2 is padding unless geometric (#9060).
-      pass.setBindGroup(1, emptyBindGroup(this.device));
+      // Group 1 is the colour table (painted depth nudge); group 2 is padding unless geometric (#9060).
+      pass.setBindGroup(1, this.tableGroup.get(frame.entityColorTable));
       const geometric = visible ? frame.geometricVisibility : undefined;
       if (geometric) {
         pass.setPipeline(this.geometric('flat')[kind]); pass.setBindGroup(OPAQUE_VISIBILITY_GROUP, geometric);
@@ -199,7 +204,7 @@ export class SelectionMaskPass {
         pass.drawIndexed(mesh.indexCount, 1, 0, 0, 0);
       }
       if (instanced && instancedFrame) {
-        instanced.draw(pass, kind, kind === 'hoverVisible' ? instancedFrame.hovered : instancedFrame.selected, frame.geometricVisibility);
+        instanced.draw(pass, kind, kind === 'hoverVisible' ? instancedFrame.hovered : instancedFrame.selected, frame.geometricVisibility, frame.entityColorTable);
       }
       pass.end();
     };
@@ -289,6 +294,7 @@ export class SelectionMaskPass {
     this.hoverUniforms = [];
     this.instanced?.destroy();
     this.instanced = null;
+    this.tableGroup.destroy();
     sectionExclusions(this.device).release();
   }
 }

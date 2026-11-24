@@ -1,0 +1,24 @@
+diff --git a/packages/renderer/src/mask-color-table.ts b/packages/renderer/src/mask-color-table.ts
+--- a/packages/renderer/src/mask-color-table.ts
++++ b/packages/renderer/src/mask-color-table.ts
+@@ -46,7 +46,7 @@
+   /** The bind group for `table` (the scene's entity colour table); absent binds an empty table. */
+   get(table?: GPUBuffer | null): GPUBindGroup {
+     const t = table ?? (this.empty ??= this.device.createBuffer({ label: 'mask-color-table-empty', size: 16, usage: GPUBufferUsage.STORAGE }));
+-    if (!this.group) {
++    if (t !== this.table || !this.group) {
+       this.table = t;
+       this.group = this.device.createBindGroup({
+         label: 'mask-color-table',
+diff --git a/packages/renderer/src/shaders/depth-nudge.wgsl.ts b/packages/renderer/src/shaders/depth-nudge.wgsl.ts
+--- a/packages/renderer/src/shaders/depth-nudge.wgsl.ts
++++ b/packages/renderer/src/shaders/depth-nudge.wgsl.ts
+@@ -125,7 +125,7 @@
+ 
+ /** Orthographic: levels painted surfaces rank on, above the `levels` unpainted ones (WGSL `orthographicPaintedLevels`). */
+ export function orthographicPaintedLevels(levels: number): number {
+-  return 0 * levels;
++  return Math.max((levels - 1) >> 2, 1);
+ }
+ 
+ /** Orthographic: levels the overlay lift clears, painted levels included (WGSL `overlayLiftedClipZ`; CPU picking). */

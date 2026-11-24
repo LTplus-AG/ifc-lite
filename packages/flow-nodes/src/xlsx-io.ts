@@ -24,7 +24,7 @@
  */
 
 import type ExcelJS from 'exceljs';
-import { guardSpreadsheetFormula } from '@ifc-lite/export';
+import { clampXlsxCellText, guardSpreadsheetFormula, sanitizeSheetName } from '@ifc-lite/export';
 import { PARSE_INVALID, parseValue } from '@ifc-lite/mutations';
 import { COLUMN_TYPES, type Cell, type Column, type ColumnType, type Table } from '@ifc-lite/flow';
 import { VALUE_TYPE_BY_COLUMN_TYPE } from './table-nodes.js';
@@ -168,14 +168,14 @@ export async function readXlsxTable(data: Uint8Array, options: ReadXlsxOptions =
  *  one row per table row, columns in table order. */
 export async function writeXlsxTable(table: Table, sheetName = 'Sheet1'): Promise<Uint8Array> {
   const wb = new (await loadExcelJS()).Workbook();
-  const ws = wb.addWorksheet(sheetName.slice(0, 31) || 'Sheet1');
+  const ws = wb.addWorksheet(sanitizeSheetName(sheetName));
   ws.addRow(table.columns.map((c) => guardSpreadsheetFormula(c.name)));
   for (const row of table.rows) {
     ws.addRow(table.columns.map((c) => {
       const v = row[c.name];
       if (v === null || v === undefined) return null;
       if (typeof v === 'number' || typeof v === 'boolean') return v;
-      return guardSpreadsheetFormula(String(v));
+      return clampXlsxCellText(guardSpreadsheetFormula(String(v)));
     }));
   }
   const buf = await wb.xlsx.writeBuffer();

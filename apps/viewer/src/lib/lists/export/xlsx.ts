@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { CellValue } from '@ifc-lite/lists';
+import { clampXlsxCellText, sanitizeSheetName } from '@ifc-lite/export';
 import { displayCell, neutralizeSpreadsheetFormula, totalsRowCells, type ExportModel, type ExportColumn } from './model';
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -18,14 +19,14 @@ function cellValue(v: CellValue, c: ExportColumn): string | number | null {
   if (c.numeric && typeof v === 'number' && Number.isFinite(v)) return v;
   // String cells derive from attacker-controllable IFC values — neutralize
   // spreadsheet formula injection before Excel treats a leading =/+/-/@ as one.
-  return neutralizeSpreadsheetFormula(displayCell(v));
+  return clampXlsxCellText(neutralizeSpreadsheetFormula(displayCell(v)));
 }
 
 export async function toXlsx(model: ExportModel): Promise<Blob> {
   const ExcelJS = (await import('exceljs')).default;
   const wb = new ExcelJS.Workbook();
   wb.creator = 'IFC-Lite';
-  const ws = wb.addWorksheet((model.title || 'List').slice(0, 31), {
+  const ws = wb.addWorksheet(sanitizeSheetName(model.title || 'List', [], 'List'), {
     views: [{ state: 'frozen', ySplit: 4 }],
   });
 

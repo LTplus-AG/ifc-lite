@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { afterEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Renderer } from '@ifc-lite/renderer';
 import type { Drawing2D } from '@ifc-lite/drawing-2d';
@@ -21,7 +21,7 @@ const state = (over: Partial<State> = {}): State => ({
 });
 
 describe('section drawing settled (#11428)', () => {
-  markSectionCapApplied(drawing); // most cases: the cap effect has applied the drawing on screen
+  beforeEach(() => markSectionCapApplied(drawing)); // the cap effect has applied the drawing on screen
 
   it('is settled when no drawing is wanted, whatever is pending', () => {
     assert.equal(isSectionDrawingSettled(state({ activeTool: 'select', drawing2DStatus: 'generating' }), true), true);
@@ -47,7 +47,6 @@ describe('section drawing settled (#11428)', () => {
     markSectionCapApplied(fresh);
     assert.equal(isSectionDrawingSettled(state({ drawing2D: fresh }), false), true);
     assert.equal(isSectionDrawingSettled(state({ drawing2D: drawing, activeTool: 'select', drawing2DPanelVisible: true }), false), true, 'the panel alone needs no cap');
-    markSectionCapApplied(drawing);
   });
 
   it('counts a floating or popped-out panel as shown', () => {

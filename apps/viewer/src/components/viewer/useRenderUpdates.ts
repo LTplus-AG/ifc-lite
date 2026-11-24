@@ -151,7 +151,7 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
     } else {
       renderer.clearSection2DOverlay();
     }
-    markSectionCapApplied(drawing2D); // the settled signal waits for this (#11428)
+    markSectionCapApplied(drawing2D); // handled (uploaded or cleared): the settled signal waits for this (#11428)
 
     renderer.requestRender();
   }, [drawing2D, drawingIsThisPlanes, activeTool, sectionPlane, isInitialized, coordinateInfo, show3DOverlay, showHiddenLines, geometryHeld]);

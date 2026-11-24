@@ -27,7 +27,11 @@ const capWanted = (s: SectionDrawingState): boolean => s.activeTool === 'section
 const planeKey = (p: Pick<SectionDrawingState['sectionPlane'], 'axis' | 'position' | 'flipped' | 'custom'>): string =>
   JSON.stringify([p.axis, p.position, p.flipped, p.custom]);
 
-/** The drawing the viewport's cap effect last applied (uploaded or cleared) to the renderer (`useRenderUpdates`). */
+/**
+ * The drawing the viewport's cap effect last handled (`useRenderUpdates`): uploaded as the cap, or
+ * cleared because it does not belong on this plane. `undefined` until that effect first runs, which
+ * never equals a drawing, so a cap that is wanted stays unsettled until then.
+ */
 let capApplied: Drawing2D | null | undefined;
 export function markSectionCapApplied(drawing: Drawing2D | null): void { capApplied = drawing; }
 

@@ -6,8 +6,8 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Renderer } from '@ifc-lite/renderer';
 import type { Drawing2D } from '@ifc-lite/drawing-2d';
-import { isSectionDrawingSettled } from './section-drawing-settled';
-import { markActiveDrawingGenerationCompleted, markActiveDrawingGenerationStarted } from './drawing/active-canvas-snapshot';
+import { isDrawingPanelShown, isSectionDrawingSettled, markSectionCapApplied } from './section-drawing-settled';
+import { markActiveDrawingGenerationCompleted, markActiveDrawingGenerationSettled, markActiveDrawingGenerationStarted } from './drawing/active-canvas-snapshot';
 import { clearViewportDebugHooks, installViewportDebugHooks } from './viewport-debug-hooks';
 import { useViewerStore } from '@/store';
 
@@ -15,12 +15,14 @@ type State = Parameters<typeof isSectionDrawingSettled>[0];
 const plane = { axis: 'down', position: 50, enabled: true, flipped: false } as State['sectionPlane'];
 const drawing = {} as Drawing2D;
 const state = (over: Partial<State> = {}): State => ({
-  drawing2DPanelVisible: false, activeTool: 'section',
+  drawing2DPanelVisible: false, floatingPanels: [], poppedOutIds: [], models: new Map(), activeTool: 'section',
   drawing2DDisplayOptions: { show3DOverlay: true } as State['drawing2DDisplayOptions'],
   drawing2DStatus: 'ready', drawing2D: drawing, drawing2DPlane: { axis: 'down', position: 50, flipped: false }, sectionPlane: plane, ...over,
 });
 
 describe('section drawing settled (#11428)', () => {
+  markSectionCapApplied(drawing); // most cases: the cap effect has applied the drawing on screen
+
   it('is settled when no drawing is wanted, whatever is pending', () => {
     assert.equal(isSectionDrawingSettled(state({ activeTool: 'select', drawing2DStatus: 'generating' }), true), true);
     assert.equal(isSectionDrawingSettled(state({ drawing2DDisplayOptions: { show3DOverlay: false } as State['drawing2DDisplayOptions'], drawing2DStatus: 'generating' }), true), true);
@@ -37,6 +39,28 @@ describe('section drawing settled (#11428)', () => {
     assert.equal(isSectionDrawingSettled(state({ sectionPlane: { ...plane, flipped: true } }), false), false);
     assert.equal(isSectionDrawingSettled(state(), false), true, 'the live plane\'s drawing');
     assert.equal(isSectionDrawingSettled(state({ drawing2DPlane: null }), false), true, 'a drawing published without its plane is the live one');
+  });
+
+  it('waits for the cap effect to apply the current drawing', () => {
+    const fresh = {} as Drawing2D;
+    assert.equal(isSectionDrawingSettled(state({ drawing2D: fresh }), false), false, 'landed in the store, cap not uploaded yet');
+    markSectionCapApplied(fresh);
+    assert.equal(isSectionDrawingSettled(state({ drawing2D: fresh }), false), true);
+    assert.equal(isSectionDrawingSettled(state({ drawing2D: drawing, activeTool: 'select', drawing2DPanelVisible: true }), false), true, 'the panel alone needs no cap');
+    markSectionCapApplied(drawing);
+  });
+
+  it('counts a floating or popped-out panel as shown', () => {
+    const none = { drawing2DPanelVisible: false, floatingPanels: [], poppedOutIds: [] } as Parameters<typeof isDrawingPanelShown>[0];
+    assert.equal(isDrawingPanelShown(none), false);
+    assert.equal(isDrawingPanelShown({ ...none, floatingPanels: [{ id: 'drawing' }] as typeof none.floatingPanels }), true);
+    assert.equal(isDrawingPanelShown({ ...none, poppedOutIds: ['drawing'] }), true);
+    assert.equal(isSectionDrawingSettled(state({ activeTool: 'select', poppedOutIds: ['drawing'] }), true), false, 'a popped-out drawing regenerating');
+  });
+
+  it('is settled while geometry is held: generation waits for the restore and the cap is cleared', () => {
+    const models = new Map([['m', { geometryRestorePending: true }]]) as unknown as State['models'];
+    assert.equal(isSectionDrawingSettled(state({ models, drawing2DStatus: 'generating' }), true), true);
   });
 
   it('is settled at idle (nothing to draw) and at error: nothing more will arrive', () => {
@@ -58,10 +82,14 @@ describe('__ifc_lite_scene_settled__ covers the section drawing (#11428)', () =>
       useViewerStore.setState({ activeTool: 'section', sectionPlane: { ...store.sectionPlane, enabled: true } });
       markActiveDrawingGenerationStarted();
       assert.equal(settled(), false, 'a generation is running');
-      useViewerStore.setState({ drawing2D: drawing, drawing2DPlane: null, drawing2DStatus: 'ready' });
-      markActiveDrawingGenerationCompleted(drawing);
-      assert.equal(settled(), true, 'the drawing landed');
+      const landed = {} as Drawing2D;
+      useViewerStore.setState({ drawing2D: landed, drawing2DPlane: null, drawing2DStatus: 'ready' });
+      markActiveDrawingGenerationCompleted(landed);
+      assert.equal(settled(), false, 'the drawing landed, its cap not yet applied');
+      markSectionCapApplied(landed);
+      assert.equal(settled(), true, 'the cap is applied');
     } finally {
+      markActiveDrawingGenerationSettled();
       useViewerStore.setState({ ...previous, drawing2D: null, drawing2DPlane: null, drawing2DStatus: 'idle' });
     }
   });

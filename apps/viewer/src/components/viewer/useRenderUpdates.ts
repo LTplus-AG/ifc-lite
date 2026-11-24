@@ -24,6 +24,7 @@ import { getThemeClearColor } from '../../utils/viewportUtils.js';
 import { rendererOverlayTheme } from '@/lib/viewport-ui/overlay-theme-renderer';
 import { setClashColorsFromTheme } from '@/lib/clash/clash-colors';
 import { isGeometryHeld } from '@/lib/pick-gating';
+import { markSectionCapApplied } from '@/lib/section-drawing-settled';
 import type { ThemeMode } from '@/store/slices/uiSlice';
 
 export interface UseRenderUpdatesParams {
@@ -150,6 +151,7 @@ export function useRenderUpdates(params: UseRenderUpdatesParams): void {
     } else {
       renderer.clearSection2DOverlay();
     }
+    markSectionCapApplied(drawing2D); // the settled signal waits for this (#11428)
 
     renderer.requestRender();
   }, [drawing2D, drawingIsThisPlanes, activeTool, sectionPlane, isInitialized, coordinateInfo, show3DOverlay, showHiddenLines, geometryHeld]);

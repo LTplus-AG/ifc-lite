@@ -15,6 +15,7 @@ import {
   suiteRows, unitInjectable, unitPreloadSource, withNodeImport, writeFlaggedDist,
 } from './flag-qualify-lib.mjs';
 import { decodePng, encodePng, pixelStats } from './flag-qualify-pixels.mjs';
+import * as gpuStage from './flag-qualify-gpu.mjs';
 
 const image = (width, height, fill = [10, 20, 30, 255]) => {
   const data = new Uint8Array(width * height * 4);
@@ -360,5 +361,21 @@ describe('suite results', () => {
     assert.match(md, /\| a\\\|b \| c \| PASS \| x \| e \|/);
     assert.equal(overall([{ verdict: 'skip' }]), 'skip');
     assert.equal(overall([{ verdict: 'pass' }, { verdict: 'error' }]), 'fail');
+  });
+});
+
+describe('section drawing wait', () => {
+  it('waits out a stale ready and a later generation, then needs ready to hold', async () => {
+    const { WAIT_SECTION_DRAWING } = gpuStage;
+    assert.equal(typeof WAIT_SECTION_DRAWING, 'function', 'the section steps wait for the cut drawing');
+    const start = performance.now();
+    const status = (t) => (t < 100 ? 'ready' : t < 300 ? 'generating' : 'ready'); // stale ready, a generation, its result
+    globalThis.__ifc_lite_viewer_store__ = { getState: () => ({ drawing2DStatus: status(performance.now() - start) }) };
+    try {
+      assert.equal(await WAIT_SECTION_DRAWING({ holdMs: 200, pollMs: 10 }), 'ready');
+      assert.ok(performance.now() - start >= 300 + 200, 'resolved only after the final ready held');
+      globalThis.__ifc_lite_viewer_store__ = { getState: () => ({ drawing2DStatus: 'generating' }) };
+      assert.equal(await WAIT_SECTION_DRAWING({ holdMs: 50, timeoutMs: 100, pollMs: 10 }), 'timeout (generating)');
+    } finally { delete globalThis.__ifc_lite_viewer_store__; }
   });
 });

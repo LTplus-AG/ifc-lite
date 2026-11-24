@@ -221,8 +221,8 @@ export function compareArms(off, on, { pixelMaxPct = 0.1, threshold = 8, readFil
     const clean = (f) => f.idle !== false && f.stable;
     const settled = clean(a.frame) && clean(b.frame);
     const unstable = settled ? '' : '; a capture was not idle or its readbacks differed';
-    // Main can render a step in more than one state between loads (a coplanar tie that the
-    // load-order-dependent frame origin decides): flags on matching ANY flags-off load is one of
+    // Main can render a step in more than one state between loads (e.g. the synthetic campus's
+    // first-batch frame origin shifts f32 rounding): flags on matching ANY flags-off load is one of
     // main's own states. Only a load whose run and step completed with a settled capture counts.
     const extra = noise.map((arm, i) => ({ arm, load: i + 2, f: arm.steps?.[id]?.frame }))
       .filter(({ arm, f }) => arm.load?.ok && !arm.errors?.length && arm.steps?.[id]?.ok === true && f && clean(f)); // a missing step is never clean

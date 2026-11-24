@@ -1203,10 +1203,11 @@ describe('storey rule reach — what location="Level 3" resolves to (#4091, #409
       'AND',
     );
     // IfcOpenShell example 17: a pump inside a space on Level 3 answers
-    // location="Level 3". The parser still records no storey for the pump
-    // itself - the widening is a filter-local hop through its space.
+    // location="Level 3". The parser now maps an element contained in a space
+    // to the space's storey too, so the filter-local hop is no longer the only
+    // route (#11468).
     assert.deepStrictEqual(out.map((e) => e.expressId), [PUMP_IN_SPACE]);
-    assert.strictEqual(store.spatialHierarchy?.elementToStorey.get(PUMP_IN_SPACE), undefined);
+    assert.strictEqual(store.spatialHierarchy?.elementToStorey.get(PUMP_IN_SPACE), STOREY_LEVEL_3);
   });
 
   it('MEASURED: the space itself IS mapped to its storey', async () => {

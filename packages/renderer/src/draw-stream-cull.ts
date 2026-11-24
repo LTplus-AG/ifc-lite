@@ -5,28 +5,49 @@
 /** Per-frame node culling, HLOD proxy selection and the optional draw budget of the draw stream. */
 import type { HlodNode, HlodTree } from './draw-stream-hlod.js';
 import type { HlodLinks } from './draw-stream-nodes.js';
-import { aabbDist2, pxPerMetre, type StreamFrameInputs, type StreamFrameStats, type StreamItem, type StreamNode } from './draw-stream-types.js';
-
-function dist2(min: readonly number[], max: readonly number[], eye: { x: number; y: number; z: number }): number {
-  const cx = (min[0]! + max[0]!) / 2 - eye.x, cy = (min[1]! + max[1]!) / 2 - eye.y, cz = (min[2]! + max[2]!) / 2 - eye.z;
-  return cx * cx + cy * cy + cz * cz;
-}
+import type { BatchedMesh } from './types.js';
+import { aabbDist2, pxPerMetre, type StreamFrameInputs, type StreamFrameStats, type StreamItem, type StreamNode, MemberPick } from './draw-stream-types.js';
 
 /**
  * The nodes to draw this frame: frustum- and contribution-culled leaves, and
  * where a clean HLOD node's error projects below `hlodPx`, its proxy instead
  * of the subtree.
  */
-export function collectStreamItems(f: StreamFrameInputs, nodes: readonly StreamNode[], h: HlodTree | null, links: HlodLinks, hlodPx: number): StreamItem[] {
+/**
+ * Each member's draw from its OWN projected size, exactly as the per-batch
+ * loop decides a batch (contribution cull, then LOD1 below `lodPx`): a node
+ * spans a whole chunk cell, so judging it by its own size drew small members
+ * at full detail that the loop draws simplified or not at all (#11370
+ * qualification: slab edges, glazing). Returns the members' common pick, or
+ * one pick per member when they differ.
+ */
+export function memberPicks(f: StreamFrameInputs, node: StreamNode, members: readonly BatchedMesh[]): MemberPick | Uint8Array {
+  if (!(f.contribPx > 0) && !(f.lodPx > 0)) return MemberPick.Lod0;
+  const picks = new Uint8Array(node.members.length);
+  let common = -1, mixed = false;
+  for (let k = 0; k < picks.length; k++) {
+    const b = members[node.members[k]!]!, px = b.bounds ? f.projectedPx(b.bounds.min, b.bounds.max) : Infinity;
+    const s = f.contribPx > 0 && px < f.contribPx ? MemberPick.Cull
+      : !(b.lod1IndexBuffer && b.lod1IndexCount) ? MemberPick.AnyLod : f.lodPx > 0 && px < f.lodPx ? MemberPick.Lod1 : MemberPick.Lod0;
+    picks[k] = s;
+    if (s === MemberPick.AnyLod) continue;
+    if (common < 0) common = s; else if (s !== common) mixed = true;
+  }
+  return mixed ? picks : common < 0 ? MemberPick.Lod0 : common as MemberPick;
+}
+
+export function collectStreamItems(f: StreamFrameInputs, nodes: readonly StreamNode[], h: HlodTree | null, links: HlodLinks, hlodPx: number,
+  members: readonly BatchedMesh[]): StreamItem[] {
   const items: StreamItem[] = [];
   const visited = new Set<StreamNode>(); // a leaf spanning several HLOD nodes is reached once per node
   const visitLeaf = (node: StreamNode): void => {
     if (visited.has(node)) return;
     visited.add(node);
     if (!f.visible(node.min, node.max)) return;
-    const px = f.projectedPx(node.min, node.max);
-    if (f.contribPx > 0 && px < f.contribPx) return;
-    items.push({ leaf: node, lod1: f.lodPx > 0 && px < f.lodPx, d: dist2(node.min, node.max, f.eye), px });
+    const pick = memberPicks(f, node, members);
+    if (pick === MemberPick.Cull) return;
+    const item = { leaf: node, lod1: pick === MemberPick.Lod1, d: aabbDist2(node.min, node.max, f.eye), px: f.projectedPx(node.min, node.max) };
+    items.push(typeof pick === 'number' ? item : { ...item, picks: pick });
   };
   if (!h || !h.roots.length) {
     for (const leaf of nodes) visitLeaf(leaf);

@@ -107,6 +107,8 @@ function writeFacet(xml: XmlLines, facet: IDSFacet, cardinality: string | undefi
       xml.close('property');
       return;
     case 'classification':
+      // `ids.xsd` makes the classification's children a choice of at least one: an empty facet is not schema-valid.
+      if (!facet.value && !facet.system) throw new Error('writeIdsXml: a classification facet needs a value or a system');
       xml.open('classification', { cardinality, instructions, uri: facet.uri });
       if (facet.value) writeConstraint(xml, 'value', facet.value);
       if (facet.system) writeConstraint(xml, 'system', facet.system);
@@ -138,6 +140,15 @@ function writeFacet(xml: XmlLines, facet: IDSFacet, cardinality: string | undefi
 }
 
 function writeRequirement(xml: XmlLines, requirement: IDSRequirement): void {
+  // Neither has an XML home for the other cardinalities: an entity facet carries no `cardinality`
+  // (a prohibited one would be read back as required), and `ids.xsd` limits a partOf's to required/prohibited.
+  const { facet, optionality } = requirement;
+  if (facet.type === 'entity' && optionality !== 'required') {
+    throw new Error(`writeIdsXml: an entity requirement cannot be ${optionality}; IDS 1.0 has no cardinality on it`);
+  }
+  if (facet.type === 'partOf' && optionality === 'optional') {
+    throw new Error('writeIdsXml: a partOf requirement cannot be optional; ids.xsd allows only required or prohibited there');
+  }
   // IDS 1.0 has no cardinality on an entity facet inside requirements.
   const cardinality = requirement.facet.type === 'entity' ? undefined : requirement.optionality;
   writeFacet(xml, requirement.facet, cardinality, 'requirement', requirement.instructions);

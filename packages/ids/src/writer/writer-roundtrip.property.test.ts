@@ -124,7 +124,11 @@ function facet(g: Gen, kind: IDSFacet['type']): IDSFacet {
       dataType: g.maybe(() => ({ type: 'simpleValue', value: g.pick(['IFCLABEL', 'IFCREAL', 'IFCBOOLEAN', 'IFCLENGTHMEASURE']) })),
       value: g.maybe(() => constraint(g)),
     };
-    case 'classification': return { type: 'classification', system: g.maybe(() => constraint(g)), value: g.maybe(() => constraint(g)) };
+    case 'classification': {
+      // ids.xsd needs a value or a system (the writer refuses neither).
+      const system = g.maybe(() => constraint(g));
+      return { type: 'classification', system, value: system && g.bool() ? undefined : constraint(g) };
+    }
     case 'material': return { type: 'material', value: g.maybe(() => constraint(g)) };
     case 'partOf': return { type: 'partOf', relation: g.pick(RELATIONS), entity: entity(g) };
   }
@@ -141,7 +145,8 @@ function specification(g: Gen, index: number): IDSSpecification {
   const requirements: IDSRequirement[] = g.list(0, 4, () => g.pick(KINDS)).map((kind, i) => ({
     id: `req-${i}`,
     facet: facet(g, kind),
-    optionality: kind === 'entity' ? 'required' : g.pick(['required', 'optional', 'prohibited'] as const),
+    // Entity has no cardinality in IDS 1.0 and partOf allows required|prohibited only (the writer refuses the rest).
+    optionality: kind === 'entity' ? 'required' : g.pick(kind === 'partOf' ? ['required', 'prohibited'] as const : ['required', 'optional', 'prohibited'] as const),
     instructions: g.maybe(() => nonEmpty(g), 0.3),
   }));
   return {

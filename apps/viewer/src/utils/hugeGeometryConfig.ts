@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { getPerfFlagDefinition, readPerfFlag, resolvePerfFlag, type PerfFlagId } from '../lib/perf/flags.js';
+import { getPerfFlagDefinition, readPerfFlag, recordAppliedPerfFlag, resolvePerfFlag, type PerfFlagId } from '../lib/perf/flags.js';
 
 /** A boolean perf flag as globals, URL params and PostHog spell it. */
 export function isPerfFlagOn(raw: unknown): boolean {
@@ -31,4 +31,14 @@ export function isHugeGeometryEnabled(): boolean {
  */
 export function readRampFlag(id: PerfFlagId, umbrellaOn: boolean, readFeatureFlag?: (key: string) => unknown): unknown {
   return resolvePerfFlag(getPerfFlagDefinition(id), umbrellaOn ? () => undefined : readFeatureFlag);
+}
+
+/**
+ * The renderer that applied the read-once render paths is gone (Viewport
+ * teardown): forget what it applied, so telemetry stops reporting a dead
+ * session's arms. The next renderer records its own again.
+ */
+export function forgetAppliedRenderPaths(): void {
+  recordAppliedPerfFlag('drawStream', undefined);
+  recordAppliedPerfFlag('gpuInstancing', undefined);
 }

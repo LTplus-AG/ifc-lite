@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { configureDrawStream, getDrawStreamConfig, HUGE_GEOMETRY_DRAW_STREAM } from './drawStreamConfig.js';
 import { configureGpuInstancing, isGpuInstancingEnabled } from './gpuInstancingConfig.js';
 import { activePerfFlags, recordAppliedPerfFlag } from '../lib/perf/flags.js';
-import { isHugeGeometryEnabled } from './hugeGeometryConfig.js';
+import { forgetAppliedRenderPaths, isHugeGeometryEnabled } from './hugeGeometryConfig.js';
 
 const g = globalThis as Record<string, unknown>;
 
@@ -97,6 +97,17 @@ describe('telemetry arms report what the renderer applied', () => {
     setSearch('?perf.gpuInstancing=1');
     configureGpuInstancing({ setGpuInstancing: () => false });
     assert.equal(activePerfFlags().gpuInstancing, undefined);
+  });
+
+  it('forgets a torn-down renderer\'s paths, so a dead session\'s arm is not reported', () => {
+    setSearch('?perf.huge=1');
+    console.log = () => {};
+    try { configureDrawStream(renderer); configureGpuInstancing(renderer); } finally { console.log = log; }
+    setSearch('');
+    assert.equal(activePerfFlags().drawStream, 'true', 'still the applied value while the renderer lives');
+    forgetAppliedRenderPaths(); // Viewport teardown
+    const arms = activePerfFlags();
+    assert.deepEqual([arms.drawStream, arms.gpuInstancing], [undefined, undefined]);
   });
 
   it('keeps the umbrella for an unrecognised explicit value', () => {

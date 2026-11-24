@@ -39,9 +39,12 @@ export interface SanitizeFilenameOptions {
  * are trimmed off the ends). `fallback` is returned verbatim when the result is
  * empty, so pass a clean token like `'list'` / `'model'`.
  */
-const WINDOWS_RESERVED_STEM = /^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/i;
+const WINDOWS_RESERVED_STEM = /^(?:con|prn|aux|nul|com[0-9\u00B9\u00B2\u00B3]|lpt[0-9\u00B9\u00B2\u00B3])(?:\.|$)/i;
 
-export function sanitizeFilename(name: string, options: SanitizeFilenameOptions = {}): string {
+export function sanitizeFilename(
+  name: string,
+  options: SanitizeFilenameOptions & { reservedStem?: boolean } = {},
+): string {
   const fallback = options.fallback ?? 'file';
   const maxLength = options.maxLength ?? 60;
   const cleaned = (name || fallback)
@@ -49,13 +52,22 @@ export function sanitizeFilename(name: string, options: SanitizeFilenameOptions 
     // Keep letters (any case/script), digits, dot, underscore, space and hyphen;
     // replace anything else (path separators, reserved chars, controls) with '-'.
     .replace(/[^\p{L}\p{N}._ -]+/gu, '-')
-    .replace(/^[\s.-]+|[\s.-]+$/g, '') // trim leading/trailing space, dot or hyphen
-    .slice(0, maxLength)
-    .replace(/[\uD800-\uDBFF]$/, '') // slice() counts UTF-16 units: drop a cut-in-half surrogate pair
-    .replace(/[\s.-]+$/, ''); // re-trim in case slice() left a trailing separator
+    .replace(/^[\s.-]+|[\s.-]+$/g, ''); // trim leading/trailing space, dot or hyphen
+  const fit = (limit: number): string =>
+    cleaned
+      .slice(0, limit)
+      .replace(/[\uD800-\uDBFF]$/, '') // slice() counts UTF-16 units: drop a cut-in-half surrogate pair
+      .replace(/[\s.-]+$/, ''); // re-trim in case slice() left a trailing separator
+  const sliced = fit(maxLength);
+  if (!sliced) return fallback;
   // Windows refuses `CON`, `NUL`, `COM1`... as a file stem whatever the extension
-  // (`CON.pdf` too), so a model named for one gets a leading underscore.
-  return cleaned ? (WINDOWS_RESERVED_STEM.test(cleaned) ? `_${cleaned}` : cleaned) : fallback;
+  // (`CON.pdf` too), so a model named for one gets a leading underscore. The
+  // prefix counts against `maxLength`: re-fit one character shorter first. An
+  // extension is not a stem, so callers sanitising one pass `reservedStem: false`.
+  if (options.reservedStem !== false && WINDOWS_RESERVED_STEM.test(sliced)) {
+    return `_${fit(maxLength - 1)}`;
+  }
+  return sliced;
 }
 
 /** No real file extension is longer than this; caps a pathological input. */
@@ -108,7 +120,7 @@ export function buildExportFilename(
   // Reserve at least 1 char for the stem: cap the extension's own budget
   // below maxLength so stemBudget below is never zero-or-negative.
   const extBudget = Math.min(EXTENSION_MAX_LENGTH, Math.max(1, maxLength - 1));
-  const sanitizedExt = `.${sanitizeFilename(ext.slice(1), { fallback: 'dat', maxLength: extBudget })}`;
+  const sanitizedExt = `.${sanitizeFilename(ext.slice(1), { fallback: 'dat', maxLength: extBudget, reservedStem: false })}`;
   const stemBudget = Math.max(1, maxLength - sanitizedExt.length);
   const stem = sanitizeFilename(baseName, { maxLength: stemBudget });
   return `${stem}${sanitizedExt}`;

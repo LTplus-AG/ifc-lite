@@ -174,3 +174,34 @@ describe('modelExportFilename', () => {
     assert.ok(result.length <= 60, `${result} is ${result.length} chars`);
   });
 });
+
+describe('reserved-name prefix stays inside the length cap (#11442)', () => {
+  it('sanitizeFilename never exceeds maxLength once the prefix is added', () => {
+    assert.strictEqual(sanitizeFilename('CON', { maxLength: 3 }), '_CO');
+    const out = sanitizeFilename(`CON.${'x'.repeat(100)}`);
+    assert.ok(out.length <= 60 && out.startsWith('_CON.'), `${out} is ${out.length}`);
+  });
+
+  it('buildExportFilename keeps the whole name within the cap', () => {
+    const out = buildExportFilename(`CON.${'x'.repeat(100)}`, 'csv');
+    assert.ok(out.length <= 60 && out.endsWith('.csv'), `${out} is ${out.length}`);
+  });
+
+  it('modelExportFilename keeps the full suffix', () => {
+    const out = modelExportFilename(`NUL.${'y'.repeat(100)}.ifc`, 'glb', '_visible');
+    assert.ok(out.endsWith('_visible.glb'), out);
+    assert.ok(out.length <= 60, `${out} is ${out.length}`);
+    assert.ok(out.startsWith('_NUL.'), out);
+  });
+
+  it('never prefixes an extension, only the stem', () => {
+    assert.strictEqual(buildExportFilename('x', 'prn'), 'x.prn');
+    assert.strictEqual(buildExportFilename('report', '.CON'), 'report.CON');
+  });
+
+  it('treats superscript-digit COM/LPT names as reserved', () => {
+    for (const n of ['COM¹', 'COM²', 'COM³', 'LPT¹', 'LPT²', 'LPT³']) {
+      assert.strictEqual(sanitizeFilename(n), `_${n}`);
+    }
+  });
+});

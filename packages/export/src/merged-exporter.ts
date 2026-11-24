@@ -1215,7 +1215,7 @@ export class MergedExporter {
       const converted = convertStepLine(finalText, sourceSchema, targetSchema, undefined, slotFill, undefined, ifc4Slots, enums,
         remapIds ? Number.MAX_SAFE_INTEGER : undefined);
       if (converted === null) {
-        if (enums.materials.leftOut(localId + offset)) return null; // a material record not written (#10763)
+        if (enums.materials.leftOut(localId + offset) || enums.boundaries.leftOut(localId + offset)) return null; // a material record (#10763) or space boundary not written
         throw new Error(`Internal error: schema conversion of #${localId + offset}=${entityRef.type} returned null with no withheldRefIds supplied.`);
       }
       finalText = converted;

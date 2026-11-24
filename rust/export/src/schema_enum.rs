@@ -195,6 +195,8 @@ pub(crate) struct ConversionChecks {
     pub(crate) forms: crate::schema_value_forms::ValueForms,
     /// The IfcMaterial a downgraded IfcMaterialProperties names (#10763).
     pub(crate) materials: crate::schema_material_referent::MaterialReferents,
+    /// The IfcRelSpaceBoundary records an IFC2X3 upgrade leaves out for want of their element.
+    pub(crate) boundaries: crate::schema_space_boundary::SpaceBoundaryElements,
     pub(crate) typed_properties: crate::schema_typed_properties::TypedPropertyUpgrade,
     /// `convert_record`'s per-type decisions, resolved once per distinct type.
     pub(crate) plans: crate::schema_plan::PlanCache,
@@ -216,6 +218,7 @@ impl ConversionChecks {
             documents: Default::default(),
             forms: Default::default(),
             materials,
+            boundaries: Default::default(),
             upgrade_omissions: Vec::new(),
             typed_properties: Default::default(),
             plans: Default::default(),
@@ -341,6 +344,7 @@ impl ConversionChecks {
         out.extend(self.documents.warnings());
         out.extend(self.forms.warnings());
         out.extend(self.materials.warnings());
+        out.extend(self.boundaries.warnings());
         out.extend(self.structural.warnings());
         out.extend(self.plans.warnings());
         out.extend(self.upgrade_omissions.iter().cloned());

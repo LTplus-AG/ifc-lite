@@ -2443,7 +2443,7 @@ export class Renderer {
                         pass.drawIndexed(batch.lod1IndexCount!);
                         frameBatchesAtLod1++;
                     } else {
-                        pass.setIndexBuffer(batch.indexBuffer, 'uint32');
+                        pass.setIndexBuffer(batch.indexBuffer, batch.indexFormat ?? 'uint32');
                         pass.drawIndexed(batch.indexCount);
                     }
                     frameDrawCalls++;

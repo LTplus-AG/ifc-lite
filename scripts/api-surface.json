@@ -7101,6 +7101,25 @@
     "resolveSpatialPlacement: function",
     "terrainRefusalReason: function"
   ],
+  "@ifc-lite/geometry/compact": [
+    "COMPACT_CELL_METRES: const",
+    "COMPACT_RECORD_BYTES: const",
+    "CompactPayload: interface",
+    "CompactRef: interface",
+    "adoptCompactMeshes: function",
+    "compactBounds: function",
+    "compactHydrationStats: function",
+    "compactRow: function",
+    "compactStep: function",
+    "copyMeshShell: function",
+    "isCompactCellSize: function",
+    "loadCompactGeometry: function",
+    "materializeCompactMesh: function",
+    "materializeCompactMeshes: function",
+    "meshTriangleCount: function",
+    "meshVertexCount: function",
+    "visitCompactPayload: function"
+  ],
   "@ifc-lite/geometry/geometry-class": [
     "GEOM_CLASS_INSTANCED_TYPE: const",
     "GEOM_CLASS_LAYER_SLICE: const",
@@ -10207,6 +10226,7 @@
     "isEntityVisible: function",
     "isNegativeDelta: function",
     "isRenderablePointCloud: function",
+    "loadCompactPages: function",
     "lodCellSizeForBounds: function",
     "materializeShardOccurrences: function",
     "nearestCardinalAxis: function",

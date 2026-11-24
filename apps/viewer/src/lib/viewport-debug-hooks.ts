@@ -5,6 +5,7 @@ import { readPerfFlag } from './perf/flags.js';
 import { sceneIdentityEnabled, tappedSceneSnapshots, resetSceneIdentityTap } from './perf/sceneIdentityTap.js';
 import { appearanceSourceTriangle, MathUtils, type Renderer } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
+import { compactHydrationStats } from '@ifc-lite/geometry/compact';
 import { getPointCloudScanSample } from '@/hooks/ingest/pointCloudScanCache';
 import { activeVisibilityReasons } from '@/lib/visibility/visibility-reasons';
 import { useViewerStore } from '@/store';
@@ -134,6 +135,11 @@ export function installViewportDebugHooks(
   }
   // Constant-time read of the renderer-owned snapshot; no scene collection walks.
   host.__ifc_lite_render_frame__ = () => renderer.getFrameStats();
+  // `?compactGeom`: pages drawn, and how many compact meshes something decoded back to f32 (0 after a plain load).
+  host.__ifc_lite_compact_stats__ = () => ({
+    pages: renderer.getScene().getBatchedMeshes().filter((batch) => batch.indexFormat === 'uint16').length,
+    decoded: compactHydrationStats(),
+  });
   // Constant-time: the viewer's own settled rule (store not streaming, no pending shards, no queued meshes,
   // no streaming fragments, no finalize running). The load scoreboard gates its interactive mark on it.
   host.__ifc_lite_scene_settled__ = () => isSceneSettled();
@@ -266,6 +272,7 @@ export function clearViewportDebugHooks(): void {
   const host = globalThis as Record<string, unknown>;
   setSourceSegmentScreenProbe(null);
   delete host.__ifc_lite_render_frame__;
+  delete host.__ifc_lite_compact_stats__;
   delete host.__ifc_lite_scene_settled__;
   delete host.__ifc_lite_render_stats__;
   delete host.__ifc_lite_scene_identity__;

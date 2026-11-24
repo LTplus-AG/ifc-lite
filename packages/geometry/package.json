@@ -11,6 +11,11 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./compact": {
+      "types": "./dist/compact.d.ts",
+      "import": "./dist/compact.js",
+      "default": "./dist/compact.js"
+    },
     "./geometry-class": {
       "types": "./dist/geometry-class.d.ts",
       "import": "./dist/geometry-class.js",

@@ -18,6 +18,7 @@ export interface ShadowOccluderDraw {
   visibilityFiltered?: boolean;
   vertexBuffer: GPUBuffer;
   indexBuffer: GPUBuffer;
+  indexFormat?: GPUIndexFormat;
   indexCount: number;
   /** Linear model; source translation is carried by `origin`. */
   model?: Float32Array;

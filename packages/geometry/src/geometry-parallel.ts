@@ -27,7 +27,7 @@
 import type { ProcessParallelOptions } from './geometry-parallel-options.js';
 import { postGeometryWorkerInit, spawnGeometryWorker } from './geometry-worker-init.js';
 import type { CoordinateHandler } from './coordinate-handler.js';
-import type { MeshData } from './types.js'; import { unpackFlatBatch } from './flat-batch-pack.js';
+import type { MeshData } from './types.js'; import { unpackBatchMeshes, processBatchBounds } from './worker-batch-meshes.js';
 import type { ByteStreamingPrePassResult } from './byte-streaming-prepass-result.js';
 import type { StreamingGeometryEvent } from './index.js';
 import { mergeGeometryDiagnostics, type GeometryDiagnostics } from './diagnostics.js';
@@ -377,7 +377,7 @@ export async function* processParallel(
         // typed-array types, so re-mapping every mesh here only re-allocated
         // ~one wrapper object per mesh (~110k per large load) on the main
         // thread. Pass the transferred objects straight through.
-        const meshes: MeshData[] = unpackFlatBatch(msg.meshes as MeshData[], msg.flatVertices);
+        const meshes: MeshData[] = unpackBatchMeshes(msg);
         // Opaque repeated occurrences render only through per-batch IFNS shards;
         // include them in the running total even though they are not flat meshes.
         const instancedShards = (msg as { instancedShards?: ArrayBuffer[] }).instancedShards;
@@ -411,7 +411,7 @@ export async function* processParallel(
           }
           if (meshes.length > 0) {
             totalMeshes += meshes.length;
-            coordinator.processMeshesIncremental(meshes);
+            processBatchBounds(coordinator, meshes);
           }
           // Count rendered instanced occurrences omitted from the flat array.
           totalMeshes += instancedOccurrences;

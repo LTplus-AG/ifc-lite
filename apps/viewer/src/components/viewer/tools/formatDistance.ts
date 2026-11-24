@@ -102,11 +102,14 @@ export function formatSignedTriple(
   p: { x: number; y: number; z: number },
   overrides: Record<string, string> = {},
 ): string {
+  const zero = formatDistanceMagnitude(0, overrides);
   const axis = (n: number) => {
-    const magnitude = formatDistanceMagnitude(n, overrides);
-    // A negative value already carries its own '-' from the formatter, so only
-    // the positive direction needs one added.
-    return n > 0 ? `+${magnitude}` : magnitude;
+    const magnitude = formatDistanceMagnitude(Math.abs(n), overrides);
+    // The sign follows what is PRINTED, not the raw value: an axis that rounds
+    // to zero reads as zero, never `-0` or `+0` (a sign on nothing claims a
+    // direction). Comparing against the formatted zero keeps this locale-safe.
+    if (magnitude === zero || n === 0 || Number.isNaN(n)) return magnitude;
+    return n > 0 ? `+${magnitude}` : `-${magnitude}`;
   };
   return `ΔX ${axis(p.x)}  ΔY ${axis(p.y)}  ΔZ ${axis(p.z)}`;
 }

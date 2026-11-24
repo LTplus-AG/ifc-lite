@@ -172,6 +172,8 @@ describe('ruleSetToIds — refuses each unmappable kind with its own reason (#52
     ['parent', rule([Rule.parent('eq', 'Level 1')]), /ancestor matched by name/],
     ['group', rule([{ kind: 'group', groupClass: 'IfcSystem', op: 'isSet', value: '' }]), /group membership .* has no IDS facet/],
     ['classification value', rule([Rule.classification('Uniclass', 'eq', 'Ss_25')]), /code OR a name/],
+    ['classification with no system (#11461)', rule([Rule.classification('', 'isSet', '')]), /no system .* has no IDS facet/],
+    ['classification with a blank system (#11461)', rule([Rule.classification('  ', 'isSet', '')]), /no system .* has no IDS facet/],
     ['JS-only regex', rule([Rule.name('matches', '(?<=a)b', 'regex')]), /groups starting "\(\?"/],
     ['case-insensitive regex flag', rule([Rule.name('matches', '/wall/i')]), /"i" flag/],
     ['class requirement', rule([Rule.ifcType(['IfcWall'])]), /IFC class requirement has no exact-class form/],

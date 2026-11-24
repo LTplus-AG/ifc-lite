@@ -13,8 +13,10 @@ use super::super::geom::{
     bounds_are_the_box, bounds_are_the_box_in_frame, is_axis_aligned_direction, mesh_to_frame,
     project_aabb_in_frame, rotate_mesh_from_frame, wall_frame_from_depth,
 };
-use super::super::local_frame::{host_thickness_wall_frame, vertical_depth_wall_frame};
-use super::super::{CutterKind, VoidContext, WALL_NORMAL_DEPTH_COS};
+use super::super::local_frame::{
+    dominant_horizontal_normal, host_thickness_wall_frame, vertical_depth_wall_frame,
+};
+use super::super::{CutterKind, VoidContext, NORMALIZE_EPSILON, WALL_NORMAL_DEPTH_COS};
 use crate::mesh_check::triangle_shape;
 use crate::program::openings::execute::Execution;
 use crate::{GeometryRouter, Mesh, Point3, Vector3};
@@ -170,12 +172,27 @@ impl Execution {
         // genuinely rotated, ~horizontal axis. Axis-aligned walls find none and
         // keep their (unchanged) world path. A box within `cos(1°)` of the axes
         // whose bounds are not the box was classified diagonal for that
-        // reason (#11321); its wall is rotated too, so it seeds the frame.
+        // reason (#11321). It seeds the frame only when the host is turned
+        // with it: the host must sit closer to the axes of the box's frame
+        // than to the world's. A box turned in a wall on the axes would
+        // otherwise turn the wall off them, and its recess would no longer
+        // start on the face it was authored on.
+        let host_normal = std::cell::OnceCell::new();
+        let host_turned_with = |depth: &Vector3<f64>| {
+            let normal = host_normal.get_or_init(|| {
+                dominant_horizontal_normal(mesh).and_then(|n| n.try_normalize(NORMALIZE_EPSILON))
+            });
+            match (normal, depth.try_normalize(NORMALIZE_EPSILON)) {
+                (Some(normal), Some(depth)) => normal.cross(&depth).norm() < off_axis(normal),
+                _ => false,
+            }
+        };
         let rotated_depth = |op: &CutterKind| {
             let depth = op.cutter().depth()?;
-            let near_axis_box = matches!(op, CutterKind::DiagonalRectangular(mesh, frame)
+            let near_axis_box = || matches!(op, CutterKind::DiagonalRectangular(mesh, frame)
                 if frame.is_axis_aligned() && !bounds_are_the_box(mesh));
-            (!is_axis_aligned_direction(&depth) || near_axis_box).then_some(depth)
+            (!is_axis_aligned_direction(&depth) || (near_axis_box() && host_turned_with(&depth)))
+                .then_some(depth)
         };
         let horizontal_axes = ctx
             .merged_openings
@@ -196,6 +213,15 @@ impl Execution {
         }
         Some(axes)
     }
+}
+
+/// The sine of the angle between the unit `dir` and its nearest world axis:
+/// the norm of its two other components, exact for the tiny turns that
+/// `1 - max²` would cancel away.
+fn off_axis(dir: &Vector3<f64>) -> f64 {
+    let a = dir.abs();
+    let nearest = if a.x >= a.y && a.x >= a.z { 0 } else if a.y >= a.z { 1 } else { 2 };
+    (0..3).filter(|&k| k != nearest).map(|k| dir[k] * dir[k]).sum::<f64>().sqrt()
 }
 
 /// The merged openings re-expressed in the wall frame `axes` around `center`,

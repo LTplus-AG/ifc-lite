@@ -347,3 +347,104 @@ fn recess_turned_in_the_wall_frame_cuts_only_its_box_on_the_exact_route() {
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+/// Turns the recess of `wall_with_finish` by `phi` degrees in plan about
+/// the vertical through its placement point, in a wall that stays on the axes.
+fn wall_with_turned_recess(phi: f64, recess: Recess, length: f64) -> String {
+    let (sin, cos) = phi.to_radians().sin_cos();
+    let (axis, depth) = match recess {
+        Recess::FromInterface => ("#15", format!("({:?},{cos:?},0.)", -sin)),
+        Recess::ToInterfaceAtTop => ("#16", format!("({sin:?},{:?},0.)", -cos)),
+    };
+    let authored = format!("#111=IFCAXIS2PLACEMENT3D(#110,{axis},#17);");
+    let content = split_wall::wall_with_finish([0.0; 2], 0.0, 2.274, recess, length);
+    assert!(content.contains(&authored));
+    content.replace(
+        &authored,
+        &format!(
+            "#140=IFCDIRECTION({depth});#141=IFCDIRECTION(({cos:?},{sin:?},0.));\
+             #111=IFCAXIS2PLACEMENT3D(#110,#140,#141);"
+        ),
+    )
+}
+
+/// The finish the turned recess of [`wall_with_turned_recess`] removes, in
+/// m³: its 1 m by 12 mm plan section clipped to the finish at y in
+/// [0.2, 0.212], over its 1 m height. The finish runs past the recess.
+fn turned_recess_removed_finish(phi: f64, recess: Recess) -> f64 {
+    let (sin, cos) = phi.to_radians().sin_cos();
+    // y = y0 + u sin + sense v cos for u in [0, 1] along the face, v in
+    // [0, 0.012] along the depth.
+    let (y0, sense) = match recess {
+        Recess::FromInterface => (0.2, 1.0),
+        Recess::ToInterfaceAtTop => (0.212, -1.0),
+    };
+    const STEPS: usize = 20_000;
+    (0..STEPS)
+        .map(|step| {
+            let u = (step as f64 + 0.5) / STEPS as f64;
+            // The v at which y reaches each finish face.
+            let a = (0.2 - y0 - u * sin) / (sense * cos);
+            let b = (0.212 - y0 - u * sin) / (sense * cos);
+            (a.max(b).min(0.012) - a.min(b).max(0.0)).max(0.0)
+        })
+        .sum::<f64>()
+        / STEPS as f64
+}
+
+fn turned_recess_in_a_straight_wall_failures() -> Vec<String> {
+    let mut failures = Vec::new();
+    for phi in [0.0005, 0.001, 0.002, 0.1, 0.5, 0.9] {
+        for recess in [Recess::FromInterface, Recess::ToInterfaceAtTop] {
+            for length in [1.0, 4.0] {
+                let content = wall_with_turned_recess(phi, recess, length);
+                let (mesh, _) = fixture_host(&content, false);
+                let exact = if length == 4.0 {
+                    4.0 * 3.0 * 0.2 + length * 3.0 * 0.012 - turned_recess_removed_finish(phi, recess)
+                } else {
+                    // The finish ends where the recess starts.
+                    finish_wall_volume(length)
+                };
+                let delta = (mesh_volume(&mesh) - exact) * 1000.0;
+                if delta.abs() > 1.1 {
+                    failures.push(format!("{phi}° {recess:?} finish {length} m: {delta:+.3} L"));
+                }
+            }
+        }
+    }
+    failures
+}
+
+/// #11321 review: in an axis-aligned wall a recess turned a fraction of a
+/// degree in plan seeded the wall frame from its own axes. The wall was then
+/// off-axis in that frame, the recess no longer started on the finish face,
+/// and it was extended through the core (about 200 L).
+#[test]
+fn recess_turned_in_a_straight_wall_keeps_the_core() {
+    let failures = turned_recess_in_a_straight_wall_failures();
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// #11321 review: the same on the exact route, where every turn from
+/// 0.002° to 0.9° cut through the core.
+#[test]
+fn recess_turned_in_a_straight_wall_keeps_the_core_on_the_exact_route() {
+    use std::process::Command;
+    const PROBE: &str = "IFCLITE_PROBE_TURNED_RECESS_STRAIGHT_WALL";
+    if std::env::var_os(PROBE).is_none() {
+        let child = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "recess_turned_in_a_straight_wall_keeps_the_core_on_the_exact_route", "--nocapture"])
+            .env("IFC_LITE_PRISM_CUT", "0")
+            .env("IFC_LITE_VOID_2D", "0")
+            .env("IFC_LITE_RECT_FAST", "0")
+            .env(PROBE, "1")
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&child.stdout);
+        assert!(child.status.success(), "{stdout}\n{}", String::from_utf8_lossy(&child.stderr));
+        assert!(stdout.contains("1 passed; 0 failed"), "{stdout}");
+        return;
+    }
+    let failures = turned_recess_in_a_straight_wall_failures();
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}

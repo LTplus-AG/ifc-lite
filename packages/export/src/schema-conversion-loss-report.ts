@@ -14,7 +14,7 @@ import { DocumentLinks } from './schema-converter-document-links.js';
 import { SourceRecords } from './schema-converter-structural-source.js';
 import { describeEntry } from './schema-conversion-loss-description.js';
 import { materialPropertiesNotWritten } from './schema-converter-material-referent.js';
-import { spaceBoundariesNotWritten } from './schema-converter-space-boundary.js';
+import { spaceBoundaryLoss } from './schema-converter-space-boundary.js';
 import { EMPTY_SOURCE_BYTES, type IfcDataStore } from '@ifc-lite/parser';
 import {
   convertEntityType,
@@ -358,14 +358,8 @@ export function analyzeConversionLoss(
     }
     // #10763: an IfcMaterialProperties whose Material names no single IfcMaterial is not written.
     const notWritten = materialPropertiesNotWritten(store, fromSchema, toSchema);
-    if (notWritten.ids.length) {
-      entries.push({ sourceType: 'IFCMATERIALPROPERTIES', targetType: 'IFCEXTENDEDMATERIALPROPERTIES', kind: 'lossy', droppedAttributes: [...notWritten.attributes], count: notWritten.ids.length, expressIds: notWritten.ids });
-    }
-    // An IFC2X3 IfcRelSpaceBoundary with no element is not written: IFC4 requires one and none is invented.
-    const unbounded = spaceBoundariesNotWritten(store, fromSchema, toSchema);
-    if (unbounded.length) {
-      entries.push({ sourceType: 'IFCRELSPACEBOUNDARY', targetType: 'IFCRELSPACEBOUNDARY', kind: 'lossy', droppedAttributes: ['RelatedBuildingElement'], count: unbounded.length, expressIds: unbounded });
-    }
+    if (notWritten.ids.length) entries.push({ sourceType: 'IFCMATERIALPROPERTIES', targetType: 'IFCEXTENDEDMATERIALPROPERTIES', kind: 'lossy', droppedAttributes: [...notWritten.attributes], count: notWritten.ids.length, expressIds: notWritten.ids });
+    entries.push(...spaceBoundaryLoss(store, fromSchema, toSchema)); // IFC2X3 boundaries with no element are not written
     for (const [sourceType, ids] of varying) {
       const byTarget = new Map<string, number[]>();
       for (const id of ids) {

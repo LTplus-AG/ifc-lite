@@ -51,6 +51,16 @@ export class SpaceBoundaryElements {
   /** Whether `apply` left record `id` out. */
   leftOut(id: number): boolean { return this.dropped.has(id); }
 
+  /** Whether any record is left out: the gate the omitted-reference filter runs behind. */
+  get any(): boolean { return this.dropped.size > 0; }
+
+  /**
+   * Record `ids` as left out BEFORE the records are converted, so a relationship
+   * that precedes a boundary in the file is already scrubbed of it (#11457).
+   * `apply` adds the same ids again at conversion, which changes nothing.
+   */
+  note(ids: Iterable<number>): void { for (const id of ids) this.dropped.add(id); }
+
   warnings(): string[] {
     if (!this.dropped.size) return [];
     const sites = [...this.dropped].sort((a, b) => a - b).map((id) => `#${id}`);
@@ -66,4 +76,10 @@ export function spaceBoundariesNotWritten(store: Pick<SourceStore, 'entityIndex'
   if (!bytes?.byteLength) return [];
   const source = new SourceRecords({ entityIndex, deferredEntityIndex, source: bytes });
   return source.ids(BOUNDARY).filter((id) => { const text = source.text(id); return text !== undefined && unrelated(text, from); });
+}
+
+/** The loss-report entry (none, or one) for the boundaries an IFC2X3 upgrade leaves out: IFC4 requires an element and none is invented. */
+export function spaceBoundaryLoss(store: Parameters<typeof spaceBoundariesNotWritten>[0], from: string, to: string): Array<{ sourceType: string; targetType: string; kind: 'lossy'; droppedAttributes: string[]; count: number; expressIds: number[] }> {
+  const expressIds = spaceBoundariesNotWritten(store, from, to);
+  return expressIds.length ? [{ sourceType: BOUNDARY, targetType: BOUNDARY, kind: 'lossy', droppedAttributes: [ELEMENT], count: expressIds.length, expressIds }] : [];
 }

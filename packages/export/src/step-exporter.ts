@@ -54,6 +54,7 @@ export type {
 import type { StepExportOptions, StepExportResult, ExportPass } from './step-export-types.js';
 import { buildExportPass } from './step-pass-builder.js';
 import { evaluateOmissionPredicates } from './step-omission-predicates.js';
+import { spaceBoundariesNotWritten } from './schema-converter-space-boundary.js';
 import { isGeometryEntity } from './step-geometry-types.js';
 import {
   buildSourceIterationContext,
@@ -197,6 +198,12 @@ export class StepExporter {
     collectModifications(pass, options, applyMutations, this.collectionContext());
     // Edited source style assignments reach the D57 flatten before any styled item is written (#7801).
     pass.styleFlatten?.noteEdited(this.dataStore, (id, text, type) => { const t = applySourceLineMutations(this.mutationView, id, text, type, pass.modifiedAttributes.get(id), pass.sourceSchema, pass.overlayActive).text; return t === text ? null : t; });
+
+    // An IFC2X3 IfcRelSpaceBoundary naming no element is left out by the upgrade (#11457): known before
+    // any record is converted, so the relationship filters scrub it from the records that name it.
+    // An edited or created boundary is judged by the conversion itself, which reads its edited line.
+    pass.enums.boundaries.note(spaceBoundariesNotWritten(this.dataStore, pass.sourceSchema, pass.schema)
+      .filter((id) => pass.effective.has(id) && !pass.modifiedAttributes.has(id) && !pass.effective.isOverlayCreated(id)));
 
     // Which ids this export may still NAME, now that the collection phase has
     // decided which ids it is WRITING (#2475). Must stay here, between those

@@ -328,6 +328,7 @@ export function evaluateOmissionPredicates(
     pass.allowedEntityIds !== null
     || pass.overlayActive
     || excludeGeometry
+    || pass.enums.boundaries.any // an IFC2X3 IfcRelSpaceBoundary the upgrade leaves out (#11457)
     || hasAnyUnreadableSourceRef();
   return { kind: 'continue', isOmittedFromOutput, mayNameOmittedRefs };
 }
@@ -340,5 +341,6 @@ export function evaluateOmissionPredicates(
  * still has an owner, so the two cannot disagree (#5794).
  */
 export function isOmittedFromPassOutput(pass: ExportPass, id: number): boolean {
-  return (pass.effective.has(id) || pass.effective.isDeleted(id)) && !pass.willBeEmitted(id);
+  // An IfcRelSpaceBoundary the schema upgrade leaves out is omitted like a deleted record (#11457).
+  return (pass.effective.has(id) || pass.effective.isDeleted(id)) && (!pass.willBeEmitted(id) || pass.enums.boundaries.leftOut(id));
 }

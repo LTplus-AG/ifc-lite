@@ -245,6 +245,15 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
         super::georef::apply(&mut pass, georef, &declared_schema(content, converting, &target)).map_err(unwritable)?;
     }
     retain_shared_atoms(&mut pass);
+    // The boundaries an IFC2X3 upgrade leaves out (#11457), known before any line is filtered. An edited boundary is
+    // judged by the conversion itself, which reads its edited line.
+    if converting {
+        let edited: std::collections::HashSet<u32> = pass.modified_attributes.iter().map(|(id, _)| *id)
+            .chain(pass.overlay.positional.keys().copied()).chain(pass.overlay.retype_order.iter().copied()).collect();
+        pass.left_out = crate::schema_space_boundary::left_out(
+            src.order.iter().filter(|id| !edited.contains(id) && pass.has(**id) && !pass.is_overlay_created(**id)).filter_map(|id| src.line(*id).map(|l| (*id, l))),
+            crate::schema_convert::canon(&source_label), crate::schema_convert::canon(&target));
+    }
 
     // The source lines the log rewrites, decided before the header because
     // the header counts them: every record with an attribute, retype or

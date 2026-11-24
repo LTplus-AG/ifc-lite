@@ -52,7 +52,7 @@ mod pass;
 mod property_value;
 mod readers;
 mod record;
-mod refilter;
+pub(crate) mod refilter;
 mod refs;
 mod retype;
 mod replay;
@@ -69,3 +69,15 @@ pub use write::{export_step_with_log, export_step_with_log_to_writer, LogExportS
 #[cfg(test)]
 #[path = "tables_tests.rs"]
 mod tables_tests;
+
+/// `line`, record `id` of source `schema`, with every id in `omitted` removed from the references it holds; the
+/// warning that says so when nothing is left to write (#11457). The plain writer's use of the log writer's filter.
+pub(crate) fn scrub_omitted(line: String, id: u32, schema: &str, omitted: &std::collections::HashSet<u32>) -> Result<String, String> {
+    let Some(head) = crate::step_record_frame::record_head(&line) else { return Ok(line) };
+    let upper = head.type_name(&line).to_ascii_uppercase();
+    match refilter::filter_source_line(&line, id, &upper, schema, &|r| omitted.contains(&r), true) {
+        refilter::Filtered::Keep => Ok(line),
+        refilter::Filtered::Rewrite(text) => Ok(text),
+        refilter::Filtered::Withhold(warning) => Err(warning),
+    }
+}

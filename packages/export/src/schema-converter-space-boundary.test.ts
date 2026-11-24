@@ -66,3 +66,23 @@ describe('IFC2X3 upgrade of an IfcRelSpaceBoundary with no RelatedBuildingElemen
     expect(result.stats.warnings.join('\n')).toContain('4 IfcRelSpaceBoundary record(s) were not written');
   });
 });
+
+// #11457: a relationship naming the left-out boundary must not ship a dangling reference.
+const CLASS = "#31=IFCCLASSIFICATION('S','E',$,'N');";
+const MIXED = "#32=IFCRELASSOCIATESCLASSIFICATION('4XigBlHYfFnxzvgV9_gBmP',$,$,$,(#20,#11),#31);";
+const SOLE = "#33=IFCRELASSOCIATESCLASSIFICATION('5XigBlHYfFnxzvgV9_gBmP',$,$,$,(#20),#31);";
+const REFS = `${DATA}\n${CLASS}\n${MIXED}\n${SOLE}`;
+const relLines = (text: string) => text.split('\n').filter((l) => l.includes('=IFCRELASSOCIATESCLASSIFICATION('));
+
+describe('a relationship naming a left-out IfcRelSpaceBoundary (#11457)', () => {
+  it('has the boundary removed from its list; one left with no member is withheld and reported', async () => {
+    const store = await parse(model('IFC2X3', REFS));
+    const result = new StepExporter(store).export({ schema: 'IFC4' });
+    const text = out(result.content);
+    expect(ids(text)).toEqual(['#21']);
+    expect(relLines(text)).toEqual(["#32=IFCRELASSOCIATESCLASSIFICATION('4XigBlHYfFnxzvgV9_gBmP',$,$,$,(#11),#31);"]);
+    expect(text).not.toMatch(/#20\b/);
+    expect(result.stats.warnings.join('\n').toLowerCase()).toContain('relationship #33 (ifcrelassociatesclassification) was withheld');
+    expect(result.stats.warnings.join('\n')).toContain('#20, #22');
+  });
+});

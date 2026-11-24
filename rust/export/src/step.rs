@@ -227,6 +227,16 @@ fn emit<W: std::io::Write>(
     let targets_ifc2x3 = crate::schema_convert::targets_ifc2x3(&schema);
 
     let (muts_by_id, mut attribute_edits_refused) = prepared_attribute_edits(opts);
+    // The boundaries an IFC2X3 upgrade leaves out (#11457): known before any record is written, so a relationship
+    // naming one is narrowed, or withheld when nothing is left, instead of shipping a dangling reference. An edited
+    // boundary is judged by the conversion itself, which reads its edited line.
+    let boundaries_left_out = if converting {
+        crate::schema_space_boundary::left_out(
+            order.iter().filter(|id| included.contains(id) && !muts_by_id.contains_key(id))
+                .filter_map(|id| line_of.get(id).map(|&(s, e)| (*id, String::from_utf8_lossy(&content[s..e])))),
+            crate::schema_convert::canon(&source_schema), crate::schema_convert::canon(&schema))
+    } else { HashSet::new() };
+    let mut withheld_warnings: Vec<String> = Vec::new();
 
     // Copy-on-write, resolved before the emit loop so the copies and the
     // repointed referrers both go through it. Its own module: the pass has four
@@ -265,6 +275,12 @@ fn emit<W: std::io::Write>(
                     None => raw.into_owned(),
                 };
                 let Some(edited) = flatten.line(&source_schema, edited) else { continue };
+                let edited = if boundaries_left_out.is_empty() { edited } else {
+                    match crate::step_log::scrub_omitted(edited, *id, crate::schema_convert::canon(&source_schema), &boundaries_left_out) {
+                        Ok(line) => line,
+                        Err(warning) => { withheld_warnings.push(warning); continue; }
+                    }
+                };
                 if converting {
                     let converted = crate::schema_convert::convert_step_line(
                         &edited,
@@ -372,7 +388,7 @@ fn emit<W: std::io::Write>(
         attribute_values_dropped: checks.attribute_values_dropped,
         property_mutations_refused,
         duplicate_records_dropped: index.duplicates.len(),
-    }, checks.warnings_for_sources(std::iter::once(content))))
+    }, { let mut warnings = checks.warnings_for_sources(std::iter::once(content)); warnings.extend(withheld_warnings); warnings }))
 }
 
 #[cfg(test)]

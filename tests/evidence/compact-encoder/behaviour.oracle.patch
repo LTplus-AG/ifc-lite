@@ -1,16 +1,16 @@
 diff --git a/rust/wasm-bindings/src/zero_copy/mesh_compact_weld.rs b/rust/wasm-bindings/src/zero_copy/mesh_compact_weld.rs
 --- a/rust/wasm-bindings/src/zero_copy/mesh_compact_weld.rs
 +++ b/rust/wasm-bindings/src/zero_copy/mesh_compact_weld.rs
-@@ -144,7 +144,7 @@ pub(super) fn weld_mesh(mesh: &MeshDataJs, window: [i64; 3], step: f64, s: &mut
-         let mut q = [0u16; 3];
+@@ -172,7 +172,7 @@ pub(super) fn weld_mesh(mesh: &MeshDataJs, window: [i64; 3], step: f64, s: &mut
          for axis in 0..3 {
-             // The caller checked the rounded bounds; this guards the last-ulp difference of the folded sum.
--            let node = (base[axis] + p[axis] as f64 * inv).floor() as i64;
-+            let node = round_half_up(base[axis] + p[axis] as f64 * inv) as i64;
+             // `origin + position` first, exactly as the bounds were formed: the f64 sum is the frame
+             // coordinate, so a point shared by meshes with different origins lands on one node.
+-            let node = ((o[axis] + p[axis] as f64) * inv - window[axis] as f64).floor() as i64;
++            let node = round_half_up((o[axis] + p[axis] as f64) * inv - window[axis] as f64) as i64;
              if !(0..=Q_MAX).contains(&node) {
                  return Err(Refusal::Extent);
              }
-@@ -170,7 +170,7 @@ fn mark_unwitnessed(mesh: &MeshDataJs, s: &mut Scratch) -> bool {
+@@ -198,7 +198,7 @@ fn mark_unwitnessed(mesh: &MeshDataJs, s: &mut Scratch) -> bool {
          let own_sq = own[0] * own[0] + own[1] * own[1] + own[2] * own[2];
          // cos > MIN, without a square root per vertex. A corner without a normal has no side to witness.
          let witnessed = dot > 0.0 && dot * dot > MIN_WITNESS_COSINE * MIN_WITNESS_COSINE * sum_sq * own_sq;
@@ -19,7 +19,7 @@ diff --git a/rust/wasm-bindings/src/zero_copy/mesh_compact_weld.rs b/rust/wasm-b
              s.unwitnessed[slot as usize] = true;
              any = true;
          }
-@@ -239,7 +239,7 @@ fn triangles(mesh: &MeshDataJs, s: &mut Scratch) -> Result<(), Refusal> {
+@@ -267,7 +267,7 @@ fn triangles(mesh: &MeshDataJs, s: &mut Scratch) -> Result<(), Refusal> {
              s.tris.extend_from_slice(&[ra, rb, rc]);
          }
      }

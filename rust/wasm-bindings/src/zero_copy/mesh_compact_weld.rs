@@ -167,13 +167,12 @@ pub(super) fn weld_mesh(mesh: &MeshDataJs, window: [i64; 3], step: f64, s: &mut 
     s.tris.clear();
     let o = mesh.origin;
     let inv = 1.0 / step; // a power of two: exact
-    // Window-relative offsets in f64, so the per-vertex work is one multiply, one add and one floor.
-    let base = [o[0] * inv - window[0] as f64, o[1] * inv - window[1] as f64, o[2] * inv - window[2] as f64];
     for (p, n) in mesh.positions.chunks_exact(3).zip(mesh.normals.chunks_exact(3)) {
         let mut q = [0u16; 3];
         for axis in 0..3 {
-            // The caller checked the rounded bounds; this guards the last-ulp difference of the folded sum.
-            let node = round_half_up(base[axis] + p[axis] as f64 * inv) as i64;
+            // `origin + position` first, exactly as the bounds were formed: the f64 sum is the frame
+            // coordinate, so a point shared by meshes with different origins lands on one node.
+            let node = round_half_up((o[axis] + p[axis] as f64) * inv - window[axis] as f64) as i64;
             if !(0..=Q_MAX).contains(&node) {
                 return Err(Refusal::Extent);
             }

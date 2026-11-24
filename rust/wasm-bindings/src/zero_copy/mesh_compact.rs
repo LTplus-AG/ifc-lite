@@ -64,6 +64,9 @@ fn step_of(level: u32) -> f64 {
 const Q_MAX: i64 = 65535;
 /// Highest picking id the 24-bit entity lane carries (`packEntityLane`).
 const MAX_LANE_ID: u32 = 0x00FF_FFFF;
+/// Cell sizes `encode_compact` accepts: two base steps, up to half a base window.
+const MIN_CELL_METRES: f64 = 1.0 / 512.0;
+const MAX_CELL_METRES: f64 = 32.0;
 /// Bytes per vertex record.
 const RECORD_BYTES: usize = 12;
 /// u32 columns per table row.
@@ -82,11 +85,12 @@ enum Refusal {
     NonFinite = 2,
     /// Express id past the 24-bit entity lane.
     IdRange = 3,
-    /// Wider than the coarsest level's window, or outside the i32 cell range.
+    /// Wider than the base level's and the coarser level's window, or outside the i32 cell range.
     Extent = 4,
     /// More welded vertices than u16 indices address.
     WeldedVertices = 5,
-    /// Loses more than 1% of its area to triangles the lattice collapses, at every level.
+    /// Loses more than 1% of its area to triangles the base lattice collapses, and no finer level
+    /// holds it (whatever stops the retry there: the collapse is why it left the base level).
     Collapse = 6,
     /// No per-vertex normals, or corners no stored normal can witness.
     Normals = 7,
@@ -323,11 +327,11 @@ impl MeshCollection {
     pub fn encode_compact(&mut self, cell_size: f64) -> CompactBatch {
         let mut batch = CompactBatch::default();
         let base_step = step_of(BASE_LEVEL);
-        let cell_steps = round_half_up(cell_size / base_step);
-        if !(cell_steps >= 2.0 && cell_steps <= (Q_MAX / 2 + 1) as f64) {
+        // Judge the argument itself, not its snapped value: 0.0015 would round up into range.
+        if !(cell_size >= MIN_CELL_METRES && cell_size <= MAX_CELL_METRES) {
             return batch;
         }
-        let cell_q = cell_steps as i64;
+        let cell_q = round_half_up(cell_size / base_step) as i64;
         // (bucket key, mesh index, box) per candidate, visited in key order.
         let mut plan = Vec::new();
         for (i, mesh) in self.meshes.iter().enumerate() {

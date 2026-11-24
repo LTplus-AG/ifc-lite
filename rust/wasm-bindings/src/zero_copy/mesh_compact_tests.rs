@@ -280,7 +280,8 @@ fn a_node_no_stored_normal_can_witness_refuses_the_mesh() {
 
 #[test]
 fn a_cell_size_outside_the_window_encodes_nothing() {
-    for cell in [0.0, -1.0, f64::NAN, f64::INFINITY, 0.0001, 32.5, 64.0] {
+    // 0.0015 and 32.0001 would snap into range; the argument itself is what is judged.
+    for cell in [0.0, -1.0, f64::NAN, f64::INFINITY, 0.0001, 0.0015, 32.0001, 32.5, 64.0] {
         let mut c = MeshCollection::new();
         c.add(flat_box(1, [0.0, 0.0, 0.0], 1.0));
         let b = c.encode_compact(cell);
@@ -373,4 +374,33 @@ fn sort_indices_matches_the_standard_sort() {
         weld::sort_indices(&mut order, |a, b| (keys[a as usize], a) < (keys[b as usize], b));
         assert_eq!(order, expected, "n = {n}");
     }
+}
+
+/// A node is the rounded f64 `origin + position`, the value the bounds are formed from, so a point
+/// shared by meshes with different origins lands on one node. Folding the origin into a per-mesh
+/// base first rounds differently next to a tie: here it would put the far corner one step off.
+#[test]
+fn a_node_is_the_rounded_sum_of_origin_and_position() {
+    let tie = 0.499_999_999_9 / 1024.0;
+    let mut mesh = flat_box(1, [tie; 3], 1.0);
+    mesh.positions.iter_mut().for_each(|p| *p -= 1024.0);
+    let mut expected: Vec<[i64; 3]> = mesh
+        .positions
+        .chunks_exact(3)
+        .map(|p| std::array::from_fn(|a| ((mesh.origin[a] + p[a] as f64) * 1024.0 + 0.5).floor() as i64))
+        .collect();
+    expected.sort();
+    expected.dedup();
+    let mut c = MeshCollection::new();
+    c.add(mesh);
+    let b = c.encode_compact(32.0);
+    assert_eq!(b.mesh_count(), 1, "refusals {:?}", b.refusals);
+    let mut nodes: Vec<[i64; 3]> = b
+        .records
+        .chunks_exact(12)
+        .map(|r| std::array::from_fn(|a| b.windows[a] as i64 + u16::from_le_bytes([r[a * 2], r[a * 2 + 1]]) as i64))
+        .collect();
+    nodes.sort();
+    nodes.dedup();
+    assert_eq!(nodes, expected);
 }

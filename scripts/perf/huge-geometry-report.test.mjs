@@ -8,7 +8,11 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const load = async (name) => { const u = new URL(name, import.meta.url); return existsSync(u) ? import(u.href) : null; };
 const report = await load('./huge-geometry-report.mjs');
@@ -78,4 +82,86 @@ test('bounded: settles with the promise, or rejects naming the step', async () =
   const { bounded } = need(browser, 'huge-geometry-browser.mjs');
   assert.equal(await bounded(Promise.resolve('done'), 60000, 'quick'), 'done');
   await assert.rejects(bounded(new Promise(() => {}), 5, 'camera orbit'), /camera orbit timed out after 5 ms/);
+});
+
+
+function runHarnessCli(name, dir, ...args) {
+  const script = fileURLToPath(new URL(`huge-geometry-${name}.mjs`, import.meta.url));
+  const result = spawnSync(process.execPath, [script, '--label', 'test', '--out', join(dir, 'out'),
+    '--models-dir', join(dir, 'models'), '--dist', join(dir, 'missing-viewer'), ...args], { encoding: 'utf8', timeout: 5000 });
+  assert.ifError(result.error);
+  return result;
+}
+
+test('#11366: all numeric CLI options exit with usage for invalid values', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'huge-geometry-options-'));
+  try {
+    for (const [name, options] of Object.entries({
+      run: { 'timeout-min': 'abc', frames: '0', seed: '-1' },
+      record: { 'timeout-min': 'abc', frames: '-2', fps: 'Infinity' },
+      cinema: { 'timeout-min': 'abc', fps: '0', seed: '-1', 'load-speed': 'Infinity', 'emit-max-mb': '0' },
+    })) {
+      for (const [key, value] of Object.entries(options)) {
+        const result = runHarnessCli(name, dir, `--${key}=${value}`);
+        const expected = { frames: 'a positive integer', seed: 'a non-negative integer' }[key] ?? 'a positive finite number';
+        assert.equal(result.status, 2, result.stderr);
+        assert.ok(result.stderr.includes(`--${key} must be ${expected}`), result.stderr);
+        assert.ok(result.stderr.includes(`usage: huge-geometry-${name}.mjs`), result.stderr);
+        assert.equal(existsSync(join(dir, 'out')), false);
+      }
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('#11366: CLI seeds accept zero and reject fractions, and frame counts reject fractions', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'huge-geometry-integer-options-'));
+  try {
+    for (const [name, key, expected] of [
+      ['run', 'seed', 'a non-negative integer'], ['cinema', 'seed', 'a non-negative integer'],
+      ['run', 'frames', 'a positive integer'], ['record', 'frames', 'a positive integer'],
+    ]) {
+      const result = runHarnessCli(name, dir, `--${key}=${key === 'seed' ? '1.5' : '2.5'}`);
+      assert.equal(result.status, 2, result.stderr);
+      assert.ok(result.stderr.includes(`--${key} must be ${expected}`), result.stderr);
+      assert.ok(result.stderr.includes(`usage: huge-geometry-${name}.mjs`), result.stderr);
+    }
+
+    const run = runHarnessCli('run', dir, '--seed=0', '--generate-only', '--scenarios=mixed', '--tiers=10');
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stdout, /generated 10 elements/);
+
+    const cinema = runHarnessCli('cinema', dir, '--seed=0');
+    assert.equal(cinema.status, 1, cinema.stderr);
+    assert.ok(cinema.stderr.includes(`no viewer build at ${join(dir, 'missing-viewer')}`), cinema.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('#11366: a missing rendered frame is a named error for each required store interaction', async () => {
+  const { interactions } = await import('./huge-geometry-measure.mjs');
+  const { AFTER_FRAME, ELEMENT_IDS, READ_PICK, STORE_ACTION } = await import('./huge-geometry-page.mjs');
+  const frameError = 'no rendered frame done within 60000 ms';
+  let action;
+  const page = {
+    async evaluate(fn, args) {
+      if (fn === READ_PICK) return { hit: false };
+      if (fn === ELEMENT_IDS) return { ids: [42], total: 1 };
+      if (fn === STORE_ACTION) { action = args.action; return { syncMs: 1 }; }
+      if (fn === AFTER_FRAME) return { presentMs: 2, doneMs: null, doneError: action === 'showAll' ? undefined : frameError };
+    },
+    async waitForFunction() {},
+    async waitForTimeout() {},
+    locator: () => ({ first: () => ({ boundingBox: async () => ({ x: 0, y: 0, width: 100, height: 100 }) }) }),
+    mouse: { async click() {} },
+  };
+  const errors = [];
+  const result = await interactions(page, errors);
+  assert.deepEqual(errors, ['hide-one', 'isolate', 'section-on', 'section-off'].map((step) => ({ step, error: frameError })));
+  assert.equal(result.hideOne, null);
+  assert.equal(result.isolate, null);
+  assert.equal(result.sectionOn, null);
+  assert.equal(result.sectionOff, null);
 });

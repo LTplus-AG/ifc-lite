@@ -12,6 +12,7 @@
 import '@/test/setup-dom.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { GraphicOverrideEngine, type Drawing2D } from '@ifc-lite/drawing-2d';
@@ -34,7 +35,19 @@ const _line = (a: { x: number; y: number }, b: { x: number; y: number }): Drawin
   line: { start: a, end: b }, category: 'cut', visibility: 'visible', entityId: 1, ifcType: 'IfcWall', modelIndex: 0, depth: 0,
 });
 
+/** Extra hook inputs a case needs (text annotations); reset by `run`. */
+let extraInputs: Record<string, unknown> = {};
+const BAD = '\u0001\u000B';
 const cases: Record<string, (d: Drawing2D) => void> = {
+  controlIfcType: (d) => { d.cutPolygons = [{ ...poly(sq), ifcType: `Ifc${BAD}Wall` }]; },
+  nanEntityId: (d) => { d.cutPolygons = [{ ...poly(sq), entityId: NaN }]; },
+  controlAnnotation: (d) => {
+    extraInputs = {
+      textAnnotations2D: [{ id: 'a', position: { x: 1, y: 1 }, text: `note${BAD}`, fontSize: 14, color: `#000${BAD}`, backgroundColor: '#fff', borderColor: '#333' }],
+      cloudAnnotations2D: [{ id: 'c', points: [{ x: 0, y: 0 }, { x: 2, y: 0 }, { x: 2, y: 2 }], color: '#e53935', label: `rev${BAD}` }],
+    };
+    d.cutPolygons = [poly(sq)];
+  },
   emptyBounds: (d) => { d.bounds = { min: { x: Infinity, y: Infinity }, max: { x: -Infinity, y: -Infinity } }; },
   pointBounds: (d) => { d.bounds = { min: { x: 2, y: 2 }, max: { x: 2, y: 2 } }; d.lines = [_line({ x: 2, y: 2 }, { x: 2, y: 2 })]; },
   nanBounds: (d) => { d.bounds = { min: { x: NaN, y: 0 }, max: { x: 4, y: 3 } }; },
@@ -50,6 +63,7 @@ function Harness({ fn, d, onReady }: { fn: string; d: Drawing2D; onReady: (f: ()
     activePresetId: null, entityColorMap: new Map(), overridesEnabled: false, overrideEngine: new GraphicOverrideEngine([]),
     measure2DResults: [], polygonArea2DResults: [], textAnnotations2D: [], cloudAnnotations2D: [],
     sheetEnabled: false, activeSheet: null, dxfUnderlays: [], ifcDataStore: null, coordinateInfo: undefined, scanSection: { points: [] },
+    ...extraInputs,
   });
   onReady(h.handleExportSVG);
   return null;
@@ -58,6 +72,7 @@ function Harness({ fn, d, onReady }: { fn: string; d: Drawing2D; onReady: (f: ()
 /** The direct SVG the export handler downloads, or the error message it toasted. */
 async function run(name: string): Promise<string> {
   useActivityJournal.setState({ jobs: [] });
+  extraInputs = {};
   const d = base(); cases[name](d);
   const container = document.createElement('div'); document.body.appendChild(container);
   let root: Root | null = null; let fn: (() => void) | null = null; let blob: Blob | null = null;
@@ -107,5 +122,21 @@ describe('direct SVG export never writes a non-finite number', () => {
     const svg = await run('nanHole');
     assert.doesNotMatch(svg, NON_FINITE);
     assert.match(svg, /<path d="M 0\.0000 0\.0000 L 4\.0000 0\.0000 L 4\.0000 3\.0000 L 0\.0000 3\.0000 Z"/);
+  });
+  it('writes well-formed XML for a control character in ifcType (xmllint)', async () => {
+    const svg = await run('controlIfcType');
+    const r = spawnSync('xmllint', ['--noout', '-'], { input: svg, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(svg, /data-ifc-type="Ifc\uFFFD\uFFFDWall"/);
+  });
+  it('writes well-formed XML for control characters in annotation text, colour and cloud label (xmllint)', async () => {
+    const svg = await run('controlAnnotation');
+    const r = spawnSync('xmllint', ['--noout', '-'], { input: svg, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+  });
+  it('omits data-entity-id for a non-finite id', async () => {
+    const svg = await run('nanEntityId');
+    assert.doesNotMatch(svg, /data-entity-id="NaN"/);
+    assert.match(svg, /data-ifc-type="IfcWall"/);
   });
 });

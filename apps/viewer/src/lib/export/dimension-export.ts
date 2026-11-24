@@ -19,7 +19,7 @@
  */
 
 import type { jsPDF } from 'jspdf';
-import { isDxfDimensionExportable } from '@ifc-lite/drawing-2d';
+import { escapeXml as xml, isDxfDimensionExportable } from '@ifc-lite/drawing-2d';
 import type { Dimension2D } from '@/store/slices/drawing2DDimensions';
 import { pdfRotatedTextStart } from './pdf-text-placement';
 import { toStandardFontText } from '@/lib/document/standard-font-text';
@@ -93,7 +93,6 @@ export function boundsWithDimensions<B extends { min: DimensionPt; max: Dimensio
   return { ...bounds, min: { x: minX, y: minY }, max: { x: maxX, y: maxY } };
 }
 
-const xml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const n = (v: number) => (v + 0).toFixed(4);
 
 /**

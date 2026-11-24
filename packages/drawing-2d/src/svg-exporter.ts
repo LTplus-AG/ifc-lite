@@ -12,6 +12,7 @@
  * - Scale and paper size handling
  */
 
+import { escapeXml, entityIdAttr, svgNum } from './xml-escape.js';
 import type { Drawing2D, DrawingLine, DrawingPolygon, Point2D, Bounds2D } from './types.js';
 import type { HatchLine } from './hatch-generator.js';
 import { HatchGenerator } from './hatch-generator.js';
@@ -87,18 +88,6 @@ export interface SVGUnderlayOptions {
 // ═══════════════════════════════════════════════════════════════════════════
 // SVG EXPORTER CLASS
 // ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * The one place a number becomes SVG text. `NaN`/`Infinity` stringify
- * verbatim through `toFixed`, which a conforming renderer must reject, so
- * every coordinate/size/rotation routes through here (mirrors the DXF
- * writer's single `fmt()`). Non-finite becomes `0`: the document stays
- * parseable and the degenerate geometry collapses at the visible origin.
- */
-function svgNum(n: number, digits = 3): string {
-  if (!Number.isFinite(n)) return '0';
-  return n.toFixed(digits);
-}
 
 /** `drawing.config.scale` is any positive number, not just the ten
  *  {@link COMMON_SCALES} presets; a `.find()` miss (a custom scale) must
@@ -221,7 +210,7 @@ export class SVGExporter {
      width="${paperSize.width}mm"
      height="${paperSize.height}mm"
      viewBox="0 0 ${paperSize.width} ${paperSize.height}">
-  <rect width="100%" height="100%" fill="${this.escapeXml(backgroundColor)}"/>
+  <rect width="100%" height="100%" fill="${escapeXml(backgroundColor)}"/>
 `;
   }
 
@@ -264,9 +253,9 @@ export class SVGExporter {
       style.dashPattern.length > 0 ? ` stroke-dasharray="${style.dashPattern.join(' ')}"` : '';
 
     return `    <line x1="${svgNum(p0.x)}" y1="${svgNum(p0.y)}" x2="${svgNum(p1.x)}" y2="${svgNum(p1.y)}"
-          stroke="${style.color}" stroke-width="${style.weight}"
+          stroke="${escapeXml(style.color)}" stroke-width="${style.weight}"
           stroke-linecap="${style.lineCap}"${dashArray}
-          data-entity-id="${line.entityId}" data-ifc-type="${this.escapeXml(line.ifcType)}"/>\n`;
+          ${entityIdAttr(line.entityId)} data-ifc-type="${escapeXml(line.ifcType)}"/>\n`;
   }
 
   private createHatchingLayer(
@@ -317,8 +306,8 @@ export class SVGExporter {
     }
 
     return `    <path d="${pathData}" fill="${fill}"
-          stroke="${pattern.strokeColor}" stroke-width="${pattern.lineWeight}"
-          data-entity-id="${polygon.entityId}" data-ifc-type="${this.escapeXml(polygon.ifcType)}"/>\n`;
+          stroke="${escapeXml(pattern.strokeColor)}" stroke-width="${pattern.lineWeight}"
+          ${entityIdAttr(polygon.entityId)} data-ifc-type="${escapeXml(polygon.ifcType)}"/>\n`;
   }
 
   private polygonToPath(polygon: { outer: Point2D[]; holes: Point2D[][] }, transform: Transform2D): string {
@@ -360,7 +349,7 @@ export class SVGExporter {
     const p1 = transformPoint(hatchLine.line.end, transform);
 
     return `    <line x1="${svgNum(p0.x)}" y1="${svgNum(p0.y)}" x2="${svgNum(p1.x)}" y2="${svgNum(p1.y)}"
-          stroke="${pattern.strokeColor}" stroke-width="${pattern.lineWeight}" stroke-linecap="butt"/>\n`;
+          stroke="${escapeXml(pattern.strokeColor)}" stroke-width="${pattern.lineWeight}" stroke-linecap="butt"/>\n`;
   }
 
   private createTitleBlock(
@@ -382,9 +371,9 @@ export class SVGExporter {
     <line x1="${x}" y1="${y + 20}" x2="${x + blockWidth}" y2="${y + 20}" stroke="black" stroke-width="0.3"/>
     <line x1="${x}" y1="${y + 35}" x2="${x + blockWidth}" y2="${y + 35}" stroke="black" stroke-width="0.3"/>
     <line x1="${x + 100}" y1="${y + 20}" x2="${x + 100}" y2="${y + blockHeight}" stroke="black" stroke-width="0.3"/>
-    <text x="${x + 5}" y="${y + 14}" font-family="Arial" font-size="10" font-weight="bold">${this.escapeXml(title)}</text>
-    <text x="${x + 5}" y="${y + 30}" font-family="Arial" font-size="8">${this.escapeXml(projectName)}</text>
-    <text x="${x + 5}" y="${y + 45}" font-family="Arial" font-size="8">Scale: ${this.escapeXml(scaleText)}</text>
+    <text x="${x + 5}" y="${y + 14}" font-family="Arial" font-size="10" font-weight="bold">${escapeXml(title)}</text>
+    <text x="${x + 5}" y="${y + 30}" font-family="Arial" font-size="8">${escapeXml(projectName)}</text>
+    <text x="${x + 5}" y="${y + 45}" font-family="Arial" font-size="8">Scale: ${escapeXml(scaleText)}</text>
     <text x="${x + 105}" y="${y + 30}" font-family="Arial" font-size="7">Date:</text>
     <text x="${x + 105}" y="${y + 45}" font-family="Arial" font-size="7">${new Date().toLocaleDateString()}</text>
   </g>\n`;
@@ -405,12 +394,12 @@ export class SVGExporter {
       transformPoint(applyDxfPlacement({ x: p.x, y: -p.y }, placement), transform);
     const groupId = `dxf-${underlay.name.replace(/[^A-Za-z0-9_-]/g, '_')}`;
 
-    let layer = `  <g id="${this.escapeXml(groupId)}" inkscape:label="${this.escapeXml(underlay.name)}" inkscape:groupmode="layer" opacity="${opacity}">\n`;
+    let layer = `  <g id="${escapeXml(groupId)}" inkscape:label="${escapeXml(underlay.name)}" inkscape:groupmode="layer" opacity="${opacity}">\n`;
 
     for (const dxfLayer of underlay.layers) {
       const visible = layerVisibility[dxfLayer.name] ?? dxfLayer.visible;
       if (!visible) continue;
-      layer += `    <g data-dxf-layer="${this.escapeXml(dxfLayer.name)}">\n`;
+      layer += `    <g data-dxf-layer="${escapeXml(dxfLayer.name)}">\n`;
 
       for (const fill of dxfLayer.fills) {
         let d = '';
@@ -437,7 +426,7 @@ export class SVGExporter {
         const tag = path.closed ? 'polygon' : 'polyline';
         const strokeWidth = path.widthMm ?? 0.18;
         const dash = path.dashed ? ` stroke-dasharray="${svgNum(strokeWidth * 6)} ${svgNum(strokeWidth * 4)}"` : '';
-        layer += `      <${tag} points="${pointsAttr}" fill="none" stroke="${path.color ?? dxfLayer.color}" stroke-width="${svgNum(strokeWidth)}" stroke-linecap="round"${dash}/>\n`;
+        layer += `      <${tag} points="${pointsAttr}" fill="none" stroke="${escapeXml(path.color ?? dxfLayer.color)}" stroke-width="${svgNum(strokeWidth)}" stroke-linecap="round"${dash}/>\n`;
       }
 
       for (const text of dxfLayer.texts) {
@@ -459,13 +448,13 @@ export class SVGExporter {
         const lines = text.text.split('\n');
         const content = lines
           .map((line, i) => `<tspan x="${svgNum(anchor.x)}" y="${svgNum(anchor.y
-            + dxfTextLineOffset(i, lines.length, text.valign, heightMm, text.lineSpacingFactor))}">${this.escapeXml(line)}</tspan>`)
+            + dxfTextLineOffset(i, lines.length, text.valign, heightMm, text.lineSpacingFactor))}">${escapeXml(line)}</tspan>`)
           .join('');
         // Aligned/fit text carries its exact span (the browser measures via textLength); else the width factor stretches about the anchor.
         const fitLength = lines.length === 1 && text.fitWidth && text.fitWidth > 0 ? text.fitWidth * placement.scale * transform.scale : 0; // exact span; Aligned keeps its estimated height
         const stretch = fitLength ? '' : text.widthScale && text.widthScale !== 1
           ? ` translate(${svgNum(anchor.x)} ${svgNum(anchor.y)}) scale(${svgNum(text.widthScale, 4)} 1) translate(${svgNum(-anchor.x)} ${svgNum(-anchor.y)})` : '';
-        layer += `      <text x="${svgNum(anchor.x)}" y="${svgNum(anchor.y)}" font-family="Arial, sans-serif" font-size="${svgNum(heightMm)}" fill="${text.color ?? dxfLayer.color}" text-anchor="${anchorAttr}" dominant-baseline="${baseline}"${fitLength ? ` textLength="${svgNum(fitLength)}" lengthAdjust="spacingAndGlyphs"` : ''} transform="rotate(${svgNum(angle, 2)} ${svgNum(anchor.x)} ${svgNum(anchor.y)})${stretch}">${content}</text>\n`;
+        layer += `      <text x="${svgNum(anchor.x)}" y="${svgNum(anchor.y)}" font-family="Arial, sans-serif" font-size="${svgNum(heightMm)}" fill="${escapeXml(text.color ?? dxfLayer.color)}" text-anchor="${anchorAttr}" dominant-baseline="${baseline}"${fitLength ? ` textLength="${svgNum(fitLength)}" lengthAdjust="spacingAndGlyphs"` : ''} transform="rotate(${svgNum(angle, 2)} ${svgNum(anchor.x)} ${svgNum(anchor.y)})${stretch}">${content}</text>\n`;
       }
 
       layer += '    </g>\n';
@@ -475,14 +464,6 @@ export class SVGExporter {
     return layer;
   }
 
-  private escapeXml(str: string): string {
-    return str
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&apos;');
-  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -12,6 +12,7 @@
  * - Revision history table
  */
 
+import { escapeXml, svgNum } from '../xml-escape.js';
 import type { TitleBlockConfig, RevisionEntry, TitleBlockPosition } from './title-block-types.js';
 import { NICE_BAR_LENGTHS_M, barLabelIsExact, formatBarLabel, MIN_BAR_SEGMENT_MM } from './scale-bar-types.js';
 import type { ScaleBarConfig, NorthArrowConfig } from './scale-bar-types.js';
@@ -84,14 +85,14 @@ export function renderTitleBlock(
 
   // Background (if specified)
   if (config.backgroundColor) {
-    svg += `    <rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" `;
-    svg += `width="${w.toFixed(2)}" height="${h.toFixed(2)}" `;
-    svg += `fill="${config.backgroundColor}"/>\n`;
+    svg += `    <rect x="${svgNum(x, 2)}" y="${svgNum(y, 2)}" `;
+    svg += `width="${svgNum(w, 2)}" height="${svgNum(h, 2)}" `;
+    svg += `fill="${escapeXml(config.backgroundColor)}"/>\n`;
   }
 
   // Outer border
-  svg += `    <rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" `;
-  svg += `width="${w.toFixed(2)}" height="${h.toFixed(2)}" `;
+  svg += `    <rect x="${svgNum(x, 2)}" y="${svgNum(y, 2)}" `;
+  svg += `width="${svgNum(w, 2)}" height="${svgNum(h, 2)}" `;
   svg += `fill="none" stroke="#000000" stroke-width="${config.borderWeight}"/>\n`;
 
   // Render fields based on layout
@@ -196,8 +197,8 @@ function renderTitleBlockFields(
   // Draw horizontal grid lines between rows
   for (let i = 1; i < rowCount; i++) {
     const lineY = rowYPositions[i];
-    svg += `      <line x1="${gridStartX.toFixed(2)}" y1="${lineY.toFixed(2)}" `;
-    svg += `x2="${(gridStartX + availableWidth - 4).toFixed(2)}" y2="${lineY.toFixed(2)}" `;
+    svg += `      <line x1="${svgNum(gridStartX, 2)}" y1="${svgNum(lineY, 2)}" `;
+    svg += `x2="${svgNum(gridStartX + availableWidth - 4, 2)}" y2="${svgNum(lineY, 2)}" `;
     svg += `stroke="#000000" stroke-width="${config.gridWeight}"/>\n`;
   }
 
@@ -208,8 +209,8 @@ function renderTitleBlockFields(
       const centerX = gridStartX + colWidth;
       const lineY1 = rowYPositions[row];
       const lineY2 = rowYPositions[row] + scaledRowHeights[row];
-      svg += `      <line x1="${centerX.toFixed(2)}" y1="${lineY1.toFixed(2)}" `;
-      svg += `x2="${centerX.toFixed(2)}" y2="${lineY2.toFixed(2)}" `;
+      svg += `      <line x1="${svgNum(centerX, 2)}" y1="${svgNum(lineY1, 2)}" `;
+      svg += `x2="${svgNum(centerX, 2)}" y2="${svgNum(lineY2, 2)}" `;
       svg += `stroke="#000000" stroke-width="${config.gridWeight}"/>\n`;
     }
   }
@@ -231,14 +232,14 @@ function renderTitleBlockFields(
 
       // Position label at top of cell
       const labelY = rowY + 0.5 + labelFontSize;
-      svg += `      <text x="${fieldX.toFixed(2)}" y="${labelY.toFixed(2)}" `;
-      svg += `font-family="Arial, sans-serif" font-size="${labelFontSize.toFixed(2)}" `;
+      svg += `      <text x="${svgNum(fieldX, 2)}" y="${svgNum(labelY, 2)}" `;
+      svg += `font-family="Arial, sans-serif" font-size="${svgNum(labelFontSize, 2)}" `;
       svg += `fill="#666666">${escapeXml(field.label)}</text>\n`;
 
       // Position value below label (with small gap)
       const valueY = labelY + 0.8 + valueFontSize * 0.8;
-      svg += `      <text x="${fieldX.toFixed(2)}" y="${valueY.toFixed(2)}" `;
-      svg += `font-family="Arial, sans-serif" font-size="${valueFontSize.toFixed(2)}" `;
+      svg += `      <text x="${svgNum(fieldX, 2)}" y="${svgNum(valueY, 2)}" `;
+      svg += `font-family="Arial, sans-serif" font-size="${svgNum(valueFontSize, 2)}" `;
       svg += `font-weight="${field.fontWeight}" fill="#000000">${escapeXml(field.value)}</text>\n`;
     }
   }
@@ -278,8 +279,8 @@ function renderLogo(
   }
 
   // Render logo as image
-  svg += `      <image x="${logoX.toFixed(2)}" y="${logoY.toFixed(2)}" `;
-  svg += `width="${logo.widthMm.toFixed(2)}" height="${logo.heightMm.toFixed(2)}" `;
+  svg += `      <image x="${svgNum(logoX, 2)}" y="${svgNum(logoY, 2)}" `;
+  svg += `width="${svgNum(logo.widthMm, 2)}" height="${svgNum(logo.heightMm, 2)}" `;
   svg += `href="${escapeXml(logo.source)}" preserveAspectRatio="xMidYMid meet"/>\n`;
 
   svg += '    </g>\n';
@@ -305,8 +306,8 @@ function renderRevisionHistory(
   const fontSize = 2.2;
 
   // Table header
-  svg += `      <rect x="${x.toFixed(2)}" y="${tableY.toFixed(2)}" `;
-  svg += `width="${w.toFixed(2)}" height="${tableHeight.toFixed(2)}" `;
+  svg += `      <rect x="${svgNum(x, 2)}" y="${svgNum(tableY, 2)}" `;
+  svg += `width="${svgNum(w, 2)}" height="${svgNum(tableHeight, 2)}" `;
   svg += `fill="none" stroke="#000000" stroke-width="${config.gridWeight}"/>\n`;
 
   // Column headers
@@ -320,14 +321,14 @@ function renderRevisionHistory(
   let colX = x;
   for (const col of cols) {
     // Header text
-    svg += `      <text x="${(colX + 1).toFixed(2)}" y="${(tableY + 3).toFixed(2)}" `;
+    svg += `      <text x="${svgNum(colX + 1, 2)}" y="${svgNum(tableY + 3, 2)}" `;
     svg += `font-family="Arial, sans-serif" font-size="${fontSize}" `;
     svg += `font-weight="bold" fill="#000000">${col.label}</text>\n`;
 
     // Vertical divider
     if (colX > x) {
-      svg += `      <line x1="${colX.toFixed(2)}" y1="${tableY.toFixed(2)}" `;
-      svg += `x2="${colX.toFixed(2)}" y2="${(tableY + tableHeight).toFixed(2)}" `;
+      svg += `      <line x1="${svgNum(colX, 2)}" y1="${svgNum(tableY, 2)}" `;
+      svg += `x2="${svgNum(colX, 2)}" y2="${svgNum(tableY + tableHeight, 2)}" `;
       svg += `stroke="#000000" stroke-width="${config.gridWeight}"/>\n`;
     }
 
@@ -335,8 +336,8 @@ function renderRevisionHistory(
   }
 
   // Header divider line
-  svg += `      <line x1="${x.toFixed(2)}" y1="${(tableY + rowHeight).toFixed(2)}" `;
-  svg += `x2="${(x + w).toFixed(2)}" y2="${(tableY + rowHeight).toFixed(2)}" `;
+  svg += `      <line x1="${svgNum(x, 2)}" y1="${svgNum(tableY + rowHeight, 2)}" `;
+  svg += `x2="${svgNum(x + w, 2)}" y2="${svgNum(tableY + rowHeight, 2)}" `;
   svg += `stroke="#000000" stroke-width="${config.gridWeight}"/>\n`;
 
   // Revision entries
@@ -354,7 +355,7 @@ function renderRevisionHistory(
           ? values[j].substring(0, maxChars - 2) + '..'
           : values[j];
 
-      svg += `      <text x="${(colX + 1).toFixed(2)}" y="${rowY.toFixed(2)}" `;
+      svg += `      <text x="${svgNum(colX + 1, 2)}" y="${svgNum(rowY, 2)}" `;
       svg += `font-family="Arial, sans-serif" font-size="${fontSize}" `;
       svg += `fill="#000000">${escapeXml(displayValue)}</text>\n`;
 
@@ -363,8 +364,8 @@ function renderRevisionHistory(
 
     // Row divider
     if (i < revisions.length - 1) {
-      svg += `      <line x1="${x.toFixed(2)}" y1="${(tableY + rowHeight * (i + 2)).toFixed(2)}" `;
-      svg += `x2="${(x + w).toFixed(2)}" y2="${(tableY + rowHeight * (i + 2)).toFixed(2)}" `;
+      svg += `      <line x1="${svgNum(x, 2)}" y1="${svgNum(tableY + rowHeight * (i + 2), 2)}" `;
+      svg += `x2="${svgNum(x + w, 2)}" y2="${svgNum(tableY + rowHeight * (i + 2), 2)}" `;
       svg += `stroke="#000000" stroke-width="${config.gridWeight * 0.5}"/>\n`;
     }
   }
@@ -516,16 +517,16 @@ function renderScaleBarInTitleBlock(
   for (let i = 0; i < divisions; i++) {
     const segX = barX + i * divWidth;
     const fill = i % 2 === 0 ? scaleBar.fillColor : '#ffffff';
-    svg += `      <rect x="${segX.toFixed(2)}" y="${barY.toFixed(2)}" `;
-    svg += `width="${divWidth.toFixed(2)}" height="${barHeight.toFixed(2)}" `;
-    svg += `fill="${fill}" stroke="${scaleBar.strokeColor}" stroke-width="${scaleBar.lineWeight}"/>\n`;
+    svg += `      <rect x="${svgNum(segX, 2)}" y="${svgNum(barY, 2)}" `;
+    svg += `width="${svgNum(divWidth, 2)}" height="${svgNum(barHeight, 2)}" `;
+    svg += `fill="${escapeXml(fill)}" stroke="${escapeXml(scaleBar.strokeColor)}" stroke-width="${scaleBar.lineWeight}"/>\n`;
   }
 
   // Draw distance labels - only at 0 and end
   const fontSize = 1.8;
   const labelY = barY + barHeight + fontSize + 0.3;
 
-  svg += `      <text x="${barX.toFixed(2)}" y="${labelY.toFixed(2)}" `;
+  svg += `      <text x="${svgNum(barX, 2)}" y="${svgNum(labelY, 2)}" `;
   svg += `font-family="Arial, sans-serif" font-size="${fontSize}" `;
   svg += `text-anchor="start" fill="#000000">0</text>\n`;
 
@@ -533,7 +534,7 @@ function renderScaleBarInTitleBlock(
   // printed without lying. Those two have to agree, and an inline copy here is
   // exactly how they would stop agreeing.
   const endLabel = formatBarLabel(actualTotalLength);
-  svg += `      <text x="${(barX + actualBarLength).toFixed(2)}" y="${labelY.toFixed(2)}" `;
+  svg += `      <text x="${svgNum(barX + actualBarLength, 2)}" y="${svgNum(labelY, 2)}" `;
   svg += `font-family="Arial, sans-serif" font-size="${fontSize}" `;
   svg += `text-anchor="end" fill="#000000">${endLabel}</text>\n`;
 
@@ -562,23 +563,23 @@ function renderNorthArrowInTitleBlock(
 
   // Apply rotation transform
   const rotation = northArrow.rotation;
-  svg += `      <g transform="translate(${arrowX.toFixed(2)}, ${arrowY.toFixed(2)}) rotate(${rotation})">\n`;
+  svg += `      <g transform="translate(${svgNum(arrowX, 2)}, ${svgNum(arrowY, 2)}) rotate(${rotation})">\n`;
 
   // Draw simple north arrow
   const halfSize = size / 2;
 
   // Arrow body (filled triangle pointing up)
-  svg += `        <polygon points="0,${(-halfSize).toFixed(2)} ${(-halfSize / 3).toFixed(2)},${(halfSize / 2).toFixed(2)} ${(halfSize / 3).toFixed(2)},${(halfSize / 2).toFixed(2)}" `;
+  svg += `        <polygon points="0,${svgNum(-halfSize, 2)} ${svgNum(-halfSize / 3, 2)},${svgNum(halfSize / 2, 2)} ${svgNum(halfSize / 3, 2)},${svgNum(halfSize / 2, 2)}" `;
   svg += `fill="#000000" stroke="none"/>\n`;
 
   // Arrow outline (lower part, unfilled)
-  svg += `        <polygon points="0,${(halfSize / 3).toFixed(2)} ${(-halfSize / 3).toFixed(2)},${(halfSize / 2).toFixed(2)} ${(halfSize / 3).toFixed(2)},${(halfSize / 2).toFixed(2)}" `;
+  svg += `        <polygon points="0,${svgNum(halfSize / 3, 2)} ${svgNum(-halfSize / 3, 2)},${svgNum(halfSize / 2, 2)} ${svgNum(halfSize / 3, 2)},${svgNum(halfSize / 2, 2)}" `;
   svg += `fill="#ffffff" stroke="#000000" stroke-width="0.25"/>\n`;
 
   // "N" label
   const fontSize = size * 0.4;
-  svg += `        <text x="0" y="${(-halfSize - 1).toFixed(2)}" `;
-  svg += `font-family="Arial, sans-serif" font-size="${fontSize.toFixed(2)}" font-weight="bold" `;
+  svg += `        <text x="0" y="${svgNum(-halfSize - 1, 2)}" `;
+  svg += `font-family="Arial, sans-serif" font-size="${svgNum(fontSize, 2)}" font-weight="bold" `;
   svg += `text-anchor="middle" fill="#000000">N</text>\n`;
 
   svg += '      </g>\n';
@@ -586,14 +587,3 @@ function renderNorthArrowInTitleBlock(
   return svg;
 }
 
-/**
- * Escape special XML characters
- */
-function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}

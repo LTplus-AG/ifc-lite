@@ -20,7 +20,7 @@ import {
   renderTitleBlock,
   exportToDXF,
   formatScaleFactorLabel,
-  makeEntityKey, isPolygonCutLine,
+  makeEntityKey, isPolygonCutLine, entityIdAttr,
   type Drawing2D,
   type PdfScaleLayout,
   type DrawingSheet,
@@ -237,7 +237,7 @@ export function createDrawingExport({
     svg += '  <g id="polygon-fills">\n';
     for (const { polygon, style: { fillColor, fillOpacity }, geometry: pathData } of styledPolygons) {
       if (!pathData) continue;
-      svg += `    <path d="${pathData}" fill="${escapeXml(fillColor)}" fill-opacity="${fillOpacity.toFixed(2)}" fill-rule="evenodd" data-entity-id="${polygon.entityId}" data-ifc-type="${escapeXml(polygon.ifcType)}"/>\n`;
+      svg += `    <path d="${pathData}" fill="${escapeXml(fillColor)}" fill-opacity="${fillOpacity.toFixed(2)}" fill-rule="evenodd" ${entityIdAttr(polygon.entityId)} data-ifc-type="${escapeXml(polygon.ifcType)}"/>\n`;
     }
     svg += '  </g>\n';
 
@@ -247,7 +247,7 @@ export function createDrawingExport({
       // Convert line weight (mm on paper) to model units
       const svgLineWeight = mmToModel(lineWeight);
       if (!pathData) continue;
-      svg += `    <path d="${pathData}" fill="none" stroke="${escapeXml(strokeColor)}" stroke-width="${svgLineWeight.toFixed(4)}" data-entity-id="${polygon.entityId}"/>\n`;
+      svg += `    <path d="${pathData}" fill="none" stroke="${escapeXml(strokeColor)}" stroke-width="${svgLineWeight.toFixed(4)}" ${entityIdAttr(polygon.entityId)}/>\n`;
     }
     svg += '  </g>\n';
 
@@ -368,9 +368,9 @@ export function createDrawingExport({
         const approxWidth = Math.max(...lines.map(l => l.length * fontSize * 0.6)) + padding * 2;
         const height = lines.length * lineHeight + padding * 2;
 
-        svg += `    <rect x="${pt.x.toFixed(4)}" y="${pt.y.toFixed(4)}" width="${approxWidth.toFixed(4)}" height="${height.toFixed(4)}" fill="${annotation.backgroundColor}" stroke="${annotation.borderColor}" stroke-width="${mmToModel(0.15).toFixed(4)}"/>\n`;
+        svg += `    <rect x="${pt.x.toFixed(4)}" y="${pt.y.toFixed(4)}" width="${approxWidth.toFixed(4)}" height="${height.toFixed(4)}" fill="${escapeXml(annotation.backgroundColor)}" stroke="${escapeXml(annotation.borderColor)}" stroke-width="${mmToModel(0.15).toFixed(4)}"/>\n`;
         for (let i = 0; i < lines.length; i++) {
-          svg += `    <text x="${(pt.x + padding).toFixed(4)}" y="${(pt.y + padding + fontSize * 0.8 + i * lineHeight).toFixed(4)}" font-family="Arial, sans-serif" font-size="${fontSize.toFixed(4)}" fill="${annotation.color}">${escapeXml(lines[i])}</text>\n`;
+          svg += `    <text x="${(pt.x + padding).toFixed(4)}" y="${(pt.y + padding + fontSize * 0.8 + i * lineHeight).toFixed(4)}" font-family="Arial, sans-serif" font-size="${fontSize.toFixed(4)}" fill="${escapeXml(annotation.color)}">${escapeXml(lines[i])}</text>\n`;
         }
       }
       svg += '  </g>\n';
@@ -390,13 +390,13 @@ export function createDrawingExport({
         const pathData = generateCloudSVGPath(cloud.points[0], cloud.points[1], arcRadius, transformX, transformY);
         const lineWidth = mmToModel(0.4);
 
-        svg += `    <path d="${pathData}" fill="rgba(229,57,53,0.05)" stroke="${cloud.color}" stroke-width="${lineWidth.toFixed(4)}"/>\n`;
+        svg += `    <path d="${pathData}" fill="rgba(229,57,53,0.05)" stroke="${escapeXml(cloud.color)}" stroke-width="${lineWidth.toFixed(4)}"/>\n`;
 
         if (cloud.label) {
           const cx = transformX((cloud.points[0].x + cloud.points[1].x) / 2);
           const cy = transformY((cloud.points[0].y + cloud.points[1].y) / 2);
           const fontSize = mmToModel(3);
-          svg += `    <text x="${cx.toFixed(4)}" y="${cy.toFixed(4)}" font-family="Arial, sans-serif" font-size="${fontSize.toFixed(4)}" fill="${cloud.color}" text-anchor="middle" dominant-baseline="middle" font-weight="bold">${escapeXml(cloud.label)}</text>\n`;
+          svg += `    <text x="${cx.toFixed(4)}" y="${cy.toFixed(4)}" font-family="Arial, sans-serif" font-size="${fontSize.toFixed(4)}" fill="${escapeXml(cloud.color)}" text-anchor="middle" dominant-baseline="middle" font-weight="bold">${escapeXml(cloud.label)}</text>\n`;
         }
       }
       svg += '  </g>\n';
@@ -506,7 +506,7 @@ export function createDrawingExport({
     svg += '    <g id="polygon-fills">\n';
     for (const { polygon, style: { fillColor, fillOpacity }, geometry: pathData } of styledPolygons) {
       if (pathData) {
-        svg += `      <path d="${pathData}" fill="${escapeXml(fillColor)}" fill-opacity="${fillOpacity.toFixed(2)}" fill-rule="evenodd" data-entity-id="${polygon.entityId}" data-ifc-type="${escapeXml(polygon.ifcType)}"/>\n`;
+        svg += `      <path d="${pathData}" fill="${escapeXml(fillColor)}" fill-opacity="${fillOpacity.toFixed(2)}" fill-rule="evenodd" ${entityIdAttr(polygon.entityId)} data-ifc-type="${escapeXml(polygon.ifcType)}"/>\n`;
       }
     }
     svg += '    </g>\n';
@@ -517,7 +517,7 @@ export function createDrawingExport({
       if (pathData) {
         // lineWeight is in mm on paper
         const svgLineWeight = lineWeight * 0.3; // Scale down for better appearance
-        svg += `      <path d="${pathData}" fill="none" stroke="${escapeXml(strokeColor)}" stroke-width="${svgLineWeight.toFixed(4)}" data-entity-id="${polygon.entityId}"/>\n`;
+        svg += `      <path d="${pathData}" fill="none" stroke="${escapeXml(strokeColor)}" stroke-width="${svgLineWeight.toFixed(4)}" ${entityIdAttr(polygon.entityId)}/>\n`;
       }
     }
     svg += '    </g>\n';

@@ -5,10 +5,11 @@
 import type { DXFUnderlayOptions, Drawing2D } from '@ifc-lite/drawing-2d';
 import type { jsPDF } from 'jspdf';
 import type { Point2D, TextAnnotation2D } from '@/store/slices/drawing2DSlice';
+import { escapeXml } from '@ifc-lite/drawing-2d';
 import { resolvedElementTags } from './element-tags';
 import { toStandardFontText } from '@/lib/document/standard-font-text';
 
-export const escapeTagXml = (value: string) => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[char]!);
+export const escapeTagXml = escapeXml;
 
 /** Existing DXF underlay text writer applies the same world/map transform as the cut. */
 export function elementTagsDxf(drawing: Drawing2D, height: number): DXFUnderlayOptions {

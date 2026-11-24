@@ -168,6 +168,7 @@ export type { HatchLine, HatchResult, CustomHatchSettings } from './hatch-genera
 // SVG EXPORT
 // ═══════════════════════════════════════════════════════════════════════════
 
+export { escapeXml, entityIdAttr, svgNum } from './xml-escape.js';
 export { SVGExporter, exportToSVG } from './svg-exporter.js';
 export type { SVGExportOptions } from './svg-exporter.js';
 

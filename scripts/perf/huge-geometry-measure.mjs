@@ -63,9 +63,10 @@ async function afterFrame(page) {
   return bounded(page.evaluate(AFTER_FRAME, { capMs: 60000 }), 90000, 'next frame');
 }
 
-async function timedAction(page, action, args) {
+async function timedAction(page, action, args, { requireFrame = true } = {}) {
   const r = await bounded(page.evaluate(STORE_ACTION, { action, args }), 120000, action);
   const f = await afterFrame(page);
+  if (requireFrame && f.doneMs == null) throw new Error(f.doneError ?? 'no rendered frame completed');
   return { syncMs: r.syncMs, presentMs: f.presentMs, doneMs: f.doneMs, doneError: f.doneError };
 }
 
@@ -93,11 +94,11 @@ export async function interactions(page, errors) {
   const one = hitId ?? sample?.ids?.[0];
   if (one !== undefined) {
     out.hideOne = await step(errors, 'hide-one', () => timedAction(page, 'hideEntities', [[one]]));
-    out.showAfterHide = await step(errors, 'show-all', () => timedAction(page, 'showAll', []));
+    out.showAfterHide = await step(errors, 'show-all', () => timedAction(page, 'showAll', [], { requireFrame: false }));
   }
   if (sample?.ids?.length) {
     out.isolate = await step(errors, 'isolate', async () => ({ ids: sample.ids.length, ofIds: sample.total, ...(await timedAction(page, 'isolateEntities', [sample.ids])) }));
-    out.showAfterIsolate = await step(errors, 'show-all', () => timedAction(page, 'showAll', []));
+    out.showAfterIsolate = await step(errors, 'show-all', () => timedAction(page, 'showAll', [], { requireFrame: false }));
   }
   out.sectionOn = await step(errors, 'section-on', () => timedAction(page, 'setSectionPlaneEnabled', [true]));
   out.sectionOff = await step(errors, 'section-off', () => timedAction(page, 'setSectionPlaneEnabled', [false]));

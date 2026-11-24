@@ -201,15 +201,43 @@ describe('compareArms', () => {
     assert.equal(overall(rows), 'fail');
   });
 
+  /** `rows` rows shaded red from the top, or blue from the bottom. */
+  const shade = (rows, fromBottom = false) => {
+    const img = image(10, 10);
+    for (let p = 0; p < rows * 10; p++) img.data.set(fromBottom ? [0, 0, 200, 255] : [200, 0, 0, 255], (fromBottom ? 99 - p : p) * 4);
+    return img;
+  };
+
+  it('passes a step where flags on matches any flags-off load', () => {
+    const off = arm('off', { steps: { home: { ok: true, frame: frame('b-off', image(10, 10)) } } });
+    const noise = [arm('off2', { steps: { home: { ok: true, frame: frame('b-off2', shade(1)) } } }),
+      arm('off3', { steps: { home: { ok: true, frame: frame('b-off3', shade(3)) } } })];
+    const row = compareArms(off, arm('on', { steps: { home: { ok: true, frame: frame('b-on', shade(3)) } } }), { ...options, noise })
+      .find((r) => r.check === 'home pixels');
+    assert.equal(row.verdict, 'pass');
+    assert.match(row.detail, /^matches flags-off load 3, one of main's own states; 0% /);
+  });
+
+  it('never lets an unclean or failed flags-off load approve a step, and names loads by their own number', () => {
+    const off = arm('off', { steps: { home: { ok: true, frame: frame('c-off', image(10, 10)) } } });
+    const on = arm('on', { steps: { home: { ok: true, frame: frame('c-on', shade(3)) } } });
+    const unstable = arm('off2', { steps: { home: { ok: true, frame: { ...frame('c-off2', shade(3)), stable: false } } } });
+    const failed = arm('off3', { errors: ['crashed'], steps: { home: { ok: false, frame: frame('c-off3', shade(3)) } } });
+    const rows = compareArms(off, on, { ...options, noise: [unstable, failed] });
+    assert.equal(rows.find((r) => r.check === 'home pixels').verdict, 'fail');
+    assert.equal(rows.find((r) => r.check === 'flags-off load 3 completed').verdict, 'error');
+    const good = arm('off3', { steps: { home: { ok: true, frame: frame('c-off3b', shade(3)) } } });
+    assert.match(compareArms(off, on, { ...options, noise: [unstable, good] }).find((r) => r.check === 'home pixels').detail, /^matches flags-off load 3,/);
+  });
+
   it('calls a step inconclusive where main is not deterministic, unless the flag is far worse', () => {
-    const shade = (rows) => { const img = image(10, 10); for (let p = 0; p < rows * 10; p++) img.data.set([200, 0, 0, 255], p * 4); return img; };
     const off = arm('off', { steps: { home: { ok: true, frame: frame('n-off', image(10, 10)) } } });
-    const on = (rows) => arm('on', { steps: { home: { ok: true, frame: frame(`n-on-${rows}`, shade(rows)) } } });
+    const on = (rows) => arm('on', { steps: { home: { ok: true, frame: frame(`n-on-${rows}`, shade(rows, true)) } } });
     assert.equal(verdicts(compareArms(off, on(1), options))['home pixels'], 'fail');
     const noise = arm('off2', { steps: { home: { ok: true, frame: frame('n-off2', shade(1)) } } });
     const row = compareArms(off, on(1), { ...options, noise }).find((r) => r.check === 'home pixels');
     assert.equal(row.verdict, 'skip');
-    assert.match(row.detail, /^inconclusive.*main vs main 10%/);
+    assert.match(row.detail, /^inconclusive.*main vs main up to 10%/);
     assert.equal(verdicts(compareArms(off, on(3), { ...options, noise }))['home pixels'], 'fail', '30% > 2 x 10% + 0.1%');
   });
 

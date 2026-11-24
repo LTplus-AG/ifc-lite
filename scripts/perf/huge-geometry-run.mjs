@@ -29,7 +29,7 @@ import { parseArgs } from 'node:util';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { generateScenario } from './huge-geometry-gen.mjs';
 import { FAMILIES, TIERS, resolveScenario, tierLabel } from './huge-geometry-ladder.mjs';
-import { ROOT, launchGpu, loadModel, positiveFinite, startSampler } from './huge-geometry-browser.mjs';
+import { ROOT, launchGpu, loadModel, nonNegativeInteger, positiveFinite, positiveInteger, startSampler } from './huge-geometry-browser.mjs';
 import { cameraPaths, interactions, settledMemory } from './huge-geometry-measure.mjs';
 import { markdownSummary } from './huge-geometry-report.mjs';
 import { startViewerServer } from './viewer-load-probe.mjs';
@@ -125,9 +125,9 @@ async function main() {
   if (!['diagnostic', 'benchmark'].includes(values.evidence)) { console.error('--evidence must be diagnostic or benchmark'); process.exit(2); }
   const scenarios = values.scenarios ? values.scenarios.split(',') : Object.keys(FAMILIES);
   const tiers = values.tiers ? values.tiers.split(',').map(parseTier) : [...TIERS];
-  const seed = values.seed === undefined ? undefined : positiveFinite('seed', values.seed, usage);
+  const seed = values.seed === undefined ? undefined : nonNegativeInteger('seed', values.seed, usage);
   for (const s of scenarios) resolveScenario({ scenario: s, elements: tiers[0], seed }); // validate before any work
-  const frames = positiveFinite('frames', values.frames, usage);
+  const frames = positiveInteger('frames', values.frames, usage);
   const timeoutMs = positiveFinite('timeout-min', values['timeout-min'], usage) * 60000;
   const out = resolve(values.out), modelsDir = resolve(values['models-dir']), dist = resolve(values.dist);
   mkdirSync(join(out, 'runs'), { recursive: true });

@@ -85,6 +85,14 @@ test('bounded: settles with the promise, or rejects naming the step', async () =
 });
 
 
+function runHarnessCli(name, dir, ...args) {
+  const script = fileURLToPath(new URL(`huge-geometry-${name}.mjs`, import.meta.url));
+  const result = spawnSync(process.execPath, [script, '--label', 'test', '--out', join(dir, 'out'),
+    '--models-dir', join(dir, 'models'), '--dist', join(dir, 'missing-viewer'), ...args], { encoding: 'utf8', timeout: 5000 });
+  assert.ifError(result.error);
+  return result;
+}
+
 test('#11366: all numeric CLI options exit with usage for invalid values', () => {
   const dir = mkdtempSync(join(tmpdir(), 'huge-geometry-options-'));
   try {
@@ -93,18 +101,40 @@ test('#11366: all numeric CLI options exit with usage for invalid values', () =>
       record: { 'timeout-min': 'abc', frames: '-2', fps: 'Infinity' },
       cinema: { 'timeout-min': 'abc', fps: '0', seed: '-1', 'load-speed': 'Infinity', 'emit-max-mb': '0' },
     })) {
-      const script = `huge-geometry-${name}.mjs`;
       for (const [key, value] of Object.entries(options)) {
-        const result = spawnSync(process.execPath, [fileURLToPath(new URL(script, import.meta.url)),
-          '--label', 'test', '--out', join(dir, 'out'), '--models-dir', join(dir, 'models'),
-          '--dist', join(dir, 'missing-viewer'), `--${key}=${value}`], { encoding: 'utf8', timeout: 5000 });
-        assert.ifError(result.error);
+        const result = runHarnessCli(name, dir, `--${key}=${value}`);
+        const expected = { frames: 'a positive integer', seed: 'a non-negative integer' }[key] ?? 'a positive finite number';
         assert.equal(result.status, 2, result.stderr);
-        assert.ok(result.stderr.includes(`--${key} must be a positive finite number`), result.stderr);
-        assert.ok(result.stderr.includes(`usage: ${script}`), result.stderr);
+        assert.ok(result.stderr.includes(`--${key} must be ${expected}`), result.stderr);
+        assert.ok(result.stderr.includes(`usage: huge-geometry-${name}.mjs`), result.stderr);
         assert.equal(existsSync(join(dir, 'out')), false);
       }
     }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('#11366: CLI seeds accept zero and reject fractions, and frame counts reject fractions', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'huge-geometry-integer-options-'));
+  try {
+    for (const [name, key, expected] of [
+      ['run', 'seed', 'a non-negative integer'], ['cinema', 'seed', 'a non-negative integer'],
+      ['run', 'frames', 'a positive integer'], ['record', 'frames', 'a positive integer'],
+    ]) {
+      const result = runHarnessCli(name, dir, `--${key}=${key === 'seed' ? '1.5' : '2.5'}`);
+      assert.equal(result.status, 2, result.stderr);
+      assert.ok(result.stderr.includes(`--${key} must be ${expected}`), result.stderr);
+      assert.ok(result.stderr.includes(`usage: huge-geometry-${name}.mjs`), result.stderr);
+    }
+
+    const run = runHarnessCli('run', dir, '--seed=0', '--generate-only', '--scenarios=mixed', '--tiers=10');
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stdout, /generated 10 elements/);
+
+    const cinema = runHarnessCli('cinema', dir, '--seed=0');
+    assert.equal(cinema.status, 1, cinema.stderr);
+    assert.ok(cinema.stderr.includes(`no viewer build at ${join(dir, 'missing-viewer')}`), cinema.stderr);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

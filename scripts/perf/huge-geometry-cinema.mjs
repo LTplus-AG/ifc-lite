@@ -30,7 +30,7 @@ import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { generateScenario } from './huge-geometry-gen.mjs';
-import { ROOT, bounded, launchGpu, loadModel, positiveFinite, startSampler } from './huge-geometry-browser.mjs';
+import { ROOT, bounded, launchGpu, loadModel, nonNegativeInteger, positiveFinite, startSampler } from './huge-geometry-browser.mjs';
 import { withTimeout } from './oom-load-probe-lib.mjs';
 import { SCENE_STATS } from './huge-geometry-page.mjs';
 import { frameSummary } from './huge-geometry-report.mjs';
@@ -340,7 +340,7 @@ async function main() {
     console.error(usage);
     process.exit(2);
   }
-  const seed = positiveFinite('seed', values.seed, usage);
+  const seed = nonNegativeInteger('seed', values.seed, usage);
   const fps = positiveFinite('fps', values.fps, usage);
   const loadSpeed = positiveFinite('load-speed', values['load-speed'], usage);
   const timeoutMs = positiveFinite('timeout-min', values['timeout-min'], usage) * 60000;

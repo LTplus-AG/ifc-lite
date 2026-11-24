@@ -25,7 +25,7 @@ import { parseArgs } from 'node:util';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { generateScenario } from './huge-geometry-gen.mjs';
 import { FAMILIES, tierLabel } from './huge-geometry-ladder.mjs';
-import { ROOT, launchGpu, loadModel, positiveFinite, startSampler } from './huge-geometry-browser.mjs';
+import { ROOT, launchGpu, loadModel, positiveFinite, positiveInteger, startSampler } from './huge-geometry-browser.mjs';
 import { cameraPaths, settledMemory } from './huge-geometry-measure.mjs';
 import { parseTier } from './huge-geometry-run.mjs';
 import { HIDE_PRIVACY_NOTICE, HUD_INSTALL, HUD_UPDATE, attachScreencast, cardHtml, startEncoder, toMp4 } from './huge-geometry-video.mjs';
@@ -158,7 +158,7 @@ async function main() {
     console.error(usage);
     process.exit(2);
   }
-  const frames = positiveFinite('frames', values.frames, usage);
+  const frames = positiveInteger('frames', values.frames, usage);
   const fps = positiveFinite('fps', values.fps, usage);
   const timeoutMs = positiveFinite('timeout-min', values['timeout-min'], usage) * 60000;
   const out = resolve(values.out), stills = join(out, 'stills');

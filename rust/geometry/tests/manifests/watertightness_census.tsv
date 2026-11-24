@@ -224,7 +224,7 @@ ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	247203	Clipping	
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	247726	Clipping	0	62	0	0	0	-	0	1374841
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	247953	Clipping	0	62	0	0	0	-	0	1408314
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	295370	SweptSolid	0	254	0	0	0	-	0	110278696
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	296868	SweptSolid	0	282	0	0	0	-	0	110281458
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	296868	SweptSolid	0	332	0	0	0	-	0	110281480
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	299369	SweptSolid	0	32	0	0	0	-	0	223044201
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	299638	SweptSolid	0	12	0	0	0	-	0	809591
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	316547	SweptSolid	0	788	0	0	0	-	0	23862133
@@ -1488,9 +1488,9 @@ issues/841_house_stack_overflow.ifc	4148	Clipping	0	140	0	0	0	-	0	9474529
 issues/841_house_stack_overflow.ifc	4219	Clipping	0	48	0	0	0	-	0	4105196
 issues/841_house_stack_overflow.ifc	4267	SweptSolid	0	28	0	0	0	-	0	3649551
 issues/841_house_stack_overflow.ifc	4374	Clipping	0	58	0	0	0	-	0	3266357
-issues/841_house_stack_overflow.ifc	4897	Clipping	0	66	0	0	0	-	0	986408
+issues/841_house_stack_overflow.ifc	4897	Clipping	0	84	0	0	0	-	0	986931
 issues/841_house_stack_overflow.ifc	5904	Clipping	0	120	0	0	0	-	0	13960888
-issues/841_house_stack_overflow.ifc	13928	SweptSolid	0	28	0	0	0	-	0	18321124
+issues/841_house_stack_overflow.ifc	13928	SweptSolid	0	28	0	0	0	-	0	18323477
 issues/845_wall_elemented_case.ifc	130	SweptSolid	0	96	0	0	0	-	0	30972
 issues/845_wall_elemented_case.ifc	133	SweptSolid	0	264	0	0	0	-	27	122855
 issues/845_wall_elemented_case.ifc	145	SweptSolid	0	96	0	0	0	-	27	106539

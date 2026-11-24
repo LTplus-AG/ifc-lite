@@ -1,5 +1,5 @@
 ---
-"@ifc-lite/export": patch
+"@ifc-lite/export": minor
 "@ifc-lite/flow-nodes": patch
 ---
 

@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { isCompactCellSize } from './compact-geometry.js';
+import { compactGeometryLoaded } from './compact-mesh.js';
 import type { ProcessParallelOptions } from './geometry-parallel-options.js';
 
 /** The geometry worker bundle, freshly instantiated for each load. */
@@ -56,6 +58,8 @@ export function postGeometryWorkerInit(
     type: 'set-instancing-enabled',
     enabled: options?.enableInstancing !== false,
   });
+  // Compact GPU records (compact-geometry.ts): a fresh worker has the encoder off, so only a host that asks says so.
+  if (options && isCompactCellSize(options.compactCellSize) && compactRecordsFor(options)) worker.postMessage({ type: 'set-compact-geometry', cellSize: options.compactCellSize });
   // Issue #924: forward the geometry-hash tolerance the same way — always
   // sent so the controller path stays uniform; null is a cheap no-op.
   worker.postMessage({
@@ -75,4 +79,26 @@ export function postGeometryWorkerInit(
     enabled: options?.skipSmallCuts === true,
     skipVoids: options?.skipVoids === true,
   });
+}
+
+const compactDecided = new WeakMap<object, boolean>();
+let warnedCompactUnloaded = false;
+
+/**
+ * Whether this load's workers encode compact records: only when the main
+ * thread can read what comes back (`loadCompactGeometry`). Decided once per
+ * load (its options object), so a worker replaced or spawned later is
+ * configured like the rest of its pool.
+ */
+function compactRecordsFor(options: ProcessParallelOptions): boolean {
+  let on = compactDecided.get(options);
+  if (on === undefined) {
+    on = compactGeometryLoaded();
+    compactDecided.set(options, on);
+    if (!on && !warnedCompactUnloaded) {
+      warnedCompactUnloaded = true;
+      console.warn('[geometry] compactCellSize without loadCompactGeometry(): f32 meshes');
+    }
+  }
+  return on;
 }

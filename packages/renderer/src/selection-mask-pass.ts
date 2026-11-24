@@ -48,6 +48,7 @@ export interface SelectableMesh {
   vertexBuffer: GPUBuffer;
   indexBuffer: GPUBuffer;
   indexCount: number;
+  indexFormat?: GPUIndexFormat;
   bindGroup: GPUBindGroup;
   vertexStride?: 36;
   /** A quantized colour batch drawn for the highlight (#10264 S3); its uniform names the entities kept. */
@@ -194,7 +195,7 @@ export class SelectionMaskPass {
         pass.setBindGroup(3, sectionExclusions(this.device).bindGroup);
         pass.setBindGroup(0, mesh.bindGroup);
         pass.setVertexBuffer(0, mesh.vertexBuffer);
-        pass.setIndexBuffer(mesh.indexBuffer, 'uint32');
+        pass.setIndexBuffer(mesh.indexBuffer, mesh.indexFormat ?? 'uint32');
         pass.drawIndexed(mesh.indexCount, 1, 0, 0, 0);
       }
       if (instanced && instancedFrame) {
@@ -206,7 +207,7 @@ export class SelectionMaskPass {
     draw(targets.visibleView, 'selectedVisible', frame.selected);
     if (frame.hovered.length > 0 || (instancedFrame?.hovered.length ?? 0) > 0) {
       draw(targets.visibleView, 'hoverVisible', frame.hovered.map((h, i) => ({
-        vertexBuffer: h.vertexBuffer, indexBuffer: h.indexBuffer, indexCount: h.indexCount, bindGroup: this.hoverGroup(h, i), vertexStride: h.vertexStride, quantized: h.quantized,
+        vertexBuffer: h.vertexBuffer, indexBuffer: h.indexBuffer, indexCount: h.indexCount, ...(h.indexFormat ? { indexFormat: h.indexFormat } : {}), bindGroup: this.hoverGroup(h, i), vertexStride: h.vertexStride, quantized: h.quantized,
       })));
     }
     draw(targets.allView, 'selectedAll', frame.selected);

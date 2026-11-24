@@ -114,6 +114,7 @@ import { resolveRtcFrame, type RtcFrame } from './rtc-frame.js';
 import { streamNativeGeometry } from './geometry-native.js';
 import { processParallel, type ProcessParallelOptions } from './geometry-parallel.js';
 import { acquireWasmStreamingOperation } from './wasm-streaming-guard.js';
+import { canRunWorkerPool } from './worker-count.js';
 import type { StallPhaseHandle } from './stall-phase.js';
 import type { ByteStreamingPrePassResult, UnitRefusedEvent } from './byte-streaming-prepass-result.js';
 import { buildPrePassWithFinishes } from './style-finishes.js';
@@ -243,6 +244,7 @@ export class GeometryProcessor {
   private tessellationQuality: TessellationQuality | null;
   private skipSmallCuts: boolean;
   private skipVoids: boolean;
+  compactCellSize?: number; // worker-pool compact GPU records at this cell size, after `loadCompactGeometry()` (`ProcessParallelOptions.compactCellSize`); unset = off
 
   constructor(options: GeometryProcessorOptions = {}) {
     this.bufferBuilder = new BufferBuilder();
@@ -768,6 +770,7 @@ export class GeometryProcessor {
       stallPhaseHandle, trace,
       // Every pool worker meshes with this processor's settings (#540, #924, #976, #1286; meshing-settings.ts).
       ...this.meshingSettings(),
+      compactCellSize: this.compactCellSize,
       wasmUrls,
       workerCountOverride,
     });
@@ -882,10 +885,7 @@ export class GeometryProcessor {
       yield { type: 'complete', totalMeshes: allMeshes.length, coordinateInfo, ...omittedTypeRecordsField(omittedTypeRecords) };
     } else {
       // Large files: parallel or streaming
-      const useParallel = typeof SharedArrayBuffer !== 'undefined'
-        && typeof Worker !== 'undefined'
-        && typeof navigator !== 'undefined'
-        && (navigator.hardwareConcurrency ?? 1) > 1;
+      const useParallel = canRunWorkerPool();
 
       if (useParallel) {
         yield* this.processParallel(

@@ -16,6 +16,9 @@ import { materializeInstances } from './scene-instance-materialization.js';
 import { InstanceSuppression } from './scene-instance-suppression.js';
 import { createSceneBatch } from './scene-batch-upload.js';
 import { SceneSnapshotLifecycle, type SceneSnapshotHost } from './scene-snapshot-lifecycle.js';
+import type { SceneCompact, SceneCompactHost } from './scene-compact.js';
+import { createCompactPages } from './compact-page-deps.js';
+import { materializeCompactMeshes } from '@ifc-lite/geometry/compact';
 import type { SceneCaptureCallback, SceneCaptureDrop, SceneSnapshot } from './scene-snapshot.js';
 import { flushQueuedMeshes } from './scene-flush.js';
 import { uploadInstancedTemplate, type InstanceUploadHost } from './scene-instance-upload.js';
@@ -44,7 +47,7 @@ import {
   rayIntersectsBox,
 } from './scene-raycaster.js';
 import { selectBoundingBoxesInRect, type RectangleRteFrame } from './scene-rect-select.js';
-import { splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, destroyGpuResources, topologySafeBatchOrigin } from './scene-geometry.js';
+import { splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, worldAabbOfPieceLists, unionOfBoxes, destroyGpuResources, topologySafeBatchOrigin } from './scene-geometry.js';
 import { TopologyMemo } from './scene-precision.js';
 import { StreamAssembly } from './scene-stream-assembly.js';
 import { mergeSameColorPieces } from './scene-mesh-pieces.js';
@@ -184,7 +187,8 @@ export class Scene {
         },
       },
       source: part => this.modelTranslations.sourceFromPlaced(part),
-      ready: () => !this.geometryReleased && !this.finalizeInProgress && !this.pendingBatchKeys.size && !this.streamingFragments.length,
+      // Appearance work is on bucket geometry: pages go back to buckets before any edit is judged ready.
+      ready: () => { this.compact?.demote(); return !this.geometryReleased && !this.finalizeInProgress && !this.pendingBatchKeys.size && !this.streamingFragments.length; },
       buckets: {
         buckets: this.buckets, reverse: () => this.meshDataBucket,
         create: (parts, key) => this.createBatchedMesh(parts, parts[0].color, device, pipeline, key),
@@ -326,6 +330,8 @@ export class Scene {
   // (post-load telemetry) must also check this.
   private finalizeInProgress = false;
   private readonly snapshots = new SceneSnapshotLifecycle(this as unknown as SceneSnapshotHost);
+  /** Meshes drawn from compact pages instead of buckets, and the way back (scene-compact.ts); null until `loadCompactPages` resolved and a mesh was queued. */
+  private compact: SceneCompact | null = null;
   private nextSplitId: number = 0; // Monotonic counter for sub-bucket keys
   private nextBatchId: number = 0; // Monotonic counter for unique batch identifiers
   // Per-model shared origins keep all colours and highlights bit-coincident
@@ -390,7 +396,7 @@ export class Scene {
   private geometryReleased: boolean = false;
   private ephemeralStreamingMode: boolean = false;
 
-  prepareDeviceRecovery(): SceneDeviceRecoveryPreparation { this.snapshots.onDeviceLost(); this.keyedInstancing.seal(this as unknown as InstanceUploadHost); return prepareSceneDeviceRecovery(this as unknown as SceneRecoveryHost); }
+  prepareDeviceRecovery(): SceneDeviceRecoveryPreparation { this.snapshots.onDeviceLost(); this.compact?.onDeviceLost(); this.keyedInstancing.seal(this as unknown as InstanceUploadHost); return prepareSceneDeviceRecovery(this as unknown as SceneRecoveryHost); }
   discardGpuResourcesForRecovery(): void { this.keyedInstancing.seal(this as unknown as InstanceUploadHost); discardSceneGpuResourcesForRecovery(this as unknown as SceneRecoveryHost); this.bumpPickGeometryRevision(); this.fragmentPieces.retainOnly(this.streamingFragments); this.streamWork.clear(); /* its fragments are gone */ }
   restoreGpuResourcesAfterRecovery(device: GPUDevice, pipeline: RenderPipeline): void { this.keyedInstancing.seal(this as unknown as InstanceUploadHost); restoreSceneGpuResourcesAfterRecovery(this as unknown as SceneRecoveryHost, device, pipeline); this.bumpPickGeometryRevision(); }
 
@@ -409,11 +415,12 @@ export class Scene {
     return this.meshes;
   }
 
-  /**
-   * Get all batched meshes
-   */
+  /** Draw every compact mesh from buckets again (scene-compact.ts). Returns whether any moved. */
+  demoteCompact(): boolean { return this.compact?.demote() ?? false; }
+
+  /** Every batch the frame draws: the buckets' and streaming fragments', then the compact pages. */
   getBatchedMeshes(): BatchedMesh[] {
-    return this.batchedMeshes;
+    return this.compact?.withPages(this.batchedMeshes) ?? this.batchedMeshes;
   }
 
   /** The shared local-frame origin all batches relativize against (null until
@@ -574,6 +581,7 @@ export class Scene {
    */
   setQuantizedBatches(enabled: boolean): void {
     this.quantizedBatchesEnabled = enabled;
+    if (!enabled) this.compact?.demote(); // pages are 12-byte records: only the quantized pipelines draw them
   }
 
   /** The draw origin of the textured drawable rendering `meshData`, or null
@@ -598,6 +606,8 @@ export class Scene {
   getIndividualMeshFrame(meshData: MeshData): IndividualMeshFrame {
     const texturedOrigin = this.getTexturedDrawOrigin(meshData);
     if (texturedOrigin) return { sharedOrigin: texturedOrigin, quantized: false };
+    const page = this.compact?.frameOf(meshData);
+    if (page) return page;
     return { sharedOrigin: this.getSharedFrameOrigin(meshData.modelIndex, meshData), quantized: this.isMeshQuantized(meshData) };
   }
 
@@ -1135,7 +1145,8 @@ export class Scene {
    * when streaming completes to merge the streamed buckets (only those, #5358).
    */
   appendToBatches(meshDataArray: MeshData[], device: GPUDevice, pipeline: RenderPipeline, isStreaming: boolean = false, sourceCounted: boolean = false): void {
-    meshDataArray = meshDataArray.map((mesh) => this.modelTranslations.placeMesh(mesh));
+    // Only `queueMeshes` admits a compact mesh to a page: one appended directly is an ordinary f32 mesh here.
+    meshDataArray = materializeCompactMeshes(materializeCompactMeshes(meshDataArray).map((mesh) => this.modelTranslations.placeMesh(mesh))); // a placed copy made while the mesh was paged is compact too
     // One verdict per (mesh, frame) for the whole append: the validation below
     // and bucket routing ask the same question about the same placed mesh.
     const topology = isStreaming && !this.ephemeralStreamingMode ? this.streamWork.streamTopology() : new TopologyMemo(); // ephemeral keeps no geometry alive
@@ -1273,6 +1284,7 @@ export class Scene {
    *     the IFC tombstone just means we ignore it for queries.
    */
   removeMeshesForEntity(expressId: number): boolean {
+    this.compact?.demote(); // pages cannot follow this: draw from buckets first
     this.triangleCounts.remove(expressId); this.geometryChanges.changed();
     this.appearanceController?.forget(expressId);
     this.modelTranslations.forgetEntityBounds(expressId);
@@ -1397,6 +1409,7 @@ export class Scene {
    * dedicated mesh removed.
    */
   removeMeshesForEntities(expressIds: Iterable<number>): number {
+    this.compact?.demote(); // pages cannot follow this: draw from buckets first
     let count = 0;
     for (const id of expressIds) {
       if (this.removeMeshesForEntity(id)) count++;
@@ -1426,6 +1439,7 @@ export class Scene {
    * to a full reload if needed.
    */
   translateMeshesForEntity(expressId: number, delta: [number, number, number], beforeWrite?: (mesh: MeshData) => void): boolean {
+    this.compact?.demote(); // pages cannot follow this: draw from buckets first
     this.appearanceController?.cancelFor(expressId);
     // An entity can have flat meshes, GPU-instanced occurrences, or both. The
     // instanced occurrences live in the per-template instance buffers, NOT in
@@ -1666,6 +1680,7 @@ export class Scene {
   /** Absolute workspace translation, renderer Y-up metres (#4226). */
   getModelTranslation(modelIndex: number) { return this.modelTranslations.get(modelIndex); }
   setModelTranslation(modelIndex: number, translation: readonly [number, number, number]): boolean {
+    this.compact?.demote(); // pages cannot follow this: draw from buckets first
     if (translation.some((v, i) => v !== this.modelTranslations.get(modelIndex)[i])) this.keyedInstancing.seal(this as unknown as InstanceUploadHost, modelIndex); // placement sizes records from instanceData
     const changed = translateSceneModel(this.translationScope(), modelIndex, translation);
     this.dropOrphanedSuppressedBounds(); if (changed) this.bumpPickGeometryRevision();
@@ -1678,6 +1693,7 @@ export class Scene {
    *  is rotated by the viewer's bake, not here. */
   getModelRotation(modelIndex: number): ModelYaw | null { return this.modelTranslations.getYaw(modelIndex); }
   setModelRotation(modelIndex: number, angle: number, pivot: readonly [number, number, number]): boolean {
+    this.compact?.demote(); // pages cannot follow this: draw from buckets first
     const yaw: ModelYaw | null = angle === 0 ? null : { angle, px: pivot[0], pz: pivot[2] };
     const was = this.modelTranslations.getYaw(modelIndex); if (was?.angle !== yaw?.angle || was?.px !== yaw?.px || was?.pz !== yaw?.pz) this.keyedInstancing.seal(this as unknown as InstanceUploadHost, modelIndex);
     const changed = rotateSceneModelInstances(this.translationScope(), modelIndex, yaw);
@@ -1687,6 +1703,7 @@ export class Scene {
 
   /** Bulk variant of `translateMeshesForEntity`. */
   translateMeshesForEntities(updates: Map<number, [number, number, number]>, beforeWrite?: (mesh: MeshData) => void): number {
+    this.compact?.demote(); // pages cannot follow this: draw from buckets first
     let count = 0;
     for (const [id, delta] of updates) {
       if (this.translateMeshesForEntity(id, delta, beforeWrite)) count++;
@@ -1710,6 +1727,7 @@ export class Scene {
    * Returns true when a mesh was modified.
    */
   rotateMeshesForEntity(expressId: number, angleRad: number, pivot: [number, number, number], beforeWrite?: (mesh: MeshData) => void): boolean {
+    this.compact?.demote(); // pages cannot follow this: draw from buckets first
     this.appearanceController?.cancelFor(expressId);
     this.streamWork.invalidate(); // positions rotate in place below
     const meshDataList = this.meshDataMap.get(expressId);
@@ -1783,6 +1801,7 @@ export class Scene {
 
   /** Bulk variant of `rotateMeshesForEntity`. */
   rotateMeshesForEntities(updates: Map<number, { angle: number; pivot: [number, number, number] }>, beforeWrite?: (mesh: MeshData) => void): number {
+    this.compact?.demote(); // pages cannot follow this: draw from buckets first
     let count = 0;
     for (const [id, { angle, pivot }] of updates) {
       if (this.rotateMeshesForEntity(id, angle, pivot, beforeWrite)) count++;
@@ -1799,6 +1818,7 @@ export class Scene {
    */
   queueMeshes(meshes: MeshData[]): void {
     this.triangleCounts.noteSources(meshes, true); this.geometryChanges.changed();
+    meshes = (this.compact ??= createCompactPages(this as unknown as SceneCompactHost))?.take(meshes) ?? materializeCompactMeshes(meshes);
     for (let i = 0; i < meshes.length; i++) {
       const fragments = this.splitMeshForStreaming(meshes[i]);
       for (let j = 0; j < fragments.length; j++) {
@@ -1810,13 +1830,13 @@ export class Scene {
 
   /** True if the mesh queue has pending work. */
   hasQueuedMeshes(): boolean {
-    return this.meshQueueReadIndex < this.meshQueue.length;
+    return this.compact?.hasQueued === true || this.meshQueueReadIndex < this.meshQueue.length;
   }
 
   /** True while GPU fragments or retained streamed buckets await finalization.
    * Recovery retires old-device fragments without retiring their CPU owner. */
   hasStreamingFragments(): boolean {
-    return this.streamingFragments.length > 0 || this.streamedBucketKeys.size > 0;
+    return this.streamingFragments.length > 0 || this.streamedBucketKeys.size > 0 || this.compact?.unsettled === true; // pages are trimmed at finalize
   }
 
   /** True while a finalize rebuild (sync or time-sliced) is mid-flight —
@@ -1834,6 +1854,7 @@ export class Scene {
   }
 
   setEphemeralStreamingMode(enabled: boolean): void {
+    if (enabled) this.compact?.demote(); // an ephemeral scene keeps no geometry to fall back on
     this.ephemeralStreamingMode = enabled;
   }
 
@@ -1866,6 +1887,7 @@ export class Scene {
    * @returns true if any meshes were processed (caller should render)
    */
   flushPending(device: GPUDevice, pipeline: RenderPipeline, budgetMs = 12, trace?: LoadTrace, deterministicUploads = false): boolean {
+    const compacted = this.compact?.drain(device, pipeline) ?? false;
     const result = flushQueuedMeshes(this.meshQueue, this.meshQueueReadIndex, (chunk, nextReadIndex) => {
       this.meshQueueReadIndex = nextReadIndex;
       this.appendToBatches(chunk, device, pipeline, true, true);
@@ -1873,7 +1895,7 @@ export class Scene {
     }, { budgetMs, trace, deterministicUploads, maxIndicesPerAppend: Scene.STREAMING_FRAGMENT_MAX_INDICES });
     this.meshQueue = result.queue;
     this.meshQueueReadIndex = result.readIndex;
-    return result.processed > 0;
+    return result.processed > 0 || compacted;
   }
 
   /**
@@ -1924,6 +1946,7 @@ export class Scene {
    * re-grouped by their CURRENT colour.
    */
   finalizeStreaming(device: GPUDevice, pipeline: RenderPipeline): void {
+    this.compact?.settle(device, pipeline);
     if (!this.hasStreamingFragments()) return;
     this.finalizeInProgress = true;
     try {
@@ -2036,6 +2059,7 @@ export class Scene {
       trace?.end(span);
       return Promise.resolve();
     }
+    this.compact?.settle(device, pipeline);
     if (!this.hasStreamingFragments()) { trace?.end(span); return Promise.resolve(); }
     // Mark the rebuild as in-flight: the preamble empties streamingFragments
     // synchronously, so settle-sensitive consumers need this flag until the
@@ -2182,6 +2206,7 @@ export class Scene {
   }
 
   finishEphemeralStreaming(): void {
+    this.compact?.demote(); // pages cannot follow this: draw from buckets first
     this.snapshots.dropCapture();
     this.streamWork.clear();
     this.streamingFragmentIndexBudget = Number.POSITIVE_INFINITY; this.modelTranslations.forgetPlacements(); // before the early return: a rolled-back pass placed meshes too
@@ -2237,6 +2262,7 @@ export class Scene {
    * Call this after finalizeStreaming() when all color updates have been applied.
    */
   releaseGeometryData(): void {
+    this.compact?.demote(); // pages cannot follow this: draw from buckets first
     if (this.geometryReleased) return;
     if (this.instanceSuppression.retained) {
       console.warn('[Appearance] Retained occurrence history still needs CPU geometry');
@@ -2314,6 +2340,7 @@ export class Scene {
     pipeline: RenderPipeline
   ): void {
     if (updates.size === 0) return;
+    this.compact?.demote(); // a recolour moves meshes between buckets
 
     if (this.geometryReleased) {
       console.warn('[Scene] updateMeshColors called after geometry data was released — skipping.');
@@ -2528,6 +2555,7 @@ export class Scene {
    * The caller must fall back to drawing the batch whole when this is false.
    */
   canPartitionBatch(batch: BatchedMesh): boolean {
+    if (batch.indexFormat) { this.compact?.requestDemotion(); return false; } // a compact page: whole this frame, from buckets the next
     if (this.geometryReleased || this.snapshots.hydrating || batch.laneIds) return false; // laneIds: colour-merged (#10653)
     const bucket = this.buckets.get(batch.colorKey);
     const live = bucket !== undefined && bucket.batchedMesh === batch;
@@ -2777,7 +2805,7 @@ export class Scene {
     const sum = sumResidentGpuBytes({
       // Evicted batches are metadata shells — their destroyed buffers still
       // report .size, so they must be excluded from the resident sum.
-      batches: this.batchedMeshes.filter((b) => b.gpuResident !== false),
+      batches: this.getBatchedMeshes().filter((b) => b.gpuResident !== false),
       partialBatches: this.partialBatchCache.values(),
       meshes: this.meshes,
       textured: this.texturedMeshes,
@@ -3577,7 +3605,7 @@ export class Scene {
   }
 
   private clearFlatBuffers(): void {
-    this.triangleCounts.clear();
+    this.triangleCounts.clear(); this.compact?.clear();
     this.streamWork.clear();
     for (const mesh of this.meshes) destroyGpuResources(mesh);
     for (const batch of this.batchedMeshes) destroyGpuResources(batch);
@@ -3634,65 +3662,8 @@ export class Scene {
    * Calculate bounding box from actual mesh vertex data
    */
   getBounds(): { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null {
-    // When geometry data is released, compute bounds from cached bounding boxes
-    if (this.geometryReleased) {
-      if (this.boundingBoxes.size === 0) return null;
-
-      let minX = Infinity, minY = Infinity, minZ = Infinity;
-      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-
-      for (const bbox of this.boundingBoxes.values()) {
-        if (bbox.min.x < minX) minX = bbox.min.x;
-        if (bbox.min.y < minY) minY = bbox.min.y;
-        if (bbox.min.z < minZ) minZ = bbox.min.z;
-        if (bbox.max.x > maxX) maxX = bbox.max.x;
-        if (bbox.max.y > maxY) maxY = bbox.max.y;
-        if (bbox.max.z > maxZ) maxZ = bbox.max.z;
-      }
-
-      return {
-        min: { x: minX, y: minY, z: minZ },
-        max: { x: maxX, y: maxY, z: maxZ },
-      };
-    }
-
-    if (this.meshDataMap.size === 0) return null;
-
-    let minX = Infinity, minY = Infinity, minZ = Infinity;
-    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-    let hasValidData = false;
-
-    // Compute bounds from all mesh data
-    for (const pieces of this.meshDataMap.values()) {
-      for (const piece of pieces) {
-        const positions = piece.positions;
-        // world = origin + position (per-element local frame).
-        const ox = piece.origin ? piece.origin[0] : 0;
-        const oy = piece.origin ? piece.origin[1] : 0;
-        const oz = piece.origin ? piece.origin[2] : 0;
-        for (let i = 0; i < positions.length; i += 3) {
-          const x = positions[i] + ox;
-          const y = positions[i + 1] + oy;
-          const z = positions[i + 2] + oz;
-          if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
-            hasValidData = true;
-            if (x < minX) minX = x;
-            if (y < minY) minY = y;
-            if (z < minZ) minZ = z;
-            if (x > maxX) maxX = x;
-            if (y > maxY) maxY = y;
-            if (z > maxZ) maxZ = z;
-          }
-        }
-      }
-    }
-
-    if (!hasValidData) return null;
-
-    return {
-      min: { x: minX, y: minY, z: minZ },
-      max: { x: maxX, y: maxY, z: maxZ },
-    };
+    // A released scene keeps only its cached per-entity boxes.
+    return this.geometryReleased ? unionOfBoxes(this.boundingBoxes.values()) : worldAabbOfPieceLists(this.meshDataMap.values());
   }
 
   /**

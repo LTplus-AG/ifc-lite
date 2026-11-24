@@ -10,16 +10,22 @@
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
+import { visitCompactPayload } from '@ifc-lite/geometry/compact';
 import { INSTANCE_STRIDE_BYTES } from './instanced-render.js';
 
 export type CpuGeometryKind = 'positions' | 'normals' | 'indices' | 'other';
 /** `owner` names the holder (e.g. `scene.buckets`); the same view may arrive under several owners. */
 export type CpuGeometryVisitor = (owner: string, array: ArrayBufferView, kind: CpuGeometryKind) => void;
 
-type MeshArrays = Pick<MeshData, 'positions' | 'normals' | 'indices' | 'entityIds' | 'uvs' | 'appearanceSource'>;
+type MeshArrays = Pick<MeshData, 'positions' | 'normals' | 'indices' | 'entityIds' | 'uvs' | 'appearanceSource' | 'compact'>;
 
 /** Visit every typed array one mesh holds. Missing or released (zero-length) arrays are passed as they are. */
 export function visitMeshArrays(owner: string, mesh: Partial<MeshArrays>, visit: CpuGeometryVisitor): void {
+  if (mesh.compact) {
+    // A compact mesh holds its batch's payload, not arrays: reading the three properties would decode it.
+    visitCompactPayload(mesh.compact.payload, (array, kind) => visit(owner, array, kind));
+    return;
+  }
   if (mesh.positions) visit(owner, mesh.positions, 'positions');
   if (mesh.normals) visit(owner, mesh.normals, 'normals');
   if (mesh.indices) visit(owner, mesh.indices, 'indices');

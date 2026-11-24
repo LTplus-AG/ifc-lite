@@ -261,6 +261,15 @@ export const PERF_FLAGS = [
     bindings: { global: '__IFC_LITE_HUGE', urlParam: 'perf.huge' },
   },
   {
+    id: 'compactGeom',
+    kind: 'ramp',
+    owner: '@louistrue',
+    removalCondition: 'Compact GPU records: delete with the f32 upload of flat meshes once on by default, or delete the encoder path if dropped.',
+    introducedAt: '2026-11-24',
+    default: false,
+    bindings: { urlParam: 'compactGeom' },
+  },
+  {
     id: 'perfTrace',
     kind: 'kill-switch',
     owner: '@louistrue',

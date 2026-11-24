@@ -1,0 +1,97 @@
+diff --git b/apps/viewer/src/utils/compactGeometryFlag.ts a/apps/viewer/src/utils/compactGeometryFlag.ts
+index dcd0fbc5fe..3b97ad4c90 100644
+--- b/apps/viewer/src/utils/compactGeometryFlag.ts
++++ a/apps/viewer/src/utils/compactGeometryFlag.ts
+@@ -13,6 +13,7 @@ import { readPerfFlag } from '../lib/perf/flags.js';
+  * decode every one of them onto its f32 path again.
+  */
+ export function compactGeometryRequested(kind: 'primary' | 'federated'): boolean {
++  if (kind !== 'primary') return false;
+   const raw = readPerfFlag('compactGeom');
+   return raw === 1 || raw === '1' || raw === true || raw === 'true';
+ }
+diff --git b/packages/geometry/src/compact-mesh.ts a/packages/geometry/src/compact-mesh.ts
+index 5a2bc72bf0..afc42f3705 100644
+--- b/packages/geometry/src/compact-mesh.ts
++++ a/packages/geometry/src/compact-mesh.ts
+@@ -77,7 +77,7 @@ export function compactHydrationStats(): { meshes: number; triangles: number } {
+ 
+ /** A shallow copy that keeps a compact shell a shell (a spread would decode it). */
+ export function copyMeshShell(mesh: MeshData): MeshData {
+-  return mesh.compact ? { ...mesh } as MeshData : { ...mesh };
++  return mesh.compact ? Object.defineProperties({}, Object.getOwnPropertyDescriptors(mesh)) as MeshData : { ...mesh };
+ }
+ 
+ /**
+diff --git b/packages/geometry/src/compact-shell.ts a/packages/geometry/src/compact-shell.ts
+index f5ec8913ea..cb3f0f66f8 100644
+--- b/packages/geometry/src/compact-shell.ts
++++ a/packages/geometry/src/compact-shell.ts
+@@ -87,7 +87,7 @@ export function decodeCompactMesh(ref: CompactRef, origin: readonly [number, num
+       // Collinear on the lattice: no face plane, so the stored normals are all there is.
+       nx = sx; ny = sy; nz = sz;
+       length = Math.hypot(nx, ny, nz) || 1;
+-    } else if (nx * sx + ny * sy + nz * sz < -Infinity) {
++    } else if (nx * sx + ny * sy + nz * sz < 0) {
+       // IFC winding is not reliably outward; the stored normals say which side the face shows.
+       length = -length;
+     }
+@@ -123,6 +123,7 @@ function installShell(mesh: MeshData, ref: CompactRef): void {
+       // A write replaces the geometry: the object stops being a compact mesh, so its row no longer
+       // speaks for it (counts, bounds, pages). The other two arrays keep their decoded values.
+       set(this: MeshData, value: Float32Array | Uint32Array) {
++        materializeCompactMesh(this);
+         Object.defineProperty(this, key, { value, enumerable: true, configurable: true, writable: true });
+       },
+     });
+diff --git b/packages/renderer/src/compact-store.ts a/packages/renderer/src/compact-store.ts
+index 9fd50bbcc3..cb391cf776 100644
+--- b/packages/renderer/src/compact-store.ts
++++ a/packages/renderer/src/compact-store.ts
+@@ -248,6 +248,7 @@ export class CompactGeometryStore {
+       origin: [origin[0], origin[1], origin[2]],
+       quantized: { min: [window[0] * step - origin[0], window[1] * step - origin[1], window[2] * step - origin[2]], step },
+     };
++    this.deps.pinBatchEntityIdAnchor(batch, 0); // the page grows: its ids (all below 2^24) are not known yet
+     this.batches.push(batch);
+     return { batch, window, vertexCount: 0, vertexCapacity, indexCount: 0, indexCapacity };
+   }
+diff --git b/packages/renderer/src/scene-compact.ts a/packages/renderer/src/scene-compact.ts
+index 8472a3d1f1..2cd4f7d731 100644
+--- b/packages/renderer/src/scene-compact.ts
++++ a/packages/renderer/src/scene-compact.ts
+@@ -87,7 +87,7 @@ export class SceneCompact {
+       && !mesh.entityIds && !mesh.uvs && !mesh.texture && !mesh.textureRef
+       && !this.scene.modelTranslations.isPlaced(mesh.modelIndex ?? 0)
+       && unmoved(mesh, ref)
+-      && recordedLane(ref) !== undefined;
++      && recordedLane(ref) === this.deps.laneOf(mesh);
+   }
+ 
+   /**
+@@ -99,7 +99,7 @@ export class SceneCompact {
+     if (!meshes.some((mesh) => mesh.compact)) return meshes;
+     const scene = this.scene;
+     // A scene that keeps no CPU geometry (ephemeral streaming, released) has no bucket path to fall back to.
+-    const pages = !scene.ephemeralStreamingMode && !scene.geometryReleased;
++    const pages = scene.quantizedBatchesEnabled && !scene.ephemeralStreamingMode && !scene.geometryReleased;
+     const rest: MeshData[] = [];
+     for (const mesh of meshes) {
+       if (pages && this.eligible(mesh)) { this.queue.push(mesh); continue; }
+@@ -203,7 +203,7 @@ export class SceneCompact {
+   private forget(members: ReadonlyArray<{ kept: MeshData }>): void {
+     const kept = new Set(members.map((member) => member.kept));
+     for (const [id, pieces] of this.scene.meshDataMap) {
+-      const rest = pieces.filter((piece) => kept.has(piece) || !kept.has(piece));
++      const rest = pieces.filter((piece) => !kept.has(piece));
+       if (rest.length === 0) this.scene.meshDataMap.delete(id);
+       else if (rest.length !== pieces.length) this.scene.meshDataMap.set(id, rest);
+     }
+@@ -276,6 +276,7 @@ export class SceneCompact {
+     this.store.destroy(release);
+     this.combined = null;
+     this.gpu = null;
++    this.demotionRequested = false; // it was asked of pages that no longer exist
+     this.trimAfterDrain = true;
+     this.scene.bumpPickGeometryRevision();
+   }

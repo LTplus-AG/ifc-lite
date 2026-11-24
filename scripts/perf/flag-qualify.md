@@ -82,7 +82,7 @@ three reads at an idle renderer with the mouse off the canvas):
 | pick (three canvas clicks) | pick | picked ids, pixels (highlight) |
 | hide 30%, isolate 10% (sorted id sample) | hide/isolate | counts, pixels |
 | colour 20% | colour override | pixels |
-| section | section | pixels |
+| section, section + colour | section | pixels, after the cut drawing the 3D cap is drawn from has settled (`drawing2DStatus` held at ready) |
 | export | export | GLB size and SHA-256 (command palette, real download) |
 | device-loss | device loss | recovery to a settled scene, pixels after recovery |
 
@@ -107,4 +107,6 @@ residue is the model's shared frame origin, which the first batch created sets:
 a different origin moves the f32 vertex positions by a rounding step, which
 shifts single sub-pixel edges and, rarely, a vertex across a LOD1 cell edge.
 Before the LOD1 election became load-order independent, main differed from
-itself in 5.1% of pixels.
+itself in 5.1% of pixels. Holter's section view looked bimodal (about 1%) only
+because the asynchronously generated cut drawing, which the 3D cap is drawn
+from, could arrive after the capture; the section steps now wait for it.

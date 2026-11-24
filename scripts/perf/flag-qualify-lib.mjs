@@ -399,6 +399,18 @@ export function failingTests(text) {
   return [...names].sort();
 }
 
+/** Test files the node:test reporter names for its failures (`test at src/...test.ts:L:C`). */
+export function failingTestFiles(text) {
+  const files = new Set();
+  for (const m of String(text).matchAll(/^test at (\S+?\.test\.[cm]?[jt]sx?):\d+/gm)) files.add(m[1]);
+  return [...files].sort();
+}
+
+/** A viewer `TEST_PATTERN` (awk regex over file paths) matching exactly `files`. */
+export function testPatternFor(files) {
+  return files.map((f) => f.replace(/[.^$*+?()[\]{}|\\]/g, '\\$&')).join('|');
+}
+
 /**
  * Rows for a suite run with the flags forced on, against the same suite
  * flags-off: a failure only the flags-on run has is the flag's.

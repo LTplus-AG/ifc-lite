@@ -11,7 +11,7 @@ import { runInNewContext } from 'node:vm';
 import { deflateSync } from 'node:zlib';
 import {
   FLAG_PRESETS, compareArms, decodePng, encodePng, failingTests, flagBootScript, flagSetLabel, injectBootScript,
-  markdownTable, noRegression, overall, parseFlagSet, pixelStats, registryFlagSpec, resolveModels, suiteRows,
+  failingTestFiles, markdownTable, noRegression, testPatternFor, overall, parseFlagSet, pixelStats, registryFlagSpec, resolveModels, suiteRows,
   unitInjectable, unitPreloadSource, withNodeImport, writeFlaggedDist,
 } from './flag-qualify-lib.mjs';
 
@@ -267,6 +267,15 @@ describe('suite results', () => {
     const text = ['✔ fine (1.2ms)', '✖ draw stream keeps picking (12.5ms)', '  ✖ nested case (3ms)', '✖ failing tests:',
       '  1) [viewer-e2e-ci] › tests/e2e/viewer-smoke.e2e.spec.ts:10:5 › loads a model', 'not ok 3 - tap case # time=1ms', 'ok 4 - fine'].join('\n');
     assert.deepEqual(failingTests(text), ['draw stream keeps picking', 'nested case', 'tap case', 'tests/e2e/viewer-smoke.e2e.spec.ts:10:5 › loads a model']);
+  });
+
+  it('names the failing test files and matches exactly those', () => {
+    const text = 'test at src/utils/drawStreamConfig.test.ts:1:626\n  x\ntest at src/lib/perf/a+b.test.tsx:3:1\ntest at src/utils/drawStreamConfig.test.ts:9:1';
+    const files = failingTestFiles(text);
+    assert.deepEqual(files, ['src/lib/perf/a+b.test.tsx', 'src/utils/drawStreamConfig.test.ts']);
+    const re = new RegExp(testPatternFor(files));
+    assert.ok(re.test('src/lib/perf/a+b.test.tsx') && re.test('src/utils/drawStreamConfig.test.ts'));
+    assert.ok(!re.test('src/utils/drawStreamConfigXtest.ts'), 'dots are literal');
   });
 
   it('blames the flag only for failures flags-off does not have', () => {

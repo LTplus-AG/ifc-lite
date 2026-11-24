@@ -30,8 +30,8 @@ import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import {
-  compareArms, failingTests, flagSetLabel, markdownTable, overall, parseFlagSet, resolveModels, suiteRows,
-  unitInjectable, unitPreloadSource, withNodeImport, writeFlaggedDist,
+  compareArms, failingTestFiles, failingTests, flagSetLabel, markdownTable, overall, parseFlagSet, resolveModels, suiteRows,
+  testPatternFor, unitInjectable, unitPreloadSource, withNodeImport, writeFlaggedDist,
 } from './flag-qualify-lib.mjs';
 
 const ROOT = new URL('../..', import.meta.url).pathname.replace(/\/$/, '');
@@ -67,7 +67,7 @@ function writeJson(path, value) {
   return value;
 }
 
-async function unitArm(flagSet, out, { shards, arm }) {
+async function unitArm(flagSet, out, { shards, arm, files = null }) {
   // Both arms get the same heap; the flags-on arm adds only the preload.
   const env = { NODE_OPTIONS: process.env.NODE_OPTIONS ?? '--max-old-space-size=4096' };
   if (flagSet) {
@@ -75,9 +75,13 @@ async function unitArm(flagSet, out, { shards, arm }) {
     writeFileSync(preload, unitPreloadSource(flagSet));
     env.NODE_OPTIONS = withNodeImport(env.NODE_OPTIONS, preload);
   }
-  const results = await Promise.all(Array.from({ length: shards }, (_, i) => run('pnpm', ['--filter', '@ifc-lite/viewer', 'test'],
-    { env: { ...env, TEST_SHARDS: String(shards), TEST_SHARD: String(i) }, log: join(out, `unit-${arm}-${i}.log`) })));
+  // `files`: only those test files (the flags-off check of what failed flags-on), one shard.
+  if (files) Object.assign(env, { TEST_PATTERN: testPatternFor(files) });
+  const n = files ? 1 : shards;
+  const results = await Promise.all(Array.from({ length: n }, (_, i) => run('pnpm', ['--filter', '@ifc-lite/viewer', 'test'],
+    { env: { ...env, TEST_SHARDS: String(n), TEST_SHARD: String(i) }, log: join(out, `unit-${arm}-${i}.log`) })));
   return { exitCode: results.some((r) => r.exitCode !== 0) ? 1 : 0, failures: results.flatMap((r) => failingTests(r.output)),
+    files: [...new Set(results.flatMap((r) => failingTestFiles(r.output)))],
     log: join(out, `unit-${arm}-*.log`) };
 }
 
@@ -88,10 +92,10 @@ async function buildDeps(values, out) {
   if (exitCode !== 0) throw new Error(`--build-deps failed (exit ${exitCode}); see ${log}`);
 }
 
-/** A suite flags on, and flags off only when that failed; writes `name`.json with its rows. */
+/** A suite flags on, and flags off only when that failed (given what failed); writes `name`.json with its rows. */
 async function suiteStage(out, name, area, runArm) {
   const on = await runArm('on');
-  const off = on.exitCode === 0 ? null : await runArm('off');
+  const off = on.exitCode === 0 ? null : await runArm('off', on);
   return writeJson(join(out, `${name}.json`), { on, off, rows: suiteRows(area, on, off) });
 }
 
@@ -110,7 +114,9 @@ async function unitStage(flagSet, out, values) {
   }
   await buildDeps(values, out);
   const shards = Number(values.shards ?? 4);
-  return suiteStage(out, 'unit', 'viewer unit suite', (arm) => unitArm(arm === 'on' ? flagSet : null, out, { shards, arm }));
+  // Flags off re-runs only the files that failed flags on, when the reporter named them all.
+  return suiteStage(out, 'unit', 'viewer unit suite', (arm, on) => unitArm(arm === 'on' ? flagSet : null, out,
+    { shards, arm, files: on?.files?.length ? on.files : null }));
 }
 
 const freePort = () => new Promise((done, fail) => {

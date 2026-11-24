@@ -174,10 +174,48 @@ pre-pass frame whenever these results accompany already-produced meshes.
 |---|---|
 | `IfcAPI` | Top-level entry point — `scanEntitiesFast` / `scanEntitiesFastBytes` / `scanGeometryEntitiesFast`, `buildPrePassOnce` / `buildPrePassStreaming`, `processGeometryBatch`, `extractProfiles`, `parseSymbolicRepresentations` |
 | `MeshCollection`, `MeshDataJs` | Tessellated geometry output |
+| `CompactBatch` | A batch's meshes as final 12-byte GPU vertex records, from `MeshCollection.encodeCompact` (see below) |
 | `ProfileCollection`, `ProfileEntryJs` | Cross-section profile data (extruded-area solids) |
 | `SymbolicRepresentationCollection`, `SymbolicCircle`, `SymbolicPolyline` | 2D symbolic representations (for plan / annotation views) |
 
 All classes implement `free()` and `[Symbol.dispose]()` — call `free()` (or use `using`) to release Rust-side memory.
+
+### Compact GPU records
+
+`MeshCollection.encodeCompact(cellSize)` writes every eligible mesh of a batch as quantized vertex
+records a renderer can upload without reading a vertex, and returns them as a `CompactBatch`. Call it
+before reading the meshes: an encoded mesh's `positions`, `normals` and `indices` come back empty.
+
+```ts
+import type { MeshCollection } from '@ifc-lite/wasm';
+
+function encodeBatch(collection: MeshCollection) {
+  const batch = collection.encodeCompact(32); // cell size in metres, 2^-9 to 32
+  try {
+    // Each getter copies its column out of wasm memory.
+    // table: 6 u32 per mesh: mesh index, vertex start, vertex count, index start, index count, level
+    const { records, indices, table, windows, bounds, cells } = batch;
+    return { records, indices, table, windows, bounds, cells };
+  } finally {
+    batch.free();
+  }
+}
+```
+
+- `records`: 12 bytes per vertex: u16 x, y, z offsets, a u16 oct-encoded normal and the u32 entity
+  lane (express id in the low 24 bits). A position is `(window + offset) * 2^-level` metres in the
+  collection's frame (Y-up, relative to its RTC offset, like `origin + position`), at most half a step from its source on each axis: 0.49 mm at level 10, the
+  default; level 9 for meshes wider than a level-10 window, levels 11 to 14 for meshes level 10
+  would collapse.
+- Vertices that share a lattice node are welded, so `indices` (mesh-local u16) address fewer
+  vertices than the source mesh; the stored normal is only a side witness for renderers that derive
+  face normals per fragment.
+- `windows`, `bounds` (f64 box in the same frame) and `cells` hold three, six and three values per
+  mesh. A window is named by its level and cell together, so group meshes by (level, cell).
+- A mesh the encoder cannot take (textured, non-finite, an express id past 24 bits, wider than the
+  coarsest window, more than 65,535 welded vertices, no per-vertex normals) is left untouched and
+  counted in `refusals`; read it through its getters as before. A cell size outside the range
+  encodes nothing.
 
 ## Geometry-core engine (`@ifc-lite/wasm/core`)
 

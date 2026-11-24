@@ -882,12 +882,13 @@ fn buckets_contained_elements_by_the_correct_spatial_container_kind() {
     // of the other three (the swapped/wrong-bucket mutation this pins).
     assert_eq!(sh.element_to_site, vec![(10, 2)], "site bucket");
     assert_eq!(sh.element_to_building, vec![(11, 3)], "building bucket");
-    assert_eq!(sh.element_to_storey, vec![(12, 4)], "storey bucket");
+    // #11468: the chair in the space the storey aggregates is on that storey too.
+    assert_eq!(sh.element_to_storey, vec![(12, 4), (13, 4)], "storey bucket");
     assert_eq!(sh.element_to_space, vec![(13, 5)], "space bucket");
 
     assert_eq!(sh.element_to_site.len(), 1);
     assert_eq!(sh.element_to_building.len(), 1);
-    assert_eq!(sh.element_to_storey.len(), 1);
+    assert_eq!(sh.element_to_storey.len(), 2);
     assert_eq!(sh.element_to_space.len(), 1);
 }
 
@@ -2965,4 +2966,85 @@ fn assert_child_ran_one_test(output: &std::process::Output) {
         stdout.contains("running 1 test"),
         "the child must select exactly one test (stale libtest name?); stdout:\n{stdout}"
     );
+}
+
+// #11468: parity with `elementToStorey` in packages/parser.
+const SPACE_CONTAINED_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
+#2=IFCSITE('Site0000000000000000001',$,'S',$,$,$,$,$,$,$,$,$,$,$);
+#3=IFCBUILDING('Bldg0000000000000000001',$,'B',$,$,$,$,$,$,$,$,$);
+#4=IFCBUILDINGSTOREY('StorA00000000000000001',$,'A',$,$,$,$,$,$,$);
+#5=IFCBUILDINGSTOREY('StorB00000000000000001',$,'B',$,$,$,$,$,$,$);
+#10=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#2));
+#11=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#2,(#3));
+#12=IFCRELAGGREGATES('Agg00000000000000000003',$,$,$,#3,(#4,#5));
+#6=IFCSPACE('Spac0000000000000000001',$,'Room',$,$,$,$,$,$,$,$);
+#7=IFCFLOWSEGMENT('Pump0000000000000001',$,'Pump',$,$,$,$,$);
+#8=IFCBUILDINGELEMENTPART('Part000000000000000001',$,'Part',$,$,$,$,$);
+#9=IFCWALL('Wall0000000000000000001',$,'W',$,$,$,$,$,$);
+#13=IFCSPACE('Spac0000000000000000002',$,'Inner',$,$,$,$,$,$,$,$);
+#14=IFCFURNISHINGELEMENT('Furn000000000000000001',$,'Chair',$,$,$,$,$);
+#20=IFCRELAGGREGATES('Agg00000000000000000010',$,$,$,#4,(#6));
+#21=IFCRELAGGREGATES('Agg00000000000000000011',$,$,$,#6,(#13));
+#22=IFCRELAGGREGATES('Agg00000000000000000012',$,$,$,#7,(#8));
+#30=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#7),#6);
+#31=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000002',$,$,$,(#9),#4);
+#32=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000003',$,$,$,(#14),#13);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+fn storey_of(dm: &DataModel, id: u32) -> Option<u32> {
+    dm.spatial_hierarchy
+        .element_to_storey
+        .iter()
+        .find(|(e, _)| *e == id)
+        .map(|(_, s)| *s)
+}
+
+#[test]
+fn space_contained_elements_map_to_the_storey_aggregating_the_space() {
+    let dm = extract_data_model_checked(SPACE_CONTAINED_IFC);
+    assert_eq!(storey_of(&dm, 7), Some(4), "pump in a space");
+    assert_eq!(storey_of(&dm, 8), Some(4), "aggregated part of the pump");
+    assert_eq!(storey_of(&dm, 14), Some(4), "element in a nested space");
+    assert_eq!(storey_of(&dm, 9), Some(4), "direct containment unchanged");
+    // The space lookup is unchanged and rows are not duplicated.
+    assert!(dm.spatial_hierarchy.element_to_space.contains(&(7, 6)));
+    for id in [7, 8, 9, 14] {
+        let n = dm.spatial_hierarchy.element_to_storey.iter().filter(|(e, _)| *e == id).count();
+        assert_eq!(n, 1, "one storey row for #{id}");
+    }
+}
+
+const SPACE_CONTAINED_DIRECT_WINS_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
+#2=IFCSITE('Site0000000000000000001',$,'S',$,$,$,$,$,$,$,$,$,$,$);
+#3=IFCBUILDING('Bldg0000000000000000001',$,'B',$,$,$,$,$,$,$,$,$);
+#4=IFCBUILDINGSTOREY('StorA00000000000000001',$,'A',$,$,$,$,$,$,$);
+#5=IFCBUILDINGSTOREY('StorB00000000000000001',$,'B',$,$,$,$,$,$,$);
+#10=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#2));
+#11=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#2,(#3));
+#12=IFCRELAGGREGATES('Agg00000000000000000003',$,$,$,#3,(#4,#5));
+#6=IFCSPACE('Spac0000000000000000001',$,'Room',$,$,$,$,$,$,$,$);
+#7=IFCFLOWSEGMENT('Pump0000000000000001',$,'Pump',$,$,$,$,$);
+#20=IFCRELAGGREGATES('Agg00000000000000000010',$,$,$,#4,(#6));
+#30=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#7),#6);
+#31=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000002',$,$,$,(#7),#5);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn direct_storey_containment_wins_over_a_space_on_another_storey() {
+    let dm = extract_data_model_checked(SPACE_CONTAINED_DIRECT_WINS_IFC);
+    assert_eq!(storey_of(&dm, 7), Some(5));
 }

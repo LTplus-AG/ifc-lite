@@ -109,10 +109,90 @@ pub(super) fn build_element_lookups(
         }
     }
 
+    // #11468 parity: `packages/parser` also maps an element contained in an
+    // IfcSpace/IfcSpatialZone that a project-reachable storey aggregates (the
+    // space may be nested in another space), plus that element's aggregated
+    // parts, to the storey. Direct containment, orphan rows included, wins, so
+    // this runs after every direct row is in. The walk goes through space-like
+    // nodes only. A space on several storeys goes to the lowest storey id,
+    // which keeps the output deterministic.
+    claim_through_spaces(
+        relationships,
+        nodes_map,
+        project_reachable,
+        &element_to_space,
+        &is_space_like_spatial_type,
+        &mut element_to_storey,
+    );
+
     ElementLookups {
         storey: element_to_storey,
         building: element_to_building,
         site: element_to_site,
         space: element_to_space,
+    }
+}
+
+fn claim_through_spaces(
+    relationships: &[Relationship],
+    nodes_map: &FxHashMap<u32, SpatialNode>,
+    project_reachable: &FxHashSet<u32>,
+    element_to_space: &[(u32, u32)],
+    is_space_like_spatial_type: &impl Fn(&str) -> bool,
+    element_to_storey: &mut Vec<(u32, u32)>,
+) {
+    if element_to_space.is_empty() {
+        return;
+    }
+    let mut parts: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+    for rel in relationships {
+        if rel.rel_type.eq_ignore_ascii_case("IFCRELAGGREGATES") {
+            parts.entry(rel.relating_id).or_default().push(rel.related_id);
+        }
+    }
+    let mut owned: FxHashSet<u32> = element_to_storey.iter().map(|(e, _)| *e).collect();
+    let mut storeys: Vec<u32> = project_reachable
+        .iter()
+        .copied()
+        .filter(|id| {
+            nodes_map
+                .get(id)
+                .is_some_and(|n| n.type_name.eq_ignore_ascii_case("IFCBUILDINGSTOREY"))
+        })
+        .collect();
+    storeys.sort_unstable();
+    for storey in storeys {
+        let mut spaces: Vec<u32> = Vec::new();
+        let mut visited: FxHashSet<u32> = FxHashSet::default();
+        let mut pending: Vec<u32> = nodes_map[&storey].children_ids.clone();
+        while let Some(id) = pending.pop() {
+            let Some(node) = nodes_map.get(&id) else { continue };
+            if !is_space_like_spatial_type(&node.type_name.to_uppercase()) || !visited.insert(id) {
+                continue;
+            }
+            spaces.push(id);
+            pending.extend(node.children_ids.iter().copied());
+        }
+        for (element_id, space_id) in element_to_space {
+            if !spaces.contains(space_id) {
+                continue;
+            }
+            let mut stack = vec![*element_id];
+            let mut seen: FxHashSet<u32> = FxHashSet::default();
+            seen.insert(*element_id);
+            if owned.insert(*element_id) {
+                element_to_storey.push((*element_id, storey));
+            }
+            while let Some(id) = stack.pop() {
+                for kid in parts.get(&id).into_iter().flatten() {
+                    if seen.insert(*kid) {
+                        if owned.insert(*kid) {
+                            element_to_storey.push((*kid, storey));
+                        }
+                        stack.push(*kid);
+                    }
+                }
+            }
+        }
     }
 }

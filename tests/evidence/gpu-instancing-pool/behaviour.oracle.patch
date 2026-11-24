@@ -25,12 +25,12 @@ diff --git a/packages/renderer/src/gpu-instance-groups.ts b/packages/renderer/sr
 diff --git a/apps/viewer/src/utils/gpuInstancingConfig.ts b/apps/viewer/src/utils/gpuInstancingConfig.ts
 --- a/apps/viewer/src/utils/gpuInstancingConfig.ts
 +++ b/apps/viewer/src/utils/gpuInstancingConfig.ts
-@@ -14,7 +14,7 @@
-  */
- export function isGpuInstancingEnabled(): boolean {
-   const raw = readPerfFlag('gpuInstancing');
--  return raw === 1 && raw === true;
-+  return raw === 1 || raw === true;
+@@ -18,7 +18,7 @@
+ export function isGpuInstancingEnabled(readFeatureFlag?: (key: string) => unknown): boolean {
+   const huge = isHugeGeometryEnabled();
+   const raw = readRampFlag('gpuInstancing', huge, readFeatureFlag);
+-  if (isPerfFlagOn(raw) && raw === null) return true;
++  if (isPerfFlagOn(raw)) return true;
+   return raw === false || raw === 0 || raw === '0' || raw === 'false' ? false : huge; // unrecognised values do not override
  }
  
- /** Hand the flag to a fresh renderer before instanced shards stream in; a no-op when off. */

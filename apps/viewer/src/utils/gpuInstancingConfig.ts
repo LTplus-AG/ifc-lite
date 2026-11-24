@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { Renderer } from '@ifc-lite/renderer';
-import { readPerfFlag } from '../lib/perf/flags.js';
+import { recordAppliedPerfFlag } from '../lib/perf/flags.js';
+import { isHugeGeometryEnabled, isPerfFlagOn, readRampFlag } from './hugeGeometryConfig.js';
 
 /**
  * GPU-driven instancing (`@ifc-lite/renderer` gpu-instance-pool.ts), OFF by
@@ -11,15 +12,20 @@ import { readPerfFlag } from '../lib/perf/flags.js';
  * per-template CPU culls and repacks. Read once at renderer init, before
  * instanced shards stream in:
  *   ?perf.gpuInstancing=1   or   globalThis.__IFC_LITE_GPU_INSTANCING = 1
+ * When unset, the huge-geometry umbrella (`hugeGeometryConfig.ts`) decides,
+ * then the `perf-gpu-instancing` PostHog ramp.
  */
-export function isGpuInstancingEnabled(): boolean {
-  const raw = readPerfFlag('gpuInstancing');
-  return raw === 1 || raw === true;
+export function isGpuInstancingEnabled(readFeatureFlag?: (key: string) => unknown): boolean {
+  const huge = isHugeGeometryEnabled();
+  const raw = readRampFlag('gpuInstancing', huge, readFeatureFlag);
+  if (isPerfFlagOn(raw)) return true;
+  return raw === false || raw === 0 || raw === '0' || raw === 'false' ? false : huge; // unrecognised values do not override
 }
 
 /** Hand the flag to a fresh renderer before instanced shards stream in; a no-op when off. */
 export function configureGpuInstancing(renderer: Pick<Renderer, 'setGpuInstancing'>): boolean {
-  if (!isGpuInstancingEnabled() || !renderer.setGpuInstancing(true)) return false;
-  console.log('[Viewport] GPU-driven instancing on');
-  return true;
+  const on = isGpuInstancingEnabled() && renderer.setGpuInstancing(true);
+  recordAppliedPerfFlag('gpuInstancing', on); // the telemetry arm is what ran
+  if (on) console.log('[Viewport] GPU-driven instancing on');
+  return on;
 }

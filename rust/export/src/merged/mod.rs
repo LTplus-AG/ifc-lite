@@ -225,7 +225,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     let mut minter = GuidMinter::new();
     let mut offset: u32 = 0;
     let mut slot_fill = Ifc2x3SlotFill::new(None);
-    let mut checks = ConversionChecks { merged: true, ..ConversionChecks::new() }; checks.forms.enable_dates();
+    let mut checks = ConversionChecks { merged: true, ..ConversionChecks::new(crate::schema_material_referent::MaterialReferents::for_target(crate::schema_convert::canon(&schema))) }; checks.forms.enable_dates();
     let mut parents = single_parents::ParentClaims::for_schema(&schema); // one rel per single-valued inverse (#5727, #5802, #5774, #5923)
 
     for (i, model) in models.iter().enumerate() {
@@ -288,7 +288,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
         }
 
         // Emit.
-        let converting = crate::schema_convert::needs_conversion(&source_schema, &schema);
+        let converting = index.add_materials(&mut checks.materials, &source_schema, &schema, &included, &plan, offset);
         let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(model.content, &source_schema, &schema); // D57
         flatten.retain_grids(|id| included.contains(&id) && !plan.skip.contains(&id));
         for &id in &index.order {
@@ -355,7 +355,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
             };
 
             let ty = index.type_of.get(&id).map_or("", String::as_str);
-            let Some(mut final_text) = parents.claim(ty, final_text, !is_first && compatible) else { continue };
+            let Some(mut final_text) = (!final_text.is_empty()).then_some(final_text).and_then(|t| parents.claim(ty, t, !is_first && compatible)) else { continue }; // empty: not written (#10763)
 
             let has_guid_slot = plan.local_guids.contains_key(&id) || (converting && is_rooted_entity_type(ty));
             if let Some(mut emitted) = has_guid_slot.then(|| read_leading_guid(&final_text)).flatten() {

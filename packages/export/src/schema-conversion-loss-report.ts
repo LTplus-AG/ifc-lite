@@ -220,10 +220,7 @@ function addDependentOmissions(entries: ConversionLossEntry[], omittedByType: Ma
   }
 }
 
-/**
- * The entry for a type with dropped attributes: its records grouped by those no carrier
- * restores for them. A `lossy` record that loses nothing then has no entry.
- */
+/** Group records by attributes no carrier restores. Records with no loss need no lossy entry. */
 function entryAfterRestoration(
   sourceType: string,
   expressIds: readonly number[],
@@ -259,13 +256,9 @@ function entryAfterRestoration(
 }
 
 /**
- * A complete, per-type loss report for converting every entity `store`
- * contains from `fromSchema` to `toSchema` — no export attempted, so this
- * does not throw for a record the export cannot write and always covers the
- * whole file, not just the first record a full export would have aborted on.
- * With source bytes, the report checks whether a narrowed SET actually loses
- * members and excludes values preserved by IFC2X3 ↔ IFC4 structural carriers
- * (#9668). Those carriers describe the default, unedited full export.
+ * Preview conversion losses across the whole source file, even when export would refuse a record.
+ * Source bytes distinguish populated slots, narrowed sets and values preserved by structural
+ * carriers in an unedited full export (#9668).
  */
 export function analyzeConversionLoss(
   store: Pick<IfcDataStore, 'entityIndex'> & Partial<Pick<IfcDataStore, 'source' | 'deferredEntityIndex'>>,

@@ -145,11 +145,26 @@ fn write_line<W: Write>(
         let Some(flat) = flatten.line(from, text.to_string()) else { return Ok(false) };
         let text = flat.as_str();
         let converted = crate::schema_convert::convert_step_line(text, from, to, id, slot_fill, Some(checks))?;
+        // A record the conversion does not write (#10763).
+        if converted.is_empty() { return Ok(false); }
         out.write_all(converted.as_bytes())?;
     } else {
         out.write_all(text.as_bytes())?;
     }
     out.write_all(b"\n").map(|()| true)
+}
+
+/// The export's conversion checks, with its material records as it writes
+/// them (#10763): every edited record (a retype too) and every created one,
+/// against what the pass emits.
+#[allow(clippy::too_many_arguments)]
+fn checks_for(content: &[u8], source_label: &str, target: &str, opts: &StepOptions, log: &MutationLog, src: &Source<'_>, pass: &mut super::pass::Pass<'_, '_>) -> crate::schema_enum::ConversionChecks {
+    let unchanged = log.mutations.is_empty() && log.new_entities.is_empty() && log.georef_mutations.is_none();
+    let mut checks = crate::schema_enum::ConversionChecks::for_source(content, source_label, target, opts, unchanged, &|id, start| src.span(id).is_some_and(|(kept, _)| kept == start), &mut || pass.allocate().ok());
+    let written = pass.mutated_lines.iter().filter_map(|(id, (line, _))| Some((*id, line.as_deref()?))).chain(pass.created_lines.iter().map(|(id, l)| (*id, l.as_str())));
+    let retained = |id| pass.will_be_emitted(id) && !matches!(pass.mutated_lines.get(&id), Some((None, _)));
+    checks.materials.with_effective(crate::schema_convert::canon(source_label), &retained, written);
+    checks
 }
 
 /// The header, naming the source's schema token unless this export converts,
@@ -279,7 +294,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     let typed_properties = src.preserve_latin1 || (crate::schema_typed_properties::applies(&source_label, &target)
         && (!pass.overlay.retype_order.is_empty() || !pass.created_lines.is_empty()));
     let mut slot_fill = crate::schema_ifc2x3_slots::Ifc2x3SlotFill::new(pass.fallback_owner_history());
-    let mut checks = crate::schema_enum::ConversionChecks::for_source(content, &source_label, &target, opts, log.mutations.is_empty() && log.new_entities.is_empty() && log.georef_mutations.is_none(), &|id, start| src.span(id).is_some_and(|(kept, _)| kept == start), &mut || pass.allocate().ok());
+    let mut checks = checks_for(content, &source_label, &target, opts, log, &src, &mut pass); // #10763: its material records too
     checks.typed_properties.enabled = typed_properties;
     let defer_varying = body_has(&pass, content, |bytes| checks.structural.buffers_varying(bytes));
     let date_buffer = body_has(&pass, content, |bytes| {

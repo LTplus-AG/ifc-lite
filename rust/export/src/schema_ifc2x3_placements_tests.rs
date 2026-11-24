@@ -85,7 +85,7 @@ fn a_section_that_is_not_utf8_is_adapted_byte_for_byte() {
 
 #[test]
 fn typed_property_finish_runs_on_a_raw_latin1_held_body_10797() {
-    let mut checks = crate::schema_enum::ConversionChecks::new();
+    let mut checks = crate::schema_enum::ConversionChecks::new(Default::default());
     checks.typed_properties.enabled = true;
     let converted = crate::schema_convert::convert_step_line(
         "#2=IFCGENERALMATERIALPROPERTIES(#1,$,$,42.);", "IFC2X3", "IFC4", 2,

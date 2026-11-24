@@ -233,6 +233,8 @@ fn emit<W: std::io::Write>(
     let copies_refused = resolved.refused;
     let copies = resolved.copies; flatten.note_edits(content, &copies, &muts_by_id); flatten.retain_grids(|id| included.contains(&id));
     let repointed = resolved.repointed;
+    // #10763: the material records as this export writes them.
+    checks.materials.note_step(crate::schema_convert::canon(&source_schema), content, line_of, &included, &muts_by_id, &repointed, &copies);
 
     // 3. Emit header + filtered entities (source order) + footer.
     // The FILE_SCHEMA token, by the TypeScript twin's rule: keep the source's
@@ -268,6 +270,8 @@ fn emit<W: std::io::Write>(
                         &mut slot_fill,
                         Some(&mut checks),
                     )?;
+                    // A record the conversion does not write (#10763).
+                    if converted.is_empty() { continue; }
                     body.write_all(converted.as_bytes())?;
                 } else {
                     body.write_all(edited.as_bytes())?;
@@ -287,9 +291,7 @@ fn emit<W: std::io::Write>(
             // copy is this element's version of that record, not a snapshot
             // taken before the caller touched it. Repointings do not, which is
             // why they are resolved into their own map.
-            let mut muts = muts_by_id.get(source_id).cloned().unwrap_or_default();
-            muts.extend(edits.iter().map(|(i, v)| (*i, v.clone())));
-            let edited = apply_attr_mutations_counted(&raw, &muts, &mut attribute_edits_refused);
+            let edited = crate::step_cow::apply_copy_edits(&raw, muts_by_id.get(source_id), edits, &mut attribute_edits_refused);
             let Some(renumbered) = flatten.line(&source_schema, renumber(&edited, *copy_id)) else { continue };
             if converting {
                 let converted = crate::schema_convert::convert_step_line(
@@ -300,6 +302,7 @@ fn emit<W: std::io::Write>(
                     &mut slot_fill,
                     Some(&mut checks),
                 )?;
+                if converted.is_empty() { continue; } // a record the conversion does not write (#10763)
                 body.write_all(converted.as_bytes())?;
             } else {
                 body.write_all(renumbered.as_bytes())?;

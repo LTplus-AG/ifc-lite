@@ -19,6 +19,7 @@ pub(crate) fn replace_argument(text: &str, index: usize, replacement: &str) -> O
 
 /// `readStepSlots`: the record's UPPERCASE type and argument slots, or `None`
 /// when it does not read as `#id=TYPE(args);` with a splittable list.
+#[cfg_attr(target_arch = "wasm32", inline(never))]
 pub(crate) fn read_slots(text: &str) -> Option<(String, Vec<String>)> {
     let frame = record_frame(text)?;
     let slots = split_args(frame.args(text))?;

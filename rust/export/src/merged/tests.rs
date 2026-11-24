@@ -24,7 +24,7 @@ fn merged_typed_property_ids_follow_synthesized_records_10797() {
 
     let schema = "IFC4";
     let mut out = header::merged_header(&MergedOptions::default(), schema);
-    let mut checks = ConversionChecks::new();
+    let mut checks = ConversionChecks::new(Default::default());
     let mut slots = Ifc2x3SlotFill::new(None);
     checks.typed_properties.enabled = true;
     let property = crate::schema_convert::convert_step_line(

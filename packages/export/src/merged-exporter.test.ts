@@ -1267,6 +1267,36 @@ describe('MergedExporter', () => {
     });
 
     it.each([
+      ['explicit defining unit', true, false],
+      ['explicit defined unit', false, true],
+      ['both units inherited', false, false],
+    ])('normalizes profile measures in a table with %s in both exports (#11329)', async (_, definingExplicit, definedExplicit) => {
+      const table = (defining: string, defined: string, unitRef: string) =>
+        "IFCPROPERTYTABLEVALUE('Section table',$, "
+        + `(IFCMASSPERLENGTHMEASURE /* defining */ ( /* g/cm */ ${defining} /* first */ )),`
+        + ` (IFCMASSPERLENGTHMEASURE(/* g/cm */ ${defined} )), 'IFCMASSPERLENGTHMEASURE(99.)',`
+        + ` /* defining unit */ ${definingExplicit ? unitRef : '$'}, /* defined unit */ ${definedExplicit ? unitRef : '$'},.NOTDEFINED.);`;
+      const secondary = mmModel([
+        [18, 'IFCPROPERTYTABLEVALUE', '#18=' + table('50.', '30.', '#23')],
+        [19, 'IFCSIUNIT', '#19=IFCSIUNIT(*,.MASSUNIT.,$,.GRAM.);'],
+        [20, 'IFCSIUNIT', '#20=IFCSIUNIT(*,.LENGTHUNIT.,.CENTI.,.METRE.);'],
+        [21, 'IFCDERIVEDUNITELEMENT', '#21=IFCDERIVEDUNITELEMENT(#19,1);'],
+        [22, 'IFCDERIVEDUNITELEMENT', '#22=IFCDERIVEDUNITELEMENT(#20,-1);'],
+        [23, 'IFCDERIVEDUNIT', '#23=IFCDERIVEDUNIT((#21,#22),.MASSPERLENGTHUNIT.,$);'],
+      ], [23]);
+      const exporter = new MergedExporter([metreModel(), secondary]);
+      const options = { schema: 'IFC4', unitReconciliation: 'normalize' } as const;
+      for (const result of [exporter.export(options), await exporter.exportAsync(options)]) {
+        const output = decode(result.content);
+        expect(result.stats.normalizedModelCount).toBe(1);
+        const unitRef = /(#\d+)=IFCDERIVEDUNIT\(\(#\d+,#\d+\),\.MASSPERLENGTHUNIT\.,\$\);/.exec(output)?.[1];
+        expect(unitRef).toBeDefined();
+        expect(output).toContain(table(definingExplicit ? '50.' : '5.', definedExplicit ? '30.' : '3.', unitRef!));
+        expect(findDanglingRefs(output)).toEqual([]);
+      }
+    });
+
+    it.each([
       ['MASSPERLENGTH', -1, '50.', 50],
       ['MOMENTOFINERTIA', 4, '2.E-5', 2e-5],
       ['SECTIONMODULUS', 3, '3.E-4', 3e-4],

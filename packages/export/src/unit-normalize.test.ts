@@ -276,11 +276,10 @@ describe('rescaleEntityLengths (full entity lines)', () => {
       .toBe("#14=IFCPROPERTYSINGLEVALUE('T',$,IFCLENGTHMEASURE(50.),#77);");
   });
 
-  it('does not scale an IfcPropertyTableValue that declares its own DefiningUnit', () => {
-    // Attrs: Name,Description,DefiningValues,DefinedValues,Expression,DefiningUnit(5),DefinedUnit(6).
-    // DefiningUnit is a live ref → the table's values are already in its own unit.
+  it('scales only the implicit column of an IfcPropertyTableValue with a DefiningUnit (#11329)', () => {
     const line = "#30=IFCPROPERTYTABLEVALUE('T',$,(IFCLENGTHMEASURE(10.)),(IFCLENGTHMEASURE(20.)),$,#88,$);";
-    expect(rescaleEntityLengths(line, 'IFCPROPERTYTABLEVALUE', 0.001, 1, 1)).toBe(line);
+    expect(rescaleEntityLengths(line, 'IFCPROPERTYTABLEVALUE', 0.001, 1, 1))
+      .toBe("#30=IFCPROPERTYTABLEVALUE('T',$,(IFCLENGTHMEASURE(10.)),(IFCLENGTHMEASURE(0.02)),$,#88,$);");
   });
 
   it('scales an IfcPropertyTableValue with no explicit unit', () => {

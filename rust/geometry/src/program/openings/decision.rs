@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Geometry-only classification of already admitted occurrence probes.
 use crate::program::opening::OpeningBounds;
-use crate::router::voids::geom::{infer_opening_frame, is_axis_aligned_direction, is_rectangular_box_mesh};
+use crate::router::voids::geom::{
+    bounds_are_the_box, infer_opening_frame, is_axis_aligned_direction, is_rectangular_box_mesh,
+};
 use crate::router::voids::CutterKind;
 use crate::router::{ClassificationKind, OpeningKindDiag};
 use crate::{Mesh, Point3, Vector3};
@@ -93,7 +95,7 @@ fn classify_item(
     if let Some(frame) = frame {
         if !clean_box {
             CutterKind::NonRectangular(mesh, min, max, dir)
-        } else if diagonal || !frame.is_axis_aligned() {
+        } else if diagonal || !frame.is_axis_aligned() || !bounds_are_the_box(&mesh) {
             CutterKind::DiagonalRectangular(mesh, frame)
         } else {
             CutterKind::Rectangular(min, max, dir)

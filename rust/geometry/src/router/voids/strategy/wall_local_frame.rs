@@ -10,8 +10,8 @@
 
 use super::super::frame_snap;
 use super::super::geom::{
-    is_axis_aligned_direction, mesh_to_frame, project_aabb_in_frame, rotate_mesh_from_frame,
-    wall_frame_from_depth,
+    bounds_are_the_box, is_axis_aligned_direction, mesh_to_frame, project_aabb_in_frame,
+    rotate_mesh_from_frame, wall_frame_from_depth,
 };
 use super::super::local_frame::{host_thickness_wall_frame, vertical_depth_wall_frame};
 use super::super::{CutterKind, VoidContext, WALL_NORMAL_DEPTH_COS};
@@ -166,15 +166,22 @@ impl Execution {
         if ctx.merged_openings.is_empty() {
             return None;
         }
-        let depth_of = |op: &CutterKind| op.cutter().depth();
         // Define the wall frame from the first opening whose depth is a
         // genuinely rotated, ~horizontal axis. Axis-aligned walls find none and
-        // keep their (unchanged) world path.
+        // keep their (unchanged) world path. A box within `cos(1°)` of the axes
+        // whose bounds are not the box was classified diagonal for that
+        // reason (#11321); its wall is rotated too, so it seeds the frame.
+        let rotated_depth = |op: &CutterKind| {
+            let depth = op.cutter().depth()?;
+            let near_axis_box = matches!(op, CutterKind::DiagonalRectangular(mesh, frame)
+                if frame.is_axis_aligned() && !bounds_are_the_box(mesh));
+            (!is_axis_aligned_direction(&depth) || near_axis_box).then_some(depth)
+        };
         let horizontal_axes = ctx
             .merged_openings
             .iter()
-            .filter_map(depth_of)
-            .find(|d| !is_axis_aligned_direction(d) && d.z.abs() <= 0.2)
+            .filter_map(rotated_depth)
+            .find(|d| d.z.abs() <= 0.2)
             .and_then(wall_frame_from_depth);
         let axes = match horizontal_axes {
             Some(axes) => axes,

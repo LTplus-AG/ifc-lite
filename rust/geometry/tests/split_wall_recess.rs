@@ -169,3 +169,87 @@ fn recess_at_the_finish_interface_has_no_membrane() {
         }
     }
 }
+
+/// Expected volume of `wall_with_finish`: 2.4 m³ of core, a 12 mm finish
+/// over `length` m, less the finish inside the recess at x in [1, 2].
+fn finish_wall_volume(length: f64) -> f64 {
+    4.0 * 3.0 * 0.2 + length * 3.0 * 0.012 - (length - 1.0).clamp(0.0, 1.0) * 0.012
+}
+
+/// Plan turns within `cos(1°)` of the axes, about both axes and in both senses.
+const NEAR_AXIS_TURNS: [f64; 5] = [0.0, 0.5, 1.0, -0.5, 89.5];
+
+fn rotated_flush_recess_failures() -> Vec<String> {
+    let mut failures = Vec::new();
+    for turn in NEAR_AXIS_TURNS {
+        for length in [0.5, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0] {
+            for recess in [Recess::FromInterface, Recess::ToInterfaceAtTop] {
+                let content = split_wall::wall_with_finish([0.0; 2], turn, 2.274, recess, length);
+                let (mesh, _) = fixture_host(&content, false);
+                let delta = (mesh_volume(&mesh) - finish_wall_volume(length)) * 1000.0;
+                let ledger = EdgeLedger::build(&mesh, VertexKey::GridMul(1.0e3), Degenerate::SkipTriangle);
+                let open = ledger.unbalanced().count();
+                if delta.abs() > 0.6 || open != 0 {
+                    failures.push(format!("{turn}° finish {length} m {recess:?}: {delta:+.3} L, {open} open edges"));
+                }
+            }
+        }
+    }
+    failures
+}
+
+/// #11321: a wall turned under 1° kept its flush recess as world bounds,
+/// which gain `size · sin θ` (4.4 L of core at 0.5°). It must match the
+/// axis-aligned wall on the default route.
+#[test]
+fn slightly_rotated_flush_recess_keeps_the_core() {
+    let failures = rotated_flush_recess_failures();
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// #11321: on the exact route the widened bounds no longer started on the
+/// finish face, so the recess was extended through the core (about 200 L).
+#[test]
+fn slightly_rotated_flush_recess_keeps_the_core_on_the_exact_route() {
+    use std::process::Command;
+    const PROBE: &str = "IFCLITE_PROBE_ROTATED_FLUSH_RECESS";
+    if std::env::var_os(PROBE).is_none() {
+        let child = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "slightly_rotated_flush_recess_keeps_the_core_on_the_exact_route", "--nocapture"])
+            .env("IFC_LITE_PRISM_CUT", "0")
+            .env("IFC_LITE_VOID_2D", "0")
+            .env("IFC_LITE_RECT_FAST", "0")
+            .env(PROBE, "1")
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&child.stdout);
+        assert!(child.status.success(), "{stdout}\n{}", String::from_utf8_lossy(&child.stderr));
+        assert!(stdout.contains("1 passed; 0 failed"), "{stdout}");
+        return;
+    }
+    let failures = rotated_flush_recess_failures();
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// #11321: the same widening on a vertically extruded slot through the wall
+/// cut up to 1.4 L too much at 1°. Only the volume is pinned here: the
+/// oblique slot leaves open edges on some turns with or without the fix.
+#[test]
+fn slightly_rotated_vertical_slot_cuts_only_the_slot() {
+    for turn in NEAR_AXIS_TURNS.into_iter().chain([0.9]) {
+        for length in [0.5, 1.5, 4.0] {
+            // The slot spans x in [1, 2] and z in [1, 2] and pokes out of
+            // both faces of the wall.
+            let content = split_wall::wall_with_finish([0.0; 2], turn, 2.274, Recess::FromInterface, length)
+                .replace("#110=IFCCARTESIANPOINT((1.,0.2,2.));", "#110=IFCCARTESIANPOINT((1.,-0.1,1.));")
+                .replace("#111=IFCAXIS2PLACEMENT3D(#110,#15,#17);", "#111=IFCAXIS2PLACEMENT3D(#110,#14,#17);")
+                .replace("#120=IFCCARTESIANPOINT((0.5,0.5));", "#120=IFCCARTESIANPOINT((0.5,0.206));")
+                .replace("#121,1.0,1.0);", "#121,1.0,0.412);")
+                .replace("#123=IFCEXTRUDEDAREASOLID(#122,#11,#14,0.012);", "#123=IFCEXTRUDEDAREASOLID(#122,#11,#14,1.0);");
+            assert_eq!(content.matches("0.412").count() + content.matches("(#122,#11,#14,1.0)").count(), 2);
+            let (mesh, _) = fixture_host(&content, false);
+            let delta = (mesh_volume(&mesh) - (finish_wall_volume(length) - 0.2)) * 1000.0;
+            assert!(delta.abs() < 0.2, "{turn}° finish {length} m: {delta:+.3} L");
+        }
+    }
+}

@@ -220,7 +220,7 @@ pub(crate) use frame_rotate::signed_permutation_map;
 pub(super) use frame_rotate::{
     rotate_mesh_from_frame, rotate_mesh_into_frame, rotate_point, thin_axis,
 };
-pub(crate) use opening_frame::{infer_opening_frame, is_rectangular_box_mesh};
+pub(crate) use opening_frame::{bounds_are_the_box, infer_opening_frame, is_rectangular_box_mesh};
 pub(super) use parity::{
     opening_engulfs_host_solid, opening_redundant_with_host, point_inside_mesh,
     point_inside_mesh_agreed,

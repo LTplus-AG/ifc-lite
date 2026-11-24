@@ -10,8 +10,8 @@
 
 use super::super::frame_snap;
 use super::super::geom::{
-    bounds_are_the_box, is_axis_aligned_direction, mesh_to_frame, project_aabb_in_frame,
-    rotate_mesh_from_frame, wall_frame_from_depth,
+    bounds_are_the_box, bounds_are_the_box_in_frame, is_axis_aligned_direction, mesh_to_frame,
+    project_aabb_in_frame, rotate_mesh_from_frame, wall_frame_from_depth,
 };
 use super::super::local_frame::{host_thickness_wall_frame, vertical_depth_wall_frame};
 use super::super::{CutterKind, VoidContext, WALL_NORMAL_DEPTH_COS};
@@ -225,8 +225,11 @@ fn openings_in_frame(ctx: &VoidContext, axes: &[Vector3<f64>; 3], center: Vector
         // (#1259 review). Only a clean box whose full frame aligns with the
         // wall frame may take the fast rectangular cut; everything else —
         // brep/curved voids and frame-misaligned boxes alike — keeps its
-        // exact (un-rotated, centred) mesh for the subtract.
-        let frame_aligned = opening.frame().is_some_and(|frame| frame.is_axis_aligned_in(axes));
+        // exact (un-rotated, centred) mesh for the subtract. The direction
+        // test admits a turn under `cos(1°)`, so the box must also be its own
+        // bounds in the frame, or those bounds over-cut it (#11321).
+        let frame_aligned = opening.frame().is_some_and(|frame| frame.is_axis_aligned_in(axes))
+            && bounds_are_the_box_in_frame(cutter, axes, center, (lmn, lmx));
         if frame_aligned {
             // Preserve THIS cutter's authored penetration axis. The new
             // #3977 selector also admits vertically extruded strips, whose

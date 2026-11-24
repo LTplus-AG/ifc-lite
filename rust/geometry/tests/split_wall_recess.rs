@@ -288,3 +288,62 @@ fn axis_aligned_recess_with_a_collinear_profile_point_stays_rectangular() {
         }
     }
 }
+
+/// #11321 review: in a rotated wall a core recess, turned a fraction of a
+/// degree from the openings that set the wall frame, kept only its bounds in
+/// that frame, which gain `size · sin θ` (4.3 L at 0.5°). It must remove only
+/// its own box. The extruded core reaches the wall frame on the exact route
+/// only, so the check runs there.
+#[test]
+fn recess_turned_in_the_wall_frame_cuts_only_its_box_on_the_exact_route() {
+    use std::process::Command;
+    const PROBE: &str = "IFCLITE_PROBE_TURNED_FRAME_RECESS";
+    if std::env::var_os(PROBE).is_none() {
+        let child = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "recess_turned_in_the_wall_frame_cuts_only_its_box_on_the_exact_route", "--nocapture"])
+            .env("IFC_LITE_PRISM_CUT", "0")
+            .env("IFC_LITE_VOID_2D", "0")
+            .env("IFC_LITE_RECT_FAST", "0")
+            .env(PROBE, "1")
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&child.stdout);
+        assert!(child.status.success(), "{stdout}\n{}", String::from_utf8_lossy(&child.stderr));
+        assert!(stdout.contains("1 passed; 0 failed"), "{stdout}");
+        return;
+    }
+    let mut failures = Vec::new();
+    for relative in [0.0_f64, 0.3, 0.5, -0.5, 0.9] {
+        let (sin, cos) = relative.to_radians().sin_cos();
+        // A 1 m by 1 m box, 0.15 m deep, from 0.1 m outside the core's
+        // outer face (y = 0) into it, turned `relative` about its corner.
+        let second = format!(
+            "#400=IFCCARTESIANPOINT((2.5,-0.1,2.));\
+             #401=IFCDIRECTION(({:?},{:?},0.));#402=IFCDIRECTION(({cos:?},{sin:?},0.));\
+             #403=IFCAXIS2PLACEMENT3D(#400,#401,#402);#404=IFCLOCALPLACEMENT(#33,#403);\
+             #405=IFCEXTRUDEDAREASOLID(#122,#11,#14,0.15);\
+             #406=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#405));\
+             #407=IFCPRODUCTDEFINITIONSHAPE($,$,(#406));\
+             #408=IFCOPENINGELEMENT('0FlushInterface0000007',$,'Recess',$,$,#404,#407,$,.RECESS.);\
+             #409=IFCRELVOIDSELEMENT('0FlushInterface0000008',$,$,$,#100,#408);\
+             #410=IFCCARTESIANPOINT((0.2,-0.1,2.));#411=IFCAXIS2PLACEMENT3D(#410,#15,#17);\
+             #412=IFCLOCALPLACEMENT(#33,#411);\
+             #413=IFCOPENINGELEMENT('0FlushInterface0000009',$,'Recess',$,$,#412,#407,$,.RECESS.);\
+             #414=IFCRELVOIDSELEMENT('0FlushInterface0000010',$,$,$,#100,#413);\nENDSEC;",
+            -sin, cos,
+        );
+        // The part of the turned box with y >= 0, over its 1 m height.
+        let removed = 0.05 + 0.15 - (0.1 - 0.5 * sin) / cos;
+        for length in [1.5, 4.0] {
+            let content = split_wall::wall_with_finish([0.0; 2], 42.0, 2.274, Recess::FromInterface, length)
+                .replacen("ENDSEC;\nEND-ISO", &format!("{second}\nEND-ISO"), 1);
+            assert!(content.contains("#414="));
+            let (mesh, _) = fixture_host(&content, false);
+            let delta = (mesh_volume(&mesh) - (finish_wall_volume(length) - removed)) * 1000.0;
+            if delta.abs() > 0.2 {
+                failures.push(format!("{relative}° finish {length} m: {delta:+.3} L"));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}

@@ -229,7 +229,7 @@ pub(super) use parity::{
 #[path = "frame_project.rs"]
 mod frame_project;
 pub(in crate::router::voids) use frame_project::{
-    mesh_to_frame, project_aabb_in_frame, wall_frame_from_depth,
+    bounds_are_the_box_in_frame, mesh_to_frame, project_aabb_in_frame, wall_frame_from_depth,
 };
 
 #[path = "frame_rotate.rs"]

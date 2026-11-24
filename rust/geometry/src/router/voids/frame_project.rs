@@ -81,3 +81,33 @@ pub(in crate::router::voids) fn project_aabb_in_frame(
         )
     })
 }
+
+/// Whether the bounds `(lo, hi)` of `mesh` in the frame `axes` about `center`
+/// (from [`project_aabb_in_frame`]) are the box itself: every corner of them
+/// is a projected vertex. The in-frame twin of `bounds_are_the_box` (#11321):
+/// a box whose frame is within `cos(1°)` of `axes` but not on them gains
+/// `size · sin θ` on these bounds, and a `Rectangular` cutter built from them
+/// over-cuts by that much. The projection carries the f32 noise of the stored
+/// positions, so the tolerance is a few f32 steps at their magnitude, not at
+/// the frame's.
+pub(in crate::router::voids) fn bounds_are_the_box_in_frame(
+    mesh: &Mesh,
+    axes: &[Vector3<f64>; 3],
+    center: Vector3<f64>,
+    (lo, hi): (Point3<f64>, Point3<f64>),
+) -> bool {
+    let magnitude = mesh.positions.iter().fold(1.0_f64, |m, v| m.max(f64::from(v.abs())));
+    let tolerance = 4.0 * f64::from(f32::EPSILON) * magnitude;
+    let projected: Vec<[f64; 3]> = mesh
+        .positions
+        .chunks_exact(3)
+        .map(|ch| {
+            let p = Vector3::new(f64::from(ch[0]), f64::from(ch[1]), f64::from(ch[2])) - center;
+            std::array::from_fn(|k| p.dot(&axes[k]))
+        })
+        .collect();
+    (0..8).all(|corner: usize| {
+        let target: [f64; 3] = std::array::from_fn(|axis| if corner >> axis & 1 == 0 { lo[axis] } else { hi[axis] });
+        projected.iter().any(|p| (0..3).all(|axis| (p[axis] - target[axis]).abs() <= tolerance))
+    })
+}

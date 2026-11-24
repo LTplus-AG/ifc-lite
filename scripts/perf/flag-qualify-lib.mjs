@@ -225,7 +225,7 @@ export function compareArms(off, on, { pixelMaxPct = 0.1, threshold = 8, readFil
     // load-order-dependent frame origin decides): flags on matching ANY flags-off load is one of
     // main's own states. Only a load whose run and step completed with a settled capture counts.
     const extra = noise.map((arm, i) => ({ arm, load: i + 2, f: arm.steps?.[id]?.frame }))
-      .filter(({ arm, f }) => arm.load?.ok && !arm.errors?.length && arm.steps[id].ok && f && clean(f));
+      .filter(({ arm, f }) => arm.load?.ok && !arm.errors?.length && arm.steps?.[id]?.ok === true && f && clean(f)); // a missing step is never clean
     // Main's own difference between loads; a size mismatch is as far apart as frames get.
     const noisePct = extra.length
       ? Math.max(...extra.map(({ f }) => compareImages(image(a.frame.path), image(f.path), { threshold }).stats?.overPct ?? Infinity)) : null;

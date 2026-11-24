@@ -230,6 +230,15 @@ describe('compareArms', () => {
     assert.match(compareArms(off, on, { ...options, noise: [unstable, good] }).find((r) => r.check === 'home pixels').detail, /^matches flags-off load 3,/);
   });
 
+  it('treats a flags-off load that is missing the step as not clean, never as a match', () => {
+    const off = arm('off', { steps: { home: { ok: true, frame: frame('m-off', image(10, 10)) } } });
+    const on = arm('on', { steps: { home: { ok: true, frame: frame('m-on', shade(3)) } } });
+    const missing = [arm('off2', { steps: {} }), arm('off3', { steps: undefined })];
+    const row = compareArms(off, on, { ...options, noise: missing }).find((r) => r.check === 'home pixels');
+    assert.equal(row.verdict, 'fail');
+    assert.doesNotMatch(row.detail, /matches flags-off load/);
+  });
+
   it('calls a step inconclusive where main is not deterministic, unless the flag is far worse', () => {
     const off = arm('off', { steps: { home: { ok: true, frame: frame('n-off', image(10, 10)) } } });
     const on = (rows) => arm('on', { steps: { home: { ok: true, frame: frame(`n-on-${rows}`, shade(rows, true)) } } });

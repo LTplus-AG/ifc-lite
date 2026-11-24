@@ -34,6 +34,7 @@ import { mergeGeometryDiagnostics, type GeometryDiagnostics } from './diagnostic
 import { omittedTypeRecordsField, parseOmittedTypeRecords } from './omitted-type-records.js';
 import { planLoadWorkerCount } from './worker-count.js';
 import { readBatchSizingOverride, readShardScanFlag, readVisibilityFilterOverride } from './perf-flags.js';
+import { forwardKeyPlan, globalKeyPlanningField, globalPlanColumns } from './global-instance-plan.js';
 import { notifyIfWasmAssetUnavailable, notifyIfWorkerScriptUnavailable } from './wasm-asset-error.js';
 import { restashWasmPanicLocation } from './wasm-panic-forward.js';
 import { mergeShardStyleSlices, type MergedShardStyles, type StylesSlice } from './shard-style-merge.js';
@@ -1141,6 +1142,7 @@ export async function* processParallel(
         if (chunkArrivals % 10 === 1 || jobCount < 1000) {
           console.log(`[stream] chunk #${chunkArrivals} @ ${elapsed()}ms (+${jobCount} jobs, total ${totalDispatchedJobs})`);
         }
+        forwardKeyPlan(broadcastSetup, jobsArr, evt.planIndex); // global instance plan: before the chunk, FIFO
         dispatchJobsChunk(jobsArr, affinityArr);
       } else if (evt.type === 'styles') {
         // Streaming pre-pass resolved styles + voids after its main scan.
@@ -1265,7 +1267,7 @@ export async function* processParallel(
                 type: 'set-prepass-columns' as const,
                 referencedRepmaps: rRepmaps,
                 instantiatedTypeIds: rTypeIds,
-                mappedInstancePlan: rMappedPlan,
+                mappedInstancePlan: rMappedPlan, ...globalPlanColumns(evt),
                 mliElementIds: mIds,
                 mliAxis: mAxis,
                 mliLayerCounts: mCounts,
@@ -1414,7 +1416,7 @@ export async function* processParallel(
       }
       prepassWorker.postMessage({
         type: 'prepass-streaming-sharded',
-        sourceFingerprint: options?.sourceFingerprint,
+        sourceFingerprint: options?.sourceFingerprint, ...globalKeyPlanningField(),
         sharedBuffer,
         chunkSize: 50_000,
         ...(visibilityFilter?.disabledTypes ? { disabledTypes: visibilityFilter.disabledTypes } : {}),
@@ -1427,7 +1429,7 @@ export async function* processParallel(
     } else {
       prepassWorker.postMessage({
         type: 'prepass-streaming',
-        sourceFingerprint: options?.sourceFingerprint,
+        sourceFingerprint: options?.sourceFingerprint, ...globalKeyPlanningField(),
         sharedBuffer,
         chunkSize: 50_000,
         ...(visibilityFilter?.disabledTypes ? { disabledTypes: visibilityFilter.disabledTypes } : {}),

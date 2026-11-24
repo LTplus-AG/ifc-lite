@@ -20,6 +20,8 @@ export const GEOMETRY_PERF_FLAG_BINDINGS = {
   visibilityFilter: { global: '__IFC_LITE_VISIBILITY_FILTER', urlParam: 'perf.visibilityFilter' },
   /** Sharded entity-index pre-pass; on by default, `0` is the kill switch. */
   shardScan: { global: '__IFC_LITE_SHARD_SCAN', urlParam: 'perf.shardScan' },
+  /** Decide GPU instancing once per model (global instance plan). Off by default. */
+  globalInstancing: { global: '__IFC_LITE_GLOBAL_INSTANCING', urlParam: 'perf.globalInstancing' },
 } as const satisfies Record<string, PerfFlagBinding>;
 
 /**
@@ -57,4 +59,15 @@ export function readShardScanFlag(): boolean {
   // other #1682 load/render knobs).
   if (v === 0 || v === '0' || v === false) return false;
   return true;
+}
+
+/**
+ * Global instance plan: decide GPU instancing ONCE per model from the
+ * pre-pass's model-wide facts (mapped-item counts, repeated content keys)
+ * instead of per batch. Off by default (the per-batch decision); `1`/true arms
+ * it. Read on the host thread when a load starts.
+ */
+export function readGlobalInstancingFlag(): boolean {
+  const v = readPerfFlagRaw(GEOMETRY_PERF_FLAG_BINDINGS.globalInstancing);
+  return v === 1 || v === '1' || v === true || v === 'true';
 }

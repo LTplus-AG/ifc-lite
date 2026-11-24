@@ -194,8 +194,8 @@
    468 packages/export/src/schema-converter.ts
    437 packages/extensions/src/testing/runner.ts
    638 packages/geometry/src/coordinate-handler.ts
-  1545 packages/geometry/src/geometry-parallel.ts
-  1780 packages/geometry/src/geometry.worker.ts
+  1542 packages/geometry/src/geometry-parallel.ts
+  1770 packages/geometry/src/geometry.worker.ts
    898 packages/geometry/src/ifc-lite-bridge.ts
   1531 packages/geometry/src/index.ts
    625 packages/geometry/src/native-bridge.ts
@@ -243,7 +243,7 @@
    758 packages/renderer/src/pointcloud/point-cloud-spatial-index.ts
   3595 packages/renderer/src/renderer.ts
    462 packages/renderer/src/scene-raycaster.ts
-  4110 packages/renderer/src/scene.ts
+  3980 packages/renderer/src/scene.ts
    589 packages/renderer/src/section-2d-overlay.ts
    553 packages/renderer/src/shaders/main.wgsl.ts
    427 packages/renderer/src/shadow-pass.ts

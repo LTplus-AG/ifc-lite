@@ -31,15 +31,21 @@ export function titleBlockWithEffectiveScale(
   effectiveScaleFactor: number
 ): TitleBlockConfig {
   const nominalScaleFactor = 1000 / requestedScaleFactor;
-  if (Math.abs(effectiveScaleFactor - nominalScaleFactor) <= 1e-9) {
-    return titleBlock;
-  }
+  const clamped = Math.abs(effectiveScaleFactor - nominalScaleFactor) > 1e-9;
+  const label = `1:${formatScaleFactorLabel(1000 / effectiveScaleFactor)}`;
+  // A field that declares it mirrors the drawing scale is a COPY of a number,
+  // written once; a sheet restored from storage, a saved template or an agent
+  // `drawing.replaceSheet` carries whatever text it was saved with, so it can
+  // disagree with `scale.factor` even when nothing was clamped. Its value is
+  // therefore always derived from the scale the drawing was placed at.
+  // A field that merely has the id 'scale' keeps the clamp-only behaviour.
+  const needsValue = (field: TitleBlockConfig['fields'][number]): boolean =>
+    field.autoPopulateSource === 'drawing.scale'
+      ? field.value !== label
+      : clamped && field.id === 'scale';
+  if (!titleBlock.fields.some(needsValue)) return titleBlock;
   return {
     ...titleBlock,
-    fields: titleBlock.fields.map((field) =>
-      field.id === 'scale'
-        ? { ...field, value: `1:${formatScaleFactorLabel(1000 / effectiveScaleFactor)}` }
-        : field
-    ),
+    fields: titleBlock.fields.map((field) => (needsValue(field) ? { ...field, value: label } : field)),
   };
 }

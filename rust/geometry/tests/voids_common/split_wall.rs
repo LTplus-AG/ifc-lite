@@ -44,9 +44,40 @@ pub(crate) fn wall_with_finish(
 #[allow(dead_code)]
 pub(crate) fn wall_with_tessellated_recess(wall_y: f64, finish_length: f64) -> String {
     let swept = wall_with_finish([0.0; 2], 0.0, wall_y, Recess::FromInterface, finish_length);
+    tessellate_recess(&swept, &[(1.0, 1.0), (2.0, 1.0), (2.0, 1.9), (1.9, 2.0), (1.0, 2.0)])
+}
+
+/// A stub wall shorter than it is thick, so its thinnest axis is its length
+/// (x), not its thickness (y): core over x in [0, 0.15], finish over
+/// [0, 0.05]. The tessellated recess fills y in [0.2, 0.212] over x in
+/// [0.07, 0.13], z in [1, 2], beyond the finish, so it encloses only air.
+#[allow(dead_code)]
+pub(crate) fn stub_wall_with_tessellated_recess(wall_y: f64) -> String {
+    let bodies = format!(
+        "{}{}#50=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#63,#67));",
+        extrusion(60, 0.0, STUB_LENGTH, 0.0, CORE),
+        extrusion(64, 0.0, 0.05, CORE, CORE + FINISH),
+    );
+    let swept = wall_with_bodies([0.0; 2], 0.0, wall_y, Recess::FromInterface, bodies);
+    tessellate_recess(&swept, &[(0.07, 1.0), (0.13, 1.0), (0.13, 1.97), (0.1, 2.0), (0.07, 2.0)])
+}
+
+/// The stub wall's length.
+#[allow(dead_code)]
+pub(crate) const STUB_LENGTH: f64 = 0.15;
+
+/// Material volume of [`stub_wall_with_tessellated_recess`]: the air recess
+/// removes nothing.
+#[allow(dead_code)]
+pub(crate) fn stub_wall_volume() -> f64 {
+    STUB_LENGTH * CORE * WALL_HEIGHT + 0.05 * FINISH * WALL_HEIGHT
+}
+
+/// Replace the swept recess of `swept` with a closed triangulated prism of
+/// the x-z `profile` spanning y in [CORE, CORE + FINISH], in wall coordinates.
+fn tessellate_recess(swept: &str, profile: &[(f64, f64); 5]) -> String {
     let start = swept.find("#110=").expect("the recess placement");
     let end = swept.find("#200=").expect("the opening element");
-    let profile = [(1.0, 1.0), (2.0, 1.0), (2.0, 1.9), (1.9, 2.0), (1.0, 2.0)];
     let points = [CORE, CORE + FINISH]
         .iter()
         .flat_map(|y| profile.iter().map(move |(x, z)| format!("({x:?},{y:?},{z:?})")))

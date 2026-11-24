@@ -17,6 +17,7 @@ describe('GEOMETRY_PERF_FLAG_BINDINGS', () => {
   it('keep the legacy global names', () => {
     expect(Object.values(GEOMETRY_PERF_FLAG_BINDINGS).map((b) => b.global).sort()).toEqual([
       '__IFC_LITE_BATCH_SIZING',
+      '__IFC_LITE_GLOBAL_INSTANCING',
       '__IFC_LITE_SHARD_SCAN',
       '__IFC_LITE_VISIBILITY_FILTER',
     ]);

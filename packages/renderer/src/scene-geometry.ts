@@ -156,6 +156,44 @@ export function entityLaneOf(mesh: MeshData): { entityId: number; saltByte: numb
 }
 
 /**
+ * Write `mesh`'s vertices as merged batch records (position relative to
+ * `origin`, normal, entity lane: 7 floats each) at record `vertexBase`.
+ * Returns the vertex count. The one writer of the batch layout: `mergeGeometry`
+ * and the stream assembly's LOD input (scene-stream-assembly.ts) share it.
+ */
+export function writeMergedRecords(
+  mesh: MeshData,
+  origin: readonly [number, number, number],
+  vertexData: Float32Array,
+  vertexDataU32: Uint32Array,
+  vertexBase: number,
+): number {
+  const positions = mesh.positions;
+  const normals = mesh.normals;
+  const vertexCount = positions.length / 3;
+  // Shift this mesh into the batch-local frame: stored = world - origin
+  // = (mesh.origin - origin) + localPosition. f64 fold, f32 store.
+  const dox = (mesh.origin ? mesh.origin[0] : 0) - origin[0];
+  const doy = (mesh.origin ? mesh.origin[1] : 0) - origin[1];
+  const doz = (mesh.origin ? mesh.origin[2] : 0) - origin[2];
+  let outIdx = vertexBase * 7;
+  const perVertexEntityIds = mesh.entityIds; // color-merged batches
+  const { entityId, saltByte } = entityLaneOf(mesh);
+  const hasNormals = normals.length > 0;
+  for (let i = 0; i < vertexCount; i++) {
+    const srcIdx = i * 3;
+    vertexData[outIdx++] = positions[srcIdx] + dox;
+    vertexData[outIdx++] = positions[srcIdx + 1] + doy;
+    vertexData[outIdx++] = positions[srcIdx + 2] + doz;
+    vertexData[outIdx++] = hasNormals ? normals[srcIdx] : 0;
+    vertexData[outIdx++] = hasNormals ? normals[srcIdx + 1] : 0;
+    vertexData[outIdx++] = hasNormals ? normals[srcIdx + 2] : 0;
+    vertexDataU32[outIdx++] = packEntityLane(perVertexEntityIds ? perVertexEntityIds[i] : entityId, saltByte);
+  }
+  return vertexCount;
+}
+
+/**
  * Merge multiple mesh geometries into single interleaved vertex/index buffers.
  *
  * Layout per vertex: position (3f) + normal (3f) + entityId (1u32) = 7 × 4 bytes.
@@ -214,30 +252,7 @@ export function mergeGeometry(
   let vertexBase = 0;
 
   for (const mesh of meshDataArray) {
-    const positions = mesh.positions;
-    const normals = mesh.normals;
-    const vertexCount = positions.length / 3;
-    // Shift this mesh into the batch-local frame: stored = world - batchOrigin
-    // = (mesh.origin - batchOrigin) + localPosition. f64 fold, f32 store.
-    const dox = (mesh.origin ? mesh.origin[0] : 0) - batchOrigin[0];
-    const doy = (mesh.origin ? mesh.origin[1] : 0) - batchOrigin[1];
-    const doz = (mesh.origin ? mesh.origin[2] : 0) - batchOrigin[2];
-
-    // Interleave vertex data (position + normal + entityId)
-    let outIdx = vertexBase * 7;
-    const perVertexEntityIds = mesh.entityIds; // color-merged batches
-    const { entityId, saltByte } = entityLaneOf(mesh);
-    const hasNormals = normals.length > 0;
-    for (let i = 0; i < vertexCount; i++) {
-      const srcIdx = i * 3;
-      vertexData[outIdx++] = positions[srcIdx] + dox;
-      vertexData[outIdx++] = positions[srcIdx + 1] + doy;
-      vertexData[outIdx++] = positions[srcIdx + 2] + doz;
-      vertexData[outIdx++] = hasNormals ? normals[srcIdx] : 0;
-      vertexData[outIdx++] = hasNormals ? normals[srcIdx + 1] : 0;
-      vertexData[outIdx++] = hasNormals ? normals[srcIdx + 2] : 0;
-      vertexDataU32[outIdx++] = packEntityLane(perVertexEntityIds ? perVertexEntityIds[i] : entityId, saltByte);
-    }
+    const vertexCount = writeMergedRecords(mesh, batchOrigin, vertexData, vertexDataU32, vertexBase);
 
     // Copy indices with vertex base offset
     const meshIndices = mesh.indices;

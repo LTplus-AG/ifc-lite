@@ -3,10 +3,11 @@
 
 use std::collections::{HashMap, HashSet};
 
-use ifc_lite_core::{parser::parse_ref, slot::IfcShapeAspect, EntityScanner};
+use ifc_lite_core::{slot::IfcShapeAspect, EntityScanner};
 
 use crate::schema_structural_axes::list_items;
 use crate::schema_structural_carriers::StructuralCarriers;
+use crate::schema_structural_links::slot_ref;
 use crate::schema_structural_varying::StructuralVarying;
 use crate::schema_structural_varying_constant::constant_action;
 use crate::step_ids::IdAllocator;
@@ -105,7 +106,7 @@ fn index(text: &str) -> (HashMap<u32, Record<'_>>, Vec<u32>) {
 }
 
 fn reference<'r, 'a>(value: &str, records: &'r HashMap<u32, Record<'a>>) -> Option<&'r Record<'a>> {
-    records.get(&parse_ref(value.as_bytes())?)
+    records.get(&slot_ref(value)?)
 }
 
 fn incomplete_aspects(text: &str, records: &HashMap<u32, Record<'_>>) -> HashSet<u32> {

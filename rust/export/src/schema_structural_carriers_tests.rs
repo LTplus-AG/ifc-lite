@@ -202,6 +202,17 @@ fn an_incomplete_varying_action_reports_an_uncarried_cause_and_an_unusable_load_
 }
 
 #[test]
+fn an_incomplete_varying_action_keeps_a_commented_applied_load_11354() {
+    let opts = StepOptions { schema: Some("IFC4".into()), ..StepOptions::default() };
+    for slot in ["#11", "#11 /* initial load */", "/* x */#11", "/* x */ #11 /* y */"] {
+        let action = VARYING.replace(",#15,#11,", &format!(",#15,{slot},"));
+        let (up, _, warnings) = export_step_with_diagnostics(model("IFC2X3", &[GEOMETRY, REACTION, &action].join("\n")).as_bytes(), &opts).unwrap();
+        assert_eq!(record(&up, 30), format!("#30=IFCSTRUCTURALCURVEACTION('3sXjCM_kPHN8ZCpuBhV_98',#5,'V',$,$,#9,#15,{slot},.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);"), "{up}");
+        assert!(!warnings.iter().any(|w| w.contains("no usable AppliedLoad")), "{slot}: {warnings:?}");
+    }
+}
+
+#[test]
 fn a_converted_varying_action_gets_causes_before_its_configuration_9668() {
     let geometry = GEOMETRY.replace("IFCSHAPEASPECT((#16),", "IFCSHAPEASPECT((#14,#16,#16),");
     let (up, warnings) = convert(&model("IFC2X3", &[geometry.as_str(), REACTION, VARYING].join("\n")), "IFC4");

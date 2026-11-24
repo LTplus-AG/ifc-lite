@@ -466,6 +466,14 @@ ${geometry.replace('(#16),', aspect)}
       expect(noLoad.warnings).toContain('no usable AppliedLoad');
     });
 
+    it('keeps an AppliedLoad that carries a STEP comment, before or after the reference (#11354)', async () => {
+      for (const slot of ['#11', '#11 /* initial load */', '/* x */#11', '/* x */ #11 /* y */']) {
+        const up = await convert(varying('(#16),').replace(',#9,#15,#11,', `,#9,#15,${slot},`), 'IFC4');
+        expect(line(up.step, 30), slot).toBe(`#30=IFCSTRUCTURALCURVEACTION('3sXjCM_kPHN8ZCpuBhV_98',#5,'V',$,$,#9,#15,${slot},.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);`);
+        expect(up.warnings, slot).not.toContain('no usable AppliedLoad');
+      }
+    });
+
     it('leaves the complete configuration conversion alone', async () => {
       const up = await convert(planar(varying('(#14,#16,#16),')), 'IFC4');
       expect(line(up.step, 30)).toMatch(/^#30=IFCSTRUCTURALSURFACEACTION\(.*\.NOTDEFINED\.\);$/);

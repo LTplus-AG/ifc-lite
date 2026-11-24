@@ -53,6 +53,23 @@ fn subset_and_edited_exports_convert_varying_actions_11037() {
 }
 
 #[test]
+fn edited_export_keeps_a_commented_applied_load_in_the_constant_action_11354() {
+    let plain = varying_fixture();
+    assert!(plain.contains(",#11,.GLOBAL_COORDS."), "fixture shape");
+    for slot in ["#11", "#11 /* initial load */", "/* x */#11"] {
+        let text = plain.replace(",#11,.GLOBAL_COORDS.", &format!(",{slot},.GLOBAL_COORDS."));
+        let options = ifc_lite_export::StepOptions {
+            schema: Some("IFC4".into()),
+            attribute_mutations: vec![ifc_lite_export::AttrMutation { express_id: 30, index: 12, value: "#9999".into() }],
+            ..Default::default()
+        };
+        let (output, _, warnings) = ifc_lite_export::export_step_with_diagnostics(text.as_bytes(), &options).unwrap();
+        assert!(output.contains(&format!(",{slot},.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);")), "{slot}: {output}");
+        assert!(!warnings.iter().any(|w| w.contains("no usable AppliedLoad")), "{slot}: {warnings:?}");
+    }
+}
+
+#[test]
 fn edited_export_counts_each_varying_action_that_loses_its_configuration_11037() {
     let text = varying_fixture();
     let second = text.lines().find(|line| line.starts_with("#30=")).unwrap()

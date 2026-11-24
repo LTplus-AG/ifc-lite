@@ -5,7 +5,7 @@ import { listItems } from './schema-converter-structural-axes.js';
 import { refId } from './schema-ifc2x3-records.js';
 import { holdsValue, withoutComments } from './step-comment-skip.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
-import { isSubtype, type SourceRecords, type StructuralRewrite } from './schema-converter-structural-source.js';
+import { isSubtype, slotRef, type SourceRecords, type StructuralRewrite } from './schema-converter-structural-source.js';
 import { constantAction } from './schema-structural-varying-constant.js';
 
 /**
@@ -157,7 +157,7 @@ export class StructuralVarying {
   constant(entity: string, args: readonly string[], carried: ReadonlySet<string>): StructuralRewrite | undefined {
     const target = varyingTarget(entity);
     if (!target || args.length !== 14) return undefined;
-    const load = isSubtype('IFC4', this.typeOf(refId(args[7])), 'IfcStructuralLoad');
+    const load = isSubtype('IFC4', this.typeOf(slotRef(args[7])), 'IfcStructuralLoad');
     return constantAction(target, entity, args, load, carried.has('CausedBy'));
   }
 

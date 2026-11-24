@@ -1,16 +1,16 @@
 diff --git a/rust/wasm-bindings/src/zero_copy/mesh_compact_weld.rs b/rust/wasm-bindings/src/zero_copy/mesh_compact_weld.rs
 --- a/rust/wasm-bindings/src/zero_copy/mesh_compact_weld.rs
 +++ b/rust/wasm-bindings/src/zero_copy/mesh_compact_weld.rs
-@@ -172,7 +172,7 @@ pub(super) fn weld_mesh(mesh: &MeshDataJs, window: [i64; 3], step: f64, s: &mut
-         for axis in 0..3 {
-             // `origin + position` first, exactly as the bounds were formed: the f64 sum is the frame
-             // coordinate, so a point shared by meshes with different origins lands on one node.
--            let node = ((o[axis] + p[axis] as f64) * inv - window[axis] as f64).floor() as i64;
-+            let node = round_half_up((o[axis] + p[axis] as f64) * inv - window[axis] as f64) as i64;
+@@ -173,7 +173,7 @@ pub(super) fn weld_mesh(mesh: &MeshDataJs, window: [i64; 3], step: f64, s: &mut
+             // The f64 `origin + position` is the frame coordinate, and it is rounded to its absolute
+             // lattice node BEFORE the window is subtracted (in integers): a point shared by meshes with
+             // different origins or windows lands on one node.
+-            let node = ((o[axis] + p[axis] as f64) * inv).floor() as i64 - window[axis];
++            let node = round_half_up((o[axis] + p[axis] as f64) * inv) as i64 - window[axis];
              // Defensive: `cell_window` admitted the bounds through this same expression.
              if !(0..=Q_MAX).contains(&node) {
                  return Err(Refusal::Extent);
-@@ -199,7 +199,7 @@ fn mark_unwitnessed(mesh: &MeshDataJs, s: &mut Scratch) -> bool {
+@@ -200,7 +200,7 @@ fn mark_unwitnessed(mesh: &MeshDataJs, s: &mut Scratch) -> bool {
          let own_sq = own[0] * own[0] + own[1] * own[1] + own[2] * own[2];
          // cos > MIN, without a square root per vertex. A corner without a normal has no side to witness.
          let witnessed = dot > 0.0 && dot * dot > MIN_WITNESS_COSINE * MIN_WITNESS_COSINE * sum_sq * own_sq;
@@ -19,7 +19,7 @@ diff --git a/rust/wasm-bindings/src/zero_copy/mesh_compact_weld.rs b/rust/wasm-b
              s.unwitnessed[slot as usize] = true;
              any = true;
          }
-@@ -268,7 +268,7 @@ fn triangles(mesh: &MeshDataJs, s: &mut Scratch) -> Result<(), Refusal> {
+@@ -269,7 +269,7 @@ fn triangles(mesh: &MeshDataJs, s: &mut Scratch) -> Result<(), Refusal> {
              s.tris.extend_from_slice(&[ra, rb, rc]);
          }
      }

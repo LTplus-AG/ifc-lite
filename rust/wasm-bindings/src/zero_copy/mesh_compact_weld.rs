@@ -170,9 +170,10 @@ pub(super) fn weld_mesh(mesh: &MeshDataJs, window: [i64; 3], step: f64, s: &mut 
     for (p, n) in mesh.positions.chunks_exact(3).zip(mesh.normals.chunks_exact(3)) {
         let mut q = [0u16; 3];
         for axis in 0..3 {
-            // `origin + position` first, exactly as the bounds were formed: the f64 sum is the frame
-            // coordinate, so a point shared by meshes with different origins lands on one node.
-            let node = round_half_up((o[axis] + p[axis] as f64) * inv - window[axis] as f64) as i64;
+            // The f64 `origin + position` is the frame coordinate, and it is rounded to its absolute
+            // lattice node BEFORE the window is subtracted (in integers): a point shared by meshes with
+            // different origins or windows lands on one node.
+            let node = round_half_up((o[axis] + p[axis] as f64) * inv) as i64 - window[axis];
             // Defensive: `cell_window` admitted the bounds through this same expression.
             if !(0..=Q_MAX).contains(&node) {
                 return Err(Refusal::Extent);

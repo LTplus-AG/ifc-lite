@@ -251,8 +251,9 @@ fn cell_window(bounds: &[f64; 6], cell_q: i64, step: f64) -> Result<([i32; 3], [
         }
         cell[axis] = c as i32;
         window[axis] = c as i64 * cell_q - half_q;
-        let lo = round_half_up(bounds[axis] / step - window[axis] as f64) as i64;
-        let hi = round_half_up(bounds[axis + 3] / step - window[axis] as f64) as i64;
+        // Absolute node first, then the integer window, as `weld_mesh` places each vertex.
+        let lo = round_half_up(bounds[axis] / step) as i64 - window[axis];
+        let hi = round_half_up(bounds[axis + 3] / step) as i64 - window[axis];
         if lo < 0 || hi > Q_MAX {
             return Err(Refusal::Extent);
         }

@@ -420,3 +420,29 @@ fn a_non_finite_normal_refuses_the_mesh() {
         assert_eq!(c.meshes[0].positions.len(), 72);
     }
 }
+
+/// A corner shared by two meshes in different windows is one lattice node. Rounding after subtracting
+/// the window would lose the low bits of a coordinate next to a tie differently per window.
+#[test]
+fn a_shared_corner_is_one_node_whatever_the_window() {
+    let x = (0.5 - 2f64.powi(-38)) / 1024.0;
+    let global_x = |mesh: MeshDataJs| -> (Vec<i64>, f64) {
+        let mut c = MeshCollection::new();
+        c.add(mesh);
+        let b = c.encode_compact(32.0);
+        assert_eq!(b.mesh_count(), 1, "refusals {:?}", b.refusals);
+        let mut nodes: Vec<i64> = b.records.chunks_exact(12).map(|r| b.windows[0] as i64 + u16::from_le_bytes([r[0], r[1]]) as i64).collect();
+        nodes.sort();
+        nodes.dedup();
+        (nodes, b.windows[0])
+    };
+    // One box starts at `x`; the other ends there, 31 m back, so it sits in the previous cell.
+    let (ahead, ahead_window) = global_x(flat_box(1, [x, 0.0, 0.0], 1.0));
+    let mut back = flat_box(2, [x, 0.0, 0.0], 31.0);
+    for p in back.positions.iter_mut().step_by(3) {
+        *p -= 31.0;
+    }
+    let (behind, behind_window) = global_x(back);
+    assert_ne!(ahead_window, behind_window, "the two meshes use different windows");
+    assert_eq!(ahead.first(), behind.last());
+}

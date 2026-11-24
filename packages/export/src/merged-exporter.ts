@@ -35,6 +35,7 @@ import { planInfrastructureUnify, resolvePrimaryContextState, unitScalesEqual, t
 import { MintedRecords, georefNormalizeCaveat, normalizeGeorefRecord, planGeorefNormalize, type GeorefNormalizePlan } from './merged-georef-normalize.js';
 import { listKeptContexts } from './merged-project-contexts.js';
 import { remapEntityText } from './merged-remap.js';
+import { armMergedModel } from './schema-converter-material-referent.js';
 import { PlannerGuids } from './merged-planner-guids.js';
 import {
   canUnifyByGlobalId,
@@ -526,7 +527,7 @@ export class MergedExporter {
       const plan = this.planModel(model, completeIndex, isFirstModel, mode.compatible, mode.lengthFactor, setup, guidToFinalId, schema);
       this.applyContainerDrops(plan, containerDrops?.byModel.get(model.id));
       this.claimParents(model, plan, visibility, completeIndex, !isFirstModel && mode.compatible, setup);
-      const written = (id: number) => (visibility === null || visibility.included.has(id)) && !plan.skipEntityIds.has(id);
+      const written = armMergedModel(enums.materials, model.dataStore, (id) => (visibility === null || visibility.included.has(id)) && !plan.skipEntityIds.has(id), offset, plan.sharedRemap);
       if (schema === 'IFC2X3') {
         // @raw-entity-enumeration-ok sync merge rejects overlays, so this is an unedited source index
         slotFill.prefer(firstWrittenOwnerHistoryRef(model.dataStore.entityIndex.byType.get('IFCOWNERHISTORY'), written, offset));
@@ -671,7 +672,7 @@ export class MergedExporter {
       const plan = this.planModel(model, completeIndex, isFirstModel, mode.compatible, mode.lengthFactor, setup, guidToFinalId, schema);
       this.applyContainerDrops(plan, containerDrops?.byModel.get(model.id));
       this.claimParents(model, plan, visibility, completeIndex, !isFirstModel && mode.compatible, setup);
-      const written = (id: number) => (visibility === null || visibility.included.has(id)) && !plan.skipEntityIds.has(id);
+      const written = armMergedModel(enums.materials, model.dataStore, (id) => (visibility === null || visibility.included.has(id)) && !plan.skipEntityIds.has(id), offset, plan.sharedRemap);
       if (schema === 'IFC2X3') {
         // @raw-entity-enumeration-ok async merge first bakes and reparses edited models into source snapshots
         slotFill.prefer(firstWrittenOwnerHistoryRef(model.dataStore.entityIndex.byType.get('IFCOWNERHISTORY'), written, offset));
@@ -1202,15 +1203,13 @@ export class MergedExporter {
 
     const converting = needsConversion(sourceSchema, targetSchema);
     if (converting) {
-      // No `withheldRefIds` passed (6th arg omitted), so `resolveUnrepresentedEntity`
-      // never takes its `allowOmit` branch here — this call cannot return `null`
-      // (#4206). The federated pipeline does not yet compute that set in its own
-      // offset/remapped id space, so it keeps this function's older, unconditional
-      // "proxy or throw" contract rather than risk a wrong omission in the wrong
-      // id space; the same LoadConfiguration/AppliedLoad case that would omit in
-      // `StepExporter` still throws here, unchanged from before this fix.
+      // No `withheldRefIds` (6th arg), so `resolveUnrepresentedEntity` never omits here (#4206): the federated
+      // pipeline has no such set in its offset id space, and keeps "proxy or throw" rather than omit in the
+      // wrong space. The only `null` is a material record the referent check left out (#10763); any other
+      // still throws, as the LoadConfiguration/AppliedLoad case `StepExporter` would omit does.
       const converted = convertStepLine(finalText, sourceSchema, targetSchema, undefined, slotFill, undefined, ifc4Slots, enums);
       if (converted === null) {
+        if (enums.materials.leftOut(localId + offset)) return null; // a material record not written (#10763)
         throw new Error(`Internal error: schema conversion of #${localId + offset}=${entityRef.type} returned null with no withheldRefIds supplied.`);
       }
       finalText = converted;

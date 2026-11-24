@@ -129,6 +129,12 @@ export class SourceRecords {
     return id === null ? undefined : this.entry(id)?.type.toUpperCase();
   }
 
+  /** The record's source text, as written. */
+  text(id: number): string | undefined {
+    const entry = this.entry(id);
+    return entry ? this.decode(entry) : undefined;
+  }
+
   slots(id: number | null): readonly string[] | undefined {
     if (id === null) return undefined;
     if (!this.cache.has(id)) {

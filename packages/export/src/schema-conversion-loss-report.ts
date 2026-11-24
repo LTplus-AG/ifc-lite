@@ -29,6 +29,7 @@ import { DocumentLinks } from './schema-converter-document-links.js';
 import { SourceRecords } from './schema-converter-structural-source.js';
 import { describeEntry } from './schema-conversion-loss-description.js';
 import { previewUpgradeDependents } from './schema-converter-unrooted-upgrade.js';
+import { materialPropertiesNotWritten } from './schema-converter-material-referent.js';
 import { EMPTY_SOURCE_BYTES, type IfcDataStore } from '@ifc-lite/parser';
 import {
   convertEntityType,
@@ -352,6 +353,11 @@ export function analyzeConversionLoss(
     if (links.unnamed.size > 0) {
       const expressIds = [...links.unnamed].sort((a, b) => a - b);
       entries.push({ targetType: 'IFCDOCUMENTREFERENCE', kind: 'lossy', droppedAttributes: ['Name'], sourceType: 'IFCDOCUMENTREFERENCE', count: expressIds.length, expressIds });
+    }
+    // #10763: an IfcMaterialProperties whose Material names no single IfcMaterial is not written.
+    const notWritten = materialPropertiesNotWritten(store, fromSchema, toSchema);
+    if (notWritten.ids.length) {
+      entries.push({ sourceType: 'IFCMATERIALPROPERTIES', targetType: 'IFCEXTENDEDMATERIALPROPERTIES', kind: 'lossy', droppedAttributes: [...notWritten.attributes], count: notWritten.ids.length, expressIds: notWritten.ids });
     }
     for (const [sourceType, ids] of varying) {
       const byTarget = new Map<string, number[]>();

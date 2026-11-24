@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "Keep the cold A/B launch helper loadable while dropping the high-performance adapter pin from the host's GPU launch: the launch test must go red.",
+  "key": "scripts/perf/browser-cold-launch.mjs",
+  "mutation": "tests/evidence/cold-ab-gpu-args/behaviour.oracle.patch",
+  "test": "scripts/perf/browser-cold-launch.test.mjs"
+}

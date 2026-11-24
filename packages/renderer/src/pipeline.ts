@@ -188,7 +188,7 @@ export class RenderPipeline {
                 },
                 { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
                 { binding: 4, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }, // selectionColorUniform (#5484)
-                { binding: 5, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } }, // entity colour table (#6076)
+                { binding: 5, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } }, // entity colour table (#6076); vertex: painted depth nudge
             ],
         });
         this.environmentBuffer = this.device.createBuffer({
@@ -661,6 +661,9 @@ export class RenderPipeline {
             ],
         });
     }
+
+    /** The bound entity colour table (#6076): the selection masks nudge painted depth from it too. */
+    getEntityColorTableBuffer(): GPUBuffer { return this.entityColorTableBuffer; }
 
     /** Bind the scene's entity colour table (#6076); null binds the empty one. Rebuilds only on change. */
     setEntityColorTableBuffer(buffer: GPUBuffer | null): void {

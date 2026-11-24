@@ -100,11 +100,35 @@ export const PERSPECTIVE_MAX_DEPTH_NUDGE_RELATIVE = (PERSPECTIVE_DEPTH_NUDGE_LEV
 /** Perspective: NDC lift for annotation lines and text; also the orthographic minimum. */
 export const PERSPECTIVE_OVERLAY_DEPTH_LIFT = 5e-5;
 
+/**
+ * Painted (colour-overridden) surfaces rank above every other level (#11405).
+ * Two coincident copies of one element on the same level, such as a
+ * federated revision of a model, are otherwise left to draw order, so a
+ * colour override showed or hid depending on the camera. The vertex stage
+ * sets `PAINTED_DEPTH_NUDGE_BIT` in the hash for an entity in the colour
+ * table: its level becomes `levels + (hash * paintedLevels >> 8)`, every
+ * unpainted level below it. Painted surfaces keep a coarser hash among
+ * themselves (`PERSPECTIVE_PAINTED_DEPTH_NUDGE_LEVELS`, a quarter of the
+ * orthographic levels) so coplanar painted entities still rank. They move
+ * at most `PERSPECTIVE_MAX_PAINTED_DEPTH_NUDGE_RELATIVE` (1.95 mm at 100 m)
+ * and orthographically 1.25 times the metre bound; unpainted surfaces do not
+ * move at all differently, so a scene without overrides is unchanged.
+ */
+export const PAINTED_DEPTH_NUDGE_BIT = 256;
+
+/** Perspective: levels painted surfaces rank on, above `PERSPECTIVE_DEPTH_NUDGE_LEVELS`. */
+export const PERSPECTIVE_PAINTED_DEPTH_NUDGE_LEVELS = PERSPECTIVE_DEPTH_NUDGE_LEVELS >> 2;
+
+/** Perspective: the furthest a painted surface moves toward the camera, relative to its distance. */
+export const PERSPECTIVE_MAX_PAINTED_DEPTH_NUDGE_RELATIVE =
+  (PERSPECTIVE_DEPTH_NUDGE_LEVELS + PERSPECTIVE_PAINTED_DEPTH_NUDGE_LEVELS - 1) * PERSPECTIVE_DEPTH_NUDGE_PER_LEVEL;
+
 /** Keep explanations above, outside the shipped WGSL literals (#7918). */
 const projectionWgsl = `
         const ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL: f32 = ${ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL};
         const ORTHOGRAPHIC_MAX_DEPTH_NUDGE_METRES: f32 = ${ORTHOGRAPHIC_MAX_DEPTH_NUDGE_METRES};
         const MAX_DEPTH_NUDGE_HASH: f32 = ${MAX_DEPTH_NUDGE_HASH}.0;
+        const PAINTED_DEPTH_NUDGE_BIT: u32 = ${PAINTED_DEPTH_NUDGE_BIT}u;
 
         fn isOrthographicProjection(viewProj: mat4x4<f32>) -> bool {
           return viewProj[0][3] == 0.0 && viewProj[1][3] == 0.0 && viewProj[2][3] == 0.0 && viewProj[3][3] == 1.0;
@@ -114,6 +138,11 @@ const projectionWgsl = `
           let depthRange = 1.0 / length(vec3<f32>(viewProj[0][2], viewProj[1][2], viewProj[2][2]));
           let steps = ORTHOGRAPHIC_MAX_DEPTH_NUDGE_METRES / (depthRange * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL);
           return u32(clamp(floor(steps), 0.0, MAX_DEPTH_NUDGE_HASH)) + 1u;
+        }
+
+        // Levels above the unpainted ones for painted surfaces: a quarter as many, at least one.
+        fn orthographicPaintedLevels(levels: u32) -> u32 {
+          return max(levels >> 2u, 1u);
         }
 
         fn orthographicOffsetInsideDepthRange(clip: vec4<f32>, ndcOffset: f32) -> f32 {
@@ -126,13 +155,21 @@ export const depthNudgeWgsl = `
         ${projectionWgsl}
         const PERSPECTIVE_DEPTH_NUDGE_PER_LEVEL: f32 = ${PERSPECTIVE_DEPTH_NUDGE_PER_LEVEL};
         const PERSPECTIVE_DEPTH_NUDGE_LEVEL_SHIFT: u32 = ${PERSPECTIVE_DEPTH_NUDGE_LEVEL_SHIFT}u;
+        const PERSPECTIVE_DEPTH_NUDGE_LEVELS: u32 = ${PERSPECTIVE_DEPTH_NUDGE_LEVELS}u;
+        const PERSPECTIVE_PAINTED_DEPTH_NUDGE_LEVELS: u32 = ${PERSPECTIVE_PAINTED_DEPTH_NUDGE_LEVELS}u;
 
+        // zHash: the 8-bit entity hash, plus PAINTED_DEPTH_NUDGE_BIT for a colour-overridden entity.
         fn nudgedClipZ(clip: vec4<f32>, zHash: u32, viewProj: mat4x4<f32>) -> f32 {
+          let hash = zHash & 255u;
+          let painted = (zHash & PAINTED_DEPTH_NUDGE_BIT) != 0u;
           if (isOrthographicProjection(viewProj)) {
-            let level = (zHash * orthographicNudgeLevels(viewProj)) >> 8u;
+            let levels = orthographicNudgeLevels(viewProj);
+            let level = select((hash * levels) >> 8u, levels + ((hash * orthographicPaintedLevels(levels)) >> 8u), painted);
             return orthographicOffsetInsideDepthRange(clip, f32(level) * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL);
           }
-          return clip.z * (1.0 + f32(zHash >> PERSPECTIVE_DEPTH_NUDGE_LEVEL_SHIFT) * PERSPECTIVE_DEPTH_NUDGE_PER_LEVEL);
+          let level = select(hash >> PERSPECTIVE_DEPTH_NUDGE_LEVEL_SHIFT,
+            PERSPECTIVE_DEPTH_NUDGE_LEVELS + ((hash * PERSPECTIVE_PAINTED_DEPTH_NUDGE_LEVELS) >> 8u), painted);
+          return clip.z * (1.0 + f32(level) * PERSPECTIVE_DEPTH_NUDGE_PER_LEVEL);
         }
 `;
 
@@ -142,7 +179,8 @@ export const overlayDepthLiftWgsl = `
 
         fn overlayLiftedClipZ(clip: vec4<f32>, viewProj: mat4x4<f32>) -> f32 {
           if (isOrthographicProjection(viewProj)) {
-            let levelsLift = f32(orthographicNudgeLevels(viewProj) + 1u) * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL;
+            let levels = orthographicNudgeLevels(viewProj);
+            let levelsLift = f32(levels + orthographicPaintedLevels(levels) + 1u) * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL;
             return orthographicOffsetInsideDepthRange(clip, max(PERSPECTIVE_OVERLAY_DEPTH_LIFT, levelsLift));
           }
           return clip.z + PERSPECTIVE_OVERLAY_DEPTH_LIFT * clip.w;

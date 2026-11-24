@@ -38,14 +38,27 @@ export const entityColorTableWgsl = `
 
         // The override colour for this fragment's entity; alpha < 0 = none.
         fn entityOverrideColor(lane: u32) -> vec4<f32> {
+          if ((uniforms.overrideParams.y & OVERRIDE_PAINT) == 0u) {
+            return vec4<f32>(0.0, 0.0, 0.0, -1.0);
+          }
+          return entityOverrideById(resolveLaneEntityId(uniforms.overrideParams.x, lane));
+        }
+
+        // PAINTED_DEPTH_NUDGE_BIT when the scene id is in the table, whatever the draw: the
+        // batch, its selection redraw and the masks all rank it alike (depth-nudge.wgsl.ts).
+        fn paintedNudgeBit(id: u32) -> u32 {
+          return select(0u, PAINTED_DEPTH_NUDGE_BIT, entityOverrideById(id).a >= 0.0);
+        }
+
+        // The table's colour for a full scene id; alpha < 0 = none.
+        fn entityOverrideById(id: u32) -> vec4<f32> {
           let none = vec4<f32>(0.0, 0.0, 0.0, -1.0);
-          if ((uniforms.overrideParams.y & OVERRIDE_PAINT) == 0u || entityColorTable[2] == 0u) {
+          if (entityColorTable[2] == 0u) {
             return none;
           }
           let capacity = entityColorTable[0];
           let maxProbe = entityColorTable[1];
           let colorBase = entityColorTable[3];
-          let id = resolveLaneEntityId(uniforms.overrideParams.x, lane);
           let mask = capacity - 1u;
           var slot = entityColorSlotHash(id) & mask;
           for (var i = 0u; i <= maxProbe && i < capacity; i = i + 1u) {

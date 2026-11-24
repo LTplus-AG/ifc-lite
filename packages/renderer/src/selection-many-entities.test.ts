@@ -137,10 +137,12 @@ function makeHarness() {
   wrapper['lastHeight'] = 256;
   const visibility = new OpaqueVisibilityPass(device as unknown as GPUDevice, 1);
   const SELECTION = { label: 'selection' };
+  const colorTable = {} as GPUBuffer;
   (renderer as unknown as Record<string, unknown>)['pipeline'] = new Proxy({} as Record<string | symbol, unknown>, {
     get(_t, prop) {
       switch (prop) {
         case 'visibility': return visibility;
+        case 'getEntityColorTableBuffer': return () => colorTable; // stable, as the real pipeline's
         case 'needsResize': return () => false;
         case 'getSampleCount': return () => 1;
         case 'getMultisampleTextureView': return () => null;

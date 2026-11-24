@@ -1,0 +1,123 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * Painted (colour-overridden) surfaces win coplanar depth ties (#11405): the
+ * level contract of `nudgedClipZ` (CPU mirror of `depth-nudge.wgsl.ts`), that
+ * every vertex entry that nudges depth also ranks painted entities, and the
+ * selection masks' colour-table group (`mask-color-table.ts`), which they need
+ * to nudge exactly as the colour pass did.
+ */
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  MAX_DEPTH_NUDGE_HASH,
+  PAINTED_DEPTH_NUDGE_BIT,
+  PERSPECTIVE_DEPTH_NUDGE_LEVEL_SHIFT,
+  PERSPECTIVE_DEPTH_NUDGE_LEVELS,
+  PERSPECTIVE_DEPTH_NUDGE_PER_LEVEL,
+  PERSPECTIVE_MAX_DEPTH_NUDGE_RELATIVE,
+  PERSPECTIVE_MAX_PAINTED_DEPTH_NUDGE_RELATIVE,
+  PERSPECTIVE_PAINTED_DEPTH_NUDGE_LEVELS,
+} from './shaders/depth-nudge.wgsl.js';
+import { mainShaderSource } from './shaders/main.wgsl.js';
+import { MaskTableGroup, maskTableLayout } from './mask-color-table.js';
+
+/** WGSL `nudgedClipZ`'s level, perspective (`orthoLevels` absent) or orthographic. */
+function level(zHash: number, orthoLevels?: number): number {
+  const hash = zHash & 255, painted = (zHash & PAINTED_DEPTH_NUDGE_BIT) !== 0;
+  if (orthoLevels !== undefined) {
+    const paintedLevels = Math.max(orthoLevels >> 2, 1);
+    return painted ? orthoLevels + ((hash * paintedLevels) >> 8) : (hash * orthoLevels) >> 8;
+  }
+  return painted ? PERSPECTIVE_DEPTH_NUDGE_LEVELS + ((hash * PERSPECTIVE_PAINTED_DEPTH_NUDGE_LEVELS) >> 8) : hash >> PERSPECTIVE_DEPTH_NUDGE_LEVEL_SHIFT;
+}
+
+const HASHES = Array.from({ length: MAX_DEPTH_NUDGE_HASH + 1 }, (_, h) => h);
+
+describe('painted surfaces win coplanar depth ties', () => {
+  for (const ortho of [undefined, 1, 2, 7, 52, 256]) {
+    it(`ranks every painted level above every unpainted one (${ortho === undefined ? 'perspective' : `orthographic, ${ortho} levels`})`, () => {
+      const topUnpainted = Math.max(...HASHES.map((h) => level(h, ortho)));
+      const bottomPainted = Math.min(...HASHES.map((h) => level(h | PAINTED_DEPTH_NUDGE_BIT, ortho)));
+      assert.ok(bottomPainted > topUnpainted, `${bottomPainted} > ${topUnpainted}`);
+      const painted = new Set(HASHES.map((h) => level(h | PAINTED_DEPTH_NUDGE_BIT, ortho)));
+      assert.ok(painted.size >= Math.min(ortho === undefined ? 8 : Math.max(ortho >> 2, 1), 8), 'painted entities still rank among themselves');
+    });
+  }
+
+  it('leaves unpainted levels where they were: a scene without overrides is unchanged', () => {
+    for (const h of HASHES) assert.equal(level(h), h >> PERSPECTIVE_DEPTH_NUDGE_LEVEL_SHIFT);
+    for (const n of [1, 52, 256]) for (const h of HASHES) assert.equal(level(h, n), (h * n) >> 8);
+  });
+
+  it('moves a painted surface at most 2 mm at 100 m (perspective)', () => {
+    const top = Math.max(...HASHES.map((h) => level(h | PAINTED_DEPTH_NUDGE_BIT)));
+    assert.equal(top * PERSPECTIVE_DEPTH_NUDGE_PER_LEVEL, PERSPECTIVE_MAX_PAINTED_DEPTH_NUDGE_RELATIVE);
+    assert.ok(PERSPECTIVE_MAX_PAINTED_DEPTH_NUDGE_RELATIVE > PERSPECTIVE_MAX_DEPTH_NUDGE_RELATIVE);
+    const shift = 100 - 100 / (1 + PERSPECTIVE_MAX_PAINTED_DEPTH_NUDGE_RELATIVE);
+    assert.ok(shift <= 0.002, `${shift} m at 100 m`);
+  });
+
+  it('every vertex entry that nudges depth ranks painted entities, so all passes agree', () => {
+    const entries = [...mainShaderSource.matchAll(/fn (vs_\w+)\([^)]*\)[^{]*\{/g)].map((m) => {
+      let depth = 0, i = m.index! + m[0].length - 1;
+      const start = i;
+      do { if (mainShaderSource[i] === '{') depth++; else if (mainShaderSource[i] === '}') depth--; i++; } while (depth > 0);
+      return { name: m[1]!, body: mainShaderSource.slice(start, i) };
+    });
+    const nudging = entries.filter((e) => e.body.includes('nudgedClipZ('));
+    assert.ok(nudging.length >= 2, 'vs_main and vs_instanced nudge');
+    for (const e of nudging) assert.ok(e.body.includes('paintedNudgeBit('), `${e.name} nudges without the painted bit`);
+    // shadeFlatVertex (vs_main_quantized, the stream) is a helper, not an entry: check it as well.
+    assert.ok(/fn shadeFlatVertex[\s\S]*?paintedNudgeBit\([\s\S]*?nudgedClipZ\(/.test(mainShaderSource));
+  });
+});
+
+describe('selection-mask colour-table group', () => {
+  function fakeDevice() {
+    const groups: { entries: { binding: number; resource: { buffer: unknown } }[] }[] = [];
+    const buffers: { destroyed: boolean }[] = [];
+    const layouts: GPUBindGroupLayoutDescriptor[] = [];
+    const device = {
+      createBindGroupLayout: (d: GPUBindGroupLayoutDescriptor) => { layouts.push(d); return { d }; },
+      createBindGroup: (d: { entries: { binding: number; resource: { buffer: unknown } }[] }) => { groups.push(d); return { n: groups.length }; },
+      createBuffer: () => { const b = { destroyed: false, destroy() { b.destroyed = true; } }; buffers.push(b); return b; },
+    } as unknown as GPUDevice;
+    return { device, groups, buffers, layouts };
+  }
+  const g = globalThis as Record<string, unknown>;
+  g.GPUShaderStage ??= { VERTEX: 1, FRAGMENT: 2, COMPUTE: 4 };
+  g.GPUBufferUsage ??= { STORAGE: 128, UNIFORM: 64, COPY_DST: 8 };
+
+  it('binds the scene table at binding 5 for the vertex stage, rebuilding only when the buffer is replaced', () => {
+    const { device, groups } = fakeDevice();
+    const plain = maskTableLayout(device, false) as unknown as { d: GPUBindGroupLayoutDescriptor };
+    const entry = [...plain.d.entries].find((e) => e.binding === 5)!;
+    assert.ok((entry.visibility & GPUShaderStage.VERTEX) !== 0, 'the vertex stage reads it');
+    const table = new MaskTableGroup(device);
+    const a = {} as GPUBuffer, b = {} as GPUBuffer;
+    const first = table.get(a);
+    assert.equal(table.get(a), first, 'a settled frame builds nothing');
+    assert.notEqual(table.get(b), first, 'a grown table (new buffer) rebinds');
+    assert.equal(groups.at(-1)!.entries.find((e) => e.binding === 5)!.resource.buffer, b);
+  });
+
+  it('keeps the instanced hover uniform at binding 0 beside the table', () => {
+    const { device, groups } = fakeDevice();
+    const hover = {} as GPUBuffer;
+    new MaskTableGroup(device, hover).get({} as GPUBuffer);
+    assert.deepEqual(groups[0]!.entries.map((e) => e.binding), [0, 5]);
+    assert.equal(groups[0]!.entries[0]!.resource.buffer, hover);
+  });
+
+  it('binds an owned empty table when none is given, and frees it on destroy', () => {
+    const { device, buffers } = fakeDevice();
+    const table = new MaskTableGroup(device);
+    table.get(null); table.get(undefined);
+    assert.equal(buffers.length, 1, 'one empty table, reused');
+    table.destroy();
+    assert.ok(buffers.every((b) => b.destroyed));
+  });
+});

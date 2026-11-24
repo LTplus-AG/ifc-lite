@@ -17,6 +17,9 @@
  *   --dist-branch apps/viewer/dist --iters 5 --headed
  *   --branch-revision <built-source-sha> --browser-executable /path/to/chrome
  * Use --fault-inject-ms 2000 --fault-inject-side branch to exercise delay detection.
+ * Real GPU: Chrome launches with the host's IFC_GPU_CHROME_ARGS when set (what
+ * ifc-gpu-check exports; inside a benchmark admission export it yourself), else
+ * the default WebGPU flags, which headless Chrome may serve from SwiftShader.
  * --close-timeout-ms bounds context/browser teardown per sample (default 30000);
  * a close() that never settles is reported as a named failure, not a hang (#4116).
  * The same flag also bounds browser.newContext()/context.newPage() setup, which
@@ -31,6 +34,7 @@ import { browserFixtureKey, validateBrowserFixtures } from './browser-cold-fixtu
 import { requireSpanSource } from './browser-span-source.mjs';
 import { prepareBrowserOutputs } from './browser-cold-outputs.js';
 import { closeBrowserWithTimeout, closeContextWithTimeout, raceWithTimeout } from './browser-cold-teardown.js';
+import { coldAbBrowserArgs } from './browser-cold-launch.mjs';
 import { existsSync, readFileSync, statSync, writeFileSync, appendFileSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -75,8 +79,8 @@ const headed = argv.includes('--headed');
 const browserLaunchOptions = {
   headless: !headed,
   ...(browserExecutable ? { executablePath: resolve(browserExecutable) } : {}),
-  // Same real-GPU flags as the retained worker-pool qualification harness.
-  args: ['--enable-gpu', '--enable-webgpu', '--enable-unsafe-webgpu', '--use-angle=default', '--ignore-gpu-blocklist'],
+  // The host's GPU launch when it exports one (IFC_GPU_CHROME_ARGS), else the defaults.
+  args: coldAbBrowserArgs(process.env),
 };
 const DIST_BRANCH = resolve(ROOT, flag('--dist-branch') ?? 'apps/viewer/dist');
 const DIST_BASE_ARG = flag('--dist-base');

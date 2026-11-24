@@ -139,8 +139,33 @@ async function home(page) {
   await settleCamera(page);
 }
 
-/** Up to `limit` element global ids, sampled from the sorted ids: the same set on every load. */
-const elementIds = (page, fraction, limit) => bounded(page.evaluate(ELEMENT_IDS, { fraction, limit, sorted: true }), 60000, 'element ids');
+/**
+ * In page: up to `limit` global ids sampled evenly from every entity the models' data stores hold, or
+ * `null` without a data store. The data store is the same whatever a flag does to geometry (a flag that
+ * routes elements to instanced or merged draws drops them from `geometryResult.meshes`), so both arms
+ * hide, isolate and colour the same elements; ids without geometry change nothing on screen.
+ */
+export const DATA_ENTITY_IDS = ({ fraction, limit }) => {
+  const s = globalThis.__ifc_lite_viewer_store__.getState();
+  const tables = [...(s.models ?? [])].filter(([, model]) => model.ifcDataStore?.entities?.count)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([modelId, model]) => [modelId, model.ifcDataStore.entities]);
+  const total = tables.reduce((n, [, t]) => n + t.count, 0);
+  if (!total) return null;
+  const want = Math.min(limit, Math.max(1, Math.round(total * fraction)));
+  const out = [];
+  // Each model's share, evenly strided over its own ids sorted natively; only picked ids become global ids.
+  for (const [modelId, table] of tables) {
+    const sorted = Uint32Array.from(table.expressId.subarray(0, table.count)).sort();
+    const share = Math.max(1, Math.round((want * table.count) / total));
+    const step = Math.max(1, Math.floor(sorted.length / share));
+    for (let i = 0, n = 0; i < sorted.length && n < share; i += step, n++) out.push(s.toGlobalId(modelId, sorted[i]));
+  }
+  return { total, ids: out };
+};
+
+/** Up to `limit` element global ids, the same set on every load: from the data store, else the sorted geometry ids. */
+const elementIds = async (page, fraction, limit) => (await bounded(page.evaluate(DATA_ENTITY_IDS, { fraction, limit }), 60000, 'entity ids'))
+  ?? bounded(page.evaluate(ELEMENT_IDS, { fraction, limit, sorted: true }), 60000, 'element ids');
 
 async function pick(page, at) {
   const box = await page.locator('canvas').first().boundingBox();
@@ -183,7 +208,12 @@ async function loseDevice(page) {
  * the script continues.
  */
 export const STEPS = [
-  { id: 'home', area: 'render', frame: true, run: home },
+  // The camera the frame is taken from: a flag that changes the scene bounds moves the home view.
+  { id: 'home', area: 'render', frame: true, run: async (page) => {
+    await home(page);
+    const viewProj = await page.evaluate(() => globalThis.__ifc_lite_view_projection__?.() ?? null);
+    return { facts: { homeViewProj: viewProj && viewProj.map((v) => +v.toPrecision(6)) } };
+  } },
   { id: 'far', area: 'LOD', frame: true, run: async (page) => { await home(page); for (let i = 0; i < 4; i++) await camera('zoomOut')(page); await settleCamera(page); } },
   { id: 'top', area: 'render', frame: true, run: async (page) => { await camera('setPresetView', 'top')(page); await settleCamera(page); } },
   { id: 'pick', area: 'pick', frame: true, run: async (page) => {

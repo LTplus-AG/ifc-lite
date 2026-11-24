@@ -82,7 +82,7 @@ pub(super) fn scan(
                 external_styles: true,
             })
         }
-        PrepassMode::Serial => scan_serial(content, disabled_types, |discovery, decoder, mode| {
+        PrepassMode::Serial => scan_serial(content, disabled_types, api.emits_sparse_facts(), |discovery, decoder, mode| {
             emit_meta(api, content, on_event, discovery, decoder, mode)
         }),
     }
@@ -91,10 +91,14 @@ pub(super) fn scan(
 pub(super) fn scan_serial<'a>(
     content: &'a [u8],
     disabled_types: &rustc_hash::FxHashSet<String>,
+    collect_sparse_facts: bool,
     mut on_meta: impl FnMut(&ColumnsDiscovery, &mut EntityDecoder<'a>, MetaMode) -> Result<f64, JsValue>,
 ) -> Result<ScannedPrepass, JsValue> {
     let mut index = SerialIndex::new(content.len());
     let mut discovery = ColumnsDiscovery::default();
+    if collect_sparse_facts {
+        discovery.sparse = Some(Default::default());
+    }
     let mut shared = ifc_lite_processing::discovery::Discovery::default();
     let mut scanner = EntityScanner::new(content);
     let mut plane_angle = None;

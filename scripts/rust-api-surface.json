@@ -300,6 +300,7 @@
     "point_in_contour": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "propagate_voids_to_parts": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "propagate_voids_via_aggregates": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
+    "recomposes": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "representation::Flow": "enum { Continue; SkipChildren; Stop }",
     "representation::MAX_WALK_LEVELS": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "representation::MappedLevel": "struct { item: DecodedEntity; map: DecodedEntity; mapped_rep: DecodedEntity }",

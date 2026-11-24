@@ -86,6 +86,10 @@ describe('draw stream culling', () => {
     assert.deepEqual([...picks], [MemberPick.Lod0, MemberPick.Lod1, MemberPick.AnyLod, MemberPick.Cull]);
     assert.equal(memberPicks(frame({ projectedPx: () => 20, lodPx: 48 }), node!, cell), MemberPick.Lod1, 'a member with no LOD1 range does not split a LOD1 node');
     assert.equal(memberPicks(frame({ projectedPx: () => 0.1, contribPx: 0.5 }), node!, cell), MemberPick.Cull);
+    const culledThenAny = memberPicks(frame({ projectedPx: (min) => (min[0] === 4 ? 20 : 0.1), contribPx: 0.5, lodPx: 48 }), node!, cell);
+    assert.deepEqual([...(culledThenAny as Uint8Array)], [MemberPick.Cull, MemberPick.Cull, MemberPick.AnyLod, MemberPick.Cull], 'a drawn member without LOD1 never joins a culled node');
+    const anyThenCulled = memberPicks(frame({ projectedPx: (min) => (min[0] === 4 ? 20 : 0.1), contribPx: 0.5, lodPx: 48 }), buildStreamNodes([cell[2]!, cell[0]!], 32)[0]!, [cell[2]!, cell[0]!]);
+    assert.deepEqual([...(anyThenCulled as Uint8Array)], [MemberPick.AnyLod, MemberPick.Cull]);
     assert.equal(memberPicks(frame({ projectedPx: () => 0.1 }), node!, cell), MemberPick.Lod0, 'culling and LOD off: everything at LOD0');
     const [item] = collectStreamItems(f, [node!], null, linkHlodLeaves(null, [node!], [], [], [], 32), 2, cell);
     assert.ok(item?.picks, 'a mixed node carries its picks');

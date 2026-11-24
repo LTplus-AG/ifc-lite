@@ -23,17 +23,25 @@ import { aabbDist2, pxPerMetre, type StreamFrameInputs, type StreamFrameStats, t
  */
 export function memberPicks(f: StreamFrameInputs, node: StreamNode, members: readonly BatchedMesh[]): MemberPick | Uint8Array {
   if (!(f.contribPx > 0) && !(f.lodPx > 0)) return MemberPick.Lod0;
-  const picks = new Uint8Array(node.members.length);
-  let common = -1, mixed = false;
-  for (let k = 0; k < picks.length; k++) {
+  const pickOf = (k: number): MemberPick => {
     const b = members[node.members[k]!]!, px = b.bounds ? f.projectedPx(b.bounds.min, b.bounds.max) : Infinity;
-    const s = f.contribPx > 0 && px < f.contribPx ? MemberPick.Cull
-      : !(b.lod1IndexBuffer && b.lod1IndexCount) ? MemberPick.AnyLod : f.lodPx > 0 && px < f.lodPx ? MemberPick.Lod1 : MemberPick.Lod0;
-    picks[k] = s;
-    if (s === MemberPick.AnyLod) continue;
-    if (common < 0) common = s; else if (s !== common) mixed = true;
+    if (f.contribPx > 0 && px < f.contribPx) return MemberPick.Cull;
+    if (!(b.lod1IndexBuffer && b.lod1IndexCount)) return MemberPick.AnyLod;
+    return f.lodPx > 0 && px < f.lodPx ? MemberPick.Lod1 : MemberPick.Lod0;
+  };
+  // Allocate per-member picks only once two members disagree (most nodes agree: no per-frame garbage).
+  let common = -1, drawsAny = false;
+  for (let k = 0; k < node.members.length; k++) {
+    const s = pickOf(k);
+    // AnyLod (no LOD1 range) agrees with either LOD, never with Cull.
+    const agrees = s === MemberPick.AnyLod ? common !== MemberPick.Cull : common < 0 ? !(s === MemberPick.Cull && drawsAny) : s === common;
+    if (s === MemberPick.AnyLod) drawsAny = true; else if (common < 0) common = s;
+    if (agrees) continue;
+    const picks = new Uint8Array(node.members.length);
+    for (let j = 0; j < picks.length; j++) picks[j] = j === k ? s : pickOf(j);
+    return picks;
   }
-  return mixed ? picks : common < 0 ? MemberPick.Lod0 : common as MemberPick;
+  return common < 0 ? MemberPick.Lod0 : common as MemberPick;
 }
 
 export function collectStreamItems(f: StreamFrameInputs, nodes: readonly StreamNode[], h: HlodTree | null, links: HlodLinks, hlodPx: number,

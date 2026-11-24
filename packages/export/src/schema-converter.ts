@@ -22,6 +22,7 @@ import { skipStepTrivia } from './step-slot-grammar.js';
 import { Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
 import type { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import type { EnumReconciliation } from './schema-converter-enums.js';
+import { MaterialReferents } from './schema-converter-material-referent.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
 import { productProxy } from './schema-converter-product-proxy.js';
 import { MEP_IFC2X3_TYPES } from './schema-converter-mep.js';
@@ -30,7 +31,6 @@ import { carryUserDefinedLabel } from './schema-converter-userdefined-label.js';
 import { attrMapFor, DELETED_SUBTYPES, remapByAttrMap, upgradeCountsIfc4Slots, upgradeRename } from './schema-converter-attr-maps.js';
 import { retypeInPlace } from './schema-converter-retyped.js';
 export { computeWithheldRefIds } from './schema-untranslatable.js';
-
 export type IfcSchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
 /**
  * Entity type name mappings between schema versions.
@@ -91,7 +91,8 @@ const IFC4_TO_IFC2X3: Map<string, string> = new Map([
   // of the other — `BY_NAME_ATTR_REMAP_TYPES` reconciles both by name.
   ['IFCSTRUCTURALCURVEACTION', 'IFCSTRUCTURALLINEARACTION'],
   ['IFCSTRUCTURALSURFACEACTION', 'IFCSTRUCTURALPLANARACTION'],
-  // #10763: IFC4 deleted this subtype for the now-concrete supertype (see the reviewed attribute map).
+  // #10763: IFC4 deleted these subtypes for their now-concrete supertypes (see the reviewed attribute maps).
+  ['IFCMATERIALPROPERTIES', 'IFCEXTENDEDMATERIALPROPERTIES'],
   ['IFCPROFILEPROPERTIES', 'IFCGENERALPROFILEPROPERTIES'],
   // IFC4X3 spatial structure → IFC2X3 equivalents
   ['IFCFACILITY', 'IFCBUILDING'],
@@ -266,20 +267,17 @@ function requireTopLevelAttributes(attrsRaw: string): string[] {
  * @param toSchema - Target schema version
  * @param random - Optional seeded `RandomSource` for the GlobalId of any IFCPROXY
  *   placeholder minted here; pass one when output must be byte-reproducible.
- * @param slots - This package's exporters pass one; it carries the owner
- *   history they reuse (#4686) and collects what they could not settle.
- *   Omitted, a throwaway stands in, so the generated table's own defaults are
- *   still written but the OwnerHistory reuse and both counts are lost.
+ * @param slots - Reuses OwnerHistory (#4686) and counts unsettled slots.
+ *   Without a collector, required-slot filling uses the generated defaults.
  * @param ifc4Slots - Counts IFC4-required slots left `$` (IFC4X3/IFC5 → IFC4, #5202; mapped or structural IFC2X3 → IFC4, #10763).
  * @param enums - Resolves enum members the target lacks and reports losses (#5365).
  * @param withheldRefIds - Express ids this export is OMITTING outright
  *   ({@link computeWithheldRefIds}, #4206) — a record whose attributes name
  *   one is redirected to the same "no representation" resolution as its own
  *   unmapped type would get, so it cannot ship a now-dangling `#N`.
- * @returns Converted line (entities without valid target representation become
- *   IFCPROXY placeholders), or `null` when this record itself is one of the
- *   narrow set `resolveUnrepresentedEntity` can safely OMIT rather than throw
- *   for — the caller must not write a `null` result.
+ * @returns Converted line (no valid target representation: an IFCPROXY placeholder),
+ *   or `null` for a record the export OMITS: one `resolveUnrepresentedEntity` can omit, or an
+ *   IfcMaterialProperties naming no single IfcMaterial (#10763); a `null` is never written.
  */
 export function convertStepLine(
   line: string,
@@ -292,7 +290,8 @@ export function convertStepLine(
   enums?: EnumReconciliation,
 ): string | null {
   if (fromSchema === toSchema) return line;
-  let converted = retypeInPlace(convertRecord(line, fromSchema, toSchema, random, withheldRefIds, fromSchema === 'IFC2X3' && toSchema === 'IFC4' ? enums?.structural.axes.axis(line) : undefined, enums?.structural), fromSchema, toSchema); // #10778
+  const kept = (enums?.materials ?? new MaterialReferents()).apply(line, fromSchema, toSchema); // #10763: null when Material names no one IfcMaterial
+  let converted = kept === null ? null : retypeInPlace(convertRecord(kept, fromSchema, toSchema, random, withheldRefIds, fromSchema === 'IFC2X3' && toSchema === 'IFC4' ? enums?.structural.axes.axis(kept) : undefined, enums?.structural), fromSchema, toSchema);
   converted = carryUserDefinedLabel(line, converted, fromSchema, toSchema); // #10824
   if (converted === null) return null;
   if (enums && toSchema !== 'IFC5') converted = enums.structural.after(enums.documents.apply(enums.apply(enums.forms.apply(converted, fromSchema, toSchema), toSchema)), withheldRefIds);

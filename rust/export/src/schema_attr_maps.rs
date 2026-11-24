@@ -84,8 +84,8 @@ pub(crate) const ATTR_MAPS: &[AttrMap] = &[
     AttrMap { retyped: &["VersionDate"], up_only: &["Publisher"], ..same("IFCLIBRARYINFORMATION") },
     // IFC4 deleted these IFC2X3 subtypes and made the abstract supertype
     // concrete in their place. A downgrade writes IfcGeneralProfileProperties
-    // (`schema_convert::map_4_to_2x3`); an IfcMaterialProperties downgrade waits
-    // on its Material referent (#10911). An IFC4 or IFC4X3 upgrade writes each
+    // or IfcExtendedMaterialProperties after resolving its Material referent.
+    // An IFC4 or IFC4X3 upgrade writes each
     // as its IFC4 supertype (`upgrade_type`, #10777). The typed subtypes keep
     // only `Material` or `ProfileDefinition`: IFC4 holds their measures as
     // IfcProperty records, so each is counted dropped.

@@ -5,8 +5,10 @@
 //! and spatial unification.
 
 use std::collections::{HashMap, HashSet};
+use crate::schema_material_referent::MaterialReferents;
 
 use super::guid::{can_unify_converted_type, extract_global_id_fast};
+use super::line_edit::rewrite_refs;
 use super::spatial::{
     ContainerMergeStrategy, SpatialLookup, StoreyMergeStrategy,
 };
@@ -92,6 +94,23 @@ impl<'a> ModelIndex<'a> {
     /// Raw bytes of the entity line for `id`.
     pub fn line_bytes(&self, id: u32) -> Option<&'a [u8]> {
         self.line_of.get(&id).map(|&(s, e)| &self.content[s..e])
+    }
+
+    /// Index the canonical material records under their exported ids (#10763, #10911).
+    pub(super) fn add_materials(
+        &self, materials: &mut MaterialReferents, from: &str, to: &str,
+        included: &HashSet<u32>, plan: &ModelPlan, offset: u32,
+    ) -> bool {
+        let written = |id| included.contains(&id) && !plan.skip.contains(&id) && !plan.shared_remap.contains_key(&id);
+        materials.load_model(
+            self.content, crate::schema_convert::canon(from), "IFCMATERIALPROPERTIES",
+            &|id, start| {
+                let &(kept, _) = self.line_of.get(&id)?;
+                (kept == start).then(|| (id.saturating_add(offset), written(id)))
+            },
+            &|bytes| rewrite_refs(bytes, offset, &|id| plan.shared_remap.get(&id).copied()),
+        );
+        crate::schema_convert::needs_conversion(from, to)
     }
 
     /// The entity line for `id` decoded lossily to a `String`.

@@ -96,8 +96,10 @@ describe('fast path kill switch', () => {
     assert.equal(GLOBAL_INSTANCING_MIN_BYTES, FAST_PATH_MAX_BYTES,
       'one threshold: every file the fast path can take keeps the per-batch decision, on either path');
     const pick = (size: number) => ({ target: { kind: 'primary' }, kernel: { kind: 'exact' }, retry: false, file: { name: 'a.ifc', size } }) as unknown as PickStartContext;
-    for (const size of [FAST_PATH_MAX_BYTES - 1, FAST_PATH_MAX_BYTES]) {
-      assert.equal(fastPathEligible(pick(size)), inSmallFileTier(size), `${size} B: the fast path takes exactly the small tier`);
+    const MIB10 = 10 * 1024 * 1024;
+    for (const [size, fast] of [[MIB10 - 1, true], [MIB10, false]] as const) {
+      assert.equal(fastPathEligible(pick(size)), fast, `${size} B: fast path`);
+      assert.equal(inSmallFileTier(size), fast, `${size} B: the plan skips exactly what the fast path takes`);
     }
   });
 });

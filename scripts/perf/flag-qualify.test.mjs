@@ -365,17 +365,26 @@ describe('suite results', () => {
 });
 
 describe('section drawing wait', () => {
+  /** A store whose drawing2DStatus follows `script`, one entry per poll; the last entry repeats. */
+  const scripted = (script) => {
+    let polls = 0;
+    return { store: { getState: () => ({ drawing2DStatus: script[Math.min(polls++, script.length - 1)] }) }, polls: () => polls };
+  };
+
   it('waits out a stale ready and a later generation, then needs ready to hold', async () => {
     const { WAIT_SECTION_DRAWING } = gpuStage;
     assert.equal(typeof WAIT_SECTION_DRAWING, 'function', 'the section steps wait for the cut drawing');
-    const start = performance.now();
-    const status = (t) => (t < 100 ? 'ready' : t < 300 ? 'generating' : 'ready'); // stale ready, a generation, its result
-    globalThis.__ifc_lite_viewer_store__ = { getState: () => ({ drawing2DStatus: status(performance.now() - start) }) };
+    // A stale ready for one poll, then a generation, then its result. Each status change is a poll,
+    // so the stale ready is reset whatever the timing; only the final hold measures time.
+    const fake = scripted(['ready', 'generating', 'generating', 'ready']);
+    globalThis.__ifc_lite_viewer_store__ = fake.store;
     try {
-      assert.equal(await WAIT_SECTION_DRAWING({ holdMs: 200, pollMs: 10 }), 'ready');
-      assert.ok(performance.now() - start >= 300 + 200, 'resolved only after the final ready held');
-      globalThis.__ifc_lite_viewer_store__ = { getState: () => ({ drawing2DStatus: 'generating' }) };
-      assert.equal(await WAIT_SECTION_DRAWING({ holdMs: 50, timeoutMs: 100, pollMs: 10 }), 'timeout (generating)');
+      assert.equal(await WAIT_SECTION_DRAWING({ holdMs: 20, pollMs: 1 }), 'ready');
+      assert.ok(fake.polls() > 4, 'resolved only after the final ready held, not on the stale one');
+      globalThis.__ifc_lite_viewer_store__ = scripted(['generating']).store;
+      assert.equal(await WAIT_SECTION_DRAWING({ holdMs: 20, timeoutMs: 30, pollMs: 1 }), 'timeout (generating)');
+      globalThis.__ifc_lite_viewer_store__ = scripted(['generating', 'error']).store;
+      assert.equal(await WAIT_SECTION_DRAWING({ holdMs: 5, pollMs: 1 }), 'error');
     } finally { delete globalThis.__ifc_lite_viewer_store__; }
   });
 });

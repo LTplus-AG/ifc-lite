@@ -43,6 +43,7 @@ import { rasterizeSvgToPngDataUrl, SHEET_PDF_DPI } from './drawing-svg-raster';
 export { rasterizeSvgToPngDataUrl, SHEET_PDF_DPI, MAX_SHEET_RASTER_PIXELS, MAX_SHEET_RASTER_DIMENSION_PX } from './drawing-svg-raster';
 import { DEFAULT_SCAN_SVG_CAP, type ScanBandPoint } from '@/hooks/scanSectionMath';
 import { computeSvgExportViewport, svgExportMmToWorld } from '@/hooks/svgExportViewport';
+import { polygonPathData } from '@/hooks/svgPolygonPath';
 import { makePropertiesGetter } from '@/hooks/drawingElementProperties';
 import { styleCutPolygons, type CutPolygonStyleContext } from '@/components/viewer/drawing/cut-polygon-style';
 import { drawCutPolygonsPdf, isPagePoint, prepareCutPolygonsPdf, type PdfCutPolygon } from '@/lib/export/section-pdf-cut-polygons';
@@ -208,35 +209,8 @@ export function createDrawingExport({
     // 'down'/'front'/'side' rule this hook used to compute inline.
 
     // Helper to get polygon path with axis-specific coordinate transformation
-    const polygonToPath = (polygon: { outer: { x: number; y: number }[]; holes: { x: number; y: number }[][] }): string => {
-      const transformPt = (x: number, y: number) => ({
-        x: flipX ? -x : x,
-        y: flipY ? -y : y,
-      });
-
-      let path = '';
-      if (polygon.outer.length > 0) {
-        const first = transformPt(polygon.outer[0].x, polygon.outer[0].y);
-        path += `M ${first.x.toFixed(4)} ${first.y.toFixed(4)}`;
-        for (let i = 1; i < polygon.outer.length; i++) {
-          const pt = transformPt(polygon.outer[i].x, polygon.outer[i].y);
-          path += ` L ${pt.x.toFixed(4)} ${pt.y.toFixed(4)}`;
-        }
-        path += ' Z';
-      }
-      for (const hole of polygon.holes) {
-        if (hole.length > 0) {
-          const holeFirst = transformPt(hole[0].x, hole[0].y);
-          path += ` M ${holeFirst.x.toFixed(4)} ${holeFirst.y.toFixed(4)}`;
-          for (let i = 1; i < hole.length; i++) {
-            const pt = transformPt(hole[i].x, hole[i].y);
-            path += ` L ${pt.x.toFixed(4)} ${pt.y.toFixed(4)}`;
-          }
-          path += ' Z';
-        }
-      }
-      return path;
-    };
+    const polygonToPath = (polygon: { outer: { x: number; y: number }[]; holes: { x: number; y: number }[][] }): string =>
+      polygonPathData(polygon, (x, y) => ({ x: flipX ? -x : x, y: flipY ? -y : y }));
 
     // Start building SVG
     let svg = `<?xml version="1.0" encoding="UTF-8"?>
@@ -262,6 +236,7 @@ export function createDrawingExport({
     const styledPolygons = styleCutPolygons(drawing.cutPolygons, styleContext, (p) => polygonToPath(p.polygon));
     svg += '  <g id="polygon-fills">\n';
     for (const { polygon, style: { fillColor, fillOpacity }, geometry: pathData } of styledPolygons) {
+      if (!pathData) continue;
       svg += `    <path d="${pathData}" fill="${escapeXml(fillColor)}" fill-opacity="${fillOpacity.toFixed(2)}" fill-rule="evenodd" data-entity-id="${polygon.entityId}" data-ifc-type="${escapeXml(polygon.ifcType)}"/>\n`;
     }
     svg += '  </g>\n';
@@ -271,6 +246,7 @@ export function createDrawingExport({
     for (const { polygon, style: { strokeColor, lineWeight }, geometry: pathData } of styledPolygons) {
       // Convert line weight (mm on paper) to model units
       const svgLineWeight = mmToModel(lineWeight);
+      if (!pathData) continue;
       svg += `    <path d="${pathData}" fill="none" stroke="${escapeXml(strokeColor)}" stroke-width="${svgLineWeight.toFixed(4)}" data-entity-id="${polygon.entityId}"/>\n`;
     }
     svg += '  </g>\n';
@@ -513,30 +489,8 @@ export function createDrawingExport({
 `;
 
     // Helper to get polygon path in paper coordinates
-    const polygonToPath = (polygon: { outer: { x: number; y: number }[]; holes: { x: number; y: number }[][] }): string => {
-      let path = '';
-      if (polygon.outer.length > 0) {
-        const first = modelToPaper(polygon.outer[0].x, polygon.outer[0].y);
-        path += `M ${first.x.toFixed(4)} ${first.y.toFixed(4)}`;
-        for (let i = 1; i < polygon.outer.length; i++) {
-          const pt = modelToPaper(polygon.outer[i].x, polygon.outer[i].y);
-          path += ` L ${pt.x.toFixed(4)} ${pt.y.toFixed(4)}`;
-        }
-        path += ' Z';
-      }
-      for (const hole of polygon.holes) {
-        if (hole.length > 0) {
-          const holeFirst = modelToPaper(hole[0].x, hole[0].y);
-          path += ` M ${holeFirst.x.toFixed(4)} ${holeFirst.y.toFixed(4)}`;
-          for (let i = 1; i < hole.length; i++) {
-            const pt = modelToPaper(hole[i].x, hole[i].y);
-            path += ` L ${pt.x.toFixed(4)} ${pt.y.toFixed(4)}`;
-          }
-          path += ' Z';
-        }
-      }
-      return path;
-    };
+    const polygonToPath = (polygon: { outer: { x: number; y: number }[]; holes: { x: number; y: number }[][] }): string =>
+      polygonPathData(polygon, modelToPaper);
 
     svg += drawingReferenceSvg(useViewerStore.getState(), drawing.config.plane, modelToPaper);
     svg += buildDxfUnderlaySvg(

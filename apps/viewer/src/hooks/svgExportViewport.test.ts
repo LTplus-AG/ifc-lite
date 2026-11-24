@@ -120,3 +120,21 @@ describe('svgExportMmToWorld', () => {
     assert.strictEqual(svgExportMmToWorld(1, 200), 0.2);
   });
 });
+
+describe('computeSvgExportViewport degenerate bounds', () => {
+  it('throws on the +/-Infinity bounds of an empty drawing rather than emitting Infinity', () => {
+    const empty: SvgExportBounds = { min: { x: Infinity, y: Infinity }, max: { x: -Infinity, y: -Infinity } };
+    assert.throws(() => computeSvgExportViewport(empty, 100, 'down'), /bounds/);
+  });
+  it('throws on a NaN corner', () => {
+    assert.throws(() => computeSvgExportViewport({ min: { x: NaN, y: 0 }, max: { x: 1, y: 1 } }, 100, 'down'), /bounds/);
+  });
+  it('gives a zero-extent drawing a positive viewBox', () => {
+    const v = computeSvgExportViewport({ min: { x: 2, y: 2 }, max: { x: 2, y: 2 } }, 100, 'down');
+    assert.ok(v.viewBoxWidth > 0 && v.viewBoxHeight > 0 && v.widthMm > 0 && v.heightMm > 0);
+  });
+  it('falls back to scale 100 for a negative or NaN scale (a negative one made width negative)', () => {
+    assert.strictEqual(computeSvgExportViewport(bounds, -50, 'down').widthMm, 120);
+    assert.strictEqual(computeSvgExportViewport(bounds, NaN, 'down').widthMm, 120);
+  });
+});

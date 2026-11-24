@@ -296,12 +296,12 @@ export function convertStepLine(
   if (converted === null) return null;
   if (enums && toSchema !== 'IFC5') converted = enums.structural.after(enums.documents.apply(enums.apply(enums.forms.apply(converted, fromSchema, toSchema), toSchema)), withheldRefIds);
   if (toSchema === 'IFC2X3') return (slots ?? new Ifc2x3SlotFill()).apply(converted);
+  if (enums?.typedProperties.capture(line, converted, fromSchema, toSchema)) return converted;
   if (ifc4Slots && toSchema === 'IFC4' && (fromSchema !== 'IFC2X3' || upgradeCountsIfc4Slots(converted))) ifc4Slots.apply(converted);
   return converted;
 }
 
-/** {@link convertStepLine} before the IFC2X3 required-slot fills, between two
- *  different schemas. */
+/** Convert before applying required-slot fills. */
 function convertRecord(
   line: string,
   fromSchema: IfcSchemaVersion,

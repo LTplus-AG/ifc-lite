@@ -50,7 +50,7 @@ export const entityColorTableWgsl = `
         // PAINTED_DEPTH_NUDGE_BIT when the scene id is in the table, whatever the draw: the
         // batch, its selection redraw and the masks all rank it alike (depth-nudge.wgsl.ts).
         fn paintedNudgeBit(id: u32) -> u32 {
-          return select(0u, PAINTED_DEPTH_NUDGE_BIT, entityOverrideById(id).a >= 0.0);
+          return select(0u, PAINTED_DEPTH_NUDGE_BIT, entityColorSlot(id) != ENTITY_COLOR_NO_SLOT);
         }
 
         // The flat path's lane: a draw without an id anchor cannot name the entity (its
@@ -60,34 +60,43 @@ export const entityColorTableWgsl = `
           return paintedNudgeBit(resolveLaneEntityId(uniforms.overrideParams.x, lane));
         }
 
-        // The table's colour for a full scene id; alpha < 0 = none.
-        fn entityOverrideById(id: u32) -> vec4<f32> {
-          let none = vec4<f32>(0.0, 0.0, 0.0, -1.0);
+        const ENTITY_COLOR_NO_SLOT: u32 = 0xFFFFFFFFu;
+
+        // The table slot holding a full scene id, or ENTITY_COLOR_NO_SLOT.
+        fn entityColorSlot(id: u32) -> u32 {
           if (entityColorTable[2] == 0u) {
-            return none;
+            return ENTITY_COLOR_NO_SLOT;
           }
           let capacity = entityColorTable[0];
           let maxProbe = entityColorTable[1];
-          let colorBase = entityColorTable[3];
           let mask = capacity - 1u;
           var slot = entityColorSlotHash(id) & mask;
           for (var i = 0u; i <= maxProbe && i < capacity; i = i + 1u) {
             let key = entityColorTable[ENTITY_COLOR_HEADER + slot];
             if (key == id) {
-              let c = colorBase + slot * 4u;
-              return vec4<f32>(
-                bitcast<f32>(entityColorTable[c]),
-                bitcast<f32>(entityColorTable[c + 1u]),
-                bitcast<f32>(entityColorTable[c + 2u]),
-                bitcast<f32>(entityColorTable[c + 3u])
-              );
+              return slot;
             }
             if (key == ENTITY_COLOR_EMPTY) {
               break;
             }
             slot = (slot + 1u) & mask;
           }
-          return none;
+          return ENTITY_COLOR_NO_SLOT;
+        }
+
+        // The table's colour for a full scene id; alpha < 0 = none.
+        fn entityOverrideById(id: u32) -> vec4<f32> {
+          let slot = entityColorSlot(id);
+          if (slot == ENTITY_COLOR_NO_SLOT) {
+            return vec4<f32>(0.0, 0.0, 0.0, -1.0);
+          }
+          let c = entityColorTable[3] + slot * 4u;
+          return vec4<f32>(
+            bitcast<f32>(entityColorTable[c]),
+            bitcast<f32>(entityColorTable[c + 1u]),
+            bitcast<f32>(entityColorTable[c + 2u]),
+            bitcast<f32>(entityColorTable[c + 3u])
+          );
         }
 
         // Composite an override over the fragment's own encoded colour exactly

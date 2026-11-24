@@ -25,6 +25,7 @@ import {
   PERSPECTIVE_MAX_DEPTH_NUDGE_RELATIVE,
   PERSPECTIVE_OVERLAY_DEPTH_LIFT,
   orthographicOverlayLiftLevels,
+  orthographicPaintedLevels,
 } from './shaders/depth-nudge.wgsl.js';
 
 /** One unit of a 24-bit depth buffer, in NDC. */
@@ -42,11 +43,6 @@ function isOrthographicProjection(m: Mat4['m']): boolean {
 function nudgeLevels(depthRange: number): number {
   const steps = ORTHOGRAPHIC_MAX_DEPTH_NUDGE_METRES / (depthRange * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL);
   return Math.min(Math.max(Math.floor(steps), 0), MAX_DEPTH_NUDGE_HASH) + 1;
-}
-
-/** WGSL `orthographicPaintedLevels`: painted surfaces rank on these above the unpainted levels. */
-function paintedLevels(levels: number): number {
-  return Math.max(levels >> 2, 1);
 }
 
 /** WGSL ortho overlay lift (shared with CPU annotation picking): above every level, painted ones included. */
@@ -135,7 +131,7 @@ describe('overlay depth lift (#812, #6729)', () => {
   it('orthographic: text and lines stay above the most-nudged face, depth bias included', () => {
     for (const range of [0.5, 10, 100, 205, 1_000, 1_560, 10_000, 100_000]) {
       const levels = nudgeLevels(range);
-      const maxNudge = (levels + paintedLevels(levels) - 1) * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL; // the top painted level
+      const maxNudge = (levels + orthographicPaintedLevels(levels) - 1) * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL; // the top painted level
       assert.ok(overlayLift(range) - TEXT_DEPTH_BIAS_UNITS * DEPTH_UNIT > maxNudge, `${range} m`);
       assert.ok(overlayLift(range) >= PERSPECTIVE_OVERLAY_DEPTH_LIFT, `${range} m: never lower than before`);
     }

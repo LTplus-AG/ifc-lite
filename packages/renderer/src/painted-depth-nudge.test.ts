@@ -20,6 +20,7 @@ import {
   PERSPECTIVE_MAX_DEPTH_NUDGE_RELATIVE,
   PERSPECTIVE_MAX_PAINTED_DEPTH_NUDGE_RELATIVE,
   PERSPECTIVE_PAINTED_DEPTH_NUDGE_LEVELS,
+  orthographicPaintedLevels,
 } from './shaders/depth-nudge.wgsl.js';
 import { mainShaderSource } from './shaders/main.wgsl.js';
 import { opaqueFastShaderSource } from './shaders/main-opaque-fast.wgsl.js';
@@ -33,7 +34,7 @@ import { MaskTableGroup, maskTableLayout } from './mask-color-table.js';
 function level(zHash: number, orthoLevels?: number): number {
   const hash = zHash & 255, painted = (zHash & PAINTED_DEPTH_NUDGE_BIT) !== 0;
   if (orthoLevels !== undefined) {
-    const paintedLevels = Math.max(orthoLevels >> 2, 1);
+    const paintedLevels = orthographicPaintedLevels(orthoLevels);
     return painted ? orthoLevels + ((hash * paintedLevels) >> 8) : (hash * orthoLevels) >> 8;
   }
   return painted ? PERSPECTIVE_DEPTH_NUDGE_LEVELS + ((hash * PERSPECTIVE_PAINTED_DEPTH_NUDGE_LEVELS) >> 8) : hash >> PERSPECTIVE_DEPTH_NUDGE_LEVEL_SHIFT;
@@ -48,7 +49,7 @@ describe('painted surfaces win coplanar depth ties', () => {
       const bottomPainted = Math.min(...HASHES.map((h) => level(h | PAINTED_DEPTH_NUDGE_BIT, ortho)));
       assert.ok(bottomPainted > topUnpainted, `${bottomPainted} > ${topUnpainted}`);
       const painted = new Set(HASHES.map((h) => level(h | PAINTED_DEPTH_NUDGE_BIT, ortho)));
-      assert.ok(painted.size >= Math.min(ortho === undefined ? 8 : Math.max(ortho >> 2, 1), 8), 'painted entities still rank among themselves');
+      assert.ok(painted.size >= Math.min(ortho === undefined ? 8 : orthographicPaintedLevels(ortho), 8), 'painted entities still rank among themselves');
     });
   }
 

@@ -120,9 +120,14 @@ export const PERSPECTIVE_OVERLAY_DEPTH_LIFT = 5e-5;
  */
 export const PAINTED_DEPTH_NUDGE_BIT = 256;
 
+/** Orthographic: levels painted surfaces rank on, above the `levels` unpainted ones (WGSL `orthographicPaintedLevels`). */
+export function orthographicPaintedLevels(levels: number): number {
+  return Math.max(levels >> 2, 1);
+}
+
 /** Orthographic: levels the overlay lift clears, painted levels included (WGSL `overlayLiftedClipZ`; CPU picking). */
 export function orthographicOverlayLiftLevels(levels: number): number {
-  return levels + Math.max(levels >> 2, 1) + 1;
+  return levels + orthographicPaintedLevels(levels) + 1;
 }
 
 /** Perspective: levels painted surfaces rank on, above `PERSPECTIVE_DEPTH_NUDGE_LEVELS`. */

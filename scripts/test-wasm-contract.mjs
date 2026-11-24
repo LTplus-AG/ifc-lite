@@ -2061,6 +2061,7 @@ await runShardRefusalBoundaryTests(api, test);
 // #5409's fixture is built from the viewer's class-toggle table: a class added there and not to Rust fails.
 await runClassToggleShardContract(IfcAPI, test);
 (await import('./lib/indexed-colour-instancing-contract.mjs')).runIndexedColourInstancingContract(IfcAPI, test);
+(await import('./lib/global-instancing-contract.mjs')).runGlobalInstancingContract(IfcAPI, test);
 await (await import('./lib/wasm-remesh-contracts.mjs')).runRemeshContracts({ IfcAPI, FIXTURES_DIR, FIXTURES_HINT, test, skip }); // #6232
 finishContractRun(api, passed, failed, skipped);
 

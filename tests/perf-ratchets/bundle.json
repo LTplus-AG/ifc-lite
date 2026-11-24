@@ -53,14 +53,14 @@
       "metric": "raw-bytes",
       "unit": "bytes",
       "description": "raw size of apps/viewer/dist/assets/parser.worker-*.js, the parser worker's own chunk (chunks it imports on demand are not counted)",
-      "ceiling": 1459413,
+      "ceiling": 1475391,
       "tolerance": {
         "kind": "relative",
         "value": 0.001
       },
       "provenance": {
-        "commit": "e0632edf1e6f9e857a440239af8fd456c32c9fab",
-        "measuredAt": "2026-11-19T00:06:05.630Z"
+        "commit": "356ece76880b114fa7bc3a8f85779c927bea1885",
+        "measuredAt": "2026-11-24T10:11:32.761Z"
       }
     }
   ]

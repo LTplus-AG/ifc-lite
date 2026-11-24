@@ -45,6 +45,7 @@ export const scriptPanelIt = {
   'scriptPanel.output.bimCode': 'bim.*',
   'scriptPanel.output.sandboxHintSuffix': 'per gli effetti su visualizzatore / dati / esportazione.',
   'scriptPanel.output.fixWithLlmButton': 'Correggi con un LLM',
+  'scriptPanel.output.surfaces': { one: '{count} vista dei risultati', many: '{count} viste dei risultati', other: '{count} viste dei risultati' },
   'scriptPanel.output.returnLabel': 'Valore restituito:',
   'scriptPanel.output.emptyState': 'Premi Esegui o {keys} per eseguire',
   'scriptPanel.deleteDialog.title': 'Elimina script',

@@ -234,6 +234,15 @@ export const PERF_FLAGS = [
     bindings: { global: '__IFC_LITE_M6__', urlParam: 'm6.stream' },
   },
   {
+    id: 'gpuInstancing',
+    kind: 'ramp',
+    owner: '@louistrue',
+    removalCondition: 'GPU-driven instancing (compute cull, indirect draws; huge-geometry campaign): delete with the per-template instanced path once it ships on by default, or delete the pool if it is dropped.',
+    introducedAt: '2026-11-23',
+    default: false,
+    bindings: { global: '__IFC_LITE_GPU_INSTANCING', urlParam: 'perf.gpuInstancing' },
+  },
+  {
     id: 'perfTrace',
     kind: 'kill-switch',
     owner: '@louistrue',

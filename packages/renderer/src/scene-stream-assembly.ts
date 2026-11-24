@@ -37,7 +37,7 @@ import type { LatticeFrame } from './quantize.js';
 import { QUANT_BYTES_PER_VERTEX } from './quantize.js';
 import { BATCH_CONSTANTS } from './constants.js';
 import { TopologyMemo } from './scene-precision.js';
-import { colorSaltByte, entityLaneOf, packEntityLane } from './scene-geometry.js';
+import { colorSaltByte, writeMergedRecords } from './scene-geometry.js';
 import { createBatchUniform } from './scene-batch-upload.js';
 import type { BatchQuantization } from './scene-derived-batches.js';
 import type { MergedBatchBytes } from './scene-snapshot-batches.js';
@@ -208,7 +208,8 @@ export class StreamAssembly {
       let lodIndices: Uint32Array | null = null;
       if (options.lod && indices.length >= LOD_MIN_TRIANGLES * 3) {
         const cellSize = lodCellSizeForBounds(bounds.min, bounds.max);
-        lodIndices = simplifyIndicesByClustering(positionsAndLanes(meshes, vertexCount, options.origin), 4, indices, cellSize, 3);
+        lodIndices = simplifyIndicesByClustering(mergedRecords(meshes, vertexCount, options.origin), 7, indices, cellSize,
+          { frameOrigin: options.origin });
         if (lodIndices) {
           lod1IndexBuffer = track(createStaticGpuBuffer(device, lodIndices, GPUBufferUsage.INDEX | arenaUsage));
           lod1IndexCount = lodIndices.length;
@@ -318,25 +319,11 @@ function unionBounds(runs: readonly FragmentRun[]): { min: [number, number, numb
   return { min, max };
 }
 
-/** The position and entity lane of each merged record (`mergeGeometry`'s arithmetic), 4 floats per vertex. */
-function positionsAndLanes(meshes: readonly MeshData[], vertexCount: number, origin: readonly [number, number, number]): Float32Array {
-  const out = new Float32Array(vertexCount * 4);
+/** The merged records (`mergeGeometry`'s batch layout) of `meshes`: the LOD input. */
+function mergedRecords(meshes: readonly MeshData[], vertexCount: number, origin: readonly [number, number, number]): Float32Array {
+  const out = new Float32Array(vertexCount * 7);
   const lanes = new Uint32Array(out.buffer);
-  let w = 0;
-  for (const mesh of meshes) {
-    const p = mesh.positions;
-    const dox = (mesh.origin ? mesh.origin[0] : 0) - origin[0];
-    const doy = (mesh.origin ? mesh.origin[1] : 0) - origin[1];
-    const doz = (mesh.origin ? mesh.origin[2] : 0) - origin[2];
-    const perVertex = mesh.entityIds;
-    const { entityId, saltByte } = entityLaneOf(mesh);
-    for (let i = 0, n = p.length / 3; i < n; i++) {
-      out[w] = p[i * 3] + dox;
-      out[w + 1] = p[i * 3 + 1] + doy;
-      out[w + 2] = p[i * 3 + 2] + doz;
-      lanes[w + 3] = packEntityLane(perVertex ? perVertex[i] : entityId, saltByte);
-      w += 4;
-    }
-  }
+  let base = 0;
+  for (const mesh of meshes) base += writeMergedRecords(mesh, origin, out, lanes, base);
   return out;
 }

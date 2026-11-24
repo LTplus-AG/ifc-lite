@@ -34,7 +34,7 @@ import { HlodTree, type HlodNode } from './draw-stream-hlod.js';
 import { GeometryArena } from './draw-stream-arena.js';
 import { StreamPipelines } from './draw-stream-pipelines.js';
 import { buildStreamNodes, linkHlodLeaves, type HlodLinks } from './draw-stream-nodes.js';
-import { collectStreamItems, pickedLoad, picksHash, StreamDrawBudget } from './draw-stream-cull.js';
+import { collectStreamItems, mixedBundles, pickedLoad, StreamDrawBudget } from './draw-stream-cull.js';
 import { cellOf, idOf, MemberPick, modeIndex, orthoSlot, type StreamBatchState, type StreamFrameInputs, type StreamFrameStats, type StreamItem, type StreamNode } from './draw-stream-types.js';
 import type { DrawStreamConfig } from './draw-stream-config.js';
 import { DEFAULT_CHUNK_CELL_SIZE } from './chunk-grid.js';
@@ -260,12 +260,12 @@ export class DrawStream {
       stats.nodesDrawn++; stats.draws += load.draws; stats.tris += load.tris; stats.entries += v.leaf.entries;
       if (!useBundles) { this.encodeNode(f.pass, v.leaf, lod, f.mode, false); continue; }
       // Members at different LODs: one bundle per node for the last pick pattern (stable while the camera rests).
-      const mixedKey = v.picks ? `${this.bundleKey}|${mi}|${picksHash(v.picks)}` : '';
-      let bundle = v.picks ? (v.leaf.mixed?.key === mixedKey ? v.leaf.mixed.bundles[0]! : null) : v.leaf.bundles[slot];
+      const mixedKey = `${this.bundleKey}|${mi}`;
+      let bundle = v.picks ? mixedBundles(v.leaf, mixedKey, v.picks)?.[0] ?? null : v.leaf.bundles[slot];
       if (!bundle) {
         if (recordBudget <= 0) { direct(() => this.encodeNode(f.pass, v.leaf, lod, f.mode, true)); continue; }
         const enc = newBundle(); this.encodeNode(enc, v.leaf, lod, f.mode, true); bundle = enc.finish(); stats.bundlesRecorded++; recordBudget--;
-        if (v.picks) v.leaf.mixed = { key: mixedKey, bundles: [bundle] }; else v.leaf.bundles[slot] = bundle;
+        if (v.picks) v.leaf.mixed = { key: mixedKey, picks: v.picks, bundles: [bundle] }; else v.leaf.bundles[slot] = bundle;
       }
       bundles.push(bundle);
     }
@@ -343,12 +343,13 @@ export class DrawStream {
       const load = it.picks ? pickedLoad(leaf, it.picks, this.members) : { draws: leaf.members.length, tris: lod1 ? leaf.tris1 : leaf.tris0 };
       stats.nodesDrawn++; stats.draws += load.draws; stats.tris += load.tris; stats.entries += leaf.entries;
       if (it.picks) { // members at different LODs: one pair for the last pick pattern
-        const key = `${this.orthoKey}|${mi}|${picksHash(it.picks)}`;
-        if (leaf.mixed?.key !== key) {
+        const key = `${this.orthoKey}|${mi}|ortho`;
+        let pair = mixedBundles(leaf, key, it.picks);
+        if (!pair) {
           const c = colourEnc(), d = depthEnc(); this.encodeNode(c, leaf, it.picks, f.mode, true, colourOf, binding); this.encodeNode(d, leaf, it.picks, f.mode, true, depthOf);
-          leaf.mixed = { key, bundles: [c.finish(), d.finish()] }; stats.bundlesRecorded++;
+          pair = [c.finish(), d.finish()]; leaf.mixed = { key, picks: it.picks, bundles: pair }; stats.bundlesRecorded++;
         }
-        colour.push(leaf.mixed.bundles[0]!); depth.push(leaf.mixed.bundles[1]!); continue;
+        colour.push(pair[0]!); depth.push(pair[1]!); continue;
       }
       if (!leaf.ortho[o]) { const e = colourEnc(); this.encodeNode(e, leaf, lod1, f.mode, true, colourOf, binding); leaf.ortho[o] = e.finish(); stats.bundlesRecorded++; }
       if (!leaf.ortho[o + 1]) { const e = depthEnc(); this.encodeNode(e, leaf, lod1, f.mode, true, depthOf); leaf.ortho[o + 1] = e.finish(); }

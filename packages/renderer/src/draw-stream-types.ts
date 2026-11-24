@@ -31,8 +31,8 @@ export interface StreamNode {
   ortho: (GPURenderBundle | null)[];   // orthographic colour/depth pairs at orthoSlot(mode, lod)
   /** Smallest member bounding-sphere radius: a lower bound on every member's projected size. */
   minRadius: number;
-  /** Bundles of the last mixed-LOD draw (`StreamItem.picks`), valid while `key` (cache keys, mode, picks hash) holds. */
-  mixed?: { key: string; bundles: GPURenderBundle[] };
+  /** Bundles of the last mixed-LOD draw, valid while `key` (cache keys and mode) and its `picks` hold. */
+  mixed?: { key: string; picks: Uint8Array; bundles: GPURenderBundle[] };
 }
 
 /**

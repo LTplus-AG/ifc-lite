@@ -58,11 +58,12 @@ export function pickedLoad(node: StreamNode, picks: Uint8Array, members: readonl
   return { draws, tris };
 }
 
-/** FNV-1a of a mixed node's picks, for its bundle-cache key. */
-export function picksHash(picks: Uint8Array): number {
-  let h = 0x811c9dc5;
-  for (let k = 0; k < picks.length; k++) h = Math.imul(h ^ picks[k]!, 0x01000193);
-  return h >>> 0;
+/** The node's cached mixed-LOD bundles when they were recorded under `key` for exactly these picks. */
+export function mixedBundles(node: StreamNode, key: string, picks: Uint8Array): GPURenderBundle[] | null {
+  const m = node.mixed;
+  if (!m || m.key !== key || m.picks.length !== picks.length) return null;
+  for (let k = 0; k < picks.length; k++) if (m.picks[k] !== picks[k]) return null;
+  return m.bundles;
 }
 
 /**

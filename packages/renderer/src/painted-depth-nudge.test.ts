@@ -103,9 +103,34 @@ describe('painted surfaces win coplanar depth ties', () => {
       const constants = new Set([...code.matchAll(/\bconst\s+([A-Z][A-Z0-9_]*)\b/g)].map((m) => m[1]!));
       const functions = new Set([...code.matchAll(/\bfn\s+(\w+)\s*\(/g)].map((m) => m[1]!));
       for (const [, id] of code.matchAll(/\b([A-Z][A-Z0-9_]{2,})\b/g)) assert.ok(constants.has(id!), `${name}: ${id} used but not declared`);
-      for (const helper of ['nudgedClipZ', 'paintedNudgeBit', 'lanePaintedNudgeBit', 'entityOverrideById', 'resolveLaneEntityId']) {
+      for (const helper of ['nudgedClipZ', 'paintedNudgeBit', 'lanePaintedNudgeBit', 'entityOverrideById', 'resolveLaneEntityId', 'flatNudgeHash', 'instanceNudgeHash']) {
         if (new RegExp(`\\b${helper}\\(`).test(code)) assert.ok(functions.has(helper), `${name}: ${helper} called but not declared`);
       }
+    }
+  });
+});
+
+describe('one painted-aware nudge hash for every depth-nudging shader', () => {
+  it('every nudgedClipZ call in every derived mesh shader takes a hash from flatNudgeHash or instanceNudgeHash', () => {
+    const derived: Record<string, string> = {
+      main: mainShaderSource, fast: opaqueFastShaderSource, ghost: ghostShaderSource, textured: texturedShaderSource,
+      stream: streamShaderSource(mainShaderSource), streamFast: streamShaderSource(opaqueFastShaderSource),
+    };
+    for (const [name, src] of Object.entries({ ...derived })) {
+      derived[`${name}-unbiased`] = unbiasedMeshShader(src, 4);
+      derived[`${name}-guarded`] = guardedMeshShader(src, 4);
+    }
+    for (const [name, src] of Object.entries(derived)) {
+      const code = src.replace(/\/\/[^\n]*/g, '');
+      const calls = [...code.matchAll(/nudgedClipZ\(\s*[\w.]+\s*,\s*(\w+)\s*,/g)].map((m) => m[1]!);
+      assert.ok(calls.length >= 3, `${name}: the flat, quantized/stream and instanced vertex entries nudge`);
+      for (const arg of calls) {
+        const assigned = new RegExp(`let\\s+${arg}\\s*=\\s*(\\w+)\\(`).exec(code)?.[1];
+        assert.ok(assigned === 'flatNudgeHash' || assigned === 'instanceNudgeHash', `${name}: nudgedClipZ takes ${arg} from ${assigned ?? 'nowhere'}`);
+      }
+      // The hash itself is written once: the Knuth constant appears only in the two shared helpers.
+      const outside = code.replace(/fn (flat|instance)NudgeHash\([^)]*\)[^{]*\{[^}]*\}/g, '');
+      assert.equal((outside.match(/2654435761u/g) ?? []).length, 0, `${name}: a nudge hash computed outside the shared helpers`);
     }
   });
 });

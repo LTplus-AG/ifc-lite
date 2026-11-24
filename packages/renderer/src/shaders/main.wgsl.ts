@@ -173,8 +173,7 @@ export const mainShaderSource = `
           let rte = (uniforms.flags.x & RTE_DRAWABLE_FLAG) != 0u;
           output.position = select(uniforms.viewProj * worldPos, uniforms.rteViewProj * vec4<f32>(eyePos, 1.0), rte);
           // Anti z-fighting depth nudge — see vs_main's comment.
-          let colorSalt = (entityId >> 24u) * 2654435761u;
-          let zHash = ((((entityId & 0x00FFFFFFu) ^ colorSalt) * 2654435761u) & 255u) | lanePaintedNudgeBit(entityId);
+          let zHash = flatNudgeHash(entityId);
           output.geometricDepth = output.position.z / output.position.w;
           output.position.z = nudgedClipZ(output.position, zHash, uniforms.viewProj);
           output.worldPos = worldPos.xyz;
@@ -215,8 +214,7 @@ export const mainShaderSource = `
           // the same geometry with a different draw colour (the selection
           // highlight's greater-equal pass) computes the SAME nudge as its
           // batch. The step size per projection is in depth-nudge.wgsl.ts.
-          let colorSalt = (input.entityId >> 24u) * 2654435761u;
-          let zHash = ((((input.entityId & 0x00FFFFFFu) ^ colorSalt) * 2654435761u) & 255u) | lanePaintedNudgeBit(input.entityId);
+          let zHash = flatNudgeHash(input.entityId);
           output.geometricDepth = output.position.z / output.position.w;
           output.position.z = nudgedClipZ(output.position, zHash, uniforms.viewProj);
           output.worldPos = worldPos.xyz;
@@ -246,7 +244,7 @@ export const mainShaderSource = `
           // Same per-entity depth nudge as vs_main. No colour salt here: the
           // instanced path never redraws an occurrence with a second draw
           // colour, so the raw picking id is enough to separate coplanar entities.
-          let zHash = (((inst.instEntityId & 0x00FFFFFFu) * 2654435761u) & 255u) | paintedNudgeBit(inst.instEntityId);
+          let zHash = instanceNudgeHash(inst.instEntityId);
           output.geometricDepth = output.position.z / output.position.w;
           output.position.z = nudgedClipZ(output.position, zHash, uniforms.viewProj);
           output.worldPos = worldPos.xyz;

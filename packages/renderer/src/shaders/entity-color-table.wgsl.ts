@@ -84,6 +84,19 @@ export const entityColorTableWgsl = `
           return ENTITY_COLOR_NO_SLOT;
         }
 
+        // The one depth-nudge hash of a flat-path vertex (vs_main, shadeFlatVertex: the batch, the stream,
+        // the selection redraw and masks): an 8-bit Knuth hash of the entity lane, salted with the material
+        // colour byte (main.wgsl.ts vs_main explains why), plus the painted bit (depth-nudge.wgsl.ts).
+        fn flatNudgeHash(lane: u32) -> u32 {
+          let colorSalt = (lane >> 24u) * 2654435761u;
+          return ((((lane & 0x00FFFFFFu) ^ colorSalt) * 2654435761u) & 255u) | lanePaintedNudgeBit(lane);
+        }
+
+        // The instanced vertex's: the raw scene id (no second draw colour), plus the painted bit.
+        fn instanceNudgeHash(id: u32) -> u32 {
+          return (((id & 0x00FFFFFFu) * 2654435761u) & 255u) | paintedNudgeBit(id);
+        }
+
         // The table's colour for a full scene id; alpha < 0 = none.
         fn entityOverrideById(id: u32) -> vec4<f32> {
           let slot = entityColorSlot(id);

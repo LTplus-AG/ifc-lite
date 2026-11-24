@@ -29,7 +29,7 @@ import { parseArgs } from 'node:util';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { generateScenario } from './huge-geometry-gen.mjs';
 import { FAMILIES, TIERS, resolveScenario, tierLabel } from './huge-geometry-ladder.mjs';
-import { ROOT, launchGpu, loadModel, startSampler } from './huge-geometry-browser.mjs';
+import { ROOT, launchGpu, loadModel, positiveFinite, startSampler } from './huge-geometry-browser.mjs';
 import { cameraPaths, interactions, settledMemory } from './huge-geometry-measure.mjs';
 import { markdownSummary } from './huge-geometry-report.mjs';
 import { startViewerServer } from './viewer-load-probe.mjs';
@@ -117,15 +117,18 @@ async function main() {
     frames: { type: 'string', default: '240' }, dist: { type: 'string', default: join(ROOT, 'apps/viewer/dist') },
     'generate-only': { type: 'boolean', default: false }, 'skip-gc': { type: 'boolean', default: false }, 'keep-climbing': { type: 'boolean', default: false }, seed: { type: 'string' },
   } });
+  const usage = 'usage: huge-geometry-run.mjs --out DIR --models-dir DIR [--scenarios a,b] [--tiers 10k,100k] [--label L] [--evidence diagnostic|benchmark] [--timeout-min 30] [--frames 240] [--seed 1] [--dist DIR] [--generate-only] [--keep-climbing]';
   if (!values.out || !values['models-dir']) {
-    console.error('usage: huge-geometry-run.mjs --out DIR --models-dir DIR [--scenarios a,b] [--tiers 10k,100k] [--label L] [--evidence diagnostic|benchmark] [--timeout-min 30] [--frames 240] [--dist DIR] [--generate-only] [--keep-climbing]');
+    console.error(usage);
     process.exit(2);
   }
   if (!['diagnostic', 'benchmark'].includes(values.evidence)) { console.error('--evidence must be diagnostic or benchmark'); process.exit(2); }
   const scenarios = values.scenarios ? values.scenarios.split(',') : Object.keys(FAMILIES);
   const tiers = values.tiers ? values.tiers.split(',').map(parseTier) : [...TIERS];
-  const seed = values.seed === undefined ? undefined : Number(values.seed);
+  const seed = values.seed === undefined ? undefined : positiveFinite('seed', values.seed, usage);
   for (const s of scenarios) resolveScenario({ scenario: s, elements: tiers[0], seed }); // validate before any work
+  const frames = positiveFinite('frames', values.frames, usage);
+  const timeoutMs = positiveFinite('timeout-min', values['timeout-min'], usage) * 60000;
   const out = resolve(values.out), modelsDir = resolve(values['models-dir']), dist = resolve(values.dist);
   mkdirSync(join(out, 'runs'), { recursive: true });
   const env = environment(dist, values.evidence, values.label);
@@ -160,7 +163,7 @@ async function main() {
         console.log(`[${scenario} ${tierLabel(elements)}] ${manifest.reused ? 'reused' : 'generated'} ${manifest.totals.elements} elements, ${(manifest.totals.bytes / 2 ** 20).toFixed(0)} MiB`);
         if (values['generate-only']) continue;
         const t0 = Date.now();
-        const r = await runOne({ baseUrl, manifest, timeoutMs: Number(values['timeout-min']) * 60000, frames: Number(values.frames), skipGc: values['skip-gc'] });
+        const r = await runOne({ baseUrl, manifest, timeoutMs, frames, skipGc: values['skip-gc'] });
         r.environment = env;
         r.runSeconds = (Date.now() - t0) / 1000;
         writeFileSync(join(out, 'runs', `${manifest.scenario.name}.json`), `${JSON.stringify(r, null, 1)}\n`);

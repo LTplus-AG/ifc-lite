@@ -34,6 +34,16 @@ export const VIEWPORT = Object.freeze({ width: 1600, height: 900 });
 /** `ifc-gpu-check`'s Pop launch (IFC_GPU_CHROME_ARGS) plus the high-performance adapter pin. */
 export const DEFAULT_GPU_ARGS = ['--enable-unsafe-webgpu', '--ignore-gpu-blocklist', '--enable-features=Vulkan', '--use-angle=vulkan'];
 
+export function positiveFinite(name, raw, usage) {
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) {
+    console.error(`--${name} must be a positive finite number`);
+    console.error(usage);
+    process.exit(2);
+  }
+  return value;
+}
+
 export function loadPlaywright() {
   return createRequire(join(ROOT, 'package.json'))('@playwright/test');
 }

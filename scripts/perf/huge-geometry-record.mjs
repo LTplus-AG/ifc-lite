@@ -25,7 +25,7 @@ import { parseArgs } from 'node:util';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { generateScenario } from './huge-geometry-gen.mjs';
 import { FAMILIES, tierLabel } from './huge-geometry-ladder.mjs';
-import { ROOT, launchGpu, loadModel, startSampler } from './huge-geometry-browser.mjs';
+import { ROOT, launchGpu, loadModel, positiveFinite, startSampler } from './huge-geometry-browser.mjs';
 import { cameraPaths, settledMemory } from './huge-geometry-measure.mjs';
 import { parseTier } from './huge-geometry-run.mjs';
 import { HIDE_PRIVACY_NOTICE, HUD_INSTALL, HUD_UPDATE, attachScreencast, cardHtml, startEncoder, toMp4 } from './huge-geometry-video.mjs';
@@ -153,13 +153,17 @@ async function main() {
     tiers: { type: 'string', default: '10k,100k,250k,500k,1M,2M' }, frames: { type: 'string', default: '180' }, fps: { type: 'string', default: '20' },
     'timeout-min': { type: 'string', default: '20' }, dist: { type: 'string', default: join(ROOT, 'apps/viewer/dist') },
   } });
+  const usage = 'usage: huge-geometry-record.mjs --label NAME --models-dir DIR --out DIR [--scenarios mixed] [--tiers 10k,100k] [--frames 180] [--fps 20] [--timeout-min 20]';
   if (!values.label || !values['models-dir'] || !values.out || !/^[\w.-]+$/.test(values.label)) {
-    console.error('usage: huge-geometry-record.mjs --label NAME --models-dir DIR --out DIR [--scenarios mixed] [--tiers 10k,100k] [--frames 180] [--fps 20] [--timeout-min 20]');
+    console.error(usage);
     process.exit(2);
   }
+  const frames = positiveFinite('frames', values.frames, usage);
+  const fps = positiveFinite('fps', values.fps, usage);
+  const timeoutMs = positiveFinite('timeout-min', values['timeout-min'], usage) * 60000;
   const out = resolve(values.out), stills = join(out, 'stills');
   mkdirSync(stills, { recursive: true });
-  const fps = Number(values.fps), webm = join(out, `${values.label}.webm`);
+  const webm = join(out, `${values.label}.webm`);
   const encoder = startEncoder(webm, { fps });
   let enc = null;
   const { server, baseUrl } = await startViewerServer(() => resolve(values.dist));
@@ -171,7 +175,7 @@ async function main() {
       for (let i = 0; i < tiers.length; i++) {
         const manifest = generateScenario(resolve(values['models-dir']), { scenario, elements: tiers[i] });
         marks[i] = `[${tierLabel(tiers[i])}]`;
-        const r = await recordTier({ encoder, baseUrl, manifest, frames: Number(values.frames), timeoutMs: Number(values['timeout-min']) * 60000,
+        const r = await recordTier({ encoder, baseUrl, manifest, frames, timeoutMs,
           label: values.label, stills, ladder: marks.join(' '), fps });
         marks[i] = `${tierLabel(tiers[i])} ${r.status === 'ok' ? '✓' : '✗'}`;
         if (r.status !== 'ok') await verdictCard(encoder, stills, values.label, manifest, r);

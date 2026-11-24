@@ -37,6 +37,38 @@ pub(crate) fn wall_with_finish(
     wall_with_bodies(site, wall_turn_deg, wall_y, recess, bodies)
 }
 
+/// #11318: the #11313 two-body wall with its recess authored as a closed,
+/// chamfered `IfcTriangulatedFaceSet` in wall coordinates. The opening carries
+/// no extrusion direction. It fills y in [0.2, 0.212] over x, z in [1, 2],
+/// beyond the finish, so it touches the core and encloses only air.
+#[allow(dead_code)]
+pub(crate) fn wall_with_tessellated_recess(wall_y: f64, finish_length: f64) -> String {
+    let swept = wall_with_finish([0.0; 2], 0.0, wall_y, Recess::FromInterface, finish_length);
+    let start = swept.find("#110=").expect("the recess placement");
+    let end = swept.find("#200=").expect("the opening element");
+    let profile = [(1.0, 1.0), (2.0, 1.0), (2.0, 1.9), (1.9, 2.0), (1.0, 2.0)];
+    let points = [CORE, CORE + FINISH]
+        .iter()
+        .flat_map(|y| profile.iter().map(move |(x, z)| format!("({x:?},{y:?},{z:?})")))
+        .collect::<Vec<_>>()
+        .join(",");
+    // Caps: outward -y at the interface, +y at the finish face.
+    let mut faces = vec![(1, 2, 3), (1, 3, 4), (1, 4, 5), (6, 8, 7), (6, 9, 8), (6, 10, 9)];
+    for i in 1..=5 {
+        let j = i % 5 + 1;
+        faces.extend([(i, j + 5, j), (i, i + 5, j + 5)]);
+    }
+    let faces = faces.iter().map(|(a, b, c)| format!("({a},{b},{c})")).collect::<Vec<_>>().join(",");
+    let recess = format!(
+        "#112=IFCLOCALPLACEMENT(#33,#11);\n\
+         #120=IFCCARTESIANPOINTLIST3D(({points}),$);\n\
+         #121=IFCTRIANGULATEDFACESET(#120,$,.T.,({faces}),$);\n\
+         #124=IFCSHAPEREPRESENTATION(#13,'Body','Tessellation',(#121));\n\
+         #125=IFCPRODUCTDEFINITIONSHAPE($,$,(#124));\n"
+    );
+    format!("{}{recess}{}", &swept[..start], &swept[end..])
+}
+
 /// The core and the middle body both occupy the authored cutter.
 #[allow(dead_code)]
 pub(crate) fn wall_with_overlapping_bodies() -> String {

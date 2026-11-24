@@ -33,34 +33,23 @@ impl ExactState {
         let CutContext { execution, clipper, wall_min, wall_max, .. } = context;
         let Fallback { opening_mesh, open_min_pt, open_max_pt, extrusion_dir, tri_before, failures_before, csg_unchanged, .. } =
             fallback;
+        // A tessellated cutter carries no direction, so the box takes the
+        // host's thinnest axis as its depth (#11318).
+        let dir = extrusion_dir.unwrap_or_else(|| wall_thinnest_axis_dir(&wall_min, &wall_max));
         // A touching cutter may reach the fallback after a manifold-gate
         // rejection. The box clip can remove the flush core face even at
         // authored depth, so first check the pre-weld source (#11313).
         // The wall-frame rotation can move a flush cap by a few ULPs.
-        // Allow half a kernel grid step along the depth axis only.
-        if extrusion_dir.is_some_and(|dir| {
-            super::prepare::cutter_is_outside_source(
-                context.original_host, (open_min_pt, open_max_pt), dir, SNAP_GRID * 0.5,
-            )
-        }) {
+        // Allow half a kernel grid step along the depth axis only. The
+        // check proves the box interior is air whichever axis is the depth,
+        // so an inferred axis needs it as much as an authored one.
+        if super::prepare::cutter_is_outside_source(
+            context.original_host, (open_min_pt, open_max_pt), dir, SNAP_GRID * 0.5,
+        ) {
             return;
         }
-        let open_min_pt = &open_min_pt;
-        let open_max_pt = &open_max_pt;
-        let dir = extrusion_dir.or_else(|| {
-            Some(wall_thinnest_axis_dir(&wall_min, &wall_max))
-        });
-        let (final_min, final_max) = if let Some(dir) = dir {
-            execution.extend_opening_along_direction(
-                *open_min_pt,
-                *open_max_pt,
-                wall_min,
-                wall_max,
-                dir,
-            )
-        } else {
-            (*open_min_pt, *open_max_pt)
-        };
+        let (final_min, final_max) =
+            execution.extend_opening_along_direction(open_min_pt, open_max_pt, wall_min, wall_max, dir);
         // Near-engulf guard. When CSG returned the host *unchanged*
         // (no cut) AND the opening's AABB covers the whole wall on
         // every axis, the rectangular fallback would cut that
@@ -111,11 +100,8 @@ impl ExactState {
         // engulf heuristic this is a positive void detection, so
         // it overrides `capped` too (the void demonstrably
         // exists — there is nothing left to approximate).
-        let probe_axis = dir.unwrap_or_else(|| {
-            wall_thinnest_axis_dir(&wall_min, &wall_max)
-        });
         let redundant_void =
-            opening_redundant_with_host(result, opening_mesh, &probe_axis);
+            opening_redundant_with_host(result, opening_mesh, &dir);
         let suppress_fallback =
             redundant_void || (csg_unchanged && engulfs_host);
         if !suppress_fallback {

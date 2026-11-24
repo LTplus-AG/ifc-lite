@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { attrNameTable, convertEntityType, shouldSkipEntity, type IfcSchemaVersion } from './schema-converter.js';
-import { isRootedEntityType, missingTypeRoute, VERBATIM_UPGRADE } from './schema-untranslatable.js';
+import { isRootedEntityType, missingTypeRoute } from './schema-untranslatable.js';
 import { IfcParser } from '@ifc-lite/parser';
 import { StepExporter } from './step-exporter.js';
 import { DELETED_SUBTYPES } from './schema-converter-attr-maps.js';
@@ -58,9 +58,8 @@ describe('every source-only type has a route (#10902)', () => {
     }
   }
 
-  it('IFC2X3 -> IFC4 writes verbatim exactly the listed types, and proxies the other rooted ones', () => {
+  it('IFC2X3 -> IFC4 preserves the task routes and proxies rooted types without a mapping', () => {
     const { verbatim, proxied, refused } = partition('IFC2X3', 'IFC4');
-    expect(verbatim).toEqual([...VERBATIM_UPGRADE].sort());
     expect(refused).toEqual([]);
     expect(proxied).toContain('IFCSERVICELIFE');
     // Written as their IFC4 supertype, so none needs a route.

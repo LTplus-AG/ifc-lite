@@ -294,11 +294,11 @@ export function convertStepLine(
   if (fromSchema === toSchema) return line;
   const kept = (enums?.materials ?? new MaterialReferents()).apply(line, fromSchema, toSchema); // #10763: null when Material names no one IfcMaterial
   let converted = kept === null ? null : retypeInPlace(convertRecord(kept, fromSchema, toSchema, random, withheldRefIds, fromSchema === 'IFC2X3' && toSchema === 'IFC4' ? enums?.structural.axes.axis(kept) : undefined, enums?.structural, maxReferenceId), fromSchema, toSchema);
-  converted = carryUserDefinedLabel(line, converted, fromSchema, toSchema); // #10824
+  converted = carryUserDefinedLabel(line, converted, fromSchema, toSchema, maxReferenceId); // #10824
   if (converted === null) return null;
-  if (enums && toSchema !== 'IFC5') converted = enums.structural.after(enums.documents.apply(enums.apply(enums.forms.apply(converted, fromSchema, toSchema), toSchema, maxReferenceId)), withheldRefIds);
+  if (enums && toSchema !== 'IFC5') converted = enums.structural.after(enums.documents.apply(enums.apply(enums.forms.apply(converted, fromSchema, toSchema, maxReferenceId), toSchema, maxReferenceId), maxReferenceId), withheldRefIds);
   if (toSchema === 'IFC2X3') return (slots ?? new Ifc2x3SlotFill()).apply(converted);
-  if (enums?.typedProperties.capture(line, converted, fromSchema, toSchema)) return converted;
+  if (enums?.typedProperties.capture(line, converted, fromSchema, toSchema, maxReferenceId)) return converted;
   if (ifc4Slots && toSchema === 'IFC4' && (fromSchema !== 'IFC2X3' || upgradeCountsIfc4Slots(converted))) ifc4Slots.apply(converted);
   return converted;
 }

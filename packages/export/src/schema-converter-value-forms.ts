@@ -81,8 +81,8 @@ function wholeDecimal(token: string): boolean {
 }
 
 /** How many values a slot holds: its members, or one unless it is `$`. */
-function valueCount(slot: string): number {
-  return listItems(slot)?.length ?? (valueForm(withoutComments(slot)) === null ? 0 : 1);
+function valueCount(slot: string, maxReferenceId?: number): number {
+  return listItems(slot, maxReferenceId)?.length ?? (valueForm(withoutComments(slot)) === null ? 0 : 1);
 }
 
 /** A typed value's argument, `NAME(arg)` -> `arg`. */
@@ -97,8 +97,8 @@ function asText(value: string | null): string | null {
 }
 
 /** The one member of an aggregate; null for any other count. */
-function onlyMember(list: string | null): string | null {
-  const members = list === null ? null : listItems(list);
+function onlyMember(list: string | null, maxReferenceId?: number): string | null {
+  const members = list === null ? null : listItems(list, maxReferenceId);
   return members?.length === 1 ? members[0].trim() : null;
 }
 
@@ -118,16 +118,16 @@ function narrowed(value: string, body: string, form: string, rule: Rule): { valu
 }
 
 /** `value` in the target's form (null to drop it), and how many values that lost. */
-function fix(value: string, prefix: string, rule: Rule, markDuration: () => void): { value: string | null; lost: number } {
+function fix(value: string, prefix: string, rule: Rule, markDuration: () => void, maxReferenceId?: number): { value: string | null; lost: number } {
   const start = skipStepTrivia(value, 0);
   if (start < 0) return { value, lost: 0 };
   if (value[start] === '(') {
-    const members = listItems(value);
+    const members = listItems(value, maxReferenceId);
     if (!members) return { value, lost: 0 };
     const kept: string[] = [];
     let lost = 0;
     for (const member of members) {
-      const fixed = fix(member, `${prefix}A`, rule, markDuration);
+      const fixed = fix(member, `${prefix}A`, rule, markDuration, maxReferenceId);
       lost += fixed.lost;
       if (fixed.value !== null) kept.push(fixed.value);
     }
@@ -146,13 +146,13 @@ function fix(value: string, prefix: string, rule: Rule, markDuration: () => void
     : to === 'D+' ? durationFromSeconds(body)
     : to === 'D-' ? durationToSeconds(body)
     : to === 'U' ? unwrapped(body)
-    : to === 'U1' ? onlyMember(unwrapped(body))
+    : to === 'U1' ? onlyMember(unwrapped(body), maxReferenceId)
     : asInteger(body); // an integer form, `I` or `AI`
   // A set of references that could not be unwrapped loses each of them, and at least one value,
   // so an emptied slot is always named.
   if (fixed !== null && (to === 'D+' || to === 'D-')) markDuration();
   const inner = to === 'U1' ? unwrapped(body) : null;
-  const lost = fixed === null ? Math.max(1, inner === null ? 1 : valueCount(inner)) : 0;
+  const lost = fixed === null ? Math.max(1, inner === null ? 1 : valueCount(inner, maxReferenceId)) : 0;
   return { value: fixed, lost };
 }
 
@@ -169,13 +169,13 @@ export class ValueForms {
   constructor(deferDates = false, private readonly timeUnitSources: readonly SourceStore[] = []) { this.dates = new CalendarDates(deferDates); }
 
   /** `line`, already converted from `from` to `to`, with every slot in a form the target accepts. */
-  apply(line: string, from: string, to: string): string {
+  apply(line: string, from: string, to: string, maxReferenceId?: number): string {
     if (!SCHEMAS.has(from) || !SCHEMAS.has(to) || from === to) return line;
     // The head names the type; most records stop before their slots are split.
     const head = stepRecordHead(line);
     if (!head) return line;
     const { arity, rules } = rulesFor(from, to, line.slice(head.typeStart, head.typeEnd).toUpperCase());
-    const record = rules.length ? readStepSlots(line) : null;
+    const record = rules.length ? readStepSlots(line, maxReferenceId) : null;
     // A record whose arity is not the target's is left alone: slot i need not be attribute i.
     if (!record || record.slots.length !== arity) return line;
     const slots = [...record.slots];
@@ -186,12 +186,12 @@ export class ValueForms {
       const calendar = form === null ? null : rule.forms.get(form);
       if (calendar?.startsWith('C') && this.dates.defer(line, rule.index, calendar,
         (narrowed) => this.count(narrowed ? this.narrowedDates : rule.required ? this.emptied : this.dropped, rule.where, 1))) continue;
-      const fixed = fix(slots[rule.index], '', rule, this.markDuration);
+      const fixed = fix(slots[rule.index], '', rule, this.markDuration, maxReferenceId);
       if (fixed.lost && rule.whole.length) {
         // Positional members: every slot of the group goes whole, each named for what it held.
         for (const i of rule.whole) {
           // The generator gives every slot of a group a row like this one.
-          const own = rules.find((r) => r.index === i), held = own ? valueCount(slots[i]) : 0;
+          const own = rules.find((r) => r.index === i), held = own ? valueCount(slots[i], maxReferenceId) : 0;
           if (!own || !held) continue;
           const emptied = own.empty && own.required ? '()' : '$';
           this.count(emptied === '$' && own.required ? this.emptied : this.dropped, own.where, held);

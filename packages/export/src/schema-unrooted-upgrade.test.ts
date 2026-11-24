@@ -158,3 +158,61 @@ it('keeps the header free of added records when the only creation is pruned (#10
   expect(result.stats.newEntityCount).toBe(0);
   expect(output).not.toContain('Re-exported by ifc-lite');
 });
+
+it('retains typed properties and user-defined labels with remapped references above u32 (#10970)', async () => {
+  const first = await parse(envelope('#4294967295=IFCCARTESIANPOINT((0.,0.));'));
+  const second = await parse(envelope([
+    "#1=IFCMATERIAL('steel');",
+    '#2=IFCGENERALMATERIALPROPERTIES(#1,$,$,42.);',
+    "#3=IFCPERSON($,'P',$,$,$,$,$,$);",
+    "#4=IFCORGANIZATION($,'O',$,$,$);",
+    '#5=IFCPERSONANDORGANIZATION(#3,#4,$);',
+    "#6=IFCAPPLICATION(#4,'1','A','A');",
+    '#7=IFCOWNERHISTORY(#5,#6,$,.NOCHANGE.,$,$,$,1);',
+    "#8=IFCPROCEDURE('3sXjCM_kPHN8ZCpuBhV_98',#7,'P',$,$,'P-1',.USERDEFINED.,'Flush');",
+    '#9=IFCCALENDARDATE(29,2,2024);',
+    "#10=IFCCLASSIFICATION('src','1',#9,'name');",
+  ].join('\n')));
+  const merged = new MergedExporter([
+    { id: 'first', name: 'first', dataStore: first },
+    { id: 'second', name: 'second', dataStore: second },
+  ]);
+  const options = { schema: 'IFC4' } as const;
+  for (const result of [merged.export(options), await merged.exportAsync(options)]) {
+    const out = new TextDecoder().decode(result.content);
+    expect.soft(out).toMatch(/^#4294967297=IFCMATERIALPROPERTIES\([^\n]+,\(#4294967306\),#4294967296\);$/m);
+    expect.soft(out).toContain("#4294967306=IFCPROPERTYSINGLEVALUE('MassDensity',$,IFCMASSDENSITYMEASURE(42.),$);");
+    expect.soft(out).toContain("#4294967305=IFCCLASSIFICATION('src','1','2024-02-29','name',$,$,$);");
+    expect.soft(out).toContain("#4294967303=IFCPROCEDURE('3sXjCM_kPHN8ZCpuBhV_98',#4294967302,'P',$,'Flush','P-1',$,.USERDEFINED.);");
+  }
+});
+
+it('withholds a sectioned spine that loses a section and preserves its neighbour (#10970)', async () => {
+  const text = readFileSync(new URL('../../../rust/export/tests/fixtures/schema_unrooted_spine.ifc', import.meta.url), 'utf8');
+  const store = await parse(text);
+  const options = { schema: 'IFC4' } as const;
+  const merged = new MergedExporter([{ id: 'source', name: 'source', dataStore: store }]);
+  for (const result of [new StepExporter(store).export(options), merged.export(options), await merged.exportAsync(options)]) {
+    const out = new TextDecoder().decode(result.content);
+    expect(out).not.toMatch(/^#(?:13|16)=/m);
+    expect(out).toContain('#17=IFCSECTIONEDSPINE(#6,(#12,#15,#14),(#7,#8,#9));');
+    expect(result.stats.warnings).toContainEqual(expect.stringContaining('#16 (IFCSECTIONEDSPINE) was omitted'));
+  }
+  expect(analyzeConversionLoss(store, 'IFC2X3', 'IFC4').entries.find(e => e.sourceType === 'IFCSECTIONEDSPINE')?.expressIds).toEqual([16]);
+});
+
+it('reconciles a value form beside a remapped unit reference above u32 (#10970)', async () => {
+  const first = await parse(envelope('#4294967295=IFCCARTESIANPOINT((0.,0.));'));
+  const second = await parse(envelope(
+    '#1=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n#2=IFCPROPERTYSINGLEVALUE(\'n\',$,IFCBINARY("0A"),#1);',
+  ).replace("('IFC2X3')", "('IFC4X3_ADD2')"));
+  const merged = new MergedExporter([
+    { id: 'first', name: 'first', dataStore: first },
+    { id: 'second', name: 'second', dataStore: second },
+  ]);
+  const opts = { schema: 'IFC2X3', projectStrategy: 'keep-first' } as const;
+  for (const result of [merged.export(opts), await merged.exportAsync(opts)]) {
+    expect(new TextDecoder().decode(result.content)).toContain("#4294967297=IFCPROPERTYSINGLEVALUE('n',$,$,#4294967296);");
+    expect(result.stats.warnings).toContainEqual(expect.stringContaining('IFCPROPERTYSINGLEVALUE.NominalValue'));
+  }
+});

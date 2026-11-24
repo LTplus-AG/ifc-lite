@@ -549,7 +549,7 @@ export class MergedExporter {
     }
     listKeptContexts(allEntityLines, setup.firstProjectIds.length ? setup.firstProjectIds[0] + setup.firstModelOffset : undefined, setup.keptContexts);
     setup.minted.appendTo(allEntityLines);
-    enums.typedProperties.finish(allEntityLines, ifc4Slots, setup.nextAvailableId, enums.structural);
+    enums.typedProperties.finish(allEntityLines, ifc4Slots, setup.nextAvailableId, enums.structural, Number.MAX_SAFE_INTEGER);
     for (const warning of finishMergedConversion(allEntityLines, slotFill, ifc4Slots, enums, setup.parentClaims)) normalizeWarnings.add(warning);
     for (const warning of omitUnrootedUpgrade(allEntityLines, upgradeSeeds)) normalizeWarnings.add(warning);
 
@@ -715,7 +715,7 @@ export class MergedExporter {
     }
     listKeptContexts(allEntityLines, setup.firstProjectIds.length ? setup.firstProjectIds[0] + setup.firstModelOffset : undefined, setup.keptContexts);
     setup.minted.appendTo(allEntityLines);
-    enums.typedProperties.finish(allEntityLines, ifc4Slots, setup.nextAvailableId, enums.structural);
+    enums.typedProperties.finish(allEntityLines, ifc4Slots, setup.nextAvailableId, enums.structural, Number.MAX_SAFE_INTEGER);
     for (const warning of finishMergedConversion(allEntityLines, slotFill, ifc4Slots, enums, setup.parentClaims)) normalizeWarnings.add(warning);
     for (const warning of omitUnrootedUpgrade(allEntityLines, upgradeSeeds)) normalizeWarnings.add(warning);
 

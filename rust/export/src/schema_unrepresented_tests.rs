@@ -256,3 +256,16 @@ fn logged_pruning_settles_header_without_a_deferred_varying_pass_10970() {
     assert!(!output.contains("#2=") && !output.contains("Re-exported by ifc-lite"), "{output}");
     assert_eq!((stats.written, stats.new_entities), (1, 0));
 }
+
+#[test]
+fn omits_a_sectioned_spine_that_loses_a_section_10970() {
+    let source = include_bytes!("../tests/fixtures/schema_unrooted_spine.ifc");
+    let opts = crate::StepOptions { schema: Some("IFC4".into()), ..Default::default() };
+    let direct = crate::export_step(source, &opts).unwrap();
+    let (logged, _) = crate::export_step_with_log(source, &opts, &crate::MutationLog::default()).unwrap();
+    let merged = crate::export_merged(&[source], &crate::MergedOptions { schema: opts.schema, ..Default::default() });
+    for output in [direct, logged, merged] {
+        assert!(!output.contains("#13=") && !output.contains("#16="), "{output}");
+        assert!(output.contains("#17=IFCSECTIONEDSPINE(#6,(#12,#15,#14),(#7,#8,#9));"), "{output}");
+    }
+}

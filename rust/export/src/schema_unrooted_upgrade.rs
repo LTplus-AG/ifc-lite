@@ -44,7 +44,8 @@ fn refs(value: &str) -> impl Iterator<Item = u32> + '_ {
 
 fn list_minimum(schema: SchemaVersion, ty: &str, attribute: AttrSlot) -> Option<usize> {
     // The pruning bounds below describe IFC4. Check legacy aggregates whole.
-    if schema != SchemaVersion::Ifc4 || !attribute.aggregate {
+    // Sectioned-spine sections and positions correspond by index. Withhold on any loss.
+    if schema != SchemaVersion::Ifc4 || !attribute.aggregate || ty == "IFCSECTIONEDSPINE" {
         return None;
     }
     use crate::generated::ifc4_required_slots::IFC4_AGGREGATE_PRUNE_EXCEPTIONS;

@@ -88,7 +88,9 @@ function readSlots(rec: OutputRecord): Slot[] | undefined {
   // aggregates as whole slots because the pruning bounds are defined for IFC4.
   const layout = target ?? attributes('IFC2X3', rec.type);
   if (!values || !layout || values.length !== layout.length) return undefined;
-  return values.map((value, index) => slot(value, layout[index], target !== undefined));
+  // Sectioned-spine sections and positions correspond by index. Withhold on any loss.
+  const narrow = target !== undefined && rec.type !== 'IFCSECTIONEDSPINE';
+  return values.map((value, index) => slot(value, layout[index], narrow));
 }
 
 function indexRequiredMembers(rec: OutputRecord, users: Map<number, Member[]>): void {

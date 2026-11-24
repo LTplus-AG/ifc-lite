@@ -25,7 +25,6 @@ import {
   PERSPECTIVE_MAX_DEPTH_NUDGE_RELATIVE,
   PERSPECTIVE_OVERLAY_DEPTH_LIFT,
   orthographicOverlayLiftLevels,
-  orthographicPaintedLevels,
 } from './shaders/depth-nudge.wgsl.js';
 
 /** One unit of a 24-bit depth buffer, in NDC. */
@@ -137,7 +136,9 @@ describe('overlay depth lift (#812, #6729)', () => {
   it('orthographic: text and lines stay above the most-nudged face, depth bias included', () => {
     for (const range of [0.5, 10, 100, 205, 1_000, 1_560, 10_000, 100_000]) {
       const levels = nudgeLevels(range);
-      const maxNudge = (levels + orthographicPaintedLevels(levels) - 1) * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL; // the top painted level
+      // The top painted level, restated from the contract (a quarter of the unpainted steps, at least one),
+      // not read back through `orthographicPaintedLevels`, so a broken helper cannot lower both sides.
+      const maxNudge = (levels + Math.max((levels - 1) >> 2, 1) - 1) * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL;
       assert.ok(overlayLift(range) - TEXT_DEPTH_BIAS_UNITS * DEPTH_UNIT > maxNudge, `${range} m`);
       assert.ok(overlayLift(range) >= PERSPECTIVE_OVERLAY_DEPTH_LIFT, `${range} m: never lower than before`);
     }

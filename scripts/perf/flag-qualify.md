@@ -95,8 +95,10 @@ Model compare has no renderer path of its own; it is covered by the e2e stage
 (`compare-impact-6921`, and the federation model here).
 
 **Pixel gate.** A step passes when at most `--pixel-max-pct` (default 0.1) of
-the pixels differ by more than 8/255 between the arms. With `--noise` a second
-flags-off arm loads too (reported as `main vs main`). A step where main differs
+the pixels differ by more than 8/255 between the arms. With `--noise`, `--noise-loads`
+(default 2) more flags-off loads run too, and flags on passes a step that
+matches any flags-off load: main can render a step in more than one state
+between loads (reported as `main vs main`). Otherwise a step where main differs
 from itself by more than the gate is inconclusive (`skip`), unless the flag
 differs by more than twice that plus the gate; failing steps get a diff
 image (`diffs/`, differing pixels in red). Main draws the same frame on every

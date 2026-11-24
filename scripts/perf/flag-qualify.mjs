@@ -12,7 +12,7 @@
  *   node scripts/perf/flag-qualify.mjs unit --flags SPEC --out DIR [--shards 4] [--build-deps]
  *   node scripts/perf/flag-qualify.mjs e2e  --flags SPEC --out DIR [--dist apps/viewer/dist] [--project viewer-e2e-ci] [--grep RE] [--build-deps]
  *   node scripts/perf/flag-qualify.mjs gpu  --flags SPEC --out DIR [--dist apps/viewer/dist] --models samples,real,campus-100k
- *        [--real-dir DIR] [--models-dir DIR] [--pixel-max-pct 0.1] [--timeout-min 8] [--noise]
+ *        [--real-dir DIR] [--models-dir DIR] [--pixel-max-pct 0.1] [--timeout-min 8] [--noise [--noise-loads 2]]
  *   node scripts/perf/flag-qualify.mjs dist --flags SPEC --dist DIR --out FLAGGED_DIST
  *   node scripts/perf/flag-qualify.mjs report --out DIR
  *
@@ -159,6 +159,9 @@ async function e2eStage(flagSet, out, values) {
 }
 
 async function gpuStage(flagSet, out, values) {
+  // Extra flags-off loads: two by default, so a two-state step shows both states 3 times in 4.
+  const noiseLoads = values.noise || values['noise-loads'] !== undefined ? Number(values['noise-loads'] ?? 2) : 0; // --noise-loads implies --noise
+  if (!Number.isSafeInteger(noiseLoads) || noiseLoads < 0) throw new Error(`--noise-loads must be a non-negative integer, got ${values['noise-loads']}`);
   const { generateScenario } = await import('./huge-geometry-gen.mjs');
   const { parseTier } = await import('./huge-geometry-run.mjs');
   const { runArm } = await import('./flag-qualify-gpu.mjs');
@@ -178,7 +181,8 @@ async function gpuStage(flagSet, out, values) {
       console.log(`flag-qualify gpu: ${model.name} (${model.files.length} file${model.files.length > 1 ? 's' : ''})`);
       const off = await runArm({ dist, model, arm: 'off', dir: frames, timeoutMs });
       const on = await runArm({ dist: flagged, model, arm: 'on', dir: frames, timeoutMs });
-      const noise = values.noise ? await runArm({ dist, model, arm: 'off2', dir: frames, timeoutMs }) : null;
+      const noise = [];
+      for (let i = 0; i < noiseLoads; i++) noise.push(await runArm({ dist, model, arm: `off${i + 2}`, dir: frames, timeoutMs }));
       const pixelMaxPct = Number(values['pixel-max-pct'] ?? 0.1);
       const rows = compareArms(off, on, compareOptions(out, pixelMaxPct, model.small, noise));
       previous.models[model.name] = { off, on, noise, small: model.small, pixelMaxPct, rows };
@@ -197,11 +201,11 @@ function compareOptions(out, pixelMaxPct, small, noise) {
 
 /** The GPU rows again from the saved arms and frames (so a changed rule applies), else the stored rows. */
 function gpuRows(out, values, entry) {
-  const frames = [entry.off, entry.on, entry.noise].flatMap((arm) => Object.values(arm?.steps ?? {}).map((step) => step.frame?.path)).filter(Boolean);
+  const frames = [entry.off, entry.on, ...[entry.noise ?? []].flat()].flatMap((arm) => Object.values(arm?.steps ?? {}).map((step) => step.frame?.path)).filter(Boolean);
   if (!entry.off || !entry.on || !frames.every((path) => existsSync(path))) return entry.rows;
   // The gate the run used, unless this report sets one.
   const pixelMaxPct = values['pixel-max-pct'] !== undefined ? Number(values['pixel-max-pct']) : entry.pixelMaxPct ?? 0.1;
-  return compareArms(entry.off, entry.on, compareOptions(out, pixelMaxPct, entry.small ?? false, entry.noise ?? null));
+  return compareArms(entry.off, entry.on, compareOptions(out, pixelMaxPct, entry.small ?? false, entry.noise ?? []));
 }
 
 function report(out, flagSet, values) {
@@ -220,7 +224,7 @@ export async function main(argv = process.argv.slice(2)) {
   const { values } = parseArgs({ args: rest, options: {
     flags: { type: 'string' }, out: { type: 'string' }, dist: { type: 'string' }, models: { type: 'string' },
     'real-dir': { type: 'string' }, 'models-dir': { type: 'string' }, 'pixel-max-pct': { type: 'string' }, 'timeout-min': { type: 'string' },
-    shards: { type: 'string' }, 'build-deps': { type: 'boolean' }, noise: { type: 'boolean' }, project: { type: 'string' }, grep: { type: 'string' },
+    shards: { type: 'string' }, 'build-deps': { type: 'boolean' }, noise: { type: 'boolean' }, 'noise-loads': { type: 'string' }, project: { type: 'string' }, grep: { type: 'string' },
   } });
   if (!['unit', 'e2e', 'gpu', 'dist', 'report'].includes(stage) || !values.flags || !values.out) {
     console.error('usage: flag-qualify.mjs unit|e2e|gpu|dist|report --flags SPEC --out DIR [options] (see the file header)');

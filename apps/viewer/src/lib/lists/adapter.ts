@@ -32,6 +32,7 @@ import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { effectiveListEntitySets, effectiveListStringAttribute, effectiveListTypeName, effectiveTypeQuantitySets } from './effective-provider-entities.js';
 import type { ZoneListContext } from './zone-list-context.js';
 import { materialNamesOf } from './list-material-names.js';
+import { quantitySetsInProjectUnits } from './project-unit-quantities.js';
 export type { ZoneListContext } from './zone-list-context.js';
 
 /**
@@ -225,9 +226,9 @@ export function createListDataProvider(
     getEntityTypeName: (id) => view ? effectiveListTypeName(store, view, id) : exactTypeName(store.entities, id), // declared class, not coalesced (#3325)
 
     getPropertySets: getPropertySetsFor,
-    getQuantitySets: getQuantitySetsFor,
+    getQuantitySets: (id) => quantitySetsInProjectUnits(store, getQuantitySetsFor(id)),
     getTypePropertySets: getTypePropertySetsFor,
-    getTypeQuantitySets: getTypeQuantitySetsFor,
+    getTypeQuantitySets: (id) => quantitySetsInProjectUnits(store, getTypeQuantitySetsFor(id)),
     getEntityDefiningTypeName: getEntityDefiningTypeNameFor,
 
     getAllEntityIds(): number[] {

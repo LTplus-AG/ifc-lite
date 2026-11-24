@@ -8,9 +8,20 @@ use crate::mesh_check::{signed_volume, EdgeLedger};
 use crate::Mesh;
 use rustc_hash::FxHashMap;
 
+/// What a retry established about the authored cutter.
+pub(super) enum Retry {
+    /// The cut of the union of the host shells.
+    Cut(Mesh),
+    /// The kernel found that the cutter does not reach the union. There is
+    /// nothing for a fallback to approximate, so the host stays as it is
+    /// (#5362). A recess that only touches the end of a finish lands here
+    /// (#11321).
+    NoOverlap,
+}
+
 /// Union consistently wound shells without losing material, then subtract
 /// the authored cutter under the same accept gates as the first attempt.
-pub(super) fn try_cut(host: &Mesh, cutter: &Mesh) -> Option<Mesh> {
+pub(super) fn try_cut(host: &Mesh, cutter: &Mesh) -> Option<Retry> {
     if crate::resource::check_current().is_err() || !strict_closed_mesh(cutter) {
         return None;
     }
@@ -55,18 +66,19 @@ pub(super) fn try_cut(host: &Mesh, cutter: &Mesh) -> Option<Mesh> {
     if !union_volume.is_finite() || (union_volume - source_volume).abs() > tolerance {
         return None;
     }
-    let GroupCut::Cut(cut) = clipper.subtract_mesh(&union, cutter) else {
+    let outcome = clipper.subtract_mesh(&union, cutter);
+    if clipper.failure_count() != 0 || crate::resource::check_current().is_err() {
         return None;
+    }
+    let GroupCut::Cut(cut) = outcome else {
+        return outcome.found_no_overlap().then_some(Retry::NoOverlap);
     };
-    if clipper.failure_count() != 0
-        || !strict_closed_mesh(&cut)
-        || crate::resource::check_current().is_err()
-    {
+    if !strict_closed_mesh(&cut) {
         return None;
     }
     let cut_volume = signed_volume(&cut);
     let removed = union_volume - cut_volume;
-    (cut_volume > 0.0 && removed > 0.0 && removed <= cutter_volume + tolerance).then_some(cut)
+    (cut_volume > 0.0 && removed > 0.0 && removed <= cutter_volume + tolerance).then_some(Retry::Cut(cut))
 }
 
 fn shell(host: &Mesh, indices: &[u32]) -> Mesh {

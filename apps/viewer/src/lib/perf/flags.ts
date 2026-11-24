@@ -13,7 +13,7 @@
  *
  * The existing global names, URL params and sticky keys are the bindings, so
  * every old spelling keeps working. `__IFC_LITE_*` globals are read only via
- * `readPerfFlagRaw` (`@ifc-lite/data`); geometry reads its three locally with
+ * `readPerfFlagRaw` (`@ifc-lite/data`); geometry reads its own locally with
  * the bindings it exports (`GEOMETRY_PERF_FLAG_BINDINGS`), spread below.
  *
  * `scripts/check-perf-flags.mjs` (CI, node-tests) parses `PERF_FLAGS` and
@@ -26,7 +26,7 @@
  */
 
 import { readPerfFlagRaw, readPerfFlagUrlParam, type PerfFlagGlobalName } from '@ifc-lite/data';
-import { GEOMETRY_PERF_FLAG_BINDINGS } from '@ifc-lite/geometry';
+import { GEOMETRY_PERF_FLAG_BINDINGS, readGlobalInstancingFlag } from '@ifc-lite/geometry';
 import { readAnalyticsFeatureFlag } from '../analytics.js';
 
 /** A kill switch guards a default-on path; a ramp rolls a new path out. */
@@ -97,6 +97,15 @@ export const PERF_FLAGS = [
     introducedAt: '2026-10-05',
     default: true,
     bindings: { ...GEOMETRY_PERF_FLAG_BINDINGS.shardScan, benchmarkEnv: 'VIEWER_BENCHMARK_SHARD_SCAN' },
+  },
+  {
+    id: 'globalInstancing',
+    kind: 'ramp',
+    owner: '@louistrue',
+    removalCondition: 'Delete with the per-batch instancing decision once the global instance plan is the default and has shipped two releases with no rendering or compare report.',
+    introducedAt: '2026-11-23',
+    default: false,
+    bindings: GEOMETRY_PERF_FLAG_BINDINGS.globalInstancing,
   },
   {
     id: 'contribCull',
@@ -282,6 +291,9 @@ function readSticky(key: string): string | null {
 export function readPerfFlag(id: PerfFlagId): unknown {
   return resolvePerfFlag(getPerfFlagDefinition(id));
 }
+
+/** The global instance plan (`?perf.globalInstancing=1`): GPU instancing decided once per model. */
+export const globalInstancingOn = readGlobalInstancingFlag;
 
 /** `readPerfFlag` for any definition; the feature-flag source is injectable for tests. */
 export function resolvePerfFlag(

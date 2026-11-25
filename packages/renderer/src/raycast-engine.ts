@@ -277,7 +277,7 @@ export class RaycastEngine {
                 );
             }
 
-            magneticResult = this.withScreenCorner(magneticResult, x, y, ray, viewport, options, clip);
+            magneticResult = this.withScreenCorner(magneticResult, x, y, ray, viewport, options, clip, intersection?.distance ?? null);
 
             const source = querySourceCurves(this.sourceSnapCurves, magneticResult.snapTarget,
                 this.camera, ray, x, y, viewport, options, clip);
@@ -353,6 +353,7 @@ export class RaycastEngine {
     private withScreenCorner(
         current: MagneticSnapResult, x: number, y: number, ray: Ray, viewport: { width: number; height: number },
         options: (PickOptions & { snapOptions?: Partial<SnapOptions> }) | undefined, clip?: PickClipState | null,
+        hitDistance: number | null = null,
     ): MagneticSnapResult {
         const snap = options?.snapOptions;
         const config = snap?.screenCornerSnap;
@@ -360,7 +361,7 @@ export class RaycastEngine {
         const hit = this.screenCorners.query({
             x, y, ray, camera: this.camera, viewKey: this.readbackViewKey(), viewport,
             pieces: this.flatIndex.allPieces(), geometryFor: mesh => this.snapDetector.getGeometryCache(mesh),
-            options: config, hiddenIds: options?.hiddenIds, isolatedIds: options?.isolatedIds, clip,
+            options: config, hiddenIds: options?.hiddenIds, isolatedIds: options?.isolatedIds, clip, hitDistance,
         });
         if (!hit) return current;
         const kind = current.snapTarget?.type;

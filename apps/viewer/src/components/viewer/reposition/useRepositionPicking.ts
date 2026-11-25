@@ -53,7 +53,7 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
         edgeLock, {
           hiddenIds: current.hiddenEntities, isolatedIds,
           snapOptions: { snapToVertices: current.snapEnabled, snapToEdges: current.snapEnabled,
-            snapToFaces: current.snapEnabled, snapToPointClouds: true, screenSnapRadius: 12 },
+            snapToFaces: current.snapEnabled, snapToPointClouds: true, screenSnapRadius: 12, screenCornerSnap: {} },
         });
       if (result.edgeLock.shouldRelease) edgeLock = { edge: null, meshExpressId: null, lockStrength: 0 };
       else if (result.edgeLock.shouldLock && result.edgeLock.edge) edgeLock = {

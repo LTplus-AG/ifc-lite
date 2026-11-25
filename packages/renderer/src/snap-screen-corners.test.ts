@@ -67,7 +67,7 @@ function cameraDownZ(): Camera {
 const canvas = { width: 800, height: 600, getBoundingClientRect: () => ({ width: 800, height: 600 }) } as unknown as HTMLCanvasElement;
 const lock = { edge: null, meshExpressId: null, lockStrength: 0 };
 const base = { snapToVertices: true, snapToEdges: true, snapToFaces: true, screenSnapRadius: 4 };
-const withCorners = { ...base, screenCornerSnap: {} };
+const withCorners = { ...base, screenCornerSnap: { settleMs: 0 } };
 
 function pick(scene: Scene, x: number, y: number, options: Record<string, unknown> = {}, clip?: Parameters<RaycastEngine['raycastSceneMagnetic']>[4]) {
   const engine = new RaycastEngine(cameraDownZ(), scene, canvas);
@@ -108,7 +108,7 @@ describe('screen-space corner snapping (#11504)', () => {
 
   it('(c) ignores corners of a model that is not eligible', () => {
     const scene = sceneWith(makeBox(1, [-4, -2, 0], [0, 2, 2], 1));
-    const only = (indices: number[]) => ({ snapOptions: { ...base, screenCornerSnap: { eligibleModelIndices: new Set(indices) } } });
+    const only = (indices: number[]) => ({ snapOptions: { ...base, screenCornerSnap: { settleMs: 0, eligibleModelIndices: new Set(indices) } } });
     assert.equal(pick(scene, 405, 265, only([0])).snapTarget, null);
     assert.equal(pick(scene, 405, 265, only([1])).snapTarget?.type, 'vertex');
   });
@@ -140,6 +140,18 @@ describe('screen-space corner snapping (#11504)', () => {
     assert.equal(inside.snapTarget?.type, 'face');
   });
 
+  it('skips a corner hidden behind a box unless occlusion is ignored', () => {
+    // F (z 4..6) covers A's corner (0, 2, 2) in the view; the ray hits F at depth 44.
+    const scene = () => sceneWith(boxA(), makeBox(2, [-1, -3, 4], [3, 3, 6]));
+    const shaded = pick(scene(), 405, 265);
+    assert.equal(shaded.intersection?.expressId, 2);
+    assert.equal(shaded.snapTarget?.expressId, 2, 'the hidden corner of A does not win');
+    assert.notEqual(shaded.snapTarget?.type, 'vertex');
+    const xray = pick(scene(), 405, 265, { snapOptions: { ...base, screenCornerSnap: { settleMs: 0, ignoreOcclusion: true } } });
+    assert.equal(xray.snapTarget?.type, 'vertex');
+    assert.deepEqual([xray.snapTarget?.expressId, xray.snapTarget?.position.z], [1, 2]);
+  });
+
   it('keeps the ray-based point when nothing is within the screen radii', () => {
     const inside = pick(sceneWith(makeBox(1, [-4, -2, 0], [4, 2, 2])), 400, 300);
     assert.equal(inside.snapTarget?.type, 'face');
@@ -152,6 +164,35 @@ describe('closestPointOnSegmentToRay', () => {
     const ray = { origin: { x: 1, y: 5, z: 10 }, direction: { x: 0, y: 0, z: -1 } };
     assert.deepEqual(closestPointOnSegmentToRay({ x: 0, y: 0, z: 0 }, { x: 4, y: 0, z: 0 }, ray), { x: 1, y: 0, z: 0 });
     assert.deepEqual(closestPointOnSegmentToRay({ x: 2, y: 0, z: 0 }, { x: 4, y: 0, z: 0 }, ray), { x: 2, y: 0, z: 0 });
+  });
+});
+
+describe('screen corner grid rebuild', () => {
+  it('never rebuilds the grid inside a camera move: queries answer null until the view has been still', () => {
+    const pieces: MeshData[] = [];
+    for (let i = 0; i < 80; i++) for (let j = 0; j < 79; j++) pieces.push(makeBox(i * 100 + j + 1, [i * 0.5, j * 0.5, 0], [i * 0.5 + 0.3, j * 0.5 + 0.3, 0.3]));
+    const camera = cameraDownZ();
+    camera.setOrthoSize(30);
+    const index = new ScreenCornerIndex();
+    const ray = camera.unprojectToRay(400, 300, 800, 600);
+    let clock = 0;
+    const query = (viewKey: string) => index.query({
+      x: 400, y: 300, ray, camera, viewKey, viewport: { width: 800, height: 600 }, pieces,
+      geometryFor: (m) => buildGeometryCache(m), options: { buildBudgetMs: 1e9 }, now: () => clock,
+    });
+    assert.equal(query('v0'), null, 'first query of a view only starts the settle timer');
+    clock = 130;
+    assert.ok(query('v0'), 'still for 130 ms: the grid is built and answers');
+    // The camera moves: every query inside the settle window returns at once.
+    clock = 200;
+    const t = performance.now();
+    assert.equal(query('v1'), null);
+    clock = 250;
+    assert.equal(query('v2'), null, 'a further change restarts the timer');
+    const blocked = performance.now() - t;
+    assert.ok(blocked < 20, `queries during a camera move took ${blocked} ms; the ~100 ms grid rebuild must not run`);
+    clock = 400;
+    assert.ok(query('v2'), 'settled: rebuilt lazily on the first query');
   });
 });
 
@@ -169,7 +210,7 @@ describe('screen corner query cost', () => {
     const ray = camera.unprojectToRay(400, 300, 800, 600);
     const query = (x: number, y: number, viewKey: string) => index.query({
       x, y, ray, camera, viewKey, viewport: { width: 800, height: 600 }, pieces, geometryFor,
-      options: { buildBudgetMs: 1e9 },
+      options: { buildBudgetMs: 1e9, settleMs: 0 },
     });
     let t = performance.now();
     query(400, 300, 'v0'); // builds every piece's candidates and the grid

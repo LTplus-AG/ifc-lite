@@ -52,11 +52,27 @@ export interface ScreenCornerSnapOptions {
   eligibleModelIndices?: ReadonlySet<number>;
   /** Per-query time budget, in ms, for building candidates of not-yet-ready pieces. Default 6. */
   buildBudgetMs?: number;
+  /**
+   * Quiet time, in ms, the view must have kept still before the screen grid is
+   * (re)built. A rebuild is a ~100 ms pass over every candidate, so it never
+   * runs inside an orbit; until it has run, queries answer null and the caller
+   * keeps its ray-based snap. Default 120.
+   */
+  settleMs?: number;
+  /**
+   * Snap to corners and edges hidden behind other geometry (the later X-ray
+   * mode). Default false: when the ray hit something, candidates farther along
+   * the ray than the hit by more than `occlusionTolerance` are skipped.
+   */
+  ignoreOcclusion?: boolean;
+  /** Depth slack, in world units, for the occlusion rule. Default 0.05 + 1 % of the hit distance. */
+  occlusionTolerance?: number;
 }
 
 export const DEFAULT_CORNER_RADIUS_PX = 10;
 export const DEFAULT_EDGE_RADIUS_PX = 6;
 const DEFAULT_BUILD_BUDGET_MS = 6;
+const DEFAULT_SETTLE_MS = 120;
 
 export interface ScreenCornerHit {
   kind: 'corner' | 'edge';
@@ -141,12 +157,15 @@ export type ScreenSnapCamera = Pick<Camera, 'projectToScreen'>;
 export class ScreenCornerIndex {
   private candidates = new WeakMap<MeshData, PieceCandidates>();
   private grid: Grid | null = null;
+  /** The grid key last seen and when it first appeared, for the settle rule. */
+  private seen: { key: string; at: number } | null = null;
   private selection: { pieces: readonly MeshData[]; filterKey: string; ready: MeshData[]; complete: boolean } | null = null;
 
   /** Drop everything built from geometry (call with the snap detector's cache). */
   clear(): void {
     this.candidates = new WeakMap();
     this.grid = null;
+    this.seen = null;
     this.selection = null;
   }
 
@@ -167,6 +186,8 @@ export class ScreenCornerIndex {
     options: ScreenCornerSnapOptions;
     hiddenIds?: ReadonlySet<number>; isolatedIds?: ReadonlySet<number> | null;
     clip?: PickClipState | null;
+    /** Distance along the ray to the first surface it hit, or null when it hit nothing. */
+    hitDistance?: number | null;
     now?: () => number;
   }): ScreenCornerHit | null {
     const { x, y, viewport, options } = args;
@@ -199,9 +220,15 @@ export class ScreenCornerIndex {
     const key = gridKey(args.viewKey, args.clip, viewport.width, viewport.height, ready.length,
       args.hiddenIds, args.isolatedIds, { cornerRadiusPx: Math.max(cornerR, edgeR) }, eligible);
     if (!this.grid || this.grid.key !== key) {
+      const t = now();
+      if (this.seen?.key !== key) this.seen = { key, at: t };
+      if (t - this.seen.at < (options.settleMs ?? DEFAULT_SETTLE_MS)) return null;
       this.grid = this.buildGrid(key, ready, args.camera, viewport, Math.max(cornerR, edgeR), args.clip);
     }
-    return this.search(this.grid, ready, x, y, args.ray, cornerR, edgeR);
+    const hit = args.hitDistance;
+    const maxDepth = options.ignoreOcclusion || hit == null || !Number.isFinite(hit) ? Infinity
+      : hit + (options.occlusionTolerance ?? 0.05 + 0.01 * hit);
+    return this.search(this.grid, ready, x, y, args.ray, cornerR, edgeR, maxDepth);
   }
 
   private buildGrid(
@@ -272,7 +299,9 @@ export class ScreenCornerIndex {
     return g;
   }
 
-  private search(g: Grid, ready: MeshData[], x: number, y: number, ray: Ray, cornerR: number, edgeR: number): ScreenCornerHit | null {
+  private search(g: Grid, ready: MeshData[], x: number, y: number, ray: Ray, cornerR: number, edgeR: number, maxDepth: number): ScreenCornerHit | null {
+    const depthOf = (px: number, py: number, pz: number) => (px - ray.origin.x) * ray.direction.x
+      + (py - ray.origin.y) * ray.direction.y + (pz - ray.origin.z) * ray.direction.z;
     const c0 = Math.floor(x / g.cell) + 1, r0 = Math.floor(y / g.cell) + 1;
     let bestCorner = -1, bestCornerD = cornerR * cornerR;
     let bestEdge = -1, bestEdgeD = edgeR * edgeR;
@@ -282,13 +311,21 @@ export class ScreenCornerIndex {
         const k = r * g.cols + c;
         for (const i of g.cornerCells.get(k) ?? []) {
           const d = (g.cx[i] - x) ** 2 + (g.cy[i] - y) ** 2;
+          if (d > bestCornerD + 1e-9) continue;
+          if (maxDepth !== Infinity && depthOf(g.cornerWorld[i * 3], g.cornerWorld[i * 3 + 1], g.cornerWorld[i * 3 + 2]) > maxDepth) continue;
           if (d < bestCornerD - 1e-9 || (Math.abs(d - bestCornerD) <= 1e-9 && bestCorner >= 0 && this.cornerBefore(g, ready, i, bestCorner, ray))) {
             bestCorner = i; bestCornerD = d;
           }
         }
         for (const i of g.edgeCells.get(k) ?? []) {
           const d = segDist2(x, y, g.ex0[i], g.ey0[i], g.ex1[i], g.ey1[i]);
-          if (d < bestEdgeD) { bestEdge = i; bestEdgeD = d; }
+          if (d >= bestEdgeD) continue;
+          if (maxDepth !== Infinity) {
+            const o = i * 6, w = g.edgeWorld;
+            const p = closestPointOnSegmentToRay({ x: w[o], y: w[o + 1], z: w[o + 2] }, { x: w[o + 3], y: w[o + 4], z: w[o + 5] }, ray);
+            if (depthOf(p.x, p.y, p.z) > maxDepth) continue;
+          }
+          bestEdge = i; bestEdgeD = d;
         }
       }
     }

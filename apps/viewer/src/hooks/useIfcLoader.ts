@@ -405,7 +405,6 @@ export function useIfcLoader() {
       return true;
     };
 
-
     const settleResumable = file && beginResumableLoad(file);
     try {
       const fileSize = processedModel?.bytes ?? file?.size ?? 0;
@@ -1933,14 +1932,10 @@ export function useIfcLoader() {
                 completeInstancedShardSupply(modelId, allInstancedShards.length, shardGeneration); // every streamed shard is queued
                 await trace.span('load.finalize', () => finalizeModel(dataStore, useViewerStore.getState().geometryResult, getViewerSchemaVersion(dataStore), {
                   loadState: 'complete',
-                  // Only show "writing" when this file will actually be cached
-                  // under the current plan (respects the size bands + kill switch).
                   cacheState: cacheable ? 'writing' : 'none', loadPath: 'wasm', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad,
                 }, allInstancedShards));
                 if (isStale()) return; // finalize awaited the identity pass (#7022)
 
-                // Cache the result in the background, reusing the `cachePlan`
-                // decided once above (single source of truth for read + write).
                 // Both tiers (`source` 10-150MB, `mesh-only` 150-400MB, kill switch `?meshCache=0`) cache
                 // tables + geometry WITHOUT the source; re-open rehydrates from the fresh buffer, validated
                 // by the mtime guard + off-thread full hash (cacheTier.ts) — the key only keys the lookup.

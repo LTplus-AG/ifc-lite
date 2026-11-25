@@ -23,3 +23,26 @@ const UUID_ANY_CASE = /^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]
 export function bcfGuid(guid: string, version: '2.1' | '3.0'): string {
   return version === '3.0' && UUID_ANY_CASE.test(guid) ? guid.toLowerCase() : guid;
 }
+
+/**
+ * BCF 3.0 lowercases every guid, so two topics whose guids differ only by case
+ * would both be written under one guid and the reader would drop one
+ * ("Duplicate topic Guid"). Refuse rather than silently merge them (#11450).
+ */
+export function assertNoCaseOnlyTopicClash(
+  topics: Iterable<{ guid: string }>,
+  version: '2.1' | '3.0',
+): void {
+  const written = new Map<string, string>();
+  for (const topic of topics) {
+    const out = bcfGuid(topic.guid, version);
+    const clash = written.get(out);
+    if (clash !== undefined) {
+      throw new Error(
+        `BCF ${version} guids are lowercase, so topics "${clash}" and "${topic.guid}" ` +
+          `would both be written as "${out}". Give one of them a different guid before writing.`
+      );
+    }
+    written.set(out, topic.guid);
+  }
+}

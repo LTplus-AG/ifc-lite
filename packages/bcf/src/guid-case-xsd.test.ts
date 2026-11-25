@@ -84,7 +84,7 @@ describe('uppercase GUIDs', () => {
     expect(topic.comments[0].viewpointGuid).toBe(VIEWPOINT.toLowerCase());
     expect(topic.viewpoints[0].guid).toBe(VIEWPOINT.toLowerCase());
     expect(topic.relatedTopics).toEqual([RELATED.toLowerCase()]);
-    expect(topic.documentReferences.map((d) => d.documentGuid).filter(Boolean)).toEqual([DOCGUID.toLowerCase()]);
+    expect(topic.documentReferences?.map((d) => d.documentGuid).filter(Boolean)).toEqual([DOCGUID.toLowerCase()]);
   });
 
   it('are left exactly as given in BCF 2.1, whose schema accepts either case', async () => {

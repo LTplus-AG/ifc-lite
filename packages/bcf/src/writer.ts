@@ -41,7 +41,7 @@ import {
   xsdRequiredString,
 } from './xsd-required-string.js';
 import { generateUuid } from '@ifc-lite/encoding';
-import { bcfGuid } from './xsd-guid.js';
+import { assertNoCaseOnlyTopicClash, bcfGuid } from './xsd-guid.js';
 import { viewpointFileName, type ViewpointFileName } from './writer-viewpoint-filename.js';
 import { BcfArchive } from './writer-archive.js';
 
@@ -64,21 +64,7 @@ export async function writeBCF(project: BCFProject): Promise<Blob> {
 
   // Write topics
   const usedFolderNames = new Set<string>();
-  // BCF 3.0 lowercases every guid, so two topics whose guids differ only by
-  // case would both be written under one guid and the reader would drop one
-  // ("Duplicate topic Guid"). Refuse rather than silently merge them (#11450).
-  const writtenGuids = new Map<string, string>();
-  for (const topic of project.topics.values()) {
-    const written = bcfGuid(topic.guid, project.version);
-    const clash = writtenGuids.get(written);
-    if (clash !== undefined) {
-      throw new Error(
-        `BCF ${project.version} guids are lowercase, so topics "${clash}" and "${topic.guid}" ` +
-          `would both be written as "${written}". Give one of them a different guid before writing.`
-      );
-    }
-    writtenGuids.set(written, topic.guid);
-  }
+  assertNoCaseOnlyTopicClash(project.topics.values(), project.version);
   for (const topic of project.topics.values()) {
     await writeTopicFolder(zip, topic, project.version, usedFolderNames);
   }

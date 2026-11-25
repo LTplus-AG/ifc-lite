@@ -90,7 +90,7 @@ async function run(name: string, beforeSettle?: () => void, scenario?: 'reload' 
   }
   const firstMeshes = await loadModel();
   if (scenario === 'reload') {
-    assert.equal(controller.status().phase, 'released', controller.status().error);
+    assert.equal(controller.status().phase, 'released', controller.status().error ?? 'not released');
     assert.deepEqual(firstMeshes.map((mesh) => mesh.positions.length), [0, 0]);
     useViewerStore.setState({ models: new Map(), geometryResult: null } as never);
   }
@@ -121,7 +121,7 @@ describe('GPU-only residency against the real backing', () => {
       `gpu-only-reload-${process.pid}`, undefined, 'reload',
     );
     try {
-      assert.equal(controller.status().phase, 'released', controller.status().error);
+      assert.equal(controller.status().phase, 'released', controller.status().error ?? 'not released');
       assert.deepEqual(meshes.map((mesh) => mesh.positions.length), [0, 0]);
     } finally {
       uninstall();

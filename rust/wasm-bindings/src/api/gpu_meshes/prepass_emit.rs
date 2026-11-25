@@ -64,6 +64,10 @@ pub(super) fn emit_scanned(
         on_event.call1(&JsValue::NULL, &index_event.into())?;
     }
 
+    if let Some(facts) = discovery.sparse.take() {
+        super::sparse_emit::emit_sparse_facts(on_event, content, &entity_index_arc, &facts)?;
+    }
+
     let mut decoder = EntityDecoder::with_arc_columnar_index(content, entity_index_arc.clone())
         .with_strict_reals(); // #7678
     decoder.seed_unit_scales(1.0, plane_angle_to_radians);

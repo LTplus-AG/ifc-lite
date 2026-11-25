@@ -107,6 +107,8 @@ export class GpuOnlyResidency {
   }
 
   private onState(state: GpuOnlyState): void {
+    // A model that left the store may come back under the same id (a reload): it is a new load.
+    if (this.lastArmed !== null && !state.models.has(this.lastArmed)) this.lastArmed = null;
     const armed = this.armed;
     if (armed) {
       if (armed.releasing) return;
@@ -122,8 +124,6 @@ export class GpuOnlyResidency {
       // A superseding load removed the model; that load may be armed in its turn, below.
       this.cancel('superseded');
     }
-    // A model that left the store may come back under the same id (a reload): it is a new load.
-    if (this.lastArmed !== null && !state.models.has(this.lastArmed)) this.lastArmed = null;
     if (state.models.size !== 1) return;
     const [[modelId, model]] = state.models;
     // The placeholder a primary load registers before any of its geometry reaches the store.

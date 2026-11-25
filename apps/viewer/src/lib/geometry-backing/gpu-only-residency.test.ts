@@ -227,6 +227,29 @@ describe('GpuOnlyResidency', () => {
     assert.equal(h.log.includes('stop tap'), false);
   });
 
+  it('#11512: arms a same-ID reload after the superseded release fails verification', async () => {
+    let finishVerification: () => void = () => {};
+    const h = await harness({
+      releaseFails: true,
+      releaseGate: new Promise<void>((resolve) => { finishVerification = resolve; }),
+    });
+    h.setModel('a', h.pending());
+    h.setModel('a', h.loaded());
+    h.waiting[0].done(true);
+    await settle();
+    assert.equal(h.controller.status().phase, 'releasing');
+
+    h.setModel('a', null);
+    h.setModel('a', h.pending());
+    finishVerification();
+    await settle();
+
+    assert.deepEqual(h.controller.status(), { modelId: 'a', phase: 'streaming' });
+    assert.equal(h.store.getState().boundedGeometryMode, true);
+    assert.equal(h.log.includes('stop tap'), false);
+    h.uninstall();
+  });
+
   it('gives a load one attempt, and a reload under the same id a new one', async () => {
     const h = await harness({ startFails: true });
     h.setModel('a', h.pending());

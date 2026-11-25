@@ -27,8 +27,10 @@ diff --git b/apps/viewer/src/lib/geometry-backing/gpu-only-residency.ts a/apps/v
 index 60118b521a..7a8b5ba01e 100644
 --- b/apps/viewer/src/lib/geometry-backing/gpu-only-residency.ts
 +++ a/apps/viewer/src/lib/geometry-backing/gpu-only-residency.ts
-@@ -109,10 +109,12 @@ export class GpuOnlyResidency {
+@@ -109,12 +109,14 @@ export class GpuOnlyResidency {
    private onState(state: GpuOnlyState): void {
+     // A model that left the store may come back under the same id (a reload): it is a new load.
+     if (this.lastArmed !== null && !state.models.has(this.lastArmed)) this.lastArmed = null;
      const armed = this.armed;
      if (armed) {
 +      if (armed.releasing) return;

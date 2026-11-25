@@ -29,8 +29,8 @@ function rig({ fail = false } = {}) {
   const env = {}; // one environment group: the bundle-cache key holds across frames
   const pipeline = { getStreamBase: () => ({ environmentLayout: {}, descriptor: { fragment: { targets: [] } }, colorFormat: 'bgra8unorm', depthFormat: 'depth32float', sampleCount: 1 }),
     visibility, getEnvironmentBindGroup: () => env } as unknown as ConstructorParameters<typeof DrawStream>[1];
-  /** Resolve every async build requested so far, then let their continuations run. */
-  const finish = async () => { for (const s of settle.splice(0)) s(); await new Promise((r) => setTimeout(r, 0)); };
+  /** Resolve the first `n` (default: every) async build requested so far, then let their continuations run. */
+  const finish = async (n = settle.length) => { for (const s of settle.splice(0, n)) s(); await new Promise((r) => setTimeout(r, 0)); };
   return { device, pipeline, log, finish };
 }
 
@@ -45,6 +45,9 @@ describe('draw stream pipelines', () => {
     assert.equal(p.ready(DISCARDING), false);
     assert.equal(p.ready(DISCARDING), false, 'still compiling');
     assert.deepEqual(log.async, ['draw-stream-1', 'draw-stream-5'], 'flat and quantized, requested once each');
+    await finish(1);
+    assert.equal(built, 1);
+    assert.equal(p.ready(DISCARDING), false, 'one layout built: the mode is not ready yet');
     await finish();
     assert.equal(built, 2, 'each landed build asks for a frame: a resting viewer would otherwise never prewarm with it');
     assert.equal(p.ready(DISCARDING), true);

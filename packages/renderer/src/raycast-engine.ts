@@ -16,6 +16,7 @@ import { RaycastFlatIndex, type RaycastScene } from './raycast-flat-index.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { PickClipState, PickOptions } from './types.js';
 import { pointClipped } from './scene-raycaster.js';
+import { ScreenCornerIndex } from './snap-screen-corners.js';
 import type { SourceSnapCurve } from './source-curve-snap.js';
 import { querySourceCurves } from './raycast-source-curve-query.js';
 import type { CpuGeometryVisitor } from './cpu-geometry-visit.js';
@@ -39,6 +40,7 @@ export class RaycastEngine {
     private raycaster: Raycaster;
     private snapDetector: SnapDetector;
     private flatIndex: RaycastFlatIndex;
+    private screenCorners = new ScreenCornerIndex();
     private pointCloudProvider: PointCloudRayProvider | null = null;
     private sourceSnapCurves: readonly SourceSnapCurve[] = [];
     /** Flat pieces read back for released geometry (#10264); empty when unused. */
@@ -275,6 +277,8 @@ export class RaycastEngine {
                 );
             }
 
+            magneticResult = this.withScreenCorner(magneticResult, x, y, ray, viewport, options, clip);
+
             const source = querySourceCurves(this.sourceSnapCurves, magneticResult.snapTarget,
                 this.camera, ray, x, y, viewport, options, clip);
             if (source) magneticResult = { snapTarget: source, edgeLock: releasedEdgeLock() };
@@ -341,10 +345,43 @@ export class RaycastEngine {
     }
 
     /**
+     * CAD-style corner snapping (#11504). With `snapOptions.screenCornerSnap` set and vertex or edge snapping on,
+     * the nearest feature corner of the eligible, visible, unclipped pieces within the corner radius of the cursor
+     * replaces the ray-based result, whatever the ray hit; failing that the nearest edge within the edge radius
+     * replaces a face-only or empty result. An existing vertex/edge snap otherwise stands.
+     */
+    private withScreenCorner(
+        current: MagneticSnapResult, x: number, y: number, ray: Ray, viewport: { width: number; height: number },
+        options: (PickOptions & { snapOptions?: Partial<SnapOptions> }) | undefined, clip?: PickClipState | null,
+    ): MagneticSnapResult {
+        const snap = options?.snapOptions;
+        const config = snap?.screenCornerSnap;
+        if (!config || (snap.snapToVertices === false && snap.snapToEdges === false)) return current;
+        const hit = this.screenCorners.query({
+            x, y, ray, camera: this.camera, viewKey: this.readbackViewKey(), viewport,
+            pieces: this.flatIndex.allPieces(), geometryFor: mesh => this.snapDetector.getGeometryCache(mesh),
+            options: config, hiddenIds: options?.hiddenIds, isolatedIds: options?.isolatedIds, clip,
+        });
+        if (!hit) return current;
+        const kind = current.snapTarget?.type;
+        if (hit.kind === 'edge' && (kind === SnapType.VERTEX || kind === SnapType.EDGE)) return current;
+        if (hit.kind === 'corner' ? snap.snapToVertices === false : snap.snapToEdges === false) return current;
+        return {
+            snapTarget: {
+                type: hit.kind === 'corner' ? SnapType.VERTEX : SnapType.EDGE,
+                position: hit.position, expressId: hit.expressId, confidence: 1,
+                metadata: hit.edge ? { vertices: [hit.edge.v0, hit.edge.v1] } : undefined,
+            },
+            edgeLock: releasedEdgeLock(),
+        };
+    }
+
+    /**
      * Invalidate BVH cache (call when geometry changes)
      */
     invalidateBVHCache(): void {
         this.flatIndex.invalidate();
+        this.screenCorners.clear();
     }
 
     /** Diagnostic (#10264): CPU geometry the raycast index and its BVH still reference. */
@@ -361,6 +398,7 @@ export class RaycastEngine {
     dispose(): void {
         this.flatIndex.dispose();
         this.snapDetector.clearCache();
+        this.screenCorners.clear();
         this.pointCloudProvider = null;
         this.sourceSnapCurves = [];
     }

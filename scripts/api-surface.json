@@ -10167,6 +10167,7 @@
     "SceneCaptureDrop: type",
     "SceneContents: interface",
     "SceneSnapshot: interface",
+    "ScreenCornerSnapOptions: interface",
     "Section2DOverlayCapStyle: interface",
     "Section2DOverlayOptions: interface",
     "SectionBoxCapFace: type",

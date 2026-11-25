@@ -13,6 +13,7 @@ import type { PickClipState } from './pick-types.js';
 import { entityClip } from './section-exclusions.js';
 import { ClippedGeometryViews, cutEntryPoint, planesFor, planesKey } from './snap-clip.js';
 import { pointClipped } from './scene-raycaster.js';
+import type { ScreenCornerSnapOptions } from './snap-screen-corners.js';
 import { releasedEdgeLock } from './raycast-point-cloud-query.js';
 
 export enum SnapType {
@@ -63,6 +64,8 @@ export interface SnapOptions {
    * points too. See `pointCloudSnapEnabled`.
    */
   snapToPointClouds?: boolean;
+  /** CAD-style screen-space corner/edge search (#11504). Consumed by `RaycastEngine`; absent = off. */
+  screenCornerSnap?: ScreenCornerSnapOptions;
 }
 
 // Edge lock state for magnetic snapping (passed from store)
@@ -544,7 +547,7 @@ export class SnapDetector {
   /**
    * Get or compute geometry cache for a mesh
    */
-  private getGeometryCache(mesh: MeshData): MeshGeometryCache {
+  getGeometryCache(mesh: MeshData): MeshGeometryCache {
     const key = this.cacheKeyFor(mesh);
     const cached = this.geometryCache.get(key);
     if (cached) {

@@ -121,6 +121,11 @@ export class RaycastFlatIndex {
     return candidates;
   }
 
+  /** Every flat piece, visibility not applied (the screen-space corner search filters its own). */
+  allPieces(): readonly MeshData[] {
+    return this.collect();
+  }
+
   /** True when the next query rebuilds nothing. Cheap: revision and identity checks. */
   isWarm(): boolean {
     if (!this.isFresh()) return false;

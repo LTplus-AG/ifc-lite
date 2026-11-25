@@ -36,7 +36,7 @@
 //!   only the glossy mesh has a finish.
 
 use ifc_lite_processing::style::SpecularMaterial;
-use ifc_lite_processing::{process, process_geometry, MeshData, ProcessingRequest, ProcessingSink};
+use ifc_lite_processing::{Batching, process, process_geometry, MeshData, ProcessingRequest, ProcessingSink};
 
 const GREY: [f32; 4] = [0.6, 0.65, 0.7, 1.0];
 const TEAL: [f32; 4] = [0.0, 0.5, 0.5, 1.0];
@@ -271,18 +271,26 @@ fn world_min_x(mesh: &MeshData) -> f64 {
 
 #[test]
 fn native_instances_keep_same_colour_occurrence_finishes_10698() {
-    let request = ProcessingRequest::full_pass().instancing(true);
-    let features = request.features.finishes(true);
-    let mut sink = Recorder::default();
-    let result = process(MAPPED_ITEM_STYLE_IFC.as_bytes(), &request.features(features), &mut sink);
-    assert_eq!(result.instances.len(), sink.instance_finishes.len());
-    let mut finishes: Vec<_> = result.instances.iter().zip(sink.instance_finishes)
-        .filter(|(instance, _)| instance.express_id == 100)
-        .map(|(instance, finish)| {
-            assert!(approx_eq(instance.color, DARK));
-            roughness(finish).expect("authored occurrence finish")
-        })
-        .collect();
-    finishes.sort_by(f32::total_cmp);
-    assert_eq!(finishes, [0.2, 0.8]);
+    for fast_first in [false, true] {
+        let request = ProcessingRequest::full_pass()
+            .instancing(true)
+            .batching(Batching::new(1, 1).fast_first(fast_first));
+        let features = request.features.finishes(true).presentation_layers(false);
+        let mut sink = Recorder::default();
+        let result = process(MAPPED_ITEM_STYLE_IFC.as_bytes(), &request.features(features), &mut sink);
+        assert_eq!(result.instances.len(), sink.instance_finishes.len());
+        let mut occurrences: Vec<_> = result.instances.iter().zip(sink.instance_finishes)
+            .filter(|(instance, _)| instance.express_id == 100)
+            .map(|(instance, finish)| {
+                assert!(approx_eq(instance.color, DARK));
+                (instance.transform[3], roughness(finish))
+            })
+            .collect();
+        occurrences.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let [(near_x, near_finish), (far_x, far_finish)] = occurrences.as_slice() else {
+            panic!("expected two slab occurrences, got {occurrences:?}");
+        };
+        assert!((far_x - near_x - 3.0).abs() < 1e-6);
+        assert_eq!((*near_finish, *far_finish), (Some(0.2), Some(0.8)));
+    }
 }

@@ -98,6 +98,23 @@ describe('parseCutDistance', () => {
     assert.equal(parseCutDistance('abc', 1.5, 3), null);
     assert.equal(parseCutDistance('%', 1.5, 3), null);
   });
+
+  it('reads a decimal comma as a decimal point, never as its integer prefix (de/fr/it/ru keyboards)', () => {
+    assert.equal(parseCutDistance('1,5', 0.5, 3), 1.5);
+    assert.equal(parseCutDistance('12,5%', 0.5, 4), 0.5);
+    assert.equal(parseCutDistance(',5', 0.2, 3), 0.5);
+  });
+
+  it('refuses text that only starts with a number instead of committing its prefix', () => {
+    assert.equal(parseCutDistance('1.2.3', 0.5, 3), null);
+    assert.equal(parseCutDistance('1,2,3', 0.5, 3), null);
+    assert.equal(parseCutDistance('1.5 ft', 0.5, 3), null);
+  });
+
+  it('still accepts a trailing metre symbol', () => {
+    assert.equal(parseCutDistance('1,5 m', 0.5, 3), 1.5);
+    assert.equal(parseCutDistance('2m', 0.5, 3), 2);
+  });
 });
 
 describe('SplitCursorInput: wall-split notices', () => {

@@ -154,11 +154,9 @@ export function entityLineText(ctx: PropertySetContext, entityId: number): strin
 }
 
 /**
- * Get the DECODED name of a property set by parsing the entity: the value the
- * mutation overlay and every caller's name set carry, with `''`, `\\` and the
- * `\X2\`/`\X4\`/`\X\`/`\S\` directives resolved. The raw text never equals
- * it for a name holding a quote, a backslash or a non-ASCII letter, so a
- * comparison against the raw form silently misses that set.
+ * Get the DECODED name of a property set (the form the mutation overlay and
+ * callers' name sets carry; the raw text misses names with a quote, backslash
+ * or non-ASCII letter).
  */
 export function getPropertySetName(ctx: PropertySetContext, psetId: number): string | null {
   const entityText = currentSetLine(ctx, psetId);
@@ -170,9 +168,8 @@ export function getPropertySetName(ctx: PropertySetContext, psetId: number): str
 
 /**
  * The decoded text of the literal opening where `prefix` (global, ending at the
- * opening `'`) first matches with a literal that closes. Read whole by the
- * shared rule, so `''` and a `\S\'` PAGE operand do not cut the name short
- * (#7589), then decoded by the one literal decoder.
+ * opening `'`) first matches with a literal that closes, read whole so `''` and
+ * a `\S\'` PAGE operand do not cut it short (#7589).
  */
 function rawThirdLiteral(entityText: string, prefix: RegExp): string | null {
   for (const match of entityText.matchAll(prefix)) {
@@ -183,10 +180,7 @@ function rawThirdLiteral(entityText: string, prefix: RegExp): string | null {
   return null;
 }
 
-/**
- * Get the DECODED name of an element quantity set by parsing the entity (see
- * {@link getPropertySetName}).
- */
+/** Get the DECODED name of an element quantity set (see {@link getPropertySetName}). */
 export function getElementQuantityName(ctx: PropertySetContext, entityId: number): string | null {
   const entityText = entityLineText(ctx, entityId);
   if (entityText === null) return null;

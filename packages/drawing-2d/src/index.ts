@@ -172,9 +172,8 @@ export { escapeXml, entityIdAttr, svgNum } from './xml-escape.js';
 export { SVGExporter, exportToSVG } from './svg-exporter.js';
 export type { SVGExportOptions } from './svg-exporter.js';
 
-// Scaled PDF export (issue #2042): pure scale/extent arithmetic only —
-// the PDF is assembled by the viewer using jsPDF, which is not a
-// dependency of this package.
+// Scaled PDF export (issue #2042): pure scale/extent arithmetic only; the
+// viewer assembles the PDF with jsPDF, which is not a dependency of this package.
 export {
   computePdfScaleLayout, worldPointToPdfMm, worldLengthToPdfMm, flipBounds2D, formatScaleFactorLabel,
   // The ratio a sheet PRINTS: the same number as the filename, hedged with

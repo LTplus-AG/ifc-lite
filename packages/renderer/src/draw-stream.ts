@@ -44,7 +44,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 export type { StreamBatchState, StreamFrameInputs, StreamFrameStats } from './draw-stream-types.js';
 
 const RECORD_BYTES = STREAM_RECORD_FLOATS * 4, DELTA_BYTES = STREAM_DELTA_FLOATS * 4;
-/** First-sight bundle recordings allowed per frame (the rest draw directly), and bundles pre-recorded per frame (`prewarm`). */
+/** First-sight recordings per resting frame (the rest draw directly); bundles per prewarm step; ms between prewarm steps. */
 const RECORD_PER_FRAME = 32, PREWARM_PER_FRAME = 24, PREWARM_IDLE_MS = 30;
 
 export class DrawStream {
@@ -75,7 +75,8 @@ export class DrawStream {
   private readonly budget = new StreamDrawBudget();
   private orthoKey = '';
   /** Prewarm resume positions: this frame's mode, and the other discard mode. */
-  private readonly prewarmCursors = [0, 0, 0, 0];
+  private readonly prewarmCursors = [0, 0, 0, 0]; // per absolute mode index
+  private warmTimer: ReturnType<typeof setTimeout> | undefined; private warmMode: OpaqueDrawMode | null = null;
   /** Per mode index: prewarm found nothing left to record (cleared on any invalidation). */
   private readonly warmModes = [false, false, false, false];
   private warmReady = 0;
@@ -88,9 +89,8 @@ export class DrawStream {
   }
 
   /**
-   * Rebuild membership, records and nodes when `key` (batch set + visibility,
-   * override and X-Ray epochs) changed. `eligible` returns the batch's state
-   * when it can be drawn as a plain opaque whole batch, else null (legacy).
+   * Rebuild membership, records and nodes when `key` (batch set + visibility, override and X-Ray epochs) changed.
+   * `eligible` returns the batch's state when it can be drawn as a plain opaque whole batch, else null (legacy).
    */
   sync(batches: readonly BatchedMesh[], geomKey: string, key: string, cell: number, eligible: (b: BatchedMesh) => StreamBatchState | null,
     forEachPiece?: (visit: (m: MeshData) => void) => void, requestRender?: () => void): boolean {
@@ -249,7 +249,7 @@ export class DrawStream {
         if (!useBundles) { this.encodeProxy(f.pass, n, f.mode, false); continue; }
         let pb = n.bundle[mi];
         if (!pb) {
-          if (recordBudget <= 0) { direct(() => this.encodeProxy(f.pass, n, f.mode, true)); continue; }
+          if (recordBudget <= 0 || f.interacting) { direct(() => this.encodeProxy(f.pass, n, f.mode, true)); continue; }
           const enc = newBundle(); this.encodeProxy(enc, n, f.mode, true); pb = enc.finish(); n.bundle[mi] = pb; stats.bundlesRecorded++; recordBudget--;
         }
         bundles.push(pb);
@@ -259,12 +259,12 @@ export class DrawStream {
       const load = v.picks ? pickedLoad(v.leaf, v.picks, this.members) : { draws: v.leaf.members.length, tris: v.lod1 ? v.leaf.tris1 : v.leaf.tris0 };
       stats.nodesDrawn++; stats.draws += load.draws; stats.tris += load.tris; stats.entries += v.leaf.entries;
       if (!useBundles) { this.encodeNode(f.pass, v.leaf, lod, f.mode, false); continue; }
-      // Members at different LODs: one bundle per node for the last pick pattern, recorded only at rest. Moving, the picks change
-      // most frames, so recording (~10x a direct encode) on every change spiked orbit/fly p95: draw those directly.
+      // Mixed LODs: one bundle per node for the last pick pattern. Bundles record only at rest: Chrome encodes them in the GPU process,
+      // and recording while moving (mixed picks change most frames; first sight after a mode flip) lengthened orbit/fly p95 frames.
       const mixedKey = `${this.bundleKey}|${mi}`;
       let bundle = v.picks ? mixedBundles(v.leaf, mixedKey, v.picks)?.[0] ?? null : v.leaf.bundles[slot];
       if (!bundle) {
-        if (recordBudget <= 0 || (v.picks && f.interacting)) { direct(() => this.encodeNode(f.pass, v.leaf, lod, f.mode, true)); continue; }
+        if (recordBudget <= 0 || f.interacting) { direct(() => this.encodeNode(f.pass, v.leaf, lod, f.mode, true)); continue; }
         const enc = newBundle(); this.encodeNode(enc, v.leaf, lod, f.mode, true); bundle = enc.finish(); stats.bundlesRecorded++; recordBudget--;
         if (v.picks) v.leaf.mixed = { key: mixedKey, picks: v.picks, bundles: [bundle] }; else v.leaf.bundles[slot] = bundle;
       }
@@ -272,50 +272,50 @@ export class DrawStream {
     }
     if (bundles.length) f.pass.executeBundles(bundles);
     stats.directNodes = directNodes;
-    // Prewarm only at rest: while moving its recordings (encoded in the GPU process) lengthened orbit frames.
-    // An idle viewer renders nothing, so it asks for the next frame itself until every mode is warm.
-    if (useBundles && !f.interacting && this.prewarm(newBundle, f.mode, stats)) setTimeout(() => this.requestRender(), PREWARM_IDLE_MS);
+    this.warmMode = f.interacting ? null : f.mode; if (useBundles && this.warmMode) this.scheduleWarm(); // prewarm: at rest, between frames
     return stats;
   }
 
-  /** Record a few missing bundles per resting frame (both LODs of every leaf, every ready proxy, all modes); true while some remain. */
-  private prewarm(newBundle: () => GPURenderBundleEncoder, mode: OpaqueDrawMode, stats: StreamFrameStats): boolean {
-    const mi = modeIndex(mode);
-    const ready = this.hlod?.stats.ready ?? 0; // a proxy turning ready adds a bundle to record
+  private scheduleWarm(): void {
+    this.warmTimer ??= setTimeout(() => { this.warmTimer = undefined; if (this.warmMode && this.prewarm(this.warmMode)) this.scheduleWarm(); }, PREWARM_IDLE_MS);
+  }
+
+  /** Record a few missing bundles (both LODs of every leaf, every ready proxy, all four modes); true while some remain. */
+  private prewarm(mode: OpaqueDrawMode): boolean {
+    const mi = modeIndex(mode), ready = this.hlod?.stats.ready ?? 0; // a proxy turning ready adds bundles to record
     if (ready !== this.warmReady) { this.warmReady = ready; this.warmModes.fill(false); }
-    if (this.warmModes[mi]) return false; // every slot this prewarm covers is recorded: skip the scans
-    let budget = this.warmLeaves(newBundle, mode, PREWARM_PER_FRAME, 0, stats);
-    for (const n of this.hlod?.nodes() ?? []) {
-      if (budget <= 0) break;
-      if (n.state !== 'ready' || n.bundle[mi]) continue;
-      const enc = newBundle(); this.encodeProxy(enc, n, mode, true); n.bundle[mi] = enc.finish(); budget--; stats.bundlesRecorded++;
+    if (this.warmModes[mi]) return false;
+    let budget = PREWARM_PER_FRAME;
+    // The resting mode first, then the other three: a section plane (or a translucent override) flips the pass to the
+    // discarding variant (section toggle 38 -> 134 ms), and the effects governor drops object-id writes as navigation starts.
+    for (const m of [mode, { ...mode, discardFree: !mode.discardFree }, { ...mode, objectId: !mode.objectId }, { discardFree: !mode.discardFree, objectId: !mode.objectId }]) {
+      const k = modeIndex(m);
+      for (const n of this.hlod?.nodes() ?? []) {
+        if (budget <= 0) break; if (n.state !== 'ready' || n.bundle[k]) continue;
+        const enc = this.bundleEncoder('draw-stream-node'); this.encodeProxy(enc, n, m, true); n.bundle[k] = enc.finish(); budget--;
+      }
+      if (budget > 0) budget = this.warmLeaves(m, budget);
     }
-    // Then the other three modes. A section plane (or a translucent override) flips the pass to the discarding
-    // variant (section toggle 38 -> 134 ms), and the effects governor drops object-id writes as navigation starts.
-    const others = [{ ...mode, discardFree: !mode.discardFree }, { ...mode, objectId: !mode.objectId }, { discardFree: !mode.discardFree, objectId: !mode.objectId }];
-    others.forEach((m, k) => { if (budget > 0) budget = this.warmLeaves(newBundle, m, budget, (k + 1) as 1 | 2 | 3, stats); });
     if (budget === PREWARM_PER_FRAME) this.warmModes[mi] = true; // nothing left: idle until a resync, an invalidation or a ready proxy
     return budget <= 0;
   }
 
-  /** Record up to `budget` missing leaf bundles (both LODs) for `mode`, resuming at cursor `c`; returns the budget left. */
-  private warmLeaves(newBundle: () => GPURenderBundleEncoder, mode: OpaqueDrawMode, budget: number, c: 0 | 1 | 2 | 3, stats: StreamFrameStats): number {
-    const slots = this.nodes.length * 2; const mi = modeIndex(mode);
+  /** Record up to `budget` missing leaf bundles (both LODs) for `mode`, resuming at that mode's cursor; returns the budget left. */
+  private warmLeaves(mode: OpaqueDrawMode, budget: number): number {
+    const slots = this.nodes.length * 2, mi = modeIndex(mode);
     for (let scanned = 0; budget > 0 && scanned < slots; scanned++) {
-      const k = this.prewarmCursors[c]++ % slots;
+      const k = this.prewarmCursors[mi]++ % slots;
       const node = this.nodes[k >> 1]!; const slot = mi * 2 + (k & 1);
       if (node.bundles[slot]) continue;
-      const enc = newBundle(); this.encodeNode(enc, node, (k & 1) === 1, mode, true); node.bundles[slot] = enc.finish(); budget--; stats.bundlesRecorded++;
+      const enc = this.bundleEncoder('draw-stream-node'); this.encodeNode(enc, node, (k & 1) === 1, mode, true); node.bundles[slot] = enc.finish(); budget--;
     }
     return budget;
   }
 
   /**
-   * Orthographic: the legacy path replays every opaque draw, with all its
-   * state, into a geometric-depth prepass through a proxied pass. Here each
-   * node records a depth bundle (depth variant, unbiased) and a colour bundle
-   * (guarded colour variant + the visibility binding) once, and the frame
-   * replays both lists: the prepass folds into the same stream.
+   * Orthographic: the legacy path replays every opaque draw, with all its state, into a geometric-depth prepass
+   * through a proxied pass. Here each node records a depth bundle (depth variant, unbiased) and a colour bundle
+   * (guarded colour variant + the visibility binding) once, and the frame replays both: the prepass folds into the stream.
    */
   private encodeOrtho(f: StreamFrameInputs, items: readonly StreamItem[], stats: StreamFrameStats): void {
     const vis = f.ortho!, binding = vis.getBinding(), mi = modeIndex(f.mode);
@@ -391,6 +391,7 @@ export class DrawStream {
   }
 
   destroy(): void {
+    clearTimeout(this.warmTimer); this.warmTimer = undefined; this.warmMode = null;
     this.frameBuffer.destroy(); this.recordBuffer?.destroy(); this.deltaBuffer?.destroy();
     this.nodes = []; this.members = []; this.legacy = []; this.pipelines.clear();
     this.hlod?.destroy(); this.hlod = null; this.arena?.destroy(); this.arena = null;

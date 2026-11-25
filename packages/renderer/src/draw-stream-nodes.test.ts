@@ -157,7 +157,7 @@ describe('draw stream culling', () => {
     assert.notEqual(executed.at(-1)![0], first, 'new picks: a new bundle');
   });
 
-  it('draws a mixed node directly while the camera moves, recording its bundle only at rest', () => {
+  it('draws a mixed node directly while the camera moves, recording its bundle only at rest (#11405 follow-up)', () => {
     let recorded = 0, directDraws = 0; const env = {};
     const enc = () => ({ setPipeline() {}, setBindGroup() {}, setVertexBuffer() {}, setIndexBuffer() {}, drawIndexed() {}, finish: () => ({ n: ++recorded }) });
     const device = { createBindGroupLayout: () => ({}), createPipelineLayout: () => ({}), createBindGroup: () => ({}), createShaderModule: () => ({}),
@@ -180,32 +180,51 @@ describe('draw stream culling', () => {
     assert.ok(recorded > recordedWhileMoving, 'the bundle is recorded once the camera rests');
   });
 
-  it('prewarms only at rest, asks for idle frames until every mode is warm, and covers the object-id variants', async () => {
+  it('prewarms only at rest, between frames, until every mode is warm (drawStream orbit p95, #11405 follow-up)', async () => {
     let recorded = 0; const env = {}; let renders = 0;
     const enc = () => ({ setPipeline() {}, setBindGroup() {}, setVertexBuffer() {}, setIndexBuffer() {}, drawIndexed() {}, finish: () => ({ n: ++recorded }) });
     const device = { createBindGroupLayout: () => ({}), createPipelineLayout: () => ({}), createBindGroup: () => ({}), createShaderModule: () => ({}),
       createBuffer: (d: GPUBufferDescriptor) => ({ size: d.size, destroy() {} }), queue: { writeBuffer() {} }, createRenderBundleEncoder: enc } as unknown as GPUDevice;
     const pipeline = { getStreamBase: () => ({ environmentLayout: {}, descriptor: { fragment: { targets: [] } }, colorFormat: 'bgra8unorm', depthFormat: 'depth32float', sampleCount: 1 }),
       visibility: { create: () => ({}) }, getEnvironmentBindGroup: () => env } as unknown as ConstructorParameters<typeof DrawStream>[1];
-    // 40 single-member nodes: 40 nodes x 2 LODs x 4 modes = 320 bundles to prewarm, 24 per frame.
+    // 40 single-member nodes: 40 nodes x 2 LODs x 4 modes = 320 bundles to prewarm, 24 per step.
     const cells = Array.from({ length: 40 }, (_, k) => batch(k + 1, k * 40, { lod1: 6 }));
     const stream = new DrawStream(device, pipeline, resolveDrawStreamConfig({ stream: true }));
     stream.sync(cells, 'g', 'k', 32, () => ({ alpha: 1, anchor: null, overrideBits: 0 }), undefined, () => { renders++; });
     stream.prepareFrame(new Float32Array(4), { getCameraWorld: () => [0, 0, 0], tryPackDrawableOrigin: () => true } as unknown as Parameters<DrawStream['prepareFrame']>[1]);
     const pass = { executeBundles() {}, setPipeline() {}, setBindGroup() {}, setVertexBuffer() {}, setIndexBuffer() {}, drawIndexed() {} } as unknown as GPURenderPassEncoder;
     const frame = (interacting: boolean) => stream.encode(fake({ pass, visible: () => false, interacting }), () => {}); // nothing visible: only prewarm records
-    frame(true); frame(true);
+    const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    frame(true); frame(true); await wait(80);
     assert.equal(recorded, 0, 'moving: no prewarm recording');
     frame(false);
-    assert.equal(recorded, 24, 'at rest: one prewarm budget');
-    await new Promise((resolve) => setTimeout(resolve, 60));
-    assert.equal(renders, 1, 'work remains: it asked for the next (idle) frame');
-    for (let i = 0; i < 20; i++) frame(false);
+    assert.equal(recorded, 0, 'not inside the frame: prewarm runs between frames');
+    for (let i = 0; i < 100 && recorded < 320; i++) await wait(10);
     assert.equal(recorded, 40 * 2 * 4, 'every leaf, both LODs, all four modes (object-id and discard variants)');
-    await new Promise((resolve) => setTimeout(resolve, 60)); // the timers the loop's resting frames scheduled
-    renders = 0; frame(false);
-    await new Promise((resolve) => setTimeout(resolve, 60));
-    assert.equal(renders, 0, 'warm: no further idle frames');
+    assert.equal(renders, 0, 'warming needs no rendered frames');
+    stream.destroy();
+  });
+
+  it('stops prewarming when the camera moves again, and on destroy (#11405 follow-up)', async () => {
+    let recorded = 0; const env = {};
+    const enc = () => ({ setPipeline() {}, setBindGroup() {}, setVertexBuffer() {}, setIndexBuffer() {}, drawIndexed() {}, finish: () => ({ n: ++recorded }) });
+    const device = { createBindGroupLayout: () => ({}), createPipelineLayout: () => ({}), createBindGroup: () => ({}), createShaderModule: () => ({}),
+      createBuffer: (d: GPUBufferDescriptor) => ({ size: d.size, destroy() {} }), queue: { writeBuffer() {} }, createRenderBundleEncoder: enc } as unknown as GPUDevice;
+    const pipeline = { getStreamBase: () => ({ environmentLayout: {}, descriptor: { fragment: { targets: [] } }, colorFormat: 'bgra8unorm', depthFormat: 'depth32float', sampleCount: 1 }),
+      visibility: { create: () => ({}) }, getEnvironmentBindGroup: () => env } as unknown as ConstructorParameters<typeof DrawStream>[1];
+    const cells = Array.from({ length: 40 }, (_, k) => batch(k + 1, k * 40, { lod1: 6 }));
+    const stream = new DrawStream(device, pipeline, resolveDrawStreamConfig({ stream: true }));
+    stream.sync(cells, 'g', 'k', 32, () => ({ alpha: 1, anchor: null, overrideBits: 0 }));
+    stream.prepareFrame(new Float32Array(4), { getCameraWorld: () => [0, 0, 0], tryPackDrawableOrigin: () => true } as unknown as Parameters<DrawStream['prepareFrame']>[1]);
+    const pass = { executeBundles() {}, setPipeline() {}, setBindGroup() {}, setVertexBuffer() {}, setIndexBuffer() {}, drawIndexed() {} } as unknown as GPURenderPassEncoder;
+    const frame = (interacting: boolean) => stream.encode(fake({ pass, visible: () => false, interacting }), () => {});
+    const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    frame(false); frame(true); await wait(80);
+    assert.equal(recorded, 0, 'a moving frame before the first step cancels it');
+    frame(false); for (let i = 0; i < 20 && recorded === 0; i++) await wait(10);
+    const partial = recorded; assert.ok(partial > 0 && partial < 320);
+    stream.destroy(); await wait(80);
+    assert.equal(recorded, partial, 'destroy stops it');
   });
 
   it('converts world size to screen px for perspective and orthographic cameras', () => {

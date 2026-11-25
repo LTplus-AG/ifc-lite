@@ -27,7 +27,10 @@ impl EntityDecoder<'_> {
         }
         self.build_index();
         let (start, end) = self.entity_index.as_ref().and_then(|index| index.lookup(id))
-            .ok_or_else(|| crate::Error::parse(0, format!("Entity #{} not found", id)))?;
+            .ok_or_else(|| {
+                self.note_missing(id);
+                crate::Error::parse(0, format!("Entity #{} not found", id))
+            })?;
         // The SAME parser checks unused fields too. A malformed tail must fail
         // even when Name was already readable or the parsed id is memoized.
         let (parsed_id, _, tokens) = self.parse_at(start, end, "decode_at_uncached")?;

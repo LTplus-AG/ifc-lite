@@ -27,7 +27,8 @@
 import type { ProcessParallelOptions } from './geometry-parallel-options.js';
 import { postGeometryWorkerInit, spawnGeometryWorker } from './geometry-worker-init.js';
 import type { CoordinateHandler } from './coordinate-handler.js';
-import type { MeshData } from './types.js'; import { unpackBatchMeshes, processBatchBounds } from './worker-batch-meshes.js';
+import type { MeshData } from './types.js';
+import { processBatchBounds, unpackBatchInstancing, unpackBatchMeshes } from './worker-batch-meshes.js';
 import type { ByteStreamingPrePassResult } from './byte-streaming-prepass-result.js';
 import type { StreamingGeometryEvent } from './index.js';
 import { mergeGeometryDiagnostics, type GeometryDiagnostics } from './diagnostics.js';
@@ -35,6 +36,7 @@ import { omittedTypeRecordsField, parseOmittedTypeRecords } from './omitted-type
 import { planLoadWorkerCount } from './worker-count.js';
 import { readBatchSizingOverride, readShardScanFlag, readVisibilityFilterOverride } from './perf-flags.js';
 import { forwardKeyPlan, globalKeyPlanningField, globalPlanColumns } from './global-instance-plan.js';
+import { sparsePoolFor } from './geometry-parallel-sparse.js';
 import { notifyIfWasmAssetUnavailable, notifyIfWorkerScriptUnavailable } from './wasm-asset-error.js';
 import { restashWasmPanicLocation } from './wasm-panic-forward.js';
 import { mergeShardStyleSlices, type MergedShardStyles, type StylesSlice } from './shard-style-merge.js';
@@ -225,7 +227,12 @@ export async function* processParallel(
   // deliver the entity index early (instead of waiting for the pre-pass
   // worker's single-threaded post-scan `entity-index` event). Measures the
   // parser-tail-contention blocker from prior art dd56ea9e.
-  const shardScanEnabled = readShardScanFlag();
+  // Out-of-core ingest (`?perf.ooc`, geometry-parallel-sparse.ts): null on the whole-file path. Its preamble comes from the serial pre-pass.
+  const shareIndex = (ids: SharedArrayBuffer, starts: SharedArrayBuffer, lengths: SharedArrayBuffer) => broadcastSetup(entityIndexSetup(() => ({
+    ids: new Uint32Array(ids), starts: new Uint32Array(starts), lengths: new Uint32Array(lengths),
+  })));
+  const sparse = sparsePoolFor(sharedBuffer, { broadcast: (setup) => broadcastSetup(setup), shareIndex, onReady: () => drainQueuedChunksIfReady() }, options);
+  const shardScanEnabled = readShardScanFlag() && !sparse;
   let entityIndexDeliveredEarly = false;
   const shardResults: (ShardColumns | null)[] = [];
   let shardResultsRemaining = 0;
@@ -260,6 +267,7 @@ export async function* processParallel(
   const keyToWorker = new Map<number, number>();
   const affinityState = { keyUses: new Map<number, number>(), workerJobs: [] as number[] };
   let nextAffinityWorker = 0;
+
 
   // Per-worker first-batch timestamps (filled lazily so we don't need
   // workerCount at this point). The closure indexes by workerIndex.
@@ -334,6 +342,7 @@ export async function* processParallel(
         }
         return;
       }
+      if (msg.type === 'sparse-stats') { sparse?.stats.push(msg.stats); return; }
       if (msg.type === 'memory') {
         eventQueue.push({
           type: 'workerMemory',
@@ -378,30 +387,8 @@ export async function* processParallel(
         // ~one wrapper object per mesh (~110k per large load) on the main
         // thread. Pass the transferred objects straight through.
         const meshes: MeshData[] = unpackBatchMeshes(msg);
-        // Opaque repeated occurrences render only through per-batch IFNS shards;
-        // include them in the running total even though they are not flat meshes.
-        const instancedShards = (msg as { instancedShards?: ArrayBuffer[] }).instancedShards;
-        const instancedOccurrences =
-          (msg as { instancedOccurrences?: number }).instancedOccurrences ?? 0;
-        // #924: forward geometry-diff hashes for instanced-only entities.
-        const instancedGeometryHashIds =
-          (msg as { instancedGeometryHashIds?: Uint32Array }).instancedGeometryHashIds;
-        const instancedGeometryHashValues =
-          (msg as { instancedGeometryHashValues?: BigUint64Array }).instancedGeometryHashValues;
-        // #1891: the world boxes for those same ids, six values per id. Travels
-        // with the ids, never on its own — an aabb array without its id array
-        // indexes nothing.
-        const instancedGeometryAabbValues =
-          (msg as { instancedGeometryAabbValues?: Float64Array }).instancedGeometryAabbValues;
-        // #1993: and their proved volumes, one per id. Same rule as the boxes —
-        // it travels with the ids or not at all.
-        const instancedGeometryVolumeValues =
-          (msg as { instancedGeometryVolumeValues?: Float64Array }).instancedGeometryVolumeValues;
-        if (
-          meshes.length > 0 ||
-          (instancedShards && instancedShards.length > 0) ||
-          (instancedGeometryHashIds && instancedGeometryHashIds.length > 0)
-        ) {
+        const instanced = unpackBatchInstancing(msg);
+        if (meshes.length > 0 || instanced.present) {
           if (!wasmFrameResolved) {
             workerError ??= new Error('Geometry worker emitted a batch before the RTC frame was resolved');
             workersCompleted++;
@@ -414,23 +401,9 @@ export async function* processParallel(
             processBatchBounds(coordinator, meshes);
           }
           // Count rendered instanced occurrences omitted from the flat array.
-          totalMeshes += instancedOccurrences;
+          totalMeshes += instanced.occurrences;
           const coordinateInfo = coordinator.getCurrentCoordinateInfo();
-          eventQueue.push({
-            type: 'batch',
-            meshes,
-            totalSoFar: totalMeshes,
-            coordinateInfo: coordinateInfo || undefined,
-            ...(instancedShards && instancedShards.length > 0 ? { instancedShards } : {}),
-            ...(instancedGeometryHashIds && instancedGeometryHashIds.length > 0
-              ? {
-                  instancedGeometryHashIds,
-                  instancedGeometryHashValues,
-                  ...(instancedGeometryAabbValues ? { instancedGeometryAabbValues } : {}),
-                  ...(instancedGeometryVolumeValues ? { instancedGeometryVolumeValues } : {}),
-                }
-              : {}),
-          });
+          eventQueue.push({ type: 'batch', meshes, totalSoFar: totalMeshes, coordinateInfo: coordinateInfo || undefined, ...instanced.fields });
           wake();
         }
         return;
@@ -713,7 +686,7 @@ export async function* processParallel(
   }
 
   const dispatchJobsChunk = (jobs: Uint32Array, affinity: Uint32Array | null) => {
-    if (!streamStartSentToWorkers || !stylesReceived || !entityIndexReceived || setupLog.holding) {
+    if (!streamStartSentToWorkers || !stylesReceived || !entityIndexReceived || sparse?.ready === false || setupLog.holding) {
       // Hold until stream-start AND styles AND entity-index have all
       // been posted to workers. Without styles the meshes would render
       // with default per-type colours; without the pre-built entity
@@ -734,7 +707,7 @@ export async function* processParallel(
 
   /** Drain queued chunks once all gating conditions are met. */
   const drainQueuedChunksIfReady = () => {
-    if (!streamStartSentToWorkers || !stylesReceived || !entityIndexReceived || setupLog.holding) return;
+    if (!streamStartSentToWorkers || !stylesReceived || !entityIndexReceived || sparse?.ready === false || setupLog.holding) return;
     while (queuedChunks.length > 0) {
       const c = queuedChunks.shift()!;
       dispatchJobsChunkInternal(c.jobs, c.affinity);
@@ -812,9 +785,8 @@ export async function* processParallel(
         new Uint32Array(sabStarts).set(starts);
         new Uint32Array(sabLengths).set(lengths);
       }
-      broadcastSetup(entityIndexSetup(() => ({
-        ids: new Uint32Array(sabIds), starts: new Uint32Array(sabStarts), lengths: new Uint32Array(sabLengths),
-      })));
+      if (sparse) sparse.offerIndex(sabIds, sabStarts, sabLengths);
+      else shareIndex(sabIds, sabStarts, sabLengths);
       if (options?.onEntityIndex) {
         try {
           options.onEntityIndex(
@@ -1227,6 +1199,8 @@ export async function* processParallel(
             (evt.oversizedIdCount as number | undefined) ?? 0,
             evt.malformedRecordCount as number | undefined);
         }
+      } else if (evt.type === 'sparse-facts') {
+        sparse?.offerFacts(evt);
       } else if (evt.type === 'prepass-columns') {
         // Pre-pass computed the referenced-repmaps + instantiated-type-id sets
         // and the material-layer index ONCE (issue #957 / #563). Forward to
@@ -1432,6 +1406,7 @@ export async function* processParallel(
         sourceFingerprint: options?.sourceFingerprint, ...globalKeyPlanningField(buffer.length),
         sharedBuffer,
         chunkSize: 50_000,
+        ...(sparse ? { emitSparseFacts: true } : {}),
         ...(visibilityFilter?.disabledTypes ? { disabledTypes: visibilityFilter.disabledTypes } : {}),
         ...(visibilityFilter?.skipTypeGeometry ? { skipTypeGeometry: true } : {}),
       });
@@ -1499,6 +1474,7 @@ export async function* processParallel(
     await new Promise<void>((resolve) => { resolveWaiting = resolve; });
   }
 
+  sparse?.report(elapsed());
   const coordinateInfo = coordinator.getFinalCoordinateInfo();
   // One aggregate per-load summary (only this scope holds the cross-worker
   // total). Counts include batch-summed upper bounds; see the event-type doc.

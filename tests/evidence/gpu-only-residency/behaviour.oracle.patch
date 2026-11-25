@@ -1,0 +1,75 @@
+diff --git b/apps/viewer/src/lib/geometry-backing/active-backing.ts a/apps/viewer/src/lib/geometry-backing/active-backing.ts
+index ee1471890a..587b0d8015 100644
+--- b/apps/viewer/src/lib/geometry-backing/active-backing.ts
++++ a/apps/viewer/src/lib/geometry-backing/active-backing.ts
+@@ -96,6 +96,7 @@ function allowlisted(tap: StoreGeometryBackingTap, state: ReleaseState, verified
+     throw new Error('The top-level geometry is not a verified model\'s list; nothing was released');
+   }
+   for (const stash of state.removedMeshes?.values() ?? []) {
++    if (stash.meshes && stash.meshes.length > 0) throw new Error('Removed-mesh undo geometry is not backed; nothing was released');
+   }
+   return [...lists];
+ }
+diff --git b/apps/viewer/src/lib/geometry-backing/gpu-only-mode.ts a/apps/viewer/src/lib/geometry-backing/gpu-only-mode.ts
+index 1400b9c6c6..6f1c7a4e19 100644
+--- b/apps/viewer/src/lib/geometry-backing/gpu-only-mode.ts
++++ a/apps/viewer/src/lib/geometry-backing/gpu-only-mode.ts
+@@ -22,7 +22,7 @@ export function gpuOnlyMode(): GpuOnlyMode {
+ 
+ /** Whether a source of `sourceBytes` bytes is loaded under GPU-only residency. */
+ export function gpuOnlyRequested(sourceBytes: number, mode: GpuOnlyMode = gpuOnlyMode()): boolean {
+-  return mode !== 'off' && sourceBytes >= 0;
++  return mode === 'on' || (mode === 'auto' && sourceBytes >= GPU_ONLY_AUTO_BYTES);
+ }
+ 
+ let installed = false;
+diff --git b/apps/viewer/src/lib/geometry-backing/gpu-only-residency.ts a/apps/viewer/src/lib/geometry-backing/gpu-only-residency.ts
+index 60118b521a..7a8b5ba01e 100644
+--- b/apps/viewer/src/lib/geometry-backing/gpu-only-residency.ts
++++ a/apps/viewer/src/lib/geometry-backing/gpu-only-residency.ts
+@@ -109,10 +109,12 @@ export class GpuOnlyResidency {
+   private onState(state: GpuOnlyState): void {
+     const armed = this.armed;
+     if (armed) {
++      if (armed.releasing) return;
+       const model = state.models.get(armed.modelId);
+       if (model) {
+         // A second model joined before the release: its geometry is no part of what this load backs
+         // from the start, so this load keeps its geometry.
++        if (state.models.size > 1) return this.cancel('a second model joined before the release');
+         if (model.loadState === 'error') return this.cancel('the load failed');
+         if (model.loadState === 'complete' && !armed.cancelSettle) this.releaseWhenSettled(armed);
+         return;
+@@ -125,7 +127,7 @@ export class GpuOnlyResidency {
+     if (state.models.size !== 1) return;
+     const [[modelId, model]] = state.models;
+     // The placeholder a primary load registers before any of its geometry reaches the store.
+-    if (modelId === this.lastArmed || model.loadState !== 'pending' || model.geometryResult) return;
++    if (modelId === this.lastArmed || model.loadState !== 'pending' || model.geometryResult || !this.deps.requested(model.fileSize ?? 0)) return;
+     this.arm(modelId);
+   }
+ 
+@@ -167,6 +169,7 @@ export class GpuOnlyResidency {
+   private releaseWhenSettled(armed: Armed): void {
+     armed.cancelSettle = this.deps.whenSettled((settled) => {
+       if (this.armed !== armed) return;
++      if (!settled) return this.fail(armed, new Error('the scene did not settle'));
+       void this.release(armed);
+     }, () => this.armed === armed);
+   }
+@@ -204,13 +207,14 @@ export class GpuOnlyResidency {
+ 
+   private cancel(reason: string): void {
+     const armed = this.armed;
+-    if (armed) this.disarm(armed, { modelId: armed.modelId, phase: 'cancelled', error: reason });
++    if (armed && !armed.releasing) this.disarm(armed, { modelId: armed.modelId, phase: 'cancelled', error: reason });
+   }
+ 
+   private disarm(armed: Armed, status: GpuOnlyStatus): void {
+     armed.cancelSettle?.();
+     this.armed = null;
+     this.last = status;
++    this.stopOwn();
+     this.store.getState().setBoundedGeometryMode(false);
+   }
+ }

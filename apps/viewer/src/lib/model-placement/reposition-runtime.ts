@@ -16,6 +16,7 @@
 import { useSyncExternalStore } from 'react';
 import type { PlacementAnchor } from './state';
 import type { PickRole } from '../../components/viewer/reposition/useRepositionPicking';
+import type { TwoPointAlignSession } from '../../components/viewer/reposition/useTwoPointAlign';
 
 export interface RepositionRuntime {
   /** The moving models, tracked separately from `modelPlacement.preview`
@@ -32,6 +33,8 @@ export interface RepositionRuntime {
   distance: string;
   role: PickRole;
   hover: PlacementAnchor | null;
+  /** The two-point align session (#11505). */
+  align: TwoPointAlignSession;
   setError: (message: string) => void;
   setReference: (id: string) => void;
   setFieldAt: (index: number, value: string) => void;

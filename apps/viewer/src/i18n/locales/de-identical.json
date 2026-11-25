@@ -1411,6 +1411,10 @@
     "value": "{action} {name}",
     "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
   },
+  "repositionPanel.twoPoint.pickedRow": {
+    "value": "{label}: {x}, {y}, {z}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
   "retainedGeometry.panel.column.code": {
     "value": "Code",
     "reason": "Same-spelling German label or established UI term (Code); placeholders retain runtime content."

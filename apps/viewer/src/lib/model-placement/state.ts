@@ -120,7 +120,8 @@ export function commitPlacement(state: PlacementState): PlacementState {
   return commitPlacements(state, preview.before, after);
 }
 
-function commitPlacements(
+/** Shared by the other placement commands (`two-point-align-apply.ts`): one undoable command for a group. */
+export function commitPlacements(
   state: PlacementState, before: ReadonlyMap<string, ModelPlacement>, after: ReadonlyMap<string, ModelPlacement>,
 ): PlacementState {
   const changed = [...after].some(([id, value]) => !samePlacement(value,

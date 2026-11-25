@@ -13,9 +13,14 @@ import type { PlacementAnchor } from '@/lib/model-placement/state';
 
 export type PickRole = 'source' | 'target' | null;
 
+/** Two-point align (#11505) takes the picks over: a stable callback that files the
+ * anchor itself, in place of the move preview's source/target anchors, and
+ * returns the role to pick next (null when finished). */
+export type PickCapture = (role: 'source' | 'target', anchor: PlacementAnchor) => PickRole;
+
 /** Uses the measurement tool's real mesh/scan snap path. Navigation remains
  * available on the other mouse buttons while left-click selects an anchor. */
-export function useRepositionPicking(role: PickRole, finish: (role: PickRole) => void, onError: (message: string) => void, reference = '') {
+export function useRepositionPicking(role: PickRole, finish: (role: PickRole) => void, onError: (message: string) => void, reference = '', capture?: PickCapture) {
   const [hover, setHover] = useState<PlacementAnchor | null>(null);
   const models = useViewerStore((state) => state.models);
   useEffect(() => {
@@ -86,7 +91,7 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
       if (refuseCaptureHeldPick(renderer)) return;
       const hit = pick(event);
       setHover(hit);
-      if (hit && role === 'target') {
+      if (hit && role === 'target' && !capture) {
         try { updateAnchor(event, hit); }
         catch (error) { onError(error instanceof Error ? error.message : String(error)); }
       }
@@ -102,8 +107,8 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
       const hit = pick(event);
       if (!hit) { onError('No eligible point found. Zoom closer, choose another point, or enter coordinates.'); return; }
       try {
-        updateAnchor(event, hit);
-        nextRole = role === 'source' ? 'target' : null;
+        if (capture) nextRole = capture(role, hit);
+        else { updateAnchor(event, hit); nextRole = role === 'source' ? 'target' : null; }
       } catch (error) { onError(error instanceof Error ? error.message : String(error)); }
     };
     // Finish on click, after consuming the whole gesture. Changing the role on
@@ -129,6 +134,6 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
       canvas.removeEventListener('pointerdown', down, true);
       canvas.style.cursor = previousCursor;
     };
-  }, [role, finish, onError, models, reference]);
+  }, [role, finish, onError, models, reference, capture]);
   return hover;
 }

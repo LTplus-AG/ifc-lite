@@ -9,6 +9,8 @@ import { beginPlacement, cancelPlacement, commitPlacement, emptyPlacementState, 
   rebasePlacementPivots, replayPlacement, resetPlacements, retainLoadedPlacements, placementFor, importPlacements,
   rotatePlacements, type PlacementAnchor, type PlacementState } from '../../lib/model-placement/state.js';
 import type { ModelRotation } from '../../lib/model-placement/rotation.js';
+import { alignPlacements } from '../../lib/model-placement/two-point-align-apply.js';
+import type { TwoPointAlignment } from '../../lib/model-placement/two-point-align.js';
 import { modelRotationBaker } from '../../lib/model-placement/rotation-bake.js';
 import { rotationRefusal } from '../../lib/model-placement/rotation-refusal.js';
 import { constrainTranslation, finiteTranslation, fromRenderTranslation, subtractTranslation,
@@ -35,6 +37,10 @@ export interface ModelPlacementSlice {
    * axis through `rotation.pivot`, a workspace point. Undoes with the moves, on
    * the same stack. */
   setModelRotation: (ids: readonly string[], rotation: ModelRotation) => void;
+  /** Seat the named models by a two-point align (#11505): turn by
+   * `alignment.heading` about `alignment.pivot`, then move by `alignment.delta`,
+   * as ONE undoable command. Composes with an existing heading. */
+  alignModels: (ids: readonly string[], alignment: TwoPointAlignment) => void;
   setModelPositionLocked: (modelId: string, locked: boolean) => void;
   /**
    * Follow recorded pivots onto a new RTC anchor after the federation
@@ -113,6 +119,14 @@ export const createModelPlacementSlice: StateCreator<ViewerState, [], [], ModelP
     const refusal = rotationRefusal(state, ids);
     if (refusal) throw new Error(refusal);
     return { modelPlacement: rotatePlacements(state.modelPlacement, ids, rotation) };
+  }),
+  alignModels: (ids, alignment) => set((state) => {
+    if (ids.some((id) => !state.models.has(id))) throw new Error('A selected model is no longer loaded.');
+    // The heading is baked like any other rotation, so the same refusal applies;
+    // a pure move (heading 0) does not touch geometry.
+    const refusal = alignment.heading === 0 ? null : rotationRefusal(state, ids);
+    if (refusal) throw new Error(refusal);
+    return { modelPlacement: alignPlacements(state.modelPlacement, ids, alignment) };
   }),
   rebasePlacementFrame: (deltas) => set((state) => {
     const workspace = new Map([...deltas].map(([id, delta]) => [id, fromRenderTranslation(delta)] as const));

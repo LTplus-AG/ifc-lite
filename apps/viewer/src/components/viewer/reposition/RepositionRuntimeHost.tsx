@@ -22,6 +22,7 @@ import { modelCenter } from '@/lib/model-placement/scene';
 import { publishRepositionRuntime } from '@/lib/model-placement/reposition-runtime';
 import { useRepositionPicking, type PickRole } from './useRepositionPicking';
 import { PlacementGizmo } from './PlacementGizmo';
+import { useTwoPointAlign } from './useTwoPointAlign';
 
 export function RepositionRuntimeHost() {
   // Surface the docked `placement` panel's Local tab (#5505) whenever a
@@ -42,7 +43,10 @@ export function RepositionRuntimeHost() {
   const [error, setError] = useState('');
   const [distance, setDistance] = useState('');
   const [role, setRole] = useState<PickRole>(null);
-  const hover = useRepositionPicking(role, setRole, setError, reference);
+  const align = useTwoPointAlign({ selected, reference, setRole, setError });
+  const hover = useRepositionPicking(role, setRole, setError, reference, align.active ? align.capture : undefined);
+  // Choosing the ordinary source/target pick leaves the two-point align.
+  const pickRole = useCallback((next: PickRole) => { if (next !== null && align.active) align.cancel(); setRole(next); }, [align]);
   const preview = placement.preview;
   const delta = preview?.delta ?? [0, 0, 0];
   const run = useCallback((action: () => void) => {
@@ -140,10 +144,10 @@ export function RepositionRuntimeHost() {
   useEffect(() => {
     publishRepositionRuntime({
       selected, reference, fields, mode, nudgeField, error, distance, role, hover,
-      setError, setReference, setFieldAt, setMode, setNudgeField, setDistance, setRole,
+      align, setError, setReference, setFieldAt, setMode, setNudgeField, setDistance, setRole: pickRole,
       chooseModels, previewFields, previewDistance, nearReference, applyNudge, apply,
     });
-  }, [selected, reference, fields, mode, nudgeField, error, distance, role, hover,
+  }, [selected, reference, fields, mode, nudgeField, error, distance, role, hover, align, pickRole,
     chooseModels, previewFields, previewDistance, nearReference, applyNudge, apply, setFieldAt]);
   useEffect(() => () => publishRepositionRuntime(null), []);
 

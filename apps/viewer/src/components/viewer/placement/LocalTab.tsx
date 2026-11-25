@@ -27,6 +27,7 @@ import { frameModels } from '@/lib/model-placement/scene';
 import { useRepositionRuntime, type RepositionRuntime } from '@/lib/model-placement/reposition-runtime';
 import { openRepositionModels } from '@/lib/model-placement/commands';
 import { RotationControls } from '../reposition/RotationControls';
+import { TwoPointAlignPanel } from '../reposition/TwoPointAlignPanel';
 import { PlacementFiles } from '../reposition/PlacementFiles';
 
 const PICK_ROLE_KEYS: Record<'source' | 'target', TranslationKey> = {
@@ -217,6 +218,7 @@ export function LocalTab() {
       ))}
 
       <RotationControls selected={runtime.selected} onError={runtime.setError} />
+      <TwoPointAlignPanel />
       {runtime.error && <p role="alert" className="text-destructive">{runtime.error}</p>}
 
       <div className="flex flex-wrap gap-1">

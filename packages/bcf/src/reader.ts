@@ -10,6 +10,7 @@
 
 import type JSZip from 'jszip';
 import { BCFArchiveFormatError, BCFResourceLimitError, loadBcfArchive } from './archive-errors.js';
+import { decodeXmlBytes } from './xml-decode.js';
 import { extractElement, unescapeXml, parseLabels, parseXsBoolean } from './xml-text.js';
 import type {
   BCFProject,
@@ -76,7 +77,7 @@ function readEntryCapped(
     // Always stream raw bytes, even for string reads: JSZip's 'string' chunks
     // are UTF-16 code units, which under-charge the budget by up to 3x for
     // multi-byte UTF-8 (a text bomb would get that much headroom past the
-    // cap). Byte chunks make the accounting exact; decode to UTF-8 at the end.
+    // cap). Byte chunks make the accounting exact; decode at the end (see decodeXmlBytes).
     const stream = streamable.internalStream('uint8array');
     stream
       .on('data', (chunk: Uint8Array) => {
@@ -99,7 +100,7 @@ function readEntryCapped(
           out.set(c, offset);
           offset += c.length;
         }
-        resolve(type === 'string' ? new TextDecoder().decode(out) : out);
+        resolve(type === 'string' ? decodeXmlBytes(out) : out);
       })
       .resume();
   });

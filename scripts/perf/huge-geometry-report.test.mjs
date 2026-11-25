@@ -31,13 +31,17 @@ test('nearest-rank percentiles', () => {
   assert.equal(percentile([NaN, 3], 0.5), 3);
 });
 
-test('frame summary reads frame time from rAF deltas, including one long stall', () => {
+test('frame summary reads frame time from rAF deltas, including moderate and long stalls', () => {
   const { frameSummary } = need(report, 'huge-geometry-report.mjs');
-  const records = Array.from({ length: 101 }, (_, i) => ({ ts: i * 16.67 + (i >= 50 ? 200 : 0), cbMs: 1, draws: 10, tris: 3e6, presents: 1, cpuMs: 2, batches: 9, instanced: 1, culled: 0, indirect: 0 }));
+  const records = Array.from({ length: 101 }, (_, i) => ({ ts: i * 16.67 + (i >= 25 ? 50 : 0) + (i >= 50 ? 200 : 0), cbMs: 1, draws: 10, tris: 3e6, presents: 1, cpuMs: 2, batches: 9, instanced: 1, culled: 0, indirect: 0 }));
   const s = frameSummary(records);
   assert.equal(s.frames, 101);
   assert.equal(s.frameMs.median, 16.67);
   assert.equal(s.frameMs.worst, 216.67);
+  assert.deepEqual(s.hitches, { over50Ms: 2, over100Ms: 1 }, 'only the longer stall clears both thresholds');
+  assert.equal(frameSummary(records.slice(0, 1)).hitches, null, 'one frame has no interval: hitches unmeasured, not zero');
+  assert.equal(s.spanMs, Math.round(100 * 16.67 + 250));
+  assert.equal(s.fps, Math.round((100 * 10000) / (100 * 16.67 + 250)) / 10);
   assert.equal(s.drawsPerFrame.median, 10);
   assert.equal(s.trianglesPerFrame.median, 3e6);
 });
@@ -59,7 +63,7 @@ test('ladder table lists every run and its failure; compare pairs runs by name',
   const { markdownSummary, markdownCompare } = need(report, 'huge-geometry-report.mjs');
   const mk = (name, nominal, status, completeMs, failure) => ({ scenario: { name, scenario: 'mixed', nominal, elements: nominal, models: 1 }, status,
     generated: { totals: { elements: nominal, bytes: 2 ** 20 } }, load: { timings: { interactiveMs: completeMs } }, failure,
-    camera: { orbit: { frameMs: { median: 16.7, p95: 20, p99: 30, worst: 40 } } } });
+    camera: { orbit: { frameMs: { median: 16.7, p95: 20, p99: 30, worst: 40 }, fps: 55.5, hitches: { over50Ms: 3, over100Ms: completeMs === 9000 ? 2 : 0 } } } });
   const base = [mk('mixed-10k', 10000, 'ok', 2000), mk('mixed-100k', 100000, 'failed', null, { kind: 'out-of-memory', detail: 'Array buffer allocation failed' })];
   const md = markdownSummary(base, { label: 'baseline' });
   assert.match(md, /\| mixed \| 10000 \| 10000 \|/);
@@ -68,6 +72,8 @@ test('ladder table lists every run and its failure; compare pairs runs by name',
   const cmp = markdownCompare(base, next, { baseLabel: 'baseline', nextLabel: 'spike' });
   assert.match(cmp, /\| mixed-10k \| ok → ok \| 2 → 1 \(×0\.5\)/);
   assert.match(cmp, /\| mixed-100k \| failed → ok \|/);
+  assert.match(md, /\| 40 \| 55\.5 \| 3 \| 0 \| – \|/, 'orbit fps and hitches >50 / >100 follow orbit worst; no zoom path');
+  assert.match(cmp, /\| mixed-100k \| failed → ok \|.*\| 55\.5 → 55\.5 \(×1\) \| 0 → 2 \|/, 'hitches over a zero base have no ratio');
 });
 
 test('tier labels parse', () => {

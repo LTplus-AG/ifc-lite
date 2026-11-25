@@ -1098,6 +1098,25 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+      # A failed advisory upload cannot fail the shared build or its consumers.
+      - name: Upload viewer build for selected E2E shadow
+        if: >-
+          github.event_name == 'pull_request' &&
+          vars.CI_PR_E2E_SELECT == 'shadow' &&
+          needs.changes.outputs.lane == 'fast' &&
+          needs.changes.outputs.batch != 'true' &&
+          needs.changes.outputs.noop != 'true' &&
+          (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true')
+        timeout-minutes: 2
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: viewer-dist-shadow
+          path: apps/viewer/dist
+          include-hidden-files: true
+          retention-days: 1
+          if-no-files-found: error
+
   # #3661: text review missed 10/10 independently confirmed defect cases even
   # after rubric retuning. This asks the executable question instead: do this
   # branch's changed tests fail when its production change is removed?
@@ -2878,6 +2897,127 @@ jobs:
           path: test-results/
           if-no-files-found: error
           retention-days: 3
+
+  # A fast PR can sample E2E early. The queue and full PRs retain all eight
+  # Viewer E2E smoke jobs. This job has no aggregate or Mergify verdict.
+  viewer-e2e-selected:
+    name: Viewer E2E shadow (selected for this PR)
+    needs: [changes, build]
+    if: >-
+      github.event_name == 'pull_request' &&
+      vars.CI_PR_E2E_SELECT == 'shadow' &&
+      needs.changes.outputs.lane == 'fast' &&
+      needs.changes.outputs.batch != 'true' &&
+      needs.changes.outputs.noop != 'true' &&
+      (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true')
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          lfs: false
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Plan selected E2E
+        id: plan
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: node scripts/ci-e2e-select.mjs --plan "$RUNNER_TEMP/viewer-e2e-shadow"
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        if: steps.plan.outputs.run == 'true'
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.plan.outputs.run == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+      - if: steps.plan.outputs.run == 'true'
+        run: pnpm install --frozen-lockfile
+      - name: Download build artifacts
+        if: steps.plan.outputs.run == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: build-output
+          path: packages
+      - name: Cache test fixtures
+        if: steps.plan.outputs.run == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: fixtures-cache
+        with:
+          path: tests/models
+          key: ci-fixtures-source-v2-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json', 'tests/models/README.md', 'tests/models/.manifest-ignore') }}
+      - name: Fetch fixtures
+        if: steps.plan.outputs.run == 'true' && steps.fixtures-cache.outputs.cache-hit != 'true'
+        run: pnpm fixtures
+
+      # Verify cached fixtures as well as downloaded ones.
+      - name: Verify fixtures
+        if: steps.plan.outputs.run == 'true'
+        run: pnpm fixtures:check
+      - name: Download viewer app build
+        if: steps.plan.outputs.run == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: viewer-dist-shadow
+          path: apps/viewer/dist
+      # The hosted runner already has the project's Chrome channel.
+      - name: Install Playwright video encoder
+        if: steps.plan.outputs.run == 'true'
+        run: pnpm exec playwright install ffmpeg
+      - name: Verify the selected Playwright files
+        id: list
+        if: steps.plan.outputs.run == 'true'
+        run: |
+          mapfile -t files < "$RUNNER_TEMP/viewer-e2e-shadow/filters.txt"
+          [ "${#files[@]}" -gt 0 ]
+          pnpm test:e2e:ci "${files[@]}" --list --reporter=list > "$RUNNER_TEMP/viewer-e2e-shadow/list.txt"
+          node scripts/ci-e2e-select.mjs --check-list "$RUNNER_TEMP/viewer-e2e-shadow"
+      - name: Run the selected Playwright files
+        id: e2e
+        if: steps.list.outcome == 'success'
+        env:
+          E2E_GPU_STRICT: '0'
+          PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ runner.temp }}/viewer-e2e-shadow/playwright.json
+        run: |
+          mapfile -t files < "$RUNNER_TEMP/viewer-e2e-shadow/filters.txt"
+          [ "${#files[@]}" -gt 0 ]
+          timeout --signal=INT --kill-after=30s 13m pnpm test:e2e:ci "${files[@]}" --reporter=list,json
+      - name: Record the advisory outcome
+        if: always()
+        env:
+          COVERAGE: ${{ steps.plan.outputs.coverage || 'unknown' }}
+          FILE_COUNT: ${{ steps.plan.outputs.count || 'unknown' }}
+          PLAN_OUTCOME: ${{ steps.plan.outcome }}
+          LIST_OUTCOME: ${{ steps.list.outcome }}
+          E2E_OUTCOME: ${{ steps.e2e.outcome }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/viewer-e2e-shadow"
+          {
+            echo '### Viewer E2E shadow'
+            echo "- Change coverage: $COVERAGE"
+            echo "- Planned files: $FILE_COUNT"
+            echo "- Plan step: $PLAN_OUTCOME"
+            echo "- Playwright listing: $LIST_OUTCOME"
+            echo "- Playwright run: $E2E_OUTCOME"
+            echo '- Inspect plan.json for omitted specs and unknown paths, and playwright.json for test outcomes and skips.'
+          } | tee "$RUNNER_TEMP/viewer-e2e-shadow/outcome.md" >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload selected E2E evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: viewer-e2e-shadow-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/viewer-e2e-shadow/
+            test-results/
+          retention-days: 7
+          if-no-files-found: error
 
   # THE PR LANE FOR RUST (CI redesign, step 5): workspace clippy and
   # `cargo test --workspace`, on every push, warm from main's shared cache.

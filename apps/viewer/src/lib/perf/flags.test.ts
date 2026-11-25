@@ -8,11 +8,11 @@ import { GEOMETRY_PERF_FLAG_BINDINGS } from '@ifc-lite/geometry';
 import {
   getPerfFlagDefinition,
   PERF_FLAGS,
-  activePerfFlags,
   readPerfFlag,
   resolvePerfFlag,
   type PerfFlagDefinition,
 } from './flags.js';
+import { activePerfFlags } from './flags-applied.js';
 import { STICKY_OVERRIDES } from '../../components/viewer/settings/sticky-overrides.js';
 import { GEOM_WORKERS_STORAGE_KEY } from '../../store/geomWorkerOverride.js';
 import { GEOM_TIER_STORAGE_KEY } from '../../store/geometryFidelity.js';

@@ -1459,7 +1459,11 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       // #1097 load-time visibility filter (skip disabled types at job gen).
       const disabledTypes = e.data.disabledTypes ?? undefined;
       const skipTypeGeometry = e.data.skipTypeGeometry === true;
-      if (typeof ifcApi.setEmitSparseFacts === 'function') ifcApi.setEmitSparseFacts(e.data.emitSparseFacts === true);
+      if (typeof ifcApi.setEmitSparseFacts === 'function') {
+        ifcApi.setEmitSparseFacts(e.data.emitSparseFacts === true);
+      } else if (e.data.emitSparseFacts === true) {
+        throw new Error('Out-of-core geometry requires a WASM build with sparse pre-pass support');
+      }
 
       // Forward Rust events 1:1 — the host (`geometry-parallel.ts`) treats
       // them as the streaming-prepass protocol. SAB-decode fallback: try the

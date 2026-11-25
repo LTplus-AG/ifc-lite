@@ -81,6 +81,22 @@ it.skipIf(!available)('native split/merge rewrites real IFC rooms with stable la
   } finally { plate.free(); }
 });
 
+it.skipIf(!available)('a split room takes its aggregation GlobalId from the supplied source', async () => {
+  const { store, editor } = await session();
+  const plate = fromRects(flattenRoomRects(rects), .05, Number.MIN_VALUE);
+  try {
+    const [face] = candidates(store, editor, plate);
+    createRoomsInStore(store, editor, 42, [{ outline: face.inner, height: 3, z: 0, Name: 'Room', grossArea: face.grossArea, netArea: face.netArea, derived: true }]);
+    const before = candidates(store, editor, plate);
+    expect(applyLayoutOp(plate, { kind: 'split', a: [21, 20], b: [21, 23] }, .01)).toBe(true);
+    let draws = 0;
+    const guidRandom = () => { draws++; return Math.random(); };
+    const sync = syncRoomLayoutInStore(store, editor, before, readFaces(plate), [], undefined, { guidRandom });
+    expect(sync.created).toHaveLength(1);
+    expect(draws).toBeGreaterThan(0);
+  } finally { plate.free(); }
+});
+
 it.skipIf(!available)('update/no-room refusal preserves graph and creation late refusal preserves allocator', async () => {
   const { store, view, editor } = await session();
   const plate = fromRects(flattenRoomRects(rects), .05, Number.MIN_VALUE);

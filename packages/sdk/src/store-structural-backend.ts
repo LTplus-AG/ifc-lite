@@ -129,7 +129,7 @@ export function createStructuralStoreBackend(
     },
     connectStructuralElement(modelId: string, RelatingElement: number, RelatedStructuralMember: number): EntityRef {
       const model = resolved(modelId);
-      return ref(model.modelId, connectStructuralElementInStore(model.editor, model.ownerHistoryId, RelatingElement, RelatedStructuralMember));
+      return ref(model.modelId, connectStructuralElementInStore(model.editor, model.ownerHistoryId, RelatingElement, RelatedStructuralMember, model.guidRandom));
     },
     addStructuralSurfaceAction(modelId: string, params: StructuralSurfaceActionInStoreParams): EntityRef {
       const model = resolved(modelId);
@@ -206,21 +206,21 @@ export function createStructuralStoreBackend(
     connectStructuralMemberToConnection(modelId: string, memberExpressId: number, connectionExpressId: number, options?: StructuralMemberConnectionOptions): EntityRef {
       const model = resolved(modelId);
       const relId = connectStructuralMemberToConnectionInStore(
-        model.editor, model.ownerHistoryId, memberExpressId, connectionExpressId, undefined, options,
+        model.editor, model.ownerHistoryId, memberExpressId, connectionExpressId, model.guidRandom, options,
       );
       return ref(model.modelId, relId);
     },
     connectStructuralActivityToItem(modelId: string, itemExpressId: number, activityExpressId: number): EntityRef {
       const model = resolved(modelId);
       const relId = connectStructuralActivityToItemInStore(
-        model.editor, model.ownerHistoryId, itemExpressId, activityExpressId,
+        model.editor, model.ownerHistoryId, itemExpressId, activityExpressId, model.guidRandom,
       );
       return ref(model.modelId, relId);
     },
     assignToStructuralGroup(modelId: string, groupExpressId: number, objectExpressIds: number[]): EntityRef {
       const model = resolved(modelId);
       const relId = assignToStructuralGroupInStore(
-        model.editor, model.ownerHistoryId, groupExpressId, objectExpressIds,
+        model.editor, model.ownerHistoryId, groupExpressId, objectExpressIds, model.guidRandom,
       );
       return ref(model.modelId, relId);
     },

@@ -39,7 +39,7 @@ export function createPhysicalStoreBackend(resolve: ModellingStoreModelResolver)
     },
     splitElements(modelId, requests) {
       const model = resolve(modelId);
-      return splitElementsInStore(model.store, model.editor, requests, { globalIdScopes: model.globalIdScopes }).map(result => {
+      return splitElementsInStore(model.store, model.editor, requests, { globalIdScopes: model.globalIdScopes, guidRandom: model.guidRandom }).map(result => {
         const ref = (expressId: number): EntityRef => ({ modelId: model.modelId, expressId });
         return { source: ref(result.sourceId), added: ref(result.addedId), left: ref(result.leftId), right: ref(result.rightId) };
       });

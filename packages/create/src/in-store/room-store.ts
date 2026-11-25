@@ -121,7 +121,7 @@ function faceHolding<F extends LayoutFace>(faces: readonly F[], p: Pt): F | null
 }
 
 /** Native layout edit keeps the larger split/merged room identity and its metadata. */
-export function syncRoomLayoutInStore(store: IfcDataStore, editor: StoreEditor, before: readonly RoomCandidate[], after: readonly LayoutFace[], globalIdScopes: readonly GlobalIdScope[] = [], editedStoreyId?: number): LayoutSync {
+export function syncRoomLayoutInStore(store: IfcDataStore, editor: StoreEditor, before: readonly RoomCandidate[], after: readonly LayoutFace[], globalIdScopes: readonly GlobalIdScope[] = [], editedStoreyId?: number, options: AuthoringGuidOptions = {}): LayoutSync {
   return editor.runAtomic(draft => {
     const out: LayoutSync = { created: [], deleted: [], remesh: [] }, view = draft.getMutationView();
     const seen = new Set(view.getMutations().map(mutation => mutation.id));
@@ -144,7 +144,7 @@ export function syncRoomLayoutInStore(store: IfcDataStore, editor: StoreEditor, 
       if (classification == null && !registry.entities.IfcSpace.allAttributes![9].optional) throw new Error('Room layout requires source classification');
       const target = roomChainInStore(store, draft, link.expressId);
       if (!target.ok) throw new Error('Room layout requires a storey');
-      const added = addSpaceToStore(draft, resolveSpatialAnchor(store, target.storeyId, view), {
+      const added = addSpaceToStore(draft, { ...resolveSpatialAnchor(store, target.storeyId, view), guidRandom: options.guidRandom }, {
         Profile: 'polygon', Position: [0, 0, chain.baseElevation], OuterCurve: outlineOf(cutFace, link), Height: chain.thickness,
         ...(typeof attrs[2] === 'string' ? { Name: attrs[2] } : {}),
         ...(typeof classification === 'string' ? { PredefinedType: classification.replace(/^\.|\.$/g, '') } : {}),

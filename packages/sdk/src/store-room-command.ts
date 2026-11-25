@@ -203,7 +203,7 @@ export function createRoomCommandBackend(resolve: RoomCommandModelResolver, prov
           if (!applyLayoutOp(plate, op.operation, tolerance)) throw new Error('Room layout edit changed nothing');
           const after = readFaces(plate);
           return prepare(draft => {
-            const sync = syncRoomLayoutInStore(draft.store, draft.editor, rooms, after, host.globalIdScopes?.() ?? [], storeyId);
+            const sync = syncRoomLayoutInStore(draft.store, draft.editor, rooms, after, host.globalIdScopes?.() ?? [], storeyId, { guidRandom: draft.guidRandom });
             return result(sync.created, sync.remesh.filter(id => !sync.created.includes(id)), sync.deleted);
           }, () => {
             host.layouts.file(modelId, storeyId, weld, host.historyHead(modelId), entry.walls, plate, after);

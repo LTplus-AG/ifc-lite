@@ -149,7 +149,7 @@ export class HeadlessBackend implements BimBackend {
       session: this.georefSession, store, assertKnownModelId: (m) => this.assertKnownModelId(m),
       hasPendingChanges: () => this.hasPendingChanges(), exportIfc: () => this.export.ifc(undefined, {}) as string,
     });
-    const storeAdapter = createHeadlessStoreAdapter(store, modelId, () => this.getOrCreateStoreEditor(), id => this.assertKnownModelId(id), () => this.peerScopes(), options);
+    const storeAdapter = createHeadlessStoreAdapter(store, modelId, () => this.getOrCreateStoreEditor(), id => this.assertKnownModelId(id), () => this.peerScopes(), this.options);
     this.store = storeAdapter;
     this.disposeRoomCommands = storeAdapter.disposeRooms;
     this.spatial = { queryBounds() { return []; }, raycast() { return []; }, queryFrustum() { return []; } };

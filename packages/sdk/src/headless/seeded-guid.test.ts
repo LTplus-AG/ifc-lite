@@ -4,7 +4,10 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { isValidIfcGuid, type RandomSource } from '@ifc-lite/encoding';
-import { openModel } from '../headless.js';
+import { getInheritanceChainAcrossSchemas, parseModel } from '@ifc-lite/parser';
+import { HeadlessBackend, openModel } from '../headless.js';
+import { BimContext } from '../context.js';
+import type { HeadlessBackendOptions } from './options.js';
 
 const SAMPLE = new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url);
 
@@ -38,6 +41,7 @@ async function authoredExport(guidRandom: RandomSource): Promise<string> {
     S.copyToStoreys('m', [b.expressId], [upper.expressId]);
     const c = S.addWall('m', home, { Start: [10, 10, 0], End: [12, 10, 0], Thickness: 0.2, Height: 3 });
     S.mirrorElements('m', [c.expressId], { axis: [[0, 20], [1, 20]], copy: true });
+    S.splitElements('m', [{ expressId: c.expressId, cut: { kind: 'wall', distance: 1 } }]);
     bim.mutate.setProperty(a, 'Pset_WallCommon', 'IsExternal', true);
     const content = bim.export.ifc();
     return typeof content === 'string' ? content : new TextDecoder().decode(content);
@@ -46,9 +50,16 @@ async function authoredExport(guidRandom: RandomSource): Promise<string> {
 
 const dataSection = (step: string) => step.slice(step.indexOf('DATA;'));
 
+/** The first attribute of every IfcRoot record, as written: rootedness comes from the schema, not from the value. */
+function rootGlobalIds(step: string): string[] {
+  return [...step.matchAll(/^#\d+\s*=\s*([A-Z0-9_]+)\s*\(\s*([^,)]*)/gm)]
+    .filter((m) => getInheritanceChainAcrossSchemas(m[1]).includes('IfcRoot'))
+    .map((m) => m[2].trim().replace(/^'(.*)'$/, '$1'));
+}
+
 function authoredGlobalIds(step: string, source: string): string[] {
-  const before = new Set([...source.matchAll(/^#\d+=[A-Z0-9_]+\('([0-9A-Za-z_$]{22})'/gm)].map((m) => m[1]));
-  return [...step.matchAll(/^#\d+=[A-Z0-9_]+\('([0-9A-Za-z_$]{22})'/gm)].map((m) => m[1]).filter((id) => !before.has(id));
+  const before = new Set(rootGlobalIds(source));
+  return rootGlobalIds(step).filter((id) => !before.has(id));
 }
 
 describe('HeadlessBackendOptions.guidRandom (#10963)', () => {
@@ -64,6 +75,24 @@ describe('HeadlessBackendOptions.guidRandom (#10963)', () => {
     expect(authoredGlobalIds(again, source)).toEqual(authored);
     expect(dataSection(again)).toBe(dataSection(first));
     expect(authoredGlobalIds(other, source)).not.toEqual(authored);
+  });
+
+  it('keeps the source it was constructed with when the caller replaces it later', async () => {
+    const { store } = await parseModel(readFileSync(SAMPLE), { disableWorkerScan: true });
+    const options: HeadlessBackendOptions = { guidRandom: seeded(3) };
+    const backend = new HeadlessBackend(store, 'hello-wall.ifc', 'm', options);
+    let late = 0;
+    options.guidRandom = () => { late++; return Math.random(); };
+    const S = new BimContext({ backend }).store;
+    S.addWall('m', S.listStoreyLevels('m')[0].expressId, { Start: [0, 10, 0], End: [6, 10, 0], Thickness: 0.2, Height: 3 });
+    expect(late).toBe(0);
+  });
+
+  it('collects a malformed or missing GlobalId of an authored root instead of skipping it', () => {
+    const step = ['DATA;', "#1=IFCWALL('bad',$,'W',$,$,$,$,$,$);", '#2=IFCRELAGGREGATES($,$,$,$,#3,(#1));', '#3=IFCCARTESIANPOINT((0.,0.,0.));', 'ENDSEC;'].join('\n');
+    const ids = authoredGlobalIds(step, '');
+    expect(ids).toEqual(['bad', '$']);
+    expect(ids.every(isValidIfcGuid)).toBe(false);
   });
 
   it.each([['seeded', seeded(1)], ['unseeded', undefined]])('keeps the source Name on %s copies', async (_, guidRandom) => {

@@ -71,6 +71,28 @@ describe('C2 SDK structural store authoring', () => {
   });
 });
 
+describe('structural relationship GlobalIds (#10963)', () => {
+  it('draw from the resolution guidRandom', async () => {
+    const withColumn = MODEL.replace('ENDSEC;\nEND-ISO', "#50=IFCCOLUMN('0column0000000000000000',#4,'C1',$,$,$,$,$);\nENDSEC;\nEND-ISO");
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(withColumn).buffer, { disableWorkerScan: true });
+    const view = new MutablePropertyView(null, 'm');
+    const editor = new StoreEditor(store, view);
+    let draws = 0;
+    const guidRandom = () => { draws++; return Math.random(); };
+    const backend = { store: createStructuralStoreBackend(() => ({ store, editor, mutationView: view, modelId: 'm', ownerHistoryId: 4, guidRandom })) } as unknown as BimBackend;
+    const ns = new StoreNamespace(backend);
+    const member = ns.addStructuralCurveMember('m', 30, { Start: [0, 0, 0], End: [2, 0, 0] });
+    const node = ns.addStructuralPointConnection('m', 30, { Position: [0, 0, 0] });
+    const load = ns.addStructuralPointAction('m', { ForceZ: -10 });
+    const analysis = ns.addStructuralAnalysisModel('m', { Name: 'Analysis' });
+    const drawsOf = (write: () => unknown) => { const before = draws; write(); return draws - before; };
+    expect(drawsOf(() => ns.connectStructuralMemberToConnection('m', member.expressId, node.expressId))).toBeGreaterThan(0);
+    expect(drawsOf(() => ns.connectStructuralElement('m', 50, member.expressId))).toBeGreaterThan(0);
+    expect(drawsOf(() => ns.connectStructuralActivityToItem('m', node.expressId, load.expressId))).toBeGreaterThan(0);
+    expect(drawsOf(() => ns.assignToStructuralGroup('m', analysis.expressId, [member.expressId, node.expressId]))).toBeGreaterThan(0);
+  });
+});
+
 // #9668: parameter extensions must reach the store through the real SDK namespace.
 describe('R2 CREATE SDK variants (#9668)', () => {
   it.each(['IFC2X3', 'IFC4', 'IFC4X3'] as const)('%s forwards varying members, warping and eccentricity', async schema => {

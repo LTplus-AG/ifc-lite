@@ -531,10 +531,9 @@ function installFreshApi(): IfcAPI {
   sparseSession?.applyTo(api); // out-of-core: before the columns (a sparse session is a content install and clears them)
   prepassColumnsApplied = false;
   applyPrepassColumnsToApi();
-  // Re-install the session source on a recovery re-init (api = null) so the *FromSource batch path isn't silently reading an empty file — same replay
-  // contract as the entity index. No-op before a session sets cachedSourceBytes.
+  // Recover the whole-file *FromSource path. Sparse batches already have their arena.
   sourceBytesApplied = false;
-  applySourceBytesToApi();
+  if (!sparseSession) applySourceBytesToApi();
   return api;
 }
 

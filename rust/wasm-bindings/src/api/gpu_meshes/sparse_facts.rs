@@ -37,7 +37,7 @@ impl SparseFacts {
         let bytes = kw.as_bytes();
         // Every keyword of interest is `IFC` + one of A/G/I/P/S: one byte test
         // rejects almost all records before any comparison.
-        let Some(&lead) = bytes.get(3) else { return };
+        let Some(&lead) = bytes.get(3) else { return }; // not-an-attribute: byte after the IFC prefix
         match lead.to_ascii_uppercase() {
             // A fill area's styles are found by scanning the source for the styled items that name it
             // (`router::annotation_style`): an arena holds none, so it would admit fills the whole file refuses.

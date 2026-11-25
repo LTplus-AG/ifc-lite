@@ -31,17 +31,17 @@ test('nearest-rank percentiles', () => {
   assert.equal(percentile([NaN, 3], 0.5), 3);
 });
 
-test('frame summary reads frame time from rAF deltas, including one long stall', () => {
+test('frame summary reads frame time from rAF deltas, including moderate and long stalls', () => {
   const { frameSummary } = need(report, 'huge-geometry-report.mjs');
-  const records = Array.from({ length: 101 }, (_, i) => ({ ts: i * 16.67 + (i >= 50 ? 200 : 0), cbMs: 1, draws: 10, tris: 3e6, presents: 1, cpuMs: 2, batches: 9, instanced: 1, culled: 0, indirect: 0 }));
+  const records = Array.from({ length: 101 }, (_, i) => ({ ts: i * 16.67 + (i >= 25 ? 50 : 0) + (i >= 50 ? 200 : 0), cbMs: 1, draws: 10, tris: 3e6, presents: 1, cpuMs: 2, batches: 9, instanced: 1, culled: 0, indirect: 0 }));
   const s = frameSummary(records);
   assert.equal(s.frames, 101);
   assert.equal(s.frameMs.median, 16.67);
   assert.equal(s.frameMs.worst, 216.67);
-  assert.deepEqual(s.hitches, { over50Ms: 1, over100Ms: 1 }, 'the one stall is a hitch past both bounds');
+  assert.deepEqual(s.hitches, { over50Ms: 2, over100Ms: 1 }, 'only the longer stall clears both thresholds');
   assert.equal(frameSummary(records.slice(0, 1)).hitches, null, 'one frame has no interval: hitches unmeasured, not zero');
-  assert.equal(s.spanMs, Math.round(100 * 16.67 + 200));
-  assert.equal(s.fps, Math.round((100 * 10000) / (100 * 16.67 + 200)) / 10);
+  assert.equal(s.spanMs, Math.round(100 * 16.67 + 250));
+  assert.equal(s.fps, Math.round((100 * 10000) / (100 * 16.67 + 250)) / 10);
   assert.equal(s.drawsPerFrame.median, 10);
   assert.equal(s.trianglesPerFrame.median, 3e6);
 });

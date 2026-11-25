@@ -672,10 +672,9 @@ function findQuantityEntry(qsets: QuantitySet[], qsetName: string, quantName: st
 }
 
 function formatQuantityValue(value: number, _type: number): CellValue {
-  // A non-finite quantity (an unresolved member Unit) has no number to show.
+  // Non-finite (an unresolved member Unit) has no number to show; otherwise return
+  // the raw number to preserve numeric sorting (display formatting is the UI's).
   if (!Number.isFinite(value)) return null;
-  // Return raw number to preserve numeric sorting.
-  // Display formatting (locale, units) is handled by the UI layer.
   return value;
 }
 

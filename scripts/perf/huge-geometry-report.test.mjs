@@ -39,6 +39,7 @@ test('frame summary reads frame time from rAF deltas, including one long stall',
   assert.equal(s.frameMs.median, 16.67);
   assert.equal(s.frameMs.worst, 216.67);
   assert.deepEqual(s.hitches, { over50Ms: 1, over100Ms: 1 }, 'the one stall is a hitch past both bounds');
+  assert.equal(frameSummary(records.slice(0, 1)).hitches, null, 'one frame has no interval: hitches unmeasured, not zero');
   assert.equal(s.spanMs, Math.round(100 * 16.67 + 200));
   assert.equal(s.fps, Math.round((100 * 10000) / (100 * 16.67 + 200)) / 10);
   assert.equal(s.drawsPerFrame.median, 10);

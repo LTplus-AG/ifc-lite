@@ -39,7 +39,8 @@ export function frameSummary(records) {
     // Delivered frames per wall-second and the path's span: a GPU-bound path renders fewer of the camera steps
     // (the frame pacer holds them) but may deliver as many frames per second; hitches are what a user sees as stutter.
     fps: spanMs ? round(((shown.length - 1) * 1000) / spanMs) : null, spanMs: round(spanMs, 0),
-    hitches: { over50Ms: deltas.filter((d) => d > 50).length, over100Ms: deltas.filter((d) => d > 100).length },
+    // No frame interval: unmeasured (null), as fps and frameMs are, not zero stutter.
+    hitches: deltas.length ? { over50Ms: deltas.filter((d) => d > 50).length, over100Ms: deltas.filter((d) => d > 100).length } : null,
     frameMs: { median: round(percentile(deltas, 0.5), 2), p95: round(percentile(deltas, 0.95), 2), p99: round(percentile(deltas, 0.99), 2),
       worst: round(deltas.length ? Math.max(...deltas) : null, 2) },
     cpuMs: { median: round(percentile(col('cpuMs'), 0.5), 2), p95: round(percentile(col('cpuMs'), 0.95), 2) },

@@ -110,6 +110,18 @@ describe('painted surfaces win coplanar depth ties', () => {
   });
 });
 
+/** Each `fn name(...) { ... }` in a WGSL source, with its brace-matched body. */
+function functionBodies(code: string): { name: string; body: string }[] {
+  const out: { name: string; body: string }[] = [];
+  for (const m of code.matchAll(/\bfn\s+(\w+)\s*\([^{]*\{/g)) {
+    let depth = 0, i = m.index! + m[0].length - 1;
+    const start = i;
+    do { if (code[i] === '{') depth++; else if (code[i] === '}') depth--; i++; } while (depth > 0 && i < code.length);
+    out.push({ name: m[1]!, body: code.slice(start, i) });
+  }
+  return out;
+}
+
 describe('one painted-aware nudge hash for every depth-nudging shader', () => {
   it('every nudgedClipZ call in every derived mesh shader takes a hash from flatNudgeHash or instanceNudgeHash', () => {
     const derived: Record<string, string> = {
@@ -122,12 +134,18 @@ describe('one painted-aware nudge hash for every depth-nudging shader', () => {
     }
     for (const [name, src] of Object.entries(derived)) {
       const code = src.replace(/\/\/[^\n]*/g, '');
-      const calls = [...code.matchAll(/nudgedClipZ\(\s*[\w.]+\s*,\s*(\w+)\s*,/g)].map((m) => m[1]!);
-      assert.ok(calls.length >= 3, `${name}: the flat, quantized/stream and instanced vertex entries nudge`);
-      for (const arg of calls) {
-        const assigned = new RegExp(`let\\s+${arg}\\s*=\\s*(\\w+)\\(`).exec(code)?.[1];
-        assert.ok(assigned === 'flatNudgeHash' || assigned === 'instanceNudgeHash', `${name}: nudgedClipZ takes ${arg} from ${assigned ?? 'nowhere'}`);
+      // Per function body: each function that nudges (the vertex entries and shadeFlatVertex) must
+      // assign the hash it passes from a shared helper itself, not borrow another entry's match.
+      let nudging = 0;
+      for (const fn of functionBodies(code)) {
+        if (fn.name === 'nudgedClipZ') continue;
+        for (const [, arg] of fn.body.matchAll(/nudgedClipZ\(\s*[\w.]+\s*,\s*(\w+)\s*,/g)) {
+          nudging++;
+          const assigned = new RegExp(`let\\s+${arg}\\s*=\\s*(\\w+)\\(`).exec(fn.body)?.[1];
+          assert.ok(assigned === 'flatNudgeHash' || assigned === 'instanceNudgeHash', `${name}: ${fn.name} passes ${arg} from ${assigned ?? 'nowhere in its body'}`);
+        }
       }
+      assert.ok(nudging >= 3, `${name}: the flat, quantized/stream and instanced vertex paths nudge`);
       // The hash itself is written once: the Knuth constant appears only in the two shared helpers.
       const outside = code.replace(/fn (flat|instance)NudgeHash\([^)]*\)[^{]*\{[^}]*\}/g, '');
       assert.equal((outside.match(/2654435761u/g) ?? []).length, 0, `${name}: a nudge hash computed outside the shared helpers`);

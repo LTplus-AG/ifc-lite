@@ -1,0 +1,26 @@
+diff --git b/apps/viewer/src/lib/model-placement/two-point-align-apply.ts a/apps/viewer/src/lib/model-placement/two-point-align-apply.ts
+index 1f08da0ade..43a654165a 100644
+--- b/apps/viewer/src/lib/model-placement/two-point-align-apply.ts
++++ a/apps/viewer/src/lib/model-placement/two-point-align-apply.ts
+@@ -40,7 +40,7 @@ export function alignPlacements(
+     const shown: ModelPlacement = preview?.before.has(id)
+       ? { ...placement, translation: addTranslation(placement.translation, preview.delta) } : placement;
+     const pivot = workspacePointToModelFrame(alignment.pivot, shown);
+-    const angle = normalizeAngle(alignment.heading);
++    const angle = normalizeAngle(shown.rotation.angle + alignment.heading);
+     const translation = subtractTranslation(target, pivot);
+     assertRenderableTranslation(translation);
+     assertRenderableTranslation(pivot);
+diff --git b/apps/viewer/src/lib/model-placement/two-point-align.ts a/apps/viewer/src/lib/model-placement/two-point-align.ts
+index 03182d8549..5cd2d2337e 100644
+--- b/apps/viewer/src/lib/model-placement/two-point-align.ts
++++ a/apps/viewer/src/lib/model-placement/two-point-align.ts
+@@ -81,7 +81,7 @@ export function alignTwoPoints(input: TwoPointAlignInput): TwoPointAlignResult {
+   if (referencePlan < MIN_PLAN_SEPARATION_M) return { ok: false, reason: 'reference-pair-degenerate' };
+   // atan2 of the cross and dot products is the signed angle between the two
+   // plan vectors in one step, without subtracting two near-pi atan2 results.
+-  const heading = wrapHeading(Math.atan2(abY * refX - abX * refY, abX * refX + abY * refY));
++  const heading = wrapHeading(Math.atan2(abX * refY - abY * refX, abX * refX + abY * refY));
+   const cos = Math.cos(heading), sin = Math.sin(heading);
+   // Where B lands relative to A' (A lands on A'), then its offset from B'.
+   const landedX = abX * cos - abY * sin, landedY = abX * sin + abY * cos;

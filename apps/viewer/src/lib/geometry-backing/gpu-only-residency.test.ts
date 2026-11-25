@@ -68,9 +68,10 @@ async function harness(options: { requested?: boolean; runningTap?: boolean; sta
 
 describe('perf.gpuOnly switch', () => {
   it('is off unless set, and auto arms only sources of 64 MiB or more', async () => {
-    const { GPU_ONLY_AUTO_BYTES, gpuOnlyMode, gpuOnlyRequested } = await load();
+    const { gpuOnlyMode, gpuOnlyRequested } = await load();
+    const autoBytes = 64 * 1024 * 1024;
     assert.equal(gpuOnlyMode(), 'off');
-    assert.equal(gpuOnlyRequested(10 * GPU_ONLY_AUTO_BYTES), false);
+    assert.equal(gpuOnlyRequested(10 * autoBytes), false);
     for (const [value, mode] of [['on', 'on'], [1, 'on'], ['true', 'on'], ['auto', 'auto'], ['AUTO', 'auto'], ['off', 'off'], [0, 'off'], ['yes', 'off']] as const) {
       flagHost.__IFC_LITE_GPU_ONLY = value;
       assert.equal(gpuOnlyMode(), mode, String(value));
@@ -78,8 +79,8 @@ describe('perf.gpuOnly switch', () => {
     flagHost.__IFC_LITE_GPU_ONLY = 'on';
     assert.equal(gpuOnlyRequested(1), true);
     flagHost.__IFC_LITE_GPU_ONLY = 'auto';
-    assert.equal(gpuOnlyRequested(GPU_ONLY_AUTO_BYTES - 1), false);
-    assert.equal(gpuOnlyRequested(GPU_ONLY_AUTO_BYTES), true);
+    assert.equal(gpuOnlyRequested(autoBytes - 1), false);
+    assert.equal(gpuOnlyRequested(autoBytes), true);
   });
 
   it('installs nothing while off: no controller is fetched and no status hook appears', async () => {

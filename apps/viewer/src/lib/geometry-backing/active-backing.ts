@@ -113,13 +113,15 @@ function allowlisted(tap: StoreGeometryBackingTap, state: ReleaseState, verified
  */
 export async function releaseVerifiedGeometry(tap: StoreGeometryBackingTap, store: StoreApi<ReleaseState>, renderer: Renderer):
   Promise<ModelBackingStatus[]> {
+  const models = store.getState().models;
   await tap.seal();
   // Fetched before anything is freed: once the arrays are gone, nothing below may fail or wait.
   const { rebuildReleasedScene } = await import('./released-device-recovery');
   const verified: Verified = new Map();
-  for (const modelId of store.getState().models.keys()) {
+  for (const [modelId, model] of models) {
     const candidate = tap.releaseCandidate(modelId);
-    if (!candidate || !tap.registryHandle.verify(await candidate.backing.acknowledge())) {
+    if (!candidate || candidate.meshes !== model.geometryResult?.meshes
+      || !tap.registryHandle.verify(await candidate.backing.acknowledge())) {
       throw new Error(`Model ${modelId} has no verified complete backing; nothing was released`);
     }
     verified.set(modelId, candidate);

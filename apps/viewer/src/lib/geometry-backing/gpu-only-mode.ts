@@ -25,15 +25,15 @@ export function gpuOnlyRequested(sourceBytes: number, mode: GpuOnlyMode = gpuOnl
   return mode === 'on' || (mode === 'auto' && sourceBytes >= GPU_ONLY_AUTO_BYTES);
 }
 
-let installed = false;
+let installation: Promise<void> | undefined;
 
-/**
- * Watch the viewer store for loads to run under GPU-only residency. Does nothing, and fetches
- * nothing, while the switch is `off`. Installed once for the page: the store outlives any one
- * viewport, and a viewport that remounts mid-load must not drop the load it was backing.
- */
-export function installGpuOnlyResidency(): void {
-  if (installed || gpuOnlyMode() === 'off') return;
-  installed = true;
-  void import('./gpu-only-residency').then(({ installGpuOnlyController }) => { installGpuOnlyController(); });
+/** Install before an eligible load publishes its placeholder. The flag-off path loads no controller. */
+export function installGpuOnlyResidency(): Promise<void> | undefined {
+  if (gpuOnlyMode() === 'off') return;
+  return installation ??= import('./gpu-only-residency').then(({ installGpuOnlyController }) => {
+    installGpuOnlyController();
+  }).catch((error: unknown) => {
+    installation = undefined;
+    console.warn('[GpuOnly] Controller unavailable; CPU geometry stays resident:', error);
+  });
 }

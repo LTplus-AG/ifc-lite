@@ -79,7 +79,6 @@ import { getEffectiveGeoreference, hasDeclaredCrs, offersCesium } from '@/lib/ge
 import { usePlacementProjectionKind } from '@/lib/geo/use-placement-projection-kind';
 import { markLoadIntent } from '@/lib/load-intent';
 import { isFeatureEnabled } from '@/lib/features';
-import { installGpuOnlyResidency } from '@/lib/geometry-backing/gpu-only-mode';
 
 /**
  * The primary container for the 3D viewport, managing IFC model loading,
@@ -112,7 +111,6 @@ function ViewportContainerLive() {
   // SourceHostProvider tree (tests), in which case the machine name is shown.
   const sourceHost = useOptionalSourceHost();
   const releaseGeometryMemory = useViewerStore((s) => s.releaseGeometryMemory);
-  useEffect(installGpuOnlyResidency, []); // `?perf.gpuOnly`: once per page; nothing is watched or fetched while it is off
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
   const structuralViewMode = useViewerStore((s) => s.structuralViewMode);
   const retypedClasses = useRetypedClasses();

@@ -42,18 +42,33 @@ function fakeRenderer() {
   return { renderer, sceneReleased: () => released };
 }
 
-async function run(name: string, beforeSettle?: () => void, reload = false) {
+async function run(name: string, beforeSettle?: () => void, scenario?: 'reload' | 'replace-during-seal') {
   const { GpuOnlyResidency, geometryBackingInUse, releaseVerifiedGeometry, runningGeometryBacking, startGeometryBacking, stopGeometryBacking } = await load();
   const store = useViewerStore as unknown as StoreApi<GpuOnlyState>;
   useViewerStore.setState({ models: new Map(), geometryResult: null, removedMeshes: new Map(), boundedGeometryMode: false } as never);
   const { renderer, sceneReleased } = fakeRenderer();
   let settled: ((ok: boolean) => void) | null = null;
+  const replacementMeshes = [mesh(3, 8)];
   const controller = new GpuOnlyResidency(store, {
     requested: () => true,
     tapInUse: geometryBackingInUse,
     startTap: (target) => startGeometryBacking(target, { database: { name, locks: null } } as never),
     stopTap: stopGeometryBacking,
-    release: releaseVerifiedGeometry,
+    release: async (tap, target, renderer) => {
+      if (scenario === 'replace-during-seal') {
+        const seal = tap.seal.bind(tap);
+        tap.seal = async () => {
+          tap.seal = seal;
+          useViewerStore.setState({ models: new Map(), geometryResult: null } as never);
+          const geometryResult: GeometryResult = { meshes: replacementMeshes, totalTriangles: 1, totalVertices: 3,
+            coordinateInfo: {} as GeometryResult['coordinateInfo'] };
+          useViewerStore.setState({ models: new Map([['m', { id: 'm', idOffset: 0, maxExpressId: 10,
+            geometryResult, fileSize: 1, loadState: 'complete' }]]) } as never);
+          return seal();
+        };
+      }
+      return releaseVerifiedGeometry(tap, target, renderer);
+    },
     renderer: () => renderer,
     whenSettled: (done) => { settled = done; return () => { settled = null; }; },
     now: () => performance.now(),
@@ -74,13 +89,13 @@ async function run(name: string, beforeSettle?: () => void, reload = false) {
     return meshes;
   }
   const firstMeshes = await loadModel();
-  if (reload) {
+  if (scenario === 'reload') {
     assert.equal(controller.status().phase, 'released', controller.status().error);
     assert.deepEqual(firstMeshes.map((mesh) => mesh.positions.length), [0, 0]);
     useViewerStore.setState({ models: new Map(), geometryResult: null } as never);
   }
-  const meshes = reload ? await loadModel() : firstMeshes;
-  return { controller, meshes, sceneReleased, uninstall, runningGeometryBacking, stopGeometryBacking };
+  const meshes = scenario === 'reload' ? await loadModel() : firstMeshes;
+  return { controller, meshes, replacementMeshes, sceneReleased, uninstall, runningGeometryBacking, stopGeometryBacking };
 }
 
 describe('GPU-only residency against the real backing', () => {
@@ -103,11 +118,27 @@ describe('GPU-only residency against the real backing', () => {
 
   it('#11512: backs and releases a reload through the same tap after the previous model closes', async () => {
     const { controller, meshes, uninstall, runningGeometryBacking, stopGeometryBacking } = await run(
-      `gpu-only-reload-${process.pid}`, undefined, true,
+      `gpu-only-reload-${process.pid}`, undefined, 'reload',
     );
     try {
       assert.equal(controller.status().phase, 'released', controller.status().error);
       assert.deepEqual(meshes.map((mesh) => mesh.positions.length), [0, 0]);
+    } finally {
+      uninstall();
+      const tap = await runningGeometryBacking();
+      if (tap) await stopGeometryBacking(tap);
+    }
+  });
+
+  it('#11512: a release awaiting its seal leaves a same-ID replacement resident', async () => {
+    const { controller, meshes, replacementMeshes, sceneReleased, uninstall, runningGeometryBacking, stopGeometryBacking } = await run(
+      `gpu-only-replacement-${process.pid}`, undefined, 'replace-during-seal',
+    );
+    try {
+      assert.equal(controller.status().phase, 'failed');
+      assert.equal(sceneReleased(), false);
+      assert.deepEqual(meshes.map((mesh) => mesh.positions.length), [9, 9]);
+      assert.deepEqual(replacementMeshes.map((mesh) => mesh.positions.length), [9]);
     } finally {
       uninstall();
       const tap = await runningGeometryBacking();

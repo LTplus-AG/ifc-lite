@@ -8,6 +8,7 @@
  * cache management, and server-side parsing delegation
  *
  */
+import { gpuOnlyRequested, installGpuOnlyResidency } from '@/lib/geometry-backing/gpu-only-mode';
 import { useCallback, useEffect, useRef } from 'react';
 import { attachCapturedLoad } from '@/lib/error-reports/correlation';
 import { useShallow } from 'zustand/react/shallow';
@@ -408,6 +409,10 @@ export function useIfcLoader() {
     const settleResumable = file && beginResumableLoad(file);
     try {
       const fileSize = processedModel?.bytes ?? file?.size ?? 0;
+      if (target.kind === 'primary' && gpuOnlyRequested(fileSize)) {
+        await installGpuOnlyResidency();
+        if (isStale()) return;
+      }
       const fileSizeMB = fileSize / (1024 * 1024);
       // LandXML finalizes before the full-buffer detector below; a processed model is IFC.
       let format: ReturnType<typeof detectFormat> | NonNullable<ReturnType<typeof detectPointCloudFormat>> | 'landxml' = processedModel ? 'ifc' : isLandXmlFileName(fileName) ? 'landxml' : 'unknown';

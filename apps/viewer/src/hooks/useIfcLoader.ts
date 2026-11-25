@@ -1930,7 +1930,7 @@ export function useIfcLoader() {
                   loadState: 'complete',
                   // Only show "writing" when this file will actually be cached
                   // under the current plan (respects the size bands + kill switch).
-                  cacheState: cachePlan.shouldCache ? 'writing' : 'none', loadPath: 'wasm', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad,
+                  cacheState: cacheable ? 'writing' : 'none', loadPath: 'wasm', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad,
                 }, allInstancedShards));
                 if (isStale()) return; // finalize awaited the identity pass (#7022)
 

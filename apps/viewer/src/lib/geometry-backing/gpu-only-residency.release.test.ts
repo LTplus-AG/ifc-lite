@@ -42,7 +42,7 @@ function fakeRenderer() {
   return { renderer, sceneReleased: () => released };
 }
 
-async function run(name: string, beforeSettle?: () => void) {
+async function run(name: string, beforeSettle?: () => void, reload = false) {
   const { GpuOnlyResidency, geometryBackingInUse, releaseVerifiedGeometry, runningGeometryBacking, startGeometryBacking, stopGeometryBacking } = await load();
   const store = useViewerStore as unknown as StoreApi<GpuOnlyState>;
   useViewerStore.setState({ models: new Map(), geometryResult: null, removedMeshes: new Map(), boundedGeometryMode: false } as never);
@@ -59,16 +59,27 @@ async function run(name: string, beforeSettle?: () => void) {
     now: () => performance.now(),
   });
   const uninstall = controller.install();
-  // The loader's order: a placeholder, then the streamed geometry, then completion.
-  useViewerStore.setState({ models: new Map([['m', { id: 'm', idOffset: 0, maxExpressId: 10, geometryResult: null, fileSize: 1, loadState: 'pending' }]]) } as never);
-  const meshes = [mesh(1, 0), mesh(2, 4)];
-  const geometryResult: GeometryResult = { meshes, totalTriangles: 2, totalVertices: 6, coordinateInfo: {} as GeometryResult['coordinateInfo'] };
-  useViewerStore.setState({ models: new Map([['m', { id: 'm', idOffset: 0, maxExpressId: 10, geometryResult, fileSize: 1, loadState: 'complete' }]]) } as never);
-  beforeSettle?.();
-  assert.ok(settled, 'the controller waits for the scene once the load completed');
-  (settled as (ok: boolean) => void)(true);
-  const deadline = Date.now() + 10_000;
-  while (!['released', 'failed', 'cancelled'].includes(controller.status().phase) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 5));
+  async function loadModel() {
+    // The loader's order: a placeholder, then the streamed geometry, then completion.
+    useViewerStore.setState({ models: new Map([['m', { id: 'm', idOffset: 0, maxExpressId: 10, geometryResult: null, fileSize: 1, loadState: 'pending' }]]) } as never);
+    const meshes = [mesh(1, 0), mesh(2, 4)];
+    const geometryResult: GeometryResult = { meshes, totalTriangles: 2, totalVertices: 6, coordinateInfo: {} as GeometryResult['coordinateInfo'] };
+    useViewerStore.setState({ models: new Map([['m', { id: 'm', idOffset: 0, maxExpressId: 10, geometryResult, fileSize: 1, loadState: 'complete' }]]) } as never);
+    beforeSettle?.();
+    assert.ok(settled, 'the controller waits for the scene once the load completed');
+    (settled as (ok: boolean) => void)(true);
+    settled = null;
+    const deadline = Date.now() + 10_000;
+    while (!['released', 'failed', 'cancelled'].includes(controller.status().phase) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 5));
+    return meshes;
+  }
+  const firstMeshes = await loadModel();
+  if (reload) {
+    assert.equal(controller.status().phase, 'released', controller.status().error);
+    assert.deepEqual(firstMeshes.map((mesh) => mesh.positions.length), [0, 0]);
+    useViewerStore.setState({ models: new Map(), geometryResult: null } as never);
+  }
+  const meshes = reload ? await loadModel() : firstMeshes;
   return { controller, meshes, sceneReleased, uninstall, runningGeometryBacking, stopGeometryBacking };
 }
 
@@ -83,6 +94,20 @@ describe('GPU-only residency against the real backing', () => {
       assert.ok(tap, 'the backing is the only copy now: its tap keeps running');
       assert.equal(tap.status().every((row) => row.complete), true);
       assert.equal(useViewerStore.getState().boundedGeometryMode, false, 'the mode ends with the load it was set for');
+    } finally {
+      uninstall();
+      const tap = await runningGeometryBacking();
+      if (tap) await stopGeometryBacking(tap);
+    }
+  });
+
+  it('#11512: backs and releases a reload through the same tap after the previous model closes', async () => {
+    const { controller, meshes, uninstall, runningGeometryBacking, stopGeometryBacking } = await run(
+      `gpu-only-reload-${process.pid}`, undefined, true,
+    );
+    try {
+      assert.equal(controller.status().phase, 'released', controller.status().error);
+      assert.deepEqual(meshes.map((mesh) => mesh.positions.length), [0, 0]);
     } finally {
       uninstall();
       const tap = await runningGeometryBacking();

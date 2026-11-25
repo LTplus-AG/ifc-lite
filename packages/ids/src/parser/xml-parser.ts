@@ -51,32 +51,41 @@ export class IDSParseError extends Error {
   }
 }
 
-// `DOMParser` exists in browsers and in test envs (happy-dom/jsdom). In plain
-// Node it's undefined, so fall back to @xmldom/xmldom. The dynamic import is
-// hidden behind a runtime-computed specifier so browser bundlers don't pull
-// xmldom into the client bundle.
+// Browsers and test envs have `DOMParser`. Plain Node loads @xmldom/xmldom on
+// the first parse that needs it, through `process.getBuiltinModule`, so workerd
+// can import this module and no bundler sees the Node-only package.
 type DOMParserCtor = new () => { parseFromString(input: string, mime: string): Document };
 
-// Only Node needs the xmldom fallback. A browser WORKER has no DOMParser
-// either, but it also never parses IDS (the main thread does, where
-// DOMParser exists) — and attempting `import('@xmldom/xmldom')` there
-// throws "bare specifier was not remapped" because the Node-only package
-// isn't in the browser bundle. Gate the fallback to the Node runtime so
-// merely importing this module (e.g. for `validateIDS` inside a worker)
-// never triggers it. Workers have no `process.versions.node`.
-const nodeProcess = (globalThis as {
-  process?: { versions?: { node?: string } };
-}).process;
-const isNodeRuntime = !!nodeProcess?.versions?.node;
+type NodeProcess = {
+  versions?: { node?: string };
+  getBuiltinModule?: (id: 'node:module') => { createRequire(path: string): (id: string) => unknown } | undefined;
+};
 
-let DOMParserImpl: DOMParserCtor | null =
-  typeof globalThis !== 'undefined' && typeof (globalThis as { DOMParser?: DOMParserCtor }).DOMParser === 'function'
-    ? ((globalThis as { DOMParser?: DOMParserCtor }).DOMParser as DOMParserCtor)
-    : null;
-if (!DOMParserImpl && isNodeRuntime) {
-  const moduleName = '@xmldom/xmldom';
-  const xmldom = (await import(/* @vite-ignore */ moduleName)) as { DOMParser: DOMParserCtor };
-  DOMParserImpl = xmldom.DOMParser;
+function hasDOMParser(value: unknown): value is { DOMParser: DOMParserCtor } {
+  return typeof value === 'object' && value !== null && typeof Reflect.get(value, 'DOMParser') === 'function';
+}
+
+let nodeFallback: { parser: DOMParserCtor | null; failure?: string } | undefined;
+
+function loadNodeFallback(): { parser: DOMParserCtor | null; failure?: string } {
+  const nodeProcess = (globalThis as { process?: NodeProcess }).process;
+  if (!nodeProcess?.versions?.node || typeof nodeProcess.getBuiltinModule !== 'function') {
+    return { parser: null, failure: 'this runtime has no globalThis.DOMParser and is not Node.' };
+  }
+  try {
+    const nodeModule = nodeProcess.getBuiltinModule('node:module');
+    const xmldom = nodeModule?.createRequire(import.meta.url)('@xmldom/xmldom');
+    if (hasDOMParser(xmldom)) return { parser: xmldom.DOMParser };
+    return { parser: null, failure: '@xmldom/xmldom did not export a DOMParser.' };
+  } catch (err) {
+    return { parser: null, failure: `@xmldom/xmldom could not be loaded: ${err instanceof Error ? err.message : String(err)}` };
+  }
+}
+
+function resolveDOMParser(): { parser: DOMParserCtor | null; failure?: string } {
+  if (hasDOMParser(globalThis)) return { parser: globalThis.DOMParser };
+  nodeFallback ??= loadNodeFallback();
+  return nodeFallback;
 }
 
 /** Options for `parseIDS`. `preview.ids11` also reads IDS 1.1 PREVIEW candidates (unstable). */
@@ -95,13 +104,14 @@ export function parseIDS(xmlContent: string | ArrayBuffer, options?: ParseIDSOpt
     xmlString = xmlString.slice(1);
   }
 
-  if (!DOMParserImpl) {
+  const resolved = resolveDOMParser();
+  if (!resolved.parser) {
     throw new IDSParseError(
       'No DOMParser implementation available',
-      'Neither globalThis.DOMParser nor @xmldom/xmldom could be loaded.',
+      `Neither globalThis.DOMParser nor @xmldom/xmldom is available: ${resolved.failure ?? 'unknown reason'}`,
     );
   }
-  const parser = new DOMParserImpl();
+  const parser = new resolved.parser();
 
   // Browser DOMParser → returns a Document with a <parsererror> element on
   // malformed input. xmldom v0.9 → throws on fatalError (and may also leave

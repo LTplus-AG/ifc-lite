@@ -70,6 +70,8 @@ export const measureEn = {
 
   'measure.snapToggle.title': 'Toggle snap (S key)',
   'measure.snap.label': 'Snap',
+  'measure.xray.label': 'X-ray',
+  'measure.xrayToggle.title': 'See through models to snap to hidden corners ({keys} key)',
 
   'measure.geoToggle.enabledTitle': 'Toggle real-world XYZ (Eastings / Northings / Height)',
   'measure.geoToggle.disabledTitle': 'Requires map georeferencing (IfcMapConversion) in the model',

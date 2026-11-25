@@ -46,6 +46,8 @@ export const measureRu = {
   "measure.mode.pointTitle": "Щёлкните по точке, чтобы узнать её координаты X/Y/Z",
   "measure.snapToggle.title": "Переключить привязку (клавиша S)",
   "measure.snap.label": "Привязка",
+  "measure.xray.label": "Рентген",
+  "measure.xrayToggle.title": "Сделать модели прозрачными, чтобы привязываться к скрытым углам (клавиша {keys})",
   "measure.geoToggle.enabledTitle": "Переключить координаты XYZ (восток/север/высота) в реальном мире",
   "measure.geoToggle.disabledTitle": "Требуется привязка карты к географическим координатам (IfcMapConversion) в модели",
   "measure.geo.label": "Гео XYZ",

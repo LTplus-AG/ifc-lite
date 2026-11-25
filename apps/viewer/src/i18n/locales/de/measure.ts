@@ -65,6 +65,8 @@ export const measureDe = {
   "measure.mode.radius": "Radius",
   "measure.snapToggle.title": "Fang umschalten (Taste S)",
   "measure.snap.label": "Fang",
+  "measure.xray.label": "Röntgen",
+  "measure.xrayToggle.title": "Modelle durchsichtig darstellen, um verdeckte Ecken zu fangen (Taste {keys})",
   "measure.geoToggle.enabledTitle": "Reales XYZ umschalten (Eastings / Northings / Höhe)",
   "measure.geoToggle.disabledTitle": "Erfordert Kartengeoreferenzierung (IfcMapConversion) im Modell",
   "measure.geo.label": "Geo XYZ",

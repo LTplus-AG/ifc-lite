@@ -48,6 +48,7 @@ import { createMeshSource, type MeshPick } from '@/lib/snap/sources/mesh';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { cancelMeasureRaycast } from './measureHandlers.js';
 import { isGeometryHeld } from '@/lib/pick-gating';
+import { screenCornerSnapConfig } from '@/lib/snap/corner-assist';
 
 /** Ghost ids a command preview may use (`ghost.ts` allocates from `commandGhostId`). */
 const GHOST_PICK_GUARD = 4;
@@ -108,7 +109,7 @@ function magneticPick(ctx: MouseHandlerContext, command: ModelingCommand, x: num
   for (let attempt = 0; attempt < 16; attempt++) {
     const pick = ctx.renderer.raycastSceneMagnetic(x, y, {
       edge: lock.edge, meshExpressId: lock.meshExpressId, lockStrength: lock.lockStrength,
-    }, { ...options, hiddenIds, snapOptions: { snapToVertices: true, snapToEdges: true, snapToFaces: true, screenSnapRadius: 40, screenCornerSnap: {} } }) as MeshPick;
+    }, { ...options, hiddenIds, snapOptions: { snapToVertices: true, snapToEdges: true, snapToFaces: true, screenSnapRadius: 40, screenCornerSnap: screenCornerSnapConfig(false) } }) as MeshPick;
     if (!pick || !construction) return pick;
     const id = pick.snapTarget?.expressId ?? pick.intersection?.expressId;
     const s = useViewerStore.getState();

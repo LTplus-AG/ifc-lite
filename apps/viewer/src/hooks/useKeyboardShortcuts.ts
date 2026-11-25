@@ -150,6 +150,7 @@ const RUNNERS: readonly [KeyCommandId, CommandRun][] = [
   ['measure.cancel', cancelMeasurement],
   ['measure.finish', finishMeasurement],
   ['measure.toggleSnap', () => { useViewerStore.getState().toggleSnap(); }],
+  ['measure.toggleXray', () => { useViewerStore.getState().toggleSnapXray(); }],
   ['section.previousPlane', () => stepSectionPlane(-1)],
   ['section.nextPlane', () => stepSectionPlane(1)],
   ['selection.escape', () => { escapeGlobal(false); }],
@@ -161,6 +162,7 @@ const TOOL_CONTEXT: Partial<Record<KeyCommandId, string>> = {
   'measure.cancel': 'measure',
   'measure.finish': 'measure',
   'measure.toggleSnap': 'measure',
+  'measure.toggleXray': 'measure',
   'section.previousPlane': 'section',
   'section.nextPlane': 'section',
 };

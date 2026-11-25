@@ -10,6 +10,7 @@ import { getGlobalRenderer } from '@/hooks/useBCF';
 import { resolveEntityRef, useViewerStore } from '@/store';
 import { fromRenderTranslation, orthogonalAxis, constrainTranslation, subtractTranslation } from '@/lib/model-placement/translation';
 import type { PlacementAnchor } from '@/lib/model-placement/state';
+import { screenCornerSnapConfig } from '@/lib/snap/corner-assist';
 
 export type PickRole = 'source' | 'target' | null;
 
@@ -23,6 +24,7 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
     if (!role || !renderer || !canvas) { setHover(null); return; }
     const state = useViewerStore.getState(), preview = state.modelPlacement.preview;
     if (!preview) return;
+    state.setRepositionPicking(true);
     const allowed = new Set<number>();
     const accepts = (id: string) => (role === 'source') === preview.before.has(id) && state.models.get(id)?.visible &&
       (role === 'source' || !reference || id === reference);
@@ -53,7 +55,7 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
         edgeLock, {
           hiddenIds: current.hiddenEntities, isolatedIds,
           snapOptions: { snapToVertices: current.snapEnabled, snapToEdges: current.snapEnabled,
-            snapToFaces: current.snapEnabled, snapToPointClouds: true, screenSnapRadius: 12, screenCornerSnap: {} },
+            snapToFaces: current.snapEnabled, snapToPointClouds: true, screenSnapRadius: 12, screenCornerSnap: screenCornerSnapConfig(current.snapXray) },
         });
       if (result.edgeLock.shouldRelease) edgeLock = { edge: null, meshExpressId: null, lockStrength: 0 };
       else if (result.edgeLock.shouldLock && result.edgeLock.edge) edgeLock = {
@@ -128,6 +130,7 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
       canvas.removeEventListener('pointermove', move, true);
       canvas.removeEventListener('pointerdown', down, true);
       canvas.style.cursor = previousCursor;
+      useViewerStore.getState().setRepositionPicking(false);
     };
   }, [role, finish, onError, models, reference]);
   return hover;

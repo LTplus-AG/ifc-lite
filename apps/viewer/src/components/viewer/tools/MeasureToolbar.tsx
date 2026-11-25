@@ -11,11 +11,12 @@
  */
 
 import { useCallback } from 'react';
-import { Crosshair, Globe, List, Magnet, Ruler, Trash2, X } from 'lucide-react';
+import { Crosshair, Eye, Globe, List, Magnet, Ruler, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useDialogs } from '@/components/ui/confirm-dialog';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n/useTranslation';
+import { shortcutLabel } from '@/lib/commands/shortcut-label';
 import { useAnchorGeoreference } from '@/lib/geo/useAnchorGeoreference';
 import { HudItem, HudSegmented, HudToolbar, type HudSegmentedOption } from '../../viewport-ui/hud';
 import { HudDivider, HudToggle } from '../../viewport-ui/hud/HudToggle';
@@ -44,6 +45,8 @@ export function MeasureToolbar() {
   const setAngleKind = useViewerStore((s) => s.setAngleKind);
   const snapEnabled = useViewerStore((s) => s.snapEnabled);
   const toggleSnap = useViewerStore((s) => s.toggleSnap);
+  const snapXray = useViewerStore((s) => s.snapXray);
+  const toggleSnapXray = useViewerStore((s) => s.toggleSnapXray);
   const geoReadoutEnabled = useViewerStore((s) => s.geoReadoutEnabled);
   const toggleGeoReadout = useViewerStore((s) => s.toggleGeoReadout);
   const clearMeasurements = useViewerStore((s) => s.clearMeasurements);
@@ -101,6 +104,9 @@ export function MeasureToolbar() {
         <HudDivider />
         <HudToggle pressed={snapEnabled} onPressedChange={toggleSnap} title={t('measure.snapToggle.title')} icon={<Magnet aria-hidden className="h-3.5 w-3.5" />}>
           {t('measure.snap.label')}
+        </HudToggle>
+        <HudToggle pressed={snapXray} onPressedChange={toggleSnapXray} title={t('measure.xrayToggle.title', { keys: shortcutLabel('measure.toggleXray') })} icon={<Eye aria-hidden className="h-3.5 w-3.5" />}>
+          {t('measure.xray.label')}
         </HudToggle>
         <HudToggle
           pressed={geoReadoutEnabled && anchor !== null}

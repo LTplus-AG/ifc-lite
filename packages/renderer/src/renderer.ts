@@ -69,7 +69,8 @@ export { DEFAULT_OVERLAY_THEME } from './overlay-theme.js';
 import { DEFAULT_OVERLAY_THEME, type OverlayTheme } from './overlay-theme.js';
 export type { Ray, Vec3, Intersection } from './raycaster.js';
 export type { SnapTarget, SnapOptions, EdgeLockInput, MagneticSnapResult } from './snap-detector.js';
-export type { ScreenCornerSnapOptions } from './snap-screen-corners.js';
+export type { ScreenCornerSnapOptions, ScreenCornerCandidate } from './snap-screen-corners.js';
+export type { ScreenCornerMarkers } from './screen-corner-markers.js';
 export type { SourceCurveIdentity, SourceSnapCurve } from './source-curve-snap.js';
 
 // Extracted manager classes. `PickingManager` is NOT exported: its constructor
@@ -3091,16 +3092,14 @@ export class Renderer {
      * the current view (`readbackRaycastCovers`): a neighbourhood is not the
      * whole scene, so another ray could pass an unfed front surface.
      */
-    setReadbackRaycastMeshes(meshes: readonly MeshData[] | null, at?: { x: number; y: number }): void {
-        this.raycastEngine.setReadbackMeshes(meshes, at);
-    }
+    setReadbackRaycastMeshes(meshes: readonly MeshData[] | null, at?: { x: number; y: number }): void { this.raycastEngine.setReadbackMeshes(meshes, at); }
 
     /** Whether the readback pieces were prepared for the ray at (x, y) under the current view. */
-    readbackRaycastCovers(x: number, y: number): boolean {
-        return this.raycastEngine.readbackCovers(x, y);
-    }
+    readbackRaycastCovers(x: number, y: number): boolean { return this.raycastEngine.readbackCovers(x, y); }
     /** The view readback coverage is stamped with: capture it before the pick, install only while it is unchanged. */
     readbackRaycastViewKey(): string { return this.raycastEngine.readbackViewKey(); }
+    /** The snap markers (#11504) of the latest magnetic pick whose `screenCornerSnap` set `markers`: `get()` them, `subscribe` to changes. */
+    get cornerMarkers() { return this.raycastEngine.cornerMarkers; }
 
     /**
      * Raycast with magnetic edge snapping: the "stick and slide along edges" experience.

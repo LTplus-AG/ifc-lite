@@ -1,0 +1,6 @@
+{
+  "issue": 7955,
+  "why": "Keep the marker exports loadable while dropping the markers opt-in, the change test, the active-corner match, the occlusion rule, the ordering, the cap and the eligibility filter of the corner candidates: the candidatesNear and marker channel tests must go red.",
+  "key": "packages/renderer/src/screen-corner-markers.ts",
+  "mutation": "tests/evidence/corner-markers-renderer-11504/behaviour.oracle.patch"
+}

@@ -25,6 +25,8 @@ export const repositionPanelRu = {
   "repositionPanel.pickSourceButton": "Выбрать исходную точку",
   "repositionPanel.pickTargetButton": "Выбрать целевую точку",
   "repositionPanel.snapLabel": "Привязка",
+  "repositionPanel.xrayLabel": "Рентген",
+  "repositionPanel.xrayTitle": "Сделать модели прозрачными, чтобы привязываться к скрытым углам (клавиша {keys})",
   "repositionPanel.pickPrompt": "Выберите {role} точку. Используйте остальные кнопки мыши для навигации.",
   "repositionPanel.previewPrompt": "Проверьте перемещение в предварительном просмотре, затем нажмите Применить.",
   "repositionPanel.hoverDetail": "{kind} · {name}",

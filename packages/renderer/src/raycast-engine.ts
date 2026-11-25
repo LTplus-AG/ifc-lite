@@ -17,6 +17,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import type { PickClipState, PickOptions } from './types.js';
 import { pointClipped } from './scene-raycaster.js';
 import { ScreenCornerIndex } from './snap-screen-corners.js';
+import { CornerMarkerChannel } from './screen-corner-markers.js';
 import type { SourceSnapCurve } from './source-curve-snap.js';
 import { querySourceCurves } from './raycast-source-curve-query.js';
 import type { CpuGeometryVisitor } from './cpu-geometry-visit.js';
@@ -41,6 +42,8 @@ export class RaycastEngine {
     private snapDetector: SnapDetector;
     private flatIndex: RaycastFlatIndex;
     private screenCorners = new ScreenCornerIndex();
+    /** The corner snap markers of the latest pick that asked for them (#11504). */
+    readonly cornerMarkers = new CornerMarkerChannel();
     private pointCloudProvider: PointCloudRayProvider | null = null;
     private sourceSnapCurves: readonly SourceSnapCurve[] = [];
     /** Flat pieces read back for released geometry (#10264); empty when unused. */
@@ -330,6 +333,7 @@ export class RaycastEngine {
                 }
             }
 
+            this.cornerMarkers.publish(this.screenCorners, options?.snapOptions?.screenCornerSnap, x, y, this.readbackViewKey(), magneticResult.snapTarget);
             return {
                 intersection,
                 ...magneticResult,
@@ -357,6 +361,7 @@ export class RaycastEngine {
     ): MagneticSnapResult {
         const snap = options?.snapOptions;
         const config = snap?.screenCornerSnap;
+        this.screenCorners.dropLive();
         if (!config || (snap.snapToVertices === false && snap.snapToEdges === false)) return current;
         const hit = this.screenCorners.query({
             x, y, ray, camera: this.camera, viewKey: this.readbackViewKey(), viewport,
@@ -383,6 +388,7 @@ export class RaycastEngine {
     invalidateBVHCache(): void {
         this.flatIndex.invalidate();
         this.screenCorners.clear();
+        this.cornerMarkers.set(null);
     }
 
     /** Diagnostic (#10264): CPU geometry the raycast index and its BVH still reference. */

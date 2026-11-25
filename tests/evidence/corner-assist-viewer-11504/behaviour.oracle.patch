@@ -1,0 +1,43 @@
+diff --git b/apps/viewer/src/lib/snap/corner-assist.ts a/apps/viewer/src/lib/snap/corner-assist.ts
+index 675589d8a8..c81f84fe76 100644
+--- b/apps/viewer/src/lib/snap/corner-assist.ts
++++ a/apps/viewer/src/lib/snap/corner-assist.ts
+@@ -34,7 +34,7 @@ export function isSnapPicking(s: Pick<SnapPickState, 'activeTool' | 'repositionP
+  * is not offered the toggle, so a preference set earlier does not reach it.
+  */
+ export function isSnapXrayActive(s: Pick<SnapPickState, 'activeTool' | 'repositionPicking' | 'snapXray'>): boolean {
+-  return s.snapXray;
++  return s.snapXray && (s.activeTool === 'measure' || s.repositionPicking);
+ }
+ 
+ /**
+@@ -42,7 +42,7 @@ export function isSnapXrayActive(s: Pick<SnapPickState, 'activeTool' | 'repositi
+  * occlusion rule off, so corners behind other geometry can be snapped.
+  */
+ export function screenCornerSnapConfig(xray: boolean): ScreenCornerSnapOptions {
+-  return { markers: true, ignoreOcclusion: true };
++  return xray ? { markers: true, ignoreOcclusion: true } : { markers: true };
+ }
+ 
+ /** One shared empty set: X-ray ghosts every entity by naming none of them as the exception. */
+@@ -55,7 +55,7 @@ const GHOST_EVERYTHING: Set<number> = new Set();
+  * appearance exactly, whatever other feature owns the ghosting.
+  */
+ export function effectiveGhostExcept(xrayActive: boolean, stored: Set<number> | null): Set<number> | null {
+-  return GHOST_EVERYTHING;
++  return xrayActive ? GHOST_EVERYTHING : stored;
+ }
+ 
+ /** A marker as the overlay draws it. */
+@@ -73,9 +73,9 @@ export interface CornerMarkerView {
+  * last so it is drawn on top.
+  */
+ export function cornerMarkerViews(markers: ScreenCornerMarkers | null, currentViewKey: string | null): CornerMarkerView[] {
+-  if (!markers) return [];
++  if (!markers || currentViewKey === null || markers.viewKey !== currentViewKey) return [];
+   const views = markers.candidates.map((c, i) => ({
+     key: `${i}:${c.expressId}`, x: c.screen.x, y: c.screen.y, active: i === markers.activeIndex,
+   }));
+-  return views;
++  return [...views.filter((v) => !v.active), ...views.filter((v) => v.active)];
+ }

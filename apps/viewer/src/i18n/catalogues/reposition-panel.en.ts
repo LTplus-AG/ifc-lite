@@ -46,6 +46,8 @@ export const repositionPanelEn = {
   'repositionPanel.pickSourceButton': 'Pick source point',
   'repositionPanel.pickTargetButton': 'Pick target point',
   'repositionPanel.snapLabel': 'Snap',
+  'repositionPanel.xrayLabel': 'X-ray',
+  'repositionPanel.xrayTitle': 'See through models to snap to hidden corners ({keys} key)',
   'repositionPanel.pickPrompt': 'Pick a {role} point. Use the other mouse buttons to navigate.',
   'repositionPanel.previewPrompt': 'Preview the move, then Apply.',
   'repositionPanel.hoverDetail': '{kind} · {name}',

@@ -28,15 +28,14 @@
 
 import type { MeshData } from '@ifc-lite/geometry';
 import type { Vec3, Ray } from './raycaster.js';
-import type { Camera } from './camera.js';
 import type { PickClipState } from './pick-types.js';
 import { isEntityVisible } from './entity-visibility.js';
-import { entityClip } from './section-exclusions.js';
-import { pointClipped } from './scene-raycaster.js';
-import { planesFor } from './snap-clip.js';
-import { clipSegmentInterval } from './clip-half-spaces.js';
-import { MIN_CORNER_VALENCE } from './snap-edge-runs.js';
 import type { MeshGeometryCache } from './snap-geometry-cache.js';
+import { depthAlongRay, segDist2, closestPointOnSegmentToRay } from './snap-screen-geometry.js';
+import { buildScreenGrid, candidatesFromCache, type Grid, type PieceCandidates, type ScreenSnapCamera } from './snap-screen-grid.js';
+
+export { closestPointOnSegmentToRay, candidatesFromCache };
+export type { ScreenSnapCamera };
 
 /** Options of the screen-space corner search. Pass `{}` for the defaults. */
 export interface ScreenCornerSnapOptions {
@@ -67,6 +66,15 @@ export interface ScreenCornerSnapOptions {
   ignoreOcclusion?: boolean;
   /** Depth slack, in world units, for the occlusion rule. Default 0.05 + 1 % of the hit distance. */
   occlusionTolerance?: number;
+  /**
+   * Publish the corners near the cursor as snap markers (`Renderer.cornerMarkers`),
+   * for a host that draws them. Default false.
+   */
+  markers?: boolean;
+  /** Pixel radius around the cursor within which marker corners are listed. Default 48. */
+  markerRadiusPx?: number;
+  /** Most marker corners listed. Default 12. */
+  markerLimit?: number;
 }
 
 export const DEFAULT_CORNER_RADIUS_PX = 10;
@@ -84,36 +92,14 @@ export interface ScreenCornerHit {
   edge?: { v0: Vec3; v1: Vec3 };
 }
 
-interface PieceCandidates {
+/** A corner offered as a snap marker: where it is on screen and in the world. */
+export interface ScreenCornerCandidate {
+  /** CSS px, canvas space. */
+  screen: { x: number; y: number };
+  position: Vec3;
   expressId: number;
-  /** x, y, z per corner. */
-  corners: Float64Array;
-  /** x0, y0, z0, x1, y1, z1 per edge. */
-  edges: Float64Array;
-}
-
-/** Corner quantisation used to drop duplicates within a piece (0.1 mm). */
-const QUANT = 1e4;
-
-/** Feature corners and feature edges of a geometry cache as flat world-space arrays. */
-export function candidatesFromCache(expressId: number, cache: MeshGeometryCache): PieceCandidates {
-  const seen = new Set<string>();
-  const corners: number[] = [];
-  const addCorner = (p: Vec3, valence: number) => {
-    if (valence < MIN_CORNER_VALENCE) return;
-    const key = `${Math.round(p.x * QUANT)},${Math.round(p.y * QUANT)},${Math.round(p.z * QUANT)}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    corners.push(p.x, p.y, p.z);
-  };
-  const edges = new Float64Array(cache.edges.length * 6);
-  cache.edges.forEach((edge, i) => {
-    edges.set([edge.v0.x, edge.v0.y, edge.v0.z, edge.v1.x, edge.v1.y, edge.v1.z], i * 6);
-    addCorner(edge.v0, edge.v0Valence);
-    addCorner(edge.v1, edge.v1Valence);
-    for (const j of edge.junctions) addCorner(j.point, j.valence);
-  });
-  return { expressId, corners: Float64Array.from(corners), edges };
+  /** Screen distance from the cursor, in CSS px. */
+  distancePx: number;
 }
 
 const setStamps = new WeakMap<object, number>();
@@ -138,27 +124,13 @@ function gridKey(viewKey: string, clip: PickClipState | null | undefined, w: num
   return [viewKey, clipKey, w, h, ready, idsOf(hidden), idsOf(isolated), idsOf(eligible), opts.cornerRadiusPx].join('|');
 }
 
-interface Grid {
-  key: string;
-  cell: number;
-  cols: number;
-  rows: number;
-  /** Per cell: indices into the corner arrays. */
-  cornerCells: Map<number, number[]>;
-  cx: number[]; cy: number[]; cornerPiece: number[]; cornerWorld: number[];
-  /** Per cell: indices into the edge arrays. */
-  edgeCells: Map<number, number[]>;
-  ex0: number[]; ey0: number[]; ex1: number[]; ey1: number[]; edgePiece: number[]; edgeWorld: number[];
-}
-
-/** The camera pieces a query needs; `Camera` satisfies it. */
-export type ScreenSnapCamera = Pick<Camera, 'projectToScreen'>;
-
 export class ScreenCornerIndex {
   private candidates = new WeakMap<MeshData, PieceCandidates>();
   private grid: Grid | null = null;
   /** The grid key last seen and when it first appeared, for the settle rule. */
   private seen: { key: string; at: number } | null = null;
+  /** What the last query that reached the grid searched, for `candidatesNear`; null until one did, and after one that did not. */
+  private live: { grid: Grid; ready: MeshData[]; ray: Ray; maxDepth: number } | null = null;
   private selection: { pieces: readonly MeshData[]; filterKey: string; ready: MeshData[]; complete: boolean } | null = null;
 
   /** Drop everything built from geometry (call with the snap detector's cache). */
@@ -167,6 +139,43 @@ export class ScreenCornerIndex {
     this.grid = null;
     this.seen = null;
     this.selection = null;
+    this.live = null;
+  }
+
+  /** Forget the last query's view, so `candidatesNear` answers nothing until the next query reaches the grid. */
+  dropLive(): void { this.live = null; }
+
+  /**
+   * The corners of the LAST query's grid within `radiusPx` of (x, y), nearest first, at most `limit`: the markers a
+   * host draws round the cursor. Same eligibility, visibility, clipping and occlusion as the query that preceded it
+   * (`ignoreOcclusion` included), so a marker is never offered that the snap would refuse. Empty until that query
+   * reached a built grid, so nothing is listed while the camera is still moving. Edges are not listed.
+   */
+  candidatesNear(x: number, y: number, radiusPx: number, limit = 12): ScreenCornerCandidate[] {
+    const live = this.live;
+    if (!live || !(radiusPx > 0) || !(limit > 0)) return [];
+    const { grid: g, ready, ray, maxDepth } = live;
+    const span = Math.ceil(radiusPx / g.cell);
+    const c0 = Math.floor(x / g.cell) + 1, r0 = Math.floor(y / g.cell) + 1;
+    const found: { i: number; d: number }[] = [];
+    for (let r = r0 - span; r <= r0 + span; r++) {
+      for (let c = c0 - span; c <= c0 + span; c++) {
+        if (c < 0 || r < 0 || c >= g.cols || r >= g.rows) continue;
+        for (const i of g.cornerCells.get(r * g.cols + c) ?? []) {
+          const d = Math.hypot(g.cx[i] - x, g.cy[i] - y);
+          if (d > radiusPx) continue;
+          if (maxDepth !== Infinity && depthAlongRay(ray, g.cornerWorld[i * 3], g.cornerWorld[i * 3 + 1], g.cornerWorld[i * 3 + 2]) > maxDepth) continue;
+          found.push({ i, d });
+        }
+      }
+    }
+    found.sort((a, b) => Math.abs(a.d - b.d) > 1e-9 ? a.d - b.d : this.cornerBefore(g, ready, a.i, b.i, ray) ? -1 : 1);
+    return found.slice(0, limit).map(({ i, d }) => ({
+      screen: { x: g.cx[i], y: g.cy[i] },
+      position: { x: g.cornerWorld[i * 3], y: g.cornerWorld[i * 3 + 1], z: g.cornerWorld[i * 3 + 2] },
+      expressId: ready[g.cornerPiece[i]].expressId,
+      distancePx: d,
+    }));
   }
 
   /**
@@ -215,6 +224,7 @@ export class ScreenCornerIndex {
       sel = this.selection = { pieces: args.pieces, filterKey, ready, complete: ready.length === active.length };
     }
     const ready = sel.ready;
+    this.live = null;
     if (ready.length === 0) return null;
 
     const key = gridKey(args.viewKey, args.clip, viewport.width, viewport.height, ready.length,
@@ -223,85 +233,17 @@ export class ScreenCornerIndex {
       const t = now();
       if (this.seen?.key !== key) this.seen = { key, at: t };
       if (t - this.seen.at < (options.settleMs ?? DEFAULT_SETTLE_MS)) return null;
-      this.grid = this.buildGrid(key, ready, args.camera, viewport, Math.max(cornerR, edgeR), args.clip);
+      this.grid = buildScreenGrid(key, ready, this.candidates, args.camera, viewport, Math.max(cornerR, edgeR), args.clip);
     }
     const hit = args.hitDistance;
     const maxDepth = options.ignoreOcclusion || hit == null || !Number.isFinite(hit) ? Infinity
       : hit + (options.occlusionTolerance ?? 0.05 + 0.01 * hit);
+    this.live = { grid: this.grid, ready, ray: args.ray, maxDepth };
     return this.search(this.grid, ready, x, y, args.ray, cornerR, edgeR, maxDepth);
   }
 
-  private buildGrid(
-    key: string, ready: MeshData[], camera: ScreenSnapCamera,
-    viewport: { width: number; height: number }, cell: number, clip: PickClipState | null | undefined,
-  ): Grid {
-    const cols = Math.ceil(viewport.width / cell) + 3;
-    const rows = Math.ceil(viewport.height / cell) + 3;
-    const g: Grid = {
-      key, cell, cols, rows, cornerCells: new Map(), edgeCells: new Map(),
-      cx: [], cy: [], cornerPiece: [], cornerWorld: [],
-      ex0: [], ey0: [], ex1: [], ey1: [], edgePiece: [], edgeWorld: [],
-    };
-    const cellOf = (px: number, py: number): number | null => {
-      const c = Math.floor(px / cell) + 1, r = Math.floor(py / cell) + 1;
-      return c < 0 || r < 0 || c >= cols || r >= rows ? null : r * cols + c;
-    };
-    const push = (m: Map<number, number[]>, k: number, v: number) => {
-      const list = m.get(k);
-      if (list) list.push(v); else m.set(k, [v]);
-    };
-    const tol = 1e-4;
-    ready.forEach((piece, pi) => {
-      const cand = this.candidates.get(piece)!;
-      const ec = entityClip(clip, piece.expressId);
-      const planes = planesFor(piece.expressId, clip);
-      for (let i = 0; i < cand.corners.length; i += 3) {
-        const wx = cand.corners[i], wy = cand.corners[i + 1], wz = cand.corners[i + 2];
-        if (pointClipped(ec, wx, wy, wz)) continue;
-        const s = camera.projectToScreen({ x: wx, y: wy, z: wz }, viewport.width, viewport.height);
-        if (!s) continue;
-        const c = cellOf(s.x, s.y);
-        if (c === null) continue;
-        const idx = g.cx.length;
-        g.cx.push(s.x); g.cy.push(s.y); g.cornerPiece.push(pi); g.cornerWorld.push(wx, wy, wz);
-        push(g.cornerCells, c, idx);
-      }
-      for (let i = 0; i < cand.edges.length; i += 6) {
-        let a: Vec3 = { x: cand.edges[i], y: cand.edges[i + 1], z: cand.edges[i + 2] };
-        let b: Vec3 = { x: cand.edges[i + 3], y: cand.edges[i + 4], z: cand.edges[i + 5] };
-        if (planes.length > 0) {
-          const iv = clipSegmentInterval(a, b, planes, tol);
-          if (!iv) continue;
-          const [lo, hi] = iv;
-          const a0 = a;
-          a = lo > 0 ? lerp(a0, b, lo) : a;
-          b = hi < 1 ? lerp(a0, b, hi) : b;
-        }
-        const sa = camera.projectToScreen(a, viewport.width, viewport.height);
-        const sb = camera.projectToScreen(b, viewport.width, viewport.height);
-        if (!sa || !sb) continue;
-        const idx = g.ex0.length;
-        g.ex0.push(sa.x); g.ey0.push(sa.y); g.ex1.push(sb.x); g.ey1.push(sb.y);
-        g.edgePiece.push(pi); g.edgeWorld.push(a.x, a.y, a.z, b.x, b.y, b.z);
-        // Register the edge in every cell it passes through (clipped to the viewport band).
-        const len = Math.hypot(sb.x - sa.x, sb.y - sa.y);
-        const steps = Math.min(4096, Math.max(1, Math.ceil(len / (cell / 4))));
-        let last = -1;
-        for (let k = 0; k <= steps; k++) {
-          const t = k / steps;
-          const c = cellOf(sa.x + (sb.x - sa.x) * t, sa.y + (sb.y - sa.y) * t);
-          if (c === null || c === last) continue;
-          last = c;
-          push(g.edgeCells, c, idx);
-        }
-      }
-    });
-    return g;
-  }
-
   private search(g: Grid, ready: MeshData[], x: number, y: number, ray: Ray, cornerR: number, edgeR: number, maxDepth: number): ScreenCornerHit | null {
-    const depthOf = (px: number, py: number, pz: number) => (px - ray.origin.x) * ray.direction.x
-      + (py - ray.origin.y) * ray.direction.y + (pz - ray.origin.z) * ray.direction.z;
+    const depthOf = (px: number, py: number, pz: number) => depthAlongRay(ray, px, py, pz);
     const c0 = Math.floor(x / g.cell) + 1, r0 = Math.floor(y / g.cell) + 1;
     let bestCorner = -1, bestCornerD = cornerR * cornerR;
     let bestEdge = -1, bestEdgeD = edgeR * edgeR;
@@ -358,9 +300,7 @@ export class ScreenCornerIndex {
    * then position, so the answer never depends on piece order.
    */
   private cornerBefore(g: Grid, ready: MeshData[], i: number, j: number, ray: Ray): boolean {
-    const depth = (k: number) => (g.cornerWorld[k * 3] - ray.origin.x) * ray.direction.x
-      + (g.cornerWorld[k * 3 + 1] - ray.origin.y) * ray.direction.y
-      + (g.cornerWorld[k * 3 + 2] - ray.origin.z) * ray.direction.z;
+    const depth = (k: number) => depthAlongRay(ray, g.cornerWorld[k * 3], g.cornerWorld[k * 3 + 1], g.cornerWorld[k * 3 + 2]);
     const di = depth(i), dj = depth(j);
     if (Math.abs(di - dj) > 1e-6) return di < dj;
     const ei = ready[g.cornerPiece[i]].expressId, ej = ready[g.cornerPiece[j]].expressId;
@@ -371,32 +311,4 @@ export class ScreenCornerIndex {
     }
     return false;
   }
-}
-
-function lerp(a: Vec3, b: Vec3, t: number): Vec3 {
-  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t };
-}
-
-/** Squared distance from (px, py) to segment (ax, ay)-(bx, by). */
-function segDist2(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
-  const dx = bx - ax, dy = by - ay;
-  const len2 = dx * dx + dy * dy;
-  const t = len2 > 0 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2)) : 0;
-  return (px - ax - dx * t) ** 2 + (py - ay - dy * t) ** 2;
-}
-
-/** The point of segment a-b nearest the ray's line (clamped to the segment). */
-export function closestPointOnSegmentToRay(a: Vec3, b: Vec3, ray: Ray): Vec3 {
-  const o = ray.origin, d = ray.direction;
-  const ux = b.x - a.x, uy = b.y - a.y, uz = b.z - a.z;
-  const wx = a.x - o.x, wy = a.y - o.y, wz = a.z - o.z;
-  const uu = ux * ux + uy * uy + uz * uz;
-  const dd = d.x * d.x + d.y * d.y + d.z * d.z;
-  const ud = ux * d.x + uy * d.y + uz * d.z;
-  const uw = ux * wx + uy * wy + uz * wz;
-  const dw = d.x * wx + d.y * wy + d.z * wz;
-  const denom = uu * dd - ud * ud;
-  // Parallel to the ray: any point is as near, take the midpoint.
-  const t = denom > 1e-12 * uu * dd ? Math.max(0, Math.min(1, (ud * dw - dd * uw) / denom)) : 0.5;
-  return lerp(a, b, t);
 }

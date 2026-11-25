@@ -28,11 +28,9 @@ import type {
   RadiusMeasurement,
 } from '../types.js';
 import { ANGLE_REQUIRED_PICKS } from '../types.js';
-import type {
-  REPROJECTED_MEASUREMENT_FIELDS,
-  ReprojectedMeasurementField,
-} from '../measurementReprojectionFields.js';
+import type { REPROJECTED_MEASUREMENT_FIELDS, ReprojectedMeasurementField } from '../measurementReprojectionFields.js';
 import { EDGE_LOCK_DEFAULTS } from '../constants.js';
+import { createSnapAssistSlice, type SnapAssistSlice } from './snapAssistSlice.js';
 import { createMeasurePointSlice, NO_MEASURE_POINT, type MeasurePointSlice } from './measurePointSlice.js';
 import { getDefaultEdgeLockState, gestureReset, snapStateReset } from './measureGesture.js';
 import { polylineLength } from '@/components/viewer/tools/measure-modes/polyline.js';
@@ -42,7 +40,7 @@ import { MIN_RADIUS_POINTS } from '@/components/viewer/tools/measure-modes/radiu
 // Monotonic counter to prevent ID collisions under rapid measurement creation
 let measurementCounter = 0;
 
-export interface MeasurementSlice extends MeasurePointSlice {
+export interface MeasurementSlice extends MeasurePointSlice, SnapAssistSlice {
   // State
   measurements: Measurement[];
   activeMeasurement: ActiveMeasurement | null;
@@ -319,6 +317,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
   activeRadius: null,
   radiusMeasurements: [],
   ...createMeasurePointSlice(set),
+  ...createSnapAssistSlice(set),
 
   // Drag-based measurement actions
   startMeasurement: (point) => set({

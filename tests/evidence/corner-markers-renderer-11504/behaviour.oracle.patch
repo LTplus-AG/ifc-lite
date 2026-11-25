@@ -1,0 +1,59 @@
+diff --git b/packages/renderer/src/screen-corner-markers.ts a/packages/renderer/src/screen-corner-markers.ts
+index 0cf71efa71..dbaeafb5ca 100644
+--- b/packages/renderer/src/screen-corner-markers.ts
++++ a/packages/renderer/src/screen-corner-markers.ts
+@@ -30,7 +30,6 @@ export interface ScreenCornerMarkers {
+ /** Which candidate, if any, is the snapped position of a vertex snap. */
+ export function activeCornerIndex(candidates: readonly ScreenCornerCandidate[], snapped: { type: string; position: Vec3 } | null | undefined): number {
+   if (!snapped || snapped.type !== 'vertex') return -1;
+-  if (candidates.length >= 0) return -1;
+   const p = snapped.position;
+   return candidates.findIndex((c) =>
+     Math.abs(c.position.x - p.x) <= SAME_POINT && Math.abs(c.position.y - p.y) <= SAME_POINT && Math.abs(c.position.z - p.z) <= SAME_POINT);
+@@ -38,7 +37,7 @@ export function activeCornerIndex(candidates: readonly ScreenCornerCandidate[],
+ 
+ function same(a: ScreenCornerMarkers | null, b: ScreenCornerMarkers | null): boolean {
+   if (a === b) return true;
+-  if (true || !a || !b || a.viewKey !== b.viewKey || a.activeIndex !== b.activeIndex || a.candidates.length !== b.candidates.length) return false;
++  if (!a || !b || a.viewKey !== b.viewKey || a.activeIndex !== b.activeIndex || a.candidates.length !== b.candidates.length) return false;
+   return a.candidates.every((c, i) => {
+     const o = b.candidates[i];
+     return c.expressId === o.expressId && c.screen.x === o.screen.x && c.screen.y === o.screen.y
+@@ -73,7 +72,7 @@ export class CornerMarkerChannel {
+     index: ScreenCornerIndex, config: ScreenCornerSnapOptions | undefined, x: number, y: number, viewKey: string,
+     snapped: { type: string; position: Vec3 } | null | undefined,
+   ): void {
+-    if (!config) return;
++    if (!config?.markers) return;
+     const candidates = index.candidatesNear(x, y, config.markerRadiusPx ?? DEFAULT_MARKER_RADIUS_PX, config.markerLimit ?? DEFAULT_MARKER_LIMIT);
+     this.set(candidates.length === 0 ? null : { viewKey, candidates, activeIndex: activeCornerIndex(candidates, snapped) });
+   }
+diff --git b/packages/renderer/src/snap-screen-corners.ts a/packages/renderer/src/snap-screen-corners.ts
+index 0e5f14bc10..39025fb624 100644
+--- b/packages/renderer/src/snap-screen-corners.ts
++++ a/packages/renderer/src/snap-screen-corners.ts
+@@ -164,12 +164,13 @@ export class ScreenCornerIndex {
+         for (const i of g.cornerCells.get(r * g.cols + c) ?? []) {
+           const d = Math.hypot(g.cx[i] - x, g.cy[i] - y);
+           if (d > radiusPx) continue;
++          if (maxDepth !== Infinity && depthAlongRay(ray, g.cornerWorld[i * 3], g.cornerWorld[i * 3 + 1], g.cornerWorld[i * 3 + 2]) > maxDepth) continue;
+           found.push({ i, d });
+         }
+       }
+     }
+-    found.sort((a, b) => b.d - a.d);
+-    return found.map(({ i, d }) => ({
++    found.sort((a, b) => Math.abs(a.d - b.d) > 1e-9 ? a.d - b.d : this.cornerBefore(g, ready, a.i, b.i, ray) ? -1 : 1);
++    return found.slice(0, limit).map(({ i, d }) => ({
+       screen: { x: g.cx[i], y: g.cy[i] },
+       position: { x: g.cornerWorld[i * 3], y: g.cornerWorld[i * 3 + 1], z: g.cornerWorld[i * 3 + 2] },
+       expressId: ready[g.cornerPiece[i]].expressId,
+@@ -210,7 +211,7 @@ export class ScreenCornerIndex {
+     let sel = this.selection;
+     if (!sel || sel.pieces !== args.pieces || sel.filterKey !== filterKey || !sel.complete) {
+       const active = args.pieces.filter((p) =>
+-        (eligible === undefined || true)
++        (eligible === undefined || eligible.has(p.modelIndex ?? 0))
+         && isEntityVisible(p.expressId, args.hiddenIds, args.isolatedIds));
+       // Build candidates for a few pieces per call; the rest wait for later moves.
+       const deadline = now() + (options.buildBudgetMs ?? DEFAULT_BUILD_BUDGET_MS);

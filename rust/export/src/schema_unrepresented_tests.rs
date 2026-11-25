@@ -55,7 +55,7 @@ fn every_source_only_type_has_a_route_10902() {
     let schemas = ["IFC2X3", "IFC4", "IFC4X3"];
     for from in schemas {
         for to in schemas.into_iter().filter(|to| *to != from) {
-            let (mut verbatim, mut proxied, mut handled) = (Vec::new(), Vec::new(), Vec::new());
+            let (mut verbatim, mut proxied, mut handled, mut omitted) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
             for name in candidates.iter().cloned() {
                 if schema_attribute_names(from, &name).is_none() { continue; }
                 let new_type = crate::schema_convert::convert_entity_type(&name, from, to);
@@ -63,6 +63,7 @@ fn every_source_only_type_has_a_route_10902() {
                 match missing_type_route(&name, &new_type, from, to, true) {
                     Route::Verbatim => verbatim.push(name),
                     Route::Handled => handled.push(name),
+                    Route::Omitted => omitted.push(name),
                     Route::Unrepresented if is_rooted_type(&name) => proxied.push(name),
                     _ => {}
                 }
@@ -70,10 +71,13 @@ fn every_source_only_type_has_a_route_10902() {
             verbatim.sort();
             proxied.sort();
             handled.sort();
+            omitted.sort();
             let pair = format!("{from}>{to}");
             assert_eq!(verbatim, listed(&pair, "verbatim"), "{pair}: written verbatim");
             assert_eq!(handled, listed(&pair, "handled"), "{pair}: another pass's");
+            assert_eq!(omitted, listed(&pair, "omitted"), "{pair}: omitted");
             if pair == "IFC2X3>IFC4" {
+                assert_eq!(OMIT_ON_UPGRADE, omitted, "OMIT_ON_UPGRADE is sorted and matches the registry");
                 assert_eq!(proxied, listed(&pair, "proxied"), "{pair}: proxied");
                 let mut ours: Vec<String> = VERBATIM_UPGRADE.iter().map(|s| (*s).to_owned()).collect();
                 ours.sort();
@@ -119,6 +123,47 @@ fn an_upgrade_counts_only_populated_move_and_order_action_slots_11326() {
 }
 
 #[test]
+fn prunes_references_to_removed_ifc2x3_resources_10970() {
+    let source = include_bytes!("../tests/fixtures/schema_unrooted_upgrade.ifc");
+    let opts = crate::step::StepOptions { schema: Some("IFC4".into()), ..Default::default() };
+    let (out, stats, warnings) = crate::step::export_step_with_diagnostics(source, &opts).unwrap();
+    let (logged, log_stats) = crate::export_step_with_log(source, &opts, &crate::MutationLog::default()).unwrap();
+    let merge_options = crate::MergedOptions { schema: opts.schema.clone(), ..Default::default() };
+    let (merged, merged_stats) = crate::export_merged_with_stats(&[source], &merge_options);
+    for (output, count, warnings) in [
+        (&out, stats.written, &warnings),
+        (&logged, log_stats.written, &log_stats.warnings),
+        (&merged, merged_stats.written, &merged_stats.warnings),
+    ] {
+        for dropped in ["#3=", "#6=", "#7=", "#19=", "#21=", "#22="] {
+            assert!(!output.lines().any(|line| line.starts_with(dropped)), "{output}");
+        }
+        assert!(output.contains("#4=IFCGEOMETRICCURVESET((#5));"), "{output}");
+        assert!(output.contains("#13=IFCGEOMETRICCURVESET((#5));"), "{output}");
+        assert!(output.contains("#12=IFCSTYLEDITEM($,(#11),'keep #3 as text');"), "{output}");
+        assert!(output.contains("#17=IFCCURVEBOUNDEDPLANE(#16,#5,());"), "{output}");
+        assert!(warnings.iter().any(|warning| warning.contains("#3 (IFCBEZIERCURVE) was omitted")), "{warnings:?}");
+        assert!(warnings.iter().any(|warning| warning.contains("#21 (IFCCOMPOSITEPROFILEDEF) was omitted")), "{warnings:?}");
+        // Orphaned IfcRelaxation records must be omitted and reported (#11131).
+        assert!(warnings.iter().any(|warning| warning.contains("#22 (IFCRELAXATION) was omitted")), "{warnings:?}");
+        assert_eq!(count, 16);
+    }
+}
+
+#[test]
+fn clears_an_optional_representation_on_an_unconverted_varying_action_10970() {
+    let source = include_bytes!("../tests/fixtures/schema_unrooted_legacy_optional.ifc");
+    let opts = crate::StepOptions { schema: Some("IFC4".into()), ..Default::default() };
+    let direct = crate::export_step(source, &opts).unwrap();
+    let (logged, _) = crate::export_step_with_log(source, &opts, &crate::MutationLog::default()).unwrap();
+    let merged = crate::export_merged(&[source], &crate::MergedOptions { schema: opts.schema, ..Default::default() });
+    for (writer, output) in [("direct", direct), ("logged", logged), ("merged", merged)] {
+        assert!(output.contains("#30=IFCSTRUCTURALLINEARACTIONVARYING('3sXjCM_kPHN8ZCpuBhV_98',$,'A',$,$,$,$,#11,.GLOBAL_COORDS.,.F.,$,.TRUE_LENGTH.,$,$);"), "{writer}: {output}");
+        assert!(!output.lines().any(|line| ["#41=", "#42=", "#43="].iter().any(|prefix| line.starts_with(prefix))), "{writer}: {output}");
+    }
+}
+
+#[test]
 fn the_warnings_name_each_type_by_route_10902() {
     let mut plans = crate::schema_plan::PlanCache::default();
     for ty in ["IFCSERVICELIFE", "IFCSERVICELIFE", "IFCCALENDARDATE", "IFCWALL", "IFCSTRUCTURALLINEARACTIONVARYING"] {
@@ -159,4 +204,68 @@ fn non_rooted_unrepresented_type_errors() {
     assert_eq!(err.express_id, 101);
     assert!(err.to_string().contains("IFCCARTESIANPOINTLIST3D"));
     assert!(err.to_string().contains("IFC2X3"));
+}
+
+#[test]
+fn merged_pruning_respects_the_checked_output_id_bound_10970() {
+    let first = |id| format!("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#{id}=IFCCARTESIANPOINT((0.,0.));\nENDSEC;\nEND-ISO-10303-21;");
+    let second = b"ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n\
+#1=IFCBEZIERCURVE(1,(#2,#3),.UNSPECIFIED.,.F.,.F.);\n\
+#2=IFCCARTESIANPOINT((0.,0.));\n#3=IFCCARTESIANPOINT((1.,1.));\n\
+#4=IFCPOLYLINE((#2,#3));\n#5=IFCGEOMETRICCURVESET((#1,#4));\nENDSEC;\nEND-ISO-10303-21;";
+    let options = crate::MergedOptions { schema: Some("IFC4".into()), ..Default::default() };
+    let (output, stats) = crate::export_merged_with_stats(&[first(u32::MAX - 5).as_bytes(), second], &options);
+    assert_eq!(stats.unmerged_model_count, 0);
+    assert!(!output.contains("#4294967291="), "{output}");
+    assert!(output.contains("#4294967295=IFCGEOMETRICCURVESET((#4294967294));"), "{output}");
+    assert!(stats.warnings.iter().any(|warning| warning.contains("#4294967291 (IFCBEZIERCURVE) was omitted")));
+    let (output, stats) = crate::export_merged_with_stats(&[first(u32::MAX).as_bytes(), second], &options);
+    assert_eq!(stats.unmerged_model_count, 1);
+    assert!(!output.contains("IFCGEOMETRICCURVESET"), "{output}");
+}
+
+#[test]
+fn logged_pruning_keeps_creation_counts_separate_from_source_and_deferred_records_10970() {
+    let source = include_str!("../tests/fixtures/schema_unrooted_legacy_optional.ifc")
+        .replace("#30=", "#18=IFCSTRUCTURALLOADLINEARFORCE('additional',0.,0.,-6.,0.,0.,0.);\n\
+#19=IFCSTRUCTURALLOADLINEARFORCE('additional',0.,0.,-7.,0.,0.,0.);\n\
+#16=IFCSHAPEASPECT((#42,#42,#42),$,$,.T.,#43);\n#30=")
+        .replace("#11,.GLOBAL_COORDS.,.F.,$,.TRUE_LENGTH.,$,$);", "#11,.GLOBAL_COORDS.,.F.,$,.TRUE_LENGTH.,#16,(#18,#19));");
+    let log = crate::MutationLog::from_json(r#"{"newEntities":[
+        {"expressId":44,"type":"IfcRelaxation","attributes":[0.1,0.5]},
+        {"expressId":45,"type":"IfcCartesianPoint","attributes":[[2,3]]}
+    ]}"#).unwrap();
+    let opts = crate::StepOptions { schema: Some("IFC4".into()), ..Default::default() };
+    let (output, stats) = crate::export_step_with_log(source.as_bytes(), &opts, &log).unwrap();
+    assert!(!output.contains("#44=") && !output.contains("#41="), "{output}");
+    assert!(output.contains("#45=IFCCARTESIANPOINT("), "{output}");
+    assert!(output.contains("#46=IFCSTRUCTURALLOADCONFIGURATION("), "{output}");
+    assert_eq!(stats.new_entities, 2);
+    assert!(output.contains("2 modifications"), "{output}");
+}
+
+#[test]
+fn logged_pruning_settles_header_without_a_deferred_varying_pass_10970() {
+    let source = b"ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#1=IFCCARTESIANPOINT((0.,0.));\nENDSEC;\nEND-ISO-10303-21;";
+    let log = crate::MutationLog::default().with_new_entities(vec![
+        crate::LogNewEntity::new(2, "IfcRelaxation", vec![serde_json::json!(0.1), serde_json::json!(0.5)]),
+    ]);
+    let opts = crate::StepOptions { schema: Some("IFC4".into()), ..Default::default() };
+    let (output, stats) = crate::export_step_with_log(source, &opts, &log).unwrap();
+    assert!(output.contains("#1=IFCCARTESIANPOINT("), "{output}");
+    assert!(!output.contains("#2=") && !output.contains("Re-exported by ifc-lite"), "{output}");
+    assert_eq!((stats.written, stats.new_entities), (1, 0));
+}
+
+#[test]
+fn omits_a_sectioned_spine_that_loses_a_section_10970() {
+    let source = include_bytes!("../tests/fixtures/schema_unrooted_spine.ifc");
+    let opts = crate::StepOptions { schema: Some("IFC4".into()), ..Default::default() };
+    let direct = crate::export_step(source, &opts).unwrap();
+    let (logged, _) = crate::export_step_with_log(source, &opts, &crate::MutationLog::default()).unwrap();
+    let merged = crate::export_merged(&[source], &crate::MergedOptions { schema: opts.schema, ..Default::default() });
+    for output in [direct, logged, merged] {
+        assert!(!output.contains("#13=") && !output.contains("#16="), "{output}");
+        assert!(output.contains("#17=IFCSECTIONEDSPINE(#6,(#12,#15,#14),(#7,#8,#9));"), "{output}");
+    }
 }

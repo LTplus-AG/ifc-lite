@@ -93,16 +93,16 @@ export class EnumReconciliation {
   private readonly unlabelled = new Map<string, number>();
 
   /** Reconcile `line`, already converted to `toSchema`, then report a broken USERDEFINED rule (#10780). */
-  apply(line: string, toSchema: SchemaVersionWithRegistry): string {
-    const out = this.reconcile(line, toSchema);
+  apply(line: string, toSchema: SchemaVersionWithRegistry, maxReferenceId?: number): string {
+    const out = this.reconcile(line, toSchema, maxReferenceId);
     // Only a record that says USERDEFINED can break the rule; the rest stop here.
-    const record = /\.USERDEFINED\./i.test(out) ? readStepSlots(out) : null;
+    const record = /\.USERDEFINED\./i.test(out) ? readStepSlots(out, maxReferenceId) : null;
     const rule = record ? userDefinedRule(toSchema, record.type) : undefined;
     if (record && rule && breaksUserDefinedRule(record.slots, rule)) this.unlabelled.set(record.type, (this.unlabelled.get(record.type) ?? 0) + 1);
     return out;
   }
 
-  private reconcile(line: string, toSchema: SchemaVersionWithRegistry): string {
+  private reconcile(line: string, toSchema: SchemaVersionWithRegistry, maxReferenceId?: number): string {
     const open = line.indexOf('(');
     const close = line.lastIndexOf(')');
     const eq = line.indexOf('=');
@@ -110,7 +110,7 @@ export class EnumReconciliation {
     const type = line.slice(eq + 1, open).trim().toUpperCase();
     const entity = targetEntities(toSchema).get(type);
     if (!entity) return line;
-    const values = splitTopLevelStepArguments(line.slice(open + 1, close));
+    const values = splitTopLevelStepArguments(line.slice(open + 1, close), maxReferenceId);
     if (values === null || values.length !== entity.attributes.length) return line;
     let changed = false;
     for (const { index, members } of entity.enumSlots) {

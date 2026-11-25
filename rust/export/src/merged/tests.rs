@@ -38,9 +38,9 @@ fn merged_typed_property_ids_follow_synthesized_records_10797() {
         models: 1, written: 3, federated_model_count: 0, unmerged_model_count: 0,
         unit_rescale_required: false, dropped_container_count: 0, warnings: Vec::new(),
     };
-    warnings::finish_typed_output(
+    warnings::finish_output(
         &mut out, &mut stats, schema, &slots, &mut checks,
-        single_parents::ParentClaims::for_schema(schema), 2, &[],
+        single_parents::ParentClaims::for_schema(schema), &HashSet::new(), 2, &[],
     );
 
     let ids = scan_ids(&out);

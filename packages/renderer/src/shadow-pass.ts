@@ -275,7 +275,7 @@ export class ShadowPass {
       bindSectionExclusions(pass, this.device, 1);
       pass.setBindGroup(0, this.drawBindGroup, [i * this.drawStride]);
       pass.setVertexBuffer(0, d.vertexBuffer);
-      pass.setIndexBuffer(d.indexBuffer, 'uint32');
+      pass.setIndexBuffer(d.indexBuffer, d.indexFormat ?? 'uint32');
       if (d.kind === 'instanced') {
         const runs = instanceRuns[i];
         if (!runs || !d.instanceBuffer || !d.rteDeltas) continue;

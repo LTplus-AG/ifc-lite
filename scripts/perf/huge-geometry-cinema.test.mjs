@@ -143,3 +143,18 @@ test('remote outputs: HGFILE lines round-trip, incomplete files are refused', as
   assert.deepEqual(u.unpack('HGFILE d.bin 1/1 QQ==\nHGFILE d.bin 1/1 Qg==').incomplete, ['d.bin'], 'conflicting duplicate chunk');
   assert.equal(u.unpack('HGFILE e.bin 1/1 QQ==\nHGFILE e.bin 1/1 QQ==').files.get('e.bin').toString(), 'A', 'an identical duplicate is fine');
 });
+
+
+test('#11366: a stalled mouse move, down or up counts as a pick miss', { timeout: 2000 }, async () => {
+  const { tryClick } = await import('./huge-geometry-cinema.mjs');
+  const at = { x: 800, y: 450 };
+  for (const stalled of ['move', 'down', 'up']) {
+    let evaluations = 0;
+    const mouse = Object.fromEntries(['move', 'down', 'up'].map((name) => [
+      name, () => name === stalled ? new Promise(() => {}) : Promise.resolve(),
+    ]));
+    const page = { mouse, async evaluate() { evaluations++; return at; } };
+    assert.deepEqual(await tryClick(page, [0, 0, 0], 5), { at, sel: null });
+    assert.equal(evaluations, 1, 'skip selection polling after a stalled mouse command');
+  }
+});

@@ -78,9 +78,9 @@ three reads at an idle renderer with the mouse off the canvas):
 
 | step | area | what is compared |
 |---|---|---|
-| home, far (4x zoom out: LOD1 and far field), top | render, LOD | pixels |
+| home, far (4x zoom out: LOD1 and far field), top | render, LOD | pixels; home also the camera (view-projection), so a flag that moves the scene bounds shows as a framing change |
 | pick (three canvas clicks) | pick | picked ids, pixels (highlight) |
-| hide 30%, isolate 10% (sorted id sample) | hide/isolate | counts, pixels |
+| hide 30%, isolate 10% (even sample of the data-store entity ids, so both arms pick the same elements) | hide/isolate | counts, pixels |
 | colour 20% | colour override | pixels |
 | section, section + colour | section | pixels, after the cut drawing the 3D cap is drawn from has settled (`drawing2DStatus` held at ready) |
 | export | export | GLB size and SHA-256 (command palette, real download) |

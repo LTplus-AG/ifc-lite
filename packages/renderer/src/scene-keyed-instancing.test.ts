@@ -45,12 +45,6 @@ function shard(ids: number[], key?: string, template = TEMPLATE): DecodedInstanc
   };
 }
 
-function keyedScene(): Scene {
-  const scene = new Scene();
-  scene.setKeyedInstancing(true);
-  return scene;
-}
-
 const range = (from: number, n: number) => Array.from({ length: n }, (_, i) => from + i);
 const minX = (scene: Scene, id: number) => scene.getInstancedEntityBounds(id)?.min.x;
 type Cpu = { instanceData: ArrayBuffer; canonicalAnchors: Float64Array };
@@ -58,7 +52,7 @@ const cpuOf = (scene: Scene) => (scene['instancedTemplateCpu'] as (Cpu | undefin
 
 describe('keyed instanced shards (global instance plan)', () => {
   it('joins records of one key into one template and one draw across shards, growing past capacity', () => {
-    const scene = keyedScene(), gpu = device();
+    const scene = new Scene(), gpu = device();
     scene.addInstancedShard(gpu, shard(range(100, 10), '21:7'));
     scene.addInstancedShard(gpu, shard(range(200, 10), '21:7'));
     const templates = scene.getInstancedTemplates();
@@ -69,7 +63,7 @@ describe('keyed instanced shards (global instance plan)', () => {
   });
 
   it('keeps unkeyed records, other keys and other models apart', () => {
-    const scene = keyedScene(), gpu = device();
+    const scene = new Scene(), gpu = device();
     scene.addInstancedShard(gpu, shard([1, 2], '21:7'));
     scene.addInstancedShard(gpu, shard([3, 4], '21:8'));
     scene.addInstancedShard(gpu, shard([5, 6]));
@@ -80,7 +74,7 @@ describe('keyed instanced shards (global instance plan)', () => {
   });
 
   it('seals a model before it moves: exact records, every occurrence moved, later records upload as before', () => {
-    const scene = keyedScene(), gpu = device();
+    const scene = new Scene(), gpu = device();
     scene.addInstancedShard(gpu, shard(range(100, 10), '21:7'));
     scene.addInstancedShard(gpu, shard(range(200, 10), '21:7'));
     scene.setModelTranslation(0, [5, 0, 0]);
@@ -95,7 +89,7 @@ describe('keyed instanced shards (global instance plan)', () => {
   });
 
   it('never opens a slot for a model away from the identity pose', () => {
-    const scene = keyedScene(), gpu = device();
+    const scene = new Scene(), gpu = device();
     scene.setModelTranslation(0, [5, 0, 0]);
     scene.addInstancedShard(gpu, shard([1], '21:7'));
     scene.addInstancedShard(gpu, shard([2], '21:7'));
@@ -104,7 +98,7 @@ describe('keyed instanced shards (global instance plan)', () => {
   });
 
   it('seals before device recovery, so the replacement draws the live count, not the capacity', async () => {
-    const scene = keyedScene(), gpu = device();
+    const scene = new Scene(), gpu = device();
     scene.addInstancedShard(gpu, shard(range(100, 10), '21:7'));
     scene.addInstancedShard(gpu, shard(range(200, 7), '21:7'));
     assert.deepEqual(await scene.prepareDeviceRecovery(), { ok: true });
@@ -117,7 +111,7 @@ describe('keyed instanced shards (global instance plan)', () => {
   });
 
   it('forgets a removed model\'s slots', () => {
-    const scene = keyedScene(), gpu = device();
+    const scene = new Scene(), gpu = device();
     scene.addInstancedShard(gpu, shard([1], '21:7'), 1);
     scene.removeInstancedTemplatesForModel(1);
     scene.addInstancedShard(gpu, shard([2], '21:7'), 1);
@@ -126,7 +120,7 @@ describe('keyed instanced shards (global instance plan)', () => {
   });
 
   it('keeps slots open when the viewer re-syncs the pose a model already has', () => {
-    const scene = keyedScene(), gpu = device();
+    const scene = new Scene(), gpu = device();
     scene.addInstancedShard(gpu, shard([1], '21:7'));
     scene.setModelTranslation(0, [0, 0, 0]);
     scene.setModelRotation(0, 0, [0, 0, 0]);
@@ -135,7 +129,7 @@ describe('keyed instanced shards (global instance plan)', () => {
   });
 
   it('uploads a record whose geometry does not match its slot on its own', () => {
-    const scene = keyedScene(), gpu = device();
+    const scene = new Scene(), gpu = device();
     scene.addInstancedShard(gpu, shard([1], '21:7'));
     scene.addInstancedShard(gpu, shard([2], '21:7', { ...TEMPLATE, origin: [3, 0, 0] }));
     scene.addInstancedShard(gpu, shard([3], '21:7', { ...TEMPLATE, indices: new Uint32Array([0, 2, 1, 0, 1, 2]) }));
@@ -146,15 +140,35 @@ describe('keyed instanced shards (global instance plan)', () => {
     assert.equal(minX(scene, 2), 5, 'a joined record keeps its own origin in its matrix');
   });
 
-  it('uploads keyed records as before unless the host opts in (a cached keyed shard with the flag off)', () => {
+  it('joins keyed records by default, whatever path uploads them; a scene can opt out (#11390 follow-up)', () => {
+    const joined = new Scene(), gpu = device();
+    assert.equal(joined.hasKeyedTemplates(), false);
+    joined.addInstancedShard(gpu, shard([1], '21:7'));
+    joined.addInstancedShard(gpu, shard([2], '21:7'));
+    assert.deepEqual(joined.getInstancedTemplates().map((t) => t.instanceCount), [2]);
+    assert.equal(joined.hasKeyedTemplates(), true, 'the plan applied to this scene');
+    joined.clear();
+    assert.equal(joined.hasKeyedTemplates(), false);
+    const optedOut = new Scene();
+    optedOut.keyedInstancing.enabled = false;
+    optedOut.addInstancedShard(gpu, shard([1], '21:7'));
+    optedOut.addInstancedShard(gpu, shard([2], '21:7'));
+    assert.deepEqual(optedOut.getInstancedTemplates().map((t) => t.instanceCount), [1, 1]);
+    assert.equal(optedOut.hasKeyedTemplates(), false, 'an opted-out scene draws them as plain records');
+  });
+
+  it('reports keyed shards per model: unjoined ones count, a removed model forgets them (#11390 follow-up)', () => {
     const scene = new Scene(), gpu = device();
-    scene.addInstancedShard(gpu, shard([1], '21:7'));
-    scene.addInstancedShard(gpu, shard([2], '21:7'));
-    assert.deepEqual(scene.getInstancedTemplates().map((t) => t.instanceCount), [1, 1]);
+    scene.setModelTranslation(1, [5, 0, 0]); // away from the identity pose: no slot opens for model 1
+    scene.addInstancedShard(gpu, shard([1], '21:7'), 1);
+    assert.equal(scene.hasKeyedTemplates(), true, 'the plan applied though nothing joined');
+    scene.addInstancedShard(gpu, shard([2]), 2);
+    scene.removeInstancedTemplatesForModel(1);
+    assert.equal(scene.hasKeyedTemplates(), false, 'model 2 carried no keys');
   });
 
   it('keeps records with equal counts and bounds but different geometry apart', () => {
-    const scene = keyedScene(), gpu = device();
+    const scene = new Scene(), gpu = device();
     const quad = (x: number) => ({ ...TEMPLATE, positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, x, 0.2, 0]), normals: new Float32Array(12), indices: new Uint32Array([0, 1, 2, 0, 3, 2]) });
     scene.addInstancedShard(gpu, shard([1], '21:7', quad(0.2)));
     scene.addInstancedShard(gpu, shard([2], '21:7', quad(0.7)));
@@ -163,7 +177,7 @@ describe('keyed instanced shards (global instance plan)', () => {
   });
 
   it('never grows a slot past the device buffer limit: the overflowing record uploads on its own', () => {
-    const scene = keyedScene(), gpu = device(24 * INSTANCE_STRIDE_BYTES);
+    const scene = new Scene(), gpu = device(24 * INSTANCE_STRIDE_BYTES);
     scene.addInstancedShard(gpu, shard(range(100, 10), '21:7'));
     scene.addInstancedShard(gpu, shard(range(200, 10), '21:7'));
     assert.deepEqual(scene.getInstancedTemplates().map((t) => t.instanceCount), [20], 'grows to the limit, not only to a power of two');

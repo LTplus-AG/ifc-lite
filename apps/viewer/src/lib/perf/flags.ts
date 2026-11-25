@@ -26,7 +26,7 @@
  */
 
 import { readPerfFlagRaw, readPerfFlagUrlParam, type PerfFlagGlobalName } from '@ifc-lite/data';
-import { GEOMETRY_PERF_FLAG_BINDINGS, readGlobalInstancingFlag } from '@ifc-lite/geometry';
+import { GEOMETRY_PERF_FLAG_BINDINGS } from '@ifc-lite/geometry';
 import { readAnalyticsFeatureFlag } from '../analytics.js';
 
 /** A kill switch guards a default-on path; a ramp rolls a new path out. */
@@ -261,6 +261,15 @@ export const PERF_FLAGS = [
     bindings: { global: '__IFC_LITE_HUGE', urlParam: 'perf.huge' },
   },
   {
+    id: 'compactGeom',
+    kind: 'ramp',
+    owner: '@louistrue',
+    removalCondition: 'Compact GPU records: delete with the f32 upload of flat meshes once on by default, or delete the encoder path if dropped.',
+    introducedAt: '2026-11-24',
+    default: false,
+    bindings: { urlParam: 'compactGeom' },
+  },
+  {
     id: 'perfTrace',
     kind: 'kill-switch',
     owner: '@louistrue',
@@ -300,9 +309,6 @@ function readSticky(key: string): string | null {
 export function readPerfFlag(id: PerfFlagId): unknown {
   return resolvePerfFlag(getPerfFlagDefinition(id));
 }
-
-/** The global instance plan (`?perf.globalInstancing=1`): GPU instancing decided once per model. */
-export const globalInstancingOn = readGlobalInstancingFlag;
 
 /** `readPerfFlag` for any definition; the feature-flag source is injectable for tests. */
 export function resolvePerfFlag(

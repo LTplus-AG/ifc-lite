@@ -158,6 +158,25 @@ are byte-identical. If you pass `wasmUrls.wasm`, point it at the core binary as 
 - **Worker support:** files > 50 MB process off-main-thread automatically
 - **Native (Tauri):** `preferNative: true` enables the native Rust pipeline when running under a Tauri host — an extension point for third parties building their own desktop app (`@tauri-apps/api` is an optional dep; web builds never load it). See the [Building for Desktop](https://ifclite.dev/docs/guide/desktop/) guide.
 
+## Compact GPU records (opt-in)
+
+Await `loadCompactGeometry()` from `@ifc-lite/geometry/compact` (and, with `@ifc-lite/renderer`,
+its `loadCompactPages()`, or its scenes decode the records instead of uploading them), then set
+`compactCellSize`
+(metres, `COMPACT_CELL_METRES`) on a `GeometryProcessor` or pass it in `ProcessParallelOptions`,
+and the worker pool encodes eligible flat meshes as final quantized GPU vertices instead of f32
+arrays. The record decoder is a chunk of its own that only `loadCompactGeometry()` fetches; without
+it the option has no effect. Such a mesh arrives with
+`MeshData.compact` set. A renderer that understands the records uploads them as they are
+(`@ifc-lite/renderer` does). Everything else can keep reading `positions`, `normals` and `indices`:
+they decode from the records on first read, flat-shaded and at most half a lattice step (0.49 mm
+by default) from the source on each axis. Off by default; meshes the encoder cannot take, and
+every path other than the worker pool, deliver f32 meshes as before.
+
+`@ifc-lite/geometry/compact` also has the small helpers for such meshes (`meshTriangleCount`,
+`copyMeshShell`, `materializeCompactMesh`, `compactBounds`). Importing it loads neither the wasm
+engine nor the decoder.
+
 ## API
 
 See the [Geometry Guide](https://ifclite.dev/docs/guide/geometry/) and [API Reference](https://ifclite.dev/docs/api/typescript/#ifc-litegeometry).

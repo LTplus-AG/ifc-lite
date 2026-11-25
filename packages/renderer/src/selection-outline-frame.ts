@@ -103,8 +103,10 @@ export function hoverSources(selected: readonly Mesh[], id: number | null, model
 
 function toSelectable(mesh: Mesh): SelectableMesh | null {
   if (!mesh.bindGroup) return null;
-  const quantized = highlightBatchOf(mesh)?.quantized !== undefined;
-  return { vertexBuffer: mesh.vertexBuffer, indexBuffer: mesh.indexBuffer, indexCount: mesh.indexCount, bindGroup: mesh.bindGroup,
+  const batch = highlightBatchOf(mesh), quantized = batch?.quantized !== undefined;
+  const page = batch?.indexFormat ? batch : undefined; // a compact page grows in place: its current buffers and count
+  return { vertexBuffer: page?.vertexBuffer ?? mesh.vertexBuffer, indexBuffer: page?.indexBuffer ?? mesh.indexBuffer, indexCount: page?.indexCount ?? mesh.indexCount, bindGroup: mesh.bindGroup,
+    ...(page ? { indexFormat: page.indexFormat } : {}),
     ...(isBorrowedSelection(mesh) ? { vertexStride: 36 as const } : {}), ...(quantized ? { quantized: true as const } : {}) };
 }
 
@@ -206,7 +208,7 @@ export function buildSelectionOutlineFrame(source: SelectionOutlineSource): Sele
     if (source.hoverBatches) {
       for (const batch of source.hoverBatches) {
         const uniforms = packBatchHoverUniforms(source, batch, hoveredId);
-        if (uniforms) hovered.push({ vertexBuffer: batch.vertexBuffer, indexBuffer: batch.indexBuffer, indexCount: batch.indexCount, uniforms, ...(batch.quantized ? { quantized: true as const } : {}) });
+        if (uniforms) hovered.push({ vertexBuffer: batch.vertexBuffer, indexBuffer: batch.indexBuffer, indexCount: batch.indexCount, uniforms, ...(batch.indexFormat ? { indexFormat: batch.indexFormat } : {}), ...(batch.quantized ? { quantized: true as const } : {}) });
       }
     } else if (!already.some((m) => m.hydrated === true)) {
       for (const piece of source.hoverPieces) {

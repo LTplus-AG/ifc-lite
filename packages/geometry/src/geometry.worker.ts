@@ -6,6 +6,8 @@ import { applySkipVoids } from './skip-voids.js';
 import { attachCanonicalMeshMetadata } from './canonical-mesh-metadata.js';
 import { ownedWasmBuffer } from './wasm-owned-buffer.js'; import { packFlatBatch } from './flat-batch-pack.js'; // one vertex buffer per stream per batch
 import { readSpecularMaterial } from './mesh-specular.js';
+import { attachMeshTexture } from './worker-mesh-texture.js';
+import { encodeSessionCompact, setCompactCellSize, tagCompactMesh, takeSessionCompact, type GeometryWorkerSetCompactGeometryMessage } from './worker-compact.js';
 import { publishPrepassFingerprint, runPrepassWithFingerprint } from './prepass-source-fingerprint.js';
 import { canReuseWorkerSource, type BytePrepassApi, type SourcePrepassApi, type FinalizeStyleArgs } from './worker-prepass-source.js';
 import { applyStyleFinishes, forgetAppliedFinishes } from './style-finishes.js';
@@ -273,6 +275,7 @@ export type GeometryWorkerRequest =
   | GeometryWorkerSetComputeGeometryHashesMessage
   | GeometryWorkerSetTessellationQualityMessage
   | GeometryWorkerSetSkipSmallCutsMessage
+  | GeometryWorkerSetCompactGeometryMessage
   | GeometryWorkerScanShardMessage
   | GeometryWorkerResolveStylesShardMessage
   | GeometryWorkerPrePassShardedMessage
@@ -403,6 +406,8 @@ export interface GeometryWorkerBatchMessage {
    *  renderer decodes + GPU-instances them. Opaque repeated occurrences render
    *  ONLY via these (they were taken off the flat `meshes` array). */
   instancedShards?: ArrayBuffer[];
+  /** Compact payloads; the batch's meshes name their rows by `compact: { batch, row }` (compact-geometry.ts). */
+  compactBatches?: import('./compact-geometry.js').CompactPayload[];
   /** Occurrence count carried by `instancedShards` this batch — folded into the
    *  pool's running mesh total so it counts flat + instanced geometry. */
   instancedOccurrences?: number;
@@ -920,6 +925,7 @@ function flushPending(session: ProcessingSession): void {
     {
       type: 'batch',
       ...packFlatBatch(meshes, transfers),
+      ...takeSessionCompact(session, transfers),
       ...(instancedShards.length > 0 ? { instancedShards } : {}),
       ...(instancedOccurrences > 0 ? { instancedOccurrences } : {}),
       ...(instancedGeometryHashIds ? { instancedGeometryHashIds } : {}),
@@ -951,6 +957,7 @@ function collectMeshes(
     // would otherwise be dropped (it rides on flat MeshData). Captured below
     // and emitted via a side-channel so compare still sees instanced geometry.
     const flatMeshedIds = new Set<number>();
+    const compactRows = encodeSessionCompact(session, collection); // before any mesh is read: an encoded mesh's arrays come back empty
 
     for (let i = 0; i < collection.length; i++) {
       // #1097: takeMesh MOVES the mesh out (no clone) — each mesh is read once.
@@ -1009,38 +1016,9 @@ function collectMeshes(
         };
         session.pendingTransfers.push(ownedWasmBuffer(positions), ownedWasmBuffer(normals), ownedWasmBuffer(indices));
         session.cumulativeMeshBytes += positions.byteLength + normals.byteLength + indices.byteLength;
-        // #961: surface texture + per-vertex UVs (decoded to RGBA8 in Rust). Carried
-        // as transferables so there is no SAB→scratch copy (see SAB-streaming memo).
-        if (mesh.hasTexture) {
-          const uvs = mesh.uvs;
-          const rgba = mesh.textureRgba;
-          meshData.uvs = uvs;
-          meshData.texture = {
-            rgba,
-            width: mesh.textureWidth,
-            height: mesh.textureHeight,
-            repeatS: mesh.textureRepeatS,
-            repeatT: mesh.textureRepeatT,
-          };
-          session.pendingTransfers.push(ownedWasmBuffer(uvs), ownedWasmBuffer(rgba));
-          session.cumulativeMeshBytes += uvs.byteLength + rgba.byteLength;
-        } else if (mesh.textureUrl) {
-          // #1781: external image reference (`IfcImageTexture`) — UVs travel as
-          // a transferable like #961, but the texture itself is only a URL +
-          // repeat flags; the main thread resolves it against the `.ifcZIP`
-          // sibling images and decodes ONCE per `textureId`.
-          const uvs = mesh.uvs;
-          meshData.uvs = uvs;
-          meshData.textureRef = {
-            textureId: mesh.textureId,
-            url: mesh.textureUrl,
-            repeatS: mesh.textureRepeatS,
-            repeatT: mesh.textureRepeatT,
-          };
-          session.pendingTransfers.push(ownedWasmBuffer(uvs));
-          session.cumulativeMeshBytes += uvs.byteLength;
-        }
+        session.cumulativeMeshBytes += attachMeshTexture(mesh, meshData, session.pendingTransfers);
         attachCanonicalMeshMetadata(meshData, fingerprint);
+        tagCompactMesh(meshData, compactRows, i);
 
         flatMeshedIds.add(mesh.expressId);
         session.pendingMeshes.push(meshData);
@@ -1693,6 +1671,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       applyMergeLayersToApi();
       return;
     }
+    if (e.data.type === 'set-compact-geometry') { setCompactCellSize(e.data.cellSize); return; }
     if (e.data.type === 'set-instancing-enabled') {
       // Default on; the host disables it for federated loads so their geometry stays
       // on the flat path (processBatch falls back to plain processGeometryBatch).

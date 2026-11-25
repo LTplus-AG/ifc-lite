@@ -383,8 +383,36 @@ describe('section drawing wait', () => {
       assert.ok(fake.polls() > 4, 'resolved only after the final ready held, not on the stale one');
       globalThis.__ifc_lite_viewer_store__ = scripted(['generating']).store;
       assert.equal(await WAIT_SECTION_DRAWING({ holdMs: 20, timeoutMs: 30, pollMs: 1 }), 'timeout (generating)');
+      // Nothing requested a drawing (the section tool is not active): idle is settled, not a 120 s wait.
+      globalThis.__ifc_lite_viewer_store__ = scripted(['idle']).store;
+      assert.equal(await WAIT_SECTION_DRAWING({ holdMs: 5, timeoutMs: 1000, pollMs: 1 }), 'idle');
+      // The viewer's settled hook wins over the status when the build has it (#11445).
+      let calls = 0;
+      globalThis.__ifc_lite_scene_settled__ = () => ++calls > 3;
+      globalThis.__ifc_lite_viewer_store__ = scripted(['generating']).store;
+      assert.equal(await WAIT_SECTION_DRAWING({ holdMs: 5, pollMs: 1 }), 'generating');
+      assert.ok(calls > 3, 'waited for the hook to report settled');
+      delete globalThis.__ifc_lite_scene_settled__;
       globalThis.__ifc_lite_viewer_store__ = scripted(['generating', 'error']).store;
       assert.equal(await WAIT_SECTION_DRAWING({ holdMs: 5, pollMs: 1 }), 'error');
+    } finally { delete globalThis.__ifc_lite_viewer_store__; delete globalThis.__ifc_lite_scene_settled__; }
+  });
+});
+
+describe('element id sample', () => {
+  it('samples every data-store entity as global ids, the same set whatever geometry a flag drops', () => {
+    const { DATA_ENTITY_IDS } = gpuStage;
+    assert.equal(typeof DATA_ENTITY_IDS, 'function', 'hide/isolate/colour sample ids from the data store');
+    const table = (ids) => ({ count: ids.length, expressId: Uint32Array.from(ids) });
+    globalThis.__ifc_lite_viewer_store__ = { getState: () => ({
+      models: new Map([['b', { ifcDataStore: { entities: table([9, 7, 8]) } }], ['a', { ifcDataStore: { entities: table([3, 1, 2]) } }]]), // keys out of order
+      toGlobalId: (model, id) => (model === 'a' ? 0 : 100) + id,
+    }) };
+    try {
+      assert.deepEqual(DATA_ENTITY_IDS({ fraction: 1, limit: 10 }), { total: 6, ids: [1, 2, 3, 107, 108, 109] });
+      assert.deepEqual(DATA_ENTITY_IDS({ fraction: 0.5, limit: 10 }).ids, [1, 2, 107, 108], 'each model its share, evenly spaced over its sorted ids');
+      globalThis.__ifc_lite_viewer_store__ = { getState: () => ({ models: new Map([['a', {}]]) }) };
+      assert.equal(DATA_ENTITY_IDS({ fraction: 1, limit: 10 }), null, 'no data store: the caller falls back to geometry ids');
     } finally { delete globalThis.__ifc_lite_viewer_store__; }
   });
 });

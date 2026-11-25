@@ -623,3 +623,56 @@ test('perspective: facade panels 10 mm in front of a wall stay drawn when zoomed
     }
   });
 });
+
+// #11411: a colour-overridden surface wins every coplanar tie, whatever the
+// two hashes, so an override is never hidden by an identical or coplanar copy.
+// Red plates hash to the top of the range and their green partners to the
+// bottom, so the red always wins the overlap until the greens are painted.
+for (const projection of ['orthographic', 'perspective'] as const) {
+  test(`${projection}: a painted surface wins a coplanar tie against the top unpainted level (#11411)`, async ({ page }) => {
+    const COLS = 4, ROWS = 2, PITCH = 1.8, TOP = 0.1;
+    const scene = new IfcScene();
+    scene.product('IFCSLAB', '.BASESLAB.', [0, 0, -1.3], scene.rectangle(40, 40), 0.3, GREY);
+    const plate = scene.rectangle(1, 1);
+    const pairs: Array<{ red: number; green: number; x: number; y: number }> = [];
+    for (let row = 0; row < ROWS; row++) for (let col = 0; col < COLS; col++) {
+      const x = (col - (COLS - 1) / 2) * PITCH - 0.25, y = (row - (ROWS - 1) / 2) * PITCH;
+      const red = scene.product('IFCPLATE', '.NOTDEFINED.', [x, y, 0], plate, TOP, RED, hash => hash >= 248);
+      const green = scene.product('IFCPLATE', '.NOTDEFINED.', [x + 0.5, y + 0.3, 0], plate, TOP, GREEN, hash => hash <= 7);
+      pairs.push({ red, green, x, y });
+    }
+    const gpu = await watchGpuDeviceLoss(page);
+    await gpu.requireLiveGpu(`${projection} painted-tie assertions`, async () => {
+      await loadScene(page, gpu, scene.toString());
+      for (const { red, green } of pairs) {
+        expect(await drawnHash(page, red), `#${red} hashes to the top of the range`).toBeGreaterThanOrEqual(248);
+        expect(await drawnHash(page, green), `#${green} hashes to the bottom of the range`).toBeLessThanOrEqual(7);
+      }
+      const middle: Point = [0, 0, TOP];
+      const eye: Point = [0, -0.01, projection === 'orthographic' ? 30 : 9];
+      const shoot = (name: string) => (projection === 'orthographic'
+        ? orthoFrame(page, gpu, name, eye, middle, 5) : perspectiveFrame(page, gpu, name, eye, middle));
+      const overlaps = pairs.map(({ x, y }): [Point, Point] => [[x, y - 0.2, TOP], [x + 0.5, y + 0.5, TOP]]);
+
+      const before = await shoot(`painted-tie-${projection}-before`);
+      for (const [k, [corner, opposite]] of overlaps.entries()) {
+        const [red, green] = count(before, corner, opposite, 3, isRed, isGreen);
+        expect(red, `overlap ${k}: unpainted, the top-ranked red plate is drawn`).toBeGreaterThan(100);
+        expect(green, `overlap ${k}: unpainted, the bottom-ranked green plate stays under it`).toBe(0);
+      }
+
+      await page.evaluate((greens) => {
+        const state = globalThis.__ifc_lite_viewer_store__.getState();
+        const model = [...state.models.values()][0]!;
+        state.setPendingColorUpdates(new Map(greens.map((id) => [state.toGlobalId(model.id, id), [1, 1, 0, 1] as [number, number, number, number]])));
+      }, pairs.map(({ green }) => green));
+      await gpu.raceLoss(`${projection} painted-tie assertions`, () => page.waitForFunction(() => globalThis.__ifc_lite_viewer_store__.getState().pendingColorUpdates === null));
+      const after = await shoot(`painted-tie-${projection}-after`);
+      for (const [k, [corner, opposite]] of overlaps.entries()) {
+        const [yellow, red] = count(after, corner, opposite, 3, isYellow, isRed);
+        expect(yellow, `overlap ${k}: the painted bottom-ranked plate is drawn`).toBeGreaterThan(100);
+        expect(red, `overlap ${k}: the unpainted top-ranked plate never shows through the override`).toBe(0);
+      }
+    });
+  });
+}

@@ -8,6 +8,7 @@
  * `dataSlice.ts` under its module-size budget and because the routing logic
  * here is dense enough to read better on its own (see #4922).
  */
+import { meshTriangleCount, meshVertexCount } from '@ifc-lite/geometry/compact';
 import type { GeometryResult, CoordinateInfo } from '@ifc-lite/geometry';
 import type { FederatedModel } from '../types.js';
 import { DATA_DEFAULTS } from '../constants.js';
@@ -63,8 +64,9 @@ export function appendGeometryBatchPatch(
   let batchTriangles = 0;
   let batchVertices = 0;
   for (let i = 0; i < meshes.length; i++) {
-    batchTriangles += meshes[i].indices.length / 3;
-    batchVertices += meshes[i].positions.length / 3;
+    // Counted without decoding a compact mesh (its row knows both).
+    batchTriangles += meshTriangleCount(meshes[i]);
+    batchVertices += meshVertexCount(meshes[i]);
   }
 
   const isActiveModel = modelId === state.activeModelId;

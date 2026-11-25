@@ -25,6 +25,12 @@ export interface SpatialStructure extends RelationshipContext {
   storeyIds: readonly number[];
   storeyElements: ReadonlyMap<number, readonly number[]>;
   /**
+   * Spaces per storey. An `IfcSpace` is a spatial structure element, so
+   * `IfcRelContainedInSpatialStructure.WR31` forbids containing it and
+   * `IfcSpatialStructureElement.WR41` requires it to be aggregated.
+   */
+  storeySpaces?: ReadonlyMap<number, readonly number[]>;
+  /**
    * Products contained in the site rather than a storey — terrain surfaces and
    * survey annotations, which have no storey to belong to.
    */
@@ -79,6 +85,12 @@ export function emitSpatialRelationships(structure: SpatialStructure): void {
   for (const [storeyId, elementIds] of structure.storeyElements) {
     if (elementIds.length > 0) {
       emitRelContainedInSpatialStructure(storeyId, elementIds, structure);
+    }
+  }
+
+  for (const [storeyId, spaceIds] of structure.storeySpaces ?? []) {
+    if (spaceIds.length > 0) {
+      emitRelAggregates(storeyId, spaceIds, structure);
     }
   }
 

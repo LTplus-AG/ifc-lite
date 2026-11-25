@@ -92,6 +92,11 @@ pub(super) struct ContentState {
         Option<rustc_hash::FxHashMap<u32, ifc_lite_processing::style::SpecularMaterial>>,
     >,
     pub(super) production_model: ifc_lite_processing::element::ProductionModel,
+    /// Out-of-core spike: the sparse arena a worker meshes from instead of
+    /// `cached_source_bytes`. An input tier, like the source bytes.
+    pub(super) sparse: std::sync::Mutex<Option<super::gpu_meshes::SparseSession>>,
+    /// Out-of-core spike: the serial pre-pass also emits `sparse-facts`.
+    pub(super) emit_sparse_facts: std::sync::atomic::AtomicBool,
 }
 
 impl std::ops::Deref for ContentState {

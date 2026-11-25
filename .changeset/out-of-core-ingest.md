@@ -1,0 +1,6 @@
+---
+"@ifc-lite/geometry": minor
+"@ifc-lite/wasm": minor
+---
+
+Out-of-core geometry ingest, off by default. With `?perf.ooc=1` (or `globalThis.__IFC_LITE_OOC = 1`) a geometry worker holds neither the source file nor an entity index of its own: it keeps a bounded sparse arena inside wasm and, before each batch, reads the byte ranges of the records that batch's reference closure needs from the shared source buffer, resolved against the one shared index. Each worker then holds an arena that is dropped once a batch leaves it over budget (`?perf.oocBudgetMb`, 192 MiB by default) instead of a copy of the file plus an index. A load stays on the whole-file path where the arena could not give the same output (`mergeLayers`, the global instance plan, a file with annotation fill areas or reused entity ids). Meshes and instancing shards are byte-identical to the whole-file path. `@ifc-lite/wasm` gains the sparse-source API this drives (`sparseBegin`, `sparseExpand`, `sparseInstall`, `sparseMarkAbsent`, `sparseTakeMisses`, `sparseSetInverseEdges`, `sparseInvalidateDerived`, `sparseReset`, `sparseStats`, `sparseEnd`), `processGeometryBatchSparse`, `processGeometryBatchPartitionedSparse`, and `setEmitSparseFacts` for the pre-pass `sparse-facts` event. Nothing changes unless the flag is set.

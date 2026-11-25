@@ -11,17 +11,18 @@ npm install @ifc-lite/drawing-2d
 ## Floor plan
 
 ```typescript
-import { generateFloorPlan, storeyCutElevation, exportToSVG, PAPER_SIZES, COMMON_SCALES } from '@ifc-lite/drawing-2d';
+import { generateFloorPlan, exportToSVG, PAPER_SIZES, COMMON_SCALES } from '@ifc-lite/drawing-2d';
 
 // Cut 1.2 m above a storey floor (standard architectural plan height). The
-// meshes sit in a shifted render frame; storeyCutElevation moves the storey's
-// Elevation into it. Elevation is relative to the building, so a building
-// placed off its site's Z also passes `buildingOrigin: { z }` in the frame.
-// storeyElevations is empty on a store restored from the cache: check for the
-// storey rather than cutting every storey at the same height.
-const elevation = store.spatialHierarchy?.storeyElevations.get(storeyId);
-if (elevation === undefined) throw new Error(`No elevation for storey #${storeyId}`);
-const cut = storeyCutElevation(elevation, 1.2, geometryResult.coordinateInfo);
+// meshes sit in a shifted render frame; the frame moves the storey's Elevation
+// into it (storeyCutElevation returns that render-frame Y as a number).
+// Elevation is relative to the building, so a building placed off its site's Z
+// also passes `buildingOrigin: { z }` in the frame. storeyElevations is empty
+// on a store restored from the cache: check for the storey rather than cutting
+// every storey at the same height.
+const storeyElevation = store.spatialHierarchy?.storeyElevations.get(storeyId);
+if (storeyElevation === undefined) throw new Error(`No elevation for storey #${storeyId}`);
+const cut = { storeyElevation, cutHeight: 1.2, frame: geometryResult.coordinateInfo };
 const drawing = await generateFloorPlan(geometryResult.meshes, cut, {
   includeHiddenLines: true,
   includeProjection: true,

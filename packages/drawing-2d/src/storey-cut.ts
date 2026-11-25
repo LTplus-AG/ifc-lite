@@ -15,6 +15,13 @@ export const DEFAULT_PLAN_CUT_HEIGHT = 1.2;
  */
 export type StoreyCutFrame = RenderFrameInfo & Pick<CoordinateInfo, 'siteOrigin'> & { buildingOrigin?: Pick<Vec3, 'z'> };
 
+/** A plan cut `cutHeight` above the floor of a storey at `storeyElevation`, placed by `frame`. */
+export interface StoreyCut {
+  storeyElevation: number;
+  cutHeight?: number;
+  frame?: StoreyCutFrame | null;
+}
+
 /**
  * Render-frame Y of a plan cut `cutHeight` above a storey floor, for
  * `generateFloorPlan`. `storeyElevation` is `IfcBuildingStorey.Elevation` in

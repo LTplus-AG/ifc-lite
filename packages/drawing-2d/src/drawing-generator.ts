@@ -30,6 +30,7 @@ import type { SVGExportOptions } from './svg-exporter.js';
 import { GPUSectionCutter } from './gpu-section-cutter.js';
 import { meshArraySource, type DrawingMeshSource } from './drawing-mesh-source.js';
 import { DrawingSession } from './drawing-session.js';
+import { storeyCutElevation, type StoreyCut } from './storey-cut.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -239,18 +240,22 @@ export function createSectionConfig(
 
 /**
  * Quick helper to generate a floor plan. `elevation` is the render-frame Y of
- * the cut; {@link storeyCutElevation} gives it for a height above a storey.
+ * the cut, or a {@link StoreyCut} height above a storey floor, which is moved
+ * into that frame with {@link storeyCutElevation}.
  */
 export async function generateFloorPlan(
   meshes: MeshData[],
-  elevation: number,
+  elevation: number | StoreyCut,
   options?: Partial<GeneratorOptions>
 ): Promise<Drawing2D> {
+  const cutY = typeof elevation === 'number'
+    ? elevation
+    : storeyCutElevation(elevation.storeyElevation, elevation.cutHeight, elevation.frame);
   const generator = new Drawing2DGenerator();
   try {
     await generator.initialize();
 
-    const config = createSectionConfig('y', elevation, { projectionDepth: 3, scale: 100 });
+    const config = createSectionConfig('y', cutY, { projectionDepth: 3, scale: 100 });
 
     return await generator.generate(meshes, config, options);
   } finally {

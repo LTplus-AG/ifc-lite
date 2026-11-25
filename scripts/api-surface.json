@@ -5855,6 +5855,7 @@
     "SlidingDoorParameters: interface",
     "StairArrowParameters: interface",
     "StampedSheetLayout: interface",
+    "StoreyCut: interface",
     "StoreyCutFrame: type",
     "StoreyFloorLevels: class",
     "StoreyFloorMesh: interface",

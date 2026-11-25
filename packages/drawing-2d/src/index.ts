@@ -117,7 +117,7 @@ export type { ProjectionBand, ProjectionBandDepths } from './projection-bands.js
 export { currentFloorBands, storeyFloorsFromMeshes, StoreyFloorLevels } from './storey-bands.js';
 export type { StoreyFloorMesh } from './storey-bands.js';
 export { storeyCutElevation, DEFAULT_PLAN_CUT_HEIGHT } from './storey-cut.js';
-export type { StoreyCutFrame } from './storey-cut.js';
+export type { StoreyCut, StoreyCutFrame } from './storey-cut.js';
 export { isFeatureElementType } from './feature-elements.js';
 
 // ═══════════════════════════════════════════════════════════════════════════

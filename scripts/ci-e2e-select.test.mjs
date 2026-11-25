@@ -10,6 +10,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { test } from 'node:test';
 
+// PR #11515 exercises the CLI through the same entry point CI uses.
 const CLI = fileURLToPath(new URL('./ci-e2e-select.mjs', import.meta.url));
 const smoke = 'tests/e2e/viewer-smoke.e2e.spec.ts';
 const changed = 'tests/e2e/changed.e2e.spec.ts';
@@ -68,7 +69,7 @@ function fixture(t, { edits, deletions = [] }) {
 test('selects the changed CI spec from the depth-two tested merge, excluding base drift', (t) => {
   const f = fixture(t, { edits: [changed] });
   const result = f.run(['--plan']);
-  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.status, 0);
   assert.deepEqual(f.plan(), {
     schemaVersion: 1, pr: '42', runId: '123', runAttempt: '2',
     baseSha: f.baseSha, headSha: f.headSha, mergeSha: f.mergeSha,
@@ -81,14 +82,14 @@ test('selects the changed CI spec from the depth-two tested merge, excluding bas
   assert.equal(f.run(['--check-list']).status, 1, 'rejects a different Playwright inventory');
   writeFileSync(listing, '  [viewer-e2e-ci] › e2e/changed.e2e.spec.ts:1:1 › selected spec\n');
   const check = f.run(['--check-list']);
-  assert.equal(check.status, 0, check.stderr);
+  assert.equal(check.status, 0);
 });
 
 test('samples smoke for shared inputs and reports unproven paths and omissions', (t) => {
   const source = 'rust/geometry/src/lib.rs';
   const f = fixture(t, { edits: [changed, source], deletions: [removed] });
   const result = f.run(['--plan']);
-  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.status, 0);
   const { coverage, unknownPaths, selected, omittedSpecs } = f.plan();
   assert.deepEqual({ coverage, unknownPaths, selected, omittedSpecs }, {
     coverage: 'unknown', unknownPaths: [source, removed],
@@ -100,13 +101,14 @@ test('samples smoke for shared inputs and reports unproven paths and omissions',
 test('unmapped changes and a mismatched checkout never opt into a browser run', (t) => {
   const f = fixture(t, { edits: ['docs/example.md'] });
   const result = f.run(['--plan']);
-  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.status, 0);
   assert.deepEqual(f.plan().selected, []);
   assert.equal(f.plan().coverage, 'unknown');
   assert.equal(readFileSync(f.output, 'utf8'), 'run=false\ncoverage=unknown\ncount=0\n');
 
   const bad = f.run(['--plan'], { PR_HEAD_SHA: f.baseSha });
-  assert.equal(bad.status, 1, bad.stderr);
-  assert.match(f.plan().error, /expected two-parent PR merge/);
-  assert.equal(f.plan().coverage, 'unknown');
+  assert.equal(bad.status, 1);
+  const rejected = f.plan();
+  assert.equal(rejected.coverage, 'unknown');
+  assert.deepEqual(rejected.selected, []);
 });

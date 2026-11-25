@@ -297,7 +297,7 @@ export function convertStepLine(
   converted = carryUserDefinedLabel(line, converted, fromSchema, toSchema, maxReferenceId); // #10824
   if (converted === null) return null;
   if (enums && toSchema !== 'IFC5') converted = enums.structural.after(enums.documents.apply(enums.apply(enums.forms.apply(converted, fromSchema, toSchema, maxReferenceId), toSchema, maxReferenceId), maxReferenceId), withheldRefIds);
-  if (toSchema === 'IFC2X3') return (slots ?? new Ifc2x3SlotFill()).apply(converted);
+  if (toSchema === 'IFC2X3') return (slots ?? new Ifc2x3SlotFill()).apply(converted, maxReferenceId);
   if (enums?.typedProperties.capture(line, converted, fromSchema, toSchema, maxReferenceId)) return converted;
   if (ifc4Slots && toSchema === 'IFC4' && (fromSchema !== 'IFC2X3' || upgradeCountsIfc4Slots(converted))) ifc4Slots.apply(converted);
   return converted;

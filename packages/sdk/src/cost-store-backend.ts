@@ -42,6 +42,8 @@ export interface CostStoreModelResolution {
   ownerHistoryId: number | null;
   /** Peer scopes used when deriving collision-free authored product GUIDs. */
   globalIdScopes?: import('@ifc-lite/create').ElementSplitOptions['globalIdScopes'];
+  /** Seeded randomness for GlobalIds authored through this resolution; see `SpatialAnchor.guidRandom`. */
+  guidRandom?: import('@ifc-lite/encoding').RandomSource;
 }
 
 export type CostStoreModelResolver = (modelId?: string) => CostStoreModelResolution;
@@ -61,7 +63,7 @@ function anchorOf(resolved: CostStoreModelResolution): CostAnchor {
   if (raw !== undefined && !SUPPORTED_COST_SCHEMAS.has(raw)) {
     throw new Error(`bim.store cost authoring: schema '${raw}' is not supported; use IFC4 or IFC4X3 (IFC2X3 is refused separately).`);
   }
-  return { ownerHistoryId: resolved.ownerHistoryId, schema: (raw as CostAnchor['schema']) ?? 'IFC4' };
+  return { ownerHistoryId: resolved.ownerHistoryId, schema: (raw as CostAnchor['schema']) ?? 'IFC4', guidRandom: resolved.guidRandom };
 }
 
 /**

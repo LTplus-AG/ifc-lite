@@ -19,12 +19,12 @@ type WithoutTop<T> = T extends unknown ? Omit<T, 'TopConstraint'> : never;
  * existing-placement policy. Hosts add permission, publication and history
  * behavior outside this factory; MCP supplies its compound-recording draft. */
 export function createOrdinaryStoreBackend(
-  resolve: (modelId: string) => Pick<CostStoreModelResolution, 'modelId' | 'store' | 'editor' | 'mutationView'>,
+  resolve: (modelId: string) => Pick<CostStoreModelResolution, 'modelId' | 'store' | 'editor' | 'mutationView' | 'guidRandom'>,
   wallIndex?: WallAutojoinIndex,
 ): OrdinaryStoreBackendMethods {
   const add = (modelId: string, storeyId: number, element: OrdinaryInStoreElement, top?: TopConstraintParams['TopConstraint']): EntityRef & { notices?: string[] } => {
     const model = resolve(modelId);
-    const anchor = resolveSpatialAnchor(model.store, storeyId, model.mutationView);
+    const anchor = { ...resolveSpatialAnchor(model.store, storeyId, model.mutationView), guidRandom: model.guidRandom };
     const notices: string[] = [];
     const expressId = addOrdinaryElementInStore(model.editor, anchor, element, { store: model.store, top: top ?? 'auto', notices, wallIndex });
     return { modelId: model.modelId, expressId, ...(notices.length ? { notices } : {}) };

@@ -9,6 +9,7 @@ import { getSchemaRegistryForVersion, type IfcDataStore } from '@ifc-lite/parser
 import { recordSessionMutation, type StoreEditor } from '@ifc-lite/mutations';
 import { addSpaceToStore } from './space.js';
 import { GENERATED_SPACE_OBJECTTYPE } from './generate-spaces.js';
+import type { AuthoringGuidOptions } from './anchor.js';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
 import { resolveSplitTarget, type SlabSplitChain } from './edit/split-target.js';
 import { getModelLengthUnitScale } from './edit/length-unit-scale.js';
@@ -51,10 +52,10 @@ export function roomChainInStore(store: IfcDataStore, editor: StoreEditor, id: n
 }
 
 /** Auto/pick/draw commit their supplied native outlines together as one operation. */
-export function createRoomsInStore(store: IfcDataStore, editor: StoreEditor, storeyId: number, rooms: readonly NewRoom[]): number[] {
+export function createRoomsInStore(store: IfcDataStore, editor: StoreEditor, storeyId: number, rooms: readonly NewRoom[], options: AuthoringGuidOptions = {}): number[] {
   if (rooms.length > 10000) throw new Error('Room batch exceeds 10000 rooms');
   return editor.runAtomic(draft => {
-    const anchor = resolveSpatialAnchor(store, storeyId, draft.getMutationView());
+    const anchor = { ...resolveSpatialAnchor(store, storeyId, draft.getMutationView()), guidRandom: options.guidRandom };
     return rooms.map(room => addSpaceToStore(draft, anchor, {
       Profile: 'polygon', OuterCurve: room.outline, Position: [0, 0, room.z], Height: room.height, Name: room.Name,
       ...(room.PredefinedType !== undefined ? { PredefinedType: room.PredefinedType } : {}),

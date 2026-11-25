@@ -353,7 +353,7 @@ export class HeadlessBackend implements BimBackend {
       ifc: (refs, options): string => {
         const opts = (options ?? {}) as Record<string, unknown>;
         const schema = (opts.schema as 'IFC2X3' | 'IFC4' | 'IFC4X3') ?? store.schemaVersion ?? 'IFC4';
-        const exportOpts: Partial<StepExportOptions> = { schema };
+        const exportOpts: Partial<StepExportOptions> = { schema, ...(this.options.guidRandom ? { guidRandom: this.options.guidRandom } : {}) };
         // `undefined` is the only "no isolation filter": an empty list is a filter
         // that matched nothing, refused in `ExportNamespace.ifc` (#4738).
         if (refs != null) {

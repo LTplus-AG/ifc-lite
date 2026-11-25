@@ -1,0 +1,6 @@
+---
+"@ifc-lite/sdk": minor
+"@ifc-lite/create": minor
+---
+
+`HeadlessBackendOptions.guidRandom` (also `openModel(bytes, { backend: { guidRandom } })`) seeds every GlobalId a headless session authors, so the same model, edits and seed export the same IFC. `@ifc-lite/create` already took a seeded `SpatialAnchor.guidRandom`, but the SDK never passed one: it now rides on the model resolution (`CostStoreModelResolution.guidRandom`) into every anchor the store backends resolve, into copy, duplicate, array, mirror, classification, room, roof, storey add and storey delete, and into the property sets `export.ifc()` writes. The create operations that resolved their own anchor or wrote GlobalIds without one (`addHostedElementInStore`, `addStoreyInStore`, `applyStoreyDelete`, `reassignElementsToStoreyInStore`, `mirrorElementsInStore`, `copyToStoreysInStore`, `addClassificationInStore`, `assignClassificationInStore`, `createRoomsInStore`, `editFootprintRoofInStore`) take a trailing optional `AuthoringGuidOptions`, `CopyBatchOptions` takes `guidRandom` beside `duplicate`, so a seeded copy, array or storey copy keeps the source Name and only an explicit `duplicate` renames it, and `GroupStoreContext` takes `guidRandom`. Omitting it keeps the platform CSPRNG.

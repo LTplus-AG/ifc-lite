@@ -233,7 +233,7 @@ export function createRoomCommandBackend(resolve: RoomCommandModelResolver, prov
         plans = planRoomCreation(rooms, { action: op.action, ...(op.action === 'pick' ? { point: op.point } : {}), boundary, height, z, existingCount: spaces.length, namePattern: op.namePattern ?? 'Room {n}', ...(op.PredefinedType !== undefined ? { PredefinedType: op.PredefinedType } : {}), ...(op.ObjectType !== undefined ? { ObjectType: op.ObjectType } : {}) });
       }
       if (plans.length === 0) throw new Error('No unoccupied room faces remain on this storey');
-      return prepare(draft => result(createRoomsInStore(draft.store, draft.editor, storeyId, plans)));
+      return prepare(draft => result(createRoomsInStore(draft.store, draft.editor, storeyId, plans, { guidRandom: draft.guidRandom })));
     } finally { running.delete(modelId); }
   }
   return {

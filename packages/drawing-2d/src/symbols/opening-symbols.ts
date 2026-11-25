@@ -12,7 +12,7 @@
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
-import type { ArchitecturalSymbol, Drawing2D, Line2D, OpeningInfo, Point2D, SectionConfig, SectionPlaneConfig } from '../types.js';
+import type { ArchitecturalSymbol, DoorOperationType, Drawing2D, Line2D, OpeningInfo, Point2D, SectionConfig, SectionPlaneConfig } from '../types.js';
 import { makeEntityKey, type EntityKey } from '../types.js';
 import { boundsExtendLine, projectTo2D, vec3 } from '../math.js';
 import { DoorSymbolGenerator } from './door-symbol.js';
@@ -48,6 +48,14 @@ export interface PlanSymbolOptions {
   /** Operation type, width and host thickness per door/window, keyed by `makeEntityKey(modelIndex, expressId)`. */
   openings?: ReadonlyMap<EntityKey, PlanOpeningInfo>;
 }
+
+/** Door operations `DoorSymbolGenerator` draws; a door stating another operation keeps its body. */
+const SYMBOLIZED_DOOR_OPERATIONS: ReadonlySet<DoorOperationType> = new Set<DoorOperationType>([
+  'SINGLE_SWING_LEFT', 'SINGLE_SWING_RIGHT', 'DOUBLE_SWING_LEFT', 'DOUBLE_SWING_RIGHT',
+  'DOUBLE_DOOR_SINGLE_SWING', 'DOUBLE_DOOR_DOUBLE_SWING', 'SWING_FIXED_LEFT',
+  'SLIDING_TO_LEFT', 'SLIDING_TO_RIGHT', 'DOUBLE_DOOR_SLIDING',
+  'FOLDING_TO_LEFT', 'FOLDING_TO_RIGHT', 'REVOLVING',
+]);
 
 const DOOR_TYPES = new Set(['ifcdoor', 'ifcdoorstandardcase']);
 const WINDOW_TYPES = new Set(['ifcwindow', 'ifcwindowstandardcase']);
@@ -100,6 +108,8 @@ export function buildOpeningSymbols(
 
     const info = openings?.get(key);
     const isDoor = DOOR_TYPES.has((first.ifcType ?? '').toLowerCase());
+    const operation = isDoor ? parseDoorOperation(info?.operationType) ?? 'SINGLE_SWING_LEFT' : undefined;
+    if (operation && !SYMBOLIZED_DOOR_OPERATIONS.has(operation)) continue;
     const width = info?.width ?? footprint.width;
     const opening: OpeningInfo = {
       type: isDoor ? 'door' : 'window',
@@ -113,8 +123,8 @@ export function buildOpeningSymbols(
       modelIndex: first.modelIndex ?? 0,
     };
     const base = { entityId: first.expressId, ifcType: first.ifcType ?? (isDoor ? 'IfcDoor' : 'IfcWindow'), modelIndex: opening.modelIndex };
-    if (isDoor) {
-      opening.doorOperation = parseDoorOperation(info?.operationType) ?? 'SINGLE_SWING_LEFT';
+    if (operation) {
+      opening.doorOperation = operation;
       const at = { min: footprint.center, max: footprint.center };
       const axes = footprint.placed ? { x: footprint.along, y: footprint.across } : undefined;
       const result = doorGenerator.generateFromOpening(opening, at, footprint.along, axes);
@@ -133,7 +143,8 @@ export function buildOpeningSymbols(
  * A plan with doors and windows drawn as symbols (#10932): the bodies of those
  * that cross the cut are left out of `generate`, and their swings and frames
  * come back as `planSymbols`, inside the drawing bounds. Doors and windows off
- * the cut keep their projection linework.
+ * the cut keep their projection linework, and doors whose operation has no
+ * symbol keep their cut body.
  */
 export async function generateWithOpeningSymbols(
   meshes: MeshData[],

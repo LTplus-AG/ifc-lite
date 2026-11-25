@@ -137,8 +137,9 @@ export function replaceStepArgument(
   entityText: string,
   attrIndex: number,
   replacement: string,
+  maxReferenceId?: number,
 ): string | null {
-  const record = readStepSlots(entityText);
+  const record = readStepSlots(entityText, maxReferenceId);
   // Load-bearing, and covered: the bounds check below READS `attrs.length`, so a
   // null reaches it as a TypeError rather than falling through to a rejection.
   // Deleting this line fails exactly the three malformed-input cases in

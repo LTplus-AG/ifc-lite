@@ -95,3 +95,10 @@ describe('convertStepLine maps IfcDoorType/IfcWindowType to their IFC2X3 IfcDoor
     expect(result).toBe("#10=IFCBUILDING('guid',$,'Bridge 1',$,$,$,$,$);");
   });
 });
+
+it('accepts wide references only when the caller supplies the merged bound (#11119)', () => {
+  const source = "#1=IFCDOORTYPE('1mW6gHB0W7lxCAqIKVEzia',#4294967296,'Door Type',$,$,$,$,'tag',$,.DOOR.,.SINGLE_SWING_LEFT.,.T.,$);";
+  expect(() => convertStepLine(source, 'IFC4', 'IFC2X3')).toThrow(/invalid STEP argument list/);
+  expect(convertStepLine(source, 'IFC4', 'IFC2X3', undefined, undefined, undefined, undefined, undefined, Number.MAX_SAFE_INTEGER))
+    .toMatch(/^#1=IFCDOORSTYLE\('1mW6gHB0W7lxCAqIKVEzia',#4294967296,/);
+});

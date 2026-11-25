@@ -420,7 +420,7 @@ function convertRecord(
     } else if (isGridPlacementInSourceLayout(entityType, args.length, tgtAttrs.length) || (entityType !== newType
       && (BY_NAME_ATTR_REMAP_TYPES.has(entityType) || (toSchema === 'IFC2X3' && MEP_IFC2X3_TYPES.has(entityType))))) {
       // MEP controls need ControlElementId, never the source PredefinedType (#8019).
-      const remapped = remapRenamedAttributesByName(finalAttrs, srcAttrs, tgtAttrs);
+      const remapped = remapRenamedAttributesByName(finalAttrs, srcAttrs, tgtAttrs, maxReferenceId);
       if (remapped === null) throw new Error('Schema conversion refused an invalid STEP argument list.');
       finalAttrs = remapped;
     }

@@ -288,6 +288,15 @@ export const PERF_FLAGS = [
     bindings: { urlParam: 'compactGeom' },
   },
   {
+    id: 'gpuOnly',
+    kind: 'ramp',
+    owner: '@louistrue',
+    removalCondition: 'GPU-only geometry residency: delete the off arm once large loads release their CPU geometry by default, or delete the controller if dropped.',
+    introducedAt: '2026-11-25',
+    default: 'off',
+    bindings: { global: '__IFC_LITE_GPU_ONLY', urlParam: 'perf.gpuOnly' },
+  },
+  {
     id: 'perfTrace',
     kind: 'kill-switch',
     owner: '@louistrue',
@@ -347,50 +356,4 @@ export function resolvePerfFlag(
   }
   if (flag.kind === 'ramp' && posthogKey) return readFeatureFlag(posthogKey) ?? undefined;
   return undefined;
-}
-
-const appliedFlags = new Map<PerfFlagId, unknown>();
-
-/**
- * Record the value a read-once flag was applied with (renderer init), so the
- * telemetry arm reports what ran, not a later re-read: a PostHog ramp can
- * load after init, and an umbrella flag can decide a path without the ramp.
- */
-export function recordAppliedPerfFlag(id: PerfFlagId, value: unknown): void {
-  if (value === undefined) appliedFlags.delete(id); else appliedFlags.set(id, value); // undefined: read the flag again
-}
-
-const MAX_STATE_LENGTH = 64;
-
-function compactState(value: unknown): string {
-  const text = typeof value === 'string' ? value : JSON.stringify(value) ?? String(value);
-  return text.length > MAX_STATE_LENGTH ? `${text.slice(0, MAX_STATE_LENGTH - 1)}…` : text;
-}
-
-/**
- * Boolean flags accept `1`/`0` (and their URL spellings) as on/off, so compare
- * those as the boolean they mean: `?perf.quantized=1` is the default, not an arm.
- */
-function effectiveState(value: unknown, fallback: PerfFlagDefault): unknown {
-  if (typeof fallback !== 'boolean') return value;
-  if (value === 1 || value === '1' || value === true) return true;
-  if (value === 0 || value === '0' || value === false) return false;
-  return value;
-}
-
-/**
- * Every flag whose current state differs from its default, as a compact
- * `{ id: value }` record (values stringified, capped at 64 chars). Meant to be
- * attached to field telemetry (#6961) so verdicts can be split by arm; an
- * empty record means the session ran every default.
- */
-export function activePerfFlags(): Record<string, string> {
-  const active: Record<string, string> = {};
-  for (const flag of PERF_FLAGS) {
-    const value = appliedFlags.has(flag.id) ? appliedFlags.get(flag.id) : readPerfFlag(flag.id);
-    if (value === undefined || value === null) continue;
-    const state = compactState(effectiveState(value, flag.default));
-    if (state !== compactState(flag.default)) active[flag.id] = state;
-  }
-  return active;
 }

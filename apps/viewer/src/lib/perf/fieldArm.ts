@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { activePerfFlags } from './flags.js';
+import { activePerfFlags } from './flags-applied.js';
 
 /**
  * The perf-flag arm a field event ran under (#6961), as one groupable string:

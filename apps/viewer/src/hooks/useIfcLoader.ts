@@ -1876,7 +1876,7 @@ export function useIfcLoader() {
                 const hasTexturedMeshes = allMeshes.some((m) => m.texture || m.textureRef);
                 if (hasTexturedMeshes) console.log('[useIfc] Skipping cache write: model carries surface textures the cache format does not persist yet (#1781)');
                 const cacheCoordinateInfo = finalCoordinateInfo;
-                const cacheable = cachePlan.shouldCache && !hasTexturedMeshes && !isCompactCellSize(geometryProcessor.compactCellSize) && !skippedHungElements && !omittedTypeRecords && allMeshes.length > 0 && !!cacheCoordinateInfo;
+                const cacheable = cachePlan.shouldCache && !hasTexturedMeshes && !isCompactCellSize(geometryProcessor.compactCellSize) && !(target.kind === 'primary' && useViewerStore.getState().boundedGeometryMode) && !skippedHungElements && !omittedTypeRecords && allMeshes.length > 0 && !!cacheCoordinateInfo;
                 const writeCache = (meshes: MeshData[]) => cacheCoordinateInfo && trace.span('cache.write', () => saveToCache(cacheKey, dataStore, {
                   meshes, coordinateInfo: cacheCoordinateInfo,
                   totalVertices: meshes.reduce((sum, m) => sum + m.positions.length / 3, 0),

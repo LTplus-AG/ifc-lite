@@ -23,7 +23,7 @@ pub(super) fn contains_varying(content: &[u8]) -> bool {
 
 pub(super) struct EffectiveResult {
     pub(super) body: String,
-    pub(super) added: usize,
+    pub(super) added: Vec<u32>,
     pub(super) dropped: usize,
     pub(super) warnings: Vec<String>,
 }
@@ -53,7 +53,7 @@ pub(super) fn finish(text: &str) -> Option<EffectiveResult> {
             plan.assign(action, id);
         }
     }
-    let mut result = EffectiveResult { body: String::with_capacity(text.len()), added: 0, dropped: 0, warnings: Vec::new() };
+    let mut result = EffectiveResult { body: String::with_capacity(text.len()), added: Vec::new(), dropped: 0, warnings: Vec::new() };
     let mut copied = 0;
     for id in actions {
         let record = &records[&id];
@@ -87,7 +87,8 @@ pub(super) fn finish(text: &str) -> Option<EffectiveResult> {
     for added in plan.added().into_iter().chain(carriers.added()) {
         result.body.push_str(&added);
         result.body.push('\n');
-        result.added += 1;
+        let (id, _, _, _) = EntityScanner::new(&added).next_entity().expect("generated STEP record");
+        result.added.push(id);
     }
     Some(result)
 }

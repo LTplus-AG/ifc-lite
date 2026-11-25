@@ -248,8 +248,8 @@ export function attrNameTable(schema: IfcSchemaVersion): Map<string, readonly st
 
 /** Count top-level (comma-separated) STEP attributes, respecting nested
  *  parentheses and single-quoted strings. Empty list → 0. */
-function requireTopLevelAttributes(attrsRaw: string): string[] {
-  const attrs = splitTopLevelStepArguments(attrsRaw);
+function requireTopLevelAttributes(attrsRaw: string, maxReferenceId?: number): string[] {
+  const attrs = splitTopLevelStepArguments(attrsRaw, maxReferenceId);
   if (attrs === null) throw new Error('Schema conversion refused an invalid STEP argument list.');
   return attrs;
 }
@@ -275,6 +275,7 @@ function requireTopLevelAttributes(attrsRaw: string): string[] {
  *   ({@link computeWithheldRefIds}, #4206) — a record whose attributes name
  *   one is redirected to the same "no representation" resolution as its own
  *   unmapped type would get, so it cannot ship a now-dangling `#N`.
+ * @param maxReferenceId - Bound for remapped STEP ids; source conversion uses the parser's u32 bound.
  * @returns Converted line (no valid target representation: an IFCPROXY placeholder),
  *   or `null` for a record the export OMITS: one `resolveUnrepresentedEntity` can omit, or an
  *   IfcMaterialProperties naming no single IfcMaterial (#10763); a `null` is never written.
@@ -288,15 +289,16 @@ export function convertStepLine(
   withheldRefIds?: ReadonlySet<number>,
   ifc4Slots?: Ifc4SlotCheck,
   enums?: EnumReconciliation,
+  maxReferenceId?: number,
 ): string | null {
   if (fromSchema === toSchema) return line;
   const kept = (enums?.materials ?? new MaterialReferents()).apply(line, fromSchema, toSchema); // #10763: null when Material names no one IfcMaterial
-  let converted = kept === null ? null : retypeInPlace(convertRecord(kept, fromSchema, toSchema, random, withheldRefIds, fromSchema === 'IFC2X3' && toSchema === 'IFC4' ? enums?.structural.axes.axis(kept) : undefined, enums?.structural), fromSchema, toSchema);
-  converted = carryUserDefinedLabel(line, converted, fromSchema, toSchema); // #10824
+  let converted = kept === null ? null : retypeInPlace(convertRecord(kept, fromSchema, toSchema, random, withheldRefIds, fromSchema === 'IFC2X3' && toSchema === 'IFC4' ? enums?.structural.axes.axis(kept) : undefined, enums?.structural, maxReferenceId), fromSchema, toSchema);
+  converted = carryUserDefinedLabel(line, converted, fromSchema, toSchema, maxReferenceId); // #10824
   if (converted === null) return null;
-  if (enums && toSchema !== 'IFC5') converted = enums.structural.after(enums.documents.apply(enums.apply(enums.forms.apply(converted, fromSchema, toSchema), toSchema)), withheldRefIds);
-  if (toSchema === 'IFC2X3') return (slots ?? new Ifc2x3SlotFill()).apply(converted);
-  if (enums?.typedProperties.capture(line, converted, fromSchema, toSchema)) return converted;
+  if (enums && toSchema !== 'IFC5') converted = enums.structural.after(enums.documents.apply(enums.apply(enums.forms.apply(converted, fromSchema, toSchema, maxReferenceId), toSchema, maxReferenceId), maxReferenceId), withheldRefIds);
+  if (toSchema === 'IFC2X3') return (slots ?? new Ifc2x3SlotFill()).apply(converted, maxReferenceId);
+  if (enums?.typedProperties.capture(line, converted, fromSchema, toSchema, maxReferenceId)) return converted;
   if (ifc4Slots && toSchema === 'IFC4' && (fromSchema !== 'IFC2X3' || upgradeCountsIfc4Slots(converted))) ifc4Slots.apply(converted);
   return converted;
 }
@@ -310,6 +312,7 @@ function convertRecord(
   withheldRefIds?: ReadonlySet<number>,
   structuralAxis?: string,
   structuralDiagnostics?: EnumReconciliation['structural'],
+  maxReferenceId?: number,
 ): string | null {
   const frame = stepRecordFrame(line, { allowMissingSemicolon: true });
   if (frame === null) return line;
@@ -322,7 +325,7 @@ function convertRecord(
   // Validate before choosing any conversion branch. A malformed slot list
   // must not still receive a type rename, proxy replacement, trim, or padding:
   // that would partially convert a record whose positions are untrustworthy.
-  const args = requireTopLevelAttributes(attrsRaw);
+  const args = requireTopLevelAttributes(attrsRaw, maxReferenceId);
 
   const newType = convertEntityType(entityType, fromSchema, toSchema);
 
@@ -417,7 +420,7 @@ function convertRecord(
     } else if (isGridPlacementInSourceLayout(entityType, args.length, tgtAttrs.length) || (entityType !== newType
       && (BY_NAME_ATTR_REMAP_TYPES.has(entityType) || (toSchema === 'IFC2X3' && MEP_IFC2X3_TYPES.has(entityType))))) {
       // MEP controls need ControlElementId, never the source PredefinedType (#8019).
-      const remapped = remapRenamedAttributesByName(finalAttrs, srcAttrs, tgtAttrs);
+      const remapped = remapRenamedAttributesByName(finalAttrs, srcAttrs, tgtAttrs, maxReferenceId);
       if (remapped === null) throw new Error('Schema conversion refused an invalid STEP argument list.');
       finalAttrs = remapped;
     }

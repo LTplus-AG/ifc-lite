@@ -8095,6 +8095,7 @@
     "TextContent: interface",
     "Tool: interface",
     "ToolAnnotations: interface",
+    "ToolCatalogEntry: interface",
     "ToolContext: interface",
     "ToolDefinition: interface",
     "ToolErrorCode: const",

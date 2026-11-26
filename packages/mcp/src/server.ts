@@ -50,6 +50,7 @@ import {
   isJsonRpcNotification,
   isJsonRpcRequest,
   notification,
+  RequestError,
   successResponse,
 } from './protocol/jsonrpc.js';
 import {
@@ -71,7 +72,7 @@ import {
   ServerConfig,
   ToolContext,
 } from './context.js';
-import { ToolExecutionError, ToolErrorCode, toolError } from './errors.js';
+import { describeThrown, ToolExecutionError, ToolErrorCode, toolError } from './errors.js';
 import { PromptRegistry } from './prompts/types.js';
 import { ResourceRegistry } from './resources/types.js';
 import { disposeSessionResources } from './session-cleanup.js';
@@ -82,11 +83,6 @@ import { ViewerManager } from './viewer-manager.js';
 import type { ViewerState } from './viewer-manager.js';
 
 export const SERVER_NAME = 'ifc-lite-mcp';
-
-/** A request failure the client caused, answered as a JSON-RPC error with this code. */
-class RequestError extends Error {
-  constructor(readonly code: number, message: string, readonly data?: unknown) { super(message); }
-}
 
 export interface OutgoingMessageSink {
   send(message: JsonRpcMessage): Promise<void> | void;
@@ -525,8 +521,12 @@ export class MCPServer {
     if (this.subscriptions.has(uri)) this.notify('notifications/resources/updated', { uri });
   }
 
-  /** Send any server notification, e.g. a host-specific channel event. Dropped until the client has initialized. */
-  notify(method: string, params: Record<string, unknown>): void { if (this.initialized) void this.sink?.send(notification(method, params)); }
+  /** Send a server notification. Dropped until initialize; a failing sink goes to the base logger (no loop), never to the caller. */
+  notify(method: string, params: Record<string, unknown>): void {
+    if (!this.initialized || !this.sink) return;
+    const failed = (err: unknown) => this.logForwarder.base.log('warning', `notify ${method} failed`, { error: describeThrown(err) });
+    try { void Promise.resolve(this.sink.send(notification(method, params))).catch(failed); } catch (err) { failed(err); }
+  }
 
   /** Notify clients that the tool list has changed (e.g., after model load). */
   notifyToolsChanged(): void { if (this.capabilities.tools?.listChanged) this.notify('notifications/tools/list_changed', {}); }

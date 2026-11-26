@@ -13,5 +13,6 @@ The MCP wire protocol now matches what the server does (#11535).
 - A resource that is not found answers `-32002` and an unknown prompt name `-32602`, as the MCP spec lists them, instead of `-32603`. `logging/setLevel` answers `-32601` when the server does not advertise logging.
 - Tool definitions carry scope at `_meta["ifc-lite/scope"]` instead of a top-level `scope` field. `ToolDefinition.scope` is gone.
 - `export_pdf_report` and `gherkin_check` are removed. Both always failed.
+- `MCPServer.notify()` drops notifications until the client has initialized, and a sink that throws or rejects is logged instead of failing the caller.
 - Tool error text now includes the hint, for clients that ignore `structuredContent`.
 - `initialize` instructions describe the real workflows, and `ifc-lite://server/manifest` lists the tools this session may call.

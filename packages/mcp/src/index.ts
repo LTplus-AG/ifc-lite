@@ -15,6 +15,7 @@ export { MCPServer, SERVER_NAME } from './server.js';
 export type { MCPServerOptions, OutgoingMessageSink } from './server.js';
 
 export type { LoadedModel, ModelRegistry, ServerConfig, SessionIdentity, ToolContext, Logger, ProgressReporter } from './context.js';
+export type { ToolCatalogEntry } from './tool-catalog.js';
 export { InMemoryModelRegistry, NOOP_PROGRESS, SILENT_LOGGER, DEFAULT_CONFIG } from './context.js';
 
 export { ToolErrorCode, ToolExecutionError, toolError } from './errors.js';

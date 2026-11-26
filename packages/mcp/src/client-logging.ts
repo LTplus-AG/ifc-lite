@@ -20,7 +20,7 @@ export class ClientLogForwarder {
   private minimum: number | null = null;
 
   constructor(
-    private readonly base: Logger,
+    readonly base: Logger,
     private readonly loggerName: string,
     private readonly send: (params: LogNotification) => void,
   ) {}

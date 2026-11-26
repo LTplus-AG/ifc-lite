@@ -24,6 +24,7 @@ import {
   readOnlyScope,
   SILENT_LOGGER,
   type LoadedModel,
+  type Logger,
   type ModelRegistry,
   type Tool,
 } from './index.js';
@@ -40,7 +41,7 @@ const fakeModel = (id: string, name = id): LoadedModel => ({
   backend: { setPeerScopes() { /* no peers */ }, dispose() { /* nothing held */ } },
 } as unknown as LoadedModel);
 
-function build({ readOnly = false, registry = new InMemoryModelRegistry() as ModelRegistry, capabilities = undefined as ServerCapabilities | undefined } = {}) {
+function build({ readOnly = false, registry = new InMemoryModelRegistry() as ModelRegistry, capabilities = undefined as ServerCapabilities | undefined, logger = SILENT_LOGGER as Logger } = {}) {
   const tools = new ToolRegistry();
   tools.register({
     name: 'load_fake', description: 'Adds a model. Second sentence.', scope: 'mutate',
@@ -58,7 +59,7 @@ function build({ readOnly = false, registry = new InMemoryModelRegistry() as Mod
   } satisfies Tool);
   const server = new MCPServer({
     version: '0.0.0-test', registry, config: { readOnly, samplingEnabled: false },
-    tools, resources: buildDefaultResourceRegistry(), prompts: buildDefaultPromptRegistry(), capabilities,
+    tools, resources: buildDefaultResourceRegistry(), prompts: buildDefaultPromptRegistry(), capabilities, logger,
   });
   const transport = new InProcessTransport();
   void transport.connect(server);
@@ -157,6 +158,17 @@ describe('list_changed', () => {
     server.registry.add(fakeModel('quiet'));
     server.setScope(readOnlyScope());
     expect(notes.filter((n) => n.method?.endsWith('list_changed'))).toEqual([]);
+  });
+
+  it('keeps a registry add working when the sink throws or rejects, and logs it', async () => {
+    const logged: string[] = [];
+    const { server } = await initialized({ logger: { log: (_level, message) => { logged.push(message); } } });
+    server.attach({ send: () => { throw new Error('socket closed'); } });
+    expect(() => server.registry.add(fakeModel('sync-throw'))).not.toThrow();
+    server.attach({ send: () => Promise.reject(new Error('socket closed')) });
+    server.registry.add(fakeModel('async-reject'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(logged.filter((m) => m === 'notify notifications/resources/list_changed failed')).toHaveLength(2);
   });
 
   it('sends no list_changed before initialize', async () => {

@@ -13,7 +13,9 @@ import { exportMetadata } from './exports-common';
 import { MAX_RESULT_BYTES, resultBytes } from './result-limit';
 import { nativeExportTarget, nativeExportGuard, nativeArtifact, targetSchema } from './export-native-runtime';
 import { internal, invalidInput, stale, unavailable } from './refusals';
-interface Input { target_model_id: string; seed_ids: number[]; excluded_ids: number[]; excluded_types: string[]; relations: Required<RelatedEntityOptions>; anonymize: AnonymizeToggles; file_stem: string }
+// The viewer contract keeps the shared collector's default spatial ancestor walk.
+type ViewerRelations = Required<Omit<RelatedEntityOptions, 'includeSpatialAggregates'>>;
+interface Input { target_model_id: string; seed_ids: number[]; excluded_ids: number[]; excluded_types: string[]; relations: ViewerRelations; anonymize: AnonymizeToggles; file_stem: string }
 const MAX_IDS = 100000;
 const SAMPLE_LIMIT = 32;
 // Reserve for the handle, filename and wire envelope. Artifact names are capped at 500 UTF-16 units.

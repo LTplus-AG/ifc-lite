@@ -6123,8 +6123,6 @@
     "TableColumn: type",
     "TableToCsvOptions: interface",
     "Vec3: type",
-    "XLSX_MAX_CELL_CHARS: const",
-    "XLSX_MAX_SHEET_NAME: const",
     "analyzeConversionLoss: function",
     "applySimplifiedGeometry: function",
     "captureAppearanceDependencies: function",

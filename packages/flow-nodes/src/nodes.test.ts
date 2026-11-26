@@ -307,16 +307,18 @@ describe('table.readXlsx / table.writeXlsx', () => {
 
   it('makes truncation visible in both spreadsheet headers and values (#11463)', async () => {
     const header = 'h'.repeat(40000);
+    const otherHeader = header + '2';
     const value = `${'x'.repeat(32765)}😀tail`;
     const bytes = await writeXlsxTable({
-      columns: [{ name: header, type: 'string' }],
-      rows: [{ [header]: value }],
+      columns: [{ name: header, type: 'string' }, { name: otherHeader, type: 'string' }],
+      rows: [{ [header]: value, [otherHeader]: 'second' }],
       key: header,
     });
     const { table } = await readXlsxTable(bytes);
     const clippedHeader = `${'h'.repeat(32766)}…`;
-    expect(table.columns[0].name).toBe(clippedHeader);
-    expect(table.rows).toEqual([{ [clippedHeader]: `${'x'.repeat(32765)}…` }]);
+    const clippedOtherHeader = `${'h'.repeat(32762)} (2)…`;
+    expect(table.columns.map(({ name }) => name)).toEqual([clippedHeader, clippedOtherHeader]);
+    expect(table.rows).toEqual([{ [clippedHeader]: `${'x'.repeat(32765)}…`, [clippedOtherHeader]: 'second' }]);
   }, 30_000);
 
   it('reads back a sheet WriteXlsx produced, column types preserved', async () => {

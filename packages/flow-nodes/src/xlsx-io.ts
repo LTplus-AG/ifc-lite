@@ -169,7 +169,20 @@ export async function readXlsxTable(data: Uint8Array, options: ReadXlsxOptions =
 export async function writeXlsxTable(table: Table, sheetName = 'Sheet1'): Promise<Uint8Array> {
   const wb = new (await loadExcelJS()).Workbook();
   const ws = wb.addWorksheet(sanitizeSheetName(sheetName));
-  ws.addRow(table.columns.map((c) => clampXlsxCellText(guardSpreadsheetFormula(c.name))));
+  const headers = table.columns.map((c) => guardSpreadsheetFormula(c.name));
+  const clipped = headers.map(clampXlsxCellText);
+  const used = new Set(headers.filter((name, i) => name === clipped[i]));
+  ws.addRow(clipped.map((name, i) => {
+    if (name === headers[i]) return name;
+    let unique = name;
+    for (let n = 2; used.has(unique); n++) {
+      // Keep the visible ellipsis and leave each original column addressable.
+      const suffix = ` (${n})…`;
+      unique = name.slice(0, name.length - suffix.length).replace(/[\uD800-\uDBFF]$/, '') + suffix;
+    }
+    used.add(unique);
+    return unique;
+  }));
   for (const row of table.rows) {
     ws.addRow(table.columns.map((c) => {
       const v = row[c.name];

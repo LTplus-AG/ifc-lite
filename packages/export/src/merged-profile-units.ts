@@ -16,8 +16,16 @@ function declaredScale(units: ProjectUnits | undefined, unitType: string, measur
   return scale;
 }
 
+/** A measure's implicit unit: a power of the length unit, times the project mass unit for mass per length. */
+function implicitScale(units: ProjectUnits | undefined, length: number, measure: string, power: number): number {
+  if (measure !== 'IFCMASSPERLENGTHMEASURE') return length ** power;
+  const mass = units?.unitForMeasure('IfcMassMeasure') === null ? NaN : units?.resolvedForUnitType('MASSUNIT')?.siScale ?? 1;
+  return mass * length ** power;
+}
+
 /**
- * Override the length-based factor when either project declares the derived unit. A NaN factor marks a declared
+ * The factor of each profile measure, from the declared derived unit when a project has one and from
+ * `implicitScale` otherwise. A NaN factor marks a declared
  * unit whose scale cannot be resolved: only scaling a value that inherits it fails (`profileFactor`).
  */
 export function profileMeasureFactors(
@@ -31,9 +39,8 @@ export function profileMeasureFactors(
     if (mapping?.kind !== 'typed') continue;
     const sourceScale = declaredScale(source, mapping.unitType, measure);
     const targetScale = declaredScale(target, mapping.unitType, measure);
-    if (sourceScale !== undefined || targetScale !== undefined) {
-      factors.set(measure, (sourceScale ?? sourceLength ** power) / (targetScale ?? targetLength ** power));
-    }
+    factors.set(measure, (sourceScale ?? implicitScale(source, sourceLength, measure, power))
+      / (targetScale ?? implicitScale(target, targetLength, measure, power)));
   }
-  return factors.size > 0 ? factors : undefined;
+  return factors;
 }

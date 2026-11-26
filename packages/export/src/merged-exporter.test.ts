@@ -1296,6 +1296,16 @@ describe('MergedExporter', () => {
       }
     });
 
+    it('scales an undeclared mass per length by the mass unit too (#11329)', () => {
+      // 50 g/mm is 50 kg/m: the length ratio alone would give 50000.
+      const secondary = mmModel([
+        [18, 'IFCPROPERTYSINGLEVALUE', "#18=IFCPROPERTYSINGLEVALUE('Section datum',$,IFCMASSPERLENGTHMEASURE(50.),$);"],
+        [19, 'IFCSIUNIT', '#19=IFCSIUNIT(*,.MASSUNIT.,$,.GRAM.);'],
+      ], [19]);
+      const output = decode(new MergedExporter([metreModel(), secondary]).export({ schema: 'IFC4', unitReconciliation: 'normalize' }).content);
+      expect(output).toContain("'Section datum',$,IFCMASSPERLENGTHMEASURE(50.),$);");
+    });
+
     it.each([
       ['no profile value', null, true],
       ['a value with an explicit unit', '#18=IFCPROPERTYSINGLEVALUE(\'Section datum\',$,IFCMASSPERLENGTHMEASURE(50.),#23);', true],

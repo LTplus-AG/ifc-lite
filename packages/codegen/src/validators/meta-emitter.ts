@@ -10,7 +10,7 @@ import type { SchemaIndex } from './schema-index.js';
 export type MetaTypeRef =
   | { k: 'simple'; name: string; width?: number; fixed?: boolean }
   | { k: 'named'; name: string }
-  | { k: 'aggregate'; kind: 'LIST' | 'SET' | 'BAG' | 'ARRAY'; low: number; high?: number; unique: boolean; optional: boolean; of: MetaTypeRef }
+  | { k: 'aggregate'; kind: 'LIST' | 'SET' | 'BAG' | 'ARRAY'; low?: number; high?: number; unique: boolean; optional: boolean; of: MetaTypeRef }
   | { k: 'generic' };
 
 /** An integer literal bound or width (`2`, `-1`); undefined for `?` or an expression. */
@@ -50,7 +50,7 @@ export function toTypeRef(spec: TypeSpec, index: SchemaIndex, owner: string): Me
       return {
         k: 'aggregate',
         kind: spec.kind === 'AGGREGATE' ? 'BAG' : spec.kind,
-        low: schemaBound(spec.low, index, owner + ' lower bound') ?? 0,
+        low: spec.low ? schemaBound(spec.low, index, owner + ' lower bound') : 0,
         ...(high !== undefined ? { high } : {}),
         unique: spec.kind === 'SET' || spec.unique,
         optional: spec.optional,

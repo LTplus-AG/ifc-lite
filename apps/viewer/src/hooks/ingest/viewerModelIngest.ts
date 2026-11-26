@@ -3,14 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { sourceWatermark } from '../../utils/source-watermark.js';
-import type { parseIfcx as ParseIfcx } from '@ifc-lite/ifcx';
-import { IFCX_LENGTH_UNIT_SCALE, createSyntheticDataStore, type IfcDataStore, type PointCloudExtraction } from '@ifc-lite/parser';
+import { buildIfcxDataStore, createSyntheticDataStore, type IfcDataStore, type PointCloudExtraction } from '@ifc-lite/parser';
 import { type GeometryResult, type MeshData, type PointCloudAsset } from '@ifc-lite/geometry';
 import { parseGLB, parseGLBToMeshData, parseGLBImageResources } from '@ifc-lite/cache';
 import type { SchemaVersion } from '../../store/types.js';
 import type { ContainerVisibilityPlan } from '../../lib/container-visibility.js';
 import { calculateMeshBounds, createCoordinateInfo, expandBoundsForPointClouds, normalizeColor } from '../../utils/localParsingUtils.js';
-import { buildTabularDataStore } from './tabularDataStore.js';
+
+export { buildIfcxDataStore };
 
 interface RawIfcxMesh {
   expressId?: number;
@@ -106,49 +106,6 @@ export function getMaxExpressId(
   const maxExpressIdFromEntities = sourceWatermark(dataStore);
   const maxExpressIdFromPoints = pointClouds.reduce((max, asset) => Math.max(max, asset.expressId), 0);
   return Math.max(maxExpressIdFromMeshes, maxExpressIdFromEntities, maxExpressIdFromPoints);
-}
-
-/**
- * The slice of an IFCX parse result the data store is built from. `spatialHierarchy`
- * is only carried into the store (never read here), so it is optional — which keeps
- * the regression test from having to fabricate a full hierarchy.
- */
-type IfcxParse = Awaited<ReturnType<typeof ParseIfcx>>;
-type IfcxStoreInput = Pick<
-  IfcxParse,
-  'fileSize' | 'parseTime' | 'strings' | 'entities' | 'properties' | 'quantities' | 'relationships' | 'georeferencing'
-> & { spatialHierarchy?: IfcxParse['spatialHierarchy']; derivedEntities?: IfcxParse['derivedEntities'] };
-
-/**
- * Build the `IfcDataStore` for an IFCX import. Exported for regression coverage of
- * the selection-time accessor path (see viewerModelIngest.test.ts).
- *
- * The store itself is `buildTabularDataStore`'s; this names what IFCX states
- * about its file.
- */
-export function buildIfcxDataStore(ifcxResult: IfcxStoreInput, buffer: ArrayBuffer): IfcDataStore {
-  const georef = ifcxResult.georeferencing;
-  return buildTabularDataStore(ifcxResult, {
-    schemaVersion: 'IFC5',
-    source: buffer,
-    fileSize: ifcxResult.fileSize,
-    parseTime: ifcxResult.parseTime,
-    // IFCX has no IfcUnitAssignment to read: the format's unit, assumed (nothing in the file declares it).
-    lengthUnitScale: IFCX_LENGTH_UNIT_SCALE,
-    lengthUnitSource: 'default',
-    georeferencing: georef ? {
-      hasGeoreference: true, source: 'mapConversion',
-      projectedCRS: { id: 0, name: georef.IfcProjectedCRS.Name, mapUnit: 'METRE', mapUnitScale: 1 },
-      mapConversion: { id: 0, sourceCRS: 0, targetCRS: 0,
-        eastings: georef.IfcMapConversion.Eastings,
-        northings: georef.IfcMapConversion.Northings,
-        orthogonalHeight: georef.IfcMapConversion.OrthogonalHeight,
-        xAxisAbscissa: georef.IfcMapConversion.XAxisAbscissa,
-        xAxisOrdinate: georef.IfcMapConversion.XAxisOrdinate,
-        scale: georef.IfcMapConversion.Scale,
-      },
-    } : undefined,
-  });
 }
 
 export async function parseIfcxViewerModel(

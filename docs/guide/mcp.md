@@ -95,6 +95,18 @@ Two presets ship out of the box:
 
 A scope can also carry an optional `modelIds` allowlist to restrict a session to specific models.
 
+### Model inputs
+
+`model_load` accepts local STEP, IFCZIP and IFCX files within the configured
+paths. IFCX supports entity, property and hierarchy queries. STEP-specific
+exports require a STEP model.
+
+For OCI models, pass `file_path: "oci://registry.example/models/design:latest"`.
+Set `IFC_LITE_MCP_OCI_HOSTS` to a comma-separated list of trusted registry
+hosts, including ports where applicable, or set `ociHosts` in the embedded
+server configuration. The server refuses OCI pulls by default. Registry
+credentials use the same environment variables as the CLI.
+
 ## What the server exposes
 
 Tools are grouped by capability. Everything below is registered in the default tool registry; the handful of tools that are declared but not yet implemented are called out as **planned**.

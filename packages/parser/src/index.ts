@@ -280,3 +280,6 @@ export async function parseAuto(
 
 export { findSourceProjectLengthUnit, normalizeMapUnitName } from './source-project-length-unit.js';
 export { WASM_SOURCE_BYTE_LIMIT, WasmSourceSizeError, assertWasmSourceSize } from './wasm-source-limit.js';
+
+export { buildTabularDataStore, type TabularStoreMeta, type TabularStoreTables } from './tabular-data-store.js';
+export { buildIfcxDataStore } from './ifcx-data-store.js';

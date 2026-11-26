@@ -16,7 +16,8 @@ import { toast } from '../../components/ui/toast.js';
 import { layerStackEntry } from '../../lib/layers/stack.js';
 import { useViewerStore, type FederatedModel } from '../../store/index.js';
 import { calculateMeshBounds, createCoordinateInfo } from '../../utils/localParsingUtils.js';
-import { buildIfcxDataStore, convertIfcxMeshes } from './viewerModelIngest.js';
+import { buildIfcxDataStore } from '@ifc-lite/parser';
+import { convertIfcxMeshes } from './viewerModelIngest.js';
 
 /**
  * Extended data store type for IFCX (IFC5) files.

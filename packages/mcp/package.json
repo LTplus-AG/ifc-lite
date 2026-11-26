@@ -63,6 +63,7 @@
     "@ifc-lite/ifcx": "workspace:^",
     "@ifc-lite/merge": "workspace:^",
     "@ifc-lite/mutations": "workspace:^",
+    "@ifc-lite/oci": "workspace:^",
     "@ifc-lite/parser": "workspace:^",
     "@ifc-lite/query": "workspace:^",
     "@ifc-lite/rhino3dm": "workspace:^",

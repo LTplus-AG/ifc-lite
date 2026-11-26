@@ -22,9 +22,10 @@ import { entityInfoAcrossSchemas, entityInfoInSchema } from '@ifc-lite/sdk/headl
 import { foldedEntityCount, foldedTypeCounts, pendingMutationsField, pendingOverlay } from '@ifc-lite/sdk/headless';
 import type { Tool } from './types.js';
 import { fmtInt, resolveModel, okResult } from './util.js';
-import { loadIfcModel } from '../loader.js';
+import { openOciModel, parseModelReference } from '@ifc-lite/oci/node-model';
+import { loadIfcModel, loadIfcModelFromBytes } from '../loader.js';
 import { resolveSafePath } from '../safe-path.js';
-import { modelAllowed } from '../auth/scope.js';
+import { modelAllowed, scopeAllows } from '../auth/scope.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 
 export const modelInfo: Tool = {
@@ -116,31 +117,47 @@ export const modelList: Tool = {
 
 export const modelLoad: Tool = {
   name: 'model_load',
-  description: 'Load an IFC file from disk into the session. Requires `mutate` scope. The path must be inside the configured allowedPaths roots (when set).',
+  description: 'Load IFC STEP, IFCZIP or IFCX from an allowed local path or an allowed OCI registry. Requires mutate scope.',
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   scope: 'mutate',
   inputSchema: {
     type: 'object',
     properties: {
-      file_path: { type: 'string', description: 'Absolute path to the .ifc file.' },
+      file_path: { type: 'string', description: 'Absolute local model path or an oci:// reference.' },
       model_id: { type: 'string', description: 'Optional explicit ID. Defaults to a slug of the file name.' },
     },
     required: ['file_path'],
     additionalProperties: false,
   },
   async handler(input, ctx) {
-    // Resolve the LLM-supplied path through the safe-path policy first.
-    // The resulting absolute path is symlink-canonicalised and bounds-checked
-    // before we touch the filesystem in `loadIfcModel`.
-    const filePath = await resolveSafePath(input.file_path, ctx, 'read');
+    const source = input.file_path;
+    const modelId = input.model_id as string | undefined;
+    let label = String(source);
     try {
-      const loaded = await loadIfcModel(filePath, {
-        modelId: input.model_id as string | undefined,
-        // Path was already validated; loader's secondary check would be a
-        // tautology, so pass a single-entry allowlist matching the file.
-        allowedPaths: [filePath],
-      });
+      let loaded;
+      if (typeof source === 'string' && source.startsWith('oci://')) {
+        const { registry } = parseModelReference(source);
+        const allowed = ctx.config.ociHosts ?? process.env.IFC_LITE_MCP_OCI_HOSTS?.split(',') ?? [];
+        if (!allowed.some((host) => host.trim().toLowerCase() === registry)) {
+          throw new ToolExecutionError({ code: ToolErrorCode.PERMISSION_DENIED, message: `OCI registry '${registry}' is outside the configured OCI hosts.` });
+        }
+        const { bytes, name } = await openOciModel(source);
+        loaded = await loadIfcModelFromBytes(bytes, name, modelId, source);
+      } else {
+        // Canonicalize and bounds-check local paths before touching the model.
+        label = await resolveSafePath(source, ctx, 'read');
+        loaded = await loadIfcModel(label, { modelId, allowedPaths: [label] });
+      }
+      const scope = ctx.currentScope?.() ?? ctx.scope;
+      if (ctx.signal.aborted || !scopeAllows(scope, 'mutate') || !modelAllowed(scope, loaded.id)) {
+        loaded.backend.dispose();
+        throw new ToolExecutionError({
+          code: ctx.signal.aborted ? ToolErrorCode.CANCELLED : ToolErrorCode.PERMISSION_DENIED,
+          message: ctx.signal.aborted ? 'Model loading cancelled.' : 'Access was withdrawn before the model was registered.',
+        });
+      }
       ctx.registry.add(loaded);
-      ctx.log.log('info', 'model_load', { id: loaded.id, file: filePath, entities: loaded.store.entityCount });
+      ctx.log.log('info', 'model_load', { id: loaded.id, file: label, entities: loaded.store.entityCount });
       // A model the scan read short is reported as such, in the text the
       // agent reads and in the structured result (#7610).
       const warnings = loaded.scanWarnings ?? [];
@@ -156,7 +173,7 @@ export const modelLoad: Tool = {
       if (err instanceof ToolExecutionError) throw err;
       throw new ToolExecutionError({
         code: ToolErrorCode.PARSE_FAILED,
-        message: `Failed to load '${filePath}': ${(err as Error).message}`,
+        message: `Failed to load '${label}': ${err instanceof Error ? err.message : String(err)}`,
       });
     }
   },

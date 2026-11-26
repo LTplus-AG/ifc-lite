@@ -7,13 +7,10 @@
  * tables instead of STEP bytes. IFCX is the first caller.
  */
 
-import {
-  attachDataStoreAccessors,
-  contiguousSourceBytes,
-  declareLengthUnitScale,
-  type IfcDataStore,
-  type IfcStoreData,
-} from '@ifc-lite/parser';
+import type { IfcDataStore } from './columnar-parser.js';
+import { attachDataStoreAccessors, type IfcStoreData } from './data-store-accessors.js';
+import { contiguousSourceBytes } from './source-bytes.js';
+import { declareLengthUnitScale } from './declared-length-unit.js';
 
 /** The tables a reader built. Carried into the store as they are. */
 export type TabularStoreTables =

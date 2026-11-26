@@ -39,6 +39,9 @@ const exportIfc: Tool = {
   },
   async handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
+    if (m.store.schemaVersion === 'IFC5') {
+      throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: 'This operation writes IFC STEP. The loaded model is IFCX.' });
+    }
     const filePath = await resolveSafePath(input.file_path, ctx, 'write');
     const schema = (input.schema as 'IFC2X3' | 'IFC4' | 'IFC4X3' | undefined) ?? m.store.schemaVersion;
     // Absent `global_ids` leaves `refs` undefined: no isolation filter, the whole

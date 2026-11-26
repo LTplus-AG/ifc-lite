@@ -2171,6 +2171,9 @@ importers:
       '@ifc-lite/mutations':
         specifier: workspace:^
         version: link:../mutations
+      '@ifc-lite/oci':
+        specifier: workspace:^
+        version: link:../oci
       '@ifc-lite/parser':
         specifier: workspace:^
         version: link:../parser

@@ -35,7 +35,7 @@ import { sourceArrayBuffer } from './sourceBuffers.js';
 import { rebuildSpatialHierarchy } from '../../utils/spatialHierarchy.js';
 import { applyStatedStoreyElevations } from '../../utils/statedStoreyElevations.js';
 import { planRhinoContainerVisibility, planRhinoTree, type RhinoTreePlan } from './rhinoLayerTree.js';
-import { buildTabularDataStore, type TabularStoreTables } from './tabularDataStore.js';
+import { buildTabularDataStore, type TabularStoreTables } from '@ifc-lite/parser';
 import type { ViewerModelPayload } from './viewerModelIngest.js';
 
 /**

@@ -348,6 +348,9 @@ const modelSave: Tool = {
   },
   async handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
+    if (m.store.schemaVersion === 'IFC5') {
+      throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: 'This operation writes IFC STEP. The loaded model is IFCX.' });
+    }
     const filePath = await resolveSafePath(input.file_path, ctx, 'write');
     const schema = (input.schema as string | undefined) ?? m.store.schemaVersion;
     const content = m.bim.export.ifc(undefined, { schema: schema as 'IFC2X3' | 'IFC4' | 'IFC4X3' }); // no ref list: whole model (#4738)

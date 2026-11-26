@@ -175,6 +175,8 @@ export interface ServerConfig {
   bsddEndpoint?: string;
   /** Glob patterns the stdio server is allowed to read from. */
   allowedPaths?: string[];
+  /** OCI registry host[:port] allowlist. Remote model loads are disabled when empty. */
+  ociHosts?: string[];
   /** Sampling capability is opt-in per spec §10. */
   samplingEnabled: boolean;
   /** When true, the MCP CLI auto-opens the viewer at startup. */

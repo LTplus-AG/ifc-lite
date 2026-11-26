@@ -2678,8 +2678,8 @@ importers:
         specifier: ^2.13.12
         version: 2.13.12
       rdf-validate-shacl:
-        specifier: ^0.6.5
-        version: 0.6.5
+        specifier: ^0.7.0
+        version: 0.7.0(@tpluscode/rdf-ns-builders@5.1.0)
     devDependencies:
       '@mergifyio/vitest':
         specifier: ^2026.11.8
@@ -5558,8 +5558,8 @@ packages:
   '@vitest/spy@5.1.0':
     resolution: {integrity: sha512-2DPO5OMHWKrBngC+fCmTQqemNF0gidRhp3lxbBmRhW+M1XJrfgPpqNqWVevXtn2f2ufD5ZaR1B6B641aAlcX5A==}
 
-  '@vocabulary/sh@1.1.6':
-    resolution: {integrity: sha512-8IfAQoKh57THz8LA2+n1jaY/VC2XaqMNSsJgzBKSSrj20y5PSMAawb6dMsxoLxqDIPBDs1TFRl/9CijUnwbBUA==}
+  '@vocabulary/sh@2.1.0':
+    resolution: {integrity: sha512-mqnNjt+d93E84+zhMbytY/6Kji8sUxTEx6FXt/fqvLNg4efsYsLQMI6uUFjB6SIj50M431dN1srKvUg4bMNcaA==}
     peerDependencies:
       '@rdfjs/types': ^2.0.0
 
@@ -7177,11 +7177,13 @@ packages:
   rdf-literal@2.0.0:
     resolution: {integrity: sha512-jlQ+h7EvnXmncmk8OzOYR8T3gNfd4g0LQXbflHkEkancic8dh0Tdt5RiRq8vUFndjIeNHt1RWeA5TAj6rgrtng==}
 
-  rdf-validate-datatype@0.2.2:
-    resolution: {integrity: sha512-mH9qL8i0WBbZ6HJCA26BB6V+WV2MraKvitez3SV0QegBWVQ4wYO49CgfFBzoAYg6tlnhFXl9MkrOAQ07X2N1FA==}
+  rdf-validate-datatype@0.3.0:
+    resolution: {integrity: sha512-bERCDdF4brFmNHbyfOOnI1kwmGJKrxn4jG6ls6axgfp+22UkiNHDA6rilHD/yJxZAZPiS4OSGDiUY6TKk5oh0A==}
+    peerDependencies:
+      '@tpluscode/rdf-ns-builders': '>=3'
 
-  rdf-validate-shacl@0.6.5:
-    resolution: {integrity: sha512-rwIibopSixDE8ecA9x0c7oTVxdMWxGiJh7h3uJ+WS2h4lq2nx3DZVO7rJvwa5kZpDq9QEFPoyZINAUyfaaoN4Q==}
+  rdf-validate-shacl@0.7.0:
+    resolution: {integrity: sha512-PaQ05kpGEIP96H513Y0ZcVplrI/BqYsvzUHgQT/BPmCLy/rfTaHvCGfvY2etEDGEIuEo4baDXtBw8czKjBbEDA==}
 
   react-dom@19.3.1:
     resolution: {integrity: sha512-Y0bARz53lhEC1NMCASs0/j+faB/zqt3R8hpvg1e8+61ZVJ4UL0UdC4cBbXfZMcIuhrfgeILTLe+ZeBCavQPtKQ==}
@@ -10486,7 +10488,7 @@ snapshots:
 
   '@vitest/spy@5.1.0': {}
 
-  '@vocabulary/sh@1.1.6(@rdfjs/types@2.0.1)':
+  '@vocabulary/sh@2.1.0(@rdfjs/types@2.0.1)':
     dependencies:
       '@rdfjs/types': 2.0.1
 
@@ -12361,32 +12363,34 @@ snapshots:
   rdf-dataset-ext@1.1.0:
     dependencies:
       rdf-canonize: 3.4.0
-      readable-stream: 3.6.2
+      readable-stream: 4.8.0
 
   rdf-literal@2.0.0:
     dependencies:
       rdf-data-factory: 2.1.0
 
-  rdf-validate-datatype@0.2.2:
+  rdf-validate-datatype@0.3.0(@tpluscode/rdf-ns-builders@5.1.0):
     dependencies:
       '@rdfjs/term-map': 2.0.2
       '@tpluscode/rdf-ns-builders': 5.1.0
 
-  rdf-validate-shacl@0.6.5:
+  rdf-validate-shacl@0.7.0(@tpluscode/rdf-ns-builders@5.1.0):
     dependencies:
       '@rdfjs/data-model': 2.1.2
       '@rdfjs/dataset': 2.0.3
       '@rdfjs/environment': 1.0.0
       '@rdfjs/namespace': 2.0.1
+      '@rdfjs/term-map': 2.0.2
       '@rdfjs/term-set': 2.0.3
       '@rdfjs/types': 2.0.1
-      '@vocabulary/sh': 1.1.6(@rdfjs/types@2.0.1)
+      '@vocabulary/sh': 2.1.0(@rdfjs/types@2.0.1)
       clownface: 2.0.3
       debug: 4.4.3
       rdf-dataset-ext: 1.1.0
       rdf-literal: 2.0.0
-      rdf-validate-datatype: 0.2.2
+      rdf-validate-datatype: 0.3.0(@tpluscode/rdf-ns-builders@5.1.0)
     transitivePeerDependencies:
+      - '@tpluscode/rdf-ns-builders'
       - supports-color
 
   react-dom@19.3.1(react@19.3.1):

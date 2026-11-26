@@ -335,7 +335,9 @@ export function analyzeConversionLoss(
       const attributes = attrNameTable(fromSchema)?.get(sourceType);
       const slot = narrowedSet ? attributes?.indexOf(narrowedSet) ?? -1 : -1;
       // #11326: a type-wide drop loses only the slots the record populated (a map-less IFCREL* or IfcWorkPlan included).
-      const checkUnset = records && info.kind === 'lossy' && info.droppedAttributes.length > 0;
+      // A type the target lacks loses the whole record (omitted or verbatim), however sparse, so it stays reported.
+      const checkUnset = records && info.kind === 'lossy' && info.droppedAttributes.length > 0
+        && info.droppedAttributes.length < (attributes?.length ?? 0);
       const isRetained = (id: number, attribute: string) => {
         if (restored.get(id)?.has(attribute) || retainedTyped?.get(id)?.has(attribute)) return true;
         // `()` and `''` are values; `$`, `*` and an empty slot are not (twin of Rust `values_without_a_name`).

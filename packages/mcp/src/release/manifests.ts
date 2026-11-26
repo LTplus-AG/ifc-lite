@@ -111,7 +111,9 @@ export function mcpbManifest(pkg: McpPackage): Record<string, unknown> {
       models: {
         type: 'file',
         title: 'IFC models',
-        description: 'Models to load when the server starts. Leave empty to load them from the chat instead.',
+        description:
+          'Models to load when the server starts. Leave empty to load them from the chat instead. ' +
+          'If a chosen file is moved or deleted, the server does not start until you change this.',
         multiple: true,
         required: false,
         // Without a default an empty choice leaves the literal placeholder in

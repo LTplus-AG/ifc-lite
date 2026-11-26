@@ -9,9 +9,13 @@
  *
  *   pnpm --filter @ifc-lite/mcp release:manifests [--out <dir>] [--no-bundle]
  *
- * (The script first builds @ifc-lite/mcp and every workspace package it
- * depends on, so no dist/ is stale. The wasm runtime is not rebuilt: it
- * needs Rust, and the bundle step fails if it is missing.)
+ * The script first builds @ifc-lite/mcp and every workspace package it
+ * depends on, the wasm runtime included, so nothing in the bundle is stale.
+ * Run it on a host with Rust and wasm-pack: without them build-wasm.sh keeps
+ * whatever runtime is on disk. The bundle step fails if a runtime is missing.
+ *
+ * Publish server.json (mcp-publisher publish) only once this version is on
+ * npm: the registry checks the npm package's mcpName.
  *
  * The bundle stages the package with its production dependencies through
  * `pnpm deploy`, writes the manifest next to it and packs it with the
@@ -65,12 +69,12 @@ writeFileSync(join(out, 'server.json'), `${JSON.stringify(serverJson(pkg), null,
 process.stdout.write(`wrote ${join(out, 'server.json')}\n`);
 
 if (!flags['no-bundle']) {
-  // gitignored and built by scripts/build-wasm.sh; without it no model loads.
-  // Checked before the slow deploy, and again in the stage after it.
-  const WASM = join('pkg', 'ifc-lite_bg.wasm');
-  if (!existsSync(join(pkgDir, '..', 'wasm', WASM))) {
-    throw new Error('packages/wasm/pkg/ifc-lite_bg.wasm is missing: build it (scripts/build-wasm.sh) first');
-  }
+  // gitignored and built by scripts/build-wasm.sh: the core runtime, plus the
+  // ones @ifc-lite/wasm/diff and /rhino load. Checked before the slow deploy,
+  // and again in the stage after it.
+  const WASM = [join('pkg', 'ifc-lite_bg.wasm'), join('pkg-diff', 'ifc-lite-diff_bg.wasm'), join('pkg-rhino', 'ifc-lite-rhino_bg.wasm')];
+  const missing = WASM.filter((f) => !existsSync(join(pkgDir, '..', 'wasm', f)));
+  if (missing.length) throw new Error(`packages/wasm is missing ${missing.join(', ')}: build it (scripts/build-wasm.sh) first`);
   const stage = join(out, 'mcpb');
   rmSync(stage, { recursive: true, force: true });
   run('pnpm', [
@@ -81,8 +85,8 @@ if (!flags['no-bundle']) {
     '--filter', pkg.name, 'deploy', '--prod', '--legacy', join(stage, BUNDLE_SERVER_DIR),
   ], pkgDir);
   pruneStage(join(stage, BUNDLE_SERVER_DIR));
-  if (!existsSync(join(stage, BUNDLE_SERVER_DIR, 'node_modules', '@ifc-lite', 'wasm', WASM))) {
-    throw new Error('the deployed stage has no wasm runtime');
+  if (WASM.some((f) => !existsSync(join(stage, BUNDLE_SERVER_DIR, 'node_modules', '@ifc-lite', 'wasm', f)))) {
+    throw new Error('the deployed stage is missing a wasm runtime');
   }
   writeFileSync(join(stage, 'manifest.json'), `${JSON.stringify(mcpbManifest(pkg), null, 2)}\n`);
   // Source maps and type declarations are about 30 MB of the stage and never run.

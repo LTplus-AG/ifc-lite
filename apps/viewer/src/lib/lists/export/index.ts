@@ -22,9 +22,16 @@ export const EXPORT_LABELS: Record<ExportFormat, string> = {
 };
 
 /** Produce the real native writer artifact before delivery by UI or automation. */
-export async function createListArtifact(format: ExportFormat, model: ExportModel): Promise<{ blob: Blob; filename: string }> {
+export async function createListArtifact(
+  format: ExportFormat, model: ExportModel, options: { csvBom?: boolean } = {},
+): Promise<{ blob: Blob; filename: string }> {
   const name = sanitizeFilename(model.title, { fallback: 'list' });
-  if (format === 'csv') return { blob: csvBlob(toCsv(model), 'text/csv;charset=utf-8;'), filename: `${name}.csv` };
+  if (format === 'csv') {
+    const csv = toCsv(model);
+    const type = 'text/csv;charset=utf-8;';
+    const blob = options.csvBom ? csvBlob(csv, type) : new Blob([csv], { type });
+    return { blob, filename: `${name}.csv` };
+  }
   if (format === 'xlsx') {
     const { toXlsx } = await import('./xlsx');
     return { blob: await toXlsx(model), filename: `${name}.xlsx` };
@@ -34,7 +41,7 @@ export async function createListArtifact(format: ExportFormat, model: ExportMode
 }
 
 export async function exportList(format: ExportFormat, model: ExportModel): Promise<void> {
-  const artifact = await createListArtifact(format, model);
+  const artifact = await createListArtifact(format, model, { csvBom: true });
   downloadBlob(artifact.blob, artifact.filename);
   // The results table is this exporter's only UI caller. Count the file once,
   // after the chosen writer and browser download have both succeeded.

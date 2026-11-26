@@ -10,7 +10,7 @@ import { invalidInput, unavailable } from './refusals';
 export interface ArtifactMetadata { artifact_id: string; filename: string; mime_type: string; bytes: number }
 export interface ArtifactInput { filename: string; mimeType: string; data: string | Uint8Array | Blob }
 export interface OperationArtifacts { create(input: ArtifactInput): Promise<ArtifactMetadata> }
-/** `needsCsvBom`: a CSV that lacks the UTF-8 BOM, which the user's SAVED copy gets (#11452) but `viewer_artifact_read` bytes do not. */
+/** Metadata and reads describe the stored bytes. A CSV save may add the three-byte BOM (#11452). */
 interface Artifact { metadata: ArtifactMetadata; blob: Blob; needsCsvBom: boolean }
 const owned = new WeakMap<ToolHost, Map<string, Artifact>>();
 const MAX_BYTES = 128 * 1024 * 1024;

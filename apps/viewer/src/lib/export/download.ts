@@ -195,6 +195,7 @@ export function downloadFile(
 ): void {
   if (!canDownload()) return;
   if (content instanceof Blob) {
+    // A Blob already carries the writer's file bytes and MIME type.
     downloadBlob(content, filename);
     return;
   }

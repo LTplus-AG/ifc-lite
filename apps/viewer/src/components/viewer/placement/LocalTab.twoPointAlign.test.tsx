@@ -31,7 +31,7 @@ const hasButton = (ui: HTMLElement, label: string) => [...ui.querySelectorAll('b
 // The Local tab's move section has its own fieldset and prompt above; ask the align section for its.
 const promptText = (ui: HTMLElement) => [...ui.querySelectorAll('fieldset')]
   .find((set) => set.querySelector('legend')?.textContent === 'Two-point align')?.querySelector('output')?.textContent ?? '';
-const readoutText = (ui: HTMLElement) => ui.querySelector('[role="group"][aria-label="Alignment result"]')?.textContent ?? '';
+const readoutText = (ui: HTMLElement) => ui.querySelector('fieldset[aria-label="Alignment result"]')?.textContent ?? '';
 /** What a user's click on the canvas does in align mode: `useRepositionPicking` calls `capture` and
  * hands the role it returns to its own `finish`. That finish is not `runtime.setRole` (which is the
  * ordinary pick path and leaves align), so the returned next role is reported, not applied. */

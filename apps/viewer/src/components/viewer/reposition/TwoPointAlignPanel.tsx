@@ -52,17 +52,17 @@ export function TwoPointAlignPanel() {
     <output className="block">
       {align.step ? t(PROMPT_KEYS[align.step]) : t('repositionPanel.twoPoint.promptReady')}
     </output>
-    {align.cleared && <p role="status" className="text-muted-foreground">{t('repositionPanel.twoPoint.picksClearedNote')}</p>}
+    {align.cleared && <output className="block text-muted-foreground">{t('repositionPanel.twoPoint.picksClearedNote')}</output>}
     {ALIGN_STEPS.filter((step) => align.points[step]).map((step) => {
       const point = align.points[step]!;
       return <p key={step} className="font-mono truncate">{t('repositionPanel.twoPoint.pickedRow', {
         label: STEP_LABELS[step], x: point[0].toFixed(3), y: point[1].toFixed(3), z: point[2].toFixed(3) })}</p>;
     })}
     {solved && !solved.ok && <p role="alert" className="text-destructive">{t(ALIGN_REFUSAL_KEYS[solved.reason])}</p>}
-    {readout && <div aria-label={t('repositionPanel.twoPoint.readoutAriaLabel')} role="group"
+    {readout && <fieldset aria-label={t('repositionPanel.twoPoint.readoutAriaLabel')}
       className={`font-mono space-y-0.5 ${readout.warn ? 'text-amber-700 dark:text-amber-300' : ''}`}>
       {readout.lines.map((line, index) => <p key={index}>{line}</p>)}
-    </div>}
+    </fieldset>}
     <p className="text-muted-foreground">{t('repositionPanel.twoPoint.previewNote')}</p>
     <div className="flex flex-wrap gap-1">
       <Button size="sm" disabled={!readout} onClick={align.apply}>{t('repositionPanel.twoPoint.applyButton')}</Button>
@@ -70,7 +70,7 @@ export function TwoPointAlignPanel() {
       <Button size="sm" variant="outline" disabled={!align.points.a} onClick={align.repick}>{t('repositionPanel.twoPoint.repickButton')}</Button>
       <Button size="sm" variant="outline" onClick={align.cancel}>{t('repositionPanel.twoPoint.cancelButton')}</Button>
     </div>
-    {copied && <p role="status" className="text-muted-foreground">
-      {t(copied === 'ok' ? 'repositionPanel.twoPoint.copiedStatus' : 'repositionPanel.twoPoint.copyFailed')}</p>}
+    {copied && <output className="block text-muted-foreground">
+      {t(copied === 'ok' ? 'repositionPanel.twoPoint.copiedStatus' : 'repositionPanel.twoPoint.copyFailed')}</output>}
   </fieldset>;
 }

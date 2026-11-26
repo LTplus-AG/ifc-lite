@@ -255,7 +255,10 @@ export async function generateFloorPlan(
   try {
     await generator.initialize();
 
-    const config = createSectionConfig('y', cutY, { projectionDepth: 3, scale: 100 });
+    const config = createSectionConfig('y', cutY, {
+      projectionDepth: 3, // 3 meters below cut
+      scale: 100,
+    });
 
     return await generator.generate(meshes, config, options);
   } finally {

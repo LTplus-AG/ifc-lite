@@ -241,7 +241,10 @@ impl ProcessingSink for Recorder {
 }
 
 fn with_finishes(express_id: u32) -> Vec<(MeshData, Option<SpecularMaterial>)> {
-    let request = ProcessingRequest::full_pass();
+    with_finishes_from(ProcessingRequest::full_pass(), express_id)
+}
+
+fn with_finishes_from(request: ProcessingRequest, express_id: u32) -> Vec<(MeshData, Option<SpecularMaterial>)> {
     let features = request.features.finishes(true);
     let mut recorder = Recorder::default();
     process(MAPPED_ITEM_STYLE_IFC.as_bytes(), &request.features(features), &mut recorder);
@@ -251,7 +254,10 @@ fn with_finishes(express_id: u32) -> Vec<(MeshData, Option<SpecularMaterial>)> {
 /// The two meshes of a slab whose occurrences sit at x=0 and x=3: exactly
 /// one near each, nearest first.
 fn at_origin_and_three_metres(express_id: u32) -> [(MeshData, Option<SpecularMaterial>); 2] {
-    let mut meshes = with_finishes(express_id);
+    two_occurrences(with_finishes(express_id))
+}
+
+fn two_occurrences(mut meshes: Vec<(MeshData, Option<SpecularMaterial>)>) -> [(MeshData, Option<SpecularMaterial>); 2] {
     assert_eq!(meshes.len(), 2, "two occurrences, two meshes");
     meshes.sort_by(|a, b| world_min_x(&a.0).total_cmp(&world_min_x(&b.0)));
     let xs = [world_min_x(&meshes[0].0), world_min_x(&meshes[1].0)];
@@ -304,14 +310,7 @@ fn native_instances_keep_same_colour_occurrence_finishes_10698() {
 #[test]
 fn deferred_flat_occurrences_keep_their_own_finishes_10698() {
     let request = ProcessingRequest::full_pass().batching(Batching::single_chunk().fast_first(true));
-    let features = request.features.finishes(true).presentation_layers(false);
-    let mut recorder = Recorder::default();
-    process(MAPPED_ITEM_STYLE_IFC.as_bytes(), &request.features(features), &mut recorder);
-    let mut occurrences: Vec<_> = recorder.meshes.into_iter()
-        .filter(|(mesh, _)| mesh.express_id == 100)
-        .map(|(mesh, finish)| (world_min_x(&mesh), roughness(finish)))
-        .collect();
-    occurrences.sort_by(|a, b| a.0.total_cmp(&b.0));
-    let finishes: Vec<_> = occurrences.iter().map(|(_, finish)| *finish).collect();
-    assert_eq!(finishes, [Some(0.2), Some(0.8)], "occurrences {occurrences:?}");
+    let request = request.clone().features(request.features.presentation_layers(false));
+    let [(_, near), (_, far)] = two_occurrences(with_finishes_from(request, 100));
+    assert_eq!((roughness(near), roughness(far)), (Some(0.2), Some(0.8)));
 }

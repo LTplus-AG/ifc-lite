@@ -230,12 +230,23 @@ function readEnvelope(dumped: unknown): Outcome {
     // split surrogate pair. An over-cap J body is a preview like P.
     // falls through
     case 'P': return { value: null, value_truncated: true, value_preview: clipUtf16(body, VALUE_PREVIEW_CHARS) };
-    case 'U': return { error: /out of memory/i.test(body)
+    case 'U': return { error: OUT_OF_MEMORY.test(body)
       ? 'Ran out of memory serialising the value; raise memory_mb or return less.'
       : `The script's value is not JSON-serialisable: ${clipUtf16(body, MAX_MESSAGE_CHARS)}` };
     case 'T': return { error: clipUtf16(body, MAX_MESSAGE_CHARS) };
     default: return { error: 'The script produced no result.' };
   }
+}
+
+const OUT_OF_MEMORY = /out of memory/i;
+
+function hintFor(mode: Mode, code: string, message: string): string | undefined {
+  if (OUT_OF_MEMORY.test(message)) return `Raise memory_mb (max ${MAX_MEMORY_MB}) or keep less in memory.`;
+  // Only when the failure looks like touching a namespace that is absent.
+  if (mode === 'read' && /\bbim\.(mutate|store)\b/.test(code) && /of undefined|undefined is not/.test(message)) {
+    return 'script_run has no bim.mutate or bim.store; use script_run_mutate to edit the model.';
+  }
+  return undefined;
 }
 
 async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolContext) {
@@ -252,12 +263,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     // kind tells a script failure from INVALID_INPUT on the tool's own arguments.
     // Clipped here too: a ScriptError from the sandbox can carry a script-sized message.
     code: ToolErrorCode.INVALID_INPUT, message: `Script error: ${clipUtf16(message, MAX_MESSAGE_CHARS)}`, details: { kind: 'script', ...details },
-    hint: /out of memory/i.test(message)
-      ? `Raise memory_mb (max ${MAX_MEMORY_MB}) or keep less in memory.`
-      // Only when the failure looks like touching a namespace that is absent.
-      : mode === 'read' && /\bbim\.(mutate|store)\b/.test(code) && /of undefined|undefined is not/.test(message)
-        ? 'script_run has no bim.mutate or bim.store; use script_run_mutate to edit the model.'
-        : undefined,
+    hint: hintFor(mode, code, message),
   });
   if (ctx.signal.aborted) throw cancelled();
 

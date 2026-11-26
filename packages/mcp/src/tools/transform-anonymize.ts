@@ -17,7 +17,7 @@ import { fmtInt, okResult, resolveGlobalIds, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
 import type { LoadedModel, ToolContext } from '../context.js';
-import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, optionalOutputPath, requireDistinctPaths, requireNoPendingEdits, stringList } from './transform-schema.js';
+import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, optionalOutputPath, withIfcPrefix, requireDistinctPaths, requireNoPendingEdits, stringList } from './transform-schema.js';
 
 /** Each relationship the walk follows, with the setting it takes when on (when off: false or 'none'). */
 const FOLLOWED = {
@@ -39,7 +39,7 @@ function anonymizeSeeds(m: LoadedModel, input: Record<string, unknown>): Set<num
     }
     seeds.add(id);
   }
-  const globalIds = (input.global_ids as string[] | undefined) ?? [];
+  const globalIds = ((input.global_ids as string[] | undefined) ?? []).map((g) => g.trim()).filter(Boolean);
   const carriers = resolveGlobalIds(m, globalIds);
   for (const g of globalIds) {
     const ids = carriers.get(g);
@@ -49,8 +49,7 @@ function anonymizeSeeds(m: LoadedModel, input: Record<string, unknown>): Set<num
   for (const raw of (input.types as string[] | undefined) ?? []) {
     const trimmed = raw.trim();
     if (!trimmed) continue;
-    // `Wall` means `IfcWall`, as `ifc-lite anonymize --type` reads it.
-    const type = /^ifc/i.test(trimmed) ? trimmed : `Ifc${trimmed}`;
+    const type = withIfcPrefix(trimmed);
     const matched = m.bim.query().byType(type).toArray();
     if (matched.length === 0) throw invalid(`types: no ${type} entities.`);
     for (const e of matched) seeds.add(e.ref.expressId);
@@ -60,7 +59,9 @@ function anonymizeSeeds(m: LoadedModel, input: Record<string, unknown>): Set<num
     const id = key.replace(/^#/, '');
     const storeys = m.bim.storeys();
     const fragment = storeys.filter((s) => s.name?.toLowerCase().includes(key.toLowerCase()));
-    const exact = storeys.find((s) => s.globalId === key) ?? storeys.find((s) => String(s.ref.expressId) === id) ?? storeys.find((s) => s.name === key);
+    const named = storeys.filter((s) => s.name === key);
+    if (named.length > 1) throw invalid(`storey: ${named.length} storeys are named '${key}'; pass a GlobalId or express id.`);
+    const exact = storeys.find((s) => s.globalId === key) ?? storeys.find((s) => String(s.ref.expressId) === id) ?? named[0];
     if (!exact && fragment.length > 1) throw invalid(`storey: '${key}' matches ${fragment.map((s) => s.name).join(', ')}; name one exactly.`);
     const storey = exact ?? fragment[0];
     if (!storey) throw new ToolExecutionError({ code: ToolErrorCode.ENTITY_NOT_FOUND, message: `storey: ${key} not found (available: ${storeys.map((s) => s.name).filter(Boolean).join(', ') || 'none'}).` });
@@ -145,7 +146,7 @@ export const modelAnonymize: Tool = {
       keep_names: { type: 'boolean', description: 'Keep IfcRoot Name, LongName, Description and Tag as authored.' },
       keep_other_names: { type: 'boolean', description: 'Keep ObjectType, Phase and non-IfcRoot names (styles, materials, layers, profiles).' },
       keep_currency: { type: 'boolean', description: 'Keep IfcMonetaryUnit.Currency instead of USD.' },
-      guid_map_path: { type: 'string', description: 'Also write a JSON map from new to original GlobalIds. It identifies the source: keep it apart from the output.' },
+      guid_map_path: { type: 'string', description: 'Also write a JSON map from original to new GlobalIds. It identifies the source: keep it apart from the output.' },
     },
     required: ['file_path'],
     additionalProperties: false,

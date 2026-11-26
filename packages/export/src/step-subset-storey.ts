@@ -60,19 +60,24 @@ export function productsUnderPlacement(storeyPlacementId: number, parsed: Parsed
 export function resolveStoreyPlacement(token: string, parsed: ParsedStep): number {
   let storeyId: number | undefined;
   const t = token.trim();
-  if (/^#?\d+$/.test(t)) {
-    storeyId = parseInt(t.replace('#', ''), 10);
+  // match by name (2nd-to-last-ish quoted arg); scan storeys for a Name match
+  const byName = (): number | undefined => {
+    for (const inst of parsed.instances.values()) {
+      if (inst.type === 'IFCBUILDINGSTOREY' && inst.body.includes(`'${t}'`)) return inst.id;
+    }
+    return undefined;
+  };
+  if (/^#\d+$/.test(t)) {
+    storeyId = parseInt(t.slice(1), 10);
+  } else if (/^\d+$/.test(t)) {
+    // Storeys are often NAMED '0', '1', ...: a bare number that is not a
+    // storey's express id is tried as a name before it is reported.
+    const id = parseInt(t, 10);
+    storeyId = parsed.instances.get(id)?.type === 'IFCBUILDINGSTOREY' ? id : byName() ?? id;
   } else if (parsed.guidToId.has(t)) {
     storeyId = parsed.guidToId.get(t);
   } else {
-    // match by name (2nd-to-last-ish quoted arg); scan storeys for a Name match
-    for (const inst of parsed.instances.values()) {
-      if (inst.type !== 'IFCBUILDINGSTOREY') continue;
-      if (inst.body.includes(`'${t}'`)) {
-        storeyId = inst.id;
-        break;
-      }
-    }
+    storeyId = byName();
   }
   if (storeyId === undefined) throw new SubsetSelectionError('not-found', `Storey not found: ${token}`);
   const storey = parsed.instances.get(storeyId);

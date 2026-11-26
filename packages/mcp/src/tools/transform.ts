@@ -35,7 +35,9 @@ import {
   FILE_WRITE_ANNOTATIONS,
   fileOutputSchema,
   invalid,
+  lossEntryRow,
   requireNoPendingEdits,
+  withIfcPrefix,
   stringList,
 } from './transform-schema.js';
 
@@ -57,7 +59,7 @@ const modelMerge: Tool = {
     properties: {
       model_ids: { type: 'array', items: { type: 'string' }, minItems: 2, description: 'Models to merge, in order; the first sets the unit and project. Default: every loaded model.' },
       file_path: { type: 'string', description: 'Output .ifc path, inside the allowed paths.' },
-      schema: { type: 'string', enum: ['IFC2X3', 'IFC4', 'IFC4X3'], description: 'Output schema (default IFC4).' },
+      schema: { type: 'string', enum: ['IFC2X3', 'IFC4', 'IFC4X3'], description: 'Output schema. Default: the first model\'s. Models in another schema are converted, the loss reported in warnings.' },
       unit_reconciliation: { type: 'string', enum: ['auto', 'normalize', 'assume-shared'], description: 'auto: federate other-unit models as separate projects; normalize: rescale into the first model\'s unit; assume-shared: one project, no rescale.' },
       merge_sites: { type: 'string', enum: ROOT_MODES, description: 'How IfcSite is matched across models.' },
       merge_buildings: { type: 'string', enum: ROOT_MODES, description: 'How IfcBuilding is matched across models.' },
@@ -82,9 +84,27 @@ const modelMerge: Tool = {
     const models = ids.map((id) => resolveModel(ctx, id));
     for (const m of models) requireNoPendingEdits(m, 'model_merge');
     const filePath = await resolveSafePath(input.file_path, ctx, 'write');
+    // Default: the first model's schema, so a merge never converts unasked.
+    const schema = (input.schema as 'IFC2X3' | 'IFC4' | 'IFC4X3' | undefined)
+      ?? ((models[0].store.schemaVersion ?? 'IFC4') as 'IFC2X3' | 'IFC4' | 'IFC4X3');
+    // A model in another schema is converted on the way in: same pre-check as model_convert (#4206).
+    const conversionWarnings: string[] = [];
+    for (const m of models) {
+      const from = (m.store.schemaVersion ?? 'IFC4') as IfcSchemaVersion;
+      if (from === schema) continue;
+      const loss = analyzeConversionLoss(m.store, from, schema);
+      if (loss.hasBlocking) {
+        throw new ToolExecutionError({
+          code: ToolErrorCode.UNSUPPORTED_OPERATION,
+          message: `Cannot merge '${m.id}' into ${schema}: some of its entity types have no ${schema} representation and can be neither dropped nor replaced.`,
+          details: { modelId: m.id, lossReport: loss.entries.map(lossEntryRow) },
+        });
+      }
+      for (const line of loss.describe()) conversionWarnings.push(`${m.id} (${from} to ${schema}): ${line}`);
+    }
     const exporter = new MergedExporter(models.map((m) => ({ id: m.id, name: m.name, dataStore: m.store })));
     const result = exporter.export({
-      schema: (input.schema as 'IFC2X3' | 'IFC4' | 'IFC4X3' | undefined) ?? 'IFC4',
+      schema,
       unitReconciliation: input.unit_reconciliation as 'auto' | 'normalize' | 'assume-shared' | undefined,
       mergeSites: input.merge_sites as 'single' | 'by-name' | undefined,
       mergeBuildings: input.merge_buildings as 'single' | 'by-name' | undefined,
@@ -92,7 +112,7 @@ const modelMerge: Tool = {
       dropEmptyContainers: input.drop_empty_containers === true,
     });
     await writeFile(filePath, result.content);
-    const s = result.stats;
+    const s = { ...result.stats, warnings: [...conversionWarnings, ...result.stats.warnings] };
     return okResult(
       `Merged ${s.modelCount} models into ${filePath} (${fmtInt(s.totalEntityCount)} entities).` +
         (s.warnings.length > 0 ? ` Warnings: ${s.warnings.join('; ')}` : ''),
@@ -163,7 +183,7 @@ const modelConvert: Tool = {
         throw new ToolExecutionError({
           code: ToolErrorCode.UNSUPPORTED_OPERATION,
           message: `Cannot convert to ${target}: some entity types have no ${target} representation and are not IfcRoot subtypes, so they can be neither dropped nor replaced.`,
-          details: { lossReport: loss.describe() },
+          details: { lossReport: loss.entries.map(lossEntryRow) },
         });
       }
       const content = exportToStep(store, { schema: target });
@@ -177,7 +197,7 @@ const modelConvert: Tool = {
           bytes,
           sourceSchema: source,
           targetSchema: target,
-          lossReport: loss.entries.map((e) => ({ type: e.sourceType, targetType: e.targetType ?? null, kind: e.kind, count: e.count, droppedAttributes: e.droppedAttributes })),
+          lossReport: loss.entries.map(lossEntryRow),
         },
       );
     } finally {
@@ -214,7 +234,7 @@ const modelExtract: Tool = {
       ...nonBlank(input.global_ids as string[] | undefined),
       ...((input.express_ids as number[] | undefined) ?? []).map((id) => `#${id}`),
     ];
-    const types = nonBlank(input.types as string[] | undefined);
+    const types = nonBlank(input.types as string[] | undefined).map(withIfcPrefix);
     const storeys = nonBlank(input.storeys as string[] | undefined);
     if (products.length + types.length + storeys.length === 0) {
       throw invalid('Select something: global_ids, express_ids, types or storeys.');

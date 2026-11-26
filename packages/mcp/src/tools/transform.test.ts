@@ -135,6 +135,19 @@ describe('model_merge', () => {
     await expect(call('model_merge', { model_ids: ['a', 'a'], file_path: join(tmp, 'dup.ifc') })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
   });
 
+  it('keeps the first model\'s schema by default and reports converting the other model', async () => {
+    const x3 = join(tmp, 'b-2x3.ifc');
+    ctx.registry.add(await loadIfcModel(join(tmp, 'b.ifc'), { modelId: 'b' }));
+    await call('model_convert', { model_id: 'b', schema: 'IFC2X3', file_path: x3 });
+    ctx.registry.remove('a');
+    ctx.registry.remove('b');
+    ctx.registry.add(await loadIfcModel(x3, { modelId: 'old' }));
+    ctx.registry.add(await loadIfcModel(join(tmp, 'a.ifc'), { modelId: 'a' }));
+    const out = join(tmp, 'merged-2x3.ifc');
+    await call('model_merge', { model_ids: ['old', 'a'], file_path: out });
+    expect(await readFile(out, 'utf-8')).toContain("FILE_SCHEMA(('IFC2X3'))");
+  });
+
   it('refuses fewer than two models', async () => {
     await expect(call('model_merge', { file_path: join(tmp, 'one.ifc') })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
   });
@@ -183,6 +196,11 @@ describe('model_extract', () => {
     expect(text).toContain("'Slab A'");
     expect(text).toContain("'Wall B A'");
     expect(text).not.toContain("'Wall A A'");
+  });
+
+  it('reads an unprefixed type as Ifc-prefixed, like model_anonymize and the CLI', async () => {
+    const res = await call('model_extract', { types: ['Slab'], file_path: join(tmp, 'extract-slab.ifc') });
+    expect(res.structuredContent.seedCount).toBe(1);
   });
 
   it('treats blank selectors as no selection', async () => {

@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { parseStep } from './step-subset.js';
-import { productsUnderPlacement } from './step-subset-storey.js';
+import { productsUnderPlacement, resolveStoreyPlacement } from './step-subset-storey.js';
 
 /** A storey placement #1000, `depth` nested placements below it, and a wall on the deepest. */
 function nested(depth: number, cycle = false): string {
@@ -25,5 +25,29 @@ describe('productsUnderPlacement (#7791, D27: no depth guard)', () => {
     // never reaches #1000.
     const text = nested(3).replace('#1001=IFCLOCALPLACEMENT(#1000,#1);', '#1001=IFCLOCALPLACEMENT(#1003,#1);');
     expect(productsUnderPlacement(1000, parseStep(text)).has(9000)).toBe(false);
+  });
+});
+
+describe('resolveStoreyPlacement: a storey NAMED with a number', () => {
+  const text = [
+    'ISO-10303-21;', 'HEADER;', 'ENDSEC;', 'DATA;',
+    "#1=IFCPROJECT('0000000000000000000PRJ',$,'P',$,$,$,$,$,$);",
+    '#2=IFCAXIS2PLACEMENT3D(#3,$,$);', '#3=IFCCARTESIANPOINT((0.,0.,0.));',
+    '#10=IFCLOCALPLACEMENT($,#2);', '#11=IFCLOCALPLACEMENT($,#2);',
+    "#20=IFCBUILDINGSTOREY('0000000000000000000ST0',$,'0',$,$,#10,$,$,.ELEMENT.,0.);",
+    "#21=IFCBUILDINGSTOREY('0000000000000000000ST1',$,'1',$,$,#11,$,$,.ELEMENT.,3.);",
+    'ENDSEC;', 'END-ISO-10303-21;', '',
+  ].join('\n');
+  const parsed = parseStep(text);
+
+  it('reads a bare number that is no storey id as a name', () => {
+    expect(resolveStoreyPlacement('1', parsed)).toBe(11);
+    expect(resolveStoreyPlacement('0', parsed)).toBe(10);
+  });
+
+  it('still reads a bare storey express id, and #id, as an id', () => {
+    expect(resolveStoreyPlacement('20', parsed)).toBe(10);
+    expect(resolveStoreyPlacement('#21', parsed)).toBe(11);
+    expect(() => resolveStoreyPlacement('#1', parsed)).toThrow(/IFCPROJECT, not an IfcBuildingStorey/);
   });
 });

@@ -4,6 +4,7 @@
 
 /** Shared metadata and guards for the file-writing transform tools. */
 
+import type { ConversionLossEntry } from '@ifc-lite/export';
 import type { JsonSchema, ToolAnnotations } from '../protocol/index.js';
 import type { LoadedModel, ToolContext } from '../context.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
@@ -65,6 +66,16 @@ export async function optionalOutputPath(input: Record<string, unknown>, key: st
   if (raw === undefined) return null;
   if (typeof raw !== 'string' || raw.length === 0) throw invalid(`${key} must be a non-empty string.`);
   return resolveSafePath(raw, ctx, 'write');
+}
+
+/** `Wall` means `IfcWall`, as the CLI's `--type` reads it. */
+export function withIfcPrefix(type: string): string {
+  return /^ifc/i.test(type) ? type : `Ifc${type}`;
+}
+
+/** A conversion loss entry as the transform tools report it, in results and error details alike. */
+export function lossEntryRow(e: ConversionLossEntry) {
+  return { type: e.sourceType, targetType: e.targetType ?? null, kind: e.kind, count: e.count, droppedAttributes: e.droppedAttributes };
 }
 
 export function invalid(message: string): ToolExecutionError {

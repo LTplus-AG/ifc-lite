@@ -33,8 +33,9 @@ export async function exportRegistryModel(): Promise<{ bytes: Uint8Array<ArrayBu
   const safe = sanitizeFilename(model.name, { fallback: 'model.ifc', maxLength: Infinity });
   const complete = /\.ifc$/i.test(safe) ? safe : `${safe}.ifc`;
   let filename = complete;
-  if (complete.length > 60) {
-    // Keep truncated registry names distinguishable when the payloads are identical.
+  const escapedDevice = safe.startsWith('_') && safe !== sanitizeFilename(model.name, { fallback: 'model.ifc', maxLength: Infinity, reservedStem: false });
+  if (escapedDevice || complete.length > 60) {
+    // Disambiguate a device-name escape from a literal underscore, as well as truncated names.
     const digest = await sha256(new TextEncoder().encode(model.name));
     const suffix = `-${digest.slice(-16)}${complete.slice(-4)}`;
     filename = sanitizeFilename(complete.slice(0, -4), { maxLength: 60 - suffix.length }) + suffix;

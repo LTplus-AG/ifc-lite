@@ -359,7 +359,7 @@ export class RaycastEngine {
         const config = snap?.screenCornerSnap;
         if (!config || (snap.snapToVertices === false && snap.snapToEdges === false)) return current;
         const hit = this.screenCorners.query({
-            x, y, ray, camera: this.camera, viewKey: this.readbackViewKey(), viewport,
+            x, y, ray, camera: this.camera, viewKey: this.readbackViewKey(), liveViewKey: () => this.readbackViewKey(), viewport,
             pieces: this.flatIndex.allPieces(), geometryFor: mesh => this.snapDetector.getGeometryCache(mesh),
             options: config, hiddenIds: options?.hiddenIds, isolatedIds: options?.isolatedIds, clip, hitDistance,
         });

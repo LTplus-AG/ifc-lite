@@ -16,7 +16,7 @@ import { RaycastEngine } from './raycast-engine.js';
 import { Camera } from './camera.js';
 import { Scene } from './scene.js';
 import { buildGeometryCache } from './snap-geometry-cache.js';
-import { ScreenCornerIndex, closestPointOnSegmentToRay } from './snap-screen-corners.js';
+import { ScreenCornerIndex, closestPointOnSegmentToRay, type IdleHost, type IdleSlice } from './snap-screen-corners.js';
 import type { Mesh } from './types.js';
 import type { MeshData } from '@ifc-lite/geometry';
 
@@ -69,9 +69,43 @@ const lock = { edge: null, meshExpressId: null, lockStrength: 0 };
 const base = { snapToVertices: true, snapToEdges: true, snapToFaces: true, screenSnapRadius: 4 };
 const withCorners = { ...base, screenCornerSnap: { settleMs: 0 } };
 
+/** Idle slices run by hand: nothing happens until `tick` / `drain`. `onWait` advances a fake clock for delayed requests. */
+class ManualIdleHost implements IdleHost {
+  private queue: { id: number; cb: (s: IdleSlice) => void; afterMs: number }[] = [];
+  private next = 1;
+  onWait: (ms: number) => void = () => {};
+  request(cb: (s: IdleSlice) => void, afterMs = 0): unknown {
+    const id = this.next++;
+    this.queue.push({ id, cb, afterMs });
+    return id;
+  }
+  cancel(h: unknown): void { this.queue = this.queue.filter((q) => q.id !== h); }
+  get pending(): number { return this.queue.length; }
+  /** Run the oldest queued slice with `budgetMs` of idle time; false when none was queued. */
+  tick(budgetMs = 1e9): boolean {
+    const q = this.queue.shift();
+    if (!q) return false;
+    if (q.afterMs > 0) this.onWait(q.afterMs);
+    q.cb({ timeRemaining: () => budgetMs, didTimeout: false });
+    return true;
+  }
+  drain(maxSlices = 100000): number {
+    let n = 0;
+    while (n < maxSlices && this.tick()) n++;
+    return n;
+  }
+}
+
+/** A pick the way a host sees it: the first pick only starts the idle build, the second one reads what it built. */
 function pick(scene: Scene, x: number, y: number, options: Record<string, unknown> = {}, clip?: Parameters<RaycastEngine['raycastSceneMagnetic']>[4]) {
+  const host = new ManualIdleHost();
+  const snap = (options.snapOptions ?? withCorners) as { screenCornerSnap?: object };
+  const snapOptions = snap.screenCornerSnap ? { ...snap, screenCornerSnap: { ...snap.screenCornerSnap, idleHost: host } } : snap;
   const engine = new RaycastEngine(cameraDownZ(), scene, canvas);
-  return engine.raycastSceneMagnetic(x, y, lock, { snapOptions: withCorners, ...options }, clip);
+  const run = () => engine.raycastSceneMagnetic(x, y, lock, { ...options, snapOptions }, clip);
+  run();
+  host.drain();
+  return run();
 }
 
 // Box A top corner (0, 2, 2) projects to (400, 270).
@@ -167,61 +201,136 @@ describe('closestPointOnSegmentToRay', () => {
   });
 });
 
-describe('screen corner grid rebuild', () => {
-  it('never rebuilds the grid inside a camera move: queries answer null until the view has been still', () => {
-    const pieces: MeshData[] = [];
-    for (let i = 0; i < 80; i++) for (let j = 0; j < 79; j++) pieces.push(makeBox(i * 100 + j + 1, [i * 0.5, j * 0.5, 0], [i * 0.5 + 0.3, j * 0.5 + 0.3, 0.3]));
-    const camera = cameraDownZ();
-    camera.setOrthoSize(30);
-    const index = new ScreenCornerIndex();
-    const ray = camera.unprojectToRay(400, 300, 800, 600);
-    let clock = 0;
-    const query = (viewKey: string) => index.query({
-      x: 400, y: 300, ray, camera, viewKey, viewport: { width: 800, height: 600 }, pieces,
-      geometryFor: (m) => buildGeometryCache(m), options: { buildBudgetMs: 1e9 }, now: () => clock,
-    });
-    assert.equal(query('v0'), null, 'first query of a view only starts the settle timer');
-    clock = 130;
-    assert.ok(query('v0'), 'still for 130 ms: the grid is built and answers');
-    // The camera moves: every query inside the settle window returns at once.
-    clock = 200;
-    const t = performance.now();
-    assert.equal(query('v1'), null);
-    clock = 250;
-    assert.equal(query('v2'), null, 'a further change restarts the timer');
-    const blocked = performance.now() - t;
-    assert.ok(blocked < 20, `queries during a camera move took ${blocked} ms; the ~100 ms grid rebuild must not run`);
-    clock = 400;
-    assert.ok(query('v2'), 'settled: rebuilt lazily on the first query');
-  });
-});
+const VIEW = { width: 800, height: 600 };
 
-describe('screen corner grid on a model with more pieces than one move can build (#11504)', () => {
-  it('settles while candidates are still being built, then covers the pieces that arrive later', () => {
-    // 100 boxes; each geometry build "costs" 1 ms of the injected clock, the budget is 5 ms: 5 pieces per move.
+/** An index over `pieces` with a still camera, a manual idle host and a fake clock; each geometry build costs 1 ms. */
+function harness(pieces: MeshData[], options: Record<string, unknown> = {}) {
+  const camera = cameraDownZ();
+  camera.setOrthoSize(30);
+  const index = new ScreenCornerIndex();
+  const host = new ManualIdleHost();
+  const state = { clock: 0, built: [] as number[], key: 'still' };
+  host.onWait = (ms) => { state.clock += ms; };
+  const query = (x: number, y: number) => index.query({
+    x, y, ray: camera.unprojectToRay(x, y, VIEW.width, VIEW.height), camera, viewKey: state.key,
+    liveViewKey: () => state.key, viewport: VIEW, pieces,
+    geometryFor: (m) => { state.clock += 1; state.built.push(m.expressId); return buildGeometryCache(m); },
+    options: { idleHost: host, settleMs: 100, maxSliceMs: 5, ...options }, now: () => state.clock,
+  });
+  const at = (wx: number, wy: number, wz = 0.1) => camera.projectToScreen({ x: wx, y: wy, z: wz }, VIEW.width, VIEW.height)!;
+  return { index, host, state, query, at, camera };
+}
+
+function boxRow(n: number): MeshData[] {
+  const pieces: MeshData[] = [];
+  for (let i = 0; i < n; i++) pieces.push(makeBox(i + 1, [i * 0.2, 0, 0], [i * 0.2 + 0.1, 0.1, 0.1]));
+  return pieces;
+}
+
+describe('screen corner idle build (#11504)', () => {
+  it('a pick never runs a candidate-build chunk or a grid rebuild; only idle slices do', () => {
+    const t = harness(boxRow(100));
+    const first = t.at(0, 0);
+    // 60 picks over a still camera, idle slices never granted: nothing is built, every answer is null.
+    for (let k = 0; k < 60; k++) {
+      t.state.clock += 16;
+      assert.equal(t.query(first.x, first.y), null);
+    }
+    assert.equal(t.state.built.length, 0, 'no pick built a candidate');
+    assert.equal(t.index.stats()?.gridsStarted, 0, 'no pick started a grid');
+    // Idle slices build; picks between slices build nothing and cost no clock.
+    t.host.tick(); // the settle wait
+    t.host.tick();
+    const built = t.state.built.length;
+    const grids = t.index.stats()!.gridsStarted;
+    assert.ok(built > 0 && grids === 1, `an idle slice built ${built} pieces and started ${grids} grid(s)`);
+    for (let k = 0; k < 60; k++) {
+      const before = t.state.clock;
+      t.query(first.x, first.y);
+      assert.equal(t.state.clock, before, 'a pick advanced the clock: it built something');
+    }
+    assert.equal(t.state.built.length, built, 'picks between slices built no candidate');
+    assert.equal(t.index.stats()!.gridsStarted, grids, 'picks between slices started no grid');
+    // A camera move starts a new grid only when an idle slice runs on the settled view, never inside a pick.
+    t.host.drain();
+    const gridsDone = t.index.stats()!.gridsStarted;
+    t.state.key = 'moved';
+    for (let k = 0; k < 20; k++) { t.state.clock += 16; assert.equal(t.query(first.x, first.y), null, 'the old grid never answers for a new view'); }
+    assert.equal(t.index.stats()!.gridsStarted, gridsDone, 'no grid started by picks of the new view');
+    t.host.drain();
+    assert.equal(t.index.stats()!.gridsStarted, gridsDone + 1, 'the idle slice built the grid for the new view');
+    assert.ok(t.query(first.x, first.y), 'and the next pick reads it');
+  });
+
+  it('coverage completes over idle ticks, and a pick answers from the part built so far', () => {
+    const t = harness(boxRow(100));
+    const first = t.at(0, 0), last = t.at(99 * 0.2, 0);
+    t.query(first.x, first.y);
+    t.host.tick(); // settle wait
+    t.host.tick(); // ~5 pieces
+    const early = t.index.stats()!;
+    assert.ok(early.gridPieces > 0 && early.gridPieces < 20, `partial grid after one slice (${early.gridPieces})`);
+    assert.ok(!early.complete);
+    let slices = 0;
+    while (t.host.tick()) slices++;
+    const done = t.index.stats()!;
+    assert.ok(slices > 5, `${slices} idle slices`);
+    assert.equal(done.complete, true);
+    assert.equal(done.gridPieces, 100);
+    assert.equal(done.candidatePieces, 100);
+    assert.equal(t.query(last.x, last.y)?.expressId, 100, 'the last piece is snappable once coverage is complete');
+    assert.equal(t.host.pending, 0, 'a complete build schedules nothing more');
+    t.query(first.x, first.y);
+    assert.equal(t.host.pending, 0, 'and a pick on the same view does not restart it');
+  });
+
+  it('builds the pieces that reach the viewport first, nearest the camera first', () => {
+    // Off-screen boxes come first in scene order; on-screen ones are at |x| = 0.5 .. 4.5 from the camera axis.
     const pieces: MeshData[] = [];
-    for (let i = 0; i < 100; i++) pieces.push(makeBox(i + 1, [i * 0.2, 0, 0], [i * 0.2 + 0.1, 0.1, 0.1]));
-    const camera = cameraDownZ();
-    camera.setOrthoSize(30);
-    const index = new ScreenCornerIndex();
-    let clock = 0;
-    const ray = (x: number, y: number) => camera.unprojectToRay(x, y, 800, 600);
-    const move = (x: number, y: number) => {
-      clock += 16; // a pointer move every 16 ms over a still camera
-      return index.query({
-        x, y, ray: ray(x, y), camera, viewKey: 'still', viewport: { width: 800, height: 600 }, pieces,
-        geometryFor: (m) => { clock += 1; return buildGeometryCache(m); },
-        options: { buildBudgetMs: 5, settledBuildBudgetMs: 5 }, now: () => clock,
-      });
-    };
-    const at = (px: number) => camera.projectToScreen({ x: px, y: 0, z: 0.1 }, 800, 600)!;
-    const first = at(0), last = at(99 * 0.2);
-    let early: ReturnType<typeof move> = null;
-    for (let k = 0; k < 14 && !early; k++) early = move(first.x, first.y);
-    assert.equal(early?.expressId, 1, 'the first built piece answers within ~14 moves, before the last piece is built');
-    for (let k = 0; k < 40; k++) move(first.x, first.y);
-    const late = move(last.x, last.y);
-    assert.equal(late?.expressId, 100, 'once the last piece is built the grid has been rebuilt to include it');
+    for (let i = 0; i < 10; i++) pieces.push(makeBox(100 + i, [500 + i, 0, 0], [500.1 + i, 0.1, 0.1]));
+    const onScreen = [9, 3, 7, 1, 5, 2, 8, 4, 6, 10];
+    for (const k of onScreen) pieces.push(makeBox(k, [k * 0.5, 0, 0], [k * 0.5 + 0.1, 0.1, 0.1]));
+    const t = harness(pieces);
+    t.query(400, 300);
+    t.host.drain();
+    assert.deepEqual(t.state.built.slice(0, 10), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 'on-screen pieces, nearest first');
+    assert.deepEqual(t.state.built.slice(10).sort(), Array.from({ length: 10 }, (_, i) => 100 + i), 'then the off-screen ones');
+  });
+
+  it('builds a very large piece after the small ones, even when it is nearest', () => {
+    const big = makeBox(1, [0, 0, 0], [0.1, 0.1, 0.1]);
+    const box = big.indices;
+    big.indices = new Uint32Array(box.length * 2000); // 24 000 triangles, over BIG_PIECE_TRIANGLES
+    for (let r = 0; r < 2000; r++) big.indices.set(box, r * box.length);
+    const t = harness([big, ...[2, 3, 4].map((id) => makeBox(id, [id * 0.5, 0, 0], [id * 0.5 + 0.1, 0.1, 0.1]))]);
+    t.query(400, 300);
+    t.host.drain();
+    assert.deepEqual(t.state.built, [2, 3, 4, 1], 'the big piece waits for the small ones');
+  });
+
+  it('does nothing while the view moves, and starts once it has been still for settleMs', () => {
+    const t = harness(boxRow(20));
+    t.host.onWait = () => {}; // the clock only moves with the picks
+    for (let k = 0; k < 10; k++) {
+      t.state.key = `v${k}`; // the camera moves between every pick
+      t.state.clock += 16;
+      t.query(400, 300);
+      t.host.tick();
+    }
+    assert.equal(t.state.built.length, 0, 'nothing built while the view moved every 16 ms');
+    t.host.onWait = (ms) => { t.state.clock += ms; };
+    t.host.drain();
+    assert.equal(t.index.stats()!.complete, true, 'built once the view stopped');
+    assert.ok(t.state.clock >= 9 * 16 + 100, 'only after the settle time');
+  });
+
+  it('stops its idle work when cleared', () => {
+    const t = harness(boxRow(20));
+    t.query(400, 300);
+    assert.equal(t.host.pending, 1);
+    t.index.clear();
+    assert.equal(t.host.pending, 0);
+    assert.equal(t.index.stats(), null);
   });
 });
 
@@ -235,23 +344,22 @@ describe('screen corner query cost', () => {
     const camera = cameraDownZ();
     camera.setOrthoSize(30);
     const index = new ScreenCornerIndex();
-    const geometryFor = (m: MeshData) => buildGeometryCache(m);
+    const host = new ManualIdleHost();
     const ray = camera.unprojectToRay(400, 300, 800, 600);
     const query = (x: number, y: number, viewKey: string) => index.query({
-      x, y, ray, camera, viewKey, viewport: { width: 800, height: 600 }, pieces, geometryFor,
-      options: { buildBudgetMs: 1e9, settleMs: 0 },
+      x, y, ray, camera, viewKey, viewport: VIEW, pieces, geometryFor: (m) => buildGeometryCache(m),
+      options: { idleHost: host, settleMs: 0, maxSliceMs: 1e9 },
     });
+    query(400, 300, 'v0');
     let t = performance.now();
-    query(400, 300, 'v0'); // builds every piece's candidates and the grid
+    host.drain(); // candidates and grid, all in idle slices
     const buildMs = performance.now() - t;
-    t = performance.now();
-    query(401, 300, 'v1'); // new camera: grid rebuild only
-    const gridMs = performance.now() - t;
+    assert.equal(index.stats()?.complete, true);
     const runs = 200;
     t = performance.now();
-    for (let k = 0; k < runs; k++) query(300 + k, 200 + (k % 50), 'v1');
+    for (let k = 0; k < runs; k++) query(300 + k, 200 + (k % 50), 'v0');
     const perMoveMs = (performance.now() - t) / runs;
-    console.log(`screen-corner bench: ${pieces.length * 8} corners; candidate build ${buildMs.toFixed(0)} ms (once), grid rebuild ${gridMs.toFixed(1)} ms (per camera change), query ${perMoveMs.toFixed(3)} ms (per move)`);
+    console.log(`screen-corner bench: ${pieces.length * 8} corners; idle build ${buildMs.toFixed(0)} ms, ~${((index.stats()?.approxBytes ?? 0) / 1e6).toFixed(1)} MB; query ${perMoveMs.toFixed(3)} ms (per move)`);
     assert.ok(perMoveMs < 2, `per-move query took ${perMoveMs} ms`);
   });
 });

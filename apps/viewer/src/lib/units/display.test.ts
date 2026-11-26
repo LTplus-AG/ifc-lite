@@ -226,10 +226,10 @@ describe('an edited quantity keeps labelling its own Unit (#11592)', () => {
     view.setQuantityExtractor(() => [{
       name: 'Qto_SpaceBaseQuantities',
       quantities: [{ name: 'NetFloorArea', type: QuantityType.Area, value: 250_000, explicitUnit: 'cm²', explicitUnitSiScale: 1e-4 }],
-    }] as never);
+    }]);
     view.setQuantity(1, 'Qto_SpaceBaseQuantities', 'NetFloorArea', 300_000, QuantityType.Area);
     const edited = view.getQuantitiesForEntity(1)[0].quantities[0];
-    const display = resolveQuantityDisplay(edited.value, edited.type, ProjectUnits.empty(), {}, edited as never);
+    const display = resolveQuantityDisplay(edited.value, edited.type, ProjectUnits.empty(), {}, edited);
     assert.strictEqual(display.unit, 'cm²');
   });
 });

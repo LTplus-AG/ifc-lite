@@ -19,11 +19,11 @@ function view(): MutablePropertyView {
       { name: 'NetSideArea', type: QuantityType.Area, value: 5_000_000, explicitUnit: 'mm²', explicitUnitSiScale: 1e-6 },
       { name: 'GrossArea', type: QuantityType.Area, value: 6 },
     ],
-  }] as never);
+  }]);
   return v;
 }
 const read = (v: MutablePropertyView, name: string) =>
-  v.getQuantitiesForEntity(1)[0].quantities.find((q) => q.name === name) as unknown as Record<string, unknown>;
+  v.getQuantitiesForEntity(1)[0].quantities.find((q) => q.name === name);
 
 describe('an edited quantity keeps its own Unit (#11592)', () => {
   it('keeps the explicit unit and its SI scale when only the value changes', () => {

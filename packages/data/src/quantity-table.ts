@@ -25,6 +25,12 @@ export interface Quantity {
   value: number;
   unit?: string;
   formula?: string;
+  /** Display symbol of the quantity's own `Unit` (`mm²`), when it declares one that resolves. */
+  explicitUnit?: string;
+  /** SI factor of that own `Unit`; absent when the quantity inherits the project unit. */
+  explicitUnitSiScale?: number;
+  /** The quantity names a `Unit` that does not resolve; never read it as the project unit. */
+  explicitUnitUnresolved?: true;
 }
 
 export interface QuantityTable {

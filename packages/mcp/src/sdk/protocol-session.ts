@@ -215,7 +215,7 @@ export class ProtocolSession {
     return this.transport.deliver(message);
   }
 
-  /** Ends the connection: requests in flight are aborted and answered with nothing. */
+  /** Ends the connection: requests in flight are aborted and answered with -32603. */
   close(): void {
     void this.server.close();
     this.transport.settleAll();

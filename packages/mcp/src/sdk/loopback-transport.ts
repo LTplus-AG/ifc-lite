@@ -31,10 +31,12 @@ export class LoopbackTransport implements Transport {
   private syncFailure: { error: unknown } | null = null;
   /** Id of the initialize request whose response has not gone out yet. */
   private pendingInitialize: JsonRpcId | undefined;
+  private seenInitialize = false;
+  private sentHandshake = false;
   /** Whether a valid `initialize` request has arrived; requests after it are served, as clients may pipeline them. */
-  initializeSeen = false;
+  get initializeSeen(): boolean { return this.seenInitialize; }
   /** Whether the initialize result has gone out; notifications wait for it. */
-  handshakeSent = false;
+  get handshakeSent(): boolean { return this.sentHandshake; }
 
   constructor(private readonly sink: () => LoopbackSink | null) {}
 
@@ -59,7 +61,7 @@ export class LoopbackTransport implements Transport {
       const settle = this.take(message.id);
       if (settle && message.id === this.pendingInitialize) {
         this.pendingInitialize = undefined;
-        if ('result' in message) this.handshakeSent = true;
+        if ('result' in message) this.sentHandshake = true;
       }
       settle?.(message as JsonRpcResponse);
       return Promise.resolve();
@@ -110,7 +112,7 @@ export class LoopbackTransport implements Transport {
       const answered = new Promise<JsonRpcResponse | null>((resolve) => this.waiting.set(message.id, resolve));
       if (message.method === 'initialize') {
         this.pendingInitialize = message.id;
-        this.initializeSeen = true;
+        this.seenInitialize = true;
       }
       try {
         this.onmessage(message as JSONRPCMessage);

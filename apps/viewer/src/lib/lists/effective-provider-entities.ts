@@ -83,19 +83,7 @@ export function effectiveListTypeName(store: IfcDataStore, view: MutableProperty
   return type ? normalizeIfcTypeName(type) : '';
 }
 
-/** Type-owned quantities use the type-specific base extractor; overlay edits win by name. */
+/** Apply type edits with the type-specific source sets as the quantity base. */
 export function effectiveTypeQuantitySets(base: QuantitySet[], typeId: number, view: MutablePropertyView | undefined): QuantitySet[] {
-  if (!view?.hasChanges(typeId)) return base;
-  const visibleBase = base.filter((set) => !view.isQuantitySetDeleted(typeId, set.name));
-  const overlay = view.getQuantitiesForEntity(typeId);
-  const byName = new Map(overlay.map((set) => [set.name, set]));
-  return [
-    ...overlay.map((set) => {
-      const baseSet = visibleBase.find((candidate) => candidate.name === set.name);
-      if (!baseSet) return set;
-      const edited = new Set(set.quantities.map((quantity) => quantity.name));
-      return { ...set, quantities: [...set.quantities, ...baseSet.quantities.filter((quantity) => !edited.has(quantity.name))] };
-    }),
-    ...visibleBase.filter((set) => !byName.has(set.name)),
-  ];
+  return view?.hasChanges(typeId) ? view.getQuantitiesForEntity(typeId, () => base) : base;
 }

@@ -114,6 +114,35 @@ describe('list quantity totals honour a member Unit', () => {
     assert.equal(converted?.value, 7);
   });
 
+  it('keeps an occurrence Unit on edits when the overlay takes its base from Lists (#11469)', async () => {
+    const bytes = new TextEncoder().encode(STEP);
+    const store = await new IfcParser().parseColumnar(bytes.buffer, { disableWorkerScan: true });
+    const view = new MutablePropertyView(store.properties, 'm');
+    view.setQuantity(11, 'Qto_WallBaseQuantities', 'NetSideArea', 7_000_000, QuantityType.Area);
+
+    const quantity = createListDataProvider(store, '', undefined, view).getQuantitySets(11)[0].quantities[0];
+    assert.equal(quantity.explicitUnitSiScale, 1e-6);
+    const provider = createProjectUnitListDataProvider(store, '', undefined, view);
+    assert.equal(provider.getQuantitySets(11)[0].quantities[0].value, 7);
+  });
+
+  it('keeps an edited type quantity in its own unit when the overlay reader supplies only occurrences (#11469)', async () => {
+    const source = STEP.replace(
+      "#40=IFCQUANTITYAREA('NetSideArea',$,$,3.,$);",
+      "#40=IFCQUANTITYAREA('NetSideArea',$,#93,3000000.,$);",
+    );
+    const bytes = new TextEncoder().encode(source);
+    const store = await new IfcParser().parseColumnar(bytes.buffer, { disableWorkerScan: true });
+    const view = new MutablePropertyView(store.properties, 'm');
+    view.setQuantityExtractor(id => extractQuantitiesOnDemand(store, id));
+    const before = createProjectUnitListDataProvider(store, '', undefined, view);
+    assert.equal(before.getTypeQuantitySets?.(12)?.[0]?.quantities[0]?.value, 3);
+
+    view.setQuantity(42, 'Qto_WallBaseQuantities', 'NetSideArea', 8_000_000, QuantityType.Area);
+    const provider = createProjectUnitListDataProvider(store, '', undefined, view);
+    assert.equal(provider.getTypeQuantitySets?.(12)?.[0]?.quantities[0]?.value, 8);
+  });
+
   it('keeps the surviving same-named set in its own scale after deleting the first member (#11469)', async () => {
     const source = STEP.replace('ENDSEC;\nEND-ISO-10303-21;', [
       "#60=IFCQUANTITYAREA('NetSideArea',$,$,6.,$);",

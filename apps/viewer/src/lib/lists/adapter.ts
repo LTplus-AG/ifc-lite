@@ -25,7 +25,7 @@ import type { PropertySet, QuantitySet } from '@ifc-lite/data';
 import { RelationshipType, exactTypeName } from '@ifc-lite/data';
 import { ENTITY_ATTRIBUTES } from '@ifc-lite/lists';
 import type { ListDataProvider, ListClassificationRef, DiscoveredColumns } from '@ifc-lite/lists';
-import { quantitySetsFor, resolveEntityPredefinedType, typePropertySetsFor } from '@ifc-lite/rules';
+import { resolveEntityPredefinedType, typePropertySetsFor } from '@ifc-lite/rules';
 import { buildSpatialAncestryIndex, type SpatialAncestryIndex } from '../../utils/spatialHierarchy.js';
 import { validEntry } from '../zones/index.js';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
@@ -143,7 +143,9 @@ export function createListDataProvider(
   }
 
   function getQuantitySetsFor(entityId: number): QuantitySet[] {
-    if (view) return view.isDeleted(entityId) ? [] : quantitySetsFor(store, entityId, view) as QuantitySet[];
+    if (view?.isDeleted(entityId)) return [];
+    if (view) return view.getQuantitiesForEntity(entityId,
+      view.hasQuantityBase() ? undefined : (baseId) => extractQuantitiesOnDemand(store, baseId));
     if (usesOnDemandQtos) return extractQuantitiesOnDemand(store, entityId) as QuantitySet[];
     return store.quantities?.getForEntity(entityId) ?? [];
   }

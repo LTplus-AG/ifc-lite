@@ -63,9 +63,12 @@ function pruneStage(dir) {
  */
 const WASM = [join('pkg', 'ifc-lite_bg.wasm'), join('pkg-diff', 'ifc-lite-diff_bg.wasm'), join('pkg-rhino', 'ifc-lite-rhino_bg.wasm')];
 
-/** Every package in a hoisted node_modules as name@version, sorted, for the release record. */
+/**
+ * Every package in a hoisted node_modules: name@version mapped to the folder
+ * of each copy, since a version can sit nested under another package.
+ */
 function resolvedTree(nodeModules) {
-  const found = [];
+  const found = new Map();
   const visit = (dir) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
@@ -74,13 +77,14 @@ function resolvedTree(nodeModules) {
       const manifest = join(path, 'package.json');
       if (existsSync(manifest)) {
         const { name, version } = JSON.parse(readFileSync(manifest, 'utf-8'));
-        found.push(`${name}@${version}`);
+        const spec = `${name}@${version}`;
+        found.set(spec, [...(found.get(spec) ?? []), path]);
       }
       if (existsSync(join(path, 'node_modules'))) visit(join(path, 'node_modules'));
     }
   };
   visit(nodeModules);
-  return [...new Set(found)].sort();
+  return found;
 }
 
 /**
@@ -88,23 +92,26 @@ function resolvedTree(nodeModules) {
  * the hoisted deploy runs with allow-unused-patches, so pnpm would not say if
  * one of them were skipped. Every line a patch adds must be in the staged file.
  */
-function assertPatchesApplied(nodeModules, staged) {
+function assertPatchesApplied(staged) {
   const root = resolve(pkgDir, '..', '..');
   const patches = JSON.parse(readFileSync(join(root, 'package.json'), 'utf-8')).pnpm?.patchedDependencies ?? {};
   for (const [spec, patch] of Object.entries(patches)) {
-    if (!staged.includes(spec)) continue;
-    const pkgRoot = join(nodeModules, spec.slice(0, spec.lastIndexOf('@')));
-    let file = '';
-    let checked = 0;
-    for (const line of readFileSync(join(root, patch), 'utf-8').split('\n')) {
-      if (line.startsWith('+++ ')) file = readFileSync(join(pkgRoot, line.slice(4).replace(/^b\//, '')), 'utf-8');
-      else if (line.startsWith('+') && line.trim() !== '+') {
-        if (!file.includes(line.slice(1))) throw new Error(`${spec} is staged without ${patch} (missing: ${line.slice(1).trim()})`);
-        checked++;
+    // A CRLF checkout of patches/ (core.autocrlf) must still compare equal.
+    const lines = readFileSync(join(root, patch), 'utf-8').split(/\r?\n/);
+    // Every copy of exactly this version, hoisted or nested.
+    for (const pkgRoot of staged.get(spec) ?? []) {
+      let file = '';
+      let checked = 0;
+      for (const line of lines) {
+        if (line.startsWith('+++ ')) file = readFileSync(join(pkgRoot, line.slice(4).replace(/^b\//, '')), 'utf-8');
+        else if (line.startsWith('+') && line.trim() !== '+') {
+          if (!file.includes(line.slice(1))) throw new Error(`${pkgRoot} is staged without ${patch} (missing: ${line.slice(1).trim()})`);
+          checked++;
+        }
       }
+      // A patch that parsed to nothing would pass without having checked anything.
+      if (checked === 0) throw new Error(`${patch} has no added lines to check`);
     }
-    // A patch that parsed to nothing would pass without having checked anything.
-    if (checked === 0) throw new Error(`${patch} has no added lines to check`);
   }
 }
 
@@ -126,7 +133,9 @@ writeFileSync(join(out, 'server.json'), `${JSON.stringify(serverJson(pkg), null,
 process.stdout.write(`wrote ${join(out, 'server.json')}\n`);
 // The registry verifies ownership through the npm package's mcpName.
 const onNpm = spawnSync('npm', ['view', `${pkg.name}@${pkg.version}`, 'mcpName'], { encoding: 'utf-8', shell: win, timeout: 30_000 });
-if (onNpm.status !== 0) {
+if (onNpm.status !== 0 && /E404/.test(onNpm.stderr ?? '')) {
+  process.stdout.write(`note: ${pkg.name}@${pkg.version} is not on npm yet; publish it before server.json\n`);
+} else if (onNpm.status !== 0) {
   process.stdout.write(`note: could not ask npm about ${pkg.name}@${pkg.version}; check its mcpName before publishing server.json\n`);
 } else if (onNpm.stdout.trim() !== pkg.mcpName) {
   process.stdout.write(`note: ${pkg.name}@${pkg.version} on npm has no mcpName ${pkg.mcpName}; publish this version before server.json\n`);
@@ -137,6 +146,10 @@ if (!flags['no-bundle']) {
   const source = missingWasm(resolve(pkgDir, '..', 'wasm'));
   if (source.length) throw new Error(`packages/wasm is missing ${source.join(', ')}: build it (scripts/build-wasm.sh) first`);
   const stage = join(out, 'mcpb');
+  const deps = join(out, `ifc-lite-${pkg.version}.deps.txt`);
+  const bundle = join(out, `ifc-lite-${pkg.version}.mcpb`);
+  // A failed rebuild must not leave the last run's bundle looking current.
+  for (const old of [deps, bundle]) rmSync(old, { force: true });
   rmSync(stage, { recursive: true, force: true });
   run('pnpm', [
     '--config.node-linker=hoisted',
@@ -152,14 +165,12 @@ if (!flags['no-bundle']) {
   // exact tree is recorded next to the bundle to audit or reproduce a release.
   const nodeModules = join(stage, BUNDLE_SERVER_DIR, 'node_modules');
   const tree = resolvedTree(nodeModules);
-  assertPatchesApplied(nodeModules, tree);
-  const deps = join(out, `ifc-lite-${pkg.version}.deps.txt`);
-  writeFileSync(deps, `${tree.join('\n')}\n`);
+  assertPatchesApplied(tree);
+  writeFileSync(deps, `${[...tree.keys()].sort().join('\n')}\n`);
   process.stdout.write(`wrote ${deps}\n`);
   writeFileSync(join(stage, 'manifest.json'), `${JSON.stringify(mcpbManifest(pkg), null, 2)}\n`);
   // Source maps and type declarations are about 30 MB of the stage and never run.
   writeFileSync(join(stage, '.mcpbignore'), '*.map\n*.d.ts\n*.d.mts\n*.d.cts\n');
-  const bundle = join(out, `ifc-lite-${pkg.version}.mcpb`);
   run('npx', ['-y', MCPB_CLI, 'pack', stage, bundle], pkgDir);
   process.stdout.write(`wrote ${bundle}\n`);
 }

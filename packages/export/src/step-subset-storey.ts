@@ -10,7 +10,8 @@
 import { IfcTypeEnumFromString, isSpatialStructureType, walkPlacementChain } from '@ifc-lite/data';
 import { decodeStepStringLiteral } from '@ifc-lite/encoding';
 import { stepString } from './schema-converter-structural-source.js';
-import { refsOutsideStrings, SINGLE_REF_RE, splitTopLevelArgs, STRUCTURE_RELATION_ATTRS, STRUCTURE_RELATIONS, SubsetSelectionError } from './step-subset-relations.js';
+import { refsOutsideStrings, splitTopLevelArgs, SubsetSelectionError } from './step-subset-relations.js';
+import { structureParents } from './step-subset-spatial-ancestors.js';
 import type { ParsedStep } from './step-subset.js';
 
 /** Map each IfcLocalPlacement to its parent placement (or null when top-level). */
@@ -137,42 +138,47 @@ export function resolveStorey(token: string, parsed: ParsedStep): { storeyId: nu
 /** IfcObjectPlacement subtypes: placement records a storey walk returns, never products. */
 const PLACEMENT_TYPES = new Set(['IFCLOCALPLACEMENT', 'IFCGRIDPLACEMENT', 'IFCLINEARPLACEMENT']);
 
-/** Element id -> the spatial structure an IfcRelContainedInSpatialStructure puts it in. */
-function containment(parsed: ParsedStep): Map<number, number> {
-  const out = new Map<number, number>();
-  const [relatingAt, relatedAt] = STRUCTURE_RELATIONS.IFCRELCONTAINEDINSPATIALSTRUCTURE;
-  for (const inst of parsed.instances.values()) {
-    if (inst.type !== 'IFCRELCONTAINEDINSPATIALSTRUCTURE') continue;
-    const args = splitTopLevelArgs(inst.body);
-    if (!args || args.length !== STRUCTURE_RELATION_ATTRS) continue;
-    const relating = SINGLE_REF_RE.exec(args[relatingAt]);
-    if (!relating) continue;
-    for (const id of refsOutsideStrings(args[relatedAt])) if (parsed.instances.has(id)) out.set(id, Number(relating[1]));
+/**
+ * The nearest storeys above `id` in the spatial tree (containment, spatial
+ * aggregation and spatial reference, as `structureParents` reads them). The
+ * walk stops at the first storey on each path and keeps a visited set, so a
+ * cyclic or deep file terminates.
+ */
+function owningStoreys(id: number, parents: ReadonlyMap<number, number[]>, parsed: ParsedStep): Set<number> {
+  const found = new Set<number>();
+  const visited = new Set<number>([id]);
+  const stack = [...(parents.get(id) ?? [])];
+  while (stack.length > 0) {
+    const next = stack.pop()!;
+    if (visited.has(next)) continue;
+    visited.add(next);
+    if (parsed.instances.get(next)?.type === 'IFCBUILDINGSTOREY') found.add(next);
+    else stack.push(...(parents.get(next) ?? []));
   }
-  return out;
+  return found;
 }
 
 /**
- * A storey's products: every element IfcRelContainedInSpatialStructure puts in
- * it (placed anywhere), plus every element whose placement chains through the
- * storey's placement and that no containment assigns to another storey. The
- * second set is what a storey means when its elements have no containment;
- * the exclusion keeps storeys that share a placement from leaking into each
- * other, while an element contained in an IfcSpace under the storey stays.
- * Spatial-structure records other than IfcSpace are never products.
+ * A storey's products: every element whose nearest storey in the spatial tree
+ * is this one (contained in it, or in a space or zone it aggregates), wherever
+ * it is placed; plus, for elements the spatial tree assigns to no storey, those
+ * whose placement chains through the storey's. Storeys that share a placement
+ * therefore never leak into each other. Spatial-structure records other than
+ * IfcSpace are never products.
  */
 export function storeyMembers(storeyId: number, placementId: number, parsed: ParsedStep): number[] {
-  const containedBy = containment(parsed);
-  const isMember = (id: number): boolean => {
+  const parents = structureParents(parsed.instances);
+  const isCandidate = (id: number): boolean => {
     const type = parsed.instances.get(id)?.type;
     if (type === undefined || PLACEMENT_TYPES.has(type)) return false;
-    if (type !== 'IFCSPACE' && isSpatialStructureType(IfcTypeEnumFromString(type))) return false;
-    const structure = containedBy.get(id);
-    return structure === undefined || structure === storeyId || parsed.instances.get(structure)?.type !== 'IFCBUILDINGSTOREY';
+    return type === 'IFCSPACE' || !isSpatialStructureType(IfcTypeEnumFromString(type));
   };
   const out = new Set<number>();
-  for (const id of productsUnderPlacement(placementId, parsed)) if (isMember(id)) out.add(id);
-  for (const [id, structure] of containedBy) if (structure === storeyId) out.add(id);
+  for (const id of parents.keys()) {
+    if (isCandidate(id) && owningStoreys(id, parents, parsed).has(storeyId)) out.add(id);
+  }
+  for (const id of productsUnderPlacement(placementId, parsed)) {
+    if (isCandidate(id) && owningStoreys(id, parents, parsed).size === 0) out.add(id);
+  }
   return [...out];
 }
-

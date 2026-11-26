@@ -91,6 +91,27 @@ describe('selectSubsetSeeds: storeys that share one placement', () => {
     expect([...selectSubsetSeeds(parseStep(spaced), { storeys: ['L01'] })].sort((a, b) => a - b)).toEqual([41, 50, 70]);
   });
 
+  it('follows spaces a storey aggregates, and leaves another storey\'s spaces out', () => {
+    const tree = [
+      'ISO-10303-21;', 'HEADER;', 'ENDSEC;', 'DATA;',
+      '#2=IFCAXIS2PLACEMENT3D(#3,$,$);', '#3=IFCCARTESIANPOINT((0.,0.,0.));',
+      '#50=IFCLOCALPLACEMENT($,#2);', '#51=IFCLOCALPLACEMENT(#50,#2);', '#52=IFCLOCALPLACEMENT($,#2);',
+      "#100=IFCBUILDINGSTOREY('0000000000000000000STA',$,'A',$,$,#50,$,$,.ELEMENT.,0.);",
+      "#200=IFCBUILDINGSTOREY('0000000000000000000STB',$,'B',$,$,#50,$,$,.ELEMENT.,3.);",
+      "#300=IFCSPACE('0000000000000000000SPA',$,'Room',$,$,#51,$,$,.ELEMENT.,.INTERNAL.,$);",
+      "#310=IFCRELAGGREGATES('0000000000000000000AGA',$,$,$,#100,(#300));",
+      "#400=IFCWALL('0000000000000000000WA4',$,'W',$,$,#51,$,$,$);",
+      "#500=IFCFURNISHINGELEMENT('0000000000000000000FU5',$,'Chair',$,$,#52,$,$);",
+      "#410=IFCRELCONTAINEDINSPATIALSTRUCTURE('0000000000000000000RCS',$,$,$,(#400,#500),#300);",
+      'ENDSEC;', 'END-ISO-10303-21;', '',
+    ].join('\n');
+    const parsed = parseStep(tree);
+    // B shares A's placement, but the space and its contents belong to A.
+    expect([...selectSubsetSeeds(parsed, { storeys: ['B'] })]).toEqual([200]);
+    // The world-placed chair is A's through its space.
+    expect([...selectSubsetSeeds(parsed, { storeys: ['A'] })].sort((a, b) => a - b)).toEqual([100, 300, 400, 500]);
+  });
+
   it('never counts a building that shares the storey placement as one of its products', () => {
     const building = [
       'ISO-10303-21;', 'HEADER;', 'ENDSEC;', 'DATA;',

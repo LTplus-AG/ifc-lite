@@ -224,6 +224,7 @@ export function buildSubset(seedProducts: Set<number>, parsed: ParsedStep): Subs
   // host through inverse relationships. Traverse them before adding spatial
   // context, so selecting an assembly never pulls in the contents of a storey.
   const inverse = new Map<number, number[]>();
+  const narrowedAssemblies = new Set<number>();
   for (const inst of parsed.instances.values()) {
     const assembly = ASSEMBLY_RELATIONS.has(inst.type);
     if (!assembly && !HOST_FEATURE_RELATIONS.has(inst.type)) continue;
@@ -233,8 +234,8 @@ export function buildSubset(seedProducts: Set<number>, parsed: ParsedStep): Subs
     if (anchor === null) continue;
     if (assembly) {
       if (parsed.instances.get(anchor)?.type !== 'IFCELEMENTASSEMBLY') continue;
-      // Explicit part selections narrow the assembly's RelatedObjects.
-      if (refsOutsideStrings(args[5]).some((part) => seedProducts.has(part))) continue;
+      // A selected part narrows all decomposition records on this assembly.
+      if (refsOutsideStrings(args[5]).some((part) => seedProducts.has(part))) narrowedAssemblies.add(anchor);
     }
     const relations = inverse.get(anchor);
     if (relations) relations.push(inst.id);
@@ -244,7 +245,11 @@ export function buildSubset(seedProducts: Set<number>, parsed: ParsedStep): Subs
   // once, even for deep or cyclic assembly graphs.
   for (const id of keep) {
     const relations = inverse.get(id);
-    if (relations) forwardClosure(relations, parsed, keep);
+    if (!relations) continue;
+    const expansion = narrowedAssemblies.has(id)
+      ? relations.filter((relation) => !ASSEMBLY_RELATIONS.has(parsed.instances.get(relation)!.type))
+      : relations;
+    forwardClosure(expansion, parsed, keep);
   }
 
   // Context roots: IfcProject (always — units/contexts hang off it even when

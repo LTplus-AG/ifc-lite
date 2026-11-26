@@ -207,6 +207,37 @@ it('keeps the ordered IfcRelNests list when extracting an assembly with selected
   }
 });
 
+it.each(['IFCRELNESTS', 'IFCRELAGGREGATES'])('narrows split assembly records including %s across one anchor (#11583)', async (relationType) => {
+  const dir = await mkdtemp(join(tmpdir(), 'ifc-extract-split-assembly-'));
+  try {
+    const src = join(dir, 'in.ifc');
+    const fixture = TWO_STOREY_MODEL.replace('ENDSEC;\nEND-ISO', [
+      "#76= IFCELEMENTASSEMBLY('ASSE000000000000000001',#5,'Assembly A',$,$,$,$,$,.NOTDEFINED.,.NOTDEFINED.);",
+      "#78= IFCELEMENTASSEMBLY('ASSE000000000000000002',#5,'Assembly B',$,$,$,$,$,.NOTDEFINED.,.NOTDEFINED.);",
+      `#77= ${relationType}('RELN000000000000000001',#5,$,$,#76,(#90));`,
+      "#79= IFCRELNESTS('RELN000000000000000002',#5,$,$,#76,(#70));",
+      "#80= IFCRELNESTS('RELN000000000000000003',#5,$,$,#78,(#95));",
+      'ENDSEC;', 'END-ISO',
+    ].join('\n'));
+    await writeFile(src, fixture, 'latin1');
+    for (const [products, expected, excluded] of [
+      ['#76,#70,#78', [70, 76, 78, 79, 80, 95], [77, 90]],
+      ['#76', [70, 76, 77, 79, 90], [78, 80, 95]],
+    ] as const) {
+      const out = join(dir, 'sub.ifc');
+      await extractEntitiesCommand([src, '--product', products, '--out', out]);
+      const text = await readFile(out, 'latin1');
+      const data = text.slice(text.indexOf('DATA;')).replace(/'(?:[^']|'')*'/g, "''");
+      const definitions = new Set(Array.from(data.matchAll(/^#(\d+)\s*=/gm), ([, id]) => Number(id)));
+      for (const id of expected) expect(definitions.has(id), `expected #${id} for ${products}`).toBe(true);
+      for (const id of excluded) expect(definitions.has(id), `unexpected #${id} for ${products}`).toBe(false);
+      for (const [, id] of data.matchAll(/#(\d+)/g)) expect(definitions.has(Number(id)), `dangling #${id}`).toBe(true);
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 it('selects each exact authored storey Name, including surrounding spaces (#11583)', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'ifc-extract-authored-storey-'));
   try {

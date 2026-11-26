@@ -17,7 +17,7 @@ import { fmtInt, okResult, resolveGlobalIds, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
 import type { LoadedModel, ToolContext } from '../context.js';
-import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, nonBlank, optionalOutputPath, withIfcPrefix, requireDistinctPaths, requireNoPendingEdits, stringList } from './transform-schema.js';
+import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, nonBlank, optionalOutputPath, withIfcPrefix, requireDistinctPaths, requireNoPendingEdits, stringList, writeSidecar } from './transform-schema.js';
 
 /** Each relationship the walk follows, with the setting it takes when on (when off: false or 'none'). */
 const FOLLOWED = {
@@ -74,10 +74,12 @@ function anonymizeSeeds(m: LoadedModel, input: Record<string, unknown>): Set<num
 }
 
 async function runAnonymize(m: LoadedModel, input: Record<string, unknown>, ctx: ToolContext) {
-  requireNoPendingEdits(m, 'model_anonymize');
   const filePath = await resolveSafePath(input.file_path, ctx, 'write');
   const guidMapPath = await optionalOutputPath(input, 'guid_map_path', ctx);
   requireDistinctPaths(filePath, guidMapPath, 'guid_map_path');
+  // After the awaits above: an edit queued while they ran must still refuse the call.
+  // Nothing below awaits until the export is written.
+  requireNoPendingEdits(m, 'model_anonymize');
   const seeds = anonymizeSeeds(m, input);
   if (seeds.size === 0) throw invalid('Select something: express_ids, global_ids, types or storey.');
   const keepPsets = input.keep_psets === true;
@@ -104,7 +106,8 @@ async function runAnonymize(m: LoadedModel, input: Record<string, unknown>, ctx:
     throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: (err as Error).message });
   }
   await writeFile(filePath, result.content);
-  if (guidMapPath) await writeFile(guidMapPath, JSON.stringify(Object.fromEntries(result.guidMap), null, 2));
+  // Owner-only: the map reverses the anonymization.
+  if (guidMapPath) await writeSidecar(filePath, guidMapPath, JSON.stringify(Object.fromEntries(result.guidMap), null, 2), 0o600);
   const warnings = [...result.stats.warnings];
   if (related.truncated) warnings.unshift('The related-entity walk hit its work budget; the subset may be incomplete.');
   return okResult(

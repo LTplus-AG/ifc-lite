@@ -9,7 +9,7 @@
  * committed `hello-wall.ifc` sample.
  */
 
-import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -128,10 +128,14 @@ describe('model_merge', () => {
 
   it('defaults to the models the token may access, and refuses a model listed twice', async () => {
     ctx.registry.add(await loadIfcModel(join(tmp, 'b.ifc'), { modelId: 'b' }));
-    ctx.registry.add(await loadIfcModel(join(tmp, 'b.ifc'), { modelId: 'hidden' }));
+    await writeFile(join(tmp, 'h.ifc'), model('H', 'Level 1'), 'utf-8');
+    ctx.registry.add(await loadIfcModel(join(tmp, 'h.ifc'), { modelId: 'hidden' }));
     ctx.scope = { ...fullScope(), modelIds: ['a', 'b'] };
     const res = await call('model_merge', { file_path: join(tmp, 'scoped.ifc') });
     expect(res.structuredContent.modelCount).toBe(2);
+    const scoped = await readFile(join(tmp, 'scoped.ifc'), 'utf-8');
+    expect(scoped).toContain("'Wall A B'");
+    expect(scoped).not.toContain("'Wall A H'");
     await expect(call('model_merge', { model_ids: ['a', 'a'], file_path: join(tmp, 'dup.ifc') })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
   });
 
@@ -227,7 +231,10 @@ describe('model_anonymize', () => {
     for (const secret of ['Acme', 'Jane Architect', 'Wall A A', '000000000000000000WA1A']) expect(text).not.toContain(secret);
     expect(text).toContain('IFCWALL(');
     const guidMap = JSON.parse(await readFile(map, 'utf-8')) as Record<string, string>;
-    expect(Object.values(guidMap).concat(Object.keys(guidMap))).toContain('000000000000000000WA1A');
+    const anon = await loadIfcModel(out, { modelId: 'anon' });
+    const [wall] = anon.bim.query().byType('IfcWall').toArray();
+    expect(guidMap['000000000000000000WA1A']).toBe(wall.globalId);
+    if (process.platform !== 'win32') expect((await stat(map)).mode & 0o777).toBe(0o600);
   });
 
   it('matches a storey by case-insensitive name fragment, as the CLI does', async () => {
@@ -275,7 +282,7 @@ describe('model_simplify and model_lod on a real model (wasm)', () => {
     ctx.registry.add(await loadIfcModel(HELLO_WALL, { modelId: 'hw' }));
   });
 
-  it('model_simplify at level 5 writes a lighter IFC that still loads', async () => {
+  it('model_simplify at level 5 replaces element bodies with box face sets and the IFC still loads', async () => {
     const out = join(tmp, 'simple.ifc');
     const res = await call('model_simplify', { level: 5, file_path: out });
     expectMatchesOutputSchema('model_simplify', res.structuredContent);
@@ -283,6 +290,11 @@ describe('model_simplify and model_lod on a real model (wasm)', () => {
     expect(s.replaced).toBeGreaterThan(0);
     expect(s.trianglesAfter).toBeLessThan(s.trianglesBefore);
     expect((await readFile(out)).length).toBe(s.bytes);
+    // Level 5 is a bounding box per element: 12 triangles each, written as one face set per replacement.
+    const sx = res.structuredContent as { simplified: number };
+    expect(s.trianglesAfter).toBe(12 * sx.simplified);
+    const written = await readFile(out, 'latin1');
+    expect((written.match(/IFCTRIANGULATEDFACESET\(/g) ?? []).length).toBeGreaterThanOrEqual(s.replaced);
     const reloaded = await loadIfcModel(out, { modelId: 'r' });
     expect(reloaded.bim.query().byType('IfcTriangulatedFaceSet').toArray().length).toBeGreaterThan(0);
   }, 60_000);
@@ -291,15 +303,19 @@ describe('model_simplify and model_lod on a real model (wasm)', () => {
     const json = join(tmp, 'lod0.json');
     const res0 = await call('model_lod', { level: 0, file_path: json });
     expectMatchesOutputSchema('model_lod', res0.structuredContent);
-    const lod0 = JSON.parse(await readFile(json, 'utf-8')) as { elements: unknown[] };
+    const lod0 = JSON.parse(await readFile(json, 'utf-8')) as { elements: { expressID: number }[] };
     expect(lod0.elements.length).toBe(res0.structuredContent.elementCount);
-    expect(lod0.elements.length).toBeGreaterThan(0);
+    const wallIds = ctx.registry.get('hw')!.bim.query().byType('IfcWall').toArray().map((e) => e.ref.expressId);
+    expect(wallIds.length).toBeGreaterThan(0);
+    for (const id of wallIds) expect(lod0.elements.map((e) => e.expressID)).toContain(id);
 
     const glb = join(tmp, 'lod1.glb');
     const meta = join(tmp, 'lod1.json');
     const res1 = await call('model_lod', { level: 1, file_path: glb, meta_path: meta });
     expectMatchesOutputSchema('model_lod', res1.structuredContent);
     expect((await readFile(glb)).subarray(0, 4).toString('latin1')).toBe('glTF');
-    expect(JSON.parse(await readFile(meta, 'utf-8'))).toMatchObject({ lod: 1 });
+    const metaJson = JSON.parse(await readFile(meta, 'utf-8')) as { lod: number; mapping: Record<string, unknown> };
+    expect(metaJson.lod).toBe(1);
+    for (const id of wallIds) expect(metaJson.mapping[String(id)]).toMatchObject({ node: expect.any(Number) });
   }, 60_000);
 });

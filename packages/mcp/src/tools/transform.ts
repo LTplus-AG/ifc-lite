@@ -158,6 +158,7 @@ const modelConvert: Tool = {
           kind: { type: 'string' },
           count: { type: 'integer' },
           droppedAttributes: { type: 'array', items: { type: 'string' }, description: 'Attributes the target schema has no slot for.' },
+          recordGroups: { type: 'array', description: 'When records of this type convert to different targets: one row per target.', items: { type: 'object' } },
         },
       },
     },

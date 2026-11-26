@@ -15,13 +15,13 @@ import { fmtInt, okResult, resolveModel } from './util.js';
 import { withIfcBytes } from './export-source.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
-import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, optionalOutputPath, requireDistinctPaths } from './transform-schema.js';
+import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, optionalOutputPath, requireDistinctPaths, throwIfCancelled, writeSidecar } from './transform-schema.js';
 
 const modelSimplify: Tool = {
   name: 'model_simplify',
   title: 'Simplify element geometry',
   description:
-    'Simplify, decimate or lighten element meshes and write a smaller IFC where each simplified element\'s body becomes an IfcTriangulatedFaceSet. Levels 1-4 drop enclosed cavities and keep 50/25/10/3% of the triangles; level 5 replaces each element with its bounding box. IFC2X3 input is upconverted to IFC4.',
+    'Simplify, decimate or lighten element meshes and write an IFC where each simplified element\'s body becomes an IfcTriangulatedFaceSet. Levels 1-4 drop enclosed cavities and keep 50/25/10/3% of the triangles; level 5 replaces each element with its bounding box. IFC2X3 input is upconverted to IFC4.',
   scope: 'export',
   annotations: FILE_WRITE_ANNOTATIONS,
   inputSchema: {
@@ -70,6 +70,7 @@ const modelSimplify: Tool = {
             message: `Simplified ${simplified.elements.length} meshes, but none could be applied to the IFC (${exported.report.skipped.length} skipped at export). Nothing written.`,
           });
         }
+        throwIfCancelled(ctx);
         await writeFile(filePath, exported.bytes);
         const trianglesBefore = simplified.elements.reduce((s, e) => s + e.trisBefore, 0);
         const trianglesAfter = simplified.elements.reduce((s, e) => s + e.trisAfter, 0);
@@ -133,6 +134,7 @@ const modelLod: Tool = {
       if (level === 0) {
         const lod0 = await generateLod0(bytes);
         const json = Buffer.from(JSON.stringify(lod0, null, 2));
+        throwIfCancelled(ctx);
         await writeFile(filePath, json);
         return okResult(
           `Wrote LOD0 for ${fmtInt(lod0.elements.length)} elements to ${filePath}.`,
@@ -140,9 +142,10 @@ const modelLod: Tool = {
         );
       }
       const { glb, meta } = await generateLod1(bytes);
+      throwIfCancelled(ctx);
       // One after the other: a failed meta write must not race a GLB still landing.
       await writeFile(filePath, glb);
-      if (metaPath) await writeFile(metaPath, JSON.stringify(meta, null, 2), 'utf-8');
+      if (metaPath) await writeSidecar(filePath, metaPath, JSON.stringify(meta, null, 2));
       return okResult(
         `Wrote LOD1 GLB (${meta.status}, ${meta.failedElements.length} failed elements) to ${filePath}.`,
         { filePath, bytes: glb.length, level, status: meta.status, failedElements: meta.failedElements.length, metaPath },

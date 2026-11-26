@@ -8,6 +8,7 @@ import type { ConversionLossEntry, IfcSchemaVersion } from '@ifc-lite/export';
 import type { JsonSchema, ToolAnnotations } from '../protocol/index.js';
 import type { LoadedModel, ToolContext } from '../context.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
+import { chmod, writeFile } from 'node:fs/promises';
 import { resolveSafePath } from '../safe-path.js';
 
 /**
@@ -81,7 +82,33 @@ export function withIfcPrefix(type: string): string {
 
 /** A conversion loss entry as the transform tools report it, in results and error details alike. */
 export function lossEntryRow(e: ConversionLossEntry) {
-  return { type: e.sourceType, targetType: e.targetType ?? null, kind: e.kind, count: e.count, droppedAttributes: e.droppedAttributes };
+  return {
+    type: e.sourceType, targetType: e.targetType ?? null, kind: e.kind, count: e.count, droppedAttributes: e.droppedAttributes,
+    // Records of one type that convert to different targets; the outer targetType is then the source type.
+    ...(e.recordGroups ? { recordGroups: e.recordGroups.map((g) => ({ targetType: g.targetType ?? null, count: g.count, droppedAttributes: g.droppedAttributes })) } : {}),
+  };
+}
+
+/** Stop before replacing an output file once the client cancelled the call. */
+export function throwIfCancelled(ctx: ToolContext): void {
+  if (ctx.signal.aborted) throw new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message: 'Cancelled before the output was written.' });
+}
+
+/**
+ * Write the second file of a two-file output after the first one landed. A
+ * failure says the first file was already written, so the caller knows the
+ * pair is mismatched.
+ */
+export async function writeSidecar(primary: string, sidecar: string, data: string, mode?: number): Promise<void> {
+  try {
+    await writeFile(sidecar, data, { encoding: 'utf-8', ...(mode !== undefined ? { mode } : {}) });
+    if (mode !== undefined) await chmod(sidecar, mode);
+  } catch (err) {
+    throw new ToolExecutionError({
+      code: ToolErrorCode.INTERNAL_ERROR,
+      message: `Wrote ${primary}, but writing ${sidecar} failed: ${err instanceof Error ? err.message : String(err)}. The two files do not match.`,
+    });
+  }
 }
 
 export function invalid(message: string): ToolExecutionError {

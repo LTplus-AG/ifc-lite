@@ -25,6 +25,9 @@ const file = (literal: string): string => [
   'ISO-10303-21;', 'HEADER;', "FILE_SCHEMA(('IFC4'));", 'ENDSEC;', 'DATA;',
   `#10=IFCWALL(${body(literal)});`,
   '#11=IFCPOINT(#10);',
+  '#5=IFCDIRECTION((1.,0.,0.));', '#6=IFCDIRECTION((0.,1.,0.));', '#7=IFCDIRECTION((0.,0.,1.));',
+  // Named only inside string text: a closure that reads it as a reference pulls it in.
+  '#9=IFCDIRECTION((1.,1.,0.));',
   'ENDSEC;', 'END-ISO-10303-21;', '',
 ].join('\n');
 
@@ -33,7 +36,7 @@ describe('STEP subset walkers over PAGE-operand literals (#7589)', () => {
     describe(name, () => {
       it('parseStep frames the record and its successor', () => {
         const parsed = parseStep(file(literal));
-        expect([...parsed.instances.keys()]).toEqual([10, 11]);
+        expect([...parsed.instances.keys()]).toEqual([10, 11, 5, 6, 7, 9]);
         expect(parsed.instances.get(10)?.body).toBe(body(literal));
         expect(parsed.instances.get(11)?.body).toBe('#10');
       });
@@ -43,7 +46,8 @@ describe('STEP subset walkers over PAGE-operand literals (#7589)', () => {
         const parsed = parseStep(file(literal));
         const closure = new Set<number>();
         forwardClosure([11], parsed, closure);
-        expect([...closure].sort((a, b) => a - b)).toEqual([10, 11]);
+        // The real references are followed, the `#9` in string text is not.
+        expect([...closure].sort((a, b) => a - b)).toEqual([5, 6, 7, 10, 11]);
       });
 
       it('splits the arguments at the right commas', () => {

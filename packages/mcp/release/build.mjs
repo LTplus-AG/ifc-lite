@@ -112,6 +112,7 @@ function assertPatchesApplied(staged) {
     const lines = readFileSync(join(root, patch), 'utf-8').split(/\r?\n/);
     // A patch that parsed to nothing would pass without having checked anything.
     if (!lines.some(isAdded)) throw new Error(`${patch} has no added lines to check`);
+    const added = new Set(lines.filter(isAdded).map((l) => l.slice(1)));
     // Every copy of exactly this version, hoisted or nested.
     for (const pkgRoot of staged.get(spec) ?? []) {
       let file = '';
@@ -125,7 +126,7 @@ function assertPatchesApplied(staged) {
           file = line === '+++ /dev/null' ? '' : readFileSync(join(pkgRoot, line.slice(4).replace(/^b\//, '')), 'utf-8');
         } else if (isAdded(line) && !file.includes(line.slice(1))) {
           throw new Error(`${pkgRoot} is staged without ${patch} (missing: ${line.slice(1).trim()})`);
-        } else if (isRemoved(line) && !lines.includes(`+${line.slice(1)}`)) {
+        } else if (isRemoved(line) && !added.has(line.slice(1))) {
           removedOnly++;
           if (!file.includes(line.slice(1))) removedGone++;
         }

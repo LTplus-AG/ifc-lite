@@ -31,6 +31,7 @@ const SourceWriteBackAction = lazyChunk(() =>
 const ModelSourceSyncIcon = lazyChunk(() =>
   import('@/components/sources/SourceDownloadStatus').then(module => ({ default: module.ModelSourceSyncIcon })),
 );
+const SOURCE_SYNC_ICON_COLOR = 'text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100';
 
 export interface ModelHeaderRowProps extends HierarchyNodeAriaProps {
   node: TreeNode;
@@ -182,12 +183,14 @@ export function ModelHeaderRow({
                 )}
                 disabled={sourceSyncing}
               >
-                <Suspense fallback={<RefreshCw aria-hidden className={cn('h-3.5 w-3.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100', sourceSyncing && 'animate-spin')} />}>
+                <Suspense fallback={
+                  <RefreshCw aria-hidden className={cn('h-3.5 w-3.5', SOURCE_SYNC_ICON_COLOR, sourceSyncing && 'animate-spin')} />
+                }>
                   <ModelSourceSyncIcon
                     modelId={modelId}
                     name={node.name}
                     syncing={sourceSyncing}
-                    className="text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
+                    className={SOURCE_SYNC_ICON_COLOR}
                   />
                 </Suspense>
               </button>

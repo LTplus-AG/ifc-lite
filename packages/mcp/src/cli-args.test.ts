@@ -14,19 +14,17 @@
  * skipped the flag, failed to skip the origin after it, and resolved
  * `https://…` as a model file path.
  *
- * The subcommand now imports `MCP_VALUE_FLAGS`. These tests are what keeps
- * that list honest — they drive the REAL parser, so a flag added to
- * `parseArgs` without a matching entry (or an entry with no parser branch)
- * fails here rather than in someone's argv.
+ * Both front doors now share `parseArgs` (#11534). These tests keep the
+ * published flag tables honest: they drive the REAL parser, so a table
+ * entry with no parser branch fails here rather than in someone's argv. A
+ * parser branch missing from the tables is not detected.
  */
 
 import { describe, it, expect } from 'vitest';
 import {
   parseArgs,
-  isMcpValueFlag,
   MCP_VALUE_FLAGS,
   MCP_BOOLEAN_FLAGS,
-  MCP_SUBCOMMAND_UNSUPPORTED_FLAGS,
   bridgeConflict,
 } from './cli-args.js';
 
@@ -43,6 +41,8 @@ describe('MCP_VALUE_FLAGS agrees with parseArgs', () => {
   it.each(MCP_BOOLEAN_FLAGS)('%s stands alone and does not swallow the next token', (flag) => {
     const opts = parseArgs([flag, 'model.ifc']);
     expect(opts.files).toEqual(['model.ifc']);
+    // Without a parser branch the flag would be "unknown" and still leave the file alone.
+    expect(opts.warnings.filter((w) => w.startsWith('unknown flag'))).toEqual([]);
   });
 
   it('has no flag in both tables', () => {
@@ -50,16 +50,10 @@ describe('MCP_VALUE_FLAGS agrees with parseArgs', () => {
     expect(overlap).toEqual([]);
   });
 
-  it('every flag the subcommand cannot honour is still a flag the binary knows', () => {
-    for (const flag of MCP_SUBCOMMAND_UNSUPPORTED_FLAGS) {
-      expect(MCP_VALUE_FLAGS.includes(flag) || MCP_BOOLEAN_FLAGS.includes(flag)).toBe(true);
-    }
-  });
-
   it('classifies --allow-origin as value-bearing — the entry that was missing', () => {
     // The specific drift this pair was built to stop: the origin must land in
     // `allowedOrigins`, never in `files`.
-    expect(isMcpValueFlag('--allow-origin')).toBe(true);
+    expect(MCP_VALUE_FLAGS).toContain('--allow-origin');
     const opts = parseArgs(['--allow-origin', 'https://app.example.test', 'model.ifc']);
     expect(opts.allowedOrigins).toEqual(['https://app.example.test']);
     expect(opts.files).toEqual(['model.ifc']);
@@ -86,24 +80,126 @@ describe('--bridge (#9523)', () => {
   });
 
   it('treats a bridge value flag without an operand as a usage error, not the default', () => {
-    expect(bridgeConflict(parseArgs(['--bridge', '--bridge-viewer-url']))).toBe('--bridge-viewer-url needs a value.');
-    expect(bridgeConflict(parseArgs(['--bridge', '--bridge-port']))).toBe('--bridge-port needs a value.');
+    expect(parseArgs(['--bridge', '--bridge-viewer-url']).errors).toEqual(['--bridge-viewer-url needs a value.']);
+    expect(parseArgs(['--bridge', '--bridge-port']).errors).toEqual(['--bridge-port needs a value.']);
     // The following flag is not swallowed as the operand.
     const opts = parseArgs(['--bridge', '--bridge-viewer-url', '--read-only']);
     expect(opts.readOnly).toBe(true);
     expect(opts.bridgeViewerUrl).toBeUndefined();
-    expect(bridgeConflict(opts)).toBe('--bridge-viewer-url needs a value.');
+    expect(opts.errors).toEqual(['--bridge-viewer-url needs a value.']);
     // A short flag or an empty string is not an operand either.
     expect(parseArgs(['--bridge', '--bridge-port', '-h']).help).toBe(true);
-    expect(bridgeConflict(parseArgs(['--bridge', '--bridge-port', '-h']))).toBe('--bridge-port needs a value.');
-    expect(bridgeConflict(parseArgs(['--bridge', '--bridge-port', '']))).toBe('--bridge-port needs a value.');
+    expect(parseArgs(['--bridge', '--bridge-port', '-h']).errors).toEqual(['--bridge-port needs a value.']);
+    expect(parseArgs(['--bridge', '--bridge-port', '']).errors).toEqual(['--bridge-port needs a value.']);
   });
 
   it('refuses file arguments, --transport http, --viewer and a bad port', () => {
     expect(bridgeConflict(parseArgs(['--bridge', 'model.ifc']))).toMatch(/loads no files/);
     expect(bridgeConflict(parseArgs(['--bridge', '--transport', 'http']))).toMatch(/stdio only/);
     expect(bridgeConflict(parseArgs(['--bridge', '--viewer']))).toMatch(/--viewer/);
-    expect(bridgeConflict(parseArgs(['--bridge', '--bridge-port', 'abc']))).toMatch(/--bridge-port/);
+    expect(parseArgs(['--bridge', '--bridge-port', 'abc']).errors).toEqual(['--bridge-port must be an integer from 0 to 65535.']);
     expect(bridgeConflict(parseArgs(['--transport', 'http']))).toBeNull();
+  });
+});
+
+describe('flag fixes (#11534)', () => {
+  it('keeps every --token and --read-only-token, not only the last', () => {
+    const opts = parseArgs(['--token', 'a', '--token', 'b', '--read-only-token', 'r1', '--read-only-token', 'r2']);
+    expect(opts.tokens).toEqual(['a', 'b']);
+    expect(opts.readOnlyTokens).toEqual(['r1', 'r2']);
+    expect(opts.warnings).toEqual([]);
+  });
+
+  it('makes a value flag with no value a usage error, not a silent default', () => {
+    const opts = parseArgs(['--token']);
+    expect(opts.tokens).toEqual([]);
+    expect(opts.errors).toEqual(['--token needs a value.']);
+  });
+
+  it('does not take a known flag as a value, so --read-only is not lost', () => {
+    for (const flag of ['--token', '--read-only-token', '--allow', '--allow-origin', '--host', '--bsdd', '--transport']) {
+      const opts = parseArgs([flag, '--read-only', 'model.ifc']);
+      expect(opts.readOnly, flag).toBe(true);
+      expect(opts.files, flag).toEqual(['model.ifc']);
+      expect(opts.errors, flag).toEqual([`${flag} needs a value.`]);
+    }
+  });
+
+  // A misspelled flag must not become a credential either (--token --read-onli
+  // would otherwise bind with that "token" and full scope).
+  it('takes nothing starting with -- as a value; --flag=value still works', () => {
+    const typo = parseArgs(['--token', '--read-onli', '--host', '0.0.0.0']);
+    expect(typo.tokens).toEqual([]);
+    expect(typo.errors.join()).toMatch(/--token needs a value; the next argument starts with '--'/);
+    // Swallowed, never echoed: it may be the secret.
+    expect([...typo.errors, ...typo.warnings].join()).not.toContain('read-onli');
+    expect(typo.host).toBe('0.0.0.0');
+    expect(parseArgs(['--token=--odd']).tokens).toEqual(['--odd']);
+    expect(parseArgs(['--token', '-single']).tokens).toEqual(['-single']);
+    // A bare `--` is not swallowed.
+    expect(parseArgs(['--host', '--']).errors).toEqual(['--host needs a value.']);
+  });
+
+  it('refuses a port that is not an integer from 0 to 65535', () => {
+    expect(parseArgs(['--port', 'abc']).errors).toEqual(['--port must be an integer from 0 to 65535.']);
+    expect(parseArgs(['--viewer-port', '70000']).errors).toHaveLength(1);
+    expect(parseArgs(['--port', '0', '--viewer-port', '8080']).errors).toEqual([]);
+  });
+
+  it('reads --flag=value for value flags and never echoes an unknown one\'s value', () => {
+    const opts = parseArgs(['--token=abc', '--port=9000', '--tokn=s3cr3t']);
+    expect(opts.tokens).toEqual(['abc']);
+    expect(opts.port).toBe(9000);
+    expect(opts.warnings).toEqual(['unknown flag --tokn=… ignored. Run with --help for the flags this version knows.']);
+  });
+
+  it('never takes an unknown --x=… as a value, so its value is not echoed or bound', () => {
+    const opts = parseArgs(['--host', '--tokn=s3cr3t']);
+    expect(opts.host).toBeUndefined();
+    expect(opts.errors.join()).toMatch(/^--host needs a value/);
+    expect(JSON.stringify(opts)).not.toContain('s3cr3t');
+  });
+
+  it('refuses a value on a boolean flag instead of ignoring the flag', () => {
+    const opts = parseArgs(['model.ifc', '--read-only=true']);
+    expect(opts.errors).toEqual(['--read-only takes no value.']);
+  });
+
+  it('takes only stdio or http as the transport', () => {
+    expect(parseArgs(['--transport', 'htp']).errors).toEqual(['--transport must be stdio or http.']);
+    expect(parseArgs(['--transport', 'http']).transport).toBe('http');
+  });
+
+  it('takes only plain decimal ports', () => {
+    for (const bad of [' ', '0x1F90', '1e3', '-1']) {
+      expect(parseArgs(['--port', bad]).errors, bad).toHaveLength(1);
+    }
+  });
+
+  it('accepts a token that starts with a dash', () => {
+    const opts = parseArgs(['--token', '-s3cr3t']);
+    expect(opts.tokens).toEqual(['-s3cr3t']);
+    expect(opts.errors).toEqual([]);
+    expect(opts.warnings).toEqual([]);
+  });
+
+  it('warns about unknown flags and still parses the rest', () => {
+    const opts = parseArgs(['--no-such-flag', '--nope=/x', 'model.ifc', '--read-only']);
+    expect(opts.files).toEqual(['model.ifc']);
+    expect(opts.readOnly).toBe(true);
+    expect(opts.warnings).toEqual([
+      'unknown flag --no-such-flag ignored. Run with --help for the flags this version knows.',
+      'unknown flag --nope=… ignored. Run with --help for the flags this version knows.',
+    ]);
+  });
+
+  it('accepts --federate from older configs but says it does nothing', () => {
+    const opts = parseArgs(['a.ifc', 'b.ifc', '--federate']);
+    expect(opts.files).toEqual(['a.ifc', 'b.ifc']);
+    expect(opts.warnings).toEqual(['--federate does nothing: every file passed is loaded into the same session. Drop it.']);
+  });
+
+  it('warns about nothing for a known command line', () => {
+    expect(parseArgs(['--bridge', '--channel', '--bridge-port', '0']).warnings).toEqual([]);
   });
 });

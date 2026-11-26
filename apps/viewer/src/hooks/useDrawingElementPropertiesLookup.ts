@@ -37,16 +37,13 @@
  * whose active rules only match on `ifcType`/`expressId`/`modelId` pay
  * nothing.
  *
- * The export side gets the same data through (unmerged) PR #3523's
- * `makePropertiesGetter` — same `fromGlobalIdFromModels` +
+ * The export side gets the same data through `makePropertiesGetter`
+ * (`hooks/drawingElementProperties.ts`), with the same `fromGlobalIdFromModels` +
  * `extractPropertiesOnDemand` resolution, same per-entity cache, same
- * same-named-set merge semantics. Its resolution differs in one respect:
- * when `fromGlobalIdFromModels` returns nothing (only reachable with two or
- * more federated models loaded and an id outside every offset range) it falls
- * back to the legacy store and the raw global id, where this hook resolves no
- * properties at all. That helper does not exist on `main` yet; once #3523
- * lands, the two should be unified into one shared resolver rather than kept
- * as two independent copies of the same logic.
+ * same-named-set merge semantics. Both resolve no properties when
+ * `fromGlobalIdFromModels` returns nothing (an id outside every loaded
+ * model's offset range, #11527). The two should be unified into one shared
+ * resolver rather than kept as two independent copies of the same logic.
  */
 
 import { useMemo } from 'react';

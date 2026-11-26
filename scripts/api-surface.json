@@ -8466,6 +8466,16 @@
     "buildImageManifest: function",
     "parseReference: function"
   ],
+  "@ifc-lite/oci/node-model": [
+    "CREDENTIAL_HINT: const",
+    "Env: type",
+    "LOOPBACK_HOSTS: const",
+    "ModelInputError: class",
+    "credentialsFromEnv: function",
+    "nodeHasher: function",
+    "openOciModel: function",
+    "parseModelReference: function"
+  ],
   "@ifc-lite/opencde-foundation": [
     "ApiVersion: interface",
     "AuthorizationCodeGrantOptions: interface",
@@ -9668,6 +9678,8 @@
     "StructuralSkippedMember: interface",
     "SyntheticDataStoreOptions: interface",
     "SyntheticEntity: interface",
+    "TabularStoreMeta: interface",
+    "TabularStoreTables: type",
     "TaskDurationType: type",
     "TimePeriodInfo: interface",
     "TypePropertyInfo: interface",
@@ -9685,7 +9697,9 @@
     "authoredKeyValue: function",
     "buildCompactEntityIndex: function",
     "buildDropCensus: function",
+    "buildIfcxDataStore: function",
     "buildMaterialUsageIndex: function",
+    "buildTabularDataStore: function",
     "collectMaterialLeaves: function",
     "complexPropertyCuts: function",
     "composeFederated: function",

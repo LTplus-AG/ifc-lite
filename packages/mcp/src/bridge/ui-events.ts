@@ -185,6 +185,8 @@ export class UiEventInbox {
   /** Count an event the bridge refused, so the agent hears that a click was lost. */
   refused(): void {
     this.refusedCount++;
+    // A waiting reader hears it now, not at the end of its wait.
+    for (const wake of this.waiters) wake();
   }
 
   /** A new tab paired: its predecessor's unread events do not carry over. */

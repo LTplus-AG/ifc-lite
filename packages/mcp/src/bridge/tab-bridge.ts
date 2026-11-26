@@ -102,9 +102,10 @@ export class TabBridge {
   }
 
   /** The preferred port the bridge could not take (another program holds it), or null. */
-  get fellBackFrom(): number | null {
-    return this.boundPort !== 0 && this.opts.port !== 0 && this.boundPort !== this.opts.port ? this.opts.port : null;
-  }
+  get fellBackFrom(): number | null { return this.boundPort !== 0 && this.opts.port !== 0 && this.boundPort !== this.opts.port ? this.opts.port : null; }
+
+  /** True when a taken preferred port falls back to others (`portFallback`). */
+  get fallsBack(): boolean { return this.opts.portFallback === true && this.opts.port !== 0; }
 
   get readOnlyCeiling(): boolean {
     return this.opts.readOnlyCeiling;

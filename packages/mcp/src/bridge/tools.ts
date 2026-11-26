@@ -175,7 +175,10 @@ function statusTool(bridge: TabBridge): Tool {
         return toolError({
           code: ToolErrorCode.INTERNAL_ERROR,
           message: `The bridge could not listen on 127.0.0.1: ${describeThrown(err)}`,
-          ...(unavailable ? { hint: 'Another program holds the port, or the system reserves it. Restart the MCP server with another --bridge-port.' } : {}),
+          ...(!unavailable ? {}
+            : bridge.fallsBack
+            ? { hint: 'No loopback port could be bound: the preferred port, its neighbours and any free port were all refused. Something on this machine blocks local listening (a sandbox or policy).' }
+            : { hint: 'Another program holds the port, or the system reserves it. Restart the MCP server with another --bridge-port.' }),
         });
       }
       return statusResult(bridge, input.pair_new_tab === true);

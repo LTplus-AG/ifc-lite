@@ -45,7 +45,8 @@ export function uiEventsTool(inbox: UiEventInbox, channel: boolean): Tool {
       if (refused > 0) lines.push(`${refused} clicks were refused since the last read: they named a surface or event you did not show in this tab.`);
       return {
         content: [{ type: 'text', text: [...lines, '', PROVENANCE].join('\n') }],
-        structuredContent: { events, dropped, refused, provenance: PROVENANCE },
+        // An unverified prompt is quoted here too, for clients that hand structured content to the model.
+        structuredContent: { events: events.map((e) => (e.promptVerified || e.prompt === undefined ? e : { ...e, prompt: shownPrompt(e) })), dropped, refused, provenance: PROVENANCE },
       };
     },
   };

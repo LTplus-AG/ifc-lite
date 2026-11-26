@@ -146,8 +146,8 @@ export const modelLoad: Tool = {
     try {
       const loaded = await loadIfcModel(filePath, {
         modelId: id,
-        // The checked path is the only root: the loader refuses it if the path
-        // now resolves anywhere else (a symlink swapped in since the check).
+        // The checked path is the only root: the loader refuses it if the file
+        // was swapped for a symlink since the check (see loadIfcModel for limits).
         allowedPaths: [filePath],
       });
       // While the file parsed, the scope may have been narrowed (setScope) or

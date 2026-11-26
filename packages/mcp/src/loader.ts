@@ -32,15 +32,15 @@ export interface LoadIfcOptions {
 export async function loadIfcModel(filePath: string, opts: LoadIfcOptions = {}): Promise<LoadedModel> {
   const absolute = resolve(filePath);
   const roots = (opts.allowedPaths ?? []).map(normalRoot);
-  if (roots.length > 0) {
-    const realRoots = await Promise.all(roots.map(realRoot));
-    // Either spelling up front (a root given as /tmp/x admits /private/tmp/x)...
-    if (!inRoots(absolute, roots) && !inRoots(absolute, realRoots)) throw outsideRoots(absolute);
-    // ...but the real path decides: a symlink in the path, or one swapped in
-    // since the caller checked it, must not lead outside the real roots.
-    if (!inRoots(await realpath(absolute), realRoots)) throw outsideRoots(absolute);
-  }
+  const realRoots = await Promise.all(roots.map(realRoot));
+  // Either spelling up front (a root given as /tmp/x admits /private/tmp/x)...
+  if (roots.length > 0 && !inRoots(absolute, roots) && !inRoots(absolute, realRoots)) throw outsideRoots(absolute);
+  // ...but the real path, resolved once and then opened, decides: a symlink in
+  // the path, or a file swapped for one since the caller checked it, must not
+  // lead outside the real roots. Out of scope: a process that rewrites parent
+  // directories inside the roots while the load runs (that needs openat).
   const canonical = await realpath(absolute);
+  if (roots.length > 0 && !inRoots(canonical, realRoots)) throw outsideRoots(absolute);
   // Refuse special files before opening them: opening a device can have side
   // effects, and a FIFO with no writer blocks. Then open without blocking and
   // without following a symlink swapped in since realpath, and check the

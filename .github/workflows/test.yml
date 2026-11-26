@@ -4153,10 +4153,13 @@ jobs:
       contents: read
       # The sticky report comment (issues/comments endpoint on the PR).
       pull-requests: write
-      # The base-stale step: main's measurements are read from earlier runs'
-      # artifacts, and with CI_BASE_STALE_GATE=on its verdict is a commit status.
+      # The base-stale step reads main's measurements from earlier runs'
+      # artifacts. No `statuses: write` while the gate is shadow (the step
+      # posts nothing then); the PR that turns CI_BASE_STALE_GATE on adds it
+      # here, with the Mergify condition and ci-viewer-select-status.test.mjs's
+      # writer list. Until then an `on` in-run post fails soft (a warning) and
+      # base-stale.yml's sweep posts.
       actions: read
-      statuses: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -4226,7 +4229,8 @@ jobs:
       # is the PR-side refresh: a PR whose author merges main or pushes gets a
       # new verdict here. It never changes this job's result
       # (continue-on-error, and the script never exits 1). With
-      # CI_BASE_STALE_GATE unset it only logs; with `on` it posts the
+      # CI_BASE_STALE_GATE unset it only logs; with `on` (and the job's
+      # `statuses: write`, added by the PR that enables it) it posts the
       # `PR base staleness` commit status Mergify can read. Not on a Mergify
       # draft: that run IS the queue's full gate on the merged tree.
       - name: Base-stale verdict (advisory unless CI_BASE_STALE_GATE is on)

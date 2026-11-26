@@ -183,7 +183,11 @@ async function main(): Promise<void> {
       });
     }
     process.stderr.write(`[ifc-lite-mcp] ready on stdio (read-only=${opts.readOnly}${bridged ? ', browser bridge on' : ''})\n`);
-    if (bridged) {
+    if (bridged?.bridge.port) {
+      // An explicit --bridge-port is bound already: print the link, as before the bind became lazy.
+      const code = bridged.bridge.pairingCode();
+      bridgeLog(`to connect a viewer tab open ${bridged.bridge.pairingUrl(code)} or enter the one-time code ${code}.`);
+    } else if (bridged) {
       process.stderr.write('[ifc-lite-mcp] the agent pairs a browser tab with bridge_status, which returns the link.\n');
     }
 

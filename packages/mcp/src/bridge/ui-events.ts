@@ -124,6 +124,8 @@ export class UiEventInbox {
   private counter = 0;
   /** Events lost to the queue cap or the rate limit since the last `take`. */
   private dropped = 0;
+  /** Events refused since the last `take`: they named no surface or event the agent showed this tab. */
+  private refusedCount = 0;
 
   constructor(private readonly now: () => number = Date.now) {}
 
@@ -157,7 +159,7 @@ export class UiEventInbox {
    * Drain queued events, with the number dropped since the last drain; with
    * none queued, wait up to `waitMs` (or until `signal` aborts) for the first.
    */
-  async take(waitMs: number, signal?: AbortSignal): Promise<{ events: ReceivedUiEvent[]; dropped: number }> {
+  async take(waitMs: number, signal?: AbortSignal): Promise<{ events: ReceivedUiEvent[]; dropped: number; refused: number }> {
     if (this.queue.length === 0 && waitMs > 0 && !signal?.aborted) {
       await new Promise<void>((resolve) => {
         const done = (): void => {
@@ -173,9 +175,16 @@ export class UiEventInbox {
     }
     const events = this.queue;
     const dropped = this.dropped;
+    const refused = this.refusedCount;
     this.queue = [];
     this.dropped = 0;
-    return { events, dropped };
+    this.refusedCount = 0;
+    return { events, dropped, refused };
+  }
+
+  /** Count an event the bridge refused, so the agent hears that a click was lost. */
+  refused(): void {
+    this.refusedCount++;
   }
 
   /** A new tab paired: its predecessor's unread events do not carry over. */
@@ -183,6 +192,7 @@ export class UiEventInbox {
     this.queue = [];
     this.recent = [];
     this.dropped = 0;
+    this.refusedCount = 0;
   }
 
   get size(): number {

@@ -221,6 +221,8 @@ describe.skipIf(!built)('ifc-lite-mcp --bridge binary', () => {
     child.kill('SIGTERM');
     expect(await closed).toBe(143);
     expect(out.stderr).toContain('stopping: SIGTERM');
+    // An explicit --bridge-port binds at start, so the link is on stderr as before.
+    expect(out.stderr).toMatch(/to connect a viewer tab open \S+#mcp-bridge=\S+ or enter the one-time code/);
     // The port is free again.
     const probe = createServer();
     await new Promise<void>((ok, fail) => { probe.once('error', fail); probe.listen(port, '127.0.0.1', () => ok()); });

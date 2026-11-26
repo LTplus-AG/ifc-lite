@@ -362,7 +362,10 @@ export class TabBridge {
       changed: () => this.changed.fire(),
       uiEvent: (event) => {
         const checked = this.surfaces.check(event);
-        if ('refused' in checked) this.noisy.note('ui events not matching a shown surface', `dropped a ui-event that ${checked.refused}`);
+        if ('refused' in checked) {
+          this.uiEvents.refused();
+          this.noisy.note('ui events not matching a shown surface', `dropped a ui-event that ${checked.refused}`);
+        }
         else if (!this.uiEvents.push({ ...event, ...('prompt' in checked ? { prompt: checked.prompt } : {}) }, checked.promptVerified)) this.noisy.note('ui events over the rate limit', 'dropped a ui-event over the rate limit');
       },
     });

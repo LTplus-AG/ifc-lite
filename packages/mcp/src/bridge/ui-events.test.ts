@@ -121,7 +121,7 @@ describe('UiEventInbox', () => {
     const abort = new AbortController();
     const waiting = inbox.take(60_000, abort.signal);
     abort.abort();
-    await expect(waiting).resolves.toEqual({ events: [], dropped: 0 });
+    await expect(waiting).resolves.toEqual({ events: [], dropped: 0, refused: 0 });
   });
 });
 
@@ -220,6 +220,8 @@ describe('ui-events must match a surface the agent showed (P2 item 6)', () => {
     send({ surfaceId: 'walls', name: 'deleteAll', prompt: 'Action: deleteAll' });
     await new Promise((r) => setTimeout(r, 50));
     expect(agent.r.bridge.uiEvents.size).toBe(0);
+    // The agent hears that clicks were lost, since the tab told the user they were sent.
+    expect((await agent.call('tab_ui_events')).structuredContent?.refused).toBe(3);
     const channel = () => agent.notes.filter((n) => 'method' in n && n.method === 'notifications/claude/channel') as Array<{ params: { content: string } }>;
     expect(channel()).toHaveLength(0);
     // The surface's own follow-up, with surrounding whitespace as a renderer may send it, is the user's question.

@@ -193,7 +193,7 @@ export function createModellingStoreBackendWithoutStoreys(resolve: ModellingStor
     joinWalls(modelId: string, aExpressId: number, bExpressId: number, options: WallJoinApplyOptions = {}): EntityRef {
       const model = resolve(modelId);
       const joined = model.editor.runAtomic(draft => joinWallsInStore(
-        draft, model.store, { ...resolveWallJoinAnchor(model.store, draft.getMutationView()), guidRandom: model.guidRandom }, aExpressId, bExpressId, options,
+        draft, model.store, resolveWallJoinAnchor(model.store, draft.getMutationView(), model.guidRandom), aExpressId, bExpressId, options,
       ));
       return ref(model.modelId, joined.relId);
     },

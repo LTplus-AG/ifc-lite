@@ -29,8 +29,9 @@ const TOOLS_LIST_BUDGET = 135_000;
 /**
  * `propose_flow` is read scope by design (a read token may propose; a
  * separately authorized `resume_flow` applies) but writes a pending artifact.
+ * Loading and unloading change the session registry.
  */
-const READ_SCOPE_WRITERS = new Set(['propose_flow']);
+const READ_SCOPE_WRITERS = new Set(['propose_flow', 'model_load', 'model_unload']);
 
 const tools = buildDefaultToolRegistry().list();
 
@@ -76,10 +77,15 @@ describe('tool catalog', () => {
     const wrong = tools.filter((t) => {
       const readOnly = t.annotations?.readOnlyHint === true;
       if (t.scope === 'mutate' || t.scope === 'export') return readOnly;
-      // Read scope may change what the viewer shows, nothing else.
+      // Read scope may change viewer display or explicitly permitted session state.
       if (t.scope === 'read' || t.scope === 'validate') return !readOnly && t.annotations !== VIEWER_DISPLAY && !READ_SCOPE_WRITERS.has(t.name);
       return false;
     });
+    for (const name of ['model_load', 'model_unload']) {
+      expect(tools.find((tool) => tool.name === name)).toMatchObject({
+        scope: 'read', annotations: { readOnlyHint: false, destructiveHint: true },
+      });
+    }
     expect(wrong.map((t) => `${t.name} (${t.scope})`)).toEqual([]);
   });
 

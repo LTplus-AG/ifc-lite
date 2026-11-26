@@ -22,9 +22,11 @@ import { entityInfoAcrossSchemas, entityInfoInSchema } from '@ifc-lite/sdk/headl
 import { foldedEntityCount, foldedTypeCounts, pendingMutationsField, pendingOverlay } from '@ifc-lite/sdk/headless';
 import type { Tool } from './types.js';
 import { fmtInt, resolveModel, okResult } from './util.js';
-import { loadIfcModel } from '../loader.js';
+import { basename } from 'node:path';
+import { deriveModelId, loadIfcModel } from '../loader.js';
 import { resolveSafePath } from '../safe-path.js';
-import { modelAllowed } from '../auth/scope.js';
+import { modelAllowed, scopeAllows, type AuthScope } from '../auth/scope.js';
+import type { ToolContext } from '../context.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { DESTRUCTIVE, READ_ONLY } from './annotations.js';
 
@@ -117,8 +119,12 @@ export const modelList: Tool = {
 
 export const modelLoad: Tool = {
   name: 'model_load', title: 'Load IFC model', annotations: DESTRUCTIVE,
-  description: 'Load an IFC file from disk into the session. Requires `mutate` scope. The path must be inside the configured allowedPaths roots (when set).',
-  scope: 'mutate',
+  description: 'Load an IFC file from disk into the session. The path must be inside the configured allowedPaths roots (when set).',
+  // `read`, not `mutate`: loading adds a model to this session and changes no
+  // model, so a --read-only server or a read-only token can still open files.
+  // The safe-path check below bounds which files, and `assertMayLoadAs`
+  // keeps it inside the token's model allowlist.
+  scope: 'read',
   inputSchema: {
     type: 'object',
     properties: {
@@ -133,13 +139,36 @@ export const modelLoad: Tool = {
     // The resulting absolute path is symlink-canonicalised and bounds-checked
     // before we touch the filesystem in `loadIfcModel`.
     const filePath = await resolveSafePath(input.file_path, ctx, 'read');
+    // The id the loader would pick, so a refusal costs no parse.
+    const id = (input.model_id as string | undefined) ?? deriveModelId(basename(filePath));
+    // Cheap checks before the parse, against the live scope (setScope may have narrowed it).
+    assertMayLoadAs(id, ctx, ctx.currentScope?.() ?? ctx.scope);
+    assertMayDiscard(id, ctx, ctx.currentScope?.() ?? ctx.scope);
     try {
       const loaded = await loadIfcModel(filePath, {
-        modelId: input.model_id as string | undefined,
-        // Path was already validated; loader's secondary check would be a
-        // tautology, so pass a single-entry allowlist matching the file.
+        modelId: id,
+        // The checked path is the only root: the loader refuses it if the file
+        // was swapped for a symlink since the check (see loadIfcModel for limits).
         allowedPaths: [filePath],
       });
+      // While the file parsed, the scope may have been narrowed (setScope) or
+      // the call cancelled: check again before the registry replaces anything.
+      try {
+        const live = ctx.currentScope?.() ?? ctx.scope;
+        if (!scopeAllows(live, 'read')) {
+          throw new ToolExecutionError({ code: ToolErrorCode.PERMISSION_DENIED, message: 'This token no longer has read scope.' });
+        }
+        assertMayLoadAs(id, ctx, live);
+        assertMayDiscard(id, ctx, live);
+        if (ctx.signal.aborted) throw new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message: 'model_load was cancelled.' });
+      } catch (refused) {
+        try {
+          loaded.backend.dispose();
+        } catch (disposeError) {
+          ctx.log.log('warning', 'model_load: dispose after refusal failed', { error: String(disposeError) });
+        }
+        throw refused;
+      }
       ctx.registry.add(loaded);
       ctx.log.log('info', 'model_load', { id: loaded.id, file: filePath, entities: loaded.store.entityCount });
       // A model the scan read short is reported as such, in the text the
@@ -163,10 +192,44 @@ export const modelLoad: Tool = {
   },
 };
 
+/**
+ * `model_load` needs only `read` scope (#11534), so it must not become a way
+ * around the token's model allowlist: the registry disposes a model it
+ * replaces, so loading under an id the token may not access is refused.
+ * Replacing or dropping a model with unsaved edits needs `mutate` (see
+ * assertMayDiscard): a session narrowed after editing must not lose the edits.
+ */
+function assertMayLoadAs(id: string, ctx: ToolContext, scope = ctx.scope): void {
+  if (!modelAllowed(scope, id)) {
+    throw new ToolExecutionError({
+      code: ToolErrorCode.PERMISSION_DENIED,
+      message: `Access to model '${id}' is not permitted for this token.`,
+    });
+  }
+}
+
+/**
+ * Unloading or replacing a model throws away its unsaved edits. A caller that
+ * could not have made them (no `mutate` in the live scope, e.g. after setScope
+ * narrowed the session) may not discard them.
+ */
+function assertMayDiscard(id: string, ctx: ToolContext, scope: AuthScope): void {
+  const existing = ctx.registry.get(id);
+  if (!existing || scopeAllows(scope, 'mutate')) return;
+  if ((pendingOverlay(existing)?.pendingMutations ?? 0) > 0) {
+    throw new ToolExecutionError({
+      code: ToolErrorCode.PERMISSION_DENIED,
+      message: `Model '${id}' has unsaved edits; dropping or replacing it needs mutate scope. Exporting keeps a copy but does not clear them; load the file under another model_id, or use a token with mutate scope.`,
+    });
+  }
+}
+
 export const modelUnload: Tool = {
   name: 'model_unload', title: 'Unload model', annotations: DESTRUCTIVE,
-  description: 'Drop a model from session memory.',
-  scope: 'mutate',
+  description: 'Drop a model from session memory. Unsaved edits to it are lost.',
+  // `read` for the same reason as `model_load`: it frees session memory and
+  // writes nothing. A token narrowed to some models still cannot drop others.
+  scope: 'read',
   inputSchema: {
     type: 'object',
     properties: {
@@ -177,18 +240,17 @@ export const modelUnload: Tool = {
   },
   handler(input, ctx) {
     const id = input.model_id as string;
+    // One live scope for every check (setScope may have narrowed it).
+    const live = ctx.currentScope?.() ?? ctx.scope;
+    // Allowlist first, so a narrowed token cannot probe which ids are loaded.
+    assertMayLoadAs(id, ctx, live);
     if (!ctx.registry.get(id)) {
       throw new ToolExecutionError({
         code: ToolErrorCode.MODEL_NOT_FOUND,
         message: `Model '${id}' is not loaded.`,
       });
     }
-    if (!modelAllowed(ctx.scope, id)) {
-      throw new ToolExecutionError({
-        code: ToolErrorCode.PERMISSION_DENIED,
-        message: `Access to model '${id}' is not permitted for this token.`,
-      });
-    }
+    assertMayDiscard(id, ctx, live);
     ctx.registry.remove(id);
     return okResult(`Unloaded model '${id}'.`, { id });
   },

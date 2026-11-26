@@ -274,6 +274,33 @@ describe('script_run', () => {
     expect((await run('7 + 7')).structuredContent?.value).toBe(14);
   });
 
+  it('serialises values and log arguments itself, so depth tricks stay in the realm', async () => {
+    const deep = 'let o = {}; for (let i = 0; i < 5000; i++) o = { a: o };';
+    expect((await runError(`({ toJSON() { ${deep} return o; } })`)).message).toMatch(/nested deeper than 1000 levels/);
+    // Read once: the getter's second, deep answer is never asked for.
+    expect((await run(`let n = 0; ({ get x() { ${deep} return n++ ? o : 1; } })`)).structuredContent?.value).toEqual({ x: 1 });
+    const logged = await run(`${deep} console.log(o); 1`);
+    expect(logged.structuredContent?.value).toBe(1);
+    expect((logged.structuredContent?.logs as Array<{ text: string }>)[0].text).toMatch(/unserialisable: the value is nested deeper/);
+    expect((await run('8 + 8')).structuredContent?.value).toBe(16);
+  });
+
+  it('matches native JSON for the shapes it supports', async () => {
+    const result = await run(`({ a: [1, undefined, () => 1, 'x'], b: undefined, c: { toJSON() { return 'tj'; } }, d: NaN, e: null, f: [[]], g: {} })`);
+    expect(result.structuredContent?.value).toEqual({ a: [1, null, null, 'x'], c: 'tj', d: null, e: null, f: [[]], g: {} });
+  });
+
+  it('judges size by the JSON it writes and previews a real JSON prefix', async () => {
+    expect((await run("const o = {}; for (let i = 0; i < 300000; i++) o['k' + i] = undefined; o")).structuredContent).toMatchObject({ value: {}, value_truncated: false });
+    const big = await run('Array.from({ length: 300000 }, (_, i) => ({ i }))');
+    expect(big.structuredContent?.value_truncated).toBe(true);
+    expect(String(big.structuredContent?.value_preview).startsWith('[{"i":0},{"i":1}')).toBe(true);
+  });
+
+  it('gives no memory hint for a script that merely says out of memory', async () => {
+    expect((await runError("throw new Error('device out of memory budget')")).hint).toBeUndefined();
+  });
+
   it('keeps recursion through QuickJS natives inside the realm', async () => {
     for (const code of [
       'const o = { toString() { return String(o); } }; String(o)',

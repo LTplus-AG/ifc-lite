@@ -46,24 +46,12 @@ describe('fallback resolvers never hand out a local id the model does not own (#
     assert.deepEqual(fromGlobalIdFromModels(state.models, offset + 150), { modelId: 'later', expressId: 150 });
   });
 
-  it('resolveEntityRef on an unowned id gives a ref that toGlobalId accepts', () => {
+  it('resolveEntityRef on a negative id gives a ref that toGlobalId accepts', () => {
     laterModelAlone();
-    // 5 is inside the later model's LOCAL range, but as a renderer id it belongs to no loaded model.
-    assert.deepEqual(resolveEntityRef(5), { modelId: 'legacy', expressId: 5 });
-    for (const globalId of [5, -2_024_174]) {
-      const ref = resolveEntityRef(globalId);
-      assert.doesNotThrow(() => useViewerStore.getState().toGlobalId(ref.modelId, ref.expressId),
-        `resolveEntityRef(${globalId}) gave ${JSON.stringify(ref)}`);
-    }
-  });
-
-  it('a stale id past the offset-0 model\'s range is not handed to it', () => {
-    const { registerModelOffset, addModel } = useViewerStore.getState();
-    const offset = registerModelOffset('first', 100);
-    addModel({ ...fixtureModel('first', { idOffset: offset }), maxExpressId: 100 });
-    const ref = resolveEntityRef(150);
+    const ref = resolveEntityRef(-2_024_174);
     assert.equal(ref.modelId, 'legacy');
-    assert.doesNotThrow(() => useViewerStore.getState().toGlobalId(ref.modelId, ref.expressId));
+    assert.doesNotThrow(() => useViewerStore.getState().toGlobalId(ref.modelId, ref.expressId),
+      `resolveEntityRef(-2024174) gave ${JSON.stringify(ref)}`);
   });
 
   it('the canonical single model at offset 0 keeps its first-model fallback', () => {

@@ -241,20 +241,17 @@ export const modelUnload: Tool = {
   },
   handler(input, ctx) {
     const id = input.model_id as string;
+    // One live scope for every check (setScope may have narrowed it).
+    const live = ctx.currentScope?.() ?? ctx.scope;
     // Allowlist first, so a narrowed token cannot probe which ids are loaded.
-    if (!modelAllowed(ctx.scope, id)) {
-      throw new ToolExecutionError({
-        code: ToolErrorCode.PERMISSION_DENIED,
-        message: `Access to model '${id}' is not permitted for this token.`,
-      });
-    }
+    assertMayLoadAs(id, ctx, live);
     if (!ctx.registry.get(id)) {
       throw new ToolExecutionError({
         code: ToolErrorCode.MODEL_NOT_FOUND,
         message: `Model '${id}' is not loaded.`,
       });
     }
-    assertMayDiscard(id, ctx, ctx.currentScope?.() ?? ctx.scope);
+    assertMayDiscard(id, ctx, live);
     ctx.registry.remove(id);
     return okResult(`Unloaded model '${id}'.`, { id });
   },

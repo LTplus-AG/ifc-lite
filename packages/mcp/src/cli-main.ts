@@ -198,7 +198,11 @@ async function runStdio(opts: CliOptions, tag: string): Promise<void> {
           : 'xdg-open';
         try {
           const { spawn } = await import('node:child_process');
-          spawn(cmd, [state.url], { detached: true, stdio: 'ignore' }).unref();
+          const child = spawn(cmd, [state.url], { detached: true, stdio: 'ignore' });
+          // A missing opener (no xdg-open) is reported asynchronously; without a
+          // listener it would crash the MCP session.
+          child.on('error', (err) => process.stderr.write(`${tag} could not auto-open browser: ${err.message}\n`));
+          child.unref();
         } catch (err) {
           process.stderr.write(`${tag} could not auto-open browser: ${(err as Error).message}\n`);
         }

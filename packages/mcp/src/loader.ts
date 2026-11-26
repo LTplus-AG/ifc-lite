@@ -13,7 +13,7 @@
 
 import { constants } from 'node:fs';
 import { open, realpath, stat } from 'node:fs/promises';
-import { basename, resolve } from 'node:path';
+import { basename, resolve, sep } from 'node:path';
 import { IfcParser, validateStepInput, type IfcDataStore } from '@ifc-lite/parser';
 import { sourceModelIdentity } from '@ifc-lite/cache';
 import { createBimContext, type BimContext } from '@ifc-lite/sdk';
@@ -31,14 +31,15 @@ export interface LoadIfcOptions {
 /** Load IFC bytes and retain the opened file identity for source-write protection. */
 export async function loadIfcModel(filePath: string, opts: LoadIfcOptions = {}): Promise<LoadedModel> {
   const absolute = resolve(filePath);
-  if (opts.allowedPaths && opts.allowedPaths.length > 0) {
-    const ok = opts.allowedPaths.some((p) => absolute === p || absolute.startsWith(p + '/'));
-    if (!ok) {
-      throw new Error(`Path '${absolute}' is outside the allowed roots`);
-    }
-  }
+  const roots = opts.allowedPaths ?? [];
+  const inRoots = (path: string) => roots.some((p) => path === p || path.startsWith(p + sep));
+  if (roots.length > 0 && !inRoots(absolute)) throw new Error(`Path '${absolute}' is outside the allowed roots`);
 
   const canonical = await realpath(absolute);
+  // Callers pass roots they already resolved (model_load and the CLI pass the
+  // checked real path itself). If the path resolves elsewhere now, something
+  // was swapped since that check: refuse rather than follow it.
+  if (roots.length > 0 && !inRoots(canonical)) throw new Error(`Path '${absolute}' is outside the allowed roots`);
   // Refuse special files before opening them: opening a device can have side
   // effects, and a FIFO with no writer blocks. Then open without blocking and
   // without following a symlink swapped in since realpath, and check the

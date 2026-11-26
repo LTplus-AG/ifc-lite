@@ -182,6 +182,14 @@ describe('a token narrowed to one model', () => {
     expect((projects.structuredContent as { entities: Array<{ globalId?: string }> }).entities.map((e) => e.globalId)).toEqual([guid('BETA')]);
   });
 
+  // #11534: model_unload checks the allowlist against the live scope too.
+  it('refuses to unload a model whose access was revoked since the call began', async () => {
+    const before = ctx.registry.get('alpha');
+    await expect(Promise.resolve().then(() => tool('model_unload').handler({ model_id: 'alpha' }, { ...ctx, currentScope: () => ({ ...NARROWED, modelIds: ['gamma'] }) })))
+      .rejects.toThrow(/not permitted for this token/);
+    expect(ctx.registry.get('alpha')).toBe(before);
+  });
+
   // #11534: losing read scope, or a cancel, during the parse also stops the registration.
   it('refuses a load whose read scope was dropped or that was cancelled while the file parsed', async () => {
     const load = tool('model_load');
@@ -277,6 +285,9 @@ describe('unsaved edits survive a narrowed session', () => {
     await expect(call('model_unload', { model_id: 'alpha' })).rejects.toThrow(/unsaved edits/);
     await expect(call('model_load', { file_path: join(tmp, 'beta.ifc'), model_id: 'alpha' })).rejects.toThrow(/unsaved edits/);
     expect(ctx.registry.get('alpha')).toBe(edited);
+    // The edit itself survives, not only the registry entry.
+    const walls = await call('query_entities', { model_id: 'alpha', type: 'IfcWall' });
+    expect((walls.structuredContent as { entities: Array<{ name?: string }> }).entities.map((e) => e.name)).toEqual(['edited']);
     // An unedited model can still be dropped with read scope.
     await call('model_unload', { model_id: 'beta' });
     expect(ctx.registry.get('beta')).toBeNull();

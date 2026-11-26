@@ -74,3 +74,19 @@ fn an_exhausted_split_budget_is_bounded_and_reported() {
     assert!(refine_span(&alignment, 0.0, 200.0, CHORD_TOL_M, MAX_SPAN_SPLITS, &mut stations));
     assert_eq!(stations.len(), 1 + 64);
 }
+
+/// An evaluated tangent that is not a finite unit vector is refused with an
+/// error instead of reaching the section frames (PR #9969 review); a unit
+/// vertical one is kept.
+#[test]
+fn only_finite_unit_tangents_reach_the_section_frames() {
+    assert!(unit_tangent(Vector3::new(0.0, 0.0, 1.0), 1).is_ok());
+    for bad in [
+        Vector3::new(f64::NAN, 0.0, 0.0),
+        Vector3::new(0.0, 0.0, f64::INFINITY),
+        Vector3::zeros(),
+        Vector3::new(2.0, 0.0, 0.0),
+    ] {
+        assert!(unit_tangent(bad, 1).is_err(), "{bad:?}");
+    }
+}

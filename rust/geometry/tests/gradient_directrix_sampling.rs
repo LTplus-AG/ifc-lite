@@ -7,9 +7,11 @@
 //! vertical profile within the chord tolerance (0.5 mm), and parameter bounds
 //! are horizontal distances along a distance-measured BaseCurve. Before, the
 //! sampler returned the flat BaseCurve (z = 0) and refused parameter trims.
+//! Swept solids along such curves are also meshed through the public element
+//! path (`GeometryRouter::process_element`).
 
 use ifc_lite_core::{EntityDecoder, IfcSchema};
-use ifc_lite_geometry::{Point3, ProfileProcessor, Result, TessellationQuality};
+use ifc_lite_geometry::{GeometryRouter, Mesh, Point3, ProfileProcessor, Result, TessellationQuality};
 
 const CHORD_TOL_M: f64 = 5.0e-4;
 
@@ -146,4 +148,103 @@ fn steep_circular_profile_stays_within_chord_tolerance() {
     }
     let worst = worst_chord_error(&points, profile);
     assert!(worst <= CHORD_TOL_M, "{worst}");
+}
+
+/// Mesh `items` (curve, profile and solid entities, the solid as #30) as the
+/// body of a building element proxy, through the public element path.
+fn element_mesh(items: &str) -> Mesh {
+    let source = format!(
+        "{items}\n\
+        #40=IFCCARTESIANPOINT((0.,0.,0.));\n\
+        #41=IFCAXIS2PLACEMENT3D(#40,$,$);\n\
+        #42=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#41,$);\n\
+        #43=IFCSHAPEREPRESENTATION(#42,'Body','AdvancedSweptSolid',(#30));\n\
+        #44=IFCPRODUCTDEFINITIONSHAPE($,$,(#43));\n\
+        #45=IFCLOCALPLACEMENT($,#41);\n\
+        #46=IFCBUILDINGELEMENTPROXY('0g1v8xyXT4tA5DJ2bk3hJs',$,$,$,$,#45,#44,$,$);"
+    );
+    let index = ifc_lite_core::build_entity_index(&source);
+    let mut decoder = EntityDecoder::with_index(&source, index);
+    let router = GeometryRouter::with_units(&source, &mut decoder);
+    let element = decoder.decode_by_id(46).unwrap();
+    let mesh = router.process_element(&element, &mut decoder).unwrap();
+    assert!(!mesh.indices.is_empty(), "no mesh");
+    assert!(mesh.positions.iter().chain(&mesh.normals).all(|c| c.is_finite()), "non-finite vertex or normal");
+    mesh
+}
+
+/// A plan heading +Y under a final circular vertical segment of radius 10 m
+/// from a level start, 5π m of arc: a quarter circle that ends vertical at
+/// station 10, at 110 m (#20).
+const VERTICAL_END: &str = "#1=IFCCARTESIANPOINT((0.,0.));\n\
+    #2=IFCDIRECTION((1.,0.));\n\
+    #3=IFCVECTOR(#2,1.);\n\
+    #4=IFCLINE(#1,#3);\n\
+    #5=IFCAXIS2PLACEMENT2D(#1,#2);\n\
+    #16=IFCDIRECTION((0.,1.));\n\
+    #17=IFCAXIS2PLACEMENT2D(#1,#16);\n\
+    #6=IFCCURVESEGMENT(.CONTINUOUS.,#17,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(10.),#4);\n\
+    #7=IFCCOMPOSITECURVE((#6),.F.);\n\
+    #8=IFCCARTESIANPOINT((0.,100.));\n\
+    #9=IFCAXIS2PLACEMENT2D(#8,#2);\n\
+    #11=IFCCIRCLE(#5,10.);\n\
+    #12=IFCCURVESEGMENT(.CONTINUOUS.,#9,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(15.707963267948966),#11);\n\
+    #20=IFCGRADIENTCURVE((#12),.F.,#7,$);";
+
+/// A swept disk and a round FixedReference sweep up to the vertical end mesh
+/// finite positions and normals and reach its 110 m top (PR #9969 review).
+/// Before, the evaluated tangent there was inf / inf and the end rings NaN.
+#[test]
+fn sweeps_up_to_a_vertical_profile_end_mesh_finite_vertices() {
+    let solids = [
+        "#30=IFCSWEPTDISKSOLID(#20,0.05,$,$,$);",
+        "#25=IFCCIRCLEPROFILEDEF(.AREA.,$,$,0.05);\n#26=IFCDIRECTION((0.,0.,1.));\n\
+         #30=IFCFIXEDREFERENCESWEPTAREASOLID(#25,$,#20,$,$,#26);",
+    ];
+    for solid in solids {
+        let mesh = element_mesh(&format!("{VERTICAL_END}\n{solid}"));
+        let top = mesh.positions.chunks_exact(3).map(|p| p[2]).fold(f32::MIN, f32::max);
+        assert!((top - 110.0).abs() < 0.01, "{solid}: top at {top}");
+    }
+}
+
+/// The crest (#17) swept by a round FixedReference solid under a Position
+/// that maps (x, y, z) to (-z, y, x): the placed tangent is vertical at the
+/// crest and tips through it. Every wall triangle stays on the tube, at least
+/// half the radius from the directrix; a section frame that flips between
+/// two rings joins each vertex to the far side of the next ring, and those
+/// triangles cross the axis (PR #9969 review).
+#[test]
+fn a_rotated_gradient_crest_meshes_a_tube_without_a_twist() {
+    let mesh = element_mesh(&format!(
+        "{CREST}\n\
+        #21=IFCCARTESIANPOINT((0.,0.,0.));\n\
+        #22=IFCDIRECTION((-1.,0.,0.));\n\
+        #23=IFCDIRECTION((0.,0.,1.));\n\
+        #24=IFCAXIS2PLACEMENT3D(#21,#22,#23);\n\
+        #25=IFCCIRCLEPROFILEDEF(.AREA.,$,$,0.5);\n\
+        #26=IFCDIRECTION((0.,0.,1.));\n\
+        #30=IFCFIXEDREFERENCESWEPTAREASOLID(#25,#24,#17,IFCPARAMETERVALUE(0.),IFCPARAMETERVALUE(200.),#26);"
+    ));
+    let vertex = |i: u32| {
+        let p = &mesh.positions[3 * i as usize..3 * i as usize + 3];
+        [p[0] as f64, p[1] as f64, p[2] as f64]
+    };
+    let mut walls = 0;
+    for triangle in mesh.indices.chunks_exact(3) {
+        let [a, b, c] = [vertex(triangle[0]), vertex(triangle[1]), vertex(triangle[2])];
+        let (u, v) = ([b[0] - a[0], b[1] - a[1], b[2] - a[2]], [c[0] - a[0], c[1] - a[1], c[2] - a[2]]);
+        let n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+        let length = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+        // The placed tangent is within 1.2 degrees of +Z; caps face along it.
+        if length == 0.0 || (n[2] / length).abs() > 0.5 {
+            continue;
+        }
+        walls += 1;
+        let centroid = [(a[0] + b[0] + c[0]) / 3.0, (a[1] + b[1] + c[1]) / 3.0, (a[2] + b[2] + c[2]) / 3.0];
+        // The directrix point at that height: local (s, 0, z(s)) placed at (-z(s), 0, s).
+        let off_axis = (centroid[0] + crest_elevation(centroid[2])).hypot(centroid[1]);
+        assert!(off_axis > 0.25, "a wall triangle crosses the axis at {centroid:?} ({off_axis} m off)");
+    }
+    assert!(walls > 100, "{walls} wall triangles");
 }

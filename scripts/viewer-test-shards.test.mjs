@@ -54,11 +54,11 @@ test('the real test files form an exact partition in the current and rollback la
   assert.ok(files.length >= 2000, `expected the real viewer suite, got ${files.length} files`);
   assert.ok(Object.keys(manifest.seconds).length >= 2000, 'expected the committed manifest to be populated');
   assert.equal(manifest.shards, SHARDS, 'the manifest must be packed for the CI matrix size');
-  for (const count of [SHARDS, 16]) {
+  for (const [count, concurrency] of [[SHARDS, "2"], [SHARDS, ""], [16, ""]]) {
     const layout = { ...manifest, shards: count };
     const seen = new Map();
     for (let shard = 0; shard < count; shard++) {
-      const mine = selectShard(files, layout, shard, count);
+      const mine = selectShard(files, layout, shard, count, concurrency);
       assert.ok(mine.length > 0, `shard ${shard}/${count} is empty`);
       for (const file of mine) {
         assert.ok(!seen.has(file), `${file} runs in shard ${seen.get(file)} AND shard ${shard} of ${count}`);
@@ -80,6 +80,21 @@ test('the packing balances the measured load to within one file of the mean (LPT
   const hashLoad = new Array(SHARDS).fill(0);
   for (const f of Object.keys(manifest.seconds)) hashLoad[pathHash(f) % SHARDS] += manifest.seconds[f];
   assert.ok(Math.max(...load) < Math.max(...hashLoad), 'packing must lower the slowest shard');
+});
+
+test('two-way concurrency repacks calibrated weights and serial execution keeps the original assignment', () => {
+  const fixture = {
+    shards: 2,
+    seconds: { a: 10, b: 9, c: 6, d: 5, e: 3 },
+    concurrentScales: [[2, 0.5]],
+  };
+  const paths = Object.keys(fixture.seconds);
+  assert.deepEqual([...assignShards(paths, fixture, 2, '2')], [
+    ['a', 0], ['b', 1], ['c', 0], ['d', 1], ['e', 1],
+  ]);
+  assert.deepEqual([...assignShards(paths, fixture, 2, '')], [
+    ['a', 0], ['b', 1], ['c', 1], ['d', 0], ['e', 0],
+  ]);
 });
 
 test('the hash fallback is bit-for-bit the awk selector it replaces, over every real path', () => {
@@ -138,6 +153,7 @@ function cli(input, env) {
   const clean = { ...process.env };
   delete clean.TEST_SHARDS;
   delete clean.TEST_SHARD;
+  delete clean.VIEWER_TEST_CONCURRENCY;
   return spawnSync(process.execPath, [SCRIPT], { input, encoding: 'utf8', env: { ...clean, ...env } });
 }
 
@@ -150,9 +166,13 @@ test('CLI: without TEST_SHARDS every file is printed (a local `pnpm test` runs e
 test('CLI: all CI shards together print every real file exactly once', () => {
   const all = [];
   for (let s = 0; s < SHARDS; s++) {
-    const r = cli(files.join('\n') + '\n', { TEST_SHARDS: String(SHARDS), TEST_SHARD: String(s) });
+    const r = cli(files.join('\n') + '\n', {
+      TEST_SHARDS: String(SHARDS), TEST_SHARD: String(s), VIEWER_TEST_CONCURRENCY: '2',
+    });
     assert.equal(r.status, 0, r.stderr);
-    all.push(...r.stdout.trim().split('\n'));
+    const selected = r.stdout.trim().split('\n');
+    assert.deepEqual(selected, selectShard(files, manifest, s, SHARDS, '2'));
+    all.push(...selected);
   }
   assert.deepEqual(all.sort(), files);
 });

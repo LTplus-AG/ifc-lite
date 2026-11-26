@@ -15,11 +15,12 @@
  * viewer-test-shards.mjs), and attributes the TAP timestamps to files (see
  * lib/viewer-test-durations.mjs for the method and its known biases). A
  * file's manifest value is the MEDIAN across the given runs; pass two or
- * three runs, since per-shard wall time varies by +-25% run to run on hosted
+ * three serial runs, since per-shard wall time varies by +-25% run to run on hosted
  * runners. Only files present at HEAD are written.
  *
  * A maintenance tool, run by hand when the shard loads drift apart; it gates
- * nothing. The selection it feeds is tested in viewer-test-shards.test.mjs.
+ * nothing. Refreshing serial weights discards calibration for the old weights.
+ * The selection it feeds is tested in viewer-test-shards.test.mjs.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -114,6 +115,9 @@ function measureRun(opts, runId) {
       continue;
     }
     const log = jobLog(opts, runId, shard, jobId);
+    if (/^.*Z +VIEWER_TEST_CONCURRENCY: '?2'? *$/m.test(log)) {
+      throw new Error(`run ${runId} shard ${shard}: serial TAP attribution requires concurrency 1`);
+    }
     const count = Number(/TEST_SHARDS: '?(\d+)/.exec(log)?.[1]);
     if (!Number.isInteger(count)) throw new Error(`run ${runId} shard ${shard}: no TEST_SHARDS in log`);
     const mine = selectShard(relFiles, manifest, shard, count);

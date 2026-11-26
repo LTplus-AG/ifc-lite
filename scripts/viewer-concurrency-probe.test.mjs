@@ -86,6 +86,7 @@ test('the gate uses the concurrency variable and the same duration-packed shards
   assert.equal(env.TEST_SHARDS, String(shards));
   assert.equal(retryEnv.TEST_SHARDS, env.TEST_SHARDS);
   assert.equal(retryEnv.TEST_SHARD, env.TEST_SHARD);
+  assert.equal(retryEnv.VIEWER_TEST_CONCURRENCY, env.VIEWER_TEST_CONCURRENCY);
   const artifact = viewerJob.steps.find((s) => s.name === 'Upload the retry record');
   // eslint-disable-next-line no-template-curly-in-string
   assert.equal(artifact.with.name, 'shard-retry-viewer-${{ matrix.shard }}');
@@ -94,7 +95,7 @@ test('the gate uses the concurrency variable and the same duration-packed shards
 // ------------------------------ what ran, through the real reporter
 
 /** Run node:test over scratch files with the probe's file reporter; return what it wrote. */
-function reporterRun(name, files) {
+function reporterRun(name, files, format = '') {
   const root = join(TMP, name);
   for (const [path, body] of Object.entries(files)) {
     mkdirSync(dirname(join(root, path)), { recursive: true });
@@ -106,7 +107,7 @@ function reporterRun(name, files) {
   spawnSync(TSX, ['--test', '--test-concurrency=2', ...entries], {
     cwd: root,
     encoding: 'utf8',
-    env: { ...env, NODE_OPTIONS: `--test-reporter=tap --test-reporter-destination=/dev/null --test-reporter=${FILE_REPORTER} --test-reporter-destination=${out}` },
+    env: { ...env, TEST_FILE_REPORT_FORMAT: format, NODE_OPTIONS: `--test-reporter=tap --test-reporter-destination=/dev/null --test-reporter=${FILE_REPORTER} --test-reporter-destination=${out}` },
   });
   return { root: realpathSync(root), text: readFileSync(out, 'utf8') };
 }
@@ -122,6 +123,17 @@ test('#9791 review: the probe counts every file whose run completed: passing, cr
     'src/helpers/contract.ts': "import test from 'node:test';\nexport function contract() { test('h', () => {}); }\n",
   });
   assert.deepEqual(reportedFiles(text, root), ['src/a.test.ts', 'src/b.test.ts', 'src/d/c.test.tsx', 'src/e.test.ts']);
+});
+
+test('the duration reporter records whole-file elapsed seconds under concurrent execution', () => {
+  const { text } = reporterRun('timings', {
+    'src/wait.test.ts': "import test from 'node:test'; test('wait', () => new Promise((r) => setTimeout(r, 100)));",
+    'src/fast.test.ts': "import test from 'node:test'; test('fast', () => {});",
+  }, 'durations');
+  const timings = JSON.parse(text);
+  assert.deepEqual(Object.keys(timings), ['src/fast.test.ts', 'src/wait.test.ts']);
+  assert.ok(timings['src/fast.test.ts'] > 0);
+  assert.ok(timings['src/wait.test.ts'] >= 0.1, 'the file duration includes the test body');
 });
 
 test('#9791 review: a runner that wrote no file list (killed mid-shard) reported nothing, and the report fails on it', () => {

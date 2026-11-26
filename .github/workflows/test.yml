@@ -1410,7 +1410,8 @@ jobs:
   # The selector packs measured files from apps/viewer/test-durations.json
   # longest first onto the least-loaded shard. Adding or removing a file
   # leaves the other assignments stable. Files absent from the manifest use
-  # a stable path hash. Change the manifest count together with the matrix
+  # a stable path hash. Concurrency 2 calibrates the weights with observed
+  # hosted shard times. Change the manifest count together with the matrix
   # and both TEST_SHARDS settings so duration packing stays active.
   #
   # Refresh per-file weights from two or three dedicated green full runs
@@ -1524,13 +1525,14 @@ jobs:
         run: pnpm --filter @ifc-lite/viewer run test
         continue-on-error: ${{ vars.CI_SHARD_RETRY == 'on' }}
         env:
-          NODE_OPTIONS: --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml --test-reporter=${{ github.workspace }}/scripts/lib/test-file-reporter.mjs --test-reporter-destination=${{ runner.temp }}/viewer-test-files.json${{ (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on') && format(' --test-reporter=tap --test-reporter-destination={0}/viewer-attempt1.tap', runner.temp) || '' }}
+          NODE_OPTIONS: --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml --test-reporter=${{ github.workspace }}/scripts/lib/test-file-reporter.mjs --test-reporter-destination=${{ runner.temp }}/viewer-test-file-durations.json${{ (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on') && format(' --test-reporter=tap --test-reporter-destination={0}/viewer-attempt1.tap', runner.temp) || '' }}
           TEST_SHARDS: '12'
           TEST_SHARD: ${{ matrix.shard }}
           # Bounded by apps/viewer's test script, the one place the rule lives.
           # Above 1, refresh test-durations.json only from runs at 1:
           # scripts/lib/viewer-test-durations.mjs assumes serial files.
           VIEWER_TEST_CONCURRENCY: ${{ vars.VIEWER_TEST_CONCURRENCY }}
+          TEST_FILE_REPORT_FORMAT: durations
       - name: Count viewer test files that reported a result
         if: steps.viewer_tests.outcome == 'success'
         continue-on-error: true
@@ -1538,8 +1540,17 @@ jobs:
           node --input-type=module -e '
             import { readFileSync } from "node:fs";
             const files = JSON.parse(readFileSync(process.argv[1], "utf8"));
-            console.log(`Viewer test files reported: ${files.length}`);
-          ' "$RUNNER_TEMP/viewer-test-files.json"
+            console.log(`Viewer test files reported: ${Object.keys(files).length}`);
+          ' "$RUNNER_TEMP/viewer-test-file-durations.json"
+      - name: Upload viewer file timings
+        if: steps.viewer_tests.outcome == 'success'
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: viewer-file-timings-${{ matrix.shard }}
+          path: ${{ runner.temp }}/viewer-test-file-durations.json
+          if-no-files-found: error
+          retention-days: 7
       # The contrast harness fails rather than skips in CI when it has no
       # browser. Check the outcome too, so a shard that skipped them for that
       # reason can never pass (scripts/lib/contrast-skips.mjs).
@@ -1567,6 +1578,7 @@ jobs:
           REPORT_DIR: ${{ runner.temp }}/shard-retry
           TEST_SHARDS: '12'
           TEST_SHARD: ${{ matrix.shard }}
+          VIEWER_TEST_CONCURRENCY: ${{ vars.VIEWER_TEST_CONCURRENCY }}
       - name: Upload the retry record
         if: (success() || failure()) && (steps.viewer_retry.outcome == 'success' || steps.viewer_retry.outcome == 'failure')
         # A diagnostic: an upload error must not turn a passed retry red.

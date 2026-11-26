@@ -68,7 +68,12 @@ each observed shard's wall time and replaying duration packing projected
 slowest steps of 15.8 minutes for 10 shards, 14.2 for 11 and 13.1 for 12.
 These estimates use shard-level wall times because concurrent TAP output
 is buffered. The viewer jobs report the number of files completed alongside
-the step durations for direct comparison on a full run.
+the step durations for direct comparison on a full run. The first 12-shard
+run passed all 3,081 files and took 10.0–15.9 minutes per shard. The
+concurrency-2 layout now uses estimates calibrated to that run and to the
+four earlier runs. Serial execution still uses the serial weights. Full
+viewer runs publish file-level durations in `viewer-file-timings-N` so later
+repacking can use measured weights.
 
 ## Rust measurements
 

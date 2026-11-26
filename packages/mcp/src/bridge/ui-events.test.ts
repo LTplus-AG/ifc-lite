@@ -83,11 +83,11 @@ describe('UiEventInbox', () => {
   it('rate-limits, caps the queue and wakes a waiting reader', async () => {
     let t = 0;
     const inbox = new UiEventInbox(() => t);
-    for (let i = 0; i < UI_EVENT_LIMITS.maxPerSecond; i++) expect(inbox.push({ surfaceId: 's', name: 'ask', prompt: `old ${i}` })).toBe(true);
-    expect(inbox.push({ surfaceId: 's', name: 'ask', prompt: 'limited' })).toBe(false);
+    for (let i = 0; i < UI_EVENT_LIMITS.maxPerSecond; i++) expect(inbox.push({ surfaceId: 's', name: 'ask', prompt: `old ${i}` }, true)).toBe(true);
+    expect(inbox.push({ surfaceId: 's', name: 'ask', prompt: 'limited' }, true)).toBe(false);
     t = 5000;
     const newest = Array.from({ length: UI_EVENT_LIMITS.maxQueued }, (_, i) => `new ${i}`);
-    for (const prompt of newest) { t += 200; inbox.push({ surfaceId: 's', name: 'ask', prompt }); }
+    for (const prompt of newest) { t += 200; inbox.push({ surfaceId: 's', name: 'ask', prompt }, true); }
     expect(inbox.size).toBe(UI_EVENT_LIMITS.maxQueued);
     const drained = await inbox.take(0);
     expect(drained.dropped).toBe(1 + UI_EVENT_LIMITS.maxPerSecond);
@@ -95,7 +95,7 @@ describe('UiEventInbox', () => {
     expect(drained.events.map((e) => e.prompt)).toEqual(newest);
     const waiting = inbox.take(10_000);
     t += 1000;
-    inbox.push({ surfaceId: 's', name: 'ask', prompt: 'next' });
+    inbox.push({ surfaceId: 's', name: 'ask', prompt: 'next' }, true);
     // The drop count is a delta: it was reported once and starts again from zero.
     await expect(waiting).resolves.toMatchObject({ events: [{ prompt: 'next' }], dropped: 0 });
   });

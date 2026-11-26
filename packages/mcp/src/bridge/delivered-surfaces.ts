@@ -26,9 +26,9 @@
 
 import { ASK_EVENT } from '@ifc-lite/a2ui';
 import { isRecord } from './json-bounds.js';
-import { a2uiSurfaceTarget, type BridgeUiEvent } from './ui-events.js';
+import { a2uiSurfaceId, type BridgeUiEvent } from './ui-events.js';
 
-/** Surface ids remembered; the oldest is forgotten past this. More than the tab keeps on screen. */
+/** Surface ids remembered; the oldest is forgotten past this. Well above what the tab's dock shows (3). */
 export const MAX_DELIVERED_SURFACES = 64;
 /** Distinct strings remembered per surface; later ones are not admitted as prompts. */
 export const MAX_SURFACE_STRINGS = 4096;
@@ -70,17 +70,17 @@ export class DeliveredSurfaces {
    * on screen, and its buttons stay clickable.
    */
   record(messages: readonly unknown[]): void {
-    const ids = new Set<string>();
-    for (const message of messages) {
-      const target = a2uiSurfaceTarget(message);
-      if (target) ids.add(target.surfaceId);
-    }
+    const ids = new Set(messages.map(a2uiSurfaceId).filter((id): id is string => id !== null));
+    if (ids.size === 0) return;
+    const call: Surface = { strings: new Set<string>(), typed: false };
+    collect(messages, call);
     for (const id of ids) {
       const surface = this.surfaces.get(id) ?? { strings: new Set<string>(), typed: false };
+      for (const s of call.strings) if (surface.strings.size < MAX_SURFACE_STRINGS) surface.strings.add(s);
+      surface.typed ||= call.typed;
       // Re-inserted, so a surface the agent keeps updating is the newest.
       this.surfaces.delete(id);
       this.surfaces.set(id, surface);
-      collect(messages, surface);
     }
     while (this.surfaces.size > MAX_DELIVERED_SURFACES) {
       const oldest = this.surfaces.keys().next().value as string;

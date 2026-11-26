@@ -89,7 +89,7 @@ function renamer(tools: readonly BridgeToolDescriptor[]): (text: string) => stri
   if (!rename) {
     const names = tools.map((t) => t.name).sort((a, b) => b.length - a.length).map((n) => n.replace(/[.\-]/g, '\\$&'));
     const pattern = names.length ? new RegExp(`(?<![A-Za-z0-9_.-])(${names.join('|')})(?![A-Za-z0-9_-])`, 'g') : null;
-    rename = (text) => (pattern ? text.replace(pattern, `${TAB_TOOL_PREFIX}$1`) : text);
+    rename = (text) => (pattern ? text.replace(pattern, (_m, name: string) => mcpName(name)) : text);
     renamers.set(tools, rename);
   }
   return rename;

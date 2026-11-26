@@ -56,10 +56,10 @@ export interface BridgeUiEventMessage {
  * (`{ createSurface: { surfaceId } }`, `updateComponents`, `updateDataModel`,
  * `deleteSurface`). The bridge and the tab read it the same way.
  */
-export function a2uiSurfaceTarget(message: unknown): { surfaceId: string; kind: string } | null {
+export function a2uiSurfaceId(message: unknown): string | null {
   if (!isRecord(message)) return null;
-  for (const [kind, body] of Object.entries(message)) {
-    if (isRecord(body) && typeof body.surfaceId === 'string' && body.surfaceId) return { surfaceId: body.surfaceId, kind };
+  for (const body of Object.values(message)) {
+    if (isRecord(body) && typeof body.surfaceId === 'string' && body.surfaceId) return body.surfaceId;
   }
   return null;
 }
@@ -125,7 +125,7 @@ export class UiEventInbox {
   constructor(private readonly now: () => number = Date.now) {}
 
   /** Queue one event. False when it was dropped by the rate limit. */
-  push(event: BridgeUiEvent, promptVerified = true): boolean {
+  push(event: BridgeUiEvent, promptVerified: boolean): boolean {
     const t = this.now();
     this.recent = this.recent.filter((r) => t - r < 1000);
     if (this.recent.length >= UI_EVENT_LIMITS.maxPerSecond) {

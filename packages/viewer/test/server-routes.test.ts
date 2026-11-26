@@ -470,7 +470,8 @@ describe('viewer server — loopback only', () => {
   });
 
   it('accepts a command from a local page and from a client that sends no Origin', TEST_TIMEOUT, async () => {
-    for (const headers of [{ origin: `http://localhost:${port}` }, { origin: `http://LocalHost:${port}` }, {}]) {
+    const cases: Record<string, string>[] = [{ origin: `http://localhost:${port}` }, { origin: `http://LocalHost:${port}` }, {}];
+    for (const headers of cases) {
       const res = await req(port, '/api/command', { method: 'POST', headers, body: command });
       assert.equal(res.status, 200, JSON.stringify(headers));
     }

@@ -65,6 +65,8 @@ export class LoopbackTransport implements Transport {
       this.take(message.id)?.(message as JsonRpcResponse);
       return Promise.resolve();
     }
+    // No server-originated message may precede the initialize result.
+    if (!this.sentHandshake) return Promise.resolve();
     const sink = this.sink();
     if (!sink) return Promise.resolve();
     // Called synchronously so notifications leave in the order they were raised.

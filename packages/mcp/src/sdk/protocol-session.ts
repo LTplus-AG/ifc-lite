@@ -255,8 +255,8 @@ export class ProtocolSession {
 
   /** Send a server notification. Dropped until initialize; a failing sink is logged, never thrown at the caller. */
   notify(method: string, params: Record<string, unknown>): void {
-    // Not before the initialize result has left the protocol layer.
-    if (!this.transport.handshakeSent) return;
+    // The transport drops it before the handshake anyway; skip the SDK's encode.
+    if (!this.isInitialized()) return;
     const failed = (err: unknown) => this.domain.baseLogger.log('warning', `notify ${method} failed`, { error: describeThrown(err) });
     this.server.notification({ method, params }).catch(failed);
   }
@@ -335,8 +335,7 @@ export class ProtocolSession {
     return {
       report: (progress, message, total) => {
         // A cancelled or closed request has nobody listening for its progress.
-        // Nobody listens once the request is aborted, and nothing may precede the initialize result.
-        if (ctx.mcpReq.signal.aborted || !this.transport.handshakeSent) return;
+        if (ctx.mcpReq.signal.aborted) return;
         const params: Record<string, unknown> = { progressToken: token, progress };
         if (total !== undefined) params.total = total;
         if (message !== undefined) params.message = message;

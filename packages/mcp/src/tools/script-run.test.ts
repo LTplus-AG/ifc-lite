@@ -157,6 +157,13 @@ describe('script_run', () => {
     expect(err.details?.logs).toEqual([{ level: 'log', text: 'before' }]);
   });
 
+  it('reports a cyclic value and keeps logs from a script that throws', async () => {
+    expect((await runError('const a = {}; a.self = a; a')).message).toMatch(/not JSON-serialisable/);
+    const err = await runError("console.log('step 1'); throw new Error('bad input')");
+    expect(err.message).toBe('Script error: bad input');
+    expect(err.details?.logs).toEqual([{ level: 'log', text: 'step 1' }]);
+  });
+
   it('does not let a script fake a timeout', async () => {
     const err = await runError("throw new Error('interrupted')");
     expect(err.code).toBe('INVALID_INPUT');
@@ -211,6 +218,16 @@ describe('script_run_mutate on timeout', () => {
     `, { timeout_ms: 200 }, scriptRunMutateTool);
     expect(err.code).toBe('TIMEOUT');
     expect(err.details?.mutations_queued).toBe(1);
+  });
+});
+
+describe('script_run_mutate on a script error', () => {
+  it('says how many edits stayed queued before the throw', async () => {
+    const err = await runError(`
+      bim.mutate.setAttribute(bim.query.byType('IfcDoor')[0], 'Description', 'Edited');
+      throw new Error('stop');
+    `, {}, scriptRunMutateTool);
+    expect(err).toMatchObject({ code: 'INVALID_INPUT', message: 'Script error: stop', details: { mutations_queued: 1 } });
   });
 });
 

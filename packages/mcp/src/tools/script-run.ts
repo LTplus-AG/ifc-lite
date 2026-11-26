@@ -130,38 +130,47 @@ function shapeLogs(entries: readonly LogEntry[]): { logs: LogLine[]; truncated: 
   return { logs, truncated: false };
 }
 
-function shapeValue(value: unknown): { value: unknown; value_truncated: boolean; value_preview?: string } {
-  // `value` came out of vm.dump, which yields plain JSON data, so this cannot throw.
-  const json = JSON.stringify(value);
-  if (json === undefined) return { value: null, value_truncated: false };
-  if (json.length <= MAX_VALUE_CHARS) return { value, value_truncated: false };
-  return { value: null, value_truncated: true, value_preview: json.slice(0, 2_000) };
-}
-
 /**
- * Wraps the script so a returned promise is awaited by the sandbox's own
- * promise settling and its value comes back tagged: a promise nested in the
- * value dumps as `{}`, so the tag is the only way to tell the two apart.
- * A direct eval inside a function gives the script its own variable
- * environment and keeps its completion value (the flow script node does the
- * same). Plain JS: the TypeScript strip needs esbuild-wasm, which does not
- * initialise under Node.
+ * The script runs inside a function that settles a returned promise and
+ * hands back one envelope: `{ json }` (the value, serialised inside the
+ * sandbox), `{ threw }` (anything the script threw or rejected with) or
+ * `{ unserialisable }`. Catching inside the sandbox means a `ScriptError`
+ * reaching the host is only ever an interrupt or a sandbox fault (QuickJS
+ * interrupts are uncatchable). A direct eval gives the script its own
+ * variable environment and keeps its completion value (the flow script node
+ * does the same). Plain JS: the TypeScript strip needs esbuild-wasm, which
+ * does not initialise under Node.
  */
 function wrapScript(code: string): string {
-  return `(function () { var r = eval(${JSON.stringify(code)}); return r instanceof Promise ? r.then(function (v) { return { settled: v }; }) : { sync: r }; })()`;
+  return `(function () {
+  function msg(e) { return e && typeof e.message === 'string' ? e.message : String(e); }
+  function env(v) {
+    try { var j = JSON.stringify(v); return { json: j === undefined ? 'null' : j }; }
+    catch (e) { return { unserialisable: msg(e) }; }
+  }
+  function fail(e) { return { threw: msg(e) }; }
+  var r;
+  try { r = eval(${JSON.stringify(code)}); } catch (e) { return fail(e); }
+  return r instanceof Promise ? r.then(env, fail) : env(r);
+})()`;
 }
 
-function unwrapValue(dumped: unknown): unknown {
-  // The wrapper always returns an object; anything else is QuickJS's dump
-  // falling back to String() for a value JSON cannot carry (a BigInt, say).
-  if (typeof dumped !== 'object' || dumped === null) {
-    throw new Error("The script's value is not JSON-serialisable (BigInt, cyclic or host value).");
-  }
-  const v = dumped as { sync?: unknown; type?: string; value?: { settled?: unknown } };
-  if ('sync' in v) return v.sync;
-  if (v.type === 'fulfilled') return v.value?.settled;
-  if (v.type === 'pending') throw new Error('The script returned a promise that never settled (only bim host calls resolve; there are no timers).');
-  return undefined;
+type Envelope = { json?: string; threw?: string; unserialisable?: string };
+
+/** The JSON text of the script's value, or the message it failed with. */
+function readEnvelope(dumped: unknown): { json: string } | { error: string } {
+  // A returned promise dumps as its settled state, `{ type, value }`.
+  const state = dumped as { type?: string; value?: Envelope } & Envelope;
+  if (state.type === 'pending') return { error: 'The script returned a promise that never settled (only bim host calls resolve; there are no timers).' };
+  const envelope = state.type === 'fulfilled' ? state.value ?? {} : state;
+  if (typeof envelope.json === 'string') return { json: envelope.json };
+  if (envelope.unserialisable !== undefined) return { error: `The script's value is not JSON-serialisable: ${envelope.unserialisable}` };
+  return { error: envelope.threw ?? 'The script produced no result.' };
+}
+
+function shapeValue(json: string): { value: unknown; value_truncated: boolean; value_preview?: string } {
+  if (json.length <= MAX_VALUE_CHARS) return { value: JSON.parse(json) as unknown, value_truncated: false };
+  return { value: null, value_truncated: true, value_preview: json.slice(0, 2_000) };
 }
 
 async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolContext) {
@@ -172,7 +181,14 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
   }
   const timeoutMs = intInput(input.timeout_ms, 'timeout_ms', 100, MAX_TIMEOUT_MS, DEFAULT_TIMEOUT_MS);
   const memoryMb = intInput(input.memory_mb, 'memory_mb', 8, MAX_MEMORY_MB, DEFAULT_MEMORY_MB);
-  const cancelled = () => new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message: 'Script cancelled by the client.' });
+  const cancelled = (details?: Record<string, unknown>) =>
+    new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message: 'Script cancelled by the client.', details });
+  const scriptError = (message: string, details: Record<string, unknown>) => new ToolExecutionError({
+    code: ToolErrorCode.INVALID_INPUT, message: `Script error: ${message}`, details,
+    hint: mode === 'read' && /\bbim\.(mutate|store)\b/.test(code)
+      ? 'script_run has no bim.mutate or bim.store; use script_run_mutate to edit the model.'
+      : undefined,
+  });
   if (ctx.signal.aborted) throw cancelled();
 
   // Read mode has no write namespaces, so it cannot queue anything. In mutate
@@ -196,15 +212,9 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     const result = await sandbox.eval(wrapScript(code), { typescript: false, filename: 'script_run.js' });
     const { logs, truncated } = shapeLogs(result.logs);
     const mutationsQueued = queued();
-    let shaped: ReturnType<typeof shapeValue>;
-    try {
-      shaped = shapeValue(unwrapValue(result.value));
-    } catch (err) {
-      throw new ToolExecutionError({
-        code: ToolErrorCode.INVALID_INPUT, message: err instanceof Error ? err.message : String(err),
-        details: { logs, mutations_queued: mutationsQueued },
-      });
-    }
+    const outcome = readEnvelope(result.value);
+    if ('error' in outcome) throw scriptError(outcome.error, { logs, mutations_queued: mutationsQueued });
+    const shaped = shapeValue(outcome.json);
     const summary = [
       `Script ran in ${result.durationMs} ms on model '${model.id}' (${mode}).`,
       mutationsQueued > 0 ? `${mutationsQueued} mutation(s) queued; persist with export_ifc or model_save.` : '',
@@ -217,24 +227,14 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
   } catch (err) {
     if (err instanceof ToolExecutionError) throw err;
     const details = { logs: err instanceof ScriptError ? shapeLogs(err.logs).logs : [], mutations_queued: queued() };
-    // The sandbox reports an interrupt only as the message 'interrupted' and
-    // takes no AbortSignal; the elapsed time tells a real interrupt from a
-    // script that threw Error('interrupted') itself.
-    const interrupted = err instanceof ScriptError && err.message === 'interrupted' && err.durationMs >= timeoutMs;
-    if (err instanceof ScriptError && !interrupted && stopReason === null) {
-      throw new ToolExecutionError({
-        code: ToolErrorCode.INVALID_INPUT,
-        message: `Script error: ${err.message}`,
-        details,
-        hint: mode === 'read' && /\bbim\.(mutate|store)\b/.test(code)
-          ? 'script_run has no bim.mutate or bim.store; use script_run_mutate to edit the model.'
-          : undefined,
-      });
-    }
-    if (stopReason === 'cancelled') throw new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message: 'Script cancelled by the client.', details });
-    if (interrupted || stopReason === 'timeout') {
+    if (stopReason === 'cancelled') throw cancelled(details);
+    // Script throws are caught in the wrapper, so 'interrupted' here is the
+    // sandbox's own interrupt handler (it reports nothing more specific).
+    if (stopReason === 'timeout' || (err instanceof ScriptError && err.message === 'interrupted')) {
       throw new ToolExecutionError({ code: ToolErrorCode.TIMEOUT, message: `Script exceeded timeout_ms (${timeoutMs}).`, details });
     }
+    // Out of memory, stack overflow, or a fault the wrapper could not catch.
+    if (err instanceof ScriptError) throw scriptError(err.message, details);
     throw err;
   } finally {
     clearTimeout(timer);

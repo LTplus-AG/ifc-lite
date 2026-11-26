@@ -26,7 +26,7 @@ export class LoopbackTransport implements Transport {
   onerror?: (error: Error) => void;
   onmessage?: (message: JSONRPCMessage) => void;
   private waiting = new Map<JsonRpcId, (response: JsonRpcResponse | null) => void>();
-  /** A sink that threw synchronously on the last send; read once by `takeSyncFailure`. */
+  /** The error the sink threw synchronously during the latest send, if it did. */
   private syncFailure: { error: unknown } | null = null;
 
   constructor(private readonly sink: () => LoopbackSink | null) {}
@@ -45,14 +45,11 @@ export class LoopbackTransport implements Transport {
   }
 
   send(message: JSONRPCMessage): Promise<void> {
+    this.syncFailure = null;
     if (isJsonRpcResponse(message)) {
       // Every request arrives through deliver(), so a response nobody waits
       // for answers a cancelled request: the client asked us not to send it.
-      const settle = message.id === null ? undefined : this.waiting.get(message.id);
-      if (settle && message.id !== null) {
-        this.waiting.delete(message.id);
-        settle(message as JsonRpcResponse);
-      }
+      this.take(message.id)?.(message as JsonRpcResponse);
       return Promise.resolve();
     }
     const sink = this.sink();
@@ -64,6 +61,14 @@ export class LoopbackTransport implements Transport {
       this.syncFailure = { error };
       return Promise.reject(error);
     }
+  }
+
+  /** Stop waiting for a response to `id`; returns its resolver, if it was waiting. */
+  private take(id: JsonRpcId | null | undefined): ((response: JsonRpcResponse | null) => void) | undefined {
+    if (id === null || id === undefined) return undefined;
+    const settle = this.waiting.get(id);
+    this.waiting.delete(id);
+    return settle;
   }
 
   /**
@@ -91,12 +96,7 @@ export class LoopbackTransport implements Transport {
     this.onmessage(message as JSONRPCMessage);
     if (isJsonRpcNotification(message) && message.method === 'notifications/cancelled') {
       // The protocol layer sends no response for a cancelled request; stop waiting for one.
-      const id = (message.params as { requestId?: JsonRpcId } | undefined)?.requestId;
-      const settle = id === undefined ? undefined : this.waiting.get(id);
-      if (settle && id !== undefined) {
-        this.waiting.delete(id);
-        settle(null);
-      }
+      this.take((message.params as { requestId?: JsonRpcId } | undefined)?.requestId)?.(null);
     }
     return Promise.resolve(null);
   }

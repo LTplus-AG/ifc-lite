@@ -12,10 +12,6 @@
 import { LOGGING_LEVELS, type LoggingLevel, type LogNotification } from './protocol/index.js';
 import type { Logger } from './context.js';
 
-export function isLoggingLevel(value: unknown): value is LoggingLevel {
-  return typeof value === 'string' && (LOGGING_LEVELS as readonly string[]).includes(value);
-}
-
 export class ClientLogForwarder {
   private minimum: number | null = null;
 

@@ -373,12 +373,12 @@ export class MCPServer implements ProtocolDomain {
 
   /** Broadcast a `notifications/resources/updated` to subscribers. */
   notifyResourceUpdated(uri: string): void {
-    if (this.sink) this.session?.resourceUpdated(uri);
+    this.session?.resourceUpdated(uri);
   }
 
   /** Send a server notification. Dropped until initialize; a failing sink is logged, never thrown at the caller. */
   notify(method: string, params: Record<string, unknown>): void {
-    if (this.sink) this.session?.notify(method, params);
+    this.session?.notify(method, params);
   }
 
   /** Notify clients that the tool list has changed (e.g., after model load). */

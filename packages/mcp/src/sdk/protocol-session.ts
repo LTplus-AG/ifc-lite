@@ -19,6 +19,8 @@ import {
   ProtocolErrorCode,
   Server,
   type JSONRPCRequest,
+  type RequestMethod,
+  type RequestTypeMap,
   type Result,
   type ServerContext,
 } from '@modelcontextprotocol/server';
@@ -74,9 +76,6 @@ export interface ProtocolDomain {
 /** Oldest last: the SDK offers the first entry when a client asks for a version we do not speak. */
 const NEGOTIABLE_VERSIONS = [PROTOCOL_VERSION, ...[...SUPPORTED_PROTOCOL_VERSIONS].filter((v) => v !== PROTOCOL_VERSION).sort().reverse()];
 
-/** Thrown by a domain handler: answered with its own code, never re-labelled. */
-class HandlerFailure extends ProtocolError {}
-
 /**
  * The SDK `Server` with one change: a request the SDK's spec schemas refuse
  * (missing or malformed params) answers -32602, not -32603. The SDK throws a
@@ -93,11 +92,14 @@ class IfcProtocolServer extends Server {
     handler: (request: JSONRPCRequest, ctx: ServerContext) => Promise<Result>,
   ): (request: JSONRPCRequest, ctx: ServerContext) => Promise<Result> {
     const inner = super._wrapHandler(method, handler);
+    const run: typeof inner = method !== 'initialize' ? inner : async (request, ctx) => {
+      const result = await inner(request, ctx);
+      this.onInitialize?.(request.params as { protocolVersion: string }, result as { protocolVersion: string });
+      return result;
+    };
     return async (request, ctx) => {
       try {
-        const result = await inner(request, ctx);
-        if (method === 'initialize') this.onInitialize?.(request.params as { protocolVersion: string }, result as { protocolVersion: string });
-        return result;
+        return await run(request, ctx);
       } catch (err) {
         if (err instanceof ProtocolError) throw err;
         throw new ProtocolError(ProtocolErrorCode.InvalidParams, err instanceof Error ? err.message : String(err));
@@ -169,40 +171,32 @@ export class ProtocolSession {
       this.initialized = true;
       this.domain.initialized({ client: params.clientInfo, protocol: params.protocolVersion, negotiated: result.protocolVersion });
     };
+    const on = <M extends RequestMethod>(method: M, handler: (request: RequestTypeMap[M], ctx: ServerContext) => unknown) =>
+      s.setRequestHandler(method, this.guard(method, handler) as never);
     if (capabilities.tools) {
-      s.setRequestHandler('tools/list', this.guard('tools/list', () => this.domain.listTools()));
-      s.setRequestHandler('tools/call', this.guard('tools/call', (request, ctx) =>
-        this.domain.callTool(request.params as CallToolParams, {
-          signal: ctx.mcpReq.signal,
-          progress: this.progressFor(request.params._meta?.progressToken, ctx),
-        })));
+      on('tools/list', () => this.domain.listTools());
+      on('tools/call', (request, ctx) => this.domain.callTool(request.params as CallToolParams, {
+        signal: ctx.mcpReq.signal,
+        progress: this.progressFor(request.params._meta?.progressToken, ctx),
+      }));
     }
     if (capabilities.resources) {
-      s.setRequestHandler('resources/list', this.guard('resources/list', () => this.domain.listResources()));
-      s.setRequestHandler('resources/templates/list', this.guard('resources/templates/list', () => this.domain.listResourceTemplates()));
-      s.setRequestHandler('resources/read', this.guard('resources/read', (request) => this.domain.readResource(request.params as ReadResourceParams)));
+      on('resources/list', () => this.domain.listResources());
+      on('resources/templates/list', () => this.domain.listResourceTemplates());
+      on('resources/read', (request) => this.domain.readResource(request.params as ReadResourceParams));
       if (capabilities.resources.subscribe) {
-        s.setRequestHandler('resources/subscribe', this.guard('resources/subscribe', (request) => {
-          this.subscriptions.add(request.params.uri);
-          return {};
-        }));
-        s.setRequestHandler('resources/unsubscribe', this.guard('resources/unsubscribe', (request) => {
-          this.subscriptions.delete(request.params.uri);
-          return {};
-        }));
+        on('resources/subscribe', (request) => { this.subscriptions.add(request.params.uri); return {}; });
+        on('resources/unsubscribe', (request) => { this.subscriptions.delete(request.params.uri); return {}; });
       }
     }
     if (capabilities.prompts) {
-      s.setRequestHandler('prompts/list', this.guard('prompts/list', () => this.domain.listPrompts()));
-      s.setRequestHandler('prompts/get', this.guard('prompts/get', (request) => this.domain.getPrompt(request.params as GetPromptParams)));
+      on('prompts/list', () => this.domain.listPrompts());
+      on('prompts/get', (request) => this.domain.getPrompt(request.params as GetPromptParams));
     }
     if (capabilities.logging) {
       // Replaces the SDK's handler, which keeps the level per HTTP session id;
       // ours is one level per connection, and the domain's logger reads it.
-      s.setRequestHandler('logging/setLevel', this.guard('logging/setLevel', (request) => {
-        this.domain.setLogLevel(request.params.level as LoggingLevel);
-        return {};
-      }));
+      on('logging/setLevel', (request) => { this.domain.setLogLevel(request.params.level as LoggingLevel); return {}; });
     }
   }
 
@@ -212,22 +206,22 @@ export class ProtocolSession {
    * error. All leave as `ProtocolError`, which `IfcProtocolServer` passes
    * through untouched.
    */
-  // Returns Promise<never>: our wire types (protocol/types.ts) are structurally
+  // `on` casts the result: our wire types (protocol/types.ts) are structurally
   // looser than the SDK's zod-derived ones, and the SDK encodes and checks
   // each result against the spec schema at runtime anyway.
-  private guard<P, R>(method: string, handler: (request: P, ctx: ServerContext) => R | Promise<R>): (request: P, ctx: ServerContext) => Promise<never> {
+  private guard<P>(method: string, handler: (request: P, ctx: ServerContext) => unknown): (request: P, ctx: ServerContext) => Promise<unknown> {
     return async (request, ctx) => {
       if (!this.initialized) {
-        throw new HandlerFailure(JsonRpcErrorCode.ServerNotInitialized, 'Server not initialized — send `initialize` first');
+        throw new ProtocolError(JsonRpcErrorCode.ServerNotInitialized, 'Server not initialized — send `initialize` first');
       }
       try {
-        return (await handler(request, ctx)) as never;
+        return await handler(request, ctx);
       } catch (err) {
         if (err instanceof ProtocolError) throw err;
-        if (err instanceof RequestError) throw new HandlerFailure(err.code, err.message, err.data);
+        if (err instanceof RequestError) throw new ProtocolError(err.code, err.message, err.data);
         const message = describeThrown(err);
         this.domain.baseLogger.log('error', `Request ${method} failed`, { error: message });
-        throw new HandlerFailure(ProtocolErrorCode.InternalError, message);
+        throw new ProtocolError(ProtocolErrorCode.InternalError, message);
       }
     };
   }
@@ -239,7 +233,6 @@ export class ProtocolSession {
         const params: Record<string, unknown> = { progressToken: token, progress };
         if (total !== undefined) params.total = total;
         if (message !== undefined) params.message = message;
-        this.transport.takeSyncFailure(); // drop one left by an unrelated notification
         const sent = ctx.mcpReq.notify({ method: 'notifications/progress', params });
         // A sink that throws fails the producer on purpose (#7372): rethrow here.
         const failure = this.transport.takeSyncFailure();

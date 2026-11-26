@@ -51,7 +51,7 @@ export function ConversationLibrary() {
       <p className="text-muted-foreground">{t('assistant.saveHint')}</p>
       <label className="sr-only" htmlFor="assistant-conversation-name">{t('assistant.conversationName')}</label>
       <div className="flex flex-wrap items-center gap-1">
-        <input id="assistant-conversation-name" className="min-w-[8rem] flex-1 h-7 border border-input rounded bg-background px-2" value={name}
+        <input id="assistant-conversation-name" className="min-w-32 flex-1 h-7 border border-input rounded bg-background px-2" value={name}
           maxLength={200} placeholder={t('assistant.conversationName')} onChange={event => setName(event.target.value)} />
         <Button size="sm" variant="outline" className="h-7 shrink-0" disabled={busy || state.status === 'streaming' || (!state.snapshot && !state.archived)} onClick={() => void save()}>{t('assistant.saveConversation')}</Button>
       </div>

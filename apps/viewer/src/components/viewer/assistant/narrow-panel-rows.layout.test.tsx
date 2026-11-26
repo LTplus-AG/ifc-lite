@@ -30,7 +30,7 @@ import { SavedComparisonLibrary } from '../compare/SavedComparisonLibrary.js';
 
 /** The floating panel's minimum and the docked panel's default. */
 const PANEL_WIDTHS = [260, 350] as const;
-/** The `min-w-[8rem]` floor: a control narrower than this is a stub. */
+/** The `min-w-32` floor: a control narrower than this is a stub. */
 const MIN_CONTROL_PX = 128;
 
 before(warmContrastBrowser);

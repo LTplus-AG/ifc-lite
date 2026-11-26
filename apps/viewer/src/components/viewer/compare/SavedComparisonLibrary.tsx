@@ -75,12 +75,12 @@ export function SavedComparisonLibrary({ result, running }: { result: CompareRes
       <div className="font-semibold">{t('comparePanel.saved.title')}</div>
       <SavedComparisonHistoryNotice />
       <div className="flex flex-wrap gap-2">
-        <input className="min-w-[8rem] flex-1 rounded border bg-background px-2" value={name} onChange={(e) => setName(e.target.value)}
+        <input className="min-w-32 flex-1 rounded border bg-background px-2" value={name} onChange={(e) => setName(e.target.value)}
           aria-label={t('comparePanel.saved.name')} placeholder={result ? `${result.baseName} → ${result.headName}` : t('comparePanel.saved.name')} />
         <Button size="sm" variant="outline" disabled={!canSave} onClick={saveCurrent}>{t('comparePanel.saved.save')}</Button>
       </div>
       <label className="flex flex-wrap items-center gap-2">{t('comparePanel.saved.pick')}
-        <select className="min-w-[8rem] flex-1 rounded border bg-background px-2 py-1" value={selected?.id ?? ''} onChange={(e) => {
+        <select className="min-w-32 flex-1 rounded border bg-background px-2 py-1" value={selected?.id ?? ''} onChange={(e) => {
           setConfirming(null); setSelectedId(e.target.value); setRenamed(saved.find((c) => c.id === e.target.value)?.name ?? '');
         }}>
           <option value="">{t('comparePanel.saved.placeholder', { count: saved.length })}</option>
@@ -90,7 +90,7 @@ export function SavedComparisonLibrary({ result, running }: { result: CompareRes
       {selected && <>
         <div className="space-y-1" data-saved-comparison-summary>{comparisonSummary(selected).map((line, i) => <p key={i}>{line}</p>)}</div>
         <div className="flex flex-wrap gap-2">
-          <input className="min-w-[8rem] flex-1 rounded border bg-background px-2" value={renamed} onChange={(e) => setRenamed(e.target.value)} aria-label={t('comparePanel.saved.renameName')} />
+          <input className="min-w-32 flex-1 rounded border bg-background px-2" value={renamed} onChange={(e) => setRenamed(e.target.value)} aria-label={t('comparePanel.saved.renameName')} />
           <Button size="sm" variant="outline" disabled={!renamed.trim()} onClick={() => void rename(selected.id, renamed).then(persisted)}>{t('comparePanel.saved.rename')}</Button>
           <Button size="sm" variant="outline" onClick={() => download(selected, 'csv')}>CSV</Button>
           <Button size="sm" variant="outline" onClick={() => download(selected, 'json')}>JSON</Button>

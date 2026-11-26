@@ -71,6 +71,32 @@ describe('list quantity totals honour a member Unit', () => {
     assert.equal(r.summary?.sums.a, 25);
   });
 
+  for (const [description, unit, sourceValue, scale] of [
+    ['explicit project unit', 92, 1.0000000000006, 1],
+    ['square millimetres', 93, 1000000.0000006, 1e-6],
+  ] as const) {
+    it(`preserves list cells and sums for a high-precision quantity in ${description} (#11469)`, async () => {
+      const source = STEP.replace(
+        "#30=IFCQUANTITYAREA('NetSideArea',$,#93,5000000.,$);",
+        `#30=IFCQUANTITYAREA('NetSideArea',$,#${unit},${sourceValue},$);`,
+      );
+      const bytes = new TextEncoder().encode(source);
+      const store = await new IfcParser().parseColumnar(bytes.buffer, { disableWorkerScan: true });
+      const definition: ListDefinition = {
+        id: 'precision', name: 'Area precision', createdAt: 0, updatedAt: 0,
+        entityTypes: [IfcTypeEnum.IfcWall], expressIdsByModel: { m: [11] }, groups: [],
+        columns: [
+          { id: 'n', source: 'attribute', propertyName: 'Name' },
+          { id: 'a', source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'NetSideArea' },
+        ],
+        grouping: { columnId: 'n', sumColumnIds: ['a'] },
+      };
+      const result = executeList(definition, createProjectUnitListDataProvider(store), 'm');
+      assert.equal(result.rows[0].values[1], sourceValue * scale);
+      assert.equal(result.summary?.sums.a, sourceValue * scale);
+    });
+  }
+
   it('converts an overlay-edited quantity that keeps its own unit, and the plain provider keeps the scale', async () => {
     const bytes = new TextEncoder().encode(STEP);
     const store = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });

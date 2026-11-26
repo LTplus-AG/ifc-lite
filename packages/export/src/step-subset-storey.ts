@@ -138,9 +138,12 @@ export function resolveStorey(token: string, parsed: ParsedStep): { storeyId: nu
 /** IfcObjectPlacement subtypes: placement records a storey walk returns, never products. */
 const PLACEMENT_TYPES = new Set(['IFCLOCALPLACEMENT', 'IFCGRIDPLACEMENT', 'IFCLINEARPLACEMENT']);
 
+/** The relations that make a spatial element own another; a reference does not. */
+const OWNERSHIP = new Set(['IFCRELCONTAINEDINSPATIALSTRUCTURE', 'IFCRELAGGREGATES']);
+
 /**
- * The nearest storeys above `id` in the spatial tree (containment, spatial
- * aggregation and spatial reference, as `structureParents` reads them). The
+ * The nearest storeys above `id` in the spatial tree (containment and spatial
+ * aggregation, as `structureParents` reads them). The
  * walk stops at the first storey on each path and keeps a visited set, so a
  * cyclic or deep file terminates.
  */
@@ -163,11 +166,19 @@ function owningStoreys(id: number, parents: ReadonlyMap<number, number[]>, parse
  * is this one (contained in it, or in a space or zone it aggregates), wherever
  * it is placed; plus, for elements the spatial tree assigns to no storey, those
  * whose placement chains through the storey's. Storeys that share a placement
- * therefore never leak into each other. Spatial-structure records other than
- * IfcSpace are never products.
+ * therefore never leak into each other. A reference
+ * (IfcRelReferencedInSpatialStructure) is not ownership. A containment record
+ * that cannot be read leaves its element unowned, so the placement decides.
+ * Spatial-structure records other than IfcSpace are never products.
  */
 export function storeyMembers(storeyId: number, placementId: number, parsed: ParsedStep): number[] {
-  const parents = structureParents(parsed.instances);
+  const parents = structureParents(parsed.instances, OWNERSHIP);
+  const owners = new Map<number, Set<number>>();
+  const ownersOf = (id: number): Set<number> => {
+    let found = owners.get(id);
+    if (!found) owners.set(id, (found = owningStoreys(id, parents, parsed)));
+    return found;
+  };
   const isCandidate = (id: number): boolean => {
     const type = parsed.instances.get(id)?.type;
     if (type === undefined || PLACEMENT_TYPES.has(type)) return false;
@@ -175,10 +186,10 @@ export function storeyMembers(storeyId: number, placementId: number, parsed: Par
   };
   const out = new Set<number>();
   for (const id of parents.keys()) {
-    if (isCandidate(id) && owningStoreys(id, parents, parsed).has(storeyId)) out.add(id);
+    if (isCandidate(id) && ownersOf(id).has(storeyId)) out.add(id);
   }
   for (const id of productsUnderPlacement(placementId, parsed)) {
-    if (isCandidate(id) && owningStoreys(id, parents, parsed).size === 0) out.add(id);
+    if (!out.has(id) && isCandidate(id) && ownersOf(id).size === 0) out.add(id);
   }
   return [...out];
 }

@@ -112,6 +112,23 @@ describe('selectSubsetSeeds: storeys that share one placement', () => {
     expect([...selectSubsetSeeds(parsed, { storeys: ['A'] })].sort((a, b) => a - b)).toEqual([100, 300, 400, 500]);
   });
 
+  it('does not treat a spatial reference as ownership', () => {
+    const ref = [
+      'ISO-10303-21;', 'HEADER;', 'ENDSEC;', 'DATA;',
+      '#2=IFCAXIS2PLACEMENT3D(#3,$,$);', '#3=IFCCARTESIANPOINT((0.,0.,0.));',
+      '#50=IFCLOCALPLACEMENT($,#2);', '#60=IFCLOCALPLACEMENT($,#2);', '#52=IFCLOCALPLACEMENT($,#2);',
+      "#100=IFCBUILDINGSTOREY('0000000000000000000STA',$,'A',$,$,#50,$,$,.ELEMENT.,0.);",
+      "#200=IFCBUILDINGSTOREY('0000000000000000000STB',$,'B',$,$,#60,$,$,.ELEMENT.,3.);",
+      "#400=IFCCOLUMN('0000000000000000000CO4',$,'C',$,$,#52,$,$,$);",
+      "#410=IFCRELCONTAINEDINSPATIALSTRUCTURE('0000000000000000000RC4',$,$,$,(#400),#100);",
+      "#420=IFCRELREFERENCEDINSPATIALSTRUCTURE('0000000000000000000RF4',$,$,$,(#400),#200);",
+      'ENDSEC;', 'END-ISO-10303-21;', '',
+    ].join('\n');
+    const parsed = parseStep(ref);
+    expect([...selectSubsetSeeds(parsed, { storeys: ['A'] })].sort((a, b) => a - b)).toEqual([100, 400]);
+    expect([...selectSubsetSeeds(parsed, { storeys: ['B'] })]).toEqual([200]);
+  });
+
   it('never counts a building that shares the storey placement as one of its products', () => {
     const building = [
       'ISO-10303-21;', 'HEADER;', 'ENDSEC;', 'DATA;',

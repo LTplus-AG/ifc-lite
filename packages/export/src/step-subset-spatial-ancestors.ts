@@ -47,11 +47,14 @@ import {
  * skipping is the fail-closed direction, unlike `step-subset-relations.ts`'s own
  * keep-whole-or-drop-whole fallback for the same shape.
  */
-export function structureParents(instances: ReadonlyMap<number, StepRecord>): Map<number, number[]> {
+export function structureParents(
+  instances: ReadonlyMap<number, StepRecord>,
+  relations: ReadonlySet<string> = new Set(Object.keys(STRUCTURE_RELATIONS)),
+): Map<number, number[]> {
   const parents = new Map<number, number[]>();
   for (const inst of instances.values()) {
     const slots = STRUCTURE_RELATIONS[inst.type];
-    if (slots === undefined) continue;
+    if (slots === undefined || !relations.has(inst.type)) continue;
     const [relatingIdx, relatedIdx] = slots;
     const args = splitTopLevelArgs(inst.body);
     if (args === null || args.length !== STRUCTURE_RELATION_ATTRS) continue;

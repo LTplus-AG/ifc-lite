@@ -98,9 +98,24 @@ export function registryConnections(input?: string): RegistryConnection[] {
   }
 }
 
+/** Unlike `registryConnections`, refuses unreadable storage so a save cannot overwrite it. */
+function storedConnectionsForSave(): RegistryConnection[] {
+  let stored: string | null | undefined;
+  try {
+    stored = globalThis.localStorage.getItem(CONNECTIONS_KEY);
+  } catch {
+    throw new RegistryError('Could not save the file store. Check that browser storage is available.');
+  }
+  try {
+    return stored ? parseConnections(stored) : [];
+  } catch {
+    throw new RegistryError('The file stores saved in this browser could not be read, so none were changed.');
+  }
+}
+
 export function saveRegistryConnection(value: RegistryConnection, replace?: boolean) {
   const connection = parseConnection(value);
-  const existing = registryConnections();
+  const existing = storedConnectionsForSave();
   const duplicate = existing.some(store => store.registry === connection.registry);
   if (duplicate && !replace) throw new RegistryError('This registry already has a file store. Select it and choose Edit file store.');
   if (replace && !duplicate) throw new RegistryError('This file store changed. Open the file-store settings again.');

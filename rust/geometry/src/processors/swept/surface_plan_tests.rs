@@ -542,3 +542,64 @@ fn round_gradient_sweeps_on_a_bend_place_the_same_ring_where_they_meet() {
     );
     assert!(shared_vertices(&first, &second) >= 8, "round sweeps share {} vertices", shared_vertices(&first, &second));
 }
+
+/// Corresponding vertices of consecutive rings, each ring `ring` vertices,
+/// point the same way from their ring's centre. A section frame that flips
+/// between two stations joins each vertex to the far side of the next ring
+/// and twists the wall through the axis.
+fn assert_rings_continuous(positions: &[f32], ring: usize, rings: usize) {
+    assert!(positions.iter().all(|c| c.is_finite()), "non-finite vertex");
+    let vertex = |i: usize| {
+        Vector3::new(positions[3 * i] as f64, positions[3 * i + 1] as f64, positions[3 * i + 2] as f64)
+    };
+    let directions = |r: usize| {
+        let ring_vertices: Vec<Vector3<f64>> = (0..ring).map(|j| vertex(r * ring + j)).collect();
+        let centre = ring_vertices.iter().sum::<Vector3<f64>>() / ring as f64;
+        ring_vertices.into_iter().map(|v| (v - centre).normalize()).collect::<Vec<_>>()
+    };
+    for r in 0..rings - 1 {
+        let worst = directions(r)
+            .iter()
+            .zip(&directions(r + 1))
+            .map(|(a, b)| a.dot(b))
+            .fold(f64::INFINITY, f64::min);
+        assert!(worst > 0.9, "rings {r} and {} turn apart (cos {worst})", r + 1);
+    }
+}
+
+/// The crest sweep (#20) under a Position that maps (x, y, z) to (-z, y, x):
+/// the placed tangent is vertical at the crest and tips through it. The
+/// section frame is the directrix-local one carried through the Position, so
+/// it stays continuous across the crest; built from the placed tangent alone,
+/// its Axis1 went from -Y to +Y there (PR #9969 review). Two sweeps trimmed
+/// at the crest still share their ring.
+#[test]
+fn a_rotated_gradient_crest_keeps_a_continuous_section_frame() {
+    let sweep = |range: &str| {
+        let source = crest(&format!(
+            "#21=IFCCARTESIANPOINT((0.,0.,0.));
+            #22=IFCDIRECTION((-1.,0.,0.));
+            #23=IFCDIRECTION((0.,0.,1.));
+            #24=IFCAXIS2PLACEMENT3D(#21,#22,#23);
+            #14=IFCCIRCLEPROFILEDEF(.AREA.,$,$,0.5);
+            #15=IFCDIRECTION((0.,0.,1.));
+            #10=IFCFIXEDREFERENCESWEPTAREASOLID(#14,#24,#20,{range},#15);"
+        ));
+        let mut decoder = EntityDecoder::new(&source);
+        let entity = decoder.decode_by_id(10).unwrap();
+        SurfaceCurveSweptAreaSolidProcessor::new(IfcSchema::new())
+            .lower(&entity, &mut decoder, TessellationQuality::Medium)
+            .unwrap()
+            .unwrap()
+    };
+    let whole = sweep("IFCPARAMETERVALUE(0.),IFCPARAMETERVALUE(200.)");
+    let ring = whole.regions[0].outer.len();
+    let mesh = whole.evaluate().unwrap();
+    assert_rings_continuous(&mesh.positions, ring, whole.points.len());
+
+    let first = sweep("IFCPARAMETERVALUE(0.),IFCPARAMETERVALUE(100.)").evaluate().unwrap();
+    let second = sweep("IFCPARAMETERVALUE(100.),IFCPARAMETERVALUE(200.)").evaluate().unwrap();
+    let shared = shared_vertices(&first.positions, &second.positions);
+    assert!(shared >= ring, "the sweeps meeting at the crest share {shared} vertices");
+}
+

@@ -140,20 +140,29 @@ pub(crate) fn build_tube_rmf(
 }
 
 /// Section frames along a curve's own evaluated unit tangents (an
-/// alignment): Axis1 is the horizontal normal to the left of the tangent and
-/// Axis2 = tangent x Axis1, so a station's frame depends on that station
-/// alone. Two sweeps trimmed at the same station then place the same ring,
-/// vertex for vertex, wherever each one starts. A vertical tangent has no
-/// horizontal normal and takes +Y as Axis1, still fixed by the station.
-pub(crate) fn curve_frames(tangents: &[Vector3<f64>]) -> (Vec<Vector3<f64>>, Vec<Vector3<f64>>) {
+/// alignment): Axis1 is the normal to the left of the tangent across `up`,
+/// the directrix's own vertical carried into the frame of `tangents` (the
+/// solid's Position applied to +Z), and Axis2 = tangent x Axis1. A station's
+/// frame is then the directrix-local one moved by the placement, so a
+/// placement that tips the curve through vertical does not flip it. A
+/// tangent along `up` keeps the previous station's Axis1; in the directrix's
+/// own frame that happens only at the vertical end of a circular segment.
+/// Everywhere else the frame depends on the station alone, so sweeps trimmed
+/// at one station keep sharing their ring, vertex for vertex.
+pub(crate) fn curve_frames(
+    tangents: &[Vector3<f64>],
+    up: &Vector3<f64>,
+) -> (Vec<Vector3<f64>>, Vec<Vector3<f64>>) {
+    let left = |t: &Vector3<f64>| up.cross(t).try_normalize(1e-9);
+    let any_level = || up.cross(&Vector3::x()).try_normalize(1e-9).unwrap_or_else(Vector3::y);
+    let mut last = tangents.iter().find_map(left).unwrap_or_else(any_level);
     let mut perp1s = Vec::with_capacity(tangents.len());
     let mut perp2s = Vec::with_capacity(tangents.len());
     for t in tangents {
-        let left = Vector3::new(-t.y, t.x, 0.0)
-            .try_normalize(1e-9)
-            .unwrap_or_else(Vector3::y);
-        perp1s.push(left);
-        perp2s.push(t.cross(&left).normalize());
+        last = left(t).unwrap_or(last);
+        let axis1 = (last - t * t.dot(&last)).normalize();
+        perp1s.push(axis1);
+        perp2s.push(t.cross(&axis1).normalize());
     }
     (perp1s, perp2s)
 }
@@ -200,7 +209,7 @@ fn build_tube_along(
     // (Per-iteration `up` selection caused frame flips at sharp bends.)
     // The curve's own tangents when it has them (see `curve_frames`).
     let (perp1s, perp2s) = match tangents {
-        Some(tangents) if tangents.len() == n => curve_frames(tangents),
+        Some(tangents) if tangents.len() == n => curve_frames(tangents, &Vector3::z()),
         _ => {
             let (_, perp1s, perp2s) = build_tube_rmf(curve_points);
             (perp1s, perp2s)

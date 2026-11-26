@@ -34,6 +34,9 @@ pub(crate) struct SurfaceCurveSweepPlan {
     /// Sweeps that meet at a point then share its tangent, so their section
     /// frames, and their end caps, agree there.
     pub(super) tangents: Option<Vec<Vector3<f64>>>,
+    /// The directrix's local +Z in the frame of `points` (the solid's
+    /// Position applied to it), the vertical that `tangents`' frames keep.
+    pub(super) up: Vector3<f64>,
     pub(super) entity_id: u32,
     /// `None`: no reference we can evaluate (absent, a surface type not
     /// handled yet, or one that fails to read); the rotation-minimising frame
@@ -128,7 +131,7 @@ impl SurfaceCurveSweepPlan {
         // place the same section there (see `curve_frames`).
         let (tangents, rmf1, rmf2) = match &self.tangents {
             Some(tangents) if tangents.len() == self.points.len() => {
-                let (rmf1, rmf2) = curve_frames(tangents);
+                let (rmf1, rmf2) = curve_frames(tangents, &self.up);
                 (tangents.clone(), rmf1, rmf2)
             }
             _ => build_tube_rmf(&self.points),

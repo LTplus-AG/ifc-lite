@@ -12,6 +12,7 @@
       "@ifc-lite/parser/browser": ["../../packages/parser/src/browser"],
       "@ifc-lite/parser/structural-glyphs": ["../../packages/parser/src/structural-glyphs"],
       "@ifc-lite/geometry": ["../../packages/geometry/src"],
+      "@ifc-lite/geometry/compact": ["../../packages/geometry/src/compact"],
       "@ifc-lite/geometry/geometry-class": ["../../packages/geometry/src/geometry-class"],
       "@ifc-lite/geometry/rhino-export": ["../../packages/geometry/src/rhino-export"],
       "@ifc-lite/geometry/world-frame": ["../../packages/geometry/src/world-frame"],

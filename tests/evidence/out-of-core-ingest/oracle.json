@@ -1,0 +1,6 @@
+{
+  "issue": 7955,
+  "why": "Keep the out-of-core path loadable while breaking what makes it equal the whole-file path: lookups that miss are not reported, inverse edges are keyed by the wrong id, range reads never merge across a gap, a batch is not run again after a miss, the arena is not dropped at its budget, the pool ignores a file the scan names unsupported and the options an arena cannot serve, arena peaks are summed, and a negative budget is accepted. The arena, planner, session, pool and flag tests must go red.",
+  "key": "packages/geometry/src/geometry-worker-sparse.ts",
+  "mutation": "tests/evidence/out-of-core-ingest/behaviour.oracle.patch"
+}

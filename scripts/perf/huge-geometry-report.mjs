@@ -1,0 +1,130 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * Pure statistics and markdown for the huge-geometry harness: frame-time
+ * summaries, the per-run summary row, the ladder table and a before/after
+ * comparison of two result sets (for spike lanes rerunning the baseline).
+ */
+
+/** Nearest-rank percentile (q in [0, 1]) of a numeric array; null when empty. */
+export function percentile(values, q) {
+  const v = values.filter(Number.isFinite).sort((a, b) => a - b);
+  if (!v.length) return null;
+  return v[Math.min(v.length - 1, Math.max(0, Math.ceil(q * v.length) - 1))];
+}
+
+const round = (x, d = 1) => (x === null || x === undefined || !Number.isFinite(x) ? null : Math.round(x * 10 ** d) / 10 ** d);
+
+/**
+ * Frame records of one camera path -> frame time distribution from rAF
+ * timestamp deltas (what a user sees), plus per-frame GPU submission.
+ */
+/**
+ * The frame records a user sees: ticks that drew nothing (the viewer's frame pacer skips draws while GPU
+ * frames are pending) are dropped. Self-contained, because the recorders' live HUDs run this same source in
+ * the page (`globalThis.__hgShownFrames`, installed by launchGpu) so videos show the reported numbers.
+ */
+export const shownFrames = (records) => (records.some((r) => 'presents' in r) ? records.filter((r) => r.presents > 0) : records);
+
+export function frameSummary(records) {
+  const shown = shownFrames(records);
+  const deltas = [];
+  for (let i = 1; i < shown.length; i++) deltas.push(shown[i].ts - shown[i - 1].ts);
+  const col = (k) => shown.map((r) => r[k]).filter(Number.isFinite);
+  const spanMs = shown.length > 1 ? shown.at(-1).ts - shown[0].ts : null;
+  return {
+    frames: records.length, rendered: shown.length,
+    // Delivered frames per wall-second and the path's span: a GPU-bound path renders fewer of the camera steps
+    // (the frame pacer holds them) but may deliver as many frames per second; hitches are what a user sees as stutter.
+    fps: spanMs ? round(((shown.length - 1) * 1000) / spanMs) : null, spanMs: round(spanMs, 0),
+    // No frame interval: unmeasured (null), as fps and frameMs are, not zero stutter.
+    hitches: deltas.length ? { over50Ms: deltas.filter((d) => d > 50).length, over100Ms: deltas.filter((d) => d > 100).length } : null,
+    frameMs: { median: round(percentile(deltas, 0.5), 2), p95: round(percentile(deltas, 0.95), 2), p99: round(percentile(deltas, 0.99), 2),
+      worst: round(deltas.length ? Math.max(...deltas) : null, 2) },
+    cpuMs: { median: round(percentile(col('cpuMs'), 0.5), 2), p95: round(percentile(col('cpuMs'), 0.95), 2) },
+    callbackMs: { median: round(percentile(col('cbMs'), 0.5), 2), p95: round(percentile(col('cbMs'), 0.95), 2) },
+    drawsPerFrame: { median: percentile(col('draws'), 0.5), max: col('draws').length ? Math.max(...col('draws')) : null },
+    trianglesPerFrame: { median: round(percentile(col('tris'), 0.5), 0), max: col('tris').length ? Math.round(Math.max(...col('tris'))) : null },
+    batchesPerFrame: percentile(col('batches'), 0.5), instancedPerFrame: percentile(col('instanced'), 0.5),
+    culledPerFrame: percentile(col('culled'), 0.5), indirectDraws: col('indirect').reduce((a, b) => a + b, 0),
+  };
+}
+
+const mib = (b) => (Number.isFinite(b) ? round(b / 2 ** 20, 0) : null);
+const median = (xs) => percentile(xs.filter(Number.isFinite), 0.5);
+
+/** One flat row per run result: the numbers the ladder table and comparisons use. */
+export function summaryRow(r) {
+  const t = r.load?.timings ?? {};
+  const m = r.memory ?? {};
+  const cam = r.camera ?? {};
+  const it = r.interactions ?? {};
+  const hits = (it.picks ?? []).filter((p) => p.hit);
+  return {
+    name: r.scenario?.name, scenario: r.scenario?.scenario, tier: r.scenario?.nominal, elements: r.generated?.totals?.elements ?? r.scenario?.elements,
+    models: r.scenario?.models, fileMiB: mib(r.generated?.totals?.bytes), sceneTriangles: m.scene?.triangles ?? null,
+    status: r.status, failure: r.failure ? `${r.failure.kind}: ${r.failure.detail}` : null,
+    firstFrameS: round((t.firstFrameMs ?? NaN) / 1000, 2), completeS: round((t.interactiveMs ?? NaN) / 1000, 2),
+    geometryS: round((t.geometryMs ?? NaN) / 1000, 2), metadataS: round((t.propsMs ?? NaN) / 1000, 2),
+    peakHeapMiB: round(r.sampling?.peak?.jsHeapMiB, 0), settledHeapMiB: round(m.settled?.jsHeapMiB, 0),
+    peakRendererPssMiB: round(r.sampling?.peak?.rendererPssMiB, 0), peakGpuProcPssMiB: round(r.sampling?.peak?.gpuPssMiB, 0),
+    peakTotalPssMiB: round(r.sampling?.peak?.totalPssMiB, 0), peakVramMiB: r.sampling?.peak?.vramMiB || null,
+    wasmMainMiB: mib(m.wasmMainThread?.bytes), gpuSceneMiB: mib(m.scene?.gpuBytes?.total), cpuSceneMiB: mib(m.scene?.cpuBytes?.total ?? m.scene?.cpuBytes),
+    drawCalls: m.scene?.frame?.drawCalls ?? null, batches: m.scene?.frame?.batchesDrawn ?? null, instanced: m.scene?.frame?.instancedDrawn ?? null,
+    orbitMedianMs: cam.orbit?.frameMs?.median ?? null, orbitP95Ms: cam.orbit?.frameMs?.p95 ?? null, orbitP99Ms: cam.orbit?.frameMs?.p99 ?? null,
+    orbitWorstMs: cam.orbit?.frameMs?.worst ?? null, zoomP95Ms: cam.zoom?.frameMs?.p95 ?? null, flyP95Ms: cam.fly?.frameMs?.p95 ?? null,
+    // Pacing next to the interval percentiles: delivered frames per second and frames over 50 / 100 ms (visible stutter).
+    orbitFps: cam.orbit?.fps ?? null, orbitHitches50: cam.orbit?.hitches?.over50Ms ?? null, orbitHitches100: cam.orbit?.hitches?.over100Ms ?? null,
+    flyFps: cam.fly?.fps ?? null, flyHitches50: cam.fly?.hitches?.over50Ms ?? null, flyHitches100: cam.fly?.hitches?.over100Ms ?? null,
+    trisPerFrame: cam.orbit?.trianglesPerFrame?.median ?? null, drawsPerFrame: cam.orbit?.drawsPerFrame?.median ?? null,
+    // A hit whose highlighted frame never finished has no pick time (not its bare selection latency).
+    pickMs: round(median(hits.map((p) => p.frameDoneMs)), 1), pickHits: `${hits.length}/${(it.picks ?? []).length}`,
+    hideMs: round(it.hideOne?.doneMs, 1), isolateMs: round(it.isolate?.doneMs, 1), sectionMs: round(it.sectionOn?.doneMs, 1),
+  };
+}
+
+const cell = (v) => (v === null || v === undefined ? '–' : String(v));
+const COLUMNS = [
+  ['scenario', 'scenario'], ['tier', 'tier'], ['elements', 'elements'], ['sceneTriangles', 'scene tris'], ['fileMiB', 'file MiB'],
+  ['status', 'status'], ['firstFrameS', 'first frame s'], ['completeS', 'complete s'], ['peakHeapMiB', 'peak JS heap MiB'],
+  ['settledHeapMiB', 'settled heap MiB'], ['peakRendererPssMiB', 'peak renderer PSS MiB'], ['peakGpuProcPssMiB', 'peak GPU-proc PSS MiB'],
+  ['peakVramMiB', 'peak VRAM MiB'], ['gpuSceneMiB', 'scene GPU MiB'], ['drawCalls', 'draws'], ['trisPerFrame', 'tris/frame'],
+  ['orbitMedianMs', 'orbit med ms'], ['orbitP95Ms', 'orbit p95'], ['orbitP99Ms', 'orbit p99'], ['orbitWorstMs', 'orbit worst'],
+  ['orbitFps', 'orbit fps'], ['orbitHitches50', 'orbit >50 ms'], ['orbitHitches100', 'orbit >100 ms'], ['zoomP95Ms', 'zoom p95'],
+  ['flyP95Ms', 'fly p95'], ['flyFps', 'fly fps'], ['flyHitches50', 'fly >50 ms'], ['flyHitches100', 'fly >100 ms'], ['pickMs', 'pick ms'], ['hideMs', 'hide ms'], ['isolateMs', 'isolate ms'], ['sectionMs', 'section ms'],
+];
+
+/** Markdown ladder table (one row per run) plus a failure list. */
+export function markdownSummary(results, { title = 'Huge-geometry ladder', label = '', host = '' } = {}) {
+  const rows = results.map(summaryRow);
+  const lines = [`# ${title}${label ? ` (${label})` : ''}`, '', host ? `Host: ${host}` : '', '',
+    `| ${COLUMNS.map(([, h]) => h).join(' | ')} |`, `|${COLUMNS.map(() => '---').join('|')}|`,
+    ...rows.map((r) => `| ${COLUMNS.map(([k]) => cell(r[k])).join(' | ')} |`), ''];
+  const failed = rows.filter((r) => r.failure);
+  if (failed.length) lines.push('## Failures', '', ...failed.map((r) => `- **${r.name}**: ${r.failure}`), '');
+  return lines.filter((l, i, a) => !(l === '' && a[i - 1] === '')).join('\n');
+}
+
+const COMPARE = [['completeS', 'complete s'], ['peakTotalPssMiB', 'peak PSS MiB'], ['orbitP95Ms', 'orbit p95 ms'], ['zoomP95Ms', 'zoom p95 ms'],
+  ['orbitFps', 'orbit fps'], ['orbitHitches100', 'orbit hitches >100 ms'], ['flyP95Ms', 'fly p95 ms'], ['flyFps', 'fly fps'],
+  ['flyHitches100', 'fly hitches >100 ms'], ['pickMs', 'pick ms'], ['isolateMs', 'isolate ms']];
+
+/** Before/after table keyed by run name: base value, new value, ratio new/base. */
+export function markdownCompare(base, next, { baseLabel = 'base', nextLabel = 'next' } = {}) {
+  const b = new Map(base.map((r) => [summaryRow(r).name, summaryRow(r)]));
+  const lines = [`# ${nextLabel} vs ${baseLabel}`, '', `| run | status | ${COMPARE.map(([, h]) => `${h} (${baseLabel} → ${nextLabel}, ×)`).join(' | ')} |`,
+    `|---|---|${COMPARE.map(() => '---').join('|')}|`];
+  for (const n of next.map(summaryRow)) {
+    const o = b.get(n.name);
+    const cells = COMPARE.map(([k]) => {
+      const x = o?.[k], y = n[k];
+      // A zero base (e.g. no hitches) has no ratio.
+      if (!Number.isFinite(x) || !Number.isFinite(y) || x === 0) return `${cell(x)} → ${cell(y)}`;
+      return `${x} → ${y} (×${round(y / x, 2)})`;
+    });
+    lines.push(`| ${n.name} | ${o ? `${o.status} → ${n.status}` : `new: ${n.status}`} | ${cells.join(' | ')} |`);
+  }
+  return `${lines.join('\n')}\n`;
+}

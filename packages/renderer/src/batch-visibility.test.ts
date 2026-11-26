@@ -57,6 +57,17 @@ describe('BatchVisibilityCache', () => {
     assert.equal(cache.classify(batch, 3, hidden, null), first, 'the epoch, not the set, decides a recompute');
     assert.equal(cache.classify(batch, 4, hidden, null), 'none');
   });
+
+  it('judges a batch again when it gains entries within one epoch (a compact page grows while a model streams)', () => {
+    const cache = new BatchVisibilityCache();
+    const page = b([1, 2]);
+    const hidden = new Set([3]);
+    assert.equal(cache.classify(page, 7, hidden, null), 'all');
+    page.expressIds.push(3); // a hidden mesh joins the page after it was judged all visible
+    const part = cache.classify(page, 7, hidden, null) as PartlyVisibleBatch;
+    assert.deepEqual([...part.expressIds].sort(), [1, 2]);
+    assert.equal(cache.classify(page, 7, hidden, null), part, 'and is cached again at its new size');
+  });
 });
 
 describe('canFilterOnGpu', () => {

@@ -1,5 +1,5 @@
 {
- "_comment": "Shared cross-language vectors for entity types with NO representation in the target schema (#7742, D3 fail closed). Both converters run every case: Rust rust/export/tests/schema_unrepresented_parity.rs (convert_step_line) and TypeScript packages/export/src/schema-unrepresented.parity.test.ts (convertStepLine). `refuses` means the converter must refuse the record (Rust Err, TS throw); otherwise `expect` is the converted line with an IFCPROXY GlobalId masked as <MINTED> (the twins mint it differently, see schema_product_proxy_vectors.json). Rule: a record whose type the TARGET registry does not declare is refused unless it is an IfcRoot subtype (then an IFCPROXY), when the target is IFC2X3, or the target is IFC4 and the SOURCE is an IFC4X3 or an IFC2X3 that declares it (an IFC2X3 one neither on the verbatim list nor a varying action). IFC5 has no registry on either side. Scope: an IFC2X3 target refuses for every source as before; an IFC4 target checks an IFC4X3 source (#7742) and an IFC2X3 source (#10902), whose IFC2X3-only types are proxied when rooted, except the `routes` verbatim list (D59: non-rooted ones, refusing them failed real files) and the types another pass converts (`handled`: varying actions, which the structural pass reports, #9668; IfcPresentationStyleAssignment on an IFC4X3 target, which style flattening carries, D57). An IFC4X3 target is not checked yet (#10971). `routes` is the registry check's partition of every source-only type per pair: TypeScript schema-representation-registry.test.ts derives it from the tables, Rust checks each name's route.",
+ "_comment": "Shared cross-language vectors for entity types with NO representation in the target schema (#7742, D3 fail closed). Both converters run every case: Rust rust/export/tests/schema_unrepresented_parity.rs (convert_step_line) and TypeScript packages/export/src/schema-unrepresented.parity.test.ts (convertStepLine). `refuses` means the converter must refuse the record (Rust Err, TS throw); otherwise `expect` is the converted line with the exact IFCPROXY GlobalId and Name (#11322). Rule: a record whose type the TARGET registry does not declare is refused unless it is an IfcRoot subtype (then an IFCPROXY), when the target is IFC2X3, or the target is IFC4 and the SOURCE is an IFC4X3 or an IFC2X3 that declares it (an IFC2X3 one neither on the verbatim list nor a varying action). IFC5 has no registry on either side. Scope: an IFC2X3 target refuses for every source as before; an IFC4 target checks an IFC4X3 source (#7742) and an IFC2X3 source (#10902), whose IFC2X3-only types are proxied when rooted, except the `routes` verbatim list (D59: non-rooted ones, refusing them failed real files) and the types another pass converts (`handled`: varying actions, which the structural pass reports, #9668; IfcPresentationStyleAssignment on an IFC4X3 target, which style flattening carries, D57). An IFC4X3 target is not checked yet (#10971). `routes` is the registry check's partition of every source-only type per pair: TypeScript schema-representation-registry.test.ts derives it from the tables, Rust checks each name's route.",
  "cases": [
   {
    "why": "IFCCURVESEGMENT is a non-rooted IFC4X3-only resource: no IFC4 representation, neither droppable nor proxiable (#7742)",
@@ -65,11 +65,65 @@
    "refuses": true
   },
   {
-   "why": "a rooted IFC4X3-only type becomes an IFCPROXY, as it does for an IFC2X3 target",
+   "why": "#11322: a rooted IFC4X3-only type keeps its GlobalId and escaped Name",
    "from": "IFC4X3",
    "to": "IFC4",
-   "line": "#5=IFCRELPOSITIONS('0YvctVUKr0kugbFTf53O9L',$,$,$,#1,(#2));",
-   "expect": "#5=IFCPROXY(<MINTED>,$,'IFCRELPOSITIONS',$,$,$,$,.NOTDEFINED.,$);"
+   "line": "#5=IFCRELPOSITIONS(/* GlobalId ('0Fake00000000000000000') in a comment long enough that the actual first attribute starts beyond the merge head window */'0YvctVUKr0kugbFTf53O9L',$,'Grid''s /* datum */, A',$,#1,(#2));",
+   "merge": true,
+   "expect": "#5=IFCPROXY('0YvctVUKr0kugbFTf53O9L',$,'Grid''s /* datum */, A',$,$,$,$,.NOTDEFINED.,$);"
+  },
+  {
+   "why": "#11322: a short comment before GlobalId also survives merged reconciliation",
+   "from": "IFC4X3",
+   "to": "IFC4",
+   "line": "#5=IFCRELPOSITIONS(/* note */'0YvctVUKr0kugbFTf53O9L',$,'Grid',$,#1,(#2));",
+   "merge": true,
+   "expect": "#5=IFCPROXY('0YvctVUKr0kugbFTf53O9L',$,'Grid',$,$,$,$,.NOTDEFINED.,$);"
+  },
+  {
+   "why": "#11322: padding around quoted GlobalId and Name slots preserves their values",
+   "from": "IFC4X3",
+   "to": "IFC4",
+   "line": "#5=IFCRELPOSITIONS( '0YvctVUKr0kugbFTf53O9L' ,$, \t'Grid' ,$,#1,(#2));",
+   "merge": true,
+   "expect": "#5=IFCPROXY('0YvctVUKr0kugbFTf53O9L',$,'Grid',$,$,$,$,.NOTDEFINED.,$);"
+  },
+  {
+   "why": "#11322: mixed comments and whitespace around both identity slots are STEP trivia",
+   "from": "IFC4X3",
+   "to": "IFC4",
+   "line": "#5=IFCRELPOSITIONS( /* ID */ '0YvctVUKr0kugbFTf53O9L' /* end ID */ ,$, /* Name */ 'Grid''s /* datum */' /* end Name */ ,$,#1,(#2));",
+   "merge": true,
+   "expect": "#5=IFCPROXY('0YvctVUKr0kugbFTf53O9L',$,'Grid''s /* datum */',$,$,$,$,.NOTDEFINED.,$);"
+  },
+  {
+   "why": "#11322: an unset GlobalId is minted identically and an unset Name falls back to the source type",
+   "from": "IFC4X3",
+   "to": "IFC4",
+   "line": "#5=IFCRELPOSITIONS($,$,/* unnamed */$,$,#1,(#2));",
+   "merge": true,
+   "expect": "#5=IFCPROXY('3lJWJ4oIi38uI5nMw7H8hx',$,'IFCRELPOSITIONS',$,$,$,$,.NOTDEFINED.,$);"
+  },
+  {
+   "why": "#11322: an empty Name falls back to the source type",
+   "from": "IFC4X3",
+   "to": "IFC4",
+   "line": "#5=IFCRELPOSITIONS('0YvctVUKr0kugbFTf53O9L',$,'',$,#1,(#2));",
+   "expect": "#5=IFCPROXY('0YvctVUKr0kugbFTf53O9L',$,'IFCRELPOSITIONS',$,$,$,$,.NOTDEFINED.,$);"
+  },
+  {
+   "why": "#11322: a whitespace-only Name falls back to the source type",
+   "from": "IFC4X3",
+   "to": "IFC4",
+   "line": "#5=IFCRELPOSITIONS('0YvctVUKr0kugbFTf53O9L',$,'   ',$,#1,(#2));",
+   "expect": "#5=IFCPROXY('0YvctVUKr0kugbFTf53O9L',$,'IFCRELPOSITIONS',$,$,$,$,.NOTDEFINED.,$);"
+  },
+  {
+   "why": "#11322: a STEP-encoded whitespace-only Name falls back to the source type",
+   "from": "IFC4X3",
+   "to": "IFC4",
+   "line": "#5=IFCRELPOSITIONS('0YvctVUKr0kugbFTf53O9L',$,'\\X2\\2003\\X0\\',$,#1,(#2));",
+   "expect": "#5=IFCPROXY('0YvctVUKr0kugbFTf53O9L',$,'IFCRELPOSITIONS',$,$,$,$,.NOTDEFINED.,$);"
   },
   {
    "why": "a type neither schema declares is not the registry's to judge: passed through",
@@ -146,7 +200,7 @@
    "from": "IFC2X3",
    "to": "IFC4",
    "line": "#5=IFCSERVICELIFE('0YvctVUKr0kugbFTf53O9L',$,'Life',$,$,.ACTUALSERVICELIFE.,10.);",
-   "expect": "#5=IFCPROXY(<MINTED>,$,'IFCSERVICELIFE',$,$,$,$,.NOTDEFINED.,$);"
+   "expect": "#5=IFCPROXY('0YvctVUKr0kugbFTf53O9L',$,'Life',$,$,$,$,.NOTDEFINED.,$);"
   },
   {
    "why": "IFCRELASSIGNSTASKS, a subtype IFC4 deleted, is written as its supertype IfcRelAssignsToControl, TimeForTask trimmed (#10902)",
@@ -195,7 +249,7 @@
    "from": "IFC2X3",
    "to": "IFC4",
    "line": "#5=IFCRELOVERRIDESPROPERTIES('0YvctVUKr0kugbFTf53O9L',$,$,$,(#2),#3,(#4));",
-   "expect": "#5=IFCPROXY(<MINTED>,$,'IFCRELOVERRIDESPROPERTIES',$,$,$,$,.NOTDEFINED.,$);"
+   "expect": "#5=IFCPROXY('0YvctVUKr0kugbFTf53O9L',$,'IFCRELOVERRIDESPROPERTIES',$,$,$,$,.NOTDEFINED.,$);"
   },
   {
    "why": "IFCRELASSIGNSTASKS on an IFC4X3 target is written as IfcRelAssignsToControl too, TimeForTask trimmed (#10902)",
@@ -210,11 +264,24 @@
    "to": "IFC4X3",
    "line": "#5=IFCRELOCCUPIESSPACES('0YvctVUKr0kugbFTf53O9L',$,$,$,(#2),$,#3,$);",
    "expect": "#5=IFCRELASSIGNSTOACTOR('0YvctVUKr0kugbFTf53O9L',$,$,$,(#2),$,#3,$);"
+  },
+  {
+   "why": "an IFC2X3 distribution point upgrades to the IFC4X3 distribution board layout (#10971)",
+   "from": "IFC2X3",
+   "to": "IFC4X3",
+   "line": "#5=IFCELECTRICDISTRIBUTIONPOINT('0YvctVUKr0kugbFTf53O9L',$,'Panel','Description','Object',$,$,'Tag',.USERDEFINED.,'Custom function');",
+   "expect": "#5=IFCDISTRIBUTIONBOARD('0YvctVUKr0kugbFTf53O9L',$,'Panel','Description','Object',$,$,'Tag',.USERDEFINED.);"
   }
  ],
  "routes": {
   "IFC2X3>IFC4": {
    "verbatim": [
+    "IFCCALENDARDATE",
+    "IFCCOORDINATEDUNIVERSALTIMEOFFSET",
+    "IFCDATEANDTIME",
+    "IFCLOCALTIME"
+   ],
+   "omitted": [
     "IFC2DCOMPOSITECURVE",
     "IFCANGULARDIMENSION",
     "IFCANNOTATIONCURVEOCCURRENCE",
@@ -228,7 +295,6 @@
     "IFCAPPROVALACTORRELATIONSHIP",
     "IFCAPPROVALPROPERTYRELATIONSHIP",
     "IFCBEZIERCURVE",
-    "IFCCALENDARDATE",
     "IFCCLASSIFICATIONITEM",
     "IFCCLASSIFICATIONITEMRELATIONSHIP",
     "IFCCLASSIFICATIONNOTATION",
@@ -237,10 +303,8 @@
     "IFCCONSTRAINTAGGREGATIONRELATIONSHIP",
     "IFCCONSTRAINTCLASSIFICATIONRELATIONSHIP",
     "IFCCONSTRAINTRELATIONSHIP",
-    "IFCCOORDINATEDUNIVERSALTIMEOFFSET",
     "IFCCRANERAILASHAPEPROFILEDEF",
     "IFCCRANERAILFSHAPEPROFILEDEF",
-    "IFCDATEANDTIME",
     "IFCDEFINEDSYMBOL",
     "IFCDIAMETERDIMENSION",
     "IFCDIMENSIONCALLOUTRELATIONSHIP",
@@ -256,7 +320,6 @@
     "IFCEXTERNALLYDEFINEDSYMBOL",
     "IFCFILLAREASTYLETILESYMBOLWITHSTYLE",
     "IFCLINEARDIMENSION",
-    "IFCLOCALTIME",
     "IFCONEDIRECTIONREPEATFACTOR",
     "IFCPREDEFINEDDIMENSIONSYMBOL",
     "IFCPREDEFINEDPOINTMARKERSYMBOL",
@@ -312,6 +375,12 @@
   },
   "IFC2X3>IFC4X3": {
    "verbatim": [
+    "IFCCALENDARDATE",
+    "IFCCOORDINATEDUNIVERSALTIMEOFFSET",
+    "IFCDATEANDTIME",
+    "IFCLOCALTIME"
+   ],
+   "omitted": [
     "IFC2DCOMPOSITECURVE",
     "IFCANGULARDIMENSION",
     "IFCANNOTATIONCURVEOCCURRENCE",
@@ -325,10 +394,7 @@
     "IFCAPPROVALACTORRELATIONSHIP",
     "IFCAPPROVALPROPERTYRELATIONSHIP",
     "IFCBEZIERCURVE",
-    "IFCBUILDINGELEMENT",
     "IFCBUILDINGELEMENTCOMPONENT",
-    "IFCBUILDINGELEMENTTYPE",
-    "IFCCALENDARDATE",
     "IFCCHAMFEREDGEFEATURE",
     "IFCCLASSIFICATIONITEM",
     "IFCCLASSIFICATIONITEMRELATIONSHIP",
@@ -340,10 +406,8 @@
     "IFCCONSTRAINTAGGREGATIONRELATIONSHIP",
     "IFCCONSTRAINTCLASSIFICATIONRELATIONSHIP",
     "IFCCONSTRAINTRELATIONSHIP",
-    "IFCCOORDINATEDUNIVERSALTIMEOFFSET",
     "IFCCRANERAILASHAPEPROFILEDEF",
     "IFCCRANERAILFSHAPEPROFILEDEF",
-    "IFCDATEANDTIME",
     "IFCDEFINEDSYMBOL",
     "IFCDIAMETERDIMENSION",
     "IFCDIMENSIONCALLOUTRELATIONSHIP",
@@ -352,7 +416,6 @@
     "IFCDIMENSIONCURVETERMINATOR",
     "IFCDIMENSIONPAIR",
     "IFCDOCUMENTELECTRONICFORMAT",
-    "IFCDOORSTYLE",
     "IFCDRAUGHTINGCALLOUT",
     "IFCDRAUGHTINGCALLOUTRELATIONSHIP",
     "IFCDRAUGHTINGPREDEFINEDTEXTFONT",
@@ -369,7 +432,6 @@
     "IFCFLUIDFLOWPROPERTIES",
     "IFCFURNITURESTANDARD",
     "IFCLINEARDIMENSION",
-    "IFCLOCALTIME",
     "IFCONEDIRECTIONREPEATFACTOR",
     "IFCPREDEFINEDDIMENSIONSYMBOL",
     "IFCPREDEFINEDPOINTMARKERSYMBOL",
@@ -378,7 +440,6 @@
     "IFCPROJECTIONCURVE",
     "IFCPROJECTORDERRECORD",
     "IFCPROPERTYCONSTRAINTRELATIONSHIP",
-    "IFCPROXY",
     "IFCRADIUSDIMENSION",
     "IFCRATIONALBEZIERCURVE",
     "IFCREFERENCESVALUEDOCUMENT",
@@ -404,31 +465,13 @@
     "IFCTIMESERIESREFERENCERELATIONSHIP",
     "IFCTIMESERIESSCHEDULE",
     "IFCTWODIRECTIONREPEATFACTOR",
-    "IFCVERTEXBASEDTEXTUREMAP",
-    "IFCWINDOWSTYLE"
+    "IFCVERTEXBASEDTEXTUREMAP"
    ],
    "handled": [
     "IFCPRESENTATIONSTYLEASSIGNMENT"
    ]
   },
   "IFC4>IFC4X3": {
-   "verbatim": [
-    "IFCBEAMSTANDARDCASE",
-    "IFCBUILDINGELEMENT",
-    "IFCBUILDINGELEMENTTYPE",
-    "IFCCOLUMNSTANDARDCASE",
-    "IFCDOORSTANDARDCASE",
-    "IFCDOORSTYLE",
-    "IFCMEMBERSTANDARDCASE",
-    "IFCOPENINGSTANDARDCASE",
-    "IFCPLATESTANDARDCASE",
-    "IFCPROXY",
-    "IFCSLABELEMENTEDCASE",
-    "IFCSLABSTANDARDCASE",
-    "IFCWALLELEMENTEDCASE",
-    "IFCWINDOWSTANDARDCASE",
-    "IFCWINDOWSTYLE"
-   ],
    "handled": [
     "IFCPRESENTATIONSTYLEASSIGNMENT"
    ]

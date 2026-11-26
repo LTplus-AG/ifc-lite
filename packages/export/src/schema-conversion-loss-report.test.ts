@@ -8,6 +8,14 @@ import { classifyEntityTypeConversion, analyzeConversionLoss } from './schema-co
 import { exportToStep } from './step-exporter.js';
 
 describe('classifyEntityTypeConversion', () => {
+  it('names the user-defined function slot omitted by the IFC4X3 board layout (#10971)', () => {
+    expect(classifyEntityTypeConversion('IFCELECTRICDISTRIBUTIONPOINT', 'IFC2X3', 'IFC4X3')).toEqual({
+      targetType: 'IFCDISTRIBUTIONBOARD',
+      kind: 'lossy',
+      droppedAttributes: ['UserDefinedFunction'],
+    });
+  });
+
   it('is identity when schemas match', () => {
     expect(classifyEntityTypeConversion('IFCWALL', 'IFC4', 'IFC4')).toEqual({
       targetType: 'IFCWALL',
@@ -40,6 +48,14 @@ describe('classifyEntityTypeConversion', () => {
     expect(info.kind).toBe('proxied');
     expect(info.targetType).toBe('IFCPROXY');
     expect(info.droppedAttributes.length).toBeGreaterThan(0);
+  });
+
+  it('reports only the attributes a generic proxy drops (#11322)', () => {
+    expect(classifyEntityTypeConversion('IFCRELPOSITIONS', 'IFC4X3', 'IFC4')).toEqual({
+      targetType: 'IFCPROXY',
+      kind: 'proxied',
+      droppedAttributes: ['OwnerHistory', 'Description', 'RelatingPositioningElement', 'RelatedProducts'],
+    });
   });
 
   it('is blocked for a non-rooted type IFC2X3 has no representation for at all', () => {

@@ -12,6 +12,7 @@
  */
 
 import { stepStringLiteralEnd } from '@ifc-lite/encoding';
+import { MAX_SOURCE_STEP_ID } from './step-slot-grammar.js';
 import { skipStepComment } from './step-comment-skip.js';
 
 /**
@@ -28,8 +29,12 @@ export function remapEntityText(
   entityText: string,
   offset: number,
   sharedRemap: ReadonlyMap<number, number>,
+  validateSourceIds = false,
 ): string {
   const remapId = (originalId: number): string => {
+    if (validateSourceIds && originalId > MAX_SOURCE_STEP_ID) {
+      throw new Error('Schema conversion refused an invalid STEP argument list.');
+    }
     // Check if this ID has a specific remap (project, shared infrastructure)
     const remapped = sharedRemap.get(originalId);
     if (remapped !== undefined) {

@@ -20,7 +20,7 @@
 
 import { isFeatureEnabled } from '@/lib/features';
 import { useCallback, useRef, useEffect, useState, type KeyboardEvent, type DragEvent } from 'react';
-import { X, Send, Square, Trash2, Paperclip, ArrowDown, Zap, Wrench } from 'lucide-react';
+import { X, Send, Square, Trash2, Paperclip, ArrowDown, Zap, Wrench, Image as ImageIcon, KeyRound } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { PromoteToolDialog } from '@/components/extensions/PromoteToolDialog';
 import { Button } from '@/components/ui/button';
@@ -48,6 +48,7 @@ import { extractCodeBlocks } from '@/lib/llm/code-extractor';
 import { fetchUsageSnapshot } from '@/lib/llm/usage-quota';
 import { buildStreamMessagesForModel, filterAttachmentsForModel } from '@/lib/llm/message-capabilities';
 import { buildSystemPrompt } from '@/lib/llm/system-prompt';
+import { withA2uiPrompt } from '@/lib/llm/a2ui-prompt';
 import { getModelContext, parseCSV } from '@/lib/llm/context-builder';
 import { collectActiveFileAttachments } from '@/lib/attachments';
 import { attachmentAdmission, MAX_ATTACHMENTS_PER_MESSAGE } from './chat/attachment-admission';
@@ -59,7 +60,6 @@ import { registerKeyboardCommand } from '@/lib/commands/dispatcher';
 import { buildRepairSessionKey, getEscalatedRepairScope, pruneMessagesForRepair } from '@/lib/llm/repair-loop';
 import type { ChatMessage, ChatRepairRequest, FileAttachment } from '@/lib/llm/types';
 import { type ScriptMutationIntent } from '@/lib/llm/script-preservation';
-import { Image as ImageIcon, KeyRound } from 'lucide-react';
 import { getModelById } from '@/lib/llm/models';
 import { resolveStreamRoute } from '@/lib/llm/byok-guard';
 import { settleTurnAfter, startChatTurnTelemetry } from '@/lib/llm/chat-telemetry';
@@ -560,21 +560,19 @@ export function ChatPanel({ onClose }: ChatPanelProps) {
         console.warn('[Chat] Personal prompt overlay unavailable', error);
       }
     }
-    const systemPrompt = buildSystemPrompt(modelContext, fileAttachments, {
+    const systemPrompt = await withA2uiPrompt(buildSystemPrompt(modelContext, fileAttachments, {
       content: liveScriptContext.content,
       revision: liveScriptContext.revision,
       selection: liveScriptContext.selection,
     }, {
       userPrompt: text.trim(),
       diagnostics: effectiveDiagnostics,
-      // Include the extension-authoring contract when the classifier
-      // flagged the turn as authoring/fork — the LLM gets the manifest
-      // schema, widget DSL, and capability catalogue in context so it
-      // can emit a valid bundle.
+      // Authoring/fork turns get the manifest schema, widget DSL and
+      // capability catalogue so the LLM can emit a valid bundle.
       includeAuthoringContract:
         classified.intent === 'authoring' || classified.intent === 'fork',
       personalOverlay,
-    });
+    }));
     const contextWindow = activeModelInfo?.contextWindow ?? 128_000;
     const inputBudget = Math.max(
       MIN_INPUT_BUDGET,

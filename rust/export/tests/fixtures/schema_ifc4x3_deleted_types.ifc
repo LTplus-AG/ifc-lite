@@ -1,0 +1,13 @@
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('ifc4x3-upgrade.ifc','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCDOORSTYLE('0YvctVUKr0kugbFTf53O9L',$,'Door Style',$,$,$,$,'D-1',.SINGLE_SWING_LEFT.,.WOOD.,.T.,.F.);
+#2=IFCWINDOWSTYLE('0YvctVUKr0kugbFTf53O9A',$,'Window Style',$,$,$,$,'W-1',.ALUMINIUM.,.DOUBLE_PANEL_VERTICAL.,.F.,.T.);
+#3=IFCPROXY('0YvctVUKr0kugbFTf53O9B',$,'Proxy',$,'Proxy object',$,$,.PRODUCT.,'PX-1');
+#4=IFCWALLELEMENTEDCASE('0YvctVUKr0kugbFTf53O9C',$,'Wall',$,$,$,$,$,.NOTDEFINED.);
+ENDSEC;
+END-ISO-10303-21;

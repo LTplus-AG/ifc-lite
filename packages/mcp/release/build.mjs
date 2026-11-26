@@ -98,19 +98,18 @@ function assertPatchesApplied(staged) {
   for (const [spec, patch] of Object.entries(patches)) {
     // A CRLF checkout of patches/ (core.autocrlf) must still compare equal.
     const lines = readFileSync(join(root, patch), 'utf-8').split(/\r?\n/);
+    const isAdded = (line) => line.startsWith('+') && !line.startsWith('+++ ') && line.trim() !== '+';
+    // A patch that parsed to nothing would pass without having checked anything.
+    if (!lines.some(isAdded)) throw new Error(`${patch} has no added lines to check`);
     // Every copy of exactly this version, hoisted or nested.
     for (const pkgRoot of staged.get(spec) ?? []) {
       let file = '';
-      let checked = 0;
       for (const line of lines) {
         if (line.startsWith('+++ ')) file = readFileSync(join(pkgRoot, line.slice(4).replace(/^b\//, '')), 'utf-8');
-        else if (line.startsWith('+') && line.trim() !== '+') {
-          if (!file.includes(line.slice(1))) throw new Error(`${pkgRoot} is staged without ${patch} (missing: ${line.slice(1).trim()})`);
-          checked++;
+        else if (isAdded(line) && !file.includes(line.slice(1))) {
+          throw new Error(`${pkgRoot} is staged without ${patch} (missing: ${line.slice(1).trim()})`);
         }
       }
-      // A patch that parsed to nothing would pass without having checked anything.
-      if (checked === 0) throw new Error(`${patch} has no added lines to check`);
     }
   }
 }

@@ -92,20 +92,21 @@ function resolvedTree(nodeModules) {
  * the hoisted deploy runs with allow-unused-patches, so pnpm would not say if
  * one of them were skipped. Every line a patch adds must be in the staged file.
  */
+const nameOf = (spec) => spec.slice(0, spec.lastIndexOf('@'));
+const isAdded = (line) => line.startsWith('+') && !line.startsWith('+++ ') && line.trim() !== '+';
+
 function assertPatchesApplied(staged) {
   const root = resolve(pkgDir, '..', '..');
   const patches = JSON.parse(readFileSync(join(root, 'package.json'), 'utf-8')).pnpm?.patchedDependencies ?? {};
   for (const [spec, patch] of Object.entries(patches)) {
-    const at = spec.lastIndexOf('@');
-    if (at <= 0 || !/^\d+\.\d+\.\d+/.test(spec.slice(at + 1))) {
+    if (!/^.+@\d+\.\d+\.\d+/.test(spec)) {
       throw new Error(`patchedDependencies key ${spec} is not name@x.y.z; this check matches exact versions only`);
     }
     // pnpm patches one version; any other version of the package ships unpatched.
-    const other = [...staged.keys()].find((s) => s.slice(0, s.lastIndexOf('@')) === spec.slice(0, at) && s !== spec);
+    const other = [...staged.keys()].find((s) => nameOf(s) === nameOf(spec) && s !== spec);
     if (other) throw new Error(`${other} is staged, but ${patch} only patches ${spec}`);
     // A CRLF checkout of patches/ (core.autocrlf) must still compare equal.
     const lines = readFileSync(join(root, patch), 'utf-8').split(/\r?\n/);
-    const isAdded = (line) => line.startsWith('+') && !line.startsWith('+++ ') && line.trim() !== '+';
     // A patch that parsed to nothing would pass without having checked anything.
     if (!lines.some(isAdded)) throw new Error(`${patch} has no added lines to check`);
     // Every copy of exactly this version, hoisted or nested.
@@ -115,8 +116,7 @@ function assertPatchesApplied(staged) {
         // A deleted file (+++ /dev/null) has no added lines to look for.
         if (line.startsWith('+++ ')) {
           file = line === '+++ /dev/null' ? '' : readFileSync(join(pkgRoot, line.slice(4).replace(/^b\//, '')), 'utf-8');
-        }
-        else if (isAdded(line) && !file.includes(line.slice(1))) {
+        } else if (isAdded(line) && !file.includes(line.slice(1))) {
           throw new Error(`${pkgRoot} is staged without ${patch} (missing: ${line.slice(1).trim()})`);
         }
       }

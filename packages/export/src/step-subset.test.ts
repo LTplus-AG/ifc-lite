@@ -95,7 +95,7 @@ function expectNoDanglingRefs(out: string): void {
   const data = uncommented.slice(uncommented.indexOf('DATA')).split('ENDSEC;')[0];
   const defined = new Set(Array.from(data.matchAll(/^\s*#\s*(\d+)\s*=/gm), (match) => Number(match[1])));
   let checked = 0;
-  for (const m of data.matchAll(/#(\d+)/g)) {
+  for (const m of data.matchAll(/#\s*(\d+)/g)) {
     expect(defined.has(Number(m[1]))).toBe(true);
     checked++;
   }

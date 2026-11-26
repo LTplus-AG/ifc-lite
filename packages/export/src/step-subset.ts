@@ -228,9 +228,14 @@ export function buildSubset(seedProducts: Set<number>, parsed: ParsedStep): Subs
     const assembly = ASSEMBLY_RELATIONS.has(inst.type);
     if (!assembly && !HOST_FEATURE_RELATIONS.has(inst.type)) continue;
     const args = splitTopLevelArgs(inst.body);
-    const anchor = args?.length === STRUCTURE_RELATION_ATTRS ? slotRef(args[4]) : null;
+    if (!args || args.length !== STRUCTURE_RELATION_ATTRS) continue;
+    const anchor = slotRef(args[4]);
     if (anchor === null) continue;
-    if (assembly && parsed.instances.get(anchor)?.type !== 'IFCELEMENTASSEMBLY') continue;
+    if (assembly) {
+      if (parsed.instances.get(anchor)?.type !== 'IFCELEMENTASSEMBLY') continue;
+      // Explicit part selections narrow the assembly's RelatedObjects set.
+      if (refsOutsideStrings(args[5]).some((part) => seedProducts.has(part))) continue;
+    }
     const relations = inverse.get(anchor);
     if (relations) relations.push(inst.id);
     else inverse.set(anchor, [inst.id]);

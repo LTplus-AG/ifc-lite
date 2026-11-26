@@ -30,6 +30,7 @@ import type { SVGExportOptions } from './svg-exporter.js';
 import { GPUSectionCutter } from './gpu-section-cutter.js';
 import { meshArraySource, type DrawingMeshSource } from './drawing-mesh-source.js';
 import { DrawingSession } from './drawing-session.js';
+import { storeyCutElevation, type StoreyCut } from './storey-cut.js';
 import { generateWithOpeningSymbols, type PlanSymbolOptions } from './symbols/opening-symbols.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -239,18 +240,23 @@ export function createSectionConfig(
 }
 
 /**
- * Quick helper to generate a floor plan. Doors and windows crossing the cut
- * are drawn as symbols (`planSymbols`) unless `openingSymbols` is false.
+ * Quick helper to generate a floor plan. `elevation` is the render-frame Y of
+ * the cut, or a {@link StoreyCut} height above a storey floor, which is moved
+ * into that frame with {@link storeyCutElevation}. Doors and windows crossing
+ * the cut are drawn as symbols unless `openingSymbols` is false.
  */
 export async function generateFloorPlan(
   meshes: MeshData[],
-  elevation: number,
+  elevation: number | StoreyCut,
   options?: Partial<GeneratorOptions> & PlanSymbolOptions
 ): Promise<Drawing2D> {
+  const cutY = typeof elevation === 'number'
+    ? elevation
+    : storeyCutElevation(elevation.storeyElevation, elevation.cutHeight, elevation.frame);
   const generator = new Drawing2DGenerator();
   try {
     await generator.initialize();
-    const config = createSectionConfig('y', elevation, { projectionDepth: 3, scale: 100 });
+    const config = createSectionConfig('y', cutY, { projectionDepth: 3, scale: 100 });
     // Select the Model-view meshes first: dropping symbolized doors and windows
     // must not change which type-library geometry generate() keeps.
     return await generateWithOpeningSymbols(selectModelMeshes(meshes), config, options, (drawn) => generator.generate(drawn, config, options));

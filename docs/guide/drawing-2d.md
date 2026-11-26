@@ -143,10 +143,31 @@ content.
 ### Generating a Floor Plan
 
 ```typescript
-import { generateFloorPlan } from '@ifc-lite/drawing-2d';
+import { generateFloorPlan, type StoreyCut } from '@ifc-lite/drawing-2d';
 
-// generateFloorPlan(meshes: MeshData[], elevation: number, options?)
-const drawing = await generateFloorPlan(meshData, 1.2, {
+// generateFloorPlan(meshes: MeshData[], elevation: number | StoreyCut, options?)
+// A number is a render-frame Y. A StoreyCut is a height above a storey floor:
+// the storey's Elevation is moved into the render frame with the geometry's
+// coordinateInfo (storeyCutElevation gives the same Y as a number).
+// storeyElevation is IfcBuildingStorey.Elevation in metres, measured from the
+// building placement. Take it from the storey's Elevation attribute. If that is
+// unset, resolve the storey's placement chain (PlacementRelTo) into the building
+// frame, or stop with an error: an entry in spatialHierarchy.storeyElevations
+// does not establish that frame, since its placement fallback reads only the
+// storey's own location.
+const storeyElevation = 0.5;
+// The parsed store does not carry the building placement. ASSUMPTION: the
+// building sits at its site's origin, so its local Z is 0 m. For a building
+// placed off it, set buildingZ to its local Z in metres: the Z of
+// IfcBuilding.ObjectPlacement.RelativePlacement.Location, relative to the site
+// placement, times store.lengthUnitScale.
+const buildingZ = 0;
+const cut: StoreyCut = {
+  storeyElevation,
+  cutHeight: 1.2,
+  frame: { ...geometryResult.coordinateInfo, buildingOrigin: { z: buildingZ } },
+};
+const drawing = await generateFloorPlan(geometryResult.meshes, cut, {
   includeHiddenLines: true,
   includeProjection: true,
 });
@@ -231,10 +252,10 @@ encoder mismatches that declared codepage, and any real DXF reader
 import { exportToDXF, encodeDxfCp1252 } from '@ifc-lite/drawing-2d';
 
 declare const dxf: ReturnType<typeof exportToDXF>;
-const { bytes, hadUnmappable } = encodeDxfCp1252(dxf);
+const { bytes, hadEscaped, hadUnmappable } = encodeDxfCp1252(dxf);
 // bytes is a Uint8Array ready to write to disk or a Blob.
-// hadUnmappable is true if a character outside windows-1252 (e.g. CJK)
-// was replaced with '?' — R12 TEXT has no wider single-byte encoding.
+// hadEscaped reports lossless DXF Unicode escapes for BMP text outside windows-1252.
+// hadUnmappable reports replacement with '?' for unsupported characters such as emoji.
 ```
 
 ## Drawing Sheets

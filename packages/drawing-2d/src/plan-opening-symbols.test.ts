@@ -100,6 +100,21 @@ describe('headless plans draw door and window symbols (#10932)', () => {
     }
   });
 
+  it('draws opening symbols on the storey-relative cut in the render frame (#10932)', async () => {
+    const meshes = [...door(20, [1, 5, 0]), ...door(21, [1, 0, 0])];
+    const drawing = await generateFloorPlan(meshes, {
+      storeyElevation: 2,
+      cutHeight: 1.2,
+      frame: {
+        siteOrigin: { x: 0, y: 0, z: 10 },
+        buildingOrigin: { z: 4 },
+        wasmRtcOffset: { x: 0, y: 0, z: 11 },
+      },
+    }, options);
+    expect(drawing.config.plane.position).toBeCloseTo(6.2);
+    expect(symbolsOf(drawing, 'door').map((s) => s.entityId)).toEqual([20]);
+  });
+
   it('prefers the authored OverallWidth over the mesh extent', async () => {
     const drawing = await generateFloorPlan([host, ...door(20, [1, 0, 0], 1.0)], 1.2, { ...options, openings: new Map([[makeEntityKey(0, 20), { width: 0.885 }]]) });
     expect(swing(drawing, 20).width).toBeCloseTo(0.885, 6);

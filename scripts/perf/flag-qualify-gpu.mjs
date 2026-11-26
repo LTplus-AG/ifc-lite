@@ -303,7 +303,7 @@ export async function runArm({ dist, model, arm, dir, timeoutMs }) {
       }
       record.steps[step.id] = out;
     }
-    record.console = session.events.console.filter((l) => /\[(error|warning)\]|draw stream|device lost|Device lost/i.test(l)).slice(-80);
+    record.console = session.events.console.filter((l) => /\[(error|warning)\]|\[ooc\]|draw stream|device lost|Device lost/i.test(l)).slice(-80);
     record.pageErrors = session.events.pageErrors.slice(0, 20);
   } catch (err) {
     record.errors.push(String(err?.message ?? err).slice(0, 600));

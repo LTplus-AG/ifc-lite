@@ -159,7 +159,7 @@ it('#9296 the cut centroid wins over projection fragments of the same element', 
 });
 
 /** A space whose NetFloorArea is authored in the model's own units (the value is NOT pre-converted to SI). */
-async function unitFixture(units: string, area: string, unitsRef = '#2') {
+async function unitFixture(units: string, area: string, unitsRef = '#2', quantityUnit = '$') {
   const source = `ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION((''),'2;1');
@@ -170,7 +170,7 @@ DATA;
 #1=IFCPROJECT('0Project00000000000001',$,'Project',$,$,$,$,$,${unitsRef});
 ${units}
 #20=IFCSPACE('0Space0000000000000020',$,'Office',$,$,$,$,$,.ELEMENT.,.INTERNAL.,$);
-#21=IFCQUANTITYAREA('NetFloorArea',$,$,${area},$);
+#21=IFCQUANTITYAREA('NetFloorArea',$,${quantityUnit},${area},$);
 #22=IFCELEMENTQUANTITY('0Quantity0000000000022',$,'Qto_SpaceBaseQuantities',$,$,(#21));
 #23=IFCRELDEFINESBYPROPERTIES('0Rel000000000000000023',$,$,$,(#20),#22);
 ENDSEC;
@@ -182,12 +182,7 @@ END-ISO-10303-21;`;
 
 it('space tag area carries the file\'s declared AREAUNIT, not a hard-coded m\u00b2', async () => {
   // Imperial authoring: AREAUNIT is the conversion-based square foot (0.09290304 m\u00b2), as Revit-style exports declare it.
-  await unitFixture(`#2=IFCUNITASSIGNMENT((#3,#4));
-#3=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
-#4=IFCCONVERSIONBASEDUNIT(#5,.AREAUNIT.,'square foot',#6);
-#5=IFCDIMENSIONALEXPONENTS(2,0,0,0,0,0,0);
-#6=IFCMEASUREWITHUNIT(IFCAREAMEASURE(0.09290304),#7);
-#7=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);`, '1076.39');
+  await unitFixture(SQUARE_FOOT_UNITS, '1076.39');
   const label = resolveElementTagLabel(tag(20));
   assert.ok(label && !label.endsWith(' m\u00b2'), `label must not claim m\u00b2 for a square-foot value: ${label}`);
   assert.match(label ?? '', /1076\.39 (sq ?ft|ft\u00b2|square foot)/i);
@@ -215,3 +210,48 @@ it('space tag area is omitted when the declared unit assignment is unreadable', 
 });
 
 const unitFixtureUndeclared = (area: string) => unitFixture('', area, '$');
+
+const SQUARE_FOOT_UNITS = `#2=IFCUNITASSIGNMENT((#3,#4));
+#3=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#4=IFCCONVERSIONBASEDUNIT(#5,.AREAUNIT.,'square foot',#6);
+#5=IFCDIMENSIONALEXPONENTS(2,0,0,0,0,0,0);
+#6=IFCMEASUREWITHUNIT(IFCAREAMEASURE(0.09290304),#7);
+#7=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);`;
+
+it('#11456 space tag area follows the quantity\'s own Unit over the project AREAUNIT', async () => {
+  // Project area unit is square metre; the quantity itself declares square foot.
+  await unitFixture(`#2=IFCUNITASSIGNMENT((#3,#8));
+#3=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#8=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);
+#4=IFCCONVERSIONBASEDUNIT(#5,.AREAUNIT.,'square foot',#6);
+#5=IFCDIMENSIONALEXPONENTS(2,0,0,0,0,0,0);
+#6=IFCMEASUREWITHUNIT(IFCAREAMEASURE(0.09290304),#7);
+#7=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);`, '1076.39', '#2', '#4');
+  const label = resolveElementTagLabel(tag(20));
+  assert.ok(label && !label.endsWith(' m\u00b2'), `label must follow the quantity's square-foot Unit: ${label}`);
+  assert.match(label ?? '', /1076\.39 (sq ?ft|ft\u00b2|square foot)/i);
+});
+
+it('#11456 SVG, DXF and PDF exports print the square-foot space tag label', async () => {
+  await unitFixture(SQUARE_FOOT_UNITS, '1076.39');
+  const { exportToDXF, parseDxf, DEFAULT_SECTION_CONFIG } = await import('@ifc-lite/drawing-2d');
+  const { elementTagsDxf, drawElementTagsPdf } = await import('./element-tag-export.js');
+  const { resolvedElementTags, elementTagsSvg } = await import('./element-tags.js');
+  const { jsPDF } = await import('jspdf');
+  useViewerStore.setState({ tagAnnotations2D: [tag(20)] });
+  const drawing: import('@ifc-lite/drawing-2d').Drawing2D = {
+    config: { ...DEFAULT_SECTION_CONFIG, plane: { axis: 'z', position: 1, flipped: false } }, lines: [], cutPolygons: [], projectionPolygons: [],
+    bounds: { min: { x: 0, y: 0 }, max: { x: 5, y: 4 } },
+    stats: { cutLineCount: 0, projectionLineCount: 0, hiddenLineCount: 0, silhouetteLineCount: 0, polygonCount: 0, totalTriangles: 0, processingTimeMs: 0 },
+  };
+  const label = resolveElementTagLabel(tag(20))!;
+  const unit = label.slice(label.indexOf('1076.39') + '1076.39 '.length);
+  assert.notEqual(unit, 'm\u00b2');
+  const svg = elementTagsSvg(resolvedElementTags(drawing), (x, y) => ({ x, y }), 3.5);
+  assert.ok(svg.includes(`1076.39 ${unit}</text>`), svg);
+  const dxf = parseDxf(exportToDXF(drawing, { underlays: [elementTagsDxf(drawing, 0.175)] }));
+  assert.ok(dxf.entities.some(entity => entity.kind === 'text' && entity.text.endsWith(`1076.39 ${unit}`)));
+  const pdf = new jsPDF();
+  drawElementTagsPdf(pdf, resolvedElementTags(drawing), (x, y) => ({ x: x*20+10, y: y*20+10 }));
+  assert.ok(pdf.output().includes(`1076.39 ${unit}) Tj`), 'the PDF text run carries the same unit');
+});

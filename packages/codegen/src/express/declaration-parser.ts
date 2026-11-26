@@ -40,14 +40,15 @@ function labelRules<R extends { label: string }>(rules: Unlabelled<R>[], prefix:
   const generate = () => {
     let label;
     do label = `${prefix}${++n}`; while (taken.has(label));
+    taken.add(label);
     return label;
   };
   return rules.map((r) => ({ ...r, label: r.label ?? generate() }) as R);
 }
 
-function parseWhereClause(s: TokenStream, end: string): WhereRule[] {
+/** `taken` is shared with the entity's UNIQUE rules: both label kinds live in one scope. */
+function parseWhereClause(s: TokenStream, end: string, taken = new Set<string>()): WhereRule[] {
   if (!s.acceptKeyword('WHERE')) return [];
-  const taken = new Set<string>();
   const rules: Unlabelled<WhereRule>[] = [];
   while (!s.isKeyword(end)) {
     const label = parseRuleLabel(s, taken);
@@ -175,13 +176,13 @@ function parseEntity(s: TokenStream): EntityDecl {
   if (s.acceptKeyword('INVERSE')) {
     while (!sectionStart()) entity.inverse.push(parseInverse(s));
   }
+  const taken = new Set<string>();
   if (s.acceptKeyword('UNIQUE')) {
-    const taken = new Set<string>();
     const unique: Unlabelled<UniqueRule>[] = [];
     while (!sectionStart()) unique.push(parseUnique(s, taken));
     entity.unique = labelRules(unique, 'UR', taken);
   }
-  entity.where = parseWhereClause(s, 'END_ENTITY');
+  entity.where = parseWhereClause(s, 'END_ENTITY', taken);
   s.expectKeyword('END_ENTITY');
   s.expectOp(';');
   return entity;

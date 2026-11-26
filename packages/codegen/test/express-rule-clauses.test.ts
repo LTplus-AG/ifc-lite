@@ -190,6 +190,11 @@ describe('EXPRESS rule parser: malformed and edge input (#11110 review)', () => 
     expect(() => parseExpressRules(typeWhere('WR1 : SELF > 0; wr1 : SELF < 1;'))).toThrow("duplicate rule label wr1 at line 1, found 'wr1'");
   });
 
+  it('gives the UNIQUE and WHERE labels of an entity one scope', () => {
+    expect(() => parseExpressRules('SCHEMA X; ENTITY A; x : INTEGER; UNIQUE UR1 : x; WHERE UR1 : x > 0; END_ENTITY; END_SCHEMA;'))
+      .toThrow('duplicate rule label UR1');
+  });
+
   it('accepts an unlabelled UNIQUE rule and numbers it UR<n>', () => {
     const [e] = parseExpressRules('SCHEMA X; ENTITY A; Name : STRING; UNIQUE UR1 : Name; Name; END_ENTITY; END_SCHEMA;').entities;
     expect(e.unique.map((u) => u.label)).toEqual(['UR1', 'UR2']);

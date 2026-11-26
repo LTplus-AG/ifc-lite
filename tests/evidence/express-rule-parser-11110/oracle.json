@@ -1,6 +1,6 @@
 {
   "issue": 7955,
-  "why": "Keep the new EXPRESS rule parser loading while dropping ABSTRACT, collapsing BAG inverses to SET and numbering unnamed WHERE rules from WR0: the clause-form and regex-surface tests must go red.",
+  "why": "Keep the new EXPRESS rule parser loading while dropping ABSTRACT, collapsing BAG inverses to SET and letting an unlabelled WHERE rule reuse a taken label: the clause-form, edge-input and regex-surface tests must go red.",
   "key": "packages/codegen/src/express/declaration-parser.ts",
   "mutation": "tests/evidence/express-rule-parser-11110/behaviour.oracle.patch",
   "test": "packages/codegen/test/express-rule-clauses.test.ts"

@@ -36,20 +36,22 @@ let activeCommand = '';
 let debugFlag = false;
 
 async function main(): Promise<void> {
+  // `mcp install` parses all of its argv itself, the server flags after `--`
+  // included, so it runs before the global flag handling below.
+  if (process.argv[2] === 'mcp' && process.argv[3] === 'install') {
+    activeCommand = 'mcp';
+    const { runInstall } = await import('@ifc-lite/mcp/install');
+    process.exitCode = runInstall(process.argv.slice(4), undefined, 'ifc-lite mcp install');
+    return;
+  }
   // Global verbosity flags are parsed and STRIPPED before dispatch so a
   // command's positional-argument scan never mistakes them for a file path.
-  const argv = process.argv.slice(2);
-  // `mcp install -- <flags>` writes those flags for the server, so the global
-  // verbosity flags are not taken out of them.
-  const dashDash = argv[0] === 'mcp' && argv[1] === 'install' ? argv.indexOf('--') : -1;
-  const verbosity = parseVerbosity(dashDash < 0 ? argv : argv.slice(0, dashDash));
+  const verbosity = parseVerbosity(process.argv.slice(2));
   logger.configure({ level: verbosity.level });
   debugFlag = verbosity.debug;
-  const args = dashDash < 0 ? verbosity.rest : [...verbosity.rest, ...argv.slice(dashDash)];
+  const args = verbosity.rest;
 
   const wantsHelp = args.includes('--help') || args.includes('-h');
-  // `mcp install` answers --help itself and judges -v/--version itself (it refuses them).
-  const mcpInstall = args[0] === 'mcp' && args[1] === 'install';
   if (args.length === 0) {
     process.stdout.write(buildHelp(await readVersion()) + '\n');
     return;
@@ -59,7 +61,7 @@ async function main(): Promise<void> {
     // still sitting in `args`, so all 37 subcommands printed the same page and
     // the real help written in `layer`/`ref`/`ext` was unreachable (#5527).
     const requested = args[0];
-    if (HELP_DELEGATING_COMMANDS.has(requested) || mcpInstall) {
+    if (HELP_DELEGATING_COMMANDS.has(requested)) {
       // These write richer help of their own; let them answer.
     } else {
       const version = await readVersion();
@@ -69,7 +71,7 @@ async function main(): Promise<void> {
     }
   }
 
-  if (!mcpInstall && (args.includes('--version') || args.includes('-v'))) {
+  if (args.includes('--version') || args.includes('-v')) {
     process.stdout.write(`ifc-lite ${await readVersion()}\n`);
     return;
   }
@@ -78,7 +80,7 @@ async function main(): Promise<void> {
   activeCommand = command;
   const commandArgs = args.slice(1);
 
-  if (!mcpInstall && commandArgs.includes('--out') && !COMMANDS_WITH_OUT.has(command)) {
+  if (commandArgs.includes('--out') && !COMMANDS_WITH_OUT.has(command)) {
     fatal(
       `\`${command}\` does not write to a file: it has no --out. ` +
         `Redirect its output instead, e.g. \`ifc-lite ${command} ... > out.json\`. ` +

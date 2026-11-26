@@ -66,11 +66,6 @@ export function collectModelPaths(args: string[]): { files: string[]; unsupporte
 }
 
 export async function mcpCommand(args: string[]): Promise<void> {
-  if (args[0] === 'install') {
-    const { runInstall } = await import('@ifc-lite/mcp/install');
-    process.exitCode = runInstall(args.slice(1), undefined, 'ifc-lite mcp install');
-    return;
-  }
   if (args.length === 0 && (process.stdin.isTTY ?? false)) {
     process.stderr.write(
       [

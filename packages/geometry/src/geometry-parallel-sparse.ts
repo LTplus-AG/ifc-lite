@@ -19,7 +19,7 @@
  */
 
 import type { GeometryWorkerSetSparseSourceMessage, WorkerSparseStats } from './geometry-worker-sparse.js';
-import { globalInstancingApplies, readOutOfCoreBudgetBytes, readOutOfCoreFlag } from './perf-flags.js';
+import { globalInstancingApplies, inSmallFileTier, readOutOfCoreBudgetBytes, readOutOfCoreFlag } from './perf-flags.js';
 import type { ProcessParallelOptions } from './geometry-parallel-options.js';
 
 interface SparseFacts { preamble: Uint8Array; inverseTargets: Uint32Array; inverseReferrers: Uint32Array }
@@ -76,6 +76,19 @@ export class SparsePool {
   offerIndex(ids: SharedArrayBuffer, starts: SharedArrayBuffer, lengths: SharedArrayBuffer): void {
     this.index = { ids, starts, lengths };
     this.send();
+  }
+
+  /**
+   * The pre-pass's own `entity-index` columns, ascending by id, on a sharded load: the workers binary-search
+   * them (`findIndexRow`), and the shards' stitch is in file order. Copied once into shared memory.
+   */
+  offerSortedIndex(ids: Uint32Array, starts: Uint32Array, lengths: Uint32Array): void {
+    const shared = (column: Uint32Array): SharedArrayBuffer => {
+      const buffer = new SharedArrayBuffer(column.byteLength);
+      new Uint32Array(buffer).set(column);
+      return buffer;
+    };
+    this.offerIndex(shared(ids), shared(starts), shared(lengths));
   }
 
   /** The pre-pass `sparse-facts` event. */
@@ -142,10 +155,14 @@ export class SparsePool {
  * and the global instance plan (its mapped sources are resolved once, before the arena holds them).
  * `globalInstancing` is the load's plan decision; unset, it is read here. `outOfCore` is the host's decision for this
  * load (a staged rollout); unset, the explicit global or URL param.
+ *
+ * A source in the small-file tier (`inSmallFileTier`, under 10 MiB) stays on the whole-file path too: the workers'
+ * copies it would save are at most 80 MiB there (FZK, 2.4 MiB: peak renderer memory 0.99x), and only past that size
+ * does the sharded scan (8 MiB) always run, which is what keeps an out-of-core first frame on time.
  */
 export function sparsePoolFor(sharedBuffer: SharedArrayBuffer, host: SparsePoolHost, options?: Pick<ProcessParallelOptions, 'mergeLayers' | 'globalInstancing' | 'outOfCore'>): SparsePool | null {
   delete (globalThis as { __IFC_LITE_OOC_STATS__?: OutOfCoreStats }).__IFC_LITE_OOC_STATS__; // never an earlier load's
-  if (!(options?.outOfCore ?? readOutOfCoreFlag())) return null;
+  if (!(options?.outOfCore ?? readOutOfCoreFlag()) || inSmallFileTier(sharedBuffer.byteLength)) return null;
   const blocker = options?.mergeLayers === true ? 'merged material layers' : (options?.globalInstancing ?? globalInstancingApplies(sharedBuffer.byteLength)) ? 'the global instance plan' : null;
   if (blocker !== null) {
     console.warn(`[stream][ooc] whole-file path: out-of-core ingest does not support ${blocker}`);

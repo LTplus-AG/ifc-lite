@@ -61,6 +61,7 @@ export interface GeometryWorkerInitMessage {
   wasmUrl?: string;
 }
 
+import { scanShardWindowedOn, type GeometryWorkerShardRefusedMessage, type ShardScanApi, type ShardScanColumns } from './shard-window-scan.js';
 import { WorkerSparseSession, type BatchCallArgs, type GeometryWorkerSetSparseSourceMessage, type GeometryWorkerSparseStatsMessage } from './geometry-worker-sparse.js';
 /**
  * The host sends `stream-start` once with the session metadata (minus
@@ -190,6 +191,8 @@ export interface GeometryWorkerScanShardMessage {
   shardIndex: number;
   rangeStart: number;
   rangeEnd: number;
+  /** Out-of-core ingest: copy only this shard's window into wasm, never the file (`shard-window-scan.ts`). */
+  windowed?: boolean;
 }
 
 export interface GeometryWorkerPrePassMessage extends GlobalKeyPlanningField {
@@ -352,6 +355,12 @@ export interface GeometryWorkerPrePassShardedMessage extends GlobalKeyPlanningFi
   indexLengths: Uint32Array;
   /** Per-record prepass classes — drives columns discovery (no byte scan). */
   indexClasses: Uint8Array;
+  /**
+   * Out-of-core ingest: also emit `sparse-facts`, and resolve styles here (one
+   * `styles` event, as the serial pre-pass does): the workers hold no source
+   * to resolve style slices from.
+   */
+  emitSparseFacts?: boolean;
 }
 
 /**
@@ -749,6 +758,21 @@ function materialiseSharedBytes(sharedBuffer: SharedArrayBuffer): Uint8Array {
  * load); shard/finalise retries first reject runtime traps, then warn once.
  */
 let sabViewFallbackWarned = false;
+/** The pre-pass emits `sparse-facts` only for an out-of-core load; a reused worker is told either way. */
+function applyEmitSparseFacts(ifcApi: IfcAPI, on: boolean): void {
+  if (typeof ifcApi.setEmitSparseFacts === 'function') ifcApi.setEmitSparseFacts(on);
+  else if (on) throw new Error('Out-of-core geometry requires a WASM build with sparse pre-pass support');
+}
+
+function postShardResult(shardIndex: number, shard: ShardScanColumns | null): void {
+  if (!shard) return (self as unknown as Worker).postMessage({ type: 'shard-result', shardIndex, windowRefused: true } satisfies GeometryWorkerShardRefusedMessage);
+  const { ids, starts, lengths, classes, handoff, oversizedIdStarts, malformedStart } = shard;
+  (self as unknown as Worker).postMessage(
+    { type: 'shard-result', shardIndex, ids, starts, lengths, classes, handoff, oversizedIdStarts, malformedStart } as GeometryWorkerShardResultMessage,
+    [ids.buffer, starts.buffer, lengths.buffer, classes.buffer, ...(oversizedIdStarts ? [oversizedIdStarts.buffer] : [])],
+  );
+}
+
 function prepareSabViewRetry(context: string, err: unknown): void {
   if (isWasmRuntimeTrap(err)) throw err;
   if (sabViewFallbackWarned) return;
@@ -1376,6 +1400,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       (ifcApi as IfcAPIWithPrepassColumns).setGlobalKeyPlanning?.(e.data.globalInstancing === true);
       (self as unknown as Worker).postMessage({ type: 'prepass-progress', phase: 'parsing' });
       const { sharedBuffer, indexIds, indexStarts, indexLengths, indexClasses } = e.data;
+      applyEmitSparseFacts(ifcApi, e.data.emitSparseFacts === true);
       const sourceFingerprint = e.data.sourceFingerprint;
       const chunkSize = e.data.chunkSize ?? 50_000;
       const disabledTypes = e.data.disabledTypes ?? undefined;
@@ -1458,11 +1483,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       // #1097 load-time visibility filter (skip disabled types at job gen).
       const disabledTypes = e.data.disabledTypes ?? undefined;
       const skipTypeGeometry = e.data.skipTypeGeometry === true;
-      if (typeof ifcApi.setEmitSparseFacts === 'function') {
-        ifcApi.setEmitSparseFacts(e.data.emitSparseFacts === true);
-      } else if (e.data.emitSparseFacts === true) {
-        throw new Error('Out-of-core geometry requires a WASM build with sparse pre-pass support');
-      }
+      applyEmitSparseFacts(ifcApi, e.data.emitSparseFacts === true);
 
       // Forward Rust events 1:1 — the host (`geometry-parallel.ts`) treats
       // them as the streaming-prepass protocol. SAB-decode fallback: try the
@@ -1497,14 +1518,12 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       const ifcApi = await ensureInit();
       const { sharedBuffer, shardIndex, rangeStart, rangeEnd } = e.data;
       const view = viewSharedBytes(sharedBuffer);
-      const scanApi = (ifcApi as unknown as {
-        scanEntityIndexShard: (
-          data: Uint8Array,
-          rangeStart: number,
-          rangeEnd: number,
-          // `malformedStart` is TODO(#3699) -- not returned by Rust yet.
-        ) => { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array; classes: Uint8Array; handoff: number; oversizedIdStarts?: Uint32Array; malformedStart?: number };
-      });
+      const scanApi = ifcApi as unknown as ShardScanApi;
+      if (e.data.windowed === true) { // out of core: no source install, this worker meshes from a sparse arena
+        sourcePreparedForStream = false;
+        postShardResult(shardIndex, scanShardWindowedOn(scanApi, view, rangeStart, rangeEnd, (err) => prepareSabViewRetry('scan-entity-index-shard', err)));
+        return;
+      }
       const sourceApi = ifcApi as unknown as SourcePrepassApi;
       sourceBytesApplied = false;
       cachedSourceBytes = view;
@@ -1527,19 +1546,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
         sourceBytesApplied = false;
         shard = scan(materialiseSharedBytes(sharedBuffer));
       }
-      (self as unknown as Worker).postMessage(
-        {
-          type: 'shard-result',
-          shardIndex,
-          ids: shard.ids,
-          starts: shard.starts,
-          lengths: shard.lengths,
-          classes: shard.classes,
-          handoff: shard.handoff, oversizedIdStarts: shard.oversizedIdStarts,
-          malformedStart: shard.malformedStart,
-        } as GeometryWorkerShardResultMessage,
-        [shard.ids.buffer, shard.starts.buffer, shard.lengths.buffer, shard.classes.buffer, ...(shard.oversizedIdStarts ? [shard.oversizedIdStarts.buffer] : [])],
-      );
+      postShardResult(shardIndex, shard);
       return;
     }
 

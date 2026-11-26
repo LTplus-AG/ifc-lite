@@ -96,7 +96,11 @@ export function wrapScript(code: string): string {
     var proto = getProto(v);
     if (proto === objectProto || proto === null || isArray(v)) return undefined;
     for (var u = 0; u < unbox.length; u++) {
-      try { return { v: apply(unbox[u], v, []) }; } catch (_) { /* receiver is not this wrapper type */ }
+      try { return { v: apply(unbox[u], v, []) }; } catch (e) {
+        // A brand-check TypeError means "not this wrapper type"; QuickJS's own
+        // out-of-memory or stack overflow must not turn the value into {}.
+        if (InternalErrorCtor && apply(isInstance, InternalErrorCtor, [e])) throw e;
+      }
     }
     return undefined;
   }
@@ -145,13 +149,18 @@ export function wrapScript(code: string): string {
       if (forLog && typeof v === 'bigint') { out += stringify(bigintText(v)); return; }
       if (typeof v === 'object') {
         var box = unboxed(v);
-        if (box) { out += stringify(forLog && typeof box.v === 'bigint' ? bigintText(box.v) : box.v); return; }
+        // Unwrapped, it takes the primitive path below (a boxed string is cut too).
+        if (box) v = forLog && typeof box.v === 'bigint' ? bigintText(box.v) : box.v;
+      }
+      if (typeof v === 'object') {
         if (forLog && apply(isInstance, ErrorCtor, [v])) { out += stringify(msg(v)); return; }
         if (apply(setHas, onPath, [v])) throw new TypeErrorCtor('the value is cyclic');
         if (sp >= L.maxDepth) throw new ErrorCtor('the value is nested deeper than ' + L.maxDepth + ' levels');
         apply(setAdd, onPath, [v]);
         var a = isArray(v);
-        fo[sp] = v; fk[sp] = a ? null : list || keys(v); fi[sp] = 0; fa[sp] = a; fw[sp] = false; sp++;
+        // An array's length is read once, as native JSON does, so a toJSON or
+        // replacer that appends to it cannot make the walk run forever.
+        fo[sp] = v; fk[sp] = a ? v.length : list || keys(v); fi[sp] = 0; fa[sp] = a; fw[sp] = false; sp++;
         out += a ? '[' : '{';
         return;
       }
@@ -167,8 +176,8 @@ export function wrapScript(code: string): string {
       if (out.length > limit) return out;
       var i = sp - 1, o = fo[i];
       if (fa[i]) {
-        if (fi[i] >= o.length) {
-          if (gap && o.length > 0) out += '\\n' + indent(sp - 1);
+        if (fi[i] >= fk[i]) {
+          if (gap && fk[i] > 0) out += '\\n' + indent(sp - 1);
           out += ']'; apply(setDelete, onPath, [o]); sp--; continue;
         }
         var idx = fi[i]; fi[i] = idx + 1;

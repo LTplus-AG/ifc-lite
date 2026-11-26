@@ -359,6 +359,8 @@ describe('script_run', () => {
       expect((await run(code)).structuredContent?.value).toBe(eval(code));
     }
     expect((await run(`${deep} try { JSON.stringify(1, (k, v) => (k === '' ? o : v)); 'no' } catch (e) { e.message }`)).structuredContent?.value).toMatch(/nested deeper than 1000 levels/);
+    expect((await run('var a = [{ toJSON() { a.push(a[0]); return 1; } }]; JSON.stringify(a)')).structuredContent?.value).toBe('[1]');
+    expect((await run("new String('x'.repeat(400000))")).structuredContent?.value_truncated).toBe(true);
     expect((await run('typeof bim.lens')).structuredContent?.value).toBe('undefined');
     expect((await run('9 + 9')).structuredContent?.value).toBe(18);
   });

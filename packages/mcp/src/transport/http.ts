@@ -24,7 +24,7 @@
 import { createServer, IncomingMessage, Server, ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { JsonRpcMessage } from '../protocol/index.js';
-import { errorResponse, isJsonRpcRequest, parseMessage } from '../protocol/jsonrpc.js';
+import { errorResponse, parseMessage } from '../protocol/jsonrpc.js';
 import { JsonRpcErrorCode } from '../protocol/index.js';
 import { MCPServer, OutgoingMessageSink } from '../server.js';
 import { AuthScope } from '../auth/scope.js';
@@ -302,7 +302,7 @@ export class HttpTransport {
       const response = await this.dispatch(session, message);
       if (res.writableEnded) return;
       if (response) writeSse(res, response);
-      else if (isJsonRpcRequest(message)) res.end(); // cancelled: end its stream
+      else res.end(); // a notification, or a cancelled request: nothing to stream
       return;
     }
 

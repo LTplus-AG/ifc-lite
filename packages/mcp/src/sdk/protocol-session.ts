@@ -131,9 +131,14 @@ class IfcProtocolServer extends Server {
         result = await inner(request, ctx);
       } catch (err) {
         if (err instanceof HandlerError) throw err;
-        if (!entered.has(signal) && !(err instanceof SdkError)) {
+        // Before our handler, only the SDK's param validation is the client's fault:
+        // it throws a bare Error or a -32602 ProtocolError. Anything else is ours.
+        const validation = (err instanceof Error && err.constructor === Error)
+          || (err instanceof ProtocolError && err.code === ProtocolErrorCode.InvalidParams);
+        if (!entered.has(signal) && validation) {
           throw invalidParams(err, (note) => this.onerror?.(new Error(note)));
         }
+        if (!entered.has(signal) && err instanceof ProtocolError) throw err;
         const message = describeThrown(err);
         if (!entered.has(signal)) throw new ProtocolError(ProtocolErrorCode.InternalError, message);
         this.onerror?.(new Error(`${method} produced a result the protocol refused: ${message}`));
@@ -170,7 +175,7 @@ function invalidParams(err: unknown, report: (note: string) => void): ProtocolEr
   const text = err instanceof Error ? err.message : describeThrown(err);
   // The list may follow a prefix such as "Invalid tools/call request: ".
   const start = text.indexOf('[');
-  const issues = start < 0 ? undefined : zodIssues(text.slice(start), report);
+  const issues = start < 0 || !text.trimEnd().endsWith(']') ? undefined : zodIssues(text.slice(start), report);
   if (!issues) return err instanceof ProtocolError ? err : new ProtocolError(ProtocolErrorCode.InvalidParams, text);
   const summary = issues.map((i) => `${(i.path ?? []).join('.') || '(params)'}: ${i.message ?? 'invalid'}`).join('; ');
   const prefix = start > 0 ? text.slice(0, start).trim().replace(/:$/, '') : 'Invalid params';
@@ -252,11 +257,7 @@ export class ProtocolSession {
     // Not before the initialize result has left the protocol layer.
     if (!this.transport.handshakeSent) return;
     const failed = (err: unknown) => this.domain.baseLogger.log('warning', `notify ${method} failed`, { error: describeThrown(err) });
-    try {
-      this.server.notification({ method, params }).catch(failed);
-    } catch (err) {
-      failed(err);
-    }
+    this.server.notification({ method, params }).catch(failed);
   }
 
   resourceUpdated(uri: string): void {
@@ -318,8 +319,11 @@ export class ProtocolSession {
         this.domain.logger.log('error', `Request ${method} failed`, { error: message });
         throw new HandlerError(ProtocolErrorCode.InternalError, message);
       } finally {
-        if (ctx.mcpReq.signal.aborted) {
-          this.domain.logger.log('info', `Cancelled request ${String(ctx.mcpReq.id)}`, { method, reason: describeThrown(ctx.mcpReq.signal.reason) });
+        const signal = ctx.mcpReq.signal;
+        if (signal.aborted) {
+          // The SDK aborts with an SdkError when the connection closes; a client cancel carries its reason.
+          const what = signal.reason instanceof SdkError ? 'Request ended by connection close' : 'Cancelled request';
+          this.domain.logger.log('info', `${what} ${String(ctx.mcpReq.id)}`, { method, reason: describeThrown(signal.reason) });
         }
       }
     };

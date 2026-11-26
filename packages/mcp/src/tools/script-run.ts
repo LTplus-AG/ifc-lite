@@ -14,9 +14,9 @@
  * namespaces at all. Neither tool gets network, files, viewer or UI access.
  *
  * Every call gets a fresh sandbox, disposed in `finally`. The QuickJS
- * interrupt handler enforces `timeout_ms`; a host timer and the client's
- * cancel signal dispose the sandbox if host work (an async bridge call)
- * outlives it. `memory_mb` caps the QuickJS heap.
+ * interrupt handler enforces `timeout_ms` on script code, and the sandbox
+ * stops waiting on async host work at the same deadline. The client's cancel
+ * signal disposes the sandbox. `memory_mb` caps the QuickJS heap.
  */
 
 import { createSandbox, ScriptError, type LogEntry, type SandboxPermissions } from '@ifc-lite/sandbox';
@@ -31,8 +31,6 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_TIMEOUT_MS = 60_000;
 const DEFAULT_MEMORY_MB = 64;
 const MAX_MEMORY_MB = 256;
-/** Grace after `timeout_ms` before the host tears the sandbox down itself. */
-const HOST_GRACE_MS = 2_000;
 /** Caps on what one call returns to the client (the sandbox caps capture at 1000 entries / 4 MB). */
 const MAX_VALUE_CHARS = 256 * 1024;
 const VALUE_PREVIEW_CHARS = 2_000;
@@ -87,7 +85,7 @@ const outputSchema: JsonSchema = {
     },
     logs_truncated: { type: 'boolean' },
     duration_ms: { type: 'number' },
-    mutations_queued: { type: 'integer', minimum: 0, description: 'Mutations this script added that are still pending; persist with export_ifc or model_save.' },
+    mutations_queued: { type: 'integer', minimum: 0, description: 'Mutation journal entries this script added (an edit it later undid still counts); persist pending edits with export_ifc or model_save.' },
   },
 };
 
@@ -192,7 +190,7 @@ type Outcome =
 /** Decode the wrapper's tagged string (a returned promise dumps as `{ type, value }`). */
 function readEnvelope(dumped: unknown): Outcome {
   const state = dumped as { type?: string; value?: unknown };
-  if (state?.type === 'pending') return { error: 'The script returned a promise that never settled (only bim host calls resolve; there are no timers).' };
+  if (state?.type === 'pending') return { error: 'The script returned a promise that never settled: a bim host call did not resolve, or the job settling it aborted (for example out of memory). There are no timers.' };
   const envelope = state?.type === 'fulfilled' ? state.value : dumped;
   if (typeof envelope !== 'string') return { error: 'The script produced no result.' };
   // The wrapper bounds these; the host re-checks so a script that subverted
@@ -228,7 +226,8 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     // kind tells a script failure from INVALID_INPUT on the tool's own arguments.
     // Clipped here too: a ScriptError from the sandbox can carry a script-sized message.
     code: ToolErrorCode.INVALID_INPUT, message: `Script error: ${clipUtf16(message, MAX_MESSAGE_CHARS)}`, details: { kind: 'script', ...details },
-    hint: mode === 'read' && /\bbim\.(mutate|store)\b/.test(code)
+    // Only when the failure looks like touching a namespace that is absent.
+    hint: mode === 'read' && /\bbim\.(mutate|store)\b/.test(code) && /of undefined|undefined is not/.test(message)
       ? 'script_run has no bim.mutate or bim.store; use script_run_mutate to edit the model.'
       : undefined,
   });
@@ -245,8 +244,8 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     limits: { timeoutMs, memoryBytes: memoryMb * 1024 * 1024 },
   });
   // dispose() can throw SandboxAbortError when QuickJS aborts tearing down a
-  // runtime (#1922). From the timer or abort listener that would be an
-  // uncaught exception; from `finally` it would replace the real outcome.
+  // runtime (#1922). From the abort listener that would be an uncaught
+  // exception; from `finally` it would replace the real outcome.
   const dispose = () => {
     try {
       sandbox.dispose();
@@ -254,15 +253,13 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
       ctx.log.log('warning', 'script_run: sandbox teardown aborted', { error: err instanceof Error ? err.message : String(err) });
     }
   };
-  let stopReason: 'cancelled' | 'timeout' | null = null;
-  const stop = (reason: 'cancelled' | 'timeout') => { stopReason ??= reason; dispose(); };
-  const onAbort = () => stop('cancelled');
-  const timer = setTimeout(() => stop('timeout'), timeoutMs + HOST_GRACE_MS);
+  let cancelledByClient = false;
+  const onAbort = () => { cancelledByClient = true; dispose(); };
   ctx.signal.addEventListener('abort', onAbort, { once: true });
   // A cancel that landed while the sandbox was being created fired no event.
   if (ctx.signal.aborted) onAbort();
   try {
-    if (stopReason) throw cancelled();
+    if (cancelledByClient) throw cancelled();
     const result = await sandbox.eval(wrapScript(code), { typescript: false, filename: 'script_run.js' });
     const { logs, truncated } = shapeLogs(result.logs);
     const mutationsQueued = queued();
@@ -282,21 +279,24 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     return okResult(`${summary}\n${JSON.stringify(structured)}`, structured);
   } catch (err) {
     if (err instanceof ToolExecutionError) throw err;
-    // A sandbox disposed by the timer or a cancel rejects with a plain Error
+    // A sandbox disposed by a cancel rejects with a plain Error
     // that carries no logs; only a ScriptError has them.
     const shaped = err instanceof ScriptError ? shapeLogs(err.logs) : { logs: [], truncated: false };
     const details = { logs: shaped.logs, logs_truncated: shaped.truncated, mutations_queued: queued() };
-    if (stopReason === 'cancelled') throw cancelled(details);
+    if (cancelledByClient) throw cancelled(details);
     // Script throws are caught in the wrapper, so 'interrupted' here is the
     // sandbox's own interrupt handler (it reports nothing more specific).
-    if (stopReason === 'timeout' || (err instanceof ScriptError && err.message === 'interrupted')) {
+    if (err instanceof ScriptError && err.message === 'interrupted') {
       throw new ToolExecutionError({ code: ToolErrorCode.TIMEOUT, message: `Script exceeded timeout_ms (${timeoutMs}).`, details });
+    }
+    // The sandbox's own realm failing is a server fault, not the script's.
+    if (err instanceof ScriptError && err.message.startsWith('Sandbox realm became invalid')) {
+      throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: err.message, details });
     }
     // Out of memory, stack overflow, or a fault the wrapper could not catch.
     if (err instanceof ScriptError) throw scriptError(err.message, details);
     throw err;
   } finally {
-    clearTimeout(timer);
     ctx.signal.removeEventListener('abort', onAbort);
     dispose();
   }

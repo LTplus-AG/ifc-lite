@@ -165,7 +165,7 @@ function compilePass(
   const constants = [...ctx.constants].map(([name, init]) => `const ${name} = ${init};`);
   const fnSources = index.schema.functions.map((f) => functions.get(f.name.toUpperCase())).filter((s): s is string => !!s);
   const source = `${header}
-import * as r from '${runtimeImport}';
+import * as r from ${JSON.stringify(runtimeImport)};
 
 ${constants.join('\n')}
 

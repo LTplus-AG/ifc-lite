@@ -110,7 +110,7 @@ export function emitSchemaMeta(index: SchemaIndex, header: string, runtimeImport
     types: index.schema.types.map((t) => typeMeta(t, index)),
   };
   return `${header}
-import type { SchemaMeta } from '${runtimeImport}';
+import type { SchemaMeta } from ${JSON.stringify(runtimeImport)};
 
 export const META: SchemaMeta = ${JSON.stringify(meta, null, 1)};
 `;

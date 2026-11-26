@@ -176,6 +176,12 @@ describe('modelExportFilename', () => {
 });
 
 describe('reserved-name prefix stays inside the length cap (#11442)', () => {
+  it('keeps the fallback safe and nonempty when the length is NaN (#11442)', () => {
+    assert.strictEqual(sanitizeFilename('CON', { maxLength: NaN }), 'file');
+    assert.strictEqual(sanitizeFilename('model', { maxLength: NaN, fallback: 'NUL.txt' }), '_NUL.txt');
+    assert.equal(sanitizeFilename('CON', { maxLength: NaN, fallback: 'x'.repeat(80) }).length, 60);
+  });
+
   it('fits the fallback when a supplementary letter cannot fit the stem budget', () => {
     const name = '\u{20000}';
     assert.strictEqual(sanitizeFilename(name, { maxLength: 1 }), 'f');

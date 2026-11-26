@@ -21,7 +21,7 @@ import { emitFileDownloaded } from '@/lib/tours/events';
 export interface SanitizeFilenameOptions {
   /** Base to sanitize and fit when the supplied name yields an empty string. Default `'file'`. */
   fallback?: string;
-  /** Maximum length of the returned name. Default 60. */
+  /** Maximum length of the returned name. Default 60. NaN selects the fallback. */
   maxLength?: number;
   /** Set to false when sanitizing a file extension. */
   reservedStem?: boolean;
@@ -54,8 +54,10 @@ function fitFilename(name: string, limit: number): string {
  */
 export function sanitizeFilename(name: string, options: SanitizeFilenameOptions = {}): string {
   const fallback = options.fallback ?? 'file';
-  const maxLength = Math.max(0, options.maxLength ?? 60);
-  const sliced = fitFilename(name, maxLength) || fitFilename(fallback, maxLength) || '_'.slice(0, maxLength);
+  const invalidLength = Number.isNaN(options.maxLength);
+  const maxLength = invalidLength ? 60 : Math.max(0, options.maxLength ?? 60);
+  const source = invalidLength ? fallback : name;
+  const sliced = fitFilename(source, maxLength) || fitFilename(fallback, maxLength) || '_'.slice(0, maxLength);
   // Windows refuses `CON`, `NUL`, `COM1`... as a file stem whatever the extension
   // (`CON.pdf` too), so a model named for one gets a leading underscore. The
   // prefix counts against `maxLength`: re-fit one character shorter first. An

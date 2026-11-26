@@ -4,8 +4,13 @@
 
 /**
  * Why a local-agent connection failed or ended, in words the user can act on
- * (#9523), plus the command that starts the bridge when nothing answered.
+ * (#9523), plus the one-time agent setup command when nothing answered.
  * Shared by the connect dialog and the status-bar chip.
+ *
+ * The bridge runs inside the user's MCP client (the agent starts it), not in
+ * a terminal: a bridge started by hand has no agent to serve and opens no
+ * port until an agent calls `bridge_status`. So the guidance is "add it to
+ * your agent, then ask the agent to connect".
  */
 
 import { AlertCircle } from 'lucide-react';
@@ -18,18 +23,20 @@ function pageOrigin(): string {
   return typeof location === 'undefined' ? DEFAULT_BRIDGE_VIEWER_URL : location.origin;
 }
 
-/** The command that starts a bridge this page can pair with. */
-export function bridgeStartCommand(port: number, origin: string = pageOrigin()): string {
-  const parts = ['npx @ifc-lite/mcp --bridge'];
-  if (port !== DEFAULT_BRIDGE_PORT) parts.push(`--bridge-port ${port}`);
+/**
+ * The one-time setup that gives an agent a bridge this page can pair with
+ * (Claude Code shown; other MCP clients run the same `npx` command).
+ */
+export function agentSetupCommand(origin: string = pageOrigin()): string {
+  const parts = ['claude mcp add ifc-lite -- npx -y @ifc-lite/mcp --bridge'];
   if (origin !== DEFAULT_BRIDGE_VIEWER_URL) parts.push(`--bridge-viewer-url ${origin}`);
   return parts.join(' ');
 }
 
-export function BridgeStartCommand({ port }: { port: number }) {
+export function AgentSetupCommand() {
   return (
     <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded border bg-muted px-2 py-1.5 font-mono text-xs">
-      {bridgeStartCommand(port)}
+      {agentSetupCommand()}
     </pre>
   );
 }
@@ -51,7 +58,7 @@ export function AgentBridgeOutcome({ status }: { status: AgentBridgeStatus }) {
         </p>
         {status.kind === 'error' && status.code === 'unreachable' && (
           <>
-            <BridgeStartCommand port={port} />
+            <AgentSetupCommand />
             {origin !== DEFAULT_BRIDGE_VIEWER_URL && (
               <p className="text-muted-foreground">{t('agentBridge.failure.origin', { origin })}</p>
             )}

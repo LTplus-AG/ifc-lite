@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The pairing link's first touch (#9523). `ifc-lite-mcp --bridge` prints
+ * The pairing link's first touch (#9523). The bridge's `bridge_status` tool
+ * returns it to the agent, which gives it to the user:
  *
  *   https://ifclite.com/#mcp-bridge=1&port=21517&code=ABCDE-FGHJK-MNPQR-STVWX
  *

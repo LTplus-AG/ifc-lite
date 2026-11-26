@@ -208,7 +208,8 @@ describe('connect dialog outcomes (#9523)', () => {
     };
     render(withBim(<AgentBridgeDialog request={{ source: 'manual' }} onClose={() => {}} load={load} />));
     await waitFor(() => dialog() !== null, 'the dialog rendered');
-    assert.match(dialog()?.textContent ?? '', /npx @ifc-lite\/mcp --bridge/, 'the start command is shown');
+    // P2 item 5: the agent runs the bridge; the dialog shows the one-time agent setup, not a terminal command.
+    assert.match(dialog()?.textContent ?? '', /claude mcp add ifc-lite -- npx -y @ifc-lite\/mcp --bridge/, 'the agent setup is shown');
     click(button(/^Connect$/));
     assert.match(dialog()?.textContent ?? '', /Enter the pairing code/);
     assert.equal(loads, 0, 'invalid input loads nothing');
@@ -225,7 +226,8 @@ describe('connect dialog outcomes (#9523)', () => {
     await waitFor(() => calls.length === 1, 'the session was asked to connect');
     assert.deepEqual(calls, [{ port: 21600, code: 'abcde fghjk' }]);
     await waitFor(() => /Could not connect to the bridge on port 21600/.test(dialog()?.textContent ?? ''), 'the failure is explained');
-    assert.match(dialog()?.textContent ?? '', /npx @ifc-lite\/mcp --bridge --bridge-port 21600/);
+    assert.match(dialog()?.textContent ?? '', /Ask your agent for a fresh link/);
+    assert.doesNotMatch(dialog()?.textContent ?? '', /--bridge-port/);
     assert.ok(button(/^Try again$/));
   });
 

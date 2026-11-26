@@ -60,7 +60,7 @@ import { BRIDGE_IMAGE_LIMITS, validateResultContent, type BridgeContent } from '
 
 export { BRIDGE_FEATURE_IMAGE_CONTENT, BRIDGE_FEATURES } from './result-content.js';
 export { BRIDGE_FEATURE_UI_EVENTS, BRIDGE_UI_EVENTS_TOOL, UI_EVENT_LIMITS, a2uiSurfaceId, type BridgeUiEvent, type BridgeUiEventMessage } from './ui-events.js';
-import { BRIDGE_UI_EVENTS_TOOL, parseUiEvent } from './ui-events.js';
+import { parseUiEvent } from './ui-events.js';
 export type { BridgeContent, BridgeImageContent, BridgeImageMimeType, BridgeTextContent } from './result-content.js';
 
 /** Bumped on any incompatible change. The bridge rejects any other value. */
@@ -93,10 +93,11 @@ export const MAX_MCP_TOOL_NAME = 64;
 export const TAB_SHOW_UI_TOOL = `${TAB_TOOL_PREFIX}show_ui`;
 
 /**
- * Names a tab may not register. A tab tool whose `tab_` name would shadow a
- * bridge tool (`show_ui`, `ui_events`) is accepted but not served.
+ * Names a tab may not register: `bridge_status`, and the tab-side name a
+ * surface delivery uses. A tab tool whose `tab_` name would shadow a bridge
+ * tool (`show_ui`, `ui_events`) is accepted but not served.
  */
-export const BRIDGE_RESERVED_TOOLS: ReadonlySet<string> = new Set([BRIDGE_STATUS_TOOL, BRIDGE_SURFACE_TOOL, BRIDGE_UI_EVENTS_TOOL]);
+export const BRIDGE_RESERVED_TOOLS: ReadonlySet<string> = new Set([BRIDGE_STATUS_TOOL, BRIDGE_SURFACE_TOOL]);
 
 /** Key in the pairing link's URL fragment that marks it as a bridge pairing link. */
 export const PAIRING_FRAGMENT_KEY = 'mcp-bridge';

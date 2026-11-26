@@ -58,8 +58,6 @@ export function productsUnderPlacement(storeyPlacementId: number, parsed: Parsed
   return seeds;
 }
 
-const UTF8 = new TextDecoder('utf-8', { fatal: true });
-
 /** IfcBuildingStorey attribute positions: Name, then LongName (after ObjectPlacement, Representation). */
 const NAME = 2;
 const LONG_NAME = 7;
@@ -76,7 +74,8 @@ function storeyText(body: string, index: number): string | null {
   // backslash is rare enough to keep as read.
   if (!/[\u0080-\u00ff]/.test(text) || text.includes('\\')) return name;
   try {
-    return UTF8.decode(Uint8Array.from(name, (c) => c.charCodeAt(0)));
+    const utf8 = new TextDecoder('utf-8', { fatal: true });
+    return utf8.decode(Uint8Array.from(name, (c) => c.charCodeAt(0)));
   } catch (err) {
     if (!(err instanceof TypeError)) throw err;
     return name; // not valid UTF-8: the bytes were latin1 text after all

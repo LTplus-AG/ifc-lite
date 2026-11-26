@@ -25,7 +25,6 @@ import { ResourceRegistry } from '../resources/index.js';
 import { PromptRegistry } from '../prompts/index.js';
 import { PROTOCOL_VERSION } from '../protocol/index.js';
 import { buildDefaultToolRegistry } from './index.js';
-import { scriptRunMutateTool, scriptRunTool } from './script-run.js';
 
 const IFC = `ISO-10303-21;
 HEADER;
@@ -71,8 +70,16 @@ afterAll(async () => {
   }
 });
 
-async function run(code: string, extra: Record<string, unknown> = {}, tool = scriptRunTool): Promise<CallToolResult> {
-  return tool.handler({ code, ...extra }, ctx);
+type ScriptTool = 'script_run' | 'script_run_mutate';
+
+async function callScript(name: ScriptTool, args: Record<string, unknown>, context: ToolContext): Promise<CallToolResult> {
+  const tool = buildDefaultToolRegistry().get(name);
+  if (!tool) throw new Error(`Expected MCP registry to provide ${name}`);
+  return tool.handler(args, context);
+}
+
+async function run(code: string, extra: Record<string, unknown> = {}, tool: ScriptTool = 'script_run'): Promise<CallToolResult> {
+  return callScript(tool, { code, ...extra }, ctx);
 }
 
 /** mutation_diff's structured result: the model's pending edits. */
@@ -85,7 +92,7 @@ function logTexts(result: CallToolResult): string[] {
   return ((result.structuredContent?.logs ?? []) as Array<{ text: string }>).map((l) => l.text);
 }
 
-async function runError(code: string, extra: Record<string, unknown> = {}, tool = scriptRunTool) {
+async function runError(code: string, extra: Record<string, unknown> = {}, tool: ScriptTool = 'script_run') {
   const err = await run(code, extra, tool).then(
     () => { throw new Error('expected the script to fail'); },
     (e: unknown) => e as { code: string; message: string; details?: Record<string, unknown>; hint?: string },
@@ -157,7 +164,8 @@ describe('script_run', () => {
   it('truncates an oversized value instead of returning it', async () => {
     const result = await run(`'x'.repeat(300 * 1024)`);
     expect(result.structuredContent).toMatchObject({ value: null, value_truncated: true });
-    expect(String(result.structuredContent?.value_preview).length).toBeLessThanOrEqual(2_000);
+    const preview = result.structuredContent?.value_preview;
+    expect(preview).toMatch(/^[\s\S]{1,2000}$/);
   });
 
   it('returns the resolved value of a returned promise', async () => {
@@ -236,7 +244,7 @@ describe('script_run', () => {
 
   it('honours a cancel that lands while the sandbox is being created', async () => {
     const ctl = new AbortController();
-    const pending = scriptRunTool.handler({ code: 'for (;;) {}' }, { ...ctx, signal: ctl.signal });
+    const pending = callScript('script_run', { code: 'for (;;) {}' }, { ...ctx, signal: ctl.signal });
     ctl.abort();
     await expect(pending).rejects.toMatchObject({ code: 'CANCELLED', details: { mutations_queued: 0, logs: [] } });
   });
@@ -261,14 +269,10 @@ describe('script_run', () => {
   });
 
   it('bounds error messages a script controls, and sees through a patched hasInstance', async () => {
-    for (const code of [
-      "const p = Promise.resolve(1); Object.defineProperty(p, 'constructor', { get() { throw 'x'.repeat(500000); } }); p",
-      "throw new Error('a'.repeat(3999) + '\\u{1F600}')",
-    ]) {
-      const err = await runError(code);
-      expect(err.message.length).toBeLessThan(4_100);
-      expect(/[\uD800-\uDBFF]$/.test(err.message)).toBe(false);
-    }
+    const oversized = await runError("const p = Promise.resolve(1); Object.defineProperty(p, 'constructor', { get() { throw 'x'.repeat(500000); } }); p");
+    expect(oversized.message.length).toBeLessThan(4_100);
+    const boundary = await runError("throw new Error('a'.repeat(3999) + '\\u{1F600}')");
+    expect(boundary.message).toBe(`Script error: ${'a'.repeat(3999)} [truncated]`);
     expect((await run("Object.defineProperty(Promise, Symbol.hasInstance, { value() { return false; } }); (async () => 7)()")).structuredContent?.value).toBe(7);
     expect((await run("Object.defineProperty(Promise, Symbol.hasInstance, { value() { throw 'y'; } }); 1")).structuredContent?.value).toBe(1);
   });
@@ -450,13 +454,15 @@ describe('script_run', () => {
     const rateLimited = (r: PromiseSettledResult<unknown>) => r.status === 'rejected' && (r.reason as { code?: string }).code === 'RATE_LIMITED';
     const sameSession = await Promise.allSettled([run('1'), run('2')]);
     expect(sameSession.filter(rateLimited)).toHaveLength(1);
-    const settled = await Promise.allSettled(['a', 'b', 'c'].map((id) => scriptRunTool.handler({ code: '1' }, as(id))));
+    expect(sameSession.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const settled = await Promise.allSettled(['a', 'b', 'c'].map((id) => callScript('script_run', { code: '1' }, as(id))));
     expect(settled.filter(rateLimited)).toHaveLength(1);
+    expect(settled.filter((r) => r.status === 'fulfilled')).toHaveLength(2);
     // Two servers in one process (no session id) each get their own slot.
     const other = { ...ctx, registry: new InMemoryModelRegistry(), session: undefined };
     other.registry.add(ctx.registry.get('m')!);
-    const servers = await Promise.allSettled([run('1'), scriptRunTool.handler({ code: '1' }, other)]);
-    expect(servers.filter(rateLimited)).toHaveLength(0);
+    const servers = await Promise.allSettled([run('1'), callScript('script_run', { code: '1' }, other)]);
+    expect(servers.filter((r) => r.status === 'fulfilled')).toHaveLength(2);
     expect((await run('4')).structuredContent?.value).toBe(4);
   }, 30_000);
 
@@ -468,7 +474,7 @@ describe('script_run', () => {
   it('honours a cancelled request', async () => {
     const ctl = new AbortController();
     ctl.abort();
-    await expect(scriptRunTool.handler({ code: '1' }, { ...ctx, signal: ctl.signal })).rejects.toMatchObject({ code: 'CANCELLED' });
+    await expect(callScript('script_run', { code: '1' }, { ...ctx, signal: ctl.signal })).rejects.toMatchObject({ code: 'CANCELLED' });
   });
 });
 
@@ -479,7 +485,7 @@ describe('script_run_mutate', () => {
       bim.mutate.setProperty(wall, 'Pset_WallCommon', 'IsExternal', true);
       bim.mutate.setAttribute(wall, 'Name', 'Renamed');
       bim.query.byType('IfcWall').map((w) => w.Name).sort();
-    `, {}, scriptRunMutateTool);
+    `, {}, 'script_run_mutate');
     expect(result.structuredContent).toMatchObject({ mode: 'mutate', value: ['Renamed', 'Wall B'], mutations_queued: 2 });
     const diff = await pendingEdits();
     expect(diff.count).toBe(2);
@@ -494,7 +500,7 @@ describe('script_run_mutate on timeout', () => {
     const err = await runError(`
       bim.mutate.setAttribute(bim.query.byType('IfcDoor')[0], 'Name', 'Edited');
       for (;;) {}
-    `, { timeout_ms: 200 }, scriptRunMutateTool);
+    `, { timeout_ms: 200 }, 'script_run_mutate');
     expect(err.code).toBe('TIMEOUT');
     expect(err.details?.mutations_queued).toBe(1);
   });
@@ -505,7 +511,7 @@ describe('script_run_mutate on a script error', () => {
     const err = await runError(`
       bim.mutate.setAttribute(bim.query.byType('IfcDoor')[0], 'Description', 'Edited');
       throw new Error('stop');
-    `, {}, scriptRunMutateTool);
+    `, {}, 'script_run_mutate');
     expect(err).toMatchObject({ code: 'INVALID_INPUT', message: 'Script error: stop', details: { mutations_queued: 1 } });
   });
 });
@@ -516,7 +522,7 @@ describe('script_run_mutate after undo', () => {
     const result = await run(`
       bim.mutate.setAttribute(bim.query.byType('IfcDoor')[0], 'Tag', 'Now');
       bim.mutate.undo('m')
-    `, {}, scriptRunMutateTool);
+    `, {}, 'script_run_mutate');
     expect(result.structuredContent).toMatchObject({ mutations_queued: 1 });
     expect((await pendingEdits()).count).toBe(before + 1);
   });
@@ -531,7 +537,8 @@ describe('script_run_mutate when the model is unloaded mid-run', () => {
     unloading.registry.count = () => 1;
     unloading.registry.get = () => null;
     unloading.registry.resolve = () => model;
-    const result = await scriptRunMutateTool.handler(
+    const result = await callScript(
+      'script_run_mutate',
       { code: "bim.mutate.setAttribute(bim.query.byType('IfcWall')[1], 'Description', 'gone'); 1" }, unloading,
     );
     expect(result.structuredContent?.mutations_queued).toBeUndefined();
@@ -542,19 +549,22 @@ describe('script_run_mutate when the model is unloaded mid-run', () => {
 describe('script_run_mutate scope', () => {
   it('needs read, and grants bim.export only with the export scope', async () => {
     const mutateOnly = { ...ctx, scope: { scopes: ['mutate'] as ToolScope[] } };
-    await expect(scriptRunMutateTool.handler({ code: '1' }, mutateOnly)).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+    await expect(callScript('script_run_mutate', { code: '1' }, mutateOnly)).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
     const noExport = { ...ctx, scope: { scopes: ['read', 'mutate'] as ToolScope[] } };
-    const result = await scriptRunMutateTool.handler({ code: '[typeof bim.export, typeof bim.mutate]' }, noExport);
+    const result = await callScript('script_run_mutate', { code: '[typeof bim.export, typeof bim.mutate]' }, noExport);
     expect(result.structuredContent?.value).toEqual(['undefined', 'object']);
-    await expect(Promise.resolve(scriptRunMutateTool.handler({ code: 'bim.export.csv([], [])' }, noExport))).rejects.toMatchObject({ hint: expect.stringMatching(/export scope/) });
+    await expect(callScript('script_run_mutate', { code: 'bim.export.csv([], [])' }, noExport)).rejects.toMatchObject({ hint: expect.stringMatching(/export scope/) });
   });
 });
 
 describe('script_run under --read-only', () => {
-  it('hides and refuses script_run_mutate but keeps script_run', async () => {
+  it.each([
+    { scope: readOnlyScope(), code: 'PERMISSION_DENIED' },
+    { scope: fullScope(), code: 'READ_ONLY' },
+  ])('hides and refuses script_run_mutate under read-only config ($code)', async ({ scope, code }) => {
     const server = new MCPServer({
       // The pairing the CLI builds for --read-only (cli.ts).
-      version: '0.0.0-test', registry: ctx.registry, scope: readOnlyScope(),
+      version: '0.0.0-test', registry: ctx.registry, scope,
       config: { ...DEFAULT_CONFIG, readOnly: true }, tools: buildDefaultToolRegistry(),
       resources: new ResourceRegistry(), prompts: new PromptRegistry(),
     });
@@ -577,8 +587,7 @@ describe('script_run under --read-only', () => {
     expect(call.result.isError).toBe(true);
     expect(call.result.structuredContent).toBeUndefined();
     const texts = (call.result as unknown as { content: Array<{ text: string }> }).content.map((c) => c.text);
-    // readOnlyScope has no mutate, so the scope gate answers before the read-only one.
-    expect(JSON.parse(texts[texts.length - 1])).toMatchObject({ code: 'PERMISSION_DENIED' });
+    expect(JSON.parse(texts[texts.length - 1])).toMatchObject({ code });
     const failed = await transport.send({
       jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'script_run', arguments: { code: 'throw new Error("x")' } },
     }) as { result: { isError: boolean; structuredContent?: unknown; content: Array<{ text: string }> } };

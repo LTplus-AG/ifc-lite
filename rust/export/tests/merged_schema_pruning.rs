@@ -35,3 +35,20 @@ fn later_same_project_guids_survive_schema_pruning_11129() {
         assert!(stats.warnings.iter().any(|warning| warning.contains(&format!("#33 ({}) was omitted", case.omitted_type))), "{}: {:?}", case.name, stats.warnings);
     }
 }
+
+/// A relationship whose only member is omitted can still be kept by a later model's fold, so its GlobalId stays
+/// reserved and no later record ships it twice. Twin of the TypeScript test of the same case.
+#[test]
+fn a_folded_relationship_keeps_a_unique_global_id_11129() {
+    #[derive(serde::Deserialize)]
+    struct Fold { first: String, later: String }
+    let fold: Fold = serde_json::from_str(include_str!("fixtures/schema_merge_fold_guid.json")).unwrap();
+    let (first, later) = (step("IFC2X3", &fold.first), step("IFC2X3", &fold.later));
+    let options = MergedOptions { schema: Some("IFC4".into()), unit_reconciliation: UnitReconciliation::AssumeShared, ..Default::default() };
+    let (out, _) = export_merged_with_stats(&[first.as_bytes(), later.as_bytes()], &options);
+    let mut seen = std::collections::HashSet::new();
+    let duplicates: Vec<&str> = out.lines().filter_map(|line| line.split_once("('").and_then(|(_, rest)| rest.get(..22)))
+        .filter(|guid| guid.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'$') && !seen.insert(*guid)).collect();
+    assert!(duplicates.is_empty(), "{duplicates:?}\n{out}");
+    assert!(out.contains("=IFCRELDEFINESBYTYPE('5YvctVUKr0kugbFTf53O9L',$,'Pruned, then folded',"), "{out}");
+}

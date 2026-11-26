@@ -223,7 +223,12 @@ export class MergedUpgradePruning {
     noteUpgradeSeed(line, this.seeds, from, this.target);
   }
 
-  forgetOmittedGuids<T extends { finalId: number }>(lines: string[], start: number, guids: Map<string, T>): void {
+  /**
+   * Release the GlobalIds of unifiable records the final prune will omit. A relationship is never unified, and a
+   * later model's fold can still keep one omitted here, so its GlobalId stays reserved: at worst a later relationship
+   * with the same GlobalId is re-stamped.
+   */
+  forgetOmittedGuids<T extends { finalId: number; canUnify: boolean }>(lines: string[], start: number, guids: Map<string, T>): void {
     if (!this.seeds.size || (this.target !== 'IFC4' && this.target !== 'IFC4X3')) return;
     const previousCount = this.omitted.size;
     for (const id of this.seeds) this.omitted.add(id);
@@ -231,7 +236,7 @@ export class MergedUpgradePruning {
     // earlier model, so index this model with the omissions already known.
     this.omitted = cascadeOmissions(lines.slice(start).map(record), this.omitted, this.target);
     if (this.omitted.size > previousCount) {
-      for (const [guid, record] of guids) if (this.omitted.has(record.finalId)) guids.delete(guid);
+      for (const [guid, record] of guids) if (record.canUnify && this.omitted.has(record.finalId)) guids.delete(guid);
     }
   }
 

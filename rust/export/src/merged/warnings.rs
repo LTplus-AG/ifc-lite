@@ -32,7 +32,8 @@ impl MergedStats {
     }
 }
 
-/// A later model can no longer unify onto a record the schema pass will prune.
+/// A later model can no longer unify onto a record the schema pass will prune. A relationship is never unified, and a
+/// later model's fold can still keep one omitted here, so its GlobalId stays reserved.
 pub(super) fn forget_omitted_guids(
     body: &str, schema: &str, seeds: &HashSet<u32>, omitted: &mut HashSet<u32>,
     guids: &mut HashMap<String, GuidRecord>, emitted: &mut HashSet<String>,
@@ -47,7 +48,7 @@ pub(super) fn forget_omitted_guids(
     let Some(dropped) = crate::schema_unrooted_upgrade::omitted_in_body(body, omitted, schema) else { return };
     if dropped.len() > previous_count {
         guids.retain(|guid, record| {
-            if dropped.contains(&record.final_id) {
+            if record.can_unify && dropped.contains(&record.final_id) {
                 emitted.remove(guid);
                 return false;
             }

@@ -4,7 +4,8 @@
 
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { globalInstancingApplies, GLOBAL_INSTANCING_MIN_BYTES, setGlobalInstancingRamp } from '@ifc-lite/geometry';
+import { decideGlobalInstancing, globalInstancingApplies, GLOBAL_INSTANCING_MIN_BYTES, setGlobalInstancingRamp } from '@ifc-lite/geometry';
+import { activePerfFlags, recordAppliedPerfFlag } from '../lib/perf/flags-applied.js';
 import { configureGpuInstancing, configureKeyedInstancing, installGlobalInstancingRamp, isGpuInstancingEnabled } from './gpuInstancingConfig.js';
 
 const g = globalThis as Record<string, unknown>;
@@ -17,6 +18,7 @@ afterEach(() => {
   delete g.__IFC_LITE_GPU_INSTANCING;
   delete g.__IFC_LITE_GLOBAL_INSTANCING;
   setGlobalInstancingRamp(undefined);
+  recordAppliedPerfFlag('globalInstancing', undefined);
   Reflect.deleteProperty(globalThis, 'location');
 });
 
@@ -84,6 +86,17 @@ describe('global instance plan ramp', () => {
     installGlobalInstancingRamp(posthog(false));
     g.__IFC_LITE_GLOBAL_INSTANCING = 1;
     assert.equal(globalInstancingApplies(large), true);
+  });
+
+  it('reports what the pool load decided as the telemetry arm, not the ramp value', () => {
+    installGlobalInstancingRamp(posthog(true));
+    assert.equal(activePerfFlags().globalInstancing, undefined, 'before a pool decision the load runs the default');
+    decideGlobalInstancing(large - 1);
+    assert.equal(activePerfFlags().globalInstancing, undefined, 'a small file keeps the per-batch decision');
+    decideGlobalInstancing(large);
+    assert.equal(activePerfFlags().globalInstancing, 'true');
+    installGlobalInstancingRamp(posthog(true));
+    assert.equal(activePerfFlags().globalInstancing, undefined, 'each load starts from the default arm');
   });
 
   it('never kills the keyed join from the ramp: a user outside it still joins cached plan records', () => {

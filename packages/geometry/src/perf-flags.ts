@@ -65,14 +65,20 @@ export function readShardScanFlag(): boolean {
   return true;
 }
 
-let globalInstancingRamp: (() => unknown) | undefined;
+/** A host's staged rollout for the plan: `read` answers when nothing explicit is set; `decided` hears each pool load's decision. */
+export interface GlobalInstancingRamp {
+  read: () => unknown;
+  decided?: (applies: boolean) => void;
+}
+
+let globalInstancingRamp: GlobalInstancingRamp | undefined;
 
 /**
- * The host's staged rollout for the plan (the viewer's PostHog ramp), asked only when neither the global nor
- * the URL param is set, so an explicit `0` or `1` always wins. `undefined` removes it.
+ * Install the host's rollout for the plan (the viewer's PostHog ramp). Its `read` is asked only when neither the
+ * global nor the URL param is set, so an explicit `0` or `1` always wins. `undefined` removes it.
  */
-export function setGlobalInstancingRamp(read: (() => unknown) | undefined): void {
-  globalInstancingRamp = read;
+export function setGlobalInstancingRamp(ramp: GlobalInstancingRamp | undefined): void {
+  globalInstancingRamp = ramp;
 }
 
 /**
@@ -83,8 +89,11 @@ export function setGlobalInstancingRamp(read: (() => unknown) | undefined): void
  */
 export function readGlobalInstancingFlag(): boolean {
   let v = readPerfFlagRaw(GEOMETRY_PERF_FLAG_BINDINGS.globalInstancing);
-  if (v === undefined) {
-    try { v = globalInstancingRamp?.(); } catch { v = undefined; } // a failing ramp read keeps the default
+  if (v === undefined && globalInstancingRamp) {
+    try { v = globalInstancingRamp.read(); } catch (err) {
+      console.warn('[geometry] global instancing ramp read failed; the plan stays off', err);
+      v = undefined;
+    }
   }
   return v === 1 || v === '1' || v === true || v === 'true';
 }
@@ -108,6 +117,13 @@ export function inSmallFileTier(byteLength: number): boolean {
  *  its decompressed IFC): the flag is on and the source is past the small tier. */
 export function globalInstancingApplies(byteLength: number): boolean {
   return !inSmallFileTier(byteLength) && readGlobalInstancingFlag();
+}
+
+/** A pool load's plan decision, made once: {@link globalInstancingApplies}, reported to the host's ramp. */
+export function decideGlobalInstancing(byteLength: number): boolean {
+  const applies = globalInstancingApplies(byteLength);
+  globalInstancingRamp?.decided?.(applies);
+  return applies;
 }
 
 /**

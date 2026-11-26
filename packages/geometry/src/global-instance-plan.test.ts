@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   forwardKeyPlan,
   globalKeyPlanningField,
@@ -12,7 +12,7 @@ import {
   type GeometryWorkerAddKeyPlanMessage,
   type GlobalPlanApi,
 } from './global-instance-plan.js';
-import { GLOBAL_INSTANCING_MIN_BYTES, globalInstancingApplies, setGlobalInstancingRamp } from './perf-flags.js';
+import { decideGlobalInstancing, GLOBAL_INSTANCING_MIN_BYTES, globalInstancingApplies, setGlobalInstancingRamp } from './perf-flags.js';
 
 const g = globalThis as Record<string, unknown>;
 afterEach(() => {
@@ -41,7 +41,7 @@ describe('global instance plan messages', () => {
     expect(globalInstancingApplies(small), 'a small file keeps the per-batch decision').toBe(false);
     delete g.__IFC_LITE_GLOBAL_INSTANCING;
     let ramp: unknown = true;
-    setGlobalInstancingRamp(() => ramp);
+    setGlobalInstancingRamp({ read: () => ramp });
     expect(globalInstancingApplies(large), 'the ramp decides when nothing explicit is set').toBe(true);
     ramp = 'control';
     expect(globalInstancingApplies(large), 'an unrecognised variant is off').toBe(false);
@@ -49,8 +49,19 @@ describe('global instance plan messages', () => {
     g.__IFC_LITE_GLOBAL_INSTANCING = 0;
     expect(globalInstancingApplies(large), 'an explicit 0 beats the ramp').toBe(false);
     delete g.__IFC_LITE_GLOBAL_INSTANCING;
-    setGlobalInstancingRamp(() => { throw new Error('analytics gone'); });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    setGlobalInstancingRamp({ read: () => { throw new Error('analytics gone'); } });
     expect(globalInstancingApplies(large), 'a failing ramp read keeps the default').toBe(false);
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
+  });
+
+  it('report each pool load\'s decision to the ramp', () => {
+    const decided: boolean[] = [];
+    setGlobalInstancingRamp({ read: () => true, decided: (on) => decided.push(on) });
+    expect(decideGlobalInstancing(GLOBAL_INSTANCING_MIN_BYTES)).toBe(true);
+    expect(decideGlobalInstancing(GLOBAL_INSTANCING_MIN_BYTES - 1)).toBe(false);
+    expect(decided).toEqual([true, false]);
   });
 
   it('forward only planned jobs, and nothing for a chunk without plan indices', () => {

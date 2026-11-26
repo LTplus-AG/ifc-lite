@@ -48,9 +48,15 @@ export function configureKeyedInstancing(scene: Pick<SceneContents, 'keyedInstan
 
 /**
  * Let the geometry host ask the `perf-global-instancing` PostHog ramp whether the global instance plan applies,
- * when no global or URL param says so. The host reads it once per load (`globalInstancingApplies`). Idempotent.
+ * when no global or URL param says so, and record what each pool load decided as the telemetry arm. Call before
+ * each exact load: the arm starts off, so a small file, a non-pool load or a cache reopen reports the default
+ * rather than the user's ramp value.
  */
 export function installGlobalInstancingRamp(readFeatureFlag?: (key: string) => unknown): void {
   const flag = getPerfFlagDefinition('globalInstancing');
-  setGlobalInstancingRamp(() => resolvePerfFlag(flag, readFeatureFlag));
+  recordAppliedPerfFlag('globalInstancing', false);
+  setGlobalInstancingRamp({
+    read: () => resolvePerfFlag(flag, readFeatureFlag),
+    decided: (applies) => recordAppliedPerfFlag('globalInstancing', applies),
+  });
 }

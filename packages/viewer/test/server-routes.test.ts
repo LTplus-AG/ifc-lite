@@ -434,6 +434,20 @@ describe('viewer server — loopback only', () => {
     });
   }
 
+  // An <iframe src> or link from another site sends no Origin, only Sec-Fetch-Site.
+  it('refuses a cross-site navigation that carries no Origin', TEST_TIMEOUT, async () => {
+    const res = await req(port, '/model.ifc', { headers: { 'sec-fetch-site': 'cross-site' } });
+    assert.equal(res.status, 403);
+    assert.equal(res.body.toString(), 'Forbidden: cross-site request');
+  });
+
+  it('serves the address bar and the page itself', TEST_TIMEOUT, async () => {
+    for (const site of ['none', 'same-origin']) {
+      const res = await req(port, '/api/status', { headers: { 'sec-fetch-site': site } });
+      assert.equal(res.status, 200, site);
+    }
+  });
+
   it('accepts a command from a local page and from a client that sends no Origin', TEST_TIMEOUT, async () => {
     for (const headers of [{ origin: `http://localhost:${port}` }, { origin: `http://LocalHost:${port}` }, {}]) {
       const res = await req(port, '/api/command', { method: 'POST', headers, body: command });

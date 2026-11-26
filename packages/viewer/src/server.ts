@@ -164,8 +164,8 @@ export async function startViewerServer(opts: ViewerServerOptions): Promise<View
 
   const server = createServer(async (req, res) => {
     const verdict = checkRequest(req);
-    if (verdict.refuse) {
-      res.writeHead(403, { 'Content-Type': 'text/plain' }).end('Forbidden');
+    if (verdict.refuse !== false) {
+      res.writeHead(403, { 'Content-Type': 'text/plain' }).end(`Forbidden: ${verdict.refuse}`);
       return;
     }
 

@@ -227,6 +227,9 @@ fn emit<W: std::io::Write>(
     let targets_ifc2x3 = crate::schema_convert::targets_ifc2x3(&schema);
 
     let (muts_by_id, mut attribute_edits_refused) = prepared_attribute_edits(opts);
+    let boundaries_left_out = if converting { crate::schema_space_boundary::plain_left_out(opts, content, &index, &included, &muts_by_id, &source_schema, &schema) } else { HashSet::new() };
+    checks.boundaries.restrict(&boundaries_left_out);
+    let mut withheld_warnings: Vec<String> = Vec::new();
 
     // Copy-on-write, resolved before the emit loop so the copies and the
     // repointed referrers both go through it. Its own module: the pass has four
@@ -265,6 +268,7 @@ fn emit<W: std::io::Write>(
                     None => raw.into_owned(),
                 };
                 let Some(edited) = flatten.line(&source_schema, edited) else { continue };
+                let Some(edited) = crate::step_log::scrub_boundaries(edited, *id, &source_schema, &boundaries_left_out, Some(&mut withheld_warnings)) else { continue };
                 if converting {
                     let converted = crate::schema_convert::convert_step_line(
                         &edited,
@@ -297,6 +301,7 @@ fn emit<W: std::io::Write>(
             // why they are resolved into their own map.
             let edited = crate::step_cow::apply_copy_edits(&raw, muts_by_id.get(source_id), edits, &mut attribute_edits_refused);
             let Some(renumbered) = flatten.line(&source_schema, renumber(&edited, *copy_id)) else { continue };
+            let Some(renumbered) = crate::step_log::scrub_boundaries(renumbered, *copy_id, &source_schema, &boundaries_left_out, None) else { continue };
             if converting {
                 let converted = crate::schema_convert::convert_step_line(
                     &renumbered,
@@ -372,7 +377,7 @@ fn emit<W: std::io::Write>(
         attribute_values_dropped: checks.attribute_values_dropped,
         property_mutations_refused,
         duplicate_records_dropped: index.duplicates.len(),
-    }, checks.warnings_for_sources(std::iter::once(content))))
+    }, { let mut warnings = checks.warnings_for_sources(std::iter::once(content)); warnings.extend(withheld_warnings); warnings }))
 }
 
 #[cfg(test)]

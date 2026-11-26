@@ -24,6 +24,7 @@ import { Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
 import type { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import type { EnumReconciliation } from './schema-converter-enums.js';
 import { MaterialReferents } from './schema-converter-material-referent.js';
+import { SpaceBoundaryElements } from './schema-converter-space-boundary.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
 import { productProxy } from './schema-converter-product-proxy.js';
 import { MEP_IFC2X3_TYPES } from './schema-converter-mep.js';
@@ -274,8 +275,9 @@ function requireTopLevelAttributes(attrsRaw: string, maxReferenceId?: number): s
  *   unmapped type would get, so it cannot ship a now-dangling `#N`.
  * @param maxReferenceId - Bound for remapped STEP ids; source conversion uses the parser's u32 bound.
  * @returns Converted line (no valid target representation: an IFCPROXY placeholder),
- *   or `null` for a record the export OMITS: one `resolveUnrepresentedEntity` can omit, or an
- *   IfcMaterialProperties naming no single IfcMaterial (#10763); a `null` is never written.
+ *   or `null` for a record the export OMITS: one `resolveUnrepresentedEntity` can omit, an
+ *   IfcMaterialProperties naming no single IfcMaterial (#10763), or an IFC2X3 IfcRelSpaceBoundary with no
+ *   RelatedBuildingElement on an upgrade; a `null` is never written.
  */
 export function convertStepLine(
   line: string,
@@ -289,6 +291,7 @@ export function convertStepLine(
   maxReferenceId?: number,
 ): string | null {
   if (fromSchema === toSchema) return line;
+  if ((enums?.boundaries ?? new SpaceBoundaryElements()).apply(line, fromSchema, toSchema) === null) return null; // an IfcRelSpaceBoundary IFC4 cannot take without its element
   const kept = (enums?.materials ?? new MaterialReferents()).apply(line, fromSchema, toSchema); // #10763: null when Material names no one IfcMaterial
   let converted = kept === null ? null : retypeInPlace(convertRecord(kept, fromSchema, toSchema, random, withheldRefIds, fromSchema === 'IFC2X3' && toSchema === 'IFC4' ? enums?.structural.axes.axis(kept) : undefined, enums?.structural, maxReferenceId), fromSchema, toSchema);
   converted = carryUserDefinedLabel(line, converted, fromSchema, toSchema, maxReferenceId); // #10824

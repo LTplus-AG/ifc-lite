@@ -104,7 +104,9 @@ pub(super) fn finish_output(
     stats.warnings.extend(parents.apply_folds(out)); // #5774 folds, after every model is written
     // One product per placement in IFC2X3 (#9209); the header holds no record to change.
     stats.written = stats.written.saturating_add_signed(crate::schema_ifc2x3_placements::place_text_for_schema(schema, out));
-    if let Some((pruned, _, losses)) = crate::schema_unrooted_upgrade::prune(out, upgrade_seeds, schema) {
+    // A left-out IfcRelSpaceBoundary (#11457) is scrubbed from its referrers by the same cardinality-aware pass.
+    let seeds: std::collections::HashSet<u32> = upgrade_seeds.iter().copied().chain(checks.boundaries.ids()).collect();
+    if let Some((pruned, _, losses)) = crate::schema_unrooted_upgrade::prune(out, &seeds, schema) {
         *out = pruned;
         stats.written -= losses.len();
         stats.warnings.extend(losses);

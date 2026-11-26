@@ -165,6 +165,7 @@ fn checks_for(content: &[u8], source_label: &str, target: &str, opts: &StepOptio
     let written = pass.mutated_lines.iter().filter_map(|(id, (line, _))| Some((*id, line.as_deref()?))).chain(pass.created_lines.iter().map(|(id, l)| (*id, l.as_str())));
     let retained = |id| pass.will_be_emitted(id) && !matches!(pass.mutated_lines.get(&id), Some((None, _)));
     checks.materials.with_effective(crate::schema_convert::canon(source_label), &retained, written);
+    checks.boundaries.restrict(&pass.left_out); // #11457: only the boundaries judged up front
     checks
 }
 
@@ -245,6 +246,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
         super::georef::apply(&mut pass, georef, &declared_schema(content, converting, &target)).map_err(unwritable)?;
     }
     retain_shared_atoms(&mut pass);
+    if converting { pass.left_out = super::boundaries_left_out(&pass, &src, &collected, &source_label, &target); }
 
     // The source lines the log rewrites, decided before the header because
     // the header counts them: every record with an attribute, retype or
@@ -271,7 +273,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
         let upper = pass.type_of(id).unwrap_or_default();
         let filtered = {
             let excluded = |r: u32| pass.is_omitted(r);
-            filter_source_line(&text, id, &upper, pass.schema, &excluded, !pass.overlay.tombstones.is_empty())
+            filter_source_line(&text, id, &upper, pass.schema, &excluded, !pass.overlay.tombstones.is_empty() || !pass.left_out.is_empty())
         };
         let text = match filtered {
             Filtered::Keep => Some(text),
@@ -335,7 +337,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
                 let upper = pass.type_of(id).unwrap_or_default();
                 let filtered = {
                     let excluded = |r: u32| pass.is_omitted(r);
-                    filter_source_line(&raw, id, &upper, pass.schema, &excluded, !pass.overlay.tombstones.is_empty())
+                    filter_source_line(&raw, id, &upper, pass.schema, &excluded, !pass.overlay.tombstones.is_empty() || !pass.left_out.is_empty())
                 };
                 owned = match filtered {
                     Filtered::Keep => raw,

@@ -54,6 +54,7 @@ export type {
 import type { StepExportOptions, StepExportResult, ExportPass } from './step-export-types.js';
 import { buildExportPass } from './step-pass-builder.js';
 import { evaluateOmissionPredicates } from './step-omission-predicates.js';
+import { noteBoundariesLeftOut } from './schema-converter-space-boundary.js';
 import { isGeometryEntity } from './step-geometry-types.js';
 import {
   buildSourceIterationContext,
@@ -197,6 +198,7 @@ export class StepExporter {
     collectModifications(pass, options, applyMutations, this.collectionContext());
     // Edited source style assignments reach the D57 flatten before any styled item is written (#7801).
     pass.styleFlatten?.noteEdited(this.dataStore, (id, text, type) => { const t = applySourceLineMutations(this.mutationView, id, text, type, pass.modifiedAttributes.get(id), pass.sourceSchema, pass.overlayActive).text; return t === text ? null : t; });
+    noteBoundariesLeftOut(pass, this.dataStore); // #11457, before any record is converted
 
     // Which ids this export may still NAME, now that the collection phase has
     // decided which ids it is WRITING (#2475). Must stay here, between those

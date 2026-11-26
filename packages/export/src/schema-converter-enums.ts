@@ -25,6 +25,7 @@ import { DocumentLinks } from './schema-converter-document-links.js';
 import type { SourceStore } from './schema-converter-structural-source.js';
 import { ValueForms } from './schema-converter-value-forms.js';
 import { MaterialReferents } from './schema-converter-material-referent.js';
+import { SpaceBoundaryElements } from './schema-converter-space-boundary.js';
 import { getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@ifc-lite/parser';
 import { escapeStepString } from './step-serialization.js';
 import { readStepSlots, splitTopLevelStepArguments } from './step-argument-parser.js';
@@ -82,6 +83,8 @@ export class EnumReconciliation {
   readonly forms: ValueForms;
   /** The IfcMaterial a downgraded IfcMaterialProperties names (#10763). */
   readonly materials: MaterialReferents;
+  /** The IfcRelSpaceBoundary records an IFC2X3 upgrade leaves out for want of their element. */
+  readonly boundaries = new SpaceBoundaryElements();
 
   constructor(deferConversions = false, timeUnitSources?: readonly SourceStore[]) {
     this.forms = new ValueForms(deferConversions, timeUnitSources);
@@ -155,7 +158,7 @@ export class EnumReconciliation {
       const total = [...this.unlabelled.values()].reduce((a, b) => a + b, 0);
       out.push(`${total} record(s) say .USERDEFINED. without the label their rule needs; none is invented: ${[...this.unlabelled.keys()].join(', ')} (#10780).`);
     }
-    return [...out, ...this.documents.warnings(), ...this.forms.warnings(), ...this.materials.warnings(), ...this.structural.warnings(), ...this.typedProperties.warnings()];
+    return [...out, ...this.documents.warnings(), ...this.forms.warnings(), ...this.materials.warnings(), ...this.boundaries.warnings(), ...this.structural.warnings(), ...this.typedProperties.warnings()];
   }
 
   private record(loss: Loss, where: string): void {

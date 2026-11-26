@@ -28,6 +28,9 @@ pub(crate) struct Pass<'s, 'a> {
     /// (entity, attribute) pairs whose edit is TEXT by the writer's own decision, out of band of the value.
     pub(crate) text_edits: HashSet<(u32, String)>,
     pub(crate) skip: HashSet<u32>,
+    /// Source records the schema upgrade leaves out (an IFC2X3 IfcRelSpaceBoundary naming no element, #11457):
+    /// omitted like a deleted record, so a relationship naming one is scrubbed of it.
+    pub(crate) left_out: HashSet<u32>,
     /// Shared relation -> elements copied on write off its `RelatedObjects`
     /// (`pass.detachedRelatedObjects`, #5794).
     pub(crate) detached: HashMap<u32, HashSet<u32>>,
@@ -68,6 +71,7 @@ impl<'s, 'a> Pass<'s, 'a> {
             attribute_slot: HashMap::new(),
             text_edits: HashSet::new(),
             skip: HashSet::new(),
+            left_out: HashSet::new(),
             detached: HashMap::new(),
             rewritten: HashSet::new(),
             rewritten_lines: Vec::new(),
@@ -143,7 +147,7 @@ impl<'s, 'a> Pass<'s, 'a> {
     /// `isOmittedFromOutput`: a record the effective index knows (or deleted)
     /// that this export does not write.
     pub(crate) fn is_omitted(&self, id: u32) -> bool {
-        (self.has(id) || self.is_deleted(id)) && !self.will_be_emitted(id)
+        (self.has(id) || self.is_deleted(id)) && (!self.will_be_emitted(id) || self.left_out.contains(&id))
     }
 
     /// `effective.byType.get(type)`: source ids of a tracked type without the

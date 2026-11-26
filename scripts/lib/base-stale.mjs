@@ -134,17 +134,20 @@ export function evaluatePerf({ relevant, editsCeilings = false, prMeasured, test
         rows.push({ ...base, verdict: UNKNOWN, reason: `${id}: main has a ceiling the PR's run did not measure` });
         continue;
       }
-      if (pr > allowed) {
-        rows.push({
-          ...base,
-          verdict: STALE,
-          reason: `${id}: PR measured ${pr} on ${short(testedBase)}, above current main's allowance ${allowed} (ceiling ${entry.ceiling})`,
-        });
-        continue;
-      }
       const b = atBase?.get(id);
       const l = latest?.get(id);
       if (b === undefined || l === undefined) {
+        // Without main's drift the PR's own value is all there is. Over the
+        // current allowance is still no verdict: a lowered ceiling usually
+        // follows main shrinking, which would carry the PR down with it.
+        if (pr > allowed) {
+          rows.push({
+            ...base,
+            verdict: UNKNOWN,
+            reason: `${id}: PR measured ${pr} on ${short(testedBase)}, above current main's allowance ${allowed} (ceiling ${entry.ceiling}); main's drift is unmeasured`,
+          });
+          continue;
+        }
         const what = !mainAtBase ? `main at the PR's base ${short(testedBase)}` : !mainLatest ? 'recent main' : `this metric on main`;
         rows.push({ ...base, verdict: UNKNOWN, reason: `${id}: no measurement of ${what}, main's drift is unmeasured` });
         continue;

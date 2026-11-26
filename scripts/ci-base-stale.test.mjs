@@ -400,3 +400,35 @@ ct('io: the compare cap counts entries, not the two paths a rename expands to', 
   assert.equal(compareMoved({ files: [], total_commits: 250 }).capped, true);
   assert.equal(compareMoved({ total_commits: 1 }).capped, true, 'no file list is no answer');
 });
+
+ct('run: two PRs sharing a head keep their own file lists in the cache', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'base-stale-run-'));
+  const cachePath = join(dir, 'cache.json');
+  const lists = { 5: ['docs/a.md'], 6: ['rust/core/src/a.rs'] };
+  const makeIo = ({ cache }) => {
+    const store = { mainMeasurements: {}, prMeasurements: {}, prFiles: {}, posted: {}, ...(cache ?? {}) };
+    return {
+      ...fakeIo(),
+      store,
+      stats: { calls: 0, downloads: 0, cacheHits: 0 },
+      setBudget: () => {},
+      inRunOnHeads: () => new Set(),
+      coreRemaining: () => 5000,
+      mainTip: () => 'tip00000001',
+      ceilingsAt: realCeilings,
+      queueCandidates: () => [{ ...STALE_PR, number: 5, headRefOid: 'same' }, { ...STALE_PR, number: 6, headRefOid: 'same' }],
+      prFiles: (n, head) => (store.prFiles[`${head}#${n}`] ??= lists[n]),
+      existingStatus: () => null,
+      postStatus: () => {},
+    };
+  };
+  const log = console.log;
+  console.log = () => {};
+  try {
+    run({ mode: 'sweep', cache: cachePath, dryRun: true }, { GITHUB_REPOSITORY: 'o/r' }, makeIo);
+  } finally {
+    console.log = log;
+  }
+  const saved = loadCache(cachePath).prFiles;
+  assert.deepEqual(saved, { 'same#5': ['docs/a.md'], 'same#6': ['rust/core/src/a.rs'] }, 'both survive the prune, neither overwrites the other');
+});

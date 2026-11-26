@@ -229,9 +229,11 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
    * its merge base does not change. Counted as one call per page.
    */
   function prFiles(number, headSha = null) {
-    if (headSha && store.prFiles[headSha]) {
+    // Keyed by PR and head: two PRs can share a head against different bases.
+    const key = headSha ? `${headSha}#${number}` : null;
+    if (key && store.prFiles[key]) {
       stats.cacheHits += 1;
-      return store.prFiles[headSha];
+      return store.prFiles[key];
     }
     const files = [];
     for (let page = 1; ; page += 1) {
@@ -239,7 +241,7 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
       files.push(...changedPaths(entries));
       if (entries.length < 100 || page >= 30) break;
     }
-    if (headSha) store.prFiles[headSha] = files;
+    if (key) store.prFiles[key] = files;
     return files;
   }
 

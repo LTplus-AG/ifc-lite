@@ -75,15 +75,23 @@ bt('main moved past: 45039295698 replayed, PR green on its base, stale on the ne
 });
 
 bt('main shrinking since the base helps the projection', () => {
-  assert.equal(perf(ALLOWED + 50, { atBase: 13000000, latest: 12999900 }).verdict, STALE, 'a PR already above the allowance is stale whatever main did');
+  // The queue measures the PR plus main's drift: 50 over, carried down 100, passes there.
+  assert.equal(perf(ALLOWED + 50, { atBase: 13000000, latest: 12999900 }).verdict, FRESH, 'the projection, not the raw PR value, decides');
+  assert.equal(perf(ALLOWED + 150, { atBase: 13000000, latest: 12999900 }).verdict, STALE);
   assert.equal(perf(ALLOWED - 10, { atBase: 13000000, latest: 12999900 }).verdict, FRESH);
 });
 
-bt('a ceiling lowered on main since the PR ran is stale even when main drift is unmeasured', () => {
+bt('a ceiling lowered since the PR ran: the projection decides, and without main drift it is unknown', () => {
   const lowered = new Map([['bundle', ceilingFile([[EAGER, 13400000]])]]);
+  // Main shrank by more than the PR is over: the merged tree passes.
+  assert.equal(perf(13475666, { atBase: 13000000, latest: 12900000, ceilings: lowered }).verdict, FRESH);
+  // Main did not shrink: the PR alone is over the new allowance.
+  const over = perf(13475666, { atBase: 13000000, latest: 13000000, ceilings: lowered });
+  assert.equal(over.verdict, STALE);
+  // No drift measured: over the allowance on its own is not proof.
   const r = perf(13475666, { atBase: null, latest: null, ceilings: lowered });
-  assert.equal(r.verdict, STALE);
-  assert.match(r.reasons[0], /above current main's allowance/);
+  assert.equal(r.verdict, UNKNOWN);
+  assert.ok(r.reasons[0].includes("above current main's allowance"), r.reasons[0]);
 });
 
 bt('no relevant change is not-relevant, and only from the PR file list', () => {

@@ -214,7 +214,8 @@ export function loadCache(path) {
  */
 function saveCache(path, store, liveHeads, lastMode) {
   if (!path) return;
-  const live = (map) => Object.fromEntries(Object.entries(map ?? {}).filter(([head]) => !liveHeads || liveHeads.has(head)));
+  // Keys are a head SHA, or `<head>#<pr>` for the per-PR file lists.
+  const live = (map) => Object.fromEntries(Object.entries(map ?? {}).filter(([key]) => !liveHeads || liveHeads.has(key.split('#')[0])));
   // Main entries are immutable per tree; keep the newest 400 so the file stays small.
   const main = Object.entries(store.mainMeasurements).slice(-400);
   writeFileSync(path, JSON.stringify({

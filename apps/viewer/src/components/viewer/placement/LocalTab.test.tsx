@@ -482,7 +482,7 @@ describe('model repositioning user interactions (#4226)', () => {
       await act(async () => { renderer.setModelTranslation(0, [1, 0, 0]); });
       assert.ok(renderer.getPickGeometryRevision() > revision);
       act(() => { canvas.dispatchEvent(new MouseEvent('click', { button: 0 })); });
-      assert.match(ui.textContent ?? '', /Check the move in preview/);
+      assert.match(ui.textContent ?? '', /Preview the move, then Apply\./);
     } finally {
       setGlobalRendererRef(null);
     }

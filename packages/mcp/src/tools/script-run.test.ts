@@ -266,6 +266,14 @@ describe('script_run', () => {
     expect(err.message.endsWith('[truncated]')).toBe(true);
   });
 
+  it('refuses a deeply nested value instead of overflowing the host stack', async () => {
+    const deep = 'var o = {}, c = o; for (var i = 0; i < 5000; i++) { c.a = {}; c = c.a; }';
+    expect((await runError(`${deep} o`)).message).toMatch(/nested deeper than 1000 levels/);
+    expect((await runError(`${deep} (async () => o)()`)).message).toMatch(/nested deeper than 1000 levels/);
+    expect((await run('var o = {}, c = o; for (var i = 0; i < 500; i++) { c.a = {}; c = c.a; } o')).structuredContent?.value_truncated).toBe(false);
+    expect((await run('7 + 7')).structuredContent?.value).toBe(14);
+  });
+
   it('keeps recursion through QuickJS natives inside the realm', async () => {
     for (const code of [
       'const o = { toString() { return String(o); } }; String(o)',

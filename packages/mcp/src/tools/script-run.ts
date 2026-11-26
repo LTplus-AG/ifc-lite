@@ -51,8 +51,11 @@ const MAX_MEMORY_MB = 128;
  * overflows Node's own stack first: the host sees a RangeError and teardown
  * aborts QuickJS (#1922), retiring the shared WASM module. 256 KB still let
  * recursion that re-enters QuickJS's C code (String(o) inside toString, a
- * self-reading getter) overflow the host. At 128 KB every shape probed raises
- * QuickJS's own catchable 'stack overflow' and disposes cleanly.
+ * self-reading getter) overflow the host. At 128 KB every recursion shape
+ * probed raises QuickJS's own catchable 'stack overflow' and disposes cleanly.
+ * JSON serialisation recurses without that check at any ceiling: the wrapper
+ * depth-checks the returned value (script-output.ts), but a deeply nested
+ * console.log argument is dumped by the sandbox bridge and can still overflow.
  */
 const MAX_STACK_BYTES = 128 * 1024;
 
@@ -129,7 +132,7 @@ const OUT_OF_MEMORY = /out of memory/i;
 
 function hintFor(mode: Mode, code: string, message: string): string | undefined {
   if (OUT_OF_MEMORY.test(message)) return `Raise memory_mb (max ${MAX_MEMORY_MB}) or keep less in memory.`;
-  if (/stack overflow|call stack/i.test(message)) return 'Stack overflow: the script recursed too deep (make it iterative or shallower), or a bim call walked a very deeply nested model.';
+  if (/stack overflow|call stack/i.test(message)) return 'Stack overflow: the script recursed too deep (make it iterative or shallower), a logged value is nested too deeply, or a bim call walked a very deeply nested model.';
   // Only when the failure looks like touching a namespace that is absent.
   if (mode === 'read' && MUTATE_ONLY_USE.test(code) && /of undefined|undefined is not/.test(message)) {
     return `script_run has no ${MUTATE_ONLY_LIST}; use script_run_mutate for them.`;

@@ -17,6 +17,10 @@ const SANDBOX_LOG_TRUNCATED = '[log output truncated: limit reached]';
 export const MAX_VALUE_CHARS = 256 * 1024;
 const VALUE_PREVIEW_CHARS = 2_000;
 const MAX_MESSAGE_CHARS = 4_000;
+/** Deepest returned value the wrapper will serialise; ~3000 levels overflow the host stack. */
+const MAX_VALUE_DEPTH = 1_000;
+/** Properties the depth walk visits before calling the value too large; any value past it is over MAX_VALUE_CHARS anyway. */
+const MAX_VALUE_NODES = MAX_VALUE_CHARS;
 const MAX_LOG_LINES = 200;
 const MAX_LOG_CHARS = 64 * 1024;
 
@@ -86,7 +90,7 @@ export function wrapScript(code: string): string {
   // tagged primitive string, which no prototype or toJSON patch can reshape
   // on its way through vm.dump, and an oversized value or message is cut down
   // inside the sandbox so only a bounded string crosses to the host.
-  return `(function (run, P, isInstance, then, apply, slice, Str, stringify, max, preview, maxMessage) {
+  return `(function (run, P, isInstance, then, apply, slice, Str, stringify, keys, max, preview, maxMessage, maxDepth, maxNodes) {
   function msg(e) {
     // message is read once and coerced inside the try, so a getter or
     // toString cannot throw past the wrapper and pose as a sandbox error.
@@ -108,8 +112,32 @@ export function wrapScript(code: string): string {
     if (m === '') return 'an empty ' + (typeof e) + ' was thrown';
     return apply(slice, m, [0, maxMessage + 1]);
   }
+  // JSON.stringify recurses in QuickJS's C code without its stack check, so a
+  // value nested a few thousand levels deep overflows the host stack and
+  // aborts the shared module (#1922). Walk it first, iteratively, with a
+  // hand-indexed stack (Array.prototype.push is script-patchable).
+  // 0: fine, 1: nested too deep, 2: too many nodes to check (and to return).
+  function shape(v) {
+    if (v === null || typeof v !== 'object') return 0;
+    var objs = [v], depths = [1], n = 1, seen = 0;
+    while (n > 0) {
+      n--;
+      var o = objs[n], d = depths[n];
+      if (d > maxDepth) return 1;
+      var ks = keys(o);
+      for (var i = 0; i < ks.length; i++) {
+        if (++seen > maxNodes) return 2;
+        var x = o[ks[i]];
+        if (x !== null && typeof x === 'object') { objs[n] = x; depths[n] = d + 1; n++; }
+      }
+    }
+    return 0;
+  }
   function env(v) {
-    var j;
+    var j, s;
+    try { s = shape(v); } catch (e) { return 'U' + msg(e); }
+    if (s === 1) return 'Uthe value is nested deeper than ' + maxDepth + ' levels (or is cyclic)';
+    if (s === 2) return 'P[value too large to preview: over ' + maxNodes + ' nested properties]';
     try { j = stringify(v); } catch (e) { return 'U' + msg(e); }
     if (j === undefined) return 'Jnull';
     return j.length > max ? 'P' + apply(slice, j, [0, preview + 1]) : 'J' + j;
@@ -132,7 +160,7 @@ export function wrapScript(code: string): string {
     }
     catch (e) { resolve(fail(e)); }
   });
-})(function () { return eval(${JSON.stringify(code)}); }, Promise, Function.prototype[Symbol.hasInstance], Promise.prototype.then, Reflect.apply, String.prototype.slice, String, JSON.stringify, ${MAX_VALUE_CHARS}, ${VALUE_PREVIEW_CHARS}, ${MAX_MESSAGE_CHARS})`;
+})(function () { return eval(${JSON.stringify(code)}); }, Promise, Function.prototype[Symbol.hasInstance], Promise.prototype.then, Reflect.apply, String.prototype.slice, String, JSON.stringify, Object.keys, ${MAX_VALUE_CHARS}, ${VALUE_PREVIEW_CHARS}, ${MAX_MESSAGE_CHARS}, ${MAX_VALUE_DEPTH}, ${MAX_VALUE_NODES})`;
 }
 
 type Outcome =

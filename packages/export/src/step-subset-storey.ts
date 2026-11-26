@@ -134,6 +134,9 @@ export function resolveStorey(token: string, parsed: ParsedStep): { storeyId: nu
   return { storeyId, placementId };
 }
 
+/** IfcObjectPlacement subtypes: placement records a storey walk returns, never products. */
+const PLACEMENT_TYPES = new Set(['IFCLOCALPLACEMENT', 'IFCGRIDPLACEMENT', 'IFCLINEARPLACEMENT']);
+
 /** Element id -> the spatial structure an IfcRelContainedInSpatialStructure puts it in. */
 function containment(parsed: ParsedStep): Map<number, number> {
   const out = new Map<number, number>();
@@ -152,10 +155,11 @@ function containment(parsed: ParsedStep): Map<number, number> {
 /**
  * A storey's products: every element IfcRelContainedInSpatialStructure puts in
  * it (placed anywhere), plus every element whose placement chains through the
- * storey's placement and that no containment assigns to another structure. The
+ * storey's placement and that no containment assigns to another storey. The
  * second set is what a storey means when its elements have no containment;
  * the exclusion keeps storeys that share a placement from leaking into each
- * other. Spatial-structure records other than IfcSpace are never products.
+ * other, while an element contained in an IfcSpace under the storey stays.
+ * Spatial-structure records other than IfcSpace are never products.
  */
 export function storeyMembers(storeyId: number, placementId: number, parsed: ParsedStep): number[] {
   const containedBy = containment(parsed);
@@ -164,7 +168,7 @@ export function storeyMembers(storeyId: number, placementId: number, parsed: Par
     if (type === undefined || PLACEMENT_TYPES.has(type)) return false;
     if (type !== 'IFCSPACE' && isSpatialStructureType(IfcTypeEnumFromString(type))) return false;
     const structure = containedBy.get(id);
-    return structure === undefined || structure === storeyId;
+    return structure === undefined || structure === storeyId || parsed.instances.get(structure)?.type !== 'IFCBUILDINGSTOREY';
   };
   const out = new Set<number>();
   for (const id of productsUnderPlacement(placementId, parsed)) if (isMember(id)) out.add(id);
@@ -172,5 +176,3 @@ export function storeyMembers(storeyId: number, placementId: number, parsed: Par
   return [...out];
 }
 
-/** IfcObjectPlacement subtypes: placement records a storey walk returns, never products. */
-const PLACEMENT_TYPES = new Set(['IFCLOCALPLACEMENT', 'IFCGRIDPLACEMENT', 'IFCLINEARPLACEMENT']);

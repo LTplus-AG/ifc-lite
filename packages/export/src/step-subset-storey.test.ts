@@ -77,6 +77,20 @@ describe('selectSubsetSeeds: storeys that share one placement', () => {
     expect([...selectSubsetSeeds(parseStep(shared), { storeys: ['L01'] })].sort((a, b) => a - b)).toEqual([41, 70]);
   });
 
+  it('keeps an element contained in a space under the storey', () => {
+    const spaced = [
+      'ISO-10303-21;', 'HEADER;', 'ENDSEC;', 'DATA;',
+      '#2=IFCAXIS2PLACEMENT3D(#3,$,$);', '#3=IFCCARTESIANPOINT((0.,0.,0.));',
+      '#40=IFCLOCALPLACEMENT($,#2);', '#45=IFCLOCALPLACEMENT(#40,#2);', '#46=IFCLOCALPLACEMENT(#45,#2);',
+      "#41=IFCBUILDINGSTOREY('0000000000000000000ST1',$,'L01',$,$,#40,$,$,.ELEMENT.,0.);",
+      "#50=IFCSPACE('0000000000000000000SP1',$,'Room',$,$,#45,$,$,.ELEMENT.,.INTERNAL.,$);",
+      "#70=IFCFURNISHINGELEMENT('0000000000000000000FU1',$,'Chair',$,$,#46,$,$);",
+      "#80=IFCRELCONTAINEDINSPATIALSTRUCTURE('0000000000000000000RC1',$,$,$,(#70),#50);",
+      'ENDSEC;', 'END-ISO-10303-21;', '',
+    ].join('\n');
+    expect([...selectSubsetSeeds(parseStep(spaced), { storeys: ['L01'] })].sort((a, b) => a - b)).toEqual([41, 50, 70]);
+  });
+
   it('never counts a building that shares the storey placement as one of its products', () => {
     const building = [
       'ISO-10303-21;', 'HEADER;', 'ENDSEC;', 'DATA;',

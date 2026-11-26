@@ -49,21 +49,24 @@ test('measured durations cover at least 95% of the current viewer suite (#10279)
     `${measured.length}/${files.length} current tests have measured durations; refresh the manifest from green CI`);
 });
 
-test('the REAL test files are partitioned: each runs in exactly one CI shard, none is empty', () => {
+test('the real test files form an exact partition in the current and rollback layouts', () => {
   // Anti-vacuity: an empty walk or an empty manifest would partition trivially.
   assert.ok(files.length >= 2000, `expected the real viewer suite, got ${files.length} files`);
   assert.ok(Object.keys(manifest.seconds).length >= 2000, 'expected the committed manifest to be populated');
   assert.equal(manifest.shards, SHARDS, 'the manifest must be packed for the CI matrix size');
-  const seen = new Map();
-  for (let s = 0; s < SHARDS; s++) {
-    const mine = selectShard(files, manifest, s, SHARDS);
-    assert.ok(mine.length > 0, `shard ${s} is empty`);
-    for (const f of mine) {
-      assert.ok(!seen.has(f), `${f} runs in shard ${seen.get(f)} AND shard ${s}`);
-      seen.set(f, s);
+  for (const count of [SHARDS, 16]) {
+    const layout = { ...manifest, shards: count };
+    const seen = new Map();
+    for (let shard = 0; shard < count; shard++) {
+      const mine = selectShard(files, layout, shard, count);
+      assert.ok(mine.length > 0, `shard ${shard}/${count} is empty`);
+      for (const file of mine) {
+        assert.ok(!seen.has(file), `${file} runs in shard ${seen.get(file)} AND shard ${shard} of ${count}`);
+        seen.set(file, shard);
+      }
     }
+    assert.deepEqual([...seen.keys()].sort(), files, `the ${count}-shard layout misses a test file`);
   }
-  assert.deepEqual([...seen.keys()].sort(), files, 'some test file runs in no shard');
 });
 
 test('the packing balances the measured load to within one file of the mean (LPT bound)', () => {

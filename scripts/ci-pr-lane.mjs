@@ -7,7 +7,7 @@
  * The switchable fast PR lane: which `Test` lanes a `pull_request` run skips.
  *
  * WHY. A full `Test` run is ~45 jobs and ~330 job-minutes, over half of it the
- * sixteen viewer shards, and it ran on every push to every PR while hosted
+ * the full viewer matrix, and it ran on every push to every PR while hosted
  * capacity was 13-36 concurrent jobs. The merge queue already runs every lane
  * once per merge (`merge_group`), so a PR push only needs the checks that fail
  * most often for the least compute; the queue is the full gate.

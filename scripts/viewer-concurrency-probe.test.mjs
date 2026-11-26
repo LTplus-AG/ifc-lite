@@ -77,6 +77,9 @@ test('the gate uses the concurrency variable and the same duration-packed shards
   // A GitHub Actions expression, compared as written.
   // eslint-disable-next-line no-template-curly-in-string
   assert.equal(env.VIEWER_TEST_CONCURRENCY, '${{ vars.VIEWER_TEST_CONCURRENCY }}');
+  // The job cap also leaves space for setup and retries in the serial fallback.
+  // eslint-disable-next-line no-template-curly-in-string
+  assert.equal(viewerJob['timeout-minutes'], "${{ vars.VIEWER_TEST_CONCURRENCY == '2' && 25 || 35 }}");
   const { shards } = parseManifest(readFileSync(MANIFEST_PATH, 'utf8'));
   assert.deepEqual(viewerJob.strategy.matrix.shard, Array.from({ length: shards }, (_, shard) => shard));
   const retryEnv = viewerJob.steps.find((s) => s.id === 'viewer_retry').env;

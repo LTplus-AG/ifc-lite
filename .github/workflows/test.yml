@@ -1402,13 +1402,19 @@ jobs:
   # to 2. With two files running at a time, twelve shards are projected to
   # fit the test-step budget and free four hosted runner slots per queue run.
   #
+  # Rollback: unset VIEWER_TEST_CONCURRENCY to run serially with a 35-minute
+  # job cap. To restore sixteen jobs as well, restore the viewer matrix,
+  # both TEST_SHARDS settings and the manifest count together. PR review
+  # signal and the dirty-PR scanner derive check names from literal lists.
+  #
   # The selector packs measured files from apps/viewer/test-durations.json
   # longest first onto the least-loaded shard. Adding or removing a file
   # leaves the other assignments stable. Files absent from the manifest use
   # a stable path hash. Change the manifest count together with the matrix
   # and both TEST_SHARDS settings so duration packing stays active.
   #
-  # Refresh per-file weights from two or three green concurrency-1 runs:
+  # Refresh per-file weights from two or three dedicated green full runs
+  # with VIEWER_TEST_CONCURRENCY unset:
   #   node scripts/refresh-viewer-test-durations.mjs --run <id> --run <id>
   # The TAP timestamp attribution in scripts/lib/viewer-test-durations.mjs
   # requires serial files. Keep concurrency bounded to 2 in the viewer test
@@ -1445,7 +1451,7 @@ jobs:
     needs: [changes, build]
     if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && needs.changes.outputs.replay != 'true' && needs.changes.outputs.lane != 'fast'
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
-    timeout-minutes: 25
+    timeout-minutes: ${{ vars.VIEWER_TEST_CONCURRENCY == '2' && 25 || 35 }}
     strategy:
       fail-fast: false
       matrix:
@@ -1556,7 +1562,7 @@ jobs:
         run: node scripts/ci-shard-retry.mjs viewer
         env:
           CI_SHARD_RETRY: ${{ vars.CI_SHARD_RETRY }}
-          JOB_TIMEOUT_MINUTES: '25'  # this job's timeout-minutes
+          JOB_TIMEOUT_MINUTES: ${{ vars.VIEWER_TEST_CONCURRENCY == '2' && 25 || 35 }}  # this job's timeout-minutes
           TAP_FILE: ${{ runner.temp }}/viewer-attempt1.tap
           REPORT_DIR: ${{ runner.temp }}/shard-retry
           TEST_SHARDS: '12'

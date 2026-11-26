@@ -43,9 +43,17 @@ The observed maximum falls inside the earlier range; the historical packing
 prediction did not establish an equivalent improvement on fresh CI. Source,
 runner load, caches and batch contents differ. This is not a controlled A/B
 measurement and supports no percentage saving. Refresh the existing manifest
-from several successful full runs at concurrency 1 when file weights drift.
-For a shard-count change, update the matrix, the initial and retry step counts,
-and the manifest together. Post-merge replay runs
+from two or three dedicated successful full runs with
+`VIEWER_TEST_CONCURRENCY` unset when file weights drift. Submit those runs in
+a maintenance window and restore the variable after they finish. The refresh
+script uses serial TAP timestamps for whole-file weights.
+
+If viewer concurrency 2 needs to be rolled back, unset
+`VIEWER_TEST_CONCURRENCY`. This switches the 12 viewer jobs to serial
+execution and raises their caps from 25 to 35 minutes. To restore the previous
+runner layout, also restore the 16-job matrix, both `TEST_SHARDS` settings and
+the manifest count in the same change. PR review signal and the dirty-PR scanner
+derive their expected check names from a literal matrix list. Post-merge replay runs
 that skip all shards provide no balancing evidence.
 
 Reproduce the inventory with

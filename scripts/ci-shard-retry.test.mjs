@@ -545,7 +545,7 @@ for (const [job, testStep, retryStep] of [['viewer-tests', 'viewer_tests', 'view
     const touched = steps.filter((s) => SWITCH.test(JSON.stringify(s))).map((s) => s.id ?? s.name); // @source-text-assertion-ok enumerates steps that read the switch
     assert.deepEqual(touched.sort(), [testStep, retryStep, guard.name, ...ALSO_READS_SWITCH[job]].sort());
     // The retry's budget reads the job's limit, so the two must agree.
-    assert.equal(Number(retry.env.JOB_TIMEOUT_MINUTES), WORKFLOW.jobs[job]['timeout-minutes']);
+    assert.equal(retry.env.JOB_TIMEOUT_MINUTES, String(WORKFLOW.jobs[job]['timeout-minutes']));
   });
 }
 

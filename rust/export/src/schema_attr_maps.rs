@@ -163,13 +163,17 @@ pub(crate) fn attr_map(entity_type: &str, new_type: &str, cfrom: &str, cto: &str
     ATTR_MAPS.iter().find(|m| m.ifc2x3 == src && m.ifc4 == tgt).map(|m| (m, up))
 }
 
-/// True when an IFC4 `line` upgraded from IFC2X3 gets its required slots
+/// True when a `target` `line` upgraded from IFC2X3 gets its required slots
 /// counted: a structural record, or one a map wrote, which can leave a
-/// required slot with no source value (#10763). The type is read from the
-/// record head. Twin of the TypeScript `upgradeCountsIfc4Slots`.
-pub(crate) fn upgrade_counts_ifc4_slots(line: &str) -> bool {
+/// required slot with no source value (#10763, #11135). A map's IFC4X3 type is
+/// its IFC4 one, but for the distribution board. The type is read from the
+/// record head. Twin of the TypeScript `upgradeCountsSlots`.
+pub(crate) fn upgrade_counts_slots(line: &str, target: crate::schema_ifc4_slots::SlotTarget) -> bool {
+    use crate::schema_ifc4_slots::SlotTarget;
     let ty = crate::step_record_frame::record_head(line).map_or("", |head| head.type_name(line));
-    ty.starts_with("IFCSTRUCTURAL") || ATTR_MAPS.iter().any(|m| m.ifc4 == ty)
+    if ty.starts_with("IFCSTRUCTURAL") { return true; }
+    let ty = if target == SlotTarget::Ifc4x3 && ty == "IFCDISTRIBUTIONBOARD" { "IFCELECTRICDISTRIBUTIONBOARD" } else { ty };
+    ATTR_MAPS.iter().any(|m| m.ifc4 == ty)
 }
 
 /// How a target slot is filled from its source value.

@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { validateStepText } from '../src/index.js';
-import { compareFile } from '../parity/compare.js';
+import { compareFile, ruleTable } from '../parity/compare.js';
 import { hitsTarget, keyString, oracleKey, ourKey, type OracleFinding } from '../parity/normalize.js';
 
 const corpusDir = join(__dirname, '..', 'parity', 'corpus');
@@ -62,6 +62,15 @@ describe('crafted parity corpus', () => {
     const result = compareFile(file, 'crafted', report.schema, misattributed, oracleFor(file)!, 0);
     expect(result.fn).toContain('invalid-type:predefinedtype|42');
     expect(result.fp).toContain('invalid-type:name|42');
+  });
+
+  it('keeps true negatives unknown when a release omits IfcGrid.HasPlacement (#11648)', async () => {
+    const paths = ['broken/grid-without-placement.ifc', 'ifc4x3/broken/grid-without-placement.ifc'];
+    const files = await Promise.all(paths.map(async path => {
+      const report = await validateStepText(read(path));
+      return compareFile(path, 'crafted', report.schema, report.findings, oracleFor(path)!, 0);
+    }));
+    expect(ruleTable(files, []).find(r => r.rule === 'ifcgrid.hasplacement')).toMatchObject({ tp: 1, fp: 0, fn: 0, tnFiles: null });
   });
 
   it.each(manifest)('$file: misses nothing ifcopenshell.validate reports', async ({ file }) => {

@@ -110,7 +110,7 @@
     "tp": 0,
     "fp": 2,
     "fn": 0,
-    "tnFiles": 114,
+    "tnFiles": null,
     "explained": "FP: ISO 10303-21 requires `*` in a slot a subtype redeclares as DERIVE (IfcGeometricRepresentationSubContext.CoordinateSpaceDimension). IfcOpenShell does not report a value written there; the corpus file subcontext-explicit-derived.ifc shows it."
    },
    {
@@ -118,392 +118,392 @@
     "tp": 4,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 112
+    "tnFiles": null
    },
    {
     "rule": "attribute-count",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "evaluation-error:ifcgeometricrepresentationcontext.north2d",
     "tp": 4,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "evaluation-error:ifcobject.uniquepropertysetnames",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "evaluation-error:ifcshaperepresentation.correctitemsfortype",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "global:ifcsingleprojectinstance",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "guid-format",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "header:file_name.author",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcarbitraryclosedprofiledef.wr1",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcaxis2placement2d.locationis2d",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcaxis2placement3d.axisandrefdirprovision",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcaxis2placement3d.axistorefdirposition",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcaxis2placement3d.locationis3d",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifccartesianpoint.cp2dor3d",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcdirection.magnitudegreaterzero",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcdoor.correctstyleassigned",
     "tp": 1,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 115
+    "tnFiles": null
    },
    {
     "rule": "ifcdoor.correcttypeassigned",
     "tp": 1,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 115
+    "tnFiles": null
    },
    {
     "rule": "ifcextrudedareasolid.validextrusiondirection",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcgeometricrepresentationsubcontext.usertargetprovided",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcgrid.hasplacement",
     "tp": 1,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 115
+    "tnFiles": null
    },
    {
     "rule": "ifcgridaxis.wr1",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifclocalplacement.wr21",
     "tp": 4,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 112
+    "tnFiles": null
    },
    {
     "rule": "ifcmateriallayer.normalizedpriority",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcnamedunit.wr1",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcobject.uniquepropertysetnames",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcownerhistory.correctchangeaction",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcperson.identifiableperson",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcpolyline.samedim",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcpositioningelement.hasplacement",
     "tp": 1,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 115
+    "tnFiles": null
    },
    {
     "rule": "ifcpositivelengthmeasure.wr1",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcproject.correctcontext",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcproject.hasname",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcpropertyset.existsname",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcpropertyset.uniquepropertynames",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcquantitylength.wr22",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcrelaggregates.noselfreference",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcrelcontainedinspatialstructure.wr31",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcreldefinesbyproperties.norelatedtypeobject",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcshapemodel.wr11",
     "tp": 4,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcshaperepresentation.correctcontext",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcshaperepresentation.correctitemsfortype",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcshaperepresentation.hasrepresentationtype",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcslab.correctpredefinedtype",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcspace.correctpredefinedtype",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcspatialstructureelement.wr41",
     "tp": 4,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 112
+    "tnFiles": null
    },
    {
     "rule": "ifctypeobject.namerequired",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcunitassignment.wr01",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcwall.correctpredefinedtype",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcwall.correcttypeassigned",
     "tp": 4,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcwallstandardcase.hasmateriallayersetusage",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "ifcwindow.correctstyleassigned",
     "tp": 1,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 115
+    "tnFiles": null
    },
    {
     "rule": "ifcwindow.correcttypeassigned",
     "tp": 1,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 115
+    "tnFiles": null
    },
    {
     "rule": "invalid-type",
     "tp": 12,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 104
+    "tnFiles": null
    },
    {
     "rule": "inverse-cardinality",
     "tp": 10,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 106
+    "tnFiles": null
    },
    {
     "rule": "not-optional",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    },
    {
     "rule": "unique:ifcroot.ur1",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 114
+    "tnFiles": null
    }
   ],
   "all": [
@@ -512,7 +512,7 @@
     "tp": 0,
     "fp": 2,
     "fn": 0,
-    "tnFiles": 129,
+    "tnFiles": null,
     "explained": "FP: ISO 10303-21 requires `*` in a slot a subtype redeclares as DERIVE (IfcGeometricRepresentationSubContext.CoordinateSpaceDimension). IfcOpenShell does not report a value written there; the corpus file subcontext-explicit-derived.ifc shows it."
    },
    {
@@ -520,7 +520,7 @@
     "tp": 0,
     "fp": 1,
     "fn": 0,
-    "tnFiles": 130,
+    "tnFiles": null,
     "explained": "FP: The rule tests `WorldCoordinateSystem :<>: ...`, instance inequality (ISO 10303-11 12.2.2). IfcOpenShell compiles it to `!=` under compare_instances_by_value, so two distinct but equal-valued placements skip the precision check. We keep instance semantics: the two contexts carry precisions $ and 1E-5."
    },
    {
@@ -528,420 +528,420 @@
     "tp": 4,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 127
+    "tnFiles": null
    },
    {
     "rule": "attribute-count",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "evaluation-error:ifcgeometricrepresentationcontext.north2d",
     "tp": 4,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "evaluation-error:ifcobject.uniquepropertysetnames",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "evaluation-error:ifcshaperepresentation.correctitemsfortype",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "global:ifcsingleprojectinstance",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "guid-format",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "header:file_name.author",
     "tp": 3,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 128
+    "tnFiles": null
    },
    {
     "rule": "header:file_name.organization",
     "tp": 1,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 130
+    "tnFiles": null
    },
    {
     "rule": "ifcarbitraryclosedprofiledef.wr1",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifcarbitraryopenprofiledef.wr12",
     "tp": 4,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 130
+    "tnFiles": null
    },
    {
     "rule": "ifcaxis2placement2d.locationis2d",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifcaxis2placement3d.axisandrefdirprovision",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifcaxis2placement3d.axistorefdirposition",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifcaxis2placement3d.locationis3d",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifccartesianpoint.cp2dor3d",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifcdirection.magnitudegreaterzero",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifcdoor.correctstyleassigned",
     "tp": 1,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 130
+    "tnFiles": null
    },
    {
     "rule": "ifcdoor.correcttypeassigned",
     "tp": 1,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 130
+    "tnFiles": null
    },
    {
     "rule": "ifcextrudedareasolid.validextrusiondirection",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifcgeometricrepresentationsubcontext.usertargetprovided",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifcgrid.hasplacement",
     "tp": 1,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 130
+    "tnFiles": null
    },
    {
     "rule": "ifcgridaxis.wr1",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifclocalplacement.wr21",
     "tp": 4,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 127
+    "tnFiles": null
    },
    {
     "rule": "ifcmateriallayer.normalizedpriority",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifcnamedunit.wr1",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifcobject.uniquepropertysetnames",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifcownerhistory.correctchangeaction",
     "tp": 3,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 128
+    "tnFiles": null
    },
    {
     "rule": "ifcperson.identifiableperson",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifcpolyline.samedim",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifcpositioningelement.hasplacement",
     "tp": 1,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 130
+    "tnFiles": null
    },
    {
     "rule": "ifcpositivelengthmeasure.wr1",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifcpositiveratiomeasure.wr1",
     "tp": 8,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 130
+    "tnFiles": null
    },
    {
     "rule": "ifcproject.correctcontext",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifcproject.hasname",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifcpropertyset.existsname",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifcpropertyset.uniquepropertynames",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifcquantitylength.wr22",
     "tp": 11,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 128
+    "tnFiles": null
    },
    {
     "rule": "ifcrelaggregates.noselfreference",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifcrelcontainedinspatialstructure.wr31",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifcreldefinesbyproperties.norelatedtypeobject",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifcrelspaceboundary.correctphysorvirt",
     "tp": 5,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 130
+    "tnFiles": null
    },
    {
     "rule": "ifcshapemodel.wr11",
     "tp": 144,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 128
+    "tnFiles": null
    },
    {
     "rule": "ifcshaperepresentation.correctcontext",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifcshaperepresentation.correctitemsfortype",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifcshaperepresentation.hasrepresentationtype",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifcslab.correctpredefinedtype",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifcspace.correctpredefinedtype",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifcspatialstructureelement.wr41",
     "tp": 4,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 127
+    "tnFiles": null
    },
    {
     "rule": "ifctypeobject.namerequired",
     "tp": 4,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 128
+    "tnFiles": null
    },
    {
     "rule": "ifcunitassignment.wr01",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifcwall.correctpredefinedtype",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifcwall.correcttypeassigned",
     "tp": 4,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifcwallstandardcase.hasmateriallayersetusage",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    },
    {
     "rule": "ifcwindow.correctstyleassigned",
     "tp": 1,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 130
+    "tnFiles": null
    },
    {
     "rule": "ifcwindow.correcttypeassigned",
     "tp": 1,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 130
+    "tnFiles": null
    },
    {
     "rule": "invalid-type",
     "tp": 12,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 119
+    "tnFiles": null
    },
    {
     "rule": "inverse-cardinality",
     "tp": 11,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 120
+    "tnFiles": null
    },
    {
     "rule": "not-optional",
     "tp": 7,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 128
+    "tnFiles": null
    },
    {
     "rule": "unique:ifcroot.ur1",
     "tp": 2,
     "fp": 0,
     "fn": 0,
-    "tnFiles": 129
+    "tnFiles": null
    }
   ]
  },
@@ -1620,7 +1620,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 0,
    "oracle": 0,
-   "milliseconds": 31,
+   "milliseconds": 41,
    "tp": [],
    "fp": [],
    "fn": []
@@ -1631,7 +1631,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 0,
    "oracle": 0,
-   "milliseconds": 33,
+   "milliseconds": 27,
    "tp": [],
    "fp": [],
    "fn": []
@@ -1670,7 +1670,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 2,
+   "milliseconds": 1,
    "tp": [
     "ifcwindow.correctstyleassigned|73"
    ],
@@ -1785,7 +1785,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 2,
    "tp": [
     "ifcproject.hasname|20"
    ],
@@ -1799,7 +1799,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifcproject.correctcontext|20"
    ],
@@ -1813,7 +1813,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "global:ifcsingleprojectinstance|"
    ],
@@ -1915,7 +1915,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifcpositivelengthmeasure.wr1|34"
    ],
@@ -2002,7 +2002,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 4,
+   "milliseconds": 0,
    "tp": [
     "ifcgeometricrepresentationsubcontext.usertargetprovided|16"
    ],
@@ -2016,7 +2016,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 0,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [],
    "fp": [
     "derived-in-subtype:coordinatespacedimension|17"
@@ -2045,7 +2045,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifcpropertyset.uniquepropertynames|132"
    ],
@@ -2059,7 +2059,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcobject.uniquepropertysetnames|42"
    ],
@@ -2087,7 +2087,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifcnamedunit.wr1|7"
    ],
@@ -2101,7 +2101,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 2,
    "tp": [
     "ifcunitassignment.wr01|10"
    ],
@@ -2115,7 +2115,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifcownerhistory.correctchangeaction|5"
    ],
@@ -2185,7 +2185,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifcarbitraryclosedprofiledef.wr1|83"
    ],
@@ -2199,7 +2199,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcmateriallayer.normalizedpriority|44"
    ],
@@ -2213,7 +2213,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 2,
    "oracle": 2,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "inverse-cardinality:associatedto|46",
     "ifcwallstandardcase.hasmateriallayersetusage|60"
@@ -2256,7 +2256,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 2,
    "tp": [
     "inverse-cardinality:containedinstructure|42"
    ],
@@ -2270,7 +2270,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifcreldefinesbyproperties.norelatedtypeobject|133"
    ],
@@ -2284,7 +2284,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "unique:ifcroot.ur1|42,60"
    ],
@@ -2312,7 +2312,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "not-optional:globalid|42"
    ],
@@ -2326,7 +2326,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "invalid-type:name|42"
    ],
@@ -2340,7 +2340,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 2,
+   "milliseconds": 1,
    "tp": [
     "invalid-type:objectplacement|42"
    ],
@@ -2396,7 +2396,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "abstract|138"
    ],
@@ -2492,7 +2492,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcslab.correctpredefinedtype|88"
    ],
@@ -2506,7 +2506,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifcspace.correctpredefinedtype|101"
    ],
@@ -2520,7 +2520,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 2,
    "oracle": 2,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifcwall.correcttypeassigned|42",
     "ifcwall.correcttypeassigned|60"
@@ -2535,7 +2535,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifctypeobject.namerequired|48"
    ],
@@ -2579,7 +2579,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcrelcontainedinspatialstructure.wr31|120"
    ],
@@ -2621,7 +2621,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "global:ifcsingleprojectinstance|"
    ],
@@ -2664,7 +2664,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 3,
    "oracle": 3,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifcaxis2placement3d.axistorefdirposition|14",
     "evaluation-error:ifcgeometricrepresentationcontext.north2d|16",
@@ -2680,7 +2680,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcdirection.magnitudegreaterzero|32"
    ],
@@ -2709,7 +2709,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifcextrudedareasolid.validextrusiondirection|35"
    ],
@@ -2723,7 +2723,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcpositivelengthmeasure.wr1|34"
    ],
@@ -2752,7 +2752,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcshaperepresentation.correctitemsfortype|85"
    ],
@@ -2781,7 +2781,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 2,
    "oracle": 2,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcshapemodel.wr11|36",
     "ifcshapemodel.wr11|95"
@@ -2796,7 +2796,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifclocalplacement.wr21|63"
    ],
@@ -2824,7 +2824,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 0,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [],
    "fp": [
     "derived-in-subtype:coordinatespacedimension|17"
@@ -2838,7 +2838,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 2,
    "oracle": 2,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "evaluation-error:ifcobject.uniquepropertysetnames|42",
     "ifcpropertyset.existsname|132"
@@ -2867,7 +2867,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcobject.uniquepropertysetnames|42"
    ],
@@ -2881,7 +2881,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifcquantitylength.wr22|134"
    ],
@@ -2909,7 +2909,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcunitassignment.wr01|10"
    ],
@@ -2951,7 +2951,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcpositioningelement.hasplacement|119"
    ],
@@ -2964,7 +2964,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 3,
    "tp": [
     "ifcgridaxis.wr1|113"
    ],
@@ -2978,7 +2978,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifcpolyline.samedim|39"
    ],
@@ -3035,7 +3035,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "inverse-cardinality:voidselements|70"
    ],
@@ -3133,7 +3133,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "invalid-type:name|42"
    ],
@@ -3147,7 +3147,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "invalid-type:objectplacement|42"
    ],
@@ -3161,7 +3161,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "invalid-type:coordinates|52"
    ],
@@ -3175,7 +3175,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "invalid-type:predefinedtype|42"
    ],
@@ -3189,7 +3189,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "attribute-count|42"
    ],
@@ -3259,7 +3259,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 170,
    "oracle": 170,
-   "milliseconds": 192,
+   "milliseconds": 200,
    "tp": [
     "ifcpositiveratiomeasure.wr1|15065",
     "ifcpositiveratiomeasure.wr1|15066",
@@ -3441,7 +3441,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 0,
    "oracle": 0,
-   "milliseconds": 8,
+   "milliseconds": 7,
    "tp": [],
    "fp": [],
    "fn": []
@@ -3463,7 +3463,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 0,
    "oracle": 0,
-   "milliseconds": 9,
+   "milliseconds": 10,
    "tp": [],
    "fp": [],
    "fn": []
@@ -3474,7 +3474,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 0,
    "oracle": 0,
-   "milliseconds": 1,
+   "milliseconds": 2,
    "tp": [],
    "fp": [],
    "fn": []
@@ -3485,7 +3485,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 0,
    "oracle": 0,
-   "milliseconds": 15,
+   "milliseconds": 18,
    "tp": [],
    "fp": [],
    "fn": []
@@ -3496,7 +3496,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 0,
    "oracle": 0,
-   "milliseconds": 54,
+   "milliseconds": 60,
    "tp": [],
    "fp": [],
    "fn": []
@@ -3534,7 +3534,7 @@
    "schema": "IFC2X3",
    "ours": 0,
    "oracle": 0,
-   "milliseconds": 174,
+   "milliseconds": 164,
    "tp": [],
    "fp": [],
    "fn": []
@@ -3545,7 +3545,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 0,
    "oracle": 0,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [],
    "fp": [],
    "fn": []
@@ -3556,7 +3556,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 0,
    "oracle": 0,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [],
    "fp": [],
    "fn": []
@@ -3592,7 +3592,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 2,
    "oracle": 1,
-   "milliseconds": 8,
+   "milliseconds": 9,
    "tp": [
     "inverse-cardinality:shapeofproduct|192"
    ],

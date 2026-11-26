@@ -124,7 +124,7 @@ async function main(): Promise<void> {
     },
     rules: { crafted: ruleTable(crafted, explanations), all: ruleTable(comparisons, explanations) },
     targeted,
-    files: comparisons.map(({ rules: _rules, ...c }) => c),
+    files: comparisons,
     missingModels: missing,
     schemaFor: Object.fromEntries(files.map((f) => [f.path, releaseFor(fileSchemaIdentifier(readFileSync(join(repoRoot, f.path), 'utf8')) ?? '') ?? 'none'])),
   };

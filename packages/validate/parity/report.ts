@@ -22,7 +22,7 @@ function ruleRows(rows: RuleRow[]): string[] {
   return [
     '| Rule | TP | FP | FN | TN files | Explanation |',
     '|---|---:|---:|---:|---:|---|',
-    ...rows.map((r) => `| \`${r.rule}\` | ${r.tp} | ${r.fp} | ${r.fn} | ${r.tnFiles} | ${r.explained ?? ''} |`),
+    ...rows.map((r) => `| \`${r.rule}\` | ${r.tp} | ${r.fp} | ${r.fn} | Unavailable | ${r.explained ?? ''} |`),
   ];
 }
 
@@ -54,6 +54,8 @@ export function writeMarkdown(r: ParityReport): string {
     ...r.targeted.map((t) => `| ${t.file} | \`${t.targets}\` | ${yes(t.ours)} | ${yes(t.oracle)} |`),
     '',
     '## Per rule, crafted corpus',
+    '',
+    'True-negative counts are unavailable because the oracle records findings without recording which rules were applicable and passed.',
     '',
     ...ruleRows(r.rules.crafted),
     '',

@@ -17,8 +17,6 @@ export interface FileComparison {
   tp: string[];
   fp: string[];
   fn: string[];
-  /** Rules evaluated per file, for true-negative counting. */
-  rules: Set<string>;
   oracleError?: string;
   milliseconds: number;
 }
@@ -28,8 +26,8 @@ export interface RuleRow {
   tp: number;
   fp: number;
   fn: number;
-  /** Files in which neither side reported the rule although it was reported somewhere in the corpus. */
-  tnFiles: number;
+  /** The oracle records findings only, so successful per-file rule evaluations are unknown. */
+  tnFiles: null;
   explained?: string;
 }
 
@@ -45,9 +43,8 @@ export function compareFile(
 ): FileComparison {
   const a = new Set(ours.map((f) => keyString(ourKey(f))));
   const b = new Set(oracle.map(f => keyString(oracleKey(f))));
-  const rules = new Set([...a, ...b].map((k) => ruleFamily(k.split('|')[0])));
   return {
-    path, kind, schema, ours: a.size, oracle: b.size, milliseconds, rules,
+    path, kind, schema, ours: a.size, oracle: b.size, milliseconds,
     tp: [...a].filter((k) => b.has(k)),
     fp: [...a].filter((k) => !b.has(k)),
     fn: [...b].filter((k) => !a.has(k)),
@@ -66,7 +63,7 @@ export function ruleTable(files: FileComparison[], explanations: Explanation[]):
   const rows = new Map<string, RuleRow>();
   const row = (rule: string) => {
     let r = rows.get(rule);
-    if (!r) rows.set(rule, (r = { rule, tp: 0, fp: 0, fn: 0, tnFiles: 0 }));
+    if (!r) rows.set(rule, (r = { rule, tp: 0, fp: 0, fn: 0, tnFiles: null }));
     return r;
   };
   for (const f of files) {
@@ -75,7 +72,6 @@ export function ruleTable(files: FileComparison[], explanations: Explanation[]):
     for (const k of f.fn) row(ruleFamily(k.split('|')[0])).fn++;
   }
   for (const r of rows.values()) {
-    r.tnFiles = files.filter((f) => !f.rules.has(r.rule)).length;
     const why = explanations.filter((e) => e.rule.toLowerCase() === r.rule && ((e.kind === 'fp' && r.fp) || (e.kind === 'fn' && r.fn)));
     if (why.length) r.explained = why.map((e) => `${e.kind.toUpperCase()}: ${e.reason}`).join(' ');
   }

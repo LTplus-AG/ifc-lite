@@ -140,14 +140,18 @@ const SCRIPT_STACK_OVERFLOW = /InternalError: stack overflow\b|stack overflow wh
 const HOST_OUT_OF_MEMORY = /^out of memory\b/;
 const HOST_STACK_OVERFLOW = /^(stack overflow|Maximum call stack size exceeded)\b/;
 
-function hintFor(mode: Mode, code: string, message: string, host: boolean, exportAllowed: boolean): string | undefined {
+/** QuickJS's wording for reading a property of an absent namespace. */
+const MISSING_NAMESPACE = /of undefined|undefined is not/;
+
+/** host: the error came from the sandbox itself, not from script code. */
+function hintFor(mode: Mode, code: string, message: string, { host, exportAllowed }: { host: boolean; exportAllowed: boolean }): string | undefined {
   if ((host ? HOST_OUT_OF_MEMORY : SCRIPT_OUT_OF_MEMORY).test(message)) return `Raise memory_mb (max ${MAX_MEMORY_MB}) or keep less in memory.`;
   if ((host ? HOST_STACK_OVERFLOW : SCRIPT_STACK_OVERFLOW).test(message)) return 'Stack overflow: the script recursed too deep (make it iterative or shallower), a logged value is nested too deeply, or a bim call walked a very deeply nested model.';
   // Only when the failure looks like touching a namespace that is absent.
-  if (mode === 'read' && MUTATE_ONLY_USE.test(code) && /of undefined|undefined is not/.test(message)) {
+  if (mode === 'read' && MUTATE_ONLY_USE.test(code) && MISSING_NAMESPACE.test(message)) {
     return `script_run has no ${MUTATE_ONLY_LIST}; use script_run_mutate for them.`;
   }
-  if (mode === 'mutate' && !exportAllowed && /\bbim\.(export|create)\b/.test(code) && /of undefined|undefined is not/.test(message)) {
+  if (mode === 'mutate' && !exportAllowed && /\bbim\.(export|create)\b/.test(code) && MISSING_NAMESPACE.test(message)) {
     return 'bim.export and bim.create need the export scope, which this token lacks.';
   }
   return undefined;
@@ -173,7 +177,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     // Envelope messages arrive clipped; a ScriptError's is clipped where it is caught.
     message: `Script error: ${message}`,
     details: { kind: 'script', ...details },
-    hint: hintFor(mode, code, message, host, exportAllowed),
+    hint: hintFor(mode, code, message, { host, exportAllowed }),
   });
   if (ctx.signal.aborted) throw cancelled();
   if (!scopeAllows(scope, 'read')) {

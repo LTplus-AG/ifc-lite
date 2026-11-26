@@ -11,7 +11,8 @@ import { formatScaleFactorLabel, type TitleBlockConfig } from '@ifc-lite/drawing
  * The field is plain static content: it was written once, by
  * `sheetSlice.ts`'s `autoPopulateTitleBlock`, from the REQUESTED
  * `sheet.scale.factor`. A restored sheet, saved template or agent
- * `drawing.replaceSheet` can carry text that disagrees with it (#11458).
+ * `drawing.replaceSheet` can carry text that disagrees with it (#11458);
+ * this corrects it while the field still auto-populates from `drawing.scale`.
  * And `calculateDrawingTransform`'s
  * `fitScale = min(scaleX, scaleY, 1)` (`sheet-types.ts`) can shrink the
  * drawing below that requested scale to fit the sheet's fixed viewport, and
@@ -38,7 +39,8 @@ export function titleBlockWithEffectiveScale(
   const nominalScaleFactor = 1000 / requestedScaleFactor;
   const clamped = Math.abs(effectiveScaleFactor - nominalScaleFactor) > 1e-9;
   const label = `1:${formatScaleFactorLabel(1000 / effectiveScaleFactor)}`;
-  // Auto-populate off means user text, which `autoPopulateTitleBlock` (`sheetSlice.ts`) also leaves alone.
+  // Auto-populate off means user text: like `autoPopulateTitleBlock` (`sheetSlice.ts`) it is kept,
+  // except that a field with the id 'scale' is still corrected when the fit clamped the drawing (#2131).
   const needsValue = (field: TitleBlockConfig['fields'][number]): boolean =>
     field.autoPopulate && field.autoPopulateSource === 'drawing.scale'
       ? field.value !== label

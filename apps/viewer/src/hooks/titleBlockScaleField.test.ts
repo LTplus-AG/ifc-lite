@@ -41,7 +41,7 @@ describe('titleBlockWithEffectiveScale (#11458)', () => {
     assert.equal(titleBlockWithEffectiveScale(ok, 100, 10), ok);
   });
 
-  it('leaves a scale field alone when auto-populate is off (#11458)', () => {
+  it('leaves an unclamped scale field alone when auto-populate is off', () => {
     const tb = blockWith({ autoPopulate: false, autoPopulateSource: 'drawing.scale', value: 'As indicated' });
     assert.equal(scaleValue(titleBlockWithEffectiveScale(tb, 100, 10)), 'As indicated');
     assert.equal(titleBlockWithEffectiveScale(tb, 100, 10), tb);

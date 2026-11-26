@@ -112,7 +112,7 @@ class IfcProtocolServer extends Server {
     private readonly link: {
       readonly handshakeSent: boolean;
       initializeSettled(): Promise<void>;
-      take(id: string | number): ((response: null) => void) | undefined;
+      release(id: string | number): (() => void) | undefined;
     },
   ) {
     super(info, options);
@@ -130,11 +130,11 @@ class IfcProtocolServer extends Server {
       // The SDK sends nothing for a request it aborted. On abort the id is
       // freed at once (a retry may reuse it); the caller hears once the
       // handler has unwound, so the retry cannot collide with the old run.
-      let held: ((response: null) => void) | undefined;
+      let held: (() => void) | undefined;
       let unwound = false;
       const abandon = () => {
-        held ??= this.link.take(id);
-        if (unwound) held?.(null);
+        held ??= this.link.release(id);
+        if (unwound) held?.();
       };
       if (signal.aborted) abandon();
       else signal.addEventListener('abort', abandon, { once: true });

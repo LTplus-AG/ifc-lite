@@ -93,10 +93,17 @@ export class LoopbackTransport implements Transport {
   }
 
   /**
-   * Stop waiting for a response to `id` and free the id for reuse; returns
-   * its resolver, if it was waiting.
+   * The protocol layer aborted request `id` and will send no response: free
+   * the id for reuse now; the returned callback answers the caller with
+   * nothing when it is called (after the aborted handler has unwound).
    */
-  take(id: JsonRpcId | null | undefined): ((response: JsonRpcResponse | null) => void) | undefined {
+  release(id: JsonRpcId): (() => void) | undefined {
+    const settle = this.take(id);
+    return settle && (() => settle(null));
+  }
+
+  /** Stop waiting for a response to `id`; returns its resolver, if it was waiting. */
+  private take(id: JsonRpcId | null | undefined): ((response: JsonRpcResponse | null) => void) | undefined {
     if (id === null || id === undefined) return undefined;
     const settle = this.waiting.get(id);
     this.waiting.delete(id);
@@ -144,5 +151,4 @@ export class LoopbackTransport implements Transport {
     this.onmessage(message as JSONRPCMessage);
     return Promise.resolve(null);
   }
-
 }

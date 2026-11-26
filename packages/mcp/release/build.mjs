@@ -13,8 +13,8 @@
  * The script first builds @ifc-lite/mcp and every workspace package it
  * depends on, the wasm runtime included, with turbo's cache off (a cached
  * soft-skip could restore an old runtime), so nothing in the bundle is stale.
- * Run it on a host with Rust and wasm-pack: without them build-wasm.sh keeps
- * whatever runtime is on disk. The bundle step fails if a runtime is missing.
+ * It refuses to bundle without wasm-pack (build-wasm.sh would keep whatever
+ * runtime is on disk), and fails if a runtime is missing from the stage.
  *
  * Publish server.json (mcp-publisher publish) only once this version is on
  * npm: the registry checks the npm package's mcpName.
@@ -31,6 +31,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -98,6 +99,21 @@ const nameOf = (spec) => spec.slice(0, spec.lastIndexOf('@'));
 const isAdded = (line) => line.startsWith('+') && !line.startsWith('+++ ') && line.trim() !== '+';
 const isRemoved = (line) => line.startsWith('-') && !line.startsWith('--- ') && line.trim() !== '-';
 
+/** A patch as files, each with the lines it adds and the lines it only removes. */
+function parsePatch(text) {
+  const files = [];
+  // A CRLF checkout of patches/ (core.autocrlf) must still compare equal.
+  for (const line of text.split(/\r?\n/)) {
+    if (line.startsWith('+++ ')) {
+      // A deleted file (+++ /dev/null) has nothing to look for.
+      files.push({ name: line === '+++ /dev/null' ? null : line.slice(4).replace(/^b\//, ''), added: [], removed: [] });
+    } else if (files.length && isAdded(line)) files.at(-1).added.push(line.slice(1));
+    else if (files.length && isRemoved(line)) files.at(-1).removed.push(line.slice(1));
+  }
+  for (const f of files) f.removed = f.removed.filter((l) => !f.added.includes(l));
+  return files.filter((f) => f.name !== null);
+}
+
 function assertPatchesApplied(staged) {
   const root = resolve(pkgDir, '..', '..');
   const patches = JSON.parse(readFileSync(join(root, 'package.json'), 'utf-8')).pnpm?.patchedDependencies ?? {};
@@ -108,38 +124,20 @@ function assertPatchesApplied(staged) {
     // pnpm patches one version; any other version of the package ships unpatched.
     const other = [...staged.keys()].find((s) => nameOf(s) === nameOf(spec) && s !== spec);
     if (other) throw new Error(`${other} is staged, but ${patch} only patches ${spec}`);
-    // A CRLF checkout of patches/ (core.autocrlf) must still compare equal.
-    const lines = readFileSync(join(root, patch), 'utf-8').split(/\r?\n/);
+    const files = parsePatch(readFileSync(join(root, patch), 'utf-8'));
     // A patch that parsed to nothing would pass without having checked anything.
-    if (!lines.some(isAdded)) throw new Error(`${patch} has no added lines to check`);
-    const added = new Set(lines.filter(isAdded).map((l) => l.slice(1)));
+    if (!files.some((f) => f.added.length)) throw new Error(`${patch} has no added lines to check`);
     // Every copy of exactly this version, hoisted or nested.
     for (const pkgRoot of staged.get(spec) ?? []) {
-      // Per patched file: added lines can be generic (`}`), so a removed line
-      // the patch does not add back must also be gone, or the file is unpatched.
-      let file = '';
-      let name = '';
-      let removedOnly = 0;
-      let removedGone = 0;
-      const endFile = () => {
-        if (removedOnly > 0 && removedGone === 0) throw new Error(`${pkgRoot}/${name} still has every line ${patch} removes`);
-        removedOnly = 0;
-        removedGone = 0;
-      };
-      for (const line of lines) {
-        if (line.startsWith('+++ ')) {
-          endFile();
-          name = line.slice(4).replace(/^b\//, '');
-          // A deleted file (+++ /dev/null) has no added lines to look for.
-          file = line === '+++ /dev/null' ? '' : readFileSync(join(pkgRoot, name), 'utf-8');
-        } else if (isAdded(line) && !file.includes(line.slice(1))) {
-          throw new Error(`${pkgRoot}/${name} is staged without ${patch} (missing: ${line.slice(1).trim()})`);
-        } else if (isRemoved(line) && !added.has(line.slice(1)) && file) {
-          removedOnly++;
-          if (!file.includes(line.slice(1))) removedGone++;
+      for (const { name, added, removed } of files) {
+        const text = readFileSync(join(pkgRoot, name), 'utf-8');
+        const missing = added.find((l) => !text.includes(l));
+        if (missing !== undefined) throw new Error(`${pkgRoot}/${name} is staged without ${patch} (missing: ${missing.trim()})`);
+        // Added lines can be generic (`}`), so a line the patch only removes must also be gone.
+        if (removed.length && removed.every((l) => text.includes(l))) {
+          throw new Error(`${pkgRoot}/${name} still has every line ${patch} removes`);
         }
       }
-      endFile();
     }
   }
 }
@@ -173,8 +171,10 @@ if (onNpm.status !== 0 && /E404/.test(onNpm.stderr ?? '')) {
 if (!flags['no-bundle']) {
   // build-wasm.sh keeps the runtime on disk when wasm-pack is missing, so a
   // release host without it would bundle an old engine.
-  if (spawnSync('wasm-pack', ['--version'], { shell: win }).status !== 0) {
-    throw new Error('wasm-pack is not on PATH: a release must rebuild the wasm runtime (scripts/build-wasm.sh)');
+  // The same two places build-wasm.sh looks.
+  const cargoWasmPack = join(homedir(), '.cargo', 'bin', win ? 'wasm-pack.exe' : 'wasm-pack');
+  if (spawnSync('wasm-pack', ['--version'], { shell: win }).status !== 0 && !existsSync(cargoWasmPack)) {
+    throw new Error('wasm-pack is not installed: a release must rebuild the wasm runtime (scripts/build-wasm.sh)');
   }
   // Checked before the slow deploy, and again in the stage after it.
   const source = missingWasm(resolve(pkgDir, '..', 'wasm'));

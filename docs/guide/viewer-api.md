@@ -2,8 +2,8 @@
 
 The `view` and `analyze` commands turn the CLI into a visual BIM analysis tool. Launch an interactive WebGL 2 viewer in the browser, then drive it from the terminal, scripts, or AI assistants via a REST API.
 
-!!! info "Optional feature"
-    The viewer is provided by `@ifc-lite/viewer-core`. All other CLI commands work without it — it only activates when you run `view` or `analyze`.
+!!! info "Viewer package"
+    The viewer is provided by `@ifc-lite/viewer-core`, which installs with the CLI.
 
 ## `view` — Launch 3D Viewer
 
@@ -71,7 +71,7 @@ The viewer exposes a REST API on the same port. Use it from `curl`, scripts, or 
 ### `POST /api/command` — Send Viewer Commands
 
 ```bash
-curl -X POST http://localhost:3456/api/command \
+curl -X POST http://127.0.0.1:3456/api/command \
   -H 'Content-Type: application/json' \
   -d '{"action":"colorize","type":"IfcWall","color":[1,0,0,1]}'
 ```
@@ -119,12 +119,12 @@ Create IFC elements and inject them into the viewer in real time. Accepts a sing
 
 ```bash
 # Single element
-curl -X POST http://localhost:3456/api/create \
+curl -X POST http://127.0.0.1:3456/api/create \
   -H 'Content-Type: application/json' \
   -d '{"type":"wall","params":{"Height":3,"Start":[0,0,0],"End":[5,0,0]}}'
 
 # Batch create (single HTTP call)
-curl -X POST http://localhost:3456/api/create \
+curl -X POST http://127.0.0.1:3456/api/create \
   -H 'Content-Type: application/json' \
   -d '[
     {"type":"wall","params":{"Height":3,"Start":[0,0,0],"End":[5,0,0]}},
@@ -144,7 +144,7 @@ All 29 element types from the [`create` command](cli.md#create-create-ifc-files)
 ### `POST /api/clear-created` — Remove Live Geometry
 
 ```bash
-curl -X POST http://localhost:3456/api/clear-created
+curl -X POST http://127.0.0.1:3456/api/clear-created
 ```
 
 Removes all geometry added via `/api/create` from the viewer and server state.
@@ -152,7 +152,7 @@ Removes all geometry added via `/api/create` from the viewer and server state.
 ### `GET /api/export` — Download Created Geometry
 
 ```bash
-curl http://localhost:3456/api/export > created.ifc
+curl http://127.0.0.1:3456/api/export > created.ifc
 ```
 
 Downloads all live-created geometry as a valid IFC STEP file.
@@ -160,7 +160,7 @@ Downloads all live-created geometry as a valid IFC STEP file.
 ### `GET /api/status` — Server Status
 
 ```bash
-curl http://localhost:3456/api/status
+curl http://127.0.0.1:3456/api/status
 ```
 
 ```json
@@ -267,7 +267,7 @@ Key design decisions:
 - **GPU color-ID picking** — click any entity to see its express ID and type
 - **Per-vertex color buffer** — real-time colorization without re-uploading geometry
 - **SSE with exponential backoff** — reconnects automatically if the connection drops
-- **CORS restricted to localhost** — the API only accepts requests from local origins
+- **Loopback only**: the server listens on 127.0.0.1, answers only requests whose Host is `localhost`, `127.0.0.1` or `[::1]` (this blocks DNS rebinding), and refuses requests from pages served from anywhere else, including cross-site iframes and links (`Sec-Fetch-Site: cross-site`); a link to the viewer page, or an IDE preview pane that embeds it, still opens it; a `frame-ancestors` policy keeps other sites from framing it. Only the viewer's own page, pages opened as `localhost` or `127.0.0.1` (http or https), and preview panes in desktop VS Code-family editors such as VS Code and Cursor may embed it. For requests, any page served from a local port counts as local. A refusal is a 403 that names the failed check. CORS allows only those local origins. To reach the viewer from another machine, forward the port with an SSH tunnel and open it as `127.0.0.1` on your side. A viewer inside a container is not reachable from the host through a published port in this release.
 
 ## Programmatic Usage (`@ifc-lite/viewer-core`)
 

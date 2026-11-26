@@ -17,10 +17,11 @@ import type {
   VisibilityBackendMethods,
   EntityRef,
 } from '@ifc-lite/sdk';
+import { viewerUrl } from './url.js';
 
 /** Post a command to the running viewer server. Fire-and-forget. */
 function sendCommand(port: number, cmd: Record<string, unknown>): void {
-  fetch(`http://localhost:${port}/api/command`, {
+  fetch(viewerUrl(port, '/api/command'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(cmd),

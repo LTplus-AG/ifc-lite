@@ -107,7 +107,7 @@ import { loadFailureReporter, settleKernelRefusal } from './ingest/loadFailureRe
 import { revalidateServedCache, type ServedCacheHit } from './ingest/cacheRevalidation.js';
 import { reportRenderStats } from '../utils/renderStatsReport.js';
 import { nextFrameOrTimeout } from '../utils/frameWait.js';
-import { compactCellSizeForLoad } from '../utils/compactGeometryFlag.js';
+import { compactCellSizeForLoad } from '../utils/compactGeometryFlag.js'; import { configureGlobalInstancing, resetGlobalInstancingArm } from '../utils/gpuInstancingConfig.js';
 import { isCompactCellSize, meshTriangleCount, meshVertexCount } from '@ifc-lite/geometry/compact';
 import { visibilityWitness } from '../utils/visibilityWitness.js';
 import { buildModelLoadedPayload, captureModelLoaded, clearModelLoadedSnapshot, snapshotFromGeometry } from '../utils/loadTelemetry.js';
@@ -431,7 +431,7 @@ export function useIfcLoader() {
         // Reset all viewer state before loading new file — PRIMARY ONLY. A
         // federated add must never wipe model #1; it joins the existing map.
         if (target.kind === 'primary') {
-          clearModelLoadedSnapshot();
+          clearModelLoadedSnapshot(); resetGlobalInstancingArm(); // the plan's telemetry arm starts at the default
           getGlobalRenderer()?.getScene()?.setColdGeometryProvider(null);
           resetViewerState({ preserveLoading: true });
           clearAllModels();
@@ -1300,7 +1300,7 @@ export function useIfcLoader() {
         // express-id offset, so the shards this produces have somewhere to
         // go.
         enableInstancing: true,
-      });
+      }); configureGlobalInstancing(geometryProcessor, { recordArm: target.kind === 'primary' }); // the plan's flag incl. its PostHog ramp, for this load's pool only
       // Armed BEFORE init() so an engine-init failure still frees whatever the
       // partially-initialised bridge allocated (dispose() is a no-op when it
       // allocated nothing).

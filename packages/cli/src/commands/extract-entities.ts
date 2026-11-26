@@ -10,7 +10,7 @@
  * Selectors (unioned):
  *   --product <GUID|expressId>  explicit product(s); repeatable or comma-list
  *   --type <IfcType>            every product of a type
- *   --storey <GUID|name|id>     every product placed under a storey (placement chain)
+ *   --storey <GUID|name|id>     the storey and its elements (spatial ownership; placement chain for unowned ones)
  *   --detect [--top N]          the N meshes a geometry-triage pass ranks most unusual
  *
  * The output carries each selected product's full forward reference closure PLUS

@@ -10,7 +10,7 @@
  *
  *   pnpm --filter @ifc-lite/mcp release:manifests [--out <dir>] [--no-bundle]
  *
- * `release:manifests` first builds @ifc-lite/mcp and every workspace package
+ * `release:manifests` clears its previous bundle outputs, then builds @ifc-lite/mcp and every workspace package
  * it depends on (running `node release/build.mjs` alone uses dist/ as it is),
  * the wasm runtime included, with turbo's cache off (a cached
  * soft-skip could restore an old runtime), so nothing in the bundle is stale.
@@ -36,7 +36,6 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { BUNDLE_SERVER_DIR, mcpbManifest, serverJson } from '../dist/release/manifests.js';
 
 /** Pinned so a new CLI release cannot change what a release builds. */
 const MCPB_CLI = '@anthropic-ai/mcpb@2.1.2';
@@ -44,7 +43,8 @@ const MCPB_CLI = '@anthropic-ai/mcpb@2.1.2';
 const pkgDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const { values: flags } = parseArgs({ options: { out: { type: 'string' }, 'no-bundle': { type: 'boolean' } } });
 // pnpm runs scripts in packages/mcp; a relative --out means where the user typed it.
-const userCwd = process.env.npm_lifecycle_event === 'release:manifests' ? (process.env.INIT_CWD ?? process.cwd()) : process.cwd();
+const packageEntry = process.env.npm_lifecycle_event === 'release:manifests';
+const userCwd = packageEntry ? (process.env.INIT_CWD ?? process.cwd()) : process.cwd();
 const out = flags.out ? resolve(userCwd, flags.out) : join(pkgDir, 'release-out');
 const pkg = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf-8'));
 
@@ -173,6 +173,28 @@ function run(command, args, cwd) {
   if (r.status !== 0) throw new Error(`${command} ${args.join(' ')} exited with ${r.status ?? r.signal}`);
 }
 
+const deps = join(out, `ifc-lite-${pkg.version}.deps.txt`);
+const bundle = join(out, `ifc-lite-${pkg.version}.mcpb`);
+function clearBundleOutputs() {
+  for (const path of [bundle, deps]) rmSync(path, { force: true });
+}
+
+if (!flags['no-bundle']) {
+  clearBundleOutputs();
+  // build-wasm.sh keeps the runtime on disk when wasm-pack is missing, so a
+  // release host without it would bundle an old engine. Looked for where
+  // build-wasm.sh looks: PATH, then ~/.cargo/bin.
+  const cargoWasmPack = join(homedir(), '.cargo', 'bin', win ? 'wasm-pack.exe' : 'wasm-pack');
+  if (spawnSync('wasm-pack', ['--version'], { shell: win }).status !== 0 && !existsSync(cargoWasmPack)) {
+    throw new Error('wasm-pack is not installed: a release must rebuild the wasm runtime (scripts/build-wasm.sh)');
+  }
+}
+if (packageEntry) {
+  run('pnpm', ['exec', 'turbo', 'run', 'build', '--force', `--filter=${pkg.name}...`], resolve(pkgDir, '../..'));
+}
+// Direct execution uses the existing dist; the package entry builds it above.
+const { BUNDLE_SERVER_DIR, mcpbManifest, serverJson } = await import('../dist/release/manifests.js');
+
 mkdirSync(out, { recursive: true });
 writeFileSync(join(out, 'server.json'), `${JSON.stringify(serverJson(pkg), null, 2)}\n`);
 process.stdout.write(`wrote ${join(out, 'server.json')}\n`);
@@ -187,13 +209,6 @@ if (onNpm.status !== 0 && /E404/.test(onNpm.stderr ?? '')) {
 }
 
 if (!flags['no-bundle']) {
-  // build-wasm.sh keeps the runtime on disk when wasm-pack is missing, so a
-  // release host without it would bundle an old engine. Looked for where
-  // build-wasm.sh looks: PATH, then ~/.cargo/bin.
-  const cargoWasmPack = join(homedir(), '.cargo', 'bin', win ? 'wasm-pack.exe' : 'wasm-pack');
-  if (spawnSync('wasm-pack', ['--version'], { shell: win }).status !== 0 && !existsSync(cargoWasmPack)) {
-    throw new Error('wasm-pack is not installed: a release must rebuild the wasm runtime (scripts/build-wasm.sh)');
-  }
   // Checked before the slow deploy (present, and newer than the Rust sources),
   // and again in the stage after it.
   const wasmDir = resolve(pkgDir, '..', 'wasm');
@@ -204,10 +219,6 @@ if (!flags['no-bundle']) {
   const rustNewest = newestMtime(resolve(pkgDir, '..', '..', 'rust'));
   const stale = WASM.filter((f) => statSync(join(wasmDir, f)).mtimeMs < rustNewest);
   if (stale.length) throw new Error(`packages/wasm/${stale.join(', ')} is older than the Rust sources: rebuild it (scripts/build-wasm.sh)`);
-  const deps = join(out, `ifc-lite-${pkg.version}.deps.txt`);
-  const bundle = join(out, `ifc-lite-${pkg.version}.mcpb`);
-  // A failed rebuild must not leave the last run's bundle looking current.
-  for (const old of [deps, bundle]) rmSync(old, { force: true });
   const stage = mkdtempSync(join(out, '.ifc-lite-mcpb-stage-'));
   try {
     run('pnpm', [
@@ -234,6 +245,9 @@ if (!flags['no-bundle']) {
     // Only once the bundle exists, so a failed pack leaves no record of a bundle.
     writeFileSync(deps, `${[...tree.keys()].sort().join('\n')}\n`);
     process.stdout.write(`wrote ${deps}\n`);
+  } catch (error) {
+    clearBundleOutputs();
+    throw error;
   } finally {
     rmSync(stage, { recursive: true, force: true });
   }

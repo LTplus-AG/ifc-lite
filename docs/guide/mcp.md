@@ -554,7 +554,16 @@ npx -y @ifc-lite/mcp install --client cursor -- --bridge
 Clients: `claude-code` (runs `claude mcp add`), `claude-desktop`, `cursor`,
 `vscode` (user scope runs `code --add-mcp`). `--scope project` writes the
 current directory's `.mcp.json`, `.cursor/mcp.json` or `.vscode/mcp.json`.
-Flags after `--` go to the server. Model paths become absolute.
+Flags after `--` go to the server. Model paths become absolute. Use
+`--force` to replace an existing IFClite entry, including an older npm pin.
+VS Code user-scope installs also require `--force` because its CLI replaces
+same-name entries. On Windows, use project scope or open the VS Code user
+configuration and paste the entry printed by install.
+
+On macOS, Claude Desktop launched from the Dock may have a different PATH
+from your terminal. If it cannot find `npx`, use a Claude Desktop bundle when
+available, or configure absolute paths for your Node installation and ensure
+the server's PATH includes that installation's bin directory.
 
 === "Claude Code"
 

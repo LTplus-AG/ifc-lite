@@ -55,6 +55,16 @@ function pruneStage(dir) {
   }
 }
 
+/**
+ * The wasm runtimes, gitignored and built by scripts/build-wasm.sh: the core
+ * one, plus those @ifc-lite/wasm/diff and /rhino load. Without them no model loads.
+ */
+const WASM = [join('pkg', 'ifc-lite_bg.wasm'), join('pkg-diff', 'ifc-lite-diff_bg.wasm'), join('pkg-rhino', 'ifc-lite-rhino_bg.wasm')];
+
+function missingWasm(root) {
+  return WASM.filter((f) => !existsSync(join(root, f)));
+}
+
 const win = process.platform === 'win32';
 
 /** On Windows pnpm and npx are .cmd shims, which need the shell; quote for it. */
@@ -69,12 +79,9 @@ writeFileSync(join(out, 'server.json'), `${JSON.stringify(serverJson(pkg), null,
 process.stdout.write(`wrote ${join(out, 'server.json')}\n`);
 
 if (!flags['no-bundle']) {
-  // gitignored and built by scripts/build-wasm.sh: the core runtime, plus the
-  // ones @ifc-lite/wasm/diff and /rhino load. Checked before the slow deploy,
-  // and again in the stage after it.
-  const WASM = [join('pkg', 'ifc-lite_bg.wasm'), join('pkg-diff', 'ifc-lite-diff_bg.wasm'), join('pkg-rhino', 'ifc-lite-rhino_bg.wasm')];
-  const missing = WASM.filter((f) => !existsSync(join(pkgDir, '..', 'wasm', f)));
-  if (missing.length) throw new Error(`packages/wasm is missing ${missing.join(', ')}: build it (scripts/build-wasm.sh) first`);
+  // Checked before the slow deploy, and again in the stage after it.
+  const source = missingWasm(resolve(pkgDir, '..', 'wasm'));
+  if (source.length) throw new Error(`packages/wasm is missing ${source.join(', ')}: build it (scripts/build-wasm.sh) first`);
   const stage = join(out, 'mcpb');
   rmSync(stage, { recursive: true, force: true });
   run('pnpm', [
@@ -85,9 +92,8 @@ if (!flags['no-bundle']) {
     '--filter', pkg.name, 'deploy', '--prod', '--legacy', join(stage, BUNDLE_SERVER_DIR),
   ], pkgDir);
   pruneStage(join(stage, BUNDLE_SERVER_DIR));
-  if (WASM.some((f) => !existsSync(join(stage, BUNDLE_SERVER_DIR, 'node_modules', '@ifc-lite', 'wasm', f)))) {
-    throw new Error('the deployed stage is missing a wasm runtime');
-  }
+  const staged = missingWasm(join(stage, BUNDLE_SERVER_DIR, 'node_modules', '@ifc-lite', 'wasm'));
+  if (staged.length) throw new Error(`the deployed stage is missing ${staged.join(', ')}`);
   writeFileSync(join(stage, 'manifest.json'), `${JSON.stringify(mcpbManifest(pkg), null, 2)}\n`);
   // Source maps and type declarations are about 30 MB of the stage and never run.
   writeFileSync(join(stage, '.mcpbignore'), '*.map\n*.d.ts\n*.d.mts\n*.d.cts\n');

@@ -542,24 +542,6 @@ A failed native library save carries the library's reason in `details.save`. Sto
 
 ## Wiring it into a client
 
-### Claude Desktop bundle
-
-If you have an `ifc-lite-<version>.mcpb` bundle, open it in Claude Desktop
-and follow the extension installation prompt. You can select multiple IFC
-files to load on startup. The server can also open files from the selected
-models' folders. If a selected file moves, update the extension configuration
-before restarting it. The bundle includes the server, its dependencies and
-WASM runtimes, and uses Claude Desktop's Node runtime.
-
-### MCP Registry
-
-The Registry identifier is `io.github.LTplus-AG/ifc-lite`. Once a version is
-listed, registry-aware clients can use the entry to configure the matching
-`@ifc-lite/mcp` npm version over stdio. You can supply IFC paths as optional
-positional arguments to load models on startup.
-
-### Client configuration
-
 === "Claude Code"
 
     The repository is a plugin marketplace. The `ifc-lite` plugin bundles the
@@ -636,6 +618,22 @@ positional arguments to load models on startup.
     Remember to call `model_load` first: an HTTP session starts empty.
 
 Cursor, Windsurf, Goose, and Zed all accept the same `npx @ifc-lite/mcp <file>` stdio command.
+
+### Claude Desktop bundle
+
+If you have an `ifc-lite-<version>.mcpb` bundle, open it in Claude Desktop
+and follow the extension installation prompt. You can select multiple IFC
+files to load on startup. The server can also open files from the selected
+models' folders. If a selected file moves, update the extension configuration
+before restarting it. The bundle includes the server, its dependencies and
+WASM runtimes, and uses Claude Desktop's Node runtime.
+
+### MCP Registry
+
+The Registry identifier is `io.github.LTplus-AG/ifc-lite`. Once a version is
+listed, registry-aware clients can use the entry to configure the matching
+`@ifc-lite/mcp` npm version over stdio. You can supply IFC paths as optional
+positional arguments to load models on startup.
 
 ## Errors that keep the agent in the loop
 

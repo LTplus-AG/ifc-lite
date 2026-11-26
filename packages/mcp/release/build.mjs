@@ -31,7 +31,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -204,37 +204,37 @@ if (!flags['no-bundle']) {
   const rustNewest = newestMtime(resolve(pkgDir, '..', '..', 'rust'));
   const stale = WASM.filter((f) => statSync(join(wasmDir, f)).mtimeMs < rustNewest);
   if (stale.length) throw new Error(`packages/wasm/${stale.join(', ')} is older than the Rust sources: rebuild it (scripts/build-wasm.sh)`);
-  // A folder this script owns: --out may already hold a user's own `mcpb`.
-  const stage = join(out, '.ifc-lite-mcpb-stage');
   const deps = join(out, `ifc-lite-${pkg.version}.deps.txt`);
   const bundle = join(out, `ifc-lite-${pkg.version}.mcpb`);
   // A failed rebuild must not leave the last run's bundle looking current.
   for (const old of [deps, bundle]) rmSync(old, { force: true });
-  rmSync(stage, { recursive: true, force: true });
-  run('pnpm', [
-    '--config.node-linker=hoisted',
-    // Root patches name packages the server does not depend on; hoisted deploy
-    // refuses unused patches unless told otherwise.
-    '--config.allow-unused-patches=true',
-    '--filter', pkg.name, 'deploy', '--prod', '--legacy', join(stage, BUNDLE_SERVER_DIR),
-  ], pkgDir);
-  pruneStage(join(stage, BUNDLE_SERVER_DIR));
-  const staged = missingWasm(join(stage, BUNDLE_SERVER_DIR, 'node_modules', '@ifc-lite', 'wasm'));
-  if (staged.length) throw new Error(`the deployed stage is missing ${staged.join(', ')}`);
-  // Hoisted deploy resolves within package.json ranges, not the lockfile, so the
-  // exact tree is recorded next to the bundle to audit or reproduce a release.
-  const nodeModules = join(stage, BUNDLE_SERVER_DIR, 'node_modules');
-  const tree = resolvedTree(nodeModules);
-  assertPatchesApplied(tree);
-  writeFileSync(join(stage, 'manifest.json'), `${JSON.stringify(mcpbManifest(pkg), null, 2)}\n`);
-  // Source maps and type declarations are about 30 MB of the stage and never run.
-  // pnpm's state files hold this host's store paths and do nothing at runtime.
-  writeFileSync(join(stage, '.mcpbignore'), '*.map\n*.d.ts\n*.d.mts\n*.d.cts\n.modules.yaml\n.pnpm-workspace-state*\n');
-  run('npx', ['-y', MCPB_CLI, 'pack', stage, bundle], pkgDir);
-  process.stdout.write(`wrote ${bundle}\n`);
-  // A few hundred MB, with its own copy of this package's package.json.
-  rmSync(stage, { recursive: true, force: true });
-  // Only once the bundle exists, so a failed pack leaves no record of a bundle.
-  writeFileSync(deps, `${[...tree.keys()].sort().join('\n')}\n`);
-  process.stdout.write(`wrote ${deps}\n`);
+  const stage = mkdtempSync(join(out, '.ifc-lite-mcpb-stage-'));
+  try {
+    run('pnpm', [
+      '--config.node-linker=hoisted',
+      // Root patches name packages the server does not depend on; hoisted deploy
+      // refuses unused patches unless told otherwise.
+      '--config.allow-unused-patches=true',
+      '--filter', pkg.name, 'deploy', '--prod', '--legacy', join(stage, BUNDLE_SERVER_DIR),
+    ], pkgDir);
+    pruneStage(join(stage, BUNDLE_SERVER_DIR));
+    const staged = missingWasm(join(stage, BUNDLE_SERVER_DIR, 'node_modules', '@ifc-lite', 'wasm'));
+    if (staged.length) throw new Error(`the deployed stage is missing ${staged.join(', ')}`);
+    // Hoisted deploy resolves within package.json ranges, not the lockfile, so the
+    // exact tree is recorded next to the bundle to audit or reproduce a release.
+    const nodeModules = join(stage, BUNDLE_SERVER_DIR, 'node_modules');
+    const tree = resolvedTree(nodeModules);
+    assertPatchesApplied(tree);
+    writeFileSync(join(stage, 'manifest.json'), `${JSON.stringify(mcpbManifest(pkg), null, 2)}\n`);
+    // Source maps and type declarations are about 30 MB of the stage and never run.
+    // pnpm's state files hold this host's store paths and do nothing at runtime.
+    writeFileSync(join(stage, '.mcpbignore'), '*.map\n*.d.ts\n*.d.mts\n*.d.cts\n.modules.yaml\n.pnpm-workspace-state*\n');
+    run('npx', ['-y', MCPB_CLI, 'pack', stage, bundle], pkgDir);
+    process.stdout.write(`wrote ${bundle}\n`);
+    // Only once the bundle exists, so a failed pack leaves no record of a bundle.
+    writeFileSync(deps, `${[...tree.keys()].sort().join('\n')}\n`);
+    process.stdout.write(`wrote ${deps}\n`);
+  } finally {
+    rmSync(stage, { recursive: true, force: true });
+  }
 }

@@ -77,7 +77,7 @@ const inputSchema: JsonSchema = {
     },
     timeout_ms: {
       type: 'integer', minimum: 100, maximum: MAX_TIMEOUT_MS, default: DEFAULT_TIMEOUT_MS,
-      description: `Execution time limit in milliseconds (default ${DEFAULT_TIMEOUT_MS}, max ${MAX_TIMEOUT_MS}). Script code is interrupted when it is exceeded; a single synchronous bim.* call already running is not cut short. Script code runs on the server's event loop, so other requests and a cancel wait until it yields or is interrupted.`,
+      description: `Execution time limit in milliseconds (default ${DEFAULT_TIMEOUT_MS}, max ${MAX_TIMEOUT_MS}). Script code is interrupted when it is exceeded; a single synchronous bim.* call already running is not cut short. Script code runs on the server's event loop, so other requests and a cancel wait until it yields or is interrupted. bim calls the script starts but does not await still count: if they outlast the limit the run is a TIMEOUT.`,
     },
     memory_mb: {
       type: 'integer', minimum: 8, maximum: MAX_MEMORY_MB, default: DEFAULT_MEMORY_MB,
@@ -105,7 +105,7 @@ const outputSchema: JsonSchema = {
     },
     logs_truncated: { type: 'boolean' },
     duration_ms: { type: 'number' },
-    mutations_queued: { type: 'integer', minimum: 0, description: 'Mutation journal entries this script added (an edit it later undid still counts); persist pending edits with export_ifc or model_save. Absent if the model was unloaded during the run.' },
+    mutations_queued: { type: 'integer', minimum: 0, description: 'Mutation journal entries this script added (an edit it later undid still counts); persist pending edits with export_ifc or model_save. Counts every edit that landed on the model during the run, so a concurrent call editing the same model is included. Absent if the model was unloaded during the run.' },
   },
 };
 
@@ -199,6 +199,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
         `Script ran in ${result.durationMs} ms on model '${model.id}' (${mode}).`,
         (mutationsQueued ?? 0) > 0 ? `${mutationsQueued} mutation(s) queued; persist with export_ifc or model_save.` : '',
         outcome.value_truncated ? `Value truncated (over ${MAX_VALUE_CHARS} JSON characters).` : '',
+        truncated ? 'Logs truncated.' : '',
       ].filter(Boolean).join(' ');
       const structured = {
         model_id: model.id, mode, ...outcome, logs, logs_truncated: truncated, duration_ms: result.durationMs,

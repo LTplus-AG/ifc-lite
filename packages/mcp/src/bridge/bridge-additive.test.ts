@@ -297,6 +297,16 @@ describe('DeliveredSurfaces', () => {
     expect(ledger.check({ surfaceId: 'dash', name: 'ask', prompt: 'Question 0' })).toEqual({ promptVerified: false });
   });
 
+  it('never forgets the id of a panel the tab may still show', () => {
+    const ledger = new DeliveredSurfaces();
+    ledger.record(Array.from({ length: 128 }, (_, i) => followUp(`a${i}`, 'Go')));
+    ledger.record(Array.from({ length: 128 }, (_, i) => followUp(`b${i}`, 'Go')));
+    ledger.record(Array.from({ length: 128 }, (_, i) => followUp(`c${i}`, 'Go')));
+    // a0 names the first panel's clicks; a1 is only a second id inside it.
+    expect(ledger.check({ surfaceId: 'a0', name: 'ask', prompt: 'Go' })).toEqual(ok);
+    expect(ledger.check({ surfaceId: 'a1', name: 'ask', prompt: 'Go' })).toMatchObject({ refused: expect.any(String) });
+  });
+
   it('never forgets an id of the call being recorded, however many it names', () => {
     const ledger = new DeliveredSurfaces();
     const many = Array.from({ length: MAX_DELIVERED_SURFACES + 36 }, (_, i) => followUp(`s${i}`, 'Go'));

@@ -225,7 +225,7 @@ describe('ui-events must match a surface the agent showed (P2 item 6)', () => {
     // The surface's own follow-up, with surrounding whitespace as a renderer may send it, is the user's question.
     send({ surfaceId: 'walls', name: 'ask', prompt: '  Which walls are external? ' });
     await expect.poll(() => channel().length).toBe(1);
-    expect(channel()[0].params.content).toBe('  Which walls are external? ');
+    expect(channel()[0].params.content).toBe('Which walls are external?');
     // A prompt the surface does not hold still arrives, but as quoted data, not as the user's words.
     send({ surfaceId: 'walls', name: 'ask', prompt: injected });
     await expect.poll(() => channel().length).toBe(2);

@@ -37,6 +37,8 @@ import { a2uiSurfaceId, type BridgeUiEvent } from './ui-events.js';
  * 16 panels (agent-surfaces.ts) and one call can name several ids.
  */
 export const MAX_DELIVERED_SURFACES = 256;
+/** Panels the tab keeps on screen (agent-surfaces.ts): their ids are never forgotten. */
+const TAB_PANELS = 16;
 /** Follow-up texts and event names remembered per surface, each; the oldest go first. */
 export const MAX_SURFACE_ENTRIES = 1024;
 
@@ -111,6 +113,8 @@ type SurfaceCheck = { refused: string } | { promptVerified: boolean };
 export class DeliveredSurfaces {
   /** Surface id -> what the agent sent for it. Insertion order is age. */
   private readonly surfaces = new Map<string, Surface>();
+  /** The first surface id of each of the last {@link TAB_PANELS} calls: the id the tab names that panel's clicks by. */
+  private readonly panels: string[] = [];
 
   /**
    * Remember the messages of one `tab_show_ui` call. The tab shows a call as
@@ -122,6 +126,8 @@ export class DeliveredSurfaces {
   record(messages: readonly unknown[]): void {
     const ids = new Set(messages.map(a2uiSurfaceId).filter((id): id is string => id !== null));
     if (ids.size === 0) return;
+    this.panels.push(ids.values().next().value as string);
+    if (this.panels.length > TAB_PANELS) this.panels.shift();
     const call = emptySurface();
     collect(messages, call);
     for (const id of ids) {
@@ -132,10 +138,11 @@ export class DeliveredSurfaces {
       this.surfaces.delete(id);
       this.surfaces.set(id, surface);
     }
-    // Forget the oldest ids, never one this call named (the panel's first id names its clicks).
+    // Forget the oldest ids, never one this call named or one that names a panel the tab may still show.
+    const kept = new Set([...ids, ...this.panels]);
     for (const id of this.surfaces.keys()) {
       if (this.surfaces.size <= MAX_DELIVERED_SURFACES) break;
-      if (!ids.has(id)) this.surfaces.delete(id);
+      if (!kept.has(id)) this.surfaces.delete(id);
     }
   }
 
@@ -151,5 +158,6 @@ export class DeliveredSurfaces {
   /** A different tab paired: what the previous one was shown does not carry over. */
   clear(): void {
     this.surfaces.clear();
+    this.panels.length = 0;
   }
 }

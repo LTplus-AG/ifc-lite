@@ -475,7 +475,8 @@ palette. Reads, selection inspection and palette discovery are available initial
   for a surface the agent sent to this tab with `tab_show_ui` and an event
   name that surface raises (or `ask`); anything else is dropped and logged.
   Its prompt counts as the user's words only when it is follow-up text the
-  agent wrote in that surface (a `prompt`, `userMessage` or `label`). Any
+  agent wrote in that surface (a follow-up's `prompt`, or an event's
+  `userMessage` or `context.prompt`); labels and data values never count. Any
   other prompt, typed or computed, still arrives, marked
   `promptVerified: false`, and with `--channel` it is quoted as data rather
   than passed on as the user's message.

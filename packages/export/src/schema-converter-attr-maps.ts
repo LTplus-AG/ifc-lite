@@ -150,24 +150,17 @@ export const DELETED_SUBTYPES: ReadonlyMap<string, string> = new Map([
   ['IFCRELSCHEDULESCOSTITEMS', 'IFCRELASSIGNSTOCONTROL'],
 ]);
 
-/** True when an IFC4 `line` upgraded from IFC2X3 gets its required slots
- *  counted: a structural record, or one a map wrote, which can leave a
- *  required slot with no source value (#10763). The type is read from the
- *  record head. Twin of Rust `upgrade_counts_ifc4_slots`. */
-export function upgradeCountsIfc4Slots(line: string): boolean {
+/** True when a `target` `line` upgraded from IFC2X3 gets its required slots
+ *  counted: one a map wrote, which can leave a required slot with no source
+ *  value (#10763, #11135), or for IFC4 a structural record (the structural pass
+ *  runs for IFC4 only). A map's IFC4X3 type is its IFC4 one, but for the
+ *  distribution board `attrMapFor` names. The type is read from the record
+ *  head. Twin of Rust `upgrade_counts_slots`. */
+export function upgradeCountsSlots(line: string, target: 'IFC4' | 'IFC4X3'): boolean {
   const head = stepRecordHead(line);
   const type = head ? line.slice(head.typeStart, head.typeEnd) : '';
-  return type.startsWith('IFCSTRUCTURAL') || getAttrMapIndex().byIfc4.has(type);
-}
-
-/** True when an IFC4X3 `line` upgraded from IFC2X3 was written by a map, so its required
- *  slots are counted against IFC4X3 (#11135). Structural records are not: the structural pass
- *  runs for IFC4 only. A map's IFC4X3 type is its IFC4 one, but for the distribution board
- *  `attrMapFor` names. Twin of Rust `upgrade_counts_ifc4x3_slots`. */
-export function upgradeCountsIfc4x3Slots(line: string): boolean {
-  const head = stepRecordHead(line);
-  const type = head ? line.slice(head.typeStart, head.typeEnd) : '';
-  return getAttrMapIndex().byIfc4.has(type === 'IFCDISTRIBUTIONBOARD' ? 'IFCELECTRICDISTRIBUTIONBOARD' : type);
+  if (target === 'IFC4' && type.startsWith('IFCSTRUCTURAL')) return true;
+  return getAttrMapIndex().byIfc4.has(target === 'IFC4X3' && type === 'IFCDISTRIBUTIONBOARD' ? 'IFCELECTRICDISTRIBUTIONBOARD' : type);
 }
 
 /** The map for writing `entityType` as `newType`, and whether it runs upward. */

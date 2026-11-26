@@ -21,14 +21,32 @@
 use crate::generated::ifc4_required_slots::{Ifc4RequiredSlot, Ifc4RequiredSlotRow, IFC4_REQUIRED_SLOTS, IFC4X3_REQUIRED_SLOTS};
 use crate::step_slot::split_top_level_args;
 
+/// A target whose required slots are counted.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SlotTarget {
+    Ifc4,
+    Ifc4x3,
+}
+
+impl SlotTarget {
+    /// The target for a canonical schema name, if its slots are counted.
+    pub(crate) fn of(schema: &str) -> Option<Self> {
+        match schema { "IFC4" => Some(Self::Ifc4), "IFC4X3" => Some(Self::Ifc4x3), _ => None }
+    }
+
+    fn table(self) -> &'static [Ifc4RequiredSlotRow] {
+        match self { Self::Ifc4 => IFC4_REQUIRED_SLOTS, Self::Ifc4x3 => IFC4X3_REQUIRED_SLOTS }
+    }
+}
+
 /// How many required slots one export left `$`, per target. An IFC2X3 ->
 /// IFC4X3 upgrade counts the records an attribute map or the typed-property
 /// pass wrote against IFC4X3's own required slots (#11135), so a slot IFC4X3
 /// made optional is not counted.
 #[derive(Default)]
 pub(crate) struct Ifc4SlotCheck {
-    required_unfilled: usize,
-    ifc4x3_required_unfilled: usize,
+    /// Indexed by `SlotTarget as usize`.
+    required_unfilled: [usize; 2],
 }
 
 impl Ifc4SlotCheck {
@@ -36,13 +54,13 @@ impl Ifc4SlotCheck {
     /// Counted per SLOT: one record can leave several. IFC4X3 counts reach the
     /// warnings only, as in the TypeScript twin.
     pub(crate) fn required_slots_unfilled(&self) -> usize {
-        self.required_unfilled
+        self.required_unfilled[SlotTarget::Ifc4 as usize]
     }
 
     /// One warning when the counter is non-zero. Same text as the TypeScript
     /// twin's, so both exporters report the same thing.
     pub(crate) fn warnings(&self) -> Vec<String> {
-        [("IFC4", self.required_unfilled, "#5202"), ("IFC4X3", self.ifc4x3_required_unfilled, "#11135")]
+        [("IFC4", self.required_unfilled[SlotTarget::Ifc4 as usize], "#5202"), ("IFC4X3", self.required_unfilled[SlotTarget::Ifc4x3 as usize], "#11135")]
             .into_iter()
             .filter(|&(_, count, _)| count > 0)
             .map(|(target, count, issue)| format!(
@@ -59,27 +77,17 @@ impl Ifc4SlotCheck {
     /// A line that does not parse, whose type IFC4 gives no required slot, or
     /// whose ARITY is not IFC4's is not counted: its position `i` need not be
     /// attribute `i` (the same guard `Ifc2x3SlotFill::fill_required` uses).
-    pub(crate) fn count(&mut self, line: &str) {
-        self.count_for(line, false);
-    }
-
-    /// [`Self::count`] against IFC4X3's required slots (#11135).
-    pub(crate) fn count_ifc4x3(&mut self, line: &str) {
-        self.count_for(line, true);
-    }
-
-    fn count_for(&mut self, line: &str, ifc4x3: bool) {
+    pub(crate) fn count(&mut self, line: &str, target: SlotTarget) {
         let Some(open) = line.find('(') else { return };
         let Some(close) = line.rfind(')').filter(|&c| c > open) else { return };
         let Some(eq) = line.find('=').filter(|&e| e < open) else { return };
         let entity_type = line[eq + 1..open].trim().to_ascii_uppercase();
-        let Some((arity, slots)) = required_slots(if ifc4x3 { IFC4X3_REQUIRED_SLOTS } else { IFC4_REQUIRED_SLOTS }, &entity_type) else { return };
+        let Some((arity, slots)) = required_slots(target.table(), &entity_type) else { return };
         let Some(values) = split_top_level_args(&line[open + 1..close]) else { return };
         if values.len() != usize::from(arity) {
             return;
         }
-        let unfilled = slots.iter().filter(|&&(index, _)| is_null_token(&values[usize::from(index)])).count();
-        *if ifc4x3 { &mut self.ifc4x3_required_unfilled } else { &mut self.required_unfilled } += unfilled;
+        self.required_unfilled[target as usize] += slots.iter().filter(|&&(index, _)| is_null_token(&values[usize::from(index)])).count();
     }
 }
 

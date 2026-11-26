@@ -35,7 +35,7 @@ const NULL_TOKEN = /^(?:\s|\/\*[\s\S]*?\*\/)*\$(?:\s|\/\*[\s\S]*?\*\/)*$/;
  *
  * `convertStepLine` consults this for `fromSchema` `'IFC4X3'`/`'IFC5'`, and for
  * the IFC2X3 → IFC4 records a structural rewrite or an attribute map wrote
- * (`upgradeCountsIfc4Slots`, #10763). The rest of IFC2X3 → IFC4 is a separately
+ * (`upgradeCountsSlots`, #10763). The rest of IFC2X3 → IFC4 is a separately
  * audited upgrade path, pinned byte-for-byte by `schema-converter-door-window-type.test.ts`.
  * An IFC2X3 → IFC4X3 upgrade counts the records an attribute map or the typed-property
  * pass wrote against IFC4X3's own required slots (#11135), so a slot IFC4X3 made optional
@@ -43,11 +43,11 @@ const NULL_TOKEN = /^(?:\s|\/\*[\s\S]*?\*\/)*\$(?:\s|\/\*[\s\S]*?\*\/)*$/;
  */
 export class Ifc4SlotCheck {
   /** Required slots left `$`, per target. Counted per SLOT: one record can leave several. */
-  private readonly requiredUnfilled = new Map<RequiredSlotTarget, number>();
+  private readonly requiredUnfilled: Record<RequiredSlotTarget, number> = { IFC4: 0, IFC4X3: 0 };
 
   /** One warning per target with a slot left `$`, in the exporters' warning channel. */
   warnings(): string[] {
-    return [...this.requiredUnfilled].map(([target, count]) =>
+    return (Object.entries(this.requiredUnfilled) as [RequiredSlotTarget, number][]).filter(([, count]) => count > 0).map(([target, count]) =>
       `${count} slot(s) keep $ where ${target} requires a value and the source offers none ` +
       '(the converter does not invent measures, labels, identifiers, references, flags or enums); ' +
       `the file is not valid ${target} (${target === 'IFC4' ? '#5202' : '#11135'}).`);
@@ -69,8 +69,7 @@ export class Ifc4SlotCheck {
     if (row === undefined) return line;
     const values = splitTopLevelStepArguments(line.slice(open + 1, close));
     if (values === null || values.length !== row.arity) return line;
-    const unfilled = row.slots.filter(([index]) => NULL_TOKEN.test(values[index])).length;
-    if (unfilled) this.requiredUnfilled.set(target, (this.requiredUnfilled.get(target) ?? 0) + unfilled);
+    this.requiredUnfilled[target] += row.slots.filter(([index]) => NULL_TOKEN.test(values[index])).length;
     return line;
   }
 }

@@ -92,7 +92,7 @@ struct Draft {
     source_type: &'static str,
     groups: Vec<Group>,
     /// The target, whose required slots the written record is counted against (#11135).
-    ifc4x3: bool,
+    target: crate::schema_ifc4_slots::SlotTarget,
 }
 
 #[derive(Default)]
@@ -126,7 +126,8 @@ impl TypedPropertyUpgrade {
         if groups.is_empty() {
             return false;
         }
-        self.drafts.insert(id, Draft { source_type, groups, ifc4x3: to == "IFC4X3" });
+        let Some(target) = crate::schema_ifc4_slots::SlotTarget::of(to) else { return false };
+        self.drafts.insert(id, Draft { source_type, groups, target });
         true
     }
 
@@ -157,10 +158,8 @@ impl TypedPropertyUpgrade {
             if let Some(replacement) = draft.emit(&line, &mut ids, &mut appended) {
                 let restored: usize = draft.groups.iter().map(|group| group.properties.len()).sum();
                 *dropped = dropped.saturating_sub(restored);
-                if draft.ifc4x3 {
-                    slots.count_ifc4x3(&replacement);
-                } else {
-                    slots.count(&replacement);
+                slots.count(&replacement, draft.target);
+                if draft.target == crate::schema_ifc4_slots::SlotTarget::Ifc4 {
                     for (attribute, _) in draft.groups.iter().flat_map(|group| &group.properties) {
                         structural.restore_omitted_value(draft.source_type, attribute, "IFC4");
                     }
@@ -168,7 +167,7 @@ impl TypedPropertyUpgrade {
                 output.extend_from_slice(replacement.as_bytes());
             } else {
                 self.refused += 1;
-                if draft.ifc4x3 { slots.count_ifc4x3(&line) } else { slots.count(&line) }
+                slots.count(&line, draft.target);
                 output.extend_from_slice(&text[start..end]);
             }
         }

@@ -240,9 +240,11 @@ pub fn convert_step_line(
         converted = checks.documents.apply(express_id, converted, &mut checks.attribute_values_dropped);
         if cto == "IFC2X3" { converted = checks.structural.after(express_id, converted); }
         let deferred = checks.typed_properties.capture(line.as_ref(), cfrom, cto, express_id);
-        (!deferred && cto == "IFC4" && (cfrom != "IFC2X3" || crate::schema_attr_maps::upgrade_counts_ifc4_slots(&converted))).then(|| checks.ifc4_slots.count(&converted));
-        // #11135: a mapped IFC2X3 upgrade to IFC4X3 is counted against IFC4X3's own required slots.
-        (!deferred && cto == "IFC4X3" && cfrom == "IFC2X3" && crate::schema_attr_maps::upgrade_counts_ifc4x3_slots(&converted)).then(|| checks.ifc4_slots.count_ifc4x3(&converted));
+        // Every record to IFC4; an IFC2X3 upgrade's mapped records to IFC4 or IFC4X3, each against its own target (#11135).
+        if let Some(target) = crate::schema_ifc4_slots::SlotTarget::of(cto).filter(|_| !deferred) {
+            let counts = if cfrom == "IFC2X3" { crate::schema_attr_maps::upgrade_counts_slots(&converted, target) } else { target == crate::schema_ifc4_slots::SlotTarget::Ifc4 };
+            if counts { checks.ifc4_slots.count(&converted, target); }
+        }
     }
     Ok(if cto == "IFC2X3" { slots.apply(converted) } else { converted })
 }

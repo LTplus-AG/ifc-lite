@@ -105,7 +105,7 @@ Tools are grouped by capability. Everything below is registered in the default t
 | Query | `query_entities`, `count_entities`, `get_entity`, `get_entities_bulk`, `spatial_hierarchy`, `containment_chain`, `relationships`, `properties_unique`, `materials_list`, `classifications_list`, `georeferencing`, `georeferencing_check`, `units`, `cost_data`, `cost_evaluate` |
 | Geometry | `geometry_bbox`, `geometry_volume`, `geometry_area`, `geometry_get` *(planned)*, `raycast` *(planned)* |
 | Clash | `clash_check`, `clash_matrix` |
-| Validation | `ids_validate`, `ids_explain`, `model_audit`, `gherkin_check` *(planned)* |
+| Validation | `ids_validate`, `ids_explain`, `model_audit` |
 | IDS authoring | `ids_audit`, `ids_lint`, `ids_read`, `ids_apply_ops`, `ids_write`, `ids_schema_search`, `ids_schema_entity`, `ids_schema_pset`, `ids_diff`, `ids_preview` *(planned)*, `ids_infer` *(planned)*, `ids_coverage` *(planned)*, `ids_test` *(planned)* |
 | Mutation | `entity_set_property`, `entity_delete_property`, `entity_set_attribute`, `entity_create`, `entity_delete`, `georeferencing_write`, `georeferencing_fix`, `mutation_batch`, `mutation_undo`, `mutation_diff`, `model_save` |
 | Hosted modelling | `place_opening`, `place_door`, `place_window` |
@@ -118,7 +118,7 @@ Tools are grouped by capability. Everything below is registered in the default t
 | BCF | `bcf_topic_list`, `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`, `bcf_viewpoint_create`, `bcf_export` |
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |
 | Diff | `model_diff`, `quantity_diff` |
-| Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_usd`, `export_3dm`, `export_pdf_report` *(planned)* |
+| Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_usd`, `export_3dm` |
 | Flow | `describe_flow`, `run_flow`, `propose_flow`, `resume_flow` |
 | Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
 | Draft layers & review | `create_draft_layer`, `draft_apply_ops`, `publish_layer`, `diff_layer`, `dry_run_merge`, `list_conflicts`, `request_review`, `add_review_feedback`, `get_review_feedback`, `add_review_topic`, `respond_to_review` |
@@ -401,11 +401,11 @@ For an `IfcSlab` host, `place_opening` accepts `Position: [x, y]` (opening centr
     by this adapter; use the hosted placement tools with an actual host.
 
 !!! note "Planned tools return a clean error"
-    `geometry_get`, `raycast`, `gherkin_check`, and `export_pdf_report` are
-    registered so agents can discover them, but they currently return an
-    `UNSUPPORTED_OPERATION` result rather than data. Mesh geometry (`geometry_get`)
-    and `raycast` need the WASM geometry pipeline; `gherkin_check` awaits the bSI
-    Gherkin grammar; `export_pdf_report` is slated for a later release.
+    `geometry_get`, `raycast`, `ids_preview`, `ids_infer`, `ids_coverage` and
+    `ids_test` are registered so agents can discover them, but they currently
+    return an `UNSUPPORTED_OPERATION` result rather than data. `geometry_get`
+    and `raycast` need the WASM geometry pipeline; the IDS four wait for their
+    engines.
 
 ### Interactive result surfaces
 
@@ -708,14 +708,16 @@ const initResp = await transport.send({
   id: 1,
   method: 'initialize',
   params: {
-    protocolVersion: '2025-11-05',
+    protocolVersion: '2025-11-25',
     capabilities: {},
     clientInfo: { name: 'host', version: '1' },
   },
 });
 ```
 
-The server negotiates MCP protocol version `2025-11-05` and accepts the neighbouring published revisions, downgrading anything it does not recognize.
+The server negotiates MCP protocol version `2025-11-25` and accepts the earlier published revisions `2025-06-18` and `2025-03-26`. Any other requested version gets `2025-11-25`.
+
+Besides tools, resources and prompts, the server answers `resources/templates/list` (the entity URI template) and `logging/setLevel` (server log lines at or above the level arrive as `notifications/message`). A tool's required scope is at `_meta["ifc-lite/scope"]` in `tools/list`. `notifications/resources/list_changed` follows the loaded models: a custom `ModelRegistry` that implements the optional `onChange` gets it for every change, one without it only for changes made by a tool call.
 
 ## Why agents plus BIM
 

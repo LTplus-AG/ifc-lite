@@ -17,7 +17,7 @@ import { foldedEntityCount, pendingMutationsField, pendingOverlay } from '@ifc-l
 import { buildSpatialTree } from '../spatial-tree.js';
 import { findByGlobalId } from '../tools/util.js';
 import { materialFallbackName } from '../material-naming.js';
-import type { ResourceContents, ResourceDefinition } from '../protocol/index.js';
+import type { ResourceContents, ResourceDefinition, ResourceTemplate } from '../protocol/index.js';
 import type { LoadedModel, ToolContext } from '../context.js';
 import { modelAllowed } from '../auth/scope.js';
 import type { ResourceProvider } from './types.js';
@@ -81,12 +81,14 @@ class ManifestProvider implements ResourceProvider {
 class EntityProvider implements ResourceProvider {
   name = 'entity';
   list(): ResourceDefinition[] {
-    // Entities are dynamic; expose the URL pattern as a hint via a single
-    // template entry the client can show in UI but won't try to fetch.
+    // Entities are too many to list; clients build the URI from the template.
+    return [];
+  }
+  templates(): ResourceTemplate[] {
     return [{
-      uri: `${URI_PREFIX}model/{model_id}/entity/{global_id}`,
-      name: 'Entity (template)',
-      description: 'Read full entity data by GlobalId. Substitute {model_id} and {global_id}.',
+      uriTemplate: `${URI_PREFIX}model/{model_id}/entity/{global_id}`,
+      name: 'entity',
+      description: 'Full entity data by GlobalId: attributes, properties, quantities, classifications, materials.',
       mimeType: 'application/json',
     }];
   }
@@ -223,7 +225,7 @@ class ServerManifestProvider implements ResourceProvider {
     return [{
       uri: `${URI_PREFIX}server/manifest`,
       name: 'ifc-lite-mcp manifest',
-      description: 'Server-wide capabilities, version, and tool catalog summary.',
+      description: 'Server settings, loaded models, and the catalog of tools this session may call.',
       mimeType: 'application/json',
     }];
   }
@@ -237,6 +239,7 @@ class ServerManifestProvider implements ResourceProvider {
       bsddEndpoint: ctx.config.bsddEndpoint ?? 'https://api.bsdd.buildingsmart.org',
       viewerOpen: ctx.viewer?.isOpen() ?? false,
       modelsLoaded: allowedModels(ctx).map((m) => ({ id: m.id, name: m.name, schema: m.store.schemaVersion })),
+      tools: ctx.toolCatalog?.() ?? [],
     })];
   }
 }

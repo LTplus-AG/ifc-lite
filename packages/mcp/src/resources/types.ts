@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { ResourceContents, ResourceDefinition } from '../protocol/index.js';
+import type { ResourceContents, ResourceDefinition, ResourceTemplate } from '../protocol/index.js';
 import type { ToolContext } from '../context.js';
 
 /**
@@ -19,6 +19,8 @@ export interface ResourceProvider {
   name: string;
   /** Static resources advertised in `resources/list`. */
   list(ctx: ToolContext): Promise<ResourceDefinition[]> | ResourceDefinition[];
+  /** URI templates advertised in `resources/templates/list`. */
+  templates?(): ResourceTemplate[];
   /** True iff this provider can read the given URI. */
   match(uri: string): boolean;
   /** Read the resource. Throws when uri doesn't match. */
@@ -43,6 +45,10 @@ export class ResourceRegistry {
       for (const item of items) all.push(item);
     }
     return all;
+  }
+
+  templates(): ResourceTemplate[] {
+    return this.providers.flatMap((p) => p.templates?.() ?? []);
   }
 
   matchProvider(uri: string): ResourceProvider | null {

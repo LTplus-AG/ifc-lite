@@ -8,8 +8,7 @@
  * `export_ifc` writes a STEP file (with any pending mutations applied),
  * `export_csv` and `export_json` produce tabular dumps, and `export_glb` /
  * `export_obj` export geometry via the Rust mesh pipeline (wasm, headless).
- * `export_ifcx` and `export_usd` export the current model via Rust too;
- * `export_pdf_report` remains stubbed pending the PDF stack.
+ * `export_ifcx` and `export_usd` export the current model via Rust too.
  */
 
 import { withIfcBytes, refusingEmpty } from './export-source.js';
@@ -340,17 +339,4 @@ const exportUsd: Tool = {
   },
 };
 
-const exportPdfReport: Tool = {
-  name: 'export_pdf_report', title: 'Export PDF report', annotations: FILE_WRITE,
-  description: 'Audit/IDS report as PDF. Planned for v0.5.',
-  scope: 'export',
-  inputSchema: { type: 'object', properties: { model_id: { type: 'string' }, file_path: { type: 'string' } }, additionalProperties: false },
-  handler() {
-    throw new ToolExecutionError({
-      code: ToolErrorCode.UNSUPPORTED_OPERATION,
-      message: 'export_pdf_report is planned for v0.5.',
-    });
-  },
-};
-
-export const exportTools: Tool[] = [exportIfc, exportCsv, exportJson, exportGlb, exportObj, exportIfcx, exportUsd, export3dmTool, exportPdfReport];
+export const exportTools: Tool[] = [exportIfc, exportCsv, exportJson, exportGlb, exportObj, exportIfcx, exportUsd, export3dmTool];

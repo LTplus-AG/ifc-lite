@@ -296,6 +296,10 @@ describe('script_run', () => {
 
   it('unwraps boxed primitives and keeps numbers and nested errors readable in logs', async () => {
     expect((await run("({ s: new String('ab'), n: new Number(5), b: new Boolean(false) })")).structuredContent?.value).toEqual({ s: 'ab', n: 5, b: false });
+    expect((await run('class Qty extends Number {} new Qty(5)')).structuredContent?.value).toBe(5);
+    expect((await run('class Box { constructor() { this.a = 1; } } new Box()')).structuredContent?.value).toEqual({ a: 1 });
+    const long = await run("console.log({ blob: 'x'.repeat(100000) }); 1");
+    expect((long.structuredContent?.logs as Array<{ text: string }>)[0].text.endsWith('[truncated]')).toBe(true);
     const result = await run("console.log(1 / 0, 0 / 0); console.log({ err: new Error('boom') }); console.error(new Error('x'.repeat(10000))); 1");
     const logs = (result.structuredContent?.logs as Array<{ text: string }>).map((l) => l.text);
     expect(logs[0]).toBe('Infinity NaN');

@@ -176,7 +176,9 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
   // Undefined when the model was unloaded mid-run (its backend is disposed):
   // the count is lost, but the run's own outcome must still come through.
   const queued = (): number | undefined => {
-    if (mode !== 'mutate' || before === null) return 0;
+    if (mode !== 'mutate') return 0;
+    // No baseline yet (it failed or the run never started): the count is unknown.
+    if (before === null) return undefined;
     // An unloaded model keeps a live mutation view but its edits can no
     // longer be saved, so report no count rather than advice to persist.
     if (ctx.registry.get(model.id) !== model) return undefined;

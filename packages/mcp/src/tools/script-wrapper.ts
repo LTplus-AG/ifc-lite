@@ -35,7 +35,7 @@ const LIMITS = {
 };
 
 export function wrapScript(code: string): string {
-  return `(function (run, P, isInstance, then, apply, slice, Str, stringify, keys, isArray, create, defineProperty, freeze, glob, ErrorCtor, TypeErrorCtor, SetCtor, setAdd, setHas, setDelete, unbox, unboxProtos, getProto, L) {
+  return `(function (run, P, isInstance, then, apply, slice, Str, stringify, keys, isArray, create, defineProperty, freeze, glob, ErrorCtor, TypeErrorCtor, SetCtor, setAdd, setHas, setDelete, unbox, objectProto, getProto, L) {
   function msg(e) {
     // message is read once and coerced inside the try, so a getter or
     // toString cannot throw past the wrapper and pose as a sandbox error.
@@ -47,7 +47,8 @@ export function wrapScript(code: string): string {
     } catch (c) {
       // QuickJS raises InternalError for both exhausted memory and stack overflow.
       try {
-        if (c && c.name === 'InternalError') return c.message === 'out of memory' ? 'out of memory while printing the error' : 'stack overflow while printing the error';
+        if (c && c.name === 'InternalError' && c.message === 'out of memory') return 'out of memory while printing the error';
+        if (c && c.name === 'InternalError' && c.message === 'stack overflow') return 'stack overflow while printing the error';
         return 'a thrown value with no string form';
       }
       catch (_) { return 'a thrown value with no string form'; }
@@ -67,15 +68,15 @@ export function wrapScript(code: string): string {
   // omit v. Frames live in null-prototype maps: an index setter on
   // Array.prototype cannot intercept them.
   // A boxed primitive's value, as native JSON unwraps it (a boxed BigInt then
-  // throws like a bare one); undefined for any other object. The prototype
-  // only picks which brand-checked valueOf to try, so plain objects cost one
-  // lookup instead of four throws; a boxed value with a swapped prototype is
-  // written as an object.
+  // throws like a bare one); undefined for any other object. Plain objects
+  // and arrays skip the brand-checked valueOf calls entirely; anything with
+  // another prototype (a boxed value, a subclass of one, a class instance)
+  // tries each, and a valueOf that rejects the receiver means "not this type".
   function unboxed(v) {
     var proto = getProto(v);
+    if (proto === objectProto || proto === null || isArray(v)) return undefined;
     for (var u = 0; u < unbox.length; u++) {
-      if (proto !== unboxProtos[u]) continue;
-      try { return { v: apply(unbox[u], v, []) }; } catch (_) { return undefined; }
+      try { return { v: apply(unbox[u], v, []) }; } catch (_) { /* receiver is not this wrapper type */ }
     }
     return undefined;
   }
@@ -135,6 +136,7 @@ export function wrapScript(code: string): string {
   function fail(e) { return 'T' + msg(e); }
   // Console text keeps what the bridge's own dump used to show for errors
   // and BigInts, which JSON rules would turn into {} or a TypeError.
+  // Cut a little under the host log budget so the marker itself survives it.
   function cut(text, max) { return text.length > max ? apply(slice, text, [0, max]) + ' [truncated]' : text; }
   function logArg(a) {
     if (typeof a === 'string') return a;
@@ -146,7 +148,7 @@ export function wrapScript(code: string): string {
         return cut(msg(a), L.maxMessage) + (typeof st === 'string' && st !== '' ? '\\n' + cut(st, L.maxLog) : '');
       }
     } catch (_) { /* an unreadable stack: fall through to the JSON form */ }
-    try { var s = ser(a, L.maxLog, true); return s === undefined ? Str(a) : s; }
+    try { var s = ser(a, L.maxLog, true); return s === undefined ? Str(a) : cut(s, L.maxLog - 32); }
     catch (e) { return '[unserialisable: ' + msg(e) + ']'; }
   }
   var original = glob.console, safe = create(null);
@@ -179,5 +181,5 @@ export function wrapScript(code: string): string {
     }
     catch (e) { resolveWrapper(fail(e)); }
   });
-})(function () { return eval(${JSON.stringify(code)}); }, Promise, Function.prototype[Symbol.hasInstance], Promise.prototype.then, Reflect.apply, String.prototype.slice, String, JSON.stringify, Object.keys, Array.isArray, Object.create, Object.defineProperty, Object.freeze, globalThis, Error, TypeError, Set, Set.prototype.add, Set.prototype.has, Set.prototype.delete, [Number.prototype.valueOf, String.prototype.valueOf, Boolean.prototype.valueOf, BigInt.prototype.valueOf], [Number.prototype, String.prototype, Boolean.prototype, BigInt.prototype], Object.getPrototypeOf, ${JSON.stringify(LIMITS)})`;
+})(function () { return eval(${JSON.stringify(code)}); }, Promise, Function.prototype[Symbol.hasInstance], Promise.prototype.then, Reflect.apply, String.prototype.slice, String, JSON.stringify, Object.keys, Array.isArray, Object.create, Object.defineProperty, Object.freeze, globalThis, Error, TypeError, Set, Set.prototype.add, Set.prototype.has, Set.prototype.delete, [Number.prototype.valueOf, String.prototype.valueOf, Boolean.prototype.valueOf, BigInt.prototype.valueOf], Object.prototype, Object.getPrototypeOf, ${JSON.stringify(LIMITS)})`;
 }

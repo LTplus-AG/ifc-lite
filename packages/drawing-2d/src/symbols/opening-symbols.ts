@@ -16,6 +16,7 @@ import type { ArchitecturalSymbol, DoorOperationType, Drawing2D, Line2D, Opening
 import { makeEntityKey, type EntityKey } from '../types.js';
 import { boundsExtendLine, point2DCross, projectTo2D, vec3 } from '../math.js';
 import { DoorSymbolGenerator } from './door-symbol.js';
+import { unit } from './door-arc.js';
 import { WindowSymbolGenerator } from './window-symbol.js';
 import { parseDoorOperation, parseWindowPartitioning } from '../openings/operation-types.js';
 
@@ -61,7 +62,7 @@ const DOOR_TYPES = new Set(['ifcdoor', 'ifcdoorstandardcase']);
 const WINDOW_TYPES = new Set(['ifcwindow', 'ifcwindowstandardcase']);
 
 /** Whether a mesh of this IFC type is drawn as a door or window symbol in a plan. */
-export function isOpeningFillingType(ifcType: string | undefined): boolean {
+function isOpeningFillingType(ifcType: string | undefined): boolean {
   const type = (ifcType ?? '').toLowerCase();
   return DOOR_TYPES.has(type) || WINDOW_TYPES.has(type);
 }
@@ -81,11 +82,6 @@ interface Footprint extends PlanAxes {
 
 /** Below this sine between the projected placement axes the element is not drawn as a symbol. */
 const MIN_AXES_SINE = 1e-3;
-
-const unit2 = (p: Point2D): Point2D | null => {
-  const len = Math.hypot(p.x, p.y);
-  return len > 1e-9 ? { x: p.x / len, y: p.y / len } : null;
-};
 
 /** Plan symbols for every door and window of `meshes` crossing the plan cut. Cardinal plan cuts only. */
 export function buildOpeningSymbols(
@@ -159,7 +155,7 @@ export async function generateWithOpeningSymbols(
   if (options?.openingSymbols === false || config.plane.axis !== 'y' || config.plane.customPlane) return generate(meshes);
   const planSymbols = buildOpeningSymbols(meshes, config.plane, options?.openings);
   const symbolized = new Set(planSymbols.map((s) => makeEntityKey(s.modelIndex, s.entityId)));
-  const drawing = await generate(meshes.filter((m) => !symbolized.has(makeEntityKey(m.modelIndex ?? 0, m.expressId))));
+  const drawing = await generate(symbolized.size === 0 ? meshes : meshes.filter((m) => !symbolized.has(makeEntityKey(m.modelIndex ?? 0, m.expressId))));
   let bounds = drawing.bounds;
   for (const symbol of planSymbols) for (const line of symbol.lines) bounds = boundsExtendLine(bounds, line);
   return { ...drawing, planSymbols, bounds };
@@ -167,8 +163,8 @@ export async function generateWithOpeningSymbols(
 
 /** The placement's axes in the plan, or `null` when they are singular there. */
 function placementAxes(m: readonly number[], plane: SectionPlaneConfig): PlanAxes | null {
-  const along = unit2(projectTo2D(vec3(m[0], m[4], m[8]), plane.axis, plane.flipped));
-  const across = unit2(projectTo2D(vec3(-m[2], -m[6], -m[10]), plane.axis, plane.flipped));
+  const along = unit(projectTo2D(vec3(m[0], m[4], m[8]), plane.axis, plane.flipped));
+  const across = unit(projectTo2D(vec3(-m[2], -m[6], -m[10]), plane.axis, plane.flipped));
   return along && across && Math.abs(point2DCross(along, across)) > MIN_AXES_SINE ? { along, across } : null;
 }
 

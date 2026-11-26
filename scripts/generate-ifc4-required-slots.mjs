@@ -89,9 +89,9 @@ const { SCHEMA_REGISTRY: IFC4 } = await import(
   pathToFileURL(join(ROOT, 'packages/parser/src/generated/schema-registry.ts')).href
 );
 
-function buildRows() {
+function buildRows(registry) {
   const rows = [];
-  for (const [name, entity] of Object.entries(IFC4.entities)) {
+  for (const [name, entity] of Object.entries(registry.entities)) {
     if (entity.isAbstract) continue;
     const attributes = entity.allAttributes ?? [];
     const slots = [];
@@ -106,7 +106,10 @@ function buildRows() {
   return rows;
 }
 
-function renderTs(rows) {
+const tsRows = (rows) => rows.map((row) => `  ['${row.type}', ${row.arity}, [${row.slots.map((s) => `[${s.index}, '${s.name}']`).join(', ')}]],`);
+const rsRows = (rows) => rows.map((row) => `    ("${row.type}", ${row.arity}, &[${row.slots.map((s) => `(${s.index}, "${s.name}")`).join(', ')}]),`);
+
+function renderTs(rows, ifc4x3Rows) {
   const lines = [];
   lines.push('/* This Source Code Form is subject to the terms of the Mozilla Public');
   lines.push(' * License, v. 2.0. If a copy of the MPL was not distributed with this');
@@ -131,18 +134,18 @@ function renderTs(rows) {
   lines.push('export type Ifc4RequiredSlotRow = readonly [string, number, readonly Ifc4RequiredSlot[]];');
   lines.push('');
   lines.push('export const IFC4_REQUIRED_SLOTS: readonly Ifc4RequiredSlotRow[] = [');
-  for (const row of rows) {
-    const slots = row.slots
-      .map((s) => `[${s.index}, '${s.name}']`)
-      .join(', ');
-    lines.push(`  ['${row.type}', ${row.arity}, [${slots}]],`);
-  }
+  lines.push(...tsRows(rows));
+  lines.push('];');
+  lines.push('');
+  lines.push('/** The same for IFC4X3, for the IFC2X3 upgrades counted against their own target (#11135). */');
+  lines.push('export const IFC4X3_REQUIRED_SLOTS: readonly Ifc4RequiredSlotRow[] = [');
+  lines.push(...tsRows(ifc4x3Rows));
   lines.push('];');
   lines.push('');
   return lines.join('\n');
 }
 
-function renderRs(rows) {
+function renderRs(rows, ifc4x3Rows) {
   const lines = [
     '// This Source Code Form is subject to the terms of the Mozilla Public',
     '// License, v. 2.0. If a copy of the MPL was not distributed with this',
@@ -169,10 +172,10 @@ function renderRs(rows) {
     '/// name for binary search.',
     'pub static IFC4_REQUIRED_SLOTS: &[Ifc4RequiredSlotRow] = &[',
   ];
-  for (const row of rows) {
-    const slots = row.slots.map((s) => `(${s.index}, "${s.name}")`).join(', ');
-    lines.push(`    ("${row.type}", ${row.arity}, &[${slots}]),`);
-  }
+  lines.push(...rsRows(rows));
+  lines.push('];', '');
+  lines.push('/// The same for IFC4X3, for the IFC2X3 upgrades counted against their own', '/// target (#11135).', 'pub static IFC4X3_REQUIRED_SLOTS: &[Ifc4RequiredSlotRow] = &[');
+  lines.push(...rsRows(ifc4x3Rows));
   lines.push('];', '');
   return lines.join('\n');
 }
@@ -208,13 +211,14 @@ function renderAggregateExceptions(schema, registry, file) {
   ].join('\n');
 }
 
-const rows = buildRows();
-if (rows.length === 0) {
+const rows = buildRows(IFC4);
+const ifc4x3Rows = buildRows(IFC4X3);
+if (rows.length === 0 || ifc4x3Rows.length === 0) {
   console.error('generate-ifc4-required-slots: the registry yielded ZERO rows; refusing to write.');
   process.exit(1);
 }
 
-const outputs = [[TS_REL, renderTs(rows)], [RS_REL, renderRs(rows) + '\n' + renderAggregateExceptions('IFC4', IFC4, 'IFC4_ADD2_TC1.exp') + '\n' + renderAggregateExceptions('IFC4X3', IFC4X3, 'IFC4X3.exp')]];
+const outputs = [[TS_REL, renderTs(rows, ifc4x3Rows)], [RS_REL, renderRs(rows, ifc4x3Rows) + '\n' + renderAggregateExceptions('IFC4', IFC4, 'IFC4_ADD2_TC1.exp') + '\n' + renderAggregateExceptions('IFC4X3', IFC4X3, 'IFC4X3.exp')]];
 
 if (process.argv.includes('--check')) {
   for (const [rel, text] of outputs) {

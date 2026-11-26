@@ -29,7 +29,7 @@ import { productProxy } from './schema-converter-product-proxy.js';
 import { MEP_IFC2X3_TYPES } from './schema-converter-mep.js';
 import { isStrictAttrPrefix, replacedSlot } from './schema-converter-renames.js';
 import { carryUserDefinedLabel } from './schema-converter-userdefined-label.js';
-import { attrMapFor, DELETED_SUBTYPES, remapByAttrMap, upgradeCountsIfc4Slots, upgradeRename } from './schema-converter-attr-maps.js';
+import { attrMapFor, DELETED_SUBTYPES, remapByAttrMap, upgradeCountsIfc4Slots, upgradeCountsIfc4x3Slots, upgradeRename } from './schema-converter-attr-maps.js';
 import { retypeInPlace } from './schema-converter-retyped.js';
 export { computeWithheldRefIds } from './schema-untranslatable.js';
 export type IfcSchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
@@ -297,6 +297,8 @@ export function convertStepLine(
   if (toSchema === 'IFC2X3') return (slots ?? new Ifc2x3SlotFill()).apply(converted, maxReferenceId);
   if (enums?.typedProperties.capture(line, converted, fromSchema, toSchema, maxReferenceId)) return converted;
   if (ifc4Slots && toSchema === 'IFC4' && (fromSchema !== 'IFC2X3' || upgradeCountsIfc4Slots(converted))) ifc4Slots.apply(converted);
+  // #11135: a mapped IFC2X3 upgrade to IFC4X3 is counted against IFC4X3's own required slots.
+  else if (ifc4Slots && toSchema === 'IFC4X3' && fromSchema === 'IFC2X3' && upgradeCountsIfc4x3Slots(converted)) ifc4Slots.apply(converted, 'IFC4X3');
   return converted;
 }
 

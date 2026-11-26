@@ -241,6 +241,8 @@ pub fn convert_step_line(
         if cto == "IFC2X3" { converted = checks.structural.after(express_id, converted); }
         let deferred = checks.typed_properties.capture(line.as_ref(), cfrom, cto, express_id);
         (!deferred && cto == "IFC4" && (cfrom != "IFC2X3" || crate::schema_attr_maps::upgrade_counts_ifc4_slots(&converted))).then(|| checks.ifc4_slots.count(&converted));
+        // #11135: a mapped IFC2X3 upgrade to IFC4X3 is counted against IFC4X3's own required slots.
+        (!deferred && cto == "IFC4X3" && cfrom == "IFC2X3" && crate::schema_attr_maps::upgrade_counts_ifc4x3_slots(&converted)).then(|| checks.ifc4_slots.count_ifc4x3(&converted));
     }
     Ok(if cto == "IFC2X3" { slots.apply(converted) } else { converted })
 }

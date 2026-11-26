@@ -172,6 +172,17 @@ pub(crate) fn upgrade_counts_ifc4_slots(line: &str) -> bool {
     ty.starts_with("IFCSTRUCTURAL") || ATTR_MAPS.iter().any(|m| m.ifc4 == ty)
 }
 
+/// True when an IFC4X3 `line` upgraded from IFC2X3 was written by a map, so
+/// its required slots are counted against IFC4X3 (#11135). Structural records
+/// are not: the structural pass runs for IFC4 only. A map's IFC4X3 type is its
+/// IFC4 one, but for the distribution board. Twin of the TypeScript
+/// `upgradeCountsIfc4x3Slots`.
+pub(crate) fn upgrade_counts_ifc4x3_slots(line: &str) -> bool {
+    let ty = crate::step_record_frame::record_head(line).map_or("", |head| head.type_name(line));
+    let ty = if ty == "IFCDISTRIBUTIONBOARD" { "IFCELECTRICDISTRIBUTIONBOARD" } else { ty };
+    ATTR_MAPS.iter().any(|m| m.ifc4 == ty)
+}
+
 /// How a target slot is filled from its source value.
 #[derive(Clone, Copy)]
 enum How {

@@ -91,7 +91,8 @@ struct Group {
 struct Draft {
     source_type: &'static str,
     groups: Vec<Group>,
-    check_ifc4_slots: bool,
+    /// The target, whose required slots the written record is counted against (#11135).
+    ifc4x3: bool,
 }
 
 #[derive(Default)]
@@ -125,7 +126,7 @@ impl TypedPropertyUpgrade {
         if groups.is_empty() {
             return false;
         }
-        self.drafts.insert(id, Draft { source_type, groups, check_ifc4_slots: to == "IFC4" });
+        self.drafts.insert(id, Draft { source_type, groups, ifc4x3: to == "IFC4X3" });
         true
     }
 
@@ -156,7 +157,9 @@ impl TypedPropertyUpgrade {
             if let Some(replacement) = draft.emit(&line, &mut ids, &mut appended) {
                 let restored: usize = draft.groups.iter().map(|group| group.properties.len()).sum();
                 *dropped = dropped.saturating_sub(restored);
-                if draft.check_ifc4_slots {
+                if draft.ifc4x3 {
+                    slots.count_ifc4x3(&replacement);
+                } else {
                     slots.count(&replacement);
                     for (attribute, _) in draft.groups.iter().flat_map(|group| &group.properties) {
                         structural.restore_omitted_value(draft.source_type, attribute, "IFC4");
@@ -165,9 +168,7 @@ impl TypedPropertyUpgrade {
                 output.extend_from_slice(replacement.as_bytes());
             } else {
                 self.refused += 1;
-                if draft.check_ifc4_slots {
-                    slots.count(&line);
-                }
+                if draft.ifc4x3 { slots.count_ifc4x3(&line) } else { slots.count(&line) }
                 output.extend_from_slice(&text[start..end]);
             }
         }

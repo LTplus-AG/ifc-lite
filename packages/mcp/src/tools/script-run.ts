@@ -130,11 +130,13 @@ function journalMutationIds(model: LoadedModel): string[] {
 
 // The QuickJS forms only (InternalError, the wrapper's own wording), so a
 // script's own 'out of memory' text does not earn the hint.
-const OUT_OF_MEMORY = /(^|: )(InternalError: )?out of memory\b|out of memory while printing|envelope could not be built/;
+const QUICKJS_ERROR = '(^|: )(InternalError: )?';
+const OUT_OF_MEMORY = new RegExp(`${QUICKJS_ERROR}out of memory\\b|out of memory while printing|envelope could not be built`);
+const STACK_OVERFLOW = new RegExp(`${QUICKJS_ERROR}stack overflow|stack overflow while printing|Maximum call stack size exceeded`);
 
 function hintFor(mode: Mode, code: string, message: string): string | undefined {
   if (OUT_OF_MEMORY.test(message)) return `Raise memory_mb (max ${MAX_MEMORY_MB}) or keep less in memory.`;
-  if (/(^|: )(InternalError: )?stack overflow|stack overflow while printing|Maximum call stack size exceeded/.test(message)) return 'Stack overflow: the script recursed too deep (make it iterative or shallower), a logged value is nested too deeply, or a bim call walked a very deeply nested model.';
+  if (STACK_OVERFLOW.test(message)) return 'Stack overflow: the script recursed too deep (make it iterative or shallower), a logged value is nested too deeply, or a bim call walked a very deeply nested model.';
   // Only when the failure looks like touching a namespace that is absent.
   if (mode === 'read' && MUTATE_ONLY_USE.test(code) && /of undefined|undefined is not/.test(message)) {
     return `script_run has no ${MUTATE_ONLY_LIST}; use script_run_mutate for them.`;

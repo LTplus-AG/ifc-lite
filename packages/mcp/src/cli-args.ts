@@ -50,7 +50,6 @@ export const MCP_BOOLEAN_FLAGS: readonly string[] = [
   '-v',
 ];
 
-const KNOWN_FLAGS: ReadonlySet<string> = new Set([...MCP_VALUE_FLAGS, ...MCP_BOOLEAN_FLAGS]);
 
 export interface CliOptions {
   files: string[];
@@ -102,17 +101,28 @@ export interface CliOptions {
  * is left whole and reported as unknown by its name alone, since the part
  * after `=` may be a credential.
  */
-function splitEquals(argv: string[]): string[] {
-  return argv.flatMap((arg) => {
+/** `--flag=value` as two arguments; `explicit` holds the indexes of values given with `=`. */
+const KNOWN_FLAGS: ReadonlySet<string> = new Set([...MCP_VALUE_FLAGS, ...MCP_BOOLEAN_FLAGS]);
+
+function splitEquals(raw: string[]): { argv: string[]; explicit: Set<number> } {
+  const argv: string[] = [];
+  const explicit = new Set<number>();
+  for (const arg of raw) {
     const eq = arg.indexOf('=');
-    if (!arg.startsWith('--') || eq < 0) return [arg];
     const name = arg.slice(0, eq);
-    return MCP_VALUE_FLAGS.includes(name) ? [name, arg.slice(eq + 1)] : [arg];
-  });
+    if (arg.startsWith('--') && eq >= 0 && MCP_VALUE_FLAGS.includes(name)) {
+      argv.push(name);
+      explicit.add(argv.length);
+      argv.push(arg.slice(eq + 1));
+    } else {
+      argv.push(arg);
+    }
+  }
+  return { argv, explicit };
 }
 
 export function parseArgs(rawArgv: string[]): CliOptions {
-  const argv = splitEquals(rawArgv);
+  const { argv, explicit } = splitEquals(rawArgv);
   const opts: CliOptions = {
     files: [],
     readOnly: false,
@@ -133,15 +143,16 @@ export function parseArgs(rawArgv: string[]): CliOptions {
   };
   let i = 0;
   /**
-   * The value after the flag at `i`, consumed. A known flag is never a value:
-   * `--token --read-only` must not register '--read-only' as a credential and
-   * drop read-only mode. Anything else is, so a token may start with '-'.
+   * The value after the flag at `i`, consumed. Nothing that starts with `--`
+   * is a value: `--token --read-only` must not register '--read-only' as a
+   * credential and drop read-only mode, and neither may a misspelled
+   * `--read-onli`. A value that really starts with `--` uses `--token=--…`;
+   * one starting with a single '-' is still taken.
    */
   const value = (flag: string): string | undefined => {
     const next = argv[i + 1];
-    // An unknown `--x=…` is not a value either: it is reported by name only,
-    // and taking it here would put its value in an error or a bind address.
-    if (next === undefined || next === '' || KNOWN_FLAGS.has(next) || (next.startsWith('--') && next.includes('='))) {
+    const flagLike = next !== undefined && !explicit.has(i + 1) && (next.startsWith('--') || KNOWN_FLAGS.has(next));
+    if (next === undefined || next === '' || flagLike) {
       opts.errors.push(`${flag} needs a value.`);
       return undefined;
     }

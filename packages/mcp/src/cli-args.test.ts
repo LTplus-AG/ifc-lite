@@ -125,6 +125,16 @@ describe('flag fixes (#11534)', () => {
     }
   });
 
+  // A misspelled flag must not become a credential either (--token --read-onli
+  // would otherwise bind with that "token" and full scope).
+  it('takes nothing starting with -- as a value; --flag=value still works', () => {
+    const typo = parseArgs(['--token', '--read-onli', '--host', '0.0.0.0']);
+    expect(typo.tokens).toEqual([]);
+    expect(typo.errors).toContain('--token needs a value.');
+    expect(parseArgs(['--token=--odd']).tokens).toEqual(['--odd']);
+    expect(parseArgs(['--token', '-single']).tokens).toEqual(['-single']);
+  });
+
   it('refuses a port that is not an integer from 0 to 65535', () => {
     expect(parseArgs(['--port', 'abc']).errors).toEqual(['--port must be an integer from 0 to 65535.']);
     expect(parseArgs(['--viewer-port', '70000']).errors).toHaveLength(1);

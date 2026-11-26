@@ -110,8 +110,7 @@ export class StatementTranslator {
     ];
   }
 
-  /** Value semantics of assignment to a variable of `type`: ARRAY bounds and SET uniqueness carry over. */
-  private coerce(value: string, type: TypeSpec | undefined, scope: Scope): string {
+  private resolveType(type: TypeSpec | undefined): TypeSpec | undefined {
     const seen = new Set<string>();
     while (type?.k === 'named') {
       const name = type.name.toUpperCase();
@@ -119,6 +118,12 @@ export class StatementTranslator {
       seen.add(name);
       type = this.expr.ctx.index.type(name)?.spec;
     }
+    return type;
+  }
+
+  /** Value semantics of assignment to a variable of `type`: ARRAY bounds and SET uniqueness carry over. */
+  private coerce(value: string, type: TypeSpec | undefined, scope: Scope): string {
+    type = this.resolveType(type);
     if (type?.k === 'aggregate' && type.kind === 'ARRAY' && type.low) return `r.assignArray(${value}, ${this.t(type.low, scope)})`;
     if (type?.k === 'aggregate' && type.kind === 'SET') return `r.assignSet(${value})`;
     return `r.assign(${value})`;
@@ -137,7 +142,10 @@ export class StatementTranslator {
     const scope = new Scope('function');
     const params = fn.params.map((p) => `${scope.define(p.name, jsIdentifier('p_', p.name), p.type).js}: r.Value`);
     const setParams = fn.params
-      .filter((p) => p.type.k === 'aggregate' && p.type.kind === 'SET')
+      .filter((p) => {
+        const type = this.resolveType(p.type);
+        return type?.k === 'aggregate' && type.kind === 'SET';
+      })
       .map((p) => `  ${scope.lookup(p.name)!.js} = r.assignSet(${scope.lookup(p.name)!.js});`);
     const body = [...setParams, ...this.locals(fn.locals, scope, 1), ...this.statements(fn.body, scope, 1)];
     return [

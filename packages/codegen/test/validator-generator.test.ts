@@ -45,6 +45,19 @@ const setRuntime = {
 };
 
 describe('generateValidators', () => {
+  it('normalizes named and inline SET parameters and keeps LIST duplicates (#11646)', () => {
+    const { files, coverage } = generateValidators(mini(
+      'Named : CountTags([1,1]) = 1; InlineSet : CountSet([1,1]) = 1; Ordered : CountList([1,1]) = 2',
+      `TYPE Tags = SET [1:?] OF INTEGER; END_TYPE;
+       FUNCTION CountTags(X : Tags) : INTEGER; RETURN(SIZEOF(X)); END_FUNCTION;
+       FUNCTION CountSet(X : SET [1:?] OF INTEGER) : INTEGER; RETURN(SIZEOF(X)); END_FUNCTION;
+       FUNCTION CountList(X : LIST [1:?] OF INTEGER) : INTEGER; RETURN(SIZEOF(X)); END_FUNCTION;`,
+    ));
+    expect(coverage.unsupported).toEqual([]);
+    const rules = loadRules(files['rules.ts'], { ...setRuntime, assignSet: (items: number[]) => [...new Set(items)] });
+    expect(rules.map(rule => rule.check({}, {}))).toEqual([true, true, true]);
+  });
+
   // Totals cross-checked against IfcOpenShell's compiled rule modules (#11559): every
   // entity WHERE, type WHERE and global RULE label it runs is one these schemas compile.
   it.each([
@@ -215,6 +228,21 @@ RULE R FOR (A); WHERE Good : FALSE; Bad : Mystery(1); END_RULE;
 SUBTYPE_CONSTRAINT C FOR A; END_SUBTYPE_CONSTRAINT; END_SCHEMA;`);
     expect(coverage.counts.global).toEqual({ total: 2, compiled: 1 });
     expect(coverage.unsupported.map(u => [u.scope, u.label])).toEqual([['schema', 'C'], ['schema', 'D upper bound'], ['global', 'Bad']]);
+  });
+
+  it('uses an entity parameter type to resolve failed DERIVE dependencies (#11646)', () => {
+    const { coverage, files } = generateValidators(`SCHEMA S;
+ENTITY A; DERIVE Flag : LOGICAL := Mystery(1); WHERE W : ReadA(SELF); END_ENTITY;
+ENTITY B; Flag : LOGICAL; WHERE W : ReadB(SELF); END_ENTITY;
+FUNCTION ReadA(T : A) : LOGICAL; RETURN(T.Flag); END_FUNCTION;
+FUNCTION ReadB(T : B) : LOGICAL; RETURN(T.Flag); END_FUNCTION; END_SCHEMA;`);
+    expect(coverage.unsupported.map(u => [u.scope, u.owner, u.label])).toEqual([
+      ['function', 'ReadA', 'ReadA'], ['derived', 'A', 'Flag'], ['entity', 'A', 'W'],
+    ]);
+    expect(coverage.unsupported[0].reason).toContain('A.Flag');
+    const [rule] = loadRules(files['rules.ts'], { attr: (value: Record<string, boolean>, key: string) => value[key] }, 'B');
+    expect(rule.check({ FLAG: true }, {})).toBe(true);
+    expect(rule.check({ FLAG: false }, {})).toBe(false);
   });
 
   it('keeps independent same-named derived attributes compiled', () => {

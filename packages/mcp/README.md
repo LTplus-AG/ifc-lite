@@ -32,12 +32,13 @@ npx @ifc-lite/mcp ./model.ifc --open
 From the repository root:
 
 ```bash
-pnpm --filter @ifc-lite/mcp release:manifests --out ./mcp-artifacts
+pnpm --filter @ifc-lite/mcp release:manifests
 ```
 
 With the project's WASM build toolchain installed, this builds a Claude
 Desktop `.mcpb`, a dependency inventory and the MCP Registry `server.json`
-for the package version. Use `--no-bundle` to generate only `server.json`.
+for the package version under the gitignored `packages/mcp/release-out/`
+directory. Use `--no-bundle` to generate only `server.json`.
 The Registry entry identifies the matching npm release. Registry publication
 requires that npm version to exist with the same `mcpName`.
 

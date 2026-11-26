@@ -127,6 +127,9 @@ function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors
   if (schema === null || typeof schema !== 'object' || Array.isArray(schema)) {
     throw new SchemaError(`Expected an object or boolean schema at ${path}`);
   }
+  if (schema.oneOf !== undefined && (!Array.isArray(schema.oneOf) || schema.oneOf.length === 0)) {
+    throw new SchemaError(`${path}.oneOf must be a non-empty array`);
+  }
   if (typeof schema.$ref === 'string') {
     const { $ref: ref, ...siblings } = schema;
     if (opts.refs?.has(ref)) throw new SchemaError(`Circular $ref '${ref}'`);
@@ -179,7 +182,7 @@ function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors
       errors.push({ path, message: `Expected input at '${path}' to satisfy at least one anyOf branch: ${wanted}` });
     }
   }
-  if (!opts.fromTab && Array.isArray(schema.oneOf) && schema.oneOf.length > 0) {
+  if (!opts.fromTab && schema.oneOf !== undefined) {
     checkOneOf(schema.oneOf as JsonSchema[], input, path, errors, opts);
   }
 

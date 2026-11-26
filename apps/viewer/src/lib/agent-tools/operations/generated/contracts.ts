@@ -22809,10 +22809,13 @@ export const operationContracts: readonly OperationContract[] = [
       "type": "object",
       "properties": {
         "global_id": {
-          "type": "string"
+          "type": "string",
+          "description": "IFC GlobalId. Supply this or express_id."
         },
         "express_id": {
-          "type": "integer"
+          "type": "integer",
+          "minimum": 1,
+          "description": "STEP entity id. Supply this or global_id."
         }
       },
       "required": [],
@@ -22934,16 +22937,15 @@ export const operationContracts: readonly OperationContract[] = [
       "properties": {
         "global_id": {
           "type": "string",
-          "description": "IFC GlobalId. Either this or express_id is required."
+          "description": "IFC GlobalId. Supply this or express_id."
         },
         "express_id": {
           "type": "integer",
-          "description": "STEP express id. Either this or global_id is required."
+          "minimum": 1,
+          "description": "STEP entity id. Supply this or global_id."
         }
       },
-      "required": [
-        "global_id"
-      ],
+      "required": [],
       "additionalProperties": false
     },
     "outputSchema": {
@@ -22982,16 +22984,15 @@ export const operationContracts: readonly OperationContract[] = [
       "properties": {
         "global_id": {
           "type": "string",
-          "description": "IFC GlobalId. Either this or express_id is required."
+          "description": "IFC GlobalId. Supply this or express_id."
         },
         "express_id": {
           "type": "integer",
-          "description": "STEP express id. Either this or global_id is required."
+          "minimum": 1,
+          "description": "STEP entity id. Supply this or global_id."
         }
       },
-      "required": [
-        "global_id"
-      ],
+      "required": [],
       "additionalProperties": false
     },
     "outputSchema": {
@@ -23273,16 +23274,15 @@ export const operationContracts: readonly OperationContract[] = [
       "properties": {
         "global_id": {
           "type": "string",
-          "description": "IFC GlobalId. Either this or express_id is required."
+          "description": "IFC GlobalId. Supply this or express_id."
         },
         "express_id": {
           "type": "integer",
-          "description": "STEP express id. Either this or global_id is required."
+          "minimum": 1,
+          "description": "STEP entity id. Supply this or global_id."
         }
       },
-      "required": [
-        "global_id"
-      ],
+      "required": [],
       "additionalProperties": false
     },
     "outputSchema": {
@@ -23321,16 +23321,15 @@ export const operationContracts: readonly OperationContract[] = [
       "properties": {
         "global_id": {
           "type": "string",
-          "description": "IFC GlobalId. Either this or express_id is required."
+          "description": "IFC GlobalId. Supply this or express_id."
         },
         "express_id": {
           "type": "integer",
-          "description": "STEP express id. Either this or global_id is required."
+          "minimum": 1,
+          "description": "STEP entity id. Supply this or global_id."
         }
       },
-      "required": [
-        "global_id"
-      ],
+      "required": [],
       "additionalProperties": false
     },
     "outputSchema": {
@@ -23369,16 +23368,15 @@ export const operationContracts: readonly OperationContract[] = [
       "properties": {
         "global_id": {
           "type": "string",
-          "description": "IFC GlobalId. Either this or express_id is required."
+          "description": "IFC GlobalId. Supply this or express_id."
         },
         "express_id": {
           "type": "integer",
-          "description": "STEP express id. Either this or global_id is required."
+          "minimum": 1,
+          "description": "STEP entity id. Supply this or global_id."
         }
       },
-      "required": [
-        "global_id"
-      ],
+      "required": [],
       "additionalProperties": false
     },
     "outputSchema": {

@@ -429,3 +429,13 @@ it('reports malformed items as schema issues (#11550)', () => {
     expect(validateInput(schema, [1]).errors[0]).toMatchObject({ path: '$', message: expect.stringMatching(/schema/i) });
   }
 });
+
+it('reports an empty or malformed embedded oneOf as a schema issue (#11550)', () => {
+  for (const oneOf of [[], null, { type: 'string' }]) {
+    const schema = { properties: { id: { oneOf } } };
+    expect(validateInput(schema, { id: 'A' })).toMatchObject({
+      valid: false,
+      errors: [{ path: '$', message: 'Tool schema error: $.id.oneOf must be a non-empty array' }],
+    });
+  }
+});

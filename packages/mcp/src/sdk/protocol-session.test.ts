@@ -179,4 +179,18 @@ describe('SDK protocol adapter lifecycle', () => {
     server.detach();
     expect(((await call) as Reply)?.error?.code).toBe(-32603);
   });
+
+  it('keeps the gate closed after a refused initialize', async () => {
+    const { request } = build();
+    expect((await request('initialize', {}))?.error?.code).toBe(-32602);
+    expect((await request('tools/list'))?.error?.code).toBe(-32600);
+  });
+
+  it('settles a request sent before initialize and cancelled in the same tick', async () => {
+    const { server } = build();
+    const early = server.handleMessage({ jsonrpc: '2.0', id: 5, method: 'tools/list' });
+    void server.handleMessage({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: 5 } });
+    const settled = await Promise.race([early.then(() => true), new Promise((r) => setTimeout(() => r(false), 200))]);
+    expect(settled).toBe(true);
+  });
 });

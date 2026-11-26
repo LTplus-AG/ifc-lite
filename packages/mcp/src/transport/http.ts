@@ -29,7 +29,7 @@ import { JsonRpcErrorCode } from '../protocol/index.js';
 import { MCPServer, OutgoingMessageSink } from '../server.js';
 import { AuthScope } from '../auth/scope.js';
 import { draftCount } from '../tools/layer-store.js';
-import { assertSessionLimits, parseHostHeader, pickReclaimable, readBody, sameScope, sendSessionCapacity, sendUnknownSession, writeSse, setCors, DEFAULT_MAX_SESSIONS, DEFAULT_SESSION_IDLE_MS, type SessionCapacityOptions } from './http-helpers.js';
+import { assertSessionLimits, jsonAnswer, parseHostHeader, pickReclaimable, readBody, sameScope, sendSessionCapacity, sendUnknownSession, writeSse, setCors, DEFAULT_MAX_SESSIONS, DEFAULT_SESSION_IDLE_MS, type SessionCapacityOptions } from './http-helpers.js';
 
 export interface HttpAuthenticator {
   /**
@@ -297,23 +297,17 @@ export class HttpTransport {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache, no-transform');
       res.setHeader('Connection', 'keep-alive');
-      // Keep the connection open until client closes; progress notifications
-      // arrive via the session's sink. Tracked before the dispatch so a client
-      // that leaves mid-call is still removed.
+      // Open until the client closes; progress arrives via the session's sink.
+      // Tracked before the dispatch so a client that leaves mid-call is removed.
       this.trackSse(session, res);
       const response = await this.dispatch(session, message);
-      if (res.writableEnded) return;
-      if (response) writeSse(res, response);
-      // A request answered with nothing was cancelled: end its stream instead of leaving it open.
-      else if (isJsonRpcRequest(message)) res.end();
+      // A request answered with nothing was cancelled: end its stream rather than leave it open.
+      if (!res.writableEnded) { if (response) writeSse(res, response); else if (isJsonRpcRequest(message)) res.end(); }
       return;
     }
 
-    // Plain JSON response (the common case). A request answered with nothing
-    // was cancelled (or its session ended mid-call); the POST still needs a
-    // JSON-RPC body, so it says so.
-    const response = await this.dispatch(session, message)
-      ?? (isJsonRpcRequest(message) ? errorResponse(message.id, JsonRpcErrorCode.RequestCancelled, 'Request cancelled') : null);
+    // Plain JSON response (the common case).
+    const response = jsonAnswer(message, await this.dispatch(session, message));
     res.statusCode = 200;
     res.setHeader('Content-Type', 'application/json');
     res.end(response ? JSON.stringify(response) : '{}');

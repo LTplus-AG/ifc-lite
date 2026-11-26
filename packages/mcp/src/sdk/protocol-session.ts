@@ -81,8 +81,12 @@ const NEGOTIABLE_VERSIONS = [PROTOCOL_VERSION, ...[...SUPPORTED_PROTOCOL_VERSION
 
 /** An error our own handler raised (see `guard`): answered with its code as is. */
 class HandlerError extends ProtocolError {}
-/** Requests whose own handler started; an SDK error on one of these came after it. */
-const entered = new WeakSet<ServerContext>();
+/**
+ * Requests whose own handler started, keyed by the request's abort signal
+ * (the SDK may hand the handler a copy of ctx, never a new signal). An SDK
+ * error on one of these came after the handler.
+ */
+const entered = new WeakSet<AbortSignal>();
 
 /**
  * The SDK `Server` with two changes, applied to every request handler:
@@ -94,7 +98,8 @@ const entered = new WeakSet<ServerContext>();
  *   relabelled; an `SdkError` is a fault, -32603). After it, an SDK error is
  *   its result validation refusing what we returned, a server fault: -32603,
  *   or an INTERNAL_ERROR tool result for `tools/call` so the client keeps the
- *   structured envelope.
+ *   structured envelope. (A failure in the SDK's final wire encoding happens
+ *   outside this wrapper and answers a bare -32603.)
  */
 class IfcProtocolServer extends Server {
   /** Request handlers running now, including aborted ones that have not returned. */
@@ -118,27 +123,28 @@ class IfcProtocolServer extends Server {
     const inner = super._wrapHandler(method, handler);
     const opening = method === 'initialize' || method === 'ping';
     return async (request, ctx) => {
-      if (!opening && !this.link.initializeSeen) {
-        throw new ProtocolError(JsonRpcErrorCode.ServerNotInitialized, 'Server not initialized — send `initialize` first');
-      }
       const signal = ctx.mcpReq.signal;
       const id = ctx.mcpReq.id;
       // The SDK sends nothing for a request it aborted, even one whose handler
-      // already returned, so the listener stays for the request's lifetime.
+      // already returned or that we refuse below, so the listener comes first
+      // and stays for the request's lifetime.
       const abandoned = () => this.link.abandon(id);
       if (signal.aborted) abandoned();
       else signal.addEventListener('abort', abandoned, { once: true });
+      if (!opening && !this.link.initializeSeen) {
+        throw new ProtocolError(JsonRpcErrorCode.ServerNotInitialized, 'Server not initialized — send `initialize` first');
+      }
       this.running++;
       let result: Result;
       try {
         result = await inner(request, ctx);
       } catch (err) {
         if (err instanceof HandlerError) throw err;
-        if (!entered.has(ctx) && !(err instanceof SdkError)) {
+        if (!entered.has(ctx.mcpReq.signal) && !(err instanceof SdkError)) {
           throw err instanceof ProtocolError ? err : new ProtocolError(ProtocolErrorCode.InvalidParams, describeThrown(err));
         }
         const message = describeThrown(err);
-        if (!entered.has(ctx)) throw new ProtocolError(ProtocolErrorCode.InternalError, message);
+        if (!entered.has(ctx.mcpReq.signal)) throw new ProtocolError(ProtocolErrorCode.InternalError, message);
         this.onerror?.(new Error(`${method} produced a result the protocol refused: ${message}`));
         if (method === 'tools/call') return toolError({ code: ToolErrorCode.INTERNAL_ERROR, message }) as unknown as Result;
         throw new ProtocolError(ProtocolErrorCode.InternalError, message);
@@ -282,7 +288,7 @@ export class ProtocolSession {
   // each result against the spec schema at runtime anyway.
   private guard<P>(method: string, handler: (request: P, ctx: ServerContext) => unknown): (request: P, ctx: ServerContext) => Promise<unknown> {
     return async (request, ctx) => {
-      entered.add(ctx);
+      entered.add(ctx.mcpReq.signal);
       try {
         return await handler(request, ctx);
       } catch (err) {

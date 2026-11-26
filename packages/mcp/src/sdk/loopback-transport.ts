@@ -61,7 +61,9 @@ export class LoopbackTransport implements Transport {
       const settle = this.take(message.id);
       if (settle && message.id === this.pendingInitialize) {
         this.pendingInitialize = undefined;
+        // A refused initialize closes the gate again; the client must retry it.
         if ('result' in message) this.sentHandshake = true;
+        else this.seenInitialize = this.sentHandshake;
       }
       settle?.(message as JsonRpcResponse);
       return Promise.resolve();

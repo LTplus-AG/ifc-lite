@@ -6,6 +6,8 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { AuthScope } from '../auth/scope.js';
+import { JsonRpcErrorCode, type JsonRpcMessage, type JsonRpcResponse } from '../protocol/index.js';
+import { errorResponse, isJsonRpcRequest } from '../protocol/jsonrpc.js';
 
 /**
  * Strict scope identity check used when reusing an HTTP session — both the
@@ -191,4 +193,13 @@ function readBodyChunks(req: IncomingMessage, max: number): Promise<string> {
     req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
     req.on('error', reject);
   });
+}
+
+/**
+ * What a JSON-mode POST answers. A request the server answered with nothing
+ * was cancelled; the POST still needs a JSON-RPC body, so it says so.
+ */
+export function jsonAnswer(message: JsonRpcMessage, response: JsonRpcResponse | null): JsonRpcResponse | null {
+  if (response || !isJsonRpcRequest(message)) return response;
+  return errorResponse(message.id, JsonRpcErrorCode.RequestCancelled, 'Request cancelled');
 }

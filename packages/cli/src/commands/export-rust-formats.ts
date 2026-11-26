@@ -18,6 +18,7 @@ import {
   countObjVertices,
   countStepEntities,
   countUsdMeshes,
+  exportRustArtifact,
 } from '@ifc-lite/export';
 import { getFlag, hasFlag, fatal, writeOutput } from '../output.js';
 import { logger } from '../logger.js';
@@ -123,6 +124,7 @@ export async function exportRustFormat(
       const out = refusingEmpty(
         () => gp.exportUsd(bytes),
         countUsdMeshes,
+  exportRustArtifact,
         'USD export produced 0 meshes — the model has no exportable render geometry (or geometry production failed).',
       );
       if (out == null) fatal('USD export failed (geometry pipeline not initialized)');
@@ -152,7 +154,7 @@ export async function exportRustFormat(
       await writeOutput(out as Uint8Array, outPath);
     } else if (format === 'jsonld') {
       // Same null-vs-empty contract as `exportStep` above (#4659).
-      const out = gp.exportJsonld(bytes, '', true, false, false, filterActive ? isolated : undefined);
+      const out = exportRustArtifact(gp, 'jsonld', bytes, filterActive ? isolated : undefined);
       if (out == null) fatal('JSON-LD export failed (geometry pipeline not initialized)');
       // Defense-in-depth: a JSON-LD document with an empty `@graph` still
       // carries its `@context`, so it is neither zero bytes nor invalid JSON.
@@ -177,7 +179,7 @@ export async function exportRustFormat(
         ? 'OBJ export produced 0 vertices — the matched entities have no exportable render geometry. Check --type/--storey/--where/--limit.'
         : 'OBJ export produced 0 vertices — the model has no exportable render geometry (or geometry production failed).';
       const out = refusingEmpty(
-        () => gp.exportObj(bytes, true, new Uint32Array(), filterActive ? isolated : undefined),
+        () => exportRustArtifact(gp, 'obj', bytes, filterActive ? isolated : undefined),
         countObjVertices,
         objEmpty,
       );
@@ -199,7 +201,7 @@ export async function exportRustFormat(
       // its parts as children (#9011). Off by default; the output is unchanged.
       const nameByGlobalId = hasFlag(args, '--name-by-global-id');
       const out = refusingEmpty(
-        () => gp.exportGlb(bytes, false, new Uint32Array(), filterActive ? isolated : undefined, '', true, false, nameByGlobalId),
+        () => exportRustArtifact(gp, 'glb', bytes, filterActive ? isolated : undefined, nameByGlobalId),
         countGlbMeshes,
         glbEmpty,
       );

@@ -12,11 +12,15 @@
  */
 
 import { withIfcBytes, refusingEmpty } from './export-source.js';
+import { cityAndEnergyExportTools } from './export-city-energy.js';
 import { export3dmTool } from './export-3dm.js';
+import { hasExportFilter, selectExportEntities, exportIsolation, exportFilterProperties } from './export-selection.js';
+import { basename } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { writeFile } from 'node:fs/promises';
 import type { EntityRef } from '@ifc-lite/sdk';
 import { GeometryProcessor } from '@ifc-lite/geometry';
-import { countGlbMeshes, countObjVertices, countUsdMeshes } from '@ifc-lite/export';
+import { countGlbMeshes, countJsonldNodes, countObjVertices, countUsdMeshes, exportRustArtifact } from '@ifc-lite/export';
 import type { Tool } from './types.js';
 import { fmtInt, okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
@@ -32,6 +36,7 @@ const exportIfc: Tool = {
       model_id: { type: 'string' },
       file_path: { type: 'string' },
       schema: { type: 'string', enum: ['IFC2X3', 'IFC4', 'IFC4X3'] },
+      ...exportFilterProperties,
       global_ids: { type: 'array', items: { type: 'string' }, description: 'Optional GlobalId allowlist; defaults to the whole model. Ids this session created count. Fails rather than exporting the whole model if none match.' },
     },
     required: ['file_path'],
@@ -53,7 +58,7 @@ const exportIfc: Tool = {
       // the allowlist actually export it rather than silently drop it.
       const wanted = new Set(input.global_ids as string[]);
       const matched = new Set<string>();
-      for (const e of m.bim.query().toArray()) {
+      for (const e of selectExportEntities(m.bim, input)) {
         if (!wanted.has(e.globalId)) continue;
         refs.push(e.ref);
         matched.add(e.globalId);
@@ -67,6 +72,12 @@ const exportIfc: Tool = {
           code: ToolErrorCode.ENTITY_NOT_FOUND,
           message: `No entity matches any of the ${wanted.size} requested global_ids, so there is nothing to export. Refusing to write the whole model instead.`,
         });
+      }
+    }
+    if (refs === undefined && hasExportFilter(input)) {
+      refs = selectExportEntities(m.bim, input).map((entity) => entity.ref);
+      if (refs.length === 0) {
+        throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'Export filters matched no entities - nothing to export.' });
       }
     }
     const content = m.bim.export.ifc(refs, { schema: schema as 'IFC2X3' | 'IFC4' | 'IFC4X3' });
@@ -94,7 +105,7 @@ const exportCsv: Tool = {
     properties: {
       model_id: { type: 'string' },
       file_path: { type: 'string' },
-      type: { type: 'string', description: 'Filter by IFC type (default: all products).' },
+      ...exportFilterProperties,
       columns: { type: 'array', items: { type: 'string' }, default: ['GlobalId', 'Type', 'Name'] },
       separator: { type: 'string', default: ',' },
     },
@@ -104,8 +115,7 @@ const exportCsv: Tool = {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const cols = (input.columns as string[] | undefined) ?? ['GlobalId', 'Type', 'Name'];
     const sep = (input.separator as string | undefined) ?? ',';
-    const filterType = input.type as string | undefined;
-    const refs = (filterType ? m.bim.query().byType(filterType).toArray() : m.bim.query().toArray()).map((e) => e.ref);
+    const refs = selectExportEntities(m.bim, input).map((entity) => entity.ref);
     const csv = m.bim.export.csv(refs, { columns: cols, separator: sep });
     if (typeof input.file_path === 'string') {
       const filePath = await resolveSafePath(input.file_path, ctx, 'write');
@@ -125,7 +135,7 @@ const exportJson: Tool = {
     properties: {
       model_id: { type: 'string' },
       file_path: { type: 'string' },
-      type: { type: 'string' },
+      ...exportFilterProperties,
       columns: { type: 'array', items: { type: 'string' }, default: ['GlobalId', 'Type', 'Name'] },
     },
     additionalProperties: false,
@@ -133,8 +143,7 @@ const exportJson: Tool = {
   async handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const cols = (input.columns as string[] | undefined) ?? ['GlobalId', 'Type', 'Name'];
-    const filterType = input.type as string | undefined;
-    const refs = (filterType ? m.bim.query().byType(filterType).toArray() : m.bim.query().toArray()).map((e) => e.ref);
+    const refs = selectExportEntities(m.bim, input).map((entity) => entity.ref);
     const rows = m.bim.export.json(refs, cols);
     if (typeof input.file_path === 'string') {
       const filePath = await resolveSafePath(input.file_path, ctx, 'write');
@@ -146,126 +155,80 @@ const exportJson: Tool = {
   },
 };
 
-const exportGlb: Tool = {
-  name: 'export_glb',
-  description: 'Geometry-only glTF binary (GLB) export via the Rust mesh pipeline. Optional `type` filter isolates one IFC class.',
-  scope: 'export',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      model_id: { type: 'string' },
-      file_path: { type: 'string' },
-      type: { type: 'string', description: 'Optional IFC type to isolate (e.g. IfcWall).' },
-    },
-    required: ['file_path'],
-    additionalProperties: false,
-  },
-  async handler(input, ctx) {
-    const m = resolveModel(ctx, input.model_id as string | undefined);
-    const filePath = await resolveSafePath(input.file_path, ctx, 'write');
-    const filterType = input.type as string | undefined;
-    const isolated = filterType
-      ? new Uint32Array(m.bim.query().byType(filterType).toArray().map((e) => e.ref.expressId))
-      : new Uint32Array();
-    // An empty isolation set means "export everything" to the Rust mesher, so a
-    // `type` filter that matched nothing would silently export the WHOLE model
-    // and report success. Fail loud instead, mirroring the CLI guard.
-    if (filterType && isolated.length === 0) {
-      throw new ToolExecutionError({
-        code: ToolErrorCode.INVALID_INPUT,
-        message: `No ${filterType} entities found - nothing to export.`,
-      });
-    }
-    return withIfcBytes(m, async (bytes) => {
-      const gp = new GeometryProcessor();
-      try {
-        await gp.init();
-        const glbEmpty = filterType
-          ? `GLB export produced 0 meshes — no ${filterType} elements have exportable render geometry.`
-          : 'GLB export produced 0 meshes — the model has no exportable render geometry.';
-        // `isolated` is empty-but-active only when `type` matched nothing
-        // (rejected above); no `type` must pass `undefined` to exportGlb,
-        // not an empty Uint32Array — the wasm boundary now treats an
-        // explicit empty array as "isolation active, matches nothing"
-        // (#4328), and would fail-close every unfiltered export otherwise.
-        const glb = await refusingEmpty(
-          () => gp.exportGlb(bytes, false, new Uint32Array(), filterType ? isolated : undefined, ''),
-          countGlbMeshes,
-          glbEmpty,
-        );
-        if (glb == null) {
-          throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'GLB export produced no output.' });
-        }
-        await writeFile(filePath, glb);
-        return okResult(`Wrote ${fmtInt(glb.length)} bytes to ${filePath}.`, { filePath, bytes: glb.length });
-      } finally {
-        gp.dispose();
-      }
-    });
-  },
-};
+const artifactFormats = {
+  glb: { title: 'Export GLB', format: 'glb', label: 'GLB', mimeType: 'model/gltf-binary', counter: countGlbMeshes, unit: 'meshes' },
+  gltf: { title: 'Export binary glTF', format: 'glb', label: 'GLB', mimeType: 'model/gltf-binary', counter: countGlbMeshes, unit: 'meshes' },
+  obj: { title: 'Export OBJ', format: 'obj', label: 'OBJ', mimeType: 'model/obj', counter: countObjVertices, unit: 'vertices' },
+  jsonld: { title: 'Export JSON-LD', format: 'jsonld', label: 'JSON-LD', mimeType: 'application/ld+json', counter: countJsonldNodes, unit: 'nodes' },
+} as const;
 
-const exportObj: Tool = {
-  name: 'export_obj',
-  description: 'Geometry-only Wavefront OBJ export via the Rust mesh pipeline. Optional `type` filter isolates one IFC class.',
-  scope: 'export',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      model_id: { type: 'string' },
-      file_path: { type: 'string' },
-      type: { type: 'string', description: 'Optional IFC type to isolate (e.g. IfcWall).' },
+function artifactTool(name: keyof typeof artifactFormats, description: string): Tool {
+  const { title, format, label, mimeType, counter, unit } = artifactFormats[name];
+  return {
+    name: `export_${name}`,
+    title,
+    description,
+    scope: 'export',
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+    outputSchema: {
+      type: 'object',
+      properties: { filePath: { type: 'string' }, bytes: { type: 'integer' } },
+      required: ['filePath', 'bytes'],
+      additionalProperties: false,
     },
-    required: ['file_path'],
-    additionalProperties: false,
-  },
-  async handler(input, ctx) {
-    const m = resolveModel(ctx, input.model_id as string | undefined);
-    const filePath = await resolveSafePath(input.file_path, ctx, 'write');
-    const filterType = input.type as string | undefined;
-    const isolated = filterType
-      ? new Uint32Array(m.bim.query().byType(filterType).toArray().map((e) => e.ref.expressId))
-      : new Uint32Array();
-    // An empty isolation set means "export everything" to the Rust mesher, so a
-    // `type` filter that matched nothing would silently export the WHOLE model
-    // and report success. Fail loud instead, mirroring the CLI guard.
-    if (filterType && isolated.length === 0) {
-      throw new ToolExecutionError({
-        code: ToolErrorCode.INVALID_INPUT,
-        message: `No ${filterType} entities found - nothing to export.`,
-      });
-    }
-    return withIfcBytes(m, async (bytes) => {
-      const gp = new GeometryProcessor();
-      try {
-        await gp.init();
-        // `isolated` is empty-but-active only when `type` matched nothing
-        // (rejected above); no `type` must pass `undefined` to exportObj,
-        // not an empty Uint32Array — the wasm boundary now treats an
-        // explicit empty array as "isolation active, matches nothing"
-        // (the OBJ twin of #4328/#4364), and would fail-close every
-        // unfiltered export otherwise.
-        const objEmpty = filterType
-          ? `OBJ export produced 0 vertices - the matched ${filterType} entities have no exportable render geometry.`
-          : 'OBJ export produced 0 vertices - the model has no exportable render geometry.';
-        // A `type` that matched only non-rendered entities (e.g. IfcProject)
-        // is refused (#7695); vertex count is the content signal, as in the CLI.
-        const obj = await refusingEmpty(
-          () => gp.exportObj(bytes, true, new Uint32Array(), filterType ? isolated : undefined),
-          countObjVertices,
-          objEmpty,
-        );
-        if (obj == null) {
-          throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'OBJ export produced no output.' });
+    inputSchema: {
+      type: 'object',
+      properties: {
+        model_id: { type: 'string', description: 'Loaded model ID. Defaults to the active model.' },
+        file_path: { type: 'string', description: 'Output path inside the allowed paths.' },
+        ...exportFilterProperties,
+        ...(format === 'glb' ? {
+          name_by_global_id: { type: 'boolean', description: 'Name glTF element nodes using IFC GlobalId.' },
+        } : {}),
+      },
+      required: ['file_path'],
+      additionalProperties: false,
+    },
+    async handler(input, ctx) {
+      const model = resolveModel(ctx, input.model_id as string | undefined);
+      const filePath = await resolveSafePath(input.file_path, ctx, 'write');
+      const isolated = exportIsolation(model.bim, input);
+      const artifact = await withIfcBytes(model, async (bytes) => {
+        const processor = new GeometryProcessor();
+        try {
+          await processor.init();
+          const target = isolated
+            ? `the matched ${typeof input.type === 'string' ? `${input.type} ` : ''}entities have`
+            : 'the model has';
+          const emptyMessage = `${label} export produced 0 ${unit} - ${target} no exportable content.`;
+          const result = await refusingEmpty(
+            () => exportRustArtifact(processor, format, bytes, isolated, input.name_by_global_id === true),
+            counter,
+            emptyMessage,
+          );
+          if (result == null) {
+            throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: `${label} export produced no output.` });
+          }
+          return result;
+        } finally {
+          processor.dispose();
         }
-        await writeFile(filePath, obj);
-        return okResult(`Wrote ${fmtInt(obj.length)} bytes to ${filePath}.`, { filePath, bytes: obj.length });
-      } finally {
-        gp.dispose();
+      });
+      ctx.signal.throwIfAborted();
+      await writeFile(await resolveSafePath(filePath, ctx, 'write'), artifact);
+      const result = okResult(`Wrote ${fmtInt(artifact.length)} bytes to ${filePath}.`, { filePath, bytes: artifact.length });
+      if (name === 'gltf' || name === 'jsonld') {
+        result.content.push({ type: 'resource_link', uri: pathToFileURL(filePath).href, name: basename(filePath), mimeType, size: artifact.length });
       }
-    });
-  },
-};
+      return result;
+    },
+  };
+}
+
+const exportGlb = artifactTool('glb', 'GLB export of model geometry as binary glTF.');
+const exportGltf = artifactTool('gltf', 'glTF export of model geometry as a single binary .glb file, as in the CLI.');
+const exportObj = artifactTool('obj', 'Wavefront OBJ export of model geometry with vertex normals.');
+const exportJsonld = artifactTool('jsonld', 'JSON-LD export of the model graph with IFC properties.');
 
 const exportIfcx: Tool = {
   name: 'export_ifcx',
@@ -338,4 +301,4 @@ const exportUsd: Tool = {
   },
 };
 
-export const exportTools: Tool[] = [exportIfc, exportCsv, exportJson, exportGlb, exportObj, exportIfcx, exportUsd, export3dmTool];
+export const exportTools: Tool[] = [exportIfc, exportCsv, exportJson, exportGlb, exportGltf, exportObj, exportJsonld, exportIfcx, exportUsd, export3dmTool, ...cityAndEnergyExportTools];

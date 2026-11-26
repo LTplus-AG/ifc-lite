@@ -11,7 +11,7 @@ Start here
 - Explore: spatial_hierarchy, storey_list, query_entities, count_entities, get_entity, get_entities_bulk, properties_unique, materials_list, classifications_list.
 - Validate: model_audit, ids_validate, check_rules, clash_check, clash_matrix, georeferencing_check.
 - Edit (mutate scope): entity_set_property, entity_set_attribute, entity_create, mutation_batch, place_door, place_window, storey_add. Edits stay pending until export_ifc or model_save writes them; mutation_diff lists them, mutation_undo reverts them.
-- Export: export_ifc, export_csv, export_json, export_glb, export_obj, export_ifcx, export_usd, export_3dm.
+- Export: export_ifc, export_csv, export_json, export_glb, export_obj, export_ifcx, export_usd, export_3dm, export_gltf, export_jsonld, export_cityjson, export_cityjsonseq, export_hbjson, export_dfjson.
 - Model transforms (write a new file): model_merge, model_convert (schema version), model_extract (isolate products), model_anonymize, model_simplify, model_lod. Transform tools can replace an existing output file.
 - Issues: bcf_topic_create, bcf_viewpoint_create, bcf_export.
 - IDS authoring: ids_schema_search, ids_read, ids_apply_ops, ids_write, ids_lint.

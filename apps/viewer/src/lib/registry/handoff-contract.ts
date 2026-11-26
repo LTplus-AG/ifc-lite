@@ -87,35 +87,30 @@ function parseConnections(input: string): RegistryConnection[] {
   return connections;
 }
 
+/** Throws on unreadable storage; readers fall back to no stores, saves refuse to overwrite. */
+function storedConnections(): RegistryConnection[] {
+  const stored = globalThis.localStorage?.getItem(CONNECTIONS_KEY);
+  return stored ? parseConnections(stored) : [];
+}
+
 export function registryConnections(input?: string): RegistryConnection[] {
   if (input !== undefined) return parseConnections(input);
   try {
-    const stored = globalThis.localStorage?.getItem(CONNECTIONS_KEY);
-    return stored ? parseConnections(stored) : [];
+    return storedConnections();
   } catch {
     console.warn('Could not load saved file stores from browser storage.');
     return [];
   }
 }
 
-/** Unlike `registryConnections`, refuses unreadable storage so a save cannot overwrite it. */
-function storedConnectionsForSave(): RegistryConnection[] {
-  let stored: string | null | undefined;
+export function saveRegistryConnection(value: RegistryConnection, replace?: boolean) {
+  const connection = parseConnection(value);
+  let existing: RegistryConnection[];
   try {
-    stored = globalThis.localStorage.getItem(CONNECTIONS_KEY);
-  } catch {
-    throw new RegistryError('Could not save the file store. Check that browser storage is available.');
-  }
-  try {
-    return stored ? parseConnections(stored) : [];
+    existing = storedConnections();
   } catch {
     throw new RegistryError('The file stores saved in this browser could not be read, so none were changed.');
   }
-}
-
-export function saveRegistryConnection(value: RegistryConnection, replace?: boolean) {
-  const connection = parseConnection(value);
-  const existing = storedConnectionsForSave();
   const duplicate = existing.some(store => store.registry === connection.registry);
   if (duplicate && !replace) throw new RegistryError('This registry already has a file store. Select it and choose Edit file store.');
   if (replace && !duplicate) throw new RegistryError('This file store changed. Open the file-store settings again.');

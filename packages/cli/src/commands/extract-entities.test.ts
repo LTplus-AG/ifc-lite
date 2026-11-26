@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GeometryProcessor } from '@ifc-lite/geometry';
+import { createMCPServer, fullScope, InMemoryModelRegistry, InProcessTransport, loadIfcModel } from '@ifc-lite/mcp';
 import { scoreTriage, extractEntitiesCommand } from './extract-entities.js';
 
 // The subset engine itself (parseStep, buildSubset, ...) is tested next to it in
@@ -131,6 +132,51 @@ DATA;
 ENDSEC;
 END-ISO-10303-21;
 `;
+
+it('extracts the same grid-placed storey members via CLI and MCP in IFC4X3_ADD2 (#11583)', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'ifc-extract-grid-storey-'));
+  try {
+    const src = join(dir, 'in.ifc');
+    const cliPath = join(dir, 'cli.ifc');
+    const mcpPath = join(dir, 'mcp.ifc');
+    const fixture = TWO_STOREY_MODEL
+      .replace("FILE_DESCRIPTION((''),'2;1')", "FILE_DESCRIPTION(('IFC5 Exporter'),'2;1')")
+      .replace("FILE_SCHEMA(('IFC4'))", "FILE_SCHEMA(('IFC4X3_ADD2'))")
+      .replace('#50= IFCLOCALPLACEMENT(#40,#21);', [
+        '#50= IFCGRIDPLACEMENT(#40,#58,$);',
+        '#55= IFCPOLYLINE((#22,#23));', '#56= IFCPOLYLINE((#22,#24));',
+        '#23= IFCCARTESIANPOINT((1.,0.,0.));', '#24= IFCCARTESIANPOINT((0.,1.,0.));',
+        "#57= IFCGRIDAXIS('A',#55,.T.);", "#59= IFCGRIDAXIS('1',#56,.T.);",
+        '#58= IFCVIRTUALGRIDINTERSECTION((#57,#59),(0.,0.));',
+      ].join('\n'));
+    await writeFile(src, fixture, 'latin1');
+    await extractEntitiesCommand([src, '--storey', 'L01', '--out', cliPath]);
+    const cli = await readFile(cliPath, 'latin1');
+    expect(cli).toContain('#70= IFCWALLSTANDARDCASE');
+    expect(cli).toContain('#50= IFCGRIDPLACEMENT(#40,#58,$);');
+    expect(cli).not.toContain('#90=');
+
+    const model = await loadIfcModel(src);
+    const registry = new InMemoryModelRegistry();
+    registry.add(model);
+    const transport = new InProcessTransport();
+    try {
+      await transport.connect(createMCPServer({ registry, scope: fullScope(), config: { allowedPaths: [dir] } }));
+      await transport.send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {
+        protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'extract parity', version: '1' },
+      } });
+      await transport.send({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: {
+        name: 'model_extract', arguments: { storeys: ['L01'], file_path: mcpPath },
+      } });
+      expect(await readFile(mcpPath, 'latin1')).toBe(cli);
+    } finally {
+      transport.close();
+      model.backend.dispose();
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 it('keeps the ordered IfcRelNests list when extracting an assembly with selected parts (#11583)', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'ifc-extract-nests-'));

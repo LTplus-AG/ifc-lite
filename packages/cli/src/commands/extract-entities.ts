@@ -31,6 +31,7 @@
 import { constants as bufferConstants } from 'node:buffer';
 import { writeFile } from 'node:fs/promises';
 import { buildSubset, parseStep, selectSubsetSeeds, serializeSubset } from '@ifc-lite/export';
+import { detectSchemaVersion, parseSourceHeader } from '@ifc-lite/parser';
 import { fatal, getFlag, getAllFlags, hasFlag, routeConsoleDiagnosticsToStderr } from '../output.js';
 import { logger } from '../logger.js';
 import { readModelInput } from '../model-input.js';
@@ -190,6 +191,7 @@ export async function extractEntitiesCommand(args: string[]): Promise<void> {
     products: splitFlag('--product'),
     types: requestedTypes,
     storeys: splitFlag('--storey'),
+    schemaVersion: detectSchemaVersion(buf, parseSourceHeader(buf)),
   });
   if (detect) {
     const bytes = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);

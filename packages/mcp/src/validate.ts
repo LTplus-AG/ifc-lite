@@ -209,7 +209,7 @@ function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors
     if (schema.maxLength !== undefined && input.length > schema.maxLength) {
       errors.push({ path, message: `String longer than ${schema.maxLength}` });
     }
-    if (typeof schema.pattern === 'string' && !compiledPattern(schema.pattern).test(input)) {
+    if (typeof schema.pattern === 'string' && !new RegExp(schema.pattern, 'u').test(input)) {
       errors.push({ path, message: `Does not match pattern ${schema.pattern}` });
     }
   }
@@ -270,13 +270,6 @@ function resolveRef(schema: JsonSchema, root: JsonSchema, seen = new Set<string>
   const { $ref: _resolved, ...siblings } = schema;
   const resolved = { ...(target as JsonSchema), ...siblings };
   return typeof resolved.$ref === 'string' ? resolveRef(resolved, root, seen) : resolved;
-}
-
-const patterns = new Map<string, RegExp>();
-function compiledPattern(source: string): RegExp {
-  let re = patterns.get(source);
-  if (!re) patterns.set(source, (re = new RegExp(source, 'u')));
-  return re;
 }
 
 function own(obj: Record<string, unknown>, key: string): unknown {

@@ -67,6 +67,14 @@ describe('model.openFromSource in the viewer', () => {
     assert.equal(add.calls[0].name, `_CON.${'a'.repeat(51)}.xyz`);
   });
 
+  it('keeps distinct source filenames distinct for the same model bytes (#11442)', async () => {
+    const add = recordingAddModel('ok');
+    const open = createViewerOpenModel(add.addModel);
+    await open(IFC, 'Tower-.ifc');
+    await open(IFC, 'Tower.ifc');
+    assert.deepEqual(add.calls.map(call => call.name), ['Tower-.ifc', 'Tower.ifc']);
+  });
+
   it('fails the node when the model never registered', async () => {
     const add = recordingAddModel('fail');
     await assert.rejects(createViewerOpenModel(add.addModel)(IFC, 'a.ifc'), /a\.ifc could not be loaded/);

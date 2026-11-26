@@ -24,7 +24,7 @@ export function bcfGuid(guid: string, version: '2.1' | '3.0'): string {
  * guid are skipped. `what` names the items in the error, e.g. `topics` or
  * `viewpoints in topic "<guid>"`.
  */
-export function assertNoCaseOnlyGuidClash(
+function assertNoCaseOnlyGuidClash(
   items: Iterable<{ guid?: string }>,
   version: '2.1' | '3.0',
   what: string,
@@ -43,5 +43,20 @@ export function assertNoCaseOnlyGuidClash(
       );
     }
     written.set(out, guid);
+  }
+}
+
+/** The writer's preflight: every topic, and each topic's comments, viewpoints and document references. */
+export function assertNoCaseOnlyGuidClashes(
+  topics: Iterable<{ guid: string; comments: { guid?: string }[]; viewpoints: { guid?: string }[]; documentReferences?: { guid?: string }[] }>,
+  version: '2.1' | '3.0',
+): void {
+  const all = [...topics];
+  assertNoCaseOnlyGuidClash(all, version, 'topics');
+  for (const topic of all) {
+    const inTopic = `in topic "${topic.guid}"`;
+    assertNoCaseOnlyGuidClash(topic.comments, version, `comments ${inTopic}`);
+    assertNoCaseOnlyGuidClash(topic.viewpoints, version, `viewpoints ${inTopic}`);
+    assertNoCaseOnlyGuidClash(topic.documentReferences ?? [], version, `document references ${inTopic}`);
   }
 }

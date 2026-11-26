@@ -36,6 +36,18 @@ function typedField(name: string, schema: JsonSchema | undefined): string {
   return type ? `${name}:${type}` : name;
 }
 
+function branchesOf(schema: JsonSchema): JsonSchema[] {
+  return ([schema.oneOf, schema.anyOf].find(Array.isArray) ?? []) as JsonSchema[];
+}
+
+function plainType(schema: JsonSchema): string {
+  return Array.isArray(schema.type) ? schema.type.join('|') : String(schema.type ?? 'any');
+}
+
+function enumText(values: readonly unknown[], separator: string): string {
+  return values.map((v) => JSON.stringify(v)).join(separator);
+}
+
 function typeOf(schema: JsonSchema): string | undefined {
   const ref = refName(schema);
   if (ref) return ref === 'Uuid' ? undefined : ref;
@@ -45,10 +57,10 @@ function typeOf(schema: JsonSchema): string | undefined {
   }
   if (schema.const !== undefined) return JSON.stringify(schema.const);
   // A long enum (the op kinds again, inside templates) would cost more than it tells.
-  if (Array.isArray(schema.enum)) return schema.enum.length > 12 ? `string (${schema.enum.length} allowed values)` : schema.enum.map((v) => JSON.stringify(v)).join('|');
+  if (Array.isArray(schema.enum)) return schema.enum.length > 12 ? `string (${schema.enum.length} allowed values)` : enumText(schema.enum, '|');
   if (schema.properties) return branchShape(schema);
-  const branches = [schema.oneOf, schema.anyOf].find(Array.isArray) as JsonSchema[] | undefined;
-  return branches?.map((b) => typeOf(b) ?? (Array.isArray(b.type) ? b.type.join('|') : String(b.type ?? 'any'))).join('|');
+  const branches = branchesOf(schema);
+  return branches.length > 0 ? branches.map((b) => typeOf(b) ?? plainType(b)).join('|') : undefined;
 }
 
 /** `spec.add: specId, name, ifcVersions:[IfcVersion] [index, description, …]` */
@@ -80,7 +92,7 @@ function fail(message: string): never {
 function directRefs(schema: JsonSchema): string[] {
   const ref = refName(schema);
   if (ref) return [ref];
-  const subs = [...Object.values(schema.properties ?? {}), ...[schema.oneOf, schema.anyOf].filter(Array.isArray).flat() as JsonSchema[]];
+  const subs = [...Object.values(schema.properties ?? {}), ...branchesOf(schema)];
   if (schema.items) subs.push(schema.items);
   return subs.flatMap(directRefs);
 }
@@ -108,7 +120,7 @@ function legendNames(defs: Defs): string[] {
 
 function legendLine(name: string, defs: Defs): string {
   const def = defs[name];
-  if (Array.isArray(def.enum)) return `${name} = ${def.enum.map((v) => JSON.stringify(v)).join(' | ')}`;
+  if (Array.isArray(def.enum)) return `${name} = ${enumText(def.enum, ' | ')}`;
   if (Array.isArray(def.oneOf)) {
     return `${name} = ${(def.oneOf as JsonSchema[]).map((b) => {
       const target = refName(b);
@@ -116,8 +128,8 @@ function legendLine(name: string, defs: Defs): string {
     }).join(' | ')}`;
   }
   if (def.properties) return `${name} = ${branchShape(def)}`;
-  if (def.type === 'array') return `${name} = [${refName(def.items) ?? String(def.items?.type ?? 'any')}]`;
-  return `${name} = ${Array.isArray(def.type) ? def.type.join('|') : String(def.type ?? 'any')}`;
+  if (def.type === 'array') return `${name} = [${refName(def.items) ?? (def.items ? plainType(def.items) : 'any')}]`;
+  return `${name} = ${plainType(def)}`;
 }
 
 function payloadDescription(defs: Defs): string {

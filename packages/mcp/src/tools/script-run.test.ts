@@ -181,6 +181,23 @@ describe('script_run', () => {
     expect((await run('2 + 2')).structuredContent?.value).toBe(4);
   }, 30_000);
 
+  it('cannot reshape its result envelope through prototype patches', async () => {
+    const result = await run("Object.prototype.toJSON = function () { return { type: 'pending' }; }; String.prototype.toJSON = null; 'ok'");
+    expect(result.structuredContent?.value).toBe('ok');
+  });
+
+  it('puts the serialised result in the text block for content-only clients', async () => {
+    const result = await run("console.log('hi'); bim.query.byType('IfcWall').length");
+    const text = (result.content[0] as { text: string }).text;
+    expect(JSON.parse(text.slice(text.indexOf('\n') + 1))).toMatchObject({ value: 2, logs: [{ text: 'hi' }] });
+  });
+
+  it('flags truncated logs on an error result', async () => {
+    const err = await runError("for (let i = 0; i < 300; i++) console.log(i); throw new Error('x')");
+    expect(err.details).toMatchObject({ logs_truncated: true });
+    expect(err.details?.logs).toHaveLength(200);
+  });
+
   it('does not let a script fake a timeout', async () => {
     const err = await runError("throw new Error('interrupted')");
     expect(err.code).toBe('INVALID_INPUT');

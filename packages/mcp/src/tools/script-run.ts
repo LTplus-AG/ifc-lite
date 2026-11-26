@@ -35,6 +35,7 @@ const MAX_MEMORY_MB = 256;
 const HOST_GRACE_MS = 2_000;
 /** Caps on what one call returns to the client (the sandbox caps capture at 1000 entries / 4 MB). */
 const MAX_VALUE_CHARS = 256 * 1024;
+const VALUE_PREVIEW_CHARS = 2_000;
 const MAX_LOG_LINES = 200;
 const MAX_LOG_CHARS = 64 * 1024;
 
@@ -153,39 +154,46 @@ function wrapScript(code: string): string {
   // The script's function is created in the global scope, outside the
   // helpers' closure, and the Promise/JSON primitives are bound before it
   // runs, so a script that declares or assigns `env`, or reassigns
-  // `Promise`, cannot reach what the wrapper relies on.
-  return `(function (run, P, then, stringify) {
+  // `Promise`, cannot reach what the wrapper relies on. The envelope is a
+  // tagged primitive string, which no prototype or toJSON patch can reshape
+  // on its way through vm.dump, and an oversized value is cut down inside the
+  // sandbox so only the preview crosses to the host.
+  return `(function (run, P, then, stringify, max, preview) {
   function msg(e) {
     try { return e && typeof e.message === 'string' ? e.message : String(e); }
     catch (_) { return 'unprintable error'; }
   }
   function env(v) {
-    try { var j = stringify(v); return { json: j === undefined ? 'null' : j }; }
-    catch (e) { return { unserialisable: msg(e) }; }
+    var j;
+    try { j = stringify(v); } catch (e) { return 'U' + msg(e); }
+    if (j === undefined) return 'Jnull';
+    return j.length > max ? 'P' + j.slice(0, preview) : 'J' + j;
   }
-  function fail(e) { return { threw: msg(e) }; }
+  function fail(e) { return 'T' + msg(e); }
   var r;
   try { r = run(); } catch (e) { return fail(e); }
   return r instanceof P ? then.call(r, env, fail) : env(r);
-})(function () { return eval(${JSON.stringify(code)}); }, Promise, Promise.prototype.then, JSON.stringify)`;
+})(function () { return eval(${JSON.stringify(code)}); }, Promise, Promise.prototype.then, JSON.stringify, ${MAX_VALUE_CHARS}, ${VALUE_PREVIEW_CHARS})`;
 }
 
-type Envelope = { json?: string; threw?: string; unserialisable?: string };
+type Outcome =
+  | { value: unknown; value_truncated: false }
+  | { value: null; value_truncated: true; value_preview: string }
+  | { error: string };
 
-/** The JSON text of the script's value, or the message it failed with. */
-function readEnvelope(dumped: unknown): { json: string } | { error: string } {
-  // A returned promise dumps as its settled state, `{ type, value }`.
-  const state = dumped as { type?: string; value?: Envelope } & Envelope;
-  if (state.type === 'pending') return { error: 'The script returned a promise that never settled (only bim host calls resolve; there are no timers).' };
-  const envelope = state.type === 'fulfilled' ? state.value ?? {} : state;
-  if (typeof envelope.json === 'string') return { json: envelope.json };
-  if (envelope.unserialisable !== undefined) return { error: `The script's value is not JSON-serialisable: ${envelope.unserialisable}` };
-  return { error: envelope.threw ?? 'The script produced no result.' };
-}
-
-function shapeValue(json: string): { value: unknown; value_truncated: boolean; value_preview?: string } {
-  if (json.length <= MAX_VALUE_CHARS) return { value: JSON.parse(json) as unknown, value_truncated: false };
-  return { value: null, value_truncated: true, value_preview: clipUtf16(json, 2_000) };
+/** Decode the wrapper's tagged string (a returned promise dumps as `{ type, value }`). */
+function readEnvelope(dumped: unknown): Outcome {
+  const state = dumped as { type?: string; value?: unknown };
+  if (state?.type === 'pending') return { error: 'The script returned a promise that never settled (only bim host calls resolve; there are no timers).' };
+  const envelope = state?.type === 'fulfilled' ? state.value : dumped;
+  if (typeof envelope !== 'string' || envelope.length === 0) return { error: 'The script produced no result.' };
+  const body = envelope.slice(1);
+  switch (envelope[0]) {
+    case 'J': return { value: JSON.parse(body) as unknown, value_truncated: false };
+    case 'P': return { value: null, value_truncated: true, value_preview: clipUtf16(body, VALUE_PREVIEW_CHARS) };
+    case 'U': return { error: `The script's value is not JSON-serialisable: ${body}` };
+    default: return { error: body };
+  }
 }
 
 async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolContext) {
@@ -239,20 +247,25 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     const { logs, truncated } = shapeLogs(result.logs);
     const mutationsQueued = queued();
     const outcome = readEnvelope(result.value);
-    if ('error' in outcome) throw scriptError(outcome.error, { logs, mutations_queued: mutationsQueued });
-    const shaped = shapeValue(outcome.json);
+    if ('error' in outcome) throw scriptError(outcome.error, { logs, logs_truncated: truncated, mutations_queued: mutationsQueued });
     const summary = [
       `Script ran in ${result.durationMs} ms on model '${model.id}' (${mode}).`,
       mutationsQueued > 0 ? `${mutationsQueued} mutation(s) queued; persist with export_ifc or model_save.` : '',
-      shaped.value_truncated ? `Value truncated (over ${MAX_VALUE_CHARS} JSON characters).` : '',
+      outcome.value_truncated ? `Value truncated (over ${MAX_VALUE_CHARS} JSON characters).` : '',
     ].filter(Boolean).join(' ');
-    return okResult(summary, {
-      model_id: model.id, mode, ...shaped, logs, logs_truncated: truncated,
+    const structured = {
+      model_id: model.id, mode, ...outcome, logs, logs_truncated: truncated,
       duration_ms: result.durationMs, mutations_queued: mutationsQueued,
-    });
+    };
+    // The serialised result goes in the text block too, for clients that
+    // read only `content` (MCP 2025-06-18, structured content).
+    return okResult(`${summary}\n${JSON.stringify(structured)}`, structured);
   } catch (err) {
     if (err instanceof ToolExecutionError) throw err;
-    const details = { logs: err instanceof ScriptError ? shapeLogs(err.logs).logs : [], mutations_queued: queued() };
+    // A sandbox disposed by the timer or a cancel rejects with a plain Error
+    // that carries no logs; only a ScriptError has them.
+    const shaped = err instanceof ScriptError ? shapeLogs(err.logs) : { logs: [], truncated: false };
+    const details = { logs: shaped.logs, logs_truncated: shaped.truncated, mutations_queued: queued() };
     if (stopReason === 'cancelled') throw cancelled(details);
     // Script throws are caught in the wrapper, so 'interrupted' here is the
     // sandbox's own interrupt handler (it reports nothing more specific).

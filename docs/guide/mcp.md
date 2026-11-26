@@ -400,9 +400,11 @@ For an `IfcSlab` host, `place_opening` accepts `Position: [x, y]` (opening centr
     by this adapter; use the hosted placement tools with an actual host.
 
 !!! note "Planned tools return a clean error"
-    `geometry_get` and `raycast` are registered so agents can discover them,
-    but they currently return an `UNSUPPORTED_OPERATION` result rather than
-    data: both need the WASM geometry pipeline.
+    `geometry_get`, `raycast`, `ids_preview`, `ids_infer`, `ids_coverage` and
+    `ids_test` are registered so agents can discover them, but they currently
+    return an `UNSUPPORTED_OPERATION` result rather than data. `geometry_get`
+    and `raycast` need the WASM geometry pipeline; the IDS four wait for their
+    engines.
 
 ### Interactive result surfaces
 

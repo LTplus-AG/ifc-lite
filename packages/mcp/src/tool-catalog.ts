@@ -50,9 +50,12 @@ export function toCatalogEntry(tool: Tool): ToolCatalogEntry {
   };
 }
 
+/** A period that ends a sentence: not after e.g./i.e./etc./vs., and followed by a capital or the end. */
+const SENTENCE_END = /(?<!\b(?:e\.g|i\.e|etc|vs))\.(?=\s+[A-Z]|$)/;
+
 function firstSentence(text: string): string {
-  const line = text.trim().split('\n')[0];
-  const end = line.search(/\.(?=\s+[A-Z]|\s*$)/);
-  const sentence = end === -1 ? line : line.slice(0, end + 1);
+  const flat = text.trim().replace(/\s+/g, ' ');
+  const end = flat.search(SENTENCE_END);
+  const sentence = end === -1 ? flat : flat.slice(0, end + 1);
   return sentence.length > PURPOSE_MAX ? `${sentence.slice(0, PURPOSE_MAX - 1)}…` : sentence;
 }

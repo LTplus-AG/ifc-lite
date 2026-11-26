@@ -34,7 +34,7 @@ export class ClientLogForwarder {
     log: (level, message, data) => {
       this.base.log(level, message, data);
       if (this.minimum === null || LOGGING_LEVELS.indexOf(level) < this.minimum) return;
-      this.send({ level, logger: this.loggerName, data: { ...data, message } });
+      this.send({ level, logger: this.loggerName, data: data ? { message, data } : { message } });
     },
   };
 }

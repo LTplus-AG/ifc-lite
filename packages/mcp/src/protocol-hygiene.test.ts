@@ -117,15 +117,23 @@ describe('logging', () => {
     await request('tools/call', { name: 'log_both', arguments: {} });
     const sent = methods(notes, 'notifications/message');
     expect(sent.map((n) => n.params?.level)).toEqual(['error']);
-    expect(sent[0].params).toMatchObject({ logger: 'ifc-lite-mcp', data: { message: 'loud line', n: 1 } });
+    expect(sent[0].params).toMatchObject({ logger: 'ifc-lite-mcp', data: { message: 'loud line', data: { n: 1 } } });
   });
 
-  it('keeps the log message when the data carries its own message key', () => {
+  it('keeps both the log message and a data.message key', () => {
     const sent: unknown[] = [];
     const forwarder = new ClientLogForwarder(SILENT_LOGGER, 'x', (p) => sent.push(p));
     forwarder.setLevel('debug');
     forwarder.logger.log('error', 'export failed', { message: 'disk full' });
-    expect(sent).toEqual([{ level: 'error', logger: 'x', data: { message: 'export failed' } }]);
+    expect(sent).toEqual([{ level: 'error', logger: 'x', data: { message: 'export failed', data: { message: 'disk full' } } }]);
+  });
+
+  it('answers -32601 when logging is not advertised', async () => {
+    const server = new MCPServer({ version: '0', tools: new ToolRegistry(), resources: buildDefaultResourceRegistry(), prompts: buildDefaultPromptRegistry(), capabilities: { tools: {} } });
+    const transport = new InProcessTransport();
+    void transport.connect(server);
+    await transport.send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 't', version: '0' } } });
+    expect(await transport.send({ jsonrpc: '2.0', id: 2, method: 'logging/setLevel', params: { level: 'debug' } })).toMatchObject({ error: { code: -32601 } });
   });
 
   it('refuses an unknown level with -32602', async () => {
@@ -145,6 +153,13 @@ describe('list_changed', () => {
     // Reloading the same id replaces the model but leaves the listed set alone.
     await request('tools/call', { name: 'load_fake', arguments: { id: 'a' } });
     expect(methods(notes, 'notifications/resources/list_changed')).toHaveLength(1);
+  });
+
+  it('sends no list_changed before initialize', async () => {
+    const { server, notes } = build();
+    server.registry.add(fakeModel('early'));
+    server.setScope(readOnlyScope());
+    expect(notes.filter((n) => n.method?.endsWith('list_changed'))).toEqual([]);
   });
 
   it('sends resources/list_changed for a registry change made outside any tool call', async () => {
@@ -211,6 +226,8 @@ describe('instructions and manifest', () => {
     const entry = (description: string) => toCatalogEntry({ name: 't', description, inputSchema: {}, handler: () => ({ content: [] }) });
     expect(entry('Class details for a name (e.g. "IfcWall") from bSDD.').purpose).toBe('Class details for a name (e.g. "IfcWall") from bSDD.');
     expect(entry('First. Second.').purpose).toBe('First.');
+    expect(entry('Property sets for an entity (e.g. Pset_WallCommon for IfcWall).').purpose).toBe('Property sets for an entity (e.g. Pset_WallCommon for IfcWall).');
+    expect(entry('A sentence wrapped\nover two lines. Then more.').purpose).toBe('A sentence wrapped over two lines.');
   });
 });
 
@@ -223,10 +240,10 @@ describe('resources', () => {
     expect(templates.map((t) => t.uriTemplate)).toEqual(['ifc-lite://model/{model_id}/entity/{global_id}']);
   });
 
-  it('answers an unknown or empty resource with -32602', async () => {
+  it('answers a missing resource with -32002 and a missing uri with -32602', async () => {
     const { request } = await initialized();
-    expect((await request('resources/read', { uri: 'nope://x' })).error?.code).toBe(-32602);
-    expect((await request('resources/read', { uri: 'ifc-lite://model/missing/manifest' })).error?.code).toBe(-32602);
+    expect((await request('resources/read', { uri: 'nope://x' })).error).toMatchObject({ code: -32002, data: { uri: 'nope://x' } });
+    expect((await request('resources/read', { uri: 'ifc-lite://model/missing/manifest' })).error?.code).toBe(-32002);
     expect((await request('resources/read')).error?.code).toBe(-32602);
     expect((await request('prompts/get')).error?.code).toBe(-32602);
   });

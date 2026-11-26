@@ -73,6 +73,8 @@ export const JsonRpcErrorCode = {
   InternalError: -32603,
   // MCP-defined extension range starts at -32000.
   ServerNotInitialized: -32002,
+  /** MCP resources spec: resources/read on a URI that names nothing. */
+  ResourceNotFound: -32002,
   RequestCancelled: -32800,
 } as const;
 

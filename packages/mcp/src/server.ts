@@ -296,6 +296,7 @@ export class MCPServer {
         case 'prompts/get':
           return successResponse(req.id, await this.handleGetPrompt((req.params ?? {}) as GetPromptParams));
         case 'logging/setLevel': {
+          if (!this.capabilities.logging) throw new RequestError(JsonRpcErrorCode.MethodNotFound, 'Logging is not offered by this server');
           const level = (req.params as Partial<SetLevelParams> | undefined)?.level;
           if (!isLoggingLevel(level)) throw new RequestError(JsonRpcErrorCode.InvalidParams, `Unknown logging level: ${String(level)}`);
           this.logForwarder.setLevel(level);
@@ -452,12 +453,11 @@ export class MCPServer {
   }
 
   private async handleReadResource(params: ReadResourceParams): Promise<ReadResourceResult> {
+    if (typeof params.uri !== 'string') throw new RequestError(JsonRpcErrorCode.InvalidParams, 'resources/read needs a uri');
     const provider = this.resources.matchProvider(params.uri);
     // An empty read is a well-formed URI naming nothing (unknown model or entity).
     const contents = provider ? await provider.read(params.uri, this.makeResourceContext()) : [];
-    if (contents.length === 0) {
-      throw new RequestError(JsonRpcErrorCode.InvalidParams, `Resource not found: ${params.uri}`, { uri: params.uri });
-    }
+    if (contents.length === 0) throw new RequestError(JsonRpcErrorCode.ResourceNotFound, 'Resource not found', { uri: params.uri });
     return { contents };
   }
 
@@ -529,10 +529,10 @@ export class MCPServer {
   notify(method: string, params: Record<string, unknown>): void { void this.sink?.send(notification(method, params)); }
 
   /** Notify clients that the tool list has changed (e.g., after model load). */
-  notifyToolsChanged(): void { this.notify('notifications/tools/list_changed', {}); }
+  notifyToolsChanged(): void { if (this.initialized) this.notify('notifications/tools/list_changed', {}); }
 
   /** Notify clients that resources/list changed (a model was loaded, unloaded or hidden by scope). */
-  notifyResourcesChanged(): void { this.notify('notifications/resources/list_changed', {}); }
+  notifyResourcesChanged(): void { if (this.initialized) this.notify('notifications/resources/list_changed', {}); }
 
   /** Read-only access to the auth scope for transports that need to gate access. */
   hasModelAccess(modelId: string): boolean {

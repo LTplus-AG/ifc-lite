@@ -10,7 +10,7 @@ The MCP wire protocol now matches what the server does (#11535).
 - `notifications/resources/list_changed` is sent when the loaded models change (new optional `ModelRegistry.onChange`; registries without it are checked after each tool call), and `notifications/tools/list_changed` when `setScope` changes the visible tools.
 - New `resources/templates/list`; the entity URI is listed there instead of as a resource with literal braces.
 - `ResourceLink` is the spec `resource_link` content type. `EmbeddedResource` is unchanged.
-- An unknown resource URI or prompt name answers JSON-RPC `-32602`, not `-32603`.
+- A resource that is not found answers `-32002` and an unknown prompt name `-32602`, as the MCP spec lists them, instead of `-32603`. `logging/setLevel` answers `-32601` when the server does not advertise logging.
 - Tool definitions carry scope at `_meta["ifc-lite/scope"]` instead of a top-level `scope` field. `ToolDefinition.scope` is gone.
 - `export_pdf_report` and `gherkin_check` are removed. Both always failed.
 - Tool error text now includes the hint, for clients that ignore `structuredContent`.

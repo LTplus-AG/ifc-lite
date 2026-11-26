@@ -233,12 +233,8 @@ export function parseExpressRules(source: string): ExpressRuleSchema {
   const schema: ExpressRuleSchema = { name: s.expectIdentifier(), types: [], entities: [], functions: [], rules: [], skipped: [] };
   s.expectOp(';');
   while (!s.isKeyword('END_SCHEMA')) {
-    const t = s.peek();
-    if (t.kind === 'eof') s.fail('expected END_SCHEMA');
-    if (!['TYPE', 'ENTITY', 'FUNCTION', 'RULE', 'PROCEDURE', 'SUBTYPE_CONSTRAINT', 'CONSTANT'].includes(t.upper)) {
-      s.fail(`unexpected '${t.text}' at schema level`);
-    }
-    s.next();
+    if (s.peek().kind === 'eof') s.fail('expected END_SCHEMA');
+    const t = s.next();
     switch (t.upper) {
       case 'TYPE': schema.types.push(parseType(s)); break;
       case 'ENTITY': schema.entities.push(parseEntity(s)); break;
@@ -252,9 +248,11 @@ export function parseExpressRules(source: string): ExpressRuleSchema {
         schema.skipped.push({ kind: t.upper, name: '' });
         skipDeclaration(s, 'END_CONSTANT');
         break;
+      default:
+        s.fail('expected a declaration at schema level', t);
     }
   }
-  s.next();
+  s.expectKeyword('END_SCHEMA');
   s.expectOp(';');
   if (s.peek().kind !== 'eof') s.fail('expected end of input after END_SCHEMA');
   return schema;

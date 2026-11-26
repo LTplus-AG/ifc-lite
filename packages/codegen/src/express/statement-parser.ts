@@ -188,5 +188,5 @@ function parseStatement(s: TokenStream): Stmt {
   }
   if (target.k !== 'call' && target.k !== 'id') s.fail('expected assignment or procedure call');
   s.expectOp(';');
-  return target.k === 'call' ? { k: 'procedure', name: target.name, args: target.args } : { k: 'procedure', name: target.name, args: [] };
+  return { k: 'procedure', name: target.name, args: target.k === 'call' ? target.args : [] };
 }

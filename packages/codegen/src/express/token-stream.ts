@@ -63,8 +63,8 @@ export class TokenStream {
     return this.source.slice(start, prev.end).replace(/\s+/g, ' ').trim();
   }
 
-  fail(message: string): never {
-    const t = this.peek();
+  /** Throw at token `t`, by default the next unconsumed one. */
+  fail(message: string, t: Token = this.peek()): never {
     const line = this.source.slice(0, t.start).split('\n').length;
     throw new ExpressSyntaxError(`${message} at line ${line}, found '${t.text || 'end of input'}'`, t.start);
   }

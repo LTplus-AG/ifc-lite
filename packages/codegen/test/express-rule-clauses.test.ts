@@ -208,7 +208,7 @@ describe('EXPRESS rule parser: malformed and edge input (#11110 review)', () => 
 
   it('points a bad statement or declaration error at the offending token', () => {
     expect(() => parseExpressRules(fnBody('a.b; RETURN (0.);'))).toThrow("expected assignment or procedure call at line 1, found ';'");
-    expect(() => parseExpressRules('SCHEMA X; FOO BAR; END_SCHEMA;')).toThrow("unexpected 'FOO' at schema level at line 1, found 'FOO'");
+    expect(() => parseExpressRules('SCHEMA X; FOO BAR; END_SCHEMA;')).toThrow("expected a declaration at schema level at line 1, found 'FOO'");
   });
 
   it('requires END_SCHEMA and nothing after it', () => {

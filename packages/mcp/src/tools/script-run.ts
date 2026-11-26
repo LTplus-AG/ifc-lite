@@ -200,6 +200,8 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
       const result = await sandbox.eval(wrapScript(code), { typescript: false, filename: 'script_run.js' });
       const { logs, truncated } = shapeLogs(result.logs);
       const mutationsQueued = queued();
+      // A cancel that landed during the last host-work drain still wins.
+      if (ctx.signal.aborted) throw cancelled({ logs, logs_truncated: truncated, mutations_queued: mutationsQueued });
       const outcome = readEnvelope(result.value);
       if ('error' in outcome) throw scriptError(outcome.error, { logs, logs_truncated: truncated, mutations_queued: mutationsQueued });
       const summary = [
@@ -235,8 +237,10 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
         throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: err.message, details });
       }
       // Out of memory, stack overflow, or a fault the wrapper could not catch.
-      // A RangeError is recursion that outran the host stack despite MAX_STACK_BYTES.
-      if (err instanceof ScriptError || err instanceof RangeError) throw scriptError(clipMessage(err.message), details);
+      // A host RangeError counts as the script's only when it is recursion that
+      // outran the host stack despite MAX_STACK_BYTES; others are server faults.
+      const hostStackOverflow = err instanceof RangeError && /call stack/i.test(err.message);
+      if (err instanceof ScriptError || hostStackOverflow) throw scriptError(clipMessage(err.message), details);
       // Keep mutations_queued on every failure, not only script ones.
       throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: describeThrown(err), details });
     } finally {

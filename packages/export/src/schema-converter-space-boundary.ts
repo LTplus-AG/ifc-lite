@@ -16,6 +16,7 @@ import { SourceRecords, slotRef, type SourceStore } from './schema-converter-str
 import { holdsValue } from './step-comment-skip.js';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { frameArgs, stepRecordFrame, stepRecordHead } from './step-record-frame.js';
+import type { ExportPass } from './step-export-types.js';
 
 const BOUNDARY = 'IFCRELSPACEBOUNDARY';
 const ELEMENT = 'RelatedBuildingElement';
@@ -85,4 +86,14 @@ export function spaceBoundariesNotWritten(store: Pick<SourceStore, 'entityIndex'
 export function spaceBoundaryLoss(store: Parameters<typeof spaceBoundariesNotWritten>[0], from: string, to: string): Array<{ sourceType: string; targetType: string; kind: 'lossy'; droppedAttributes: string[]; count: number; expressIds: number[] }> {
   const expressIds = spaceBoundariesNotWritten(store, from, to);
   return expressIds.length ? [{ sourceType: BOUNDARY, targetType: BOUNDARY, kind: 'lossy', droppedAttributes: [ELEMENT], count: expressIds.length, expressIds }] : [];
+}
+
+/**
+ * Note the source boundaries a StepExporter pass leaves out (#11457) before any record is converted, so the
+ * relationship filters scrub them from the records that name them. An edited or created boundary is judged by the
+ * conversion itself, which reads its edited line.
+ */
+export function noteBoundariesLeftOut(pass: ExportPass, store: Parameters<typeof spaceBoundariesNotWritten>[0]): void {
+  pass.enums.boundaries.note(spaceBoundariesNotWritten(store, pass.sourceSchema, pass.schema)
+    .filter((id) => pass.effective.has(id) && !pass.modifiedAttributes.has(id) && !pass.effective.isOverlayCreated(id)));
 }

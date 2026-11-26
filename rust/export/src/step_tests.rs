@@ -243,9 +243,10 @@ fn schema_conversion_to_ifc4_keeps_model_parseable() {
         },
     ).unwrap();
     assert!(step.contains("FILE_SCHEMA(('IFC4'))"));
-    // Conversion preserves every express id (renames type, never drops entities).
+    // Conversion keeps every express id except the 28 VIRTUAL IfcRelSpaceBoundary records that name no element,
+    // which IFC4 cannot hold (#11457).
     let (reparsed, _ids, schema) = parse_back(&step);
-    assert_eq!(reparsed, stats.total, "no entities lost in conversion");
+    assert_eq!(reparsed, stats.total - 28, "only the element-less boundaries are left out");
     assert_eq!(schema, "IFC4");
     // The converted file must still re-parse as a coherent entity set.
     assert!(step.lines().filter(|l| l.starts_with('#')).count() == stats.written);

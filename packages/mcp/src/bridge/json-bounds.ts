@@ -94,7 +94,7 @@ const NUMERIC_KEYWORDS = ['minimum', 'exclusiveMinimum', 'maximum', 'minLength',
  */
 export function checkSchemaShape(schema: unknown, path: string): string | null {
   if (!isRecord(schema)) return `${path} must be an object`;
-  const { type, properties, required, items, anyOf, additionalProperties } = schema;
+  const { type, properties, required, items, anyOf, oneOf, additionalProperties } = schema;
   const names: unknown[] = type === undefined ? [] : Array.isArray(type) ? type : [type];
   if (!names.every((t) => typeof t === 'string' && SUPPORTED_SCHEMA_TYPES.has(t))) {
     // An unknown name (a typo like 'intrger') would be published but match every value.
@@ -114,16 +114,20 @@ export function checkSchemaShape(schema: unknown, path: string): string | null {
     const err = checkSchemaShape(items, `${path}.items`);
     if (err) return err;
   }
-  if (anyOf !== undefined) {
-    if (!Array.isArray(anyOf)) return `${path}.anyOf must be an array`;
-    for (const [i, sub] of anyOf.entries()) {
-      const err = checkSchemaShape(sub, `${path}.anyOf[${i}]`);
+  for (const [key, branches] of [['anyOf', anyOf], ['oneOf', oneOf]] as const) {
+    if (branches === undefined) continue;
+    if (!Array.isArray(branches)) return `${path}.${key} must be an array`;
+    for (const [i, sub] of branches.entries()) {
+      const err = checkSchemaShape(sub, `${path}.${key}[${i}]`);
       if (err) return err;
     }
   }
-  // `validateInput` enforces only `additionalProperties: false`; a schema there would be published but not enforced.
+  // A tab schema has no `$defs` the server could resolve against; `validateInput` would throw on every call.
+  if (schema.$ref !== undefined) return `${path}.$ref is not supported in a tab schema; inline the schema`;
+  if (schema.pattern !== undefined && !compiles(schema.pattern)) return `${path}.pattern must be a valid regular expression (u flag)`;
   if (additionalProperties !== undefined && typeof additionalProperties !== 'boolean') {
-    return `${path}.additionalProperties must be true or false; a schema there is not supported`;
+    const err = checkSchemaShape(additionalProperties, `${path}.additionalProperties`);
+    if (err) return err;
   }
   if (schema.enum !== undefined && !Array.isArray(schema.enum)) return `${path}.enum must be an array`;
   for (const k of NUMERIC_KEYWORDS) {
@@ -131,4 +135,15 @@ export function checkSchemaShape(schema: unknown, path: string): string | null {
     if (v !== undefined && (typeof v !== 'number' || !Number.isFinite(v))) return `${path}.${k} must be a finite number`;
   }
   return null;
+}
+
+function compiles(pattern: unknown): boolean {
+  if (typeof pattern !== 'string') return false;
+  try {
+    new RegExp(pattern, 'u');
+    return true;
+  } catch (err) {
+    if (err instanceof SyntaxError) return false;
+    throw err;
+  }
 }

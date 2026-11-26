@@ -90,7 +90,13 @@ interface WalkOptions {
 /** `const` failures, so `checkOneOf` can tell a wrong discriminator from a real problem. */
 const constMismatches = new WeakSet<ValidationIssue>();
 
-function walk(schema: JsonSchema, input: unknown, path: string, errors: ValidationIssue[], opts: WalkOptions): unknown {
+function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors: ValidationIssue[], opts: WalkOptions): unknown {
+  // Boolean subschemas (2020-12): `true` accepts anything, `false` nothing.
+  if (schema === true) return input;
+  if (schema === false) {
+    if (input !== undefined) errors.push({ path, message: 'No value is allowed here' });
+    return input;
+  }
   if (typeof schema.$ref === 'string') schema = resolveRef(schema, opts.root);
   if (opts.fillDefaults && input === undefined && schema.default !== undefined) {
     input = clone(schema.default);
@@ -203,7 +209,7 @@ function walk(schema: JsonSchema, input: unknown, path: string, errors: Validati
     if (schema.maxLength !== undefined && input.length > schema.maxLength) {
       errors.push({ path, message: `String longer than ${schema.maxLength}` });
     }
-    if (typeof schema.pattern === 'string' && !new RegExp(schema.pattern, 'u').test(input)) {
+    if (typeof schema.pattern === 'string' && !compiledPattern(schema.pattern).test(input)) {
       errors.push({ path, message: `Does not match pattern ${schema.pattern}` });
     }
   }
@@ -233,7 +239,9 @@ function checkOneOf(branches: JsonSchema[], input: unknown, path: string, errors
     errors.push({ path, message: `Expected input at '${path}' to match exactly one oneOf branch; it matches ${matched}` });
     return;
   }
-  const discriminated = branchErrors.filter((b) => !b.some((e) => constMismatches.has(e)));
+  // A wrong discriminator is a const failure on a direct child (`$.op.kind`), not one deep in a payload.
+  const isChild = (p: string) => p.startsWith(`${path}.`) && !/[.[]/.test(p.slice(path.length + 1));
+  const discriminated = branchErrors.filter((b) => !b.some((e) => constMismatches.has(e) && isChild(e.path)));
   const candidates = discriminated.length > 0 ? discriminated : branchErrors;
   const fewest = Math.min(...candidates.map((b) => b.length));
   const closest = candidates.filter((b) => b.length === fewest).slice(0, 3);
@@ -246,12 +254,14 @@ function describeIssues(issues: ValidationIssue[]): string {
 }
 
 /** Resolve a local `$ref` (`#/a/b`) against the root; sibling keywords override the target's. */
-function resolveRef(schema: JsonSchema, root: JsonSchema): JsonSchema {
+function resolveRef(schema: JsonSchema, root: JsonSchema, seen = new Set<string>()): JsonSchema {
   const ref = schema.$ref as string;
   if (!ref.startsWith('#')) throw new Error(`Unsupported non-local $ref '${ref}'`);
+  if (seen.has(ref)) throw new Error(`Circular $ref '${ref}'`);
+  seen.add(ref);
   let target: unknown = root;
   for (const raw of ref.slice(1).split('/').filter(Boolean)) {
-    const key = decodeURIComponent(raw).replace(/~1/g, '/').replace(/~0/g, '~');
+    const key = raw.replace(/~1/g, '/').replace(/~0/g, '~');
     target = target !== null && typeof target === 'object' ? own(target as Record<string, unknown>, key) : undefined;
   }
   if (target === undefined || target === null || typeof target !== 'object') {
@@ -259,8 +269,14 @@ function resolveRef(schema: JsonSchema, root: JsonSchema): JsonSchema {
   }
   const { $ref: _resolved, ...siblings } = schema;
   const resolved = { ...(target as JsonSchema), ...siblings };
-  // A target that is itself a $ref is followed in the next walk step.
-  return typeof resolved.$ref === 'string' && resolved.$ref !== ref ? resolveRef(resolved, root) : resolved;
+  return typeof resolved.$ref === 'string' ? resolveRef(resolved, root, seen) : resolved;
+}
+
+const patterns = new Map<string, RegExp>();
+function compiledPattern(source: string): RegExp {
+  let re = patterns.get(source);
+  if (!re) patterns.set(source, (re = new RegExp(source, 'u')));
+  return re;
 }
 
 function own(obj: Record<string, unknown>, key: string): unknown {

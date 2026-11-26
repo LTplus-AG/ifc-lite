@@ -278,4 +278,26 @@ describe('validateInput: 2020-12 keywords beyond the original subset', () => {
   it('throws on a $ref that points nowhere instead of skipping the check', () => {
     expect(() => validateInput({ $ref: '#/$defs/Missing' }, {})).toThrow(/Unresolvable \$ref/);
   });
+
+  it('fails cleanly on a $ref cycle instead of overflowing the stack', () => {
+    const schema = { type: 'object', properties: { a: { $ref: '#/$defs/A' } }, $defs: { A: { $ref: '#/$defs/B' }, B: { $ref: '#/$defs/A' } } };
+    expect(() => validateInput(schema, { a: 1 })).toThrow(/Circular \$ref/);
+  });
+
+  it('treats boolean subschemas as accept-all and reject-all', () => {
+    const schema = { type: 'object', properties: { yes: true, no: false } } as unknown as Parameters<typeof validateInput>[0];
+    expect(validateInput(schema, { yes: 5 }).valid).toBe(true);
+    expect(validateInput(schema, { no: 5 }).errors).toEqual([{ path: '$.no', message: 'No value is allowed here' }]);
+  });
+
+  it('a const failure deep in a payload does not hide the branch whose discriminator matched', () => {
+    const schema = { type: 'object', properties: { op: { oneOf: [
+      { type: 'object', properties: { kind: { const: 'a' }, body: { type: 'object', properties: { v: { const: 1 } } } } },
+      { type: 'object', properties: { kind: { const: 'b' } } },
+    ] } } };
+    const r = validateInput(schema, { op: { kind: 'a', body: { v: 2 } } });
+    expect(r.errors[0].message).toContain('$.op.body.v');
+    expect(r.errors[0].message).not.toContain('$.op.kind');
+  });
 });
+

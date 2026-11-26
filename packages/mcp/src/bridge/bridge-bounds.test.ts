@@ -77,8 +77,17 @@ describe('schema keywords the bridge cannot enforce (CodeRabbit json-bounds.ts:8
     expect(p.welcome.sessionId).toBeTruthy();
   });
 
-  it('refuses a schema-valued additionalProperties, which would be published but not enforced', async () => {
-    expect(await refusal({ type: 'object', additionalProperties: { type: 'integer' } })).toMatch(/additionalProperties must be true or false/);
+  it('checks a schema-valued additionalProperties, which validateInput now enforces', async () => {
+    expect(await refusal({ type: 'object', additionalProperties: { type: 'intrger' } })).toMatch(/additionalProperties\.type must be one of/);
+  });
+
+  // validateInput would throw on every call for these, surfacing as a JSON-RPC
+  // InternalError instead of a refusal at hello (code review of the 2020-12 validator).
+  it('refuses $ref, a non-array oneOf and an invalid pattern', async () => {
+    expect(await refusal({ type: 'object', properties: { a: { $ref: '#/$defs/A' } } })).toMatch(/\$ref is not supported/);
+    expect(await refusal({ type: 'object', properties: { a: { oneOf: { type: 'string' } } } })).toMatch(/oneOf must be an array/);
+    expect(await refusal({ type: 'object', properties: { a: { oneOf: [{ type: 'strng' }] } } })).toMatch(/oneOf\[0\]\.type must be one of/);
+    expect(await refusal({ type: 'object', properties: { a: { type: 'string', pattern: '[' } } })).toMatch(/pattern must be a valid regular expression/);
   });
 });
 

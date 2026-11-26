@@ -112,10 +112,13 @@ export async function ensureExactSourceGeometry(modelId: string, productIds: rea
     const outcome = await requestRemesh(useViewerStore.getState, modelId, missing, 'shape');
     signal.throwIfAborted();
     const remeshed = new Map([...byGlobalId].filter(([, id]) => missing.includes(id)));
+    const after = useViewerStore.getState().models.get(modelId)?.geometryResult?.meshes ?? [];
     const why = outcome.status !== 'applied' ? reasonOf(outcome)
-      // Never re-mesh in a loop: what came back must carry the provenance, or the edit cannot bind.
-      : missingProducts(useViewerStore.getState().models.get(modelId)?.geometryResult?.meshes ?? [], remeshed).length > 0
-        ? 'the re-meshed geometry carries no corner provenance' : null;
+      // Every re-meshed product must come back with geometry: none would read as exact and bind nothing.
+      : [...remeshed.keys()].some((globalId) => !after.some((mesh) => mesh.expressId === globalId))
+        ? 'the re-mesh returned no geometry'
+        // Never re-mesh in a loop: what came back must carry the provenance, or the edit cannot bind.
+        : missingProducts(after, remeshed).length > 0 ? 'the re-meshed geometry carries no corner provenance' : null;
     if (why !== null) {
       throw new Error(`The exact geometry of ${missing.length} object(s) could not be prepared for appearance (${why}). Refresh the preview, or reload the model.`);
     }

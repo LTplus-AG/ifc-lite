@@ -133,3 +133,10 @@ it('leaves a plan with no compact mesh exactly as before: no re-mesh and no wait
   assert.ok(Date.now() - started < 1000, 'returned without waiting on the 3D view');
   assert.equal(polled, 2, 'only the one look for compact pieces per product');
 });
+
+it('refuses, instead of binding nothing, when an applied re-mesh returns no geometry for a product', async () => {
+  mesher.restore();
+  mesher = installScriptedMesher(() => []);
+  await assert.rejects(ensureExactSourceGeometry(MODEL, [10], signal()), /could not be prepared for appearance/);
+  assert.equal(mesher.requests.length, 1);
+});

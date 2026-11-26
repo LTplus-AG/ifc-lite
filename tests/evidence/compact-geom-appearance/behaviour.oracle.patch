@@ -1,20 +1,18 @@
 diff --git a/apps/viewer/src/lib/appearance/exact-source-geometry.ts b/apps/viewer/src/lib/appearance/exact-source-geometry.ts
-index ef2ca4e30a..b123ae818f 100644
 --- a/apps/viewer/src/lib/appearance/exact-source-geometry.ts
 +++ b/apps/viewer/src/lib/appearance/exact-source-geometry.ts
-@@ -37,7 +37,8 @@ const SCENE_SWAP_POLL_MS = 50;
-  * to its own readback. Reads no geometry array, so a compact mesh is not decoded.
-  */
- function lacksCornerProvenance(mesh: MeshData): boolean {
--  return mesh.geometryItemId !== undefined && mesh.appearanceSource === undefined && !isReleasedMesh(mesh) && !mesh.compact;
-+  if (mesh.compact) return true;
-+  return mesh.geometryItemId !== undefined && mesh.appearanceSource === undefined && !isReleasedMesh(mesh);
+@@ -47,7 +47,7 @@ function reasonOf(outcome: Exclude<RemeshOutcome, { status: 'applied' }>): strin
+   return 'the model changed';
  }
  
- function reasonOf(outcome: Exclude<RemeshOutcome, { status: 'applied' }>): string {
-@@ -80,7 +81,7 @@ async function sceneHasExactGeometry(expected: ReadonlyMap<number, number>, sign
+-const isCompact = (_mesh: MeshData): boolean => false;
++const isCompact = (mesh: MeshData): boolean => mesh.compact !== undefined;
+ 
+ /** Model-local product ids of `productIds` with a mesh in `meshes` that `lacks` (default: no corner provenance). */
+ function missingProducts(meshes: readonly MeshData[], productIds: ReadonlyMap<number, number>, lacks = lacksCornerProvenance): number[] {
+@@ -83,7 +83,7 @@ async function sceneHasExactGeometry(expected: ReadonlyMap<number, number>, sign
        const pieces = scene.getMeshDataPieces(id) ?? [];
-       return pieces.length >= count && !pieces.some(lacksCornerProvenance);
+       return pieces.length >= count && !pieces.some(isCompact);
      };
 -    return true;
 +    if ([...expected].every(drawn)) return true;

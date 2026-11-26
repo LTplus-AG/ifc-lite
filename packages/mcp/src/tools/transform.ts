@@ -40,6 +40,7 @@ import {
   requireNoPendingEdits,
   withIfcPrefix,
   stringList,
+  throwIfCancelled,
 } from './transform-schema.js';
 
 const ROOT_MODES = ['single', 'by-name'];
@@ -109,6 +110,7 @@ const modelMerge: Tool = {
       mergeStoreys: input.merge_storeys as 'by-name' | 'by-elevation' | 'by-name-then-elevation' | undefined,
       dropEmptyContainers: input.drop_empty_containers === true,
     });
+    throwIfCancelled(ctx);
     await writeFile(filePath, result.content);
     const s = { ...result.stats, warnings: [...conversionWarnings, ...result.stats.warnings] };
     return okResult(
@@ -186,6 +188,7 @@ const modelConvert: Tool = {
         });
       }
       const content = exportToStep(store, { schema: target });
+      throwIfCancelled(ctx);
       await writeFile(filePath, content);
       const bytes = Buffer.byteLength(content);
       return okResult(
@@ -264,6 +267,7 @@ const modelExtract: Tool = {
       }
       const subset = buildSubset(seeds, parsed);
       const out = Buffer.from(serializeSubset(subset, parsed), 'latin1');
+      throwIfCancelled(ctx);
       await writeFile(filePath, out);
       return okResult(
         `Extracted ${seeds.size} selected entities into ${subset.keep.size} instances: ${filePath}.`,

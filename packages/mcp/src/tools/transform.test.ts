@@ -286,13 +286,12 @@ describe('model_simplify and model_lod on a real model (wasm)', () => {
     const out = join(tmp, 'simple.ifc');
     const res = await call('model_simplify', { level: 5, file_path: out });
     expectMatchesOutputSchema('model_simplify', res.structuredContent);
-    const s = res.structuredContent as { replaced: number; trianglesAfter: number; trianglesBefore: number; bytes: number };
+    const s = res.structuredContent as { simplified: number; replaced: number; trianglesAfter: number; trianglesBefore: number; bytes: number };
     expect(s.replaced).toBeGreaterThan(0);
     expect(s.trianglesAfter).toBeLessThan(s.trianglesBefore);
     expect((await readFile(out)).length).toBe(s.bytes);
     // Level 5 is a bounding box per element: 12 triangles each, written as one face set per replacement.
-    const sx = res.structuredContent as { simplified: number };
-    expect(s.trianglesAfter).toBe(12 * sx.simplified);
+    expect(s.trianglesAfter).toBe(12 * s.simplified);
     const written = await readFile(out, 'latin1');
     expect((written.match(/IFCTRIANGULATEDFACESET\(/g) ?? []).length).toBeGreaterThanOrEqual(s.replaced);
     const reloaded = await loadIfcModel(out, { modelId: 'r' });

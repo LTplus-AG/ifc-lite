@@ -8,7 +8,7 @@ import type { ConversionLossEntry, IfcSchemaVersion } from '@ifc-lite/export';
 import type { JsonSchema, ToolAnnotations } from '../protocol/index.js';
 import type { LoadedModel, ToolContext } from '../context.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
-import { chmod, writeFile } from 'node:fs/promises';
+import { rm, writeFile } from 'node:fs/promises';
 import { resolveSafePath } from '../safe-path.js';
 
 /**
@@ -101,8 +101,10 @@ export function throwIfCancelled(ctx: ToolContext): void {
  */
 export async function writeSidecar(primary: string, sidecar: string, data: string, mode?: number): Promise<void> {
   try {
-    await writeFile(sidecar, data, { encoding: 'utf-8', ...(mode !== undefined ? { mode } : {}) });
-    if (mode !== undefined) await chmod(sidecar, mode);
+    // `mode` applies only when the file is created, so a restricted file is
+    // removed first and created fresh, never rewritten under older permissions.
+    if (mode !== undefined) await rm(sidecar, { force: true });
+    await writeFile(sidecar, data, { encoding: 'utf-8', ...(mode !== undefined ? { mode, flag: 'wx' } : {}) });
   } catch (err) {
     throw new ToolExecutionError({
       code: ToolErrorCode.INTERNAL_ERROR,

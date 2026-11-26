@@ -315,7 +315,7 @@ export function selectSubsetSeeds(parsed: ParsedStep, selectors: SubsetSelectors
     }
     // Elements contained in the storey but placed elsewhere (world or building
     // placement) are its products too.
-    for (const id of containedIn(new Set([storeyId]), parsed)) products.push(id);
+    for (const id of containedIn(storeyId, parsed)) products.push(id);
     if (selectors.requireEachMatch && products.length === 0) throw new SubsetSelectionError('invalid', `Nothing is placed under storey ${token}.`);
     for (const id of products) seeds.add(id);
   }

@@ -136,20 +136,19 @@ export function resolveStorey(token: string, parsed: ParsedStep): { storeyId: nu
 
 /**
  * RelatedElements of every IfcRelContainedInSpatialStructure whose
- * RelatingStructure is in `structures`: a storey's products that are placed
+ * RelatingStructure is `storeyId`: a storey's products that are placed
  * in world or building coordinates rather than under the storey's placement.
  * A record that does not split into its six attributes is skipped.
  */
-export function containedIn(structures: ReadonlySet<number>, parsed: ParsedStep): number[] {
+export function containedIn(storeyId: number, parsed: ParsedStep): number[] {
   const out: number[] = [];
-  if (structures.size === 0) return out;
   const [relatingAt, relatedAt] = STRUCTURE_RELATIONS.IFCRELCONTAINEDINSPATIALSTRUCTURE;
   for (const inst of parsed.instances.values()) {
     if (inst.type !== 'IFCRELCONTAINEDINSPATIALSTRUCTURE') continue;
     const args = splitTopLevelArgs(inst.body);
     if (!args || args.length !== STRUCTURE_RELATION_ATTRS) continue;
     const relating = SINGLE_REF_RE.exec(args[relatingAt]);
-    if (!relating || !structures.has(Number(relating[1]))) continue;
+    if (!relating || Number(relating[1]) !== storeyId) continue;
     for (const id of refsOutsideStrings(args[relatedAt])) if (parsed.instances.has(id)) out.push(id);
   }
   return out;

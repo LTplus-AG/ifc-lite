@@ -17,7 +17,7 @@ import { fmtInt, okResult, resolveGlobalIds, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
 import type { LoadedModel, ToolContext } from '../context.js';
-import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, requireNoPendingEdits, stringList } from './transform-schema.js';
+import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, requireDistinctPaths, requireNoPendingEdits, stringList } from './transform-schema.js';
 
 /** Each relationship the walk follows, with the setting it takes when on (when off: false or 'none'). */
 const FOLLOWED = {
@@ -68,6 +68,7 @@ async function runAnonymize(m: LoadedModel, input: Record<string, unknown>, ctx:
   requireNoPendingEdits(m, 'model_anonymize');
   const filePath = await resolveSafePath(input.file_path, ctx, 'write');
   const guidMapPath = typeof input.guid_map_path === 'string' ? await resolveSafePath(input.guid_map_path, ctx, 'write') : undefined;
+  requireDistinctPaths(filePath, guidMapPath, 'guid_map_path');
   const seeds = anonymizeSeeds(m, input);
   if (seeds.size === 0) throw invalid('Select something: express_ids, global_ids, types or storey.');
   const keepPsets = input.keep_psets === true;
@@ -120,7 +121,8 @@ export const modelAnonymize: Tool = {
   description:
     'Anonymize, scrub or redact: export selected entities plus their relationship context (hosts, openings, types, materials, aggregates, spatial chain) as an IFC with names, GlobalIds, owner history, property sets and currency neutralised, so a bug reproduction can be shared without the source model. Geometry-relevant placements survive. Selectors are unioned and each must match.',
   scope: 'export',
-  annotations: FILE_WRITE_ANNOTATIONS,
+  // Fresh random GlobalIds and a timestamp each run.
+  annotations: { ...FILE_WRITE_ANNOTATIONS, idempotentHint: false },
   inputSchema: {
     type: 'object',
     properties: {

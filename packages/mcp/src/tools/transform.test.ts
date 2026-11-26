@@ -96,7 +96,8 @@ describe('transform tool metadata', () => {
     const t = tool(name);
     expect(t.title).toBeTruthy();
     expect(t.scope).toBe('export');
-    expect(t.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false });
+    // destructive: each one replaces an existing file at file_path.
+    expect(t.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true });
     expect(t.outputSchema).toMatchObject({ type: 'object', required: ['filePath', 'bytes'] });
     expect(t.inputSchema.required).toContain('file_path');
     for (const [key, prop] of Object.entries(t.inputSchema.properties ?? {})) {
@@ -117,6 +118,15 @@ describe('model_merge', () => {
     const walls = merged.bim.query().byType('IfcWall').toArray().map((e) => e.name).sort();
     expect(walls).toEqual(['Wall A A', 'Wall A B', 'Wall B A', 'Wall B B']);
     expect(merged.bim.storeys().map((s) => s.name)).toEqual(['Level 1']);
+  });
+
+  it('defaults to the models the token may access, and refuses a model listed twice', async () => {
+    ctx.registry.add(await loadIfcModel(join(tmp, 'b.ifc'), { modelId: 'b' }));
+    ctx.registry.add(await loadIfcModel(join(tmp, 'b.ifc'), { modelId: 'hidden' }));
+    ctx.scope = { ...fullScope(), modelIds: ['a', 'b'] };
+    const res = await call('model_merge', { file_path: join(tmp, 'scoped.ifc') });
+    expect(res.structuredContent.modelCount).toBe(2);
+    await expect(call('model_merge', { model_ids: ['a', 'a'], file_path: join(tmp, 'dup.ifc') })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
   });
 
   it('refuses fewer than two models', async () => {
@@ -194,6 +204,12 @@ describe('model_anonymize', () => {
   it('matches a storey by case-insensitive name fragment, as the CLI does', async () => {
     const res = await call('model_anonymize', { storey: 'level', file_path: join(tmp, 'anon-storey.ifc') });
     expect(res.structuredContent.seedCount).toBe(3);
+  });
+
+  it('refuses a GUID map path equal to the output path, so the map cannot replace the anonymized file', async () => {
+    const out = join(tmp, 'same.ifc');
+    await expect(call('model_anonymize', { global_ids: ['000000000000000000WA1A'], file_path: out, guid_map_path: out }))
+      .rejects.toMatchObject({ code: 'INVALID_INPUT' });
   });
 
   it('fails loudly on a storey that does not exist', async () => {

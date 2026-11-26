@@ -9,12 +9,13 @@ import type { LoadedModel } from '../context.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 
 /**
- * Writes a new file and leaves the loaded model alone; the same input writes
- * the same file. Loaded sources are refused as targets by `resolveSafePath`.
+ * Writes a new file and leaves the loaded model alone, but replaces an
+ * existing file at the target path. Loaded sources are refused as targets by
+ * `resolveSafePath`.
  */
 export const FILE_WRITE_ANNOTATIONS: ToolAnnotations = {
   readOnlyHint: false,
-  destructiveHint: false,
+  destructiveHint: true,
   idempotentHint: true,
   openWorldHint: false,
 };
@@ -35,6 +36,11 @@ export function fileOutputSchema(extra: Record<string, JsonSchema>): JsonSchema 
     },
     required: ['filePath', 'bytes'],
   };
+}
+
+/** Refuse two outputs of one call that resolve to the same file. */
+export function requireDistinctPaths(a: string, b: string | null | undefined, name: string): void {
+  if (b === a) throw invalid(`${name} must differ from file_path.`);
 }
 
 export function invalid(message: string): ToolExecutionError {

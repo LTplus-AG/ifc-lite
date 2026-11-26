@@ -10,10 +10,12 @@
  * live in `transform-mesh.ts`.
  */
 
+import { constants as bufferConstants } from 'node:buffer';
 import { writeFile } from 'node:fs/promises';
 import {
   analyzeConversionLoss,
   buildSubset,
+  exportToStep,
   MergedExporter,
   parseStep,
   selectSubsetSeeds,
@@ -25,6 +27,8 @@ import { fmtInt, okResult, resolveModel } from './util.js';
 import { withIfcBytes } from './export-source.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
+import { loadIfcModelFromBytes } from '../loader.js';
+import { modelAllowed } from '../auth/scope.js';
 import { modelAnonymize } from './transform-anonymize.js';
 import { meshTransformTools } from './transform-mesh.js';
 import {
@@ -69,7 +73,9 @@ const modelMerge: Tool = {
     warnings: { type: 'array', items: { type: 'string' } },
   }),
   async handler(input, ctx) {
-    const ids = (input.model_ids as string[] | undefined) ?? ctx.registry.list().map((m) => m.id);
+    const ids = (input.model_ids as string[] | undefined)
+      ?? ctx.registry.list().filter((m) => modelAllowed(ctx.scope, m.id)).map((m) => m.id);
+    if (new Set(ids).size !== ids.length) throw invalid('model_ids lists a model more than once.');
     if (ids.length < 2) throw invalid(`model_merge needs at least 2 models; ${ids.length} given or loaded.`);
     const models = ids.map((id) => resolveModel(ctx, id));
     for (const m of models) requireNoPendingEdits(m, 'model_merge');
@@ -140,30 +146,40 @@ const modelConvert: Tool = {
     const target = input.schema as 'IFC2X3' | 'IFC4' | 'IFC4X3';
     const source = (m.store.schemaVersion ?? 'IFC4') as IfcSchemaVersion;
     const filePath = await resolveSafePath(input.file_path, ctx, 'write');
-    // Same pre-check as `ifc-lite convert` (#4206): a type the target cannot
-    // represent is reported by name instead of throwing mid-export.
-    const loss = analyzeConversionLoss(m.store, source, target);
-    if (loss.hasBlocking) {
-      throw new ToolExecutionError({
-        code: ToolErrorCode.UNSUPPORTED_OPERATION,
-        message: `Cannot convert to ${target}: some entity types have no ${target} representation and are not IfcRoot subtypes, so they can be neither dropped nor replaced.`,
-        details: { lossReport: loss.describe() },
-      });
+    // Pending edits are baked and re-parsed first, so the loss pre-check sees
+    // what the export writes, created entities included.
+    const baked = m.backend.hasPendingChanges()
+      ? await withIfcBytes(m, (bytes) => loadIfcModelFromBytes(bytes, m.name))
+      : undefined;
+    try {
+      const store = baked?.store ?? m.store;
+      // Same pre-check as `ifc-lite convert` (#4206): a type the target cannot
+      // represent is reported by name instead of throwing mid-export.
+      const loss = analyzeConversionLoss(store, source, target);
+      if (loss.hasBlocking) {
+        throw new ToolExecutionError({
+          code: ToolErrorCode.UNSUPPORTED_OPERATION,
+          message: `Cannot convert to ${target}: some entity types have no ${target} representation and are not IfcRoot subtypes, so they can be neither dropped nor replaced.`,
+          details: { lossReport: loss.describe() },
+        });
+      }
+      const content = exportToStep(store, { schema: target });
+      await writeFile(filePath, content);
+      const bytes = Buffer.byteLength(content);
+      return okResult(
+        `Converted ${source} to ${target}: wrote ${fmtInt(bytes)} bytes to ${filePath}.` +
+          (loss.entries.length > 0 ? `\n${loss.describe().join('\n')}` : ''),
+        {
+          filePath,
+          bytes,
+          sourceSchema: source,
+          targetSchema: target,
+          lossReport: loss.entries.map((e) => ({ type: e.sourceType, targetType: e.targetType ?? null, kind: e.kind, count: e.count })),
+        },
+      );
+    } finally {
+      baked?.backend.dispose();
     }
-    const content = m.bim.export.ifc(undefined, { schema: target });
-    await writeFile(filePath, content);
-    const bytes = typeof content === 'string' ? Buffer.byteLength(content) : content.length;
-    return okResult(
-      `Converted ${source} to ${target}: wrote ${fmtInt(bytes)} bytes to ${filePath}.` +
-        (loss.entries.length > 0 ? `\n${loss.describe().join('\n')}` : ''),
-      {
-        filePath,
-        bytes,
-        sourceSchema: source,
-        targetSchema: target,
-        lossReport: loss.entries.map((e) => ({ type: e.sourceType, targetType: e.targetType ?? null, kind: e.kind, count: e.count })),
-      },
-    );
   },
 };
 
@@ -201,6 +217,12 @@ const modelExtract: Tool = {
       throw invalid('Select something: global_ids, express_ids, types or storeys.');
     }
     return withIfcBytes(m, async (bytes) => {
+      if (bytes.byteLength >= bufferConstants.MAX_STRING_LENGTH) {
+        throw new ToolExecutionError({
+          code: ToolErrorCode.UNSUPPORTED_OPERATION,
+          message: `The model is too large to extract from (${fmtInt(bytes.byteLength)} bytes, over the V8 string limit).`,
+        });
+      }
       // latin1 is a lossless byte<->char bijection, so raw high bytes in the
       // source round-trip unchanged (same as the CLI).
       const parsed = parseStep(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('latin1'));
@@ -210,7 +232,10 @@ const modelExtract: Tool = {
       } catch (err) {
         throw new ToolExecutionError({ code: ToolErrorCode.ENTITY_NOT_FOUND, message: (err as Error).message });
       }
-      if (seeds.size === 0) throw invalid(`Nothing matched: no product of type ${types.join(', ')} (or a subtype) and no product under the given storeys.`);
+      if (seeds.size === 0) {
+        const tried = [types.length > 0 ? `no product of type ${types.join(', ')} (or a subtype)` : '', storeys.length > 0 ? `no product under storey ${storeys.join(', ')}` : ''];
+        throw invalid(`Nothing matched: ${tried.filter(Boolean).join(', and ')}.`);
+      }
       const subset = buildSubset(seeds, parsed);
       const out = Buffer.from(serializeSubset(subset, parsed), 'latin1');
       await writeFile(filePath, out);

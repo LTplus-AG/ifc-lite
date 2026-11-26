@@ -23,6 +23,7 @@ export type PickCapture = (role: 'source' | 'target', anchor: PlacementAnchor) =
 export function useRepositionPicking(role: PickRole, finish: (role: PickRole) => void, onError: (message: string) => void, reference = '', capture?: PickCapture) {
   const [hover, setHover] = useState<PlacementAnchor | null>(null);
   const models = useViewerStore((state) => state.models);
+  const previewModelIds = useViewerStore((state) => state.modelPlacement.preview?.modelIds);
   useEffect(() => {
     const renderer = getGlobalRenderer(), canvas = renderer?.getCanvas();
     if (!role || !renderer || !canvas) { setHover(null); return; }
@@ -97,9 +98,10 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
       }
     };
     let nextRole: PickRole | undefined;
+    let pendingCapture: { hit: PlacementAnchor; revision: number } | undefined;
     const down = (event: PointerEvent) => {
       if (event.button !== 0) return;
-      event.preventDefault(); event.stopImmediatePropagation(); nextRole = undefined;
+      event.preventDefault(); event.stopImmediatePropagation(); nextRole = undefined; pendingCapture = undefined;
       if (isGeometryRestoreHeld(useViewerStore.getState())) {
         return;
       }
@@ -107,7 +109,7 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
       const hit = pick(event);
       if (!hit) { onError('No eligible point found. Zoom closer, choose another point, or enter coordinates.'); return; }
       try {
-        if (capture) nextRole = capture(role, hit);
+        if (capture) pendingCapture = { hit, revision: useViewerStore.getState().modelPlacement.revision };
         else { updateAnchor(event, hit); nextRole = role === 'source' ? 'target' : null; }
       } catch (error) { onError(error instanceof Error ? error.message : String(error)); }
     };
@@ -117,11 +119,16 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
     const release = (event: MouseEvent) => {
       if (event.button !== 0) return;
       event.preventDefault(); event.stopImmediatePropagation();
-      if (event.type === 'click' && nextRole !== undefined) {
-        // A click during a reopen's restore hold is ignored, even for a press picked just before it began.
-        if (isGeometryRestoreHeld(useViewerStore.getState())) { nextRole = undefined; return; }
-        finish(nextRole);
-      }
+      if (event.type !== 'click') return;
+      const captured = pendingCapture;
+      const next = nextRole;
+      pendingCapture = undefined;
+      nextRole = undefined;
+      const state = useViewerStore.getState();
+      // A click during a reopen's restore hold is ignored, even for a press picked just before it began.
+      if (isGeometryRestoreHeld(state)) return;
+      if (capture && captured?.revision === state.modelPlacement.revision) finish(capture(role, captured.hit));
+      else if (next !== undefined) finish(next);
     };
     canvas.addEventListener('pointerup', release, true);
     canvas.addEventListener('click', release, true);
@@ -134,6 +141,6 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
       canvas.removeEventListener('pointerdown', down, true);
       canvas.style.cursor = previousCursor;
     };
-  }, [role, finish, onError, models, reference, capture]);
+  }, [role, finish, onError, models, previewModelIds, reference, capture]);
   return hover;
 }

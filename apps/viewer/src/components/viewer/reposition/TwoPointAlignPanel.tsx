@@ -60,7 +60,7 @@ export function TwoPointAlignPanel() {
     })}
     {solved && !solved.ok && <p role="alert" className="text-destructive">{t(ALIGN_REFUSAL_KEYS[solved.reason])}</p>}
     {readout && <fieldset aria-label={t('repositionPanel.twoPoint.readoutAriaLabel')}
-      className={`font-mono space-y-0.5 ${readout.warn ? 'text-amber-700 dark:text-amber-300' : ''}`}>
+      className={`font-mono space-y-0.5 ${readout.warn ? 'text-status-warn' : ''}`}>
       {readout.lines.map((line, index) => <p key={index}>{line}</p>)}
     </fieldset>}
     <p className="text-muted-foreground">{t('repositionPanel.twoPoint.previewNote')}</p>

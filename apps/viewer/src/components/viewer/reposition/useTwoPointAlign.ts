@@ -55,6 +55,11 @@ export function useTwoPointAlign({ selected, reference, setRole, setError }: Opt
   selectedRef.current = selected;
   const revision = useViewerStore((s) => s.modelPlacement.revision);
 
+  const ensurePreview = useCallback(() => {
+    const store = useViewerStore.getState();
+    if (!store.modelPlacement.preview) store.openReposition(selectedRef.current);
+  }, []);
+
   const commitPoints = useCallback((next: AlignPoints) => {
     pointsRef.current = next;
     revisionRef.current = useViewerStore.getState().modelPlacement.revision;
@@ -70,12 +75,13 @@ export function useTwoPointAlign({ selected, reference, setRole, setError }: Opt
     if (selectedRef.current.length === 0 || !reference) return;
     // A pick needs a preview to exist (the picking hook gates on it); a pending
     // move preview is kept, and carried by the apply.
-    if (!useViewerStore.getState().modelPlacement.preview) useViewerStore.getState().openReposition(selectedRef.current);
+    try { ensurePreview(); }
+    catch (error) { setError(error instanceof Error ? error.message : String(error)); return; }
     activeRef.current = true;
     setActive(true); setCleared(false); setError('');
     commitPoints({});
     setRole('source');
-  }, [commitPoints, reference, setError, setRole]);
+  }, [commitPoints, ensurePreview, reference, setError, setRole]);
 
   const repick = useCallback(() => { setCleared(false); commitPoints({}); setRole('source'); }, [commitPoints, setRole]);
 
@@ -108,10 +114,13 @@ export function useTwoPointAlign({ selected, reference, setRole, setError }: Opt
   // A placement change after a pick (gizmo drag, nudge, undo) moves the models
   // the points were read off, so they no longer describe the scene: start over.
   useEffect(() => {
-    if (!activeRef.current || revision === revisionRef.current) return;
-    if (nextAlignStep(pointsRef.current) === 'a') { revisionRef.current = revision; return; }
-    commitPoints({}); setCleared(true); setRole('source');
-  }, [revision, commitPoints, setRole]);
+    if (!activeRef.current || revision === revisionRef.current || !useViewerStore.getState().repositionOpen) return;
+    // Committing a typed rotation or undoing placement ends the move preview.
+    try { ensurePreview(); }
+    catch (error) { exit(); setError(error instanceof Error ? error.message : String(error)); return; }
+    if (pointsRef.current.a) { commitPoints({}); setCleared(true); setRole('source'); }
+    else revisionRef.current = useViewerStore.getState().modelPlacement.revision;
+  }, [revision, commitPoints, ensurePreview, exit, setError, setRole]);
 
   // The picked points belong to the current moving models and reference.
   const selectionKey = selected.join('|');

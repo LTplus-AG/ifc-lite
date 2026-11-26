@@ -261,23 +261,11 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
   // Counted by id, so mutations the script undoes are not subtracted.
   const before = new Set(mode === 'mutate' ? pendingMutationIds(model) : []);
   const queued = () => (mode === 'mutate' ? pendingMutationIds(model).filter((id) => !before.has(id)).length : 0);
-  if (runningScripts >= MAX_CONCURRENT_SCRIPTS) {
-    throw new ToolExecutionError({
-      code: ToolErrorCode.RATE_LIMITED,
-      message: `${MAX_CONCURRENT_SCRIPTS} scripts are already running on this server; retry when one finishes.`,
-    });
-  }
-  runningScripts++;
-  let sandbox: Awaited<ReturnType<typeof createSandbox>>;
-  try {
-    sandbox = await createSandbox(model.bim, {
+  return withScriptSlot(async () => {
+    const sandbox = await createSandbox(model.bim, {
       permissions: mode === 'mutate' ? MUTATE_PERMISSIONS : READ_PERMISSIONS,
       limits: { timeoutMs, memoryBytes: memoryMb * 1024 * 1024 },
-    });
-  } catch (err) {
-    runningScripts--;
-    throw err;
-  }
+  });
   // dispose() can throw SandboxAbortError when QuickJS aborts tearing down a
   // runtime (#1922). From the abort listener that would be an uncaught
   // exception; from `finally` it would replace the real outcome.
@@ -341,6 +329,22 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
   } finally {
     ctx.signal.removeEventListener('abort', onAbort);
     dispose();
+  }
+  });
+}
+
+/** Holds one of the process-wide script slots for the duration of `run`. */
+async function withScriptSlot<T>(run: () => Promise<T>): Promise<T> {
+  if (runningScripts >= MAX_CONCURRENT_SCRIPTS) {
+    throw new ToolExecutionError({
+      code: ToolErrorCode.RATE_LIMITED,
+      message: `${MAX_CONCURRENT_SCRIPTS} scripts are already running on this server; retry when one finishes.`,
+    });
+  }
+  runningScripts++;
+  try {
+    return await run();
+  } finally {
     runningScripts--;
   }
 }

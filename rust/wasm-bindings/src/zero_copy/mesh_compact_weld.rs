@@ -17,7 +17,7 @@ const MAX_COLLAPSED_AREA_FRACTION: f64 = 0.01;
 /// `MIN_LATTICE_COS2`). The shader shades a face by its snapped normal, so a
 /// face turned further reads as another surface: a Ø12 mm rebar collapses
 /// nothing on the 1 mm lattice but turns 2 to 20% of its area past this (#11444).
-const MIN_LATTICE_COS2: f64 = 0.821_393_804_843_269_7;
+pub(super) const MIN_LATTICE_COS2: f64 = 0.821_393_804_843_269_6;
 
 /// A corner is witnessed by its node's stored normal when the cosine between
 /// them is above this. The fragment shader orients a face's derivative normal
@@ -293,7 +293,8 @@ fn lattice_degrades(nodes: &[[u16; 3]], [a, b, c]: [u16; 3], source: [f64; 3], s
     let d = |x: [u16; 3], y: [u16; 3], axis: usize| (x[axis] as i64 - y[axis] as i64) as f64;
     let u = [d(nb, na, 0), d(nb, na, 1), d(nb, na, 2)];
     let w = [d(nc, na, 0), d(nc, na, 1), d(nc, na, 2)];
-    // Offsets are at most 65,535 steps, so every product is exact in f64.
+    // Offsets are at most 65,535 steps, so the cross product is exact in f64 and a collapse is
+    // exactly zero; the turn comparison itself is approximate.
     let q = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
     let turn = source[0] * q[0] + source[1] * q[1] + source[2] * q[2];
     turn <= 0.0 || turn * turn < MIN_LATTICE_COS2 * source_len * source_len * (q[0] * q[0] + q[1] * q[1] + q[2] * q[2])

@@ -468,3 +468,10 @@ fn a_thin_swept_rebar_moves_to_a_finer_lattice_11444() {
         assert!(b.table[5] > BASE_LEVEL, "origin {origin:?}: encoded at level {}", b.table[5]);
     }
 }
+
+/// The encoder's turn limit is the renderer's `Math.cos((25 * Math.PI) / 180) ** 2`, bit for bit.
+#[test]
+fn the_turn_limit_is_the_renderers_25_degrees() {
+    assert_eq!(weld::MIN_LATTICE_COS2, 25f64.to_radians().cos().powi(2));
+    assert_eq!(weld::MIN_LATTICE_COS2.to_string(), "0.8213938048432696");
+}

@@ -1,10 +1,8 @@
 --- a/packages/export/src/step-subset-storey.ts
 +++ b/packages/export/src/step-subset-storey.ts
-@@ -139,7 +139,4 @@
-   // No placement is allowed (IFC permits a storey whose elements are placed
-   // independently); membership then comes from containment alone.
--  if (placementId === undefined) {
--    throw new SubsetSelectionError('invalid', `Storey #${storeyId} has no placement`);
--  }
-   return { storeyId, placementId };
- }
+@@ -222,5 +222,4 @@
+   storeyId: number, placementId: number | undefined, parsed: ParsedStep, schemaVersion?: string,
+ ): number[] {
+-  if (placementId === undefined) return [];
+   const parents = structureParents(parsed.instances, OWNERSHIP);
+   const hosts = hostOf(parsed);

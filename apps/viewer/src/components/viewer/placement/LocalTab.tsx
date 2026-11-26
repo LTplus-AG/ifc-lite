@@ -13,7 +13,7 @@
  * `snapEnabled`).
  */
 import { PositionedDownload } from '../PositionedDownload';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import type { TranslationKey } from '@/i18n';
@@ -68,7 +68,7 @@ function pickPrompt(
 }
 
 export function LocalTab() {
-  const { t } = useTranslation();
+  const { t, revision } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const placement = useViewerStore((s) => s.modelPlacement);
   const snapEnabled = useViewerStore((s) => s.snapEnabled);
@@ -77,6 +77,13 @@ export function LocalTab() {
   const repositionOpen = useViewerStore((s) => s.repositionOpen);
   const runtime = useRepositionRuntime();
   const [pending, setPending] = useState<readonly string[]>([]);
+  // Memoised so hover re-renders do not rescan every model's entity ids; `t`
+  // keeps its identity across locale switches, so `revision` keys the locale.
+  const role = runtime?.role ?? null, reference = runtime?.reference ?? '', before = placement.preview?.before;
+  const prompt = useMemo(
+    () => (role ? pickPrompt(t, role, before, reference, models, hidden, isolated) : t('repositionPanel.previewPrompt')),
+    [t, revision, role, before, reference, models, hidden, isolated],
+  );
 
   if (!repositionOpen || !runtime) {
     return (
@@ -169,7 +176,7 @@ export function LocalTab() {
         </label>
       </div>
       <output className="block">
-        {runtime.role ? pickPrompt(t, runtime.role, preview?.before, runtime.reference, models, hidden, isolated) : t('repositionPanel.previewPrompt')}
+        {prompt}
         {runtime.hover ? ` ${t('repositionPanel.hoverDetail', { kind: t(HOVER_KIND_KEYS[runtime.hover.kind]), name: models.get(runtime.hover.modelId)?.name ?? '' })}` : ''}
       </output>
 

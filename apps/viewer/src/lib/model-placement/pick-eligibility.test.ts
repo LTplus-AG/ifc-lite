@@ -31,6 +31,7 @@ test('every pick-hint key exists in each reposition-panel catalogue with the Eng
 const models = new Map([['a', { visible: true }], ['b', { visible: true }], ['c', { visible: true }], ['h', { visible: false }]]);
 const names: Record<string, string> = { a: 'A.ifc', b: 'B.ifc', c: 'C.ifc', h: 'H.ifc' };
 const nameOf = (id: string) => names[id];
+const everyEligible = (ids: string[]) => ids;
 const ctx = (moving: string[], reference = '') => eligibility.pickContext(new Set(moving), reference, models);
 
 test('source picks accept only moving visible models', () => {
@@ -57,25 +58,25 @@ test('prompt key follows role and reference, and falls back when nothing is elig
 });
 
 test('wrong-role hits name the hit model and what the step expects', () => {
-  const m = (role: 'source' | 'target', hit: string | null) => eligibility.rejectedPickMessage(role, hit, ctx(['a']), models.keys(), nameOf);
+  const m = (role: 'source' | 'target', hit: string | null) => eligibility.rejectedPickMessage(role, hit, ctx(['a']), models.keys(), nameOf, everyEligible);
   assert.deepEqual(m('source', 'b'), { key: 'repositionPanel.errorNotMoving', params: { hit: 'B.ifc', expected: 'A.ifc' } });
   assert.deepEqual(m('target', 'a'), { key: 'repositionPanel.errorIsMoving', params: { hit: 'A.ifc', expected: 'B.ifc, C.ifc' } });
 });
 
 test('a non-reference model is reported as such', () => {
-  const r = eligibility.rejectedPickMessage('target', 'b', ctx(['a'], 'c'), models.keys(), nameOf);
+  const r = eligibility.rejectedPickMessage('target', 'b', ctx(['a'], 'c'), models.keys(), nameOf, everyEligible);
   assert.deepEqual(r, { key: 'repositionPanel.errorNotReference', params: { hit: 'B.ifc', expected: 'C.ifc' } });
 });
 
 test('a wrong-model hit with nothing eligible keeps the generic message', () => {
   // The only moving model is hidden, so there is no model to point the user at.
-  assert.equal(eligibility.rejectedPickMessage('source', 'b', ctx(['h']), models.keys(), nameOf).key, 'repositionPanel.errorNoPoint');
-  assert.equal(eligibility.rejectedPickMessage('target', 'a', ctx(['a'], 'h'), models.keys(), nameOf).key, 'repositionPanel.errorNoPoint');
+  assert.equal(eligibility.rejectedPickMessage('source', 'b', ctx(['h']), models.keys(), nameOf, everyEligible).key, 'repositionPanel.errorNoPoint');
+  assert.equal(eligibility.rejectedPickMessage('target', 'a', ctx(['a'], 'h'), models.keys(), nameOf, everyEligible).key, 'repositionPanel.errorNoPoint');
 });
 
 test('no hit, a hidden model or an eligible model keep the generic message', () => {
   for (const hit of [null, 'h', 'b']) {
-    assert.equal(eligibility.rejectedPickMessage('target', hit, ctx(['a']), models.keys(), nameOf).key, 'repositionPanel.errorNoPoint');
+    assert.equal(eligibility.rejectedPickMessage('target', hit, ctx(['a']), models.keys(), nameOf, everyEligible).key, 'repositionPanel.errorNoPoint');
   }
 });
 
@@ -87,7 +88,7 @@ test('models sharing a display name get an ordinal, unique names stay plain', ()
 
 test('the wrong-model message tells same-named models apart', () => {
   const dupNames: Record<string, string> = { a: 'X.ifc', b: 'X.ifc', c: 'X.ifc', h: 'H.ifc' };
-  const r = eligibility.rejectedPickMessage('source', 'b', ctx(['a', 'c']), models.keys(), (id) => dupNames[id]);
+  const r = eligibility.rejectedPickMessage('source', 'b', ctx(['a', 'c']), models.keys(), (id) => dupNames[id], everyEligible);
   assert.deepEqual(r.params, { hit: 'X.ifc (2)', expected: 'X.ifc (1), X.ifc (3)' });
 });
 

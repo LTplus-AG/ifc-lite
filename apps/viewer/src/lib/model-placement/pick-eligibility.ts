@@ -11,6 +11,8 @@
  * models, narrowed to the chosen reference model when one is set. A hidden
  * model is never eligible.
  */
+import { isEntityVisible } from '@ifc-lite/renderer';
+
 export type PickRole = 'source' | 'target';
 
 export interface PickEligibilityContext {
@@ -63,7 +65,7 @@ export interface RejectedPickMessage { key: RejectedPickKey; params: { hit: stri
 export function rejectedPickMessage(
   role: PickRole, hitModelId: string | null, ctx: PickEligibilityContext,
   modelIds: Iterable<string>, nameOf: (modelId: string) => string,
-  pickable: (eligible: string[]) => string[] = (eligible) => eligible,
+  pickable: (eligible: string[]) => string[],
 ): RejectedPickMessage {
   const generic: RejectedPickMessage = { key: 'repositionPanel.errorNoPoint', params: { hit: '', expected: '' } };
   if (hitModelId === null || !ctx.isVisible(hitModelId) || isEligiblePickModel(role, hitModelId, ctx)) return generic;
@@ -114,7 +116,7 @@ export function pickableModelIds(
     let any = false;
     for (const entityId of entityIdsOf(id)) {
       any = true;
-      if (!hidden.has(entityId) && (isolated === null || isolated.has(entityId))) return true;
+      if (isEntityVisible(entityId, hidden, isolated)) return true;
     }
     return !any;
   });
@@ -144,18 +146,16 @@ export function hitModelId(
   return id === undefined ? null : modelOf(id);
 }
 
-/** Entity ids a model's meshes and point clouds contribute to a pick (the ids the hidden/isolation sets are keyed by). */
-export function modelEntityIds(
+/** Entity ids a model's meshes and point clouds contribute to a pick (the ids the hidden/isolation sets are keyed by). Lazy, so `pickableModelIds` stops at the first visible one. */
+export function* modelEntityIds(
   model: { geometryResult?: {
     meshes?: ReadonlyArray<{ expressId: number; entityIds?: ArrayLike<number> }>;
     pointClouds?: ReadonlyArray<{ expressId: number }>;
   } | null } | undefined,
-): number[] {
-  const ids: number[] = [];
+): Generator<number> {
   for (const mesh of model?.geometryResult?.meshes ?? []) {
-    if (mesh.entityIds) for (let i = 0; i < mesh.entityIds.length; i++) ids.push(mesh.entityIds[i]);
-    else ids.push(mesh.expressId);
+    if (mesh.entityIds) for (let i = 0; i < mesh.entityIds.length; i++) yield mesh.entityIds[i];
+    else yield mesh.expressId;
   }
-  for (const cloud of model?.geometryResult?.pointClouds ?? []) ids.push(cloud.expressId);
-  return ids;
+  for (const cloud of model?.geometryResult?.pointClouds ?? []) yield cloud.expressId;
 }

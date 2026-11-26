@@ -88,8 +88,9 @@ const NEGOTIABLE_VERSIONS = [PROTOCOL_VERSION, ...[...SUPPORTED_PROTOCOL_VERSION
  *   throw `ProtocolError` (see `guard`), and SDK faults are `SdkError`.
  */
 class IfcProtocolServer extends Server {
-  /** Set once `initialize` has been answered. */
-  ready = false;
+  private answeredInitialize = false;
+  /** Whether `initialize` has been answered. */
+  get ready(): boolean { return this.answeredInitialize; }
   /** Runs after the SDK answered `initialize`, with the request and the negotiated result. */
   onInitialize?: (params: { protocolVersion: string; clientInfo?: unknown }, result: { protocolVersion: string }) => void;
 
@@ -110,7 +111,7 @@ class IfcProtocolServer extends Server {
         throw toProtocolError(err);
       }
       if (method === 'initialize') {
-        this.ready = true;
+        this.answeredInitialize = true;
         // A failing observer must not fail a handshake the SDK already answered.
         try {
           this.onInitialize?.(request.params as { protocolVersion: string }, result as { protocolVersion: string });

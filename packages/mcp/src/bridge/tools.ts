@@ -28,7 +28,7 @@ import { ToolRegistry, type Tool } from '../tools/types.js';
 import { surfacePushTool } from './surface-push.js';
 import { uiEventsTool } from './ui-events-tool.js';
 import { BRIDGE_UI_EVENTS_TOOL } from './ui-events.js';
-import { BRIDGE_STATUS_TOOL, BRIDGE_SURFACE_TOOL, DEFAULT_BRIDGE_PORT, TAB_SHOW_UI_TOOL, TAB_TOOL_PREFIX, type BridgeToolDescriptor } from './protocol.js';
+import { BRIDGE_STATUS_TOOL, BRIDGE_SURFACE_TOOL, DEFAULT_BRIDGE_PORT, MAX_MCP_TOOL_NAME, TAB_SHOW_UI_TOOL, TAB_TOOL_PREFIX, type BridgeToolDescriptor } from './protocol.js';
 import { BridgeCallError, type BridgeCallFailure, type TabBridge } from './tab-bridge.js';
 
 const FAILURE_CODE: Record<BridgeCallFailure, ToolErrorCodeValue> = {
@@ -70,14 +70,14 @@ function mcpName(tabName: string): string {
  * The 0.32 names of the surface tools, still callable (never listed) for one
  * minor release. Remove in 0.34.
  */
-const LEGACY_SURFACE_TOOL = 'viewer_show_ui';
-const LEGACY_UI_EVENTS_TOOL = 'viewer_ui_events';
+const LEGACY_ALIASES: ReadonlyMap<string, string> = new Map([
+  [BRIDGE_SURFACE_TOOL, TAB_SHOW_UI_TOOL],
+  ['viewer_ui_events', BRIDGE_UI_EVENTS_TOOL],
+]);
 
-/** Longest MCP tool name many clients accept; a longer `tab_` name is not served. */
-const MAX_MCP_TOOL_NAME = 64;
-
-function fitsMcpName(d: BridgeToolDescriptor): boolean {
-  return mcpName(d.name).length <= MAX_MCP_TOOL_NAME;
+/** The tab tools this server lists and forwards: a longer `tab_` name than clients accept is skipped. */
+function servable(tools: readonly BridgeToolDescriptor[]): BridgeToolDescriptor[] {
+  return tools.filter((d) => mcpName(d.name).length <= MAX_MCP_TOOL_NAME);
 }
 
 async function forward(bridge: TabBridge, name: string, input: Record<string, unknown>, signal: AbortSignal): Promise<CallToolResult> {
@@ -255,24 +255,25 @@ export class BridgeToolRegistry extends ToolRegistry {
     super.register(tool);
   }
 
-  override get(name: string): Tool | null {
+  override get(requested: string): Tool | null {
+    const name = LEGACY_ALIASES.get(requested) ?? requested;
     if (name === BRIDGE_STATUS_TOOL) return this.status;
-    if (name === TAB_SHOW_UI_TOOL || name === LEGACY_SURFACE_TOOL) return this.surface;
-    if (name === BRIDGE_UI_EVENTS_TOOL || name === LEGACY_UI_EVENTS_TOOL) return this.events;
+    if (name === TAB_SHOW_UI_TOOL) return this.surface;
+    if (name === BRIDGE_UI_EVENTS_TOOL) return this.events;
     if (!name.startsWith(TAB_TOOL_PREFIX)) return super.get(name);
     const tab = this.bridge.tab();
     if (!tab) return notConnectedTool(this.bridge, name);
-    const d = tab.tools.find((t) => mcpName(t.name) === name);
+    const d = servable(tab.tools).find((t) => mcpName(t.name) === name);
     // A hidden (mutating, read-only) tool still resolves, so the call gets a
     // READ_ONLY refusal from `TabBridge.call` rather than "unknown tool".
-    return d && fitsMcpName(d) ? forwardedTool(this.bridge, d, tab.tools) : null;
+    return d ? forwardedTool(this.bridge, d, tab.tools) : null;
   }
 
   override list(): Tool[] {
     const own = super.list();
     const tab = this.bridge.tab();
     if (!tab) return [...own, this.status];
-    const visible = (tab.permission === 'read-only' ? tab.tools.filter((t) => t.readOnly) : tab.tools).filter(fitsMcpName);
+    const visible = servable(tab.tools).filter((t) => tab.permission !== 'read-only' || t.readOnly);
     return [...own, this.status, ...(tab.a2uiSurface ? [this.surface, this.events] : []), ...visible.map((d) => forwardedTool(this.bridge, d, tab.tools))];
   }
 

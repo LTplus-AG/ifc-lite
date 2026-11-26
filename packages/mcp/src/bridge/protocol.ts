@@ -86,6 +86,9 @@ export const BRIDGE_SURFACE_TOOL = 'viewer_show_ui';
  * tool of the same server that runs on a model loaded in-process.
  */
 export const TAB_TOOL_PREFIX = 'tab_';
+/** Longest MCP tool name many clients accept. */
+export const MAX_MCP_TOOL_NAME = 64;
+
 /** MCP name of the bridge's surface delivery tool. */
 export const TAB_SHOW_UI_TOOL = `${TAB_TOOL_PREFIX}show_ui`;
 
@@ -128,8 +131,8 @@ export const BRIDGE_LIMITS = {
   maxPendingCalls: 64,
   maxBufferedBytes: 32 * 1024 * 1024,
   maxTools: 256,
-  /** A longer name is accepted but not served: its `tab_` name would pass the 64 most clients allow. */
-  maxToolNameLength: 64,
+  /** A name this long is accepted, but served only if its `tab_` name fits {@link MAX_MCP_TOOL_NAME}. */
+  maxToolNameLength: MAX_MCP_TOOL_NAME,
   maxDescriptionLength: 8192,
   maxTitleLength: 256,
   /** UTF-8 bytes of all tool descriptors together (as JSON), schemas included. */

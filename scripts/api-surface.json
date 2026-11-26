@@ -8154,6 +8154,7 @@
     "BridgeWelcomeMessage: interface",
     "DEFAULT_BRIDGE_PORT: const",
     "DEFAULT_BRIDGE_VIEWER_URL: const",
+    "MAX_MCP_TOOL_NAME: const",
     "PAIRING_FRAGMENT_KEY: const",
     "PairingFragment: interface",
     "ParseResult: type",

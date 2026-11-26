@@ -314,8 +314,6 @@ function stopBridgeWithClient(running: RunningBridge, transport: StdioTransport)
     // Normal case: bridge first, so the `shutting-down` answers to pending
     // calls are written and flushed before the transport closes.
     void running.close()
-      // Also the local viewer page and the other per-session resources of the headless side.
-      .then(() => running.server.detach())
       .then(() => new Promise<void>((resolve) => setImmediate(resolve)))
       .then(() => new Promise<void>((resolve) => process.stdout.write('', () => resolve())))
       .finally(() => {

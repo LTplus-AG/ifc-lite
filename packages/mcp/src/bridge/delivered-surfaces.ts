@@ -25,7 +25,7 @@
  * and what is recorded is only text the agent wrote.
  */
 
-import { ASK_EVENT } from '@ifc-lite/a2ui';
+import { ASK_EVENT, eventToFollowUp } from '@ifc-lite/a2ui';
 import { isRecord } from './json-bounds.js';
 import { a2uiSurfaceId, type BridgeUiEvent } from './ui-events.js';
 
@@ -34,12 +34,20 @@ export const MAX_DELIVERED_SURFACES = 64;
 /** Follow-up texts and event names remembered per surface, each. */
 export const MAX_SURFACE_ENTRIES = 1024;
 
-/** Keys whose string value is follow-up text the agent wrote. */
+/**
+ * Keys whose string value is follow-up text the agent wrote. A `label` is
+ * the button's own text: the renderer sends it as the prompt of an event
+ * without a user message, and the agent chose it, unlike a data value.
+ */
 const PROMPT_KEYS: ReadonlySet<string> = new Set(['prompt', 'userMessage', 'label']);
 
-/** The renderer's prompt for an event action without a user message (`eventToFollowUp`). */
+/** The renderer's prompt for an event action without a user message. */
 function genericPrompt(name: string): string {
-  return `Action: ${name}`;
+  return eventToFollowUp(name, undefined).userText;
+}
+
+function emptySurface(): Surface {
+  return { prompts: new Set(), events: new Set() };
 }
 
 /** What one surface may send back. */
@@ -51,6 +59,11 @@ interface Surface {
 function add(set: Set<string>, value: string): void {
   const trimmed = value.trim();
   if (trimmed && set.size < MAX_SURFACE_ENTRIES) set.add(trimmed);
+}
+
+/** `from` is already trimmed; only the cap applies. */
+function merge(into: Set<string>, from: Set<string>): void {
+  for (const value of from) if (into.size < MAX_SURFACE_ENTRIES) into.add(value);
 }
 
 function collect(value: unknown, into: Surface): void {
@@ -66,7 +79,7 @@ function collect(value: unknown, into: Surface): void {
   }
 }
 
-export type SurfaceCheck = { refused: string } | { promptVerified: boolean };
+type SurfaceCheck = { refused: string } | { promptVerified: boolean };
 
 export class DeliveredSurfaces {
   /** Surface id -> what the agent sent for it. Insertion order is age. */
@@ -82,12 +95,12 @@ export class DeliveredSurfaces {
   record(messages: readonly unknown[]): void {
     const ids = new Set(messages.map(a2uiSurfaceId).filter((id): id is string => id !== null));
     if (ids.size === 0) return;
-    const call: Surface = { prompts: new Set(), events: new Set() };
+    const call = emptySurface();
     collect(messages, call);
     for (const id of ids) {
-      const surface = this.surfaces.get(id) ?? { prompts: new Set<string>(), events: new Set<string>() };
-      for (const p of call.prompts) add(surface.prompts, p);
-      for (const e of call.events) add(surface.events, e);
+      const surface = this.surfaces.get(id) ?? emptySurface();
+      merge(surface.prompts, call.prompts);
+      merge(surface.events, call.events);
       // Re-inserted, so a surface the agent keeps updating is the newest.
       this.surfaces.delete(id);
       this.surfaces.set(id, surface);

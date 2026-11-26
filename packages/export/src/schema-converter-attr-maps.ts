@@ -169,7 +169,9 @@ export function attrMapFor(
 ): { map: AttrMap; up: boolean } | undefined {
   if (fromSchema === 'IFC2X3' && (toSchema === 'IFC4' || toSchema === 'IFC4X3')) {
     const found = getAttrMapIndex().byIfc2x3.get(entityType);
-    return found?.ifc4 === newType ? { map: found, up: true } : undefined;
+    const target = toSchema === 'IFC4X3' && newType === 'IFCDISTRIBUTIONBOARD'
+      ? 'IFCELECTRICDISTRIBUTIONBOARD' : newType;
+    return found?.ifc4 === target ? { map: found, up: true } : undefined;
   }
   if (toSchema === 'IFC2X3' && (fromSchema === 'IFC4' || fromSchema === 'IFC4X3')) {
     // IFC4X3 also declares the renamed IfcDistributionBoard with the same carried slots (#11021).

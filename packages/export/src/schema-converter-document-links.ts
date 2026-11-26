@@ -103,11 +103,11 @@ export class DocumentLinks {
   }
 
   /** `line`, already converted, with its link slot written. */
-  apply(line: string): string {
+  apply(line: string, maxReferenceId?: number): string {
     if (this.at < 0) return line;
     const id = Number(/^\s*#(\d+)/.exec(line)?.[1]);
     const value = this.fill.get(id);
-    const record = value ? readStepSlots(line) : null;
+    const record = value ? readStepSlots(line, maxReferenceId) : null;
     if (!record || !slotUnset(record.slots[this.at])) return line;
     const slots = [...record.slots];
     slots[this.at] = value!;

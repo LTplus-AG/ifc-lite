@@ -143,7 +143,7 @@ describe('draw stream culling', () => {
     const device = { createBindGroupLayout: () => ({}), createPipelineLayout: () => ({}), createBindGroup: () => ({}), createShaderModule: () => ({}),
       createBuffer: (d: GPUBufferDescriptor) => ({ size: d.size, destroy() {} }), queue: { writeBuffer() {} }, createRenderBundleEncoder: enc } as unknown as GPUDevice;
     const pipeline = { getStreamBase: () => ({ environmentLayout: {}, descriptor: { fragment: { targets: [] } }, colorFormat: 'bgra8unorm', depthFormat: 'depth32float', sampleCount: 1 }),
-      visibility: { create: () => ({}) }, getEnvironmentBindGroup: () => env } as unknown as ConstructorParameters<typeof DrawStream>[1];
+      visibility: { create: () => ({}), createAsync: async () => ({}) }, getEnvironmentBindGroup: () => env } as unknown as ConstructorParameters<typeof DrawStream>[1];
     const cell = [batch(1, 0, { lod1: 6 }), batch(2, 2, { lod1: 6 })];
     const stream = new DrawStream(device, pipeline, resolveDrawStreamConfig({ stream: true }));
     stream.sync(cell, 'g', 'k', 32, () => ({ alpha: 1, anchor: null, overrideBits: 0 }));

@@ -36,7 +36,11 @@ export function frameSummary(records) {
   const spanMs = shown.length > 1 ? shown.at(-1).ts - shown[0].ts : null;
   return {
     frames: records.length, rendered: shown.length,
-    fps: spanMs ? round(((shown.length - 1) * 1000) / spanMs) : null,
+    // Delivered frames per wall-second and the path's span: a GPU-bound path renders fewer of the camera steps
+    // (the frame pacer holds them) but may deliver as many frames per second; hitches are what a user sees as stutter.
+    fps: spanMs ? round(((shown.length - 1) * 1000) / spanMs) : null, spanMs: round(spanMs, 0),
+    // No frame interval: unmeasured (null), as fps and frameMs are, not zero stutter.
+    hitches: deltas.length ? { over50Ms: deltas.filter((d) => d > 50).length, over100Ms: deltas.filter((d) => d > 100).length } : null,
     frameMs: { median: round(percentile(deltas, 0.5), 2), p95: round(percentile(deltas, 0.95), 2), p99: round(percentile(deltas, 0.99), 2),
       worst: round(deltas.length ? Math.max(...deltas) : null, 2) },
     cpuMs: { median: round(percentile(col('cpuMs'), 0.5), 2), p95: round(percentile(col('cpuMs'), 0.95), 2) },
@@ -71,6 +75,9 @@ export function summaryRow(r) {
     drawCalls: m.scene?.frame?.drawCalls ?? null, batches: m.scene?.frame?.batchesDrawn ?? null, instanced: m.scene?.frame?.instancedDrawn ?? null,
     orbitMedianMs: cam.orbit?.frameMs?.median ?? null, orbitP95Ms: cam.orbit?.frameMs?.p95 ?? null, orbitP99Ms: cam.orbit?.frameMs?.p99 ?? null,
     orbitWorstMs: cam.orbit?.frameMs?.worst ?? null, zoomP95Ms: cam.zoom?.frameMs?.p95 ?? null, flyP95Ms: cam.fly?.frameMs?.p95 ?? null,
+    // Pacing next to the interval percentiles: delivered frames per second and frames over 50 / 100 ms (visible stutter).
+    orbitFps: cam.orbit?.fps ?? null, orbitHitches50: cam.orbit?.hitches?.over50Ms ?? null, orbitHitches100: cam.orbit?.hitches?.over100Ms ?? null,
+    flyFps: cam.fly?.fps ?? null, flyHitches50: cam.fly?.hitches?.over50Ms ?? null, flyHitches100: cam.fly?.hitches?.over100Ms ?? null,
     trisPerFrame: cam.orbit?.trianglesPerFrame?.median ?? null, drawsPerFrame: cam.orbit?.drawsPerFrame?.median ?? null,
     // A hit whose highlighted frame never finished has no pick time (not its bare selection latency).
     pickMs: round(median(hits.map((p) => p.frameDoneMs)), 1), pickHits: `${hits.length}/${(it.picks ?? []).length}`,
@@ -85,7 +92,8 @@ const COLUMNS = [
   ['settledHeapMiB', 'settled heap MiB'], ['peakRendererPssMiB', 'peak renderer PSS MiB'], ['peakGpuProcPssMiB', 'peak GPU-proc PSS MiB'],
   ['peakVramMiB', 'peak VRAM MiB'], ['gpuSceneMiB', 'scene GPU MiB'], ['drawCalls', 'draws'], ['trisPerFrame', 'tris/frame'],
   ['orbitMedianMs', 'orbit med ms'], ['orbitP95Ms', 'orbit p95'], ['orbitP99Ms', 'orbit p99'], ['orbitWorstMs', 'orbit worst'],
-  ['zoomP95Ms', 'zoom p95'], ['flyP95Ms', 'fly p95'], ['pickMs', 'pick ms'], ['hideMs', 'hide ms'], ['isolateMs', 'isolate ms'], ['sectionMs', 'section ms'],
+  ['orbitFps', 'orbit fps'], ['orbitHitches50', 'orbit >50 ms'], ['orbitHitches100', 'orbit >100 ms'], ['zoomP95Ms', 'zoom p95'],
+  ['flyP95Ms', 'fly p95'], ['flyFps', 'fly fps'], ['flyHitches50', 'fly >50 ms'], ['flyHitches100', 'fly >100 ms'], ['pickMs', 'pick ms'], ['hideMs', 'hide ms'], ['isolateMs', 'isolate ms'], ['sectionMs', 'section ms'],
 ];
 
 /** Markdown ladder table (one row per run) plus a failure list. */
@@ -100,7 +108,8 @@ export function markdownSummary(results, { title = 'Huge-geometry ladder', label
 }
 
 const COMPARE = [['completeS', 'complete s'], ['peakTotalPssMiB', 'peak PSS MiB'], ['orbitP95Ms', 'orbit p95 ms'], ['zoomP95Ms', 'zoom p95 ms'],
-  ['flyP95Ms', 'fly p95 ms'], ['pickMs', 'pick ms'], ['isolateMs', 'isolate ms']];
+  ['orbitFps', 'orbit fps'], ['orbitHitches100', 'orbit hitches >100 ms'], ['flyP95Ms', 'fly p95 ms'], ['flyFps', 'fly fps'],
+  ['flyHitches100', 'fly hitches >100 ms'], ['pickMs', 'pick ms'], ['isolateMs', 'isolate ms']];
 
 /** Before/after table keyed by run name: base value, new value, ratio new/base. */
 export function markdownCompare(base, next, { baseLabel = 'base', nextLabel = 'next' } = {}) {
@@ -111,7 +120,8 @@ export function markdownCompare(base, next, { baseLabel = 'base', nextLabel = 'n
     const o = b.get(n.name);
     const cells = COMPARE.map(([k]) => {
       const x = o?.[k], y = n[k];
-      if (!Number.isFinite(x) || !Number.isFinite(y)) return `${cell(x)} → ${cell(y)}`;
+      // A zero base (e.g. no hitches) has no ratio.
+      if (!Number.isFinite(x) || !Number.isFinite(y) || x === 0) return `${cell(x)} → ${cell(y)}`;
       return `${x} → ${y} (×${round(y / x, 2)})`;
     });
     lines.push(`| ${n.name} | ${o ? `${o.status} → ${n.status}` : `new: ${n.status}`} | ${cells.join(' | ')} |`);

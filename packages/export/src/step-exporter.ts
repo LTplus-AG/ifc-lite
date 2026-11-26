@@ -9,6 +9,7 @@
  * Supports applying property and root attribute mutations before export.
  */
 
+import { finishStepConversion } from './schema-converter-step-finish.js';
 import { hasGeorefEdits, IFC2X3_GEOREF_REFUSAL } from './step-coordinate-options.js';
 import type { IfcDataStore, IfcSourceHeader } from '@ifc-lite/parser';
 import { EntityExtractor, parseSourceHeader } from '@ifc-lite/parser';
@@ -227,12 +228,15 @@ export class StepExporter {
     // rewrite that resolves against them, in that one order (#2475 steps 2b
     // and 2c). `pass.rewrittenEntityLines`, this call's output, is flushed
     // just below — after the quantity-set loop inside it, as it always was.
+    const generatedSetsStart = pass.entities.length;
     generatePropertyAndQuantitySetEntities(pass, options, this.propertySetContext());
+    const generatedSetsEnd = pass.entities.length;
 
     // The rewritten type-object lines, then the new georeferencing entities
     // (IfcProjectedCRS, IfcMapConversion), through the one emit path every
     // appended record takes, so a converting export converts them (#7682).
     pass.entities.push(...convertAppendedLines(pass, options, [...pass.rewrittenEntityLines.values()]));
+    const appendedStart = pass.entities.length;
     pass.entities.push(...convertAppendedLines(pass, options, pass.newGeorefLines));
 
     // Add overlay-created entities (store.addEntity / mutationView.createEntity),
@@ -249,7 +253,9 @@ export class StepExporter {
 
     // Complete map metadata adaptation before optional Rust planning and assembly.
     normalizeCoordinateMetadata(pass, options, () => allocatedExpressId(this.nextExpressId++));
-    this.nextExpressId = pass.enums.typedProperties.finish(pass.entities, pass.ifc4Slots, this.nextExpressId, pass.enums.structural);
+    this.nextExpressId = finishStepConversion(pass, this.nextExpressId, [
+      [generatedSetsStart, generatedSetsEnd], [appendedStart, pass.entities.length],
+    ]);
     return { pass };
   }
 

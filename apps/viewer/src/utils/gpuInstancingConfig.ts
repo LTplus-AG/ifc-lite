@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { Renderer, SceneContents } from '@ifc-lite/renderer';
-import { readPerfFlag, recordAppliedPerfFlag } from '../lib/perf/flags.js';
+import { readPerfFlag } from '../lib/perf/flags.js';
+import { recordAppliedPerfFlag } from '../lib/perf/flags-applied.js';
 import { isHugeGeometryEnabled, isPerfFlagOff, isPerfFlagOn, readRampFlag } from './hugeGeometryConfig.js';
 
 /**

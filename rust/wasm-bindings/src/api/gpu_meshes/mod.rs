@@ -41,6 +41,10 @@ pub(super) mod style_finishes;
 mod prepass_from_source;
 mod prepass_affinity;
 mod source_fingerprint_prepass;
+mod sparse;
+mod sparse_facts;
+mod sparse_emit;
+pub(in crate::api) use sparse::SparseSession;
 
 /// Scan `content` into the compact columnar index. Its one refusal is a span
 /// past `u32::MAX` (#7675, CORE-24), which a wasm32 `&[u8]` cannot reach: the

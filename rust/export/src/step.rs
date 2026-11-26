@@ -139,6 +139,7 @@ fn group_property_mutations<'a>(
 
 /// Resolve last-wins attribute edits, excluding anything that is not one STEP value.
 #[allow(clippy::type_complexity)]
+/// Resolve last-wins attribute edits, excluding anything that is not one STEP value.
 fn prepared_attribute_edits(opts: &StepOptions) -> (HashMap<u32, BTreeMap<usize, String>>, usize) {
     let mut attribute_edits_refused = 0;
     let mut muts_by_id: HashMap<u32, BTreeMap<usize, String>> = HashMap::new();
@@ -161,8 +162,13 @@ fn emit<W: std::io::Write>(
     // 1. Index every entity line (preserve source order). A repeated id keeps
     // its last record, as core does, and the rest are counted (#7682,
     // EXPORT-STEP-11).
+    let source_schema = detect_schema(content);
+    let schema = opts.schema.clone().unwrap_or_else(|| source_schema.clone());
+    let upgrading = crate::schema_unrooted_upgrade::Upgrade::between(&source_schema, &schema);
+    let mut may_prune_upgrade = false;
     let mut owner_histories: Vec<(u32, usize)> = Vec::new();
     let index = crate::step_index::RecordIndex::build(content, |id, type_name, start| {
+        may_prune_upgrade |= !may_prune_upgrade && upgrading.is_some_and(|upgrade| upgrade.omitted_type(type_name));
         if type_name.eq_ignore_ascii_case("IFCOWNERHISTORY") {
             owner_histories.push((id, start));
         }
@@ -200,8 +206,6 @@ fn emit<W: std::io::Write>(
     // Read the source HEADER once, here, so the writer can carry its
     // provenance forward instead of blanking it (see `step_header`).
     let source_header = crate::source_header::parse_source_header(content);
-    let source_schema = detect_schema(content);
-    let schema = opts.schema.clone().unwrap_or_else(|| source_schema.clone());
     // Only convert entity types/attributes when an explicit target differs from source.
     let converting = opts.schema.is_some()
         && crate::schema_convert::needs_conversion(&source_schema, &schema);
@@ -245,7 +249,7 @@ fn emit<W: std::io::Write>(
     // IFC2X3 places one product per placement (#9209): its records are held to adapt them.
     use std::io::Write as _;
     let date_buffer = crate::schema_value_forms::ValueForms::buffer_for_dates(content, &source_schema, &schema);
-    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, targets_ifc2x3, date_buffer || checks.structural.buffers_varying(content) || checks.typed_properties.enabled);
+    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, targets_ifc2x3, date_buffer || checks.structural.buffers_varying(content) || checks.typed_properties.enabled, upgrading.filter(|_| may_prune_upgrade));
     if targets_ifc2x3 || date_buffer { checks.forms.enable_dates(); }
 
     let mut written = 0usize;

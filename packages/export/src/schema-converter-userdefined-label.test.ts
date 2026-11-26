@@ -18,7 +18,7 @@ describe('the .USERDEFINED. label (#10824)', () => {
       expect(up("#7=IFCPROCEDURE('g',#2,'P',$,$,'P-1',.USERDEFINED.,'Flush');", to))
         .toBe("#7=IFCPROCEDURE('g',#2,'P',$,'Flush','P-1',$,.USERDEFINED.);");
       expect(up("#7=IFCELECTRICDISTRIBUTIONPOINT('g',#2,'n',$,$,$,$,'t',.USERDEFINED.,'Custom');", to))
-        .toBe("#7=IFCELECTRICDISTRIBUTIONBOARD('g',#2,'n',$,'Custom',$,$,'t',.USERDEFINED.);");
+        .toBe("#7=" + (to === 'IFC4X3' ? 'IFCDISTRIBUTIONBOARD' : 'IFCELECTRICDISTRIBUTIONBOARD') + "('g',#2,'n',$,'Custom',$,$,'t',.USERDEFINED.);");
     }
   });
 
@@ -56,7 +56,7 @@ describe('the .USERDEFINED. label (#10824)', () => {
     };
     for (const to of ['IFC4', 'IFC4X3'] as const) {
       expect(run("#7=IFCELECTRICDISTRIBUTIONPOINT('g',#2,'n',$,$,$,$,'t',.ALARMPANEL.,$);", 'IFC2X3', to).out, to)
-        .toBe("#7=IFCELECTRICDISTRIBUTIONBOARD('g',#2,'n',$,'ALARMPANEL',$,$,'t',.USERDEFINED.);");
+        .toBe("#7=" + (to === 'IFC4X3' ? 'IFCDISTRIBUTIONBOARD' : 'IFCELECTRICDISTRIBUTIONBOARD') + "('g',#2,'n',$,'ALARMPANEL',$,$,'t',.USERDEFINED.);");
     }
     // Down, the label is UserDefinedFunction, IFC2X3's short name for it. Every IFC4/IFC4X3 board member is in
     // IFC2X3's point enum, so the member here is one the source enum lacks too: IfcDistributionBoard's

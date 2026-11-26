@@ -50,10 +50,14 @@ export interface PlanSymbolOptions {
   openings?: ReadonlyMap<EntityKey, PlanOpeningInfo>;
 }
 
-/** Door operations `DoorSymbolGenerator` draws; a door stating another operation keeps its body. */
+/**
+ * Door operations `DoorSymbolGenerator` draws; a door stating another operation
+ * keeps its body. SWING_FIXED_LEFT/RIGHT are left out: the generator has no
+ * fixed-panel symbol and would swing a leaf across the whole width.
+ */
 const SYMBOLIZED_DOOR_OPERATIONS: ReadonlySet<DoorOperationType> = new Set<DoorOperationType>([
   'SINGLE_SWING_LEFT', 'SINGLE_SWING_RIGHT', 'DOUBLE_SWING_LEFT', 'DOUBLE_SWING_RIGHT',
-  'DOUBLE_DOOR_SINGLE_SWING', 'DOUBLE_DOOR_DOUBLE_SWING', 'SWING_FIXED_LEFT',
+  'DOUBLE_DOOR_SINGLE_SWING', 'DOUBLE_DOOR_DOUBLE_SWING',
   'SLIDING_TO_LEFT', 'SLIDING_TO_RIGHT', 'DOUBLE_DOOR_SLIDING',
   'FOLDING_TO_LEFT', 'FOLDING_TO_RIGHT', 'REVOLVING',
 ]);

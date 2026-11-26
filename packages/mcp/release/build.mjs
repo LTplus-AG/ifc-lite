@@ -7,8 +7,9 @@
  * Build the MCP Registry `server.json` and the Claude Desktop bundle
  * (`ifc-lite-<version>.mcpb`) for the current @ifc-lite/mcp version.
  *
- *   pnpm --filter @ifc-lite/mcp build
  *   pnpm --filter @ifc-lite/mcp release:manifests [--out <dir>] [--no-bundle]
+ *
+ * (The script builds the package first, so dist/ is never stale.)
  *
  * The bundle stages the package with its production dependencies through
  * `pnpm deploy`, writes the manifest next to it and packs it with the
@@ -24,15 +25,15 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseArgs } from 'node:util';
 import { BUNDLE_SERVER_DIR, mcpbManifest, serverJson } from '../dist/release/manifests.js';
 
 /** Pinned so a new CLI release cannot change what a release builds. */
 const MCPB_CLI = '@anthropic-ai/mcpb@2.1.2';
 
 const pkgDir = dirname(dirname(fileURLToPath(import.meta.url)));
-const argv = process.argv.slice(2);
-const outFlag = argv.indexOf('--out');
-const out = resolve(outFlag >= 0 && argv[outFlag + 1] ? argv[outFlag + 1] : join(pkgDir, 'release-out'));
+const { values: flags } = parseArgs({ options: { out: { type: 'string' }, 'no-bundle': { type: 'boolean' } } });
+const out = resolve(flags.out ?? join(pkgDir, 'release-out'));
 const pkg = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf-8'));
 
 /** `.bin` holds symlinks to CLIs the server never runs; a bundle carries real files only. */
@@ -55,7 +56,7 @@ mkdirSync(out, { recursive: true });
 writeFileSync(join(out, 'server.json'), `${JSON.stringify(serverJson(pkg), null, 2)}\n`);
 process.stdout.write(`wrote ${join(out, 'server.json')}\n`);
 
-if (!argv.includes('--no-bundle')) {
+if (!flags['no-bundle']) {
   const stage = join(out, 'mcpb');
   rmSync(stage, { recursive: true, force: true });
   run('pnpm', [
@@ -67,6 +68,8 @@ if (!argv.includes('--no-bundle')) {
   ], pkgDir);
   removeBinLinks(join(stage, BUNDLE_SERVER_DIR));
   writeFileSync(join(stage, 'manifest.json'), `${JSON.stringify(mcpbManifest(pkg), null, 2)}\n`);
+  // Source maps and type declarations are about 30 MB of the stage and never run.
+  writeFileSync(join(stage, '.mcpbignore'), '*.map\n*.d.ts\n*.d.mts\n*.d.cts\n');
   const bundle = join(out, `ifc-lite-${pkg.version}.mcpb`);
   run('npx', ['-y', MCPB_CLI, 'pack', stage, bundle], pkgDir);
   process.stdout.write(`wrote ${bundle}\n`);

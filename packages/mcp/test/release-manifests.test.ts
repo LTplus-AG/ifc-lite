@@ -11,7 +11,7 @@
 
 import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
-import { mcpbManifest, serverJson, SERVER_SCHEMA, type McpPackage } from '../src/release/manifests.js';
+import { mcpbManifest, serverJson, type McpPackage } from '../src/release/manifests.js';
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8')) as McpPackage & {
   files: string[];
@@ -28,7 +28,7 @@ describe('server.json for the MCP Registry', () => {
   });
 
   it('carries the schema, the required fields and the npm release it lists', () => {
-    expect(server.$schema).toBe(SERVER_SCHEMA);
+    expect(server.$schema).toBe('https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json');
     expect(server.version).toBe(pkg.version);
     expect(npm).toMatchObject({ registryType: 'npm', identifier: pkg.name, version: pkg.version, transport: { type: 'stdio' } });
   });

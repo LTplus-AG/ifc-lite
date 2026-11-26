@@ -14,7 +14,7 @@
  * `release/build.mjs` writes both; nothing here touches the file system.
  */
 
-export const SERVER_SCHEMA = 'https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json';
+const SERVER_SCHEMA = 'https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json';
 
 /** The fields of @ifc-lite/mcp's package.json these listings read. */
 export interface McpPackage {

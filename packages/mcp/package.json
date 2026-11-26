@@ -41,7 +41,7 @@
     "typecheck": "node ../../scripts/typecheck-tests.mjs",
     "dev": "pnpm exec tsc --watch",
     "start": "node dist/cli.js",
-    "release:manifests": "node release/build.mjs",
+    "release:manifests": "pnpm run build && node release/build.mjs",
     "test": "vitest run"
   },
   "dependencies": {

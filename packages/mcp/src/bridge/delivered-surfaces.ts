@@ -31,8 +31,11 @@ import { ASK_EVENT, eventToFollowUp } from '@ifc-lite/a2ui';
 import { isRecord } from './json-bounds.js';
 import { a2uiSurfaceId, type BridgeUiEvent } from './ui-events.js';
 
-/** Surface ids remembered; the oldest is forgotten past this. Well above what the tab's dock shows (3). */
-export const MAX_DELIVERED_SURFACES = 64;
+/**
+ * Surface ids remembered; the oldest is forgotten past this. The tab keeps
+ * 16 panels (agent-surfaces.ts) and one call can name several ids.
+ */
+export const MAX_DELIVERED_SURFACES = 256;
 /** Follow-up texts and event names remembered per surface, each; the oldest go first. */
 export const MAX_SURFACE_ENTRIES = 1024;
 

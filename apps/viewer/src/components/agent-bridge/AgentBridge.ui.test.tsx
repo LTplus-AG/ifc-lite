@@ -107,7 +107,7 @@ describe('pairing link (#9523)', () => {
     const text = dialog()?.textContent ?? '';
     assert.match(text, /The viewer cannot tell who made the link/);
     assert.match(text, /Whatever program is listening on 127\.0\.0\.1, port 21518, will be able to read the model\(s\) open in this tab, including unsaved edits/);
-    assert.match(text, /cannot check what that program is\. Connect only if you started ifc-lite-mcp --bridge yourself/);
+    assert.match(text, /cannot check what that program is\. Connect only if your own agent gave you this link or code/);
     assert.match(text, /the agent may send what it reads to its AI provider/);
     assert.match(text, /bSDD tools also send IFC class names to bSDD/);
     assert.match(text, /Read-only at first.*allow the agent to run command-palette actions/);
@@ -209,7 +209,7 @@ describe('connect dialog outcomes (#9523)', () => {
     render(withBim(<AgentBridgeDialog request={{ source: 'manual' }} onClose={() => {}} load={load} />));
     await waitFor(() => dialog() !== null, 'the dialog rendered');
     // P2 item 5: the agent runs the bridge; the dialog shows the one-time agent setup, not a terminal command.
-    assert.match(dialog()?.textContent ?? '', /claude mcp add ifc-lite -- npx -y @ifc-lite\/mcp --bridge/, 'the agent setup is shown');
+    assert.match(dialog()?.textContent ?? '', /claude mcp add ifc-lite -- npx -y @ifc-lite\/mcp@latest --bridge/, 'the agent setup is shown');
     click(button(/^Connect$/));
     assert.match(dialog()?.textContent ?? '', /Enter the pairing code/);
     assert.equal(loads, 0, 'invalid input loads nothing');
@@ -233,7 +233,7 @@ describe('connect dialog outcomes (#9523)', () => {
 
   for (const [code, pattern] of [
     ['pairing-failed', /did not accept this code/],
-    ['protocol-mismatch', /Update the bridge \(npx @ifc-lite\/mcp@latest --bridge\)/],
+    ['protocol-mismatch', /use @ifc-lite\/mcp@latest in your agent's MCP config/],
     ['permission-denied', /"Apps on device" in Chrome, "Device apps and services" in Firefox/],
   ] as const) {
     it(`explains ${code}`, async () => {

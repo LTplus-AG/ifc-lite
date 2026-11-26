@@ -28,7 +28,8 @@ function pageOrigin(): string {
  * (Claude Code shown; other MCP clients run the same `npx` command).
  */
 export function agentSetupCommand(origin: string = pageOrigin()): string {
-  const parts = ['claude mcp add ifc-lite -- npx -y @ifc-lite/mcp --bridge'];
+  // @latest: npx would otherwise keep running a cached older bridge.
+  const parts = ['claude mcp add ifc-lite -- npx -y @ifc-lite/mcp@latest --bridge'];
   if (origin !== DEFAULT_BRIDGE_VIEWER_URL) parts.push(`--bridge-viewer-url ${origin}`);
   return parts.join(' ');
 }

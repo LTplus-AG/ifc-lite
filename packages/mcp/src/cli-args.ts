@@ -52,7 +52,6 @@ export const MCP_BOOLEAN_FLAGS: readonly string[] = [
 
 const KNOWN_FLAGS: ReadonlySet<string> = new Set([...MCP_VALUE_FLAGS, ...MCP_BOOLEAN_FLAGS]);
 
-
 export interface CliOptions {
   files: string[];
   readOnly: boolean;
@@ -157,10 +156,7 @@ export function parseArgs(argv: string[]): CliOptions {
       const v = value(arg);
       if (v !== undefined) opts.transport = v as 'stdio' | 'http';
     }
-    else if (arg === '--port') {
-      const v = port(arg);
-      if (v !== undefined) opts.port = v;
-    }
+    else if (arg === '--port') opts.port = port(arg) ?? opts.port;
     else if (arg === '--host') opts.host = value(arg);
     else if (arg === '--token' || arg === '--read-only-token') {
       const token = value(arg);
@@ -168,17 +164,11 @@ export function parseArgs(argv: string[]): CliOptions {
     }
     else if (arg === '--bsdd') opts.bsdd = value(arg);
     else if (arg === '--viewer') opts.autoViewer = true;
-    else if (arg === '--viewer-port') {
-      const v = port(arg);
-      if (v !== undefined) opts.viewerPort = v;
-    }
+    else if (arg === '--viewer-port') opts.viewerPort = port(arg) ?? opts.viewerPort;
     else if (arg === '--open') { opts.autoViewer = true; opts.openBrowser = true; }
     else if (arg === '--bridge') opts.bridge = true;
     else if (arg === '--channel') opts.channel = true;
-    else if (arg === '--bridge-port') {
-      const v = value(arg);
-      if (v !== undefined) opts.bridgePort = Number(v);
-    }
+    else if (arg === '--bridge-port') opts.bridgePort = port(arg);
     else if (arg === '--bridge-viewer-url') opts.bridgeViewerUrl = value(arg);
     else if (arg === '--allow') {
       const path = value(arg);
@@ -208,9 +198,6 @@ export function bridgeConflict(opts: CliOptions): string | null {
   if (opts.files.length > 0) return `--bridge serves the model open in a browser tab and loads no files; drop ${opts.files.join(', ')}.`;
   if (opts.transport !== 'stdio') return '--bridge speaks MCP over stdio only; drop --transport http.';
   if (opts.autoViewer) return '--bridge cannot be combined with --viewer or --open: the browser tab is the viewer.';
-  if (opts.bridgePort !== undefined && (!Number.isInteger(opts.bridgePort) || opts.bridgePort < 0 || opts.bridgePort > 65535)) {
-    return '--bridge-port must be an integer from 0 to 65535 (0 picks a free port).';
-  }
   return null;
 }
 

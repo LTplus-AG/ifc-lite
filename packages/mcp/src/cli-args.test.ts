@@ -95,7 +95,7 @@ describe('--bridge (#9523)', () => {
     expect(bridgeConflict(parseArgs(['--bridge', 'model.ifc']))).toMatch(/loads no files/);
     expect(bridgeConflict(parseArgs(['--bridge', '--transport', 'http']))).toMatch(/stdio only/);
     expect(bridgeConflict(parseArgs(['--bridge', '--viewer']))).toMatch(/--viewer/);
-    expect(bridgeConflict(parseArgs(['--bridge', '--bridge-port', 'abc']))).toMatch(/--bridge-port/);
+    expect(parseArgs(['--bridge', '--bridge-port', 'abc']).errors).toEqual(["--bridge-port must be an integer from 0 to 65535, got 'abc'."]);
     expect(bridgeConflict(parseArgs(['--transport', 'http']))).toBeNull();
   });
 });

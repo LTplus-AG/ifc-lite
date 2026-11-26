@@ -244,7 +244,7 @@ async function runHttp(opts: CliOptions, tag: string): Promise<RunningHttpCli | 
     process.stderr.write(
       // The count, not the values: a mistyped flag (`--tokn secret`) leaves
       // its value here as a positional, and it must not land in a log.
-      `${tag} --transport http does not preload files (${opts.files.length} file argument${opts.files.length === 1 ? '' : 's'} given): each session starts empty and the agent ` +
+      `${tag} --transport http does not preload files (${opts.files.length} file argument(s) given): each session starts empty and the agent ` +
       'loads a model with model_load. Drop the file arguments, and pass --allow <dir> to bound what it can load.\n',
     );
     process.exitCode = 2;

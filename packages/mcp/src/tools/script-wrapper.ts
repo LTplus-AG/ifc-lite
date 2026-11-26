@@ -192,8 +192,14 @@ export function wrapScript(code: string): string {
   // its depth-capped copy) and whose parse first scans nesting depth.
   function depthOf(text) {
     var depth = 0, top = 0, inString = false, n = text.length;
+    // Each level takes at least one character, so short text cannot be too deep.
+    if (n <= L.maxDepth) return 0;
+    // One argument array, reused: its index is an own property, so no
+    // Array.prototype setter can intercept the writes.
+    var at = [0];
     for (var p = 0; p < n; p++) {
-      var ch = apply(charCodeAt, text, [p]);
+      at[0] = p;
+      var ch = apply(charCodeAt, text, at);
       if (inString) {
         if (ch === 92) p++;
         else if (ch === 34) inString = false;

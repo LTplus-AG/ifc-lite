@@ -10,7 +10,7 @@ use super::attrs::{attr_names, named_attribute};
 use crate::step_text::quoted;
 use super::lines::split_args;
 use super::pass::Pass;
-use super::refilter::{filter_created_line, Filtered};
+use super::refilter::filter_log_line;
 use super::retype::retype_tokens;
 use super::values::{attribute_slot, positional_override, Unwritable};
 
@@ -110,15 +110,10 @@ pub(crate) fn write_created(pass: &mut Pass<'_, '_>) -> Result<(), Unwritable> {
             args_text = overrides(pass, id, &args_text, &upper, &positionals)?;
         }
         let Some(line) = super::cow::detach(pass, id, format!("#{id}={upper}({args_text});")) else { continue };
-        let filtered = {
-            let excluded = |r: u32| pass.is_omitted(r);
-            filter_created_line(&line, id, &upper, pass.schema, &excluded, !pass.overlay.tombstones.is_empty())
-        };
-        let line = match filtered {
-            Filtered::Keep => line,
-            Filtered::Rewrite(l) => l,
-            Filtered::Withhold(w) => {
-                pass.warnings.push(w);
+        let line = match filter_log_line(pass, line, id, &upper) {
+            Ok(line) => line,
+            Err(warning) => {
+                pass.warnings.push(warning);
                 continue;
             }
         };

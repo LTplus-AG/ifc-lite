@@ -48,7 +48,7 @@ pub(crate) struct Pass<'s, 'a> {
     pub(crate) created_lines: Vec<(u32, String)>,
     pub(crate) new_entity_count: usize,
     /// Source lines the log rewrites, with what each carries.
-    pub(crate) mutated_lines: HashMap<u32, (Option<String>, Delivery)>,
+    pub(crate) mutated_lines: HashMap<u32, (Result<String, String>, Delivery)>,
     pub(crate) warnings: Vec<String>,
     pub(super) ids: crate::step_ids::IdAllocator,
     owner_history_of: HashMap<u32, Option<u32>>,

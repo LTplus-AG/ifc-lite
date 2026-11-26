@@ -44,6 +44,8 @@ export function RepositionRuntimeHost() {
   const [distance, setDistance] = useState('');
   const [role, setRole] = useState<PickRole>(null);
   const align = useTwoPointAlign({ selected, reference, setRole, setError });
+  const { active: alignActive, apply: applyAlignment } = align;
+  const alignmentReady = align.result?.ok === true;
   const hover = useRepositionPicking(role, setRole, setError, reference, align.active ? align.capture : undefined);
   // Choosing the ordinary source/target pick leaves the two-point align.
   const pickRole = useCallback((next: PickRole) => { if (next !== null && align.active) align.cancel(); setRole(next); }, [align]);
@@ -83,7 +85,8 @@ export function RepositionRuntimeHost() {
     const eligibleTarget = (event: KeyboardEvent) => !isTextEntryTarget(event) && !isPressableTarget(event);
     const removeApply = registerKeyboardCommand('reposition.apply', (event) => {
       if (!eligibleTarget(event)) return false;
-      apply();
+      if (!alignActive) apply();
+      else if (alignmentReady) applyAlignment();
     }, { ignoreModifiers: true });
     const removeConstrain = registerKeyboardCommand('reposition.constrain', (event) => {
       if (!eligibleTarget(event) || event.ctrlKey || event.metaKey) return false;
@@ -105,7 +108,7 @@ export function RepositionRuntimeHost() {
       });
     }, { ignoreModifiers: true });
     return () => { removeCancel(); removeApply(); removeConstrain(); removeNudge(); };
-  }, [apply, ensurePreview, run]);
+  }, [alignActive, alignmentReady, apply, applyAlignment, ensurePreview, run]);
 
   const chooseModels = useCallback((ids: readonly string[]) => run(() => {
     useViewerStore.getState().openReposition(ids); setSelected(ids); setRole(null);

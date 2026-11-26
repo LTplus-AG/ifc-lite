@@ -13,7 +13,7 @@ import type { GeometryResult } from '@ifc-lite/geometry';
 import type { Renderer } from '@ifc-lite/renderer';
 import { convergeFederationRtcFrame } from '@/hooks/ingest/federationRtcRebase';
 import { setGlobalRendererRef } from '@/lib/renderer-ref';
-import { render, cleanup, click } from '@/test/render';
+import { render, cleanup, click, press } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import { emptyPlacementState, placementFor } from '@/lib/model-placement/state';
@@ -61,6 +61,14 @@ describe('two-point align panel (#11505)', () => {
   });
   afterEach(() => { cleanup(); setGlobalRendererRef({ current: null }); });
 
+  function pressCanvasEnter() {
+    const canvas = ui.querySelector('canvas') ?? ui.appendChild(document.createElement('canvas'));
+    canvas.tabIndex = -1;
+    canvas.focus();
+    assert.equal(document.activeElement, canvas);
+    press(canvas, 'Enter');
+  }
+
   it('walks the four prompts in order and enables Apply only once the result exists', () => {
     click(button(ui, 'Two-point align'));
     assert.equal(promptText(ui), 'Pick A on the moving models.');
@@ -99,6 +107,38 @@ describe('two-point align panel (#11505)', () => {
     assert.deepEqual(placementFor(useViewerStore.getState().modelPlacement, 'ifc').translation, [0, 0, 0]);
   });
 
+  it('uses canvas Enter to apply the displayed alignment instead of the pending move (#11629)', () => {
+    act(() => useViewerStore.getState().previewModelTranslation([5, 0, 0]));
+    click(button(ui, 'Two-point align'));
+    pickAll([5, 0, 0], [20, 0, 0], [15, 0, 0], [20, 10, 0]);
+    assert.match(readoutText(ui), /Rotation \+90\.00°/);
+
+    pressCanvasEnter();
+    const state = useViewerStore.getState().modelPlacement;
+    const placed = placementFor(state, 'ifc');
+    assert.equal(state.undo.length, 1);
+    assert.equal(placed.rotation.angle, Math.PI / 2);
+    assert.deepEqual(placed.translation, [20, 0, 0]);
+  });
+
+  it('leaves the pending move uncommitted when canvas Enter has no valid alignment (#11629)', () => {
+    act(() => useViewerStore.getState().previewModelTranslation([5, 0, 0]));
+    click(button(ui, 'Two-point align'));
+    pressCanvasEnter();
+    assert.equal(useViewerStore.getState().modelPlacement.undo.length, 0);
+    pickAll([5, 0, 0], [20, 0, 0], [5, 0, 0], [20, 10, 0]);
+    pressCanvasEnter();
+    const state = useViewerStore.getState().modelPlacement;
+    assert.equal(state.undo.length, 0);
+    assert.deepEqual(state.preview?.delta, [5, 0, 0]);
+
+    click(button(ui, 'Cancel align'));
+    pressCanvasEnter();
+    const applied = useViewerStore.getState().modelPlacement;
+    assert.equal(applied.undo.length, 1);
+    assert.deepEqual(placementFor(applied, 'ifc').translation, [5, 0, 0]);
+  });
+
   it('warns when B lands over 10 mm off B-prime and lists the ratio when lengths differ by over 0.1%', () => {
     click(button(ui, 'Two-point align'));
     pickAll([0, 0, 0], [0, 0, 0], [10, 0, 0], [10.05, 0, 0]);
@@ -117,14 +157,41 @@ describe('two-point align panel (#11505)', () => {
     assert.equal(button(ui, 'Apply alignment').disabled, true);
   });
 
-  it('copies exactly the displayed readout lines', async () => {
+  it('copies the displayed readout and clears its status when the points change (#11629)', async ({ mock }) => {
     const written: string[] = [];
-    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (text: string) => { written.push(text); } } });
+    mock.method(navigator.clipboard, 'writeText', async (text: string) => { written.push(text); });
     click(button(ui, 'Two-point align'));
     pickAll([0, 0, 0], [3, 4, 5], [10, 0, 0], [13, 4, 5]);
     await act(async () => { click(button(ui, 'Copy transformation')); });
     assert.deepEqual(written, [[...ui.querySelectorAll('[aria-label="Alignment result"] p')].map((p) => p.textContent).join('\n')]);
     assert.match(written[0], /^Rotation 0\.00° \(about A\)\nMove ΔX 3\.000 · ΔY 4\.000 · ΔZ 5\.000 m\nCheck: B lands 0 mm from B′ ✓$/);
+    assert.match(ui.textContent ?? '', /Transformation copied/);
+
+    click(button(ui, 'Pick again'));
+    pickAll([0, 0, 0], [7, 0, 0], [10, 0, 0], [17, 0, 0]);
+    assert.match(readoutText(ui), /ΔX 7\.000/);
+    assert.doesNotMatch(ui.textContent ?? '', /Transformation copied/);
+    assert.equal(written.length, 1);
+    await act(async () => { click(button(ui, 'Copy transformation')); });
+    assert.match(written[1], /ΔX 7\.000/);
+    assert.match(ui.textContent ?? '', /Transformation copied/);
+  });
+
+  it('keeps newer copy feedback when an earlier clipboard write settles after repicking (#11629)', async ({ mock }) => {
+    let finishFirst!: () => void;
+    const firstWrite = new Promise<void>((resolve) => { finishFirst = resolve; });
+    mock.method(navigator.clipboard, 'writeText', (text: string) =>
+      text.includes('ΔX 3.000') ? firstWrite : Promise.resolve());
+
+    click(button(ui, 'Two-point align'));
+    pickAll([0, 0, 0], [3, 0, 0], [10, 0, 0], [13, 0, 0]);
+    click(button(ui, 'Copy transformation'));
+    click(button(ui, 'Pick again'));
+    pickAll([0, 0, 0], [7, 0, 0], [10, 0, 0], [17, 0, 0]);
+    await act(async () => { click(button(ui, 'Copy transformation')); });
+    assert.match(ui.textContent ?? '', /Transformation copied/);
+
+    await act(async () => { finishFirst(); });
     assert.match(ui.textContent ?? '', /Transformation copied/);
   });
 

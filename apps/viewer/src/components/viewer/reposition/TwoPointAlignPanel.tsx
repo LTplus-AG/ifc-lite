@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { useRepositionRuntime } from '@/lib/model-placement/reposition-runtime';
 import { buildAlignReadout } from '@/lib/model-placement/two-point-align-readout';
 import { ALIGN_REFUSAL_KEYS, ALIGN_STEPS, type AlignStep } from '@/lib/model-placement/two-point-align-session';
+import type { TwoPointAlignment } from '@/lib/model-placement/two-point-align';
 
 const PROMPT_KEYS: Record<AlignStep, TranslationKey> = {
   a: 'repositionPanel.twoPoint.promptA',
@@ -23,10 +24,15 @@ const PROMPT_KEYS: Record<AlignStep, TranslationKey> = {
 };
 const STEP_LABELS: Record<AlignStep, string> = { a: 'A', aPrime: 'A′', b: 'B', bPrime: 'B′' };
 
+interface CopyFeedback {
+  alignment: TwoPointAlignment;
+  status: 'ok' | 'failed' | null;
+}
+
 export function TwoPointAlignPanel() {
   const { t } = useTranslation();
   const runtime = useRepositionRuntime();
-  const [copied, setCopied] = useState<'ok' | 'failed' | null>(null);
+  const [copyFeedback, setCopyFeedback] = useState<CopyFeedback | null>(null);
   const align = runtime?.align;
   if (!runtime || !align) return null;
 
@@ -41,11 +47,17 @@ export function TwoPointAlignPanel() {
   }
 
   const solved = align.result;
-  const readout = solved?.ok ? buildAlignReadout(solved.alignment, t) : null;
+  const alignment = solved?.ok ? solved.alignment : null;
+  const readout = alignment ? buildAlignReadout(alignment, t) : null;
+  const copied = copyFeedback?.alignment === alignment ? copyFeedback.status : null;
   const copy = async () => {
-    if (!readout) return;
-    try { await navigator.clipboard.writeText(readout.lines.join('\n')); setCopied('ok'); }
-    catch { setCopied('failed'); }
+    if (!alignment || !readout) return;
+    const request: CopyFeedback = { alignment, status: null };
+    setCopyFeedback(request);
+    let status: CopyFeedback['status'] = 'ok';
+    try { await navigator.clipboard.writeText(readout.lines.join('\n')); }
+    catch { status = 'failed'; }
+    setCopyFeedback((current) => current === request ? { alignment, status } : current);
   };
   return <fieldset className="space-y-1 border-t pt-2">
     <legend className="font-medium">{t('repositionPanel.twoPoint.legend')}</legend>

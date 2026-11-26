@@ -482,6 +482,8 @@ describe('ifc-lite-mcp install: dry run and usage errors', () => {
     [['--client', 'cursor', ''], 'empty argument'],
     [['--client', 'cursor', '--', '--allow', ''], '--allow needs a value'],
     [['--client', 'cursor', '--', '--token', 'abc'], 'for --transport http'],
+    [['--client', 'cursor', '--', '--read-only-token', 'abc'], 'for --transport http'],
+    [['--client', 'cursor', '--', '--transport', 'invalid'], '--transport must be stdio or http'],
     [['--client', 'cursor', '--', '--insecure'], 'only act with'],
     [['--client', 'cursor', '--', '--read-only=true'], 'with a space'],
     [['--client', 'cursor', '--', '--allow', '--read-only'], '--allow needs a value'],

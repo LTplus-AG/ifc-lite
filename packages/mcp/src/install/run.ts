@@ -30,7 +30,7 @@ import {
 import { describeEntry, mergeServer } from './merge.js';
 import { serverCommand } from './pin.js';
 import { checkServerArgs, EXIT_FLAGS } from './server-args.js';
-import { isMcpValueFlag, MCP_BOOLEAN_FLAGS } from '../cli-args.js';
+import { MCP_BOOLEAN_FLAGS, MCP_VALUE_FLAGS } from '../cli-args.js';
 import { nodeInstallIo, note, type InstallIo } from './io.js';
 
 const CLIENT_IDS = Object.keys(CLIENTS);
@@ -99,7 +99,7 @@ function parseInstallArgs(argv: string[], host: HostEnv): InstallArgs | 'help' {
       if (EXIT_FLAGS.includes(arg)) throw new InstallError(`${arg} is not an install option.`);
       const own = arg.match(/^(--(?:client|scope|name))=/);
       if (own) throw new InstallError(`Write ${own[1]} <value>, with a space.`);
-      const serverFlag = isMcpValueFlag(arg) || MCP_BOOLEAN_FLAGS.includes(arg);
+      const serverFlag = MCP_VALUE_FLAGS.includes(arg) || MCP_BOOLEAN_FLAGS.includes(arg);
       throw new InstallError(serverFlag ? `${arg} is a server flag; put it after --, e.g. -- ${arg}.` : `Unknown option ${arg}.`);
     } else files.push(arg);
   }

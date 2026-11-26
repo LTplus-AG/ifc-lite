@@ -8,13 +8,13 @@
  * here, because once written it fails silently at every client launch.
  */
 
-import { bridgeConflict, isMcpValueFlag, MCP_BOOLEAN_FLAGS, parseArgs } from '../cli-args.js';
+import { bridgeConflict, MCP_BOOLEAN_FLAGS, MCP_VALUE_FLAGS, parseArgs } from '../cli-args.js';
 import { InstallError, pathFor, type HostEnv } from './clients.js';
 import { DEFAULT_BRIDGE_VIEWER_URL } from '../bridge/bridge-protocol.js';
 import { isInsecureRemoteOrigin, normalizeOrigin } from '../bridge/guards.js';
 
 /** Read only by the HTTP transport, which an installed server never runs. */
-const HTTP_ONLY_FLAGS = ['--port', '--host', '--token'];
+const HTTP_ONLY_FLAGS = ['--port', '--host', '--token', '--read-only-token'];
 /** Server flags that print and exit; `--help`/`-h` are install's own. */
 export const EXIT_FLAGS = ['--help', '-h', '--version', '-v'];
 /** Value flags that only act next to another flag. */
@@ -28,6 +28,7 @@ const NEEDS: Record<string, { flag: string; ok: (o: ReturnType<typeof parseArgs>
 export function checkServerArgs(argv: string[], host: HostEnv): { args: string[]; hasPaths: boolean } {
   const { args, hasPaths } = walk(argv, host);
   const parsed = parseArgs(args);
+  if (parsed.errors.length > 0) throw new InstallError(parsed.errors.join(' '));
   if (parsed.transport !== 'stdio') {
     throw new InstallError('Clients start ifc-lite-mcp over stdio; drop --transport. For HTTP, give the client the server URL.');
   }
@@ -91,10 +92,10 @@ function walk(args: string[], host: HostEnv): { args: string[]; hasPaths: boolea
       if (!host.isFile(model)) throw new InstallError(`No model file at ${model}.`);
       out.push(model);
     } else if (arg.includes('=')) {
-      throw new InstallError(`The server reads ${arg.split('=')[0]} <value>, with a space; it would ignore ${arg}.`);
+      throw new InstallError(`Install expects ${arg.split('=')[0]} <value>, with a space.`);
     } else if (HTTP_ONLY_FLAGS.includes(arg)) {
       throw new InstallError(`${arg} is for --transport http; clients start the server over stdio.`);
-    } else if (isMcpValueFlag(arg)) {
+    } else if (MCP_VALUE_FLAGS.includes(arg)) {
       const value = args[i + 1];
       if (!value || value.startsWith('-')) throw new InstallError(`${arg} needs a value.`);
       i++;

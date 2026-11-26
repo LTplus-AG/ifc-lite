@@ -565,3 +565,67 @@ fn c4_6b_column_class_wins_over_mismatched_keyword() {
     assert_eq!(d.site_position, Some((7, 0, bytes.len())));
     assert_eq!(d.buffered_jobs, [(7, 0, bytes.len(), ifc_lite_core::IfcType::IfcSite)]);
 }
+
+/// The facts `observe_sparse_columns` collects from a whole-file shard scan's columns, and the record count.
+fn column_facts(bytes: &[u8]) -> (super::super::sparse_facts::SparseFacts, usize) {
+    let scan = ifc_lite_processing::scan_shard_result(bytes, 0, bytes.len(), true);
+    let ids: Vec<_> = scan.records.iter().map(|r| r.0).collect();
+    let starts: Vec<_> = scan.records.iter().map(|r| r.1 as u32).collect();
+    let lengths: Vec<_> = scan.records.iter().map(|r| (r.2 - r.1) as u32).collect();
+    let mut discovery = ColumnsDiscovery::default();
+    discovery.observe_sparse_columns(bytes, &ids, &starts, &lengths, &scan.classes.unwrap());
+    (discovery.sparse.expect("facts collected"), ids.len())
+}
+
+/// Out-of-core on the sharded pre-pass: the facts the columns give (`observe_sparse_columns`) are the facts the
+/// serial scan gives, record for record, so a sharded load ships the serial `sparse-facts` event.
+fn assert_sparse_facts_match_serial(name: &str, bytes: &[u8]) {
+    use ifc_lite_core::EntityScanner;
+    let mut serial = super::super::sparse_facts::SparseFacts::default();
+    let mut scanner = EntityScanner::new(bytes);
+    while let Some((id, kw, start, end)) = scanner.next_entity() {
+        serial.observe(bytes, id, kw, start, end);
+    }
+    let (columns, _) = column_facts(bytes);
+    let index = ifc_lite_core::build_entity_index(bytes);
+    let lookup = |id: u32| index.get(&id).copied();
+    assert_eq!(columns.preamble(bytes, lookup), serial.preamble(bytes, lookup), "{name}: preamble");
+    assert_eq!(columns.inverse_targets, serial.inverse_targets, "{name}: inverse targets");
+    assert_eq!(columns.inverse_referrers, serial.inverse_referrers, "{name}: inverse referrers");
+    for indexed in [index.len(), index.len() + 1] {
+        assert_eq!(columns.refusal(indexed), serial.refusal(indexed), "{name}: refusal");
+    }
+}
+
+#[test]
+fn sharded_sparse_facts_match_the_serial_scan_on_every_fact() {
+    let bytes = b"ISO-10303-21;\nHEADER;FILE_NAME('#9=IFCGRID($);');ENDSEC;\nDATA;\n\
+#1=IFCPROJECT('p',$,$,$,$,$,$,(#2),$);\n#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#3,$);\n\
+#3=IFCAXIS2PLACEMENT3D(#4,$,$);\n#4=IFCCARTESIANPOINT((0.,0.,0.));\n\
+#5=IfcGeometricRepresentationSubContext('Body','Model',*,*,*,*,#2,$,.MODEL_VIEW.,$);\n\
+#6=IFCSITE('s',$,$,$,$,$,$,$,$,$,$,$,$,$);\n#7=IFCGRID('g',$,$,$,$,$,$,(),(),$,$);\n\
+#8=IFCINDEXEDCOLOURMAP(#20,$,#21,(1));\n#9=IFCINDEXEDTRIANGLETEXTUREMAP((#22),#23,#24,$);\n\
+#10=IFCWALL('w',$,$,$,$,$,$,$,$);\n#10=IFCSLAB('dup',$,$,$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n";
+    assert_sparse_facts_match_serial("synthetic", bytes);
+    let mut fill = bytes.to_vec();
+    let at = fill.windows(6).position(|w| w == b"ENDSEC").unwrap_or(0);
+    let at = fill[at + 6..].windows(6).position(|w| w == b"ENDSEC").map(|p| p + at + 6).unwrap();
+    fill.splice(at..at, b"#30=IFCANNOTATIONFILLAREA(#4,$);\n".iter().copied());
+    assert_sparse_facts_match_serial("synthetic with a fill area", &fill);
+    let (facts, records) = column_facts(&fill);
+    assert_eq!(facts.refusal(records), Some("annotation fill areas"));
+}
+
+#[test]
+fn sharded_sparse_facts_match_the_serial_scan_on_the_committed_fixtures() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../processing/tests/fixtures");
+    let mut seen = 0;
+    for entry in std::fs::read_dir(dir).expect("processing fixtures") {
+        let path = entry.unwrap().path();
+        if path.extension().is_some_and(|ext| ext == "ifc") {
+            assert_sparse_facts_match_serial(&path.display().to_string(), &std::fs::read(&path).unwrap());
+            seen += 1;
+        }
+    }
+    assert!(seen >= 10, "the fixture corpus is the evidence: {seen} files");
+}

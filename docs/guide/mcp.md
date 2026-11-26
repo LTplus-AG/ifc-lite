@@ -14,7 +14,7 @@ source snapshot rather than pending mutation overlays.
 
 ### stdio (local agents)
 
-The default transport is stdio, the mode Claude Desktop and Cursor expect. Pass one or more IFC files as positional arguments and they are preloaded into the model registry:
+The default transport is stdio, the mode Claude Desktop and Cursor expect. Pass one or more IFC files as positional arguments and they are preloaded into the model registry. Each gets a `model_id` derived from the file name: the `.ifc`/`.ifcxml`/`.ifczip` extension dropped and runs of characters outside `a-z A-Z 0-9 _ -` replaced by `_`, lowercased (`Tower A.ifc` becomes `tower_a`; `model_list` shows the ids); a second file with the same name gets `_2` (`model`, `model_2`), and a file passed twice loads once:
 
 ```bash
 # Single model over stdio
@@ -37,24 +37,21 @@ You can also invoke the package directly with `npx @ifc-lite/mcp ./model.ifc`. B
 The Streamable HTTP transport serves remote agents:
 
 ```bash
-ifc-lite mcp ./model.ifc --transport http --port 8765 --token $API_TOKEN
+ifc-lite mcp --transport http --port 8765 --token $API_TOKEN --allow ./models
 ```
 
-!!! warning "HTTP sessions start with an empty registry"
-    In `--transport http` mode the positional files are **not** preloaded. Every
-    HTTP session gets its own fresh, empty model registry. The agent loads a
-    model into its session with the `model_load` tool, which needs `mutate`
-    scope, so it is hidden under `--read-only`. Only the default `stdio`
-    transport preloads the files you pass on the command line. This isolation is
-    deliberate: two sessions that load different files which derive the same
-    internal id never alias each other's state.
+!!! note "HTTP sessions start empty"
+    In `--transport http` mode every session gets its own fresh, empty model
+    registry, so sessions never share edits. The agent loads a model with
+    `model_load`, which needs only `read` scope, so it also works under
+    `--read-only` and with a read-only token. `--allow` bounds which files it
+    can open. File arguments load nothing over HTTP (the server warns and
+    starts): preloading would cost one parse and one resident copy per session.
+    Without `--allow`, `model_load` reads, and tools that write files write,
+    under the working directory, the system temp directory and the
+    directories of loaded models.
 
-    A corollary: `--read-only` combined with `--transport http` produces
-    sessions that have no way to load a model at all (the registry starts
-    empty and `model_load` is hidden). For read-only serving of preloaded
-    files, use the `stdio` transport.
-
-By default the server binds `127.0.0.1`. Binding a non-loopback host requires either a `--token` (which becomes the bearer token for full scope) or the `--insecure` flag for development only. The token travels as a plaintext `Authorization` header: the CLI itself serves plain HTTP, so any non-loopback deployment must sit behind a TLS-terminating reverse proxy (nginx, Caddy, a cloud load balancer), or the bearer token is readable by anyone on the network path.
+By default the server binds `127.0.0.1`. Binding a non-loopback host requires either a token (`--token` gets full scope, or the `--read-only` preset under `--read-only`; `--read-only-token` always gets the `--read-only` preset, see the option table) or the `--insecure` flag for development only. The token travels as a plaintext `Authorization` header: the CLI itself serves plain HTTP, so any non-loopback deployment must sit behind a TLS-terminating reverse proxy (nginx, Caddy, a cloud load balancer), or the bearer token is readable by anyone on the network path.
 
 ### Flags
 
@@ -62,12 +59,13 @@ By default the server binds `127.0.0.1`. Binding a non-loopback host requires ei
 |------|-------------|
 | `--transport <t>` | `stdio` (default) or `http` |
 | `--port <N>` | HTTP port (default 8765) |
-| `--host <h>` | HTTP host (default 127.0.0.1; non-loopback requires `--token` or `--insecure`) |
-| `--token <bearer>` | HTTP bearer token that maps to full scope |
+| `--host <h>` | HTTP host (default 127.0.0.1; non-loopback requires `--token`, `--read-only-token` or `--insecure`) |
+| `--token <bearer>` | HTTP bearer token (repeatable). Full scope, or the `--read-only` preset under `--read-only` |
+| `--read-only-token <bearer>` | HTTP bearer token with the `--read-only` preset (repeatable) |
 | `--insecure` | Allow a non-loopback bind without a token (development only). With `--bridge`: accept a plain-`http` origin on a non-loopback host, with a warning |
-| `--read-only` | Hide mutation tools |
+| `--read-only` | Hide mutation tools. Loading and unloading models still works, and export and flow-checkpoint tools still write files under the allowed roots (`--allow`, or the working, temp and model directories without it) |
 | `--bsdd <url>` | Override the bSDD endpoint |
-| `--allow <path>` | Restrict file-system access (repeatable) |
+| `--allow <path>` | Restrict file-system access, over stdio and HTTP (repeatable) |
 | `--viewer` | Auto-open the 3D viewer |
 | `--viewer-port <N>` | Preferred viewer port (0 = auto) |
 | `--open` | Auto-open the viewer **and** open its URL in the browser |
@@ -76,21 +74,23 @@ By default the server binds `127.0.0.1`. Binding a non-loopback host requires ei
 | `--bridge-viewer-url <url>` | Base of the pairing link (default `https://ifclite.com`). Its origin replaces the default in the allowlist |
 | `--allow-origin <origin>` | HTTP: let a browser origin read responses. Bridge: an extra origin that may connect (repeatable) |
 
+An unknown flag prints a warning on stderr and is otherwise ignored, so a config written for another version still starts, unless that flag took a value: the value is then read as a file. `--flag=value` works for every value flag. A value flag with no value (`--token --read-only`) is a usage error: the server exits with code 2 rather than guess. `--federate` is accepted for the same reason and does nothing: every file passed already loads into one session.
+
 ## Scopes and permissions
 
 Every tool declares the scope a caller needs. At `tools/list` time the server filters the advertised set by the session's scope, so an agent never even sees a tool it is not allowed to call, which keeps it from attempting a forbidden operation.
 
 | Scope | Grants |
 |-------|--------|
-| `read` | Discovery, query, geometry metrics, viewer reads |
+| `read` | Discovery (including loading and unloading models), query, geometry metrics, viewer reads |
 | `validate` | IDS validation, model audit |
 | `export` | Data and geometry export |
-| `mutate` | Property/attribute edits, entity create/delete, model load/save |
+| `mutate` | Property/attribute edits, entity create/delete, model save |
 | `admin` | All of the above |
 
 Two presets ship out of the box:
 
-- **Full access** (`read`, `validate`, `mutate`, `export`, `admin`) is the default.
+- **Full access** (`read`, `validate`, `mutate`, `export`, `admin`) is the default over stdio and for a `--token`. An HTTP caller without a token gets everything except `admin`.
 - **Read-only** (`read`, `validate`, `export`) is what `--read-only` selects; it omits `mutate`.
 
 A scope can also carry an optional `modelIds` allowlist to restrict a session to specific models.
@@ -621,7 +621,7 @@ the server's PATH includes that installation's bin directory.
 
 === "Claude Desktop"
 
-    Add the server to `claude_desktop_config.json`:
+    Add the server to `claude_desktop_config.json` (`~/Library/Application Support/Claude/` on macOS, `%APPDATA%\Claude\` on Windows):
 
     ```json
     {
@@ -642,7 +642,7 @@ the server's PATH includes that installation's bin directory.
     at it with the bearer token:
 
     ```bash
-    ifc-lite mcp ./model.ifc --transport http --port 8765 --token my-secret
+    ifc-lite mcp --transport http --port 8765 --token my-secret --allow ./models
     ```
 
     ```
@@ -650,7 +650,7 @@ the server's PATH includes that installation's bin directory.
     Header:     Authorization: Bearer my-secret
     ```
 
-    Remember to call `model_load` first: an HTTP session starts empty.
+    Each session starts empty: call `model_load` first.
 
 Cursor, Windsurf, Goose, and Zed all accept the same `npx @ifc-lite/mcp <file>` stdio command.
 

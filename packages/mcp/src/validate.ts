@@ -87,7 +87,8 @@ interface WalkOptions {
   fillDefaults: boolean;
 }
 
-const CONST_MISMATCH = 'Expected constant ';
+/** `const` failures, so `checkOneOf` can tell a wrong discriminator from a real problem. */
+const constMismatches = new WeakSet<ValidationIssue>();
 
 function walk(schema: JsonSchema, input: unknown, path: string, errors: ValidationIssue[], opts: WalkOptions): unknown {
   if (typeof schema.$ref === 'string') schema = resolveRef(schema, opts.root);
@@ -100,7 +101,9 @@ function walk(schema: JsonSchema, input: unknown, path: string, errors: Validati
     errors.push({ path, message: `Expected one of ${JSON.stringify(schema.enum)}; got ${JSON.stringify(input)}` });
   }
   if (schema.const !== undefined && !sameValue(schema.const, input)) {
-    errors.push({ path, message: `${CONST_MISMATCH}${JSON.stringify(schema.const)}; got ${JSON.stringify(input)}` });
+    const issue = { path, message: `Expected constant ${JSON.stringify(schema.const)}; got ${JSON.stringify(input)}` };
+    constMismatches.add(issue);
+    errors.push(issue);
   }
 
   const types = Array.isArray(schema.type) ? schema.type : (schema.type ? [schema.type] : []);
@@ -151,9 +154,8 @@ function walk(schema: JsonSchema, input: unknown, path: string, errors: Validati
     }
     const extra = schema.additionalProperties;
     if (extra === false || (typeof extra === 'object' && extra !== null)) {
-      const allowed = new Set(Object.keys(schema.properties ?? {}));
       for (const key of Object.keys(obj)) {
-        if (allowed.has(key)) continue;
+        if (own(schema.properties ?? {}, key) !== undefined) continue;
         if (extra === false) errors.push({ path: `${path}.${key}`, message: 'Unexpected property' });
         else defineData(result, key, walk(extra, obj[key], `${path}.${key}`, errors, opts));
       }
@@ -231,7 +233,7 @@ function checkOneOf(branches: JsonSchema[], input: unknown, path: string, errors
     errors.push({ path, message: `Expected input at '${path}' to match exactly one oneOf branch; it matches ${matched}` });
     return;
   }
-  const discriminated = branchErrors.filter((b) => !b.some((e) => e.message.startsWith(CONST_MISMATCH)));
+  const discriminated = branchErrors.filter((b) => !b.some((e) => constMismatches.has(e)));
   const candidates = discriminated.length > 0 ? discriminated : branchErrors;
   const fewest = Math.min(...candidates.map((b) => b.length));
   const closest = candidates.filter((b) => b.length === fewest).slice(0, 3);

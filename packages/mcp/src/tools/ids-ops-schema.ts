@@ -32,7 +32,7 @@ function refName(schema: JsonSchema | undefined): string | undefined {
 /** `spec.add: specId, name, ifcVersions [index, description, …]` */
 function kindLine(kind: string, defs: Defs): string {
   const payload = defs[`Op_${kind.replace(/\./g, '_')}`]?.properties?.payload;
-  if (!payload) throw new Error(`ids ops schema has no payload for ${kind}`);
+  if (!payload) fail(`no payload for ${kind}`);
   const fields = Object.keys(payload.properties ?? {});
   const required = payload.required ?? [];
   const optional = fields.filter((f) => !required.includes(f));
@@ -50,12 +50,16 @@ function branchShape(schema: JsonSchema): string {
   return `{${parts.join(', ')}}`;
 }
 
+function fail(message: string): never {
+  throw new Error(`ids ops schema: ${message}`);
+}
+
 function legendLine(name: string, defs: Defs): string {
   const def = defs[name];
-  if (!def) throw new Error(`ids ops schema has no $def ${name}`);
+  if (!def) fail(`no $def ${name}`);
   if (Array.isArray(def.enum)) return `${name} = ${def.enum.map((v) => JSON.stringify(v)).join(' | ')}`;
   const branches = Array.isArray(def.oneOf) ? (def.oneOf as JsonSchema[]) : [];
-  return `${name} = ${branches.map((b) => branchShape(defs[refName(b) ?? ''] ?? b)).join(' | ')}`;
+  return `${name} = ${branches.map((b) => branchShape(defs[refName(b) ?? ''] ?? fail(`unresolved branch of ${name}`))).join(' | ')}`;
 }
 
 function payloadDescription(defs: Defs): string {

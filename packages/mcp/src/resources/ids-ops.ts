@@ -7,6 +7,8 @@ import { IDS_OPS_SCHEMA_URI } from '../tools/ids-ops-schema.js';
 import type { ResourceProvider } from './types.js';
 
 /** The full JSON Schema of one `ids_apply_ops` op; the tool advertises a summary. */
+let schemaText: string | undefined;
+
 export const idsOpsSchemaProvider: ResourceProvider = {
   name: 'ids-ops-schema',
   list: () => [{
@@ -16,5 +18,5 @@ export const idsOpsSchemaProvider: ResourceProvider = {
     mimeType: 'application/schema+json',
   }],
   match: (uri) => uri === IDS_OPS_SCHEMA_URI,
-  read: (uri) => [{ uri, mimeType: 'application/schema+json', text: JSON.stringify(getOpJsonSchema()) }],
+  read: (uri) => [{ uri, mimeType: 'application/schema+json', text: (schemaText ??= JSON.stringify(getOpJsonSchema())) }],
 };

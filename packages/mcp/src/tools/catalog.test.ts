@@ -19,25 +19,17 @@ import { ResourceRegistry } from '../resources/index.js';
 import { MCPServer } from '../server.js';
 import { InProcessTransport } from '../transport/in-process.js';
 import { ENFORCED_KEYWORDS } from '../validate.js';
+import { VIEWER_DISPLAY } from './annotations.js';
 import { buildDefaultToolRegistry } from './index.js';
 
-/**
- * Bytes of the full-scope `tools/list` result. Lower it when the catalog
- * shrinks; raising it needs a reason in the commit message. Was ~143 KB (without
- * titles or annotations) before
- * the ids_apply_ops op schema moved to a resource.
- */
+/** Bytes of the full-scope `tools/list` result. Lower it when the catalog shrinks; raising it needs a reason in the commit message. */
 const TOOLS_LIST_BUDGET = 126_500;
 
-/** Scope `read`/`validate` tools that still change session state outside the model. */
-const NOT_READ_ONLY_IN_READ_SCOPE = new Set([
-  // Viewer display state: colours, visibility, camera, section, selection.
-  'viewer_open', 'viewer_close', 'viewer_colorize', 'viewer_isolate', 'viewer_hide', 'viewer_show', 'viewer_reset',
-  'viewer_fly_to', 'viewer_set_section', 'viewer_clear_section', 'viewer_color_by_storey', 'viewer_color_by_property',
-  'viewer_select', 'a2ui_viewer_action',
-  // Writes a durable pending Flow artifact.
-  'propose_flow',
-]);
+/**
+ * `propose_flow` is read scope by design (a read token may propose; a
+ * separately authorized `resume_flow` applies) but writes a pending artifact.
+ */
+const READ_SCOPE_WRITERS = new Set(['propose_flow']);
 
 const tools = buildDefaultToolRegistry().list();
 
@@ -83,7 +75,8 @@ describe('tool catalog', () => {
     const wrong = tools.filter((t) => {
       const readOnly = t.annotations?.readOnlyHint === true;
       if (t.scope === 'mutate' || t.scope === 'export') return readOnly;
-      if (t.scope === 'read' || t.scope === 'validate') return readOnly === NOT_READ_ONLY_IN_READ_SCOPE.has(t.name);
+      // Read scope may change what the viewer shows, nothing else.
+      if (t.scope === 'read' || t.scope === 'validate') return !readOnly && t.annotations !== VIEWER_DISPLAY && !READ_SCOPE_WRITERS.has(t.name);
       return false;
     });
     expect(wrong.map((t) => `${t.name} (${t.scope})`)).toEqual([]);

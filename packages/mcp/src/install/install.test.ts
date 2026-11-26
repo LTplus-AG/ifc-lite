@@ -198,7 +198,7 @@ describe('ifc-lite-mcp install: where each client is configured', () => {
     io.files.set('/Users/u/.cursor/mcp.json', '{}');
     io.writeFile = () => { throw new InstallError('EACCES: permission denied'); };
     expect(install(['--client', 'cursor'], io)).toBe(1);
-    expect(io.stderr).toMatch(/EACCES.*unchanged \(backup: .*bak-/);
+    expect(io.stderr).toMatch(/EACCES.*install did not write the file \(backup: .*bak-/);
   });
 
   it('Claude Code on Windows wraps npx in cmd /c with a pin cmd cannot mangle', () => {

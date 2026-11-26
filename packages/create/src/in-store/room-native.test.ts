@@ -81,20 +81,31 @@ it.skipIf(!available)('native split/merge rewrites real IFC rooms with stable la
   } finally { plate.free(); }
 });
 
-it.skipIf(!available)('a split room takes its aggregation GlobalId from the supplied source', async () => {
-  const { store, editor } = await session();
-  const plate = fromRects(flattenRoomRects(rects), .05, Number.MIN_VALUE);
-  try {
-    const [face] = candidates(store, editor, plate);
-    createRoomsInStore(store, editor, 42, [{ outline: face.inner, height: 3, z: 0, Name: 'Room', grossArea: face.grossArea, netArea: face.netArea, derived: true }]);
-    const before = candidates(store, editor, plate);
-    expect(applyLayoutOp(plate, { kind: 'split', a: [21, 20], b: [21, 23] }, .01)).toBe(true);
-    let draws = 0;
-    const guidRandom = () => { draws++; return Math.random(); };
-    const sync = syncRoomLayoutInStore(store, editor, before, readFaces(plate), [], undefined, { guidRandom });
-    expect(sync.created).toHaveLength(1);
-    expect(draws).toBeGreaterThan(0);
-  } finally { plate.free(); }
+it.skipIf(!available)('a split room takes every GlobalId it authors, its aggregation included, from the supplied source', async () => {
+  /** The GlobalIds a seeded split authors, by entity type. */
+  const splitOnce = async (seed: number) => {
+    const { store, editor } = await session();
+    const plate = fromRects(flattenRoomRects(rects), .05, Number.MIN_VALUE);
+    try {
+      let state = seed >>> 0;
+      const guidRandom = () => ((state = (Math.imul(state, 1664525) + 1013904223) >>> 0) / 4294967296);
+      const [face] = candidates(store, editor, plate);
+      // The split room's GlobalId derives from this room's, so it is seeded too.
+      createRoomsInStore(store, editor, 42, [{ outline: face.inner, height: 3, z: 0, Name: 'Room', grossArea: face.grossArea, netArea: face.netArea, derived: true }], { guidRandom });
+      const before = candidates(store, editor, plate);
+      expect(applyLayoutOp(plate, { kind: 'split', a: [21, 20], b: [21, 23] }, .01)).toBe(true);
+      const existing = new Set(editor.getNewEntities().map((e) => e.expressId));
+      const sync = syncRoomLayoutInStore(store, editor, before, readFaces(plate), [], undefined, { guidRandom });
+      expect(sync.created).toHaveLength(1);
+      return editor.getNewEntities()
+        .filter((e) => !existing.has(e.expressId) && typeof e.attributes[0] === 'string' && !e.attributes[0].startsWith('#'))
+        .map((e) => `${e.type.toUpperCase()} ${String(e.attributes[0])}`)
+        .sort();
+    } finally { plate.free(); }
+  };
+  const first = await splitOnce(42);
+  expect(first.some((id) => id.startsWith('IFCRELAGGREGATES '))).toBe(true);
+  expect(await splitOnce(42)).toEqual(first);
 });
 
 it.skipIf(!available)('update/no-room refusal preserves graph and creation late refusal preserves allocator', async () => {

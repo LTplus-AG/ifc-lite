@@ -82,6 +82,13 @@ function rootGlobalIds(step: string): string[] {
     .map((m) => m[2].trim().replace(/^'(.*)'$/, '$1'));
 }
 
+/** GlobalIds that more than one exported root carries, over the whole file, source roots included. */
+function duplicateRootGlobalIds(step: string): string[] {
+  const seen = new Set<string>(), duplicates = new Set<string>();
+  for (const id of rootGlobalIds(step)) (seen.has(id) ? duplicates : seen).add(id);
+  return [...duplicates];
+}
+
 function authoredGlobalIds(step: string, source: string): string[] {
   const before = new Set(rootGlobalIds(source));
   return rootGlobalIds(step).filter((id) => !before.has(id));
@@ -97,6 +104,8 @@ describe('HeadlessBackendOptions.guidRandom (#10963)', () => {
     expect(authored.length).toBeGreaterThan(15);
     expect(authored.every(isValidIfcGuid)).toBe(true);
     expect(new Set(authored).size).toBe(authored.length);
+    // A new root reusing a source GlobalId is not in `authored`, so check the whole file too.
+    expect(duplicateRootGlobalIds(first)).toEqual([]);
     expect(authoredGlobalIds(again, source)).toEqual(authored);
     expect(dataSection(again)).toBe(dataSection(first));
     expect(authoredGlobalIds(other, source)).not.toEqual(authored);
@@ -123,6 +132,11 @@ describe('HeadlessBackendOptions.guidRandom (#10963)', () => {
     expect(replaced.authoredBeforeExport).toBe(0);
     expect(replaced.late).toBe(0);
     expect(replaced.data).toBe(kept.data);
+  });
+
+  it('finds a GlobalId two exported roots share, a source root included', () => {
+    const step = ['DATA;', "#1=IFCWALL('2O2Fr$t4X7Zf8NOew3FLOH',$,'W',$,$,$,$,$,$);", "#2=IFCSLAB('2O2Fr$t4X7Zf8NOew3FLOH',$,'S',$,$,$,$,$,$);", "#3=IFCWALL('0YvctVUKr0kugbFTf53O9L',$,'V',$,$,$,$,$,$);", 'ENDSEC;'].join('\n');
+    expect(duplicateRootGlobalIds(step)).toEqual(['2O2Fr$t4X7Zf8NOew3FLOH']);
   });
 
   it('collects a malformed or missing GlobalId of an authored root instead of skipping it', () => {

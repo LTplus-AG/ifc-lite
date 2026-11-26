@@ -184,7 +184,9 @@ const modelConvert: Tool = {
     const filePath = await resolveSafePath(input.file_path, ctx, 'write');
     // Pending edits are baked and re-parsed first, so the loss pre-check sees
     // what the export writes, created entities included.
-    const baked = m.backend.hasPendingChanges()
+    // Pending edits are baked, and a model that kept no source bytes is re-read,
+    // so the loss check and the export both see the records that get written.
+    const baked = m.backend.hasPendingChanges() || m.store.source.byteLength === 0
       ? await withIfcBytes(m, (bytes) => loadIfcModelFromBytes(bytes, m.name))
       : undefined;
     try {
@@ -267,16 +269,17 @@ const modelExtract: Tool = {
       let seeds: Set<number>;
       try {
         seeds = selectSubsetSeeds(parsed, { products, types, storeys });
+        // Each type and storey must contribute, or a typo hides behind another selector's matches.
+        for (const type of types) {
+          if (selectSubsetSeeds(parsed, { types: [type] }).size === 0) throw invalid(`types: no product of type ${type} (or a subtype).`);
+        }
+        for (const storey of storeys) {
+          if (selectSubsetSeeds(parsed, { storeys: [storey] }).size === 0) throw invalid(`storeys: nothing is placed under storey ${storey}.`);
+        }
       } catch (err) {
         if (!(err instanceof SubsetSelectionError)) throw err;
         if (err.kind === 'invalid') throw invalid(err.message);
         throw new ToolExecutionError({ code: ToolErrorCode.ENTITY_NOT_FOUND, message: err.message });
-      }
-      if (seeds.size === 0) {
-        const tried: string[] = [];
-        if (types.length > 0) tried.push(`no product of type ${types.join(', ')} (or a subtype)`);
-        if (storeys.length > 0) tried.push(`no product under storey ${storeys.join(', ')}`);
-        throw invalid(`Nothing matched: ${tried.join(', and ')}.`);
       }
       const subset = buildSubset(seeds, parsed);
       const out = Buffer.from(serializeSubset(subset, parsed), 'latin1');

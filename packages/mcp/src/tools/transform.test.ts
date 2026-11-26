@@ -226,6 +226,11 @@ describe('model_extract', () => {
     expect(res.structuredContent.seedCount).toBe(1);
   });
 
+  it('refuses a type that matches nothing even when another selector matches', async () => {
+    await expect(call('model_extract', { global_ids: ['000000000000000000WA1A'], types: ['IfcWal'], file_path: join(tmp, 'x.ifc') }))
+      .rejects.toMatchObject({ code: 'INVALID_INPUT', message: expect.stringContaining('IfcWal') });
+  });
+
   it('treats blank selectors as no selection', async () => {
     await expect(call('model_extract', { global_ids: [''], storeys: [' '], file_path: join(tmp, 'x.ifc') }))
       .rejects.toMatchObject({ code: 'INVALID_INPUT', message: expect.stringContaining('Select something') });

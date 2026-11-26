@@ -22,16 +22,10 @@
  * still dangles. That is the rest of the rules:
  *   - the RELATING object (`RelatingStructure` / `RelatingObject`, the spatial
  *     parent) is a hard requirement. A containment with no parent is
- *     meaningless, and it would dangle. A KNOWN residual gap follows from that,
- *     and it is not this module's to close: `buildSubset` force-keeps only
- *     `IfcProject` / `IfcSite` / `IfcBuilding` / `IfcBuildingStorey`, so a
- *     product contained in an `IfcSpace` or `IfcSpatialZone` still has an
- *     unkept parent and still loses containment. Widening that type list is the
- *     wrong close, because it force-keeps every space AND its forward closure in
- *     every extraction; the right one is a BACKWARD closure from each kept
- *     product up its containment and aggregation edges, which keeps exactly the
- *     seeds' ancestors and needs no type list at all. Either way it is a change
- *     to how `buildSubset` seeds, not to the rule here. Filed as #4124.
+ *     meaningless, and it would dangle. `buildSubset` keeps every spatial
+ *     ancestor of what it selected (a backward closure, #4124, see
+ *     `step-subset-spatial-ancestors.ts`), so a kept product's parent is kept
+ *     too, an `IfcSpace` included.
  *   - an empty intersection drops the relation.
  *   - every other non-set reference must be kept too. That is attribute 1,
  *     `OwnerHistory`; usually it already is, because each kept product's own

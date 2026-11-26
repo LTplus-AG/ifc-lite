@@ -632,7 +632,7 @@ test('FAIL CLOSED: an unrecognised severity exits 1 rather than defaulting to ad
 
 // -------------------------------------------- the aggregate, and the budget
 
-test('the shipped config EXCLUDES the `test` aggregate, and the exclusion is the only one', () => {
+test('the shipped config only excludes the aggregate and the advisory shadow job', () => {
   // `Build + WASM + Rust + Node` is `needs:` twelve jobs and publishes no check
   // run until every one finishes. Measured by `created_at` -- which is when a
   // lane becomes PRESENT, the thing this gate polls for -- from each run's own
@@ -642,17 +642,18 @@ test('the shipped config EXCLUDES the `test` aggregate, and the exclusion is the
   // The last NON-aggregate lane appeared at 161..845 s over the same runs: 0 of
   // 68 past the budget. Full numbers in scripts/lib/pr-review-signal.test.mjs.
   const cfg = JSON.parse(readFileSync(CONFIG, 'utf8'));
-  assert.deepEqual(cfg.excludeJobKeys, ['test'], 'exactly one job is excluded, and it is the aggregate');
+  assert.deepEqual(cfg.excludeJobKeys, ['test', 'node-tests-selected']);
 });
 
-test('excluding the aggregate removes THAT lane and nothing else from the required set', () => {
+test('the shipped exclusions preserve every other required lane', () => {
   // The risk of an exclusion list is that it quietly swallows a real lane.
   const yml = readFileSync(TEST_YML, 'utf8');
   const all = expandJobNames(yml, { exclude: [] });
-  const shipped = expandJobNames(yml, { exclude: ['test'] });
+  const cfg = JSON.parse(readFileSync(CONFIG, 'utf8'));
+  const shipped = expandJobNames(yml, { exclude: cfg.excludeJobKeys });
   assert.deepEqual(
     all.filter((n) => !shipped.includes(n)),
-    ['Build + WASM + Rust + Node'],
+    ['Build + WASM + Rust + Node', 'Node package tests, advisory (selected for this PR)'],
   );
   for (const n of ['Node tests (shard 1/4)', 'Node tests (shard 4/4)', 'Rust tests', 'Lint', 'Typecheck', 'Build packages + WASM']) {
     assert.ok(shipped.includes(n), `${n} must still be required`);
@@ -678,7 +679,8 @@ test('THE #3294 SHAPE STILL FAILS under the shipped exclusion, naming every lane
     reviewChecks: [],
   });
   assert.equal(r.code, 1, r.output);
-  const expected = expandJobNames(readFileSync(TEST_YML, 'utf8'), { exclude: ['test'] });
+  const cfg = JSON.parse(readFileSync(CONFIG, 'utf8'));
+  const expected = expandJobNames(readFileSync(TEST_YML, 'utf8'), { exclude: cfg.excludeJobKeys });
   assert.match(r.output, new RegExp(`MISSING_LANES: ${expected.length} of ${expected.length}`));
   for (const n of expected) assert.ok(r.output.includes(n), `must name the missing lane ${n}`);
   assert.ok(

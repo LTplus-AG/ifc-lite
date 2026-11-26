@@ -12,6 +12,9 @@
  */
 export const SERIALISER_SOURCE = `
   function bigintText(b) { return Str(b) + 'n'; }
+  // LengthOfArrayLike: a proxy's fractional, negative or NaN length reads as
+  // native JSON reads it.
+  function lengthOf(n) { n = +n; return n > 0 ? (n > 9007199254740991 ? 9007199254740991 : n - (n % 1)) : 0; }
   function omitted(v) { var t = typeof v; return t === 'undefined' || t === 'function' || t === 'symbol'; }
   // JSON's per-property steps, in the spec's order: toJSON, then the
   // replacer function (called with the holder), then unboxing in write().
@@ -63,7 +66,7 @@ export const SERIALISER_SOURCE = `
     var o = { fn: null, list: null, gap: '' };
     if (typeof replacer === 'function') o.fn = replacer;
     else if (isArray(replacer)) {
-      var list = create(null), seen = new SetCtor(), n = 0, len = replacer.length;
+      var list = create(null), seen = new SetCtor(), n = 0, len = lengthOf(replacer.length);
       for (var ri = 0; ri < len; ri++) {
         var item = replacer[ri], name;
         if (typeof item === 'string') name = item;
@@ -112,10 +115,13 @@ export const SERIALISER_SOURCE = `
         var a = isArray(v);
         // An array's length is read once, as native JSON does, so a toJSON or
         // replacer that appends to it cannot make the walk run forever.
-        fo[sp] = v; fk[sp] = a ? v.length : list || keys(v); fi[sp] = 0; fa[sp] = a; fw[sp] = false; sp++;
+        fo[sp] = v; fk[sp] = a ? lengthOf(v.length) : list || keys(v); fi[sp] = 0; fa[sp] = a; fw[sp] = false; sp++;
         out += a ? '[' : '{';
         return;
       }
+      // A BigInt left here would reach native stringify, which calls its
+      // toJSON again and could hand native recursion an unchecked deep value.
+      if (typeof v === 'bigint') throw new TypeErrorCtor('a BigInt cannot be serialised as JSON; convert it with String() or Number()');
       // A string past the cap is cut before it is escaped, so the preview path
       // runs instead of copying a huge string into out.
       if (typeof v === 'string' && limit !== Infinity && out.length + v.length > limit) v = apply(slice, v, [0, out.length > limit ? 0 : limit - out.length + 1]);

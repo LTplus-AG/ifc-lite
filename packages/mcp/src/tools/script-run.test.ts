@@ -64,8 +64,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  for (const model of ctx.registry.list()) ctx.registry.remove(model.id);
-  await rm(tmp, { recursive: true, force: true });
+  try {
+    if (ctx) for (const model of ctx.registry.list()) ctx.registry.remove(model.id);
+  } finally {
+    if (tmp) await rm(tmp, { recursive: true, force: true });
+  }
 });
 
 async function run(code: string, extra: Record<string, unknown> = {}, tool = scriptRunTool): Promise<CallToolResult> {
@@ -374,6 +377,9 @@ describe('script_run', () => {
     }
     expect((await run(`${deep} try { JSON.stringify(1, (k, v) => (k === '' ? o : v)); 'no' } catch (e) { e.message }`)).structuredContent?.value).toMatch(/nested deeper than 1000 levels/);
     expect((await run('var a = [{ toJSON() { a.push(a[0]); return 1; } }]; JSON.stringify(a)')).structuredContent?.value).toBe('[1]');
+    // A BigInt toJSON that returns a BigInt first cannot get a deep value past the check on its second call.
+    expect((await run(`${deep} var calls = 0; BigInt.prototype.toJSON = () => (++calls === 1 ? 1n : o); try { JSON.stringify(1n); 'no' } catch (e) { e.name + ' ' + calls }`)).structuredContent?.value).toBe('TypeError 1');
+    expect((await run('JSON.stringify(new Proxy([1, 2, 3], { get: (t, k) => (k === "length" ? 1.5 : t[k]) }))')).structuredContent?.value).toBe('[1]');
     expect((await run("new String('x'.repeat(400000))")).structuredContent?.value_truncated).toBe(true);
     expect((await run('typeof bim.lens')).structuredContent?.value).toBe('undefined');
     // A deep bim argument is refused in the realm instead of overflowing the bridge's dump.
@@ -472,6 +478,9 @@ describe('script_run_mutate', () => {
     expect(result.structuredContent).toMatchObject({ mode: 'mutate', value: ['Renamed', 'Wall B'], mutations_queued: 2 });
     const diff = await buildDefaultToolRegistry().get('mutation_diff')!.handler({}, ctx);
     expect(diff.structuredContent?.count).toBe(2);
+    expect(diff.structuredContent?.mutations).toContainEqual(expect.objectContaining({
+      psetName: 'Pset_WallCommon', propName: 'IsExternal', newValue: true,
+    }));
   });
 });
 
@@ -497,9 +506,15 @@ describe('script_run_mutate on a script error', () => {
 });
 
 describe('script_run_mutate after undo', () => {
-  it('never reports a negative count', async () => {
-    const result = await run('bim.mutate.undo("m"); bim.mutate.undo("m"); 1', {}, scriptRunMutateTool);
-    expect(result.structuredContent?.mutations_queued).toBe(0);
+  it('still counts the edit (headless undo reverts nothing)', async () => {
+    const pending = async () => (await buildDefaultToolRegistry().get('mutation_diff')!.handler({}, ctx)).structuredContent?.count as number;
+    const before = await pending();
+    const result = await run(`
+      bim.mutate.setAttribute(bim.query.byType('IfcDoor')[0], 'Tag', 'Now');
+      bim.mutate.undo('m')
+    `, {}, scriptRunMutateTool);
+    expect(result.structuredContent).toMatchObject({ mutations_queued: 1 });
+    expect(await pending()).toBe(before + 1);
   });
 });
 

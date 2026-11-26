@@ -5,7 +5,7 @@
 /**
  * A quantity declaring its own `Unit` (mm2 in a square-metre project) must be
  * summed in the project's unit, not as a raw number. W1 has the same quantity
- * name in two Qto sets (first wins, 10), W2 is 5,000,000 mm2 = 5 m2, W3 inherits
+ * name in two sets (the Qto_WallBaseQuantities one, 10, not BaseQuantities, 99), W2 is 5,000,000 mm2 = 5 m2, W3 inherits
  * 3 from its type, W4 overrides the type with 7. Expected total 25.
  */
 import { describe, it } from 'node:test';
@@ -33,7 +33,7 @@ DATA;
 #12=IFCWALL('Wall000000000000000003A',$,'W3',$,$,$,$,$,$);
 #13=IFCWALL('Wall000000000000000004A',$,'W4',$,$,$,$,$,$);
 #20=IFCQUANTITYAREA('NetSideArea',$,$,10.,$);
-#21=IFCQUANTITYAREA('NetSideArea',$,$,10.,$);
+#21=IFCQUANTITYAREA('NetSideArea',$,$,99.,$);
 #22=IFCELEMENTQUANTITY('Q000000000000000000A1',$,'Qto_WallBaseQuantities',$,$,(#20));
 #23=IFCELEMENTQUANTITY('Q000000000000000000A2',$,'BaseQuantities',$,$,(#21));
 #24=IFCRELDEFINESBYPROPERTIES('R000000000000000000A1',$,$,$,(#10),#22);
@@ -85,5 +85,54 @@ describe('list quantity totals honour a member Unit', () => {
     const provider = createProjectUnitListDataProvider(store, '', undefined, view);
     const converted = provider.getQuantitySets(11).flatMap(set => set.quantities).find(q => q.name === 'NetSideArea');
     assert.equal(converted?.value, 7);
+  });
+
+  // #11469: mass and time follow the project's own unit (tonne, minute), not SI.
+  const MASS_TIME = `ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,#90);
+#90=IFCUNITASSIGNMENT((#91,#95,#98));
+#91=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#94=IFCSIUNIT(*,.MASSUNIT.,.KILO.,.GRAM.);
+#95=IFCCONVERSIONBASEDUNIT(#96,.MASSUNIT.,'tonne',#97);
+#96=IFCDIMENSIONALEXPONENTS(0,1,0,0,0,0,0);
+#97=IFCMEASUREWITHUNIT(IFCMASSMEASURE(1000.),#94);
+#100=IFCSIUNIT(*,.TIMEUNIT.,$,.SECOND.);
+#98=IFCCONVERSIONBASEDUNIT(#99,.TIMEUNIT.,'minute',#101);
+#99=IFCDIMENSIONALEXPONENTS(0,0,1,0,0,0,0);
+#101=IFCMEASUREWITHUNIT(IFCTIMEMEASURE(60.),#100);
+#10=IFCWALL('Wall000000000000000001A',$,'W1',$,$,$,$,$,$);
+#11=IFCWALL('Wall000000000000000002A',$,'W2',$,$,$,$,$,$);
+#20=IFCQUANTITYWEIGHT('GrossWeight',$,#94,500.,$);
+#21=IFCQUANTITYTIME('Duration',$,#100,120.,$);
+#22=IFCELEMENTQUANTITY('Q000000000000000000A1',$,'Qto_WallBaseQuantities',$,$,(#20,#21));
+#23=IFCRELDEFINESBYPROPERTIES('R000000000000000000A1',$,$,$,(#10),#22);
+#30=IFCQUANTITYWEIGHT('GrossWeight',$,$,1.5,$);
+#31=IFCQUANTITYTIME('Duration',$,$,3.,$);
+#32=IFCELEMENTQUANTITY('Q000000000000000000B1',$,'Qto_WallBaseQuantities',$,$,(#30,#31));
+#33=IFCRELDEFINESBYPROPERTIES('R000000000000000000B1',$,$,$,(#11),#32);
+ENDSEC;
+END-ISO-10303-21;
+`;
+
+  it('expresses and sums mass and time in a tonne and minute project', async () => {
+    const bytes = new TextEncoder().encode(MASS_TIME);
+    const store = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
+    const def: ListDefinition = {
+      id: 'l', name: 'n', createdAt: 0, updatedAt: 0, entityTypes: [IfcTypeEnum.IfcWall], conditions: [], groups: [],
+      columns: [
+        { id: 'n', source: 'attribute', propertyName: 'Name' },
+        { id: 'w', source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'GrossWeight' },
+        { id: 't', source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'Duration' },
+      ],
+      grouping: { groupByColumnId: 'n', sumColumnIds: ['w', 't'] },
+    } as unknown as ListDefinition;
+    const r = executeList(def, createProjectUnitListDataProvider(store), 'm');
+    assert.deepEqual(r.rows.map(x => [x.values[1], x.values[2]]), [[0.5, 2], [1.5, 3]]);
+    assert.equal(r.summary?.sums.w, 2);
+    assert.equal(r.summary?.sums.t, 5);
   });
 });

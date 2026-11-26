@@ -52,7 +52,9 @@ import { scanOutlineDxfLayers, type ScanOutlineLayer } from '@/lib/scan-outline/
 import { boundsWithDimensions, dimensionsToSvg, drawDimensionsPdf } from '@/lib/export/dimension-export';
 import { noticeOtherCutDimensionsLeftOut, useExportDimensionGraphics, type ExportDimensionGraphics } from '@/hooks/useExportDimensions';
 
-function tryDrawingSvg(generate: () => string | null): string | null {
+type DrawingSvg = { svg: string; warnings: string[] };
+
+function tryDrawingSvg(generate: () => DrawingSvg | null): DrawingSvg | null {
   try { return generate(); }
   catch (error) { toast.error(error instanceof Error ? error.message : String(error)); return null; }
 }
@@ -184,15 +186,16 @@ export function createDrawingExport({
     getElementProperties: makePropertiesGetter(storeModels, ifcDataStore),
   });
 
-  // Cut polygons the last SVG generator left out because a vertex was not
-  // finite (polygonPathData returns ''); reported with the download.
-  let droppedPolygons = 0;
-  const countDropped = (styled: ReadonlyArray<{ polygon: { polygon: { outer: readonly unknown[] } }; geometry: string }>) => {
-    droppedPolygons = styled.filter((p) => !p.geometry && p.polygon.polygon.outer.length > 0).length;
+  // A nonempty outer ring produces no path when a mapped vertex is non-finite.
+  const cutPolygonWarnings = (styled: ReadonlyArray<{ polygon: { polygon: { outer: readonly unknown[] } }; geometry: string }>): string[] => {
+    const count = styled.filter((p) => !p.geometry && p.polygon.polygon.outer.length > 0).length;
+    if (count === 0) return [];
+    const one = count === 1;
+    return [`${count} cut polygon${one ? '' : 's'} with invalid coordinates ${one ? 'was' : 'were'} left out of the drawing.`];
   };
 
   // Generate SVG that matches the canvas rendering exactly
-  const generateExportSVG = (): string | null => {
+  const generateExportSVG = (): DrawingSvg | null => {
     if (!drawing) return null;
 
     const { bounds } = drawing;
@@ -243,7 +246,6 @@ export function createDrawingExport({
 
     // 1. FILL CUT POLYGONS (with color from IFC materials or override engine)
     const styledPolygons = styleCutPolygons(drawing.cutPolygons, styleContext, (p) => polygonToPath(p.polygon));
-    countDropped(styledPolygons);
     svg += '  <g id="polygon-fills">\n';
     for (const { polygon, style: { fillColor, fillOpacity }, geometry: pathData } of styledPolygons) {
       if (!pathData) continue;
@@ -427,12 +429,12 @@ export function createDrawingExport({
     svg += elementTagsSvg(resolvedElementTags(drawing), (x, y) => ({ x: flipX ? -x : x, y: flipY ? -y : y }), mmToModel(3.5));
     svg += dimensionsToSvg(dims, (x, y) => ({ x: flipX ? -x : x, y: flipY ? -y : y }), mmToModel);
     svg += '</svg>';
-    return svg;
+    return { svg, warnings: cutPolygonWarnings(styledPolygons) };
   };
 
   // Generate SVG with drawing sheet (frame, title block, scale bar)
   // This generates coordinates directly in paper mm space (like the canvas rendering)
-  const generateSheetSVG = (): string | null => {
+  const generateSheetSVG = (): DrawingSvg | null => {
     if (!drawing || !activeSheet) return null;
 
     const { bounds } = drawing;
@@ -513,7 +515,6 @@ export function createDrawingExport({
 
     // Render polygon fills
     const styledPolygons = styleCutPolygons(drawing.cutPolygons, styleContext, (p) => polygonToPath(p.polygon));
-    countDropped(styledPolygons);
     svg += '    <g id="polygon-fills">\n';
     for (const { polygon, style: { fillColor, fillOpacity }, geometry: pathData } of styledPolygons) {
       if (pathData) {
@@ -622,16 +623,12 @@ export function createDrawingExport({
     svg += '\n';
 
     svg += '</svg>';
-    return svg;
+    return { svg, warnings: cutPolygonWarnings(styledPolygons) };
   };
   const createSvgArtifact = (): NativeDrawingArtifact => {
-    droppedPolygons = 0;
-    const svg = sheetEnabled && activeSheet ? generateSheetSVG() : generateExportSVG();
-    if (!svg) throw new NoNativeDrawingError();
-    const one = droppedPolygons === 1;
-    const warnings = droppedPolygons > 0
-      ? [`${droppedPolygons} cut polygon${one ? '' : 's'} with invalid coordinates ${one ? 'was' : 'were'} left out of the SVG.`]
-      : [];
+    const result = sheetEnabled && activeSheet ? generateSheetSVG() : generateExportSVG();
+    if (!result) throw new NoNativeDrawingError();
+    const { svg, warnings } = result;
     for (const message of warnings) services.warn?.(message);
     const stem = sheetEnabled && activeSheet
       ? `${sanitizeFilename(activeSheet.name, { fallback: 'sheet' })}-${sectionPlane.axis}-${sectionPlane.position}`
@@ -780,13 +777,13 @@ export function createDrawingExport({
     // vector — see `useDrawingExport.pdfVectorPaths.test.tsx`, which pins
     // both halves of that split.
     if (sheetEnabled && activeSheet) {
-      const svg = generateSheetSVG();
-      if (!svg) throw new Error('No completed native sheet is available.');
+      const sheet = generateSheetSVG();
+      if (!sheet) throw new Error('No completed native sheet is available.');
       const { widthMm, heightMm } = activeSheet.paper;
       return recordActivity({ kind: 'export', title: 'activityTray.job.export', panel: 'drawing',
         subject: `${activeSheet.name} · PDF` }, async () => {
           const { jsPDF } = await import('jspdf');
-          const { dataUrl, fit } = await rasterizeSvgToPngDataUrl(svg, widthMm, heightMm);
+          const { dataUrl, fit } = await rasterizeSvgToPngDataUrl(sheet.svg, widthMm, heightMm);
           const doc = new jsPDF({
             unit: 'mm',
             format: [widthMm, heightMm],
@@ -796,6 +793,7 @@ export function createDrawingExport({
           // image must span the sheet whatever the raster cost, or a capped
           // export would print a smaller sheet at the same nominal scale.
           doc.addImage(dataUrl, 'PNG', 0, 0, widthMm, heightMm);
+          for (const message of sheet.warnings) warn(message);
 
           if (fit.capped) {
             // FLOOR, not round: 299.53 dpi renders as "reduced from 300 to
@@ -945,8 +943,8 @@ export function createDrawingExport({
   // Print handler
   const handlePrint = () => {
     // Use sheet export if enabled, otherwise raw drawing export
-    const svg = tryDrawingSvg(() => (sheetEnabled && activeSheet) ? generateSheetSVG() : generateExportSVG());
-    if (!svg) return;
+    const result = tryDrawingSvg(() => (sheetEnabled && activeSheet) ? generateSheetSVG() : generateExportSVG());
+    if (!result) return;
 
     // Create a new window for printing
     const printWindow = window.open('', '_blank', 'width=800,height=600');
@@ -997,7 +995,7 @@ export function createDrawingExport({
           </style>
         </head>
         <body>
-          ${svg}
+          ${result.svg}
           <script>
             window.onload = function() {
               window.print();
@@ -1008,6 +1006,7 @@ export function createDrawingExport({
       </html>
     `);
     printWindow.document.close();
+    for (const message of result.warnings) services.warn?.(message);
     noticeOtherCutDimensionsLeftOut(t);
   };
 

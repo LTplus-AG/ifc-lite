@@ -186,13 +186,15 @@ function readEnvelope(dumped: unknown): Outcome {
   const state = dumped as { type?: string; value?: unknown };
   if (state?.type === 'pending') return { error: 'The script returned a promise that never settled (only bim host calls resolve; there are no timers).' };
   const envelope = state?.type === 'fulfilled' ? state.value : dumped;
-  if (typeof envelope !== 'string' || envelope.length === 0) return { error: 'The script produced no result.' };
+  if (typeof envelope !== 'string') return { error: 'The script produced no result.' };
   const body = envelope.slice(1);
   switch (envelope[0]) {
     case 'J': return { value: JSON.parse(body) as unknown, value_truncated: false };
+    // The wrapper already cut the preview; clipping again only mends a split surrogate pair.
     case 'P': return { value: null, value_truncated: true, value_preview: clipUtf16(body, VALUE_PREVIEW_CHARS) };
     case 'U': return { error: `The script's value is not JSON-serialisable: ${body}` };
-    default: return { error: body };
+    case 'T': return { error: body };
+    default: return { error: 'The script produced no result.' };
   }
 }
 

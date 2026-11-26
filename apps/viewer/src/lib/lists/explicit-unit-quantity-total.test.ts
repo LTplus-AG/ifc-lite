@@ -4,17 +4,17 @@
 
 /**
  * A quantity declaring its own `Unit` (mm2 in a square-metre project) must be
- * summed in the project's unit, not as a raw number. W1 has the same quantity
- * name in two sets (the Qto_WallBaseQuantities one, 10, not BaseQuantities, 99), W2 is 5,000,000 mm2 = 5 m2, W3 inherits
- * 3 from its type, W4 overrides the type with 7. Expected total 25.
+ * summed in the project's unit, not as a raw number (#11469). W1 has the same
+ * quantity name in two sets and the column reads the Qto_WallBaseQuantities one
+ * (10, not BaseQuantities' 99). W2 is 5,000,000 mm2 = 5 m2, W3 inherits 3 from
+ * its type, W4 overrides the type with 7. Expected total 25.
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { IfcParser } from '@ifc-lite/parser';
+import { IfcParser, extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import { executeList, type ListDefinition } from '@ifc-lite/lists';
 import { IfcTypeEnum, QuantityType } from '@ifc-lite/data';
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import { createListDataProvider } from './adapter.js';
 import { createProjectUnitListDataProvider } from './project-unit-quantities.js';
 

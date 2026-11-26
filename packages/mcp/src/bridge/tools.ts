@@ -73,7 +73,11 @@ const LEGACY_ALIASES: ReadonlyMap<string, string> = new Map([
   ['viewer_ui_events', BRIDGE_UI_EVENTS_TOOL],
 ]);
 
-/** Names the bridge serves itself; a tab tool whose `tab_` name is one of them is skipped. */
+/**
+ * MCP names the bridge serves itself; a tab tool whose `tab_` name is one of
+ * them is skipped. `BRIDGE_RESERVED_TOOLS` (protocol) holds the tab-side
+ * names a tab may not register at all; these are the prefixed MCP names.
+ */
 const BRIDGE_OWNED: ReadonlySet<string> = new Set([BRIDGE_STATUS_TOOL, TAB_SHOW_UI_TOOL, BRIDGE_UI_EVENTS_TOOL]);
 
 /**
@@ -110,6 +114,7 @@ function renamer(tools: readonly BridgeToolDescriptor[]): (text: string) => stri
   if (!rename) {
     // Only names a word of prose cannot be: ones with `_` or `.`.
     const names = servable(tools).map((t) => t.name).filter((n) => /[_.]/.test(n)).sort((a, b) => b.length - a.length).map((n) => n.replace(/[.\-]/g, '\\$&'));
+    // The trailing guard mirrors the leading one: a name followed by `.word` is part of a longer dotted name.
     const pattern = names.length ? new RegExp(`(?<![A-Za-z0-9_.-])(${names.join('|')})(?![A-Za-z0-9_-]|\\.[A-Za-z0-9])`, 'g') : null;
     rename = (text) => (pattern ? text.replace(pattern, (_m, name: string) => mcpName(name)) : text);
     renamers.set(tools, rename);

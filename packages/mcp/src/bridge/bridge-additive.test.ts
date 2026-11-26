@@ -18,7 +18,7 @@ import { buildDefaultPromptRegistry } from '../prompts/index.js';
 import { buildDefaultResourceRegistry } from '../resources/index.js';
 import { buildDefaultToolRegistry } from '../tools/index.js';
 import { MUTATING_TOOL, pairTab, READ_TOOL, tabTool, type FakeTab } from '../test/bridge-fake-tab.js';
-import { BRIDGE_RESERVED_TOOLS, BRIDGE_STATUS_TOOL, TAB_TOOL_PREFIX } from './bridge-protocol.js';
+import { BRIDGE_STATUS_TOOL, TAB_TOOL_PREFIX } from './bridge-protocol.js';
 import { DeliveredSurfaces, MAX_DELIVERED_SURFACES } from './delivered-surfaces.js';
 import { fallbackPorts, PORT_FALLBACK_SPAN } from './loopback-server.js';
 import { startBridgeServer, type BridgeServerOptions, type RunningBridge } from './run.js';
@@ -147,7 +147,6 @@ describe('one server: headless and tab', () => {
   });
 
   it('skips a tab tool whose tab_ name would shadow a bridge tool, without failing the hello', async () => {
-    expect(BRIDGE_RESERVED_TOOLS.has('show_ui')).toBe(false);
     const agent = await start();
     const { tab } = await pairTab({ port: agent.r.bridge.port, code: agent.r.bridge.pairingCode(), a2uiSurface: true,
       tools: [READ_TOOL, { ...READ_TOOL, name: 'show_ui' }, { ...READ_TOOL, name: 'ui_events' }] });

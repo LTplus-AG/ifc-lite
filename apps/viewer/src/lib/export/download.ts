@@ -23,7 +23,11 @@ export interface SanitizeFilenameOptions {
   fallback?: string;
   /** Maximum length of the returned name. Default 60. */
   maxLength?: number;
+  /** Set to false when sanitizing a file extension. */
+  reservedStem?: boolean;
 }
+
+const WINDOWS_RESERVED_STEM = /^(?:con|prn|aux|nul|com[0-9\u00B9\u00B2\u00B3]|lpt[0-9\u00B9\u00B2\u00B3])(?: *\.|$)/i;
 
 /**
  * Make a user- or model-supplied name safe to use as a download filename
@@ -39,12 +43,7 @@ export interface SanitizeFilenameOptions {
  * are trimmed off the ends). `fallback` is returned verbatim when the result is
  * empty, so pass a clean token like `'list'` / `'model'`.
  */
-const WINDOWS_RESERVED_STEM = /^(?:con|prn|aux|nul|com[0-9\u00B9\u00B2\u00B3]|lpt[0-9\u00B9\u00B2\u00B3])(?:\.|$)/i;
-
-export function sanitizeFilename(
-  name: string,
-  options: SanitizeFilenameOptions & { reservedStem?: boolean } = {},
-): string {
+export function sanitizeFilename(name: string, options: SanitizeFilenameOptions = {}): string {
   const fallback = options.fallback ?? 'file';
   const maxLength = options.maxLength ?? 60;
   const cleaned = (name || fallback)

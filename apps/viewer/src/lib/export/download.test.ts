@@ -11,6 +11,7 @@ describe('sanitizeFilename', () => {
     assert.strictEqual(sanitizeFilename('CON'), '_CON');
     assert.strictEqual(sanitizeFilename('nul'), '_nul');
     assert.strictEqual(sanitizeFilename('Com1.model'), '_Com1.model');
+    assert.strictEqual(sanitizeFilename('NUL .model'), '_NUL .model');
     assert.strictEqual(modelExportFilename('AUX.ifc', 'pdf'), '_AUX.pdf');
     assert.strictEqual(sanitizeFilename('CONSTRUCTION'), 'CONSTRUCTION');
     assert.strictEqual(sanitizeFilename('COM10'), 'COM10');

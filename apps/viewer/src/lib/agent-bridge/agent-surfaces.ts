@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { BridgeSurfaceMessage } from '@ifc-lite/mcp/bridge-protocol';
+import { AGENT_SURFACE_PANELS, type BridgeSurfaceMessage } from '@ifc-lite/mcp/bridge-protocol';
 
 export type AgentSurface = BridgeSurfaceMessage['surface'];
-const MAX_SURFACES = 16;
+/** Shared with the bridge, which keeps these panels' surface ids so their clicks are admitted. */
+const MAX_SURFACES = AGENT_SURFACE_PANELS;
 let surfaces: readonly AgentSurface[] = [];
 const listeners = new Set<() => void>();
 

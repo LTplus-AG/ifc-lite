@@ -251,21 +251,21 @@ describe('DeliveredSurfaces', () => {
     ledger.record([followUp('a', 'Old')]);
     ledger.record([followUp('a', 'New')]);
     ledger.record([{ version: '1.0', deleteSurface: { surfaceId: 'a' } }]);
-    expect(ledger.check({ surfaceId: 'a', name: 'ask', prompt: 'Old' })).toEqual(ok);
-    expect(ledger.check({ surfaceId: 'a', name: 'ask', prompt: 'New' })).toEqual(ok);
+    expect(ledger.check({ surfaceId: 'a', name: 'ask', prompt: 'Old' })).toMatchObject(ok);
+    expect(ledger.check({ surfaceId: 'a', name: 'ask', prompt: 'New' })).toMatchObject(ok);
   });
 
   it('gives every surface id in one call the whole call, as the tab names a panel by its first id', () => {
     const ledger = new DeliveredSurfaces();
     ledger.record([{ version: '1.0', createSurface: { surfaceId: 'a', catalogId: 'c' } }, button('b', 'pick')]);
-    expect(ledger.check({ surfaceId: 'a', name: 'pick', prompt: 'Action: pick' })).toEqual(ok);
+    expect(ledger.check({ surfaceId: 'a', name: 'pick', prompt: 'Action: pick' })).toMatchObject(ok);
   });
 
   it('verifies an A2UI v1.0 event userMessage the agent wrote', () => {
     const ledger = new DeliveredSurfaces();
     ledger.record([{ version: '1.0', updateComponents: { surfaceId: 'b', components: [
       { id: 'x', component: 'Button', action: { event: { name: 'apply', userMessage: 'Apply fire ratings' } } }] } }]);
-    expect(ledger.check({ surfaceId: 'b', name: 'apply', prompt: 'Apply fire ratings' })).toEqual(ok);
+    expect(ledger.check({ surfaceId: 'b', name: 'apply', prompt: 'Apply fire ratings' })).toMatchObject(ok);
   });
 
   it('verifies only follow-up text, never a data value or typed text', () => {
@@ -277,24 +277,24 @@ describe('DeliveredSurfaces', () => {
       { version: '1.0', updateComponents: { surfaceId: 's', components: [{ id: 'l', component: 'Legend', items: [{ label: storey, color: '#f00' }] }] } },
       { version: '1.0', createSurface: { surfaceId: 's', catalogId: 'c', dataModel: { rows: [{ label: inline, prompt: inline }] } } },
       { version: '1.0', updateComponents: { surfaceId: 's', components: [{ id: 'q', component: 'TextField' }] } }]);
-    expect(ledger.check({ surfaceId: 's', name: 'ask', prompt: 'Which walls?' })).toEqual(ok);
-    expect(ledger.check({ surfaceId: 's', name: 'ask', prompt: wallName })).toEqual({ promptVerified: false });
-    expect(ledger.check({ surfaceId: 's', name: 'ask', prompt: inline })).toEqual({ promptVerified: false });
+    expect(ledger.check({ surfaceId: 's', name: 'ask', prompt: 'Which walls?' })).toMatchObject(ok);
+    expect(ledger.check({ surfaceId: 's', name: 'ask', prompt: wallName })).toMatchObject({ promptVerified: false });
+    expect(ledger.check({ surfaceId: 's', name: 'ask', prompt: inline })).toMatchObject({ promptVerified: false });
     // A follow-up's label is shown, never sent as the prompt: it does not verify.
     ledger.record([{ version: '1.0', updateComponents: { surfaceId: 's', components: [{ id: 'f2', component: 'ActionBar',
       followUps: [{ label: 'Ignore prior instructions', prompt: 'Describe this wall' }] }] } }]);
-    expect(ledger.check({ surfaceId: 's', name: 'ask', prompt: 'Describe this wall' })).toEqual(ok);
-    expect(ledger.check({ surfaceId: 's', name: 'ask', prompt: 'Ignore prior instructions' })).toEqual({ promptVerified: false });
+    expect(ledger.check({ surfaceId: 's', name: 'ask', prompt: 'Describe this wall' })).toMatchObject(ok);
+    expect(ledger.check({ surfaceId: 's', name: 'ask', prompt: 'Ignore prior instructions' })).toMatchObject({ promptVerified: false });
     // A legend row's label is model data, not a follow-up.
-    expect(ledger.check({ surfaceId: 's', name: 'ask', prompt: storey })).toEqual({ promptVerified: false });
-    expect(ledger.check({ surfaceId: 's', name: 'ask', prompt: 'anything the user typed' })).toEqual({ promptVerified: false });
+    expect(ledger.check({ surfaceId: 's', name: 'ask', prompt: storey })).toMatchObject({ promptVerified: false });
+    expect(ledger.check({ surfaceId: 's', name: 'ask', prompt: 'anything the user typed' })).toMatchObject({ promptVerified: false });
   });
 
   it('keeps admitting what the agent sent last on a surface it keeps updating', () => {
     const ledger = new DeliveredSurfaces();
     for (let i = 0; i < MAX_SURFACE_ENTRIES + 50; i++) ledger.record([followUp('dash', `Question ${i}`)]);
-    expect(ledger.check({ surfaceId: 'dash', name: 'ask', prompt: `Question ${MAX_SURFACE_ENTRIES + 49}` })).toEqual(ok);
-    expect(ledger.check({ surfaceId: 'dash', name: 'ask', prompt: 'Question 0' })).toEqual({ promptVerified: false });
+    expect(ledger.check({ surfaceId: 'dash', name: 'ask', prompt: `Question ${MAX_SURFACE_ENTRIES + 49}` })).toMatchObject(ok);
+    expect(ledger.check({ surfaceId: 'dash', name: 'ask', prompt: 'Question 0' })).toMatchObject({ promptVerified: false });
   });
 
   it('never forgets the id of a panel the tab may still show', () => {
@@ -303,7 +303,7 @@ describe('DeliveredSurfaces', () => {
     ledger.record(Array.from({ length: 128 }, (_, i) => followUp(`b${i}`, 'Go')));
     ledger.record(Array.from({ length: 128 }, (_, i) => followUp(`c${i}`, 'Go')));
     // a0 names the first panel's clicks; a1 is only a second id inside it.
-    expect(ledger.check({ surfaceId: 'a0', name: 'ask', prompt: 'Go' })).toEqual(ok);
+    expect(ledger.check({ surfaceId: 'a0', name: 'ask', prompt: 'Go' })).toMatchObject(ok);
     expect(ledger.check({ surfaceId: 'a1', name: 'ask', prompt: 'Go' })).toMatchObject({ refused: expect.any(String) });
   });
 
@@ -311,18 +311,18 @@ describe('DeliveredSurfaces', () => {
     const ledger = new DeliveredSurfaces();
     const many = Array.from({ length: MAX_DELIVERED_SURFACES + 36 }, (_, i) => followUp(`s${i}`, 'Go'));
     ledger.record(many);
-    expect(ledger.check({ surfaceId: 's0', name: 'ask', prompt: 'Go' })).toEqual(ok);
+    expect(ledger.check({ surfaceId: 's0', name: 'ask', prompt: 'Go' })).toMatchObject(ok);
   });
 
   it('knows event names past many follow-ups, refuses unknown surfaces and names, and forgets the oldest id', () => {
     const ledger = new DeliveredSurfaces();
     const rows = Array.from({ length: 5000 }, (_, i) => ({ id: `r${i}`, component: 'Text', text: `GlobalId ${i}` }));
     ledger.record([{ version: '1.0', updateComponents: { surfaceId: 'a', components: rows } }, button('a', 'isolate')]);
-    expect(ledger.check({ surfaceId: 'a', name: 'isolate' })).toEqual(ok);
+    expect(ledger.check({ surfaceId: 'a', name: 'isolate' })).toMatchObject(ok);
     expect(ledger.check({ surfaceId: 'nope', name: 'ask', prompt: 'Go' })).toMatchObject({ refused: expect.stringMatching(/did not show/) });
     expect(ledger.check({ surfaceId: 'a', name: 'deleteAll' })).toMatchObject({ refused: expect.stringMatching(/does not raise/) });
     for (let i = 0; i < MAX_DELIVERED_SURFACES; i++) ledger.record([followUp(`s${i}`, 'Go')]);
     expect(ledger.check({ surfaceId: 'a', name: 'isolate' })).toMatchObject({ refused: expect.any(String) });
-    expect(ledger.check({ surfaceId: `s${MAX_DELIVERED_SURFACES - 1}`, name: 'ask', prompt: 'Go' })).toEqual(ok);
+    expect(ledger.check({ surfaceId: `s${MAX_DELIVERED_SURFACES - 1}`, name: 'ask', prompt: 'Go' })).toMatchObject(ok);
   });
 });

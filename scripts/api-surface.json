@@ -8133,6 +8133,7 @@
     "toolError: function"
   ],
   "@ifc-lite/mcp/bridge-protocol": [
+    "AGENT_SURFACE_PANELS: const",
     "BRIDGE_FEATURES: const",
     "BRIDGE_FEATURE_IMAGE_CONTENT: const",
     "BRIDGE_FEATURE_UI_EVENTS: const",

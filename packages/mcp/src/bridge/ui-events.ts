@@ -17,6 +17,9 @@ import { checkJsonBounds, isRecord, utf8Length } from './json-bounds.js';
 
 /** `welcome.features` entry: this bridge accepts `ui-event` frames. */
 export const BRIDGE_FEATURE_UI_EVENTS = 'ui-events';
+/** Agent surface panels a tab keeps; the bridge keeps their ids for at least this many calls. */
+export const AGENT_SURFACE_PANELS = 16;
+
 /** MCP name of the tool that drains them (a bridge tool, under the tab prefix). */
 export const BRIDGE_UI_EVENTS_TOOL = 'tab_ui_events';
 

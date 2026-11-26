@@ -59,7 +59,7 @@ import { clip, quoted } from './sanitize.js';
 import { BRIDGE_IMAGE_LIMITS, validateResultContent, type BridgeContent } from './result-content.js';
 
 export { BRIDGE_FEATURE_IMAGE_CONTENT, BRIDGE_FEATURES } from './result-content.js';
-export { BRIDGE_FEATURE_UI_EVENTS, BRIDGE_UI_EVENTS_TOOL, UI_EVENT_LIMITS, a2uiSurfaceId, type BridgeUiEvent, type BridgeUiEventMessage } from './ui-events.js';
+export { BRIDGE_FEATURE_UI_EVENTS, BRIDGE_UI_EVENTS_TOOL, UI_EVENT_LIMITS, AGENT_SURFACE_PANELS, a2uiSurfaceId, type BridgeUiEvent, type BridgeUiEventMessage } from './ui-events.js';
 import { parseUiEvent } from './ui-events.js';
 export type { BridgeContent, BridgeImageContent, BridgeImageMimeType, BridgeTextContent } from './result-content.js';
 

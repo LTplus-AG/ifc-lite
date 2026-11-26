@@ -363,8 +363,7 @@ export class TabBridge {
       uiEvent: (event) => {
         const checked = this.surfaces.check(event);
         if ('refused' in checked) this.noisy.note('ui events not matching a shown surface', `dropped a ui-event that ${checked.refused}`);
-        // A verified prompt goes on as the agent wrote it, without whitespace the tab added around it.
-        else if (!this.uiEvents.push(checked.promptVerified && event.prompt !== undefined ? { ...event, prompt: event.prompt.trim() } : event, checked.promptVerified)) this.noisy.note('ui events over the rate limit', 'dropped a ui-event over the rate limit');
+        else if (!this.uiEvents.push({ ...event, ...('prompt' in checked ? { prompt: checked.prompt } : {}) }, checked.promptVerified)) this.noisy.note('ui events over the rate limit', 'dropped a ui-event over the rate limit');
       },
     });
   }

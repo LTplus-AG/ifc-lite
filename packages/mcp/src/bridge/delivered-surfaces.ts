@@ -30,15 +30,13 @@
 
 import { ASK_EVENT, eventToFollowUp } from '@ifc-lite/a2ui';
 import { isRecord } from './json-bounds.js';
-import { a2uiSurfaceId, type BridgeUiEvent } from './ui-events.js';
+import { AGENT_SURFACE_PANELS, a2uiSurfaceId, type BridgeUiEvent } from './ui-events.js';
 
 /**
  * Surface ids remembered; the oldest is forgotten past this. The tab keeps
  * 16 panels (agent-surfaces.ts) and one call can name several ids.
  */
 export const MAX_DELIVERED_SURFACES = 256;
-/** Panels the tab keeps on screen (agent-surfaces.ts): their ids are never forgotten. */
-const TAB_PANELS = 16;
 /** Follow-up texts and event names remembered per surface, each; the oldest go first. */
 export const MAX_SURFACE_ENTRIES = 1024;
 
@@ -108,12 +106,13 @@ function collect(value: unknown, into: Surface): void {
   }
 }
 
-type SurfaceCheck = { refused: string } | { promptVerified: boolean };
+/** Refused, or admitted with the prompt to deliver (trimmed when verified, as the agent wrote it). */
+type SurfaceCheck = { refused: string } | { promptVerified: boolean; prompt?: string };
 
 export class DeliveredSurfaces {
   /** Surface id -> what the agent sent for it. Insertion order is age. */
   private readonly surfaces = new Map<string, Surface>();
-  /** The first surface id of each of the last {@link TAB_PANELS} calls: the id the tab names that panel's clicks by. */
+  /** The first surface id of each of the last {@link AGENT_SURFACE_PANELS} calls: the id the tab names that panel's clicks by. */
   private readonly panels: string[] = [];
 
   /**
@@ -126,8 +125,9 @@ export class DeliveredSurfaces {
   record(messages: readonly unknown[]): void {
     const ids = new Set(messages.map(a2uiSurfaceId).filter((id): id is string => id !== null));
     if (ids.size === 0) return;
-    this.panels.push(ids.values().next().value as string);
-    if (this.panels.length > TAB_PANELS) this.panels.shift();
+    const [first] = ids;
+    this.panels.push(first);
+    if (this.panels.length > AGENT_SURFACE_PANELS) this.panels.shift();
     const call = emptySurface();
     collect(messages, call);
     for (const id of ids) {
@@ -139,6 +139,7 @@ export class DeliveredSurfaces {
       this.surfaces.set(id, surface);
     }
     // Forget the oldest ids, never one this call named or one that names a panel the tab may still show.
+    if (this.surfaces.size <= MAX_DELIVERED_SURFACES) return;
     const kept = new Set([...ids, ...this.panels]);
     for (const id of this.surfaces.keys()) {
       if (this.surfaces.size <= MAX_DELIVERED_SURFACES) break;
@@ -152,7 +153,8 @@ export class DeliveredSurfaces {
     if (!surface) return { refused: 'names a surface the agent did not show in this tab' };
     if (event.name !== ASK_EVENT && !surface.events.has(event.name)) return { refused: 'names an event that surface does not raise' };
     const prompt = event.prompt?.trim();
-    return { promptVerified: !prompt || surface.prompts.has(prompt) || prompt === genericPrompt(event.name) };
+    const promptVerified = !prompt || surface.prompts.has(prompt) || prompt === genericPrompt(event.name);
+    return { promptVerified, ...(event.prompt === undefined ? {} : { prompt: promptVerified ? prompt : event.prompt }) };
   }
 
   /** A different tab paired: what the previous one was shown does not carry over. */

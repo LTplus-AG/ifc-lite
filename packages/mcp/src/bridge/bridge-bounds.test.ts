@@ -91,6 +91,8 @@ describe('schema keywords the bridge cannot enforce (CodeRabbit json-bounds.ts:8
     expect(await refusal({ type: 'object', properties: { a: { type: 'array', uniqueItems: 'true' } } })).toMatch(/uniqueItems must be true or false/);
     expect(await refusal({ type: 'object', properties: { a: { oneOf: [{ type: 'strng' }] } } })).toMatch(/oneOf\[0\]\.type must be one of/);
     expect(await refusal({ type: 'object', properties: { a: { type: 'string', pattern: '[' } } })).toMatch(/pattern must be a valid regular expression/);
+    // validateInput runs tab patterns on the server's event loop: `^(a+)+$` on 28 a's and a '!' blocked it ~7 s.
+    expect(await refusal({ type: 'object', properties: { a: { type: 'string', pattern: '^(a+)+$' } } })).toMatch(/can backtrack exponentially/);
   });
 });
 

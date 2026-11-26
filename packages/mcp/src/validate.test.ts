@@ -275,13 +275,13 @@ describe('validateInput: 2020-12 keywords beyond the original subset', () => {
     expect(validateInput(schema, { a: 'x', b: 'y' }).errors[0].path).toBe('$.b');
   });
 
-  it('throws on a $ref that points nowhere instead of skipping the check', () => {
-    expect(() => validateInput({ $ref: '#/$defs/Missing' }, {})).toThrow(/Unresolvable \$ref/);
+  it('reports a $ref that points nowhere as a schema error instead of skipping the check', () => {
+    expect(validateInput({ $ref: '#/$defs/Missing' }, {}).errors[0].message).toMatch(/Unresolvable \$ref/);
   });
 
-  it('fails cleanly on a $ref cycle instead of overflowing the stack', () => {
+  it('reports a $ref cycle as a schema error instead of overflowing the stack', () => {
     const schema = { type: 'object', properties: { a: { $ref: '#/$defs/A' } }, $defs: { A: { $ref: '#/$defs/B' }, B: { $ref: '#/$defs/A' } } };
-    expect(() => validateInput(schema, { a: 1 })).toThrow(/Circular \$ref/);
+    expect(validateInput(schema, { a: 1 }).errors[0].message).toMatch(/Circular \$ref/);
   });
 
   it('treats boolean subschemas as accept-all and reject-all', () => {
@@ -303,7 +303,7 @@ describe('validateInput: 2020-12 keywords beyond the original subset', () => {
   it('refuses a constraint next to a $ref instead of half-applying it', () => {
     const schema = { type: 'object', properties: { op: { $ref: '#/$defs/Op', required: ['kind'] } },
       $defs: { Op: { type: 'object', properties: { kind: { const: 'add' } } } } };
-    expect(() => validateInput(schema, { op: {} })).toThrow(/Keyword 'required' next to \$ref/);
+    expect(validateInput(schema, { op: {} }).errors[0].message).toMatch(/Keyword 'required' next to \$ref/);
   });
 
   it('resolves an empty JSON Pointer segment as a key, not as the parent', () => {
@@ -346,7 +346,7 @@ describe('validateInput: code-review cases for items:false, enum discriminators,
   it('decodes percent-escapes in a $ref pointer', () => {
     const schema = { type: 'object', properties: { v: { $ref: '#/$defs/a%20b' } }, $defs: { 'a b': { type: 'string' } } };
     expect(validateInput(schema, { v: 1 }).valid).toBe(false);
-    expect(() => validateInput({ $ref: '#/$defs/%E0' }, {})).toThrow(/bad percent-escape/);
+    expect(validateInput({ $ref: '#/$defs/%E0' }, {}).errors[0].message).toMatch(/bad percent-escape/);
   });
 
   it('keeps a default written next to a $ref', () => {
@@ -364,6 +364,26 @@ describe('validateInput: code-review cases for items:false, enum discriminators,
     const schema = { type: 'object', properties: { d: { type: 'string', pattern: '^\\d{4}\\-\\d{2}$' } } };
     expect(validateInput(schema, { d: '2026-11' }).valid).toBe(true);
     expect(validateInput(schema, { d: '2026/11' }).valid).toBe(false);
+  });
+
+  it('null fails a non-null branch type, so a nullable oneOf picks exactly one branch', () => {
+    const schema = { type: 'object', properties: { v: { type: 'object', oneOf: [
+      { properties: { x: { type: 'string' } }, required: ['k'] },
+      { properties: { x: { type: 'null' } }, required: ['k'] },
+    ] } } };
+    expect(validateInput(schema, { v: { k: 1, x: null } }).valid).toBe(true);
+    // A top-level null still reads as absent.
+    expect(validateInput({ type: 'object', properties: { x: { type: 'string' } } }, { x: null }).valid).toBe(true);
+  });
+
+  it('refuses an anchor $ref instead of resolving it to the root', () => {
+    const r = validateInput({ type: 'object', properties: { a: { $ref: '#A' } } }, { a: 5 });
+    expect(r.errors[0].message).toMatch(/Tool schema error: Unsupported \$ref '#A'/);
+  });
+
+  it('reports a pattern that compiles in neither mode as a schema error', () => {
+    const r = validateInput({ type: 'object', properties: { a: { type: 'string', pattern: '(' } } }, { a: 'x' });
+    expect(r.errors[0].message).toMatch(/Tool schema error: pattern "\(" does not compile/);
   });
 });
 

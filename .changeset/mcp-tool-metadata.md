@@ -10,6 +10,6 @@ Input validation now enforces `oneOf`, `$ref`/`$defs`, `const`, `pattern`, `uniq
 
 Descriptions of `storey_plan_add`, `bcf_publication_check` and `ids_write` now say what they really do (read-only dry run, local record with a read-only server call, XML returned with no file written).
 
-Bridge tab schemas: `$ref`, an empty or non-array `anyOf`/`oneOf`, and a `pattern` that does not compile are refused at hello/update (the server would otherwise throw on every call). `pattern`, `oneOf` branches and schema-valued `additionalProperties` in tab schemas are now enforced server-side. A root `oneOf` is stripped from advertised schemas like a root `anyOf`.
+Bridge tab schemas: `$ref`, an empty or non-array `anyOf`/`oneOf`, and a `pattern` that does not compile are refused at hello/update (the server would otherwise throw on every call). `pattern`, `oneOf` branches and schema-valued `additionalProperties` in tab schemas are now enforced server-side; a tab `pattern` that repeats a group which itself repeats or alternates (`(a+)+`) is refused, since it could stall the server. A defect in a schema (bad `$ref`, uncompilable `pattern`) now comes back as `INVALID_INPUT` naming the schema problem, not a JSON-RPC internal error. A root `oneOf` is stripped from advertised schemas like a root `anyOf`.
 
 `room_command` now enforces the `uniqueItems` it always declared on `command.expressIds`: a call with duplicate ids fails with `INVALID_INPUT`.

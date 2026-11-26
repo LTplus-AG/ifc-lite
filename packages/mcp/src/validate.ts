@@ -61,10 +61,23 @@ export const ENFORCED_KEYWORDS: ReadonlySet<string> = new Set([
   'description', 'title', 'format', 'examples', '$schema', '$comment',
 ]);
 
+/** A defect in the schema itself (bad `$ref`, bad `pattern`), not in the caller's input. */
+export class SchemaError extends Error {}
+
+/**
+ * Never throws for a bad schema: the defect comes back as an issue at `$`, so
+ * a caller sees INVALID_INPUT naming the schema problem rather than a JSON-RPC
+ * internal error.
+ */
 export function validateInput(schema: JsonSchema, input: unknown): ValidationResult {
   const errors: ValidationIssue[] = [];
-  const value = walk(schema, input, '$', errors, { root: schema, fillDefaults: true });
-  return { valid: errors.length === 0, errors, value };
+  try {
+    const value = walk(schema, input, '$', errors, { root: schema, fillDefaults: true });
+    return { valid: errors.length === 0, errors, value };
+  } catch (err) {
+    if (!(err instanceof SchemaError)) throw err;
+    return { valid: false, errors: [{ path: '$', message: `Tool schema error: ${err.message}` }], value: input };
+  }
 }
 
 /**
@@ -92,7 +105,7 @@ interface WalkOptions {
 /** `const` (and one-value `enum`) failures, so `checkOneOf` can tell a wrong discriminator from a real problem. */
 const constMismatches = new WeakSet<ValidationIssue>();
 
-const REF_SIBLINGS: ReadonlySet<string> = new Set(['default', 'description', 'title', 'examples', '$comment', '$defs', '$schema']);
+const REF_SIBLINGS: ReadonlySet<string> = new Set(['default', 'description', 'title', 'format', 'examples', '$comment', '$defs', '$schema']);
 
 function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors: ValidationIssue[], opts: WalkOptions): unknown {
   // Boolean subschemas (2020-12): `true` accepts anything, `false` nothing.
@@ -103,11 +116,11 @@ function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors
   }
   if (typeof schema.$ref === 'string') {
     const { $ref: ref, ...siblings } = schema;
-    if (opts.refs?.has(ref)) throw new Error(`Circular $ref '${ref}'`);
+    if (opts.refs?.has(ref)) throw new SchemaError(`Circular $ref '${ref}'`);
     // Only annotations and `default` may sit next to a `$ref`; merging two
     // validated results has too many edge cases for a feature no schema uses.
     const constraint = Object.keys(siblings).find((k) => !REF_SIBLINGS.has(k));
-    if (constraint) throw new Error(`Keyword '${constraint}' next to $ref '${ref}' is not supported; move it into the referenced schema`);
+    if (constraint) throw new SchemaError(`Keyword '${constraint}' next to $ref '${ref}' is not supported; move it into the referenced schema`);
     if (opts.fillDefaults && input === undefined && siblings.default !== undefined) input = clone(siblings.default);
     return walk(resolveRef(ref, opts.root), input, path, errors, { ...opts, refs: new Set([...(opts.refs ?? []), ref]) });
   }
@@ -116,7 +129,15 @@ function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors
   if (opts.fillDefaults && input === undefined && schema.default !== undefined) {
     input = clone(schema.default);
   }
-  if (input === undefined || input === null) return input;
+  if (input === undefined) return input;
+  if (input === null) {
+    // Handlers read null as absent, so a top-level null passes. Inside an
+    // anyOf/oneOf branch test it must still fail a non-null `type`, or null
+    // would match every branch and a oneOf could never accept it.
+    const declared = Array.isArray(schema.type) ? schema.type : schema.type ? [schema.type] : [];
+    if (!opts.fillDefaults && declared.length > 0 && !declared.includes('null')) errors.push({ path, message: 'Expected a non-null value' });
+    return input;
+  }
 
   if (schema.enum && !schema.enum.some((v) => sameValue(v, input))) {
     const issue = { path, message: `Expected one of ${JSON.stringify(schema.enum)}; got ${JSON.stringify(input)}` };
@@ -227,7 +248,7 @@ function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors
     if (schema.maxLength !== undefined && input.length > schema.maxLength) {
       errors.push({ path, message: `String longer than ${schema.maxLength}` });
     }
-    if (typeof schema.pattern === 'string' && !compilePattern(schema.pattern).test(input)) {
+    if (typeof schema.pattern === 'string' && !patternOf(schema).test(input)) {
       errors.push({ path, message: `Does not match pattern ${schema.pattern}` });
     }
   }
@@ -273,7 +294,8 @@ function describeIssues(issues: ValidationIssue[]): string {
 
 /** The schema a local `$ref` (`#/a/b`) points at, which may be a boolean schema. */
 function resolveRef(ref: string, root: JsonSchema): JsonSchema | boolean {
-  if (!ref.startsWith('#')) throw new Error(`Unsupported non-local $ref '${ref}'`);
+  // Local JSON Pointers only; an anchor (`#Foo`) or a remote URI is not resolved.
+  if (ref !== '#' && !ref.startsWith('#/')) throw new SchemaError(`Unsupported $ref '${ref}'`);
   let target: unknown = root;
   // `#` is the root; every segment after it is a key, including an empty one (RFC 6901).
   for (const raw of ref === '#' ? [] : ref.slice(1).split('/').slice(1)) {
@@ -283,7 +305,7 @@ function resolveRef(ref: string, root: JsonSchema): JsonSchema | boolean {
   if (typeof target === 'boolean' || (target !== null && typeof target === 'object' && !Array.isArray(target))) {
     return target as JsonSchema | boolean;
   }
-  throw new Error(`Unresolvable $ref '${ref}'`);
+  throw new SchemaError(`Unresolvable $ref '${ref}'`);
 }
 
 function decodePointerSegment(raw: string, ref: string): string {
@@ -291,7 +313,7 @@ function decodePointerSegment(raw: string, ref: string): string {
   try {
     decoded = decodeURIComponent(raw);
   } catch (err) {
-    if (err instanceof URIError) throw new Error(`Unresolvable $ref '${ref}': bad percent-escape`);
+    if (err instanceof URIError) throw new SchemaError(`Unresolvable $ref '${ref}': bad percent-escape`);
     throw err;
   }
   return decoded.replace(/~1/g, '/').replace(/~0/g, '~');
@@ -303,6 +325,21 @@ function decodePointerSegment(raw: string, ref: string): string {
  * carry escapes like `\-` that only non-unicode mode accepts. Throws a
  * SyntaxError when neither compiles.
  */
+const compiled = new WeakMap<JsonSchema, RegExp>();
+function patternOf(schema: JsonSchema): RegExp {
+  let re = compiled.get(schema);
+  if (!re) {
+    try {
+      re = compilePattern(schema.pattern as string);
+    } catch (err) {
+      if (err instanceof SyntaxError) throw new SchemaError(`pattern ${JSON.stringify(schema.pattern)} does not compile`);
+      throw err;
+    }
+    compiled.set(schema, re);
+  }
+  return re;
+}
+
 export function compilePattern(source: string): RegExp {
   try {
     return new RegExp(source, 'u');

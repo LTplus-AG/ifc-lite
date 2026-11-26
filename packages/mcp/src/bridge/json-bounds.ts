@@ -127,6 +127,8 @@ export function checkSchemaShape(schema: unknown, path: string): string | null {
   if (schema.$ref !== undefined) return `${path}.$ref is not supported in a tab schema; inline the schema`;
   // validateInput runs the pattern on every call; one that does not compile would throw there instead.
   if (schema.pattern !== undefined && !compiles(schema.pattern)) return `${path}.pattern must be a valid regular expression`;
+  // The server runs tab patterns on its own event loop; a quantified group that can match in many ways (`(a+)+`, `(a|ab)*`) backtracks exponentially.
+  if (typeof schema.pattern === 'string' && ambiguousRepeat(schema.pattern)) return `${path}.pattern repeats a group that itself repeats or alternates; that can backtrack exponentially`;
   if (additionalProperties !== undefined && typeof additionalProperties !== 'boolean') {
     const err = checkSchemaShape(additionalProperties, `${path}.additionalProperties`);
     if (err) return err;
@@ -149,4 +151,31 @@ function compiles(pattern: unknown): boolean {
     if (err instanceof SyntaxError) return false;
     throw err;
   }
+}
+
+/**
+ * True when a group that contains a quantifier or `|` is itself followed by
+ * `*`, `+` or `{`: the shape of every classic catastrophic-backtracking regex.
+ * Conservative (it also refuses some safe patterns) and linear in the source.
+ */
+export function ambiguousRepeat(source: string): boolean {
+  const groups: boolean[] = [];
+  let inClass = false;
+  for (let i = 0; i < source.length; i++) {
+    const c = source[i];
+    if (c === '\\') { i++; continue; }
+    if (inClass) { if (c === ']') inClass = false; continue; }
+    if (c === '[') { inClass = true; continue; }
+    if (c === '(') { groups.push(false); continue; }
+    if (c === ')') {
+      const risky = groups.pop() ?? false;
+      const next = source[i + 1];
+      if (risky && (next === '*' || next === '+' || next === '{')) return true;
+      // A group that repeats or alternates makes its parent risky too.
+      if (groups.length > 0 && (risky || next === '*' || next === '+' || next === '{')) groups[groups.length - 1] = true;
+      continue;
+    }
+    if (groups.length > 0 && (c === '*' || c === '+' || c === '{' || c === '|')) groups[groups.length - 1] = true;
+  }
+  return false;
 }

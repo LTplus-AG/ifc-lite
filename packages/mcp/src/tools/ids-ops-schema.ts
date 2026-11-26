@@ -51,10 +51,8 @@ function enumText(values: readonly unknown[], separator: string): string {
 function typeOf(schema: JsonSchema): string | undefined {
   const ref = refName(schema);
   if (ref) return ref === 'Uuid' ? undefined : ref;
-  if (schema.items) {
-    const item = typeOf(schema.items);
-    return item ? `[${item}]` : undefined;
-  }
+  // Arrays always show as arrays, so a list of ids is not mistaken for one id.
+  if (schema.items) return `[${refName(schema.items) ?? typeOf(schema.items) ?? plainType(schema.items)}]`;
   if (schema.const !== undefined) return JSON.stringify(schema.const);
   // A long enum (the op kinds again, inside templates) would cost more than it tells.
   if (Array.isArray(schema.enum)) return schema.enum.length > 12 ? `string (${schema.enum.length} allowed values)` : enumText(schema.enum, '|');

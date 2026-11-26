@@ -69,7 +69,7 @@ export const repositionPanelDe = {
   "repositionPanel.rotation.clearButton": "Drehung aufheben",
   "repositionPanel.rotation.summaryRow": "{name}: {degrees}° um {pivot}",
   "repositionPanel.twoPoint.legend": "Zwei-Punkt-Ausrichtung",
-  "repositionPanel.twoPoint.intro": "Wählen Sie A und B auf den zu verschiebenden Modellen, dann die passenden Punkte A′ und B′ auf dem Referenzmodell. Die Drehung erfolgt um die senkrechte Achse durch A.",
+  "repositionPanel.twoPoint.intro": "Wählen Sie A auf den zu verschiebenden Modellen und dann den zugehörigen Punkt A′ auf dem Referenzmodell. Wiederholen Sie dies für B und B′. Die Drehung erfolgt um die senkrechte Achse durch A.",
   "repositionPanel.twoPoint.startButton": "Zwei-Punkt-Ausrichtung",
   "repositionPanel.twoPoint.needReference": "Wählen Sie ein Referenzmodell, an dem ausgerichtet wird.",
   "repositionPanel.twoPoint.refusal.nonFinite": "Ein gewählter Punkt ist keine endliche Koordinate. Wählen Sie die Punkte erneut.",

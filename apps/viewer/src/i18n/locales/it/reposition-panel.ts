@@ -69,7 +69,7 @@ export const repositionPanelIt = {
   "repositionPanel.rotation.clearButton": "Cancella rotazione",
   "repositionPanel.rotation.summaryRow": "{name}: {degrees}° attorno a {pivot}",
   "repositionPanel.twoPoint.legend": "Allineamento a due punti",
-  "repositionPanel.twoPoint.intro": "Scegli A e B sui modelli da spostare, poi i punti corrispondenti A′ e B′ sul riferimento. La rotazione avviene attorno all’asse verticale passante per A.",
+  "repositionPanel.twoPoint.intro": "Scegli A sui modelli da spostare, poi il punto corrispondente A′ sul riferimento. Ripeti per B e B′. La rotazione avviene attorno all’asse verticale passante per A.",
   "repositionPanel.twoPoint.startButton": "Allineamento a due punti",
   "repositionPanel.twoPoint.needReference": "Scegli un modello di riferimento su cui allineare.",
   "repositionPanel.twoPoint.refusal.nonFinite": "Un punto scelto non è una coordinata finita. Scegli di nuovo i punti.",

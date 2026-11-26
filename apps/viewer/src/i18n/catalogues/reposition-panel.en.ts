@@ -95,7 +95,7 @@ export const repositionPanelEn = {
   'repositionPanel.rotation.summaryRow': '{name}: {degrees}° about {pivot}',
 
   'repositionPanel.twoPoint.legend': 'Two-point align',
-  'repositionPanel.twoPoint.intro': 'Pick A and B on the moving models, then the matching A′ and B′ on the reference. The rotation is about the vertical axis through A.',
+  'repositionPanel.twoPoint.intro': 'Pick A on the moving models, then its match A′ on the reference. Repeat for B and B′. The rotation is about the vertical axis through A.',
   'repositionPanel.twoPoint.startButton': 'Two-point align',
   'repositionPanel.twoPoint.needReference': 'Choose a reference model to align to.',
   'repositionPanel.twoPoint.refusal.nonFinite': 'A picked point is not a finite coordinate. Pick the points again.',

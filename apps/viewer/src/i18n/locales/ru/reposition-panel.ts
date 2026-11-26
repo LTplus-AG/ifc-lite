@@ -69,7 +69,7 @@ export const repositionPanelRu = {
   "repositionPanel.rotation.clearButton": "Очистить вращение",
   "repositionPanel.rotation.summaryRow": "{name}: {degrees}° вокруг {pivot}",
   "repositionPanel.twoPoint.legend": "Выравнивание по двум точкам",
-  "repositionPanel.twoPoint.intro": "Укажите A и B на перемещаемых моделях, затем соответствующие A′ и B′ на эталонной модели. Поворот выполняется вокруг вертикальной оси через A.",
+  "repositionPanel.twoPoint.intro": "Укажите точку A на перемещаемых моделях, затем соответствующую точку A′ на эталонной модели. Повторите для B и B′. Поворот выполняется вокруг вертикальной оси через A.",
   "repositionPanel.twoPoint.startButton": "Выровнять по двум точкам",
   "repositionPanel.twoPoint.needReference": "Выберите эталонную модель для выравнивания.",
   "repositionPanel.twoPoint.refusal.nonFinite": "Выбранная точка не является конечной координатой. Выберите точки заново.",

@@ -132,8 +132,9 @@ async function main(): Promise<void> {
     const expected = readJson<{ files: FileComparison[] }>(join(here, 'report.json'));
     const baseline = new Map(expected.files.map(file => [file.path, file]));
     const actual = new Set(comparisons.map(file => file.path));
-    const optional = new Set(process.env.IFC_LITE_REQUIRE_FIXTURES === '1' ? [] : missing);
-    const absent = [...baseline.keys()].filter(path => !actual.has(path) && !optional.has(path));
+    const strict = process.env.IFC_LITE_REQUIRE_FIXTURES === '1';
+    const optional = new Set(strict ? [] : missing);
+    const absent = [...new Set([...(strict ? missing : []), ...[...baseline.keys()].filter(path => !actual.has(path) && !optional.has(path))])];
     const unexpected = [...actual].filter(path => !baseline.has(path));
     if (absent.length || unexpected.length) {
       throw new Error(`Parity input paths changed. Missing: ${absent.join(', ')}. Unexpected: ${unexpected.join(', ')}.`);

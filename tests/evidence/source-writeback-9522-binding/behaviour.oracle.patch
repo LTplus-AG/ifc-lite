@@ -1,0 +1,12 @@
+diff --git a/apps/viewer/src/services/sources/model-writeback.ts b/apps/viewer/src/services/sources/model-writeback.ts
+--- a/apps/viewer/src/services/sources/model-writeback.ts
++++ b/apps/viewer/src/services/sources/model-writeback.ts
+@@ -29,7 +29,7 @@
+   destination: { mode: WriteBackMode; fileName: string; containerId: string },
+   signal?: AbortSignal,
+ ): Promise<SaveSourceOutcome> {
+-  if (false) return { kind: 'model-changed' };
++  if (!isSourceBindingCurrent(binding)) return { kind: 'model-changed' };
+   const provider = host.get(binding.tag.provider);
+   if (!provider?.uploadFile || !writeBackModes(provider).includes(destination.mode)) return { kind: 'unavailable' };
+   if (destination.mode !== 'new-version' && (!isUploadFileName(destination.fileName) ||

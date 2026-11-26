@@ -286,7 +286,8 @@ describe('headless plans draw door and window symbols (#10932)', () => {
     expect(expected.length).toBeGreaterThan(1);
     const coordinateTransform = ({ x, y }: { x: number; y: number }) => ({ x: 12 - 2 * y, y: -4 + 2 * x });
     const entities = parseDxf(exportToDXF(drawing, { coordinateTransform })).entities
-      .filter(entity => entity.kind === 'line' && entity.layer === 'IFC-SYMBOLS');
+      .filter(entity => entity.kind === 'line')
+      .filter(entity => entity.layer === 'IFC-SYMBOLS');
     expect(entities).toHaveLength(expected.length);
     for (const [i, line] of entities.entries()) {
       expectPoint({ x: line.x1, y: line.y1 }, 12 - 2 * expected[i].start.y, -4 + 2 * expected[i].start.x);

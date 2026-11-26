@@ -40,6 +40,7 @@ export interface EntityMeta {
   name: string;
   abstract: boolean;
   supertype?: string;
+  supertypes?: string[];
   /** Explicit attributes this entity introduces, in STEP order. */
   attributes: AttributeMeta[];
   /** Inherited explicit attributes this entity redeclares with a narrower type. */
@@ -77,7 +78,7 @@ export interface CompiledRule<F> {
 }
 
 export interface UnsupportedRule {
-  scope: 'entity' | 'type' | 'derived' | 'global' | 'function';
+  scope: 'entity' | 'type' | 'derived' | 'global' | 'function' | 'schema';
   owner: string;
   label: string;
   reason: string;

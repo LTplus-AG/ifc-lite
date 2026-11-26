@@ -91,7 +91,7 @@ const E_LOAD_CASE = new r.EnumValue("LOAD_CASE");
 
 function fn_IfcAssociatedSurface(m: r.Model, p_arg: r.Value): r.Value {
   let v_surf: r.Value = undefined;
-  v_surf = r.assign(r.attr(p_arg, "BASISSURFACE"));
+  v_surf = r.assign(r.attr(p_arg, "BASISSURFACE", "IFCPCURVE"));
   return v_surf;
   return undefined;
 }
@@ -151,16 +151,16 @@ function fn_IfcBuildAxes(m: r.Model, p_axis: r.Value, p_refdirection: r.Value): 
   let v_d2: r.Value = undefined;
   v_d1 = r.assign(r.nvl(fn_IfcNormalise(m, p_axis), r.complex(m, [r.construct(m, "IfcRepresentationItem", []), r.construct(m, "IfcGeometricRepresentationItem", []), r.construct(m, "IfcDirection", [r.aggregate([[0], [0], [1]])])])));
   v_d2 = r.assign(fn_IfcFirstProjAxis(m, v_d1, p_refdirection));
-  return r.aggregate([[v_d2], [r.attr(fn_IfcNormalise(m, fn_IfcCrossProduct(m, v_d1, v_d2)), "ORIENTATION")], [v_d1]]);
+  return r.aggregate([[v_d2], [r.attr(fn_IfcNormalise(m, fn_IfcCrossProduct(m, v_d1, v_d2)), "ORIENTATION", "IFCVECTOR")], [v_d1]]);
   return undefined;
 }
 
 function fn_IfcConsecutiveSegments(m: r.Model, p_segments: r.Value): r.Value {
   let v_result: r.Value = r.assign(true);
   {
-    const from2 = r.int(1), to3 = r.int(r.sub(r.hiindex(p_segments), 1)), by4 = 1;
-    if (from2 !== undefined && to3 !== undefined && by4) for (let i_i1 = from2; by4 > 0 ? i_i1 <= to3 : i_i1 >= to3; i_i1 += by4) {
-      if (r.isTrue(r.ne(r.index(r.index(p_segments, i_i1), r.hiindex(r.index(p_segments, i_i1))), r.index(r.index(p_segments, r.add(i_i1, 1)), 1)))) {
+    const from_2 = r.int(1), to_3 = r.int(r.sub(r.hiindex(p_segments), 1)), by_4 = 1;
+    if (from_2 !== undefined && to_3 !== undefined && by_4) for (let i_i_1 = from_2; by_4 > 0 ? i_i_1 <= to_3 : i_i_1 >= to_3; i_i_1 += by_4) {
+      if (r.isTrue(r.ne(r.index(r.index(p_segments, i_i_1), r.hiindex(r.index(p_segments, i_i_1))), r.index(r.index(p_segments, r.add(i_i_1, 1)), 1)))) {
         {
           v_result = r.assign(false);
           break;
@@ -178,9 +178,9 @@ function fn_IfcConstraintsParamBSpline(m: r.Model, p_degree: r.Value, p_upknots:
   let v_sum: r.Value = undefined;
   v_sum = r.assign(r.index(p_knotmult, 1));
   {
-    const from6 = r.int(2), to7 = r.int(p_upknots), by8 = 1;
-    if (from6 !== undefined && to7 !== undefined && by8) for (let i_i5 = from6; by8 > 0 ? i_i5 <= to7 : i_i5 >= to7; i_i5 += by8) {
-      v_sum = r.assign(r.add(v_sum, r.index(p_knotmult, i_i5)));
+    const from_6 = r.int(2), to_7 = r.int(p_upknots), by_8 = 1;
+    if (from_6 !== undefined && to_7 !== undefined && by_8) for (let i_i_5 = from_6; by_8 > 0 ? i_i_5 <= to_7 : i_i_5 >= to_7; i_i_5 += by_8) {
+      v_sum = r.assign(r.add(v_sum, r.index(p_knotmult, i_i_5)));
     }
   }
   if (r.isTrue(r.or(r.or(r.or(r.lt(p_degree, 1), () => r.lt(p_upknots, 2)), () => r.lt(p_upcp, p_degree)), () => r.ne(v_sum, r.add(r.add(p_degree, p_upcp), 2))))) {
@@ -193,18 +193,18 @@ function fn_IfcConstraintsParamBSpline(m: r.Model, p_degree: r.Value, p_upknots:
     return v_result;
   }
   {
-    const from10 = r.int(2), to11 = r.int(p_upknots), by12 = 1;
-    if (from10 !== undefined && to11 !== undefined && by12) for (let i_i9 = from10; by12 > 0 ? i_i9 <= to11 : i_i9 >= to11; i_i9 += by12) {
-      if (r.isTrue(r.or(r.lt(r.index(p_knotmult, i_i9), 1), () => r.le(r.index(p_knots, i_i9), r.index(p_knots, r.sub(i_i9, 1)))))) {
+    const from_10 = r.int(2), to_11 = r.int(p_upknots), by_12 = 1;
+    if (from_10 !== undefined && to_11 !== undefined && by_12) for (let i_i_9 = from_10; by_12 > 0 ? i_i_9 <= to_11 : i_i_9 >= to_11; i_i_9 += by_12) {
+      if (r.isTrue(r.or(r.lt(r.index(p_knotmult, i_i_9), 1), () => r.le(r.index(p_knots, i_i_9), r.index(p_knots, r.sub(i_i_9, 1)))))) {
         v_result = r.assign(false);
         return v_result;
       }
-      v_k = r.assign(r.index(p_knotmult, i_i9));
-      if (r.isTrue(r.and(r.lt(i_i9, p_upknots), () => r.gt(v_k, p_degree)))) {
+      v_k = r.assign(r.index(p_knotmult, i_i_9));
+      if (r.isTrue(r.and(r.lt(i_i_9, p_upknots), () => r.gt(v_k, p_degree)))) {
         v_result = r.assign(false);
         return v_result;
       }
-      if (r.isTrue(r.and(r.eq(i_i9, p_upknots), () => r.gt(v_k, r.add(p_degree, 1))))) {
+      if (r.isTrue(r.and(r.eq(i_i_9, p_upknots), () => r.gt(v_k, r.add(p_degree, 1))))) {
         v_result = r.assign(false);
         return v_result;
       }
@@ -224,176 +224,176 @@ function fn_IfcConvertDirectionInto2D(m: r.Model, p_direction: r.Value): r.Value
 
 function fn_IfcCorrectDimensions(m: r.Model, p_m: r.Value, p_dim: r.Value): r.Value {
   {
-    const sel13 = r.caseSelector(p_m);
-    if (r.isTrue(r.eq(sel13, E_LENGTHUNIT))) {
+    const sel_13 = r.caseSelector(p_m);
+    if (r.isTrue(r.eq(sel_13, E_LENGTHUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [1, 0, 0, 0, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel13, E_MASSUNIT))) {
+    } else if (r.isTrue(r.eq(sel_13, E_MASSUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [0, 1, 0, 0, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel13, E_TIMEUNIT))) {
+    } else if (r.isTrue(r.eq(sel_13, E_TIMEUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [0, 0, 1, 0, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel13, E_ELECTRICCURRENTUNIT))) {
+    } else if (r.isTrue(r.eq(sel_13, E_ELECTRICCURRENTUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 1, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel13, E_THERMODYNAMICTEMPERATUREUNIT))) {
+    } else if (r.isTrue(r.eq(sel_13, E_THERMODYNAMICTEMPERATUREUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 0, 1, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel13, E_AMOUNTOFSUBSTANCEUNIT))) {
+    } else if (r.isTrue(r.eq(sel_13, E_AMOUNTOFSUBSTANCEUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 0, 0, 1, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel13, E_LUMINOUSINTENSITYUNIT))) {
+    } else if (r.isTrue(r.eq(sel_13, E_LUMINOUSINTENSITYUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 0, 0, 0, 1])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel13, E_PLANEANGLEUNIT))) {
+    } else if (r.isTrue(r.eq(sel_13, E_PLANEANGLEUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 0, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel13, E_SOLIDANGLEUNIT))) {
+    } else if (r.isTrue(r.eq(sel_13, E_SOLIDANGLEUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 0, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel13, E_AREAUNIT))) {
+    } else if (r.isTrue(r.eq(sel_13, E_AREAUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [2, 0, 0, 0, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel13, E_VOLUMEUNIT))) {
+    } else if (r.isTrue(r.eq(sel_13, E_VOLUMEUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [3, 0, 0, 0, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel13, E_ABSORBEDDOSEUNIT))) {
+    } else if (r.isTrue(r.eq(sel_13, E_ABSORBEDDOSEUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [2, 0, r.neg(2), 0, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel13, E_RADIOACTIVITYUNIT))) {
+    } else if (r.isTrue(r.eq(sel_13, E_RADIOACTIVITYUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [0, 0, r.neg(1), 0, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel13, E_ELECTRICCAPACITANCEUNIT))) {
+    } else if (r.isTrue(r.eq(sel_13, E_ELECTRICCAPACITANCEUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [r.neg(2), r.neg(1), 4, 2, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel13, E_DOSEEQUIVALENTUNIT))) {
+    } else if (r.isTrue(r.eq(sel_13, E_DOSEEQUIVALENTUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [2, 0, r.neg(2), 0, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel13, E_ELECTRICCHARGEUNIT))) {
+    } else if (r.isTrue(r.eq(sel_13, E_ELECTRICCHARGEUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [0, 0, 1, 1, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel13, E_ELECTRICCONDUCTANCEUNIT))) {
+    } else if (r.isTrue(r.eq(sel_13, E_ELECTRICCONDUCTANCEUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [r.neg(2), r.neg(1), 3, 2, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel13, E_ELECTRICVOLTAGEUNIT))) {
+    } else if (r.isTrue(r.eq(sel_13, E_ELECTRICVOLTAGEUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [2, 1, r.neg(3), r.neg(1), 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel13, E_ELECTRICRESISTANCEUNIT))) {
+    } else if (r.isTrue(r.eq(sel_13, E_ELECTRICRESISTANCEUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [2, 1, r.neg(3), r.neg(2), 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel13, E_ENERGYUNIT))) {
+    } else if (r.isTrue(r.eq(sel_13, E_ENERGYUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [2, 1, r.neg(2), 0, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel13, E_FORCEUNIT))) {
+    } else if (r.isTrue(r.eq(sel_13, E_FORCEUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [1, 1, r.neg(2), 0, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel13, E_FREQUENCYUNIT))) {
+    } else if (r.isTrue(r.eq(sel_13, E_FREQUENCYUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [0, 0, r.neg(1), 0, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel13, E_INDUCTANCEUNIT))) {
+    } else if (r.isTrue(r.eq(sel_13, E_INDUCTANCEUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [2, 1, r.neg(2), r.neg(2), 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel13, E_ILLUMINANCEUNIT))) {
+    } else if (r.isTrue(r.eq(sel_13, E_ILLUMINANCEUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [r.neg(2), 0, 0, 0, 0, 0, 1])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel13, E_LUMINOUSFLUXUNIT))) {
+    } else if (r.isTrue(r.eq(sel_13, E_LUMINOUSFLUXUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 0, 0, 0, 1])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel13, E_MAGNETICFLUXUNIT))) {
+    } else if (r.isTrue(r.eq(sel_13, E_MAGNETICFLUXUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [2, 1, r.neg(2), r.neg(1), 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel13, E_MAGNETICFLUXDENSITYUNIT))) {
+    } else if (r.isTrue(r.eq(sel_13, E_MAGNETICFLUXDENSITYUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [0, 1, r.neg(2), r.neg(1), 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel13, E_POWERUNIT))) {
+    } else if (r.isTrue(r.eq(sel_13, E_POWERUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [2, 1, r.neg(3), 0, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel13, E_PRESSUREUNIT))) {
+    } else if (r.isTrue(r.eq(sel_13, E_PRESSUREUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [r.neg(1), 1, r.neg(2), 0, 0, 0, 0])))) {
         return true;
       } else {
@@ -412,10 +412,10 @@ function fn_IfcCorrectFillAreaStyle(m: r.Model, p_styles: r.Value): r.Value {
   let v_tiles: r.Value = r.assign(0);
   let v_colour: r.Value = r.assign(0);
   let v_external: r.Value = r.assign(0);
-  v_external = r.assign(r.sizeof(r.query(p_styles, (q14: r.Value) => r.typeIs(m, q14, "IFCEXTERNALLYDEFINEDHATCHSTYLE"))));
-  v_hatching = r.assign(r.sizeof(r.query(p_styles, (q15: r.Value) => r.typeIs(m, q15, "IFCFILLAREASTYLEHATCHING"))));
-  v_tiles = r.assign(r.sizeof(r.query(p_styles, (q16: r.Value) => r.typeIs(m, q16, "IFCFILLAREASTYLETILES"))));
-  v_colour = r.assign(r.sizeof(r.query(p_styles, (q17: r.Value) => r.typeIs(m, q17, "IFCCOLOUR"))));
+  v_external = r.assign(r.sizeof(r.query(p_styles, (q_14: r.Value) => r.typeIs(m, q_14, "IFCEXTERNALLYDEFINEDHATCHSTYLE"))));
+  v_hatching = r.assign(r.sizeof(r.query(p_styles, (q_15: r.Value) => r.typeIs(m, q_15, "IFCFILLAREASTYLEHATCHING"))));
+  v_tiles = r.assign(r.sizeof(r.query(p_styles, (q_16: r.Value) => r.typeIs(m, q_16, "IFCFILLAREASTYLETILES"))));
+  v_colour = r.assign(r.sizeof(r.query(p_styles, (q_17: r.Value) => r.typeIs(m, q_17, "IFCCOLOUR"))));
   if (r.isTrue(r.gt(v_external, 1))) {
     return false;
   }
@@ -442,7 +442,7 @@ function fn_IfcCorrectLocalPlacement(m: r.Model, p_axisplacement: r.Value, p_rel
         return true;
       }
       if (r.isTrue(r.typeIs(m, p_axisplacement, "IFCAXIS2PLACEMENT3D"))) {
-        if (r.isTrue(r.eq(r.attr(r.attr(p_relplacement, "RELATIVEPLACEMENT"), "DIM"), 3))) {
+        if (r.isTrue(r.eq(r.attr(r.attr(p_relplacement, "RELATIVEPLACEMENT", "IFCLOCALPLACEMENT"), "DIM"), 3))) {
           return true;
         } else {
           return false;
@@ -463,42 +463,42 @@ function fn_IfcCorrectObjectAssignment(m: r.Model, p_constraint: r.Value, p_obje
     return true;
   }
   {
-    const sel18 = r.caseSelector(p_constraint);
-    if (r.isTrue(r.eq(sel18, E_NOTDEFINED))) {
+    const sel_18 = r.caseSelector(p_constraint);
+    if (r.isTrue(r.eq(sel_18, E_NOTDEFINED))) {
       return true;
-    } else if (r.isTrue(r.eq(sel18, E_PRODUCT))) {
+    } else if (r.isTrue(r.eq(sel_18, E_PRODUCT))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_objects, (q19: r.Value) => r.not(r.typeIs(m, q19, "IFCPRODUCT")))));
+        v_count = r.assign(r.sizeof(r.query(p_objects, (q_19: r.Value) => r.not(r.typeIs(m, q_19, "IFCPRODUCT")))));
         return r.eq(v_count, 0);
       }
-    } else if (r.isTrue(r.eq(sel18, E_PROCESS))) {
+    } else if (r.isTrue(r.eq(sel_18, E_PROCESS))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_objects, (q20: r.Value) => r.not(r.typeIs(m, q20, "IFCPROCESS")))));
+        v_count = r.assign(r.sizeof(r.query(p_objects, (q_20: r.Value) => r.not(r.typeIs(m, q_20, "IFCPROCESS")))));
         return r.eq(v_count, 0);
       }
-    } else if (r.isTrue(r.eq(sel18, E_CONTROL))) {
+    } else if (r.isTrue(r.eq(sel_18, E_CONTROL))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_objects, (q21: r.Value) => r.not(r.typeIs(m, q21, "IFCCONTROL")))));
+        v_count = r.assign(r.sizeof(r.query(p_objects, (q_21: r.Value) => r.not(r.typeIs(m, q_21, "IFCCONTROL")))));
         return r.eq(v_count, 0);
       }
-    } else if (r.isTrue(r.eq(sel18, E_RESOURCE))) {
+    } else if (r.isTrue(r.eq(sel_18, E_RESOURCE))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_objects, (q22: r.Value) => r.not(r.typeIs(m, q22, "IFCRESOURCE")))));
+        v_count = r.assign(r.sizeof(r.query(p_objects, (q_22: r.Value) => r.not(r.typeIs(m, q_22, "IFCRESOURCE")))));
         return r.eq(v_count, 0);
       }
-    } else if (r.isTrue(r.eq(sel18, E_ACTOR))) {
+    } else if (r.isTrue(r.eq(sel_18, E_ACTOR))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_objects, (q23: r.Value) => r.not(r.typeIs(m, q23, "IFCACTOR")))));
+        v_count = r.assign(r.sizeof(r.query(p_objects, (q_23: r.Value) => r.not(r.typeIs(m, q_23, "IFCACTOR")))));
         return r.eq(v_count, 0);
       }
-    } else if (r.isTrue(r.eq(sel18, E_GROUP))) {
+    } else if (r.isTrue(r.eq(sel_18, E_GROUP))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_objects, (q24: r.Value) => r.not(r.typeIs(m, q24, "IFCGROUP")))));
+        v_count = r.assign(r.sizeof(r.query(p_objects, (q_24: r.Value) => r.not(r.typeIs(m, q_24, "IFCGROUP")))));
         return r.eq(v_count, 0);
       }
-    } else if (r.isTrue(r.eq(sel18, E_PROJECT))) {
+    } else if (r.isTrue(r.eq(sel_18, E_PROJECT))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_objects, (q25: r.Value) => r.not(r.typeIs(m, q25, "IFCPROJECT")))));
+        v_count = r.assign(r.sizeof(r.query(p_objects, (q_25: r.Value) => r.not(r.typeIs(m, q_25, "IFCPROJECT")))));
         return r.eq(v_count, 0);
       }
     } else {
@@ -515,17 +515,17 @@ function fn_IfcCorrectUnitAssignment(m: r.Model, p_units: r.Value): r.Value {
   let v_monetaryunitnumber: r.Value = r.assign(0);
   let v_namedunitnames: r.Value = r.assignSet(r.aggregate([]));
   let v_derivedunitnames: r.Value = r.assignSet(r.aggregate([]));
-  v_namedunitnumber = r.assign(r.sizeof(r.query(p_units, (q26: r.Value) => r.and(r.typeIs(m, q26, "IFCNAMEDUNIT"), () => r.not(r.eq(r.attr(q26, "UNITTYPE"), E_USERDEFINED))))));
-  v_derivedunitnumber = r.assign(r.sizeof(r.query(p_units, (q27: r.Value) => r.and(r.typeIs(m, q27, "IFCDERIVEDUNIT"), () => r.not(r.eq(r.attr(q27, "UNITTYPE"), E_USERDEFINED))))));
-  v_monetaryunitnumber = r.assign(r.sizeof(r.query(p_units, (q28: r.Value) => r.typeIs(m, q28, "IFCMONETARYUNIT"))));
+  v_namedunitnumber = r.assign(r.sizeof(r.query(p_units, (q_26: r.Value) => r.and(r.typeIs(m, q_26, "IFCNAMEDUNIT"), () => r.not(r.eq(r.attr(q_26, "UNITTYPE", "IFCNAMEDUNIT"), E_USERDEFINED))))));
+  v_derivedunitnumber = r.assign(r.sizeof(r.query(p_units, (q_27: r.Value) => r.and(r.typeIs(m, q_27, "IFCDERIVEDUNIT"), () => r.not(r.eq(r.attr(q_27, "UNITTYPE", "IFCDERIVEDUNIT"), E_USERDEFINED))))));
+  v_monetaryunitnumber = r.assign(r.sizeof(r.query(p_units, (q_28: r.Value) => r.typeIs(m, q_28, "IFCMONETARYUNIT"))));
   {
-    const from30 = r.int(1), to31 = r.int(r.sizeof(p_units)), by32 = 1;
-    if (from30 !== undefined && to31 !== undefined && by32) for (let i_i29 = from30; by32 > 0 ? i_i29 <= to31 : i_i29 >= to31; i_i29 += by32) {
-      if (r.isTrue(r.and(r.typeIs(m, r.index(p_units, i_i29), "IFCNAMEDUNIT"), () => r.not(r.eq(r.attr(r.index(p_units, i_i29), "UNITTYPE"), E_USERDEFINED))))) {
-        v_namedunitnames = r.assignSet(r.add(v_namedunitnames, r.attr(r.index(p_units, i_i29), "UNITTYPE")));
+    const from_30 = r.int(1), to_31 = r.int(r.sizeof(p_units)), by_32 = 1;
+    if (from_30 !== undefined && to_31 !== undefined && by_32) for (let i_i_29 = from_30; by_32 > 0 ? i_i_29 <= to_31 : i_i_29 >= to_31; i_i_29 += by_32) {
+      if (r.isTrue(r.and(r.typeIs(m, r.index(p_units, i_i_29), "IFCNAMEDUNIT"), () => r.not(r.eq(r.attr(r.index(p_units, i_i_29), "UNITTYPE", "IFCNAMEDUNIT"), E_USERDEFINED))))) {
+        v_namedunitnames = r.assignSet(r.add(v_namedunitnames, r.attr(r.index(p_units, i_i_29), "UNITTYPE", "IFCNAMEDUNIT")));
       }
-      if (r.isTrue(r.and(r.typeIs(m, r.index(p_units, i_i29), "IFCDERIVEDUNIT"), () => r.not(r.eq(r.attr(r.index(p_units, i_i29), "UNITTYPE"), E_USERDEFINED))))) {
-        v_derivedunitnames = r.assignSet(r.add(v_derivedunitnames, r.attr(r.index(p_units, i_i29), "UNITTYPE")));
+      if (r.isTrue(r.and(r.typeIs(m, r.index(p_units, i_i_29), "IFCDERIVEDUNIT"), () => r.not(r.eq(r.attr(r.index(p_units, i_i_29), "UNITTYPE", "IFCDERIVEDUNIT"), E_USERDEFINED))))) {
+        v_derivedunitnames = r.assignSet(r.add(v_derivedunitnames, r.attr(r.index(p_units, i_i_29), "UNITTYPE", "IFCDERIVEDUNIT")));
       }
     }
   }
@@ -543,14 +543,14 @@ function fn_IfcCrossProduct(m: r.Model, p_arg1: r.Value, p_arg2: r.Value): r.Val
     return undefined;
   } else {
     {
-      v_v1 = r.assign(r.attr(fn_IfcNormalise(m, p_arg1), "DIRECTIONRATIOS"));
-      v_v2 = r.assign(r.attr(fn_IfcNormalise(m, p_arg2), "DIRECTIONRATIOS"));
+      v_v1 = r.assign(r.attr(fn_IfcNormalise(m, p_arg1), "DIRECTIONRATIOS", "IFCDIRECTION"));
+      v_v2 = r.assign(r.attr(fn_IfcNormalise(m, p_arg2), "DIRECTIONRATIOS", "IFCDIRECTION"));
       v_res = r.assign(r.complex(m, [r.construct(m, "IfcRepresentationItem", []), r.construct(m, "IfcGeometricRepresentationItem", []), r.construct(m, "IfcDirection", [r.aggregate([[r.sub(r.mul(r.index(v_v1, 2), r.index(v_v2, 3)), r.mul(r.index(v_v1, 3), r.index(v_v2, 2)))], [r.sub(r.mul(r.index(v_v1, 3), r.index(v_v2, 1)), r.mul(r.index(v_v1, 1), r.index(v_v2, 3)))], [r.sub(r.mul(r.index(v_v1, 1), r.index(v_v2, 2)), r.mul(r.index(v_v1, 2), r.index(v_v2, 1)))]])])]));
       v_mag = r.assign(0);
       {
-        const from34 = r.int(1), to35 = r.int(3), by36 = 1;
-        if (from34 !== undefined && to35 !== undefined && by36) for (let i_i33 = from34; by36 > 0 ? i_i33 <= to35 : i_i33 >= to35; i_i33 += by36) {
-          v_mag = r.assign(r.add(v_mag, r.mul(r.index(r.attr(v_res, "DIRECTIONRATIOS"), i_i33), r.index(r.attr(v_res, "DIRECTIONRATIOS"), i_i33))));
+        const from_34 = r.int(1), to_35 = r.int(3), by_36 = 1;
+        if (from_34 !== undefined && to_35 !== undefined && by_36) for (let i_i_33 = from_34; by_36 > 0 ? i_i_33 <= to_35 : i_i_33 >= to_35; i_i_33 += by_36) {
+          v_mag = r.assign(r.add(v_mag, r.mul(r.index(r.attr(v_res, "DIRECTIONRATIOS"), i_i_33), r.index(r.attr(v_res, "DIRECTIONRATIOS"), i_i_33))));
         }
       }
       if (r.isTrue(r.gt(v_mag, 0))) {
@@ -566,22 +566,22 @@ function fn_IfcCrossProduct(m: r.Model, p_arg1: r.Value, p_arg2: r.Value): r.Val
 
 function fn_IfcCurveDim(m: r.Model, p_curve: r.Value): r.Value {
   if (r.isTrue(r.typeIs(m, p_curve, "IFCLINE"))) {
-    return r.attr(r.attr(p_curve, "PNT"), "DIM");
+    return r.attr(r.attr(p_curve, "PNT", "IFCLINE"), "DIM");
   }
   if (r.isTrue(r.typeIs(m, p_curve, "IFCCONIC"))) {
-    return r.attr(r.attr(p_curve, "POSITION"), "DIM");
+    return r.attr(r.attr(p_curve, "POSITION", "IFCCONIC"), "DIM");
   }
   if (r.isTrue(r.typeIs(m, p_curve, "IFCPOLYLINE"))) {
-    return r.attr(r.index(r.attr(p_curve, "POINTS"), 1), "DIM");
+    return r.attr(r.index(r.attr(p_curve, "POINTS", "IFCPOLYLINE"), 1), "DIM");
   }
   if (r.isTrue(r.typeIs(m, p_curve, "IFCTRIMMEDCURVE"))) {
-    return fn_IfcCurveDim(m, r.attr(p_curve, "BASISCURVE"));
+    return fn_IfcCurveDim(m, r.attr(p_curve, "BASISCURVE", "IFCTRIMMEDCURVE"));
   }
   if (r.isTrue(r.typeIs(m, p_curve, "IFCCOMPOSITECURVE"))) {
-    return r.attr(r.index(r.attr(p_curve, "SEGMENTS"), 1), "DIM");
+    return r.attr(r.index(r.attr(p_curve, "SEGMENTS", "IFCCOMPOSITECURVE"), 1), "DIM");
   }
   if (r.isTrue(r.typeIs(m, p_curve, "IFCBSPLINECURVE"))) {
-    return r.attr(r.index(r.attr(p_curve, "CONTROLPOINTSLIST"), 1), "DIM");
+    return r.attr(r.index(r.attr(p_curve, "CONTROLPOINTSLIST", "IFCBSPLINECURVE"), 1), "DIM");
   }
   if (r.isTrue(r.typeIs(m, p_curve, "IFCOFFSETCURVE2D"))) {
     return 2;
@@ -593,7 +593,7 @@ function fn_IfcCurveDim(m: r.Model, p_curve: r.Value): r.Value {
     return 3;
   }
   if (r.isTrue(r.typeIs(m, p_curve, "IFCINDEXEDPOLYCURVE"))) {
-    return r.attr(r.attr(p_curve, "POINTS"), "DIM");
+    return r.attr(r.attr(p_curve, "POINTS", "IFCINDEXEDPOLYCURVE"), "DIM");
   }
   return undefined;
   return undefined;
@@ -602,9 +602,9 @@ function fn_IfcCurveDim(m: r.Model, p_curve: r.Value): r.Value {
 function fn_IfcCurveWeightsPositive(m: r.Model, p_b: r.Value): r.Value {
   let v_result: r.Value = r.assign(true);
   {
-    const from38 = r.int(0), to39 = r.int(r.attr(p_b, "UPPERINDEXONCONTROLPOINTS")), by40 = 1;
-    if (from38 !== undefined && to39 !== undefined && by40) for (let i_i37 = from38; by40 > 0 ? i_i37 <= to39 : i_i37 >= to39; i_i37 += by40) {
-      if (r.isTrue(r.le(r.index(r.attr(p_b, "WEIGHTS"), i_i37), 0))) {
+    const from_38 = r.int(0), to_39 = r.int(r.attr(p_b, "UPPERINDEXONCONTROLPOINTS")), by_40 = 1;
+    if (from_38 !== undefined && to_39 !== undefined && by_40) for (let i_i_37 = from_38; by_40 > 0 ? i_i_37 <= to_39 : i_i_37 >= to_39; i_i_37 += by_40) {
+      if (r.isTrue(r.le(r.index(r.attr(p_b, "WEIGHTS"), i_i_37), 0))) {
         v_result = r.assign(false);
         return v_result;
       }
@@ -618,15 +618,15 @@ function fn_IfcDeriveDimensionalExponents(m: r.Model, p_unitelements: r.Value): 
   p_unitelements = r.assignSet(p_unitelements);
   let v_result: r.Value = r.assign(r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 0, 0, 0, 0]));
   {
-    const from42 = r.int(r.loindex(p_unitelements)), to43 = r.int(r.hiindex(p_unitelements)), by44 = 1;
-    if (from42 !== undefined && to43 !== undefined && by44) for (let i_i41 = from42; by44 > 0 ? i_i41 <= to43 : i_i41 >= to43; i_i41 += by44) {
-      r.setAttr(v_result, "LENGTHEXPONENT", r.add(r.attr(v_result, "LENGTHEXPONENT"), r.mul(r.attr(r.index(p_unitelements, i_i41), "EXPONENT"), r.attr(r.attr(r.attr(r.index(p_unitelements, i_i41), "UNIT"), "DIMENSIONS"), "LENGTHEXPONENT"))));
-      r.setAttr(v_result, "MASSEXPONENT", r.add(r.attr(v_result, "MASSEXPONENT"), r.mul(r.attr(r.index(p_unitelements, i_i41), "EXPONENT"), r.attr(r.attr(r.attr(r.index(p_unitelements, i_i41), "UNIT"), "DIMENSIONS"), "MASSEXPONENT"))));
-      r.setAttr(v_result, "TIMEEXPONENT", r.add(r.attr(v_result, "TIMEEXPONENT"), r.mul(r.attr(r.index(p_unitelements, i_i41), "EXPONENT"), r.attr(r.attr(r.attr(r.index(p_unitelements, i_i41), "UNIT"), "DIMENSIONS"), "TIMEEXPONENT"))));
-      r.setAttr(v_result, "ELECTRICCURRENTEXPONENT", r.add(r.attr(v_result, "ELECTRICCURRENTEXPONENT"), r.mul(r.attr(r.index(p_unitelements, i_i41), "EXPONENT"), r.attr(r.attr(r.attr(r.index(p_unitelements, i_i41), "UNIT"), "DIMENSIONS"), "ELECTRICCURRENTEXPONENT"))));
-      r.setAttr(v_result, "THERMODYNAMICTEMPERATUREEXPONENT", r.add(r.attr(v_result, "THERMODYNAMICTEMPERATUREEXPONENT"), r.mul(r.attr(r.index(p_unitelements, i_i41), "EXPONENT"), r.attr(r.attr(r.attr(r.index(p_unitelements, i_i41), "UNIT"), "DIMENSIONS"), "THERMODYNAMICTEMPERATUREEXPONENT"))));
-      r.setAttr(v_result, "AMOUNTOFSUBSTANCEEXPONENT", r.add(r.attr(v_result, "AMOUNTOFSUBSTANCEEXPONENT"), r.mul(r.attr(r.index(p_unitelements, i_i41), "EXPONENT"), r.attr(r.attr(r.attr(r.index(p_unitelements, i_i41), "UNIT"), "DIMENSIONS"), "AMOUNTOFSUBSTANCEEXPONENT"))));
-      r.setAttr(v_result, "LUMINOUSINTENSITYEXPONENT", r.add(r.attr(v_result, "LUMINOUSINTENSITYEXPONENT"), r.mul(r.attr(r.index(p_unitelements, i_i41), "EXPONENT"), r.attr(r.attr(r.attr(r.index(p_unitelements, i_i41), "UNIT"), "DIMENSIONS"), "LUMINOUSINTENSITYEXPONENT"))));
+    const from_42 = r.int(r.loindex(p_unitelements)), to_43 = r.int(r.hiindex(p_unitelements)), by_44 = 1;
+    if (from_42 !== undefined && to_43 !== undefined && by_44) for (let i_i_41 = from_42; by_44 > 0 ? i_i_41 <= to_43 : i_i_41 >= to_43; i_i_41 += by_44) {
+      r.setAttr(v_result, "LENGTHEXPONENT", r.add(r.attr(v_result, "LENGTHEXPONENT"), r.mul(r.attr(r.index(p_unitelements, i_i_41), "EXPONENT"), r.attr(r.attr(r.attr(r.index(p_unitelements, i_i_41), "UNIT"), "DIMENSIONS"), "LENGTHEXPONENT"))));
+      r.setAttr(v_result, "MASSEXPONENT", r.add(r.attr(v_result, "MASSEXPONENT"), r.mul(r.attr(r.index(p_unitelements, i_i_41), "EXPONENT"), r.attr(r.attr(r.attr(r.index(p_unitelements, i_i_41), "UNIT"), "DIMENSIONS"), "MASSEXPONENT"))));
+      r.setAttr(v_result, "TIMEEXPONENT", r.add(r.attr(v_result, "TIMEEXPONENT"), r.mul(r.attr(r.index(p_unitelements, i_i_41), "EXPONENT"), r.attr(r.attr(r.attr(r.index(p_unitelements, i_i_41), "UNIT"), "DIMENSIONS"), "TIMEEXPONENT"))));
+      r.setAttr(v_result, "ELECTRICCURRENTEXPONENT", r.add(r.attr(v_result, "ELECTRICCURRENTEXPONENT"), r.mul(r.attr(r.index(p_unitelements, i_i_41), "EXPONENT"), r.attr(r.attr(r.attr(r.index(p_unitelements, i_i_41), "UNIT"), "DIMENSIONS"), "ELECTRICCURRENTEXPONENT"))));
+      r.setAttr(v_result, "THERMODYNAMICTEMPERATUREEXPONENT", r.add(r.attr(v_result, "THERMODYNAMICTEMPERATUREEXPONENT"), r.mul(r.attr(r.index(p_unitelements, i_i_41), "EXPONENT"), r.attr(r.attr(r.attr(r.index(p_unitelements, i_i_41), "UNIT"), "DIMENSIONS"), "THERMODYNAMICTEMPERATUREEXPONENT"))));
+      r.setAttr(v_result, "AMOUNTOFSUBSTANCEEXPONENT", r.add(r.attr(v_result, "AMOUNTOFSUBSTANCEEXPONENT"), r.mul(r.attr(r.index(p_unitelements, i_i_41), "EXPONENT"), r.attr(r.attr(r.attr(r.index(p_unitelements, i_i_41), "UNIT"), "DIMENSIONS"), "AMOUNTOFSUBSTANCEEXPONENT"))));
+      r.setAttr(v_result, "LUMINOUSINTENSITYEXPONENT", r.add(r.attr(v_result, "LUMINOUSINTENSITYEXPONENT"), r.mul(r.attr(r.index(p_unitelements, i_i_41), "EXPONENT"), r.attr(r.attr(r.attr(r.index(p_unitelements, i_i_41), "UNIT"), "DIMENSIONS"), "LUMINOUSINTENSITYEXPONENT"))));
     }
   }
   return v_result;
@@ -635,66 +635,66 @@ function fn_IfcDeriveDimensionalExponents(m: r.Model, p_unitelements: r.Value): 
 
 function fn_IfcDimensionsForSiUnit(m: r.Model, p_n: r.Value): r.Value {
   {
-    const sel45 = r.caseSelector(p_n);
-    if (r.isTrue(r.eq(sel45, E_METRE))) {
+    const sel_45 = r.caseSelector(p_n);
+    if (r.isTrue(r.eq(sel_45, E_METRE))) {
       return r.construct(m, "IfcDimensionalExponents", [1, 0, 0, 0, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel45, E_SQUARE_METRE))) {
+    } else if (r.isTrue(r.eq(sel_45, E_SQUARE_METRE))) {
       return r.construct(m, "IfcDimensionalExponents", [2, 0, 0, 0, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel45, E_CUBIC_METRE))) {
+    } else if (r.isTrue(r.eq(sel_45, E_CUBIC_METRE))) {
       return r.construct(m, "IfcDimensionalExponents", [3, 0, 0, 0, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel45, E_GRAM))) {
+    } else if (r.isTrue(r.eq(sel_45, E_GRAM))) {
       return r.construct(m, "IfcDimensionalExponents", [0, 1, 0, 0, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel45, E_SECOND))) {
+    } else if (r.isTrue(r.eq(sel_45, E_SECOND))) {
       return r.construct(m, "IfcDimensionalExponents", [0, 0, 1, 0, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel45, E_AMPERE))) {
+    } else if (r.isTrue(r.eq(sel_45, E_AMPERE))) {
       return r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 1, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel45, E_KELVIN))) {
+    } else if (r.isTrue(r.eq(sel_45, E_KELVIN))) {
       return r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 0, 1, 0, 0]);
-    } else if (r.isTrue(r.eq(sel45, E_MOLE))) {
+    } else if (r.isTrue(r.eq(sel_45, E_MOLE))) {
       return r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 0, 0, 1, 0]);
-    } else if (r.isTrue(r.eq(sel45, E_CANDELA))) {
+    } else if (r.isTrue(r.eq(sel_45, E_CANDELA))) {
       return r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 0, 0, 0, 1]);
-    } else if (r.isTrue(r.eq(sel45, E_RADIAN))) {
+    } else if (r.isTrue(r.eq(sel_45, E_RADIAN))) {
       return r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 0, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel45, E_STERADIAN))) {
+    } else if (r.isTrue(r.eq(sel_45, E_STERADIAN))) {
       return r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 0, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel45, E_HERTZ))) {
+    } else if (r.isTrue(r.eq(sel_45, E_HERTZ))) {
       return r.construct(m, "IfcDimensionalExponents", [0, 0, r.neg(1), 0, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel45, E_NEWTON))) {
+    } else if (r.isTrue(r.eq(sel_45, E_NEWTON))) {
       return r.construct(m, "IfcDimensionalExponents", [1, 1, r.neg(2), 0, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel45, E_PASCAL))) {
+    } else if (r.isTrue(r.eq(sel_45, E_PASCAL))) {
       return r.construct(m, "IfcDimensionalExponents", [r.neg(1), 1, r.neg(2), 0, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel45, E_JOULE))) {
+    } else if (r.isTrue(r.eq(sel_45, E_JOULE))) {
       return r.construct(m, "IfcDimensionalExponents", [2, 1, r.neg(2), 0, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel45, E_WATT))) {
+    } else if (r.isTrue(r.eq(sel_45, E_WATT))) {
       return r.construct(m, "IfcDimensionalExponents", [2, 1, r.neg(3), 0, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel45, E_COULOMB))) {
+    } else if (r.isTrue(r.eq(sel_45, E_COULOMB))) {
       return r.construct(m, "IfcDimensionalExponents", [0, 0, 1, 1, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel45, E_VOLT))) {
+    } else if (r.isTrue(r.eq(sel_45, E_VOLT))) {
       return r.construct(m, "IfcDimensionalExponents", [2, 1, r.neg(3), r.neg(1), 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel45, E_FARAD))) {
+    } else if (r.isTrue(r.eq(sel_45, E_FARAD))) {
       return r.construct(m, "IfcDimensionalExponents", [r.neg(2), r.neg(1), 4, 2, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel45, E_OHM))) {
+    } else if (r.isTrue(r.eq(sel_45, E_OHM))) {
       return r.construct(m, "IfcDimensionalExponents", [2, 1, r.neg(3), r.neg(2), 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel45, E_SIEMENS))) {
+    } else if (r.isTrue(r.eq(sel_45, E_SIEMENS))) {
       return r.construct(m, "IfcDimensionalExponents", [r.neg(2), r.neg(1), 3, 2, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel45, E_WEBER))) {
+    } else if (r.isTrue(r.eq(sel_45, E_WEBER))) {
       return r.construct(m, "IfcDimensionalExponents", [2, 1, r.neg(2), r.neg(1), 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel45, E_TESLA))) {
+    } else if (r.isTrue(r.eq(sel_45, E_TESLA))) {
       return r.construct(m, "IfcDimensionalExponents", [0, 1, r.neg(2), r.neg(1), 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel45, E_HENRY))) {
+    } else if (r.isTrue(r.eq(sel_45, E_HENRY))) {
       return r.construct(m, "IfcDimensionalExponents", [2, 1, r.neg(2), r.neg(2), 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel45, E_DEGREE_CELSIUS))) {
+    } else if (r.isTrue(r.eq(sel_45, E_DEGREE_CELSIUS))) {
       return r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 0, 1, 0, 0]);
-    } else if (r.isTrue(r.eq(sel45, E_LUMEN))) {
+    } else if (r.isTrue(r.eq(sel_45, E_LUMEN))) {
       return r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 0, 0, 0, 1]);
-    } else if (r.isTrue(r.eq(sel45, E_LUX))) {
+    } else if (r.isTrue(r.eq(sel_45, E_LUX))) {
       return r.construct(m, "IfcDimensionalExponents", [r.neg(2), 0, 0, 0, 0, 0, 1]);
-    } else if (r.isTrue(r.eq(sel45, E_BECQUEREL))) {
+    } else if (r.isTrue(r.eq(sel_45, E_BECQUEREL))) {
       return r.construct(m, "IfcDimensionalExponents", [0, 0, r.neg(1), 0, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel45, E_GRAY))) {
+    } else if (r.isTrue(r.eq(sel_45, E_GRAY))) {
       return r.construct(m, "IfcDimensionalExponents", [2, 0, r.neg(2), 0, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel45, E_SIEVERT))) {
+    } else if (r.isTrue(r.eq(sel_45, E_SIEVERT))) {
       return r.construct(m, "IfcDimensionalExponents", [2, 0, r.neg(2), 0, 0, 0, 0]);
     } else {
       return r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 0, 0, 0, 0]);
@@ -720,9 +720,9 @@ function fn_IfcDotProduct(m: r.Model, p_arg1: r.Value, p_arg2: r.Value): r.Value
         v_ndim = r.assign(r.attr(p_arg1, "DIM"));
         v_scalar = r.assign(0);
         {
-          const from47 = r.int(1), to48 = r.int(v_ndim), by49 = 1;
-          if (from47 !== undefined && to48 !== undefined && by49) for (let i_i46 = from47; by49 > 0 ? i_i46 <= to48 : i_i46 >= to48; i_i46 += by49) {
-            v_scalar = r.assign(r.add(v_scalar, r.mul(r.index(r.attr(v_vec1, "DIRECTIONRATIOS"), i_i46), r.index(r.attr(v_vec2, "DIRECTIONRATIOS"), i_i46))));
+          const from_47 = r.int(1), to_48 = r.int(v_ndim), by_49 = 1;
+          if (from_47 !== undefined && to_48 !== undefined && by_49) for (let i_i_46 = from_47; by_49 > 0 ? i_i_46 <= to_48 : i_i_46 >= to_48; i_i_46 += by_49) {
+            v_scalar = r.assign(r.add(v_scalar, r.mul(r.index(r.attr(v_vec1, "DIRECTIONRATIOS"), i_i_46), r.index(r.attr(v_vec2, "DIRECTIONRATIOS"), i_i_46))));
           }
         }
       }
@@ -770,26 +770,26 @@ function fn_IfcGetBasisSurface(m: r.Model, p_c: r.Value): r.Value {
   let v_n: r.Value = undefined;
   v_surfs = r.assignSet(r.aggregate([]));
   if (r.isTrue(r.typeIs(m, p_c, "IFCPCURVE"))) {
-    v_surfs = r.assignSet(r.aggregate([[r.attr(p_c, "BASISSURFACE")]]));
+    v_surfs = r.assignSet(r.aggregate([[r.attr(p_c, "BASISSURFACE", "IFCPCURVE")]]));
   } else {
     if (r.isTrue(r.typeIs(m, p_c, "IFCSURFACECURVE"))) {
-      v_n = r.assign(r.sizeof(r.attr(p_c, "ASSOCIATEDGEOMETRY")));
+      v_n = r.assign(r.sizeof(r.attr(p_c, "ASSOCIATEDGEOMETRY", "IFCSURFACECURVE")));
       {
-        const from51 = r.int(1), to52 = r.int(v_n), by53 = 1;
-        if (from51 !== undefined && to52 !== undefined && by53) for (let i_i50 = from51; by53 > 0 ? i_i50 <= to52 : i_i50 >= to52; i_i50 += by53) {
-          v_surfs = r.assignSet(r.add(v_surfs, fn_IfcAssociatedSurface(m, r.index(r.attr(p_c, "ASSOCIATEDGEOMETRY"), i_i50))));
+        const from_51 = r.int(1), to_52 = r.int(v_n), by_53 = 1;
+        if (from_51 !== undefined && to_52 !== undefined && by_53) for (let i_i_50 = from_51; by_53 > 0 ? i_i_50 <= to_52 : i_i_50 >= to_52; i_i_50 += by_53) {
+          v_surfs = r.assignSet(r.add(v_surfs, fn_IfcAssociatedSurface(m, r.index(r.attr(p_c, "ASSOCIATEDGEOMETRY", "IFCSURFACECURVE"), i_i_50))));
         }
       }
     }
   }
   if (r.isTrue(r.typeIs(m, p_c, "IFCCOMPOSITECURVEONSURFACE"))) {
-    v_n = r.assign(r.sizeof(r.attr(p_c, "SEGMENTS")));
-    v_surfs = r.assignSet(fn_IfcGetBasisSurface(m, r.attr(r.index(r.attr(p_c, "SEGMENTS"), 1), "PARENTCURVE")));
+    v_n = r.assign(r.sizeof(r.attr(p_c, "SEGMENTS", "IFCCOMPOSITECURVE")));
+    v_surfs = r.assignSet(fn_IfcGetBasisSurface(m, r.attr(r.index(r.attr(p_c, "SEGMENTS", "IFCCOMPOSITECURVE"), 1), "PARENTCURVE")));
     if (r.isTrue(r.gt(v_n, 1))) {
       {
-        const from55 = r.int(2), to56 = r.int(v_n), by57 = 1;
-        if (from55 !== undefined && to56 !== undefined && by57) for (let i_i54 = from55; by57 > 0 ? i_i54 <= to56 : i_i54 >= to56; i_i54 += by57) {
-          v_surfs = r.assignSet(r.mul(v_surfs, fn_IfcGetBasisSurface(m, r.attr(r.index(r.attr(p_c, "SEGMENTS"), 1), "PARENTCURVE"))));
+        const from_55 = r.int(2), to_56 = r.int(v_n), by_57 = 1;
+        if (from_55 !== undefined && to_56 !== undefined && by_57) for (let i_i_54 = from_55; by_57 > 0 ? i_i_54 <= to_56 : i_i_54 >= to_56; i_i_54 += by_57) {
+          v_surfs = r.assignSet(r.mul(v_surfs, fn_IfcGetBasisSurface(m, r.attr(r.index(r.attr(p_c, "SEGMENTS", "IFCCOMPOSITECURVE"), 1), "PARENTCURVE"))));
         }
       }
     }
@@ -807,9 +807,9 @@ function fn_IfcListToArray(m: r.Model, p_lis: r.Value, p_low: r.Value, p_u: r.Va
   } else {
     v_res = r.assignArray(r.aggregate([[r.index(p_lis, 1), v_n]]), p_low);
     {
-      const from59 = r.int(2), to60 = r.int(v_n), by61 = 1;
-      if (from59 !== undefined && to60 !== undefined && by61) for (let i_i58 = from59; by61 > 0 ? i_i58 <= to60 : i_i58 >= to60; i_i58 += by61) {
-        r.setIndex(v_res, r.sub(r.add(p_low, i_i58), 1), r.index(p_lis, i_i58));
+      const from_59 = r.int(2), to_60 = r.int(v_n), by_61 = 1;
+      if (from_59 !== undefined && to_60 !== undefined && by_61) for (let i_i_58 = from_59; by_61 > 0 ? i_i_58 <= to_60 : i_i_58 >= to_60; i_i_58 += by_61) {
+        r.setIndex(v_res, r.sub(r.add(p_low, i_i_58), 1), r.index(p_lis, i_i_58));
       }
     }
     return v_res;
@@ -822,9 +822,9 @@ function fn_IfcLoopHeadToTail(m: r.Model, p_aloop: r.Value): r.Value {
   let v_p: r.Value = r.assign(true);
   v_n = r.assign(r.sizeof(r.attr(p_aloop, "EDGELIST")));
   {
-    const from63 = r.int(2), to64 = r.int(v_n), by65 = 1;
-    if (from63 !== undefined && to64 !== undefined && by65) for (let i_i62 = from63; by65 > 0 ? i_i62 <= to64 : i_i62 >= to64; i_i62 += by65) {
-      v_p = r.assign(r.and(v_p, () => r.same(r.attr(r.index(r.attr(p_aloop, "EDGELIST"), r.sub(i_i62, 1)), "EDGEEND"), r.attr(r.index(r.attr(p_aloop, "EDGELIST"), i_i62), "EDGESTART"))));
+    const from_63 = r.int(2), to_64 = r.int(v_n), by_65 = 1;
+    if (from_63 !== undefined && to_64 !== undefined && by_65) for (let i_i_62 = from_63; by_65 > 0 ? i_i_62 <= to_64 : i_i_62 >= to_64; i_i_62 += by_65) {
+      v_p = r.assign(r.and(v_p, () => r.same(r.attr(r.index(r.attr(p_aloop, "EDGELIST"), r.sub(i_i_62, 1)), "EDGEEND"), r.attr(r.index(r.attr(p_aloop, "EDGELIST"), i_i_62), "EDGESTART"))));
     }
   }
   return v_p;
@@ -841,12 +841,12 @@ function fn_IfcMakeArrayOfArray(m: r.Model, p_lis: r.Value, p_low1: r.Value, p_u
   }
   v_res = r.assignArray(r.aggregate([[fn_IfcListToArray(m, r.index(p_lis, 1), p_low2, p_u2), r.add(r.sub(p_u1, p_low1), 1)]]), p_low1);
   {
-    const from67 = r.int(2), to68 = r.int(r.hiindex(p_lis)), by69 = 1;
-    if (from67 !== undefined && to68 !== undefined && by69) for (let i_i66 = from67; by69 > 0 ? i_i66 <= to68 : i_i66 >= to68; i_i66 += by69) {
-      if (r.isTrue(r.ne(r.add(r.sub(p_u2, p_low2), 1), r.sizeof(r.index(p_lis, i_i66))))) {
+    const from_67 = r.int(2), to_68 = r.int(r.hiindex(p_lis)), by_69 = 1;
+    if (from_67 !== undefined && to_68 !== undefined && by_69) for (let i_i_66 = from_67; by_69 > 0 ? i_i_66 <= to_68 : i_i_66 >= to_68; i_i_66 += by_69) {
+      if (r.isTrue(r.ne(r.add(r.sub(p_u2, p_low2), 1), r.sizeof(r.index(p_lis, i_i_66))))) {
         return undefined;
       }
-      r.setIndex(v_res, r.sub(r.add(p_low1, i_i66), 1), fn_IfcListToArray(m, r.index(p_lis, i_i66), p_low2, p_u2));
+      r.setIndex(v_res, r.sub(r.add(p_low1, i_i_66), 1), fn_IfcListToArray(m, r.index(p_lis, i_i_66), p_low2, p_u2));
     }
   }
   return v_res;
@@ -857,9 +857,9 @@ function fn_IfcMlsTotalThickness(m: r.Model, p_layerset: r.Value): r.Value {
   let v_max: r.Value = r.assign(r.attr(r.index(r.attr(p_layerset, "MATERIALLAYERS"), 1), "LAYERTHICKNESS"));
   if (r.isTrue(r.gt(r.sizeof(r.attr(p_layerset, "MATERIALLAYERS")), 1))) {
     {
-      const from71 = r.int(2), to72 = r.int(r.hiindex(r.attr(p_layerset, "MATERIALLAYERS"))), by73 = 1;
-      if (from71 !== undefined && to72 !== undefined && by73) for (let i_i70 = from71; by73 > 0 ? i_i70 <= to72 : i_i70 >= to72; i_i70 += by73) {
-        v_max = r.assign(r.add(v_max, r.attr(r.index(r.attr(p_layerset, "MATERIALLAYERS"), i_i70), "LAYERTHICKNESS")));
+      const from_71 = r.int(2), to_72 = r.int(r.hiindex(r.attr(p_layerset, "MATERIALLAYERS"))), by_73 = 1;
+      if (from_71 !== undefined && to_72 !== undefined && by_73) for (let i_i_70 = from_71; by_73 > 0 ? i_i_70 <= to_72 : i_i_70 >= to_72; i_i_70 += by_73) {
+        v_max = r.assign(r.add(v_max, r.attr(r.index(r.attr(p_layerset, "MATERIALLAYERS"), i_i_70), "LAYERTHICKNESS")));
       }
     }
   }
@@ -878,11 +878,11 @@ function fn_IfcNormalise(m: r.Model, p_arg: r.Value): r.Value {
   } else {
     if (r.isTrue(r.typeIs(m, p_arg, "IFCVECTOR"))) {
       {
-        v_ndim = r.assign(r.attr(p_arg, "DIM"));
-        r.setAttr(v_v, "DIRECTIONRATIOS", r.attr(r.attr(p_arg, "ORIENTATION"), "DIRECTIONRATIOS"));
-        r.setAttr(v_vec, "MAGNITUDE", r.attr(p_arg, "MAGNITUDE"));
+        v_ndim = r.assign(r.attr(p_arg, "DIM", "IFCVECTOR"));
+        r.setAttr(v_v, "DIRECTIONRATIOS", r.attr(r.attr(p_arg, "ORIENTATION", "IFCVECTOR"), "DIRECTIONRATIOS"));
+        r.setAttr(v_vec, "MAGNITUDE", r.attr(p_arg, "MAGNITUDE", "IFCVECTOR"));
         r.setAttr(v_vec, "ORIENTATION", v_v);
-        if (r.isTrue(r.eq(r.attr(p_arg, "MAGNITUDE"), 0))) {
+        if (r.isTrue(r.eq(r.attr(p_arg, "MAGNITUDE", "IFCVECTOR"), 0))) {
           return undefined;
         } else {
           r.setAttr(v_vec, "MAGNITUDE", 1);
@@ -890,23 +890,23 @@ function fn_IfcNormalise(m: r.Model, p_arg: r.Value): r.Value {
       }
     } else {
       {
-        v_ndim = r.assign(r.attr(p_arg, "DIM"));
-        r.setAttr(v_v, "DIRECTIONRATIOS", r.attr(p_arg, "DIRECTIONRATIOS"));
+        v_ndim = r.assign(r.attr(p_arg, "DIM", "IFCDIRECTION"));
+        r.setAttr(v_v, "DIRECTIONRATIOS", r.attr(p_arg, "DIRECTIONRATIOS", "IFCDIRECTION"));
       }
     }
     v_mag = r.assign(0);
     {
-      const from75 = r.int(1), to76 = r.int(v_ndim), by77 = 1;
-      if (from75 !== undefined && to76 !== undefined && by77) for (let i_i74 = from75; by77 > 0 ? i_i74 <= to76 : i_i74 >= to76; i_i74 += by77) {
-        v_mag = r.assign(r.add(v_mag, r.mul(r.index(r.attr(v_v, "DIRECTIONRATIOS"), i_i74), r.index(r.attr(v_v, "DIRECTIONRATIOS"), i_i74))));
+      const from_75 = r.int(1), to_76 = r.int(v_ndim), by_77 = 1;
+      if (from_75 !== undefined && to_76 !== undefined && by_77) for (let i_i_74 = from_75; by_77 > 0 ? i_i_74 <= to_76 : i_i_74 >= to_76; i_i_74 += by_77) {
+        v_mag = r.assign(r.add(v_mag, r.mul(r.index(r.attr(v_v, "DIRECTIONRATIOS"), i_i_74), r.index(r.attr(v_v, "DIRECTIONRATIOS"), i_i_74))));
       }
     }
     if (r.isTrue(r.gt(v_mag, 0))) {
       v_mag = r.assign(r.sqrt(v_mag));
       {
-        const from79 = r.int(1), to80 = r.int(v_ndim), by81 = 1;
-        if (from79 !== undefined && to80 !== undefined && by81) for (let i_i78 = from79; by81 > 0 ? i_i78 <= to80 : i_i78 >= to80; i_i78 += by81) {
-          r.setIndex(r.attr(v_v, "DIRECTIONRATIOS"), i_i78, r.div(r.index(r.attr(v_v, "DIRECTIONRATIOS"), i_i78), v_mag));
+        const from_79 = r.int(1), to_80 = r.int(v_ndim), by_81 = 1;
+        if (from_79 !== undefined && to_80 !== undefined && by_81) for (let i_i_78 = from_79; by_81 > 0 ? i_i_78 <= to_80 : i_i_78 >= to_80; i_i_78 += by_81) {
+          r.setIndex(r.attr(v_v, "DIRECTIONRATIOS"), i_i_78, r.div(r.index(r.attr(v_v, "DIRECTIONRATIOS"), i_i_78), v_mag));
         }
       }
       if (r.isTrue(r.typeIs(m, p_arg, "IFCVECTOR"))) {
@@ -939,9 +939,9 @@ function fn_IfcPathHeadToTail(m: r.Model, p_apath: r.Value): r.Value {
   let v_p: r.Value = r.assign(r.UNKNOWN);
   v_n = r.assign(r.sizeof(r.attr(p_apath, "EDGELIST")));
   {
-    const from83 = r.int(2), to84 = r.int(v_n), by85 = 1;
-    if (from83 !== undefined && to84 !== undefined && by85) for (let i_i82 = from83; by85 > 0 ? i_i82 <= to84 : i_i82 >= to84; i_i82 += by85) {
-      v_p = r.assign(r.and(v_p, () => r.same(r.attr(r.index(r.attr(p_apath, "EDGELIST"), r.sub(i_i82, 1)), "EDGEEND"), r.attr(r.index(r.attr(p_apath, "EDGELIST"), i_i82), "EDGESTART"))));
+    const from_83 = r.int(2), to_84 = r.int(v_n), by_85 = 1;
+    if (from_83 !== undefined && to_84 !== undefined && by_85) for (let i_i_82 = from_83; by_85 > 0 ? i_i_82 <= to_84 : i_i_82 >= to_84; i_i_82 += by_85) {
+      v_p = r.assign(r.and(v_p, () => r.same(r.attr(r.index(r.attr(p_apath, "EDGELIST"), r.sub(i_i_82, 1)), "EDGEEND"), r.attr(r.index(r.attr(p_apath, "EDGELIST"), i_i_82), "EDGESTART"))));
     }
   }
   return v_p;
@@ -1026,17 +1026,17 @@ function fn_IfcScalarTimesVector(m: r.Model, p_scalar: r.Value, p_vec: r.Value):
     return undefined;
   } else {
     if (r.isTrue(r.typeIs(m, p_vec, "IFCVECTOR"))) {
-      v_v = r.assign(r.attr(p_vec, "ORIENTATION"));
-      v_mag = r.assign(r.mul(p_scalar, r.attr(p_vec, "MAGNITUDE")));
+      v_v = r.assign(r.attr(p_vec, "ORIENTATION", "IFCVECTOR"));
+      v_mag = r.assign(r.mul(p_scalar, r.attr(p_vec, "MAGNITUDE", "IFCVECTOR")));
     } else {
       v_v = r.assign(p_vec);
       v_mag = r.assign(p_scalar);
     }
     if (r.isTrue(r.lt(v_mag, 0))) {
       {
-        const from87 = r.int(1), to88 = r.int(r.sizeof(r.attr(v_v, "DIRECTIONRATIOS"))), by89 = 1;
-        if (from87 !== undefined && to88 !== undefined && by89) for (let i_i86 = from87; by89 > 0 ? i_i86 <= to88 : i_i86 >= to88; i_i86 += by89) {
-          r.setIndex(r.attr(v_v, "DIRECTIONRATIOS"), i_i86, r.neg(r.index(r.attr(v_v, "DIRECTIONRATIOS"), i_i86)));
+        const from_87 = r.int(1), to_88 = r.int(r.sizeof(r.attr(v_v, "DIRECTIONRATIOS"))), by_89 = 1;
+        if (from_87 !== undefined && to_88 !== undefined && by_89) for (let i_i_86 = from_87; by_89 > 0 ? i_i_86 <= to_88 : i_i_86 >= to_88; i_i_86 += by_89) {
+          r.setIndex(r.attr(v_v, "DIRECTIONRATIOS"), i_i_86, r.neg(r.index(r.attr(v_v, "DIRECTIONRATIOS"), i_i_86)));
         }
       }
       v_mag = r.assign(r.neg(v_mag));
@@ -1069,131 +1069,131 @@ function fn_IfcShapeRepresentationTypes(m: r.Model, p_reptype: r.Value, p_items:
   p_items = r.assignSet(p_items);
   let v_count: r.Value = r.assign(0);
   {
-    const sel90 = r.caseSelector(p_reptype);
-    if (r.isTrue(r.eq(sel90, "Point"))) {
+    const sel_90 = r.caseSelector(p_reptype);
+    if (r.isTrue(r.eq(sel_90, "Point"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q91: r.Value) => r.typeIs(m, q91, "IFCPOINT"))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_91: r.Value) => r.typeIs(m, q_91, "IFCPOINT"))));
       }
-    } else if (r.isTrue(r.eq(sel90, "PointCloud"))) {
+    } else if (r.isTrue(r.eq(sel_90, "PointCloud"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q92: r.Value) => r.typeIs(m, q92, "IFCCARTESIANPOINTLIST3D"))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_92: r.Value) => r.typeIs(m, q_92, "IFCCARTESIANPOINTLIST3D"))));
       }
-    } else if (r.isTrue(r.eq(sel90, "Curve"))) {
+    } else if (r.isTrue(r.eq(sel_90, "Curve"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q93: r.Value) => r.typeIs(m, q93, "IFCCURVE"))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_93: r.Value) => r.typeIs(m, q_93, "IFCCURVE"))));
       }
-    } else if (r.isTrue(r.eq(sel90, "Curve2D"))) {
+    } else if (r.isTrue(r.eq(sel_90, "Curve2D"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q94: r.Value) => r.and(r.typeIs(m, q94, "IFCCURVE"), () => r.eq(r.attr(q94, "DIM"), 2)))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_94: r.Value) => r.and(r.typeIs(m, q_94, "IFCCURVE"), () => r.eq(r.attr(q_94, "DIM", "IFCCURVE"), 2)))));
       }
-    } else if (r.isTrue(r.eq(sel90, "Curve3D"))) {
+    } else if (r.isTrue(r.eq(sel_90, "Curve3D"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q95: r.Value) => r.and(r.typeIs(m, q95, "IFCCURVE"), () => r.eq(r.attr(q95, "DIM"), 3)))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_95: r.Value) => r.and(r.typeIs(m, q_95, "IFCCURVE"), () => r.eq(r.attr(q_95, "DIM", "IFCCURVE"), 3)))));
       }
-    } else if (r.isTrue(r.eq(sel90, "Surface"))) {
+    } else if (r.isTrue(r.eq(sel_90, "Surface"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q96: r.Value) => r.typeIs(m, q96, "IFCSURFACE"))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_96: r.Value) => r.typeIs(m, q_96, "IFCSURFACE"))));
       }
-    } else if (r.isTrue(r.eq(sel90, "Surface2D"))) {
+    } else if (r.isTrue(r.eq(sel_90, "Surface2D"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q97: r.Value) => r.and(r.typeIs(m, q97, "IFCSURFACE"), () => r.eq(r.attr(q97, "DIM"), 2)))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_97: r.Value) => r.and(r.typeIs(m, q_97, "IFCSURFACE"), () => r.eq(r.attr(q_97, "DIM", "IFCSURFACE"), 2)))));
       }
-    } else if (r.isTrue(r.eq(sel90, "Surface3D"))) {
+    } else if (r.isTrue(r.eq(sel_90, "Surface3D"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q98: r.Value) => r.and(r.typeIs(m, q98, "IFCSURFACE"), () => r.eq(r.attr(q98, "DIM"), 3)))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_98: r.Value) => r.and(r.typeIs(m, q_98, "IFCSURFACE"), () => r.eq(r.attr(q_98, "DIM", "IFCSURFACE"), 3)))));
       }
-    } else if (r.isTrue(r.eq(sel90, "FillArea"))) {
+    } else if (r.isTrue(r.eq(sel_90, "FillArea"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q99: r.Value) => r.typeIs(m, q99, "IFCANNOTATIONFILLAREA"))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_99: r.Value) => r.typeIs(m, q_99, "IFCANNOTATIONFILLAREA"))));
       }
-    } else if (r.isTrue(r.eq(sel90, "Text"))) {
+    } else if (r.isTrue(r.eq(sel_90, "Text"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q100: r.Value) => r.typeIs(m, q100, "IFCTEXTLITERAL"))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_100: r.Value) => r.typeIs(m, q_100, "IFCTEXTLITERAL"))));
       }
-    } else if (r.isTrue(r.eq(sel90, "AdvancedSurface"))) {
+    } else if (r.isTrue(r.eq(sel_90, "AdvancedSurface"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q101: r.Value) => r.typeIs(m, q101, "IFCBSPLINESURFACE"))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_101: r.Value) => r.typeIs(m, q_101, "IFCBSPLINESURFACE"))));
       }
-    } else if (r.isTrue(r.eq(sel90, "Annotation2D"))) {
+    } else if (r.isTrue(r.eq(sel_90, "Annotation2D"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q102: r.Value) => r.eq(r.sizeof(r.mul(r.typeOf(m, q102), r.aggregate([["IFC4.IFCPOINT"], ["IFC4.IFCCURVE"], ["IFC4.IFCGEOMETRICCURVESET"], ["IFC4.IFCANNOTATIONFILLAREA"], ["IFC4.IFCTEXTLITERAL"]]))), 1))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_102: r.Value) => r.eq(r.sizeof(r.mul(r.typeOf(m, q_102), r.aggregate([["IFC4.IFCPOINT"], ["IFC4.IFCCURVE"], ["IFC4.IFCGEOMETRICCURVESET"], ["IFC4.IFCANNOTATIONFILLAREA"], ["IFC4.IFCTEXTLITERAL"]]))), 1))));
       }
-    } else if (r.isTrue(r.eq(sel90, "GeometricSet"))) {
+    } else if (r.isTrue(r.eq(sel_90, "GeometricSet"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q103: r.Value) => r.or(r.or(r.or(r.typeIs(m, q103, "IFCGEOMETRICSET"), () => r.typeIs(m, q103, "IFCPOINT")), () => r.typeIs(m, q103, "IFCCURVE")), () => r.typeIs(m, q103, "IFCSURFACE")))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_103: r.Value) => r.or(r.or(r.or(r.typeIs(m, q_103, "IFCGEOMETRICSET"), () => r.typeIs(m, q_103, "IFCPOINT")), () => r.typeIs(m, q_103, "IFCCURVE")), () => r.typeIs(m, q_103, "IFCSURFACE")))));
       }
-    } else if (r.isTrue(r.eq(sel90, "GeometricCurveSet"))) {
+    } else if (r.isTrue(r.eq(sel_90, "GeometricCurveSet"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q104: r.Value) => r.or(r.or(r.or(r.typeIs(m, q104, "IFCGEOMETRICCURVESET"), () => r.typeIs(m, q104, "IFCGEOMETRICSET")), () => r.typeIs(m, q104, "IFCPOINT")), () => r.typeIs(m, q104, "IFCCURVE")))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_104: r.Value) => r.or(r.or(r.or(r.typeIs(m, q_104, "IFCGEOMETRICCURVESET"), () => r.typeIs(m, q_104, "IFCGEOMETRICSET")), () => r.typeIs(m, q_104, "IFCPOINT")), () => r.typeIs(m, q_104, "IFCCURVE")))));
         {
-          const from107 = r.int(1), to108 = r.int(r.hiindex(p_items)), by109 = 1;
-          if (from107 !== undefined && to108 !== undefined && by109) for (let i_i105 = from107; by109 > 0 ? i_i105 <= to108 : i_i105 >= to108; i_i105 += by109) {
-            if (r.isTrue(r.typeIs(m, r.index(p_items, i_i105), "IFCGEOMETRICSET"))) {
-              if (r.isTrue(r.gt(r.sizeof(r.query(r.attr(r.index(p_items, i_i105), "ELEMENTS"), (q106: r.Value) => r.typeIs(m, q106, "IFCSURFACE"))), 0))) {
+          const from_107 = r.int(1), to_108 = r.int(r.hiindex(p_items)), by_109 = 1;
+          if (from_107 !== undefined && to_108 !== undefined && by_109) for (let i_i_105 = from_107; by_109 > 0 ? i_i_105 <= to_108 : i_i_105 >= to_108; i_i_105 += by_109) {
+            if (r.isTrue(r.typeIs(m, r.index(p_items, i_i_105), "IFCGEOMETRICSET"))) {
+              if (r.isTrue(r.gt(r.sizeof(r.query(r.attr(r.index(p_items, i_i_105), "ELEMENTS", "IFCGEOMETRICSET"), (q_106: r.Value) => r.typeIs(m, q_106, "IFCSURFACE"))), 0))) {
                 v_count = r.assign(r.sub(v_count, 1));
               }
             }
           }
         }
       }
-    } else if (r.isTrue(r.eq(sel90, "Tessellation"))) {
+    } else if (r.isTrue(r.eq(sel_90, "Tessellation"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q110: r.Value) => r.typeIs(m, q110, "IFCTESSELLATEDITEM"))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_110: r.Value) => r.typeIs(m, q_110, "IFCTESSELLATEDITEM"))));
       }
-    } else if (r.isTrue(r.eq(sel90, "SurfaceOrSolidModel"))) {
+    } else if (r.isTrue(r.eq(sel_90, "SurfaceOrSolidModel"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q111: r.Value) => r.ge(r.sizeof(r.mul(r.aggregate([["IFC4.IFCTESSELLATEDITEM"], ["IFC4.IFCSHELLBASEDSURFACEMODEL"], ["IFC4.IFCFACEBASEDSURFACEMODEL"], ["IFC4.IFCSOLIDMODEL"]]), r.typeOf(m, q111))), 1))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_111: r.Value) => r.ge(r.sizeof(r.mul(r.aggregate([["IFC4.IFCTESSELLATEDITEM"], ["IFC4.IFCSHELLBASEDSURFACEMODEL"], ["IFC4.IFCFACEBASEDSURFACEMODEL"], ["IFC4.IFCSOLIDMODEL"]]), r.typeOf(m, q_111))), 1))));
       }
-    } else if (r.isTrue(r.eq(sel90, "SurfaceModel"))) {
+    } else if (r.isTrue(r.eq(sel_90, "SurfaceModel"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q112: r.Value) => r.ge(r.sizeof(r.mul(r.aggregate([["IFC4.IFCTESSELLATEDITEM"], ["IFC4.IFCSHELLBASEDSURFACEMODEL"], ["IFC4.IFCFACEBASEDSURFACEMODEL"]]), r.typeOf(m, q112))), 1))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_112: r.Value) => r.ge(r.sizeof(r.mul(r.aggregate([["IFC4.IFCTESSELLATEDITEM"], ["IFC4.IFCSHELLBASEDSURFACEMODEL"], ["IFC4.IFCFACEBASEDSURFACEMODEL"]]), r.typeOf(m, q_112))), 1))));
       }
-    } else if (r.isTrue(r.eq(sel90, "SolidModel"))) {
+    } else if (r.isTrue(r.eq(sel_90, "SolidModel"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q113: r.Value) => r.typeIs(m, q113, "IFCSOLIDMODEL"))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_113: r.Value) => r.typeIs(m, q_113, "IFCSOLIDMODEL"))));
       }
-    } else if (r.isTrue(r.eq(sel90, "SweptSolid"))) {
+    } else if (r.isTrue(r.eq(sel_90, "SweptSolid"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q114: r.Value) => r.and(r.ge(r.sizeof(r.mul(r.aggregate([["IFC4.IFCEXTRUDEDAREASOLID"], ["IFC4.IFCREVOLVEDAREASOLID"]]), r.typeOf(m, q114))), 1), () => r.eq(r.sizeof(r.mul(r.aggregate([["IFC4.IFCEXTRUDEDAREASOLIDTAPERED"], ["IFC4.IFCREVOLVEDAREASOLIDTAPERED"]]), r.typeOf(m, q114))), 0)))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_114: r.Value) => r.and(r.ge(r.sizeof(r.mul(r.aggregate([["IFC4.IFCEXTRUDEDAREASOLID"], ["IFC4.IFCREVOLVEDAREASOLID"]]), r.typeOf(m, q_114))), 1), () => r.eq(r.sizeof(r.mul(r.aggregate([["IFC4.IFCEXTRUDEDAREASOLIDTAPERED"], ["IFC4.IFCREVOLVEDAREASOLIDTAPERED"]]), r.typeOf(m, q_114))), 0)))));
       }
-    } else if (r.isTrue(r.eq(sel90, "AdvancedSweptSolid"))) {
+    } else if (r.isTrue(r.eq(sel_90, "AdvancedSweptSolid"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q115: r.Value) => r.ge(r.sizeof(r.mul(r.aggregate([["IFC4.IFCSWEPTAREASOLID"], ["IFC4.IFCSWEPTDISKSOLID"]]), r.typeOf(m, q115))), 1))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_115: r.Value) => r.ge(r.sizeof(r.mul(r.aggregate([["IFC4.IFCSWEPTAREASOLID"], ["IFC4.IFCSWEPTDISKSOLID"]]), r.typeOf(m, q_115))), 1))));
       }
-    } else if (r.isTrue(r.eq(sel90, "CSG"))) {
+    } else if (r.isTrue(r.eq(sel_90, "CSG"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q116: r.Value) => r.ge(r.sizeof(r.mul(r.aggregate([["IFC4.IFCBOOLEANRESULT"], ["IFC4.IFCCSGPRIMITIVE3D"], ["IFC4.IFCCSGSOLID"]]), r.typeOf(m, q116))), 1))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_116: r.Value) => r.ge(r.sizeof(r.mul(r.aggregate([["IFC4.IFCBOOLEANRESULT"], ["IFC4.IFCCSGPRIMITIVE3D"], ["IFC4.IFCCSGSOLID"]]), r.typeOf(m, q_116))), 1))));
       }
-    } else if (r.isTrue(r.eq(sel90, "Clipping"))) {
+    } else if (r.isTrue(r.eq(sel_90, "Clipping"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q117: r.Value) => r.ge(r.sizeof(r.mul(r.aggregate([["IFC4.IFCCSGSOLID"], ["IFC4.IFCBOOLEANCLIPPINGRESULT"]]), r.typeOf(m, q117))), 1))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_117: r.Value) => r.ge(r.sizeof(r.mul(r.aggregate([["IFC4.IFCCSGSOLID"], ["IFC4.IFCBOOLEANCLIPPINGRESULT"]]), r.typeOf(m, q_117))), 1))));
       }
-    } else if (r.isTrue(r.eq(sel90, "Brep"))) {
+    } else if (r.isTrue(r.eq(sel_90, "Brep"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q118: r.Value) => r.typeIs(m, q118, "IFCFACETEDBREP"))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_118: r.Value) => r.typeIs(m, q_118, "IFCFACETEDBREP"))));
       }
-    } else if (r.isTrue(r.eq(sel90, "AdvancedBrep"))) {
+    } else if (r.isTrue(r.eq(sel_90, "AdvancedBrep"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q119: r.Value) => r.typeIs(m, q119, "IFCMANIFOLDSOLIDBREP"))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_119: r.Value) => r.typeIs(m, q_119, "IFCMANIFOLDSOLIDBREP"))));
       }
-    } else if (r.isTrue(r.eq(sel90, "BoundingBox"))) {
+    } else if (r.isTrue(r.eq(sel_90, "BoundingBox"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q120: r.Value) => r.typeIs(m, q120, "IFCBOUNDINGBOX"))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_120: r.Value) => r.typeIs(m, q_120, "IFCBOUNDINGBOX"))));
         if (r.isTrue(r.gt(r.sizeof(p_items), 1))) {
           v_count = r.assign(0);
         }
       }
-    } else if (r.isTrue(r.eq(sel90, "SectionedSpine"))) {
+    } else if (r.isTrue(r.eq(sel_90, "SectionedSpine"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q121: r.Value) => r.typeIs(m, q121, "IFCSECTIONEDSPINE"))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_121: r.Value) => r.typeIs(m, q_121, "IFCSECTIONEDSPINE"))));
       }
-    } else if (r.isTrue(r.eq(sel90, "LightSource"))) {
+    } else if (r.isTrue(r.eq(sel_90, "LightSource"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q122: r.Value) => r.typeIs(m, q122, "IFCLIGHTSOURCE"))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_122: r.Value) => r.typeIs(m, q_122, "IFCLIGHTSOURCE"))));
       }
-    } else if (r.isTrue(r.eq(sel90, "MappedRepresentation"))) {
+    } else if (r.isTrue(r.eq(sel_90, "MappedRepresentation"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q123: r.Value) => r.typeIs(m, q123, "IFCMAPPEDITEM"))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_123: r.Value) => r.typeIs(m, q_123, "IFCMAPPEDITEM"))));
       }
     } else {
       return undefined;
@@ -1207,12 +1207,12 @@ function fn_IfcSurfaceWeightsPositive(m: r.Model, p_b: r.Value): r.Value {
   let v_result: r.Value = r.assign(true);
   let v_weights: r.Value = r.assignArray(r.attr(p_b, "WEIGHTS"), 0);
   {
-    const from129 = r.int(0), to130 = r.int(r.attr(p_b, "UUPPER")), by131 = 1;
-    if (from129 !== undefined && to130 !== undefined && by131) for (let i_i124 = from129; by131 > 0 ? i_i124 <= to130 : i_i124 >= to130; i_i124 += by131) {
+    const from_129 = r.int(0), to_130 = r.int(r.attr(p_b, "UUPPER", "IFCBSPLINESURFACE")), by_131 = 1;
+    if (from_129 !== undefined && to_130 !== undefined && by_131) for (let i_i_124 = from_129; by_131 > 0 ? i_i_124 <= to_130 : i_i_124 >= to_130; i_i_124 += by_131) {
       {
-        const from126 = r.int(0), to127 = r.int(r.attr(p_b, "VUPPER")), by128 = 1;
-        if (from126 !== undefined && to127 !== undefined && by128) for (let i_j125 = from126; by128 > 0 ? i_j125 <= to127 : i_j125 >= to127; i_j125 += by128) {
-          if (r.isTrue(r.le(r.index(r.index(v_weights, i_i124), i_j125), 0))) {
+        const from_126 = r.int(0), to_127 = r.int(r.attr(p_b, "VUPPER", "IFCBSPLINESURFACE")), by_128 = 1;
+        if (from_126 !== undefined && to_127 !== undefined && by_128) for (let i_j_125 = from_126; by_128 > 0 ? i_j_125 <= to_127 : i_j_125 >= to_127; i_j_125 += by_128) {
+          if (r.isTrue(r.le(r.index(r.index(v_weights, i_i_124), i_j_125), 0))) {
             v_result = r.assign(false);
             return v_result;
           }
@@ -1228,13 +1228,13 @@ function fn_IfcTaperedSweptAreaProfiles(m: r.Model, p_startarea: r.Value, p_enda
   let v_result: r.Value = r.assign(false);
   if (r.isTrue(r.typeIs(m, p_startarea, "IFCPARAMETERIZEDPROFILEDEF"))) {
     if (r.isTrue(r.typeIs(m, p_endarea, "IFCDERIVEDPROFILEDEF"))) {
-      v_result = r.assign(r.same(p_startarea, r.attr(p_endarea, "PARENTPROFILE")));
+      v_result = r.assign(r.same(p_startarea, r.attr(p_endarea, "PARENTPROFILE", "IFCDERIVEDPROFILEDEF")));
     } else {
       v_result = r.assign(r.eq(r.typeOf(m, p_startarea), r.typeOf(m, p_endarea)));
     }
   } else {
     if (r.isTrue(r.typeIs(m, p_endarea, "IFCDERIVEDPROFILEDEF"))) {
-      v_result = r.assign(r.same(p_startarea, r.attr(p_endarea, "PARENTPROFILE")));
+      v_result = r.assign(r.same(p_startarea, r.attr(p_endarea, "PARENTPROFILE", "IFCDERIVEDPROFILEDEF")));
     } else {
       v_result = r.assign(false);
     }
@@ -1247,28 +1247,28 @@ function fn_IfcTopologyRepresentationTypes(m: r.Model, p_reptype: r.Value, p_ite
   p_items = r.assignSet(p_items);
   let v_count: r.Value = r.assign(0);
   {
-    const sel132 = r.caseSelector(p_reptype);
-    if (r.isTrue(r.eq(sel132, "Vertex"))) {
+    const sel_132 = r.caseSelector(p_reptype);
+    if (r.isTrue(r.eq(sel_132, "Vertex"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q133: r.Value) => r.typeIs(m, q133, "IFCVERTEX"))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_133: r.Value) => r.typeIs(m, q_133, "IFCVERTEX"))));
       }
-    } else if (r.isTrue(r.eq(sel132, "Edge"))) {
+    } else if (r.isTrue(r.eq(sel_132, "Edge"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q134: r.Value) => r.typeIs(m, q134, "IFCEDGE"))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_134: r.Value) => r.typeIs(m, q_134, "IFCEDGE"))));
       }
-    } else if (r.isTrue(r.eq(sel132, "Path"))) {
+    } else if (r.isTrue(r.eq(sel_132, "Path"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q135: r.Value) => r.typeIs(m, q135, "IFCPATH"))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_135: r.Value) => r.typeIs(m, q_135, "IFCPATH"))));
       }
-    } else if (r.isTrue(r.eq(sel132, "Face"))) {
+    } else if (r.isTrue(r.eq(sel_132, "Face"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q136: r.Value) => r.typeIs(m, q136, "IFCFACE"))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_136: r.Value) => r.typeIs(m, q_136, "IFCFACE"))));
       }
-    } else if (r.isTrue(r.eq(sel132, "Shell"))) {
+    } else if (r.isTrue(r.eq(sel_132, "Shell"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q137: r.Value) => r.or(r.typeIs(m, q137, "IFCOPENSHELL"), () => r.typeIs(m, q137, "IFCCLOSEDSHELL")))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_137: r.Value) => r.or(r.typeIs(m, q_137, "IFCOPENSHELL"), () => r.typeIs(m, q_137, "IFCCLOSEDSHELL")))));
       }
-    } else if (r.isTrue(r.eq(sel132, "Undefined"))) {
+    } else if (r.isTrue(r.eq(sel_132, "Undefined"))) {
       return true;
     } else {
       return undefined;
@@ -1288,19 +1288,19 @@ function fn_IfcUniqueDefinitionNames(m: r.Model, p_relations: r.Value): r.Value 
     return true;
   }
   {
-    const from143 = r.int(1), to144 = r.int(r.hiindex(p_relations)), by145 = 1;
-    if (from143 !== undefined && to144 !== undefined && by145) for (let i_i138 = from143; by145 > 0 ? i_i138 <= to144 : i_i138 >= to144; i_i138 += by145) {
-      v_definition = r.assign(r.attr(r.index(p_relations, i_i138), "RELATINGPROPERTYDEFINITION"));
+    const from_143 = r.int(1), to_144 = r.int(r.hiindex(p_relations)), by_145 = 1;
+    if (from_143 !== undefined && to_144 !== undefined && by_145) for (let i_i_138 = from_143; by_145 > 0 ? i_i_138 <= to_144 : i_i_138 >= to_144; i_i_138 += by_145) {
+      v_definition = r.assign(r.attr(r.index(p_relations, i_i_138), "RELATINGPROPERTYDEFINITION"));
       if (r.isTrue(r.typeIs(m, v_definition, "IFCPROPERTYSETDEFINITION"))) {
         v_properties = r.assignSet(r.add(v_properties, v_definition));
       } else {
         if (r.isTrue(r.typeIs(m, v_definition, "IFCPROPERTYSETDEFINITIONSET"))) {
           {
-            v_definitionset = r.assign(v_definition);
+            v_definitionset = r.assignSet(v_definition);
             {
-              const from140 = r.int(1), to141 = r.int(r.hiindex(v_definitionset)), by142 = 1;
-              if (from140 !== undefined && to141 !== undefined && by142) for (let i_j139 = from140; by142 > 0 ? i_j139 <= to141 : i_j139 >= to141; i_j139 += by142) {
-                v_properties = r.assignSet(r.add(v_properties, r.index(v_definitionset, i_j139)));
+              const from_140 = r.int(1), to_141 = r.int(r.hiindex(v_definitionset)), by_142 = 1;
+              if (from_140 !== undefined && to_141 !== undefined && by_142) for (let i_j_139 = from_140; by_142 > 0 ? i_j_139 <= to_141 : i_j_139 >= to_141; i_j_139 += by_142) {
+                v_properties = r.assignSet(r.add(v_properties, r.index(v_definitionset, i_j_139)));
               }
             }
           }
@@ -1317,9 +1317,9 @@ function fn_IfcUniquePropertyName(m: r.Model, p_properties: r.Value): r.Value {
   p_properties = r.assignSet(p_properties);
   let v_names: r.Value = r.assignSet(r.aggregate([]));
   {
-    const from147 = r.int(1), to148 = r.int(r.hiindex(p_properties)), by149 = 1;
-    if (from147 !== undefined && to148 !== undefined && by149) for (let i_i146 = from147; by149 > 0 ? i_i146 <= to148 : i_i146 >= to148; i_i146 += by149) {
-      v_names = r.assignSet(r.add(v_names, r.attr(r.index(p_properties, i_i146), "NAME")));
+    const from_147 = r.int(1), to_148 = r.int(r.hiindex(p_properties)), by_149 = 1;
+    if (from_147 !== undefined && to_148 !== undefined && by_149) for (let i_i_146 = from_147; by_149 > 0 ? i_i_146 <= to_148 : i_i_146 >= to_148; i_i_146 += by_149) {
+      v_names = r.assignSet(r.add(v_names, r.attr(r.index(p_properties, i_i_146), "NAME")));
     }
   }
   return r.eq(r.sizeof(v_names), r.sizeof(p_properties));
@@ -1331,10 +1331,10 @@ function fn_IfcUniquePropertySetNames(m: r.Model, p_properties: r.Value): r.Valu
   let v_names: r.Value = r.assignSet(r.aggregate([]));
   let v_unnamed: r.Value = r.assign(0);
   {
-    const from151 = r.int(1), to152 = r.int(r.hiindex(p_properties)), by153 = 1;
-    if (from151 !== undefined && to152 !== undefined && by153) for (let i_i150 = from151; by153 > 0 ? i_i150 <= to152 : i_i150 >= to152; i_i150 += by153) {
-      if (r.isTrue(r.typeIs(m, r.index(p_properties, i_i150), "IFCPROPERTYSET"))) {
-        v_names = r.assignSet(r.add(v_names, r.attr(r.index(p_properties, i_i150), "NAME")));
+    const from_151 = r.int(1), to_152 = r.int(r.hiindex(p_properties)), by_153 = 1;
+    if (from_151 !== undefined && to_152 !== undefined && by_153) for (let i_i_150 = from_151; by_153 > 0 ? i_i_150 <= to_152 : i_i_150 >= to_152; i_i_150 += by_153) {
+      if (r.isTrue(r.typeIs(m, r.index(p_properties, i_i_150), "IFCPROPERTYSET"))) {
+        v_names = r.assignSet(r.add(v_names, r.attr(r.index(p_properties, i_i_150), "NAME", "IFCROOT")));
       } else {
         v_unnamed = r.assign(r.add(v_unnamed, 1));
       }
@@ -1348,9 +1348,9 @@ function fn_IfcUniquePropertyTemplateNames(m: r.Model, p_properties: r.Value): r
   p_properties = r.assignSet(p_properties);
   let v_names: r.Value = r.assignSet(r.aggregate([]));
   {
-    const from155 = r.int(1), to156 = r.int(r.hiindex(p_properties)), by157 = 1;
-    if (from155 !== undefined && to156 !== undefined && by157) for (let i_i154 = from155; by157 > 0 ? i_i154 <= to156 : i_i154 >= to156; i_i154 += by157) {
-      v_names = r.assignSet(r.add(v_names, r.attr(r.index(p_properties, i_i154), "NAME")));
+    const from_155 = r.int(1), to_156 = r.int(r.hiindex(p_properties)), by_157 = 1;
+    if (from_155 !== undefined && to_156 !== undefined && by_157) for (let i_i_154 = from_155; by_157 > 0 ? i_i_154 <= to_156 : i_i_154 >= to_156; i_i_154 += by_157) {
+      v_names = r.assignSet(r.add(v_names, r.attr(r.index(p_properties, i_i_154), "NAME")));
     }
   }
   return r.eq(r.sizeof(v_names), r.sizeof(p_properties));
@@ -1361,9 +1361,9 @@ function fn_IfcUniqueQuantityNames(m: r.Model, p_properties: r.Value): r.Value {
   p_properties = r.assignSet(p_properties);
   let v_names: r.Value = r.assignSet(r.aggregate([]));
   {
-    const from159 = r.int(1), to160 = r.int(r.hiindex(p_properties)), by161 = 1;
-    if (from159 !== undefined && to160 !== undefined && by161) for (let i_i158 = from159; by161 > 0 ? i_i158 <= to160 : i_i158 >= to160; i_i158 += by161) {
-      v_names = r.assignSet(r.add(v_names, r.attr(r.index(p_properties, i_i158), "NAME")));
+    const from_159 = r.int(1), to_160 = r.int(r.hiindex(p_properties)), by_161 = 1;
+    if (from_159 !== undefined && to_160 !== undefined && by_161) for (let i_i_158 = from_159; by_161 > 0 ? i_i_158 <= to_160 : i_i_158 >= to_160; i_i_158 += by_161) {
+      v_names = r.assignSet(r.add(v_names, r.attr(r.index(p_properties, i_i_158), "NAME")));
     }
   }
   return r.eq(r.sizeof(v_names), r.sizeof(p_properties));
@@ -1384,15 +1384,15 @@ function fn_IfcVectorDifference(m: r.Model, p_arg1: r.Value, p_arg2: r.Value): r
   } else {
     {
       if (r.isTrue(r.typeIs(m, p_arg1, "IFCVECTOR"))) {
-        v_mag1 = r.assign(r.attr(p_arg1, "MAGNITUDE"));
-        v_vec1 = r.assign(r.attr(p_arg1, "ORIENTATION"));
+        v_mag1 = r.assign(r.attr(p_arg1, "MAGNITUDE", "IFCVECTOR"));
+        v_vec1 = r.assign(r.attr(p_arg1, "ORIENTATION", "IFCVECTOR"));
       } else {
         v_mag1 = r.assign(1);
         v_vec1 = r.assign(p_arg1);
       }
       if (r.isTrue(r.typeIs(m, p_arg2, "IFCVECTOR"))) {
-        v_mag2 = r.assign(r.attr(p_arg2, "MAGNITUDE"));
-        v_vec2 = r.assign(r.attr(p_arg2, "ORIENTATION"));
+        v_mag2 = r.assign(r.attr(p_arg2, "MAGNITUDE", "IFCVECTOR"));
+        v_vec2 = r.assign(r.attr(p_arg2, "ORIENTATION", "IFCVECTOR"));
       } else {
         v_mag2 = r.assign(1);
         v_vec2 = r.assign(p_arg2);
@@ -1403,10 +1403,10 @@ function fn_IfcVectorDifference(m: r.Model, p_arg1: r.Value, p_arg2: r.Value): r
       v_mag = r.assign(0);
       v_res = r.assign(r.complex(m, [r.construct(m, "IfcRepresentationItem", []), r.construct(m, "IfcGeometricRepresentationItem", []), r.construct(m, "IfcDirection", [r.aggregate([[0, v_ndim]])])]));
       {
-        const from163 = r.int(1), to164 = r.int(v_ndim), by165 = 1;
-        if (from163 !== undefined && to164 !== undefined && by165) for (let i_i162 = from163; by165 > 0 ? i_i162 <= to164 : i_i162 >= to164; i_i162 += by165) {
-          r.setIndex(r.attr(v_res, "DIRECTIONRATIOS"), i_i162, r.sub(r.mul(v_mag1, r.index(r.attr(v_vec1, "DIRECTIONRATIOS"), i_i162)), r.mul(v_mag2, r.index(r.attr(v_vec2, "DIRECTIONRATIOS"), i_i162))));
-          v_mag = r.assign(r.add(v_mag, r.mul(r.index(r.attr(v_res, "DIRECTIONRATIOS"), i_i162), r.index(r.attr(v_res, "DIRECTIONRATIOS"), i_i162))));
+        const from_163 = r.int(1), to_164 = r.int(v_ndim), by_165 = 1;
+        if (from_163 !== undefined && to_164 !== undefined && by_165) for (let i_i_162 = from_163; by_165 > 0 ? i_i_162 <= to_164 : i_i_162 >= to_164; i_i_162 += by_165) {
+          r.setIndex(r.attr(v_res, "DIRECTIONRATIOS"), i_i_162, r.sub(r.mul(v_mag1, r.index(r.attr(v_vec1, "DIRECTIONRATIOS"), i_i_162)), r.mul(v_mag2, r.index(r.attr(v_vec2, "DIRECTIONRATIOS"), i_i_162))));
+          v_mag = r.assign(r.add(v_mag, r.mul(r.index(r.attr(v_res, "DIRECTIONRATIOS"), i_i_162), r.index(r.attr(v_res, "DIRECTIONRATIOS"), i_i_162))));
         }
       }
       if (r.isTrue(r.gt(v_mag, 0))) {
@@ -1434,15 +1434,15 @@ function fn_IfcVectorSum(m: r.Model, p_arg1: r.Value, p_arg2: r.Value): r.Value 
   } else {
     {
       if (r.isTrue(r.typeIs(m, p_arg1, "IFCVECTOR"))) {
-        v_mag1 = r.assign(r.attr(p_arg1, "MAGNITUDE"));
-        v_vec1 = r.assign(r.attr(p_arg1, "ORIENTATION"));
+        v_mag1 = r.assign(r.attr(p_arg1, "MAGNITUDE", "IFCVECTOR"));
+        v_vec1 = r.assign(r.attr(p_arg1, "ORIENTATION", "IFCVECTOR"));
       } else {
         v_mag1 = r.assign(1);
         v_vec1 = r.assign(p_arg1);
       }
       if (r.isTrue(r.typeIs(m, p_arg2, "IFCVECTOR"))) {
-        v_mag2 = r.assign(r.attr(p_arg2, "MAGNITUDE"));
-        v_vec2 = r.assign(r.attr(p_arg2, "ORIENTATION"));
+        v_mag2 = r.assign(r.attr(p_arg2, "MAGNITUDE", "IFCVECTOR"));
+        v_vec2 = r.assign(r.attr(p_arg2, "ORIENTATION", "IFCVECTOR"));
       } else {
         v_mag2 = r.assign(1);
         v_vec2 = r.assign(p_arg2);
@@ -1453,10 +1453,10 @@ function fn_IfcVectorSum(m: r.Model, p_arg1: r.Value, p_arg2: r.Value): r.Value 
       v_mag = r.assign(0);
       v_res = r.assign(r.complex(m, [r.construct(m, "IfcRepresentationItem", []), r.construct(m, "IfcGeometricRepresentationItem", []), r.construct(m, "IfcDirection", [r.aggregate([[0, v_ndim]])])]));
       {
-        const from167 = r.int(1), to168 = r.int(v_ndim), by169 = 1;
-        if (from167 !== undefined && to168 !== undefined && by169) for (let i_i166 = from167; by169 > 0 ? i_i166 <= to168 : i_i166 >= to168; i_i166 += by169) {
-          r.setIndex(r.attr(v_res, "DIRECTIONRATIOS"), i_i166, r.add(r.mul(v_mag1, r.index(r.attr(v_vec1, "DIRECTIONRATIOS"), i_i166)), r.mul(v_mag2, r.index(r.attr(v_vec2, "DIRECTIONRATIOS"), i_i166))));
-          v_mag = r.assign(r.add(v_mag, r.mul(r.index(r.attr(v_res, "DIRECTIONRATIOS"), i_i166), r.index(r.attr(v_res, "DIRECTIONRATIOS"), i_i166))));
+        const from_167 = r.int(1), to_168 = r.int(v_ndim), by_169 = 1;
+        if (from_167 !== undefined && to_168 !== undefined && by_169) for (let i_i_166 = from_167; by_169 > 0 ? i_i_166 <= to_168 : i_i_166 >= to_168; i_i_166 += by_169) {
+          r.setIndex(r.attr(v_res, "DIRECTIONRATIOS"), i_i_166, r.add(r.mul(v_mag1, r.index(r.attr(v_vec1, "DIRECTIONRATIOS"), i_i_166)), r.mul(v_mag2, r.index(r.attr(v_vec2, "DIRECTIONRATIOS"), i_i_166))));
+          v_mag = r.assign(r.add(v_mag, r.mul(r.index(r.attr(v_res, "DIRECTIONRATIOS"), i_i_166), r.index(r.attr(v_res, "DIRECTIONRATIOS"), i_i_166))));
         }
       }
       if (r.isTrue(r.gt(v_mag, 0))) {
@@ -1476,53 +1476,53 @@ export const RULES: r.CompiledRules = {
       { label: "WR1", source: "(Role <> IfcRoleEnum.USERDEFINED) OR ((Role = IfcRoleEnum.USERDEFINED) AND EXISTS(SELF.UserDefinedRole))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "ROLE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "ROLE"), E_USERDEFINED), () => r.exists(r.attr(self, "USERDEFINEDROLE")))) },
     ],
     "IfcActuator": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcActuatorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcActuatorTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCACTUATORTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCACTUATORTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcActuatorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcActuatorTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCACTUATORTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCACTUATORTYPE")) },
     ],
     "IfcActuatorType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcActuatorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcActuatorTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcActuatorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcActuatorTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcAddress": [
       { label: "WR1", source: "(NOT(EXISTS(Purpose))) OR ((Purpose <> IfcAddressTypeEnum.USERDEFINED) OR ((Purpose = IfcAddressTypeEnum.USERDEFINED) AND EXISTS(SELF.UserDefinedPurpose)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "PURPOSE"))), () => r.or(r.ne(r.attr(self, "PURPOSE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PURPOSE"), E_USERDEFINED), () => r.exists(r.attr(self, "USERDEFINEDPURPOSE"))))) },
     ],
     "IfcAdvancedBrep": [
-      { label: "HasAdvancedFaces", source: "SIZEOF(QUERY(Afs <* SELF\\IfcManifoldSolidBrep.Outer.CfsFaces | (NOT ('IFC4.IFCADVANCEDFACE' IN TYPEOF(Afs))) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(r.attr(self, "OUTER"), "CFSFACES"), (q172: r.Value) => r.not(r.typeIs(m, q172, "IFCADVANCEDFACE")))), 0) },
+      { label: "HasAdvancedFaces", source: "SIZEOF(QUERY(Afs <* SELF\\IfcManifoldSolidBrep.Outer.CfsFaces | (NOT ('IFC4.IFCADVANCEDFACE' IN TYPEOF(Afs))) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(r.attr(self, "OUTER", "IFCMANIFOLDSOLIDBREP"), "CFSFACES"), (q_172: r.Value) => r.not(r.typeIs(m, q_172, "IFCADVANCEDFACE")))), 0) },
     ],
     "IfcAdvancedBrepWithVoids": [
-      { label: "VoidsHaveAdvancedFaces", source: "SIZEOF (QUERY (Vsh <* Voids | SIZEOF (QUERY (Afs <* Vsh.CfsFaces | (NOT ('IFC4.IFCADVANCEDFACE' IN TYPEOF(Afs))) )) = 0 )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "VOIDS"), (q173: r.Value) => r.eq(r.sizeof(r.query(r.attr(q173, "CFSFACES"), (q174: r.Value) => r.not(r.typeIs(m, q174, "IFCADVANCEDFACE")))), 0))), 0) },
+      { label: "VoidsHaveAdvancedFaces", source: "SIZEOF (QUERY (Vsh <* Voids | SIZEOF (QUERY (Afs <* Vsh.CfsFaces | (NOT ('IFC4.IFCADVANCEDFACE' IN TYPEOF(Afs))) )) = 0 )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "VOIDS"), (q_173: r.Value) => r.eq(r.sizeof(r.query(r.attr(q_173, "CFSFACES"), (q_174: r.Value) => r.not(r.typeIs(m, q_174, "IFCADVANCEDFACE")))), 0))), 0) },
     ],
     "IfcAdvancedFace": [
-      { label: "ApplicableSurface", source: "SIZEOF ( ['IFC4.IFCELEMENTARYSURFACE', 'IFC4.IFCSWEPTSURFACE', 'IFC4.IFCBSPLINESURFACE'] * TYPEOF(SELF\\IfcFaceSurface.FaceSurface)) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.mul(r.aggregate([["IFC4.IFCELEMENTARYSURFACE"], ["IFC4.IFCSWEPTSURFACE"], ["IFC4.IFCBSPLINESURFACE"]]), r.typeOf(m, r.attr(self, "FACESURFACE")))), 1) },
-      { label: "RequiresEdgeCurve", source: "SIZEOF(QUERY (ElpFbnds <* QUERY (Bnds <* SELF\\IfcFace.Bounds | 'IFC4.IFCEDGELOOP' IN TYPEOF(Bnds.Bound)) | NOT (SIZEOF (QUERY (Oe <* ElpFbnds.Bound\\IfcEdgeLoop.EdgeList | NOT('IFC4.IFCEDGECURVE' IN TYPEOF(Oe\\IfcOrientedEdge.EdgeElement) ))) = 0 ))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.query(r.attr(self, "BOUNDS"), (q176: r.Value) => r.typeIs(m, r.attr(q176, "BOUND"), "IFCEDGELOOP")), (q175: r.Value) => r.not(r.eq(r.sizeof(r.query(r.attr(r.attr(q175, "BOUND"), "EDGELIST"), (q177: r.Value) => r.not(r.typeIs(m, r.attr(q177, "EDGEELEMENT"), "IFCEDGECURVE")))), 0)))), 0) },
-      { label: "ApplicableEdgeCurves", source: "SIZEOF(QUERY (ElpFbnds <* QUERY (Bnds <* SELF\\IfcFace.Bounds | 'IFC4.IFCEDGELOOP' IN TYPEOF(Bnds.Bound)) | NOT (SIZEOF (QUERY (Oe <* ElpFbnds.Bound\\IfcEdgeLoop.EdgeList | NOT (SIZEOF (['IFC4.IFCLINE', 'IFC4.IFCCONIC', 'IFC4.IFCPOLYLINE', 'IFC4.IFCBSPLINECURVE'] * TYPEOF(Oe\\IfcOrientedEdge.EdgeElement\\IfcEdgeCurve.EdgeGeometry)) = 1 ) )) = 0 ))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.query(r.attr(self, "BOUNDS"), (q179: r.Value) => r.typeIs(m, r.attr(q179, "BOUND"), "IFCEDGELOOP")), (q178: r.Value) => r.not(r.eq(r.sizeof(r.query(r.attr(r.attr(q178, "BOUND"), "EDGELIST"), (q180: r.Value) => r.not(r.eq(r.sizeof(r.mul(r.aggregate([["IFC4.IFCLINE"], ["IFC4.IFCCONIC"], ["IFC4.IFCPOLYLINE"], ["IFC4.IFCBSPLINECURVE"]]), r.typeOf(m, r.attr(r.attr(q180, "EDGEELEMENT"), "EDGEGEOMETRY")))), 1)))), 0)))), 0) },
+      { label: "ApplicableSurface", source: "SIZEOF ( ['IFC4.IFCELEMENTARYSURFACE', 'IFC4.IFCSWEPTSURFACE', 'IFC4.IFCBSPLINESURFACE'] * TYPEOF(SELF\\IfcFaceSurface.FaceSurface)) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.mul(r.aggregate([["IFC4.IFCELEMENTARYSURFACE"], ["IFC4.IFCSWEPTSURFACE"], ["IFC4.IFCBSPLINESURFACE"]]), r.typeOf(m, r.attr(self, "FACESURFACE", "IFCFACESURFACE")))), 1) },
+      { label: "RequiresEdgeCurve", source: "SIZEOF(QUERY (ElpFbnds <* QUERY (Bnds <* SELF\\IfcFace.Bounds | 'IFC4.IFCEDGELOOP' IN TYPEOF(Bnds.Bound)) | NOT (SIZEOF (QUERY (Oe <* ElpFbnds.Bound\\IfcEdgeLoop.EdgeList | NOT('IFC4.IFCEDGECURVE' IN TYPEOF(Oe\\IfcOrientedEdge.EdgeElement) ))) = 0 ))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.query(r.attr(self, "BOUNDS", "IFCFACE"), (q_176: r.Value) => r.typeIs(m, r.attr(q_176, "BOUND"), "IFCEDGELOOP")), (q_175: r.Value) => r.not(r.eq(r.sizeof(r.query(r.attr(r.attr(q_175, "BOUND"), "EDGELIST", "IFCEDGELOOP"), (q_177: r.Value) => r.not(r.typeIs(m, r.attr(q_177, "EDGEELEMENT", "IFCORIENTEDEDGE"), "IFCEDGECURVE")))), 0)))), 0) },
+      { label: "ApplicableEdgeCurves", source: "SIZEOF(QUERY (ElpFbnds <* QUERY (Bnds <* SELF\\IfcFace.Bounds | 'IFC4.IFCEDGELOOP' IN TYPEOF(Bnds.Bound)) | NOT (SIZEOF (QUERY (Oe <* ElpFbnds.Bound\\IfcEdgeLoop.EdgeList | NOT (SIZEOF (['IFC4.IFCLINE', 'IFC4.IFCCONIC', 'IFC4.IFCPOLYLINE', 'IFC4.IFCBSPLINECURVE'] * TYPEOF(Oe\\IfcOrientedEdge.EdgeElement\\IfcEdgeCurve.EdgeGeometry)) = 1 ) )) = 0 ))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.query(r.attr(self, "BOUNDS", "IFCFACE"), (q_179: r.Value) => r.typeIs(m, r.attr(q_179, "BOUND"), "IFCEDGELOOP")), (q_178: r.Value) => r.not(r.eq(r.sizeof(r.query(r.attr(r.attr(q_178, "BOUND"), "EDGELIST", "IFCEDGELOOP"), (q_180: r.Value) => r.not(r.eq(r.sizeof(r.mul(r.aggregate([["IFC4.IFCLINE"], ["IFC4.IFCCONIC"], ["IFC4.IFCPOLYLINE"], ["IFC4.IFCBSPLINECURVE"]]), r.typeOf(m, r.attr(r.attr(q_180, "EDGEELEMENT", "IFCORIENTEDEDGE"), "EDGEGEOMETRY", "IFCEDGECURVE")))), 1)))), 0)))), 0) },
     ],
     "IfcAirTerminal": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcAirTerminalTypeEnum.USERDEFINED) OR ((PredefinedType = IfcAirTerminalTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCAIRTERMINALTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCAIRTERMINALTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcAirTerminalTypeEnum.USERDEFINED) OR ((PredefinedType = IfcAirTerminalTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCAIRTERMINALTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCAIRTERMINALTYPE")) },
     ],
     "IfcAirTerminalBox": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcAirTerminalBoxTypeEnum.USERDEFINED) OR ((PredefinedType = IfcAirTerminalBoxTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCAIRTERMINALBOXTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCAIRTERMINALBOXTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcAirTerminalBoxTypeEnum.USERDEFINED) OR ((PredefinedType = IfcAirTerminalBoxTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCAIRTERMINALBOXTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCAIRTERMINALBOXTYPE")) },
     ],
     "IfcAirTerminalBoxType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcAirTerminalBoxTypeEnum.USERDEFINED) OR ((PredefinedType = IfcAirTerminalBoxTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcAirTerminalBoxTypeEnum.USERDEFINED) OR ((PredefinedType = IfcAirTerminalBoxTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcAirTerminalType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcAirTerminalTypeEnum.USERDEFINED) OR ((PredefinedType = IfcAirTerminalTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcAirTerminalTypeEnum.USERDEFINED) OR ((PredefinedType = IfcAirTerminalTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcAirToAirHeatRecovery": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcAirToAirHeatRecoveryTypeEnum.USERDEFINED) OR ((PredefinedType = IfcAirToAirHeatRecoveryTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCAIRTOAIRHEATRECOVERYTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCAIRTOAIRHEATRECOVERYTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcAirToAirHeatRecoveryTypeEnum.USERDEFINED) OR ((PredefinedType = IfcAirToAirHeatRecoveryTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCAIRTOAIRHEATRECOVERYTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCAIRTOAIRHEATRECOVERYTYPE")) },
     ],
     "IfcAirToAirHeatRecoveryType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcAirToAirHeatRecoveryTypeEnum.USERDEFINED) OR ((PredefinedType = IfcAirToAirHeatRecoveryTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcAirToAirHeatRecoveryTypeEnum.USERDEFINED) OR ((PredefinedType = IfcAirToAirHeatRecoveryTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcAlarm": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcAlarmTypeEnum.USERDEFINED) OR ((PredefinedType = IfcAlarmTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCALARMTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCALARMTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcAlarmTypeEnum.USERDEFINED) OR ((PredefinedType = IfcAlarmTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCALARMTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCALARMTYPE")) },
     ],
     "IfcAlarmType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcAlarmTypeEnum.USERDEFINED) OR ((PredefinedType = IfcAlarmTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcAlarmTypeEnum.USERDEFINED) OR ((PredefinedType = IfcAlarmTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcApproval": [
       { label: "HasIdentifierOrName", source: "EXISTS (Identifier) OR EXISTS (Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.exists(r.attr(self, "IDENTIFIER")), () => r.exists(r.attr(self, "NAME"))) },
@@ -1533,13 +1533,13 @@ export const RULES: r.CompiledRules = {
       { label: "WR3", source: "NOT('IFC4.IFCOFFSETCURVE2D' IN TYPEOF(OuterCurve))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.not(r.typeIs(m, r.attr(self, "OUTERCURVE"), "IFCOFFSETCURVE2D")) },
     ],
     "IfcArbitraryOpenProfileDef": [
-      { label: "WR11", source: "('IFC4.IFCCENTERLINEPROFILEDEF' IN TYPEOF(SELF)) OR (SELF\\IfcProfileDef.ProfileType = IfcProfileTypeEnum.CURVE)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.typeIs(m, self, "IFCCENTERLINEPROFILEDEF"), () => r.eq(r.attr(self, "PROFILETYPE"), E_CURVE)) },
+      { label: "WR11", source: "('IFC4.IFCCENTERLINEPROFILEDEF' IN TYPEOF(SELF)) OR (SELF\\IfcProfileDef.ProfileType = IfcProfileTypeEnum.CURVE)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.typeIs(m, self, "IFCCENTERLINEPROFILEDEF"), () => r.eq(r.attr(self, "PROFILETYPE", "IFCPROFILEDEF"), E_CURVE)) },
       { label: "WR12", source: "Curve.Dim = 2", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(r.attr(self, "CURVE"), "DIM"), 2) },
     ],
     "IfcArbitraryProfileDefWithVoids": [
-      { label: "WR1", source: "SELF\\IfcProfileDef.ProfileType = AREA", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(self, "PROFILETYPE"), E_AREA) },
-      { label: "WR2", source: "SIZEOF(QUERY(temp <* InnerCurves | temp.Dim <> 2)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "INNERCURVES"), (q181: r.Value) => r.ne(r.attr(q181, "DIM"), 2))), 0) },
-      { label: "WR3", source: "SIZEOF(QUERY(temp <* InnerCurves | 'IFC4.IFCLINE' IN TYPEOF(temp))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "INNERCURVES"), (q182: r.Value) => r.typeIs(m, q182, "IFCLINE"))), 0) },
+      { label: "WR1", source: "SELF\\IfcProfileDef.ProfileType = AREA", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(self, "PROFILETYPE", "IFCPROFILEDEF"), E_AREA) },
+      { label: "WR2", source: "SIZEOF(QUERY(temp <* InnerCurves | temp.Dim <> 2)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "INNERCURVES"), (q_181: r.Value) => r.ne(r.attr(q_181, "DIM"), 2))), 0) },
+      { label: "WR3", source: "SIZEOF(QUERY(temp <* InnerCurves | 'IFC4.IFCLINE' IN TYPEOF(temp))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "INNERCURVES"), (q_182: r.Value) => r.typeIs(m, q_182, "IFCLINE"))), 0) },
     ],
     "IfcAsymmetricIShapeProfileDef": [
       { label: "ValidFlangeThickness", source: "NOT(EXISTS(TopFlangeThickness)) OR ((BottomFlangeThickness + TopFlangeThickness) < OverallDepth)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "TOPFLANGETHICKNESS"))), () => r.lt(r.add(r.attr(self, "BOTTOMFLANGETHICKNESS"), r.attr(self, "TOPFLANGETHICKNESS")), r.attr(self, "OVERALLDEPTH"))) },
@@ -1548,60 +1548,60 @@ export const RULES: r.CompiledRules = {
       { label: "ValidTopFilletRadius", source: "(NOT(EXISTS(TopFlangeFilletRadius))) OR (TopFlangeFilletRadius <= (TopFlangeWidth - WebThickness)/2.)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "TOPFLANGEFILLETRADIUS"))), () => r.le(r.attr(self, "TOPFLANGEFILLETRADIUS"), r.div(r.sub(r.attr(self, "TOPFLANGEWIDTH"), r.attr(self, "WEBTHICKNESS")), 2))) },
     ],
     "IfcAudioVisualAppliance": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcAudioVisualApplianceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcAudioVisualApplianceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCAUDIOVISUALAPPLIANCETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCAUDIOVISUALAPPLIANCETYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcAudioVisualApplianceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcAudioVisualApplianceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCAUDIOVISUALAPPLIANCETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCAUDIOVISUALAPPLIANCETYPE")) },
     ],
     "IfcAudioVisualApplianceType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcAudioVisualApplianceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcAudioVisualApplianceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcAudioVisualApplianceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcAudioVisualApplianceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcAxis1Placement": [
       { label: "AxisIs3D", source: "(NOT (EXISTS (Axis))) OR (Axis.Dim = 3)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "AXIS"))), () => r.eq(r.attr(r.attr(self, "AXIS"), "DIM"), 3)) },
-      { label: "LocationIs3D", source: "SELF\\IfcPlacement.Location.Dim = 3", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(r.attr(self, "LOCATION"), "DIM"), 3) },
+      { label: "LocationIs3D", source: "SELF\\IfcPlacement.Location.Dim = 3", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(r.attr(self, "LOCATION", "IFCPLACEMENT"), "DIM"), 3) },
     ],
     "IfcAxis2Placement2D": [
       { label: "RefDirIs2D", source: "(NOT (EXISTS (RefDirection))) OR (RefDirection.Dim = 2)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "REFDIRECTION"))), () => r.eq(r.attr(r.attr(self, "REFDIRECTION"), "DIM"), 2)) },
-      { label: "LocationIs2D", source: "SELF\\IfcPlacement.Location.Dim = 2", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(r.attr(self, "LOCATION"), "DIM"), 2) },
+      { label: "LocationIs2D", source: "SELF\\IfcPlacement.Location.Dim = 2", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(r.attr(self, "LOCATION", "IFCPLACEMENT"), "DIM"), 2) },
     ],
     "IfcAxis2Placement3D": [
-      { label: "LocationIs3D", source: "SELF\\IfcPlacement.Location.Dim = 3", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(r.attr(self, "LOCATION"), "DIM"), 3) },
+      { label: "LocationIs3D", source: "SELF\\IfcPlacement.Location.Dim = 3", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(r.attr(self, "LOCATION", "IFCPLACEMENT"), "DIM"), 3) },
       { label: "AxisIs3D", source: "(NOT (EXISTS (Axis))) OR (Axis.Dim = 3)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "AXIS"))), () => r.eq(r.attr(r.attr(self, "AXIS"), "DIM"), 3)) },
       { label: "RefDirIs3D", source: "(NOT (EXISTS (RefDirection))) OR (RefDirection.Dim = 3)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "REFDIRECTION"))), () => r.eq(r.attr(r.attr(self, "REFDIRECTION"), "DIM"), 3)) },
       { label: "AxisToRefDirPosition", source: "(NOT (EXISTS (Axis))) OR (NOT (EXISTS (RefDirection))) OR (IfcCrossProduct(Axis,RefDirection).Magnitude > 0.0)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "AXIS"))), () => r.not(r.exists(r.attr(self, "REFDIRECTION")))), () => r.gt(r.attr(fn_IfcCrossProduct(m, r.attr(self, "AXIS"), r.attr(self, "REFDIRECTION")), "MAGNITUDE"), 0)) },
       { label: "AxisAndRefDirProvision", source: "NOT ((EXISTS (Axis)) XOR (EXISTS (RefDirection)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.not(r.xor(r.exists(r.attr(self, "AXIS")), r.exists(r.attr(self, "REFDIRECTION")))) },
     ],
     "IfcBSplineCurve": [
-      { label: "SameDim", source: "SIZEOF(QUERY(Temp <* ControlPointsList | Temp.Dim <> ControlPointsList[1].Dim)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "CONTROLPOINTSLIST"), (q183: r.Value) => r.ne(r.attr(q183, "DIM"), r.attr(r.index(r.attr(self, "CONTROLPOINTSLIST"), 1), "DIM")))), 0) },
+      { label: "SameDim", source: "SIZEOF(QUERY(Temp <* ControlPointsList | Temp.Dim <> ControlPointsList[1].Dim)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "CONTROLPOINTSLIST"), (q_183: r.Value) => r.ne(r.attr(q_183, "DIM"), r.attr(r.index(r.attr(self, "CONTROLPOINTSLIST"), 1), "DIM")))), 0) },
     ],
     "IfcBSplineCurveWithKnots": [
       { label: "ConsistentBSpline", source: "IfcConstraintsParamBSpline(Degree, UpperIndexOnKnots, UpperIndexOnControlPoints, KnotMultiplicities, Knots)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcConstraintsParamBSpline(m, r.attr(self, "DEGREE"), r.attr(self, "UPPERINDEXONKNOTS"), r.attr(self, "UPPERINDEXONCONTROLPOINTS"), r.attr(self, "KNOTMULTIPLICITIES"), r.attr(self, "KNOTS")) },
       { label: "CorrespondingKnotLists", source: "SIZEOF(KnotMultiplicities) = UpperIndexOnKnots", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.attr(self, "KNOTMULTIPLICITIES")), r.attr(self, "UPPERINDEXONKNOTS")) },
     ],
     "IfcBSplineSurfaceWithKnots": [
-      { label: "UDirectionConstraints", source: "IfcConstraintsParamBSpline ( SELF\\IfcBSplineSurface.UDegree, KnotUUpper, SELF\\IfcBSplineSurface.UUpper, UMultiplicities, UKnots)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcConstraintsParamBSpline(m, r.attr(self, "UDEGREE"), r.attr(self, "KNOTUUPPER"), r.attr(self, "UUPPER"), r.attr(self, "UMULTIPLICITIES"), r.attr(self, "UKNOTS")) },
-      { label: "VDirectionConstraints", source: "IfcConstraintsParamBSpline ( SELF\\IfcBSplineSurface.VDegree, KnotVUpper, SELF\\IfcBSplineSurface.VUpper, VMultiplicities, VKnots)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcConstraintsParamBSpline(m, r.attr(self, "VDEGREE"), r.attr(self, "KNOTVUPPER"), r.attr(self, "VUPPER"), r.attr(self, "VMULTIPLICITIES"), r.attr(self, "VKNOTS")) },
+      { label: "UDirectionConstraints", source: "IfcConstraintsParamBSpline ( SELF\\IfcBSplineSurface.UDegree, KnotUUpper, SELF\\IfcBSplineSurface.UUpper, UMultiplicities, UKnots)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcConstraintsParamBSpline(m, r.attr(self, "UDEGREE", "IFCBSPLINESURFACE"), r.attr(self, "KNOTUUPPER"), r.attr(self, "UUPPER", "IFCBSPLINESURFACE"), r.attr(self, "UMULTIPLICITIES"), r.attr(self, "UKNOTS")) },
+      { label: "VDirectionConstraints", source: "IfcConstraintsParamBSpline ( SELF\\IfcBSplineSurface.VDegree, KnotVUpper, SELF\\IfcBSplineSurface.VUpper, VMultiplicities, VKnots)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcConstraintsParamBSpline(m, r.attr(self, "VDEGREE", "IFCBSPLINESURFACE"), r.attr(self, "KNOTVUPPER"), r.attr(self, "VUPPER", "IFCBSPLINESURFACE"), r.attr(self, "VMULTIPLICITIES"), r.attr(self, "VKNOTS")) },
       { label: "CorrespondingULists", source: "SIZEOF(UMultiplicities) = KnotUUpper", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.attr(self, "UMULTIPLICITIES")), r.attr(self, "KNOTUUPPER")) },
       { label: "CorrespondingVLists", source: "SIZEOF(VMultiplicities) = KnotVUpper", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.attr(self, "VMULTIPLICITIES")), r.attr(self, "KNOTVUPPER")) },
     ],
     "IfcBeam": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcBeamTypeEnum.USERDEFINED) OR ((PredefinedType = IfcBeamTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCBEAMTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCBEAMTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcBeamTypeEnum.USERDEFINED) OR ((PredefinedType = IfcBeamTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCBEAMTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCBEAMTYPE")) },
     ],
     "IfcBeamStandardCase": [
-      { label: "HasMaterialProfileSetUsage", source: "SIZEOF (QUERY(temp <* USEDIN(SELF, 'IFC4.IFCRELASSOCIATES.RELATEDOBJECTS') | ('IFC4.IFCRELASSOCIATESMATERIAL' IN TYPEOF(temp)) AND ('IFC4.IFCMATERIALPROFILESETUSAGE' IN TYPEOF(temp.RelatingMaterial)) )) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.usedIn(m, self, "IFC4.IFCRELASSOCIATES.RELATEDOBJECTS"), (q184: r.Value) => r.and(r.typeIs(m, q184, "IFCRELASSOCIATESMATERIAL"), () => r.typeIs(m, r.attr(q184, "RELATINGMATERIAL"), "IFCMATERIALPROFILESETUSAGE")))), 1) },
+      { label: "HasMaterialProfileSetUsage", source: "SIZEOF (QUERY(temp <* USEDIN(SELF, 'IFC4.IFCRELASSOCIATES.RELATEDOBJECTS') | ('IFC4.IFCRELASSOCIATESMATERIAL' IN TYPEOF(temp)) AND ('IFC4.IFCMATERIALPROFILESETUSAGE' IN TYPEOF(temp.RelatingMaterial)) )) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.usedIn(m, self, "IFC4.IFCRELASSOCIATES.RELATEDOBJECTS"), (q_184: r.Value) => r.and(r.typeIs(m, q_184, "IFCRELASSOCIATESMATERIAL"), () => r.typeIs(m, r.attr(q_184, "RELATINGMATERIAL"), "IFCMATERIALPROFILESETUSAGE")))), 1) },
     ],
     "IfcBeamType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcBeamTypeEnum.USERDEFINED) OR ((PredefinedType = IfcBeamTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcBeamTypeEnum.USERDEFINED) OR ((PredefinedType = IfcBeamTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcBlobTexture": [
       { label: "SupportedRasterFormat", source: "SELF.RasterFormat IN ['BMP', 'JPG', 'GIF', 'PNG']", check: (self: r.EntityInstance, m: r.Model): r.Value => r.isIn(r.attr(self, "RASTERFORMAT"), r.aggregate([["BMP"], ["JPG"], ["GIF"], ["PNG"]])) },
       { label: "RasterCodeByteStream", source: "BLENGTH(RasterCode) MOD 8 = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.mod(r.blength(r.attr(self, "RASTERCODE")), 8), 0) },
     ],
     "IfcBoiler": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcBoilerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcBoilerTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCBOILERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCBOILERTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcBoilerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcBoilerTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCBOILERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCBOILERTYPE")) },
     ],
     "IfcBoilerType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcBoilerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcBoilerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcBoilerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcBoilerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcBooleanClippingResult": [
       { label: "FirstOperandType", source: "('IFC4.IFCSWEPTAREASOLID' IN TYPEOF(FirstOperand)) OR ('IFC4.IFCSWEPTDISCSOLID' IN TYPEOF(FirstOperand)) OR ('IFC4.IFCBOOLEANCLIPPINGRESULT' IN TYPEOF(FirstOperand))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.typeIs(m, r.attr(self, "FIRSTOPERAND"), "IFCSWEPTAREASOLID"), () => r.isIn("IFC4.IFCSWEPTDISCSOLID", r.typeOf(m, r.attr(self, "FIRSTOPERAND")))), () => r.typeIs(m, r.attr(self, "FIRSTOPERAND"), "IFCBOOLEANCLIPPINGRESULT")) },
@@ -1614,35 +1614,35 @@ export const RULES: r.CompiledRules = {
       { label: "SecondOperandClosed", source: "NOT('IFC4.IFCTESSELLATEDFACESET' IN TYPEOF(SecondOperand)) OR (EXISTS(SecondOperand.Closed) AND SecondOperand.Closed)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.typeIs(m, r.attr(self, "SECONDOPERAND"), "IFCTESSELLATEDFACESET")), () => r.and(r.exists(r.attr(r.attr(self, "SECONDOPERAND"), "CLOSED")), () => r.attr(r.attr(self, "SECONDOPERAND"), "CLOSED"))) },
     ],
     "IfcBoundaryCurve": [
-      { label: "IsClosed", source: "SELF\\IfcCompositeCurve.ClosedCurve", check: (self: r.EntityInstance, m: r.Model): r.Value => r.attr(self, "CLOSEDCURVE") },
+      { label: "IsClosed", source: "SELF\\IfcCompositeCurve.ClosedCurve", check: (self: r.EntityInstance, m: r.Model): r.Value => r.attr(self, "CLOSEDCURVE", "IFCCOMPOSITECURVE") },
     ],
     "IfcBoxedHalfSpace": [
-      { label: "UnboundedSurface", source: "NOT ('IFC4.IFCCURVEBOUNDEDPLANE' IN TYPEOF(SELF\\IfcHalfSpaceSolid.BaseSurface))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.not(r.typeIs(m, r.attr(self, "BASESURFACE"), "IFCCURVEBOUNDEDPLANE")) },
+      { label: "UnboundedSurface", source: "NOT ('IFC4.IFCCURVEBOUNDEDPLANE' IN TYPEOF(SELF\\IfcHalfSpaceSolid.BaseSurface))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.not(r.typeIs(m, r.attr(self, "BASESURFACE", "IFCHALFSPACESOLID"), "IFCCURVEBOUNDEDPLANE")) },
     ],
     "IfcBuildingElement": [
-      { label: "MaxOneMaterialAssociation", source: "SIZEOF (QUERY(temp <* SELF\\IfcObjectDefinition.HasAssociations | 'IFC4.IFCRELASSOCIATESMATERIAL' IN TYPEOF(temp) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "HASASSOCIATIONS"), (q185: r.Value) => r.typeIs(m, q185, "IFCRELASSOCIATESMATERIAL"))), 1) },
+      { label: "MaxOneMaterialAssociation", source: "SIZEOF (QUERY(temp <* SELF\\IfcObjectDefinition.HasAssociations | 'IFC4.IFCRELASSOCIATESMATERIAL' IN TYPEOF(temp) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "HASASSOCIATIONS", "IFCOBJECTDEFINITION"), (q_185: r.Value) => r.typeIs(m, q_185, "IFCRELASSOCIATESMATERIAL"))), 1) },
     ],
     "IfcBuildingElementPart": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcBuildingElementPartTypeEnum.USERDEFINED) OR ((PredefinedType = IfcBuildingElementPartTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCBUILDINGELEMENTPARTTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCBUILDINGELEMENTPARTTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcBuildingElementPartTypeEnum.USERDEFINED) OR ((PredefinedType = IfcBuildingElementPartTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCBUILDINGELEMENTPARTTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCBUILDINGELEMENTPARTTYPE")) },
     ],
     "IfcBuildingElementPartType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcBuildingElementPartTypeEnum.USERDEFINED) OR ((PredefinedType = IfcBuildingElementPartTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcBuildingElementPartTypeEnum.USERDEFINED) OR ((PredefinedType = IfcBuildingElementPartTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcBuildingElementProxy": [
-      { label: "HasObjectName", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME")) },
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcBuildingElementProxyTypeEnum.USERDEFINED) OR ((PredefinedType = IfcBuildingElementProxyTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCBUILDINGELEMENTPROXYTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCBUILDINGELEMENTPROXYTYPE")) },
+      { label: "HasObjectName", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME", "IFCROOT")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcBuildingElementProxyTypeEnum.USERDEFINED) OR ((PredefinedType = IfcBuildingElementProxyTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCBUILDINGELEMENTPROXYTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCBUILDINGELEMENTPROXYTYPE")) },
     ],
     "IfcBuildingElementProxyType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcBuildingElementProxyTypeEnum.USERDEFINED) OR ((PredefinedType = IfcBuildingElementProxyTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcBuildingElementProxyTypeEnum.USERDEFINED) OR ((PredefinedType = IfcBuildingElementProxyTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcBurner": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcBurnerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcBurnerTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCBURNERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCBURNERTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcBurnerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcBurnerTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCBURNERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCBURNERTYPE")) },
     ],
     "IfcBurnerType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcBurnerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcBurnerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcBurnerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcBurnerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcCShapeProfileDef": [
       { label: "ValidGirth", source: "Girth < (Depth / 2.)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.lt(r.attr(self, "GIRTH"), r.div(r.attr(self, "DEPTH"), 2)) },
@@ -1650,32 +1650,32 @@ export const RULES: r.CompiledRules = {
       { label: "ValidWallThickness", source: "(WallThickness < Width/2.) AND (WallThickness < Depth/2.)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.lt(r.attr(self, "WALLTHICKNESS"), r.div(r.attr(self, "WIDTH"), 2)), () => r.lt(r.attr(self, "WALLTHICKNESS"), r.div(r.attr(self, "DEPTH"), 2))) },
     ],
     "IfcCableCarrierFitting": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcCableCarrierFittingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCableCarrierFittingTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCABLECARRIERFITTINGTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCCABLECARRIERFITTINGTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcCableCarrierFittingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCableCarrierFittingTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCABLECARRIERFITTINGTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCCABLECARRIERFITTINGTYPE")) },
     ],
     "IfcCableCarrierFittingType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcCableCarrierFittingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCableCarrierFittingTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcCableCarrierFittingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCableCarrierFittingTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcCableCarrierSegment": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcCableCarrierSegmentTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCableCarrierSegmentTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCABLECARRIERSEGMENTTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCCABLECARRIERSEGMENTTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcCableCarrierSegmentTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCableCarrierSegmentTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCABLECARRIERSEGMENTTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCCABLECARRIERSEGMENTTYPE")) },
     ],
     "IfcCableCarrierSegmentType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcCableCarrierSegmentTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCableCarrierSegmentTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcCableCarrierSegmentTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCableCarrierSegmentTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcCableFitting": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcCableFittingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCableFittingTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCABLEFITTINGTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCCABLEFITTINGTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcCableFittingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCableFittingTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCABLEFITTINGTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCCABLEFITTINGTYPE")) },
     ],
     "IfcCableFittingType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcCableFittingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCableFittingTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcCableFittingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCableFittingTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcCableSegment": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcCableSegmentTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCableSegmentTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCABLESEGMENTTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCCABLESEGMENTTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcCableSegmentTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCableSegmentTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCABLESEGMENTTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCCABLESEGMENTTYPE")) },
     ],
     "IfcCableSegmentType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcCableSegmentTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCableSegmentTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcCableSegmentTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCableSegmentTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcCartesianPoint": [
       { label: "CP2Dor3D", source: "HIINDEX(Coordinates) >= 2", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ge(r.hiindex(r.attr(self, "COORDINATES")), 2) },
@@ -1684,17 +1684,17 @@ export const RULES: r.CompiledRules = {
       { label: "ScaleGreaterZero", source: "Scl > 0.0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.gt(r.attr(self, "SCL"), 0) },
     ],
     "IfcCartesianTransformationOperator2D": [
-      { label: "DimEqual2", source: "SELF\\IfcCartesianTransformationOperator.Dim = 2", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(self, "DIM"), 2) },
-      { label: "Axis1Is2D", source: "NOT(EXISTS(SELF\\IfcCartesianTransformationOperator.Axis1)) OR (SELF\\IfcCartesianTransformationOperator.Axis1.Dim = 2)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "AXIS1"))), () => r.eq(r.attr(r.attr(self, "AXIS1"), "DIM"), 2)) },
-      { label: "Axis2Is2D", source: "NOT(EXISTS(SELF\\IfcCartesianTransformationOperator.Axis2)) OR (SELF\\IfcCartesianTransformationOperator.Axis2.Dim = 2)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "AXIS2"))), () => r.eq(r.attr(r.attr(self, "AXIS2"), "DIM"), 2)) },
+      { label: "DimEqual2", source: "SELF\\IfcCartesianTransformationOperator.Dim = 2", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(self, "DIM", "IFCCARTESIANTRANSFORMATIONOPERATOR"), 2) },
+      { label: "Axis1Is2D", source: "NOT(EXISTS(SELF\\IfcCartesianTransformationOperator.Axis1)) OR (SELF\\IfcCartesianTransformationOperator.Axis1.Dim = 2)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "AXIS1", "IFCCARTESIANTRANSFORMATIONOPERATOR"))), () => r.eq(r.attr(r.attr(self, "AXIS1", "IFCCARTESIANTRANSFORMATIONOPERATOR"), "DIM"), 2)) },
+      { label: "Axis2Is2D", source: "NOT(EXISTS(SELF\\IfcCartesianTransformationOperator.Axis2)) OR (SELF\\IfcCartesianTransformationOperator.Axis2.Dim = 2)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "AXIS2", "IFCCARTESIANTRANSFORMATIONOPERATOR"))), () => r.eq(r.attr(r.attr(self, "AXIS2", "IFCCARTESIANTRANSFORMATIONOPERATOR"), "DIM"), 2)) },
     ],
     "IfcCartesianTransformationOperator2DnonUniform": [
       { label: "Scale2GreaterZero", source: "Scl2 > 0.0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.gt(r.attr(self, "SCL2"), 0) },
     ],
     "IfcCartesianTransformationOperator3D": [
-      { label: "DimIs3D", source: "SELF\\IfcCartesianTransformationOperator.Dim = 3", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(self, "DIM"), 3) },
-      { label: "Axis1Is3D", source: "NOT(EXISTS(SELF\\IfcCartesianTransformationOperator.Axis1)) OR (SELF\\IfcCartesianTransformationOperator.Axis1.Dim = 3)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "AXIS1"))), () => r.eq(r.attr(r.attr(self, "AXIS1"), "DIM"), 3)) },
-      { label: "Axis2Is3D", source: "NOT(EXISTS(SELF\\IfcCartesianTransformationOperator.Axis2)) OR (SELF\\IfcCartesianTransformationOperator.Axis2.Dim = 3)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "AXIS2"))), () => r.eq(r.attr(r.attr(self, "AXIS2"), "DIM"), 3)) },
+      { label: "DimIs3D", source: "SELF\\IfcCartesianTransformationOperator.Dim = 3", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(self, "DIM", "IFCCARTESIANTRANSFORMATIONOPERATOR"), 3) },
+      { label: "Axis1Is3D", source: "NOT(EXISTS(SELF\\IfcCartesianTransformationOperator.Axis1)) OR (SELF\\IfcCartesianTransformationOperator.Axis1.Dim = 3)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "AXIS1", "IFCCARTESIANTRANSFORMATIONOPERATOR"))), () => r.eq(r.attr(r.attr(self, "AXIS1", "IFCCARTESIANTRANSFORMATIONOPERATOR"), "DIM"), 3)) },
+      { label: "Axis2Is3D", source: "NOT(EXISTS(SELF\\IfcCartesianTransformationOperator.Axis2)) OR (SELF\\IfcCartesianTransformationOperator.Axis2.Dim = 3)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "AXIS2", "IFCCARTESIANTRANSFORMATIONOPERATOR"))), () => r.eq(r.attr(r.attr(self, "AXIS2", "IFCCARTESIANTRANSFORMATIONOPERATOR"), "DIM"), 3)) },
       { label: "Axis3Is3D", source: "NOT(EXISTS(Axis3)) OR (Axis3.Dim = 3)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "AXIS3"))), () => r.eq(r.attr(r.attr(self, "AXIS3"), "DIM"), 3)) },
     ],
     "IfcCartesianTransformationOperator3DnonUniform": [
@@ -1702,57 +1702,57 @@ export const RULES: r.CompiledRules = {
       { label: "Scale3GreaterZero", source: "Scl3 > 0.0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.gt(r.attr(self, "SCL3"), 0) },
     ],
     "IfcChiller": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcChillerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcChillerTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCHILLERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCCHILLERTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcChillerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcChillerTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCHILLERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCCHILLERTYPE")) },
     ],
     "IfcChillerType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcChillerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcChillerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcChillerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcChillerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcChimney": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcChimneyTypeEnum.USERDEFINED) OR ((PredefinedType = IfcChimneyTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCHIMNEYTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCCHIMNEYTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcChimneyTypeEnum.USERDEFINED) OR ((PredefinedType = IfcChimneyTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCHIMNEYTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCCHIMNEYTYPE")) },
     ],
     "IfcChimneyType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcChimneyTypeEnum.USERDEFINED) OR ((PredefinedType = IfcChimneyTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcChimneyTypeEnum.USERDEFINED) OR ((PredefinedType = IfcChimneyTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcCircleHollowProfileDef": [
-      { label: "WR1", source: "WallThickness < SELF\\IfcCircleProfileDef.Radius", check: (self: r.EntityInstance, m: r.Model): r.Value => r.lt(r.attr(self, "WALLTHICKNESS"), r.attr(self, "RADIUS")) },
+      { label: "WR1", source: "WallThickness < SELF\\IfcCircleProfileDef.Radius", check: (self: r.EntityInstance, m: r.Model): r.Value => r.lt(r.attr(self, "WALLTHICKNESS"), r.attr(self, "RADIUS", "IFCCIRCLEPROFILEDEF")) },
     ],
     "IfcCoil": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcCoilTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCoilTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCOILTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCCOILTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcCoilTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCoilTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCOILTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCCOILTYPE")) },
     ],
     "IfcCoilType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcCoilTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCoilTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcCoilTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCoilTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcColumn": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcColumnTypeEnum.USERDEFINED) OR ((PredefinedType = IfcColumnTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCOLUMNTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCCOLUMNTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcColumnTypeEnum.USERDEFINED) OR ((PredefinedType = IfcColumnTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCOLUMNTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCCOLUMNTYPE")) },
     ],
     "IfcColumnStandardCase": [
-      { label: "HasMaterialProfileSetUsage", source: "SIZEOF (QUERY(temp <* USEDIN(SELF, 'IFC4.IFCRELASSOCIATES.RELATEDOBJECTS') | ('IFC4.IFCRELASSOCIATESMATERIAL' IN TYPEOF(temp)) AND ('IFC4.IFCMATERIALPROFILESETUSAGE' IN TYPEOF(temp.RelatingMaterial)) )) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.usedIn(m, self, "IFC4.IFCRELASSOCIATES.RELATEDOBJECTS"), (q186: r.Value) => r.and(r.typeIs(m, q186, "IFCRELASSOCIATESMATERIAL"), () => r.typeIs(m, r.attr(q186, "RELATINGMATERIAL"), "IFCMATERIALPROFILESETUSAGE")))), 1) },
+      { label: "HasMaterialProfileSetUsage", source: "SIZEOF (QUERY(temp <* USEDIN(SELF, 'IFC4.IFCRELASSOCIATES.RELATEDOBJECTS') | ('IFC4.IFCRELASSOCIATESMATERIAL' IN TYPEOF(temp)) AND ('IFC4.IFCMATERIALPROFILESETUSAGE' IN TYPEOF(temp.RelatingMaterial)) )) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.usedIn(m, self, "IFC4.IFCRELASSOCIATES.RELATEDOBJECTS"), (q_186: r.Value) => r.and(r.typeIs(m, q_186, "IFCRELASSOCIATESMATERIAL"), () => r.typeIs(m, r.attr(q_186, "RELATINGMATERIAL"), "IFCMATERIALPROFILESETUSAGE")))), 1) },
     ],
     "IfcColumnType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcColumnTypeEnum.USERDEFINED) OR ((PredefinedType = IfcColumnTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcColumnTypeEnum.USERDEFINED) OR ((PredefinedType = IfcColumnTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcCommunicationsAppliance": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcCommunicationsApplianceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCommunicationsApplianceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCOMMUNICATIONSAPPLIANCETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCCOMMUNICATIONSAPPLIANCETYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcCommunicationsApplianceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCommunicationsApplianceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCOMMUNICATIONSAPPLIANCETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCCOMMUNICATIONSAPPLIANCETYPE")) },
     ],
     "IfcCommunicationsApplianceType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcCommunicationsApplianceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCommunicationsApplianceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcCommunicationsApplianceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCommunicationsApplianceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcComplexProperty": [
-      { label: "WR21", source: "SIZEOF(QUERY(temp <* HasProperties | SELF :=: temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "HASPROPERTIES"), (q187: r.Value) => r.same(self, q187))), 0) },
+      { label: "WR21", source: "SIZEOF(QUERY(temp <* HasProperties | SELF :=: temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "HASPROPERTIES"), (q_187: r.Value) => r.same(self, q_187))), 0) },
       { label: "WR22", source: "IfcUniquePropertyName(HasProperties)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcUniquePropertyName(m, r.attr(self, "HASPROPERTIES")) },
     ],
     "IfcComplexPropertyTemplate": [
       { label: "UniquePropertyNames", source: "IfcUniquePropertyTemplateNames(HasPropertyTemplates)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcUniquePropertyTemplateNames(m, r.attr(self, "HASPROPERTYTEMPLATES")) },
-      { label: "NoSelfReference", source: "SIZEOF(QUERY(temp <* HasPropertyTemplates | SELF :=: temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "HASPROPERTYTEMPLATES"), (q188: r.Value) => r.same(self, q188))), 0) },
+      { label: "NoSelfReference", source: "SIZEOF(QUERY(temp <* HasPropertyTemplates | SELF :=: temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "HASPROPERTYTEMPLATES"), (q_188: r.Value) => r.same(self, q_188))), 0) },
     ],
     "IfcCompositeCurve": [
-      { label: "CurveContinuous", source: "((NOT ClosedCurve) AND (SIZEOF(QUERY(Temp <* Segments | Temp.Transition = Discontinuous)) = 1)) OR ((ClosedCurve) AND (SIZEOF(QUERY(Temp <* Segments | Temp.Transition = Discontinuous)) = 0))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.and(r.not(r.attr(self, "CLOSEDCURVE")), () => r.eq(r.sizeof(r.query(r.attr(self, "SEGMENTS"), (q189: r.Value) => r.eq(r.attr(q189, "TRANSITION"), E_DISCONTINUOUS))), 1)), () => r.and(r.attr(self, "CLOSEDCURVE"), () => r.eq(r.sizeof(r.query(r.attr(self, "SEGMENTS"), (q190: r.Value) => r.eq(r.attr(q190, "TRANSITION"), E_DISCONTINUOUS))), 0))) },
-      { label: "SameDim", source: "SIZEOF( QUERY( Temp <* Segments | Temp.Dim <> Segments[1].Dim)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "SEGMENTS"), (q191: r.Value) => r.ne(r.attr(q191, "DIM"), r.attr(r.index(r.attr(self, "SEGMENTS"), 1), "DIM")))), 0) },
+      { label: "CurveContinuous", source: "((NOT ClosedCurve) AND (SIZEOF(QUERY(Temp <* Segments | Temp.Transition = Discontinuous)) = 1)) OR ((ClosedCurve) AND (SIZEOF(QUERY(Temp <* Segments | Temp.Transition = Discontinuous)) = 0))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.and(r.not(r.attr(self, "CLOSEDCURVE")), () => r.eq(r.sizeof(r.query(r.attr(self, "SEGMENTS"), (q_189: r.Value) => r.eq(r.attr(q_189, "TRANSITION"), E_DISCONTINUOUS))), 1)), () => r.and(r.attr(self, "CLOSEDCURVE"), () => r.eq(r.sizeof(r.query(r.attr(self, "SEGMENTS"), (q_190: r.Value) => r.eq(r.attr(q_190, "TRANSITION"), E_DISCONTINUOUS))), 0))) },
+      { label: "SameDim", source: "SIZEOF( QUERY( Temp <* Segments | Temp.Dim <> Segments[1].Dim)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "SEGMENTS"), (q_191: r.Value) => r.ne(r.attr(q_191, "DIM"), r.attr(r.index(r.attr(self, "SEGMENTS"), 1), "DIM")))), 0) },
     ],
     "IfcCompositeCurveOnSurface": [
       { label: "SameSurface", source: "SIZEOF(BasisSurface) > 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.gt(r.sizeof(r.attr(self, "BASISSURFACE")), 0) },
@@ -1761,84 +1761,84 @@ export const RULES: r.CompiledRules = {
       { label: "ParentIsBoundedCurve", source: "('IFC4.IFCBOUNDEDCURVE' IN TYPEOF(ParentCurve))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.typeIs(m, r.attr(self, "PARENTCURVE"), "IFCBOUNDEDCURVE") },
     ],
     "IfcCompositeProfileDef": [
-      { label: "InvariantProfileType", source: "SIZEOF(QUERY(temp <* Profiles | temp.ProfileType <> Profiles[1].ProfileType)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "PROFILES"), (q192: r.Value) => r.ne(r.attr(q192, "PROFILETYPE"), r.attr(r.index(r.attr(self, "PROFILES"), 1), "PROFILETYPE")))), 0) },
-      { label: "NoRecursion", source: "SIZEOF(QUERY(temp <* Profiles | 'IFC4.IFCCOMPOSITEPROFILEDEF' IN TYPEOF(temp))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "PROFILES"), (q193: r.Value) => r.typeIs(m, q193, "IFCCOMPOSITEPROFILEDEF"))), 0) },
+      { label: "InvariantProfileType", source: "SIZEOF(QUERY(temp <* Profiles | temp.ProfileType <> Profiles[1].ProfileType)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "PROFILES"), (q_192: r.Value) => r.ne(r.attr(q_192, "PROFILETYPE"), r.attr(r.index(r.attr(self, "PROFILES"), 1), "PROFILETYPE")))), 0) },
+      { label: "NoRecursion", source: "SIZEOF(QUERY(temp <* Profiles | 'IFC4.IFCCOMPOSITEPROFILEDEF' IN TYPEOF(temp))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "PROFILES"), (q_193: r.Value) => r.typeIs(m, q_193, "IFCCOMPOSITEPROFILEDEF"))), 0) },
     ],
     "IfcCompressor": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcCompressorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCompressorTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCOMPRESSORTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCCOMPRESSORTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcCompressorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCompressorTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCOMPRESSORTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCCOMPRESSORTYPE")) },
     ],
     "IfcCompressorType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcCompressorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCompressorTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcCompressorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCompressorTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcCondenser": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcCondenserTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCondenserTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCONDENSERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCCONDENSERTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcCondenserTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCondenserTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCONDENSERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCCONDENSERTYPE")) },
     ],
     "IfcCondenserType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcCondenserTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCondenserTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcCondenserTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCondenserTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcConstraint": [
-      { label: "WR11", source: "(ConstraintGrade <> IfcConstraintEnum.USERDEFINED) OR ((ConstraintGrade = IfcConstraintEnum.USERDEFINED) AND EXISTS(SELF\\IfcConstraint.UserDefinedGrade))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "CONSTRAINTGRADE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "CONSTRAINTGRADE"), E_USERDEFINED), () => r.exists(r.attr(self, "USERDEFINEDGRADE")))) },
+      { label: "WR11", source: "(ConstraintGrade <> IfcConstraintEnum.USERDEFINED) OR ((ConstraintGrade = IfcConstraintEnum.USERDEFINED) AND EXISTS(SELF\\IfcConstraint.UserDefinedGrade))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "CONSTRAINTGRADE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "CONSTRAINTGRADE"), E_USERDEFINED), () => r.exists(r.attr(self, "USERDEFINEDGRADE", "IFCCONSTRAINT")))) },
     ],
     "IfcConstructionEquipmentResource": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcConstructionEquipmentResourceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcConstructionEquipmentResourceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcConstructionEquipmentResourceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcConstructionEquipmentResourceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
     ],
     "IfcConstructionEquipmentResourceType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcConstructionEquipmentResourceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcConstructionEquipmentResourceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcTypeResource.ResourceType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "RESOURCETYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcConstructionEquipmentResourceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcConstructionEquipmentResourceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcTypeResource.ResourceType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "RESOURCETYPE", "IFCTYPERESOURCE")))) },
     ],
     "IfcConstructionMaterialResource": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcConstructionMaterialResourceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcConstructionMaterialResourceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcConstructionMaterialResourceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcConstructionMaterialResourceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
     ],
     "IfcConstructionMaterialResourceType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcConstructionMaterialResourceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcConstructionMaterialResourceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcTypeResource.ResourceType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "RESOURCETYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcConstructionMaterialResourceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcConstructionMaterialResourceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcTypeResource.ResourceType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "RESOURCETYPE", "IFCTYPERESOURCE")))) },
     ],
     "IfcConstructionProductResource": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcConstructionProductResourceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcConstructionProductResourceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcConstructionProductResourceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcConstructionProductResourceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
     ],
     "IfcConstructionProductResourceType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcConstructionProductResourceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcConstructionProductResourceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcTypeResource.ResourceType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "RESOURCETYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcConstructionProductResourceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcConstructionProductResourceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcTypeResource.ResourceType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "RESOURCETYPE", "IFCTYPERESOURCE")))) },
     ],
     "IfcController": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcControllerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcControllerTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCONTROLLERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCCONTROLLERTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcControllerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcControllerTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCONTROLLERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCCONTROLLERTYPE")) },
     ],
     "IfcControllerType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcControllerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcControllerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcControllerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcControllerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcCooledBeam": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcCooledBeamTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCooledBeamTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCOOLEDBEAMTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCCOOLEDBEAMTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcCooledBeamTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCooledBeamTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCOOLEDBEAMTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCCOOLEDBEAMTYPE")) },
     ],
     "IfcCooledBeamType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcCooledBeamTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCooledBeamTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcCooledBeamTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCooledBeamTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcCoolingTower": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcCoolingTowerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCoolingTowerTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCOOLINGTOWERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCCOOLINGTOWERTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcCoolingTowerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCoolingTowerTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCOOLINGTOWERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCCOOLINGTOWERTYPE")) },
     ],
     "IfcCoolingTowerType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcCoolingTowerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCoolingTowerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcCoolingTowerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCoolingTowerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcCovering": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcCoveringTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCoveringTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCOVERINGTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCCOVERINGTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcCoveringTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCoveringTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCOVERINGTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCCOVERINGTYPE")) },
     ],
     "IfcCoveringType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcCoveringTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCoveringTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcCoveringTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCoveringTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcCrewResource": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcCrewResourceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCrewResourceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcCrewResourceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCrewResourceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
     ],
     "IfcCrewResourceType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcCrewResourceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCrewResourceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcTypeResource.ResourceType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "RESOURCETYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcCrewResourceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCrewResourceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcTypeResource.ResourceType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "RESOURCETYPE", "IFCTYPERESOURCE")))) },
     ],
     "IfcCurtainWall": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcCurtainWallTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCurtainWallTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCURTAINWALLTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCCURTAINWALLTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcCurtainWallTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCurtainWallTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCCURTAINWALLTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCCURTAINWALLTYPE")) },
     ],
     "IfcCurtainWallType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcCurtainWallTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCurtainWallTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcCurtainWallTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCurtainWallTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcCurveStyle": [
       { label: "MeasureOfWidth", source: "(NOT(EXISTS(CurveWidth))) OR ('IFC4.IFCPOSITIVELENGTHMEASURE' IN TYPEOF(CurveWidth)) OR (('IFC4.IFCDESCRIPTIVEMEASURE' IN TYPEOF(CurveWidth)) AND (CurveWidth = 'by layer'))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "CURVEWIDTH"))), () => r.typeIs(m, r.attr(self, "CURVEWIDTH"), "IFCPOSITIVELENGTHMEASURE")), () => r.and(r.typeIs(m, r.attr(self, "CURVEWIDTH"), "IFCDESCRIPTIVEMEASURE"), () => r.eq(r.attr(self, "CURVEWIDTH"), "by layer"))) },
@@ -1848,165 +1848,165 @@ export const RULES: r.CompiledRules = {
       { label: "VisibleLengthGreaterEqualZero", source: "VisibleSegmentLength >= 0.", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ge(r.attr(self, "VISIBLESEGMENTLENGTH"), 0) },
     ],
     "IfcDamper": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcDamperTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDamperTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCDAMPERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCDAMPERTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcDamperTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDamperTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCDAMPERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCDAMPERTYPE")) },
     ],
     "IfcDamperType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcDamperTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDamperTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcDamperTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDamperTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcDerivedProfileDef": [
-      { label: "InvariantProfileType", source: "SELF\\IfcProfileDef.ProfileType = ParentProfile.ProfileType", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(self, "PROFILETYPE"), r.attr(r.attr(self, "PARENTPROFILE"), "PROFILETYPE")) },
+      { label: "InvariantProfileType", source: "SELF\\IfcProfileDef.ProfileType = ParentProfile.ProfileType", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(self, "PROFILETYPE", "IFCPROFILEDEF"), r.attr(r.attr(self, "PARENTPROFILE"), "PROFILETYPE")) },
     ],
     "IfcDerivedUnit": [
       { label: "WR1", source: "(SIZEOF (Elements) > 1) OR ((SIZEOF (Elements) = 1) AND (Elements[1].Exponent <> 1 ))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.gt(r.sizeof(r.attr(self, "ELEMENTS")), 1), () => r.and(r.eq(r.sizeof(r.attr(self, "ELEMENTS")), 1), () => r.ne(r.attr(r.index(r.attr(self, "ELEMENTS"), 1), "EXPONENT"), 1))) },
       { label: "WR2", source: "(UnitType <> IfcDerivedUnitEnum.USERDEFINED) OR ((UnitType = IfcDerivedUnitEnum.USERDEFINED) AND (EXISTS(SELF.UserDefinedType)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "UNITTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "UNITTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "USERDEFINEDTYPE")))) },
     ],
     "IfcDirection": [
-      { label: "MagnitudeGreaterZero", source: "SIZEOF(QUERY(Tmp <* DirectionRatios | Tmp <> 0.0)) > 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.gt(r.sizeof(r.query(r.attr(self, "DIRECTIONRATIOS"), (q194: r.Value) => r.ne(q194, 0))), 0) },
+      { label: "MagnitudeGreaterZero", source: "SIZEOF(QUERY(Tmp <* DirectionRatios | Tmp <> 0.0)) > 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.gt(r.sizeof(r.query(r.attr(self, "DIRECTIONRATIOS"), (q_194: r.Value) => r.ne(q_194, 0))), 0) },
     ],
     "IfcDiscreteAccessory": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcDiscreteAccessoryTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDiscreteAccessoryTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCDISCRETEACCESSORYTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCDISCRETEACCESSORYTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcDiscreteAccessoryTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDiscreteAccessoryTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCDISCRETEACCESSORYTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCDISCRETEACCESSORYTYPE")) },
     ],
     "IfcDiscreteAccessoryType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcDiscreteAccessoryTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDiscreteAccessoryTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcDiscreteAccessoryTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDiscreteAccessoryTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcDistributionChamberElement": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcDistributionChamberElementTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDistributionChamberElementTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCDISTRIBUTIONCHAMBERELEMENTTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCDISTRIBUTIONCHAMBERELEMENTTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcDistributionChamberElementTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDistributionChamberElementTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCDISTRIBUTIONCHAMBERELEMENTTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCDISTRIBUTIONCHAMBERELEMENTTYPE")) },
     ],
     "IfcDistributionChamberElementType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcDistributionChamberElementTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDistributionChamberElementTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcDistributionChamberElementTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDistributionChamberElementTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcDocumentReference": [
       { label: "WR1", source: "EXISTS(Name) XOR EXISTS(ReferencedDocument)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.xor(r.exists(r.attr(self, "NAME")), r.exists(r.attr(self, "REFERENCEDDOCUMENT"))) },
     ],
     "IfcDoor": [
-      { label: "CorrectStyleAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCDOORTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCDOORTYPE")) },
+      { label: "CorrectStyleAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCDOORTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCDOORTYPE")) },
     ],
     "IfcDoorLiningProperties": [
       { label: "WR31", source: "NOT(EXISTS(LiningDepth) AND NOT(EXISTS(LiningThickness)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.not(r.and(r.exists(r.attr(self, "LININGDEPTH")), () => r.not(r.exists(r.attr(self, "LININGTHICKNESS"))))) },
       { label: "WR32", source: "NOT(EXISTS(ThresholdDepth) AND NOT(EXISTS(ThresholdThickness)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.not(r.and(r.exists(r.attr(self, "THRESHOLDDEPTH")), () => r.not(r.exists(r.attr(self, "THRESHOLDTHICKNESS"))))) },
       { label: "WR33", source: "(EXISTS(TransomOffset) AND EXISTS(TransomThickness)) XOR (NOT(EXISTS(TransomOffset)) AND NOT(EXISTS(TransomThickness)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.xor(r.and(r.exists(r.attr(self, "TRANSOMOFFSET")), () => r.exists(r.attr(self, "TRANSOMTHICKNESS"))), r.and(r.not(r.exists(r.attr(self, "TRANSOMOFFSET"))), () => r.not(r.exists(r.attr(self, "TRANSOMTHICKNESS"))))) },
       { label: "WR34", source: "(EXISTS(CasingDepth) AND EXISTS(CasingThickness)) XOR (NOT(EXISTS(CasingDepth)) AND NOT(EXISTS(CasingThickness)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.xor(r.and(r.exists(r.attr(self, "CASINGDEPTH")), () => r.exists(r.attr(self, "CASINGTHICKNESS"))), r.and(r.not(r.exists(r.attr(self, "CASINGDEPTH"))), () => r.not(r.exists(r.attr(self, "CASINGTHICKNESS"))))) },
-      { label: "WR35", source: "(EXISTS(SELF\\IfcPropertySetDefinition.DefinesType[1])) AND ( ('IFC4.IFCDOORTYPE' IN TYPEOF(SELF\\IfcPropertySetDefinition.DefinesType[1])) OR ('IFC4.IFCDOORSTYLE' IN TYPEOF(SELF\\IfcPropertySetDefinition.DefinesType[1])) )", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.exists(r.index(r.attr(self, "DEFINESTYPE"), 1)), () => r.or(r.typeIs(m, r.index(r.attr(self, "DEFINESTYPE"), 1), "IFCDOORTYPE"), () => r.typeIs(m, r.index(r.attr(self, "DEFINESTYPE"), 1), "IFCDOORSTYLE"))) },
+      { label: "WR35", source: "(EXISTS(SELF\\IfcPropertySetDefinition.DefinesType[1])) AND ( ('IFC4.IFCDOORTYPE' IN TYPEOF(SELF\\IfcPropertySetDefinition.DefinesType[1])) OR ('IFC4.IFCDOORSTYLE' IN TYPEOF(SELF\\IfcPropertySetDefinition.DefinesType[1])) )", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.exists(r.index(r.attr(self, "DEFINESTYPE", "IFCPROPERTYSETDEFINITION"), 1)), () => r.or(r.typeIs(m, r.index(r.attr(self, "DEFINESTYPE", "IFCPROPERTYSETDEFINITION"), 1), "IFCDOORTYPE"), () => r.typeIs(m, r.index(r.attr(self, "DEFINESTYPE", "IFCPROPERTYSETDEFINITION"), 1), "IFCDOORSTYLE"))) },
     ],
     "IfcDoorPanelProperties": [
-      { label: "ApplicableToType", source: "(EXISTS(SELF\\IfcPropertySetDefinition.DefinesType[1])) AND ( ('IFC4.IFCDOORTYPE' IN TYPEOF(SELF\\IfcPropertySetDefinition.DefinesType[1])) OR ('IFC4.IFCDOORSTYLE' IN TYPEOF(SELF\\IfcPropertySetDefinition.DefinesType[1])) )", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.exists(r.index(r.attr(self, "DEFINESTYPE"), 1)), () => r.or(r.typeIs(m, r.index(r.attr(self, "DEFINESTYPE"), 1), "IFCDOORTYPE"), () => r.typeIs(m, r.index(r.attr(self, "DEFINESTYPE"), 1), "IFCDOORSTYLE"))) },
+      { label: "ApplicableToType", source: "(EXISTS(SELF\\IfcPropertySetDefinition.DefinesType[1])) AND ( ('IFC4.IFCDOORTYPE' IN TYPEOF(SELF\\IfcPropertySetDefinition.DefinesType[1])) OR ('IFC4.IFCDOORSTYLE' IN TYPEOF(SELF\\IfcPropertySetDefinition.DefinesType[1])) )", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.exists(r.index(r.attr(self, "DEFINESTYPE", "IFCPROPERTYSETDEFINITION"), 1)), () => r.or(r.typeIs(m, r.index(r.attr(self, "DEFINESTYPE", "IFCPROPERTYSETDEFINITION"), 1), "IFCDOORTYPE"), () => r.typeIs(m, r.index(r.attr(self, "DEFINESTYPE", "IFCPROPERTYSETDEFINITION"), 1), "IFCDOORSTYLE"))) },
     ],
     "IfcDoorType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcDoorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDoorTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcDoorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDoorTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcDraughtingPreDefinedColour": [
-      { label: "PreDefinedColourNames", source: "SELF\\IfcPreDefinedItem.Name IN ['black','red','green','blue','yellow', 'magenta','cyan','white','by layer']", check: (self: r.EntityInstance, m: r.Model): r.Value => r.isIn(r.attr(self, "NAME"), r.aggregate([["black"], ["red"], ["green"], ["blue"], ["yellow"], ["magenta"], ["cyan"], ["white"], ["by layer"]])) },
+      { label: "PreDefinedColourNames", source: "SELF\\IfcPreDefinedItem.Name IN ['black','red','green','blue','yellow', 'magenta','cyan','white','by layer']", check: (self: r.EntityInstance, m: r.Model): r.Value => r.isIn(r.attr(self, "NAME", "IFCPREDEFINEDITEM"), r.aggregate([["black"], ["red"], ["green"], ["blue"], ["yellow"], ["magenta"], ["cyan"], ["white"], ["by layer"]])) },
     ],
     "IfcDraughtingPreDefinedCurveFont": [
-      { label: "PreDefinedCurveFontNames", source: "SELF\\IfcPredefinedItem.Name IN ['continuous', 'chain', 'chain double dash', 'dashed', 'dotted', 'by layer']", check: (self: r.EntityInstance, m: r.Model): r.Value => r.isIn(r.attr(self, "NAME"), r.aggregate([["continuous"], ["chain"], ["chain double dash"], ["dashed"], ["dotted"], ["by layer"]])) },
+      { label: "PreDefinedCurveFontNames", source: "SELF\\IfcPredefinedItem.Name IN ['continuous', 'chain', 'chain double dash', 'dashed', 'dotted', 'by layer']", check: (self: r.EntityInstance, m: r.Model): r.Value => r.isIn(r.attr(self, "NAME", "IFCPREDEFINEDITEM"), r.aggregate([["continuous"], ["chain"], ["chain double dash"], ["dashed"], ["dotted"], ["by layer"]])) },
     ],
     "IfcDuctFitting": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcDuctFittingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDuctFittingTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCDUCTFITTINGTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCDUCTFITTINGTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcDuctFittingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDuctFittingTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCDUCTFITTINGTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCDUCTFITTINGTYPE")) },
     ],
     "IfcDuctFittingType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcDuctFittingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDuctFittingTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcDuctFittingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDuctFittingTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcDuctSegment": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcDuctSegmentTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDuctSegmentTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCDUCTSEGMENTTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCDUCTSEGMENTTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcDuctSegmentTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDuctSegmentTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCDUCTSEGMENTTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCDUCTSEGMENTTYPE")) },
     ],
     "IfcDuctSegmentType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcDuctSegmentTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDuctSegmentTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcDuctSegmentTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDuctSegmentTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcDuctSilencer": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcDuctSilencerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDuctSilencerTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCDUCTSILENCERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCDUCTSILENCERTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcDuctSilencerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDuctSilencerTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCDUCTSILENCERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCDUCTSILENCERTYPE")) },
     ],
     "IfcDuctSilencerType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcDuctSilencerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDuctSilencerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcDuctSilencerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDuctSilencerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcEdgeLoop": [
       { label: "IsClosed", source: "(EdgeList[1].EdgeStart) :=: (EdgeList[Ne].EdgeEnd)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.same(r.attr(r.index(r.attr(self, "EDGELIST"), 1), "EDGESTART"), r.attr(r.index(r.attr(self, "EDGELIST"), r.attr(self, "NE")), "EDGEEND")) },
       { label: "IsContinuous", source: "IfcLoopHeadToTail(SELF)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcLoopHeadToTail(m, self) },
     ],
     "IfcElectricAppliance": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcElectricApplianceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcElectricApplianceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCELECTRICAPPLIANCETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCELECTRICAPPLIANCETYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcElectricApplianceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcElectricApplianceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCELECTRICAPPLIANCETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCELECTRICAPPLIANCETYPE")) },
     ],
     "IfcElectricApplianceType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcElectricApplianceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcElectricApplianceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcElectricApplianceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcElectricApplianceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcElectricDistributionBoard": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcElectricDistributionBoardTypeEnum.USERDEFINED) OR ((PredefinedType = IfcElectricDistributionBoardTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCELECTRICDISTRIBUTIONBOARDTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCELECTRICDISTRIBUTIONBOARDTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcElectricDistributionBoardTypeEnum.USERDEFINED) OR ((PredefinedType = IfcElectricDistributionBoardTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCELECTRICDISTRIBUTIONBOARDTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCELECTRICDISTRIBUTIONBOARDTYPE")) },
     ],
     "IfcElectricDistributionBoardType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcElectricDistributionBoardTypeEnum.USERDEFINED) OR ((PredefinedType = IfcElectricDistributionBoardTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcElectricDistributionBoardTypeEnum.USERDEFINED) OR ((PredefinedType = IfcElectricDistributionBoardTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcElectricFlowStorageDevice": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcElectricFlowStorageDeviceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcElectricFlowStorageDeviceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCELECTRICFLOWSTORAGEDEVICETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCELECTRICFLOWSTORAGEDEVICETYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcElectricFlowStorageDeviceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcElectricFlowStorageDeviceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCELECTRICFLOWSTORAGEDEVICETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCELECTRICFLOWSTORAGEDEVICETYPE")) },
     ],
     "IfcElectricFlowStorageDeviceType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcElectricFlowStorageDeviceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcElectricFlowStorageDeviceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcElectricFlowStorageDeviceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcElectricFlowStorageDeviceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcElectricGenerator": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcElectricGeneratorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcElectricGeneratorTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCELECTRICGENERATORTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCELECTRICGENERATORTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcElectricGeneratorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcElectricGeneratorTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCELECTRICGENERATORTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCELECTRICGENERATORTYPE")) },
     ],
     "IfcElectricGeneratorType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcElectricGeneratorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcElectricGeneratorTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcElectricGeneratorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcElectricGeneratorTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcElectricMotor": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcElectricMotorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcElectricMotorTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCELECTRICMOTORTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCELECTRICMOTORTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcElectricMotorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcElectricMotorTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCELECTRICMOTORTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCELECTRICMOTORTYPE")) },
     ],
     "IfcElectricMotorType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcElectricMotorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcElectricMotorTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcElectricMotorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcElectricMotorTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcElectricTimeControl": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcElectricTimeControlTypeEnum.USERDEFINED) OR ((PredefinedType = IfcElectricTimeControlTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCELECTRICTIMECONTROLTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCELECTRICTIMECONTROLTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcElectricTimeControlTypeEnum.USERDEFINED) OR ((PredefinedType = IfcElectricTimeControlTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCELECTRICTIMECONTROLTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCELECTRICTIMECONTROLTYPE")) },
     ],
     "IfcElectricTimeControlType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcElectricTimeControlTypeEnum.USERDEFINED) OR ((PredefinedType = IfcElectricTimeControlTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcElectricTimeControlTypeEnum.USERDEFINED) OR ((PredefinedType = IfcElectricTimeControlTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcElementAssembly": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcElementAssemblyTypeEnum.USERDEFINED) OR ((PredefinedType = IfcElementAssemblyTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCELEMENTASSEMBLYTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCELEMENTASSEMBLYTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcElementAssemblyTypeEnum.USERDEFINED) OR ((PredefinedType = IfcElementAssemblyTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCELEMENTASSEMBLYTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCELEMENTASSEMBLYTYPE")) },
     ],
     "IfcElementAssemblyType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcElementAssemblyTypeEnum.USERDEFINED) OR ((PredefinedType = IfcElementAssemblyTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcElementAssemblyTypeEnum.USERDEFINED) OR ((PredefinedType = IfcElementAssemblyTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcElementQuantity": [
       { label: "UniqueQuantityNames", source: "IfcUniqueQuantityNames(Quantities)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcUniqueQuantityNames(m, r.attr(self, "QUANTITIES")) },
     ],
     "IfcEngine": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcEngineTypeEnum.USERDEFINED) OR ((PredefinedType = IfcEngineTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCENGINETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCENGINETYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcEngineTypeEnum.USERDEFINED) OR ((PredefinedType = IfcEngineTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCENGINETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCENGINETYPE")) },
     ],
     "IfcEngineType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcEngineTypeEnum.USERDEFINED) OR ((PredefinedType = IfcEngineTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcEngineTypeEnum.USERDEFINED) OR ((PredefinedType = IfcEngineTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcEvaporativeCooler": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcEvaporativeCoolerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcEvaporativeCoolerTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCEVAPORATIVECOOLERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCEVAPORATIVECOOLERTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcEvaporativeCoolerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcEvaporativeCoolerTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCEVAPORATIVECOOLERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCEVAPORATIVECOOLERTYPE")) },
     ],
     "IfcEvaporativeCoolerType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcEvaporativeCoolerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcEvaporativeCoolerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcEvaporativeCoolerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcEvaporativeCoolerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcEvaporator": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcEvaporatorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcEvaporatorTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCEVAPORATORTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCEVAPORATORTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcEvaporatorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcEvaporatorTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCEVAPORATORTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCEVAPORATORTYPE")) },
     ],
     "IfcEvaporatorType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcEvaporatorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcEvaporatorTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcEvaporatorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcEvaporatorTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcEvent": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcEventTypeEnum.USERDEFINED) OR ((PredefinedType = IfcEventTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcEventTypeEnum.USERDEFINED) OR ((PredefinedType = IfcEventTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
       { label: "CorrectTypeAssigned", source: "NOT(EXISTS(EventTriggerType)) OR (EventTriggerType <> IfcEventTriggerTypeEnum.USERDEFINED) OR ((EventTriggerType = IfcEventTriggerTypeEnum.USERDEFINED) AND EXISTS(UserDefinedEventTriggerType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "EVENTTRIGGERTYPE"))), () => r.ne(r.attr(self, "EVENTTRIGGERTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "EVENTTRIGGERTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "USERDEFINEDEVENTTRIGGERTYPE")))) },
     ],
     "IfcEventType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcEventTypeEnum.USERDEFINED) OR ((PredefinedType = IfcEventTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcTypeProcess.ProcessType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "PROCESSTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcEventTypeEnum.USERDEFINED) OR ((PredefinedType = IfcEventTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcTypeProcess.ProcessType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "PROCESSTYPE", "IFCTYPEPROCESS")))) },
       { label: "CorrectEventTriggerType", source: "(EventTriggerType <> IfcEventTriggerTypeEnum.USERDEFINED) OR ((EventTriggerType = IfcEventTriggerTypeEnum.USERDEFINED) AND EXISTS(UserDefinedEventTriggerType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "EVENTTRIGGERTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "EVENTTRIGGERTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "USERDEFINEDEVENTTRIGGERTYPE")))) },
     ],
     "IfcExternalReference": [
@@ -2016,32 +2016,32 @@ export const RULES: r.CompiledRules = {
       { label: "ValidExtrusionDirection", source: "IfcDotProduct(IfcRepresentationItem() || IfcGeometricRepresentationItem() || IfcDirection([0.0,0.0,1.0]), SELF.ExtrudedDirection) <> 0.0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ne(fn_IfcDotProduct(m, r.complex(m, [r.construct(m, "IfcRepresentationItem", []), r.construct(m, "IfcGeometricRepresentationItem", []), r.construct(m, "IfcDirection", [r.aggregate([[0], [0], [1]])])]), r.attr(self, "EXTRUDEDDIRECTION")), 0) },
     ],
     "IfcExtrudedAreaSolidTapered": [
-      { label: "CorrectProfileAssignment", source: "IfcTaperedSweptAreaProfiles(SELF\\IfcSweptAreaSolid.SweptArea, SELF.EndSweptArea)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcTaperedSweptAreaProfiles(m, r.attr(self, "SWEPTAREA"), r.attr(self, "ENDSWEPTAREA")) },
+      { label: "CorrectProfileAssignment", source: "IfcTaperedSweptAreaProfiles(SELF\\IfcSweptAreaSolid.SweptArea, SELF.EndSweptArea)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcTaperedSweptAreaProfiles(m, r.attr(self, "SWEPTAREA", "IFCSWEPTAREASOLID"), r.attr(self, "ENDSWEPTAREA")) },
     ],
     "IfcFace": [
-      { label: "HasOuterBound", source: "SIZEOF(QUERY(temp <* Bounds | 'IFC4.IFCFACEOUTERBOUND' IN TYPEOF(temp))) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "BOUNDS"), (q195: r.Value) => r.typeIs(m, q195, "IFCFACEOUTERBOUND"))), 1) },
+      { label: "HasOuterBound", source: "SIZEOF(QUERY(temp <* Bounds | 'IFC4.IFCFACEOUTERBOUND' IN TYPEOF(temp))) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "BOUNDS"), (q_195: r.Value) => r.typeIs(m, q_195, "IFCFACEOUTERBOUND"))), 1) },
     ],
     "IfcFan": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcFanTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFanTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCFANTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCFANTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcFanTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFanTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCFANTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCFANTYPE")) },
     ],
     "IfcFanType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcFanTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFanTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcFanTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFanTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcFastener": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcFastenerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFastenerTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCFASTENERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCFASTENERTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcFastenerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFastenerTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCFASTENERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCFASTENERTYPE")) },
     ],
     "IfcFastenerType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcFastenerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFastenerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcFastenerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFastenerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcFeatureElementSubtraction": [
-      { label: "HasNoSubtraction", source: "SIZEOF(SELF\\IfcElement.HasOpenings) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.attr(self, "HASOPENINGS")), 0) },
-      { label: "IsNotFilling", source: "SIZEOF(SELF\\IfcElement.FillsVoids) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.attr(self, "FILLSVOIDS")), 0) },
+      { label: "HasNoSubtraction", source: "SIZEOF(SELF\\IfcElement.HasOpenings) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.attr(self, "HASOPENINGS", "IFCELEMENT")), 0) },
+      { label: "IsNotFilling", source: "SIZEOF(SELF\\IfcElement.FillsVoids) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.attr(self, "FILLSVOIDS", "IFCELEMENT")), 0) },
     ],
     "IfcFillAreaStyle": [
-      { label: "MaxOneColour", source: "SIZEOF(QUERY(Style <* SELF.FillStyles | 'IFC4.IFCCOLOUR' IN TYPEOF(Style) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "FILLSTYLES"), (q196: r.Value) => r.typeIs(m, q196, "IFCCOLOUR"))), 1) },
-      { label: "MaxOneExtHatchStyle", source: "SIZEOF(QUERY(Style <* SELF.FillStyles | 'IFC4.IFCEXTERNALLYDEFINEDHATCHSTYLE' IN TYPEOF(Style) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "FILLSTYLES"), (q197: r.Value) => r.typeIs(m, q197, "IFCEXTERNALLYDEFINEDHATCHSTYLE"))), 1) },
+      { label: "MaxOneColour", source: "SIZEOF(QUERY(Style <* SELF.FillStyles | 'IFC4.IFCCOLOUR' IN TYPEOF(Style) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "FILLSTYLES"), (q_196: r.Value) => r.typeIs(m, q_196, "IFCCOLOUR"))), 1) },
+      { label: "MaxOneExtHatchStyle", source: "SIZEOF(QUERY(Style <* SELF.FillStyles | 'IFC4.IFCEXTERNALLYDEFINEDHATCHSTYLE' IN TYPEOF(Style) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "FILLSTYLES"), (q_197: r.Value) => r.typeIs(m, q_197, "IFCEXTERNALLYDEFINEDHATCHSTYLE"))), 1) },
       { label: "ConsistentHatchStyleDef", source: "IfcCorrectFillAreaStyle(SELF.FillStyles)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcCorrectFillAreaStyle(m, r.attr(self, "FILLSTYLES")) },
     ],
     "IfcFillAreaStyleHatching": [
@@ -2049,59 +2049,59 @@ export const RULES: r.CompiledRules = {
       { label: "RefHatchLine2D", source: "NOT(EXISTS(PointOfReferenceHatchLine)) OR (PointOfReferenceHatchLine.Dim = 2)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "POINTOFREFERENCEHATCHLINE"))), () => r.eq(r.attr(r.attr(self, "POINTOFREFERENCEHATCHLINE"), "DIM"), 2)) },
     ],
     "IfcFilter": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcFilterTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFilterTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCFILTERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCFILTERTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcFilterTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFilterTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCFILTERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCFILTERTYPE")) },
     ],
     "IfcFilterType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcFilterTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFilterTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcFilterTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFilterTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcFireSuppressionTerminal": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcFireSuppressionTerminalTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFireSuppressionTerminalTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCFIRESUPPRESSIONTERMINALTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCFIRESUPPRESSIONTERMINALTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcFireSuppressionTerminalTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFireSuppressionTerminalTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCFIRESUPPRESSIONTERMINALTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCFIRESUPPRESSIONTERMINALTYPE")) },
     ],
     "IfcFireSuppressionTerminalType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcFireSuppressionTerminalTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFireSuppressionTerminalTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcFireSuppressionTerminalTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFireSuppressionTerminalTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcFixedReferenceSweptAreaSolid": [
       { label: "DirectrixBounded", source: "(EXISTS(StartParam) AND EXISTS(EndParam)) OR (SIZEOF(['IFC4.IFCCONIC', 'IFC4.IFCBOUNDEDCURVE'] * TYPEOF(Directrix)) = 1)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.and(r.exists(r.attr(self, "STARTPARAM")), () => r.exists(r.attr(self, "ENDPARAM"))), () => r.eq(r.sizeof(r.mul(r.aggregate([["IFC4.IFCCONIC"], ["IFC4.IFCBOUNDEDCURVE"]]), r.typeOf(m, r.attr(self, "DIRECTRIX")))), 1)) },
     ],
     "IfcFlowInstrument": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcFlowInstrumentTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFlowInstrumentTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCFLOWINSTRUMENTTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCFLOWINSTRUMENTTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcFlowInstrumentTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFlowInstrumentTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCFLOWINSTRUMENTTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCFLOWINSTRUMENTTYPE")) },
     ],
     "IfcFlowInstrumentType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcFlowInstrumentTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFlowInstrumentTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcFlowInstrumentTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFlowInstrumentTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcFlowMeter": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcFlowMeterTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFlowMeterTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCFLOWMETERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCFLOWMETERTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcFlowMeterTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFlowMeterTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCFLOWMETERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCFLOWMETERTYPE")) },
     ],
     "IfcFlowMeterType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcFlowMeterTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFlowMeterTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcFlowMeterTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFlowMeterTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcFooting": [
-      { label: "CorrectPredefinedType", source: "NOT EXISTS(PredefinedType) OR (PredefinedType <> IfcFootingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFootingTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCFOOTINGTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCFOOTINGTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT EXISTS(PredefinedType) OR (PredefinedType <> IfcFootingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFootingTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCFOOTINGTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCFOOTINGTYPE")) },
     ],
     "IfcFootingType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcFootingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFootingTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcFootingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFootingTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcFurniture": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcFurnitureTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFurnitureTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCFURNITURETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCFURNITURETYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcFurnitureTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFurnitureTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCFURNITURETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCFURNITURETYPE")) },
     ],
     "IfcFurnitureType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcFurnitureTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFurnitureTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcFurnitureTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFurnitureTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcGeographicElement": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcGeographicElementTypeEnum.USERDEFINED) OR ((PredefinedType = IfcGeographicElementTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCGEOGRAPHICELEMENTTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCGEOGRAPHICELEMENTTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcGeographicElementTypeEnum.USERDEFINED) OR ((PredefinedType = IfcGeographicElementTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCGEOGRAPHICELEMENTTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCGEOGRAPHICELEMENTTYPE")) },
     ],
     "IfcGeographicElementType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcGeographicElementTypeEnum.USERDEFINED) OR ((PredefinedType = IfcGeographicElementTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcGeographicElementTypeEnum.USERDEFINED) OR ((PredefinedType = IfcGeographicElementTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcGeometricCurveSet": [
-      { label: "NoSurfaces", source: "SIZEOF(QUERY(Temp <* SELF\\IfcGeometricSet.Elements | 'IFC4.IFCSURFACE' IN TYPEOF(Temp))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ELEMENTS"), (q198: r.Value) => r.typeIs(m, q198, "IFCSURFACE"))), 0) },
+      { label: "NoSurfaces", source: "SIZEOF(QUERY(Temp <* SELF\\IfcGeometricSet.Elements | 'IFC4.IFCSURFACE' IN TYPEOF(Temp))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ELEMENTS", "IFCGEOMETRICSET"), (q_198: r.Value) => r.typeIs(m, q_198, "IFCSURFACE"))), 0) },
     ],
     "IfcGeometricRepresentationContext": [
       { label: "North2D", source: "NOT(EXISTS(TrueNorth)) OR (HIINDEX(TrueNorth.DirectionRatios) = 2)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "TRUENORTH"))), () => r.eq(r.hiindex(r.attr(r.attr(self, "TRUENORTH"), "DIRECTIONRATIOS")), 2)) },
@@ -2109,31 +2109,31 @@ export const RULES: r.CompiledRules = {
     "IfcGeometricRepresentationSubContext": [
       { label: "ParentNoSub", source: "NOT('IFC4.IFCGEOMETRICREPRESENTATIONSUBCONTEXT' IN TYPEOF(ParentContext))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.not(r.typeIs(m, r.attr(self, "PARENTCONTEXT"), "IFCGEOMETRICREPRESENTATIONSUBCONTEXT")) },
       { label: "UserTargetProvided", source: "(TargetView <> IfcGeometricProjectionEnum.USERDEFINED) OR ((TargetView = IfcGeometricProjectionEnum.USERDEFINED) AND EXISTS(UserDefinedTargetView))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "TARGETVIEW"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "TARGETVIEW"), E_USERDEFINED), () => r.exists(r.attr(self, "USERDEFINEDTARGETVIEW")))) },
-      { label: "NoCoordOperation", source: "SIZEOF(SELF\\IfcGeometricRepresentationContext.HasCoordinateOperation) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.attr(self, "HASCOORDINATEOPERATION")), 0) },
+      { label: "NoCoordOperation", source: "SIZEOF(SELF\\IfcGeometricRepresentationContext.HasCoordinateOperation) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.attr(self, "HASCOORDINATEOPERATION", "IFCGEOMETRICREPRESENTATIONCONTEXT")), 0) },
     ],
     "IfcGeometricSet": [
-      { label: "ConsistentDim", source: "SIZEOF(QUERY(Temp <* Elements | Temp.Dim <> Elements[1].Dim)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ELEMENTS"), (q199: r.Value) => r.ne(r.attr(q199, "DIM"), r.attr(r.index(r.attr(self, "ELEMENTS"), 1), "DIM")))), 0) },
+      { label: "ConsistentDim", source: "SIZEOF(QUERY(Temp <* Elements | Temp.Dim <> Elements[1].Dim)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ELEMENTS"), (q_199: r.Value) => r.ne(r.attr(q_199, "DIM"), r.attr(r.index(r.attr(self, "ELEMENTS"), 1), "DIM")))), 0) },
     ],
     "IfcGrid": [
-      { label: "HasPlacement", source: "EXISTS(SELF\\IfcProduct.ObjectPlacement)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "OBJECTPLACEMENT")) },
+      { label: "HasPlacement", source: "EXISTS(SELF\\IfcProduct.ObjectPlacement)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "OBJECTPLACEMENT", "IFCPRODUCT")) },
     ],
     "IfcGridAxis": [
       { label: "WR1", source: "AxisCurve.Dim = 2", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(r.attr(self, "AXISCURVE"), "DIM"), 2) },
       { label: "WR2", source: "(SIZEOF(PartOfU) = 1) XOR (SIZEOF(PartOfV) = 1) XOR (SIZEOF(PartOfW) = 1)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.xor(r.xor(r.eq(r.sizeof(r.attr(self, "PARTOFU")), 1), r.eq(r.sizeof(r.attr(self, "PARTOFV")), 1)), r.eq(r.sizeof(r.attr(self, "PARTOFW")), 1)) },
     ],
     "IfcHeatExchanger": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcHeatExchangerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcHeatExchangerTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCHEATEXCHANGERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCHEATEXCHANGERTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcHeatExchangerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcHeatExchangerTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCHEATEXCHANGERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCHEATEXCHANGERTYPE")) },
     ],
     "IfcHeatExchangerType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcHeatExchangerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcHeatExchangerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcHeatExchangerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcHeatExchangerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcHumidifier": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcHumidifierTypeEnum.USERDEFINED) OR ((PredefinedType = IfcHumidifierTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCHUMIDIFIERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCHUMIDIFIERTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcHumidifierTypeEnum.USERDEFINED) OR ((PredefinedType = IfcHumidifierTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCHUMIDIFIERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCHUMIDIFIERTYPE")) },
     ],
     "IfcHumidifierType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcHumidifierTypeEnum.USERDEFINED) OR ((PredefinedType = IfcHumidifierTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcHumidifierTypeEnum.USERDEFINED) OR ((PredefinedType = IfcHumidifierTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcIShapeProfileDef": [
       { label: "ValidFlangeThickness", source: "(2. * FlangeThickness) < OverallDepth", check: (self: r.EntityInstance, m: r.Model): r.Value => r.lt(r.mul(2, r.attr(self, "FLANGETHICKNESS")), r.attr(self, "OVERALLDEPTH")) },
@@ -2144,45 +2144,45 @@ export const RULES: r.CompiledRules = {
       { label: "Consecutive", source: "(SIZEOF(Segments) = 0) OR IfcConsecutiveSegments(Segments)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "SEGMENTS")), 0), () => fn_IfcConsecutiveSegments(m, r.attr(self, "SEGMENTS"))) },
     ],
     "IfcInterceptor": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcInterceptorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcInterceptorTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCINTERCEPTORTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCINTERCEPTORTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcInterceptorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcInterceptorTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCINTERCEPTORTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCINTERCEPTORTYPE")) },
     ],
     "IfcInterceptorType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcInterceptorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcInterceptorTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcInterceptorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcInterceptorTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcIntersectionCurve": [
-      { label: "TwoPCurves", source: "SIZEOF(SELF\\IfcSurfaceCurve.AssociatedGeometry) = 2", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.attr(self, "ASSOCIATEDGEOMETRY")), 2) },
-      { label: "DistinctSurfaces", source: "IfcAssociatedSurface(SELF\\IfcSurfaceCurve.AssociatedGeometry[1]) <> IfcAssociatedSurface(SELF\\IfcSurfaceCurve.AssociatedGeometry[2])", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ne(fn_IfcAssociatedSurface(m, r.index(r.attr(self, "ASSOCIATEDGEOMETRY"), 1)), fn_IfcAssociatedSurface(m, r.index(r.attr(self, "ASSOCIATEDGEOMETRY"), 2))) },
+      { label: "TwoPCurves", source: "SIZEOF(SELF\\IfcSurfaceCurve.AssociatedGeometry) = 2", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.attr(self, "ASSOCIATEDGEOMETRY", "IFCSURFACECURVE")), 2) },
+      { label: "DistinctSurfaces", source: "IfcAssociatedSurface(SELF\\IfcSurfaceCurve.AssociatedGeometry[1]) <> IfcAssociatedSurface(SELF\\IfcSurfaceCurve.AssociatedGeometry[2])", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ne(fn_IfcAssociatedSurface(m, r.index(r.attr(self, "ASSOCIATEDGEOMETRY", "IFCSURFACECURVE"), 1)), fn_IfcAssociatedSurface(m, r.index(r.attr(self, "ASSOCIATEDGEOMETRY", "IFCSURFACECURVE"), 2))) },
     ],
     "IfcJunctionBox": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcJunctionBoxTypeEnum.USERDEFINED) OR ((PredefinedType = IfcJunctionBoxTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCJUNCTIONBOXTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCJUNCTIONBOXTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcJunctionBoxTypeEnum.USERDEFINED) OR ((PredefinedType = IfcJunctionBoxTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCJUNCTIONBOXTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCJUNCTIONBOXTYPE")) },
     ],
     "IfcJunctionBoxType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcJunctionBoxTypeEnum.USERDEFINED) OR ((PredefinedType = IfcJunctionBoxTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcJunctionBoxTypeEnum.USERDEFINED) OR ((PredefinedType = IfcJunctionBoxTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcLShapeProfileDef": [
       { label: "ValidThickness", source: "(Thickness < Depth) AND (NOT(EXISTS(Width)) OR (Thickness < Width))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.lt(r.attr(self, "THICKNESS"), r.attr(self, "DEPTH")), () => r.or(r.not(r.exists(r.attr(self, "WIDTH"))), () => r.lt(r.attr(self, "THICKNESS"), r.attr(self, "WIDTH")))) },
     ],
     "IfcLaborResource": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcLaborResourceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcLaborResourceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcLaborResourceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcLaborResourceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
     ],
     "IfcLaborResourceType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcLaborResourceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcLaborResourceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcTypeResource.ResourceType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "RESOURCETYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcLaborResourceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcLaborResourceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcTypeResource.ResourceType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "RESOURCETYPE", "IFCTYPERESOURCE")))) },
     ],
     "IfcLamp": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcLampTypeEnum.USERDEFINED) OR ((PredefinedType = IfcLampTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCLAMPTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCLAMPTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcLampTypeEnum.USERDEFINED) OR ((PredefinedType = IfcLampTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCLAMPTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCLAMPTYPE")) },
     ],
     "IfcLampType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcLampTypeEnum.USERDEFINED) OR ((PredefinedType = IfcLampTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcLampTypeEnum.USERDEFINED) OR ((PredefinedType = IfcLampTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcLightFixture": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcLightFixtureTypeEnum.USERDEFINED) OR ((PredefinedType = IfcLightFixtureTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCLIGHTFIXTURETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCLIGHTFIXTURETYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcLightFixtureTypeEnum.USERDEFINED) OR ((PredefinedType = IfcLightFixtureTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCLIGHTFIXTURETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCLIGHTFIXTURETYPE")) },
     ],
     "IfcLightFixtureType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcLightFixtureTypeEnum.USERDEFINED) OR ((PredefinedType = IfcLightFixtureTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcLightFixtureTypeEnum.USERDEFINED) OR ((PredefinedType = IfcLightFixtureTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcLine": [
       { label: "SameDim", source: "Dir.Dim = Pnt.Dim", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(r.attr(self, "DIR"), "DIM"), r.attr(r.attr(self, "PNT"), "DIM")) },
@@ -2191,7 +2191,7 @@ export const RULES: r.CompiledRules = {
       { label: "WR21", source: "IfcCorrectLocalPlacement(RelativePlacement, PlacementRelTo)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcCorrectLocalPlacement(m, r.attr(self, "RELATIVEPLACEMENT"), r.attr(self, "PLACEMENTRELTO")) },
     ],
     "IfcMaterialDefinitionRepresentation": [
-      { label: "OnlyStyledRepresentations", source: "SIZEOF(QUERY(temp <* Representations | (NOT('IFC4.IFCSTYLEDREPRESENTATION' IN TYPEOF(temp))) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "REPRESENTATIONS"), (q200: r.Value) => r.not(r.typeIs(m, q200, "IFCSTYLEDREPRESENTATION")))), 0) },
+      { label: "OnlyStyledRepresentations", source: "SIZEOF(QUERY(temp <* Representations | (NOT('IFC4.IFCSTYLEDREPRESENTATION' IN TYPEOF(temp))) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "REPRESENTATIONS"), (q_200: r.Value) => r.not(r.typeIs(m, q_200, "IFCSTYLEDREPRESENTATION")))), 0) },
     ],
     "IfcMaterialLayer": [
       { label: "NormalizedPriority", source: "NOT(EXISTS(Priority)) OR {0 <= Priority <= 100}", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "PRIORITY"))), () => r.interval(0, '<=', r.attr(self, "PRIORITY"), '<=', 100)) },
@@ -2200,35 +2200,35 @@ export const RULES: r.CompiledRules = {
       { label: "NormalizedPriority", source: "NOT(EXISTS(Priority)) OR {0 <= Priority <= 100}", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "PRIORITY"))), () => r.interval(0, '<=', r.attr(self, "PRIORITY"), '<=', 100)) },
     ],
     "IfcMechanicalFastener": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcMechanicalFastenerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcMechanicalFastenerTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCMECHANICALFASTENERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCMECHANICALFASTENERTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcMechanicalFastenerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcMechanicalFastenerTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCMECHANICALFASTENERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCMECHANICALFASTENERTYPE")) },
     ],
     "IfcMechanicalFastenerType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcMechanicalFastenerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcMechanicalFastenerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcMechanicalFastenerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcMechanicalFastenerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcMedicalDevice": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcMedicalDeviceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcMedicalDeviceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCMEDICALDEVICETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCMEDICALDEVICETYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcMedicalDeviceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcMedicalDeviceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCMEDICALDEVICETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCMEDICALDEVICETYPE")) },
     ],
     "IfcMedicalDeviceType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcMedicalDeviceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcMedicalDeviceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcMedicalDeviceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcMedicalDeviceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcMember": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcMemberTypeEnum.USERDEFINED) OR ((PredefinedType = IfcMemberTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCMEMBERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCMEMBERTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcMemberTypeEnum.USERDEFINED) OR ((PredefinedType = IfcMemberTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCMEMBERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCMEMBERTYPE")) },
     ],
     "IfcMemberStandardCase": [
-      { label: "HasMaterialProfileSetUsage", source: "SIZEOF (QUERY(temp <* USEDIN(SELF, 'IFC4.IFCRELASSOCIATES.RELATEDOBJECTS') | ('IFC4.IFCRELASSOCIATESMATERIAL' IN TYPEOF(temp)) AND ('IFC4.IFCMATERIALPROFILESETUSAGE' IN TYPEOF(temp.RelatingMaterial)) )) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.usedIn(m, self, "IFC4.IFCRELASSOCIATES.RELATEDOBJECTS"), (q201: r.Value) => r.and(r.typeIs(m, q201, "IFCRELASSOCIATESMATERIAL"), () => r.typeIs(m, r.attr(q201, "RELATINGMATERIAL"), "IFCMATERIALPROFILESETUSAGE")))), 1) },
+      { label: "HasMaterialProfileSetUsage", source: "SIZEOF (QUERY(temp <* USEDIN(SELF, 'IFC4.IFCRELASSOCIATES.RELATEDOBJECTS') | ('IFC4.IFCRELASSOCIATESMATERIAL' IN TYPEOF(temp)) AND ('IFC4.IFCMATERIALPROFILESETUSAGE' IN TYPEOF(temp.RelatingMaterial)) )) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.usedIn(m, self, "IFC4.IFCRELASSOCIATES.RELATEDOBJECTS"), (q_201: r.Value) => r.and(r.typeIs(m, q_201, "IFCRELASSOCIATESMATERIAL"), () => r.typeIs(m, r.attr(q_201, "RELATINGMATERIAL"), "IFCMATERIALPROFILESETUSAGE")))), 1) },
     ],
     "IfcMemberType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcMemberTypeEnum.USERDEFINED) OR ((PredefinedType = IfcMemberTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcMemberTypeEnum.USERDEFINED) OR ((PredefinedType = IfcMemberTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcMotorConnection": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcMotorConnectionTypeEnum.USERDEFINED) OR ((PredefinedType = IfcMotorConnectionTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCMOTORCONNECTIONTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCMOTORCONNECTIONTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcMotorConnectionTypeEnum.USERDEFINED) OR ((PredefinedType = IfcMotorConnectionTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCMOTORCONNECTIONTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCMOTORCONNECTIONTYPE")) },
     ],
     "IfcMotorConnectionType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcMotorConnectionTypeEnum.USERDEFINED) OR ((PredefinedType = IfcMotorConnectionTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcMotorConnectionTypeEnum.USERDEFINED) OR ((PredefinedType = IfcMotorConnectionTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcNamedUnit": [
       { label: "WR1", source: "IfcCorrectDimensions (SELF.UnitType, SELF.Dimensions)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcCorrectDimensions(m, r.attr(self, "UNITTYPE"), r.attr(self, "DIMENSIONS")) },
@@ -2237,10 +2237,10 @@ export const RULES: r.CompiledRules = {
       { label: "UniquePropertySetNames", source: "((SIZEOF(IsDefinedBy) = 0) OR IfcUniqueDefinitionNames(IsDefinedBy))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISDEFINEDBY")), 0), () => fn_IfcUniqueDefinitionNames(m, r.attr(self, "ISDEFINEDBY"))) },
     ],
     "IfcObjective": [
-      { label: "WR21", source: "(ObjectiveQualifier <> IfcObjectiveEnum.USERDEFINED) OR ((ObjectiveQualifier = IfcObjectiveEnum.USERDEFINED) AND EXISTS(SELF\\IfcObjective.UserDefinedQualifier))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "OBJECTIVEQUALIFIER"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "OBJECTIVEQUALIFIER"), E_USERDEFINED), () => r.exists(r.attr(self, "USERDEFINEDQUALIFIER")))) },
+      { label: "WR21", source: "(ObjectiveQualifier <> IfcObjectiveEnum.USERDEFINED) OR ((ObjectiveQualifier = IfcObjectiveEnum.USERDEFINED) AND EXISTS(SELF\\IfcObjective.UserDefinedQualifier))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "OBJECTIVEQUALIFIER"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "OBJECTIVEQUALIFIER"), E_USERDEFINED), () => r.exists(r.attr(self, "USERDEFINEDQUALIFIER", "IFCOBJECTIVE")))) },
     ],
     "IfcOccupant": [
-      { label: "WR31", source: "NOT(PredefinedType = IfcOccupantTypeEnum.USERDEFINED) OR EXISTS(SELF\\IfcObject.ObjectType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.exists(r.attr(self, "OBJECTTYPE"))) },
+      { label: "WR31", source: "NOT(PredefinedType = IfcOccupantTypeEnum.USERDEFINED) OR EXISTS(SELF\\IfcObject.ObjectType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT"))) },
     ],
     "IfcOffsetCurve2D": [
       { label: "DimIs2D", source: "BasisCurve.Dim = 2", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(r.attr(self, "BASISCURVE"), "DIM"), 2) },
@@ -2252,11 +2252,11 @@ export const RULES: r.CompiledRules = {
       { label: "EdgeElementNotOriented", source: "NOT('IFC4.IFCORIENTEDEDGE' IN TYPEOF(EdgeElement))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.not(r.typeIs(m, r.attr(self, "EDGEELEMENT"), "IFCORIENTEDEDGE")) },
     ],
     "IfcOutlet": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcOutletTypeEnum.USERDEFINED) OR ((PredefinedType = IfcOutletTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCOUTLETTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCOUTLETTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcOutletTypeEnum.USERDEFINED) OR ((PredefinedType = IfcOutletTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCOUTLETTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCOUTLETTYPE")) },
     ],
     "IfcOutletType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcOutletTypeEnum.USERDEFINED) OR ((PredefinedType = IfcOutletTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcOutletTypeEnum.USERDEFINED) OR ((PredefinedType = IfcOutletTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcOwnerHistory": [
       { label: "CorrectChangeAction", source: "(EXISTS(LastModifiedDate)) OR (NOT(EXISTS(LastModifiedDate)) AND NOT(EXISTS(ChangeAction))) OR (NOT(EXISTS(LastModifiedDate)) AND EXISTS(ChangeAction) AND ((ChangeAction = IfcChangeActionEnum.NOTDEFINED) OR (ChangeAction = IfcChangeActionEnum.NOCHANGE)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.exists(r.attr(self, "LASTMODIFIEDDATE")), () => r.and(r.not(r.exists(r.attr(self, "LASTMODIFIEDDATE"))), () => r.not(r.exists(r.attr(self, "CHANGEACTION"))))), () => r.and(r.and(r.not(r.exists(r.attr(self, "LASTMODIFIEDDATE"))), () => r.exists(r.attr(self, "CHANGEACTION"))), () => r.or(r.eq(r.attr(self, "CHANGEACTION"), E_NOTDEFINED), () => r.eq(r.attr(self, "CHANGEACTION"), E_NOCHANGE)))) },
@@ -2272,83 +2272,83 @@ export const RULES: r.CompiledRules = {
       { label: "ValidSetOfNames", source: "NOT EXISTS(MiddleNames) OR EXISTS(FamilyName) OR EXISTS(GivenName)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "MIDDLENAMES"))), () => r.exists(r.attr(self, "FAMILYNAME"))), () => r.exists(r.attr(self, "GIVENNAME"))) },
     ],
     "IfcPhysicalComplexQuantity": [
-      { label: "NoSelfReference", source: "SIZEOF(QUERY(temp <* HasQuantities | SELF :=: temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "HASQUANTITIES"), (q202: r.Value) => r.same(self, q202))), 0) },
+      { label: "NoSelfReference", source: "SIZEOF(QUERY(temp <* HasQuantities | SELF :=: temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "HASQUANTITIES"), (q_202: r.Value) => r.same(self, q_202))), 0) },
       { label: "UniqueQuantityNames", source: "IfcUniqueQuantityNames(HasQuantities)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcUniqueQuantityNames(m, r.attr(self, "HASQUANTITIES")) },
     ],
     "IfcPile": [
-      { label: "CorrectPredefinedType", source: "NOT EXISTS(PredefinedType) OR (PredefinedType <> IfcPileTypeEnum.USERDEFINED) OR ((PredefinedType = IfcPileTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCPILETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCPILETYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT EXISTS(PredefinedType) OR (PredefinedType <> IfcPileTypeEnum.USERDEFINED) OR ((PredefinedType = IfcPileTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCPILETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCPILETYPE")) },
     ],
     "IfcPileType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcPileTypeEnum.USERDEFINED) OR ((PredefinedType = IfcPileTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcPileTypeEnum.USERDEFINED) OR ((PredefinedType = IfcPileTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcPipeFitting": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcPipeFittingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcPipeFittingTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCPIPEFITTINGTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCPIPEFITTINGTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcPipeFittingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcPipeFittingTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCPIPEFITTINGTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCPIPEFITTINGTYPE")) },
     ],
     "IfcPipeFittingType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcPipeFittingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcPipeFittingTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcPipeFittingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcPipeFittingTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcPipeSegment": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcPipeSegmentTypeEnum.USERDEFINED) OR ((PredefinedType = IfcPipeSegmentTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCPIPESEGMENTTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCPIPESEGMENTTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcPipeSegmentTypeEnum.USERDEFINED) OR ((PredefinedType = IfcPipeSegmentTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCPIPESEGMENTTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCPIPESEGMENTTYPE")) },
     ],
     "IfcPipeSegmentType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcPipeSegmentTypeEnum.USERDEFINED) OR ((PredefinedType = IfcPipeSegmentTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcPipeSegmentTypeEnum.USERDEFINED) OR ((PredefinedType = IfcPipeSegmentTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcPixelTexture": [
       { label: "MinPixelInS", source: "Width >= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ge(r.attr(self, "WIDTH"), 1) },
       { label: "MinPixelInT", source: "Height >= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ge(r.attr(self, "HEIGHT"), 1) },
       { label: "NumberOfColours", source: "{1 <= ColourComponents <= 4}", check: (self: r.EntityInstance, m: r.Model): r.Value => r.interval(1, '<=', r.attr(self, "COLOURCOMPONENTS"), '<=', 4) },
       { label: "SizeOfPixelList", source: "SIZEOF(Pixel) = (Width * Height)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.attr(self, "PIXEL")), r.mul(r.attr(self, "WIDTH"), r.attr(self, "HEIGHT"))) },
-      { label: "PixelAsByteAndSameLength", source: "SIZEOF(QUERY(temp<* Pixel | (BLENGTH(temp) MOD 8 = 0) AND (BLENGTH(temp) = BLENGTH(Pixel[1])) )) = SIZEOF(Pixel)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "PIXEL"), (q203: r.Value) => r.and(r.eq(r.mod(r.blength(q203), 8), 0), () => r.eq(r.blength(q203), r.blength(r.index(r.attr(self, "PIXEL"), 1)))))), r.sizeof(r.attr(self, "PIXEL"))) },
+      { label: "PixelAsByteAndSameLength", source: "SIZEOF(QUERY(temp<* Pixel | (BLENGTH(temp) MOD 8 = 0) AND (BLENGTH(temp) = BLENGTH(Pixel[1])) )) = SIZEOF(Pixel)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "PIXEL"), (q_203: r.Value) => r.and(r.eq(r.mod(r.blength(q_203), 8), 0), () => r.eq(r.blength(q_203), r.blength(r.index(r.attr(self, "PIXEL"), 1)))))), r.sizeof(r.attr(self, "PIXEL"))) },
     ],
     "IfcPlate": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcPlateTypeEnum.USERDEFINED) OR ((PredefinedType = IfcPlateTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCPLATETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCPLATETYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcPlateTypeEnum.USERDEFINED) OR ((PredefinedType = IfcPlateTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCPLATETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCPLATETYPE")) },
     ],
     "IfcPlateStandardCase": [
-      { label: "HasMaterialLayerSetUsage", source: "SIZEOF (QUERY(temp <* USEDIN(SELF, 'IFC4.IFCRELASSOCIATES.RELATEDOBJECTS') | ('IFC4.IFCRELASSOCIATESMATERIAL' IN TYPEOF(temp)) AND ('IFC4.IFCMATERIALLAYERSETUSAGE' IN TYPEOF(temp.RelatingMaterial)) )) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.usedIn(m, self, "IFC4.IFCRELASSOCIATES.RELATEDOBJECTS"), (q204: r.Value) => r.and(r.typeIs(m, q204, "IFCRELASSOCIATESMATERIAL"), () => r.typeIs(m, r.attr(q204, "RELATINGMATERIAL"), "IFCMATERIALLAYERSETUSAGE")))), 1) },
+      { label: "HasMaterialLayerSetUsage", source: "SIZEOF (QUERY(temp <* USEDIN(SELF, 'IFC4.IFCRELASSOCIATES.RELATEDOBJECTS') | ('IFC4.IFCRELASSOCIATESMATERIAL' IN TYPEOF(temp)) AND ('IFC4.IFCMATERIALLAYERSETUSAGE' IN TYPEOF(temp.RelatingMaterial)) )) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.usedIn(m, self, "IFC4.IFCRELASSOCIATES.RELATEDOBJECTS"), (q_204: r.Value) => r.and(r.typeIs(m, q_204, "IFCRELASSOCIATESMATERIAL"), () => r.typeIs(m, r.attr(q_204, "RELATINGMATERIAL"), "IFCMATERIALLAYERSETUSAGE")))), 1) },
     ],
     "IfcPlateType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcPlateTypeEnum.USERDEFINED) OR ((PredefinedType = IfcPlateTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcPlateTypeEnum.USERDEFINED) OR ((PredefinedType = IfcPlateTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcPolyLoop": [
-      { label: "AllPointsSameDim", source: "SIZEOF(QUERY(Temp <* Polygon | Temp.Dim <> Polygon[1].Dim)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "POLYGON"), (q205: r.Value) => r.ne(r.attr(q205, "DIM"), r.attr(r.index(r.attr(self, "POLYGON"), 1), "DIM")))), 0) },
+      { label: "AllPointsSameDim", source: "SIZEOF(QUERY(Temp <* Polygon | Temp.Dim <> Polygon[1].Dim)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "POLYGON"), (q_205: r.Value) => r.ne(r.attr(q_205, "DIM"), r.attr(r.index(r.attr(self, "POLYGON"), 1), "DIM")))), 0) },
     ],
     "IfcPolygonalBoundedHalfSpace": [
       { label: "BoundaryDim", source: "PolygonalBoundary.Dim = 2", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(r.attr(self, "POLYGONALBOUNDARY"), "DIM"), 2) },
       { label: "BoundaryType", source: "SIZEOF(TYPEOF(PolygonalBoundary) * [ 'IFC4.IFCPOLYLINE', 'IFC4.IFCCOMPOSITECURVE'] ) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.mul(r.typeOf(m, r.attr(self, "POLYGONALBOUNDARY")), r.aggregate([["IFC4.IFCPOLYLINE"], ["IFC4.IFCCOMPOSITECURVE"]]))), 1) },
     ],
     "IfcPolyline": [
-      { label: "SameDim", source: "SIZEOF(QUERY(Temp <* Points | Temp.Dim <> Points[1].Dim)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "POINTS"), (q206: r.Value) => r.ne(r.attr(q206, "DIM"), r.attr(r.index(r.attr(self, "POINTS"), 1), "DIM")))), 0) },
+      { label: "SameDim", source: "SIZEOF(QUERY(Temp <* Points | Temp.Dim <> Points[1].Dim)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "POINTS"), (q_206: r.Value) => r.ne(r.attr(q_206, "DIM"), r.attr(r.index(r.attr(self, "POINTS"), 1), "DIM")))), 0) },
     ],
     "IfcPostalAddress": [
       { label: "WR1", source: "EXISTS (InternalLocation) OR EXISTS (AddressLines) OR EXISTS (PostalBox) OR EXISTS (PostalCode) OR EXISTS (Town) OR EXISTS (Region) OR EXISTS (Country)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.or(r.or(r.or(r.or(r.exists(r.attr(self, "INTERNALLOCATION")), () => r.exists(r.attr(self, "ADDRESSLINES"))), () => r.exists(r.attr(self, "POSTALBOX"))), () => r.exists(r.attr(self, "POSTALCODE"))), () => r.exists(r.attr(self, "TOWN"))), () => r.exists(r.attr(self, "REGION"))), () => r.exists(r.attr(self, "COUNTRY"))) },
     ],
     "IfcPresentationLayerAssignment": [
-      { label: "ApplicableItems", source: "SIZEOF(QUERY(temp <* AssignedItems | ( SIZEOF(TYPEOF(temp) * [ 'IFC4.IFCSHAPEREPRESENTATION', 'IFC4.IFCGEOMETRICREPRESENTATIONITEM', 'IFC4.IFCMAPPEDITEM']) = 1) )) = SIZEOF(AssignedItems)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ASSIGNEDITEMS"), (q207: r.Value) => r.eq(r.sizeof(r.mul(r.typeOf(m, q207), r.aggregate([["IFC4.IFCSHAPEREPRESENTATION"], ["IFC4.IFCGEOMETRICREPRESENTATIONITEM"], ["IFC4.IFCMAPPEDITEM"]]))), 1))), r.sizeof(r.attr(self, "ASSIGNEDITEMS"))) },
+      { label: "ApplicableItems", source: "SIZEOF(QUERY(temp <* AssignedItems | ( SIZEOF(TYPEOF(temp) * [ 'IFC4.IFCSHAPEREPRESENTATION', 'IFC4.IFCGEOMETRICREPRESENTATIONITEM', 'IFC4.IFCMAPPEDITEM']) = 1) )) = SIZEOF(AssignedItems)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ASSIGNEDITEMS"), (q_207: r.Value) => r.eq(r.sizeof(r.mul(r.typeOf(m, q_207), r.aggregate([["IFC4.IFCSHAPEREPRESENTATION"], ["IFC4.IFCGEOMETRICREPRESENTATIONITEM"], ["IFC4.IFCMAPPEDITEM"]]))), 1))), r.sizeof(r.attr(self, "ASSIGNEDITEMS"))) },
     ],
     "IfcPresentationLayerWithStyle": [
-      { label: "ApplicableOnlyToItems", source: "SIZEOF(QUERY(temp <* AssignedItems | ( SIZEOF(TYPEOF(temp) * [ 'IFC4.IFCGEOMETRICREPRESENTATIONITEM', 'IFC4.IFCMAPPEDITEM']) = 1) )) = SIZEOF(AssignedItems)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ASSIGNEDITEMS"), (q208: r.Value) => r.eq(r.sizeof(r.mul(r.typeOf(m, q208), r.aggregate([["IFC4.IFCGEOMETRICREPRESENTATIONITEM"], ["IFC4.IFCMAPPEDITEM"]]))), 1))), r.sizeof(r.attr(self, "ASSIGNEDITEMS"))) },
+      { label: "ApplicableOnlyToItems", source: "SIZEOF(QUERY(temp <* AssignedItems | ( SIZEOF(TYPEOF(temp) * [ 'IFC4.IFCGEOMETRICREPRESENTATIONITEM', 'IFC4.IFCMAPPEDITEM']) = 1) )) = SIZEOF(AssignedItems)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ASSIGNEDITEMS"), (q_208: r.Value) => r.eq(r.sizeof(r.mul(r.typeOf(m, q_208), r.aggregate([["IFC4.IFCGEOMETRICREPRESENTATIONITEM"], ["IFC4.IFCMAPPEDITEM"]]))), 1))), r.sizeof(r.attr(self, "ASSIGNEDITEMS"))) },
     ],
     "IfcProcedure": [
-      { label: "HasName", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME")) },
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcProcedureTypeEnum.USERDEFINED) OR ((PredefinedType = IfcProcedureTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
+      { label: "HasName", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME", "IFCROOT")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcProcedureTypeEnum.USERDEFINED) OR ((PredefinedType = IfcProcedureTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
     ],
     "IfcProcedureType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcProcedureTypeEnum.USERDEFINED) OR ((PredefinedType = IfcProcedureTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcTypeProcess.ProcessType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "PROCESSTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcProcedureTypeEnum.USERDEFINED) OR ((PredefinedType = IfcProcedureTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcTypeProcess.ProcessType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "PROCESSTYPE", "IFCTYPEPROCESS")))) },
     ],
     "IfcProduct": [
-      { label: "PlacementForShapeRepresentation", source: "(EXISTS(Representation) AND EXISTS(ObjectPlacement)) OR (EXISTS(Representation) AND (SIZEOF(QUERY(temp <* Representation.Representations | 'IFC4.IFCSHAPEREPRESENTATION' IN TYPEOF(temp))) = 0)) OR (NOT(EXISTS(Representation)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.and(r.exists(r.attr(self, "REPRESENTATION")), () => r.exists(r.attr(self, "OBJECTPLACEMENT"))), () => r.and(r.exists(r.attr(self, "REPRESENTATION")), () => r.eq(r.sizeof(r.query(r.attr(r.attr(self, "REPRESENTATION"), "REPRESENTATIONS"), (q209: r.Value) => r.typeIs(m, q209, "IFCSHAPEREPRESENTATION"))), 0))), () => r.not(r.exists(r.attr(self, "REPRESENTATION")))) },
+      { label: "PlacementForShapeRepresentation", source: "(EXISTS(Representation) AND EXISTS(ObjectPlacement)) OR (EXISTS(Representation) AND (SIZEOF(QUERY(temp <* Representation.Representations | 'IFC4.IFCSHAPEREPRESENTATION' IN TYPEOF(temp))) = 0)) OR (NOT(EXISTS(Representation)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.and(r.exists(r.attr(self, "REPRESENTATION")), () => r.exists(r.attr(self, "OBJECTPLACEMENT"))), () => r.and(r.exists(r.attr(self, "REPRESENTATION")), () => r.eq(r.sizeof(r.query(r.attr(r.attr(self, "REPRESENTATION"), "REPRESENTATIONS"), (q_209: r.Value) => r.typeIs(m, q_209, "IFCSHAPEREPRESENTATION"))), 0))), () => r.not(r.exists(r.attr(self, "REPRESENTATION")))) },
     ],
     "IfcProductDefinitionShape": [
-      { label: "OnlyShapeModel", source: "SIZEOF(QUERY(temp <* Representations | (NOT('IFC4.IFCSHAPEMODEL' IN TYPEOF(temp))) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "REPRESENTATIONS"), (q210: r.Value) => r.not(r.typeIs(m, q210, "IFCSHAPEMODEL")))), 0) },
+      { label: "OnlyShapeModel", source: "SIZEOF(QUERY(temp <* Representations | (NOT('IFC4.IFCSHAPEMODEL' IN TYPEOF(temp))) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "REPRESENTATIONS"), (q_210: r.Value) => r.not(r.typeIs(m, q_210, "IFCSHAPEMODEL")))), 0) },
     ],
     "IfcProject": [
-      { label: "HasName", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME")) },
-      { label: "CorrectContext", source: "NOT(EXISTS(SELF\\IfcContext.RepresentationContexts)) OR (SIZEOF(QUERY(Temp <* SELF\\IfcContext.RepresentationContexts | 'IFC4.IFCGEOMETRICREPRESENTATIONSUBCONTEXT' IN TYPEOF(Temp) )) = 0)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "REPRESENTATIONCONTEXTS"))), () => r.eq(r.sizeof(r.query(r.attr(self, "REPRESENTATIONCONTEXTS"), (q211: r.Value) => r.typeIs(m, q211, "IFCGEOMETRICREPRESENTATIONSUBCONTEXT"))), 0)) },
-      { label: "NoDecomposition", source: "SIZEOF(SELF\\IfcObjectDefinition.Decomposes) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.attr(self, "DECOMPOSES")), 0) },
+      { label: "HasName", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME", "IFCROOT")) },
+      { label: "CorrectContext", source: "NOT(EXISTS(SELF\\IfcContext.RepresentationContexts)) OR (SIZEOF(QUERY(Temp <* SELF\\IfcContext.RepresentationContexts | 'IFC4.IFCGEOMETRICREPRESENTATIONSUBCONTEXT' IN TYPEOF(Temp) )) = 0)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "REPRESENTATIONCONTEXTS", "IFCCONTEXT"))), () => r.eq(r.sizeof(r.query(r.attr(self, "REPRESENTATIONCONTEXTS", "IFCCONTEXT"), (q_211: r.Value) => r.typeIs(m, q_211, "IFCGEOMETRICREPRESENTATIONSUBCONTEXT"))), 0)) },
+      { label: "NoDecomposition", source: "SIZEOF(SELF\\IfcObjectDefinition.Decomposes) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.attr(self, "DECOMPOSES", "IFCOBJECTDEFINITION")), 0) },
     ],
     "IfcProjectedCRS": [
       { label: "IsLengthUnit", source: "NOT(EXISTS(MapUnit)) OR (MapUnit.UnitType = IfcUnitEnum.LENGTHUNIT)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "MAPUNIT"))), () => r.eq(r.attr(r.attr(self, "MAPUNIT"), "UNITTYPE"), E_LENGTHUNIT)) },
@@ -2362,107 +2362,107 @@ export const RULES: r.CompiledRules = {
       { label: "NoSelfReference", source: "DependingProperty :<>: DependantProperty", check: (self: r.EntityInstance, m: r.Model): r.Value => r.notSame(r.attr(self, "DEPENDINGPROPERTY"), r.attr(self, "DEPENDANTPROPERTY")) },
     ],
     "IfcPropertyEnumeratedValue": [
-      { label: "WR21", source: "NOT(EXISTS(EnumerationReference)) OR NOT(EXISTS(EnumerationValues)) OR (SIZEOF(QUERY(temp <* EnumerationValues | temp IN EnumerationReference.EnumerationValues)) = SIZEOF(EnumerationValues))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "ENUMERATIONREFERENCE"))), () => r.not(r.exists(r.attr(self, "ENUMERATIONVALUES")))), () => r.eq(r.sizeof(r.query(r.attr(self, "ENUMERATIONVALUES"), (q212: r.Value) => r.isIn(q212, r.attr(r.attr(self, "ENUMERATIONREFERENCE"), "ENUMERATIONVALUES")))), r.sizeof(r.attr(self, "ENUMERATIONVALUES")))) },
+      { label: "WR21", source: "NOT(EXISTS(EnumerationReference)) OR NOT(EXISTS(EnumerationValues)) OR (SIZEOF(QUERY(temp <* EnumerationValues | temp IN EnumerationReference.EnumerationValues)) = SIZEOF(EnumerationValues))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "ENUMERATIONREFERENCE"))), () => r.not(r.exists(r.attr(self, "ENUMERATIONVALUES")))), () => r.eq(r.sizeof(r.query(r.attr(self, "ENUMERATIONVALUES"), (q_212: r.Value) => r.isIn(q_212, r.attr(r.attr(self, "ENUMERATIONREFERENCE"), "ENUMERATIONVALUES")))), r.sizeof(r.attr(self, "ENUMERATIONVALUES")))) },
     ],
     "IfcPropertyEnumeration": [
-      { label: "WR01", source: "SIZEOF(QUERY(temp <* SELF.EnumerationValues | NOT(TYPEOF(SELF.EnumerationValues[1]) = TYPEOF(temp)) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ENUMERATIONVALUES"), (q213: r.Value) => r.not(r.eq(r.typeOf(m, r.index(r.attr(self, "ENUMERATIONVALUES"), 1)), r.typeOf(m, q213))))), 0) },
+      { label: "WR01", source: "SIZEOF(QUERY(temp <* SELF.EnumerationValues | NOT(TYPEOF(SELF.EnumerationValues[1]) = TYPEOF(temp)) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ENUMERATIONVALUES"), (q_213: r.Value) => r.not(r.eq(r.typeOf(m, r.index(r.attr(self, "ENUMERATIONVALUES"), 1)), r.typeOf(m, q_213))))), 0) },
     ],
     "IfcPropertyListValue": [
-      { label: "WR31", source: "SIZEOF(QUERY(temp <* SELF.ListValues | NOT(TYPEOF(SELF.ListValues[1]) = TYPEOF(temp)) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "LISTVALUES"), (q214: r.Value) => r.not(r.eq(r.typeOf(m, r.index(r.attr(self, "LISTVALUES"), 1)), r.typeOf(m, q214))))), 0) },
+      { label: "WR31", source: "SIZEOF(QUERY(temp <* SELF.ListValues | NOT(TYPEOF(SELF.ListValues[1]) = TYPEOF(temp)) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "LISTVALUES"), (q_214: r.Value) => r.not(r.eq(r.typeOf(m, r.index(r.attr(self, "LISTVALUES"), 1)), r.typeOf(m, q_214))))), 0) },
     ],
     "IfcPropertySet": [
-      { label: "ExistsName", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME")) },
+      { label: "ExistsName", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME", "IFCROOT")) },
       { label: "UniquePropertyNames", source: "IfcUniquePropertyName(HasProperties)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcUniquePropertyName(m, r.attr(self, "HASPROPERTIES")) },
     ],
     "IfcPropertySetTemplate": [
-      { label: "ExistsName", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME")) },
+      { label: "ExistsName", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME", "IFCROOT")) },
       { label: "UniquePropertyNames", source: "IfcUniquePropertyTemplateNames(HasPropertyTemplates)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcUniquePropertyTemplateNames(m, r.attr(self, "HASPROPERTYTEMPLATES")) },
     ],
     "IfcPropertyTableValue": [
       { label: "WR21", source: "(NOT(EXISTS(DefiningValues)) AND NOT(EXISTS(DefinedValues))) OR (SIZEOF(DefiningValues) = SIZEOF(DefinedValues))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.and(r.not(r.exists(r.attr(self, "DEFININGVALUES"))), () => r.not(r.exists(r.attr(self, "DEFINEDVALUES")))), () => r.eq(r.sizeof(r.attr(self, "DEFININGVALUES")), r.sizeof(r.attr(self, "DEFINEDVALUES")))) },
-      { label: "WR22", source: "NOT(EXISTS(DefiningValues)) OR (SIZEOF(QUERY(temp <* SELF.DefiningValues | TYPEOF(temp) <> TYPEOF(SELF.DefiningValues[1]) )) = 0)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "DEFININGVALUES"))), () => r.eq(r.sizeof(r.query(r.attr(self, "DEFININGVALUES"), (q215: r.Value) => r.ne(r.typeOf(m, q215), r.typeOf(m, r.index(r.attr(self, "DEFININGVALUES"), 1))))), 0)) },
-      { label: "WR23", source: "NOT(EXISTS(DefinedValues)) OR (SIZEOF(QUERY(temp <* SELF.DefinedValues | TYPEOF(temp) <> TYPEOF(SELF.DefinedValues[1]) )) = 0)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "DEFINEDVALUES"))), () => r.eq(r.sizeof(r.query(r.attr(self, "DEFINEDVALUES"), (q216: r.Value) => r.ne(r.typeOf(m, q216), r.typeOf(m, r.index(r.attr(self, "DEFINEDVALUES"), 1))))), 0)) },
+      { label: "WR22", source: "NOT(EXISTS(DefiningValues)) OR (SIZEOF(QUERY(temp <* SELF.DefiningValues | TYPEOF(temp) <> TYPEOF(SELF.DefiningValues[1]) )) = 0)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "DEFININGVALUES"))), () => r.eq(r.sizeof(r.query(r.attr(self, "DEFININGVALUES"), (q_215: r.Value) => r.ne(r.typeOf(m, q_215), r.typeOf(m, r.index(r.attr(self, "DEFININGVALUES"), 1))))), 0)) },
+      { label: "WR23", source: "NOT(EXISTS(DefinedValues)) OR (SIZEOF(QUERY(temp <* SELF.DefinedValues | TYPEOF(temp) <> TYPEOF(SELF.DefinedValues[1]) )) = 0)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "DEFINEDVALUES"))), () => r.eq(r.sizeof(r.query(r.attr(self, "DEFINEDVALUES"), (q_216: r.Value) => r.ne(r.typeOf(m, q_216), r.typeOf(m, r.index(r.attr(self, "DEFINEDVALUES"), 1))))), 0)) },
     ],
     "IfcProtectiveDevice": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcProtectiveDeviceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcProtectiveDeviceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCPROTECTIVEDEVICETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCPROTECTIVEDEVICETYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcProtectiveDeviceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcProtectiveDeviceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCPROTECTIVEDEVICETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCPROTECTIVEDEVICETYPE")) },
     ],
     "IfcProtectiveDeviceTrippingUnit": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcProtectiveDeviceTrippingUnitTypeEnum.USERDEFINED) OR ((PredefinedType = IfcProtectiveDeviceTrippingUnitTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCPROTECTIVEDEVICETRIPPINGUNITTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCPROTECTIVEDEVICETRIPPINGUNITTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcProtectiveDeviceTrippingUnitTypeEnum.USERDEFINED) OR ((PredefinedType = IfcProtectiveDeviceTrippingUnitTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCPROTECTIVEDEVICETRIPPINGUNITTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCPROTECTIVEDEVICETRIPPINGUNITTYPE")) },
     ],
     "IfcProtectiveDeviceTrippingUnitType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcProtectiveDeviceTrippingUnitTypeEnum.USERDEFINED) OR ((PredefinedType = IfcProtectiveDeviceTrippingUnitTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcProtectiveDeviceTrippingUnitTypeEnum.USERDEFINED) OR ((PredefinedType = IfcProtectiveDeviceTrippingUnitTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcProtectiveDeviceType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcProtectiveDeviceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcProtectiveDeviceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcProtectiveDeviceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcProtectiveDeviceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcProxy": [
-      { label: "WR1", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME")) },
+      { label: "WR1", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME", "IFCROOT")) },
     ],
     "IfcPump": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcPumpTypeEnum.USERDEFINED) OR ((PredefinedType = IfcPumpTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCPUMPTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCPUMPTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcPumpTypeEnum.USERDEFINED) OR ((PredefinedType = IfcPumpTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCPUMPTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCPUMPTYPE")) },
     ],
     "IfcPumpType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcPumpTypeEnum.USERDEFINED) OR ((PredefinedType = IfcPumpTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcPumpTypeEnum.USERDEFINED) OR ((PredefinedType = IfcPumpTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcQuantityArea": [
-      { label: "WR21", source: "NOT(EXISTS(SELF\\IfcPhysicalSimpleQuantity.Unit)) OR (SELF\\IfcPhysicalSimpleQuantity.Unit.UnitType = IfcUnitEnum.AREAUNIT)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "UNIT"))), () => r.eq(r.attr(r.attr(self, "UNIT"), "UNITTYPE"), E_AREAUNIT)) },
+      { label: "WR21", source: "NOT(EXISTS(SELF\\IfcPhysicalSimpleQuantity.Unit)) OR (SELF\\IfcPhysicalSimpleQuantity.Unit.UnitType = IfcUnitEnum.AREAUNIT)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "UNIT", "IFCPHYSICALSIMPLEQUANTITY"))), () => r.eq(r.attr(r.attr(self, "UNIT", "IFCPHYSICALSIMPLEQUANTITY"), "UNITTYPE"), E_AREAUNIT)) },
       { label: "WR22", source: "AreaValue >= 0.", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ge(r.attr(self, "AREAVALUE"), 0) },
     ],
     "IfcQuantityCount": [
       { label: "WR21", source: "CountValue >= 0.", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ge(r.attr(self, "COUNTVALUE"), 0) },
     ],
     "IfcQuantityLength": [
-      { label: "WR21", source: "NOT(EXISTS(SELF\\IfcPhysicalSimpleQuantity.Unit)) OR (SELF\\IfcPhysicalSimpleQuantity.Unit.UnitType = IfcUnitEnum.LENGTHUNIT)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "UNIT"))), () => r.eq(r.attr(r.attr(self, "UNIT"), "UNITTYPE"), E_LENGTHUNIT)) },
+      { label: "WR21", source: "NOT(EXISTS(SELF\\IfcPhysicalSimpleQuantity.Unit)) OR (SELF\\IfcPhysicalSimpleQuantity.Unit.UnitType = IfcUnitEnum.LENGTHUNIT)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "UNIT", "IFCPHYSICALSIMPLEQUANTITY"))), () => r.eq(r.attr(r.attr(self, "UNIT", "IFCPHYSICALSIMPLEQUANTITY"), "UNITTYPE"), E_LENGTHUNIT)) },
       { label: "WR22", source: "LengthValue >= 0.", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ge(r.attr(self, "LENGTHVALUE"), 0) },
     ],
     "IfcQuantityTime": [
-      { label: "WR21", source: "NOT(EXISTS(SELF\\IfcPhysicalSimpleQuantity.Unit)) OR (SELF\\IfcPhysicalSimpleQuantity.Unit.UnitType = IfcUnitEnum.TIMEUNIT)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "UNIT"))), () => r.eq(r.attr(r.attr(self, "UNIT"), "UNITTYPE"), E_TIMEUNIT)) },
+      { label: "WR21", source: "NOT(EXISTS(SELF\\IfcPhysicalSimpleQuantity.Unit)) OR (SELF\\IfcPhysicalSimpleQuantity.Unit.UnitType = IfcUnitEnum.TIMEUNIT)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "UNIT", "IFCPHYSICALSIMPLEQUANTITY"))), () => r.eq(r.attr(r.attr(self, "UNIT", "IFCPHYSICALSIMPLEQUANTITY"), "UNITTYPE"), E_TIMEUNIT)) },
       { label: "WR22", source: "TimeValue >= 0.", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ge(r.attr(self, "TIMEVALUE"), 0) },
     ],
     "IfcQuantityVolume": [
-      { label: "WR21", source: "NOT(EXISTS(SELF\\IfcPhysicalSimpleQuantity.Unit)) OR (SELF\\IfcPhysicalSimpleQuantity.Unit.UnitType = IfcUnitEnum.VOLUMEUNIT)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "UNIT"))), () => r.eq(r.attr(r.attr(self, "UNIT"), "UNITTYPE"), E_VOLUMEUNIT)) },
+      { label: "WR21", source: "NOT(EXISTS(SELF\\IfcPhysicalSimpleQuantity.Unit)) OR (SELF\\IfcPhysicalSimpleQuantity.Unit.UnitType = IfcUnitEnum.VOLUMEUNIT)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "UNIT", "IFCPHYSICALSIMPLEQUANTITY"))), () => r.eq(r.attr(r.attr(self, "UNIT", "IFCPHYSICALSIMPLEQUANTITY"), "UNITTYPE"), E_VOLUMEUNIT)) },
       { label: "WR22", source: "VolumeValue >= 0.", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ge(r.attr(self, "VOLUMEVALUE"), 0) },
     ],
     "IfcQuantityWeight": [
-      { label: "WR21", source: "NOT(EXISTS(SELF\\IfcPhysicalSimpleQuantity.Unit)) OR (SELF\\IfcPhysicalSimpleQuantity.Unit.UnitType = IfcUnitEnum.MASSUNIT)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "UNIT"))), () => r.eq(r.attr(r.attr(self, "UNIT"), "UNITTYPE"), E_MASSUNIT)) },
+      { label: "WR21", source: "NOT(EXISTS(SELF\\IfcPhysicalSimpleQuantity.Unit)) OR (SELF\\IfcPhysicalSimpleQuantity.Unit.UnitType = IfcUnitEnum.MASSUNIT)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "UNIT", "IFCPHYSICALSIMPLEQUANTITY"))), () => r.eq(r.attr(r.attr(self, "UNIT", "IFCPHYSICALSIMPLEQUANTITY"), "UNITTYPE"), E_MASSUNIT)) },
       { label: "WR22", source: "WeightValue >= 0.", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ge(r.attr(self, "WEIGHTVALUE"), 0) },
     ],
     "IfcRailing": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcRailingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcRailingTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCRAILINGTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCRAILINGTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcRailingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcRailingTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCRAILINGTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCRAILINGTYPE")) },
     ],
     "IfcRailingType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcRailingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcRailingTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcRailingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcRailingTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcRamp": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcRampTypeEnum.USERDEFINED) OR ((PredefinedType = IfcRampTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCRAMPTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCRAMPTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcRampTypeEnum.USERDEFINED) OR ((PredefinedType = IfcRampTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCRAMPTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCRAMPTYPE")) },
     ],
     "IfcRampFlight": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcRampFlightTypeEnum.USERDEFINED) OR ((PredefinedType = IfcRampFlightTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCRAMPFLIGHTTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCRAMPFLIGHTTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcRampFlightTypeEnum.USERDEFINED) OR ((PredefinedType = IfcRampFlightTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCRAMPFLIGHTTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCRAMPFLIGHTTYPE")) },
     ],
     "IfcRampFlightType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcRampFlightTypeEnum.USERDEFINED) OR ((PredefinedType = IfcRampFlightTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcRampFlightTypeEnum.USERDEFINED) OR ((PredefinedType = IfcRampFlightTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcRampType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcRampTypeEnum.USERDEFINED) OR ((PredefinedType = IfcRampTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcRampTypeEnum.USERDEFINED) OR ((PredefinedType = IfcRampTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcRationalBSplineCurveWithKnots": [
-      { label: "SameNumOfWeightsAndPoints", source: "SIZEOF(WeightsData) = SIZEOF(SELF\\IfcBSplineCurve.ControlPointsList)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.attr(self, "WEIGHTSDATA")), r.sizeof(r.attr(self, "CONTROLPOINTSLIST"))) },
+      { label: "SameNumOfWeightsAndPoints", source: "SIZEOF(WeightsData) = SIZEOF(SELF\\IfcBSplineCurve.ControlPointsList)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.attr(self, "WEIGHTSDATA")), r.sizeof(r.attr(self, "CONTROLPOINTSLIST", "IFCBSPLINECURVE"))) },
       { label: "WeightsGreaterZero", source: "IfcCurveWeightsPositive(SELF)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcCurveWeightsPositive(m, self) },
     ],
     "IfcRationalBSplineSurfaceWithKnots": [
-      { label: "CorrespondingWeightsDataLists", source: "(SIZEOF(WeightsData) = SIZEOF(SELF\\IfcBSplineSurface.ControlPointsList)) AND (SIZEOF(WeightsData[1]) = SIZEOF(SELF\\IfcBSplineSurface.ControlPointsList[1]))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.eq(r.sizeof(r.attr(self, "WEIGHTSDATA")), r.sizeof(r.attr(self, "CONTROLPOINTSLIST"))), () => r.eq(r.sizeof(r.index(r.attr(self, "WEIGHTSDATA"), 1)), r.sizeof(r.index(r.attr(self, "CONTROLPOINTSLIST"), 1)))) },
+      { label: "CorrespondingWeightsDataLists", source: "(SIZEOF(WeightsData) = SIZEOF(SELF\\IfcBSplineSurface.ControlPointsList)) AND (SIZEOF(WeightsData[1]) = SIZEOF(SELF\\IfcBSplineSurface.ControlPointsList[1]))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.eq(r.sizeof(r.attr(self, "WEIGHTSDATA")), r.sizeof(r.attr(self, "CONTROLPOINTSLIST", "IFCBSPLINESURFACE"))), () => r.eq(r.sizeof(r.index(r.attr(self, "WEIGHTSDATA"), 1)), r.sizeof(r.index(r.attr(self, "CONTROLPOINTSLIST", "IFCBSPLINESURFACE"), 1)))) },
       { label: "WeightValuesGreaterZero", source: "IfcSurfaceWeightsPositive(SELF)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcSurfaceWeightsPositive(m, self) },
     ],
     "IfcRectangleHollowProfileDef": [
-      { label: "ValidWallThickness", source: "(WallThickness < (SELF\\IfcRectangleProfileDef.XDim/2.)) AND (WallThickness < (SELF\\IfcRectangleProfileDef.YDim/2.))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.lt(r.attr(self, "WALLTHICKNESS"), r.div(r.attr(self, "XDIM"), 2)), () => r.lt(r.attr(self, "WALLTHICKNESS"), r.div(r.attr(self, "YDIM"), 2))) },
-      { label: "ValidInnerRadius", source: "NOT(EXISTS(InnerFilletRadius)) OR ((InnerFilletRadius <= (SELF\\IfcRectangleProfileDef.XDim/2. - WallThickness)) AND (InnerFilletRadius <= (SELF\\IfcRectangleProfileDef.YDim/2. - WallThickness)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "INNERFILLETRADIUS"))), () => r.and(r.le(r.attr(self, "INNERFILLETRADIUS"), r.sub(r.div(r.attr(self, "XDIM"), 2), r.attr(self, "WALLTHICKNESS"))), () => r.le(r.attr(self, "INNERFILLETRADIUS"), r.sub(r.div(r.attr(self, "YDIM"), 2), r.attr(self, "WALLTHICKNESS"))))) },
-      { label: "ValidOuterRadius", source: "NOT(EXISTS(OuterFilletRadius)) OR ((OuterFilletRadius <= (SELF\\IfcRectangleProfileDef.XDim/2.)) AND (OuterFilletRadius <= (SELF\\IfcRectangleProfileDef.YDim/2.)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "OUTERFILLETRADIUS"))), () => r.and(r.le(r.attr(self, "OUTERFILLETRADIUS"), r.div(r.attr(self, "XDIM"), 2)), () => r.le(r.attr(self, "OUTERFILLETRADIUS"), r.div(r.attr(self, "YDIM"), 2)))) },
+      { label: "ValidWallThickness", source: "(WallThickness < (SELF\\IfcRectangleProfileDef.XDim/2.)) AND (WallThickness < (SELF\\IfcRectangleProfileDef.YDim/2.))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.lt(r.attr(self, "WALLTHICKNESS"), r.div(r.attr(self, "XDIM", "IFCRECTANGLEPROFILEDEF"), 2)), () => r.lt(r.attr(self, "WALLTHICKNESS"), r.div(r.attr(self, "YDIM", "IFCRECTANGLEPROFILEDEF"), 2))) },
+      { label: "ValidInnerRadius", source: "NOT(EXISTS(InnerFilletRadius)) OR ((InnerFilletRadius <= (SELF\\IfcRectangleProfileDef.XDim/2. - WallThickness)) AND (InnerFilletRadius <= (SELF\\IfcRectangleProfileDef.YDim/2. - WallThickness)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "INNERFILLETRADIUS"))), () => r.and(r.le(r.attr(self, "INNERFILLETRADIUS"), r.sub(r.div(r.attr(self, "XDIM", "IFCRECTANGLEPROFILEDEF"), 2), r.attr(self, "WALLTHICKNESS"))), () => r.le(r.attr(self, "INNERFILLETRADIUS"), r.sub(r.div(r.attr(self, "YDIM", "IFCRECTANGLEPROFILEDEF"), 2), r.attr(self, "WALLTHICKNESS"))))) },
+      { label: "ValidOuterRadius", source: "NOT(EXISTS(OuterFilletRadius)) OR ((OuterFilletRadius <= (SELF\\IfcRectangleProfileDef.XDim/2.)) AND (OuterFilletRadius <= (SELF\\IfcRectangleProfileDef.YDim/2.)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "OUTERFILLETRADIUS"))), () => r.and(r.le(r.attr(self, "OUTERFILLETRADIUS"), r.div(r.attr(self, "XDIM", "IFCRECTANGLEPROFILEDEF"), 2)), () => r.le(r.attr(self, "OUTERFILLETRADIUS"), r.div(r.attr(self, "YDIM", "IFCRECTANGLEPROFILEDEF"), 2)))) },
     ],
     "IfcRectangularTrimmedSurface": [
       { label: "U1AndU2Different", source: "U1 <> U2", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ne(r.attr(self, "U1"), r.attr(self, "U2")) },
@@ -2471,76 +2471,76 @@ export const RULES: r.CompiledRules = {
       { label: "VsenseCompatible", source: "Vsense = (V2 > V1)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(self, "VSENSE"), r.gt(r.attr(self, "V2"), r.attr(self, "V1"))) },
     ],
     "IfcReinforcingBar": [
-      { label: "CorrectPredefinedType", source: "NOT EXISTS(PredefinedType) OR (PredefinedType <> IfcReinforcingBarTypeEnum.USERDEFINED) OR ((PredefinedType = IfcReinforcingBarTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCREINFORCINGBARTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCREINFORCINGBARTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT EXISTS(PredefinedType) OR (PredefinedType <> IfcReinforcingBarTypeEnum.USERDEFINED) OR ((PredefinedType = IfcReinforcingBarTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCREINFORCINGBARTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCREINFORCINGBARTYPE")) },
     ],
     "IfcReinforcingBarType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcReinforcingBarTypeEnum.USERDEFINED) OR ((PredefinedType = IfcReinforcingBarTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcReinforcingBarTypeEnum.USERDEFINED) OR ((PredefinedType = IfcReinforcingBarTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
       { label: "BendingShapeCodeProvided", source: "NOT EXISTS(BendingParameters) OR EXISTS(BendingShapeCode)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "BENDINGPARAMETERS"))), () => r.exists(r.attr(self, "BENDINGSHAPECODE"))) },
     ],
     "IfcReinforcingMesh": [
-      { label: "CorrectPredefinedType", source: "NOT EXISTS(PredefinedType) OR (PredefinedType <> IfcReinforcingMeshTypeEnum.USERDEFINED) OR ((PredefinedType = IfcReinforcingMeshTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCREINFORCINGMESHTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCREINFORCINGMESHTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT EXISTS(PredefinedType) OR (PredefinedType <> IfcReinforcingMeshTypeEnum.USERDEFINED) OR ((PredefinedType = IfcReinforcingMeshTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCREINFORCINGMESHTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCREINFORCINGMESHTYPE")) },
     ],
     "IfcReinforcingMeshType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcReinforcingMeshTypeEnum.USERDEFINED) OR ((PredefinedType = IfcReinforcingMeshTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcReinforcingMeshTypeEnum.USERDEFINED) OR ((PredefinedType = IfcReinforcingMeshTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
       { label: "BendingShapeCodeProvided", source: "NOT EXISTS(BendingParameters) OR EXISTS(BendingShapeCode)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "BENDINGPARAMETERS"))), () => r.exists(r.attr(self, "BENDINGSHAPECODE"))) },
     ],
     "IfcRelAggregates": [
-      { label: "NoSelfReference", source: "SIZEOF(QUERY(Temp <* RelatedObjects | RelatingObject :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS"), (q217: r.Value) => r.same(r.attr(self, "RELATINGOBJECT"), q217))), 0) },
+      { label: "NoSelfReference", source: "SIZEOF(QUERY(Temp <* RelatedObjects | RelatingObject :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS"), (q_217: r.Value) => r.same(r.attr(self, "RELATINGOBJECT"), q_217))), 0) },
     ],
     "IfcRelAssigns": [
       { label: "WR1", source: "IfcCorrectObjectAssignment(RelatedObjectsType, RelatedObjects)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcCorrectObjectAssignment(m, r.attr(self, "RELATEDOBJECTSTYPE"), r.attr(self, "RELATEDOBJECTS")) },
     ],
     "IfcRelAssignsToActor": [
-      { label: "NoSelfReference", source: "SIZEOF(QUERY(Temp <* SELF\\IfcRelAssigns.RelatedObjects | RelatingActor :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS"), (q218: r.Value) => r.same(r.attr(self, "RELATINGACTOR"), q218))), 0) },
+      { label: "NoSelfReference", source: "SIZEOF(QUERY(Temp <* SELF\\IfcRelAssigns.RelatedObjects | RelatingActor :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS", "IFCRELASSIGNS"), (q_218: r.Value) => r.same(r.attr(self, "RELATINGACTOR"), q_218))), 0) },
     ],
     "IfcRelAssignsToControl": [
-      { label: "NoSelfReference", source: "SIZEOF(QUERY(Temp <* SELF\\IfcRelAssigns.RelatedObjects | RelatingControl :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS"), (q219: r.Value) => r.same(r.attr(self, "RELATINGCONTROL"), q219))), 0) },
+      { label: "NoSelfReference", source: "SIZEOF(QUERY(Temp <* SELF\\IfcRelAssigns.RelatedObjects | RelatingControl :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS", "IFCRELASSIGNS"), (q_219: r.Value) => r.same(r.attr(self, "RELATINGCONTROL"), q_219))), 0) },
     ],
     "IfcRelAssignsToGroup": [
-      { label: "NoSelfReference", source: "SIZEOF(QUERY(Temp <* SELF\\IfcRelAssigns.RelatedObjects | RelatingGroup :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS"), (q220: r.Value) => r.same(r.attr(self, "RELATINGGROUP"), q220))), 0) },
+      { label: "NoSelfReference", source: "SIZEOF(QUERY(Temp <* SELF\\IfcRelAssigns.RelatedObjects | RelatingGroup :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS", "IFCRELASSIGNS"), (q_220: r.Value) => r.same(r.attr(self, "RELATINGGROUP"), q_220))), 0) },
     ],
     "IfcRelAssignsToProcess": [
-      { label: "NoSelfReference", source: "SIZEOF(QUERY(Temp <* SELF\\IfcRelAssigns.RelatedObjects | RelatingProcess :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS"), (q221: r.Value) => r.same(r.attr(self, "RELATINGPROCESS"), q221))), 0) },
+      { label: "NoSelfReference", source: "SIZEOF(QUERY(Temp <* SELF\\IfcRelAssigns.RelatedObjects | RelatingProcess :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS", "IFCRELASSIGNS"), (q_221: r.Value) => r.same(r.attr(self, "RELATINGPROCESS"), q_221))), 0) },
     ],
     "IfcRelAssignsToProduct": [
-      { label: "NoSelfReference", source: "SIZEOF(QUERY(Temp <* SELF\\IfcRelAssigns.RelatedObjects | RelatingProduct :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS"), (q222: r.Value) => r.same(r.attr(self, "RELATINGPRODUCT"), q222))), 0) },
+      { label: "NoSelfReference", source: "SIZEOF(QUERY(Temp <* SELF\\IfcRelAssigns.RelatedObjects | RelatingProduct :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS", "IFCRELASSIGNS"), (q_222: r.Value) => r.same(r.attr(self, "RELATINGPRODUCT"), q_222))), 0) },
     ],
     "IfcRelAssignsToResource": [
-      { label: "NoSelfReference", source: "SIZEOF(QUERY(Temp <* SELF\\IfcRelAssigns.RelatedObjects | RelatingResource :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS"), (q223: r.Value) => r.same(r.attr(self, "RELATINGRESOURCE"), q223))), 0) },
+      { label: "NoSelfReference", source: "SIZEOF(QUERY(Temp <* SELF\\IfcRelAssigns.RelatedObjects | RelatingResource :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS", "IFCRELASSIGNS"), (q_223: r.Value) => r.same(r.attr(self, "RELATINGRESOURCE"), q_223))), 0) },
     ],
     "IfcRelAssociatesMaterial": [
-      { label: "NoVoidElement", source: "SIZEOF(QUERY(temp <* SELF\\IfcRelAssociates.RelatedObjects | ('IFC4.IFCFEATUREELEMENTSUBTRACTION' IN TYPEOF(temp)) OR ('IFC4.IFCVIRTUALELEMENT' IN TYPEOF(temp)) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS"), (q224: r.Value) => r.or(r.typeIs(m, q224, "IFCFEATUREELEMENTSUBTRACTION"), () => r.typeIs(m, q224, "IFCVIRTUALELEMENT")))), 0) },
-      { label: "AllowedElements", source: "SIZEOF(QUERY(temp <* SELF\\IfcRelAssociates.RelatedObjects | ( SIZEOF(TYPEOF(temp) * [ 'IFC4.IFCELEMENT', 'IFC4.IFCELEMENTTYPE', 'IFC4.IFCWINDOWSTYLE', 'IFC4.IFCDOORSTYLE', 'IFC4.IFCSTRUCTURALMEMBER', 'IFC4.IFCPORT']) = 0) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS"), (q225: r.Value) => r.eq(r.sizeof(r.mul(r.typeOf(m, q225), r.aggregate([["IFC4.IFCELEMENT"], ["IFC4.IFCELEMENTTYPE"], ["IFC4.IFCWINDOWSTYLE"], ["IFC4.IFCDOORSTYLE"], ["IFC4.IFCSTRUCTURALMEMBER"], ["IFC4.IFCPORT"]]))), 0))), 0) },
+      { label: "NoVoidElement", source: "SIZEOF(QUERY(temp <* SELF\\IfcRelAssociates.RelatedObjects | ('IFC4.IFCFEATUREELEMENTSUBTRACTION' IN TYPEOF(temp)) OR ('IFC4.IFCVIRTUALELEMENT' IN TYPEOF(temp)) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS", "IFCRELASSOCIATES"), (q_224: r.Value) => r.or(r.typeIs(m, q_224, "IFCFEATUREELEMENTSUBTRACTION"), () => r.typeIs(m, q_224, "IFCVIRTUALELEMENT")))), 0) },
+      { label: "AllowedElements", source: "SIZEOF(QUERY(temp <* SELF\\IfcRelAssociates.RelatedObjects | ( SIZEOF(TYPEOF(temp) * [ 'IFC4.IFCELEMENT', 'IFC4.IFCELEMENTTYPE', 'IFC4.IFCWINDOWSTYLE', 'IFC4.IFCDOORSTYLE', 'IFC4.IFCSTRUCTURALMEMBER', 'IFC4.IFCPORT']) = 0) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS", "IFCRELASSOCIATES"), (q_225: r.Value) => r.eq(r.sizeof(r.mul(r.typeOf(m, q_225), r.aggregate([["IFC4.IFCELEMENT"], ["IFC4.IFCELEMENTTYPE"], ["IFC4.IFCWINDOWSTYLE"], ["IFC4.IFCDOORSTYLE"], ["IFC4.IFCSTRUCTURALMEMBER"], ["IFC4.IFCPORT"]]))), 0))), 0) },
     ],
     "IfcRelConnectsElements": [
       { label: "NoSelfReference", source: "RelatingElement :<>: RelatedElement", check: (self: r.EntityInstance, m: r.Model): r.Value => r.notSame(r.attr(self, "RELATINGELEMENT"), r.attr(self, "RELATEDELEMENT")) },
     ],
     "IfcRelConnectsPathElements": [
-      { label: "NormalizedRelatingPriorities", source: "(SIZEOF(RelatingPriorities) = 0) OR (SIZEOF (QUERY (temp <* RelatingPriorities | {0 <= temp <= 100} )) = SIZEOF(RelatingPriorities))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "RELATINGPRIORITIES")), 0), () => r.eq(r.sizeof(r.query(r.attr(self, "RELATINGPRIORITIES"), (q226: r.Value) => r.interval(0, '<=', q226, '<=', 100))), r.sizeof(r.attr(self, "RELATINGPRIORITIES")))) },
-      { label: "NormalizedRelatedPriorities", source: "(SIZEOF(RelatedPriorities) = 0) OR (SIZEOF (QUERY (temp <* RelatedPriorities | {0 <= temp <= 100} )) = SIZEOF(RelatedPriorities))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "RELATEDPRIORITIES")), 0), () => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDPRIORITIES"), (q227: r.Value) => r.interval(0, '<=', q227, '<=', 100))), r.sizeof(r.attr(self, "RELATEDPRIORITIES")))) },
+      { label: "NormalizedRelatingPriorities", source: "(SIZEOF(RelatingPriorities) = 0) OR (SIZEOF (QUERY (temp <* RelatingPriorities | {0 <= temp <= 100} )) = SIZEOF(RelatingPriorities))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "RELATINGPRIORITIES")), 0), () => r.eq(r.sizeof(r.query(r.attr(self, "RELATINGPRIORITIES"), (q_226: r.Value) => r.interval(0, '<=', q_226, '<=', 100))), r.sizeof(r.attr(self, "RELATINGPRIORITIES")))) },
+      { label: "NormalizedRelatedPriorities", source: "(SIZEOF(RelatedPriorities) = 0) OR (SIZEOF (QUERY (temp <* RelatedPriorities | {0 <= temp <= 100} )) = SIZEOF(RelatedPriorities))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "RELATEDPRIORITIES")), 0), () => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDPRIORITIES"), (q_227: r.Value) => r.interval(0, '<=', q_227, '<=', 100))), r.sizeof(r.attr(self, "RELATEDPRIORITIES")))) },
     ],
     "IfcRelConnectsPorts": [
       { label: "NoSelfReference", source: "RelatingPort :<>: RelatedPort", check: (self: r.EntityInstance, m: r.Model): r.Value => r.notSame(r.attr(self, "RELATINGPORT"), r.attr(self, "RELATEDPORT")) },
     ],
     "IfcRelContainedInSpatialStructure": [
-      { label: "WR31", source: "SIZEOF(QUERY(temp <* RelatedElements | 'IFC4.IFCSPATIALSTRUCTUREELEMENT' IN TYPEOF(temp))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDELEMENTS"), (q228: r.Value) => r.typeIs(m, q228, "IFCSPATIALSTRUCTUREELEMENT"))), 0) },
+      { label: "WR31", source: "SIZEOF(QUERY(temp <* RelatedElements | 'IFC4.IFCSPATIALSTRUCTUREELEMENT' IN TYPEOF(temp))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDELEMENTS"), (q_228: r.Value) => r.typeIs(m, q_228, "IFCSPATIALSTRUCTUREELEMENT"))), 0) },
     ],
     "IfcRelDeclares": [
-      { label: "NoSelfReference", source: "SIZEOF(QUERY(Temp <* RelatedDefinitions | RelatingContext :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDDEFINITIONS"), (q229: r.Value) => r.same(r.attr(self, "RELATINGCONTEXT"), q229))), 0) },
+      { label: "NoSelfReference", source: "SIZEOF(QUERY(Temp <* RelatedDefinitions | RelatingContext :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDDEFINITIONS"), (q_229: r.Value) => r.same(r.attr(self, "RELATINGCONTEXT"), q_229))), 0) },
     ],
     "IfcRelDefinesByProperties": [
-      { label: "NoRelatedTypeObject", source: "SIZEOF(QUERY(Types <* SELF\\IfcRelDefinesByProperties.RelatedObjects | 'IFC4.IFCTYPEOBJECT' IN TYPEOF(Types))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS"), (q230: r.Value) => r.typeIs(m, q230, "IFCTYPEOBJECT"))), 0) },
+      { label: "NoRelatedTypeObject", source: "SIZEOF(QUERY(Types <* SELF\\IfcRelDefinesByProperties.RelatedObjects | 'IFC4.IFCTYPEOBJECT' IN TYPEOF(Types))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS", "IFCRELDEFINESBYPROPERTIES"), (q_230: r.Value) => r.typeIs(m, q_230, "IFCTYPEOBJECT"))), 0) },
     ],
     "IfcRelInterferesElements": [
       { label: "NotSelfReference", source: "RelatingElement :<>: RelatedElement", check: (self: r.EntityInstance, m: r.Model): r.Value => r.notSame(r.attr(self, "RELATINGELEMENT"), r.attr(self, "RELATEDELEMENT")) },
     ],
     "IfcRelNests": [
-      { label: "NoSelfReference", source: "SIZEOF(QUERY(Temp <* RelatedObjects | RelatingObject :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS"), (q231: r.Value) => r.same(r.attr(self, "RELATINGOBJECT"), q231))), 0) },
+      { label: "NoSelfReference", source: "SIZEOF(QUERY(Temp <* RelatedObjects | RelatingObject :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS"), (q_231: r.Value) => r.same(r.attr(self, "RELATINGOBJECT"), q_231))), 0) },
     ],
     "IfcRelReferencedInSpatialStructure": [
-      { label: "AllowedRelatedElements", source: "SIZEOF(QUERY(temp <* RelatedElements | ('IFC4.IFCSPATIALSTRUCTUREELEMENT' IN TYPEOF(temp)) AND (NOT ('IFC4.IFCSPACE' IN TYPEOF(temp))) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDELEMENTS"), (q232: r.Value) => r.and(r.typeIs(m, q232, "IFCSPATIALSTRUCTUREELEMENT"), () => r.not(r.typeIs(m, q232, "IFCSPACE"))))), 0) },
+      { label: "AllowedRelatedElements", source: "SIZEOF(QUERY(temp <* RelatedElements | ('IFC4.IFCSPATIALSTRUCTUREELEMENT' IN TYPEOF(temp)) AND (NOT ('IFC4.IFCSPACE' IN TYPEOF(temp))) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDELEMENTS"), (q_232: r.Value) => r.and(r.typeIs(m, q_232, "IFCSPATIALSTRUCTUREELEMENT"), () => r.not(r.typeIs(m, q_232, "IFCSPACE"))))), 0) },
     ],
     "IfcRelSequence": [
       { label: "AvoidInconsistentSequence", source: "RelatingProcess :<>: RelatedProcess", check: (self: r.EntityInstance, m: r.Model): r.Value => r.notSame(r.attr(self, "RELATINGPROCESS"), r.attr(self, "RELATEDPROCESS")) },
@@ -2560,185 +2560,185 @@ export const RULES: r.CompiledRules = {
       { label: "AxisDirectionInXY", source: "Axis.Z.DirectionRatios[3] = 0.0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.index(r.attr(r.attr(r.attr(self, "AXIS"), "Z"), "DIRECTIONRATIOS"), 3), 0) },
     ],
     "IfcRevolvedAreaSolidTapered": [
-      { label: "CorrectProfileAssignment", source: "IfcTaperedSweptAreaProfiles(SELF\\IfcSweptAreaSolid.SweptArea, SELF.EndSweptArea)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcTaperedSweptAreaProfiles(m, r.attr(self, "SWEPTAREA"), r.attr(self, "ENDSWEPTAREA")) },
+      { label: "CorrectProfileAssignment", source: "IfcTaperedSweptAreaProfiles(SELF\\IfcSweptAreaSolid.SweptArea, SELF.EndSweptArea)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcTaperedSweptAreaProfiles(m, r.attr(self, "SWEPTAREA", "IFCSWEPTAREASOLID"), r.attr(self, "ENDSWEPTAREA")) },
     ],
     "IfcRoof": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcRoofTypeEnum.USERDEFINED) OR ((PredefinedType = IfcRoofTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCROOFTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCROOFTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcRoofTypeEnum.USERDEFINED) OR ((PredefinedType = IfcRoofTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCROOFTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCROOFTYPE")) },
     ],
     "IfcRoofType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcRoofTypeEnum.USERDEFINED) OR ((PredefinedType = IfcRoofTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcRoofTypeEnum.USERDEFINED) OR ((PredefinedType = IfcRoofTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcRoundedRectangleProfileDef": [
-      { label: "ValidRadius", source: "((RoundingRadius <= (SELF\\IfcRectangleProfileDef.XDim/2.)) AND (RoundingRadius <= (SELF\\IfcRectangleProfileDef.YDim/2.)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.le(r.attr(self, "ROUNDINGRADIUS"), r.div(r.attr(self, "XDIM"), 2)), () => r.le(r.attr(self, "ROUNDINGRADIUS"), r.div(r.attr(self, "YDIM"), 2))) },
+      { label: "ValidRadius", source: "((RoundingRadius <= (SELF\\IfcRectangleProfileDef.XDim/2.)) AND (RoundingRadius <= (SELF\\IfcRectangleProfileDef.YDim/2.)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.le(r.attr(self, "ROUNDINGRADIUS"), r.div(r.attr(self, "XDIM", "IFCRECTANGLEPROFILEDEF"), 2)), () => r.le(r.attr(self, "ROUNDINGRADIUS"), r.div(r.attr(self, "YDIM", "IFCRECTANGLEPROFILEDEF"), 2))) },
     ],
     "IfcSanitaryTerminal": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcSanitaryTerminalTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSanitaryTerminalTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCSANITARYTERMINALTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCSANITARYTERMINALTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcSanitaryTerminalTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSanitaryTerminalTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCSANITARYTERMINALTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCSANITARYTERMINALTYPE")) },
     ],
     "IfcSanitaryTerminalType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcSanitaryTerminalTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSanitaryTerminalTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcSanitaryTerminalTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSanitaryTerminalTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcSeamCurve": [
-      { label: "TwoPCurves", source: "SIZEOF(SELF\\IfcSurfaceCurve.AssociatedGeometry) = 2", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.attr(self, "ASSOCIATEDGEOMETRY")), 2) },
-      { label: "SameSurface", source: "IfcAssociatedSurface(SELF\\IfcSurfaceCurve.AssociatedGeometry[1]) = IfcAssociatedSurface(SELF\\IfcSurfaceCurve.AssociatedGeometry[2])", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(fn_IfcAssociatedSurface(m, r.index(r.attr(self, "ASSOCIATEDGEOMETRY"), 1)), fn_IfcAssociatedSurface(m, r.index(r.attr(self, "ASSOCIATEDGEOMETRY"), 2))) },
+      { label: "TwoPCurves", source: "SIZEOF(SELF\\IfcSurfaceCurve.AssociatedGeometry) = 2", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.attr(self, "ASSOCIATEDGEOMETRY", "IFCSURFACECURVE")), 2) },
+      { label: "SameSurface", source: "IfcAssociatedSurface(SELF\\IfcSurfaceCurve.AssociatedGeometry[1]) = IfcAssociatedSurface(SELF\\IfcSurfaceCurve.AssociatedGeometry[2])", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(fn_IfcAssociatedSurface(m, r.index(r.attr(self, "ASSOCIATEDGEOMETRY", "IFCSURFACECURVE"), 1)), fn_IfcAssociatedSurface(m, r.index(r.attr(self, "ASSOCIATEDGEOMETRY", "IFCSURFACECURVE"), 2))) },
     ],
     "IfcSectionedSpine": [
       { label: "CorrespondingSectionPositions", source: "SIZEOF(CrossSections) = SIZEOF(CrossSectionPositions)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.attr(self, "CROSSSECTIONS")), r.sizeof(r.attr(self, "CROSSSECTIONPOSITIONS"))) },
-      { label: "ConsistentProfileTypes", source: "SIZEOF(QUERY(temp <* CrossSections | CrossSections[1].ProfileType <> temp.ProfileType)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "CROSSSECTIONS"), (q233: r.Value) => r.ne(r.attr(r.index(r.attr(self, "CROSSSECTIONS"), 1), "PROFILETYPE"), r.attr(q233, "PROFILETYPE")))), 0) },
+      { label: "ConsistentProfileTypes", source: "SIZEOF(QUERY(temp <* CrossSections | CrossSections[1].ProfileType <> temp.ProfileType)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "CROSSSECTIONS"), (q_233: r.Value) => r.ne(r.attr(r.index(r.attr(self, "CROSSSECTIONS"), 1), "PROFILETYPE"), r.attr(q_233, "PROFILETYPE")))), 0) },
       { label: "SpineCurveDim", source: "SpineCurve.Dim = 3", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(r.attr(self, "SPINECURVE"), "DIM"), 3) },
     ],
     "IfcSensor": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcSensorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSensorTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCSENSORTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCSENSORTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcSensorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSensorTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCSENSORTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCSENSORTYPE")) },
     ],
     "IfcSensorType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcSensorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSensorTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcSensorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSensorTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcShadingDevice": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcShadingDeviceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcShadingDeviceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCSHADINGDEVICETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCSHADINGDEVICETYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcShadingDeviceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcShadingDeviceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCSHADINGDEVICETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCSHADINGDEVICETYPE")) },
     ],
     "IfcShadingDeviceType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcShadingDeviceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcShadingDeviceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcShadingDeviceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcShadingDeviceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcShapeModel": [
-      { label: "WR11", source: "(SIZEOF(SELF\\IfcRepresentation.OfProductRepresentation) = 1) XOR (SIZEOF(SELF\\IfcRepresentation.RepresentationMap) = 1) XOR (SIZEOF(OfShapeAspect) = 1)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.xor(r.xor(r.eq(r.sizeof(r.attr(self, "OFPRODUCTREPRESENTATION")), 1), r.eq(r.sizeof(r.attr(self, "REPRESENTATIONMAP")), 1)), r.eq(r.sizeof(r.attr(self, "OFSHAPEASPECT")), 1)) },
+      { label: "WR11", source: "(SIZEOF(SELF\\IfcRepresentation.OfProductRepresentation) = 1) XOR (SIZEOF(SELF\\IfcRepresentation.RepresentationMap) = 1) XOR (SIZEOF(OfShapeAspect) = 1)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.xor(r.xor(r.eq(r.sizeof(r.attr(self, "OFPRODUCTREPRESENTATION", "IFCREPRESENTATION")), 1), r.eq(r.sizeof(r.attr(self, "REPRESENTATIONMAP", "IFCREPRESENTATION")), 1)), r.eq(r.sizeof(r.attr(self, "OFSHAPEASPECT")), 1)) },
     ],
     "IfcShapeRepresentation": [
-      { label: "CorrectContext", source: "'IFC4.IFCGEOMETRICREPRESENTATIONCONTEXT' IN TYPEOF(SELF\\IfcRepresentation.ContextOfItems)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.typeIs(m, r.attr(self, "CONTEXTOFITEMS"), "IFCGEOMETRICREPRESENTATIONCONTEXT") },
-      { label: "NoTopologicalItem", source: "SIZEOF(QUERY(temp <* Items | ('IFC4.IFCTOPOLOGICALREPRESENTATIONITEM' IN TYPEOF(temp)) AND (NOT(SIZEOF( ['IFC4.IFCVERTEXPOINT', 'IFC4.IFCEDGECURVE', 'IFC4.IFCFACESURFACE'] * TYPEOF(temp)) = 1)) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ITEMS"), (q234: r.Value) => r.and(r.typeIs(m, q234, "IFCTOPOLOGICALREPRESENTATIONITEM"), () => r.not(r.eq(r.sizeof(r.mul(r.aggregate([["IFC4.IFCVERTEXPOINT"], ["IFC4.IFCEDGECURVE"], ["IFC4.IFCFACESURFACE"]]), r.typeOf(m, q234))), 1))))), 0) },
-      { label: "HasRepresentationType", source: "EXISTS(SELF\\IfcRepresentation.RepresentationType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "REPRESENTATIONTYPE")) },
-      { label: "HasRepresentationIdentifier", source: "EXISTS(SELF\\IfcRepresentation.RepresentationIdentifier)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "REPRESENTATIONIDENTIFIER")) },
-      { label: "CorrectItemsForType", source: "IfcShapeRepresentationTypes(SELF\\IfcRepresentation.RepresentationType, SELF\\IfcRepresentation.Items)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcShapeRepresentationTypes(m, r.attr(self, "REPRESENTATIONTYPE"), r.attr(self, "ITEMS")) },
+      { label: "CorrectContext", source: "'IFC4.IFCGEOMETRICREPRESENTATIONCONTEXT' IN TYPEOF(SELF\\IfcRepresentation.ContextOfItems)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.typeIs(m, r.attr(self, "CONTEXTOFITEMS", "IFCREPRESENTATION"), "IFCGEOMETRICREPRESENTATIONCONTEXT") },
+      { label: "NoTopologicalItem", source: "SIZEOF(QUERY(temp <* Items | ('IFC4.IFCTOPOLOGICALREPRESENTATIONITEM' IN TYPEOF(temp)) AND (NOT(SIZEOF( ['IFC4.IFCVERTEXPOINT', 'IFC4.IFCEDGECURVE', 'IFC4.IFCFACESURFACE'] * TYPEOF(temp)) = 1)) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ITEMS"), (q_234: r.Value) => r.and(r.typeIs(m, q_234, "IFCTOPOLOGICALREPRESENTATIONITEM"), () => r.not(r.eq(r.sizeof(r.mul(r.aggregate([["IFC4.IFCVERTEXPOINT"], ["IFC4.IFCEDGECURVE"], ["IFC4.IFCFACESURFACE"]]), r.typeOf(m, q_234))), 1))))), 0) },
+      { label: "HasRepresentationType", source: "EXISTS(SELF\\IfcRepresentation.RepresentationType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "REPRESENTATIONTYPE", "IFCREPRESENTATION")) },
+      { label: "HasRepresentationIdentifier", source: "EXISTS(SELF\\IfcRepresentation.RepresentationIdentifier)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "REPRESENTATIONIDENTIFIER", "IFCREPRESENTATION")) },
+      { label: "CorrectItemsForType", source: "IfcShapeRepresentationTypes(SELF\\IfcRepresentation.RepresentationType, SELF\\IfcRepresentation.Items)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcShapeRepresentationTypes(m, r.attr(self, "REPRESENTATIONTYPE", "IFCREPRESENTATION"), r.attr(self, "ITEMS", "IFCREPRESENTATION")) },
     ],
     "IfcSlab": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcSlabTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSlabTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCSLABTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCSLABTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcSlabTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSlabTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCSLABTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCSLABTYPE")) },
     ],
     "IfcSlabElementedCase": [
-      { label: "HasDecomposition", source: "HIINDEX(SELF\\IfcObjectDefinition.IsDecomposedBy) > 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.gt(r.hiindex(r.attr(self, "ISDECOMPOSEDBY")), 0) },
+      { label: "HasDecomposition", source: "HIINDEX(SELF\\IfcObjectDefinition.IsDecomposedBy) > 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.gt(r.hiindex(r.attr(self, "ISDECOMPOSEDBY", "IFCOBJECTDEFINITION")), 0) },
     ],
     "IfcSlabStandardCase": [
-      { label: "HasMaterialLayerSetusage", source: "SIZEOF (QUERY(temp <* USEDIN(SELF, 'IFC4.IFCRELASSOCIATES.RELATEDOBJECTS') | ('IFC4.IFCRELASSOCIATESMATERIAL' IN TYPEOF(temp)) AND ('IFC4.IFCMATERIALLAYERSETUSAGE' IN TYPEOF(temp.RelatingMaterial)) )) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.usedIn(m, self, "IFC4.IFCRELASSOCIATES.RELATEDOBJECTS"), (q235: r.Value) => r.and(r.typeIs(m, q235, "IFCRELASSOCIATESMATERIAL"), () => r.typeIs(m, r.attr(q235, "RELATINGMATERIAL"), "IFCMATERIALLAYERSETUSAGE")))), 1) },
+      { label: "HasMaterialLayerSetusage", source: "SIZEOF (QUERY(temp <* USEDIN(SELF, 'IFC4.IFCRELASSOCIATES.RELATEDOBJECTS') | ('IFC4.IFCRELASSOCIATESMATERIAL' IN TYPEOF(temp)) AND ('IFC4.IFCMATERIALLAYERSETUSAGE' IN TYPEOF(temp.RelatingMaterial)) )) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.usedIn(m, self, "IFC4.IFCRELASSOCIATES.RELATEDOBJECTS"), (q_235: r.Value) => r.and(r.typeIs(m, q_235, "IFCRELASSOCIATESMATERIAL"), () => r.typeIs(m, r.attr(q_235, "RELATINGMATERIAL"), "IFCMATERIALLAYERSETUSAGE")))), 1) },
     ],
     "IfcSlabType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcSlabTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSlabTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcSlabTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSlabTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcSolarDevice": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcSolarDeviceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSolarDeviceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCSOLARDEVICETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCSOLARDEVICETYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcSolarDeviceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSolarDeviceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCSOLARDEVICETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCSOLARDEVICETYPE")) },
     ],
     "IfcSolarDeviceType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcSolarDeviceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSolarDeviceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcSolarDeviceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSolarDeviceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcSpace": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcSpaceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSpaceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCSPACETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCSPACETYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcSpaceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSpaceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCSPACETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCSPACETYPE")) },
     ],
     "IfcSpaceHeater": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcSpaceHeaterTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSpaceHeaterTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCSPACEHEATERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCSPACEHEATERTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcSpaceHeaterTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSpaceHeaterTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCSPACEHEATERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCSPACEHEATERTYPE")) },
     ],
     "IfcSpaceHeaterType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcSpaceHeaterTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSpaceHeaterTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcSpaceHeaterTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSpaceHeaterTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcSpaceType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcSpaceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSpaceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcSpatialElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcSpaceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSpaceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcSpatialElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCSPATIALELEMENTTYPE")))) },
     ],
     "IfcSpatialStructureElement": [
-      { label: "WR41", source: "(HIINDEX(SELF\\IfcObjectDefinition.Decomposes) = 1) AND ('IFC4.IFCRELAGGREGATES' IN TYPEOF(SELF\\IfcObjectDefinition.Decomposes[1])) AND (('IFC4.IFCPROJECT' IN TYPEOF (SELF\\IfcObjectDefinition.Decomposes[1].RelatingObject)) OR ('IFC4.IFCSPATIALSTRUCTUREELEMENT' IN TYPEOF (SELF\\IfcObjectDefinition.Decomposes[1].RelatingObject)) )", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.and(r.eq(r.hiindex(r.attr(self, "DECOMPOSES")), 1), () => r.typeIs(m, r.index(r.attr(self, "DECOMPOSES"), 1), "IFCRELAGGREGATES")), () => r.or(r.typeIs(m, r.attr(r.index(r.attr(self, "DECOMPOSES"), 1), "RELATINGOBJECT"), "IFCPROJECT"), () => r.typeIs(m, r.attr(r.index(r.attr(self, "DECOMPOSES"), 1), "RELATINGOBJECT"), "IFCSPATIALSTRUCTUREELEMENT"))) },
+      { label: "WR41", source: "(HIINDEX(SELF\\IfcObjectDefinition.Decomposes) = 1) AND ('IFC4.IFCRELAGGREGATES' IN TYPEOF(SELF\\IfcObjectDefinition.Decomposes[1])) AND (('IFC4.IFCPROJECT' IN TYPEOF (SELF\\IfcObjectDefinition.Decomposes[1].RelatingObject)) OR ('IFC4.IFCSPATIALSTRUCTUREELEMENT' IN TYPEOF (SELF\\IfcObjectDefinition.Decomposes[1].RelatingObject)) )", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.and(r.eq(r.hiindex(r.attr(self, "DECOMPOSES", "IFCOBJECTDEFINITION")), 1), () => r.typeIs(m, r.index(r.attr(self, "DECOMPOSES", "IFCOBJECTDEFINITION"), 1), "IFCRELAGGREGATES")), () => r.or(r.typeIs(m, r.attr(r.index(r.attr(self, "DECOMPOSES", "IFCOBJECTDEFINITION"), 1), "RELATINGOBJECT"), "IFCPROJECT"), () => r.typeIs(m, r.attr(r.index(r.attr(self, "DECOMPOSES", "IFCOBJECTDEFINITION"), 1), "RELATINGOBJECT"), "IFCSPATIALSTRUCTUREELEMENT"))) },
     ],
     "IfcSpatialZone": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcSpatialZoneTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSpatialZoneTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCSPATIALZONETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCSPATIALZONETYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcSpatialZoneTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSpatialZoneTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCSPATIALZONETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCSPATIALZONETYPE")) },
     ],
     "IfcSpatialZoneType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcSpatialZoneTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSpatialZoneTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcSpatialElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcSpatialZoneTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSpatialZoneTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcSpatialElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCSPATIALELEMENTTYPE")))) },
     ],
     "IfcStackTerminal": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcStackTerminalTypeEnum.USERDEFINED) OR ((PredefinedType = IfcStackTerminalTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCSTACKTERMINALTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCSTACKTERMINALTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcStackTerminalTypeEnum.USERDEFINED) OR ((PredefinedType = IfcStackTerminalTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCSTACKTERMINALTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCSTACKTERMINALTYPE")) },
     ],
     "IfcStackTerminalType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcStackTerminalTypeEnum.USERDEFINED) OR ((PredefinedType = IfcStackTerminalTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcStackTerminalTypeEnum.USERDEFINED) OR ((PredefinedType = IfcStackTerminalTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcStair": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcStairTypeEnum.USERDEFINED) OR ((PredefinedType = IfcStairTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCSTAIRTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCSTAIRTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcStairTypeEnum.USERDEFINED) OR ((PredefinedType = IfcStairTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCSTAIRTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCSTAIRTYPE")) },
     ],
     "IfcStairFlight": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcStairFlightTypeEnum.USERDEFINED) OR ((PredefinedType = IfcStairFlightTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCSTAIRFLIGHTTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCSTAIRFLIGHTTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcStairFlightTypeEnum.USERDEFINED) OR ((PredefinedType = IfcStairFlightTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCSTAIRFLIGHTTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCSTAIRFLIGHTTYPE")) },
     ],
     "IfcStairFlightType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcStairFlightTypeEnum.USERDEFINED) OR ((PredefinedType = IfcStairFlightTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcStairFlightTypeEnum.USERDEFINED) OR ((PredefinedType = IfcStairFlightTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcStairType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcStairTypeEnum.USERDEFINED) OR ((PredefinedType = IfcStairTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcStairTypeEnum.USERDEFINED) OR ((PredefinedType = IfcStairTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcStructuralAnalysisModel": [
-      { label: "HasObjectType", source: "(PredefinedType <> IfcAnalysisModelTypeEnum.USERDEFINED) OR EXISTS(SELF\\IfcObject.ObjectType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE"))) },
+      { label: "HasObjectType", source: "(PredefinedType <> IfcAnalysisModelTypeEnum.USERDEFINED) OR EXISTS(SELF\\IfcObject.ObjectType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT"))) },
     ],
     "IfcStructuralCurveAction": [
-      { label: "ProjectedIsGlobal", source: "(NOT EXISTS(ProjectedOrTrue)) OR ((ProjectedOrTrue <> PROJECTED_LENGTH) OR (SELF\\IfcStructuralActivity.GlobalOrLocal = GLOBAL_COORDS))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "PROJECTEDORTRUE"))), () => r.or(r.ne(r.attr(self, "PROJECTEDORTRUE"), E_PROJECTED_LENGTH), () => r.eq(r.attr(self, "GLOBALORLOCAL"), E_GLOBAL_COORDS))) },
-      { label: "HasObjectType", source: "(PredefinedType <> IfcStructuralCurveActivityTypeEnum.USERDEFINED) OR EXISTS(SELF\\IfcObject.ObjectType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE"))) },
+      { label: "ProjectedIsGlobal", source: "(NOT EXISTS(ProjectedOrTrue)) OR ((ProjectedOrTrue <> PROJECTED_LENGTH) OR (SELF\\IfcStructuralActivity.GlobalOrLocal = GLOBAL_COORDS))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "PROJECTEDORTRUE"))), () => r.or(r.ne(r.attr(self, "PROJECTEDORTRUE"), E_PROJECTED_LENGTH), () => r.eq(r.attr(self, "GLOBALORLOCAL", "IFCSTRUCTURALACTIVITY"), E_GLOBAL_COORDS))) },
+      { label: "HasObjectType", source: "(PredefinedType <> IfcStructuralCurveActivityTypeEnum.USERDEFINED) OR EXISTS(SELF\\IfcObject.ObjectType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT"))) },
       { label: "SuitablePredefinedType", source: "PredefinedType <> IfcStructuralCurveActivityTypeEnum.EQUIDISTANT", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_EQUIDISTANT) },
     ],
     "IfcStructuralCurveMember": [
-      { label: "HasObjectType", source: "(PredefinedType <> IfcStructuralCurveMemberTypeEnum.USERDEFINED) OR EXISTS(SELF\\IfcObject.ObjectType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE"))) },
+      { label: "HasObjectType", source: "(PredefinedType <> IfcStructuralCurveMemberTypeEnum.USERDEFINED) OR EXISTS(SELF\\IfcObject.ObjectType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT"))) },
     ],
     "IfcStructuralCurveReaction": [
-      { label: "HasObjectType", source: "(PredefinedType <> IfcStructuralCurveActivityTypeEnum.USERDEFINED) OR EXISTS(SELF\\IfcObject.ObjectType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE"))) },
+      { label: "HasObjectType", source: "(PredefinedType <> IfcStructuralCurveActivityTypeEnum.USERDEFINED) OR EXISTS(SELF\\IfcObject.ObjectType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT"))) },
       { label: "SuitablePredefinedType", source: "(PredefinedType <> IfcStructuralCurveActivityTypeEnum.SINUS) AND (PredefinedType <> IfcStructuralCurveActivityTypeEnum.PARABOLA)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_SINUS), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_PARABOLA)) },
     ],
     "IfcStructuralLinearAction": [
-      { label: "SuitableLoadType", source: "SIZEOF(['IFC4.IFCSTRUCTURALLOADLINEARFORCE', 'IFC4.IFCSTRUCTURALLOADTEMPERATURE'] * TYPEOF(SELF\\IfcStructuralActivity.AppliedLoad)) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.mul(r.aggregate([["IFC4.IFCSTRUCTURALLOADLINEARFORCE"], ["IFC4.IFCSTRUCTURALLOADTEMPERATURE"]]), r.typeOf(m, r.attr(self, "APPLIEDLOAD")))), 1) },
-      { label: "ConstPredefinedType", source: "SELF\\IfcStructuralCurveAction.PredefinedType = IfcStructuralCurveActivityTypeEnum.CONST", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(self, "PREDEFINEDTYPE"), E_CONST) },
+      { label: "SuitableLoadType", source: "SIZEOF(['IFC4.IFCSTRUCTURALLOADLINEARFORCE', 'IFC4.IFCSTRUCTURALLOADTEMPERATURE'] * TYPEOF(SELF\\IfcStructuralActivity.AppliedLoad)) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.mul(r.aggregate([["IFC4.IFCSTRUCTURALLOADLINEARFORCE"], ["IFC4.IFCSTRUCTURALLOADTEMPERATURE"]]), r.typeOf(m, r.attr(self, "APPLIEDLOAD", "IFCSTRUCTURALACTIVITY")))), 1) },
+      { label: "ConstPredefinedType", source: "SELF\\IfcStructuralCurveAction.PredefinedType = IfcStructuralCurveActivityTypeEnum.CONST", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(self, "PREDEFINEDTYPE", "IFCSTRUCTURALCURVEACTION"), E_CONST) },
     ],
     "IfcStructuralLoadCase": [
-      { label: "IsLoadCasePredefinedType", source: "SELF\\IfcStructuralLoadGroup.PredefinedType = IfcLoadGroupTypeEnum.LOAD_CASE", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(self, "PREDEFINEDTYPE"), E_LOAD_CASE) },
+      { label: "IsLoadCasePredefinedType", source: "SELF\\IfcStructuralLoadGroup.PredefinedType = IfcLoadGroupTypeEnum.LOAD_CASE", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(self, "PREDEFINEDTYPE", "IFCSTRUCTURALLOADGROUP"), E_LOAD_CASE) },
     ],
     "IfcStructuralLoadConfiguration": [
       { label: "ValidListSize", source: "NOT EXISTS(Locations) OR (SIZEOF(Locations) = SIZEOF(Values))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "LOCATIONS"))), () => r.eq(r.sizeof(r.attr(self, "LOCATIONS")), r.sizeof(r.attr(self, "VALUES")))) },
     ],
     "IfcStructuralLoadGroup": [
-      { label: "HasObjectType", source: "( (PredefinedType <> IfcLoadGroupTypeEnum.USERDEFINED) AND (ActionType <> IfcActionTypeEnum.USERDEFINED) AND (ActionSource <> IfcActionSourceTypeEnum.USERDEFINED) ) OR EXISTS(SELF\\IfcObject.ObjectType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.and(r.and(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.ne(r.attr(self, "ACTIONTYPE"), E_USERDEFINED)), () => r.ne(r.attr(self, "ACTIONSOURCE"), E_USERDEFINED)), () => r.exists(r.attr(self, "OBJECTTYPE"))) },
+      { label: "HasObjectType", source: "( (PredefinedType <> IfcLoadGroupTypeEnum.USERDEFINED) AND (ActionType <> IfcActionTypeEnum.USERDEFINED) AND (ActionSource <> IfcActionSourceTypeEnum.USERDEFINED) ) OR EXISTS(SELF\\IfcObject.ObjectType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.and(r.and(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.ne(r.attr(self, "ACTIONTYPE"), E_USERDEFINED)), () => r.ne(r.attr(self, "ACTIONSOURCE"), E_USERDEFINED)), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT"))) },
     ],
     "IfcStructuralPlanarAction": [
-      { label: "SuitableLoadType", source: "SIZEOF(['IFC4.IFCSTRUCTURALLOADPLANARFORCE', 'IFC4.IFCSTRUCTURALLOADTEMPERATURE'] * TYPEOF(SELF\\IfcStructuralActivity.AppliedLoad)) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.mul(r.aggregate([["IFC4.IFCSTRUCTURALLOADPLANARFORCE"], ["IFC4.IFCSTRUCTURALLOADTEMPERATURE"]]), r.typeOf(m, r.attr(self, "APPLIEDLOAD")))), 1) },
-      { label: "ConstPredefinedType", source: "SELF\\IfcStructuralSurfaceAction.PredefinedType = IfcStructuralSurfaceActivityTypeEnum.CONST", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(self, "PREDEFINEDTYPE"), E_CONST) },
+      { label: "SuitableLoadType", source: "SIZEOF(['IFC4.IFCSTRUCTURALLOADPLANARFORCE', 'IFC4.IFCSTRUCTURALLOADTEMPERATURE'] * TYPEOF(SELF\\IfcStructuralActivity.AppliedLoad)) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.mul(r.aggregate([["IFC4.IFCSTRUCTURALLOADPLANARFORCE"], ["IFC4.IFCSTRUCTURALLOADTEMPERATURE"]]), r.typeOf(m, r.attr(self, "APPLIEDLOAD", "IFCSTRUCTURALACTIVITY")))), 1) },
+      { label: "ConstPredefinedType", source: "SELF\\IfcStructuralSurfaceAction.PredefinedType = IfcStructuralSurfaceActivityTypeEnum.CONST", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(self, "PREDEFINEDTYPE", "IFCSTRUCTURALSURFACEACTION"), E_CONST) },
     ],
     "IfcStructuralPointAction": [
-      { label: "SuitableLoadType", source: "SIZEOF(['IFC4.IFCSTRUCTURALLOADSINGLEFORCE', 'IFC4.IFCSTRUCTURALLOADSINGLEDISPLACEMENT'] * TYPEOF(SELF\\IfcStructuralActivity.AppliedLoad)) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.mul(r.aggregate([["IFC4.IFCSTRUCTURALLOADSINGLEFORCE"], ["IFC4.IFCSTRUCTURALLOADSINGLEDISPLACEMENT"]]), r.typeOf(m, r.attr(self, "APPLIEDLOAD")))), 1) },
+      { label: "SuitableLoadType", source: "SIZEOF(['IFC4.IFCSTRUCTURALLOADSINGLEFORCE', 'IFC4.IFCSTRUCTURALLOADSINGLEDISPLACEMENT'] * TYPEOF(SELF\\IfcStructuralActivity.AppliedLoad)) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.mul(r.aggregate([["IFC4.IFCSTRUCTURALLOADSINGLEFORCE"], ["IFC4.IFCSTRUCTURALLOADSINGLEDISPLACEMENT"]]), r.typeOf(m, r.attr(self, "APPLIEDLOAD", "IFCSTRUCTURALACTIVITY")))), 1) },
     ],
     "IfcStructuralPointReaction": [
-      { label: "SuitableLoadType", source: "SIZEOF(['IFC4.IFCSTRUCTURALLOADSINGLEFORCE', 'IFC4.IFCSTRUCTURALLOADSINGLEDISPLACEMENT'] * TYPEOF(SELF\\IfcStructuralActivity.AppliedLoad)) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.mul(r.aggregate([["IFC4.IFCSTRUCTURALLOADSINGLEFORCE"], ["IFC4.IFCSTRUCTURALLOADSINGLEDISPLACEMENT"]]), r.typeOf(m, r.attr(self, "APPLIEDLOAD")))), 1) },
+      { label: "SuitableLoadType", source: "SIZEOF(['IFC4.IFCSTRUCTURALLOADSINGLEFORCE', 'IFC4.IFCSTRUCTURALLOADSINGLEDISPLACEMENT'] * TYPEOF(SELF\\IfcStructuralActivity.AppliedLoad)) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.mul(r.aggregate([["IFC4.IFCSTRUCTURALLOADSINGLEFORCE"], ["IFC4.IFCSTRUCTURALLOADSINGLEDISPLACEMENT"]]), r.typeOf(m, r.attr(self, "APPLIEDLOAD", "IFCSTRUCTURALACTIVITY")))), 1) },
     ],
     "IfcStructuralResultGroup": [
-      { label: "HasObjectType", source: "(TheoryType <> IfcAnalysisTheoryTypeEnum.USERDEFINED) OR EXISTS(SELF\\IfcObject.ObjectType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "THEORYTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE"))) },
+      { label: "HasObjectType", source: "(TheoryType <> IfcAnalysisTheoryTypeEnum.USERDEFINED) OR EXISTS(SELF\\IfcObject.ObjectType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "THEORYTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT"))) },
     ],
     "IfcStructuralSurfaceAction": [
-      { label: "ProjectedIsGlobal", source: "(NOT EXISTS(ProjectedOrTrue)) OR ((ProjectedOrTrue <> PROJECTED_LENGTH) OR (SELF\\IfcStructuralActivity.GlobalOrLocal = GLOBAL_COORDS))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "PROJECTEDORTRUE"))), () => r.or(r.ne(r.attr(self, "PROJECTEDORTRUE"), E_PROJECTED_LENGTH), () => r.eq(r.attr(self, "GLOBALORLOCAL"), E_GLOBAL_COORDS))) },
-      { label: "HasObjectType", source: "(PredefinedType <> IfcStructuralSurfaceActivityTypeEnum.USERDEFINED) OR EXISTS(SELF\\IfcObject.ObjectType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE"))) },
+      { label: "ProjectedIsGlobal", source: "(NOT EXISTS(ProjectedOrTrue)) OR ((ProjectedOrTrue <> PROJECTED_LENGTH) OR (SELF\\IfcStructuralActivity.GlobalOrLocal = GLOBAL_COORDS))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "PROJECTEDORTRUE"))), () => r.or(r.ne(r.attr(self, "PROJECTEDORTRUE"), E_PROJECTED_LENGTH), () => r.eq(r.attr(self, "GLOBALORLOCAL", "IFCSTRUCTURALACTIVITY"), E_GLOBAL_COORDS))) },
+      { label: "HasObjectType", source: "(PredefinedType <> IfcStructuralSurfaceActivityTypeEnum.USERDEFINED) OR EXISTS(SELF\\IfcObject.ObjectType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT"))) },
     ],
     "IfcStructuralSurfaceMember": [
-      { label: "HasObjectType", source: "(PredefinedType <> IfcStructuralSurfaceMemberTypeEnum.USERDEFINED) OR EXISTS(SELF\\IfcObject.ObjectType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE"))) },
+      { label: "HasObjectType", source: "(PredefinedType <> IfcStructuralSurfaceMemberTypeEnum.USERDEFINED) OR EXISTS(SELF\\IfcObject.ObjectType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT"))) },
     ],
     "IfcStructuralSurfaceReaction": [
-      { label: "HasPredefinedType", source: "(PredefinedType <> IfcStructuralSurfaceActivityTypeEnum.USERDEFINED) OR EXISTS(SELF\\IfcObject.ObjectType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE"))) },
+      { label: "HasPredefinedType", source: "(PredefinedType <> IfcStructuralSurfaceActivityTypeEnum.USERDEFINED) OR EXISTS(SELF\\IfcObject.ObjectType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT"))) },
     ],
     "IfcStyledItem": [
       { label: "ApplicableItem", source: "NOT('IFC4.IFCSTYLEDITEM' IN TYPEOF(Item))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.not(r.typeIs(m, r.attr(self, "ITEM"), "IFCSTYLEDITEM")) },
     ],
     "IfcStyledRepresentation": [
-      { label: "OnlyStyledItems", source: "SIZEOF(QUERY(temp <* SELF\\IfcRepresentation.Items | (NOT('IFC4.IFCSTYLEDITEM' IN TYPEOF(temp))) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ITEMS"), (q236: r.Value) => r.not(r.typeIs(m, q236, "IFCSTYLEDITEM")))), 0) },
+      { label: "OnlyStyledItems", source: "SIZEOF(QUERY(temp <* SELF\\IfcRepresentation.Items | (NOT('IFC4.IFCSTYLEDITEM' IN TYPEOF(temp))) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ITEMS", "IFCREPRESENTATION"), (q_236: r.Value) => r.not(r.typeIs(m, q_236, "IFCSTYLEDITEM")))), 0) },
     ],
     "IfcSubContractResource": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcSubContractResourceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSubContractResourceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcSubContractResourceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSubContractResourceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
     ],
     "IfcSubContractResourceType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcSubContractResourceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSubContractResourceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcTypeResource.ResourceType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "RESOURCETYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcSubContractResourceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSubContractResourceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcTypeResource.ResourceType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "RESOURCETYPE", "IFCTYPERESOURCE")))) },
     ],
     "IfcSurfaceCurve": [
       { label: "CurveIs3D", source: "Curve3D.Dim = 3", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(r.attr(self, "CURVE3D"), "DIM"), 3) },
@@ -2748,7 +2748,7 @@ export const RULES: r.CompiledRules = {
       { label: "DirectrixBounded", source: "(EXISTS(StartParam) AND EXISTS(EndParam)) OR (SIZEOF(['IFC4.IFCCONIC', 'IFC4.IFCBOUNDEDCURVE'] * TYPEOF(Directrix)) = 1)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.and(r.exists(r.attr(self, "STARTPARAM")), () => r.exists(r.attr(self, "ENDPARAM"))), () => r.eq(r.sizeof(r.mul(r.aggregate([["IFC4.IFCCONIC"], ["IFC4.IFCBOUNDEDCURVE"]]), r.typeOf(m, r.attr(self, "DIRECTRIX")))), 1)) },
     ],
     "IfcSurfaceFeature": [
-      { label: "HasObjectType", source: "NOT EXISTS(PredefinedType) OR (PredefinedType <> IfcSurfaceFeatureTypeEnum.USERDEFINED) OR EXISTS(SELF\\IfcObject.ObjectType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.exists(r.attr(self, "OBJECTTYPE"))) },
+      { label: "HasObjectType", source: "NOT EXISTS(PredefinedType) OR (PredefinedType <> IfcSurfaceFeatureTypeEnum.USERDEFINED) OR EXISTS(SELF\\IfcObject.ObjectType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT"))) },
     ],
     "IfcSurfaceOfLinearExtrusion": [
       { label: "DepthGreaterZero", source: "Depth > 0.", check: (self: r.EntityInstance, m: r.Model): r.Value => r.gt(r.attr(self, "DEPTH"), 0) },
@@ -2760,11 +2760,11 @@ export const RULES: r.CompiledRules = {
       { label: "NonnegativeArea3", source: "(NOT EXISTS(ShearReinforcement)) OR (ShearReinforcement >= 0.)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "SHEARREINFORCEMENT"))), () => r.ge(r.attr(self, "SHEARREINFORCEMENT"), 0)) },
     ],
     "IfcSurfaceStyle": [
-      { label: "MaxOneShading", source: "SIZEOF(QUERY(Style <* SELF.Styles | 'IFC4.IFCSURFACESTYLESHADING' IN TYPEOF(Style) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "STYLES"), (q237: r.Value) => r.typeIs(m, q237, "IFCSURFACESTYLESHADING"))), 1) },
-      { label: "MaxOneLighting", source: "SIZEOF(QUERY(Style <* SELF.Styles | 'IFC4.IFCSURFACESTYLELIGHTING' IN TYPEOF(Style) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "STYLES"), (q238: r.Value) => r.typeIs(m, q238, "IFCSURFACESTYLELIGHTING"))), 1) },
-      { label: "MaxOneRefraction", source: "SIZEOF(QUERY(Style <* SELF.Styles | 'IFC4.IFCSURFACESTYLEREFRACTION' IN TYPEOF(Style) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "STYLES"), (q239: r.Value) => r.typeIs(m, q239, "IFCSURFACESTYLEREFRACTION"))), 1) },
-      { label: "MaxOneTextures", source: "SIZEOF(QUERY(Style <* SELF.Styles | 'IFC4.IFCSURFACESTYLEWITHTEXTURES' IN TYPEOF(Style) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "STYLES"), (q240: r.Value) => r.typeIs(m, q240, "IFCSURFACESTYLEWITHTEXTURES"))), 1) },
-      { label: "MaxOneExtDefined", source: "SIZEOF(QUERY(Style <* SELF.Styles | 'IFC4.IFCEXTERNALLYDEFINEDSURFACESTYLE' IN TYPEOF(Style) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "STYLES"), (q241: r.Value) => r.typeIs(m, q241, "IFCEXTERNALLYDEFINEDSURFACESTYLE"))), 1) },
+      { label: "MaxOneShading", source: "SIZEOF(QUERY(Style <* SELF.Styles | 'IFC4.IFCSURFACESTYLESHADING' IN TYPEOF(Style) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "STYLES"), (q_237: r.Value) => r.typeIs(m, q_237, "IFCSURFACESTYLESHADING"))), 1) },
+      { label: "MaxOneLighting", source: "SIZEOF(QUERY(Style <* SELF.Styles | 'IFC4.IFCSURFACESTYLELIGHTING' IN TYPEOF(Style) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "STYLES"), (q_238: r.Value) => r.typeIs(m, q_238, "IFCSURFACESTYLELIGHTING"))), 1) },
+      { label: "MaxOneRefraction", source: "SIZEOF(QUERY(Style <* SELF.Styles | 'IFC4.IFCSURFACESTYLEREFRACTION' IN TYPEOF(Style) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "STYLES"), (q_239: r.Value) => r.typeIs(m, q_239, "IFCSURFACESTYLEREFRACTION"))), 1) },
+      { label: "MaxOneTextures", source: "SIZEOF(QUERY(Style <* SELF.Styles | 'IFC4.IFCSURFACESTYLEWITHTEXTURES' IN TYPEOF(Style) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "STYLES"), (q_240: r.Value) => r.typeIs(m, q_240, "IFCSURFACESTYLEWITHTEXTURES"))), 1) },
+      { label: "MaxOneExtDefined", source: "SIZEOF(QUERY(Style <* SELF.Styles | 'IFC4.IFCEXTERNALLYDEFINEDSURFACESTYLE' IN TYPEOF(Style) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "STYLES"), (q_241: r.Value) => r.typeIs(m, q_241, "IFCEXTERNALLYDEFINEDSURFACESTYLE"))), 1) },
     ],
     "IfcSweptAreaSolid": [
       { label: "SweptAreaType", source: "SweptArea.ProfileType = IfcProfileTypeEnum.Area", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(r.attr(self, "SWEPTAREA"), "PROFILETYPE"), E_AREA) },
@@ -2775,64 +2775,64 @@ export const RULES: r.CompiledRules = {
       { label: "DirectrixBounded", source: "(EXISTS(StartParam) AND EXISTS(EndParam)) OR (SIZEOF(['IFC4.IFCCONIC', 'IFC4.IFCBOUNDEDCURVE'] * TYPEOF(Directrix)) = 1)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.and(r.exists(r.attr(self, "STARTPARAM")), () => r.exists(r.attr(self, "ENDPARAM"))), () => r.eq(r.sizeof(r.mul(r.aggregate([["IFC4.IFCCONIC"], ["IFC4.IFCBOUNDEDCURVE"]]), r.typeOf(m, r.attr(self, "DIRECTRIX")))), 1)) },
     ],
     "IfcSweptDiskSolidPolygonal": [
-      { label: "CorrectRadii", source: "NOT(EXISTS(FilletRadius)) OR (FilletRadius >= SELF\\IfcSweptDiskSolid.Radius)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "FILLETRADIUS"))), () => r.ge(r.attr(self, "FILLETRADIUS"), r.attr(self, "RADIUS"))) },
-      { label: "DirectrixIsPolyline", source: "('IFC4.IFCPOLYLINE' IN TYPEOF(SELF\\IfcSweptDiskSolid.Directrix)) OR (('IFC4.IFCINDEXEDPOLYCURVE' IN TYPEOF(SELF\\IfcSweptDiskSolid.Directrix)) AND NOT(EXISTS(SELF\\IfcSweptDiskSolid.Directrix.Segments)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.typeIs(m, r.attr(self, "DIRECTRIX"), "IFCPOLYLINE"), () => r.and(r.typeIs(m, r.attr(self, "DIRECTRIX"), "IFCINDEXEDPOLYCURVE"), () => r.not(r.exists(r.attr(r.attr(self, "DIRECTRIX"), "SEGMENTS"))))) },
+      { label: "CorrectRadii", source: "NOT(EXISTS(FilletRadius)) OR (FilletRadius >= SELF\\IfcSweptDiskSolid.Radius)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "FILLETRADIUS"))), () => r.ge(r.attr(self, "FILLETRADIUS"), r.attr(self, "RADIUS", "IFCSWEPTDISKSOLID"))) },
+      { label: "DirectrixIsPolyline", source: "('IFC4.IFCPOLYLINE' IN TYPEOF(SELF\\IfcSweptDiskSolid.Directrix)) OR (('IFC4.IFCINDEXEDPOLYCURVE' IN TYPEOF(SELF\\IfcSweptDiskSolid.Directrix)) AND NOT(EXISTS(SELF\\IfcSweptDiskSolid.Directrix.Segments)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.typeIs(m, r.attr(self, "DIRECTRIX", "IFCSWEPTDISKSOLID"), "IFCPOLYLINE"), () => r.and(r.typeIs(m, r.attr(self, "DIRECTRIX", "IFCSWEPTDISKSOLID"), "IFCINDEXEDPOLYCURVE"), () => r.not(r.exists(r.attr(r.attr(self, "DIRECTRIX", "IFCSWEPTDISKSOLID"), "SEGMENTS"))))) },
     ],
     "IfcSweptSurface": [
       { label: "SweptCurveType", source: "SweptCurve.ProfileType = IfcProfileTypeEnum.Curve", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(r.attr(self, "SWEPTCURVE"), "PROFILETYPE"), E_CURVE) },
     ],
     "IfcSwitchingDevice": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcSwitchingDeviceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSwitchingDeviceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCSWITCHINGDEVICETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCSWITCHINGDEVICETYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcSwitchingDeviceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSwitchingDeviceTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCSWITCHINGDEVICETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCSWITCHINGDEVICETYPE")) },
     ],
     "IfcSwitchingDeviceType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcSwitchingDeviceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSwitchingDeviceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcSwitchingDeviceTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSwitchingDeviceTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcSystemFurnitureElement": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcSystemFurnitureElementTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSystemFurnitureElementTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCSYSTEMFURNITUREELEMENTTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCSYSTEMFURNITUREELEMENTTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcSystemFurnitureElementTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSystemFurnitureElementTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCSYSTEMFURNITUREELEMENTTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCSYSTEMFURNITUREELEMENTTYPE")) },
     ],
     "IfcSystemFurnitureElementType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcSystemFurnitureElementTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSystemFurnitureElementTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcSystemFurnitureElementTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSystemFurnitureElementTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcTShapeProfileDef": [
       { label: "ValidFlangeThickness", source: "FlangeThickness < Depth", check: (self: r.EntityInstance, m: r.Model): r.Value => r.lt(r.attr(self, "FLANGETHICKNESS"), r.attr(self, "DEPTH")) },
       { label: "ValidWebThickness", source: "WebThickness < FlangeWidth", check: (self: r.EntityInstance, m: r.Model): r.Value => r.lt(r.attr(self, "WEBTHICKNESS"), r.attr(self, "FLANGEWIDTH")) },
     ],
     "IfcTable": [
-      { label: "WR1", source: "SIZEOF(QUERY( Temp <* Rows | HIINDEX(Temp.RowCells) <> HIINDEX(Rows[1].RowCells))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ROWS"), (q242: r.Value) => r.ne(r.hiindex(r.attr(q242, "ROWCELLS")), r.hiindex(r.attr(r.index(r.attr(self, "ROWS"), 1), "ROWCELLS"))))), 0) },
+      { label: "WR1", source: "SIZEOF(QUERY( Temp <* Rows | HIINDEX(Temp.RowCells) <> HIINDEX(Rows[1].RowCells))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ROWS"), (q_242: r.Value) => r.ne(r.hiindex(r.attr(q_242, "ROWCELLS")), r.hiindex(r.attr(r.index(r.attr(self, "ROWS"), 1), "ROWCELLS"))))), 0) },
       { label: "WR2", source: "{ 0 <= NumberOfHeadings <= 1 }", check: (self: r.EntityInstance, m: r.Model): r.Value => r.interval(0, '<=', r.attr(self, "NUMBEROFHEADINGS"), '<=', 1) },
     ],
     "IfcTank": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcTankTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTankTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCTANKTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCTANKTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcTankTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTankTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCTANKTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCTANKTYPE")) },
     ],
     "IfcTankType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcTankTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTankTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcTankTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTankTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcTask": [
-      { label: "HasName", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME")) },
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcTaskTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTaskTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
+      { label: "HasName", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME", "IFCROOT")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcTaskTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTaskTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
     ],
     "IfcTaskType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcTaskTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTaskTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcTypeProcess.ProcessType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "PROCESSTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcTaskTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTaskTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcTypeProcess.ProcessType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "PROCESSTYPE", "IFCTYPEPROCESS")))) },
     ],
     "IfcTelecomAddress": [
       { label: "MinimumDataProvided", source: "EXISTS (TelephoneNumbers) OR EXISTS (FacsimileNumbers) OR EXISTS (PagerNumber) OR EXISTS (ElectronicMailAddresses) OR EXISTS (WWWHomePageURL) OR EXISTS (MessagingIDs)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.or(r.or(r.or(r.exists(r.attr(self, "TELEPHONENUMBERS")), () => r.exists(r.attr(self, "FACSIMILENUMBERS"))), () => r.exists(r.attr(self, "PAGERNUMBER"))), () => r.exists(r.attr(self, "ELECTRONICMAILADDRESSES"))), () => r.exists(r.attr(self, "WWWHOMEPAGEURL"))), () => r.exists(r.attr(self, "MESSAGINGIDS"))) },
     ],
     "IfcTendon": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcTendonTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTendonTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCTENDONTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCTENDONTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcTendonTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTendonTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCTENDONTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCTENDONTYPE")) },
     ],
     "IfcTendonAnchor": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcTendonAnchorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTendonAnchorTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCTENDONANCHORTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCTENDONANCHORTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcTendonAnchorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTendonAnchorTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCTENDONANCHORTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCTENDONANCHORTYPE")) },
     ],
     "IfcTendonAnchorType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcTendonAnchorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTendonAnchorTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcTendonAnchorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTendonAnchorTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcTendonType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcTendonTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTendonTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcTendonTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTendonTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcTextLiteralWithExtent": [
       { label: "WR31", source: "NOT('IFC4.IFCPLANARBOX' IN TYPEOF(Extent))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.not(r.typeIs(m, r.attr(self, "EXTENT"), "IFCPLANARBOX")) },
@@ -2841,26 +2841,26 @@ export const RULES: r.CompiledRules = {
       { label: "MeasureOfFontSize", source: "('IFC4.IFCLENGTHMEASURE' IN TYPEOF(SELF.FontSize)) AND (SELF.FontSize > 0.)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.typeIs(m, r.attr(self, "FONTSIZE"), "IFCLENGTHMEASURE"), () => r.gt(r.attr(self, "FONTSIZE"), 0)) },
     ],
     "IfcTopologyRepresentation": [
-      { label: "WR21", source: "SIZEOF(QUERY(temp <* SELF\\IfcRepresentation.Items | NOT('IFC4.IFCTOPOLOGICALREPRESENTATIONITEM' IN TYPEOF(temp)) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ITEMS"), (q243: r.Value) => r.not(r.typeIs(m, q243, "IFCTOPOLOGICALREPRESENTATIONITEM")))), 0) },
-      { label: "WR22", source: "EXISTS(SELF\\IfcRepresentation.RepresentationType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "REPRESENTATIONTYPE")) },
-      { label: "WR23", source: "IfcTopologyRepresentationTypes(SELF\\IfcRepresentation.RepresentationType, SELF\\IfcRepresentation.Items)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcTopologyRepresentationTypes(m, r.attr(self, "REPRESENTATIONTYPE"), r.attr(self, "ITEMS")) },
+      { label: "WR21", source: "SIZEOF(QUERY(temp <* SELF\\IfcRepresentation.Items | NOT('IFC4.IFCTOPOLOGICALREPRESENTATIONITEM' IN TYPEOF(temp)) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ITEMS", "IFCREPRESENTATION"), (q_243: r.Value) => r.not(r.typeIs(m, q_243, "IFCTOPOLOGICALREPRESENTATIONITEM")))), 0) },
+      { label: "WR22", source: "EXISTS(SELF\\IfcRepresentation.RepresentationType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "REPRESENTATIONTYPE", "IFCREPRESENTATION")) },
+      { label: "WR23", source: "IfcTopologyRepresentationTypes(SELF\\IfcRepresentation.RepresentationType, SELF\\IfcRepresentation.Items)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcTopologyRepresentationTypes(m, r.attr(self, "REPRESENTATIONTYPE", "IFCREPRESENTATION"), r.attr(self, "ITEMS", "IFCREPRESENTATION")) },
     ],
     "IfcToroidalSurface": [
       { label: "MajorLargerMinor", source: "MinorRadius < MajorRadius", check: (self: r.EntityInstance, m: r.Model): r.Value => r.lt(r.attr(self, "MINORRADIUS"), r.attr(self, "MAJORRADIUS")) },
     ],
     "IfcTransformer": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcTransformerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTransformerTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCTRANFORMERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.isIn("IFC4.IFCTRANFORMERTYPE", r.typeOf(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE")))) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcTransformerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTransformerTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCTRANFORMERTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.isIn("IFC4.IFCTRANFORMERTYPE", r.typeOf(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE")))) },
     ],
     "IfcTransformerType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcTransformerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTransformerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcTransformerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTransformerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcTransportElement": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcTransportElementTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTransportElementTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCTRANSPORTELEMENTTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCTRANSPORTELEMENTTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcTransportElementTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTransportElementTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCTRANSPORTELEMENTTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCTRANSPORTELEMENTTYPE")) },
     ],
     "IfcTransportElementType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcTransportElementTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTransportElementTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcTransportElementTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTransportElementTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcTrimmedCurve": [
       { label: "Trim1ValuesConsistent", source: "(HIINDEX(Trim1) = 1) OR (TYPEOF(Trim1[1]) <> TYPEOF(Trim1[2]))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.hiindex(r.attr(self, "TRIM1")), 1), () => r.ne(r.typeOf(m, r.index(r.attr(self, "TRIM1"), 1)), r.typeOf(m, r.index(r.attr(self, "TRIM1"), 2)))) },
@@ -2868,18 +2868,18 @@ export const RULES: r.CompiledRules = {
       { label: "NoTrimOfBoundedCurves", source: "NOT('IFC4.IFCBOUNDEDCURVE' IN TYPEOF(BasisCurve))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.not(r.typeIs(m, r.attr(self, "BASISCURVE"), "IFCBOUNDEDCURVE")) },
     ],
     "IfcTubeBundle": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcTubeBundleTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTubeBundleTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCTUBEBUNDLETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCTUBEBUNDLETYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcTubeBundleTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTubeBundleTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCTUBEBUNDLETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCTUBEBUNDLETYPE")) },
     ],
     "IfcTubeBundleType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcTubeBundleTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTubeBundleTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcTubeBundleTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTubeBundleTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcTypeObject": [
-      { label: "NameRequired", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME")) },
+      { label: "NameRequired", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME", "IFCROOT")) },
       { label: "UniquePropertySetNames", source: "(NOT(EXISTS(HasPropertySets))) OR IfcUniquePropertySetNames(HasPropertySets)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "HASPROPERTYSETS"))), () => fn_IfcUniquePropertySetNames(m, r.attr(self, "HASPROPERTYSETS"))) },
     ],
     "IfcTypeProduct": [
-      { label: "ApplicableOccurrence", source: "NOT(EXISTS(SELF\\IfcTypeObject.Types[1])) OR (SIZEOF(QUERY(temp <* SELF\\IfcTypeObject.Types[1].RelatedObjects | NOT('IFC4.IFCPRODUCT' IN TYPEOF(temp))) ) = 0)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.index(r.attr(self, "TYPES"), 1))), () => r.eq(r.sizeof(r.query(r.attr(r.index(r.attr(self, "TYPES"), 1), "RELATEDOBJECTS"), (q244: r.Value) => r.not(r.typeIs(m, q244, "IFCPRODUCT")))), 0)) },
+      { label: "ApplicableOccurrence", source: "NOT(EXISTS(SELF\\IfcTypeObject.Types[1])) OR (SIZEOF(QUERY(temp <* SELF\\IfcTypeObject.Types[1].RelatedObjects | NOT('IFC4.IFCPRODUCT' IN TYPEOF(temp))) ) = 0)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.index(r.attr(self, "TYPES", "IFCTYPEOBJECT"), 1))), () => r.eq(r.sizeof(r.query(r.attr(r.index(r.attr(self, "TYPES", "IFCTYPEOBJECT"), 1), "RELATEDOBJECTS"), (q_244: r.Value) => r.not(r.typeIs(m, q_244, "IFCPRODUCT")))), 0)) },
     ],
     "IfcUShapeProfileDef": [
       { label: "ValidFlangeThickness", source: "FlangeThickness < (Depth / 2.)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.lt(r.attr(self, "FLANGETHICKNESS"), r.div(r.attr(self, "DEPTH"), 2)) },
@@ -2889,88 +2889,88 @@ export const RULES: r.CompiledRules = {
       { label: "WR01", source: "IfcCorrectUnitAssignment(Units)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcCorrectUnitAssignment(m, r.attr(self, "UNITS")) },
     ],
     "IfcUnitaryControlElement": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcUnitaryControlElementTypeEnum.USERDEFINED) OR ((PredefinedType = IfcUnitaryControlElementTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCUNITARYCONTROLELEMENTTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCUNITARYCONTROLELEMENTTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcUnitaryControlElementTypeEnum.USERDEFINED) OR ((PredefinedType = IfcUnitaryControlElementTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCUNITARYCONTROLELEMENTTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCUNITARYCONTROLELEMENTTYPE")) },
     ],
     "IfcUnitaryControlElementType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcUnitaryControlElementTypeEnum.USERDEFINED) OR ((PredefinedType = IfcUnitaryControlElementTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcUnitaryControlElementTypeEnum.USERDEFINED) OR ((PredefinedType = IfcUnitaryControlElementTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcUnitaryEquipment": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcUnitaryEquipmentTypeEnum.USERDEFINED) OR ((PredefinedType = IfcUnitaryEquipmentTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCUNITARYEQUIPMENTTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCUNITARYEQUIPMENTTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcUnitaryEquipmentTypeEnum.USERDEFINED) OR ((PredefinedType = IfcUnitaryEquipmentTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCUNITARYEQUIPMENTTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCUNITARYEQUIPMENTTYPE")) },
     ],
     "IfcUnitaryEquipmentType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcUnitaryEquipmentTypeEnum.USERDEFINED) OR ((PredefinedType = IfcUnitaryEquipmentTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcUnitaryEquipmentTypeEnum.USERDEFINED) OR ((PredefinedType = IfcUnitaryEquipmentTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcValve": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcValveTypeEnum.USERDEFINED) OR ((PredefinedType = IfcValveTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCVALVETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCVALVETYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcValveTypeEnum.USERDEFINED) OR ((PredefinedType = IfcValveTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCVALVETYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCVALVETYPE")) },
     ],
     "IfcValveType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcValveTypeEnum.USERDEFINED) OR ((PredefinedType = IfcValveTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcValveTypeEnum.USERDEFINED) OR ((PredefinedType = IfcValveTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcVector": [
       { label: "MagGreaterOrEqualZero", source: "Magnitude >= 0.0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ge(r.attr(self, "MAGNITUDE"), 0) },
     ],
     "IfcVibrationIsolator": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcVibrationIsolatorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcVibrationIsolatorTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCVIBRATIONISOLATORTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCVIBRATIONISOLATORTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcVibrationIsolatorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcVibrationIsolatorTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCVIBRATIONISOLATORTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCVIBRATIONISOLATORTYPE")) },
     ],
     "IfcVibrationIsolatorType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcVibrationIsolatorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcVibrationIsolatorTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcVibrationIsolatorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcVibrationIsolatorTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcVoidingFeature": [
-      { label: "HasObjectType", source: "NOT EXISTS(PredefinedType) OR (PredefinedType <> IfcVoidingFeatureTypeEnum.USERDEFINED) OR EXISTS(SELF\\IfcObject.ObjectType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.exists(r.attr(self, "OBJECTTYPE"))) },
+      { label: "HasObjectType", source: "NOT EXISTS(PredefinedType) OR (PredefinedType <> IfcVoidingFeatureTypeEnum.USERDEFINED) OR EXISTS(SELF\\IfcObject.ObjectType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT"))) },
     ],
     "IfcWall": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcWallTypeEnum.USERDEFINED) OR ((PredefinedType = IfcWallTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCWALLTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCWALLTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcWallTypeEnum.USERDEFINED) OR ((PredefinedType = IfcWallTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCWALLTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCWALLTYPE")) },
     ],
     "IfcWallElementedCase": [
-      { label: "HasDecomposition", source: "HIINDEX(SELF\\IfcObjectDefinition.IsDecomposedBy) > 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.gt(r.hiindex(r.attr(self, "ISDECOMPOSEDBY")), 0) },
+      { label: "HasDecomposition", source: "HIINDEX(SELF\\IfcObjectDefinition.IsDecomposedBy) > 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.gt(r.hiindex(r.attr(self, "ISDECOMPOSEDBY", "IFCOBJECTDEFINITION")), 0) },
     ],
     "IfcWallStandardCase": [
-      { label: "HasMaterialLayerSetUsage", source: "SIZEOF (QUERY(temp <* USEDIN(SELF, 'IFC4.IFCRELASSOCIATES.RELATEDOBJECTS') | ('IFC4.IFCRELASSOCIATESMATERIAL' IN TYPEOF(temp)) AND ('IFC4.IFCMATERIALLAYERSETUSAGE' IN TYPEOF(temp.RelatingMaterial)) )) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.usedIn(m, self, "IFC4.IFCRELASSOCIATES.RELATEDOBJECTS"), (q245: r.Value) => r.and(r.typeIs(m, q245, "IFCRELASSOCIATESMATERIAL"), () => r.typeIs(m, r.attr(q245, "RELATINGMATERIAL"), "IFCMATERIALLAYERSETUSAGE")))), 1) },
+      { label: "HasMaterialLayerSetUsage", source: "SIZEOF (QUERY(temp <* USEDIN(SELF, 'IFC4.IFCRELASSOCIATES.RELATEDOBJECTS') | ('IFC4.IFCRELASSOCIATESMATERIAL' IN TYPEOF(temp)) AND ('IFC4.IFCMATERIALLAYERSETUSAGE' IN TYPEOF(temp.RelatingMaterial)) )) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.usedIn(m, self, "IFC4.IFCRELASSOCIATES.RELATEDOBJECTS"), (q_245: r.Value) => r.and(r.typeIs(m, q_245, "IFCRELASSOCIATESMATERIAL"), () => r.typeIs(m, r.attr(q_245, "RELATINGMATERIAL"), "IFCMATERIALLAYERSETUSAGE")))), 1) },
     ],
     "IfcWallType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcWallTypeEnum.USERDEFINED) OR ((PredefinedType = IfcWallTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcWallTypeEnum.USERDEFINED) OR ((PredefinedType = IfcWallTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcWasteTerminal": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcWasteTerminalTypeEnum.USERDEFINED) OR ((PredefinedType = IfcWasteTerminalTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
-      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCWASTETERMINALTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCWASTETERMINALTYPE")) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcWasteTerminalTypeEnum.USERDEFINED) OR ((PredefinedType = IfcWasteTerminalTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
+      { label: "CorrectTypeAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCWASTETERMINALTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCWASTETERMINALTYPE")) },
     ],
     "IfcWasteTerminalType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcWasteTerminalTypeEnum.USERDEFINED) OR ((PredefinedType = IfcWasteTerminalTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcWasteTerminalTypeEnum.USERDEFINED) OR ((PredefinedType = IfcWasteTerminalTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcWindow": [
-      { label: "CorrectStyleAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCWINDOWTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY"), 1), "RELATINGTYPE"), "IFCWINDOWTYPE")) },
+      { label: "CorrectStyleAssigned", source: "(SIZEOF(IsTypedBy) = 0) OR ('IFC4.IFCWINDOWTYPE' IN TYPEOF(SELF\\IfcObject.IsTypedBy[1].RelatingType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISTYPEDBY")), 0), () => r.typeIs(m, r.attr(r.index(r.attr(self, "ISTYPEDBY", "IFCOBJECT"), 1), "RELATINGTYPE"), "IFCWINDOWTYPE")) },
     ],
     "IfcWindowLiningProperties": [
       { label: "WR31", source: "NOT(EXISTS(LiningDepth) AND NOT(EXISTS(LiningThickness)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.not(r.and(r.exists(r.attr(self, "LININGDEPTH")), () => r.not(r.exists(r.attr(self, "LININGTHICKNESS"))))) },
       { label: "WR32", source: "NOT(NOT(EXISTS(FirstTransomOffset)) AND EXISTS(SecondTransomOffset))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.not(r.and(r.not(r.exists(r.attr(self, "FIRSTTRANSOMOFFSET"))), () => r.exists(r.attr(self, "SECONDTRANSOMOFFSET")))) },
       { label: "WR33", source: "NOT(NOT(EXISTS(FirstMullionOffset)) AND EXISTS(SecondMullionOffset))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.not(r.and(r.not(r.exists(r.attr(self, "FIRSTMULLIONOFFSET"))), () => r.exists(r.attr(self, "SECONDMULLIONOFFSET")))) },
-      { label: "WR34", source: "(EXISTS(SELF\\IfcPropertySetDefinition.DefinesType[1])) AND ( ('IFC4.IFCWINDOWTYPE' IN TYPEOF(SELF\\IfcPropertySetDefinition.DefinesType[1])) OR ('IFC4.IFCWINDOWSTYLE' IN TYPEOF(SELF\\IfcPropertySetDefinition.DefinesType[1])) )", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.exists(r.index(r.attr(self, "DEFINESTYPE"), 1)), () => r.or(r.typeIs(m, r.index(r.attr(self, "DEFINESTYPE"), 1), "IFCWINDOWTYPE"), () => r.typeIs(m, r.index(r.attr(self, "DEFINESTYPE"), 1), "IFCWINDOWSTYLE"))) },
+      { label: "WR34", source: "(EXISTS(SELF\\IfcPropertySetDefinition.DefinesType[1])) AND ( ('IFC4.IFCWINDOWTYPE' IN TYPEOF(SELF\\IfcPropertySetDefinition.DefinesType[1])) OR ('IFC4.IFCWINDOWSTYLE' IN TYPEOF(SELF\\IfcPropertySetDefinition.DefinesType[1])) )", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.exists(r.index(r.attr(self, "DEFINESTYPE", "IFCPROPERTYSETDEFINITION"), 1)), () => r.or(r.typeIs(m, r.index(r.attr(self, "DEFINESTYPE", "IFCPROPERTYSETDEFINITION"), 1), "IFCWINDOWTYPE"), () => r.typeIs(m, r.index(r.attr(self, "DEFINESTYPE", "IFCPROPERTYSETDEFINITION"), 1), "IFCWINDOWSTYLE"))) },
     ],
     "IfcWindowPanelProperties": [
-      { label: "ApplicableToType", source: "(EXISTS(SELF\\IfcPropertySetDefinition.DefinesType[1])) AND ( ('IFC4.IFCWINDOWTYPE' IN TYPEOF(SELF\\IfcPropertySetDefinition.DefinesType[1])) OR ('IFC4.IFCWINDOWSTYLE' IN TYPEOF(SELF\\IfcPropertySetDefinition.DefinesType[1])) )", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.exists(r.index(r.attr(self, "DEFINESTYPE"), 1)), () => r.or(r.typeIs(m, r.index(r.attr(self, "DEFINESTYPE"), 1), "IFCWINDOWTYPE"), () => r.typeIs(m, r.index(r.attr(self, "DEFINESTYPE"), 1), "IFCWINDOWSTYLE"))) },
+      { label: "ApplicableToType", source: "(EXISTS(SELF\\IfcPropertySetDefinition.DefinesType[1])) AND ( ('IFC4.IFCWINDOWTYPE' IN TYPEOF(SELF\\IfcPropertySetDefinition.DefinesType[1])) OR ('IFC4.IFCWINDOWSTYLE' IN TYPEOF(SELF\\IfcPropertySetDefinition.DefinesType[1])) )", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.exists(r.index(r.attr(self, "DEFINESTYPE", "IFCPROPERTYSETDEFINITION"), 1)), () => r.or(r.typeIs(m, r.index(r.attr(self, "DEFINESTYPE", "IFCPROPERTYSETDEFINITION"), 1), "IFCWINDOWTYPE"), () => r.typeIs(m, r.index(r.attr(self, "DEFINESTYPE", "IFCPROPERTYSETDEFINITION"), 1), "IFCWINDOWSTYLE"))) },
     ],
     "IfcWindowType": [
-      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcWindowTypeEnum.USERDEFINED) OR ((PredefinedType = IfcWindowTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "(PredefinedType <> IfcWindowTypeEnum.USERDEFINED) OR ((PredefinedType = IfcWindowTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcWorkCalendar": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcWorkCalendarTypeEnum.USERDEFINED) OR ((PredefinedType = IfcWorkCalendarTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcWorkCalendarTypeEnum.USERDEFINED) OR ((PredefinedType = IfcWorkCalendarTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
     ],
     "IfcWorkPlan": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcWorkPlanTypeEnum.USERDEFINED) OR ((PredefinedType = IfcWorkPlanTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcWorkPlanTypeEnum.USERDEFINED) OR ((PredefinedType = IfcWorkPlanTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
     ],
     "IfcWorkSchedule": [
-      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcWorkScheduleTypeEnum.USERDEFINED) OR ((PredefinedType = IfcWorkScheduleTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
+      { label: "CorrectPredefinedType", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcWorkScheduleTypeEnum.USERDEFINED) OR ((PredefinedType = IfcWorkScheduleTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
     ],
     "IfcZShapeProfileDef": [
       { label: "ValidFlangeThickness", source: "FlangeThickness < (Depth / 2.)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.lt(r.attr(self, "FLANGETHICKNESS"), r.div(r.attr(self, "DEPTH"), 2)) },
     ],
     "IfcZone": [
-      { label: "WR1", source: "(SIZEOF(SELF\\IfcGroup.IsGroupedBy) = 0) OR (SIZEOF (QUERY (temp <* SELF\\IfcGroup.IsGroupedBy[1].RelatedObjects | NOT(('IFC4.IFCZONE' IN TYPEOF(temp)) OR ('IFC4.IFCSPACE' IN TYPEOF(temp)) OR ('IFC4.IFCSPATIALZONE' IN TYPEOF(temp)) ))) = 0)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISGROUPEDBY")), 0), () => r.eq(r.sizeof(r.query(r.attr(r.index(r.attr(self, "ISGROUPEDBY"), 1), "RELATEDOBJECTS"), (q246: r.Value) => r.not(r.or(r.or(r.typeIs(m, q246, "IFCZONE"), () => r.typeIs(m, q246, "IFCSPACE")), () => r.typeIs(m, q246, "IFCSPATIALZONE"))))), 0)) },
+      { label: "WR1", source: "(SIZEOF(SELF\\IfcGroup.IsGroupedBy) = 0) OR (SIZEOF (QUERY (temp <* SELF\\IfcGroup.IsGroupedBy[1].RelatedObjects | NOT(('IFC4.IFCZONE' IN TYPEOF(temp)) OR ('IFC4.IFCSPACE' IN TYPEOF(temp)) OR ('IFC4.IFCSPATIALZONE' IN TYPEOF(temp)) ))) = 0)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.sizeof(r.attr(self, "ISGROUPEDBY", "IFCGROUP")), 0), () => r.eq(r.sizeof(r.query(r.attr(r.index(r.attr(self, "ISGROUPEDBY", "IFCGROUP"), 1), "RELATEDOBJECTS"), (q_246: r.Value) => r.not(r.or(r.or(r.typeIs(m, q_246, "IFCZONE"), () => r.typeIs(m, q_246, "IFCSPACE")), () => r.typeIs(m, q_246, "IFCSPATIALZONE"))))), 0)) },
     ],
   },
   type: {
@@ -3062,11 +3062,11 @@ export const RULES: r.CompiledRules = {
     "IfcCartesianPointList.Dim": (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcPointListDim(m, self),
     "IfcCartesianTransformationOperator.Scl": (self: r.EntityInstance, m: r.Model): r.Value => r.nvl(r.attr(self, "SCALE"), 1),
     "IfcCartesianTransformationOperator.Dim": (self: r.EntityInstance, m: r.Model): r.Value => r.attr(r.attr(self, "LOCALORIGIN"), "DIM"),
-    "IfcCartesianTransformationOperator2D.U": (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcBaseAxis(m, 2, r.attr(self, "AXIS1"), r.attr(self, "AXIS2"), undefined),
-    "IfcCartesianTransformationOperator2DnonUniform.Scl2": (self: r.EntityInstance, m: r.Model): r.Value => r.nvl(r.attr(self, "SCALE2"), r.attr(self, "SCL")),
-    "IfcCartesianTransformationOperator3D.U": (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcBaseAxis(m, 3, r.attr(self, "AXIS1"), r.attr(self, "AXIS2"), r.attr(self, "AXIS3")),
-    "IfcCartesianTransformationOperator3DnonUniform.Scl2": (self: r.EntityInstance, m: r.Model): r.Value => r.nvl(r.attr(self, "SCALE2"), r.attr(self, "SCL")),
-    "IfcCartesianTransformationOperator3DnonUniform.Scl3": (self: r.EntityInstance, m: r.Model): r.Value => r.nvl(r.attr(self, "SCALE3"), r.attr(self, "SCL")),
+    "IfcCartesianTransformationOperator2D.U": (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcBaseAxis(m, 2, r.attr(self, "AXIS1", "IFCCARTESIANTRANSFORMATIONOPERATOR"), r.attr(self, "AXIS2", "IFCCARTESIANTRANSFORMATIONOPERATOR"), undefined),
+    "IfcCartesianTransformationOperator2DnonUniform.Scl2": (self: r.EntityInstance, m: r.Model): r.Value => r.nvl(r.attr(self, "SCALE2"), r.attr(self, "SCL", "IFCCARTESIANTRANSFORMATIONOPERATOR")),
+    "IfcCartesianTransformationOperator3D.U": (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcBaseAxis(m, 3, r.attr(self, "AXIS1", "IFCCARTESIANTRANSFORMATIONOPERATOR"), r.attr(self, "AXIS2", "IFCCARTESIANTRANSFORMATIONOPERATOR"), r.attr(self, "AXIS3")),
+    "IfcCartesianTransformationOperator3DnonUniform.Scl2": (self: r.EntityInstance, m: r.Model): r.Value => r.nvl(r.attr(self, "SCALE2"), r.attr(self, "SCL", "IFCCARTESIANTRANSFORMATIONOPERATOR")),
+    "IfcCartesianTransformationOperator3DnonUniform.Scl3": (self: r.EntityInstance, m: r.Model): r.Value => r.nvl(r.attr(self, "SCALE3"), r.attr(self, "SCL", "IFCCARTESIANTRANSFORMATIONOPERATOR")),
     "IfcCompositeCurve.NSegments": (self: r.EntityInstance, m: r.Model): r.Value => r.sizeof(r.attr(self, "SEGMENTS")),
     "IfcCompositeCurve.ClosedCurve": (self: r.EntityInstance, m: r.Model): r.Value => r.ne(r.attr(r.index(r.attr(self, "SEGMENTS"), r.attr(self, "NSEGMENTS")), "TRANSITION"), E_DISCONTINUOUS),
     "IfcCompositeCurveOnSurface.BasisSurface": (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcGetBasisSurface(m, self),
@@ -3079,7 +3079,7 @@ export const RULES: r.CompiledRules = {
     "IfcFaceBasedSurfaceModel.Dim": (self: r.EntityInstance, m: r.Model): r.Value => 3,
     "IfcGeometricRepresentationSubContext.WorldCoordinateSystem": (self: r.EntityInstance, m: r.Model): r.Value => r.attr(r.attr(self, "PARENTCONTEXT"), "WORLDCOORDINATESYSTEM"),
     "IfcGeometricRepresentationSubContext.CoordinateSpaceDimension": (self: r.EntityInstance, m: r.Model): r.Value => r.attr(r.attr(self, "PARENTCONTEXT"), "COORDINATESPACEDIMENSION"),
-    "IfcGeometricRepresentationSubContext.TrueNorth": (self: r.EntityInstance, m: r.Model): r.Value => r.nvl(r.attr(r.attr(self, "PARENTCONTEXT"), "TRUENORTH"), fn_IfcConvertDirectionInto2D(m, r.index(r.attr(r.attr(self, "WORLDCOORDINATESYSTEM"), "P"), 2))),
+    "IfcGeometricRepresentationSubContext.TrueNorth": (self: r.EntityInstance, m: r.Model): r.Value => r.nvl(r.attr(r.attr(self, "PARENTCONTEXT"), "TRUENORTH"), fn_IfcConvertDirectionInto2D(m, r.index(r.attr(r.attr(self, "WORLDCOORDINATESYSTEM", "IFCGEOMETRICREPRESENTATIONCONTEXT"), "P"), 2))),
     "IfcGeometricRepresentationSubContext.Precision": (self: r.EntityInstance, m: r.Model): r.Value => r.nvl(r.attr(r.attr(self, "PARENTCONTEXT"), "PRECISION"), 0.00001),
     "IfcGeometricSet.Dim": (self: r.EntityInstance, m: r.Model): r.Value => r.attr(r.index(r.attr(self, "ELEMENTS"), 1), "DIM"),
     "IfcHalfSpaceSolid.Dim": (self: r.EntityInstance, m: r.Model): r.Value => 3,
@@ -3090,7 +3090,7 @@ export const RULES: r.CompiledRules = {
     "IfcPlacement.Dim": (self: r.EntityInstance, m: r.Model): r.Value => r.attr(r.attr(self, "LOCATION"), "DIM"),
     "IfcPointOnCurve.Dim": (self: r.EntityInstance, m: r.Model): r.Value => r.attr(r.attr(self, "BASISCURVE"), "DIM"),
     "IfcPointOnSurface.Dim": (self: r.EntityInstance, m: r.Model): r.Value => r.attr(r.attr(self, "BASISSURFACE"), "DIM"),
-    "IfcRationalBSplineCurveWithKnots.Weights": (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcListToArray(m, r.attr(self, "WEIGHTSDATA"), 0, r.attr(self, "UPPERINDEXONCONTROLPOINTS")),
+    "IfcRationalBSplineCurveWithKnots.Weights": (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcListToArray(m, r.attr(self, "WEIGHTSDATA"), 0, r.attr(self, "UPPERINDEXONCONTROLPOINTS", "IFCBSPLINECURVE")),
     "IfcRationalBSplineSurfaceWithKnots.Weights": (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcMakeArrayOfArray(m, r.attr(self, "WEIGHTSDATA"), 0, r.attr(self, "UUPPER"), 0, r.attr(self, "VUPPER")),
     "IfcRevolvedAreaSolid.AxisLine": (self: r.EntityInstance, m: r.Model): r.Value => r.complex(m, [r.construct(m, "IfcRepresentationItem", []), r.construct(m, "IfcGeometricRepresentationItem", []), r.construct(m, "IfcCurve", []), r.construct(m, "IfcLine", [r.attr(r.attr(self, "AXIS"), "LOCATION"), r.complex(m, [r.construct(m, "IfcRepresentationItem", []), r.construct(m, "IfcGeometricRepresentationItem", []), r.construct(m, "IfcVector", [r.attr(r.attr(self, "AXIS"), "Z"), 1])])])]),
     "IfcSIUnit.Dimensions": (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcDimensionsForSiUnit(m, r.attr(self, "NAME")),
@@ -3102,8 +3102,8 @@ export const RULES: r.CompiledRules = {
     "IfcSurfaceOfLinearExtrusion.ExtrusionAxis": (self: r.EntityInstance, m: r.Model): r.Value => r.complex(m, [r.construct(m, "IfcRepresentationItem", []), r.construct(m, "IfcGeometricRepresentationItem", []), r.construct(m, "IfcVector", [r.attr(self, "EXTRUDEDDIRECTION"), r.attr(self, "DEPTH")])]),
     "IfcSurfaceOfRevolution.AxisLine": (self: r.EntityInstance, m: r.Model): r.Value => r.complex(m, [r.construct(m, "IfcRepresentationItem", []), r.construct(m, "IfcGeometricRepresentationItem", []), r.construct(m, "IfcCurve", []), r.construct(m, "IfcLine", [r.attr(r.attr(self, "AXISPOSITION"), "LOCATION"), r.complex(m, [r.construct(m, "IfcRepresentationItem", []), r.construct(m, "IfcGeometricRepresentationItem", []), r.construct(m, "IfcVector", [r.attr(r.attr(self, "AXISPOSITION"), "Z"), 1])])])]),
     "IfcTable.NumberOfCellsInRow": (self: r.EntityInstance, m: r.Model): r.Value => r.hiindex(r.attr(r.index(r.attr(self, "ROWS"), 1), "ROWCELLS")),
-    "IfcTable.NumberOfHeadings": (self: r.EntityInstance, m: r.Model): r.Value => r.sizeof(r.query(r.attr(self, "ROWS"), (q170: r.Value) => r.attr(q170, "ISHEADING"))),
-    "IfcTable.NumberOfDataRows": (self: r.EntityInstance, m: r.Model): r.Value => r.sizeof(r.query(r.attr(self, "ROWS"), (q171: r.Value) => r.not(r.attr(q171, "ISHEADING")))),
+    "IfcTable.NumberOfHeadings": (self: r.EntityInstance, m: r.Model): r.Value => r.sizeof(r.query(r.attr(self, "ROWS"), (q_170: r.Value) => r.attr(q_170, "ISHEADING"))),
+    "IfcTable.NumberOfDataRows": (self: r.EntityInstance, m: r.Model): r.Value => r.sizeof(r.query(r.attr(self, "ROWS"), (q_171: r.Value) => r.not(r.attr(q_171, "ISHEADING")))),
     "IfcTessellatedFaceSet.Dim": (self: r.EntityInstance, m: r.Model): r.Value => 3,
     "IfcTriangulatedFaceSet.NumberOfTriangles": (self: r.EntityInstance, m: r.Model): r.Value => r.sizeof(r.attr(self, "COORDINDEX")),
     "IfcVector.Dim": (self: r.EntityInstance, m: r.Model): r.Value => r.attr(r.attr(self, "ORIENTATION"), "DIM"),
@@ -3114,10 +3114,10 @@ export const RULES: r.CompiledRules = {
       let v_isdifferent: r.Value = r.assign(false);
       if (r.isTrue(r.gt(r.sizeof(pop_ifcgeometricrepresentationcontext), 1))) {
         {
-          const from248 = r.int(2), to249 = r.int(r.hiindex(pop_ifcgeometricrepresentationcontext)), by250 = 1;
-          if (from248 !== undefined && to249 !== undefined && by250) for (let i_i247 = from248; by250 > 0 ? i_i247 <= to249 : i_i247 >= to249; i_i247 += by250) {
-            if (r.isTrue(r.notSame(r.attr(r.index(pop_ifcgeometricrepresentationcontext, 1), "WORLDCOORDINATESYSTEM"), r.attr(r.index(pop_ifcgeometricrepresentationcontext, i_i247), "WORLDCOORDINATESYSTEM")))) {
-              v_isdifferent = r.assign(r.or(r.not(fn_IfcSameValidPrecision(m, r.attr(r.index(pop_ifcgeometricrepresentationcontext, 1), "PRECISION"), r.attr(r.index(pop_ifcgeometricrepresentationcontext, i_i247), "PRECISION"))), () => r.not(fn_IfcSameAxis2Placement(m, r.attr(r.index(pop_ifcgeometricrepresentationcontext, 1), "WORLDCOORDINATESYSTEM"), r.attr(r.index(pop_ifcgeometricrepresentationcontext, i_i247), "WORLDCOORDINATESYSTEM"), r.attr(r.index(pop_ifcgeometricrepresentationcontext, 1), "PRECISION")))));
+          const from_248 = r.int(2), to_249 = r.int(r.hiindex(pop_ifcgeometricrepresentationcontext)), by_250 = 1;
+          if (from_248 !== undefined && to_249 !== undefined && by_250) for (let i_i_247 = from_248; by_250 > 0 ? i_i_247 <= to_249 : i_i_247 >= to_249; i_i_247 += by_250) {
+            if (r.isTrue(r.notSame(r.attr(r.index(pop_ifcgeometricrepresentationcontext, 1), "WORLDCOORDINATESYSTEM"), r.attr(r.index(pop_ifcgeometricrepresentationcontext, i_i_247), "WORLDCOORDINATESYSTEM")))) {
+              v_isdifferent = r.assign(r.or(r.not(fn_IfcSameValidPrecision(m, r.attr(r.index(pop_ifcgeometricrepresentationcontext, 1), "PRECISION"), r.attr(r.index(pop_ifcgeometricrepresentationcontext, i_i_247), "PRECISION"))), () => r.not(fn_IfcSameAxis2Placement(m, r.attr(r.index(pop_ifcgeometricrepresentationcontext, 1), "WORLDCOORDINATESYSTEM"), r.attr(r.index(pop_ifcgeometricrepresentationcontext, i_i_247), "WORLDCOORDINATESYSTEM"), r.attr(r.index(pop_ifcgeometricrepresentationcontext, 1), "PRECISION")))));
               if (r.isTrue(r.eq(v_isdifferent, true))) {
                 break;
               }

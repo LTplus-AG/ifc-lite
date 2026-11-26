@@ -8,9 +8,11 @@ import { z } from 'zod';
 import * as r from '../../runtime/index.js';
 import { SCHEMA } from './index.js';
 
-export const EntityRef = z.strictObject({ ref: z.number().int().positive() });
+const $EntityRef = z.strictObject({ ref: z.number().int().positive() });
 
-function typed<T extends string, S extends z.ZodType>(type: T, value: S) {
+export { $EntityRef as EntityRef };
+
+function $typed<T extends string, S extends z.ZodType>(type: T, value: S) {
   return z.strictObject({ typed: z.strictObject({ type: z.literal(type), value }) });
 }
 
@@ -22,7 +24,7 @@ export const IfcAreaMeasure = z.number();
 export const IfcBoolean = z.boolean();
 export const IfcLabel = z.string();
 export const IfcBoxAlignment = IfcLabel.superRefine(r.typeRuleRefinement(SCHEMA, "IfcBoxAlignment"));
-export const IfcComplexNumber = z.array(z.number()).min(1).max(2);
+export const IfcComplexNumber = z.array(z.number()).length(2);
 export const IfcCompoundPlaneAngleMeasure = z.array(z.number().int()).min(3).max(4).superRefine(r.typeRuleRefinement(SCHEMA, "IfcCompoundPlaneAngleMeasure"));
 export const IfcContextDependentMeasure = z.number();
 export const IfcCountMeasure = z.number();
@@ -295,60 +297,60 @@ export const IfcWindowPanelPositionEnum = z.enum(["LEFT","MIDDLE","RIGHT","BOTTO
 export const IfcWindowStyleConstructionEnum = z.enum(["ALUMINIUM","HIGH_GRADE_STEEL","STEEL","WOOD","ALUMINIUM_WOOD","PLASTIC","OTHER_CONSTRUCTION","NOTDEFINED"]);
 export const IfcWindowStyleOperationEnum = z.enum(["SINGLE_PANEL","DOUBLE_PANEL_VERTICAL","DOUBLE_PANEL_HORIZONTAL","TRIPLE_PANEL_VERTICAL","TRIPLE_PANEL_BOTTOM","TRIPLE_PANEL_TOP","TRIPLE_PANEL_LEFT","TRIPLE_PANEL_RIGHT","TRIPLE_PANEL_HORIZONTAL","USERDEFINED","NOTDEFINED"]);
 export const IfcWorkControlTypeEnum = z.enum(["ACTUAL","BASELINE","PLANNED","USERDEFINED","NOTDEFINED"]);
-export const IfcActorSelect = EntityRef;
-export const IfcAppliedValueSelect = z.union([EntityRef, typed("IfcRatioMeasure", IfcRatioMeasure), typed("IfcMonetaryMeasure", IfcMonetaryMeasure)]);
-export const IfcAxis2Placement = EntityRef;
-export const IfcBooleanOperand = EntityRef;
-export const IfcCharacterStyleSelect = EntityRef;
-export const IfcClassificationNotationSelect = EntityRef;
-export const IfcColour = EntityRef;
-export const IfcColourOrFactor = z.union([EntityRef, typed("IfcNormalisedRatioMeasure", IfcNormalisedRatioMeasure)]);
-export const IfcConditionCriterionSelect = z.union([EntityRef, typed("IfcLabel", IfcLabel)]);
-export const IfcCsgSelect = EntityRef;
-export const IfcCurveFontOrScaledCurveFontSelect = EntityRef;
-export const IfcCurveOrEdgeCurve = EntityRef;
-export const IfcCurveStyleFontSelect = EntityRef;
-export const IfcDateTimeSelect = EntityRef;
-export const IfcDefinedSymbolSelect = EntityRef;
-export const IfcDerivedMeasureValue = z.union([typed("IfcVolumetricFlowRateMeasure", IfcVolumetricFlowRateMeasure), typed("IfcTimeStamp", IfcTimeStamp), typed("IfcThermalTransmittanceMeasure", IfcThermalTransmittanceMeasure), typed("IfcThermalResistanceMeasure", IfcThermalResistanceMeasure), typed("IfcThermalAdmittanceMeasure", IfcThermalAdmittanceMeasure), typed("IfcPressureMeasure", IfcPressureMeasure), typed("IfcPowerMeasure", IfcPowerMeasure), typed("IfcMassFlowRateMeasure", IfcMassFlowRateMeasure), typed("IfcMassDensityMeasure", IfcMassDensityMeasure), typed("IfcLinearVelocityMeasure", IfcLinearVelocityMeasure), typed("IfcKinematicViscosityMeasure", IfcKinematicViscosityMeasure), typed("IfcIntegerCountRateMeasure", IfcIntegerCountRateMeasure), typed("IfcHeatFluxDensityMeasure", IfcHeatFluxDensityMeasure), typed("IfcFrequencyMeasure", IfcFrequencyMeasure), typed("IfcEnergyMeasure", IfcEnergyMeasure), typed("IfcElectricVoltageMeasure", IfcElectricVoltageMeasure), typed("IfcDynamicViscosityMeasure", IfcDynamicViscosityMeasure), typed("IfcCompoundPlaneAngleMeasure", IfcCompoundPlaneAngleMeasure), typed("IfcAngularVelocityMeasure", IfcAngularVelocityMeasure), typed("IfcThermalConductivityMeasure", IfcThermalConductivityMeasure), typed("IfcMolecularWeightMeasure", IfcMolecularWeightMeasure), typed("IfcVaporPermeabilityMeasure", IfcVaporPermeabilityMeasure), typed("IfcMoistureDiffusivityMeasure", IfcMoistureDiffusivityMeasure), typed("IfcIsothermalMoistureCapacityMeasure", IfcIsothermalMoistureCapacityMeasure), typed("IfcSpecificHeatCapacityMeasure", IfcSpecificHeatCapacityMeasure), typed("IfcMonetaryMeasure", IfcMonetaryMeasure), typed("IfcMagneticFluxDensityMeasure", IfcMagneticFluxDensityMeasure), typed("IfcMagneticFluxMeasure", IfcMagneticFluxMeasure), typed("IfcLuminousFluxMeasure", IfcLuminousFluxMeasure), typed("IfcForceMeasure", IfcForceMeasure), typed("IfcInductanceMeasure", IfcInductanceMeasure), typed("IfcIlluminanceMeasure", IfcIlluminanceMeasure), typed("IfcElectricResistanceMeasure", IfcElectricResistanceMeasure), typed("IfcElectricConductanceMeasure", IfcElectricConductanceMeasure), typed("IfcElectricChargeMeasure", IfcElectricChargeMeasure), typed("IfcDoseEquivalentMeasure", IfcDoseEquivalentMeasure), typed("IfcElectricCapacitanceMeasure", IfcElectricCapacitanceMeasure), typed("IfcAbsorbedDoseMeasure", IfcAbsorbedDoseMeasure), typed("IfcRadioActivityMeasure", IfcRadioActivityMeasure), typed("IfcRotationalFrequencyMeasure", IfcRotationalFrequencyMeasure), typed("IfcTorqueMeasure", IfcTorqueMeasure), typed("IfcAccelerationMeasure", IfcAccelerationMeasure), typed("IfcLinearForceMeasure", IfcLinearForceMeasure), typed("IfcLinearStiffnessMeasure", IfcLinearStiffnessMeasure), typed("IfcModulusOfSubgradeReactionMeasure", IfcModulusOfSubgradeReactionMeasure), typed("IfcModulusOfElasticityMeasure", IfcModulusOfElasticityMeasure), typed("IfcMomentOfInertiaMeasure", IfcMomentOfInertiaMeasure), typed("IfcPlanarForceMeasure", IfcPlanarForceMeasure), typed("IfcRotationalStiffnessMeasure", IfcRotationalStiffnessMeasure), typed("IfcShearModulusMeasure", IfcShearModulusMeasure), typed("IfcLinearMomentMeasure", IfcLinearMomentMeasure), typed("IfcLuminousIntensityDistributionMeasure", IfcLuminousIntensityDistributionMeasure), typed("IfcCurvatureMeasure", IfcCurvatureMeasure), typed("IfcMassPerLengthMeasure", IfcMassPerLengthMeasure), typed("IfcModulusOfLinearSubgradeReactionMeasure", IfcModulusOfLinearSubgradeReactionMeasure), typed("IfcModulusOfRotationalSubgradeReactionMeasure", IfcModulusOfRotationalSubgradeReactionMeasure), typed("IfcRotationalMassMeasure", IfcRotationalMassMeasure), typed("IfcSectionalAreaIntegralMeasure", IfcSectionalAreaIntegralMeasure), typed("IfcSectionModulusMeasure", IfcSectionModulusMeasure), typed("IfcTemperatureGradientMeasure", IfcTemperatureGradientMeasure), typed("IfcThermalExpansionCoefficientMeasure", IfcThermalExpansionCoefficientMeasure), typed("IfcWarpingConstantMeasure", IfcWarpingConstantMeasure), typed("IfcWarpingMomentMeasure", IfcWarpingMomentMeasure), typed("IfcSoundPowerMeasure", IfcSoundPowerMeasure), typed("IfcSoundPressureMeasure", IfcSoundPressureMeasure), typed("IfcHeatingValueMeasure", IfcHeatingValueMeasure), typed("IfcPHMeasure", IfcPHMeasure), typed("IfcIonConcentrationMeasure", IfcIonConcentrationMeasure)]);
-export const IfcDocumentSelect = EntityRef;
-export const IfcDraughtingCalloutElement = EntityRef;
-export const IfcFillAreaStyleTileShapeSelect = EntityRef;
-export const IfcFillStyleSelect = EntityRef;
-export const IfcGeometricSetSelect = EntityRef;
-export const IfcHatchLineDistanceSelect = z.union([EntityRef, typed("IfcPositiveLengthMeasure", IfcPositiveLengthMeasure)]);
-export const IfcLayeredItem = EntityRef;
-export const IfcLibrarySelect = EntityRef;
-export const IfcLightDistributionDataSourceSelect = EntityRef;
-export const IfcMaterialSelect = EntityRef;
-export const IfcMeasureValue = z.union([typed("IfcVolumeMeasure", IfcVolumeMeasure), typed("IfcTimeMeasure", IfcTimeMeasure), typed("IfcThermodynamicTemperatureMeasure", IfcThermodynamicTemperatureMeasure), typed("IfcSolidAngleMeasure", IfcSolidAngleMeasure), typed("IfcPositiveRatioMeasure", IfcPositiveRatioMeasure), typed("IfcRatioMeasure", IfcRatioMeasure), typed("IfcPositivePlaneAngleMeasure", IfcPositivePlaneAngleMeasure), typed("IfcPlaneAngleMeasure", IfcPlaneAngleMeasure), typed("IfcParameterValue", IfcParameterValue), typed("IfcNumericMeasure", IfcNumericMeasure), typed("IfcMassMeasure", IfcMassMeasure), typed("IfcPositiveLengthMeasure", IfcPositiveLengthMeasure), typed("IfcLengthMeasure", IfcLengthMeasure), typed("IfcElectricCurrentMeasure", IfcElectricCurrentMeasure), typed("IfcDescriptiveMeasure", IfcDescriptiveMeasure), typed("IfcCountMeasure", IfcCountMeasure), typed("IfcContextDependentMeasure", IfcContextDependentMeasure), typed("IfcAreaMeasure", IfcAreaMeasure), typed("IfcAmountOfSubstanceMeasure", IfcAmountOfSubstanceMeasure), typed("IfcLuminousIntensityMeasure", IfcLuminousIntensityMeasure), typed("IfcNormalisedRatioMeasure", IfcNormalisedRatioMeasure), typed("IfcComplexNumber", IfcComplexNumber)]);
-export const IfcMetricValueSelect = z.union([EntityRef, typed("IfcText", IfcText)]);
-export const IfcObjectReferenceSelect = EntityRef;
-export const IfcOrientationSelect = z.union([EntityRef, typed("IfcPlaneAngleMeasure", IfcPlaneAngleMeasure)]);
-export const IfcPointOrVertexPoint = EntityRef;
-export const IfcPresentationStyleSelect = z.union([EntityRef, typed("IfcNullStyle", IfcNullStyle)]);
-export const IfcShell = EntityRef;
-export const IfcSimpleValue = z.union([typed("IfcInteger", IfcInteger), typed("IfcReal", IfcReal), typed("IfcBoolean", IfcBoolean), typed("IfcIdentifier", IfcIdentifier), typed("IfcText", IfcText), typed("IfcLabel", IfcLabel), typed("IfcLogical", IfcLogical)]);
-export const IfcSizeSelect = z.union([typed("IfcRatioMeasure", IfcRatioMeasure), typed("IfcLengthMeasure", IfcLengthMeasure), typed("IfcDescriptiveMeasure", IfcDescriptiveMeasure), typed("IfcPositiveLengthMeasure", IfcPositiveLengthMeasure), typed("IfcNormalisedRatioMeasure", IfcNormalisedRatioMeasure), typed("IfcPositiveRatioMeasure", IfcPositiveRatioMeasure)]);
-export const IfcSpecularHighlightSelect = z.union([typed("IfcSpecularExponent", IfcSpecularExponent), typed("IfcSpecularRoughness", IfcSpecularRoughness)]);
-export const IfcStructuralActivityAssignmentSelect = EntityRef;
-export const IfcSurfaceOrFaceSurface = EntityRef;
-export const IfcSurfaceStyleElementSelect = EntityRef;
-export const IfcSymbolStyleSelect = EntityRef;
-export const IfcTextFontSelect = EntityRef;
-export const IfcTextStyleSelect = EntityRef;
-export const IfcTrimmingSelect = z.union([EntityRef, typed("IfcParameterValue", IfcParameterValue)]);
-export const IfcUnit = EntityRef;
-export const IfcValue = z.union([typed("IfcVolumeMeasure", IfcVolumeMeasure), typed("IfcTimeMeasure", IfcTimeMeasure), typed("IfcThermodynamicTemperatureMeasure", IfcThermodynamicTemperatureMeasure), typed("IfcSolidAngleMeasure", IfcSolidAngleMeasure), typed("IfcPositiveRatioMeasure", IfcPositiveRatioMeasure), typed("IfcRatioMeasure", IfcRatioMeasure), typed("IfcPositivePlaneAngleMeasure", IfcPositivePlaneAngleMeasure), typed("IfcPlaneAngleMeasure", IfcPlaneAngleMeasure), typed("IfcParameterValue", IfcParameterValue), typed("IfcNumericMeasure", IfcNumericMeasure), typed("IfcMassMeasure", IfcMassMeasure), typed("IfcPositiveLengthMeasure", IfcPositiveLengthMeasure), typed("IfcLengthMeasure", IfcLengthMeasure), typed("IfcElectricCurrentMeasure", IfcElectricCurrentMeasure), typed("IfcDescriptiveMeasure", IfcDescriptiveMeasure), typed("IfcCountMeasure", IfcCountMeasure), typed("IfcContextDependentMeasure", IfcContextDependentMeasure), typed("IfcAreaMeasure", IfcAreaMeasure), typed("IfcAmountOfSubstanceMeasure", IfcAmountOfSubstanceMeasure), typed("IfcLuminousIntensityMeasure", IfcLuminousIntensityMeasure), typed("IfcNormalisedRatioMeasure", IfcNormalisedRatioMeasure), typed("IfcComplexNumber", IfcComplexNumber), typed("IfcInteger", IfcInteger), typed("IfcReal", IfcReal), typed("IfcBoolean", IfcBoolean), typed("IfcIdentifier", IfcIdentifier), typed("IfcText", IfcText), typed("IfcLabel", IfcLabel), typed("IfcLogical", IfcLogical), typed("IfcVolumetricFlowRateMeasure", IfcVolumetricFlowRateMeasure), typed("IfcTimeStamp", IfcTimeStamp), typed("IfcThermalTransmittanceMeasure", IfcThermalTransmittanceMeasure), typed("IfcThermalResistanceMeasure", IfcThermalResistanceMeasure), typed("IfcThermalAdmittanceMeasure", IfcThermalAdmittanceMeasure), typed("IfcPressureMeasure", IfcPressureMeasure), typed("IfcPowerMeasure", IfcPowerMeasure), typed("IfcMassFlowRateMeasure", IfcMassFlowRateMeasure), typed("IfcMassDensityMeasure", IfcMassDensityMeasure), typed("IfcLinearVelocityMeasure", IfcLinearVelocityMeasure), typed("IfcKinematicViscosityMeasure", IfcKinematicViscosityMeasure), typed("IfcIntegerCountRateMeasure", IfcIntegerCountRateMeasure), typed("IfcHeatFluxDensityMeasure", IfcHeatFluxDensityMeasure), typed("IfcFrequencyMeasure", IfcFrequencyMeasure), typed("IfcEnergyMeasure", IfcEnergyMeasure), typed("IfcElectricVoltageMeasure", IfcElectricVoltageMeasure), typed("IfcDynamicViscosityMeasure", IfcDynamicViscosityMeasure), typed("IfcCompoundPlaneAngleMeasure", IfcCompoundPlaneAngleMeasure), typed("IfcAngularVelocityMeasure", IfcAngularVelocityMeasure), typed("IfcThermalConductivityMeasure", IfcThermalConductivityMeasure), typed("IfcMolecularWeightMeasure", IfcMolecularWeightMeasure), typed("IfcVaporPermeabilityMeasure", IfcVaporPermeabilityMeasure), typed("IfcMoistureDiffusivityMeasure", IfcMoistureDiffusivityMeasure), typed("IfcIsothermalMoistureCapacityMeasure", IfcIsothermalMoistureCapacityMeasure), typed("IfcSpecificHeatCapacityMeasure", IfcSpecificHeatCapacityMeasure), typed("IfcMonetaryMeasure", IfcMonetaryMeasure), typed("IfcMagneticFluxDensityMeasure", IfcMagneticFluxDensityMeasure), typed("IfcMagneticFluxMeasure", IfcMagneticFluxMeasure), typed("IfcLuminousFluxMeasure", IfcLuminousFluxMeasure), typed("IfcForceMeasure", IfcForceMeasure), typed("IfcInductanceMeasure", IfcInductanceMeasure), typed("IfcIlluminanceMeasure", IfcIlluminanceMeasure), typed("IfcElectricResistanceMeasure", IfcElectricResistanceMeasure), typed("IfcElectricConductanceMeasure", IfcElectricConductanceMeasure), typed("IfcElectricChargeMeasure", IfcElectricChargeMeasure), typed("IfcDoseEquivalentMeasure", IfcDoseEquivalentMeasure), typed("IfcElectricCapacitanceMeasure", IfcElectricCapacitanceMeasure), typed("IfcAbsorbedDoseMeasure", IfcAbsorbedDoseMeasure), typed("IfcRadioActivityMeasure", IfcRadioActivityMeasure), typed("IfcRotationalFrequencyMeasure", IfcRotationalFrequencyMeasure), typed("IfcTorqueMeasure", IfcTorqueMeasure), typed("IfcAccelerationMeasure", IfcAccelerationMeasure), typed("IfcLinearForceMeasure", IfcLinearForceMeasure), typed("IfcLinearStiffnessMeasure", IfcLinearStiffnessMeasure), typed("IfcModulusOfSubgradeReactionMeasure", IfcModulusOfSubgradeReactionMeasure), typed("IfcModulusOfElasticityMeasure", IfcModulusOfElasticityMeasure), typed("IfcMomentOfInertiaMeasure", IfcMomentOfInertiaMeasure), typed("IfcPlanarForceMeasure", IfcPlanarForceMeasure), typed("IfcRotationalStiffnessMeasure", IfcRotationalStiffnessMeasure), typed("IfcShearModulusMeasure", IfcShearModulusMeasure), typed("IfcLinearMomentMeasure", IfcLinearMomentMeasure), typed("IfcLuminousIntensityDistributionMeasure", IfcLuminousIntensityDistributionMeasure), typed("IfcCurvatureMeasure", IfcCurvatureMeasure), typed("IfcMassPerLengthMeasure", IfcMassPerLengthMeasure), typed("IfcModulusOfLinearSubgradeReactionMeasure", IfcModulusOfLinearSubgradeReactionMeasure), typed("IfcModulusOfRotationalSubgradeReactionMeasure", IfcModulusOfRotationalSubgradeReactionMeasure), typed("IfcRotationalMassMeasure", IfcRotationalMassMeasure), typed("IfcSectionalAreaIntegralMeasure", IfcSectionalAreaIntegralMeasure), typed("IfcSectionModulusMeasure", IfcSectionModulusMeasure), typed("IfcTemperatureGradientMeasure", IfcTemperatureGradientMeasure), typed("IfcThermalExpansionCoefficientMeasure", IfcThermalExpansionCoefficientMeasure), typed("IfcWarpingConstantMeasure", IfcWarpingConstantMeasure), typed("IfcWarpingMomentMeasure", IfcWarpingMomentMeasure), typed("IfcSoundPowerMeasure", IfcSoundPowerMeasure), typed("IfcSoundPressureMeasure", IfcSoundPressureMeasure), typed("IfcHeatingValueMeasure", IfcHeatingValueMeasure), typed("IfcPHMeasure", IfcPHMeasure), typed("IfcIonConcentrationMeasure", IfcIonConcentrationMeasure)]);
-export const IfcVectorOrDirection = EntityRef;
+export const IfcActorSelect = $EntityRef;
+export const IfcAppliedValueSelect = z.union([$EntityRef, $typed("IfcRatioMeasure", IfcRatioMeasure), $typed("IfcMonetaryMeasure", IfcMonetaryMeasure)]);
+export const IfcAxis2Placement = $EntityRef;
+export const IfcBooleanOperand = $EntityRef;
+export const IfcCharacterStyleSelect = $EntityRef;
+export const IfcClassificationNotationSelect = $EntityRef;
+export const IfcColour = $EntityRef;
+export const IfcColourOrFactor = z.union([$EntityRef, $typed("IfcNormalisedRatioMeasure", IfcNormalisedRatioMeasure)]);
+export const IfcConditionCriterionSelect = z.union([$EntityRef, $typed("IfcLabel", IfcLabel)]);
+export const IfcCsgSelect = $EntityRef;
+export const IfcCurveFontOrScaledCurveFontSelect = $EntityRef;
+export const IfcCurveOrEdgeCurve = $EntityRef;
+export const IfcCurveStyleFontSelect = $EntityRef;
+export const IfcDateTimeSelect = $EntityRef;
+export const IfcDefinedSymbolSelect = $EntityRef;
+export const IfcDerivedMeasureValue = z.union([$typed("IfcVolumetricFlowRateMeasure", IfcVolumetricFlowRateMeasure), $typed("IfcTimeStamp", IfcTimeStamp), $typed("IfcThermalTransmittanceMeasure", IfcThermalTransmittanceMeasure), $typed("IfcThermalResistanceMeasure", IfcThermalResistanceMeasure), $typed("IfcThermalAdmittanceMeasure", IfcThermalAdmittanceMeasure), $typed("IfcPressureMeasure", IfcPressureMeasure), $typed("IfcPowerMeasure", IfcPowerMeasure), $typed("IfcMassFlowRateMeasure", IfcMassFlowRateMeasure), $typed("IfcMassDensityMeasure", IfcMassDensityMeasure), $typed("IfcLinearVelocityMeasure", IfcLinearVelocityMeasure), $typed("IfcKinematicViscosityMeasure", IfcKinematicViscosityMeasure), $typed("IfcIntegerCountRateMeasure", IfcIntegerCountRateMeasure), $typed("IfcHeatFluxDensityMeasure", IfcHeatFluxDensityMeasure), $typed("IfcFrequencyMeasure", IfcFrequencyMeasure), $typed("IfcEnergyMeasure", IfcEnergyMeasure), $typed("IfcElectricVoltageMeasure", IfcElectricVoltageMeasure), $typed("IfcDynamicViscosityMeasure", IfcDynamicViscosityMeasure), $typed("IfcCompoundPlaneAngleMeasure", IfcCompoundPlaneAngleMeasure), $typed("IfcAngularVelocityMeasure", IfcAngularVelocityMeasure), $typed("IfcThermalConductivityMeasure", IfcThermalConductivityMeasure), $typed("IfcMolecularWeightMeasure", IfcMolecularWeightMeasure), $typed("IfcVaporPermeabilityMeasure", IfcVaporPermeabilityMeasure), $typed("IfcMoistureDiffusivityMeasure", IfcMoistureDiffusivityMeasure), $typed("IfcIsothermalMoistureCapacityMeasure", IfcIsothermalMoistureCapacityMeasure), $typed("IfcSpecificHeatCapacityMeasure", IfcSpecificHeatCapacityMeasure), $typed("IfcMonetaryMeasure", IfcMonetaryMeasure), $typed("IfcMagneticFluxDensityMeasure", IfcMagneticFluxDensityMeasure), $typed("IfcMagneticFluxMeasure", IfcMagneticFluxMeasure), $typed("IfcLuminousFluxMeasure", IfcLuminousFluxMeasure), $typed("IfcForceMeasure", IfcForceMeasure), $typed("IfcInductanceMeasure", IfcInductanceMeasure), $typed("IfcIlluminanceMeasure", IfcIlluminanceMeasure), $typed("IfcElectricResistanceMeasure", IfcElectricResistanceMeasure), $typed("IfcElectricConductanceMeasure", IfcElectricConductanceMeasure), $typed("IfcElectricChargeMeasure", IfcElectricChargeMeasure), $typed("IfcDoseEquivalentMeasure", IfcDoseEquivalentMeasure), $typed("IfcElectricCapacitanceMeasure", IfcElectricCapacitanceMeasure), $typed("IfcAbsorbedDoseMeasure", IfcAbsorbedDoseMeasure), $typed("IfcRadioActivityMeasure", IfcRadioActivityMeasure), $typed("IfcRotationalFrequencyMeasure", IfcRotationalFrequencyMeasure), $typed("IfcTorqueMeasure", IfcTorqueMeasure), $typed("IfcAccelerationMeasure", IfcAccelerationMeasure), $typed("IfcLinearForceMeasure", IfcLinearForceMeasure), $typed("IfcLinearStiffnessMeasure", IfcLinearStiffnessMeasure), $typed("IfcModulusOfSubgradeReactionMeasure", IfcModulusOfSubgradeReactionMeasure), $typed("IfcModulusOfElasticityMeasure", IfcModulusOfElasticityMeasure), $typed("IfcMomentOfInertiaMeasure", IfcMomentOfInertiaMeasure), $typed("IfcPlanarForceMeasure", IfcPlanarForceMeasure), $typed("IfcRotationalStiffnessMeasure", IfcRotationalStiffnessMeasure), $typed("IfcShearModulusMeasure", IfcShearModulusMeasure), $typed("IfcLinearMomentMeasure", IfcLinearMomentMeasure), $typed("IfcLuminousIntensityDistributionMeasure", IfcLuminousIntensityDistributionMeasure), $typed("IfcCurvatureMeasure", IfcCurvatureMeasure), $typed("IfcMassPerLengthMeasure", IfcMassPerLengthMeasure), $typed("IfcModulusOfLinearSubgradeReactionMeasure", IfcModulusOfLinearSubgradeReactionMeasure), $typed("IfcModulusOfRotationalSubgradeReactionMeasure", IfcModulusOfRotationalSubgradeReactionMeasure), $typed("IfcRotationalMassMeasure", IfcRotationalMassMeasure), $typed("IfcSectionalAreaIntegralMeasure", IfcSectionalAreaIntegralMeasure), $typed("IfcSectionModulusMeasure", IfcSectionModulusMeasure), $typed("IfcTemperatureGradientMeasure", IfcTemperatureGradientMeasure), $typed("IfcThermalExpansionCoefficientMeasure", IfcThermalExpansionCoefficientMeasure), $typed("IfcWarpingConstantMeasure", IfcWarpingConstantMeasure), $typed("IfcWarpingMomentMeasure", IfcWarpingMomentMeasure), $typed("IfcSoundPowerMeasure", IfcSoundPowerMeasure), $typed("IfcSoundPressureMeasure", IfcSoundPressureMeasure), $typed("IfcHeatingValueMeasure", IfcHeatingValueMeasure), $typed("IfcPHMeasure", IfcPHMeasure), $typed("IfcIonConcentrationMeasure", IfcIonConcentrationMeasure)]);
+export const IfcDocumentSelect = $EntityRef;
+export const IfcDraughtingCalloutElement = $EntityRef;
+export const IfcFillAreaStyleTileShapeSelect = $EntityRef;
+export const IfcFillStyleSelect = $EntityRef;
+export const IfcGeometricSetSelect = $EntityRef;
+export const IfcHatchLineDistanceSelect = z.union([$EntityRef, $typed("IfcPositiveLengthMeasure", IfcPositiveLengthMeasure)]);
+export const IfcLayeredItem = $EntityRef;
+export const IfcLibrarySelect = $EntityRef;
+export const IfcLightDistributionDataSourceSelect = $EntityRef;
+export const IfcMaterialSelect = $EntityRef;
+export const IfcMeasureValue = z.union([$typed("IfcVolumeMeasure", IfcVolumeMeasure), $typed("IfcTimeMeasure", IfcTimeMeasure), $typed("IfcThermodynamicTemperatureMeasure", IfcThermodynamicTemperatureMeasure), $typed("IfcSolidAngleMeasure", IfcSolidAngleMeasure), $typed("IfcPositiveRatioMeasure", IfcPositiveRatioMeasure), $typed("IfcRatioMeasure", IfcRatioMeasure), $typed("IfcPositivePlaneAngleMeasure", IfcPositivePlaneAngleMeasure), $typed("IfcPlaneAngleMeasure", IfcPlaneAngleMeasure), $typed("IfcParameterValue", IfcParameterValue), $typed("IfcNumericMeasure", IfcNumericMeasure), $typed("IfcMassMeasure", IfcMassMeasure), $typed("IfcPositiveLengthMeasure", IfcPositiveLengthMeasure), $typed("IfcLengthMeasure", IfcLengthMeasure), $typed("IfcElectricCurrentMeasure", IfcElectricCurrentMeasure), $typed("IfcDescriptiveMeasure", IfcDescriptiveMeasure), $typed("IfcCountMeasure", IfcCountMeasure), $typed("IfcContextDependentMeasure", IfcContextDependentMeasure), $typed("IfcAreaMeasure", IfcAreaMeasure), $typed("IfcAmountOfSubstanceMeasure", IfcAmountOfSubstanceMeasure), $typed("IfcLuminousIntensityMeasure", IfcLuminousIntensityMeasure), $typed("IfcNormalisedRatioMeasure", IfcNormalisedRatioMeasure), $typed("IfcComplexNumber", IfcComplexNumber)]);
+export const IfcMetricValueSelect = z.union([$EntityRef, $typed("IfcText", IfcText)]);
+export const IfcObjectReferenceSelect = $EntityRef;
+export const IfcOrientationSelect = z.union([$EntityRef, $typed("IfcPlaneAngleMeasure", IfcPlaneAngleMeasure)]);
+export const IfcPointOrVertexPoint = $EntityRef;
+export const IfcPresentationStyleSelect = z.union([$EntityRef, $typed("IfcNullStyle", IfcNullStyle)]);
+export const IfcShell = $EntityRef;
+export const IfcSimpleValue = z.union([$typed("IfcInteger", IfcInteger), $typed("IfcReal", IfcReal), $typed("IfcBoolean", IfcBoolean), $typed("IfcIdentifier", IfcIdentifier), $typed("IfcText", IfcText), $typed("IfcLabel", IfcLabel), $typed("IfcLogical", IfcLogical)]);
+export const IfcSizeSelect = z.union([$typed("IfcRatioMeasure", IfcRatioMeasure), $typed("IfcLengthMeasure", IfcLengthMeasure), $typed("IfcDescriptiveMeasure", IfcDescriptiveMeasure), $typed("IfcPositiveLengthMeasure", IfcPositiveLengthMeasure), $typed("IfcNormalisedRatioMeasure", IfcNormalisedRatioMeasure), $typed("IfcPositiveRatioMeasure", IfcPositiveRatioMeasure)]);
+export const IfcSpecularHighlightSelect = z.union([$typed("IfcSpecularExponent", IfcSpecularExponent), $typed("IfcSpecularRoughness", IfcSpecularRoughness)]);
+export const IfcStructuralActivityAssignmentSelect = $EntityRef;
+export const IfcSurfaceOrFaceSurface = $EntityRef;
+export const IfcSurfaceStyleElementSelect = $EntityRef;
+export const IfcSymbolStyleSelect = $EntityRef;
+export const IfcTextFontSelect = $EntityRef;
+export const IfcTextStyleSelect = $EntityRef;
+export const IfcTrimmingSelect = z.union([$EntityRef, $typed("IfcParameterValue", IfcParameterValue)]);
+export const IfcUnit = $EntityRef;
+export const IfcValue = z.union([$typed("IfcVolumeMeasure", IfcVolumeMeasure), $typed("IfcTimeMeasure", IfcTimeMeasure), $typed("IfcThermodynamicTemperatureMeasure", IfcThermodynamicTemperatureMeasure), $typed("IfcSolidAngleMeasure", IfcSolidAngleMeasure), $typed("IfcPositiveRatioMeasure", IfcPositiveRatioMeasure), $typed("IfcRatioMeasure", IfcRatioMeasure), $typed("IfcPositivePlaneAngleMeasure", IfcPositivePlaneAngleMeasure), $typed("IfcPlaneAngleMeasure", IfcPlaneAngleMeasure), $typed("IfcParameterValue", IfcParameterValue), $typed("IfcNumericMeasure", IfcNumericMeasure), $typed("IfcMassMeasure", IfcMassMeasure), $typed("IfcPositiveLengthMeasure", IfcPositiveLengthMeasure), $typed("IfcLengthMeasure", IfcLengthMeasure), $typed("IfcElectricCurrentMeasure", IfcElectricCurrentMeasure), $typed("IfcDescriptiveMeasure", IfcDescriptiveMeasure), $typed("IfcCountMeasure", IfcCountMeasure), $typed("IfcContextDependentMeasure", IfcContextDependentMeasure), $typed("IfcAreaMeasure", IfcAreaMeasure), $typed("IfcAmountOfSubstanceMeasure", IfcAmountOfSubstanceMeasure), $typed("IfcLuminousIntensityMeasure", IfcLuminousIntensityMeasure), $typed("IfcNormalisedRatioMeasure", IfcNormalisedRatioMeasure), $typed("IfcComplexNumber", IfcComplexNumber), $typed("IfcInteger", IfcInteger), $typed("IfcReal", IfcReal), $typed("IfcBoolean", IfcBoolean), $typed("IfcIdentifier", IfcIdentifier), $typed("IfcText", IfcText), $typed("IfcLabel", IfcLabel), $typed("IfcLogical", IfcLogical), $typed("IfcVolumetricFlowRateMeasure", IfcVolumetricFlowRateMeasure), $typed("IfcTimeStamp", IfcTimeStamp), $typed("IfcThermalTransmittanceMeasure", IfcThermalTransmittanceMeasure), $typed("IfcThermalResistanceMeasure", IfcThermalResistanceMeasure), $typed("IfcThermalAdmittanceMeasure", IfcThermalAdmittanceMeasure), $typed("IfcPressureMeasure", IfcPressureMeasure), $typed("IfcPowerMeasure", IfcPowerMeasure), $typed("IfcMassFlowRateMeasure", IfcMassFlowRateMeasure), $typed("IfcMassDensityMeasure", IfcMassDensityMeasure), $typed("IfcLinearVelocityMeasure", IfcLinearVelocityMeasure), $typed("IfcKinematicViscosityMeasure", IfcKinematicViscosityMeasure), $typed("IfcIntegerCountRateMeasure", IfcIntegerCountRateMeasure), $typed("IfcHeatFluxDensityMeasure", IfcHeatFluxDensityMeasure), $typed("IfcFrequencyMeasure", IfcFrequencyMeasure), $typed("IfcEnergyMeasure", IfcEnergyMeasure), $typed("IfcElectricVoltageMeasure", IfcElectricVoltageMeasure), $typed("IfcDynamicViscosityMeasure", IfcDynamicViscosityMeasure), $typed("IfcCompoundPlaneAngleMeasure", IfcCompoundPlaneAngleMeasure), $typed("IfcAngularVelocityMeasure", IfcAngularVelocityMeasure), $typed("IfcThermalConductivityMeasure", IfcThermalConductivityMeasure), $typed("IfcMolecularWeightMeasure", IfcMolecularWeightMeasure), $typed("IfcVaporPermeabilityMeasure", IfcVaporPermeabilityMeasure), $typed("IfcMoistureDiffusivityMeasure", IfcMoistureDiffusivityMeasure), $typed("IfcIsothermalMoistureCapacityMeasure", IfcIsothermalMoistureCapacityMeasure), $typed("IfcSpecificHeatCapacityMeasure", IfcSpecificHeatCapacityMeasure), $typed("IfcMonetaryMeasure", IfcMonetaryMeasure), $typed("IfcMagneticFluxDensityMeasure", IfcMagneticFluxDensityMeasure), $typed("IfcMagneticFluxMeasure", IfcMagneticFluxMeasure), $typed("IfcLuminousFluxMeasure", IfcLuminousFluxMeasure), $typed("IfcForceMeasure", IfcForceMeasure), $typed("IfcInductanceMeasure", IfcInductanceMeasure), $typed("IfcIlluminanceMeasure", IfcIlluminanceMeasure), $typed("IfcElectricResistanceMeasure", IfcElectricResistanceMeasure), $typed("IfcElectricConductanceMeasure", IfcElectricConductanceMeasure), $typed("IfcElectricChargeMeasure", IfcElectricChargeMeasure), $typed("IfcDoseEquivalentMeasure", IfcDoseEquivalentMeasure), $typed("IfcElectricCapacitanceMeasure", IfcElectricCapacitanceMeasure), $typed("IfcAbsorbedDoseMeasure", IfcAbsorbedDoseMeasure), $typed("IfcRadioActivityMeasure", IfcRadioActivityMeasure), $typed("IfcRotationalFrequencyMeasure", IfcRotationalFrequencyMeasure), $typed("IfcTorqueMeasure", IfcTorqueMeasure), $typed("IfcAccelerationMeasure", IfcAccelerationMeasure), $typed("IfcLinearForceMeasure", IfcLinearForceMeasure), $typed("IfcLinearStiffnessMeasure", IfcLinearStiffnessMeasure), $typed("IfcModulusOfSubgradeReactionMeasure", IfcModulusOfSubgradeReactionMeasure), $typed("IfcModulusOfElasticityMeasure", IfcModulusOfElasticityMeasure), $typed("IfcMomentOfInertiaMeasure", IfcMomentOfInertiaMeasure), $typed("IfcPlanarForceMeasure", IfcPlanarForceMeasure), $typed("IfcRotationalStiffnessMeasure", IfcRotationalStiffnessMeasure), $typed("IfcShearModulusMeasure", IfcShearModulusMeasure), $typed("IfcLinearMomentMeasure", IfcLinearMomentMeasure), $typed("IfcLuminousIntensityDistributionMeasure", IfcLuminousIntensityDistributionMeasure), $typed("IfcCurvatureMeasure", IfcCurvatureMeasure), $typed("IfcMassPerLengthMeasure", IfcMassPerLengthMeasure), $typed("IfcModulusOfLinearSubgradeReactionMeasure", IfcModulusOfLinearSubgradeReactionMeasure), $typed("IfcModulusOfRotationalSubgradeReactionMeasure", IfcModulusOfRotationalSubgradeReactionMeasure), $typed("IfcRotationalMassMeasure", IfcRotationalMassMeasure), $typed("IfcSectionalAreaIntegralMeasure", IfcSectionalAreaIntegralMeasure), $typed("IfcSectionModulusMeasure", IfcSectionModulusMeasure), $typed("IfcTemperatureGradientMeasure", IfcTemperatureGradientMeasure), $typed("IfcThermalExpansionCoefficientMeasure", IfcThermalExpansionCoefficientMeasure), $typed("IfcWarpingConstantMeasure", IfcWarpingConstantMeasure), $typed("IfcWarpingMomentMeasure", IfcWarpingMomentMeasure), $typed("IfcSoundPowerMeasure", IfcSoundPowerMeasure), $typed("IfcSoundPressureMeasure", IfcSoundPressureMeasure), $typed("IfcHeatingValueMeasure", IfcHeatingValueMeasure), $typed("IfcPHMeasure", IfcPHMeasure), $typed("IfcIonConcentrationMeasure", IfcIonConcentrationMeasure)]);
+export const IfcVectorOrDirection = $EntityRef;
 
 export const Ifc2DCompositeCurve = z.strictObject({
-  Segments: z.array(EntityRef).min(1),
+  Segments: z.array($EntityRef).min(1),
   SelfIntersect: z.union([z.boolean(), z.literal('UNKNOWN')]),
 });
 export const IfcActionRequest = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
@@ -356,7 +358,7 @@ export const IfcActionRequest = z.strictObject({
 });
 export const IfcActor = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
@@ -369,12 +371,12 @@ export const IfcActorRole = z.strictObject({
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcActorRole", ["IfcActorRole.WR1"]));
 export const IfcActuatorType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcActuatorTypeEnum,
@@ -386,106 +388,106 @@ export const IfcAddress = z.strictObject({
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcAddress", ["IfcAddress.WR1"]));
 export const IfcAirTerminalBoxType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcAirTerminalBoxTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcAirTerminalBoxType", ["IfcTypeObject.WR1","IfcAirTerminalBoxType.WR1"]));
 export const IfcAirTerminalType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcAirTerminalTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcAirTerminalType", ["IfcTypeObject.WR1","IfcAirTerminalType.WR1"]));
 export const IfcAirToAirHeatRecoveryType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcAirToAirHeatRecoveryTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcAirToAirHeatRecoveryType", ["IfcTypeObject.WR1","IfcAirToAirHeatRecoveryType.WR1"]));
 export const IfcAlarmType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcAlarmTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcAlarmType", ["IfcTypeObject.WR1"]));
 export const IfcAngularDimension = z.strictObject({
-  Contents: z.array(IfcDraughtingCalloutElement).min(1),
+  Contents: z.array(IfcDraughtingCalloutElement).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcAnnotation = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
 });
 export const IfcAnnotationCurveOccurrence = z.strictObject({
-  Item: EntityRef.nullish(),
-  Styles: z.array(EntityRef).min(1),
+  Item: $EntityRef.nullish(),
+  Styles: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   Name: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcAnnotationCurveOccurrence", ["IfcStyledItem.WR11"]));
 export const IfcAnnotationFillArea = z.strictObject({
-  OuterBoundary: EntityRef,
-  InnerBoundaries: z.array(EntityRef).min(1).nullish(),
+  OuterBoundary: $EntityRef,
+  InnerBoundaries: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
 });
 export const IfcAnnotationFillAreaOccurrence = z.strictObject({
-  Item: EntityRef.nullish(),
-  Styles: z.array(EntityRef).min(1),
+  Item: $EntityRef.nullish(),
+  Styles: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   Name: IfcLabel.nullish(),
-  FillStyleTarget: EntityRef.nullish(),
+  FillStyleTarget: $EntityRef.nullish(),
   GlobalOrLocal: IfcGlobalOrLocalEnum.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcAnnotationFillAreaOccurrence", ["IfcStyledItem.WR11"]));
 export const IfcAnnotationOccurrence = z.strictObject({
-  Item: EntityRef.nullish(),
-  Styles: z.array(EntityRef).min(1),
+  Item: $EntityRef.nullish(),
+  Styles: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   Name: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcAnnotationOccurrence", ["IfcStyledItem.WR11"]));
 export const IfcAnnotationSurface = z.strictObject({
-  Item: EntityRef,
-  TextureCoordinates: EntityRef.nullish(),
+  Item: $EntityRef,
+  TextureCoordinates: $EntityRef.nullish(),
 });
 export const IfcAnnotationSurfaceOccurrence = z.strictObject({
-  Item: EntityRef.nullish(),
-  Styles: z.array(EntityRef).min(1),
+  Item: $EntityRef.nullish(),
+  Styles: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   Name: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcAnnotationSurfaceOccurrence", ["IfcStyledItem.WR11"]));
 export const IfcAnnotationSymbolOccurrence = z.strictObject({
-  Item: EntityRef.nullish(),
-  Styles: z.array(EntityRef).min(1),
+  Item: $EntityRef.nullish(),
+  Styles: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   Name: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcAnnotationSymbolOccurrence", ["IfcStyledItem.WR11"]));
 export const IfcAnnotationTextOccurrence = z.strictObject({
-  Item: EntityRef.nullish(),
-  Styles: z.array(EntityRef).min(1),
+  Item: $EntityRef.nullish(),
+  Styles: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   Name: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcAnnotationTextOccurrence", ["IfcStyledItem.WR11"]));
 export const IfcApplication = z.strictObject({
-  ApplicationDeveloper: EntityRef,
+  ApplicationDeveloper: $EntityRef,
   Version: IfcLabel,
   ApplicationFullName: IfcLabel,
   ApplicationIdentifier: IfcIdentifier,
@@ -494,13 +496,13 @@ export const IfcAppliedValue = z.strictObject({
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   AppliedValue: IfcAppliedValueSelect.nullish(),
-  UnitBasis: EntityRef.nullish(),
+  UnitBasis: $EntityRef.nullish(),
   ApplicableDate: IfcDateTimeSelect.nullish(),
   FixedUntilDate: IfcDateTimeSelect.nullish(),
 });
 export const IfcAppliedValueRelationship = z.strictObject({
-  ComponentOfTotal: EntityRef,
-  Components: z.array(EntityRef).min(1),
+  ComponentOfTotal: $EntityRef,
+  Components: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   ArithmeticOperator: IfcArithmeticOperatorEnum,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
@@ -516,55 +518,55 @@ export const IfcApproval = z.strictObject({
 });
 export const IfcApprovalActorRelationship = z.strictObject({
   Actor: IfcActorSelect,
-  Approval: EntityRef,
-  Role: EntityRef,
+  Approval: $EntityRef,
+  Role: $EntityRef,
 });
 export const IfcApprovalPropertyRelationship = z.strictObject({
-  ApprovedProperties: z.array(EntityRef).min(1),
-  Approval: EntityRef,
+  ApprovedProperties: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
+  Approval: $EntityRef,
 });
 export const IfcApprovalRelationship = z.strictObject({
-  RelatedApproval: EntityRef,
-  RelatingApproval: EntityRef,
+  RelatedApproval: $EntityRef,
+  RelatingApproval: $EntityRef,
   Description: IfcText.nullish(),
   Name: IfcLabel,
 });
 export const IfcArbitraryClosedProfileDef = z.strictObject({
   ProfileType: IfcProfileTypeEnum,
   ProfileName: IfcLabel.nullish(),
-  OuterCurve: EntityRef,
+  OuterCurve: $EntityRef,
 });
 export const IfcArbitraryOpenProfileDef = z.strictObject({
   ProfileType: IfcProfileTypeEnum,
   ProfileName: IfcLabel.nullish(),
-  Curve: EntityRef,
+  Curve: $EntityRef,
 });
 export const IfcArbitraryProfileDefWithVoids = z.strictObject({
   ProfileType: IfcProfileTypeEnum,
   ProfileName: IfcLabel.nullish(),
-  OuterCurve: EntityRef,
-  InnerCurves: z.array(EntityRef).min(1),
+  OuterCurve: $EntityRef,
+  InnerCurves: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcArbitraryProfileDefWithVoids", ["IfcArbitraryProfileDefWithVoids.WR1"]));
 export const IfcAsset = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
   AssetID: IfcIdentifier,
-  OriginalValue: EntityRef,
-  CurrentValue: EntityRef,
-  TotalReplacementCost: EntityRef,
+  OriginalValue: $EntityRef,
+  CurrentValue: $EntityRef,
+  TotalReplacementCost: $EntityRef,
   Owner: IfcActorSelect,
   User: IfcActorSelect,
-  ResponsiblePerson: EntityRef,
-  IncorporationDate: EntityRef,
-  DepreciatedValue: EntityRef,
+  ResponsiblePerson: $EntityRef,
+  IncorporationDate: $EntityRef,
+  DepreciatedValue: $EntityRef,
 });
 export const IfcAsymmetricIShapeProfileDef = z.strictObject({
   ProfileType: IfcProfileTypeEnum,
   ProfileName: IfcLabel.nullish(),
-  Position: EntityRef,
+  Position: $EntityRef,
   OverallWidth: IfcPositiveLengthMeasure,
   OverallDepth: IfcPositiveLengthMeasure,
   WebThickness: IfcPositiveLengthMeasure,
@@ -576,50 +578,50 @@ export const IfcAsymmetricIShapeProfileDef = z.strictObject({
   CentreOfGravityInY: IfcPositiveLengthMeasure.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcAsymmetricIShapeProfileDef", ["IfcIShapeProfileDef.WR1","IfcIShapeProfileDef.WR2","IfcIShapeProfileDef.WR3"]));
 export const IfcAxis1Placement = z.strictObject({
-  Location: EntityRef,
-  Axis: EntityRef.nullish(),
+  Location: $EntityRef,
+  Axis: $EntityRef.nullish(),
 });
 export const IfcAxis2Placement2D = z.strictObject({
-  Location: EntityRef,
-  RefDirection: EntityRef.nullish(),
+  Location: $EntityRef,
+  RefDirection: $EntityRef.nullish(),
 });
 export const IfcAxis2Placement3D = z.strictObject({
-  Location: EntityRef,
-  Axis: EntityRef.nullish(),
-  RefDirection: EntityRef.nullish(),
+  Location: $EntityRef,
+  Axis: $EntityRef.nullish(),
+  RefDirection: $EntityRef.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcAxis2Placement3D", ["IfcAxis2Placement3D.WR5"]));
 export const IfcBSplineCurve = z.strictObject({
   Degree: z.number().int(),
-  ControlPointsList: z.array(EntityRef).min(2),
+  ControlPointsList: z.array($EntityRef).min(2),
   CurveForm: IfcBSplineCurveForm,
   ClosedCurve: z.union([z.boolean(), z.literal('UNKNOWN')]),
   SelfIntersect: z.union([z.boolean(), z.literal('UNKNOWN')]),
 });
 export const IfcBeam = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcBeamType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcBeamTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcBeamType", ["IfcTypeObject.WR1"]));
 export const IfcBezierCurve = z.strictObject({
   Degree: z.number().int(),
-  ControlPointsList: z.array(EntityRef).min(2),
+  ControlPointsList: z.array($EntityRef).min(2),
   CurveForm: IfcBSplineCurveForm,
   ClosedCurve: z.union([z.boolean(), z.literal('UNKNOWN')]),
   SelfIntersect: z.union([z.boolean(), z.literal('UNKNOWN')]),
@@ -628,24 +630,24 @@ export const IfcBlobTexture = z.strictObject({
   RepeatS: z.boolean(),
   RepeatT: z.boolean(),
   TextureType: IfcSurfaceTextureEnum,
-  TextureTransform: EntityRef.nullish(),
+  TextureTransform: $EntityRef.nullish(),
   RasterFormat: IfcIdentifier,
   RasterCode: z.boolean(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcBlobTexture", ["IfcBlobTexture.WR11"]));
 export const IfcBlock = z.strictObject({
-  Position: EntityRef,
+  Position: $EntityRef,
   XLength: IfcPositiveLengthMeasure,
   YLength: IfcPositiveLengthMeasure,
   ZLength: IfcPositiveLengthMeasure,
 });
 export const IfcBoilerType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcBoilerTypeEnum,
@@ -704,102 +706,102 @@ export const IfcBoundedSurface = z.strictObject({
 
 });
 export const IfcBoundingBox = z.strictObject({
-  Corner: EntityRef,
+  Corner: $EntityRef,
   XDim: IfcPositiveLengthMeasure,
   YDim: IfcPositiveLengthMeasure,
   ZDim: IfcPositiveLengthMeasure,
 });
 export const IfcBoxedHalfSpace = z.strictObject({
-  BaseSurface: EntityRef,
+  BaseSurface: $EntityRef,
   AgreementFlag: z.boolean(),
-  Enclosure: EntityRef,
+  Enclosure: $EntityRef,
 });
 export const IfcBuilding = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   LongName: IfcLabel.nullish(),
   CompositionType: IfcElementCompositionEnum,
   ElevationOfRefHeight: IfcLengthMeasure.nullish(),
   ElevationOfTerrain: IfcLengthMeasure.nullish(),
-  BuildingAddress: EntityRef.nullish(),
+  BuildingAddress: $EntityRef.nullish(),
 });
 export const IfcBuildingElement = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcBuildingElementComponent = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcBuildingElementPart = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcBuildingElementProxy = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
   CompositionType: IfcElementCompositionEnum.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcBuildingElementProxy", ["IfcBuildingElementProxy.WR1"]));
 export const IfcBuildingElementProxyType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcBuildingElementProxyTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcBuildingElementProxyType", ["IfcTypeObject.WR1"]));
 export const IfcBuildingElementType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcBuildingElementType", ["IfcTypeObject.WR1"]));
 export const IfcBuildingStorey = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   LongName: IfcLabel.nullish(),
   CompositionType: IfcElementCompositionEnum,
   Elevation: IfcLengthMeasure.nullish(),
@@ -807,7 +809,7 @@ export const IfcBuildingStorey = z.strictObject({
 export const IfcCShapeProfileDef = z.strictObject({
   ProfileType: IfcProfileTypeEnum,
   ProfileName: IfcLabel.nullish(),
-  Position: EntityRef,
+  Position: $EntityRef,
   Depth: IfcPositiveLengthMeasure,
   Width: IfcPositiveLengthMeasure,
   WallThickness: IfcPositiveLengthMeasure,
@@ -817,36 +819,36 @@ export const IfcCShapeProfileDef = z.strictObject({
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcCShapeProfileDef", ["IfcCShapeProfileDef.WR1","IfcCShapeProfileDef.WR2","IfcCShapeProfileDef.WR3"]));
 export const IfcCableCarrierFittingType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcCableCarrierFittingTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcCableCarrierFittingType", ["IfcTypeObject.WR1","IfcCableCarrierFittingType.WR1"]));
 export const IfcCableCarrierSegmentType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcCableCarrierSegmentTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcCableCarrierSegmentType", ["IfcTypeObject.WR1"]));
 export const IfcCableSegmentType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcCableSegmentTypeEnum,
@@ -860,54 +862,54 @@ export const IfcCartesianPoint = z.strictObject({
   Coordinates: z.array(IfcLengthMeasure).min(1).max(3),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcCartesianPoint", ["IfcCartesianPoint.WR1"]));
 export const IfcCartesianTransformationOperator = z.strictObject({
-  Axis1: EntityRef.nullish(),
-  Axis2: EntityRef.nullish(),
-  LocalOrigin: EntityRef,
+  Axis1: $EntityRef.nullish(),
+  Axis2: $EntityRef.nullish(),
+  LocalOrigin: $EntityRef,
   Scale: z.number().nullish(),
 });
 export const IfcCartesianTransformationOperator2D = z.strictObject({
-  Axis1: EntityRef.nullish(),
-  Axis2: EntityRef.nullish(),
-  LocalOrigin: EntityRef,
+  Axis1: $EntityRef.nullish(),
+  Axis2: $EntityRef.nullish(),
+  LocalOrigin: $EntityRef,
   Scale: z.number().nullish(),
 });
 export const IfcCartesianTransformationOperator2DnonUniform = z.strictObject({
-  Axis1: EntityRef.nullish(),
-  Axis2: EntityRef.nullish(),
-  LocalOrigin: EntityRef,
+  Axis1: $EntityRef.nullish(),
+  Axis2: $EntityRef.nullish(),
+  LocalOrigin: $EntityRef,
   Scale: z.number().nullish(),
   Scale2: z.number().nullish(),
 });
 export const IfcCartesianTransformationOperator3D = z.strictObject({
-  Axis1: EntityRef.nullish(),
-  Axis2: EntityRef.nullish(),
-  LocalOrigin: EntityRef,
+  Axis1: $EntityRef.nullish(),
+  Axis2: $EntityRef.nullish(),
+  LocalOrigin: $EntityRef,
   Scale: z.number().nullish(),
-  Axis3: EntityRef.nullish(),
+  Axis3: $EntityRef.nullish(),
 });
 export const IfcCartesianTransformationOperator3DnonUniform = z.strictObject({
-  Axis1: EntityRef.nullish(),
-  Axis2: EntityRef.nullish(),
-  LocalOrigin: EntityRef,
+  Axis1: $EntityRef.nullish(),
+  Axis2: $EntityRef.nullish(),
+  LocalOrigin: $EntityRef,
   Scale: z.number().nullish(),
-  Axis3: EntityRef.nullish(),
+  Axis3: $EntityRef.nullish(),
   Scale2: z.number().nullish(),
   Scale3: z.number().nullish(),
 });
 export const IfcCenterLineProfileDef = z.strictObject({
   ProfileType: IfcProfileTypeEnum,
   ProfileName: IfcLabel.nullish(),
-  Curve: EntityRef,
+  Curve: $EntityRef,
   Thickness: IfcPositiveLengthMeasure,
 });
 export const IfcChamferEdgeFeature = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
   FeatureLength: IfcPositiveLengthMeasure.nullish(),
   Width: IfcPositiveLengthMeasure.nullish(),
@@ -915,12 +917,12 @@ export const IfcChamferEdgeFeature = z.strictObject({
 });
 export const IfcChillerType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcChillerTypeEnum,
@@ -932,33 +934,33 @@ export const IfcCircle = z.strictObject({
 export const IfcCircleHollowProfileDef = z.strictObject({
   ProfileType: IfcProfileTypeEnum,
   ProfileName: IfcLabel.nullish(),
-  Position: EntityRef,
+  Position: $EntityRef,
   Radius: IfcPositiveLengthMeasure,
   WallThickness: IfcPositiveLengthMeasure,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcCircleHollowProfileDef", ["IfcCircleHollowProfileDef.WR1"]));
 export const IfcCircleProfileDef = z.strictObject({
   ProfileType: IfcProfileTypeEnum,
   ProfileName: IfcLabel.nullish(),
-  Position: EntityRef,
+  Position: $EntityRef,
   Radius: IfcPositiveLengthMeasure,
 });
 export const IfcClassification = z.strictObject({
   Source: IfcLabel,
   Edition: IfcLabel,
-  EditionDate: EntityRef.nullish(),
+  EditionDate: $EntityRef.nullish(),
   Name: IfcLabel,
 });
 export const IfcClassificationItem = z.strictObject({
-  Notation: EntityRef,
-  ItemOf: EntityRef.nullish(),
+  Notation: $EntityRef,
+  ItemOf: $EntityRef.nullish(),
   Title: IfcLabel,
 });
 export const IfcClassificationItemRelationship = z.strictObject({
-  RelatingItem: EntityRef,
-  RelatedItems: z.array(EntityRef).min(1),
+  RelatingItem: $EntityRef,
+  RelatedItems: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcClassificationNotation = z.strictObject({
-  NotationFacets: z.array(EntityRef).min(1),
+  NotationFacets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcClassificationNotationFacet = z.strictObject({
   NotationValue: IfcLabel,
@@ -967,19 +969,19 @@ export const IfcClassificationReference = z.strictObject({
   Location: IfcLabel.nullish(),
   ItemReference: IfcIdentifier.nullish(),
   Name: IfcLabel.nullish(),
-  ReferencedSource: EntityRef.nullish(),
+  ReferencedSource: $EntityRef.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcClassificationReference", ["IfcExternalReference.WR1"]));
 export const IfcClosedShell = z.strictObject({
-  CfsFaces: z.array(EntityRef).min(1),
+  CfsFaces: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcCoilType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcCoilTypeEnum,
@@ -995,22 +997,22 @@ export const IfcColourSpecification = z.strictObject({
 });
 export const IfcColumn = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcColumnType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcColumnTypeEnum,
@@ -1019,57 +1021,57 @@ export const IfcComplexProperty = z.strictObject({
   Name: IfcIdentifier,
   Description: IfcText.nullish(),
   UsageName: IfcIdentifier,
-  HasProperties: z.array(EntityRef).min(1),
+  HasProperties: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcCompositeCurve = z.strictObject({
-  Segments: z.array(EntityRef).min(1),
+  Segments: z.array($EntityRef).min(1),
   SelfIntersect: z.union([z.boolean(), z.literal('UNKNOWN')]),
 });
 export const IfcCompositeCurveSegment = z.strictObject({
   Transition: IfcTransitionCode,
   SameSense: z.boolean(),
-  ParentCurve: EntityRef,
+  ParentCurve: $EntityRef,
 });
 export const IfcCompositeProfileDef = z.strictObject({
   ProfileType: IfcProfileTypeEnum,
   ProfileName: IfcLabel.nullish(),
-  Profiles: z.array(EntityRef).min(2),
+  Profiles: z.array($EntityRef).min(2).refine(r.uniqueItems, 'aggregate items must be unique'),
   Label: IfcLabel.nullish(),
 });
 export const IfcCompressorType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcCompressorTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcCompressorType", ["IfcTypeObject.WR1","IfcCompressorType.WR1"]));
 export const IfcCondenserType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcCondenserTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcCondenserType", ["IfcTypeObject.WR1","IfcCondenserType.WR1"]));
 export const IfcCondition = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
 });
 export const IfcConditionCriterion = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
@@ -1080,7 +1082,7 @@ export const IfcConic = z.strictObject({
   Position: IfcAxis2Placement,
 });
 export const IfcConnectedFaceSet = z.strictObject({
-  CfsFaces: z.array(EntityRef).min(1),
+  CfsFaces: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcConnectionCurveGeometry = z.strictObject({
   CurveOnRelatingElement: IfcCurveOrEdgeCurve,
@@ -1103,7 +1105,7 @@ export const IfcConnectionPointGeometry = z.strictObject({
 export const IfcConnectionPortGeometry = z.strictObject({
   LocationAtRelatingElement: IfcAxis2Placement,
   LocationAtRelatedElement: IfcAxis2Placement.nullish(),
-  ProfileOfPort: EntityRef,
+  ProfileOfPort: $EntityRef,
 });
 export const IfcConnectionSurfaceGeometry = z.strictObject({
   SurfaceOnRelatingElement: IfcSurfaceOrFaceSurface,
@@ -1121,116 +1123,116 @@ export const IfcConstraint = z.strictObject({
 export const IfcConstraintAggregationRelationship = z.strictObject({
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatingConstraint: EntityRef,
-  RelatedConstraints: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
+  RelatingConstraint: $EntityRef,
+  RelatedConstraints: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   LogicalAggregator: IfcLogicalOperatorEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcConstraintAggregationRelationship", ["IfcConstraintAggregationRelationship.WR11"]));
 export const IfcConstraintClassificationRelationship = z.strictObject({
-  ClassifiedConstraint: EntityRef,
-  RelatedClassifications: z.array(IfcClassificationNotationSelect).min(1),
+  ClassifiedConstraint: $EntityRef,
+  RelatedClassifications: z.array(IfcClassificationNotationSelect).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcConstraintRelationship = z.strictObject({
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatingConstraint: EntityRef,
-  RelatedConstraints: z.array(EntityRef).min(1),
+  RelatingConstraint: $EntityRef,
+  RelatedConstraints: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcConstraintRelationship", ["IfcConstraintRelationship.WR11"]));
 export const IfcConstructionEquipmentResource = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
   ResourceIdentifier: IfcIdentifier.nullish(),
   ResourceGroup: IfcLabel.nullish(),
   ResourceConsumption: IfcResourceConsumptionEnum.nullish(),
-  BaseQuantity: EntityRef.nullish(),
+  BaseQuantity: $EntityRef.nullish(),
 });
 export const IfcConstructionMaterialResource = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
   ResourceIdentifier: IfcIdentifier.nullish(),
   ResourceGroup: IfcLabel.nullish(),
   ResourceConsumption: IfcResourceConsumptionEnum.nullish(),
-  BaseQuantity: EntityRef.nullish(),
-  Suppliers: z.array(IfcActorSelect).min(1).nullish(),
+  BaseQuantity: $EntityRef.nullish(),
+  Suppliers: z.array(IfcActorSelect).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   UsageRatio: IfcRatioMeasure.nullish(),
 });
 export const IfcConstructionProductResource = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
   ResourceIdentifier: IfcIdentifier.nullish(),
   ResourceGroup: IfcLabel.nullish(),
   ResourceConsumption: IfcResourceConsumptionEnum.nullish(),
-  BaseQuantity: EntityRef.nullish(),
+  BaseQuantity: $EntityRef.nullish(),
 });
 export const IfcConstructionResource = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
   ResourceIdentifier: IfcIdentifier.nullish(),
   ResourceGroup: IfcLabel.nullish(),
   ResourceConsumption: IfcResourceConsumptionEnum.nullish(),
-  BaseQuantity: EntityRef.nullish(),
+  BaseQuantity: $EntityRef.nullish(),
 });
 export const IfcContextDependentUnit = z.strictObject({
-  Dimensions: EntityRef,
+  Dimensions: $EntityRef,
   UnitType: IfcUnitEnum,
   Name: IfcLabel,
 });
 export const IfcControl = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
 });
 export const IfcControllerType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcControllerTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcControllerType", ["IfcTypeObject.WR1"]));
 export const IfcConversionBasedUnit = z.strictObject({
-  Dimensions: EntityRef,
+  Dimensions: $EntityRef,
   UnitType: IfcUnitEnum,
   Name: IfcLabel,
-  ConversionFactor: EntityRef,
+  ConversionFactor: $EntityRef,
 });
 export const IfcCooledBeamType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcCooledBeamTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcCooledBeamType", ["IfcTypeObject.WR1","IfcCooledBeamType.WR1"]));
 export const IfcCoolingTowerType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcCoolingTowerTypeEnum,
@@ -1242,14 +1244,14 @@ export const IfcCoordinatedUniversalTimeOffset = z.strictObject({
 });
 export const IfcCostItem = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
 });
 export const IfcCostSchedule = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
@@ -1257,7 +1259,7 @@ export const IfcCostSchedule = z.strictObject({
   PreparedBy: IfcActorSelect.nullish(),
   SubmittedOn: IfcDateTimeSelect.nullish(),
   Status: IfcLabel.nullish(),
-  TargetUsers: z.array(IfcActorSelect).min(1).nullish(),
+  TargetUsers: z.array(IfcActorSelect).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   UpdateDate: IfcDateTimeSelect.nullish(),
   ID: IfcIdentifier,
   PredefinedType: IfcCostScheduleTypeEnum,
@@ -1266,7 +1268,7 @@ export const IfcCostValue = z.strictObject({
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   AppliedValue: IfcAppliedValueSelect.nullish(),
-  UnitBasis: EntityRef.nullish(),
+  UnitBasis: $EntityRef.nullish(),
   ApplicableDate: IfcDateTimeSelect.nullish(),
   FixedUntilDate: IfcDateTimeSelect.nullish(),
   CostType: IfcLabel,
@@ -1274,23 +1276,23 @@ export const IfcCostValue = z.strictObject({
 });
 export const IfcCovering = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
   PredefinedType: IfcCoveringTypeEnum.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcCovering", ["IfcCovering.WR61"]));
 export const IfcCoveringType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcCoveringTypeEnum,
@@ -1298,7 +1300,7 @@ export const IfcCoveringType = z.strictObject({
 export const IfcCraneRailAShapeProfileDef = z.strictObject({
   ProfileType: IfcProfileTypeEnum,
   ProfileName: IfcLabel.nullish(),
-  Position: EntityRef,
+  Position: $EntityRef,
   OverallHeight: IfcPositiveLengthMeasure,
   BaseWidth2: IfcPositiveLengthMeasure,
   Radius: IfcPositiveLengthMeasure.nullish(),
@@ -1315,7 +1317,7 @@ export const IfcCraneRailAShapeProfileDef = z.strictObject({
 export const IfcCraneRailFShapeProfileDef = z.strictObject({
   ProfileType: IfcProfileTypeEnum,
   ProfileName: IfcLabel.nullish(),
-  Position: EntityRef,
+  Position: $EntityRef,
   OverallHeight: IfcPositiveLengthMeasure,
   HeadWidth: IfcPositiveLengthMeasure,
   Radius: IfcPositiveLengthMeasure.nullish(),
@@ -1328,46 +1330,46 @@ export const IfcCraneRailFShapeProfileDef = z.strictObject({
 });
 export const IfcCrewResource = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
   ResourceIdentifier: IfcIdentifier.nullish(),
   ResourceGroup: IfcLabel.nullish(),
   ResourceConsumption: IfcResourceConsumptionEnum.nullish(),
-  BaseQuantity: EntityRef.nullish(),
+  BaseQuantity: $EntityRef.nullish(),
 });
 export const IfcCsgPrimitive3D = z.strictObject({
-  Position: EntityRef,
+  Position: $EntityRef,
 });
 export const IfcCsgSolid = z.strictObject({
   TreeRootExpression: IfcCsgSelect,
 });
 export const IfcCurrencyRelationship = z.strictObject({
-  RelatingMonetaryUnit: EntityRef,
-  RelatedMonetaryUnit: EntityRef,
+  RelatingMonetaryUnit: $EntityRef,
+  RelatedMonetaryUnit: $EntityRef,
   ExchangeRate: IfcPositiveRatioMeasure,
-  RateDateTime: EntityRef,
-  RateSource: EntityRef.nullish(),
+  RateDateTime: $EntityRef,
+  RateSource: $EntityRef.nullish(),
 });
 export const IfcCurtainWall = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcCurtainWallType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcCurtainWallTypeEnum,
@@ -1376,9 +1378,9 @@ export const IfcCurve = z.strictObject({
 
 });
 export const IfcCurveBoundedPlane = z.strictObject({
-  BasisSurface: EntityRef,
-  OuterBoundary: EntityRef,
-  InnerBoundaries: z.array(EntityRef),
+  BasisSurface: $EntityRef,
+  OuterBoundary: $EntityRef,
+  InnerBoundaries: z.array($EntityRef).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcCurveStyle = z.strictObject({
   Name: IfcLabel.nullish(),
@@ -1388,7 +1390,7 @@ export const IfcCurveStyle = z.strictObject({
 });
 export const IfcCurveStyleFont = z.strictObject({
   Name: IfcLabel.nullish(),
-  PatternList: z.array(EntityRef).min(1),
+  PatternList: z.array($EntityRef).min(1),
 });
 export const IfcCurveStyleFontAndScaling = z.strictObject({
   Name: IfcLabel.nullish(),
@@ -1401,69 +1403,69 @@ export const IfcCurveStyleFontPattern = z.strictObject({
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcCurveStyleFontPattern", ["IfcCurveStyleFontPattern.WR01"]));
 export const IfcDamperType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcDamperTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcDamperType", ["IfcTypeObject.WR1","IfcDamperType.WR1"]));
 export const IfcDateAndTime = z.strictObject({
-  DateComponent: EntityRef,
-  TimeComponent: EntityRef,
+  DateComponent: $EntityRef,
+  TimeComponent: $EntityRef,
 });
 export const IfcDefinedSymbol = z.strictObject({
   Definition: IfcDefinedSymbolSelect,
-  Target: EntityRef,
+  Target: $EntityRef,
 });
 export const IfcDerivedProfileDef = z.strictObject({
   ProfileType: IfcProfileTypeEnum,
   ProfileName: IfcLabel.nullish(),
-  ParentProfile: EntityRef,
-  Operator: EntityRef,
+  ParentProfile: $EntityRef,
+  Operator: $EntityRef,
   Label: IfcLabel.nullish(),
 });
 export const IfcDerivedUnit = z.strictObject({
-  Elements: z.array(EntityRef).min(1),
+  Elements: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   UnitType: IfcDerivedUnitEnum,
   UserDefinedType: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcDerivedUnit", ["IfcDerivedUnit.WR2"]));
 export const IfcDerivedUnitElement = z.strictObject({
-  Unit: EntityRef,
+  Unit: $EntityRef,
   Exponent: z.number().int(),
 });
 export const IfcDiameterDimension = z.strictObject({
-  Contents: z.array(IfcDraughtingCalloutElement).min(1),
+  Contents: z.array(IfcDraughtingCalloutElement).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcDimensionCalloutRelationship = z.strictObject({
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatingDraughtingCallout: EntityRef,
-  RelatedDraughtingCallout: EntityRef,
+  RelatingDraughtingCallout: $EntityRef,
+  RelatedDraughtingCallout: $EntityRef,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcDimensionCalloutRelationship", ["IfcDimensionCalloutRelationship.WR11"]));
 export const IfcDimensionCurve = z.strictObject({
-  Item: EntityRef.nullish(),
-  Styles: z.array(EntityRef).min(1),
+  Item: $EntityRef.nullish(),
+  Styles: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   Name: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcDimensionCurve", ["IfcStyledItem.WR11"]));
 export const IfcDimensionCurveDirectedCallout = z.strictObject({
-  Contents: z.array(IfcDraughtingCalloutElement).min(1),
+  Contents: z.array(IfcDraughtingCalloutElement).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcDimensionCurveTerminator = z.strictObject({
-  Item: EntityRef.nullish(),
-  Styles: z.array(EntityRef).min(1),
+  Item: $EntityRef.nullish(),
+  Styles: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   Name: IfcLabel.nullish(),
-  AnnotatedCurve: EntityRef,
+  AnnotatedCurve: $EntityRef,
   Role: IfcDimensionExtentUsage,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcDimensionCurveTerminator", ["IfcStyledItem.WR11"]));
 export const IfcDimensionPair = z.strictObject({
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatingDraughtingCallout: EntityRef,
-  RelatedDraughtingCallout: EntityRef,
+  RelatingDraughtingCallout: $EntityRef,
+  RelatedDraughtingCallout: $EntityRef,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcDimensionPair", ["IfcDimensionPair.WR11"]));
 export const IfcDimensionalExponents = z.strictObject({
   LengthExponent: z.number().int(),
@@ -1479,119 +1481,119 @@ export const IfcDirection = z.strictObject({
 });
 export const IfcDiscreteAccessory = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcDiscreteAccessoryType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcDiscreteAccessoryType", ["IfcTypeObject.WR1"]));
 export const IfcDistributionChamberElement = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcDistributionChamberElementType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcDistributionChamberElementTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcDistributionChamberElementType", ["IfcTypeObject.WR1"]));
 export const IfcDistributionControlElement = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
   ControlElementId: IfcIdentifier.nullish(),
 });
 export const IfcDistributionControlElementType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcDistributionControlElementType", ["IfcTypeObject.WR1"]));
 export const IfcDistributionElement = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcDistributionElementType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcDistributionElementType", ["IfcTypeObject.WR1"]));
 export const IfcDistributionFlowElement = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcDistributionFlowElementType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcDistributionFlowElementType", ["IfcTypeObject.WR1"]));
 export const IfcDistributionPort = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   FlowDirection: IfcFlowDirectionEnum.nullish(),
 });
 export const IfcDocumentElectronicFormat = z.strictObject({
@@ -1603,24 +1605,24 @@ export const IfcDocumentInformation = z.strictObject({
   DocumentId: IfcIdentifier,
   Name: IfcLabel,
   Description: IfcText.nullish(),
-  DocumentReferences: z.array(EntityRef).min(1).nullish(),
+  DocumentReferences: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Purpose: IfcText.nullish(),
   IntendedUse: IfcText.nullish(),
   Scope: IfcText.nullish(),
   Revision: IfcLabel.nullish(),
   DocumentOwner: IfcActorSelect.nullish(),
-  Editors: z.array(IfcActorSelect).min(1).nullish(),
-  CreationTime: EntityRef.nullish(),
-  LastRevisionTime: EntityRef.nullish(),
-  ElectronicFormat: EntityRef.nullish(),
-  ValidFrom: EntityRef.nullish(),
-  ValidUntil: EntityRef.nullish(),
+  Editors: z.array(IfcActorSelect).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  CreationTime: $EntityRef.nullish(),
+  LastRevisionTime: $EntityRef.nullish(),
+  ElectronicFormat: $EntityRef.nullish(),
+  ValidFrom: $EntityRef.nullish(),
+  ValidUntil: $EntityRef.nullish(),
   Confidentiality: IfcDocumentConfidentialityEnum.nullish(),
   Status: IfcDocumentStatusEnum.nullish(),
 });
 export const IfcDocumentInformationRelationship = z.strictObject({
-  RelatingDocument: EntityRef,
-  RelatedDocuments: z.array(EntityRef).min(1),
+  RelatingDocument: $EntityRef,
+  RelatedDocuments: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   RelationshipType: IfcLabel.nullish(),
 });
 export const IfcDocumentReference = z.strictObject({
@@ -1630,19 +1632,19 @@ export const IfcDocumentReference = z.strictObject({
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcDocumentReference", ["IfcExternalReference.WR1"]));
 export const IfcDoor = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
   OverallHeight: IfcPositiveLengthMeasure.nullish(),
   OverallWidth: IfcPositiveLengthMeasure.nullish(),
 });
 export const IfcDoorLiningProperties = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   LiningDepth: IfcPositiveLengthMeasure.nullish(),
@@ -1655,27 +1657,27 @@ export const IfcDoorLiningProperties = z.strictObject({
   ThresholdOffset: IfcLengthMeasure.nullish(),
   CasingThickness: IfcPositiveLengthMeasure.nullish(),
   CasingDepth: IfcPositiveLengthMeasure.nullish(),
-  ShapeAspectStyle: EntityRef.nullish(),
+  ShapeAspectStyle: $EntityRef.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcDoorLiningProperties", ["IfcDoorLiningProperties.WR31","IfcDoorLiningProperties.WR32","IfcDoorLiningProperties.WR33","IfcDoorLiningProperties.WR34"]));
 export const IfcDoorPanelProperties = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   PanelDepth: IfcPositiveLengthMeasure.nullish(),
   PanelOperation: IfcDoorPanelOperationEnum,
   PanelWidth: IfcNormalisedRatioMeasure.nullish(),
   PanelPosition: IfcDoorPanelPositionEnum,
-  ShapeAspectStyle: EntityRef.nullish(),
+  ShapeAspectStyle: $EntityRef.nullish(),
 });
 export const IfcDoorStyle = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   OperationType: IfcDoorStyleOperationEnum,
   ConstructionType: IfcDoorStyleConstructionEnum,
@@ -1683,13 +1685,13 @@ export const IfcDoorStyle = z.strictObject({
   Sizeable: z.boolean(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcDoorStyle", ["IfcTypeObject.WR1"]));
 export const IfcDraughtingCallout = z.strictObject({
-  Contents: z.array(IfcDraughtingCalloutElement).min(1),
+  Contents: z.array(IfcDraughtingCalloutElement).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcDraughtingCalloutRelationship = z.strictObject({
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatingDraughtingCallout: EntityRef,
-  RelatedDraughtingCallout: EntityRef,
+  RelatingDraughtingCallout: $EntityRef,
+  RelatedDraughtingCallout: $EntityRef,
 });
 export const IfcDraughtingPreDefinedColour = z.strictObject({
   Name: IfcLabel,
@@ -1702,151 +1704,151 @@ export const IfcDraughtingPreDefinedTextFont = z.strictObject({
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcDraughtingPreDefinedTextFont", ["IfcDraughtingPreDefinedTextFont.WR31"]));
 export const IfcDuctFittingType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcDuctFittingTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcDuctFittingType", ["IfcTypeObject.WR1","IfcDuctFittingType.WR2"]));
 export const IfcDuctSegmentType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcDuctSegmentTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcDuctSegmentType", ["IfcTypeObject.WR1","IfcDuctSegmentType.WR1"]));
 export const IfcDuctSilencerType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcDuctSilencerTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcDuctSilencerType", ["IfcTypeObject.WR1","IfcDuctSilencerType.WR1"]));
 export const IfcEdge = z.strictObject({
-  EdgeStart: EntityRef,
-  EdgeEnd: EntityRef,
+  EdgeStart: $EntityRef,
+  EdgeEnd: $EntityRef,
 });
 export const IfcEdgeCurve = z.strictObject({
-  EdgeStart: EntityRef,
-  EdgeEnd: EntityRef,
-  EdgeGeometry: EntityRef,
+  EdgeStart: $EntityRef,
+  EdgeEnd: $EntityRef,
+  EdgeGeometry: $EntityRef,
   SameSense: z.boolean(),
 });
 export const IfcEdgeFeature = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
   FeatureLength: IfcPositiveLengthMeasure.nullish(),
 });
 export const IfcEdgeLoop = z.strictObject({
-  EdgeList: z.array(EntityRef).min(1),
+  EdgeList: z.array($EntityRef).min(1),
 });
 export const IfcElectricApplianceType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcElectricApplianceTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcElectricApplianceType", ["IfcTypeObject.WR1"]));
 export const IfcElectricDistributionPoint = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
   DistributionPointFunction: IfcElectricDistributionPointFunctionEnum,
   UserDefinedFunction: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcElectricDistributionPoint", ["IfcElectricDistributionPoint.WR31"]));
 export const IfcElectricFlowStorageDeviceType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcElectricFlowStorageDeviceTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcElectricFlowStorageDeviceType", ["IfcTypeObject.WR1"]));
 export const IfcElectricGeneratorType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcElectricGeneratorTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcElectricGeneratorType", ["IfcTypeObject.WR1"]));
 export const IfcElectricHeaterType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcElectricHeaterTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcElectricHeaterType", ["IfcTypeObject.WR1"]));
 export const IfcElectricMotorType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcElectricMotorTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcElectricMotorType", ["IfcTypeObject.WR1"]));
 export const IfcElectricTimeControlType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcElectricTimeControlTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcElectricTimeControlType", ["IfcTypeObject.WR1"]));
 export const IfcElectricalBaseProperties = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   EnergySequence: IfcEnergySequenceEnum.nullish(),
@@ -1862,85 +1864,85 @@ export const IfcElectricalBaseProperties = z.strictObject({
 });
 export const IfcElectricalCircuit = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
 });
 export const IfcElectricalElement = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcElement = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcElementAssembly = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
   AssemblyPlace: IfcAssemblyPlaceEnum.nullish(),
   PredefinedType: IfcElementAssemblyTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcElementAssembly", ["IfcElementAssembly.WR1"]));
 export const IfcElementComponent = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcElementComponentType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcElementComponentType", ["IfcTypeObject.WR1"]));
 export const IfcElementQuantity = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   MethodOfMeasurement: IfcLabel.nullish(),
-  Quantities: z.array(EntityRef).min(1),
+  Quantities: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcElementType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcElementType", ["IfcTypeObject.WR1"]));
 export const IfcElementarySurface = z.strictObject({
-  Position: EntityRef,
+  Position: $EntityRef,
 });
 export const IfcEllipse = z.strictObject({
   Position: IfcAxis2Placement,
@@ -1950,34 +1952,34 @@ export const IfcEllipse = z.strictObject({
 export const IfcEllipseProfileDef = z.strictObject({
   ProfileType: IfcProfileTypeEnum,
   ProfileName: IfcLabel.nullish(),
-  Position: EntityRef,
+  Position: $EntityRef,
   SemiAxis1: IfcPositiveLengthMeasure,
   SemiAxis2: IfcPositiveLengthMeasure,
 });
 export const IfcEnergyConversionDevice = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcEnergyConversionDeviceType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcEnergyConversionDeviceType", ["IfcTypeObject.WR1"]));
 export const IfcEnergyProperties = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   EnergySequence: IfcEnergySequenceEnum.nullish(),
@@ -1987,7 +1989,7 @@ export const IfcEnvironmentalImpactValue = z.strictObject({
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   AppliedValue: IfcAppliedValueSelect.nullish(),
-  UnitBasis: EntityRef.nullish(),
+  UnitBasis: $EntityRef.nullish(),
   ApplicableDate: IfcDateTimeSelect.nullish(),
   FixedUntilDate: IfcDateTimeSelect.nullish(),
   ImpactType: IfcLabel,
@@ -1996,48 +1998,48 @@ export const IfcEnvironmentalImpactValue = z.strictObject({
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcEnvironmentalImpactValue", ["IfcEnvironmentalImpactValue.WR1"]));
 export const IfcEquipmentElement = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcEquipmentStandard = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
 });
 export const IfcEvaporativeCoolerType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcEvaporativeCoolerTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcEvaporativeCoolerType", ["IfcTypeObject.WR1","IfcEvaporativeCoolerType.WR1"]));
 export const IfcEvaporatorType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcEvaporatorTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcEvaporatorType", ["IfcTypeObject.WR1","IfcEvaporatorType.WR1"]));
 export const IfcExtendedMaterialProperties = z.strictObject({
-  Material: EntityRef,
-  ExtendedProperties: z.array(EntityRef).min(1),
+  Material: $EntityRef,
+  ExtendedProperties: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   Description: IfcText.nullish(),
   Name: IfcLabel,
 });
@@ -2067,36 +2069,36 @@ export const IfcExternallyDefinedTextFont = z.strictObject({
   Name: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcExternallyDefinedTextFont", ["IfcExternalReference.WR1"]));
 export const IfcExtrudedAreaSolid = z.strictObject({
-  SweptArea: EntityRef,
-  Position: EntityRef,
-  ExtrudedDirection: EntityRef,
+  SweptArea: $EntityRef,
+  Position: $EntityRef,
+  ExtrudedDirection: $EntityRef,
   Depth: IfcPositiveLengthMeasure,
 });
 export const IfcFace = z.strictObject({
-  Bounds: z.array(EntityRef).min(1),
+  Bounds: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcFaceBasedSurfaceModel = z.strictObject({
-  FbsmFaces: z.array(EntityRef).min(1),
+  FbsmFaces: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcFaceBound = z.strictObject({
-  Bound: EntityRef,
+  Bound: $EntityRef,
   Orientation: z.boolean(),
 });
 export const IfcFaceOuterBound = z.strictObject({
-  Bound: EntityRef,
+  Bound: $EntityRef,
   Orientation: z.boolean(),
 });
 export const IfcFaceSurface = z.strictObject({
-  Bounds: z.array(EntityRef).min(1),
-  FaceSurface: EntityRef,
+  Bounds: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
+  FaceSurface: $EntityRef,
   SameSense: z.boolean(),
 });
 export const IfcFacetedBrep = z.strictObject({
-  Outer: EntityRef,
+  Outer: $EntityRef,
 });
 export const IfcFacetedBrepWithVoids = z.strictObject({
-  Outer: EntityRef,
-  Voids: z.array(EntityRef).min(1),
+  Outer: $EntityRef,
+  Voids: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcFailureConnectionCondition = z.strictObject({
   Name: IfcLabel.nullish(),
@@ -2109,297 +2111,297 @@ export const IfcFailureConnectionCondition = z.strictObject({
 });
 export const IfcFanType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcFanTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcFanType", ["IfcTypeObject.WR1","IfcFanType.WR1"]));
 export const IfcFastener = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcFastenerType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcFastenerType", ["IfcTypeObject.WR1"]));
 export const IfcFeatureElement = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcFeatureElementAddition = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcFeatureElementSubtraction = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcFillAreaStyle = z.strictObject({
   Name: IfcLabel.nullish(),
-  FillStyles: z.array(IfcFillStyleSelect).min(1),
+  FillStyles: z.array(IfcFillStyleSelect).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcFillAreaStyleHatching = z.strictObject({
-  HatchLineAppearance: EntityRef,
+  HatchLineAppearance: $EntityRef,
   StartOfNextHatchLine: IfcHatchLineDistanceSelect,
-  PointOfReferenceHatchLine: EntityRef.nullish(),
-  PatternStart: EntityRef.nullish(),
+  PointOfReferenceHatchLine: $EntityRef.nullish(),
+  PatternStart: $EntityRef.nullish(),
   HatchLineAngle: IfcPlaneAngleMeasure,
 });
 export const IfcFillAreaStyleTileSymbolWithStyle = z.strictObject({
-  Symbol: EntityRef,
+  Symbol: $EntityRef,
 });
 export const IfcFillAreaStyleTiles = z.strictObject({
-  TilingPattern: EntityRef,
-  Tiles: z.array(IfcFillAreaStyleTileShapeSelect).min(1),
+  TilingPattern: $EntityRef,
+  Tiles: z.array(IfcFillAreaStyleTileShapeSelect).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   TilingScale: IfcPositiveRatioMeasure,
 });
 export const IfcFilterType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcFilterTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcFilterType", ["IfcTypeObject.WR1","IfcFilterType.WR1"]));
 export const IfcFireSuppressionTerminalType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcFireSuppressionTerminalTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcFireSuppressionTerminalType", ["IfcTypeObject.WR1"]));
 export const IfcFlowController = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcFlowControllerType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcFlowControllerType", ["IfcTypeObject.WR1"]));
 export const IfcFlowFitting = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcFlowFittingType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcFlowFittingType", ["IfcTypeObject.WR1"]));
 export const IfcFlowInstrumentType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcFlowInstrumentTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcFlowInstrumentType", ["IfcTypeObject.WR1"]));
 export const IfcFlowMeterType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcFlowMeterTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcFlowMeterType", ["IfcTypeObject.WR1","IfcFlowMeterType.WR1"]));
 export const IfcFlowMovingDevice = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcFlowMovingDeviceType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcFlowMovingDeviceType", ["IfcTypeObject.WR1"]));
 export const IfcFlowSegment = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcFlowSegmentType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcFlowSegmentType", ["IfcTypeObject.WR1"]));
 export const IfcFlowStorageDevice = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcFlowStorageDeviceType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcFlowStorageDeviceType", ["IfcTypeObject.WR1"]));
 export const IfcFlowTerminal = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcFlowTerminalType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcFlowTerminalType", ["IfcTypeObject.WR1"]));
 export const IfcFlowTreatmentDevice = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcFlowTreatmentDeviceType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcFlowTreatmentDeviceType", ["IfcTypeObject.WR1"]));
 export const IfcFluidFlowProperties = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   PropertySource: IfcPropertySourceEnum,
-  FlowConditionTimeSeries: EntityRef.nullish(),
-  VelocityTimeSeries: EntityRef.nullish(),
-  FlowrateTimeSeries: EntityRef.nullish(),
-  Fluid: EntityRef,
-  PressureTimeSeries: EntityRef.nullish(),
+  FlowConditionTimeSeries: $EntityRef.nullish(),
+  VelocityTimeSeries: $EntityRef.nullish(),
+  FlowrateTimeSeries: $EntityRef.nullish(),
+  Fluid: $EntityRef,
+  PressureTimeSeries: $EntityRef.nullish(),
   UserDefinedPropertySource: IfcLabel.nullish(),
   TemperatureSingleValue: IfcThermodynamicTemperatureMeasure.nullish(),
   WetBulbTemperatureSingleValue: IfcThermodynamicTemperatureMeasure.nullish(),
-  WetBulbTemperatureTimeSeries: EntityRef.nullish(),
-  TemperatureTimeSeries: EntityRef.nullish(),
+  WetBulbTemperatureTimeSeries: $EntityRef.nullish(),
+  TemperatureTimeSeries: $EntityRef.nullish(),
   FlowrateSingleValue: IfcDerivedMeasureValue.nullish(),
   FlowConditionSingleValue: IfcPositiveRatioMeasure.nullish(),
   VelocitySingleValue: IfcLinearVelocityMeasure.nullish(),
@@ -2407,17 +2409,17 @@ export const IfcFluidFlowProperties = z.strictObject({
 });
 export const IfcFooting = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
   PredefinedType: IfcFootingTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcFooting", ["IfcFooting.WR1"]));
 export const IfcFuelProperties = z.strictObject({
-  Material: EntityRef,
+  Material: $EntityRef,
   CombustionTemperature: IfcThermodynamicTemperatureMeasure.nullish(),
   CarbonContent: IfcPositiveRatioMeasure.nullish(),
   LowerHeatingValue: IfcHeatingValueMeasure.nullish(),
@@ -2425,65 +2427,65 @@ export const IfcFuelProperties = z.strictObject({
 });
 export const IfcFurnishingElement = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcFurnishingElementType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcFurnishingElementType", ["IfcTypeObject.WR1"]));
 export const IfcFurnitureStandard = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
 });
 export const IfcFurnitureType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   AssemblyPlace: IfcAssemblyPlaceEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcFurnitureType", ["IfcTypeObject.WR1"]));
 export const IfcGasTerminalType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcGasTerminalTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcGasTerminalType", ["IfcTypeObject.WR1","IfcGasTerminalType.WR1"]));
 export const IfcGeneralMaterialProperties = z.strictObject({
-  Material: EntityRef,
+  Material: $EntityRef,
   MolecularWeight: IfcMolecularWeightMeasure.nullish(),
   Porosity: IfcNormalisedRatioMeasure.nullish(),
   MassDensity: IfcMassDensityMeasure.nullish(),
 });
 export const IfcGeneralProfileProperties = z.strictObject({
   ProfileName: IfcLabel.nullish(),
-  ProfileDefinition: EntityRef.nullish(),
+  ProfileDefinition: $EntityRef.nullish(),
   PhysicalWeight: IfcMassPerLengthMeasure.nullish(),
   Perimeter: IfcPositiveLengthMeasure.nullish(),
   MinimumPlateThickness: IfcPositiveLengthMeasure.nullish(),
@@ -2491,7 +2493,7 @@ export const IfcGeneralProfileProperties = z.strictObject({
   CrossSectionArea: IfcAreaMeasure.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcGeneralProfileProperties", ["IfcGeneralProfileProperties.WR1"]));
 export const IfcGeometricCurveSet = z.strictObject({
-  Elements: z.array(IfcGeometricSetSelect).min(1),
+  Elements: z.array(IfcGeometricSetSelect).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcGeometricRepresentationContext = z.strictObject({
   ContextIdentifier: IfcLabel.nullish(),
@@ -2499,7 +2501,7 @@ export const IfcGeometricRepresentationContext = z.strictObject({
   CoordinateSpaceDimension: IfcDimensionCount,
   Precision: z.number().nullish(),
   WorldCoordinateSystem: IfcAxis2Placement,
-  TrueNorth: EntityRef.nullish(),
+  TrueNorth: $EntityRef.nullish(),
 });
 export const IfcGeometricRepresentationItem = z.strictObject({
 
@@ -2507,72 +2509,72 @@ export const IfcGeometricRepresentationItem = z.strictObject({
 export const IfcGeometricRepresentationSubContext = z.strictObject({
   ContextIdentifier: IfcLabel.nullish(),
   ContextType: IfcLabel.nullish(),
-  ParentContext: EntityRef,
+  ParentContext: $EntityRef,
   TargetScale: IfcPositiveRatioMeasure.nullish(),
   TargetView: IfcGeometricProjectionEnum,
   UserDefinedTargetView: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcGeometricRepresentationSubContext", ["IfcGeometricRepresentationSubContext.WR32"]));
 export const IfcGeometricSet = z.strictObject({
-  Elements: z.array(IfcGeometricSetSelect).min(1),
+  Elements: z.array(IfcGeometricSetSelect).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcGrid = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
-  UAxes: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
-  VAxes: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
-  WAxes: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
+  UAxes: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
+  VAxes: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
+  WAxes: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcGrid", ["IfcGrid.WR41"]));
 export const IfcGridAxis = z.strictObject({
   AxisTag: IfcLabel.nullish(),
-  AxisCurve: EntityRef,
+  AxisCurve: $EntityRef,
   SameSense: IfcBoolean,
 });
 export const IfcGridPlacement = z.strictObject({
-  PlacementLocation: EntityRef,
-  PlacementRefDirection: EntityRef.nullish(),
+  PlacementLocation: $EntityRef,
+  PlacementRefDirection: $EntityRef.nullish(),
 });
 export const IfcGroup = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
 });
 export const IfcHalfSpaceSolid = z.strictObject({
-  BaseSurface: EntityRef,
+  BaseSurface: $EntityRef,
   AgreementFlag: z.boolean(),
 });
 export const IfcHeatExchangerType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcHeatExchangerTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcHeatExchangerType", ["IfcTypeObject.WR1","IfcHeatExchangerType.WR1"]));
 export const IfcHumidifierType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcHumidifierTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcHumidifierType", ["IfcTypeObject.WR1","IfcHumidifierType.WR1"]));
 export const IfcHygroscopicMaterialProperties = z.strictObject({
-  Material: EntityRef,
+  Material: $EntityRef,
   UpperVaporResistanceFactor: IfcPositiveRatioMeasure.nullish(),
   LowerVaporResistanceFactor: IfcPositiveRatioMeasure.nullish(),
   IsothermalMoistureCapacity: IfcIsothermalMoistureCapacityMeasure.nullish(),
@@ -2582,7 +2584,7 @@ export const IfcHygroscopicMaterialProperties = z.strictObject({
 export const IfcIShapeProfileDef = z.strictObject({
   ProfileType: IfcProfileTypeEnum,
   ProfileName: IfcLabel.nullish(),
-  Position: EntityRef,
+  Position: $EntityRef,
   OverallWidth: IfcPositiveLengthMeasure,
   OverallDepth: IfcPositiveLengthMeasure,
   WebThickness: IfcPositiveLengthMeasure,
@@ -2593,21 +2595,21 @@ export const IfcImageTexture = z.strictObject({
   RepeatS: z.boolean(),
   RepeatT: z.boolean(),
   TextureType: IfcSurfaceTextureEnum,
-  TextureTransform: EntityRef.nullish(),
+  TextureTransform: $EntityRef.nullish(),
   UrlReference: IfcIdentifier,
 });
 export const IfcInventory = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
   InventoryType: IfcInventoryTypeEnum,
   Jurisdiction: IfcActorSelect,
-  ResponsiblePersons: z.array(EntityRef).min(1),
-  LastUpdateDate: EntityRef,
-  CurrentValue: EntityRef.nullish(),
-  OriginalValue: EntityRef.nullish(),
+  ResponsiblePersons: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
+  LastUpdateDate: $EntityRef,
+  CurrentValue: $EntityRef.nullish(),
+  OriginalValue: $EntityRef.nullish(),
 });
 export const IfcIrregularTimeSeries = z.strictObject({
   Name: IfcLabel,
@@ -2618,7 +2620,7 @@ export const IfcIrregularTimeSeries = z.strictObject({
   DataOrigin: IfcDataOriginEnum,
   UserDefinedDataOrigin: IfcLabel.nullish(),
   Unit: IfcUnit.nullish(),
-  Values: z.array(EntityRef).min(1),
+  Values: z.array($EntityRef).min(1),
 });
 export const IfcIrregularTimeSeriesValue = z.strictObject({
   TimeStamp: IfcDateTimeSelect,
@@ -2626,12 +2628,12 @@ export const IfcIrregularTimeSeriesValue = z.strictObject({
 });
 export const IfcJunctionBoxType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcJunctionBoxTypeEnum,
@@ -2639,7 +2641,7 @@ export const IfcJunctionBoxType = z.strictObject({
 export const IfcLShapeProfileDef = z.strictObject({
   ProfileType: IfcProfileTypeEnum,
   ProfileName: IfcLabel.nullish(),
-  Position: EntityRef,
+  Position: $EntityRef,
   Depth: IfcPositiveLengthMeasure,
   Width: IfcPositiveLengthMeasure.nullish(),
   Thickness: IfcPositiveLengthMeasure,
@@ -2651,24 +2653,24 @@ export const IfcLShapeProfileDef = z.strictObject({
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcLShapeProfileDef", ["IfcLShapeProfileDef.WR21","IfcLShapeProfileDef.WR22"]));
 export const IfcLaborResource = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
   ResourceIdentifier: IfcIdentifier.nullish(),
   ResourceGroup: IfcLabel.nullish(),
   ResourceConsumption: IfcResourceConsumptionEnum.nullish(),
-  BaseQuantity: EntityRef.nullish(),
+  BaseQuantity: $EntityRef.nullish(),
   SkillSet: IfcText.nullish(),
 });
 export const IfcLampType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcLampTypeEnum,
@@ -2676,9 +2678,9 @@ export const IfcLampType = z.strictObject({
 export const IfcLibraryInformation = z.strictObject({
   Name: IfcLabel,
   Version: IfcLabel.nullish(),
-  Publisher: EntityRef.nullish(),
-  VersionDate: EntityRef.nullish(),
-  LibraryReference: z.array(EntityRef).min(1).nullish(),
+  Publisher: $EntityRef.nullish(),
+  VersionDate: $EntityRef.nullish(),
+  LibraryReference: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
 });
 export const IfcLibraryReference = z.strictObject({
   Location: IfcLabel.nullish(),
@@ -2692,46 +2694,46 @@ export const IfcLightDistributionData = z.strictObject({
 });
 export const IfcLightFixtureType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcLightFixtureTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcLightFixtureType", ["IfcTypeObject.WR1"]));
 export const IfcLightIntensityDistribution = z.strictObject({
   LightDistributionCurve: IfcLightDistributionCurveEnum,
-  DistributionData: z.array(EntityRef).min(1),
+  DistributionData: z.array($EntityRef).min(1),
 });
 export const IfcLightSource = z.strictObject({
   Name: IfcLabel.nullish(),
-  LightColour: EntityRef,
+  LightColour: $EntityRef,
   AmbientIntensity: IfcNormalisedRatioMeasure.nullish(),
   Intensity: IfcNormalisedRatioMeasure.nullish(),
 });
 export const IfcLightSourceAmbient = z.strictObject({
   Name: IfcLabel.nullish(),
-  LightColour: EntityRef,
+  LightColour: $EntityRef,
   AmbientIntensity: IfcNormalisedRatioMeasure.nullish(),
   Intensity: IfcNormalisedRatioMeasure.nullish(),
 });
 export const IfcLightSourceDirectional = z.strictObject({
   Name: IfcLabel.nullish(),
-  LightColour: EntityRef,
+  LightColour: $EntityRef,
   AmbientIntensity: IfcNormalisedRatioMeasure.nullish(),
   Intensity: IfcNormalisedRatioMeasure.nullish(),
-  Orientation: EntityRef,
+  Orientation: $EntityRef,
 });
 export const IfcLightSourceGoniometric = z.strictObject({
   Name: IfcLabel.nullish(),
-  LightColour: EntityRef,
+  LightColour: $EntityRef,
   AmbientIntensity: IfcNormalisedRatioMeasure.nullish(),
   Intensity: IfcNormalisedRatioMeasure.nullish(),
-  Position: EntityRef,
-  ColourAppearance: EntityRef.nullish(),
+  Position: $EntityRef,
+  ColourAppearance: $EntityRef.nullish(),
   ColourTemperature: IfcThermodynamicTemperatureMeasure,
   LuminousFlux: IfcLuminousFluxMeasure,
   LightEmissionSource: IfcLightEmissionSourceEnum,
@@ -2739,10 +2741,10 @@ export const IfcLightSourceGoniometric = z.strictObject({
 });
 export const IfcLightSourcePositional = z.strictObject({
   Name: IfcLabel.nullish(),
-  LightColour: EntityRef,
+  LightColour: $EntityRef,
   AmbientIntensity: IfcNormalisedRatioMeasure.nullish(),
   Intensity: IfcNormalisedRatioMeasure.nullish(),
-  Position: EntityRef,
+  Position: $EntityRef,
   Radius: IfcPositiveLengthMeasure,
   ConstantAttenuation: IfcReal,
   DistanceAttenuation: IfcReal,
@@ -2750,87 +2752,87 @@ export const IfcLightSourcePositional = z.strictObject({
 });
 export const IfcLightSourceSpot = z.strictObject({
   Name: IfcLabel.nullish(),
-  LightColour: EntityRef,
+  LightColour: $EntityRef,
   AmbientIntensity: IfcNormalisedRatioMeasure.nullish(),
   Intensity: IfcNormalisedRatioMeasure.nullish(),
-  Position: EntityRef,
+  Position: $EntityRef,
   Radius: IfcPositiveLengthMeasure,
   ConstantAttenuation: IfcReal,
   DistanceAttenuation: IfcReal,
   QuadricAttenuation: IfcReal,
-  Orientation: EntityRef,
+  Orientation: $EntityRef,
   ConcentrationExponent: IfcReal.nullish(),
   SpreadAngle: IfcPositivePlaneAngleMeasure,
   BeamWidthAngle: IfcPositivePlaneAngleMeasure,
 });
 export const IfcLine = z.strictObject({
-  Pnt: EntityRef,
-  Dir: EntityRef,
+  Pnt: $EntityRef,
+  Dir: $EntityRef,
 });
 export const IfcLinearDimension = z.strictObject({
-  Contents: z.array(IfcDraughtingCalloutElement).min(1),
+  Contents: z.array(IfcDraughtingCalloutElement).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcLocalPlacement = z.strictObject({
-  PlacementRelTo: EntityRef.nullish(),
+  PlacementRelTo: $EntityRef.nullish(),
   RelativePlacement: IfcAxis2Placement,
 });
 export const IfcLocalTime = z.strictObject({
   HourComponent: IfcHourInDay,
   MinuteComponent: IfcMinuteInHour.nullish(),
   SecondComponent: IfcSecondInMinute.nullish(),
-  Zone: EntityRef.nullish(),
+  Zone: $EntityRef.nullish(),
   DaylightSavingOffset: IfcDaylightSavingHour.nullish(),
 });
 export const IfcLoop = z.strictObject({
 
 });
 export const IfcManifoldSolidBrep = z.strictObject({
-  Outer: EntityRef,
+  Outer: $EntityRef,
 });
 export const IfcMappedItem = z.strictObject({
-  MappingSource: EntityRef,
-  MappingTarget: EntityRef,
+  MappingSource: $EntityRef,
+  MappingTarget: $EntityRef,
 });
 export const IfcMaterial = z.strictObject({
   Name: IfcLabel,
 });
 export const IfcMaterialClassificationRelationship = z.strictObject({
-  MaterialClassifications: z.array(IfcClassificationNotationSelect).min(1),
-  ClassifiedMaterial: EntityRef,
+  MaterialClassifications: z.array(IfcClassificationNotationSelect).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
+  ClassifiedMaterial: $EntityRef,
 });
 export const IfcMaterialDefinitionRepresentation = z.strictObject({
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  Representations: z.array(EntityRef).min(1),
-  RepresentedMaterial: EntityRef,
+  Representations: z.array($EntityRef).min(1),
+  RepresentedMaterial: $EntityRef,
 });
 export const IfcMaterialLayer = z.strictObject({
-  Material: EntityRef.nullish(),
+  Material: $EntityRef.nullish(),
   LayerThickness: IfcPositiveLengthMeasure,
   IsVentilated: IfcLogical.nullish(),
 });
 export const IfcMaterialLayerSet = z.strictObject({
-  MaterialLayers: z.array(EntityRef).min(1),
+  MaterialLayers: z.array($EntityRef).min(1),
   LayerSetName: IfcLabel.nullish(),
 });
 export const IfcMaterialLayerSetUsage = z.strictObject({
-  ForLayerSet: EntityRef,
+  ForLayerSet: $EntityRef,
   LayerSetDirection: IfcLayerSetDirectionEnum,
   DirectionSense: IfcDirectionSenseEnum,
   OffsetFromReferenceLine: IfcLengthMeasure,
 });
 export const IfcMaterialList = z.strictObject({
-  Materials: z.array(EntityRef).min(1),
+  Materials: z.array($EntityRef).min(1),
 });
 export const IfcMaterialProperties = z.strictObject({
-  Material: EntityRef,
+  Material: $EntityRef,
 });
 export const IfcMeasureWithUnit = z.strictObject({
   ValueComponent: IfcValue,
   UnitComponent: IfcUnit,
 });
 export const IfcMechanicalConcreteMaterialProperties = z.strictObject({
-  Material: EntityRef,
+  Material: $EntityRef,
   DynamicViscosity: IfcDynamicViscosityMeasure.nullish(),
   YoungModulus: IfcModulusOfElasticityMeasure.nullish(),
   ShearModulus: IfcModulusOfElasticityMeasure.nullish(),
@@ -2845,29 +2847,29 @@ export const IfcMechanicalConcreteMaterialProperties = z.strictObject({
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcMechanicalConcreteMaterialProperties", ["IfcMechanicalMaterialProperties.WR21","IfcMechanicalMaterialProperties.WR22"]));
 export const IfcMechanicalFastener = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
   NominalDiameter: IfcPositiveLengthMeasure.nullish(),
   NominalLength: IfcPositiveLengthMeasure.nullish(),
 });
 export const IfcMechanicalFastenerType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcMechanicalFastenerType", ["IfcTypeObject.WR1"]));
 export const IfcMechanicalMaterialProperties = z.strictObject({
-  Material: EntityRef,
+  Material: $EntityRef,
   DynamicViscosity: IfcDynamicViscosityMeasure.nullish(),
   YoungModulus: IfcModulusOfElasticityMeasure.nullish(),
   ShearModulus: IfcModulusOfElasticityMeasure.nullish(),
@@ -2875,7 +2877,7 @@ export const IfcMechanicalMaterialProperties = z.strictObject({
   ThermalExpansionCoefficient: IfcThermalExpansionCoefficientMeasure.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcMechanicalMaterialProperties", ["IfcMechanicalMaterialProperties.WR21","IfcMechanicalMaterialProperties.WR22"]));
 export const IfcMechanicalSteelMaterialProperties = z.strictObject({
-  Material: EntityRef,
+  Material: $EntityRef,
   DynamicViscosity: IfcDynamicViscosityMeasure.nullish(),
   YoungModulus: IfcModulusOfElasticityMeasure.nullish(),
   ShearModulus: IfcModulusOfElasticityMeasure.nullish(),
@@ -2887,26 +2889,26 @@ export const IfcMechanicalSteelMaterialProperties = z.strictObject({
   HardeningModule: IfcModulusOfElasticityMeasure.nullish(),
   ProportionalStress: IfcPressureMeasure.nullish(),
   PlasticStrain: IfcPositiveRatioMeasure.nullish(),
-  Relaxations: z.array(EntityRef).min(1).nullish(),
+  Relaxations: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcMechanicalSteelMaterialProperties", ["IfcMechanicalMaterialProperties.WR21","IfcMechanicalMaterialProperties.WR22","IfcMechanicalSteelMaterialProperties.WR31","IfcMechanicalSteelMaterialProperties.WR32","IfcMechanicalSteelMaterialProperties.WR33","IfcMechanicalSteelMaterialProperties.WR34"]));
 export const IfcMember = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcMemberType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcMemberTypeEnum,
@@ -2928,19 +2930,19 @@ export const IfcMonetaryUnit = z.strictObject({
 });
 export const IfcMotorConnectionType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcMotorConnectionTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcMotorConnectionType", ["IfcTypeObject.WR1"]));
 export const IfcMove = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
@@ -2949,24 +2951,24 @@ export const IfcMove = z.strictObject({
   WorkMethod: IfcLabel.nullish(),
   IsMilestone: z.boolean(),
   Priority: z.number().int().nullish(),
-  MoveFrom: EntityRef,
-  MoveTo: EntityRef,
+  MoveFrom: $EntityRef,
+  MoveTo: $EntityRef,
   PunchList: z.array(IfcText).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcMove", ["IfcTask.WR3","IfcMove.WR3"]));
 export const IfcNamedUnit = z.strictObject({
-  Dimensions: EntityRef,
+  Dimensions: $EntityRef,
   UnitType: IfcUnitEnum,
 });
 export const IfcObject = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
 });
 export const IfcObjectDefinition = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
 });
@@ -2981,14 +2983,14 @@ export const IfcObjective = z.strictObject({
   CreatingActor: IfcActorSelect.nullish(),
   CreationTime: IfcDateTimeSelect.nullish(),
   UserDefinedGrade: IfcLabel.nullish(),
-  BenchmarkValues: EntityRef.nullish(),
-  ResultValues: EntityRef.nullish(),
+  BenchmarkValues: $EntityRef.nullish(),
+  ResultValues: $EntityRef.nullish(),
   ObjectiveQualifier: IfcObjectiveEnum,
   UserDefinedQualifier: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcObjective", ["IfcConstraint.WR11","IfcObjective.WR21"]));
 export const IfcOccupant = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
@@ -2996,34 +2998,34 @@ export const IfcOccupant = z.strictObject({
   PredefinedType: IfcOccupantTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcOccupant", ["IfcOccupant.WR31"]));
 export const IfcOffsetCurve2D = z.strictObject({
-  BasisCurve: EntityRef,
+  BasisCurve: $EntityRef,
   Distance: IfcLengthMeasure,
   SelfIntersect: z.union([z.boolean(), z.literal('UNKNOWN')]),
 });
 export const IfcOffsetCurve3D = z.strictObject({
-  BasisCurve: EntityRef,
+  BasisCurve: $EntityRef,
   Distance: IfcLengthMeasure,
   SelfIntersect: z.union([z.boolean(), z.literal('UNKNOWN')]),
-  RefDirection: EntityRef,
+  RefDirection: $EntityRef,
 });
 export const IfcOneDirectionRepeatFactor = z.strictObject({
-  RepeatFactor: EntityRef,
+  RepeatFactor: $EntityRef,
 });
 export const IfcOpenShell = z.strictObject({
-  CfsFaces: z.array(EntityRef).min(1),
+  CfsFaces: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcOpeningElement = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcOpticalMaterialProperties = z.strictObject({
-  Material: EntityRef,
+  Material: $EntityRef,
   VisibleTransmittance: IfcPositiveRatioMeasure.nullish(),
   SolarTransmittance: IfcPositiveRatioMeasure.nullish(),
   ThermalIrTransmittance: IfcPositiveRatioMeasure.nullish(),
@@ -3036,7 +3038,7 @@ export const IfcOpticalMaterialProperties = z.strictObject({
 });
 export const IfcOrderAction = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
@@ -3051,52 +3053,52 @@ export const IfcOrganization = z.strictObject({
   Id: IfcIdentifier.nullish(),
   Name: IfcLabel,
   Description: IfcText.nullish(),
-  Roles: z.array(EntityRef).min(1).nullish(),
-  Addresses: z.array(EntityRef).min(1).nullish(),
+  Roles: z.array($EntityRef).min(1).nullish(),
+  Addresses: z.array($EntityRef).min(1).nullish(),
 });
 export const IfcOrganizationRelationship = z.strictObject({
   Name: IfcLabel,
   Description: IfcText.nullish(),
-  RelatingOrganization: EntityRef,
-  RelatedOrganizations: z.array(EntityRef).min(1),
+  RelatingOrganization: $EntityRef,
+  RelatedOrganizations: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcOrientedEdge = z.strictObject({
-  EdgeElement: EntityRef,
+  EdgeElement: $EntityRef,
   Orientation: z.boolean(),
 });
 export const IfcOutletType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcOutletTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcOutletType", ["IfcTypeObject.WR1"]));
 export const IfcOwnerHistory = z.strictObject({
-  OwningUser: EntityRef,
-  OwningApplication: EntityRef,
+  OwningUser: $EntityRef,
+  OwningApplication: $EntityRef,
   State: IfcStateEnum.nullish(),
   ChangeAction: IfcChangeActionEnum,
   LastModifiedDate: IfcTimeStamp.nullish(),
-  LastModifyingUser: EntityRef.nullish(),
-  LastModifyingApplication: EntityRef.nullish(),
+  LastModifyingUser: $EntityRef.nullish(),
+  LastModifyingApplication: $EntityRef.nullish(),
   CreationDate: IfcTimeStamp,
 });
 export const IfcParameterizedProfileDef = z.strictObject({
   ProfileType: IfcProfileTypeEnum,
   ProfileName: IfcLabel.nullish(),
-  Position: EntityRef,
+  Position: $EntityRef,
 });
 export const IfcPath = z.strictObject({
-  EdgeList: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
+  EdgeList: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcPerformanceHistory = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
@@ -3104,18 +3106,18 @@ export const IfcPerformanceHistory = z.strictObject({
 });
 export const IfcPermeableCoveringProperties = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   OperationType: IfcPermeableCoveringOperationEnum,
   PanelPosition: IfcWindowPanelPositionEnum,
   FrameDepth: IfcPositiveLengthMeasure.nullish(),
   FrameThickness: IfcPositiveLengthMeasure.nullish(),
-  ShapeAspectStyle: EntityRef.nullish(),
+  ShapeAspectStyle: $EntityRef.nullish(),
 });
 export const IfcPermit = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
@@ -3128,18 +3130,18 @@ export const IfcPerson = z.strictObject({
   MiddleNames: z.array(IfcLabel).min(1).nullish(),
   PrefixTitles: z.array(IfcLabel).min(1).nullish(),
   SuffixTitles: z.array(IfcLabel).min(1).nullish(),
-  Roles: z.array(EntityRef).min(1).nullish(),
-  Addresses: z.array(EntityRef).min(1).nullish(),
+  Roles: z.array($EntityRef).min(1).nullish(),
+  Addresses: z.array($EntityRef).min(1).nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcPerson", ["IfcPerson.WR1"]));
 export const IfcPersonAndOrganization = z.strictObject({
-  ThePerson: EntityRef,
-  TheOrganization: EntityRef,
-  Roles: z.array(EntityRef).min(1).nullish(),
+  ThePerson: $EntityRef,
+  TheOrganization: $EntityRef,
+  Roles: z.array($EntityRef).min(1).nullish(),
 });
 export const IfcPhysicalComplexQuantity = z.strictObject({
   Name: IfcLabel,
   Description: IfcText.nullish(),
-  HasQuantities: z.array(EntityRef).min(1),
+  HasQuantities: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   Discrimination: IfcLabel,
   Quality: IfcLabel.nullish(),
   Usage: IfcLabel.nullish(),
@@ -3151,40 +3153,40 @@ export const IfcPhysicalQuantity = z.strictObject({
 export const IfcPhysicalSimpleQuantity = z.strictObject({
   Name: IfcLabel,
   Description: IfcText.nullish(),
-  Unit: EntityRef.nullish(),
+  Unit: $EntityRef.nullish(),
 });
 export const IfcPile = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
   PredefinedType: IfcPileTypeEnum,
   ConstructionType: IfcPileConstructionEnum.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcPile", ["IfcPile.WR1"]));
 export const IfcPipeFittingType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcPipeFittingTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcPipeFittingType", ["IfcTypeObject.WR1","IfcPipeFittingType.WR1"]));
 export const IfcPipeSegmentType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcPipeSegmentTypeEnum,
@@ -3193,14 +3195,14 @@ export const IfcPixelTexture = z.strictObject({
   RepeatS: z.boolean(),
   RepeatT: z.boolean(),
   TextureType: IfcSurfaceTextureEnum,
-  TextureTransform: EntityRef.nullish(),
+  TextureTransform: $EntityRef.nullish(),
   Width: IfcInteger,
   Height: IfcInteger,
   ColourComponents: IfcInteger,
   Pixel: z.array(z.string().regex(/^[0-3][0-9A-Fa-f]*$/)).min(1),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcPixelTexture", ["IfcPixelTexture.WR21","IfcPixelTexture.WR22","IfcPixelTexture.WR23","IfcPixelTexture.WR24"]));
 export const IfcPlacement = z.strictObject({
-  Location: EntityRef,
+  Location: $EntityRef,
 });
 export const IfcPlanarBox = z.strictObject({
   SizeInX: IfcLengthMeasure,
@@ -3212,26 +3214,26 @@ export const IfcPlanarExtent = z.strictObject({
   SizeInY: IfcLengthMeasure,
 });
 export const IfcPlane = z.strictObject({
-  Position: EntityRef,
+  Position: $EntityRef,
 });
 export const IfcPlate = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcPlateType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcPlateTypeEnum,
@@ -3240,34 +3242,34 @@ export const IfcPoint = z.strictObject({
 
 });
 export const IfcPointOnCurve = z.strictObject({
-  BasisCurve: EntityRef,
+  BasisCurve: $EntityRef,
   PointParameter: IfcParameterValue,
 });
 export const IfcPointOnSurface = z.strictObject({
-  BasisSurface: EntityRef,
+  BasisSurface: $EntityRef,
   PointParameterU: IfcParameterValue,
   PointParameterV: IfcParameterValue,
 });
 export const IfcPolyLoop = z.strictObject({
-  Polygon: z.array(EntityRef).min(3).refine(r.uniqueItems, 'aggregate items must be unique'),
+  Polygon: z.array($EntityRef).min(3).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcPolygonalBoundedHalfSpace = z.strictObject({
-  BaseSurface: EntityRef,
+  BaseSurface: $EntityRef,
   AgreementFlag: z.boolean(),
-  Position: EntityRef,
-  PolygonalBoundary: EntityRef,
+  Position: $EntityRef,
+  PolygonalBoundary: $EntityRef,
 });
 export const IfcPolyline = z.strictObject({
-  Points: z.array(EntityRef).min(2),
+  Points: z.array($EntityRef).min(2),
 });
 export const IfcPort = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
 });
 export const IfcPostalAddress = z.strictObject({
   Purpose: IfcAddressTypeEnum.nullish(),
@@ -3308,28 +3310,28 @@ export const IfcPreDefinedTextFont = z.strictObject({
 export const IfcPresentationLayerAssignment = z.strictObject({
   Name: IfcLabel,
   Description: IfcText.nullish(),
-  AssignedItems: z.array(IfcLayeredItem).min(1),
+  AssignedItems: z.array(IfcLayeredItem).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   Identifier: IfcIdentifier.nullish(),
 });
 export const IfcPresentationLayerWithStyle = z.strictObject({
   Name: IfcLabel,
   Description: IfcText.nullish(),
-  AssignedItems: z.array(IfcLayeredItem).min(1),
+  AssignedItems: z.array(IfcLayeredItem).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   Identifier: IfcIdentifier.nullish(),
   LayerOn: z.union([z.boolean(), z.literal('UNKNOWN')]),
   LayerFrozen: z.union([z.boolean(), z.literal('UNKNOWN')]),
   LayerBlocked: z.union([z.boolean(), z.literal('UNKNOWN')]),
-  LayerStyles: z.array(IfcPresentationStyleSelect),
+  LayerStyles: z.array(IfcPresentationStyleSelect).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcPresentationStyle = z.strictObject({
   Name: IfcLabel.nullish(),
 });
 export const IfcPresentationStyleAssignment = z.strictObject({
-  Styles: z.array(IfcPresentationStyleSelect).min(1),
+  Styles: z.array(IfcPresentationStyleSelect).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcProcedure = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
@@ -3339,32 +3341,32 @@ export const IfcProcedure = z.strictObject({
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcProcedure", ["IfcProcedure.WR3","IfcProcedure.WR4"]));
 export const IfcProcess = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
 });
 export const IfcProduct = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
 });
 export const IfcProductDefinitionShape = z.strictObject({
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  Representations: z.array(EntityRef).min(1),
+  Representations: z.array($EntityRef).min(1),
 });
 export const IfcProductRepresentation = z.strictObject({
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  Representations: z.array(EntityRef).min(1),
+  Representations: z.array($EntityRef).min(1),
 });
 export const IfcProductsOfCombustionProperties = z.strictObject({
-  Material: EntityRef,
+  Material: $EntityRef,
   SpecificHeatCapacity: IfcSpecificHeatCapacityMeasure.nullish(),
   N20Content: IfcPositiveRatioMeasure.nullish(),
   COContent: IfcPositiveRatioMeasure.nullish(),
@@ -3376,22 +3378,22 @@ export const IfcProfileDef = z.strictObject({
 });
 export const IfcProfileProperties = z.strictObject({
   ProfileName: IfcLabel.nullish(),
-  ProfileDefinition: EntityRef.nullish(),
+  ProfileDefinition: $EntityRef.nullish(),
 });
 export const IfcProject = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
   LongName: IfcLabel.nullish(),
   Phase: IfcLabel.nullish(),
-  RepresentationContexts: z.array(EntityRef).min(1),
-  UnitsInContext: EntityRef,
+  RepresentationContexts: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
+  UnitsInContext: $EntityRef,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcProject", ["IfcProject.WR31"]));
 export const IfcProjectOrder = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
@@ -3401,26 +3403,26 @@ export const IfcProjectOrder = z.strictObject({
 });
 export const IfcProjectOrderRecord = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  Records: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
+  Records: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   PredefinedType: IfcProjectOrderRecordTypeEnum,
 });
 export const IfcProjectionCurve = z.strictObject({
-  Item: EntityRef.nullish(),
-  Styles: z.array(EntityRef).min(1),
+  Item: $EntityRef.nullish(),
+  Styles: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   Name: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcProjectionCurve", ["IfcStyledItem.WR11"]));
 export const IfcProjectionElement = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcProperty = z.strictObject({
@@ -3435,20 +3437,20 @@ export const IfcPropertyBoundedValue = z.strictObject({
   Unit: IfcUnit.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcPropertyBoundedValue", ["IfcPropertyBoundedValue.WR22"]));
 export const IfcPropertyConstraintRelationship = z.strictObject({
-  RelatingConstraint: EntityRef,
-  RelatedProperties: z.array(EntityRef).min(1),
+  RelatingConstraint: $EntityRef,
+  RelatedProperties: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
 });
 export const IfcPropertyDefinition = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
 });
 export const IfcPropertyDependencyRelationship = z.strictObject({
-  DependingProperty: EntityRef,
-  DependantProperty: EntityRef,
+  DependingProperty: $EntityRef,
+  DependantProperty: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   Expression: IfcText.nullish(),
@@ -3457,7 +3459,7 @@ export const IfcPropertyEnumeratedValue = z.strictObject({
   Name: IfcIdentifier,
   Description: IfcText.nullish(),
   EnumerationValues: z.array(IfcValue).min(1),
-  EnumerationReference: EntityRef.nullish(),
+  EnumerationReference: $EntityRef.nullish(),
 });
 export const IfcPropertyEnumeration = z.strictObject({
   Name: IfcLabel,
@@ -3478,14 +3480,14 @@ export const IfcPropertyReferenceValue = z.strictObject({
 });
 export const IfcPropertySet = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  HasProperties: z.array(EntityRef).min(1),
+  HasProperties: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcPropertySet", ["IfcPropertySet.WR31"]));
 export const IfcPropertySetDefinition = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
 });
@@ -3506,35 +3508,35 @@ export const IfcPropertyTableValue = z.strictObject({
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcPropertyTableValue", ["IfcPropertyTableValue.WR1"]));
 export const IfcProtectiveDeviceType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcProtectiveDeviceTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcProtectiveDeviceType", ["IfcTypeObject.WR1"]));
 export const IfcProxy = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   ProxyType: IfcObjectTypeEnum,
   Tag: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcProxy", ["IfcProxy.WR1"]));
 export const IfcPumpType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcPumpTypeEnum,
@@ -3542,101 +3544,101 @@ export const IfcPumpType = z.strictObject({
 export const IfcQuantityArea = z.strictObject({
   Name: IfcLabel,
   Description: IfcText.nullish(),
-  Unit: EntityRef.nullish(),
+  Unit: $EntityRef.nullish(),
   AreaValue: IfcAreaMeasure,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcQuantityArea", ["IfcQuantityArea.WR22"]));
 export const IfcQuantityCount = z.strictObject({
   Name: IfcLabel,
   Description: IfcText.nullish(),
-  Unit: EntityRef.nullish(),
+  Unit: $EntityRef.nullish(),
   CountValue: IfcCountMeasure,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcQuantityCount", ["IfcQuantityCount.WR21"]));
 export const IfcQuantityLength = z.strictObject({
   Name: IfcLabel,
   Description: IfcText.nullish(),
-  Unit: EntityRef.nullish(),
+  Unit: $EntityRef.nullish(),
   LengthValue: IfcLengthMeasure,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcQuantityLength", ["IfcQuantityLength.WR22"]));
 export const IfcQuantityTime = z.strictObject({
   Name: IfcLabel,
   Description: IfcText.nullish(),
-  Unit: EntityRef.nullish(),
+  Unit: $EntityRef.nullish(),
   TimeValue: IfcTimeMeasure,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcQuantityTime", ["IfcQuantityTime.WR22"]));
 export const IfcQuantityVolume = z.strictObject({
   Name: IfcLabel,
   Description: IfcText.nullish(),
-  Unit: EntityRef.nullish(),
+  Unit: $EntityRef.nullish(),
   VolumeValue: IfcVolumeMeasure,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcQuantityVolume", ["IfcQuantityVolume.WR22"]));
 export const IfcQuantityWeight = z.strictObject({
   Name: IfcLabel,
   Description: IfcText.nullish(),
-  Unit: EntityRef.nullish(),
+  Unit: $EntityRef.nullish(),
   WeightValue: IfcMassMeasure,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcQuantityWeight", ["IfcQuantityWeight.WR22"]));
 export const IfcRadiusDimension = z.strictObject({
-  Contents: z.array(IfcDraughtingCalloutElement).min(1),
+  Contents: z.array(IfcDraughtingCalloutElement).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcRailing = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
   PredefinedType: IfcRailingTypeEnum.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcRailing", ["IfcRailing.WR61"]));
 export const IfcRailingType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcRailingTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcRailingType", ["IfcTypeObject.WR1"]));
 export const IfcRamp = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
   ShapeType: IfcRampTypeEnum,
 });
 export const IfcRampFlight = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcRampFlightType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcRampFlightTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcRampFlightType", ["IfcTypeObject.WR1"]));
 export const IfcRationalBezierCurve = z.strictObject({
   Degree: z.number().int(),
-  ControlPointsList: z.array(EntityRef).min(2),
+  ControlPointsList: z.array($EntityRef).min(2),
   CurveForm: IfcBSplineCurveForm,
   ClosedCurve: z.union([z.boolean(), z.literal('UNKNOWN')]),
   SelfIntersect: z.union([z.boolean(), z.literal('UNKNOWN')]),
@@ -3645,7 +3647,7 @@ export const IfcRationalBezierCurve = z.strictObject({
 export const IfcRectangleHollowProfileDef = z.strictObject({
   ProfileType: IfcProfileTypeEnum,
   ProfileName: IfcLabel.nullish(),
-  Position: EntityRef,
+  Position: $EntityRef,
   XDim: IfcPositiveLengthMeasure,
   YDim: IfcPositiveLengthMeasure,
   WallThickness: IfcPositiveLengthMeasure,
@@ -3655,18 +3657,18 @@ export const IfcRectangleHollowProfileDef = z.strictObject({
 export const IfcRectangleProfileDef = z.strictObject({
   ProfileType: IfcProfileTypeEnum,
   ProfileName: IfcLabel.nullish(),
-  Position: EntityRef,
+  Position: $EntityRef,
   XDim: IfcPositiveLengthMeasure,
   YDim: IfcPositiveLengthMeasure,
 });
 export const IfcRectangularPyramid = z.strictObject({
-  Position: EntityRef,
+  Position: $EntityRef,
   XLength: IfcPositiveLengthMeasure,
   YLength: IfcPositiveLengthMeasure,
   Height: IfcPositiveLengthMeasure,
 });
 export const IfcRectangularTrimmedSurface = z.strictObject({
-  BasisSurface: EntityRef,
+  BasisSurface: $EntityRef,
   U1: IfcParameterValue,
   V1: IfcParameterValue,
   U2: IfcParameterValue,
@@ -3676,7 +3678,7 @@ export const IfcRectangularTrimmedSurface = z.strictObject({
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcRectangularTrimmedSurface", ["IfcRectangularTrimmedSurface.WR1","IfcRectangularTrimmedSurface.WR2","IfcRectangularTrimmedSurface.WR4"]));
 export const IfcReferencesValueDocument = z.strictObject({
   ReferencedDocument: IfcDocumentSelect,
-  ReferencingValues: z.array(EntityRef).min(1),
+  ReferencingValues: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
 });
@@ -3690,7 +3692,7 @@ export const IfcRegularTimeSeries = z.strictObject({
   UserDefinedDataOrigin: IfcLabel.nullish(),
   Unit: IfcUnit.nullish(),
   TimeStep: IfcTimeMeasure,
-  Values: z.array(EntityRef).min(1),
+  Values: z.array($EntityRef).min(1),
 });
 export const IfcReinforcementBarProperties = z.strictObject({
   TotalCrossSectionArea: IfcAreaMeasure,
@@ -3702,20 +3704,20 @@ export const IfcReinforcementBarProperties = z.strictObject({
 });
 export const IfcReinforcementDefinitionProperties = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   DefinitionType: IfcLabel.nullish(),
-  ReinforcementSectionDefinitions: z.array(EntityRef).min(1),
+  ReinforcementSectionDefinitions: z.array($EntityRef).min(1),
 });
 export const IfcReinforcingBar = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
   SteelGrade: IfcLabel.nullish(),
   NominalDiameter: IfcPositiveLengthMeasure,
@@ -3726,23 +3728,23 @@ export const IfcReinforcingBar = z.strictObject({
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcReinforcingBar", ["IfcReinforcingBar.WR1"]));
 export const IfcReinforcingElement = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
   SteelGrade: IfcLabel.nullish(),
 });
 export const IfcReinforcingMesh = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
   SteelGrade: IfcLabel.nullish(),
   MeshLength: IfcPositiveLengthMeasure.nullish(),
@@ -3756,192 +3758,192 @@ export const IfcReinforcingMesh = z.strictObject({
 });
 export const IfcRelAggregates = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatingObject: EntityRef,
-  RelatedObjects: z.array(EntityRef).min(1),
+  RelatingObject: $EntityRef,
+  RelatedObjects: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcRelAggregates", ["IfcRelDecomposes.WR31"]));
 export const IfcRelAssigns = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatedObjects: z.array(EntityRef).min(1),
+  RelatedObjects: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   RelatedObjectsType: IfcObjectTypeEnum.nullish(),
 });
 export const IfcRelAssignsTasks = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatedObjects: z.array(EntityRef).min(1),
+  RelatedObjects: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   RelatedObjectsType: IfcObjectTypeEnum.nullish(),
-  RelatingControl: EntityRef,
-  TimeForTask: EntityRef.nullish(),
+  RelatingControl: $EntityRef,
+  TimeForTask: $EntityRef.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcRelAssignsTasks", ["IfcRelAssignsToControl.WR1","IfcRelAssignsTasks.WR1"]));
 export const IfcRelAssignsToActor = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatedObjects: z.array(EntityRef).min(1),
+  RelatedObjects: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   RelatedObjectsType: IfcObjectTypeEnum.nullish(),
-  RelatingActor: EntityRef,
-  ActingRole: EntityRef.nullish(),
+  RelatingActor: $EntityRef,
+  ActingRole: $EntityRef.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcRelAssignsToActor", ["IfcRelAssignsToActor.WR1"]));
 export const IfcRelAssignsToControl = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatedObjects: z.array(EntityRef).min(1),
+  RelatedObjects: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   RelatedObjectsType: IfcObjectTypeEnum.nullish(),
-  RelatingControl: EntityRef,
+  RelatingControl: $EntityRef,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcRelAssignsToControl", ["IfcRelAssignsToControl.WR1"]));
 export const IfcRelAssignsToGroup = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatedObjects: z.array(EntityRef).min(1),
+  RelatedObjects: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   RelatedObjectsType: IfcObjectTypeEnum.nullish(),
-  RelatingGroup: EntityRef,
+  RelatingGroup: $EntityRef,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcRelAssignsToGroup", ["IfcRelAssignsToGroup.WR1"]));
 export const IfcRelAssignsToProcess = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatedObjects: z.array(EntityRef).min(1),
+  RelatedObjects: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   RelatedObjectsType: IfcObjectTypeEnum.nullish(),
-  RelatingProcess: EntityRef,
-  QuantityInProcess: EntityRef.nullish(),
+  RelatingProcess: $EntityRef,
+  QuantityInProcess: $EntityRef.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcRelAssignsToProcess", ["IfcRelAssignsToProcess.WR1"]));
 export const IfcRelAssignsToProduct = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatedObjects: z.array(EntityRef).min(1),
+  RelatedObjects: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   RelatedObjectsType: IfcObjectTypeEnum.nullish(),
-  RelatingProduct: EntityRef,
+  RelatingProduct: $EntityRef,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcRelAssignsToProduct", ["IfcRelAssignsToProduct.WR1"]));
 export const IfcRelAssignsToProjectOrder = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatedObjects: z.array(EntityRef).min(1),
+  RelatedObjects: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   RelatedObjectsType: IfcObjectTypeEnum.nullish(),
-  RelatingControl: EntityRef,
+  RelatingControl: $EntityRef,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcRelAssignsToProjectOrder", ["IfcRelAssignsToControl.WR1"]));
 export const IfcRelAssignsToResource = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatedObjects: z.array(EntityRef).min(1),
+  RelatedObjects: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   RelatedObjectsType: IfcObjectTypeEnum.nullish(),
-  RelatingResource: EntityRef,
+  RelatingResource: $EntityRef,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcRelAssignsToResource", ["IfcRelAssignsToResource.WR1"]));
 export const IfcRelAssociates = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatedObjects: z.array(EntityRef).min(1),
+  RelatedObjects: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcRelAssociatesAppliedValue = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatedObjects: z.array(EntityRef).min(1),
-  RelatingAppliedValue: EntityRef,
+  RelatedObjects: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
+  RelatingAppliedValue: $EntityRef,
 });
 export const IfcRelAssociatesApproval = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatedObjects: z.array(EntityRef).min(1),
-  RelatingApproval: EntityRef,
+  RelatedObjects: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
+  RelatingApproval: $EntityRef,
 });
 export const IfcRelAssociatesClassification = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatedObjects: z.array(EntityRef).min(1),
+  RelatedObjects: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   RelatingClassification: IfcClassificationNotationSelect,
 });
 export const IfcRelAssociatesConstraint = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatedObjects: z.array(EntityRef).min(1),
+  RelatedObjects: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   Intent: IfcLabel,
-  RelatingConstraint: EntityRef,
+  RelatingConstraint: $EntityRef,
 });
 export const IfcRelAssociatesDocument = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatedObjects: z.array(EntityRef).min(1),
+  RelatedObjects: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   RelatingDocument: IfcDocumentSelect,
 });
 export const IfcRelAssociatesLibrary = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatedObjects: z.array(EntityRef).min(1),
+  RelatedObjects: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   RelatingLibrary: IfcLibrarySelect,
 });
 export const IfcRelAssociatesMaterial = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatedObjects: z.array(EntityRef).min(1),
+  RelatedObjects: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   RelatingMaterial: IfcMaterialSelect,
 });
 export const IfcRelAssociatesProfileProperties = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatedObjects: z.array(EntityRef).min(1),
-  RelatingProfileProperties: EntityRef,
-  ProfileSectionLocation: EntityRef.nullish(),
+  RelatedObjects: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
+  RelatingProfileProperties: $EntityRef,
+  ProfileSectionLocation: $EntityRef.nullish(),
   ProfileOrientation: IfcOrientationSelect.nullish(),
 });
 export const IfcRelConnects = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
 });
 export const IfcRelConnectsElements = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  ConnectionGeometry: EntityRef.nullish(),
-  RelatingElement: EntityRef,
-  RelatedElement: EntityRef,
+  ConnectionGeometry: $EntityRef.nullish(),
+  RelatingElement: $EntityRef,
+  RelatedElement: $EntityRef,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcRelConnectsElements", ["IfcRelConnectsElements.WR31"]));
 export const IfcRelConnectsPathElements = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  ConnectionGeometry: EntityRef.nullish(),
-  RelatingElement: EntityRef,
-  RelatedElement: EntityRef,
+  ConnectionGeometry: $EntityRef.nullish(),
+  RelatingElement: $EntityRef,
+  RelatedElement: $EntityRef,
   RelatingPriorities: z.array(z.number().int()),
   RelatedPriorities: z.array(z.number().int()),
   RelatedConnectionType: IfcConnectionTypeEnum,
@@ -3949,247 +3951,247 @@ export const IfcRelConnectsPathElements = z.strictObject({
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcRelConnectsPathElements", ["IfcRelConnectsElements.WR31"]));
 export const IfcRelConnectsPortToElement = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatingPort: EntityRef,
-  RelatedElement: EntityRef,
+  RelatingPort: $EntityRef,
+  RelatedElement: $EntityRef,
 });
 export const IfcRelConnectsPorts = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatingPort: EntityRef,
-  RelatedPort: EntityRef,
-  RealizingElement: EntityRef.nullish(),
+  RelatingPort: $EntityRef,
+  RelatedPort: $EntityRef,
+  RealizingElement: $EntityRef.nullish(),
 });
 export const IfcRelConnectsStructuralActivity = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   RelatingElement: IfcStructuralActivityAssignmentSelect,
-  RelatedStructuralActivity: EntityRef,
+  RelatedStructuralActivity: $EntityRef,
 });
 export const IfcRelConnectsStructuralElement = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatingElement: EntityRef,
-  RelatedStructuralMember: EntityRef,
+  RelatingElement: $EntityRef,
+  RelatedStructuralMember: $EntityRef,
 });
 export const IfcRelConnectsStructuralMember = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatingStructuralMember: EntityRef,
-  RelatedStructuralConnection: EntityRef,
-  AppliedCondition: EntityRef.nullish(),
-  AdditionalConditions: EntityRef.nullish(),
+  RelatingStructuralMember: $EntityRef,
+  RelatedStructuralConnection: $EntityRef,
+  AppliedCondition: $EntityRef.nullish(),
+  AdditionalConditions: $EntityRef.nullish(),
   SupportedLength: IfcLengthMeasure.nullish(),
-  ConditionCoordinateSystem: EntityRef.nullish(),
+  ConditionCoordinateSystem: $EntityRef.nullish(),
 });
 export const IfcRelConnectsWithEccentricity = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatingStructuralMember: EntityRef,
-  RelatedStructuralConnection: EntityRef,
-  AppliedCondition: EntityRef.nullish(),
-  AdditionalConditions: EntityRef.nullish(),
+  RelatingStructuralMember: $EntityRef,
+  RelatedStructuralConnection: $EntityRef,
+  AppliedCondition: $EntityRef.nullish(),
+  AdditionalConditions: $EntityRef.nullish(),
   SupportedLength: IfcLengthMeasure.nullish(),
-  ConditionCoordinateSystem: EntityRef.nullish(),
-  ConnectionConstraint: EntityRef,
+  ConditionCoordinateSystem: $EntityRef.nullish(),
+  ConnectionConstraint: $EntityRef,
 });
 export const IfcRelConnectsWithRealizingElements = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  ConnectionGeometry: EntityRef.nullish(),
-  RelatingElement: EntityRef,
-  RelatedElement: EntityRef,
-  RealizingElements: z.array(EntityRef).min(1),
+  ConnectionGeometry: $EntityRef.nullish(),
+  RelatingElement: $EntityRef,
+  RelatedElement: $EntityRef,
+  RealizingElements: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   ConnectionType: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcRelConnectsWithRealizingElements", ["IfcRelConnectsElements.WR31"]));
 export const IfcRelContainedInSpatialStructure = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatedElements: z.array(EntityRef).min(1),
-  RelatingStructure: EntityRef,
+  RelatedElements: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
+  RelatingStructure: $EntityRef,
 });
 export const IfcRelCoversBldgElements = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatingBuildingElement: EntityRef,
-  RelatedCoverings: z.array(EntityRef).min(1),
+  RelatingBuildingElement: $EntityRef,
+  RelatedCoverings: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcRelCoversSpaces = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatedSpace: EntityRef,
-  RelatedCoverings: z.array(EntityRef).min(1),
+  RelatedSpace: $EntityRef,
+  RelatedCoverings: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcRelDecomposes = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatingObject: EntityRef,
-  RelatedObjects: z.array(EntityRef).min(1),
+  RelatingObject: $EntityRef,
+  RelatedObjects: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcRelDecomposes", ["IfcRelDecomposes.WR31"]));
 export const IfcRelDefines = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatedObjects: z.array(EntityRef).min(1),
+  RelatedObjects: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcRelDefinesByProperties = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatedObjects: z.array(EntityRef).min(1),
-  RelatingPropertyDefinition: EntityRef,
+  RelatedObjects: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
+  RelatingPropertyDefinition: $EntityRef,
 });
 export const IfcRelDefinesByType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatedObjects: z.array(EntityRef).min(1),
-  RelatingType: EntityRef,
+  RelatedObjects: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
+  RelatingType: $EntityRef,
 });
 export const IfcRelFillsElement = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatingOpeningElement: EntityRef,
-  RelatedBuildingElement: EntityRef,
+  RelatingOpeningElement: $EntityRef,
+  RelatedBuildingElement: $EntityRef,
 });
 export const IfcRelFlowControlElements = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatedControlElements: z.array(EntityRef).min(1),
-  RelatingFlowElement: EntityRef,
+  RelatedControlElements: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
+  RelatingFlowElement: $EntityRef,
 });
 export const IfcRelInteractionRequirements = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   DailyInteraction: IfcCountMeasure.nullish(),
   ImportanceRating: IfcNormalisedRatioMeasure.nullish(),
-  LocationOfInteraction: EntityRef.nullish(),
-  RelatedSpaceProgram: EntityRef,
-  RelatingSpaceProgram: EntityRef,
+  LocationOfInteraction: $EntityRef.nullish(),
+  RelatedSpaceProgram: $EntityRef,
+  RelatingSpaceProgram: $EntityRef,
 });
 export const IfcRelNests = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatingObject: EntityRef,
-  RelatedObjects: z.array(EntityRef).min(1),
+  RelatingObject: $EntityRef,
+  RelatedObjects: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcRelNests", ["IfcRelDecomposes.WR31"]));
 export const IfcRelOccupiesSpaces = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatedObjects: z.array(EntityRef).min(1),
+  RelatedObjects: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   RelatedObjectsType: IfcObjectTypeEnum.nullish(),
-  RelatingActor: EntityRef,
-  ActingRole: EntityRef.nullish(),
+  RelatingActor: $EntityRef,
+  ActingRole: $EntityRef.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcRelOccupiesSpaces", ["IfcRelAssignsToActor.WR1"]));
 export const IfcRelOverridesProperties = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatedObjects: z.array(EntityRef).min(1),
-  RelatingPropertyDefinition: EntityRef,
-  OverridingProperties: z.array(EntityRef).min(1),
+  RelatedObjects: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
+  RelatingPropertyDefinition: $EntityRef,
+  OverridingProperties: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcRelOverridesProperties", ["IfcRelOverridesProperties.WR1"]));
 export const IfcRelProjectsElement = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatingElement: EntityRef,
-  RelatedFeatureElement: EntityRef,
+  RelatingElement: $EntityRef,
+  RelatedFeatureElement: $EntityRef,
 });
 export const IfcRelReferencedInSpatialStructure = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatedElements: z.array(EntityRef).min(1),
-  RelatingStructure: EntityRef,
+  RelatedElements: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
+  RelatingStructure: $EntityRef,
 });
 export const IfcRelSchedulesCostItems = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatedObjects: z.array(EntityRef).min(1),
+  RelatedObjects: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   RelatedObjectsType: IfcObjectTypeEnum.nullish(),
-  RelatingControl: EntityRef,
+  RelatingControl: $EntityRef,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcRelSchedulesCostItems", ["IfcRelAssignsToControl.WR1"]));
 export const IfcRelSequence = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatingProcess: EntityRef,
-  RelatedProcess: EntityRef,
+  RelatingProcess: $EntityRef,
+  RelatedProcess: $EntityRef,
   TimeLag: IfcTimeMeasure,
   SequenceType: IfcSequenceEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcRelSequence", ["IfcRelSequence.WR1"]));
 export const IfcRelServicesBuildings = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatingSystem: EntityRef,
-  RelatedBuildings: z.array(EntityRef).min(1),
+  RelatingSystem: $EntityRef,
+  RelatedBuildings: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcRelSpaceBoundary = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatingSpace: EntityRef,
-  RelatedBuildingElement: EntityRef.nullish(),
-  ConnectionGeometry: EntityRef.nullish(),
+  RelatingSpace: $EntityRef,
+  RelatedBuildingElement: $EntityRef.nullish(),
+  ConnectionGeometry: $EntityRef.nullish(),
   PhysicalOrVirtualBoundary: IfcPhysicalOrVirtualEnum,
   InternalOrExternalBoundary: IfcInternalOrExternalEnum,
 });
 export const IfcRelVoidsElement = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  RelatingBuildingElement: EntityRef,
-  RelatedOpeningElement: EntityRef,
+  RelatingBuildingElement: $EntityRef,
+  RelatedOpeningElement: $EntityRef,
 });
 export const IfcRelationship = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
 });
@@ -4198,10 +4200,10 @@ export const IfcRelaxation = z.strictObject({
   InitialStress: IfcNormalisedRatioMeasure,
 });
 export const IfcRepresentation = z.strictObject({
-  ContextOfItems: EntityRef,
+  ContextOfItems: $EntityRef,
   RepresentationIdentifier: IfcLabel.nullish(),
   RepresentationType: IfcLabel.nullish(),
-  Items: z.array(EntityRef).min(1),
+  Items: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcRepresentationContext = z.strictObject({
   ContextIdentifier: IfcLabel.nullish(),
@@ -4212,24 +4214,24 @@ export const IfcRepresentationItem = z.strictObject({
 });
 export const IfcRepresentationMap = z.strictObject({
   MappingOrigin: IfcAxis2Placement,
-  MappedRepresentation: EntityRef,
+  MappedRepresentation: $EntityRef,
 });
 export const IfcResource = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
 });
 export const IfcRevolvedAreaSolid = z.strictObject({
-  SweptArea: EntityRef,
-  Position: EntityRef,
-  Axis: EntityRef,
+  SweptArea: $EntityRef,
+  Position: $EntityRef,
+  Axis: $EntityRef,
   Angle: IfcPlaneAngleMeasure,
 });
 export const IfcRibPlateProfileProperties = z.strictObject({
   ProfileName: IfcLabel.nullish(),
-  ProfileDefinition: EntityRef.nullish(),
+  ProfileDefinition: $EntityRef.nullish(),
   Thickness: IfcPositiveLengthMeasure.nullish(),
   RibHeight: IfcPositiveLengthMeasure.nullish(),
   RibWidth: IfcPositiveLengthMeasure.nullish(),
@@ -4237,40 +4239,40 @@ export const IfcRibPlateProfileProperties = z.strictObject({
   Direction: IfcRibPlateDirectionEnum,
 });
 export const IfcRightCircularCone = z.strictObject({
-  Position: EntityRef,
+  Position: $EntityRef,
   Height: IfcPositiveLengthMeasure,
   BottomRadius: IfcPositiveLengthMeasure,
 });
 export const IfcRightCircularCylinder = z.strictObject({
-  Position: EntityRef,
+  Position: $EntityRef,
   Height: IfcPositiveLengthMeasure,
   Radius: IfcPositiveLengthMeasure,
 });
 export const IfcRoof = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
   ShapeType: IfcRoofTypeEnum,
 });
 export const IfcRoot = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
 });
 export const IfcRoundedEdgeFeature = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
   FeatureLength: IfcPositiveLengthMeasure.nullish(),
   Radius: IfcPositiveLengthMeasure.nullish(),
@@ -4278,7 +4280,7 @@ export const IfcRoundedEdgeFeature = z.strictObject({
 export const IfcRoundedRectangleProfileDef = z.strictObject({
   ProfileType: IfcProfileTypeEnum,
   ProfileName: IfcLabel.nullish(),
-  Position: EntityRef,
+  Position: $EntityRef,
   XDim: IfcPositiveLengthMeasure,
   YDim: IfcPositiveLengthMeasure,
   RoundingRadius: IfcPositiveLengthMeasure,
@@ -4290,19 +4292,19 @@ export const IfcSIUnit = z.strictObject({
 });
 export const IfcSanitaryTerminalType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcSanitaryTerminalTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcSanitaryTerminalType", ["IfcTypeObject.WR1"]));
 export const IfcScheduleTimeControl = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
@@ -4327,37 +4329,37 @@ export const IfcScheduleTimeControl = z.strictObject({
 });
 export const IfcSectionProperties = z.strictObject({
   SectionType: IfcSectionTypeEnum,
-  StartProfile: EntityRef,
-  EndProfile: EntityRef.nullish(),
+  StartProfile: $EntityRef,
+  EndProfile: $EntityRef.nullish(),
 });
 export const IfcSectionReinforcementProperties = z.strictObject({
   LongitudinalStartPosition: IfcLengthMeasure,
   LongitudinalEndPosition: IfcLengthMeasure,
   TransversePosition: IfcLengthMeasure.nullish(),
   ReinforcementRole: IfcReinforcingBarRoleEnum,
-  SectionDefinition: EntityRef,
-  CrossSectionReinforcementDefinitions: z.array(EntityRef).min(1),
+  SectionDefinition: $EntityRef,
+  CrossSectionReinforcementDefinitions: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcSectionedSpine = z.strictObject({
-  SpineCurve: EntityRef,
-  CrossSections: z.array(EntityRef).min(2),
-  CrossSectionPositions: z.array(EntityRef).min(2),
+  SpineCurve: $EntityRef,
+  CrossSections: z.array($EntityRef).min(2),
+  CrossSectionPositions: z.array($EntityRef).min(2),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcSectionedSpine", ["IfcSectionedSpine.WR1"]));
 export const IfcSensorType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcSensorTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcSensorType", ["IfcTypeObject.WR1"]));
 export const IfcServiceLife = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
@@ -4366,7 +4368,7 @@ export const IfcServiceLife = z.strictObject({
 });
 export const IfcServiceLifeFactor = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   PredefinedType: IfcServiceLifeFactorTypeEnum,
@@ -4375,26 +4377,26 @@ export const IfcServiceLifeFactor = z.strictObject({
   LowerValue: IfcMeasureValue.nullish(),
 });
 export const IfcShapeAspect = z.strictObject({
-  ShapeRepresentations: z.array(EntityRef).min(1),
+  ShapeRepresentations: z.array($EntityRef).min(1),
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ProductDefinitional: z.union([z.boolean(), z.literal('UNKNOWN')]),
-  PartOfProductDefinitionShape: EntityRef,
+  PartOfProductDefinitionShape: $EntityRef,
 });
 export const IfcShapeModel = z.strictObject({
-  ContextOfItems: EntityRef,
+  ContextOfItems: $EntityRef,
   RepresentationIdentifier: IfcLabel.nullish(),
   RepresentationType: IfcLabel.nullish(),
-  Items: z.array(EntityRef).min(1),
+  Items: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcShapeRepresentation = z.strictObject({
-  ContextOfItems: EntityRef,
+  ContextOfItems: $EntityRef,
   RepresentationIdentifier: IfcLabel.nullish(),
   RepresentationType: IfcLabel.nullish(),
-  Items: z.array(EntityRef).min(1),
+  Items: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcShapeRepresentation", ["IfcShapeRepresentation.WR23"]));
 export const IfcShellBasedSurfaceModel = z.strictObject({
-  SbsmBoundary: z.array(IfcShell).min(1),
+  SbsmBoundary: z.array(IfcShell).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcSimpleProperty = z.strictObject({
   Name: IfcIdentifier,
@@ -4402,39 +4404,39 @@ export const IfcSimpleProperty = z.strictObject({
 });
 export const IfcSite = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   LongName: IfcLabel.nullish(),
   CompositionType: IfcElementCompositionEnum,
   RefLatitude: IfcCompoundPlaneAngleMeasure.nullish(),
   RefLongitude: IfcCompoundPlaneAngleMeasure.nullish(),
   RefElevation: IfcLengthMeasure.nullish(),
   LandTitleNumber: IfcLabel.nullish(),
-  SiteAddress: EntityRef.nullish(),
+  SiteAddress: $EntityRef.nullish(),
 });
 export const IfcSlab = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
   PredefinedType: IfcSlabTypeEnum.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcSlab", ["IfcSlab.WR61"]));
 export const IfcSlabType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcSlabTypeEnum,
@@ -4450,30 +4452,30 @@ export const IfcSolidModel = z.strictObject({
 });
 export const IfcSoundProperties = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   IsAttenuating: IfcBoolean,
   SoundScale: IfcSoundScaleEnum.nullish(),
-  SoundValues: z.array(EntityRef).min(1).max(8),
+  SoundValues: z.array($EntityRef).min(1).max(8),
 });
 export const IfcSoundValue = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
-  SoundLevelTimeSeries: EntityRef.nullish(),
+  SoundLevelTimeSeries: $EntityRef.nullish(),
   Frequency: IfcFrequencyMeasure,
   SoundLevelSingleValue: IfcDerivedMeasureValue.nullish(),
 });
 export const IfcSpace = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   LongName: IfcLabel.nullish(),
   CompositionType: IfcElementCompositionEnum,
   InteriorOrExteriorSpace: IfcInternalOrExternalEnum,
@@ -4481,31 +4483,31 @@ export const IfcSpace = z.strictObject({
 });
 export const IfcSpaceHeaterType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcSpaceHeaterTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcSpaceHeaterType", ["IfcTypeObject.WR1","IfcSpaceHeaterType.WR1"]));
 export const IfcSpaceProgram = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
   SpaceProgramIdentifier: IfcIdentifier,
   MaxRequiredArea: IfcAreaMeasure.nullish(),
   MinRequiredArea: IfcAreaMeasure.nullish(),
-  RequestedLocation: EntityRef.nullish(),
+  RequestedLocation: $EntityRef.nullish(),
   StandardRequiredArea: IfcAreaMeasure,
 });
 export const IfcSpaceThermalLoadProperties = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableValueRatio: IfcPositiveRatioMeasure.nullish(),
@@ -4514,80 +4516,80 @@ export const IfcSpaceThermalLoadProperties = z.strictObject({
   SourceDescription: IfcText.nullish(),
   MaximumValue: IfcPowerMeasure,
   MinimumValue: IfcPowerMeasure.nullish(),
-  ThermalLoadTimeSeriesValues: EntityRef.nullish(),
+  ThermalLoadTimeSeriesValues: $EntityRef.nullish(),
   UserDefinedThermalLoadSource: IfcLabel.nullish(),
   UserDefinedPropertySource: IfcLabel.nullish(),
   ThermalLoadType: IfcThermalLoadTypeEnum,
 });
 export const IfcSpaceType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcSpaceTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcSpaceType", ["IfcTypeObject.WR1"]));
 export const IfcSpatialStructureElement = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   LongName: IfcLabel.nullish(),
   CompositionType: IfcElementCompositionEnum,
 });
 export const IfcSpatialStructureElementType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcSpatialStructureElementType", ["IfcTypeObject.WR1"]));
 export const IfcSphere = z.strictObject({
-  Position: EntityRef,
+  Position: $EntityRef,
   Radius: IfcPositiveLengthMeasure,
 });
 export const IfcStackTerminalType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcStackTerminalTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcStackTerminalType", ["IfcTypeObject.WR1"]));
 export const IfcStair = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
   ShapeType: IfcStairTypeEnum,
 });
 export const IfcStairFlight = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
   NumberOfRiser: z.number().int().nullish(),
   NumberOfTreads: z.number().int().nullish(),
@@ -4596,139 +4598,139 @@ export const IfcStairFlight = z.strictObject({
 });
 export const IfcStairFlightType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcStairFlightTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcStairFlightType", ["IfcTypeObject.WR1"]));
 export const IfcStructuralAction = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
-  AppliedLoad: EntityRef,
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
+  AppliedLoad: $EntityRef,
   GlobalOrLocal: IfcGlobalOrLocalEnum,
   DestabilizingLoad: z.boolean(),
-  CausedBy: EntityRef.nullish(),
+  CausedBy: $EntityRef.nullish(),
 });
 export const IfcStructuralActivity = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
-  AppliedLoad: EntityRef,
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
+  AppliedLoad: $EntityRef,
   GlobalOrLocal: IfcGlobalOrLocalEnum,
 });
 export const IfcStructuralAnalysisModel = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
   PredefinedType: IfcAnalysisModelTypeEnum,
-  OrientationOf2DPlane: EntityRef.nullish(),
-  LoadedBy: z.array(EntityRef).min(1).nullish(),
-  HasResults: z.array(EntityRef).min(1).nullish(),
+  OrientationOf2DPlane: $EntityRef.nullish(),
+  LoadedBy: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasResults: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
 });
 export const IfcStructuralConnection = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
-  AppliedCondition: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
+  AppliedCondition: $EntityRef.nullish(),
 });
 export const IfcStructuralConnectionCondition = z.strictObject({
   Name: IfcLabel.nullish(),
 });
 export const IfcStructuralCurveConnection = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
-  AppliedCondition: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
+  AppliedCondition: $EntityRef.nullish(),
 });
 export const IfcStructuralCurveMember = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   PredefinedType: IfcStructuralCurveTypeEnum,
 });
 export const IfcStructuralCurveMemberVarying = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   PredefinedType: IfcStructuralCurveTypeEnum,
 });
 export const IfcStructuralItem = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
 });
 export const IfcStructuralLinearAction = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
-  AppliedLoad: EntityRef,
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
+  AppliedLoad: $EntityRef,
   GlobalOrLocal: IfcGlobalOrLocalEnum,
   DestabilizingLoad: z.boolean(),
-  CausedBy: EntityRef.nullish(),
+  CausedBy: $EntityRef.nullish(),
   ProjectedOrTrue: IfcProjectedOrTrueLengthEnum,
 });
 export const IfcStructuralLinearActionVarying = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
-  AppliedLoad: EntityRef,
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
+  AppliedLoad: $EntityRef,
   GlobalOrLocal: IfcGlobalOrLocalEnum,
   DestabilizingLoad: z.boolean(),
-  CausedBy: EntityRef.nullish(),
+  CausedBy: $EntityRef.nullish(),
   ProjectedOrTrue: IfcProjectedOrTrueLengthEnum,
-  VaryingAppliedLoadLocation: EntityRef,
-  SubsequentAppliedLoads: z.array(EntityRef).min(1),
+  VaryingAppliedLoadLocation: $EntityRef,
+  SubsequentAppliedLoads: z.array($EntityRef).min(1),
 });
 export const IfcStructuralLoad = z.strictObject({
   Name: IfcLabel.nullish(),
 });
 export const IfcStructuralLoadGroup = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
@@ -4802,80 +4804,80 @@ export const IfcStructuralLoadTemperature = z.strictObject({
 });
 export const IfcStructuralMember = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
 });
 export const IfcStructuralPlanarAction = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
-  AppliedLoad: EntityRef,
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
+  AppliedLoad: $EntityRef,
   GlobalOrLocal: IfcGlobalOrLocalEnum,
   DestabilizingLoad: z.boolean(),
-  CausedBy: EntityRef.nullish(),
+  CausedBy: $EntityRef.nullish(),
   ProjectedOrTrue: IfcProjectedOrTrueLengthEnum,
 });
 export const IfcStructuralPlanarActionVarying = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
-  AppliedLoad: EntityRef,
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
+  AppliedLoad: $EntityRef,
   GlobalOrLocal: IfcGlobalOrLocalEnum,
   DestabilizingLoad: z.boolean(),
-  CausedBy: EntityRef.nullish(),
+  CausedBy: $EntityRef.nullish(),
   ProjectedOrTrue: IfcProjectedOrTrueLengthEnum,
-  VaryingAppliedLoadLocation: EntityRef,
-  SubsequentAppliedLoads: z.array(EntityRef).min(2),
+  VaryingAppliedLoadLocation: $EntityRef,
+  SubsequentAppliedLoads: z.array($EntityRef).min(2),
 });
 export const IfcStructuralPointAction = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
-  AppliedLoad: EntityRef,
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
+  AppliedLoad: $EntityRef,
   GlobalOrLocal: IfcGlobalOrLocalEnum,
   DestabilizingLoad: z.boolean(),
-  CausedBy: EntityRef.nullish(),
+  CausedBy: $EntityRef.nullish(),
 });
 export const IfcStructuralPointConnection = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
-  AppliedCondition: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
+  AppliedCondition: $EntityRef.nullish(),
 });
 export const IfcStructuralPointReaction = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
-  AppliedLoad: EntityRef,
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
+  AppliedLoad: $EntityRef,
   GlobalOrLocal: IfcGlobalOrLocalEnum,
 });
 export const IfcStructuralProfileProperties = z.strictObject({
   ProfileName: IfcLabel.nullish(),
-  ProfileDefinition: EntityRef.nullish(),
+  ProfileDefinition: $EntityRef.nullish(),
   PhysicalWeight: IfcMassPerLengthMeasure.nullish(),
   Perimeter: IfcPositiveLengthMeasure.nullish(),
   MinimumPlateThickness: IfcPositiveLengthMeasure.nullish(),
@@ -4900,28 +4902,28 @@ export const IfcStructuralProfileProperties = z.strictObject({
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcStructuralProfileProperties", ["IfcGeneralProfileProperties.WR1","IfcStructuralProfileProperties.WR21","IfcStructuralProfileProperties.WR22"]));
 export const IfcStructuralReaction = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
-  AppliedLoad: EntityRef,
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
+  AppliedLoad: $EntityRef,
   GlobalOrLocal: IfcGlobalOrLocalEnum,
 });
 export const IfcStructuralResultGroup = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
   TheoryType: IfcAnalysisTheoryTypeEnum,
-  ResultForLoadGroup: EntityRef.nullish(),
+  ResultForLoadGroup: $EntityRef.nullish(),
   IsLinear: z.boolean(),
 });
 export const IfcStructuralSteelProfileProperties = z.strictObject({
   ProfileName: IfcLabel.nullish(),
-  ProfileDefinition: EntityRef.nullish(),
+  ProfileDefinition: $EntityRef.nullish(),
   PhysicalWeight: IfcMassPerLengthMeasure.nullish(),
   Perimeter: IfcPositiveLengthMeasure.nullish(),
   MinimumPlateThickness: IfcPositiveLengthMeasure.nullish(),
@@ -4950,115 +4952,115 @@ export const IfcStructuralSteelProfileProperties = z.strictObject({
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcStructuralSteelProfileProperties", ["IfcGeneralProfileProperties.WR1","IfcStructuralProfileProperties.WR21","IfcStructuralProfileProperties.WR22","IfcStructuralSteelProfileProperties.WR31","IfcStructuralSteelProfileProperties.WR32"]));
 export const IfcStructuralSurfaceConnection = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
-  AppliedCondition: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
+  AppliedCondition: $EntityRef.nullish(),
 });
 export const IfcStructuralSurfaceMember = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   PredefinedType: IfcStructuralSurfaceTypeEnum,
   Thickness: IfcPositiveLengthMeasure.nullish(),
 });
 export const IfcStructuralSurfaceMemberVarying = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   PredefinedType: IfcStructuralSurfaceTypeEnum,
   Thickness: IfcPositiveLengthMeasure.nullish(),
   SubsequentThickness: z.array(IfcPositiveLengthMeasure).min(2),
-  VaryingThicknessLocation: EntityRef,
+  VaryingThicknessLocation: $EntityRef,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcStructuralSurfaceMemberVarying", ["IfcStructuralSurfaceMemberVarying.WR61"]));
 export const IfcStructuredDimensionCallout = z.strictObject({
-  Contents: z.array(IfcDraughtingCalloutElement).min(1),
+  Contents: z.array(IfcDraughtingCalloutElement).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcStyleModel = z.strictObject({
-  ContextOfItems: EntityRef,
+  ContextOfItems: $EntityRef,
   RepresentationIdentifier: IfcLabel.nullish(),
   RepresentationType: IfcLabel.nullish(),
-  Items: z.array(EntityRef).min(1),
+  Items: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcStyledItem = z.strictObject({
-  Item: EntityRef.nullish(),
-  Styles: z.array(EntityRef).min(1),
+  Item: $EntityRef.nullish(),
+  Styles: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   Name: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcStyledItem", ["IfcStyledItem.WR11"]));
 export const IfcStyledRepresentation = z.strictObject({
-  ContextOfItems: EntityRef,
+  ContextOfItems: $EntityRef,
   RepresentationIdentifier: IfcLabel.nullish(),
   RepresentationType: IfcLabel.nullish(),
-  Items: z.array(EntityRef).min(1),
+  Items: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcSubContractResource = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
   ResourceIdentifier: IfcIdentifier.nullish(),
   ResourceGroup: IfcLabel.nullish(),
   ResourceConsumption: IfcResourceConsumptionEnum.nullish(),
-  BaseQuantity: EntityRef.nullish(),
+  BaseQuantity: $EntityRef.nullish(),
   SubContractor: IfcActorSelect.nullish(),
   JobDescription: IfcText.nullish(),
 });
 export const IfcSubedge = z.strictObject({
-  EdgeStart: EntityRef,
-  EdgeEnd: EntityRef,
-  ParentEdge: EntityRef,
+  EdgeStart: $EntityRef,
+  EdgeEnd: $EntityRef,
+  ParentEdge: $EntityRef,
 });
 export const IfcSurface = z.strictObject({
 
 });
 export const IfcSurfaceCurveSweptAreaSolid = z.strictObject({
-  SweptArea: EntityRef,
-  Position: EntityRef,
-  Directrix: EntityRef,
+  SweptArea: $EntityRef,
+  Position: $EntityRef,
+  Directrix: $EntityRef,
   StartParam: IfcParameterValue,
   EndParam: IfcParameterValue,
-  ReferenceSurface: EntityRef,
+  ReferenceSurface: $EntityRef,
 });
 export const IfcSurfaceOfLinearExtrusion = z.strictObject({
-  SweptCurve: EntityRef,
-  Position: EntityRef,
-  ExtrudedDirection: EntityRef,
+  SweptCurve: $EntityRef,
+  Position: $EntityRef,
+  ExtrudedDirection: $EntityRef,
   Depth: IfcLengthMeasure,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcSurfaceOfLinearExtrusion", ["IfcSurfaceOfLinearExtrusion.WR41"]));
 export const IfcSurfaceOfRevolution = z.strictObject({
-  SweptCurve: EntityRef,
-  Position: EntityRef,
-  AxisPosition: EntityRef,
+  SweptCurve: $EntityRef,
+  Position: $EntityRef,
+  AxisPosition: $EntityRef,
 });
 export const IfcSurfaceStyle = z.strictObject({
   Name: IfcLabel.nullish(),
   Side: IfcSurfaceSide,
-  Styles: z.array(IfcSurfaceStyleElementSelect).min(1).max(5),
+  Styles: z.array(IfcSurfaceStyleElementSelect).min(1).max(5).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcSurfaceStyleLighting = z.strictObject({
-  DiffuseTransmissionColour: EntityRef,
-  DiffuseReflectionColour: EntityRef,
-  TransmissionColour: EntityRef,
-  ReflectanceColour: EntityRef,
+  DiffuseTransmissionColour: $EntityRef,
+  DiffuseReflectionColour: $EntityRef,
+  TransmissionColour: $EntityRef,
+  ReflectanceColour: $EntityRef,
 });
 export const IfcSurfaceStyleRefraction = z.strictObject({
   RefractionIndex: IfcReal.nullish(),
   DispersionFactor: IfcReal.nullish(),
 });
 export const IfcSurfaceStyleRendering = z.strictObject({
-  SurfaceColour: EntityRef,
+  SurfaceColour: $EntityRef,
   Transparency: IfcNormalisedRatioMeasure.nullish(),
   DiffuseColour: IfcColourOrFactor.nullish(),
   TransmissionColour: IfcColourOrFactor.nullish(),
@@ -5069,40 +5071,40 @@ export const IfcSurfaceStyleRendering = z.strictObject({
   ReflectanceMethod: IfcReflectanceMethodEnum,
 });
 export const IfcSurfaceStyleShading = z.strictObject({
-  SurfaceColour: EntityRef,
+  SurfaceColour: $EntityRef,
 });
 export const IfcSurfaceStyleWithTextures = z.strictObject({
-  Textures: z.array(EntityRef).min(1),
+  Textures: z.array($EntityRef).min(1),
 });
 export const IfcSurfaceTexture = z.strictObject({
   RepeatS: z.boolean(),
   RepeatT: z.boolean(),
   TextureType: IfcSurfaceTextureEnum,
-  TextureTransform: EntityRef.nullish(),
+  TextureTransform: $EntityRef.nullish(),
 });
 export const IfcSweptAreaSolid = z.strictObject({
-  SweptArea: EntityRef,
-  Position: EntityRef,
+  SweptArea: $EntityRef,
+  Position: $EntityRef,
 });
 export const IfcSweptDiskSolid = z.strictObject({
-  Directrix: EntityRef,
+  Directrix: $EntityRef,
   Radius: IfcPositiveLengthMeasure,
   InnerRadius: IfcPositiveLengthMeasure.nullish(),
   StartParam: IfcParameterValue,
   EndParam: IfcParameterValue,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcSweptDiskSolid", ["IfcSweptDiskSolid.WR2"]));
 export const IfcSweptSurface = z.strictObject({
-  SweptCurve: EntityRef,
-  Position: EntityRef,
+  SweptCurve: $EntityRef,
+  Position: $EntityRef,
 });
 export const IfcSwitchingDeviceType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcSwitchingDeviceTypeEnum,
@@ -5113,26 +5115,26 @@ export const IfcSymbolStyle = z.strictObject({
 });
 export const IfcSystem = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
 });
 export const IfcSystemFurnitureElementType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcSystemFurnitureElementType", ["IfcTypeObject.WR1"]));
 export const IfcTShapeProfileDef = z.strictObject({
   ProfileType: IfcProfileTypeEnum,
   ProfileName: IfcLabel.nullish(),
-  Position: EntityRef,
+  Position: $EntityRef,
   Depth: IfcPositiveLengthMeasure,
   FlangeWidth: IfcPositiveLengthMeasure,
   WebThickness: IfcPositiveLengthMeasure,
@@ -5146,7 +5148,7 @@ export const IfcTShapeProfileDef = z.strictObject({
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcTShapeProfileDef", ["IfcTShapeProfileDef.WR1","IfcTShapeProfileDef.WR2"]));
 export const IfcTable = z.strictObject({
   Name: z.string(),
-  Rows: z.array(EntityRef).min(1),
+  Rows: z.array($EntityRef).min(1),
 });
 export const IfcTableRow = z.strictObject({
   RowCells: z.array(IfcValue).min(1),
@@ -5154,19 +5156,19 @@ export const IfcTableRow = z.strictObject({
 });
 export const IfcTankType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcTankTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcTankType", ["IfcTypeObject.WR1","IfcTankType.WR1"]));
 export const IfcTask = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
@@ -5188,12 +5190,12 @@ export const IfcTelecomAddress = z.strictObject({
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcTelecomAddress", ["IfcAddress.WR1","IfcTelecomAddress.WR1"]));
 export const IfcTendon = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
   SteelGrade: IfcLabel.nullish(),
   PredefinedType: IfcTendonTypeEnum,
@@ -5207,20 +5209,20 @@ export const IfcTendon = z.strictObject({
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcTendon", ["IfcTendon.WR1"]));
 export const IfcTendonAnchor = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
   SteelGrade: IfcLabel.nullish(),
 });
 export const IfcTerminatorSymbol = z.strictObject({
-  Item: EntityRef.nullish(),
-  Styles: z.array(EntityRef).min(1),
+  Item: $EntityRef.nullish(),
+  Styles: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
   Name: IfcLabel.nullish(),
-  AnnotatedCurve: EntityRef,
+  AnnotatedCurve: $EntityRef,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcTerminatorSymbol", ["IfcStyledItem.WR11"]));
 export const IfcTextLiteral = z.strictObject({
   Literal: IfcPresentableText,
@@ -5231,7 +5233,7 @@ export const IfcTextLiteralWithExtent = z.strictObject({
   Literal: IfcPresentableText,
   Placement: IfcAxis2Placement,
   Path: IfcTextPath,
-  Extent: EntityRef,
+  Extent: $EntityRef,
   BoxAlignment: IfcBoxAlignment,
 });
 export const IfcTextStyle = z.strictObject({
@@ -5276,13 +5278,13 @@ export const IfcTextureCoordinateGenerator = z.strictObject({
   Parameter: z.array(IfcSimpleValue).min(1),
 });
 export const IfcTextureMap = z.strictObject({
-  TextureMaps: z.array(EntityRef).min(1),
+  TextureMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcTextureVertex = z.strictObject({
   Coordinates: z.array(IfcParameterValue).min(2).max(2),
 });
 export const IfcThermalMaterialProperties = z.strictObject({
-  Material: EntityRef,
+  Material: $EntityRef,
   SpecificHeatCapacity: IfcSpecificHeatCapacityMeasure.nullish(),
   BoilingPoint: IfcThermodynamicTemperatureMeasure.nullish(),
   FreezingPoint: IfcThermodynamicTemperatureMeasure.nullish(),
@@ -5299,18 +5301,18 @@ export const IfcTimeSeries = z.strictObject({
   Unit: IfcUnit.nullish(),
 });
 export const IfcTimeSeriesReferenceRelationship = z.strictObject({
-  ReferencedTimeSeries: EntityRef,
-  TimeSeriesReferences: z.array(IfcDocumentSelect).min(1),
+  ReferencedTimeSeries: $EntityRef,
+  TimeSeriesReferences: z.array(IfcDocumentSelect).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcTimeSeriesSchedule = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
   ApplicableDates: z.array(IfcDateTimeSelect).min(1).nullish(),
   TimeSeriesScheduleType: IfcTimeSeriesScheduleTypeEnum,
-  TimeSeries: EntityRef,
+  TimeSeries: $EntityRef,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcTimeSeriesSchedule", ["IfcTimeSeriesSchedule.WR41"]));
 export const IfcTimeSeriesValue = z.strictObject({
   ListValues: z.array(IfcValue).min(1),
@@ -5319,31 +5321,31 @@ export const IfcTopologicalRepresentationItem = z.strictObject({
 
 });
 export const IfcTopologyRepresentation = z.strictObject({
-  ContextOfItems: EntityRef,
+  ContextOfItems: $EntityRef,
   RepresentationIdentifier: IfcLabel.nullish(),
   RepresentationType: IfcLabel.nullish(),
-  Items: z.array(EntityRef).min(1),
+  Items: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcTopologyRepresentation", ["IfcTopologyRepresentation.WR22"]));
 export const IfcTransformerType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcTransformerTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcTransformerType", ["IfcTypeObject.WR1"]));
 export const IfcTransportElement = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
   OperationType: IfcTransportElementTypeEnum.nullish(),
   CapacityByWeight: IfcMassMeasure.nullish(),
@@ -5351,12 +5353,12 @@ export const IfcTransportElement = z.strictObject({
 });
 export const IfcTransportElementType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcTransportElementTypeEnum,
@@ -5364,57 +5366,57 @@ export const IfcTransportElementType = z.strictObject({
 export const IfcTrapeziumProfileDef = z.strictObject({
   ProfileType: IfcProfileTypeEnum,
   ProfileName: IfcLabel.nullish(),
-  Position: EntityRef,
+  Position: $EntityRef,
   BottomXDim: IfcPositiveLengthMeasure,
   TopXDim: IfcPositiveLengthMeasure,
   YDim: IfcPositiveLengthMeasure,
   TopXOffset: IfcLengthMeasure,
 });
 export const IfcTrimmedCurve = z.strictObject({
-  BasisCurve: EntityRef,
-  Trim1: z.array(IfcTrimmingSelect).min(1).max(2),
-  Trim2: z.array(IfcTrimmingSelect).min(1).max(2),
+  BasisCurve: $EntityRef,
+  Trim1: z.array(IfcTrimmingSelect).min(1).max(2).refine(r.uniqueItems, 'aggregate items must be unique'),
+  Trim2: z.array(IfcTrimmingSelect).min(1).max(2).refine(r.uniqueItems, 'aggregate items must be unique'),
   SenseAgreement: z.boolean(),
   MasterRepresentation: IfcTrimmingPreference,
 });
 export const IfcTubeBundleType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcTubeBundleTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcTubeBundleType", ["IfcTypeObject.WR1","IfcTubeBundleType.WR1"]));
 export const IfcTwoDirectionRepeatFactor = z.strictObject({
-  RepeatFactor: EntityRef,
-  SecondRepeatFactor: EntityRef,
+  RepeatFactor: $EntityRef,
+  SecondRepeatFactor: $EntityRef,
 });
 export const IfcTypeObject = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcTypeObject", ["IfcTypeObject.WR1"]));
 export const IfcTypeProduct = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcTypeProduct", ["IfcTypeObject.WR1"]));
 export const IfcUShapeProfileDef = z.strictObject({
   ProfileType: IfcProfileTypeEnum,
   ProfileName: IfcLabel.nullish(),
-  Position: EntityRef,
+  Position: $EntityRef,
   Depth: IfcPositiveLengthMeasure,
   FlangeWidth: IfcPositiveLengthMeasure,
   WebThickness: IfcPositiveLengthMeasure,
@@ -5425,121 +5427,121 @@ export const IfcUShapeProfileDef = z.strictObject({
   CentreOfGravityInX: IfcPositiveLengthMeasure.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcUShapeProfileDef", ["IfcUShapeProfileDef.WR21","IfcUShapeProfileDef.WR22"]));
 export const IfcUnitAssignment = z.strictObject({
-  Units: z.array(IfcUnit).min(1),
+  Units: z.array(IfcUnit).min(1).refine(r.uniqueItems, 'aggregate items must be unique'),
 });
 export const IfcUnitaryEquipmentType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcUnitaryEquipmentTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcUnitaryEquipmentType", ["IfcTypeObject.WR1","IfcUnitaryEquipmentType.WR1"]));
 export const IfcValveType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcValveTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcValveType", ["IfcTypeObject.WR1","IfcValveType.WR1"]));
 export const IfcVector = z.strictObject({
-  Orientation: EntityRef,
+  Orientation: $EntityRef,
   Magnitude: IfcLengthMeasure,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcVector", ["IfcVector.WR1"]));
 export const IfcVertex = z.strictObject({
 
 });
 export const IfcVertexBasedTextureMap = z.strictObject({
-  TextureVertices: z.array(EntityRef).min(3),
-  TexturePoints: z.array(EntityRef).min(3),
+  TextureVertices: z.array($EntityRef).min(3),
+  TexturePoints: z.array($EntityRef).min(3),
 });
 export const IfcVertexLoop = z.strictObject({
-  LoopVertex: EntityRef,
+  LoopVertex: $EntityRef,
 });
 export const IfcVertexPoint = z.strictObject({
-  VertexGeometry: EntityRef,
+  VertexGeometry: $EntityRef,
 });
 export const IfcVibrationIsolatorType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcVibrationIsolatorTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcVibrationIsolatorType", ["IfcTypeObject.WR1","IfcVibrationIsolatorType.WR1"]));
 export const IfcVirtualElement = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcVirtualGridIntersection = z.strictObject({
-  IntersectingAxes: z.array(EntityRef).min(2).max(2).refine(r.uniqueItems, 'aggregate items must be unique'),
+  IntersectingAxes: z.array($EntityRef).min(2).max(2).refine(r.uniqueItems, 'aggregate items must be unique'),
   OffsetDistances: z.array(IfcLengthMeasure).min(2).max(3),
 });
 export const IfcWall = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcWallStandardCase = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
 });
 export const IfcWallType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcWallTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcWallType", ["IfcTypeObject.WR1"]));
 export const IfcWasteTerminalType = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ElementType: IfcLabel.nullish(),
   PredefinedType: IfcWasteTerminalTypeEnum,
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcWasteTerminalType", ["IfcTypeObject.WR1"]));
 export const IfcWaterProperties = z.strictObject({
-  Material: EntityRef,
+  Material: $EntityRef,
   IsPotable: z.boolean().nullish(),
   Hardness: IfcIonConcentrationMeasure.nullish(),
   AlkalinityConcentration: IfcIonConcentrationMeasure.nullish(),
@@ -5550,19 +5552,19 @@ export const IfcWaterProperties = z.strictObject({
 });
 export const IfcWindow = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
-  ObjectPlacement: EntityRef.nullish(),
-  Representation: EntityRef.nullish(),
+  ObjectPlacement: $EntityRef.nullish(),
+  Representation: $EntityRef.nullish(),
   Tag: IfcIdentifier.nullish(),
   OverallHeight: IfcPositiveLengthMeasure.nullish(),
   OverallWidth: IfcPositiveLengthMeasure.nullish(),
 });
 export const IfcWindowLiningProperties = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   LiningDepth: IfcPositiveLengthMeasure.nullish(),
@@ -5573,27 +5575,27 @@ export const IfcWindowLiningProperties = z.strictObject({
   SecondTransomOffset: IfcNormalisedRatioMeasure.nullish(),
   FirstMullionOffset: IfcNormalisedRatioMeasure.nullish(),
   SecondMullionOffset: IfcNormalisedRatioMeasure.nullish(),
-  ShapeAspectStyle: EntityRef.nullish(),
+  ShapeAspectStyle: $EntityRef.nullish(),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcWindowLiningProperties", ["IfcWindowLiningProperties.WR31","IfcWindowLiningProperties.WR32","IfcWindowLiningProperties.WR33"]));
 export const IfcWindowPanelProperties = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   OperationType: IfcWindowPanelOperationEnum,
   PanelPosition: IfcWindowPanelPositionEnum,
   FrameDepth: IfcPositiveLengthMeasure.nullish(),
   FrameThickness: IfcPositiveLengthMeasure.nullish(),
-  ShapeAspectStyle: EntityRef.nullish(),
+  ShapeAspectStyle: $EntityRef.nullish(),
 });
 export const IfcWindowStyle = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ApplicableOccurrence: IfcLabel.nullish(),
-  HasPropertySets: z.array(EntityRef).min(1).nullish(),
-  RepresentationMaps: z.array(EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  HasPropertySets: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
+  RepresentationMaps: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Tag: IfcLabel.nullish(),
   ConstructionType: IfcWindowStyleConstructionEnum,
   OperationType: IfcWindowStyleOperationEnum,
@@ -5602,13 +5604,13 @@ export const IfcWindowStyle = z.strictObject({
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcWindowStyle", ["IfcTypeObject.WR1"]));
 export const IfcWorkControl = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
   Identifier: IfcIdentifier,
   CreationDate: IfcDateTimeSelect,
-  Creators: z.array(EntityRef).min(1).nullish(),
+  Creators: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Purpose: IfcLabel.nullish(),
   Duration: IfcTimeMeasure.nullish(),
   TotalFloat: IfcTimeMeasure.nullish(),
@@ -5619,13 +5621,13 @@ export const IfcWorkControl = z.strictObject({
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcWorkControl", ["IfcWorkControl.WR1"]));
 export const IfcWorkPlan = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
   Identifier: IfcIdentifier,
   CreationDate: IfcDateTimeSelect,
-  Creators: z.array(EntityRef).min(1).nullish(),
+  Creators: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Purpose: IfcLabel.nullish(),
   Duration: IfcTimeMeasure.nullish(),
   TotalFloat: IfcTimeMeasure.nullish(),
@@ -5636,13 +5638,13 @@ export const IfcWorkPlan = z.strictObject({
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcWorkPlan", ["IfcWorkControl.WR1"]));
 export const IfcWorkSchedule = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),
   Identifier: IfcIdentifier,
   CreationDate: IfcDateTimeSelect,
-  Creators: z.array(EntityRef).min(1).nullish(),
+  Creators: z.array($EntityRef).min(1).refine(r.uniqueItems, 'aggregate items must be unique').nullish(),
   Purpose: IfcLabel.nullish(),
   Duration: IfcTimeMeasure.nullish(),
   TotalFloat: IfcTimeMeasure.nullish(),
@@ -5654,7 +5656,7 @@ export const IfcWorkSchedule = z.strictObject({
 export const IfcZShapeProfileDef = z.strictObject({
   ProfileType: IfcProfileTypeEnum,
   ProfileName: IfcLabel.nullish(),
-  Position: EntityRef,
+  Position: $EntityRef,
   Depth: IfcPositiveLengthMeasure,
   FlangeWidth: IfcPositiveLengthMeasure,
   WebThickness: IfcPositiveLengthMeasure,
@@ -5664,7 +5666,7 @@ export const IfcZShapeProfileDef = z.strictObject({
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcZShapeProfileDef", ["IfcZShapeProfileDef.WR21"]));
 export const IfcZone = z.strictObject({
   GlobalId: IfcGloballyUniqueId,
-  OwnerHistory: EntityRef,
+  OwnerHistory: $EntityRef,
   Name: IfcLabel.nullish(),
   Description: IfcText.nullish(),
   ObjectType: IfcLabel.nullish(),

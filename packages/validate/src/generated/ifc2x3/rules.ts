@@ -91,9 +91,9 @@ function fn_IfcAddToBeginOfList(m: r.Model, p_ascalar: r.Value, p_alist: r.Value
     v_result = r.assign(r.add(v_result, p_ascalar));
     if (r.isTrue(r.ge(r.hiindex(p_alist), 1))) {
       {
-        const from2 = r.int(1), to3 = r.int(r.hiindex(p_alist)), by4 = 1;
-        if (from2 !== undefined && to3 !== undefined && by4) for (let i_i1 = from2; by4 > 0 ? i_i1 <= to3 : i_i1 >= to3; i_i1 += by4) {
-          r.setIndex(v_result, r.add(i_i1, 1), r.index(p_alist, i_i1));
+        const from_2 = r.int(1), to_3 = r.int(r.hiindex(p_alist)), by_4 = 1;
+        if (from_2 !== undefined && to_3 !== undefined && by_4) for (let i_i_1 = from_2; by_4 > 0 ? i_i_1 <= to_3 : i_i_1 >= to_3; i_i_1 += by_4) {
+          r.setIndex(v_result, r.add(i_i_1, 1), r.index(p_alist, i_i_1));
         }
       }
     }
@@ -157,182 +157,182 @@ function fn_IfcBuildAxes(m: r.Model, p_axis: r.Value, p_refdirection: r.Value): 
   let v_d2: r.Value = undefined;
   v_d1 = r.assign(r.nvl(fn_IfcNormalise(m, p_axis), r.complex(m, [r.construct(m, "IfcRepresentationItem", []), r.construct(m, "IfcGeometricRepresentationItem", []), r.construct(m, "IfcDirection", [r.aggregate([[0], [0], [1]])])])));
   v_d2 = r.assign(fn_IfcFirstProjAxis(m, v_d1, p_refdirection));
-  return r.aggregate([[v_d2], [r.attr(fn_IfcNormalise(m, fn_IfcCrossProduct(m, v_d1, v_d2)), "ORIENTATION")], [v_d1]]);
+  return r.aggregate([[v_d2], [r.attr(fn_IfcNormalise(m, fn_IfcCrossProduct(m, v_d1, v_d2)), "ORIENTATION", "IFCVECTOR")], [v_d1]]);
   return undefined;
 }
 
 function fn_IfcCorrectDimensions(m: r.Model, p_m: r.Value, p_dim: r.Value): r.Value {
   {
-    const sel5 = r.caseSelector(p_m);
-    if (r.isTrue(r.eq(sel5, E_LENGTHUNIT))) {
+    const sel_5 = r.caseSelector(p_m);
+    if (r.isTrue(r.eq(sel_5, E_LENGTHUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [1, 0, 0, 0, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel5, E_MASSUNIT))) {
+    } else if (r.isTrue(r.eq(sel_5, E_MASSUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [0, 1, 0, 0, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel5, E_TIMEUNIT))) {
+    } else if (r.isTrue(r.eq(sel_5, E_TIMEUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [0, 0, 1, 0, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel5, E_ELECTRICCURRENTUNIT))) {
+    } else if (r.isTrue(r.eq(sel_5, E_ELECTRICCURRENTUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 1, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel5, E_THERMODYNAMICTEMPERATUREUNIT))) {
+    } else if (r.isTrue(r.eq(sel_5, E_THERMODYNAMICTEMPERATUREUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 0, 1, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel5, E_AMOUNTOFSUBSTANCEUNIT))) {
+    } else if (r.isTrue(r.eq(sel_5, E_AMOUNTOFSUBSTANCEUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 0, 0, 1, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel5, E_LUMINOUSINTENSITYUNIT))) {
+    } else if (r.isTrue(r.eq(sel_5, E_LUMINOUSINTENSITYUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 0, 0, 0, 1])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel5, E_PLANEANGLEUNIT))) {
+    } else if (r.isTrue(r.eq(sel_5, E_PLANEANGLEUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 0, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel5, E_SOLIDANGLEUNIT))) {
+    } else if (r.isTrue(r.eq(sel_5, E_SOLIDANGLEUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 0, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel5, E_AREAUNIT))) {
+    } else if (r.isTrue(r.eq(sel_5, E_AREAUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [2, 0, 0, 0, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel5, E_VOLUMEUNIT))) {
+    } else if (r.isTrue(r.eq(sel_5, E_VOLUMEUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [3, 0, 0, 0, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel5, E_ABSORBEDDOSEUNIT))) {
+    } else if (r.isTrue(r.eq(sel_5, E_ABSORBEDDOSEUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [2, 0, r.neg(2), 0, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel5, E_RADIOACTIVITYUNIT))) {
+    } else if (r.isTrue(r.eq(sel_5, E_RADIOACTIVITYUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [0, 0, r.neg(1), 0, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel5, E_ELECTRICCAPACITANCEUNIT))) {
+    } else if (r.isTrue(r.eq(sel_5, E_ELECTRICCAPACITANCEUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [r.neg(2), 1, 4, 1, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel5, E_DOSEEQUIVALENTUNIT))) {
+    } else if (r.isTrue(r.eq(sel_5, E_DOSEEQUIVALENTUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [2, 0, r.neg(2), 0, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel5, E_ELECTRICCHARGEUNIT))) {
+    } else if (r.isTrue(r.eq(sel_5, E_ELECTRICCHARGEUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [0, 0, 1, 1, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel5, E_ELECTRICCONDUCTANCEUNIT))) {
+    } else if (r.isTrue(r.eq(sel_5, E_ELECTRICCONDUCTANCEUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [r.neg(2), r.neg(1), 3, 2, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel5, E_ELECTRICVOLTAGEUNIT))) {
+    } else if (r.isTrue(r.eq(sel_5, E_ELECTRICVOLTAGEUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [2, 1, r.neg(3), r.neg(1), 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel5, E_ELECTRICRESISTANCEUNIT))) {
+    } else if (r.isTrue(r.eq(sel_5, E_ELECTRICRESISTANCEUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [2, 1, r.neg(3), r.neg(2), 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel5, E_ENERGYUNIT))) {
+    } else if (r.isTrue(r.eq(sel_5, E_ENERGYUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [2, 1, r.neg(2), 0, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel5, E_FORCEUNIT))) {
+    } else if (r.isTrue(r.eq(sel_5, E_FORCEUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [1, 1, r.neg(2), 0, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel5, E_FREQUENCYUNIT))) {
+    } else if (r.isTrue(r.eq(sel_5, E_FREQUENCYUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [0, 0, r.neg(1), 0, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel5, E_INDUCTANCEUNIT))) {
+    } else if (r.isTrue(r.eq(sel_5, E_INDUCTANCEUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [2, 1, r.neg(2), r.neg(2), 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel5, E_ILLUMINANCEUNIT))) {
+    } else if (r.isTrue(r.eq(sel_5, E_ILLUMINANCEUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [r.neg(2), 0, 0, 0, 0, 0, 1])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel5, E_LUMINOUSFLUXUNIT))) {
+    } else if (r.isTrue(r.eq(sel_5, E_LUMINOUSFLUXUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 0, 0, 0, 1])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel5, E_MAGNETICFLUXUNIT))) {
+    } else if (r.isTrue(r.eq(sel_5, E_MAGNETICFLUXUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [2, 1, r.neg(2), r.neg(1), 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel5, E_MAGNETICFLUXDENSITYUNIT))) {
+    } else if (r.isTrue(r.eq(sel_5, E_MAGNETICFLUXDENSITYUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [0, 1, r.neg(2), r.neg(1), 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel5, E_POWERUNIT))) {
+    } else if (r.isTrue(r.eq(sel_5, E_POWERUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [2, 1, r.neg(3), 0, 0, 0, 0])))) {
         return true;
       } else {
         return false;
       }
-    } else if (r.isTrue(r.eq(sel5, E_PRESSUREUNIT))) {
+    } else if (r.isTrue(r.eq(sel_5, E_PRESSUREUNIT))) {
       if (r.isTrue(r.eq(p_dim, r.construct(m, "IfcDimensionalExponents", [r.neg(1), 1, r.neg(2), 0, 0, 0, 0])))) {
         return true;
       } else {
@@ -351,10 +351,10 @@ function fn_IfcCorrectFillAreaStyle(m: r.Model, p_styles: r.Value): r.Value {
   let v_tiles: r.Value = r.assign(0);
   let v_colour: r.Value = r.assign(0);
   let v_external: r.Value = r.assign(0);
-  v_external = r.assign(r.sizeof(r.query(p_styles, (q6: r.Value) => r.typeIs(m, q6, "IFCEXTERNALLYDEFINEDHATCHSTYLE"))));
-  v_hatching = r.assign(r.sizeof(r.query(p_styles, (q7: r.Value) => r.typeIs(m, q7, "IFCFILLAREASTYLEHATCHING"))));
-  v_tiles = r.assign(r.sizeof(r.query(p_styles, (q8: r.Value) => r.typeIs(m, q8, "IFCFILLAREASTYLETILES"))));
-  v_colour = r.assign(r.sizeof(r.query(p_styles, (q9: r.Value) => r.typeIs(m, q9, "IFCCOLOUR"))));
+  v_external = r.assign(r.sizeof(r.query(p_styles, (q_6: r.Value) => r.typeIs(m, q_6, "IFCEXTERNALLYDEFINEDHATCHSTYLE"))));
+  v_hatching = r.assign(r.sizeof(r.query(p_styles, (q_7: r.Value) => r.typeIs(m, q_7, "IFCFILLAREASTYLEHATCHING"))));
+  v_tiles = r.assign(r.sizeof(r.query(p_styles, (q_8: r.Value) => r.typeIs(m, q_8, "IFCFILLAREASTYLETILES"))));
+  v_colour = r.assign(r.sizeof(r.query(p_styles, (q_9: r.Value) => r.typeIs(m, q_9, "IFCCOLOUR"))));
   if (r.isTrue(r.gt(v_external, 1))) {
     return false;
   }
@@ -402,42 +402,42 @@ function fn_IfcCorrectObjectAssignment(m: r.Model, p_constraint: r.Value, p_obje
     return true;
   }
   {
-    const sel10 = r.caseSelector(p_constraint);
-    if (r.isTrue(r.eq(sel10, E_NOTDEFINED))) {
+    const sel_10 = r.caseSelector(p_constraint);
+    if (r.isTrue(r.eq(sel_10, E_NOTDEFINED))) {
       return true;
-    } else if (r.isTrue(r.eq(sel10, E_PRODUCT))) {
+    } else if (r.isTrue(r.eq(sel_10, E_PRODUCT))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_objects, (q11: r.Value) => r.not(r.typeIs(m, q11, "IFCPRODUCT")))));
+        v_count = r.assign(r.sizeof(r.query(p_objects, (q_11: r.Value) => r.not(r.typeIs(m, q_11, "IFCPRODUCT")))));
         return r.eq(v_count, 0);
       }
-    } else if (r.isTrue(r.eq(sel10, E_PROCESS))) {
+    } else if (r.isTrue(r.eq(sel_10, E_PROCESS))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_objects, (q12: r.Value) => r.not(r.typeIs(m, q12, "IFCPROCESS")))));
+        v_count = r.assign(r.sizeof(r.query(p_objects, (q_12: r.Value) => r.not(r.typeIs(m, q_12, "IFCPROCESS")))));
         return r.eq(v_count, 0);
       }
-    } else if (r.isTrue(r.eq(sel10, E_CONTROL))) {
+    } else if (r.isTrue(r.eq(sel_10, E_CONTROL))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_objects, (q13: r.Value) => r.not(r.typeIs(m, q13, "IFCCONTROL")))));
+        v_count = r.assign(r.sizeof(r.query(p_objects, (q_13: r.Value) => r.not(r.typeIs(m, q_13, "IFCCONTROL")))));
         return r.eq(v_count, 0);
       }
-    } else if (r.isTrue(r.eq(sel10, E_RESOURCE))) {
+    } else if (r.isTrue(r.eq(sel_10, E_RESOURCE))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_objects, (q14: r.Value) => r.not(r.typeIs(m, q14, "IFCRESOURCE")))));
+        v_count = r.assign(r.sizeof(r.query(p_objects, (q_14: r.Value) => r.not(r.typeIs(m, q_14, "IFCRESOURCE")))));
         return r.eq(v_count, 0);
       }
-    } else if (r.isTrue(r.eq(sel10, E_ACTOR))) {
+    } else if (r.isTrue(r.eq(sel_10, E_ACTOR))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_objects, (q15: r.Value) => r.not(r.typeIs(m, q15, "IFCACTOR")))));
+        v_count = r.assign(r.sizeof(r.query(p_objects, (q_15: r.Value) => r.not(r.typeIs(m, q_15, "IFCACTOR")))));
         return r.eq(v_count, 0);
       }
-    } else if (r.isTrue(r.eq(sel10, E_GROUP))) {
+    } else if (r.isTrue(r.eq(sel_10, E_GROUP))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_objects, (q16: r.Value) => r.not(r.typeIs(m, q16, "IFCGROUP")))));
+        v_count = r.assign(r.sizeof(r.query(p_objects, (q_16: r.Value) => r.not(r.typeIs(m, q_16, "IFCGROUP")))));
         return r.eq(v_count, 0);
       }
-    } else if (r.isTrue(r.eq(sel10, E_PROJECT))) {
+    } else if (r.isTrue(r.eq(sel_10, E_PROJECT))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_objects, (q17: r.Value) => r.not(r.typeIs(m, q17, "IFCPROJECT")))));
+        v_count = r.assign(r.sizeof(r.query(p_objects, (q_17: r.Value) => r.not(r.typeIs(m, q_17, "IFCPROJECT")))));
         return r.eq(v_count, 0);
       }
     } else {
@@ -454,17 +454,17 @@ function fn_IfcCorrectUnitAssignment(m: r.Model, p_units: r.Value): r.Value {
   let v_monetaryunitnumber: r.Value = r.assign(0);
   let v_namedunitnames: r.Value = r.assignSet(r.aggregate([]));
   let v_derivedunitnames: r.Value = r.assignSet(r.aggregate([]));
-  v_namedunitnumber = r.assign(r.sizeof(r.query(p_units, (q18: r.Value) => r.and(r.typeIs(m, q18, "IFCNAMEDUNIT"), () => r.not(r.eq(r.attr(q18, "UNITTYPE"), E_USERDEFINED))))));
-  v_derivedunitnumber = r.assign(r.sizeof(r.query(p_units, (q19: r.Value) => r.and(r.typeIs(m, q19, "IFCDERIVEDUNIT"), () => r.not(r.eq(r.attr(q19, "UNITTYPE"), E_USERDEFINED))))));
-  v_monetaryunitnumber = r.assign(r.sizeof(r.query(p_units, (q20: r.Value) => r.typeIs(m, q20, "IFCMONETARYUNIT"))));
+  v_namedunitnumber = r.assign(r.sizeof(r.query(p_units, (q_18: r.Value) => r.and(r.typeIs(m, q_18, "IFCNAMEDUNIT"), () => r.not(r.eq(r.attr(q_18, "UNITTYPE", "IFCNAMEDUNIT"), E_USERDEFINED))))));
+  v_derivedunitnumber = r.assign(r.sizeof(r.query(p_units, (q_19: r.Value) => r.and(r.typeIs(m, q_19, "IFCDERIVEDUNIT"), () => r.not(r.eq(r.attr(q_19, "UNITTYPE", "IFCDERIVEDUNIT"), E_USERDEFINED))))));
+  v_monetaryunitnumber = r.assign(r.sizeof(r.query(p_units, (q_20: r.Value) => r.typeIs(m, q_20, "IFCMONETARYUNIT"))));
   {
-    const from22 = r.int(1), to23 = r.int(r.sizeof(p_units)), by24 = 1;
-    if (from22 !== undefined && to23 !== undefined && by24) for (let i_i21 = from22; by24 > 0 ? i_i21 <= to23 : i_i21 >= to23; i_i21 += by24) {
-      if (r.isTrue(r.and(r.typeIs(m, r.index(p_units, i_i21), "IFCNAMEDUNIT"), () => r.not(r.eq(r.attr(r.index(p_units, i_i21), "UNITTYPE"), E_USERDEFINED))))) {
-        v_namedunitnames = r.assignSet(r.add(v_namedunitnames, r.attr(r.index(p_units, i_i21), "UNITTYPE")));
+    const from_22 = r.int(1), to_23 = r.int(r.sizeof(p_units)), by_24 = 1;
+    if (from_22 !== undefined && to_23 !== undefined && by_24) for (let i_i_21 = from_22; by_24 > 0 ? i_i_21 <= to_23 : i_i_21 >= to_23; i_i_21 += by_24) {
+      if (r.isTrue(r.and(r.typeIs(m, r.index(p_units, i_i_21), "IFCNAMEDUNIT"), () => r.not(r.eq(r.attr(r.index(p_units, i_i_21), "UNITTYPE", "IFCNAMEDUNIT"), E_USERDEFINED))))) {
+        v_namedunitnames = r.assignSet(r.add(v_namedunitnames, r.attr(r.index(p_units, i_i_21), "UNITTYPE", "IFCNAMEDUNIT")));
       }
-      if (r.isTrue(r.and(r.typeIs(m, r.index(p_units, i_i21), "IFCDERIVEDUNIT"), () => r.not(r.eq(r.attr(r.index(p_units, i_i21), "UNITTYPE"), E_USERDEFINED))))) {
-        v_derivedunitnames = r.assignSet(r.add(v_derivedunitnames, r.attr(r.index(p_units, i_i21), "UNITTYPE")));
+      if (r.isTrue(r.and(r.typeIs(m, r.index(p_units, i_i_21), "IFCDERIVEDUNIT"), () => r.not(r.eq(r.attr(r.index(p_units, i_i_21), "UNITTYPE", "IFCDERIVEDUNIT"), E_USERDEFINED))))) {
+        v_derivedunitnames = r.assignSet(r.add(v_derivedunitnames, r.attr(r.index(p_units, i_i_21), "UNITTYPE", "IFCDERIVEDUNIT")));
       }
     }
   }
@@ -487,9 +487,9 @@ function fn_IfcCrossProduct(m: r.Model, p_arg1: r.Value, p_arg2: r.Value): r.Val
       v_res = r.assign(r.complex(m, [r.construct(m, "IfcRepresentationItem", []), r.construct(m, "IfcGeometricRepresentationItem", []), r.construct(m, "IfcDirection", [r.aggregate([[r.sub(r.mul(r.index(v_v1, 2), r.index(v_v2, 3)), r.mul(r.index(v_v1, 3), r.index(v_v2, 2)))], [r.sub(r.mul(r.index(v_v1, 3), r.index(v_v2, 1)), r.mul(r.index(v_v1, 1), r.index(v_v2, 3)))], [r.sub(r.mul(r.index(v_v1, 1), r.index(v_v2, 2)), r.mul(r.index(v_v1, 2), r.index(v_v2, 1)))]])])]));
       v_mag = r.assign(0);
       {
-        const from26 = r.int(1), to27 = r.int(3), by28 = 1;
-        if (from26 !== undefined && to27 !== undefined && by28) for (let i_i25 = from26; by28 > 0 ? i_i25 <= to27 : i_i25 >= to27; i_i25 += by28) {
-          v_mag = r.assign(r.add(v_mag, r.mul(r.index(r.attr(v_res, "DIRECTIONRATIOS"), i_i25), r.index(r.attr(v_res, "DIRECTIONRATIOS"), i_i25))));
+        const from_26 = r.int(1), to_27 = r.int(3), by_28 = 1;
+        if (from_26 !== undefined && to_27 !== undefined && by_28) for (let i_i_25 = from_26; by_28 > 0 ? i_i_25 <= to_27 : i_i_25 >= to_27; i_i_25 += by_28) {
+          v_mag = r.assign(r.add(v_mag, r.mul(r.index(r.attr(v_res, "DIRECTIONRATIOS"), i_i_25), r.index(r.attr(v_res, "DIRECTIONRATIOS"), i_i_25))));
         }
       }
       if (r.isTrue(r.gt(v_mag, 0))) {
@@ -505,22 +505,22 @@ function fn_IfcCrossProduct(m: r.Model, p_arg1: r.Value, p_arg2: r.Value): r.Val
 
 function fn_IfcCurveDim(m: r.Model, p_curve: r.Value): r.Value {
   if (r.isTrue(r.typeIs(m, p_curve, "IFCLINE"))) {
-    return r.attr(r.attr(p_curve, "PNT"), "DIM");
+    return r.attr(r.attr(p_curve, "PNT", "IFCLINE"), "DIM");
   }
   if (r.isTrue(r.typeIs(m, p_curve, "IFCCONIC"))) {
-    return r.attr(r.attr(p_curve, "POSITION"), "DIM");
+    return r.attr(r.attr(p_curve, "POSITION", "IFCCONIC"), "DIM");
   }
   if (r.isTrue(r.typeIs(m, p_curve, "IFCPOLYLINE"))) {
-    return r.attr(r.index(r.attr(p_curve, "POINTS"), 1), "DIM");
+    return r.attr(r.index(r.attr(p_curve, "POINTS", "IFCPOLYLINE"), 1), "DIM");
   }
   if (r.isTrue(r.typeIs(m, p_curve, "IFCTRIMMEDCURVE"))) {
-    return fn_IfcCurveDim(m, r.attr(p_curve, "BASISCURVE"));
+    return fn_IfcCurveDim(m, r.attr(p_curve, "BASISCURVE", "IFCTRIMMEDCURVE"));
   }
   if (r.isTrue(r.typeIs(m, p_curve, "IFCCOMPOSITECURVE"))) {
-    return r.attr(r.index(r.attr(p_curve, "SEGMENTS"), 1), "DIM");
+    return r.attr(r.index(r.attr(p_curve, "SEGMENTS", "IFCCOMPOSITECURVE"), 1), "DIM");
   }
   if (r.isTrue(r.typeIs(m, p_curve, "IFCBSPLINECURVE"))) {
-    return r.attr(r.index(r.attr(p_curve, "CONTROLPOINTSLIST"), 1), "DIM");
+    return r.attr(r.index(r.attr(p_curve, "CONTROLPOINTSLIST", "IFCBSPLINECURVE"), 1), "DIM");
   }
   if (r.isTrue(r.typeIs(m, p_curve, "IFCOFFSETCURVE2D"))) {
     return 2;
@@ -535,9 +535,9 @@ function fn_IfcCurveDim(m: r.Model, p_curve: r.Value): r.Value {
 function fn_IfcCurveWeightsPositive(m: r.Model, p_b: r.Value): r.Value {
   let v_result: r.Value = r.assign(true);
   {
-    const from30 = r.int(0), to31 = r.int(r.attr(p_b, "UPPERINDEXONCONTROLPOINTS")), by32 = 1;
-    if (from30 !== undefined && to31 !== undefined && by32) for (let i_i29 = from30; by32 > 0 ? i_i29 <= to31 : i_i29 >= to31; i_i29 += by32) {
-      if (r.isTrue(r.le(r.index(r.attr(p_b, "WEIGHTS"), i_i29), 0))) {
+    const from_30 = r.int(0), to_31 = r.int(r.attr(p_b, "UPPERINDEXONCONTROLPOINTS")), by_32 = 1;
+    if (from_30 !== undefined && to_31 !== undefined && by_32) for (let i_i_29 = from_30; by_32 > 0 ? i_i_29 <= to_31 : i_i_29 >= to_31; i_i_29 += by_32) {
+      if (r.isTrue(r.le(r.index(r.attr(p_b, "WEIGHTS"), i_i_29), 0))) {
         v_result = r.assign(false);
         return v_result;
       }
@@ -551,15 +551,15 @@ function fn_IfcDeriveDimensionalExponents(m: r.Model, p_unitelements: r.Value): 
   p_unitelements = r.assignSet(p_unitelements);
   let v_result: r.Value = r.assign(r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 0, 0, 0, 0]));
   {
-    const from34 = r.int(r.loindex(p_unitelements)), to35 = r.int(r.hiindex(p_unitelements)), by36 = 1;
-    if (from34 !== undefined && to35 !== undefined && by36) for (let i_i33 = from34; by36 > 0 ? i_i33 <= to35 : i_i33 >= to35; i_i33 += by36) {
-      r.setAttr(v_result, "LENGTHEXPONENT", r.add(r.attr(v_result, "LENGTHEXPONENT"), r.mul(r.attr(r.index(p_unitelements, i_i33), "EXPONENT"), r.attr(r.attr(r.attr(r.index(p_unitelements, i_i33), "UNIT"), "DIMENSIONS"), "LENGTHEXPONENT"))));
-      r.setAttr(v_result, "MASSEXPONENT", r.add(r.attr(v_result, "MASSEXPONENT"), r.mul(r.attr(r.index(p_unitelements, i_i33), "EXPONENT"), r.attr(r.attr(r.attr(r.index(p_unitelements, i_i33), "UNIT"), "DIMENSIONS"), "MASSEXPONENT"))));
-      r.setAttr(v_result, "TIMEEXPONENT", r.add(r.attr(v_result, "TIMEEXPONENT"), r.mul(r.attr(r.index(p_unitelements, i_i33), "EXPONENT"), r.attr(r.attr(r.attr(r.index(p_unitelements, i_i33), "UNIT"), "DIMENSIONS"), "TIMEEXPONENT"))));
-      r.setAttr(v_result, "ELECTRICCURRENTEXPONENT", r.add(r.attr(v_result, "ELECTRICCURRENTEXPONENT"), r.mul(r.attr(r.index(p_unitelements, i_i33), "EXPONENT"), r.attr(r.attr(r.attr(r.index(p_unitelements, i_i33), "UNIT"), "DIMENSIONS"), "ELECTRICCURRENTEXPONENT"))));
-      r.setAttr(v_result, "THERMODYNAMICTEMPERATUREEXPONENT", r.add(r.attr(v_result, "THERMODYNAMICTEMPERATUREEXPONENT"), r.mul(r.attr(r.index(p_unitelements, i_i33), "EXPONENT"), r.attr(r.attr(r.attr(r.index(p_unitelements, i_i33), "UNIT"), "DIMENSIONS"), "THERMODYNAMICTEMPERATUREEXPONENT"))));
-      r.setAttr(v_result, "AMOUNTOFSUBSTANCEEXPONENT", r.add(r.attr(v_result, "AMOUNTOFSUBSTANCEEXPONENT"), r.mul(r.attr(r.index(p_unitelements, i_i33), "EXPONENT"), r.attr(r.attr(r.attr(r.index(p_unitelements, i_i33), "UNIT"), "DIMENSIONS"), "AMOUNTOFSUBSTANCEEXPONENT"))));
-      r.setAttr(v_result, "LUMINOUSINTENSITYEXPONENT", r.add(r.attr(v_result, "LUMINOUSINTENSITYEXPONENT"), r.mul(r.attr(r.index(p_unitelements, i_i33), "EXPONENT"), r.attr(r.attr(r.attr(r.index(p_unitelements, i_i33), "UNIT"), "DIMENSIONS"), "LUMINOUSINTENSITYEXPONENT"))));
+    const from_34 = r.int(r.loindex(p_unitelements)), to_35 = r.int(r.hiindex(p_unitelements)), by_36 = 1;
+    if (from_34 !== undefined && to_35 !== undefined && by_36) for (let i_i_33 = from_34; by_36 > 0 ? i_i_33 <= to_35 : i_i_33 >= to_35; i_i_33 += by_36) {
+      r.setAttr(v_result, "LENGTHEXPONENT", r.add(r.attr(v_result, "LENGTHEXPONENT"), r.mul(r.attr(r.index(p_unitelements, i_i_33), "EXPONENT"), r.attr(r.attr(r.attr(r.index(p_unitelements, i_i_33), "UNIT"), "DIMENSIONS"), "LENGTHEXPONENT"))));
+      r.setAttr(v_result, "MASSEXPONENT", r.add(r.attr(v_result, "MASSEXPONENT"), r.mul(r.attr(r.index(p_unitelements, i_i_33), "EXPONENT"), r.attr(r.attr(r.attr(r.index(p_unitelements, i_i_33), "UNIT"), "DIMENSIONS"), "MASSEXPONENT"))));
+      r.setAttr(v_result, "TIMEEXPONENT", r.add(r.attr(v_result, "TIMEEXPONENT"), r.mul(r.attr(r.index(p_unitelements, i_i_33), "EXPONENT"), r.attr(r.attr(r.attr(r.index(p_unitelements, i_i_33), "UNIT"), "DIMENSIONS"), "TIMEEXPONENT"))));
+      r.setAttr(v_result, "ELECTRICCURRENTEXPONENT", r.add(r.attr(v_result, "ELECTRICCURRENTEXPONENT"), r.mul(r.attr(r.index(p_unitelements, i_i_33), "EXPONENT"), r.attr(r.attr(r.attr(r.index(p_unitelements, i_i_33), "UNIT"), "DIMENSIONS"), "ELECTRICCURRENTEXPONENT"))));
+      r.setAttr(v_result, "THERMODYNAMICTEMPERATUREEXPONENT", r.add(r.attr(v_result, "THERMODYNAMICTEMPERATUREEXPONENT"), r.mul(r.attr(r.index(p_unitelements, i_i_33), "EXPONENT"), r.attr(r.attr(r.attr(r.index(p_unitelements, i_i_33), "UNIT"), "DIMENSIONS"), "THERMODYNAMICTEMPERATUREEXPONENT"))));
+      r.setAttr(v_result, "AMOUNTOFSUBSTANCEEXPONENT", r.add(r.attr(v_result, "AMOUNTOFSUBSTANCEEXPONENT"), r.mul(r.attr(r.index(p_unitelements, i_i_33), "EXPONENT"), r.attr(r.attr(r.attr(r.index(p_unitelements, i_i_33), "UNIT"), "DIMENSIONS"), "AMOUNTOFSUBSTANCEEXPONENT"))));
+      r.setAttr(v_result, "LUMINOUSINTENSITYEXPONENT", r.add(r.attr(v_result, "LUMINOUSINTENSITYEXPONENT"), r.mul(r.attr(r.index(p_unitelements, i_i_33), "EXPONENT"), r.attr(r.attr(r.attr(r.index(p_unitelements, i_i_33), "UNIT"), "DIMENSIONS"), "LUMINOUSINTENSITYEXPONENT"))));
     }
   }
   return v_result;
@@ -568,66 +568,66 @@ function fn_IfcDeriveDimensionalExponents(m: r.Model, p_unitelements: r.Value): 
 
 function fn_IfcDimensionsForSiUnit(m: r.Model, p_n: r.Value): r.Value {
   {
-    const sel37 = r.caseSelector(p_n);
-    if (r.isTrue(r.eq(sel37, E_METRE))) {
+    const sel_37 = r.caseSelector(p_n);
+    if (r.isTrue(r.eq(sel_37, E_METRE))) {
       return r.construct(m, "IfcDimensionalExponents", [1, 0, 0, 0, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel37, E_SQUARE_METRE))) {
+    } else if (r.isTrue(r.eq(sel_37, E_SQUARE_METRE))) {
       return r.construct(m, "IfcDimensionalExponents", [2, 0, 0, 0, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel37, E_CUBIC_METRE))) {
+    } else if (r.isTrue(r.eq(sel_37, E_CUBIC_METRE))) {
       return r.construct(m, "IfcDimensionalExponents", [3, 0, 0, 0, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel37, E_GRAM))) {
+    } else if (r.isTrue(r.eq(sel_37, E_GRAM))) {
       return r.construct(m, "IfcDimensionalExponents", [0, 1, 0, 0, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel37, E_SECOND))) {
+    } else if (r.isTrue(r.eq(sel_37, E_SECOND))) {
       return r.construct(m, "IfcDimensionalExponents", [0, 0, 1, 0, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel37, E_AMPERE))) {
+    } else if (r.isTrue(r.eq(sel_37, E_AMPERE))) {
       return r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 1, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel37, E_KELVIN))) {
+    } else if (r.isTrue(r.eq(sel_37, E_KELVIN))) {
       return r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 0, 1, 0, 0]);
-    } else if (r.isTrue(r.eq(sel37, E_MOLE))) {
+    } else if (r.isTrue(r.eq(sel_37, E_MOLE))) {
       return r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 0, 0, 1, 0]);
-    } else if (r.isTrue(r.eq(sel37, E_CANDELA))) {
+    } else if (r.isTrue(r.eq(sel_37, E_CANDELA))) {
       return r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 0, 0, 0, 1]);
-    } else if (r.isTrue(r.eq(sel37, E_RADIAN))) {
+    } else if (r.isTrue(r.eq(sel_37, E_RADIAN))) {
       return r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 0, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel37, E_STERADIAN))) {
+    } else if (r.isTrue(r.eq(sel_37, E_STERADIAN))) {
       return r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 0, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel37, E_HERTZ))) {
+    } else if (r.isTrue(r.eq(sel_37, E_HERTZ))) {
       return r.construct(m, "IfcDimensionalExponents", [0, 0, r.neg(1), 0, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel37, E_NEWTON))) {
+    } else if (r.isTrue(r.eq(sel_37, E_NEWTON))) {
       return r.construct(m, "IfcDimensionalExponents", [1, 1, r.neg(2), 0, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel37, E_PASCAL))) {
+    } else if (r.isTrue(r.eq(sel_37, E_PASCAL))) {
       return r.construct(m, "IfcDimensionalExponents", [r.neg(1), 1, r.neg(2), 0, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel37, E_JOULE))) {
+    } else if (r.isTrue(r.eq(sel_37, E_JOULE))) {
       return r.construct(m, "IfcDimensionalExponents", [2, 1, r.neg(2), 0, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel37, E_WATT))) {
+    } else if (r.isTrue(r.eq(sel_37, E_WATT))) {
       return r.construct(m, "IfcDimensionalExponents", [2, 1, r.neg(3), 0, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel37, E_COULOMB))) {
+    } else if (r.isTrue(r.eq(sel_37, E_COULOMB))) {
       return r.construct(m, "IfcDimensionalExponents", [0, 0, 1, 1, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel37, E_VOLT))) {
+    } else if (r.isTrue(r.eq(sel_37, E_VOLT))) {
       return r.construct(m, "IfcDimensionalExponents", [2, 1, r.neg(3), r.neg(1), 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel37, E_FARAD))) {
+    } else if (r.isTrue(r.eq(sel_37, E_FARAD))) {
       return r.construct(m, "IfcDimensionalExponents", [r.neg(2), r.neg(1), 4, 1, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel37, E_OHM))) {
+    } else if (r.isTrue(r.eq(sel_37, E_OHM))) {
       return r.construct(m, "IfcDimensionalExponents", [2, 1, r.neg(3), r.neg(2), 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel37, E_SIEMENS))) {
+    } else if (r.isTrue(r.eq(sel_37, E_SIEMENS))) {
       return r.construct(m, "IfcDimensionalExponents", [r.neg(2), r.neg(1), 3, 2, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel37, E_WEBER))) {
+    } else if (r.isTrue(r.eq(sel_37, E_WEBER))) {
       return r.construct(m, "IfcDimensionalExponents", [2, 1, r.neg(2), r.neg(1), 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel37, E_TESLA))) {
+    } else if (r.isTrue(r.eq(sel_37, E_TESLA))) {
       return r.construct(m, "IfcDimensionalExponents", [0, 1, r.neg(2), r.neg(1), 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel37, E_HENRY))) {
+    } else if (r.isTrue(r.eq(sel_37, E_HENRY))) {
       return r.construct(m, "IfcDimensionalExponents", [2, 1, r.neg(2), r.neg(2), 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel37, E_DEGREE_CELSIUS))) {
+    } else if (r.isTrue(r.eq(sel_37, E_DEGREE_CELSIUS))) {
       return r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 0, 1, 0, 0]);
-    } else if (r.isTrue(r.eq(sel37, E_LUMEN))) {
+    } else if (r.isTrue(r.eq(sel_37, E_LUMEN))) {
       return r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 0, 0, 0, 1]);
-    } else if (r.isTrue(r.eq(sel37, E_LUX))) {
+    } else if (r.isTrue(r.eq(sel_37, E_LUX))) {
       return r.construct(m, "IfcDimensionalExponents", [r.neg(2), 0, 0, 0, 0, 0, 1]);
-    } else if (r.isTrue(r.eq(sel37, E_BECQUEREL))) {
+    } else if (r.isTrue(r.eq(sel_37, E_BECQUEREL))) {
       return r.construct(m, "IfcDimensionalExponents", [0, 0, r.neg(1), 0, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel37, E_GRAY))) {
+    } else if (r.isTrue(r.eq(sel_37, E_GRAY))) {
       return r.construct(m, "IfcDimensionalExponents", [2, 0, r.neg(2), 0, 0, 0, 0]);
-    } else if (r.isTrue(r.eq(sel37, E_SIEVERT))) {
+    } else if (r.isTrue(r.eq(sel_37, E_SIEVERT))) {
       return r.construct(m, "IfcDimensionalExponents", [2, 0, r.neg(2), 0, 0, 0, 0]);
     } else {
       return r.construct(m, "IfcDimensionalExponents", [0, 0, 0, 0, 0, 0, 0]);
@@ -653,9 +653,9 @@ function fn_IfcDotProduct(m: r.Model, p_arg1: r.Value, p_arg2: r.Value): r.Value
         v_ndim = r.assign(r.attr(p_arg1, "DIM"));
         v_scalar = r.assign(0);
         {
-          const from39 = r.int(1), to40 = r.int(v_ndim), by41 = 1;
-          if (from39 !== undefined && to40 !== undefined && by41) for (let i_i38 = from39; by41 > 0 ? i_i38 <= to40 : i_i38 >= to40; i_i38 += by41) {
-            v_scalar = r.assign(r.add(v_scalar, r.mul(r.index(r.attr(v_vec1, "DIRECTIONRATIOS"), i_i38), r.index(r.attr(v_vec2, "DIRECTIONRATIOS"), i_i38))));
+          const from_39 = r.int(1), to_40 = r.int(v_ndim), by_41 = 1;
+          if (from_39 !== undefined && to_40 !== undefined && by_41) for (let i_i_38 = from_39; by_41 > 0 ? i_i_38 <= to_40 : i_i_38 >= to_40; i_i_38 += by_41) {
+            v_scalar = r.assign(r.add(v_scalar, r.mul(r.index(r.attr(v_vec1, "DIRECTIONRATIOS"), i_i_38), r.index(r.attr(v_vec2, "DIRECTIONRATIOS"), i_i_38))));
           }
         }
       }
@@ -716,9 +716,9 @@ function fn_IfcListToArray(m: r.Model, p_lis: r.Value, p_low: r.Value, p_u: r.Va
   } else {
     v_res = r.assignArray(r.aggregate([[r.index(p_lis, 1), v_n]]), p_low);
     {
-      const from43 = r.int(2), to44 = r.int(v_n), by45 = 1;
-      if (from43 !== undefined && to44 !== undefined && by45) for (let i_i42 = from43; by45 > 0 ? i_i42 <= to44 : i_i42 >= to44; i_i42 += by45) {
-        r.setIndex(v_res, r.sub(r.add(p_low, i_i42), 1), r.index(p_lis, i_i42));
+      const from_43 = r.int(2), to_44 = r.int(v_n), by_45 = 1;
+      if (from_43 !== undefined && to_44 !== undefined && by_45) for (let i_i_42 = from_43; by_45 > 0 ? i_i_42 <= to_44 : i_i_42 >= to_44; i_i_42 += by_45) {
+        r.setIndex(v_res, r.sub(r.add(p_low, i_i_42), 1), r.index(p_lis, i_i_42));
       }
     }
     return v_res;
@@ -731,9 +731,9 @@ function fn_IfcLoopHeadToTail(m: r.Model, p_aloop: r.Value): r.Value {
   let v_p: r.Value = r.assign(true);
   v_n = r.assign(r.sizeof(r.attr(p_aloop, "EDGELIST")));
   {
-    const from47 = r.int(2), to48 = r.int(v_n), by49 = 1;
-    if (from47 !== undefined && to48 !== undefined && by49) for (let i_i46 = from47; by49 > 0 ? i_i46 <= to48 : i_i46 >= to48; i_i46 += by49) {
-      v_p = r.assign(r.and(v_p, () => r.same(r.attr(r.index(r.attr(p_aloop, "EDGELIST"), r.sub(i_i46, 1)), "EDGEEND"), r.attr(r.index(r.attr(p_aloop, "EDGELIST"), i_i46), "EDGESTART"))));
+    const from_47 = r.int(2), to_48 = r.int(v_n), by_49 = 1;
+    if (from_47 !== undefined && to_48 !== undefined && by_49) for (let i_i_46 = from_47; by_49 > 0 ? i_i_46 <= to_48 : i_i_46 >= to_48; i_i_46 += by_49) {
+      v_p = r.assign(r.and(v_p, () => r.same(r.attr(r.index(r.attr(p_aloop, "EDGELIST"), r.sub(i_i_46, 1)), "EDGEEND"), r.attr(r.index(r.attr(p_aloop, "EDGELIST"), i_i_46), "EDGESTART"))));
     }
   }
   return v_p;
@@ -744,9 +744,9 @@ function fn_IfcMlsTotalThickness(m: r.Model, p_layerset: r.Value): r.Value {
   let v_max: r.Value = r.assign(r.attr(r.index(r.attr(p_layerset, "MATERIALLAYERS"), 1), "LAYERTHICKNESS"));
   if (r.isTrue(r.gt(r.sizeof(r.attr(p_layerset, "MATERIALLAYERS")), 1))) {
     {
-      const from51 = r.int(2), to52 = r.int(r.hiindex(r.attr(p_layerset, "MATERIALLAYERS"))), by53 = 1;
-      if (from51 !== undefined && to52 !== undefined && by53) for (let i_i50 = from51; by53 > 0 ? i_i50 <= to52 : i_i50 >= to52; i_i50 += by53) {
-        v_max = r.assign(r.add(v_max, r.attr(r.index(r.attr(p_layerset, "MATERIALLAYERS"), i_i50), "LAYERTHICKNESS")));
+      const from_51 = r.int(2), to_52 = r.int(r.hiindex(r.attr(p_layerset, "MATERIALLAYERS"))), by_53 = 1;
+      if (from_51 !== undefined && to_52 !== undefined && by_53) for (let i_i_50 = from_51; by_53 > 0 ? i_i_50 <= to_52 : i_i_50 >= to_52; i_i_50 += by_53) {
+        v_max = r.assign(r.add(v_max, r.attr(r.index(r.attr(p_layerset, "MATERIALLAYERS"), i_i_50), "LAYERTHICKNESS")));
       }
     }
   }
@@ -766,8 +766,8 @@ function fn_IfcNormalise(m: r.Model, p_arg: r.Value): r.Value {
     v_ndim = r.assign(r.attr(p_arg, "DIM"));
     if (r.isTrue(r.typeIs(m, p_arg, "IFCVECTOR"))) {
       {
-        r.setAttr(v_v, "DIRECTIONRATIOS", r.attr(r.attr(p_arg, "ORIENTATION"), "DIRECTIONRATIOS"));
-        r.setAttr(v_vec, "MAGNITUDE", r.attr(p_arg, "MAGNITUDE"));
+        r.setAttr(v_v, "DIRECTIONRATIOS", r.attr(r.attr(p_arg, "ORIENTATION", "IFCVECTOR"), "DIRECTIONRATIOS"));
+        r.setAttr(v_vec, "MAGNITUDE", r.attr(p_arg, "MAGNITUDE", "IFCVECTOR"));
         r.setAttr(v_vec, "ORIENTATION", v_v);
         if (r.isTrue(r.eq(r.attr(p_arg, "MAGNITUDE"), 0))) {
           return undefined;
@@ -780,17 +780,17 @@ function fn_IfcNormalise(m: r.Model, p_arg: r.Value): r.Value {
     }
     v_mag = r.assign(0);
     {
-      const from55 = r.int(1), to56 = r.int(v_ndim), by57 = 1;
-      if (from55 !== undefined && to56 !== undefined && by57) for (let i_i54 = from55; by57 > 0 ? i_i54 <= to56 : i_i54 >= to56; i_i54 += by57) {
-        v_mag = r.assign(r.add(v_mag, r.mul(r.index(r.attr(v_v, "DIRECTIONRATIOS"), i_i54), r.index(r.attr(v_v, "DIRECTIONRATIOS"), i_i54))));
+      const from_55 = r.int(1), to_56 = r.int(v_ndim), by_57 = 1;
+      if (from_55 !== undefined && to_56 !== undefined && by_57) for (let i_i_54 = from_55; by_57 > 0 ? i_i_54 <= to_56 : i_i_54 >= to_56; i_i_54 += by_57) {
+        v_mag = r.assign(r.add(v_mag, r.mul(r.index(r.attr(v_v, "DIRECTIONRATIOS"), i_i_54), r.index(r.attr(v_v, "DIRECTIONRATIOS"), i_i_54))));
       }
     }
     if (r.isTrue(r.gt(v_mag, 0))) {
       v_mag = r.assign(r.sqrt(v_mag));
       {
-        const from59 = r.int(1), to60 = r.int(v_ndim), by61 = 1;
-        if (from59 !== undefined && to60 !== undefined && by61) for (let i_i58 = from59; by61 > 0 ? i_i58 <= to60 : i_i58 >= to60; i_i58 += by61) {
-          r.setIndex(r.attr(v_v, "DIRECTIONRATIOS"), i_i58, r.div(r.index(r.attr(v_v, "DIRECTIONRATIOS"), i_i58), v_mag));
+        const from_59 = r.int(1), to_60 = r.int(v_ndim), by_61 = 1;
+        if (from_59 !== undefined && to_60 !== undefined && by_61) for (let i_i_58 = from_59; by_61 > 0 ? i_i_58 <= to_60 : i_i_58 >= to_60; i_i_58 += by_61) {
+          r.setIndex(r.attr(v_v, "DIRECTIONRATIOS"), i_i_58, r.div(r.index(r.attr(v_v, "DIRECTIONRATIOS"), i_i_58), v_mag));
         }
       }
       if (r.isTrue(r.typeIs(m, p_arg, "IFCVECTOR"))) {
@@ -823,9 +823,9 @@ function fn_IfcPathHeadToTail(m: r.Model, p_apath: r.Value): r.Value {
   let v_p: r.Value = r.assign(r.UNKNOWN);
   v_n = r.assign(r.sizeof(r.attr(p_apath, "EDGELIST")));
   {
-    const from63 = r.int(2), to64 = r.int(v_n), by65 = 1;
-    if (from63 !== undefined && to64 !== undefined && by65) for (let i_i62 = from63; by65 > 0 ? i_i62 <= to64 : i_i62 >= to64; i_i62 += by65) {
-      v_p = r.assign(r.and(v_p, () => r.same(r.attr(r.index(r.attr(p_apath, "EDGELIST"), r.sub(i_i62, 1)), "EDGEEND"), r.attr(r.index(r.attr(p_apath, "EDGELIST"), i_i62), "EDGESTART"))));
+    const from_63 = r.int(2), to_64 = r.int(v_n), by_65 = 1;
+    if (from_63 !== undefined && to_64 !== undefined && by_65) for (let i_i_62 = from_63; by_65 > 0 ? i_i_62 <= to_64 : i_i_62 >= to_64; i_i_62 += by_65) {
+      v_p = r.assign(r.and(v_p, () => r.same(r.attr(r.index(r.attr(p_apath, "EDGELIST"), r.sub(i_i_62, 1)), "EDGEEND"), r.attr(r.index(r.attr(p_apath, "EDGELIST"), i_i_62), "EDGESTART"))));
     }
   }
   return v_p;
@@ -899,17 +899,17 @@ function fn_IfcScalarTimesVector(m: r.Model, p_scalar: r.Value, p_vec: r.Value):
     return undefined;
   } else {
     if (r.isTrue(r.typeIs(m, p_vec, "IFCVECTOR"))) {
-      v_v = r.assign(r.attr(p_vec, "ORIENTATION"));
-      v_mag = r.assign(r.mul(p_scalar, r.attr(p_vec, "MAGNITUDE")));
+      v_v = r.assign(r.attr(p_vec, "ORIENTATION", "IFCVECTOR"));
+      v_mag = r.assign(r.mul(p_scalar, r.attr(p_vec, "MAGNITUDE", "IFCVECTOR")));
     } else {
       v_v = r.assign(p_vec);
       v_mag = r.assign(p_scalar);
     }
     if (r.isTrue(r.lt(v_mag, 0))) {
       {
-        const from67 = r.int(1), to68 = r.int(r.sizeof(r.attr(v_v, "DIRECTIONRATIOS"))), by69 = 1;
-        if (from67 !== undefined && to68 !== undefined && by69) for (let i_i66 = from67; by69 > 0 ? i_i66 <= to68 : i_i66 >= to68; i_i66 += by69) {
-          r.setIndex(r.attr(v_v, "DIRECTIONRATIOS"), i_i66, r.neg(r.index(r.attr(v_v, "DIRECTIONRATIOS"), i_i66)));
+        const from_67 = r.int(1), to_68 = r.int(r.sizeof(r.attr(v_v, "DIRECTIONRATIOS"))), by_69 = 1;
+        if (from_67 !== undefined && to_68 !== undefined && by_69) for (let i_i_66 = from_67; by_69 > 0 ? i_i_66 <= to_68 : i_i_66 >= to_68; i_i_66 += by_69) {
+          r.setIndex(r.attr(v_v, "DIRECTIONRATIOS"), i_i_66, r.neg(r.index(r.attr(v_v, "DIRECTIONRATIOS"), i_i_66)));
         }
       }
       v_mag = r.assign(r.neg(v_mag));
@@ -942,75 +942,75 @@ function fn_IfcShapeRepresentationTypes(m: r.Model, p_reptype: r.Value, p_items:
   p_items = r.assignSet(p_items);
   let v_count: r.Value = r.assign(0);
   {
-    const sel70 = r.caseSelector(p_reptype);
-    if (r.isTrue(r.eq(sel70, "Curve2D"))) {
+    const sel_70 = r.caseSelector(p_reptype);
+    if (r.isTrue(r.eq(sel_70, "Curve2D"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q71: r.Value) => r.and(r.typeIs(m, q71, "IFCCURVE"), () => r.eq(r.attr(q71, "DIM"), 2)))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_71: r.Value) => r.and(r.typeIs(m, q_71, "IFCCURVE"), () => r.eq(r.attr(q_71, "DIM"), 2)))));
       }
-    } else if (r.isTrue(r.eq(sel70, "Annotation2D"))) {
+    } else if (r.isTrue(r.eq(sel_70, "Annotation2D"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q72: r.Value) => r.eq(r.sizeof(r.mul(r.typeOf(m, q72), r.aggregate([["IFC2X3.IFCPOINT"], ["IFC2X3.IFCCURVE"], ["IFC2X3.IFCGEOMETRICCURVESET"], ["IFC2X3.IFCANNOTATIONFILLAREA"], ["IFC2X3.IFCDEFINEDSYMBOL"], ["IFC2X3.IFCTEXTLITERAL"], ["IFC2X3.IFCDRAUGHTINGCALLOUT"]]))), 1))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_72: r.Value) => r.eq(r.sizeof(r.mul(r.typeOf(m, q_72), r.aggregate([["IFC2X3.IFCPOINT"], ["IFC2X3.IFCCURVE"], ["IFC2X3.IFCGEOMETRICCURVESET"], ["IFC2X3.IFCANNOTATIONFILLAREA"], ["IFC2X3.IFCDEFINEDSYMBOL"], ["IFC2X3.IFCTEXTLITERAL"], ["IFC2X3.IFCDRAUGHTINGCALLOUT"]]))), 1))));
       }
-    } else if (r.isTrue(r.eq(sel70, "GeometricSet"))) {
+    } else if (r.isTrue(r.eq(sel_70, "GeometricSet"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q73: r.Value) => r.or(r.or(r.or(r.typeIs(m, q73, "IFCGEOMETRICSET"), () => r.typeIs(m, q73, "IFCPOINT")), () => r.typeIs(m, q73, "IFCCURVE")), () => r.typeIs(m, q73, "IFCSURFACE")))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_73: r.Value) => r.or(r.or(r.or(r.typeIs(m, q_73, "IFCGEOMETRICSET"), () => r.typeIs(m, q_73, "IFCPOINT")), () => r.typeIs(m, q_73, "IFCCURVE")), () => r.typeIs(m, q_73, "IFCSURFACE")))));
       }
-    } else if (r.isTrue(r.eq(sel70, "GeometricCurveSet"))) {
+    } else if (r.isTrue(r.eq(sel_70, "GeometricCurveSet"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q74: r.Value) => r.or(r.or(r.or(r.typeIs(m, q74, "IFCGEOMETRICCURVESET"), () => r.typeIs(m, q74, "IFCGEOMETRICSET")), () => r.typeIs(m, q74, "IFCPOINT")), () => r.typeIs(m, q74, "IFCCURVE")))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_74: r.Value) => r.or(r.or(r.or(r.typeIs(m, q_74, "IFCGEOMETRICCURVESET"), () => r.typeIs(m, q_74, "IFCGEOMETRICSET")), () => r.typeIs(m, q_74, "IFCPOINT")), () => r.typeIs(m, q_74, "IFCCURVE")))));
         {
-          const from77 = r.int(1), to78 = r.int(r.hiindex(p_items)), by79 = 1;
-          if (from77 !== undefined && to78 !== undefined && by79) for (let i_i75 = from77; by79 > 0 ? i_i75 <= to78 : i_i75 >= to78; i_i75 += by79) {
-            if (r.isTrue(r.typeIs(m, r.index(p_items, i_i75), "IFCGEOMETRICSET"))) {
-              if (r.isTrue(r.gt(r.sizeof(r.query(r.attr(r.index(p_items, i_i75), "ELEMENTS"), (q76: r.Value) => r.typeIs(m, q76, "IFCSURFACE"))), 0))) {
+          const from_77 = r.int(1), to_78 = r.int(r.hiindex(p_items)), by_79 = 1;
+          if (from_77 !== undefined && to_78 !== undefined && by_79) for (let i_i_75 = from_77; by_79 > 0 ? i_i_75 <= to_78 : i_i_75 >= to_78; i_i_75 += by_79) {
+            if (r.isTrue(r.typeIs(m, r.index(p_items, i_i_75), "IFCGEOMETRICSET"))) {
+              if (r.isTrue(r.gt(r.sizeof(r.query(r.attr(r.index(p_items, i_i_75), "ELEMENTS", "IFCGEOMETRICSET"), (q_76: r.Value) => r.typeIs(m, q_76, "IFCSURFACE"))), 0))) {
                 v_count = r.assign(r.sub(v_count, 1));
               }
             }
           }
         }
       }
-    } else if (r.isTrue(r.eq(sel70, "SurfaceModel"))) {
+    } else if (r.isTrue(r.eq(sel_70, "SurfaceModel"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q80: r.Value) => r.ge(r.sizeof(r.mul(r.aggregate([["IFC2X3.IFCSHELLBASEDSURFACEMODEL"], ["IFC2X3.IFCFACEBASEDSURFACEMODEL"], ["IFC2X3.IFCFACETEDBREP"], ["IFC2X3.IFCFACETEDBREPWITHVOIDS"]]), r.typeOf(m, q80))), 1))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_80: r.Value) => r.ge(r.sizeof(r.mul(r.aggregate([["IFC2X3.IFCSHELLBASEDSURFACEMODEL"], ["IFC2X3.IFCFACEBASEDSURFACEMODEL"], ["IFC2X3.IFCFACETEDBREP"], ["IFC2X3.IFCFACETEDBREPWITHVOIDS"]]), r.typeOf(m, q_80))), 1))));
       }
-    } else if (r.isTrue(r.eq(sel70, "SolidModel"))) {
+    } else if (r.isTrue(r.eq(sel_70, "SolidModel"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q81: r.Value) => r.typeIs(m, q81, "IFCSOLIDMODEL"))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_81: r.Value) => r.typeIs(m, q_81, "IFCSOLIDMODEL"))));
       }
-    } else if (r.isTrue(r.eq(sel70, "SweptSolid"))) {
+    } else if (r.isTrue(r.eq(sel_70, "SweptSolid"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q82: r.Value) => r.typeIs(m, q82, "IFCSWEPTAREASOLID"))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_82: r.Value) => r.typeIs(m, q_82, "IFCSWEPTAREASOLID"))));
       }
-    } else if (r.isTrue(r.eq(sel70, "CSG"))) {
+    } else if (r.isTrue(r.eq(sel_70, "CSG"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q83: r.Value) => r.typeIs(m, q83, "IFCBOOLEANRESULT"))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_83: r.Value) => r.typeIs(m, q_83, "IFCBOOLEANRESULT"))));
       }
-    } else if (r.isTrue(r.eq(sel70, "Clipping"))) {
+    } else if (r.isTrue(r.eq(sel_70, "Clipping"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q84: r.Value) => r.typeIs(m, q84, "IFCBOOLEANCLIPPINGRESULT"))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_84: r.Value) => r.typeIs(m, q_84, "IFCBOOLEANCLIPPINGRESULT"))));
       }
-    } else if (r.isTrue(r.eq(sel70, "AdvancedSweptSolid"))) {
+    } else if (r.isTrue(r.eq(sel_70, "AdvancedSweptSolid"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q85: r.Value) => r.or(r.typeIs(m, q85, "IFCSURFACECURVESWEPTAREASOLID"), () => r.typeIs(m, q85, "IFCSWEPTDISKSOLID")))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_85: r.Value) => r.or(r.typeIs(m, q_85, "IFCSURFACECURVESWEPTAREASOLID"), () => r.typeIs(m, q_85, "IFCSWEPTDISKSOLID")))));
       }
-    } else if (r.isTrue(r.eq(sel70, "Brep"))) {
+    } else if (r.isTrue(r.eq(sel_70, "Brep"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q86: r.Value) => r.or(r.typeIs(m, q86, "IFCFACETEDBREP"), () => r.typeIs(m, q86, "IFCFACETEDBREPWITHVOIDS")))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_86: r.Value) => r.or(r.typeIs(m, q_86, "IFCFACETEDBREP"), () => r.typeIs(m, q_86, "IFCFACETEDBREPWITHVOIDS")))));
       }
-    } else if (r.isTrue(r.eq(sel70, "BoundingBox"))) {
+    } else if (r.isTrue(r.eq(sel_70, "BoundingBox"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q87: r.Value) => r.typeIs(m, q87, "IFCBOUNDINGBOX"))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_87: r.Value) => r.typeIs(m, q_87, "IFCBOUNDINGBOX"))));
         if (r.isTrue(r.gt(r.sizeof(p_items), 1))) {
           v_count = r.assign(0);
         }
       }
-    } else if (r.isTrue(r.eq(sel70, "SectionedSpine"))) {
+    } else if (r.isTrue(r.eq(sel_70, "SectionedSpine"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q88: r.Value) => r.typeIs(m, q88, "IFCSECTIONEDSPINE"))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_88: r.Value) => r.typeIs(m, q_88, "IFCSECTIONEDSPINE"))));
       }
-    } else if (r.isTrue(r.eq(sel70, "MappedRepresentation"))) {
+    } else if (r.isTrue(r.eq(sel_70, "MappedRepresentation"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q89: r.Value) => r.typeIs(m, q89, "IFCMAPPEDITEM"))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_89: r.Value) => r.typeIs(m, q_89, "IFCMAPPEDITEM"))));
       }
     } else {
       return undefined;
@@ -1024,28 +1024,28 @@ function fn_IfcTopologyRepresentationTypes(m: r.Model, p_reptype: r.Value, p_ite
   p_items = r.assignSet(p_items);
   let v_count: r.Value = r.assign(0);
   {
-    const sel90 = r.caseSelector(p_reptype);
-    if (r.isTrue(r.eq(sel90, "Vertex"))) {
+    const sel_90 = r.caseSelector(p_reptype);
+    if (r.isTrue(r.eq(sel_90, "Vertex"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q91: r.Value) => r.typeIs(m, q91, "IFCVERTEX"))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_91: r.Value) => r.typeIs(m, q_91, "IFCVERTEX"))));
       }
-    } else if (r.isTrue(r.eq(sel90, "Edge"))) {
+    } else if (r.isTrue(r.eq(sel_90, "Edge"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q92: r.Value) => r.typeIs(m, q92, "IFCEDGE"))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_92: r.Value) => r.typeIs(m, q_92, "IFCEDGE"))));
       }
-    } else if (r.isTrue(r.eq(sel90, "Path"))) {
+    } else if (r.isTrue(r.eq(sel_90, "Path"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q93: r.Value) => r.typeIs(m, q93, "IFCPATH"))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_93: r.Value) => r.typeIs(m, q_93, "IFCPATH"))));
       }
-    } else if (r.isTrue(r.eq(sel90, "Face"))) {
+    } else if (r.isTrue(r.eq(sel_90, "Face"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q94: r.Value) => r.typeIs(m, q94, "IFCFACE"))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_94: r.Value) => r.typeIs(m, q_94, "IFCFACE"))));
       }
-    } else if (r.isTrue(r.eq(sel90, "Shell"))) {
+    } else if (r.isTrue(r.eq(sel_90, "Shell"))) {
       {
-        v_count = r.assign(r.sizeof(r.query(p_items, (q95: r.Value) => r.or(r.typeIs(m, q95, "IFCOPENSHELL"), () => r.typeIs(m, q95, "IFCCLOSEDSHELL")))));
+        v_count = r.assign(r.sizeof(r.query(p_items, (q_95: r.Value) => r.or(r.typeIs(m, q_95, "IFCOPENSHELL"), () => r.typeIs(m, q_95, "IFCCLOSEDSHELL")))));
       }
-    } else if (r.isTrue(r.eq(sel90, "Undefined"))) {
+    } else if (r.isTrue(r.eq(sel_90, "Undefined"))) {
       return true;
     } else {
       return undefined;
@@ -1059,9 +1059,9 @@ function fn_IfcUniquePropertyName(m: r.Model, p_properties: r.Value): r.Value {
   p_properties = r.assignSet(p_properties);
   let v_names: r.Value = r.assignSet(r.aggregate([]));
   {
-    const from97 = r.int(1), to98 = r.int(r.hiindex(p_properties)), by99 = 1;
-    if (from97 !== undefined && to98 !== undefined && by99) for (let i_i96 = from97; by99 > 0 ? i_i96 <= to98 : i_i96 >= to98; i_i96 += by99) {
-      v_names = r.assignSet(r.add(v_names, r.attr(r.index(p_properties, i_i96), "NAME")));
+    const from_97 = r.int(1), to_98 = r.int(r.hiindex(p_properties)), by_99 = 1;
+    if (from_97 !== undefined && to_98 !== undefined && by_99) for (let i_i_96 = from_97; by_99 > 0 ? i_i_96 <= to_98 : i_i_96 >= to_98; i_i_96 += by_99) {
+      v_names = r.assignSet(r.add(v_names, r.attr(r.index(p_properties, i_i_96), "NAME")));
     }
   }
   return r.eq(r.sizeof(v_names), r.sizeof(p_properties));
@@ -1073,16 +1073,16 @@ function fn_IfcValidCalendarDate(m: r.Model, p_date: r.Value): r.Value {
     return false;
   }
   {
-    const sel100 = r.caseSelector(r.attr(p_date, "MONTHCOMPONENT"));
-    if (r.isTrue(r.eq(sel100, 4))) {
+    const sel_100 = r.caseSelector(r.attr(p_date, "MONTHCOMPONENT"));
+    if (r.isTrue(r.eq(sel_100, 4))) {
       return r.interval(1, '<=', r.attr(p_date, "DAYCOMPONENT"), '<=', 30);
-    } else if (r.isTrue(r.eq(sel100, 6))) {
+    } else if (r.isTrue(r.eq(sel_100, 6))) {
       return r.interval(1, '<=', r.attr(p_date, "DAYCOMPONENT"), '<=', 30);
-    } else if (r.isTrue(r.eq(sel100, 9))) {
+    } else if (r.isTrue(r.eq(sel_100, 9))) {
       return r.interval(1, '<=', r.attr(p_date, "DAYCOMPONENT"), '<=', 30);
-    } else if (r.isTrue(r.eq(sel100, 11))) {
+    } else if (r.isTrue(r.eq(sel_100, 11))) {
       return r.interval(1, '<=', r.attr(p_date, "DAYCOMPONENT"), '<=', 30);
-    } else if (r.isTrue(r.eq(sel100, 2))) {
+    } else if (r.isTrue(r.eq(sel_100, 2))) {
       {
         if (r.isTrue(fn_IfcLeapYear(m, r.attr(p_date, "YEARCOMPONENT")))) {
           return r.interval(1, '<=', r.attr(p_date, "DAYCOMPONENT"), '<=', 29);
@@ -1120,15 +1120,15 @@ function fn_IfcVectorDifference(m: r.Model, p_arg1: r.Value, p_arg2: r.Value): r
   } else {
     {
       if (r.isTrue(r.typeIs(m, p_arg1, "IFCVECTOR"))) {
-        v_mag1 = r.assign(r.attr(p_arg1, "MAGNITUDE"));
-        v_vec1 = r.assign(r.attr(p_arg1, "ORIENTATION"));
+        v_mag1 = r.assign(r.attr(p_arg1, "MAGNITUDE", "IFCVECTOR"));
+        v_vec1 = r.assign(r.attr(p_arg1, "ORIENTATION", "IFCVECTOR"));
       } else {
         v_mag1 = r.assign(1);
         v_vec1 = r.assign(p_arg1);
       }
       if (r.isTrue(r.typeIs(m, p_arg2, "IFCVECTOR"))) {
-        v_mag2 = r.assign(r.attr(p_arg2, "MAGNITUDE"));
-        v_vec2 = r.assign(r.attr(p_arg2, "ORIENTATION"));
+        v_mag2 = r.assign(r.attr(p_arg2, "MAGNITUDE", "IFCVECTOR"));
+        v_vec2 = r.assign(r.attr(p_arg2, "ORIENTATION", "IFCVECTOR"));
       } else {
         v_mag2 = r.assign(1);
         v_vec2 = r.assign(p_arg2);
@@ -1139,10 +1139,10 @@ function fn_IfcVectorDifference(m: r.Model, p_arg1: r.Value, p_arg2: r.Value): r
       v_mag = r.assign(0);
       v_res = r.assign(r.complex(m, [r.construct(m, "IfcRepresentationItem", []), r.construct(m, "IfcGeometricRepresentationItem", []), r.construct(m, "IfcDirection", [r.aggregate([[0, v_ndim]])])]));
       {
-        const from102 = r.int(1), to103 = r.int(v_ndim), by104 = 1;
-        if (from102 !== undefined && to103 !== undefined && by104) for (let i_i101 = from102; by104 > 0 ? i_i101 <= to103 : i_i101 >= to103; i_i101 += by104) {
-          r.setIndex(r.attr(v_res, "DIRECTIONRATIOS"), i_i101, r.sub(r.mul(v_mag1, r.index(r.attr(v_vec1, "DIRECTIONRATIOS"), i_i101)), r.mul(v_mag2, r.index(r.attr(v_vec2, "DIRECTIONRATIOS"), i_i101))));
-          v_mag = r.assign(r.add(v_mag, r.mul(r.index(r.attr(v_res, "DIRECTIONRATIOS"), i_i101), r.index(r.attr(v_res, "DIRECTIONRATIOS"), i_i101))));
+        const from_102 = r.int(1), to_103 = r.int(v_ndim), by_104 = 1;
+        if (from_102 !== undefined && to_103 !== undefined && by_104) for (let i_i_101 = from_102; by_104 > 0 ? i_i_101 <= to_103 : i_i_101 >= to_103; i_i_101 += by_104) {
+          r.setIndex(r.attr(v_res, "DIRECTIONRATIOS"), i_i_101, r.sub(r.mul(v_mag1, r.index(r.attr(v_vec1, "DIRECTIONRATIOS"), i_i_101)), r.mul(v_mag2, r.index(r.attr(v_vec2, "DIRECTIONRATIOS"), i_i_101))));
+          v_mag = r.assign(r.add(v_mag, r.mul(r.index(r.attr(v_res, "DIRECTIONRATIOS"), i_i_101), r.index(r.attr(v_res, "DIRECTIONRATIOS"), i_i_101))));
         }
       }
       if (r.isTrue(r.gt(v_mag, 0))) {
@@ -1170,15 +1170,15 @@ function fn_IfcVectorSum(m: r.Model, p_arg1: r.Value, p_arg2: r.Value): r.Value 
   } else {
     {
       if (r.isTrue(r.typeIs(m, p_arg1, "IFCVECTOR"))) {
-        v_mag1 = r.assign(r.attr(p_arg1, "MAGNITUDE"));
-        v_vec1 = r.assign(r.attr(p_arg1, "ORIENTATION"));
+        v_mag1 = r.assign(r.attr(p_arg1, "MAGNITUDE", "IFCVECTOR"));
+        v_vec1 = r.assign(r.attr(p_arg1, "ORIENTATION", "IFCVECTOR"));
       } else {
         v_mag1 = r.assign(1);
         v_vec1 = r.assign(p_arg1);
       }
       if (r.isTrue(r.typeIs(m, p_arg2, "IFCVECTOR"))) {
-        v_mag2 = r.assign(r.attr(p_arg2, "MAGNITUDE"));
-        v_vec2 = r.assign(r.attr(p_arg2, "ORIENTATION"));
+        v_mag2 = r.assign(r.attr(p_arg2, "MAGNITUDE", "IFCVECTOR"));
+        v_vec2 = r.assign(r.attr(p_arg2, "ORIENTATION", "IFCVECTOR"));
       } else {
         v_mag2 = r.assign(1);
         v_vec2 = r.assign(p_arg2);
@@ -1189,10 +1189,10 @@ function fn_IfcVectorSum(m: r.Model, p_arg1: r.Value, p_arg2: r.Value): r.Value 
       v_mag = r.assign(0);
       v_res = r.assign(r.complex(m, [r.construct(m, "IfcRepresentationItem", []), r.construct(m, "IfcGeometricRepresentationItem", []), r.construct(m, "IfcDirection", [r.aggregate([[0, v_ndim]])])]));
       {
-        const from106 = r.int(1), to107 = r.int(v_ndim), by108 = 1;
-        if (from106 !== undefined && to107 !== undefined && by108) for (let i_i105 = from106; by108 > 0 ? i_i105 <= to107 : i_i105 >= to107; i_i105 += by108) {
-          r.setIndex(r.attr(v_res, "DIRECTIONRATIOS"), i_i105, r.add(r.mul(v_mag1, r.index(r.attr(v_vec1, "DIRECTIONRATIOS"), i_i105)), r.mul(v_mag2, r.index(r.attr(v_vec2, "DIRECTIONRATIOS"), i_i105))));
-          v_mag = r.assign(r.add(v_mag, r.mul(r.index(r.attr(v_res, "DIRECTIONRATIOS"), i_i105), r.index(r.attr(v_res, "DIRECTIONRATIOS"), i_i105))));
+        const from_106 = r.int(1), to_107 = r.int(v_ndim), by_108 = 1;
+        if (from_106 !== undefined && to_107 !== undefined && by_108) for (let i_i_105 = from_106; by_108 > 0 ? i_i_105 <= to_107 : i_i_105 >= to_107; i_i_105 += by_108) {
+          r.setIndex(r.attr(v_res, "DIRECTIONRATIOS"), i_i_105, r.add(r.mul(v_mag1, r.index(r.attr(v_vec1, "DIRECTIONRATIOS"), i_i_105)), r.mul(v_mag2, r.index(r.attr(v_vec2, "DIRECTIONRATIOS"), i_i_105))));
+          v_mag = r.assign(r.add(v_mag, r.mul(r.index(r.attr(v_res, "DIRECTIONRATIOS"), i_i_105), r.index(r.attr(v_res, "DIRECTIONRATIOS"), i_i_105))));
         }
       }
       if (r.isTrue(r.gt(v_mag, 0))) {
@@ -1209,8 +1209,8 @@ function fn_IfcVectorSum(m: r.Model, p_arg1: r.Value, p_arg2: r.Value): r.Value 
 export const RULES: r.CompiledRules = {
   entity: {
     "Ifc2DCompositeCurve": [
-      { label: "WR1", source: "SELF\\IfcCompositeCurve.ClosedCurve", check: (self: r.EntityInstance, m: r.Model): r.Value => r.attr(self, "CLOSEDCURVE") },
-      { label: "WR2", source: "SELF\\IfcCurve.Dim = 2", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(self, "DIM"), 2) },
+      { label: "WR1", source: "SELF\\IfcCompositeCurve.ClosedCurve", check: (self: r.EntityInstance, m: r.Model): r.Value => r.attr(self, "CLOSEDCURVE", "IFCCOMPOSITECURVE") },
+      { label: "WR2", source: "SELF\\IfcCurve.Dim = 2", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(self, "DIM", "IFCCURVE"), 2) },
     ],
     "IfcActorRole": [
       { label: "WR1", source: "(Role <> IfcRoleEnum.USERDEFINED) OR ((Role = IfcRoleEnum.USERDEFINED) AND EXISTS(SELF.UserDefinedRole))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "ROLE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "ROLE"), E_USERDEFINED), () => r.exists(r.attr(self, "USERDEFINEDROLE")))) },
@@ -1219,31 +1219,31 @@ export const RULES: r.CompiledRules = {
       { label: "WR1", source: "(NOT(EXISTS(Purpose))) OR ((Purpose <> IfcAddressTypeEnum.USERDEFINED) OR ((Purpose = IfcAddressTypeEnum.USERDEFINED) AND EXISTS(SELF.UserDefinedPurpose)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "PURPOSE"))), () => r.or(r.ne(r.attr(self, "PURPOSE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PURPOSE"), E_USERDEFINED), () => r.exists(r.attr(self, "USERDEFINEDPURPOSE"))))) },
     ],
     "IfcAirTerminalBoxType": [
-      { label: "WR1", source: "(PredefinedType <> IfcAirTerminalBoxTypeEnum.USERDEFINED) OR ((PredefinedType = IfcAirTerminalBoxTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcAirTerminalBoxTypeEnum.USERDEFINED) OR ((PredefinedType = IfcAirTerminalBoxTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcAirTerminalType": [
-      { label: "WR1", source: "(PredefinedType <> IfcAirTerminalTypeEnum.USERDEFINED) OR ((PredefinedType = IfcAirTerminalTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcAirTerminalTypeEnum.USERDEFINED) OR ((PredefinedType = IfcAirTerminalTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcAirToAirHeatRecoveryType": [
-      { label: "WR1", source: "(PredefinedType <> IfcAirToAirHeatRecoveryTypeEnum.USERDEFINED) OR ((PredefinedType = IfcAirToAirHeatRecoveryTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcAirToAirHeatRecoveryTypeEnum.USERDEFINED) OR ((PredefinedType = IfcAirToAirHeatRecoveryTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcAnnotationCurveOccurrence": [
-      { label: "WR31", source: "NOT(EXISTS(SELF\\IfcStyledItem.Item)) OR ('IFC2X3.IFCCURVE' IN TYPEOF (SELF\\IfcStyledItem.Item))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "ITEM"))), () => r.typeIs(m, r.attr(self, "ITEM"), "IFCCURVE")) },
+      { label: "WR31", source: "NOT(EXISTS(SELF\\IfcStyledItem.Item)) OR ('IFC2X3.IFCCURVE' IN TYPEOF (SELF\\IfcStyledItem.Item))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "ITEM", "IFCSTYLEDITEM"))), () => r.typeIs(m, r.attr(self, "ITEM", "IFCSTYLEDITEM"), "IFCCURVE")) },
     ],
     "IfcAnnotationFillAreaOccurrence": [
-      { label: "WR31", source: "NOT(EXISTS(SELF\\IfcStyledItem.Item)) OR ('IFC2X3.IFCANNOTATIONFILLAREA' IN TYPEOF (SELF\\IfcStyledItem.Item))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "ITEM"))), () => r.typeIs(m, r.attr(self, "ITEM"), "IFCANNOTATIONFILLAREA")) },
+      { label: "WR31", source: "NOT(EXISTS(SELF\\IfcStyledItem.Item)) OR ('IFC2X3.IFCANNOTATIONFILLAREA' IN TYPEOF (SELF\\IfcStyledItem.Item))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "ITEM", "IFCSTYLEDITEM"))), () => r.typeIs(m, r.attr(self, "ITEM", "IFCSTYLEDITEM"), "IFCANNOTATIONFILLAREA")) },
     ],
     "IfcAnnotationSurface": [
       { label: "WR01", source: "SIZEOF([ 'IFC2X3.IFCSURFACE', 'IFC2X3.IFCSHELLBASEDSURFACEMODEL', 'IFC2X3.IFCFACEBASEDSURFACEMODEL', 'IFC2X3.IFCSOLIDMODEL', 'IFC2X3.IFCBOOLEANRESULT', 'IFC2X3.IFCCSGPRIMITIVE3D'] * TYPEOF(Item) ) >= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ge(r.sizeof(r.mul(r.aggregate([["IFC2X3.IFCSURFACE"], ["IFC2X3.IFCSHELLBASEDSURFACEMODEL"], ["IFC2X3.IFCFACEBASEDSURFACEMODEL"], ["IFC2X3.IFCSOLIDMODEL"], ["IFC2X3.IFCBOOLEANRESULT"], ["IFC2X3.IFCCSGPRIMITIVE3D"]]), r.typeOf(m, r.attr(self, "ITEM")))), 1) },
     ],
     "IfcAnnotationSurfaceOccurrence": [
-      { label: "WR31", source: "NOT(EXISTS(SELF\\IfcStyledItem.Item)) OR (SIZEOF( ['IFC2X3.IFCSURFACE', 'IFC2X3.IFCFACEBASEDSURFACEMODEL', 'IFC2X3.IFCSHELLBASEDSURFACEMODEL', 'IFC2X3.IFCSOLIDMODEL'] * TYPEOF(SELF\\IfcStyledItem.Item)) > 0)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "ITEM"))), () => r.gt(r.sizeof(r.mul(r.aggregate([["IFC2X3.IFCSURFACE"], ["IFC2X3.IFCFACEBASEDSURFACEMODEL"], ["IFC2X3.IFCSHELLBASEDSURFACEMODEL"], ["IFC2X3.IFCSOLIDMODEL"]]), r.typeOf(m, r.attr(self, "ITEM")))), 0)) },
+      { label: "WR31", source: "NOT(EXISTS(SELF\\IfcStyledItem.Item)) OR (SIZEOF( ['IFC2X3.IFCSURFACE', 'IFC2X3.IFCFACEBASEDSURFACEMODEL', 'IFC2X3.IFCSHELLBASEDSURFACEMODEL', 'IFC2X3.IFCSOLIDMODEL'] * TYPEOF(SELF\\IfcStyledItem.Item)) > 0)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "ITEM", "IFCSTYLEDITEM"))), () => r.gt(r.sizeof(r.mul(r.aggregate([["IFC2X3.IFCSURFACE"], ["IFC2X3.IFCFACEBASEDSURFACEMODEL"], ["IFC2X3.IFCSHELLBASEDSURFACEMODEL"], ["IFC2X3.IFCSOLIDMODEL"]]), r.typeOf(m, r.attr(self, "ITEM", "IFCSTYLEDITEM")))), 0)) },
     ],
     "IfcAnnotationSymbolOccurrence": [
-      { label: "WR31", source: "NOT(EXISTS(SELF\\IfcStyledItem.Item)) OR ('IFC2X3.IFCDEFINEDSYMBOL' IN TYPEOF (SELF\\IfcStyledItem.Item))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "ITEM"))), () => r.typeIs(m, r.attr(self, "ITEM"), "IFCDEFINEDSYMBOL")) },
+      { label: "WR31", source: "NOT(EXISTS(SELF\\IfcStyledItem.Item)) OR ('IFC2X3.IFCDEFINEDSYMBOL' IN TYPEOF (SELF\\IfcStyledItem.Item))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "ITEM", "IFCSTYLEDITEM"))), () => r.typeIs(m, r.attr(self, "ITEM", "IFCSTYLEDITEM"), "IFCDEFINEDSYMBOL")) },
     ],
     "IfcAnnotationTextOccurrence": [
-      { label: "WR31", source: "NOT(EXISTS(SELF\\IfcStyledItem.Item)) OR ('IFC2X3.IFCTEXTLITERAL' IN TYPEOF (SELF\\IfcStyledItem.Item))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "ITEM"))), () => r.typeIs(m, r.attr(self, "ITEM"), "IFCTEXTLITERAL")) },
+      { label: "WR31", source: "NOT(EXISTS(SELF\\IfcStyledItem.Item)) OR ('IFC2X3.IFCTEXTLITERAL' IN TYPEOF (SELF\\IfcStyledItem.Item))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "ITEM", "IFCSTYLEDITEM"))), () => r.typeIs(m, r.attr(self, "ITEM", "IFCSTYLEDITEM"), "IFCTEXTLITERAL")) },
     ],
     "IfcAppliedValue": [
       { label: "WR1", source: "EXISTS (AppliedValue) OR EXISTS (ValueOfComponents)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.exists(r.attr(self, "APPLIEDVALUE")), () => r.exists(r.attr(self, "VALUEOFCOMPONENTS"))) },
@@ -1254,40 +1254,40 @@ export const RULES: r.CompiledRules = {
       { label: "WR3", source: "NOT('IFC2X3.IFCOFFSETCURVE2D' IN TYPEOF(OuterCurve))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.not(r.typeIs(m, r.attr(self, "OUTERCURVE"), "IFCOFFSETCURVE2D")) },
     ],
     "IfcArbitraryOpenProfileDef": [
-      { label: "WR11", source: "('IFC2X3.IFCCENTERLINEPROFILEDEF' IN TYPEOF(SELF)) OR (SELF\\IfcProfileDef.ProfileType = IfcProfileTypeEnum.CURVE)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.typeIs(m, self, "IFCCENTERLINEPROFILEDEF"), () => r.eq(r.attr(self, "PROFILETYPE"), E_CURVE)) },
+      { label: "WR11", source: "('IFC2X3.IFCCENTERLINEPROFILEDEF' IN TYPEOF(SELF)) OR (SELF\\IfcProfileDef.ProfileType = IfcProfileTypeEnum.CURVE)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.typeIs(m, self, "IFCCENTERLINEPROFILEDEF"), () => r.eq(r.attr(self, "PROFILETYPE", "IFCPROFILEDEF"), E_CURVE)) },
       { label: "WR12", source: "Curve.Dim = 2", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(r.attr(self, "CURVE"), "DIM"), 2) },
     ],
     "IfcArbitraryProfileDefWithVoids": [
-      { label: "WR1", source: "SELF\\IfcProfileDef.ProfileType = AREA", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(self, "PROFILETYPE"), E_AREA) },
-      { label: "WR2", source: "SIZEOF(QUERY(temp <* InnerCurves | temp.Dim <> 2)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "INNERCURVES"), (q111: r.Value) => r.ne(r.attr(q111, "DIM"), 2))), 0) },
-      { label: "WR3", source: "SIZEOF(QUERY(temp <* InnerCurves | 'IFC2X3.IFCLINE' IN TYPEOF(temp))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "INNERCURVES"), (q112: r.Value) => r.typeIs(m, q112, "IFCLINE"))), 0) },
+      { label: "WR1", source: "SELF\\IfcProfileDef.ProfileType = AREA", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(self, "PROFILETYPE", "IFCPROFILEDEF"), E_AREA) },
+      { label: "WR2", source: "SIZEOF(QUERY(temp <* InnerCurves | temp.Dim <> 2)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "INNERCURVES"), (q_111: r.Value) => r.ne(r.attr(q_111, "DIM"), 2))), 0) },
+      { label: "WR3", source: "SIZEOF(QUERY(temp <* InnerCurves | 'IFC2X3.IFCLINE' IN TYPEOF(temp))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "INNERCURVES"), (q_112: r.Value) => r.typeIs(m, q_112, "IFCLINE"))), 0) },
     ],
     "IfcAsset": [
-      { label: "WR1", source: "SIZEOF(QUERY(Temp <* SELF\\IfcGroup.IsGroupedBy.RelatedObjects | NOT('IFC2X3.IFCELEMENT' IN TYPEOF(Temp)))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(r.attr(self, "ISGROUPEDBY"), "RELATEDOBJECTS"), (q113: r.Value) => r.not(r.typeIs(m, q113, "IFCELEMENT")))), 0) },
+      { label: "WR1", source: "SIZEOF(QUERY(Temp <* SELF\\IfcGroup.IsGroupedBy.RelatedObjects | NOT('IFC2X3.IFCELEMENT' IN TYPEOF(Temp)))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(r.attr(self, "ISGROUPEDBY", "IFCGROUP"), "RELATEDOBJECTS"), (q_113: r.Value) => r.not(r.typeIs(m, q_113, "IFCELEMENT")))), 0) },
     ],
     "IfcAxis1Placement": [
       { label: "WR1", source: "(NOT (EXISTS (Axis))) OR (Axis.Dim = 3)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "AXIS"))), () => r.eq(r.attr(r.attr(self, "AXIS"), "DIM"), 3)) },
-      { label: "WR2", source: "SELF\\IfcPlacement.Location.Dim = 3", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(r.attr(self, "LOCATION"), "DIM"), 3) },
+      { label: "WR2", source: "SELF\\IfcPlacement.Location.Dim = 3", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(r.attr(self, "LOCATION", "IFCPLACEMENT"), "DIM"), 3) },
     ],
     "IfcAxis2Placement2D": [
       { label: "WR1", source: "(NOT (EXISTS (RefDirection))) OR (RefDirection.Dim = 2)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "REFDIRECTION"))), () => r.eq(r.attr(r.attr(self, "REFDIRECTION"), "DIM"), 2)) },
-      { label: "WR2", source: "SELF\\IfcPlacement.Location.Dim = 2", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(r.attr(self, "LOCATION"), "DIM"), 2) },
+      { label: "WR2", source: "SELF\\IfcPlacement.Location.Dim = 2", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(r.attr(self, "LOCATION", "IFCPLACEMENT"), "DIM"), 2) },
     ],
     "IfcAxis2Placement3D": [
-      { label: "WR1", source: "SELF\\IfcPlacement.Location.Dim = 3", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(r.attr(self, "LOCATION"), "DIM"), 3) },
+      { label: "WR1", source: "SELF\\IfcPlacement.Location.Dim = 3", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(r.attr(self, "LOCATION", "IFCPLACEMENT"), "DIM"), 3) },
       { label: "WR2", source: "(NOT (EXISTS (Axis))) OR (Axis.Dim = 3)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "AXIS"))), () => r.eq(r.attr(r.attr(self, "AXIS"), "DIM"), 3)) },
       { label: "WR3", source: "(NOT (EXISTS (RefDirection))) OR (RefDirection.Dim = 3)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "REFDIRECTION"))), () => r.eq(r.attr(r.attr(self, "REFDIRECTION"), "DIM"), 3)) },
       { label: "WR4", source: "(NOT (EXISTS (Axis))) OR (NOT (EXISTS (RefDirection))) OR (IfcCrossProduct(Axis,RefDirection).Magnitude > 0.0)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "AXIS"))), () => r.not(r.exists(r.attr(self, "REFDIRECTION")))), () => r.gt(r.attr(fn_IfcCrossProduct(m, r.attr(self, "AXIS"), r.attr(self, "REFDIRECTION")), "MAGNITUDE"), 0)) },
       { label: "WR5", source: "NOT ((EXISTS (Axis)) XOR (EXISTS (RefDirection)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.not(r.xor(r.exists(r.attr(self, "AXIS")), r.exists(r.attr(self, "REFDIRECTION")))) },
     ],
     "IfcBSplineCurve": [
-      { label: "WR41", source: "SIZEOF(QUERY(Temp <* ControlPointsList | Temp.Dim <> ControlPointsList[1].Dim)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "CONTROLPOINTSLIST"), (q114: r.Value) => r.ne(r.attr(q114, "DIM"), r.attr(r.index(r.attr(self, "CONTROLPOINTSLIST"), 1), "DIM")))), 0) },
+      { label: "WR41", source: "SIZEOF(QUERY(Temp <* ControlPointsList | Temp.Dim <> ControlPointsList[1].Dim)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "CONTROLPOINTSLIST"), (q_114: r.Value) => r.ne(r.attr(q_114, "DIM"), r.attr(r.index(r.attr(self, "CONTROLPOINTSLIST"), 1), "DIM")))), 0) },
     ],
     "IfcBlobTexture": [
       { label: "WR11", source: "SELF.RasterFormat IN ['BMP', 'JPG', 'GIF', 'PNG']", check: (self: r.EntityInstance, m: r.Model): r.Value => r.isIn(r.attr(self, "RASTERFORMAT"), r.aggregate([["BMP"], ["JPG"], ["GIF"], ["PNG"]])) },
     ],
     "IfcBoilerType": [
-      { label: "WR1", source: "(PredefinedType <> IfcBoilerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcBoilerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcBoilerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcBoilerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcBooleanClippingResult": [
       { label: "WR1", source: "('IFC2X3.IFCSWEPTAREASOLID' IN TYPEOF(FirstOperand)) OR ('IFC2X3.IFCBOOLEANCLIPPINGRESULT' IN TYPEOF(FirstOperand))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.typeIs(m, r.attr(self, "FIRSTOPERAND"), "IFCSWEPTAREASOLID"), () => r.typeIs(m, r.attr(self, "FIRSTOPERAND"), "IFCBOOLEANCLIPPINGRESULT")) },
@@ -1298,10 +1298,10 @@ export const RULES: r.CompiledRules = {
       { label: "WR1", source: "FirstOperand.Dim = SecondOperand.Dim", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(r.attr(self, "FIRSTOPERAND"), "DIM"), r.attr(r.attr(self, "SECONDOPERAND"), "DIM")) },
     ],
     "IfcBoxedHalfSpace": [
-      { label: "WR1", source: "NOT ('IFC2X3.IFCCURVEBOUNDEDPLANE' IN TYPEOF(SELF\\IfcHalfSpaceSolid.BaseSurface))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.not(r.typeIs(m, r.attr(self, "BASESURFACE"), "IFCCURVEBOUNDEDPLANE")) },
+      { label: "WR1", source: "NOT ('IFC2X3.IFCCURVEBOUNDEDPLANE' IN TYPEOF(SELF\\IfcHalfSpaceSolid.BaseSurface))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.not(r.typeIs(m, r.attr(self, "BASESURFACE", "IFCHALFSPACESOLID"), "IFCCURVEBOUNDEDPLANE")) },
     ],
     "IfcBuildingElementProxy": [
-      { label: "WR1", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME")) },
+      { label: "WR1", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME", "IFCROOT")) },
     ],
     "IfcCShapeProfileDef": [
       { label: "WR1", source: "Girth < (Depth / 2.)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.lt(r.attr(self, "GIRTH"), r.div(r.attr(self, "DEPTH"), 2)) },
@@ -1309,7 +1309,7 @@ export const RULES: r.CompiledRules = {
       { label: "WR3", source: "(WallThickness < Width/2.) AND (WallThickness < Depth/2.)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.lt(r.attr(self, "WALLTHICKNESS"), r.div(r.attr(self, "WIDTH"), 2)), () => r.lt(r.attr(self, "WALLTHICKNESS"), r.div(r.attr(self, "DEPTH"), 2))) },
     ],
     "IfcCableCarrierFittingType": [
-      { label: "WR1", source: "(PredefinedType <> IfcCableCarrierFittingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCableCarrierFittingTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcCableCarrierFittingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCableCarrierFittingTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcCalendarDate": [
       { label: "WR21", source: "IfcValidCalendarDate (SELF)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcValidCalendarDate(m, self) },
@@ -1321,17 +1321,17 @@ export const RULES: r.CompiledRules = {
       { label: "WR1", source: "Scl > 0.0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.gt(r.attr(self, "SCL"), 0) },
     ],
     "IfcCartesianTransformationOperator2D": [
-      { label: "WR1", source: "SELF\\IfcCartesianTransformationOperator.Dim = 2", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(self, "DIM"), 2) },
-      { label: "WR2", source: "NOT(EXISTS(SELF\\IfcCartesianTransformationOperator.Axis1)) OR (SELF\\IfcCartesianTransformationOperator.Axis1.Dim = 2)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "AXIS1"))), () => r.eq(r.attr(r.attr(self, "AXIS1"), "DIM"), 2)) },
-      { label: "WR3", source: "NOT(EXISTS(SELF\\IfcCartesianTransformationOperator.Axis2)) OR (SELF\\IfcCartesianTransformationOperator.Axis2.Dim = 2)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "AXIS2"))), () => r.eq(r.attr(r.attr(self, "AXIS2"), "DIM"), 2)) },
+      { label: "WR1", source: "SELF\\IfcCartesianTransformationOperator.Dim = 2", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(self, "DIM", "IFCCARTESIANTRANSFORMATIONOPERATOR"), 2) },
+      { label: "WR2", source: "NOT(EXISTS(SELF\\IfcCartesianTransformationOperator.Axis1)) OR (SELF\\IfcCartesianTransformationOperator.Axis1.Dim = 2)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "AXIS1", "IFCCARTESIANTRANSFORMATIONOPERATOR"))), () => r.eq(r.attr(r.attr(self, "AXIS1", "IFCCARTESIANTRANSFORMATIONOPERATOR"), "DIM"), 2)) },
+      { label: "WR3", source: "NOT(EXISTS(SELF\\IfcCartesianTransformationOperator.Axis2)) OR (SELF\\IfcCartesianTransformationOperator.Axis2.Dim = 2)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "AXIS2", "IFCCARTESIANTRANSFORMATIONOPERATOR"))), () => r.eq(r.attr(r.attr(self, "AXIS2", "IFCCARTESIANTRANSFORMATIONOPERATOR"), "DIM"), 2)) },
     ],
     "IfcCartesianTransformationOperator2DnonUniform": [
       { label: "WR1", source: "Scl2 > 0.0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.gt(r.attr(self, "SCL2"), 0) },
     ],
     "IfcCartesianTransformationOperator3D": [
-      { label: "WR1", source: "SELF\\IfcCartesianTransformationOperator.Dim = 3", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(self, "DIM"), 3) },
-      { label: "WR2", source: "NOT(EXISTS(SELF\\IfcCartesianTransformationOperator.Axis1)) OR (SELF\\IfcCartesianTransformationOperator.Axis1.Dim = 3)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "AXIS1"))), () => r.eq(r.attr(r.attr(self, "AXIS1"), "DIM"), 3)) },
-      { label: "WR3", source: "NOT(EXISTS(SELF\\IfcCartesianTransformationOperator.Axis2)) OR (SELF\\IfcCartesianTransformationOperator.Axis2.Dim = 3)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "AXIS2"))), () => r.eq(r.attr(r.attr(self, "AXIS2"), "DIM"), 3)) },
+      { label: "WR1", source: "SELF\\IfcCartesianTransformationOperator.Dim = 3", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(self, "DIM", "IFCCARTESIANTRANSFORMATIONOPERATOR"), 3) },
+      { label: "WR2", source: "NOT(EXISTS(SELF\\IfcCartesianTransformationOperator.Axis1)) OR (SELF\\IfcCartesianTransformationOperator.Axis1.Dim = 3)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "AXIS1", "IFCCARTESIANTRANSFORMATIONOPERATOR"))), () => r.eq(r.attr(r.attr(self, "AXIS1", "IFCCARTESIANTRANSFORMATIONOPERATOR"), "DIM"), 3)) },
+      { label: "WR3", source: "NOT(EXISTS(SELF\\IfcCartesianTransformationOperator.Axis2)) OR (SELF\\IfcCartesianTransformationOperator.Axis2.Dim = 3)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "AXIS2", "IFCCARTESIANTRANSFORMATIONOPERATOR"))), () => r.eq(r.attr(r.attr(self, "AXIS2", "IFCCARTESIANTRANSFORMATIONOPERATOR"), "DIM"), 3)) },
       { label: "WR4", source: "NOT(EXISTS(Axis3)) OR (Axis3.Dim = 3)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "AXIS3"))), () => r.eq(r.attr(r.attr(self, "AXIS3"), "DIM"), 3)) },
     ],
     "IfcCartesianTransformationOperator3DnonUniform": [
@@ -1339,63 +1339,63 @@ export const RULES: r.CompiledRules = {
       { label: "WR2", source: "Scl3 > 0.0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.gt(r.attr(self, "SCL3"), 0) },
     ],
     "IfcChillerType": [
-      { label: "WR1", source: "(PredefinedType <> IfcChillerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcChillerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcChillerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcChillerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcCircleHollowProfileDef": [
-      { label: "WR1", source: "WallThickness < SELF\\IfcCircleProfileDef.Radius", check: (self: r.EntityInstance, m: r.Model): r.Value => r.lt(r.attr(self, "WALLTHICKNESS"), r.attr(self, "RADIUS")) },
+      { label: "WR1", source: "WallThickness < SELF\\IfcCircleProfileDef.Radius", check: (self: r.EntityInstance, m: r.Model): r.Value => r.lt(r.attr(self, "WALLTHICKNESS"), r.attr(self, "RADIUS", "IFCCIRCLEPROFILEDEF")) },
     ],
     "IfcCoilType": [
-      { label: "WR1", source: "(PredefinedType <> IfcCoilTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCoilTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcCoilTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCoilTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcComplexProperty": [
-      { label: "WR21", source: "SIZEOF(QUERY(temp <* HasProperties | SELF :=: temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "HASPROPERTIES"), (q115: r.Value) => r.same(self, q115))), 0) },
+      { label: "WR21", source: "SIZEOF(QUERY(temp <* HasProperties | SELF :=: temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "HASPROPERTIES"), (q_115: r.Value) => r.same(self, q_115))), 0) },
       { label: "WR22", source: "IfcUniquePropertyName(HasProperties)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcUniquePropertyName(m, r.attr(self, "HASPROPERTIES")) },
     ],
     "IfcCompositeCurve": [
-      { label: "WR41", source: "((NOT ClosedCurve) AND (SIZEOF(QUERY(Temp <* Segments | Temp.Transition = Discontinuous)) = 1)) OR ((ClosedCurve) AND (SIZEOF(QUERY(Temp <* Segments | Temp.Transition = Discontinuous)) = 0))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.and(r.not(r.attr(self, "CLOSEDCURVE")), () => r.eq(r.sizeof(r.query(r.attr(self, "SEGMENTS"), (q116: r.Value) => r.eq(r.attr(q116, "TRANSITION"), E_DISCONTINUOUS))), 1)), () => r.and(r.attr(self, "CLOSEDCURVE"), () => r.eq(r.sizeof(r.query(r.attr(self, "SEGMENTS"), (q117: r.Value) => r.eq(r.attr(q117, "TRANSITION"), E_DISCONTINUOUS))), 0))) },
-      { label: "WR42", source: "SIZEOF( QUERY( Temp <* Segments | Temp.Dim <> Segments[1].Dim)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "SEGMENTS"), (q118: r.Value) => r.ne(r.attr(q118, "DIM"), r.attr(r.index(r.attr(self, "SEGMENTS"), 1), "DIM")))), 0) },
+      { label: "WR41", source: "((NOT ClosedCurve) AND (SIZEOF(QUERY(Temp <* Segments | Temp.Transition = Discontinuous)) = 1)) OR ((ClosedCurve) AND (SIZEOF(QUERY(Temp <* Segments | Temp.Transition = Discontinuous)) = 0))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.and(r.not(r.attr(self, "CLOSEDCURVE")), () => r.eq(r.sizeof(r.query(r.attr(self, "SEGMENTS"), (q_116: r.Value) => r.eq(r.attr(q_116, "TRANSITION"), E_DISCONTINUOUS))), 1)), () => r.and(r.attr(self, "CLOSEDCURVE"), () => r.eq(r.sizeof(r.query(r.attr(self, "SEGMENTS"), (q_117: r.Value) => r.eq(r.attr(q_117, "TRANSITION"), E_DISCONTINUOUS))), 0))) },
+      { label: "WR42", source: "SIZEOF( QUERY( Temp <* Segments | Temp.Dim <> Segments[1].Dim)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "SEGMENTS"), (q_118: r.Value) => r.ne(r.attr(q_118, "DIM"), r.attr(r.index(r.attr(self, "SEGMENTS"), 1), "DIM")))), 0) },
     ],
     "IfcCompositeCurveSegment": [
       { label: "WR1", source: "('IFC2X3.IFCBOUNDEDCURVE' IN TYPEOF(ParentCurve))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.typeIs(m, r.attr(self, "PARENTCURVE"), "IFCBOUNDEDCURVE") },
     ],
     "IfcCompositeProfileDef": [
-      { label: "WR1", source: "SIZEOF(QUERY(temp <* Profiles | temp.ProfileType <> Profiles[1].ProfileType)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "PROFILES"), (q119: r.Value) => r.ne(r.attr(q119, "PROFILETYPE"), r.attr(r.index(r.attr(self, "PROFILES"), 1), "PROFILETYPE")))), 0) },
-      { label: "WR2", source: "SIZEOF(QUERY(temp <* Profiles | 'IFC2X3.IFCCOMPOSITEPROFILEDEF' IN TYPEOF(temp))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "PROFILES"), (q120: r.Value) => r.typeIs(m, q120, "IFCCOMPOSITEPROFILEDEF"))), 0) },
+      { label: "WR1", source: "SIZEOF(QUERY(temp <* Profiles | temp.ProfileType <> Profiles[1].ProfileType)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "PROFILES"), (q_119: r.Value) => r.ne(r.attr(q_119, "PROFILETYPE"), r.attr(r.index(r.attr(self, "PROFILES"), 1), "PROFILETYPE")))), 0) },
+      { label: "WR2", source: "SIZEOF(QUERY(temp <* Profiles | 'IFC2X3.IFCCOMPOSITEPROFILEDEF' IN TYPEOF(temp))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "PROFILES"), (q_120: r.Value) => r.typeIs(m, q_120, "IFCCOMPOSITEPROFILEDEF"))), 0) },
     ],
     "IfcCompressorType": [
-      { label: "WR1", source: "(PredefinedType <> IfcCompressorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCompressorTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcCompressorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCompressorTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcCondenserType": [
-      { label: "WR1", source: "(PredefinedType <> IfcCondenserTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCondenserTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcCondenserTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCondenserTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcConditionCriterion": [
-      { label: "WR1", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME")) },
+      { label: "WR1", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME", "IFCROOT")) },
     ],
     "IfcConstraint": [
-      { label: "WR11", source: "(ConstraintGrade <> IfcConstraintEnum.USERDEFINED) OR ((ConstraintGrade = IfcConstraintEnum.USERDEFINED) AND EXISTS(SELF\\IfcConstraint.UserDefinedGrade))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "CONSTRAINTGRADE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "CONSTRAINTGRADE"), E_USERDEFINED), () => r.exists(r.attr(self, "USERDEFINEDGRADE")))) },
+      { label: "WR11", source: "(ConstraintGrade <> IfcConstraintEnum.USERDEFINED) OR ((ConstraintGrade = IfcConstraintEnum.USERDEFINED) AND EXISTS(SELF\\IfcConstraint.UserDefinedGrade))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "CONSTRAINTGRADE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "CONSTRAINTGRADE"), E_USERDEFINED), () => r.exists(r.attr(self, "USERDEFINEDGRADE", "IFCCONSTRAINT")))) },
     ],
     "IfcConstraintAggregationRelationship": [
-      { label: "WR11", source: "SIZEOF(QUERY(temp <* RelatedConstraints | temp :=: RelatingConstraint )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDCONSTRAINTS"), (q121: r.Value) => r.same(q121, r.attr(self, "RELATINGCONSTRAINT")))), 0) },
+      { label: "WR11", source: "SIZEOF(QUERY(temp <* RelatedConstraints | temp :=: RelatingConstraint )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDCONSTRAINTS"), (q_121: r.Value) => r.same(q_121, r.attr(self, "RELATINGCONSTRAINT")))), 0) },
     ],
     "IfcConstraintRelationship": [
-      { label: "WR11", source: "SIZEOF(QUERY(temp <* RelatedConstraints | temp :=: RelatingConstraint )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDCONSTRAINTS"), (q122: r.Value) => r.same(q122, r.attr(self, "RELATINGCONSTRAINT")))), 0) },
+      { label: "WR11", source: "SIZEOF(QUERY(temp <* RelatedConstraints | temp :=: RelatingConstraint )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDCONSTRAINTS"), (q_122: r.Value) => r.same(q_122, r.attr(self, "RELATINGCONSTRAINT")))), 0) },
     ],
     "IfcConstructionMaterialResource": [
-      { label: "WR1", source: "SIZEOF(SELF\\IfcResource.ResourceOf) <=1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.attr(self, "RESOURCEOF")), 1) },
-      { label: "WR2", source: "NOT(EXISTS(SELF\\IfcResource.ResourceOf[1])) OR (SELF\\IfcResource.ResourceOf[1].RelatedObjectsType = IfcObjectTypeEnum.PRODUCT)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.index(r.attr(self, "RESOURCEOF"), 1))), () => r.eq(r.attr(r.index(r.attr(self, "RESOURCEOF"), 1), "RELATEDOBJECTSTYPE"), E_PRODUCT)) },
+      { label: "WR1", source: "SIZEOF(SELF\\IfcResource.ResourceOf) <=1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.attr(self, "RESOURCEOF", "IFCRESOURCE")), 1) },
+      { label: "WR2", source: "NOT(EXISTS(SELF\\IfcResource.ResourceOf[1])) OR (SELF\\IfcResource.ResourceOf[1].RelatedObjectsType = IfcObjectTypeEnum.PRODUCT)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.index(r.attr(self, "RESOURCEOF", "IFCRESOURCE"), 1))), () => r.eq(r.attr(r.index(r.attr(self, "RESOURCEOF", "IFCRESOURCE"), 1), "RELATEDOBJECTSTYPE"), E_PRODUCT)) },
     ],
     "IfcConstructionProductResource": [
-      { label: "WR1", source: "SIZEOF(SELF\\IfcResource.ResourceOf) <=1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.attr(self, "RESOURCEOF")), 1) },
-      { label: "WR2", source: "NOT(EXISTS(SELF\\IfcResource.ResourceOf[1])) OR (SELF\\IfcResource.ResourceOf[1].RelatedObjectsType = IfcObjectTypeEnum.PRODUCT)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.index(r.attr(self, "RESOURCEOF"), 1))), () => r.eq(r.attr(r.index(r.attr(self, "RESOURCEOF"), 1), "RELATEDOBJECTSTYPE"), E_PRODUCT)) },
+      { label: "WR1", source: "SIZEOF(SELF\\IfcResource.ResourceOf) <=1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.attr(self, "RESOURCEOF", "IFCRESOURCE")), 1) },
+      { label: "WR2", source: "NOT(EXISTS(SELF\\IfcResource.ResourceOf[1])) OR (SELF\\IfcResource.ResourceOf[1].RelatedObjectsType = IfcObjectTypeEnum.PRODUCT)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.index(r.attr(self, "RESOURCEOF", "IFCRESOURCE"), 1))), () => r.eq(r.attr(r.index(r.attr(self, "RESOURCEOF", "IFCRESOURCE"), 1), "RELATEDOBJECTSTYPE"), E_PRODUCT)) },
     ],
     "IfcCooledBeamType": [
-      { label: "WR1", source: "(PredefinedType <> IfcCooledBeamTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCooledBeamTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcCooledBeamTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCooledBeamTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcCoolingTowerType": [
-      { label: "WR1", source: "(PredefinedType <> IfcCoolingTowerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCoolingTowerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcCoolingTowerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCoolingTowerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcCovering": [
-      { label: "WR61", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcCoveringTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCoveringTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
+      { label: "WR61", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcCoveringTypeEnum.USERDEFINED) OR ((PredefinedType = IfcCoveringTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
     ],
     "IfcCurveStyle": [
       { label: "WR11", source: "(NOT(EXISTS(CurveWidth))) OR ('IFC2X3.IFCPOSITIVELENGTHMEASURE' IN TYPEOF(CurveWidth)) OR (('IFC2X3.IFCDESCRIPTIVEMEASURE' IN TYPEOF(CurveWidth)) AND (CurveWidth = 'by layer'))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "CURVEWIDTH"))), () => r.typeIs(m, r.attr(self, "CURVEWIDTH"), "IFCPOSITIVELENGTHMEASURE")), () => r.and(r.typeIs(m, r.attr(self, "CURVEWIDTH"), "IFCDESCRIPTIVEMEASURE"), () => r.eq(r.attr(self, "CURVEWIDTH"), "by layer"))) },
@@ -1404,31 +1404,31 @@ export const RULES: r.CompiledRules = {
       { label: "WR01", source: "VisibleSegmentLength >= 0.", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ge(r.attr(self, "VISIBLESEGMENTLENGTH"), 0) },
     ],
     "IfcDamperType": [
-      { label: "WR1", source: "(PredefinedType <> IfcDamperTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDamperTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcDamperTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDamperTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcDerivedProfileDef": [
-      { label: "WR1", source: "SELF\\IfcProfileDef.ProfileType = ParentProfile.ProfileType", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(self, "PROFILETYPE"), r.attr(r.attr(self, "PARENTPROFILE"), "PROFILETYPE")) },
+      { label: "WR1", source: "SELF\\IfcProfileDef.ProfileType = ParentProfile.ProfileType", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(self, "PROFILETYPE", "IFCPROFILEDEF"), r.attr(r.attr(self, "PARENTPROFILE"), "PROFILETYPE")) },
     ],
     "IfcDerivedUnit": [
       { label: "WR1", source: "(SIZEOF (Elements) > 1) OR ((SIZEOF (Elements) = 1) AND (Elements[1].Exponent <> 1 ))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.gt(r.sizeof(r.attr(self, "ELEMENTS")), 1), () => r.and(r.eq(r.sizeof(r.attr(self, "ELEMENTS")), 1), () => r.ne(r.attr(r.index(r.attr(self, "ELEMENTS"), 1), "EXPONENT"), 1))) },
       { label: "WR2", source: "(UnitType <> IfcDerivedUnitEnum.USERDEFINED) OR ((UnitType = IfcDerivedUnitEnum.USERDEFINED) AND (EXISTS(SELF.UserDefinedType)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "UNITTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "UNITTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "USERDEFINEDTYPE")))) },
     ],
     "IfcDimensionCalloutRelationship": [
-      { label: "WR11", source: "SELF\\IfcDraughtingCalloutRelationship.Name IN ['primary','secondary']", check: (self: r.EntityInstance, m: r.Model): r.Value => r.isIn(r.attr(self, "NAME"), r.aggregate([["primary"], ["secondary"]])) },
-      { label: "WR12", source: "SIZEOF(TYPEOF(SELF\\IfcDraughtingCalloutRelationship.RelatingDraughtingCallout) * [ 'IFC2X3.IFCANGULARDIMENSION', 'IFC2X3.IFCDIAMETERDIMENSION', 'IFC2X3.IFCLINEARDIMENSION', 'IFC2X3.IFCRADIUSDIMENSION']) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.mul(r.typeOf(m, r.attr(self, "RELATINGDRAUGHTINGCALLOUT")), r.aggregate([["IFC2X3.IFCANGULARDIMENSION"], ["IFC2X3.IFCDIAMETERDIMENSION"], ["IFC2X3.IFCLINEARDIMENSION"], ["IFC2X3.IFCRADIUSDIMENSION"]]))), 1) },
-      { label: "WR13", source: "NOT ('IFC2X3.IFCDIMENSIONCURVEDIRECTEDCALLOUT' IN TYPEOF (SELF\\IfcDraughtingCalloutRelationship.RelatedDraughtingCallout))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.not(r.typeIs(m, r.attr(self, "RELATEDDRAUGHTINGCALLOUT"), "IFCDIMENSIONCURVEDIRECTEDCALLOUT")) },
+      { label: "WR11", source: "SELF\\IfcDraughtingCalloutRelationship.Name IN ['primary','secondary']", check: (self: r.EntityInstance, m: r.Model): r.Value => r.isIn(r.attr(self, "NAME", "IFCDRAUGHTINGCALLOUTRELATIONSHIP"), r.aggregate([["primary"], ["secondary"]])) },
+      { label: "WR12", source: "SIZEOF(TYPEOF(SELF\\IfcDraughtingCalloutRelationship.RelatingDraughtingCallout) * [ 'IFC2X3.IFCANGULARDIMENSION', 'IFC2X3.IFCDIAMETERDIMENSION', 'IFC2X3.IFCLINEARDIMENSION', 'IFC2X3.IFCRADIUSDIMENSION']) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.mul(r.typeOf(m, r.attr(self, "RELATINGDRAUGHTINGCALLOUT", "IFCDRAUGHTINGCALLOUTRELATIONSHIP")), r.aggregate([["IFC2X3.IFCANGULARDIMENSION"], ["IFC2X3.IFCDIAMETERDIMENSION"], ["IFC2X3.IFCLINEARDIMENSION"], ["IFC2X3.IFCRADIUSDIMENSION"]]))), 1) },
+      { label: "WR13", source: "NOT ('IFC2X3.IFCDIMENSIONCURVEDIRECTEDCALLOUT' IN TYPEOF (SELF\\IfcDraughtingCalloutRelationship.RelatedDraughtingCallout))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.not(r.typeIs(m, r.attr(self, "RELATEDDRAUGHTINGCALLOUT", "IFCDRAUGHTINGCALLOUTRELATIONSHIP"), "IFCDIMENSIONCURVEDIRECTEDCALLOUT")) },
     ],
     "IfcDimensionCurve": [
       { label: "WR51", source: "SIZEOF(USEDIN(SELF,'IFC2X3.IFCDRAUGHTINGCALLOUT.CONTENTS')) >= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ge(r.sizeof(r.usedIn(m, self, "IFC2X3.IFCDRAUGHTINGCALLOUT.CONTENTS")), 1) },
-      { label: "WR52", source: "(SIZEOF(QUERY (Dct1 <* USEDIN(SELF,'IFC2X3.' + 'IFCTERMINATORSYMBOL.ANNOTATEDCURVE') | (Dct1.Role = IfcDimensionExtentUsage.ORIGIN))) <= 1) AND (SIZEOF(QUERY (Dct2 <* USEDIN(SELF,'IFC2X3.' + 'IFCTERMINATORSYMBOL.ANNOTATEDCURVE') | (Dct2.Role = IfcDimensionExtentUsage.TARGET))) <= 1)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.le(r.sizeof(r.query(r.usedIn(m, self, r.add("IFC2X3.", "IFCTERMINATORSYMBOL.ANNOTATEDCURVE")), (q123: r.Value) => r.eq(r.attr(q123, "ROLE"), E_ORIGIN))), 1), () => r.le(r.sizeof(r.query(r.usedIn(m, self, r.add("IFC2X3.", "IFCTERMINATORSYMBOL.ANNOTATEDCURVE")), (q124: r.Value) => r.eq(r.attr(q124, "ROLE"), E_TARGET))), 1)) },
-      { label: "WR53", source: "SIZEOF(QUERY (Dct <* AnnotatedBySymbols | NOT('IFC2X3.IFCDIMENSIONCURVETERMINATOR' IN TYPEOF(Dct)))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ANNOTATEDBYSYMBOLS"), (q125: r.Value) => r.not(r.typeIs(m, q125, "IFCDIMENSIONCURVETERMINATOR")))), 0) },
+      { label: "WR52", source: "(SIZEOF(QUERY (Dct1 <* USEDIN(SELF,'IFC2X3.' + 'IFCTERMINATORSYMBOL.ANNOTATEDCURVE') | (Dct1.Role = IfcDimensionExtentUsage.ORIGIN))) <= 1) AND (SIZEOF(QUERY (Dct2 <* USEDIN(SELF,'IFC2X3.' + 'IFCTERMINATORSYMBOL.ANNOTATEDCURVE') | (Dct2.Role = IfcDimensionExtentUsage.TARGET))) <= 1)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.le(r.sizeof(r.query(r.usedIn(m, self, r.add("IFC2X3.", "IFCTERMINATORSYMBOL.ANNOTATEDCURVE")), (q_123: r.Value) => r.eq(r.attr(q_123, "ROLE"), E_ORIGIN))), 1), () => r.le(r.sizeof(r.query(r.usedIn(m, self, r.add("IFC2X3.", "IFCTERMINATORSYMBOL.ANNOTATEDCURVE")), (q_124: r.Value) => r.eq(r.attr(q_124, "ROLE"), E_TARGET))), 1)) },
+      { label: "WR53", source: "SIZEOF(QUERY (Dct <* AnnotatedBySymbols | NOT('IFC2X3.IFCDIMENSIONCURVETERMINATOR' IN TYPEOF(Dct)))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ANNOTATEDBYSYMBOLS"), (q_125: r.Value) => r.not(r.typeIs(m, q_125, "IFCDIMENSIONCURVETERMINATOR")))), 0) },
     ],
     "IfcDimensionCurveDirectedCallout": [
-      { label: "WR41", source: "SIZEOF(QUERY (Dc <* SELF\\IfcDraughtingCallout.Contents | ( 'IFC2X3.IFCDIMENSIONCURVE' IN TYPEOF(Dc)))) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "CONTENTS"), (q126: r.Value) => r.typeIs(m, q126, "IFCDIMENSIONCURVE"))), 1) },
-      { label: "WR42", source: "SIZEOF (QUERY (Dc <* SELF.contents | ('IFC2X3.IFCPROJECTIONCURVE' IN TYPEOF (Dc)))) <= 2", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "CONTENTS"), (q127: r.Value) => r.typeIs(m, q127, "IFCPROJECTIONCURVE"))), 2) },
+      { label: "WR41", source: "SIZEOF(QUERY (Dc <* SELF\\IfcDraughtingCallout.Contents | ( 'IFC2X3.IFCDIMENSIONCURVE' IN TYPEOF(Dc)))) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "CONTENTS", "IFCDRAUGHTINGCALLOUT"), (q_126: r.Value) => r.typeIs(m, q_126, "IFCDIMENSIONCURVE"))), 1) },
+      { label: "WR42", source: "SIZEOF (QUERY (Dc <* SELF.contents | ('IFC2X3.IFCPROJECTIONCURVE' IN TYPEOF (Dc)))) <= 2", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "CONTENTS"), (q_127: r.Value) => r.typeIs(m, q_127, "IFCPROJECTIONCURVE"))), 2) },
     ],
     "IfcDimensionCurveTerminator": [
-      { label: "WR61", source: "'IFC2X3.IFCDIMENSIONCURVE' IN TYPEOF (SELF\\IfcTerminatorSymbol.AnnotatedCurve)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.typeIs(m, r.attr(self, "ANNOTATEDCURVE"), "IFCDIMENSIONCURVE") },
+      { label: "WR61", source: "'IFC2X3.IFCDIMENSIONCURVE' IN TYPEOF (SELF\\IfcTerminatorSymbol.AnnotatedCurve)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.typeIs(m, r.attr(self, "ANNOTATEDCURVE", "IFCTERMINATORSYMBOL"), "IFCDIMENSIONCURVE") },
     ],
     "IfcDimensionPair": [
       { label: "WR11", source: "SELF.Name IN ['chained','parallel']", check: (self: r.EntityInstance, m: r.Model): r.Value => r.isIn(r.attr(self, "NAME"), r.aggregate([["chained"], ["parallel"]])) },
@@ -1446,47 +1446,47 @@ export const RULES: r.CompiledRules = {
       { label: "WR32", source: "NOT(NOT(EXISTS(ThresholdDepth)) AND EXISTS(ThresholdThickness))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.not(r.and(r.not(r.exists(r.attr(self, "THRESHOLDDEPTH"))), () => r.exists(r.attr(self, "THRESHOLDTHICKNESS")))) },
       { label: "WR33", source: "(EXISTS(TransomOffset) AND EXISTS(TransomThickness)) XOR (NOT(EXISTS(TransomOffset)) AND NOT(EXISTS(TransomThickness)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.xor(r.and(r.exists(r.attr(self, "TRANSOMOFFSET")), () => r.exists(r.attr(self, "TRANSOMTHICKNESS"))), r.and(r.not(r.exists(r.attr(self, "TRANSOMOFFSET"))), () => r.not(r.exists(r.attr(self, "TRANSOMTHICKNESS"))))) },
       { label: "WR34", source: "(EXISTS(CasingDepth) AND EXISTS(CasingThickness)) XOR (NOT(EXISTS(CasingDepth)) AND NOT(EXISTS(CasingThickness)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.xor(r.and(r.exists(r.attr(self, "CASINGDEPTH")), () => r.exists(r.attr(self, "CASINGTHICKNESS"))), r.and(r.not(r.exists(r.attr(self, "CASINGDEPTH"))), () => r.not(r.exists(r.attr(self, "CASINGTHICKNESS"))))) },
-      { label: "WR35", source: "EXISTS(SELF\\IfcPropertySetDefinition.DefinesType[1]) AND ('IFC2X3.IFCDOORSTYLE' IN TYPEOF(SELF\\IfcPropertySetDefinition.DefinesType[1]))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.exists(r.index(r.attr(self, "DEFINESTYPE"), 1)), () => r.typeIs(m, r.index(r.attr(self, "DEFINESTYPE"), 1), "IFCDOORSTYLE")) },
+      { label: "WR35", source: "EXISTS(SELF\\IfcPropertySetDefinition.DefinesType[1]) AND ('IFC2X3.IFCDOORSTYLE' IN TYPEOF(SELF\\IfcPropertySetDefinition.DefinesType[1]))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.exists(r.index(r.attr(self, "DEFINESTYPE", "IFCPROPERTYSETDEFINITION"), 1)), () => r.typeIs(m, r.index(r.attr(self, "DEFINESTYPE", "IFCPROPERTYSETDEFINITION"), 1), "IFCDOORSTYLE")) },
     ],
     "IfcDoorPanelProperties": [
-      { label: "WR31", source: "EXISTS(SELF\\IfcPropertySetDefinition.DefinesType[1]) AND ('IFC2X3.IFCDOORSTYLE' IN TYPEOF(SELF\\IfcPropertySetDefinition.DefinesType[1]))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.exists(r.index(r.attr(self, "DEFINESTYPE"), 1)), () => r.typeIs(m, r.index(r.attr(self, "DEFINESTYPE"), 1), "IFCDOORSTYLE")) },
+      { label: "WR31", source: "EXISTS(SELF\\IfcPropertySetDefinition.DefinesType[1]) AND ('IFC2X3.IFCDOORSTYLE' IN TYPEOF(SELF\\IfcPropertySetDefinition.DefinesType[1]))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.exists(r.index(r.attr(self, "DEFINESTYPE", "IFCPROPERTYSETDEFINITION"), 1)), () => r.typeIs(m, r.index(r.attr(self, "DEFINESTYPE", "IFCPROPERTYSETDEFINITION"), 1), "IFCDOORSTYLE")) },
     ],
     "IfcDraughtingPreDefinedColour": [
-      { label: "WR31", source: "SELF\\IfcPreDefinedItem.Name IN ['black','red','green','blue','yellow', 'magenta','cyan','white','by layer']", check: (self: r.EntityInstance, m: r.Model): r.Value => r.isIn(r.attr(self, "NAME"), r.aggregate([["black"], ["red"], ["green"], ["blue"], ["yellow"], ["magenta"], ["cyan"], ["white"], ["by layer"]])) },
+      { label: "WR31", source: "SELF\\IfcPreDefinedItem.Name IN ['black','red','green','blue','yellow', 'magenta','cyan','white','by layer']", check: (self: r.EntityInstance, m: r.Model): r.Value => r.isIn(r.attr(self, "NAME", "IFCPREDEFINEDITEM"), r.aggregate([["black"], ["red"], ["green"], ["blue"], ["yellow"], ["magenta"], ["cyan"], ["white"], ["by layer"]])) },
     ],
     "IfcDraughtingPreDefinedCurveFont": [
-      { label: "WR31", source: "SELF\\IfcPredefinedItem.Name IN ['continuous', 'chain', 'chain double dash', 'dashed', 'dotted', 'by layer']", check: (self: r.EntityInstance, m: r.Model): r.Value => r.isIn(r.attr(self, "NAME"), r.aggregate([["continuous"], ["chain"], ["chain double dash"], ["dashed"], ["dotted"], ["by layer"]])) },
+      { label: "WR31", source: "SELF\\IfcPredefinedItem.Name IN ['continuous', 'chain', 'chain double dash', 'dashed', 'dotted', 'by layer']", check: (self: r.EntityInstance, m: r.Model): r.Value => r.isIn(r.attr(self, "NAME", "IFCPREDEFINEDITEM"), r.aggregate([["continuous"], ["chain"], ["chain double dash"], ["dashed"], ["dotted"], ["by layer"]])) },
     ],
     "IfcDraughtingPreDefinedTextFont": [
-      { label: "WR31", source: "SELF\\IfcPreDefinedItem.Name IN ['ISO 3098-1 font A','ISO 3098-1 font B']", check: (self: r.EntityInstance, m: r.Model): r.Value => r.isIn(r.attr(self, "NAME"), r.aggregate([["ISO 3098-1 font A"], ["ISO 3098-1 font B"]])) },
+      { label: "WR31", source: "SELF\\IfcPreDefinedItem.Name IN ['ISO 3098-1 font A','ISO 3098-1 font B']", check: (self: r.EntityInstance, m: r.Model): r.Value => r.isIn(r.attr(self, "NAME", "IFCPREDEFINEDITEM"), r.aggregate([["ISO 3098-1 font A"], ["ISO 3098-1 font B"]])) },
     ],
     "IfcDuctFittingType": [
-      { label: "WR2", source: "(PredefinedType <> IfcDuctFittingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDuctFittingTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR2", source: "(PredefinedType <> IfcDuctFittingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDuctFittingTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcDuctSegmentType": [
-      { label: "WR1", source: "(PredefinedType <> IfcDuctSegmentTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDuctSegmentTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcDuctSegmentTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDuctSegmentTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcDuctSilencerType": [
-      { label: "WR1", source: "(PredefinedType <> IfcDuctSilencerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDuctSilencerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcDuctSilencerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcDuctSilencerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcEdgeLoop": [
       { label: "WR1", source: "(EdgeList[1].EdgeStart) :=: (EdgeList[Ne].EdgeEnd)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.same(r.attr(r.index(r.attr(self, "EDGELIST"), 1), "EDGESTART"), r.attr(r.index(r.attr(self, "EDGELIST"), r.attr(self, "NE")), "EDGEEND")) },
       { label: "WR2", source: "IfcLoopHeadToTail(SELF)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcLoopHeadToTail(m, self) },
     ],
     "IfcElectricDistributionPoint": [
-      { label: "WR31", source: "(DistributionPointFunction <> IfcElectricDistributionPointFunctionEnum.USERDEFINED) OR ((DistributionPointFunction = IfcElectricDistributionPointFunctionEnum.USERDEFINED) AND EXISTS(SELF\\IfcElectricDistributionPoint.UserDefinedFunction))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "DISTRIBUTIONPOINTFUNCTION"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "DISTRIBUTIONPOINTFUNCTION"), E_USERDEFINED), () => r.exists(r.attr(self, "USERDEFINEDFUNCTION")))) },
+      { label: "WR31", source: "(DistributionPointFunction <> IfcElectricDistributionPointFunctionEnum.USERDEFINED) OR ((DistributionPointFunction = IfcElectricDistributionPointFunctionEnum.USERDEFINED) AND EXISTS(SELF\\IfcElectricDistributionPoint.UserDefinedFunction))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "DISTRIBUTIONPOINTFUNCTION"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "DISTRIBUTIONPOINTFUNCTION"), E_USERDEFINED), () => r.exists(r.attr(self, "USERDEFINEDFUNCTION", "IFCELECTRICDISTRIBUTIONPOINT")))) },
     ],
     "IfcElementAssembly": [
-      { label: "WR1", source: "(PredefinedType <> IfcElementAssemblyTypeEnum.USERDEFINED) OR ((PredefinedType = IfcElementAssemblyTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcElementAssemblyTypeEnum.USERDEFINED) OR ((PredefinedType = IfcElementAssemblyTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
     ],
     "IfcEnvironmentalImpactValue": [
-      { label: "WR1", source: "(Category <> IfcEnvironmentalImpactCategoryEnum.USERDEFINED) OR ((Category = IfcEnvironmentalImpactCategoryEnum.USERDEFINED) AND EXISTS(SELF\\IfcEnvironmentalImpactValue.UserDefinedCategory))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "CATEGORY"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "CATEGORY"), E_USERDEFINED), () => r.exists(r.attr(self, "USERDEFINEDCATEGORY")))) },
+      { label: "WR1", source: "(Category <> IfcEnvironmentalImpactCategoryEnum.USERDEFINED) OR ((Category = IfcEnvironmentalImpactCategoryEnum.USERDEFINED) AND EXISTS(SELF\\IfcEnvironmentalImpactValue.UserDefinedCategory))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "CATEGORY"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "CATEGORY"), E_USERDEFINED), () => r.exists(r.attr(self, "USERDEFINEDCATEGORY", "IFCENVIRONMENTALIMPACTVALUE")))) },
     ],
     "IfcEvaporativeCoolerType": [
-      { label: "WR1", source: "(PredefinedType <> IfcEvaporativeCoolerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcEvaporativeCoolerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcEvaporativeCoolerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcEvaporativeCoolerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcEvaporatorType": [
-      { label: "WR1", source: "(PredefinedType <> IfcEvaporatorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcEvaporatorTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcEvaporatorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcEvaporatorTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcExternalReference": [
       { label: "WR1", source: "EXISTS(ItemReference) OR EXISTS(Location) OR EXISTS(Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.exists(r.attr(self, "ITEMREFERENCE")), () => r.exists(r.attr(self, "LOCATION"))), () => r.exists(r.attr(self, "NAME"))) },
@@ -1495,14 +1495,14 @@ export const RULES: r.CompiledRules = {
       { label: "WR31", source: "IfcDotProduct(IfcRepresentationItem() || IfcGeometricRepresentationItem() || IfcDirection([0.0,0.0,1.0]), SELF.ExtrudedDirection) <> 0.0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ne(fn_IfcDotProduct(m, r.complex(m, [r.construct(m, "IfcRepresentationItem", []), r.construct(m, "IfcGeometricRepresentationItem", []), r.construct(m, "IfcDirection", [r.aggregate([[0], [0], [1]])])]), r.attr(self, "EXTRUDEDDIRECTION")), 0) },
     ],
     "IfcFace": [
-      { label: "WR1", source: "SIZEOF(QUERY(temp <* Bounds | 'IFC2X3.IFCFACEOUTERBOUND' IN TYPEOF(temp))) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "BOUNDS"), (q128: r.Value) => r.typeIs(m, q128, "IFCFACEOUTERBOUND"))), 1) },
+      { label: "WR1", source: "SIZEOF(QUERY(temp <* Bounds | 'IFC2X3.IFCFACEOUTERBOUND' IN TYPEOF(temp))) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "BOUNDS"), (q_128: r.Value) => r.typeIs(m, q_128, "IFCFACEOUTERBOUND"))), 1) },
     ],
     "IfcFanType": [
-      { label: "WR1", source: "(PredefinedType <> IfcFanTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFanTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcFanTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFanTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcFillAreaStyle": [
-      { label: "WR11", source: "SIZEOF(QUERY(Style <* SELF.FillStyles | 'IFC2X3.IFCCOLOUR' IN TYPEOF(Style) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "FILLSTYLES"), (q129: r.Value) => r.typeIs(m, q129, "IFCCOLOUR"))), 1) },
-      { label: "WR12", source: "SIZEOF(QUERY(Style <* SELF.FillStyles | 'IFC2X3.IFCEXTERNALLYDEFINEDHATCHSTYLE' IN TYPEOF(Style) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "FILLSTYLES"), (q130: r.Value) => r.typeIs(m, q130, "IFCEXTERNALLYDEFINEDHATCHSTYLE"))), 1) },
+      { label: "WR11", source: "SIZEOF(QUERY(Style <* SELF.FillStyles | 'IFC2X3.IFCCOLOUR' IN TYPEOF(Style) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "FILLSTYLES"), (q_129: r.Value) => r.typeIs(m, q_129, "IFCCOLOUR"))), 1) },
+      { label: "WR12", source: "SIZEOF(QUERY(Style <* SELF.FillStyles | 'IFC2X3.IFCEXTERNALLYDEFINEDHATCHSTYLE' IN TYPEOF(Style) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "FILLSTYLES"), (q_130: r.Value) => r.typeIs(m, q_130, "IFCEXTERNALLYDEFINEDHATCHSTYLE"))), 1) },
       { label: "WR13", source: "IfcCorrectFillAreaStyle(SELF.FillStyles)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcCorrectFillAreaStyle(m, r.attr(self, "FILLSTYLES")) },
     ],
     "IfcFillAreaStyleHatching": [
@@ -1511,42 +1511,42 @@ export const RULES: r.CompiledRules = {
       { label: "WR23", source: "NOT(EXISTS(PointOfReferenceHatchLine)) OR (PointOfReferenceHatchLine.Dim = 2)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "POINTOFREFERENCEHATCHLINE"))), () => r.eq(r.attr(r.attr(self, "POINTOFREFERENCEHATCHLINE"), "DIM"), 2)) },
     ],
     "IfcFilterType": [
-      { label: "WR1", source: "(PredefinedType <> IfcFilterTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFilterTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcFilterTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFilterTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcFlowMeterType": [
-      { label: "WR1", source: "(PredefinedType <> IfcFlowMeterTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFlowMeterTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcFlowMeterTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFlowMeterTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcFooting": [
-      { label: "WR1", source: "(PredefinedType <> IfcFootingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFootingTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcFootingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcFootingTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
     ],
     "IfcGasTerminalType": [
-      { label: "WR1", source: "(PredefinedType <> IfcGasTerminalTypeEnum.USERDEFINED) OR ((PredefinedType = IfcGasTerminalTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcGasTerminalTypeEnum.USERDEFINED) OR ((PredefinedType = IfcGasTerminalTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcGeneralProfileProperties": [
       { label: "WR1", source: "NOT(EXISTS(CrossSectionArea)) OR (CrossSectionArea > 0.)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "CROSSSECTIONAREA"))), () => r.gt(r.attr(self, "CROSSSECTIONAREA"), 0)) },
     ],
     "IfcGeometricCurveSet": [
-      { label: "WR1", source: "SIZEOF(QUERY(Temp <* SELF\\IfcGeometricSet.Elements | 'IFC2X3.IFCSURFACE' IN TYPEOF(Temp))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ELEMENTS"), (q131: r.Value) => r.typeIs(m, q131, "IFCSURFACE"))), 0) },
+      { label: "WR1", source: "SIZEOF(QUERY(Temp <* SELF\\IfcGeometricSet.Elements | 'IFC2X3.IFCSURFACE' IN TYPEOF(Temp))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ELEMENTS", "IFCGEOMETRICSET"), (q_131: r.Value) => r.typeIs(m, q_131, "IFCSURFACE"))), 0) },
     ],
     "IfcGeometricRepresentationSubContext": [
       { label: "WR31", source: "NOT('IFC2X3.IFCGEOMETRICREPRESENTATIONSUBCONTEXT' IN TYPEOF(ParentContext))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.not(r.typeIs(m, r.attr(self, "PARENTCONTEXT"), "IFCGEOMETRICREPRESENTATIONSUBCONTEXT")) },
       { label: "WR32", source: "(TargetView <> IfcGeometricProjectionEnum.USERDEFINED) OR ((TargetView = IfcGeometricProjectionEnum.USERDEFINED) AND EXISTS(UserDefinedTargetView))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "TARGETVIEW"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "TARGETVIEW"), E_USERDEFINED), () => r.exists(r.attr(self, "USERDEFINEDTARGETVIEW")))) },
     ],
     "IfcGeometricSet": [
-      { label: "WR21", source: "SIZEOF(QUERY(Temp <* Elements | Temp.Dim <> Elements[1].Dim)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ELEMENTS"), (q132: r.Value) => r.ne(r.attr(q132, "DIM"), r.attr(r.index(r.attr(self, "ELEMENTS"), 1), "DIM")))), 0) },
+      { label: "WR21", source: "SIZEOF(QUERY(Temp <* Elements | Temp.Dim <> Elements[1].Dim)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ELEMENTS"), (q_132: r.Value) => r.ne(r.attr(q_132, "DIM"), r.attr(r.index(r.attr(self, "ELEMENTS"), 1), "DIM")))), 0) },
     ],
     "IfcGrid": [
-      { label: "WR41", source: "EXISTS(SELF\\IfcProduct.ObjectPlacement)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "OBJECTPLACEMENT")) },
+      { label: "WR41", source: "EXISTS(SELF\\IfcProduct.ObjectPlacement)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "OBJECTPLACEMENT", "IFCPRODUCT")) },
     ],
     "IfcGridAxis": [
       { label: "WR1", source: "AxisCurve.Dim = 2", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(r.attr(self, "AXISCURVE"), "DIM"), 2) },
       { label: "WR2", source: "(SIZEOF(PartOfU) = 1) XOR (SIZEOF(PartOfV) = 1) XOR (SIZEOF(PartOfW) = 1)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.xor(r.xor(r.eq(r.sizeof(r.attr(self, "PARTOFU")), 1), r.eq(r.sizeof(r.attr(self, "PARTOFV")), 1)), r.eq(r.sizeof(r.attr(self, "PARTOFW")), 1)) },
     ],
     "IfcHeatExchangerType": [
-      { label: "WR1", source: "(PredefinedType <> IfcHeatExchangerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcHeatExchangerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcHeatExchangerTypeEnum.USERDEFINED) OR ((PredefinedType = IfcHeatExchangerTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcHumidifierType": [
-      { label: "WR1", source: "(PredefinedType <> IfcHumidifierTypeEnum.USERDEFINED) OR ((PredefinedType = IfcHumidifierTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcHumidifierTypeEnum.USERDEFINED) OR ((PredefinedType = IfcHumidifierTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcIShapeProfileDef": [
       { label: "WR1", source: "FlangeThickness < (OverallDepth / 2.)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.lt(r.attr(self, "FLANGETHICKNESS"), r.div(r.attr(self, "OVERALLDEPTH"), 2)) },
@@ -1554,7 +1554,7 @@ export const RULES: r.CompiledRules = {
       { label: "WR3", source: "NOT(EXISTS(FilletRadius)) OR ((FilletRadius <= (OverallWidth - WebThickness)/2.) AND (FilletRadius <= (OverallDepth - (2. * FlangeThickness))/2.))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "FILLETRADIUS"))), () => r.and(r.le(r.attr(self, "FILLETRADIUS"), r.div(r.sub(r.attr(self, "OVERALLWIDTH"), r.attr(self, "WEBTHICKNESS")), 2)), () => r.le(r.attr(self, "FILLETRADIUS"), r.div(r.sub(r.attr(self, "OVERALLDEPTH"), r.mul(2, r.attr(self, "FLANGETHICKNESS"))), 2)))) },
     ],
     "IfcInventory": [
-      { label: "WR41", source: "SIZEOF(QUERY(temp <* SELF\\IfcGroup.IsGroupedBy.RelatedObjects | NOT( ('IFC2X3.IFCSPACE' IN TYPEOF (temp)) OR ('IFC2X3.IFCASSET' IN TYPEOF (temp)) OR ('IFC2X3.IFCFURNISHINGELEMENT' IN TYPEOF (temp)) ))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(r.attr(self, "ISGROUPEDBY"), "RELATEDOBJECTS"), (q133: r.Value) => r.not(r.or(r.or(r.typeIs(m, q133, "IFCSPACE"), () => r.typeIs(m, q133, "IFCASSET")), () => r.typeIs(m, q133, "IFCFURNISHINGELEMENT"))))), 0) },
+      { label: "WR41", source: "SIZEOF(QUERY(temp <* SELF\\IfcGroup.IsGroupedBy.RelatedObjects | NOT( ('IFC2X3.IFCSPACE' IN TYPEOF (temp)) OR ('IFC2X3.IFCASSET' IN TYPEOF (temp)) OR ('IFC2X3.IFCFURNISHINGELEMENT' IN TYPEOF (temp)) ))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(r.attr(self, "ISGROUPEDBY", "IFCGROUP"), "RELATEDOBJECTS"), (q_133: r.Value) => r.not(r.or(r.or(r.typeIs(m, q_133, "IFCSPACE"), () => r.typeIs(m, q_133, "IFCASSET")), () => r.typeIs(m, q_133, "IFCFURNISHINGELEMENT"))))), 0) },
     ],
     "IfcLShapeProfileDef": [
       { label: "WR21", source: "Thickness < Depth", check: (self: r.EntityInstance, m: r.Model): r.Value => r.lt(r.attr(self, "THICKNESS"), r.attr(self, "DEPTH")) },
@@ -1570,7 +1570,7 @@ export const RULES: r.CompiledRules = {
       { label: "WR21", source: "IfcValidTime (SELF)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcValidTime(m, self) },
     ],
     "IfcMaterialDefinitionRepresentation": [
-      { label: "WR11", source: "SIZEOF(QUERY(temp <* Representations | (NOT('IFC2X3.IFCSTYLEDREPRESENTATION' IN TYPEOF(temp))) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "REPRESENTATIONS"), (q134: r.Value) => r.not(r.typeIs(m, q134, "IFCSTYLEDREPRESENTATION")))), 0) },
+      { label: "WR11", source: "SIZEOF(QUERY(temp <* Representations | (NOT('IFC2X3.IFCSTYLEDREPRESENTATION' IN TYPEOF(temp))) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "REPRESENTATIONS"), (q_134: r.Value) => r.not(r.typeIs(m, q_134, "IFCSTYLEDREPRESENTATION")))), 0) },
     ],
     "IfcMechanicalMaterialProperties": [
       { label: "WR21", source: "NOT(EXISTS(YoungModulus)) OR (YoungModulus >= 0.0)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "YOUNGMODULUS"))), () => r.ge(r.attr(self, "YOUNGMODULUS"), 0)) },
@@ -1583,21 +1583,21 @@ export const RULES: r.CompiledRules = {
       { label: "WR34", source: "NOT(EXISTS(ProportionalStress)) OR (ProportionalStress >= 0.)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "PROPORTIONALSTRESS"))), () => r.ge(r.attr(self, "PROPORTIONALSTRESS"), 0)) },
     ],
     "IfcMove": [
-      { label: "WR1", source: "SIZEOF(SELF\\IfcProcess.OperatesOn) >= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ge(r.sizeof(r.attr(self, "OPERATESON")), 1) },
-      { label: "WR2", source: "SIZEOF(QUERY(temp <* OperatesOn | SIZEOF(QUERY(temp2 <* temp.RelatedObjects | ('IFC2X3.IFCACTOR' IN TYPEOF (temp2)) OR ('IFC2X3.IFCEQUIPMENTELEMENT' IN TYPEOF (temp2)) OR ('IFC2X3.IFCFURNISHINGELEMENT' IN TYPEOF (temp2)) )) >=1 )) >= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ge(r.sizeof(r.query(r.attr(self, "OPERATESON"), (q135: r.Value) => r.ge(r.sizeof(r.query(r.attr(q135, "RELATEDOBJECTS"), (q136: r.Value) => r.or(r.or(r.typeIs(m, q136, "IFCACTOR"), () => r.typeIs(m, q136, "IFCEQUIPMENTELEMENT")), () => r.typeIs(m, q136, "IFCFURNISHINGELEMENT")))), 1))), 1) },
-      { label: "WR3", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME")) },
+      { label: "WR1", source: "SIZEOF(SELF\\IfcProcess.OperatesOn) >= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ge(r.sizeof(r.attr(self, "OPERATESON", "IFCPROCESS")), 1) },
+      { label: "WR2", source: "SIZEOF(QUERY(temp <* OperatesOn | SIZEOF(QUERY(temp2 <* temp.RelatedObjects | ('IFC2X3.IFCACTOR' IN TYPEOF (temp2)) OR ('IFC2X3.IFCEQUIPMENTELEMENT' IN TYPEOF (temp2)) OR ('IFC2X3.IFCFURNISHINGELEMENT' IN TYPEOF (temp2)) )) >=1 )) >= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ge(r.sizeof(r.query(r.attr(self, "OPERATESON"), (q_135: r.Value) => r.ge(r.sizeof(r.query(r.attr(q_135, "RELATEDOBJECTS"), (q_136: r.Value) => r.or(r.or(r.typeIs(m, q_136, "IFCACTOR"), () => r.typeIs(m, q_136, "IFCEQUIPMENTELEMENT")), () => r.typeIs(m, q_136, "IFCFURNISHINGELEMENT")))), 1))), 1) },
+      { label: "WR3", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME", "IFCROOT")) },
     ],
     "IfcNamedUnit": [
       { label: "WR1", source: "IfcCorrectDimensions (SELF.UnitType, SELF.Dimensions)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcCorrectDimensions(m, r.attr(self, "UNITTYPE"), r.attr(self, "DIMENSIONS")) },
     ],
     "IfcObject": [
-      { label: "WR1", source: "SIZEOF(QUERY(temp <* IsDefinedBy | 'IFC2X3.IFCRELDEFINESBYTYPE' IN TYPEOF(temp))) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "ISDEFINEDBY"), (q137: r.Value) => r.typeIs(m, q137, "IFCRELDEFINESBYTYPE"))), 1) },
+      { label: "WR1", source: "SIZEOF(QUERY(temp <* IsDefinedBy | 'IFC2X3.IFCRELDEFINESBYTYPE' IN TYPEOF(temp))) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "ISDEFINEDBY"), (q_137: r.Value) => r.typeIs(m, q_137, "IFCRELDEFINESBYTYPE"))), 1) },
     ],
     "IfcObjective": [
-      { label: "WR21", source: "(ObjectiveQualifier <> IfcObjectiveEnum.USERDEFINED) OR ((ObjectiveQualifier = IfcObjectiveEnum.USERDEFINED) AND EXISTS(SELF\\IfcObjective.UserDefinedQualifier))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "OBJECTIVEQUALIFIER"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "OBJECTIVEQUALIFIER"), E_USERDEFINED), () => r.exists(r.attr(self, "USERDEFINEDQUALIFIER")))) },
+      { label: "WR21", source: "(ObjectiveQualifier <> IfcObjectiveEnum.USERDEFINED) OR ((ObjectiveQualifier = IfcObjectiveEnum.USERDEFINED) AND EXISTS(SELF\\IfcObjective.UserDefinedQualifier))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "OBJECTIVEQUALIFIER"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "OBJECTIVEQUALIFIER"), E_USERDEFINED), () => r.exists(r.attr(self, "USERDEFINEDQUALIFIER", "IFCOBJECTIVE")))) },
     ],
     "IfcOccupant": [
-      { label: "WR31", source: "NOT(PredefinedType = IfcOccupantTypeEnum.USERDEFINED) OR EXISTS(SELF\\IfcObject.ObjectType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.exists(r.attr(self, "OBJECTTYPE"))) },
+      { label: "WR31", source: "NOT(PredefinedType = IfcOccupantTypeEnum.USERDEFINED) OR EXISTS(SELF\\IfcObject.ObjectType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT"))) },
     ],
     "IfcOffsetCurve2D": [
       { label: "WR1", source: "BasisCurve.Dim = 2", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(r.attr(self, "BASISCURVE"), "DIM"), 2) },
@@ -1615,16 +1615,16 @@ export const RULES: r.CompiledRules = {
       { label: "WR1", source: "EXISTS(FamilyName) OR EXISTS(GivenName)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.exists(r.attr(self, "FAMILYNAME")), () => r.exists(r.attr(self, "GIVENNAME"))) },
     ],
     "IfcPhysicalComplexQuantity": [
-      { label: "WR21", source: "SIZEOF(QUERY(temp <* HasQuantities | SELF :=: temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "HASQUANTITIES"), (q138: r.Value) => r.same(self, q138))), 0) },
+      { label: "WR21", source: "SIZEOF(QUERY(temp <* HasQuantities | SELF :=: temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "HASQUANTITIES"), (q_138: r.Value) => r.same(self, q_138))), 0) },
     ],
     "IfcPile": [
-      { label: "WR1", source: "(PredefinedType <> IfcPileTypeEnum.USERDEFINED) OR ((PredefinedType = IfcPileTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcPileTypeEnum.USERDEFINED) OR ((PredefinedType = IfcPileTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
     ],
     "IfcPipeFittingType": [
-      { label: "WR1", source: "(PredefinedType <> IfcPipeFittingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcPipeFittingTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcPipeFittingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcPipeFittingTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcPipeSegmentType": [
-      { label: "WR1", source: "(PredefinedType <> IfcPipeSegmentTypeEnum.USERDEFINED) OR ((PredefinedType = IfcPipeSegmentTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcPipeSegmentTypeEnum.USERDEFINED) OR ((PredefinedType = IfcPipeSegmentTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcPixelTexture": [
       { label: "WR21", source: "Width >= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ge(r.attr(self, "WIDTH"), 1) },
@@ -1633,43 +1633,43 @@ export const RULES: r.CompiledRules = {
       { label: "WR24", source: "SIZEOF(Pixel) = (Width * Height)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.attr(self, "PIXEL")), r.mul(r.attr(self, "WIDTH"), r.attr(self, "HEIGHT"))) },
     ],
     "IfcPolyLoop": [
-      { label: "WR21", source: "SIZEOF(QUERY(Temp <* Polygon | Temp.Dim <> Polygon[1].Dim)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "POLYGON"), (q139: r.Value) => r.ne(r.attr(q139, "DIM"), r.attr(r.index(r.attr(self, "POLYGON"), 1), "DIM")))), 0) },
+      { label: "WR21", source: "SIZEOF(QUERY(Temp <* Polygon | Temp.Dim <> Polygon[1].Dim)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "POLYGON"), (q_139: r.Value) => r.ne(r.attr(q_139, "DIM"), r.attr(r.index(r.attr(self, "POLYGON"), 1), "DIM")))), 0) },
     ],
     "IfcPolygonalBoundedHalfSpace": [
       { label: "WR41", source: "PolygonalBoundary.Dim = 2", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(r.attr(self, "POLYGONALBOUNDARY"), "DIM"), 2) },
       { label: "WR42", source: "SIZEOF(TYPEOF(PolygonalBoundary) * [ 'IFC2X3.IFCPOLYLINE', 'IFC2X3.IFCCOMPOSITECURVE'] ) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.mul(r.typeOf(m, r.attr(self, "POLYGONALBOUNDARY")), r.aggregate([["IFC2X3.IFCPOLYLINE"], ["IFC2X3.IFCCOMPOSITECURVE"]]))), 1) },
     ],
     "IfcPolyline": [
-      { label: "WR41", source: "SIZEOF(QUERY(Temp <* Points | Temp.Dim <> Points[1].Dim)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "POINTS"), (q140: r.Value) => r.ne(r.attr(q140, "DIM"), r.attr(r.index(r.attr(self, "POINTS"), 1), "DIM")))), 0) },
+      { label: "WR41", source: "SIZEOF(QUERY(Temp <* Points | Temp.Dim <> Points[1].Dim)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "POINTS"), (q_140: r.Value) => r.ne(r.attr(q_140, "DIM"), r.attr(r.index(r.attr(self, "POINTS"), 1), "DIM")))), 0) },
     ],
     "IfcPostalAddress": [
       { label: "WR1", source: "EXISTS (InternalLocation) OR EXISTS (AddressLines) OR EXISTS (PostalBox) OR EXISTS (PostalCode) OR EXISTS (Town) OR EXISTS (Region) OR EXISTS (Country)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.or(r.or(r.or(r.or(r.exists(r.attr(self, "INTERNALLOCATION")), () => r.exists(r.attr(self, "ADDRESSLINES"))), () => r.exists(r.attr(self, "POSTALBOX"))), () => r.exists(r.attr(self, "POSTALCODE"))), () => r.exists(r.attr(self, "TOWN"))), () => r.exists(r.attr(self, "REGION"))), () => r.exists(r.attr(self, "COUNTRY"))) },
     ],
     "IfcPreDefinedDimensionSymbol": [
-      { label: "WR31", source: "SELF\\IfcPreDefinedItem.Name IN ['arc length','conical taper','counterbore', 'countersink','depth','diameter','plus minus','radius', 'slope','spherical diameter','spherical radius','square']", check: (self: r.EntityInstance, m: r.Model): r.Value => r.isIn(r.attr(self, "NAME"), r.aggregate([["arc length"], ["conical taper"], ["counterbore"], ["countersink"], ["depth"], ["diameter"], ["plus minus"], ["radius"], ["slope"], ["spherical diameter"], ["spherical radius"], ["square"]])) },
+      { label: "WR31", source: "SELF\\IfcPreDefinedItem.Name IN ['arc length','conical taper','counterbore', 'countersink','depth','diameter','plus minus','radius', 'slope','spherical diameter','spherical radius','square']", check: (self: r.EntityInstance, m: r.Model): r.Value => r.isIn(r.attr(self, "NAME", "IFCPREDEFINEDITEM"), r.aggregate([["arc length"], ["conical taper"], ["counterbore"], ["countersink"], ["depth"], ["diameter"], ["plus minus"], ["radius"], ["slope"], ["spherical diameter"], ["spherical radius"], ["square"]])) },
     ],
     "IfcPreDefinedPointMarkerSymbol": [
-      { label: "WR31", source: "SELF\\IfcPreDefinedItem.Name IN ['asterisk','circle','dot','plus','square','triangle','x']", check: (self: r.EntityInstance, m: r.Model): r.Value => r.isIn(r.attr(self, "NAME"), r.aggregate([["asterisk"], ["circle"], ["dot"], ["plus"], ["square"], ["triangle"], ["x"]])) },
+      { label: "WR31", source: "SELF\\IfcPreDefinedItem.Name IN ['asterisk','circle','dot','plus','square','triangle','x']", check: (self: r.EntityInstance, m: r.Model): r.Value => r.isIn(r.attr(self, "NAME", "IFCPREDEFINEDITEM"), r.aggregate([["asterisk"], ["circle"], ["dot"], ["plus"], ["square"], ["triangle"], ["x"]])) },
     ],
     "IfcPreDefinedTerminatorSymbol": [
-      { label: "WR31", source: "SELF\\IfcPreDefinedItem.Name IN ['blanked arrow','blanked box', 'blanked dot','dimension origin','filled arrow','filled box', 'filled dot','integral symbol','open arrow','slash','unfilled arrow']", check: (self: r.EntityInstance, m: r.Model): r.Value => r.isIn(r.attr(self, "NAME"), r.aggregate([["blanked arrow"], ["blanked box"], ["blanked dot"], ["dimension origin"], ["filled arrow"], ["filled box"], ["filled dot"], ["integral symbol"], ["open arrow"], ["slash"], ["unfilled arrow"]])) },
+      { label: "WR31", source: "SELF\\IfcPreDefinedItem.Name IN ['blanked arrow','blanked box', 'blanked dot','dimension origin','filled arrow','filled box', 'filled dot','integral symbol','open arrow','slash','unfilled arrow']", check: (self: r.EntityInstance, m: r.Model): r.Value => r.isIn(r.attr(self, "NAME", "IFCPREDEFINEDITEM"), r.aggregate([["blanked arrow"], ["blanked box"], ["blanked dot"], ["dimension origin"], ["filled arrow"], ["filled box"], ["filled dot"], ["integral symbol"], ["open arrow"], ["slash"], ["unfilled arrow"]])) },
     ],
     "IfcProcedure": [
-      { label: "WR1", source: "SIZEOF(QUERY(temp <* SELF\\IfcObjectDefinition.Decomposes | NOT('IFC2X3.IFCRELNESTS' IN TYPEOF(temp)))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "DECOMPOSES"), (q141: r.Value) => r.not(r.typeIs(m, q141, "IFCRELNESTS")))), 0) },
-      { label: "WR2", source: "SIZEOF(QUERY(temp <* SELF\\IfcObjectDefinition.IsDecomposedBy | NOT('IFC2X3.IFCRELNESTS' IN TYPEOF(temp)))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ISDECOMPOSEDBY"), (q142: r.Value) => r.not(r.typeIs(m, q142, "IFCRELNESTS")))), 0) },
-      { label: "WR3", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME")) },
-      { label: "WR4", source: "(ProcedureType <> IfcProcedureTypeEnum.USERDEFINED) OR ((ProcedureType = IfcProcedureTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcProcedure.UserDefinedProcedureType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PROCEDURETYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PROCEDURETYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "USERDEFINEDPROCEDURETYPE")))) },
+      { label: "WR1", source: "SIZEOF(QUERY(temp <* SELF\\IfcObjectDefinition.Decomposes | NOT('IFC2X3.IFCRELNESTS' IN TYPEOF(temp)))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "DECOMPOSES", "IFCOBJECTDEFINITION"), (q_141: r.Value) => r.not(r.typeIs(m, q_141, "IFCRELNESTS")))), 0) },
+      { label: "WR2", source: "SIZEOF(QUERY(temp <* SELF\\IfcObjectDefinition.IsDecomposedBy | NOT('IFC2X3.IFCRELNESTS' IN TYPEOF(temp)))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ISDECOMPOSEDBY", "IFCOBJECTDEFINITION"), (q_142: r.Value) => r.not(r.typeIs(m, q_142, "IFCRELNESTS")))), 0) },
+      { label: "WR3", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME", "IFCROOT")) },
+      { label: "WR4", source: "(ProcedureType <> IfcProcedureTypeEnum.USERDEFINED) OR ((ProcedureType = IfcProcedureTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcProcedure.UserDefinedProcedureType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PROCEDURETYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PROCEDURETYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "USERDEFINEDPROCEDURETYPE", "IFCPROCEDURE")))) },
     ],
     "IfcProduct": [
       { label: "WR1", source: "(EXISTS(Representation) AND EXISTS(ObjectPlacement)) OR (EXISTS(Representation) AND (NOT('IFC2X3.IFCPRODUCTDEFINITIONSHAPE' IN TYPEOF(Representation)))) OR (NOT(EXISTS(Representation)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.and(r.exists(r.attr(self, "REPRESENTATION")), () => r.exists(r.attr(self, "OBJECTPLACEMENT"))), () => r.and(r.exists(r.attr(self, "REPRESENTATION")), () => r.not(r.typeIs(m, r.attr(self, "REPRESENTATION"), "IFCPRODUCTDEFINITIONSHAPE")))), () => r.not(r.exists(r.attr(self, "REPRESENTATION")))) },
     ],
     "IfcProductDefinitionShape": [
-      { label: "WR11", source: "SIZEOF(QUERY(temp <* Representations | (NOT('IFC2X3.IFCSHAPEMODEL' IN TYPEOF(temp))) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "REPRESENTATIONS"), (q143: r.Value) => r.not(r.typeIs(m, q143, "IFCSHAPEMODEL")))), 0) },
+      { label: "WR11", source: "SIZEOF(QUERY(temp <* Representations | (NOT('IFC2X3.IFCSHAPEMODEL' IN TYPEOF(temp))) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "REPRESENTATIONS"), (q_143: r.Value) => r.not(r.typeIs(m, q_143, "IFCSHAPEMODEL")))), 0) },
     ],
     "IfcProject": [
-      { label: "WR31", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME")) },
-      { label: "WR32", source: "SIZEOF(QUERY(Temp <* RepresentationContexts | 'IFC2X3.IFCGEOMETRICREPRESENTATIONSUBCONTEXT' IN TYPEOF(Temp) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "REPRESENTATIONCONTEXTS"), (q144: r.Value) => r.typeIs(m, q144, "IFCGEOMETRICREPRESENTATIONSUBCONTEXT"))), 0) },
-      { label: "WR33", source: "SIZEOF(SELF\\IfcObjectDefinition.Decomposes) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.attr(self, "DECOMPOSES")), 0) },
+      { label: "WR31", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME", "IFCROOT")) },
+      { label: "WR32", source: "SIZEOF(QUERY(Temp <* RepresentationContexts | 'IFC2X3.IFCGEOMETRICREPRESENTATIONSUBCONTEXT' IN TYPEOF(Temp) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "REPRESENTATIONCONTEXTS"), (q_144: r.Value) => r.typeIs(m, q_144, "IFCGEOMETRICREPRESENTATIONSUBCONTEXT"))), 0) },
+      { label: "WR33", source: "SIZEOF(SELF\\IfcObjectDefinition.Decomposes) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.attr(self, "DECOMPOSES", "IFCOBJECTDEFINITION")), 0) },
     ],
     "IfcPropertyBoundedValue": [
       { label: "WR21", source: "NOT(EXISTS(UpperBoundValue)) OR NOT(EXISTS(LowerBoundValue)) OR (TYPEOF(UpperBoundValue) = TYPEOF(LowerBoundValue))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "UPPERBOUNDVALUE"))), () => r.not(r.exists(r.attr(self, "LOWERBOUNDVALUE")))), () => r.eq(r.typeOf(m, r.attr(self, "UPPERBOUNDVALUE")), r.typeOf(m, r.attr(self, "LOWERBOUNDVALUE")))) },
@@ -1679,66 +1679,66 @@ export const RULES: r.CompiledRules = {
       { label: "WR1", source: "DependingProperty :<>: DependantProperty", check: (self: r.EntityInstance, m: r.Model): r.Value => r.notSame(r.attr(self, "DEPENDINGPROPERTY"), r.attr(self, "DEPENDANTPROPERTY")) },
     ],
     "IfcPropertyEnumeratedValue": [
-      { label: "WR1", source: "NOT(EXISTS(EnumerationReference)) OR (SIZEOF(QUERY(temp <* EnumerationValues | temp IN EnumerationReference.EnumerationValues)) = SIZEOF(EnumerationValues))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "ENUMERATIONREFERENCE"))), () => r.eq(r.sizeof(r.query(r.attr(self, "ENUMERATIONVALUES"), (q145: r.Value) => r.isIn(q145, r.attr(r.attr(self, "ENUMERATIONREFERENCE"), "ENUMERATIONVALUES")))), r.sizeof(r.attr(self, "ENUMERATIONVALUES")))) },
+      { label: "WR1", source: "NOT(EXISTS(EnumerationReference)) OR (SIZEOF(QUERY(temp <* EnumerationValues | temp IN EnumerationReference.EnumerationValues)) = SIZEOF(EnumerationValues))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "ENUMERATIONREFERENCE"))), () => r.eq(r.sizeof(r.query(r.attr(self, "ENUMERATIONVALUES"), (q_145: r.Value) => r.isIn(q_145, r.attr(r.attr(self, "ENUMERATIONREFERENCE"), "ENUMERATIONVALUES")))), r.sizeof(r.attr(self, "ENUMERATIONVALUES")))) },
     ],
     "IfcPropertyEnumeration": [
-      { label: "WR01", source: "SIZEOF(QUERY(temp <* SELF.EnumerationValues | NOT(TYPEOF(SELF.EnumerationValues[1]) = TYPEOF(temp)) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ENUMERATIONVALUES"), (q146: r.Value) => r.not(r.eq(r.typeOf(m, r.index(r.attr(self, "ENUMERATIONVALUES"), 1)), r.typeOf(m, q146))))), 0) },
+      { label: "WR01", source: "SIZEOF(QUERY(temp <* SELF.EnumerationValues | NOT(TYPEOF(SELF.EnumerationValues[1]) = TYPEOF(temp)) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ENUMERATIONVALUES"), (q_146: r.Value) => r.not(r.eq(r.typeOf(m, r.index(r.attr(self, "ENUMERATIONVALUES"), 1)), r.typeOf(m, q_146))))), 0) },
     ],
     "IfcPropertyListValue": [
-      { label: "WR31", source: "SIZEOF(QUERY(temp <* SELF.ListValues | NOT(TYPEOF(SELF.ListValues[1]) = TYPEOF(temp)) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "LISTVALUES"), (q147: r.Value) => r.not(r.eq(r.typeOf(m, r.index(r.attr(self, "LISTVALUES"), 1)), r.typeOf(m, q147))))), 0) },
+      { label: "WR31", source: "SIZEOF(QUERY(temp <* SELF.ListValues | NOT(TYPEOF(SELF.ListValues[1]) = TYPEOF(temp)) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "LISTVALUES"), (q_147: r.Value) => r.not(r.eq(r.typeOf(m, r.index(r.attr(self, "LISTVALUES"), 1)), r.typeOf(m, q_147))))), 0) },
     ],
     "IfcPropertySet": [
-      { label: "WR31", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME")) },
+      { label: "WR31", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME", "IFCROOT")) },
       { label: "WR32", source: "IfcUniquePropertyName(HasProperties)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcUniquePropertyName(m, r.attr(self, "HASPROPERTIES")) },
     ],
     "IfcPropertyTableValue": [
       { label: "WR1", source: "SIZEOF(DefiningValues) = SIZEOF(DefinedValues)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.attr(self, "DEFININGVALUES")), r.sizeof(r.attr(self, "DEFINEDVALUES"))) },
-      { label: "WR2", source: "SIZEOF(QUERY(temp <* SELF.DefiningValues | TYPEOF(temp) <> TYPEOF(SELF.DefiningValues[1])))=0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "DEFININGVALUES"), (q148: r.Value) => r.ne(r.typeOf(m, q148), r.typeOf(m, r.index(r.attr(self, "DEFININGVALUES"), 1))))), 0) },
-      { label: "WR3", source: "SIZEOF(QUERY(temp <* SELF.DefinedValues | TYPEOF(temp) <> TYPEOF(SELF.DefinedValues[1])))=0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "DEFINEDVALUES"), (q149: r.Value) => r.ne(r.typeOf(m, q149), r.typeOf(m, r.index(r.attr(self, "DEFINEDVALUES"), 1))))), 0) },
+      { label: "WR2", source: "SIZEOF(QUERY(temp <* SELF.DefiningValues | TYPEOF(temp) <> TYPEOF(SELF.DefiningValues[1])))=0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "DEFININGVALUES"), (q_148: r.Value) => r.ne(r.typeOf(m, q_148), r.typeOf(m, r.index(r.attr(self, "DEFININGVALUES"), 1))))), 0) },
+      { label: "WR3", source: "SIZEOF(QUERY(temp <* SELF.DefinedValues | TYPEOF(temp) <> TYPEOF(SELF.DefinedValues[1])))=0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "DEFINEDVALUES"), (q_149: r.Value) => r.ne(r.typeOf(m, q_149), r.typeOf(m, r.index(r.attr(self, "DEFINEDVALUES"), 1))))), 0) },
     ],
     "IfcProxy": [
-      { label: "WR1", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME")) },
+      { label: "WR1", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME", "IFCROOT")) },
     ],
     "IfcPumpType": [
-      { label: "WR1", source: "(PredefinedType <> IfcPumpTypeEnum.USERDEFINED) OR ((PredefinedType = IfcPumpTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcPumpTypeEnum.USERDEFINED) OR ((PredefinedType = IfcPumpTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcQuantityArea": [
-      { label: "WR21", source: "NOT(EXISTS(SELF\\IfcPhysicalSimpleQuantity.Unit)) OR (SELF\\IfcPhysicalSimpleQuantity.Unit.UnitType = IfcUnitEnum.AREAUNIT)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "UNIT"))), () => r.eq(r.attr(r.attr(self, "UNIT"), "UNITTYPE"), E_AREAUNIT)) },
+      { label: "WR21", source: "NOT(EXISTS(SELF\\IfcPhysicalSimpleQuantity.Unit)) OR (SELF\\IfcPhysicalSimpleQuantity.Unit.UnitType = IfcUnitEnum.AREAUNIT)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "UNIT", "IFCPHYSICALSIMPLEQUANTITY"))), () => r.eq(r.attr(r.attr(self, "UNIT", "IFCPHYSICALSIMPLEQUANTITY"), "UNITTYPE"), E_AREAUNIT)) },
       { label: "WR22", source: "AreaValue >= 0.", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ge(r.attr(self, "AREAVALUE"), 0) },
     ],
     "IfcQuantityCount": [
       { label: "WR21", source: "CountValue >= 0.", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ge(r.attr(self, "COUNTVALUE"), 0) },
     ],
     "IfcQuantityLength": [
-      { label: "WR21", source: "NOT(EXISTS(SELF\\IfcPhysicalSimpleQuantity.Unit)) OR (SELF\\IfcPhysicalSimpleQuantity.Unit.UnitType = IfcUnitEnum.LENGTHUNIT)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "UNIT"))), () => r.eq(r.attr(r.attr(self, "UNIT"), "UNITTYPE"), E_LENGTHUNIT)) },
+      { label: "WR21", source: "NOT(EXISTS(SELF\\IfcPhysicalSimpleQuantity.Unit)) OR (SELF\\IfcPhysicalSimpleQuantity.Unit.UnitType = IfcUnitEnum.LENGTHUNIT)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "UNIT", "IFCPHYSICALSIMPLEQUANTITY"))), () => r.eq(r.attr(r.attr(self, "UNIT", "IFCPHYSICALSIMPLEQUANTITY"), "UNITTYPE"), E_LENGTHUNIT)) },
       { label: "WR22", source: "LengthValue >= 0.", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ge(r.attr(self, "LENGTHVALUE"), 0) },
     ],
     "IfcQuantityTime": [
-      { label: "WR21", source: "NOT(EXISTS(SELF\\IfcPhysicalSimpleQuantity.Unit)) OR (SELF\\IfcPhysicalSimpleQuantity.Unit.UnitType = IfcUnitEnum.TIMEUNIT)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "UNIT"))), () => r.eq(r.attr(r.attr(self, "UNIT"), "UNITTYPE"), E_TIMEUNIT)) },
+      { label: "WR21", source: "NOT(EXISTS(SELF\\IfcPhysicalSimpleQuantity.Unit)) OR (SELF\\IfcPhysicalSimpleQuantity.Unit.UnitType = IfcUnitEnum.TIMEUNIT)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "UNIT", "IFCPHYSICALSIMPLEQUANTITY"))), () => r.eq(r.attr(r.attr(self, "UNIT", "IFCPHYSICALSIMPLEQUANTITY"), "UNITTYPE"), E_TIMEUNIT)) },
       { label: "WR22", source: "TimeValue >= 0.", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ge(r.attr(self, "TIMEVALUE"), 0) },
     ],
     "IfcQuantityVolume": [
-      { label: "WR21", source: "NOT(EXISTS(SELF\\IfcPhysicalSimpleQuantity.Unit)) OR (SELF\\IfcPhysicalSimpleQuantity.Unit.UnitType = IfcUnitEnum.VOLUMEUNIT)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "UNIT"))), () => r.eq(r.attr(r.attr(self, "UNIT"), "UNITTYPE"), E_VOLUMEUNIT)) },
+      { label: "WR21", source: "NOT(EXISTS(SELF\\IfcPhysicalSimpleQuantity.Unit)) OR (SELF\\IfcPhysicalSimpleQuantity.Unit.UnitType = IfcUnitEnum.VOLUMEUNIT)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "UNIT", "IFCPHYSICALSIMPLEQUANTITY"))), () => r.eq(r.attr(r.attr(self, "UNIT", "IFCPHYSICALSIMPLEQUANTITY"), "UNITTYPE"), E_VOLUMEUNIT)) },
       { label: "WR22", source: "VolumeValue >= 0.", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ge(r.attr(self, "VOLUMEVALUE"), 0) },
     ],
     "IfcQuantityWeight": [
-      { label: "WR21", source: "NOT(EXISTS(SELF\\IfcPhysicalSimpleQuantity.Unit)) OR (SELF\\IfcPhysicalSimpleQuantity.Unit.UnitType = IfcUnitEnum.MASSUNIT)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "UNIT"))), () => r.eq(r.attr(r.attr(self, "UNIT"), "UNITTYPE"), E_MASSUNIT)) },
+      { label: "WR21", source: "NOT(EXISTS(SELF\\IfcPhysicalSimpleQuantity.Unit)) OR (SELF\\IfcPhysicalSimpleQuantity.Unit.UnitType = IfcUnitEnum.MASSUNIT)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "UNIT", "IFCPHYSICALSIMPLEQUANTITY"))), () => r.eq(r.attr(r.attr(self, "UNIT", "IFCPHYSICALSIMPLEQUANTITY"), "UNITTYPE"), E_MASSUNIT)) },
       { label: "WR22", source: "WeightValue >= 0.", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ge(r.attr(self, "WEIGHTVALUE"), 0) },
     ],
     "IfcRailing": [
-      { label: "WR61", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcRailingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcRailingTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
+      { label: "WR61", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcRailingTypeEnum.USERDEFINED) OR ((PredefinedType = IfcRailingTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
     ],
     "IfcRamp": [
-      { label: "WR1", source: "(HIINDEX(SELF\\IfcObjectDefinition.IsDecomposedBy) = 0) OR ((HIINDEX(SELF\\IfcObjectDefinition.IsDecomposedBy) = 1) AND (NOT(EXISTS(SELF\\IfcProduct.Representation))))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.hiindex(r.attr(self, "ISDECOMPOSEDBY")), 0), () => r.and(r.eq(r.hiindex(r.attr(self, "ISDECOMPOSEDBY")), 1), () => r.not(r.exists(r.attr(self, "REPRESENTATION"))))) },
+      { label: "WR1", source: "(HIINDEX(SELF\\IfcObjectDefinition.IsDecomposedBy) = 0) OR ((HIINDEX(SELF\\IfcObjectDefinition.IsDecomposedBy) = 1) AND (NOT(EXISTS(SELF\\IfcProduct.Representation))))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.hiindex(r.attr(self, "ISDECOMPOSEDBY", "IFCOBJECTDEFINITION")), 0), () => r.and(r.eq(r.hiindex(r.attr(self, "ISDECOMPOSEDBY", "IFCOBJECTDEFINITION")), 1), () => r.not(r.exists(r.attr(self, "REPRESENTATION", "IFCPRODUCT"))))) },
     ],
     "IfcRationalBezierCurve": [
-      { label: "WR1", source: "SIZEOF(WeightsData) = SIZEOF(SELF\\IfcBSplineCurve.ControlPointsList)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.attr(self, "WEIGHTSDATA")), r.sizeof(r.attr(self, "CONTROLPOINTSLIST"))) },
+      { label: "WR1", source: "SIZEOF(WeightsData) = SIZEOF(SELF\\IfcBSplineCurve.ControlPointsList)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.attr(self, "WEIGHTSDATA")), r.sizeof(r.attr(self, "CONTROLPOINTSLIST", "IFCBSPLINECURVE"))) },
       { label: "WR2", source: "IfcCurveWeightsPositive(SELF)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcCurveWeightsPositive(m, self) },
     ],
     "IfcRectangleHollowProfileDef": [
-      { label: "WR31", source: "(WallThickness < (SELF\\IfcRectangleProfileDef.XDim/2.)) AND (WallThickness < (SELF\\IfcRectangleProfileDef.YDim/2.))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.lt(r.attr(self, "WALLTHICKNESS"), r.div(r.attr(self, "XDIM"), 2)), () => r.lt(r.attr(self, "WALLTHICKNESS"), r.div(r.attr(self, "YDIM"), 2))) },
-      { label: "WR32", source: "NOT(EXISTS(OuterFilletRadius)) OR ((OuterFilletRadius <= (SELF\\IfcRectangleProfileDef.XDim/2.)) AND (OuterFilletRadius <= (SELF\\IfcRectangleProfileDef.YDim/2.)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "OUTERFILLETRADIUS"))), () => r.and(r.le(r.attr(self, "OUTERFILLETRADIUS"), r.div(r.attr(self, "XDIM"), 2)), () => r.le(r.attr(self, "OUTERFILLETRADIUS"), r.div(r.attr(self, "YDIM"), 2)))) },
-      { label: "WR33", source: "NOT(EXISTS(InnerFilletRadius)) OR ((InnerFilletRadius <= (SELF\\IfcRectangleProfileDef.XDim/2. - WallThickness)) AND (InnerFilletRadius <= (SELF\\IfcRectangleProfileDef.YDim/2. - WallThickness)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "INNERFILLETRADIUS"))), () => r.and(r.le(r.attr(self, "INNERFILLETRADIUS"), r.sub(r.div(r.attr(self, "XDIM"), 2), r.attr(self, "WALLTHICKNESS"))), () => r.le(r.attr(self, "INNERFILLETRADIUS"), r.sub(r.div(r.attr(self, "YDIM"), 2), r.attr(self, "WALLTHICKNESS"))))) },
+      { label: "WR31", source: "(WallThickness < (SELF\\IfcRectangleProfileDef.XDim/2.)) AND (WallThickness < (SELF\\IfcRectangleProfileDef.YDim/2.))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.lt(r.attr(self, "WALLTHICKNESS"), r.div(r.attr(self, "XDIM", "IFCRECTANGLEPROFILEDEF"), 2)), () => r.lt(r.attr(self, "WALLTHICKNESS"), r.div(r.attr(self, "YDIM", "IFCRECTANGLEPROFILEDEF"), 2))) },
+      { label: "WR32", source: "NOT(EXISTS(OuterFilletRadius)) OR ((OuterFilletRadius <= (SELF\\IfcRectangleProfileDef.XDim/2.)) AND (OuterFilletRadius <= (SELF\\IfcRectangleProfileDef.YDim/2.)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "OUTERFILLETRADIUS"))), () => r.and(r.le(r.attr(self, "OUTERFILLETRADIUS"), r.div(r.attr(self, "XDIM", "IFCRECTANGLEPROFILEDEF"), 2)), () => r.le(r.attr(self, "OUTERFILLETRADIUS"), r.div(r.attr(self, "YDIM", "IFCRECTANGLEPROFILEDEF"), 2)))) },
+      { label: "WR33", source: "NOT(EXISTS(InnerFilletRadius)) OR ((InnerFilletRadius <= (SELF\\IfcRectangleProfileDef.XDim/2. - WallThickness)) AND (InnerFilletRadius <= (SELF\\IfcRectangleProfileDef.YDim/2. - WallThickness)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "INNERFILLETRADIUS"))), () => r.and(r.le(r.attr(self, "INNERFILLETRADIUS"), r.sub(r.div(r.attr(self, "XDIM", "IFCRECTANGLEPROFILEDEF"), 2), r.attr(self, "WALLTHICKNESS"))), () => r.le(r.attr(self, "INNERFILLETRADIUS"), r.sub(r.div(r.attr(self, "YDIM", "IFCRECTANGLEPROFILEDEF"), 2), r.attr(self, "WALLTHICKNESS"))))) },
     ],
     "IfcRectangularTrimmedSurface": [
       { label: "WR1", source: "U1 <> U2", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ne(r.attr(self, "U1"), r.attr(self, "U2")) },
@@ -1747,62 +1747,62 @@ export const RULES: r.CompiledRules = {
       { label: "WR4", source: "Vsense = (V2 > V1)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(self, "VSENSE"), r.gt(r.attr(self, "V2"), r.attr(self, "V1"))) },
     ],
     "IfcReinforcingBar": [
-      { label: "WR1", source: "(BarRole <> IfcReinforcingBarRoleEnum.USERDEFINED) OR ((BarRole = IfcReinforcingBarRoleEnum.USERDEFINED) AND EXISTS(SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "BARROLE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "BARROLE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
+      { label: "WR1", source: "(BarRole <> IfcReinforcingBarRoleEnum.USERDEFINED) OR ((BarRole = IfcReinforcingBarRoleEnum.USERDEFINED) AND EXISTS(SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "BARROLE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "BARROLE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
     ],
     "IfcRelAssigns": [
       { label: "WR1", source: "IfcCorrectObjectAssignment(RelatedObjectsType, RelatedObjects)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcCorrectObjectAssignment(m, r.attr(self, "RELATEDOBJECTSTYPE"), r.attr(self, "RELATEDOBJECTS")) },
     ],
     "IfcRelAssignsTasks": [
-      { label: "WR1", source: "HIINDEX(SELF\\IfcRelAssigns.RelatedObjects) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.hiindex(r.attr(self, "RELATEDOBJECTS")), 1) },
-      { label: "WR2", source: "'IFC2X3.IFCTASK' IN TYPEOF(SELF\\IfcRelAssigns.RelatedObjects[1])", check: (self: r.EntityInstance, m: r.Model): r.Value => r.typeIs(m, r.index(r.attr(self, "RELATEDOBJECTS"), 1), "IFCTASK") },
-      { label: "WR3", source: "'IFC2X3.IFCWORKCONTROL' IN TYPEOF(SELF\\IfcRelAssignsToControl.RelatingControl)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.typeIs(m, r.attr(self, "RELATINGCONTROL"), "IFCWORKCONTROL") },
+      { label: "WR1", source: "HIINDEX(SELF\\IfcRelAssigns.RelatedObjects) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.hiindex(r.attr(self, "RELATEDOBJECTS", "IFCRELASSIGNS")), 1) },
+      { label: "WR2", source: "'IFC2X3.IFCTASK' IN TYPEOF(SELF\\IfcRelAssigns.RelatedObjects[1])", check: (self: r.EntityInstance, m: r.Model): r.Value => r.typeIs(m, r.index(r.attr(self, "RELATEDOBJECTS", "IFCRELASSIGNS"), 1), "IFCTASK") },
+      { label: "WR3", source: "'IFC2X3.IFCWORKCONTROL' IN TYPEOF(SELF\\IfcRelAssignsToControl.RelatingControl)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.typeIs(m, r.attr(self, "RELATINGCONTROL", "IFCRELASSIGNSTOCONTROL"), "IFCWORKCONTROL") },
     ],
     "IfcRelAssignsToActor": [
-      { label: "WR1", source: "SIZEOF(QUERY(Temp <* SELF\\IfcRelAssigns.RelatedObjects | RelatingActor :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS"), (q150: r.Value) => r.same(r.attr(self, "RELATINGACTOR"), q150))), 0) },
+      { label: "WR1", source: "SIZEOF(QUERY(Temp <* SELF\\IfcRelAssigns.RelatedObjects | RelatingActor :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS", "IFCRELASSIGNS"), (q_150: r.Value) => r.same(r.attr(self, "RELATINGACTOR"), q_150))), 0) },
     ],
     "IfcRelAssignsToControl": [
-      { label: "WR1", source: "SIZEOF(QUERY(Temp <* SELF\\IfcRelAssigns.RelatedObjects | RelatingControl :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS"), (q151: r.Value) => r.same(r.attr(self, "RELATINGCONTROL"), q151))), 0) },
+      { label: "WR1", source: "SIZEOF(QUERY(Temp <* SELF\\IfcRelAssigns.RelatedObjects | RelatingControl :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS", "IFCRELASSIGNS"), (q_151: r.Value) => r.same(r.attr(self, "RELATINGCONTROL"), q_151))), 0) },
     ],
     "IfcRelAssignsToGroup": [
-      { label: "WR1", source: "SIZEOF(QUERY(Temp <* SELF\\IfcRelAssigns.RelatedObjects | RelatingGroup :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS"), (q152: r.Value) => r.same(r.attr(self, "RELATINGGROUP"), q152))), 0) },
+      { label: "WR1", source: "SIZEOF(QUERY(Temp <* SELF\\IfcRelAssigns.RelatedObjects | RelatingGroup :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS", "IFCRELASSIGNS"), (q_152: r.Value) => r.same(r.attr(self, "RELATINGGROUP"), q_152))), 0) },
     ],
     "IfcRelAssignsToProcess": [
-      { label: "WR1", source: "SIZEOF(QUERY(Temp <* SELF\\IfcRelAssigns.RelatedObjects | RelatingProcess :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS"), (q153: r.Value) => r.same(r.attr(self, "RELATINGPROCESS"), q153))), 0) },
+      { label: "WR1", source: "SIZEOF(QUERY(Temp <* SELF\\IfcRelAssigns.RelatedObjects | RelatingProcess :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS", "IFCRELASSIGNS"), (q_153: r.Value) => r.same(r.attr(self, "RELATINGPROCESS"), q_153))), 0) },
     ],
     "IfcRelAssignsToProduct": [
-      { label: "WR1", source: "SIZEOF(QUERY(Temp <* SELF\\IfcRelAssigns.RelatedObjects | RelatingProduct :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS"), (q154: r.Value) => r.same(r.attr(self, "RELATINGPRODUCT"), q154))), 0) },
+      { label: "WR1", source: "SIZEOF(QUERY(Temp <* SELF\\IfcRelAssigns.RelatedObjects | RelatingProduct :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS", "IFCRELASSIGNS"), (q_154: r.Value) => r.same(r.attr(self, "RELATINGPRODUCT"), q_154))), 0) },
     ],
     "IfcRelAssignsToResource": [
-      { label: "WR1", source: "SIZEOF(QUERY(Temp <* SELF\\IfcRelAssigns.RelatedObjects | RelatingResource :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS"), (q155: r.Value) => r.same(r.attr(self, "RELATINGRESOURCE"), q155))), 0) },
+      { label: "WR1", source: "SIZEOF(QUERY(Temp <* SELF\\IfcRelAssigns.RelatedObjects | RelatingResource :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS", "IFCRELASSIGNS"), (q_155: r.Value) => r.same(r.attr(self, "RELATINGRESOURCE"), q_155))), 0) },
     ],
     "IfcRelAssociates": [
-      { label: "WR21", source: "SIZEOF(QUERY(temp <* RelatedObjects | NOT(('IFC2X3.IFCOBJECTDEFINITION' IN TYPEOF(temp)) OR ('IFC2X3.IFCPROPERTYDEFINITION' IN TYPEOF(temp))) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS"), (q156: r.Value) => r.not(r.or(r.typeIs(m, q156, "IFCOBJECTDEFINITION"), () => r.typeIs(m, q156, "IFCPROPERTYDEFINITION"))))), 0) },
+      { label: "WR21", source: "SIZEOF(QUERY(temp <* RelatedObjects | NOT(('IFC2X3.IFCOBJECTDEFINITION' IN TYPEOF(temp)) OR ('IFC2X3.IFCPROPERTYDEFINITION' IN TYPEOF(temp))) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS"), (q_156: r.Value) => r.not(r.or(r.typeIs(m, q_156, "IFCOBJECTDEFINITION"), () => r.typeIs(m, q_156, "IFCPROPERTYDEFINITION"))))), 0) },
     ],
     "IfcRelAssociatesMaterial": [
-      { label: "WR21", source: "SIZEOF(QUERY(temp <* SELF\\IfcRelAssociates.RelatedObjects | ('IFC2X3.IFCFEATUREELEMENTSUBTRACTION' IN TYPEOF(temp)) OR ('IFC2X3.IFCVIRTUALELEMENT' IN TYPEOF(temp)) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS"), (q157: r.Value) => r.or(r.typeIs(m, q157, "IFCFEATUREELEMENTSUBTRACTION"), () => r.typeIs(m, q157, "IFCVIRTUALELEMENT")))), 0) },
-      { label: "WR22", source: "SIZEOF(QUERY(temp <* SELF\\IfcRelAssociates.RelatedObjects | (NOT('IFC2X3.IFCPRODUCT' IN TYPEOF(temp)) AND NOT('IFC2X3.IFCTYPEPRODUCT' IN TYPEOF(temp))) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS"), (q158: r.Value) => r.and(r.not(r.typeIs(m, q158, "IFCPRODUCT")), () => r.not(r.typeIs(m, q158, "IFCTYPEPRODUCT"))))), 0) },
+      { label: "WR21", source: "SIZEOF(QUERY(temp <* SELF\\IfcRelAssociates.RelatedObjects | ('IFC2X3.IFCFEATUREELEMENTSUBTRACTION' IN TYPEOF(temp)) OR ('IFC2X3.IFCVIRTUALELEMENT' IN TYPEOF(temp)) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS", "IFCRELASSOCIATES"), (q_157: r.Value) => r.or(r.typeIs(m, q_157, "IFCFEATUREELEMENTSUBTRACTION"), () => r.typeIs(m, q_157, "IFCVIRTUALELEMENT")))), 0) },
+      { label: "WR22", source: "SIZEOF(QUERY(temp <* SELF\\IfcRelAssociates.RelatedObjects | (NOT('IFC2X3.IFCPRODUCT' IN TYPEOF(temp)) AND NOT('IFC2X3.IFCTYPEPRODUCT' IN TYPEOF(temp))) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS", "IFCRELASSOCIATES"), (q_158: r.Value) => r.and(r.not(r.typeIs(m, q_158, "IFCPRODUCT")), () => r.not(r.typeIs(m, q_158, "IFCTYPEPRODUCT"))))), 0) },
     ],
     "IfcRelConnectsElements": [
       { label: "WR31", source: "RelatingElement :<>: RelatedElement", check: (self: r.EntityInstance, m: r.Model): r.Value => r.notSame(r.attr(self, "RELATINGELEMENT"), r.attr(self, "RELATEDELEMENT")) },
     ],
     "IfcRelContainedInSpatialStructure": [
-      { label: "WR31", source: "SIZEOF(QUERY(temp <* RelatedElements | 'IFC2X3.IFCSPATIALSTRUCTUREELEMENT' IN TYPEOF(temp))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDELEMENTS"), (q159: r.Value) => r.typeIs(m, q159, "IFCSPATIALSTRUCTUREELEMENT"))), 0) },
+      { label: "WR31", source: "SIZEOF(QUERY(temp <* RelatedElements | 'IFC2X3.IFCSPATIALSTRUCTUREELEMENT' IN TYPEOF(temp))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDELEMENTS"), (q_159: r.Value) => r.typeIs(m, q_159, "IFCSPATIALSTRUCTUREELEMENT"))), 0) },
     ],
     "IfcRelDecomposes": [
-      { label: "WR31", source: "SIZEOF(QUERY(Temp <* RelatedObjects | RelatingObject :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS"), (q160: r.Value) => r.same(r.attr(self, "RELATINGOBJECT"), q160))), 0) },
+      { label: "WR31", source: "SIZEOF(QUERY(Temp <* RelatedObjects | RelatingObject :=: Temp)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS"), (q_160: r.Value) => r.same(r.attr(self, "RELATINGOBJECT"), q_160))), 0) },
     ],
     "IfcRelNests": [
-      { label: "WR1", source: "SIZEOF(QUERY(Temp <* SELF\\IfcRelDecomposes.RelatedObjects | NOT(TYPEOF(SELF\\IfcRelDecomposes.RelatingObject) = TYPEOF(Temp)))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS"), (q161: r.Value) => r.not(r.eq(r.typeOf(m, r.attr(self, "RELATINGOBJECT")), r.typeOf(m, q161))))), 0) },
+      { label: "WR1", source: "SIZEOF(QUERY(Temp <* SELF\\IfcRelDecomposes.RelatedObjects | NOT(TYPEOF(SELF\\IfcRelDecomposes.RelatingObject) = TYPEOF(Temp)))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS", "IFCRELDECOMPOSES"), (q_161: r.Value) => r.not(r.eq(r.typeOf(m, r.attr(self, "RELATINGOBJECT", "IFCRELDECOMPOSES")), r.typeOf(m, q_161))))), 0) },
     ],
     "IfcRelOverridesProperties": [
-      { label: "WR1", source: "SIZEOF(SELF\\IfcRelDefines.RelatedObjects) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.attr(self, "RELATEDOBJECTS")), 1) },
+      { label: "WR1", source: "SIZEOF(SELF\\IfcRelDefines.RelatedObjects) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.attr(self, "RELATEDOBJECTS", "IFCRELDEFINES")), 1) },
     ],
     "IfcRelReferencedInSpatialStructure": [
-      { label: "WR31", source: "SIZEOF(QUERY(temp <* RelatedElements | 'IFC2X3.IFCSPATIALSTRUCTUREELEMENT' IN TYPEOF(temp))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDELEMENTS"), (q162: r.Value) => r.typeIs(m, q162, "IFCSPATIALSTRUCTUREELEMENT"))), 0) },
+      { label: "WR31", source: "SIZEOF(QUERY(temp <* RelatedElements | 'IFC2X3.IFCSPATIALSTRUCTUREELEMENT' IN TYPEOF(temp))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDELEMENTS"), (q_162: r.Value) => r.typeIs(m, q_162, "IFCSPATIALSTRUCTUREELEMENT"))), 0) },
     ],
     "IfcRelSchedulesCostItems": [
-      { label: "WR11", source: "SIZEOF(QUERY(temp <* SELF\\IfcRelAssigns.RelatedObjects | NOT('IFC2X3.IFCCOSTITEM' IN TYPEOF(temp)) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS"), (q163: r.Value) => r.not(r.typeIs(m, q163, "IFCCOSTITEM")))), 0) },
-      { label: "WR12", source: "'IFC2X3.IFCCOSTSCHEDULE' IN TYPEOF (SELF\\IfcRelAssignsToControl.RelatingControl)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.typeIs(m, r.attr(self, "RELATINGCONTROL"), "IFCCOSTSCHEDULE") },
+      { label: "WR11", source: "SIZEOF(QUERY(temp <* SELF\\IfcRelAssigns.RelatedObjects | NOT('IFC2X3.IFCCOSTITEM' IN TYPEOF(temp)) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "RELATEDOBJECTS", "IFCRELASSIGNS"), (q_163: r.Value) => r.not(r.typeIs(m, q_163, "IFCCOSTITEM")))), 0) },
+      { label: "WR12", source: "'IFC2X3.IFCCOSTSCHEDULE' IN TYPEOF (SELF\\IfcRelAssignsToControl.RelatingControl)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.typeIs(m, r.attr(self, "RELATINGCONTROL", "IFCRELASSIGNSTOCONTROL"), "IFCCOSTSCHEDULE") },
     ],
     "IfcRelSequence": [
       { label: "WR1", source: "RelatingProcess :<>: RelatedProcess", check: (self: r.EntityInstance, m: r.Model): r.Value => r.notSame(r.attr(self, "RELATINGPROCESS"), r.attr(self, "RELATEDPROCESS")) },
@@ -1815,51 +1815,51 @@ export const RULES: r.CompiledRules = {
       { label: "WR32", source: "Axis.Z.DirectionRatios[3] = 0.0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.index(r.attr(r.attr(r.attr(self, "AXIS"), "Z"), "DIRECTIONRATIOS"), 3), 0) },
     ],
     "IfcRoof": [
-      { label: "WR1", source: "(HIINDEX(SELF\\IfcObjectDefinition.IsDecomposedBy) = 0) OR ((HIINDEX(SELF\\IfcObjectDefinition.IsDecomposedBy) = 1) AND (NOT(EXISTS(SELF\\IfcProduct.Representation))))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.hiindex(r.attr(self, "ISDECOMPOSEDBY")), 0), () => r.and(r.eq(r.hiindex(r.attr(self, "ISDECOMPOSEDBY")), 1), () => r.not(r.exists(r.attr(self, "REPRESENTATION"))))) },
+      { label: "WR1", source: "(HIINDEX(SELF\\IfcObjectDefinition.IsDecomposedBy) = 0) OR ((HIINDEX(SELF\\IfcObjectDefinition.IsDecomposedBy) = 1) AND (NOT(EXISTS(SELF\\IfcProduct.Representation))))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.hiindex(r.attr(self, "ISDECOMPOSEDBY", "IFCOBJECTDEFINITION")), 0), () => r.and(r.eq(r.hiindex(r.attr(self, "ISDECOMPOSEDBY", "IFCOBJECTDEFINITION")), 1), () => r.not(r.exists(r.attr(self, "REPRESENTATION", "IFCPRODUCT"))))) },
     ],
     "IfcRoundedRectangleProfileDef": [
-      { label: "WR31", source: "((RoundingRadius <= (SELF\\IfcRectangleProfileDef.XDim/2.)) AND (RoundingRadius <= (SELF\\IfcRectangleProfileDef.YDim/2.)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.le(r.attr(self, "ROUNDINGRADIUS"), r.div(r.attr(self, "XDIM"), 2)), () => r.le(r.attr(self, "ROUNDINGRADIUS"), r.div(r.attr(self, "YDIM"), 2))) },
+      { label: "WR31", source: "((RoundingRadius <= (SELF\\IfcRectangleProfileDef.XDim/2.)) AND (RoundingRadius <= (SELF\\IfcRectangleProfileDef.YDim/2.)))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.le(r.attr(self, "ROUNDINGRADIUS"), r.div(r.attr(self, "XDIM", "IFCRECTANGLEPROFILEDEF"), 2)), () => r.le(r.attr(self, "ROUNDINGRADIUS"), r.div(r.attr(self, "YDIM", "IFCRECTANGLEPROFILEDEF"), 2))) },
     ],
     "IfcSectionedSpine": [
       { label: "WR1", source: "SIZEOF(CrossSections) = SIZEOF(CrossSectionPositions)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.attr(self, "CROSSSECTIONS")), r.sizeof(r.attr(self, "CROSSSECTIONPOSITIONS"))) },
-      { label: "WR2", source: "SIZEOF(QUERY(temp <* CrossSections | CrossSections[1].ProfileType <> temp.ProfileType)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "CROSSSECTIONS"), (q164: r.Value) => r.ne(r.attr(r.index(r.attr(self, "CROSSSECTIONS"), 1), "PROFILETYPE"), r.attr(q164, "PROFILETYPE")))), 0) },
+      { label: "WR2", source: "SIZEOF(QUERY(temp <* CrossSections | CrossSections[1].ProfileType <> temp.ProfileType)) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "CROSSSECTIONS"), (q_164: r.Value) => r.ne(r.attr(r.index(r.attr(self, "CROSSSECTIONS"), 1), "PROFILETYPE"), r.attr(q_164, "PROFILETYPE")))), 0) },
       { label: "WR3", source: "SpineCurve.Dim = 3", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(r.attr(self, "SPINECURVE"), "DIM"), 3) },
     ],
     "IfcServiceLifeFactor": [
-      { label: "WR31", source: "NOT(PredefinedType = IfcServiceLifeFactorTypeEnum.USERDEFINED) OR EXISTS(SELF\\IfcObject.ObjectType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.exists(r.attr(self, "OBJECTTYPE"))) },
+      { label: "WR31", source: "NOT(PredefinedType = IfcServiceLifeFactorTypeEnum.USERDEFINED) OR EXISTS(SELF\\IfcObject.ObjectType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT"))) },
     ],
     "IfcShapeModel": [
-      { label: "WR11", source: "(SIZEOF(SELF\\IfcRepresentation.OfProductRepresentation) = 1) XOR (SIZEOF(SELF\\IfcRepresentation.RepresentationMap) = 1) XOR (SIZEOF(OfShapeAspect) = 1)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.xor(r.xor(r.eq(r.sizeof(r.attr(self, "OFPRODUCTREPRESENTATION")), 1), r.eq(r.sizeof(r.attr(self, "REPRESENTATIONMAP")), 1)), r.eq(r.sizeof(r.attr(self, "OFSHAPEASPECT")), 1)) },
+      { label: "WR11", source: "(SIZEOF(SELF\\IfcRepresentation.OfProductRepresentation) = 1) XOR (SIZEOF(SELF\\IfcRepresentation.RepresentationMap) = 1) XOR (SIZEOF(OfShapeAspect) = 1)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.xor(r.xor(r.eq(r.sizeof(r.attr(self, "OFPRODUCTREPRESENTATION", "IFCREPRESENTATION")), 1), r.eq(r.sizeof(r.attr(self, "REPRESENTATIONMAP", "IFCREPRESENTATION")), 1)), r.eq(r.sizeof(r.attr(self, "OFSHAPEASPECT")), 1)) },
     ],
     "IfcShapeRepresentation": [
-      { label: "WR21", source: "'IFC2X3.IFCGEOMETRICREPRESENTATIONCONTEXT' IN TYPEOF(SELF\\IfcRepresentation.ContextOfItems)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.typeIs(m, r.attr(self, "CONTEXTOFITEMS"), "IFCGEOMETRICREPRESENTATIONCONTEXT") },
-      { label: "WR22", source: "SIZEOF(QUERY(temp <* Items | ('IFC2X3.IFCTOPOLOGICALREPRESENTATIONITEM' IN TYPEOF(temp)) AND (NOT(SIZEOF( ['IFC2X3.IFCVERTEXPOINT', 'IFC2X3.IFCEDGECURVE', 'IFC2X3.IFCFACESURFACE'] * TYPEOF(temp)) = 1)) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ITEMS"), (q165: r.Value) => r.and(r.typeIs(m, q165, "IFCTOPOLOGICALREPRESENTATIONITEM"), () => r.not(r.eq(r.sizeof(r.mul(r.aggregate([["IFC2X3.IFCVERTEXPOINT"], ["IFC2X3.IFCEDGECURVE"], ["IFC2X3.IFCFACESURFACE"]]), r.typeOf(m, q165))), 1))))), 0) },
-      { label: "WR23", source: "EXISTS(SELF\\IfcRepresentation.RepresentationType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "REPRESENTATIONTYPE")) },
-      { label: "WR24", source: "IfcShapeRepresentationTypes(SELF\\IfcRepresentation.RepresentationType, SELF\\IfcRepresentation.Items)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcShapeRepresentationTypes(m, r.attr(self, "REPRESENTATIONTYPE"), r.attr(self, "ITEMS")) },
+      { label: "WR21", source: "'IFC2X3.IFCGEOMETRICREPRESENTATIONCONTEXT' IN TYPEOF(SELF\\IfcRepresentation.ContextOfItems)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.typeIs(m, r.attr(self, "CONTEXTOFITEMS", "IFCREPRESENTATION"), "IFCGEOMETRICREPRESENTATIONCONTEXT") },
+      { label: "WR22", source: "SIZEOF(QUERY(temp <* Items | ('IFC2X3.IFCTOPOLOGICALREPRESENTATIONITEM' IN TYPEOF(temp)) AND (NOT(SIZEOF( ['IFC2X3.IFCVERTEXPOINT', 'IFC2X3.IFCEDGECURVE', 'IFC2X3.IFCFACESURFACE'] * TYPEOF(temp)) = 1)) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ITEMS"), (q_165: r.Value) => r.and(r.typeIs(m, q_165, "IFCTOPOLOGICALREPRESENTATIONITEM"), () => r.not(r.eq(r.sizeof(r.mul(r.aggregate([["IFC2X3.IFCVERTEXPOINT"], ["IFC2X3.IFCEDGECURVE"], ["IFC2X3.IFCFACESURFACE"]]), r.typeOf(m, q_165))), 1))))), 0) },
+      { label: "WR23", source: "EXISTS(SELF\\IfcRepresentation.RepresentationType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "REPRESENTATIONTYPE", "IFCREPRESENTATION")) },
+      { label: "WR24", source: "IfcShapeRepresentationTypes(SELF\\IfcRepresentation.RepresentationType, SELF\\IfcRepresentation.Items)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcShapeRepresentationTypes(m, r.attr(self, "REPRESENTATIONTYPE", "IFCREPRESENTATION"), r.attr(self, "ITEMS", "IFCREPRESENTATION")) },
     ],
     "IfcSlab": [
-      { label: "WR61", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcSlabTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSlabTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
+      { label: "WR61", source: "NOT(EXISTS(PredefinedType)) OR (PredefinedType <> IfcSlabTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSlabTypeEnum.USERDEFINED) AND EXISTS (SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.not(r.exists(r.attr(self, "PREDEFINEDTYPE"))), () => r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED)), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
     ],
     "IfcSpaceHeaterType": [
-      { label: "WR1", source: "(PredefinedType <> IfcSpaceHeaterTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSpaceHeaterTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcSpaceHeaterTypeEnum.USERDEFINED) OR ((PredefinedType = IfcSpaceHeaterTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcSpatialStructureElement": [
-      { label: "WR41", source: "(HIINDEX(SELF\\IfcObjectDefinition.Decomposes) = 1) AND ('IFC2X3.IFCRELAGGREGATES' IN TYPEOF(SELF\\IfcObjectDefinition.Decomposes[1])) AND (('IFC2X3.IFCPROJECT' IN TYPEOF (SELF\\IfcObjectDefinition.Decomposes[1].RelatingObject)) OR ('IFC2X3.IFCSPATIALSTRUCTUREELEMENT' IN TYPEOF (SELF\\IfcObjectDefinition.Decomposes[1].RelatingObject)) )", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.and(r.eq(r.hiindex(r.attr(self, "DECOMPOSES")), 1), () => r.typeIs(m, r.index(r.attr(self, "DECOMPOSES"), 1), "IFCRELAGGREGATES")), () => r.or(r.typeIs(m, r.attr(r.index(r.attr(self, "DECOMPOSES"), 1), "RELATINGOBJECT"), "IFCPROJECT"), () => r.typeIs(m, r.attr(r.index(r.attr(self, "DECOMPOSES"), 1), "RELATINGOBJECT"), "IFCSPATIALSTRUCTUREELEMENT"))) },
+      { label: "WR41", source: "(HIINDEX(SELF\\IfcObjectDefinition.Decomposes) = 1) AND ('IFC2X3.IFCRELAGGREGATES' IN TYPEOF(SELF\\IfcObjectDefinition.Decomposes[1])) AND (('IFC2X3.IFCPROJECT' IN TYPEOF (SELF\\IfcObjectDefinition.Decomposes[1].RelatingObject)) OR ('IFC2X3.IFCSPATIALSTRUCTUREELEMENT' IN TYPEOF (SELF\\IfcObjectDefinition.Decomposes[1].RelatingObject)) )", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.and(r.eq(r.hiindex(r.attr(self, "DECOMPOSES", "IFCOBJECTDEFINITION")), 1), () => r.typeIs(m, r.index(r.attr(self, "DECOMPOSES", "IFCOBJECTDEFINITION"), 1), "IFCRELAGGREGATES")), () => r.or(r.typeIs(m, r.attr(r.index(r.attr(self, "DECOMPOSES", "IFCOBJECTDEFINITION"), 1), "RELATINGOBJECT"), "IFCPROJECT"), () => r.typeIs(m, r.attr(r.index(r.attr(self, "DECOMPOSES", "IFCOBJECTDEFINITION"), 1), "RELATINGOBJECT"), "IFCSPATIALSTRUCTUREELEMENT"))) },
     ],
     "IfcStair": [
-      { label: "WR1", source: "(HIINDEX(SELF\\IfcObjectDefinition.IsDecomposedBy) = 0) OR ((HIINDEX(SELF\\IfcObjectDefinition.IsDecomposedBy) = 1) AND (NOT(EXISTS(SELF\\IfcProduct.Representation))))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.hiindex(r.attr(self, "ISDECOMPOSEDBY")), 0), () => r.and(r.eq(r.hiindex(r.attr(self, "ISDECOMPOSEDBY")), 1), () => r.not(r.exists(r.attr(self, "REPRESENTATION"))))) },
+      { label: "WR1", source: "(HIINDEX(SELF\\IfcObjectDefinition.IsDecomposedBy) = 0) OR ((HIINDEX(SELF\\IfcObjectDefinition.IsDecomposedBy) = 1) AND (NOT(EXISTS(SELF\\IfcProduct.Representation))))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.hiindex(r.attr(self, "ISDECOMPOSEDBY", "IFCOBJECTDEFINITION")), 0), () => r.and(r.eq(r.hiindex(r.attr(self, "ISDECOMPOSEDBY", "IFCOBJECTDEFINITION")), 1), () => r.not(r.exists(r.attr(self, "REPRESENTATION", "IFCPRODUCT"))))) },
     ],
     "IfcStructuralLinearAction": [
-      { label: "WR61", source: "SIZEOF(['IFC2X3.IFCSTRUCTURALLOADLINEARFORCE', 'IFC2X3.IFCSTRUCTURALLOADTEMPERATURE'] * TYPEOF(SELF\\IfcStructuralActivity.AppliedLoad)) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.mul(r.aggregate([["IFC2X3.IFCSTRUCTURALLOADLINEARFORCE"], ["IFC2X3.IFCSTRUCTURALLOADTEMPERATURE"]]), r.typeOf(m, r.attr(self, "APPLIEDLOAD")))), 1) },
+      { label: "WR61", source: "SIZEOF(['IFC2X3.IFCSTRUCTURALLOADLINEARFORCE', 'IFC2X3.IFCSTRUCTURALLOADTEMPERATURE'] * TYPEOF(SELF\\IfcStructuralActivity.AppliedLoad)) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.mul(r.aggregate([["IFC2X3.IFCSTRUCTURALLOADLINEARFORCE"], ["IFC2X3.IFCSTRUCTURALLOADTEMPERATURE"]]), r.typeOf(m, r.attr(self, "APPLIEDLOAD", "IFCSTRUCTURALACTIVITY")))), 1) },
     ],
     "IfcStructuralPlanarAction": [
-      { label: "WR61", source: "SIZEOF(['IFC2X3.IFCSTRUCTURALLOADPLANARFORCE', 'IFC2X3.IFCSTRUCTURALLOADTEMPERATURE'] * TYPEOF(SELF\\IfcStructuralActivity.AppliedLoad)) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.mul(r.aggregate([["IFC2X3.IFCSTRUCTURALLOADPLANARFORCE"], ["IFC2X3.IFCSTRUCTURALLOADTEMPERATURE"]]), r.typeOf(m, r.attr(self, "APPLIEDLOAD")))), 1) },
+      { label: "WR61", source: "SIZEOF(['IFC2X3.IFCSTRUCTURALLOADPLANARFORCE', 'IFC2X3.IFCSTRUCTURALLOADTEMPERATURE'] * TYPEOF(SELF\\IfcStructuralActivity.AppliedLoad)) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.mul(r.aggregate([["IFC2X3.IFCSTRUCTURALLOADPLANARFORCE"], ["IFC2X3.IFCSTRUCTURALLOADTEMPERATURE"]]), r.typeOf(m, r.attr(self, "APPLIEDLOAD", "IFCSTRUCTURALACTIVITY")))), 1) },
     ],
     "IfcStructuralPointAction": [
-      { label: "WR61", source: "SIZEOF(['IFC2X3.IFCSTRUCTURALLOADSINGLEFORCE', 'IFC2X3.IFCSTRUCTURALLOADSINGLEDISPLACEMENT'] * TYPEOF(SELF\\IfcStructuralActivity.AppliedLoad)) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.mul(r.aggregate([["IFC2X3.IFCSTRUCTURALLOADSINGLEFORCE"], ["IFC2X3.IFCSTRUCTURALLOADSINGLEDISPLACEMENT"]]), r.typeOf(m, r.attr(self, "APPLIEDLOAD")))), 1) },
+      { label: "WR61", source: "SIZEOF(['IFC2X3.IFCSTRUCTURALLOADSINGLEFORCE', 'IFC2X3.IFCSTRUCTURALLOADSINGLEDISPLACEMENT'] * TYPEOF(SELF\\IfcStructuralActivity.AppliedLoad)) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.mul(r.aggregate([["IFC2X3.IFCSTRUCTURALLOADSINGLEFORCE"], ["IFC2X3.IFCSTRUCTURALLOADSINGLEDISPLACEMENT"]]), r.typeOf(m, r.attr(self, "APPLIEDLOAD", "IFCSTRUCTURALACTIVITY")))), 1) },
     ],
     "IfcStructuralPointReaction": [
-      { label: "WR61", source: "SIZEOF(['IFC2X3.IFCSTRUCTURALLOADSINGLEFORCE', 'IFC2X3.IFCSTRUCTURALLOADSINGLEDISPLACEMENT'] * TYPEOF(SELF\\IfcStructuralActivity.AppliedLoad)) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.mul(r.aggregate([["IFC2X3.IFCSTRUCTURALLOADSINGLEFORCE"], ["IFC2X3.IFCSTRUCTURALLOADSINGLEDISPLACEMENT"]]), r.typeOf(m, r.attr(self, "APPLIEDLOAD")))), 1) },
+      { label: "WR61", source: "SIZEOF(['IFC2X3.IFCSTRUCTURALLOADSINGLEFORCE', 'IFC2X3.IFCSTRUCTURALLOADSINGLEDISPLACEMENT'] * TYPEOF(SELF\\IfcStructuralActivity.AppliedLoad)) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.mul(r.aggregate([["IFC2X3.IFCSTRUCTURALLOADSINGLEFORCE"], ["IFC2X3.IFCSTRUCTURALLOADSINGLEDISPLACEMENT"]]), r.typeOf(m, r.attr(self, "APPLIEDLOAD", "IFCSTRUCTURALACTIVITY")))), 1) },
     ],
     "IfcStructuralProfileProperties": [
       { label: "WR21", source: "NOT(EXISTS(ShearDeformationAreaY)) OR (ShearDeformationAreaY >= 0.)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "SHEARDEFORMATIONAREAY"))), () => r.ge(r.attr(self, "SHEARDEFORMATIONAREAY"), 0)) },
@@ -1870,29 +1870,29 @@ export const RULES: r.CompiledRules = {
       { label: "WR32", source: "NOT(EXISTS(ShearAreaZ)) OR (ShearAreaZ >= 0.)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.attr(self, "SHEARAREAZ"))), () => r.ge(r.attr(self, "SHEARAREAZ"), 0)) },
     ],
     "IfcStructuralSurfaceMemberVarying": [
-      { label: "WR61", source: "EXISTS(SELF\\IfcStructuralSurfaceMember.Thickness)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "THICKNESS")) },
-      { label: "WR62", source: "SIZEOF(QUERY(temp <* SELF.VaryingThicknessLocation.ShapeRepresentations | NOT(SIZEOF(temp\\IfcRepresentation.Items) = 1) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(r.attr(self, "VARYINGTHICKNESSLOCATION"), "SHAPEREPRESENTATIONS"), (q166: r.Value) => r.not(r.eq(r.sizeof(r.attr(q166, "ITEMS")), 1)))), 0) },
-      { label: "WR63", source: "SIZEOF(QUERY(temp <* SELF.VaryingThicknessLocation.ShapeRepresentations | NOT(('IFC2X3.IFCCARTESIANPOINT' IN TYPEOF(temp\\IfcRepresentation.Items[1])) OR ('IFC2X3.IFCPOINTONSURFACE' IN TYPEOF(temp\\IfcRepresentation.Items[1]))) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(r.attr(self, "VARYINGTHICKNESSLOCATION"), "SHAPEREPRESENTATIONS"), (q167: r.Value) => r.not(r.or(r.typeIs(m, r.index(r.attr(q167, "ITEMS"), 1), "IFCCARTESIANPOINT"), () => r.typeIs(m, r.index(r.attr(q167, "ITEMS"), 1), "IFCPOINTONSURFACE"))))), 0) },
+      { label: "WR61", source: "EXISTS(SELF\\IfcStructuralSurfaceMember.Thickness)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "THICKNESS", "IFCSTRUCTURALSURFACEMEMBER")) },
+      { label: "WR62", source: "SIZEOF(QUERY(temp <* SELF.VaryingThicknessLocation.ShapeRepresentations | NOT(SIZEOF(temp\\IfcRepresentation.Items) = 1) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(r.attr(self, "VARYINGTHICKNESSLOCATION"), "SHAPEREPRESENTATIONS"), (q_166: r.Value) => r.not(r.eq(r.sizeof(r.attr(q_166, "ITEMS", "IFCREPRESENTATION")), 1)))), 0) },
+      { label: "WR63", source: "SIZEOF(QUERY(temp <* SELF.VaryingThicknessLocation.ShapeRepresentations | NOT(('IFC2X3.IFCCARTESIANPOINT' IN TYPEOF(temp\\IfcRepresentation.Items[1])) OR ('IFC2X3.IFCPOINTONSURFACE' IN TYPEOF(temp\\IfcRepresentation.Items[1]))) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(r.attr(self, "VARYINGTHICKNESSLOCATION"), "SHAPEREPRESENTATIONS"), (q_167: r.Value) => r.not(r.or(r.typeIs(m, r.index(r.attr(q_167, "ITEMS", "IFCREPRESENTATION"), 1), "IFCCARTESIANPOINT"), () => r.typeIs(m, r.index(r.attr(q_167, "ITEMS", "IFCREPRESENTATION"), 1), "IFCPOINTONSURFACE"))))), 0) },
     ],
     "IfcStructuredDimensionCallout": [
-      { label: "WR31", source: "SIZEOF(QUERY ( Ato <* QUERY ( Con <* SELF.contents | ( 'IFC2X3.IFCANNOTATIONTEXTOCCURRENCE' IN TYPEOF(Con)) ) | (NOT (Ato.Name IN ['dimension value', 'tolerance value','unit text','prefix text','suffix text'])))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.query(r.attr(self, "CONTENTS"), (q169: r.Value) => r.typeIs(m, q169, "IFCANNOTATIONTEXTOCCURRENCE")), (q168: r.Value) => r.not(r.isIn(r.attr(q168, "NAME"), r.aggregate([["dimension value"], ["tolerance value"], ["unit text"], ["prefix text"], ["suffix text"]]))))), 0) },
+      { label: "WR31", source: "SIZEOF(QUERY ( Ato <* QUERY ( Con <* SELF.contents | ( 'IFC2X3.IFCANNOTATIONTEXTOCCURRENCE' IN TYPEOF(Con)) ) | (NOT (Ato.Name IN ['dimension value', 'tolerance value','unit text','prefix text','suffix text'])))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.query(r.attr(self, "CONTENTS"), (q_169: r.Value) => r.typeIs(m, q_169, "IFCANNOTATIONTEXTOCCURRENCE")), (q_168: r.Value) => r.not(r.isIn(r.attr(q_168, "NAME"), r.aggregate([["dimension value"], ["tolerance value"], ["unit text"], ["prefix text"], ["suffix text"]]))))), 0) },
     ],
     "IfcStyledItem": [
       { label: "WR11", source: "SIZEOF(Styles) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.attr(self, "STYLES")), 1) },
       { label: "WR12", source: "NOT('IFC2X3.IFCSTYLEDITEM' IN TYPEOF(Item))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.not(r.typeIs(m, r.attr(self, "ITEM"), "IFCSTYLEDITEM")) },
     ],
     "IfcStyledRepresentation": [
-      { label: "WR21", source: "SIZEOF(QUERY(temp <* SELF\\IfcRepresentation.Items | (NOT('IFC2X3.IFCSTYLEDITEM' IN TYPEOF(temp))) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ITEMS"), (q170: r.Value) => r.not(r.typeIs(m, q170, "IFCSTYLEDITEM")))), 0) },
+      { label: "WR21", source: "SIZEOF(QUERY(temp <* SELF\\IfcRepresentation.Items | (NOT('IFC2X3.IFCSTYLEDITEM' IN TYPEOF(temp))) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ITEMS", "IFCREPRESENTATION"), (q_170: r.Value) => r.not(r.typeIs(m, q_170, "IFCSTYLEDITEM")))), 0) },
     ],
     "IfcSurfaceOfLinearExtrusion": [
       { label: "WR41", source: "Depth > 0.", check: (self: r.EntityInstance, m: r.Model): r.Value => r.gt(r.attr(self, "DEPTH"), 0) },
     ],
     "IfcSurfaceStyle": [
-      { label: "WR11", source: "SIZEOF(QUERY(Style <* SELF.Styles | 'IFC2X3.IFCSURFACESTYLESHADING' IN TYPEOF(Style) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "STYLES"), (q171: r.Value) => r.typeIs(m, q171, "IFCSURFACESTYLESHADING"))), 1) },
-      { label: "WR12", source: "SIZEOF(QUERY(Style <* SELF.Styles | 'IFC2X3.IFCSURFACESTYLELIGHTING' IN TYPEOF(Style) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "STYLES"), (q172: r.Value) => r.typeIs(m, q172, "IFCSURFACESTYLELIGHTING"))), 1) },
-      { label: "WR13", source: "SIZEOF(QUERY(Style <* SELF.Styles | 'IFC2X3.IFCSURFACESTYLEREFRACTION' IN TYPEOF(Style) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "STYLES"), (q173: r.Value) => r.typeIs(m, q173, "IFCSURFACESTYLEREFRACTION"))), 1) },
-      { label: "WR14", source: "SIZEOF(QUERY(Style <* SELF.Styles | 'IFC2X3.IFCSURFACESTYLEWITHTEXTURES' IN TYPEOF(Style) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "STYLES"), (q174: r.Value) => r.typeIs(m, q174, "IFCSURFACESTYLEWITHTEXTURES"))), 1) },
-      { label: "WR15", source: "SIZEOF(QUERY(Style <* SELF.Styles | 'IFC2X3.IFCEXTERNALLYDEFINEDSURFACESTYLE' IN TYPEOF(Style) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "STYLES"), (q175: r.Value) => r.typeIs(m, q175, "IFCEXTERNALLYDEFINEDSURFACESTYLE"))), 1) },
+      { label: "WR11", source: "SIZEOF(QUERY(Style <* SELF.Styles | 'IFC2X3.IFCSURFACESTYLESHADING' IN TYPEOF(Style) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "STYLES"), (q_171: r.Value) => r.typeIs(m, q_171, "IFCSURFACESTYLESHADING"))), 1) },
+      { label: "WR12", source: "SIZEOF(QUERY(Style <* SELF.Styles | 'IFC2X3.IFCSURFACESTYLELIGHTING' IN TYPEOF(Style) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "STYLES"), (q_172: r.Value) => r.typeIs(m, q_172, "IFCSURFACESTYLELIGHTING"))), 1) },
+      { label: "WR13", source: "SIZEOF(QUERY(Style <* SELF.Styles | 'IFC2X3.IFCSURFACESTYLEREFRACTION' IN TYPEOF(Style) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "STYLES"), (q_173: r.Value) => r.typeIs(m, q_173, "IFCSURFACESTYLEREFRACTION"))), 1) },
+      { label: "WR14", source: "SIZEOF(QUERY(Style <* SELF.Styles | 'IFC2X3.IFCSURFACESTYLEWITHTEXTURES' IN TYPEOF(Style) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "STYLES"), (q_174: r.Value) => r.typeIs(m, q_174, "IFCSURFACESTYLEWITHTEXTURES"))), 1) },
+      { label: "WR15", source: "SIZEOF(QUERY(Style <* SELF.Styles | 'IFC2X3.IFCEXTERNALLYDEFINEDSURFACESTYLE' IN TYPEOF(Style) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "STYLES"), (q_175: r.Value) => r.typeIs(m, q_175, "IFCEXTERNALLYDEFINEDSURFACESTYLE"))), 1) },
     ],
     "IfcSweptAreaSolid": [
       { label: "WR22", source: "SweptArea.ProfileType = IfcProfileTypeEnum.Area", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.attr(r.attr(self, "SWEPTAREA"), "PROFILETYPE"), E_AREA) },
@@ -1910,23 +1910,23 @@ export const RULES: r.CompiledRules = {
       { label: "WR2", source: "WebThickness < FlangeWidth", check: (self: r.EntityInstance, m: r.Model): r.Value => r.lt(r.attr(self, "WEBTHICKNESS"), r.attr(self, "FLANGEWIDTH")) },
     ],
     "IfcTable": [
-      { label: "WR1", source: "SIZEOF(QUERY( Temp <* Rows | HIINDEX(Temp.RowCells) <> HIINDEX(Rows[1].RowCells))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ROWS"), (q176: r.Value) => r.ne(r.hiindex(r.attr(q176, "ROWCELLS")), r.hiindex(r.attr(r.index(r.attr(self, "ROWS"), 1), "ROWCELLS"))))), 0) },
-      { label: "WR2", source: "SIZEOF(QUERY( Temp <* Rows | HIINDEX(Temp.RowCells) <> HIINDEX(Rows[1].RowCells))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ROWS"), (q177: r.Value) => r.ne(r.hiindex(r.attr(q177, "ROWCELLS")), r.hiindex(r.attr(r.index(r.attr(self, "ROWS"), 1), "ROWCELLS"))))), 0) },
+      { label: "WR1", source: "SIZEOF(QUERY( Temp <* Rows | HIINDEX(Temp.RowCells) <> HIINDEX(Rows[1].RowCells))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ROWS"), (q_176: r.Value) => r.ne(r.hiindex(r.attr(q_176, "ROWCELLS")), r.hiindex(r.attr(r.index(r.attr(self, "ROWS"), 1), "ROWCELLS"))))), 0) },
+      { label: "WR2", source: "SIZEOF(QUERY( Temp <* Rows | HIINDEX(Temp.RowCells) <> HIINDEX(Rows[1].RowCells))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ROWS"), (q_177: r.Value) => r.ne(r.hiindex(r.attr(q_177, "ROWCELLS")), r.hiindex(r.attr(r.index(r.attr(self, "ROWS"), 1), "ROWCELLS"))))), 0) },
       { label: "WR3", source: "{ 0 <= NumberOfHeadings <= 1 }", check: (self: r.EntityInstance, m: r.Model): r.Value => r.interval(0, '<=', r.attr(self, "NUMBEROFHEADINGS"), '<=', 1) },
     ],
     "IfcTankType": [
-      { label: "WR1", source: "(PredefinedType <> IfcTankTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTankTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcTankTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTankTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcTask": [
-      { label: "WR1", source: "SIZEOF(QUERY(temp <* SELF\\IfcObjectDefinition.Decomposes | NOT('IFC2X3.IFCRELNESTS' IN TYPEOF(temp)))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "DECOMPOSES"), (q178: r.Value) => r.not(r.typeIs(m, q178, "IFCRELNESTS")))), 0) },
-      { label: "WR2", source: "SIZEOF(QUERY(temp <* SELF\\IfcObjectDefinition.IsDecomposedBy | NOT('IFC2X3.IFCRELNESTS' IN TYPEOF(temp)))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ISDECOMPOSEDBY"), (q179: r.Value) => r.not(r.typeIs(m, q179, "IFCRELNESTS")))), 0) },
-      { label: "WR3", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME")) },
+      { label: "WR1", source: "SIZEOF(QUERY(temp <* SELF\\IfcObjectDefinition.Decomposes | NOT('IFC2X3.IFCRELNESTS' IN TYPEOF(temp)))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "DECOMPOSES", "IFCOBJECTDEFINITION"), (q_178: r.Value) => r.not(r.typeIs(m, q_178, "IFCRELNESTS")))), 0) },
+      { label: "WR2", source: "SIZEOF(QUERY(temp <* SELF\\IfcObjectDefinition.IsDecomposedBy | NOT('IFC2X3.IFCRELNESTS' IN TYPEOF(temp)))) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ISDECOMPOSEDBY", "IFCOBJECTDEFINITION"), (q_179: r.Value) => r.not(r.typeIs(m, q_179, "IFCRELNESTS")))), 0) },
+      { label: "WR3", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME", "IFCROOT")) },
     ],
     "IfcTelecomAddress": [
       { label: "WR1", source: "EXISTS (TelephoneNumbers) OR EXISTS (PagerNumber) OR EXISTS (FacsimileNumbers) OR EXISTS (ElectronicMailAddresses) OR EXISTS (WWWHomePageURL)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.or(r.or(r.or(r.exists(r.attr(self, "TELEPHONENUMBERS")), () => r.exists(r.attr(self, "PAGERNUMBER"))), () => r.exists(r.attr(self, "FACSIMILENUMBERS"))), () => r.exists(r.attr(self, "ELECTRONICMAILADDRESSES"))), () => r.exists(r.attr(self, "WWWHOMEPAGEURL"))) },
     ],
     "IfcTendon": [
-      { label: "WR1", source: "(PredefinedType <> IfcTendonTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTendonTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcTendonTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTendonTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcObject.ObjectType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT")))) },
     ],
     "IfcTextLiteralWithExtent": [
       { label: "WR31", source: "NOT('IFC2X3.IFCPLANARBOX' IN TYPEOF(Extent))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.not(r.typeIs(m, r.attr(self, "EXTENT"), "IFCPLANARBOX")) },
@@ -1935,15 +1935,15 @@ export const RULES: r.CompiledRules = {
       { label: "WR31", source: "('IFC2X3.IFCLENGTHMEASURE' IN TYPEOF(SELF.FontSize)) AND (SELF.FontSize > 0.)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.typeIs(m, r.attr(self, "FONTSIZE"), "IFCLENGTHMEASURE"), () => r.gt(r.attr(self, "FONTSIZE"), 0)) },
     ],
     "IfcTextureMap": [
-      { label: "WR11", source: "SIZEOF([ 'IFC2X3.IFCSHELLBASEDSURFACEMODEL', 'IFC2X3.IFCFACEBASEDSURFACEMODEL', 'IFC2X3.IFCFACETEDBREP', 'IFC2X3.IFCFACETEDBREPWITHVOIDS'] * TYPEOF(SELF\\IfcTextureCoordinate.AnnotatedSurface[1].Item) ) >= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ge(r.sizeof(r.mul(r.aggregate([["IFC2X3.IFCSHELLBASEDSURFACEMODEL"], ["IFC2X3.IFCFACEBASEDSURFACEMODEL"], ["IFC2X3.IFCFACETEDBREP"], ["IFC2X3.IFCFACETEDBREPWITHVOIDS"]]), r.typeOf(m, r.attr(r.index(r.attr(self, "ANNOTATEDSURFACE"), 1), "ITEM")))), 1) },
+      { label: "WR11", source: "SIZEOF([ 'IFC2X3.IFCSHELLBASEDSURFACEMODEL', 'IFC2X3.IFCFACEBASEDSURFACEMODEL', 'IFC2X3.IFCFACETEDBREP', 'IFC2X3.IFCFACETEDBREPWITHVOIDS'] * TYPEOF(SELF\\IfcTextureCoordinate.AnnotatedSurface[1].Item) ) >= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ge(r.sizeof(r.mul(r.aggregate([["IFC2X3.IFCSHELLBASEDSURFACEMODEL"], ["IFC2X3.IFCFACEBASEDSURFACEMODEL"], ["IFC2X3.IFCFACETEDBREP"], ["IFC2X3.IFCFACETEDBREPWITHVOIDS"]]), r.typeOf(m, r.attr(r.index(r.attr(self, "ANNOTATEDSURFACE", "IFCTEXTURECOORDINATE"), 1), "ITEM")))), 1) },
     ],
     "IfcTimeSeriesSchedule": [
-      { label: "WR41", source: "NOT(TimeSeriesScheduleType=IfcTimeSeriesScheduleTypeEnum.USERDEFINED) OR EXISTS(SELF\\IfcObject.ObjectType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.eq(r.attr(self, "TIMESERIESSCHEDULETYPE"), E_USERDEFINED)), () => r.exists(r.attr(self, "OBJECTTYPE"))) },
+      { label: "WR41", source: "NOT(TimeSeriesScheduleType=IfcTimeSeriesScheduleTypeEnum.USERDEFINED) OR EXISTS(SELF\\IfcObject.ObjectType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.eq(r.attr(self, "TIMESERIESSCHEDULETYPE"), E_USERDEFINED)), () => r.exists(r.attr(self, "OBJECTTYPE", "IFCOBJECT"))) },
     ],
     "IfcTopologyRepresentation": [
-      { label: "WR21", source: "SIZEOF(QUERY(temp <* SELF\\IfcRepresentation.Items | NOT('IFC2X3.IFCTOPOLOGICALREPRESENTATIONITEM' IN TYPEOF(temp)) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ITEMS"), (q180: r.Value) => r.not(r.typeIs(m, q180, "IFCTOPOLOGICALREPRESENTATIONITEM")))), 0) },
-      { label: "WR22", source: "EXISTS(SELF\\IfcRepresentation.RepresentationType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "REPRESENTATIONTYPE")) },
-      { label: "WR23", source: "IfcTopologyRepresentationTypes(SELF\\IfcRepresentation.RepresentationType, SELF\\IfcRepresentation.Items)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcTopologyRepresentationTypes(m, r.attr(self, "REPRESENTATIONTYPE"), r.attr(self, "ITEMS")) },
+      { label: "WR21", source: "SIZEOF(QUERY(temp <* SELF\\IfcRepresentation.Items | NOT('IFC2X3.IFCTOPOLOGICALREPRESENTATIONITEM' IN TYPEOF(temp)) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(self, "ITEMS", "IFCREPRESENTATION"), (q_180: r.Value) => r.not(r.typeIs(m, q_180, "IFCTOPOLOGICALREPRESENTATIONITEM")))), 0) },
+      { label: "WR22", source: "EXISTS(SELF\\IfcRepresentation.RepresentationType)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "REPRESENTATIONTYPE", "IFCREPRESENTATION")) },
+      { label: "WR23", source: "IfcTopologyRepresentationTypes(SELF\\IfcRepresentation.RepresentationType, SELF\\IfcRepresentation.Items)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcTopologyRepresentationTypes(m, r.attr(self, "REPRESENTATIONTYPE", "IFCREPRESENTATION"), r.attr(self, "ITEMS", "IFCREPRESENTATION")) },
     ],
     "IfcTrimmedCurve": [
       { label: "WR41", source: "(HIINDEX(Trim1) = 1) OR (TYPEOF(Trim1[1]) <> TYPEOF(Trim1[2]))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.eq(r.hiindex(r.attr(self, "TRIM1")), 1), () => r.ne(r.typeOf(m, r.index(r.attr(self, "TRIM1"), 1)), r.typeOf(m, r.index(r.attr(self, "TRIM1"), 2)))) },
@@ -1951,13 +1951,13 @@ export const RULES: r.CompiledRules = {
       { label: "WR43", source: "NOT('IFC2X3.IFCBOUNDEDCURVE' IN TYPEOF(BasisCurve))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.not(r.typeIs(m, r.attr(self, "BASISCURVE"), "IFCBOUNDEDCURVE")) },
     ],
     "IfcTubeBundleType": [
-      { label: "WR1", source: "(PredefinedType <> IfcTubeBundleTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTubeBundleTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcTubeBundleTypeEnum.USERDEFINED) OR ((PredefinedType = IfcTubeBundleTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcTypeObject": [
-      { label: "WR1", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME")) },
+      { label: "WR1", source: "EXISTS(SELF\\IfcRoot.Name)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.exists(r.attr(self, "NAME", "IFCROOT")) },
     ],
     "IfcTypeProduct": [
-      { label: "WR41", source: "NOT(EXISTS(SELF\\IfcTypeObject.ObjectTypeOf[1])) OR (SIZEOF(QUERY(temp <* SELF\\IfcTypeObject.ObjectTypeOf[1].RelatedObjects | NOT('IFC2X3.IFCPRODUCT' IN TYPEOF(temp))) ) = 0)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.index(r.attr(self, "OBJECTTYPEOF"), 1))), () => r.eq(r.sizeof(r.query(r.attr(r.index(r.attr(self, "OBJECTTYPEOF"), 1), "RELATEDOBJECTS"), (q181: r.Value) => r.not(r.typeIs(m, q181, "IFCPRODUCT")))), 0)) },
+      { label: "WR41", source: "NOT(EXISTS(SELF\\IfcTypeObject.ObjectTypeOf[1])) OR (SIZEOF(QUERY(temp <* SELF\\IfcTypeObject.ObjectTypeOf[1].RelatedObjects | NOT('IFC2X3.IFCPRODUCT' IN TYPEOF(temp))) ) = 0)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.not(r.exists(r.index(r.attr(self, "OBJECTTYPEOF", "IFCTYPEOBJECT"), 1))), () => r.eq(r.sizeof(r.query(r.attr(r.index(r.attr(self, "OBJECTTYPEOF", "IFCTYPEOBJECT"), 1), "RELATEDOBJECTS"), (q_181: r.Value) => r.not(r.typeIs(m, q_181, "IFCPRODUCT")))), 0)) },
     ],
     "IfcUShapeProfileDef": [
       { label: "WR21", source: "FlangeThickness < (Depth / 2.)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.lt(r.attr(self, "FLANGETHICKNESS"), r.div(r.attr(self, "DEPTH"), 2)) },
@@ -1967,37 +1967,37 @@ export const RULES: r.CompiledRules = {
       { label: "WR01", source: "IfcCorrectUnitAssignment(Units)", check: (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcCorrectUnitAssignment(m, r.attr(self, "UNITS")) },
     ],
     "IfcUnitaryEquipmentType": [
-      { label: "WR1", source: "(PredefinedType <> IfcUnitaryEquipmentTypeEnum.USERDEFINED) OR ((PredefinedType = IfcUnitaryEquipmentTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcUnitaryEquipmentTypeEnum.USERDEFINED) OR ((PredefinedType = IfcUnitaryEquipmentTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcValveType": [
-      { label: "WR1", source: "(PredefinedType <> IfcValveTypeEnum.USERDEFINED) OR ((PredefinedType = IfcValveTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcValveTypeEnum.USERDEFINED) OR ((PredefinedType = IfcValveTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcVector": [
       { label: "WR1", source: "Magnitude >= 0.0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.ge(r.attr(self, "MAGNITUDE"), 0) },
     ],
     "IfcVibrationIsolatorType": [
-      { label: "WR1", source: "(PredefinedType <> IfcVibrationIsolatorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcVibrationIsolatorTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE")))) },
+      { label: "WR1", source: "(PredefinedType <> IfcVibrationIsolatorTypeEnum.USERDEFINED) OR ((PredefinedType = IfcVibrationIsolatorTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcElementType.ElementType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "PREDEFINEDTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "ELEMENTTYPE", "IFCELEMENTTYPE")))) },
     ],
     "IfcWall": [
-      { label: "WR1", source: "SIZEOF (QUERY(temp <* SELF\\IfcObjectDefinition.HasAssociations | 'IFC2X3.IFCRELASSOCIATESMATERIAL' IN TYPEOF(temp) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "HASASSOCIATIONS"), (q182: r.Value) => r.typeIs(m, q182, "IFCRELASSOCIATESMATERIAL"))), 1) },
+      { label: "WR1", source: "SIZEOF (QUERY(temp <* SELF\\IfcObjectDefinition.HasAssociations | 'IFC2X3.IFCRELASSOCIATESMATERIAL' IN TYPEOF(temp) )) <= 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.le(r.sizeof(r.query(r.attr(self, "HASASSOCIATIONS", "IFCOBJECTDEFINITION"), (q_182: r.Value) => r.typeIs(m, q_182, "IFCRELASSOCIATESMATERIAL"))), 1) },
     ],
     "IfcWallStandardCase": [
-      { label: "WR1", source: "SIZEOF (QUERY(temp <* USEDIN(SELF, 'IFC2X3.IFCRELASSOCIATES.RELATEDOBJECTS') | ('IFC2X3.IFCRELASSOCIATESMATERIAL' IN TYPEOF(temp)) AND ('IFC2X3.IFCMATERIALLAYERSETUSAGE' IN TYPEOF(temp.RelatingMaterial)) )) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.usedIn(m, self, "IFC2X3.IFCRELASSOCIATES.RELATEDOBJECTS"), (q183: r.Value) => r.and(r.typeIs(m, q183, "IFCRELASSOCIATESMATERIAL"), () => r.typeIs(m, r.attr(q183, "RELATINGMATERIAL"), "IFCMATERIALLAYERSETUSAGE")))), 1) },
+      { label: "WR1", source: "SIZEOF (QUERY(temp <* USEDIN(SELF, 'IFC2X3.IFCRELASSOCIATES.RELATEDOBJECTS') | ('IFC2X3.IFCRELASSOCIATESMATERIAL' IN TYPEOF(temp)) AND ('IFC2X3.IFCMATERIALLAYERSETUSAGE' IN TYPEOF(temp.RelatingMaterial)) )) = 1", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.usedIn(m, self, "IFC2X3.IFCRELASSOCIATES.RELATEDOBJECTS"), (q_183: r.Value) => r.and(r.typeIs(m, q_183, "IFCRELASSOCIATESMATERIAL"), () => r.typeIs(m, r.attr(q_183, "RELATINGMATERIAL"), "IFCMATERIALLAYERSETUSAGE")))), 1) },
     ],
     "IfcWindowLiningProperties": [
       { label: "WR31", source: "NOT(NOT(EXISTS(LiningDepth)) AND EXISTS(LiningThickness))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.not(r.and(r.not(r.exists(r.attr(self, "LININGDEPTH"))), () => r.exists(r.attr(self, "LININGTHICKNESS")))) },
       { label: "WR32", source: "NOT(NOT(EXISTS(FirstTransomOffset)) AND EXISTS(SecondTransomOffset))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.not(r.and(r.not(r.exists(r.attr(self, "FIRSTTRANSOMOFFSET"))), () => r.exists(r.attr(self, "SECONDTRANSOMOFFSET")))) },
       { label: "WR33", source: "NOT(NOT(EXISTS(FirstMullionOffset)) AND EXISTS(SecondMullionOffset))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.not(r.and(r.not(r.exists(r.attr(self, "FIRSTMULLIONOFFSET"))), () => r.exists(r.attr(self, "SECONDMULLIONOFFSET")))) },
-      { label: "WR34", source: "EXISTS(SELF\\IfcPropertySetDefinition.DefinesType[1]) AND ('IFC2X3.IFCWINDOWSTYLE' IN TYPEOF(SELF\\IfcPropertySetDefinition.DefinesType[1]))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.exists(r.index(r.attr(self, "DEFINESTYPE"), 1)), () => r.typeIs(m, r.index(r.attr(self, "DEFINESTYPE"), 1), "IFCWINDOWSTYLE")) },
+      { label: "WR34", source: "EXISTS(SELF\\IfcPropertySetDefinition.DefinesType[1]) AND ('IFC2X3.IFCWINDOWSTYLE' IN TYPEOF(SELF\\IfcPropertySetDefinition.DefinesType[1]))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.and(r.exists(r.index(r.attr(self, "DEFINESTYPE", "IFCPROPERTYSETDEFINITION"), 1)), () => r.typeIs(m, r.index(r.attr(self, "DEFINESTYPE", "IFCPROPERTYSETDEFINITION"), 1), "IFCWINDOWSTYLE")) },
     ],
     "IfcWorkControl": [
-      { label: "WR1", source: "(WorkControlType <> IfcWorkControlTypeEnum.USERDEFINED) OR ((WorkControlType = IfcWorkControlTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcWorkControl.UserDefinedControlType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "WORKCONTROLTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "WORKCONTROLTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "USERDEFINEDCONTROLTYPE")))) },
+      { label: "WR1", source: "(WorkControlType <> IfcWorkControlTypeEnum.USERDEFINED) OR ((WorkControlType = IfcWorkControlTypeEnum.USERDEFINED) AND EXISTS(SELF\\IfcWorkControl.UserDefinedControlType))", check: (self: r.EntityInstance, m: r.Model): r.Value => r.or(r.ne(r.attr(self, "WORKCONTROLTYPE"), E_USERDEFINED), () => r.and(r.eq(r.attr(self, "WORKCONTROLTYPE"), E_USERDEFINED), () => r.exists(r.attr(self, "USERDEFINEDCONTROLTYPE", "IFCWORKCONTROL")))) },
     ],
     "IfcZShapeProfileDef": [
       { label: "WR21", source: "FlangeThickness < (Depth / 2.)", check: (self: r.EntityInstance, m: r.Model): r.Value => r.lt(r.attr(self, "FLANGETHICKNESS"), r.div(r.attr(self, "DEPTH"), 2)) },
     ],
     "IfcZone": [
-      { label: "WR1", source: "SIZEOF (QUERY (temp <* SELF\\IfcGroup.IsGroupedBy.RelatedObjects | NOT(('IFC2X3.IFCZONE' IN TYPEOF(temp)) OR ('IFC2X3.IFCSPACE' IN TYPEOF(temp))) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(r.attr(self, "ISGROUPEDBY"), "RELATEDOBJECTS"), (q184: r.Value) => r.not(r.or(r.typeIs(m, q184, "IFCZONE"), () => r.typeIs(m, q184, "IFCSPACE"))))), 0) },
+      { label: "WR1", source: "SIZEOF (QUERY (temp <* SELF\\IfcGroup.IsGroupedBy.RelatedObjects | NOT(('IFC2X3.IFCZONE' IN TYPEOF(temp)) OR ('IFC2X3.IFCSPACE' IN TYPEOF(temp))) )) = 0", check: (self: r.EntityInstance, m: r.Model): r.Value => r.eq(r.sizeof(r.query(r.attr(r.attr(self, "ISGROUPEDBY", "IFCGROUP"), "RELATEDOBJECTS"), (q_184: r.Value) => r.not(r.or(r.typeIs(m, q_184, "IFCZONE"), () => r.typeIs(m, q_184, "IFCSPACE"))))), 0) },
     ],
   },
   type: {
@@ -2079,11 +2079,11 @@ export const RULES: r.CompiledRules = {
     "IfcCartesianPoint.Dim": (self: r.EntityInstance, m: r.Model): r.Value => r.hiindex(r.attr(self, "COORDINATES")),
     "IfcCartesianTransformationOperator.Scl": (self: r.EntityInstance, m: r.Model): r.Value => r.nvl(r.attr(self, "SCALE"), 1),
     "IfcCartesianTransformationOperator.Dim": (self: r.EntityInstance, m: r.Model): r.Value => r.attr(r.attr(self, "LOCALORIGIN"), "DIM"),
-    "IfcCartesianTransformationOperator2D.U": (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcBaseAxis(m, 2, r.attr(self, "AXIS1"), r.attr(self, "AXIS2"), undefined),
-    "IfcCartesianTransformationOperator2DnonUniform.Scl2": (self: r.EntityInstance, m: r.Model): r.Value => r.nvl(r.attr(self, "SCALE2"), r.attr(self, "SCL")),
-    "IfcCartesianTransformationOperator3D.U": (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcBaseAxis(m, 3, r.attr(self, "AXIS1"), r.attr(self, "AXIS2"), r.attr(self, "AXIS3")),
-    "IfcCartesianTransformationOperator3DnonUniform.Scl2": (self: r.EntityInstance, m: r.Model): r.Value => r.nvl(r.attr(self, "SCALE2"), r.attr(self, "SCL")),
-    "IfcCartesianTransformationOperator3DnonUniform.Scl3": (self: r.EntityInstance, m: r.Model): r.Value => r.nvl(r.attr(self, "SCALE3"), r.attr(self, "SCL")),
+    "IfcCartesianTransformationOperator2D.U": (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcBaseAxis(m, 2, r.attr(self, "AXIS1", "IFCCARTESIANTRANSFORMATIONOPERATOR"), r.attr(self, "AXIS2", "IFCCARTESIANTRANSFORMATIONOPERATOR"), undefined),
+    "IfcCartesianTransformationOperator2DnonUniform.Scl2": (self: r.EntityInstance, m: r.Model): r.Value => r.nvl(r.attr(self, "SCALE2"), r.attr(self, "SCL", "IFCCARTESIANTRANSFORMATIONOPERATOR")),
+    "IfcCartesianTransformationOperator3D.U": (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcBaseAxis(m, 3, r.attr(self, "AXIS1", "IFCCARTESIANTRANSFORMATIONOPERATOR"), r.attr(self, "AXIS2", "IFCCARTESIANTRANSFORMATIONOPERATOR"), r.attr(self, "AXIS3")),
+    "IfcCartesianTransformationOperator3DnonUniform.Scl2": (self: r.EntityInstance, m: r.Model): r.Value => r.nvl(r.attr(self, "SCALE2"), r.attr(self, "SCL", "IFCCARTESIANTRANSFORMATIONOPERATOR")),
+    "IfcCartesianTransformationOperator3DnonUniform.Scl3": (self: r.EntityInstance, m: r.Model): r.Value => r.nvl(r.attr(self, "SCALE3"), r.attr(self, "SCL", "IFCCARTESIANTRANSFORMATIONOPERATOR")),
     "IfcCompositeCurve.NSegments": (self: r.EntityInstance, m: r.Model): r.Value => r.sizeof(r.attr(self, "SEGMENTS")),
     "IfcCompositeCurve.ClosedCurve": (self: r.EntityInstance, m: r.Model): r.Value => r.ne(r.attr(r.index(r.attr(self, "SEGMENTS"), r.attr(self, "NSEGMENTS")), "TRANSITION"), E_DISCONTINUOUS),
     "IfcCompositeCurveSegment.Dim": (self: r.EntityInstance, m: r.Model): r.Value => r.attr(r.attr(self, "PARENTCURVE"), "DIM"),
@@ -2107,22 +2107,22 @@ export const RULES: r.CompiledRules = {
     "IfcPlacement.Dim": (self: r.EntityInstance, m: r.Model): r.Value => r.attr(r.attr(self, "LOCATION"), "DIM"),
     "IfcPointOnCurve.Dim": (self: r.EntityInstance, m: r.Model): r.Value => r.attr(r.attr(self, "BASISCURVE"), "DIM"),
     "IfcPointOnSurface.Dim": (self: r.EntityInstance, m: r.Model): r.Value => r.attr(r.attr(self, "BASISSURFACE"), "DIM"),
-    "IfcRationalBezierCurve.Weights": (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcListToArray(m, r.attr(self, "WEIGHTSDATA"), 0, r.attr(self, "UPPERINDEXONCONTROLPOINTS")),
+    "IfcRationalBezierCurve.Weights": (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcListToArray(m, r.attr(self, "WEIGHTSDATA"), 0, r.attr(self, "UPPERINDEXONCONTROLPOINTS", "IFCBSPLINECURVE")),
     "IfcRectangularTrimmedSurface.Dim": (self: r.EntityInstance, m: r.Model): r.Value => r.attr(r.attr(self, "BASISSURFACE"), "DIM"),
     "IfcRevolvedAreaSolid.AxisLine": (self: r.EntityInstance, m: r.Model): r.Value => r.complex(m, [r.construct(m, "IfcRepresentationItem", []), r.construct(m, "IfcGeometricRepresentationItem", []), r.construct(m, "IfcCurve", []), r.construct(m, "IfcLine", [r.attr(r.attr(self, "AXIS"), "LOCATION"), r.complex(m, [r.construct(m, "IfcRepresentationItem", []), r.construct(m, "IfcGeometricRepresentationItem", []), r.construct(m, "IfcVector", [r.attr(r.attr(self, "AXIS"), "Z"), 1])])])]),
     "IfcSIUnit.Dimensions": (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcDimensionsForSiUnit(m, r.attr(self, "NAME")),
     "IfcSectionedSpine.Dim": (self: r.EntityInstance, m: r.Model): r.Value => 3,
     "IfcShellBasedSurfaceModel.Dim": (self: r.EntityInstance, m: r.Model): r.Value => 3,
     "IfcSolidModel.Dim": (self: r.EntityInstance, m: r.Model): r.Value => 3,
-    "IfcStructuralLinearActionVarying.VaryingAppliedLoads": (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcAddToBeginOfList(m, r.attr(self, "APPLIEDLOAD"), r.attr(self, "SUBSEQUENTAPPLIEDLOADS")),
-    "IfcStructuralPlanarActionVarying.VaryingAppliedLoads": (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcAddToBeginOfList(m, r.attr(self, "APPLIEDLOAD"), r.attr(self, "SUBSEQUENTAPPLIEDLOADS")),
-    "IfcStructuralSurfaceMemberVarying.VaryingThickness": (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcAddToBeginOfList(m, r.attr(self, "THICKNESS"), r.attr(self, "SUBSEQUENTTHICKNESS")),
+    "IfcStructuralLinearActionVarying.VaryingAppliedLoads": (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcAddToBeginOfList(m, r.attr(self, "APPLIEDLOAD", "IFCSTRUCTURALACTIVITY"), r.attr(self, "SUBSEQUENTAPPLIEDLOADS")),
+    "IfcStructuralPlanarActionVarying.VaryingAppliedLoads": (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcAddToBeginOfList(m, r.attr(self, "APPLIEDLOAD", "IFCSTRUCTURALACTIVITY"), r.attr(self, "SUBSEQUENTAPPLIEDLOADS")),
+    "IfcStructuralSurfaceMemberVarying.VaryingThickness": (self: r.EntityInstance, m: r.Model): r.Value => fn_IfcAddToBeginOfList(m, r.attr(self, "THICKNESS", "IFCSTRUCTURALSURFACEMEMBER"), r.attr(self, "SUBSEQUENTTHICKNESS")),
     "IfcSurfaceOfLinearExtrusion.ExtrusionAxis": (self: r.EntityInstance, m: r.Model): r.Value => r.complex(m, [r.construct(m, "IfcRepresentationItem", []), r.construct(m, "IfcGeometricRepresentationItem", []), r.construct(m, "IfcVector", [r.attr(self, "EXTRUDEDDIRECTION"), r.attr(self, "DEPTH")])]),
     "IfcSurfaceOfRevolution.AxisLine": (self: r.EntityInstance, m: r.Model): r.Value => r.complex(m, [r.construct(m, "IfcRepresentationItem", []), r.construct(m, "IfcGeometricRepresentationItem", []), r.construct(m, "IfcCurve", []), r.construct(m, "IfcLine", [r.attr(r.attr(self, "AXISPOSITION"), "LOCATION"), r.complex(m, [r.construct(m, "IfcRepresentationItem", []), r.construct(m, "IfcGeometricRepresentationItem", []), r.construct(m, "IfcVector", [r.attr(r.attr(self, "AXISPOSITION"), "Z"), 1])])])]),
     "IfcSweptSurface.Dim": (self: r.EntityInstance, m: r.Model): r.Value => r.attr(r.attr(self, "POSITION"), "DIM"),
     "IfcTable.NumberOfCellsInRow": (self: r.EntityInstance, m: r.Model): r.Value => r.hiindex(r.attr(r.index(r.attr(self, "ROWS"), 1), "ROWCELLS")),
-    "IfcTable.NumberOfHeadings": (self: r.EntityInstance, m: r.Model): r.Value => r.sizeof(r.query(r.attr(self, "ROWS"), (q109: r.Value) => r.attr(q109, "ISHEADING"))),
-    "IfcTable.NumberOfDataRows": (self: r.EntityInstance, m: r.Model): r.Value => r.sizeof(r.query(r.attr(self, "ROWS"), (q110: r.Value) => r.not(r.attr(q110, "ISHEADING")))),
+    "IfcTable.NumberOfHeadings": (self: r.EntityInstance, m: r.Model): r.Value => r.sizeof(r.query(r.attr(self, "ROWS"), (q_109: r.Value) => r.attr(q_109, "ISHEADING"))),
+    "IfcTable.NumberOfDataRows": (self: r.EntityInstance, m: r.Model): r.Value => r.sizeof(r.query(r.attr(self, "ROWS"), (q_110: r.Value) => r.not(r.attr(q_110, "ISHEADING")))),
     "IfcVector.Dim": (self: r.EntityInstance, m: r.Model): r.Value => r.attr(r.attr(self, "ORIENTATION"), "DIM"),
   },
   global: [
@@ -2131,10 +2131,10 @@ export const RULES: r.CompiledRules = {
       let v_isdifferent: r.Value = r.assign(false);
       if (r.isTrue(r.gt(r.sizeof(pop_ifcgeometricrepresentationcontext), 1))) {
         {
-          const from186 = r.int(2), to187 = r.int(r.hiindex(pop_ifcgeometricrepresentationcontext)), by188 = 1;
-          if (from186 !== undefined && to187 !== undefined && by188) for (let i_i185 = from186; by188 > 0 ? i_i185 <= to187 : i_i185 >= to187; i_i185 += by188) {
-            if (r.isTrue(r.notSame(r.attr(r.index(pop_ifcgeometricrepresentationcontext, 1), "WORLDCOORDINATESYSTEM"), r.attr(r.index(pop_ifcgeometricrepresentationcontext, i_i185), "WORLDCOORDINATESYSTEM")))) {
-              v_isdifferent = r.assign(r.or(r.not(fn_IfcSameValidPrecision(m, r.attr(r.index(pop_ifcgeometricrepresentationcontext, 1), "PRECISION"), r.attr(r.index(pop_ifcgeometricrepresentationcontext, i_i185), "PRECISION"))), () => r.not(fn_IfcSameAxis2Placement(m, r.attr(r.index(pop_ifcgeometricrepresentationcontext, 1), "WORLDCOORDINATESYSTEM"), r.attr(r.index(pop_ifcgeometricrepresentationcontext, i_i185), "WORLDCOORDINATESYSTEM"), r.attr(r.index(pop_ifcgeometricrepresentationcontext, 1), "PRECISION")))));
+          const from_186 = r.int(2), to_187 = r.int(r.hiindex(pop_ifcgeometricrepresentationcontext)), by_188 = 1;
+          if (from_186 !== undefined && to_187 !== undefined && by_188) for (let i_i_185 = from_186; by_188 > 0 ? i_i_185 <= to_187 : i_i_185 >= to_187; i_i_185 += by_188) {
+            if (r.isTrue(r.notSame(r.attr(r.index(pop_ifcgeometricrepresentationcontext, 1), "WORLDCOORDINATESYSTEM"), r.attr(r.index(pop_ifcgeometricrepresentationcontext, i_i_185), "WORLDCOORDINATESYSTEM")))) {
+              v_isdifferent = r.assign(r.or(r.not(fn_IfcSameValidPrecision(m, r.attr(r.index(pop_ifcgeometricrepresentationcontext, 1), "PRECISION"), r.attr(r.index(pop_ifcgeometricrepresentationcontext, i_i_185), "PRECISION"))), () => r.not(fn_IfcSameAxis2Placement(m, r.attr(r.index(pop_ifcgeometricrepresentationcontext, 1), "WORLDCOORDINATESYSTEM"), r.attr(r.index(pop_ifcgeometricrepresentationcontext, i_i_185), "WORLDCOORDINATESYSTEM"), r.attr(r.index(pop_ifcgeometricrepresentationcontext, 1), "PRECISION")))));
               if (r.isTrue(r.eq(v_isdifferent, true))) {
                 break;
               }

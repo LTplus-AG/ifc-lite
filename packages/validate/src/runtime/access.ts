@@ -51,9 +51,9 @@ export function resolve(model: Model | undefined, v: Value): Value {
 }
 
 /** `base.Name`, with `name` upper-cased by the compiler. */
-export function attr(base: Value, name: string): Value {
+export function attr(base: Value, name: string, group?: string): Value {
   if (!(base instanceof EntityInstance)) return undefined;
-  const slot = base.entity.slots.get(name);
+  const slot = (group ? base.entity.slots.get(`${group}.${name}`) : undefined) ?? base.entity.slots.get(name);
   if (!slot) return undefined;
   switch (slot.k) {
     case 'explicit': {

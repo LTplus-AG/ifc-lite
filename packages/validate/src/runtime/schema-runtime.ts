@@ -26,7 +26,7 @@ export interface ResolvedEntityRule {
 
 export class ResolvedEntity {
   readonly upper: string;
-  supertype?: ResolvedEntity;
+  readonly supertypes: ResolvedEntity[] = [];
   readonly subtypes: ResolvedEntity[] = [];
   chain: ResolvedEntity[] = [];
   attributes: ResolvedAttribute[] = [];
@@ -53,9 +53,12 @@ export class ResolvedEntity {
   descendants(): ResolvedEntity[] {
     if (!this.descendantCache) {
       const out: ResolvedEntity[] = [];
+      const seen = new Set<ResolvedEntity>();
       const stack: ResolvedEntity[] = [this];
       while (stack.length) {
         const e = stack.pop()!;
+        if (seen.has(e)) continue;
+        seen.add(e);
         out.push(e);
         stack.push(...e.subtypes);
       }
@@ -87,14 +90,15 @@ export class SchemaRuntime {
     for (const t of meta.types) this.types.set(t.name.toUpperCase(), t);
     for (const e of meta.entities) this.entities.set(e.name.toUpperCase(), new ResolvedEntity(e));
     for (const e of this.entities.values()) {
-      const parent = e.meta.supertype ? this.entities.get(e.meta.supertype.toUpperCase()) : undefined;
-      if (parent) {
-        e.supertype = parent;
+      for (const name of e.meta.supertypes ?? (e.meta.supertype ? [e.meta.supertype] : [])) {
+        const parent = this.entity(name);
+        if (!parent) continue;
+        e.supertypes.push(parent);
         parent.subtypes.push(e);
       }
     }
     for (const e of this.entities.values()) this.resolveEntity(e);
-    for (const t of meta.types) if (t.kind === 'defined') this.typeRules.set(t.name.toUpperCase(), this.collectTypeRules(t.name));
+    for (const t of meta.types) this.typeRules.set(t.name.toUpperCase(), this.collectTypeRules(t.name));
   }
 
   entity(name: string): ResolvedEntity | undefined {
@@ -139,10 +143,10 @@ export class SchemaRuntime {
     const out: ResolvedTypeRule[] = [];
     const seen = new Set<string>();
     let current: TypeMeta | undefined = this.type(name);
-    while (current && current.kind === 'defined' && !seen.has(current.name)) {
+    while (current && !seen.has(current.name)) {
       seen.add(current.name);
       for (const rule of this.rules.type[current.name] ?? []) out.push({ declaredBy: current.name, rule });
-      current = current.underlying.k === 'named' ? this.type(current.underlying.name) : undefined;
+      current = current.kind === 'defined' && current.underlying.k === 'named' ? this.type(current.underlying.name) : undefined;
     }
     return out;
   }
@@ -150,10 +154,13 @@ export class SchemaRuntime {
   private resolveEntity(e: ResolvedEntity): void {
     const chain: ResolvedEntity[] = [];
     const seen = new Set<string>();
-    for (let c: ResolvedEntity | undefined = e; c && !seen.has(c.upper); c = c.supertype) {
-      seen.add(c.upper);
-      chain.unshift(c);
-    }
+    const visit = (level: ResolvedEntity) => {
+      if (seen.has(level.upper)) return;
+      seen.add(level.upper);
+      for (const parent of level.supertypes) visit(parent);
+      chain.push(level);
+    };
+    visit(e);
     e.chain = chain;
     const derivedHere = new Set<string>();
     const retyped = new Map<string, AttributeMeta>();
@@ -169,7 +176,13 @@ export class SchemaRuntime {
         const resolved: ResolvedAttribute = {
           ...(narrowed ?? attr), name: attr.name, declaredBy: level.name, derived: derivedHere.has(upper),
         };
-        e.slots.set(upper, { k: 'explicit', index: e.attributes.length, attribute: resolved });
+        const slot: AttributeSlot = { k: 'explicit', index: e.attributes.length, attribute: resolved };
+        if (e.slots.has(upper)) {
+          const old = e.slots.get(upper)!;
+          if (old.k === 'explicit') e.slots.set(`${old.attribute.declaredBy.toUpperCase()}.${upper}`, old);
+          e.slots.set(`${level.upper}.${upper}`, slot);
+        }
+        e.slots.set(upper, slot);
         e.attributes.push(resolved);
       }
       for (const inv of level.meta.inverse ?? []) {

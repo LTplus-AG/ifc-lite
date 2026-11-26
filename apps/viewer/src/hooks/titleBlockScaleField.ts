@@ -5,11 +5,13 @@
 import { formatScaleFactorLabel, type TitleBlockConfig } from '@ifc-lite/drawing-2d';
 
 /**
- * Correct the title block's "Scale" text field for a fit-clamped sheet.
+ * Make the exported title block's "Scale" text state the scale the drawing
+ * was actually placed at.
  *
  * The field is plain static content: it was written once, by
  * `sheetSlice.ts`'s `autoPopulateTitleBlock`, from the REQUESTED
- * `sheet.scale.factor`. `calculateDrawingTransform`'s
+ * `sheet.scale.factor`, and a restored sheet, saved template or agent
+ * `drawing.replaceSheet` can carry text that disagrees with it (#11458). `calculateDrawingTransform`'s
  * `fitScale = min(scaleX, scaleY, 1)` (`sheet-types.ts`) can shrink the
  * drawing below that requested scale to fit the sheet's fixed viewport, and
  * when it does, `effectiveScaleFactor` (already fed to the scale BAR as
@@ -20,10 +22,12 @@ import { formatScaleFactorLabel, type TitleBlockConfig } from '@ifc-lite/drawing
  * same defect class PR #2131 fixed for the plain (non-sheet) SVG exporter's
  * title block.
  *
- * Returns `titleBlock` unchanged when the drawing was not clamped (the
- * common path incurs no allocation and never regresses a user-edited field
- * on the un-clamped path), and a shallow copy with only the 'scale' field's
- * `value` replaced otherwise.
+ * A field that auto-populates from `drawing.scale` always gets the placed
+ * scale; a field merely named 'scale' (auto-populate off, user text) is only
+ * corrected when the fit clamped the drawing. Returns `titleBlock` itself when
+ * no field needs a new value, and a shallow copy with only those fields'
+ * `value` replaced otherwise. The on-screen preview still reads the stored
+ * text; this applies to export only.
  */
 export function titleBlockWithEffectiveScale(
   titleBlock: TitleBlockConfig,
@@ -33,14 +37,7 @@ export function titleBlockWithEffectiveScale(
   const nominalScaleFactor = 1000 / requestedScaleFactor;
   const clamped = Math.abs(effectiveScaleFactor - nominalScaleFactor) > 1e-9;
   const label = `1:${formatScaleFactorLabel(1000 / effectiveScaleFactor)}`;
-  // A field that declares it mirrors the drawing scale is a COPY of a number,
-  // written once; a sheet restored from storage, a saved template or an agent
-  // `drawing.replaceSheet` carries whatever text it was saved with, so it can
-  // disagree with `scale.factor` even when nothing was clamped. Its value is
-  // therefore always derived from the scale the drawing was placed at.
-  // Only while auto-populate is on, as `autoPopulateTitleBlock` (`sheetSlice.ts`) skips a field with it off:
-  // a user who turned it off keeps their text (#11458).
-  // A field that merely has the id 'scale' keeps the clamp-only behaviour.
+  // Auto-populate off means user text, which `autoPopulateTitleBlock` (`sheetSlice.ts`) also leaves alone.
   const needsValue = (field: TitleBlockConfig['fields'][number]): boolean =>
     field.autoPopulate && field.autoPopulateSource === 'drawing.scale'
       ? field.value !== label

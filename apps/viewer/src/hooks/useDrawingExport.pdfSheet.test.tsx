@@ -776,6 +776,15 @@ describe('generateSheetSVG — title block "Scale" field vs. a fit-clamped drawi
     const { svg } = await exportPdfForSheet(sheet); // buildDrawing()'s default 4m span fits comfortably
     assert.equal(parseTitleBlockScaleFieldText(svg), '1:50');
   });
+
+  it('prints the placed scale when the stored field text is stale and nothing was clamped (#11458)', async () => {
+    // A restored sheet, saved template or agent replaceSheet can carry a field that
+    // disagrees with scale.factor: buildSheet's default field still reads '1:100'.
+    const sheet = buildSheet('A3_LANDSCAPE', 50, '1:50');
+    assert.equal(sheet.titleBlock.fields.find((f) => f.id === 'scale')?.value, '1:100', 'fixture carries the stale copy');
+    const { svg } = await exportPdfForSheet(sheet);
+    assert.equal(parseTitleBlockScaleFieldText(svg), '1:50');
+  });
 });
 
 describe('sheet CAD reference lineweights (#6615)', () => {

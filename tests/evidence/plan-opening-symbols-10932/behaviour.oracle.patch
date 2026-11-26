@@ -17,9 +17,9 @@ index 520ddf9678..bc18d52227 100644
 @@ -110,6 +110,10 @@ export function buildOpeningSymbols(
      const info = openings?.get(key);
      const isDoor = DOOR_TYPES.has((first.ifcType ?? '').toLowerCase());
-+    // A door swing represents the element and its opening. A window frame
-+    // follows the cut pieces, so a gap between them keeps its projection.
-+    if (!isDoor && !footprint.hasCutPiece) continue;
++    // The doorway uses its full span. A window needs a real section segment,
++    // even when disconnected components share one mesh and one bounding box.
++    if (!isDoor && (!footprint.hasCutPiece || !group.some(mesh => cutter.cutSingleMesh(mesh).segments.length > 0))) continue;
      const operation = isDoor ? parseDoorOperation(info?.operationType) ?? 'SINGLE_SWING_LEFT' : undefined;
 +    if (operation && !SYMBOLIZED_DOOR_OPERATIONS.has(operation)) continue;
      const width = positiveOr(info?.width, footprint.width);

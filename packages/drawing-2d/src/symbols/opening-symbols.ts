@@ -15,6 +15,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import type { ArchitecturalSymbol, DoorOperationType, Drawing2D, Line2D, OpeningInfo, Point2D, SectionConfig, SectionPlaneConfig, Vec3 } from '../types.js';
 import { makeEntityKey, type EntityKey } from '../types.js';
 import { boundsExtendLine, point2DCross, projectTo2D, vec3 } from '../math.js';
+import { SectionCutter } from '../section-cutter.js';
 import { DoorSymbolGenerator } from './door-symbol.js';
 import { unit } from './door-arc.js';
 import { WindowSymbolGenerator } from './window-symbol.js';
@@ -106,6 +107,7 @@ export function buildOpeningSymbols(
 
   const doorGenerator = new DoorSymbolGenerator();
   const windowGenerator = new WindowSymbolGenerator();
+  const cutter = new SectionCutter(plane);
   const symbols: PlanSymbol[] = [];
   for (const [key, group] of groups) {
     const first = group[0];
@@ -114,9 +116,9 @@ export function buildOpeningSymbols(
 
     const info = openings?.get(key);
     const isDoor = DOOR_TYPES.has((first.ifcType ?? '').toLowerCase());
-    // A door swing represents the element and its opening. A window frame
-    // follows the cut pieces, so a gap between them keeps its projection.
-    if (!isDoor && !footprint.hasCutPiece) continue;
+    // The doorway uses its full span. A window needs a real section segment,
+    // even when disconnected components share one mesh and one bounding box.
+    if (!isDoor && (!footprint.hasCutPiece || !group.some(mesh => cutter.cutSingleMesh(mesh).segments.length > 0))) continue;
     const operation = isDoor ? parseDoorOperation(info?.operationType) ?? 'SINGLE_SWING_LEFT' : undefined;
     if (operation && !SYMBOLIZED_DOOR_OPERATIONS.has(operation)) continue;
     const width = positiveOr(info?.width, footprint.width);
@@ -150,7 +152,7 @@ export function buildOpeningSymbols(
 /**
  * Replace each symbolized opening's linework and include its symbol in the
  * drawing bounds. A doorway uses the extent of the whole element, including
- * a gap between its pieces. A window requires a piece spanning the cut.
+ * a gap between its pieces. A window requires a section segment.
  */
 export async function generateWithOpeningSymbols(
   meshes: MeshData[],

@@ -6,6 +6,7 @@
  * BCF 3.0 narrows `Guid` to lowercase hex; 2.1 accepts either case. A project
  * read from a 2.1 archive written by a tool that uppercases its GUIDs must
  * still write a schema-valid 3.0 archive, with every cross-reference agreeing.
+ * Regression tests for #11450.
  */
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -133,6 +134,19 @@ describe('guids that differ only by case', () => {
     const topic = [...back.topics.values()][0];
     expect(topic.viewpoints.map((v) => v.guid).sort()).toEqual([VIEWPOINT, VIEWPOINT.toLowerCase()].sort());
     expect(topic.comments[0].viewpointGuid).toBe(VIEWPOINT);
+  });
+
+  it('in one topic\'s comments or document references are refused by the 3.0 writer', async () => {
+    const lowerComment = COMMENT.toLowerCase();
+    const p = project('3.0');
+    const topic = [...p.topics.values()][0];
+    topic.comments.push({ ...topic.comments[0], guid: lowerComment });
+    await expect(writeBCF(p)).rejects.toThrow(new RegExp(`comments in topic "${TOPIC}" "${COMMENT}" and "${lowerComment}"`));
+
+    const q = project('3.0');
+    const refs = [...q.topics.values()][0].documentReferences!;
+    refs.push({ ...refs[0], guid: DOCREF.toLowerCase() });
+    await expect(writeBCF(q)).rejects.toThrow(/document references in topic/);
   });
 
   it('in different topics\' viewpoints are not a clash', async () => {

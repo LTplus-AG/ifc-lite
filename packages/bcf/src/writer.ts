@@ -65,7 +65,10 @@ export async function writeBCF(project: BCFProject): Promise<Blob> {
   const usedFolderNames = new Set<string>();
   assertNoCaseOnlyGuidClash(project.topics.values(), project.version, 'topics');
   for (const topic of project.topics.values()) {
-    assertNoCaseOnlyGuidClash(topic.viewpoints, project.version, `viewpoints in topic "${topic.guid}"`);
+    const inTopic = `in topic "${topic.guid}"`;
+    assertNoCaseOnlyGuidClash(topic.comments, project.version, `comments ${inTopic}`);
+    assertNoCaseOnlyGuidClash(topic.viewpoints, project.version, `viewpoints ${inTopic}`);
+    assertNoCaseOnlyGuidClash(topic.documentReferences ?? [], project.version, `document references ${inTopic}`);
   }
   for (const topic of project.topics.values()) {
     await writeTopicFolder(zip, topic, project.version, usedFolderNames);

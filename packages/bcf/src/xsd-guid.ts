@@ -16,30 +16,32 @@ export function bcfGuid(guid: string, version: '2.1' | '3.0'): string {
 }
 
 /**
- * BCF 3.0 lowercases every guid, so two topics (or two viewpoints of one topic)
- * whose guids differ only by case would both be written under one guid: the
- * reader drops one topic ("Duplicate topic Guid"), and a comment's
- * `<Viewpoint Guid>` can no longer say which viewpoint it means. Refuse rather
- * than silently merge them (#11450). `what` names the items in the error, e.g.
- * `topics` or `viewpoints in topic "<guid>"`.
+ * BCF 3.0 lowercases every guid, so two topics (or two comments, viewpoints or
+ * document references of one topic) whose guids differ only by case would both
+ * be written under one guid: the reader drops one topic ("Duplicate topic
+ * Guid"), and a comment's `<Viewpoint Guid>` can no longer say which viewpoint
+ * it means. Refuse rather than silently merge them (#11450). Items without a
+ * guid are skipped. `what` names the items in the error, e.g. `topics` or
+ * `viewpoints in topic "<guid>"`.
  */
 export function assertNoCaseOnlyGuidClash(
-  items: Iterable<{ guid: string }>,
+  items: Iterable<{ guid?: string }>,
   version: '2.1' | '3.0',
   what: string,
 ): void {
   if (version !== '3.0') return;
   const written = new Map<string, string>();
-  for (const item of items) {
-    const out = bcfGuid(item.guid, version);
+  for (const { guid } of items) {
+    if (!guid) continue;
+    const out = bcfGuid(guid, version);
     const clash = written.get(out);
     // An exact duplicate is not a case-only clash; lowercasing does not create it.
-    if (clash !== undefined && clash !== item.guid) {
+    if (clash !== undefined && clash !== guid) {
       throw new Error(
-        `BCF ${version} guids are lowercase, so ${what} "${clash}" and "${item.guid}" ` +
+        `BCF ${version} guids are lowercase, so ${what} "${clash}" and "${guid}" ` +
           `would both be written as "${out}". Give one of them a different guid before writing.`
       );
     }
-    written.set(out, item.guid);
+    written.set(out, guid);
   }
 }

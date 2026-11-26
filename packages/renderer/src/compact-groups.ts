@@ -15,6 +15,8 @@ import type { SceneCompactHost } from './scene-compact-host.js';
 import { entityCollapses } from './compact-exact.js';
 
 const ZERO_POSITION = new Float32Array(3);
+/** The stream end's verdicts per Scene: bucket keys whose groups move to their buckets. */
+const streamVerdicts = new WeakMap<SceneCompactHost, Map<string, 'exact' | 'shared'>>();
 
 /** The bucket a set of paged meshes would share. */
 export interface Group {
@@ -67,7 +69,14 @@ export function collectGroups(store: CompactGeometryStore, host: SceneCompactHos
       group.members.push(mesh);
     }
   }
-  if (!judge) return groups; // an edit-time build: no group moves to its bucket, so none is judged
+  // An edit-time build judges no group again (none moves to its bucket); a group judged at the stream end keeps that verdict
+  // for the meshes the bucket path refused, so they get no LOD1 either.
+  let verdicts = streamVerdicts.get(host);
+  if (!judge) {
+    for (const [key, group] of groups) group.move = verdicts?.get(key) ?? null;
+    return groups;
+  }
+  streamVerdicts.set(host, (verdicts = new Map()));
   const { quantStep, maxQuantExtent, maxCollapsedFraction } = deps.bucket;
   // Buckets that hold meshes of their own (f32 meshes no page draws), or will once the queue is flushed: their batch is
   // the union, so the group joins it. (A queued f32 mesh is keyed as the bucket path keys it: at its own first vertex.)
@@ -80,6 +89,7 @@ export function collectGroups(store: CompactGeometryStore, host: SceneCompactHos
     const { min, max } = group.bounds;
     for (let axis = 0; axis < 3; axis++) if (max[axis] - Math.floor(min[axis] / quantStep) * quantStep > maxQuantExtent) group.move = 'exact';
     if (!group.move && group.fine && entityCollapses(group.members, quantStep, maxCollapsedFraction)) group.move = 'exact';
+    if (group.move) verdicts.set(key, group.move);
   }
   return groups;
 }

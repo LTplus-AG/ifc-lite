@@ -55,8 +55,7 @@ export class SceneCompact {
   private refused = new WeakSet<MeshData>();
   /** The pages' LOD build under way (compact-lod.ts), a slice per `drain`; null when none. */
   private lod: PageLodBuild | null = null;
-  /** Meshes retired since the last build ('all': a build was dropped part-way): a drain builds their pages' parts again. */
-  private retired: Set<MeshData> | 'all' | null = null;
+  private retired: Set<MeshData> | 'all' | null = null; // retired since the last build ('all': one was dropped): a drain builds their pages again
   /** Pages fill outside a stream (after a device loss, or a queue that outlived its stream): trim them at the drain that uploads them. */
   private trimAfterDrain = false;
   /** Meshes handed to the bucket path decoded since the last `clear`, by reason (`take` and `drain`; edits that demote are not counted). */
@@ -154,8 +153,10 @@ export class SceneCompact {
     }
     this.queue = [];
     if (queue.length === 0) {
-      this.trimAfterDrain = false; // nothing was paged: a later stream's pages are its own to trim
+      const trim = this.trimAfterDrain && this.store.untrimmed; // nothing paged: this stream's pages are trimmed now
+      this.trimAfterDrain = false; // (a later stream's are its own to trim)
       this.toBuckets(decoded);
+      if (trim) this.trim(device);
       return true;
     }
     this.lod = null; // appended pages drop their parts; the next settle builds every page's again

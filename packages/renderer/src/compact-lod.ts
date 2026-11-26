@@ -133,7 +133,7 @@ interface PagePlan {
 /**
  * Rewrite every page's index buffer by group and give it each group's LOD1 range. `groups` is what
  * `collectGroups` returned for the pages; the meshes of an exact group that left them since are skipped (no
- * group decision changes: an exact group gets no LOD1).
+ * group decision changes: a group that moves gets no LOD1, nor do the meshes of it a bucket refused).
  */
 function* buildPageLods(
   store: CompactGeometryStore, groups: Map<string, Group>, device: GPUDevice, deps: CompactPageDeps, pages?: (page: CompactPage) => boolean,

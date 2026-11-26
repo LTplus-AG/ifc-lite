@@ -184,6 +184,13 @@ export function createDrawingExport({
     getElementProperties: makePropertiesGetter(storeModels, ifcDataStore),
   });
 
+  // Cut polygons the last SVG generator left out because a vertex was not
+  // finite (polygonPathData returns ''); reported with the download.
+  let droppedPolygons = 0;
+  const countDropped = (styled: ReadonlyArray<{ polygon: { polygon: { outer: readonly unknown[] } }; geometry: string }>) => {
+    droppedPolygons = styled.filter((p) => !p.geometry && p.polygon.polygon.outer.length > 0).length;
+  };
+
   // Generate SVG that matches the canvas rendering exactly
   const generateExportSVG = (): string | null => {
     if (!drawing) return null;
@@ -234,6 +241,7 @@ export function createDrawingExport({
 
     // 1. FILL CUT POLYGONS (with color from IFC materials or override engine)
     const styledPolygons = styleCutPolygons(drawing.cutPolygons, styleContext, (p) => polygonToPath(p.polygon));
+    countDropped(styledPolygons);
     svg += '  <g id="polygon-fills">\n';
     for (const { polygon, style: { fillColor, fillOpacity }, geometry: pathData } of styledPolygons) {
       if (!pathData) continue;
@@ -503,6 +511,7 @@ export function createDrawingExport({
 
     // Render polygon fills
     const styledPolygons = styleCutPolygons(drawing.cutPolygons, styleContext, (p) => polygonToPath(p.polygon));
+    countDropped(styledPolygons);
     svg += '    <g id="polygon-fills">\n';
     for (const { polygon, style: { fillColor, fillOpacity }, geometry: pathData } of styledPolygons) {
       if (pathData) {
@@ -614,12 +623,17 @@ export function createDrawingExport({
     return svg;
   };
   const createSvgArtifact = (): NativeDrawingArtifact => {
+    droppedPolygons = 0;
     const svg = sheetEnabled && activeSheet ? generateSheetSVG() : generateExportSVG();
     if (!svg) throw new NoNativeDrawingError();
+    const warnings = droppedPolygons > 0
+      ? [`${droppedPolygons} cut polygon${droppedPolygons === 1 ? '' : 's'} with invalid coordinates ${droppedPolygons === 1 ? 'was' : 'were'} left out of the SVG.`]
+      : [];
+    for (const message of warnings) services.warn?.(message);
     const stem = sheetEnabled && activeSheet
       ? `${sanitizeFilename(activeSheet.name, { fallback: 'sheet' })}-${sectionPlane.axis}-${sectionPlane.position}`
       : `section-${sectionPlane.axis}-${sectionPlane.position}`;
-    return { blob: new Blob([svg], { type: 'image/svg+xml' }), filename: `${stem}.svg`, warnings: [] };
+    return { blob: new Blob([svg], { type: 'image/svg+xml' }), filename: `${stem}.svg`, warnings };
   };
   const handleExportSVG = () => {
     try { const artifact = createSvgArtifact(); downloadFile(artifact.blob, artifact.filename, 'image/svg+xml'); }

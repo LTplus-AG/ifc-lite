@@ -12,7 +12,7 @@
 import '@/test/setup-dom.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { validateXML } from 'xmllint-wasm';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { GraphicOverrideEngine, type Drawing2D } from '@ifc-lite/drawing-2d';
@@ -37,6 +37,12 @@ const _line = (a: { x: number; y: number }, b: { x: number; y: number }): Drawin
 
 /** Extra hook inputs a case needs (text annotations); reset by `run`. */
 let extraInputs: Record<string, unknown> = {};
+
+/** libxml2's well-formedness errors for `svg`, via xmllint-wasm (no system xmllint, no schema). */
+async function xmlErrors(svg: string): Promise<string[]> {
+  const result = await validateXML({ xml: [{ fileName: 'export.svg', contents: svg }], normalization: 'format' });
+  return result.errors.map((error) => error.message);
+}
 const BAD = '\u0001\u000B';
 const cases: Record<string, (d: Drawing2D) => void> = {
   controlIfcType: (d) => { d.cutPolygons = [{ ...poly(sq), ifcType: `Ifc${BAD}Wall` }]; },
@@ -55,7 +61,7 @@ const cases: Record<string, (d: Drawing2D) => void> = {
   nanHole: (d) => { d.cutPolygons = [poly(sq, [[{ x: 1, y: NaN }, { x: 2, y: 1 }, { x: 2, y: 2 }]])]; },
 };
 
-function Harness({ fn, d, onReady }: { fn: string; d: Drawing2D; onReady: (f: () => void) => void }): null {
+function Harness({ d, onReady }: { d: Drawing2D; onReady: (f: () => void) => void }): null {
   const h = useDrawingExport({
     drawing: d,
     displayOptions: { showHiddenLines: true, scale: 50, showScanSection: false, scanSectionOpacity: 0, scanSectionIncludeInExport: false },
@@ -69,8 +75,12 @@ function Harness({ fn, d, onReady }: { fn: string; d: Drawing2D; onReady: (f: ()
   return null;
 }
 
+/** Info toasts (export warnings) shown by the last `run`. */
+let infos: string[] = [];
+
 /** The direct SVG the export handler downloads, or the error message it toasted. */
 async function run(name: string): Promise<string> {
+  infos = [];
   useActivityJournal.setState({ jobs: [] });
   extraInputs = {};
   const d = base(); cases[name](d);
@@ -78,11 +88,13 @@ async function run(name: string): Promise<string> {
   let root: Root | null = null; let fn: (() => void) | null = null; let blob: Blob | null = null;
   const orig = URL.createObjectURL;
   const origError = toast.error;
+  const origInfo = toast.info;
   let toasted: string | null = null;
   toast.error = (message: string) => { toasted = message; };
+  toast.info = (message: string) => { infos.push(message); };
   URL.createObjectURL = function (o: Blob | MediaSource): string { if (o instanceof Blob && o.type === 'image/svg+xml') blob = o; return orig.call(URL, o); };
   try {
-    await act(async () => { root = createRoot(container); root.render(<Harness fn={name} d={d} onReady={(f) => { fn = f; }} />); });
+    await act(async () => { root = createRoot(container); root.render(<Harness d={d} onReady={(f) => { fn = f; }} />); });
     await act(async () => { fn!(); });
     await waitFor(() => blob !== null || toasted !== null, 'the export finished');
     if (toasted !== null) return `ERROR ${toasted}`;
@@ -90,6 +102,7 @@ async function run(name: string): Promise<string> {
   } catch (e) { return `ERROR ${e}`; } finally {
     URL.createObjectURL = orig;
     toast.error = origError;
+    toast.info = origInfo;
     if (root) await act(async () => { (root as Root).unmount(); });
     container.remove();
   }
@@ -117,22 +130,22 @@ describe('direct SVG export never writes a non-finite number', () => {
     const svg = await run('nanOuter');
     assert.doesNotMatch(svg, NON_FINITE);
     assert.ok(!svg.includes('data-entity-id="7"'), 'the unusable polygon is skipped');
+    assert.ok(infos.some((m) => /1 cut polygon with invalid coordinates was left out/.test(m)), `warned: ${infos.join(' | ')}`);
   });
   it('skips only the NaN hole; the wall stays filled', async () => {
     const svg = await run('nanHole');
     assert.doesNotMatch(svg, NON_FINITE);
     assert.match(svg, /<path d="M 0\.0000 0\.0000 L 4\.0000 0\.0000 L 4\.0000 3\.0000 L 0\.0000 3\.0000 Z"/);
+    assert.ok(!infos.some((m) => /left out/.test(m)), 'a kept polygon is not reported as dropped');
   });
-  it('writes well-formed XML for a control character in ifcType (xmllint)', async () => {
+  it('writes well-formed XML for a control character in ifcType (libxml2)', async () => {
     const svg = await run('controlIfcType');
-    const r = spawnSync('xmllint', ['--noout', '-'], { input: svg, encoding: 'utf8' });
-    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(await xmlErrors(svg), []);
     assert.match(svg, /data-ifc-type="Ifc\uFFFD\uFFFDWall"/);
   });
-  it('writes well-formed XML for control characters in annotation text, colour and cloud label (xmllint)', async () => {
+  it('writes well-formed XML for control characters in annotation text, colour and cloud label (libxml2)', async () => {
     const svg = await run('controlAnnotation');
-    const r = spawnSync('xmllint', ['--noout', '-'], { input: svg, encoding: 'utf8' });
-    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(await xmlErrors(svg), []);
   });
   it('omits data-entity-id for a non-finite id', async () => {
     const svg = await run('nanEntityId');

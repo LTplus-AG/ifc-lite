@@ -5,12 +5,12 @@
 /**
  * #11467: one control character in an IFC string made the exported SVG
  * not well-formed XML. Every case writes the hostile string through an
- * exported writer and asks `xmllint --noout` (the XML parser itself, not a
- * regex of ours) whether the document parses.
+ * exported writer and asks libxml2 (xmllint-wasm, the XML parser itself, not a
+ * regex of ours, and no system binary) whether the document parses.
  */
 
 import { describe, expect, it } from 'vitest';
-import { spawnSync } from 'node:child_process';
+import { validateXML } from 'xmllint-wasm';
 import { exportToSVG } from './svg-exporter.js';
 import { renderTitleBlock } from './sheet/title-block-renderer.js';
 import { escapeXml, entityIdAttr, svgNum } from './xml-escape.js';
@@ -20,10 +20,9 @@ import type { DxfUnderlay } from './dxf/types.js';
 
 const HOSTILE = ['\u0001', '\u000B', '\u0000', '￾', 'x\uD800y', 'a\uDC00'];
 
-function wellFormed(xml: string): { ok: boolean; err: string } {
-  const r = spawnSync('xmllint', ['--noout', '-'], { input: xml, encoding: 'utf8' });
-  if (r.error) throw r.error;
-  return { ok: r.status === 0, err: r.stderr };
+async function wellFormed(xml: string): Promise<{ ok: boolean; err: string }> {
+  const r = await validateXML({ xml: [{ fileName: 'doc.svg', contents: xml }], normalization: 'format' });
+  return { ok: r.valid, err: r.errors.map((e) => e.message).join('\n') };
 }
 const doc = (body: string) => `<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">${body}</svg>`;
 
@@ -45,28 +44,28 @@ const block = (value: string): TitleBlockConfig => ({
 describe('SVG writers emit well-formed XML for hostile strings (#11467)', () => {
   for (const bad of HOSTILE) {
     const tag = JSON.stringify(bad);
-    it(`escapeXml output parses: ${tag}`, () => {
-      const r = wellFormed(doc(`<text a="${escapeXml(bad)}">${escapeXml(bad)}</text>`));
+    it(`escapeXml output parses: ${tag}`, async () => {
+      const r = await wellFormed(doc(`<text a="${escapeXml(bad)}">${escapeXml(bad)}</text>`));
       expect(r.ok, r.err).toBe(true);
     });
-    it(`SVGExporter ifcType ${tag}`, () => {
-      const r = wellFormed(exportToSVG(drawing(`Ifc${bad}Wall`), {}));
+    it(`SVGExporter ifcType ${tag}`, async () => {
+      const r = await wellFormed(exportToSVG(drawing(`Ifc${bad}Wall`), {}));
       expect(r.ok, r.err).toBe(true);
     });
-    it(`SVGExporter title block text and underlay names ${tag}`, () => {
+    it(`SVGExporter title block text and underlay names ${tag}`, async () => {
       const u: DxfUnderlay = { name: `s${bad}`, unitScale: 1, skipped: {}, warnings: [], bounds: { min: { x: 0, y: 0 }, max: { x: 1, y: 1 } },
         layers: [{ name: `L${bad}`, color: '#000000', visible: true, fills: [], paths: [], texts: [] } as never] };
-      const r = wellFormed(exportToSVG(drawing('IfcWall'), { showTitleBlock: true, title: `T${bad}`, projectName: `P${bad}`, underlays: [{ underlay: u }] } as never));
+      const r = await wellFormed(exportToSVG(drawing('IfcWall'), { showTitleBlock: true, title: `T${bad}`, projectName: `P${bad}`, underlays: [{ underlay: u }] } as never));
       expect(r.ok, r.err).toBe(true);
     });
-    it(`renderTitleBlock field ${tag}`, () => {
+    it(`renderTitleBlock field ${tag}`, async () => {
       const { svgElements } = renderTitleBlock(block(`v${bad}`), { x: 0, y: 0, width: 420, height: 297 }, []);
-      const r = wellFormed(doc(svgElements));
+      const r = await wellFormed(doc(svgElements));
       expect(r.ok, r.err).toBe(true);
     });
   }
 
-  it('replaces lone surrogates (xmllint cannot see them through UTF-8, so assert directly)', () => {
+  it('replaces lone surrogates (libxml2 cannot see them through UTF-8, so assert directly)', () => {
     expect(escapeXml('x\uD800y\uDC00')).toBe('x\uFFFDy\uFFFD');
     expect(escapeXml('\uD83D\uDE00')).toBe('\uD83D\uDE00');
   });
@@ -81,6 +80,11 @@ describe('SVG writers emit well-formed XML for hostile strings (#11467)', () => 
     expect(entityIdAttr(Infinity)).toBe('');
     expect(entityIdAttr(7)).toBe(' data-entity-id="7"');
     expect(exportToSVG(drawing('IfcWall', NaN), {})).not.toMatch(/NaN/);
+  });
+  it('a NaN or Infinity cut-polygon vertex never reaches the path data', () => {
+    const d = drawing('IfcWall');
+    d.cutPolygons[0].polygon.outer[1] = { x: NaN, y: Infinity };
+    expect(exportToSVG(d, {})).not.toMatch(/NaN|Infinity/);
   });
   it('title block geometry never prints NaN or Infinity', () => {
     const b = { ...block('v'), widthMm: NaN };

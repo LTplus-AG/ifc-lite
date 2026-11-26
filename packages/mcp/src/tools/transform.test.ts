@@ -255,7 +255,11 @@ describe('model_extract', () => {
   it('refuses express_ids while edits are pending, since they name source-file records', async () => {
     await call('entity_set_attribute', { express_id: 72, attribute: 'Name', value: 'Edited' });
     await expect(call('model_extract', { express_ids: [72], file_path: join(tmp, 'x.ifc') }))
-      .rejects.toMatchObject({ code: 'INVALID_INPUT', message: expect.stringContaining('global_ids') });
+      .rejects.toMatchObject({ code: 'INVALID_INPUT', message: expect.stringContaining('GlobalId') });
+    await expect(call('model_extract', { storeys: ['#41'], file_path: join(tmp, 'x.ifc') }))
+      .rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    await expect(call('model_simplify', { express_ids: [72], file_path: join(tmp, 'x.ifc') }))
+      .rejects.toMatchObject({ code: 'INVALID_INPUT', message: expect.stringContaining('express_ids') });
   });
 
   it('treats blank selectors as no selection', async () => {

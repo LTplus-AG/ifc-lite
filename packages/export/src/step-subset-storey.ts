@@ -146,12 +146,13 @@ export function resolveStorey(token: string, parsed: ParsedStep): { storeyId: nu
 const PLACEMENT_TYPES = new Set(['IFCLOCALPLACEMENT', 'IFCGRIDPLACEMENT', 'IFCLINEARPLACEMENT']);
 
 const PART_WHOLE_RELATIONS = new Set(['IFCRELAGGREGATES', 'IFCRELNESTS']);
-const HOST_RELATIONS = new Set(['IFCRELVOIDSELEMENT', 'IFCRELFILLSELEMENT', ...PART_WHOLE_RELATIONS]);
+const HOST_RELATIONS = new Set(['IFCRELVOIDSELEMENT', 'IFCRELFILLSELEMENT', 'IFCRELPROJECTSELEMENT', ...PART_WHOLE_RELATIONS]);
 
 /**
- * Opening -> host element (IfcRelVoidsElement), filler -> opening
+ * Opening -> host element (IfcRelVoidsElement), projection -> host
+ * (IfcRelProjectsElement), filler -> opening
  * (IfcRelFillsElement), part -> whole (IfcRelAggregates / IfcRelNests under a
- * non-spatial whole). All four share the six-attribute shape with the relating
+ * non-spatial whole). All five share the six-attribute shape with the relating
  * object at index 4 and the related set at index 5. Relation records that do
  * not split into six attributes are skipped.
  */

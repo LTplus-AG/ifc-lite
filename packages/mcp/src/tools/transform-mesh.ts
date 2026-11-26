@@ -50,6 +50,10 @@ const modelSimplify: Tool = {
     const m = resolveStepModel(ctx, input.model_id as string | undefined, 'model_simplify');
     const filePath = await resolveSafePath(input.file_path, ctx, 'write');
     const level = (input.level as number | undefined) ?? 1;
+    if (input.express_ids !== undefined && m.backend.hasPendingChanges()) {
+      // The mesher reads re-serialized bytes when edits are pending; source ids need not survive that.
+      throw invalid('express_ids name records of the source file; with unsaved edits pending, write them with export_ifc and model_load the result first.');
+    }
     return withIfcBytes(m, async (bytes) => {
       const session = new DemeshSession(bytes);
       try {

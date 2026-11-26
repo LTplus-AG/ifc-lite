@@ -88,6 +88,29 @@ fn copied_relationship_does_not_restore_an_omitted_boundary_11457() {
     assert!(out.lines().any(|line| line.starts_with("#34=") && line.contains("#11")));
 }
 
+/// A copied boundary uses the effective copy's RelatedBuildingElement (#11457).
+#[test]
+fn copy_on_write_checks_the_copied_boundarys_required_element() {
+    let rels = "#31=IFCCLASSIFICATION('S','E',$,'N');\n#34=IFCRELASSOCIATESCLASSIFICATION('6XigBlHYfFnxzvgV9_gBmP',$,$,$,(#22,#11),#31);";
+    let source = model("IFC2X3", &format!("{}\n{rels}", data()));
+    for target in ["IFC4", "IFC4X3"] {
+        for (slot, value, keep_copy) in [(2, "'Copied boundary'", false), (5, "#11", true)] {
+            let opts = StepOptions {
+                schema: Some(target.into()),
+                copy_on_write: vec![crate::CopyOnWriteMutation {
+                    express_id: 22, index: slot, value: value.into(), referrer_id: 34, referrer_index: 4,
+                }],
+                ..StepOptions::default()
+            };
+            let (out, _, warnings) = export_step_with_diagnostics(source.as_bytes(), &opts).unwrap();
+            assert_eq!(out.lines().any(|line| line.starts_with("#35=IFCRELSPACEBOUNDARY")), keep_copy, "{target}: {out}");
+            let refs = if keep_copy { "(#35,#11)" } else { "(#11)" };
+            assert!(out.lines().any(|line| line.starts_with("#34=") && line.contains(refs)), "{target}: {out}");
+            assert_eq!(warnings.iter().any(|w| w.contains("RelatedBuildingElement") && w.contains("#35")), !keep_copy, "{warnings:?}");
+        }
+    }
+}
+
 /// The same scrub through the mutation-log writer (#11457), with a log that edits nothing.
 #[test]
 fn the_log_writer_scrubs_the_same_way() {

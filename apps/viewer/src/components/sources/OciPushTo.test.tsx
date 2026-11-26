@@ -250,12 +250,14 @@ test('a grant for superseded file-store settings is neither cached nor used (#96
   }
 });
 
-test('saving a file store never overwrites saved stores it cannot read (#9638 review)', () => {
+test('saving a file store keeps a copy of saved stores it cannot read (#9638 review)', () => {
   const unreadable = JSON.stringify([{ registry: 'https://kept.example.test', authorization_server: 'https://issuer.example.test' }]);
   localStorage.setItem('ifc-lite:oci-file-stores:v1', unreadable);
   assert.deepEqual(registryConnections(), []);
-  assert.throws(() => saveRegistryConnection({ registry: 'https://new.example.test', authorization_server: 'https://issuer.example.test', client_id: 'ifc-lite' }), /could not be read/);
-  assert.equal(localStorage.getItem('ifc-lite:oci-file-stores:v1'), unreadable);
+  const added = { registry: 'https://new.example.test', authorization_server: 'https://issuer.example.test', client_id: 'ifc-lite' };
+  saveRegistryConnection(added);
+  assert.deepEqual(registryConnections().map(store => store.registry), [added.registry]);
+  assert.equal(localStorage.getItem('ifc-lite:oci-file-stores:v1:unreadable'), unreadable);
 });
 
 test('OCI handoff requires callback issuer identification when advertised or when multiple issuers share the callback (#9638)', async () => {

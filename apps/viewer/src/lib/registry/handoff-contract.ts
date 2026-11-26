@@ -8,6 +8,7 @@ export const HANDOFF_PROTOCOL = 'oci-handoff/1';
 export const HANDOFF_PATH = '/open-artifact';
 export const HANDOFF_CALLBACK = '/open-artifact/callback';
 const CONNECTIONS_KEY = 'ifc-lite:oci-file-stores:v1';
+const UNREADABLE_CONNECTIONS_KEY = `${CONNECTIONS_KEY}:unreadable`;
 const MAX_CONNECTIONS = 32;
 export interface TokenExchangeSettings {
   endpoint: string;
@@ -87,7 +88,7 @@ function parseConnections(input: string): RegistryConnection[] {
   return connections;
 }
 
-/** Throws on unreadable storage; readers fall back to no stores, saves refuse to overwrite. */
+/** Throws on unreadable storage; readers fall back to no stores, saves keep a copy first. */
 function storedConnections(): RegistryConnection[] {
   const stored = globalThis.localStorage?.getItem(CONNECTIONS_KEY);
   return stored ? parseConnections(stored) : [];
@@ -109,7 +110,14 @@ export function saveRegistryConnection(value: RegistryConnection, replace?: bool
   try {
     existing = storedConnections();
   } catch {
-    throw new RegistryError('The file stores saved in this browser could not be read, so none were changed.');
+    // Start over, but keep what could not be read rather than overwrite it.
+    try {
+      globalThis.localStorage.setItem(UNREADABLE_CONNECTIONS_KEY, globalThis.localStorage.getItem(CONNECTIONS_KEY) ?? '');
+    } catch {
+      throw new RegistryError('Could not save the file store. Check that browser storage is available.');
+    }
+    console.warn(`Saved file stores could not be read; kept a copy under ${UNREADABLE_CONNECTIONS_KEY}.`);
+    existing = [];
   }
   const duplicate = existing.some(store => store.registry === connection.registry);
   if (duplicate && !replace) throw new RegistryError('This registry already has a file store. Select it and choose Edit file store.');

@@ -86,7 +86,7 @@ export function resourceSession(value: unknown, connection: RegistryConnection, 
     repositoryName(match[1]); return match[2].split(',').map(a => `${match[1]}:${a}`);
   }));
   const requested = actions(requestedScope), granted = actions(scope);
-  if (!granted.size) throw new RegistryError('This account was given no access to the requested folder.', 403);
+  if (!granted.size) throw new RegistryError('The authorization server granted no access to the requested folder. Check the account\'s access and the issuer\'s repository scopes.', 403);
   if ([...granted].some(a => !requested.has(a))) throw new RegistryError('The returned access exceeds the requested folders and actions.');
   return { registry: connection.registry, scope, accessToken: grant.token, expiresAt: grant.expiresAt,
     connectionIdentity: registryConnectionIdentity(connection) };

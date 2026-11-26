@@ -52,7 +52,7 @@ test('identity scopes an issuer adds by default do not block a repository grant 
   const session=resourceSession({access_token:'opaque',token_type:'Bearer',expires_in:300,scope:'profile email repository:project/model:pull'},connection,requested);
   assert(resourceAllows(session,'project/model','pull'));
   assert.equal(resourceAllows(session,'project/model','push'),false);
-  assert.throws(() => resourceSession({access_token:'opaque',token_type:'Bearer',expires_in:300,scope:'profile email'},connection,requested),/no access to the requested folder/);
+  assert.throws(() => resourceSession({access_token:'opaque',token_type:'Bearer',expires_in:300,scope:'profile email'},connection,requested),/granted no access to the requested folder/);
   assert.throws(() => resourceSession({access_token:'opaque',token_type:'Bearer',expires_in:300,scope:'profile repository:project/model:delete'},connection,requested),/unsupported/);
 });
 

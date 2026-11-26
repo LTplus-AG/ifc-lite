@@ -3,14 +3,18 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Pure helpers behind `./cli-main.ts`. Internal: not a package subpath, so
+ * Helpers behind `./cli-main.ts`. Internal: not a package subpath, so
  * tests can reach them without making them public API.
  */
 
 import { randomUUID } from 'node:crypto';
+import { realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import type { CliOptions } from './cli-args.js';
+import type { ModelRegistry } from './context.js';
+import { deriveModelId, freeModelId, loadIfcModel } from './loader.js';
+import { fmtInt } from './tools/util.js';
 import { fullScope, readOnlyScope, type AuthScope } from './auth/scope.js';
 
 /** Where Claude Desktop reads its MCP config on `platform`. */
@@ -55,4 +59,43 @@ export function tokenScopes(opts: CliOptions): Map<string, AuthScope> {
   for (const t of opts.readOnlyTokens) tokens.set(t, readOnlyScope());
   for (const scope of tokens.values()) scope.session = `token-${randomUUID()}`;
   return tokens;
+}
+
+/** A path-free reason for a failed preload: the error code, or the loader's refusal class. */
+function loadFailureReason(err: unknown): string {
+  const code = (err as NodeJS.ErrnoException | undefined)?.code;
+  if (typeof code === 'string') return code;
+  const message = err instanceof Error ? err.message : '';
+  if (message.includes('outside the allowed roots')) return 'outside --allow';
+  return 'not a readable IFC file';
+}
+
+export async function loadFiles(registry: ModelRegistry, opts: CliOptions, log: (line: string) => void): Promise<void> {
+  const seen = new Map<string, number>();
+  for (const [index, file] of opts.files.entries()) {
+    const label = `file argument ${index + 1} of ${opts.files.length}`;
+    const absolute = resolve(file);
+    // The real path, so ./m.ifc, M.ifc on a case-insensitive disk and a
+    // symlink all count as one file. A path that does not resolve falls
+    // through to the loader, which reports it.
+    const key = await realpath(absolute).catch(() => absolute);
+    const first = seen.get(key);
+    if (first !== undefined) {
+      log(`warning: ${label} repeats file argument ${first + 1}; skipped`);
+      continue;
+    }
+    seen.set(key, index);
+    // `arch/model.ifc` and `struct/model.ifc` both derive `model`; suffix the
+    // later one so it cannot replace (and dispose) the earlier.
+    const modelId = freeModelId(registry, deriveModelId(basename(file)));
+    const m = await loadIfcModel(absolute, { allowedPaths: opts.allowedPaths, modelId }).catch((err: unknown) => {
+      // Name the argument by position and give a fixed reason, never the
+      // loader's text: a mistyped value flag (`--tokn secret`) leaves its
+      // value here, any message may spell the path, and stderr reaches client logs.
+      throw new Error(`${label} could not be loaded (${loadFailureReason(err)}). Check the path, and that no flag is misspelled.`);
+    });
+    registry.add(m);
+    log(`loaded ${m.name} (${m.id}) — ${fmtInt(m.store.entityCount)} entities`);
+    for (const w of m.scanWarnings ?? []) log(`warning: ${m.name}: ${w}`);
+  }
 }

@@ -10,7 +10,6 @@
  * the same code, so the two cannot drift apart again.
  */
 
-import { basename, resolve } from 'node:path';
 import { bridgeConflict, parseArgs, type CliOptions } from './cli-args.js';
 import { startBridgeServer, type RunningBridge } from './bridge/run.js';
 import { DEFAULT_BRIDGE_PORT, DEFAULT_BRIDGE_VIEWER_URL } from './bridge/protocol.js';
@@ -18,10 +17,8 @@ import { StdioTransport } from './transport/stdio.js';
 import { routeConsoleToStderr } from './transport/stdio-console.js';
 import { HttpTransport, BearerTokenAuth, AllowAllAuth, type HttpAuthenticator, type SessionFactory } from './transport/http.js';
 import { createMCPServer, VERSION } from './index.js';
-import { deriveModelId, freeModelId, loadIfcModel } from './loader.js';
-import { anonymousHttpScope, claudeDesktopConfigPath, serverScope, tokenScopes } from './cli-support.js';
-import { InMemoryModelRegistry, type ModelRegistry } from './context.js';
-import { fmtInt } from './tools/util.js';
+import { anonymousHttpScope, claudeDesktopConfigPath, loadFiles, serverScope, tokenScopes } from './cli-support.js';
+import { InMemoryModelRegistry } from './context.js';
 
 export interface McpCliIdentity {
   /** How the user invoked us, for usage text: `ifc-lite-mcp` or `ifc-lite mcp`. */
@@ -146,33 +143,6 @@ export async function runMcpCli(argv: string[], identity: McpCliIdentity): Promi
 /** Server config both transports share; stdio adds the viewer fields. */
 function baseConfig(opts: CliOptions) {
   return { readOnly: opts.readOnly, bsddEndpoint: opts.bsdd, allowedPaths: opts.allowedPaths, samplingEnabled: false };
-}
-
-async function loadFiles(registry: ModelRegistry, opts: CliOptions, log: (line: string) => void): Promise<void> {
-  const seen = new Map<string, number>();
-  for (const [index, file] of opts.files.entries()) {
-    const label = `file argument ${index + 1} of ${opts.files.length}`;
-    const absolute = resolve(file);
-    const first = seen.get(absolute);
-    if (first !== undefined) {
-      log(`warning: ${label} repeats file argument ${first + 1}; skipped`);
-      continue;
-    }
-    seen.set(absolute, index);
-    // `arch/model.ifc` and `struct/model.ifc` both derive `model`; suffix the
-    // later one so it cannot replace (and dispose) the earlier.
-    const modelId = freeModelId(registry, deriveModelId(basename(file)));
-    const m = await loadIfcModel(absolute, { allowedPaths: opts.allowedPaths, modelId }).catch((err: unknown) => {
-      // Name the argument by position, never by path: a mistyped value flag
-      // (`--tokn secret`) leaves its value here, and stderr reaches client logs.
-      const message = err instanceof Error ? err.message : String(err);
-      const redacted = [absolute, file].reduce((text, part) => text.split(part).join('<file>'), message);
-      throw new Error(`${label} could not be loaded: ${redacted}. Check the path, and that no flag is misspelled.`);
-    });
-    registry.add(m);
-    log(`loaded ${m.name} (${m.id}) — ${fmtInt(m.store.entityCount)} entities`);
-    for (const w of m.scanWarnings ?? []) log(`warning: ${m.name}: ${w}`);
-  }
 }
 
 async function runStdio(opts: CliOptions, tag: string): Promise<void> {

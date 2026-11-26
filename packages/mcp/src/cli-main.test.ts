@@ -9,14 +9,15 @@
  * config path.
  */
 
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { parseArgs } from './cli-args.js';
 import { mcpHelpText, runMcpCli, type RunningHttpCli } from './cli-main.js';
-import { anonymousHttpScope, claudeDesktopConfigPath, serverScope, tokenScopes } from './cli-support.js';
+import { anonymousHttpScope, claudeDesktopConfigPath, loadFiles, serverScope, tokenScopes } from './cli-support.js';
+import { InMemoryModelRegistry } from './context.js';
 
 const MODEL = `ISO-10303-21;
 HEADER;
@@ -176,18 +177,42 @@ describe('stdio file arguments (#11534)', () => {
     vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     // runStdio routes console output to stderr for the process; undo that here.
     const consoleBefore = { log: console.log, info: console.info, debug: console.debug, warn: console.warn };
+    const routed = Symbol.for('ifc-lite.mcp.console-to-stderr');
     try {
       const missing = await runMcpCli(['--tokn', 's3cret-value'], { command: 'ifc-lite-mcp' }).catch((e: unknown) => e);
-      expect(String(missing)).toMatch(/file argument 1 of 1 could not be loaded/);
+      expect(String(missing)).toMatch(/file argument 1 of 1 could not be loaded \(ENOENT\)/);
       expect(String(missing)).not.toContain('s3cret');
       // An existing file outside --allow: the loader's message names the path, the CLI must not.
       const outside = await runMcpCli(['--allow', dir, '--tokn', outsideFile], { command: 'ifc-lite-mcp' }).catch((e: unknown) => e);
-      expect(String(outside)).toMatch(/file argument 1 of 1 could not be loaded: .*outside the allowed roots/);
+      expect(String(outside)).toMatch(/file argument 1 of 1 could not be loaded \(outside --allow\)/);
       expect(String(outside)).not.toContain(outsideFile);
     } finally {
       Object.assign(console, consoleBefore);
+      delete (console as unknown as Record<symbol, unknown>)[routed];
       vi.restoreAllMocks();
     }
+  });
+});
+
+describe('loadFiles (#11534)', () => {
+  let dir: string;
+  beforeAll(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'mcp-cli-load-'));
+    for (const sub of ['arch', 'struct']) {
+      await mkdir(join(dir, sub));
+      await writeFile(join(dir, sub, 'model.ifc'), MODEL);
+    }
+  });
+  afterAll(() => rm(dir, { recursive: true, force: true }));
+
+  it('gives same-named files their own id and loads a repeated file once', async () => {
+    const registry = new InMemoryModelRegistry();
+    const lines: string[] = [];
+    const arch = join(dir, 'arch', 'model.ifc');
+    const opts = parseArgs([arch, join(dir, 'struct', 'model.ifc'), join(dir, 'arch', '.', 'model.ifc')]);
+    await loadFiles(registry, opts, (line) => lines.push(line));
+    expect(registry.list().map((m) => m.id)).toEqual(['model', 'model_2']);
+    expect(lines).toContain('warning: file argument 3 of 3 repeats file argument 1; skipped');
   });
 });
 

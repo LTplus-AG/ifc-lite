@@ -68,12 +68,13 @@ function dropAnnotationPin(ctx: MouseHandlerContext, x: number, y: number): void
   const intersection = ctx.renderer.raycastScene(x, y, ctx.getPickOptions())?.intersection;
   if (!intersection) return;
   // Federated models: resolve which model the hit globalId belongs to, so the
-  // annotation carries enough context to render its popover header. Falls back
-  // to (null, expressId) when there's only the legacy single-model state.
+  // annotation carries enough context to render its popover header. With no
+  // models loaded the lookup is the legacy sentinel ('legacy', globalId).
   const modelLookup = fromGlobalIdFromModels(store.models, intersection.expressId);
   store.beginDraft(
     { x: intersection.point.x, y: intersection.point.y, z: intersection.point.z },
-    modelLookup?.expressId ?? intersection.expressId ?? null,
+    // No lookup means no loaded model owns the hit: anchor no entity (#11527).
+    modelLookup ? modelLookup.expressId : null,
     modelLookup?.modelId ?? null,
   );
 }

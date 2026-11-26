@@ -7,6 +7,7 @@ import type { DxfUnderlayRenderData } from '@/hooks/useDxfUnderlay';
 import type { DXFUnderlayOptions } from '@ifc-lite/drawing-2d';
 import type { jsPDF } from 'jspdf';
 import { pdfRotatedTextStart } from './pdf-text-placement';
+import { toStandardFontText } from '@/lib/document/standard-font-text';
 
 /** Map a DXF vertical justification onto an SVG dominant-baseline. */
 function dxfValignToBaseline(valign: 'baseline' | 'bottom' | 'middle' | 'top'): string {
@@ -93,7 +94,7 @@ export function drawDxfUnderlaysPdf(doc: jsPDF, underlays: readonly DxfUnderlayR
         // jsPDF's align/baseline shift along the page axes, so each line's
         // baseline start is placed along/across the rotated baseline here,
         // stacking lines about the block's attachment like the canvas renderer.
-        const lines = text.text.split('\n');
+        const lines = toStandardFontText(text.text).text.split('\n');
         lines.forEach((line, i) => {
           if (!line) return;
           // Aligned/fit text stretches horizontally (PDF Tz); justification uses the stretched width.

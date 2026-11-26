@@ -9,17 +9,18 @@ call BIM operations as typed tools instead of shelling out to the CLI.
 ```bash
 ifc-lite mcp ./model.ifc                       # stdio (default transport)
 ifc-lite mcp ./model.ifc --read-only           # hide all mutation tools
-ifc-lite mcp ./arch.ifc ./struct.ifc --federate
+ifc-lite mcp ./arch.ifc ./struct.ifc            # several files, one session
 ifc-lite mcp --transport http --port 8765 --token <secret>
 ifc-lite mcp ./model.ifc --viewer              # auto-open the 3D viewer
 ```
 
 The standalone binary `ifc-lite-mcp …` accepts the same flags. Useful options:
-`--read-only`, `--federate`, `--transport stdio|http`, `--port`, `--host`
-(loopback by default; non-loopback needs `--token` or `--insecure`), `--token`
-(a single bearer token for HTTP auth; combine with `--read-only` to scope the
-whole server read-only), `--bsdd <url>`, `--allow <path>` (restrict filesystem
-access).
+`--read-only`, `--transport stdio|http`, `--port`, `--host`
+(loopback by default; non-loopback needs `--token`, `--read-only-token` or `--insecure`), `--token`
+(repeatable bearer token for HTTP auth; combine with `--read-only` to scope the
+whole server read-only), `--read-only-token` (repeatable, the `--read-only` preset: no edits, but export and flow-checkpoint tools still write files under the allowed roots),
+`--bsdd <url>`, `--allow <path>` (restrict filesystem access), and the
+`--bridge` flags.
 
 Register it with Claude Code via your MCP config, e.g.:
 
@@ -64,7 +65,7 @@ the answer, and `contentDiff.pendingMutations` says how many.
 **Geometry** — `geometry_get`, `geometry_bbox`, `geometry_area`,
 `geometry_volume`, `raycast`.
 
-**Validation** — `ids_validate`, `ids_explain`, `gherkin_check`.
+**Validation** — `ids_validate`, `ids_explain`.
 
 **Clash** — `clash_check`, `clash_matrix`.
 
@@ -79,7 +80,7 @@ only the user gave in `values`, never invented ones),
 `mutation_batch`, `mutation_diff`, `mutation_undo`.
 
 **Export** — `export_csv`, `export_json`, `export_ifc`, `export_ifcx`,
-`export_glb`, `export_3dm`, `export_pdf_report`.
+`export_glb`, `export_3dm`.
 
 **BCF** — `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`,
 `bcf_topic_list`, `bcf_viewpoint_create`, `bcf_export`.

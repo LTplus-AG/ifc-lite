@@ -82,12 +82,7 @@ export { PolygonBuilder, simplifyPolygon, polygonBounds } from './polygon-builde
 // LINE MERGING
 // ═══════════════════════════════════════════════════════════════════════════
 
-export {
-  mergeDrawingLines,
-  mergeCollinearLines,
-  deduplicateLines,
-  splitLineAtParams,
-} from './line-merger.js';
+export { mergeDrawingLines, mergeCollinearLines, deduplicateLines, splitLineAtParams } from './line-merger.js';
 export type { LineMergerOptions } from './line-merger.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -121,6 +116,8 @@ export type { ProjectionBand, ProjectionBandDepths } from './projection-bands.js
 // Current-floor scoping + feature-element exclusion (issue #979 follow-up)
 export { currentFloorBands, storeyFloorsFromMeshes, StoreyFloorLevels } from './storey-bands.js';
 export type { StoreyFloorMesh } from './storey-bands.js';
+export { storeyCutElevation } from './storey-cut.js';
+export type { StoreyCut, StoreyCutFrame } from './storey-cut.js';
 export { isFeatureElementType } from './feature-elements.js';
 
 // ═══════════════════════════════════════════════════════════════════════════

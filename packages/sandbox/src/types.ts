@@ -55,6 +55,8 @@ export interface SandboxConfig {
   permissions?: SandboxPermissions;
   /** Resource limits */
   limits?: SandboxLimits;
+  /** Decode pre-serialized JSON text at bridge positions that normally dump objects. */
+  jsonBridgeArguments?: boolean;
   /**
    * `network.fetch:<host>` grants the running graph holds. Consulted by
    * `bim.network.fetch` on every call (not just once at sandbox creation)

@@ -43,9 +43,10 @@ function renderLogArg(arg: unknown): string {
   }
 }
 
-export function shapeLogs(entries: readonly LogEntry[]): { logs: LogLine[]; truncated: boolean } {
+export function shapeLogs(entries: readonly LogEntry[], clippedLogMarker: string): { logs: LogLine[]; truncated: boolean } {
   const logs: LogLine[] = [];
   let chars = 0;
+  let truncated = false;
   for (const [index, entry] of entries.entries()) {
     if (logs.length >= MAX_LOG_LINES) return { logs, truncated: true };
     // The sandbox appends its marker as the final warn entry and then stops
@@ -54,6 +55,10 @@ export function shapeLogs(entries: readonly LogEntry[]): { logs: LogLine[]; trun
     const isSandboxMarker = index === entries.length - 1 && entry.level === 'warn'
       && entry.args.length === 1 && entry.args[0] === SANDBOX_LOG_TRUNCATED;
     if (isSandboxMarker) return { logs, truncated: true };
+    if (entry.level === 'warn' && entry.args.length === 1 && entry.args[0] === clippedLogMarker) {
+      truncated = true;
+      continue;
+    }
     const text = entry.args.map(renderLogArg).join(' ');
     if (chars + text.length > MAX_LOG_CHARS) {
       // Clip the entry that crosses the budget rather than dropping it, so
@@ -65,7 +70,7 @@ export function shapeLogs(entries: readonly LogEntry[]): { logs: LogLine[]; trun
     chars += text.length;
     logs.push({ level: entry.level, text });
   }
-  return { logs, truncated: false };
+  return { logs, truncated };
 }
 
 type Outcome =

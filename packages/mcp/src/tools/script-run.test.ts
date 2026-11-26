@@ -165,7 +165,7 @@ describe('script_run', () => {
     const result = await run(`'x'.repeat(300 * 1024)`);
     expect(result.structuredContent).toMatchObject({ value: null, value_truncated: true });
     const preview = result.structuredContent?.value_preview;
-    expect(preview).toMatch(/^[\s\S]{1,2000}$/);
+    expect(preview).toMatch(/^"x{1,1999}$/);
   });
 
   it('returns the resolved value of a returned promise', async () => {
@@ -315,8 +315,6 @@ describe('script_run', () => {
     expect((await run("({ s: new String('ab'), n: new Number(5), b: new Boolean(false) })")).structuredContent?.value).toEqual({ s: 'ab', n: 5, b: false });
     expect((await run('class Qty extends Number {} new Qty(5)')).structuredContent?.value).toBe(5);
     expect((await run('class Box { constructor() { this.a = 1; } } new Box()')).structuredContent?.value).toEqual({ a: 1 });
-    const long = await run("console.log({ blob: 'x'.repeat(100000) }); 1");
-    expect(logTexts(long)[0].endsWith('[truncated]')).toBe(true);
     const result = await run("console.log(1 / 0, 0 / 0); console.log({ err: new Error('boom') }); console.error(new Error('x'.repeat(10000))); 1");
     const logs = logTexts(result);
     expect(logs[0]).toBe('Infinity NaN');
@@ -436,6 +434,56 @@ describe('script_run', () => {
     expect((await runError("throw new Error('no walls')")).details?.kind).toBe('script');
   });
 
+  it('reports wrapper-clipped logs on successful and failed scripts', async () => {
+    const log = "console.log({ blob: 'x'.repeat(100000) }); console.info('after');";
+    const result = await run(log);
+    expect(result.structuredContent?.logs_truncated).toBe(true);
+    const last = result.content.at(-1) as { text: string };
+    expect(JSON.parse(last.text)).toMatchObject({ logs_truncated: true });
+    expect(logTexts(result)).toEqual([expect.stringMatching(/ \[truncated\]$/), 'after']);
+    expect((await runError(log + "throw new Error('stop')")).details).toMatchObject({
+      logs_truncated: true,
+      logs: [{ text: expect.stringMatching(/ \[truncated\]$/) }, { text: 'after' }],
+    });
+  });
+
+  it('coerces boxed numbers and strings using native JSON rules', async () => {
+    const result = await run(`
+      const number = new Number(1);
+      number.valueOf = () => 3;
+      number.toString = () => 'renamed';
+      const string = new String('old');
+      string.toString = () => 'new';
+      [
+        JSON.stringify([number, string]),
+        JSON.stringify({ old: 1, new: 2, renamed: 3 }, [string, number]),
+        JSON.stringify({ a: 1 }, null, number),
+        JSON.stringify({ a: 1 }, null, string),
+      ];
+    `);
+    expect(result.structuredContent?.value).toEqual([
+      '[3,"new"]',
+      '{"new":2,"renamed":3}',
+      '{\n   "a": 1\n}',
+      '{\nnew"a": 1\n}',
+    ]);
+  });
+
+  it('serializes bridge arguments once and delivers their nested data', async () => {
+    const result = await run(`
+      let calls = 0;
+      const input = { ref: { modelId: 'm', expressId: 72 } };
+      Object.defineProperty(Object.prototype, 'toJSON', {
+        value() { calls++; return this; },
+        configurable: true,
+      });
+      const attributes = bim.query.attributes(input);
+      delete Object.prototype.toJSON;
+      ({ calls, hasAttributes: attributes.length > 0 });
+    `);
+    expect(result.structuredContent?.value).toEqual({ calls: 2, hasAttributes: true });
+  });
+
   it('marks logs truncated when the sandbox itself dropped output', async () => {
     const result = await run("console.log('x'.repeat(5e6)); 1");
     expect(result.structuredContent?.logs_truncated).toBe(true);
@@ -452,17 +500,19 @@ describe('script_run', () => {
     // together overlap even with trivial scripts.
     const as = (id: string) => ({ ...ctx, session: { id } });
     const rateLimited = (r: PromiseSettledResult<unknown>) => r.status === 'rejected' && (r.reason as { code?: string }).code === 'RATE_LIMITED';
+    const values = (batch: PromiseSettledResult<CallToolResult>[]) =>
+      batch.flatMap((r) => r.status === 'fulfilled' ? [r.value.structuredContent?.value] : []);
     const sameSession = await Promise.allSettled([run('1'), run('2')]);
     expect(sameSession.filter(rateLimited)).toHaveLength(1);
-    expect(sameSession.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(values(sameSession)).toEqual([1]);
     const settled = await Promise.allSettled(['a', 'b', 'c'].map((id) => callScript('script_run', { code: '1' }, as(id))));
     expect(settled.filter(rateLimited)).toHaveLength(1);
-    expect(settled.filter((r) => r.status === 'fulfilled')).toHaveLength(2);
+    expect(values(settled)).toEqual([1, 1]);
     // Two servers in one process (no session id) each get their own slot.
     const other = { ...ctx, registry: new InMemoryModelRegistry(), session: undefined };
     other.registry.add(ctx.registry.get('m')!);
-    const servers = await Promise.allSettled([run('1'), callScript('script_run', { code: '1' }, other)]);
-    expect(servers.filter((r) => r.status === 'fulfilled')).toHaveLength(2);
+    const servers = await Promise.allSettled([run('1'), callScript('script_run', { code: '2' }, other)]);
+    expect(values(servers)).toEqual([1, 2]);
     expect((await run('4')).structuredContent?.value).toBe(4);
   }, 30_000);
 

@@ -35,6 +35,8 @@ console.log(result.logs);  // captured console output
 sandbox.dispose();
 ```
 
+Hosts that pre-serialize arguments can set `jsonBridgeArguments: true`. In that mode, bridge positions declared as `dump` or `entityRefs*` accept JSON text and other primitive values. Encode even literal strings and null as JSON text before calling those positions.
+
 ## Recovering from a teardown abort
 
 A script that exhausts the memory limit inside a *drained promise job* — the post-`await` body of an `async function run()` that nothing awaits — trips an upstream assertion in `JS_FreeRuntime`, so `dispose()` comes back as an emscripten abort ([#1922](https://github.com/LTplus-AG/ifc-lite/issues/1922)). Two consequences a consumer has to handle:

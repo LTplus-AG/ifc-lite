@@ -33,8 +33,6 @@ export const SERIALISER_SOURCE = `
   // and arrays skip the brand-checked valueOf calls entirely; anything with
   // another prototype (a boxed value, a subclass of one, a class instance)
   // tries each, and a valueOf that rejects the receiver means "not this type".
-  // A Number or String subclass that overrides valueOf or toString is written
-  // from its internal value (native JSON calls the override).
   // A boxed value whose prototype was reset to Object.prototype or null is
   // written as an object, unlike native JSON; plain objects stay cheap.
   // A Proxy's getPrototypeOf trap may throw: that reads as 'no prototype to
@@ -63,6 +61,11 @@ export const SERIALISER_SOURCE = `
     }
     return undefined;
   }
+  function coerceBox(v, primitive) {
+    if (typeof primitive === 'number') return +v;
+    if (typeof primitive === 'string') return Str(v);
+    return primitive;
+  }
   // The replacer and indent of JSON.stringify(value, replacer, space): a
   // function, or a property list (null-prototype, so no Array.prototype
   // setter sees it); and the gap string.
@@ -75,13 +78,13 @@ export const SERIALISER_SOURCE = `
         var item = replacer[ri], name = undefined;
         if (typeof item === 'string') name = item;
         else if (typeof item === 'number') name = Str(item);
-        else if (item !== null && typeof item === 'object') { var b = unboxed(item); if (b && (typeof b.v === 'string' || typeof b.v === 'number')) name = Str(b.v); }
+        else if (item !== null && typeof item === 'object') { var b = unboxed(item); if (b && (typeof b.v === 'string' || typeof b.v === 'number')) name = Str(item); }
         if (name !== undefined && !apply(setHas, seen, [name])) { apply(setAdd, seen, [name]); list[n++] = name; }
       }
       list.length = n;
       o.list = list;
     }
-    if (space !== null && typeof space === 'object') { var sb = unboxed(space); if (sb) space = sb.v; }
+    if (space !== null && typeof space === 'object') { var sb = unboxed(space); if (sb) space = coerceBox(space, sb.v); }
     if (typeof space === 'number') {
       var count = space > 10 ? 10 : space >= 1 ? space - (space % 1) : 0;
       for (var si = 0; si < count; si++) o.gap += ' ';
@@ -109,7 +112,7 @@ export const SERIALISER_SOURCE = `
       if (typeof v === 'object') {
         var box = unboxed(v);
         // Unwrapped, it takes the primitive path below (a boxed string is cut too).
-        if (box) v = forLog && typeof box.v === 'bigint' ? bigintText(box.v) : box.v;
+        if (box) v = forLog && typeof box.v === 'bigint' ? bigintText(box.v) : coerceBox(v, box.v);
       }
       if (typeof v === 'object') {
         if (forLog && isError(v)) { out += stringify(msg(v)); return; }

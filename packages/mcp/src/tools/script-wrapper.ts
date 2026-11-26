@@ -24,7 +24,7 @@
  * before they reach the bridge, and the script's own JSON.stringify and
  * JSON.parse are replaced with depth-checked versions, and every object
  * argument to a bim.* method is passed through that same bounded path before
- * the bridge dumps it (#11600 tracks the bridge-side fix).
+ * the host decodes the serialized data.
  *
  * The catch blocks inside the generated source are not silent in the house
  * rule's sense: this code runs in the sandbox with no host logger, and each
@@ -98,7 +98,7 @@ const INTRINSICS_OBJECT = `{ ${INTRINSICS.map(([n, v]) => `${n}: ${v}`).join(', 
 const INTRINSICS_LOCALS = INTRINSICS.map(([n]) => `${n} = I.${n}`).join(', ');
 
 // The wrapper text around the script, built once: only the script varies.
-const WRAPPER_HEAD = `(function (run, I, L) {
+const WRAPPER_HEAD = `(function (run, I, L, clippedLogMarker) {
   // The intrinsics, by name: read once here, before the script runs.
   var ${INTRINSICS_LOCALS};
   // instanceof, guarded: a thrown Proxy whose getPrototypeOf trap throws must
@@ -147,8 +147,15 @@ ${SERIALISER_SOURCE}
   // Console text keeps what the bridge's own dump used to show for errors
   // and BigInts, which JSON rules would turn into {} or a TypeError.
   // Cut a little under the host log budget so the marker itself survives it.
+  // Send a private marker through the capture buffer so clipping is reported
+  // even if evaluation later exits without returning an envelope.
+  var logClipped = false;
   function cut(text, max) {
     if (text.length <= max) return text;
+    if (!logClipped) {
+      logClipped = true;
+      original.warn(clippedLogMarker);
+    }
     // Never end on the first half of a surrogate pair.
     var c = apply(charCodeAt, text, [max - 1]), end = c >= 0xD800 && c <= 0xDBFF ? max - 1 : max;
     return apply(slice, text, [0, end]) + ' [truncated]';
@@ -202,15 +209,13 @@ ${SERIALISER_SOURCE}
   // only affects itself, since the bridge's console is reachable only from here.
   defineProperty(glob, 'console', { value: safe, writable: true, configurable: true });
   delete glob.InternalError;
-  // The bridge vm.dump()s every object argument of a bim method (JSON
-  // semantics), and that recursion has no stack check either (#11600). Each
-  // object argument therefore goes through the wrapper's bounded serialiser
-  // and native parse first: the bridge gets the same data, capped in depth
-  // (except an Error, which JSON writes as {} where vm.dump kept its fields).
+  // Send the checked JSON text across the bridge. QuickJS's object dump
+  // copies objects before stringifying, so the copy can acquire inherited
+  // hooks even when the original had no prototype. Strings and null use the
+  // same encoding so the host can tell JSON text from other primitives.
   function safeArg(a) {
-    if (a === null || (typeof a !== 'object' && typeof a !== 'function')) return a;
-    var text = ser(a, Infinity, false);
-    return text === undefined ? undefined : parse(text);
+    if (a === null || typeof a === 'string') return stringify(a);
+    return typeof a === 'object' || typeof a === 'function' ? ser(a, Infinity, false) : a;
   }
   // path is the dotted namespace ('query'); a method the schema lists bounds
   // only its dumped positions, one it does not list bounds every object.
@@ -288,8 +293,8 @@ ${SERIALISER_SOURCE}
     catch (e) { resolveWrapper(fail(e)); }
   });
 })(function () { return (0, eval)(`;
-const WRAPPER_TAIL = `); }, ${INTRINSICS_OBJECT}, ${JSON.stringify(LIMITS)})`;
+const WRAPPER_TAIL = `); }, ${INTRINSICS_OBJECT}, ${JSON.stringify(LIMITS)}, `;
 
-export function wrapScript(code: string): string {
-  return WRAPPER_HEAD + JSON.stringify(code) + WRAPPER_TAIL;
+export function wrapScript(code: string, clippedLogMarker: string): string {
+  return WRAPPER_HEAD + JSON.stringify(code) + WRAPPER_TAIL + JSON.stringify(clippedLogMarker) + ')';
 }

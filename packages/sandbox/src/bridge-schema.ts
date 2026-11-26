@@ -122,11 +122,11 @@ export interface NamespaceSchema {
 export interface BridgeCallContext {
   sandboxSessionId: string;
   appendUiSurface?: AppendUiSurface;
+  jsonBridgeArguments?: boolean;
   /**
    * Cancellation for host work this call starts (#2419), aborted when the run
    * stops waiting (`timeoutMs`) and when the sandbox is disposed. An async
-   * `call:` that can take real time must forward it, or the work runs on to
-   * completion on the user's machine after the run that asked for it is gone.
+   * `call:` that can take real time must forward it so its work stops with the run.
    *
    * Optional because the bridge supplies it, not the caller: `buildBridge` gets
    * the session-scoped half and `buildNamespace` adds the signal per call, so a
@@ -276,7 +276,7 @@ function buildNamespace(
         // here keeps the failure a clean, catchable script exception.
         const label = `bim.${schema.name}.${method.name}`;
         try {
-          const nativeArgs = unmarshalArgs(vm, handles, method.args);
+          const nativeArgs = unmarshalArgs(vm, handles, method.args, context.jsonBridgeArguments);
           // `hostWork.signal` is read here, per call, rather than captured when
           // the namespace is built: the queue swaps in a fresh controller after
           // a run gives up waiting, so a cached signal would hand every later

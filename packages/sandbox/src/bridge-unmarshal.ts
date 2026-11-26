@@ -14,8 +14,16 @@ export type ArgType =
   | 'entityRefsUndefined?' // missing/undefined becomes undefined; null throws (#4789)
   | '...strings';
 
+function readDumpedArg(vm: QuickJSContext, handle: QuickJSHandle, jsonBridgeArguments: boolean): unknown {
+  if (!jsonBridgeArguments) return vm.dump(handle);
+  const type = vm.typeof(handle);
+  if (type === 'string') return JSON.parse(vm.getString(handle)) as unknown;
+  if (type === 'object' || type === 'function') throw new TypeError('Expected a pre-serialized bridge argument');
+  return vm.dump(handle);
+}
+
 /** Unmarshal QuickJS handles to native JS values based on arg schema. */
-export function unmarshalArgs(vm: QuickJSContext, handles: QuickJSHandle[], argTypes: ArgType[]): unknown[] {
+export function unmarshalArgs(vm: QuickJSContext, handles: QuickJSHandle[], argTypes: ArgType[], jsonBridgeArguments = false): unknown[] {
   const result: unknown[] = [];
   for (let i = 0; i < argTypes.length; i++) {
     switch (argTypes[i]) {
@@ -26,13 +34,13 @@ export function unmarshalArgs(vm: QuickJSContext, handles: QuickJSHandle[], argT
         result.push(handles[i] ? vm.getNumber(handles[i]) : undefined);
         break;
       case 'dump':
-        result.push(handles[i] ? vm.dump(handles[i]) : undefined);
+        result.push(handles[i] ? readDumpedArg(vm, handles[i], jsonBridgeArguments) : undefined);
         break;
       case 'entityRefs': case 'entityRefs?': case 'entityRefsUndefined?': {
         const optional = argTypes[i] === 'entityRefs?';
         const undefinedOnly = argTypes[i] === 'entityRefsUndefined?';
         const raw = handles[i]
-          ? vm.dump(handles[i]) as Array<{ ref?: EntityRef } & EntityRef> | null | undefined
+          ? readDumpedArg(vm, handles[i], jsonBridgeArguments) as Array<{ ref?: EntityRef } & EntityRef> | null | undefined
           : (optional || undefinedOnly ? undefined : []);
         result.push(
           (optional && raw == null) || (undefinedOnly && raw === undefined)

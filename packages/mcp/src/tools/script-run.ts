@@ -21,6 +21,7 @@
  * QuickJS heap.
  */
 
+import { randomUUID } from 'node:crypto';
 import { createSandbox, SANDBOX_CONSOLE_LEVELS, ScriptError, type SandboxPermissions } from '@ifc-lite/sandbox';
 import { MAX_VALUE_CHARS, clipMessage, readEnvelope, shapeLogs } from './script-output.js';
 import { wrapScript } from './script-wrapper.js';
@@ -231,6 +232,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     try {
       sandbox = await createSandbox(model.bim, {
         permissions,
+        jsonBridgeArguments: true,
         limits: { timeoutMs, memoryBytes: memoryMb * 1024 * 1024, maxStackBytes: MAX_STACK_BYTES },
       });
     } catch (err) {
@@ -250,14 +252,15 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
         ctx.log.log('warning', 'script_run: sandbox teardown aborted', { error: describeThrown(err) });
       }
     };
+    const clippedLogMarker = randomUUID();
     ctx.signal.addEventListener('abort', dispose, { once: true });
     // A cancel that landed while the sandbox was being created fired no event.
     if (ctx.signal.aborted) dispose();
     try {
       if (ctx.signal.aborted) throw cancelled(nothingRan());
       if (mode === 'mutate') before = new Set(journalMutationIds(model));
-      const result = await sandbox.eval(wrapScript(code), { typescript: false, filename: 'internal-script-wrapper.js' });
-      const { logs, truncated } = shapeLogs(result.logs);
+      const result = await sandbox.eval(wrapScript(code, clippedLogMarker), { typescript: false, filename: 'internal-script-wrapper.js' });
+      const { logs, truncated } = shapeLogs(result.logs, clippedLogMarker);
       const mutationsQueued = queued();
       // A cancel that landed during the last host-work drain still wins.
       if (ctx.signal.aborted) throw cancelled({ logs, logs_truncated: truncated, mutations_queued: mutationsQueued });
@@ -283,7 +286,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
       if (err instanceof ToolExecutionError) throw err;
       // A sandbox disposed by a cancel rejects with a plain Error
       // that carries no logs; only a ScriptError has them.
-      const shaped = err instanceof ScriptError ? shapeLogs(err.logs) : { logs: [], truncated: false };
+      const shaped = err instanceof ScriptError ? shapeLogs(err.logs, clippedLogMarker) : { logs: [], truncated: false };
       const details = { logs: shaped.logs, logs_truncated: shaped.truncated, mutations_queued: queued() };
       if (ctx.signal.aborted) throw cancelled(details);
       // Script throws are caught in the wrapper, so 'interrupted' here is the

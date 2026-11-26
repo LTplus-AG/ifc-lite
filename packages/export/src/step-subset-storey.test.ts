@@ -20,6 +20,14 @@ describe('productsUnderPlacement (#7791, D27: no depth guard)', () => {
     expect(productsUnderPlacement(1000, parseStep(nested(300))).has(9000)).toBe(true);
   });
 
+  it('reads ObjectPlacement only on IfcProduct, including IFC4.3 placement chains (#11583)', () => {
+    const text = nested(1)
+      .replace('#1001=IFCLOCALPLACEMENT(#1000,#1);', '#1001=IFCGRIDPLACEMENT(#1000,$,#10,#11);')
+      .replace('ENDSEC;\nEND-ISO', "#9100=IFCSTRUCTURALANALYSISMODEL('0000000000000000000030',$,'analysis',$,$,.LOADING_3D.,$,$,$,#1000);\nENDSEC;\nEND-ISO");
+    const products = productsUnderPlacement(1000, parseStep(text), 'IFC4X3');
+    expect([...products]).toEqual([9000]);
+  });
+
   it('does not select a product whose chain cycles without reaching the storey', () => {
     // #1001 points past the storey to #1003, so #1001..#1003 form a cycle that
     // never reaches #1000.

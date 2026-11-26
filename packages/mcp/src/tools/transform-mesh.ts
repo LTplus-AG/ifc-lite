@@ -15,7 +15,7 @@ import { fmtInt, okResult } from './util.js';
 import { refusingEmpty, withIfcBytes } from './export-source.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
-import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, optionalOutputPath, refuseSourceIdsWhilePending, requireDistinctPaths, resolveStepModel, beforeWrite, unsupported, writeSidecar } from './transform-schema.js';
+import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, optionalOutputPath, refuseSourceIdsWhilePending, requireDistinctPaths, resolveStepModel, beforeWrite, unsupported, writeTransformPair } from './transform-schema.js';
 
 const modelSimplify: Tool = {
   name: 'model_simplify',
@@ -50,7 +50,7 @@ const modelSimplify: Tool = {
     const m = resolveStepModel(ctx, input.model_id as string | undefined, 'model_simplify');
     const filePath = await resolveSafePath(input.file_path, ctx, 'write');
     const level = (input.level as number | undefined) ?? 1;
-    if (input.express_ids !== undefined) refuseSourceIdsWhilePending(m, 'express_ids');
+    if (input.express_ids !== undefined) refuseSourceIdsWhilePending(m, 'express_ids', 'omit express_ids to simplify all elements, or write the edits with export_ifc and model_load the result first');
     return withIfcBytes(m, async (bytes) => {
       const session = new DemeshSession(bytes);
       try {
@@ -103,7 +103,7 @@ const modelLod: Tool = {
   name: 'model_lod',
   title: 'Generate LOD artifact',
   description:
-    'Generate a lightweight level-of-detail artifact. Level 0 writes JSON with one world transform and bounding box per element; level 1 writes a GLB of simplified element shells, plus optional metadata JSON mapping express ids to GLB nodes.',
+    'Generate a lightweight level-of-detail artifact. Level 0 writes JSON with one world transform and bounding box per element; level 1 writes a GLB of element meshes with boxes for recoverable mesh failures, plus optional metadata JSON mapping express ids to GLB nodes.',
   scope: 'export',
   annotations: FILE_WRITE_ANNOTATIONS,
   inputSchema: {
@@ -120,7 +120,7 @@ const modelLod: Tool = {
   outputSchema: fileOutputSchema({
     level: { type: 'integer' },
     elementCount: { type: 'integer', description: 'Level 0: elements in the JSON.' },
-    status: { type: 'string', enum: ['ok', 'degraded'], description: 'Level 1: degraded when some elements fell back to boxes.' },
+    status: { type: 'string', enum: ['ok', 'degraded'], description: 'Level 1: degraded when meshing failed for some elements. Some may be omitted.' },
     failedElements: { type: 'integer', description: 'Level 1: elements that failed to mesh.' },
     metaPath: { type: ['string', 'null'] },
   }),
@@ -143,10 +143,9 @@ const modelLod: Tool = {
         );
       }
       const { glb, meta } = await refusingEmpty(() => generateLod1(bytes), (r) => countGlbMeshes(r.glb), 'LOD1 produced no meshes: the model has no exportable geometry.');
-      beforeWrite(ctx, m);
-      // One after the other: a failed meta write must not race a GLB still landing.
-      await writeFile(filePath, glb);
-      if (metaPath) await writeSidecar(filePath, metaPath, JSON.stringify(meta, null, 2));
+      await writeTransformPair(ctx, m, filePath, glb, metaPath
+        ? { path: metaPath, argument: 'meta_path', data: JSON.stringify(meta, null, 2) }
+        : undefined);
       return okResult(
         `Wrote LOD1 GLB (${meta.status}, ${meta.failedElements.length} failed elements) to ${filePath}.`,
         { filePath, bytes: glb.length, level, status: meta.status, failedElements: meta.failedElements.length, metaPath },

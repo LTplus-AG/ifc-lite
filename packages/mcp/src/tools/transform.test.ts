@@ -9,7 +9,8 @@
  * committed `hello-wall.ifc` sample.
  */
 
-import { mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { statSync } from 'node:fs';
+import { link, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,7 +23,6 @@ import { buildDefaultToolRegistry } from './index.js';
 import { toToolDefinition } from '../tool-catalog.js';
 import { validateInput } from '../validate.js';
 import { toolError } from '../errors.js';
-import { CASE_INSENSITIVE_FS } from './transform-schema.js';
 import type { CallToolResult } from '../protocol/index.js';
 
 const HELLO_WALL = fileURLToPath(new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url));
@@ -311,10 +311,25 @@ describe('model_anonymize', () => {
     const out = join(tmp, 'same.ifc');
     await expect(call('model_anonymize', { global_ids: ['000000000000000000WA1A'], file_path: out, guid_map_path: out }))
       .rejects.toMatchObject({ code: 'INVALID_INPUT' });
-    if (CASE_INSENSITIVE_FS) {
+    await writeFile(out, 'probe');
+    const caseAlias = join(tmp, 'SAME.ifc');
+    if (statSync(caseAlias, { throwIfNoEntry: false })?.ino === (await stat(out)).ino) {
       await expect(call('model_anonymize', { global_ids: ['000000000000000000WA1A'], file_path: out, guid_map_path: join(tmp, 'SAME.ifc') }))
         .rejects.toMatchObject({ code: 'INVALID_INPUT' });
     }
+  });
+
+  it('withholds the GUID map when export access is withdrawn after the IFC write (#11583)', async () => {
+    const filePath = join(tmp, 'revoked.ifc');
+    const mapPath = join(tmp, 'revoked-guids.json');
+    let authorizationChecks = 0;
+    const denied = { ...fullScope(), scopes: [] };
+    ctx.currentScope = () => authorizationChecks++ === 0 ? fullScope() : denied;
+    await expect(call('model_anonymize', {
+      global_ids: ['000000000000000000WA1A'], file_path: filePath, guid_map_path: mapPath,
+    })).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+    expect(await readFile(filePath, 'latin1')).toContain('IFCWALL(');
+    await expect(readFile(mapPath)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('refuses a blank storey and a name fragment that matches several storeys', async () => {
@@ -385,6 +400,16 @@ describe('model_simplify and model_lod on a real model (wasm)', () => {
     const res = await call('model_lod', { model_id: 'a', level: 1, file_path: join(tmp, 'boxes-lod1.glb') });
     expect(res.structuredContent).toMatchObject({ status: 'degraded' });
     expect(res.content[0]).toMatchObject({ text: expect.stringContaining('degraded') });
+  }, 60_000);
+
+  it('rejects LOD1 outputs that are hard links to the same file (#11583)', async () => {
+    const glb = join(tmp, 'linked.glb');
+    const meta = join(tmp, 'linked.json');
+    await writeFile(glb, 'previous file');
+    await link(glb, meta);
+    await expect(call('model_lod', { level: 1, file_path: glb, meta_path: meta }))
+      .rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    expect(await readFile(glb, 'utf-8')).toBe('previous file');
   }, 60_000);
 
   it('model_lod level 0 writes one JSON row per element; level 1 writes a GLB and its metadata', async () => {

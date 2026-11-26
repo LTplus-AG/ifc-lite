@@ -8,16 +8,24 @@
  */
 import { IfcTypeEnumFromString, isSpatialStructureType, walkPlacementChain } from '@ifc-lite/data';
 import { decodeStepStringLiteral } from '@ifc-lite/encoding';
+import { expandTypes } from '@ifc-lite/parser';
 import { slotRef, stepString } from './schema-converter-structural-source.js';
 import { refsOutsideStrings, splitTopLevelArgs, STRUCTURE_RELATION_ATTRS, SubsetSelectionError } from './step-subset-relations.js';
 import { structureParents } from './step-subset-spatial-ancestors.js';
 import type { ParsedStep } from './step-subset.js';
 
-/** Map each IfcLocalPlacement to its parent placement (or null when top-level). */
-function placementParents(parsed: ParsedStep): Map<number, number | null> {
+const OBJECT_PLACEMENT = 5;
+const PLACEMENT_TYPES = new Set(['IFCLOCALPLACEMENT', 'IFCGRIDPLACEMENT', 'IFCLINEARPLACEMENT']);
+
+/** Map placements that have a PlacementRelTo slot to their parent placement. */
+function placementParents(parsed: ParsedStep, schemaVersion?: string): Map<number, number | null> {
   const parents = new Map<number, number | null>();
   for (const inst of parsed.instances.values()) {
-    if (inst.type !== 'IFCLOCALPLACEMENT') continue;
+    if (!PLACEMENT_TYPES.has(inst.type)) continue;
+    if (inst.type !== 'IFCLOCALPLACEMENT' && !schemaVersion?.toUpperCase().startsWith('IFC4X3')) {
+      parents.set(inst.id, null);
+      continue;
+    }
     // PlacementRelTo is the first attribute; comments around it are trivia.
     parents.set(inst.id, slotRef(splitTopLevelArgs(inst.body)?.[0]));
   }
@@ -25,8 +33,9 @@ function placementParents(parsed: ParsedStep): Map<number, number | null> {
 }
 
 /** Every product whose ObjectPlacement chains up through `storeyPlacementId`. */
-export function productsUnderPlacement(storeyPlacementId: number, parsed: ParsedStep): Set<number> {
-  const parents = placementParents(parsed);
+export function productsUnderPlacement(storeyPlacementId: number, parsed: ParsedStep, schemaVersion?: string): Set<number> {
+  const parents = placementParents(parsed, schemaVersion);
+  const productTypes = new Set(expandTypes(['IFCPRODUCT'], schemaVersion));
   const under = new Set<number>();
   // Whether each placement seen so far chains up through the storey's: shared
   // ancestry is walked once, so the pass stays linear in the placement count.
@@ -43,17 +52,11 @@ export function productsUnderPlacement(storeyPlacementId: number, parsed: Parsed
     for (const id of walked.ids) if (id !== storeyPlacementId) chainsUp.set(id, reaches);
     if (reaches) under.add(pid);
   }
-  // Products referencing a selected placement. `refsOutsideStrings`, not a
-  // raw REF_RE scan: free text (e.g. `'... see also #40'`) could otherwise
-  // seed a product into the wrong storey's extraction.
   const seeds = new Set<number>();
   for (const inst of parsed.instances.values()) {
-    for (const ref of refsOutsideStrings(inst.body)) {
-      if (under.has(ref)) {
-        seeds.add(inst.id);
-        break;
-      }
-    }
+    if (!productTypes.has(inst.type)) continue;
+    const placement = slotRef(splitTopLevelArgs(inst.body)?.[OBJECT_PLACEMENT]);
+    if (placement !== null && under.has(placement)) seeds.add(inst.id);
   }
   return seeds;
 }
@@ -100,6 +103,8 @@ export function resolveStorey(token: string, parsed: ParsedStep): { storeyId: nu
   };
   if (/^#\d+$/.test(t)) {
     storeyId = parseInt(t.slice(1), 10);
+  } else if (parsed.guidToId.has(t)) {
+    storeyId = parsed.guidToId.get(t);
   } else if (/^\d+$/.test(t)) {
     // Storeys are often NAMED '0', '1', ...: a bare number that is not a
     // storey's express id is tried as a name before it is reported.
@@ -118,8 +123,6 @@ export function resolveStorey(token: string, parsed: ParsedStep): { storeyId: nu
       throw new SubsetSelectionError('invalid', `'${t}' is storey #${id} and the Name of storey #${named}; pass #${id} or a GlobalId.`);
     }
     storeyId = isStoreyId ? id : named ?? id;
-  } else if (parsed.guidToId.has(t)) {
-    storeyId = parsed.guidToId.get(t);
   } else {
     storeyId = byName();
   }
@@ -129,21 +132,14 @@ export function resolveStorey(token: string, parsed: ParsedStep): { storeyId: nu
   if (storey.type !== 'IFCBUILDINGSTOREY') {
     throw new SubsetSelectionError('invalid', `#${storeyId} is ${storey.type}, not an IfcBuildingStorey`);
   }
-  // IfcBuildingStorey ObjectPlacement is attribute 6 (after Guid, Owner, Name,
-  // Description, ObjectType) — the last #ref before LongName/Elevation. Grab the
-  // placement ref: the storey references exactly one IfcLocalPlacement.
-  // `refsOutsideStrings`, not a raw REF_RE scan: the storey's own Name/
-  // Description can contain a `#id`-shaped substring (e.g. `'duplicate of
-  // #99'`) naming an unrelated IfcLocalPlacement.
-  const refs = refsOutsideStrings(storey.body);
-  const placementId = refs.find((r) => parsed.instances.get(r)?.type === 'IFCLOCALPLACEMENT');
+  const placement = slotRef(splitTopLevelArgs(storey.body)?.[OBJECT_PLACEMENT]);
+  const placementType = placement === null ? undefined : parsed.instances.get(placement)?.type;
+  const placementId = placement !== null && placementType !== undefined && PLACEMENT_TYPES.has(placementType)
+    ? placement : undefined;
   // No placement is allowed (IFC permits a storey whose elements are placed
   // independently); membership then comes from containment alone.
   return { storeyId, placementId };
 }
-
-/** IfcObjectPlacement subtypes: placement records a storey walk returns, never products. */
-const PLACEMENT_TYPES = new Set(['IFCLOCALPLACEMENT', 'IFCGRIDPLACEMENT', 'IFCLINEARPLACEMENT']);
 
 const PART_WHOLE_RELATIONS = new Set(['IFCRELAGGREGATES', 'IFCRELNESTS']);
 const HOST_RELATIONS = new Set(['IFCRELVOIDSELEMENT', 'IFCRELFILLSELEMENT', 'IFCRELPROJECTSELEMENT', ...PART_WHOLE_RELATIONS]);
@@ -197,13 +193,15 @@ function owningStoreys(id: number, parents: ReadonlyMap<number, number[]>, parse
  * A storey's products: every element whose nearest storey in the spatial tree
  * is this one (contained in it, or in a space or zone it aggregates), wherever
  * it is placed; plus, for elements the spatial tree assigns to no storey, those
- * whose placement chains through the storey's. Storeys that share a placement
- * therefore never leak into each other. A reference
+ * whose placement chains through the storey's. Explicit ownership keeps
+ * assigned products separate even when storeys share a placement. A reference
  * (IfcRelReferencedInSpatialStructure) is not ownership. A containment record
  * that cannot be read leaves its element unowned, so the placement decides.
  * Spatial-structure records other than IfcSpace are never products.
  */
-export function storeyMembers(storeyId: number, placementId: number | undefined, parsed: ParsedStep): number[] {
+export function storeyMembers(
+  storeyId: number, placementId: number | undefined, parsed: ParsedStep, schemaVersion?: string,
+): number[] {
   const parents = structureParents(parsed.instances, OWNERSHIP);
   const hosts = hostOf(parsed);
   const owners = new Map<number, Set<number>>();
@@ -255,7 +253,7 @@ export function storeyMembers(storeyId: number, placementId: number | undefined,
   };
   for (const id of parents.keys()) consider(id);
   for (const id of hosts.keys()) consider(id);
-  const placed = placementId === undefined ? [] : productsUnderPlacement(placementId, parsed);
+  const placed = placementId === undefined ? [] : productsUnderPlacement(placementId, parsed, schemaVersion);
   for (const id of placed) {
     if (out.has(id) || !isCandidate(id)) continue;
     const owner = ownersOf(id);

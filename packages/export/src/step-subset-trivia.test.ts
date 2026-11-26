@@ -166,6 +166,11 @@ describe('storey members off the placement chain', () => {
     expect(sorted(selectSubsetSeeds(parseStep(text), { storeys: ['L01'] }))).toEqual([41, 70]);
   });
 
+  it('recognizes the DATA opener with trivia before its semicolon (#11583)', () => {
+    const parsed = parseStep("ISO-10303-21;HEADER;ENDSEC;DATA /* opener */ ;#5=IFCWALL('0000000000000000000000',$,$,$,$,$,$,$,$);ENDSEC;END-ISO-10303-21;");
+    expect(parsed.instances.get(5)?.type).toBe('IFCWALL');
+  });
+
   it('selects by containment for a storey with no placement', () => {
     const text = file([
       ...BASE.filter((r) => !r.startsWith('#41=')),

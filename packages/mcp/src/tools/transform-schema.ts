@@ -8,7 +8,7 @@ import type { ConversionLossEntry, IfcSchemaVersion } from '@ifc-lite/export';
 import type { JsonSchema, ToolAnnotations } from '../protocol/index.js';
 import type { LoadedModel, ToolContext } from '../context.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
-import { rm, writeFile } from 'node:fs/promises';
+import { rm, stat, writeFile } from 'node:fs/promises';
 import { resolveSafePath } from '../safe-path.js';
 import { modelAllowed, scopeAllows } from '../auth/scope.js';
 import { resolveModel } from './util.js';
@@ -56,12 +56,14 @@ export function fileOutputSchema(extra: Record<string, JsonSchema>): JsonSchema 
  */
 export function requireDistinctPaths(a: string, b: string | null | undefined, name: string): void {
   if (b == null) return;
-  const fold = (p: string) => (CASE_INSENSITIVE_FS ? p.normalize('NFC').toLowerCase() : p);
-  if (fold(a) === fold(b)) throw invalid(`${name} must differ from file_path.`);
+  if (outputPathKey(a) === outputPathKey(b)) throw invalid(`${name} must differ from file_path.`);
 }
 
 /** The default filesystems of macOS and Windows ignore case. */
-export const CASE_INSENSITIVE_FS = process.platform === 'darwin' || process.platform === 'win32';
+const CASE_INSENSITIVE_FS = process.platform === 'darwin' || process.platform === 'win32';
+
+const outputPathKey = (path: string): string =>
+  CASE_INSENSITIVE_FS ? path.normalize('NFC').toLowerCase() : path;
 
 /** A second output path argument: absent is null; present must be a non-empty string inside the allowed paths. */
 export async function optionalOutputPath(input: Record<string, unknown>, key: string, ctx: ToolContext): Promise<string | null> {
@@ -120,22 +122,58 @@ export function beforeWrite(ctx: ToolContext, ...models: LoadedModel[]): void {
   }
 }
 
-/**
- * Write the second file of a two-file output after the first one landed. A
- * failure says the first file was already written, so the caller knows the
- * pair is mismatched.
- */
-export async function writeSidecar(primary: string, sidecar: string, data: string, mode?: number): Promise<void> {
+const activeOutputs = new Set<string>();
+
+async function outputInode(path: string): Promise<string | undefined> {
   try {
-    // `mode` applies only when the file is created, so a restricted file is
-    // removed first and created fresh, never rewritten under older permissions.
-    if (mode !== undefined) await rm(sidecar, { force: true });
-    await writeFile(sidecar, data, { encoding: 'utf-8', ...(mode !== undefined ? { mode, flag: 'wx' } : {}) });
-  } catch (err) {
-    throw new ToolExecutionError({
-      code: ToolErrorCode.INTERNAL_ERROR,
-      message: `Wrote ${primary}, but writing ${sidecar} failed: ${err instanceof Error ? err.message : String(err)}. The two files do not match.`,
-    });
+    const { dev, ino } = await stat(path, { bigint: true });
+    return `inode:${dev}:${ino}`;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    return undefined;
+  }
+}
+
+/** Hold both destinations for a paired write and recheck live access between files. */
+export async function writeTransformPair(
+  ctx: ToolContext,
+  model: LoadedModel,
+  primary: string,
+  content: Uint8Array,
+  sidecar?: { path: string; argument: string; data: string; mode?: number },
+): Promise<void> {
+  const paths = sidecar ? [primary, sidecar.path] : [primary];
+  const inodes = await Promise.all(paths.map(outputInode));
+  if (sidecar && inodes[0] !== undefined && inodes[0] === inodes[1]) {
+    throw invalid(`${sidecar.argument} must differ from file_path.`);
+  }
+  const keys = [...paths.map(outputPathKey), ...inodes.filter((inode) => inode !== undefined)];
+  if (keys.some((key) => activeOutputs.has(key))) throw invalid('Another transform is writing to one of these paths.');
+  for (const key of keys) activeOutputs.add(key);
+  try {
+    beforeWrite(ctx, model);
+    await writeFile(primary, content);
+    if (!sidecar) return;
+    try {
+      beforeWrite(ctx, model);
+      // The owner-only map needs a fresh inode. Setting the mode on an
+      // existing file would preserve its old permissions.
+      if (sidecar.mode !== undefined) {
+        await rm(sidecar.path, { force: true });
+        beforeWrite(ctx, model);
+      }
+      await writeFile(sidecar.path, sidecar.data, {
+        encoding: 'utf-8',
+        ...(sidecar.mode !== undefined ? { mode: sidecar.mode, flag: 'wx' } : {}),
+      });
+    } catch (error) {
+      throw new ToolExecutionError({
+        code: error instanceof ToolExecutionError ? error.code : ToolErrorCode.INTERNAL_ERROR,
+        message: `Wrote ${primary}, but writing ${sidecar.path} failed: ${error instanceof Error ? error.message : String(error)}. The two files do not match.`,
+      });
+    }
+  } finally {
+    for (const key of keys) activeOutputs.delete(key);
   }
 }
 
@@ -153,9 +191,11 @@ export function invalid(message: string): ToolExecutionError {
  * byte-backed transforms read a re-serialized export whose ids need not match,
  * so a selection by express id is refused. `what` names the offending input.
  */
-export function refuseSourceIdsWhilePending(m: LoadedModel, what: string): void {
+export function refuseSourceIdsWhilePending(
+  m: LoadedModel, what: string, recovery = 'select by GlobalId or name, or write the edits with export_ifc and model_load the result first',
+): void {
   if (!m.backend.hasPendingChanges()) return;
-  throw invalid(`${what} names records of the source file by express id; with unsaved edits pending, select by GlobalId or name, or write the edits with export_ifc and model_load the result first.`);
+  throw invalid(`${what} names records of the source file by express id; with unsaved edits pending, ${recovery}.`);
 }
 
 /** Store-backed transforms copy records from the parsed source; a model that kept none cannot be used. */

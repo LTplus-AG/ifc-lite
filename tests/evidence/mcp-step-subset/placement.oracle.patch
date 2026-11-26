@@ -1,7 +1,6 @@
 --- a/packages/export/src/step-subset-storey.ts
 +++ b/packages/export/src/step-subset-storey.ts
-@@ -139,8 +139,5 @@
-   const placementId = refs.find((r) => parsed.instances.get(r)?.type === 'IFCLOCALPLACEMENT');
+@@ -139,7 +139,4 @@
    // No placement is allowed (IFC permits a storey whose elements are placed
    // independently); membership then comes from containment alone.
 -  if (placementId === undefined) {

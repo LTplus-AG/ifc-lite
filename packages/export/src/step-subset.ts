@@ -46,7 +46,7 @@ function firstStringSlot(body: string): string | null {
   return after === body.length || body[after] === ',' ? body.slice(start + 1, end - 1) : null;
 }
 
-/** Index of the `DATA;` section token, ignoring header string literals and comments; -1 if none. */
+/** Index after the DATA section opener, ignoring header strings and comments, or -1. */
 function findDataSection(text: string): number {
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
@@ -56,8 +56,9 @@ function findDataSection(text: string): number {
       i = end - 1;
     } else if (ch === '/' && text[i + 1] === '*') {
       i = skipStepComment(text, i) - 1;
-    } else if (text.startsWith('DATA;', i) && !/[A-Za-z0-9_]/.test(text[i - 1] ?? '')) {
-      return i;
+    } else if (text.startsWith('DATA', i) && !/[A-Za-z0-9_]/.test(text[i - 1] ?? '')) {
+      const end = skipStepTrivia(text, i + 4);
+      if (text[end] === ';') return end + 1;
     }
   }
   return -1;
@@ -74,10 +75,9 @@ const HOST_FEATURE_RELATIONS = new Set(['IFCRELVOIDSELEMENT', 'IFCRELFILLSELEMEN
  * scans character by character instead.
  */
 export function parseStep(text: string): ParsedStep {
-  const dataStart = findDataSection(text);
-  if (dataStart < 0) throw new Error('Not a STEP file: no DATA; section');
-  // The header ends at the `DATA;` token itself: a record may follow on the same line.
-  const headerEnd = dataStart + 'DATA;'.length;
+  const headerEnd = findDataSection(text);
+  if (headerEnd < 0) throw new Error('Not a STEP file: no DATA; section');
+  // A record may follow the section opener on the same line.
   const header = text.slice(0, headerEnd) + '\n';
   const data = text;
 
@@ -168,14 +168,15 @@ export function parseStep(text: string): ParsedStep {
  * id fails loudly instead of silently selecting nothing. */
 export function resolveToId(token: string, parsed: ParsedStep): number {
   const t = token.trim();
+  const guidId = parsed.guidToId.get(t);
+  if (guidId !== undefined) return guidId;
   if (t.startsWith('#') || /^\d+$/.test(t)) {
-    const id = parseInt(t.startsWith('#') ? t.slice(1) : t, 10);
+    if (!/^#?\d+$/.test(t)) throw new SubsetSelectionError('invalid', `Invalid expressId: ${t}`);
+    const id = Number(t.replace(/^#/, ''));
     if (!parsed.instances.has(id)) throw new SubsetSelectionError('not-found', `expressId not found in model: #${id}`);
     return id;
   }
-  const id = parsed.guidToId.get(t);
-  if (id === undefined) throw new SubsetSelectionError('not-found', `GlobalId not found in model: ${t}`);
-  return id;
+  throw new SubsetSelectionError('not-found', `GlobalId not found in model: ${t}`);
 }
 
 /**
@@ -358,7 +359,7 @@ export function selectSubsetSeeds(parsed: ParsedStep, selectors: SubsetSelectors
     const { storeyId, placementId } = resolveStorey(token, parsed);
     // The storey itself is kept as asked, even if no product is contained in it.
     seeds.add(storeyId);
-    const products = storeyMembers(storeyId, placementId, parsed);
+    const products = storeyMembers(storeyId, placementId, parsed, selectors.schemaVersion);
     if (selectors.requireEachMatch && products.length === 0) throw new SubsetSelectionError('invalid', `Storey ${token} has no elements.`);
     for (const id of products) seeds.add(id);
   }

@@ -90,13 +90,10 @@ describe('resolveToId', () => {
  * no count here: a count goes stale on the next commit that adds a caller.
  */
 function expectNoDanglingRefs(out: string): void {
-  const defined = new Set<number>();
-  for (const m of out.matchAll(/^#(\d+)=/gm)) defined.add(Number(m[1]));
-  // A `#` inside a STEP string literal is TEXT, not a reference: an exporter
-  // writes names like `'Level #7'`. Strip literals first, with a REGEX rather
-  // than the character scanner the production code uses, so this oracle cannot
-  // inherit that scanner's blind spot.
-  const data = out.slice(out.indexOf('DATA;')).replace(/'(?:[^']|'')*'/g, "''");
+  // Strip literals and comments independently of the production tokenizer.
+  const uncommented = out.replace(/'(?:[^']|'')*'|\/\*[\s\S]*?\*\//g, '');
+  const data = uncommented.slice(uncommented.indexOf('DATA')).split('ENDSEC;')[0];
+  const defined = new Set(Array.from(data.matchAll(/^\s*#\s*(\d+)\s*=/gm), (match) => Number(match[1])));
   let checked = 0;
   for (const m of data.matchAll(/#(\d+)/g)) {
     expect(defined.has(Number(m[1]))).toBe(true);
@@ -414,7 +411,7 @@ describe('buildSubset: an id that is REFERENCED but never DEFINED', () => {
 
   it('forwardClosure keeps only ids the file defines', () => {
     const keep = new Set<number>();
-    forwardClosure([70], p, keep);
+    forwardClosure([70, 999], p, keep);
     expect(keep.has(70)).toBe(true);
     expect(keep.has(999)).toBe(false);
   });
@@ -502,7 +499,7 @@ const STOREY_MODEL_UNRELATED_REL_OWNED = STOREY_MODEL.replace(
 
 describe('buildSubset: a dropped relation does not drag its OwnerHistory in', () => {
   const p = parseStep(STOREY_MODEL_UNRELATED_REL_OWNED);
-  const { keep } = buildSubset(new Set([70, 72]), p);
+  const { keep } = buildSubset(new Set([45, 70, 72]), p);
 
   it('reports nothing for a relation the kept intersection already dropped', () => {
     // The intersection is tested BEFORE the OwnerHistory loop for this reason.

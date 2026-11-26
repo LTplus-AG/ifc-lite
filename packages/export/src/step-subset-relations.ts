@@ -67,6 +67,7 @@
 import { stepStringLiteralEnd } from '@ifc-lite/encoding';
 import { skipStepComment, withoutComments } from './step-comment-skip.js';
 import { slotRef } from './schema-converter-structural-source.js';
+import { skipStepTrivia } from './step-slot-grammar.js';
 
 /**
  * A selector that cannot be satisfied: `not-found` when it names nothing in the
@@ -282,9 +283,11 @@ export function refsOutsideStrings(arg: string): number[] {
       if (end < 0) break; // never closes: the rest is string text
       i = end - 1;
     } else if (char === '#') {
-      let end = i + 1;
+      const start = skipStepTrivia(arg, i + 1);
+      if (start < 0) break;
+      let end = start;
       while (end < arg.length && arg[end] >= '0' && arg[end] <= '9') end++;
-      if (end > i + 1) ids.push(Number(arg.slice(i + 1, end)));
+      if (end > start) ids.push(Number(arg.slice(start, end)));
       i = end - 1;
     }
   }
@@ -299,7 +302,7 @@ export function refsOutsideStrings(arg: string): number[] {
  */
 function keepWhole(inst: StepRecord, keep: ReadonlySet<number>): string | null {
   // Comments are trivia; string text is still over-counted, the safe direction.
-  const refs = [...withoutComments(inst.body).matchAll(/#(\d+)/g)].map((m) => Number(m[1]));
+  const refs = [...withoutComments(inst.body).matchAll(/#\s*(\d+)/g)].map((m) => Number(m[1]));
   return refs.length > 0 && refs.every((r) => keep.has(r)) ? inst.full : null;
 }
 

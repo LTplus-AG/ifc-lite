@@ -10,14 +10,13 @@
  * the same two functions `ifc-lite anonymize` and the viewer dialog call.
  */
 
-import { writeFile } from 'node:fs/promises';
 import { collectRelatedEntities, exportAnonymizedSubset, type RelatedEntityOptions } from '@ifc-lite/export';
 import type { Tool } from './types.js';
 import { fmtInt, okResult, resolveGlobalIds } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
 import type { LoadedModel, ToolContext } from '../context.js';
-import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, nonBlank, optionalOutputPath, withIfcPrefix, requireDistinctPaths, requireNoPendingEdits, resolveStepModel, requireSourceBytes, stringList, beforeWrite, writeSidecar } from './transform-schema.js';
+import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, nonBlank, optionalOutputPath, withIfcPrefix, requireDistinctPaths, requireNoPendingEdits, resolveStepModel, requireSourceBytes, stringList, writeTransformPair } from './transform-schema.js';
 
 /** Each relationship the walk follows, with the setting it takes when on (when off: false or 'none'). */
 const FOLLOWED = {
@@ -116,10 +115,10 @@ async function runAnonymize(m: LoadedModel, input: Record<string, unknown>, ctx:
   } catch (err) {
     throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: (err as Error).message });
   }
-  beforeWrite(ctx, m);
-  await writeFile(filePath, result.content);
   // Owner-only: the map reverses the anonymization.
-  if (guidMapPath) await writeSidecar(filePath, guidMapPath, JSON.stringify(Object.fromEntries(result.guidMap), null, 2), 0o600);
+  await writeTransformPair(ctx, m, filePath, result.content, guidMapPath
+    ? { path: guidMapPath, argument: 'guid_map_path', data: JSON.stringify(Object.fromEntries(result.guidMap), null, 2), mode: 0o600 }
+    : undefined);
   const warnings = [...result.stats.warnings];
   if (related.truncated) warnings.unshift('The related-entity walk hit its work budget; the subset may be incomplete.');
   return okResult(

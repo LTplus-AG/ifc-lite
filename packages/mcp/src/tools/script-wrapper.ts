@@ -256,18 +256,18 @@ export function wrapScript(code: string): string {
     }
     catch (e) { return '[unserialisable: ' + msg(e) + ']'; }
   }
-  var original = glob.console, safe = create(null);
-  for (var li = 0; li < L.levels.length; li++) {
-    (function (level) {
-      var fn = original[level];
-      safe[level] = function () {
-        var args = create(null), n = arguments.length;
-        for (var ai = 0; ai < n; ai++) args[ai] = logArg(arguments[ai]);
-        args.length = n;
-        return apply(fn, original, args);
-      };
-    })(L.levels[li]);
+  // A function that maps each argument and then calls fn on thisArg. The
+  // argument list is a null-prototype array-like, out of Array.prototype's reach.
+  function forwardMapped(fn, thisArg, mapper) {
+    return function () {
+      var args = create(null), n = arguments.length;
+      for (var ai = 0; ai < n; ai++) args[ai] = mapper(arguments[ai]);
+      args.length = n;
+      return apply(fn, thisArg, args);
+    };
   }
+  var original = glob.console, safe = create(null);
+  for (var li = 0; li < L.levels.length; li++) safe[L.levels[li]] = forwardMapped(original[L.levels[li]], original, logArg);
   // Writable and configurable like the originals: a script that replaces them
   // only affects itself, since the bridge's console is reachable only from here.
   defineProperty(glob, 'console', { value: safe, writable: true, configurable: true });
@@ -284,21 +284,10 @@ export function wrapScript(code: string): string {
   function wrapMethods(source, level) {
     var target = create(null), ks = keys(source);
     for (var wi = 0; wi < ks.length; wi++) {
-      (function (name) {
-        var member = source[name];
-        if (typeof member === 'function') {
-          target[name] = function () {
-            var args = create(null), n = arguments.length;
-            for (var ai = 0; ai < n; ai++) args[ai] = safeArg(arguments[ai]);
-            args.length = n;
-            return apply(member, source, args);
-          };
-        } else if (member !== null && typeof member === 'object' && level < 3) {
-          target[name] = wrapMethods(member, level + 1);
-        } else {
-          target[name] = member;
-        }
-      })(ks[wi]);
+      var member = source[ks[wi]];
+      target[ks[wi]] = typeof member === 'function' ? forwardMapped(member, source, safeArg)
+        : member !== null && typeof member === 'object' && level < 3 ? wrapMethods(member, level + 1)
+        : member;
     }
     return target;
   }

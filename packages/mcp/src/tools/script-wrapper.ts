@@ -35,7 +35,7 @@ const LIMITS = {
 };
 
 export function wrapScript(code: string): string {
-  return `(function (run, P, isInstance, then, apply, slice, Str, stringify, keys, isArray, create, defineProperty, freeze, glob, ErrorCtor, TypeErrorCtor, SetCtor, setAdd, setHas, setDelete, unbox, L) {
+  return `(function (run, P, isInstance, then, apply, slice, Str, stringify, keys, isArray, create, defineProperty, freeze, glob, ErrorCtor, TypeErrorCtor, SetCtor, setAdd, setHas, setDelete, unbox, unboxProtos, getProto, L) {
   function msg(e) {
     // message is read once and coerced inside the try, so a getter or
     // toString cannot throw past the wrapper and pose as a sandbox error.
@@ -67,11 +67,15 @@ export function wrapScript(code: string): string {
   // omit v. Frames live in null-prototype maps: an index setter on
   // Array.prototype cannot intercept them.
   // A boxed primitive's value, as native JSON unwraps it (a boxed BigInt then
-  // throws like a bare one); undefined for any other object. Each valueOf is
-  // brand-checked, so only the real wrapper types answer.
+  // throws like a bare one); undefined for any other object. The prototype
+  // only picks which brand-checked valueOf to try, so plain objects cost one
+  // lookup instead of four throws; a boxed value with a swapped prototype is
+  // written as an object.
   function unboxed(v) {
+    var proto = getProto(v);
     for (var u = 0; u < unbox.length; u++) {
-      try { return { v: apply(unbox[u], v, []) }; } catch (_) { /* not this wrapper type */ }
+      if (proto !== unboxProtos[u]) continue;
+      try { return { v: apply(unbox[u], v, []) }; } catch (_) { return undefined; }
     }
     return undefined;
   }
@@ -175,5 +179,5 @@ export function wrapScript(code: string): string {
     }
     catch (e) { resolveWrapper(fail(e)); }
   });
-})(function () { return eval(${JSON.stringify(code)}); }, Promise, Function.prototype[Symbol.hasInstance], Promise.prototype.then, Reflect.apply, String.prototype.slice, String, JSON.stringify, Object.keys, Array.isArray, Object.create, Object.defineProperty, Object.freeze, globalThis, Error, TypeError, Set, Set.prototype.add, Set.prototype.has, Set.prototype.delete, [Number.prototype.valueOf, String.prototype.valueOf, Boolean.prototype.valueOf, BigInt.prototype.valueOf], ${JSON.stringify(LIMITS)})`;
+})(function () { return eval(${JSON.stringify(code)}); }, Promise, Function.prototype[Symbol.hasInstance], Promise.prototype.then, Reflect.apply, String.prototype.slice, String, JSON.stringify, Object.keys, Array.isArray, Object.create, Object.defineProperty, Object.freeze, globalThis, Error, TypeError, Set, Set.prototype.add, Set.prototype.has, Set.prototype.delete, [Number.prototype.valueOf, String.prototype.valueOf, Boolean.prototype.valueOf, BigInt.prototype.valueOf], [Number.prototype, String.prototype, Boolean.prototype, BigInt.prototype], Object.getPrototypeOf, ${JSON.stringify(LIMITS)})`;
 }

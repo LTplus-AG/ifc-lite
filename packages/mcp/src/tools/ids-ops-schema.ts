@@ -30,12 +30,25 @@ function payloadOf(kind: string, defs: Defs): JsonSchema {
   return defs[`Op_${kind.replace(/\./g, '_')}`]?.properties?.payload ?? fail(`no payload for ${kind}`);
 }
 
-/** `facet:FacetDraft`, `ifcVersions:[IfcVersion]`, `field:"title"|"date"`; plain fields and ids stay bare. */
+/** A field with its type: `facet:FacetDraft`, `ifcVersions:[IfcVersion]`, `field:"title"|"date"`, `set:{name, [description]}`. Plain fields and ids stay bare. */
 function typedField(name: string, schema: JsonSchema | undefined): string {
-  const ref = refName(schema) ?? (refName(schema?.items) && `[${refName(schema?.items)}]`);
-  if (ref && ref !== 'Uuid' && ref !== '[Uuid]') return `${name}:${ref}`;
-  if (Array.isArray(schema?.enum)) return `${name}:${schema.enum.map((v) => JSON.stringify(v)).join('|')}`;
-  return name;
+  const type = schema ? typeOf(schema) : undefined;
+  return type ? `${name}:${type}` : name;
+}
+
+function typeOf(schema: JsonSchema): string | undefined {
+  const ref = refName(schema);
+  if (ref) return ref === 'Uuid' ? undefined : ref;
+  if (schema.items) {
+    const item = typeOf(schema.items);
+    return item ? `[${item}]` : undefined;
+  }
+  if (schema.const !== undefined) return JSON.stringify(schema.const);
+  // A long enum (the op kinds again, inside templates) would cost more than it tells.
+  if (Array.isArray(schema.enum)) return schema.enum.length > 12 ? `string (${schema.enum.length} allowed values)` : schema.enum.map((v) => JSON.stringify(v)).join('|');
+  if (schema.properties) return branchShape(schema);
+  const branches = [schema.oneOf, schema.anyOf].find(Array.isArray) as JsonSchema[] | undefined;
+  return branches?.map((b) => typeOf(b) ?? (Array.isArray(b.type) ? b.type.join('|') : String(b.type ?? 'any'))).join('|');
 }
 
 /** `spec.add: specId, name, ifcVersions:[IfcVersion] [index, description, …]` */
@@ -48,13 +61,13 @@ function kindLine(kind: string, defs: Defs): string {
   return `${kind}: ${show(required) || '(none)'}${optional.length ? ` [${show(optional)}]` : ''}`;
 }
 
-/** One branch of a discriminated union: `{type:"entity", name, [predefinedType]}`. */
+/** One branch of a discriminated union: `{type:"entity", name:ValueInput, [predefinedType:ValueInput]}`. */
 function branchShape(schema: JsonSchema): string {
   const props = schema.properties ?? {};
   const required = schema.required ?? [];
   const parts = Object.entries(props).map(([key, sub]) => {
-    if (sub.const !== undefined) return `${key}:${JSON.stringify(sub.const)}`;
-    return required.includes(key) ? key : `[${key}]`;
+    const field = typedField(key, sub);
+    return required.includes(key) || sub.const !== undefined ? field : `[${field}]`;
   });
   return `{${parts.join(', ')}}`;
 }
@@ -63,10 +76,13 @@ function fail(message: string): never {
   throw new Error(`ids ops schema: ${message}`);
 }
 
-/** `$defs` names a schema refers to at its own level: a property, an array item or a union branch. */
+/** `$defs` names a schema refers to, through inline properties, items and union branches but not through other `$defs`. */
 function directRefs(schema: JsonSchema): string[] {
-  const subs = [...Object.values(schema.properties ?? {}), ...(Array.isArray(schema.oneOf) ? schema.oneOf as JsonSchema[] : [])];
-  return subs.flatMap((sub) => [refName(sub), refName(sub.items)]).filter((n): n is string => n !== undefined);
+  const ref = refName(schema);
+  if (ref) return [ref];
+  const subs = [...Object.values(schema.properties ?? {}), ...[schema.oneOf, schema.anyOf].filter(Array.isArray).flat() as JsonSchema[]];
+  if (schema.items) subs.push(schema.items);
+  return subs.flatMap(directRefs);
 }
 
 /**

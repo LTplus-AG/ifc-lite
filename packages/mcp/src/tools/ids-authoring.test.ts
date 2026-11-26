@@ -183,7 +183,7 @@ describe('tools/list', () => {
     const ops = (apply.inputSchema.properties as Record<string, { items: { properties: Record<string, { enum?: string[]; description?: string }> } }>).ops;
     expect(ops.items.properties.kind.enum).toContain('facet.add');
     expect(ops.items.properties.payload.description).toContain('facet.add: specId, section:Section, facetId, facet:FacetDraft');
-    expect(JSON.stringify(apply.inputSchema).length).toBeLessThan(10_000);
+    expect(JSON.stringify(apply.inputSchema).length).toBeLessThan(12_000);
 
   });
 });

@@ -21,8 +21,8 @@
  * matches more than one branch.
  *
  * `$ref` resolves local JSON pointers (`#/$defs/Name`) against the root schema
- * passed to `validateInput`. Keywords next to a `$ref` are applied too, on top
- * of the referenced schema's.
+ * passed to `validateInput`. Only annotations and `default` may sit next to a
+ * `$ref`; any other keyword there throws rather than being half-applied.
  *
  * A top-level `anyOf` or `oneOf` is enforced here but NOT advertised: the Anthropic
  * Messages API rejects a tool `input_schema` carrying `oneOf`/`allOf`/`anyOf`
@@ -92,6 +92,8 @@ interface WalkOptions {
 /** `const` (and one-value `enum`) failures, so `checkOneOf` can tell a wrong discriminator from a real problem. */
 const constMismatches = new WeakSet<ValidationIssue>();
 
+const REF_SIBLINGS: ReadonlySet<string> = new Set(['default', 'description', 'title', 'examples', '$comment', '$defs', '$schema']);
+
 function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors: ValidationIssue[], opts: WalkOptions): unknown {
   // Boolean subschemas (2020-12): `true` accepts anything, `false` nothing.
   if (schema === true) return input;
@@ -100,23 +102,14 @@ function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors
     return input;
   }
   if (typeof schema.$ref === 'string') {
-    // The referenced schema and the keywords next to the `$ref` both apply.
     const { $ref: ref, ...siblings } = schema;
     if (opts.refs?.has(ref)) throw new Error(`Circular $ref '${ref}'`);
-    // A default next to the `$ref` is filled first, so the target checks it and adds its own defaults.
+    // Only annotations and `default` may sit next to a `$ref`; merging two
+    // validated results has too many edge cases for a feature no schema uses.
+    const constraint = Object.keys(siblings).find((k) => !REF_SIBLINGS.has(k));
+    if (constraint) throw new Error(`Keyword '${constraint}' next to $ref '${ref}' is not supported; move it into the referenced schema`);
     if (opts.fillDefaults && input === undefined && siblings.default !== undefined) input = clone(siblings.default);
-    // Both see the caller's input; a default the target fills must not trip a sibling `additionalProperties: false`.
-    const fromRef = walk(resolveRef(ref, opts.root), input, path, errors, { ...opts, refs: new Set([...(opts.refs ?? []), ref]) });
-    const fromSiblings = walk(siblings, input, path, errors, opts);
-    // A default may sit on either side; keep whichever result exists.
-    if (!matchesType('object', fromRef) || !matchesType('object', fromSiblings)) return fromRef !== undefined ? fromRef : fromSiblings;
-    // The target's result, with the properties the siblings declare taken from theirs.
-    const merged = { ...(fromRef as Record<string, unknown>) };
-    for (const key of Object.keys(siblings.properties ?? {})) {
-      const value = own(fromSiblings as Record<string, unknown>, key);
-      if (value !== undefined) defineData(merged, key, value);
-    }
-    return merged;
+    return walk(resolveRef(ref, opts.root), input, path, errors, { ...opts, refs: new Set([...(opts.refs ?? []), ref]) });
   }
   // Children start a fresh `$ref` chain: a recursive schema is fine once it descends into the input.
   const child: WalkOptions = opts.refs ? { root: opts.root, fillDefaults: opts.fillDefaults } : opts;
@@ -282,7 +275,8 @@ function describeIssues(issues: ValidationIssue[]): string {
 function resolveRef(ref: string, root: JsonSchema): JsonSchema | boolean {
   if (!ref.startsWith('#')) throw new Error(`Unsupported non-local $ref '${ref}'`);
   let target: unknown = root;
-  for (const raw of ref.slice(1).split('/').filter(Boolean)) {
+  // `#` is the root; every segment after it is a key, including an empty one (RFC 6901).
+  for (const raw of ref === '#' ? [] : ref.slice(1).split('/').slice(1)) {
     const key = decodePointerSegment(raw, ref);
     target = target !== null && typeof target === 'object' ? own(target as Record<string, unknown>, key) : undefined;
   }

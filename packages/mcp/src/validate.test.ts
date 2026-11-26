@@ -300,12 +300,15 @@ describe('validateInput: 2020-12 keywords beyond the original subset', () => {
     expect(r.errors[0].message).not.toContain('$.op.kind');
   });
 
-  it('applies keywords next to a $ref on top of the referenced schema', () => {
-    const schema = { type: 'object', properties: { op: { $ref: '#/$defs/Op', properties: { extra: { type: 'string' } } } },
+  it('refuses a constraint next to a $ref instead of half-applying it', () => {
+    const schema = { type: 'object', properties: { op: { $ref: '#/$defs/Op', required: ['kind'] } },
       $defs: { Op: { type: 'object', properties: { kind: { const: 'add' } } } } };
-    expect(validateInput(schema, { op: { kind: 'bogus' } }).valid).toBe(false);
-    expect(validateInput(schema, { op: { kind: 'add', extra: 1 } }).valid).toBe(false);
-    expect(validateInput(schema, { op: { kind: 'add', extra: 'x' } }).valid).toBe(true);
+    expect(() => validateInput(schema, { op: {} })).toThrow(/Keyword 'required' next to \$ref/);
+  });
+
+  it('resolves an empty JSON Pointer segment as a key, not as the parent', () => {
+    const schema = { type: 'object', properties: { o: { $ref: '#/$defs/' } }, $defs: { '': { type: 'string' } } };
+    expect(validateInput(schema, { o: 3 }).valid).toBe(false);
   });
 
   it('resolves a $ref to a boolean schema, and allows a recursive schema that descends into the input', () => {
@@ -325,13 +328,7 @@ describe('advertisedInputSchema', () => {
   });
 });
 
-describe('validateInput: code-review cases for $ref siblings, items:false, enum discriminators', () => {
-  it('a default filled by the $ref target does not trip a sibling additionalProperties: false', () => {
-    const schema = { type: 'object', properties: { o: { $ref: '#/$defs/A', properties: { b: {} }, additionalProperties: false } },
-      $defs: { A: { type: 'object', properties: { a: { type: 'string', default: 'x' } } } } };
-    expect(validateInput(schema, { o: { b: 1 } }).valid).toBe(true);
-  });
-
+describe('validateInput: code-review cases for items:false, enum discriminators, $ref defaults', () => {
   it('items: false rejects any item', () => {
     expect(validateInput({ type: 'array', items: false } as unknown as Parameters<typeof validateInput>[0], [1]).valid).toBe(false);
   });

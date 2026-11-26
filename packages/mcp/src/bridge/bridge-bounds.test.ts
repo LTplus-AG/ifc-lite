@@ -88,6 +88,7 @@ describe('schema keywords the bridge cannot enforce (CodeRabbit json-bounds.ts:8
     expect(await refusal({ type: 'object', properties: { a: { $ref: '#/$defs/A' } } })).toMatch(/\$ref is not supported/);
     expect(await refusal({ type: 'object', properties: { a: { oneOf: { type: 'string' } } } })).toMatch(/oneOf must be a non-empty array/);
     expect(await refusal({ type: 'object', properties: { a: { oneOf: [] } } })).toMatch(/oneOf must be a non-empty array/);
+    expect(await refusal({ type: 'object', properties: { a: { type: 'array', uniqueItems: 'true' } } })).toMatch(/uniqueItems must be true or false/);
     expect(await refusal({ type: 'object', properties: { a: { oneOf: [{ type: 'strng' }] } } })).toMatch(/oneOf\[0\]\.type must be one of/);
     expect(await refusal({ type: 'object', properties: { a: { type: 'string', pattern: '[' } } })).toMatch(/pattern must be a valid regular expression/);
   });

@@ -132,6 +132,7 @@ export function checkSchemaShape(schema: unknown, path: string): string | null {
     if (err) return err;
   }
   if (schema.enum !== undefined && !Array.isArray(schema.enum)) return `${path}.enum must be an array`;
+  if (schema.uniqueItems !== undefined && typeof schema.uniqueItems !== 'boolean') return `${path}.uniqueItems must be true or false`;
   for (const k of NUMERIC_KEYWORDS) {
     const v = schema[k];
     if (v !== undefined && (typeof v !== 'number' || !Number.isFinite(v))) return `${path}.${k} must be a finite number`;

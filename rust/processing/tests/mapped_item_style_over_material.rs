@@ -297,3 +297,21 @@ fn native_instances_keep_same_colour_occurrence_finishes_10698() {
         assert_eq!((*near_finish, *far_finish), (Some(0.2), Some(0.8)));
     }
 }
+
+/// Flat meshes too: a `fast_first` pass defers the attached styles past its first
+/// chunk, and every job goes into that chunk here, so the same-colour occurrences
+/// of slab #100 must still get their own finishes (#10698, CodeRabbit on 9c25396b2).
+#[test]
+fn deferred_flat_occurrences_keep_their_own_finishes_10698() {
+    let request = ProcessingRequest::full_pass().batching(Batching::single_chunk().fast_first(true));
+    let features = request.features.finishes(true).presentation_layers(false);
+    let mut recorder = Recorder::default();
+    process(MAPPED_ITEM_STYLE_IFC.as_bytes(), &request.features(features), &mut recorder);
+    let mut occurrences: Vec<_> = recorder.meshes.into_iter()
+        .filter(|(mesh, _)| mesh.express_id == 100)
+        .map(|(mesh, finish)| (world_min_x(&mesh), roughness(finish)))
+        .collect();
+    occurrences.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let finishes: Vec<_> = occurrences.iter().map(|(_, finish)| *finish).collect();
+    assert_eq!(finishes, [Some(0.2), Some(0.8)], "occurrences {occurrences:?}");
+}

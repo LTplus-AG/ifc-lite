@@ -11,7 +11,7 @@
 //! before every chunk, the metadata step, `on_finishes` (when asked for),
 //! `on_batch`, mesh retention and the one-time replay of deferred styles as
 //! `on_color_update` (before the first chunk instead, with no update, when
-//! instanced finishes need the resolved styles while meshing).
+//! finishes need the resolved styles while meshing).
 
 use super::diagnostics::DiagnosticCollectors;
 use super::entity_index::ProcessingIndex;
@@ -49,7 +49,7 @@ pub(super) struct PassContext<'c> {
     pub(super) material_layers: Option<Arc<ifc_lite_geometry::MaterialLayerIndex>>,
     pub(super) skipped_entity_ids: HashSet<u32>,
     /// Swapped once when styles were deferred: after the first batch, or before
-    /// it for instanced finishes.
+    /// it when finishes are asked for.
     pub(super) geometry_style_index: Arc<FxHashMap<u32, GeometryStyleInfo>>,
     /// One owned model snapshot shared by every job, re-taken on style replay.
     pub(super) run: RunSnapshot,
@@ -310,10 +310,10 @@ pub(super) fn run<'c>(
     );
     let geometry_guard = geometry_span.clone().entered();
 
-    // Instances and recovered flats keep the style source chosen while meshing,
-    // and the replay below recolours flat meshes only. So with instanced
-    // finishes, apply the deferred styles before the first chunk (#10698).
-    if defer_style_updates && req.instancing && req.features.finishes && !cancelled(req) {
+    // A finish is joined by the style source chosen while meshing, and the
+    // replay below sends colours only. So with finishes, apply the deferred
+    // styles before the first chunk (#10698).
+    if defer_style_updates && req.features.finishes && !cancelled(req) {
         replay_deferred_styles(&mut ctx, sink, &[], &deferred_styled_item_positions, &indexed_colour_index, &mut deferred_style_refusals);
         deferred_styles_applied = true;
     }
@@ -338,7 +338,7 @@ pub(super) fn run<'c>(
             total_meshes += chunk_meshes.len();
             let emit_mesh_chunk_size = current_chunk_size.max(1);
             for (emitted_meshes, emitted_styles) in chunk_meshes.chunks(emit_mesh_chunk_size).zip(chunk_styles.chunks(emit_mesh_chunk_size)) {
-                super::pass_finishes::emit_finishes(sink, finishes.as_mut(), emitted_meshes, emitted_styles, !deferred_styles_applied);
+                super::pass_finishes::emit_finishes(sink, finishes.as_mut(), emitted_styles);
                 sink.on_batch(emitted_meshes, processed_jobs, total_jobs);
             }
             if req.retain_meshes {

@@ -96,7 +96,7 @@ fn emit_final_batches(
         counts.1 = recovered.iter().map(|mesh| mesh.vertex_count()).sum::<usize>();
         counts.2 = recovered.iter().map(|mesh| mesh.triangle_count()).sum::<usize>();
         if !cancelled(req) {
-            super::pass_finishes::emit_finishes(sink, finishes.as_mut(), recovered, recovered_styles, false);
+            super::pass_finishes::emit_finishes(sink, finishes.as_mut(), recovered_styles);
             sink.on_batch(recovered, progress.0, progress.1);
         }
     }

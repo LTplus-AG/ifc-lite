@@ -163,7 +163,7 @@ export function getPropertySetName(ctx: PropertySetContext, psetId: number): str
   if (entityText === null) return null;
 
   // Parse: IFCPROPERTYSET('guid',$,'Name',$,...) - Name is 3rd argument
-  return rawThirdLiteral(entityText, /IFCPROPERTYSET\s*\([^,]*,[^,]*,'/gi);
+  return decodedThirdLiteral(entityText, /IFCPROPERTYSET\s*\([^,]*,[^,]*,'/gi);
 }
 
 /**
@@ -171,7 +171,7 @@ export function getPropertySetName(ctx: PropertySetContext, psetId: number): str
  * opening `'`) first matches with a literal that closes, read whole so `''` and
  * a `\S\'` PAGE operand do not cut it short (#7589).
  */
-function rawThirdLiteral(entityText: string, prefix: RegExp): string | null {
+function decodedThirdLiteral(entityText: string, prefix: RegExp): string | null {
   for (const match of entityText.matchAll(prefix)) {
     const open = match.index + match[0].length - 1;
     const end = stepStringLiteralEnd(entityText, open);
@@ -186,7 +186,7 @@ export function getElementQuantityName(ctx: PropertySetContext, entityId: number
   if (entityText === null) return null;
 
   // Parse: IFCELEMENTQUANTITY('guid',$,'Name',...) - Name is 3rd argument
-  return rawThirdLiteral(entityText, /IFCELEMENTQUANTITY\s*\([^,]*,[^,]*,'/gi);
+  return decodedThirdLiteral(entityText, /IFCELEMENTQUANTITY\s*\([^,]*,[^,]*,'/gi);
 }
 
 /**

@@ -176,7 +176,8 @@ function invalidParams(err: unknown, report: (note: string) => void): ProtocolEr
   // The list may follow a prefix such as "Invalid tools/call request: ".
   const start = text.indexOf('[');
   const issues = start < 0 || !text.trimEnd().endsWith(']') ? undefined : zodIssues(text.slice(start), report);
-  if (!issues) return err instanceof ProtocolError ? err : new ProtocolError(ProtocolErrorCode.InvalidParams, text);
+  // A bare Error that is not an issue list is an SDK fault, not the client's params.
+  if (!issues) return err instanceof ProtocolError ? err : new ProtocolError(ProtocolErrorCode.InternalError, text);
   const summary = issues.map((i) => `${(i.path ?? []).join('.') || '(params)'}: ${i.message ?? 'invalid'}`).join('; ');
   const prefix = start > 0 ? text.slice(0, start).trim().replace(/:$/, '') : 'Invalid params';
   return new ProtocolError(ProtocolErrorCode.InvalidParams, `${prefix}: ${summary}`, { issues });
@@ -334,7 +335,8 @@ export class ProtocolSession {
     return {
       report: (progress, message, total) => {
         // A cancelled or closed request has nobody listening for its progress.
-        if (ctx.mcpReq.signal.aborted) return;
+        // Nobody listens once the request is aborted, and nothing may precede the initialize result.
+        if (ctx.mcpReq.signal.aborted || !this.transport.handshakeSent) return;
         const params: Record<string, unknown> = { progressToken: token, progress };
         if (total !== undefined) params.total = total;
         if (message !== undefined) params.message = message;

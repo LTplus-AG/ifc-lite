@@ -99,8 +99,6 @@ export class LoopbackTransport implements Transport {
   /** One inbound message; resolves with its response, or null for notifications and abandoned requests. */
   deliver(message: JsonRpcMessage): Promise<JsonRpcResponse | null> {
     if (!this.onmessage) return Promise.resolve(null);
-    // The server sends the client no requests, so a client response answers nothing.
-    if (isJsonRpcResponse(message)) return Promise.resolve(null);
     if (isJsonRpcRequest(message)) {
       // The SDK drops a request its strict envelope schema refuses (null or
       // fractional id, array params, extra members) without answering it.
@@ -109,7 +107,8 @@ export class LoopbackTransport implements Transport {
         return Promise.resolve(errorResponse(id, JsonRpcErrorCode.InvalidRequest, 'Invalid JSON-RPC request'));
       }
       if (this.waiting.has(message.id)) {
-        return Promise.resolve(errorResponse(message.id, JsonRpcErrorCode.InvalidRequest, `Request id ${String(message.id)} is already in flight`));
+        // id null: the client must not match this to the live request with that id.
+        return Promise.resolve(errorResponse(null, JsonRpcErrorCode.InvalidRequest, `Request id ${String(message.id)} is already in flight`));
       }
       const answered = new Promise<JsonRpcResponse | null>((resolve) => this.waiting.set(message.id, resolve));
       if (message.method === 'initialize') this.pendingInitialize.add(message.id);
@@ -121,6 +120,8 @@ export class LoopbackTransport implements Transport {
       }
       return answered;
     }
+    // The server sends the client no requests, so a client response answers nothing.
+    if (isJsonRpcResponse(message)) return Promise.resolve(null);
     this.onmessage(message as JSONRPCMessage);
     return Promise.resolve(null);
   }

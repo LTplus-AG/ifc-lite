@@ -43,7 +43,7 @@ describe.each(['IFC2X3', 'IFC4', 'IFC4X3'] as Schema[])('IfcCreator spaces (%s) 
   it('aggregates a space made through the generic addElement and addAxisElement', () => {
     const c = new IfcCreator({ Name: 'T', Schema: schema });
     const storey = c.addIfcBuildingStorey({ Name: 'GF', Elevation: 0 });
-    const profile = { ProfileType: 'RECTANGLE' as const, XDim: 2, YDim: 2 };
+    const profile = { ProfileType: 'AREA' as const, XDim: 2, YDim: 2 };
     const generic = c.addElement(storey, { IfcType: 'IfcSpace', Placement: { Location: [0, 0, 0] }, Profile: profile, Depth: 3 });
     const axis = c.addAxisElement(storey, { IfcType: 'IFCSPACE', Start: [0, 0, 0], End: [0, 0, 3], Profile: profile });
     const { content } = c.toIfc();

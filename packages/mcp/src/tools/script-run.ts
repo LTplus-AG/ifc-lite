@@ -136,8 +136,7 @@ function journalMutationIds(model: LoadedModel): string[] {
 }
 
 // Memory and stack hints go only to errors the sandbox or the wrapper's 'Q'
-// tag vouches for (QuickJS's own InternalError; the script has no
-// InternalError global to construct one), never to text a script threw.
+// tag vouches for (see script-wrapper.ts), never to text a script threw.
 const QUICKJS_OUT_OF_MEMORY = /^(InternalError: )?out of memory\b/;
 const QUICKJS_STACK_OVERFLOW = /^(InternalError: )?(stack overflow|Maximum call stack size exceeded)\b/;
 

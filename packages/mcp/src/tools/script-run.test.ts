@@ -225,6 +225,22 @@ describe('script_run', () => {
     expect(/[\uD800-\uDBFF]$/.test(preview)).toBe(false);
   });
 
+  it('keeps the value cap when the script patches call, slice or species', async () => {
+    const big = "JSON.stringify('x'.repeat(400000))";
+    for (const code of [
+      `Function.prototype.call = function () { return 'J' + ${big}; }; Promise.resolve(1)`,
+      `String.prototype.slice = function () { return ${big}; }; 'y'.repeat(300000)`,
+      `class Evil extends Promise { static get [Symbol.species]() { return function (ex) { ex(() => {}, () => {}); return 'J' + ${big}; }; } }; Evil.resolve(1)`,
+    ]) {
+      const result = await run(code);
+      expect(JSON.stringify(result.structuredContent).length).toBeLessThan(10_000);
+    }
+  });
+
+  it('tags a script failure apart from bad arguments', async () => {
+    expect((await runError("throw new Error('no walls')")).details?.kind).toBe('script');
+  });
+
   it('refuses out-of-range limits', async () => {
     await expect(run('1', { timeout_ms: 10 })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
     await expect(run('1', { memory_mb: 4096 })).rejects.toMatchObject({ code: 'INVALID_INPUT' });

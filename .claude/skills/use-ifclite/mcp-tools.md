@@ -78,6 +78,10 @@ for IfcSite RefLatitude/RefLongitude; refuses rather than guess a CRS, unit or s
 only the user gave in `values`, never invented ones),
 `mutation_batch`, `mutation_diff`, `mutation_undo`.
 
+**Scripting** — `script_run` (read-only) and `script_run_mutate` (hidden under
+`--read-only`): JavaScript against the `bim` SDK in the QuickJS sandbox, with
+`timeout_ms` and `memory_mb` limits. One script replaces many single-purpose calls.
+
 **Export** — `export_csv`, `export_json`, `export_ifc`, `export_ifcx`,
 `export_glb`, `export_3dm`, `export_pdf_report`.
 

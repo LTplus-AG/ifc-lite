@@ -36,6 +36,7 @@ const HOST_GRACE_MS = 2_000;
 /** Caps on what one call returns to the client (the sandbox caps capture at 1000 entries / 4 MB). */
 const MAX_VALUE_CHARS = 256 * 1024;
 const VALUE_PREVIEW_CHARS = 2_000;
+const MAX_MESSAGE_CHARS = 4_000;
 const MAX_LOG_LINES = 200;
 const MAX_LOG_CHARS = 64 * 1024;
 
@@ -158,22 +159,27 @@ function wrapScript(code: string): string {
   // tagged primitive string, which no prototype or toJSON patch can reshape
   // on its way through vm.dump, and an oversized value is cut down inside the
   // sandbox so only the preview crosses to the host.
-  return `(function (run, P, then, stringify, max, preview) {
+  return `(function (run, P, then, apply, slice, Str, stringify, max, preview) {
   function msg(e) {
-    try { return e && typeof e.message === 'string' ? e.message : String(e); }
+    try { return e && typeof e.message === 'string' ? e.message : Str(e); }
     catch (_) { return 'unprintable error'; }
   }
   function env(v) {
     var j;
     try { j = stringify(v); } catch (e) { return 'U' + msg(e); }
     if (j === undefined) return 'Jnull';
-    return j.length > max ? 'P' + j.slice(0, preview + 1) : 'J' + j;
+    return j.length > max ? 'P' + apply(slice, j, [0, preview + 1]) : 'J' + j;
   }
   function fail(e) { return 'T' + msg(e); }
   var r;
   try { r = run(); } catch (e) { return fail(e); }
-  return r instanceof P ? then.call(r, env, fail) : env(r);
-})(function () { return eval(${JSON.stringify(code)}); }, Promise, Promise.prototype.then, JSON.stringify, ${MAX_VALUE_CHARS}, ${VALUE_PREVIEW_CHARS})`;
+  if (!(r instanceof P)) return env(r);
+  // Settle through a promise the wrapper owns: then() on the script's
+  // promise builds its result via the script-controlled species constructor.
+  return new P(function (resolve) {
+    apply(then, r, [function (v) { resolve(env(v)); }, function (e) { resolve(fail(e)); }]);
+  });
+})(function () { return eval(${JSON.stringify(code)}); }, Promise, Promise.prototype.then, Reflect.apply, String.prototype.slice, String, JSON.stringify, ${MAX_VALUE_CHARS}, ${VALUE_PREVIEW_CHARS})`;
 }
 
 type Outcome =
@@ -188,11 +194,18 @@ function readEnvelope(dumped: unknown): Outcome {
   const envelope = state?.type === 'fulfilled' ? state.value : dumped;
   if (typeof envelope !== 'string') return { error: 'The script produced no result.' };
   const body = envelope.slice(1);
+  // The wrapper bounds these, but re-check on the host so a script that
+  // subverted it still cannot hand back an unbounded value or message.
+  if (envelope[0] !== 'J' && body.length > MAX_MESSAGE_CHARS) return readEnvelope(envelope.slice(0, MAX_MESSAGE_CHARS + 1));
   switch (envelope[0]) {
-    case 'J': return { value: JSON.parse(body) as unknown, value_truncated: false };
+    case 'J': return body.length > MAX_VALUE_CHARS
+      ? { value: null, value_truncated: true, value_preview: clipUtf16(body, VALUE_PREVIEW_CHARS) }
+      : { value: JSON.parse(body) as unknown, value_truncated: false };
     // The wrapper cuts one unit past the preview so this clip can back off a split surrogate pair.
     case 'P': return { value: null, value_truncated: true, value_preview: clipUtf16(body, VALUE_PREVIEW_CHARS) };
-    case 'U': return { error: `The script's value is not JSON-serialisable: ${body}` };
+    case 'U': return { error: /out of memory/i.test(body)
+      ? 'Ran out of memory serialising the value; raise memory_mb or return less.'
+      : `The script's value is not JSON-serialisable: ${body}` };
     case 'T': return { error: body };
     default: return { error: 'The script produced no result.' };
   }
@@ -209,7 +222,8 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
   const cancelled = (details?: Record<string, unknown>) =>
     new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message: 'Script cancelled by the client.', details });
   const scriptError = (message: string, details: Record<string, unknown>) => new ToolExecutionError({
-    code: ToolErrorCode.INVALID_INPUT, message: `Script error: ${message}`, details,
+    // kind tells a script failure from INVALID_INPUT on the tool's own arguments.
+    code: ToolErrorCode.INVALID_INPUT, message: `Script error: ${message}`, details: { kind: 'script', ...details },
     hint: mode === 'read' && /\bbim\.(mutate|store)\b/.test(code)
       ? 'script_run has no bim.mutate or bim.store; use script_run_mutate to edit the model.'
       : undefined,

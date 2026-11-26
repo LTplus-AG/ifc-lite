@@ -127,17 +127,28 @@ export class UiEventInbox {
   /** Events refused since the last `take`: they named no surface or event the agent showed this tab. */
   private refusedCount = 0;
 
+  /** Wake-ups for refusals in the last second, apart from `recent` so a refusal flood costs real clicks nothing. */
+  private refusalWakes: number[] = [];
+
   constructor(private readonly now: () => number = Date.now) {}
+
+  /** Take a slot in a rolling one-second window of `maxPerSecond`; false when it is full. */
+  private admit(window: number[], t: number): boolean {
+    const live = window.filter((r) => t - r < 1000);
+    window.length = 0;
+    window.push(...live);
+    if (window.length >= UI_EVENT_LIMITS.maxPerSecond) return false;
+    window.push(t);
+    return true;
+  }
 
   /** Queue one event. False when it was dropped by the rate limit. */
   push(event: BridgeUiEvent, promptVerified: boolean): boolean {
     const t = this.now();
-    this.recent = this.recent.filter((r) => t - r < 1000);
-    if (this.recent.length >= UI_EVENT_LIMITS.maxPerSecond) {
+    if (!this.admit(this.recent, t)) {
       this.dropped++;
       return false;
     }
-    this.recent.push(t);
     const received: ReceivedUiEvent = { ...event, id: `e${++this.counter}`, promptVerified, at: new Date(t).toISOString() };
     this.queue.push(received);
     if (this.queue.length > UI_EVENT_LIMITS.maxQueued) {
@@ -156,8 +167,9 @@ export class UiEventInbox {
   }
 
   /**
-   * Drain queued events, with the number dropped since the last drain; with
-   * none queued, wait up to `waitMs` (or until `signal` aborts) for the first.
+   * Drain queued events, with the numbers dropped and refused since the last
+   * drain; with none of those to report, wait up to `waitMs` (or until
+   * `signal` aborts) for the first.
    */
   async take(waitMs: number, signal?: AbortSignal): Promise<{ events: ReceivedUiEvent[]; dropped: number; refused: number }> {
     // Losses already counted are news too: report them without waiting.
@@ -186,13 +198,9 @@ export class UiEventInbox {
   /** Count an event the bridge refused, so the agent hears that a click was lost. */
   refused(): void {
     this.refusedCount++;
-    // A waiting reader hears it now, under the same per-second limit as accepted events,
-    // so a flood of bad events cannot turn the agent's long-poll into a busy loop.
-    const t = this.now();
-    this.recent = this.recent.filter((r) => t - r < 1000);
-    if (this.recent.length >= UI_EVENT_LIMITS.maxPerSecond) return;
-    this.recent.push(t);
-    for (const wake of this.waiters) wake();
+    // A waiting reader hears it now, at most maxPerSecond times a second, so a
+    // flood of bad events cannot turn the agent's long-poll into a busy loop.
+    if (this.admit(this.refusalWakes, this.now())) for (const wake of this.waiters) wake();
   }
 
   /** A new tab paired: its predecessor's unread events do not carry over. */
@@ -201,6 +209,7 @@ export class UiEventInbox {
     this.recent = [];
     this.dropped = 0;
     this.refusedCount = 0;
+    this.refusalWakes = [];
   }
 
   get size(): number {

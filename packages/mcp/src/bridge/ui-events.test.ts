@@ -127,7 +127,6 @@ describe('UiEventInbox', () => {
     for (let i = 0; i < 3 * UI_EVENT_LIMITS.maxPerSecond; i++) inbox.refused();
     await expect(waiting).resolves.toMatchObject({ refused: 3 * UI_EVENT_LIMITS.maxPerSecond });
     expect(woken).toBe(1);
-    t += 1000;
   });
 
   it('stops waiting when the call is cancelled', async () => {

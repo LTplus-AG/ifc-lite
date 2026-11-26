@@ -2530,7 +2530,7 @@ export class IfcCreator {
   addElement(storeyId: number, params: GenericElementParams): number {
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
     const ifcType = params.IfcType.toUpperCase();
-    const tail = genericProductTail(this.schema, ifcType, 'addElement', tag, params.PredefinedType);
+    const tail = genericProductTail(this.schema, ifcType, 'addElement', tag, params.PredefinedType, params.ObjectType);
     const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), params.Placement);
     const profileId = this.createProfile(params.Profile);
 
@@ -2587,7 +2587,7 @@ export class IfcCreator {
   addAxisElement(storeyId: number, params: AxisElementParams): number {
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
     const ifcType = params.IfcType.toUpperCase();
-    const tail = genericProductTail(this.schema, ifcType, 'addAxisElement', tag, params.PredefinedType);
+    const tail = genericProductTail(this.schema, ifcType, 'addAxisElement', tag, params.PredefinedType, params.ObjectType);
     const dx = params.End[0] - params.Start[0];
     const dy = params.End[1] - params.Start[1];
     const dz = params.End[2] - params.Start[2];

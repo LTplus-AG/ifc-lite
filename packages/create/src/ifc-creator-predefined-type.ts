@@ -101,19 +101,25 @@ function entityNamed(schema: CreatorSchema, ifcTypeUpper: string): string | unde
  *
  * Only what a storey can hold is written: an `IfcElement` or another product
  * is contained, an `IfcSpace` is aggregated (#11498). A non-product (a group
- * such as `IfcZone`, or a context such as `IfcProject`), an abstract entity and
- * another spatial element all throw. Callers run this before writing any record,
- * so a refusal leaves nothing behind. A type the schema does not know keeps the
- * historical `,<tag>,.TOKEN.` tail.
+ * such as `IfcZone`, or a context such as `IfcProject`), an abstract entity,
+ * another spatial element, a feature element (`IfcOpeningElement`, which voids a
+ * host), a type the target schema does not define, and USERDEFINED without an
+ * ObjectType all throw. Callers run this before writing any record, so a refusal
+ * leaves nothing behind.
  */
-export function genericProductTail(schema: CreatorSchema, ifcTypeUpper: string, op: string, tag: string, predefinedType: string | undefined): string {
+export function genericProductTail(
+  schema: CreatorSchema, ifcTypeUpper: string, op: string, tag: string, predefinedType: string | undefined, objectType?: string,
+): string {
   const entity = entityNamed(schema, ifcTypeUpper);
-  if (!entity) return `,${tag},.${predefinedType ?? 'NOTDEFINED'}.`;
+  if (!entity) throw new Error(`${op}: ${ifcTypeUpper} is not an entity in ${schema}`);
   const registry = getSchemaRegistryForVersion(schema);
   const chain = registry.entities[entity].inheritanceChain ?? [];
   if (!chain.includes('IfcProduct')) throw new Error(`${op}: ${entity} is not a product and cannot be placed in a storey`);
   const spatial = chain.includes('IfcSpatialElement') || chain.includes('IfcSpatialStructureElement');
   if (spatial && entity !== 'IfcSpace') throw new Error(`${op}: ${entity} is a spatial element and cannot be placed in a storey`);
+  if (chain.includes('IfcFeatureElement')) {
+    throw new Error(`${op}: ${entity} is a feature element; it voids or projects from a host and is never contained in a storey`);
+  }
   if (registry.entities[entity].isAbstract) throw new Error(`${op}: ${entity} is abstract in ${schema} and cannot be instantiated`);
   const rest = (registry.entities[entity].allAttributes ?? []).slice(7);
   const composition = (name: string) => spatial && name === 'CompositionType';
@@ -126,6 +132,9 @@ export function genericProductTail(schema: CreatorSchema, ifcTypeUpper: string, 
     if (attr === target && predefinedType !== undefined && !(predefinedType === 'NOTDEFINED' && !allowed.includes('NOTDEFINED'))) {
       if (!allowed.includes(predefinedType)) {
         throw new Error(`${op}: ${entity}.${attr.name} must be one of ${allowed.join(', ')} in ${schema}; got ${predefinedType}`);
+      }
+      if (predefinedType === 'USERDEFINED' && !objectType?.trim()) {
+        throw new Error(`${op}: ${entity}.ObjectType is required when ${attr.name} is USERDEFINED`);
       }
       return `,.${predefinedType}.`;
     }

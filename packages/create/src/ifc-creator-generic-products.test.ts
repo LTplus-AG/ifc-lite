@@ -94,6 +94,18 @@ describe.each(['IFC2X3', 'IFC4', 'IFC4X3'] as Schema[])('generic product writers
     expect(records(true)).toBe(records(false));
   });
 
+  it('refuses a feature element, a type the schema does not define, and USERDEFINED without ObjectType', () => {
+    const c = new IfcCreator({ Name: 'T', Schema: schema });
+    const storey = c.addIfcBuildingStorey({ Name: 'GF', Elevation: 0 });
+    const at = { Placement: { Location: [0, 0, 0] as [number, number, number] }, Profile: profile, Depth: 1 };
+    expect(() => c.addElement(storey, { IfcType: 'IfcOpeningElement', ...at })).toThrow(/feature element/);
+    expect(() => c.addAxisElement(storey, { IfcType: 'IfcOpeningElement', Start: [0, 0, 0], End: [0, 0, 1], Profile: profile })).toThrow(/feature element/);
+    expect(() => c.addElement(storey, { IfcType: 'IfcNotAThing', ...at })).toThrow(/not an entity in/);
+    if (schema === 'IFC2X3') return; // InteriorOrExteriorSpace has no USERDEFINED
+    expect(() => c.addElement(storey, { IfcType: 'IfcSpace', PredefinedType: 'USERDEFINED', ...at })).toThrow(/ObjectType is required/);
+    expect(() => c.addElement(storey, { IfcType: 'IfcSpace', PredefinedType: 'USERDEFINED', ObjectType: 'Atrium', ...at })).not.toThrow();
+  });
+
   it('refuses an abstract product', () => {
     const c = new IfcCreator({ Name: 'T', Schema: schema });
     const storey = c.addIfcBuildingStorey({ Name: 'GF', Elevation: 0 });

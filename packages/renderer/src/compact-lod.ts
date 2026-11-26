@@ -15,10 +15,11 @@
  *
  * - **Exact fallback.** A bucket batch stays exact f32 when one of its meshes
  *   would lose its shape on the 1 mm lattice (#9068) or the batch is wider
- *   than the u16 range (quantize.ts). The encoder moved such a mesh to another
- *   lattice level, so a group with a row off level 10, or wider than that
- *   range, is the group of an exact batch: `exactGroups` names its meshes, and
- *   the scene moves them to buckets, decoded.
+ *   than the u16 range (quantize.ts). The encoder moved such a mesh to a finer
+ *   lattice level, so a group with a row finer than level 10, or wider than
+ *   that range, is the group of an exact batch: `settlePages` hands its meshes
+ *   to the scene, which moves them to buckets, decoded. (A row on level 9 only
+ *   outgrew its window, which says nothing about its bucket's extent.)
  * - **LOD1 and culling.** Each page's index buffer is rewritten group by group
  *   (a part per group, `lod-parts.ts`), and the page gets a second index buffer
  *   holding each part's LOD1 range: the bucket clustering (lod-simplify.ts)
@@ -97,7 +98,7 @@ function collectGroups(store: CompactGeometryStore, host: SceneCompactHost, deps
         group.bounds.max[axis] = Math.max(group.bounds.max[axis], b[o + 3 + axis]);
       }
       group.triangles += row.indexCount / 3;
-      if (row.level !== BUCKET_LEVEL) group.exact = true;
+      if (row.level > BUCKET_LEVEL) group.exact = true; // a finer level: level 10 collapsed it (level 9: only too wide for its window)
       group.members.push(mesh);
     }
   }

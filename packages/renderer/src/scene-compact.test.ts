@@ -900,6 +900,16 @@ describe('compact pages take the decisions of the bucket batches they stand in f
     assert.equal(decoded(), 2);
   });
 
+  it('keep a bucket paged whose mesh only outgrew its window (level 9)', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    const meshes = compactBatch([{ expressId: 1, at: [0, 0, 0], size: 1, color: GREY }, { expressId: 2, at: [3, 0, 0], size: 1, color: GREY }]);
+    meshes[1].compact!.payload.table[1 * 7 + 5] = 9;
+    upload(on, gpu, meshes);
+    on.finalizeStreaming(gpu.device, gpu.pipeline);
+    assert.deepEqual(entitiesOf(pages(on)), [1, 2]);
+    assert.equal(on.getCompactStats()?.decodes.exact, undefined);
+  });
+
   it('move the meshes of a bucket wider than the u16 lattice range to buckets', async () => {
     const on = await lodScene(true), gpu = fakeGpu();
     // 66 m apart on x, in two compact cells; with chunking off the bucket path files both in one batch.

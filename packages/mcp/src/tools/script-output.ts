@@ -90,9 +90,18 @@ export function wrapScript(code: string): string {
   function msg(e) {
     // message is read once and coerced inside the try, so a getter or
     // toString cannot throw past the wrapper and pose as a sandbox error.
+    // The error type is kept (TypeError: ..., not just the message), and an
+    // empty message falls back to the thrown value's string form.
     var m;
-    try { var x = e && e.message; m = typeof x === 'string' ? x : Str(e); }
-    catch (_) { return 'unprintable error (possibly out of memory)'; }
+    try {
+      var x = e && e.message, n = e && e.name;
+      m = typeof x !== 'string' || x === '' ? Str(e)
+        : typeof n === 'string' && n !== '' && n !== 'Error' ? n + ': ' + x : x;
+    } catch (c) {
+      // Only QuickJS's own InternalError means memory ran out while printing.
+      try { return c && c.name === 'InternalError' ? 'out of memory while printing the error' : 'a thrown value with no string form'; }
+      catch (_) { return 'a thrown value with no string form'; }
+    }
     return apply(slice, m, [0, maxMessage + 1]);
   }
   function env(v) {

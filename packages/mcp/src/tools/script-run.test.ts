@@ -276,6 +276,13 @@ describe('script_run', () => {
     expect((await runError("bim.create.project({})")).hint).toMatch(/script_run_mutate/);
   });
 
+  it('keeps the error type and says when a thrown value has no string form', async () => {
+    expect((await runError('null.x')).message).toMatch(/^Script error: TypeError: /);
+    const err = await runError('throw Object.create(null)');
+    expect(err.message).toBe('Script error: a thrown value with no string form');
+    expect(err.hint).toBeUndefined();
+  });
+
   it('tags a script failure apart from bad arguments', async () => {
     expect((await runError("throw new Error('no walls')")).details?.kind).toBe('script');
   });

@@ -30,10 +30,12 @@ export function SourceWriteBackDialog({ modelId, onClose }: { modelId: string; o
 
 const MODE_LABELS = { 'new-version': 'sources.writeBack.newVersion', 'new-file': 'sources.writeBack.newFile', 'new-location': 'sources.writeBack.newLocation' } as const;
 
+const CONFLICT_ALERTS = { 'stale-base': 'sources.writeBack.staleBase', 'name-exists': 'sources.writeBack.nameExists', 'destination-refused': 'sources.writeBack.refused' } as const;
+
 /** The one problem worth showing, if any. A stale binding outranks the outcome that reported it. */
 function alertKey(current: boolean, outcome: SaveSourceOutcome | null) {
   if (!current || outcome?.kind === 'model-changed') return 'sources.writeBack.modelChanged' as const;
-  if (outcome?.kind === 'conflict') return outcome.conflict.kind === 'stale-base' ? 'sources.writeBack.staleBase' as const : 'sources.writeBack.nameExists' as const;
+  if (outcome?.kind === 'conflict') return CONFLICT_ALERTS[outcome.conflict.kind];
   if (outcome?.kind === 'invalid-destination') return 'sources.writeBack.invalidDestination' as const;
   if (outcome?.kind === 'unavailable') return 'sources.writeBack.unavailable' as const;
   return null;
@@ -87,7 +89,7 @@ function BoundWriteBackDialog({ binding, provider, onClose }: { binding: WriteBa
           <p className="text-sm text-muted-foreground">{t('sources.writeBack.base', { revision: binding.tag.revisionId })}</p>
           <label className="flex items-start gap-2 text-sm"><Checkbox checked={confirmed} onCheckedChange={setConfirmed} />{t('sources.writeBack.confirm')}</label>
         </fieldset>
-        {problem && <p role="alert">{t(problem)}</p>}
+        {problem && <p role="alert">{t(problem, { reason: outcome?.kind === 'conflict' && outcome.conflict.kind === 'destination-refused' ? outcome.conflict.reason : '' })}</p>}
         {error && <p role="alert">{t('sources.writeBack.failed', { reason: error })}</p>}
         <Button type="submit" disabled={busy || !confirmed || !current || (mode === 'new-location' && !folder.id)}>{t(busy ? 'sources.writeBack.saving' : 'sources.writeBack.save')}</Button>
       </form>}

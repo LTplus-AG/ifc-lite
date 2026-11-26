@@ -213,6 +213,7 @@ export const sourcesDe = {
   "sources.writeBack.modelChanged": "Das Modell oder die geladene Quellrevision hat sich geändert. Schließen Sie „In Quelle speichern“ und öffnen Sie es erneut, bevor Sie fortfahren.",
   "sources.writeBack.unavailable": "Dieses geladene Modell oder diese Quelle unterstützt das Zurückschreiben von IFC nicht.",
   "sources.writeBack.staleBase": "Die Quelle hat eine neuere Revision. Es wurde nichts hochgeladen. Speichern Sie unter einem neuen Namen, oder laden Sie die Quelle neu und gleichen Sie Ihre Änderungen ab, bevor Sie eine neue Version versuchen.",
+  "sources.writeBack.refused": "Es wurde nichts hochgeladen: {reason}",
   "sources.writeBack.nameExists": "Dieser Name existiert im gewählten Ordner bereits. Es wurde nichts hochgeladen. Wählen Sie einen anderen Namen oder Ordner.",
   "sources.writeBack.invalidDestination": "Wählen Sie einen Zielordner und einen gültigen Dateinamen mit der Endung .ifc.",
   "sources.writeBack.failed": "Speichern fehlgeschlagen: {reason}. Prüfen Sie die Quelle, bevor Sie es erneut versuchen; eine Fehlerantwort heißt nicht immer, dass keine Datei angelegt wurde."

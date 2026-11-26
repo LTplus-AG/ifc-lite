@@ -119,3 +119,24 @@ it('#9522 a stalled upload can be cancelled, which aborts it and frees the dialo
   assert.match(document.body.textContent??'',/Save failed: the upload was cancelled\./);
   assert.equal(useViewerStore.getState().sourceTags.get('m')?.revisionId,'v1');
 });
+
+it('#9522 new-location never offers a container that refuses uploads as the destination',async()=>{
+  const source=await setup(async()=>result);
+  source.listContainers=async(_ctx,_project,parent)=>({items:parent?[{id:'area::folder',name:'Real folder',parentId:'area'}]:[{id:'area',name:'File area',acceptsUploads:false}]});
+  render(<SourceHostProvider additionalProviders={[()=>source]}><SourceWriteBackDialog modelId="m" onClose={()=>{}} /></SourceHostProvider>);
+  click(radio('A new file in another folder'));await flush();
+  click(button('File area'));await flush();
+  assert.equal([...document.querySelectorAll('button')].some(b=>b.textContent==='Use this folder'),false,'an upload-refusing container is not a destination');
+  click(button('Real folder'));await flush();
+  assert.ok(button('Use this folder'));
+});
+
+it('#9522 a destination the provider refuses says nothing was uploaded, not that a file may exist',async()=>{
+  let writes=0;const source=await setup(async()=>{writes++;return {ok:false,conflict:{kind:'destination-refused',reason:'Choose a folder inside the file area.'}};});
+  render(<SourceHostProvider additionalProviders={[()=>source]}><SourceWriteBackDialog modelId="m" onClose={()=>{}} /></SourceHostProvider>);
+  click(radio('A new file in the same folder'));confirm();click(button('Confirm and save'));await flush();
+  assert.equal(writes,1);
+  assert.match(document.body.textContent??'',/Nothing was uploaded: Choose a folder inside the file area\./);
+  assert.doesNotMatch(document.body.textContent??'',/does not always mean no file was created/);
+  assert.equal(useViewerStore.getState().sourceTags.get('m')?.revisionId,'v1');
+});

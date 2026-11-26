@@ -231,6 +231,7 @@ export const sourcesEn = {
   'sources.writeBack.modelChanged': 'The model or loaded source revision changed. Close and reopen Save to source before continuing.',
   'sources.writeBack.unavailable': 'This loaded model or source does not support IFC write-back.',
   'sources.writeBack.staleBase': 'The source has a newer revision. Nothing was uploaded. Save under a new name, or reload the source and reconcile your edits before trying a new version.',
+  'sources.writeBack.refused': 'Nothing was uploaded: {reason}',
   'sources.writeBack.nameExists': 'That name already exists in the chosen folder. Nothing was uploaded. Choose another name or folder.',
   'sources.writeBack.invalidDestination': 'Choose a destination folder and a valid filename ending in .ifc.',
   'sources.writeBack.failed': 'Save failed: {reason}. Check the source before retrying; a failed response does not always mean no file was created.',

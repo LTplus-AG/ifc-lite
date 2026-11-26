@@ -174,6 +174,7 @@ export const sourcesFr = {
   "sources.writeBack.modelChanged": "Le modèle ou la révision source chargée a changé. Fermez puis rouvrez « Enregistrer dans la source » avant de continuer.",
   "sources.writeBack.unavailable": "Ce modèle chargé ou cette source ne prend pas en charge la réécriture IFC.",
   "sources.writeBack.staleBase": "La source contient une révision plus récente. Rien n’a été envoyé. Enregistrez sous un nouveau nom, ou rechargez la source et réconciliez vos modifications avant d’essayer une nouvelle version.",
+  "sources.writeBack.refused": "Rien n’a été envoyé : {reason}",
   "sources.writeBack.nameExists": "Ce nom existe déjà dans le dossier choisi. Rien n’a été envoyé. Choisissez un autre nom ou dossier.",
   "sources.writeBack.invalidDestination": "Choisissez un dossier de destination et un nom de fichier valide se terminant par .ifc.",
   "sources.writeBack.failed": "Échec de l’enregistrement : {reason}. Vérifiez la source avant de réessayer ; une réponse d’échec ne signifie pas toujours qu’aucun fichier n’a été créé.",

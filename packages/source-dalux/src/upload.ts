@@ -8,8 +8,6 @@
  * finalize, so another writer may still race the preflight check. */
 
 import type {
-  SourceFile,
-  SourceRevision,
   UploadOptions,
   UploadResult,
   UploadTarget,
@@ -17,6 +15,7 @@ import type {
 import type { PluginContext } from '@ifc-lite/plugin-api';
 
 import { decodeFile, decodeFileArea, decodeFileResponse } from './dalux-types.js';
+import { uploadedFile } from './upload-result.js';
 import type { DaluxFile, DaluxFileArea } from './dalux-types.js';
 import {
   BrowserDaluxApiClient,
@@ -155,18 +154,6 @@ class DaluxPoster {
   }
 }
 
-function toSourceRevision(file: DaluxFile, sizeBytes: number): SourceRevision {
-  const id = currentRevisionId(file);
-  return {
-    id,
-    label: file.version ?? id,
-    // Dalux reports date-only strings; an upload that just happened is "now".
-    createdAt: new Date().toISOString(),
-    ...(file.lastModifiedByUserId ? { createdBy: file.lastModifiedByUserId } : {}),
-    sizeBytes: file.fileSize ?? sizeBytes,
-  };
-}
-
 async function loadFileArea(
   ctx: PluginContext,
   client: BrowserDaluxApiClient,
@@ -266,6 +253,8 @@ export async function uploadToDalux(
   let fileType: DaluxFileType;
   let finalizeTarget: { fileId: string } | { folderId: string };
   let carriedProperties: unknown[] | undefined;
+  /** Where the file lands, for a finalize response that omits its folder. */
+  let destinationFolderId: string | undefined;
 
   if (target.mode === 'new-version') {
     const { ref } = target;
@@ -295,6 +284,7 @@ export async function uploadToDalux(
     fileName = current.fileName;
     fileType = asDaluxFileType(current.fileType) ?? daluxFileTypeFor(fileName);
     finalizeTarget = { fileId: ref.fileId };
+    destinationFolderId = nonEmptyString(current.folderId) ?? decodeContainerId(ref.containerId).folderId;
     // A new revision keeps the file's metadata: resend its properties as-is so
     // a folder with required properties does not reject the new revision.
     const rawProperties = ((response as { data?: { properties?: unknown } }).data ?? {}).properties;
@@ -305,13 +295,18 @@ export async function uploadToDalux(
     fileAreaId = container.fileAreaId;
     fileName = validateFileName(target.fileName);
     fileType = daluxFileTypeFor(fileName);
-    // The area root has no folder of its own. Dalux reports root-level
-    // folders with the file area id as their parent, so the area id is the
-    // root's folder id. Unverified against the live API.
-    const folderId = container.folderId ?? fileAreaId;
-    finalizeTarget = { folderId };
 
     await loadFileArea(ctx, client, projectId, fileAreaId, signal);
+
+    // The area root has no folder of its own. Sending the area id as its
+    // folder id is unverified against the live API, so refuse it until it is (#11609).
+    const folderId = container.folderId;
+    if (!folderId) {
+      const reason = "Saving into a Dalux file area's root is not supported yet. Choose a folder inside the file area.";
+      return { ok: false, conflict: { kind: 'destination-refused', reason } };
+    }
+    finalizeTarget = { folderId };
+    destinationFolderId = folderId;
 
     // Same listing `listFiles` uses. Dalux ignores the folder filter, so this
     // sweeps the whole area and compares each file's own folder.
@@ -330,9 +325,7 @@ export async function uploadToDalux(
     );
     if (clash) return { ok: false, conflict: { kind: 'name-exists', existingFileId: clash.fileId } };
 
-    if (container.folderId) {
-      await assertNoRequiredProperties(ctx, client, projectId, fileAreaId, container.folderId, fileType, signal);
-    }
+    await assertNoRequiredProperties(ctx, client, projectId, fileAreaId, folderId, fileType, signal);
   }
 
   signal?.throwIfAborted();
@@ -384,7 +377,5 @@ export async function uploadToDalux(
     },
   );
   const created = decodeFileResponse(await finalizeResponse.json()).data;
-
-  const file: SourceFile = toSourceFile(fileAreaId, created);
-  return { ok: true, file, revision: toSourceRevision(created, total) };
+  return { ok: true, ...(await uploadedFile(ctx, client, { projectId, fileAreaId, destinationFolderId }, created, total)) };
 }

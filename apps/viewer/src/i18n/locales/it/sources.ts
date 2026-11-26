@@ -226,6 +226,7 @@ export const sourcesIt = {
   "sources.writeBack.modelChanged": "Il modello o la revisione di origine caricata è cambiata. Chiudi e riapri «Salva nell’origine» prima di continuare.",
   "sources.writeBack.unavailable": "Questo modello caricato o questa origine non supporta la riscrittura IFC.",
   "sources.writeBack.staleBase": "L’origine ha una revisione più recente. Non è stato caricato nulla. Salva con un nuovo nome, oppure ricarica l’origine e riconcilia le modifiche prima di provare una nuova versione.",
+  "sources.writeBack.refused": "Non è stato caricato nulla: {reason}",
   "sources.writeBack.nameExists": "Questo nome esiste già nella cartella scelta. Non è stato caricato nulla. Scegli un altro nome o cartella.",
   "sources.writeBack.invalidDestination": "Scegli una cartella di destinazione e un nome di file valido che termini con .ifc.",
   "sources.writeBack.failed": "Salvataggio non riuscito: {reason}. Controlla l’origine prima di riprovare; una risposta di errore non significa sempre che nessun file sia stato creato."

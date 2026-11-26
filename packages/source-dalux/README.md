@@ -100,11 +100,14 @@ Refusals are decided before any byte is sent: `stale-base` (the file's current
 revision is not the `baseRevisionId`), `name-exists` (case-insensitive, same
 folder; this sweeps the file area like `listFiles` does), a `shared` or
 `published` file area, and a folder whose file properties are required (ifc-lite
-cannot fill them in yet). Check-then-write is not atomic: Dalux has no
+cannot fill them in yet). A file area's root is refused as a `new-file` or
+`new-location` destination (a `destination-refused` conflict), and file areas
+are listed with `acceptsUploads: false`, until the root mapping is verified
+live (#11609). Check-then-write is not atomic: Dalux has no
 conditional write, so a concurrent writer can still win the gap.
 
-Not verified against the live API: that the area root accepts its own file area
-id as `folderId`, which `fileType` Dalux files non-IFC extensions under, and
+Not verified against the live API: whether the area root accepts its own file
+area id as `folderId` (refused until it is), which `fileType` Dalux files non-IFC extensions under, and
 which API-identity permissions allow uploads.
 
 **Relay.** In the browser, uploads go through the same-origin relay, which

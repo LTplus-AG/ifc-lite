@@ -36,7 +36,8 @@ export interface UploadOptions {
 /**
  * Why an upload was refused without writing anything. A conflict is an
  * expected outcome, not an error: the host offers the user a way out (save as
- * a new file, or reload) instead of showing a failure.
+ * a new file, another folder, or reload) instead of showing a failure that
+ * might have written something.
  */
 export type UploadConflict =
   | {
@@ -48,6 +49,11 @@ export type UploadConflict =
       readonly kind: 'name-exists';
       /** The existing file that already has the requested name in that container. */
       readonly existingFileId: string;
+    }
+  | {
+      readonly kind: 'destination-refused';
+      /** Why the provider cannot write to that destination, worded for the user. */
+      readonly reason: string;
     };
 
 export type UploadResult =

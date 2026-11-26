@@ -224,7 +224,7 @@
    835 packages/parser/src/material-resolver.ts
    787 packages/parser/src/on-demand-extractors.ts
    494 packages/parser/src/source-bytes.ts
-   513 packages/plugin-api/src/types.ts
+   511 packages/plugin-api/src/types.ts
    678 packages/pointcloud/src/formats/e57-decode.ts
    529 packages/pointcloud/src/streaming/e57-source.ts
    423 packages/provenance/src/certificate.ts

@@ -35,23 +35,9 @@ import { CompactGeometryStore, type CompactStoreStats } from './compact-store.js
 import type { RenderPipeline } from './pipeline.js';
 import type { CompactPageDeps } from './compact-page-deps.js';
 import type { BatchedMesh } from './types.js';
+import { normalize, pageMode, pageRefusal, type CompactDecodeReason, type CompactSelection, type PageMode, type SceneCompactHost, type Selection } from './scene-compact-host.js';
 
-import { normalize, recordedLane, unmoved, type CompactSelection, type SceneCompactHost, type Selection } from './scene-compact-host.js';
-
-export type { CompactSelection, SceneCompactHost } from './scene-compact-host.js';
-
-/**
- * Why a queued compact mesh went to the bucket path decoded: the scene had no quantized pipelines
- * (`pipelines`) or keeps no CPU geometry (`no-cpu-geometry`), or the mesh no longer matches its
- * records (`written`: its geometry was replaced) or needs what a page cannot draw.
- */
-export type CompactDecodeReason = 'pipelines' | 'no-cpu-geometry' | 'written' | 'id' | 'texture' | 'placed' | 'moved' | 'lane';
-
-/** What `Scene.getCompactStats` reports: meshes drawn from pages, and those a load decoded to buckets by reason. */
-export interface CompactSceneStats { paged: number; decodes: Readonly<Partial<Record<CompactDecodeReason, number>>> }
-
-/** Pages now, wait for the probe in flight, or the scene-wide reason every compact mesh decodes. */
-type PageMode = 'pages' | 'wait' | Extract<CompactDecodeReason, 'pipelines' | 'no-cpu-geometry'>;
+export type { CompactDecodeReason, CompactSceneStats, CompactSelection, SceneCompactHost } from './scene-compact-host.js';
 
 export class SceneCompact {
   private readonly store: CompactGeometryStore;
@@ -75,31 +61,9 @@ export class SceneCompact {
     this.store = new CompactGeometryStore(deps);
   }
 
-  /**
-   * Whether eligible meshes draw from pages now (`'pages'`), wait queued for the quantized pipeline
-   * probe in flight (`'wait'`), or decode to the bucket path (the reason). A scene that keeps no CPU
-   * geometry (ephemeral streaming, released) has no bucket path to fall back to.
-   */
-  private pageMode(): PageMode {
-    const scene = this.scene;
-    if (scene.ephemeralStreamingMode || scene.geometryReleased) return 'no-cpu-geometry';
-    return scene.quantizedBatchesEnabled ? 'pages' : scene.quantizedBatchesPending ? 'wait' : 'pipelines';
-  }
-
-  /** Why `mesh` cannot draw from a page (null when it can). */
-  private refusal(mesh: MeshData): CompactDecodeReason | null {
-    const ref = mesh.compact;
-    if (!ref) return 'written';
-    if (!(mesh.expressId >= 0 && mesh.expressId <= 0x00ffffff) || mesh.entityIds) return 'id';
-    if (mesh.uvs || mesh.texture || mesh.textureRef) return 'texture';
-    if (this.scene.modelTranslations.isPlaced(mesh.modelIndex ?? 0)) return 'placed';
-    if (!unmoved(mesh, ref)) return 'moved';
-    return recordedLane(ref) === this.deps.laneOf(mesh) ? null : 'lane';
-  }
-
   /** Whether `mesh` may go to a page under `mode`; counts the reason when it may not. */
   private pageable(mesh: MeshData, mode: PageMode): boolean {
-    const reason = mode === 'pages' || mode === 'wait' ? this.refusal(mesh) : mode;
+    const reason = mode === 'pages' || mode === 'wait' ? pageRefusal(this.scene, (m) => this.deps.laneOf(m), mesh) : mode;
     if (reason === null) return true;
     this.decodes[reason] = (this.decodes[reason] ?? 0) + 1;
     return false;
@@ -112,7 +76,7 @@ export class SceneCompact {
    */
   take(meshes: MeshData[]): MeshData[] {
     if (!meshes.some((mesh) => mesh.compact)) return meshes;
-    const mode = this.pageMode();
+    const mode = pageMode(this.scene);
     const rest: MeshData[] = [];
     for (const mesh of meshes) {
       if (mesh.compact && this.pageable(mesh, mode)) { this.queue.push(mesh); continue; }
@@ -175,7 +139,7 @@ export class SceneCompact {
       demoted = this.demoteChosen(chosen, false);
     }
     if (this.queue.length === 0) return demoted;
-    const mode = this.pageMode();
+    const mode = pageMode(this.scene);
     // Until the probe settles, nothing is uploaded: a decode now would be for good.
     if (mode === 'wait') return demoted;
     // A queued mesh may have changed since `take`: its geometry written, or its id, colour, origin or

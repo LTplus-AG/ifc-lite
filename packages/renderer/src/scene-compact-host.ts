@@ -59,3 +59,37 @@ export function recordedLane(ref: CompactRef): number {
   const at = records.byteOffset + compactRow(ref).vertexStart * COMPACT_RECORD_BYTES + 8;
   return new DataView(records.buffer, at, 4).getUint32(0, true);
 }
+
+/**
+ * Why a queued compact mesh went to the bucket path decoded: the scene had no quantized pipelines
+ * (`pipelines`) or keeps no CPU geometry (`no-cpu-geometry`), or the mesh no longer matches its
+ * records (`written`: its geometry was replaced) or needs what a page cannot draw.
+ */
+export type CompactDecodeReason = 'pipelines' | 'no-cpu-geometry' | 'written' | 'id' | 'texture' | 'placed' | 'moved' | 'lane';
+
+/** What `Scene.getCompactStats` reports: meshes drawn from pages, and those a load decoded to buckets by reason. */
+export interface CompactSceneStats { paged: number; decodes: Readonly<Partial<Record<CompactDecodeReason, number>>> }
+
+/** Pages now, wait for the probe in flight, or the scene-wide reason every compact mesh decodes. */
+export type PageMode = 'pages' | 'wait' | Extract<CompactDecodeReason, 'pipelines' | 'no-cpu-geometry'>;
+
+/**
+ * Whether eligible meshes draw from pages now (`'pages'`), wait queued for the quantized pipeline
+ * probe in flight (`'wait'`), or decode to the bucket path (the reason). A scene that keeps no CPU
+ * geometry (ephemeral streaming, released) has no bucket path to fall back to.
+ */
+export function pageMode(scene: SceneCompactHost): PageMode {
+  if (scene.ephemeralStreamingMode || scene.geometryReleased) return 'no-cpu-geometry';
+  return scene.quantizedBatchesEnabled ? 'pages' : scene.quantizedBatchesPending ? 'wait' : 'pipelines';
+}
+
+/** Why `mesh` cannot draw from a page (null when it can); `laneOf` is the lane the bucket path would stamp. */
+export function pageRefusal(scene: SceneCompactHost, laneOf: (mesh: MeshData) => number, mesh: MeshData): CompactDecodeReason | null {
+  const ref = mesh.compact;
+  if (!ref) return 'written';
+  if (!(mesh.expressId >= 0 && mesh.expressId <= 0x00ffffff) || mesh.entityIds) return 'id';
+  if (mesh.uvs || mesh.texture || mesh.textureRef) return 'texture';
+  if (scene.modelTranslations.isPlaced(mesh.modelIndex ?? 0)) return 'placed';
+  if (!unmoved(mesh, ref)) return 'moved';
+  return recordedLane(ref) === laneOf(mesh) ? null : 'lane';
+}

@@ -72,18 +72,18 @@ test("apps/viewer's script bounds VIEWER_TEST_CONCURRENCY: only 2, the value the
 });
 
 test('the gate uses the concurrency variable and the same duration-packed shards for tests and retries', () => {
-  const job = TEST_YML.jobs['viewer-tests'];
-  const env = job.steps.find((s) => s.id === 'viewer_tests').env;
+  const viewerJob = TEST_YML.jobs['viewer-tests'];
+  const env = viewerJob.steps.find((s) => s.id === 'viewer_tests').env;
   // A GitHub Actions expression, compared as written.
   // eslint-disable-next-line no-template-curly-in-string
   assert.equal(env.VIEWER_TEST_CONCURRENCY, '${{ vars.VIEWER_TEST_CONCURRENCY }}');
   const { shards } = parseManifest(readFileSync(MANIFEST_PATH, 'utf8'));
-  assert.deepEqual(job.strategy.matrix.shard, Array.from({ length: shards }, (_, shard) => shard));
-  const retryEnv = job.steps.find((s) => s.id === 'viewer_retry').env;
+  assert.deepEqual(viewerJob.strategy.matrix.shard, Array.from({ length: shards }, (_, shard) => shard));
+  const retryEnv = viewerJob.steps.find((s) => s.id === 'viewer_retry').env;
   assert.equal(env.TEST_SHARDS, String(shards));
   assert.equal(retryEnv.TEST_SHARDS, env.TEST_SHARDS);
   assert.equal(retryEnv.TEST_SHARD, env.TEST_SHARD);
-  const artifact = job.steps.find((s) => s.name === 'Upload the retry record');
+  const artifact = viewerJob.steps.find((s) => s.name === 'Upload the retry record');
   // eslint-disable-next-line no-template-curly-in-string
   assert.equal(artifact.with.name, 'shard-retry-viewer-${{ matrix.shard }}');
 });

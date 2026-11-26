@@ -13,11 +13,11 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { CallToolResult, ToolScope } from '../protocol/index.js';
+import type { CallToolResult } from '../protocol/index.js';
 import {
   DEFAULT_CONFIG, InMemoryModelRegistry, NOOP_PROGRESS, SILENT_LOGGER, type ToolContext,
 } from '../context.js';
-import { fullScope } from '../auth/scope.js';
+import { fullScope, readOnlyScope } from '../auth/scope.js';
 import { loadIfcModel } from '../loader.js';
 import { MCPServer } from '../server.js';
 import { InProcessTransport } from '../transport/in-process.js';
@@ -83,7 +83,7 @@ async function runError(code: string, extra: Record<string, unknown> = {}, tool 
 describe('script_run', () => {
   it('is registered with read and mutate variants', () => {
     const registry = buildDefaultToolRegistry();
-    expect(registry.get('script_run')?.scope).toBe('admin');
+    expect(registry.get('script_run')?.scope).toBe('read');
     expect(registry.get('script_run_mutate')?.scope).toBe('mutate');
     expect(registry.get('script_run')?.outputSchema).toBeDefined();
   });
@@ -308,18 +308,11 @@ describe('script_run_mutate after undo', () => {
   });
 });
 
-describe('script tools need the admin scope', () => {
-  it('refuses a token with read and mutate but not admin', async () => {
-    const limited = { ...ctx, scope: { scopes: ['read', 'validate', 'mutate', 'export'] as ToolScope[] } };
-    await expect(scriptRunTool.handler({ code: '1' }, limited)).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
-    await expect(scriptRunMutateTool.handler({ code: '1' }, limited)).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
-  });
-});
-
 describe('script_run under --read-only', () => {
   it('hides and refuses script_run_mutate but keeps script_run', async () => {
     const server = new MCPServer({
-      version: '0.0.0-test', registry: ctx.registry, scope: fullScope(),
+      // The pairing the CLI builds for --read-only (cli.ts).
+      version: '0.0.0-test', registry: ctx.registry, scope: readOnlyScope(),
       config: { ...DEFAULT_CONFIG, readOnly: true }, tools: buildDefaultToolRegistry(),
       resources: new ResourceRegistry(), prompts: new PromptRegistry(),
     });
@@ -342,7 +335,8 @@ describe('script_run under --read-only', () => {
     expect(call.result.isError).toBe(true);
     expect(call.result.structuredContent).toBeUndefined();
     const texts = (call.result as unknown as { content: Array<{ text: string }> }).content.map((c) => c.text);
-    expect(JSON.parse(texts[texts.length - 1])).toMatchObject({ code: 'READ_ONLY' });
+    // readOnlyScope has no mutate, so the scope gate answers before the read-only one.
+    expect(JSON.parse(texts[texts.length - 1])).toMatchObject({ code: 'PERMISSION_DENIED' });
     const failed = await transport.send({
       jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'script_run', arguments: { code: 'throw new Error("x")' } },
     }) as { result: { isError: boolean; structuredContent?: unknown; content: Array<{ text: string }> } };

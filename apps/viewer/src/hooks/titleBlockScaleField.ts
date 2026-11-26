@@ -5,7 +5,7 @@
 import { formatScaleFactorLabel, type TitleBlockConfig } from '@ifc-lite/drawing-2d';
 
 /**
- * Make the exported title block's "Scale" text state the scale the drawing
+ * Make the title block's "Scale" text state the scale the drawing
  * was actually placed at.
  *
  * The field is plain static content: it was written once, by
@@ -28,8 +28,8 @@ import { formatScaleFactorLabel, type TitleBlockConfig } from '@ifc-lite/drawing
  * scale; a field merely named 'scale' (auto-populate off, user text) is only
  * corrected when the fit clamped the drawing. Returns `titleBlock` itself when
  * no field needs a new value, and a shallow copy with only those fields'
- * `value` replaced otherwise. The on-screen preview still reads the stored
- * text; this applies to export only.
+ * `value` replaced otherwise. The export, the sheet preview and the title
+ * block editor all read the Scale through this, so they cannot disagree (#11581).
  */
 export function titleBlockWithEffectiveScale(
   titleBlock: TitleBlockConfig,

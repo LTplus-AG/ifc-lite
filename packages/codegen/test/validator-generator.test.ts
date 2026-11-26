@@ -217,6 +217,21 @@ SUBTYPE_CONSTRAINT C FOR A; END_SUBTYPE_CONSTRAINT; END_SCHEMA;`);
     expect(coverage.unsupported.map(u => [u.scope, u.label])).toEqual([['schema', 'C'], ['schema', 'D upper bound'], ['global', 'Bad']]);
   });
 
+  it('uses an entity parameter type to resolve failed DERIVE dependencies (#11646)', () => {
+    const { coverage, files } = generateValidators(`SCHEMA S;
+ENTITY A; DERIVE Flag : LOGICAL := Mystery(1); WHERE W : ReadA(SELF); END_ENTITY;
+ENTITY B; Flag : LOGICAL; WHERE W : ReadB(SELF); END_ENTITY;
+FUNCTION ReadA(T : A) : LOGICAL; RETURN(T.Flag); END_FUNCTION;
+FUNCTION ReadB(T : B) : LOGICAL; RETURN(T.Flag); END_FUNCTION; END_SCHEMA;`);
+    expect(coverage.unsupported.map(u => [u.scope, u.owner, u.label])).toEqual([
+      ['function', 'ReadA', 'ReadA'], ['derived', 'A', 'Flag'], ['entity', 'A', 'W'],
+    ]);
+    expect(coverage.unsupported[0].reason).toContain('A.Flag');
+    const [rule] = loadRules(files['rules.ts'], { attr: (value: Record<string, boolean>, key: string) => value[key] }, 'B');
+    expect(rule.check({ FLAG: true }, {})).toBe(true);
+    expect(rule.check({ FLAG: false }, {})).toBe(false);
+  });
+
   it('keeps independent same-named derived attributes compiled', () => {
     const { coverage } = generateValidators(`SCHEMA S;
 ENTITY A; DERIVE Flag : LOGICAL := Mystery(1); WHERE W : Flag; END_ENTITY;

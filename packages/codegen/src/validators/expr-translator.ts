@@ -124,7 +124,10 @@ export class ExpressionTranslator {
     }
     const upper = e.name.toUpperCase();
     if (!this.index.attributeNames.has(upper)) throw new UnsupportedConstruct(`no entity declares attribute ${e.name}`);
-    const owner = e.base.k === 'group' ? this.index.entity(e.base.entity) : e.base.k === 'self' ? scope.entity : undefined;
+    const variableType = e.base.k === 'id' ? scope.lookup(e.base.name)?.type : undefined;
+    let owner = scope.entity;
+    if (e.base.k === 'group') owner = this.index.entity(e.base.entity);
+    else if (e.base.k !== 'self') owner = variableType?.k === 'named' ? this.index.entity(variableType.name) : undefined;
     this.ctx.checkDerived(upper, owner);
     const group = e.base.k === 'group' ? `, ${JSON.stringify(e.base.entity.toUpperCase())}` : '';
     return `r.attr(${this.translate(e.base, scope)}, ${JSON.stringify(upper)}${group})`;

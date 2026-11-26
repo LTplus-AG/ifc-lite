@@ -263,7 +263,7 @@ export function publishDraftFile(draft: DraftLayer, ctx: ToolContext): ReturnTyp
 }
 
 const publishLayerTool: Tool = {
-  name: 'publish_layer', title: 'Publish layer', annotations: EDIT,
+  name: 'publish_layer', title: 'Publish layer', annotations: DESTRUCTIVE_NOT_IDEMPOTENT,
   description:
     'Freeze a draft into an immutable content-addressed layer (blake3 id + provenance manifest). ' +
     'Actual ops are re-verified against the manifest scope claims; mismatches are reported.',

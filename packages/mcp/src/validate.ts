@@ -33,6 +33,7 @@
  */
 
 import type { JsonSchema } from './protocol/index.js';
+import { resolveRef, SchemaError } from './schema-ref.js';
 
 export interface ValidationIssue {
   path: string;
@@ -61,8 +62,7 @@ export const ENFORCED_KEYWORDS: ReadonlySet<string> = new Set([
   'description', 'title', 'format', 'examples', '$schema', '$comment',
 ]);
 
-/** A defect in the schema itself (bad `$ref`, bad `pattern`), not in the caller's input. */
-export class SchemaError extends Error {}
+export { SchemaError };
 
 export interface ValidateOptions {
   /**
@@ -137,13 +137,14 @@ function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors
   }
   const filled = opts.fillDefaults && input === undefined && schema.default !== undefined;
   if (filled) input = clone(schema.default);
-  // Children start a fresh `$ref` chain once they descend into the caller's
-  // input. Under a filled default they do not, so a schema whose default
-  // re-enters itself (`{properties: {next: {$ref: '#'}}, default: {}}`) is a
-  // circular $ref instead of a stack overflow.
-  const child: WalkOptions = opts.refs && !filled ? { ...opts, refs: undefined } : opts;
+  // Children start a fresh `$ref` chain once they descend into a value. A
+  // property still absent under a filled default keeps it, so a schema whose
+  // default re-enters itself (`{properties: {next: {$ref: '#'}}, default: {}}`)
+  // is a circular $ref instead of a stack overflow.
+  const child: WalkOptions = opts.refs ? { ...opts, refs: undefined } : opts;
   if (input === undefined || input === null) return input;
 
+  if (schema.enum !== undefined && !Array.isArray(schema.enum)) throw new SchemaError('enum must be an array');
   if (schema.enum && !schema.enum.some((v) => sameValue(v, input))) {
     const issue = { path, message: `Expected one of ${JSON.stringify(schema.enum)}; got ${JSON.stringify(input)}` };
     // A one-value enum is a discriminator just like a const.
@@ -187,7 +188,8 @@ function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors
         const childPath = `${path}.${key}`;
         // Own properties only: a schema property named `toString` or
         // `constructor` must not read the value inherited from Object.prototype.
-        const value = walk(sub, own(obj, key), childPath, errors, child);
+        const supplied = own(obj, key);
+        const value = walk(sub, supplied, childPath, errors, filled && supplied === undefined ? opts : child);
         // defineProperty, not `result[key] =`: a `__proto__` key must stay data.
         if (value !== undefined) defineData(result, key, value);
       }
@@ -294,33 +296,6 @@ function checkOneOf(branches: JsonSchema[], input: unknown, path: string, errors
 
 function describeIssues(issues: ValidationIssue[]): string {
   return issues.map((e) => `${e.path}: ${e.message}`).join('; ');
-}
-
-/** The schema a local `$ref` (`#/a/b`) points at, which may be a boolean schema. */
-function resolveRef(ref: string, root: JsonSchema): JsonSchema | boolean {
-  // Local JSON Pointers only; an anchor (`#Foo`) or a remote URI is not resolved.
-  if (ref !== '#' && !ref.startsWith('#/')) throw new SchemaError(`Unsupported $ref '${ref}'`);
-  let target: unknown = root;
-  // `#` is the root; every segment after it is a key, including an empty one (RFC 6901).
-  for (const raw of ref === '#' ? [] : ref.slice(1).split('/').slice(1)) {
-    const key = decodePointerSegment(raw, ref);
-    target = target !== null && typeof target === 'object' ? own(target as Record<string, unknown>, key) : undefined;
-  }
-  if (typeof target === 'boolean' || (target !== null && typeof target === 'object' && !Array.isArray(target))) {
-    return target as JsonSchema | boolean;
-  }
-  throw new SchemaError(`Unresolvable $ref '${ref}'`);
-}
-
-function decodePointerSegment(raw: string, ref: string): string {
-  let decoded: string;
-  try {
-    decoded = decodeURIComponent(raw);
-  } catch (err) {
-    if (err instanceof URIError) throw new SchemaError(`Unresolvable $ref '${ref}': bad percent-escape`);
-    throw err;
-  }
-  return decoded.replace(/~1/g, '/').replace(/~0/g, '~');
 }
 
 const compiled = new WeakMap<JsonSchema, RegExp>();

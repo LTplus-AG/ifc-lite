@@ -404,5 +404,15 @@ describe('validateInput: code-review cases for items:false, enum discriminators,
     expect(validateInput(schema, [{}, { n: 1 }]).errors).toEqual([{ path: '$[1]', message: 'Duplicate array item' }]);
     expect(validateInput(schema, [{}, { n: 2 }]).valid).toBe(true);
   });
+
+  it('a recursive default stops at a supplied terminal value instead of reporting a cycle', () => {
+    const schema = { type: 'object', properties: { t: { $ref: '#/$defs/T' } },
+      $defs: { T: { type: 'object', default: { next: null }, properties: { next: { $ref: '#/$defs/T' } } } } };
+    expect(validateInput(schema, {}).valid).toBe(true);
+  });
+
+  it('reports a non-array enum as a schema error', () => {
+    expect(validateInput({ enum: 'abc' } as unknown as Parameters<typeof validateInput>[0], 'x').errors[0].message).toMatch(/Tool schema error: enum must be an array/);
+  });
 });
 

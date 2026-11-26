@@ -116,7 +116,7 @@ export function checkSchemaShape(schema: unknown, path: string): string | null {
   }
   for (const [key, branches] of [['anyOf', anyOf], ['oneOf', oneOf]] as const) {
     if (branches === undefined) continue;
-    // An empty oneOf matches nothing; an empty anyOf has always been accepted as no constraint.
+    // An empty oneOf matches nothing, so the tool could never be called; an empty anyOf has always been accepted as no constraint.
     if (!Array.isArray(branches) || (key === 'oneOf' && branches.length === 0)) return `${path}.${key} must be ${key === 'oneOf' ? 'a non-empty' : 'an'} array`;
     for (const [i, sub] of branches.entries()) {
       const err = checkSchemaShape(sub, `${path}.${key}[${i}]`);

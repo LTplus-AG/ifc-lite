@@ -164,6 +164,23 @@ describe('selectSubsetSeeds: storeys that share one placement', () => {
     expect([...selectSubsetSeeds(parseStep(world), { storeys: ['L01'] })].sort((a, b) => a - b)).toEqual([41, 70, 72]);
   });
 
+  it('includes the elements of a storey the selected storey aggregates', () => {
+    const nested = [
+      'ISO-10303-21;', 'HEADER;', 'ENDSEC;', 'DATA;',
+      '#2=IFCAXIS2PLACEMENT3D(#3,$,$);', '#3=IFCCARTESIANPOINT((0.,0.,0.));',
+      '#10=IFCLOCALPLACEMENT($,#2);', '#20=IFCLOCALPLACEMENT(#10,#2);', '#30=IFCLOCALPLACEMENT(#20,#2);',
+      "#100=IFCBUILDINGSTOREY('0000000000000000000ST1',$,'Level 1',$,$,#10,$,$,.ELEMENT.,0.);",
+      "#200=IFCBUILDINGSTOREY('0000000000000000000ST2',$,'Mezzanine',$,$,#20,$,$,.PARTIAL.,1.5);",
+      "#210=IFCRELAGGREGATES('0000000000000000000AG1',$,$,$,#100,(#200));",
+      "#300=IFCWALL('0000000000000000000WA3',$,'W',$,$,#30,$,$,$);",
+      "#310=IFCRELCONTAINEDINSPATIALSTRUCTURE('0000000000000000000RC3',$,$,$,(#300),#200);",
+      'ENDSEC;', 'END-ISO-10303-21;', '',
+    ].join('\n');
+    const parsed = parseStep(nested);
+    expect([...selectSubsetSeeds(parsed, { storeys: ['Level 1'] })].sort((a, b) => a - b)).toEqual([100, 300]);
+    expect([...selectSubsetSeeds(parsed, { storeys: ['Mezzanine'] })].sort((a, b) => a - b)).toEqual([200, 300]);
+  });
+
   it('never counts a building that shares the storey placement as one of its products', () => {
     const building = [
       'ISO-10303-21;', 'HEADER;', 'ENDSEC;', 'DATA;',
@@ -232,5 +249,17 @@ describe('resolveStorey: a storey NAMED with a number', () => {
     expect(resolveStorey('20', parsed).placementId).toBe(10);
     expect(resolveStorey('#21', parsed).placementId).toBe(11);
     expect(() => resolveStorey('#1', parsed).placementId).toThrow(/IFCPROJECT, not an IfcBuildingStorey/);
+  });
+});
+
+describe('parseStep: GlobalId index', () => {
+  it('keeps the first record for a GlobalId; a later record with the same leading string does not shadow it', () => {
+    const text = [
+      'ISO-10303-21;', 'HEADER;', 'ENDSEC;', 'DATA;',
+      "#10=IFCWALL('2O2Fr$t4X7Zf8NOew3FLKr',$,'W',$,$,$,$,$,$);",
+      "#900=IFCPROPERTYSINGLEVALUE('2O2Fr$t4X7Zf8NOew3FLKr',$,$,$);",
+      'ENDSEC;', 'END-ISO-10303-21;', '',
+    ].join('\n');
+    expect(parseStep(text).guidToId.get('2O2Fr$t4X7Zf8NOew3FLKr')).toBe(10);
   });
 });

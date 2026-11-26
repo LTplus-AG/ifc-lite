@@ -106,7 +106,9 @@ export function parseStep(text: string): ParsedStep {
     instances.set(id, { id, type: type.toUpperCase(), body, full });
     // First quoted 22-char token is the GlobalId of a rooted entity.
     const gm = /^\s*'([^']{22})'/.exec(body);
-    if (gm) guidToId.set(gm[1], id);
+    // The first record wins: a later non-rooted record whose first string
+    // happens to equal a GlobalId must not shadow the entity that carries it.
+    if (gm && !guidToId.has(gm[1])) guidToId.set(gm[1], id);
     i = semi + 1;
   }
   return { header, instances, guidToId };

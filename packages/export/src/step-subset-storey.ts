@@ -137,21 +137,24 @@ export function resolveStorey(token: string, parsed: ParsedStep): { storeyId: nu
 /** IfcObjectPlacement subtypes: placement records a storey walk returns, never products. */
 const PLACEMENT_TYPES = new Set(['IFCLOCALPLACEMENT', 'IFCGRIDPLACEMENT', 'IFCLINEARPLACEMENT']);
 
+const HOST_RELATIONS = new Set(['IFCRELVOIDSELEMENT', 'IFCRELFILLSELEMENT', 'IFCRELAGGREGATES', 'IFCRELNESTS']);
+
 /**
  * Opening -> host element (IfcRelVoidsElement), filler -> opening
- * (IfcRelFillsElement), part -> whole (IfcRelAggregates under a non-spatial
- * whole). Relation records that do not split into six attributes are skipped.
+ * (IfcRelFillsElement), part -> whole (IfcRelAggregates / IfcRelNests under a
+ * non-spatial whole). All four share the six-attribute shape with the relating
+ * object at index 4 and the related set at index 5. Relation records that do not split into six attributes are skipped.
  */
 function hostOf(parsed: ParsedStep): Map<number, number> {
   const out = new Map<number, number>();
   for (const inst of parsed.instances.values()) {
-    if (inst.type !== 'IFCRELVOIDSELEMENT' && inst.type !== 'IFCRELFILLSELEMENT' && inst.type !== 'IFCRELAGGREGATES') continue;
+    if (!HOST_RELATIONS.has(inst.type)) continue;
     const args = splitTopLevelArgs(inst.body);
     if (!args || args.length !== STRUCTURE_RELATION_ATTRS) continue;
     const relating = SINGLE_REF_RE.exec(args[4]);
     if (!relating) continue;
     const whole = Number(relating[1]);
-    if (inst.type === 'IFCRELAGGREGATES' && isSpatialStructureType(IfcTypeEnumFromString(parsed.instances.get(whole)?.type ?? ''))) continue;
+    if ((inst.type === 'IFCRELAGGREGATES' || inst.type === 'IFCRELNESTS') && isSpatialStructureType(IfcTypeEnumFromString(parsed.instances.get(whole)?.type ?? ''))) continue;
     for (const part of refsOutsideStrings(args[5])) out.set(part, whole);
   }
   return out;
@@ -211,6 +214,25 @@ export function storeyMembers(storeyId: number, placementId: number, parsed: Par
     owners.set(id, found);
     return found;
   };
+  // A storey the selected one aggregates (a mezzanine, a split level) is part of it.
+  const within = new Map<number, boolean>();
+  const isWithin = (storey: number): boolean => {
+    const cached = within.get(storey);
+    if (cached !== undefined) return cached;
+    const visited = new Set<number>();
+    const stack = [storey];
+    let found = false;
+    while (stack.length > 0 && !found) {
+      const next = stack.pop()!;
+      if (visited.has(next)) continue;
+      visited.add(next);
+      if (next === storeyId) found = true;
+      else stack.push(...(parents.get(next) ?? []));
+    }
+    within.set(storey, found);
+    return found;
+  };
+  const ownedHere = (owner: Set<number>): boolean => [...owner].some(isWithin);
   const isCandidate = (id: number): boolean => {
     const type = parsed.instances.get(id)?.type;
     if (type === undefined || PLACEMENT_TYPES.has(type)) return false;
@@ -219,12 +241,12 @@ export function storeyMembers(storeyId: number, placementId: number, parsed: Par
   const out = new Set<number>();
   // Spatial children, and openings/fillers/parts that inherit an owner, wherever placed.
   for (const id of [...parents.keys(), ...hosts.keys()]) {
-    if (!out.has(id) && isCandidate(id) && ownersOf(id).has(storeyId)) out.add(id);
+    if (!out.has(id) && isCandidate(id) && ownedHere(ownersOf(id))) out.add(id);
   }
   for (const id of productsUnderPlacement(placementId, parsed)) {
     if (out.has(id) || !isCandidate(id)) continue;
     const owner = ownersOf(id);
-    if (owner.size === 0 || owner.has(storeyId)) out.add(id);
+    if (owner.size === 0 || ownedHere(owner)) out.add(id);
   }
   return [...out];
 }

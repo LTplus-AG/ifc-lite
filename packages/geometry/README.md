@@ -196,6 +196,12 @@ annotation fill areas or reuses an entity id. A batch whose records cannot all b
 refused, and the pool's usual recovery splits it. The main thread, the parser and the pre-pass
 still hold the file: this lowers the pool's share of a load's memory, not the 2 GiB source limit.
 
+A host that rolls the flag out itself (the viewer's `perf-ooc` ramp) sets `GeometryProcessor.outOfCore = true`
+(`ProcessParallelOptions.outOfCore`) for the loads it chooses; left unset, the pool reads the global and the URL
+param. `onOutOfCoreDecision(ran)` then hears once per pool load whether it meshed out of core: `false` at the start
+of a load that does not, or the pre-pass scan's outcome (sparse sources, or the whole-file index for a file the
+arena cannot serve).
+
 ## API
 
 See the [Geometry Guide](https://ifclite.dev/docs/guide/geometry/) and [API Reference](https://ifclite.dev/docs/api/typescript/#ifc-litegeometry).

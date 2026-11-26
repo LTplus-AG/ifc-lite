@@ -3,12 +3,16 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { CellValue } from '@ifc-lite/lists';
+import { toStandardFontText } from '@/lib/document/standard-font-text';
 import { displayCell, groupHeaderLabel, totalsRowCells, type ExportModel } from './model';
 
 /** Quality tabular PDF report: title + meta, dark header, grouped sections
  *  (bold group rows carrying per-group count + subtotals), right-aligned
  *  numerics, a grand-total foot, and page numbers. */
 export async function toPdf(model: ExportModel): Promise<Blob> {
+  // The standard PDF fonts are WinAnsi: text outside it (ș ț ă č ł …) is printed with its base letter, never
+  // handed to jsPDF raw, which would write the whole string as two-byte garbage.
+  const pdfText = (s: string) => toStandardFontText(s).text;
   const { jsPDF } = await import('jspdf');
   const autoTable = (await import('jspdf-autotable')).default;
 
@@ -20,13 +24,13 @@ export async function toPdf(model: ExportModel): Promise<Blob> {
   const doc = new jsPDF({ orientation: landscape ? 'landscape' : 'portrait', unit: 'pt', format: 'a4' });
 
   doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
-  doc.text(model.title || 'List', 40, 42);
+  doc.text(pdfText(model.title || 'List'), 40, 42);
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(130);
-  doc.text(`${model.totals.count.toLocaleString()} elements · ${model.generatedAt}`, 40, 58);
+  doc.text(pdfText(`${model.totals.count.toLocaleString()} elements · ${model.generatedAt}`), 40, 58);
   doc.setTextColor(0);
 
-  const head = [cols.map((c) => c.label)];
-  const cell = (vals: CellValue[], i: number) => displayCell(vals[i]);
+  const head = [cols.map((c) => pdfText(c.label))];
+  const cell = (vals: CellValue[], i: number) => pdfText(displayCell(vals[i]));
   const body: Array<Array<string | { content: string; styles: Record<string, unknown> }>> = [];
 
   if (model.schedule) {
@@ -36,7 +40,7 @@ export async function toPdf(model: ExportModel): Promise<Blob> {
     // level and carry their own count; member rows sit on leaf groups only.
     for (const g of model.groups) {
       body.push(model.columns.map((c, i) => ({
-        content: i === 0 ? groupHeaderLabel(g) : (c.summed ? displayCell(g.sums[c.id]) : ''),
+        content: pdfText(i === 0 ? groupHeaderLabel(g) : (c.summed ? displayCell(g.sums[c.id]) : '')),
         styles: { fontStyle: 'bold', fillColor: [226, 232, 240] as unknown as number[] },
       })));
       for (const r of g.rows) body.push(model.columns.map((_, i) => cell(r, i)));
@@ -46,7 +50,7 @@ export async function toPdf(model: ExportModel): Promise<Blob> {
   }
 
   const foot = model.sumColumnIds.length > 0
-    ? [totalsRowCells(model, cols, `Total (${model.totals.count})`).map(displayCell)]
+    ? [totalsRowCells(model, cols, `Total (${model.totals.count})`).map((v) => pdfText(displayCell(v)))]
     : undefined;
 
   const columnStyles: Record<number, { halign: 'right' }> = {};

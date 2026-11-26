@@ -15,6 +15,8 @@ import {
 } from '@/lib/assistant/clash-group-draft';
 
 const field = 'h-7 min-w-0 rounded border border-input bg-background px-1.5 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
+/** A control that shares a wrapping row with buttons: it grows, but never below a usable width (#11439). */
+const grow = cn(field, 'min-w-32 flex-1');
 
 interface EditorProps {
   draft: ClashGroupDraft;
@@ -90,13 +92,13 @@ function GroupHeader({ group, draft, resolve, focusClashes, apply }: {
       event.preventDefault();
       if (apply(renameDraftGroup(draft, group.key, renaming))) setRenaming(null);
     }}>
-      <input aria-label={t('clashApply.groupName')} className={cn(field, 'min-w-32 flex-1')} maxLength={100} value={renaming}
+      <input aria-label={t('clashApply.groupName')} className={grow} maxLength={100} value={renaming}
         onChange={event => setRenaming(event.target.value)} />
       <Button type="submit" size="sm" className="h-7">{t('clashApply.saveName')}</Button>
       <Button type="button" size="sm" variant="ghost" className="h-7" onClick={() => setRenaming(null)}>{t('clashApply.cancelRename')}</Button>
     </form>}
     {others.length > 0 && <div className="flex flex-wrap items-center gap-1">
-      <select aria-label={t('clashApply.mergeInto', { name: group.name })} className={cn(field, 'min-w-32 flex-1')} value={mergeTarget}
+      <select aria-label={t('clashApply.mergeInto', { name: group.name })} className={grow} value={mergeTarget}
         onChange={event => setMergeTarget(event.target.value)}>
         <option value="">{t('clashApply.mergeInto', { name: group.name })}</option>
         {others.map(other => <option key={other.key} value={other.key}>{other.name}</option>)}
@@ -156,14 +158,14 @@ export function ClashGroupDraftEditor({ draft, onChange, resolve, focusClash, fo
     {selected.size > 0 && <div className="sticky bottom-0 space-y-1 rounded border border-primary/40 bg-background p-2">
       <p className="font-medium">{t('clashApply.selected', { count: selected.size })}</p>
       <div className="flex flex-wrap items-center gap-1">
-        <select aria-label={t('clashApply.moveTo')} className={cn(field, 'min-w-32 flex-1')} value={target} onChange={event => setTarget(event.target.value)}>
+        <select aria-label={t('clashApply.moveTo')} className={grow} value={target} onChange={event => setTarget(event.target.value)}>
           <option value="">{t('clashApply.moveTo')}</option>
           {draft.groups.map(group => <option key={group.key} value={group.key}>{group.name}</option>)}
           <option value="new">{t('clashApply.moveTarget.new')}</option>
           <option value="unclassified">{t('clashApply.moveTarget.unclassified')}</option>
         </select>
         {target === 'new' && <input aria-label={t('clashApply.newGroupName')} placeholder={t('clashApply.newGroupName')} maxLength={100}
-          className={cn(field, 'min-w-32 flex-1')} value={newName} onChange={event => setNewName(event.target.value)} />}
+          className={grow} value={newName} onChange={event => setNewName(event.target.value)} />}
         <Button type="button" size="sm" className="h-7" disabled={!target} onClick={move}>{t('clashApply.move')}</Button>
       </div>
     </div>}

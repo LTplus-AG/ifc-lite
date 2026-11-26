@@ -77,7 +77,7 @@ export type ModellingStoreModelResolver = (modelId?: string) => CostStoreModelRe
  */
 export function createModellingStoreBackendWithoutStoreys(resolve: ModellingStoreModelResolver): ModellingStoreBackendMethodsWithoutStoreys {
   const ref = (modelId: string, expressId: number): EntityRef => ({ modelId, expressId });
-  const editTarget = (model: CostStoreModelResolution) => ({ dataStore: model.store, view: model.mutationView, editor: model.editor });
+  const editTarget = (model: CostStoreModelResolution) => ({ dataStore: model.store, view: model.mutationView, editor: model.editor, guidRandom: model.guidRandom });
   const authoring = (modelId: string) => {
     const model = resolve(modelId);
     return { model, anchor: { ...resolveAuthoringAnchor(model.store, model.mutationView), ownerHistoryId: model.ownerHistoryId, guidRandom: model.guidRandom } };
@@ -217,7 +217,7 @@ export function createModellingStoreBackendWithoutStoreys(resolve: ModellingStor
       const { model, anchor } = authoring(modelId);
       requireKinds(model, 'assignType', [[[typeExpressId], ['IfcTypeObject']], [objectExpressIds, ['IfcObject']]]);
       // An occurrence drawn with its old type follows the new type's layers, not the old type's (#9296).
-      followTypeLayersOnRetypeInStore(editTarget(model), typeExpressId, objectExpressIds, { guidRandom: model.guidRandom });
+      followTypeLayersOnRetypeInStore(editTarget(model), typeExpressId, objectExpressIds);
       const existing = readRelatedLists(model.store, 'IfcRelDefinesByType', model.mutationView);
       const rel = assignTypeInStore(model.editor, anchor, typeExpressId, objectExpressIds, existing).relId;
       // A layered type drives the thickness of what it types, in the same record (one undo step).

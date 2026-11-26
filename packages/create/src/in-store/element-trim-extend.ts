@@ -88,7 +88,7 @@ export function trimExtendElementInStore(store: IfcDataStore, editor: StoreEdito
           reanchorHostedOpeningsInStore(store, draft, id, [toNativeLength({ lengthUnitScale: scale }, along), toNativeLength({ lengthUnitScale: scale }, across), 0]);
       }
       if ('wallId' in params.boundary) {
-        joinWallsInStore(draft, store, { ...resolveWallJoinAnchor(store, view), guidRandom: guidOptions.guidRandom }, params.boundary.wallId, id);
+        joinWallsInStore(draft, store, resolveWallJoinAnchor(store, view, guidOptions.guidRandom), params.boundary.wallId, id);
         walls.add(params.boundary.wallId);
       }
     } else {

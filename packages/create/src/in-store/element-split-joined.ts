@@ -65,7 +65,7 @@ export function splitJoinedWallDraft(
 
   const draft = env.editor;
   {
-      const anchor = { ...resolveWallJoinAnchor(env.dataStore, draft.getMutationView()), guidRandom: env.guidRandom };
+      const anchor = resolveWallJoinAnchor(env.dataStore, draft.getMutationView(), env.guidRandom);
       const moving = rels.filter(movesToNew);
       for (const rel of moving) draft.removeEntity(rel.relId);
       reshapeWallsInStore(draft, env.dataStore, anchor, [{ wallId: expressId, start: kept.start, end: kept.end }]);

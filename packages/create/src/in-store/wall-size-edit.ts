@@ -81,7 +81,7 @@ function resizeWallBody(ctx: EditTarget, expressId: number, newStart: Vec3, newE
     return { ok: true, newLength: length, walls: [expressId] };
   }
 
-  const result = reshapeWallsInStore(ctx.editor, ctx.dataStore, resolveWallJoinAnchor(ctx.dataStore, ctx.view),
+  const result = reshapeWallsInStore(ctx.editor, ctx.dataStore, resolveWallJoinAnchor(ctx.dataStore, ctx.view, ctx.guidRandom),
     [{ wallId: expressId, start: [newStart[0], newStart[1]], end: [newEnd[0], newEnd[1]] }], options);
   return { ok: true, newLength: length, walls: result.walls };
 }

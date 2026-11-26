@@ -48,6 +48,9 @@ async function authoredExport(guidRandom: RandomSource): Promise<string> {
     const e = S.addWall('m', home, { Start: [20, 10, 0], End: [22, 10, 0], Thickness: 0.2, Height: 3 });
     const f = S.addWall('m', home, { Start: [25, 8, 0], End: [25, 12, 0], Thickness: 0.2, Height: 3 });
     S.trimExtendElement(e, { mode: 'extend', click: [21.9, 10], boundary: { wallId: f.expressId } });
+    // Moving and resizing a joined wall rebuild its joins.
+    S.transformElements('m', [f.expressId], { kind: 'move', delta: [0.5, 0] });
+    S.resizeWall(b, [6, 10, 0], [6, 15, 0]);
     // Retyping one of two walls that share a layer-set usage splits the usage.
     const layered = (Name: string, thicknesses: number[]) => {
       const type = S.addElementType('m', { Type: 'IfcWallType', Name }).expressId;

@@ -4,7 +4,7 @@
 
 import { useMemo } from 'react';
 import { resolvedElementTags, elementTagsSvg } from '@/lib/drawing/element-tags';
-import { escapeTagXml as escapeXml, elementTagsDxf, drawElementTagsPdf } from '@/lib/drawing/element-tag-export';
+import { elementTagsDxf, drawElementTagsPdf } from '@/lib/drawing/element-tag-export';
 import { buildDxfUnderlaySvg, drawDxfUnderlaysPdf, mappedDxfUnderlayOptions } from '@/lib/export/drawing-vector-underlays';
 import { drawingReferenceSvg, snapshotDrawingReferences, rasterizeReferenceLayer } from '@/lib/export/drawing-raster-references';
 import type React from 'react';
@@ -20,7 +20,7 @@ import {
   renderTitleBlock,
   exportToDXF,
   formatScaleFactorLabel,
-  makeEntityKey, isPolygonCutLine, entityIdAttr,
+  makeEntityKey, isPolygonCutLine, entityIdAttr, escapeXml, svgNum,
   type Drawing2D,
   type PdfScaleLayout,
   type DrawingSheet,
@@ -73,14 +73,14 @@ function buildScanSectionSvg(
 ): string {
   if (points.length === 0 || opacity <= 0) return '';
   const stride = points.length > cap ? Math.ceil(points.length / cap) : 1;
-  let svg = `  <g id="scan-section" opacity="${opacity.toFixed(2)}">\n`;
+  let svg = `  <g id="scan-section" opacity="${svgNum(opacity, 2)}">\n`;
   for (let i = 0; i < points.length; i += stride) {
     const p = mapPoint(points[i].point.x, points[i].point.y);
     const color = points[i].color;
     const fill = color
       ? `#${color.map((c) => Math.round(c * 255).toString(16).padStart(2, '0')).join('')}`
       : '#8a8a8a';
-    svg += `    <circle cx="${p.x.toFixed(4)}" cy="${p.y.toFixed(4)}" r="${radiusModelUnits.toFixed(4)}" fill="${fill}" stroke="none"/>\n`;
+    svg += `    <circle cx="${svgNum(p.x, 4)}" cy="${svgNum(p.y, 4)}" r="${svgNum(radiusModelUnits, 4)}" fill="${fill}" stroke="none"/>\n`;
   }
   svg += '  </g>\n';
   return svg;
@@ -222,10 +222,10 @@ export function createDrawingExport({
     // Start building SVG
     let svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg"
-     width="${svgWidthMm.toFixed(2)}mm"
-     height="${svgHeightMm.toFixed(2)}mm"
-     viewBox="${viewBoxMinX.toFixed(4)} ${viewBoxMinY.toFixed(4)} ${viewWidth.toFixed(4)} ${viewHeight.toFixed(4)}">
-  <rect x="${viewBoxMinX.toFixed(4)}" y="${viewBoxMinY.toFixed(4)}" width="${viewWidth.toFixed(4)}" height="${viewHeight.toFixed(4)}" fill="#FFFFFF"/>
+     width="${svgNum(svgWidthMm, 2)}mm"
+     height="${svgNum(svgHeightMm, 2)}mm"
+     viewBox="${svgNum(viewBoxMinX, 4)} ${svgNum(viewBoxMinY, 4)} ${svgNum(viewWidth, 4)} ${svgNum(viewHeight, 4)}">
+  <rect x="${svgNum(viewBoxMinX, 4)}" y="${svgNum(viewBoxMinY, 4)}" width="${svgNum(viewWidth, 4)}" height="${svgNum(viewHeight, 4)}" fill="#FFFFFF"/>
 `;
 
     const mapUnderlay = (x: number, y: number) => ({ x: flipX ? -x : x, y: flipY ? -y : y });
@@ -245,7 +245,7 @@ export function createDrawingExport({
     svg += '  <g id="polygon-fills">\n';
     for (const { polygon, style: { fillColor, fillOpacity }, geometry: pathData } of styledPolygons) {
       if (!pathData) continue;
-      svg += `    <path d="${pathData}" fill="${escapeXml(fillColor)}" fill-opacity="${fillOpacity.toFixed(2)}" fill-rule="evenodd" ${entityIdAttr(polygon.entityId)} data-ifc-type="${escapeXml(polygon.ifcType)}"/>\n`;
+      svg += `    <path d="${pathData}" fill="${escapeXml(fillColor)}" fill-opacity="${svgNum(fillOpacity, 2)}" fill-rule="evenodd" ${entityIdAttr(polygon.entityId)} data-ifc-type="${escapeXml(polygon.ifcType)}"/>\n`;
     }
     svg += '  </g>\n';
 
@@ -255,7 +255,7 @@ export function createDrawingExport({
       // Convert line weight (mm on paper) to model units
       const svgLineWeight = mmToModel(lineWeight);
       if (!pathData) continue;
-      svg += `    <path d="${pathData}" fill="none" stroke="${escapeXml(strokeColor)}" stroke-width="${svgLineWeight.toFixed(4)}" ${entityIdAttr(polygon.entityId)}/>\n`;
+      svg += `    <path d="${pathData}" fill="none" stroke="${escapeXml(strokeColor)}" stroke-width="${svgNum(svgLineWeight, 4)}" ${entityIdAttr(polygon.entityId)}/>\n`;
     }
     svg += '  </g>\n';
 
@@ -328,12 +328,12 @@ export function createDrawingExport({
 
       // Convert line width from mm on paper to model units
       const svgLineWidth = mmToModel(lineWidth);
-      const dashAttr = dashArray ? ` stroke-dasharray="${dashArray.split(' ').map(d => mmToModel(parseFloat(d)).toFixed(4)).join(' ')}"` : '';
+      const dashAttr = dashArray ? ` stroke-dasharray="${dashArray.split(' ').map(d => svgNum(mmToModel(parseFloat(d)), 4)).join(' ')}"` : '';
 
       // Transform line endpoints with axis-specific flipping
       const startT = { x: flipX ? -start.x : start.x, y: flipY ? -start.y : start.y };
       const endT = { x: flipX ? -end.x : end.x, y: flipY ? -end.y : end.y };
-      svg += `    <line x1="${startT.x.toFixed(4)}" y1="${startT.y.toFixed(4)}" x2="${endT.x.toFixed(4)}" y2="${endT.y.toFixed(4)}" stroke="${strokeColor}" stroke-width="${svgLineWidth.toFixed(4)}"${dashAttr}/>\n`;
+      svg += `    <line x1="${svgNum(startT.x, 4)}" y1="${svgNum(startT.y, 4)}" x2="${svgNum(endT.x, 4)}" y2="${svgNum(endT.y, 4)}" stroke="${strokeColor}" stroke-width="${svgNum(svgLineWidth, 4)}"${dashAttr}/>\n`;
     }
     svg += '  </g>\n';
 
@@ -344,13 +344,13 @@ export function createDrawingExport({
         if (result.points.length < 3) continue;
         const pointsStr = result.points.map(p => {
           const pt = { x: flipX ? -p.x : p.x, y: flipY ? -p.y : p.y };
-          return `${pt.x.toFixed(4)},${pt.y.toFixed(4)}`;
+          return `${svgNum(pt.x, 4)},${svgNum(pt.y, 4)}`;
         }).join(' ');
 
         const measureColor = '#2196F3';
         const lineWidth = mmToModel(0.3);
 
-        svg += `    <polygon points="${pointsStr}" fill="rgba(33,150,243,0.1)" stroke="${measureColor}" stroke-width="${lineWidth.toFixed(4)}" stroke-dasharray="${mmToModel(1).toFixed(4)} ${mmToModel(0.5).toFixed(4)}"/>\n`;
+        svg += `    <polygon points="${pointsStr}" fill="rgba(33,150,243,0.1)" stroke="${measureColor}" stroke-width="${svgNum(lineWidth, 4)}" stroke-dasharray="${svgNum(mmToModel(1), 4)} ${svgNum(mmToModel(0.5), 4)}"/>\n`;
 
         // Label at centroid
         const centroid = computePolygonCentroid(result.points);
@@ -358,7 +358,7 @@ export function createDrawingExport({
         const areaText = formatArea(result.area);
         const fontSize = mmToModel(3);
 
-        svg += `    <text x="${ct.x.toFixed(4)}" y="${ct.y.toFixed(4)}" font-family="Arial, sans-serif" font-size="${fontSize.toFixed(4)}" fill="#000000" text-anchor="middle" dominant-baseline="middle" font-weight="bold">${escapeXml(areaText)}</text>\n`;
+        svg += `    <text x="${svgNum(ct.x, 4)}" y="${svgNum(ct.y, 4)}" font-family="Arial, sans-serif" font-size="${svgNum(fontSize, 4)}" fill="#000000" text-anchor="middle" dominant-baseline="middle" font-weight="bold">${escapeXml(areaText)}</text>\n`;
       }
       svg += '  </g>\n';
     }
@@ -376,9 +376,9 @@ export function createDrawingExport({
         const approxWidth = Math.max(...lines.map(l => l.length * fontSize * 0.6)) + padding * 2;
         const height = lines.length * lineHeight + padding * 2;
 
-        svg += `    <rect x="${pt.x.toFixed(4)}" y="${pt.y.toFixed(4)}" width="${approxWidth.toFixed(4)}" height="${height.toFixed(4)}" fill="${escapeXml(annotation.backgroundColor)}" stroke="${escapeXml(annotation.borderColor)}" stroke-width="${mmToModel(0.15).toFixed(4)}"/>\n`;
+        svg += `    <rect x="${svgNum(pt.x, 4)}" y="${svgNum(pt.y, 4)}" width="${svgNum(approxWidth, 4)}" height="${svgNum(height, 4)}" fill="${escapeXml(annotation.backgroundColor)}" stroke="${escapeXml(annotation.borderColor)}" stroke-width="${svgNum(mmToModel(0.15), 4)}"/>\n`;
         for (let i = 0; i < lines.length; i++) {
-          svg += `    <text x="${(pt.x + padding).toFixed(4)}" y="${(pt.y + padding + fontSize * 0.8 + i * lineHeight).toFixed(4)}" font-family="Arial, sans-serif" font-size="${fontSize.toFixed(4)}" fill="${escapeXml(annotation.color)}">${escapeXml(lines[i])}</text>\n`;
+          svg += `    <text x="${svgNum((pt.x + padding), 4)}" y="${svgNum((pt.y + padding + fontSize * 0.8 + i * lineHeight), 4)}" font-family="Arial, sans-serif" font-size="${svgNum(fontSize, 4)}" fill="${escapeXml(annotation.color)}">${escapeXml(lines[i])}</text>\n`;
         }
       }
       svg += '  </g>\n';
@@ -398,13 +398,13 @@ export function createDrawingExport({
         const pathData = generateCloudSVGPath(cloud.points[0], cloud.points[1], arcRadius, transformX, transformY);
         const lineWidth = mmToModel(0.4);
 
-        svg += `    <path d="${pathData}" fill="rgba(229,57,53,0.05)" stroke="${escapeXml(cloud.color)}" stroke-width="${lineWidth.toFixed(4)}"/>\n`;
+        svg += `    <path d="${pathData}" fill="rgba(229,57,53,0.05)" stroke="${escapeXml(cloud.color)}" stroke-width="${svgNum(lineWidth, 4)}"/>\n`;
 
         if (cloud.label) {
           const cx = transformX((cloud.points[0].x + cloud.points[1].x) / 2);
           const cy = transformY((cloud.points[0].y + cloud.points[1].y) / 2);
           const fontSize = mmToModel(3);
-          svg += `    <text x="${cx.toFixed(4)}" y="${cy.toFixed(4)}" font-family="Arial, sans-serif" font-size="${fontSize.toFixed(4)}" fill="${escapeXml(cloud.color)}" text-anchor="middle" dominant-baseline="middle" font-weight="bold">${escapeXml(cloud.label)}</text>\n`;
+          svg += `    <text x="${svgNum(cx, 4)}" y="${svgNum(cy, 4)}" font-family="Arial, sans-serif" font-size="${svgNum(fontSize, 4)}" fill="${escapeXml(cloud.color)}" text-anchor="middle" dominant-baseline="middle" font-weight="bold">${escapeXml(cloud.label)}</text>\n`;
         }
       }
       svg += '  </g>\n';
@@ -486,7 +486,7 @@ export function createDrawingExport({
     // Create clipping path for viewport FIRST (so it can be used by drawing content)
     svg += `  <defs>
     <clipPath id="viewport-clip">
-      <rect x="${viewport.x.toFixed(2)}" y="${viewport.y.toFixed(2)}" width="${viewport.width.toFixed(2)}" height="${viewport.height.toFixed(2)}"/>
+      <rect x="${svgNum(viewport.x, 2)}" y="${svgNum(viewport.y, 2)}" width="${svgNum(viewport.width, 2)}" height="${svgNum(viewport.height, 2)}"/>
     </clipPath>
   </defs>
 
@@ -515,7 +515,7 @@ export function createDrawingExport({
     svg += '    <g id="polygon-fills">\n';
     for (const { polygon, style: { fillColor, fillOpacity }, geometry: pathData } of styledPolygons) {
       if (pathData) {
-        svg += `      <path d="${pathData}" fill="${escapeXml(fillColor)}" fill-opacity="${fillOpacity.toFixed(2)}" fill-rule="evenodd" ${entityIdAttr(polygon.entityId)} data-ifc-type="${escapeXml(polygon.ifcType)}"/>\n`;
+        svg += `      <path d="${pathData}" fill="${escapeXml(fillColor)}" fill-opacity="${svgNum(fillOpacity, 2)}" fill-rule="evenodd" ${entityIdAttr(polygon.entityId)} data-ifc-type="${escapeXml(polygon.ifcType)}"/>\n`;
       }
     }
     svg += '    </g>\n';
@@ -526,7 +526,7 @@ export function createDrawingExport({
       if (pathData) {
         // lineWeight is in mm on paper
         const svgLineWeight = lineWeight * 0.3; // Scale down for better appearance
-        svg += `      <path d="${pathData}" fill="none" stroke="${escapeXml(strokeColor)}" stroke-width="${svgLineWeight.toFixed(4)}" ${entityIdAttr(polygon.entityId)}/>\n`;
+        svg += `      <path d="${pathData}" fill="none" stroke="${escapeXml(strokeColor)}" stroke-width="${svgNum(svgLineWeight, 4)}" ${entityIdAttr(polygon.entityId)}/>\n`;
       }
     }
     svg += '    </g>\n';
@@ -575,7 +575,7 @@ export function createDrawingExport({
       // lineWidth is in mm on paper
       const svgLineWidth = lineWidth * 0.3;
       const dashAttr = dashArray ? ` stroke-dasharray="${dashArray}"` : '';
-      svg += `      <line x1="${paperStart.x.toFixed(4)}" y1="${paperStart.y.toFixed(4)}" x2="${paperEnd.x.toFixed(4)}" y2="${paperEnd.y.toFixed(4)}" stroke="${strokeColor}" stroke-width="${svgLineWidth.toFixed(4)}"${dashAttr}/>\n`;
+      svg += `      <line x1="${svgNum(paperStart.x, 4)}" y1="${svgNum(paperStart.y, 4)}" x2="${svgNum(paperEnd.x, 4)}" y2="${svgNum(paperEnd.y, 4)}" stroke="${strokeColor}" stroke-width="${svgNum(svgLineWidth, 4)}"${dashAttr}/>\n`;
     }
     svg += '    </g>\n';
 
@@ -626,8 +626,9 @@ export function createDrawingExport({
     droppedPolygons = 0;
     const svg = sheetEnabled && activeSheet ? generateSheetSVG() : generateExportSVG();
     if (!svg) throw new NoNativeDrawingError();
+    const one = droppedPolygons === 1;
     const warnings = droppedPolygons > 0
-      ? [`${droppedPolygons} cut polygon${droppedPolygons === 1 ? '' : 's'} with invalid coordinates ${droppedPolygons === 1 ? 'was' : 'were'} left out of the SVG.`]
+      ? [`${droppedPolygons} cut polygon${one ? '' : 's'} with invalid coordinates ${one ? 'was' : 'were'} left out of the SVG.`]
       : [];
     for (const message of warnings) services.warn?.(message);
     const stem = sheetEnabled && activeSheet

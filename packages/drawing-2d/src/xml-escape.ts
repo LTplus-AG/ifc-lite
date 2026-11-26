@@ -18,8 +18,16 @@ const XML_ENTITIES: Record<string, string> = {
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;',
 };
 
+/** Any character either pass below would change; most values (colours, type names) have none.
+ *  Matching control characters is the point, as in XML_FORBIDDEN. */
+const NEEDS_ESCAPE =
+  // eslint-disable-next-line no-control-regex
+  /[&<>"'\u0000-\u0008\u000B\u000C\u000E-\u001F\uD800-\uDFFF\uFFFE\uFFFF]/;
+
 export function escapeXml(value: string): string {
-  return String(value)
+  const text = String(value);
+  if (!NEEDS_ESCAPE.test(text)) return text;
+  return text
     .replace(XML_FORBIDDEN, '�')
     .replace(/[&<>"']/g, (c) => XML_ENTITIES[c]);
 }

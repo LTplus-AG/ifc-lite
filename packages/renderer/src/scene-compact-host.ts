@@ -13,6 +13,7 @@ import { compactRow, COMPACT_RECORD_BYTES, type CompactRef } from '@ifc-lite/geo
 import type { RenderPipeline } from './pipeline.js';
 import type { BatchedMesh } from './types.js';
 import type { ChunkAnchorSource } from './chunk-grid.js';
+import type { CompactStoreStats } from './compact-store.js';
 
 /** Which paged meshes an operation needs on the bucket path: every one (`undefined`), some entities', or one model's. */
 export type CompactSelection = { ids: Iterable<number> } | { modelIndex: number } | undefined;
@@ -83,7 +84,7 @@ export function recordedLane(ref: CompactRef): number {
 export type CompactDecodeReason = 'pipelines' | 'no-cpu-geometry' | 'written' | 'id' | 'texture' | 'placed' | 'moved' | 'lane' | 'exact';
 
 /** What `Scene.getCompactStats` reports: meshes drawn from pages, and those a load decoded to buckets by reason. */
-export interface CompactSceneStats { paged: number; decodes: Readonly<Partial<Record<CompactDecodeReason, number>>> }
+export interface CompactSceneStats { paged: number; decodes: Readonly<Partial<Record<CompactDecodeReason, number>>>; pages: Readonly<CompactStoreStats> }
 
 /** Pages now, wait for the probe in flight, or the scene-wide reason every compact mesh decodes. */
 export type PageMode = 'pages' | 'wait' | Extract<CompactDecodeReason, 'pipelines' | 'no-cpu-geometry'>;

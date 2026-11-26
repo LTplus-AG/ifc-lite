@@ -120,6 +120,8 @@ function upload(scene: Scene, gpu: ReturnType<typeof fakeGpu>, meshes: MeshData[
 
 const pages = (scene: Scene): BatchedMesh[] => scene.getBatchedMeshes().filter((batch) => batch.indexFormat === 'uint16');
 const buckets = (scene: Scene): BatchedMesh[] => scene.getBatchedMeshes().filter((batch) => batch.indexFormat === undefined);
+/** `getCompactStats` without the page counters. */
+const pagedAndDecodes = (scene: Scene) => { const stats = scene.getCompactStats(); return stats && { paged: stats.paged, decodes: stats.decodes }; };
 const entitiesOf = (batches: readonly BatchedMesh[]): number[] => [...new Set(batches.flatMap((batch) => batch.expressIds))].sort((a, b) => a - b);
 
 /** Compact meshes decoded to f32 since the current test began (the counter is process-wide). */
@@ -691,7 +693,7 @@ describe('compact meshes in the scene', () => {
     assert.equal(pages(scene)[0].vertexBuffer.size, 8 * 12, 'trimmed at the drain that filled it: its stream had ended');
     assert.equal(scene.hasStreamingFragments(), false);
     assert.equal(decoded(), 0);
-    assert.deepEqual(scene.getCompactStats(), { paged: 2, decodes: {} });
+    assert.deepEqual(pagedAndDecodes(scene), { paged: 2, decodes: {} });
   });
 
   it('decode the waiting queue to buckets when the probe finds no quantized pipelines', async () => {
@@ -706,7 +708,7 @@ describe('compact meshes in the scene', () => {
     flushAll(scene, gpu);
     assert.deepEqual(entitiesOf(buckets(scene)), [411]);
     assert.equal(pages(scene).length, 0);
-    assert.deepEqual(scene.getCompactStats(), { paged: 0, decodes: { pipelines: 1 } });
+    assert.deepEqual(pagedAndDecodes(scene), { paged: 0, decodes: { pipelines: 1 } });
   });
 
   it('count why each mesh a load sends to buckets was decoded', async () => {
@@ -720,9 +722,9 @@ describe('compact meshes in the scene', () => {
     meshes[2].origin = [1, 0, 0]; // moved after encoding
     upload(scene, gpu, meshes);
     assert.deepEqual(entitiesOf(pages(scene)), [421]);
-    assert.deepEqual(scene.getCompactStats(), { paged: 1, decodes: { lane: 1, moved: 1 } });
+    assert.deepEqual(pagedAndDecodes(scene), { paged: 1, decodes: { lane: 1, moved: 1 } });
     scene.clear();
-    assert.deepEqual(scene.getCompactStats(), { paged: 0, decodes: {} });
+    assert.deepEqual(pagedAndDecodes(scene), { paged: 0, decodes: {} });
   });
 
   it('land on the lattice nodes the bucket path draws the same mesh on, whatever the mesh frame', async () => {

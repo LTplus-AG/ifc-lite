@@ -420,9 +420,9 @@ export class Scene {
 
   /** Draw every compact mesh from buckets again (scene-compact.ts). Returns whether any moved. */
   demoteCompact(): boolean { return this.compact?.demote() ?? false; }
-  /** Compact meshes drawn from pages, and those a load decoded to buckets by reason (scene-compact.ts); null before the page code loaded. */
+  /** Compact meshes drawn from pages, those a load decoded to buckets by reason, and the pages' counters (scene-compact.ts); null before the page code loaded. */
   getCompactStats(): CompactSceneStats | null {
-    return this.compact && { paged: this.compact.meshCount, decodes: { ...this.compact.decodes } };
+    return this.compact && { paged: this.compact.meshCount, decodes: { ...this.compact.decodes }, pages: { ...this.compact.stats } };
   }
 
   /** Every batch the frame draws: the buckets' and streaming fragments', then the compact pages. */

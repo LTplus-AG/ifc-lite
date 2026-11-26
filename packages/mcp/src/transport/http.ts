@@ -297,12 +297,12 @@ export class HttpTransport {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache, no-transform');
       res.setHeader('Connection', 'keep-alive');
-      // Open until the client closes; progress arrives via the session's sink.
       // Tracked before the dispatch so a client that leaves mid-call is removed.
       this.trackSse(session, res);
       const response = await this.dispatch(session, message);
-      // A request answered with nothing was cancelled: end its stream rather than leave it open.
-      if (!res.writableEnded) { if (response) writeSse(res, response); else if (isJsonRpcRequest(message)) res.end(); }
+      if (res.writableEnded) return;
+      if (response) writeSse(res, response);
+      else if (isJsonRpcRequest(message)) res.end(); // cancelled: end its stream
       return;
     }
 

@@ -140,11 +140,11 @@ class IfcProtocolServer extends Server {
         result = await inner(request, ctx);
       } catch (err) {
         if (err instanceof HandlerError) throw err;
-        if (!entered.has(ctx.mcpReq.signal) && !(err instanceof SdkError)) {
+        if (!entered.has(signal) && !(err instanceof SdkError)) {
           throw err instanceof ProtocolError ? err : new ProtocolError(ProtocolErrorCode.InvalidParams, describeThrown(err));
         }
         const message = describeThrown(err);
-        if (!entered.has(ctx.mcpReq.signal)) throw new ProtocolError(ProtocolErrorCode.InternalError, message);
+        if (!entered.has(signal)) throw new ProtocolError(ProtocolErrorCode.InternalError, message);
         this.onerror?.(new Error(`${method} produced a result the protocol refused: ${message}`));
         if (method === 'tools/call') return toolError({ code: ToolErrorCode.INTERNAL_ERROR, message }) as unknown as Result;
         throw new ProtocolError(ProtocolErrorCode.InternalError, message);

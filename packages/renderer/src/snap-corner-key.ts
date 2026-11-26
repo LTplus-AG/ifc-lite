@@ -12,9 +12,12 @@ let nextSetStamp = 1;
  * A set's identity plus its size: hashing thousands of hidden ids on every
  * mouse move would cost more than the query. Hosts replace these sets when
  * visibility changes; an in-place edit that keeps the size is not seen.
+ * Empty sets are all equal: hosts hand over a fresh empty set per pick, and
+ * keying those by identity restarted the grid on (nearly) every pick.
  */
 export function idsOf(s: ReadonlySet<number> | null | undefined): string {
   if (s == null) return '-';
+  if (s.size === 0) return '0';
   let id = setStamps.get(s);
   if (id === undefined) setStamps.set(s, id = nextSetStamp++);
   return `${id}:${s.size}`;

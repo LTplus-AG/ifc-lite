@@ -211,8 +211,8 @@ function harness(pieces: MeshData[], options: Record<string, unknown> = {}) {
   const host = new ManualIdleHost();
   const state = { clock: 0, built: [] as number[], key: 'still' };
   host.onWait = (ms) => { state.clock += ms; };
-  const query = (x: number, y: number) => index.query({
-    x, y, ray: camera.unprojectToRay(x, y, VIEW.width, VIEW.height), camera, viewKey: state.key,
+  const query = (x: number, y: number, extra: Partial<Parameters<ScreenCornerIndex['query']>[0]> = {}) => index.query({
+    x, y, ray: camera.unprojectToRay(x, y, VIEW.width, VIEW.height), camera, viewKey: state.key, ...extra,
     liveViewKey: () => state.key, viewport: VIEW, pieces,
     geometryFor: (m) => { state.clock += 1; state.built.push(m.expressId); return buildGeometryCache(m); },
     options: { idleHost: host, settleMs: 100, maxSliceMs: 5, ...options }, now: () => state.clock,
@@ -322,6 +322,19 @@ describe('screen corner idle build (#11504)', () => {
     t.host.drain();
     assert.equal(t.index.stats()!.complete, true, 'built once the view stopped');
     assert.ok(t.state.clock >= 9 * 16 + 100, 'only after the settle time');
+  });
+
+  it('a fresh empty set per pick (hidden ids, section-excluded ids) is not a view change', () => {
+    const t = harness(boxRow(20));
+    const first = t.at(0, 0);
+    // The viewer hands over new, equal, empty sets on every pick; the grid must not restart for them.
+    const pick = () => t.query(first.x, first.y, { hiddenIds: new Set<number>(), clip: { sectionExcludedIds: new Set<number>() } });
+    pick();
+    t.host.drain();
+    assert.equal(t.index.stats()!.complete, true);
+    for (let k = 0; k < 20; k++) { t.state.clock += 16; assert.ok(pick(), 'the grid still answers'); }
+    assert.equal(t.index.stats()!.gridsStarted, 1, 'no new grid for an equal empty set');
+    assert.equal(t.host.pending, 0);
   });
 
   it('stops its idle work when cleared', () => {

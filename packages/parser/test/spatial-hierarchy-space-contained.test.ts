@@ -71,4 +71,20 @@ describe('elementToStorey for elements a storey reaches only through an IfcSpace
     expect(hierarchy.elementToStorey.get(7)).toBe(5);
     expect(hierarchy.elementToStorey.get(8)).toBe(5);
   });
+
+  it('resolves an element reached through spaces on two storeys to the lowest storey id, whatever the declaration order', () => {
+    // Malformed: E (#7) is contained in space #6 on storey 5 and in space #9 on storey 4.
+    // Storey 5 is aggregated first, so it is visited first; the lowest id still wins,
+    // matching rust/processing `claim_through_spaces` (same model in data_model/tests.rs).
+    const hierarchy = build(
+      [...SPATIAL, [6, 'IFCSPACE'], [9, 'IFCSPACE'], [7, 'IFCFURNISHINGELEMENT'], [8, 'IFCBUILDINGELEMENTPART']],
+      [[1, 2, RelationshipType.Aggregates], [2, 3, RelationshipType.Aggregates],
+        [3, 5, RelationshipType.Aggregates], [3, 4, RelationshipType.Aggregates],
+        [5, 6, RelationshipType.Aggregates], [4, 9, RelationshipType.Aggregates],
+        [6, 7, RelationshipType.ContainsElements], [9, 7, RelationshipType.ContainsElements],
+        [7, 8, RelationshipType.Aggregates]],
+    );
+    expect(hierarchy.elementToStorey.get(7)).toBe(4);
+    expect(hierarchy.elementToStorey.get(8)).toBe(4);
+  });
 });

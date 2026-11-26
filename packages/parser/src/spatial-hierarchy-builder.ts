@@ -50,9 +50,8 @@ interface BuildContext {
    *  SpatialHierarchy field docs); covers aggregated descendants too, unlike `elementToStorey`. */
   elementToContainer: Map<number, number>;
   visited: Set<number>;
-  /** Storeys with the spatial children they aggregate, in visit order; the
-   *  claim-through-spaces pass runs over these once every direct containment
-   *  is in, so storey visit order cannot decide a contested element. */
+  /** Storeys with the spatial children they aggregate; the claim-through-spaces
+   *  pass runs over these once every direct containment is in. */
   spaceClaims: Array<{ storeyId: number; childNodes: SpatialNode[] }>;
   canonicalParent: Map<number, number>; // childId -> its one allowed builder (#4095)
   /** Spatial-structure nodes buildNode will actually visit from IfcProject
@@ -370,11 +369,14 @@ export class SpatialHierarchyBuilder {
  * (`effectiveStoreyResolver`) already walks through the space; the parsed
  * model must answer the same. It runs once every storey has been visited so
  * direct containment, and the parts of a directly contained element, always
- * win whatever order the storeys were visited in.
+ * win whatever order the storeys were visited in. An element reached through
+ * spaces on several storeys (a malformed file) goes to the lowest storey
+ * express id, the same rule as `claim_through_spaces` in the Rust data model.
  */
 function claimThroughSpaces(ctx: BuildContext): void {
   const { relationships, elementToStorey } = ctx;
-  for (const { storeyId, childNodes } of ctx.spaceClaims) {
+  const claims = [...ctx.spaceClaims].sort((a, b) => a.storeyId - b.storeyId);
+  for (const { storeyId, childNodes } of claims) {
     const walk = (nodes: SpatialNode[]): void => {
       for (const node of nodes) {
         if (!isSpaceLikeSpatialType(node.type)) continue;

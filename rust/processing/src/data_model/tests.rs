@@ -3049,6 +3049,43 @@ END-ISO-10303-21;
 fn direct_storey_containment_wins_over_a_space_on_another_storey() {
     let dm = extract_data_model_checked(SPACE_CONTAINED_DIRECT_WINS_IFC);
     assert_eq!(storey_of(&dm, 7), Some(5));
-    // The part of a directly contained element is not handed to the space's storey.
-    assert_ne!(storey_of(&dm, 8), Some(4), "part of a directly contained element");
+    // The part follows its directly contained parent, not the space's storey.
+    assert_eq!(storey_of(&dm, 8), Some(5), "part of a directly contained element");
+}
+
+// Malformed: pump #7 is contained in space #6 on storey #5 and in space #13 on
+// storey #4, and the building aggregates #5 before #4. The lowest storey id
+// wins on both paths (same model in packages/parser
+// spatial-hierarchy-space-contained.test.ts).
+const SPACE_CONTAINED_TWO_STOREYS_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
+#2=IFCSITE('Site0000000000000000001',$,'S',$,$,$,$,$,$,$,$,$,$,$);
+#3=IFCBUILDING('Bldg0000000000000000001',$,'B',$,$,$,$,$,$,$,$,$);
+#4=IFCBUILDINGSTOREY('StorA00000000000000001',$,'A',$,$,$,$,$,$,$);
+#5=IFCBUILDINGSTOREY('StorB00000000000000001',$,'B',$,$,$,$,$,$,$);
+#10=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#2));
+#11=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#2,(#3));
+#12=IFCRELAGGREGATES('Agg00000000000000000003',$,$,$,#3,(#5,#4));
+#6=IFCSPACE('Spac0000000000000000001',$,'Room B',$,$,$,$,$,$,$,$);
+#13=IFCSPACE('Spac0000000000000000002',$,'Room A',$,$,$,$,$,$,$,$);
+#7=IFCFLOWSEGMENT('Pump0000000000000001',$,'Pump',$,$,$,$,$);
+#8=IFCBUILDINGELEMENTPART('Part000000000000000001',$,'Part',$,$,$,$,$);
+#20=IFCRELAGGREGATES('Agg00000000000000000010',$,$,$,#5,(#6));
+#21=IFCRELAGGREGATES('Agg00000000000000000011',$,$,$,#4,(#13));
+#22=IFCRELAGGREGATES('Agg00000000000000000012',$,$,$,#7,(#8));
+#30=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#7),#6);
+#31=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000002',$,$,$,(#7),#13);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn an_element_in_spaces_on_two_storeys_goes_to_the_lowest_storey_id() {
+    let dm = extract_data_model_checked(SPACE_CONTAINED_TWO_STOREYS_IFC);
+    assert_eq!(storey_of(&dm, 7), Some(4));
+    assert_eq!(storey_of(&dm, 8), Some(4), "aggregated part follows");
 }

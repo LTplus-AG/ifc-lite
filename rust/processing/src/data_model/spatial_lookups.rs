@@ -109,13 +109,14 @@ pub(super) fn build_element_lookups(
         }
     }
 
-    // #11468 parity: `packages/parser` also maps an element contained in an
-    // IfcSpace/IfcSpatialZone that a project-reachable storey aggregates (the
-    // space may be nested in another space), plus that element's aggregated
-    // parts, to the storey. Direct containment, orphan rows included, wins, so
-    // this runs after every direct row is in. The walk goes through space-like
-    // nodes only. A space on several storeys goes to the lowest storey id,
-    // which keeps the output deterministic.
+    // #11468 parity with `packages/parser`'s `elementToStorey`: the aggregated
+    // parts of a directly contained element are on its storey, and so is an
+    // element contained in an IfcSpace/IfcSpatialZone that a project-reachable
+    // storey aggregates (the space may be nested in another space), with its
+    // parts. Direct containment, orphan rows included, wins, so this runs after
+    // every direct row is in. The walk goes through space-like nodes only. An
+    // element reached through spaces on several storeys goes to the lowest
+    // storey id; the parser applies the same rule.
     claim_through_spaces(
         relationships,
         nodes_map,
@@ -141,9 +142,6 @@ fn claim_through_spaces(
     is_space_like_spatial_type: &impl Fn(&str) -> bool,
     element_to_storey: &mut Vec<(u32, u32)>,
 ) {
-    if element_to_space.is_empty() {
-        return;
-    }
     let mut parts: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
     for rel in relationships {
         if rel.rel_type.eq_ignore_ascii_case("IFCRELAGGREGATES") {
@@ -151,15 +149,19 @@ fn claim_through_spaces(
         }
     }
     let mut owned: FxHashSet<u32> = element_to_storey.iter().map(|(e, _)| *e).collect();
-    // The aggregated parts of a directly contained element belong to its own
-    // storey (packages/parser propagates it to them), so the space claim must
-    // not hand them to another storey. They get no row here: only the
-    // elements the claim itself reaches do.
-    let mut pending: Vec<u32> = owned.iter().copied().collect();
-    while let Some(id) = pending.pop() {
-        for kid in parts.get(&id).into_iter().flatten() {
-            if owned.insert(*kid) {
-                pending.push(*kid);
+    // The aggregated parts of a directly contained element are on its storey
+    // (packages/parser propagates it to them), so they get that row here, and
+    // the space claim below cannot hand them to another storey. Walked in row
+    // order, so a part shared by two parents takes the first-declared one.
+    let direct: Vec<(u32, u32)> = element_to_storey.clone();
+    for (element_id, storey) in direct {
+        let mut pending = vec![element_id];
+        while let Some(id) = pending.pop() {
+            for kid in parts.get(&id).into_iter().flatten() {
+                if owned.insert(*kid) {
+                    element_to_storey.push((*kid, storey));
+                    pending.push(*kid);
+                }
             }
         }
     }

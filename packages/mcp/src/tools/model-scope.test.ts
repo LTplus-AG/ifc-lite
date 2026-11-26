@@ -181,6 +181,21 @@ describe('a token narrowed to one model', () => {
     expect((projects.structuredContent as { entities: Array<{ globalId?: string }> }).entities.map((e) => e.globalId)).toEqual([guid('BETA')]);
   });
 
+  // #11534: losing read scope, or a cancel, during the parse also stops the registration.
+  it('refuses a load whose read scope was dropped or that was cancelled while the file parsed', async () => {
+    const load = tool('model_load');
+    let live: AuthScope = NARROWED;
+    const before = ctx.registry.get('alpha');
+    const pending = load.handler({ file_path: join(tmp, 'beta.ifc'), model_id: 'alpha' }, { ...ctx, currentScope: () => live });
+    live = { ...NARROWED, scopes: [] };
+    await expect(pending).rejects.toThrow(/no longer has read scope/);
+    const abort = new AbortController();
+    const cancelled = load.handler({ file_path: join(tmp, 'beta.ifc'), model_id: 'alpha' }, { ...ctx, signal: abort.signal });
+    abort.abort();
+    await expect(cancelled).rejects.toThrow(/cancelled/);
+    expect(ctx.registry.get('alpha')).toBe(before);
+  });
+
   // #11534: the allowlist is checked again after the parse, against the live scope.
   it('refuses a load whose model was revoked while the file parsed', async () => {
     const load = tool('model_load');

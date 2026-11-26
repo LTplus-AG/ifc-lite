@@ -25,7 +25,7 @@ import { fmtInt, resolveModel, okResult } from './util.js';
 import { basename } from 'node:path';
 import { deriveModelId, loadIfcModel } from '../loader.js';
 import { resolveSafePath } from '../safe-path.js';
-import { modelAllowed } from '../auth/scope.js';
+import { modelAllowed, scopeAllows } from '../auth/scope.js';
 import type { ToolContext } from '../context.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 
@@ -148,11 +148,21 @@ export const modelLoad: Tool = {
         // tautology, so pass a single-entry allowlist matching the file.
         allowedPaths: [filePath],
       });
-      // The scope may have been narrowed (setScope) while the file parsed.
+      // While the file parsed, the scope may have been narrowed (setScope) or
+      // the call cancelled: check again before the registry replaces anything.
       try {
-        assertMayLoadAs(id, ctx, ctx.currentScope?.() ?? ctx.scope);
+        const live = ctx.currentScope?.() ?? ctx.scope;
+        if (!scopeAllows(live, 'read')) {
+          throw new ToolExecutionError({ code: ToolErrorCode.PERMISSION_DENIED, message: 'This token no longer has read scope.' });
+        }
+        assertMayLoadAs(id, ctx, live);
+        if (ctx.signal.aborted) throw new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message: 'model_load was cancelled.' });
       } catch (refused) {
-        loaded.backend.dispose();
+        try {
+          loaded.backend.dispose();
+        } catch (disposeError) {
+          ctx.log.log('warning', 'model_load: dispose after refusal failed', { error: String(disposeError) });
+        }
         throw refused;
       }
       ctx.registry.add(loaded);

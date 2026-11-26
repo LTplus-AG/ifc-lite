@@ -202,7 +202,9 @@ describe('loadFiles (#11534)', () => {
     await mkdir(join(dir, 'arch'));
     await writeFile(join(dir, 'arch', 'model.ifc'), MODEL);
     await mkdir(join(dir, 'struct'));
-    await writeFile(join(dir, 'struct', 'model.ifc'), MODEL.replace('#40=', '#39= IFCCARTESIANPOINT((1.,0.,0.));\n#40='));
+    const struct = MODEL.replace('#40=', '#39= IFCCARTESIANPOINT((1.,0.,0.));\n#40=');
+    expect(struct).not.toBe(MODEL); // the payloads must really differ
+    await writeFile(join(dir, 'struct', 'model.ifc'), struct);
   });
   afterAll(() => rm(dir, { recursive: true, force: true }));
 

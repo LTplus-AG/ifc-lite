@@ -5,7 +5,7 @@
 // scripts/ci-base-stale.mjs: argument parsing, the path filters it derives
 // from the real test.yml, and the per-PR evaluation over a fake I/O layer.
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -20,11 +20,15 @@ async function load(rel) {
 }
 const cli = await load('./ci-base-stale.mjs');
 const core = await load('./lib/base-stale.mjs');
-const { evaluatePr, loadCache, loadFilterGlobs, parseArgs, readFilterGlobs, run } = cli ?? {};
+const ioMod = await load('./lib/base-stale-io.mjs');
+const { callAllowance, CALL_CAP, evaluatePr, loadCache, loadFilterGlobs, parseArgs, RATE_FLOOR, readFilterGlobs, run } = cli ?? {};
 const { prRelevance } = core ?? {};
+const { BudgetError, changedPaths, createIo, isOwnRun } = ioMod ?? {};
 function ct(name, body) {
   test(name, () => {
-    assert.ok(cli && core, 'scripts/ci-base-stale.mjs or scripts/lib/base-stale.mjs is absent');
+    assert.ok(cli && core && ioMod, 'scripts/ci-base-stale.mjs, scripts/lib/base-stale.mjs or scripts/lib/base-stale-io.mjs is absent');
+    assert.equal(typeof callAllowance, 'function', 'callAllowance is not exported');
+    assert.equal(typeof isOwnRun, 'function', 'isOwnRun is not exported');
     return body();
   });
 }
@@ -38,6 +42,44 @@ ct('parseArgs: the three modes and their required inputs', () => {
   assert.throws(() => parseArgs(['--in-run', '--pr', '3']), /--head-sha, --merge-sha and --measured-dir/);
   assert.throws(() => parseArgs(['--pr', 'x']), /--pr <n> is required/);
   assert.throws(() => parseArgs(['--sweep', '--bogus']), /unknown option/);
+});
+
+ct('parseArgs: a malformed --pr-run is refused, never read as "no replay"', () => {
+  assert.equal(parseArgs(['--pr', '1', '--pr-run', '4503929569']).prRun, 4503929569);
+  for (const bad of ['4503929569x', '0', '-3', '1.5']) {
+    assert.throws(() => parseArgs(['--pr', '1', '--pr-run', bad]), /--pr-run needs a run id/, bad);
+  }
+});
+
+ct('callAllowance: half the headroom above the floor, capped, never negative', () => {
+  assert.equal(callAllowance(1000, CALL_CAP.sweep), CALL_CAP.sweep);
+  assert.equal(callAllowance(RATE_FLOOR + 100, CALL_CAP.sweep), 50);
+  assert.equal(callAllowance(RATE_FLOOR + 1, CALL_CAP.sweep), 0);
+  assert.equal(callAllowance(RATE_FLOOR - 50, CALL_CAP.single), 0);
+  assert.equal(callAllowance(null, CALL_CAP.single), CALL_CAP.single);
+  // Back to back, runs converge on the floor and never cross it.
+  let left = 1000;
+  for (let i = 0; i < 50; i += 1) left -= callAllowance(left, CALL_CAP.sweep);
+  assert.ok(left >= RATE_FLOOR, `reached ${left}`);
+});
+
+ct('io: only a same-repository run may supply a main measurement', () => {
+  assert.equal(isOwnRun({ id: 1, repository_id: 9, head_repository_id: 9 }), true);
+  assert.equal(isOwnRun({ id: 1, repository_id: 9, head_repository_id: 4 }), false, 'a fork run');
+  assert.equal(isOwnRun({ id: 1 }), false, 'origin unknown');
+  assert.equal(isOwnRun(null), false);
+});
+
+ct('io: a renamed file counts at both paths', () => {
+  const paths = changedPaths([{ filename: 'rust/core/src/a.rs', previous_filename: 'rust/export/src/a.rs' }, { filename: 'docs/x.md' }]);
+  assert.deepEqual(paths, ['rust/core/src/a.rs', 'rust/export/src/a.rs', 'docs/x.md']);
+});
+
+ct('io: past the budget a call throws BudgetError before reaching the API', () => {
+  const io = createIo({ repo: 'o/r' });
+  io.setBudget(0);
+  assert.throws(() => io.mainTip(), (err) => err instanceof BudgetError);
+  assert.equal(io.stats.calls, 0);
 });
 
 ct("relevance follows test.yml's filters: the paths that run the perf-ratchet job and the Rust lanes", () => {
@@ -135,7 +177,7 @@ const STALE_PR = { number: 5, headRefOid: 'head5', isDraft: false, isCrossReposi
 const FORK_PR = { number: 6, headRefOid: 'head6', isDraft: false, isCrossRepository: true };
 const realCeilings = () => new Map([['bundle', ceilings.get('bundle')]]);
 
-function runFake({ gate, cacheData = null, prs = [STALE_PR], existing = 'failure', opts = {} }) {
+function runFake({ gate, cacheData = null, prs = [STALE_PR], existing = 'failure', opts = {}, remaining = () => 5000, ioOver = {} }) {
   const dir = mkdtempSync(join(tmpdir(), 'base-stale-run-'));
   const cachePath = join(dir, 'cache.json');
   if (cacheData) writeFileSync(cachePath, JSON.stringify(cacheData));
@@ -149,21 +191,25 @@ function runFake({ gate, cacheData = null, prs = [STALE_PR], existing = 'failure
       stats: { calls: 0, downloads: 0, cacheHits: 0 },
       mainTip: () => 'tip00000001',
       ceilingsAt: realCeilings,
-      coreRemaining: () => 5000,
+      setBudget: () => {},
+      coreRemaining: remaining,
       queueCandidates: () => prs,
       existingStatus: (sha) => { reads.push(sha); return existing; },
       postStatus: (sha, context, status) => { posts.push({ sha, context, ...status }); store.posted[sha] = status.state; },
+      ...ioOver,
     };
   };
   const env = { GITHUB_REPOSITORY: 'o/r', CI_BASE_STALE_GATE: gate };
   const log = console.log;
   console.log = () => {};
+  const jsonOut = join(dir, 'verdicts.jsonl');
   try {
-    run({ mode: 'sweep', cache: cachePath, dryRun: false, ...opts }, env, makeIo);
+    run({ mode: 'sweep', cache: cachePath, dryRun: false, jsonOut, ...opts }, env, makeIo);
   } finally {
     console.log = log;
   }
-  return { posts, reads, saved: loadCache(cachePath) };
+  const rows = readFileSync(jsonOut, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+  return { posts, reads, saved: loadCache(cachePath), rows };
 }
 
 ct('run, on: a stale labelled PR gets a failure status; a fork gets nothing', () => {
@@ -213,6 +259,8 @@ ct('run: a single-PR run keeps the sweep cache entries of other heads', () => {
     mainTip: () => 'tip00000001',
     ceilingsAt: realCeilings,
     pull: () => ({ head: { sha: 'head5', repo: { full_name: 'o/r' } } }),
+    setBudget: () => {},
+    coreRemaining: () => 5000,
     existingStatus: () => null,
     postStatus: () => {},
   });
@@ -224,4 +272,66 @@ ct('run: a single-PR run keeps the sweep cache entries of other heads', () => {
     console.log = log;
   }
   assert.deepEqual(loadCache(cachePath).prFiles.other, ['a']);
+});
+
+ct('run, rollback: a single-PR run after `on` does not mark the rollback sweep done', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'base-stale-run-'));
+  const cachePath = join(dir, 'cache.json');
+  writeFileSync(cachePath, JSON.stringify({ version: 1, lastMode: 'on' }));
+  const makeIo = ({ cache }) => ({
+    ...fakeIo(),
+    store: { mainMeasurements: {}, prMeasurements: {}, prFiles: {}, posted: {}, ...cache },
+    stats: { calls: 0, downloads: 0, cacheHits: 0 },
+    setBudget: () => {},
+    coreRemaining: () => 5000,
+    mainTip: () => 'tip00000001',
+    ceilingsAt: realCeilings,
+    pull: () => ({ head: { sha: 'head9', repo: { full_name: 'o/r' } } }),
+    existingStatus: () => null,
+    postStatus: () => {},
+  });
+  const log = console.log;
+  console.log = () => {};
+  try {
+    run({ mode: 'pr', pr: 9, cache: cachePath, dryRun: false }, { GITHUB_REPOSITORY: 'o/r' }, makeIo);
+  } finally {
+    console.log = log;
+  }
+  assert.equal(loadCache(cachePath).lastMode, 'on');
+  // So the next shadow sweep still reads (and releases) every labelled head.
+  const { reads, posts } = runFake({ gate: 'shadow', cacheData: loadCache(cachePath) });
+  assert.deepEqual(reads, ['head5']);
+  assert.equal(posts[0].state, 'success');
+});
+
+ct('run, budget: a sweep cut short posts nothing for the rest and keeps the rollback pending', () => {
+  const second = { ...STALE_PR, number: 7, headRefOid: 'head7' };
+  let n = 0;
+  const { posts, reads, saved, rows } = runFake({
+    gate: 'shadow',
+    cacheData: { version: 1, lastMode: 'on' },
+    prs: [STALE_PR, second],
+    ioOver: { prFiles: () => { n += 1; if (n === 1) return ['apps/viewer/src/a.ts']; throw new BudgetError('files of PR #7'); } },
+  });
+  assert.deepEqual(reads, ['head5'], 'the cut-short head is not read');
+  assert.deepEqual(posts.map((p) => p.sha), ['head5']);
+  assert.equal(saved.lastMode, 'on', 'an incomplete sweep must not mark the rollback done');
+  assert.equal(rows[1].verdict, 'unknown');
+  assert.match(rows[1].reasons[0], /^not judged: API budget/);
+  assert.equal(rows[1].posted, null);
+});
+
+ct('run, budget: the rate floor is re-read between PRs and stops the sweep', () => {
+  const second = { ...STALE_PR, number: 7, headRefOid: 'head7' };
+  const left = [1000, RATE_FLOOR - 1];
+  const { rows, saved } = runFake({ gate: 'shadow', cacheData: { version: 1, lastMode: 'shadow' }, prs: [STALE_PR, second], remaining: () => left.shift() ?? 0 });
+  assert.equal(rows.length, 2);
+  assert.notEqual(rows[0].verdict, 'unknown');
+  assert.match(rows[1].reasons[0], /not judged: .* core API requests left/);
+  assert.equal(saved.lastMode, 'shadow');
+});
+
+ct('run: under the floor at start nothing is read, an empty evidence file is written', () => {
+  const { rows, reads, posts } = runFake({ gate: 'on', remaining: () => RATE_FLOOR });
+  assert.deepEqual([rows, reads, posts], [[], [], []]);
 });

@@ -57,12 +57,28 @@ import { appendFileSync, existsSync, readdirSync, readFileSync, writeFileSync } 
 import { join } from 'node:path';
 import { gatingFilters, parseFilterBlock, splitJobs } from './lib/ci-path-coverage.mjs';
 import { combine, evaluatePerf, evaluateRust, parseGateMode, prRelevance, QUEUE_LABEL, STATUS_CONTEXT, statusFor, summaryLine } from './lib/base-stale.mjs';
-import { createIo, slim } from './lib/base-stale-io.mjs';
+import { BudgetError, createIo, slim } from './lib/base-stale-io.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 import { loadMeasuredFile } from './perf-ratchet/ceilings.mjs';
 
-/** Below this many core API requests left, a sweep stops rather than starve other workflows. */
+/** Below this many core API requests left, a run stops rather than starve other workflows. */
 export const RATE_FLOOR = 300;
+/**
+ * Most counted calls one run may make. Measured 2026-11-26 over the 7 labelled
+ * PRs then open: a cold sweep made 71 calls, a warm one (no head moved) 15.
+ */
+export const CALL_CAP = { sweep: 150, single: 60 };
+
+/**
+ * This run's allowance: at most half of what is left above the floor, and
+ * never more than the cap. Each run spends at most half the headroom, so
+ * however many main pushes land in an hour, this workflow alone cannot take
+ * the shared token below RATE_FLOOR, and a busy hour backs off on its own.
+ */
+export function callAllowance(remaining, cap) {
+  if (remaining === null) return cap;
+  return Math.max(0, Math.min(cap, Math.floor((remaining - RATE_FLOOR) / 2)));
+}
 
 export function parseArgs(argv) {
   const opts = { mode: null, pr: null, dryRun: false };
@@ -80,7 +96,11 @@ export function parseArgs(argv) {
     else if (flag === '--merge-sha') opts.mergeSha = value();
     else if (flag === '--measured-dir') opts.measuredDir = value();
     else if (flag === '--main-sha') opts.mainSha = value();
-    else if (flag === '--pr-run') opts.prRun = Number(value());
+    else if (flag === '--pr-run') {
+      const raw = value();
+      if (!/^[1-9]\d*$/.test(raw)) throw new Error(`--pr-run needs a run id, got ${raw}`);
+      opts.prRun = Number(raw);
+    }
     else if (flag === '--cache') opts.cache = value();
     else if (flag === '--json-out') opts.jsonOut = value();
     else if (flag === '--trigger') opts.trigger = value();
@@ -158,7 +178,8 @@ export function evaluatePr(io, { pr, headSha, mainTip, ceilings, globs, measured
     const rust = evaluateRust({ relevant: rel.rust, prFiles: files, rustGlobs: globs.rustGlobs, testedBase: tb, moved });
     return { ...record, ...combine(perf, rust), perf: { verdict: perf.verdict, rows: perf.rows }, rust: { verdict: rust.verdict, mainRustFiles: rust.mainRustFiles, overlap: rust.overlap } };
   } catch (err) {
-    return { ...record, verdict: 'unknown', reasons: [`harness: ${err.message.split('\n')[0]}`] };
+    const budget = err instanceof BudgetError;
+    return { ...record, verdict: 'unknown', reasons: [`${budget ? 'not judged' : 'harness'}: ${err.message.split('\n')[0]}`], ...(budget ? { budget: true } : {}) };
   }
 }
 
@@ -181,8 +202,14 @@ export function loadCache(path) {
 /**
  * A sweep prunes per-head entries to the heads it just judged (the labelled
  * PRs); a single-PR run keeps every entry, or it would empty the sweep's cache.
+ *
+ * `lastMode` is the gate mode of the last sweep that read every head it had
+ * to. Only such a sweep may move it: a single-PR run, or a sweep cut short by
+ * the API budget, carries the old value through, so the first complete sweep
+ * after `on` still reads every labelled head's status and releases the
+ * failures the in-run step posted (they are not in `posted`).
  */
-function saveCache(path, store, liveHeads, gateMode) {
+function saveCache(path, store, liveHeads, lastMode) {
   if (!path) return;
   const live = (map) => Object.fromEntries(Object.entries(map ?? {}).filter(([head]) => !liveHeads || liveHeads.has(head)));
   // Main entries are immutable per tree; keep the newest 400 so the file stays small.
@@ -193,7 +220,7 @@ function saveCache(path, store, liveHeads, gateMode) {
     prMeasurements: live(store.prMeasurements),
     prFiles: live(store.prFiles),
     posted: live(store.posted),
-    lastMode: gateMode,
+    lastMode,
   }));
 }
 
@@ -203,7 +230,8 @@ function finish(opts, records, extra) {
   const header = `### Base-stale signal (${extra.gateMode}${opts.dryRun ? ', dry run' : ''})\n\n` +
     `Judged against main ${String(extra.mainTip).slice(0, 9)} at ${extra.evaluatedAt}. A verdict is refreshed on the PR's next run, ` +
     'on every push to main for labelled PRs, and when the queue label is added; until then it is only as fresh as this.\n\n';
-  const body = `${header}${lines.join('\n') || '- no PR evaluated'}\n\nAPI calls: ${extra.stats.calls} (${extra.stats.downloads} downloads, ${extra.stats.cacheHits} cache hits)\n`;
+  const allowed = extra.allowance === undefined || extra.allowance === Infinity ? '' : ` of ${extra.allowance} allowed`;
+  const body = `${header}${lines.join('\n') || '- no PR evaluated'}\n\nAPI calls: ${extra.stats.calls}${allowed} (${extra.stats.downloads} downloads, ${extra.stats.cacheHits} cache hits)\n`;
   console.log(body);
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, body);
   if (opts.jsonOut) writeFileSync(opts.jsonOut, records.map((r) => JSON.stringify({ ...r, ...extra, stats: undefined })).join('\n') + (records.length ? '\n' : ''));
@@ -216,19 +244,22 @@ export function run(opts, env = process.env, makeIo = createIo) {
   const cache = loadCache(opts.cache);
   const io = makeIo({ repo, cache });
   const evaluatedAt = new Date().toISOString();
+  const sweep = opts.mode === 'sweep';
+  // `rate_limit` is free; read it before spending anything.
+  const allowance = callAllowance(io.coreRemaining(), sweep ? CALL_CAP.sweep : CALL_CAP.single);
+  if (allowance === 0) {
+    console.log(`::notice title=base-stale::skipped: under ${RATE_FLOOR} core API requests to spare; verdicts are not refreshed this time`);
+    finish(opts, [], { gateMode, mainTip: opts.mainSha ?? 'not read', evaluatedAt, stats: io.stats, skipped: 'rate-floor' });
+    return 0;
+  }
+  io.setBudget(allowance);
   const globs = loadFilterGlobs();
   const mainTip = opts.mainSha ?? io.mainTip();
   const ceilings = io.ceilingsAt(mainTip);
   const targetUrl = env.GITHUB_RUN_ID ? `${env.GITHUB_SERVER_URL ?? 'https://github.com'}/${repo}/actions/runs/${env.GITHUB_RUN_ID}` : undefined;
 
   let targets;
-  if (opts.mode === 'sweep') {
-    const remaining = io.coreRemaining();
-    if (remaining !== null && remaining < RATE_FLOOR) {
-      console.log(`::notice title=base-stale::sweep skipped: ${remaining} core API requests left (floor ${RATE_FLOOR}); verdicts are not refreshed this time`);
-      finish(opts, [], { gateMode, mainTip, evaluatedAt, stats: io.stats });
-      return 0;
-    }
+  if (sweep) {
     targets = io.queueCandidates(QUEUE_LABEL).map((p) => ({ pr: p.number, headSha: p.headRefOid, fork: p.isCrossRepository }));
   } else if (opts.mode === 'in-run') {
     // No download (the measurement step failed): fall back to the PR's newest
@@ -242,24 +273,49 @@ export function run(opts, env = process.env, makeIo = createIo) {
   }
 
   const records = [];
+  // Whether every head this sweep had to read was read; see saveCache.
+  let complete = true;
+  let stopped = null;
   for (const t of targets) {
+    if (!stopped && sweep && records.length > 0) {
+      // Other workflows spend the same token while this one runs.
+      const left = io.coreRemaining();
+      if (left !== null && left < RATE_FLOOR) stopped = `${left} core API requests left (floor ${RATE_FLOOR})`;
+    }
+    if (stopped) {
+      complete = false;
+      records.push({ pr: t.pr, head: t.headSha, mainTip, verdict: 'unknown', reasons: [`not judged: ${stopped}`], trigger: opts.trigger ?? opts.mode, gateMode, evaluatedAt, fork: t.fork, posted: null });
+      continue;
+    }
     let headSha = t.headSha;
     let fork = t.fork;
     if (!headSha) {
-      const pull = io.pull(t.pr);
+      let pull;
+      try {
+        pull = io.pull(t.pr);
+      } catch (err) {
+        if (!(err instanceof BudgetError)) throw err;
+        stopped = 'API budget for this run spent';
+        records.push({ pr: t.pr, head: null, mainTip, verdict: 'unknown', reasons: [`not judged: ${stopped}`], trigger: opts.trigger ?? opts.mode, gateMode, evaluatedAt, fork, posted: null });
+        continue;
+      }
       headSha = pull.head.sha;
       fork = pull.head.repo?.full_name !== repo;
     }
     const rec = { ...evaluatePr(io, { pr: t.pr, headSha, mainTip, ceilings, globs, measured: t.measured ?? null, prRun: opts.prRun ?? null }), trigger: opts.trigger ?? opts.mode, gateMode, evaluatedAt };
+    // A verdict the budget cut short is no answer: post nothing, keep the
+    // head's old status, and stop the sweep before it spends more.
+    const budgetCut = rec.budget === true;
+    if (budgetCut) stopped = 'API budget for this run spent';
     let status = null;
-    if (!fork && !opts.dryRun) {
+    if (!fork && !opts.dryRun && !budgetCut) {
       try {
         // Shadow reads the existing status only where `on` may have left a
         // non-success: always for a single PR; in a sweep, for every head on
         // the first sweep after the gate left `on` (the in-run step's posts are
         // not in this cache), then only for heads this workflow last posted a
         // non-success on. A settled shadow sweep reads no statuses at all.
-        const leftOn = !cache || cache.lastMode === 'on';
+        const leftOn = cache?.lastMode !== 'shadow';
         const mayHold = opts.mode !== 'sweep' || leftOn || (io.store.posted[headSha] && io.store.posted[headSha] !== 'success');
         const existing = gateMode === 'on' || !mayHold ? null : io.existingStatus(headSha, STATUS_CONTEXT);
         status = statusFor(rec, gateMode, existing);
@@ -267,12 +323,16 @@ export function run(opts, env = process.env, makeIo = createIo) {
       } catch (err) {
         console.log(`::warning title=base-stale::could not read or post the ${STATUS_CONTEXT} status on #${t.pr}: ${err.message.split('\n')[0]}`);
         status = { state: 'not-posted', description: err.message.split('\n')[0] };
+        complete = false;
       }
     }
     records.push({ ...rec, fork, posted: status });
   }
-  saveCache(opts.cache, io.store, opts.mode === 'sweep' ? new Set(records.map((r) => r.head)) : null, gateMode);
-  finish(opts, records, { gateMode, mainTip, evaluatedAt, stats: io.stats });
+  if (stopped) complete = false;
+  if (stopped) console.log(`::notice title=base-stale::stopped early: ${stopped}; the rest are logged as not judged`);
+  const lastMode = sweep && complete && !opts.dryRun ? gateMode : (cache?.lastMode ?? null);
+  saveCache(opts.cache, io.store, sweep ? new Set(records.map((r) => r.head).filter(Boolean)) : null, lastMode);
+  finish(opts, records, { gateMode, mainTip, evaluatedAt, stats: io.stats, allowance });
   return 0;
 }
 

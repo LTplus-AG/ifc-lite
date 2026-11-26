@@ -14,7 +14,10 @@
  * artifact test.yml already uploads (no build, no search over runs), and an
  * optional cache (`cache`) keeps immutable answers across sweeps: a main
  * tree's measurement never changes, and a PR head's measurement only changes
- * when a newer run on that head measures again.
+ * when a newer run on that head measures again. Every counted call also
+ * spends a per-run allowance (`setBudget`); past it, the call throws
+ * `BudgetError` instead of reaching the API, so a busy day cannot drain the
+ * token the other workflows share.
  */
 
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -28,6 +31,32 @@ export const MEASURED_ARTIFACTS = ['perf-ratchet-measured', 'perf-ratchet-measur
 const NEGATIVE_TTL_MS = 2 * 60 * 60 * 1000;
 const COMPARE_FILE_CAP = 300;
 const COMPARE_COMMIT_CAP = 250;
+/** Runs tried per tree: a tree with no measuring run among its newest few is a miss, not a scan. */
+const TREE_RUN_CAP = 5;
+
+/** A read refused because this run has spent its API allowance. */
+export class BudgetError extends Error {
+  constructor(what) {
+    super(`API budget for this run spent before ${what}`);
+    this.name = 'BudgetError';
+  }
+}
+
+/**
+ * A run of THIS repository's code. A fork's `pull_request` run executes the
+ * fork's workflow, so it can upload a `tested-tree-<tree>` artifact naming any
+ * tree with any values (the same check as `isGreenBatchRun` in
+ * ci-push-replay.mjs). Main's measurements are shared by every PR's verdict
+ * and cached, so only a same-repository run may supply one.
+ */
+export function isOwnRun(workflowRun) {
+  return Boolean(workflowRun?.id) && workflowRun.repository_id !== undefined && workflowRun.head_repository_id === workflowRun.repository_id;
+}
+
+/** `pulls/<n>/files` entries to paths: a rename counts at both ends, or a move out of a crate hides it. */
+export function changedPaths(entries) {
+  return entries.flatMap((f) => (f.previous_filename ? [f.filename, f.previous_filename] : [f.filename]));
+}
 
 /** Only what the decision reads, so the cross-sweep cache stays small. */
 export function slim(measured) {
@@ -37,9 +66,15 @@ export function slim(measured) {
 export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => Date.now() }) {
   const stats = { calls: 0, downloads: 0, cacheHits: 0 };
   const store = { mainMeasurements: {}, prMeasurements: {}, prFiles: {}, posted: {}, ...(cache ?? {}) };
+  let budget = Infinity;
 
-  const api = (path, what) => {
+  /** Count one request against this run's allowance, or refuse it. */
+  const spend = (what) => {
+    if (stats.calls >= budget) throw new BudgetError(what);
     stats.calls += 1;
+  };
+  const api = (path, what) => {
+    spend(what);
     return gh(['api', path], what);
   };
   const git = (args) => execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).trim();
@@ -56,7 +91,7 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
       for (const name of MEASURED_ARTIFACTS) {
         const art = byName.get(name);
         if (!art) continue;
-        stats.calls += 1;
+        spend(`artifact ${name} of run ${runId}`);
         stats.downloads += 1;
         const zip = spawnSync('gh', ['api', `repos/${repo}/actions/artifacts/${art.id}/zip`], { maxBuffer: 64 * 1024 * 1024 });
         if (zip.status !== 0) throw new Error(`downloading artifact ${name} of run ${runId} failed: ${String(zip.stderr).trim()}`);
@@ -86,7 +121,10 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
       return hit.families ? { sha, families: hit.families, runId: hit.runId } : null;
     }
     const found = api(`repos/${repo}/actions/artifacts?name=tested-tree-${tree}&per_page=20`, `the tested-tree artifact of ${sha}`);
-    const candidates = (found.artifacts ?? []).filter((a) => !a.expired && a.workflow_run?.id).sort((a, b) => b.id - a.id);
+    const candidates = (found.artifacts ?? [])
+      .filter((a) => !a.expired && isOwnRun(a.workflow_run))
+      .sort((a, b) => b.id - a.id)
+      .slice(0, TREE_RUN_CAP);
     for (const art of candidates) {
       const families = runMeasurement(art.workflow_run.id);
       if (families) {
@@ -176,20 +214,21 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
   }
 
   /**
-   * The PR's changed files (REST, paginated; GitHub stops at 3,000). Cached
-   * per head SHA: a head's diff against its merge base does not change.
+   * The PR's changed files (REST, paginated; GitHub stops at 3,000), with a
+   * renamed file's old path too. Cached per head SHA: a head's diff against
+   * its merge base does not change. Counted as one call per page.
    */
   function prFiles(number, headSha = null) {
     if (headSha && store.prFiles[headSha]) {
       stats.cacheHits += 1;
       return store.prFiles[headSha];
     }
-    stats.calls += 1;
-    const out = execFileSync('gh', ['api', '--paginate', `repos/${repo}/pulls/${number}/files?per_page=100`, '--jq', '.[].filename'], {
-      encoding: 'utf8',
-      maxBuffer: 64 * 1024 * 1024,
-    });
-    const files = out.split('\n').filter(Boolean);
+    const files = [];
+    for (let page = 1; ; page += 1) {
+      const entries = api(`repos/${repo}/pulls/${number}/files?per_page=100&page=${page}`, `files of PR #${number}`);
+      files.push(...changedPaths(entries));
+      if (entries.length < 100 || page >= 30) break;
+    }
     if (headSha) store.prFiles[headSha] = files;
     return files;
   }
@@ -235,14 +274,14 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
   function postStatus(sha, context, { state, description }, targetUrl) {
     const args = ['api', '--method', 'POST', `repos/${repo}/statuses/${sha}`, '-f', `state=${state}`, '-f', `context=${context}`, '-f', `description=${description}`];
     if (targetUrl) args.push('-f', `target_url=${targetUrl}`);
-    stats.calls += 1;
+    spend(`the ${context} status on ${sha}`);
     gh(args, `the ${context} status on ${sha}`);
     store.posted[sha] = state;
   }
 
   /** Open, labelled, non-draft PRs on main, with their head SHA. */
   function queueCandidates(label) {
-    stats.calls += 1;
+    spend(`open PRs labelled ${label}`);
     const list = gh(
       ['pr', 'list', '--repo', repo, '--label', label, '--state', 'open', '--base', 'main', '--limit', '200', '--json', 'number,headRefOid,isDraft,isCrossRepository'],
       `open PRs labelled ${label}`,
@@ -255,9 +294,15 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
     return gh(['api', 'rate_limit'], 'the API rate limit').resources?.core?.remaining ?? null;
   }
 
+  /** Cap this run's counted calls (including those already made). */
+  function setBudget(n) {
+    budget = n;
+  }
+
   return {
     stats,
     store,
+    setBudget,
     pull,
     mainTip,
     mainMeasurementAt,

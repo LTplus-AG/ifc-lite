@@ -289,19 +289,13 @@ export class MCPServer implements ProtocolDomain {
       });
     }
 
-    // Tools see a plain AbortError on cancel (they check `error.name`); the SDK
-    // aborts its own signal with the client's reason or an SdkError instead.
-    const abort = new AbortController();
-    const forwardAbort = () => abort.abort();
-    if (channel.signal.aborted) forwardAbort();
-    else channel.signal.addEventListener('abort', forwardAbort, { once: true });
     const ctx: ToolContext = {
       registry: this.registry,
       scope: this.scope,
       currentScope: () => this.scope,
       progress: channel.progress,
       log: this.logger,
-      signal: abort.signal,
+      signal: channel.signal,
       config: this.config,
       // Read at call time — `setScope` may refresh the principal mid-session.
       session: { id: this.sessionId, principal: this.scope.user },
@@ -326,7 +320,6 @@ export class MCPServer implements ProtocolDomain {
         message: err instanceof Error ? err.message : String(err),
       });
     } finally {
-      channel.signal.removeEventListener('abort', forwardAbort);
       if (!this.registry.onChange) this.syncListedModels();
     }
   }

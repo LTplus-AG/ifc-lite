@@ -97,14 +97,19 @@ const entered = new WeakSet<ServerContext>();
  *   structured envelope.
  */
 class IfcProtocolServer extends Server {
-  /** Whether the initialize result has gone out; requests before that are refused. */
-  isReady: () => boolean = () => false;
-  /** The SDK aborted request `id` (client cancel, or close) and will not answer it. */
-  onAbandoned?: (id: string | number) => void;
   /** Request handlers running now, including aborted ones that have not returned. */
   running = 0;
   /** Runs after the SDK answered `initialize`, with the request and the negotiated result. */
   onInitialize?: (params: { protocolVersion: string; clientInfo?: unknown }, result: { protocolVersion: string }) => void;
+
+  constructor(
+    info: { name: string; version: string },
+    options: ConstructorParameters<typeof Server>[1],
+    /** Whether the initialize result has gone out (requests before that are refused), and where an aborted request is reported. */
+    private readonly link: { readonly handshakeSent: boolean; abandon(id: string | number): void },
+  ) {
+    super(info, options);
+  }
 
   protected override _wrapHandler(
     method: string,
@@ -113,11 +118,13 @@ class IfcProtocolServer extends Server {
     const inner = super._wrapHandler(method, handler);
     const opening = method === 'initialize' || method === 'ping';
     return async (request, ctx) => {
-      if (!opening && !this.isReady()) {
+      if (!opening && !this.link.handshakeSent) {
         throw new ProtocolError(JsonRpcErrorCode.ServerNotInitialized, 'Server not initialized — send `initialize` first');
       }
       const signal = ctx.mcpReq.signal;
-      const abandoned = () => this.onAbandoned?.(ctx.mcpReq.id);
+      const id = ctx.mcpReq.id;
+      // The SDK sends nothing for a request it aborted (client cancel, or close).
+      const abandoned = () => this.link.abandon(id);
       if (signal.aborted) abandoned();
       else signal.addEventListener('abort', abandoned, { once: true });
       this.running++;
@@ -152,6 +159,23 @@ class IfcProtocolServer extends Server {
 }
 
 /**
+ * Runs `fn` with a signal that aborts with a plain AbortError when `source`
+ * aborts. Tools check `error.name === 'AbortError'`; the SDK aborts its own
+ * signal with the client's reason or an SdkError instead.
+ */
+async function withPlainAbort<T>(source: AbortSignal, fn: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const plain = new AbortController();
+  const forward = () => plain.abort();
+  if (source.aborted) forward();
+  else source.addEventListener('abort', forward, { once: true });
+  try {
+    return await fn(plain.signal);
+  } finally {
+    source.removeEventListener('abort', forward);
+  }
+}
+
+/**
  * One connection. Holds the per-connection protocol state (handshake,
  * resource subscriptions) and forwards domain events to the client.
  */
@@ -162,6 +186,7 @@ export class ProtocolSession {
 
   constructor(private readonly domain: ProtocolDomain, sink: () => LoopbackSink | null) {
     const capabilities = domain.capabilities;
+    this.transport = new LoopbackTransport(sink);
     this.server = new IfcProtocolServer(
       { name: domain.name, version: domain.version },
       {
@@ -169,9 +194,9 @@ export class ProtocolSession {
         instructions: domain.instructions,
         supportedProtocolVersions: NEGOTIABLE_VERSIONS,
       },
+      this.transport,
     );
     this.server.onerror = (err) => domain.baseLogger.log('warning', 'MCP protocol error', { error: describeThrown(err) });
-    this.transport = new LoopbackTransport(sink);
     this.register(capabilities);
     void this.server.connect(this.transport);
   }
@@ -214,8 +239,6 @@ export class ProtocolSession {
 
   private register(capabilities: ServerCapabilities): void {
     const s = this.server;
-    s.isReady = () => this.transport.handshakeSent;
-    s.onAbandoned = (id) => this.transport.abandon(id);
     // The SDK answers initialize and negotiates the version; we only record it.
     s.onInitialize = (params, result) => {
       this.domain.initialized({ client: params.clientInfo, protocol: params.protocolVersion, negotiated: result.protocolVersion });
@@ -224,10 +247,10 @@ export class ProtocolSession {
       s.setRequestHandler(method, this.guard(method, handler) as never);
     if (capabilities.tools) {
       on('tools/list', () => this.domain.listTools());
-      on('tools/call', (request, ctx) => this.domain.callTool(request.params as CallToolParams, {
-        signal: ctx.mcpReq.signal,
+      on('tools/call', (request, ctx) => withPlainAbort(ctx.mcpReq.signal, (signal) => this.domain.callTool(request.params as CallToolParams, {
+        signal,
         progress: this.progressFor(request.params._meta?.progressToken, ctx),
-      }));
+      })));
     }
     if (capabilities.resources) {
       on('resources/list', () => this.domain.listResources());

@@ -302,15 +302,16 @@ export class HttpTransport {
       // that leaves mid-call is still removed.
       this.trackSse(session, res);
       const response = await this.dispatch(session, message);
-      if (response && !res.writableEnded) writeSse(res, response);
-      // A cancelled request has no response: end its stream instead of leaving it open.
-      else if (!response && isJsonRpcRequest(message) && !res.writableEnded) res.end();
+      if (res.writableEnded) return;
+      if (response) writeSse(res, response);
+      // A request answered with nothing was cancelled: end its stream instead of leaving it open.
+      else if (isJsonRpcRequest(message)) res.end();
       return;
     }
 
-    // Plain JSON response (the common case). A request the server answered with
-    // nothing was cancelled (or its session ended mid-call); the POST still
-    // needs a JSON-RPC body, so it says so.
+    // Plain JSON response (the common case). A request answered with nothing
+    // was cancelled (or its session ended mid-call); the POST still needs a
+    // JSON-RPC body, so it says so.
     const response = await this.dispatch(session, message)
       ?? (isJsonRpcRequest(message) ? errorResponse(message.id, JsonRpcErrorCode.RequestCancelled, 'Request cancelled') : null);
     res.statusCode = 200;

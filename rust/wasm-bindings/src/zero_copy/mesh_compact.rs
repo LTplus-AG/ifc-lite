@@ -90,7 +90,7 @@ enum Refusal {
     Extent = 4,
     /// More welded vertices than u16 indices address.
     WeldedVertices = 5,
-    /// Loses more than 1% of its area to triangles the lattice collapses or turns past 25°: at the base level with
+    /// Loses more than 1% of its area to triangles the lattice collapses, or 5% to faces it turns past 20°: at the base level with
     /// no finer level holding it (whatever stops the retry there, the collapse is why it left the
     /// base level), or at the coarser level for a mesh too wide for the base window.
     Collapse = 6,

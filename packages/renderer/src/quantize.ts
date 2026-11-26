@@ -176,21 +176,71 @@ export function quantizeInterleaved(
 export const MAX_COLLAPSED_AREA_FRACTION = 0.01;
 
 /**
- * cos² of the largest turn a face may take on the lattice: 25°. The shader
- * shades a face by its snapped normal (screen-space derivatives), so a face
- * turned further reads as another surface. A Ø12 mm rebar collapses nothing on
- * the ~1 mm lattice but turns 2 to 20% of its area past this, wherever it sits
- * on the lattice; at 30° some positions dropped under 1% (#11444).
+ * Share of one entity's surface whose face may flip or turn past 20°
+ * (`MIN_LATTICE_COS2`) without collapsing before its batch stays f32 (#11444).
+ * The shader shades a face by its snapped normal, so a turned face reads as
+ * another surface. A Ø12 mm rebar collapses nothing on the ~1 mm lattice but
+ * turns at least 10% of its area past 20° wherever it sits; chamfered everyday
+ * pieces turn up to about 4%, which stays quantized.
  */
-const MIN_LATTICE_COS2 = Math.cos((25 * Math.PI) / 180) ** 2;
+const MAX_TURNED_AREA_FRACTION = 0.05;
+/** cos² of the 20° turn `MAX_TURNED_AREA_FRACTION` counts (the wasm encoder's `MIN_LATTICE_COS2`). */
+const MIN_LATTICE_COS2 = Math.cos((20 * Math.PI) / 180) ** 2;
+
+/** Source area (as `|n|`) of some triangles, and how much of it the lattice collapses, or keeps but turns. */
+export interface LatticeLoss { area: number; collapsed: number; turned: number }
+
+/** Whether the lattice visibly destroys the shape `loss` sums up: the batch gate's rule for one entity. */
+export function latticeLoses(loss: LatticeLoss): boolean {
+  return loss.collapsed > loss.area * MAX_COLLAPSED_AREA_FRACTION || loss.turned > loss.area * MAX_TURNED_AREA_FRACTION;
+}
+
+/** Each vertex's lattice node, `round(p / QUANT_STEP)` per axis, from positions at `strideFloats`. */
+function latticeNodes(vertexData: Float32Array, strideFloats: number): Int32Array {
+  const vertexCount = (vertexData.length / strideFloats) | 0;
+  const nodes = new Int32Array(vertexCount * 3);
+  for (let v = 0; v < vertexCount; v++) {
+    for (let axis = 0; axis < 3; axis++) nodes[v * 3 + axis] = Math.round(vertexData[v * strideFloats + axis] / QUANT_STEP);
+  }
+  return nodes;
+}
+
+/**
+ * Add triangle `a, b, c` to `loss`: its source `|n|`, and that again under
+ * `collapsed` and `turned` when its lattice nodes lose the face. A degenerate
+ * source triangle adds nothing.
+ */
+function addLatticeTriangle(
+  loss: LatticeLoss, vertexData: Float32Array, strideFloats: number, nodes: Int32Array, a: number, b: number, c: number,
+): void {
+  const pa = a * strideFloats, pb = b * strideFloats, pc = c * strideFloats;
+  const ux = vertexData[pb] - vertexData[pa], uy = vertexData[pb + 1] - vertexData[pa + 1], uz = vertexData[pb + 2] - vertexData[pa + 2];
+  const vx = vertexData[pc] - vertexData[pa], vy = vertexData[pc + 1] - vertexData[pa + 1], vz = vertexData[pc + 2] - vertexData[pa + 2];
+  const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+  const area = Math.sqrt(nx * nx + ny * ny + nz * nz);
+  if (!(area > 0)) return;
+  loss.area += area;
+  const na = a * 3, nb = b * 3, nc = c * 3;
+  const qux = nodes[nb] - nodes[na], quy = nodes[nb + 1] - nodes[na + 1], quz = nodes[nb + 2] - nodes[na + 2];
+  const qvx = nodes[nc] - nodes[na], qvy = nodes[nc + 1] - nodes[na + 1], qvz = nodes[nc + 2] - nodes[na + 2];
+  // Integer lattice offsets: every product is exact, so zero means collapsed.
+  const qnx = quy * qvz - quz * qvy, qny = quz * qvx - qux * qvz, qnz = qux * qvy - quy * qvx;
+  const qnSq = qnx * qnx + qny * qny + qnz * qnz;
+  if (qnSq === 0) { loss.collapsed += area; return; }
+  const turn = nx * qnx + ny * qny + nz * qnz;
+  if (turn <= 0 || turn * turn < MIN_LATTICE_COS2 * area * area * qnSq) loss.turned += area;
+}
 
 /**
  * True when snapping a batch onto the lattice would visibly destroy shape:
  * some entity loses more than `MAX_COLLAPSED_AREA_FRACTION` of its triangle
- * area to triangles that become zero-area, flip, or turn their face by more
- * than 25° (`MIN_LATTICE_COS2`). Sub-millimetre slivers occur in most models
- * and stay quantized; small round members (Ø≈2 mm rods, railing bars, thin
- * pipes, rebar) collapse or crumple wholesale and must not (#9068, #11444).
+ * area to triangles that become zero-area, or more than
+ * `MAX_TURNED_AREA_FRACTION` to faces that turn past 20°. Sub-millimetre
+ * slivers and small chamfers occur in most models and stay quantized; small
+ * round members (Ø≈2 mm rods, railing bars, thin pipes, rebar) collapse or
+ * crumple wholesale and must not (#9068, #11444). Scene routing keeps such
+ * entities in buckets of their own (`markOffLattice`), so this mostly confirms
+ * what routing decided.
  *
  * `quantMin` is lattice-aligned, so `round(p / QUANT_STEP)` is the node
  * `quantizeInterleaved` writes; the integer cross product is exact.
@@ -200,46 +250,49 @@ export function latticeCollapsesGeometry(
   strideFloats: number,
   indices: Uint32Array,
 ): boolean {
-  const vertexCount = (vertexData.length / strideFloats) | 0;
   const ids = new Uint32Array(vertexData.buffer, vertexData.byteOffset, vertexData.length);
-  const nodes = new Int32Array(vertexCount * 3);
-  for (let v = 0; v < vertexCount; v++) {
-    for (let axis = 0; axis < 3; axis++) nodes[v * 3 + axis] = Math.round(vertexData[v * strideFloats + axis] / QUANT_STEP);
-  }
+  const nodes = latticeNodes(vertexData, strideFloats);
   // Merged batches keep each entity's triangles contiguous: accumulate a run,
   // judge it when the entity changes (an entity split across runs is summed).
-  const totals = new Map<number, { area: number; collapsed: number }>();
-  let runId = -1, runArea = 0, runCollapsed = 0;
+  const totals = new Map<number, LatticeLoss>();
+  let runId = -1;
+  let run: LatticeLoss = { area: 0, collapsed: 0, turned: 0 };
   const flush = (): void => {
     if (runId < 0) return;
-    const entry = totals.get(runId) ?? { area: 0, collapsed: 0 };
-    entry.area += runArea; entry.collapsed += runCollapsed;
+    const entry = totals.get(runId) ?? { area: 0, collapsed: 0, turned: 0 };
+    entry.area += run.area; entry.collapsed += run.collapsed; entry.turned += run.turned;
     totals.set(runId, entry);
   };
   for (let t = 0; t + 2 < indices.length; t += 3) {
-    const a = indices[t], b = indices[t + 1], c = indices[t + 2];
-    const pa = a * strideFloats, pb = b * strideFloats, pc = c * strideFloats;
-    const ux = vertexData[pb] - vertexData[pa], uy = vertexData[pb + 1] - vertexData[pa + 1], uz = vertexData[pb + 2] - vertexData[pa + 2];
-    const vx = vertexData[pc] - vertexData[pa], vy = vertexData[pc + 1] - vertexData[pa + 1], vz = vertexData[pc + 2] - vertexData[pa + 2];
-    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
-    const area = Math.sqrt(nx * nx + ny * ny + nz * nz);
-    if (!(area > 0)) continue;
-    const id = ids[pa + 6];
-    if (id !== runId) { flush(); runId = id; runArea = 0; runCollapsed = 0; }
-    runArea += area;
-    const na = a * 3, nb = b * 3, nc = c * 3;
-    const qux = nodes[nb] - nodes[na], quy = nodes[nb + 1] - nodes[na + 1], quz = nodes[nb + 2] - nodes[na + 2];
-    const qvx = nodes[nc] - nodes[na], qvy = nodes[nc + 1] - nodes[na + 1], qvz = nodes[nc + 2] - nodes[na + 2];
-    // Integer lattice offsets: every product is exact, so zero means collapsed.
-    const qnx = quy * qvz - quz * qvy, qny = quz * qvx - qux * qvz, qnz = qux * qvy - quy * qvx;
-    const turn = nx * qnx + ny * qny + nz * qnz;
-    const qnSq = qnx * qnx + qny * qny + qnz * qnz;
-    // `area` is |n|: collapsed (turn 0), flipped, or turned past 25° from the source face.
-    if (turn <= 0 || turn * turn < MIN_LATTICE_COS2 * area * area * qnSq) runCollapsed += area;
+    const id = ids[indices[t] * strideFloats + 6];
+    if (id !== runId) { flush(); runId = id; run = { area: 0, collapsed: 0, turned: 0 }; }
+    addLatticeTriangle(run, vertexData, strideFloats, nodes, indices[t], indices[t + 1], indices[t + 2]);
   }
   flush();
-  for (const { area, collapsed } of totals.values()) {
-    if (collapsed > area * MAX_COLLAPSED_AREA_FRACTION) return true;
+  for (const loss of totals.values()) {
+    if (latticeLoses(loss)) return true;
   }
   return false;
+}
+
+/**
+ * Add `mesh`'s triangles to `loss`, judged in the frame of the batch it would
+ * join (`frameOrigin`), on the f32 positions `mergeGeometry` would store there.
+ * Scene routing sums an entity's meshes this way and asks `latticeLoses`, the
+ * batch gate's own rule (#11444).
+ */
+export function addMeshLatticeLoss(
+  loss: LatticeLoss,
+  mesh: { positions: Float32Array; indices: Uint32Array; origin?: readonly number[] },
+  frameOrigin: readonly [number, number, number],
+): void {
+  const { positions, indices } = mesh;
+  // The stored f32 position, as `writeMergedRecords` folds it: (mesh.origin - frame) + local.
+  const local = new Float32Array(positions.length);
+  for (let axis = 0; axis < 3; axis++) {
+    const shift = (mesh.origin ? mesh.origin[axis] : 0) - frameOrigin[axis];
+    for (let i = axis; i < positions.length; i += 3) local[i] = positions[i] + shift;
+  }
+  const nodes = latticeNodes(local, 3);
+  for (let t = 0; t + 2 < indices.length; t += 3) addLatticeTriangle(loss, local, 3, nodes, indices[t], indices[t + 1], indices[t + 2]);
 }

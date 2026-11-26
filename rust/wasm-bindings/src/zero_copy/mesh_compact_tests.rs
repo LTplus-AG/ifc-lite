@@ -448,8 +448,8 @@ fn a_shared_corner_is_one_node_whatever_the_window() {
 }
 
 /// #11444: the reported Ø12 mm U-bar (an `IfcSweptDiskSolid` along a faceted `IfcIndexedPolyCurve`),
-/// meshed by the kernel. Nothing of it collapses on the 1 mm lattice, but a few percent of its area
-/// turns its face by more than 25°: crumpled bends and a non-round section. It must move to a finer
+/// meshed by the kernel. Nothing of it collapses on the 1 mm lattice, but 10% or more of its area
+/// turns its face by more than 20°: crumpled bends and a non-round section. It must move to a finer
 /// level wherever it sits on the lattice.
 #[test]
 fn a_thin_swept_rebar_moves_to_a_finer_lattice_11444() {
@@ -469,9 +469,9 @@ fn a_thin_swept_rebar_moves_to_a_finer_lattice_11444() {
     }
 }
 
-/// The encoder's turn limit is the renderer's `Math.cos((25 * Math.PI) / 180) ** 2`, bit for bit.
+/// The encoder's turn limit is the renderer's `Math.cos((20 * Math.PI) / 180) ** 2`, bit for bit.
 #[test]
-fn the_turn_limit_is_the_renderers_25_degrees() {
-    assert_eq!(weld::MIN_LATTICE_COS2, 25f64.to_radians().cos().powi(2));
-    assert_eq!(weld::MIN_LATTICE_COS2.to_string(), "0.8213938048432696");
+fn the_turn_limit_is_the_renderers_20_degrees() {
+    assert_eq!(weld::MIN_LATTICE_COS2, 20f64.to_radians().cos().powi(2));
+    assert_eq!(weld::MIN_LATTICE_COS2.to_string(), "0.8830222215594891");
 }

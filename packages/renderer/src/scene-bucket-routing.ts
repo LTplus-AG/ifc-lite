@@ -6,6 +6,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import type { BatchedMesh } from './types.js';
 import { BATCH_CONSTANTS } from './constants.js';
 import { type TopologyMemo, originPreservesTriangleTopology, topologySafeBatchOrigin } from './scene-precision.js';
+import { addMeshLatticeLoss, latticeLoses, type LatticeLoss } from './quantize.js';
 
 export interface PrecisionBucket {
   key: string;
@@ -21,16 +22,57 @@ interface RoutingState {
   coldKeys: ReadonlySet<string>;
   maxBufferSize: number;
   sharedOrigin: [number, number, number] | undefined;
+  /** A mesh `markOffLattice` kept off the ~1 mm lattice: routed to its colour's f32 bucket (#11444). */
+  offLattice?(mesh: MeshData): boolean;
   nextSplitKey(): string;
 }
 
-/** Route by GPU size and by the fixed f32-safe frame chosen for each bucket. */
+/** Suffix of the routing key for meshes the lattice would crumple: their own f32 buckets per colour. */
+export const LATTICE_BUCKET_SUFFIX = '#lattice';
+
+/**
+ * Add to `into` the meshes of `meshes` whose entity the lattice would crumple:
+ * per entity and bucket colour, the batch gate's rule (`latticeLoses`) over
+ * that entity's meshes in this arrival, each judged in the frame a new bucket
+ * would give it. Routing then keeps them in an f32 bucket of their colour, so
+ * the batch they would have joined still quantizes (#11444).
+ */
+export function markOffLattice(
+  meshes: readonly MeshData[],
+  baseKeyOf: (mesh: MeshData) => string,
+  sharedOriginOf: (mesh: MeshData) => [number, number, number] | undefined,
+  memo: TopologyMemo | undefined,
+  into: WeakSet<MeshData>,
+): void {
+  const entities = new Map<string, { loss: LatticeLoss; meshes: MeshData[] }>();
+  for (const mesh of meshes) {
+    const frame = topologySafeBatchOrigin([mesh], undefined, sharedOriginOf(mesh), undefined, memo);
+    if (!frame || mesh.indices.length < 3) continue;
+    const key = `${baseKeyOf(mesh)}\u0000${mesh.expressId}`;
+    let entity = entities.get(key);
+    if (!entity) entities.set(key, entity = { loss: { area: 0, collapsed: 0, turned: 0 }, meshes: [] });
+    addMeshLatticeLoss(entity.loss, mesh, frame);
+    entity.meshes.push(mesh);
+  }
+  for (const { loss, meshes: parts } of entities.values()) {
+    if (latticeLoses(loss)) for (const mesh of parts) into.add(mesh);
+  }
+}
+
+/**
+ * Route by GPU size, by the fixed f32-safe frame chosen for each bucket, and by
+ * whether `markOffLattice` kept the mesh off the lattice: such a mesh goes to a
+ * bucket of its own colour that stays f32 (the batch gate,
+ * `latticeCollapsesGeometry`, judges a whole batch), so its colour neighbours
+ * keep their 12-byte records (#11444).
+ */
 export function resolvePrecisionBucket(
   state: RoutingState,
-  baseKey: string,
+  colorKey: string,
   mesh: MeshData,
   memo?: TopologyMemo,
 ): string {
+  const baseKey = state.offLattice?.(mesh) ? colorKey + LATTICE_BUCKET_SUFFIX : colorKey;
   let key = state.activeKeys.get(baseKey) ?? baseKey;
   const current = state.buckets.get(key);
   const meshBytes = (mesh.positions.length / 3) * BATCH_CONSTANTS.BYTES_PER_VERTEX;

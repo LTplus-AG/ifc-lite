@@ -6,9 +6,10 @@
  * Regression for #11444: an IfcSweptDiskSolid rebar (Ø12 mm, 24 sides) along
  * a faceted IfcIndexedPolyCurve drew with crumpled bends and a non-round
  * section. The kernel's tube is round; the ~1 mm vertex lattice is not. No
- * triangle collapses there, so the #9068 guard let the batch quantize, but a
- * few percent of the surface turns its face by more than 25°, and the shader
- * shades each face by its snapped normal.
+ * triangle collapses there, so the #9068 guard let the batch quantize, but 10
+ * to 30% of the surface turns its face by more than 20°, and the shader shades
+ * each face by its snapped normal. Scene routing now keeps such a mesh in an
+ * f32 bucket of its own, so the rest of its colour stays quantized.
  *
  * The bar is the issue's directrix (36 points, millimetres, two bends of 16
  * segments around a 22 mm centreline radius, an inclined middle leg), swept
@@ -19,8 +20,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import type { MeshData } from '@ifc-lite/geometry';
-import { latticeCollapsesGeometry } from './quantize.js';
+import { addMeshLatticeLoss, latticeCollapsesGeometry, latticeLoses } from './quantize.js';
 import { mergeGeometry } from './scene-geometry.js';
+import { Scene } from './scene.js';
+
+(globalThis as Record<string, unknown>).GPUBufferUsage = {
+  MAP_READ: 1, MAP_WRITE: 2, COPY_SRC: 4, COPY_DST: 8, INDEX: 16,
+  VERTEX: 32, UNIFORM: 64, STORAGE: 128, INDIRECT: 256, QUERY_RESOLVE: 512,
+};
 
 const DIRECTRIX_MM: [number, number, number][] = [
   [0, 0, 0], [-420.5, 0, 0], [-422.6564, -0.0105, -0.1054],
@@ -78,6 +85,41 @@ function sweptBar(expressId: number, points: V[], radius: number, sides: number,
   };
 }
 
+/** A 5 m x 0.2 m x 3 m wall, off the lattice: everyday geometry the lattice keeps. */
+function wall(expressId: number): MeshData {
+  const off: V = [0.00031, 0.00047, 0.00013];
+  const positions: number[] = [];
+  for (const z of [0, 3]) for (const y of [0, 0.2]) for (const x of [0, 5]) positions.push(off[0] + x, off[1] + y, off[2] + z);
+  return {
+    expressId,
+    positions: new Float32Array(positions),
+    normals: new Float32Array(positions.map((_, i) => (i % 3 === 2 ? 1 : 0))),
+    indices: new Uint32Array([0, 2, 1, 1, 2, 3, 4, 5, 6, 5, 7, 6, 0, 1, 4, 1, 5, 4, 2, 6, 3, 3, 6, 7, 0, 4, 2, 2, 4, 6, 1, 3, 5, 3, 7, 5]),
+    color: [0.5, 0.5, 0.5, 1],
+    origin: [0, 0, 0],
+  };
+}
+
+function fakeDevice(): GPUDevice {
+  return {
+    limits: { maxBufferSize: 1 << 30, maxStorageBufferBindingSize: 1 << 30 },
+    createBuffer: (desc: GPUBufferDescriptor) => ({ size: desc.size, destroy() {} }),
+    createBindGroup: () => ({}),
+    queue: { writeBuffer: () => {} },
+  } as unknown as GPUDevice;
+}
+const fakePipeline = { getUniformBufferSize: () => 256, getBindGroupLayout: () => ({}) } as unknown as Parameters<Scene['appendToBatches']>[2];
+
+/** Each batch of a quantized scene holding `meshes`: its entities and whether it quantized. */
+function sceneBatches(meshes: MeshData[]): { ids: number[]; quantized: boolean }[] {
+  const scene = new Scene();
+  scene.setQuantizedBatches(true);
+  scene.appendToBatches(meshes, fakeDevice(), fakePipeline);
+  return scene.getBatchedMeshes()
+    .map((batch) => ({ ids: [...batch.expressIds].sort((a, b) => a - b), quantized: batch.quantized !== undefined }))
+    .sort((a, b) => a.ids[0] - b.ids[0]);
+}
+
 const metres = DIRECTRIX_MM.map(([x, y, z]): V => [x / 1000, y / 1000, z / 1000]);
 const STRIDE = 7;
 function degrades(...meshes: MeshData[]): boolean {
@@ -95,6 +137,24 @@ describe('lattice turn guard (#11444)', () => {
     for (const off of offsets) {
       assert.strictEqual(degrades(sweptBar(1, metres, 0.006, 24, off)), true, `offset ${off}`);
     }
+  });
+
+  it('judges a mesh by the batch gate\'s rule', () => {
+    const judge = (mesh: MeshData): boolean => {
+      const loss = { area: 0, collapsed: 0, turned: 0 };
+      addMeshLatticeLoss(loss, mesh, [0, 0, 0]);
+      return latticeLoses(loss);
+    };
+    const bar = sweptBar(1, metres, 0.006, 24, [0.00031, 0.00047, 0.00013]);
+    assert.strictEqual(judge(bar), true);
+    assert.strictEqual(judge(wall(2)), false);
+    assert.strictEqual(judge(bar), degrades(bar), 'the same verdict as the batch gate');
+  });
+
+  it('keeps only the bar on f32: a wall of the same colour still quantizes', () => {
+    const bar = sweptBar(1, metres, 0.006, 24, [0.00031, 0.00047, 0.00013]);
+    assert.deepStrictEqual(sceneBatches([wall(2)]), [{ ids: [2], quantized: true }], 'sanity: the wall alone quantizes');
+    assert.deepStrictEqual(sceneBatches([bar, wall(2)]), [{ ids: [1], quantized: false }, { ids: [2], quantized: true }]);
   });
 
   it('is scale-relative: the same bar at 10x (Ø120 mm) still quantizes', () => {

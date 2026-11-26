@@ -51,7 +51,7 @@ import { splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, worl
 import { TopologyMemo } from './scene-precision.js';
 import { StreamAssembly } from './scene-stream-assembly.js';
 import { mergeSameColorPieces } from './scene-mesh-pieces.js';
-import { resolvePrecisionBucket } from './scene-bucket-routing.js';
+import { markOffLattice, resolvePrecisionBucket } from './scene-bucket-routing.js';
 import { residentBatchBytes, sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { composeInstancedOverrideColor, originalColorWithAlpha } from './instanced-override-color.js';
 import { writeInstanceLane } from './instance-lane-write.js';
@@ -337,6 +337,8 @@ export class Scene {
   // Per-model shared origins keep all colours and highlights bit-coincident
   // without narrowing the distance between federated models into f32 vertices.
   private sharedFrameOrigins = new Map<number, [number, number, number]>();
+  /** Meshes routed to an f32 `#lattice` bucket of their colour: the lattice would crumple their entity (#11444). */
+  private readonly offLattice = new WeakSet<MeshData>();
   private cachedMaxBufferSize: number = 0; // device.limits.maxBufferSize * safety factor (set on first use)
   private static readonly STREAMING_FRAGMENT_MAX_INDICES = 180_000;
   private static readonly STREAMING_FRAGMENT_MAX_VERTEX_BYTES = 8 * 1024 * 1024;
@@ -1164,6 +1166,7 @@ export class Scene {
       if (this.refusesBucketPath(meshData, topology)) throw new Error('Unable to resolve a topology-safe GPU frame for mesh geometry.');
     }
     if (this.appearanceController) for (const part of meshDataArray) this.appearanceController.cancelFor(part.expressId);
+    if (this.quantizedBatchesEnabled) markOffLattice(meshDataArray, (mesh) => this.bucketBaseKey(mesh), (mesh) => this.modelTranslations.frameOrigin(this.sharedFrameOrigins.get(mesh.modelIndex ?? 0) ?? null, mesh.modelIndex ?? 0), topology, this.offLattice);
     // Cache max buffer size on first call
     if (this.cachedMaxBufferSize === 0) {
       this.cachedMaxBufferSize = this.getMaxBufferSize(device);
@@ -2523,6 +2526,7 @@ export class Scene {
       sharedOrigin: this.modelTranslations.frameOrigin(
         this.sharedFrameOrigins.get(modelIndex) ?? null, modelIndex,
       ),
+      offLattice: (mesh) => this.offLattice.has(mesh),
       nextSplitKey: () => `${baseColorKey}#${this.nextSplitId++}`,
     }, baseColorKey, meshData, topology);
   }

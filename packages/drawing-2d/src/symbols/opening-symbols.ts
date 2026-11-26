@@ -12,7 +12,7 @@
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
-import type { ArchitecturalSymbol, DoorOperationType, Drawing2D, Line2D, OpeningInfo, Point2D, SectionConfig, SectionPlaneConfig } from '../types.js';
+import type { ArchitecturalSymbol, DoorOperationType, Drawing2D, Line2D, OpeningInfo, Point2D, SectionConfig, SectionPlaneConfig, Vec3 } from '../types.js';
 import { makeEntityKey, type EntityKey } from '../types.js';
 import { boundsExtendLine, point2DCross, projectTo2D, vec3 } from '../math.js';
 import { DoorSymbolGenerator } from './door-symbol.js';
@@ -176,6 +176,9 @@ function measureFootprint(group: readonly MeshData[], plane: SectionPlaneConfig)
   const m = group[0].localToWorld;
   const placed = m?.length === 16 ? placementAxes(m, plane) : undefined;
   if (placed === null) return null;
+  // With a placement, width and depth are measured along its own 3D axes, so a
+  // tilted element's height does not leak into them through the projection.
+  const local = placed && m ? [localExtent(m[0], m[4], m[8]), localExtent(m[2], m[6], m[10])] : null;
   const points: Point2D[] = [];
   let minY = Infinity;
   let maxY = -Infinity;
@@ -183,10 +186,11 @@ function measureFootprint(group: readonly MeshData[], plane: SectionPlaneConfig)
     const o = mesh.origin ?? [0, 0, 0];
     const p = mesh.positions;
     for (let i = 0; i + 2 < p.length; i += 3) {
-      const y = p[i + 1] + o[1];
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
-      points.push(projectTo2D(vec3(p[i] + o[0], y, p[i + 2] + o[2]), plane.axis, plane.flipped));
+      const world = vec3(p[i] + o[0], p[i + 1] + o[1], p[i + 2] + o[2]);
+      if (world.y < minY) minY = world.y;
+      if (world.y > maxY) maxY = world.y;
+      if (local) for (const extent of local) extent.add(world);
+      points.push(projectTo2D(world, plane.axis, plane.flipped));
     }
   }
   if (points.length === 0) return null;
@@ -207,10 +211,25 @@ function measureFootprint(group: readonly MeshData[], plane: SectionPlaneConfig)
     center: { x: (sm * axes.across.y - tm * axes.along.y) / det, y: (tm * axes.along.x - sm * axes.across.x) / det },
     along: axes.along,
     across: axes.across,
-    width: s1 - s0,
-    depth: t1 - t0,
+    width: local ? local[0].size() : s1 - s0,
+    depth: local ? local[1].size() : t1 - t0,
     minY,
     maxY,
+  };
+}
+
+/** Running extent of points along the unit direction of `(x, y, z)`. */
+function localExtent(x: number, y: number, z: number) {
+  const len = Math.hypot(x, y, z) || 1;
+  let lo = Infinity;
+  let hi = -Infinity;
+  return {
+    add(p: Vec3): void {
+      const d = (p.x * x + p.y * y + p.z * z) / len;
+      if (d < lo) lo = d;
+      if (d > hi) hi = d;
+    },
+    size: (): number => hi - lo,
   };
 }
 

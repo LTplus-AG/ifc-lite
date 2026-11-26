@@ -199,6 +199,16 @@ describe('headless plans draw door and window symbols (#10932)', () => {
     expectPoint(leafEnd, cx - 0.45 + (0.9 * swingTo.x) / across, cz + (0.9 * swingTo.z) / across);
   });
 
+  it('measures a tilted door without OverallWidth along its own local X', async () => {
+    const [c, s, k] = [Math.cos(Math.PI / 6), Math.sin(Math.PI / 6), 0.6];
+    const swingTo = vec3(s * k, c * k, -Math.sqrt(1 - k * k));
+    const localToWorld = frame(vec3(c, -s, 0), vec3Scale(swingTo, -1), [1, 0, 2]);
+    const drawing = await generateFloorPlan([placedDoor(20, localToWorld)], 1.2, options);
+    expect(swing(drawing, 20).width).toBeCloseTo(0.9, 5);
+    const [cx, , cz] = toWorld(localToWorld, [0.45, 1.05, -0.05]);
+    expectPoint(leafAndClosedEnd(drawing, 20).hinge, cx - 0.45, cz);
+  });
+
   it('hinges a door without localToWorld at the mirrored point in a flipped view', () => {
     const plain = box(20, [1, 0, -0.1], [2, 2.1, 0], { ifcType: 'IfcDoor' });
     const leaf = (flipped: boolean) => {

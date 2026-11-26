@@ -893,8 +893,10 @@ describe('compact pages take the decisions of the bucket batches they stand in f
 
   it('move the meshes of a bucket that would stay exact f32 (#9068) to buckets at the end of the stream', async () => {
     const on = await lodScene(true), gpu = fakeGpu();
-    const exact = compactBatch([{ expressId: 1, at: [0, 0, 0], size: 1, color: GREY }, { expressId: 2, at: [3, 0, 0], size: 1, color: GREY }]);
-    // Row 1 is on level 11: the encoder moved it there because level 10 collapsed it. Its bucket batch would stay f32.
+    // Row 1 is a sliver on level 11 (the fixture writes 1024 steps per metre; read on level 11, its 1-step-thick
+    // box is 0.49 mm): level 10 collapses all of it, so its entity, and with it the bucket batch, stays f32.
+    const exact = compactBatch([{ expressId: 1, at: [0, 0, 0], size: 1, color: GREY }, { expressId: 2, at: [3.001, 0.001, 0.001], size: 0.0007, color: GREY }]);
+    // (odd level 11 nodes: each corner pair rounds onto one level 10 node)
     exact[1].compact!.payload.table[1 * 7 + 5] = 11;
     const other = compactBatch([{ expressId: 3, at: [0, 0, 0], size: 1, color: RED }]);
     upload(on, gpu, [...exact, ...other]);
@@ -903,7 +905,29 @@ describe('compact pages take the decisions of the bucket batches they stand in f
     assert.deepEqual(entitiesOf(pages(on)), [3]);
     assert.deepEqual(entitiesOf(buckets(on)), [1, 2]);
     assert.equal(on.getCompactStats()?.decodes.exact, 2);
-    assert.equal(decoded(), 2);
+  });
+
+  it('keep a bucket paged whose finer-level entity loses no area on the bucket lattice (judged per entity, #11606)', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    const meshes = compactBatch([{ expressId: 1, at: [0, 0, 0], size: 1, color: GREY }, { expressId: 2, at: [3, 0, 0], size: 1, color: GREY }]);
+    meshes[1].compact!.payload.table[1 * 7 + 5] = 11; // read on level 11: a 0.5 m box, whole on the 1 mm lattice
+    upload(on, gpu, meshes);
+    settle(on, gpu);
+    assert.deepEqual(entitiesOf(pages(on)), [1, 2]);
+    assert.equal(on.getCompactStats()?.decodes.exact, undefined);
+  });
+
+  it('move a group to its bucket when the bucket holds f32 meshes of its own (#11606)', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    const flat: MeshData = {
+      expressId: 9, modelIndex: 0, color: GREY,
+      positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]),
+    };
+    upload(on, gpu, [...compactBatch([{ expressId: 1, at: [2, 0, 0], size: 1, color: GREY }, { expressId: 3, at: [2, 0, 0], size: 1, color: RED }]), flat]);
+    settle(on, gpu);
+    assert.deepEqual(entitiesOf(pages(on)), [3], 'the red group has a bucket of its own: paged');
+    assert.deepEqual(entitiesOf(buckets(on)), [1, 9], 'one bucket batch, as the f32 load builds it');
+    assert.equal(on.getCompactStats()?.decodes.shared, 1);
   });
 
   it('keep a bucket paged whose mesh only outgrew its window (level 9)', async () => {

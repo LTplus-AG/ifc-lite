@@ -13,6 +13,8 @@
  * stream (`SceneCompact.settle`) every group is judged as its bucket batch
  * would be:
  *
+ * - **Shared buckets.** A group whose bucket holds f32 meshes too (meshes no page draws) moves to it:
+ *   the bucket batch is the union, and only it decides as that batch does.
  * - **Exact fallback.** A bucket batch stays exact f32 when one of its meshes
  *   would lose its shape on the 1 mm lattice (#9068) or the batch is wider
  *   than the u16 range (quantize.ts). The encoder moved such a mesh to a finer
@@ -39,6 +41,7 @@ import type { CompactPageDeps } from './compact-page-deps.js';
 import type { CompactGeometryStore, CompactPage } from './compact-store.js';
 import type { LodPart } from './lod-parts.js';
 import type { SceneCompactHost } from './scene-compact-host.js';
+import { entityCollapses } from './compact-exact.js';
 
 /** Scratch record per vertex: position xyz (page frame) and the u32 entity lane. */
 const SCRATCH_FLOATS = 4;
@@ -57,8 +60,10 @@ export interface PageLod {
 interface Group {
   bounds: { min: [number, number, number]; max: [number, number, number] };
   triangles: number;
-  /** Its batch would stay exact f32. */
-  exact: boolean;
+  /** A member is on a lattice finer than the bucket batch's (level 10 collapsed it). */
+  fine: boolean;
+  /** Why its meshes move to their bucket: the batch would stay exact f32, or the bucket holds f32 meshes too. */
+  move: 'exact' | 'shared' | null;
   members: MeshData[];
   /** LOD1 indices the clustering kept over every part, or -1 when it refused one. */
   kept: number;
@@ -88,7 +93,7 @@ function collectGroups(store: CompactGeometryStore, host: SceneCompactHost, deps
       const key = bucketKeyOf(host, mesh);
       let group = groups.get(key);
       if (!group) {
-        group = { bounds: { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] }, triangles: 0, exact: false, members: [], kept: 0 };
+        group = { bounds: { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] }, triangles: 0, fine: false, move: null, members: [], kept: 0 };
         groups.set(key, group);
       }
       const ref = mesh.compact!, row = compactRow(ref), b = ref.payload.bounds, o = ref.row * 6;
@@ -98,15 +103,20 @@ function collectGroups(store: CompactGeometryStore, host: SceneCompactHost, deps
       }
       group.triangles += row.indexCount / 3;
       // A lattice finer than the bucket batch's: the bucket's collapsed it (one coarser only outgrew its window).
-      if (compactStep(row.level) < deps.bucket.quantStep) group.exact = true;
+      if (compactStep(row.level) < deps.bucket.quantStep) group.fine = true;
       group.members.push(mesh);
     }
   }
-  const { quantStep, maxQuantExtent } = deps.bucket;
-  for (const group of groups.values()) {
+  const { quantStep, maxQuantExtent, maxCollapsedFraction } = deps.bucket;
+  // Buckets that hold meshes of their own (f32 meshes no page draws): their batch is the union, so the group joins it.
+  const shared = new Set<string>();
+  for (const [key, bucket] of host.buckets) if (bucket.meshData.length > 0) shared.add(key.replace(/#\d+$/, ''));
+  for (const [key, group] of groups) {
+    if (shared.has(key)) { group.move = 'shared'; continue; }
     // quantize.ts: the batch's lower corner floors to the lattice; past `maxQuantExtent` above it the batch stays f32.
     const { min, max } = group.bounds;
-    for (let axis = 0; axis < 3; axis++) if (max[axis] - Math.floor(min[axis] / quantStep) * quantStep > maxQuantExtent) group.exact = true;
+    for (let axis = 0; axis < 3; axis++) if (max[axis] - Math.floor(min[axis] / quantStep) * quantStep > maxQuantExtent) group.move = 'exact';
+    if (!group.move && group.fine && entityCollapses(group.members, quantStep, maxCollapsedFraction)) group.move = 'exact';
   }
   return groups;
 }
@@ -121,18 +131,21 @@ function firstVertex(ref: CompactRef): [number, number, number] {
 
 /**
  * The pages were trimmed at the end of a stream: hand the meshes of every group whose bucket batch would
- * stay exact f32 to `toBuckets` now (they join the stream's finalize), and return the build of the pages'
+ * stay exact f32, or whose bucket holds f32 meshes too, to `toBuckets` now (they join the stream's finalize), and return the build of the pages'
  * parts when bucket batches build LOD1 (null otherwise). The caller runs it a slice at a time and drops it
  * when the pages change under it.
  */
 export function settlePages(
-  store: CompactGeometryStore, host: SceneCompactHost, device: GPUDevice, deps: CompactPageDeps, toBuckets: (exact: MeshData[]) => void,
+  store: CompactGeometryStore, host: SceneCompactHost, device: GPUDevice, deps: CompactPageDeps,
+  toBuckets: (meshes: MeshData[], reason: 'exact' | 'shared') => void,
 ): PageLodBuild | null {
   const t0 = performance.now();
   const groups = collectGroups(store, host, deps);
-  const exact: MeshData[] = [];
-  for (const group of groups.values()) if (group.exact) exact.push(...group.members);
-  if (exact.length > 0) toBuckets(exact);
+  for (const reason of ['exact', 'shared'] as const) {
+    const meshes: MeshData[] = [];
+    for (const group of groups.values()) if (group.move === reason) meshes.push(...group.members);
+    if (meshes.length > 0) toBuckets(meshes, reason);
+  }
   store.stats.settleMs += performance.now() - t0;
   return host.lodBuildsEnabled ? new PageLodBuild(store, buildPageLods(store, groups, device, deps)) : null;
 }
@@ -193,7 +206,7 @@ function* buildPageLods(store: CompactGeometryStore, groups: Map<string, Group>,
       meshes.sort((a, b) => a.expressId - b.expressId); // stable: an entity's meshes keep their order
       let lod1: Uint16Array | null = null;
       const runs: EntityRun[] = [];
-      if (!group.exact && group.kept >= 0 && group.triangles >= lodMinTriangles) {
+      if (!group.move && group.kept >= 0 && group.triangles >= lodMinTriangles) {
         scratch ??= new Float32Array(MAX_PAGE_VERTICES * SCRATCH_FLOATS);
         lanes ??= new Uint32Array(scratch.buffer);
         if (!decoded) { readRecords(store, page, scratch, lanes); decoded = true; }

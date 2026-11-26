@@ -17,7 +17,7 @@ import { pinBatchEntityIdAnchor } from './entity-color-table.js';
 import type { RenderPipeline } from './pipeline.js';
 import { createBatchUniform } from './scene-batch-upload.js';
 import { LOD_MAX_KEPT_FRACTION, LOD_MIN_TRIANGLES, lodCellSizeForBounds, simplifyIndicesByClustering } from './lod-simplify.js';
-import { MAX_QUANT_EXTENT, QUANT_STEP } from './quantize.js';
+import { MAX_COLLAPSED_AREA_FRACTION, MAX_QUANT_EXTENT, QUANT_STEP } from './quantize.js';
 import { destroyGpuResources, entityLaneOf, packEntityLane } from './scene-geometry.js';
 import type { SceneCompact, SceneCompactHost } from './scene-compact.js';
 import type { BatchedMesh } from './types.js';
@@ -38,6 +38,7 @@ export interface CompactPageDeps {
     lodMaxKeptFraction: number;
     quantStep: number;
     maxQuantExtent: number;
+    maxCollapsedFraction: number;
   };
 }
 
@@ -56,6 +57,7 @@ export const COMPACT_PAGE_DEPS: CompactPageDeps = {
     lodMaxKeptFraction: LOD_MAX_KEPT_FRACTION,
     quantStep: QUANT_STEP,
     maxQuantExtent: MAX_QUANT_EXTENT,
+    maxCollapsedFraction: MAX_COLLAPSED_AREA_FRACTION,
   },
 };
 

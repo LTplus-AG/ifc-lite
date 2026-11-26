@@ -210,8 +210,8 @@ export class SceneCompact {
   /** Trim the pages and take their buckets' decisions (compact-lod.ts): exact groups move to buckets, decoded, now; the LOD build runs in drains. */
   private trim(device: GPUDevice): void {
     this.store.trim(device);
-    this.lod = settlePages(this.store, this.scene, device, this.deps, (meshes) => {
-      this.decodes.exact = (this.decodes.exact ?? 0) + meshes.length;
+    this.lod = settlePages(this.store, this.scene, device, this.deps, (meshes, reason) => {
+      this.decodes[reason] = (this.decodes[reason] ?? 0) + meshes.length;
       // A failed bucket build leaves each mesh on its page or in its (pending) bucket: neither loses it, so the stream goes on.
       try { this.demoteChosen(meshes.map((source) => [source, this.members.get(source)!]), false); } catch (error) { console.warn('[compactGeom] exact buckets', error); }
     });

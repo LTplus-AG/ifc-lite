@@ -43,6 +43,8 @@ export interface SceneCompactHost {
   bumpPickGeometryRevision(): void;
   /** Bucket batches build LOD1 ranges (`Scene.setLodBuildsEnabled`): pages then build theirs (compact-lod.ts). */
   lodBuildsEnabled: boolean;
+  /** The Scene's buckets (key, possibly with a `#N` overflow suffix): their f32 meshes. */
+  buckets: ReadonlyMap<string, { meshData: readonly MeshData[] }>;
   /** The bucket base key the bucket path would file `mesh` under, its chunk cell taken at `anchor`. */
   compactBucketKey(mesh: MeshData, anchor: ChunkAnchorSource): string;
 }
@@ -91,9 +93,10 @@ export function recordedLane(ref: CompactRef): number {
  * Why a queued compact mesh went to the bucket path decoded: the scene had no quantized pipelines
  * (`pipelines`) or keeps no CPU geometry (`no-cpu-geometry`), or the mesh no longer matches its
  * records (`written`: its geometry was replaced) or needs what a page cannot draw, or its bucket would
- * stay exact f32 (`exact`: one of its meshes the 1 mm lattice collapses, #9068, or wider than its range).
+ * stay exact f32 (`exact`: an entity the 1 mm lattice collapses, #9068, or wider than its range), or its bucket
+ * holds f32 meshes too (`shared`: the bucket batch is their union).
  */
-export type CompactDecodeReason = 'pipelines' | 'no-cpu-geometry' | 'written' | 'id' | 'texture' | 'placed' | 'moved' | 'lane' | 'exact';
+export type CompactDecodeReason = 'pipelines' | 'no-cpu-geometry' | 'written' | 'id' | 'texture' | 'placed' | 'moved' | 'lane' | 'exact' | 'shared';
 
 /** What `Scene.getCompactStats` reports: meshes drawn from pages, and those a load decoded to buckets by reason. */
 export interface CompactSceneStats { paged: number; decodes: Readonly<Partial<Record<CompactDecodeReason, number>>>; pages: Readonly<CompactStoreStats> }

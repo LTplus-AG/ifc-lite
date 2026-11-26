@@ -151,11 +151,11 @@ export class Model {
 
   /** EXPRESS USEDIN: referrers through the role `SCHEMA.ENTITY.ATTRIBUTE`, or all referrers for `''`. */
   usedIn(target: EntityInstance, role: string): EntityInstance[] {
-    if (!role) return this.collectReferrers(target, false, () => true);
+    if (!role) return this.collectReferrers(target, true, () => true);
     const parts = role.toUpperCase().split('.');
     const attr = parts.pop()!;
     const entity = parts.pop()!;
-    return this.collectReferrers(target, false, (e, index) => {
+    return this.collectReferrers(target, true, (e, index) => {
       if (!e.isA(entity)) return false;
       const slot = e.slots.get(attr);
       return slot?.k === 'explicit' && slot.index === index;

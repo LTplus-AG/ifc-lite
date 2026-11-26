@@ -24,3 +24,11 @@ it('enforces OF UNIQUE on references by instance identity (#11560)', async () =>
   expect(report.findings.some(f => f.instance === 4 && f.attribute?.includes('Polygon'))).toBe(true);
   expect(report.findings.filter(f => f.instance === 5)).toEqual([]);
 });
+
+it('checks the decoded character count of FILE_NAME.name at the 256-character boundary (#11647)', async () => {
+  for (const length of [256, 257]) {
+    const source = file('').replace("FILE_NAME('a'", "FILE_NAME('" + 'a'.repeat(length) + "'");
+    const report = await validateStepText(source);
+    expect(report.findings.filter(f => f.rule === 'FILE_NAME.name')).toHaveLength(length === 256 ? 0 : 1);
+  }
+});

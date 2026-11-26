@@ -57,7 +57,7 @@ export function typeOf(m: Model, v: Value): Value {
   if (v instanceof EntityInstance) return [...v.entity.typeofNames];
   if (v instanceof Typed) return definedTypeChain(m, v.type);
   const p = prim(v);
-  if (typeof p === 'number') return v instanceof StepInteger || Number.isInteger(p) ? ['INTEGER', 'NUMBER'] : ['REAL', 'NUMBER'];
+  if (typeof p === 'number') return v instanceof StepInteger ? ['INTEGER', 'NUMBER'] : ['REAL', 'NUMBER'];
   if (typeof p === 'string') return ['STRING'];
   if (typeof p === 'boolean') return ['BOOLEAN', 'LOGICAL'];
   if (p instanceof BinaryValue) return ['BINARY'];

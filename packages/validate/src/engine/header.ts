@@ -15,6 +15,10 @@ const HEADER_ATTRIBUTES: Record<string, Array<[name: string, list: boolean]>> = 
   ],
 };
 
+function isHeaderString(value: unknown): boolean {
+  return typeof value === 'string' && (value.length <= 256 || Array.from(value).length <= 256);
+}
+
 export function checkHeader(text: string, out: ValidationFinding[]): void {
   const records = headerRecords(text);
   if (!records.size) {
@@ -29,7 +33,7 @@ export function checkHeader(text: string, out: ValidationFinding[]): void {
     }
     attributes.forEach(([name, list], i) => {
       const v = values[i];
-      const ok = list ? Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === 'string') : typeof v === 'string';
+      const ok = list ? Array.isArray(v) && v.length > 0 && v.every(isHeaderString) : isHeaderString(v);
       if (!ok) {
         out.push({
           category: 'header', rule: `${entity}.${name}`, attribute: `${entity}.${name}`,

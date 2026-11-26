@@ -90,3 +90,23 @@ ENTITY Sample; A : Bits; B : Five; C : Fixed; END_ENTITY; END_SCHEMA;`);
   const report = await validateStepText('DATA;#1=SAMPLE("31F","31F","31F");#2=SAMPLE("3FF","3FF","3FF");ENDSEC;', { schema });
   expect(report.findings.filter(f => f.rule === 'invalid-type').map(f => f.instance)).toEqual([2, 2, 2]);
 });
+
+it('distinguishes integral REAL and INTEGER STEP tokens in TYPEOF (#11647)', async () => {
+  const { schema } = generated(`SCHEMA S; ENTITY Sample; N : NUMBER;
+WHERE IsReal : 'REAL' IN TYPEOF(N); IsInteger : 'INTEGER' IN TYPEOF(N); END_ENTITY; END_SCHEMA;`);
+  const report = await validateStepText('DATA;#1=SAMPLE(5.);#2=SAMPLE(5);#3=SAMPLE(5.25);ENDSEC;', { schema });
+  expect(report.findings.filter(f => f.category === 'entity_rule').map(f => [f.instance, f.rule])).toEqual([
+    [1, 'Sample.IsInteger'], [2, 'Sample.IsReal'], [3, 'Sample.IsInteger'],
+  ]);
+});
+
+it('counts every referencing role in the USEDIN bag (#11647)', async () => {
+  const { schema } = generated(`SCHEMA S; ENTITY Item;
+WHERE Twice : SIZEOF(USEDIN(SELF, '')) = 2;
+ FirstRole : SIZEOF(USEDIN(SELF, 'S.Link.First')) = 1; END_ENTITY;
+ENTITY Link; First : Item; Second : Item; END_ENTITY; END_SCHEMA;`);
+  const report = await validateStepText('DATA;#1=ITEM();#2=ITEM();#3=ITEM();#4=LINK(#1,#1);#5=LINK(#2,#3);ENDSEC;', { schema });
+  expect(report.findings.filter(f => f.category === 'entity_rule').map(f => [f.instance, f.rule])).toEqual([
+    [2, 'Item.Twice'], [3, 'Item.Twice'], [3, 'Item.FirstRole'],
+  ]);
+});

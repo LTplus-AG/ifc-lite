@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -65,9 +65,16 @@ describe('MCP shared loading validation', () => {
       await writeFile(join(root, 'in.ifc'), MINIMAL);
       await symlink(join(outside, 'm.ifc'), join(root, 'escape.ifc'));
       await expect(loadIfcModel(join(root, 'escape.ifc'), { allowedPaths: [root] })).rejects.toThrow(/outside the allowed roots/);
+      // The callers' pattern: the root is the checked file itself. Swapping that
+      // file for a symlink to an outside file must not move the root with it.
+      const checked = join(root, 'checked.ifc');
+      await symlink(join(outside, 'm.ifc'), checked);
+      await expect(loadIfcModel(checked, { allowedPaths: [checked] })).rejects.toThrow(/outside the allowed roots/);
       // A root reached through a symlinked directory, and with a trailing separator.
       await symlink(root, join(base, 'linked'));
       await expect(loadIfcModel(join(base, 'linked', 'in.ifc'), { allowedPaths: [join(base, 'linked') + '/'] })).resolves.toBeDefined();
+      // A file named by its real path under a root spelled through that link.
+      await expect(loadIfcModel(join(await realpath(root), 'in.ifc'), { allowedPaths: [join(base, 'linked')] })).resolves.toBeDefined();
     } finally {
       await rm(base, { recursive: true, force: true });
     }

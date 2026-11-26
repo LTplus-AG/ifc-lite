@@ -13,7 +13,7 @@
 
 import { constants } from 'node:fs';
 import { open, realpath, stat } from 'node:fs/promises';
-import { basename, resolve, sep } from 'node:path';
+import { basename, dirname, join, parse, resolve, sep } from 'node:path';
 import { IfcParser, validateStepInput, type IfcDataStore } from '@ifc-lite/parser';
 import { sourceModelIdentity } from '@ifc-lite/cache';
 import { createBimContext, type BimContext } from '@ifc-lite/sdk';
@@ -31,22 +31,16 @@ export interface LoadIfcOptions {
 /** Load IFC bytes and retain the opened file identity for source-write protection. */
 export async function loadIfcModel(filePath: string, opts: LoadIfcOptions = {}): Promise<LoadedModel> {
   const absolute = resolve(filePath);
-  // Roots without a trailing separator, so `/data/` and `/` match too.
-  const roots = (opts.allowedPaths ?? []).map((p) => (p.length > 1 && p.endsWith(sep) ? p.slice(0, -1) : p));
-  const inRoots = (path: string, of: readonly string[]) =>
-    of.some((p) => path === p || path.startsWith(p.endsWith(sep) ? p : p + sep));
-  if (roots.length > 0 && !inRoots(absolute, roots)) throw new Error(`Path '${absolute}' is outside the allowed roots`);
-
-  const canonical = await realpath(absolute);
-  // Again on the real path, against the real roots: a symlink in the path
-  // (or swapped in since the caller checked it) must not lead outside them.
+  const roots = (opts.allowedPaths ?? []).map(normalRoot);
   if (roots.length > 0) {
-    const realRoots = await Promise.all(roots.map((p) => realpath(p).catch((err: NodeJS.ErrnoException) => {
-      if (err.code === 'ENOENT') return p; // a root that does not exist contains nothing real
-      throw err;
-    })));
-    if (!inRoots(canonical, realRoots)) throw new Error(`Path '${absolute}' is outside the allowed roots`);
+    const realRoots = await Promise.all(roots.map(realRoot));
+    // Either spelling up front (a root given as /tmp/x admits /private/tmp/x)...
+    if (!inRoots(absolute, roots) && !inRoots(absolute, realRoots)) throw outsideRoots(absolute);
+    // ...but the real path decides: a symlink in the path, or one swapped in
+    // since the caller checked it, must not lead outside the real roots.
+    if (!inRoots(await realpath(absolute), realRoots)) throw outsideRoots(absolute);
   }
+  const canonical = await realpath(absolute);
   // Refuse special files before opening them: opening a device can have side
   // effects, and a FIFO with no writer blocks. Then open without blocking and
   // without following a symlink swapped in since realpath, and check the
@@ -131,6 +125,34 @@ export function freeModelId(registry: ModelRegistry, base: string): string {
   let id = base;
   for (let n = 2; registry.get(id) !== null; n += 1) id = `${base}_${n}`;
   return id;
+}
+
+/** Absolute, without a trailing separator unless it is a filesystem root (`/`, `C:\\`). */
+function normalRoot(p: string): string {
+  const r = resolve(p);
+  return r !== parse(r).root && r.endsWith(sep) ? r.slice(0, -1) : r;
+}
+
+/**
+ * A root's real form. A directory root is followed through links (macOS
+ * /tmp -> /private/tmp). A root that is not a directory, such as the checked
+ * file model_load and the CLI pass, keeps its last component: following it
+ * would move the root along with a file swapped for a symlink. A root that
+ * cannot be resolved stays as written, so it admits nothing it did not before.
+ */
+async function realRoot(root: string): Promise<string> {
+  const real = await realpath(root).catch(() => root);
+  if (real === root) return root;
+  if ((await stat(real).catch(() => null))?.isDirectory()) return real;
+  return join(await realpath(dirname(root)).catch(() => dirname(root)), basename(root));
+}
+
+function inRoots(path: string, roots: readonly string[]): boolean {
+  return roots.some((p) => path === p || path.startsWith(p.endsWith(sep) ? p : p + sep));
+}
+
+function outsideRoots(path: string): Error {
+  return new Error(`Path '${path}' is outside the allowed roots`);
 }
 
 export function deriveModelId(name: string): string {

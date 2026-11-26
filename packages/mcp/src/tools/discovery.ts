@@ -146,8 +146,8 @@ export const modelLoad: Tool = {
     try {
       const loaded = await loadIfcModel(filePath, {
         modelId: id,
-        // Path was already validated; loader's secondary check would be a
-        // tautology, so pass a single-entry allowlist matching the file.
+        // The checked path is the only root: the loader refuses it if the path
+        // now resolves anywhere else (a symlink swapped in since the check).
         allowedPaths: [filePath],
       });
       // While the file parsed, the scope may have been narrowed (setScope) or

@@ -10,8 +10,9 @@
  *
  *   pnpm --filter @ifc-lite/mcp release:manifests [--out <dir>] [--no-bundle]
  *
- * The script first builds @ifc-lite/mcp and every workspace package it
- * depends on, the wasm runtime included, with turbo's cache off (a cached
+ * `release:manifests` first builds @ifc-lite/mcp and every workspace package
+ * it depends on (running `node release/build.mjs` alone uses dist/ as it is),
+ * the wasm runtime included, with turbo's cache off (a cached
  * soft-skip could restore an old runtime), so nothing in the bundle is stale.
  * It refuses to bundle without wasm-pack (build-wasm.sh would keep whatever
  * runtime is on disk), and fails if a runtime is missing from the stage.

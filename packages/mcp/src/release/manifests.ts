@@ -88,7 +88,8 @@ export function mcpbManifest(pkg: McpPackage): Record<string, unknown> {
     long_description:
       'Opens IFC2X3, IFC4, IFC4X3 and IFC5 models and gives the agent tools to query entities and properties, ' +
       'validate against IDS, run clash checks and diffs, work with BCF, edit models and export them ' +
-      '(IFC, glTF, CSV, JSON, Parquet). Choose model files below, or ask the agent to load one.',
+      '(IFC, glTF, CSV, JSON, Parquet). Choose at least one model file below: the agent can then ' +
+      'also load other models from the same folders.',
     author: { name: pkg.author },
     repository: { type: 'git', url: repoUrl(pkg) },
     homepage: pkg.homepage,
@@ -112,7 +113,8 @@ export function mcpbManifest(pkg: McpPackage): Record<string, unknown> {
         type: 'file',
         title: 'IFC models',
         description:
-          'Models to load when the server starts. Leave empty to load them from the chat instead. ' +
+          'Models to load when the server starts. The agent may also load other files from these ' +
+          'models\' folders; with none chosen it can only reach its working and temp folders. ' +
           'If a chosen file is moved or deleted, the server does not start until you change this.',
         multiple: true,
         required: false,

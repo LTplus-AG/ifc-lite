@@ -220,10 +220,10 @@ describe('script_run', () => {
 
   it('clips an oversized log line instead of dropping it', async () => {
     const result = await run("console.log('a'.repeat(70000)); console.log('small'); 1");
-    const logs = result.structuredContent?.logs as Array<{ text: string }>;
+    const logs = logTexts(result);
     expect(result.structuredContent?.logs_truncated).toBe(true);
     expect(logs).toHaveLength(1);
-    expect(logs[0].text.length).toBe(64 * 1024);
+    expect(logs[0].length).toBe(64 * 1024);
   });
 
   it('honours a cancel that lands while the sandbox is being created', async () => {
@@ -292,9 +292,9 @@ describe('script_run', () => {
 
   it('logs errors and BigInts readably and names a cycle as one', async () => {
     const result = await run("console.error(new TypeError('boom')); console.log(10n); 1");
-    const logs = result.structuredContent?.logs as Array<{ text: string }>;
-    expect(logs[0].text).toMatch(/^TypeError: boom/);
-    expect(logs[1].text).toBe('10n');
+    const logs = logTexts(result);
+    expect(logs[0]).toMatch(/^TypeError: boom/);
+    expect(logs[1]).toBe('10n');
     expect((await runError("const a = { pad: 'y'.repeat(1000) }; a.self = a; a")).message).toMatch(/not JSON-serialisable: TypeError: the value is cyclic/);
     expect((await run("const f = () => 1; f.toJSON = () => 'fn'; ({ f })")).structuredContent?.value).toEqual({ f: 'fn' });
   });

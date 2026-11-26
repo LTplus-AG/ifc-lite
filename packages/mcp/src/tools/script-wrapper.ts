@@ -122,10 +122,10 @@ export function wrapScript(code: string): string {
   // opts: from jsonOptions, or undefined for plain JSON with no replacer.
   function ser(root, limit, forLog, opts) {
     var fn = opts ? opts.fn : null, list = opts ? opts.list : null, gap = opts ? opts.gap : '';
-    var indents = create(null);
-    indents[0] = '';
-    var built = 0;
+    // Indent strings per depth, built only when there is a gap.
+    var indents = null, built = 0;
     function indent(depth) {
+      if (indents === null) { indents = create(null); indents[0] = ''; }
       for (; built < depth; built++) indents[built + 1] = indents[built] + gap;
       return indents[depth];
     }

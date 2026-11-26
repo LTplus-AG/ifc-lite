@@ -12,6 +12,7 @@ import { clearRegistrySession, useRegistryWorkspace } from '@/lib/registry/works
 import { OCI_MANIFEST_TYPE, sha256 } from '@/lib/registry/artifacts';
 import { HANDOFF_PROTOCOL, saveRegistryConnection } from '@/lib/registry/handoff-contract';
 import { SourcesPanel } from './SourcesPanel';
+import { resolveEnglish } from '@/i18n/registry';
 import { installRegistryPopup, registryCallback, registryOAuthConfig, registryTokenReply } from '@/test/registry-oauth-fixture';
 const initialFetch = globalThis.fetch;
 
@@ -29,15 +30,16 @@ function button(ui: HTMLElement, name: string): HTMLButtonElement {
 afterEach(async () => { await act(async () => { cleanup(); clearRegistrySession(); }); globalThis.fetch = initialFetch; });
 
 test('the registry flag gates file-store controls and handoff authorization (#9638)', async t => {
-  const enabled = await mount();
-  await waitFor(() => Boolean(enabled.textContent?.includes('Add file store')), 'the enabled viewer offers file-store setup');
-  cleanup();
-
   const registry = 'https://files.example.test';
   saveRegistryConnection({ registry, authorization_server: 'https://issuer.example.test', client_id: 'viewer' });
   t.after(() => { localStorage.clear(); window.history.replaceState(null, '', '/'); });
   const disabled = await mount(false);
   assert.doesNotMatch(disabled.textContent ?? '', /Model registry|Add file store|Browse versions|Push to…/);
+  assert.equal(resolveEnglish('registry.title'), 'registry.title', 'the disabled feature must not load its English catalogue (#8310)');
+  cleanup();
+
+  const enabled = await mount();
+  await waitFor(() => Boolean(enabled.textContent?.includes('Add file store')), 'the enabled viewer offers file-store setup');
   cleanup();
 
   const fetch = t.mock.method(globalThis, 'fetch', async () => Response.json({}));

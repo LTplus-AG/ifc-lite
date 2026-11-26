@@ -36,6 +36,7 @@ jobs:
             os: ubuntu-latest
             rust-target: x86_64-unknown-linux-musl
           - target: darwin-x64
+            # Like Server Binaries, cross-build x64 on the hosted ARM64 image.
             os: macos-15
             rust-target: x86_64-apple-darwin
           - target: darwin-arm64
@@ -108,8 +109,8 @@ jobs:
           if [[ "$RUNNER_OS" == Windows ]]; then
             binary+=.exe
           fi
-          case "$ASSET_TARGET" in
-            linux-x64|darwin-arm64|win32-x64)
+          case "$ASSET_TARGET:$RUNNER_ARCH" in
+            linux-x64:X64|darwin-arm64:ARM64|win32-x64:X64)
               "target/$RUST_TARGET/release/$binary" --help
               ;;
           esac
@@ -194,7 +195,22 @@ jobs:
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: release-assets/ifc-build-cache-*.tar.gz
+          # The action uploads to GitHub's attestations API independently of
+          # the optional artifact metadata records for OCI registry pushes.
           create-storage-record: false
+
+      - name: Verify Published Provenance
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          for archive in release-assets/ifc-build-cache-*.tar.gz; do
+            gh attestation verify "$archive" --repo "$GH_REPO" \
+              --signer-workflow "$GH_REPO/.github/workflows/cache-cli-binaries.yml" \
+              --source-ref "refs/tags/$RELEASE_TAG"
+          done
 
       - name: Attach Missing Assets and Record Cache Format
         shell: bash

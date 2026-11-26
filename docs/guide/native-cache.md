@@ -18,7 +18,7 @@ gh attestation verify "$archive" --repo LTplus-AG/ifc-lite \
   --source-ref "refs/tags/$tag"
 ```
 
-The published `.sha256` sidecar checks transfer integrity. CI consumers must verify the attestation or check the archive against a SHA-256 digest pinned in their own repository, as the `setup-oci-registries` action does for zot and oras.
+GitHub CLI retrieves the attestation from the public repository by archive digest. The release workflow runs the same verification before uploading the archives. The published `.sha256` sidecar checks transfer integrity. CI consumers must verify the attestation or check the archive against a SHA-256 digest pinned in their own repository, as the `setup-oci-registries` action does for zot and oras.
 
 The crate is not published to crates.io. Cargo can build it from a local checkout or directly from this repository.
 

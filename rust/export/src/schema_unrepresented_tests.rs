@@ -269,3 +269,54 @@ fn omits_a_sectioned_spine_that_loses_a_section_10970() {
         assert!(output.contains("#17=IFCSECTIONEDSPINE(#6,(#12,#15,#14),(#7,#8,#9));"), "{output}");
     }
 }
+
+#[test]
+fn upgrades_deleted_ifc4_types_to_ifc4x3_10971() {
+    let source = include_bytes!("../tests/fixtures/schema_ifc4x3_deleted_types.ifc");
+    let opts = crate::StepOptions { schema: Some("IFC4X3".into()), ..Default::default() };
+    let (out, stats, _) = crate::export_step_with_diagnostics(source, &opts).unwrap();
+    assert_eq!(stats.attribute_values_dropped, 5);
+    for line in [
+        "#1=IFCDOORTYPE('0YvctVUKr0kugbFTf53O9L',$,'Door Style',$,$,$,$,'D-1',$,.NOTDEFINED.,.SINGLE_SWING_LEFT.,.T.,$);",
+        "#2=IFCWINDOWTYPE('0YvctVUKr0kugbFTf53O9A',$,'Window Style',$,$,$,$,'W-1',$,.NOTDEFINED.,.DOUBLE_PANEL_VERTICAL.,.F.,$);",
+        "#3=IFCBUILDINGELEMENTPROXY('0YvctVUKr0kugbFTf53O9B',$,'Proxy',$,'Proxy object',$,$,'PX-1',.NOTDEFINED.);",
+        "#4=IFCWALL('0YvctVUKr0kugbFTf53O9C',$,'Wall',$,$,$,$,$,.NOTDEFINED.);",
+    ] {
+        assert!(out.contains(line), "{line}\n{out}");
+    }
+}
+
+#[test]
+fn omits_ifc2x3_resources_and_rewrites_ifc4x3_referrers_10971() {
+    let source = include_bytes!("../tests/fixtures/schema_unrooted_upgrade.ifc");
+    let opts = crate::StepOptions { schema: Some("IFC4X3".into()), ..Default::default() };
+    let out = crate::export_step(source, &opts).unwrap();
+    for dropped in ["#3=", "#6=", "#7=", "#19=", "#21="] {
+        assert!(!out.lines().any(|line| line.starts_with(dropped)), "{out}");
+    }
+    assert!(out.contains("#4=IFCGEOMETRICCURVESET((#5));"), "{out}");
+    assert!(out.contains("#12=IFCSTYLEDITEM($,(#10),'keep #3 as text');"), "{out}");
+}
+
+#[test]
+fn clears_only_the_optional_zone_of_a_retained_local_time_in_ifc4x3_10971() {
+    // A damaged HourOffset refers to an obsolete curve, so the offset is pruned.
+    let source = include_bytes!("../tests/fixtures/schema_ifc4x3_legacy_optional.ifc");
+    let opts = crate::StepOptions { schema: Some("IFC4X3".into()), ..Default::default() };
+    let (direct, _, direct_warnings) = crate::export_step_with_diagnostics(source, &opts).unwrap();
+    let (logged, log_stats) = crate::export_step_with_log(source, &opts, &crate::MutationLog::default()).unwrap();
+    let (merged, merged_stats) = crate::export_merged_with_stats(
+        &[source], &crate::MergedOptions { schema: opts.schema, ..Default::default() },
+    );
+    for (writer, output, warnings) in [
+        ("direct", direct, direct_warnings),
+        ("logged", logged, log_stats.warnings),
+        ("merged", merged, merged_stats.warnings),
+    ] {
+        assert!(output.contains("#5=IFCLOCALTIME(10,30,15.,$,$);"), "{writer}: {output}");
+        assert!(output.contains("#7=IFCDATEANDTIME(#6,#5);"), "{writer}: {output}");
+        assert!(!output.lines().any(|line| line.starts_with("#3=") || line.starts_with("#4=")), "{writer}: {output}");
+        assert!(warnings.iter().any(|w| w.contains("#4 (IFCCOORDINATEDUNIVERSALTIMEOFFSET) was omitted")), "{writer}: {warnings:?}");
+        assert!(!warnings.iter().any(|w| w.contains("#5 (IFCLOCALTIME) was omitted")), "{writer}: {warnings:?}");
+    }
+}

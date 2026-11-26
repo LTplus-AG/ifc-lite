@@ -164,11 +164,11 @@ fn emit<W: std::io::Write>(
     // EXPORT-STEP-11).
     let source_schema = detect_schema(content);
     let schema = opts.schema.clone().unwrap_or_else(|| source_schema.clone());
-    let upgrading = crate::schema_unrooted_upgrade::applies(&source_schema, &schema);
+    let upgrading = crate::schema_unrooted_upgrade::Upgrade::between(&source_schema, &schema);
     let mut may_prune_upgrade = false;
     let mut owner_histories: Vec<(u32, usize)> = Vec::new();
     let index = crate::step_index::RecordIndex::build(content, |id, type_name, start| {
-        may_prune_upgrade |= upgrading && !may_prune_upgrade && crate::schema_unrooted_upgrade::omitted_type(type_name);
+        may_prune_upgrade |= !may_prune_upgrade && upgrading.is_some_and(|upgrade| upgrade.omitted_type(type_name));
         if type_name.eq_ignore_ascii_case("IFCOWNERHISTORY") {
             owner_histories.push((id, start));
         }
@@ -249,7 +249,7 @@ fn emit<W: std::io::Write>(
     // IFC2X3 places one product per placement (#9209): its records are held to adapt them.
     use std::io::Write as _;
     let date_buffer = crate::schema_value_forms::ValueForms::buffer_for_dates(content, &source_schema, &schema);
-    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, targets_ifc2x3, date_buffer || checks.structural.buffers_varying(content) || checks.typed_properties.enabled, may_prune_upgrade);
+    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, targets_ifc2x3, date_buffer || checks.structural.buffers_varying(content) || checks.typed_properties.enabled, upgrading.filter(|_| may_prune_upgrade));
     if targets_ifc2x3 || date_buffer { checks.forms.enable_dates(); }
 
     let mut written = 0usize;

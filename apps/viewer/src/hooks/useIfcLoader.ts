@@ -8,6 +8,7 @@
  * cache management, and server-side parsing delegation
  *
  */
+import { gpuOnlyRequested, installGpuOnlyResidency } from '@/lib/geometry-backing/gpu-only-mode';
 import { useCallback, useEffect, useRef } from 'react';
 import { attachCapturedLoad } from '@/lib/error-reports/correlation';
 import { useShallow } from 'zustand/react/shallow';
@@ -404,10 +405,13 @@ export function useIfcLoader() {
       return true;
     };
 
-
     const settleResumable = file && beginResumableLoad(file);
     try {
       const fileSize = processedModel?.bytes ?? file?.size ?? 0;
+      if (target.kind === 'primary' && gpuOnlyRequested(fileSize)) {
+        await installGpuOnlyResidency();
+        if (isStale()) return;
+      }
       const fileSizeMB = fileSize / (1024 * 1024);
       // LandXML finalizes before the full-buffer detector below; a processed model is IFC.
       let format: ReturnType<typeof detectFormat> | NonNullable<ReturnType<typeof detectPointCloudFormat>> | 'landxml' = processedModel ? 'ifc' : isLandXmlFileName(fileName) ? 'landxml' : 'unknown';
@@ -1876,7 +1880,7 @@ export function useIfcLoader() {
                 const hasTexturedMeshes = allMeshes.some((m) => m.texture || m.textureRef);
                 if (hasTexturedMeshes) console.log('[useIfc] Skipping cache write: model carries surface textures the cache format does not persist yet (#1781)');
                 const cacheCoordinateInfo = finalCoordinateInfo;
-                const cacheable = cachePlan.shouldCache && !hasTexturedMeshes && !isCompactCellSize(geometryProcessor.compactCellSize) && !skippedHungElements && !omittedTypeRecords && allMeshes.length > 0 && !!cacheCoordinateInfo;
+                const cacheable = cachePlan.shouldCache && !hasTexturedMeshes && !isCompactCellSize(geometryProcessor.compactCellSize) && !(target.kind === 'primary' && useViewerStore.getState().boundedGeometryMode) && !skippedHungElements && !omittedTypeRecords && allMeshes.length > 0 && !!cacheCoordinateInfo;
                 const writeCache = (meshes: MeshData[]) => cacheCoordinateInfo && trace.span('cache.write', () => saveToCache(cacheKey, dataStore, {
                   meshes, coordinateInfo: cacheCoordinateInfo,
                   totalVertices: meshes.reduce((sum, m) => sum + m.positions.length / 3, 0),
@@ -1928,14 +1932,10 @@ export function useIfcLoader() {
                 completeInstancedShardSupply(modelId, allInstancedShards.length, shardGeneration); // every streamed shard is queued
                 await trace.span('load.finalize', () => finalizeModel(dataStore, useViewerStore.getState().geometryResult, getViewerSchemaVersion(dataStore), {
                   loadState: 'complete',
-                  // Only show "writing" when this file will actually be cached
-                  // under the current plan (respects the size bands + kill switch).
-                  cacheState: cachePlan.shouldCache ? 'writing' : 'none', loadPath: 'wasm', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad,
+                  cacheState: cacheable ? 'writing' : 'none', loadPath: 'wasm', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad,
                 }, allInstancedShards));
                 if (isStale()) return; // finalize awaited the identity pass (#7022)
 
-                // Cache the result in the background, reusing the `cachePlan`
-                // decided once above (single source of truth for read + write).
                 // Both tiers (`source` 10-150MB, `mesh-only` 150-400MB, kill switch `?meshCache=0`) cache
                 // tables + geometry WITHOUT the source; re-open rehydrates from the fresh buffer, validated
                 // by the mtime guard + off-thread full hash (cacheTier.ts) — the key only keys the lookup.

@@ -5,22 +5,23 @@ use std::collections::HashSet;
 use std::io::{self, Write};
 
 use crate::schema_ifc2x3_placements::place_each_object_once;
+use crate::schema_unrooted_upgrade::Upgrade;
 
 /// Holds DATA for IFC2X3 placements or a conversion that rewrites the emitted records. Other exports stream directly.
 pub(crate) struct Body<'w> {
     out: &'w mut dyn Write,
     held: Option<Vec<u8>>,
     ifc2x3: bool,
-    prune_upgrade: bool,
+    prune_upgrade: Option<Upgrade>,
 }
 
 impl<'w> Body<'w> {
     pub(crate) fn new(out: &'w mut dyn Write, ifc2x3: bool) -> Self {
-        Self::for_conversion(out, ifc2x3, false, false)
+        Self::for_conversion(out, ifc2x3, false, None)
     }
 
-    pub(crate) fn for_conversion(out: &'w mut dyn Write, ifc2x3: bool, deferred: bool, prune_upgrade: bool) -> Self {
-        Body { out, held: (ifc2x3 || deferred || prune_upgrade).then(Vec::new), ifc2x3, prune_upgrade }
+    pub(crate) fn for_conversion(out: &'w mut dyn Write, ifc2x3: bool, deferred: bool, prune_upgrade: Option<Upgrade>) -> Self {
+        Body { out, held: (ifc2x3 || deferred || prune_upgrade.is_some()).then(Vec::new), ifc2x3, prune_upgrade }
     }
 
     pub(crate) fn finish(self) -> io::Result<isize> {
@@ -47,9 +48,8 @@ impl<'w> Body<'w> {
             let rewritten = deferred(text);
             let source = rewritten.as_ref().map_or(text, |(s, _)| s.as_str());
             let added = rewritten.as_ref().map_or(0, |(_, n)| *n);
-            if self.prune_upgrade {
-                use crate::schema_unrooted_upgrade::{prune, seeds};
-                if let Some((pruned, omitted, losses)) = prune(source, &seeds(source.as_bytes()).collect()) {
+            if let Some(upgrade) = self.prune_upgrade {
+                if let Some((pruned, omitted, losses)) = upgrade.prune(source) {
                     let removed = losses.len() as isize;
                     warnings.extend(losses);
                     return Some((pruned, added - removed, omitted));

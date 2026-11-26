@@ -11,7 +11,7 @@ import {
   type DrawStreamOverrides,
   type Renderer,
 } from '@ifc-lite/renderer';
-import { recordAppliedPerfFlag } from '../lib/perf/flags.js';
+import { recordAppliedPerfFlag } from '../lib/perf/flags-applied.js';
 import { isHugeGeometryEnabled, readRampFlag } from './hugeGeometryConfig.js';
 
 /** What the huge-geometry umbrella turns on: stream, arenas, HLOD and the highlight index (no frame budget). */

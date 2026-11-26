@@ -43,7 +43,9 @@ const LIMITS = {
 };
 
 export function wrapScript(code: string): string {
-  return `(function (run, P, isInstance, then, apply, slice, Str, stringify, keys, isArray, create, defineProperty, glob, ErrorCtor, TypeErrorCtor, SetCtor, setAdd, setHas, setDelete, unbox, objectProto, getProto, parse, charCodeAt, SyntaxErrorCtor, RegExpCtor, exec, bind, InternalErrorCtor, toStringTag, L) {
+  return `(function (run, I, L) {
+  // The intrinsics, by name: read once here, before the script runs.
+  var P = I.P, isInstance = I.isInstance, then = I.then, apply = I.apply, slice = I.slice, Str = I.Str, stringify = I.stringify, keys = I.keys, isArray = I.isArray, create = I.create, defineProperty = I.defineProperty, glob = I.glob, ErrorCtor = I.ErrorCtor, TypeErrorCtor = I.TypeErrorCtor, SetCtor = I.SetCtor, setAdd = I.setAdd, setHas = I.setHas, setDelete = I.setDelete, unbox = I.unbox, objectProto = I.objectProto, getProto = I.getProto, parse = I.parse, charCodeAt = I.charCodeAt, SyntaxErrorCtor = I.SyntaxErrorCtor, RegExpCtor = I.RegExpCtor, exec = I.exec, bind = I.bind, InternalErrorCtor = I.InternalErrorCtor, toStringTag = I.toStringTag;
   function msg(e) {
     // message is read once and coerced inside the try, so a getter or
     // toString cannot throw past the wrapper and pose as a sandbox error.
@@ -291,5 +293,5 @@ export function wrapScript(code: string): string {
     }
     catch (e) { resolveWrapper(fail(e)); }
   });
-})(function () { return eval(${JSON.stringify(code)}); }, Promise, Function.prototype[Symbol.hasInstance], Promise.prototype.then, Reflect.apply, String.prototype.slice, String, JSON.stringify, Object.keys, Array.isArray, Object.create, Object.defineProperty, globalThis, Error, TypeError, Set, Set.prototype.add, Set.prototype.has, Set.prototype.delete, [Number.prototype.valueOf, String.prototype.valueOf, Boolean.prototype.valueOf, BigInt.prototype.valueOf], Object.prototype, Object.getPrototypeOf, JSON.parse, String.prototype.charCodeAt, SyntaxError, RegExp, RegExp.prototype.exec, Function.prototype.bind, typeof InternalError === 'function' ? InternalError : undefined, Symbol.toStringTag, ${JSON.stringify(LIMITS)})`;
+})(function () { return eval(${JSON.stringify(code)}); }, { P: Promise, isInstance: Function.prototype[Symbol.hasInstance], then: Promise.prototype.then, apply: Reflect.apply, slice: String.prototype.slice, Str: String, stringify: JSON.stringify, keys: Object.keys, isArray: Array.isArray, create: Object.create, defineProperty: Object.defineProperty, glob: globalThis, ErrorCtor: Error, TypeErrorCtor: TypeError, SetCtor: Set, setAdd: Set.prototype.add, setHas: Set.prototype.has, setDelete: Set.prototype.delete, unbox: [Number.prototype.valueOf, String.prototype.valueOf, Boolean.prototype.valueOf, BigInt.prototype.valueOf], objectProto: Object.prototype, getProto: Object.getPrototypeOf, parse: JSON.parse, charCodeAt: String.prototype.charCodeAt, SyntaxErrorCtor: SyntaxError, RegExpCtor: RegExp, exec: RegExp.prototype.exec, bind: Function.prototype.bind, InternalErrorCtor: typeof InternalError === 'function' ? InternalError : undefined, toStringTag: Symbol.toStringTag }, ${JSON.stringify(LIMITS)})`;
 }

@@ -151,14 +151,18 @@ fn prunes_references_to_removed_ifc2x3_resources_10970() {
 }
 
 #[test]
-fn clears_an_optional_representation_on_an_unconverted_varying_action_10970() {
+fn clears_an_optional_representation_on_a_varying_action_written_constant_10970() {
     let source = include_bytes!("../tests/fixtures/schema_unrooted_legacy_optional.ifc");
     let opts = crate::StepOptions { schema: Some("IFC4".into()), ..Default::default() };
     let direct = crate::export_step(source, &opts).unwrap();
     let (logged, _) = crate::export_step_with_log(source, &opts, &crate::MutationLog::default()).unwrap();
     let merged = crate::export_merged(&[source], &crate::MergedOptions { schema: opts.schema, ..Default::default() });
-    for (writer, output) in [("direct", direct), ("logged", logged), ("merged", merged)] {
-        assert!(output.contains("#30=IFCSTRUCTURALLINEARACTIONVARYING('3sXjCM_kPHN8ZCpuBhV_98',$,'A',$,$,$,$,#11,.GLOBAL_COORDS.,.F.,$,.TRUE_LENGTH.,$,$);"), "{writer}: {output}");
+    // No load configuration holds the action: the single-model writers write it constant (#11354), the merged writer
+    // still keeps the IFC2X3 keyword. Either way its Representation is cleared.
+    let constant = "#30=IFCSTRUCTURALCURVEACTION('3sXjCM_kPHN8ZCpuBhV_98',$,'A',$,$,$,$,#11,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);";
+    let kept = "#30=IFCSTRUCTURALLINEARACTIONVARYING('3sXjCM_kPHN8ZCpuBhV_98',$,'A',$,$,$,$,#11,.GLOBAL_COORDS.,.F.,$,.TRUE_LENGTH.,$,$);";
+    for (writer, output, expected) in [("direct", direct, constant), ("logged", logged, constant), ("merged", merged, kept)] {
+        assert!(output.contains(expected), "{writer}: {output}");
         assert!(!output.lines().any(|line| ["#41=", "#42=", "#43="].iter().any(|prefix| line.starts_with(prefix))), "{writer}: {output}");
     }
 }

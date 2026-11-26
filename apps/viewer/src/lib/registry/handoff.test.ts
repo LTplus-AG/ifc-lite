@@ -22,6 +22,13 @@ test('a handoff is a pinned content locator and accepts an independent authoriza
   assert.throws(() => handoffContext({...value,source:{...value.source,digest:'issued'}},[connection]));
 });
 
+test('a saved file store needs a registry host the OCI reference parser accepts (#9638 review)', () => {
+  assert.throws(() => registryConnections(JSON.stringify([{...connection,registry:'https://registry'}])),/domain name/);
+  for (const registry of ['https://registry.example.test','http://localhost:5000','http://localhost','https://registry:5000']) {
+    assert.equal(registryConnections(JSON.stringify([{...connection,registry}]))[0].registry,registry);
+  }
+});
+
 test('ordinary OAuth responses support downscoping and require no Subsoil session or identity fields', () => {
   const requested='repository:project/model:pull,push';
   const session=resourceSession({access_token:'opaque',token_type:'Bearer',expires_in:300,scope:'repository:project/model:pull'},connection,requested);

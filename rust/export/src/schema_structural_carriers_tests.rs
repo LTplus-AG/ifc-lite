@@ -125,6 +125,22 @@ fn a_comment_only_caused_by_is_not_warned_as_omitted_10779() {
     assert!(warnings.contains("IFCSTRUCTURALLINEARACTION.CausedBy has no slot in IFC4; its value is omitted"), "{warnings}");
 }
 
+#[test]
+fn a_structural_profile_subtype_reports_only_unpreserved_values_10797() {
+    let n = crate::schema_convert::schema_attribute_names("IFC2X3", "IFCSTRUCTURALSTEELPROFILEPROPERTIES").unwrap().len();
+    let profile = "#37=IFCCARTESIANPOINT((0.,0.));\n#38=IFCAXIS2PLACEMENT2D(#37,$);\n#39=IFCRECTANGLEPROFILEDEF(.AREA.,'R',#38,0.2,0.3);";
+    let record = format!("{profile}\n#40=IFCSTRUCTURALSTEELPROFILEPROPERTIES('HEA',#39,12.5{});", ",$".repeat(n - 3));
+    let input = model("IFC2X3", &record);
+    let (up, warnings) = convert(&input, "IFC4");
+    assert!(up.contains("#40=IFCPROFILEPROPERTIES('Pset_ProfileMechanical',$,(#41),#39);"), "{up}");
+    assert!(up.contains("#41=IFCPROPERTYSINGLEVALUE('MassPerLength',$,IFCMASSPERLENGTHMEASURE(12.5),$);"), "{up}");
+    assert!(warnings.contains("IFCSTRUCTURALSTEELPROFILEPROPERTIES.ProfileName has no slot in IFC4; its value is omitted"), "{warnings}");
+    assert!(!warnings.contains("IFCSTRUCTURALSTEELPROFILEPROPERTIES.PhysicalWeight"), "{warnings}");
+    let opts = StepOptions { schema: Some("IFC4".into()), ..StepOptions::default() };
+    let (_, stats, _) = export_step_with_diagnostics(input.as_bytes(), &opts).unwrap();
+    assert_eq!(stats.attribute_values_dropped, 1, "ProfileName");
+}
+
 // A varying action that stays unconverted is no IFC4 product, so no 'Causes' relationship may name it.
 const GEOMETRY: &str = "#13=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#8,$);
 #14=IFCSHAPEREPRESENTATION(#13,'Reference','Point',(#7));
@@ -169,7 +185,7 @@ fn reads_causes_and_unset_slots_with_step_comments_10248() {
 
 #[test]
 fn reports_caused_by_lost_when_no_id_is_left_for_its_relationship_10597() {
-    let mut checks = crate::schema_enum::ConversionChecks::new();
+    let mut checks = crate::schema_enum::ConversionChecks::default();
     let source = model("IFC2X3", &[REACTION, CAUSED].join("\n"));
     checks.structural.carriers = super::StructuralCarriers::scan_ifc2x3(source.as_bytes(), |_, _| true);
     checks.structural.allocate(|| None);

@@ -115,7 +115,7 @@ async function runRules(m: LoadedModel, rules: ClashRule[], ctx: ToolContext): P
 
 /** Project a `Clash` down to a compact, JSON-friendly display row. */
 /** Exported for direct unit testing (see clash.test.ts distanceKind coverage). */
-export function displayClash(c: Clash): Record<string, unknown> {
+export function displayClash(c: Clash) {
   return {
     id: c.id,
     rule: c.rule,
@@ -150,7 +150,7 @@ export function displayClash(c: Clash): Record<string, unknown> {
  * equal-distance rows no longer reshuffle between runs.
  */
 function topClashes(clashes: Clash[], cap: number): {
-  rows: Record<string, unknown>[];
+  rows: ReturnType<typeof displayClash>[];
   truncated: { shown: number; dropped: number; total: number } | null;
 } {
   const sorted = sortClashes(clashes, 'distance');
@@ -162,7 +162,7 @@ function topClashes(clashes: Clash[], cap: number): {
   return { rows, truncated: null };
 }
 
-const clashCheck: Tool = {
+export const clashCheck = {
   name: 'clash_check',
   description:
     'Clash detection on a single model. Omit BOTH a and b to detect ALL clashes inside the model '
@@ -222,7 +222,7 @@ const clashCheck: Tool = {
       },
     );
   },
-};
+} satisfies Tool;
 
 const clashMatrix: Tool = {
   name: 'clash_matrix',

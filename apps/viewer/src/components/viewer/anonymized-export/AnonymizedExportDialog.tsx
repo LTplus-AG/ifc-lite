@@ -140,7 +140,7 @@ export function AnonymizedExportDialog({ surface, trigger }: AnonymizedExportDia
     try {
       const dataStore = await ensureModelExportReady(set.targetModelId);
       if (!dataStore) throw new Error(t('anonymizedExport.dialog.modelDataUnavailableError'));
-      const result = runAnonymizedExport({
+      const result = await runAnonymizedExport({
         store: dataStore,
         fileStem,
         includedIds: set.includedIds,

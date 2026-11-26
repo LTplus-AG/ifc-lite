@@ -66,6 +66,9 @@ export class ModelGeometryBacking {
 
   get isCurrent(): boolean { return this.live && !this.superseded; }
 
+  /** Not yet disposed: its records still exist (current or not, complete or not). */
+  get isLive(): boolean { return this.live; }
+
   /**
    * The store replaced this generation's geometry (or removed the model): from now on it is not
    * current, so a retained handle reports so and its readers refuse, before the replacement begins.
@@ -75,6 +78,16 @@ export class ModelGeometryBacking {
   /** Closed, fully committed and still current: the precondition for any release. */
   get isComplete(): boolean {
     return this.isCurrent && this.writer.isClosed && !this.writer.error
+      && this.directory.chunks.every((chunk) => chunk.state === 'durable')
+      && this.directory.shards.every((shard) => shard.state === 'durable');
+  }
+
+  /**
+   * Closed and fully committed, and not yet disposed, whether or not it is still current: what the tap's own
+   * replay and carry may read from a generation the store has replaced (through `carryReader`), never a consumer.
+   */
+  get isDurablyComplete(): boolean {
+    return this.live && this.writer.isClosed && !this.writer.error
       && this.directory.chunks.every((chunk) => chunk.state === 'durable')
       && this.directory.shards.every((shard) => shard.state === 'durable');
   }

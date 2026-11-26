@@ -40,6 +40,7 @@ import { loadTracerReady } from './lib/perf/loadTrace';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
+import { useViewerStore } from './store';
 import './index.css';
 import 'maplibre-gl/dist/maplibre-gl.css';
 // Wire the placement-edit helpers' parser-backed source reader. Pure
@@ -57,12 +58,18 @@ import type { FileSourceProviderFactory } from './services/sources/source-host';
 // After the pairing-fragment strip, like every module that may report (pairing-fragment.boot.test.ts).
 import './lib/analytics';
 import { applyRuntimeConfig } from './lib/features/runtime-start';
-import { applyProcessingConfig } from './lib/processed-model';
+import {
+  applyProcessingConfig,
+  type FiledProcessedModelRequest,
+  type OpenProcessedModelOptions,
+  type ProcessedModelRequest,
+} from './lib/processed-model';
 import { linkIconFont } from './lib/features/icon-font';
 import type { ViewerRuntimeConfig } from './lib/features/runtime-config';
 
 export type { FileSourceProviderFactory } from './services/sources/source-host';
 export type { ViewerRuntimeConfig } from './lib/features/runtime-config';
+export type { OpenProcessedModelOptions, ProcessedModelRequest } from './lib/processed-model';
 
 export interface ViewerBootstrapOptions {
   /**
@@ -87,6 +94,15 @@ export interface ViewerBootstrapOptions {
    * not happen.
    */
   readonly config?: ViewerRuntimeConfig;
+  /** Initial processed model. Takes precedence over the configured start model and page URL. */
+  readonly processedModel?: FiledProcessedModelRequest;
+}
+
+export interface ViewerHandle {
+  /** Open a stored model, optionally using a processing server for that request and its Retry. */
+  openProcessedModel(model: ProcessedModelRequest, options?: OpenProcessedModelOptions): void;
+  /** Change the default processing server for subsequent requests, including enabled uploads. */
+  setProcessingServerUrl(url: string): void;
 }
 
 let prepared = false;
@@ -118,13 +134,13 @@ export function prepareViewer(): void {
 }
 
 /** Mounts the viewer into `container`. Call once, from the app entry. */
-export function mountViewer(container: HTMLElement, options: ViewerBootstrapOptions = {}): void {
+export function mountViewer(container: HTMLElement, options: ViewerBootstrapOptions = {}): ViewerHandle {
   prepareViewer();
   // The feature set and analytics, then the locale, before anything renders.
   const config = applyRuntimeConfig(options.config);
   void startLocales(config?.locale);
   // The processing server and a start model; the viewer's autoload takes the request once it mounts.
-  applyProcessingConfig(config);
+  const handle = applyProcessingConfig(config, options.processedModel);
   // Pull the engine binary down before a local pick, once the start model is known.
   scheduleWasmPrewarm();
   // The model tree's icon font, a third-party request; viewer only (the embed has no tree).
@@ -146,10 +162,17 @@ export function mountViewer(container: HTMLElement, options: ViewerBootstrapOpti
   // configuration fails never spawns workers.
   scheduleFastPath();
 
+  // `?a2uiDemo=1` plays a recorded A2UI chat reply once a model loads (docs/architecture/a2ui.md).
+  if (new URLSearchParams(window.location.search).has('a2uiDemo')) {
+    import('./lib/a2ui/demo').then((m) => m.armA2uiDemo(useViewerStore), (error: unknown) => console.warn('[a2ui] demo unavailable', error));
+  }
+
   // Decode the schema tables a first interaction reads once a load has
   // settled and the page is idle (lib/schema-tables/warm-schema-tables.ts).
   // Loaded on demand so it adds nothing to the startup graph; it does nothing
   // until a model has loaded.
   void import('./lib/schema-tables/warm-schema-tables').then(({ startSchemaTableWarm }) => { startSchemaTableWarm(); })
     .catch((err: unknown) => { console.warn('[schema-table warm] not started:', err); });
+
+  return handle;
 }

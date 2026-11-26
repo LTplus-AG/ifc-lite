@@ -16,6 +16,7 @@ import type { registryEn } from './catalogues/registry.en';
 import type { structuralGlyphsEn } from './catalogues/structural-glyphs.en';
 import type { structuralDeriveEn } from './catalogues/structural-derive.en';
 import type { agentBridgeEn } from './catalogues/agent-bridge.en';
+import type { a2uiEn } from './catalogues/a2ui.en';
 
-export type LazyTranslationKey = keyof typeof flowReviewEn | keyof typeof retainedGeometryEn | keyof typeof registryEn | keyof typeof structuralGlyphsEn | keyof typeof structuralDeriveEn | keyof typeof agentBridgeEn;
+export type LazyTranslationKey = keyof typeof flowReviewEn | keyof typeof retainedGeometryEn | keyof typeof registryEn | keyof typeof structuralGlyphsEn | keyof typeof structuralDeriveEn | keyof typeof agentBridgeEn | keyof typeof a2uiEn;
 

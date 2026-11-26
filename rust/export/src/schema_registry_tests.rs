@@ -101,9 +101,7 @@ fn adjusted_type_universe() -> std::collections::BTreeMap<(&'static str, &'stati
                 let name = ty.name().to_ascii_uppercase();
                 let Some(src) = super::schema_attribute_names(from, &name) else { continue };
                 let new_type = super::convert_entity_type(&name, from, to);
-                if super::should_skip_entity(&new_type, to)
-                    || !crate::schema_unrepresented::has_representation(true, &new_type, to)
-                {
+                if super::should_skip_entity(&new_type, to) {
                     continue;
                 }
                 let Some(tgt) = super::schema_attribute_names(to, &new_type) else { continue };
@@ -159,7 +157,7 @@ const SOURCE_LAYOUT_EXEMPT: &[(&str, &str)] = &[
     ("IFCCONSTRUCTIONRESOURCE", "abstract in both schemas"),
     ("IFCWORKCONTROL", "abstract in both schemas"),
     ("IFCSURFACETEXTURE", "abstract in both schemas"),
-    ("IFCMATERIALPROPERTIES", "abstract in IFC2X3; its downgrade needs the Material referent resolved, so it stays as on main here (#10763 follow-up)"),
+    ("IFCMATERIALPROPERTIES", "abstract in IFC2X3, so only the IFC4 downgrade (renamed) has instances"),
     ("IFCPROFILEPROPERTIES", "abstract in IFC2X3, so only the IFC4 downgrade (renamed) has instances"),
     ("IFCSTRUCTURALLINEARACTION", "schema_structural::attributes"),
     ("IFCSTRUCTURALPLANARACTION", "schema_structural::attributes"),
@@ -256,4 +254,25 @@ fn no_same_named_type_passes_a_different_attribute_through_by_position_10763_108
     bad.sort();
     bad.dedup();
     assert!(bad.is_empty(), "{} same-named type(s) pass an attribute through by position into another:\n{}", bad.len(), bad.join("\n"));
+}
+
+/// #10856: the enum reconciliation generator checks every enum slot of a type
+/// a conversion renames a record into, from a list it keeps by hand. That list
+/// must be exactly the types `rename_type` produces, per direction.
+#[test]
+fn rename_targets_are_the_converters_10856() {
+    let schemas = ["IFC2X3", "IFC4", "IFC4X3"];
+    let mut produced = std::collections::BTreeSet::new();
+    // Each source schema's own catalog: IFC_TYPES is IFC4X3's and lacks
+    // IFC2X3-only names such as IFCELECTRICDISTRIBUTIONPOINT.
+    for (from, name, ..) in RETYPE_ROWS.iter().filter(|r| schemas.contains(&r.0)) {
+        for to in schemas.into_iter().filter(|to| to != from) {
+            if let Some(target) = super::rename_type(name, from, to).filter(|t| super::schema_attribute_names(to, t).is_some()) {
+                produced.insert((*from, to, target));
+            }
+        }
+    }
+    let listed: std::collections::BTreeSet<(&str, &str, &str)> = crate::generated::enum_reconciliation::RENAME_TARGETS.iter().copied().collect();
+    assert!(produced.len() > 20, "anti-vacuity: {}", produced.len());
+    assert_eq!(listed, produced, "update RENAME_TARGETS in scripts/generate-enum-reconciliation.mjs and regenerate");
 }

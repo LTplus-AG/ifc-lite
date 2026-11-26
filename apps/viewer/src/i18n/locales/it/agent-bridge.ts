@@ -40,6 +40,7 @@ export const agentBridgeIt = {
   "agentBridge.panel.error": "errore {code}",
   "agentBridge.panel.cancelled": "annullata",
   "agentBridge.panel.duration": "{ms} ms",
+  "agentBridge.panel.repeated": "×{count}",
   "agentBridge.failure.unreachable": "Impossibile collegarsi al bridge sulla porta {port}, oppure ha chiuso la connessione. Avvia il bridge su questo computer con il comando qui sotto, controlla la porta, poi abbina con il codice mostrato. Se è già in esecuzione, potrebbe aver rifiutato la connessione perché troppe schede tentavano l’abbinamento: chiudile e riprova.",
   "agentBridge.failure.origin": "Visualizzatore non su ifclite.com? Avvia il bridge con --bridge-viewer-url {origin} perché accetti questa pagina.",
   "agentBridge.failure.permissionDenied": "Il browser ha impedito a questo sito di raggiungere le app su questo computer. Consentilo nelle impostazioni del sito (l’icona a sinistra dell’indirizzo): «Apps on device» in Chrome, «Device apps and services» in Firefox (etichette tradotte secondo la lingua del browser). Poi riprova.",
@@ -75,4 +76,9 @@ export const agentBridgeIt = {
   "agentBridge.panel.editChange": "{entity} · {field}: {before} → {after}",
   "agentBridge.panel.editDeleted": "{entity} · {field} eliminato (era {before})",
   "agentBridge.panel.editUnchanged": "{entity} · {field} era già {after}; nulla è cambiato",
+  'agentBridge.surfaces.title': "Dal tuo agente",
+  'agentBridge.surfaces.dismiss': "Chiudi {title}",
+  'agentBridge.surfaces.clear': "Cancella tutto",
+  'agentBridge.surfaces.untitled': "Risultato dell'agente",
+  'agentBridge.surfaces.sent': "Inviato al tuo agente",
 } satisfies Catalogue;

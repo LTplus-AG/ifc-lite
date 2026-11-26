@@ -13,14 +13,12 @@ import type {
   BridgeErrorMessage,
   BridgeResultAckMessage,
   BridgeServerMessage,
+  BridgeSurfaceMessage,
   BridgeWelcomeMessage,
   ParseResult,
 } from './protocol.js';
+import { isRecord } from './json-bounds.js';
 import { clip, quoted } from './sanitize.js';
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
 
 function isPermission(v: unknown): boolean {
   return v === 'read-only' || v === 'read-write';
@@ -40,12 +38,25 @@ export function parseServerMessage(text: string, options?: { resultAck: true }):
   switch (raw.type) {
     case 'welcome':
       if (typeof raw.sessionId !== 'string' || !isPermission(raw.permission)) return { ok: false, error: 'malformed welcome' };
-      return { ok: true, value: raw as unknown as BridgeWelcomeMessage };
+      // `features` is optional (older bridges omit it); anything but strings is dropped, never fatal.
+      return {
+        ok: true,
+        value: {
+          ...(raw as unknown as BridgeWelcomeMessage),
+          features: Array.isArray(raw.features) ? raw.features.filter((f): f is string => typeof f === 'string') : [],
+        },
+      };
     case 'call':
       if (typeof raw.sessionId !== 'string' || typeof raw.id !== 'string' || typeof raw.name !== 'string' || !isRecord(raw.arguments)) {
         return { ok: false, error: 'malformed call' };
       }
       return { ok: true, value: raw as unknown as BridgeCallMessage };
+    case 'a2ui-surface':
+      if (typeof raw.sessionId !== 'string' || typeof raw.id !== 'string' || !isRecord(raw.surface)
+        || !Array.isArray(raw.surface.messages) || (raw.surface.title !== undefined && typeof raw.surface.title !== 'string')) {
+        return { ok: false, error: 'malformed A2UI surface' };
+      }
+      return { ok: true, value: raw as unknown as BridgeSurfaceMessage };
     case 'cancel':
       if (typeof raw.sessionId !== 'string' || typeof raw.id !== 'string') return { ok: false, error: 'malformed cancel' };
       return { ok: true, value: raw as unknown as BridgeCancelMessage };

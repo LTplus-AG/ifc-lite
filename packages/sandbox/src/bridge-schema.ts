@@ -36,6 +36,7 @@ import { buildScheduleNamespace } from './bridge-schedule.js';
 import { buildStructuralNamespace } from './bridge-structural.js';
 import { buildClashNamespace } from './bridge-clash.js';
 import { buildCostNamespace } from './bridge-cost.js';
+import { buildUiNamespace, type AppendUiSurface } from './bridge-ui.js';
 import { buildNetworkNamespace } from './bridge-network.js';
 import type { FetchTransport } from './network-request.js';
 /** How to marshal the return value back to QuickJS */
@@ -120,6 +121,7 @@ export interface NamespaceSchema {
 
 export interface BridgeCallContext {
   sandboxSessionId: string;
+  appendUiSurface?: AppendUiSurface;
   /**
    * Cancellation for host work this call starts (#2419), aborted when the run
    * stops waiting (`timeoutMs`) and when the sandbox is disposed. An async
@@ -200,6 +202,7 @@ export const NAMESPACE_SCHEMAS: NamespaceSchema[] = [
 
   // ── bim.export ─────────────────────────────────────────────
   buildExportNamespace(),
+  buildUiNamespace(),
 
   // ── bim.network ────────────────────────────────────────────
   // The empty grant list here is a placeholder for typegen/introspection

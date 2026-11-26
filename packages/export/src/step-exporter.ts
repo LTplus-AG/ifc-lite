@@ -9,6 +9,7 @@
  * Supports applying property and root attribute mutations before export.
  */
 
+import { finishStepConversion } from './schema-converter-step-finish.js';
 import { hasGeorefEdits, IFC2X3_GEOREF_REFUSAL } from './step-coordinate-options.js';
 import type { IfcDataStore, IfcSourceHeader } from '@ifc-lite/parser';
 import { EntityExtractor, parseSourceHeader } from '@ifc-lite/parser';
@@ -66,7 +67,7 @@ import {
 export class StepExporter {
   private dataStore: IfcDataStore;
   private mutationView: MutablePropertyView | null;
-  private nextExpressId: number;
+  private nextExpressId = 1;
   private entityExtractor: EntityExtractor | null;
   /**
    * The owner-history memos the property-set and quantity-set generators read.
@@ -90,11 +91,6 @@ export class StepExporter {
     this.dataStore = dataStore;
     this.isReadableSourceRef = createSourceRefReader(dataStore.source);
     this.mutationView = mutationView || null;
-    const maxExisting = this.findMaxExpressId();
-    const overlayWatermark = typeof mutationView?.peekNextExpressId === 'function'
-      ? mutationView.peekNextExpressId() - 1
-      : 0;
-    this.nextExpressId = Math.max(maxExisting, overlayWatermark) + 1;
     this.entityExtractor = dataStore.source ? new EntityExtractor(dataStore.source) : null;
   }
 
@@ -110,6 +106,9 @@ export class StepExporter {
   }
 
   private preparePass(options: StepExportOptions): { pass: ExportPass } | { result: StepExportResult } {
+    const overlayNextId = this.mutationView?.peekNextExpressId?.() ?? 1;
+    this.nextExpressId = Math.max(this.findMaxExpressId() + 1, overlayNextId);
+
     // Both owner-history caches are per-EXPORT, not per-exporter: they now
     // depend on `willBeEmitted`, which depends on this call's options. Reusing
     // one exporter for a `visibleOnly` export and then a full one would
@@ -229,12 +228,15 @@ export class StepExporter {
     // rewrite that resolves against them, in that one order (#2475 steps 2b
     // and 2c). `pass.rewrittenEntityLines`, this call's output, is flushed
     // just below — after the quantity-set loop inside it, as it always was.
+    const generatedSetsStart = pass.entities.length;
     generatePropertyAndQuantitySetEntities(pass, options, this.propertySetContext());
+    const generatedSetsEnd = pass.entities.length;
 
     // The rewritten type-object lines, then the new georeferencing entities
     // (IfcProjectedCRS, IfcMapConversion), through the one emit path every
     // appended record takes, so a converting export converts them (#7682).
     pass.entities.push(...convertAppendedLines(pass, options, [...pass.rewrittenEntityLines.values()]));
+    const appendedStart = pass.entities.length;
     pass.entities.push(...convertAppendedLines(pass, options, pass.newGeorefLines));
 
     // Add overlay-created entities (store.addEntity / mutationView.createEntity),
@@ -251,6 +253,9 @@ export class StepExporter {
 
     // Complete map metadata adaptation before optional Rust planning and assembly.
     normalizeCoordinateMetadata(pass, options, () => allocatedExpressId(this.nextExpressId++));
+    this.nextExpressId = finishStepConversion(pass, this.nextExpressId, [
+      [generatedSetsStart, generatedSetsEnd], [appendedStart, pass.entities.length],
+    ]);
     return { pass };
   }
 

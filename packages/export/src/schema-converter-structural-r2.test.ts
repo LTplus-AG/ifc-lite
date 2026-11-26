@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 import { describe, it, expect } from 'vitest';
-import { convertStepLine } from './schema-converter.js';
+import { attrNameTable, convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
 
 // #9668: the invariant is semantic stiffness, including IFC2X3's rigid -1
 // sentinel, and correct action slots rather than positional enum placement.
@@ -42,6 +42,20 @@ describe('structural schema conformance #9668', () => {
     expect(there).toBe('#23=IFCBOUNDARYNODECONDITION($,-1.,0.,$,$,$,$);');
     expect(convertStepLine(there!, 'IFC2X3', 'IFC4')).toContain('IFCBOOLEAN(.T.)');
   });
+  it.each([
+    ['IFCBOUNDARYNODECONDITION', '1.,2.,3.,-1.,5.,6.'],
+    ['IFCBOUNDARYNODECONDITIONWARPING', '1.,2.,3.,4.,5.,6.,-1.'],
+    ['IFCBOUNDARYEDGECONDITION', '1.,2.,3.,-1.,5.,6.'],
+    ['IFCBOUNDARYFACECONDITION', '1.,-1.,3.'],
+  ])('%s uses the same stiffness measures and rigid sentinel in IFC4 and IFC4X3 (#10847)', (type, values) => {
+    const source = `#23=${type}('Support',${values});`;
+    const convert = (line: string, from: IfcSchemaVersion, to: IfcSchemaVersion) =>
+      convertStepLine(line, from, to, undefined, undefined, undefined, undefined, new EnumReconciliation());
+    const ifc4 = convert(source, 'IFC2X3', 'IFC4');
+    expect(ifc4).toContain('IFCBOOLEAN(.T.)');
+    expect(convert(source, 'IFC2X3', 'IFC4X3')).toBe(ifc4);
+    expect(convert(ifc4!, 'IFC4X3', 'IFC2X3')).toBe(source);
+  });
   it('honors withheld load references before structural remapping', () => {
     const source = "#50=IFCSTRUCTURALLINEARACTION('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);";
     const out = convertStepLine(source, 'IFC4', 'IFC2X3', undefined, undefined, new Set([22]));
@@ -62,6 +76,17 @@ describe('structural schema conformance #9668', () => {
 // behavior is an explicit loss warning, never hidden metadata (#9668).
 import { EnumReconciliation } from './schema-converter-enums.js';
 describe('structural conversion reports unrepresentable data #9668', () => {
+  it('names the measures a deleted structural profile-properties subtype drops (#10777)', () => {
+    const diagnostics = new EnumReconciliation();
+    const n = attrNameTable('IFC2X3')!.get('IFCSTRUCTURALSTEELPROFILEPROPERTIES')!.length;
+    const line = `#5=IFCSTRUCTURALSTEELPROFILEPROPERTIES('HEA',#9,12.5${',$'.repeat(n - 3)});`;
+    // Only ProfileDefinition carries; the measures are dropped, not shifted into another slot.
+    expect(convertStepLine(line, 'IFC2X3', 'IFC4', undefined, undefined, undefined, undefined, diagnostics)).toBe('#5=IFCPROFILEPROPERTIES($,$,$,#9);');
+    expect(diagnostics.warnings().join('\n')).toContain('IFCSTRUCTURALSTEELPROFILEPROPERTIES.PhysicalWeight has no slot in IFC4; its value is omitted');
+    const info = classifyEntityTypeConversion('IFCSTRUCTURALSTEELPROFILEPROPERTIES', 'IFC2X3', 'IFC4');
+    expect(info).toMatchObject({ targetType: 'IFCPROFILEPROPERTIES', kind: 'lossy' });
+    expect(info.droppedAttributes).toEqual(expect.arrayContaining(['ProfileName', 'PhysicalWeight']));
+  });
   it('reports IFC2X3 point-action CausedBy instead of silently dropping it', () => {
     const diagnostics = new EnumReconciliation();
     const source = "#50=IFCSTRUCTURALPOINTACTION('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,.F.,#77);";
@@ -213,5 +238,26 @@ describe('irreversible structural relationship preview #9668 review regression',
         .toBe("#50=IFCRELASSIGNSTOPRODUCT('id',#1,$,$,(#77),$,#22);");
       expect(diagnostics.warnings().join(' ' )).toContain('the relationship kind is not kept in the target file');
     }
+  });
+});
+
+describe('comments beside IFC4 structural action values (#11001)', () => {
+  const action = (load: string, type: string) => `#50=IFCSTRUCTURALCURVEACTION('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,${load},.TRUE_LENGTH.,${type});`;
+  const warnings = (load: string, type: string) => {
+    const diagnostics = new EnumReconciliation();
+    convertStepLine(action(load, type), 'IFC4', 'IFC2X3', undefined, undefined, undefined, undefined, diagnostics);
+    return diagnostics.warnings().join('\n');
+  };
+  it('reports commented $ as unknown', () => {
+    expect(warnings('/* unknown */$', '.CONST.')).toContain('DestabilizingLoad is unknown');
+    expect(warnings('/* value */.F.', '.CONST.')).not.toContain('DestabilizingLoad is unknown');
+  });
+  it('exempts commented CONST and keeps reporting real losses', () => {
+    expect(warnings('.F.', '/* intrinsic */.CONST.')).not.toContain('PredefinedType has no slot');
+    expect(warnings('.F.', '/* distinct */.LINEAR.')).toContain('PredefinedType has no slot');
+  });
+  it('writes a commented $ as the unset value in a by-name remap', () => {
+    const source = "#5=IFCDOORTYPE('id',#1,/* none */$,$,$,$,$,'tag',$,.DOOR.,.SINGLE_SWING_LEFT.,.F.,$);";
+    expect(convertStepLine(source, 'IFC4', 'IFC2X3')).toMatch(/^#5=IFCDOORSTYLE\('id',#1,\$,/);
   });
 });

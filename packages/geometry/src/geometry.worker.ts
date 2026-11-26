@@ -6,6 +6,8 @@ import { applySkipVoids } from './skip-voids.js';
 import { attachCanonicalMeshMetadata } from './canonical-mesh-metadata.js';
 import { ownedWasmBuffer } from './wasm-owned-buffer.js'; import { packFlatBatch } from './flat-batch-pack.js'; // one vertex buffer per stream per batch
 import { readSpecularMaterial } from './mesh-specular.js';
+import { attachMeshTexture } from './worker-mesh-texture.js';
+import { encodeSessionCompact, setCompactCellSize, tagCompactMesh, takeSessionCompact, type GeometryWorkerSetCompactGeometryMessage } from './worker-compact.js';
 import { publishPrepassFingerprint, runPrepassWithFingerprint } from './prepass-source-fingerprint.js';
 import { canReuseWorkerSource, type BytePrepassApi, type SourcePrepassApi, type FinalizeStyleArgs } from './worker-prepass-source.js';
 import { applyStyleFinishes, forgetAppliedFinishes } from './style-finishes.js';
@@ -39,6 +41,7 @@ import { takeWasmPanicStash } from './wasm-panic-forward.js';
 import { traceGeometryWorkerMessage, meterTypedArrayArgs, countCopy, postPrepassEvent } from './worker-trace.js'; // #6956 spans, #6957 counters
 import { isColumnLengthRefusal } from './wasm-column-refusal.js';
 import { annotatePrepassComplete } from './omitted-type-records.js'; // F2 #8341
+import { WorkerGlobalPlan, type GeometryWorkerAddKeyPlanMessage, type GlobalKeyPlanningField, type GlobalPlanColumns, type IfcAPIWithPrepassColumns } from './global-instance-plan.js';
 
 export interface GeometryWorkerInitMessage {
   type: 'init';
@@ -58,6 +61,8 @@ export interface GeometryWorkerInitMessage {
   wasmUrl?: string;
 }
 
+import { scanShardWindowedOn, type GeometryWorkerShardRefusedMessage, type ShardScanApi, type ShardScanColumns } from './shard-window-scan.js';
+import { WorkerSparseSession, type BatchCallArgs, type GeometryWorkerSetSparseSourceMessage, type GeometryWorkerSparseStatsMessage } from './geometry-worker-sparse.js';
 /**
  * The host sends `stream-start` once with the session metadata (minus
  * jobs), then any number of `stream-chunk` messages with new job slices,
@@ -155,7 +160,7 @@ export interface GeometryWorkerSetEntityIndexMessage {
  * caches on content swap), so the injected values survive. Absent ⇒ the
  * worker's lazy per-batch build (the byte-identical fallback) runs instead.
  */
-export interface GeometryWorkerSetPrepassColumnsMessage {
+export interface GeometryWorkerSetPrepassColumnsMessage extends GlobalPlanColumns {
   type: 'set-prepass-columns';
   referencedRepmaps: Uint32Array;
   instantiatedTypeIds: Uint32Array;
@@ -186,12 +191,16 @@ export interface GeometryWorkerScanShardMessage {
   shardIndex: number;
   rangeStart: number;
   rangeEnd: number;
+  /** Out-of-core ingest: copy only this shard's window into wasm, never the file (`shard-window-scan.ts`). */
+  windowed?: boolean;
 }
 
-export interface GeometryWorkerPrePassMessage {
+export interface GeometryWorkerPrePassMessage extends GlobalKeyPlanningField {
   type: 'prepass-streaming';
   sourceFingerprint?: SharedArrayBuffer;
   sharedBuffer: SharedArrayBuffer;
+  /** Out-of-core ingest: also emit the `sparse-facts` event (the preamble every sparse worker starts from). */
+  emitSparseFacts?: boolean;
   /** Jobs per chunk (defaults to 50_000). */
   chunkSize?: number;
   /** #1097 load-time visibility filter: uppercase STEP keywords whose
@@ -266,15 +275,18 @@ export type GeometryWorkerRequest =
   | GeometryWorkerSetStylesMessage
   | GeometryWorkerSetEntityIndexMessage
   | GeometryWorkerSetPrepassColumnsMessage
+  | GeometryWorkerAddKeyPlanMessage
   | GeometryWorkerSetMergeLayersMessage
   | GeometryWorkerSetInstancingMessage
   | GeometryWorkerSetComputeGeometryHashesMessage
   | GeometryWorkerSetTessellationQualityMessage
   | GeometryWorkerSetSkipSmallCutsMessage
+  | GeometryWorkerSetCompactGeometryMessage
   | GeometryWorkerScanShardMessage
   | GeometryWorkerResolveStylesShardMessage
   | GeometryWorkerPrePassShardedMessage
   | GeometryWorkerFinalizeStylesMessage
+  | GeometryWorkerSetSparseSourceMessage
   | GeometryWorkerPrePassMessage;
 
 /**
@@ -331,7 +343,7 @@ export interface GeometryWorkerStylesShardResultMessage {
  * (stitched) entity index columns, and styles resolution EXTERNAL (no styles
  * event from this call — the host finalizes via finalize-styles below).
  */
-export interface GeometryWorkerPrePassShardedMessage {
+export interface GeometryWorkerPrePassShardedMessage extends GlobalKeyPlanningField {
   type: 'prepass-streaming-sharded';
   sourceFingerprint?: SharedArrayBuffer;
   sharedBuffer: SharedArrayBuffer;
@@ -343,6 +355,12 @@ export interface GeometryWorkerPrePassShardedMessage {
   indexLengths: Uint32Array;
   /** Per-record prepass classes — drives columns discovery (no byte scan). */
   indexClasses: Uint8Array;
+  /**
+   * Out-of-core ingest: also emit `sparse-facts`, and resolve styles here (one
+   * `styles` event, as the serial pre-pass does): the workers hold no source
+   * to resolve style slices from.
+   */
+  emitSparseFacts?: boolean;
 }
 
 /**
@@ -401,6 +419,8 @@ export interface GeometryWorkerBatchMessage {
    *  renderer decodes + GPU-instances them. Opaque repeated occurrences render
    *  ONLY via these (they were taken off the flat `meshes` array). */
   instancedShards?: ArrayBuffer[];
+  /** Compact payloads; the batch's meshes name their rows by `compact: { batch, row }` (compact-geometry.ts). */
+  compactBatches?: import('./compact-geometry.js').CompactPayload[];
   /** Occurrence count carried by `instancedShards` this batch — folded into the
    *  pool's running mesh total so it counts flat + instanced geometry. */
   instancedOccurrences?: number;
@@ -517,12 +537,12 @@ function installFreshApi(): IfcAPI {
   applySkipVoids(api, skipVoids);
   entityIndexApplied = false;
   applyEntityIndexToApi();
+  sparseSession?.applyTo(api); // out-of-core: before the columns (a sparse session is a content install and clears them)
   prepassColumnsApplied = false;
   applyPrepassColumnsToApi();
-  // Re-install the session source on a recovery re-init (api = null) so the *FromSource batch path isn't silently reading an empty file — same replay
-  // contract as the entity index. No-op before a session sets cachedSourceBytes.
+  // Recover the whole-file *FromSource path. Sparse batches already have their arena.
   sourceBytesApplied = false;
-  applySourceBytesToApi();
+  if (!sparseSession) applySourceBytesToApi();
   return api;
 }
 
@@ -556,27 +576,6 @@ type IfcAPIWithMerge = IfcAPI & {
   setSourceBytes?: (data: Uint8Array) => void;
 };
 
-/**
- * Narrow wrapper for the pre-pass column setters (issue #957 / #563). Optional
- * so a staged/older engine binary without them degrades to the byte-identical
- * lazy per-worker rebuild instead of throwing.
- */
-type IfcAPIWithPrepassColumns = IfcAPI & {
-  setReferencedRepmaps?: (ids: Uint32Array) => void;
-  setInstantiatedTypeIds?: (ids: Uint32Array) => void;
-  /** #1623 Phase 3: install the don't-bake plan (RepresentationMap ids repeated
-   *  >= 2x). Optional so an older engine binary degrades to full materialize. */
-  setMappedInstancePlan?: (ids: Uint32Array) => void;
-  setMaterialLayerIndex?: (
-    elementIds: Uint32Array,
-    axis: Uint32Array,
-    layerCounts: Uint32Array,
-    directionSense: Float64Array,
-    offset: Float64Array,
-    layerMaterialIds: Uint32Array,
-    layerThicknesses: Float64Array,
-  ) => void;
-};
 
 /**
  * Push the cached `mergeLayersFlag` onto the IfcAPI. Idempotent — only
@@ -674,6 +673,7 @@ function applyEntityIndexToApi(): void {
  */
 let cachedPrepassColumns: GeometryWorkerSetPrepassColumnsMessage | null = null;
 let prepassColumnsApplied: boolean = false;
+const workerGlobalPlan = new WorkerGlobalPlan(); // global instance plan: replayed with the columns
 
 /**
  * Push the cached pre-pass columns onto the IfcAPI (once per API). MUST run
@@ -705,8 +705,12 @@ function applyPrepassColumnsToApi(): void {
       c.mliLayerThicknesses,
     );
   }
+  workerGlobalPlan.apply(ifcApi, c);
   prepassColumnsApplied = true;
 }
+
+/** Out-of-core ingest (`?perf.ooc`): when set, batches mesh from a sparse arena fed by range reads and this worker never installs the source or the index. */
+let sparseSession: WorkerSparseSession | null = null;
 
 /** One owned WASM source per load, reused from shard scanning through meshing
  * (#3989). The JS view is retained for instance recovery; all source-taking
@@ -754,6 +758,21 @@ function materialiseSharedBytes(sharedBuffer: SharedArrayBuffer): Uint8Array {
  * load); shard/finalise retries first reject runtime traps, then warn once.
  */
 let sabViewFallbackWarned = false;
+/** The pre-pass emits `sparse-facts` only for an out-of-core load; a reused worker is told either way. */
+function applyEmitSparseFacts(ifcApi: IfcAPI, on: boolean): void {
+  if (typeof ifcApi.setEmitSparseFacts === 'function') ifcApi.setEmitSparseFacts(on);
+  else if (on) throw new Error('Out-of-core geometry requires a WASM build with sparse pre-pass support');
+}
+
+function postShardResult(shardIndex: number, shard: ShardScanColumns | null): void {
+  if (!shard) return (self as unknown as Worker).postMessage({ type: 'shard-result', shardIndex, windowRefused: true } satisfies GeometryWorkerShardRefusedMessage);
+  const { ids, starts, lengths, classes, handoff, oversizedIdStarts, malformedStart } = shard;
+  (self as unknown as Worker).postMessage(
+    { type: 'shard-result', shardIndex, ids, starts, lengths, classes, handoff, oversizedIdStarts, malformedStart } as GeometryWorkerShardResultMessage,
+    [ids.buffer, starts.buffer, lengths.buffer, classes.buffer, ...(oversizedIdStarts ? [oversizedIdStarts.buffer] : [])],
+  );
+}
+
 function prepareSabViewRetry(context: string, err: unknown): void {
   if (isWasmRuntimeTrap(err)) throw err;
   if (sabViewFallbackWarned) return;
@@ -937,6 +956,7 @@ function flushPending(session: ProcessingSession): void {
     {
       type: 'batch',
       ...packFlatBatch(meshes, transfers),
+      ...takeSessionCompact(session, transfers),
       ...(instancedShards.length > 0 ? { instancedShards } : {}),
       ...(instancedOccurrences > 0 ? { instancedOccurrences } : {}),
       ...(instancedGeometryHashIds ? { instancedGeometryHashIds } : {}),
@@ -968,6 +988,7 @@ function collectMeshes(
     // would otherwise be dropped (it rides on flat MeshData). Captured below
     // and emitted via a side-channel so compare still sees instanced geometry.
     const flatMeshedIds = new Set<number>();
+    const compactRows = encodeSessionCompact(session, collection); // before any mesh is read: an encoded mesh's arrays come back empty
 
     for (let i = 0; i < collection.length; i++) {
       // #1097: takeMesh MOVES the mesh out (no clone) — each mesh is read once.
@@ -1026,38 +1047,9 @@ function collectMeshes(
         };
         session.pendingTransfers.push(ownedWasmBuffer(positions), ownedWasmBuffer(normals), ownedWasmBuffer(indices));
         session.cumulativeMeshBytes += positions.byteLength + normals.byteLength + indices.byteLength;
-        // #961: surface texture + per-vertex UVs (decoded to RGBA8 in Rust). Carried
-        // as transferables so there is no SAB→scratch copy (see SAB-streaming memo).
-        if (mesh.hasTexture) {
-          const uvs = mesh.uvs;
-          const rgba = mesh.textureRgba;
-          meshData.uvs = uvs;
-          meshData.texture = {
-            rgba,
-            width: mesh.textureWidth,
-            height: mesh.textureHeight,
-            repeatS: mesh.textureRepeatS,
-            repeatT: mesh.textureRepeatT,
-          };
-          session.pendingTransfers.push(ownedWasmBuffer(uvs), ownedWasmBuffer(rgba));
-          session.cumulativeMeshBytes += uvs.byteLength + rgba.byteLength;
-        } else if (mesh.textureUrl) {
-          // #1781: external image reference (`IfcImageTexture`) — UVs travel as
-          // a transferable like #961, but the texture itself is only a URL +
-          // repeat flags; the main thread resolves it against the `.ifcZIP`
-          // sibling images and decodes ONCE per `textureId`.
-          const uvs = mesh.uvs;
-          meshData.uvs = uvs;
-          meshData.textureRef = {
-            textureId: mesh.textureId,
-            url: mesh.textureUrl,
-            repeatS: mesh.textureRepeatS,
-            repeatT: mesh.textureRepeatT,
-          };
-          session.pendingTransfers.push(ownedWasmBuffer(uvs));
-          session.cumulativeMeshBytes += uvs.byteLength;
-        }
+        session.cumulativeMeshBytes += attachMeshTexture(mesh, meshData, session.pendingTransfers);
         attachCanonicalMeshMetadata(meshData, fingerprint);
+        tagCompactMesh(meshData, compactRows, i);
 
         flatMeshedIds.add(mesh.expressId);
         session.pendingMeshes.push(meshData);
@@ -1167,8 +1159,10 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
     // runtime throws inside setSourceBytes during the copy, exactly as the legacy
     // per-call path would; the catch below materialises + retries, and the retry
     // re-installs the copy from the materialised buffer.
-    cachedSourceBytes = session.localBytes;
-    applySourceBytesToApi();
+    if (!sparseSession) {
+      cachedSourceBytes = session.localBytes;
+      applySourceBytesToApi();
+    }
     applyStyleFinishes(ifcApi, session.styleIds, session.styleFinishes);
 
     // Instanced-only path: produce geometry ONCE via a partitioned batch, which
@@ -1194,42 +1188,26 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
       processGeometryBatchPartitioned?: (...args: unknown[]) => PartitionedBatchResult;
     }).processGeometryBatchPartitioned;
 
+    // What every batch variant takes after its source: one list, so the variants cannot drift apart.
+    const args: BatchCallArgs = [
+      jobs, session.unitScale, session.rtcX, session.rtcY, session.rtcZ, session.needsShift,
+      session.voidKeys, session.voidCounts, session.voidValues,
+      session.styleIds, session.styleColors, session.planeAngleToRadians,
+      session.materialElementIds, session.materialColorCounts, session.materialColors,
+    ];
     const wasmSpan = traceGeometryWorkerMessage.begin('worker.batch.wasm');
     try {
-    if (typeof partitionedFromSourceFn === 'function' && instancingEnabled) {
-      consumePartitioned(session, partitionedFromSourceFn.call(
-        ifcApi, jobs, session.unitScale,
-        session.rtcX, session.rtcY, session.rtcZ, session.needsShift,
-        session.voidKeys, session.voidCounts, session.voidValues,
-        session.styleIds, session.styleColors, session.planeAngleToRadians,
-        session.materialElementIds, session.materialColorCounts, session.materialColors,
-      ), wasmSpan);
+    if (sparseSession) {
+      const out = sparseSession.mesh(ifcApi, args, instancingEnabled);
+      if ('takeShard' in out) consumePartitioned(session, out, wasmSpan); else collectMeshes(session, out, wasmSpan);
+    } else if (typeof partitionedFromSourceFn === 'function' && instancingEnabled) {
+      consumePartitioned(session, partitionedFromSourceFn.call(ifcApi, ...args), wasmSpan);
     } else if (typeof batchFromSourceFn === 'function') {
-      collectMeshes(session, batchFromSourceFn.call(
-        ifcApi, jobs, session.unitScale,
-        session.rtcX, session.rtcY, session.rtcZ, session.needsShift,
-        session.voidKeys, session.voidCounts, session.voidValues,
-        session.styleIds, session.styleColors, session.planeAngleToRadians,
-        session.materialElementIds, session.materialColorCounts, session.materialColors,
-      ), wasmSpan);
+      collectMeshes(session, batchFromSourceFn.call(ifcApi, ...args), wasmSpan);
     } else if (typeof partitionedFn === 'function' && instancingEnabled) {
-      consumePartitioned(session, partitionedFn.call(
-        ifcApi, session.localBytes, jobs, session.unitScale,
-        session.rtcX, session.rtcY, session.rtcZ, session.needsShift,
-        session.voidKeys, session.voidCounts, session.voidValues,
-        session.styleIds, session.styleColors, session.planeAngleToRadians,
-        session.materialElementIds, session.materialColorCounts, session.materialColors,
-      ), wasmSpan);
+      consumePartitioned(session, partitionedFn.call(ifcApi, session.localBytes, ...args), wasmSpan);
     } else {
-      const collection = ifcApi.processGeometryBatch(
-        session.localBytes, jobs, session.unitScale,
-        session.rtcX, session.rtcY, session.rtcZ, session.needsShift,
-        session.voidKeys, session.voidCounts, session.voidValues,
-        session.styleIds, session.styleColors,
-        session.planeAngleToRadians,
-        session.materialElementIds, session.materialColorCounts, session.materialColors,
-      );
-      collectMeshes(session, collection, wasmSpan);
+      collectMeshes(session, ifcApi.processGeometryBatch(session.localBytes, ...args), wasmSpan);
     }
     } finally { traceGeometryWorkerMessage.end(wasmSpan); }
   } catch (err) {
@@ -1240,7 +1218,8 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
     // entities could therefore blow the silent-window budget invisibly
     // (#1097, secondary window). Ping liveness before we recurse / re-init.
     postWorkerHeartbeat();
-    if (!isWasmRuntimeTrap(err) && !session.sabFallbackTaken && session.localBytes.buffer instanceof SharedArrayBuffer) {
+    // (An out-of-core session has its own copy retry, per read: a refused batch goes straight to the split.)
+    if (!sparseSession && !isWasmRuntimeTrap(err) && !session.sabFallbackTaken && session.localBytes.buffer instanceof SharedArrayBuffer) {
       session.sabFallbackTaken = true;
       console.warn(`[Worker] processGeometryBatch rejected SAB view (${msg}), falling back to copy`);
       session.localBytes = materialiseSharedBytes(session.sharedBuffer);
@@ -1418,8 +1397,10 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
     if (e.data.type === 'prepass-streaming-sharded') {
       // Sharded pre-pass main call: prebuilt (stitched) index, external styles.
       const ifcApi = await ensureInit();
+      (ifcApi as IfcAPIWithPrepassColumns).setGlobalKeyPlanning?.(e.data.globalInstancing === true);
       (self as unknown as Worker).postMessage({ type: 'prepass-progress', phase: 'parsing' });
       const { sharedBuffer, indexIds, indexStarts, indexLengths, indexClasses } = e.data;
+      applyEmitSparseFacts(ifcApi, e.data.emitSparseFacts === true);
       const sourceFingerprint = e.data.sourceFingerprint;
       const chunkSize = e.data.chunkSize ?? 50_000;
       const disabledTypes = e.data.disabledTypes ?? undefined;
@@ -1494,6 +1475,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
 
     if (e.data.type === 'prepass-streaming') {
       const ifcApi = await ensureInit();
+      (ifcApi as IfcAPIWithPrepassColumns).setGlobalKeyPlanning?.(e.data.globalInstancing === true);
       (self as unknown as Worker).postMessage({ type: 'prepass-progress', phase: 'parsing' });
       const sharedBuffer = e.data.sharedBuffer;
       const sourceFingerprint = e.data.sourceFingerprint;
@@ -1501,6 +1483,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       // #1097 load-time visibility filter (skip disabled types at job gen).
       const disabledTypes = e.data.disabledTypes ?? undefined;
       const skipTypeGeometry = e.data.skipTypeGeometry === true;
+      applyEmitSparseFacts(ifcApi, e.data.emitSparseFacts === true);
 
       // Forward Rust events 1:1 — the host (`geometry-parallel.ts`) treats
       // them as the streaming-prepass protocol. SAB-decode fallback: try the
@@ -1535,14 +1518,12 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       const ifcApi = await ensureInit();
       const { sharedBuffer, shardIndex, rangeStart, rangeEnd } = e.data;
       const view = viewSharedBytes(sharedBuffer);
-      const scanApi = (ifcApi as unknown as {
-        scanEntityIndexShard: (
-          data: Uint8Array,
-          rangeStart: number,
-          rangeEnd: number,
-          // `malformedStart` is TODO(#3699) -- not returned by Rust yet.
-        ) => { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array; classes: Uint8Array; handoff: number; oversizedIdStarts?: Uint32Array; malformedStart?: number };
-      });
+      const scanApi = ifcApi as unknown as ShardScanApi;
+      if (e.data.windowed === true) { // out of core: no source install, this worker meshes from a sparse arena
+        sourcePreparedForStream = false;
+        postShardResult(shardIndex, scanShardWindowedOn(scanApi, view, rangeStart, rangeEnd, (err) => prepareSabViewRetry('scan-entity-index-shard', err)));
+        return;
+      }
       const sourceApi = ifcApi as unknown as SourcePrepassApi;
       sourceBytesApplied = false;
       cachedSourceBytes = view;
@@ -1565,19 +1546,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
         sourceBytesApplied = false;
         shard = scan(materialiseSharedBytes(sharedBuffer));
       }
-      (self as unknown as Worker).postMessage(
-        {
-          type: 'shard-result',
-          shardIndex,
-          ids: shard.ids,
-          starts: shard.starts,
-          lengths: shard.lengths,
-          classes: shard.classes,
-          handoff: shard.handoff, oversizedIdStarts: shard.oversizedIdStarts,
-          malformedStart: shard.malformedStart,
-        } as GeometryWorkerShardResultMessage,
-        [shard.ids.buffer, shard.starts.buffer, shard.lengths.buffer, shard.classes.buffer, ...(shard.oversizedIdStarts ? [shard.oversizedIdStarts.buffer] : [])],
-      );
+      postShardResult(shardIndex, shard);
       return;
     }
 
@@ -1670,11 +1639,22 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       // the IfcAPI's pre-pass columns either way.
       cachedEntityIndex = null;
       cachedPrepassColumns = null;
-      prepassColumnsApplied = false;
+      prepassColumnsApplied = false; workerGlobalPlan.clear();
       forgetAppliedFinishes(ifcApi); // Rust clears finishes even when the index is rejected.
       ifcApi.setEntityIndex(e.data.ids, e.data.starts, e.data.lengths);
       cachedEntityIndex = { ids: e.data.ids, starts: e.data.starts, lengths: e.data.lengths };
       entityIndexApplied = true;
+      return;
+    }
+
+    if (e.data.type === 'set-sparse-source') {
+      const ifcApi = await ensureInit();
+      sparseSession = new WorkerSparseSession(e.data);
+      sparseSession.applyTo(ifcApi);
+      // The session is a content install: nothing from an earlier load survives it.
+      cachedEntityIndex = cachedPrepassColumns = null;
+      entityIndexApplied = prepassColumnsApplied = false;
+      forgetAppliedFinishes(ifcApi);
       return;
     }
 
@@ -1693,6 +1673,11 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       return;
     }
 
+    if (e.data.type === 'add-key-plan') { // global instance plan: planned jobs of the next chunk
+      workerGlobalPlan.record(api as IfcAPIWithPrepassColumns | null, e.data);
+      return;
+    }
+
     if (e.data.type === 'set-merge-layers') {
       // Cache the requested flag — if the API already exists, push it
       // through immediately; otherwise the next `new IfcAPI()` path
@@ -1703,6 +1688,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       applyMergeLayersToApi();
       return;
     }
+    if (e.data.type === 'set-compact-geometry') { setCompactCellSize(e.data.cellSize); return; }
     if (e.data.type === 'set-instancing-enabled') {
       // Default on; the host disables it for federated loads so their geometry stays
       // on the flat path (processBatch falls back to plain processGeometryBatch).
@@ -1741,8 +1727,12 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       if (!activeSession) {
         throw new Error('stream-end received before stream-start');
       }
+      // Before `complete`: the host terminates this worker when it sees that.
+      if (sparseSession) (self as unknown as Worker).postMessage({ type: 'sparse-stats', stats: sparseSession.stats } satisfies GeometryWorkerSparseStatsMessage);
       emitSessionEnd(activeSession);
       activeSession = null;
+      if (sparseSession) api?.sparseEnd();
+      sparseSession = null;
       // Release the per-load entity index and drop the applied flag. Workers
       // are normally terminated after a load, but a reused worker must not
       // retain the (large) index buffers across loads, nor replay a stale
@@ -1754,7 +1744,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       // reused worker cannot replay a previous load's referenced-repmaps /
       // material-layer index. The next load re-populates via set-prepass-columns.
       cachedPrepassColumns = null;
-      prepassColumnsApplied = false;
+      prepassColumnsApplied = false; workerGlobalPlan.clear();
       // Release this worker's reference to the session source bytes and drop the
       // applied flag. The wasm-side copy is reclaimed on worker termination (the
       // pool is per-load) or overwritten by the next load's setSourceBytes on a

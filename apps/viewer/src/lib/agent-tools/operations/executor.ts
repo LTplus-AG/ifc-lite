@@ -12,7 +12,7 @@ import { operationArtifacts } from './artifacts';
 import { contractFingerprint } from './metadata';
 import { MAX_RESULT_BYTES, utf8Bytes } from './result-limit';
 import type { Operation } from './contract';
-import { viewerOperation, operationUnavailable } from './registry';
+import { viewerOperation, operationUnavailable, unknownOperationMessage } from './registry';
 import { disabled, internal, invalidInput, stale, unavailable, type InputReason } from './refusals';
 
 export interface OperationJob {
@@ -115,7 +115,7 @@ export async function executeOperation(
   if (Object.keys(args).some(key => !allowed.includes(key))) invalid('Unknown execution argument.');
   if (typeof args.operation_id !== 'string') invalid('operation_id is required.');
   let entry: Operation;
-  try { entry = viewerOperation(args.operation_id); } catch { invalid('Unknown operation_id. Discover an exact registered ID first.', 'unknown-target'); }
+  try { entry = viewerOperation(args.operation_id); } catch { invalid(unknownOperationMessage(args.operation_id), 'unknown-target'); }
   if (entry.needs === 'model' && !model) invalid('This operation requires a loaded model.');
   const writes = entry.effects.some(effect => effect !== 'read');
   if (readOnly && writes) throw new ToolExecutionError({ code: ToolErrorCode.READ_ONLY, message: 'Inspect only accepts read operations.', details: { reason: 'read-only' } });
@@ -356,7 +356,9 @@ export function operationJob(host: ToolHost, id: string, cancel = false, claimDe
       const aborted = host.lifetimeSignal?.aborted === true || (error instanceof DOMException && error.name === 'AbortError')
         || (error instanceof ToolExecutionError && error.code === ToolErrorCode.CANCELLED);
       if (!job.delivered && (aborted || (error instanceof ToolExecutionError && error.code === ToolErrorCode.STATE_CHANGED))) {
-        Object.assign(job.snapshot, { state: aborted ? 'cancelled' : 'failed', error: error instanceof Error ? error.message : 'Operation failed.', result: undefined });
+        const refusal = aborted ? cancelledDispatch() : operationFailure(error, job.snapshot.operation_id);
+        Object.assign(job.snapshot, { state: aborted ? 'cancelled' : 'failed', error: refusal.message, error_code: refusal.code,
+          error_details: refusal.details, result: undefined });
         if (!job.delivery.pending) job.discard();
       }
       throw error;
@@ -374,7 +376,7 @@ export function operationJob(host: ToolHost, id: string, cancel = false, claimDe
 export async function executeOperationRequest(host: ToolHost, args: Record<string, unknown>, context: ToolCallContext, readOnly: boolean) {
   if (typeof args.operation_id !== 'string') invalid('operation_id is required.');
   let entry: Operation;
-  try { entry = viewerOperation(args.operation_id); } catch { invalid('Unknown operation_id.', 'unknown-target'); }
+  try { entry = viewerOperation(args.operation_id); } catch { invalid(unknownOperationMessage(args.operation_id), 'unknown-target'); }
   let model: ReadyModel | undefined;
   if (entry.needs === 'model') {
     const { resolveModel, usableModel } = await import('../main-viewer-dispatch');

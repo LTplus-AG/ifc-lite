@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { BridgeCallResult, BridgeErrorCode, BridgePermission, BridgeToolDescriptor } from './protocol.js';
+import type { BridgeUiEventMessage } from './ui-events.js';
 
 // ── tab -> bridge ────────────────────────────────────────────────────────
 
@@ -15,6 +16,7 @@ export interface BridgeHelloMessage {
   tools: BridgeToolDescriptor[];
   client?: { name: string; version?: string };
   resultAck?: true;
+  a2uiSurface?: true;
 }
 
 export interface BridgeResultMessage {
@@ -33,7 +35,7 @@ export interface BridgeUpdateMessage {
   tools?: BridgeToolDescriptor[];
 }
 
-export type BridgeTabMessage = BridgeHelloMessage | BridgeResultMessage | BridgeUpdateMessage;
+export type BridgeTabMessage = BridgeHelloMessage | BridgeResultMessage | BridgeUpdateMessage | BridgeUiEventMessage;
 
 // ── bridge -> tab ────────────────────────────────────────────────────────
 
@@ -49,6 +51,7 @@ export interface BridgeWelcomeMessage {
    */
   readOnlyCeiling: boolean;
   bridge: { name: string; version: string };
+  features?: string[];
   resultAck?: true;
 }
 
@@ -59,6 +62,14 @@ export interface BridgeCallMessage {
   id: string;
   name: string;
   arguments: Record<string, unknown>;
+}
+
+export interface BridgeSurfaceMessage {
+  type: 'a2ui-surface';
+  sessionId: string;
+  /** Uses the normal result/cancel lifecycle. */
+  id: string;
+  surface: { messages: unknown[]; title?: string };
 }
 
 export interface BridgeCancelMessage {
@@ -77,6 +88,7 @@ export interface BridgeErrorMessage {
 export type BridgeServerMessage =
   | BridgeWelcomeMessage
   | BridgeCallMessage
+  | BridgeSurfaceMessage
   | BridgeCancelMessage
   | BridgeErrorMessage;
 

@@ -14,7 +14,7 @@
  */
 
 import type { BimContext } from '@ifc-lite/sdk';
-import type { BridgeToolDescriptor } from '@ifc-lite/mcp/bridge-protocol';
+import type { BridgeToolDescriptor, BridgeUiEvent } from '@ifc-lite/mcp/bridge-protocol';
 import { useViewerStore } from '@/store';
 import {
   createMainViewerEditor, createMainViewerToolHost, dispatchMainViewerTool, mainViewerToolDefinitions,
@@ -23,9 +23,10 @@ import type { ToolHost } from '@/lib/agent-tools/types';
 import { BridgeClient, type BridgeClientOptions, type LocalNetworkPermission } from './client';
 import {
   AGENT_BRIDGE_ACTIVITY_LIMIT, getAgentBridgeState, registerAgentBridgeControls, updateAgentBridgeState,
-  type AgentBridgeActivity, type AgentBridgePermission, type AgentBridgeStatus,
+  foldActivity, type AgentBridgeActivity, type AgentBridgePermission, type AgentBridgeStatus,
 } from './state';
 import { isFramed } from './pairing-fragment';
+import { agentSurfaces } from './agent-surfaces';
 import { ENDED_KEYS } from './outcome-keys';
 import { toast } from '@/components/ui/toast';
 import { registerEnglish } from '@/i18n';
@@ -105,7 +106,7 @@ function flushActivity(): void {
   if (pendingRows.length === 0) return;
   const rows = pendingRows.reverse();
   pendingRows = [];
-  updateAgentBridgeState({ activity: [...rows, ...getAgentBridgeState().activity].slice(0, AGENT_BRIDGE_ACTIVITY_LIMIT) });
+  updateAgentBridgeState({ activity: foldActivity([...rows, ...getAgentBridgeState().activity]).slice(0, AGENT_BRIDGE_ACTIVITY_LIMIT) });
 }
 
 function resetActivity(): void {
@@ -127,6 +128,8 @@ export function connectAgentBridge({ port, code, bim, WebSocket }: ConnectAgentB
     return;
   }
   active?.disconnect();
+  // Surfaces belong to the agent that pushed them: a click must never reach a different agent.
+  agentSurfaces.clear();
   const lifetime = new AbortController();
   const host = createMainViewerToolHost(useViewerStore, bim, { editor: createMainViewerEditor(useViewerStore), lifetimeSignal: lifetime.signal });
   resetActivity();
@@ -159,6 +162,11 @@ export function connectAgentBridge({ port, code, bim, WebSocket }: ConnectAgentB
   });
   active = client;
   client.connect();
+}
+
+/** Hand a click on an agent-pushed surface back to the agent. False when no bridge takes it. */
+export function sendAgentUiEvent(event: BridgeUiEvent): boolean {
+  return active?.sendUiEvent(event) ?? false;
 }
 
 /** Close the connection at the user's request. */

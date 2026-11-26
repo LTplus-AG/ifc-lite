@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useEffect, useRef, useState } from 'react';
-import { DEFAULT_RESOURCE_URI_CONFIG, assertResourceUriIdentityConfig, type ResourceUriIdentityConfig, GUID_PATTERN, LIMITS, assertIri, createResourceLinkStrategy, type ProfileDefinition, type ResourceIdentityLink } from '@ifc-lite/semantic';
+import { DEFAULT_RESOURCE_URI_CONFIG, assertResourceUriIdentityConfig, type ResourceUriIdentityConfig, type ProfileDefinition, type ResourceIdentityLink } from '@ifc-lite/semantic';
 import { useTranslation } from '@/i18n';
 import type { IdentityFields } from '@/lib/semantic/resolver-context';
 export interface SemanticIdentityControlsProps {
@@ -13,20 +13,8 @@ export interface SemanticIdentityControlsProps {
   profile: ProfileDefinition; onError: (message: string) => void;
   identityFields?: IdentityFields; onIdentityFields?: (fields: IdentityFields) => void;
 }
-export function parseResourceLinks(serialized: string): ResourceIdentityLink[] {
-  if (new TextEncoder().encode(serialized).length > LIMITS.bytes) throw new Error('Resource links exceed byte limit');
-  const raw: unknown = JSON.parse(serialized);
-  if (!Array.isArray(raw) || raw.length > LIMITS.rows) throw new Error('Expected a bounded resource link array');
-  const links = raw.map((item: unknown) => {
-    if (!item || typeof item !== 'object' || !('resourceId' in item) || typeof item.resourceId !== 'string'
-      || !('modelRevision' in item) || typeof item.modelRevision !== 'string' || !('GlobalId' in item) || typeof item.GlobalId !== 'string') throw new Error('Links require resourceId, modelRevision and GlobalId');
-    assertIri(item.resourceId); assertIri(item.modelRevision);
-    if (!new RegExp(GUID_PATTERN).test(item.GlobalId)) throw new Error('Invalid IFC GlobalId');
-    return { resourceId: item.resourceId, modelRevision: item.modelRevision, GlobalId: item.GlobalId };
-  });
-  createResourceLinkStrategy(links);
-  return links;
-}
+export { parseResourceLinks } from '@/lib/semantic/identity-input';
+import { parseResourceLinks } from '@/lib/semantic/identity-input';
 const control = 'w-full rounded border border-border bg-background p-2 text-sm';
 export function SemanticIdentityControls({ strategy, onStrategy, links, onLinks, profile, onError,
   uriConfig = DEFAULT_RESOURCE_URI_CONFIG, onUriConfig, identityFields = { GlobalId: 'GlobalId', modelRevision: 'modelRevision' }, onIdentityFields }: SemanticIdentityControlsProps) {

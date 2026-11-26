@@ -100,6 +100,8 @@ export const sheetsPdfFr = {
   "sheetsPdf.pdfView.pageReadoutFits": "Page estimée : {width} × {height} mm (tient sur {paperName}). La page exportée est dimensionnée selon le dessin lui-même et ne sera jamais plus grande.",
   "sheetsPdf.pdfView.pageReadoutOversizeIso": "Page estimée : {width} × {height} mm (plus grande que toute feuille ISO). La page exportée est dimensionnée selon le dessin lui-même et ne sera jamais plus grande.",
   "sheetsPdf.pdfView.pageReadoutUnavailable": "La taille de page n'est pas encore disponible. Chargez un modèle et choisissez une échelle valide.",
+  "sheetsPdf.pdfView.releasedLoading": "Lecture de la géométrie du modèle depuis le stockage local…",
+  "sheetsPdf.pdfView.releasedUnavailable": "La géométrie du modèle n'est pas encore disponible dans le stockage local. L'export sera possible dès qu'elle le sera.",
   "sheetsPdf.pdfView.oversizeTitle": "Page trop grande pour être imprimée",
   "sheetsPdf.pdfView.oversizeDescription": "Cette échelle nécessite une page de {width} × {height} mm. Un côté de page PDF ne peut pas dépasser {maxDimension} mm. Choisissez une échelle plus petite.",
   "sheetsPdf.pdfView.perspectiveTitle": "Caméra en perspective",

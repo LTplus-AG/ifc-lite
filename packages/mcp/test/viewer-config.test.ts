@@ -126,7 +126,7 @@ describe('ServerConfig.autoOpenViewer / .viewerPort — public API is honoured',
     const state = await server.maybeAutoOpenViewer();
     expect(state).not.toBeNull();
     expect(server.viewer.isOpen()).toBe(true);
-    expect(state!.url).toMatch(/^http:\/\/localhost:\d+\/$/);
+    expect(state!.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
   });
 
   it('level 1 — explicit override set: wins over a contradicting config value', async () => {
@@ -153,7 +153,7 @@ describe('ServerConfig.autoOpenViewer / .viewerPort — public API is honoured',
     const server = await bootServer({ autoOpenViewer: true, viewerPort: port });
     const state = await server.maybeAutoOpenViewer();
     expect(state).not.toBeNull();
-    expect(state!.url).toBe(`http://localhost:${port}/`);
+    expect(state!.url).toBe(`http://127.0.0.1:${port}/`);
   });
 
   it('an explicit override port wins over a contradicting config port', async () => {
@@ -161,6 +161,6 @@ describe('ServerConfig.autoOpenViewer / .viewerPort — public API is honoured',
     const server = await bootServer({ autoOpenViewer: true, viewerPort: configPort });
     const state = await server.maybeAutoOpenViewer({ port: overridePort });
     expect(state).not.toBeNull();
-    expect(state!.url).toBe(`http://localhost:${overridePort}/`);
+    expect(state!.url).toBe(`http://127.0.0.1:${overridePort}/`);
   });
 });

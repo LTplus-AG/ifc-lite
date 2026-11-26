@@ -28,7 +28,7 @@ import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { render, cleanup, click, type as typeInto, advance } from '@/test/render.js';
+import { render, cleanup, click, type as typeInto, advance, settle } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { MutablePropertyView } from '@ifc-lite/mutations';
@@ -286,7 +286,7 @@ describe('IDSCorrectionDialog — stale audit snapshot vs. deleted entities (#52
     act(() => {
       useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 });
     });
-    await advance(0);
+    await settle();
 
     assert.deepEqual(checkboxLabelsText().map((t) => t.trim()), ['Wall A']);
     assert.match(applyButton().textContent ?? '', /Apply to 0/);

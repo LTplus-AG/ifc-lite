@@ -159,4 +159,4 @@ pub fn collate_instances(meshes: &[Mesh], min_group: usize, rtc: [f64; 3]) -> Co
 // verify_recomposition moved to super::verify (kept as a re-export below) —
 // the module-size ratchet budget pushed it out once #3666's inline pairing
 // check landed here; it belongs next to that check's shared math anyway.
-pub use super::verify::verify_recomposition;
+pub use super::verify::{recomposes, verify_recomposition};

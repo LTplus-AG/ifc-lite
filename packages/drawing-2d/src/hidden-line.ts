@@ -19,7 +19,7 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import type { Point2D, DrawingLine, Bounds2D, VisibilityState, SectionPlaneConfig } from './types.js';
 import { point2DLerp, point2DDistance, EPSILON } from './math.js';
-import { buildDepthRaster, type DepthRaster } from './hidden-line-raster.js';
+import { buildDepthRaster, createDepthRaster, rasterizeOccluders, type DepthRaster } from './hidden-line-raster.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -60,6 +60,17 @@ const DEFAULT_OPTIONS: HiddenLineOptions = {
   samplesPerLine: 10,
   depthBias: 0.001,
 };
+
+/**
+ * Halvings used to locate where a line's visibility flips between two
+ * neighbouring samples. Bisection runs at least the minimum (2^-7 of a sample
+ * spacing, enough to refine a sloped line's depth crossing inside one pixel),
+ * then continues while the interval still spans more than one depth-raster
+ * pixel, so a long line's split is not left where sample spacing put it. The
+ * maximum is a termination cap for a degenerate raster.
+ */
+const MIN_TRANSITION_BISECTION_STEPS = 7;
+const MAX_TRANSITION_BISECTION_STEPS = 32;
 
 /**
  * View depth along a line as an affine function of the line parameter t
@@ -119,6 +130,22 @@ export class HiddenLineClassifier {
       bounds,
     );
     this.built = true;
+  }
+
+  /**
+   * Start an empty occluder buffer over `bounds`, to be filled batch by batch
+   * with {@link addOccluders} (a streamed drawing source). Same buffer as
+   * {@link buildDepthBuffer} over the concatenated batches.
+   */
+  beginDepthBuffer(bounds: Bounds2D): void {
+    this.raster = createDepthRaster(bounds, this.options.resolution);
+    this.built = true;
+  }
+
+  /** Rasterize one batch of occluders into the buffer {@link beginDepthBuffer} started. */
+  addOccluders(meshes: readonly MeshData[], plane: SectionPlaneConfig, occluderDepth: number): void {
+    if (!this.built) throw new Error('Depth buffer not started. Call beginDepthBuffer first.');
+    if (this.raster) rasterizeOccluders(this.raster, meshes, plane, occluderDepth, this.options.depthBias);
   }
 
   /**
@@ -197,9 +224,11 @@ export class HiddenLineClassifier {
     // View depth varies along the line when the producer supplied a
     // per-endpoint `depthEnd` (e.g. a sloped edge); lerp it per sample.
     const depthAt = lineDepthAt(line);
+    const pointAt = (t: number) => point2DLerp(line.line.start, line.line.end, t);
 
-    // For very short lines, just test the midpoint
+    // A degenerate line gets one sample interval (both endpoints).
     const numSamples = lineLength < EPSILON ? 1 : Math.max(2, samplesPerLine);
+    const bisectionSteps = this.transitionBisectionSteps(line, numSamples);
 
     const segments: VisibilitySegment[] = [];
     let currentStart = line.line.start;
@@ -214,7 +243,7 @@ export class HiddenLineClassifier {
       // -0.3 + (0.1 - -0.3) > 0.1) and land outside the raster bounds,
       // misreading a fully occluded endpoint as visible (PR #2644 review).
       const point =
-        i === numSamples ? line.line.end : point2DLerp(line.line.start, line.line.end, t);
+        i === numSamples ? line.line.end : pointAt(t);
       const isVisible = this.sampleVisibility(point, depthAt(t), depthBias);
 
       if (isVisible) visibleCount++;
@@ -225,9 +254,18 @@ export class HiddenLineClassifier {
       // 'partial' while the emitted segments were one uniform run; now the
       // two derive from the same transitions and cannot disagree.
       if (isVisible !== currentVisible) {
-        // Find transition point (approximate)
-        const transitionT = (i - 0.5) / numSamples;
-        const transitionPoint = point2DLerp(line.line.start, line.line.end, transitionT);
+        // Bisect between the two disagreeing samples so the split lands on
+        // the occluder's edge, not half a sample spacing away from it.
+        let lo = (i - 1) / numSamples;
+        let hi = t;
+        for (let step = 0; step < bisectionSteps; step++) {
+          const mid = (lo + hi) / 2;
+          const midVisible = this.sampleVisibility(pointAt(mid), depthAt(mid), depthBias);
+          if (midVisible === currentVisible) lo = mid;
+          else hi = mid;
+        }
+        const transitionT = (lo + hi) / 2;
+        const transitionPoint = pointAt(transitionT);
 
         segments.push({
           start: currentStart,
@@ -266,6 +304,26 @@ export class HiddenLineClassifier {
     }
 
     return { line, segments, overallVisibility };
+  }
+
+  /**
+   * Halvings needed to narrow one sample spacing of `line` to under one
+   * depth-raster pixel, clamped to the min/max step counts. No raster (so no
+   * transitions) or degenerate bounds fall back to the minimum or the cap.
+   */
+  private transitionBisectionSteps(line: DrawingLine, numSamples: number): number {
+    const raster = this.raster;
+    if (!raster) return MIN_TRANSITION_BISECTION_STEPS;
+    const { bounds, width, height } = raster;
+    const dx = Math.abs(line.line.end.x - line.line.start.x);
+    const dy = Math.abs(line.line.end.y - line.line.start.y);
+    const spacingPixels = Math.max(
+      (dx / (bounds.max.x - bounds.min.x)) * (width - 1),
+      (dy / (bounds.max.y - bounds.min.y)) * (height - 1),
+    ) / numSamples;
+    const steps = Math.ceil(Math.log2(spacingPixels));
+    if (Number.isNaN(steps)) return MIN_TRANSITION_BISECTION_STEPS;
+    return Math.min(MAX_TRANSITION_BISECTION_STEPS, Math.max(MIN_TRANSITION_BISECTION_STEPS, steps));
   }
 
   private sampleVisibility(point: Point2D, lineDepth: number, depthBias: number): boolean {

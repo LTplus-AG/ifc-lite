@@ -14,10 +14,12 @@
  * (`scripts/module-size-allowlist.txt`).
  */
 
-import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
+import { decodeStepStringLiteral, isValidIfcGuid } from '@ifc-lite/encoding';
 import { deterministicGlobalId, getInheritanceChainAcrossSchemas, type IfcDataStore } from '@ifc-lite/parser';
+import { withoutComments } from './step-comment-skip.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
 import type { EffectiveEntityIndex } from './effective-index.js';
+import { varyingTarget } from './schema-converter-structural-varying.js';
 
 /**
  * Whether `type` is an IfcRoot subtype (has a GlobalId as its first
@@ -28,6 +30,67 @@ import type { EffectiveEntityIndex } from './effective-index.js';
  */
 export function isRootedEntityType(type: string): boolean {
   return getInheritanceChainAcrossSchemas(type).includes('IfcRoot');
+}
+
+/** IFC2X3 resources handled by the whole-file omission pass (#10970). */
+export const OMIT_ON_UPGRADE: ReadonlySet<string> = new Set([
+  'IFC2DCOMPOSITECURVE', 'IFCANGULARDIMENSION', 'IFCANNOTATIONCURVEOCCURRENCE',
+  'IFCANNOTATIONFILLAREAOCCURRENCE', 'IFCANNOTATIONOCCURRENCE', 'IFCANNOTATIONSURFACE',
+  'IFCANNOTATIONSURFACEOCCURRENCE', 'IFCANNOTATIONSYMBOLOCCURRENCE', 'IFCANNOTATIONTEXTOCCURRENCE',
+  'IFCAPPLIEDVALUERELATIONSHIP', 'IFCAPPROVALACTORRELATIONSHIP', 'IFCAPPROVALPROPERTYRELATIONSHIP',
+  'IFCBEZIERCURVE', 'IFCCLASSIFICATIONITEM', 'IFCCLASSIFICATIONITEMRELATIONSHIP',
+  'IFCCLASSIFICATIONNOTATION', 'IFCCLASSIFICATIONNOTATIONFACET', 'IFCCONNECTIONPORTGEOMETRY',
+  'IFCCONSTRAINTAGGREGATIONRELATIONSHIP', 'IFCCONSTRAINTCLASSIFICATIONRELATIONSHIP',
+  'IFCCONSTRAINTRELATIONSHIP', 'IFCCRANERAILASHAPEPROFILEDEF', 'IFCCRANERAILFSHAPEPROFILEDEF',
+  'IFCDEFINEDSYMBOL', 'IFCDIAMETERDIMENSION', 'IFCDIMENSIONCALLOUTRELATIONSHIP', 'IFCDIMENSIONCURVE',
+  'IFCDIMENSIONCURVEDIRECTEDCALLOUT', 'IFCDIMENSIONCURVETERMINATOR', 'IFCDIMENSIONPAIR',
+  'IFCDOCUMENTELECTRONICFORMAT', 'IFCDRAUGHTINGCALLOUT', 'IFCDRAUGHTINGCALLOUTRELATIONSHIP',
+  'IFCDRAUGHTINGPREDEFINEDTEXTFONT', 'IFCENVIRONMENTALIMPACTVALUE', 'IFCEXTERNALLYDEFINEDSYMBOL',
+  'IFCFILLAREASTYLETILESYMBOLWITHSTYLE', 'IFCLINEARDIMENSION', 'IFCONEDIRECTIONREPEATFACTOR',
+  'IFCPREDEFINEDDIMENSIONSYMBOL', 'IFCPREDEFINEDPOINTMARKERSYMBOL', 'IFCPREDEFINEDSYMBOL',
+  'IFCPREDEFINEDTERMINATORSYMBOL', 'IFCPROJECTIONCURVE', 'IFCPROPERTYCONSTRAINTRELATIONSHIP',
+  'IFCRADIUSDIMENSION', 'IFCRATIONALBEZIERCURVE', 'IFCREFERENCESVALUEDOCUMENT', 'IFCRELAXATION',
+  'IFCSTRUCTUREDDIMENSIONCALLOUT', 'IFCSYMBOLSTYLE', 'IFCTERMINATORSYMBOL',
+  'IFCTEXTSTYLEWITHBOXCHARACTERISTICS', 'IFCTIMESERIESREFERENCERELATIONSHIP',
+  'IFCTWODIRECTIONREPEATFACTOR', 'IFCVERTEXBASEDTEXTUREMAP',
+]);
+
+/** Dates still written as they are pending date conversion (#10879). */
+export const VERBATIM_UPGRADE: ReadonlySet<string> = new Set([
+  'IFCCALENDARDATE', 'IFCCOORDINATEDUNIVERSALTIMEOFFSET', 'IFCDATEANDTIME', 'IFCLOCALTIME',
+]);
+
+/**
+ * What `convertRecord` does with a record of `entityType` in `toSchema`, given
+ * whether the source table (`inSource`) and the target table (`inTarget`, true
+ * when the target has none) declare its (possibly renamed) type. One rule for
+ * `convertRecord`, the loss report and the registry check (#10902); the Rust
+ * twin `missing_type_route` documents each case:
+ *  - `written`: the target declares it, or the source does not know the name;
+ *  - `unrepresented`: proxied if rooted, refused if not (`resolveUnrepresentedEntity`);
+ *  - `handled`: converted by another pass, so neither the loss report nor the
+ *    warnings name it here: an IFC2X3 varying action on an IFC4 target by the
+ *    structural pass, which reports it (#9668), an IfcPresentationStyleAssignment on an IFC4X3
+ *    target by style flattening (D57);
+ *  - `omitted`: withheld by the whole-file reference pass (#10970);
+ *  - `verbatim`: written as it is under a name the target lacks, and reported
+ *    lossy (the dates and property subtypes in {@link VERBATIM_UPGRADE}).
+ */
+export function missingTypeRoute(entityType: string, fromSchema: IfcSchemaVersion, toSchema: IfcSchemaVersion, inSource: boolean, inTarget: boolean): 'written' | 'unrepresented' | 'handled' | 'omitted' | 'verbatim' {
+  if (inTarget) return 'written';
+  // An IFC2X3 target refuses even a name no table knows (`#1=IFCLABEL('x');`, #7683).
+  if (toSchema === 'IFC2X3') return 'unrepresented';
+  if (!inSource) return 'written';
+  const type = entityType.toUpperCase();
+  // The structural pass converts and reports IFC2X3 <-> IFC4 only.
+  if (fromSchema === 'IFC2X3' && toSchema === 'IFC4' && varyingTarget(type)) return 'handled';
+  // `StyleFlatten.applies`, as Rust asks it; inline, as that module imports schema-converter.
+  if (toSchema === 'IFC4X3' && (fromSchema === 'IFC2X3' || fromSchema === 'IFC4') && type === 'IFCPRESENTATIONSTYLEASSIGNMENT') return 'handled';
+  if (toSchema === 'IFC4X3') return fromSchema === 'IFC2X3' && VERBATIM_UPGRADE.has(type) ? 'verbatim' : 'omitted';
+  if (toSchema !== 'IFC4') return 'verbatim';
+  if (fromSchema === 'IFC4X3') return 'unrepresented';
+  if (fromSchema === 'IFC2X3' && OMIT_ON_UPGRADE.has(type)) return 'omitted';
+  return fromSchema === 'IFC2X3' && !VERBATIM_UPGRADE.has(type) ? 'unrepresented' : 'verbatim';
 }
 
 /**
@@ -66,15 +129,25 @@ export function resolveUnrepresentedEntity(
   prefix: string,
   entityType: string,
   attrsRaw: string,
+  args: readonly string[],
   toSchema: IfcSchemaVersion,
-  random?: RandomSource,
+  expressId: number,
   allowOmit = false,
 ): string | null {
   if (isRootedEntityType(entityType)) {
-    const guid = random
-      ? generateIfcGuid(random)
-      : deterministicGlobalId(`ifcproxy:${prefix}${entityType}(${attrsRaw})`);
-    return `${prefix}IFCPROXY('${guid}',$,'${entityType}',$,$,$,$,.NOTDEFINED.,$);`;
+    // IfcRoot begins with GlobalId, OwnerHistory, Name in every schema.
+    const [globalIdSlot = '', , nameSlot = ''] = args;
+    const globalId = withoutComments(globalIdSlot);
+    const sourceGuid = globalId.startsWith("'") && globalId.endsWith("'") ? globalId.slice(1, -1) : '';
+    const guid = isValidIfcGuid(sourceGuid)
+      ? sourceGuid
+      : deterministicGlobalId(`ifcproxy:#${expressId}=${entityType}(${args.join(',')})`);
+    const name = withoutComments(nameSlot);
+    // Use the source type when there is no meaningful Name for the proxy.
+    const proxyName = name.startsWith("'") && name.endsWith("'")
+      && /\P{White_Space}/u.test(decodeStepStringLiteral(name.slice(1, -1)))
+      ? name : `'${entityType}'`;
+    return `${prefix}IFCPROXY('${guid}',$,${proxyName},$,$,$,$,.NOTDEFINED.,$);`;
   }
   if (allowOmit && WITHHOLDABLE_UNROOTED_TYPES.has(entityType)) return null;
   throw new Error(

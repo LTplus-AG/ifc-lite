@@ -63,6 +63,8 @@ export interface PostPassFrame {
   /** Selection/hover outline (#5390), or null while nothing is selected or hovered. */
   selectionOutline: SelectionOutlineFrame | null;
   geometricVisibility?: GPUBindGroup;
+  /** The scene's entity colour table, for the masks' painted depth nudge. */
+  entityColorTable?: GPUBuffer | null;
 }
 
 type PassName = 'ambient occlusion' | 'edges' | 'eye-dome lighting' | 'selection outline';
@@ -151,6 +153,7 @@ export class PostPassChain {
         hovered: frame.selectionOutline.hovered,
         instanced: frame.selectionOutline.instanced,
         geometricVisibility: frame.geometricVisibility,
+        entityColorTable: frame.entityColorTable,
       });
       if (mask) {
         this.edges?.encodeOutline({

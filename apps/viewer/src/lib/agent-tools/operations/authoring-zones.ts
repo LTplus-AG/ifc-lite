@@ -144,21 +144,25 @@ export const zoneOperations = [
     type: 'object', properties: { ...idInput.properties, expected_configuration: revisionInput }, required: ['set_id', 'expected_configuration'], additionalProperties: false,
   }, async (i, c) => { const { generateZonesFromStoreys } = await import('@/hooks/useZoneStoreyGeneration'); assertToolActive(c); set(i.set_id); const result = generateZonesFromStoreys(); if (!result.ok) throw unavailable(result.error);
     return zoneWrite(c, i.expected_configuration, () => { useViewerStore.getState().replaceZonesInSet(i.set_id, result.zones); return { set_id: i.set_id, zone_count: set(i.set_id).zones.length }; }); }),
-  operation(meta('zones.assign', 'Recompute native assignments using the live renderer’s canonical entity bounds; returns element_count (every element evaluated, assigned or not) and the timing (read the assignments with zones.read). Requires a mounted renderer; never fabricates an empty successful evaluation.'), emptySchema, async (_, c) => {
+  operation(meta('zones.assign', 'Recompute native assignments using the live renderer’s canonical entity bounds; returns element_count (every element evaluated, assigned or not) and the timing (read the assignments with zones.read). Requires a mounted renderer; never fabricates an empty successful evaluation.', 'configuration'), emptySchema, async (_, c) => {
     const [{ getGlobalRenderer }, { recomputeZoneAssignmentsNow }] = await Promise.all([import('@/hooks/useBCF'), import('@/hooks/useZoneAssignmentSync')]);
     assertToolActive(c); if (!getGlobalRenderer()?.getScene()) throw unavailable('A mounted native renderer is required for zone evaluation.');
-    recomputeZoneAssignmentsNow(); const s = useViewerStore.getState(); return out({ element_count: s.zoneAssignments.size, timing: s.zoneAssignmentTiming });
+    return out(c.commit(() => {
+      recomputeZoneAssignmentsNow();
+      const s = useViewerStore.getState();
+      return { element_count: s.zoneAssignments.size, timing: s.zoneAssignmentTiming };
+    }));
   }),
   operation<{ set_id: string; zone_id: string }>(meta('zones.select', 'Select native assigned elements in a zone. Empty zone_id selects the unassigned bucket using the same federation-aware handler as the panel.', 'selection'), {
     type: 'object', properties: { ...idInput.properties, zone_id: { type: 'string', maxLength: 200 } }, required: ['set_id', 'zone_id'], additionalProperties: false,
   }, async (i, c) => { const { selectElementsInZone } = await import('@/hooks/useZoneSelection'); assertToolActive(c);
     // Selecting clears the user's selection first, so an unknown zone must be refused, not selected as empty (#10793).
     if (i.zone_id) zoneOf(i.set_id, i.zone_id); else set(i.set_id); return out(c.commit(() => ({ selected: selectElementsInZone(i.set_id, i.zone_id || null) }))); }),
-  operation<{ set_id: string }>(meta('zones.apportion', 'Run native proved-solid volume apportionment for a current zone set. Returns apportioned_count, refused_count, refusals by reason (no-geometry, unproved-solid, ...) and timing; the per-element rows are stored and read through zones.read as apportioned and refused rows.'), idInput, async (i, c) => {
+  operation<{ set_id: string }>(meta('zones.apportion', 'Run native proved-solid volume apportionment for a current zone set. Returns apportioned_count, refused_count, refusals by reason (no-geometry, unproved-solid, ...) and timing; the per-element rows are stored and read through zones.read as apportioned and refused rows.', 'configuration'), idInput, async (i, c) => {
     const [{ computeZoneApportionmentNow }, { getGlobalRenderer }] = await Promise.all([import('@/hooks/useZoneApportionment'), import('@/hooks/useBCF')]); assertToolActive(c);
     if (!getGlobalRenderer()?.getScene()) throw unavailable('A mounted native renderer is required for apportionment.');
     // One record per element would pass the result limit on a large set after the entry was stored (#10794).
-    const entry = computeZoneApportionmentNow(set(i.set_id)), refusals: Record<string, number> = {};
+    const entry = c.commit(() => computeZoneApportionmentNow(set(i.set_id))), refusals: Record<string, number> = {};
     for (const reason of entry.refused.values()) refusals[reason] = (refusals[reason] ?? 0) + 1;
     return out({ set_id: i.set_id, apportioned_count: entry.byElement.size, refused_count: entry.refused.size, refusals, computed_at: entry.computedAt, elapsed_ms: entry.elapsedMs });
   }),

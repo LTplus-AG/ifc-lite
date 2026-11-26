@@ -9,6 +9,7 @@
 //! rewritten records that carry an owner history, and the set of a value
 //! edited in place.
 
+use crate::step_slot::slot_is;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use ifc_lite_core::SchemaFamily;
@@ -257,7 +258,7 @@ fn mark_modified(index: &FileIndex, schema: &str, ledger: &mut Ledger, patched: 
         let Some(original_id) = ifc_lite_core::parser::parse_ref(slot.trim().as_bytes()) else {
             // Optional in IFC4: the file never recorded an author for this
             // object, and none is invented. IFC2X3 requires one.
-            if slot.trim() != "$" || required {
+            if !slot_is(&slot, "$") || required {
                 out.findings.push(report(format!("modified {ty} has no owner history{}; the modification is not recorded on it", if required { ", which IFC2X3 requires" } else { "" })));
             }
             continue;

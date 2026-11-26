@@ -14,7 +14,7 @@ import { rotationRefusal } from '../../lib/model-placement/rotation-refusal.js';
 import { constrainTranslation, finiteTranslation, fromRenderTranslation, subtractTranslation,
   type Translation, type MoveConstraint } from '../../lib/model-placement/translation.js';
 import type { Vec3 } from '@ifc-lite/geometry';
-import { type PlacementManifest, resolvePlacementManifest } from '../../lib/model-placement/manifest.js';
+import { PlacementManifestTargetError, type PlacementManifest, resolvePlacementManifest } from '../../lib/model-placement/manifest.js';
 import { placementFrameKey } from '../../lib/model-placement/persistence.js';
 
 export interface ModelPlacementSlice {
@@ -57,7 +57,7 @@ export const createModelPlacementSlice: StateCreator<ViewerState, [], [], ModelP
     // The same refusal the rotate command applies, so no path can record a
     // heading the bake would only partly carry out.
     const refusal = rotationRefusal(state, [...incoming].filter(([, placement]) => placement.rotation.angle !== 0).map(([id]) => id));
-    if (refusal) throw new Error(refusal);
+    if (refusal) throw new PlacementManifestTargetError('rotation', refusal);
     return { modelPlacement: importPlacements(state.modelPlacement, incoming) };
   }),
   openReposition: (modelIds) => {

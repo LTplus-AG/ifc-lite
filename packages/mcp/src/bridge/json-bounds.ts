@@ -67,12 +67,20 @@ export function checkJsonBounds(value: unknown, bounds: JsonBounds, label: strin
   return null;
 }
 
-/** UTF-8 byte length of `text`. */
+/** UTF-8 byte length of `text`, counted without encoding it (results can be megabytes). Lone surrogates count as U+FFFD (3 bytes), as TextEncoder writes them. */
 export function utf8Length(text: string): number {
-  return new TextEncoder().encode(text).length;
+  let bytes = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    if (c < 0x80) bytes += 1;
+    else if (c < 0x800) bytes += 2;
+    else if (c >= 0xd800 && c <= 0xdbff && i + 1 < text.length && (text.charCodeAt(i + 1) & 0xfc00) === 0xdc00) { bytes += 4; i++; }
+    else bytes += 3;
+  }
+  return bytes;
 }
 
-function isRecord(v: unknown): v is Record<string, unknown> {
+export function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 

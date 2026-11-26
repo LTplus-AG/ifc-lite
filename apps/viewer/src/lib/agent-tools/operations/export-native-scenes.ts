@@ -7,7 +7,7 @@ import { hasRetainedShapeOnlyModel, RETAINED_SHAPE_ONLY_REASON } from '@/store/r
 import { modelExportFilename, sanitizeFilename, stripExtension } from '@/lib/export/download';
 import { produceNativeGlb } from '@/lib/export/native-glb';
 import { produceNativeUsd, produceNativeRhino } from '@/lib/export/native-scenes';
-import { produceNativeEnergy } from '@/lib/export/native-energy';
+import { NoEnergyRoomsError, produceNativeEnergy } from '@/lib/export/native-energy';
 import { buildKmzForModel } from '@/lib/geo/kmz-export';
 import type { RhinoExportSettings } from '@/components/viewer/rhino-export-options';
 import { RHINO_UNITS, RHINO_COORDINATES, RHINO_LAYER_SCHEMES, RHINO_PROPERTIES, RHINO_3DM_VERSIONS } from '@/components/viewer/rhino-export-options';
@@ -36,7 +36,13 @@ export const exportNativeSceneOperations = [
   } satisfies JSONSchemaType<{ target_model_id: string; settings: RhinoExportSettings }>, async (i, c) => { const blocked = nativeExportBlockReason('3dm', useViewerStore.getState()); if (blocked) throw unavailable(blocked); const model = nativeStepTarget(i.target_model_id); const check = nativeExportGuard(c, [model.id]); check(); const result = await produceNativeRhino(model, i.settings, useViewerStore.getState().getMutationView, p => { c.progress?.({ phase: p.phase, done: 'done' in p ? p.done : 0, total: 'total' in p ? p.total : 1 }); }, c.signal, check); return nativeArtifact(c, new Blob([new Uint8Array(result.bytes)], { type: 'application/vnd.rhino' }), modelExportFilename(model.name, '3dm'), { model_id: model.id, warnings: result.warnings }, check); }),
   viewerOperation<{ target_model_id: string; format: 'hbjson' | 'dfjson' }>(exportMetadata('exports.energy', 'Await native Honeybee/Dragonfly energy export from the current edited model, including Room-tool spaces. Preserve no-space/source/retained refusals and HBJSON skipped-space counts instead of reporting truncated output as unqualified success.'), {
     type: 'object', properties: { target_model_id: targetSchema, format: { type: 'string', enum: ['hbjson', 'dfjson'] } }, required: ['target_model_id', 'format'], additionalProperties: false,
-  } satisfies JSONSchemaType<{ target_model_id: string; format: 'hbjson' | 'dfjson' }>, async (i, c) => { const blocked = nativeExportBlockReason('energy', useViewerStore.getState()); if (blocked) throw unavailable(blocked); const model = nativeExportTarget(i.target_model_id); const check = nativeExportGuard(c, [model.id]); check(); const result = await produceNativeEnergy(model, i.format, check); return nativeArtifact(c, result.blob, modelExportFilename(model.name, i.format), { model_id: model.id, stats: result.stats, skip_note: result.hbjsonSkipNote }, check); }),
+  } satisfies JSONSchemaType<{ target_model_id: string; format: 'hbjson' | 'dfjson' }>, async (i, c) => { const blocked = nativeExportBlockReason('energy', useViewerStore.getState()); if (blocked) throw unavailable(blocked); const model = nativeExportTarget(i.target_model_id); const check = nativeExportGuard(c, [model.id]); check(); let result: Awaited<ReturnType<typeof produceNativeEnergy>>;
+    try { result = await produceNativeEnergy(model, i.format, check); }
+    catch (error) {
+      if (error instanceof NoEnergyRoomsError) throw invalidInput('wrong-target', error.message);
+      throw error;
+    }
+    return nativeArtifact(c, result.blob, modelExportFilename(model.name, i.format), { model_id: model.id, stats: result.stats, skip_note: result.hbjsonSkipNote }, check); }),
   viewerOperation<{ target_model_id: string; altitude_mode: 'clampToGround' | 'absolute' }>(exportMetadata('exports.kmz', 'Await the native georeference-to-WGS84/COLLADA KMZ producer, one model including its own instanced occurrences, explicit terrain-clamped versus MSL altitude, pending georeference edits and native refusal diagnostics.'), {
     type: 'object', properties: { target_model_id: targetSchema, altitude_mode: { type: 'string', enum: ['clampToGround', 'absolute'] } }, required: ['target_model_id', 'altitude_mode'], additionalProperties: false,
   } satisfies JSONSchemaType<{ target_model_id: string; altitude_mode: 'clampToGround' | 'absolute' }>, async (i, c) => { const blocked = nativeExportBlockReason('kmz', useViewerStore.getState()); if (blocked) throw unavailable(blocked);

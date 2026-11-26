@@ -100,6 +100,8 @@ export const sheetsPdfIt = {
   "sheetsPdf.pdfView.pageReadoutFits": "Pagina stimata: {width} x {height} mm (rientra in {paperName}). La pagina esportata è dimensionata sul disegno stesso e non sarà mai più grande.",
   "sheetsPdf.pdfView.pageReadoutOversizeIso": "Pagina stimata: {width} x {height} mm (più grande di qualsiasi formato ISO). La pagina esportata è dimensionata sul disegno stesso e non sarà mai più grande.",
   "sheetsPdf.pdfView.pageReadoutUnavailable": "Le dimensioni della pagina non sono ancora disponibili. Carica un modello e scegli una scala valida.",
+  "sheetsPdf.pdfView.releasedLoading": "Lettura della geometria del modello dalla memoria locale…",
+  "sheetsPdf.pdfView.releasedUnavailable": "La geometria del modello non è ancora disponibile nella memoria locale. L'esportazione sarà possibile non appena lo sarà.",
   "sheetsPdf.pdfView.oversizeTitle": "Pagina troppo grande per la stampa",
   "sheetsPdf.pdfView.oversizeDescription": "Questa scala richiede una pagina di {width} x {height} mm. Una pagina PDF non può superare {maxDimension} mm per lato. Scegli una scala più piccola.",
   "sheetsPdf.pdfView.perspectiveTitle": "Camera prospettica",

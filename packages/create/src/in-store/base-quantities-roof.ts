@@ -15,7 +15,7 @@
 import { QuantityType } from '@ifc-lite/data';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { polygonArea } from './base-quantities-measure.js';
+import { polygonArea } from './polygon-2d.js';
 import { asExpressIdRef, readAttributes } from './edit/placement-core.js';
 
 interface RoofPlaneAreas {

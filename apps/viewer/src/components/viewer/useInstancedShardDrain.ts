@@ -29,7 +29,7 @@ import { activeLoadTrace } from '@/lib/perf/activeLoadTrace';
 import { useViewerStore } from '@/store';
 import { drainInstancedShards, hasPendingInstancedShards, noteDroppedInstancedShards, subscribeInstancedShards } from '@/store/instancedShardQueue';
 import { applyFederationOffsetToShard } from './instancedFederationOffset.js';
-import { fitInstanceOnlyBounds } from './streamingInstancedBounds.js';
+import { fitInstanceOnlyBounds, instanceOnlyLoadPossible } from './streamingInstancedBounds.js';
 import type { Bounds } from './streamingBounds.js';
 
 export interface InstancedShardDrainParams {
@@ -48,6 +48,8 @@ export interface InstancedShardDrainParams {
   finalBoundsRefittedRef: MutableRefObject<boolean>;
   lastFitPolicyKindRef: MutableRefObject<'compact' | 'linear' | null>;
   lastGeometryRef: MutableRefObject<MeshData[] | null>;
+  /** Whether the load is still streaming: a shard-only exact load fits once it is not. */
+  isStreaming?: boolean;
 }
 
 export function useInstancedShardDrain(params: InstancedShardDrainParams): void {
@@ -112,11 +114,17 @@ export function useInstancedShardDrain(params: InstancedShardDrainParams): void 
           }
           noteDroppedInstancedShards('ownerless', ownerless.length, ownerless);
           if (uploaded === 0) return;
-          if (p.geometryKernel === 'retained' && p.geometry?.length === 0 && !p.appearanceSourceGeometry?.length
+          if (instanceOnlyLoadPossible(p.geometryKernel, scene) && p.geometry?.length === 0 && !p.appearanceSourceGeometry?.length
             && scene.getInstancedModelIndices().length > 0) {
-            fitInstanceOnlyBounds({ renderer, cameraFittedRef: p.cameraFittedRef, cameraSnapshotRef: p.cameraSnapshotRef,
-              geometryBoundsRef: p.geometryBoundsRef, finalBoundsRefittedRef: p.finalBoundsRefittedRef,
-              lastFitPolicyKindRef: p.lastFitPolicyKindRef, complete: false });
+            // A shard-only arrival owns the load. The retained kernel fits now. An exact load under
+            // the global instance plan may still stream flat geometry, so it fits at completion: in
+            // finalize, or here when its shards drain after the stream already ended.
+            if (p.geometryKernel === 'retained' || !p.isStreaming) {
+              fitInstanceOnlyBounds({ renderer, cameraFittedRef: p.cameraFittedRef, cameraSnapshotRef: p.cameraSnapshotRef,
+                geometryBoundsRef: p.geometryBoundsRef, finalBoundsRefittedRef: p.finalBoundsRefittedRef,
+                lastFitPolicyKindRef: p.lastFitPolicyKindRef, complete: p.geometryKernel !== 'retained',
+                initialAtCompletion: p.geometryKernel !== 'retained' });
+            }
             p.lastGeometryRef.current = p.geometry;
           }
           renderer.requestRender();

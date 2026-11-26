@@ -222,21 +222,15 @@ cargo build --release -p ifc-lite-server
 
 ## Rust Installation
 
-Add to your `Cargo.toml`:
-
-```toml
-[dependencies]
-ifc-lite-core = "19"
-ifc-lite-geometry = "19"
-```
-
-Or install via cargo:
+Use Cargo to add the crates to your project's `Cargo.toml`:
 
 ```bash
 cargo add ifc-lite-core ifc-lite-geometry
 ```
 
 Additional crates: `ifc-lite-processing` (streaming/entity scan), `ifc-lite-export` (glTF/IFC5 export), and `ifc-lite-clash` (clash detection).
+
+The `ifc-build-cache` CLI, which builds the `.ifclite` cache natively, installs from the repository instead of crates.io: see [Native Cache Builder](native-cache.md#installation).
 
 ## Python Installation
 

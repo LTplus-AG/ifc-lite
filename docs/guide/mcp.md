@@ -105,7 +105,7 @@ Tools are grouped by capability. Everything below is registered in the default t
 | Query | `query_entities`, `count_entities`, `get_entity`, `get_entities_bulk`, `spatial_hierarchy`, `containment_chain`, `relationships`, `properties_unique`, `materials_list`, `classifications_list`, `georeferencing`, `georeferencing_check`, `units`, `cost_data`, `cost_evaluate` |
 | Geometry | `geometry_bbox`, `geometry_volume`, `geometry_area`, `geometry_get` *(planned)*, `raycast` *(planned)* |
 | Clash | `clash_check`, `clash_matrix` |
-| Validation | `ids_validate`, `ids_explain`, `model_audit`, `gherkin_check` *(planned)* |
+| Validation | `ids_validate`, `ids_explain`, `model_audit` |
 | IDS authoring | `ids_audit`, `ids_lint`, `ids_read`, `ids_apply_ops`, `ids_write`, `ids_schema_search`, `ids_schema_entity`, `ids_schema_pset`, `ids_diff`, `ids_preview` *(planned)*, `ids_infer` *(planned)*, `ids_coverage` *(planned)*, `ids_test` *(planned)* |
 | Mutation | `entity_set_property`, `entity_delete_property`, `entity_set_attribute`, `entity_create`, `entity_delete`, `georeferencing_write`, `georeferencing_fix`, `mutation_batch`, `mutation_undo`, `mutation_diff`, `model_save` |
 | Hosted modelling | `place_opening`, `place_door`, `place_window` |
@@ -118,7 +118,7 @@ Tools are grouped by capability. Everything below is registered in the default t
 | BCF | `bcf_topic_list`, `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`, `bcf_viewpoint_create`, `bcf_export` |
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |
 | Diff | `model_diff`, `quantity_diff` |
-| Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_usd`, `export_3dm`, `export_pdf_report` *(planned)* |
+| Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_usd`, `export_3dm` |
 | Flow | `describe_flow`, `run_flow`, `propose_flow`, `resume_flow` |
 | Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
 | Draft layers & review | `create_draft_layer`, `draft_apply_ops`, `publish_layer`, `diff_layer`, `dry_run_merge`, `list_conflicts`, `request_review`, `add_review_feedback`, `get_review_feedback`, `add_review_topic`, `respond_to_review` |
@@ -400,11 +400,27 @@ For an `IfcSlab` host, `place_opening` accepts `Position: [x, y]` (opening centr
     by this adapter; use the hosted placement tools with an actual host.
 
 !!! note "Planned tools return a clean error"
-    `geometry_get`, `raycast`, `gherkin_check`, and `export_pdf_report` are
-    registered so agents can discover them, but they currently return an
-    `UNSUPPORTED_OPERATION` result rather than data. Mesh geometry (`geometry_get`)
-    and `raycast` need the WASM geometry pipeline; `gherkin_check` awaits the bSI
-    Gherkin grammar; `export_pdf_report` is slated for a later release.
+    `geometry_get`, `raycast`, `ids_preview`, `ids_infer`, `ids_coverage` and
+    `ids_test` are registered so agents can discover them, but they currently
+    return an `UNSUPPORTED_OPERATION` result rather than data. `geometry_get`
+    and `raycast` need the WASM geometry pipeline; the IDS four wait for their
+    engines.
+
+### Interactive result surfaces
+
+Use `present_query`, `present_ids_results` or `present_clash_results` on the
+model-serving MCP server to compute IFC results and show a table, stats and
+viewer controls in an MCP Apps host. `present_query` takes a declarative query,
+a list of column paths such as `Name` and `Pset_DoorCommon.FireRating`, and an
+optional grouping field. The other tools accept the same arguments as
+`ids_validate` and `clash_check`. Each tool returns a text summary as well.
+Use `viewer_open` and open its URL to activate the result's viewer controls.
+For the paired main viewer, use `viewer_show_ui` in bridge mode to deliver a
+validated surface. When the user clicks a follow-up on it, the click comes back
+to the agent: `viewer_ui_events` returns the queued events (pass `wait_seconds`
+to wait for the next one), and with `--channel` each click is also pushed into a
+Claude Code session as a channel message. See the
+[A2UI architecture guide](../architecture/a2ui.md#mcp-result-surfaces).
 
 ### Resources
 
@@ -448,8 +464,8 @@ ifc-lite-mcp --bridge --read-only  # tools the tab labels as mutating stay off w
 - **One tab.** A new pairing replaces the paired tab, which is disconnected. While a tab is paired no code is live; `bridge_status` with `pair_new_tab: true` issues one.
 - **Guards.** The WebSocket upgrade is refused unless the `Origin` is allowlisted: the `--bridge-viewer-url` origin (default `https://ifclite.com`; a configured URL replaces the default, so add `--allow-origin https://ifclite.com` to keep it) plus each `--allow-origin` and the `Host` is loopback on the bridge port. Plain `http:` origins are accepted only on loopback hosts, unless `--insecure` is passed (with a warning). The pairing code is the authentication; the origin check only keeps other web pages out.
 - **Permissions.** The tab labels each tool `readOnly` or not, and says whether the user allowed changes. Read-only is the default. While read-only, tools the tab labels mutating are neither listed nor forwarded. The bridge cannot see what a tool does, so the labels are the tab's claim: the tab is the authority and must refuse model-changing calls itself while read-only. There is no tool for writing back to a cloud source.
-- **Tab-supplied data.** Tool names, descriptions and results come from the tab and from model data; the bridge tells the agent they are data, not instructions. Results carry text and structured content only. Descriptors, schemas and results are bounded in size and depth (see `BRIDGE_LIMITS`).
-- **Hostile frames.** Frames are bounded as a whole before any field is read; an unpaired connection may send at most 1.25 MiB; diagnostic strings derived from tab input (errors, log lines, client name) are clipped and stripped of control characters; tool names, descriptions and schemas are bounded by `BRIDGE_LIMITS`; tool results pass through as text, unaltered, within the result limits, and the agent is told to treat them as data; frame handlers run under a guard, so a frame cannot crash the process. A local process, or a page on an allowed origin (pages on other origins are refused before a slot is allocated), CAN block pairing for as long as it keeps attacking, by keeping the 4 unpaired slots busy so the real tab gets HTTP 429. It still cannot pair without the code. Allow only origins whose content you trust. The bridge logs "pairing is being blocked: every unpaired slot is busy …", and `bridge_status` reports `pairingPressure` and what to do.
+- **Tab-supplied data.** Tool names, descriptions and results come from the tab and from model data; the bridge tells the agent they are data, not instructions. Results carry text, structured content and images (PNG, JPEG or WebP; the bytes must match the declared type; at most 2 per result and 3 MiB of base64 each). Descriptors, schemas and results are bounded in size and depth (see `BRIDGE_LIMITS`).
+- **Hostile frames.** Frames are bounded as a whole before any field is read; an unpaired connection may send at most 1.25 MiB; diagnostic strings derived from tab input (errors, log lines, client name) are clipped and stripped of control characters; tool names, descriptions and schemas are bounded by `BRIDGE_LIMITS`; tool results pass through unaltered within the result limits, and the agent is told to treat them as data; frame handlers run under a guard, so a frame cannot crash the process. A local process, or a page on an allowed origin (pages on other origins are refused before a slot is allocated), CAN block pairing for as long as it keeps attacking, by keeping the 4 unpaired slots busy so the real tab gets HTTP 429. It still cannot pair without the code. Allow only origins whose content you trust. The bridge logs "pairing is being blocked: every unpaired slot is busy …", and `bridge_status` reports `pairingPressure` and what to do.
 - **No tab.** Only `bridge_status` is listed, and any other call fails at once with `VIEWER_NOT_CONNECTED`. A tab that closes fails its pending calls the same way.
 
 The tab<->bridge frame protocol is transport-neutral and exported, browser-safe, as `@ifc-lite/mcp/bridge-protocol`. Tools are listed with MCP `annotations` (`readOnlyHint`, and `destructiveHint` for tools labelled mutating). In the viewer, open the pairing link in the tab that holds the model (or use **Sources → Local agent → Connect local agent**, or **Connect local agent…** in the command palette, and type the code). The viewer strips the code from the address bar at once and asks for confirmation before it connects; it serves its read tools, and property and attribute edits only when the user allows them (below); palette discovery is also available. Command execution and selection changes require the explicit commands-and-edits grant described below. While paired, the status bar shows *Local agent connected · read-only* with Disconnect and an activity log (tool, model, duration, outcome; no arguments or results). A code works once, so after any drop the tab asks for a fresh link instead of reconnecting. Verified from a public `https` origin in Chromium 156 and Firefox 157: both block `ws://127.0.0.1` until the site may reach apps on this device (permission `loopback-network`). Chrome asks "Access other apps and services on this device" (site setting *Apps on device*); Firefox asks "<site> wants to access other apps and services on this device" (setting *Device apps and services*). Granting the older `local-network` / `local-network-access` permissions does not help. Safari is not verified. The full security model is in the [package README](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/mcp/README.md#bridge-to-a-browser-tab---bridge).
@@ -469,11 +485,25 @@ The bridge advertises four viewer-native palette tools in addition to the model 
 
 For example, query walls with `query_entities`, select their ids with `viewer_select`, discover a command with `viewer_commands { "query": "frame" }`, then invoke `viewer_command_run { "command_id": "view:frame" }`. Discover again when the model, selection or enabled features change.
 
+The viewer also exposes its native feature operations, and `viewer_operation_coverage` summarizes which controls they cover and lists gap IDs. Pass `section` for paged details or `section` and `row_id` for one row. See [viewer operations](viewer-operations.md).
+
 Discovery and selection reads work while read-only. Selection changes and command dispatch require the explicit commands-and-edits grant at every pairing; `--read-only` keeps them hidden. The tab checks the grant itself immediately before dispatch, even if a bridge forwards a forbidden call. Revoking it stops new actions; already dispatched asynchronous actions may continue.
 
 The viewer lazily mounts the palette owner on connection without opening its dialog. The agent uses the same command rows, native callbacks and live prerequisite checks as the palette, including runtime exports, templates, tours and extension commands that supply a live availability check. Commands without such a check are discoverable but refused. File-picker commands require a real browser user gesture and are refused over MCP.
 
 A successful result says **dispatched**, not completed. Opening a clash, Flow, IDS or authoring panel exposes the native workflow; it does not run the workflow or fill its forms. This interface exposes palette entry points, not every control inside every panel. New palette features automatically appear through the existing registry/providers; no parallel agent command list is maintained.
+
+### Seeing the viewport
+
+`viewer_screenshot` returns what the user sees in the 3D viewport (camera, visibility, section cuts, selection highlight) as an MCP image the agent can look at, plus one line with the size and camera position. It uses the same native capture as the toolbar screenshot and `exports.screenshot`, scaled down to `max_width` pixels wide (256 to 1920, default 1024, aspect kept) and encoded as JPEG unless `format: "png"` is passed. It is read-only: it changes neither the model nor the view. It fails with `UNSUPPORTED_OPERATION` when no viewport is mounted.
+
+Images need a bridge that forwards them: it says so with `features: ["image-content"]` in its `welcome`. Against an older bridge the tab sends a text line asking for an update instead (`npx @ifc-lite/mcp@latest --bridge`), so mixed versions keep working. A capture exceeding 3 MiB of base64 returns `INVALID_INPUT`. Retry with a smaller `max_width` or JPEG. If the bridge cannot fit an otherwise valid image in the reply, it drops the image and sends a note.
+
+### Opening a model
+
+`viewer_open_model` lets the agent open a model itself and waits until it has loaded. Pass `sample` for a model bundled with the viewer (`demo`, `demo-rev-b`, `hello-wall`, `infra-bridge`, `layers-demo`) or `url` for an `https` model file whose path ends in its extension (after a redirect to a path that names another model format, that one is used): IFC, IFCX, GLB, Rhino 3DM, LandXML or a point cloud, plus splats where the viewer offers them. A `.gltf` is refused, since its external buffers cannot come along with one download. The tab fetches the URL without credentials, so the server must allow cross-origin requests. Preflight refuses recognised HTML and XML error responses, empty bodies and JSON error responses whose complete body fits in the 64 KiB scan, regardless of the declared content type. Other content goes to the viewer's format detection. Downloads are capped at 512 MiB. `mode` is `replace` or `add` (federate); it may be omitted only when nothing is loaded. The result lists every open model with its `model_id`, so the agent can go straight to `query_entities`.
+
+The call answers within about 45 seconds. If the download exceeds that budget, the call fails before starting a load. If the loader is still pending or the model has yet to register and loading continues at the deadline, the result is `state: "loading"`. If the loader has returned and its model is registered but geometry is still arriving, the result is `state: "streaming"`. Check `model_list` for progress before issuing another open. It needs the commands-and-edits grant. Replacing models that have unexported edits is refused with `STATE_CHANGED`, since the agent cannot answer the confirmation a user would get; use `mode: "add"` or ask the user to export first. Loads use the same path as the welcome card and the command palette.
 
 For the proposed path from palette entry points to complete panel and tool workflows, see the [viewer automation plan](../architecture/viewer-automation-plan.md).
 
@@ -483,8 +513,11 @@ For the proposed path from palette entry points to complete panel and tool workf
 
 For `exports.viewPdf`, a numerical scale that exceeds the printable page limit returns `INVALID_INPUT` with `details.reason` set to `limit`. Retry with a larger scale denominator. An empty view or an oversized page at the displayed scale returns `UNSUPPORTED_OPERATION` with reason `unavailable`.
 
+With `lists.editColumn`, a column present in the reviewed list snapshot but missing from the current list returns `STATE_CHANGED/stale`. An unknown column ID returns `INVALID_INPUT/unknown-target`. Schedule ordering, editing, and playback return `INVALID_INPUT/wrong-target` when the loaded timeline belongs to another model, or `UNSUPPORTED_OPERATION/unavailable` when no timeline is loaded.
+
+- **Change sets.** Pass either inline `json` (up to 1,000,000 characters) or the same host's JSON `artifact_id` (up to 16 MiB) to `changeSets.import`. Pass the handle from `changeSets.export` directly for large files. Import stages the set without applying its edits.
 - **Expected-state revisions.** A read returns a short revision of the state a later write depends on, and the write takes it back: clash `expected_reports` (`clash.reports.read` to `clash.reports.write`), `expected_library` (`clash.groups.read` to `clash.groups.library`, `clash.groups.write`, and as `expected_groups` to `clash.drafts.create`, checked when `source` is `groups`; it also covers which workspace is active, so a workspace switch refuses any of these until you read again; `clash.groups.library` and `clash.groups.write` return the next one), validation `expected_reports` (`validation.reports.read` to `validation.reports.manage`), and zone `expected_configuration`. A write whose state changed since the read is refused; read again. These tokens are the revision string; the old full-JSON form is refused. Other operations' `expected_*` inputs keep their own documented form. None of these tokens is the `expected_revision` argument of `viewer_operation_execute`, which takes the integer revision an inspection returns.
-- **Zones.** `zones.read` returns `configuration_revision` on every page, which every zone edit takes as `expected_configuration`. Each edit returns the next `configuration_revision`, so a chain of edits needs no read in between. Every zone write (`zones.set.create`, `zones.set.edit`, `zones.box.write`, `zones.box.remove`, `zones.import`, `zones.generateStoreys`) returns a receipt of ids and counts (such as `set_id`, `zone_id`, `action`, `set_count`, `zone_count`), never a set. `zones.assign` returns `element_count` (every element evaluated, assigned or not) and timing. `zones.apportion` returns `apportioned_count`, `refused_count`, `refusals` by reason, `computed_at` and `elapsed_ms`. Read the data itself with `zones.read`. Geometry and table exports discard results if their source geometry, zone definitions or assignments change during export. The table also checks its apportionment results. Colour-only updates can finish.
+- **Zones.** `zones.read` returns `configuration_revision` on every page, which every zone edit takes as `expected_configuration`. Each edit returns the next `configuration_revision`, so a chain of edits needs no read in between. Every zone write (`zones.set.create`, `zones.set.edit`, `zones.box.write`, `zones.box.remove`, `zones.import`, `zones.generateStoreys`) returns a receipt of ids and counts (such as `set_id`, `zone_id`, `action`, `set_count`, `zone_count`), never a set. `zones.assign` returns `element_count` (every element evaluated, assigned or not) and timing. `zones.apportion` returns `apportioned_count`, `refused_count`, `refusals` by reason, `computed_at` and `elapsed_ms`. Both calculations publish shared results and require `viewer_operation_execute` with an edit grant. Read the results with `zones.read`. Geometry and table exports discard results if their source geometry, zone definitions or assignments change during export. The table also checks its apportionment results. Colour-only updates can finish.
 - **Paging.** `clash.reports.read`, `clash.groups.read` and `validation.reports.read` return one page plus `total` and `next_offset`; their storage status (`storage`, or `status` for groups) carries `phase`, `recovered`, `entry_count` and `counts` by save state for the whole library, and `items` mapping this page's ids to their save states (a map, so in no particular order). Save states whose entry is gone, such as a stuck deletion, page as rows after the entries, so `total` counts them too. Pass `next_offset` as the optional `offset` input (default 0), together with the previous page's `page_revision`, until `next_offset` is `null`. `page_revision` digests every row of the list, entries and save states included, so if anything changed between two pages the next one is refused ("The list changed since the previous page"): read again from offset 0. A read past offset 0 without `page_revision` is refused too. `zones.read` pages flat rows tagged by `kind` under one cursor: `set` (a zone set without its zones), `zone`, `apportionment` (one per computed set, with `stale` when the set changed after the run), `apportioned` and `refused` (one per element of it), and `assignment` (one per element and zone set). Follow `page.next_offset` and send `page.page_revision` back as `page_revision`, the same way; use `counts` for the number of rows of each kind. A single item too large for any page is refused, and the error names the offset and `page_revision` to continue with. The same cursor applies to `annotations.read`, `clash.results`, `document.inspect`, `document.library`, `filters.results`, `lists.run`, and `validation.results`. Their requested row limit still applies, and a large row may shorten the page. Start over at offset 0 after a stale-page error.
 - **Previews.** `zones.writeback.prepare` returns `row_count`, a bounded `rows` sample and `truncated`; its token still applies every row, so review a truncated table in full with `zones.table.export`. `exports.anonymized.prepare` reports `truncated` when relationship expansion hit its work budget, and refuses a membership above 100,000 entities (`reason: "member-cap"` in the error details, also from `exports.anonymized`) or a preview above the result limit (`reason: "preview-size"`); narrow the selection or exclude types.
 
@@ -511,7 +544,28 @@ A failed native library save carries the library's reason in `details.save`. Sto
 
 === "Claude Code"
 
-    Register the server with the `claude mcp add` command:
+    The repository is a plugin marketplace. The `ifc-lite` plugin bundles the
+    `use-ifclite` skill and the viewer bridge (`--bridge --channel`):
+
+    ```bash
+    claude plugin marketplace add LTplus-AG/ifc-lite
+    claude plugin install ifc-lite@ifc-lite
+    ```
+
+    Ask Claude to connect to the viewer; it calls `bridge_status` and gives you
+    a pairing link. Surfaces it shows with `viewer_show_ui` appear over the
+    viewport, and a follow-up you click there comes back to Claude. To have
+    clicks arrive in the session on their own, start Claude Code with the
+    plugin as a channel (research preview):
+
+    ```bash
+    claude --dangerously-load-development-channels plugin:ifc-lite@ifc-lite
+    ```
+
+    Without the flag, Claude reads the clicks with `viewer_ui_events`.
+
+    To serve a file instead of a viewer tab, register the server with the
+    `claude mcp add` command:
 
     ```bash
     claude mcp add ifc-lite -- npx -y @ifc-lite/mcp /abs/path/to/model.ifc
@@ -653,14 +707,16 @@ const initResp = await transport.send({
   id: 1,
   method: 'initialize',
   params: {
-    protocolVersion: '2025-11-05',
+    protocolVersion: '2025-11-25',
     capabilities: {},
     clientInfo: { name: 'host', version: '1' },
   },
 });
 ```
 
-The server negotiates MCP protocol version `2025-11-05` and accepts the neighbouring published revisions, downgrading anything it does not recognize.
+The server negotiates MCP protocol version `2025-11-25` and accepts the earlier published revisions `2025-06-18` and `2025-03-26`. Any other requested version gets `2025-11-25`.
+
+Besides tools, resources and prompts, the server answers `resources/templates/list` (the entity URI template) and `logging/setLevel` (server log lines at or above the level arrive as `notifications/message`). A tool's required scope is at `_meta["ifc-lite/scope"]` in `tools/list`. `notifications/resources/list_changed` follows the loaded models: a custom `ModelRegistry` that implements the optional `onChange` gets it for every change, one without it only for changes made by a tool call.
 
 ## Why agents plus BIM
 

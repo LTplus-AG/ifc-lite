@@ -107,24 +107,10 @@ export const NO_MARKER_REQUIRED = new Map([
     'like the lens hide/show pair).',
   ],
   [
-    // The lens hidden-id sync moved here from LensPanel.tsx with #5877 (the
-    // lens runtime now outlives its panel); the gap below moved with it.
-    'apps/viewer/src/hooks/useLens.ts',
-    'KNOWN GAP, tracked on #3338, not a justification: the lens hidden-id sync writes ' +
-    'planLensHiddenSync deltas over state.lensHiddenIds, which are LENS RULE MATCHES and can ' +
-    'name a geometry-less IfcElementAssembly exactly as LensPanel.tsx rule ISOLATE can -- so this ' +
-    'hide is a silent no-op for that case. Left unrouted here deliberately: hide and show are ' +
-    'two halves of an ownership ledger (lensAppliedHiddenIds records what the lens hid so ' +
-    'teardown releases only that), and expanding one side without the other corrupts it. ' +
-    'Routing both is a behaviour change that needs its own test, not a drive-by.' +
-    ' The paired showEntities is the release half of that ledger: it must pass back exactly ' +
-    'the ids planLensHiddenSync says the lens owns, or it would unhide something the user hid.',
-  ],
-  [
-    // The lens hidden-id sync's apply step moved here from useLens.ts (#10525 follow-up), and the same
-    // known gap moved with it.
+    // The lens hidden-id sync moved from LensPanel.tsx (#5877) to useLens.ts, then its apply step moved
+    // here (#10525 follow-up); the known gap moved with it.
     'apps/viewer/src/lib/lens/native-lens.ts',
-    'KNOWN GAP, tracked on #3338 (moved from useLens.ts): showEntities/hideEntities apply the ' +
+    'KNOWN GAP, tracked on #3338: showEntities/hideEntities apply the ' +
     'planLensHiddenSync delta of the lens ownership ledger, whose ids are lens rule matches and can ' +
     'name a geometry-less assembly. Expanding one half of the hide/show ledger without the other ' +
     'corrupts it; routing both is a behaviour change that needs its own test.',

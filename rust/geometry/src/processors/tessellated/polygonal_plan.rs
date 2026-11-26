@@ -32,7 +32,7 @@ pub(crate) enum PolygonalFaceSetPlan {
 /// shared index rule and `PnIndex` remap; an invalid corner is `0`, which
 /// drops the whole face rather than a vertex of it (#7689).
 #[inline]
-fn parse_index_loop(indices: &[AttributeValue], pn_index: Option<&[u32]>) -> Vec<u32> {
+pub(super) fn parse_index_loop(indices: &[AttributeValue], pn_index: Option<&[u32]>) -> Vec<u32> {
     indices
         .iter()
         .map(|value| super::indices::polygon_corner(value, pn_index))
@@ -40,7 +40,7 @@ fn parse_index_loop(indices: &[AttributeValue], pn_index: Option<&[u32]>) -> Vec
 }
 
 #[inline]
-fn parse_face_inner_indices(
+pub(super) fn parse_face_inner_indices(
     face_entity: &DecodedEntity,
     pn_index: Option<&[u32]>,
 ) -> Vec<Vec<u32>> {

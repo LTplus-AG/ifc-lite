@@ -54,6 +54,23 @@ references. Public `run_flow` routes `element.stair` / `element.railing` through
 Tracking is fresh per RPC call, so cross-call update/remove needs a persistent
 caller-owned tracking store. No separate creation or Redo RPC is added.
 
+## Interactive IFC results
+
+MCP Apps hosts can open interactive IFC result surfaces from the model-serving tools.
+
+| Tool | Inputs |
+| --- | --- |
+| `present_query` | `query` (IFC types, conditions, storey, modelId, limit), `columns` (field paths and optional labels), optional `modelId`, `groupBy` and `title` |
+| `present_ids_results` | The `ids_validate` inputs and an optional `title` |
+| `present_clash_results` | The `clash_check` inputs and an optional `title` |
+
+The tools include a text summary and an A2UI v1.0 payload rendered by
+`ui://ifc-lite/a2ui-surface`. Connect the browser viewer through `viewer_open` to
+use row selection and the other viewer controls. In `--bridge` mode,
+`viewer_show_ui` delivers validated messages or a builder spec to a compatible
+paired main viewer tab. See the [A2UI architecture guide](../../docs/architecture/a2ui.md#mcp-result-surfaces)
+for a Claude Desktop walkthrough.
+
 ## 3D viewer integration
 
 The server bundles the same WebGL viewer used by `ifc-lite view`. Once it is
@@ -119,7 +136,7 @@ The same `npx` command works as a stdio server in any MCP-aware client.
 | Discovery | `model_info`, `model_list`, `model_load`, `model_unload`, `schema_describe` |
 | Query | `query_entities`, `count_entities`, `get_entity`, `get_entities_bulk`, `spatial_hierarchy`, `containment_chain`, `relationships`, `properties_unique`, `materials_list`, `classifications_list`, `georeferencing`, `georeferencing_check`, `units`, `cost_data`, `cost_evaluate` |
 | Geometry | `geometry_bbox`, `geometry_volume`, `geometry_area`, `geometry_get`, `raycast`, `clash_check`, `clash_matrix` |
-| Validation | `ids_validate`, `ids_explain`, `model_audit`, `gherkin_check` |
+| Validation | `ids_validate`, `ids_explain`, `model_audit` |
 | IDS authoring | `ids_audit`, `ids_lint`, `ids_read`, `ids_apply_ops` (grounding-gated), `ids_write`, `ids_schema_search`, `ids_schema_entity`, `ids_schema_pset`, `ids_diff`, `ids_preview`, `ids_infer`, `ids_coverage`, `ids_test` |
 | Mutation | `entity_set_property`, `entity_delete_property`, `entity_set_attribute`, `entity_create`, `entity_delete`, `georeferencing_write`, `georeferencing_fix`, `mutation_batch`, `mutation_undo`, `mutation_diff`, `model_save` |
 | Hosted modelling | `place_opening`, `place_door`, `place_window` |
@@ -131,8 +148,8 @@ The same `npx` command works as a stdio server in any MCP-aware client.
 | BCF | `bcf_topic_list`, `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`, `bcf_viewpoint_create`, `bcf_export` |
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |
 | Diff | `model_diff` (`by_content` for content-keyed matching), `quantity_diff` |
-| Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_3dm`, `export_pdf_report` |
-| Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
+| Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_3dm` |
+| Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_select`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
 
 `join_walls` joins two straight walls in the same placement frame through the
 viewer/SDK core. It writes `IfcRelConnectsPathElements` and rewrites bodies and
@@ -243,7 +260,7 @@ const initResp = await transport.send({
   jsonrpc: '2.0',
   id: 1,
   method: 'initialize',
-  params: { protocolVersion: '2025-11-05', capabilities: {}, clientInfo: { name: 'host', version: '1' } },
+  params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'host', version: '1' } },
 });
 ```
 
@@ -357,8 +374,11 @@ palette. Reads, selection inspection and palette discovery are available initial
 - **Tab-supplied data.** Tool names, titles, descriptions and results come from
   the tab and from model data. The bridge's MCP `instructions` and
   `bridge_status` say they are data, not instructions. Results may carry text
-  content and `structuredContent` only; images, resources (any URI) and other
-  content types fail the call.
+  content, `structuredContent` and images; resources (any URI) and other
+  content types fail the call. An image must be PNG, JPEG or WebP, its decoded
+  bytes must start with that type's file signature, and its `data` must be
+  canonical base64 of at most 3 MiB, at most 2 images per result. Images pass
+  to the agent unchanged as MCP `image` content.
 - **Bounds.** Before pairing, a connection may send at most 1.25 MiB in
   total (a hello carries at most 1 MiB of tool descriptors); more, and it is
   dropped before anything is parsed. A paired tab's frames over 16 MiB close
@@ -453,9 +473,10 @@ protocol version `1`; `--bridge` carries them over a loopback WebSocket at
 | Direction | `type` | Fields |
 |-----------|--------|--------|
 | tab → bridge | `hello` (first frame) | `protocol`, `pairingCode`, `permission`, `tools[]` (`name`, `title?`, `description`, `inputSchema`, `readOnly`), `client?`, `resultAck?` |
-| bridge → tab | `welcome` | `protocol`, `sessionId`, `permission` (effective), `readOnlyCeiling`, `bridge`, `resultAck?` |
+| bridge → tab | `welcome` | `protocol`, `sessionId`, `permission` (effective), `readOnlyCeiling`, `bridge`, `features?` ([`image-content`]), `resultAck?` |
+| bridge → tab | `a2ui-surface` | `sessionId`, `id`, `surface` (messages and optional title), sent when the tab advertises `hello.a2uiSurface` |
 | bridge → tab | `call` | `sessionId`, `id`, `name`, `arguments` |
-| tab → bridge | `result` | `sessionId`, `id`, `result` (an MCP `CallToolResult` with text content only, passed through), `resultAck?` |
+| tab → bridge | `result` | `sessionId`, `id`, `result` (an MCP `CallToolResult` with text, and image content when `welcome.features` lists `image-content`, passed through), `resultAck?` |
 | bridge → tab | `result-ack` | `sessionId`, `id`, `accepted` |
 | bridge → tab | `cancel` | `sessionId`, `id`, `reason` (`cancelled` or `timeout`) |
 | tab → bridge | `update` | `sessionId`, `permission?`, `tools?` |
@@ -467,6 +488,10 @@ Consumers can parse acknowledgements with `parseServerMessage(text, { resultAck:
 effective `permission` is `read-only`, the tab must refuse every call that
 would change the model, whatever label it sent, and answer it with an
 `isError` result.
+
+**Images are opt-in per bridge:** send `image` content only when
+`welcome.features` lists `image-content`. A bridge from before the feature
+refuses the whole result, and the protocol version did not change for it.
 
 **Timing and size the tab must tolerate:** send the `hello` within 3 s of
 the socket opening and keep it (with every frame before pairing) under
@@ -483,8 +508,7 @@ area), clash, IDS validation, mutation, BCF, bSDD, diff, export (IFC, CSV, JSON,
 GLB, OBJ, IFCX), and live viewer control.
 
 Planned: mesh geometry (`geometry_get`) and `raycast` (both need the WASM
-geometry pipeline), Gherkin validation (`gherkin_check`), and PDF report export
-(`export_pdf_report`) — these tools are registered but currently return
+geometry pipeline). These tools are registered but currently return
 `UNSUPPORTED_OPERATION`. Also planned: OAuth 2.1 with PKCE and hosted
 multi-tenant deployment, sampling for natural-language descriptions, and public
 registry listing.

@@ -33,7 +33,8 @@ import {
 } from './auto-space-detect.js';
 import { addSpaceToStore, type SpaceBuildResult, type SpaceBoundaryInput } from './space.js';
 import { polygonPerimeter } from './base-quantities-measure.js';
-import { offsetRoomFootprint, pointInPolygon, polygonArea, type BoundaryMode } from './room-footprint-offset.js';
+import { offsetRoomFootprint, type BoundaryMode } from './room-footprint-offset.js';
+import { pointInPolygon, polygonArea } from './polygon-2d.js';
 
 export { offsetRoomFootprint, type BoundaryMode } from './room-footprint-offset.js';
 

@@ -17,8 +17,8 @@
  * - `property` → property facet; `quantity` → property facet on the
  *   quantity set (IDS 1.0 checks quantities through the property facet).
  * - `material` → material facet; `classification` presence → classification
- *   facet (a code/name value does not map: the rule matches a reference's
- *   code OR name, IDS only its code).
+ *   facet, only with a system. A code/name value does not map: the
+ *   rule matches a reference's code OR name, IDS only its code.
  * - Operators `eq`, `contains`, `startsWith`, `matches`, `isSet`, `in`
  *   and the numeric bounds (`gt`/`gte`/`lt`/`lte`, a `between` pair folds
  *   into one restriction). Negations have no IDS form in a required facet.
@@ -231,7 +231,8 @@ function mapRule(rule: FilterRule, scaleOf: StoredUnitScaleOf): Mapped {
         return { reason: 'a classification value check matches a code OR a name; the IDS classification facet matches the code only' };
       }
       const system = rule.system?.trim();
-      return { facet: { type: 'classification', ...(system ? { system: { type: 'simpleValue', value: system } } : {}) } };
+      if (!system) return { reason: 'a classification check with no system ("any classification") has no IDS facet: IDS 1.0 requires a system' };
+      return { facet: { type: 'classification', system: { type: 'simpleValue', value: system } } };
     }
     case 'ifcType':
     case 'predefinedType':

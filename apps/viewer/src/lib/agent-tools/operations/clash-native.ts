@@ -83,6 +83,9 @@ export function clashSettings() {
     showRegionBox: s.showClashRegionBox,
   };
 }
+export function clashViewSettingsSignature() {
+  return JSON.stringify({ settings: clashSettings(), statusFilter: [...useViewerStore.getState().clashStatusFilter].sort() });
+}
 /**
  * Classify a recorded detection or focus failure by its kind (#10871).
  * A missing preset is an input refusal when the caller named it directly.
@@ -111,6 +114,7 @@ export const nativeClashOperations = [
       return out({
         settings: clashSettings(),
         expected_settings: JSON.stringify(clashSettings()),
+        expected_view_settings: clashViewSettingsSignature(),
         presets: s.clashPresets,
         expected_presets: JSON.stringify(s.clashPresets),
         exclusions: s.clashExclusions,

@@ -13,7 +13,7 @@ import { resolvePlacementChain } from './edit/placement-core.js';
 import { generateSpacesFromWalls } from './generate-spaces.js';
 import { transformElementsInStore } from './element-transform-edit.js';
 import { roomChainInStore } from './room-store.js';
-import { polygonArea } from './room-footprint-offset.js';
+import { polygonArea } from './polygon-2d.js';
 import { joinWallsInStore, resolveWallJoinAnchor } from './wall-join-edit.js';
 
 async function setup(custom = false, snapTolerance?: number) {

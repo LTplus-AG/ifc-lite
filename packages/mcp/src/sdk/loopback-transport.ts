@@ -31,7 +31,9 @@ export class LoopbackTransport implements Transport {
   private syncFailure: { error: unknown } | null = null;
   /** Id of the initialize request whose response has not gone out yet. */
   private pendingInitialize: JsonRpcId | undefined;
-  /** Whether a response to `initialize` has reached the client. */
+  /** Whether a valid `initialize` request has arrived; requests after it are served, as clients may pipeline them. */
+  initializeSeen = false;
+  /** Whether the initialize result has gone out; notifications wait for it. */
   handshakeSent = false;
 
   constructor(private readonly sink: () => LoopbackSink | null) {}
@@ -43,9 +45,9 @@ export class LoopbackTransport implements Transport {
     this.onclose?.();
   }
 
-  /** Requests still waiting for an answer are answered with nothing. */
+  /** The connection closed: requests still waiting get an error, so `null` keeps meaning "cancelled". */
   settleAll(): void {
-    for (const settle of this.waiting.values()) settle(null);
+    for (const [id, settle] of this.waiting) settle(errorResponse(id, JsonRpcErrorCode.InternalError, 'The connection closed before the request was answered'));
     this.waiting.clear();
   }
 
@@ -106,7 +108,10 @@ export class LoopbackTransport implements Transport {
         return Promise.resolve(errorResponse(message.id, JsonRpcErrorCode.InvalidRequest, `Request id ${String(message.id)} is already in flight`));
       }
       const answered = new Promise<JsonRpcResponse | null>((resolve) => this.waiting.set(message.id, resolve));
-      if (message.method === 'initialize') this.pendingInitialize = message.id;
+      if (message.method === 'initialize') {
+        this.pendingInitialize = message.id;
+        this.initializeSeen = true;
+      }
       try {
         this.onmessage(message as JSONRPCMessage);
       } catch (err) {

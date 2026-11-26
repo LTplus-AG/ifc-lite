@@ -105,8 +105,8 @@ class IfcProtocolServer extends Server {
   constructor(
     info: { name: string; version: string },
     options: ConstructorParameters<typeof Server>[1],
-    /** Whether the initialize result has gone out (requests before that are refused), and where an aborted request is reported. */
-    private readonly link: { readonly handshakeSent: boolean; abandon(id: string | number): void },
+    /** Whether initialize has arrived (requests before it are refused), and where an aborted request is reported. */
+    private readonly link: { readonly initializeSeen: boolean; abandon(id: string | number): void },
   ) {
     super(info, options);
   }
@@ -118,12 +118,13 @@ class IfcProtocolServer extends Server {
     const inner = super._wrapHandler(method, handler);
     const opening = method === 'initialize' || method === 'ping';
     return async (request, ctx) => {
-      if (!opening && !this.link.handshakeSent) {
+      if (!opening && !this.link.initializeSeen) {
         throw new ProtocolError(JsonRpcErrorCode.ServerNotInitialized, 'Server not initialized — send `initialize` first');
       }
       const signal = ctx.mcpReq.signal;
       const id = ctx.mcpReq.id;
-      // The SDK sends nothing for a request it aborted (client cancel, or close).
+      // The SDK sends nothing for a request it aborted, even one whose handler
+      // already returned, so the listener stays for the request's lifetime.
       const abandoned = () => this.link.abandon(id);
       if (signal.aborted) abandoned();
       else signal.addEventListener('abort', abandoned, { once: true });
@@ -143,7 +144,6 @@ class IfcProtocolServer extends Server {
         throw new ProtocolError(ProtocolErrorCode.InternalError, message);
       } finally {
         this.running--;
-        signal.removeEventListener('abort', abandoned);
       }
       if (method === 'initialize') {
         // A failing observer must not fail a handshake the SDK already answered.

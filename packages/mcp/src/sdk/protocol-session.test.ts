@@ -147,4 +147,36 @@ describe('SDK protocol adapter lifecycle', () => {
     expect(await first).toBeNull();
     expect(abortNames).toEqual(['AbortError']);
   });
+
+  it('serves a request pipelined right behind initialize, as before the SDK', async () => {
+    const { server } = build();
+    const init = server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'initialize',
+      params: { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 't', version: '0' } } });
+    const list = server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'tools/list' }) as Promise<Reply>;
+    await init;
+    expect((await list)?.result).toBeDefined();
+  });
+
+  it('never leaves a request hanging when the cancel lands just after its handler returned', async () => {
+    for (let ticks = 0; ticks < 12; ticks++) {
+      const { server, initialize, release } = build();
+      await initialize();
+      const call = server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'wait', arguments: {} } });
+      await new Promise((r) => setTimeout(r, 5));
+      release();
+      for (let i = 0; i < ticks; i++) await Promise.resolve();
+      await server.handleMessage({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: 1 } });
+      const settled = await Promise.race([call.then(() => true), new Promise((r) => setTimeout(() => r(false), 200))]);
+      expect(settled, `cancel after ${ticks} microtasks`).toBe(true);
+    }
+  });
+
+  it('answers requests still in flight at detach with an error, not as cancelled', async () => {
+    const { server, initialize } = build();
+    await initialize();
+    const call = server.handleMessage({ jsonrpc: '2.0', id: 'd', method: 'tools/call', params: { name: 'wait', arguments: {} } });
+    await new Promise((r) => setTimeout(r, 10));
+    server.detach();
+    expect(((await call) as Reply)?.error?.code).toBe(-32603);
+  });
 });

@@ -96,11 +96,6 @@ export async function loadModelForDelivery(
   const sourceFingerprint = sourceModelIdentity(name, bytes);
 
   const parser = new IfcParser();
-  const origLog = console.log;
-  const origWarn = console.warn;
-  const silent = (): void => undefined;
-  console.log = silent;
-  console.warn = silent;
   try {
     const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
     const store = await parser.parseColumnar(arrayBuffer, {});
@@ -108,9 +103,6 @@ export async function loadModelForDelivery(
     return { path, sha256, sourceFingerprint, store };
   } catch (err) {
     return { path, error: `could not be parsed: ${(err as Error).message}` };
-  } finally {
-    if (console.log === silent) console.log = origLog;
-    if (console.warn === silent) console.warn = origWarn;
   }
 }
 

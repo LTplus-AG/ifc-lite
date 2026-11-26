@@ -11,7 +11,7 @@
  */
 
 import { logger, parseVerbosity } from './logger.js';
-import { fatal } from './output.js';
+import { fatal, routeConsoleDiagnosticsToStderr } from './output.js';
 import { COMMANDS_WITH_OUT } from './out-flag-commands.js';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -206,9 +206,11 @@ async function main(): Promise<void> {
       await (await import('./commands/gym.js')).gymCommand(commandArgs);
       break;
     case 'delivery':
+      routeConsoleDiagnosticsToStderr();
       await (await import('./commands/delivery.js')).deliveryCommand(commandArgs);
       break;
     case 'check':
+      routeConsoleDiagnosticsToStderr();
       await (await import('./commands/check.js')).checkCommand(commandArgs);
       break;
     case 'semantic':

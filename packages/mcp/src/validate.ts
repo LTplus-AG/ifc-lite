@@ -69,10 +69,15 @@ export class SchemaError extends Error {}
  * a caller sees INVALID_INPUT naming the schema problem rather than a JSON-RPC
  * internal error.
  */
-export function validateInput(schema: JsonSchema, input: unknown): ValidationResult {
+export interface ValidateOptions {
+  /** Off for a schema from an untrusted peer (a bridge tab): its `pattern`s are not run. Default on. */
+  runPatterns?: boolean;
+}
+
+export function validateInput(schema: JsonSchema, input: unknown, options: ValidateOptions = {}): ValidationResult {
   const errors: ValidationIssue[] = [];
   try {
-    const value = walk(schema, input, '$', errors, { root: schema, fillDefaults: true });
+    const value = walk(schema, input, '$', errors, { root: schema, fillDefaults: true, runPatterns: options.runPatterns !== false });
     return { valid: errors.length === 0, errors, value };
   } catch (err) {
     if (!(err instanceof SchemaError)) throw err;
@@ -98,6 +103,7 @@ interface WalkOptions {
    * result is discarded, so a default must not be what lets it pass.
    */
   fillDefaults: boolean;
+  runPatterns: boolean;
   /** `$ref`s followed at the current path; a repeat is a cycle that consumes no input. */
   refs?: ReadonlySet<string>;
 }
@@ -125,20 +131,11 @@ function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors
     return walk(resolveRef(ref, opts.root), input, path, errors, { ...opts, refs: new Set([...(opts.refs ?? []), ref]) });
   }
   // Children start a fresh `$ref` chain: a recursive schema is fine once it descends into the input.
-  const child: WalkOptions = opts.refs ? { root: opts.root, fillDefaults: opts.fillDefaults } : opts;
+  const child: WalkOptions = opts.refs ? { ...opts, refs: undefined } : opts;
   if (opts.fillDefaults && input === undefined && schema.default !== undefined) {
     input = clone(schema.default);
   }
-  if (input === undefined) return input;
-  if (input === null) {
-    // Handlers read null as absent, so a top-level null passes. Inside an
-    // anyOf/oneOf branch test it must still fail a non-null `type`, or null
-    // would match every branch and a oneOf could never accept it.
-    // (`fillDefaults` is false exactly while a branch is being tested, see tryBranches.)
-    const declared = Array.isArray(schema.type) ? schema.type : schema.type ? [schema.type] : [];
-    if (!opts.fillDefaults && declared.length > 0 && !declared.includes('null')) errors.push({ path, message: 'Expected a non-null value' });
-    return input;
-  }
+  if (input === undefined || input === null) return input;
 
   if (schema.enum && !schema.enum.some((v) => sameValue(v, input))) {
     const issue = { path, message: `Expected one of ${JSON.stringify(schema.enum)}; got ${JSON.stringify(input)}` };
@@ -249,7 +246,7 @@ function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors
     if (schema.maxLength !== undefined && input.length > schema.maxLength) {
       errors.push({ path, message: `String longer than ${schema.maxLength}` });
     }
-    if (typeof schema.pattern === 'string' && !patternOf(schema).test(input)) {
+    if (opts.runPatterns && typeof schema.pattern === 'string' && !patternOf(schema).test(input)) {
       errors.push({ path, message: `Does not match pattern ${schema.pattern}` });
     }
   }

@@ -91,8 +91,21 @@ describe('schema keywords the bridge cannot enforce (CodeRabbit json-bounds.ts:8
     expect(await refusal({ type: 'object', properties: { a: { type: 'array', uniqueItems: 'true' } } })).toMatch(/uniqueItems must be true or false/);
     expect(await refusal({ type: 'object', properties: { a: { oneOf: [{ type: 'strng' }] } } })).toMatch(/oneOf\[0\]\.type must be one of/);
     expect(await refusal({ type: 'object', properties: { a: { type: 'string', pattern: '[' } } })).toMatch(/pattern must be a valid regular expression/);
-    // validateInput runs tab patterns on the server's event loop: `^(a+)+$` on 28 a's and a '!' blocked it ~7 s.
-    expect(await refusal({ type: 'object', properties: { a: { type: 'string', pattern: '^(a+)+$' } } })).toMatch(/can backtrack exponentially/);
+  });
+});
+
+describe('tab patterns are published, not run server-side (code review: a tab regex could stall the server)', () => {
+  it('forwards a call that breaks a tab pattern to the tab instead of running ^(a+)+$ on it', async () => {
+    const agent = await start();
+    const inputSchema = { type: 'object', properties: { type: { type: 'string', pattern: '^(a+)+$' } } };
+    const p = await pairTab({ port: agent.bridge.port, code: agent.bridge.pairingCode(), tools: [{ ...READ_TOOL, inputSchema }] });
+    tabs.push(p.tab);
+    const started = Date.now();
+    const pending = agent.call(READ_TOOL.name, { type: `${'a'.repeat(40)}!` });
+    const c = await p.tab.next('call');
+    expect(Date.now() - started).toBeLessThan(1_000);
+    p.tab.reply(p.welcome.sessionId, c.id, textResult('ok'));
+    expect((await pending).isError).toBeUndefined();
   });
 });
 

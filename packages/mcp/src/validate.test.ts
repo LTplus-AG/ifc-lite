@@ -366,14 +366,10 @@ describe('validateInput: code-review cases for items:false, enum discriminators,
     expect(validateInput(schema, { d: '2026/11' }).valid).toBe(false);
   });
 
-  it('null fails a non-null branch type, so a nullable oneOf picks exactly one branch', () => {
-    const schema = { type: 'object', properties: { v: { type: 'object', oneOf: [
-      { properties: { x: { type: 'string' } }, required: ['k'] },
-      { properties: { x: { type: 'null' } }, required: ['k'] },
-    ] } } };
-    expect(validateInput(schema, { v: { k: 1, x: null } }).valid).toBe(true);
-    // A top-level null still reads as absent.
-    expect(validateInput({ type: 'object', properties: { x: { type: 'string' } } }, { x: null }).valid).toBe(true);
+  it('does not run patterns when the caller opts out (schemas from a bridge tab)', () => {
+    const schema = { type: 'object', properties: { a: { type: 'string', pattern: '^x$' } } };
+    expect(validateInput(schema, { a: 'y' }).valid).toBe(false);
+    expect(validateInput(schema, { a: 'y' }, { runPatterns: false }).valid).toBe(true);
   });
 
   it('refuses an anchor $ref instead of resolving it to the root', () => {

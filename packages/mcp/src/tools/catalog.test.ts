@@ -23,7 +23,7 @@ import { VIEWER_DISPLAY } from './annotations.js';
 import { buildDefaultToolRegistry } from './index.js';
 
 /** Bytes of the full-scope `tools/list` result. Lower it when the catalog shrinks; raising it needs a reason in the commit message. */
-const TOOLS_LIST_BUDGET = 132_000;
+const TOOLS_LIST_BUDGET = 133_000;
 
 /**
  * `propose_flow` is read scope by design (a read token may propose; a

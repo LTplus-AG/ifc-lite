@@ -395,10 +395,11 @@ palette. Reads, selection inspection and palette discovery are available initial
   `object`, `null`), and `oneOf`/`anyOf` must be arrays of schemas. `pattern` must
   compile as a regular expression, and `$ref` is refused (a tab
   schema has no `$defs` to resolve against). The bridge enforces `enum`,
-  `const`, `pattern`, `uniqueItems`, `oneOf`, `anyOf` and schema-valued
-  `additionalProperties`. Other JSON Schema keywords (`format`,
-  `exclusiveMaximum`, `multipleOf`, `allOf`, …) are published to the agent but
-  not checked by the bridge; the tab must validate them. Non-finite numbers
+  `const`, `uniqueItems`, `oneOf`, `anyOf` and schema-valued
+  `additionalProperties`. `pattern` is published but not run on the server
+  (a tab regex on agent input could stall it), and other keywords (`format`,
+  `exclusiveMaximum`, `multipleOf`, `allOf`, …) are published but not
+  checked either; the tab must validate them. Non-finite numbers
   (`1e999`) are refused anywhere in a frame. An oversized or malformed hello is refused; an update is rejected with a non-fatal `error`;
   a result fails its call with a message naming the limit. The size and
   depth walk is iterative and counts before it copies, and the schema-shape

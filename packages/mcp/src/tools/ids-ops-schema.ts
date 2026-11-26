@@ -58,7 +58,9 @@ function typeOf(schema: JsonSchema): string | undefined {
   if (Array.isArray(schema.enum)) return schema.enum.length > 12 ? `string (${schema.enum.length} allowed values)` : enumText(schema.enum, '|');
   if (schema.properties) return branchShape(schema);
   const branches = branchesOf(schema);
-  return branches.length > 0 ? branches.map((b) => typeOf(b) ?? plainType(b)).join('|') : undefined;
+  if (branches.length > 0) return branches.map((b) => typeOf(b) ?? plainType(b)).join('|');
+  // Strings stay bare (most fields are names or text); other scalars say what they are.
+  return schema.type !== undefined && schema.type !== 'string' ? plainType(schema) : undefined;
 }
 
 /** `spec.add: specId, name, ifcVersions:[IfcVersion] [index, description, …]` */

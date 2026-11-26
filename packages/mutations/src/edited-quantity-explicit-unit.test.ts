@@ -9,6 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import { QuantityType } from '@ifc-lite/data';
 import { MutablePropertyView } from './mutable-property-view.js';
+import { replayQuantityMutation } from './quantity-replay.js';
 
 /** NetSideArea declares its own mm2 Unit; GrossArea inherits the project unit. */
 function view(): MutablePropertyView {
@@ -50,5 +51,18 @@ describe('an edited quantity keeps its own Unit (#11592)', () => {
       expect(q).not.toHaveProperty('explicitUnitSiScale');
       expect(q).not.toHaveProperty('explicitUnit');
     }
+  });
+
+  it('keeps it when the edit repeats the quantity\'s own unit symbol', () => {
+    const v = view();
+    v.setQuantity(1, 'Qto_WallBaseQuantities', 'NetSideArea', 7_000_000, QuantityType.Area, 'mm²');
+    expect(read(v, 'NetSideArea')).toMatchObject({ explicitUnit: 'mm²', explicitUnitSiScale: 1e-6 });
+  });
+
+  it('still has it after the edit is undone', () => {
+    const v = view();
+    const edit = v.setQuantity(1, 'Qto_WallBaseQuantities', 'NetSideArea', 7_000_000, QuantityType.Area);
+    replayQuantityMutation(v, edit, 'undo');
+    expect(read(v, 'NetSideArea')).toMatchObject({ value: 5_000_000, explicitUnit: 'mm²', explicitUnitSiScale: 1e-6 });
   });
 });

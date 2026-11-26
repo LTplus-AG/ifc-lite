@@ -13,7 +13,7 @@ export function quantityHistoryBefore(
   authoredQuantity: Quantity | undefined,
   qsetName: string,
   quantName: string,
-): { oldValue: number | null; isUpdate: boolean; oldQuantityType?: number; oldUnit: string | null } {
+): { oldValue: number | null; isUpdate: boolean; oldQuantityType?: number; oldUnit: string | null | undefined } {
   // Get old value for undo and to determine CREATE vs UPDATE. An overlay
   // mutation (a prior edit this session) wins; otherwise fall back to the
   // base quantity's own value — `qsetExistsInBase` alone is not enough,
@@ -23,7 +23,11 @@ export function quantityHistoryBefore(
   // restore), which is exactly the null the viewer's undo handler treats
   // as "nothing to revert to" — undo silently did nothing (#2297 shape).
   const quantity = authoredQuantity ?? findQuantityInBaseSets(baseQsets, qsetName, quantName);
-  const oldUnit = existingMutation?.unitRemoved ? null : existingMutation?.unit ?? quantity?.unit ?? null;
+  // `null` restores "no unit"; `undefined` restores the source's own unit. An
+  // existing quantity without a unit label inherits its Unit from the source
+  // (its own `Unit`, or the project's), so undo must not replay a removal (#11592).
+  const oldUnit = existingMutation?.unitRemoved ? null
+    : existingMutation?.unit ?? quantity?.unit ?? (quantity ? undefined : null);
   return {
     oldValue: existingMutation ? existingMutation.value ?? null : quantity?.value ?? null,
     isUpdate: existingMutation !== undefined || quantity !== undefined,

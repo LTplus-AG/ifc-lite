@@ -8,12 +8,14 @@ import type { QuantityMutation } from './types.js';
 /**
  * The explicit `Unit` an edited quantity keeps (#11592). An edit changes the
  * number, not the unit it is measured in, so the base quantity's own `Unit`
- * and its SI scale stay with it. They are dropped when the edit removes the
- * unit, names a unit of its own (a symbol with no known scale) or changes the
- * quantity type, because the base unit no longer describes the value.
+ * and its SI scale stay with it, also when the edit repeats that unit's symbol.
+ * They are dropped when the edit removes the unit, names another unit (a
+ * symbol with no known scale) or changes the quantity type, because the base
+ * unit no longer describes the value.
  */
 export function keptExplicitUnit(base: Quantity, mutation: QuantityMutation): Pick<Quantity, 'explicitUnit' | 'explicitUnitSiScale' | 'explicitUnitUnresolved'> {
-  if (mutation.unitRemoved || mutation.unit || (mutation.quantityType !== undefined && mutation.quantityType !== base.type)) return {};
+  const namesOtherUnit = mutation.unit !== undefined && mutation.unit !== base.explicitUnit;
+  if (mutation.unitRemoved || namesOtherUnit || (mutation.quantityType !== undefined && mutation.quantityType !== base.type)) return {};
   const { explicitUnit, explicitUnitSiScale, explicitUnitUnresolved } = base;
   return {
     ...(explicitUnit !== undefined ? { explicitUnit } : {}),

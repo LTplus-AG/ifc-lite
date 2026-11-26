@@ -46,7 +46,8 @@ for(const authored of [false,true]) it(`#6232 ${authored?'authored':'source'} qu
   useViewerStore.getState().undo(MODEL);assert.deepEqual(read(),before);
   useViewerStore.getState().redo(MODEL);assert.deepEqual(read(),after);
   assert.equal(mutation.oldQuantityType,before.type);
-  assert.equal(mutation.oldUnit,before.unit??null);
+  // A source quantity without a unit label records "keep the source unit" (undefined), not a removal (#11592).
+  assert.equal(mutation.oldUnit,before.unit);
 });
 
 it('#6232 legacy quantity history restores value while retaining effective metadata without guessing a lost prior type',async()=>{

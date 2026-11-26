@@ -21,11 +21,7 @@ export interface Tool {
    */
   outputSchema?: JsonSchema;
   icons?: Icon[];
-  /**
-   * The schema came from a paired bridge tab. Its `pattern`s are published
-   * but not run here: a tab regex on agent input could stall the server
-   * (catastrophic or polynomial backtracking), so the tab checks them.
-   */
+  /** The schema came from a paired bridge tab; validated with `fromTab` (see `ValidateOptions`). */
   schemaFromTab?: boolean;
   _meta?: ToolDefinition['_meta'];
   handler(input: Record<string, unknown>, ctx: ToolContext): Promise<CallToolResult> | CallToolResult;

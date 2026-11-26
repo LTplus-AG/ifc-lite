@@ -127,9 +127,9 @@ export function checkSchemaShape(schema: unknown, path: string): string | null {
   if (schema.$ref !== undefined) return `${path}.$ref is not supported in a tab schema; inline the schema`;
   // A tab pattern is published, not run server-side (Tool.schemaFromTab); it must still compile for clients that do.
   if (schema.pattern !== undefined && !compiles(schema.pattern)) return `${path}.pattern must be a valid regular expression`;
+  // Tab schemas keep the bridge's original rule: true or false only (see ValidateOptions.fromTab).
   if (additionalProperties !== undefined && typeof additionalProperties !== 'boolean') {
-    const err = checkSchemaShape(additionalProperties, `${path}.additionalProperties`);
-    if (err) return err;
+    return `${path}.additionalProperties must be true or false; a schema there is not supported`;
   }
   if (schema.enum !== undefined && !Array.isArray(schema.enum)) return `${path}.enum must be an array`;
   if (schema.uniqueItems !== undefined && typeof schema.uniqueItems !== 'boolean') return `${path}.uniqueItems must be true or false`;

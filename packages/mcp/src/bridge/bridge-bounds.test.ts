@@ -77,8 +77,8 @@ describe('schema keywords the bridge cannot enforce (CodeRabbit json-bounds.ts:8
     expect(p.welcome.sessionId).toBeTruthy();
   });
 
-  it('checks a schema-valued additionalProperties, which validateInput now enforces', async () => {
-    expect(await refusal({ type: 'object', additionalProperties: { type: 'intrger' } })).toMatch(/additionalProperties\.type must be one of/);
+  it('refuses a schema-valued additionalProperties, which would be published but not enforced', async () => {
+    expect(await refusal({ type: 'object', additionalProperties: { type: 'integer' } })).toMatch(/additionalProperties must be true or false/);
   });
 
   // validateInput would throw on every call for these, as a JSON-RPC InternalError

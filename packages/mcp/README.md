@@ -392,16 +392,18 @@ palette. Reads, selection inspection and palette discovery are available initial
   well-formed for the keywords the bridge validates (`properties` of schemas,
   `required` as strings, numeric bounds as numbers, ...), `type` must name a
   type the bridge enforces (`string`, `number`, `integer`, `boolean`, `array`,
-  `object`, `null`), and `oneOf`/`anyOf` must be arrays of schemas. `pattern` must
-  compile as a regular expression, and `$ref` is refused (a tab
-  schema has no `$defs` to resolve against). The bridge enforces `enum`,
-  `const`, `uniqueItems`, `oneOf`, `anyOf` and schema-valued
-  `additionalProperties`. `pattern` is published but not run on the server
-  (a tab regex on agent input could stall it), and other keywords (`format`,
-  `exclusiveMaximum`, `multipleOf`, `allOf`, …) are published but not
-  checked either; the tab must validate them. Non-finite numbers
-  (`1e999`) are refused anywhere in a frame. An oversized or malformed hello is refused; an update is rejected with a non-fatal `error`;
-  a result fails its call with a message naming the limit. The size and
+  `object`, `null`), `additionalProperties` must be `true` or `false`,
+  `anyOf` must be an array of schemas and `oneOf` a non-empty one, `pattern`
+  must compile, and `$ref` is refused (a tab schema has no `$defs` to resolve
+  against). The bridge enforces `type`, `properties`, `required`, `items`,
+  `enum`, `const`, `uniqueItems`, numeric and length bounds, `anyOf` and
+  `additionalProperties: false`. `pattern` and `oneOf` are published but not
+  enforced on the server (a tab regex on agent input could stall it, and
+  `oneOf` branches may differ only by `pattern`), and neither are other
+  keywords (`format`, `exclusiveMaximum`, `multipleOf`, `allOf`, …); the tab
+  must validate them. Non-finite numbers (`1e999`) are refused anywhere in a
+  frame. An oversized or malformed hello is refused; an update is rejected
+  with a non-fatal `error`; a result fails its call with a message naming the limit. The size and
   depth walk is iterative and counts before it copies, and the schema-shape
   check recurses only after the 32-level bound has passed, so a value nested
   30,000 deep or an 8-million-element array is refused cheaply rather than

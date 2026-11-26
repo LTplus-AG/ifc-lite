@@ -65,8 +65,13 @@ export const ENFORCED_KEYWORDS: ReadonlySet<string> = new Set([
 export class SchemaError extends Error {}
 
 export interface ValidateOptions {
-  /** Off for a schema from an untrusted peer (a bridge tab): its `pattern`s are not run. Default on. */
-  runPatterns?: boolean;
+  /**
+   * The schema came from a bridge tab, written for the bridge's original
+   * enforcement: `pattern` is not run (a tab regex on agent input could stall
+   * the server) and `oneOf` is not enforced (its branches may differ only by
+   * keywords we do not run). The tab checks both.
+   */
+  fromTab?: boolean;
 }
 
 /**
@@ -77,7 +82,7 @@ export interface ValidateOptions {
 export function validateInput(schema: JsonSchema, input: unknown, options: ValidateOptions = {}): ValidationResult {
   const errors: ValidationIssue[] = [];
   try {
-    const value = walk(schema, input, '$', errors, { root: schema, fillDefaults: true, runPatterns: options.runPatterns !== false });
+    const value = walk(schema, input, '$', errors, { root: schema, fillDefaults: true, fromTab: options.fromTab === true });
     return { valid: errors.length === 0, errors, value };
   } catch (err) {
     if (!(err instanceof SchemaError)) throw err;
@@ -103,7 +108,7 @@ interface WalkOptions {
    * result is discarded, so a default must not be what lets it pass.
    */
   fillDefaults: boolean;
-  runPatterns: boolean;
+  fromTab: boolean;
   /** `$ref`s followed at the current path; a repeat is a cycle that consumes no input. */
   refs?: ReadonlySet<string>;
 }
@@ -168,7 +173,7 @@ function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors
       errors.push({ path, message: `Expected input at '${path}' to satisfy at least one anyOf branch: ${wanted}` });
     }
   }
-  if (Array.isArray(schema.oneOf) && schema.oneOf.length > 0) {
+  if (!opts.fromTab && Array.isArray(schema.oneOf) && schema.oneOf.length > 0) {
     checkOneOf(schema.oneOf as JsonSchema[], input, path, errors, opts);
   }
 
@@ -246,7 +251,7 @@ function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors
     if (schema.maxLength !== undefined && input.length > schema.maxLength) {
       errors.push({ path, message: `String longer than ${schema.maxLength}` });
     }
-    if (opts.runPatterns && typeof schema.pattern === 'string' && !patternOf(schema).test(input)) {
+    if (!opts.fromTab && typeof schema.pattern === 'string' && !patternOf(schema).test(input)) {
       errors.push({ path, message: `Does not match pattern ${schema.pattern}` });
     }
   }

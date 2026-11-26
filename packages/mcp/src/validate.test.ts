@@ -366,10 +366,13 @@ describe('validateInput: code-review cases for items:false, enum discriminators,
     expect(validateInput(schema, { d: '2026/11' }).valid).toBe(false);
   });
 
-  it('does not run patterns when the caller opts out (schemas from a bridge tab)', () => {
+  it('a tab schema runs neither pattern nor oneOf exclusivity (fromTab)', () => {
     const schema = { type: 'object', properties: { a: { type: 'string', pattern: '^x$' } } };
     expect(validateInput(schema, { a: 'y' }).valid).toBe(false);
-    expect(validateInput(schema, { a: 'y' }, { runPatterns: false }).valid).toBe(true);
+    expect(validateInput(schema, { a: 'y' }, { fromTab: true }).valid).toBe(true);
+    // Branches that differ only by pattern: both match once patterns are off, which must not fail the call.
+    const byPattern = { type: 'object', properties: { id: { oneOf: [{ type: 'string', pattern: '^[0-9]+$' }, { type: 'string', pattern: '^[a-z]+$' }] } } };
+    expect(validateInput(byPattern, { id: 'abc' }, { fromTab: true }).valid).toBe(true);
   });
 
   it('refuses an anchor $ref instead of resolving it to the root', () => {

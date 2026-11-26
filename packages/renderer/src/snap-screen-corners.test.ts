@@ -196,6 +196,35 @@ describe('screen corner grid rebuild', () => {
   });
 });
 
+describe('screen corner grid on a model with more pieces than one move can build (#11504)', () => {
+  it('settles while candidates are still being built, then covers the pieces that arrive later', () => {
+    // 100 boxes; each geometry build "costs" 1 ms of the injected clock, the budget is 5 ms: 5 pieces per move.
+    const pieces: MeshData[] = [];
+    for (let i = 0; i < 100; i++) pieces.push(makeBox(i + 1, [i * 0.2, 0, 0], [i * 0.2 + 0.1, 0.1, 0.1]));
+    const camera = cameraDownZ();
+    camera.setOrthoSize(30);
+    const index = new ScreenCornerIndex();
+    let clock = 0;
+    const ray = (x: number, y: number) => camera.unprojectToRay(x, y, 800, 600);
+    const move = (x: number, y: number) => {
+      clock += 16; // a pointer move every 16 ms over a still camera
+      return index.query({
+        x, y, ray: ray(x, y), camera, viewKey: 'still', viewport: { width: 800, height: 600 }, pieces,
+        geometryFor: (m) => { clock += 1; return buildGeometryCache(m); },
+        options: { buildBudgetMs: 5, settledBuildBudgetMs: 5 }, now: () => clock,
+      });
+    };
+    const at = (px: number) => camera.projectToScreen({ x: px, y: 0, z: 0.1 }, 800, 600)!;
+    const first = at(0), last = at(99 * 0.2);
+    let early: ReturnType<typeof move> = null;
+    for (let k = 0; k < 14 && !early; k++) early = move(first.x, first.y);
+    assert.equal(early?.expressId, 1, 'the first built piece answers within ~14 moves, before the last piece is built');
+    for (let k = 0; k < 40; k++) move(first.x, first.y);
+    const late = move(last.x, last.y);
+    assert.equal(late?.expressId, 100, 'once the last piece is built the grid has been rebuilt to include it');
+  });
+});
+
 describe('screen corner query cost', () => {
   it('answers a query over ~50k corners in well under a frame', () => {
     // 80 x 79 grid of boxes, 8 corners each: 50.5k feature corners.

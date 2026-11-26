@@ -10,6 +10,7 @@ import { getGlobalRenderer } from '@/hooks/useBCF';
 import { resolveEntityRef, useViewerStore } from '@/store';
 import { fromRenderTranslation, orthogonalAxis, constrainTranslation, subtractTranslation } from '@/lib/model-placement/translation';
 import type { PlacementAnchor } from '@/lib/model-placement/state';
+import { createIsolationFor } from './repositionIsolation';
 
 export type PickRole = 'source' | 'target' | null;
 
@@ -35,6 +36,7 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
       for (const cloud of model.geometryResult?.pointClouds ?? []) allowed.add(cloud.expressId);
     }
     for (const id of renderer.getScene().getInstancedEntityIds()) if (accepts(resolveEntityRef(id).modelId)) allowed.add(id);
+    const isolationFor = createIsolationFor(allowed);
     let edgeLock: EdgeLockInput = { edge: null, meshExpressId: null, lockStrength: 0 };
     let lastRevision = state.modelPlacement.revision;
     const previousCursor = canvas.style.cursor;
@@ -47,8 +49,7 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
       }
       lastRevision = current.modelPlacement.revision;
       const rect = canvas.getBoundingClientRect();
-      const isolatedIds = current.isolatedEntities === null ? allowed
-        : new Set([...allowed].filter((id) => current.isolatedEntities?.has(id)));
+      const isolatedIds = isolationFor(current.isolatedEntities);
       const result = renderer.raycastSceneMagnetic(event.clientX - rect.left, event.clientY - rect.top,
         edgeLock, {
           hiddenIds: current.hiddenEntities, isolatedIds,

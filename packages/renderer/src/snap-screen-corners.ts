@@ -50,8 +50,13 @@ export interface ScreenCornerSnapOptions {
    * `modelIndex` counts as index 0.
    */
   eligibleModelIndices?: ReadonlySet<number>;
-  /** Per-query time budget, in ms, for building candidates of not-yet-ready pieces. Default 6. */
+  /** Per-query time budget, in ms, for building candidates of not-yet-ready pieces while the view moves. Default 6. */
   buildBudgetMs?: number;
+  /**
+   * Per-query budget for the same work once the view has been still for `settleMs`: a large model's candidates
+   * are then built within a few seconds of hovering instead of a few pieces per move. Default 24.
+   */
+  settledBuildBudgetMs?: number;
   /**
    * Quiet time, in ms, the view must have kept still before the screen grid is
    * (re)built. A rebuild is a ~100 ms pass over every candidate, so it never
@@ -73,6 +78,9 @@ export const DEFAULT_CORNER_RADIUS_PX = 10;
 export const DEFAULT_EDGE_RADIUS_PX = 6;
 const DEFAULT_BUILD_BUDGET_MS = 6;
 const DEFAULT_SETTLE_MS = 120;
+const DEFAULT_SETTLED_BUILD_BUDGET_MS = 24;
+/** A grid that lacks pieces is rebuilt once the ready pieces outnumber its own by this factor. */
+const GRID_REGROW_FACTOR = 1.5;
 
 export interface ScreenCornerHit {
   kind: 'corner' | 'edge';
@@ -131,15 +139,20 @@ function idsOf(s: ReadonlySet<number> | null | undefined): string {
 }
 
 /** What a screen grid was built for; any difference rebuilds it. */
-function gridKey(viewKey: string, clip: PickClipState | null | undefined, w: number, h: number, ready: number,
+function gridKey(viewKey: string, clip: PickClipState | null | undefined, w: number, h: number,
   hidden: ReadonlySet<number> | undefined, isolated: ReadonlySet<number> | null | undefined,
   opts: Required<Pick<ScreenCornerSnapOptions, 'cornerRadiusPx'>>, eligible: ReadonlySet<number> | undefined): string {
   const clipKey = clip ? JSON.stringify([clip.sectionPlane, clip.extraPlanes, clip.clipBox, idsOf(clip.sectionExcludedIds)]) : '';
-  return [viewKey, clipKey, w, h, ready, idsOf(hidden), idsOf(isolated), idsOf(eligible), opts.cornerRadiusPx].join('|');
+  return [viewKey, clipKey, w, h, idsOf(hidden), idsOf(isolated), idsOf(eligible), opts.cornerRadiusPx].join('|');
 }
 
 interface Grid {
+  /** What the view was when the grid was built (see `gridKey`). */
   key: string;
+  /** How many ready pieces the grid holds; later-built pieces need a rebuild (see `grownEnough`). */
+  readyCount: number;
+  /** The pieces the grid's `cornerPiece` / `edgePiece` indices refer to (a snapshot: the live list may have grown). */
+  pieces: readonly MeshData[];
   cell: number;
   cols: number;
   rows: number;
@@ -197,6 +210,14 @@ export class ScreenCornerIndex {
     const eligible = options.eligibleModelIndices;
     const now = args.now ?? (() => performance.now());
 
+    // The view as the grid sees it. The settle timer runs on this key alone: it must not restart each time
+    // another piece's candidates become ready, or a model with more pieces than one move can build never settles.
+    const viewKey = gridKey(args.viewKey, args.clip, viewport.width, viewport.height,
+      args.hiddenIds, args.isolatedIds, { cornerRadiusPx: Math.max(cornerR, edgeR) }, eligible);
+    const t0 = now();
+    if (this.seen?.key !== viewKey) this.seen = { key: viewKey, at: t0 };
+    const settled = t0 - this.seen.at >= (options.settleMs ?? DEFAULT_SETTLE_MS);
+
     // The filtered piece list is reused until the pieces, visibility or eligibility change.
     const filterKey = `${idsOf(args.hiddenIds)}|${idsOf(args.isolatedIds)}|${idsOf(eligible)}`;
     let sel = this.selection;
@@ -204,8 +225,11 @@ export class ScreenCornerIndex {
       const active = args.pieces.filter((p) =>
         (eligible === undefined || eligible.has(p.modelIndex ?? 0))
         && isEntityVisible(p.expressId, args.hiddenIds, args.isolatedIds));
-      // Build candidates for a few pieces per call; the rest wait for later moves.
-      const deadline = now() + (options.buildBudgetMs ?? DEFAULT_BUILD_BUDGET_MS);
+      // Build candidates for a few pieces per call (more once the view is still); the rest wait for later moves.
+      const budget = settled
+        ? Math.max(options.buildBudgetMs ?? DEFAULT_BUILD_BUDGET_MS, options.settledBuildBudgetMs ?? DEFAULT_SETTLED_BUILD_BUDGET_MS)
+        : options.buildBudgetMs ?? DEFAULT_BUILD_BUDGET_MS;
+      const deadline = now() + budget;
       for (const piece of active) {
         if (this.candidates.has(piece)) continue;
         if (now() > deadline) break;
@@ -217,18 +241,19 @@ export class ScreenCornerIndex {
     const ready = sel.ready;
     if (ready.length === 0) return null;
 
-    const key = gridKey(args.viewKey, args.clip, viewport.width, viewport.height, ready.length,
-      args.hiddenIds, args.isolatedIds, { cornerRadiusPx: Math.max(cornerR, edgeR) }, eligible);
-    if (!this.grid || this.grid.key !== key) {
-      const t = now();
-      if (this.seen?.key !== key) this.seen = { key, at: t };
-      if (t - this.seen.at < (options.settleMs ?? DEFAULT_SETTLE_MS)) return null;
-      this.grid = this.buildGrid(key, ready, args.camera, viewport, Math.max(cornerR, edgeR), args.clip);
+    const sameView = this.grid?.key === viewKey;
+    // A grid built before every piece was ready is rebuilt when it has grown enough, or the last piece arrived.
+    const grownEnough = !!this.grid && ready.length > this.grid.readyCount
+      && (sel.complete || ready.length >= this.grid.readyCount * GRID_REGROW_FACTOR);
+    if (!this.grid || !sameView || grownEnough) {
+      // Never inside a camera move; a grid of this very view that merely lacks a few pieces keeps answering meanwhile.
+      if (settled) this.grid = this.buildGrid(viewKey, ready, args.camera, viewport, Math.max(cornerR, edgeR), args.clip);
+      else if (!this.grid || !sameView) return null;
     }
     const hit = args.hitDistance;
     const maxDepth = options.ignoreOcclusion || hit == null || !Number.isFinite(hit) ? Infinity
       : hit + (options.occlusionTolerance ?? 0.05 + 0.01 * hit);
-    return this.search(this.grid, ready, x, y, args.ray, cornerR, edgeR, maxDepth);
+    return this.search(this.grid!, x, y, args.ray, cornerR, edgeR, maxDepth);
   }
 
   private buildGrid(
@@ -238,7 +263,7 @@ export class ScreenCornerIndex {
     const cols = Math.ceil(viewport.width / cell) + 3;
     const rows = Math.ceil(viewport.height / cell) + 3;
     const g: Grid = {
-      key, cell, cols, rows, cornerCells: new Map(), edgeCells: new Map(),
+      key, readyCount: ready.length, pieces: ready, cell, cols, rows, cornerCells: new Map(), edgeCells: new Map(),
       cx: [], cy: [], cornerPiece: [], cornerWorld: [],
       ex0: [], ey0: [], ex1: [], ey1: [], edgePiece: [], edgeWorld: [],
     };
@@ -299,7 +324,7 @@ export class ScreenCornerIndex {
     return g;
   }
 
-  private search(g: Grid, ready: MeshData[], x: number, y: number, ray: Ray, cornerR: number, edgeR: number, maxDepth: number): ScreenCornerHit | null {
+  private search(g: Grid, x: number, y: number, ray: Ray, cornerR: number, edgeR: number, maxDepth: number): ScreenCornerHit | null {
     const depthOf = (px: number, py: number, pz: number) => (px - ray.origin.x) * ray.direction.x
       + (py - ray.origin.y) * ray.direction.y + (pz - ray.origin.z) * ray.direction.z;
     const c0 = Math.floor(x / g.cell) + 1, r0 = Math.floor(y / g.cell) + 1;
@@ -313,7 +338,7 @@ export class ScreenCornerIndex {
           const d = (g.cx[i] - x) ** 2 + (g.cy[i] - y) ** 2;
           if (d > bestCornerD + 1e-9) continue;
           if (maxDepth !== Infinity && depthOf(g.cornerWorld[i * 3], g.cornerWorld[i * 3 + 1], g.cornerWorld[i * 3 + 2]) > maxDepth) continue;
-          if (d < bestCornerD - 1e-9 || (Math.abs(d - bestCornerD) <= 1e-9 && bestCorner >= 0 && this.cornerBefore(g, ready, i, bestCorner, ray))) {
+          if (d < bestCornerD - 1e-9 || (Math.abs(d - bestCornerD) <= 1e-9 && bestCorner >= 0 && this.cornerBefore(g, i, bestCorner, ray))) {
             bestCorner = i; bestCornerD = d;
           }
         }
@@ -334,7 +359,7 @@ export class ScreenCornerIndex {
       return {
         kind: 'corner',
         position: { x: w[bestCorner * 3], y: w[bestCorner * 3 + 1], z: w[bestCorner * 3 + 2] },
-        expressId: ready[g.cornerPiece[bestCorner]].expressId,
+        expressId: g.pieces[g.cornerPiece[bestCorner]].expressId,
         distancePx: Math.sqrt(bestCornerD),
       };
     }
@@ -344,7 +369,7 @@ export class ScreenCornerIndex {
       return {
         kind: 'edge',
         position: closestPointOnSegmentToRay(v0, v1, ray),
-        expressId: ready[g.edgePiece[bestEdge]].expressId,
+        expressId: g.pieces[g.edgePiece[bestEdge]].expressId,
         distancePx: Math.sqrt(bestEdgeD),
         edge: { v0, v1 },
       };
@@ -357,13 +382,13 @@ export class ScreenCornerIndex {
    * viewer (a box's top corner over its bottom one), then lower expressId,
    * then position, so the answer never depends on piece order.
    */
-  private cornerBefore(g: Grid, ready: MeshData[], i: number, j: number, ray: Ray): boolean {
+  private cornerBefore(g: Grid, i: number, j: number, ray: Ray): boolean {
     const depth = (k: number) => (g.cornerWorld[k * 3] - ray.origin.x) * ray.direction.x
       + (g.cornerWorld[k * 3 + 1] - ray.origin.y) * ray.direction.y
       + (g.cornerWorld[k * 3 + 2] - ray.origin.z) * ray.direction.z;
     const di = depth(i), dj = depth(j);
     if (Math.abs(di - dj) > 1e-6) return di < dj;
-    const ei = ready[g.cornerPiece[i]].expressId, ej = ready[g.cornerPiece[j]].expressId;
+    const ei = g.pieces[g.cornerPiece[i]].expressId, ej = g.pieces[g.cornerPiece[j]].expressId;
     if (ei !== ej) return ei < ej;
     for (let a = 0; a < 3; a++) {
       const vi = g.cornerWorld[i * 3 + a], vj = g.cornerWorld[j * 3 + a];

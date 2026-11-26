@@ -146,25 +146,59 @@ fn m11_n_row_comparison_tolerance() {
 fn m11_n_reference_is_independent_of_worker_address_layout() {
     let Some(worker) = support::worker_path() else {return;};
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let mut workers = vec![worker.clone(),worker.clone()];
-    /// Removes the wrapper directory however the test ends, panics included.
-    struct TempDir(std::path::PathBuf);
-    impl Drop for TempDir { fn drop(&mut self) { let _ = std::fs::remove_dir_all(&self.0); } }
-    let directory = TempDir(std::env::temp_dir().join(format!("m11-n-layout-{}",std::process::id())));
+    /// The wrapper directory and every worker a pass started. However the test
+    /// ends, panics included (a pass past the deadline), it kills each recorded
+    /// worker that is still running and removes the directory. A detached pass
+    /// thread cannot be stopped, and the runtime spawns its worker with stderr
+    /// inherited, so a worker stuck in compute would otherwise outlive the test
+    /// binary and keep a CI `cargo test 2>&1 | tee` step open until the job
+    /// timeout. Each wrapper records its PID and then execs the worker (the
+    /// same process, so the runtime's own kill-on-drop still reaches it); a
+    /// PID is only killed while its command line is still the worker's.
+    struct Layout { directory: std::path::PathBuf, worker: std::path::PathBuf }
+    impl Layout {
+        fn kill_workers(&self) {
+            let Ok(pids) = std::fs::read_to_string(self.directory.join("pids")) else {return;};
+            for pid in pids.split_whitespace() {
+                let Ok(command) = std::fs::read(format!("/proc/{pid}/cmdline")) else {continue;};
+                let program = command.split(|&b| b==0).next().unwrap_or_default();
+                if program == self.worker.as_os_str().as_encoded_bytes() {
+                    let _ = std::process::Command::new("kill").args(["-KILL",pid]).status();
+                }
+            }
+        }
+    }
+    impl Drop for Layout {
+        fn drop(&mut self) {
+            // Remove the wrappers first so a pass cannot start another worker;
+            // a wrapper already past its PID line execs within moments, so
+            // sweep a few times.
+            for name in ["worker","worker-no-aslr"] { let _ = std::fs::remove_file(self.directory.join(name)); }
+            for _ in 0..3 { self.kill_workers(); std::thread::sleep(std::time::Duration::from_millis(100)); }
+            let _ = std::fs::remove_dir_all(&self.directory);
+        }
+    }
+    let worker_path = std::fs::canonicalize(&worker).unwrap();
+    let layout = Layout {directory: std::env::temp_dir().join(format!("m11-n-layout-{}",std::process::id())), worker: worker_path.clone()};
+    std::fs::create_dir_all(&layout.directory).unwrap();
+    let wrapper = |name: &str, exec: &str| {
+        // Single-quoted shell words: each ' in a path becomes '\''.
+        let quote = |path: &Path| format!("'{}'",path.to_str().expect("path is UTF-8").replace('\'',"'\\''"));
+        let path = layout.directory.join(name);
+        std::fs::write(&path,format!("#!/bin/sh\necho $$ >> {}\nexec {exec} {} \"$@\"\n",
+            quote(&layout.directory.join("pids")),quote(&worker_path))).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path,std::fs::Permissions::from_mode(0o755)).unwrap();
+        path.into_os_string()
+    };
+    let ordinary = wrapper("worker","");
+    let mut workers = vec![ordinary.clone(),ordinary];
     // Probe the personality flag itself: setarch can exist while a sandbox
     // (e.g. Docker's default seccomp profile) refuses ADDR_NO_RANDOMIZE.
     let aslr_off = std::process::Command::new("setarch")
         .args([std::env::consts::ARCH,"-R","true"]).output().is_ok_and(|o| o.status.success());
     if aslr_off {
-        std::fs::create_dir_all(&directory.0).unwrap();
-        let fixed = directory.0.join("worker-no-aslr");
-        let worker_path = std::fs::canonicalize(&worker).unwrap();
-        // One single-quoted shell word: each ' in the path becomes '\''.
-        let quoted = format!("'{}'",worker_path.to_str().expect("worker path is UTF-8").replace('\'',"'\\''"));
-        std::fs::write(&fixed,format!("#!/bin/sh\nexec setarch \"$(uname -m)\" -R {quoted} \"$@\"\n")).unwrap();
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&fixed,std::fs::Permissions::from_mode(0o755)).unwrap();
-        workers.push(fixed.into_os_string());
+        workers.push(wrapper("worker-no-aslr","setarch \"$(uname -m)\" -R"));
     } else {
         eprintln!("SKIP the ASLR-off worker: `setarch -R true` failed (no setarch, or the personality flag is refused); comparing 2 ordinary ASLR workers only");
     }
@@ -183,7 +217,7 @@ fn m11_n_reference_is_independent_of_worker_address_layout() {
         // (one thread each) so the three passes cost about one in wall time.
         // Detached threads and a channel, not a scope: a pass that panics or
         // outlives the deadline fails the test at once instead of waiting on
-        // the others (a timed-out pass is left running until the process exits).
+        // the others (Layout then kills every worker still running).
         let (sender,receiver) = std::sync::mpsc::channel();
         for (k,w) in workers.iter().enumerate() {
             let (sender,root,model,w) = (sender.clone(),root.clone(),model.clone(),w.clone());

@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <map>
 #include <numeric>
 #include <random>
@@ -266,7 +267,7 @@ void run_mesh_canonical_tests() {
     // re-splitting it moves A w / 3 of volume and tilts both normals by about
     // w / L. A parallelogram tagged planar, split by the SDK on its long
     // diagonal (the canonical rule prefers the short one), must keep that
-    // split. Before the hinge check, the 10 m quad was re-split up to
+    // split. Before any flatness check, the 10 m quad was re-split up to
     // w = 1e-4 m and the 1 m quad up to w = 1e-5 m.
     for (const auto& [length,lift]:std::vector<std::pair<double,double>>{{10,1e-4},{10,1e-6},{1,1e-5},{1,1e-7}}) {
         const double s=length/2;
@@ -291,8 +292,48 @@ void run_mesh_canonical_tests() {
         canonicalize(mesh,{true});
         require(!has_edge(mesh,{10,0,0},{0,4,0}),"the planar rectangle with an edge vertex is re-split");
     }
+    // Folds that add up (#10916 review): an n x 1 m strip at a 2.6e6 m offset
+    // whose bottom edge sags as z = c x^2 / 2, split by the SDK as two fans
+    // (bottom vertices 0..split to the top-left corner, split..n to the
+    // top-right). Each interior edge folds by only about c, so a check at each
+    // edge accepted it, and whether it did depended on the split; the
+    // whole-face sag is c n^2 / 8 (0.12 um and 0.26 um here). Every split
+    // must keep the SDK's split; the same strip made flat is re-split, to
+    // one topology from every split and under +/-1 ULP noise.
+    {
+        const double eps=std::numeric_limits<double>::epsilon();
+        auto strip=[](unsigned n,double c,unsigned split) {
+            AdapterMesh mesh;
+            const double x0=2.6e6,y0=1.2e6;
+            for (unsigned i=0;i<=n;++i) { const double x=double(i); mesh.positions.insert(mesh.positions.end(),{x0+x,y0,c*x*x/2}); }
+            const uint32_t left=n+1,right=n+2;
+            mesh.positions.insert(mesh.positions.end(),{x0,y0+1,0, x0+double(n),y0+1,0});
+            for (unsigned i=0;i<n;++i) {
+                const uint32_t apex=i<split ? left : right;
+                mesh.indices.insert(mesh.indices.end(),{i,i+1,apex});
+            }
+            mesh.indices.insert(mesh.indices.end(),{split,right,left});
+            mesh.faces.assign(n+1,0); mesh.normals.assign(mesh.indices.size()*3,0.);
+            return mesh;
+        };
+        for (const auto& [n,scale]:std::vector<std::pair<unsigned,double>>{{40,1.},{120,0.25}}) {
+            const double c=scale*eps*(2.6e6+n);
+            for (unsigned split:{1u,5u,10u}) {
+                declined(strip(n,c,split),{true},"a sagging strip tagged planar keeps the SDK's split for every SDK split");
+            }
+            AdapterMesh reference=strip(n,0,1); canonicalize(reference,{true});
+            AdapterMesh kept=strip(n,0,1); order_mesh(kept); order_mesh(kept);
+            require(reference.indices!=kept.indices,"the flat strip is re-split");
+            for (unsigned split:{1u,5u,10u}) for (unsigned run=0;run<8;++run) {
+                AdapterMesh mesh=strip(n,0,split);
+                if (run) nudge(mesh,random);
+                canonicalize(mesh,{true});
+                same_topology(mesh,reference,"a flat strip canonicalizes to one topology from every SDK split and under noise");
+            }
+        }
+    }
     // A truly planar quad in a general orientation at a 1e6 m offset, under
-    // the SDK's +/-1 ULP noise: the hinge check must not decline it, so both
+    // the SDK's +/-1 ULP noise: the flatness check must not decline it, so both
     // SDK splits keep canonicalizing to one topology.
     {
         const Point origin{1e6,-4e5,2.5e5},u{0.48,0.6,0.64},v{0.8,-0.36,-0.48};

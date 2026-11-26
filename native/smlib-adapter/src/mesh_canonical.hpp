@@ -74,14 +74,16 @@ void order_mesh(AdapterMesh& mesh);
 // exact orientation checks but without the greedy's normal and edge-use
 // checks, so a near-collinear quad can get a split where the greedy would
 // decline; its last resort (a near diagonal) also requires both flat normals
-// to follow the face. Both paths also require the SDK's split to be flat to
-// first order (at every interior edge the tetrahedron of its two triangles is
-// no thicker than the SDK's +/-1 ULP coordinate noise: a warp of about
-// 16 eps M on a convex quad, M the largest |coordinate|) and the face's 3D
-// area to be kept (1e-9 relative plus a floor of 2 eps M times the bounding-box
-// diagonal per triangle), so a warped face tagged planar keeps the SDK's
-// split, and an accepted re-split keeps the face's volume and normals to within
-// that noise. Cost is O(V^3) per
+// to follow the face. Both paths also require the face to be flat: every
+// vertex within 16 eps M of one plane (M the face's largest |coordinate|:
+// about 9 nm at a 2.6e6 m offset), a plane chosen from the face's vertex set
+// alone, so the verdict never depends on the SDK's split; and the face's 3D
+// area to be kept (1e-9 relative plus a floor of 2 eps M times the
+// bounding-box diagonal per triangle). So a warped face tagged planar keeps
+// the SDK's split, and an accepted re-split stays within a slab 32 eps M thick,
+// moving at most that times the face's area of volume, however many triangles
+// it has, and tilting a triangle's normal by at most 32 eps M over its
+// smallest height. Cost is O(V^3) per
 // face in the worst case (about 11 ms for 256 vertices, 1 us for a quad).
 // Requires order_mesh first (canonical vertex IDs, faces contiguous).
 void canonical_planar_faces(AdapterMesh& mesh, const std::vector<bool>& planar_faces);

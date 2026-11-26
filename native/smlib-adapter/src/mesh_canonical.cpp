@@ -56,48 +56,6 @@ double double_area(const AdapterMesh& mesh,const Triangle& t) {
     }
     return best;
 }
-double double_area(const AdapterMesh& mesh,uint32_t a,uint32_t b,uint32_t c) { return double_area(mesh,Triangle{a,b,c}); }
-// Whether the SDK's triangulation of a face tagged planar is flat to first
-// order: at every interior edge a-b, between triangles (a, b, c) and (b, a, d),
-// the tetrahedron a b c d is no thicker than the SDK's coordinate noise. Its
-// volume is what re-splitting that hinge moves (a quad of area A whose two
-// opposite corners are lifted by w: A w / 3, while its 3D area only changes by
-// about A (w/L)^2, too little for same_area). If every hinge is flat and the
-// face is connected, all its triangles lie in one plane, so any split of it
-// keeps its volume and normals. Noise: coordinates change by about one ULP of
-// the largest |coordinate| M between runs (plus half a ULP of rounding in a
-// truly planar face), and |det| moves by the four faces' double areas times
-// that, so the tolerance is 8 eps M times their sum, about 3x the worst case,
-// plus the determinant's own rounding (4 eps times the sum of its absolute
-// terms). For a convex quad that is a warp of 16 eps M (about 9 nm at a
-// 2.6e6 m offset, 4e-14 m at 10 m): a real warp is far above it, and a
-// planar face's noise far below. Fails closed on non-finite values.
-bool flat_hinges(const AdapterMesh& mesh,const std::vector<Triangle>& face) {
-    double magnitude=0;
-    std::map<std::pair<uint32_t,uint32_t>,uint32_t> opposite;
-    for (const auto& t:face) for (unsigned k=0;k<3;++k) {
-        opposite[{t[k],t[(k+1)%3]}]=t[(k+2)%3];
-        const auto x=point(mesh,t[k]);
-        for (double c:x) magnitude=std::max(magnitude,std::abs(c));
-    }
-    const double eps=std::numeric_limits<double>::epsilon();
-    for (const auto& [ab,c]:opposite) {
-        const auto [a,b]=ab;
-        if (a>b) continue; // each hinge once
-        const auto found=opposite.find({b,a});
-        if (found==opposite.end()) continue; // boundary edge
-        const uint32_t d=found->second;
-        const auto A=point(mesh,a),B=point(mesh,b),C=point(mesh,c),D=point(mesh,d);
-        const Point x{B[0]-A[0],B[1]-A[1],B[2]-A[2]},y{C[0]-A[0],C[1]-A[1],C[2]-A[2]},z{D[0]-A[0],D[1]-A[1],D[2]-A[2]};
-        const std::array<double,6> terms{x[0]*y[1]*z[2],-x[0]*y[2]*z[1],x[1]*y[2]*z[0],-x[1]*y[0]*z[2],x[2]*y[0]*z[1],-x[2]*y[1]*z[0]};
-        double det=0,permanent=0;
-        for (double term:terms) { det+=term; permanent+=std::abs(term); }
-        const double faces=double_area(mesh,a,b,c)+double_area(mesh,b,a,d)+double_area(mesh,a,c,d)+double_area(mesh,b,d,c);
-        const double tolerance=8*eps*magnitude*faces+4*eps*permanent;
-        if (!(std::abs(det)<=tolerance)) return false;
-    }
-    return true;
-}
 // Whether a retriangulation keeps a face's 3D area: within 1e-9 relative,
 // plus a floor for the SDK's +/-1 ULP coordinate noise. That noise warps a
 // planar face by about one ULP of its largest |coordinate| M, which changes
@@ -108,7 +66,7 @@ bool flat_hinges(const AdapterMesh& mesh,const std::vector<Triangle>& face) {
 // extent and triangle at a 2.6e6 m offset, the precision such coordinates
 // carry. A real warp is far above it (a 0.25 um corner on a 1 um wide face
 // there: 1.17%; #10916's closed cap: 1.17%). This is a second-order test (a
-// saddle warp w changes area by about A (w/L)^2), so flat_hinges guards the
+// saddle warp w changes area by about A (w/L)^2), so flat_face guards the
 // warp itself; within the noise floor 2 eps M diag, an accepted split can
 // still change area by up to that floor.
 bool same_area(const AdapterMesh& mesh,const std::vector<Triangle>& before,const std::vector<Triangle>& after) {
@@ -284,6 +242,70 @@ int exact_orient(double ax,double ay,double bx,double by,double cx,double cy) {
     for (size_t i=size;i-->0;) if (e[i]!=0) return e[i]>0 ? 1 : -1;
     return 0;
 }
+// Whether every vertex of a face tagged planar lies within 16 eps M of one
+// plane (M the face's largest |coordinate|: about 9 nm at a 2.6e6 m offset,
+// 5e-14 m for a 10 m face near the origin). The plane depends only on the
+// face's vertex set, never on the SDK's triangulation or vertex order, so two
+// SDK splits of one face always get the same verdict. A face that passes lies
+// in a slab 32 eps M thick, so every split of it, the SDK's or the canonical
+// one, stays in that slab: re-splitting moves at most about 32 eps M times its
+// area of volume, however many triangles it has. (A check at each interior
+// edge let folds add up across a long face and depended on the split: #10916
+// review, a 40 m strip at 2.6e6 m sagging 0.12 um was re-split.)
+// The plane passes through three vertices that span the face well: a, the
+// vertex farthest from the lowest-ID one; b, the vertex farthest from a; c,
+// the vertex farthest from line ab (ties to the lower ID). Coordinate noise
+// of about one ULP of M on a, b and c then tilts it by at most about that
+// noise over the face's width at c, so every vertex's distance moves by a
+// few times the noise. The Newell plane is not that robust: when two
+// vertices nearly coincide across a thin face, its normal is set by their
+// short separation, and the SDK's +/-1 ULP noise alone moved distances to 40
+// eps M (#10916: 8 of 400,000 noisy truly planar quads). Its normal is an
+// exact-product, compensated cross product: in plain doubles, rounding tilts
+// a sliver's normal by about eps L / W along it (L its length, W its width)
+// and moves the far vertices' distances by eps L^2 / W. 16 eps M is about 3x
+// the noise (#10916 probe: 0 of 400,000 noisy truly planar quads rejected,
+// slivers to 1e-6 of their length). Fails closed on non-finite values and on
+// collinear vertices.
+bool flat_face(const AdapterMesh& mesh,const std::vector<Triangle>& face) {
+    std::vector<uint32_t> vertices;
+    for (const auto& t:face) vertices.insert(vertices.end(),t.begin(),t.end());
+    std::sort(vertices.begin(),vertices.end());
+    vertices.erase(std::unique(vertices.begin(),vertices.end()),vertices.end());
+    if (vertices.size()<3) return false;
+    double magnitude=0;
+    for (uint32_t id:vertices) for (double x:point(mesh,id)) magnitude=std::max(magnitude,std::abs(x));
+    auto between=[&](uint32_t from,uint32_t to) {
+        const auto x=point(mesh,from),y=point(mesh,to);
+        return Point{y[0]-x[0],y[1]-x[1],y[2]-x[2]};
+    };
+    auto farthest=[&](auto&& measure) {
+        uint32_t best=vertices.front(); double most=-1;
+        for (uint32_t id:vertices) { const double m=measure(id); if (m>most) { most=m; best=id; } }
+        return best;
+    };
+    const uint32_t a=farthest([&](uint32_t id) { const auto d=between(vertices.front(),id); return dot(d,d); });
+    const uint32_t b=farthest([&](uint32_t id) { const auto d=between(a,id); return dot(d,d); });
+    const Point ab=between(a,b);
+    auto plain_cross=[](const Point& x,const Point& y) { return Point{x[1]*y[2]-x[2]*y[1],x[2]*y[0]-x[0]*y[2],x[0]*y[1]-x[1]*y[0]}; };
+    const uint32_t c=farthest([&](uint32_t id) { const auto n=plain_cross(ab,between(a,id)); return dot(n,n); });
+    const Point ac=between(a,c);
+    auto difference=[](double p,double q,double r,double s) { // p q - r s
+        double x,xe,y,ye,sum,carry;
+        two_product(p,q,x,xe); two_product(-r,s,y,ye);
+        two_sum(x,y,sum,carry);
+        return sum+(carry+xe+ye);
+    };
+    const Point normal{difference(ab[1],ac[2],ab[2],ac[1]),difference(ab[2],ac[0],ab[0],ac[2]),difference(ab[0],ac[1],ab[1],ac[0])};
+    const double length=std::hypot(normal[0],normal[1],normal[2]);
+    const double tolerance=16*std::numeric_limits<double>::epsilon()*magnitude;
+    if (!std::isfinite(length) || !(length>0) || !std::isfinite(tolerance)) return false;
+    for (uint32_t id:vertices) {
+        const double distance=dot(between(a,id),normal)/length;
+        if (!(std::abs(distance)<=tolerance)) return false;
+    }
+    return true;
+}
 using P2=std::array<double,2>;
 int orient2(const P2& a,const P2& b,const P2& c) { return exact_orient(a[0],a[1],b[0],b[1],c[0],c[1]); }
 bool within(const P2& a,const P2& b,const P2& r) {
@@ -388,7 +410,7 @@ std::vector<Triangle> requad(const AdapterMesh& mesh,const Triangle& a,const Tri
         const bool use_flipped=clear ? flipped_clear : flipped && sound({p,u,q},{q,v,p});
         if (use_flipped && (!use_kept || rank(p,q)<rank(u,v))) {
             const Triangle first{p,u,q},second{q,v,p};
-            if (!flat_hinges(mesh,{a,b}) || !same_area(mesh,{a,b},{first,second})) return {};
+            if (!flat_face(mesh,{a,b}) || !same_area(mesh,{a,b},{first,second})) return {};
             return {first,second};
         }
         if (use_kept) return {a,b};
@@ -525,13 +547,15 @@ std::vector<Triangle> greedy(const AdapterMesh& mesh,const std::vector<Triangle>
     }
     for (const auto& d:outline) if (!after.count(d)) return {};
     std::vector<Triangle> result{found.begin(),found.end()};
-    if (!flat_hinges(mesh,face) || !same_area(mesh,face,result)) return {};
+    if (!same_area(mesh,face,result)) return {};
     return result;
 }
 // The greedy, and if nearness left it without a valid triangulation, the
 // greedy without the near rule (exact predicates and grid ranking only).
+// Neither runs unless the face is flat (flat_face).
 std::vector<Triangle> retriangulate(const AdapterMesh& mesh,const std::vector<Triangle>& face,
     const std::vector<Edge>& foreign,double h) {
+    if (!flat_face(mesh,face)) return {};
     auto result=greedy(mesh,face,foreign,h,true);
     if (result.empty()) result=greedy(mesh,face,foreign,h,false);
     return result;

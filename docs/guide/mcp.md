@@ -132,6 +132,17 @@ a deleted or replaced source path and a retargeted source symlink.
 IFC, IFCX, USD, GLB, and OBJ exports include pending session creates, edits,
 and deletions. Exporting and reloading an IFC file first is unnecessary.
 
+### Model health
+
+Use `model_stats` for building quantities, element and storey counts, and
+basic naming and GlobalId checks. `model_diagnose_geometry` runs the STEP
+geometry engine and reports opening and CSG failures. Its product and type
+filters narrow the worst-host list while retaining model totals.
+
+`model_delivery` accepts a CLI delivery recipe JSON file and returns the
+combined structural, IDS and rule-set report. Every local file the recipe
+references must be in the server's allowed paths.
+
 ### IDS authoring
 
 The IDS authoring tools work on IDS documents and need no model. They are

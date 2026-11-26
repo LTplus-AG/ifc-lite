@@ -18,7 +18,7 @@
 
 import { createHeadlessContext } from '../loader.js';
 import { printJson, fatal, hasFlag, firstNonBlank } from '../output.js';
-import { filterBuildingElements } from './stats-aggregation.js';
+import { filterBuildingElements } from '@ifc-lite/sdk/headless';
 
 interface Recipe {
   name: string;

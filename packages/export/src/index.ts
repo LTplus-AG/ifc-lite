@@ -125,3 +125,5 @@ export { expandAffectedSet, type RemeshCause } from './affected-set.js';
 export { editOwnershipRefusal, effectiveReferencers } from './edit-ownership.js';
 
 export { exportSectionedStep, type SectionExportPlane, type SectionExportOptions } from './section-export-entry.js';
+
+export { readGeometryDiagnostics, filterWorstHosts } from './geometry-diagnostics.js';

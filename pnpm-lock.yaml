@@ -2589,6 +2589,9 @@ importers:
       '@ifc-lite/bcf':
         specifier: workspace:^
         version: link:../bcf
+      '@ifc-lite/cache':
+        specifier: workspace:^
+        version: link:../cache
       '@ifc-lite/clash':
         specifier: workspace:^
         version: link:../clash
@@ -2634,6 +2637,9 @@ importers:
       '@ifc-lite/query':
         specifier: workspace:^
         version: link:../query
+      '@ifc-lite/rules':
+        specifier: workspace:^
+        version: link:../rules
       '@ifc-lite/spatial':
         specifier: workspace:^
         version: link:../spatial

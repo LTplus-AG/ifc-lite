@@ -389,6 +389,55 @@ export class ClashSession {
 }
 
 /**
+ * One batch's compact records, returned by [`MeshCollection::encode_compact`].
+ * Every getter copies its column into a new typed array.
+ */
+export class CompactBatch {
+    private constructor();
+    free(): void;
+    [Symbol.dispose](): void;
+    /**
+     * Six f64 per encoded mesh: its AABB in the collection's frame (Y-up,
+     * RTC-relative `origin + position`), min x, y, z then max x, y, z.
+     */
+    readonly bounds: Float64Array;
+    /**
+     * Three i32 per encoded mesh: its cell indices at its level.
+     */
+    readonly cells: Int32Array;
+    /**
+     * Mesh-local u16 triangle indices.
+     */
+    readonly indices: Uint16Array;
+    /**
+     * Number of encoded meshes (table rows).
+     */
+    readonly meshCount: number;
+    /**
+     * 12 bytes per welded vertex: u16 x, y, z offsets, u16 oct normal, u32 entity lane.
+     */
+    readonly records: Uint8Array;
+    /**
+     * Meshes left on the f32 path, by reason: textured, empty, non-finite, id
+     * range, extent, welded vertices, collapse, normals, index range.
+     */
+    readonly refusals: Uint32Array;
+    /**
+     * Six u32 per encoded mesh: mesh index in the collection, vertex start,
+     * vertex count, index start, index count, lattice level (step = 2^-level m).
+     */
+    readonly table: Uint32Array;
+    /**
+     * `[inVertices, inTriangles, outVertices, outTriangles]` over the encoded meshes.
+     */
+    readonly totals: Float64Array;
+    /**
+     * Three f64 per encoded mesh: its window origin in units of its level's step.
+     */
+    readonly windows: Float64Array;
+}
+
+/**
  * A set of closed 2D rings, grouped into disjoint shapes.
  *
  * Rings carry no duplicated closing vertex (connect the last point back to
@@ -525,6 +574,12 @@ export class GridAxisJs {
 export class IfcAPI {
     free(): void;
     [Symbol.dispose](): void;
+    /**
+     * Record the content-key plan index of planned jobs (`planIndex` of the
+     * pre-pass `jobs` events; unplanned entries are skipped). Effective only
+     * once `setGlobalInstancePlan` armed the load. Mismatched lengths record nothing.
+     */
+    addGlobalKeyPlan(job_ids: Uint32Array, plan_index: Uint32Array): void;
     /**
      * Run the pre-pass ONCE and return serialized results for worker distribution.
      * Takes raw bytes (&[u8]) to avoid TextDecoder overhead.
@@ -1167,6 +1222,14 @@ export class IfcAPI {
      */
     processGeometryBatchPartitionedFromSource(jobs_flat: Uint32Array, unit_scale: number, rtc_x: number, rtc_y: number, rtc_z: number, needs_shift: boolean, void_keys: Uint32Array, void_counts: Uint32Array, void_values: Uint32Array, style_ids: Uint32Array, style_colors: Uint8Array, plane_angle_to_radians?: number | null, material_element_ids?: Uint32Array | null, material_color_counts?: Uint32Array | null, material_colors_rgba?: Uint8Array | null): PartitionedBatch;
     /**
+     * `processGeometryBatchPartitionedFromSource` over the sparse arena.
+     */
+    processGeometryBatchPartitionedSparse(jobs_flat: Uint32Array, unit_scale: number, rtc_x: number, rtc_y: number, rtc_z: number, needs_shift: boolean, void_keys: Uint32Array, void_counts: Uint32Array, void_values: Uint32Array, style_ids: Uint32Array, style_colors: Uint8Array, plane_angle_to_radians?: number | null, material_element_ids?: Uint32Array | null, material_color_counts?: Uint32Array | null, material_colors_rgba?: Uint8Array | null): PartitionedBatch;
+    /**
+     * `processGeometryBatchFromSource` over the sparse arena.
+     */
+    processGeometryBatchSparse(jobs_flat: Uint32Array, unit_scale: number, rtc_x: number, rtc_y: number, rtc_z: number, needs_shift: boolean, void_keys: Uint32Array, void_counts: Uint32Array, void_values: Uint32Array, style_ids: Uint32Array, style_colors: Uint8Array, plane_angle_to_radians?: number | null, material_element_ids?: Uint32Array | null, material_color_counts?: Uint32Array | null, material_colors_rgba?: Uint8Array | null): MeshCollection;
+    /**
      * Propose IFC walls, slabs, columns and pipes from a scan segmentation
      * report (#6894). `report_json` is the JSON `segmentScanPoints`
      * returned; `options_json` is a camelCase `ScanProposalOptions` object
@@ -1289,6 +1352,14 @@ export class IfcAPI {
      */
     setComputeGeometryHashes(tolerance?: number | null): void;
     /**
+     * Ask the serial streaming pre-pass to also emit
+     * `{ type: "sparse-facts", preamble, inverseTargets, inverseReferrers }`
+     * right after its `entity-index` event. The event carries `unsupported`
+     * (a reason) instead when the file cannot be meshed from a sparse arena:
+     * the host then keeps its workers on the whole-file path.
+     */
+    setEmitSparseFacts(on: boolean): void;
+    /**
      * Populate `cached_entity_index` from pre-extracted column arrays.
      *
      * Used by the streaming pre-pass to share its already-built entity
@@ -1318,6 +1389,23 @@ export class IfcAPI {
      * next batch scans the bytes it is given.
      */
     setEntityIndex(ids: Uint32Array, starts: Uint32Array, lengths: Uint32Array): void;
+    /**
+     * Arm the global instance plan for this load. `source_ids` and `counts`
+     * are the pre-pass columns' `mappedInstancePlan` and
+     * `mappedInstanceCounts` (model-wide `IfcMappedItem` count per source);
+     * only sources at or above the instancing gate are kept. Mismatched
+     * lengths disarm the plan, which leaves the per-batch decision in charge.
+     * Installed after `setEntityIndex`, which clears it on a content swap.
+     * Arming starts the plan over, key plan included: call `addGlobalKeyPlan` after it.
+     */
+    setGlobalInstancePlan(source_ids: Uint32Array, counts: Uint32Array): void;
+    /**
+     * Plan content keys in the streaming pre-pass of THIS instance: hash every
+     * job's geometry items before the first dispatch, emit a
+     * `global-key-plan` event and each job's `planIndex` with its chunk.
+     * Off by default; off leaves the pre-pass events unchanged.
+     */
+    setGlobalKeyPlanning(on: boolean): void;
     /**
      * Install the pre-computed set of type ids that an `IfcRelDefinesByType`
      * instantiates (#957 follow-up), so the worker's first type-product batch
@@ -1487,6 +1575,55 @@ export class IfcAPI {
      */
     simplifyMeshes(express_ids: Uint32Array, levels: Uint8Array, positions: Float32Array, normals: Float32Array, indices: Uint32Array, vertex_counts: Uint32Array, index_counts: Uint32Array, origins: Float64Array, local_to_world: Float64Array, local_to_world_present: Uint8Array, rtc_x: number, rtc_y: number, rtc_z: number, unit_scale: number, y_up: boolean): SimplifiedMeshes;
     /**
+     * Start an out-of-core session from the pre-pass preamble. Replaces any
+     * previous content, like `setEntityIndex`. `reserve_bytes` sizes the
+     * arena once (the host's budget plus headroom), so it never reallocates
+     * below that; 0 lets it grow on demand.
+     */
+    sparseBegin(preamble: Uint8Array, reserve_bytes: number): void;
+    /**
+     * End the session and free the arena.
+     */
+    sparseEnd(): void;
+    /**
+     * Ids reachable from `ids` within `max_depth` hops (`0xFFFFFFFF` for the
+     * full closure) that are not installed yet, ascending.
+     */
+    sparseExpand(ids: Uint32Array, max_depth: number): Uint32Array;
+    /**
+     * Install records from one contiguous read. `spans` is flat
+     * `[id, offset, length]` triples into `chunk`.
+     */
+    sparseInstall(spans: Uint32Array, chunk: Uint8Array): void;
+    /**
+     * Forget results derived while a dependency was missing, before the batch
+     * that reported the miss runs again.
+     */
+    sparseInvalidateDerived(): void;
+    /**
+     * Ids the file does not hold, so the walk stops asking for them.
+     */
+    sparseMarkAbsent(ids: Uint32Array): void;
+    /**
+     * Drop every installed record but the preamble (the host's byte budget).
+     * Mesh caches survive: they are keyed by entity id, not by arena offset.
+     */
+    sparseReset(): void;
+    /**
+     * Declare records that reference a target and must travel with it
+     * (indexed colour and texture maps): `referrers[i]` references `targets[i]`.
+     */
+    sparseSetInverseEdges(targets: Uint32Array, referrers: Uint32Array): void;
+    /**
+     * `[arenaBytes, baseBytes, records, installedBytesTotal,
+     * installedRecordsTotal, resets]`.
+     */
+    sparseStats(): Float64Array;
+    /**
+     * Ids a batch looked up and did not find since the last call.
+     */
+    sparseTakeMisses(): Uint32Array;
+    /**
      * Check if API is initialized
      */
     readonly is_ready: boolean;
@@ -1534,6 +1671,15 @@ export class MeshCollection {
     private constructor();
     free(): void;
     [Symbol.dispose](): void;
+    /**
+     * Encode every eligible mesh into compact GPU records (see the module
+     * docs) and empty its vertex arrays. `cell_size` is the spatial cell size
+     * in metres at the base level (step 2^-10 m), snapped to that lattice;
+     * it must lie in [2^-9, 32] m so a window (65,535 steps) holds any mesh
+     * that starts in its cell and is narrower than the cell. Outside that
+     * range nothing is encoded and the collection is left as it was.
+     */
+    encodeCompact(cell_size: number): CompactBatch;
     /**
      * Get mesh at index (clones — non-destructive). Prefer `takeMesh` on the
      * hot streaming path; this stays for callers that read meshes more than once.
@@ -2632,6 +2778,7 @@ export interface InitOutput {
     readonly __wbg_clashintersectionsolidjs_free: (a: number, b: number) => void;
     readonly __wbg_clashrunresult_free: (a: number, b: number) => void;
     readonly __wbg_clashsession_free: (a: number, b: number) => void;
+    readonly __wbg_compactbatch_free: (a: number, b: number) => void;
     readonly __wbg_contours2d_free: (a: number, b: number) => void;
     readonly __wbg_gridaxiscollection_free: (a: number, b: number) => void;
     readonly __wbg_gridaxisjs_free: (a: number, b: number) => void;
@@ -2680,6 +2827,15 @@ export interface InitOutput {
     readonly clashsession_ingest: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => void;
     readonly clashsession_new: () => number;
     readonly clashsession_runRule: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => number;
+    readonly compactbatch_bounds: (a: number) => number;
+    readonly compactbatch_cells: (a: number) => number;
+    readonly compactbatch_indices: (a: number) => number;
+    readonly compactbatch_meshCount: (a: number) => number;
+    readonly compactbatch_records: (a: number) => number;
+    readonly compactbatch_refusals: (a: number) => number;
+    readonly compactbatch_table: (a: number) => number;
+    readonly compactbatch_totals: (a: number) => number;
+    readonly compactbatch_windows: (a: number) => number;
     readonly contours2d_bounds: (a: number) => number;
     readonly contours2d_coords: (a: number) => number;
     readonly contours2d_fromMeshOutline: (a: number) => number;
@@ -2699,6 +2855,7 @@ export interface InitOutput {
     readonly gridaxisjs_gridId: (a: number) => number;
     readonly gridaxisjs_start: (a: number) => number;
     readonly gridaxisjs_tag: (a: number, b: number) => void;
+    readonly ifcapi_addGlobalKeyPlan: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly ifcapi_buildPrePassOnce: (a: number, b: number, c: number) => number;
     readonly ifcapi_buildPrePassStreaming: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
     readonly ifcapi_buildPrePassStreamingSharded: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number) => void;
@@ -2763,6 +2920,8 @@ export interface InitOutput {
     readonly ifcapi_processGeometryBatchInstanced: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number, c1: number) => void;
     readonly ifcapi_processGeometryBatchPartitioned: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number) => number;
     readonly ifcapi_processGeometryBatchPartitionedFromSource: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number) => number;
+    readonly ifcapi_processGeometryBatchPartitionedSparse: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number) => void;
+    readonly ifcapi_processGeometryBatchSparse: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number) => void;
     readonly ifcapi_proposeScanElements: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_registerScanCorrespondences: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_resolveStyledItemsShard: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
@@ -2774,7 +2933,10 @@ export interface InitOutput {
     readonly ifcapi_scanGeometryEntitiesFast: (a: number, b: number, c: number) => number;
     readonly ifcapi_segmentScanPoints: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_setComputeGeometryHashes: (a: number, b: number, c: number) => void;
+    readonly ifcapi_setEmitSparseFacts: (a: number, b: number) => void;
     readonly ifcapi_setEntityIndex: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
+    readonly ifcapi_setGlobalInstancePlan: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly ifcapi_setGlobalKeyPlanning: (a: number, b: number) => void;
     readonly ifcapi_setInstantiatedTypeIds: (a: number, b: number, c: number) => void;
     readonly ifcapi_setMappedInstancePlan: (a: number, b: number, c: number) => void;
     readonly ifcapi_setMaterialLayerIndex: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number) => void;
@@ -2788,6 +2950,16 @@ export interface InitOutput {
     readonly ifcapi_setStyleFinishes: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly ifcapi_setTessellationQuality: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_simplifyMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number) => void;
+    readonly ifcapi_sparseBegin: (a: number, b: number, c: number, d: number) => void;
+    readonly ifcapi_sparseEnd: (a: number) => void;
+    readonly ifcapi_sparseExpand: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly ifcapi_sparseInstall: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly ifcapi_sparseInvalidateDerived: (a: number) => void;
+    readonly ifcapi_sparseMarkAbsent: (a: number, b: number, c: number) => void;
+    readonly ifcapi_sparseReset: (a: number) => void;
+    readonly ifcapi_sparseSetInverseEdges: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly ifcapi_sparseStats: (a: number, b: number) => void;
+    readonly ifcapi_sparseTakeMisses: (a: number, b: number) => void;
     readonly ifcapi_version: (a: number, b: number) => void;
     readonly intersection2d: (a: number, b: number) => number;
     readonly landxmltinstreamsession_abort: (a: number) => void;
@@ -2802,6 +2974,7 @@ export interface InitOutput {
     readonly meshOutline2d: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly meshcollection_buildingRotation: (a: number, b: number) => void;
     readonly meshcollection_diagnostics: (a: number) => number;
+    readonly meshcollection_encodeCompact: (a: number, b: number) => number;
     readonly meshcollection_geometryAabbValues: (a: number) => number;
     readonly meshcollection_geometryClosureFlags: (a: number) => number;
     readonly meshcollection_geometryHashCount: (a: number) => number;

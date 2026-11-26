@@ -25,6 +25,7 @@ import { resolveChatViewportScreenshot } from './chatViewportCapture.js';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { captureViewportFrame } from '@/lib/viewport-capture';
 import { formatArg, levelPrefix, captureCompressedCanvasImage } from './executableCodeBlockHelpers';
+import { ScriptSurfaces } from '../script-surfaces/ScriptSurfaces';
 import { useSandbox } from '@/hooks/useSandbox';
 import { useViewerStore } from '@/store';
 import type { CodeBlock, CodeExecResult } from '@/lib/llm/types';
@@ -61,9 +62,7 @@ export const ExecutableCodeBlock = memo(function ExecutableCodeBlock({
       if (scriptResult) {
         setCodeExecResult(messageId, block.index, {
           status: 'success',
-          logs: scriptResult.logs,
-          value: scriptResult.value,
-          durationMs: scriptResult.durationMs,
+          ...scriptResult,
         });
 
         // Auto-capture viewport screenshot if script likely created/modified geometry
@@ -319,6 +318,8 @@ export const ExecutableCodeBlock = memo(function ExecutableCodeBlock({
                   </span>
                 </div>
               )}
+
+              {result?.surfaces && <ScriptSurfaces surfaces={result.surfaces} />}
 
               {/* Success footer */}
               {result?.status === 'success' && (

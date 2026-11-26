@@ -9,6 +9,7 @@ import type { Renderer } from '@ifc-lite/renderer';
 import type { LoadTrace } from '@ifc-lite/load-trace';
 import { tracePhaseOnce } from '@/lib/perf/activeLoadTrace';
 import { computeBounds, userMovedCamera, withoutIds, type Bounds } from './streamingBounds.js';
+import { instanceOnlyLoadPossible } from './streamingInstancedBounds.js';
 import type { createRobustFitBoundsAccumulator } from './robustFitBoundsAccumulator.js';
 
 interface Params {
@@ -52,13 +53,13 @@ export function refitCompletedStreamBounds(params: Params): void {
     let exactBounds = robust ?? rb?.fit ?? computeBounds(withoutIds(capturedGeometry, fitExcludedIds)) ?? fullBounds;
     // #7955: retained flat walls and grouped columns share one final framing
     // extent. Keep exact's existing robust fit and telemetry unchanged.
-    if (geometryKernel === 'retained') {
-      const scene = renderer.getScene();
+    const scene = renderer.getScene();
+    if (instanceOnlyLoadPossible(geometryKernel, scene)) { // the global instance plan instances part of an exact load too
       for (const id of scene.getInstancedEntityIds()) {
         const instance = scene.getInstancedEntityBounds(id);
         if (!instance) continue;
         fullBounds = unionBounds(fullBounds, instance);
-        exactBounds = unionBounds(exactBounds, instance);
+        if (!fitExcludedIds?.has(id)) exactBounds = unionBounds(exactBounds, instance); // type-hidden: clipped, not framed
       }
     }
     // Pin (or clear) the robust orbit-pivot anchor. setSceneBounds gets

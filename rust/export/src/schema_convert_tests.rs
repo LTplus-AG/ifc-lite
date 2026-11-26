@@ -43,8 +43,15 @@ fn entity_type_renames() {
 /// type names exists in IFC4.
 #[test]
 fn ifc2x3_only_types_are_renamed_on_upgrade() {
+    for target in ["IFC4", "IFC5"] {
+        assert_eq!(
+            convert_entity_type("IFCELECTRICDISTRIBUTIONPOINT", "IFC2X3", target),
+            "IFCELECTRICDISTRIBUTIONBOARD",
+            "2X3 → {target}",
+        );
+    }
+    // The IFC4X3 distribution board layout is covered by the shared vectors.
     for (from, want) in [
-        ("IFCELECTRICDISTRIBUTIONPOINT", "IFCELECTRICDISTRIBUTIONBOARD"),
         ("IFCGASTERMINALTYPE", "IFCBURNERTYPE"),
         ("IFCEQUIPMENTELEMENT", "IFCBUILDINGELEMENTPROXY"),
     ] {
@@ -676,7 +683,7 @@ fn a_renamed_type_is_not_treated_as_unrepresented() {
 #[test]
 fn ifc4x3_to_ifc4_downgrade_counts_an_unfillable_mandatory_slot() {
     let line = "#10=IFCPROJECTEDCRS($,'A description',$,$,$,$,$);";
-    let mut check = crate::schema_enum::ConversionChecks::new();
+    let mut check = crate::schema_enum::ConversionChecks::default();
     let out = convert_step_line(line, "IFC4X3", "IFC4", 10, &mut none(), Some(&mut check)).unwrap();
     assert_eq!(out, line, "no value is fabricated: {out}");
     assert_eq!(check.ifc4_slots.required_slots_unfilled(), 1);
@@ -689,7 +696,7 @@ fn ifc4x3_to_ifc4_downgrade_counts_an_unfillable_mandatory_slot() {
 #[test]
 fn ifc4x3_to_ifc4_downgrade_never_fills_a_boolean_flag() {
     let line = "#5=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,$,#6);";
-    let mut check = crate::schema_enum::ConversionChecks::new();
+    let mut check = crate::schema_enum::ConversionChecks::default();
     let out = convert_step_line(line, "IFC5", "IFC4", 5, &mut none(), Some(&mut check)).unwrap();
     assert_eq!(out, line, "SameSense keeps its $: {out}");
     assert_eq!(check.ifc4_slots.required_slots_unfilled(), 1);
@@ -699,7 +706,7 @@ fn ifc4x3_to_ifc4_downgrade_never_fills_a_boolean_flag() {
 #[test]
 fn ifc2x3_to_ifc4_upgrade_is_not_counted() {
     let line = "#5=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,$,#6);";
-    let mut check = crate::schema_enum::ConversionChecks::new();
+    let mut check = crate::schema_enum::ConversionChecks::default();
     let out = convert_step_line(line, "IFC2X3", "IFC4", 5, &mut none(), Some(&mut check)).unwrap();
     assert_eq!(out, line, "{out}");
     assert_eq!(check.ifc4_slots.required_slots_unfilled(), 0);
@@ -710,7 +717,7 @@ fn ifc2x3_to_ifc4_upgrade_is_not_counted() {
 #[test]
 fn ifc4x3_to_ifc4_downgrade_skips_a_record_whose_arity_disagrees_with_the_table() {
     let line = "#5=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,$);"; // 2 attrs, table expects 3
-    let mut check = crate::schema_enum::ConversionChecks::new();
+    let mut check = crate::schema_enum::ConversionChecks::default();
     let out = convert_step_line(line, "IFC4X3", "IFC4", 5, &mut none(), Some(&mut check)).unwrap();
     assert_eq!(out, line, "{out}");
     assert_eq!(check.ifc4_slots.required_slots_unfilled(), 0);
@@ -771,7 +778,7 @@ fn positioning_types_become_a_full_proxy_on_downgrade_7683() {
 #[test]
 fn values_without_a_target_slot_are_counted_7683() {
     let dropped = |line: &str, from: &str, to: &str| {
-        let mut checks = crate::schema_enum::ConversionChecks::new();
+        let mut checks = crate::schema_enum::ConversionChecks::default();
         convert_step_line(line, from, to, 1, &mut none(), Some(&mut checks)).unwrap();
         checks.attribute_values_dropped
     };
@@ -783,6 +790,7 @@ fn values_without_a_target_slot_are_counted_7683() {
         "ControlElementId"
     );
     assert_eq!(dropped("#1=IFCALIGNMENT('g',$,'A',$,$,#5,#6,.ROAD.);", "IFC4X3", "IFC4"), 1, "PredefinedType");
+    assert_eq!(dropped("#1=IFCRELPOSITIONS('0YvctVUKr0kugbFTf53O9L',$,'Grid','Description',#2,(#3));", "IFC4X3", "IFC4"), 3, "#11322: only Description and the two relationships are lost");
     assert_eq!(dropped("#1=IFCWALL('g',$,$,$,$,$,$,$,$);", "IFC2X3", "IFC4"), 0, "a pad loses nothing");
 }
 
@@ -791,7 +799,7 @@ fn values_without_a_target_slot_are_counted_7683() {
 #[test]
 fn a_comment_beside_no_value_is_not_counted_10779() {
     let dropped = |line: &str| {
-        let mut checks = crate::schema_enum::ConversionChecks::new();
+        let mut checks = crate::schema_enum::ConversionChecks::default();
         convert_step_line(line, "IFC4", "IFC2X3", 1, &mut none(), Some(&mut checks)).unwrap();
         checks.attribute_values_dropped
     };
@@ -807,7 +815,7 @@ fn a_comment_beside_no_value_is_not_counted_10779() {
 #[test]
 fn structural_required_axis_is_counted_with_record_head_whitespace_9668() {
     let line = "#50 = IFCSTRUCTURALCURVEMEMBER('id',#1,$,$,$,$,$,.RIGID_JOINED_MEMBER.);";
-    let mut checks = crate::schema_enum::ConversionChecks::new();
+    let mut checks = crate::schema_enum::ConversionChecks::default();
     let out = convert_step_line(line, "IFC2X3", "IFC4", 50, &mut none(), Some(&mut checks)).unwrap();
     assert!(out.ends_with(".RIGID_JOINED_MEMBER.,$);"));
     assert_eq!(checks.ifc4_slots.required_slots_unfilled(), 1, "{out}");
@@ -820,7 +828,7 @@ fn structural_required_axis_is_counted_with_record_head_whitespace_9668() {
 #[test]
 fn a_slot_replaced_in_place_is_written_dollar_and_counted_10758() {
     let convert = |line: &str, from: &str, to: &str| {
-        let mut checks = crate::schema_enum::ConversionChecks::new();
+        let mut checks = crate::schema_enum::ConversionChecks::default();
         let out = convert_step_line(line, from, to, 10, &mut none(), Some(&mut checks)).unwrap();
         (out, checks.attribute_values_dropped, checks.enums.lost())
     };

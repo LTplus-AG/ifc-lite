@@ -28,7 +28,7 @@
 
 import type { MeshData } from '@ifc-lite/geometry';
 
-type FieldKind = 'scalar' | 'array' | 'appearance' | 'texture' | 'bitmap';
+type FieldKind = 'scalar' | 'array' | 'appearance' | 'texture' | 'bitmap' | 'unstored';
 
 /** Exhaustive at compile time: adding a `MeshData` field fails `satisfies`. */
 const MESH_FIELDS = {
@@ -38,6 +38,9 @@ const MESH_FIELDS = {
   texture: 'texture', textureRef: 'scalar', textureBitmap: 'bitmap', geometryHash: 'scalar',
   geometryAabb: 'scalar', geometryVolume: 'scalar', geometryClass: 'scalar', origin: 'scalar',
   occurrenceKey: 'scalar', localBounds: 'scalar', localToWorld: 'scalar',
+  // A compact mesh (`?compactGeom`) is stored as the f32 arrays its three properties decode to, so its
+  // record is an ordinary mesh: the row into a worker payload is not part of the image.
+  compact: 'unstored',
 } as const satisfies Record<keyof MeshData, FieldKind>;
 
 type ArrayField = 'positions' | 'normals' | 'indices' | 'entityIds' | 'uvs';

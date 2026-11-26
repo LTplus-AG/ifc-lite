@@ -79,6 +79,12 @@ describe('--bridge (#9523)', () => {
     expect(bridgeConflict(opts)).toBeNull();
   });
 
+  it('takes --channel only together with --bridge', () => {
+    expect(parseArgs(['--bridge', '--channel'])).toMatchObject({ bridge: true, channel: true, files: [] });
+    expect(bridgeConflict(parseArgs(['--bridge', '--channel']))).toBeNull();
+    expect(bridgeConflict(parseArgs(['--channel', 'model.ifc']))).toBe('--channel needs --bridge: it pushes events from the paired viewer tab.');
+  });
+
   it('treats a bridge value flag without an operand as a usage error, not the default', () => {
     expect(bridgeConflict(parseArgs(['--bridge', '--bridge-viewer-url']))).toBe('--bridge-viewer-url needs a value.');
     expect(bridgeConflict(parseArgs(['--bridge', '--bridge-port']))).toBe('--bridge-port needs a value.');

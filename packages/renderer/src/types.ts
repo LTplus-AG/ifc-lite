@@ -8,6 +8,7 @@
 
 import type { ClipBox } from './clip-types.js';
 import type { MeshUniformSlot } from './mesh-uniform-arena.js';
+import type { SectionCapStyleOptions } from './section-cap-types.js';
 export type { ClipBox, ExtraClipPlane } from './clip-types.js';
 
 export interface Vec3 {
@@ -88,6 +89,8 @@ export interface BatchedMesh {
   vertexBuffer: GPUBuffer;
   indexBuffer: GPUBuffer;
   indexCount: number;
+  /** Index width of `indexBuffer`; absent = 'uint32'. Compact pages (compact-store.ts) draw with u16. */
+  indexFormat?: GPUIndexFormat;
   color: [number, number, number, number];
   /** Finish shared by every piece: `colorKey` folds it in at 1/1000, so a batch never mixes finishes (#5582). */
   finish?: MeshFinish;
@@ -132,32 +135,7 @@ export interface BatchedMesh {
 // Semantic axis names: down (Y), front (Z), side (X) for intuitive user experience
 export type SectionPlaneAxis = 'down' | 'front' | 'side';
 
-export type SectionCapHatchId =
-  | 'solid'
-  | 'diagonal'
-  | 'crossHatch'
-  | 'horizontal'
-  | 'vertical'
-  | 'concrete'
-  | 'brick'
-  | 'insulation';
-
-export interface SectionCapStyleOptions {
-  /** Fill colour behind the hatch. RGBA 0-1. */
-  fillColor?: [number, number, number, number];
-  /** Hatch stroke colour. RGBA 0-1. */
-  strokeColor?: [number, number, number, number];
-  /** Hatch pattern id. */
-  pattern?: SectionCapHatchId;
-  /** Spacing between hatch lines, in screen pixels. */
-  spacingPx?: number;
-  /** Primary angle in radians. */
-  angleRad?: number;
-  /** Line width in pixels. */
-  widthPx?: number;
-  /** Secondary angle (cross-hatch). */
-  secondaryAngleRad?: number;
-}
+export type { SectionCapHatchId, SectionCapStyleOptions } from './section-cap-types.js';
 
 export interface SectionPlane {
   /** Keys this plane's cap among the cutting planes beyond the first (#7545); unused on the primary plane. */

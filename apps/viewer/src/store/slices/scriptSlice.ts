@@ -7,13 +7,13 @@
  * and execution results.
  */
 
+import type { ScriptResult } from '@ifc-lite/sandbox';
 import type { StateCreator } from 'zustand';
 import type { SavedScript, SaveResult } from '../../lib/scripts/persistence.js';
 import { loadSavedScripts, saveScripts, validateScriptName, canCreateScript, isScriptWithinSizeLimit } from '../../lib/scripts/persistence.js';
 import type { ScriptEditOperation, ScriptEditorSelection, ScriptEditorTextChange } from '../../lib/llm/types.js';
 import { applyScriptEditOperations } from '../../lib/llm/script-edit-ops.js';
 import type { ScriptDiagnostic } from '../../lib/llm/script-diagnostics.js';
-import { scriptAdmissionRevision } from './scriptSlice.revision.js';
 import {
   type ScriptMutationIntent,
   type ScriptReplacementSource,
@@ -29,11 +29,7 @@ export interface LogEntry {
   timestamp: number;
 }
 
-export interface ScriptResult {
-  value: unknown;
-  logs: LogEntry[];
-  durationMs: number;
-}
+export type { ScriptResult } from '@ifc-lite/sandbox';
 
 export interface ScriptEditorApplyAdapter {
   apply: (
@@ -68,7 +64,6 @@ export interface ScriptFallbackOptions {
 export interface ScriptAssistantTurnSnapshot {
   content: string;
   selection: ScriptEditorSelection;
-  revision: number;
 }
 
 export interface ScriptSlice {
@@ -118,7 +113,6 @@ export interface ScriptSlice {
   scriptPanelVisible: boolean;
   scriptDeleteConfirmId: string | null;
   scriptEditorRevision: number;
-  scriptEditorRevisionOffset: number; // Advanced only by rollback; read through scriptAdmissionRevision.
   scriptEditorSelection: ScriptEditorSelection;
   scriptAppliedOpIds: Set<string>;
   scriptEditorApplyAdapter: ScriptEditorApplyAdapter | null;
@@ -203,7 +197,6 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
   scriptPanelVisible: loadStoredScriptPanelVisible(),
   scriptDeleteConfirmId: null,
   scriptEditorRevision: 0,
-  scriptEditorRevisionOffset: 0,
   scriptEditorSelection: { from: 0, to: 0 },
   scriptAppliedOpIds: new Set(),
   scriptEditorApplyAdapter: null,
@@ -474,7 +467,6 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
       scriptAssistantTurnSnapshot: {
         content: state.scriptEditorContent,
         selection: state.scriptEditorSelection,
-        revision: state.scriptEditorRevision,
       },
     });
   },
@@ -491,8 +483,9 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
     set({
       scriptEditorContent: snapshot.content,
       scriptEditorSelection: snapshot.selection,
-      scriptEditorRevision: snapshot.revision,
-      scriptEditorRevisionOffset: scriptAdmissionRevision(state) + 1 - snapshot.revision,
+      // Restore content, never the revision number: a client may hold a revision
+      // issued during the turn, and reusing it would let that edit hit this source.
+      scriptEditorRevision: state.scriptEditorRevision + 1,
       scriptEditorDirty: true,
       scriptAppliedOpIds: new Set(),
       scriptAssistantTurnSnapshot: null,

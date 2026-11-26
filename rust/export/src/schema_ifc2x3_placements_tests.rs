@@ -82,3 +82,40 @@ fn a_section_that_is_not_utf8_is_adapted_byte_for_byte() {
     assert!(out.windows(5).any(|w| w == b"Caf\xE9'"), "{:?}", String::from_utf8_lossy(&out));
     assert!(out.ends_with(b"#3=IFCBUILDING('b',$,$,$,$,#4,$,$,.ELEMENT.,$,$,$);\n#4=IFCLOCALPLACEMENT($,$);\n"), "{:?}", String::from_utf8_lossy(&out));
 }
+
+#[test]
+fn typed_property_finish_runs_on_a_raw_latin1_held_body_10797() {
+    let mut checks = crate::schema_enum::ConversionChecks::new(Default::default());
+    checks.typed_properties.enabled = true;
+    let converted = crate::schema_convert::convert_step_line(
+        "#2=IFCGENERALMATERIALPROPERTIES(#1,$,$,42.);", "IFC2X3", "IFC4", 2,
+        &mut crate::schema_ifc2x3_slots::Ifc2x3SlotFill::new(None), Some(&mut checks),
+    ).unwrap();
+    let mut output = Vec::new();
+    let mut body = Body::for_conversion(&mut output, false, true, None);
+    body.write_all(b"#1=IFCMATERIAL('B\xe9ton',$,$);\n").unwrap();
+    writeln!(body, "{converted}").unwrap();
+    let added = checks.finish(body, None, crate::step_ids::IdAllocator::after(2)).unwrap();
+    assert_eq!(added, 1);
+    let original = b"#1=IFCMATERIAL('B\xe9ton',$,$);\n";
+    assert!(output.starts_with(original), "{output:?}");
+    let text = std::str::from_utf8(&output[original.len()..]).unwrap();
+    assert!(text.contains("#2=IFCMATERIALPROPERTIES('Pset_MaterialCommon',$,(#3),#1);"), "{text}");
+    assert!(text.contains("#3=IFCPROPERTYSINGLEVALUE('MassDensity',$,IFCMASSDENSITYMEASURE(42.),$);"), "{text}");
+}
+
+#[test]
+fn wraps_direct_styles_for_the_ifc2x3_target_10879() {
+    let input = include_bytes!("../tests/fixtures/schema_styled_item_downgrade.ifc");
+    let options = crate::StepOptions { schema: Some("IFC2X3".to_owned()), ..Default::default() };
+    let step = crate::export_step(input, &options).unwrap();
+    let (log, _) = crate::export_step_with_log(input, &options, &crate::MutationLog::default()).unwrap();
+    let (merged, stats) = crate::export_merged_models(&[crate::MergedModel::new(input)], &crate::MergedOptions { schema: options.schema.clone(), ..Default::default() });
+    assert_eq!(stats.written, merged.lines().filter(|line| line.starts_with('#')).count());
+    for output in [&step, &log, &merged] {
+        assert!(output.contains("#2=IFCSTYLEDITEM(#1,(#6),'Styled point');"), "{output}");
+        assert!(output.contains("#6=IFCPRESENTATIONSTYLEASSIGNMENT((/* style */ #3 /* member */));"), "{output}");
+        let second = crate::export_step(output.as_bytes(), &options).unwrap();
+        assert_eq!(second.matches("=IFCPRESENTATIONSTYLEASSIGNMENT(").count(), 1);
+    }
+}

@@ -176,6 +176,17 @@ impl TypeGeometryPlan {
         ids.sort_unstable();
         ids
     }
+
+    /// The model-wide `IfcMappedItem` count of each source
+    /// [`Self::browser_instance_sources`] lists, in the same (ascending id)
+    /// order, so the browser's global instance plan applies its gate once per
+    /// model instead of once per batch.
+    pub fn browser_instance_counts(&self) -> Vec<u32> {
+        self.browser_instance_sources()
+            .iter()
+            .map(|id| self.mapped_item_plan.get(id).map_or(0, |(count, _)| *count))
+            .collect()
+    }
 }
 
 /// #957: type-product geometry (IfcXxxType + its RepresentationMaps) and the

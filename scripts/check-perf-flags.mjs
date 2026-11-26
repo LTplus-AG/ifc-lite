@@ -37,6 +37,7 @@ export const ALLOWED_READERS = new Set([
  */
 export const PUBLISHED_GLOBALS = new Set([
   '__IFC_LITE_LOAD_TRACE__', // load-trace span API, apps/viewer/src/lib/perf/loadTraceEnabled.ts (#6956)
+  '__IFC_LITE_OOC_STATS__', // out-of-core range-read totals of the last load, packages/geometry/src/geometry-parallel-sparse.ts
 ]);
 // Production sources only: the viewer and every package's src/ (other apps
 // and package tooling never read these flags).

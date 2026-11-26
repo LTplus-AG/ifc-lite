@@ -732,10 +732,10 @@ impl Default for MeshCollection {
     }
 }
 
-/// The per-entity geometry-fingerprint arrays and their push API. A CHILD
-/// module so it can touch this module's private `MeshCollection` fields.
-#[path = "mesh_fingerprint.rs"]
-mod fingerprint;
+/// Child modules, so they can touch this module's private fields: the per-entity
+/// geometry-fingerprint arrays with their push API, and the compact GPU-record encoder.
+#[path = "mesh_fingerprint.rs"] mod fingerprint;
+#[path = "mesh_compact.rs"] mod compact;
 pub use fingerprint::GeometryFingerprint;
 
 #[cfg(test)]

@@ -1,0 +1,15 @@
+diff --git a/apps/viewer/src/lib/section-drawing-settled.ts b/apps/viewer/src/lib/section-drawing-settled.ts
+--- a/apps/viewer/src/lib/section-drawing-settled.ts
++++ b/apps/viewer/src/lib/section-drawing-settled.ts
+@@ -49,9 +49,9 @@
+ export function isSectionDrawingSettled(state: SectionDrawingState, generationPending = isDrawingGenerationPending()): boolean {
+   if (!isDrawingPanelShown(state) && !capWanted(state)) return true;
+   if (isGeometryHeld(state)) return true;
+-  if (state.drawing2DStatus === 'generating' && generationPending) return false;
++  if (generationPending || state.drawing2DStatus === 'generating') return false;
+   if (state.drawing2DStatus !== 'ready' || !state.drawing2D) return true;
+   // A drawing published without its plane is the live plane's (`drawnSectionPlane`).
+   if (state.drawing2DPlane && planeKey(state.drawing2DPlane) !== planeKey(state.sectionPlane)) return false;
+-  return !capWanted(state) || capApplied !== undefined;
++  return !capWanted(state) || capApplied === state.drawing2D;
+ }

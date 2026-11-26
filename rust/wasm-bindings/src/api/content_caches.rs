@@ -72,6 +72,7 @@ content_slots! {
     cached_instantiated_type_ids: Arc<rustc_hash::FxHashSet<u32>>,
     cached_type_geometry_plan: Arc<ifc_lite_processing::discovery::TypeGeometryPlan>,
     cached_mapped_instance_plan: ifc_lite_geometry::MappedInstancePlan,
+    cached_global_plan: super::gpu_meshes::global_plan::SharedGlobalPlan,
     cached_texture_index: Arc<rustc_hash::FxHashMap<u32, ifc_lite_geometry::ResolvedTextureMap>>,
     cached_indexed_colour_maps: Arc<IndexedColourCache>,
     cached_plane_angle_to_radians: f64,
@@ -91,6 +92,11 @@ pub(super) struct ContentState {
         Option<rustc_hash::FxHashMap<u32, ifc_lite_processing::style::SpecularMaterial>>,
     >,
     pub(super) production_model: ifc_lite_processing::element::ProductionModel,
+    /// Out-of-core spike: the sparse arena a worker meshes from instead of
+    /// `cached_source_bytes`. An input tier, like the source bytes.
+    pub(super) sparse: std::sync::Mutex<Option<super::gpu_meshes::SparseSession>>,
+    /// Out-of-core spike: the serial pre-pass also emits `sparse-facts`.
+    pub(super) emit_sparse_facts: std::sync::atomic::AtomicBool,
 }
 
 impl std::ops::Deref for ContentState {

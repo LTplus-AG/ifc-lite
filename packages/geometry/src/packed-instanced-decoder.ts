@@ -141,7 +141,15 @@ export interface DecodedInstancedShard {
    *  so a shard built by hand before it existed still type-checks; the decoder
    *  always sets it. */
   carriesFinishes?: boolean;
+  /** Per-template model-wide key from the `IFNL` trailer a global instance
+   *  plan appends (u64 as `"hi:lo"`, `''` = unkeyed); undefined when the shard
+   *  has no trailer. Records of one model sharing a key are one template: a
+   *  consumer may draw them as one (the renderer's keyed slots). */
+  templateKeys?: string[];
 }
+
+/** `"IFNL"` little-endian: the template-key trailer magic (u64 keys). */
+export const INSTANCED_KEY_TRAILER_MAGIC = 0x4946_4e4c;
 
 /** Whether a payload's leading magic marks it as an instanced ("IFNS") shard. */
 export function isInstancedShard(payload: unknown): boolean {
@@ -309,5 +317,19 @@ export function decodeInstancedShard(payload: unknown): DecodedInstancedShard {
     });
   }
 
-  return { templates, instances, carriesItemIds, carriesFinishes };
+  // Optional key trailer after the pools; readers that predate it stop above.
+  let templateKeys: string[] | undefined;
+  const trailerBytes = 8 + templateCount * 8;
+  if (buffer.byteLength >= expectedBytes + trailerBytes
+    && view.getUint32(expectedBytes, true) === INSTANCED_KEY_TRAILER_MAGIC
+    && view.getUint32(expectedBytes + 4, true) === templateCount) {
+    templateKeys = new Array<string>(templateCount);
+    for (let t = 0; t < templateCount; t += 1) {
+      const hi = view.getUint32(expectedBytes + 8 + t * 8, true);
+      const lo = view.getUint32(expectedBytes + 12 + t * 8, true);
+      templateKeys[t] = hi === 0 && lo === 0 ? '' : `${hi}:${lo}`;
+    }
+  }
+
+  return { templates, instances, carriesItemIds, carriesFinishes, ...(templateKeys ? { templateKeys } : {}) };
 }

@@ -93,6 +93,29 @@ fn parameter_trimmed_gradient_directrix_starts_and_ends_at_the_parameters() {
     assert!(points.windows(2).all(|pair| pair[1].x > pair[0].x));
 }
 
+/// A length bound is measured along the 3D curve. On the vertical end the
+/// whole arc of 5π m reaches station 10 at 110 m, and an end 6 cm of arc
+/// short of it lies 0.006 rad before vertical. The last metre of station is
+/// 4.51 m of arc, but a Simpson estimate counted it as about 375 m, and the
+/// sweep stopped near station 9 (PR #9969 review). The top of the mesh is
+/// the end ring's: its centre height plus the radius times cos(angle).
+#[test]
+fn length_bounds_up_to_the_vertical_end_reach_their_place_on_the_arc() {
+    let (radius, section) = (10.0_f64, 0.05_f64);
+    for arc in [5.0 * std::f64::consts::PI, 5.0 * std::f64::consts::PI - 0.06] {
+        let mesh = element_mesh(&format!(
+            "{VERTICAL_END}
+            #25=IFCCIRCLEPROFILEDEF(.AREA.,$,$,{section:?});
+            #26=IFCDIRECTION((0.,0.,1.));
+            #30=IFCFIXEDREFERENCESWEPTAREASOLID(#25,$,#20,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE({arc:?}),#26);"
+        ));
+        let angle = arc / radius;
+        let expected = 100.0 + radius * (1.0 - angle.cos()) + section * angle.cos();
+        let top = mesh.positions.chunks_exact(3).map(|p| p[2] as f64).fold(f64::MIN, f64::max);
+        assert!((top - expected).abs() < 1e-4, "arc {arc}: top at {top}, expected {expected}");
+    }
+}
+
 /// The parameter of a 2-point IfcPolyline BaseCurve is 0..1 over its 1000 m,
 /// not distance. That mapping is not read, so parameter bounds on it are
 /// refused rather than cut at 0.3..0.6 m. Unbounded, the curve still follows

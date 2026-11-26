@@ -101,6 +101,14 @@ describe('headless plans draw door and window symbols (#10932)', () => {
     }
   });
 
+  it('draws a door swing at a cut between the leaf and transom (#10932)', async () => {
+    const leaf = box(20, [1, 0, -0.1], [1.9, 1, 0], { ifcType: 'IfcDoor' });
+    const transom = box(20, [1, 1.5, -0.1], [1.9, 2, 0], { ifcType: 'IfcDoor' });
+    const drawing = await generateFloorPlan([host, leaf, transom], 1.2, options);
+    expect(symbolsOf(drawing, 'door').map(symbol => symbol.entityId)).toEqual([20]);
+    expect(drawing.lines.some(line => line.entityId === 20)).toBe(false);
+  });
+
   it('draws opening symbols on the storey-relative cut in the render frame (#10932)', async () => {
     const meshes = [...door(20, [1, 5, 0]), ...door(21, [1, 0, 0])];
     const drawing = await generateFloorPlan(meshes, {

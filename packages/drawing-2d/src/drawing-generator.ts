@@ -242,8 +242,9 @@ export function createSectionConfig(
 /**
  * Quick helper to generate a floor plan. `elevation` is the render-frame Y of
  * the cut, or a {@link StoreyCut} height above a storey floor, which is moved
- * into that frame with {@link storeyCutElevation}. Doors and windows crossing
- * the cut are drawn as symbols when `openingSymbols` is true.
+ * into that frame with {@link storeyCutElevation}. With `openingSymbols`, a
+ * door swing uses the element's total height and a window frame requires a
+ * mesh piece that spans the cut.
  */
 export async function generateFloorPlan(
   meshes: MeshData[],

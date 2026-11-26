@@ -177,7 +177,7 @@ console.log(`${drawing.stats.cutLineCount} cut lines`);
 console.log(`${drawing.stats.projectionLineCount} projection lines`);
 ```
 
-With `openingSymbols: true`, doors and windows that cross the cut come back as plan symbols in `drawing.planSymbols` (a swing per `IfcDoor`, a frame per `IfcWindow`) instead of cut bodies, and `exportToSVG` and `exportToDXF` draw them. Pass `openings`, keyed by `makeEntityKey(modelIndex, expressId)`, with each element's `operationType`, `partitioningType`, `width` (`OverallWidth`) and host `wallThickness`; without them a door swings `SINGLE_SWING_LEFT` at its mesh width. A door whose operation has no plan symbol keeps its cut body. By default, the floor-plan generator keeps the cut bodies.
+With `openingSymbols: true`, `drawing.planSymbols` contains a swing when the cut lies within the door element's overall height, including a gap between the leaf and transom. A window frame requires an individual window mesh piece to span the cut. A symbol replaces that element's body linework, and `exportToSVG` and `exportToDXF` draw the symbol. Pass `openings`, keyed by `makeEntityKey(modelIndex, expressId)`, with each element's `operationType`, `partitioningType`, `width` (`OverallWidth`) and host `wallThickness`; without them a door swings `SINGLE_SWING_LEFT` at its mesh width. A door whose operation has no plan symbol keeps its cut body. By default, the floor-plan generator keeps the cut bodies.
 
 ### Generating a Section
 

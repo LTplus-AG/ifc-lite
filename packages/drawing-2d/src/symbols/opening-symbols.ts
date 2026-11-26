@@ -44,7 +44,7 @@ export interface PlanOpeningInfo {
 }
 
 export interface PlanSymbolOptions {
-  /** Draw doors and windows crossing the cut as symbols instead of cutting their bodies. Default false. */
+  /** Replace door and window linework with plan symbols. Default false. */
   openingSymbols?: boolean;
   /** Operation type, width and host thickness per door/window, keyed by `makeEntityKey(modelIndex, expressId)`. */
   openings?: ReadonlyMap<EntityKey, PlanOpeningInfo>;
@@ -88,7 +88,7 @@ interface Footprint extends PlanAxes {
 /** Below this sine between the projected placement axes the element is not drawn as a symbol. */
 const MIN_AXES_SINE = 1e-3;
 
-/** Plan symbols for every door and window of `meshes` crossing the plan cut. Cardinal plan cuts only. */
+/** Plan symbols at a cardinal cut, using the door height or the window pieces. */
 export function buildOpeningSymbols(
   meshes: readonly MeshData[],
   plane: SectionPlaneConfig,
@@ -148,11 +148,9 @@ export function buildOpeningSymbols(
 }
 
 /**
- * A plan with doors and windows drawn as symbols (#10932): the bodies of those
- * that cross the cut are left out of `generate`, and their swings and frames
- * come back as `planSymbols`, inside the drawing bounds. Doors and windows off
- * the cut keep their projection linework, and doors whose operation has no
- * symbol keep their cut body.
+ * Replace each symbolized opening's linework and include its symbol in the
+ * drawing bounds. A doorway uses the extent of the whole element, including
+ * a gap between its pieces. A window requires a piece spanning the cut.
  */
 export async function generateWithOpeningSymbols(
   meshes: MeshData[],

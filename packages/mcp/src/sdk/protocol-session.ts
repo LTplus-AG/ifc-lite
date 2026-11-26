@@ -79,19 +79,22 @@ export interface ProtocolDomain {
 /** Oldest last: the SDK offers the first entry when a client asks for a version we do not speak. */
 const NEGOTIABLE_VERSIONS = [PROTOCOL_VERSION, ...[...SUPPORTED_PROTOCOL_VERSIONS].filter((v) => v !== PROTOCOL_VERSION).sort().reverse()];
 
-/** How far a request got into our own handler (see `guard`). */
-type HandlerReach = 'entered' | 'threw';
-const reached = new WeakMap<ServerContext, HandlerReach>();
+/** An error our own handler raised (see `guard`): answered with its code as is. */
+class HandlerError extends ProtocolError {}
+/** Requests whose own handler started; an SDK error on one of these came after it. */
+const entered = new WeakSet<ServerContext>();
 
 /**
  * The SDK `Server` with two changes, applied to every request handler:
  * - requests other than initialize/ping before the handshake answer -32600,
  *   ahead of the SDK's param validation (the SDK itself does not gate them);
- * - errors are labelled by where they arose. Before our handler ran, a bare
- *   `Error` is the SDK's param validation: -32602. Our handler's own errors
- *   keep their code. After our handler returned, an SDK error (its result
- *   validation) is a server fault: -32603, or an INTERNAL_ERROR tool result
- *   for `tools/call` so the client keeps the structured envelope.
+ * - errors are labelled by where they arose. Our handler's own errors
+ *   (`HandlerError`) keep their code. Before our handler started, the error
+ *   is the SDK's param validation: -32602 (a bare `Error` from the SDK is
+ *   relabelled; an `SdkError` is a fault, -32603). After it, an SDK error is
+ *   its result validation refusing what we returned, a server fault: -32603,
+ *   or an INTERNAL_ERROR tool result for `tools/call` so the client keeps the
+ *   structured envelope.
  */
 class IfcProtocolServer extends Server {
   private answeredInitialize = false;
@@ -114,9 +117,8 @@ class IfcProtocolServer extends Server {
       try {
         result = await inner(request, ctx);
       } catch (err) {
-        const reach = reached.get(ctx);
-        if (reach === 'threw' && err instanceof ProtocolError) throw err;
-        if (reach === undefined && !(err instanceof SdkError)) {
+        if (err instanceof HandlerError) throw err;
+        if (!entered.has(ctx) && !(err instanceof SdkError)) {
           throw err instanceof ProtocolError ? err : new ProtocolError(ProtocolErrorCode.InvalidParams, describeThrown(err));
         }
         const message = describeThrown(err);
@@ -239,16 +241,15 @@ export class ProtocolSession {
   // each result against the spec schema at runtime anyway.
   private guard<P>(method: string, handler: (request: P, ctx: ServerContext) => unknown): (request: P, ctx: ServerContext) => Promise<unknown> {
     return async (request, ctx) => {
-      reached.set(ctx, 'entered');
+      entered.add(ctx);
       try {
         return await handler(request, ctx);
       } catch (err) {
-        reached.set(ctx, 'threw');
-        if (err instanceof ProtocolError) throw err;
-        if (err instanceof RequestError) throw new ProtocolError(err.code, err.message, err.data);
+        if (err instanceof ProtocolError) throw new HandlerError(err.code, err.message, err.data);
+        if (err instanceof RequestError) throw new HandlerError(err.code, err.message, err.data);
         const message = describeThrown(err);
         this.domain.logger.log('error', `Request ${method} failed`, { error: message });
-        throw new ProtocolError(ProtocolErrorCode.InternalError, message);
+        throw new HandlerError(ProtocolErrorCode.InternalError, message);
       }
     };
   }

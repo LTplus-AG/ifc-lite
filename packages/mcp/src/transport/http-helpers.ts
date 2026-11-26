@@ -107,11 +107,13 @@ export interface ReclaimableSession {
   /** Requests currently being handled. */
   inFlight: number;
   lastSeen: number;
+  /** Tool handlers still running; a cancelled call is answered before its handler stops. */
+  server?: { runningCalls(): number };
 }
 
 /**
  * Pick up to `need` sessions that are safe to end, oldest `lastSeen` first.
- * Safe means all four hold: no open SSE stream, no request in flight, inactive
+ * Safe means all four hold: no open SSE stream, no request or tool handler in flight, inactive
  * for at least `idleMs`, and no unpublished layer drafts. Ending a session
  * destroys its drafts and they cannot be recovered, so one that holds any is
  * never a candidate. Single O(n) scan; allocates only for sessions that qualify.
@@ -127,7 +129,7 @@ export function pickReclaimable(
   const safe: Array<{ id: string; lastSeen: number }> = [];
   for (const [id, s] of sessions) {
     if (s.sseClients.size > 0) continue;
-    if (s.inFlight > 0) continue;
+    if (s.inFlight > 0 || (s.server?.runningCalls() ?? 0) > 0) continue;
     if (now - s.lastSeen < idleMs) continue;
     if (draftCount(id) > 0) continue;
     safe.push({ id, lastSeen: s.lastSeen });

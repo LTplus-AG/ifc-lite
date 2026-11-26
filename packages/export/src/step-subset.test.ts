@@ -91,7 +91,7 @@ describe('resolveToId', () => {
  */
 function expectNoDanglingRefs(out: string): void {
   // Strip literals and comments independently of the production tokenizer.
-  const uncommented = out.replace(/'(?:[^']|'')*'|\/\*[\s\S]*?\*\//g, '');
+  const uncommented = out.replace(/'(?:\\S\\[^\r\n]|\\\\|''|[^'])*'|\/\*[\s\S]*?\*\//g, '');
   const data = uncommented.slice(uncommented.indexOf('DATA')).split('ENDSEC;')[0];
   const defined = new Set(Array.from(data.matchAll(/^\s*#\s*(\d+)\s*=/gm), (match) => Number(match[1])));
   let checked = 0;
@@ -113,6 +113,18 @@ describe('expectNoDanglingRefs is not vacuous', () => {
   it('fails on a DATA section with no instance lines', () => {
     const empty = 'ISO-10303-21;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n';
     expect(() => expectNoDanglingRefs(empty)).toThrow();
+  });
+
+  it('detects a dangling reference after a PAGE directive with an apostrophe operand', () => {
+    const text = [
+      'DATA;',
+      String.raw`#1=IFCMATERIAL('Para \S\' 5',$,$);`,
+      '#2=IFCLOCALPLACEMENT($,#999);',
+      "#3=IFCMATERIAL('M',$,$);",
+      'ENDSEC;',
+    ].join('\n');
+    expect(() => expectNoDanglingRefs(text)).toThrow();
+    expectNoDanglingRefs(text.replace('#999', '#3'));
   });
 });
 
@@ -283,9 +295,7 @@ describe('buildSubset: one containment relation per storey (the real exporter sh
     for (const unkept of ['#71', '#73']) expect(rewritten.get(80)).not.toContain(unkept);
     // Everything OUTSIDE the rewritten set survives verbatim: the GlobalId, the
     // OwnerHistory, the Name, and RelatingStructure (the storey).
-    expect(rewritten.get(80)).toContain("'RCON000000000000000001'");
-    expect(rewritten.get(80)).toContain("'L01 contents'");
-    expect(rewritten.get(80)?.endsWith(',#41);')).toBe(true);
+    expect(rewritten.get(80)).toBe("#80= IFCRELCONTAINEDINSPATIALSTRUCTURE('RCON000000000000000001',#5,'L01 contents',$,(#70,#72),#41);");
     expect(keep.has(71)).toBe(false);
     expect(keep.has(73)).toBe(false);
   });

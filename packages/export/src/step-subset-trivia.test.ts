@@ -173,11 +173,14 @@ describe('storey members off the placement chain', () => {
       "#41=IFCWALL('0000000000000000000002',$,'Part',$,$,$,$,$,$);",
       "#42=IFCWALL('0000000000000000000003',$,'Unrelated',$,$,$,$,$,$);",
       "#50=IFCRELAGGREGATES('0000000000000000000004',$,$,$,#40,(#41));",
+      "#60=IFCBUILDINGSTOREY('0000000000000000000005',$,'Level',$,$,$,$,$,.ELEMENT.,0.);",
+      "#61=IFCRELCONTAINEDINSPATIALSTRUCTURE('0000000000000000000006',$,$,$,(#40,#42),#60);",
       'ENDSEC;END-ISO-10303-21;',
     ].join('\n');
     const parsed = parseStep(text);
     const result = buildSubset(new Set([40]), parsed);
-    expect([...result.keep].sort((a, b) => a - b)).toEqual([40, 41, 50]);
+    expect([...result.keep].sort((a, b) => a - b)).toEqual([40, 41, 50, 60, 61]);
+    expect(result.rewritten.get(61)).toContain('(#40),#60');
   });
 
   it('does not swallow the next record when a semicolon is missing (#11583)', () => {

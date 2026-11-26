@@ -9,6 +9,7 @@
  * out what models are loaded and what's in them.
  */
 
+import { withSourceWriteLock } from '../source-write-lock.js';
 import {
   extractGeoreferencingOnDemand,
   extractLengthUnitScale,
@@ -134,29 +135,35 @@ export const modelLoad: Tool = {
     const modelId = input.model_id as string | undefined;
     let label = String(source);
     try {
-      let loaded;
-      if (typeof source === 'string' && source.startsWith('oci://')) {
-        const { registry } = parseModelReference(source);
-        const allowed = ctx.config.ociHosts ?? process.env.IFC_LITE_MCP_OCI_HOSTS?.split(',') ?? [];
-        if (!allowed.some((host) => host.trim().toLowerCase() === registry)) {
-          throw new ToolExecutionError({ code: ToolErrorCode.PERMISSION_DENIED, message: `OCI registry '${registry}' is outside the configured OCI hosts.` });
+      const loaded = await withSourceWriteLock(ctx.registry, async () => {
+        if (ctx.signal.aborted) {
+          throw new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message: 'Model loading cancelled.' });
         }
-        const { bytes, name } = await openOciModel(source);
-        loaded = await loadIfcModelFromBytes(bytes, name, modelId, source);
-      } else {
-        // Canonicalize and bounds-check local paths before touching the model.
-        label = await resolveSafePath(source, ctx, 'read');
-        loaded = await loadIfcModel(label, { modelId, allowedPaths: [label] });
-      }
-      const scope = ctx.currentScope?.() ?? ctx.scope;
-      if (ctx.signal.aborted || !scopeAllows(scope, 'mutate') || !modelAllowed(scope, loaded.id)) {
-        loaded.backend.dispose();
-        throw new ToolExecutionError({
-          code: ctx.signal.aborted ? ToolErrorCode.CANCELLED : ToolErrorCode.PERMISSION_DENIED,
-          message: ctx.signal.aborted ? 'Model loading cancelled.' : 'Access was withdrawn before the model was registered.',
-        });
-      }
-      ctx.registry.add(loaded);
+        let loaded;
+        if (typeof source === 'string' && source.startsWith('oci://')) {
+          const { registry } = parseModelReference(source);
+          const allowed = ctx.config.ociHosts ?? process.env.IFC_LITE_MCP_OCI_HOSTS?.split(',') ?? [];
+          if (!allowed.some((host) => host.trim().toLowerCase() === registry)) {
+            throw new ToolExecutionError({ code: ToolErrorCode.PERMISSION_DENIED, message: `OCI registry '${registry}' is outside the configured OCI hosts.` });
+          }
+          const { bytes, name } = await openOciModel(source);
+          loaded = await loadIfcModelFromBytes(bytes, name, modelId, source);
+        } else {
+          // Canonicalize and bounds-check local paths before touching the model.
+          label = await resolveSafePath(source, ctx, 'read');
+          loaded = await loadIfcModel(label, { modelId, allowedPaths: [label] });
+        }
+        const scope = ctx.currentScope?.() ?? ctx.scope;
+        if (ctx.signal.aborted || !scopeAllows(scope, 'mutate') || !modelAllowed(scope, loaded.id)) {
+          loaded.backend.dispose();
+          throw new ToolExecutionError({
+            code: ctx.signal.aborted ? ToolErrorCode.CANCELLED : ToolErrorCode.PERMISSION_DENIED,
+            message: ctx.signal.aborted ? 'Model loading cancelled.' : 'Access was withdrawn before the model was registered.',
+          });
+        }
+        ctx.registry.add(loaded);
+        return loaded;
+      });
       ctx.log.log('info', 'model_load', { id: loaded.id, file: label, entities: loaded.store.entityCount });
       // A model the scan read short is reported as such, in the text the
       // agent reads and in the structured result (#7610).

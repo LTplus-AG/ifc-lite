@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 /**
- * Spatial-structure relations for an extracted subset: which ones join it, and
+ * Spatial and nesting relations for an extracted subset: which ones join it, and
  * what text each one emits.
  *
  * `IfcRelContainedInSpatialStructure` is one-to-MANY, and a real exporter
@@ -143,8 +143,16 @@ export const STRUCTURE_RELATIONS: Record<string, [number, number]> = {
   IFCRELREFERENCEDINSPATIALSTRUCTURE: [5, 4],
 };
 
+// Nesting has the same slots as aggregation. Its related objects are ordered,
+// and the member filter below preserves their original order. Keep this row
+// out of STRUCTURE_RELATIONS so nesting does not add spatial ancestors.
+const SUBSET_RELATIONS: Record<string, [number, number]> = {
+  ...STRUCTURE_RELATIONS,
+  IFCRELNESTS: STRUCTURE_RELATIONS.IFCRELAGGREGATES,
+};
+
 /**
- * All three are `GlobalId, OwnerHistory, Name, Description` plus the relating/related
+ * These relations are `GlobalId, OwnerHistory, Name, Description` plus the relating/related
  * pair: exactly 6 attributes in every schema that defines them. A record that does not
  * split into 6 was mis-scanned (or is not the entity the type name claims), so it falls
  * back to keep-whole-or-drop-whole rather than having a slot index written into
@@ -154,13 +162,12 @@ export const STRUCTURE_RELATIONS: Record<string, [number, number]> = {
  * therefore cannot simply be added as a row above: it would fail this check on every
  * record and fall silently back to keep-whole-or-drop-whole, which is the bug this
  * module exists to fix. Such a type needs the count moved into the table value first,
- * or the whole table derived from the schema registry, which returns 7 for that entity
- * and would make row four safe rather than forbidden. Filed as #4123.
+ * or the table derived from the schema registry, which returns 7 for that entity. Filed as #4123.
  */
 export const STRUCTURE_RELATION_ATTRS = 6;
 
 /**
- * Decide every spatial-structure relation against a kept-id set.
+ * Decide every spatial or nesting relation against a kept-id set.
  *
  * Pure in both arguments: adding relation ids to `keep` afterwards cannot
  * change any verdict, because a relation of these types references products,
@@ -174,7 +181,7 @@ export function planSpatialRelations(
   const rewritten = new Map<number, string>();
   const blockedOn: number[][] = [];
   for (const inst of instances) {
-    const slots = STRUCTURE_RELATIONS[inst.type];
+    const slots = SUBSET_RELATIONS[inst.type];
     if (slots === undefined) continue;
     const line = relationLine(inst, slots, keep, blockedOn);
     if (line === null) continue;
@@ -187,7 +194,7 @@ export function planSpatialRelations(
 /**
  * The record text this relation contributes to the subset, or null to drop it.
  * Returns `inst.full` unchanged when nothing was filtered out. Appends ONE entry
- * to `blocked` when the ONLY thing standing in the way is unkept non-SET
+ * to `blocked` when the ONLY thing standing in the way is unkept non-member
  * references; see {@link SpatialRelationPlan.blockedOn}.
  */
 function relationLine(
@@ -202,7 +209,7 @@ function relationLine(
   const args = splitTopLevelArgs(inst.body);
   if (args === null || args.length !== STRUCTURE_RELATION_ATTRS) return keepWhole(inst, keep);
 
-  // Comments around the SET and its references are trivia.
+  // Comments around the member list and its references are trivia.
   const setText = withoutComments(args[relatedIdx]);
   if (!setText.startsWith('(') || !setText.endsWith(')')) return keepWhole(inst, keep);
   const members = splitTopLevelArgs(setText.slice(1, -1));
@@ -210,14 +217,14 @@ function relationLine(
   const memberIds: number[] = [];
   for (const member of members) {
     const ref = slotRef(member);
-    // A SET member that is not a plain object reference is not something this
+    // A member that is not a plain object reference is not something this
     // rewrite understands; fall back rather than guess at it.
     if (ref === null) return keepWhole(inst, keep);
     memberIds.push(ref);
   }
 
   // The relating parent must be a real, kept reference. The `every reference
-  // outside the SET is kept` loop below would pass VACUOUSLY on a `$` here,
+  // outside the member list is kept` loop below would pass VACUOUSLY on a `$` here,
   // emitting a containment with no parent.
   const relating = slotRef(args[relatingIdx]);
   if (relating === null || !keep.has(relating)) return null;
@@ -225,7 +232,7 @@ function relationLine(
   const kept = memberIds.filter((id) => keep.has(id));
   if (kept.length === 0) return null;
 
-  // Every other non-set reference (OwnerHistory) must be kept or the emitted
+  // Every other reference (OwnerHistory) must be kept or the emitted
   // record dangles. Ordered AFTER the intersection so `blocked` names only the
   // references of a relation that would OTHERWISE survive; both checks drop the
   // relation, so which one runs first changes no verdict.

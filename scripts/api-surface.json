@@ -9715,6 +9715,7 @@
     "createSyntheticDataStore: function",
     "declareLengthUnitScale: function",
     "detectFormat: function",
+    "detectSchemaVersion: function",
     "deterministicGlobalId: function",
     "effectiveMetadataRecord: function",
     "effectiveRelationshipEdges: function",

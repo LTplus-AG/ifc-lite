@@ -100,6 +100,7 @@ async function runAnonymize(m: LoadedModel, input: Record<string, unknown>, ctx:
   ) as RelatedEntityOptions;
   const related = collectRelatedEntities(m.store, seeds, {
     ...followed,
+    includeSpatialAggregates: !off.has('IfcRelAggregates'),
     IfcRelConnectsPathElementsDepth: (input.connect_depth as number | undefined) ?? 0,
     // Keeping psets needs the walk to reach them too, as in the CLI.
     IfcRelDefinesByProperties: keepPsets,

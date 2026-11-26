@@ -20,6 +20,7 @@
  * the `OutgoingMessageSink` contract.
  */
 
+import { SERVER_INSTRUCTIONS } from './server-instructions.js';
 import {
   CallToolParams,
   CallToolResult,
@@ -528,15 +529,3 @@ function toToolDefinition(tool: Omit<ToolDefinition, 'scope'> & { scope?: string
     ...(tool._meta !== undefined ? { _meta: tool._meta } : {}),
   };
 }
-
-const SERVER_INSTRUCTIONS = `
-ifc-lite-mcp exposes a federated set of IFC/BIM models as MCP tools.
-
-Conventions:
-  • All tools accept an optional model_id; when only one model is loaded it can be omitted.
-  • Errors surface as tool results with isError=true and structuredContent.code (e.g. ENTITY_NOT_FOUND).
-  • Long operations stream progress via notifications/progress when a progressToken is supplied.
-  • Mutations are queued; call export_ifc or model_save to persist.
-
-See the resource ifc-lite://server/manifest for the full tool catalog.
-`.trim();

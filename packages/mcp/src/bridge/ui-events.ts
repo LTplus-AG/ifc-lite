@@ -3,11 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * User events from surfaces the agent pushed with `viewer_show_ui`: a click
+ * User events from surfaces the agent pushed with `tab_show_ui`: a click
  * on a follow-up button, or another A2UI event the surface raised. The tab
  * sends them as `ui-event` frames once the bridge advertised
  * {@link BRIDGE_FEATURE_UI_EVENTS}; the agent reads them with
- * `viewer_ui_events`, or receives them as a channel message when the client
+ * `tab_ui_events`, or receives them as a channel message when the client
  * listens for one.
  *
  * Browser-safe: the tab imports the parser through `bridge-protocol`.
@@ -17,7 +17,8 @@ import { checkJsonBounds, isRecord, utf8Length } from './json-bounds.js';
 
 /** `welcome.features` entry: this bridge accepts `ui-event` frames. */
 export const BRIDGE_FEATURE_UI_EVENTS = 'ui-events';
-export const BRIDGE_UI_EVENTS_TOOL = 'viewer_ui_events';
+/** MCP name of the tool that drains them (a bridge tool, under the tab prefix). */
+export const BRIDGE_UI_EVENTS_TOOL = 'tab_ui_events';
 
 export const UI_EVENT_LIMITS = {
   maxSurfaceIdLength: 128,

@@ -88,7 +88,7 @@ export interface CliOptions {
   openBrowser: boolean;
   insecure: boolean;
   /**
-   * `--bridge`: forward tools to a paired browser tab instead of loading files.
+   * `--bridge`: also serve a paired browser tab's tools (as `tab_*`).
    * Optional so code that builds a `CliOptions` itself keeps compiling;
    * `parseArgs` always sets it.
    */
@@ -167,15 +167,14 @@ export function parseArgs(argv: string[]): CliOptions {
 }
 
 /**
- * Why `--bridge` cannot run with these options, or null. The bridge has no
- * model of its own and speaks stdio only.
+ * Why `--bridge` cannot run with these options, or null. The bridge adds the
+ * paired tab's tools to the stdio server, so files, `--viewer` and the rest
+ * of the headless flags combine with it; HTTP does not (one tab, one client).
  */
 export function bridgeConflict(opts: CliOptions): string | null {
   if (!opts.bridge) return opts.channel ? '--channel needs --bridge: it pushes events from the paired viewer tab.' : null;
   if (opts.bridgeMissingOperand?.length) return `${opts.bridgeMissingOperand.join(', ')} needs a value.`;
-  if (opts.files.length > 0) return `--bridge serves the model open in a browser tab and loads no files; drop ${opts.files.join(', ')}.`;
   if (opts.transport !== 'stdio') return '--bridge speaks MCP over stdio only; drop --transport http.';
-  if (opts.autoViewer) return '--bridge cannot be combined with --viewer or --open: the browser tab is the viewer.';
   if (opts.bridgePort !== undefined && (!Number.isInteger(opts.bridgePort) || opts.bridgePort < 0 || opts.bridgePort > 65535)) {
     return '--bridge-port must be an integer from 0 to 65535 (0 picks a free port).';
   }

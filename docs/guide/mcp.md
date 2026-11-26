@@ -71,8 +71,8 @@ By default the server binds `127.0.0.1`. Binding a non-loopback host requires ei
 | `--viewer` | Auto-open the 3D viewer |
 | `--viewer-port <N>` | Preferred viewer port (0 = auto) |
 | `--open` | Auto-open the viewer **and** open its URL in the browser |
-| `--bridge` | Forward tools to a paired ifc-lite browser tab instead of loading files (see [Bridge to a browser tab](#bridge-to-a-browser-tab)) |
-| `--bridge-port <N>` | Bridge WebSocket port on 127.0.0.1 (default 21517; 0 = auto) |
+| `--bridge` | Also serve a paired ifc-lite browser tab's tools, as `tab_*` (see [Bridge to a browser tab](#bridge-to-a-browser-tab)) |
+| `--bridge-port <N>` | Bridge WebSocket port on 127.0.0.1 (default 21517, falling back to the next free one; an explicit port does not fall back; 0 = auto) |
 | `--bridge-viewer-url <url>` | Base of the pairing link (default `https://ifclite.com`). Its origin replaces the default in the allowlist |
 | `--allow-origin <origin>` | HTTP: let a browser origin read responses. Bridge: an extra origin that may connect (repeatable) |
 
@@ -415,9 +415,9 @@ a list of column paths such as `Name` and `Pset_DoorCommon.FireRating`, and an
 optional grouping field. The other tools accept the same arguments as
 `ids_validate` and `clash_check`. Each tool returns a text summary as well.
 Use `viewer_open` and open its URL to activate the result's viewer controls.
-For the paired main viewer, use `viewer_show_ui` in bridge mode to deliver a
+For the paired main viewer, use `tab_show_ui` in bridge mode to deliver a
 validated surface. When the user clicks a follow-up on it, the click comes back
-to the agent: `viewer_ui_events` returns the queued events (pass `wait_seconds`
+to the agent: `tab_ui_events` returns the queued events (pass `wait_seconds`
 to wait for the next one), and with `--channel` each click is also pushed into a
 Claude Code session as a channel message. See the
 [A2UI architecture guide](../architecture/a2ui.md#mcp-result-surfaces).
@@ -453,7 +453,7 @@ When the viewer is open, every viewer-touching tool drives the live scene, and a
 
 ## Bridge to a browser tab
 
-`ifc-lite-mcp --bridge` lets a local agent work on the model open in an ifc-lite browser tab, including models loaded from a cloud source or carrying unsaved edits. The bridge speaks MCP over stdio to the agent and forwards tool calls over a WebSocket on `127.0.0.1` to one paired tab. It loads no model itself and takes no file arguments. It stops, freeing its port, when stdin ends, closes or errors, and on SIGINT or SIGTERM.
+`ifc-lite-mcp --bridge` lets a local agent also work on the model open in an ifc-lite browser tab, including models loaded from a cloud source or carrying unsaved edits. It adds to the stdio server: headless tools, resources, prompts and file arguments all stay. Once a tab pairs, its tools are listed as `tab_<name>` and forwarded over a WebSocket on `127.0.0.1` to that tab; they are removed when it disconnects. The prefix keeps the tab's tools apart from this server's tools of the same name (`model_audit` runs here, `tab_model_audit` in the tab). No port is bound until the agent first calls `bridge_status`; 21517 is preferred, and when another session holds it the next free port is used and carried in the link. The bridge stops, freeing its port, when stdin ends, closes or errors, and on SIGINT or SIGTERM.
 
 ```bash
 ifc-lite-mcp --bridge              # read-write if the tab allows it
@@ -466,7 +466,7 @@ ifc-lite-mcp --bridge --read-only  # tools the tab labels as mutating stay off w
 - **Permissions.** The tab labels each tool `readOnly` or not, and says whether the user allowed changes. Read-only is the default. While read-only, tools the tab labels mutating are neither listed nor forwarded. The bridge cannot see what a tool does, so the labels are the tab's claim: the tab is the authority and must refuse model-changing calls itself while read-only. There is no tool for writing back to a cloud source.
 - **Tab-supplied data.** Tool names, descriptions and results come from the tab and from model data; the bridge tells the agent they are data, not instructions. Results carry text, structured content and images (PNG, JPEG or WebP; the bytes must match the declared type; at most 2 per result and 3 MiB of base64 each). Descriptors, schemas and results are bounded in size and depth (see `BRIDGE_LIMITS`).
 - **Hostile frames.** Frames are bounded as a whole before any field is read; an unpaired connection may send at most 1.25 MiB; diagnostic strings derived from tab input (errors, log lines, client name) are clipped and stripped of control characters; tool names, descriptions and schemas are bounded by `BRIDGE_LIMITS`; tool results pass through unaltered within the result limits, and the agent is told to treat them as data; frame handlers run under a guard, so a frame cannot crash the process. A local process, or a page on an allowed origin (pages on other origins are refused before a slot is allocated), CAN block pairing for as long as it keeps attacking, by keeping the 4 unpaired slots busy so the real tab gets HTTP 429. It still cannot pair without the code. Allow only origins whose content you trust. The bridge logs "pairing is being blocked: every unpaired slot is busy …", and `bridge_status` reports `pairingPressure` and what to do.
-- **No tab.** Only `bridge_status` is listed, and any other call fails at once with `VIEWER_NOT_CONNECTED`. A tab that closes fails its pending calls the same way.
+- **No tab.** No `tab_*` tool is listed, and a call to one fails at once with `VIEWER_NOT_CONNECTED`. A tab that closes fails its pending calls the same way.
 
 The tab<->bridge frame protocol is transport-neutral and exported, browser-safe, as `@ifc-lite/mcp/bridge-protocol`. Tools are listed with MCP `annotations` (`readOnlyHint`, and `destructiveHint` for tools labelled mutating). In the viewer, open the pairing link in the tab that holds the model (or use **Sources → Local agent → Connect local agent**, or **Connect local agent…** in the command palette, and type the code). The viewer strips the code from the address bar at once and asks for confirmation before it connects; it serves its read tools, and property and attribute edits only when the user allows them (below); palette discovery is also available. Command execution and selection changes require the explicit commands-and-edits grant described below. While paired, the status bar shows *Local agent connected · read-only* with Disconnect and an activity log (tool, model, duration, outcome; no arguments or results). A code works once, so after any drop the tab asks for a fresh link instead of reconnecting. Verified from a public `https` origin in Chromium 156 and Firefox 157: both block `ws://127.0.0.1` until the site may reach apps on this device (permission `loopback-network`). Chrome asks "Access other apps and services on this device" (site setting *Apps on device*); Firefox asks "<site> wants to access other apps and services on this device" (setting *Device apps and services*). Granting the older `local-network` / `local-network-access` permissions does not help. Safari is not verified. The full security model is in the [package README](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/mcp/README.md#bridge-to-a-browser-tab---bridge).
 
@@ -476,7 +476,7 @@ When both peers support result acknowledgements, a prepared operation result is 
 
 ### Driving the main viewer through its command palette
 
-The bridge advertises four viewer-native palette tools in addition to the model tools, plus the native operation tools described below:
+The bridge advertises four viewer-native palette tools in addition to the model tools, plus the native operation tools described below. The names in this and the following sections are the tab's own; over MCP each is listed with the `tab_` prefix (`viewer_commands` is `tab_viewer_commands`, `viewer_screenshot` is `tab_viewer_screenshot`).
 
 - `viewer_commands`: search with `query`, page with `offset` and `limit` (maximum 50), or inspect an exact `command_id`. Results include current availability, a reason when unavailable, toggle state when known, and the no-argument command input schema.
 - `viewer_get_selection`: read model-qualified entity references from the renderer selection.
@@ -553,7 +553,7 @@ A failed native library save carries the library's reason in `details.save`. Sto
     ```
 
     Ask Claude to connect to the viewer; it calls `bridge_status` and gives you
-    a pairing link. Surfaces it shows with `viewer_show_ui` appear over the
+    a pairing link. Surfaces it shows with `tab_show_ui` appear over the
     viewport, and a follow-up you click there comes back to Claude. To have
     clicks arrive in the session on their own, start Claude Code with the
     plugin as a channel (research preview):
@@ -562,7 +562,7 @@ A failed native library save carries the library's reason in `details.save`. Sto
     claude --dangerously-load-development-channels plugin:ifc-lite@ifc-lite
     ```
 
-    Without the flag, Claude reads the clicks with `viewer_ui_events`.
+    Without the flag, Claude reads the clicks with `tab_ui_events`.
 
     To serve a file instead of a viewer tab, register the server with the
     `claude mcp add` command:

@@ -41,7 +41,7 @@ buttons that isolate, colour or fly to a result set.
         +-- ChatPanel / ChatMessage            stream chunks -> StreamedAnswer -> surfaces in the turn
         +-- packages/sandbox  bim.ui.*         scripts present surfaces built from computed data
         +-- packages/mcp                       MCP App (ui:// resource) + tools returning
-                                               application/a2ui+json; viewer_show_ui over the agent bridge
+                                               application/a2ui+json; tab_show_ui over the agent bridge
 ```
 
 The one seam callers learn is `@ifc-lite/a2ui`: catalog id, `IfcQuerySpec`, entity ref
@@ -78,7 +78,7 @@ Renderer functions (A2UI v1.0 functions, `allowedCallers` per `policy.ts`): `sel
    from script results. The sandbox validates the section specs and builds the A2UI messages on
    the host.
 3. **External agents**: MCP tools return `application/a2ui+json` resources (MCP Apps hosts
-   render them through the `ui://ifc-lite/a2ui-surface` app), and `viewer_show_ui` pushes a surface into
+   render them through the `ui://ifc-lite/a2ui-surface` app), and `tab_show_ui` pushes a surface into
    a live viewer tab over the agent bridge.
 
 ## MCP result surfaces
@@ -112,18 +112,18 @@ See the [MCP Apps specification](https://github.com/modelcontextprotocol/ext-app
 and the [A2UI MCP Apps guide](https://a2ui.org/guides/a2ui-in-mcp-apps/).
 
 In bridge mode, call `bridge_status` to pair a main viewer tab, then call
-`viewer_show_ui` with either a v1.0 `messages` array or a builder `spec`
+`tab_show_ui` with either a v1.0 `messages` array or a builder `spec`
 (`surfaceId`, `sections`, and optional `title` and `card`). The bridge validates
 the payload and waits for the paired tab to acknowledge storing it. The tab
 exposes the stored surfaces through `agentSurfaces` for the viewer panel. Tabs advertise support in
-`hello.a2uiSurface`; the bridge lists `viewer_show_ui` only for a tab supporting
+`hello.a2uiSurface`; the bridge lists `tab_show_ui` only for a tab supporting
 that frame.
 
 Clicks travel back. The bridge advertises `ui-events` in `welcome.features`; the
 tab then sends a follow-up click on an agent surface as a `ui-event` frame
 (`surfaceId`, `name`, `prompt`, `context`), bounded to a 4,000-character prompt,
 8 KiB of context and 10 events per second. The agent reads them with
-`viewer_ui_events` (optionally waiting for the next one). With `--channel` the
+`tab_ui_events` (optionally waiting for the next one). With `--channel` the
 bridge also declares the Claude Code `claude/channel` capability and pushes each
 event as a `notifications/claude/channel` message, so a click arrives in a
 running Claude Code session as a turn of its own. Events stay queued either way,

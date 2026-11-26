@@ -42,6 +42,38 @@ export async function listenLoopback(
   return { http, wss, port: (http.address() as AddressInfo).port };
 }
 
+/** How many ports after the preferred one are tried before any free port. */
+export const PORT_FALLBACK_SPAN = 9;
+
+/**
+ * Ports to try in order: `preferred`, the next {@link PORT_FALLBACK_SPAN},
+ * then 0 (any free port). Neighbours first, so a user typing a port by hand
+ * in the viewer's dialog has a short list to guess from.
+ */
+export function fallbackPorts(preferred: number): number[] {
+  if (preferred === 0) return [0];
+  const out: number[] = [];
+  for (let p = preferred; p <= Math.min(65535, preferred + PORT_FALLBACK_SPAN); p++) out.push(p);
+  return [...out, 0];
+}
+
+/** `listenLoopback` on the first of `ports` that is free; any error but EADDRINUSE stops at once. */
+export async function listenLoopbackFirstFree(
+  ports: readonly number[],
+  ...rest: Parameters<typeof listenLoopback> extends [number, ...infer R] ? R : never
+): Promise<LoopbackServer> {
+  let last: unknown = new Error('no port to listen on');
+  for (const port of ports) {
+    try {
+      return await listenLoopback(port, ...rest);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EADDRINUSE') throw err;
+      last = err;
+    }
+  }
+  throw last;
+}
+
 /** Answer an upgrade request with a bare HTTP status and drop the socket. */
 export function refuseUpgrade(socket: Duplex, status: number, text: string): void {
   socket.end(`HTTP/1.1 ${status} ${text}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);

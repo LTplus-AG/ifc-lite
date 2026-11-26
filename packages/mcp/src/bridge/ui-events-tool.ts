@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * `viewer_ui_events`: what the user did on surfaces the agent pushed with
- * `viewer_show_ui`. Long-polls so an agent can wait for the next click, and
+ * `tab_ui_events`: what the user did on surfaces the agent pushed with
+ * `tab_show_ui`. Long-polls so an agent can wait for the next click, and
  * the channel notification (`--channel`) that pushes the same events into a
  * Claude Code session as they arrive.
  */
@@ -21,7 +21,7 @@ export function uiEventsTool(inbox: UiEventInbox, channel: boolean): Tool {
     name: BRIDGE_UI_EVENTS_TOOL,
     title: 'Viewer UI events',
     description:
-      'Read what the user clicked on surfaces you showed with viewer_show_ui: follow-up questions (name "ask", with the prompt) ' +
+      'Read what the user clicked on surfaces you showed with tab_show_ui: follow-up questions (name "ask", with the prompt) ' +
       'and other surface events with their context. Pass wait_seconds to wait for the next event.' +
       (channel ? ' Events are also pushed as channel messages; skip ids you already handled.' : ''),
     inputSchema: {

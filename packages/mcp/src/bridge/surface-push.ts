@@ -7,7 +7,7 @@ import { toolError, ToolErrorCode } from '../errors.js';
 import type { CallToolResult } from '../protocol/index.js';
 import type { Tool } from '../tools/types.js';
 import { checkJsonBounds, isRecord } from './json-bounds.js';
-import { BRIDGE_SURFACE_TOOL } from './protocol.js';
+import { TAB_SHOW_UI_TOOL } from './protocol.js';
 
 async function prepare(input: Record<string, unknown>) {
   if ((input.messages === undefined) === (input.spec === undefined)) {
@@ -31,7 +31,7 @@ async function prepare(input: Record<string, unknown>) {
 
 export function surfacePushTool(forward: (surface: Record<string, unknown>, signal: AbortSignal) => Promise<CallToolResult>): Tool {
   return {
-    name: BRIDGE_SURFACE_TOOL,
+    name: TAB_SHOW_UI_TOOL,
     description: 'Show an IFC A2UI v1.0 surface in the paired viewer. Supply messages or a builder spec with surfaceId and sections.',
     scope: 'read',
     annotations: { readOnlyHint: true },

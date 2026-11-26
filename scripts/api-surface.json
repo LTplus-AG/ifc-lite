@@ -8157,6 +8157,8 @@
     "PAIRING_FRAGMENT_KEY: const",
     "PairingFragment: interface",
     "ParseResult: type",
+    "TAB_SHOW_UI_TOOL: const",
+    "TAB_TOOL_PREFIX: const",
     "UI_EVENT_LIMITS: const",
     "buildPairingUrl: function",
     "normalizePairingCode: function",

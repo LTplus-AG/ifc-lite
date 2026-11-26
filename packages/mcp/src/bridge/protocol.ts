@@ -74,10 +74,29 @@ export const DEFAULT_BRIDGE_VIEWER_URL = 'https://ifclite.com';
 
 /** The bridge-owned tool, always listed. A tab may not register a tool with this name. */
 export const BRIDGE_STATUS_TOOL = 'bridge_status';
+/**
+ * The name a surface delivery carries on the tab's side (a `call` or
+ * `a2ui-surface` frame). Agents see it as {@link TAB_SHOW_UI_TOOL}.
+ */
 export const BRIDGE_SURFACE_TOOL = 'viewer_show_ui';
 
-/** Tools the bridge serves itself; a tab may not register these names. */
-export const BRIDGE_RESERVED_TOOLS: ReadonlySet<string> = new Set([BRIDGE_STATUS_TOOL, BRIDGE_SURFACE_TOOL, BRIDGE_UI_EVENTS_TOOL]);
+/**
+ * Every tool of the paired tab is listed over MCP under this prefix
+ * (`model_info` becomes `tab_model_info`), so it never shares a name with a
+ * tool of the same server that runs on a model loaded in-process.
+ */
+export const TAB_TOOL_PREFIX = 'tab_';
+/** MCP name of the bridge's surface delivery tool. */
+export const TAB_SHOW_UI_TOOL = `${TAB_TOOL_PREFIX}show_ui`;
+
+/**
+ * Names a tab may not register: the bridge's own tools, and the tab-side
+ * names whose prefixed form would shadow one of them.
+ */
+export const BRIDGE_RESERVED_TOOLS: ReadonlySet<string> = new Set([
+  BRIDGE_STATUS_TOOL, BRIDGE_SURFACE_TOOL, BRIDGE_UI_EVENTS_TOOL,
+  ...[TAB_SHOW_UI_TOOL, BRIDGE_UI_EVENTS_TOOL].map((name) => name.slice(TAB_TOOL_PREFIX.length)),
+]);
 
 /** Key in the pairing link's URL fragment that marks it as a bridge pairing link. */
 export const PAIRING_FRAGMENT_KEY = 'mcp-bridge';

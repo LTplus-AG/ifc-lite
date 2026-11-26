@@ -19,8 +19,7 @@ import {
   pairTab,
   rawPeer,
   textResult,
-  type FakeTab,
-} from '../test/bridge-fake-tab.js';
+  type FakeTab, tabTool } from '../test/bridge-fake-tab.js';
 
 const running: RunningBridge[] = [];
 const tabs: FakeTab[] = [];
@@ -90,7 +89,7 @@ describe('item 2: tab-supplied JSON is depth- and size-bounded', () => {
   it('turns a result nested 20,000 deep into an error result at once', async () => {
     const agent = await start();
     const { tab, welcome } = await paired(agent);
-    const pending = agent.call(READ_TOOL.name);
+    const pending = agent.call(tabTool(READ_TOOL.name));
     const c = await tab.next('call');
     tab.sendRaw(withDeep({ type: 'result', sessionId: welcome.sessionId, id: c.id, result: { content: [], structuredContent: '__DEEP__' } }, nestedJson(20_000)));
     const result = await pending;
@@ -228,7 +227,7 @@ describe('item 6: list_changed only on a real change, throttled', () => {
       tab.sendRaw({ type: 'update', sessionId: welcome.sessionId, permission: i % 2 === 0 ? 'read-write' : 'read-only' });
     }
     tab.sendRaw({ type: 'update', sessionId: welcome.sessionId, permission: 'read-write' });
-    await expect.poll(async () => (await agent.list()).map((t) => t.name)).toContain(MUTATING_TOOL.name);
+    await expect.poll(async () => (await agent.list()).map((t) => t.name)).toContain(tabTool(MUTATING_TOOL.name));
     expect(agent.listChanged()).toBe(1);
   });
 
@@ -239,7 +238,7 @@ describe('item 6: list_changed only on a real change, throttled', () => {
     tab.sendRaw({ type: 'update', sessionId: welcome.sessionId, tools: [READ_TOOL, extra] });
     await expect.poll(() => agent.bridge.tab()?.tools.length).toBe(2);
     expect((await agent.list()).map((t) => t.name)).not.toContain('delete_entity');
-    expect((await agent.call('delete_entity', {})).structuredContent?.code).toBe('READ_ONLY');
+    expect((await agent.call('tab_delete_entity', {})).structuredContent?.code).toBe('READ_ONLY');
     expect(tab.calls()).toEqual([]);
   });
 });
@@ -253,8 +252,8 @@ describe('item 7: schema properties are own properties; malformed schemas are re
     };
     const { tab, welcome } = await paired(agent, { tools: [tool] });
     // Omitting toString is fine; omitting the required constructor is not.
-    expect((await agent.call('proto_props', {})).structuredContent?.code).toBe('INVALID_INPUT');
-    const pending = agent.call('proto_props', { constructor: 'x' });
+    expect((await agent.call('tab_proto_props', {})).structuredContent?.code).toBe('INVALID_INPUT');
+    const pending = agent.call('tab_proto_props', { constructor: 'x' });
     const c = await tab.next('call');
     expect(c.arguments).toEqual({ constructor: 'x' });
     tab.reply(welcome.sessionId, c.id, textResult('ok'));
@@ -287,7 +286,7 @@ describe('item 8: aggregate limits, text-only content, provenance', () => {
   it('fails a call whose result exceeds maxResultBytes with a message naming the limit', async () => {
     const agent = await start();
     const { tab, welcome } = await paired(agent);
-    const pending = agent.call(READ_TOOL.name);
+    const pending = agent.call(tabTool(READ_TOOL.name));
     const c = await tab.next('call');
     tab.reply(welcome.sessionId, c.id, textResult('y'.repeat(BRIDGE_LIMITS.maxResultBytes + 1)));
     const result = await pending;
@@ -301,7 +300,7 @@ describe('item 8: aggregate limits, text-only content, provenance', () => {
   ])('refuses %s in result content', async (_label, entry, why) => {
     const agent = await start();
     const { tab, welcome } = await paired(agent);
-    const pending = agent.call(READ_TOOL.name);
+    const pending = agent.call(tabTool(READ_TOOL.name));
     const c = await tab.next('call');
     tab.sendRaw({ type: 'result', sessionId: welcome.sessionId, id: c.id, result: { content: [entry] } });
     const result = await pending;
@@ -313,7 +312,7 @@ describe('item 8: aggregate limits, text-only content, provenance', () => {
     const agent = await start();
     const { tab, welcome } = await paired(agent);
     expect(welcome.features).toEqual(['image-content', 'ui-events']);
-    const pending = agent.call(READ_TOOL.name);
+    const pending = agent.call(tabTool(READ_TOOL.name));
     const c = await tab.next('call');
     const data = btoa(String.fromCharCode(0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1));
     tab.sendRaw({ type: 'result', sessionId: welcome.sessionId, id: c.id, result: { content: [{ type: 'text', text: 'shot' }, { type: 'image', data, mimeType: 'image/jpeg' }] } });
@@ -338,7 +337,7 @@ describe('frame limits and binary frames', () => {
   it('closes with 1009 on a frame over maxMessageBytes and fails the pending call', async () => {
     const agent = await start({ tuning: { maxMessageBytes: 2048 } });
     const { tab, welcome } = await paired(agent);
-    const pending = agent.call(READ_TOOL.name);
+    const pending = agent.call(tabTool(READ_TOOL.name));
     const c = await tab.next('call');
     tab.reply(welcome.sessionId, c.id, textResult('z'.repeat(4096)));
     expect(await tab.closed()).toBe(1009);
@@ -350,7 +349,7 @@ describe('frame limits and binary frames', () => {
   it('closes a paired tab that sends a binary frame, failing its pending call', async () => {
     const agent = await start();
     const { tab } = await paired(agent);
-    const pending = agent.call(READ_TOOL.name);
+    const pending = agent.call(tabTool(READ_TOOL.name));
     await tab.next('call');
     tab.ws.send(Buffer.from([1, 2, 3]), { binary: true });
     expect(await tab.closed()).toBe(BridgeCloseCode.INVALID_MESSAGE);

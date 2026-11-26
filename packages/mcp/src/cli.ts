@@ -13,11 +13,12 @@
  *   ifc-lite-mcp --transport http --port 8765
  *   ifc-lite-mcp --transport http --port 8765 --token abc123
  *   ifc-lite-mcp --bridge
+ *   ifc-lite-mcp ./model.ifc --bridge
  */
 
 import { resolve } from 'node:path';
 import { bridgeConflict, parseArgs, type CliOptions } from './cli-args.js';
-import { startBridgeServer, type RunningBridge } from './bridge/run.js';
+import { startBridgeServer, type HeadlessParts, type RunningBridge } from './bridge/run.js';
 import { DEFAULT_BRIDGE_PORT, DEFAULT_BRIDGE_VIEWER_URL } from './bridge/protocol.js';
 import { StdioTransport } from './transport/stdio.js';
 import { routeConsoleToStderr } from './transport/stdio-console.js';
@@ -25,7 +26,10 @@ import { HttpTransport, BearerTokenAuth, AllowAllAuth, type HttpAuthenticator, t
 import { createMCPServer, VERSION } from './index.js';
 import { loadIfcModel } from './loader.js';
 import { fullScope, readOnlyScope, type AuthScope } from './auth/scope.js';
-import { InMemoryModelRegistry } from './context.js';
+import { InMemoryModelRegistry, type Logger } from './context.js';
+import { buildDefaultToolRegistry } from './tools/index.js';
+import { buildDefaultResourceRegistry } from './resources/index.js';
+import { buildDefaultPromptRegistry } from './prompts/index.js';
 import { fmtInt } from './tools/util.js';
 
 function printHelp(): void {
@@ -61,11 +65,14 @@ function printHelp(): void {
     --viewer-port <n>       Preferred viewer port (0 = auto).
     --open                  Implies --viewer; also tries to open the URL in
                             the default browser via the OS opener.
-    --bridge                Serve the model open in an ifc-lite browser tab:
-                            stdio MCP here, forwarded to one paired tab over
-                            ws://127.0.0.1. Loads no files. Pair through the
-                            link printed below or the bridge_status tool.
-    --bridge-port <n>       Bridge port (default ${DEFAULT_BRIDGE_PORT}; 0 = pick a free one).
+    --bridge                Also serve the model open in an ifc-lite browser
+                            tab: its tools are added as tab_* once a tab
+                            pairs over ws://127.0.0.1. Files and every other
+                            tool still work. The agent pairs with the
+                            bridge_status tool, which returns the link.
+    --bridge-port <n>       Bridge port (default ${DEFAULT_BRIDGE_PORT}, or the next free
+                            one if taken; an explicit port does not fall
+                            back; 0 = pick a free one).
     --bridge-viewer-url <u> Base of the pairing link (default
                             ${DEFAULT_BRIDGE_VIEWER_URL}). Its origin replaces the
                             default in the allowed origins; add
@@ -83,6 +90,7 @@ function printHelp(): void {
     ifc-lite-mcp ./model.ifc --read-only
     ifc-lite-mcp --transport http --port 8765 --token abc
     ifc-lite-mcp --bridge
+    ifc-lite-mcp ./model.ifc --bridge
 
   Claude Desktop config (~/.config/Claude/claude_desktop_config.json):
     {
@@ -118,8 +126,10 @@ async function main(): Promise<void> {
     process.exitCode = 0;
     return;
   }
-  if (opts.bridge || opts.channel) {
-    await runBridge(opts);
+  const conflict = bridgeConflict(opts);
+  if (conflict) {
+    process.stderr.write(`[ifc-lite-mcp] ${conflict}\n`);
+    process.exitCode = 2;
     return;
   }
   const scope: AuthScope = opts.readOnly ? readOnlyScope() : fullScope();
@@ -136,35 +146,45 @@ async function main(): Promise<void> {
       for (const w of m.scanWarnings ?? []) process.stderr.write(`[ifc-lite-mcp] warning: ${m.name}: ${w}\n`);
     }
 
-    const server = createMCPServer({
-      version: VERSION,
-      registry,
-      scope,
-      config: {
-        readOnly: opts.readOnly,
-        bsddEndpoint: opts.bsdd,
-        allowedPaths: opts.allowedPaths,
-        samplingEnabled: false,
-        autoOpenViewer: opts.autoViewer,
-        viewerPort: opts.viewerPort,
+    const config = {
+      readOnly: opts.readOnly,
+      bsddEndpoint: opts.bsdd,
+      allowedPaths: opts.allowedPaths,
+      samplingEnabled: false,
+      autoOpenViewer: opts.autoViewer,
+      viewerPort: opts.viewerPort,
+    };
+    const logger: Logger = {
+      log(level, message, data) {
+        if (level === 'debug') return;
+        process.stderr.write(`[ifc-lite-mcp] ${level} ${message}${data ? ` ${JSON.stringify(data)}` : ''}\n`);
       },
-      logger: {
-        log(level, message, data) {
-          if (level === 'debug') return;
-          process.stderr.write(`[ifc-lite-mcp] ${level} ${message}${data ? ` ${JSON.stringify(data)}` : ''}\n`);
-        },
-      },
-    });
+    };
+    const bridged = opts.bridge
+      ? await startBridge(opts, {
+        registry, scope, config,
+        tools: buildDefaultToolRegistry(), resources: buildDefaultResourceRegistry(), prompts: buildDefaultPromptRegistry(),
+      }, logger)
+      : null;
+    if (opts.bridge && !bridged) return;
+    const server = bridged?.server ?? createMCPServer({ version: VERSION, registry, scope, config, logger });
     const transport = new StdioTransport();
     await transport.connect(server);
-    // The peer stopped reading stdout (EPIPE): nothing can be answered, so leave
-    // cleanly instead of serving into a dead pipe or dying on an unhandled error.
-    transport.onClose((reason) => {
-      if (reason !== 'stdout-error') return;
-      process.exitCode = 0;
-      setTimeout(() => process.exit(0), 1000).unref();
-    });
-    process.stderr.write(`[ifc-lite-mcp] ready on stdio (read-only=${opts.readOnly})\n`);
+    if (bridged) {
+      stopBridgeWithClient(bridged, transport);
+    } else {
+      // The peer stopped reading stdout (EPIPE): nothing can be answered, so leave
+      // cleanly instead of serving into a dead pipe or dying on an unhandled error.
+      transport.onClose((reason) => {
+        if (reason !== 'stdout-error') return;
+        process.exitCode = 0;
+        setTimeout(() => process.exit(0), 1000).unref();
+      });
+    }
+    process.stderr.write(`[ifc-lite-mcp] ready on stdio (read-only=${opts.readOnly}${bridged ? ', browser bridge on' : ''})\n`);
+    if (bridged) {
+      process.stderr.write('[ifc-lite-mcp] the browser bridge listens once the agent calls bridge_status, which returns the pairing link.\n');
+    }
 
     if (opts.autoViewer && registry.count() > 0) {
       try {
@@ -246,42 +266,38 @@ async function main(): Promise<void> {
 /** Longest a --bridge shutdown may take, whatever stdout does. */
 const SHUTDOWN_DEADLINE_MS = 2000;
 
-async function runBridge(opts: CliOptions): Promise<void> {
-  const conflict = bridgeConflict(opts);
-  if (conflict) {
-    process.stderr.write(`[ifc-lite-mcp] ${conflict}\n`);
-    process.exitCode = 2;
-    return;
-  }
-  routeConsoleToStderr();
+/** Start the bridge layer on top of the headless parts; null (exit code set) when it cannot start. */
+async function startBridge(opts: CliOptions, headless: HeadlessParts, logger: Logger): Promise<RunningBridge | null> {
   const log = (line: string): void => { process.stderr.write(`[ifc-lite-mcp bridge] ${line}\n`); };
-  const port = opts.bridgePort ?? DEFAULT_BRIDGE_PORT;
-  let running: RunningBridge;
   try {
-    running = await startBridgeServer({
+    return await startBridgeServer({
       version: VERSION,
-      port,
+      port: opts.bridgePort ?? DEFAULT_BRIDGE_PORT,
+      // An explicit --bridge-port is a promise to the user; only the default falls back.
+      portFallback: opts.bridgePort === undefined,
+      lazy: true,
+      headless,
       readOnly: opts.readOnly,
       channel: opts.channel,
       viewerUrl: opts.bridgeViewerUrl,
       extraOrigins: opts.allowedOrigins,
       allowInsecureOrigins: opts.insecure,
       log,
+      logger,
     });
   } catch (err) {
-    const e = err as NodeJS.ErrnoException;
-    const why = e.code === 'EADDRINUSE'
-      ? `port ${port} on 127.0.0.1 is in use (another bridge running?). Pass --bridge-port <n>; the pairing link carries the port.`
-      : e.message;
-    process.stderr.write(`[ifc-lite-mcp] cannot start the bridge: ${why}\n`);
+    process.stderr.write(`[ifc-lite-mcp] cannot start the bridge: ${(err as Error).message}\n`);
     process.exitCode = 1;
-    return;
+    return null;
   }
-  const { server, bridge } = running;
-  const transport = new StdioTransport();
-  await transport.connect(server);
-  // The bridge's listener keeps the process alive, so every way the MCP
-  // client can go away (or a signal) closes it and frees the port.
+}
+
+/**
+ * The bridge's listener keeps the process alive, so every way the MCP client
+ * can go away (or a signal) closes it and frees the port.
+ */
+function stopBridgeWithClient(running: RunningBridge, transport: StdioTransport): void {
+  const log = (line: string): void => { process.stderr.write(`[ifc-lite-mcp bridge] ${line}\n`); };
   let stopping = false;
   const stop = (why: string, exitCode: number): void => {
     if (stopping) return;
@@ -307,11 +323,6 @@ async function runBridge(opts: CliOptions): Promise<void> {
   process.stdin.once('error', (err) => stop(`stdin error: ${err.message}`, 1));
   process.once('SIGINT', () => stop('SIGINT', 130));
   process.once('SIGTERM', () => stop('SIGTERM', 143));
-  const code = bridge.pairingCode();
-  log(`ready on stdio; listening on ws://127.0.0.1:${bridge.port} (read-only=${opts.readOnly})`);
-  log(`allowed origins (exactly these): ${bridge.allowedOrigins.join(', ')}`);
-  log(`to connect a viewer tab open ${bridge.pairingUrl(code)}`);
-  log(`or enter the one-time code ${code}. The agent can also call bridge_status for it.`);
 }
 
 main().catch((err: Error) => {

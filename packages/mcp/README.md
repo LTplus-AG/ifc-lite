@@ -67,7 +67,7 @@ MCP Apps hosts can open interactive IFC result surfaces from the model-serving t
 The tools include a text summary and an A2UI v1.0 payload rendered by
 `ui://ifc-lite/a2ui-surface`. Connect the browser viewer through `viewer_open` to
 use row selection and the other viewer controls. In `--bridge` mode,
-`viewer_show_ui` delivers validated messages or a builder spec to a compatible
+`tab_show_ui` delivers validated messages or a builder spec to a compatible
 paired main viewer tab. See the [A2UI architecture guide](../../docs/architecture/a2ui.md#mcp-result-surfaces)
 for a Claude Desktop walkthrough.
 
@@ -287,17 +287,25 @@ error.
 ## Bridge to a browser tab (`--bridge`)
 
 ```bash
-npx @ifc-lite/mcp --bridge              # stdio MCP, forwarded to one paired tab
-npx @ifc-lite/mcp --bridge --read-only  # tools the tab marks as mutating stay off
+npx @ifc-lite/mcp --bridge               # headless tools plus the paired tab's
+npx @ifc-lite/mcp ./model.ifc --bridge   # a local model and the tab, one server
+npx @ifc-lite/mcp --bridge --read-only   # tools the tab marks as mutating stay off
 ```
 
-`--bridge` lets a local agent (Claude Desktop, Claude Code, …) work on the
+`--bridge` lets a local agent (Claude Desktop, Claude Code, …) also work on the
 model open in an ifc-lite browser tab: a model loaded from a cloud source, or
-one with unsaved edits. The bridge speaks MCP over stdio and forwards every tool
-call (other than `bridge_status`) over a WebSocket on `127.0.0.1` to the paired tab, which runs it against
-its model. The bridge loads no model of its own, so it takes no file arguments
-and refuses `--transport http`. It stops, freeing its port, when stdin ends,
-closes or errors, and on SIGINT or SIGTERM.
+one with unsaved edits. It adds to the normal stdio server rather than
+replacing it: every headless tool, resource and prompt stays, on models loaded
+in this process. Once a tab pairs, its tools are added as `tab_<name>` (the
+tab's `model_audit` is `tab_model_audit`, next to this server's own
+`model_audit`) and removed when it disconnects, each time with
+`notifications/tools/list_changed`. `tab_*` calls go over a WebSocket on
+`127.0.0.1` to the paired tab, which runs them against its model. `viewer_*`
+tools without the prefix drive this process's own local viewer page, not the
+tab. `--transport http` is refused. No port is bound until the agent first
+calls `bridge_status`, so a session that never pairs holds none. The bridge
+stops, freeing its port, when stdin ends, closes or errors, and on SIGINT or
+SIGTERM.
 
 **Status:** this package ships the local side. The viewer pairs from the
 pairing link, or from *Connect local agent* in its Sources panel and command
@@ -305,7 +313,7 @@ palette. Reads, selection inspection and palette discovery are available initial
 
 | Flag | Meaning |
 |------|---------|
-| `--bridge-port <n>` | Port on 127.0.0.1. Default `21517`; `0` picks a free one. The pairing link carries it. |
+| `--bridge-port <n>` | Port on 127.0.0.1. Default `21517`; if that is taken (a second session), the next nine ports and then any free one are tried. An explicit port does not fall back. `0` picks a free one. The pairing link carries the port. |
 | `--bridge-viewer-url <url>` | Base of the pairing link. Default `https://ifclite.com`. Its origin REPLACES the default in the allowlist; add `--allow-origin https://ifclite.com` to keep both. |
 | `--allow-origin <origin>` | Another browser origin that may connect (repeatable), e.g. a dev server. |
 | `--read-only` | A ceiling: tools the tab labels as mutating stay hidden and refused even if the tab allows changes. The tab must enforce the rest. |
@@ -431,7 +439,7 @@ palette. Reads, selection inspection and palette discovery are available initial
   unknown id or an already answered call is ignored. Calls time out after
   120 s (`TIMEOUT`, and the tab gets a `cancel`); closing the socket fails all
   pending calls.
-- **No tab.** Only `bridge_status` is listed, and any other call fails at once
+- **No tab.** No `tab_*` tool is listed, and a call to one fails at once
   with `VIEWER_NOT_CONNECTED`. `notifications/tools/list_changed` is sent when
   the listed tools can change: on connect, disconnect, replacement, and an
   `update` that actually changes the effective permission or the tool list. At
@@ -460,6 +468,13 @@ palette. Reads, selection inspection and palette discovery are available initial
   is busy …" (once per 10 s window), and `bridge_status` reports
   `pairingPressure` (`failedAttempts`, `refusedBusy`) and tells the user to
   stop that program or page, or restart the bridge on another `--bridge-port`.
+
+- **UI events match what the agent showed.** A `ui-event` is accepted only
+  for a surface the agent delivered to this tab with `tab_show_ui`, with an
+  event name that surface raises (or `ask`), and with a prompt that is text
+  from that surface. Anything else is dropped and logged, so a tab cannot send
+  the agent words it framed as the user's (with `--channel`, a prompt reaches
+  the agent as the user's message).
 
 ### Wire protocol
 

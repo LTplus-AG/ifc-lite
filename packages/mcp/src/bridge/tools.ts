@@ -4,25 +4,31 @@
 
 /**
  * The MCP tool surface of `--bridge` (#9523), served by the ordinary
- * `MCPServer` through a live `ToolRegistry`.
+ * `MCPServer` through a live `ToolRegistry`. The bridge ADDS to a server:
+ * tools registered here the usual way (the headless set, on models loaded in
+ * this process) are listed first and unchanged, then the bridge's own.
  *
- *   - `bridge_status` is always listed. When no tab is paired it returns the
- *     pairing code and link: Claude Desktop hides the bridge's stderr, so this
- *     is how the user gets them.
- *   - The paired tab's tools are listed as it described them. Mutating ones
- *     are hidden while the effective permission is read-only, and a direct
- *     call to one is refused here without being forwarded.
- *   - With no tab, any other name resolves to a stand-in that fails at once
- *     with VIEWER_NOT_CONNECTED instead of "unknown tool" or a hang.
+ *   - `bridge_status` is always listed. It binds the loopback listener on
+ *     first use and, when no tab is paired, returns the pairing code and
+ *     link: Claude Desktop hides the bridge's stderr, so this is how the user
+ *     gets them.
+ *   - The paired tab's tools are listed under `tab_` + the tab's name, so a
+ *     tab's `model_audit` (the viewer's engine, on the model open in the
+ *     browser) never collides with this server's `model_audit` (on a model
+ *     loaded here). Mutating ones are hidden while the effective permission
+ *     is read-only, and a direct call to one is refused here without being
+ *     forwarded.
+ *   - With no tab, any other `tab_` name resolves to a stand-in that fails at
+ *     once with VIEWER_NOT_CONNECTED instead of "unknown tool" or a hang.
  */
 
 import type { CallToolResult, JsonSchema } from '../protocol/index.js';
-import { ToolErrorCode, toolError, type ToolErrorCodeValue } from '../errors.js';
+import { ToolErrorCode, describeThrown, toolError, type ToolErrorCodeValue } from '../errors.js';
 import { ToolRegistry, type Tool } from '../tools/types.js';
 import { surfacePushTool } from './surface-push.js';
 import { uiEventsTool } from './ui-events-tool.js';
 import { BRIDGE_UI_EVENTS_TOOL } from './ui-events.js';
-import { BRIDGE_STATUS_TOOL, BRIDGE_SURFACE_TOOL, type BridgeToolDescriptor } from './protocol.js';
+import { BRIDGE_STATUS_TOOL, BRIDGE_SURFACE_TOOL, TAB_SHOW_UI_TOOL, TAB_TOOL_PREFIX, type BridgeToolDescriptor } from './protocol.js';
 import { BridgeCallError, type BridgeCallFailure, type TabBridge } from './tab-bridge.js';
 
 const FAILURE_CODE: Record<BridgeCallFailure, ToolErrorCodeValue> = {
@@ -67,7 +73,7 @@ async function forward(bridge: TabBridge, name: string, input: Record<string, un
 
 function forwardedTool(bridge: TabBridge, d: BridgeToolDescriptor): Tool {
   return {
-    name: d.name,
+    name: TAB_TOOL_PREFIX + d.name,
     description: d.description,
     inputSchema: d.inputSchema as JsonSchema,
     scope: d.readOnly ? 'read' : 'mutate',
@@ -77,14 +83,14 @@ function forwardedTool(bridge: TabBridge, d: BridgeToolDescriptor): Tool {
   };
 }
 
-/** Stand-in for any name while no tab is paired: no schema of its own, fails at once. */
+/** Stand-in for a `tab_` name while no tab is paired: no schema of its own, fails at once. */
 function notConnectedTool(bridge: TabBridge, name: string): Tool {
   return {
     name,
     description: '',
     inputSchema: { type: 'object' },
     scope: 'read',
-    handler: (input, ctx) => forward(bridge, name, input, ctx.signal),
+    handler: (input, ctx) => forward(bridge, name.slice(TAB_TOOL_PREFIX.length), input, ctx.signal),
   };
 }
 
@@ -94,6 +100,7 @@ function statusTool(bridge: TabBridge): Tool {
     description:
       'Report whether an ifc-lite browser tab is connected to this bridge. When none is, returns a one-time ' +
       'pairing code and a link: give the link to the user to open in the browser tab holding their model. ' +
+      'Once paired, the tab\'s tools are listed as tab_*. ' +
       'Pass pair_new_tab: true to issue a fresh code that lets a different tab replace the connected one.',
     inputSchema: {
       type: 'object',
@@ -109,7 +116,18 @@ function statusTool(bridge: TabBridge): Tool {
     scope: 'read',
     title: 'Bridge status and pairing',
     annotations: { readOnlyHint: true },
-    handler: (input) => statusResult(bridge, input.pair_new_tab === true),
+    handler: async (input) => {
+      try {
+        await bridge.listen();
+      } catch (err) {
+        return toolError({
+          code: ToolErrorCode.INTERNAL_ERROR,
+          message: `The bridge could not listen on 127.0.0.1: ${describeThrown(err)}`,
+          hint: 'Another program may hold the port. Restart the MCP server with another --bridge-port.',
+        });
+      }
+      return statusResult(bridge, input.pair_new_tab === true);
+    },
   };
 }
 
@@ -186,27 +204,33 @@ export class BridgeToolRegistry extends ToolRegistry {
     this.events = uiEventsTool(bridge.uiEvents, channel);
   }
 
-  override register(): void {
-    throw new Error('BridgeToolRegistry lists the paired tab\'s tools; it does not take registrations.');
+  /** Register a tool that runs in this process. The bridge's names and the `tab_` prefix are taken. */
+  override register(tool: Tool): void {
+    if (tool.name === BRIDGE_STATUS_TOOL || tool.name.startsWith(TAB_TOOL_PREFIX)) {
+      throw new Error(`'${tool.name}' is reserved for the bridge (bridge_status and every tab_* name).`);
+    }
+    super.register(tool);
   }
 
   override get(name: string): Tool | null {
     if (name === BRIDGE_STATUS_TOOL) return this.status;
-    if (name === BRIDGE_SURFACE_TOOL) return this.surface;
+    if (name === TAB_SHOW_UI_TOOL) return this.surface;
     if (name === BRIDGE_UI_EVENTS_TOOL) return this.events;
+    if (!name.startsWith(TAB_TOOL_PREFIX)) return super.get(name);
     const tab = this.bridge.tab();
     if (!tab) return notConnectedTool(this.bridge, name);
-    const d = tab.tools.find((t) => t.name === name);
+    const d = tab.tools.find((t) => TAB_TOOL_PREFIX + t.name === name);
     // A hidden (mutating, read-only) tool still resolves, so the call gets a
     // READ_ONLY refusal from `TabBridge.call` rather than "unknown tool".
     return d ? forwardedTool(this.bridge, d) : null;
   }
 
   override list(): Tool[] {
+    const own = super.list();
     const tab = this.bridge.tab();
-    if (!tab) return [this.status];
+    if (!tab) return [...own, this.status];
     const visible = tab.permission === 'read-only' ? tab.tools.filter((t) => t.readOnly) : tab.tools;
-    return [this.status, ...(tab.a2uiSurface ? [this.surface, this.events] : []), ...visible.map((d) => forwardedTool(this.bridge, d))];
+    return [...own, this.status, ...(tab.a2uiSurface ? [this.surface, this.events] : []), ...visible.map((d) => forwardedTool(this.bridge, d))];
   }
 
   override has(name: string): boolean {

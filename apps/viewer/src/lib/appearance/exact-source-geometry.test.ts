@@ -140,3 +140,13 @@ it('refuses, instead of binding nothing, when an applied re-mesh returns no geom
   await assert.rejects(ensureExactSourceGeometry(MODEL, [10], signal()), /could not be prepared for appearance/);
   assert.equal(mesher.requests.length, 1);
 });
+
+it('refuses a retry that finds a product drawn from records in the scene but gone from the store', async () => {
+  // An earlier re-mesh returned no mesh for the wall: the store dropped it, the scene still draws its record piece.
+  const geometryResult = useViewerStore.getState().models.get(MODEL)!.geometryResult!;
+  geometryResult.meshes.splice(0, 1);
+  const scene = { getMeshDataPieces: (id: number) => (id === OFFSET + 10 ? [compactWall(id, id + 1)] : meshesOf(id)) };
+  setGlobalRendererRef({ current: { getScene: () => scene } as unknown as Renderer });
+  await assert.rejects(ensureExactSourceGeometry(MODEL, [10, 20], signal()), /could not be prepared for appearance \(the re-mesh returned no geometry\)/);
+  assert.equal(mesher.requests.length, 0, 'nothing in the store to re-mesh');
+});

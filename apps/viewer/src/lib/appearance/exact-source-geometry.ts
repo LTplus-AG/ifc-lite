@@ -11,11 +11,13 @@
  * lattice, with triangles that collapse on it dropped, so a decode no longer
  * maps to source corners and the edit used to be refused.
  *
- * Once a plan names the products it will bind, those whose meshes lack the
- * provenance are re-meshed from the model's source by the authoring re-mesh
+ * Once a plan names the products it will bind, those drawn from compact
+ * records are re-meshed from the model's source by the authoring re-mesh
  * (`requestRemesh`): the same mesher the load used, so the meshes that come
  * back are the exact f32 meshes with the provenance a load without compact
- * records gives them. Only those products leave their pages.
+ * records gives them. Only those products leave their pages. A plan with no
+ * compact product (every load without `?compactGeom`) runs exactly as before:
+ * a non-compact mesh without provenance is left to the binding to refuse.
  *
  * A scan transfer is not covered: its session pins the target model's
  * geometry from the first landmark pick, before any product is known.
@@ -128,6 +130,12 @@ export async function ensureExactSourceGeometry(modelId: string, productIds: rea
   const expected = new Map<number, number>();
   for (const mesh of useViewerStore.getState().models.get(modelId)?.geometryResult?.meshes ?? []) {
     if (swapping.has(mesh.expressId)) expected.set(mesh.expressId, (expected.get(mesh.expressId) ?? 0) + 1);
+  }
+  // A product the scene still draws from records but the store holds no mesh for (an earlier re-mesh returned
+  // none) has nothing exact to swap in: waiting on it would read its absence as success.
+  const absent = [...swapping].filter((id) => !expected.has(id));
+  if (absent.length > 0) {
+    throw new Error(`The exact geometry of ${absent.length} object(s) could not be prepared for appearance (the re-mesh returned no geometry). Refresh the preview, or reload the model.`);
   }
   if (!await sceneHasExactGeometry(expected, signal)) {
     throw new Error('The exact geometry of the chosen objects is not in the 3D view yet. Refresh the preview.');

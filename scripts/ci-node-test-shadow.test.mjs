@@ -34,9 +34,9 @@ test('Node shadow trusts the PR merge parent and declines shared inputs or a dif
 
   const event = join(cwd, 'event.json');
   const output = join(cwd, 'output');
-  const preflight = (sha, eventName = 'pull_request') => {
+  const preflight = (sha, eventName = 'pull_request', ref = 'feature') => {
     writeFileSync(output, '');
-    writeFileSync(event, JSON.stringify({ pull_request: { head: { sha, ref: 'feature' } } }));
+    writeFileSync(event, JSON.stringify({ pull_request: { head: { sha, ref } } }));
     return spawnSync(process.execPath, [cli, '--shadow-preflight'], {
       cwd, encoding: 'utf8',
       env: { ...process.env, GITHUB_EVENT_PATH: event, GITHUB_OUTPUT: output,
@@ -47,11 +47,17 @@ test('Node shadow trusts the PR merge parent and declines shared inputs or a dif
   const eligible = preflight(head);
   assert.equal(eligible.status, 0, eligible.stderr);
   assert.equal(readFileSync(output, 'utf8'), 'eligible=true\n');
-  assert.equal(preflight(head, 'merge_group').status, 1);
-  assert.equal(preflight('a'.repeat(40)).status, 1);
-  assert.equal(readFileSync(output, 'utf8'), '');
+  const assertDecline = (result, reason) => {
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(readFileSync(output, 'utf8'), 'eligible=false\n');
+    assert.match(result.stdout, reason);
+  };
+  assertDecline(preflight(head, 'merge_group'), /declined: expected a pull_request event/);
+  assertDecline(preflight(head, 'pull_request', 'mergify/merge-queue/main'), /declined: merge-queue head/);
+  assertDecline(preflight('a'.repeat(40)), /declined: checkout second parent does not match the PR head SHA/);
 
   git('reset', '--hard', 'HEAD^1');
+  assertDecline(preflight(head), /declined: checkout does not have exactly two parents/);
   git('switch', '-q', 'feature');
   writeFileSync(join(cwd, 'pnpm-lock.yaml'), 'shared input\n');
   git('add', 'pnpm-lock.yaml');
@@ -59,7 +65,5 @@ test('Node shadow trusts the PR merge parent and declines shared inputs or a dif
   const mixedHead = git('rev-parse', 'HEAD');
   git('switch', '-q', 'main');
   git('merge', '--no-ff', '-qm', 'PR merge with shared input', 'feature');
-  const declined = preflight(mixedHead);
-  assert.equal(declined.status, 0, declined.stderr);
-  assert.equal(readFileSync(output, 'utf8'), 'eligible=false\n');
+  assertDecline(preflight(mixedHead), /declined: unmapped paths: \["pnpm-lock\.yaml"\]/);
 });

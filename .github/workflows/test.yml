@@ -2697,14 +2697,14 @@ jobs:
           lfs: false
           persist-credentials: false
           fetch-depth: 2
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
+          cache: pnpm
       - name: Check package-source scope
         id: scope
         run: node scripts/ci-node-test-shards.mjs --shadow-preflight
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.0
-        if: steps.scope.outputs.eligible == 'true'
       - if: steps.scope.outputs.eligible == 'true'
         run: pnpm install --frozen-lockfile
       - name: Download build artifacts

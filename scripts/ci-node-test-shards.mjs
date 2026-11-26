@@ -126,25 +126,24 @@ function summary(lines) {
   }
 }
 
-function mergeBase() {
-  const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
-  const pr = event.pull_request;
-  const [base, head, ...rest] = capture('git', ['show', '-s', '--format=%P', 'HEAD']).trim().split(' ');
-  if (process.env.GITHUB_EVENT_NAME !== 'pull_request' || !/^[a-f0-9]{40}$/.test(base)
-    || !/^[a-f0-9]{40}$/.test(head) || rest.length || head !== pr?.head?.sha
-    || pr.head.ref.startsWith('mergify/merge-queue/')) {
-    throw new Error('Expected the exact two-parent ordinary PR merge checkout');
-  }
-  return base;
-}
-
 function inputs() {
-  const base = mergeBase();
+  if (process.env.GITHUB_EVENT_NAME !== 'pull_request') return { reason: 'expected a pull_request event' };
+  const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
+  const prHead = event.pull_request?.head;
+  if (prHead?.ref?.startsWith('mergify/merge-queue/')) return { reason: 'merge-queue head' };
+  const parents = capture('git', ['show', '-s', '--format=%P', 'HEAD']).trim().split(' ');
+  if (parents.length !== 2 || !parents.every((sha) => /^[a-f0-9]{40}$/.test(sha))) {
+    return { reason: 'checkout does not have exactly two parents' };
+  }
+  const [base, head] = parents;
+  if (head !== prHead?.sha) return { reason: 'checkout second parent does not match the PR head SHA' };
+
   const paths = capture('git', ['diff', '--name-only', '--no-renames', '-z', base, 'HEAD', '--'])
     .split('\0').slice(0, -1);
-  const dirs = paths.map((path) => PACKAGE_SOURCE.exec(path)?.[1]);
-  if (!paths.length || dirs.some((dir) => !dir)) return null;
-  return { base, dirs: [...new Set(dirs)] };
+  if (!paths.length) return { reason: 'empty diff' };
+  const unmapped = paths.filter((path) => !PACKAGE_SOURCE.test(path));
+  if (unmapped.length) return { reason: 'unmapped paths: ' + JSON.stringify(unmapped) };
+  return { base, dirs: [...new Set(paths.map((path) => PACKAGE_SOURCE.exec(path)[1]))] };
 }
 
 function packageTests(plan) {
@@ -159,10 +158,10 @@ function packageTests(plan) {
 
 function runShadow() {
   const input = inputs();
-  if (!input) throw new Error('Package source eligibility changed since preflight');
+  if (input.reason) throw new Error('Package source eligibility changed since preflight: ' + input.reason);
   const started = performance.now();
   const graph = (filters) => JSON.parse(capture('pnpm', [...TURBO_TEST, ...filters, '--dry=json']));
-  const full = graph(OWN_JOB.map((name) => '--filter=!' + name));
+  const full = graph(['--filter=!@ifc-lite/viewer']);
   const affected = graph(['--filter=...[' + input.base + ']']);
   const known = new Set(full.packages.concat(OWN_JOB));
   for (const dir of input.dirs) {
@@ -179,12 +178,19 @@ function runShadow() {
     throw new Error('Exact Turbo filters did not reproduce the selected test plan');
   }
 
+  const coverageGaps = [
+    'Viewer tests are outside this sample. See viewer-tests-selected when that separate job is enabled and applicable.',
+    'Queue coverage also includes the standalone integration and oracle checks.',
+  ];
+  if (selected.includes('@ifc-lite/wasm') && !process.env.IFC_LITE_CURRENT_MAIN_DIFF_ORACLE) {
+    coverageGaps.push('Not covered: @ifc-lite/wasm diff parity against the independent TS oracle (oracle not staged in this shadow run).');
+  }
   summary([
     '### Package Node tests (shadow)',
     '',
     'Base parent: `' + input.base + '`',
     'Selected: ' + selected.length + '/' + allTests.length + ' package test tasks',
-    'Queue coverage also includes the standalone integration and oracle checks.',
+    ...coverageGaps,
     'Planning: ' + Math.round(performance.now() - started) + ' ms',
     ...selected.map((name) => '- `' + name + '`'),
   ]);
@@ -202,8 +208,9 @@ function runShadow() {
 
 function main(argv) {
   if (argv[0] === '--shadow-preflight') {
-    const eligible = Boolean(inputs());
-    if (!eligible) summary(['Package Node shadow declined: expected a nonempty, package-source-only diff.']);
+    const { reason } = inputs();
+    const eligible = !reason;
+    if (reason) summary(['Package Node shadow declined: ' + reason]);
     appendFileSync(process.env.GITHUB_OUTPUT, 'eligible=' + eligible + '\n');
     return;
   }

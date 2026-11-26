@@ -76,14 +76,14 @@ impl StructuralDiagnostics {
         self.defer_varying && varying_effective::contains_varying(content)
     }
 
-    pub(crate) fn finish_effective_varying(&mut self, text: &str, dropped: &mut usize) -> Option<(String, Vec<u32>)> {
+    pub(crate) fn finish_effective_varying(&mut self, text: &str, dropped: &mut usize) -> std::io::Result<Option<(String, Vec<u32>)>> {
         if !self.defer_varying {
-            return None;
+            return Ok(None);
         }
-        let output = varying_effective::finish(text)?;
+        let Some(output) = varying_effective::finish(text)? else { return Ok(None) };
         *dropped += output.dropped;
         output.warnings.into_iter().for_each(|warning| self.record(warning));
-        Some((output.body, output.added))
+        Ok(Some((output.body, output.added)))
     }
 
     fn record(&mut self, message: String) { *self.losses.entry(message).or_default() += 1; }

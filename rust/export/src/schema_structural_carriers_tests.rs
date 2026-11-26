@@ -224,7 +224,9 @@ fn a_constant_action_requires_an_eligible_applied_load_11354() {
     for invalid in ["#40", "$", "#9"] {
         let action = VARYING.replace(",#15,#11,", &format!(",#15,{invalid},"));
         let source = model("IFC2X3", &[GEOMETRY, REACTION, &action, "#40=IFCSTRUCTURALLOADCONFIGURATION($,(#11),$);"].join("\n"));
-        let error = export_step_with_diagnostics(source.as_bytes(), &opts).unwrap_err();
+        let Err(error) = export_step_with_diagnostics(source.as_bytes(), &opts) else {
+            panic!("IFC4 export accepted an ineligible AppliedLoad {invalid}");
+        };
         assert!(error.to_string().contains("#30 (IFCSTRUCTURALLINEARACTIONVARYING)"), "{invalid}: {error}");
         assert!(error.to_string().contains("no usable AppliedLoad"), "{invalid}: {error}");
     }

@@ -25,7 +25,7 @@ impl<'w> Body<'w> {
     }
 
     pub(crate) fn finish(self) -> io::Result<isize> {
-        self.finish_with_header(|_| None, |_, _| Ok(()), &mut Vec::new())
+        self.finish_with_header(|_| Ok(None), |_, _| Ok(()), &mut Vec::new())
     }
 
     /// Apply a byte-preserving pass before adaptations that read the DATA as text.
@@ -39,35 +39,35 @@ impl<'w> Body<'w> {
     /// Adapt a held section, then write its header with the final delta before writing DATA.
     pub(crate) fn finish_with_header(
         self,
-        deferred: impl FnOnce(&str) -> Option<(String, isize)>,
+        deferred: impl FnOnce(&str) -> io::Result<Option<(String, isize)>>,
         header: impl FnOnce(&mut dyn Write, &HashSet<u32>) -> io::Result<()>,
         warnings: &mut Vec<String>,
     ) -> io::Result<isize> {
         let Some(held) = self.held else { return Ok(0) };
-        let adapt = |text: &str| {
-            let rewritten = deferred(text);
+        let adapt = |text: &str| -> io::Result<_> {
+            let rewritten = deferred(text)?;
             let source = rewritten.as_ref().map_or(text, |(s, _)| s.as_str());
             let added = rewritten.as_ref().map_or(0, |(_, n)| *n);
             if let Some(upgrade) = self.prune_upgrade {
                 if let Some((pruned, omitted, losses)) = upgrade.prune(source) {
                     let removed = losses.len() as isize;
                     warnings.extend(losses);
-                    return Some((pruned, added - removed, omitted));
+                    return Ok(Some((pruned, added - removed, omitted)));
                 }
             }
-            if let Some(placed) = self.ifc2x3.then(|| place_each_object_once(source)).flatten() {
+            Ok(if let Some(placed) = self.ifc2x3.then(|| place_each_object_once(source)).flatten() {
                 let delta = added + placed.added as isize - placed.removed as isize;
                 Some((placed.body, delta, HashSet::new()))
             } else {
                 rewritten.map(|(body, delta)| (body, delta, HashSet::new()))
-            }
+            })
         };
         let adapted = match std::str::from_utf8(&held) {
-            Ok(text) => adapt(text).map(|(text, count, added)| (text.into_bytes(), count, added)),
+            Ok(text) => adapt(text)?.map(|(text, count, added)| (text.into_bytes(), count, added)),
             // Preserve preexisting single-byte encodings, as the rewrites add ASCII only.
             Err(_) => {
                 let text: String = held.iter().map(|&b| char::from(b)).collect();
-                adapt(&text).and_then(|(text, count, added)| {
+                adapt(&text)?.and_then(|(text, count, added)| {
                     let bytes = text.chars().map(|c| u8::try_from(u32::from(c)).ok()).collect::<Option<Vec<u8>>>()?;
                     Some((bytes, count, added))
                 })

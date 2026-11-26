@@ -118,12 +118,15 @@ fn effective_exports_refuse_an_action_without_a_usable_initial_load_11354() {
     let options = StepOptions { schema: Some("IFC4".into()), ..StepOptions::default() };
     let edited = StepOptions {
         attribute_mutations: vec![AttrMutation { express_id: 30, index: 7, value: "$".into() }],
-        ..options.clone()
+        schema: options.schema.clone(),
+        ..StepOptions::default()
     };
     let log = serde_json::from_value(serde_json::json!({"mutations": [
-        {"type": "UPDATE_POSITIONAL_ATTRIBUTE", "entityId": 30, "attributeName": "@7", "newValue": "$"}
+        {"type": "UPDATE_POSITIONAL_ATTRIBUTE", "entityId": 30, "attributeName": "@7", "newValue": "#9"}
     ]})).unwrap();
-    let edited_error = export_step_with_diagnostics(source.as_bytes(), &edited).unwrap_err();
+    let Err(edited_error) = export_step_with_diagnostics(source.as_bytes(), &edited) else {
+        panic!("edited IFC4 export accepted an unset AppliedLoad");
+    };
     let logged_error = export_step_with_log(source.as_bytes(), &options, &log).unwrap_err();
     for error in [edited_error, logged_error] {
         let diagnostic = error.to_string();

@@ -38,6 +38,7 @@ export interface StructuralRewrite {
   readonly restored?: readonly (readonly [number, readonly string[]])[];
   /** The source attributes the target drops, for the loss preview (the varying constant fallback, #11354). */
   readonly dropped?: readonly string[];
+  readonly unusableAppliedLoad?: boolean;
 }
 
 const SUBTYPES = new Map<string, boolean>();

@@ -9,7 +9,7 @@ use crate::schema_structural_axes::list_items;
 use crate::schema_structural_carriers::StructuralCarriers;
 use crate::schema_structural_links::slot_ref;
 use crate::schema_structural_varying::StructuralVarying;
-use crate::schema_structural_varying_constant::constant_action;
+use crate::schema_structural_varying_constant::{constant_action, require_applied_load};
 use crate::step_ids::IdAllocator;
 use crate::step_record_frame::record_frame;
 use crate::step_slot::split_top_level_args;
@@ -32,10 +32,10 @@ struct Record<'a> {
     end: usize,
 }
 
-pub(super) fn finish(text: &str) -> Option<EffectiveResult> {
+pub(super) fn finish(text: &str) -> std::io::Result<Option<EffectiveResult>> {
     let (records, mut actions) = index(text);
     if actions.is_empty() {
-        return None;
+        return Ok(None);
     }
     actions.sort_unstable_by_key(|id| records[id].start);
     let max = records.keys().copied().max().unwrap_or_default();
@@ -72,12 +72,13 @@ pub(super) fn finish(text: &str) -> Option<EffectiveResult> {
             result.warnings.push(message.to_owned());
             carriers.write(id);
         }
+        plan.require_constant_load(id, &ty, &args)?;
         let body = if let Some((body, warnings, dropped)) = plan.rewrite(id, &ty, &args, cause.is_some()) {
             result.dropped += dropped;
             result.warnings.extend(warnings);
             body
         } else {
-            fallback(&ty, &args, &records, cause.is_some(), &mut result)
+            fallback(id, &ty, &args, &records, cause.is_some(), &mut result)?
         };
         result.body.push_str(&format!("#{id}={body};"));
     }
@@ -88,7 +89,7 @@ pub(super) fn finish(text: &str) -> Option<EffectiveResult> {
         let (id, _, _, _) = EntityScanner::new(&added).next_entity().expect("generated STEP record");
         result.added.push(id);
     }
-    Some(result)
+    Ok(Some(result))
 }
 
 fn index(text: &str) -> (HashMap<u32, Record<'_>>, Vec<u32>) {
@@ -123,12 +124,13 @@ fn incomplete_aspects(text: &str, records: &HashMap<u32, Record<'_>>) -> HashSet
 }
 
 /// An action `StructuralVarying::rewrite` does not know (its scan could not read the record): the constant action all the same.
-fn fallback(ty: &str, args: &[String], records: &HashMap<u32, Record<'_>>, cause_carried: bool, result: &mut EffectiveResult) -> String {
+fn fallback(id: u32, ty: &str, args: &[String], records: &HashMap<u32, Record<'_>>, cause_carried: bool, result: &mut EffectiveResult) -> std::io::Result<String> {
     let target = StructuralVarying::target(ty).expect("indexed only varying actions");
     let load = reference(&args[7], records)
         .is_some_and(|r| StructuralVarying::admits_direct_load(ty, r.ty));
-    let constant = constant_action(target, ty, args, load, cause_carried);
+    require_applied_load(id, ty, load)?;
+    let constant = constant_action(target, ty, args, cause_carried);
     result.dropped += constant.dropped;
     result.warnings.extend(constant.warnings);
-    constant.body
+    Ok(constant.body)
 }

@@ -14,6 +14,7 @@ import { computeWithheldRefIds } from './schema-untranslatable.js';
 import { readStepSlots } from './step-argument-parser.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
 import { finishEffectiveVarying } from './schema-structural-varying-effective.js';
+import { unusableAppliedLoad } from './schema-structural-varying-constant.js';
 
 const NONE: ReadonlySet<string> = new Set();
 const CAUSED_BY_UNCONVERTED = "IFC2X3 CausedBy of a varying action that stays unconverted is kept only in that IFC2X3 record; no 'Causes' relationship is written";
@@ -167,6 +168,7 @@ export class StructuralDiagnostics {
     const rewrite = attrs ? { body: `IFCRELCONNECTSSTRUCTURALELEMENT(${attrs})`, losses: [LINK] }
       : this.varying.rewrite(id, entity, args, carried) ?? this.carriers.rewrite(id, entity, args, withheld)
         ?? this.thickness.rewrite(id, entity, args) ?? this.axes.rewrite(id, args, withheld);
+    if (rewrite?.unusableAppliedLoad && !this.roundTrip) throw unusableAppliedLoad(id, entity);
     if (!rewrite || (withheld && rewrite.body !== null && referencesAnyExpressId(rewrite.body, withheld))) return undefined;
     rewrite.losses.forEach((loss) => this.record(loss));
     if (this.roundTrip && rewrite.dropped?.length) this.constantDropped.set(id, rewrite.dropped);

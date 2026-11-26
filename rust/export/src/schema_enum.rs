@@ -296,14 +296,14 @@ impl ConversionChecks {
         let varying_ids = std::cell::RefCell::new(Vec::new());
         let surviving_deferred = std::cell::Cell::new(typed_added);
         let body_delta = body.finish_with_header(|text| {
-            let varying = self.structural.finish_effective_varying(text, &mut self.attribute_values_dropped)
+            let varying = self.structural.finish_effective_varying(text, &mut self.attribute_values_dropped)?
                 .map(|(text, ids)| { varying_ids.replace(ids); text });
             let added = varying_ids.borrow().len() as isize;
             let source = varying.as_deref().unwrap_or(text);
-            match self.forms.finish_dates(source, &mut self.attribute_values_dropped, |ty| self.plans.forget_verbatim(ty)) {
+            Ok(match self.forms.finish_dates(source, &mut self.attribute_values_dropped, |ty| self.plans.forget_verbatim(ty)) {
                 Some((body, delta)) => Some((body, added + delta)),
                 None => varying.map(|body| (body, added)),
-            }
+            })
         }, |out, omitted| {
             let varying = varying_ids.borrow().iter().filter(|id| !omitted.contains(id)).count();
             // Typed properties reserve a contiguous range starting at the supplied allocator.

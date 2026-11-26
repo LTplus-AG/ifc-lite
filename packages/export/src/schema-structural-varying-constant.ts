@@ -10,7 +10,9 @@ const OMITTED_SLOTS = [
 ] as const;
 const lossFor = (words: readonly string[]): string => `The retained varying structural action has no complete load configuration; its ${words.join(' and ')} were omitted (#11037).`;
 
-const MISSING_LOAD = 'The retained varying structural action has no usable AppliedLoad; the required IFC4 slot was left unset (#11037).';
+export function unusableAppliedLoad(id: number, entity: string): Error {
+  return new Error(`Cannot convert #${id} (${entity}) to IFC4: the constant action has no usable AppliedLoad (#11354).`);
+}
 
 /**
  * The constant IFC4 action an IFC2X3 varying action is written as when its
@@ -28,9 +30,8 @@ export function constantAction(target: string, entity: string, args: readonly st
   const omitted = OMITTED_SLOTS.filter((o) => holdsValue(args[o.slot]));
   // Reported only when a slot held a value, and naming only those (#11354).
   const losses = omitted.length ? [lossFor(omitted.map((o) => o.words))] : [];
-  if (!load) losses.push(MISSING_LOAD);
   if (!carried && holdsValue(args[10])) losses.push(`${entity}.CausedBy has no slot in IFC4; its value is omitted (#11037).`);
-  const applied = load ? args[7] : '$';
   const dropped = [...(load || !holdsValue(args[7]) ? [] : ['AppliedLoad']), ...omitted.map((o) => o.attribute)];
-  return { body: `${target}(${[...args.slice(0, 7), applied, args[8], args[9], args[11], '.CONST.'].join(',')})`, losses, dropped };
+  if (!load) return { body: null, losses, dropped, unusableAppliedLoad: true };
+  return { body: `${target}(${[...args.slice(0, 8), args[8], args[9], args[11], '.CONST.'].join(',')})`, losses, dropped };
 }

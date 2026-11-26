@@ -91,7 +91,7 @@ const inputSchema: JsonSchema = {
     },
     timeout_ms: {
       type: 'integer', minimum: 100, maximum: MAX_TIMEOUT_MS, default: DEFAULT_TIMEOUT_MS,
-      description: `Execution time limit in milliseconds (default ${DEFAULT_TIMEOUT_MS}, max ${MAX_TIMEOUT_MS}). Script code is interrupted when it is exceeded; a single synchronous bim.* call already running is not cut short. Script code runs on the server's event loop, so other requests and a cancel wait until it yields or is interrupted. bim calls the script starts but does not await still count: if they outlast the limit the run is a TIMEOUT. The limit is wall-clock from when the script starts running, so once it has started, time spent waiting behind another session's script counts too, and so does serialising a large returned value.`,
+      description: `Execution time limit in milliseconds (default ${DEFAULT_TIMEOUT_MS}, max ${MAX_TIMEOUT_MS}). Script code is interrupted when it is exceeded; a single synchronous bim.* call already running is not cut short. Script code runs on the server's event loop, so other requests and a cancel wait until it yields or is interrupted. bim calls the script starts but does not await still count: if they outlast the limit the run is a TIMEOUT. The limit is wall-clock from when the script starts running, so once it has started, time spent waiting behind another session's script counts too, and so do serialising a large returned value and the bounded copy of large object arguments to bim calls.`,
     },
     memory_mb: {
       type: 'integer', minimum: 8, maximum: MAX_MEMORY_MB, default: DEFAULT_MEMORY_MB,

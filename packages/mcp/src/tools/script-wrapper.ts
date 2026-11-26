@@ -61,6 +61,11 @@ export function wrapScript(code: string): string {
   var P = I.P, isInstance = I.isInstance, then = I.then, apply = I.apply, slice = I.slice, Str = I.Str, stringify = I.stringify, keys = I.keys, isArray = I.isArray, create = I.create, defineProperty = I.defineProperty, glob = I.glob, ErrorCtor = I.ErrorCtor, TypeErrorCtor = I.TypeErrorCtor, SetCtor = I.SetCtor, setAdd = I.setAdd, setHas = I.setHas, setDelete = I.setDelete, unbox = I.unbox, objectProto = I.objectProto, getProto = I.getProto, parse = I.parse, charCodeAt = I.charCodeAt, SyntaxErrorCtor = I.SyntaxErrorCtor, RegExpCtor = I.RegExpCtor, exec = I.exec, bind = I.bind, InternalErrorCtor = I.InternalErrorCtor, toStringTag = I.toStringTag;
   // Guarded: a thrown Proxy whose getPrototypeOf trap throws must not make the
   // wrapper itself throw.
+  // Guarded like isInternal: instanceof on a Proxy can run script code.
+  function isError(e) {
+    try { return apply(isInstance, ErrorCtor, [e]); }
+    catch (_) { return false; }
+  }
   function isInternal(e) {
     try { return !!InternalErrorCtor && apply(isInstance, InternalErrorCtor, [e]); }
     catch (_) { return false; }
@@ -180,7 +185,7 @@ export function wrapScript(code: string): string {
         if (box) v = forLog && typeof box.v === 'bigint' ? bigintText(box.v) : box.v;
       }
       if (typeof v === 'object') {
-        if (forLog && apply(isInstance, ErrorCtor, [v])) { out += stringify(msg(v)); return; }
+        if (forLog && isError(v)) { out += stringify(msg(v)); return; }
         if (apply(setHas, onPath, [v])) throw new TypeErrorCtor('the value is cyclic');
         if (sp >= L.maxDepth) throw new ErrorCtor('the value is nested deeper than ' + L.maxDepth + ' levels');
         apply(setAdd, onPath, [v]);
@@ -222,7 +227,7 @@ export function wrapScript(code: string): string {
         if (omitted(v)) continue;
         // A long key can pass the cap on its own: copy only enough of it to
         // pass the cap, so the result is read as a preview, then stop.
-        if (out.length + k.length > limit) return out.length > limit ? out : out + apply(slice, k, [0, limit - out.length + 1]);
+        if (out.length + k.length > limit) return out.length > limit ? out : out + (fw[i] ? ',' : '') + stringify(apply(slice, k, [0, limit - out.length + 1]));
         if (fw[i]) out += ',';
         fw[i] = true;
         if (gap) out += '\\n' + indent(sp);
@@ -254,13 +259,11 @@ export function wrapScript(code: string): string {
     if (typeof a === 'string') return a;
     if (typeof a === 'bigint') return bigintText(a);
     if (typeof a === 'number') return a === 0 && 1 / a < 0 ? '-0' : Str(a);
-    try {
-      if (apply(isInstance, ErrorCtor, [a])) {
-        var st = a.stack;
-        var head = cut(msg(a), L.maxMessage);
-        return head + (typeof st === 'string' && st !== '' ? '\\n' + cut(st, L.maxLog - 32 - head.length) : '');
-      }
-    } catch (_) { /* an unreadable stack: fall through to the JSON form */ }
+    if (isError(a)) {
+      var head = cut(msg(a), L.maxMessage), st;
+      try { st = a.stack; } catch (_) { st = '[stack unreadable]'; }
+      return head + (typeof st === 'string' && st !== '' ? '\\n' + cut(st, L.maxLog - 32 - head.length) : '');
+    }
     try {
       var s = ser(a, L.maxLog, true);
       // A root whose toJSON gave a string (a Date, say) prints as that text, not quoted.
@@ -272,10 +275,15 @@ export function wrapScript(code: string): string {
   // A function that maps each argument and then calls fn on thisArg. The
   // argument list is a null-prototype array-like, out of Array.prototype's reach.
   // only, when given, maps just the argument indexes it marks true.
-  function forwardMapped(fn, thisArg, mapper, only) {
+  // label, when given, prefixes a mapper failure (e.g. 'bim.cost.items').
+  function forwardMapped(fn, thisArg, mapper, only, label) {
     return function () {
       var args = create(null), n = arguments.length;
-      for (var ai = 0; ai < n; ai++) args[ai] = !only || only[ai] === true ? mapper(arguments[ai]) : arguments[ai];
+      for (var ai = 0; ai < n; ai++) {
+        if (only && only[ai] !== true) { args[ai] = arguments[ai]; continue; }
+        try { args[ai] = mapper(arguments[ai]); }
+        catch (e) { if (!label || isInternal(e)) throw e; throw new TypeErrorCtor(label + ': argument ' + ai + ': ' + msg(e)); }
+      }
       args.length = n;
       return apply(fn, thisArg, args);
     };
@@ -302,7 +310,7 @@ export function wrapScript(code: string): string {
     for (var wi = 0; wi < ks.length; wi++) {
       var member = source[ks[wi]], name = path === '' ? ks[wi] : path + '.' + ks[wi];
       var listed = L.dumped[name];
-      target[ks[wi]] = typeof member === 'function' ? forwardMapped(member, source, safeArg, listed)
+      target[ks[wi]] = typeof member === 'function' ? forwardMapped(member, source, safeArg, listed, 'bim.' + name)
         : member !== null && typeof member === 'object' && level < 3 ? wrapMethods(member, level + 1, name)
         : member;
     }

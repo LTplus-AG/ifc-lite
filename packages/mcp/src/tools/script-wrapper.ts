@@ -43,10 +43,10 @@ const MAX_VALUE_DEPTH = 1_000;
  * vm.dump()s ('dump' and the entityRefs kinds). Only those are bounded, so a
  * string or number argument keeps its toString/valueOf coercion.
  */
-const DUMPED_ARGS: Record<string, number[]> = Object.fromEntries(
+const DUMPED_ARGS: Record<string, Record<number, true>> = Object.fromEntries(
   NAMESPACE_SCHEMAS.flatMap((ns) => ns.methods.map((m) => [
     `${ns.name}.${m.name}`,
-    m.args.flatMap((kind, i) => (kind === 'dump' || kind.startsWith('entityRefs') ? [i] : [])),
+    Object.fromEntries(m.args.flatMap((kind, i) => (kind === 'dump' || kind.startsWith('entityRefs') ? [[i, true]] : []))),
   ])),
 );
 
@@ -271,13 +271,11 @@ export function wrapScript(code: string): string {
   }
   // A function that maps each argument and then calls fn on thisArg. The
   // argument list is a null-prototype array-like, out of Array.prototype's reach.
-  // positions, when given, limits the mapping to those argument indexes.
-  function forwardMapped(fn, thisArg, mapper, positions) {
-    var only = null;
-    if (positions) { only = create(null); for (var pi = 0; pi < positions.length; pi++) only[positions[pi]] = true; }
+  // only, when given, maps just the argument indexes it marks true.
+  function forwardMapped(fn, thisArg, mapper, only) {
     return function () {
       var args = create(null), n = arguments.length;
-      for (var ai = 0; ai < n; ai++) args[ai] = only === null || only[ai] ? mapper(arguments[ai]) : arguments[ai];
+      for (var ai = 0; ai < n; ai++) args[ai] = !only || only[ai] === true ? mapper(arguments[ai]) : arguments[ai];
       args.length = n;
       return apply(fn, thisArg, args);
     };

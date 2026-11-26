@@ -180,13 +180,14 @@ export class SceneCompact {
       if (pieces) pieces.push(source); else this.byId.set(source.expressId, [source]);
     }
     this.scene.triangleCounts.uploaded(queue);
+    this.scene.bumpPickGeometryRevision();
+    // After the pages: a throw here (a bucket's GPU build) leaves these in their buckets, pending, and the pages drawn.
+    // Before the trim: its shared-bucket check (compact-lod.ts) must find them.
+    this.toBuckets(decoded);
     if (this.trimAfterDrain) {
       this.trimAfterDrain = false;
       this.trim(device);
     }
-    this.scene.bumpPickGeometryRevision();
-    // After the pages: a throw here (a bucket's GPU build) leaves these in their buckets, pending, and the pages drawn.
-    this.toBuckets(decoded);
     return true;
   }
 
@@ -213,7 +214,7 @@ export class SceneCompact {
     this.lod = settlePages(this.store, this.scene, device, this.deps, (meshes, reason) => {
       this.decodes[reason] = (this.decodes[reason] ?? 0) + meshes.length;
       // A failed bucket build leaves each mesh on its page or in its (pending) bucket: neither loses it, so the stream goes on.
-      try { this.demoteChosen(meshes.map((source) => [source, this.members.get(source)!]), false); } catch (error) { console.warn('[compactGeom] exact buckets', error); }
+      try { this.demoteChosen(meshes.map((source) => [source, this.members.get(source)!]), false); } catch (error) { console.warn(`[compactGeom] moving ${reason} groups to buckets`, error); }
     });
   }
 

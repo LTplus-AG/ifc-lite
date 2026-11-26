@@ -1039,6 +1039,16 @@ describe('compact pages take the decisions of the bucket batches they stand in f
     assert.equal(pages(narrow)[0].lodParts?.length, 2, '32 m chunks: two buckets, not the first scene\'s cached one');
   });
 
+  it('move a group to its bucket when an f32 mesh of that bucket is still queued at the end of the stream (#11606)', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    upload(on, gpu, compactBatch([{ expressId: 1, at: [2, 0, 0], size: 1, color: GREY }]));
+    on.queueMeshes([{ expressId: 9, modelIndex: 0, color: GREY, positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]) }]);
+    settle(on, gpu);
+    assert.equal(on.getCompactStats()?.decodes.shared, 1, 'judged with the queued mesh in its bucket');
+    assert.deepEqual(entitiesOf(buckets(on)), [1, 9]);
+  });
+
   it('keep pages whole when bucket batches build no LOD1', async () => {
     const gpu = fakeGpu(), scene = await newScene();
     scene.setSpatialChunking({ cellSize: 32 });

@@ -109,9 +109,11 @@ function collectGroups(store: CompactGeometryStore, host: SceneCompactHost, deps
     }
   }
   const { quantStep, maxQuantExtent, maxCollapsedFraction } = deps.bucket;
-  // Buckets that hold meshes of their own (f32 meshes no page draws): their batch is the union, so the group joins it.
+  // Buckets that hold meshes of their own (f32 meshes no page draws), or will once the queue is flushed: their batch is
+  // the union, so the group joins it. (A queued f32 mesh is keyed as the bucket path keys it: at its own first vertex.)
   const shared = new Set<string>();
   for (const [key, bucket] of host.buckets) if (bucket.meshData.length > 0) shared.add(key.replace(/#\d+$/, ''));
+  for (const mesh of host.meshQueue) if (!mesh.compact) shared.add(host.compactBucketKey(mesh, mesh));
   for (const [key, group] of groups) {
     if (shared.has(key)) { group.move = 'shared'; continue; }
     // quantize.ts: the batch's lower corner floors to the lattice; past `maxQuantExtent` above it the batch stays f32.
@@ -187,7 +189,8 @@ function* buildPageLods(store: CompactGeometryStore, groups: Map<string, Group>,
   const { simplify, lodCellSize, lodMinTriangles, lodMaxKeptFraction } = deps.bucket;
   const groupOf = new Map<MeshData, Group>();
   for (const group of groups.values()) for (const mesh of group.members) groupOf.set(mesh, group);
-  let scratch: Float32Array | null = null, lanes: Uint32Array | null = null; // allocated by the first page that clusters
+  // Allocated by the first page that clusters: positions and lanes, and the records' own u16 nodes.
+  let scratch: Float32Array | null = null, lanes: Uint32Array | null = null, nodes: Uint16Array | null = null;
   const plans: PagePlan[] = [];
   for (const page of store.pageList()) {
     // A page with a mesh `collect` did not see, or one written since (no records to read), keeps its own buffer, and
@@ -211,13 +214,14 @@ function* buildPageLods(store: CompactGeometryStore, groups: Map<string, Group>,
       if (!group.move && group.kept >= 0 && group.triangles >= lodMinTriangles) {
         scratch ??= new Float32Array(MAX_PAGE_VERTICES * SCRATCH_FLOATS);
         lanes ??= new Uint32Array(scratch.buffer);
-        if (!decoded) { readRecords(store, page, scratch, lanes); decoded = true; }
+        nodes ??= new Uint16Array(MAX_PAGE_VERTICES * 3);
+        if (!decoded) { readRecords(store, page, scratch, lanes, nodes); decoded = true; }
         const source = sourceIndices(store, meshes);
         const out = simplify(scratch.subarray(0, page.vertexCount * SCRATCH_FLOATS), SCRATCH_FLOATS, source,
           lodCellSize(group.bounds.min, group.bounds.max), { idLaneOffset: 3, frameOrigin: store.origin!, unconditional: true });
         if (out) {
           group.kept += out.length;
-          ({ indices: lod1, records } = lod1Vertices(out, source, { positions: scratch, lanes, vertexCount: page.vertexCount, quantized: page.batch.quantized! }, deps.bucket.octEncode));
+          ({ indices: lod1, records } = lod1Vertices(out, source, { positions: scratch, lanes, nodes, vertexCount: page.vertexCount }, deps.bucket.octEncode));
           // The clustering is entity-scoped: every corner of a triangle carries its entity's lane.
           const idOf = new Map<number, number>();
           for (const mesh of meshes) idOf.set(lanes[store.slotOf(mesh)!.base * SCRATCH_FLOATS + 3], mesh.expressId);
@@ -245,16 +249,18 @@ function* buildPageLods(store: CompactGeometryStore, groups: Map<string, Group>,
   }
 }
 
-/** Positions (page frame) and lanes of `page`'s records, at their page vertex numbers. */
-function readRecords(store: CompactGeometryStore, page: CompactPage, scratch: Float32Array, lanes: Uint32Array): void {
+/** Positions (page frame), lanes and u16 nodes of `page`'s records, at their page vertex numbers. */
+function readRecords(store: CompactGeometryStore, page: CompactPage, scratch: Float32Array, lanes: Uint32Array, nodes: Uint16Array): void {
   const q = page.batch.quantized!;
   for (const mesh of page.meshes) {
     const slot = store.slotOf(mesh)!, ref = mesh.compact!, records = ref.payload.records;
     const view = new DataView(records.buffer, records.byteOffset + compactRow(ref).vertexStart * COMPACT_RECORD_BYTES, slot.vertexCount * COMPACT_RECORD_BYTES);
     for (let v = 0, at = 0, out = slot.base * SCRATCH_FLOATS; v < slot.vertexCount; v++, at += COMPACT_RECORD_BYTES, out += SCRATCH_FLOATS) {
-      scratch[out] = q.min[0] + view.getUint16(at, true) * q.step;
-      scratch[out + 1] = q.min[1] + view.getUint16(at + 2, true) * q.step;
-      scratch[out + 2] = q.min[2] + view.getUint16(at + 4, true) * q.step;
+      const n = (slot.base + v) * 3;
+      for (let axis = 0; axis < 3; axis++) {
+        nodes[n + axis] = view.getUint16(at + axis * 2, true);
+        scratch[out + axis] = q.min[axis] + nodes[n + axis] * q.step;
+      }
       lanes[out + 3] = view.getUint32(at + 8, true);
     }
   }

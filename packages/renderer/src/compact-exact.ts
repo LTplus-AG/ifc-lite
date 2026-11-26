@@ -12,7 +12,8 @@
  * finer-level row can tip its batch, and it does only when its collapsed area, over all its meshes
  * in the group, passes the threshold. Areas come from the records: a finer row is within its own
  * (smaller) step of the source; a level 10 row lost the triangles welding emptied, which the encoder
- * already bounded by the same threshold per mesh.
+ * already bounded by the same threshold per mesh. So this is approximate: a level 10 piece adds its
+ * area but none of the (at most 1%) it lost, which only ever tips a borderline entity toward quantized.
  */
 
 import type { MeshData } from '@ifc-lite/geometry';

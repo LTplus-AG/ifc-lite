@@ -21,9 +21,9 @@ import { COMPACT_RECORD_BYTES } from '@ifc-lite/geometry/compact';
 export interface PageScratch {
   positions: Float32Array;
   lanes: Uint32Array;
+  /** The records' own u16 nodes, 3 per vertex (copied verbatim: the f32 positions round far from the store origin). */
+  nodes: Uint16Array;
   vertexCount: number;
-  /** The page's dequantization: position = min + q * step. */
-  quantized: { min: readonly number[]; step: number };
 }
 
 const STRIDE = 4;
@@ -42,7 +42,7 @@ function precedes(ax: number, ay: number, az: number, bx: number, by: number, bz
 export function lod1Vertices(
   lod1: Uint32Array, source: Uint32Array, page: PageScratch, octEncode: (x: number, y: number, z: number) => [number, number],
 ): { indices: Uint16Array; records: Uint8Array } {
-  const { positions: p, lanes, quantized: q } = page;
+  const { positions: p, lanes, nodes } = page;
   // The smallest face normal at each vertex, over the part's triangles (NaN: no face yet).
   const smallest = new Float32Array(page.vertexCount * 3).fill(Number.NaN);
   for (let t = 0; t + 2 < source.length; t += 3) {
@@ -61,7 +61,7 @@ export function lod1Vertices(
     }
   }
   // Welded vertices at one position and lane (other meshes of the entity, or sides kept apart) share their corners.
-  const node = (v: number, axis: number): number => Math.round((p[v * STRIDE + axis] - q.min[axis]) / q.step);
+  const node = (v: number, axis: number): number => nodes[v * 3 + axis];
   const positionKey = (v: number): number => (node(v, 0) * 65536 + node(v, 1)) * 65536 + node(v, 2);
   const local = new Map<number, number>(); // page vertex -> representative record
   const reps: number[] = [];

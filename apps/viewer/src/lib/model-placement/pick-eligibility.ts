@@ -85,19 +85,26 @@ export function rejectedPickMessage(
 /**
  * Display label per model. Models sharing a name get a load-order ordinal
  * ("A.ifc (1)", "A.ifc (2)") so a list never reads "A.ifc, A.ifc"; unique
- * names stay as they are.
+ * names stay as they are. An ordinal that would equal another model's own
+ * name ("A.ifc (1)" loaded beside two "A.ifc") is skipped, so every label is
+ * distinct.
  */
 export function modelLabels(modelIds: Iterable<string>, nameOf: (modelId: string) => string): Map<string, string> {
   const ids = [...modelIds];
   const total = new Map<string, number>();
   for (const id of ids) total.set(nameOf(id), (total.get(nameOf(id)) ?? 0) + 1);
-  const seen = new Map<string, number>();
+  const taken = new Set([...total.keys()].filter((name) => total.get(name) === 1));
+  const next = new Map<string, number>();
   const labels = new Map<string, string>();
   for (const id of ids) {
     const name = nameOf(id);
-    const n = (seen.get(name) ?? 0) + 1;
-    seen.set(name, n);
-    labels.set(id, (total.get(name) ?? 0) > 1 ? `${name} (${n})` : name);
+    if ((total.get(name) ?? 0) === 1) { labels.set(id, name); continue; }
+    let n = next.get(name) ?? 1;
+    while (taken.has(`${name} (${n})`)) n++;
+    const label = `${name} (${n})`;
+    next.set(name, n + 1);
+    taken.add(label);
+    labels.set(id, label);
   }
   return labels;
 }

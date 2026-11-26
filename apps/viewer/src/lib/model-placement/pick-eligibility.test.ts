@@ -86,6 +86,13 @@ test('models sharing a display name get an ordinal, unique names stay plain', ()
   assert.deepEqual([...labels], [['a', 'A.ifc (1)'], ['b', 'B.ifc'], ['c', 'A.ifc (2)']]);
 });
 
+test('an ordinal never collides with a model literally named like one', () => {
+  const names = new Map([['a', 'A.ifc'], ['b', 'A.ifc'], ['c', 'A.ifc (1)']]);
+  const labels = eligibility.modelLabels(names.keys(), (id) => names.get(id)!);
+  assert.deepEqual([...labels], [['a', 'A.ifc (2)'], ['b', 'A.ifc (3)'], ['c', 'A.ifc (1)']]);
+  assert.equal(new Set(labels.values()).size, 3);
+});
+
 test('the wrong-model message tells same-named models apart', () => {
   const dupNames: Record<string, string> = { a: 'X.ifc', b: 'X.ifc', c: 'X.ifc', h: 'H.ifc' };
   const r = eligibility.rejectedPickMessage('source', 'b', ctx(['a', 'c']), models.keys(), (id) => dupNames[id], everyEligible);

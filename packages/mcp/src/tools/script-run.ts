@@ -60,8 +60,8 @@ const MAX_MEMORY_MB = 128;
  * probed raises QuickJS's own catchable 'stack overflow' and disposes cleanly.
  * JSON serialisation and parsing recurse without that check at any ceiling,
  * so the wrapper serialises values and console arguments itself and gives the
- * script depth-checked JSON (script-wrapper.ts). Arguments to bim.* methods
- * are still dumped by the sandbox bridge unchecked (#11600).
+ * script depth-checked JSON and bounded copies of bim.* method arguments
+ * (script-wrapper.ts; #11600 tracks the bridge-side fix).
  */
 const MAX_STACK_BYTES = 128 * 1024;
 

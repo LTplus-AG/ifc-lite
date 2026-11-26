@@ -334,6 +334,9 @@ describe('script_run', () => {
     expect((await runError("throw 'InternalError: stack overflow'")).hint).toBeUndefined();
     expect((await runError("throw new Proxy({}, { getPrototypeOf() { throw new Error('interrupted'); } })")).code).toBe('INVALID_INPUT');
     expect((await run('typeof InternalError')).structuredContent?.value).toBe('undefined');
+    // Global scope, as in the other sandbox hosts.
+    expect((await run('var g = 5; globalThis.g')).structuredContent?.value).toBe(5);
+    expect((await run('typeof arguments')).structuredContent?.value).toBe('undefined');
     expect(logTexts(await run("'use strict'; console.debug = console.log; console.debug('x'); 1"))).toEqual(['x']);
     expect((await run('Object.prototype.toString.call(JSON)')).structuredContent?.value).toBe('[object JSON]');
     const huge = await run("({ a: 'x'.repeat(2e7) })", { memory_mb: 128 });
@@ -366,6 +369,9 @@ describe('script_run', () => {
     expect((await run('var a = [{ toJSON() { a.push(a[0]); return 1; } }]; JSON.stringify(a)')).structuredContent?.value).toBe('[1]');
     expect((await run("new String('x'.repeat(400000))")).structuredContent?.value_truncated).toBe(true);
     expect((await run('typeof bim.lens')).structuredContent?.value).toBe('undefined');
+    // A deep bim argument is refused in the realm instead of overflowing the bridge's dump.
+    expect((await run(`${deep} try { bim.cost.evaluateItem(o); 'no' } catch (e) { e.message }`)).structuredContent?.value).toMatch(/nested deeper than 1000 levels/);
+    expect((await run("bim.query.byType('IfcWall').length")).structuredContent?.value).toBe(2);
     expect((await run('9 + 9')).structuredContent?.value).toBe(18);
   });
 

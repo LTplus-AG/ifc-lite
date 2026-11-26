@@ -22,9 +22,9 @@
  * length are capped, and native stringify only ever sees primitives. Console
  * methods are replaced so non-string arguments go through the same path
  * before they reach the bridge, and the script's own JSON.stringify and
- * JSON.parse are replaced with depth-checked versions. Still open: a deeply
- * nested value passed as an argument to a bim.* method is dumped by the
- * sandbox bridge unchecked (#11600).
+ * JSON.parse are replaced with depth-checked versions, and every object
+ * argument to a bim.* method is passed through that same bounded path before
+ * the bridge dumps it (#11600 tracks the bridge-side fix).
  *
  * The catch blocks inside the generated source are not silent in the house
  * rule's sense: this code runs in the sandbox with no host logger, and each
@@ -221,8 +221,8 @@ export function wrapScript(code: string): string {
   }
   function env(v) {
     var j;
-    // 'Q' marks QuickJS's own InternalError. The script has no InternalError
-    // global, so it can only reuse one a real limit raised, not invent one.
+    // 'Q' marks QuickJS's own InternalError class. The script has no
+    // InternalError global, though one it caught can still be reused.
     try { j = ser(v, L.max); } catch (e) { return (isInternal(e) ? 'Q' : 'U') + msg(e); }
     if (j === undefined) return 'Jnull';
     return j.length > L.max ? 'P' + apply(slice, j, [0, L.preview + 1]) : 'J' + j;
@@ -272,6 +272,39 @@ export function wrapScript(code: string): string {
   // only affects itself, since the bridge's console is reachable only from here.
   defineProperty(glob, 'console', { value: safe, writable: true, configurable: true });
   delete glob.InternalError;
+  // The bridge vm.dump()s every object argument of a bim method (JSON
+  // semantics), and that recursion has no stack check either (#11600). Each
+  // object argument therefore goes through the wrapper's bounded serialiser
+  // and native parse first: the bridge gets the same data, capped in depth.
+  function safeArg(a) {
+    if (a === null || (typeof a !== 'object' && typeof a !== 'function')) return a;
+    var text = ser(a, Infinity, false);
+    return text === undefined ? undefined : parse(text);
+  }
+  function wrapMethods(source, level) {
+    var target = create(null), ks = keys(source);
+    for (var wi = 0; wi < ks.length; wi++) {
+      (function (name) {
+        var member = source[name];
+        if (typeof member === 'function') {
+          target[name] = function () {
+            var args = create(null), n = arguments.length;
+            for (var ai = 0; ai < n; ai++) args[ai] = safeArg(arguments[ai]);
+            args.length = n;
+            return apply(member, source, args);
+          };
+        } else if (member !== null && typeof member === 'object' && level < 3) {
+          target[name] = wrapMethods(member, level + 1);
+        } else {
+          target[name] = member;
+        }
+      })(ks[wi]);
+    }
+    return target;
+  }
+  if (glob.bim !== null && typeof glob.bim === 'object') {
+    defineProperty(glob, 'bim', { value: wrapMethods(glob.bim, 0), writable: true, configurable: true });
+  }
   // The script's own JSON calls hit the same C recursion, so it gets a JSON
   // whose stringify is the wrapper's serialiser (replacer and indent applied
   // in the same iterative walk) and whose parse first scans nesting depth.
@@ -324,5 +357,5 @@ export function wrapScript(code: string): string {
     }
     catch (e) { resolveWrapper(fail(e)); }
   });
-})(function () { return eval(${JSON.stringify(code)}); }, { P: Promise, isInstance: Function.prototype[Symbol.hasInstance], then: Promise.prototype.then, apply: Reflect.apply, slice: String.prototype.slice, Str: String, stringify: JSON.stringify, keys: Object.keys, isArray: Array.isArray, create: Object.create, defineProperty: Object.defineProperty, glob: globalThis, ErrorCtor: Error, TypeErrorCtor: TypeError, SetCtor: Set, setAdd: Set.prototype.add, setHas: Set.prototype.has, setDelete: Set.prototype.delete, unbox: [[Number.prototype, Number.prototype.valueOf], [String.prototype, String.prototype.valueOf], [Boolean.prototype, Boolean.prototype.valueOf], [BigInt.prototype, BigInt.prototype.valueOf]], objectProto: Object.prototype, getProto: Object.getPrototypeOf, parse: JSON.parse, charCodeAt: String.prototype.charCodeAt, SyntaxErrorCtor: SyntaxError, RegExpCtor: RegExp, exec: RegExp.prototype.exec, bind: Function.prototype.bind, InternalErrorCtor: typeof InternalError === 'function' ? InternalError : undefined, toStringTag: Symbol.toStringTag }, ${JSON.stringify(LIMITS)})`;
+})(function () { return (0, eval)(${JSON.stringify(code)}); }, { P: Promise, isInstance: Function.prototype[Symbol.hasInstance], then: Promise.prototype.then, apply: Reflect.apply, slice: String.prototype.slice, Str: String, stringify: JSON.stringify, keys: Object.keys, isArray: Array.isArray, create: Object.create, defineProperty: Object.defineProperty, glob: globalThis, ErrorCtor: Error, TypeErrorCtor: TypeError, SetCtor: Set, setAdd: Set.prototype.add, setHas: Set.prototype.has, setDelete: Set.prototype.delete, unbox: [[Number.prototype, Number.prototype.valueOf], [String.prototype, String.prototype.valueOf], [Boolean.prototype, Boolean.prototype.valueOf], [BigInt.prototype, BigInt.prototype.valueOf]], objectProto: Object.prototype, getProto: Object.getPrototypeOf, parse: JSON.parse, charCodeAt: String.prototype.charCodeAt, SyntaxErrorCtor: SyntaxError, RegExpCtor: RegExp, exec: RegExp.prototype.exec, bind: Function.prototype.bind, InternalErrorCtor: typeof InternalError === 'function' ? InternalError : undefined, toStringTag: Symbol.toStringTag }, ${JSON.stringify(LIMITS)})`;
 }

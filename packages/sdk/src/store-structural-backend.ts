@@ -38,7 +38,6 @@ import {
   assignToStructuralGroupInStore,
   connectStructuralActivityToItemInStore,
   connectStructuralMemberToConnectionInStore,
-  resolveSpatialAnchor,
   type StructuralSurfaceActionInStoreParams,
   type StructuralPointReactionInStoreParams,
   type StructuralCurveReactionInStoreParams,
@@ -55,6 +54,7 @@ import {
   type StructuralPointConnectionInStoreParams,
 } from '@ifc-lite/create';
 import type { CostStoreModelResolution } from './cost-store-backend.js';
+import { seededSpatialAnchor } from './seeded-anchor.js';
 import type { StructuralStoreBackendMethods } from './store-structural-types.js';
 import type { EntityRef } from './types.js';
 
@@ -158,17 +158,17 @@ export function createStructuralStoreBackend(
     },
     addStructuralSurfaceMember(modelId: string, storeyExpressId: number, params: StructuralSurfaceMemberInStoreParams): EntityRef {
       const model = resolved(modelId);
-      const result = addStructuralSurfaceMemberToStore(model.editor, { ...resolveSpatialAnchor(model.store, storeyExpressId), guidRandom: model.guidRandom }, params, model.store);
+      const result = addStructuralSurfaceMemberToStore(model.editor, seededSpatialAnchor(model, storeyExpressId), params, model.store);
       return ref(model.modelId, result.memberId);
     },
     addStructuralCurveConnection(modelId: string, storeyExpressId: number, params: StructuralCurveConnectionInStoreParams): EntityRef {
       const model = resolved(modelId);
-      const result = addStructuralCurveConnectionToStore(model.editor, { ...resolveSpatialAnchor(model.store, storeyExpressId), guidRandom: model.guidRandom }, params);
+      const result = addStructuralCurveConnectionToStore(model.editor, seededSpatialAnchor(model, storeyExpressId), params);
       return ref(model.modelId, result.connectionId);
     },
     addStructuralSurfaceConnection(modelId: string, storeyExpressId: number, params: StructuralSurfaceConnectionInStoreParams): EntityRef {
       const model = resolved(modelId);
-      const result = addStructuralSurfaceConnectionToStore(model.editor, { ...resolveSpatialAnchor(model.store, storeyExpressId), guidRandom: model.guidRandom }, params);
+      const result = addStructuralSurfaceConnectionToStore(model.editor, seededSpatialAnchor(model, storeyExpressId), params);
       return ref(model.modelId, result.connectionId);
     },
     addStructuralAnalysisModel(modelId: string, params: StructuralAnalysisModelInStoreParams): EntityRef {
@@ -178,13 +178,13 @@ export function createStructuralStoreBackend(
     },
     addStructuralCurveMember(modelId: string, storeyExpressId: number, params: StructuralCurveMemberInStoreParams): EntityRef {
       const model = resolved(modelId);
-      const anchor = { ...resolveSpatialAnchor(model.store, storeyExpressId), guidRandom: model.guidRandom };
+      const anchor = seededSpatialAnchor(model, storeyExpressId);
       const result = addStructuralCurveMemberToStore(model.editor, anchor, params);
       return ref(model.modelId, result.memberId);
     },
     addStructuralPointConnection(modelId: string, storeyExpressId: number, params: StructuralPointConnectionInStoreParams): EntityRef {
       const model = resolved(modelId);
-      const anchor = { ...resolveSpatialAnchor(model.store, storeyExpressId), guidRandom: model.guidRandom };
+      const anchor = seededSpatialAnchor(model, storeyExpressId);
       const result = addStructuralPointConnectionToStore(model.editor, anchor, params);
       return ref(model.modelId, result.connectionId);
     },

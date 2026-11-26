@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { addOrdinaryElementInStore, resolveSpatialAnchor, type OrdinaryInStoreElement, type WallAutojoinIndex } from '@ifc-lite/create';
+import { addOrdinaryElementInStore, type OrdinaryInStoreElement, type WallAutojoinIndex } from '@ifc-lite/create';
+import { seededSpatialAnchor } from './seeded-anchor.js';
 import type { CostStoreModelResolution } from './cost-store-backend.js';
 import type { EntityRef, StoreBackendMethods } from './types.js';
 import type { TopConstraintParams } from './store-top-types.js';
@@ -24,7 +25,7 @@ export function createOrdinaryStoreBackend(
 ): OrdinaryStoreBackendMethods {
   const add = (modelId: string, storeyId: number, element: OrdinaryInStoreElement, top?: TopConstraintParams['TopConstraint']): EntityRef & { notices?: string[] } => {
     const model = resolve(modelId);
-    const anchor = { ...resolveSpatialAnchor(model.store, storeyId, model.mutationView), guidRandom: model.guidRandom };
+    const anchor = seededSpatialAnchor(model, storeyId, model.mutationView);
     const notices: string[] = [];
     const expressId = addOrdinaryElementInStore(model.editor, anchor, element, { store: model.store, top: top ?? 'auto', notices, wallIndex });
     return { modelId: model.modelId, expressId, ...(notices.length ? { notices } : {}) };

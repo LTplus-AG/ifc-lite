@@ -77,6 +77,13 @@ export class InMemoryModelRegistry implements ModelRegistry {
     return () => this.listeners.delete(listener);
   }
 
+  /** The change is already committed: a failing listener is reported, never thrown at the add/remove caller. */
+  private changed(): void {
+    for (const listener of this.listeners) {
+      try { listener(); } catch (err) { console.error('[ifc-lite-mcp] model registry listener failed:', err); }
+    }
+  }
+
   list(): LoadedModel[] {
     return Array.from(this.models.values());
   }
@@ -99,13 +106,13 @@ export class InMemoryModelRegistry implements ModelRegistry {
     if (previous && previous !== model) previous.backend.dispose();
     this.models.set(model.id, model);
     model.backend.setPeerScopes(() => this.list().filter(peer => peer !== model).map(peer => ({ dataStore: peer.store, view: peer.backend.getMutationView() })));
-    this.listeners.forEach((l) => l());
+    this.changed();
   }
 
   remove(id: string): boolean {
     this.models.get(id)?.backend.dispose();
     const removed = this.models.delete(id);
-    if (removed) this.listeners.forEach((l) => l());
+    if (removed) this.changed();
     return removed;
   }
 

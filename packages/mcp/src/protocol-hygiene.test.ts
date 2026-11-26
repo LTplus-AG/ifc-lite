@@ -171,6 +171,24 @@ describe('list_changed', () => {
     expect(logged.filter((m) => m === 'notify notifications/resources/list_changed failed')).toHaveLength(2);
   });
 
+  it('commits a registry add even when a listener throws, and still runs the others', () => {
+    const registry = new InMemoryModelRegistry();
+    let ran = 0;
+    registry.onChange(() => { throw new Error('bad host listener'); });
+    registry.onChange(() => { ran++; });
+    const errors: unknown[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => { errors.push(args); };
+    try {
+      expect(() => registry.add(fakeModel('kept'))).not.toThrow();
+      expect(() => registry.remove('kept')).not.toThrow();
+    } finally {
+      console.error = original;
+    }
+    expect(ran).toBe(2);
+    expect(errors).toHaveLength(2);
+  });
+
   it('sends no list_changed before initialize', async () => {
     const { server, notes } = build();
     server.registry.add(fakeModel('early'));

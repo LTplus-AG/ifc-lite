@@ -169,6 +169,18 @@ export class ExpressionTranslator {
     return out;
   }
 
+  private productOperand(operand: Expr, other: Expr, scope: Scope): string {
+    if (other.k === 'call' && other.name.toUpperCase() === 'TYPEOF' && operand.k === 'aggregate') {
+      const items = operand.items.map(item => {
+        if (item.value.k !== 'str') return item;
+        const name = this.typeLiteral(item.value.value);
+        return name ? { ...item, value: { ...item.value, value: name } } : item;
+      });
+      return this.translate({ ...operand, items }, scope);
+    }
+    return this.translate(operand, scope);
+  }
+
   private binary(op: BinaryOp, left: Expr, right: Expr, scope: Scope): string {
     if (op === 'IN' && left.k === 'str' && right.k === 'call' && right.name.toUpperCase() === 'TYPEOF' && right.args.length === 1) {
       const literal = this.typeLiteral(left.value);
@@ -178,6 +190,7 @@ export class ExpressionTranslator {
         return `r.typeIs(m, ${this.translate(right.args[0], scope)}, ${JSON.stringify(name)})`;
       }
     }
+    if (op === '*') return `r.mul(${this.productOperand(left, right, scope)}, ${this.productOperand(right, left, scope)})`;
     if (op === '||') {
       const parts = this.complexParts({ k: 'binary', op, left, right }, []).map((p) => this.translate(p, scope));
       return `r.complex(m, [${parts.join(', ')}])`;

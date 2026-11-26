@@ -26,12 +26,23 @@ END_ENTITY;
 ${extra}
 END_SCHEMA;`;
 
-function loadMiniRules(source: string, runtime: Record<string, unknown>): { label: string; check: (self: object, model: object) => boolean }[] {
+function loadRules(source: string, runtime: Record<string, unknown>, entity = 'MiniThing'): { label: string; check: (self: object, model: object) => boolean }[] {
   const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } });
-  const exports = { RULES: { entity: { MiniThing: [] } } };
+  const exports = { RULES: { entity: { [entity]: [] } } };
   runInNewContext(outputText, { exports, require: () => ({ EnumValue: class {}, ...runtime }) });
-  return exports.RULES.entity.MiniThing;
+  return exports.RULES.entity[entity];
 }
+
+const setRuntime = {
+  typeOf: (_model: unknown, names: string[]) => names,
+  aggregate: (items: string[][]) => items.flat(),
+  mul: (left: string[], right: string[]) => left.filter(name => right.includes(name)),
+  sizeof: (items: unknown[]) => items.length,
+  eq: (left: number, right: number) => left === right,
+  ge: (left: number, right: number) => left >= right,
+  attr: (entity: Record<string, unknown>, key: string) => entity[key],
+  query: (items: string[][], matches: (names: string[]) => boolean) => items.filter(matches),
+};
 
 describe('generateValidators', () => {
   // Totals cross-checked against IfcOpenShell's compiled rule modules (#11559): every
@@ -126,7 +137,9 @@ END_SCHEMA;`;
 
   it('preserves ordinary strings and qualifies type and role operands (#11559)', () => {
     const { files } = generateValidators(mini("WR1 : 'foo.MiniThing' <> 'bar.MiniThing'; WR2 : 'mini.minithing' IN TYPEOF(SELF); WR3 : EXISTS(USEDIN(SELF, 'mini.minithing.name'))"));
-    const rules = loadMiniRules(files['rules.ts'], {
+    const rules = loadRules(files['rules.ts'], {
+      typeOf: () => ['MINI.MINITHING'],
+      isIn: (value: string, names: string[]) => names.includes(value),
       ne: (a: string, b: string) => a !== b,
       typeIs: (_model: unknown, _entity: unknown, name: string) => name === 'MINITHING',
       usedIn: (_model: unknown, _entity: unknown, role: string) => role.endsWith('.MINITHING.NAME') ? role : undefined,
@@ -135,12 +148,27 @@ END_SCHEMA;`;
     expect(rules.map(rule => rule.check({}, {}))).toEqual([true, true, true]);
   });
 
+  it('matches type-name sets in either intersection order and preserves ordinary set literals (#11559)', () => {
+    const { files } = generateValidators(mini("A : SIZEOF(TYPEOF(SELF) * ['mini.MiniThing']) = 1; B : SIZEOF(['mini.MiniThing'] * TYPEOF(SELF)) = 1; C : SIZEOF(['mini.MiniThing'] * ['MINI.MINITHING']) = 0"));
+    const rules = loadRules(files['rules.ts'], setRuntime);
+    expect(rules.map(rule => rule.check(['MINI.MINITHING'], {}))).toEqual([true, true, true]);
+    expect(rules.map(rule => rule.check(['MINI.OTHER'], {}))).toEqual([false, false, true]);
+  });
+
+  it('executes IFC4X3 ApplicableOnlyToItems on matching and nonmatching assigned items', () => {
+    const rules = loadRules(generate('IFC4X3.exp').files['rules.ts'], setRuntime, 'IfcPresentationLayerWithStyle');
+    const rule = rules.find(rule => rule.label === 'ApplicableOnlyToItems')!;
+    const valid = [['IFC4X3_DEV_923B0514.IFCMAPPEDITEM'], ['IFC4X3_DEV_923B0514.IFCGEOMETRICREPRESENTATIONITEM']];
+    expect(rule.check({ ASSIGNEDITEMS: valid }, {})).toBe(true);
+    expect(rule.check({ ASSIGNEDITEMS: [...valid, ['IFC4X3_DEV_923B0514.IFCWALL']] }, {})).toBe(false);
+  });
+
   it('loads unrelated rules when ESCAPE is illegal and executes legal ESCAPE (#11559)', () => {
     const schema = mini('WR1 : Bad(Name); WR2 : Good(Name)',
       'FUNCTION Bad(X : MiniLabel) : LOGICAL; ESCAPE; END_FUNCTION; FUNCTION Good(X : MiniLabel) : LOGICAL; REPEAT WHILE TRUE; ESCAPE; END_REPEAT; RETURN (TRUE); END_FUNCTION;');
     const { files, coverage } = generateValidators(schema);
     expect(coverage.unsupported.map(u => u.reason)).toEqual(['ESCAPE outside REPEAT', 'calls Bad, which did not compile: ESCAPE outside REPEAT']);
-    const rules = loadMiniRules(files['rules.ts'], { isTrue: Boolean, attr: () => 'x' });
+    const rules = loadRules(files['rules.ts'], { isTrue: Boolean, attr: () => 'x' });
     expect(rules.find(rule => rule.label === 'WR2')?.check({}, {})).toBe(true);
   });
 

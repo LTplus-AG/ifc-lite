@@ -148,6 +148,8 @@ pub(crate) struct ValueForms {
     emptied: BTreeMap<String, usize>,
     dates: calendar_dates::CalendarDates,
     narrowed_dates: BTreeMap<String, usize>,
+    /// Times written with a minute or second the IFC2X3 source left unset (#11199).
+    filled_dates: BTreeMap<String, usize>,
     duration_converted: bool,
 }
 
@@ -164,9 +166,16 @@ impl ValueForms {
     }
 
     pub(crate) fn finish_dates(&mut self, text: &str, dropped: &mut usize, pruned: impl FnMut(&str)) -> Option<(String, isize)> {
-        self.dates.finish(text, |required, narrowed, site| {
-            *dropped += 1;
-            let into = if narrowed { &mut self.narrowed_dates } else if required { &mut self.emptied } else { &mut self.dropped };
+        self.dates.finish(text, |required, loss, site| {
+            use calendar_dates::DateLoss;
+            // A filled clock precision is reported, not a dropped value.
+            if loss != DateLoss::Filled { *dropped += 1; }
+            let into = match loss {
+                DateLoss::Filled => &mut self.filled_dates,
+                DateLoss::Narrowed => &mut self.narrowed_dates,
+                DateLoss::Dropped if required => &mut self.emptied,
+                DateLoss::Dropped => &mut self.dropped,
+            };
             *into.entry(site).or_default() += 1;
         }, pruned)
     }
@@ -174,12 +183,11 @@ impl ValueForms {
     /// `line`, already converted from `cfrom` to `cto`, with every slot in a
     /// form the target accepts; each value dropped is added to `dropped`.
     pub(crate) fn apply(&mut self, line: String, cfrom: &str, cto: &str, express_id: u32, dropped: &mut usize) -> Result<String, UnrepresentedEntityError> {
-        // #11199: legacy date records go even when no slot converts.
-        if cfrom == "IFC2X3" && matches!(cto, "IFC4" | "IFC4X3") { self.dates.upgrading = true; }
         let Some(frame) = crate::step_record_frame::record_frame(&line) else { return Ok(line) };
         let written = frame.head.type_name(&line);
         // The converter writes the type in upper case; anything else is copied once.
         let ty: std::borrow::Cow<str> = if written.bytes().any(|b| b.is_ascii_lowercase()) { written.to_ascii_uppercase().into() } else { written.into() };
+        if cfrom == "IFC2X3" && matches!(cto, "IFC4" | "IFC4X3") { self.dates.note_upgraded(&ty); } // #11199
         let Ok(at) = VALUE_FORM_SLOTS.binary_search_by(|(f, t, name, _)| (*f, *t, *name).cmp(&(cfrom, cto, &*ty))) else { return Ok(line) };
         let slots: &[ValueFormSlot] = VALUE_FORM_SLOTS[at].3;
         let Some(mut args) = split_top_level_args(frame.args(&line)) else { return Ok(line) };
@@ -245,19 +253,17 @@ impl ValueForms {
 
     /// One warning per kind, naming every slot a value was dropped from (#10847).
     pub(crate) fn warnings(&self) -> Vec<String> {
+        let sites = |where_: &BTreeMap<String, usize>, what: &dyn Fn(usize, String) -> String| {
+            (!where_.is_empty()).then(|| what(where_.values().sum(), where_.keys().map(String::as_str).collect::<Vec<_>>().join(", ")))
+        };
         let line = |where_: &BTreeMap<String, usize>, what: &str| {
-            let total: usize = where_.values().sum();
-            let sites: Vec<&str> = where_.keys().map(String::as_str).collect();
-            (!where_.is_empty()).then(|| format!("{total} value(s) of a type the target slot does not accept {what}: {} (#10847).", sites.join(", ")))
+            sites(where_, &|total, list| format!("{total} value(s) of a type the target slot does not accept {what}: {list} (#10847)."))
         };
         line(&self.dropped, "were dropped").into_iter()
             .chain(line(&self.emptied, "left a slot the target requires as $, so the file is not valid against its header"))
-            .chain(self.dates.warnings())
-            .chain((!self.narrowed_dates.is_empty()).then(|| format!(
-                "{} date value(s) kept the calendar date and dropped the time and any timezone: {} (#10879).",
-                self.narrowed_dates.values().sum::<usize>(),
-                self.narrowed_dates.keys().map(String::as_str).collect::<Vec<_>>().join(", "),
-            )))
+            .chain(self.dates.warning())
+            .chain(sites(&self.narrowed_dates, &|total, list| format!("{total} date value(s) kept the calendar date and dropped the time and any timezone: {list} (#10879).")))
+            .chain(sites(&self.filled_dates, &|total, list| format!("{total} time value(s) wrote an unset minute or second as 00, a precision the IFC2X3 source does not state: {list} (#11199).")))
             .collect()
     }
 }

@@ -3,7 +3,7 @@
 #[path = "schema_calendar_date_values.rs"]
 mod values;
 
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use ifc_lite_core::EntityScanner;
 
@@ -34,15 +34,28 @@ struct PendingDate {
 #[derive(Default)]
 pub(super) struct CalendarDates {
     pub(super) enabled: bool,
-    /// An IFC2X3 upgrade ran, so its legacy date records go even when no slot converts (#11199).
-    pub(super) upgrading: bool,
+    /// An IFC2X3 upgrade wrote a legacy date record, so those nothing references
+    /// go even when no slot converts (#11199).
+    carriers_written: bool,
     pending: HashMap<u32, Vec<PendingDate>>,
     retained: usize,
-    /// Per `TYPE.Attribute`: times written with a minute or second the source left unset (#11199).
-    filled: BTreeMap<String, usize>,
+}
+
+/// What a deferred date slot lost: all of it, its time (kept the date), or
+/// nothing but a clock precision it filled (#11199).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum DateLoss {
+    Dropped,
+    Narrowed,
+    Filled,
 }
 
 impl CalendarDates {
+    /// Note an IFC2X3 upgrade's record of `ty`: a legacy date record arms the finishing pass.
+    pub(super) fn note_upgraded(&mut self, ty: &str) {
+        if carrier(ty) { self.carriers_written = true; }
+    }
+
     pub(super) fn defer(&mut self, id: u32, slot: u8, operator: &str, required: bool, site: impl FnOnce() -> String) -> bool {
         if !self.enabled {
             return false;
@@ -56,11 +69,11 @@ impl CalendarDates {
         true
     }
 
-    pub(super) fn finish(&mut self, text: &str, mut loss: impl FnMut(bool, bool, String), pruned: impl FnMut(&str)) -> Option<(String, isize)> {
-        if !self.enabled || (self.pending.is_empty() && !self.upgrading) {
+    pub(super) fn finish(&mut self, text: &str, mut loss: impl FnMut(bool, DateLoss, String), pruned: impl FnMut(&str)) -> Option<(String, isize)> {
+        if !self.enabled || (self.pending.is_empty() && !self.carriers_written) {
             return None;
         }
-        let upgrade = self.upgrading || self.pending.values().any(|dates| dates.iter().any(|date| date.up));
+        let upgrade = self.carriers_written || self.pending.values().any(|dates| dates.iter().any(|date| date.up));
         let (carriers, maximum) = collect_carriers(text, upgrade);
         let mut ids = IdAllocator::after(maximum);
         let mut appended = Vec::new();
@@ -74,18 +87,20 @@ impl CalendarDates {
             for date in dates {
                 let Some(value) = slots.get_mut(usize::from(date.slot)) else { continue };
                 let fixed = if date.up {
-                    from_legacy(value, date.kind, |id| carriers.get(&id?)).map(|(value, narrowed, filled)| {
-                        if filled { *self.filled.entry(date.site.clone()).or_default() += 1; }
-                        (value, narrowed)
-                    })
+                    from_legacy(value, date.kind, |id| carriers.get(&id?))
                 } else {
-                    restored_date(value, date.kind, &mut ids, &mut appended).map(|value| (value, false))
+                    restored_date(value, date.kind, &mut ids, &mut appended).map(|value| (value, false, false))
                 };
-                let narrowed = fixed.as_ref().is_some_and(|(_, narrowed)| *narrowed);
-                if fixed.is_none() || narrowed {
-                    loss(date.required, narrowed, date.site);
+                let lost = match fixed {
+                    None => Some(DateLoss::Dropped),
+                    Some((_, true, _)) => Some(DateLoss::Narrowed),
+                    Some((_, _, true)) => Some(DateLoss::Filled),
+                    Some(_) => None,
+                };
+                if let Some(lost) = lost {
+                    loss(date.required, lost, date.site);
                 }
-                *value = fixed.map_or_else(|| "$".to_owned(), |(value, _)| value);
+                *value = fixed.map_or_else(|| "$".to_owned(), |(value, _, _)| value);
             }
             rewrites.insert(id, frame.with_args(line, &slots.join(",")));
         }
@@ -94,17 +109,11 @@ impl CalendarDates {
         self.retained = used.len();
         Some(finish_text(text, &carriers, &used, &rewrites, &appended, pruned))
     }
-    pub(super) fn warnings(&self) -> impl Iterator<Item = String> + '_ {
-        let retained = (self.retained != 0).then(|| format!(
+    pub(super) fn warning(&self) -> Option<String> {
+        (self.retained != 0).then(|| format!(
             "{} legacy IFC2X3 date record(s) are still referenced by unconverted slots, so the file is not valid against its header (#10879).",
             self.retained,
-        ));
-        let filled = (!self.filled.is_empty()).then(|| format!(
-            "{} time value(s) wrote an unset minute or second as 00, a precision the IFC2X3 source does not state: {} (#11199).",
-            self.filled.values().sum::<usize>(),
-            self.filled.keys().map(String::as_str).collect::<Vec<_>>().join(", "),
-        ));
-        retained.into_iter().chain(filled)
+        ))
     }
 }
 

@@ -8,7 +8,10 @@ import { stepRecordHead } from './step-record-frame.js';
 import { namedExpressIds } from './step-ref-scan.js';
 import { MAX_SOURCE_STEP_ID, skipStepTrivia } from './step-slot-grammar.js';
 
-interface PendingDate { slot: number; kind: CalendarKind; up: boolean; where: string; lost: (narrowed: boolean) => void }
+/** What a deferred date slot lost: all of it, its time (kept the date), or nothing but a clock precision it filled (#11199). */
+export type DateLoss = 'dropped' | 'narrowed' | 'filled';
+
+interface PendingDate { slot: number; kind: CalendarKind; up: boolean; lost: (loss: DateLoss) => void }
 
 function recordId(text: string): number {
   const match = /^#(\d+)/.exec(text.slice(skipStepTrivia(text, 0)));
@@ -19,18 +22,21 @@ function recordId(text: string): number {
 export class CalendarDates {
   private readonly pending = new Map<number, PendingDate[]>();
   private retained = 0;
-  /** Per `TYPE.Attribute`: times written with a minute or second the source left unset (#11199). */
-  private readonly filled = new Map<string, number>();
-  /** An IFC2X3 upgrade ran, so its legacy date records go even when no slot converts (#11199). */
-  upgrading = false;
+  /** An IFC2X3 upgrade wrote a legacy date record, so those nothing references go even when no slot converts (#11199). */
+  private carriersWritten = false;
 
   constructor(private readonly enabled: boolean) {}
 
-  defer(text: string, slot: number, operator: string, where: string, lost: (narrowed: boolean) => void): boolean {
+  /** Note an IFC2X3 upgrade's record of `type`: a legacy date record arms the finishing pass. */
+  noteUpgraded(type: string): void {
+    if (DATE_CARRIERS.has(type)) this.carriersWritten = true;
+  }
+
+  defer(text: string, slot: number, operator: string, lost: (loss: DateLoss) => void): boolean {
     if (!this.enabled) return false;
     const id = recordId(text);
     if (!id) return false;
-    const date = { slot, kind: operator.slice(3) as CalendarKind, up: operator[1] === '+', where, lost };
+    const date = { slot, kind: operator.slice(3) as CalendarKind, up: operator[1] === '+', lost };
     const records = this.pending.get(id);
     if (records) records.push(date);
     else this.pending.set(id, [date]);
@@ -38,8 +44,8 @@ export class CalendarDates {
   }
 
   finish(lines: string[], maxReferenceId = MAX_SOURCE_STEP_ID): void {
-    if (!this.enabled || (!this.pending.size && !this.upgrading)) return;
-    const upgrade = this.upgrading || [...this.pending.values()].some((rules) => rules.some((rule) => rule.up));
+    if (!this.enabled || (!this.pending.size && !this.carriersWritten)) return;
+    const upgrade = this.carriersWritten || [...this.pending.values()].some((rules) => rules.some((rule) => rule.up));
     const carriers = new Map<number, DateRecord>();
     let next = 1;
     for (const line of lines) {
@@ -62,12 +68,12 @@ export class CalendarDates {
       for (const date of dates) {
         const value = slots[date.slot];
         let fixed: string | null;
-        let narrowed = false;
+        let narrowed = false, filled = false;
         if (date.up) {
           const result = fromLegacyDate(value, date.kind, (id) => id === null ? undefined : carriers.get(id));
           fixed = result?.value ?? null;
           narrowed = result?.narrowed ?? false;
-          if (result?.filled) this.filled.set(date.where, (this.filled.get(date.where) ?? 0) + 1);
+          filled = result?.filled ?? false;
         } else {
           let candidate = next;
           const result = toLegacyDate(value, date.kind, () => candidate++);
@@ -77,7 +83,7 @@ export class CalendarDates {
             fixed = result.ref;
           } else fixed = null;
         }
-        if (fixed === null || narrowed) date.lost(narrowed);
+        if (fixed === null || narrowed || filled) date.lost(fixed === null ? 'dropped' : narrowed ? 'narrowed' : 'filled');
         slots[date.slot] = fixed ?? '$';
       }
       lines[index] = record.prefix + slots.join(',') + record.suffix;
@@ -88,11 +94,9 @@ export class CalendarDates {
   }
 
   warnings(): string[] {
-    const filled = [...this.filled.values()].reduce((sum, count) => sum + count, 0);
-    return [
-      ...(this.retained ? [this.retained + ' legacy IFC2X3 date record(s) are still referenced by unconverted slots, so the file is not valid against its header (#10879).'] : []),
-      ...(filled ? [`${filled} time value(s) wrote an unset minute or second as 00, a precision the IFC2X3 source does not state: ${[...this.filled.keys()].sort().join(', ')} (#11199).`] : []),
-    ];
+    return this.retained
+      ? [this.retained + ' legacy IFC2X3 date record(s) are still referenced by unconverted slots, so the file is not valid against its header (#10879).']
+      : [];
   }
 }
 

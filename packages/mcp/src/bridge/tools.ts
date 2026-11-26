@@ -169,11 +169,13 @@ function statusResult(bridge: TabBridge, pairNewTab: boolean): CallToolResult {
     );
   }
   if (pairing) {
+    // The dialog assumes the default port; a fallback port must be typed too.
+    const portHint = bridge.port === DEFAULT_BRIDGE_PORT ? '' : ` and port ${bridge.port}`;
     lines.push(
       '',
       `To ${tab ? 'pair a different tab (it replaces the connected one)' : 'connect'}, open this link in the browser tab with the model:`,
       pairing.url,
-      `or enter the code ${pairing.code}${bridge.port === DEFAULT_BRIDGE_PORT ? '' : ` and port ${bridge.port}`} in the viewer's "Connect local agent" dialog.`,
+      `or enter the code ${pairing.code}${portHint} in the viewer's "Connect local agent" dialog.`,
       'The code works once.',
     );
   }

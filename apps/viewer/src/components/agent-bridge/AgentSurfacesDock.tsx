@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { useTranslation } from '@/i18n';
 import { ASK_EVENT } from '@ifc-lite/a2ui';
+import { a2uiSurfaceTarget } from '@ifc-lite/mcp/bridge-protocol';
 import { followUpToChat, type FollowUpHandler } from '@/lib/a2ui/actions';
 import { A2uiMessagesView, type AgentToRendererMessage } from '@/lib/a2ui/surface-host';
 import { agentSurfaces, type AgentSurface } from '@/lib/agent-bridge/agent-surfaces';
@@ -32,12 +33,10 @@ function keyOf(surface: object): number {
 }
 
 function surfaceIdOf(surface: AgentSurface): string {
-  // Any message kind names its surface (createSurface, updateComponents, updateDataModel), as the bridge reads it.
+  // Read as the bridge reads it, so a click names the surface the bridge recorded.
   for (const message of surface.messages) {
-    for (const body of Object.values(message as Record<string, unknown>)) {
-      const id = (body as { surfaceId?: unknown } | null)?.surfaceId;
-      if (typeof id === 'string' && id) return id;
-    }
+    const target = a2uiSurfaceTarget(message);
+    if (target) return target.surfaceId;
   }
   return 'agent-surface';
 }

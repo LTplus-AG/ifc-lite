@@ -24,62 +24,59 @@
 
 import { ASK_EVENT } from '@ifc-lite/a2ui';
 import { isRecord } from './json-bounds.js';
-import type { BridgeUiEvent } from './ui-events.js';
+import { a2uiSurfaceTarget, type BridgeUiEvent } from './ui-events.js';
 
 /** Surfaces remembered; the oldest is forgotten past this. */
 export const MAX_DELIVERED_SURFACES = 16;
 /** Distinct strings remembered per surface; later ones are not admitted as prompts. */
 export const MAX_SURFACE_STRINGS = 4096;
 
-/** A component whose value the user types, so a prompt bound to it is not in the surface. */
-const FREE_TEXT_COMPONENT = 'TextField';
-
 /** The renderer's prompt for an event action without a user message (`eventToFollowUp`). */
 function genericPrompt(name: string): string {
   return `Action: ${name}`;
 }
 
-function collectStrings(value: unknown, out: Set<string>): void {
-  if (out.size >= MAX_SURFACE_STRINGS) return;
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (trimmed) out.add(trimmed);
-  } else if (Array.isArray(value)) {
-    for (const item of value) collectStrings(item, out);
-  } else if (isRecord(value)) {
-    for (const item of Object.values(value)) collectStrings(item, out);
-  }
+/** What one surface holds: the agent's strings, and whether the user can type into it. */
+interface Surface {
+  strings: Set<string>;
+  /** It has a `TextField`, so a prompt bound to it is the user's own text, not in `strings`. */
+  typed: boolean;
 }
 
-/** The surface a v1.0 message is about (`{ createSurface: { surfaceId } }` and its siblings). */
-function surfaceIdOf(message: unknown): { id: string; kind: string } | null {
-  if (!isRecord(message)) return null;
-  for (const [kind, body] of Object.entries(message)) {
-    if (isRecord(body) && typeof body.surfaceId === 'string' && body.surfaceId) return { id: body.surfaceId, kind };
+function collect(value: unknown, into: Surface): void {
+  if (into.strings.size >= MAX_SURFACE_STRINGS) return;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed) into.strings.add(trimmed);
+  } else if (Array.isArray(value)) {
+    for (const item of value) collect(item, into);
+  } else if (isRecord(value)) {
+    if (value.component === 'TextField') into.typed = true;
+    for (const item of Object.values(value)) collect(item, into);
   }
-  return null;
 }
 
 export class DeliveredSurfaces {
-  /** Surface id -> every trimmed string the agent sent for it. Insertion order is age. */
-  private readonly surfaces = new Map<string, Set<string>>();
+  /** Surface id -> what the agent sent for it. Insertion order is age. */
+  private readonly surfaces = new Map<string, Surface>();
 
   /** Remember the messages of one `tab_show_ui` call. */
   record(messages: readonly unknown[]): void {
     for (const message of messages) {
-      const target = surfaceIdOf(message);
+      const target = a2uiSurfaceTarget(message);
       if (!target) continue;
+      const id = target.surfaceId;
       if (target.kind === 'deleteSurface') {
-        this.surfaces.delete(target.id);
+        this.surfaces.delete(id);
         continue;
       }
       // Unioned across calls: the tab keeps one panel per call, and an older
-      // panel with the same id stays clickable.
-      const strings = this.surfaces.get(target.id) ?? new Set<string>();
+      // panel with the same id stays clickable (until the id is evicted).
+      const surface = this.surfaces.get(id) ?? { strings: new Set<string>(), typed: false };
       // Re-inserted, so a surface the agent keeps updating is the newest.
-      this.surfaces.delete(target.id);
-      this.surfaces.set(target.id, strings);
-      collectStrings(message, strings);
+      this.surfaces.delete(id);
+      this.surfaces.set(id, surface);
+      collect(message, surface);
     }
     while (this.surfaces.size > MAX_DELIVERED_SURFACES) {
       const oldest = this.surfaces.keys().next().value as string;
@@ -89,13 +86,13 @@ export class DeliveredSurfaces {
 
   /** Why `event` is refused, or null when it matches a delivered surface. */
   refusal(event: BridgeUiEvent): string | null {
-    const strings = this.surfaces.get(event.surfaceId);
-    if (!strings) return 'names a surface the agent did not show in this tab';
+    const surface = this.surfaces.get(event.surfaceId);
+    if (!surface) return 'names a surface the agent did not show in this tab';
+    const { strings } = surface;
     if (event.name !== ASK_EVENT && !strings.has(event.name)) return 'names an event that surface does not raise';
     if (event.prompt !== undefined) {
       const prompt = event.prompt.trim();
-      const typed = strings.has(FREE_TEXT_COMPONENT);
-      if (prompt && !typed && !strings.has(prompt) && prompt !== genericPrompt(event.name)) return 'carries a prompt that surface does not contain';
+      if (prompt && !surface.typed && !strings.has(prompt) && prompt !== genericPrompt(event.name)) return 'carries a prompt that surface does not contain';
     }
     return null;
   }

@@ -51,6 +51,19 @@ export interface BridgeUiEventMessage {
   event: BridgeUiEvent;
 }
 
+/**
+ * The surface an A2UI v1.0 message is about: every message kind carries it
+ * (`{ createSurface: { surfaceId } }`, `updateComponents`, `updateDataModel`,
+ * `deleteSurface`). The bridge and the tab read it the same way.
+ */
+export function a2uiSurfaceTarget(message: unknown): { surfaceId: string; kind: string } | null {
+  if (!isRecord(message)) return null;
+  for (const [kind, body] of Object.entries(message)) {
+    if (isRecord(body) && typeof body.surfaceId === 'string' && body.surfaceId) return { surfaceId: body.surfaceId, kind };
+  }
+  return null;
+}
+
 type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
 
 export function parseUiEvent(raw: unknown): Parsed<BridgeUiEvent> {

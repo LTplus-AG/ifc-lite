@@ -11,6 +11,7 @@
  * land on the moving models, `target` picks on the reference model. A and B are
  * source picks, A' and B' target picks, in the order A, A', B, B'.
  */
+import type { TranslationKey } from '@/i18n';
 import type { Translation } from './translation.js';
 import { alignTwoPoints, type TwoPointAlignRefusal, type TwoPointAlignResult } from './two-point-align.js';
 
@@ -44,8 +45,8 @@ export function solveAlignPoints(points: AlignPoints): TwoPointAlignResult | nul
   return alignTwoPoints({ a, b, aPrime, bPrime });
 }
 
-export const ALIGN_REFUSAL_MESSAGES: Readonly<Record<TwoPointAlignRefusal, string>> = {
-  'non-finite': 'A picked point is not a finite coordinate. Pick the points again.',
-  'moving-pair-degenerate': 'A and B are at the same plan position. Pick B further from A on the moving models.',
-  'reference-pair-degenerate': 'A′ and B′ are at the same plan position. Pick B′ further from A′ on the reference model.',
+export const ALIGN_REFUSAL_KEYS: Readonly<Record<TwoPointAlignRefusal, TranslationKey>> = {
+  'non-finite': 'repositionPanel.twoPoint.refusal.nonFinite',
+  'moving-pair-degenerate': 'repositionPanel.twoPoint.refusal.movingDegenerate',
+  'reference-pair-degenerate': 'repositionPanel.twoPoint.refusal.referenceDegenerate',
 };

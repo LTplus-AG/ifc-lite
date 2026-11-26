@@ -13,7 +13,7 @@ import type { TranslationKey } from '@/i18n';
 import { Button } from '@/components/ui/button';
 import { useRepositionRuntime } from '@/lib/model-placement/reposition-runtime';
 import { buildAlignReadout } from '@/lib/model-placement/two-point-align-readout';
-import { ALIGN_REFUSAL_MESSAGES, ALIGN_STEPS, type AlignStep } from '@/lib/model-placement/two-point-align-session';
+import { ALIGN_REFUSAL_KEYS, ALIGN_STEPS, type AlignStep } from '@/lib/model-placement/two-point-align-session';
 
 const PROMPT_KEYS: Record<AlignStep, TranslationKey> = {
   a: 'repositionPanel.twoPoint.promptA',
@@ -58,7 +58,7 @@ export function TwoPointAlignPanel() {
       return <p key={step} className="font-mono truncate">{t('repositionPanel.twoPoint.pickedRow', {
         label: STEP_LABELS[step], x: point[0].toFixed(3), y: point[1].toFixed(3), z: point[2].toFixed(3) })}</p>;
     })}
-    {solved && !solved.ok && <p role="alert" className="text-destructive">{ALIGN_REFUSAL_MESSAGES[solved.reason]}</p>}
+    {solved && !solved.ok && <p role="alert" className="text-destructive">{t(ALIGN_REFUSAL_KEYS[solved.reason])}</p>}
     {readout && <div aria-label={t('repositionPanel.twoPoint.readoutAriaLabel')} role="group"
       className={`font-mono space-y-0.5 ${readout.warn ? 'text-amber-700 dark:text-amber-300' : ''}`}>
       {readout.lines.map((line, index) => <p key={index}>{line}</p>)}

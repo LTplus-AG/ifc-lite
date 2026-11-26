@@ -11,8 +11,9 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
+import { useTranslation } from '@/i18n';
 import type { PlacementAnchor } from '@/lib/model-placement/state';
-import { ALIGN_REFUSAL_MESSAGES, nextAlignStep, recordAlignPick, roleForAlignStep, solveAlignPoints,
+import { ALIGN_REFUSAL_KEYS, nextAlignStep, recordAlignPick, roleForAlignStep, solveAlignPoints,
   type AlignPoints, type AlignStep } from '@/lib/model-placement/two-point-align-session';
 import type { TwoPointAlignResult } from '@/lib/model-placement/two-point-align';
 import type { PickRole } from './useRepositionPicking';
@@ -43,6 +44,7 @@ interface Options {
 }
 
 export function useTwoPointAlign({ selected, reference, setRole, setError }: Options): TwoPointAlignSession {
+  const { t } = useTranslation();
   const [active, setActive] = useState(false);
   const [points, setPoints] = useState<AlignPoints>({});
   const [cleared, setCleared] = useState(false);
@@ -91,7 +93,7 @@ export function useTwoPointAlign({ selected, reference, setRole, setError }: Opt
     try {
       const solved = solveAlignPoints(pointsRef.current);
       if (!solved) throw new Error('Pick all four points first.');
-      if (!solved.ok) throw new Error(ALIGN_REFUSAL_MESSAGES[solved.reason]);
+      if (!solved.ok) throw new Error(t(ALIGN_REFUSAL_KEYS[solved.reason]));
       const ids = selectedRef.current;
       const store = useViewerStore.getState();
       store.alignModels(ids, solved.alignment);
@@ -100,7 +102,7 @@ export function useTwoPointAlign({ selected, reference, setRole, setError }: Opt
       setError('');
       exit();
     } catch (error) { setError(error instanceof Error ? error.message : String(error)); }
-  }, [exit, setError]);
+  }, [exit, setError, t]);
 
   // A placement change after a pick (gizmo drag, nudge, undo) moves the models
   // the points were read off, so they no longer describe the scene: start over.

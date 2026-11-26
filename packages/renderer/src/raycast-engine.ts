@@ -361,6 +361,7 @@ export class RaycastEngine {
         const hit = this.screenCorners.query({
             x, y, ray, camera: this.camera, viewKey: this.readbackViewKey(), liveViewKey: () => this.readbackViewKey(), viewport,
             pieces: this.flatIndex.allPieces(), geometryFor: mesh => this.snapDetector.getGeometryCache(mesh),
+            startGeometry: mesh => this.snapDetector.startGeometryCache(mesh),
             options: config, hiddenIds: options?.hiddenIds, isolatedIds: options?.isolatedIds, clip, hitDistance,
         });
         if (!hit) return current;

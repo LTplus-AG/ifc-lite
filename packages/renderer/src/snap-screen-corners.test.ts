@@ -16,6 +16,7 @@ import { RaycastEngine } from './raycast-engine.js';
 import { Camera } from './camera.js';
 import { Scene } from './scene.js';
 import { buildGeometryCache } from './snap-geometry-cache.js';
+import { GeometryCacheBuild, type StepBuild } from './snap-geometry-build.js';
 import { ScreenCornerIndex, closestPointOnSegmentToRay, type IdleHost, type IdleSlice } from './snap-screen-corners.js';
 import type { Mesh } from './types.js';
 import type { MeshData } from '@ifc-lite/geometry';
@@ -221,6 +222,21 @@ function harness(pieces: MeshData[], options: Record<string, unknown> = {}) {
   return { index, host, state, query, at, camera };
 }
 
+/** One piece made of `n` separate boxes (8 vertices, 12 triangles each): big geometry, many feature edges. */
+function boxSoup(n: number, expressId: number): MeshData {
+  const positions = new Float32Array(n * 24), indices = new Uint32Array(n * 36);
+  const unit = makeBox(1, [0, 0, 0], [0.1, 0.1, 0.1]);
+  for (let b = 0; b < n; b++) {
+    for (let v = 0; v < 24; v += 3) {
+      positions[b * 24 + v] = unit.positions[v] + (b % 50) * 0.2 - 5;
+      positions[b * 24 + v + 1] = unit.positions[v + 1] + Math.floor(b / 50) * 0.2 - 3;
+      positions[b * 24 + v + 2] = unit.positions[v + 2];
+    }
+    for (let k = 0; k < 36; k++) indices[b * 36 + k] = unit.indices[k] + b * 8;
+  }
+  return { ...unit, expressId, positions, normals: new Float32Array(positions.length), indices };
+}
+
 function boxRow(n: number): MeshData[] {
   const pieces: MeshData[] = [];
   for (let i = 0; i < n; i++) pieces.push(makeBox(i + 1, [i * 0.2, 0, 0], [i * 0.2 + 0.1, 0.1, 0.1]));
@@ -310,17 +326,7 @@ describe('screen corner idle build (#11504)', () => {
 
   it('builds one piece far bigger than a slice budget over several slices, each doing bounded work', () => {
     // One piece of 1500 separate boxes: ~18 000 feature edges and ~12 000 corners, built in one go by the old code.
-    const n = 1500, positions = new Float32Array(n * 24), indices = new Uint32Array(n * 36);
-    const unit = makeBox(1, [0, 0, 0], [0.1, 0.1, 0.1]);
-    for (let b = 0; b < n; b++) {
-      for (let v = 0; v < 24; v += 3) {
-        positions[b * 24 + v] = unit.positions[v] + (b % 50) * 0.2 - 5;
-        positions[b * 24 + v + 1] = unit.positions[v + 1] + Math.floor(b / 50) * 0.2 - 3;
-        positions[b * 24 + v + 2] = unit.positions[v + 2];
-      }
-      for (let k = 0; k < 36; k++) indices[b * 36 + k] = unit.indices[k] + b * 8;
-    }
-    const big: MeshData = { ...unit, expressId: 7, positions, normals: new Float32Array(positions.length), indices };
+    const big = boxSoup(1500, 7);
     const t = harness([big]);
     // Every clock read costs 1 ms: the pipeline reads it once per chunk, so chunks per slice = budget.
     const state = t.state;
@@ -354,6 +360,43 @@ describe('screen corner idle build (#11504)', () => {
     const total = sliceGain.reduce((a, b) => a + b, 0);
     assert.ok(Math.max(...sliceGain) < total / 4, `no slice did more than a quarter of the piece (${Math.max(...sliceGain)} of ${total} bytes)`);
     assert.ok(Math.max(...sliceCost) <= 5 + 4, `no slice overshot its budget by more than one chunk (${Math.max(...sliceCost)} ticks)`);
+  });
+
+  it('builds the snap geometry of one huge piece in bounded steps across slices, and a pick never builds it', () => {
+    // 1500 boxes: 18 000 triangles, 12 000 welded vertices. Its weld, classify and run-merge are the longest
+    // stages a slice used to run in one call (up to ~200 ms for 8 000 triangles in a real model).
+    const big = boxSoup(1500, 7);
+    const t = harness([big]);
+    const state = t.state;
+    let started = 0, atomic = 0, steps = 0;
+    const query = () => t.index.query({
+      x: 400, y: 300, ray: t.camera.unprojectToRay(400, 300, VIEW.width, VIEW.height), camera: t.camera, viewKey: 'still',
+      liveViewKey: () => 'still', viewport: VIEW, pieces: [big],
+      geometryFor: (m) => { atomic++; return buildGeometryCache(m); },
+      startGeometry: (m): StepBuild<ReturnType<typeof buildGeometryCache>> => {
+        started++;
+        const build = new GeometryCacheBuild(m);
+        return { get done() { return build.done; }, step: () => { steps++; return build.step(); }, result: () => build.result() };
+      },
+      options: { idleHost: t.host, settleMs: 0, maxSliceMs: 5 }, now: () => state.clock++,
+    });
+    for (let k = 0; k < 5; k++) query();
+    assert.equal(started + atomic + steps, 0, 'a pick built nothing');
+    const perSlice: number[] = [];
+    while (t.host.pending > 0) {
+      const before = steps;
+      t.host.tick(5);
+      perSlice.push(steps - before);
+      assert.ok(perSlice.length < 5000, 'terminates');
+    }
+    assert.equal(atomic, 0, 'the geometry was never built in one call');
+    assert.equal(started, 1);
+    const geometrySlices = perSlice.filter((n) => n > 0).length;
+    assert.ok(geometrySlices >= 20, `the geometry took ${geometrySlices} slices`);
+    // Every clock read costs 1 ms and the pipeline reads it once per step: a 5 ms budget allows about 5 steps.
+    assert.ok(Math.max(...perSlice) <= 5 + 1, `a slice ran ${Math.max(...perSlice)} geometry steps`);
+    assert.equal(t.index.stats()!.complete, true);
+    assert.equal(t.index.stats()!.candidatePieces, 1);
   });
 
   it('does nothing while the view moves, and starts once it has been still for settleMs', () => {

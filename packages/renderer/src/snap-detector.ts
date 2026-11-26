@@ -7,6 +7,7 @@ import type { Ray, Vec3, Intersection } from './raycaster.js';
 import { Raycaster } from './raycaster.js';
 import { distance, vecEquals, closestPointOnEdgeWithT, screenToWorldRadius } from './snap-geometry-utils.js';
 import { buildGeometryCache, type MeshGeometryCache } from './snap-geometry-cache.js';
+import { GeometryCacheBuild, finishedBuild, type StepBuild } from './snap-geometry-build.js';
 import type { SnapEdge } from './snap-edge-runs.js';
 import { bestEdgeCandidate, detectCorner, type EdgeCandidate } from './snap-corner.js';
 import type { PickClipState } from './pick-types.js';
@@ -557,6 +558,30 @@ export class SnapDetector {
     const cache = buildGeometryCache(mesh);
     this.geometryCache.set(key, cache);
     return cache;
+  }
+
+  /**
+   * The same cache as `getGeometryCache`, built in bounded `step`s for the idle
+   * corner pipeline (#11504). Already cached: a finished build. The cache is
+   * stored when the build's `result` is read, unless a pick built it meanwhile,
+   * in which case that one is kept so every reader sees one object.
+   */
+  startGeometryCache(mesh: MeshData): StepBuild<MeshGeometryCache> {
+    const key = this.cacheKeyFor(mesh);
+    const cached = this.geometryCache.get(key);
+    if (cached) return finishedBuild(cached);
+    const build = new GeometryCacheBuild(mesh);
+    return {
+      get done() { return build.done; },
+      step: () => build.step(),
+      result: () => {
+        const existing = this.geometryCache.get(key);
+        if (existing) return existing;
+        const cache = build.result();
+        this.geometryCache.set(key, cache);
+        return cache;
+      },
+    };
   }
 
   /** The mesh's snap geometry under `clip`, and the key naming that clip ('' when nothing clips it). */

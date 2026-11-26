@@ -22,6 +22,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import type { PickClipState } from './pick-types.js';
 import { isEntityVisible } from './entity-visibility.js';
 import type { MeshGeometryCache } from './snap-geometry-cache.js';
+import { finishedBuild, type StepBuild } from './snap-geometry-build.js';
 import { CandidateBuild, type PieceCandidates } from './snap-corner-candidates.js';
 import { CornerGrid, type ScreenSnapCamera } from './snap-corner-grid.js';
 import { gridKey, idsOf } from './snap-corner-key.js';
@@ -36,6 +37,8 @@ export const DEFAULT_MAX_SLICE_MS = 6;
 export interface BuildContext {
   pieces: readonly MeshData[];
   geometryFor: (mesh: MeshData) => MeshGeometryCache;
+  /** The same cache built in bounded steps; preferred over `geometryFor`, which builds a piece in one call. */
+  startGeometry?: (mesh: MeshData) => StepBuild<MeshGeometryCache>;
   camera: ScreenSnapCamera & { getPosition(): { x: number; y: number; z: number } };
   viewport: { width: number; height: number };
   /** The view's stamp NOW (the camera may have moved since the last pick). */
@@ -82,6 +85,8 @@ export class CornerBuildPipeline {
   private candidates = new WeakMap<MeshData, PieceCandidates>();
   /** Candidate builds a slice stopped inside; the next slice resumes them. */
   private building = new WeakMap<MeshData, CandidateBuild>();
+  /** Geometry builds a slice stopped inside, one per piece without candidates. */
+  private geometry = new WeakMap<MeshData, StepBuild<MeshGeometryCache>>();
   private candidatePieces = 0;
   private candidateBuilds = 0;
   private gridsStarted = 0;
@@ -126,6 +131,7 @@ export class CornerBuildPipeline {
     this.handle = null;
     this.candidates = new WeakMap();
     this.building = new WeakMap();
+    this.geometry = new WeakMap();
     this.candidatePieces = 0;
     this.candidateBytes = 0;
     this.ctx = null; this.seen = null; this.run = null; this.activeCache = null;
@@ -196,7 +202,18 @@ export class CornerBuildPipeline {
       if (!cand) {
         let build = this.building.get(piece);
         if (!build) {
-          build = new CandidateBuild(piece.expressId, ctx.geometryFor(piece));
+          // The snap geometry (weld, classify, merge) is built in steps too: its stages are the
+          // longest atomic work a slice can meet on a large piece.
+          let geo = this.geometry.get(piece);
+          if (!geo) {
+            geo = ctx.startGeometry ? ctx.startGeometry(piece) : finishedBuild(ctx.geometryFor(piece));
+            this.geometry.set(piece, geo);
+            if (over()) break;
+          }
+          while (!geo.done && !geo.step()) if (over()) break;
+          if (!geo.done) break;
+          build = new CandidateBuild(piece.expressId, geo.result());
+          this.geometry.delete(piece);
           this.building.set(piece, build);
           if (over()) break;
         }

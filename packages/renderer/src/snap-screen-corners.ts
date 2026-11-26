@@ -28,6 +28,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import type { Ray } from './raycaster.js';
 import type { PickClipState } from './pick-types.js';
 import type { MeshGeometryCache } from './snap-geometry-cache.js';
+import type { StepBuild } from './snap-geometry-build.js';
 import type { IdleHost } from './snap-idle-host.js';
 import type { ScreenSnapCamera, ScreenCornerHit } from './snap-corner-grid.js';
 import { gridKey } from './snap-corner-key.js';
@@ -105,6 +106,8 @@ export class ScreenCornerIndex {
     viewport: { width: number; height: number };
     pieces: readonly MeshData[];
     geometryFor: (mesh: MeshData) => MeshGeometryCache;
+    /** Optional: the same cache built in bounded steps. The idle build prefers it, so one huge piece spans several slices. */
+    startGeometry?: (mesh: MeshData) => StepBuild<MeshGeometryCache>;
     options: ScreenCornerSnapOptions;
     hiddenIds?: ReadonlySet<number>; isolatedIds?: ReadonlySet<number> | null;
     clip?: PickClipState | null;
@@ -124,7 +127,7 @@ export class ScreenCornerIndex {
     const viewKey = gridKey(args.viewKey, args.clip, viewport.width, viewport.height, args.hiddenIds, args.isolatedIds, cell, eligible);
     const liveViewKey = args.liveViewKey;
     pipeline.observe({
-      pieces: args.pieces, geometryFor: args.geometryFor, camera: args.camera, viewport,
+      pieces: args.pieces, geometryFor: args.geometryFor, startGeometry: args.startGeometry, camera: args.camera, viewport,
       liveViewKey: liveViewKey ? () => liveViewKey() : () => args.viewKey,
       hiddenIds: args.hiddenIds, isolatedIds: args.isolatedIds, eligible, clip: args.clip, cell,
       settleMs: options.settleMs ?? DEFAULT_SETTLE_MS, maxSliceMs: options.maxSliceMs ?? DEFAULT_MAX_SLICE_MS,

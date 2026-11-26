@@ -149,7 +149,7 @@ The same `npx` command works as a stdio server in any MCP-aware client.
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |
 | Diff | `model_diff` (`by_content` for content-keyed matching), `quantity_diff` |
 | Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_3dm` |
-| Scripting | `script_run` (read-only), `script_run_mutate` (hidden under `--read-only`): JavaScript against the `bim` SDK in the QuickJS sandbox, with time and memory limits. Script code runs on the server's event loop, so other requests wait while it runs |
+| Scripting | `script_run` (read-only), `script_run_mutate` (hidden under `--read-only`): JavaScript against the `bim` SDK in the QuickJS sandbox, with time and memory limits. Both need the `read` scope; `bim.export` and `bim.create` in `script_run_mutate` also need `export`. Script code runs on the server's event loop, so other requests wait while it runs |
 | Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_select`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
 
 `join_walls` joins two straight walls in the same placement frame through the

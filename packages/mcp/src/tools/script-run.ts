@@ -158,6 +158,14 @@ function hintFor(mode: Mode, code: string, message: string, { host, exportAllowe
 }
 
 async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolContext) {
+  // A script reads the model and (in mutate mode) can export it, so the
+  // token needs those scopes too, not only the tool's own 'mutate'. Checked
+  // before the model lookup, whose errors list the loaded model ids.
+  const scope = ctx.currentScope?.() ?? ctx.scope;
+  if (!scopeAllows(scope, 'read')) {
+    throw new ToolExecutionError({ code: ToolErrorCode.PERMISSION_DENIED, message: 'Script tools read the model and need the read scope.' });
+  }
+  const exportAllowed = scopeAllows(scope, 'export');
   const model = resolveModel(ctx, input.model_id as string | undefined);
   const code = input.code;
   if (typeof code !== 'string' || code.length === 0 || code.length > MAX_CODE_CHARS) {
@@ -167,10 +175,6 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
   const memoryMb = intInput(input.memory_mb, 'memory_mb', 8, MAX_MEMORY_MB, DEFAULT_MEMORY_MB);
   const cancelled = (details?: Record<string, unknown>) =>
     new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message: 'Script cancelled by the client.', details });
-  // A script reads the model and (in mutate mode) can export it, so the
-  // token needs those scopes too, not only the tool's own 'mutate'.
-  const scope = ctx.currentScope?.() ?? ctx.scope;
-  const exportAllowed = scopeAllows(scope, 'export');
   const scriptError = (message: string, details: Record<string, unknown>, host = false) => new ToolExecutionError({
     // kind tells a script failure from INVALID_INPUT on the tool's own arguments.
     code: ToolErrorCode.INVALID_INPUT,
@@ -180,9 +184,6 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     hint: hintFor(mode, code, message, { host, exportAllowed }),
   });
   if (ctx.signal.aborted) throw cancelled();
-  if (!scopeAllows(scope, 'read')) {
-    throw new ToolExecutionError({ code: ToolErrorCode.PERMISSION_DENIED, message: 'Script tools read the model and need the read scope.' });
-  }
   const mutatePermissions: SandboxPermissions = { ...MUTATE_PERMISSIONS, export: exportAllowed };
 
   // Read mode has no write namespaces, so it cannot queue anything. In mutate

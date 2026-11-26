@@ -35,7 +35,7 @@ const LIMITS = {
 };
 
 export function wrapScript(code: string): string {
-  return `(function (run, P, isInstance, then, apply, slice, Str, stringify, keys, isArray, create, defineProperty, freeze, glob, ErrorCtor, TypeErrorCtor, SetCtor, setAdd, setHas, setDelete, unbox, objectProto, getProto, L) {
+  return `(function (run, P, isInstance, then, apply, slice, Str, stringify, keys, isArray, create, defineProperty, freeze, glob, ErrorCtor, TypeErrorCtor, SetCtor, setAdd, setHas, setDelete, unbox, objectProto, getProto, parse, L) {
   function msg(e) {
     // message is read once and coerced inside the try, so a getter or
     // toString cannot throw past the wrapper and pose as a sandbox error.
@@ -156,7 +156,12 @@ export function wrapScript(code: string): string {
         return head + (typeof st === 'string' && st !== '' ? '\\n' + cut(st, L.maxLog - 32 - head.length) : '');
       }
     } catch (_) { /* an unreadable stack: fall through to the JSON form */ }
-    try { var s = ser(a, L.maxLog, true); return cut(s === undefined ? Str(a) : s, L.maxLog - 32); }
+    try {
+      var s = ser(a, L.maxLog, true);
+      // A root whose toJSON gave a string (a Date, say) prints as that text, not quoted.
+      if (s !== undefined && s.charCodeAt(0) === 34) s = parse(s);
+      return cut(s === undefined ? Str(a) : s, L.maxLog - 32);
+    }
     catch (e) { return '[unserialisable: ' + msg(e) + ']'; }
   }
   var original = glob.console, safe = create(null);
@@ -189,5 +194,5 @@ export function wrapScript(code: string): string {
     }
     catch (e) { resolveWrapper(fail(e)); }
   });
-})(function () { return eval(${JSON.stringify(code)}); }, Promise, Function.prototype[Symbol.hasInstance], Promise.prototype.then, Reflect.apply, String.prototype.slice, String, JSON.stringify, Object.keys, Array.isArray, Object.create, Object.defineProperty, Object.freeze, globalThis, Error, TypeError, Set, Set.prototype.add, Set.prototype.has, Set.prototype.delete, [Number.prototype.valueOf, String.prototype.valueOf, Boolean.prototype.valueOf, BigInt.prototype.valueOf], Object.prototype, Object.getPrototypeOf, ${JSON.stringify(LIMITS)})`;
+})(function () { return eval(${JSON.stringify(code)}); }, Promise, Function.prototype[Symbol.hasInstance], Promise.prototype.then, Reflect.apply, String.prototype.slice, String, JSON.stringify, Object.keys, Array.isArray, Object.create, Object.defineProperty, Object.freeze, globalThis, Error, TypeError, Set, Set.prototype.add, Set.prototype.has, Set.prototype.delete, [Number.prototype.valueOf, String.prototype.valueOf, Boolean.prototype.valueOf, BigInt.prototype.valueOf], Object.prototype, Object.getPrototypeOf, JSON.parse, ${JSON.stringify(LIMITS)})`;
 }

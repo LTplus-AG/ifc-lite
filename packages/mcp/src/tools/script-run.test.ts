@@ -303,6 +303,7 @@ describe('script_run', () => {
     const result = await run("console.log(1 / 0, 0 / 0); console.log({ err: new Error('boom') }); console.error(new Error('x'.repeat(10000))); 1");
     const logs = (result.structuredContent?.logs as Array<{ text: string }>).map((l) => l.text);
     expect(logs[0]).toBe('Infinity NaN');
+    expect(((await run('console.log(new Date(0)); 1')).structuredContent?.logs as Array<{ text: string }>)[0].text).toBe('1970-01-01T00:00:00.000Z');
     expect(logs[1]).toBe('{"err":"boom"}');
     expect(logs[2].split('\n')[0].endsWith('[truncated]')).toBe(true);
     expect((await runError("throw new Error('out of memory')")).hint).toBeUndefined();

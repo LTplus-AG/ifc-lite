@@ -2501,7 +2501,7 @@ export class IfcCreator {
   // ============================================================================
 
   /**
-   * Create ANY IFC element type with an extruded profile at a placement.
+   * Create any IFC product a storey can hold (#11577) with an extruded profile at a placement.
    *
    * This is the low-level foundation that all high-level methods (addIfcWall,
    * addIfcBeam, etc.) are built on. Use it when you need an IFC type that
@@ -2528,6 +2528,9 @@ export class IfcCreator {
    * ```
    */
   addElement(storeyId: number, params: GenericElementParams): number {
+    const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
+    const ifcType = params.IfcType.toUpperCase();
+    const tail = genericProductTail(this.schema, ifcType, 'addElement', tag, params.PredefinedType);
     const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), params.Placement);
     const profileId = this.createProfile(params.Profile);
 
@@ -2546,9 +2549,6 @@ export class IfcCreator {
     const name = params.Name ?? params.IfcType;
     const desc = params.Description ? `'${esc(params.Description)}'` : '$';
     const objType = params.ObjectType ? `'${esc(params.ObjectType)}'` : '$';
-    const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
-    const ifcType = params.IfcType.toUpperCase();
-    const tail = genericProductTail(this.schema, ifcType, 'addElement', tag, params.PredefinedType);
     // The STEP keyword is upper case whatever the caller's spelling (#11577).
     this.line(elementId, ifcType, `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId}${tail}`);
 
@@ -2560,7 +2560,7 @@ export class IfcCreator {
   }
 
   /**
-   * Create ANY IFC element type extruded along an axis (Start → End).
+   * Create any IFC product a storey can hold (#11577) extruded along an axis (Start → End).
    *
    * The profile is placed at Start and extruded along the direction to End.
    * The extrusion length equals the distance between Start and End.
@@ -2585,6 +2585,9 @@ export class IfcCreator {
    * ```
    */
   addAxisElement(storeyId: number, params: AxisElementParams): number {
+    const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
+    const ifcType = params.IfcType.toUpperCase();
+    const tail = genericProductTail(this.schema, ifcType, 'addAxisElement', tag, params.PredefinedType);
     const dx = params.End[0] - params.Start[0];
     const dy = params.End[1] - params.Start[1];
     const dz = params.End[2] - params.Start[2];
@@ -2616,9 +2619,6 @@ export class IfcCreator {
     const name = params.Name ?? params.IfcType;
     const desc = params.Description ? `'${esc(params.Description)}'` : '$';
     const objType = params.ObjectType ? `'${esc(params.ObjectType)}'` : '$';
-    const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
-    const ifcType = params.IfcType.toUpperCase();
-    const tail = genericProductTail(this.schema, ifcType, 'addAxisElement', tag, params.PredefinedType);
     // The STEP keyword is upper case whatever the caller's spelling (#11577).
     this.line(elementId, ifcType, `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId}${tail}`);
 

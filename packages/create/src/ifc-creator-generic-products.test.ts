@@ -77,6 +77,28 @@ describe.each(['IFC2X3', 'IFC4', 'IFC4X3'] as Schema[])('generic product writers
     const storey = c.addIfcBuildingStorey({ Name: 'GF', Elevation: 0 });
     expect(() => c.addElement(storey, { IfcType: type, Placement: { Location: [0, 0, 0] }, Profile: profile, Depth: 1 }))
       .toThrow(/spatial element/);
+    expect(() => c.addAxisElement(storey, { IfcType: type, Start: [0, 0, 0], End: [0, 0, 1], Profile: profile }))
+      .toThrow(/spatial element/);
+  });
+
+  it('a refused type leaves no orphan records behind', () => {
+    const records = (refuse: boolean) => {
+      const c = new IfcCreator({ Name: 'T', Schema: schema });
+      const storey = c.addIfcBuildingStorey({ Name: 'GF', Elevation: 0 });
+      if (refuse) {
+        expect(() => c.addElement(storey, { IfcType: 'IfcZone', Placement: { Location: [0, 0, 0] }, Profile: profile, Depth: 1 })).toThrow();
+        expect(() => c.addAxisElement(storey, { IfcType: 'IfcSite', Start: [0, 0, 0], End: [0, 0, 1], Profile: profile })).toThrow();
+      }
+      return c.toIfc().content.split('\n').filter((line) => line.startsWith('#')).length;
+    };
+    expect(records(true)).toBe(records(false));
+  });
+
+  it('refuses an abstract product', () => {
+    const c = new IfcCreator({ Name: 'T', Schema: schema });
+    const storey = c.addIfcBuildingStorey({ Name: 'GF', Elevation: 0 });
+    expect(() => c.addElement(storey, { IfcType: 'IfcElement', Placement: { Location: [0, 0, 0] }, Profile: profile, Depth: 1 }))
+      .toThrow(/abstract/);
   });
 });
 
@@ -84,5 +106,7 @@ it('refuses an IFC4X3 IfcFacilityPart under a storey (#11577)', () => {
   const c = new IfcCreator({ Name: 'T', Schema: 'IFC4X3' });
   const storey = c.addIfcBuildingStorey({ Name: 'GF', Elevation: 0 });
   expect(() => c.addElement(storey, { IfcType: 'IfcFacilityPart', Placement: { Location: [0, 0, 0] }, Profile: profile, Depth: 1 }))
+    .toThrow(/spatial element/);
+  expect(() => c.addAxisElement(storey, { IfcType: 'IfcFacilityPart', Start: [0, 0, 0], End: [0, 0, 1], Profile: profile }))
     .toThrow(/spatial element/);
 });

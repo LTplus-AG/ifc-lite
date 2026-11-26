@@ -1575,9 +1575,9 @@ declare const bim: {
     nestCostItems(handle: number, parentCostItemId: number, childCostItemIds: number[]): number;
     /** Canonical IfcRelAssignsToProduct. Prefer assignCostItemsToProduct. */
     addIfcRelAssignsToProduct(handle: number, relatingProductId: number, relatedObjectIds: number[]): number;
-    /** Create ANY IFC type extruded along a Start→End axis. Returns expressId. */
+    /** Create an IFC product a storey can hold (element, other product or IfcSpace; groups and other spatial elements throw) extruded along a Start→End axis. Returns expressId. */
     addAxisElement(handle: number, storeyId: number, params: unknown): number;
-    /** Create ANY IFC type with a profile at a placement. Returns expressId. */
+    /** Create an IFC product a storey can hold (element, other product or IfcSpace; groups and other spatial elements throw) with a profile at a placement. Returns expressId. */
     addElement(handle: number, storeyId: number, params: unknown): number;
     /** Add IfcBeam. Returns expressId. */
     addIfcBeam(handle: number, storeyId: number, params: unknown): number;

@@ -100,38 +100,38 @@ function entityNamed(schema: CreatorSchema, ifcTypeUpper: string): string | unde
  *   other required slot throws; a caller value with no classification slot throws.
  *
  * Only what a storey can hold is written: an `IfcElement` or another product
- * is contained, an `IfcSpace` is aggregated (#11498). A group (`IfcZone`,
- * `IfcSystem`, `IfcGroup`) is not a product and another spatial element
- * cannot sit in a storey, so both throw. A type the schema does not know
- * keeps the historical `,<tag>,.TOKEN.` tail.
+ * is contained, an `IfcSpace` is aggregated (#11498). A non-product (a group
+ * such as `IfcZone`, or a context such as `IfcProject`), an abstract entity and
+ * another spatial element all throw. Callers run this before writing any record,
+ * so a refusal leaves nothing behind. A type the schema does not know keeps the
+ * historical `,<tag>,.TOKEN.` tail.
  */
 export function genericProductTail(schema: CreatorSchema, ifcTypeUpper: string, op: string, tag: string, predefinedType: string | undefined): string {
   const entity = entityNamed(schema, ifcTypeUpper);
   if (!entity) return `,${tag},.${predefinedType ?? 'NOTDEFINED'}.`;
   const registry = getSchemaRegistryForVersion(schema);
   const chain = registry.entities[entity].inheritanceChain ?? [];
-  if (!chain.includes('IfcProduct')) {
-    throw new Error(`${op}: ${entity} is not a product and cannot be placed in a storey; it needs a group or assignment relationship`);
-  }
+  if (!chain.includes('IfcProduct')) throw new Error(`${op}: ${entity} is not a product and cannot be placed in a storey`);
   const spatial = chain.includes('IfcSpatialElement') || chain.includes('IfcSpatialStructureElement');
   if (spatial && entity !== 'IfcSpace') throw new Error(`${op}: ${entity} is a spatial element and cannot be placed in a storey`);
+  if (registry.entities[entity].isAbstract) throw new Error(`${op}: ${entity} is abstract in ${schema} and cannot be instantiated`);
   const rest = (registry.entities[entity].allAttributes ?? []).slice(7);
   const composition = (name: string) => spatial && name === 'CompositionType';
   const target = rest.find((a) => a.name === 'PredefinedType') ?? rest.find((a) => registry.enums[a.type] && !composition(a.name));
-  if (predefinedType !== undefined && !target) throw new Error(`${entity} has no PredefinedType attribute in ${schema}`);
+  if (predefinedType !== undefined && !target) throw new Error(`${op}: ${entity} has no PredefinedType attribute in ${schema}`);
   return rest.map((attr) => {
     if (attr.name === 'Tag') return `,${tag}`;
     if (composition(attr.name)) return ',.ELEMENT.';
     const allowed = registry.enums[attr.type] ?? [];
     if (attr === target && predefinedType !== undefined && !(predefinedType === 'NOTDEFINED' && !allowed.includes('NOTDEFINED'))) {
       if (!allowed.includes(predefinedType)) {
-        throw new Error(`${entity}.${attr.name} must be one of ${allowed.join(', ')} in ${schema}; got ${predefinedType}`);
+        throw new Error(`${op}: ${entity}.${attr.name} must be one of ${allowed.join(', ')} in ${schema}; got ${predefinedType}`);
       }
       return `,.${predefinedType}.`;
     }
     if (attr === target && allowed.includes('NOTDEFINED')) return ',.NOTDEFINED.';
     if (attr.optional) return ',$';
     if (allowed.includes('NOTDEFINED')) return ',.NOTDEFINED.';
-    throw new Error(`${entity}.${attr.name} is required in ${schema} and cannot be written by the generic element writer`);
+    throw new Error(`${op}: ${entity}.${attr.name} is required in ${schema} and cannot be written by the generic writer`);
   }).join('');
 }

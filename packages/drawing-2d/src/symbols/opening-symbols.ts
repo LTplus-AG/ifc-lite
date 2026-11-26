@@ -111,7 +111,7 @@ export function buildOpeningSymbols(
     const isDoor = DOOR_TYPES.has((first.ifcType ?? '').toLowerCase());
     const operation = isDoor ? parseDoorOperation(info?.operationType) ?? 'SINGLE_SWING_LEFT' : undefined;
     if (operation && !SYMBOLIZED_DOOR_OPERATIONS.has(operation)) continue;
-    const width = info?.width ?? footprint.width;
+    const width = positiveOr(info?.width, footprint.width);
     const opening: OpeningInfo = {
       type: isDoor ? 'door' : 'window',
       openingId: first.expressId,
@@ -131,7 +131,7 @@ export function buildOpeningSymbols(
       symbols.push({ kind: 'door', ...base, lines: result.lines, symbol: { ...result.symbol, entityId: base.entityId } });
     } else {
       const partitioning = parseWindowPartitioning(info?.partitioningType) ?? 'SINGLE_PANEL';
-      const thickness = info?.wallThickness ?? Math.max(footprint.depth, 1e-3);
+      const thickness = positiveOr(info?.wallThickness, Math.max(footprint.depth, 1e-3));
       const result = windowGenerator.generateSymbol(footprint.center, width, thickness, footprint.along, footprint.across, partitioning);
       symbols.push({ kind: 'window', ...base, lines: result.lines, symbol: { ...result.symbol, entityId: base.entityId } });
     }
@@ -212,6 +212,11 @@ function measureFootprint(group: readonly MeshData[], plane: SectionPlaneConfig)
     minY,
     maxY,
   };
+}
+
+/** `value` when it is a finite positive length, else `fallback`. */
+function positiveOr(value: number | undefined, fallback: number): number {
+  return value !== undefined && Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
 /** Running extent of points along the unit direction of `(x, y, z)`. */

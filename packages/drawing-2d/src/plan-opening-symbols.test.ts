@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import type { MeshData } from '@ifc-lite/geometry';
 import { generateFloorPlan } from './drawing-generator.js';
 import { exportToSVG } from './svg-exporter.js';
+import { exportToDXF } from './dxf-exporter.js';
 import { box } from './drawing-stream.fixtures.test.js';
 import { vec3, vec3Cross, vec3Scale } from './math.js';
 import { buildOpeningSymbols } from './symbols/opening-symbols.js';
@@ -207,6 +208,40 @@ describe('headless plans draw door and window symbols (#10932)', () => {
     expect(swing(drawing, 20).width).toBeCloseTo(0.9, 5);
     const [cx, , cz] = toWorld(localToWorld, [0.45, 1.05, -0.05]);
     expectPoint(leafAndClosedEnd(drawing, 20).hinge, cx - 0.45, cz);
+  });
+
+  it('keeps the body of a door stating an operation outside the enumeration', async () => {
+    const openings = new Map([[makeEntityKey(0, 20), { operationType: '.LIFTING_VERTICAL_LEFT.' }]]);
+    const drawing = await generateFloorPlan([host, ...door(20, [1, 0, 0])], 1.2, { ...options, openings });
+    expect(symbolsOf(drawing, 'door')).toEqual([]);
+    expect(drawing.cutPolygons.some((p) => p.entityId === 20)).toBe(true);
+  });
+
+  it('measures the mesh when the stated width or wall thickness is not a positive length', async () => {
+    const window = box(30, [4.5, 0.9, -0.1], [5.5, 2.0, 0], { ifcType: 'IfcWindow', localToWorld: [1, 0, 0, 4.5, 0, 1, 0, 0.9, 0, 0, 1, 0, 0, 0, 0, 1] });
+    for (const bad of [0, -1, Number.NaN]) {
+      const openings = new Map([[makeEntityKey(0, 20), { width: bad }], [makeEntityKey(0, 30), { wallThickness: bad }]]);
+      const drawing = await generateFloorPlan([host, ...door(20, [1, 0, 0]), window], 1.2, { ...options, openings });
+      expect(swing(drawing, 20).width).toBeCloseTo(0.9, 5);
+      const points = symbolsOf(drawing, 'window').flatMap((s) => s.lines.flatMap((l) => [l.start, l.end]));
+      expect(points.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y))).toBe(true);
+      expect(Math.max(...points.map((p) => p.y)) - Math.min(...points.map((p) => p.y))).toBeCloseTo(0.1, 5);
+    }
+  });
+
+  it('leaves orphan type geometry out when the doors were the only placed meshes', async () => {
+    const orphanType = box(90, [3, 0, -0.1], [3.9, 2.1, 0], { ifcType: 'IfcDoorType', geometryClass: 1 });
+    const drawing = await generateFloorPlan([...door(20, [1, 0, 0]), orphanType], 1.2, options);
+    expect(symbolsOf(drawing, 'door').map((s) => s.entityId)).toEqual([20]);
+    expect(drawing.cutPolygons.filter((p) => p.entityId === 90)).toEqual([]);
+  });
+
+  it('writes the symbols to DXF on their own layer', async () => {
+    const drawing = await generateFloorPlan([host, ...door(20, [1, 0, 0])], 1.2, options);
+    const symbolLines = symbolsOf(drawing, 'door').flatMap((s) => s.lines).length;
+    expect(symbolLines).toBeGreaterThan(1);
+    const onLayer = exportToDXF(drawing).split(/\r?\n/).filter((line) => line.trim() === 'IFC-SYMBOLS').length;
+    expect(onLayer).toBeGreaterThanOrEqual(symbolLines);
   });
 
   it('hinges a door without localToWorld at the mirrored point in a flipped view', () => {

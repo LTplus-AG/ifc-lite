@@ -191,6 +191,14 @@ export class DXFExporter {
       this.writeLine(writer, line, categoryLayers, map);
     }
 
+    // Door swings and window symbols that stand in for cut bodies (#10932).
+    if (drawing.planSymbols?.length) {
+      const symbolLayer = writer.layer('IFC-SYMBOLS', '#000000');
+      for (const symbol of drawing.planSymbols) {
+        for (const { start, end } of symbol.lines) writer.addLine(map(start), map(end), symbolLayer);
+      }
+    }
+
     for (const extra of polylineLayers) {
       const layer = writer.layer(extra.name, extra.color);
       for (const polyline of extra.polylines) {

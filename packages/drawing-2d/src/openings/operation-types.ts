@@ -29,19 +29,20 @@ function enumToken(value: unknown): string | null {
 
 /**
  * A stated door operation, or null. NOTDEFINED states no handedness, so it reads
- * as absent and must not shadow a type's value (#8232).
+ * as absent and must not shadow a type's value (#8232). A stated value outside
+ * this enumeration (an IFC4X3 `LIFTING_VERTICAL_LEFT`, say) reads as USERDEFINED.
  */
 export function parseDoorOperation(value: unknown): DoorOperationType | null {
   const token = enumToken(value);
   if (token === null || token === 'NOTDEFINED') return null;
-  return isDoorOperation(token) ? token : null;
+  return isDoorOperation(token) ? token : 'USERDEFINED';
 }
 
-/** A stated window partitioning, or null (NOTDEFINED reads as absent). */
+/** A stated window partitioning, or null (NOTDEFINED reads as absent, an unknown value as USERDEFINED). */
 export function parseWindowPartitioning(value: unknown): WindowPartitioningType | null {
   const token = enumToken(value);
   if (token === null || token === 'NOTDEFINED') return null;
-  return isWindowPartitioning(token) ? token : null;
+  return isWindowPartitioning(token) ? token : 'USERDEFINED';
 }
 
 function isDoorOperation(token: string): token is DoorOperationType {

@@ -251,7 +251,9 @@ export async function generateFloorPlan(
   try {
     await generator.initialize();
     const config = createSectionConfig('y', elevation, { projectionDepth: 3, scale: 100 });
-    return await generateWithOpeningSymbols(meshes, config, options, (drawn) => generator.generate(drawn, config, options));
+    // Select the Model-view meshes first: dropping symbolized doors and windows
+    // must not change which type-library geometry generate() keeps.
+    return await generateWithOpeningSymbols(selectModelMeshes(meshes), config, options, (drawn) => generator.generate(drawn, config, options));
   } finally {
     generator.dispose();
   }

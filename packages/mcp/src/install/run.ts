@@ -21,19 +21,21 @@ import { readPackageVersion, UNKNOWN_VERSION } from '@ifc-lite/data/node';
 import { isMcpValueFlag } from '../cli-args.js';
 import {
   CLIENTS,
-  CLIENT_LABELS,
   InstallError,
   isClientId,
   planInstall,
   type ClientId,
+  type CommandPlan,
+  type FilePlan,
   type HostEnv,
-  type InstallPlan,
   type InstallScope,
   type ServerCommand,
 } from './clients.js';
 import { mergeServer } from './merge.js';
 
 /** Everything `runInstall` does to the outside world, so tests can fake it. */
+const CLIENT_IDS = Object.keys(CLIENTS);
+
 export interface InstallIo {
   host: HostEnv;
   /** File contents, or undefined when the file does not exist. */
@@ -62,7 +64,7 @@ export function nodeInstallIo(): InstallIo {
     writeFile(path, text) {
       mkdirSync(dirname(path), { recursive: true });
       // Write beside the target and rename, so a crash never leaves half a config.
-      const tmp = `${path}.ifc-lite-tmp`;
+      const tmp = `${path}.${process.pid}.tmp`;
       writeFileSync(tmp, text);
       renameSync(tmp, path);
     },
@@ -83,7 +85,7 @@ export function nodeInstallIo(): InstallIo {
 
 function installHelp(invokedAs: string): string {
   return `
-  Usage: ${invokedAs} --client <${CLIENTS.join('|')}> [options] [model.ifc…] [-- server flags]
+  Usage: ${invokedAs} --client <${CLIENT_IDS.join('|')}> [options] [model.ifc…] [-- server flags]
 
   Registers ifc-lite-mcp with an MCP client. Model paths and --allow values
   are made absolute. Flags after -- go to the server, e.g. -- --bridge.
@@ -139,8 +141,8 @@ function parseInstallArgs(argv: string[], cwd: string): InstallArgs | 'help' {
       throw new InstallError(`Unknown option ${arg}. Server flags go after --, e.g. -- ${arg}.`);
     } else files.push(arg);
   }
-  if (client === undefined) throw new InstallError(`--client is required: one of ${CLIENTS.join(', ')}.`);
-  if (!isClientId(client)) throw new InstallError(`Unknown client "${client}". Use one of ${CLIENTS.join(', ')}.`);
+  if (client === undefined) throw new InstallError(`--client is required: one of ${CLIENT_IDS.join(', ')}.`);
+  if (!isClientId(client)) throw new InstallError(`Unknown client "${client}". Use one of ${CLIENT_IDS.join(', ')}.`);
   if (scope !== 'user' && scope !== 'project') throw new InstallError('--scope must be user or project.');
   if (!/^[A-Za-z0-9_-]+$/.test(name)) throw new InstallError('--name may use letters, digits, - and _ only.');
   return { client, scope, name, dryRun, force, serverArgs: absolutePaths([...files, ...passThrough], cwd) };
@@ -186,7 +188,7 @@ function quote(arg: string, platform: NodeJS.Platform): string {
   return `'${arg.replace(/'/g, `'\\''`)}'`;
 }
 
-function commandLine(plan: Extract<InstallPlan, { kind: 'command' }>, platform: NodeJS.Platform): string {
+function commandLine(plan: CommandPlan, platform: NodeJS.Platform): string {
   return [plan.command, ...plan.args].map((a) => quote(a, platform)).join(' ');
 }
 
@@ -209,7 +211,7 @@ export function runInstall(
       return 0;
     }
     const plan = planInstall(args.client, args.scope, args.name, serverCommand(version, args.serverArgs), io.host);
-    const label = CLIENT_LABELS[args.client];
+    const label = CLIENTS[args.client];
     return plan.kind === 'command'
       ? runCommandPlan(plan, args, label, io)
       : writeFilePlan(plan, args, label, io);
@@ -221,7 +223,7 @@ export function runInstall(
 }
 
 function runCommandPlan(
-  plan: Extract<InstallPlan, { kind: 'command' }>,
+  plan: CommandPlan,
   args: InstallArgs,
   label: string,
   io: InstallIo,
@@ -231,10 +233,9 @@ function runCommandPlan(
     io.out(`${line}\n`);
     return 0;
   }
-  if (args.force && args.client === 'claude-code') {
-    // `claude mcp add` refuses an existing name; remove ours first. A
-    // non-zero exit here only means there was nothing to remove.
-    io.run('claude', ['mcp', 'remove', '--scope', args.scope, args.name]);
+  if (args.force && plan.remove) {
+    // A non-zero exit here only means there was nothing to remove.
+    io.run(plan.command, plan.remove);
   }
   const result = io.run(plan.command, plan.args);
   if (result.missing) {
@@ -242,7 +243,7 @@ function runCommandPlan(
     return 1;
   }
   if (result.status !== 0) {
-    const hint = args.client === 'claude-code' ? ' If the name is taken, pass --force or --name.' : '';
+    const hint = plan.remove ? ' If the name is taken, pass --force or --name.' : '';
     io.err(`[ifc-lite-mcp install] \`${plan.command}\` exited with ${result.status}.${hint}\n`);
     return result.status;
   }
@@ -251,7 +252,7 @@ function runCommandPlan(
 }
 
 function writeFilePlan(
-  plan: Extract<InstallPlan, { kind: 'file' }>,
+  plan: FilePlan,
   args: InstallArgs,
   label: string,
   io: InstallIo,

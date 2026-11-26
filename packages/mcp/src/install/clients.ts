@@ -20,18 +20,17 @@
 
 import { posix, win32 } from 'node:path';
 
-export const CLIENTS = ['claude-code', 'claude-desktop', 'cursor', 'vscode'] as const;
-export type ClientId = (typeof CLIENTS)[number];
-
-/** `user`: every project of this user. `project`: the current directory only. */
-export type InstallScope = 'user' | 'project';
-
-export const CLIENT_LABELS: Record<ClientId, string> = {
+/** Every supported client and its display name. */
+export const CLIENTS = {
   'claude-code': 'Claude Code',
   'claude-desktop': 'Claude Desktop',
   cursor: 'Cursor',
   vscode: 'VS Code',
-};
+} as const;
+export type ClientId = keyof typeof CLIENTS;
+
+/** `user`: every project of this user. `project`: the current directory only. */
+export type InstallScope = 'user' | 'project';
 
 /** The machine the config is written for. Injected so tests can be any OS. */
 export interface HostEnv {
@@ -47,15 +46,28 @@ export interface ServerCommand {
   args: string[];
 }
 
+export interface FilePlan {
+  kind: 'file';
+  path: string;
+  key: 'mcpServers' | 'servers';
+  entry: Record<string, unknown>;
+}
+
+export interface CommandPlan {
+  kind: 'command';
+  command: string;
+  args: string[];
+  /** Run first under --force, because the CLI refuses an existing name. */
+  remove?: string[];
+}
+
 /** A client takes the server either as an entry in a JSON file or through its own CLI. */
-export type InstallPlan =
-  | { kind: 'file'; path: string; key: 'mcpServers' | 'servers'; entry: Record<string, unknown> }
-  | { kind: 'command'; command: string; args: string[] };
+export type InstallPlan = FilePlan | CommandPlan;
 
 export class InstallError extends Error {}
 
 export function isClientId(value: string): value is ClientId {
-  return (CLIENTS as readonly string[]).includes(value);
+  return Object.hasOwn(CLIENTS, value);
 }
 
 export function planInstall(
@@ -72,15 +84,18 @@ export function planInstall(
         kind: 'command',
         command: 'claude',
         args: ['mcp', 'add', '--scope', scope, name, '--', server.command, ...server.args],
+        remove: ['mcp', 'remove', '--scope', scope, name],
       };
-    case 'claude-desktop': {
+    case 'claude-desktop':
       if (scope === 'project') throw new InstallError('Claude Desktop has no project config; drop --scope project.');
       return { kind: 'file', path: claudeDesktopConfigPath(host), key: 'mcpServers', entry: { ...server } };
-    }
-    case 'cursor': {
-      const base = scope === 'user' ? host.home : host.cwd;
-      return { kind: 'file', path: path.join(base, '.cursor', 'mcp.json'), key: 'mcpServers', entry: { ...server } };
-    }
+    case 'cursor':
+      return {
+        kind: 'file',
+        path: path.join(scope === 'user' ? host.home : host.cwd, '.cursor', 'mcp.json'),
+        key: 'mcpServers',
+        entry: { ...server },
+      };
     case 'vscode': {
       const entry = { type: 'stdio', ...server };
       if (scope === 'project') {

@@ -31,7 +31,7 @@ import { allPrompts } from './prompts/templates.js';
 import { ClientLogForwarder } from './client-logging.js';
 import { toCatalogEntry } from './tool-catalog.js';
 import { toolError, ToolErrorCode } from './errors.js';
-import type { ContentBlock, ToolDefinition } from './protocol/index.js';
+import type { ContentBlock, ServerCapabilities, ToolDefinition } from './protocol/index.js';
 
 type Note = { method?: string; params?: Record<string, unknown> };
 
@@ -40,7 +40,7 @@ const fakeModel = (id: string, name = id): LoadedModel => ({
   backend: { setPeerScopes() { /* no peers */ }, dispose() { /* nothing held */ } },
 } as unknown as LoadedModel);
 
-function build({ readOnly = false, registry = new InMemoryModelRegistry() as ModelRegistry } = {}) {
+function build({ readOnly = false, registry = new InMemoryModelRegistry() as ModelRegistry, capabilities = undefined as ServerCapabilities | undefined } = {}) {
   const tools = new ToolRegistry();
   tools.register({
     name: 'load_fake', description: 'Adds a model. Second sentence.', scope: 'mutate',
@@ -58,7 +58,7 @@ function build({ readOnly = false, registry = new InMemoryModelRegistry() as Mod
   } satisfies Tool);
   const server = new MCPServer({
     version: '0.0.0-test', registry, config: { readOnly, samplingEnabled: false },
-    tools, resources: buildDefaultResourceRegistry(), prompts: buildDefaultPromptRegistry(),
+    tools, resources: buildDefaultResourceRegistry(), prompts: buildDefaultPromptRegistry(), capabilities,
   });
   const transport = new InProcessTransport();
   void transport.connect(server);
@@ -129,11 +129,8 @@ describe('logging', () => {
   });
 
   it('answers -32601 when logging is not advertised', async () => {
-    const server = new MCPServer({ version: '0', tools: new ToolRegistry(), resources: buildDefaultResourceRegistry(), prompts: buildDefaultPromptRegistry(), capabilities: { tools: {} } });
-    const transport = new InProcessTransport();
-    void transport.connect(server);
-    await transport.send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 't', version: '0' } } });
-    expect(await transport.send({ jsonrpc: '2.0', id: 2, method: 'logging/setLevel', params: { level: 'debug' } })).toMatchObject({ error: { code: -32601 } });
+    const { request } = await initialized({ capabilities: { tools: {} } });
+    expect((await request('logging/setLevel', { level: 'debug' })).error?.code).toBe(-32601);
   });
 
   it('refuses an unknown level with -32602', async () => {

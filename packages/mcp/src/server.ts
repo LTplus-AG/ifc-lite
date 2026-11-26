@@ -525,14 +525,14 @@ export class MCPServer {
     if (this.subscriptions.has(uri)) this.notify('notifications/resources/updated', { uri });
   }
 
-  /** Send any server notification, e.g. a host-specific channel event. Dropped while no client is attached. */
-  notify(method: string, params: Record<string, unknown>): void { void this.sink?.send(notification(method, params)); }
+  /** Send any server notification, e.g. a host-specific channel event. Dropped until the client has initialized. */
+  notify(method: string, params: Record<string, unknown>): void { if (this.initialized) void this.sink?.send(notification(method, params)); }
 
   /** Notify clients that the tool list has changed (e.g., after model load). */
-  notifyToolsChanged(): void { if (this.initialized) this.notify('notifications/tools/list_changed', {}); }
+  notifyToolsChanged(): void { this.notify('notifications/tools/list_changed', {}); }
 
   /** Notify clients that resources/list changed (a model was loaded, unloaded or hidden by scope). */
-  notifyResourcesChanged(): void { if (this.initialized) this.notify('notifications/resources/list_changed', {}); }
+  notifyResourcesChanged(): void { this.notify('notifications/resources/list_changed', {}); }
 
   /** Read-only access to the auth scope for transports that need to gate access. */
   hasModelAccess(modelId: string): boolean {

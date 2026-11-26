@@ -51,7 +51,7 @@ export function generateValidators(expressSource: string, options: ValidatorGene
     'rules.ts': rules.source,
     'zod.ts': emitZodSchemas(index, header, runtimeImport, zodImport),
     'index.ts': `${header}
-import { SchemaRuntime } from '${runtimeImport}';
+import { SchemaRuntime } from ${JSON.stringify(runtimeImport)};
 import { META } from './schema.js';
 import { RULES } from './rules.js';
 

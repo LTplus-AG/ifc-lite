@@ -49,7 +49,10 @@ class ZodWriter {
           case 'INTEGER': return 'z.number().int()';
           case 'BOOLEAN': return 'z.boolean()';
           case 'LOGICAL': return "z.union([z.boolean(), z.literal('UNKNOWN')])";
-          case 'BINARY': return 'z.string().regex(/^[0-3][0-9A-Fa-f]*$/)';
+          case 'BINARY': {
+            const base = 'z.string().regex(/^(?:0|[0-3][0-9A-Fa-f]+)$/)';
+            return width === undefined ? base : `${base}.refine(value => (value.length - 1) * 4 - Number(value[0]) ${spec.fixed ? '===' : '<='} ${width}, 'invalid BINARY bit length')`;
+          }
           default: return width === undefined ? 'z.string()' : `z.string().${spec.fixed ? 'length' : 'max'}(${width})`;
         }
       }
@@ -154,8 +157,8 @@ export function emitZodSchemas(index: SchemaIndex, header: string, runtimeImport
   const types = w.orderedTypes().map((t) => `export const ${t.name} = ${w.typeDecl(t)};`);
   const entities = index.schema.entities.map((e) => `export const ${e.name} = ${w.entity(e).schema};`);
   return `${header}
-import { z } from '${zodImport}';
-import * as r from '${runtimeImport}';
+import { z } from ${JSON.stringify(zodImport)};
+import * as r from ${JSON.stringify(runtimeImport)};
 import { SCHEMA } from './index.js';
 
 const $EntityRef = z.strictObject({ ref: z.number().int().positive() });

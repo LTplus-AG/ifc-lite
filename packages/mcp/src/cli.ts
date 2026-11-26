@@ -70,9 +70,9 @@ function printHelp(): void {
                             pairs over ws://127.0.0.1. Files and every other
                             tool still work. The agent pairs with the
                             bridge_status tool, which returns the link.
-    --bridge-port <n>       Bridge port (default ${DEFAULT_BRIDGE_PORT}, or the next free
-                            one if taken; an explicit port does not fall
-                            back; 0 = pick a free one).
+    --bridge-port <n>       Bridge port (default ${DEFAULT_BRIDGE_PORT}, falling back to a
+                            free port if taken; an explicit port does not
+                            fall back; 0 = any free port).
     --bridge-viewer-url <u> Base of the pairing link (default
                             ${DEFAULT_BRIDGE_VIEWER_URL}). Its origin replaces the
                             default in the allowed origins; add
@@ -263,12 +263,15 @@ async function main(): Promise<void> {
   }
 }
 
+function bridgeLog(line: string): void {
+  process.stderr.write(`[ifc-lite-mcp bridge] ${line}\n`);
+}
+
 /** Longest a --bridge shutdown may take, whatever stdout does. */
 const SHUTDOWN_DEADLINE_MS = 2000;
 
 /** Start the bridge layer on top of the headless parts; null (exit code set) when it cannot start. */
 async function startBridge(opts: CliOptions, headless: HeadlessParts, logger: Logger): Promise<RunningBridge | null> {
-  const log = (line: string): void => { process.stderr.write(`[ifc-lite-mcp bridge] ${line}\n`); };
   try {
     return await startBridgeServer({
       version: VERSION,
@@ -282,7 +285,7 @@ async function startBridge(opts: CliOptions, headless: HeadlessParts, logger: Lo
       viewerUrl: opts.bridgeViewerUrl,
       extraOrigins: opts.allowedOrigins,
       allowInsecureOrigins: opts.insecure,
-      log,
+      log: bridgeLog,
       logger,
     });
   } catch (err) {
@@ -297,12 +300,11 @@ async function startBridge(opts: CliOptions, headless: HeadlessParts, logger: Lo
  * can go away (or a signal) closes it and frees the port.
  */
 function stopBridgeWithClient(running: RunningBridge, transport: StdioTransport): void {
-  const log = (line: string): void => { process.stderr.write(`[ifc-lite-mcp bridge] ${line}\n`); };
   let stopping = false;
   const stop = (why: string, exitCode: number): void => {
     if (stopping) return;
     stopping = true;
-    log(`stopping: ${why}`);
+    bridgeLog(`stopping: ${why}`);
     process.exitCode = exitCode;
     // Armed FIRST, so exit is bounded even if the flush below never completes
     // (a peer that stopped reading leaves stdout full and its callback pending).

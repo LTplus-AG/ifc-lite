@@ -61,6 +61,11 @@ export function bridgeFailureResult(err: BridgeCallError): CallToolResult {
   });
 }
 
+/** The MCP name of a tab tool. */
+function mcpName(tabName: string): string {
+  return TAB_TOOL_PREFIX + tabName;
+}
+
 async function forward(bridge: TabBridge, name: string, input: Record<string, unknown>, signal: AbortSignal): Promise<CallToolResult> {
   try {
     // The tab's CallToolResult passes through unchanged, `isError` included.
@@ -73,7 +78,7 @@ async function forward(bridge: TabBridge, name: string, input: Record<string, un
 
 function forwardedTool(bridge: TabBridge, d: BridgeToolDescriptor): Tool {
   return {
-    name: TAB_TOOL_PREFIX + d.name,
+    name: mcpName(d.name),
     description: d.description,
     inputSchema: d.inputSchema as JsonSchema,
     scope: d.readOnly ? 'read' : 'mutate',
@@ -219,7 +224,7 @@ export class BridgeToolRegistry extends ToolRegistry {
     if (!name.startsWith(TAB_TOOL_PREFIX)) return super.get(name);
     const tab = this.bridge.tab();
     if (!tab) return notConnectedTool(this.bridge, name);
-    const d = tab.tools.find((t) => TAB_TOOL_PREFIX + t.name === name);
+    const d = tab.tools.find((t) => mcpName(t.name) === name);
     // A hidden (mutating, read-only) tool still resolves, so the call gets a
     // READ_ONLY refusal from `TabBridge.call` rather than "unknown tool".
     return d ? forwardedTool(this.bridge, d) : null;

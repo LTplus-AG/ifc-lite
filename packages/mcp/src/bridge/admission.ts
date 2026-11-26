@@ -94,19 +94,22 @@ export class PairingAdmission {
     this.attempts++;
     if (ws.readyState !== ws.OPEN) {
       // Left before its comparison: counts as a failed guess, and frees the slot only now.
-      this.gate.fail();
-      this.failedAttempts++;
+      this.failed();
       this.host.release(slot);
       return;
     }
     if (this.codes.consume(hello.pairingCode) !== 'ok') {
-      this.gate.fail();
-      this.failedAttempts++;
+      this.failed();
       this.host.note('wrong pairing codes', 'refused a wrong pairing code');
       this.host.kill(ws, BridgeErrorCode.PAIRING_FAILED, 'Pairing code not accepted. Use the latest link or code from bridge_status.', BridgeCloseCode.PAIRING_FAILED);
       return;
     }
     this.gate.succeed();
     this.host.admit(ws, slot, hello);
+  }
+
+  private failed(): void {
+    this.gate.fail();
+    this.failedAttempts++;
   }
 }

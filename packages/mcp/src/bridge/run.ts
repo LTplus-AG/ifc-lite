@@ -16,7 +16,7 @@ import { PromptRegistry } from '../prompts/types.js';
 import { ResourceRegistry } from '../resources/types.js';
 import { MCPServer } from '../server.js';
 import { SERVER_INSTRUCTIONS } from '../server-instructions.js';
-import type { ToolRegistry } from '../tools/types.js';
+import { ToolRegistry } from '../tools/types.js';
 import { isInsecureRemoteOrigin, normalizeOrigin } from './guards.js';
 import { BRIDGE_STATUS_TOOL, BRIDGE_UI_EVENTS_TOOL, DEFAULT_BRIDGE_VIEWER_URL, TAB_SHOW_UI_TOOL } from './bridge-protocol.js';
 import { TabBridge, type TabBridgeOptions } from './tab-bridge.js';
@@ -141,28 +141,33 @@ export async function startBridgeServer(opts: BridgeServerOptions): Promise<Runn
     ...opts.tuning,
   });
   if (!opts.lazy) await bridge.listen();
-  const headless = opts.headless;
+  const withHeadless = opts.headless !== undefined;
+  // Tab only: no model, and full scope plus `readOnly`, so a --read-only
+  // bridge refuses mutating calls with READ_ONLY, the code the tab-granted
+  // read-only uses.
+  const parts: HeadlessParts = opts.headless ?? {
+    registry: new InMemoryModelRegistry(), tools: new ToolRegistry(), resources: new ResourceRegistry(),
+    prompts: new PromptRegistry(), scope: fullScope(), config: {},
+  };
   const tools = new BridgeToolRegistry(bridge, opts.channel === true);
-  if (headless) tools.registerAll(headless.tools.list());
+  tools.registerAll(parts.tools.list());
   const bridgeInstructions = opts.channel ? `${INSTRUCTIONS}\n${CHANNEL_INSTRUCTIONS}` : INSTRUCTIONS;
   const server = new MCPServer({
-    name: headless ? 'ifc-lite' : 'ifc-lite-bridge',
+    name: withHeadless ? 'ifc-lite' : 'ifc-lite-bridge',
     version: opts.version,
-    registry: headless?.registry ?? new InMemoryModelRegistry(),
-    // Full scope plus `readOnly`: a --read-only bridge then refuses mutating
-    // calls with READ_ONLY, the same code the tab-granted read-only uses.
-    scope: headless?.scope ?? fullScope(),
-    config: { samplingEnabled: false, ...headless?.config, readOnly: opts.readOnly },
+    registry: parts.registry,
+    scope: parts.scope,
+    config: { samplingEnabled: false, ...parts.config, readOnly: opts.readOnly },
     tools,
-    resources: headless?.resources ?? new ResourceRegistry(),
-    prompts: headless?.prompts ?? new PromptRegistry(),
+    resources: parts.resources,
+    prompts: parts.prompts,
     capabilities: {
       tools: { listChanged: true },
-      ...(headless ? { resources: { subscribe: true, listChanged: true }, prompts: { listChanged: false } } : {}),
+      ...(withHeadless ? { resources: { subscribe: true, listChanged: true }, prompts: { listChanged: false } } : {}),
       logging: {},
       ...(opts.channel ? { experimental: { 'claude/channel': {} } } : {}),
     },
-    instructions: headless ? `${SERVER_INSTRUCTIONS}\n\n${bridgeInstructions}` : bridgeInstructions,
+    instructions: withHeadless ? `${SERVER_INSTRUCTIONS}\n\n${bridgeInstructions}` : bridgeInstructions,
     logger: opts.logger,
   });
   bridge.onChange(() => server.notifyToolsChanged());

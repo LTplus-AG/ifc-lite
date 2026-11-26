@@ -27,6 +27,8 @@ import type { BridgeUiEvent } from './ui-events.js';
 
 /** Surfaces remembered; the oldest is forgotten past this. */
 export const MAX_DELIVERED_SURFACES = 16;
+/** Distinct strings remembered per surface; later ones are not admitted as prompts. */
+export const MAX_SURFACE_STRINGS = 4096;
 
 /** The renderer's prompt for an event action without a user message (`eventToFollowUp`). */
 function genericPrompt(name: string): string {
@@ -34,6 +36,7 @@ function genericPrompt(name: string): string {
 }
 
 function collectStrings(value: unknown, out: Set<string>): void {
+  if (out.size >= MAX_SURFACE_STRINGS) return;
   if (typeof value === 'string') {
     const trimmed = value.trim();
     if (trimmed) out.add(trimmed);
@@ -45,12 +48,10 @@ function collectStrings(value: unknown, out: Set<string>): void {
 }
 
 /** The surface a v1.0 message is about (`{ createSurface: { surfaceId } }` and its siblings). */
-function surfaceIdOf(message: unknown): { id: string; deleted: boolean } | null {
+function surfaceIdOf(message: unknown): { id: string; kind: string } | null {
   if (!isRecord(message)) return null;
   for (const [kind, body] of Object.entries(message)) {
-    if (isRecord(body) && typeof body.surfaceId === 'string' && body.surfaceId) {
-      return { id: body.surfaceId, deleted: kind === 'deleteSurface' };
-    }
+    if (isRecord(body) && typeof body.surfaceId === 'string' && body.surfaceId) return { id: body.surfaceId, kind };
   }
   return null;
 }
@@ -64,11 +65,12 @@ export class DeliveredSurfaces {
     for (const message of messages) {
       const target = surfaceIdOf(message);
       if (!target) continue;
-      if (target.deleted) {
+      if (target.kind === 'deleteSurface') {
         this.surfaces.delete(target.id);
         continue;
       }
-      const strings = this.surfaces.get(target.id) ?? new Set<string>();
+      // A createSurface starts the surface over, so what it replaced is no longer admitted.
+      const strings = (target.kind !== 'createSurface' && this.surfaces.get(target.id)) || new Set<string>();
       // Re-inserted, so a surface the agent keeps updating is the newest.
       this.surfaces.delete(target.id);
       this.surfaces.set(target.id, strings);

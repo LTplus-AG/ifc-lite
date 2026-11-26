@@ -108,11 +108,6 @@ export class TabBridge {
     return [...this.origins];
   }
 
-  /** True once the listener is bound (`listen` resolved). */
-  get isListening(): boolean {
-    return this.http !== null;
-  }
-
   /**
    * Bind the loopback listener and resolve with its port. Safe to call again:
    * every caller shares the first bind, and a failed bind can be retried.

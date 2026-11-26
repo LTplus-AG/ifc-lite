@@ -60,12 +60,14 @@ export function fallbackPorts(preferred: number): number[] {
 /** `listenLoopback` on the first of `ports` that is free; any error but EADDRINUSE stops at once. */
 export async function listenLoopbackFirstFree(
   ports: readonly number[],
-  ...rest: Parameters<typeof listenLoopback> extends [number, ...infer R] ? R : never
+  maxPayload: number,
+  onUpgrade: (wss: WebSocketServer, req: IncomingMessage, socket: Duplex, head: Buffer) => void,
+  log: (line: string) => void,
 ): Promise<LoopbackServer> {
   let last: unknown = new Error('no port to listen on');
   for (const port of ports) {
     try {
-      return await listenLoopback(port, ...rest);
+      return await listenLoopback(port, maxPayload, onUpgrade, log);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'EADDRINUSE') throw err;
       last = err;

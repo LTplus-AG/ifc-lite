@@ -126,10 +126,9 @@ describe('one server: headless and tab', () => {
 describe('lazy listener and port fallback', () => {
   it('binds nothing until bridge_status, then reports the port the link carries', async () => {
     const agent = await start({ lazy: true });
-    expect(agent.r.bridge.isListening).toBe(false);
     expect(agent.r.bridge.port).toBe(0);
     const status = await agent.call(BRIDGE_STATUS_TOOL);
-    expect(agent.r.bridge.isListening).toBe(true);
+    expect(agent.r.bridge.port).toBeGreaterThan(0);
     const port = status.structuredContent?.port as number;
     expect(port).toBeGreaterThan(0);
     expect(new URL(status.structuredContent?.pairingUrl as string).hash).toContain(`port=${port}`);
@@ -165,6 +164,16 @@ describe('lazy listener and port fallback', () => {
 });
 
 describe('DeliveredSurfaces', () => {
+  it('a createSurface starts the surface over', () => {
+    const ledger = new DeliveredSurfaces();
+    ledger.record([{ version: '1.0', createSurface: { surfaceId: 'a', note: 'Old' } }]);
+    ledger.record([{ version: '1.0', updateComponents: { surfaceId: 'a', note: 'Added' } }]);
+    expect(ledger.refusal({ surfaceId: 'a', name: 'ask', prompt: 'Old' })).toBeNull();
+    ledger.record([{ version: '1.0', createSurface: { surfaceId: 'a', note: 'New' } }]);
+    expect(ledger.refusal({ surfaceId: 'a', name: 'ask', prompt: 'Old' })).toMatch(/does not contain/);
+    expect(ledger.refusal({ surfaceId: 'a', name: 'ask', prompt: 'New' })).toBeNull();
+  });
+
   const created = (surfaceId: string, text: string) => ({ version: '1.0', createSurface: { surfaceId, catalogId: 'c' }, note: text });
 
   it('forgets a deleted surface and the oldest past the cap', () => {

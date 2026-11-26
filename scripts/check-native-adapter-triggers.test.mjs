@@ -577,7 +577,7 @@ test('split artifacts stay namespaced, and split Rust caches restore the single 
   assert.ok(audit(ownKey).some((f) => f.includes("split job na-native must restore the single job's Rust cache")));
   // A change to the single job's cache (#10851's pinned adapter key) must reach the split too.
   const monoMoved = copyTree(context);
-  inJob(monoMoved, 'native-adapter', '          cache-prefix: geometry-platform\n', '          cache-prefix: geometry-platform-adapter-v1\n');
+  inJob(monoMoved, 'native-adapter', '          cache-prefix: geometry-platform-adapter-v1\n', '          cache-prefix: geometry-platform-adapter-v2\n');
   assert.ok(audit(monoMoved).some((f) => f.includes("split job na-wasm must restore the single job's Rust cache")));
 });
 

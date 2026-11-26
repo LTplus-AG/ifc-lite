@@ -745,12 +745,14 @@ jobs:
         id: native-ctest
         continue-on-error: true
         run: ctest --test-dir "$RUNNER_TEMP/smlib-native" --output-on-failure
-      # Restore-only, from the single job's own key: the shadow phase writes no Rust
-      # cache (the Actions cache is at its limit), and both layouts start alike.
-      # The split's own cache arrangement is decided at the flip.
+      # Restore-only, from the single job's own pinned key: the shadow phase writes
+      # no Rust cache (the Actions cache is at its limit), and both layouts start
+      # alike. The split's own cache arrangement is decided at the flip.
       - uses: ./.github/actions/setup-wasm-build
         with:
-          cache-prefix: geometry-platform
+          cache-prefix: geometry-platform-adapter-v1
+          pinned-rust-cache: 'true'
+          cache-bin: 'false'
           save-if: 'false'
       - name: Real Rust subprocess integration
         id: native-consumers
@@ -1060,12 +1062,14 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-      # Restore-only, from the single job's own key: the shadow phase writes no Rust
-      # cache (the Actions cache is at its limit), and both layouts start alike.
-      # The split's own cache arrangement is decided at the flip.
+      # Restore-only, from the single job's own pinned key: the shadow phase writes
+      # no Rust cache (the Actions cache is at its limit), and both layouts start
+      # alike. The split's own cache arrangement is decided at the flip.
       - uses: ./.github/actions/setup-wasm-build
         with:
-          cache-prefix: geometry-platform
+          cache-prefix: geometry-platform-adapter-v1
+          pinned-rust-cache: 'true'
+          cache-bin: 'false'
           save-if: 'false'
       - name: Strict Clippy and unit tests with the opt-in retained-browser feature
         id: retained-clippy
@@ -1215,10 +1219,13 @@ jobs:
           pnpm build --filter=@ifc-lite/cli
           # na-cli-parity runs the parity tests on these exact builds.
           tar -cf "$RUNNER_TEMP/na-dists.tar" packages/*/dist
+          # Hand over once staged, as the single job keeps its engine on disk when
+          # real-kernel.test.mjs fails: its viewer-retained step can still pass.
+          echo staged=true >> "$GITHUB_OUTPUT"
           IFCLITE_RETAINED_ENGINE="$RUNNER_TEMP/cli-retained-engine" \
             node --test scripts/cli-retained-engine/real-kernel.test.mjs
       - name: Hand the staged retained engine over
-        if: steps.cli-retained.outcome == 'success'
+        if: steps.cli-retained.outputs.staged == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: na-split-cli-retained-engine
@@ -1228,7 +1235,7 @@ jobs:
           overwrite: true
           retention-days: 3
       - name: Hand the built packages over
-        if: steps.cli-retained.outcome == 'success'
+        if: steps.cli-retained.outputs.staged == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: na-split-dists
@@ -1330,12 +1337,14 @@ jobs:
           ref: c9c5979f04cea8c38213004d4f04df0dcfb40d05
           path: upstream-smlib
           persist-credentials: false
-      # Restore-only, from the single job's own key: the shadow phase writes no Rust
-      # cache (the Actions cache is at its limit), and both layouts start alike.
-      # The split's own cache arrangement is decided at the flip.
+      # Restore-only, from the single job's own pinned key: the shadow phase writes
+      # no Rust cache (the Actions cache is at its limit), and both layouts start
+      # alike. The split's own cache arrangement is decided at the flip.
       - uses: ./.github/actions/setup-wasm-build
         with:
-          cache-prefix: geometry-platform
+          cache-prefix: geometry-platform-adapter-v1
+          pinned-rust-cache: 'true'
+          cache-bin: 'false'
           save-if: 'false'
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -1483,7 +1492,7 @@ jobs:
           path: ${{ runner.temp }}/na-native-refs
       - name: Restore the native references
         run: node scripts/native-adapter-split.mjs unpack --from "$RUNNER_TEMP/na-native-refs"
-      # Absent when na-viewer's cli-retained failed: the lanes below then fail with their own messages.
+      # Absent when na-viewer's cli-retained failed before staging: the lanes below then fail with their own messages.
       - name: Fetch na-viewer's staged engine
         continue-on-error: true
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2

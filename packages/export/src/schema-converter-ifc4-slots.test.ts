@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { convertStepLine } from './schema-converter.js';
+import { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import { StepExporter } from './step-exporter.js';
 
 // #5202 finding 2: cardinality tightening on a downgrade to IFC4 was
@@ -90,5 +91,57 @@ END-ISO-10303-21;`;
   it('stays quiet when no conversion to IFC4 runs', async () => {
     const { warnings } = await exportAs('IFC4X3');
     expect(warnings.some((w) => w.includes('#5202'))).toBe(false);
+  });
+});
+
+// #11135: an IFC2X3 property subtype upgraded to IfcMaterialProperties/IfcProfileProperties
+// with no measure to carry keeps Properties `$`, which IFC4X3 requires as IFC4 does.
+describe('StepExporter: an IFC2X3 upgrade counts the slots its target requires (#11135)', () => {
+  const IFC2X3_MODEL = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t.ifc','',(''),(''),'','','');
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0OSuGGYUFyIf0LtE29OSuG',$,'P',$,$,$,$,$,$);
+#8=IFCMATERIAL('Steel');
+#9=IFCRECTANGLEPROFILEDEF(.AREA.,'R',$,1.,1.);
+#5=IFCMECHANICALMATERIALPROPERTIES(#8,$,$,$,$,$);
+#6=IFCGENERALPROFILEPROPERTIES('P',#9,$,$,$,$,$);
+#7=IFCMECHANICALMATERIALPROPERTIES(#8,$,2.1E11,$,$,$);
+ENDSEC;
+END-ISO-10303-21;`;
+  const warning = (n: number, target: string, issue: string) =>
+    `${n} slot(s) keep $ where ${target} requires a value and the source offers none ` +
+    '(the converter does not invent measures, labels, identifiers, references, flags or enums); ' +
+    `the file is not valid ${target} (${issue}).`;
+
+  async function upgrade(schema: 'IFC4' | 'IFC4X3') {
+    const bytes = new TextEncoder().encode(IFC2X3_MODEL);
+    const store = await new IfcParser().parseColumnar(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
+    const result = new StepExporter(store).export({ schema });
+    return { text: new TextDecoder().decode(result.content), warnings: result.stats.warnings };
+  }
+
+  it('names the two unset Properties slots on both targets, and not the carried one', async () => {
+    for (const [schema, issue] of [['IFC4', '#5202'], ['IFC4X3', '#11135']] as const) {
+      const { text, warnings } = await upgrade(schema);
+      expect(text).toContain('#5=IFCMATERIALPROPERTIES($,$,$,#8);');
+      expect(text).toContain('#6=IFCPROFILEPROPERTIES($,$,$,#9);');
+      expect(text).toMatch(/#7=IFCMATERIALPROPERTIES\('Pset_MaterialMechanical',\$,\(#\d+\),#8\);/);
+      expect(warnings).toContain(warning(2, schema, issue));
+      expect(warnings.join('\n'), 'one target, one count').not.toContain(schema === 'IFC4' ? 'IFC4X3 requires' : 'IFC4 requires');
+    }
+  });
+
+  it('counts a structural member whose Axis the upgrade cannot supply, on both targets', () => {
+    const member = "#5=IFCSTRUCTURALCURVEMEMBER('0OSuGGYUFyIf0LtE29OSuH',$,'m',$,$,$,#3,.RIGID_JOINED_MEMBER.);";
+    for (const target of ['IFC4', 'IFC4X3'] as const) {
+      const check = new Ifc4SlotCheck();
+      expect(convertStepLine(member, 'IFC2X3', target, undefined, undefined, undefined, check)).toBe(
+        "#5=IFCSTRUCTURALCURVEMEMBER('0OSuGGYUFyIf0LtE29OSuH',$,'m',$,$,$,#3,.RIGID_JOINED_MEMBER.,$);");
+      expect(check.warnings().join('\n')).toContain(`1 slot(s) keep $ where ${target} requires a value`);
+    }
   });
 });

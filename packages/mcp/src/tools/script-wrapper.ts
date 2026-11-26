@@ -58,7 +58,7 @@ const LIMITS = {
 export function wrapScript(code: string): string {
   return `(function (run, I, L) {
   // The intrinsics, by name: read once here, before the script runs.
-  var P = I.P, isInstance = I.isInstance, then = I.then, apply = I.apply, slice = I.slice, Str = I.Str, stringify = I.stringify, keys = I.keys, isArray = I.isArray, create = I.create, defineProperty = I.defineProperty, glob = I.glob, ErrorCtor = I.ErrorCtor, TypeErrorCtor = I.TypeErrorCtor, SetCtor = I.SetCtor, setAdd = I.setAdd, setHas = I.setHas, setDelete = I.setDelete, unbox = I.unbox, objectProto = I.objectProto, getProto = I.getProto, parse = I.parse, charCodeAt = I.charCodeAt, SyntaxErrorCtor = I.SyntaxErrorCtor, RegExpCtor = I.RegExpCtor, exec = I.exec, bind = I.bind, InternalErrorCtor = I.InternalErrorCtor, toStringTag = I.toStringTag;
+  var P = I.P, isInstance = I.isInstance, then = I.then, apply = I.apply, slice = I.slice, Str = I.Str, stringify = I.stringify, keys = I.keys, isArray = I.isArray, create = I.create, defineProperty = I.defineProperty, glob = I.glob, ErrorCtor = I.ErrorCtor, TypeErrorCtor = I.TypeErrorCtor, SetCtor = I.SetCtor, setAdd = I.setAdd, setHas = I.setHas, setDelete = I.setDelete, unbox = I.unbox, objectProto = I.objectProto, indexOf = I.indexOf, lastIndexOf = I.lastIndexOf, getProto = I.getProto, parse = I.parse, charCodeAt = I.charCodeAt, SyntaxErrorCtor = I.SyntaxErrorCtor, RegExpCtor = I.RegExpCtor, exec = I.exec, bind = I.bind, InternalErrorCtor = I.InternalErrorCtor, toStringTag = I.toStringTag;
   // instanceof, guarded: a thrown Proxy whose getPrototypeOf trap throws must
   // not make the wrapper itself throw.
   function instanceOf(ctor, e) {
@@ -259,6 +259,17 @@ export function wrapScript(code: string): string {
     if (isError(a)) {
       var head = cut(msg(a), L.maxMessage), st;
       try { st = a.stack; } catch (_) { st = '[stack unreadable]'; }
+      // The wrapper's own frames (and the eval that runs the script) mean
+      // nothing to the script's author: cut the stack where they start.
+      if (typeof st === 'string') {
+        var cutAt = apply(indexOf, st, ['internal-script-wrapper.js']);
+        if (cutAt >= 0) {
+          var lineStart = apply(lastIndexOf, st, ['\\n', cutAt]);
+          st = apply(slice, st, [0, lineStart < 0 ? 0 : lineStart]);
+          var evalAt = apply(lastIndexOf, st, ['\\n    at eval (native)']);
+          if (evalAt >= 0) st = apply(slice, st, [0, evalAt]);
+        }
+      }
       return head + (typeof st === 'string' && st !== '' ? '\\n' + cut(st, L.maxLog - 32 - head.length) : '');
     }
     try {
@@ -273,14 +284,19 @@ export function wrapScript(code: string): string {
   // argument list is a null-prototype array-like, out of Array.prototype's reach.
   // only, when given, maps just the argument indexes it marks true.
   function forwardMapped(fn, thisArg, mapper, only) {
-    return function () {
+    var forward = function () {
       var args = create(null), n = arguments.length;
       for (var ai = 0; ai < n; ai++) args[ai] = only && only[ai] !== true ? arguments[ai] : mapper(arguments[ai]);
       args.length = n;
       return apply(fn, thisArg, args);
     };
+    // Keep the original's name and arity, which scripts may introspect.
+    defineProperty(forward, 'name', { value: fn.name, configurable: true });
+    defineProperty(forward, 'length', { value: fn.length, configurable: true });
+    return forward;
   }
-  var original = glob.console, safe = create(null);
+  // Ordinary objects, like the originals; they are filled before the script runs.
+  var original = glob.console, safe = create(objectProto);
   for (var li = 0; li < L.levels.length; li++) safe[L.levels[li]] = forwardMapped(original[L.levels[li]], original, logArg);
   // Writable and configurable like the originals: a script that replaces them
   // only affects itself, since the bridge's console is reachable only from here.
@@ -305,7 +321,7 @@ export function wrapScript(code: string): string {
     };
   }
   function wrapMethods(source, level, path) {
-    var target = create(null), ks = keys(source);
+    var target = create(objectProto), ks = keys(source);
     for (var wi = 0; wi < ks.length; wi++) {
       var member = source[ks[wi]], name = path === '' ? ks[wi] : path + '.' + ks[wi];
       var listed = L.dumped[name];
@@ -342,7 +358,7 @@ export function wrapScript(code: string): string {
     }
     return top;
   }
-  var safeJson = create(null);
+  var safeJson = create(objectProto);
   safeJson.stringify = function (value, replacer, space) {
     return ser(value, Infinity, false, jsonOptions(replacer, space));
   };
@@ -370,5 +386,5 @@ export function wrapScript(code: string): string {
     }
     catch (e) { resolveWrapper(fail(e)); }
   });
-})(function () { return (0, eval)(${JSON.stringify(code)}); }, { P: Promise, isInstance: Function.prototype[Symbol.hasInstance], then: Promise.prototype.then, apply: Reflect.apply, slice: String.prototype.slice, Str: String, stringify: JSON.stringify, keys: Object.keys, isArray: Array.isArray, create: Object.create, defineProperty: Object.defineProperty, glob: globalThis, ErrorCtor: Error, TypeErrorCtor: TypeError, SetCtor: Set, setAdd: Set.prototype.add, setHas: Set.prototype.has, setDelete: Set.prototype.delete, unbox: [[Number.prototype, Number.prototype.valueOf], [String.prototype, String.prototype.valueOf], [Boolean.prototype, Boolean.prototype.valueOf], [BigInt.prototype, BigInt.prototype.valueOf]], objectProto: Object.prototype, getProto: Object.getPrototypeOf, parse: JSON.parse, charCodeAt: String.prototype.charCodeAt, SyntaxErrorCtor: SyntaxError, RegExpCtor: RegExp, exec: RegExp.prototype.exec, bind: Function.prototype.bind, InternalErrorCtor: typeof InternalError === 'function' ? InternalError : undefined, toStringTag: Symbol.toStringTag }, ${JSON.stringify(LIMITS)})`;
+})(function () { return (0, eval)(${JSON.stringify(code)}); }, { P: Promise, isInstance: Function.prototype[Symbol.hasInstance], then: Promise.prototype.then, apply: Reflect.apply, slice: String.prototype.slice, Str: String, stringify: JSON.stringify, keys: Object.keys, isArray: Array.isArray, create: Object.create, defineProperty: Object.defineProperty, glob: globalThis, ErrorCtor: Error, TypeErrorCtor: TypeError, SetCtor: Set, setAdd: Set.prototype.add, setHas: Set.prototype.has, setDelete: Set.prototype.delete, unbox: [[Number.prototype, Number.prototype.valueOf], [String.prototype, String.prototype.valueOf], [Boolean.prototype, Boolean.prototype.valueOf], [BigInt.prototype, BigInt.prototype.valueOf]], objectProto: Object.prototype, indexOf: String.prototype.indexOf, lastIndexOf: String.prototype.lastIndexOf, getProto: Object.getPrototypeOf, parse: JSON.parse, charCodeAt: String.prototype.charCodeAt, SyntaxErrorCtor: SyntaxError, RegExpCtor: RegExp, exec: RegExp.prototype.exec, bind: Function.prototype.bind, InternalErrorCtor: typeof InternalError === 'function' ? InternalError : undefined, toStringTag: Symbol.toStringTag }, ${JSON.stringify(LIMITS)})`;
 }

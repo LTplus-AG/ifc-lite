@@ -288,7 +288,9 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
       if (err instanceof ScriptError && err.message === 'interrupted') {
         throw new ToolExecutionError({
           code: ToolErrorCode.TIMEOUT, message: `Script exceeded timeout_ms (${timeoutMs}).`, details,
-          hint: `Raise timeout_ms (max ${MAX_TIMEOUT_MS}) or do less per call; un-awaited bim calls count toward it.`,
+          hint: timeoutMs < MAX_TIMEOUT_MS
+            ? `Raise timeout_ms (max ${MAX_TIMEOUT_MS}) or do less per call; un-awaited bim calls count toward it.`
+            : 'timeout_ms is at its maximum: do less per call; un-awaited bim calls count toward it.',
         });
       }
       // The sandbox's own realm failing is a server fault, not the script's.

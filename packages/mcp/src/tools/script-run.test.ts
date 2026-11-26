@@ -341,6 +341,10 @@ describe('script_run', () => {
     expect((await run('typeof arguments')).structuredContent?.value).toBe('undefined');
     expect(logTexts(await run("'use strict'; console.debug = console.log; console.debug('x'); 1"))).toEqual(['x']);
     expect((await run('Object.prototype.toString.call(JSON)')).structuredContent?.value).toBe('[object JSON]');
+    expect((await run("[String(JSON), bim.query.byType.name, bim.query.hasOwnProperty('byType')]")).structuredContent?.value).toEqual(['[object JSON]', 'byType', true]);
+    const stack = logTexts(await run("console.log(new Error('boom')); 1"))[0];
+    expect(stack).toMatch(/^boom/);
+    expect(stack).not.toMatch(/internal-script-wrapper|eval \(native\)/);
     const huge = await run("({ a: 'x'.repeat(2e7) })", { memory_mb: 128 });
     expect(huge.structuredContent).toMatchObject({ value_truncated: true });
   });

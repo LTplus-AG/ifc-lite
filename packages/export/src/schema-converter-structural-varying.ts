@@ -2,7 +2,6 @@
 /** Matches rust/export/src/schema_structural_varying.rs (#9668). */
 import { destabilizingUnknown } from './schema-converter-structural.js';
 import { listItems } from './schema-converter-structural-axes.js';
-import { refId } from './schema-ifc2x3-records.js';
 import { holdsValue, withoutComments } from './step-comment-skip.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
 import { isSubtype, slotRef, type SourceRecords, type StructuralRewrite } from './schema-converter-structural-source.js';
@@ -66,7 +65,7 @@ export class StructuralVarying {
     if (!work) return;
     this.readAspects(source.ids('IFCSHAPEASPECT'), (id) => source.slots(id));
     for (const id of mode === 'downgrade' ? source.ids('IFCSTRUCTURALLOADCONFIGURATION') : []) {
-      const values = listItems(source.slots(id)?.[1] ?? '')?.map(refId);
+      const values = listItems(source.slots(id)?.[1] ?? '')?.map(slotRef);
       if (values?.length && values.every((v) => v !== null)) this.configs.set(id, values as number[]);
     }
     this.mode = mode;
@@ -84,7 +83,7 @@ export class StructuralVarying {
   private readAspects(ids: readonly number[], slots: (id: number) => readonly string[] | undefined): void {
     for (const id of ids) {
       const args = slots(id);
-      const shape = refId(args?.[4]);
+      const shape = slotRef(args?.[4]);
       if (shape === null) continue;
       const list = this.aspects.get(shape) ?? [];
       list.push({ id, representations: listItems(args?.[0] ?? '')?.length ?? -1 });
@@ -105,7 +104,7 @@ export class StructuralVarying {
         if (!args || args.some((a, i) => i !== 7 && referencesAnyExpressId(a, configs))) continue;
         if (this.toIfc2x3(id, ifc4, args)) {
           candidates.add(id);
-          consumed.add(refId(args[7])!);
+          consumed.add(slotRef(args[7])!);
         }
       }
     }
@@ -194,7 +193,7 @@ export class StructuralVarying {
     if (!kind || args.length !== 12) return undefined;
     const predefined = args[11].trim().toUpperCase();
     if (!(kind.spread as readonly string[]).includes(predefined)) return undefined;
-    const config = refId(args[7]) ?? -1;
+    const config = slotRef(args[7]) ?? -1;
     const values = this.configs.get(config);
     if (!values) return undefined;
     const aspect = this.convertible(kind, args[6], values);

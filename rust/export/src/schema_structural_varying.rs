@@ -14,7 +14,6 @@
 //! read the source, so only an unedited full export arms them. Twin of
 //! `packages/export/src/schema-converter-structural-varying.ts`.
 use std::collections::{BTreeMap, HashMap, HashSet};
-use crate::schema_ifc2x3_records::ref_id;
 use crate::schema_structural_links::slot_ref;
 use crate::schema_structural_axes::list_items;
 use crate::step_record_frame::record_frame;
@@ -118,7 +117,7 @@ impl Source {
             if !(shape || kind.is_some() || config) { continue; }
             let Some(args) = record(content, start, end) else { continue };
             if shape {
-                if let Some(of) = ref_id(args.get(ASPECT_OF_SHAPE).map(String::as_str)) { source.aspects.entry(of).or_default().push((id, args.first().and_then(|a| list_items(a)).map(|r| r.len()))); }
+                if let Some(of) = args.get(ASPECT_OF_SHAPE).and_then(|a| slot_ref(a)) { source.aspects.entry(of).or_default().push((id, args.first().and_then(|a| list_items(a)).map(|r| r.len()))); }
             } else if config {
                 if let Some(values) = args.get(CONFIGURATION_VALUES).and_then(|v| refs(v)).filter(|v| !v.is_empty()) { source.configs.insert(id, values); }
             } else if let Some(kind) = kind {
@@ -191,7 +190,7 @@ impl StructuralVarying {
         let mut result = Self::default();
         for (id, kind, args) in &source.actions {
             if args.len() != 12 || !kind.spread.iter().any(|s| args[11].trim().eq_ignore_ascii_case(s)) { continue; }
-            let Some((config, values)) = ref_id(Some(&args[7])).and_then(|c| source.configs.get_key_value(&c)) else { continue };
+            let Some((config, values)) = slot_ref(&args[7]).and_then(|c| source.configs.get_key_value(&c)) else { continue };
             // A configuration named outside AppliedLoad would dangle once it is dropped.
             if args.iter().enumerate().any(|(i, a)| i != 7 && names_config(a)) { continue; }
             if let Some(aspect) = source.convertible(kind, &args[6], values, None) {

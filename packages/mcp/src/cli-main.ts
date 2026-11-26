@@ -234,16 +234,15 @@ async function runHttp(opts: CliOptions, tag: string): Promise<RunningHttpCli | 
   // Files are not preloaded over HTTP. Every session has its own registry
   // so sessions never share edits, and preloading would mean one full parse
   // and one resident copy per session, which any client could multiply by
-  // opening sessions. Say so instead of starting a server that ignores them.
+  // opening sessions. Warn rather than refuse, so configs written for the
+  // old behaviour (files silently ignored) keep starting.
   if (opts.files.length > 0) {
     process.stderr.write(
       // The count, not the values: a mistyped flag (`--tokn secret`) leaves
       // its value here as a positional, and it must not land in a log.
-      `${tag} --transport http does not preload files (${opts.files.length} file argument(s) given): each session starts empty and the agent ` +
+      `${tag} warning: --transport http does not preload files (${opts.files.length} file argument(s) ignored): each session starts empty and the agent ` +
       'loads a model with model_load. Drop the file arguments, and pass --allow <dir> to bound what it can load.\n',
     );
-    process.exitCode = 2;
-    return undefined;
   }
   if (!opts.allowedPaths?.length) {
     process.stderr.write(

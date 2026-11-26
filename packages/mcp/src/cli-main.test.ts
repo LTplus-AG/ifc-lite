@@ -4,7 +4,7 @@
 
 /**
  * The shared command line runtime (#11534): a read-only HTTP session can
- * load a model, HTTP mode honours --allow and refuses file arguments it
+ * load a model, HTTP mode honours --allow and warns about file arguments it
  * would ignore, tokens repeat, and the help names the right Claude Desktop
  * config path.
  */
@@ -142,13 +142,18 @@ describe('HTTP mode of runMcpCli (#11534)', () => {
     }
   });
 
-  it('refuses file arguments instead of starting a server that ignores them', async () => {
-    const before = process.exitCode;
+  // Configs from before #11534 pass files over HTTP: keep them starting, but say the files load nothing.
+  it('warns about file arguments over HTTP and still starts', async () => {
+    const stderr = vi.mocked(process.stderr.write);
+    stderr.mockClear();
+    const server = await runMcpCli(['--transport', 'http', '--port', '0', modelPath], { command: 'ifc-lite-mcp' });
     try {
-      await expect(runMcpCli(['--transport', 'http', '--port', '0', modelPath], { command: 'ifc-lite-mcp' })).resolves.toBeUndefined();
-      expect(process.exitCode).toBe(2);
+      expect(server?.port).toBeGreaterThan(0);
+      const said = stderr.mock.calls.map((c) => String(c[0])).join('');
+      expect(said).toMatch(/does not preload files \(1 file argument\(s\) ignored\)/);
+      expect(said).not.toContain(modelPath); // a mistyped flag's value may sit among the files
     } finally {
-      process.exitCode = before;
+      await server?.close();
     }
   });
 });

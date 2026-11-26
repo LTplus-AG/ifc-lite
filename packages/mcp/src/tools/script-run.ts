@@ -41,7 +41,8 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 // sandbox in a worker thread so a script no longer blocks other sessions.
 const MAX_TIMEOUT_MS = 30_000;
 /**
- * Sandboxes alive at once, process-wide. All of them share one QuickJS WASM
+ * script_run sandboxes alive at once, process-wide (a run_flow script node
+ * holds no slot). All of them share one QuickJS WASM
  * module whose linear memory never shrinks, so overlapping runs that await
  * host work could otherwise each reserve up to MAX_MEMORY_MB. It bounds
  * sandboxes, not host work: a cancelled run frees its slot while a bim call

@@ -29,26 +29,32 @@ export function literalInt(e: Expr | undefined): number | undefined {
       if (Number.isSafeInteger(n)) return n;
     }
   }
-  throw new Error('Cannot emit a schema bound that is not a constant integer');
+  return undefined;
 }
 
-export function toTypeRef(spec: TypeSpec, index: SchemaIndex): MetaTypeRef {
+function schemaBound(expr: Expr | undefined, index: SchemaIndex, label: string): number | undefined {
+  const value = literalInt(expr);
+  if (value === undefined && expr && expr.k !== 'indeterminate') index.unsupportedBounds.add(label);
+  return value;
+}
+
+export function toTypeRef(spec: TypeSpec, index: SchemaIndex, owner: string): MetaTypeRef {
   switch (spec.k) {
     case 'simple': {
-      const width = literalInt(spec.width);
+      const width = schemaBound(spec.width, index, owner + ' width');
       return { k: 'simple', name: spec.name, ...(width !== undefined ? { width } : {}), ...(spec.fixed ? { fixed: true } : {}) };
     }
     case 'named': return { k: 'named', name: index.canonical(spec.name) ?? spec.name };
     case 'aggregate': {
-      const high = literalInt(spec.high);
+      const high = schemaBound(spec.high, index, owner + ' upper bound');
       return {
         k: 'aggregate',
         kind: spec.kind === 'AGGREGATE' ? 'BAG' : spec.kind,
-        low: literalInt(spec.low) ?? 0,
+        low: schemaBound(spec.low, index, owner + ' lower bound') ?? 0,
         ...(high !== undefined ? { high } : {}),
         unique: spec.kind === 'SET' || spec.unique,
         optional: spec.optional,
-        of: toTypeRef(spec.of, index),
+        of: toTypeRef(spec.of, index, owner),
       };
     }
     default: return { k: 'generic' };
@@ -63,12 +69,12 @@ function entityMeta(e: EntityDecl, index: SchemaIndex): Record<string, unknown> 
   const meta: Record<string, unknown> = {
     name: e.name,
     abstract: e.abstract,
-    attributes: own.map((a) => ({ name: a.name, type: toTypeRef(a.type, index), optional: a.optional })),
+    attributes: own.map((a) => ({ name: a.name, type: toTypeRef(a.type, index, `${e.name}.${a.name}`), optional: a.optional })),
   };
   if (e.supertypes.length > 1) meta.supertypes = e.supertypes.map(name => index.canonical(name) ?? name);
   else if (e.supertypes[0]) meta.supertype = index.canonical(e.supertypes[0]) ?? e.supertypes[0];
   if (retyped.length) {
-    meta.retyped = Object.fromEntries(retyped.map((a) => [a.redeclares!.attribute, { name: a.redeclares!.attribute, type: toTypeRef(a.type, index), optional: a.optional }]));
+    meta.retyped = Object.fromEntries(retyped.map((a) => [a.redeclares!.attribute, { name: a.redeclares!.attribute, type: toTypeRef(a.type, index, `${e.name}.${a.name}`), optional: a.optional }]));
   }
   if (derivedRedeclarations.length) meta.derivedRedeclarations = derivedRedeclarations.map((d) => d.redeclares!.attribute);
   if (derived.length) meta.derived = derived.map((d) => d.name);
@@ -78,8 +84,8 @@ function entityMeta(e: EntityDecl, index: SchemaIndex): Record<string, unknown> 
       entity: index.canonical(i.entity) ?? i.entity,
       forAttribute: i.forAttribute,
       ...(i.aggregate ? { aggregate: i.aggregate } : {}),
-      low: i.aggregate ? literalInt(i.low) ?? 0 : 1,
-      ...(i.aggregate ? (literalInt(i.high) !== undefined ? { high: literalInt(i.high) } : {}) : { high: 1 }),
+      low: i.aggregate ? schemaBound(i.low, index, `${e.name}.${i.name} lower bound`) ?? 0 : 1,
+      ...(i.aggregate ? (schemaBound(i.high, index, `${e.name}.${i.name} upper bound`) !== undefined ? { high: schemaBound(i.high, index, `${e.name}.${i.name} upper bound`) } : {}) : { high: 1 }),
     }));
   }
   if (e.unique.length) meta.unique = e.unique.map((u) => ({ label: u.label, attributes: u.attributes.map((a) => a.name) }));
@@ -93,7 +99,7 @@ function isInheritedExplicit(e: EntityDecl, attribute: string, index: SchemaInde
 function typeMeta(t: TypeDecl, index: SchemaIndex): Record<string, unknown> {
   if (t.spec.k === 'enumeration') return { kind: 'enum', name: t.name, items: t.spec.items.map((i) => i.toUpperCase()) };
   if (t.spec.k === 'select') return { kind: 'select', name: t.name, items: t.spec.items.map((i) => index.canonical(i) ?? i) };
-  return { kind: 'defined', name: t.name, underlying: toTypeRef(t.spec, index) };
+  return { kind: 'defined', name: t.name, underlying: toTypeRef(t.spec, index, t.name) };
 }
 
 export function emitSchemaMeta(index: SchemaIndex, header: string, runtimeImport: string): string {

@@ -71,8 +71,15 @@ describe('generateValidators', () => {
   });
 
   it("compiles 'X' IN TYPEOF(e) to a membership test and AND/OR with a lazy right operand", () => {
-    const { files } = generateValidators(mini("WR1 : ('MINI.MINITHING' IN TYPEOF(SELF)) AND EXISTS(Name)"));
-    expect(files['rules.ts']).toContain('r.and(r.typeIs(m, self, "MINITHING"), () => r.exists(r.attr(self, "NAME")))');
+    const { files } = generateValidators(mini("WR1 : FALSE AND EXISTS(Name); WR2 : TRUE OR EXISTS(Name)"));
+    let reads = 0;
+    const rules = loadRules(files['rules.ts'], {
+      and: (left: boolean, right: () => boolean) => left && right(),
+      or: (left: boolean, right: () => boolean) => left || right(),
+      attr: () => { reads++; return 'value'; }, exists: Boolean,
+    });
+    expect(rules.map(rule => rule.check({}, {}))).toEqual([false, true]);
+    expect(reads).toBe(0);
   });
 
   it('reports a rule it cannot compile instead of dropping it', () => {
@@ -203,11 +210,11 @@ END_SCHEMA;`;
   });
 
   it('keeps supported sibling global labels and reports skipped declarations (#11559)', () => {
-    const { coverage } = generateValidators(`SCHEMA S; ENTITY A; END_ENTITY;
+    const { coverage } = generateValidators(`SCHEMA S; TYPE D = LIST [1:Mystery(1)] OF REAL; END_TYPE; ENTITY A; END_ENTITY;
 RULE R FOR (A); WHERE Good : FALSE; Bad : Mystery(1); END_RULE;
 SUBTYPE_CONSTRAINT C FOR A; END_SUBTYPE_CONSTRAINT; END_SCHEMA;`);
     expect(coverage.counts.global).toEqual({ total: 2, compiled: 1 });
-    expect(coverage.unsupported.map(u => [u.scope, u.label])).toEqual([['schema', 'C'], ['global', 'Bad']]);
+    expect(coverage.unsupported.map(u => [u.scope, u.label])).toEqual([['schema', 'C'], ['schema', 'D upper bound'], ['global', 'Bad']]);
   });
 
   it('keeps independent same-named derived attributes compiled', () => {

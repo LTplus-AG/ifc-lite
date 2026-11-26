@@ -8,6 +8,7 @@
  * through that storey's placement.
  */
 import { walkPlacementChain } from '@ifc-lite/data';
+import { decodeStepStringLiteral } from '@ifc-lite/encoding';
 import { refsOutsideStrings, splitTopLevelArgs, SubsetSelectionError } from './step-subset-relations.js';
 import type { ParsedStep } from './step-subset.js';
 
@@ -60,12 +61,16 @@ export function productsUnderPlacement(storeyPlacementId: number, parsed: Parsed
 export function resolveStoreyPlacement(token: string, parsed: ParsedStep): number {
   let storeyId: number | undefined;
   const t = token.trim();
-  // Exact match on the Name attribute (the third), never on LongName,
+  // Exact match on the decoded Name attribute (the third), never on LongName,
   // Description or ObjectType text; two storeys of one name are refused.
+  const nameOf = (body: string): string | undefined => {
+    const raw = splitTopLevelArgs(body)?.[2];
+    return raw && raw.length >= 2 && raw.startsWith("'") && raw.endsWith("'") ? decodeStepStringLiteral(raw.slice(1, -1)) : undefined;
+  };
   const byName = (): number | undefined => {
     const hits: number[] = [];
     for (const inst of parsed.instances.values()) {
-      if (inst.type === 'IFCBUILDINGSTOREY' && splitTopLevelArgs(inst.body)?.[2] === `'${t}'`) hits.push(inst.id);
+      if (inst.type === 'IFCBUILDINGSTOREY' && nameOf(inst.body) === t) hits.push(inst.id);
     }
     if (hits.length > 1) throw new SubsetSelectionError('invalid', `${hits.length} storeys are named '${t}' (#${hits.join(', #')}); pass a GlobalId or #id.`);
     return hits[0];

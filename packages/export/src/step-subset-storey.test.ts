@@ -52,6 +52,11 @@ describe('resolveStoreyPlacement: a storey NAMED with a number', () => {
     expect(resolveStoreyPlacement('1', described)).toBe(11);
   });
 
+  it('decodes the Name before comparing (doubled quote, \\X2\\ escape)', () => {
+    const named = parseStep(text.replace("'0',$,$,#10", "'O''Brien \\X2\\00FC\\X0\\',$,$,#10"));
+    expect(resolveStoreyPlacement("O'Brien \u00fc", named)).toBe(10);
+  });
+
   it('still reads a bare storey express id, and #id, as an id', () => {
     expect(resolveStoreyPlacement('20', parsed)).toBe(10);
     expect(resolveStoreyPlacement('#21', parsed)).toBe(11);

@@ -18,13 +18,15 @@ import {
   copyFileSync,
   mkdirSync,
   readFileSync,
+  readlinkSync,
   realpathSync,
   renameSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join, posix, win32 } from 'node:path';
+import { dirname, join, posix, resolve, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 // Resolves Windows `.cmd` shims (`claude.cmd`, `code.cmd`) that a bare spawn cannot run.
 import crossSpawn from 'cross-spawn';
@@ -74,21 +76,22 @@ export function nodeInstallIo(): InstallIo {
       }
     },
     writeFile(path, text) {
-      mkdirSync(dirname(path), { recursive: true });
-      // A dotfiles symlink stays a symlink (write its target), and the mode is kept.
-      let target = path;
-      let mode: number | undefined;
-      try {
-        target = realpathSync(path);
-        mode = statSync(target).mode & 0o7777;
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-      }
+      const { target, mode } = writeTarget(path);
+      mkdirSync(dirname(target), { recursive: true });
       // Write beside the target and rename, so a crash never leaves half a config.
       const tmp = `${target}.${process.pid}.tmp`;
-      writeFileSync(tmp, text);
-      if (mode !== undefined) chmodSync(tmp, mode);
-      renameSync(tmp, target);
+      try {
+        writeFileSync(tmp, text);
+        if (mode !== undefined) chmodSync(tmp, mode);
+        renameSync(tmp, target);
+      } catch (err) {
+        try {
+          unlinkSync(tmp);
+        } catch (cleanup) {
+          if ((cleanup as NodeJS.ErrnoException).code !== 'ENOENT') process.stderr.write(`could not remove ${tmp}: ${(cleanup as Error).message}\n`);
+        }
+        throw err;
+      }
     },
     copyFile: (from, to) => copyFileSync(from, to, constants.COPYFILE_EXCL),
     run(command, args) {
@@ -103,6 +106,28 @@ export function nodeInstallIo(): InstallIo {
     err: (text) => process.stderr.write(text),
     now: () => new Date(),
   };
+}
+
+/**
+ * Where a config write really lands, and the mode to keep. A dotfiles
+ * symlink stays a symlink: its target is written, even when that target
+ * does not exist yet.
+ */
+function writeTarget(path: string): { target: string; mode?: number } {
+  try {
+    const target = realpathSync(path);
+    return { target, mode: statSync(target).mode & 0o7777 };
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+  }
+  try {
+    return { target: resolve(dirname(path), readlinkSync(path)) };
+  } catch (err) {
+    // EINVAL: a plain path, not a link. ENOENT: nothing there yet.
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code !== 'ENOENT' && code !== 'EINVAL') throw err;
+    return { target: path };
+  }
 }
 
 function installHelp(invokedAs: string): string {
@@ -180,7 +205,7 @@ function absolutePaths(args: string[], host: HostEnv): string[] {
   const out: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg === '--transport') {
+    if (arg === '--transport' && args[i + 1] !== 'stdio') {
       throw new InstallError('Clients start ifc-lite-mcp over stdio; drop --transport. For HTTP, give the client the server URL.');
     }
     out.push(arg.startsWith('-') ? arg : abs(arg));
@@ -205,7 +230,8 @@ function packageVersion(): string {
 /** Quote for a POSIX shell, or for cmd.exe (where `^` escapes and `""` is a literal quote). */
 function quote(arg: string, platform: NodeJS.Platform): string {
   if (platform === 'win32') return /^[\w@+=:,./\\-]+$/.test(arg) ? arg : `"${arg.replace(/"/g, '""')}"`;
-  if (/^[\w@%+=:,./^-]+$/.test(arg)) return arg;
+  // `^` stays quoted: zsh with EXTENDED_GLOB reads it as a glob.
+  if (/^[\w@+=:,./-]+$/.test(arg)) return arg;
   return `'${arg.replace(/'/g, `'\\''`)}'`;
 }
 
@@ -232,14 +258,18 @@ export function runInstall(
       io.out(installHelp(invokedAs));
       return 0;
     }
+    if (args.scope === 'project' && args.serverArgs.some((x) => !x.startsWith('-'))) {
+      io.err('[ifc-lite-mcp install] note: the project file gets absolute paths, which only work on this machine.\n');
+    }
     const plan = planInstall(args.client, args.scope, args.name, serverCommand(version, args.serverArgs), io.host);
     const label = CLIENTS[args.client];
     return plan.kind === 'command'
       ? runCommandPlan(plan, args, label, io)
       : writeFilePlan(plan, args, label, io);
   } catch (err) {
-    if (!(err instanceof InstallError)) throw err;
-    io.err(`[ifc-lite-mcp install] ${err.message}\n`);
+    // A file-system or spawn failure (EACCES, EROFS, ...) is the user's to fix, not a crash.
+    if (!(err instanceof InstallError) && typeof (err as NodeJS.ErrnoException).code !== 'string') throw err;
+    io.err(`[ifc-lite-mcp install] ${(err as Error).message}\n`);
     return 1;
   }
 }
@@ -268,7 +298,9 @@ function runCommandPlan(
     return 1;
   }
   if (result.status !== 0) {
-    const hint = plan.remove ? ' If the name is taken, pass --force or --name.' : '';
+    const hint = remove
+      ? ` The old "${args.name}" entry was already removed; fix the error and run again:\n${line}`
+      : plan.remove ? ' If the name is taken, pass --force or --name.' : '';
     io.err(`[ifc-lite-mcp install] \`${plan.command}\` exited with ${result.status}.${hint}\n`);
     return result.status;
   }
@@ -312,7 +344,12 @@ function writeFilePlan(
     io.copyFile(plan.path, to);
     backup = ` (backup: ${to})`;
   }
-  io.writeFile(plan.path, merged.text);
+  try {
+    io.writeFile(plan.path, merged.text);
+  } catch (err) {
+    if (backup) (err as Error).message += `; the file is unchanged${backup}`;
+    throw err;
+  }
   io.err(
     `[ifc-lite-mcp install] ${merged.status} "${args.name}" in ${plan.path}${backup}. ` +
       `Restart ${label} to load it.\n`,

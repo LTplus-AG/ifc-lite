@@ -95,6 +95,25 @@ describe('ifc-lite-mcp install: where each client is configured', () => {
     }]);
   });
 
+  it('accepts --transport stdio, which is what clients use anyway', () => {
+    const io = fakeIo();
+    expect(install(['--client', 'cursor', '--', '--transport', 'stdio'], io)).toBe(0);
+  });
+
+  it('Claude Code --force says the old entry is gone when the add then fails', () => {
+    const io = fakeIo({}, { status: 1 });
+    expect(install(['--client', 'claude-code', '--force'], io)).toBe(1);
+    expect(io.stderr).toContain('already removed');
+  });
+
+  it('a file-system error is reported, not thrown, and names the backup', () => {
+    const io = fakeIo();
+    io.files.set('/Users/u/.cursor/mcp.json', '{}');
+    io.writeFile = () => { throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }); };
+    expect(install(['--client', 'cursor'], io)).toBe(1);
+    expect(io.stderr).toMatch(/EACCES.*unchanged \(backup: .*bak-/);
+  });
+
   it('Claude Code --force removes the old entry first', () => {
     const io = fakeIo();
     install(['--client', 'claude-code', '--force', '--scope', 'project'], io);
@@ -168,7 +187,7 @@ describe('ifc-lite-mcp install: dry run and usage errors', () => {
     const io = fakeIo({ cwd: '/My Models' });
     expect(install(['--client', 'claude-code', '--dry-run', 'a.ifc'], io)).toBe(0);
     expect(io.runs).toEqual([]);
-    expect(io.stdout).toBe(`claude mcp add --scope user ifc-lite -- npx -y ${PKG} '/My Models/a.ifc'\n`);
+    expect(io.stdout).toBe(`claude mcp add --scope user ifc-lite -- npx -y '${PKG}' '/My Models/a.ifc'\n`);
   });
 
   it('--dry-run --force prints the remove step a real run takes first', () => {
@@ -193,7 +212,7 @@ describe('ifc-lite-mcp install: dry run and usage errors', () => {
   it('prints the command when the client CLI is not on PATH', () => {
     const io = fakeIo({}, { missing: true });
     expect(install(['--client', 'claude-code'], io)).toBe(1);
-    expect(io.stderr).toContain(`claude mcp add --scope user ifc-lite -- npx -y ${PKG}`);
+    expect(io.stderr).toContain(`claude mcp add --scope user ifc-lite -- npx -y '${PKG}'`);
   });
 
   it.each([
@@ -201,6 +220,7 @@ describe('ifc-lite-mcp install: dry run and usage errors', () => {
     [['--client', 'zed'], 'Unknown client'],
     [['--client', 'cursor', '--read-only'], 'Server flags go after --'],
     [['--client', 'cursor', '--', '--transport', 'http'], 'drop --transport'],
+    [['--client', 'cursor', '--', '--transport'], 'drop --transport'],
     [['--client', 'claude-desktop', '--scope', 'project'], 'no project config'],
     [['--client', 'cursor', '--name', 'a b'], '--name'],
   ])('%j is refused', (argv, message) => {
@@ -227,6 +247,17 @@ describe('ifc-lite-mcp install: real files', () => {
       'mcp.json',
       expect.stringMatching(/^mcp\.json\.bak-\d{8}-\d{9}$/),
     ]);
+  });
+
+  it.skipIf(process.platform === 'win32')('writes through a dangling dotfiles symlink', () => {
+    dir = mkdtempSync(join(tmpdir(), 'ifc-lite-install-'));
+    mkdirSync(join(dir, '.cursor'));
+    const real = join(dir, 'dotfiles', 'cursor', 'mcp.json');
+    symlinkSync(real, join(dir, '.cursor', 'mcp.json'));
+    const io: InstallIo = { ...nodeInstallIo(), host: { platform: process.platform, home: dir, cwd: dir, env: {} }, err: () => {} };
+    expect(install(['--client', 'cursor'], io)).toBe(0);
+    expect(lstatSync(join(dir, '.cursor', 'mcp.json')).isSymbolicLink()).toBe(true);
+    expect(JSON.parse(readFileSync(real, 'utf-8')).mcpServers['ifc-lite'].command).toBe('npx');
   });
 
   it.skipIf(process.platform === 'win32')('writes through a symlinked config and keeps its mode', () => {

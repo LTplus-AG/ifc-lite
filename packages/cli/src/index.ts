@@ -44,6 +44,8 @@ async function main(): Promise<void> {
   const args = verbosity.rest;
 
   const wantsHelp = args.includes('--help') || args.includes('-h');
+  // `mcp install` answers --help itself and passes -v/--version after `--` to the server.
+  const mcpInstall = args[0] === 'mcp' && args[1] === 'install';
   if (args.length === 0) {
     process.stdout.write(buildHelp(await readVersion()) + '\n');
     return;
@@ -53,7 +55,7 @@ async function main(): Promise<void> {
     // still sitting in `args`, so all 37 subcommands printed the same page and
     // the real help written in `layer`/`ref`/`ext` was unreachable (#5527).
     const requested = args[0];
-    if (HELP_DELEGATING_COMMANDS.has(requested) || (requested === 'mcp' && args[1] === 'install')) {
+    if (HELP_DELEGATING_COMMANDS.has(requested) || mcpInstall) {
       // These write richer help of their own; let them answer.
     } else {
       const version = await readVersion();
@@ -63,7 +65,7 @@ async function main(): Promise<void> {
     }
   }
 
-  if (args.includes('--version') || args.includes('-v')) {
+  if (!mcpInstall && (args.includes('--version') || args.includes('-v'))) {
     process.stdout.write(`ifc-lite ${await readVersion()}\n`);
     return;
   }

@@ -11,7 +11,8 @@
  *   pnpm --filter @ifc-lite/mcp release:manifests [--out <dir>] [--no-bundle]
  *
  * The script first builds @ifc-lite/mcp and every workspace package it
- * depends on, the wasm runtime included, so nothing in the bundle is stale.
+ * depends on, the wasm runtime included, with turbo's cache off (a cached
+ * soft-skip could restore an old runtime), so nothing in the bundle is stale.
  * Run it on a host with Rust and wasm-pack: without them build-wasm.sh keeps
  * whatever runtime is on disk. The bundle step fails if a runtime is missing.
  *
@@ -41,7 +42,8 @@ const MCPB_CLI = '@anthropic-ai/mcpb@2.1.2';
 const pkgDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const { values: flags } = parseArgs({ options: { out: { type: 'string' }, 'no-bundle': { type: 'boolean' } } });
 // pnpm runs scripts in packages/mcp; a relative --out means where the user typed it.
-const out = flags.out ? resolve(process.env.INIT_CWD ?? process.cwd(), flags.out) : join(pkgDir, 'release-out');
+const userCwd = process.env.npm_lifecycle_event === 'release:manifests' ? (process.env.INIT_CWD ?? process.cwd()) : process.cwd();
+const out = flags.out ? resolve(userCwd, flags.out) : join(pkgDir, 'release-out');
 const pkg = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf-8'));
 
 /**
@@ -94,6 +96,7 @@ function resolvedTree(nodeModules) {
  */
 const nameOf = (spec) => spec.slice(0, spec.lastIndexOf('@'));
 const isAdded = (line) => line.startsWith('+') && !line.startsWith('+++ ') && line.trim() !== '+';
+const isRemoved = (line) => line.startsWith('-') && !line.startsWith('--- ') && line.trim() !== '-';
 
 function assertPatchesApplied(staged) {
   const root = resolve(pkgDir, '..', '..');
@@ -112,14 +115,22 @@ function assertPatchesApplied(staged) {
     // Every copy of exactly this version, hoisted or nested.
     for (const pkgRoot of staged.get(spec) ?? []) {
       let file = '';
+      // Added lines can be generic (`}`); a removed line the patch does not
+      // add back must also be gone, or the file may simply be unpatched.
+      let removedOnly = 0;
+      let removedGone = 0;
       for (const line of lines) {
         // A deleted file (+++ /dev/null) has no added lines to look for.
         if (line.startsWith('+++ ')) {
           file = line === '+++ /dev/null' ? '' : readFileSync(join(pkgRoot, line.slice(4).replace(/^b\//, '')), 'utf-8');
         } else if (isAdded(line) && !file.includes(line.slice(1))) {
           throw new Error(`${pkgRoot} is staged without ${patch} (missing: ${line.slice(1).trim()})`);
+        } else if (isRemoved(line) && !lines.includes(`+${line.slice(1)}`)) {
+          removedOnly++;
+          if (!file.includes(line.slice(1))) removedGone++;
         }
       }
+      if (removedOnly > 0 && removedGone === 0) throw new Error(`${pkgRoot} still has every line ${patch} removes`);
     }
   }
 }
@@ -154,7 +165,8 @@ if (!flags['no-bundle']) {
   // Checked before the slow deploy, and again in the stage after it.
   const source = missingWasm(resolve(pkgDir, '..', 'wasm'));
   if (source.length) throw new Error(`packages/wasm is missing ${source.join(', ')}: build it (scripts/build-wasm.sh) first`);
-  const stage = join(out, 'mcpb');
+  // A folder this script owns: --out may already hold a user's own `mcpb`.
+  const stage = join(out, '.ifc-lite-mcpb-stage');
   const deps = join(out, `ifc-lite-${pkg.version}.deps.txt`);
   const bundle = join(out, `ifc-lite-${pkg.version}.mcpb`);
   // A failed rebuild must not leave the last run's bundle looking current.
@@ -175,11 +187,12 @@ if (!flags['no-bundle']) {
   const nodeModules = join(stage, BUNDLE_SERVER_DIR, 'node_modules');
   const tree = resolvedTree(nodeModules);
   assertPatchesApplied(tree);
-  writeFileSync(deps, `${[...tree.keys()].sort().join('\n')}\n`);
-  process.stdout.write(`wrote ${deps}\n`);
   writeFileSync(join(stage, 'manifest.json'), `${JSON.stringify(mcpbManifest(pkg), null, 2)}\n`);
   // Source maps and type declarations are about 30 MB of the stage and never run.
   writeFileSync(join(stage, '.mcpbignore'), '*.map\n*.d.ts\n*.d.mts\n*.d.cts\n');
   run('npx', ['-y', MCPB_CLI, 'pack', stage, bundle], pkgDir);
   process.stdout.write(`wrote ${bundle}\n`);
+  // Only once the bundle exists, so a failed pack leaves no record of a bundle.
+  writeFileSync(deps, `${[...tree.keys()].sort().join('\n')}\n`);
+  process.stdout.write(`wrote ${deps}\n`);
 }

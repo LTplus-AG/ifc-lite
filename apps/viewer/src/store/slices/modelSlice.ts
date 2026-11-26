@@ -111,10 +111,10 @@ export interface ModelSlice {
    * Not the only spelling in the repo, and this doc must not claim otherwise:
    * `store/globalId.ts` `fromGlobalIdFromModels` holds an independent copy that
    * deliberately differs — it does not sort by `idOffset`, and it has a
-   * single-model fallback that answers an id above the model's parse range
-   * (an overlay allocation) when the range check misses, for legacy
-   * single-store behaviour. An id below the model's offset gets no answer (#11527). Unifying them is a separate change with its
-   * own risk; what this pair guarantees is that the SCOPED and UNSCOPED
+   * single-model fallback that answers any id above the model's parse range
+   * (where overlay allocations land) when the range check misses, for legacy
+   * single-store behaviour; an id below the model's offset gets no answer
+   * (#11527). Unifying them is a separate change with its own risk; what this pair guarantees is that the SCOPED and UNSCOPED
    * resolvers on this slice always agree.
    */
   resolveGlobalIdInModel: (modelId: string, globalId: number) => GlobalIdLookup | null;

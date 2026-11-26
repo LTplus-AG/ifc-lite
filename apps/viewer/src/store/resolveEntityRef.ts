@@ -37,12 +37,17 @@ function resolveEntityRefFromState(
   if (progressive) return progressive;
 
   // Fallback: single-model mode where offset is 0 → globalId === expressId.
-  // Only under that premise: behind a removed model the offset is not 0, and a
-  // negative id is nobody's (#11527: either became an unpublished local id that
-  // the next toGlobalId refused). Those take the legacy sentinel below.
+  // Only under that premise, and inside the model's range when it has one:
+  // behind a removed model the offset is not 0, a negative id is nobody's, and
+  // a stale id past the range is not this model's (#11527: each became an
+  // unpublished local id that the next toGlobalId refused). Those take the
+  // legacy sentinel below.
   const first = state.models.entries().next();
-  if (!first.done && (first.value[1].idOffset ?? 0) === 0 && Number.isSafeInteger(globalId) && globalId >= 0) {
-    return { modelId: first.value[0], expressId: globalId };
+  if (!first.done) {
+    const model = first.value[1];
+    const owned = Number.isSafeInteger(globalId) && globalId >= 0
+      && (model.maxExpressId === undefined || globalId <= model.maxExpressId);
+    if ((model.idOffset ?? 0) === 0 && owned) return { modelId: first.value[0], expressId: globalId };
   }
 
   // Legacy single-model mode (no models in federation map yet), or an id no model owns.
@@ -55,8 +60,10 @@ function resolveEntityRefFromState(
  *
  * Resolution order:
  *  1. resolveGlobalIdFromModels (offset-based range check — the canonical path)
- *  2. First loaded model as fallback (single-model, offset 0)
- *  3. 'legacy' sentinel for truly legacy single-model mode (no federation map)
+ *  2. The federation registry, for a published component not yet in `models` (#5050)
+ *  3. First loaded model as fallback (single-model, offset 0, id inside its range)
+ *  4. 'legacy' sentinel: legacy single-model mode (no federation map), or an id
+ *     no loaded model owns (#11527)
  *
  * ALWAYS returns an EntityRef — never null.  This ensures all callers
  * (multi-select, basket, context menu) can proceed without null-guards.

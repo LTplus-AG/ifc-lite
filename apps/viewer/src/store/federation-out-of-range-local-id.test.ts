@@ -57,6 +57,15 @@ describe('fallback resolvers never hand out a local id the model does not own (#
     }
   });
 
+  it('a stale id past the offset-0 model\'s range is not handed to it', () => {
+    const { registerModelOffset, addModel } = useViewerStore.getState();
+    const offset = registerModelOffset('first', 100);
+    addModel({ ...fixtureModel('first', { idOffset: offset }), maxExpressId: 100 });
+    const ref = resolveEntityRef(150);
+    assert.equal(ref.modelId, 'legacy');
+    assert.doesNotThrow(() => useViewerStore.getState().toGlobalId(ref.modelId, ref.expressId));
+  });
+
   it('the canonical single model at offset 0 keeps its first-model fallback', () => {
     const { registerModelOffset, addModel } = useViewerStore.getState();
     const offset = registerModelOffset('only', 100);

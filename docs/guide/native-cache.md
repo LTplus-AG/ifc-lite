@@ -20,6 +20,13 @@ gh attestation verify "$archive" --repo LTplus-AG/ifc-lite \
 
 GitHub CLI retrieves the attestation from the public repository by archive digest. The release workflow runs the same verification before uploading the archives. The published `.sha256` sidecar checks transfer integrity. CI consumers must verify the attestation or check the archive against a SHA-256 digest pinned in their own repository, as the `setup-oci-registries` action does for zot and oras.
 
+If a partial upload leaves assets whose digests differ on retry, a maintainer must delete the affected assets from that release and rerun the original release-triggered **Cache CLI Binaries** workflow run. Archive metadata is fixed, but rebuilt binaries can still differ. Remove the matching archive or checksum sidecar if present so the workflow can publish the pair together. For example, with `tag` and `archive` set as above:
+
+```sh
+gh release delete-asset "$tag" "$archive" --repo LTplus-AG/ifc-lite
+gh release delete-asset "$tag" "$archive.sha256" --repo LTplus-AG/ifc-lite
+```
+
 The crate is not published to crates.io. Cargo can build it from a local checkout or directly from this repository.
 
 From a checkout:

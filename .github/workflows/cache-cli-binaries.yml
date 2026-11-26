@@ -106,8 +106,10 @@ jobs:
           ASSET_TARGET: ${{ matrix.target }}
         run: |
           binary=ifc-build-cache
+          python_cmd=python3
           if [[ "$RUNNER_OS" == Windows ]]; then
             binary+=.exe
+            python_cmd=python
           fi
           case "$ASSET_TARGET:$RUNNER_ARCH" in
             linux-x64:X64|darwin-arm64:ARM64|win32-x64:X64)
@@ -115,7 +117,26 @@ jobs:
               ;;
           esac
           archive="ifc-build-cache-$ASSET_TARGET.tar.gz"
-          tar -czf "$archive" -C "target/$RUST_TARGET/release" "$binary"
+          commit_time=$(git show -s --format=%ct HEAD)
+          # Emit one USTAR member with fixed metadata on GNU tar and BSD tar hosts.
+          "$python_cmd" - "$archive" "target/$RUST_TARGET/release/$binary" "$commit_time" <<'PY'
+          import gzip
+          import sys
+          import tarfile
+          from pathlib import Path
+
+          archive, path, commit_time = sys.argv[1:]
+          binary = Path(path)
+          member = tarfile.TarInfo(binary.name)
+          member.size = binary.stat().st_size
+          member.mtime = int(commit_time)
+          member.mode = 0o755
+          member.uid = member.gid = 0
+          with open(archive, "wb") as output, binary.open("rb") as source:
+              with gzip.GzipFile(filename="", mode="wb", fileobj=output, mtime=0) as compressed:
+                  with tarfile.open(fileobj=compressed, mode="w", format=tarfile.USTAR_FORMAT) as tar:
+                      tar.addfile(member, source)
+          PY
           if command -v sha256sum >/dev/null 2>&1; then
             sha256sum "$archive" > "$archive.sha256"
           else
@@ -186,6 +207,7 @@ jobs:
               checksum=$(sha256sum -- "$file")
               if [[ "$digest" != "sha256:${checksum%% *}" ]]; then
                 echo "::error::Existing release asset has a different or unavailable digest: $file"
+                echo "To recover, use gh release delete-asset to remove partial or mismatching Cache CLI assets from this release, including their matching archive or checksum files if present, then rerun the original release-triggered workflow run."
                 exit 1
               fi
             fi

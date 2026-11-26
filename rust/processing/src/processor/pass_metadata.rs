@@ -73,7 +73,8 @@ pub(super) fn populate_metadata(
 }
 
 /// Replay the saved IFCSTYLEDITEM positions instead of re-scanning the file
-/// (~0.5-1 s for 1 GB files), once the first batch is out. The replay is the
+/// (~0.5-1 s for 1 GB files), once the first batch is out, or before it when
+/// finishes are asked for (`meshed_jobs` then empty). The replay is the
 /// shared resolver's styled-item building block, so deferred and up-front
 /// resolution cannot drift. Colours the first batches went out with are
 /// corrected through `on_color_update`.

@@ -16,7 +16,7 @@
 
 use crate::api::IfcAPI;
 use crate::zero_copy::MeshDataJs;
-use ifc_lite_core::EntityDecoder;
+use ifc_lite_processing::element::StyleSource;
 use ifc_lite_processing::style::{MeshFinishJoin, SpecularMaterial};
 use ifc_lite_processing::MeshData;
 use rustc_hash::FxHashMap;
@@ -57,10 +57,11 @@ pub(super) fn style_finishes_from_wire(ids: &[u32], finishes: &[f32]) -> StyleFi
 }
 
 /// The batch's finish join (#5984): `ifc_lite_processing::style::MeshFinishJoin`
-/// over this batch's colour index and decoder, so a mesh's finish comes from
-/// the style its colour came from. That reaches past the mesh's own item: an
-/// occurrence styled on its `IfcMappedItem`, and #957 type geometry, whose
-/// meshes carry no item id at all. `None` inside when no finishes are
+/// by the [`StyleSource`] production paired with each mesh and occurrence when
+/// it chose the colour (#10698), so a mesh's finish comes from the style its
+/// colour came from and no colour is compared. That reaches past the mesh's own
+/// item: an occurrence styled on its `IfcMappedItem`, and #957 type geometry,
+/// whose meshes carry no item id at all. `None` inside when no finishes are
 /// installed for this style wire, and then every join is free.
 pub(super) struct BatchFinishes<'a> {
     join: Option<MeshFinishJoin<'a>>,
@@ -74,28 +75,23 @@ impl<'a> BatchFinishes<'a> {
         Self { join }
     }
 
-    /// One finish per mesh, index-parallel; empty when nothing is installed.
-    pub(super) fn for_meshes(&mut self, meshes: &[MeshData], decoder: &mut EntityDecoder) -> Vec<Option<SpecularMaterial>> {
-        match self.join.as_mut() {
-            Some(join) => meshes.iter().map(|m| join.finish_for_mesh(m, decoder)).collect(),
+    /// One finish per source, index-parallel with the meshes the sources were
+    /// produced with; empty when nothing is installed.
+    pub(super) fn for_sources(&self, sources: &[StyleSource]) -> Vec<Option<SpecularMaterial>> {
+        match self.join.as_ref() {
+            Some(join) => sources.iter().map(|&source| join.finish_for_source(source)).collect(),
             None => Vec::new(),
         }
     }
 
-    /// The finish of a pose-only (don't-bake) shard occurrence, which has no
-    /// `MeshData` of its own.
-    pub(super) fn for_occurrence(
-        &mut self,
-        express_id: u32,
-        geometry_item_id: Option<u32>,
-        color: [f32; 4],
-        decoder: &mut EntityDecoder,
-    ) -> Option<SpecularMaterial> {
-        self.join.as_mut()?.finish(express_id, geometry_item_id, color, decoder)
+    /// The finish of one mesh or pose-only (don't-bake) shard occurrence whose
+    /// colour came from `source`.
+    pub(super) fn for_source(&self, source: StyleSource) -> Option<SpecularMaterial> {
+        self.join.as_ref()?.finish_for_source(source)
     }
 }
 
-/// Entry `i` of a [`BatchFinishes::for_meshes`] result (empty means none).
+/// Entry `i` of a [`BatchFinishes::for_sources`] result (empty means none).
 pub(super) fn finish_at(finishes: &[Option<SpecularMaterial>], i: usize) -> Option<SpecularMaterial> {
     finishes.get(i).copied().flatten()
 }

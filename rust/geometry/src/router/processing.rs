@@ -126,6 +126,7 @@ impl GeometryRouter {
         // `allow_instancing = false` — a voided occurrence must materialize its cut
         // geometry, never instance an un-cut shared template.
         self.process_element_with_submeshes_impl(element, decoder, true, None, SourceHygiene::Watertight)
+            .map(crate::styled_parts::StyledParts::into_collection)
     }
 
     /// [`Self::process_element_with_submeshes`] with an explicit don't-bake gate.
@@ -143,7 +144,7 @@ impl GeometryRouter {
             &rustc_hash::FxHashMap<u32, crate::processors::texture::ResolvedTextureMap>,
         >,
         hygiene: SourceHygiene,
-    ) -> Result<SubMeshCollection> {
+    ) -> Result<crate::styled_parts::StyledParts> {
         // If a material-layer buildup is attached, the common program's layer
         // control first tries slicing single-solid elements (walls / slabs
         // with IfcMaterialLayerSetUsage) over the uncut host, so each layer
@@ -154,7 +155,7 @@ impl GeometryRouter {
         // `allow_instancing` enables the #1623 don't-bake decision), their
         // source hygiene and placement: the product control.
         crate::program::GeometryProgram::styled_product(element, allow_instancing, texture_index, hygiene)
-            .drain_styled(self, decoder)
+            .drain_styled_parts(self, decoder)
     }
 
     /// Process a single representation item (IfcExtrudedAreaSolid, etc.), with

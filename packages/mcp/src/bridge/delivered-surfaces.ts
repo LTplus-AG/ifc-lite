@@ -13,10 +13,11 @@
  * (`{ event: { name } }`) in that surface. Anything else is dropped.
  *
  * An admitted event's prompt is VERIFIED only when it is follow-up text the
- * agent wrote in that surface: the value of a `prompt`, `userMessage` or
- * `label` key, or the renderer's generic `Action: <name>` line. Data values
- * (entity names, property values) never verify a prompt: they may come from
- * the model. Any other prompt, typed into a field or computed by the
+ * agent wrote in that surface: a follow-up's `prompt` or `label`, an event
+ * action's `context.prompt`, `userMessage` or the label of the component that
+ * carries it, or the renderer's generic `Action: <name>` line. Data values
+ * (entity names, property values, legend rows, `updateDataModel`) never
+ * verify a prompt: they may come from the model. Any other prompt, typed into a field or computed by the
  * renderer, is still delivered, but marked unverified, and the agent reads it
  * as quoted data rather than as the user's words (`channelParams`).
  *
@@ -34,12 +35,6 @@ export const MAX_DELIVERED_SURFACES = 64;
 /** Follow-up texts and event names remembered per surface, each. */
 export const MAX_SURFACE_ENTRIES = 1024;
 
-/**
- * Keys whose string value is follow-up text the agent wrote. A `label` is
- * the button's own text: the renderer sends it as the prompt of an event
- * without a user message, and the agent chose it, unlike a data value.
- */
-const PROMPT_KEYS: ReadonlySet<string> = new Set(['prompt', 'userMessage', 'label']);
 
 /** The renderer's prompt for an event action without a user message. */
 function genericPrompt(name: string): string {
@@ -66,17 +61,43 @@ function merge(into: Set<string>, from: Set<string>): void {
   for (const value of from) if (into.size < MAX_SURFACE_ENTRIES) into.add(value);
 }
 
+function addString(set: Set<string>, value: unknown): void {
+  if (typeof value === 'string') add(set, value);
+}
+
+/**
+ * Follow-up text and event names from the agent's component definitions.
+ * Only two shapes carry follow-up text: a follow-up (`{ label, prompt }`)
+ * and an object with an `action` (a button: its `label`, and the action's
+ * `userMessage` and `event.context.prompt`). A `label` anywhere else (a
+ * legend row) may be model data and is not taken.
+ */
 function collect(value: unknown, into: Surface): void {
   if (Array.isArray(value)) {
     for (const item of value) collect(item, into);
     return;
   }
   if (!isRecord(value)) return;
-  for (const [key, item] of Object.entries(value)) {
-    if (typeof item === 'string' && PROMPT_KEYS.has(key)) add(into.prompts, item);
-    if (key === 'event' && isRecord(item) && typeof item.name === 'string') add(into.events, item.name);
-    collect(item, into);
+  if (typeof value.prompt === 'string' && typeof value.label === 'string') {
+    add(into.prompts, value.prompt);
+    add(into.prompts, value.label);
   }
+  const action = value.action;
+  if (isRecord(action)) {
+    addString(into.prompts, value.label);
+    addString(into.prompts, action.userMessage);
+    const event = action.event;
+    if (isRecord(event)) {
+      addString(into.events, event.name);
+      if (isRecord(event.context)) addString(into.prompts, event.context.prompt);
+    }
+  }
+  for (const item of Object.values(value)) collect(item, into);
+}
+
+/** The messages that define components: data-model updates carry values, not follow-ups. */
+function definitions(messages: readonly unknown[]): unknown[] {
+  return messages.filter((m) => !(isRecord(m) && 'updateDataModel' in m));
 }
 
 type SurfaceCheck = { refused: string } | { promptVerified: boolean };
@@ -96,7 +117,7 @@ export class DeliveredSurfaces {
     const ids = new Set(messages.map(a2uiSurfaceId).filter((id): id is string => id !== null));
     if (ids.size === 0) return;
     const call = emptySurface();
-    collect(messages, call);
+    collect(definitions(messages), call);
     for (const id of ids) {
       const surface = this.surfaces.get(id) ?? emptySurface();
       merge(surface.prompts, call.prompts);

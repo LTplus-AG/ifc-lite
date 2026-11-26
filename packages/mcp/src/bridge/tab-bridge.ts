@@ -24,6 +24,7 @@ import {
   BRIDGE_LIMITS,
   BRIDGE_PROTOCOL_VERSION,
   BRIDGE_SURFACE_TOOL,
+  TAB_TOOL_PREFIX,
   BridgeCloseCode,
   BridgeErrorCode,
   buildPairingUrl,
@@ -66,6 +67,8 @@ export class TabBridge {
   private wss: WebSocketServer | null = null;
   private boundPort = 0;
   private listening: Promise<number> | null = null;
+  /** The preferred port, when it was taken and the bridge fell back to another. */
+  private movedFrom: number | null = null;
   private active: BridgeSession | null = null;
   /** Unpaired connections, each holding one of `maxPendingHandshakes` slots. */
   private readonly slots = new Set<Slot>();
@@ -98,6 +101,11 @@ export class TabBridge {
 
   get port(): number {
     return this.boundPort;
+  }
+
+  /** The preferred port the bridge could not take (another program holds it), or null. */
+  get fellBackFrom(): number | null {
+    return this.movedFrom;
   }
 
   get readOnlyCeiling(): boolean {
@@ -133,7 +141,8 @@ export class TabBridge {
     this.http = server.http;
     this.wss = server.wss;
     this.boundPort = server.port;
-    const moved = server.port !== this.opts.port && this.opts.port !== 0 ? ` (port ${this.opts.port} is in use)` : '';
+    this.movedFrom = server.port !== this.opts.port && this.opts.port !== 0 ? this.opts.port : null;
+    const moved = this.movedFrom !== null ? ` (port ${this.movedFrom} is in use)` : '';
     this.log(`listening on ws://127.0.0.1:${server.port}${moved}; allowed origins (exactly these): ${this.allowedOrigins.join(', ')}`);
     return this.boundPort;
   }
@@ -183,13 +192,13 @@ export class TabBridge {
       return s.call(name, args, this.callTimeoutMs, signal);
     }
     const tool = s.tools.find((t) => t.name === name);
-    if (!tool) return Promise.reject(new BridgeCallError('unknown-tool', `The connected viewer does not offer a tool named '${name}'.`));
+    if (!tool) return Promise.reject(new BridgeCallError('unknown-tool', `The connected viewer does not offer a tool named '${TAB_TOOL_PREFIX}${name}'.`));
     if (!tool.readOnly && this.effectivePermission(s) === 'read-only') {
       return Promise.reject(new BridgeCallError(
         'read-only',
         this.opts.readOnlyCeiling
-          ? `'${name}' changes the model, and this bridge was started --read-only.`
-          : `'${name}' changes the model, and the viewer granted read-only access. Allow changes in the tab to use it.`,
+          ? `'${TAB_TOOL_PREFIX}${name}' changes the model, and this bridge was started --read-only.`
+          : `'${TAB_TOOL_PREFIX}${name}' changes the model, and the viewer granted read-only access. Allow changes in the tab to use it.`,
       ));
     }
     return s.call(name, args, this.callTimeoutMs, signal);

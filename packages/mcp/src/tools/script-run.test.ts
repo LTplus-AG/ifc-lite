@@ -285,6 +285,15 @@ describe('script_run', () => {
     expect((await run('8 + 8')).structuredContent?.value).toBe(16);
   });
 
+  it('logs errors and BigInts readably and names a cycle as one', async () => {
+    const result = await run("console.error(new TypeError('boom')); console.log(10n); 1");
+    const logs = result.structuredContent?.logs as Array<{ text: string }>;
+    expect(logs[0].text).toMatch(/^TypeError: boom/);
+    expect(logs[1].text).toBe('10n');
+    expect((await runError("const a = { pad: 'y'.repeat(1000) }; a.self = a; a")).message).toMatch(/not JSON-serialisable: TypeError: the value is cyclic/);
+    expect((await run("const f = () => 1; f.toJSON = () => 'fn'; ({ f })")).structuredContent?.value).toEqual({ f: 'fn' });
+  });
+
   it('matches native JSON for the shapes it supports', async () => {
     const result = await run(`({ a: [1, undefined, () => 1, 'x'], b: undefined, c: { toJSON() { return 'tj'; } }, d: NaN, e: null, f: [[]], g: {} })`);
     expect(result.structuredContent?.value).toEqual({ a: [1, null, null, 'x'], c: 'tj', d: null, e: null, f: [[]], g: {} });

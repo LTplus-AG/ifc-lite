@@ -35,7 +35,7 @@ const LIMITS = {
 };
 
 export function wrapScript(code: string): string {
-  return `(function (run, P, isInstance, then, apply, slice, Str, stringify, keys, isArray, create, defineProperty, freeze, glob, L) {
+  return `(function (run, P, isInstance, then, apply, slice, Str, stringify, keys, isArray, create, defineProperty, freeze, glob, ErrorCtor, SetCtor, setAdd, setHas, setDelete, L) {
   function msg(e) {
     // message is read once and coerced inside the try, so a getter or
     // toString cannot throw past the wrapper and pose as a sandbox error.
@@ -57,7 +57,7 @@ export function wrapScript(code: string): string {
   }
   function omitted(v) { var t = typeof v; return t === 'undefined' || t === 'function' || t === 'symbol'; }
   function resolve(v, k) {
-    if (v !== null && (typeof v === 'object' || typeof v === 'bigint')) {
+    if (v !== null && (typeof v === 'object' || typeof v === 'function' || typeof v === 'bigint')) {
       var f = v.toJSON;
       if (typeof f === 'function') return apply(f, v, [k]);
     }
@@ -67,11 +67,16 @@ export function wrapScript(code: string): string {
   // omit v. Frames live in null-prototype maps: an index setter on
   // Array.prototype cannot intercept them.
   function ser(root, limit) {
+    // onPath holds the objects being written, so a cycle is named as one
+    // (like native JSON) before the length cap could turn it into a preview.
     var out = '', sp = 0, fo = create(null), fk = create(null), fi = create(null), fa = create(null), fw = create(null);
+    var onPath = new SetCtor();
     function write(v) {
       if (v === null) { out += 'null'; return; }
       if (typeof v === 'object') {
-        if (sp >= L.maxDepth) throw new Error('the value is nested deeper than ' + L.maxDepth + ' levels (or is cyclic)');
+        if (apply(setHas, onPath, [v])) throw new TypeError('the value is cyclic');
+        if (sp >= L.maxDepth) throw new Error('the value is nested deeper than ' + L.maxDepth + ' levels');
+        apply(setAdd, onPath, [v]);
         var a = isArray(v);
         fo[sp] = v; fk[sp] = a ? null : keys(v); fi[sp] = 0; fa[sp] = a; fw[sp] = false; sp++;
         out += a ? '[' : '{';
@@ -86,13 +91,13 @@ export function wrapScript(code: string): string {
       if (out.length > limit) return out;
       var i = sp - 1, o = fo[i];
       if (fa[i]) {
-        if (fi[i] >= o.length) { out += ']'; sp--; continue; }
+        if (fi[i] >= o.length) { out += ']'; apply(setDelete, onPath, [o]); sp--; continue; }
         var idx = fi[i]; fi[i] = idx + 1;
         if (idx > 0) out += ',';
         write(resolve(o[idx], Str(idx)));
       } else {
         var ks = fk[i];
-        if (fi[i] >= ks.length) { out += '}'; sp--; continue; }
+        if (fi[i] >= ks.length) { out += '}'; apply(setDelete, onPath, [o]); sp--; continue; }
         var k = ks[fi[i]]; fi[i] = fi[i] + 1;
         var v = resolve(o[k], k);
         if (omitted(v)) continue;
@@ -111,8 +116,17 @@ export function wrapScript(code: string): string {
     return j.length > L.max ? 'P' + apply(slice, j, [0, L.preview + 1]) : 'J' + j;
   }
   function fail(e) { return 'T' + msg(e); }
+  // Console text keeps what the bridge's own dump used to show for errors
+  // and BigInts, which JSON rules would turn into {} or a TypeError.
   function logArg(a) {
     if (typeof a === 'string') return a;
+    if (typeof a === 'bigint') return Str(a) + 'n';
+    try {
+      if (apply(isInstance, ErrorCtor, [a])) {
+        var st = a.stack;
+        return msg(a) + (typeof st === 'string' && st !== '' ? '\\n' + apply(slice, st, [0, L.maxLog]) : '');
+      }
+    } catch (_) { /* an unreadable stack: fall through to the JSON form */ }
     try { var s = ser(a, L.maxLog); return s === undefined ? Str(a) : s; }
     catch (e) { return '[unserialisable: ' + msg(e) + ']'; }
   }
@@ -146,5 +160,5 @@ export function wrapScript(code: string): string {
     }
     catch (e) { resolveWrapper(fail(e)); }
   });
-})(function () { return eval(${JSON.stringify(code)}); }, Promise, Function.prototype[Symbol.hasInstance], Promise.prototype.then, Reflect.apply, String.prototype.slice, String, JSON.stringify, Object.keys, Array.isArray, Object.create, Object.defineProperty, Object.freeze, globalThis, ${JSON.stringify(LIMITS)})`;
+})(function () { return eval(${JSON.stringify(code)}); }, Promise, Function.prototype[Symbol.hasInstance], Promise.prototype.then, Reflect.apply, String.prototype.slice, String, JSON.stringify, Object.keys, Array.isArray, Object.create, Object.defineProperty, Object.freeze, globalThis, Error, Set, Set.prototype.add, Set.prototype.has, Set.prototype.delete, ${JSON.stringify(LIMITS)})`;
 }

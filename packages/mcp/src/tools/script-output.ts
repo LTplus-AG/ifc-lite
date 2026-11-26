@@ -33,6 +33,7 @@ function clipUtf16(text: string, max: number): string {
   return text.slice(0, end);
 }
 
+/** The wrapper already hands the bridge strings; this covers any capture that bypassed it. */
 function renderLogArg(arg: unknown): string {
   if (typeof arg === 'string') return arg;
   try {

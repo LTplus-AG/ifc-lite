@@ -6158,6 +6158,8 @@
     "escapeCsvCell: function",
     "expandAffectedSet: function",
     "exportAnonymizedSubset: function",
+    "exportEnergyArtifact: function",
+    "exportRustArtifact: function",
     "exportSectionedStep: function",
     "exportToStep: function",
     "extractGlbMapping: function",

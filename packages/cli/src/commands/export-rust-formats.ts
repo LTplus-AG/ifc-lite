@@ -124,7 +124,6 @@ export async function exportRustFormat(
       const out = refusingEmpty(
         () => gp.exportUsd(bytes),
         countUsdMeshes,
-  exportRustArtifact,
         'USD export produced 0 meshes — the model has no exportable render geometry (or geometry production failed).',
       );
       if (out == null) fatal('USD export failed (geometry pipeline not initialized)');

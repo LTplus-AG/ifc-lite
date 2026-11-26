@@ -1,7 +1,7 @@
 ---
 "@ifc-lite/mcp": minor
 "@ifc-lite/export": minor
-"@ifc-lite/cli": patch
+"@ifc-lite/cli": minor
 ---
 
 MCP: add `model_merge`, `model_convert`, `model_extract`, `model_anonymize`, `model_simplify` and `model_lod`, the CLI's model transforms. Each writes to `file_path` (replacing a file already there, never a loaded model's source) and declares a title, annotations and an `outputSchema`; tools can now declare `outputSchema` in `tools/list`.

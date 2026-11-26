@@ -454,11 +454,12 @@ describe('viewer server — loopback only', () => {
   // The page may be embedded by an IDE preview pane, so CSP keeps other sites from framing it.
   it('only lets local pages and IDE webviews frame the viewer page', TEST_TIMEOUT, async () => {
     const res = await req(port, '/');
-    // The exact set is the security contract: every added source is a new site that may frame the viewer.
+    // Exact set on purpose: each added source is one more site that may frame the viewer.
     const [directive, ...sources] = String(res.headers['content-security-policy']).split(/\s+/);
     assert.equal(directive, 'frame-ancestors');
     assert.deepEqual(sources.sort(), [
-      "'self'", 'http://127.0.0.1:*', 'http://localhost:*', 'vscode-file:', 'vscode-webview:',
+      "'self'", 'http://127.0.0.1:*', 'http://localhost:*', 'https://127.0.0.1:*', 'https://localhost:*',
+      'vscode-file:', 'vscode-webview:',
     ]);
   });
 

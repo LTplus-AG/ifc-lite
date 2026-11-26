@@ -57,15 +57,26 @@ export class TokenStream {
     return this.next().text;
   }
 
-  /** Source text from `start` up to the end of the previously consumed token. */
+  /**
+   * Source text of the tokens consumed since offset `start`, on one line:
+   * remarks dropped, any gap between tokens written as one space, string
+   * literals verbatim.
+   */
   sliceFrom(start: number): string {
-    const prev = this.tokens[Math.max(this.pos - 1, 0)];
-    return this.source.slice(start, prev.end).replace(/\s+/g, ' ').trim();
+    let first = this.pos;
+    while (first > 0 && this.tokens[first - 1].start >= start) first--;
+    let text = '';
+    for (let i = first; i < this.pos; i++) {
+      const t = this.tokens[i];
+      if (i > first && t.start > this.tokens[i - 1].end) text += ' ';
+      text += this.source.slice(t.start, t.end);
+    }
+    return text;
   }
 
   /** Throw at token `t`, by default the next unconsumed one. */
   fail(message: string, t: Token = this.peek()): never {
     const line = this.source.slice(0, t.start).split('\n').length;
-    throw new ExpressSyntaxError(`${message} at line ${line}, found '${t.text || 'end of input'}'`, t.start);
+    throw new ExpressSyntaxError(`${message} at line ${line}, found ${t.kind === 'eof' ? 'end of input' : `'${this.source.slice(t.start, t.end)}'`}`, t.start);
   }
 }

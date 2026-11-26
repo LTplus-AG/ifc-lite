@@ -185,6 +185,22 @@ describe('EXPRESS rule parser: malformed and edge input (#11110 review)', () => 
     expect(t.where.map((w) => w.label)).toEqual(['WR2', 'WR1', 'WR3']);
   });
 
+  it('compares rule labels case-insensitively, as EXPRESS identifiers', () => {
+    expect(parseExpressRules(typeWhere('wr1 : SELF > 0; SELF < 1;')).types[0].where.map((w) => w.label)).toEqual(['wr1', 'WR2']);
+    expect(() => parseExpressRules(typeWhere('WR1 : SELF > 0; wr1 : SELF < 1;'))).toThrow("duplicate rule label wr1 at line 1, found 'wr1'");
+  });
+
+  it('accepts an unlabelled UNIQUE rule and numbers it UR<n>', () => {
+    const [e] = parseExpressRules('SCHEMA X; ENTITY A; Name : STRING; UNIQUE UR1 : Name; Name; END_ENTITY; END_SCHEMA;').entities;
+    expect(e.unique.map((u) => u.label)).toEqual(['UR1', 'UR2']);
+  });
+
+  it('keeps a rule source to its tokens: no remarks, string literals verbatim', () => {
+    const [rule] = parseExpressRules(typeWhere("WR1 : SELF <> 'a   b' -- tail\n  (* inline *) + f( 1 );")).types[0].where;
+    expect(rule.source).toBe("SELF <> 'a   b' + f( 1 )");
+    expect(() => parseExpressRules(typeWhere("WR1 : SELF ''"))).toThrow("expected ';' at line 1, found ''''");
+  });
+
   it('rejects a WHERE rule with a colon but no label', () => {
     expect(() => parseExpressRules(typeWhere(': SELF > 0;'))).toThrow('expected expression');
   });

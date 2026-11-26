@@ -17,30 +17,44 @@ import { tokenize } from './lexer.js';
 import { parseLocals, parseStatements, parseTypeSpec } from './statement-parser.js';
 import { TokenStream } from './token-stream.js';
 
+/**
+ * An optional `label :` before a WHERE or UNIQUE rule. Labels are EXPRESS
+ * identifiers, so a repeat in any case is an error.
+ */
+function parseRuleLabel(s: TokenStream, taken: Set<string>): string | undefined {
+  if (s.peek().kind !== 'id' || !s.isOp(':', 1)) return undefined;
+  const t = s.peek();
+  const label = s.expectIdentifier();
+  if (taken.has(t.upper)) s.fail(`duplicate rule label ${label}`, t);
+  taken.add(t.upper);
+  s.next();
+  return label;
+}
+
+/** Number unlabelled rules <prefix>1, <prefix>2, ..., skipping labels already taken. */
+function labelRules<T extends { label?: string }>(rules: T[], prefix: string, taken: Set<string>): (T & { label: string })[] {
+  let n = 0;
+  const generate = () => {
+    let label;
+    do label = `${prefix}${++n}`; while (taken.has(label));
+    return label;
+  };
+  return rules.map((r) => ({ ...r, label: r.label ?? generate() }));
+}
+
 function parseWhereClause(s: TokenStream, end: string): WhereRule[] {
-  const rules: (Omit<WhereRule, 'label'> & { label?: string })[] = [];
   if (!s.acceptKeyword('WHERE')) return [];
+  const taken = new Set<string>();
+  const rules: (Omit<WhereRule, 'label'> & { label?: string })[] = [];
   while (!s.isKeyword(end)) {
-    let label: string | undefined;
-    if (s.peek().kind === 'id' && s.isOp(':', 1)) {
-      label = s.expectIdentifier();
-      s.next();
-    }
+    const label = parseRuleLabel(s, taken);
     const start = s.peek().start;
     const expr = parseExpression(s);
     const source = s.sliceFrom(start);
     s.expectOp(';');
     rules.push({ label, expr, source });
   }
-  // Unlabelled rules are numbered WR1, WR2, ... skipping labels the clause already uses.
-  const taken = new Set(rules.map((r) => r.label));
-  let unnamed = 0;
-  return rules.map(({ label, expr, source }) => {
-    if (label === undefined) {
-      do label = `WR${++unnamed}`; while (taken.has(label));
-    }
-    return { label, expr, source };
-  });
+  return labelRules(rules, 'WR', taken);
 }
 
 function parseAttributeName(s: TokenStream): { name: string; redeclares?: Redeclaration } {
@@ -110,9 +124,8 @@ function parseInverse(s: TokenStream): InverseAttribute {
   return inv;
 }
 
-function parseUnique(s: TokenStream): UniqueRule {
-  const label = s.expectIdentifier();
-  s.expectOp(':');
+function parseUnique(s: TokenStream, taken: Set<string>): Omit<UniqueRule, 'label'> & { label?: string } {
+  const label = parseRuleLabel(s, taken);
   const attributes: UniqueRule['attributes'] = [];
   do {
     if (s.acceptKeyword('SELF')) {
@@ -160,7 +173,10 @@ function parseEntity(s: TokenStream): EntityDecl {
     while (!sectionStart()) entity.inverse.push(parseInverse(s));
   }
   if (s.acceptKeyword('UNIQUE')) {
-    while (!sectionStart()) entity.unique.push(parseUnique(s));
+    const taken = new Set<string>();
+    const unique = [];
+    while (!sectionStart()) unique.push(parseUnique(s, taken));
+    entity.unique = labelRules(unique, 'UR', taken);
   }
   entity.where = parseWhereClause(s, 'END_ENTITY');
   s.expectKeyword('END_ENTITY');

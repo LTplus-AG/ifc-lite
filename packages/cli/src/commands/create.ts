@@ -106,7 +106,7 @@ export async function createCommand(args: string[]): Promise<void> {
   let viewerOk = false;
   if (viewerPort) {
     try {
-      const resp = await fetch(`http://localhost:${viewerPort}/api/command`, {
+      const resp = await fetch(`http://127.0.0.1:${viewerPort}/api/command`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

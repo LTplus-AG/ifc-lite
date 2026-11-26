@@ -83,7 +83,7 @@ export class ViewerManager {
     if (!this.server) return null;
     return {
       port: this.port,
-      url: `http://localhost:${this.port}/`,
+      url: `http://127.0.0.1:${this.port}/`,
       modelId: this.modelId,
       startedAt: this.startedAt,
       clientCount: this.server.clientCount(),

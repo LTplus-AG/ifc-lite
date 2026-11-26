@@ -91,7 +91,7 @@ describe('viewer tools — full integration', () => {
       transport, 2, 'tools/call',
       { name: 'viewer_open', arguments: {} },
     );
-    expect(open.structuredContent.url).toMatch(/^http:\/\/localhost:\d+\/$/);
+    expect(open.structuredContent.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
     const { port } = open.structuredContent;
     expect(port).toBeGreaterThan(0);
 

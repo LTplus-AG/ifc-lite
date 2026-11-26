@@ -411,8 +411,11 @@ export async function startViewerServer(opts: ViewerServerOptions): Promise<View
       server.off('error', onListenError);
       const addr = server.address();
       const port = typeof addr === 'object' && addr ? addr.port : requestedPort;
-      const url = `http://localhost:${port}`;
-      ownHosts = new Set([`localhost:${port}`, `127.0.0.1:${port}`]);
+      // Report the address the socket is bound to: `localhost` may resolve
+      // to ::1 first, where another process could hold the same port.
+      const url = `http://127.0.0.1:${port}`;
+      // Clients leave the default port out of Host.
+      ownHosts = new Set(['localhost', '127.0.0.1'].flatMap((h) => (port === 80 ? [h, `${h}:80`] : [`${h}:${port}`])));
 
       if (opts.onReady) {
         try {

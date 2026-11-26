@@ -176,7 +176,7 @@ function evaluateWhere(
 }
 
 async function sendViewerCommand(port: number, cmd: Record<string, unknown>): Promise<void> {
-  await fetch(`http://localhost:${port}/api/command`, {
+  await fetch(`http://127.0.0.1:${port}/api/command`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(cmd),

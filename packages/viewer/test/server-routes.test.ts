@@ -827,7 +827,7 @@ describe('viewer server — startup contract', () => {
     try {
       assert.ok(seenPort > 0);
       assert.equal(seenPort, port);
-      assert.equal(seenUrl, `http://localhost:${seenPort}`);
+      assert.equal(seenUrl, `http://127.0.0.1:${seenPort}`);
       const res = await req(seenPort, '/api/status');
       assert.equal(res.status, 200);
     } finally {

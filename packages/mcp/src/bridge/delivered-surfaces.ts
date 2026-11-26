@@ -41,6 +41,9 @@ function genericPrompt(name: string): string {
   return eventToFollowUp(name, undefined).userText;
 }
 
+/** A data model (an update, or createSurface's inline one) carries values, not follow-ups. */
+const DATA_MODEL_KEYS: ReadonlySet<string> = new Set(['updateDataModel', 'dataModel']);
+
 function emptySurface(): Surface {
   return { prompts: new Set(), events: new Set() };
 }
@@ -78,8 +81,6 @@ function collect(value: unknown, into: Surface): void {
     return;
   }
   if (!isRecord(value)) return;
-  // A data model (an update, or createSurface's inline one) carries values, not follow-ups.
-  if ('updateDataModel' in value) return;
   if (typeof value.prompt === 'string' && typeof value.label === 'string') {
     addString(into.prompts, value.prompt);
     addString(into.prompts, value.label);
@@ -94,7 +95,9 @@ function collect(value: unknown, into: Surface): void {
       if (isRecord(event.context)) addString(into.prompts, event.context.prompt);
     }
   }
-  for (const [key, item] of Object.entries(value)) if (key !== 'dataModel') collect(item, into);
+  for (const [key, item] of Object.entries(value)) {
+    if (!DATA_MODEL_KEYS.has(key)) collect(item, into);
+  }
 }
 
 type SurfaceCheck = { refused: string } | { promptVerified: boolean };

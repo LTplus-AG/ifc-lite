@@ -17,7 +17,6 @@ import { UiEventInbox } from './ui-events.js';
 import { IFC_CATALOG_ID } from '@ifc-lite/a2ui';
 import { pairTab, textResult, type FakeTab } from '../test/bridge-fake-tab.js';
 
-
 /** The first tab_show_ui of a process loads the A2UI validator, which can take seconds on a busy runner. */
 const SURFACE_WAIT_MS = 15_000;
 const running: RunningBridge[] = [];

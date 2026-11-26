@@ -132,12 +132,7 @@ async function main(): Promise<void> {
     process.exitCode = 2;
     return;
   }
-  // With --bridge --read-only: the read-only scopes plus `mutate`, so a
-  // mutating tab tool reaches config.readOnly and is refused with READ_ONLY
-  // (the code the tab's own read-only grant uses); `admin` stays out.
-  const scope: AuthScope = !opts.readOnly ? fullScope()
-    : opts.bridge ? { ...readOnlyScope(), scopes: [...readOnlyScope().scopes, 'mutate'] }
-    : readOnlyScope();
+  const scope: AuthScope = !opts.readOnly ? fullScope() : opts.bridge ? bridgeReadOnlyScope() : readOnlyScope();
 
   const registry = new InMemoryModelRegistry();
   if (opts.transport === 'stdio') {
@@ -266,6 +261,17 @@ async function main(): Promise<void> {
     process.stderr.write(`Unknown transport: ${opts.transport}\n`);
     process.exit(1);
   }
+}
+
+/**
+ * `--bridge --read-only`: the read-only scopes plus `mutate`, so a mutating
+ * tab tool reaches config.readOnly and is refused with READ_ONLY (the code
+ * the tab's own read-only grant uses); `admin` stays out.
+ */
+function bridgeReadOnlyScope(): AuthScope {
+  const scope = readOnlyScope();
+  scope.scopes.push('mutate');
+  return scope;
 }
 
 function bridgeLog(line: string): void {

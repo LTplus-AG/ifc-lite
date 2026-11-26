@@ -28,7 +28,7 @@ import { ToolRegistry, type Tool } from '../tools/types.js';
 import { surfacePushTool } from './surface-push.js';
 import { uiEventsTool } from './ui-events-tool.js';
 import { BRIDGE_UI_EVENTS_TOOL } from './ui-events.js';
-import { BRIDGE_STATUS_TOOL, BRIDGE_SURFACE_TOOL, TAB_SHOW_UI_TOOL, TAB_TOOL_PREFIX, type BridgeToolDescriptor } from './protocol.js';
+import { BRIDGE_STATUS_TOOL, BRIDGE_SURFACE_TOOL, DEFAULT_BRIDGE_PORT, TAB_SHOW_UI_TOOL, TAB_TOOL_PREFIX, type BridgeToolDescriptor } from './protocol.js';
 import { BridgeCallError, type BridgeCallFailure, type TabBridge } from './tab-bridge.js';
 
 const FAILURE_CODE: Record<BridgeCallFailure, ToolErrorCodeValue> = {
@@ -173,7 +173,7 @@ function statusResult(bridge: TabBridge, pairNewTab: boolean): CallToolResult {
       '',
       `To ${tab ? 'pair a different tab (it replaces the connected one)' : 'connect'}, open this link in the browser tab with the model:`,
       pairing.url,
-      `or enter the code ${pairing.code} in the viewer's "Connect local agent" dialog.`,
+      `or enter the code ${pairing.code}${bridge.port === DEFAULT_BRIDGE_PORT ? '' : ` and port ${bridge.port}`} in the viewer's "Connect local agent" dialog.`,
       'The code works once.',
     );
   }

@@ -82,7 +82,7 @@ describe('7. happy path through stdio framing', () => {
     stdout.setEncoding('utf8').on('data', (c: string) => client.feed(c));
 
     client.send({ id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } } });
-    expect((await client.reply(1)).result).toMatchObject({ serverInfo: { name: 'ifc-lite-bridge' }, capabilities: { tools: { listChanged: true } } });
+    expect((await client.reply(1)).result).toMatchObject({ serverInfo: { name: 'ifc-lite' }, capabilities: { tools: { listChanged: true } } });
     client.send({ method: 'notifications/initialized' });
 
     const { tab, welcome } = await pairTab({ port: r.bridge.port, code: r.bridge.pairingCode(), permission: 'read-write' });

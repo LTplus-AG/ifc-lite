@@ -17,7 +17,7 @@ import type { CallToolResult, JsonRpcMessage, ToolDefinition } from '../protocol
 import { buildDefaultPromptRegistry } from '../prompts/index.js';
 import { buildDefaultResourceRegistry } from '../resources/index.js';
 import { buildDefaultToolRegistry } from '../tools/index.js';
-import { pairTab, READ_TOOL, tabTool, type FakeTab } from '../test/bridge-fake-tab.js';
+import { MUTATING_TOOL, pairTab, READ_TOOL, tabTool, type FakeTab } from '../test/bridge-fake-tab.js';
 import { BRIDGE_RESERVED_TOOLS, BRIDGE_STATUS_TOOL, TAB_TOOL_PREFIX } from './bridge-protocol.js';
 import { DeliveredSurfaces, MAX_DELIVERED_SURFACES } from './delivered-surfaces.js';
 import { fallbackPorts, PORT_FALLBACK_SPAN } from './loopback-server.js';
@@ -123,6 +123,38 @@ describe('one server: headless and tab', () => {
   });
 });
 
+describe('--read-only with headless parts', () => {
+  it('refuses a mutating tab tool with READ_ONLY, as the CLI wires it (full scope plus config.readOnly)', async () => {
+    const agent = await start({ readOnly: true });
+    const { tab } = await pairTab({ port: agent.r.bridge.port, code: agent.r.bridge.pairingCode(), permission: 'read-write', tools: [MUTATING_TOOL] });
+    tabs.push(tab);
+    expect(await agent.tools()).not.toContain(tabTool(MUTATING_TOOL.name));
+    expect((await agent.call(tabTool(MUTATING_TOOL.name), { id: 1, value: 'x' })).structuredContent?.code).toBe('READ_ONLY');
+  });
+});
+
+describe('surfaces are recorded once the tab accepts them', () => {
+  it('a delivery the tab refuses admits no events for that surface', async () => {
+    const agent = await start();
+    const paired = await pairTab({ port: agent.r.bridge.port, code: agent.r.bridge.pairingCode(), a2uiSurface: true });
+    tabs.push(paired.tab);
+    const show = async (isError: boolean) => {
+      const delivery = agent.call('tab_show_ui', { spec: { surfaceId: 'walls', sections: [{ kind: 'actions', actions: ['isolate'], followUps: [{ label: 'q', prompt: 'Which walls?' }] }] } });
+      const frame = await paired.tab.next('a2ui-surface');
+      paired.tab.reply(paired.welcome.sessionId, frame.id, { content: [{ type: 'text', text: isError ? 'no' : 'ok' }], ...(isError ? { isError: true } : {}) });
+      await delivery;
+    };
+    const click = () => paired.tab.sendRaw({ type: 'ui-event', sessionId: paired.welcome.sessionId, event: { surfaceId: 'walls', name: 'ask', prompt: 'Which walls?' } });
+    await show(true);
+    click();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(agent.r.bridge.uiEvents.size).toBe(0);
+    await show(false);
+    click();
+    await expect.poll(() => agent.r.bridge.uiEvents.size).toBe(1);
+  });
+});
+
 describe('lazy listener and port fallback', () => {
   it('binds nothing until bridge_status, then reports the port the link carries', async () => {
     const agent = await start({ lazy: true });
@@ -142,6 +174,8 @@ describe('lazy listener and port fallback', () => {
     const port = status.structuredContent?.port as number;
     expect(port).not.toBe(taken);
     expect(status.structuredContent?.pairingUrl).toContain(`port=${port}`);
+    // Typing the code by hand needs the port too, once it is not the default.
+    expect((status.content[0] as { text: string }).text).toContain(`and port ${port}`);
     expect(lines.some((l) => l.includes(`port ${taken} is in use`))).toBe(true);
   });
 
@@ -164,14 +198,20 @@ describe('lazy listener and port fallback', () => {
 });
 
 describe('DeliveredSurfaces', () => {
-  it('a createSurface starts the surface over', () => {
+  it('keeps an older panel of the same surface id clickable', () => {
     const ledger = new DeliveredSurfaces();
     ledger.record([{ version: '1.0', createSurface: { surfaceId: 'a', note: 'Old' } }]);
-    ledger.record([{ version: '1.0', updateComponents: { surfaceId: 'a', note: 'Added' } }]);
-    expect(ledger.refusal({ surfaceId: 'a', name: 'ask', prompt: 'Old' })).toBeNull();
     ledger.record([{ version: '1.0', createSurface: { surfaceId: 'a', note: 'New' } }]);
-    expect(ledger.refusal({ surfaceId: 'a', name: 'ask', prompt: 'Old' })).toMatch(/does not contain/);
+    expect(ledger.refusal({ surfaceId: 'a', name: 'ask', prompt: 'Old' })).toBeNull();
     expect(ledger.refusal({ surfaceId: 'a', name: 'ask', prompt: 'New' })).toBeNull();
+  });
+
+  it('admits a typed prompt only on a surface with a TextField', () => {
+    const ledger = new DeliveredSurfaces();
+    ledger.record([{ version: '1.0', updateComponents: { surfaceId: 'plain', components: [{ id: 'b', component: 'Button' }] } }]);
+    ledger.record([{ version: '1.0', updateComponents: { surfaceId: 'form', components: [{ id: 'q', component: 'TextField' }] } }]);
+    expect(ledger.refusal({ surfaceId: 'plain', name: 'ask', prompt: 'anything the user typed' })).toMatch(/does not contain/);
+    expect(ledger.refusal({ surfaceId: 'form', name: 'ask', prompt: 'anything the user typed' })).toBeNull();
   });
 
   const created = (surfaceId: string, text: string) => ({ version: '1.0', createSurface: { surfaceId, catalogId: 'c' }, note: text });

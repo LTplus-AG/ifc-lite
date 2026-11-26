@@ -12,7 +12,8 @@
  *   - its surface id names a surface the agent delivered to this tab, and
  *   - its prompt, if any, is text the agent itself put in that surface (a
  *     follow-up prompt, a label, a data value), or the renderer's generic
- *     `Action: <name>` line, and
+ *     `Action: <name>` line, or the surface has a `TextField` (the user can
+ *     type the prompt), and
  *   - its name is `ask` or a string that appears in that surface (an A2UI
  *     event action's name).
  *
@@ -29,6 +30,9 @@ import type { BridgeUiEvent } from './ui-events.js';
 export const MAX_DELIVERED_SURFACES = 16;
 /** Distinct strings remembered per surface; later ones are not admitted as prompts. */
 export const MAX_SURFACE_STRINGS = 4096;
+
+/** A component whose value the user types, so a prompt bound to it is not in the surface. */
+const FREE_TEXT_COMPONENT = 'TextField';
 
 /** The renderer's prompt for an event action without a user message (`eventToFollowUp`). */
 function genericPrompt(name: string): string {
@@ -69,8 +73,9 @@ export class DeliveredSurfaces {
         this.surfaces.delete(target.id);
         continue;
       }
-      // A createSurface starts the surface over, so what it replaced is no longer admitted.
-      const strings = (target.kind !== 'createSurface' && this.surfaces.get(target.id)) || new Set<string>();
+      // Unioned across calls: the tab keeps one panel per call, and an older
+      // panel with the same id stays clickable.
+      const strings = this.surfaces.get(target.id) ?? new Set<string>();
       // Re-inserted, so a surface the agent keeps updating is the newest.
       this.surfaces.delete(target.id);
       this.surfaces.set(target.id, strings);
@@ -89,7 +94,8 @@ export class DeliveredSurfaces {
     if (event.name !== ASK_EVENT && !strings.has(event.name)) return 'names an event that surface does not raise';
     if (event.prompt !== undefined) {
       const prompt = event.prompt.trim();
-      if (prompt && !strings.has(prompt) && prompt !== genericPrompt(event.name)) return 'carries a prompt that surface does not contain';
+      const typed = strings.has(FREE_TEXT_COMPONENT);
+      if (prompt && !typed && !strings.has(prompt) && prompt !== genericPrompt(event.name)) return 'carries a prompt that surface does not contain';
     }
     return null;
   }

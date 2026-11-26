@@ -132,7 +132,9 @@ async function main(): Promise<void> {
     process.exitCode = 2;
     return;
   }
-  const scope: AuthScope = opts.readOnly ? readOnlyScope() : fullScope();
+  // With --bridge: full scope plus config.readOnly, so a mutating tab tool is
+  // refused with READ_ONLY, the code the tab's own read-only grant uses.
+  const scope: AuthScope = opts.readOnly && !opts.bridge ? readOnlyScope() : fullScope();
 
   const registry = new InMemoryModelRegistry();
   if (opts.transport === 'stdio') {

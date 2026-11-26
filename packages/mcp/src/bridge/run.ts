@@ -50,7 +50,7 @@ export interface BridgeServerOptions {
   /**
    * `--channel`: declare the Claude Code `claude/channel` capability and push
    * each viewer UI event as a channel message, besides queueing it for
-   * `viewer_ui_events`.
+   * `tab_ui_events`.
    */
   channel?: boolean;
   /** Base of the pairing link. Its origin is allowed to connect. */
@@ -141,10 +141,8 @@ export async function startBridgeServer(opts: BridgeServerOptions): Promise<Runn
     ...opts.tuning,
   });
   if (!opts.lazy) await bridge.listen();
-  const withHeadless = opts.headless !== undefined;
-  // Tab only: no model, and full scope plus `readOnly`, so a --read-only
-  // bridge refuses mutating calls with READ_ONLY, the code the tab-granted
-  // read-only uses.
+  // Without headless parts (tests, embedding) the same server has no models
+  // or headless tools.
   const parts: HeadlessParts = opts.headless ?? {
     registry: new InMemoryModelRegistry(), tools: new ToolRegistry(), resources: new ResourceRegistry(),
     prompts: new PromptRegistry(), scope: fullScope(), config: {},
@@ -153,7 +151,7 @@ export async function startBridgeServer(opts: BridgeServerOptions): Promise<Runn
   tools.registerAll(parts.tools.list());
   const bridgeInstructions = opts.channel ? `${INSTRUCTIONS}\n${CHANNEL_INSTRUCTIONS}` : INSTRUCTIONS;
   const server = new MCPServer({
-    name: withHeadless ? 'ifc-lite' : 'ifc-lite-bridge',
+    name: 'ifc-lite',
     version: opts.version,
     registry: parts.registry,
     scope: parts.scope,
@@ -163,11 +161,12 @@ export async function startBridgeServer(opts: BridgeServerOptions): Promise<Runn
     prompts: parts.prompts,
     capabilities: {
       tools: { listChanged: true },
-      ...(withHeadless ? { resources: { subscribe: true, listChanged: true }, prompts: { listChanged: false } } : {}),
+      resources: { subscribe: true, listChanged: true },
+      prompts: { listChanged: false },
       logging: {},
       ...(opts.channel ? { experimental: { 'claude/channel': {} } } : {}),
     },
-    instructions: withHeadless ? `${SERVER_INSTRUCTIONS}\n\n${bridgeInstructions}` : bridgeInstructions,
+    instructions: `${SERVER_INSTRUCTIONS}\n\n${bridgeInstructions}`,
     logger: opts.logger,
   });
   bridge.onChange(() => server.notifyToolsChanged());

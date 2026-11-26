@@ -128,7 +128,8 @@ export const BRIDGE_LIMITS = {
   maxPendingCalls: 64,
   maxBufferedBytes: 32 * 1024 * 1024,
   maxTools: 256,
-  maxToolNameLength: 64,
+  /** 64 (the common client limit for an MCP tool name) less the `tab_` prefix the bridge adds. */
+  maxToolNameLength: 64 - TAB_TOOL_PREFIX.length,
   maxDescriptionLength: 8192,
   maxTitleLength: 256,
   /** UTF-8 bytes of all tool descriptors together (as JSON), schemas included. */

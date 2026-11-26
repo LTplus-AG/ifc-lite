@@ -3,9 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Surfaces an external agent pushed with `viewer_show_ui`, stacked newest
+ * Surfaces an external agent pushed with `tab_show_ui`, stacked newest
  * first over the viewport. Loaded only once a surface arrives. Follow-up
- * buttons go back to that agent as UI events (`viewer_ui_events`, or a Claude
+ * buttons go back to that agent as UI events (`tab_ui_events`, or a Claude
  * Code channel message); with a bridge that predates them they continue in
  * the in-app chat.
  */
@@ -32,9 +32,12 @@ function keyOf(surface: object): number {
 }
 
 function surfaceIdOf(surface: AgentSurface): string {
+  // Any message kind names its surface (createSurface, updateComponents, updateDataModel), as the bridge reads it.
   for (const message of surface.messages) {
-    const id = (message as { createSurface?: { surfaceId?: unknown } }).createSurface?.surfaceId;
-    if (typeof id === 'string' && id) return id;
+    for (const body of Object.values(message as Record<string, unknown>)) {
+      const id = (body as { surfaceId?: unknown } | null)?.surfaceId;
+      if (typeof id === 'string' && id) return id;
+    }
   }
   return 'agent-surface';
 }

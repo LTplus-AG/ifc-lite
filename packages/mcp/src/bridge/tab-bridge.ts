@@ -178,8 +178,11 @@ export class TabBridge {
       return Promise.reject(new BridgeCallError('no-viewer', 'No connected viewer: no ifc-lite browser tab is paired with this bridge.'));
     }
     if (name === BRIDGE_SURFACE_TOOL && s.a2uiSurface) {
-      if (Array.isArray(args.messages)) this.surfaces.record(args.messages);
-      return s.call(name, args, this.callTimeoutMs, signal);
+      // Recorded once the tab stored it: a refused or lost delivery admits no events.
+      return s.call(name, args, this.callTimeoutMs, signal).then((result) => {
+        if (!result.isError && this.active === s && Array.isArray(args.messages)) this.surfaces.record(args.messages);
+        return result;
+      });
     }
     const tool = s.tools.find((t) => t.name === name);
     if (!tool) return Promise.reject(new BridgeCallError('unknown-tool', `The connected viewer does not offer a tool named '${name}'.`));

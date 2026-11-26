@@ -82,9 +82,9 @@
 import { stepStringLiteralEnd } from '@ifc-lite/encoding';
 
 /**
- * One parsed STEP record, as `extract-entities.ts`'s `parseStep` produces it.
+ * One parsed STEP record, as `step-subset.ts`'s `parseStep` produces it.
  * Declared HERE and imported there, rather than the other way round, so the
- * dependency runs one way: `extract-entities.ts` imports this module, never
+ * dependency runs one way: `step-subset.ts` imports this module, never
  * the reverse.
  */
 export interface StepRecord {
@@ -266,7 +266,7 @@ function relationLine(
  * established in general. There, over-counting references (drop the record) is
  * the safe error, while under-counting (emit a dangling `#id`) is not.
  *
- * Exported for `extract-entities.ts`'s `forwardClosure`, which has the same
+ * Exported for `step-subset.ts`'s `forwardClosure`, which has the same
  * hazard scanning a whole record body for its reference closure: nothing here
  * assumes `arg` is one split ARGUMENT rather than a whole body, since a comma
  * or `)` outside a string does not affect the in-string/out-of-string state

@@ -191,6 +191,11 @@ describe('model_anonymize', () => {
     expect(Object.values(guidMap).concat(Object.keys(guidMap))).toContain('000000000000000000WA1A');
   });
 
+  it('matches a storey by case-insensitive name fragment, as the CLI does', async () => {
+    const res = await call('model_anonymize', { storey: 'level', file_path: join(tmp, 'anon-storey.ifc') });
+    expect(res.structuredContent.seedCount).toBe(3);
+  });
+
   it('fails loudly on a storey that does not exist', async () => {
     await expect(call('model_anonymize', { storey: 'Level 9', file_path: join(tmp, 'x.ifc') })).rejects.toMatchObject({ code: 'ENTITY_NOT_FOUND' });
   });

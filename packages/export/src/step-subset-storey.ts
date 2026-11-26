@@ -3,10 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 /**
- * `extract-entities`' `--storey` selector: resolve a storey token (GUID /
+ * The storey selector of `selectSubsetSeeds`: resolve a storey token (GUID /
  * name / expressId) to the set of products whose ObjectPlacement chains up
- * through that storey's placement. Split out of `extract-entities.ts` to
- * keep that file under its module-size budget.
+ * through that storey's placement.
  */
 import { walkPlacementChain } from '@ifc-lite/data';
 import { refsOutsideStrings } from './step-subset-relations.js';

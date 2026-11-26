@@ -98,7 +98,7 @@ describe('splitTopLevelArgs skips comment content in the outer scan (#4227)', ()
 
 /**
  * End-to-end: the same comment-corruption shape, through `planSpatialRelations`
- * — the actual write path `extract-entities.ts` calls. Mirrors #4227's own
+ * — the actual write path `step-subset.ts` calls. Mirrors #4227's own
  * "hidden reference leaks into written IFC" demonstration, but for this
  * module's failure mode: a comment-shifted six-attribute check falls back to
  * keep-whole-or-drop-whole and DROPS a containment relation that should have

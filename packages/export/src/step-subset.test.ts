@@ -797,7 +797,7 @@ describe('planSpatialRelations: a record it cannot scan, or cannot read as six a
 // child→parent edge for BOTH directions here, because both #200 and #201 are
 // spatial-structure types, so the parent graph itself is cyclic before
 // `spatialAncestors` ever walks it. Pins the
-// `if (visited.has(parentId)) continue;` guard in `spatial-ancestors.ts`:
+// `if (visited.has(parentId)) continue;` guard in `step-subset-spatial-ancestors.ts`:
 // without it, `stack.push(parentId)` re-enqueues #200/#201 forever and the walk
 // never returns. The 55-test suite passes with that guard deleted (nothing else
 // in it makes an aggregation graph cyclic), so this is the only pin.
@@ -841,7 +841,7 @@ describe('spatialAncestors: a cyclic IfcRelAggregates graph terminates', () => {
   );
 });
 
-// The empty-intersection guard in `subset-relations.ts`'s `relationLine`
+// The empty-intersection guard in `step-subset-relations.ts`'s `relationLine`
 // (`if (kept.length === 0) return null;`) is reached only when the RELATING
 // object is kept but EVERY member of the related SET is dropped. The existing
 // "drops a relation whose kept intersection is empty" test above (#82, the L02

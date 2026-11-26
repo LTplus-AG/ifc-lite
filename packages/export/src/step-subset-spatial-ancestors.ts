@@ -37,14 +37,14 @@ import {
  * `IfcElementAssembly` and its parts), which reuses this same relation type
  * and six-attribute shape but is not a spatial ancestor: keeping the whole
  * assembly because one of its parts was independently selected is a different
- * bug, not this one (`extract-entities.test.ts` pins the opposite behaviour).
+ * bug, not this one (`step-subset.test.ts` pins the opposite behaviour).
  * A row is only added for this table when the relating object's OWN type is a
  * spatial-structure type, so a decomposition parent can never enter it.
  *
  * Silently skips a record `splitTopLevelArgs` cannot read cleanly, or that
  * does not split into the six attributes every one of these types has: this
  * map only ever ADDS candidate ancestors for `buildSubset` to keep, so
- * skipping is the fail-closed direction, unlike `subset-relations.ts`'s own
+ * skipping is the fail-closed direction, unlike `step-subset-relations.ts`'s own
  * keep-whole-or-drop-whole fallback for the same shape.
  */
 export function structureParents(instances: ReadonlyMap<number, StepRecord>): Map<number, number[]> {

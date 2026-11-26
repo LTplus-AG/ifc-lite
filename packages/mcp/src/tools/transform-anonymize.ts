@@ -11,7 +11,7 @@
  */
 
 import { writeFile } from 'node:fs/promises';
-import { collectRelatedEntities, exportAnonymizedSubset } from '@ifc-lite/export';
+import { collectRelatedEntities, exportAnonymizedSubset, type RelatedEntityOptions } from '@ifc-lite/export';
 import type { Tool } from './types.js';
 import { fmtInt, okResult, resolveGlobalIds, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
@@ -19,7 +19,16 @@ import { resolveSafePath } from '../safe-path.js';
 import type { LoadedModel, ToolContext } from '../context.js';
 import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, requireNoPendingEdits, stringList } from './transform-schema.js';
 
-const RELATIONSHIPS = ['IfcRelVoidsElement', 'IfcRelFillsElement', 'IfcRelDefinesByType', 'IfcRelAssociatesMaterial', 'IfcRelAggregates', 'IfcRelNests'];
+/** Each relationship the walk follows, with the setting it takes when on (when off: false or 'none'). */
+const FOLLOWED = {
+  IfcRelVoidsElement: true,
+  IfcRelFillsElement: true,
+  IfcRelDefinesByType: true,
+  IfcRelAssociatesMaterial: true,
+  IfcRelAggregates: 'both',
+  IfcRelNests: 'down',
+} as const;
+const RELATIONSHIPS = Object.keys(FOLLOWED);
 
 /** Seeds for `model_anonymize`: every selector unioned, each failing loudly on zero matches. */
 function anonymizeSeeds(m: LoadedModel, input: Record<string, unknown>): Set<number> {
@@ -45,7 +54,8 @@ function anonymizeSeeds(m: LoadedModel, input: Record<string, unknown>): Set<num
   if (typeof input.storey === 'string') {
     const key = input.storey;
     const storeys = m.bim.storeys();
-    const storey = storeys.find((s) => s.globalId === key) ?? storeys.find((s) => String(s.ref.expressId) === key) ?? storeys.find((s) => s.name === key);
+    const storey = storeys.find((s) => s.globalId === key) ?? storeys.find((s) => String(s.ref.expressId) === key) ?? storeys.find((s) => s.name === key)
+      ?? storeys.find((s) => s.name?.toLowerCase().includes(key.toLowerCase()));
     if (!storey) throw new ToolExecutionError({ code: ToolErrorCode.ENTITY_NOT_FOUND, message: `storey: ${key} not found (available: ${storeys.map((s) => s.name).filter(Boolean).join(', ') || 'none'}).` });
     const contained = m.bim.contains(storey.ref);
     if (contained.length === 0) throw invalid(`storey: ${key} contains nothing.`);
@@ -62,13 +72,11 @@ async function runAnonymize(m: LoadedModel, input: Record<string, unknown>, ctx:
   if (seeds.size === 0) throw invalid('Select something: express_ids, global_ids, types or storey.');
   const keepPsets = input.keep_psets === true;
   const off = new Set((input.exclude_relationships as string[] | undefined) ?? []);
+  const followed = Object.fromEntries(
+    Object.entries(FOLLOWED).map(([rel, on]) => [rel, off.has(rel) ? (on === true ? false : 'none') : on]),
+  ) as RelatedEntityOptions;
   const related = collectRelatedEntities(m.store, seeds, {
-    IfcRelVoidsElement: !off.has('IfcRelVoidsElement'),
-    IfcRelFillsElement: !off.has('IfcRelFillsElement'),
-    IfcRelDefinesByType: !off.has('IfcRelDefinesByType'),
-    IfcRelAssociatesMaterial: !off.has('IfcRelAssociatesMaterial'),
-    IfcRelAggregates: off.has('IfcRelAggregates') ? 'none' : 'both',
-    IfcRelNests: off.has('IfcRelNests') ? 'none' : 'down',
+    ...followed,
     IfcRelConnectsPathElementsDepth: (input.connect_depth as number | undefined) ?? 0,
     // Keeping psets needs the walk to reach them too, as in the CLI.
     IfcRelDefinesByProperties: keepPsets,

@@ -210,7 +210,7 @@ export function buildSubset(seedProducts: Set<number>, parsed: ParsedStep): Subs
 
   // Spatial relationships that connect kept products into the tree, each
   // relation's member SET filtered down to the kept ids rather than the whole
-  // relation being dropped. `subset-relations.ts` owns that rule and the
+  // relation being dropped. `step-subset-relations.ts` owns that rule and the
   // no-dangling-reference invariant it preserves.
   let spatial = planSpatialRelations(parsed.instances.values(), keep);
   // A relation-private IfcOwnerHistory is reachable from nothing else, so the

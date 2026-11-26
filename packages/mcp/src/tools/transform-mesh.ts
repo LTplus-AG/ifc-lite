@@ -131,16 +131,15 @@ const modelLod: Tool = {
     return withIfcBytes(m, async (bytes) => {
       if (level === 0) {
         const lod0 = await generateLod0(bytes);
-        const text = JSON.stringify(lod0, null, 2);
-        await writeFile(filePath, text, 'utf-8');
+        const json = Buffer.from(JSON.stringify(lod0, null, 2));
+        await writeFile(filePath, json);
         return okResult(
           `Wrote LOD0 for ${fmtInt(lod0.elements.length)} elements to ${filePath}.`,
-          { filePath, bytes: Buffer.byteLength(text), level, elementCount: lod0.elements.length, metaPath: null },
+          { filePath, bytes: json.length, level, elementCount: lod0.elements.length, metaPath: null },
         );
       }
       const { glb, meta } = await generateLod1(bytes);
-      await writeFile(filePath, glb);
-      if (metaPath) await writeFile(metaPath, JSON.stringify(meta, null, 2), 'utf-8');
+      await Promise.all([writeFile(filePath, glb), metaPath ? writeFile(metaPath, JSON.stringify(meta, null, 2), 'utf-8') : undefined]);
       return okResult(
         `Wrote LOD1 GLB (${meta.status}, ${meta.failedElements.length} failed elements) to ${filePath}.`,
         { filePath, bytes: glb.length, level, status: meta.status, failedElements: meta.failedElements.length, metaPath },

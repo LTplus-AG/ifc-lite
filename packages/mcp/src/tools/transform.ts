@@ -151,14 +151,14 @@ const modelConvert: Tool = {
       });
     }
     const content = m.bim.export.ifc(undefined, { schema: target });
-    const bytes = typeof content === 'string' ? new TextEncoder().encode(content) : content;
-    await writeFile(filePath, bytes);
+    await writeFile(filePath, content);
+    const bytes = typeof content === 'string' ? Buffer.byteLength(content) : content.length;
     return okResult(
-      `Converted ${source} to ${target}: wrote ${fmtInt(bytes.length)} bytes to ${filePath}.` +
+      `Converted ${source} to ${target}: wrote ${fmtInt(bytes)} bytes to ${filePath}.` +
         (loss.entries.length > 0 ? `\n${loss.describe().join('\n')}` : ''),
       {
         filePath,
-        bytes: bytes.length,
+        bytes,
         sourceSchema: source,
         targetSchema: target,
         lossReport: loss.entries.map((e) => ({ type: e.sourceType, targetType: e.targetType ?? null, kind: e.kind, count: e.count })),

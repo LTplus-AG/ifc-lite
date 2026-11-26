@@ -39,6 +39,7 @@ import {
   nonBlank,
   schemaOf,
   requireNoPendingEdits,
+  requireSourceBytes,
   resolveStepModel,
   isStepModel,
   withIfcPrefix,
@@ -92,9 +93,7 @@ const modelMerge: Tool = {
     for (const m of models) {
       requireNoPendingEdits(m, 'model_merge');
       // MergedExporter skips a model with no source bytes; refuse rather than merge fewer than asked.
-      if (m.store.source.byteLength === 0) {
-        throw unsupported(`Model '${m.id}' kept no source bytes to merge. Reload it with model_load.`);
-      }
+      requireSourceBytes(m, 'model_merge');
     }
     // Default: the first model's schema, so a merge never converts unasked.
     const schema = (input.schema as 'IFC2X3' | 'IFC4' | 'IFC4X3' | undefined)

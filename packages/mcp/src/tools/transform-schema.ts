@@ -135,6 +135,11 @@ export function invalid(message: string): ToolExecutionError {
   return new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message });
 }
 
+/** Store-backed transforms copy records from the parsed source; a model that kept none cannot be used. */
+export function requireSourceBytes(m: LoadedModel, tool: string): void {
+  if (m.store.source.byteLength === 0) throw unsupported(`Model '${m.id}' kept no source bytes for ${tool}. Reload it with model_load.`);
+}
+
 /** Store-backed transforms read the parsed source, so pending edits would be lost. */
 export function requireNoPendingEdits(m: LoadedModel, tool: string): void {
   if (!m.backend.hasPendingChanges()) return;

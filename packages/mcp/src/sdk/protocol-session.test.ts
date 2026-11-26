@@ -76,8 +76,6 @@ describe('SDK protocol adapter lifecycle', () => {
     await new Promise((r) => setTimeout(r, 10));
     await server.handleMessage({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: 'slow' } });
     expect(await pending).toBeNull();
-    // Answered only once the aborted handler has unwound.
-    expect(server.runningCalls()).toBe(0);
     await new Promise((r) => setTimeout(r, 10));
     expect(sent.filter((m) => 'id' in m && m.id === 'slow')).toEqual([]);
   });
@@ -124,17 +122,6 @@ describe('SDK protocol adapter lifecycle', () => {
     const reply = await request('tools/call', { name: 'bad_result', arguments: {} });
     expect(reply?.error).toBeUndefined();
     expect(reply?.result).toMatchObject({ isError: true, structuredContent: { code: 'INTERNAL_ERROR' } });
-  });
-
-  it('counts a tool call as running until its handler settles (HTTP reclaim reads it)', async () => {
-    const { server, initialize, release } = build();
-    await initialize();
-    const pending = server.handleMessage({ jsonrpc: '2.0', id: 'c', method: 'tools/call', params: { name: 'wait', arguments: {} } });
-    await new Promise((r) => setTimeout(r, 10));
-    expect(server.runningCalls()).toBe(1);
-    release();
-    await pending;
-    expect(server.runningCalls()).toBe(0);
   });
 
   it('aborts the tool with an AbortError and keeps a reused id off the cancelled request', async () => {
@@ -217,10 +204,14 @@ describe('SDK protocol adapter lifecycle', () => {
   });
 
   it('says what params were wrong in one line', async () => {
-    const { request } = build();
+    const { request, initialize } = build();
     const reply = await request('initialize', { protocolVersion: 5 });
     expect(reply?.error?.code).toBe(-32602);
     expect(reply?.error).toMatchObject({ data: { issues: expect.any(Array) } });
     expect(String((reply?.error as { message?: string }).message)).not.toContain('\n');
+    await initialize();
+    const call = await request('tools/call', { arguments: {} });
+    expect(call?.error).toMatchObject({ code: -32602, data: { issues: expect.any(Array) } });
+    expect(String((call?.error as { message?: string }).message)).toMatch(/^Invalid tools\/call request: [^\n]+$/);
   });
 });

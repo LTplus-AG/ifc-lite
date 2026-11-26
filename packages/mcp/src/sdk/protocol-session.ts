@@ -102,8 +102,6 @@ const entered = new WeakSet<AbortSignal>();
  *   outside this wrapper and answers a bare -32603.)
  */
 class IfcProtocolServer extends Server {
-  /** Request handlers running now, including aborted ones that have not returned. */
-  running = 0;
   /** Runs after the SDK answered `initialize`, with the request and the negotiated result. */
   onInitialize?: (params: { protocolVersion: string; clientInfo?: unknown }, result: { protocolVersion: string }) => void;
 
@@ -125,7 +123,6 @@ class IfcProtocolServer extends Server {
     return async (request, ctx) => {
       const signal = ctx.mcpReq.signal;
       const id = ctx.mcpReq.id;
-      this.running++;
       let result: Result;
       try {
         if (!opening && !this.link.initializeSeen) {
@@ -143,14 +140,13 @@ class IfcProtocolServer extends Server {
         if (method === 'tools/call') return toolError({ code: ToolErrorCode.INTERNAL_ERROR, message }) as unknown as Result;
         throw new ProtocolError(ProtocolErrorCode.InternalError, message);
       } finally {
-        this.running--;
         // The SDK sends nothing for a request it aborted, even one whose handler
         // already returned. Its caller is told once the handler has unwound (a
         // retry then cannot collide with the old run), or when a later abort lands.
         if (signal.aborted) this.link.abandon(id);
         else signal.addEventListener('abort', () => this.link.abandon(id), { once: true });
       }
-      if (method === 'initialize') {
+      if (method === 'initialize' && !signal.aborted) {
         // A failing observer must not fail a handshake the SDK already answered.
         try {
           this.onInitialize?.(request.params as { protocolVersion: string }, result as { protocolVersion: string });
@@ -172,14 +168,16 @@ class IfcProtocolServer extends Server {
 function invalidParams(err: unknown): ProtocolError {
   if (err instanceof ProtocolError && err.code !== ProtocolErrorCode.InvalidParams) return err;
   const text = err instanceof Error ? err.message : describeThrown(err);
-  const issues = zodIssues(text);
+  // The list may follow a prefix such as "Invalid tools/call request: ".
+  const start = text.indexOf('[');
+  const issues = start < 0 ? undefined : zodIssues(text.slice(start));
   if (!issues) return err instanceof ProtocolError ? err : new ProtocolError(ProtocolErrorCode.InvalidParams, text);
   const summary = issues.map((i) => `${(i.path ?? []).join('.') || '(params)'}: ${i.message ?? 'invalid'}`).join('; ');
-  return new ProtocolError(ProtocolErrorCode.InvalidParams, `Invalid params: ${summary}`, { issues });
+  const prefix = start > 0 ? text.slice(0, start).trim().replace(/:$/, '') : 'Invalid params';
+  return new ProtocolError(ProtocolErrorCode.InvalidParams, `${prefix}: ${summary}`, { issues });
 }
 
 function zodIssues(text: string): Array<{ path?: unknown[]; message?: string }> | undefined {
-  if (!text.trimStart().startsWith('[')) return undefined; // plain text already
   try {
     const parsed: unknown = JSON.parse(text);
     return Array.isArray(parsed) ? parsed : undefined;
@@ -237,10 +235,6 @@ export class ProtocolSession {
     return this.transport.handshakeSent;
   }
 
-  /** Request handlers still running, including cancelled ones that have not returned yet. */
-  runningHandlers(): number {
-    return this.server.running;
-  }
 
   /** One inbound message; resolves with the response, or null for notifications. */
   deliver(message: JsonRpcMessage): Promise<JsonRpcResponse | null> {
@@ -323,6 +317,10 @@ export class ProtocolSession {
         const message = describeThrown(err);
         this.domain.logger.log('error', `Request ${method} failed`, { error: message });
         throw new HandlerError(ProtocolErrorCode.InternalError, message);
+      } finally {
+        if (ctx.mcpReq.signal.aborted) {
+          this.domain.logger.log('info', `Cancelled request ${String(ctx.mcpReq.id)}`, { method, reason: describeThrown(ctx.mcpReq.signal.reason) });
+        }
       }
     };
   }

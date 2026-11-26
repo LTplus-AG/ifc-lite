@@ -694,7 +694,7 @@ describe('HttpTransport session cap (#6943)', () => {
   });
 });
 
-describe('HttpTransport cancelled request', () => {
+describe('HttpTransport cancelled request (#11542 lifecycle follow-up)', () => {
   it('answers a cancelled JSON-mode POST with -32800, not an empty body (SDK cancellation sends no response)', async () => {
     const { ToolRegistry } = await import('../tools/types.js');
     const tools = new ToolRegistry();

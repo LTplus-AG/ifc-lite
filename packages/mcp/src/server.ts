@@ -213,15 +213,6 @@ export class MCPServer implements ProtocolDomain {
     return state;
   }
 
-  /**
-   * Request handlers still running. A cancelled request gets no response, but
-   * its handler runs until it notices the abort; a transport must not end the
-   * session under it.
-   */
-  runningCalls(): number {
-    return this.session?.runningHandlers() ?? 0;
-  }
-
   isInitialized(): boolean {
     return this.session?.isInitialized() ?? false;
   }

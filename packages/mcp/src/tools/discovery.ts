@@ -135,7 +135,9 @@ export const modelLoad: Tool = {
     const filePath = await resolveSafePath(input.file_path, ctx, 'read');
     try {
       const loaded = await withSourceWriteLock(ctx.registry, async () => {
-        ctx.signal.throwIfAborted();
+        if (ctx.signal.aborted) {
+          throw new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message: 'Model loading cancelled.' });
+        }
         const model = await loadIfcModel(filePath, {
           modelId: input.model_id as string | undefined,
           // The path was already validated by resolveSafePath.

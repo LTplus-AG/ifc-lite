@@ -22,6 +22,7 @@ import type { ToolContext } from '../context.js';
 import { DEFAULT_CONFIG, InMemoryModelRegistry, NOOP_PROGRESS, SILENT_LOGGER } from '../context.js';
 import { fullScope } from '../auth/scope.js';
 import { loadIfcModel } from '../loader.js';
+import { withSourceWriteLock } from '../source-write-lock.js';
 import { buildDefaultToolRegistry } from './index.js';
 import { toToolDefinition } from '../tool-catalog.js';
 import { validateInput } from '../validate.js';
@@ -257,6 +258,43 @@ it('protects an output registered by model_load during transform preparation (#1
   } finally {
     statSpy.mockRestore();
   }
+});
+
+it('returns CANCELLED for a queued model load and lets the next load proceed (#11583)', async () => {
+  const registry = ctx.registry;
+  let release!: () => void;
+  const hold = new Promise<void>((resolve) => { release = resolve; });
+  const predecessor = withSourceWriteLock(registry, () => hold);
+  const abort = new AbortController();
+  let enteredQueue!: () => void;
+  const queued = new Promise<void>((resolve) => { enteredQueue = resolve; });
+  const result = tool('model_load').handler({ file_path: join(tmp, 'b.ifc'), model_id: 'cancelled' }, {
+    ...ctx,
+    signal: abort.signal,
+    // Read-path validation uses configured roots. The registry lookup here
+    // occurs immediately before joining the source-write queue.
+    get registry() {
+      enteredQueue();
+      return registry;
+    },
+  });
+  try {
+    await queued;
+    abort.abort();
+  } finally {
+    release();
+    await predecessor;
+  }
+  await expect(result).rejects.toMatchObject({ code: 'CANCELLED' });
+  expect(registry.get('cancelled')).toBeNull();
+
+  const malformed = join(tmp, 'malformed.ifc');
+  await writeFile(malformed, 'not an IFC file');
+  await expect(call('model_load', { file_path: malformed, model_id: 'malformed' }))
+    .rejects.toMatchObject({ code: 'PARSE_FAILED' });
+  expect(registry.get('malformed')).toBeNull();
+  await call('model_load', { file_path: join(tmp, 'b.ifc'), model_id: 'next' });
+  expect(registry.get('next')?.store.schemaVersion).toBe('IFC4');
 });
 
 describe('model_extract', () => {

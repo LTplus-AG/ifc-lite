@@ -372,7 +372,7 @@ describe('script_run', () => {
     expect((await run("new String('x'.repeat(400000))")).structuredContent?.value_truncated).toBe(true);
     expect((await run('typeof bim.lens')).structuredContent?.value).toBe('undefined');
     // A deep bim argument is refused in the realm instead of overflowing the bridge's dump.
-    expect((await run(`${deep} try { bim.cost.evaluateItem(o); 'no' } catch (e) { e.message }`)).structuredContent?.value).toMatch(/^bim\.cost\.evaluateItem: argument 0: .*nested deeper than 1000 levels/);
+    expect((await run(`${deep} try { bim.cost.evaluateItem(o); 'no' } catch (e) { e.message }`)).structuredContent?.value).toMatch(/^bim\.cost\.evaluateItem: .*nested deeper than 1000 levels/);
     expect((await run("bim.query.byType('IfcWall').length")).structuredContent?.value).toBe(2);
     // A string argument keeps its toString coercion: only dumped positions are bounded.
     expect((await run("bim.query.byType({ toString() { return 'IfcWall'; } }).length")).structuredContent?.value).toBe(2);

@@ -59,17 +59,14 @@ export function wrapScript(code: string): string {
   return `(function (run, I, L) {
   // The intrinsics, by name: read once here, before the script runs.
   var P = I.P, isInstance = I.isInstance, then = I.then, apply = I.apply, slice = I.slice, Str = I.Str, stringify = I.stringify, keys = I.keys, isArray = I.isArray, create = I.create, defineProperty = I.defineProperty, glob = I.glob, ErrorCtor = I.ErrorCtor, TypeErrorCtor = I.TypeErrorCtor, SetCtor = I.SetCtor, setAdd = I.setAdd, setHas = I.setHas, setDelete = I.setDelete, unbox = I.unbox, objectProto = I.objectProto, getProto = I.getProto, parse = I.parse, charCodeAt = I.charCodeAt, SyntaxErrorCtor = I.SyntaxErrorCtor, RegExpCtor = I.RegExpCtor, exec = I.exec, bind = I.bind, InternalErrorCtor = I.InternalErrorCtor, toStringTag = I.toStringTag;
-  // Guarded: a thrown Proxy whose getPrototypeOf trap throws must not make the
-  // wrapper itself throw.
-  // Guarded like isInternal: instanceof on a Proxy can run script code.
-  function isError(e) {
-    try { return apply(isInstance, ErrorCtor, [e]); }
+  // instanceof, guarded: a thrown Proxy whose getPrototypeOf trap throws must
+  // not make the wrapper itself throw.
+  function instanceOf(ctor, e) {
+    try { return !!ctor && apply(isInstance, ctor, [e]); }
     catch (_) { return false; }
   }
-  function isInternal(e) {
-    try { return !!InternalErrorCtor && apply(isInstance, InternalErrorCtor, [e]); }
-    catch (_) { return false; }
-  }
+  function isError(e) { return instanceOf(ErrorCtor, e); }
+  function isInternal(e) { return instanceOf(InternalErrorCtor, e); }
   function msg(e) {
     // message is read once and coerced inside the try, so a getter or
     // toString cannot throw past the wrapper and pose as a sandbox error.
@@ -275,15 +272,10 @@ export function wrapScript(code: string): string {
   // A function that maps each argument and then calls fn on thisArg. The
   // argument list is a null-prototype array-like, out of Array.prototype's reach.
   // only, when given, maps just the argument indexes it marks true.
-  // label, when given, prefixes a mapper failure (e.g. 'bim.cost.items').
-  function forwardMapped(fn, thisArg, mapper, only, label) {
+  function forwardMapped(fn, thisArg, mapper, only) {
     return function () {
       var args = create(null), n = arguments.length;
-      for (var ai = 0; ai < n; ai++) {
-        if (only && only[ai] !== true) { args[ai] = arguments[ai]; continue; }
-        try { args[ai] = mapper(arguments[ai]); }
-        catch (e) { if (!label || isInternal(e)) throw e; throw new TypeErrorCtor(label + ': argument ' + ai + ': ' + msg(e)); }
-      }
+      for (var ai = 0; ai < n; ai++) args[ai] = only && only[ai] !== true ? arguments[ai] : mapper(arguments[ai]);
       args.length = n;
       return apply(fn, thisArg, args);
     };
@@ -305,12 +297,19 @@ export function wrapScript(code: string): string {
   }
   // path is the dotted namespace ('query'); a method the schema lists bounds
   // only its dumped positions, one it does not list bounds every object.
+  // safeArg, with a refusal named after the bim method it came from.
+  function labelled(label) {
+    return function (a) {
+      try { return safeArg(a); }
+      catch (e) { if (isInternal(e)) throw e; throw new TypeErrorCtor(label + ': ' + msg(e)); }
+    };
+  }
   function wrapMethods(source, level, path) {
     var target = create(null), ks = keys(source);
     for (var wi = 0; wi < ks.length; wi++) {
       var member = source[ks[wi]], name = path === '' ? ks[wi] : path + '.' + ks[wi];
       var listed = L.dumped[name];
-      target[ks[wi]] = typeof member === 'function' ? forwardMapped(member, source, safeArg, listed, 'bim.' + name)
+      target[ks[wi]] = typeof member === 'function' ? forwardMapped(member, source, labelled('bim.' + name), listed)
         : member !== null && typeof member === 'object' && level < 3 ? wrapMethods(member, level + 1, name)
         : member;
     }

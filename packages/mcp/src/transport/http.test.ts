@@ -698,6 +698,8 @@ describe('HttpTransport cancelled request (#11542 lifecycle follow-up)', () => {
   it('answers a cancelled JSON-mode POST with -32800, not an empty body (SDK cancellation sends no response)', async () => {
     const { ToolRegistry } = await import('../tools/types.js');
     const tools = new ToolRegistry();
+    let started!: () => void;
+    const running = new Promise<void>((resolve) => { started = resolve; });
     tools.register({
       name: 'wait', description: 'Waits until cancelled.', scope: 'read', inputSchema: { type: 'object' },
       handler: (_input, ctx) => new Promise((resolve) => {
@@ -705,8 +707,6 @@ describe('HttpTransport cancelled request (#11542 lifecycle follow-up)', () => {
         started();
       }),
     });
-    let started: () => void = () => undefined;
-    const running = new Promise<void>((resolve) => { started = resolve; });
     const transport = makeTransport({ build: (scope, sessionId) => createMCPServer({ version: VERSION, scope, sessionId, tools }) });
     await transport.listen();
     try {

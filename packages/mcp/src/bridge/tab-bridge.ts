@@ -24,7 +24,6 @@ import {
   BRIDGE_LIMITS,
   BRIDGE_PROTOCOL_VERSION,
   BRIDGE_SURFACE_TOOL,
-  TAB_TOOL_PREFIX,
   BridgeCloseCode,
   BridgeErrorCode,
   buildPairingUrl,
@@ -42,6 +41,7 @@ import { describeThrown } from '../errors.js';
 import { BridgeCallError, BridgeSession, failSocket, rawToString } from './session.js';
 import { handleSessionFrame } from './session-frames.js';
 import { DeliveredSurfaces } from './delivered-surfaces.js';
+import { mcpName } from './tab-names.js';
 import { UiEventInbox } from './ui-events.js';
 
 export { BridgeCallError, type BridgeCallFailure } from './session.js';
@@ -67,8 +67,6 @@ export class TabBridge {
   private wss: WebSocketServer | null = null;
   private boundPort = 0;
   private listening: Promise<number> | null = null;
-  /** The preferred port, when it was taken and the bridge fell back to another. */
-  private movedFrom: number | null = null;
   private active: BridgeSession | null = null;
   /** Unpaired connections, each holding one of `maxPendingHandshakes` slots. */
   private readonly slots = new Set<Slot>();
@@ -105,7 +103,7 @@ export class TabBridge {
 
   /** The preferred port the bridge could not take (another program holds it), or null. */
   get fellBackFrom(): number | null {
-    return this.movedFrom;
+    return this.boundPort !== 0 && this.opts.port !== 0 && this.boundPort !== this.opts.port ? this.opts.port : null;
   }
 
   get readOnlyCeiling(): boolean {
@@ -141,8 +139,7 @@ export class TabBridge {
     this.http = server.http;
     this.wss = server.wss;
     this.boundPort = server.port;
-    this.movedFrom = server.port !== this.opts.port && this.opts.port !== 0 ? this.opts.port : null;
-    const moved = this.movedFrom !== null ? ` (port ${this.movedFrom} is in use)` : '';
+    const moved = this.fellBackFrom !== null ? ` (port ${this.fellBackFrom} is in use)` : '';
     this.log(`listening on ws://127.0.0.1:${server.port}${moved}; allowed origins (exactly these): ${this.allowedOrigins.join(', ')}`);
     return this.boundPort;
   }
@@ -192,13 +189,14 @@ export class TabBridge {
       return s.call(name, args, this.callTimeoutMs, signal);
     }
     const tool = s.tools.find((t) => t.name === name);
-    if (!tool) return Promise.reject(new BridgeCallError('unknown-tool', `The connected viewer does not offer a tool named '${TAB_TOOL_PREFIX}${name}'.`));
+    const shown = mcpName(name);
+    if (!tool) return Promise.reject(new BridgeCallError('unknown-tool', `The connected viewer does not offer a tool named '${shown}'.`));
     if (!tool.readOnly && this.effectivePermission(s) === 'read-only') {
       return Promise.reject(new BridgeCallError(
         'read-only',
         this.opts.readOnlyCeiling
-          ? `'${TAB_TOOL_PREFIX}${name}' changes the model, and this bridge was started --read-only.`
-          : `'${TAB_TOOL_PREFIX}${name}' changes the model, and the viewer granted read-only access. Allow changes in the tab to use it.`,
+          ? `'${shown}' changes the model, and this bridge was started --read-only.`
+          : `'${shown}' changes the model, and the viewer granted read-only access. Allow changes in the tab to use it.`,
       ));
     }
     return s.call(name, args, this.callTimeoutMs, signal);

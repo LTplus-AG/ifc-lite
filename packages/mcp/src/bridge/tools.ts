@@ -29,6 +29,7 @@ import { surfacePushTool } from './surface-push.js';
 import { uiEventsTool } from './ui-events-tool.js';
 import { BRIDGE_UI_EVENTS_TOOL } from './ui-events.js';
 import { BRIDGE_STATUS_TOOL, BRIDGE_SURFACE_TOOL, DEFAULT_BRIDGE_PORT, MAX_MCP_TOOL_NAME, TAB_SHOW_UI_TOOL, TAB_TOOL_PREFIX, type BridgeToolDescriptor } from './protocol.js';
+import { mcpName } from './tab-names.js';
 import { BridgeCallError, type BridgeCallFailure, type TabBridge } from './tab-bridge.js';
 
 const FAILURE_CODE: Record<BridgeCallFailure, ToolErrorCodeValue> = {
@@ -61,15 +62,11 @@ export function bridgeFailureResult(err: BridgeCallError): CallToolResult {
   });
 }
 
-/** The MCP name of a tab tool. */
-function mcpName(tabName: string): string {
-  return TAB_TOOL_PREFIX + tabName;
-}
 
 /**
  * The 0.32 names of the surface tools, still callable (never listed) for one
  * minor release.
- * TODO(remove-by: @ifc-lite/mcp 0.34, louistrue): drop these aliases (tracking issue linked in the P2 PR).
+ * TODO(remove-by: @ifc-lite/mcp 0.34, louistrue): drop these aliases (#11545).
  */
 const LEGACY_ALIASES: ReadonlyMap<string, string> = new Map([
   [BRIDGE_SURFACE_TOOL, TAB_SHOW_UI_TOOL],
@@ -171,6 +168,20 @@ function statusTool(bridge: TabBridge): Tool {
   };
 }
 
+/**
+ * How to pair by typing the code. After a fallback, only the link: a code
+ * typed into the dialog with the preferred port would go to the program that
+ * holds it.
+ */
+function manualPairingHint(bridge: TabBridge, code: string): string {
+  const moved = bridge.fellBackFrom;
+  if (moved !== null) {
+    return `Use the link: it carries port ${bridge.port}. Port ${moved} belongs to another program, so do not type the code into the dialog with that port.`;
+  }
+  if (bridge.port === DEFAULT_BRIDGE_PORT) return `or enter the code ${code} in the viewer's "Connect local agent" dialog.`;
+  return `or enter the code ${code} with port ${bridge.port} in the viewer's "Connect local agent" dialog.`;
+}
+
 function statusResult(bridge: TabBridge, pairNewTab: boolean): CallToolResult {
   const tab = bridge.tab();
   const base = {
@@ -207,14 +218,7 @@ function statusResult(bridge: TabBridge, pairNewTab: boolean): CallToolResult {
     );
   }
   if (pairing) {
-    // After a fallback, only the link: a code typed into the dialog's default
-    // port would go to the program that holds it.
-    const moved = bridge.fellBackFrom;
-    const manual = moved !== null
-      ? `Use the link: it carries port ${bridge.port}. Port ${moved} belongs to another program, so do not type the code into the dialog with that port.`
-      : bridge.port === DEFAULT_BRIDGE_PORT
-      ? `or enter the code ${pairing.code} in the viewer's "Connect local agent" dialog.`
-      : `or enter the code ${pairing.code} with port ${bridge.port} in the viewer's "Connect local agent" dialog.`;
+    const manual = manualPairingHint(bridge, pairing.code);
     lines.push(
       '',
       `To ${tab ? 'pair a different tab (it replaces the connected one)' : 'connect'}, open this link in the browser tab with the model:`,

@@ -17,9 +17,10 @@
  * action's `context.prompt`, `userMessage` or the label of the component that
  * carries it, or the renderer's generic `Action: <name>` line. Data values
  * (entity names, property values, legend rows, `updateDataModel`) never
- * verify a prompt: they may come from the model. Any other prompt, typed into a field or computed by the
- * renderer, is still delivered, but marked unverified, and the agent reads it
- * as quoted data rather than as the user's words (`channelParams`).
+ * verify a prompt: they may come from the model. Any other prompt, typed
+ * into a field or computed by the renderer, is still delivered, but marked
+ * unverified, and the agent reads it as quoted data rather than as the
+ * user's words (`channelParams`).
  *
  * A surface is recorded when it is sent, not when the tab confirms it: a tab
  * may store and show it even if its answer is lost or the call times out,
@@ -34,7 +35,6 @@ import { a2uiSurfaceId, type BridgeUiEvent } from './ui-events.js';
 export const MAX_DELIVERED_SURFACES = 64;
 /** Follow-up texts and event names remembered per surface, each. */
 export const MAX_SURFACE_ENTRIES = 1024;
-
 
 /** The renderer's prompt for an event action without a user message. */
 function genericPrompt(name: string): string {
@@ -78,9 +78,11 @@ function collect(value: unknown, into: Surface): void {
     return;
   }
   if (!isRecord(value)) return;
+  // A data-model update carries values, not follow-ups.
+  if ('updateDataModel' in value) return;
   if (typeof value.prompt === 'string' && typeof value.label === 'string') {
-    add(into.prompts, value.prompt);
-    add(into.prompts, value.label);
+    addString(into.prompts, value.prompt);
+    addString(into.prompts, value.label);
   }
   const action = value.action;
   if (isRecord(action)) {
@@ -93,11 +95,6 @@ function collect(value: unknown, into: Surface): void {
     }
   }
   for (const item of Object.values(value)) collect(item, into);
-}
-
-/** The messages that define components: data-model updates carry values, not follow-ups. */
-function definitions(messages: readonly unknown[]): unknown[] {
-  return messages.filter((m) => !(isRecord(m) && 'updateDataModel' in m));
 }
 
 type SurfaceCheck = { refused: string } | { promptVerified: boolean };
@@ -117,7 +114,7 @@ export class DeliveredSurfaces {
     const ids = new Set(messages.map(a2uiSurfaceId).filter((id): id is string => id !== null));
     if (ids.size === 0) return;
     const call = emptySurface();
-    collect(definitions(messages), call);
+    collect(messages, call);
     for (const id of ids) {
       const surface = this.surfaces.get(id) ?? emptySurface();
       merge(surface.prompts, call.prompts);

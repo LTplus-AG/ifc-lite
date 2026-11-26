@@ -78,6 +78,8 @@ describe('PDF text with characters outside WinAnsi (#11449)', () => {
       t.after(() => Reflect.deleteProperty(globalThis, 'DOMParser'));
     }
     const doc = await (await browserReportSeams(null)).createDoc('a4', 'portrait');
+    assert.ok(doc.textWidth);
+    assert.equal(doc.textWidth(ROOM), doc.textWidth('Sala de sedinte – Etaj 2, 25 m²'));
     doc.text(ROOM, 40, 40);
     doc.table({ startY: 60, margin: { left: 40, right: 40 }, head: [['Etaj', 'Număr']], body: [[ROOM, '3']] });
     const raw = Buffer.from(await doc.output().arrayBuffer()).toString('latin1');

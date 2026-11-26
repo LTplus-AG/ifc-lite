@@ -31,19 +31,25 @@ export async function listenLoopback(
   const wss = new WebSocketServer({ noServer: true, maxPayload });
   http.on('upgrade', (req, socket, head) => onUpgrade(wss, req, socket, head));
   await new Promise<void>((resolve, reject) => {
-    http.once('error', (err) => {
+    const onError = (err: Error): void => {
       // Not bound: nothing to keep.
       wss.close();
       reject(err);
-    });
+    };
+    http.once('error', onError);
     // 127.0.0.1 only, never a public interface.
     http.listen(port, '127.0.0.1', () => {
-      http.off('error', reject);
+      http.off('error', onError);
       resolve();
     });
   });
   http.on('error', (err) => log(`server error: ${err.message}`));
   return { http, wss, port: (http.address() as AddressInfo).port };
+}
+
+/** The listen error that means another program holds the port. */
+export function isAddrInUse(err: unknown): boolean {
+  return (err as NodeJS.ErrnoException | null)?.code === 'EADDRINUSE';
 }
 
 /** How many ports after the preferred one are tried before any free port. */
@@ -73,7 +79,7 @@ export async function listenLoopbackFirstFree(
     try {
       return await listenLoopback(port, maxPayload, onUpgrade, log);
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'EADDRINUSE') throw err;
+      if (!isAddrInUse(err)) throw err;
       last = err;
     }
   }

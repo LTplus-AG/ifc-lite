@@ -19,6 +19,7 @@
 import { resolve } from 'node:path';
 import { bridgeConflict, parseArgs, type CliOptions } from './cli-args.js';
 import { startBridgeServer, type HeadlessParts, type RunningBridge } from './bridge/run.js';
+import { isAddrInUse } from './bridge/loopback-server.js';
 import { DEFAULT_BRIDGE_PORT, DEFAULT_BRIDGE_VIEWER_URL } from './bridge/protocol.js';
 import { StdioTransport } from './transport/stdio.js';
 import { routeConsoleToStderr } from './transport/stdio-console.js';
@@ -283,14 +284,16 @@ const SHUTDOWN_DEADLINE_MS = 2000;
 
 /** Start the bridge layer on top of the headless parts; null (exit code set) when it cannot start. */
 async function startBridge(opts: CliOptions, headless: HeadlessParts, logger: Logger): Promise<RunningBridge | null> {
+  // An explicit --bridge-port is a promise to the user: bound at start, no
+  // fallback, so a taken one fails here as it always did. Only the default
+  // waits for bridge_status and falls back.
+  const explicitPort = opts.bridgePort !== undefined;
   try {
     return await startBridgeServer({
       version: VERSION,
       port: opts.bridgePort ?? DEFAULT_BRIDGE_PORT,
-      // An explicit --bridge-port is a promise to the user; only the default falls back.
-      portFallback: opts.bridgePort === undefined,
-      // An explicit port is bound at start, so a taken one fails here as it always did.
-      lazy: opts.bridgePort === undefined,
+      portFallback: !explicitPort,
+      lazy: !explicitPort,
       headless,
       readOnly: opts.readOnly,
       channel: opts.channel,
@@ -301,10 +304,9 @@ async function startBridge(opts: CliOptions, headless: HeadlessParts, logger: Lo
       logger,
     });
   } catch (err) {
-    const e = err as NodeJS.ErrnoException;
-    const why = e.code === 'EADDRINUSE'
+    const why = explicitPort && isAddrInUse(err)
       ? `port ${opts.bridgePort} on 127.0.0.1 is in use (another bridge running?). Pass another --bridge-port, or drop it to let the bridge pick a free one.`
-      : e.message;
+      : (err as Error).message;
     process.stderr.write(`[ifc-lite-mcp] cannot start the bridge: ${why}\n`);
     process.exitCode = 1;
     return null;

@@ -152,11 +152,12 @@ export function parseArgs(rawArgv: string[]): CliOptions {
    */
   const value = (flag: string): string | undefined => {
     const next = argv[i + 1];
-    if (next === undefined || next === '' || (!explicit.has(i + 1) && KNOWN_FLAGS.has(next))) {
+    if (next === undefined || next === '' || (!explicit.has(i + 1) && (KNOWN_FLAGS.has(next) || next === '--'))) {
       opts.errors.push(`${flag} needs a value.`);
       return undefined;
     }
-    if (!explicit.has(i + 1) && next.startsWith('--')) {
+    // A bare `--` (end of options) is left alone, like a known flag.
+    if (!explicit.has(i + 1) && next.startsWith('--') && next !== '--') {
       i++;
       opts.errors.push(`${flag} needs a value; the next argument starts with '--'. Pass ${flag}=<value> if the value starts with '--'.`);
       return undefined;

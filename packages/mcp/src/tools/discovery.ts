@@ -140,8 +140,9 @@ export const modelLoad: Tool = {
     const filePath = await resolveSafePath(input.file_path, ctx, 'read');
     // The id the loader would pick, so a refusal costs no parse.
     const id = (input.model_id as string | undefined) ?? deriveModelId(basename(filePath));
-    assertMayLoadAs(id, ctx);
-    assertMayDiscard(id, ctx, ctx.scope);
+    // Cheap checks before the parse, against the live scope (setScope may have narrowed it).
+    assertMayLoadAs(id, ctx, ctx.currentScope?.() ?? ctx.scope);
+    assertMayDiscard(id, ctx, ctx.currentScope?.() ?? ctx.scope);
     try {
       const loaded = await loadIfcModel(filePath, {
         modelId: id,
@@ -217,7 +218,7 @@ function assertMayDiscard(id: string, ctx: ToolContext, scope: AuthScope): void 
   if ((pendingOverlay(existing)?.pendingMutations ?? 0) > 0) {
     throw new ToolExecutionError({
       code: ToolErrorCode.PERMISSION_DENIED,
-      message: `Model '${id}' has unsaved edits; dropping or replacing it needs mutate scope. Export it first.`,
+      message: `Model '${id}' has unsaved edits; dropping or replacing it needs mutate scope. Exporting keeps a copy of the edits but does not clear them.`,
     });
   }
 }

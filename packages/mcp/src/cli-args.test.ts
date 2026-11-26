@@ -136,6 +136,8 @@ describe('flag fixes (#11534)', () => {
     expect(typo.host).toBe('0.0.0.0');
     expect(parseArgs(['--token=--odd']).tokens).toEqual(['--odd']);
     expect(parseArgs(['--token', '-single']).tokens).toEqual(['-single']);
+    // A bare `--` is not swallowed.
+    expect(parseArgs(['--host', '--']).errors).toEqual(['--host needs a value.']);
   });
 
   it('refuses a port that is not an integer from 0 to 65535', () => {

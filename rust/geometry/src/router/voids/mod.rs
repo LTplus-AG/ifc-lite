@@ -250,8 +250,29 @@ impl GeometryRouter {
         // the layered slicing without voids (an element whose voided slicing
         // declined can still slice uncut, and then each layer is cut); its
         // void context is classified ONCE per element, not per sub-mesh.
+        self.styled_submeshes_and_voids(element, decoder, void_index).map(crate::styled_parts::StyledParts::into_collection)
+    }
+
+    /// [`Self::process_element_with_submeshes_and_voids`] with each sub-mesh's
+    /// `IfcMappedItem` occurrence chain ([`crate::StyledSubMeshes`], #10698):
+    /// the same sub-meshes in the same order. A cut part keeps its chain.
+    pub fn process_element_with_styled_submeshes_and_voids(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        void_index: &FxHashMap<u32, Vec<u32>>,
+    ) -> Result<crate::StyledSubMeshes> {
+        self.styled_submeshes_and_voids(element, decoder, void_index).map(crate::StyledSubMeshes::new)
+    }
+
+    fn styled_submeshes_and_voids(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        void_index: &FxHashMap<u32, Vec<u32>>,
+    ) -> Result<crate::styled_parts::StyledParts> {
         let opening_ids = void_index.get(&element.id).map(Vec::as_slice).unwrap_or_default();
-        crate::program::GeometryProgram::voided_styled(element, opening_ids).drain_styled(self, decoder)
+        crate::program::GeometryProgram::voided_styled(element, opening_ids).drain_styled_parts(self, decoder)
     }
 }
 

@@ -30,7 +30,7 @@ impl<'a> VoidControl<'a> {
     pub(super) fn hosts_walked(&mut self, ids: &'a [u32], hosts: Result<ProductOutput>) -> Phase<'a> {
         let outgrown = match &hosts {
             Ok(ProductOutput::Parts(parts)) => self.frame.outgrown_by(parts.iter()),
-            Ok(ProductOutput::Styled(subs)) => self.frame.outgrown_by(subs.sub_meshes.iter().map(|sub| &sub.mesh)),
+            Ok(ProductOutput::Styled(subs)) => self.frame.outgrown_by(subs.parts.iter().map(|part| &part.sub.mesh)),
             _ => false,
         };
         if outgrown {
@@ -52,7 +52,7 @@ impl<'a> VoidControl<'a> {
                 parts.iter_mut().for_each(|part| router.place_root_frame_cut(part, &at))
             }
             ProductOutput::Styled(subs) => {
-                subs.sub_meshes.iter_mut().for_each(|sub| router.place_root_frame_cut_sub(sub, &at))
+                subs.subs_mut(0).for_each(|sub| router.place_root_frame_cut_sub(sub, &at))
             }
             ProductOutput::Retained(..) => {}
         }

@@ -236,6 +236,7 @@
     "SimplifyOptions": "struct { boxify: bool; drop_cavities: bool; min_triangles: u32; target_ratio: Option<f32>; weld_eps: f32 }",
     "SimplifyStats": "struct { cavity_components_dropped: u32; cavity_triangles_dropped: u32; cell_iterations: u32; passthrough: bool; tris_after: u32; tris_before: u32 }",
     "SkippedProfile": "struct { express_id: u32; ifc_type: String; reason: String }",
+    "StyledSubMeshes": "struct (non_exhaustive)",
     "SubMesh": "struct { geometry_id: u32; mesh: Mesh; texture: Option<crate::processors::texture::TextureAttachment>; uvs: Option<Vec<f32>> }",
     "SubMeshCollection": "struct { ids_are_materials: bool; sub_meshes: Vec<SubMesh> }",
     "SurfaceOfLinearExtrusionProcessor": "struct (unit)",

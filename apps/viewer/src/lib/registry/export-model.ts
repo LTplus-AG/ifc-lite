@@ -29,10 +29,6 @@ export async function exportRegistryModel(): Promise<{ bytes: Uint8Array<ArrayBu
     scheduleState: schedule,
     description: 'Model release published from IFClite',
   });
-  const current = useViewerStore.getState();
-  if (current.mutationVersion !== state.mutationVersion || current.models.get(id) !== model) {
-    throw new RegistryError('The model changed while exporting. Please publish again.');
-  }
   if (result.ext !== 'ifc' || result.skippedCount) throw new RegistryError('This demo publishes plain IFC files. This model needs a different export format.');
   const safe = sanitizeFilename(model.name, { fallback: 'model.ifc', maxLength: Infinity });
   const complete = /\.ifc$/i.test(safe) ? safe : `${safe}.ifc`;
@@ -42,6 +38,10 @@ export async function exportRegistryModel(): Promise<{ bytes: Uint8Array<ArrayBu
     const digest = await sha256(new TextEncoder().encode(model.name));
     const suffix = `-${digest.slice(-16)}${complete.slice(-4)}`;
     filename = sanitizeFilename(complete.slice(0, -4), { maxLength: 60 - suffix.length }) + suffix;
+  }
+  const current = useViewerStore.getState();
+  if (current.mutationVersion !== state.mutationVersion || current.models.get(id) !== model) {
+    throw new RegistryError('The model changed while exporting. Please publish again.');
   }
   return { bytes: typeof result.content === 'string' ? new TextEncoder().encode(result.content) : new Uint8Array(result.content), filename };
 }

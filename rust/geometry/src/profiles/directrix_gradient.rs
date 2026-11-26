@@ -14,7 +14,7 @@ use crate::alignment::AlignmentCurve;
 use crate::alignment_arc_length::ArcLengthMap;
 use crate::math::tol::CHORD_TOL_M;
 use crate::tessellation::TessellationQuality;
-use crate::{Point3, Result, Vector3};
+use crate::{Error, Point3, Result, Vector3};
 use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType};
 
 /// Splits one span between plan vertices and vertical segment boundaries may
@@ -158,10 +158,19 @@ impl ProfileProcessor {
         for s in stations {
             let frame = alignment.evaluate(s);
             points.push(frame.origin);
-            tangents.push(frame.tangent);
+            tangents.push(unit_tangent(frame.tangent, curve.id)?);
         }
         Ok(Some(DirectrixSamples { points, tangents: Some(tangents) }))
     }
+}
+
+/// `tangent` when it is a finite unit vector. The section frames are built
+/// from it, so any other evaluation is refused here instead of meshing as NaN.
+fn unit_tangent(tangent: Vector3<f64>, curve: u32) -> Result<Vector3<f64>> {
+    if tangent.iter().all(|c| c.is_finite()) && (tangent.norm() - 1.0).abs() <= 1e-9 {
+        return Ok(tangent);
+    }
+    Err(Error::geometry(format!("IfcGradientCurve #{curve}: an evaluated tangent is not a finite unit vector")))
 }
 
 /// Whether the `BaseCurve` parameter is horizontal distance: a plain

@@ -603,3 +603,73 @@ fn a_rotated_gradient_crest_keeps_a_continuous_section_frame() {
     assert!(shared >= ring, "the sweeps meeting at the crest share {shared} vertices");
 }
 
+/// A plan heading +Y under a circular vertical segment of radius 10 m from a
+/// level start, 5π m of arc, which ends vertical at station 10 (#20).
+fn vertical_end(solid: &str) -> String {
+    format!(
+        "#1=IFCCARTESIANPOINT((0.,0.));
+        #2=IFCDIRECTION((1.,0.));
+        #3=IFCVECTOR(#2,1.);
+        #4=IFCLINE(#1,#3);
+        #5=IFCAXIS2PLACEMENT2D(#1,#2);
+        #16=IFCDIRECTION((0.,1.));
+        #17=IFCAXIS2PLACEMENT2D(#1,#16);
+        #6=IFCCURVESEGMENT(.CONTINUOUS.,#17,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(10.),#4);
+        #7=IFCCOMPOSITECURVE((#6),.F.);
+        #8=IFCCARTESIANPOINT((0.,100.));
+        #9=IFCAXIS2PLACEMENT2D(#8,#2);
+        #11=IFCCIRCLE(#5,10.);
+        #12=IFCCURVESEGMENT(.CONTINUOUS.,#9,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(15.707963267948966),#11);
+        #20=IFCGRADIENTCURVE((#12),.F.,#7,$);
+        {solid}"
+    )
+}
+
+/// Sweeps that run up to the vertical end mesh finite positions and normals,
+/// and their last ring continues the one before: the evaluated tangent there
+/// is the unit vertical, and Axis1 keeps the previous station's horizontal
+/// normal. Before, the tangent was inf / inf and the rings were NaN (PR #9969
+/// review).
+#[test]
+fn sweeps_up_to_a_vertical_profile_end_stay_finite_and_continuous() {
+    let source = vertical_end("#30=IFCSWEPTDISKSOLID(#20,0.05,$,$,$);");
+    let mut decoder = EntityDecoder::new(&source);
+    let entity = decoder.decode_by_id(30).unwrap();
+    let mesh = SweptDiskSolidProcessor::new(IfcSchema::new())
+        .lower(&entity, &mut decoder, TessellationQuality::Medium)
+        .unwrap()
+        .unwrap()
+        .evaluate();
+    assert!(mesh.normals.iter().all(|c| c.is_finite()), "non-finite disk normal");
+    // One ring per directrix sample; the first ring is the vertices at the
+    // disk radius from the first sample.
+    let directrix = decoder.decode_by_id(20).unwrap();
+    let samples = crate::profiles::ProfileProcessor::new(IfcSchema::new())
+        .get_directrix_points(&directrix, &mut decoder, None, None, TessellationQuality::Medium)
+        .unwrap();
+    let top = samples.last().unwrap();
+    assert!((top.z - 110.0).abs() < 1e-9 && (top.y - 10.0).abs() < 1e-9, "{top:?}");
+    let first = samples[0];
+    let segments = mesh
+        .positions
+        .chunks_exact(3)
+        .take_while(|p| ((p[0] as f64 - first.x).hypot(p[1] as f64 - first.y).hypot(p[2] as f64 - first.z) - 0.05).abs() < 1e-4)
+        .count();
+    assert!(segments >= 8, "{segments} vertices in the first ring");
+    assert_rings_continuous(&mesh.positions, segments, samples.len());
+
+    let source = vertical_end(
+        "#14=IFCCIRCLEPROFILEDEF(.AREA.,$,$,0.05);
+        #15=IFCDIRECTION((0.,0.,1.));
+        #30=IFCFIXEDREFERENCESWEPTAREASOLID(#14,$,#20,$,$,#15);",
+    );
+    let mut decoder = EntityDecoder::new(&source);
+    let entity = decoder.decode_by_id(30).unwrap();
+    let round = SurfaceCurveSweptAreaSolidProcessor::new(IfcSchema::new())
+        .lower(&entity, &mut decoder, TessellationQuality::Medium)
+        .unwrap()
+        .unwrap();
+    let mesh = round.evaluate().unwrap();
+    assert!(mesh.normals.iter().all(|c| c.is_finite()), "non-finite sweep normal");
+    assert_rings_continuous(&mesh.positions, round.regions[0].outer.len(), round.points.len());
+}

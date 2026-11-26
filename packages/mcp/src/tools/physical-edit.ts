@@ -8,6 +8,7 @@ import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import type { Tool } from './types.js';
 import type { JsonSchema } from '../protocol/index.js';
 import { okResult, resolveModel } from './util.js';
+import { EDIT } from './annotations.js';
 
 const xy = { type: 'array', items: { type: 'number' }, minItems: 2, maxItems: 2 };
 const xyz = { ...xy, minItems: 3, maxItems: 3 };
@@ -17,7 +18,7 @@ const variant = (properties: Record<string, JsonSchema>, required: string[]): Js
 
 /** #6232 D5: commands plan and write through the viewer's canonical physical cores. */
 export const physicalEditTool: Tool = {
-  name: 'edit_element_geometry', scope: 'mutate',
+  name: 'edit_element_geometry', scope: 'mutate', title: 'Edit element geometry', annotations: EDIT,
   description: 'Align native mesh edges or centres, move/rotate a selection, change extrusion/profile dimensions, move wall endpoints, split a selection or trim/extend an axis. Coordinates are IFC storey-local metres; rotation is radians. Supported-source predicates, hosted cuts, wall joins, identity policy and atomic refusals match the viewer. One mutation_undo restores the whole operation. Shared writable source geometry is refused when editing it would alter an unrelated occurrence.',
   inputSchema: {
     type: 'object', properties: {

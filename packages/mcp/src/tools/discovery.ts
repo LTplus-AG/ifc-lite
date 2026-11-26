@@ -26,9 +26,10 @@ import { loadIfcModel } from '../loader.js';
 import { resolveSafePath } from '../safe-path.js';
 import { modelAllowed } from '../auth/scope.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
+import { DESTRUCTIVE, EDIT, READ_ONLY } from './annotations.js';
 
 export const modelInfo: Tool = {
-  name: 'model_info',
+  name: 'model_info', title: 'Model info', annotations: READ_ONLY,
   description: 'Return schema, entity counts, file metadata, georeferencing, and units for the active (or named) model.',
   scope: 'read',
   inputSchema: {
@@ -79,7 +80,7 @@ export const modelInfo: Tool = {
 };
 
 export const modelList: Tool = {
-  name: 'model_list',
+  name: 'model_list', title: 'List loaded models', annotations: READ_ONLY,
   description: 'List all currently loaded models with metadata.',
   scope: 'read',
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
@@ -115,7 +116,7 @@ export const modelList: Tool = {
 };
 
 export const modelLoad: Tool = {
-  name: 'model_load',
+  name: 'model_load', title: 'Load IFC model', annotations: EDIT,
   description: 'Load an IFC file from disk into the session. Requires `mutate` scope. The path must be inside the configured allowedPaths roots (when set).',
   scope: 'mutate',
   inputSchema: {
@@ -163,7 +164,7 @@ export const modelLoad: Tool = {
 };
 
 export const modelUnload: Tool = {
-  name: 'model_unload',
+  name: 'model_unload', title: 'Unload model', annotations: DESTRUCTIVE,
   description: 'Drop a model from session memory.',
   scope: 'mutate',
   inputSchema: {
@@ -227,7 +228,7 @@ function inheritanceChainRootToLeaf(type: string): string[] {
 }
 
 export const schemaDescribe: Tool = {
-  name: 'schema_describe',
+  name: 'schema_describe', title: 'Describe IFC entity type', annotations: READ_ONLY,
   description: 'Describe an IFC entity type: attributes, parents, inheritance chain. Useful for an agent to know the legal shape before mutating. '
     + 'Classes outside the IFC4_ADD2_TC1 codegen pin (IFC2X3-only and IFC4X3-only ones) are answered from the bundled schema union, '
     + 'which carries names but not attribute types — `schemaSource` says which table answered.',

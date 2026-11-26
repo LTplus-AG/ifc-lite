@@ -17,6 +17,7 @@ import type { ToolContext } from '../context.js';
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
 import { storeyAddInput } from './storey-add-input.js';
+import { DESTRUCTIVE, EDIT, EDIT_IDEMPOTENT, READ_ONLY } from './annotations.js';
 
 const modelId: JsonSchema = { type: 'string', description: 'Required when multiple models are loaded.' };
 const storeyId: JsonSchema = { type: 'integer', minimum: 1, description: 'IfcBuildingStorey express id.' };
@@ -45,7 +46,7 @@ function store(ctx: ToolContext, input: Record<string, unknown>) {
 }
 
 const storeyList: Tool = {
-  name: 'storey_list',
+  name: 'storey_list', title: 'List storeys', annotations: READ_ONLY,
   description: 'List the live storeys of a model, highest first: express id, GlobalId, Name, elevation (m), floor-to-floor height to the storey above (m, null for the top storey) and element count.',
   scope: 'read',
   inputSchema: { type: 'object', properties: { model_id: modelId }, additionalProperties: false },
@@ -57,7 +58,7 @@ const storeyList: Tool = {
 };
 
 const storeyAdd: Tool = {
-  name: 'storey_add',
+  name: 'storey_add', title: 'Add storey', annotations: EDIT,
   description: 'Add an IfcBuildingStorey, aggregated under the building and placed like its neighbours. '
     + 'Give Name and Elevation, or a reference storey and side to take the neighbours\' naming and spacing. One mutation_undo removes it.',
   scope: 'mutate',
@@ -79,7 +80,7 @@ const storeyAdd: Tool = {
 };
 
 const storeyRename: Tool = {
-  name: 'storey_rename',
+  name: 'storey_rename', title: 'Rename storey', annotations: EDIT_IDEMPOTENT,
   description: 'Rename a storey (IfcRoot.Name). One mutation_undo reverts it.',
   scope: 'mutate',
   inputSchema: { type: 'object', properties: { model_id: modelId, storey_express_id: storeyId, Name: { type: 'string', minLength: 1 } }, required: ['storey_express_id', 'Name'], additionalProperties: false },
@@ -93,7 +94,7 @@ const storeyRename: Tool = {
 };
 
 const storeyPlanEdit: Tool = {
-  name: 'storey_plan_edit',
+  name: 'storey_plan_edit', title: 'Preview storey edit', annotations: READ_ONLY,
   description: 'Dry run of storey_edit: which storeys and elements would move, which attached walls resize and which stairs refit, '
     + 'plus every refusal (zero spacing, crossing a neighbour, no valid stair flight, shared placements) and notices for elements left as they are. Writes nothing.',
   scope: 'read',
@@ -112,7 +113,7 @@ const storeyPlanEdit: Tool = {
 };
 
 const storeyEdit: Tool = {
-  name: 'storey_edit',
+  name: 'storey_edit', title: 'Edit storey elevation', annotations: EDIT,
   description: 'Re-level a storey: `elevation` moves that storey only, `floor_height` shifts every storey above by the same amount. '
     + 'Contents move with their storey through real placement writes; walls attached to the storey above resize and stairs refit. '
     + 'Refused (nothing written) when storey_plan_edit reports a refusal. One mutation_undo reverts the whole edit.',
@@ -128,7 +129,7 @@ const storeyEdit: Tool = {
 };
 
 const storeyDelete: Tool = {
-  name: 'storey_delete',
+  name: 'storey_delete', title: 'Delete storey', annotations: DESTRUCTIVE,
   description: 'Delete a storey without orphaning elements: `empty` (refused while it holds elements), `move` its contents to target_storey_express_id '
     + '(same identities and world positions), or `delete_contents`. A model keeps at least one storey. One mutation_undo restores it.',
   scope: 'mutate',

@@ -9,8 +9,7 @@
 
 import { initDiff } from '@ifc-lite/diff';
 import { randomUUID } from 'node:crypto';
-import { computeStackHash, getProvenance } from '@ifc-lite/ifcx';
-import type { IfcxFile } from '@ifc-lite/ifcx';
+import { computeStackHash, getProvenance, type IfcxFile } from '@ifc-lite/ifcx';
 import { parseScopeClaims } from '@ifc-lite/extensions';
 import { diffStackStates, extractStackState, planThreeWayMerge } from '@ifc-lite/merge';
 import type { MergePlan } from '@ifc-lite/merge';
@@ -29,6 +28,7 @@ import {
 import { requireOwnedReview, requireReview, visibleDraftIds } from './layer-access.js';
 import type { LayerReview, LayerWorkspace, ReviewDecision, ReviewStatus } from './layer-store.js';
 import { publishDraftFile } from './layer.js';
+import { EDIT, READ_ONLY } from './annotations.js';
 
 interface ResolvedCandidate {
   /** Files composing the candidate's full state (base + delta). */
@@ -122,7 +122,7 @@ function conflictsJson(plan: MergePlan): Array<{ kind: string; path: string; com
 }
 
 const diffLayer: Tool = {
-  name: 'diff_layer',
+  name: 'diff_layer', title: 'Diff layer', annotations: READ_ONLY,
   description:
     'Structured diff of a draft or published layer against a ref, layer, or draft ' +
     '(defaults to the candidate\'s own base). Same JSON shape the review UI consumes.',
@@ -158,7 +158,7 @@ const diffLayer: Tool = {
 };
 
 const dryRunMerge: Tool = {
-  name: 'dry_run_merge',
+  name: 'dry_run_merge', title: 'Preview merge', annotations: READ_ONLY,
   description:
     'Preview merging a draft or layer into a ref: MergePlan conflicts and auto-op count. No side effects.',
   scope: 'read',
@@ -182,7 +182,7 @@ const dryRunMerge: Tool = {
 };
 
 const listConflicts: Tool = {
-  name: 'list_conflicts',
+  name: 'list_conflicts', title: 'List merge conflicts', annotations: READ_ONLY,
   description: 'Conflict records a merge of the candidate into the ref would produce. No side effects.',
   scope: 'read',
   inputSchema: {
@@ -205,7 +205,7 @@ const listConflicts: Tool = {
 };
 
 const requestReview: Tool = {
-  name: 'request_review',
+  name: 'request_review', title: 'Request review', annotations: EDIT,
   description: 'Open a review (the PR object) proposing a published layer for merge into a ref.',
   scope: 'mutate',
   inputSchema: {
@@ -259,7 +259,7 @@ interface DecisionInput {
 }
 
 const addReviewFeedback: Tool = {
-  name: 'add_review_feedback',
+  name: 'add_review_feedback', title: 'Add review feedback', annotations: EDIT,
   description: 'Record per-entity reviewer decisions (and optionally a status change) on an open review.',
   scope: 'mutate',
   inputSchema: {
@@ -319,7 +319,7 @@ const addReviewFeedback: Tool = {
 };
 
 const getReviewFeedback: Tool = {
-  name: 'get_review_feedback',
+  name: 'get_review_feedback', title: 'Get review feedback', annotations: READ_ONLY,
   description: 'Read a review\'s status and per-entity decisions, structured for the agent to act on.',
   scope: 'read',
   inputSchema: {
@@ -361,7 +361,7 @@ const getReviewFeedback: Tool = {
 };
 
 const addReviewTopic: Tool = {
-  name: 'add_review_topic',
+  name: 'add_review_topic', title: 'Add review topic', annotations: EDIT,
   description:
     'Attach a review comment as a BCF-shaped topic bound to (review, entity, componentKey?) — 08-review.md §8.6.',
   scope: 'mutate',
@@ -405,7 +405,7 @@ const addReviewTopic: Tool = {
 };
 
 const respondToReview: Tool = {
-  name: 'respond_to_review',
+  name: 'respond_to_review', title: 'Respond to review', annotations: EDIT,
   description:
     'Open a follow-up draft on the reviewed layer\'s base so the agent can address feedback; ' +
     'the draft is recorded as a response on the review.',

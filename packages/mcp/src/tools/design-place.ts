@@ -8,6 +8,7 @@ import type { JsonSchema } from '../protocol/index.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
+import { EDIT } from './annotations.js';
 
 const point = (dimensions: number): JsonSchema => ({ type: 'array', items: { type: 'number' }, minItems: dimensions, maxItems: dimensions });
 const metadata: Record<string, JsonSchema> = {
@@ -49,7 +50,7 @@ const schemas: Record<'curtain_wall' | 'grid' | 'grid_column', JsonSchema> = {
 function designTool(kind: keyof typeof schemas): Tool {
   const type = kind === 'curtain_wall' ? 'IfcCurtainWall' : kind === 'grid' ? 'IfcGrid' : 'IfcColumn';
   return {
-    name: `place_${kind}`,
+    name: `place_${kind}`, title: `Place ${kind.replace('_', ' ')}`, annotations: EDIT,
     description: `Create ${type} on a loaded storey through the Model workspace/SDK builder. `
       + 'All lengths are metres in the storey frame; grid axes are in the grid frame. '
       + 'Grid columns require actual model-local grid/axis references and a position matching their live crossing. '

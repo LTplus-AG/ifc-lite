@@ -25,9 +25,10 @@ import type { ToolContext } from '../context.js';
 import { buildIdsAccessor } from './ids-accessor.js';
 import { nativeReviewModel, reviewCaptures, reviewAccess } from './review-captures.js';
 import { buildDropCensusIssues, dropCensusJson } from './drop-census-issues.js';
+import { READ_ONLY } from './annotations.js';
 
 export const idsValidate = {
-  name: 'ids_validate',
+  name: 'ids_validate', title: 'Validate against IDS', annotations: READ_ONLY,
   description: 'Run an IDS rule set against the model. Either pass `ids_xml` inline or `ids_path` to read from disk.',
   scope: 'validate',
   inputSchema: {
@@ -142,7 +143,7 @@ function summarizeIdsReport(report: IDSValidationReport): {
 }
 
 const idsExplain: Tool = {
-  name: 'ids_explain',
+  name: 'ids_explain', title: 'Explain IDS specification', annotations: READ_ONLY,
   description: 'Produce a natural-language explanation of a single IDS specification (applicability + requirements).',
   scope: 'read',
   inputSchema: {
@@ -177,7 +178,7 @@ const idsExplain: Tool = {
 };
 
 const modelAudit: Tool = {
-  name: 'model_audit',
+  name: 'model_audit', title: 'Model health audit', annotations: READ_ONLY,
   description: 'Comprehensive model health check: required entities, GlobalId uniqueness, orphan detection, naming conventions, broken relationships. Returns Lighthouse-style scores per category.',
   scope: 'validate',
   inputSchema: {
@@ -331,7 +332,7 @@ function clamp(v: number): number {
 }
 
 const gherkinCheck: Tool = {
-  name: 'gherkin_check',
+  name: 'gherkin_check', title: 'Gherkin rule check', annotations: READ_ONLY,
   description: 'Run buildingSMART Gherkin validation rules. Not implemented in v0.1.',
   scope: 'validate',
   inputSchema: {

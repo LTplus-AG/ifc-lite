@@ -518,15 +518,12 @@ export class MCPServer {
 }
 
 function toToolDefinition(tool: Omit<ToolDefinition, 'scope'> & { scope?: string }): ToolDefinition {
-  return {
-    name: tool.name,
-    ...(tool.title !== undefined ? { title: tool.title } : {}),
-    description: tool.description,
-    inputSchema: advertisedInputSchema(tool.inputSchema),
-    scope: tool.scope as ToolDefinition['scope'],
-    ...(tool.annotations !== undefined ? { annotations: tool.annotations } : {}),
-    ...(tool._meta !== undefined ? { _meta: tool._meta } : {}),
-  };
+  const def: ToolDefinition = { name: tool.name, description: tool.description, inputSchema: advertisedInputSchema(tool.inputSchema), scope: tool.scope as ToolDefinition['scope'] };
+  // Optional fields are copied only when set, so `tools/list` carries no `"title": undefined` keys.
+  for (const key of ['title', 'outputSchema', 'icons', 'annotations', '_meta'] as const) {
+    if (tool[key] !== undefined) Object.assign(def, { [key]: tool[key] });
+  }
+  return def;
 }
 
 const SERVER_INSTRUCTIONS = `

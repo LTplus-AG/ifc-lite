@@ -221,3 +221,61 @@ describe('validateInput reads own properties only (#9523 review of PR #9905)', (
     expect((value as { polluted?: unknown }).polluted).toBeUndefined();
   });
 });
+
+// oneOf / $ref / const / pattern / uniqueItems / additionalProperties schemas
+// were silently unchecked before (ids_apply_ops carried 41 KB of them).
+describe('validateInput: 2020-12 keywords beyond the original subset', () => {
+  const union = {
+    type: 'object',
+    properties: { op: { $ref: '#/$defs/Op' } },
+    $defs: {
+      Op: { oneOf: [{ $ref: '#/$defs/Add' }, { $ref: '#/$defs/Remove' }] },
+      Add: { type: 'object', properties: { kind: { const: 'add' }, name: { type: 'string', minLength: 1 } }, required: ['kind', 'name'], additionalProperties: false },
+      Remove: { type: 'object', properties: { kind: { const: 'remove' }, id: { $ref: '#/$defs/Id' } }, required: ['kind', 'id'], additionalProperties: false },
+      Id: { type: 'string', pattern: '^[0-9a-f]{4}$' },
+    },
+  };
+
+  it('resolves $ref into $defs and accepts the one matching oneOf branch', () => {
+    expect(validateInput(union, { op: { kind: 'add', name: 'x' } }).valid).toBe(true);
+    expect(validateInput(union, { op: { kind: 'remove', id: 'ab12' } }).valid).toBe(true);
+  });
+
+  it('reports only the branch whose discriminator matched', () => {
+    const r = validateInput(union, { op: { kind: 'remove', id: 'nope' } });
+    expect(r.valid).toBe(false);
+    expect(r.errors).toHaveLength(1);
+    expect(r.errors[0].message).toContain('$.op.id: Does not match pattern');
+    expect(r.errors[0].message).not.toContain('Expected constant');
+  });
+
+  it('rejects an input that matches no branch, and one that matches two', () => {
+    expect(validateInput(union, { op: { kind: 'explode' } }).valid).toBe(false);
+    const both = { oneOf: [{ type: 'string' }, { type: 'string', minLength: 1 }] };
+    const r = validateInput({ type: 'object', properties: { v: both } }, { v: 'x' });
+    expect(r.valid).toBe(false);
+    expect(r.errors[0].message).toContain('it matches 2');
+  });
+
+  it('compares const and enum structurally', () => {
+    const schema = { type: 'object', properties: { v: { const: { a: 1, b: [2] } } } };
+    expect(validateInput(schema, { v: { b: [2], a: 1 } }).valid).toBe(true);
+    expect(validateInput(schema, { v: { a: 1, b: [3] } }).valid).toBe(false);
+  });
+
+  it('rejects duplicate items under uniqueItems', () => {
+    const schema = { type: 'object', properties: { ids: { type: 'array', uniqueItems: true } } };
+    const r = validateInput(schema, { ids: [1, 2, 1] });
+    expect(r.errors).toEqual([{ path: '$.ids[2]', message: 'Duplicate array item' }]);
+  });
+
+  it('checks extra keys against an additionalProperties schema', () => {
+    const schema = { type: 'object', properties: { a: { type: 'string' } }, additionalProperties: { type: 'number' } };
+    expect(validateInput(schema, { a: 'x', b: 1 }).valid).toBe(true);
+    expect(validateInput(schema, { a: 'x', b: 'y' }).errors[0].path).toBe('$.b');
+  });
+
+  it('throws on a $ref that points nowhere instead of skipping the check', () => {
+    expect(() => validateInput({ $ref: '#/$defs/Missing' }, {})).toThrow(/Unresolvable \$ref/);
+  });
+});

@@ -29,6 +29,7 @@ import { findByGlobalId, okResult, resolveGlobalIds, resolveModel } from './util
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { expandAssemblyRefs } from './viewer-assembly-expansion.js';
 import { formatMaterialsBlock } from './material-summary.js';
+import { READ_ONLY, VIEWER_DISPLAY } from './annotations.js';
 
 function requireViewer(ctx: ToolContext): ViewerManager {
   if (!ctx.viewer) throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: 'No viewer manager attached.' });
@@ -49,10 +50,6 @@ function refsForGlobalIds(m: ReturnType<typeof resolveModel>, gids: string[]): E
   return refs;
 }
 
-function refsForExpressIds(m: ReturnType<typeof resolveModel>, eids: number[]): EntityRef[] {
-  return eids.map((expressId) => ({ modelId: m.id, expressId }));
-}
-
 /**
  * The ids a viewer tool acts on, given its selector input -- assemblies
  * already expanded (#3338). Expansion lives HERE, not at each tool, so a tool
@@ -64,7 +61,7 @@ function refsForExpressIds(m: ReturnType<typeof resolveModel>, eids: number[]): 
 function resolveTargetRefs(m: ReturnType<typeof resolveModel>, input: Record<string, unknown>): EntityRef[] {
   const refs: EntityRef[] = [];
   if (Array.isArray(input.global_ids)) refs.push(...refsForGlobalIds(m, input.global_ids as string[]));
-  if (Array.isArray(input.express_ids)) refs.push(...refsForExpressIds(m, input.express_ids as number[]));
+  if (Array.isArray(input.express_ids)) refs.push(...(input.express_ids as number[]).map((expressId) => ({ modelId: m.id, expressId })));
   if (typeof input.global_id === 'string') refs.push(...refsForGlobalIds(m, [input.global_id]));
   if (typeof input.express_id === 'number') refs.push({ modelId: m.id, expressId: input.express_id });
   if (typeof input.type === 'string') {
@@ -110,7 +107,7 @@ function parseColor(input: unknown): [number, number, number, number] {
 // ── open / close / status ─────────────────────────────────────────────────
 
 const viewerOpen: Tool = {
-  name: 'viewer_open',
+  name: 'viewer_open', title: 'Open viewer', annotations: VIEWER_DISPLAY,
   description: 'Boot the in-process WebGL viewer for a model. Returns the URL to open in a browser. Idempotent for the same model.',
   scope: 'read',
   inputSchema: {
@@ -139,7 +136,7 @@ const viewerOpen: Tool = {
 };
 
 const viewerClose: Tool = {
-  name: 'viewer_close',
+  name: 'viewer_close', title: 'Close viewer', annotations: VIEWER_DISPLAY,
   description: 'Stop the in-process viewer and clear its selection state.',
   scope: 'read',
   inputSchema: { type: 'object', additionalProperties: false },
@@ -154,7 +151,7 @@ const viewerClose: Tool = {
 };
 
 const viewerStatus: Tool = {
-  name: 'viewer_status',
+  name: 'viewer_status', title: 'Viewer status', annotations: READ_ONLY,
   description: 'Report whether the viewer is open, on what port, and the current selection.',
   scope: 'read',
   inputSchema: { type: 'object', additionalProperties: false },
@@ -185,7 +182,7 @@ const TARGET_SELECTOR_PROPS = {
 } as const;
 
 const viewerColorize: Tool = {
-  name: 'viewer_colorize',
+  name: 'viewer_colorize', title: 'Colorize entities', annotations: VIEWER_DISPLAY,
   description: 'Paint a set of entities with a color. Pass `type`, `global_ids`, or `express_ids` to pick the set; pass `color` as [r,g,b]/[r,g,b,a] (0–1), a #hex, or a named color.',
   scope: 'read',
   inputSchema: {
@@ -212,7 +209,7 @@ const viewerColorize: Tool = {
 };
 
 const viewerIsolate: Tool = {
-  name: 'viewer_isolate',
+  name: 'viewer_isolate', title: 'Isolate entities', annotations: VIEWER_DISPLAY,
   description: 'Hide everything except the listed entities. Great for "show me only the load-bearing walls".',
   scope: 'read',
   inputSchema: {
@@ -234,7 +231,7 @@ const viewerIsolate: Tool = {
 };
 
 const viewerHide: Tool = {
-  name: 'viewer_hide',
+  name: 'viewer_hide', title: 'Hide entities', annotations: VIEWER_DISPLAY,
   description: 'Hide a set of entities in the viewer.',
   scope: 'read',
   inputSchema: {
@@ -255,7 +252,7 @@ const viewerHide: Tool = {
 };
 
 const viewerShow: Tool = {
-  name: 'viewer_show',
+  name: 'viewer_show', title: 'Show entities', annotations: VIEWER_DISPLAY,
   description: 'Make a set of entities visible (un-hide).',
   scope: 'read',
   inputSchema: {
@@ -276,7 +273,7 @@ const viewerShow: Tool = {
 };
 
 const viewerReset: Tool = {
-  name: 'viewer_reset',
+  name: 'viewer_reset', title: 'Reset viewer', annotations: VIEWER_DISPLAY,
   description: 'Reset visibility (show all) and clear all per-element color overrides.',
   scope: 'read',
   inputSchema: { type: 'object', properties: { model_id: { type: 'string' } }, additionalProperties: false },
@@ -291,7 +288,7 @@ const viewerReset: Tool = {
 };
 
 const viewerFlyTo: Tool = {
-  name: 'viewer_fly_to',
+  name: 'viewer_fly_to', title: 'Fly to entities', annotations: VIEWER_DISPLAY,
   description: 'Animate the camera to frame the listed entities.',
   scope: 'read',
   inputSchema: {
@@ -315,7 +312,7 @@ const viewerFlyTo: Tool = {
 // ── section ───────────────────────────────────────────────────────────────
 
 const viewerSetSection: Tool = {
-  name: 'viewer_set_section',
+  name: 'viewer_set_section', title: 'Set section plane', annotations: VIEWER_DISPLAY,
   description: 'Apply a section plane to the viewer.',
   scope: 'read',
   inputSchema: {
@@ -340,7 +337,7 @@ const viewerSetSection: Tool = {
 };
 
 const viewerClearSection: Tool = {
-  name: 'viewer_clear_section',
+  name: 'viewer_clear_section', title: 'Clear section plane', annotations: VIEWER_DISPLAY,
   description: 'Remove the active section plane.',
   scope: 'read',
   inputSchema: { type: 'object', additionalProperties: false },
@@ -355,7 +352,7 @@ const viewerClearSection: Tool = {
 // ── color helpers ─────────────────────────────────────────────────────────
 
 const viewerColorByStorey: Tool = {
-  name: 'viewer_color_by_storey',
+  name: 'viewer_color_by_storey', title: 'Color by storey', annotations: VIEWER_DISPLAY,
   description: 'Apply a default per-storey color overlay (built-in viewer preset).',
   scope: 'read',
   inputSchema: { type: 'object', additionalProperties: false },
@@ -374,7 +371,7 @@ const PALETTE: [number, number, number, number][] = [
 ];
 
 const viewerColorByProperty: Tool = {
-  name: 'viewer_color_by_property',
+  name: 'viewer_color_by_property', title: 'Color by property', annotations: VIEWER_DISPLAY,
   description: 'Color a type set by the value of a property — distinct color per unique value, plus a "missing" group. Returns the legend so the agent can describe what colors mean.',
   scope: 'read',
   inputSchema: {
@@ -560,7 +557,7 @@ function buildSelectionPayload(
 }
 
 const viewerGetSelection: Tool = {
-  name: 'viewer_get_selection',
+  name: 'viewer_get_selection', title: 'Get viewer selection', annotations: READ_ONLY,
   description: 'Return what the user has clicked in the viewer. Both the human-readable text content and the structured payload include type, expressId, globalId, name, description, and any of the optional sections in `include` (default: attributes + classifications + materials).',
   scope: 'read',
   inputSchema: {
@@ -585,7 +582,7 @@ const viewerGetSelection: Tool = {
 };
 
 const viewerDescribeSelection: Tool = {
-  name: 'viewer_describe_selection',
+  name: 'viewer_describe_selection', title: 'Describe viewer selection', annotations: READ_ONLY,
   description: 'Like viewer_get_selection but always pulls the full kitchen sink — attributes, properties, quantities, classifications, materials. Use this when the user asks "tell me everything about what I just clicked".',
   scope: 'read',
   inputSchema: { type: 'object', additionalProperties: false },
@@ -597,7 +594,7 @@ const viewerDescribeSelection: Tool = {
 };
 
 const viewerWaitForSelection: Tool = {
-  name: 'viewer_wait_for_selection',
+  name: 'viewer_wait_for_selection', title: 'Wait for viewer selection', annotations: READ_ONLY,
   description: 'Block until the user picks an entity in the viewer (or `timeout_ms` elapses). Useful for "click on the wall you want me to inspect" workflows. Returns the same rich payload as viewer_get_selection.',
   scope: 'read',
   inputSchema: {
@@ -649,7 +646,7 @@ const viewerWaitForSelection: Tool = {
 // ── elicitation-style ask ─────────────────────────────────────────────────
 
 const viewerAsk: Tool = {
-  name: 'viewer_ask',
+  name: 'viewer_ask', title: 'Ask to open viewer', annotations: READ_ONLY,
   description: 'Inform the user that the agent would like to open the viewer for visual context. Returns guidance for the agent. The agent is expected to relay this to the user, then call `viewer_open` once they confirm.',
   scope: 'read',
   inputSchema: {

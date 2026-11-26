@@ -7,6 +7,7 @@ import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
 import { storeyAddInput } from './storey-add-input.js';
+import { EDIT, EDIT_IDEMPOTENT, READ_ONLY } from './annotations.js';
 
 const id: JsonSchema = { type: 'integer', minimum: 1 };
 const modelId: JsonSchema = { type: 'string', description: 'Required when multiple models are loaded.' };
@@ -22,8 +23,8 @@ const invalid = (error: unknown): never => {
 /** The same SDK plans and writes as storey authoring, exposed without raw STEP edits (#9352). */
 export const storeyFollowUpTools: Tool[] = [
   {
-    name: 'storey_plan_add', scope: 'read',
-    description: 'Dry run of adding a storey: refusal, relative top bindings and elements that cannot resize. Writes nothing. Accepts Name and Elevation, or a reference storey and side as storey_add does. Elevation is metres.',
+    name: 'storey_plan_add', scope: 'read', title: 'Preview storey add', annotations: READ_ONLY,
+    description: 'Preview storey_add without writing anything (read-only dry run despite the name): the refusal, relative top bindings and elements that cannot resize. Call storey_add to apply. Accepts Name and Elevation, or a reference storey and side as storey_add does. Elevation is metres.',
     inputSchema: { type: 'object', properties: {
       model_id: modelId, Name: { type: 'string', minLength: 1 }, Elevation: { type: 'number' },
       Description: { type: 'string' }, LongName: { type: 'string' }, GlobalId: { type: 'string' },
@@ -39,7 +40,7 @@ export const storeyFollowUpTools: Tool[] = [
     },
   },
   {
-    name: 'set_top_constraint', scope: 'mutate',
+    name: 'set_top_constraint', scope: 'mutate', title: 'Set top constraint', annotations: EDIT_IDEMPOTENT,
     description: 'Fit an element top to the next storey, an explicit storey, a slab underside, a roof underside (walls), or make it fixed. The constraint has the SDK shape. One mutation_undo reverts placement, geometry and attachment together.',
     inputSchema: { type: 'object', properties: {
       model_id: modelId, express_id: id, constraint: { anyOf: [constraint('fixed'), constraint('storeyAbove'),
@@ -54,7 +55,7 @@ export const storeyFollowUpTools: Tool[] = [
     },
   },
   {
-    name: 'copy_to_storeys', scope: 'mutate',
+    name: 'copy_to_storeys', scope: 'mutate', title: 'Copy to storeys', annotations: EDIT,
     description: 'Copy selected products to each target storey, carrying their hosted children and rebinding relative tops. Returns selected copies and unattached-top notices per storey. One mutation_undo removes the whole operation.',
     inputSchema: { type: 'object', properties: { model_id: modelId, express_ids: ids, storey_express_ids: ids },
       required: ['express_ids', 'storey_express_ids'], additionalProperties: false },

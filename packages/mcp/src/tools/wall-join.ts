@@ -7,9 +7,10 @@ import type { WallJoinApplyOptions } from '@ifc-lite/create';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
+import { EDIT } from './annotations.js';
 
 export const joinWallsTool: Tool = {
-  name: 'join_walls',
+  name: 'join_walls', title: 'Join walls', annotations: EDIT,
   description: 'Join two straight walls in the same placement frame through IfcRelConnectsPathElements. Uses the Model workspace and SDK core, rewrites bodies and axes atomically, and refuses unreadable or stranded hosted openings. One mutation_undo restores the earlier complete graph.',
   scope: 'mutate',
   inputSchema: {

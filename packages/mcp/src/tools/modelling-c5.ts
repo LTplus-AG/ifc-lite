@@ -5,6 +5,7 @@ import type { ClassificationInStoreParams, MirrorElementsParams } from '@ifc-lit
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
+import { EDIT, EDIT_IDEMPOTENT } from './annotations.js';
 const modelId = { type: 'string', description: 'Required when several models are loaded.' };
 const ids = { type: 'array', items: { type: 'integer', minimum: 1 }, minItems: 1, maxItems: 10000 };
 const point = { type: 'array', items: { type: 'number' }, minItems: 2, maxItems: 2 };
@@ -15,13 +16,13 @@ function invoke(input: Record<string, unknown>, ctx: Parameters<Tool['handler']>
 }
 export const modellingC5Tools: Tool[] = [
   {
-    name: 'mirror_elements', scope: 'mutate',
+    name: 'mirror_elements', scope: 'mutate', title: 'Mirror elements', annotations: EDIT,
     description: 'Mirror upright products about a storey-local XY axis line in metres, in place or as copies. Hosted openings stay hosted; door handedness flips. Grids are refused atomically.',
     inputSchema: { type: 'object', properties: { model_id: modelId, express_ids: ids, axis: { type: 'array', items: point, minItems: 2, maxItems: 2 }, copy: { type: 'boolean' } }, required: ['express_ids', 'axis'], additionalProperties: false },
     handler: (input, ctx) => invoke(input, ctx, model => model.bim.store.mirrorElements(model.id, input.express_ids as number[], { axis: input.axis as MirrorElementsParams['axis'], copy: input.copy as boolean | undefined })),
   },
   {
-    name: 'add_classification', scope: 'mutate',
+    name: 'add_classification', scope: 'mutate', title: 'Add classification', annotations: EDIT_IDEMPOTENT,
     description: 'Create or reuse an IfcClassification system and reference. Optionally associate objects with the reference, retaining their other classifications.',
     inputSchema: { type: 'object', properties: { model_id: modelId, System: { type: 'string', minLength: 1 }, Identification: { type: 'string', minLength: 1 }, Name: { type: 'string' }, Source: { type: 'string' }, Edition: { type: 'string' }, Location: { type: 'string' }, objects: ids }, required: ['System', 'Identification'], additionalProperties: false },
     handler: (input, ctx) => invoke(input, ctx, model => {
@@ -30,7 +31,7 @@ export const modellingC5Tools: Tool[] = [
     }),
   },
   {
-    name: 'assign_classification', scope: 'mutate',
+    name: 'assign_classification', scope: 'mutate', title: 'Assign classification', annotations: EDIT_IDEMPOTENT,
     description: 'Associate live objects with an existing IfcClassification or IfcClassificationReference. Extends the existing relationship without duplicates.',
     inputSchema: { type: 'object', properties: { model_id: modelId, classification_id: { type: 'integer', minimum: 1 }, objects: ids }, required: ['classification_id', 'objects'], additionalProperties: false },
     handler: (input, ctx) => invoke(input, ctx, model => model.bim.store.assignClassification(model.id, input.classification_id as number, input.objects as number[])),

@@ -28,6 +28,7 @@ import type { Tool } from './types.js';
 import { fmtInt, okResult } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
+import { EDIT, EDIT_IDEMPOTENT, FILE_WRITE, READ_ONLY } from './annotations.js';
 
 // One project per server instance. We keep it on a module-level Map keyed by
 // session — for stdio that's exactly one entry; for HTTP each session gets
@@ -48,7 +49,7 @@ function findTopic(project: BCFProject, guid: string): BCFTopic | null {
 }
 
 const bcfTopicList: Tool = {
-  name: 'bcf_topic_list',
+  name: 'bcf_topic_list', title: 'List BCF topics', annotations: READ_ONLY,
   description: 'List BCF topics in this session, optionally filtered by status.',
   scope: 'read',
   inputSchema: {
@@ -76,7 +77,7 @@ const bcfTopicList: Tool = {
 };
 
 const bcfTopicCreate: Tool = {
-  name: 'bcf_topic_create',
+  name: 'bcf_topic_create', title: 'Create BCF topic', annotations: EDIT,
   description: 'Create a new BCF topic. Returns the GUID for follow-up calls.',
   scope: 'mutate',
   inputSchema: {
@@ -112,7 +113,7 @@ const bcfTopicCreate: Tool = {
 };
 
 const bcfTopicUpdate: Tool = {
-  name: 'bcf_topic_update',
+  name: 'bcf_topic_update', title: 'Update BCF topic', annotations: EDIT,
   description: 'Update topic fields or append a comment.',
   scope: 'mutate',
   inputSchema: {
@@ -145,7 +146,7 @@ const bcfTopicUpdate: Tool = {
 };
 
 const bcfTopicClose: Tool = {
-  name: 'bcf_topic_close',
+  name: 'bcf_topic_close', title: 'Close BCF topic', annotations: EDIT_IDEMPOTENT,
   description: 'Mark a topic resolved (status="Closed").',
   scope: 'mutate',
   inputSchema: {
@@ -169,7 +170,7 @@ const bcfTopicClose: Tool = {
 };
 
 const bcfViewpointCreate: Tool = {
-  name: 'bcf_viewpoint_create',
+  name: 'bcf_viewpoint_create', title: 'Create BCF viewpoint', annotations: EDIT,
   description: 'Attach a viewpoint to a topic. Selection-only viewpoints work without camera state; camera/section require a viewer integration.',
   scope: 'mutate',
   inputSchema: {
@@ -198,7 +199,7 @@ const bcfViewpointCreate: Tool = {
 };
 
 const bcfExport: Tool = {
-  name: 'bcf_export',
+  name: 'bcf_export', title: 'Export BCF', annotations: FILE_WRITE,
   description: 'Export the in-memory BCF project as a .bcfzip file.',
   scope: 'export',
   inputSchema: {

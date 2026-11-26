@@ -14,6 +14,7 @@ import { createGateContext, describeEntity, describePset, searchSchema, type Sch
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import type { Tool } from './types.js';
 import { okResult } from './util.js';
+import { READ_ONLY } from './annotations.js';
 
 const VERSION = {
   type: 'string',
@@ -23,7 +24,7 @@ const VERSION = {
 } as const;
 
 const idsSchemaSearch: Tool = {
-  name: 'ids_schema_search',
+  name: 'ids_schema_search', title: 'Search IFC schema names', annotations: READ_ONLY,
   description: 'Find IFC entity, property set, property or data type names close to a query (typo-tolerant). Use before writing a name into an IDS facet.',
   scope: 'read',
   inputSchema: {
@@ -49,7 +50,7 @@ const idsSchemaSearch: Tool = {
 };
 
 const idsSchemaEntity: Tool = {
-  name: 'ids_schema_entity',
+  name: 'ids_schema_entity', title: 'IFC entity for IDS', annotations: READ_ONLY,
   description: 'Describe an IFC entity for IDS authoring: supertypes, abstract flag, predefined types, attributes and the standard property sets that apply to it.',
   scope: 'read',
   inputSchema: {
@@ -76,7 +77,7 @@ const idsSchemaEntity: Tool = {
 };
 
 const idsSchemaPset: Tool = {
-  name: 'ids_schema_pset',
+  name: 'ids_schema_pset', title: 'IFC property set', annotations: READ_ONLY,
   description: 'Describe a standard property or quantity set: the entities it applies to and its properties with data types and enumerations.',
   scope: 'read',
   inputSchema: {

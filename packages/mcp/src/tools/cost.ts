@@ -5,11 +5,12 @@
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
+import { READ_ONLY } from './annotations.js';
 
 const modelProperty = { model_id: { type: 'string', description: 'Loaded model id; required when multiple models are loaded.' } } as const;
 
 const costData: Tool = {
-  name: 'cost_data',
+  name: 'cost_data', title: 'Cost data', annotations: READ_ONLY,
   description: 'Read the canonical IFC 5D cost graph from the loaded source snapshot.',
   scope: 'read',
   inputSchema: { type: 'object', properties: modelProperty, additionalProperties: false },
@@ -21,7 +22,7 @@ const costData: Tool = {
 };
 
 const costEvaluate: Tool = {
-  name: 'cost_evaluate',
+  name: 'cost_evaluate', title: 'Evaluate cost', annotations: READ_ONLY,
   description: 'Evaluate one IfcCostItem or IfcCostValue from the loaded source snapshot using decimal arithmetic and return diagnostics.',
   scope: 'read',
   inputSchema: {

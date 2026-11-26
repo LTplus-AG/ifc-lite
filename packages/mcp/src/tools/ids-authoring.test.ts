@@ -76,10 +76,22 @@ describe('MCP ids_apply_ops goes through the grounding gate', () => {
     expect((structured(r).details as { issues: Array<{ code: string }> }).issues[0].code).toBe('GATE-ENT-001');
   });
 
-  it('refuses an op that is not in the vocabulary (validateOp)', async () => {
+  it('refuses an op kind that is not in the vocabulary before the handler runs', async () => {
     const r = await session.call('ids_apply_ops', { ops: [{ kind: 'spec.explode', opId: '00000000-0000-7000-8000-0000000000c1', payload: {} }] });
     expect(r.isError).toBe(true);
-    expect((structured(r).details as { issues: Array<{ code: string }> }).issues[0].code).toBe('GATE-OP-001');
+    expect(structured(r).code).toBe('INVALID_INPUT');
+    const [error] = (structured(r).details as { errors: Array<{ path: string; message: string }> }).errors;
+    expect(error.path).toBe('$.ops[0].kind');
+    expect(error.message).toContain('spec.add');
+  });
+
+  // The advertised `payload` is a plain object; the full per-kind schema is
+  // still enforced by validateOp inside the gate.
+  it('refuses a payload that breaks the full op schema (validateOp)', async () => {
+    const r = await session.call('ids_apply_ops', { ops: [{ kind: 'spec.add', opId: '00000000-0000-7000-8000-0000000000c2', payload: { specId: SPEC, ifcVersions: ['IFC4'] } }] });
+    expect(r.isError).toBe(true);
+    const issues = (structured(r).details as { issues: Array<{ code: string; path: string }> }).issues;
+    expect(issues[0].code).toBe('GATE-OP-001');
   });
 
   it('applies a grounded batch, and the document lints, writes and reads back', async () => {
@@ -159,7 +171,7 @@ describe('MCP ids_schema_* lookups', () => {
 });
 
 describe('tools/list', () => {
-  it('advertises the op JSON Schema on ids_apply_ops', async () => {
+  it('advertises a compact op list instead of the 41 KB op schema', async () => {
     const listed = (await session.transport.send({ jsonrpc: '2.0', id: 999, method: 'tools/list', params: {} })) as {
       result: { tools: Array<{ name: string; inputSchema: Record<string, unknown> }> };
     };
@@ -168,7 +180,10 @@ describe('tools/list', () => {
       expect(names).toContain(n);
     }
     const apply = listed.result.tools.find((t) => t.name === 'ids_apply_ops')!;
-    expect(apply.inputSchema.$defs).toHaveProperty('Op_spec_add');
-    expect(apply.inputSchema).not.toHaveProperty('oneOf');
+    const ops = (apply.inputSchema.properties as Record<string, { items: { properties: Record<string, { enum?: string[]; description?: string }> } }>).ops;
+    expect(ops.items.properties.kind.enum).toContain('facet.add');
+    expect(ops.items.properties.payload.description).toContain('facet.add: specId, section, facetId, facet');
+    expect(JSON.stringify(apply.inputSchema).length).toBeLessThan(8_000);
+
   });
 });

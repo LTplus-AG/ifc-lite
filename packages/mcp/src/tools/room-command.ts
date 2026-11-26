@@ -7,12 +7,13 @@ import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import type { Tool } from './types.js';
 import type { JsonSchema } from '../protocol/index.js';
 import { okResult, resolveModel } from './util.js';
+import { EDIT, READ_ONLY } from './annotations.js';
 const xy = { type: 'array', items: { type: 'number' }, minItems: 2, maxItems: 2 };
 const edit = (properties: Record<string, JsonSchema>, required: string[]): JsonSchema => ({ type: 'object', properties, required, additionalProperties: false });
 
 /** #6232 D5: real mesh-derived native DCEL, shared occupancy/layout/writer and Undo policy. */
 export const roomCommandTool: Tool = {
-  name: 'room_command', scope: 'mutate',
+  name: 'room_command', scope: 'mutate', title: 'Room command', annotations: EDIT,
   description: 'Native Room operations from the current tessellated wall geometry. Query candidate faces; Auto creates unoccupied rooms, Pick selects a point, Footprint encloses the storey, Update follows detected boundaries, Edit changes retained native topology and synchronizes IFC spaces. All coordinates/settings are storey-local metres. Requires the installed WASM geometry runtime. Each write is one mutation_undo operation; supported shapes and occupied-room refusals match the viewer.',
   inputSchema: {
     type: 'object', properties: {
@@ -60,7 +61,7 @@ export const roomCommandTool: Tool = {
 
 /** Thin read-only entry point over the same native Room command service. */
 export const queryRoomsTool: Tool = {
-  name: 'query_rooms', scope: 'read',
+  name: 'query_rooms', scope: 'read', title: 'Room candidates on a storey', annotations: READ_ONLY,
   description: 'Read native mesh-derived room candidates on a loaded storey. Coordinates and settings are storey-local metres. No IFC or Undo operation is written.',
   inputSchema: {
     type: 'object', properties: {

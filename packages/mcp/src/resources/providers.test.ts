@@ -24,6 +24,7 @@ import { DEFAULT_CONFIG, InMemoryModelRegistry, NOOP_PROGRESS, SILENT_LOGGER } f
 import { fullScope } from '../auth/scope.js';
 import { loadIfcModel } from '../loader.js';
 import { buildDefaultResourceRegistry } from './index.js';
+import { IDS_OPS_SCHEMA_URI } from '../tools/ids-ops-schema.js';
 
 /** A 22-character IFC GlobalId from a short mnemonic. */
 function guid(mnemonic: string): string {
@@ -119,3 +120,15 @@ describe('ifc-lite://model/{id}/entity/{global_id}', () => {
   });
 });
 
+
+describe('ifc-lite://schemas/ids-ops-v1.json', () => {
+  it('serves the full op schema that ids_apply_ops only summarises', async () => {
+    const provider = buildDefaultResourceRegistry().matchProvider(IDS_OPS_SCHEMA_URI);
+    if (!provider) throw new Error('ids ops schema resource not registered');
+    expect((await provider.list(ctx)).map((r) => r.uri)).toContain(IDS_OPS_SCHEMA_URI);
+    const [contents] = await provider.read(IDS_OPS_SCHEMA_URI, ctx);
+    const schema = JSON.parse((contents as { text: string }).text) as { oneOf: unknown[]; $defs: Record<string, unknown> };
+    expect(schema.$defs).toHaveProperty('Op_facet_add');
+    expect(schema.oneOf.length).toBeGreaterThan(40);
+  });
+});

@@ -12,11 +12,12 @@
  */
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
+import { READ_ONLY } from './annotations.js';
 
 const modelProperty = { model_id: { type: 'string', description: 'Loaded model id; required when multiple models are loaded.' } } as const;
 
 const structuralData: Tool = {
-  name: 'structural_data',
+  name: 'structural_data', title: 'Structural analysis data', annotations: READ_ONLY,
   description: 'Read the structural analysis model — analysis models, members, connections, actions/reactions and load/result groups — from the loaded model.',
   scope: 'read',
   inputSchema: { type: 'object', properties: modelProperty, additionalProperties: false },

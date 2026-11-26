@@ -27,7 +27,6 @@ import {
   createLintContext,
   createSidecar,
   createStudioDocument,
-  getOpJsonSchema,
   lintDocument,
   nodePath,
   parseStudioDocument,
@@ -45,6 +44,8 @@ import type { ToolContext } from '../context.js';
 import type { Tool } from './types.js';
 import { okResult } from './util.js';
 import { loadIdsXml } from './validation.js';
+import { READ_ONLY } from './annotations.js';
+import { idsOpsInputSchema } from './ids-ops-schema.js';
 
 const XML_INPUT = {
   ids_xml: { type: 'string', description: 'Inline IDS XML.' },
@@ -99,7 +100,7 @@ function outline(doc: StudioDocument) {
 }
 
 const idsAudit: Tool = {
-  name: 'ids_audit',
+  name: 'ids_audit', title: 'Audit IDS file', annotations: READ_ONLY,
   description: 'Conformance audit of an IDS file: XML and XSD shape, IFC entity/property names, restriction coherence. Answers "is this a valid IDS 1.0 file?". No model needed.',
   scope: 'validate',
   inputSchema: { type: 'object', properties: { ...XML_INPUT }, additionalProperties: false },
@@ -116,7 +117,7 @@ const idsAudit: Tool = {
 };
 
 const idsLint: Tool = {
-  name: 'ids_lint',
+  name: 'ids_lint', title: 'Lint IDS document', annotations: READ_ONLY,
   description:
     'Lint an IDS document with the IDSL rule catalogue: does it mean what the author intends? Each diagnostic names its node (`nodeId`, `path`) and may carry quick fixes: op batches you can pass to ids_apply_ops unchanged. Pass `doc` (from ids_read / ids_apply_ops) or the XML.',
   scope: 'validate',
@@ -140,7 +141,7 @@ const idsLint: Tool = {
 };
 
 const idsRead: Tool = {
-  name: 'ids_read',
+  name: 'ids_read', title: 'Read IDS', annotations: READ_ONLY,
   description:
     'Read IDS XML into a Studio document (JSON with a stable UUID for every specification, facet and constraint). Pass the returned `doc` to ids_apply_ops, ids_lint and ids_write. Reading the same XML twice gives the same ids.',
   scope: 'read',
@@ -152,18 +153,16 @@ const idsRead: Tool = {
 };
 
 function opsInputSchema(): JsonSchema {
-  const ops = getOpJsonSchema();
   return {
     type: 'object',
     properties: {
       doc: DOC_INPUT,
       ...XML_INPUT,
       title: { type: 'string', description: 'Title of a new, empty document (when neither doc nor XML is given).' },
-      ops: { type: 'array', minItems: 1, items: { oneOf: ops.oneOf }, description: 'Operations of IDS ops vocabulary v1, applied in order as one batch.' },
+      ops: idsOpsInputSchema(),
     },
     required: ['ops'],
     additionalProperties: false,
-    $defs: ops.$defs,
   };
 }
 
@@ -177,7 +176,7 @@ function refusalText(issues: readonly GateIssue[]): string {
 }
 
 const idsApplyOps: Tool = {
-  name: 'ids_apply_ops',
+  name: 'ids_apply_ops', title: 'Apply IDS operations', annotations: READ_ONLY,
   description:
     'Change an IDS document by applying typed operations. Every op is validated and the batch is checked by the grounding gate against the IFC schema tables (entities, predefined types, attributes, property sets, properties, enumerations, data types). A refused batch changes nothing and returns each problem with a path and ranked candidates; fix the names and resend the whole batch. Starts from `doc`, from the XML, or from an empty document. Returns the new `doc` and its lint diagnostics.',
   scope: 'read',
@@ -202,9 +201,9 @@ const idsApplyOps: Tool = {
 };
 
 const idsWrite: Tool = {
-  name: 'ids_write',
+  name: 'ids_write', title: 'Serialise IDS to XML', annotations: READ_ONLY,
   description:
-    'Serialise a Studio document to IDS 1.0 XML. The XML is read back to prove nothing was lost and audited; a document with audit errors is refused. Also returns the studio.json sidecar that keeps node ids next to the XML.',
+    'Serialise a Studio document to IDS 1.0 XML and return it as `xml`; writes no file. The XML is read back to prove nothing was lost and audited; a document with audit errors is refused. Also returns the studio.json sidecar that keeps node ids next to the XML.',
   scope: 'read',
   inputSchema: { type: 'object', properties: { doc: DOC_INPUT }, required: ['doc'], additionalProperties: false },
   async handler(input, ctx) {

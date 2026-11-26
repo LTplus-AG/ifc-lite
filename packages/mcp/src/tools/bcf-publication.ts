@@ -10,6 +10,7 @@ import { scopeAllows } from '../auth/scope.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import type { Tool } from './types.js';
 import { okResult } from './util.js';
+import { EDIT, EDIT_IDEMPOTENT, READ_ONLY } from './annotations.js';
 
 /** Stable across authenticated sessions; local stdio shares the CLI journal. */
 export function mcpPublicationNamespace(ctx: ToolContext, requiresStableIdentity = true): string | undefined {
@@ -36,7 +37,7 @@ function required(input: Record<string, unknown>, key: string): string {
 const entryProperty = { entry_id: { type: 'string', description: 'Durable publication id returned by bcf_publications_list.' } } as const;
 
 const list: Tool = {
-  name: 'bcf_publications_list', scope: 'read',
+  name: 'bcf_publications_list', scope: 'read', title: 'List BCF publications', annotations: READ_ONLY,
   description: 'List credential-free native Flow BCF publication intents, unresolved outcomes and receipts for the current principal. Does not contact a server.',
   inputSchema: { type: 'object', properties: {
     cursor: { type: 'string', description: 'Opaque nextCursor from the preceding page; follow even empty progress pages.' },
@@ -58,8 +59,8 @@ const list: Tool = {
   },
 };
 const check: Tool = {
-  name: 'bcf_publication_check', scope: 'mutate',
-  description: 'Read the original BCF target under explicitly supplied network.fetch grants and persist actual matching candidate GUIDs. Never sends a write or blindly retries. token_env needs its exact secret.read grant; unsafe credential-bearing results are refused; protocol keys and identifiers are preserved.',
+  name: 'bcf_publication_check', scope: 'mutate', title: 'Check BCF publication target', annotations: { ...EDIT_IDEMPOTENT, openWorldHint: true },
+  description: 'Read the original BCF target under explicitly supplied network.fetch grants and record the matching candidate GUIDs on the local publication entry (hence mutate scope). Read-only on the server: never sends a write or blindly retries. token_env needs its exact secret.read grant; unsafe credential-bearing results are refused; protocol keys and identifiers are preserved.',
   inputSchema: { type: 'object', properties: { ...entryProperty,
     capabilities: { type: 'array', items: { type: 'string' }, description: 'Explicit current network.fetch:<host> and optional secret.read:<NAME> grants; no prior run grant is reused.' },
     token_env: { type: 'string', description: 'Environment variable containing the BCF bearer token, authorized by secret.read:<NAME>.' },
@@ -103,7 +104,7 @@ const check: Tool = {
   },
 };
 const reconcile: Tool = {
-  name: 'bcf_publication_reconcile', scope: 'mutate',
+  name: 'bcf_publication_reconcile', scope: 'mutate', title: 'Reconcile BCF publication', annotations: EDIT,
   description: 'Bind an intent to one GUID previously obtained and durably checked at its original target with the same payload. Makes no network write. Refuses arbitrary GUIDs and live send ownership; the receipt survives process restart.',
   inputSchema: { type: 'object', properties: { ...entryProperty,
     candidate_guid: { type: 'string', description: 'An exact GUID from the persisted matching check candidates.' },
@@ -117,7 +118,7 @@ const reconcile: Tool = {
 };
 
 const confirmAbsent: Tool = {
-  name: 'bcf_publication_confirm_absent', scope: 'mutate',
+  name: 'bcf_publication_confirm_absent', scope: 'mutate', title: 'Confirm BCF topic absent', annotations: EDIT,
   description: 'Explicitly confirm absence only after the latest complete persisted server check found an empty collection with explicit full original access-scope confirmation. Old markerless or unconfirmed checks cannot release an intent. Makes no write; releases the intent for a separately reviewed later run. Failed or partial checks and live send ownership cannot release it.',
   inputSchema: { type: 'object', properties: entryProperty, required: ['entry_id'], additionalProperties: false },
   async handler(input, ctx) {

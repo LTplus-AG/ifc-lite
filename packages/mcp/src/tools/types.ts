@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { CallToolResult, JsonSchema, ToolAnnotations, ToolDefinition, ToolScope } from '../protocol/index.js';
+import type { CallToolResult, Icon, JsonSchema, ToolAnnotations, ToolDefinition, ToolScope } from '../protocol/index.js';
 import type { ToolContext } from '../context.js';
 
 export interface Tool {
@@ -14,6 +14,13 @@ export interface Tool {
   title?: string;
   /** MCP behaviour hints for `tools/list`. */
   annotations?: ToolAnnotations;
+  /**
+   * Schema of the `structuredContent` a successful call returns. Clients may
+   * reject a result that does not match, so it must describe every success
+   * path of the handler.
+   */
+  outputSchema?: JsonSchema;
+  icons?: Icon[];
   _meta?: ToolDefinition['_meta'];
   handler(input: Record<string, unknown>, ctx: ToolContext): Promise<CallToolResult> | CallToolResult;
 }

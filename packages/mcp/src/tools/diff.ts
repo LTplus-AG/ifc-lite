@@ -26,6 +26,7 @@ import { foldedTypeCounts, pendingMutationsField, pendingOverlay, type PendingOv
 import type { LoadedModel, ToolContext } from '../context.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { firstNonBlank } from '../material-naming.js';
+import { READ_ONLY } from './annotations.js';
 
 function resolveTwo(ctx: ToolContext, a: string, b: string) {
   const left = ctx.registry.get(a);
@@ -44,7 +45,7 @@ function resolveTwo(ctx: ToolContext, a: string, b: string) {
 }
 
 const modelDiff: Tool = {
-  name: 'model_diff',
+  name: 'model_diff', title: 'Diff two models', annotations: READ_ONLY,
   description:
     'Compare two loaded models. Reports added/removed entities by GlobalId and per-type count deltas. '
     + 'Set by_content=true when the two models may have been re-exported from scratch (new GlobalIds): '
@@ -211,7 +212,7 @@ function collectGlobalIds(model: LoadedModel, overlay: PendingOverlay | null): S
 }
 
 const quantityDiff: Tool = {
-  name: 'quantity_diff',
+  name: 'quantity_diff', title: 'Diff quantities', annotations: READ_ONLY,
   description: 'Per-entity-type quantity comparison between two models, optionally grouped by storey.',
   scope: 'read',
   inputSchema: {

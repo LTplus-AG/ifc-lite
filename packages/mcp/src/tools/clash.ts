@@ -35,6 +35,7 @@ import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import type { LoadedModel, ToolContext } from '../context.js';
+import { READ_ONLY } from './annotations.js';
 
 /** Cap on clashes returned in a tool result. The dropped count is reported. */
 const CLASH_DISPLAY_CAP = 50;
@@ -163,7 +164,7 @@ function topClashes(clashes: Clash[], cap: number): {
 }
 
 export const clashCheck = {
-  name: 'clash_check',
+  name: 'clash_check', title: 'Clash check', annotations: READ_ONLY,
   description:
     'Clash detection on a single model. Omit BOTH a and b to detect ALL clashes inside the model '
     + '(every element vs every other — no discipline matrix needed). Give only a TYPE selector for a to '
@@ -225,7 +226,7 @@ export const clashCheck = {
 } satisfies Tool;
 
 const clashMatrix: Tool = {
-  name: 'clash_matrix',
+  name: 'clash_matrix', title: 'Discipline clash matrix', annotations: READ_ONLY,
   description:
     'Run the standard discipline clash matrix (MEP x STR, HVAC x ARCH, ...) over the whole model. '
     + 'Returns per-rule and per-severity breakdowns over EVERY clash, plus a sample of clashes '

@@ -11,6 +11,7 @@
  */
 
 import { a2uiResourceProvider } from './a2ui.js';
+import { idsOpsSchemaProvider } from './ids-ops.js';
 import { extractGeoreferencingOnDemand } from '@ifc-lite/parser';
 import { foldedEntityCount, pendingMutationsField, pendingOverlay } from '@ifc-lite/sdk/headless';
 import { buildSpatialTree } from '../spatial-tree.js';
@@ -309,5 +310,6 @@ export function defaultResourceProviders(): ResourceProvider[] {
     new PropertySetsProvider(),
     new ViewerSelectionProvider(),
     new ViewerStatusProvider(),
+    idsOpsSchemaProvider,
   ];
 }

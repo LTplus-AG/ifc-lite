@@ -43,6 +43,7 @@ import {
   verifyLayerAgainstClaims,
 } from './layer-ops.js';
 import type { DraftOpInput } from './layer-ops.js';
+import { EDIT } from './annotations.js';
 
 /**
  * Attribute key a `set_property` op writes. Carries the Pset/Qto name so
@@ -100,7 +101,7 @@ function requireEntity(draft: DraftLayer, op: DraftOpInput, index: number): void
 }
 
 const createDraftLayer: Tool = {
-  name: 'create_draft_layer',
+  name: 'create_draft_layer', title: 'Create draft layer', annotations: EDIT,
   description:
     'Open a draft layer (CRDT session) bound to a base ref or layer. All writes land in drafts; ' +
     '`scope` is a list of capability scope-claims that bound what the draft may touch.',
@@ -148,7 +149,7 @@ const createDraftLayer: Tool = {
 };
 
 const draftApplyOps: Tool = {
-  name: 'draft_apply_ops',
+  name: 'draft_apply_ops', title: 'Apply draft operations', annotations: EDIT,
   description:
     'Apply entity operations to a draft layer. Each op is checked against the draft\'s scope claims ' +
     'before it touches the document; violations return a structured error.',
@@ -262,7 +263,7 @@ export function publishDraftFile(draft: DraftLayer, ctx: ToolContext): ReturnTyp
 }
 
 const publishLayerTool: Tool = {
-  name: 'publish_layer',
+  name: 'publish_layer', title: 'Publish layer', annotations: EDIT,
   description:
     'Freeze a draft into an immutable content-addressed layer (blake3 id + provenance manifest). ' +
     'Actual ops are re-verified against the manifest scope claims; mismatches are reported.',

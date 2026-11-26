@@ -6,6 +6,7 @@ import type { CopyTransform, CopyArrayParams } from '@ifc-lite/create';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
+import { EDIT } from './annotations.js';
 
 const point2 = { type: 'array', items: { type: 'number' }, minItems: 2, maxItems: 2 };
 const selection = {
@@ -16,7 +17,7 @@ const selection = {
 /** #6232 D5: paste, Duplicate and array share dependency selection, placement and atomic copy. */
 export const copyElementsTools: Tool[] = [
   {
-    name: 'duplicate_element', scope: 'mutate',
+    name: 'duplicate_element', scope: 'mutate', title: 'Duplicate element', annotations: EDIT,
     description: 'Duplicate one product with its hosted openings/fillings and assembly parts, new GlobalIds and the viewer Name suffix (copy). Supply the desired storey-local IFC XYZ metre offset; optional Name overrides the suffix. One mutation_undo removes the whole duplicate.',
     inputSchema: {
       type: 'object', properties: {
@@ -37,7 +38,7 @@ export const copyElementsTools: Tool[] = [
     },
   },
   {
-    name: 'copy_elements', scope: 'mutate',
+    name: 'copy_elements', scope: 'mutate', title: 'Copy elements', annotations: EDIT,
     description: 'Copy selected products once per transform, with their hosted openings/fillings and assembly parts. Selected children are deduplicated. Offset is storey-local IFC XYZ metres; turn is radians about pivot XY. One mutation_undo removes the complete batch.',
     inputSchema: {
       type: 'object', properties: { ...selection, transforms: {
@@ -52,7 +53,7 @@ export const copyElementsTools: Tool[] = [
     handler(input, ctx) { return copy(input, ctx, false); },
   },
   {
-    name: 'array_elements', scope: 'mutate',
+    name: 'array_elements', scope: 'mutate', title: 'Array elements', annotations: EDIT,
     description: 'Linear spacing/fit or polar array using the viewer planner. Count includes the original; a full circle excludes the coincident final copy. Distances and anchor/cursor are storey-local metres; angleDegrees is degrees. One mutation_undo removes all copies.',
     inputSchema: {
       type: 'object', properties: { ...selection, params: {

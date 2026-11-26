@@ -85,6 +85,7 @@ import { okResult, paginate, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
 import type { ToolContext } from '../context.js';
+import { EDIT, FLOW_RUN, READ_ONLY } from './annotations.js';
 
 const flowInputSchema = {
   flow: { description: 'Inline flow document (the parsed *.flow.json object). Provide this or flow_path.' },
@@ -122,7 +123,7 @@ function parseGraphValue(value: unknown): { ok: true; doc: FlowDocument } | { ok
 }
 
 const describeFlow: Tool = {
-  name: 'describe_flow',
+  name: 'describe_flow', title: 'Describe flow', annotations: READ_ONLY,
   description:
     'Describe a .flow.json graph\'s typed interface: declared inputs (name, kind, default) and outputs ' +
     '(node/port, value kind, access), plus registry-aware validation diagnostics. Never throws for an ' +
@@ -197,7 +198,7 @@ function trackingSummary(result: RunResult): { created: number; updated: number;
 }
 
 const runFlowTool: Tool = {
-  name: 'run_flow',
+  name: 'run_flow', title: 'Run flow', annotations: FLOW_RUN,
   description:
     'Run a .flow.json graph headlessly against a loaded model, exactly as `ifc-lite flow run` does. ' +
     '`inputs` overrides Player parameters as `{ "nodeId.param": value }`; a key naming no declared ' +
@@ -350,7 +351,7 @@ async function executeFlow(input: Record<string, unknown>, ctx: ToolContext, res
 
 const resumeFlowTool: Tool = {
   ...runFlowTool,
-  name: 'resume_flow',
+  name: 'resume_flow', title: 'Resume flow', annotations: FLOW_RUN,
   description: 'Consume one separately reviewed pending Flow artifact by exact proposal digest. Rechecks current sources, graph, permissions and original budget before restoring completed nodes and running downstream effects. Completed or lost-owner claims cannot run twice.',
   inputSchema: { ...runFlowTool.inputSchema, required: ['checkpoint_path', 'approved_digest'], properties: {
     ...runFlowTool.inputSchema.properties,
@@ -361,7 +362,7 @@ const resumeFlowTool: Tool = {
 };
 
 const proposeFlowTool: Tool = {
-  ...runFlowTool, name: 'propose_flow', scope: 'read',
+  ...runFlowTool, name: 'propose_flow', scope: 'read', title: 'Propose flow', annotations: { ...EDIT, openWorldHint: true },
   description: 'Run a native read/AI-only graph to a durable pending artifact. Model and external effect nodes are refused before requesting; applying requires a separate authorized resume_flow call.',
   handler: (input, ctx) => executeFlow(input, ctx, false, true),
 };

@@ -51,6 +51,7 @@ import { storeyFollowUpTools } from './storey-follow-ups.js';
 import { storeyTools } from './storeys.js';
 import { georeferencingWriteTool } from './georef.js';
 import { georeferencingFixTool } from './georef-doctor.js';
+import { DESTRUCTIVE, DESTRUCTIVE_NOT_IDEMPOTENT, EDIT_IDEMPOTENT, FILE_WRITE, READ_ONLY } from './annotations.js';
 
 interface MutationContext {
   m: ReturnType<typeof resolveModel>;
@@ -115,7 +116,7 @@ function applySetProperty(ctx: MutationContext, args: { expressId: number; pset:
 }
 
 const entitySetProperty: Tool = {
-  name: 'entity_set_property',
+  name: 'entity_set_property', title: 'Set property', annotations: EDIT_IDEMPOTENT,
   description: 'Set or create a property on an entity. Mutations are queued; call `export_ifc` to persist.',
   scope: 'mutate',
   inputSchema: entityTargetSchema({
@@ -140,7 +141,7 @@ const entitySetProperty: Tool = {
 };
 
 const entityDeleteProperty: Tool = {
-  name: 'entity_delete_property',
+  name: 'entity_delete_property', title: 'Delete property', annotations: DESTRUCTIVE,
   description: 'Delete a property from a Pset. Queued — persist via `export_ifc`.',
   scope: 'mutate',
   inputSchema: entityTargetSchema({
@@ -167,7 +168,7 @@ const entityDeleteProperty: Tool = {
 };
 
 const entitySetAttribute: Tool = {
-  name: 'entity_set_attribute',
+  name: 'entity_set_attribute', title: 'Set attribute', annotations: EDIT_IDEMPOTENT,
   description: 'Set a top-level IFC attribute (Name, Description, ObjectType, Tag).',
   scope: 'mutate',
   inputSchema: entityTargetSchema({
@@ -198,7 +199,7 @@ const entitySetAttribute: Tool = {
 };
 
 const entityDelete: Tool = {
-  name: 'entity_delete',
+  name: 'entity_delete', title: 'Delete entity', annotations: DESTRUCTIVE,
   description: 'Delete an entity. Note: cascades are NOT applied automatically — caller must remove dependent relationships first.',
   scope: 'mutate',
   inputSchema: entityTargetSchema({}),
@@ -218,7 +219,7 @@ const entityDelete: Tool = {
 };
 
 const mutationBatch: Tool = {
-  name: 'mutation_batch',
+  name: 'mutation_batch', title: 'Batch mutations', annotations: DESTRUCTIVE_NOT_IDEMPOTENT,
   description: 'Apply N mutation operations in order. Each item names a sub-tool and its arguments. Returns per-step results in order. Not atomic: a failing operation is reported in results[] and does not roll back the ones before it.',
   scope: 'mutate',
   inputSchema: {
@@ -290,7 +291,7 @@ const mutationBatch: Tool = {
 };
 
 const mutationDiff: Tool = {
-  name: 'mutation_diff',
+  name: 'mutation_diff', title: 'Pending mutations', annotations: READ_ONLY,
   description: 'Inspect pending mutations vs the original parsed state.',
   scope: 'read',
   inputSchema: { type: 'object', properties: { model_id: { type: 'string' } }, additionalProperties: false },
@@ -310,7 +311,7 @@ const mutationDiff: Tool = {
 };
 
 const mutationUndo: Tool = {
-  name: 'mutation_undo',
+  name: 'mutation_undo', title: 'Undo mutations', annotations: DESTRUCTIVE_NOT_IDEMPOTENT,
   description: 'Revert the last N pending operations on this session. A hosted placement or wall join is one operation including its complete IFC graph; other mutations count individually.',
   scope: 'mutate',
   inputSchema: {
@@ -333,7 +334,7 @@ const mutationUndo: Tool = {
 };
 
 const modelSave: Tool = {
-  name: 'model_save',
+  name: 'model_save', title: 'Save model to disk', annotations: FILE_WRITE,
   description: 'Write the current model (with pending mutations) to disk. Convenience wrapper around export_ifc.',
   scope: 'mutate',
   inputSchema: {

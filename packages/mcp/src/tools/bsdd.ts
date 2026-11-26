@@ -13,6 +13,7 @@ import type { Tool } from './types.js';
 import { findByGlobalId, okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { BsddHttpError, type BsddSearchResult, type BsddClassInfo, type BsddClassProperty } from '@ifc-lite/sdk';
+import { READ_ONLY_NETWORK } from './annotations.js';
 
 /**
  * Translate a thrown bSDD client error into a typed ToolExecutionError so the
@@ -128,7 +129,7 @@ function summarizeMatchCandidates(ifcType: string, candidates: BsddSearchResult[
 }
 
 const bsddSearch: Tool = {
-  name: 'bsdd_search',
+  name: 'bsdd_search', title: 'Search bSDD', annotations: READ_ONLY_NETWORK,
   description: 'Search the buildingSMART Data Dictionary for classes by keyword.',
   scope: 'read',
   inputSchema: {
@@ -161,7 +162,7 @@ const bsddSearch: Tool = {
 };
 
 const bsddClass: Tool = {
-  name: 'bsdd_class',
+  name: 'bsdd_class', title: 'bSDD class', annotations: READ_ONLY_NETWORK,
   description: 'Full class details for an IFC entity name (e.g. "IfcWall") from bSDD.',
   scope: 'read',
   inputSchema: {
@@ -190,7 +191,7 @@ const bsddClass: Tool = {
 };
 
 const bsddPropertySets: Tool = {
-  name: 'bsdd_property_sets',
+  name: 'bsdd_property_sets', title: 'bSDD property sets', annotations: READ_ONLY_NETWORK,
   description: 'Get all property sets defined for an IFC entity in bSDD (e.g. Pset_WallCommon for IfcWall).',
   scope: 'read',
   inputSchema: {
@@ -217,7 +218,7 @@ const bsddPropertySets: Tool = {
 };
 
 const bsddMatch: Tool = {
-  name: 'bsdd_match',
+  name: 'bsdd_match', title: 'Match bSDD classes', annotations: READ_ONLY_NETWORK,
   description: 'Suggest matching bSDD classes for an entity in the loaded model. Useful for classifying unclassified elements.',
   scope: 'read',
   inputSchema: {

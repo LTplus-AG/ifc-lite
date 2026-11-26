@@ -5,7 +5,8 @@
 // scripts/ci-base-stale.mjs: argument parsing, the path filters it derives
 // from the real test.yml, and the per-PR evaluation over a fake I/O layer.
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -21,7 +22,7 @@ async function load(rel) {
 const cli = await load('./ci-base-stale.mjs');
 const core = await load('./lib/base-stale.mjs');
 const ioMod = await load('./lib/base-stale-io.mjs');
-const { callAllowance, CALL_CAP, evaluatePr, loadCache, loadFilterGlobs, parseArgs, RATE_FLOOR, readFilterGlobs, run } = cli ?? {};
+const { callAllowance, CALL_CAP, evaluatePr, MIN_ALLOWANCE, loadCache, loadFilterGlobs, parseArgs, RATE_FLOOR, readFilterGlobs, run } = cli ?? {};
 const { prRelevance } = core ?? {};
 const { BudgetError, changedPaths, createIo, isOwnRun } = ioMod ?? {};
 function ct(name, body) {
@@ -54,6 +55,7 @@ ct('parseArgs: a malformed --pr-run is refused, never read as "no replay"', () =
 ct('callAllowance: half the headroom above the floor, capped, never negative', () => {
   assert.equal(callAllowance(1000, CALL_CAP.sweep), CALL_CAP.sweep);
   assert.equal(callAllowance(RATE_FLOOR + 100, CALL_CAP.sweep), 50);
+  assert.equal(callAllowance(RATE_FLOOR + 2 * MIN_ALLOWANCE - 1, CALL_CAP.sweep), 0, 'too small for the setup reads');
   assert.equal(callAllowance(RATE_FLOOR + 1, CALL_CAP.sweep), 0);
   assert.equal(callAllowance(RATE_FLOOR - 50, CALL_CAP.single), 0);
   assert.equal(callAllowance(null, CALL_CAP.single), CALL_CAP.single);
@@ -204,7 +206,8 @@ function runFake({ gate, cacheData = null, prs = [STALE_PR], existing = 'failure
   console.log = () => {};
   const jsonOut = join(dir, 'verdicts.jsonl');
   try {
-    run({ mode: 'sweep', cache: cachePath, dryRun: false, jsonOut, ...opts }, env, makeIo);
+    const code = run({ mode: 'sweep', cache: cachePath, dryRun: false, jsonOut, ...opts }, env, makeIo);
+    opts.onCode?.(code);
   } finally {
     console.log = log;
   }
@@ -220,11 +223,26 @@ ct('run, on: a stale labelled PR gets a failure status; a fork gets nothing', ()
   assert.equal(posts[0].state, 'failure');
 });
 
-ct('run, shadow: a settled sweep reads no status and posts nothing, even for a stale PR', () => {
-  const { posts, reads, saved } = runFake({ gate: undefined, cacheData: { version: 1, lastMode: 'shadow' } });
+ct('run, shadow: a settled sweep reads no status of a head it already read that is not stale', () => {
+  const fresh = { prMeasurement: () => ({ runId: 7, mergeSha: 'cafe0000001', testedBase: 'base0000001', families: [fam(400)] }) };
+  const { posts, reads, saved } = runFake({ gate: undefined, cacheData: { version: 1, lastMode: 'shadow', shadowRead: { head5: true } }, ioOver: fresh });
   assert.deepEqual(posts, []);
   assert.deepEqual(reads, []);
   assert.equal(saved.lastMode, 'shadow');
+});
+
+ct('run, shadow: a settled sweep still reads a new head, and a stale one, and releases what it finds', () => {
+  // New head: the in-run step may have posted on it while the gate was
+  // briefly `on` between two sweeps, so the shadow cache cannot vouch for it.
+  const fresh = { prMeasurement: () => ({ runId: 7, mergeSha: 'cafe0000001', testedBase: 'base0000001', families: [fam(400)] }) };
+  const first = runFake({ gate: 'shadow', cacheData: { version: 1, lastMode: 'shadow' }, ioOver: fresh });
+  assert.deepEqual(first.reads, ['head5']);
+  assert.equal(first.posts[0].state, 'success');
+  assert.equal(first.saved.shadowRead.head5, true);
+  // Already read but stale: read again, because that is what `on` would fail.
+  const stale = runFake({ gate: 'shadow', cacheData: { version: 1, lastMode: 'shadow', shadowRead: { head5: true } }, existing: null });
+  assert.deepEqual(stale.reads, ['head5']);
+  assert.deepEqual(stale.posts, []);
 });
 
 ct('run, rollback: the first shadow sweep after `on` releases a failure the gate left', () => {
@@ -334,4 +352,31 @@ ct('run, budget: the rate floor is re-read between PRs and stops the sweep', () 
 ct('run: under the floor at start nothing is read, an empty evidence file is written', () => {
   const { rows, reads, posts } = runFake({ gate: 'on', remaining: () => RATE_FLOOR });
   assert.deepEqual([rows, reads, posts], [[], [], []]);
+});
+
+ct('run: a budget spent during setup is a clean skip (exit 0, empty evidence), not a harness fault', () => {
+  let code;
+  const { rows, reads, posts } = runFake({
+    gate: 'on',
+    ioOver: { queueCandidates: () => { throw new BudgetError('open PRs labelled mergify-trial'); } },
+    opts: { onCode: (c) => { code = c; } },
+  });
+  assert.deepEqual([rows, reads, posts], [[], [], []]);
+  assert.equal(code, 0);
+});
+
+ct('io: a file main moved out of a crate still counts for that crate (local git, no rename folding)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'base-stale-git-'));
+  const git = (...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: dir, encoding: 'utf8' }).trim();
+  git('init', '-q');
+  mkdirSync(join(dir, 'rust/core/src'), { recursive: true });
+  writeFileSync(join(dir, 'rust/core/src/a.rs'), 'pub fn a() -> u32 { 1 }\n'.repeat(20));
+  git('add', '-A');
+  git('commit', '-qm', 'base');
+  const base = git('rev-parse', 'HEAD');
+  mkdirSync(join(dir, 'docs'));
+  git('mv', 'rust/core/src/a.rs', 'docs/a.rs');
+  git('commit', '-qm', 'move');
+  const moved = createIo({ repo: 'o/r', cwd: dir }).movedSince(base, git('rev-parse', 'HEAD'));
+  assert.deepEqual([...moved.files].sort(), ['docs/a.rs', 'rust/core/src/a.rs']);
 });

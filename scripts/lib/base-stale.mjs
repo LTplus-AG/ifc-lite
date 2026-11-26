@@ -166,6 +166,21 @@ export function evaluatePerf({ relevant, editsCeilings = false, prMeasured, test
       }
     }
   }
+  // A family main measures now but did not at the PR's base (a new ceiling
+  // family, or a newly added measuring job): the queue will judge it on the
+  // merged tree, and the PR's run never measured it. A family main measured
+  // at the base too was skipped by the PR's own path gate, as it will be in
+  // the queue, so its absence from the PR is not a gap.
+  const measuredByPr = new Set(prMeasured.map((f) => f.family));
+  const atBaseFamilies = mainAtBase ? new Set(mainAtBase.families.map((f) => f.family)) : null;
+  for (const fam of mainLatest?.families ?? []) {
+    if (measuredByPr.has(fam.family) || !ceilings.has(fam.family) || atBaseFamilies?.has(fam.family)) continue;
+    rows.push({
+      id: `${fam.family}/*`,
+      verdict: UNKNOWN,
+      reason: `${fam.family}: main measures this family since ${atBaseFamilies ? `the PR's base ${short(testedBase)}` : 'an unmeasured base'}; the PR's run did not`,
+    });
+  }
   const verdict = worst(rows.map((r) => r.verdict)) ?? UNKNOWN;
   // Tightest first, so the first reason of a fresh verdict is the metric
   // closest to its allowance (the one to watch), not the first in the file.

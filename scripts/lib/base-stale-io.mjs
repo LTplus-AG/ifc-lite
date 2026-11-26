@@ -65,7 +65,7 @@ export function slim(measured) {
 
 export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => Date.now() }) {
   const stats = { calls: 0, downloads: 0, cacheHits: 0 };
-  const store = { mainMeasurements: {}, prMeasurements: {}, prFiles: {}, posted: {}, ...(cache ?? {}) };
+  const store = { mainMeasurements: {}, prMeasurements: {}, prFiles: {}, posted: {}, shadowRead: {}, ...(cache ?? {}) };
   let budget = Infinity;
 
   /** Count one request against this run's allowance, or refuse it. */
@@ -200,13 +200,15 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
       // A base that is not behind the tip (a replay against an older main)
       // would give a reversed diff: that is no answer, not an empty one.
       if (spawnSync('git', ['merge-base', '--is-ancestor', base, tip], { cwd }).status !== 0) return null;
-      const files = git(['diff', '--name-only', `${base}..${tip}`]).split('\n').filter(Boolean);
+      // --no-renames: a move lists its old path too (a crate main moved a file
+      // out of still changed), and rename detection would fetch blobs.
+      const files = git(['diff', '--name-only', '--no-renames', `${base}..${tip}`]).split('\n').filter(Boolean);
       const commits = Number(git(['rev-list', '--count', `${base}..${tip}`]));
       return { files, commits, capped: false };
     }
     const cmp = api(`repos/${repo}/compare/${base}...${tip}`, `main's changes since ${base}`);
     if (cmp.status !== 'ahead' && cmp.status !== 'identical') return null;
-    const files = cmp.files?.map((f) => f.filename) ?? null;
+    const files = cmp.files ? changedPaths(cmp.files) : null;
     // `compare` caps files at 300 and drops them past 250 commits: report that
     // as capped, never as "nothing moved".
     const capped = files === null || files.length >= COMPARE_FILE_CAP || cmp.total_commits >= COMPARE_COMMIT_CAP;

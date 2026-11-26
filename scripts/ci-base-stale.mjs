@@ -68,6 +68,8 @@ export const RATE_FLOOR = 300;
  * PRs then open: a cold sweep made 71 calls, a warm one (no head moved) 15.
  */
 export const CALL_CAP = { sweep: 150, single: 60 };
+/** Below this the setup reads (main's tip, its ceilings, the PR list) may not fit: skip instead. */
+export const MIN_ALLOWANCE = 10;
 
 /**
  * This run's allowance: at most half of what is left above the floor, and
@@ -77,7 +79,8 @@ export const CALL_CAP = { sweep: 150, single: 60 };
  */
 export function callAllowance(remaining, cap) {
   if (remaining === null) return cap;
-  return Math.max(0, Math.min(cap, Math.floor((remaining - RATE_FLOOR) / 2)));
+  const n = Math.min(cap, Math.floor((remaining - RATE_FLOOR) / 2));
+  return n < MIN_ALLOWANCE ? 0 : n;
 }
 
 export function parseArgs(argv) {
@@ -220,6 +223,7 @@ function saveCache(path, store, liveHeads, lastMode) {
     prMeasurements: live(store.prMeasurements),
     prFiles: live(store.prFiles),
     posted: live(store.posted),
+    shadowRead: live(store.shadowRead),
     lastMode,
   }));
 }
@@ -254,13 +258,25 @@ export function run(opts, env = process.env, makeIo = createIo) {
   }
   io.setBudget(allowance);
   const globs = loadFilterGlobs();
-  const mainTip = opts.mainSha ?? io.mainTip();
-  const ceilings = io.ceilingsAt(mainTip);
+  let mainTip = opts.mainSha ?? null;
+  let ceilings;
+  let candidates = null;
+  try {
+    mainTip ??= io.mainTip();
+    ceilings = io.ceilingsAt(mainTip);
+    if (sweep) candidates = io.queueCandidates(QUEUE_LABEL);
+  } catch (err) {
+    // Spent before any PR was judged: the same honest skip as the floor.
+    if (!(err instanceof BudgetError)) throw err;
+    console.log(`::notice title=base-stale::skipped: ${err.message}; verdicts are not refreshed this time`);
+    finish(opts, [], { gateMode, mainTip: mainTip ?? 'not read', evaluatedAt, stats: io.stats, allowance, skipped: 'budget' });
+    return 0;
+  }
   const targetUrl = env.GITHUB_RUN_ID ? `${env.GITHUB_SERVER_URL ?? 'https://github.com'}/${repo}/actions/runs/${env.GITHUB_RUN_ID}` : undefined;
 
   let targets;
   if (sweep) {
-    targets = io.queueCandidates(QUEUE_LABEL).map((p) => ({ pr: p.number, headSha: p.headRefOid, fork: p.isCrossRepository }));
+    targets = candidates.map((p) => ({ pr: p.number, headSha: p.headRefOid, fork: p.isCrossRepository }));
   } else if (opts.mode === 'in-run') {
     // No download (the measurement step failed): fall back to the PR's newest
     // earlier measurement, which the decision then dates honestly.
@@ -312,12 +328,18 @@ export function run(opts, env = process.env, makeIo = createIo) {
       try {
         // Shadow reads the existing status only where `on` may have left a
         // non-success: always for a single PR; in a sweep, for every head on
-        // the first sweep after the gate left `on` (the in-run step's posts are
-        // not in this cache), then only for heads this workflow last posted a
-        // non-success on. A settled shadow sweep reads no statuses at all.
+        // the first complete sweep after the gate left `on`; and otherwise for
+        // a head no shadow sweep has read yet (the in-run step may have posted
+        // on it while the gate was briefly `on` between two sweeps; its posts
+        // are not in `posted`), a head judged stale (what the in-run step
+        // would have failed), or a head this workflow last posted a
+        // non-success on. A settled shadow sweep reads only new or stale heads.
         const leftOn = cache?.lastMode !== 'shadow';
-        const mayHold = opts.mode !== 'sweep' || leftOn || (io.store.posted[headSha] && io.store.posted[headSha] !== 'success');
+        const seen = io.store.shadowRead?.[headSha] === true;
+        const mayHold = opts.mode !== 'sweep' || leftOn || !seen || rec.verdict === 'stale' ||
+          (io.store.posted[headSha] && io.store.posted[headSha] !== 'success');
         const existing = gateMode === 'on' || !mayHold ? null : io.existingStatus(headSha, STATUS_CONTEXT);
+        if (gateMode !== 'on' && mayHold) (io.store.shadowRead ??= {})[headSha] = true;
         status = statusFor(rec, gateMode, existing);
         if (status) io.postStatus(headSha, STATUS_CONTEXT, status, targetUrl);
       } catch (err) {

@@ -41,7 +41,7 @@ import {
 } from './ifc-creator-cost.js';
 import { emitElementQuantity, emitPropertySet, type DefinitionContext } from './ifc-creator-definitions.js';
 import { createTerrainWriter, type TerrainContext, type TerrainWriter } from './ifc-creator-terrain.js';
-import { emitRelFillsElement, emitSpatialRelationships } from './ifc-creator-relationships.js';
+import { emitRelFillsElement, emitSpatialRelationships, spaceIdsOf } from './ifc-creator-relationships.js';
 import { emitDefaultStyle, emitStyledItems } from './ifc-creator-styles.js';
 import { buildStepHeader } from './ifc-creator-header.js';
 import { generateIfcGuid, isValidIfcGuid } from '@ifc-lite/encoding';
@@ -2751,7 +2751,7 @@ export class IfcCreator {
       siteId: this.siteId,
       buildingId: this.buildingId,
       storeyIds: this.storeyIds,
-      storeyElements: this.storeyElements,
+      storeyElements: this.storeyElements, spaceIds: spaceIdsOf(this.entities),
       siteElements: this.siteElements,
       projectElements: this.projectElements,
     });

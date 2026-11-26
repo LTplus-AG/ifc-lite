@@ -27,7 +27,7 @@ import {
   STRUCTURE_RELATIONS,
   STRUCTURE_RELATION_ATTRS,
   type StepRecord,
-} from './subset-relations.js';
+} from './step-subset-relations.js';
 
 /**
  * Related-child id → its relating-parent id(s), across the three structure

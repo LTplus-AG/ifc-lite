@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import { planSpatialRelations, splitTopLevelArgs, type StepRecord } from './subset-relations.js';
+import { planSpatialRelations, splitTopLevelArgs, type StepRecord } from './step-subset-relations.js';
 
 /**
  * #4227: `@ifc-lite/export`'s `step-argument-parser.ts` had two top-level STEP

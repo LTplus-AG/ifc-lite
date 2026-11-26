@@ -9,8 +9,8 @@
  * keep that file under its module-size budget.
  */
 import { walkPlacementChain } from '@ifc-lite/data';
-import { refsOutsideStrings } from './subset-relations.js';
-import type { ParsedStep } from './extract-entities.js';
+import { refsOutsideStrings } from './step-subset-relations.js';
+import type { ParsedStep } from './step-subset.js';
 
 /** Map each IfcLocalPlacement to its parent placement (or null when top-level). */
 function placementParents(parsed: ParsedStep): Map<number, number | null> {

@@ -160,6 +160,8 @@ export interface ToolDefinition {
   title?: string;
   description: string;
   inputSchema: JsonSchema;
+  /** JSON Schema of `structuredContent` on success (MCP 2025-06-18). */
+  outputSchema?: JsonSchema;
   annotations?: ToolAnnotations;
   _meta?: { ui?: { resourceUri: string; visibility?: Array<'model' | 'app'> } };
   /** Optional metadata: which scope a token needs to call this tool. */

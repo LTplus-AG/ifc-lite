@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import { parseStep } from './extract-entities.js';
-import { productsUnderPlacement } from './storey-selection.js';
+import { parseStep } from './step-subset.js';
+import { productsUnderPlacement } from './step-subset-storey.js';
 
 /** A storey placement #1000, `depth` nested placements below it, and a wall on the deepest. */
 function nested(depth: number, cycle = false): string {

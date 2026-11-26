@@ -1,0 +1,147 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * `model_anonymize` (#2934): a seed selection, expanded by relationship
+ * context, exported as a STEP file with every project-identifying signal
+ * removed while geometry-relevant transformations survive. Thin wrapper over
+ * `@ifc-lite/export`'s `collectRelatedEntities` / `exportAnonymizedSubset`,
+ * the same two functions `ifc-lite anonymize` and the viewer dialog call.
+ */
+
+import { writeFile } from 'node:fs/promises';
+import { collectRelatedEntities, exportAnonymizedSubset } from '@ifc-lite/export';
+import type { Tool } from './types.js';
+import { fmtInt, okResult, resolveGlobalIds, resolveModel } from './util.js';
+import { ToolErrorCode, ToolExecutionError } from '../errors.js';
+import { resolveSafePath } from '../safe-path.js';
+import type { LoadedModel, ToolContext } from '../context.js';
+import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, requireNoPendingEdits, stringList } from './transform-schema.js';
+
+const RELATIONSHIPS = ['IfcRelVoidsElement', 'IfcRelFillsElement', 'IfcRelDefinesByType', 'IfcRelAssociatesMaterial', 'IfcRelAggregates', 'IfcRelNests'];
+
+/** Seeds for `model_anonymize`: every selector unioned, each failing loudly on zero matches. */
+function anonymizeSeeds(m: LoadedModel, input: Record<string, unknown>): Set<number> {
+  const seeds = new Set<number>();
+  for (const id of (input.express_ids as number[] | undefined) ?? []) {
+    if (!m.bim.entity({ modelId: m.id, expressId: id })) {
+      throw new ToolExecutionError({ code: ToolErrorCode.ENTITY_NOT_FOUND, message: `express_ids: entity #${id} not found.` });
+    }
+    seeds.add(id);
+  }
+  const globalIds = (input.global_ids as string[] | undefined) ?? [];
+  const carriers = resolveGlobalIds(m, globalIds);
+  for (const g of globalIds) {
+    const ids = carriers.get(g);
+    if (!ids) throw new ToolExecutionError({ code: ToolErrorCode.ENTITY_NOT_FOUND, message: `global_ids: GlobalId ${g} not found.` });
+    for (const id of ids) seeds.add(id);
+  }
+  for (const type of (input.types as string[] | undefined) ?? []) {
+    const matched = m.bim.query().byType(type).toArray();
+    if (matched.length === 0) throw invalid(`types: no ${type} entities.`);
+    for (const e of matched) seeds.add(e.ref.expressId);
+  }
+  if (typeof input.storey === 'string') {
+    const key = input.storey;
+    const storeys = m.bim.storeys();
+    const storey = storeys.find((s) => s.globalId === key) ?? storeys.find((s) => String(s.ref.expressId) === key) ?? storeys.find((s) => s.name === key);
+    if (!storey) throw new ToolExecutionError({ code: ToolErrorCode.ENTITY_NOT_FOUND, message: `storey: ${key} not found (available: ${storeys.map((s) => s.name).filter(Boolean).join(', ') || 'none'}).` });
+    const contained = m.bim.contains(storey.ref);
+    if (contained.length === 0) throw invalid(`storey: ${key} contains nothing.`);
+    for (const e of contained) seeds.add(e.ref.expressId);
+  }
+  return seeds;
+}
+
+async function runAnonymize(m: LoadedModel, input: Record<string, unknown>, ctx: ToolContext) {
+  requireNoPendingEdits(m, 'model_anonymize');
+  const filePath = await resolveSafePath(input.file_path, ctx, 'write');
+  const guidMapPath = typeof input.guid_map_path === 'string' ? await resolveSafePath(input.guid_map_path, ctx, 'write') : undefined;
+  const seeds = anonymizeSeeds(m, input);
+  if (seeds.size === 0) throw invalid('Select something: express_ids, global_ids, types or storey.');
+  const keepPsets = input.keep_psets === true;
+  const off = new Set((input.exclude_relationships as string[] | undefined) ?? []);
+  const related = collectRelatedEntities(m.store, seeds, {
+    IfcRelVoidsElement: !off.has('IfcRelVoidsElement'),
+    IfcRelFillsElement: !off.has('IfcRelFillsElement'),
+    IfcRelDefinesByType: !off.has('IfcRelDefinesByType'),
+    IfcRelAssociatesMaterial: !off.has('IfcRelAssociatesMaterial'),
+    IfcRelAggregates: off.has('IfcRelAggregates') ? 'none' : 'both',
+    IfcRelNests: off.has('IfcRelNests') ? 'none' : 'down',
+    IfcRelConnectsPathElementsDepth: (input.connect_depth as number | undefined) ?? 0,
+    // Keeping psets needs the walk to reach them too, as in the CLI.
+    IfcRelDefinesByProperties: keepPsets,
+  });
+  let result: ReturnType<typeof exportAnonymizedSubset>;
+  try {
+    // No `filename`: the output path often carries the project name this strips.
+    result = exportAnonymizedSubset(m.store, related.all, {
+      keepPropertySets: keepPsets,
+      pseudonymizeNames: input.keep_names !== true,
+      pseudonymizeAllNames: input.keep_other_names !== true,
+      neutralizeCurrency: input.keep_currency !== true,
+    });
+  } catch (err) {
+    throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: (err as Error).message });
+  }
+  await writeFile(filePath, result.content);
+  if (guidMapPath) await writeFile(guidMapPath, JSON.stringify(Object.fromEntries(result.guidMap), null, 2));
+  const warnings = [...result.stats.warnings];
+  if (related.truncated) warnings.unshift('The related-entity walk hit its work budget; the subset may be incomplete.');
+  return okResult(
+    `Anonymized ${seeds.size} seed(s): ${fmtInt(related.all.size)} related, ${fmtInt(result.stats.entityCount)} exported to ${filePath}.` +
+      (guidMapPath ? ` GUID map at ${guidMapPath} links back to the source; do not share it with the file.` : '') +
+      (warnings.length > 0 ? ` Warnings: ${warnings.join('; ')}` : ''),
+    {
+      filePath,
+      bytes: result.content.length,
+      seedCount: seeds.size,
+      includedCount: related.all.size,
+      entityCount: result.stats.entityCount,
+      truncated: related.truncated,
+      guidMapPath: guidMapPath ?? null,
+      warnings,
+    },
+  );
+}
+
+export const modelAnonymize: Tool = {
+  name: 'model_anonymize',
+  title: 'Anonymized subset export',
+  description:
+    'Anonymize, scrub or redact: export selected entities plus their relationship context (hosts, openings, types, materials, aggregates, spatial chain) as an IFC with names, GlobalIds, owner history, property sets and currency neutralised, so a bug reproduction can be shared without the source model. Geometry-relevant placements survive. Selectors are unioned and each must match.',
+  scope: 'export',
+  annotations: FILE_WRITE_ANNOTATIONS,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      model_id: { type: 'string', description: 'Source model; optional when one model is loaded. Must have no unsaved edits.' },
+      file_path: { type: 'string', description: 'Output .ifc path, inside the allowed paths.' },
+      express_ids: { type: 'array', items: { type: 'integer', minimum: 1 }, description: 'Seed entities by express id.' },
+      global_ids: { ...stringList, description: 'Seed entities by GlobalId.' },
+      types: { ...stringList, description: 'Every entity of these IFC types.' },
+      storey: { type: 'string', description: 'Every entity contained in this storey (GlobalId, express id or name).' },
+      exclude_relationships: { type: 'array', items: { type: 'string', enum: RELATIONSHIPS }, description: 'Relationships not to follow when expanding the seeds.' },
+      connect_depth: { type: 'integer', minimum: 0, description: 'Also follow IfcRelConnectsPathElements this many hops (default 0).' },
+      keep_psets: { type: 'boolean', description: 'Keep property sets instead of clearing them.' },
+      keep_names: { type: 'boolean', description: 'Keep IfcRoot Name, LongName, Description and Tag as authored.' },
+      keep_other_names: { type: 'boolean', description: 'Keep ObjectType, Phase and non-IfcRoot names (styles, materials, layers, profiles).' },
+      keep_currency: { type: 'boolean', description: 'Keep IfcMonetaryUnit.Currency instead of USD.' },
+      guid_map_path: { type: 'string', description: 'Also write a JSON map from new to original GlobalIds. It identifies the source: keep it apart from the output.' },
+    },
+    required: ['file_path'],
+    additionalProperties: false,
+  },
+  outputSchema: fileOutputSchema({
+    seedCount: { type: 'integer' },
+    includedCount: { type: 'integer' },
+    entityCount: { type: 'integer' },
+    truncated: { type: 'boolean', description: 'The relationship walk hit its work budget; the subset may be incomplete.' },
+    guidMapPath: { type: ['string', 'null'] },
+    warnings: { type: 'array', items: { type: 'string' } },
+  }),
+  handler(input, ctx) {
+    return runAnonymize(resolveModel(ctx, input.model_id as string | undefined), input, ctx);
+  },
+};

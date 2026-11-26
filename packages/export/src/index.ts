@@ -30,6 +30,16 @@ export type {
   AnonymizeOptions,
   AnonymizeResult,
 } from './anonymize-types.js';
+// Raw STEP subset extraction: a selection plus its closure and context roots,
+// records copied byte-for-byte (CLI `extract-entities`, MCP `model_extract`).
+export {
+  parseStep,
+  buildSubset,
+  serializeSubset,
+  selectSubsetSeeds,
+  type ParsedStep,
+  type SubsetSelectors,
+} from './step-subset.js';
 export { MergedExporter, type MergeModelInput, type MergeExportOptions, type MergeExportResult, type MergeBlobExportResult, type ExportProgress } from './merged-exporter.js';
 export { collectReferencedEntityIds, getVisibleEntityIds } from './reference-collector.js';
 export { renumberStepIds, type RenumberStepIdsOptions, type RenumberStepIdsResult } from './renumber-step-ids.js';

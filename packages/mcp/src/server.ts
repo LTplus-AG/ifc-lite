@@ -522,7 +522,7 @@ function toToolDefinition(tool: Omit<ToolDefinition, 'scope'> & { scope?: string
     name: tool.name,
     ...(tool.title !== undefined ? { title: tool.title } : {}),
     description: tool.description,
-    inputSchema: advertisedInputSchema(tool.inputSchema),
+    inputSchema: advertisedInputSchema(tool.inputSchema), ...(tool.outputSchema ? { outputSchema: tool.outputSchema } : {}),
     scope: tool.scope as ToolDefinition['scope'],
     ...(tool.annotations !== undefined ? { annotations: tool.annotations } : {}),
     ...(tool._meta !== undefined ? { _meta: tool._meta } : {}),

@@ -7,7 +7,8 @@ import { ensureModelExportReady } from '@/services/desktop-export';
 import { exportChangedModelToStep } from '@/lib/export/changed-model-export';
 import { collectChangedModels } from '@/lib/export/model-changes';
 import { mapStepSchema } from '@/lib/export/artifact-naming';
-import { buildExportFilename, sanitizeFilename } from '@/lib/export/download';
+import { sanitizeFilename } from '@/lib/export/download';
+import { sha256 } from './artifacts';
 import { RegistryError } from './protocol';
 
 /** Export the active model through the same complete, mutation-aware path as Export modified IFC. */
@@ -35,6 +36,12 @@ export async function exportRegistryModel(): Promise<{ bytes: Uint8Array<ArrayBu
   if (result.ext !== 'ifc' || result.skippedCount) throw new RegistryError('This demo publishes plain IFC files. This model needs a different export format.');
   const safe = sanitizeFilename(model.name, { fallback: 'model.ifc', maxLength: Infinity });
   const complete = /\.ifc$/i.test(safe) ? safe : `${safe}.ifc`;
-  const filename = complete.length <= 60 ? complete : buildExportFilename(complete.slice(0, -4), complete.slice(-4));
+  let filename = complete;
+  if (complete.length > 60) {
+    // Keep truncated registry names distinguishable when the payloads are identical.
+    const digest = await sha256(new TextEncoder().encode(model.name));
+    const suffix = `-${digest.slice(-16)}${complete.slice(-4)}`;
+    filename = sanitizeFilename(complete.slice(0, -4), { maxLength: 60 - suffix.length }) + suffix;
+  }
   return { bytes: typeof result.content === 'string' ? new TextEncoder().encode(result.content) : new Uint8Array(result.content), filename };
 }

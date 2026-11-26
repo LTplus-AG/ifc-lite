@@ -52,7 +52,7 @@ export function toCatalogEntry(tool: Tool): ToolCatalogEntry {
 
 function firstSentence(text: string): string {
   const line = text.trim().split('\n')[0];
-  const end = line.search(/\.(\s|$)/);
+  const end = line.search(/\.(?=\s+[A-Z]|\s*$)/);
   const sentence = end === -1 ? line : line.slice(0, end + 1);
   return sentence.length > PURPOSE_MAX ? `${sentence.slice(0, PURPOSE_MAX - 1)}…` : sentence;
 }

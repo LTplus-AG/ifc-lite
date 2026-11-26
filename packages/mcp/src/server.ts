@@ -138,7 +138,7 @@ export class MCPServer {
   private active = new Map<string | number, AbortController>();
   /** Currently subscribed resource URIs (for `notifications/resources/updated`). */
   private subscriptions = new Set<string>();
-  /** Model ids resources/list last showed; list_changed goes out only when they change. */
+  /** Models resources/list last showed; list_changed goes out only when they change. */
   private listedModels = '';
   private unsubscribeRegistry: (() => void) | undefined;
 
@@ -176,7 +176,7 @@ export class MCPServer {
   /** Attach an outgoing-message sink. Required before handling messages. */
   attach(sink: OutgoingMessageSink): void {
     this.sink = sink;
-    this.listedModels = this.visibleModelIds();
+    this.listedModels = this.listedModelsKey();
     this.unsubscribeRegistry ??= this.registry.onChange?.(() => this.syncListedModels());
   }
 
@@ -284,7 +284,7 @@ export class MCPServer {
         case 'resources/templates/list':
           return successResponse(req.id, { resourceTemplates: this.resources.templates() } satisfies ListResourceTemplatesResult);
         case 'resources/read':
-          return successResponse(req.id, await this.handleReadResource(req.params as ReadResourceParams));
+          return successResponse(req.id, await this.handleReadResource((req.params ?? {}) as ReadResourceParams));
         case 'resources/subscribe':
           this.subscriptions.add((req.params as SubscribeParams).uri);
           return successResponse(req.id, {});
@@ -294,7 +294,7 @@ export class MCPServer {
         case 'prompts/list':
           return successResponse(req.id, this.handleListPrompts());
         case 'prompts/get':
-          return successResponse(req.id, await this.handleGetPrompt(req.params as GetPromptParams));
+          return successResponse(req.id, await this.handleGetPrompt((req.params ?? {}) as GetPromptParams));
         case 'logging/setLevel': {
           const level = (req.params as Partial<SetLevelParams> | undefined)?.level;
           if (!isLoggingLevel(level)) throw new RequestError(JsonRpcErrorCode.InvalidParams, `Unknown logging level: ${String(level)}`);
@@ -367,7 +367,6 @@ export class MCPServer {
     return { tools: visibleTools(this.tools, this.scope, this.config.readOnly).map(toToolDefinition) };
   }
 
-
   private async handleCallTool(req: JsonRpcRequest): Promise<CallToolResult> {
     const params = req.params as CallToolParams;
     const tool = this.tools.get(params.name);
@@ -438,6 +437,7 @@ export class MCPServer {
       });
     } finally {
       this.active.delete(req.id);
+      this.syncListedModels(); // for a registry without onChange
     }
   }
 
@@ -461,13 +461,13 @@ export class MCPServer {
     return { contents };
   }
 
-  private visibleModelIds(): string {
-    return this.registry.list().filter((m) => modelAllowed(this.scope, m.id)).map((m) => m.id).join('\n');
+  private listedModelsKey(): string {
+    return this.registry.list().filter((m) => modelAllowed(this.scope, m.id)).map((m) => `${m.id}\t${m.name}`).join('\n');
   }
 
   /** Per-model resources follow the loaded set the scope permits. */
   private syncListedModels(): void {
-    const ids = this.visibleModelIds();
+    const ids = this.listedModelsKey();
     if (ids !== this.listedModels) { this.listedModels = ids; this.notifyResourcesChanged(); }
   }
 

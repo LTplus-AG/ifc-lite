@@ -7,7 +7,7 @@ The MCP wire protocol now matches what the server does (#11535).
 - `PROTOCOL_VERSION` is `2025-11-25`. `2025-11-05` was never an MCP revision and is no longer negotiated; such clients get `2025-11-25`.
 - Prompt messages use only `user` and `assistant` roles.
 - `logging/setLevel` works: server log lines at or above the level go to the client as `notifications/message`. Nothing is sent before a level is set.
-- `notifications/resources/list_changed` is sent when a tool call loads or unloads a model, and `notifications/tools/list_changed` when `setScope` changes the visible tools.
+- `notifications/resources/list_changed` is sent when the loaded models change (new optional `ModelRegistry.onChange`; registries without it are checked after each tool call), and `notifications/tools/list_changed` when `setScope` changes the visible tools.
 - New `resources/templates/list`; the entity URI is listed there instead of as a resource with literal braces.
 - `ResourceLink` is the spec `resource_link` content type. `EmbeddedResource` is unchanged.
 - An unknown resource URI or prompt name answers JSON-RPC `-32602`, not `-32603`.

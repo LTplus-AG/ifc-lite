@@ -22,17 +22,20 @@ import {
   buildDefaultPromptRegistry,
   fullScope,
   readOnlyScope,
+  SILENT_LOGGER,
   type LoadedModel,
   type Tool,
 } from './index.js';
 import { allPrompts } from './prompts/templates.js';
+import { ClientLogForwarder } from './client-logging.js';
+import { toCatalogEntry } from './tool-catalog.js';
 import { toolError, ToolErrorCode } from './errors.js';
 import type { ContentBlock, ToolDefinition } from './protocol/index.js';
 
 type Note = { method?: string; params?: Record<string, unknown> };
 
-const fakeModel = (id: string): LoadedModel => ({
-  id, name: id, loadedAt: 0,
+const fakeModel = (id: string, name = id): LoadedModel => ({
+  id, name, loadedAt: 0,
   backend: { setPeerScopes() { /* no peers */ }, dispose() { /* nothing held */ } },
 } as unknown as LoadedModel);
 
@@ -117,6 +120,14 @@ describe('logging', () => {
     expect(sent[0].params).toMatchObject({ logger: 'ifc-lite-mcp', data: { message: 'loud line', n: 1 } });
   });
 
+  it('keeps the log message when the data carries its own message key', () => {
+    const sent: unknown[] = [];
+    const forwarder = new ClientLogForwarder(SILENT_LOGGER, 'x', (p) => sent.push(p));
+    forwarder.setLevel('debug');
+    forwarder.logger.log('error', 'export failed', { message: 'disk full' });
+    expect(sent).toEqual([{ level: 'error', logger: 'x', data: { message: 'export failed' } }]);
+  });
+
   it('refuses an unknown level with -32602', async () => {
     const { request } = await initialized();
     expect((await request('logging/setLevel', { level: 'loud' })).error?.code).toBe(-32602);
@@ -141,9 +152,35 @@ describe('list_changed', () => {
     server.registry.add(fakeModel('host-loaded'));
     server.registry.remove('host-loaded');
     expect(methods(notes, 'notifications/resources/list_changed')).toHaveLength(2);
+    server.registry.add(fakeModel('host-loaded', 'renamed'));
+    server.registry.add(fakeModel('host-loaded', 'renamed again'));
+    // Same id, new name: the listed resource names change too.
+    expect(methods(notes, 'notifications/resources/list_changed')).toHaveLength(4);
     server.detach();
     server.registry.add(fakeModel('after-detach'));
-    expect(methods(notes, 'notifications/resources/list_changed')).toHaveLength(2);
+    expect(methods(notes, 'notifications/resources/list_changed')).toHaveLength(4);
+  });
+
+  it('still sends resources/list_changed after a tool call when the registry has no onChange', async () => {
+    const models = new Map<string, LoadedModel>();
+    const registry = {
+      list: () => [...models.values()], get: (id: string) => models.get(id) ?? null,
+      resolve: () => null, add: (m: LoadedModel) => { models.set(m.id, m); },
+      remove: (id: string) => models.delete(id), count: () => models.size,
+    };
+    const tools = new ToolRegistry();
+    tools.register({
+      name: 'load', description: 'Adds a model.', inputSchema: { type: 'object' },
+      handler() { registry.add(fakeModel('m')); return { content: [] }; },
+    } satisfies Tool);
+    const server = new MCPServer({ version: '0', registry, tools, resources: buildDefaultResourceRegistry(), prompts: buildDefaultPromptRegistry() });
+    const transport = new InProcessTransport();
+    void transport.connect(server);
+    const notes: Note[] = [];
+    transport.onMessage((m) => notes.push(m as Note));
+    await transport.send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 't', version: '0' } } });
+    await transport.send({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'load', arguments: {} } });
+    expect(methods(notes, 'notifications/resources/list_changed')).toHaveLength(1);
   });
 
   it('sends tools/list_changed when setScope changes the visible tools, and not otherwise', async () => {
@@ -179,6 +216,12 @@ describe('instructions and manifest', () => {
     ]);
     expect(await read(true)).toEqual([{ name: 'log_both', title: 'Log both', purpose: 'Logs info and error.', scope: 'read' }]);
   });
+
+  it('does not cut a purpose at an abbreviation', () => {
+    const entry = (description: string) => toCatalogEntry({ name: 't', description, inputSchema: {}, handler: () => ({ content: [] }) });
+    expect(entry('Class details for a name (e.g. "IfcWall") from bSDD.').purpose).toBe('Class details for a name (e.g. "IfcWall") from bSDD.');
+    expect(entry('First. Second.').purpose).toBe('First.');
+  });
 });
 
 describe('resources', () => {
@@ -194,6 +237,8 @@ describe('resources', () => {
     const { request } = await initialized();
     expect((await request('resources/read', { uri: 'nope://x' })).error?.code).toBe(-32602);
     expect((await request('resources/read', { uri: 'ifc-lite://model/missing/manifest' })).error?.code).toBe(-32602);
+    expect((await request('resources/read')).error?.code).toBe(-32602);
+    expect((await request('prompts/get')).error?.code).toBe(-32602);
   });
 
   it('types resource_link per spec, beside the embedded resource', () => {

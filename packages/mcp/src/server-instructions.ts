@@ -18,7 +18,7 @@ Start here
 - 3D viewer: viewer_ask, then viewer_open; viewer_colorize, viewer_isolate, viewer_fly_to, viewer_get_selection.
 
 Conventions
-- model_id: tools that act on one loaded model take an optional model_id. Omit it when one model is loaded; pass it when several are (MODEL_REQUIRED otherwise). BCF, bSDD, IDS authoring, draft layers and the two-model diffs take no model_id.
+- model_id: tools that act on one loaded model take an optional model_id. Omit it when one model is loaded; pass it when several are (MODEL_REQUIRED otherwise). BCF topics, draft layers and the two-model diffs (model_diff, quantity_diff) take no model_id.
 - Entities: pass global_id (GlobalId) or express_id.
 - Errors are tool results with isError=true, structuredContent.code (e.g. ENTITY_NOT_FOUND) and often a hint. Follow the hint and retry.
 - Long calls send notifications/progress when the request carries _meta.progressToken.

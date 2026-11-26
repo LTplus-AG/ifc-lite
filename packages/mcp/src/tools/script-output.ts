@@ -98,8 +98,11 @@ export function wrapScript(code: string): string {
       m = typeof x !== 'string' || x === '' ? Str(e)
         : typeof n === 'string' && n !== '' && n !== 'Error' ? n + ': ' + x : x;
     } catch (c) {
-      // Only QuickJS's own InternalError means memory ran out while printing.
-      try { return c && c.name === 'InternalError' ? 'out of memory while printing the error' : 'a thrown value with no string form'; }
+      // QuickJS raises InternalError for both exhausted memory and stack overflow.
+      try {
+        if (c && c.name === 'InternalError') return c.message === 'out of memory' ? 'out of memory while printing the error' : 'stack overflow while printing the error';
+        return 'a thrown value with no string form';
+      }
       catch (_) { return 'a thrown value with no string form'; }
     }
     if (m === '') return 'an empty ' + (typeof e) + ' was thrown';

@@ -49,10 +49,12 @@ const MAX_MEMORY_MB = 128;
 /**
  * QuickJS stack ceiling. At the sandbox's 512 KB default, runaway recursion
  * overflows Node's own stack first: the host sees a RangeError and teardown
- * aborts QuickJS (#1922), retiring the shared WASM module. At 256 KB QuickJS
- * raises its own catchable 'stack overflow' and disposes cleanly (probed).
+ * aborts QuickJS (#1922), retiring the shared WASM module. 256 KB still let
+ * recursion that re-enters QuickJS's C code (String(o) inside toString, a
+ * self-reading getter) overflow the host. At 128 KB every shape probed raises
+ * QuickJS's own catchable 'stack overflow' and disposes cleanly.
  */
-const MAX_STACK_BYTES = 256 * 1024;
+const MAX_STACK_BYTES = 128 * 1024;
 
 type Mode = 'read' | 'mutate';
 
@@ -231,7 +233,10 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
       // Script throws are caught in the wrapper, so 'interrupted' here is the
       // sandbox's own interrupt handler (it reports nothing more specific).
       if (err instanceof ScriptError && err.message === 'interrupted') {
-        throw new ToolExecutionError({ code: ToolErrorCode.TIMEOUT, message: `Script exceeded timeout_ms (${timeoutMs}).`, details });
+        throw new ToolExecutionError({
+          code: ToolErrorCode.TIMEOUT, message: `Script exceeded timeout_ms (${timeoutMs}).`, details,
+          hint: `Raise timeout_ms (max ${MAX_TIMEOUT_MS}) or do less per call; un-awaited bim calls count toward it.`,
+        });
       }
       // The sandbox's own realm failing is a server fault, not the script's.
       if (err instanceof ScriptError && err.message.startsWith('Sandbox realm became invalid')) {

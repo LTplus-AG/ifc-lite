@@ -127,6 +127,7 @@ describe('script_run', () => {
     const started = Date.now();
     const err = await runError('for (;;) {}', { timeout_ms: 200 });
     expect(err.code).toBe('TIMEOUT');
+    expect(err.hint).toMatch(/timeout_ms/);
     expect(Date.now() - started).toBeLessThan(5_000);
   });
 
@@ -263,6 +264,20 @@ describe('script_run', () => {
     const err = await runError("throw 'x'.repeat(5e6)", { memory_mb: 64 });
     expect(err.message.length).toBeLessThan(4_100);
     expect(err.message.endsWith('[truncated]')).toBe(true);
+  });
+
+  it('keeps recursion through QuickJS natives inside the realm', async () => {
+    for (const code of [
+      'const o = { toString() { return String(o); } }; String(o)',
+      'const o = { get x() { return o.x; } }; o.x',
+    ]) {
+      const err = await runError(code);
+      expect(err.message).toMatch(/stack overflow/);
+      expect(err.hint).toMatch(/recursed too deep/);
+    }
+    const printing = await runError('const e = { get message() { const f = () => f(); return f(); } }; throw e;');
+    expect(printing.message).toBe('Script error: stack overflow while printing the error');
+    expect((await run('6 + 6')).structuredContent?.value).toBe(12);
   });
 
   it('reports runaway recursion as a script error and keeps the sandbox healthy', async () => {

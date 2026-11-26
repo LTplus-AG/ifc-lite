@@ -171,11 +171,11 @@ function statusTool(bridge: TabBridge): Tool {
       try {
         await bridge.listen();
       } catch (err) {
-        const inUse = isPortUnavailable(err);
+        const unavailable = isPortUnavailable(err);
         return toolError({
           code: ToolErrorCode.INTERNAL_ERROR,
           message: `The bridge could not listen on 127.0.0.1: ${describeThrown(err)}`,
-          ...(inUse ? { hint: 'Another program holds the port. Restart the MCP server with another --bridge-port.' } : {}),
+          ...(unavailable ? { hint: 'Another program holds the port, or the system reserves it. Restart the MCP server with another --bridge-port.' } : {}),
         });
       }
       return statusResult(bridge, input.pair_new_tab === true);

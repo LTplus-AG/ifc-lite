@@ -153,7 +153,8 @@ export class DeliveredSurfaces {
     if (!surface) return { refused: 'names a surface the agent did not show in this tab' };
     if (event.name !== ASK_EVENT && !surface.events.has(event.name)) return { refused: 'names an event that surface does not raise' };
     const prompt = event.prompt?.trim();
-    // A blank prompt is no prompt: nothing to pass on as the user's words.
+    // A blank prompt is no prompt: nothing to pass on as the user's words. The
+    // `prompt: undefined` key tells the caller to drop the tab's raw blank text.
     if (!prompt) return { promptVerified: true, ...(event.prompt === undefined ? {} : { prompt: undefined }) };
     const promptVerified = surface.prompts.has(prompt) || prompt === genericPrompt(event.name);
     return { promptVerified, prompt: promptVerified ? prompt : event.prompt };

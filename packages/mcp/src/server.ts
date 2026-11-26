@@ -7,8 +7,9 @@
  *
  * Responsibilities:
  *   - track initialization handshake
- *   - dispatch `tools/list`, `tools/call`, `resources/list`, `resources/read`,
- *     `prompts/list`, `prompts/get`, `ping`, `notifications/initialized`,
+ *   - dispatch `tools/list`, `tools/call`, `resources/list`,
+ *     `resources/templates/list`, `resources/read`, `prompts/list`,
+ *     `prompts/get`, `logging/setLevel`, `ping`, `notifications/initialized`,
  *     `notifications/cancelled`
  *   - filter tool advertisement by auth scope
  *   - validate tool input against the tool's JSON schema
@@ -32,6 +33,7 @@ import {
   JsonRpcRequest,
   JsonRpcResponse,
   ListPromptsResult,
+  ListResourceTemplatesResult,
   ListResourcesResult,
   ListToolsResult,
   PROTOCOL_VERSION,
@@ -40,14 +42,15 @@ import {
   ReadResourceParams,
   ReadResourceResult,
   ServerCapabilities,
+  SetLevelParams,
   SubscribeParams,
-  ToolDefinition,
 } from './protocol/index.js';
 import {
   errorResponse,
   isJsonRpcNotification,
   isJsonRpcRequest,
   notification,
+  RequestError,
   successResponse,
 } from './protocol/jsonrpc.js';
 import {
@@ -56,6 +59,9 @@ import {
   modelAllowed,
   scopeAllows,
 } from './auth/scope.js';
+import { ClientLogForwarder, isLoggingLevel } from './client-logging.js';
+import { SERVER_INSTRUCTIONS } from './server-instructions.js';
+import { toCatalogEntry, toToolDefinition, visibleTools } from './tool-catalog.js';
 import {
   DEFAULT_CONFIG,
   InMemoryModelRegistry,
@@ -66,13 +72,13 @@ import {
   ServerConfig,
   ToolContext,
 } from './context.js';
-import { ToolExecutionError, ToolErrorCode, toolError } from './errors.js';
+import { describeThrown, ToolExecutionError, ToolErrorCode, toolError } from './errors.js';
 import { PromptRegistry } from './prompts/types.js';
 import { ResourceRegistry } from './resources/types.js';
 import { disposeSessionResources } from './session-cleanup.js';
 import { ToolRegistry } from './tools/types.js';
 import { withScanHint } from './tools/util.js';
-import { advertisedInputSchema, validateInput } from './validate.js';
+import { validateInput } from './validate.js';
 import { ViewerManager } from './viewer-manager.js';
 import type { ViewerState } from './viewer-manager.js';
 
@@ -119,6 +125,7 @@ export class MCPServer {
 
   private scope: AuthScope;
   private logger: Logger;
+  private logForwarder: ClientLogForwarder;
   private capabilities: ServerCapabilities;
   private instructions: string;
   private initialized = false;
@@ -127,6 +134,9 @@ export class MCPServer {
   private active = new Map<string | number, AbortController>();
   /** Currently subscribed resource URIs (for `notifications/resources/updated`). */
   private subscriptions = new Set<string>();
+  /** Models resources/list last showed; list_changed goes out only when they change. */
+  private listedModels = '';
+  private unsubscribeRegistry: (() => void) | undefined;
 
   constructor(opts: MCPServerOptions) {
     this.name = opts.name ?? SERVER_NAME;
@@ -138,7 +148,8 @@ export class MCPServer {
     this.tools = opts.tools;
     this.resources = opts.resources;
     this.prompts = opts.prompts;
-    this.logger = opts.logger ?? SILENT_LOGGER;
+    this.logForwarder = new ClientLogForwarder(opts.logger ?? SILENT_LOGGER, this.name, (params) => this.notify('notifications/message', { ...params }));
+    this.logger = this.logForwarder.logger;
     this.instructions = opts.instructions ?? SERVER_INSTRUCTIONS;
     this.capabilities = opts.capabilities ?? {
       tools: { listChanged: true },
@@ -161,10 +172,14 @@ export class MCPServer {
   /** Attach an outgoing-message sink. Required before handling messages. */
   attach(sink: OutgoingMessageSink): void {
     this.sink = sink;
+    this.listedModels = this.listedModelsKey();
+    this.unsubscribeRegistry ??= this.registry.onChange?.(() => this.syncListedModels());
   }
 
   detach(): void {
     this.sink = null;
+    this.unsubscribeRegistry?.();
+    this.unsubscribeRegistry = undefined;
     this.active.forEach((c) => c.abort());
     this.active.clear();
     // Close the viewer sockets, layer Y.Docs and native Room plates even if
@@ -174,7 +189,11 @@ export class MCPServer {
 
   /** Update the auth scope mid-session (e.g. token refresh). */
   setScope(scope: AuthScope): void {
+    const names = () => visibleTools(this.tools, this.scope, this.config.readOnly).map((t) => t.name).join('\n');
+    const before = names();
     this.scope = scope;
+    if (names() !== before) this.notifyToolsChanged();
+    this.syncListedModels();
   }
 
   /**
@@ -258,8 +277,10 @@ export class MCPServer {
           return successResponse(req.id, await this.handleCallTool(req));
         case 'resources/list':
           return successResponse(req.id, await this.handleListResources());
+        case 'resources/templates/list':
+          return successResponse(req.id, { resourceTemplates: this.resources.templates() } satisfies ListResourceTemplatesResult);
         case 'resources/read':
-          return successResponse(req.id, await this.handleReadResource(req.params as ReadResourceParams));
+          return successResponse(req.id, await this.handleReadResource((req.params ?? {}) as ReadResourceParams));
         case 'resources/subscribe':
           this.subscriptions.add((req.params as SubscribeParams).uri);
           return successResponse(req.id, {});
@@ -269,11 +290,19 @@ export class MCPServer {
         case 'prompts/list':
           return successResponse(req.id, this.handleListPrompts());
         case 'prompts/get':
-          return successResponse(req.id, await this.handleGetPrompt(req.params as GetPromptParams));
+          return successResponse(req.id, await this.handleGetPrompt((req.params ?? {}) as GetPromptParams));
+        case 'logging/setLevel': {
+          if (!this.capabilities.logging) throw new RequestError(JsonRpcErrorCode.MethodNotFound, 'Logging is not offered by this server');
+          const level = (req.params as Partial<SetLevelParams> | undefined)?.level;
+          if (!isLoggingLevel(level)) throw new RequestError(JsonRpcErrorCode.InvalidParams, `Unknown logging level: ${String(level)}`);
+          this.logForwarder.setLevel(level);
+          return successResponse(req.id, {});
+        }
         default:
           return errorResponse(req.id, JsonRpcErrorCode.MethodNotFound, `Unknown method: ${req.method}`);
       }
     } catch (err) {
+      if (err instanceof RequestError) return errorResponse(req.id, err.code, err.message, err.data);
       const message = err instanceof Error ? err.message : String(err);
       this.logger.log('error', `Request ${req.method} failed`, { error: message });
       return errorResponse(req.id, JsonRpcErrorCode.InternalError, message);
@@ -309,14 +338,8 @@ export class MCPServer {
 
   private handleInitialize(params: InitializeParams): InitializeResult {
     this.initialized = true;
-    // Per MCP spec: when the client requests a protocol version we support,
-    // echo it back; otherwise reply with our preferred version. Newer
-    // clients (e.g. Claude Desktop ≥ 0.x asking for 2025-11-25) hard-close
-    // the transport on a version mismatch, so silently downgrading them
-    // would brick the integration. Our wire surface is the stable subset
-    // (initialize, tools/{list,call}, resources/*, prompts/*, notifications/*,
-    // logging) that's been compatible across these revisions, so accepting
-    // them is safe.
+    // Per MCP spec: echo a version we support, else offer our own. Clients
+    // hard-close on a mismatch, so a needless downgrade bricks them.
     const negotiated = SUPPORTED_PROTOCOL_VERSIONS.has(params.protocolVersion)
       ? params.protocolVersion
       : PROTOCOL_VERSION;
@@ -338,17 +361,7 @@ export class MCPServer {
   // ────────────────────────────────────────────────────────────────────────
 
   private handleListTools(): ListToolsResult {
-    const visible = this.tools.list().filter((t) => scopeAllows(this.scope, t.scope));
-    if (this.config.readOnly) {
-      // belt-and-suspenders: even if a token claims `mutate`, hide mutation
-      // tools when the server was started --read-only.
-      const tools: ToolDefinition[] = visible
-        .filter((t) => t.scope !== 'mutate')
-        .map(toToolDefinition);
-      return { tools };
-    }
-    const tools: ToolDefinition[] = visible.map(toToolDefinition);
-    return { tools };
+    return { tools: visibleTools(this.tools, this.scope, this.config.readOnly).map(toToolDefinition) };
   }
 
   private async handleCallTool(req: JsonRpcRequest): Promise<CallToolResult> {
@@ -421,6 +434,7 @@ export class MCPServer {
       });
     } finally {
       this.active.delete(req.id);
+      if (!this.registry.onChange) this.syncListedModels();
     }
   }
 
@@ -435,16 +449,22 @@ export class MCPServer {
   }
 
   private async handleReadResource(params: ReadResourceParams): Promise<ReadResourceResult> {
+    if (typeof params.uri !== 'string') throw new RequestError(JsonRpcErrorCode.InvalidParams, 'resources/read needs a uri');
     const provider = this.resources.matchProvider(params.uri);
-    if (!provider) {
-      throw new ToolExecutionError({
-        code: ToolErrorCode.UNSUPPORTED_OPERATION,
-        message: `No resource provider matches URI: ${params.uri}`,
-      });
-    }
-    const ctx = this.makeResourceContext();
-    const contents = await provider.read(params.uri, ctx);
+    // An empty read is a well-formed URI naming nothing (unknown model or entity).
+    const contents = provider ? await provider.read(params.uri, this.makeResourceContext()) : [];
+    if (contents.length === 0) throw new RequestError(JsonRpcErrorCode.ResourceNotFound, 'Resource not found', { uri: params.uri });
     return { contents };
+  }
+
+  private listedModelsKey(): string {
+    return this.registry.list().filter((m) => modelAllowed(this.scope, m.id)).map((m) => `${m.id}\t${m.name}`).join('\n');
+  }
+
+  /** Per-model resources follow the loaded set the scope permits. */
+  private syncListedModels(): void {
+    const key = this.listedModelsKey();
+    if (key !== this.listedModels) { this.listedModels = key; this.notifyResourcesChanged(); }
   }
 
   // ────────────────────────────────────────────────────────────────────────
@@ -457,12 +477,7 @@ export class MCPServer {
 
   private async handleGetPrompt(params: GetPromptParams): Promise<GetPromptResult> {
     const prompt = this.prompts.get(params.name);
-    if (!prompt) {
-      throw new ToolExecutionError({
-        code: ToolErrorCode.UNSUPPORTED_OPERATION,
-        message: `Unknown prompt: ${params.name}`,
-      });
-    }
+    if (!prompt) throw new RequestError(JsonRpcErrorCode.InvalidParams, `Unknown prompt: ${params.name}`);
     const ctx = this.makeResourceContext();
     return prompt.render(params.arguments ?? {}, ctx);
   }
@@ -482,13 +497,13 @@ export class MCPServer {
       config: this.config,
       session: { id: this.sessionId, principal: this.scope.user },
       viewer: this.viewer,
+      toolCatalog: () => visibleTools(this.tools, this.scope, this.config.readOnly).map(toCatalogEntry),
     };
   }
 
   private makeProgress(token: string | number | undefined): ProgressReporter {
-    if (token === undefined || !this.sink) {
-      return { report() { /* no token => silent */ } };
-    }
+    if (token === undefined || !this.sink) return { report() { /* no token => silent */ } };
+    // Sent directly, not via notify(): a sink that throws here fails the producer on purpose (#7372).
     const sink = this.sink;
     return {
       report: (progress, message, total) => {
@@ -505,38 +520,22 @@ export class MCPServer {
     if (this.subscriptions.has(uri)) this.notify('notifications/resources/updated', { uri });
   }
 
-  /** Send any server notification, e.g. a host-specific channel event. Dropped while no client is attached. */
-  notify(method: string, params: Record<string, unknown>): void { void this.sink?.send(notification(method, params)); }
+  /** Send a server notification. Dropped until initialize; a failing sink is logged, never thrown at the caller. */
+  notify(method: string, params: Record<string, unknown>): void {
+    const sink = this.sink;
+    if (!this.initialized || !sink) return;
+    const failed = (err: unknown) => this.logForwarder.base.log('warning', `notify ${method} failed`, { error: describeThrown(err) });
+    void (async () => { try { await sink.send(notification(method, params)); } catch (err) { failed(err); } })();
+  }
 
   /** Notify clients that the tool list has changed (e.g., after model load). */
-  notifyToolsChanged(): void { this.notify('notifications/tools/list_changed', {}); }
+  notifyToolsChanged(): void { if (this.capabilities.tools?.listChanged) this.notify('notifications/tools/list_changed', {}); }
+
+  /** Notify clients that resources/list changed (a model was loaded, unloaded or hidden by scope). */
+  notifyResourcesChanged(): void { if (this.capabilities.resources?.listChanged) this.notify('notifications/resources/list_changed', {}); }
 
   /** Read-only access to the auth scope for transports that need to gate access. */
   hasModelAccess(modelId: string): boolean {
     return modelAllowed(this.scope, modelId);
   }
 }
-
-function toToolDefinition(tool: Omit<ToolDefinition, 'scope'> & { scope?: string }): ToolDefinition {
-  return {
-    name: tool.name,
-    ...(tool.title !== undefined ? { title: tool.title } : {}),
-    description: tool.description,
-    inputSchema: advertisedInputSchema(tool.inputSchema), ...(tool.outputSchema ? { outputSchema: tool.outputSchema } : {}),
-    scope: tool.scope as ToolDefinition['scope'],
-    ...(tool.annotations !== undefined ? { annotations: tool.annotations } : {}),
-    ...(tool._meta !== undefined ? { _meta: tool._meta } : {}),
-  };
-}
-
-const SERVER_INSTRUCTIONS = `
-ifc-lite-mcp exposes a federated set of IFC/BIM models as MCP tools.
-
-Conventions:
-  • All tools accept an optional model_id; when only one model is loaded it can be omitted.
-  • Errors surface as tool results with isError=true and structuredContent.code (e.g. ENTITY_NOT_FOUND).
-  • Long operations stream progress via notifications/progress when a progressToken is supplied.
-  • Mutations are queued; call export_ifc or model_save to persist.
-
-See the resource ifc-lite://server/manifest for the full tool catalog.
-`.trim();

@@ -64,7 +64,7 @@ the answer, and `contentDiff.pendingMutations` says how many.
 **Geometry** — `geometry_get`, `geometry_bbox`, `geometry_area`,
 `geometry_volume`, `raycast`.
 
-**Validation** — `ids_validate`, `ids_explain`, `gherkin_check`.
+**Validation** — `ids_validate`, `ids_explain`.
 
 **Clash** — `clash_check`, `clash_matrix`.
 
@@ -79,7 +79,7 @@ only the user gave in `values`, never invented ones),
 `mutation_batch`, `mutation_diff`, `mutation_undo`.
 
 **Export** — `export_csv`, `export_json`, `export_ifc`, `export_ifcx`,
-`export_glb`, `export_3dm`, `export_pdf_report`.
+`export_glb`, `export_3dm`.
 
 **Model transforms** (write a new file, the loaded model is untouched):
 `model_merge`, `model_convert` (schema version, with a loss report),

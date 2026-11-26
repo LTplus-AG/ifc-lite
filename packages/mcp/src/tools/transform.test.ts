@@ -19,6 +19,7 @@ import { DEFAULT_CONFIG, InMemoryModelRegistry, NOOP_PROGRESS, SILENT_LOGGER } f
 import { fullScope } from '../auth/scope.js';
 import { loadIfcModel } from '../loader.js';
 import { buildDefaultToolRegistry } from './index.js';
+import { toToolDefinition } from '../tool-catalog.js';
 import { validateInput } from '../validate.js';
 import { toolError } from '../errors.js';
 import { CASE_INSENSITIVE_FS } from './transform-schema.js';
@@ -102,6 +103,8 @@ describe('transform tool metadata', () => {
     // destructive: each one replaces an existing file at file_path.
     expect(t.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true });
     expect(t.outputSchema).toMatchObject({ type: 'object', additionalProperties: false });
+    // tools/list carries it to the client.
+    expect(toToolDefinition(t).outputSchema).toBe(t.outputSchema);
     // An error result's structuredContent must validate too, for clients that check it.
     const err = toolError({ code: 'INVALID_INPUT', message: 'x', hint: 'y' });
     expect(validateInput(t.outputSchema!, err.structuredContent)).toMatchObject({ valid: true, errors: [] });

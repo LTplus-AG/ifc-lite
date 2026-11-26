@@ -27,8 +27,8 @@ export function viewerUrl(port: number, path = ''): string {
   return `http://${VIEWER_HOST}:${port}${path}`;
 }
 
-/** `localhost` or `127.0.0.1`, with or without a port. */
-const LOOPBACK = String.raw`(localhost|127\.0\.0\.1)(:\d+)?`;
+/** `localhost`, `127.0.0.1` or `[::1]` (a tunnel's local end), with or without a port. */
+const LOOPBACK = String.raw`(localhost|127\.0\.0\.1|\[::1\])(:\d+)?`;
 const LOOPBACK_HOST = new RegExp(`^${LOOPBACK}$`, 'i');
 /** A page served from this machine. */
 const LOCAL_ORIGIN = new RegExp(`^https?://${LOOPBACK}$`);

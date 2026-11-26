@@ -267,7 +267,7 @@ Key design decisions:
 - **GPU color-ID picking** — click any entity to see its express ID and type
 - **Per-vertex color buffer** — real-time colorization without re-uploading geometry
 - **SSE with exponential backoff** — reconnects automatically if the connection drops
-- **Loopback only** — the server listens on 127.0.0.1, answers only requests whose Host is `localhost` or `127.0.0.1` (this blocks DNS rebinding), and refuses POSTs from pages that are not served from `localhost` or `127.0.0.1`. CORS allows only those local origins. To reach the viewer from a container or another machine, forward the port with an SSH tunnel and open it as `localhost` on your side.
+- **Loopback only**: the server listens on 127.0.0.1, answers only requests whose Host is `localhost`, `127.0.0.1` or `[::1]` (this blocks DNS rebinding), and refuses POSTs from pages served from anywhere else. CORS allows only those local origins. To reach the viewer from another machine, forward the port with an SSH tunnel and open it as `localhost` on your side. A viewer inside a container is not reachable from the host through a published port in this release.
 
 ## Programmatic Usage (`@ifc-lite/viewer-core`)
 

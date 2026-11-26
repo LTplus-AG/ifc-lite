@@ -176,7 +176,8 @@ function evaluateWhere(
 }
 
 async function sendViewerCommand(port: number, cmd: Record<string, unknown>): Promise<void> {
-  const { viewerUrl } = await import('@ifc-lite/viewer-core');
+  const { viewerUrl } = await import('@ifc-lite/viewer-core').catch(() => ({ viewerUrl: null }));
+  if (!viewerUrl) return; // like an unreachable viewer: analysis output does not depend on it
   await fetch(viewerUrl(port, '/api/command'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

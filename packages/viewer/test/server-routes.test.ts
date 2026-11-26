@@ -15,6 +15,7 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { connect } from 'node:net';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -446,19 +447,26 @@ describe('viewer server — loopback only', () => {
   });
 
   // A tunnel (ssh -L 9000:127.0.0.1:<port>) or port 80 changes the Host port.
-  for (const host of ['localhost:9000', '127.0.0.1:9000', 'LOCALHOST:9000', 'localhost']) {
+  for (const host of ['localhost:9000', '127.0.0.1:9000', '[::1]:9000', 'LOCALHOST:9000', 'localhost']) {
     it(`serves Host ${host}`, TEST_TIMEOUT, async () => {
       const res = await req(port, '/api/status', { headers: { host } });
       assert.equal(res.status, 200);
     });
   }
 
-  it('is not reachable on a non-loopback interface', TEST_TIMEOUT, async () => {
+  it('is not reachable on a non-loopback interface', TEST_TIMEOUT, async (t) => {
     const external = Object.values(networkInterfaces())
       .flat()
       .find((i) => i && i.family === 'IPv4' && !i.internal);
-    if (!external) return; // no external interface on this box: nothing to probe
-    await assert.rejects(req(port, '/api/status', { address: external.address }));
+    if (!external) return t.skip('no external IPv4 interface to probe');
+    // Refused or dropped both mean unreachable; only a completed connect fails.
+    const connected = await new Promise<boolean>((done) => {
+      const socket = connect({ host: external.address, port, timeout: 2_000 });
+      socket.once('connect', () => { socket.destroy(); done(true); });
+      socket.once('timeout', () => { socket.destroy(); done(false); });
+      socket.once('error', () => done(false));
+    });
+    assert.equal(connected, false);
   });
 });
 

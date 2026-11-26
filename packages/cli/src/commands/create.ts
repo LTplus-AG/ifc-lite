@@ -105,8 +105,8 @@ export async function createCommand(args: string[]): Promise<void> {
   // Stream to viewer (if --viewer specified)
   let viewerOk = false;
   if (viewerPort) {
+    const { viewerUrl } = await import('@ifc-lite/viewer-core');
     try {
-      const { viewerUrl } = await import('@ifc-lite/viewer-core');
       const resp = await fetch(viewerUrl(viewerPort, '/api/command'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
